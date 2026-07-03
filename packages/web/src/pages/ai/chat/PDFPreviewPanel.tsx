@@ -115,7 +115,6 @@ export function PDFPreviewPanel({ file, onClose, fullscreen, onToggleFullscreen,
       light: tokens,
       dark:  tokens,
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDark]);
 
   useEffect(() => {

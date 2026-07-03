@@ -7,17 +7,28 @@
  * 回复框支持快捷回复（插入）与快捷回复 CRUD 管理。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Badge, Button, Dropdown, Empty, Input, Select, Spin, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import { BarChart3, CheckCheck, MessageSquareText, RotateCcw, Search, Send, Settings, Tag as TagIcon, UserCheck } from 'lucide-react';
-import type { ChannelConversation, ChannelConversationStatus, ChannelCsAgent, ChannelMessage, ChannelQuickReply, PaginatedResponse, WsMessage } from '@zenith/shared';
+import type { ChannelConversationStatus, ChannelMessage, WsMessage } from '@zenith/shared';
 import { CHANNEL_CONVERSATION_STATUS_LABELS } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { UserAvatar } from '@/components/UserAvatar';
 import { ChannelQuickReplyDrawer } from './ChannelQuickReplyDrawer';
 import { ConversationTagModal } from './ConversationTagModal';
 import { ChannelCsPerformanceDrawer } from './ChannelCsPerformanceDrawer';
+import {
+  channelCsKeys,
+  useAssignChannelConversation,
+  useChannelConversationMessages,
+  useChannelConversations,
+  useChannelCsAgents,
+  useChannelQuickReplies,
+  useCsChannels,
+  useReplyChannelConversation,
+  useResolveChannelConversation,
+} from '@/hooks/queries/channel-cs';
 
 const { Text } = Typography;
 
@@ -30,38 +41,49 @@ const STATUS_TAG_COLOR: Record<ChannelConversationStatus, 'orange' | 'blue' | 'g
   resolved: 'green',
 };
 
-interface CsChannel {
-  id: number;
-  name: string;
-  avatar: string | null;
-}
+const EMPTY_CHANNELS: NonNullable<ReturnType<typeof useCsChannels>['data']> = [];
+const EMPTY_CONVERSATIONS: NonNullable<ReturnType<typeof useChannelConversations>['data']> = [];
+const EMPTY_MESSAGES: ChannelMessage[] = [];
+const EMPTY_QUICK_REPLIES: NonNullable<ReturnType<typeof useChannelQuickReplies>['data']> = [];
+const EMPTY_AGENTS: NonNullable<ReturnType<typeof useChannelCsAgents>['data']> = [];
 
 export default function ChannelCustomerServicePage() {
-  const [channels, setChannels] = useState<CsChannel[]>([]);
+  const queryClient = useQueryClient();
   const [channelId, setChannelId] = useState<number | null>(null);
-  const [conversations, setConversations] = useState<ChannelConversation[]>([]);
   const [activeUserId, setActiveUserId] = useState<number | null>(null);
-  const [messages, setMessages] = useState<ChannelMessage[]>([]);
-  const [loadingMsg, setLoadingMsg] = useState(false);
   const [reply, setReply] = useState('');
-  const [sending, setSending] = useState(false);
-  const [quickReplies, setQuickReplies] = useState<ChannelQuickReply[]>([]);
   const [manageVisible, setManageVisible] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>('all');
   const [keywordInput, setKeywordInput] = useState('');
   const [keyword, setKeyword] = useState('');
-  const [agents, setAgents] = useState<ChannelCsAgent[]>([]);
   const [tagModalVisible, setTagModalVisible] = useState(false);
   const [performanceVisible, setPerformanceVisible] = useState(false);
-  const [opLoading, setOpLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastCountRef = useRef(0);
   const channelIdRef = useRef<number | null>(null);
   const activeUserIdRef = useRef<number | null>(null);
-  const statusFilterRef = useRef<StatusFilter>('all');
-  const assigneeFilterRef = useRef<AssigneeFilter>('all');
-  const keywordRef = useRef('');
+
+  const channelsQuery = useCsChannels();
+  const channels = channelsQuery.data ?? EMPTY_CHANNELS;
+  const agentsQuery = useChannelCsAgents();
+  const agents = agentsQuery.data ?? EMPTY_AGENTS;
+  const conversationParams = useMemo(() => ({
+    status: statusFilter === 'all' ? undefined : statusFilter,
+    assignee: assigneeFilter === 'all' ? undefined : assigneeFilter,
+    keyword: keyword || undefined,
+  }), [assigneeFilter, keyword, statusFilter]);
+  const conversationsQuery = useChannelConversations(channelId ?? undefined, conversationParams, channelId != null);
+  const conversations = conversationsQuery.data ?? EMPTY_CONVERSATIONS;
+  const messagesQuery = useChannelConversationMessages(channelId ?? undefined, activeUserId ?? undefined, { page: 1, pageSize: 50 }, channelId != null && activeUserId != null);
+  const messages = useMemo(() => [...(messagesQuery.data?.list ?? EMPTY_MESSAGES)].reverse(), [messagesQuery.data]);
+  const quickRepliesQuery = useChannelQuickReplies(channelId ?? undefined, channelId != null);
+  const quickReplies = quickRepliesQuery.data ?? EMPTY_QUICK_REPLIES;
+  const replyMutation = useReplyChannelConversation();
+  const assignMutation = useAssignChannelConversation();
+  const resolveMutation = useResolveChannelConversation();
+  const sending = replyMutation.isPending;
+  const opLoading = assignMutation.isPending || resolveMutation.isPending;
 
   const activeConv = useMemo(
     () => conversations.find((c) => c.userId === activeUserId) ?? null,
@@ -75,91 +97,26 @@ export default function ChannelCustomerServicePage() {
     });
   }, []);
 
-  // 加载客服可服务的运营号
   useEffect(() => {
-    void (async () => {
-      const res = await request.get<CsChannel[]>('/api/channels/cs/channels', { silent: true });
-      if (res.code === 0 && res.data) {
-        setChannels(res.data);
-        if (res.data.length > 0) setChannelId((prev) => prev ?? res.data[0].id);
-      }
-    })();
-  }, []);
-
-  const fetchConversations = useCallback(async (cid: number) => {
-    const params = new URLSearchParams();
-    if (statusFilterRef.current !== 'all') params.set('status', statusFilterRef.current);
-    if (assigneeFilterRef.current !== 'all') params.set('assignee', assigneeFilterRef.current);
-    const kw = keywordRef.current.trim();
-    if (kw) params.set('keyword', kw);
-    const qs = params.toString();
-    const res = await request.get<ChannelConversation[]>(
-      `/api/channels/cs/${cid}/conversations${qs ? `?${qs}` : ''}`,
-      { silent: true },
-    );
-    if (res.code === 0 && res.data) setConversations(res.data);
-  }, []);
-
-  const fetchMessages = useCallback(async (cid: number, uid: number, showSpin = false) => {
-    if (showSpin) setLoadingMsg(true);
-    try {
-      const res = await request.get<PaginatedResponse<ChannelMessage>>(
-        `/api/channels/cs/${cid}/conversations/${uid}/messages?page=1&pageSize=50`,
-        { silent: true },
-      );
-      if (res.code === 0 && res.data) {
-        const ordered = [...res.data.list].reverse();
-        setMessages(ordered);
-        if (ordered.length !== lastCountRef.current) {
-          lastCountRef.current = ordered.length;
-          scrollToBottom();
-        }
-      }
-    } finally {
-      if (showSpin) setLoadingMsg(false);
-    }
-  }, [scrollToBottom]);
-
-  const fetchQuickReplies = useCallback(async (cid: number) => {
-    const res = await request.get<ChannelQuickReply[]>(
-      `/api/channels/cs/quick-replies?channelId=${cid}`,
-      { silent: true },
-    );
-    if (res.code === 0 && res.data) setQuickReplies(res.data);
-  }, []);
+    if (channels.length > 0) setChannelId((prev) => prev ?? channels[0].id);
+  }, [channels]);
 
   // 保持当前频道 / 会话引用，供 WS 回调读取最新值
   useEffect(() => { channelIdRef.current = channelId; }, [channelId]);
   useEffect(() => { activeUserIdRef.current = activeUserId; }, [activeUserId]);
 
-  // 保持筛选条件引用，供 WS / 轮询刷新时带上当前筛选
-  useEffect(() => { statusFilterRef.current = statusFilter; }, [statusFilter]);
-  useEffect(() => { assigneeFilterRef.current = assigneeFilter; }, [assigneeFilter]);
-  useEffect(() => { keywordRef.current = keyword; }, [keyword]);
-
-  // 筛选变化时重新加载会话列表
   useEffect(() => {
     if (channelId == null) return;
-    void fetchConversations(channelId);
-  }, [channelId, statusFilter, assigneeFilter, keyword, fetchConversations]);
-
-  // 加载可指派客服（拥有 channel:cs 权限的用户）
-  useEffect(() => {
-    void (async () => {
-      const res = await request.get<ChannelCsAgent[]>('/api/channels/cs/agents', { silent: true });
-      if (res.code === 0 && res.data) setAgents(res.data);
-    })();
-  }, []);
-
-  // 切换频道：重置会话 + 加载快捷回复（会话列表由筛选 effect 负责加载）
-  useEffect(() => {
-    if (channelId == null) return;
-    setConversations([]);
     setActiveUserId(null);
-    setMessages([]);
-    setQuickReplies([]);
-    void fetchQuickReplies(channelId);
-  }, [channelId, fetchQuickReplies]);
+    lastCountRef.current = 0;
+  }, [channelId]);
+
+  useEffect(() => {
+    if (messages.length !== lastCountRef.current) {
+      lastCountRef.current = messages.length;
+      scrollToBottom();
+    }
+  }, [messages, scrollToBottom]);
 
   // 订阅 WS：用户给运营号发消息时实时刷新
   const handleWs = useCallback((wsMsg: WsMessage) => {
@@ -167,68 +124,41 @@ export default function ChannelCustomerServicePage() {
       const cid = channelIdRef.current;
       if (cid == null || wsMsg.payload.channelId !== cid) return;
       const uid = activeUserIdRef.current;
-      if (uid != null) void fetchMessages(cid, uid);
+      if (uid != null) void queryClient.invalidateQueries({ queryKey: ['channel-cs', 'messages', cid, uid] });
       return;
     }
     if (wsMsg.type !== 'channel:cs-message') return;
     const cid = channelIdRef.current;
     if (cid == null) return;
     if (wsMsg.payload.channelId === cid) {
-      void fetchConversations(cid);
+      void queryClient.invalidateQueries({ queryKey: ['channel-cs', 'conversations', cid] });
       const uid = activeUserIdRef.current;
-      if (uid != null) void fetchMessages(cid, uid);
+      if (uid != null) void queryClient.invalidateQueries({ queryKey: ['channel-cs', 'messages', cid, uid] });
     } else {
       // 其他频道有新消息：刷新会话列表更新未读角标（仅当前选中频道维度）
-      void fetchConversations(cid);
+      void queryClient.invalidateQueries({ queryKey: ['channel-cs', 'conversations', cid] });
     }
-  }, [fetchConversations, fetchMessages]);
+  }, [queryClient]);
 
   useWebSocket(handleWs);
 
-  // 轮询会话列表（WS 兜底，降频至 30s）
-  useEffect(() => {
-    if (channelId == null) return;
-    const timer = setInterval(() => { void fetchConversations(channelId); }, 30000);
-    return () => clearInterval(timer);
-  }, [channelId, fetchConversations]);
-
-  // 切换会话：加载消息
   useEffect(() => {
     if (channelId == null || activeUserId == null) return;
     lastCountRef.current = 0;
-    void fetchMessages(channelId, activeUserId, true);
-  }, [channelId, activeUserId, fetchMessages]);
-
-  // 轮询活动会话消息（WS 兜底，降频至 15s）
-  useEffect(() => {
-    if (channelId == null || activeUserId == null) return;
-    const timer = setInterval(() => { void fetchMessages(channelId, activeUserId); }, 15000);
-    return () => clearInterval(timer);
-  }, [channelId, activeUserId, fetchMessages]);
+  }, [channelId, activeUserId]);
 
   const handleReply = useCallback(async () => {
     const content = reply.trim();
     if (!content || sending || channelId == null || activeUserId == null) return;
-    setSending(true);
-    try {
-      const res = await request.post<ChannelMessage>(
-        `/api/channels/cs/${channelId}/conversations/${activeUserId}/reply`,
-        { content },
-        { silent: true },
-      );
-      if (res.code === 0 && res.data) {
-        setReply('');
-        setMessages((prev) => [...prev, res.data as ChannelMessage]);
-        lastCountRef.current += 1;
-        scrollToBottom();
-        void fetchConversations(channelId);
-      } else {
-        Toast.error(res.message || '回复失败');
-      }
-    } finally {
-      setSending(false);
-    }
-  }, [reply, sending, channelId, activeUserId, scrollToBottom, fetchConversations]);
+    const sent = await replyMutation.mutateAsync({ channelId, userId: activeUserId, content });
+    setReply('');
+    queryClient.setQueryData(
+      channelCsKeys.messages(channelId, activeUserId, { page: 1, pageSize: 50 }),
+      (prev: { list: ChannelMessage[] } | undefined) => (prev ? { ...prev, list: [sent, ...prev.list] } : prev),
+    );
+    lastCountRef.current += 1;
+    scrollToBottom();
+  }, [reply, sending, channelId, activeUserId, replyMutation, queryClient, scrollToBottom]);
 
   const insertQuickReply = useCallback((content: string) => {
     setReply((prev) => {
@@ -240,50 +170,24 @@ export default function ChannelCustomerServicePage() {
   const refreshAfterOp = useCallback(() => {
     const cid = channelIdRef.current;
     if (cid == null) return;
-    void fetchConversations(cid);
+    void queryClient.invalidateQueries({ queryKey: ['channel-cs', 'conversations', cid] });
     const uid = activeUserIdRef.current;
-    if (uid != null) void fetchMessages(cid, uid);
-  }, [fetchConversations, fetchMessages]);
+    if (uid != null) void queryClient.invalidateQueries({ queryKey: ['channel-cs', 'messages', cid, uid] });
+  }, [queryClient]);
 
   const handleAssign = useCallback(async (assigneeId: number | null) => {
     if (channelId == null || activeUserId == null || opLoading) return;
-    setOpLoading(true);
-    try {
-      const res = await request.post(
-        `/api/channels/cs/${channelId}/conversations/${activeUserId}/assign`,
-        { assigneeId },
-        { silent: true },
-      );
-      if (res.code === 0) {
-        Toast.success(assigneeId == null ? '已取消指派' : '已指派');
-        refreshAfterOp();
-      } else {
-        Toast.error(res.message || '操作失败');
-      }
-    } finally {
-      setOpLoading(false);
-    }
-  }, [channelId, activeUserId, opLoading, refreshAfterOp]);
+    await assignMutation.mutateAsync({ channelId, userId: activeUserId, assigneeId });
+    Toast.success(assigneeId == null ? '已取消指派' : '已指派');
+    refreshAfterOp();
+  }, [channelId, activeUserId, opLoading, assignMutation, refreshAfterOp]);
 
   const handleResolve = useCallback(async () => {
     if (channelId == null || activeUserId == null || opLoading) return;
-    setOpLoading(true);
-    try {
-      const res = await request.post(
-        `/api/channels/cs/${channelId}/conversations/${activeUserId}/resolve`,
-        {},
-        { silent: true },
-      );
-      if (res.code === 0) {
-        Toast.success('已标记为已解决');
-        refreshAfterOp();
-      } else {
-        Toast.error(res.message || '操作失败');
-      }
-    } finally {
-      setOpLoading(false);
-    }
-  }, [channelId, activeUserId, opLoading, refreshAfterOp]);
+    await resolveMutation.mutateAsync({ channelId, userId: activeUserId });
+    Toast.success('已标记为已解决');
+    refreshAfterOp();
+  }, [channelId, activeUserId, opLoading, resolveMutation, refreshAfterOp]);
 
   const handleSearch = useCallback(() => { setKeyword(keywordInput.trim()); }, [keywordInput]);
 
@@ -300,7 +204,7 @@ export default function ChannelCustomerServicePage() {
         />
         <Button
           icon={<RotateCcw size={14} />}
-          onClick={() => { if (channelId != null) { void fetchConversations(channelId); if (activeUserId != null) void fetchMessages(channelId, activeUserId, true); } }}
+          onClick={() => { void conversationsQuery.refetch(); if (activeUserId != null) void messagesQuery.refetch(); }}
         >
           刷新
         </Button>
@@ -448,7 +352,7 @@ export default function ChannelCustomerServicePage() {
                 </div>
 
                 <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: 16, minHeight: 0 }}>
-                  {loadingMsg ? (
+                  {messagesQuery.isFetching ? (
                     <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
                   ) : messages.map((m) => {
                     const isOut = m.direction === 'out';
@@ -539,7 +443,7 @@ export default function ChannelCustomerServicePage() {
           channelName={channels.find((c) => c.id === channelId)?.name ?? '当前频道'}
           visible={manageVisible}
           onClose={() => setManageVisible(false)}
-          onChanged={() => { void fetchQuickReplies(channelId); }}
+          onChanged={() => { void quickRepliesQuery.refetch(); }}
         />
       )}
 

@@ -1,12 +1,12 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { Button, Input, Select, Spin, Tag, Toast, Modal, Banner, Empty } from '@douyinfe/semi-ui';
 import { RefreshCw, Save, Send, Trash2, Plus } from 'lucide-react';
 import type { MpMenu, MpMenuButton } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
+import { useDeleteMpMenu, useMpMenu, usePublishMpMenu, usePullMpMenu, useSaveMpMenu } from '@/hooks/queries/mp-menu';
 
 const CONTENT_TYPE_OPTIONS = [
   { label: '跳转网址', value: 'view' },
@@ -31,31 +31,37 @@ const clone = (b: MpMenuButton[]): MpMenuButton[] => structuredClone(b);
 
 export default function MpMenuPage() {
   const { hasPermission: can } = usePermission();
-  const { accounts, currentId, currentIdRef, setCurrentId, loading: accountsLoading } = useMpAccounts();
+  const { accounts, currentId, setCurrentId, loading: accountsLoading } = useMpAccounts();
 
   const [menu, setMenu] = useState<MpMenu | null>(null);
   const [buttons, setButtons] = useState<MpMenuButton[]>([]);
   const [selected, setSelected] = useState<Sel>(null);
   const [activeL1, setActiveL1] = useState<number | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [busy, setBusy] = useState<'' | 'save' | 'publish' | 'pull' | 'delete'>('');
-
-  const load = useCallback(async (accountId: number) => {
-    setLoading(true);
-    try {
-      const res = await request.get<MpMenu>(`/api/mp/menu?accountId=${accountId}`);
-      if (currentIdRef.current !== accountId) return; // 账号已切换，丢弃过期响应
-      setMenu(res.data ?? null);
-      setButtons(res.data?.buttons ?? []);
-      setSelected(null);
-      setActiveL1(null);
-    } finally { setLoading(false); }
-  }, [currentIdRef]);
+  const menuQuery = useMpMenu(currentId);
+  const saveMutation = useSaveMpMenu();
+  const publishMutation = usePublishMpMenu();
+  const pullMutation = usePullMpMenu();
+  const deleteMutation = useDeleteMpMenu();
+  const busy = saveMutation.isPending ? 'save'
+    : publishMutation.isPending ? 'publish'
+      : pullMutation.isPending ? 'pull'
+        : deleteMutation.isPending ? 'delete'
+          : '';
 
   useEffect(() => {
-    if (currentId) void load(currentId);
-    else { setButtons([]); setMenu(null); setSelected(null); setActiveL1(null); }
-  }, [currentId, load]);
+    if (!currentId) {
+      setButtons([]);
+      setMenu(null);
+      setSelected(null);
+      setActiveL1(null);
+      return;
+    }
+    if (!menuQuery.isSuccess) return;
+    setMenu(menuQuery.data ?? null);
+    setButtons(menuQuery.data?.buttons ?? []);
+    setSelected(null);
+    setActiveL1(null);
+  }, [currentId, menuQuery.data, menuQuery.isSuccess]);
 
   const getSelectedBtn = (): MpMenuButton | null => {
     if (!selected) return null;
@@ -124,38 +130,26 @@ export default function MpMenuPage() {
 
   const doSave = async () => {
     if (!currentId) return;
-    setBusy('save');
-    try {
-      const res = await request.post<MpMenu>('/api/mp/menu/save', { accountId: currentId, buttons });
-      if (res.code === 0) { Toast.success('已保存草稿'); setMenu(res.data ?? null); }
-    } finally { setBusy(''); }
+    const data = await saveMutation.mutateAsync({ accountId: currentId, buttons });
+    Toast.success('已保存草稿');
+    setMenu(data ?? null);
   };
 
   const doPublish = async () => {
     if (!currentId) return;
-    setBusy('publish');
-    try {
-      // 先保存当前编辑的按钮树，再发布，避免发布到旧草稿丢失改动
-      const saveRes = await request.post<MpMenu>('/api/mp/menu/save', { accountId: currentId, buttons });
-      if (saveRes.code !== 0) return;
-      const res = await request.post<MpMenu>('/api/mp/menu/publish', { accountId: currentId });
-      if (res.code === 0) { Toast.success('已保存并发布到微信'); setMenu(res.data ?? null); }
-    } finally { setBusy(''); }
+    const data = await publishMutation.mutateAsync({ accountId: currentId, buttons });
+    Toast.success('已保存并发布到微信');
+    setMenu(data ?? null);
   };
 
   const doPull = async () => {
     if (!currentId) return;
-    setBusy('pull');
-    try {
-      const res = await request.post<MpMenu>('/api/mp/menu/pull', { accountId: currentId });
-      if (res.code === 0) {
-        Toast.success('已从微信拉取');
-        setMenu(res.data ?? null);
-        setButtons(res.data?.buttons ?? []);
-        setSelected(null);
-        setActiveL1(null);
-      }
-    } finally { setBusy(''); }
+    const data = await pullMutation.mutateAsync(currentId);
+    Toast.success('已从微信拉取');
+    setMenu(data ?? null);
+    setButtons(data?.buttons ?? []);
+    setSelected(null);
+    setActiveL1(null);
   };
 
   const doDelete = () => {
@@ -164,17 +158,12 @@ export default function MpMenuPage() {
       title: '确定要删除微信端的自定义菜单吗？',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        setBusy('delete');
-        try {
-          const res = await request.post<MpMenu>('/api/mp/menu/delete', { accountId: currentId });
-          if (res.code === 0) {
-            Toast.success('已删除微信菜单');
-            setMenu(res.data ?? null);
-            setButtons([]);
-            setSelected(null);
-            setActiveL1(null);
-          }
-        } finally { setBusy(''); }
+        const data = await deleteMutation.mutateAsync(currentId);
+        Toast.success('已删除微信菜单');
+        setMenu(data ?? null);
+        setButtons([]);
+        setSelected(null);
+        setActiveL1(null);
       },
     });
   };
@@ -266,7 +255,7 @@ export default function MpMenuPage() {
         actionTitle="自定义菜单操作"
       />
 
-      <Spin spinning={loading}>
+      <Spin spinning={menuQuery.isFetching}>
         <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start', flexWrap: 'wrap' }}>
 
           {/* ── 手机预览（无边框风格，适配主题） ── */}

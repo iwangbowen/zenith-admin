@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Input, Modal, Select, Spin, Toast, Switch, Tag, Row, Col } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -7,12 +8,20 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import { PAYMENT_CHANNEL_LABELS } from '@zenith/shared';
-import type { PaymentChannel, PaymentChannelConfig, PaginatedResponse } from '@zenith/shared';
+import type { PaymentChannel, PaymentChannelConfig } from '@zenith/shared';
+import {
+  paymentChannelKeys,
+  useDeletePaymentChannel,
+  usePaymentChannelDetail,
+  usePaymentChannelList,
+  useSavePaymentChannel,
+  useSetDefaultPaymentChannel,
+  useTestPaymentChannel,
+} from '@/hooks/queries/payment-channels';
 
 interface SearchParams {
   keyword: string;
@@ -23,99 +32,85 @@ const defaultSearch: SearchParams = { keyword: '', channel: '', status: '' };
 
 export default function PaymentChannelsPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
 
-  const [data, setData] = useState<PaginatedResponse<PaymentChannelConfig> | null>(null);
-  const [loading, setLoading] = useState(false);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearch);
-  const searchRef = useRef<SearchParams>(defaultSearch);
-  searchRef.current = searchParams;
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearch);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearch);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<PaymentChannelConfig | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [detailLoading, setDetailLoading] = useState(false);
   const [formChannel, setFormChannel] = useState<PaymentChannel>('wechat');
-  const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
-  const [testingIds, setTestingIds] = useState<Set<number>>(new Set());
-  const [defaultingIds, setDefaultingIds] = useState<Set<number>>(new Set());
-
-  const fetchList = useCallback(
-    async (p = page, ps = pageSize, params?: SearchParams) => {
-      const active = params ?? searchRef.current;
-      setLoading(true);
-      try {
-        const query: Record<string, string> = { page: String(p), pageSize: String(ps) };
-        if (active.keyword) query.keyword = active.keyword;
-        if (active.channel) query.channel = active.channel;
-        if (active.status) query.status = active.status;
-        const res = await request.get<PaginatedResponse<PaymentChannelConfig>>(`/api/payment/channels?${new URLSearchParams(query)}`);
-        if (res.code === 0) {
-          setData(res.data);
-          setPage(res.data.page);
-          setPageSize(res.data.pageSize);
-        }
-      } finally {
-        setLoading(false);
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [page, pageSize],
-  );
-
-  useEffect(() => {
-    void fetchList();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   function handleSearch() {
     setPage(1);
-    void fetchList(1, pageSize);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: paymentChannelKeys.lists });
   }
   function handleReset() {
-    setSearchParams(defaultSearch);
+    setDraftParams(defaultSearch);
+    setSubmittedParams(defaultSearch);
     setPage(1);
-    void fetchList(1, pageSize, defaultSearch);
+    void queryClient.invalidateQueries({ queryKey: paymentChannelKeys.lists });
   }
+
+  const listQuery = usePaymentChannelList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    channel: submittedParams.channel || undefined,
+    status: submittedParams.status || undefined,
+  });
+  const data = listQuery.data ?? null;
+  const detailQuery = usePaymentChannelDetail(editing?.id, modalVisible);
+  const editingDetail = editing ? (detailQuery.data ?? editing) : null;
+  const detailLoading = !!editing && detailQuery.isFetching;
+  const saveMutation = useSavePaymentChannel();
+  const deleteMutation = useDeletePaymentChannel();
+  const toggleMutation = useSavePaymentChannel();
+  const testMutation = useTestPaymentChannel();
+  const defaultMutation = useSetDefaultPaymentChannel();
+  const togglingId = toggleMutation.isPending ? (toggleMutation.variables?.id ?? null) : null;
+  const testingId = testMutation.isPending ? (testMutation.variables ?? null) : null;
+  const defaultingId = defaultMutation.isPending ? (defaultMutation.variables ?? null) : null;
+
+  useEffect(() => {
+    if (modalVisible && editingDetail?.channel) setFormChannel(editingDetail.channel);
+  }, [editingDetail?.channel, modalVisible]);
 
   function openCreate() {
     setEditing(null);
     setFormChannel('wechat');
     setModalVisible(true);
   }
-  async function openEdit(record: PaymentChannelConfig) {
+  function openEdit(record: PaymentChannelConfig) {
     setEditing(record);
     setFormChannel(record.channel);
     setModalVisible(true);
-    setDetailLoading(true);
-    const res = await request.get<PaymentChannelConfig>(`/api/payment/channels/${record.id}`);
-    setDetailLoading(false);
-    if (res.code === 0 && res.data) setEditing(res.data);
   }
   function closeModal() {
     setModalVisible(false);
     setEditing(null);
-    setDetailLoading(false);
   }
 
-  const formInit = editing
+  const formInit = editingDetail
     ? {
-        name: editing.name,
-        channel: editing.channel,
-        status: editing.status,
-        isDefault: editing.isDefault,
-        sandbox: editing.sandbox,
-        notifyUrl: editing.notifyUrl ?? '',
-        remark: editing.remark ?? '',
-        wechatAppId: editing.wechatAppId ?? '',
-        wechatMchId: editing.wechatMchId ?? '',
-        wechatSerialNo: editing.wechatSerialNo ?? '',
-        wechatPlatformCert: editing.wechatPlatformCert ?? '',
-        alipayAppId: editing.alipayAppId ?? '',
-        alipayPublicKey: editing.alipayPublicKey ?? '',
-        alipaySignType: editing.alipaySignType ?? 'RSA2',
-        alipayGateway: editing.alipayGateway ?? '',
+        name: editingDetail.name,
+        channel: editingDetail.channel,
+        status: editingDetail.status,
+        isDefault: editingDetail.isDefault,
+        sandbox: editingDetail.sandbox,
+        notifyUrl: editingDetail.notifyUrl ?? '',
+        remark: editingDetail.remark ?? '',
+        wechatAppId: editingDetail.wechatAppId ?? '',
+        wechatMchId: editingDetail.wechatMchId ?? '',
+        wechatSerialNo: editingDetail.wechatSerialNo ?? '',
+        wechatPlatformCert: editingDetail.wechatPlatformCert ?? '',
+        alipayAppId: editingDetail.alipayAppId ?? '',
+        alipayPublicKey: editingDetail.alipayPublicKey ?? '',
+        alipaySignType: editingDetail.alipaySignType ?? 'RSA2',
+        alipayGateway: editingDetail.alipayGateway ?? '',
       }
     : { channel: 'wechat', status: 'enabled', isDefault: false, sandbox: false, alipaySignType: 'RSA2' };
 
@@ -128,77 +123,36 @@ export default function PaymentChannelsPage() {
     } catch {
       throw new Error('validation');
     }
-    setSubmitting(true);
-    try {
-      const res = editing
-        ? await request.put(`/api/payment/channels/${editing.id}`, values)
-        : await request.post('/api/payment/channels', values);
-      if (res.code === 0) {
-        Toast.success(editing ? '更新成功' : '创建成功');
-        closeModal();
-        void fetchList();
-      } else {
-        throw new Error(res.message);
-      }
-    } finally {
-      setSubmitting(false);
-    }
+    await saveMutation.mutateAsync({ id: editing?.id, values });
+    Toast.success(editing ? '更新成功' : '创建成功');
+    closeModal();
   }
 
   async function handleDelete(id: number) {
-    const res = await request.delete(`/api/payment/channels/${id}`);
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      void fetchList();
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   }
 
   function handleToggle(record: PaymentChannelConfig, checked: boolean) {
-    setTogglingIds((prev) => new Set(prev).add(record.id));
-    request
-      .put(`/api/payment/channels/${record.id}`, { status: checked ? 'enabled' : 'disabled' })
-      .then((res) => {
-        if (res.code === 0) {
-          Toast.success(checked ? '已启用' : '已停用');
-          void fetchList();
-        }
-      })
-      .finally(() => setTogglingIds((prev) => { const s = new Set(prev); s.delete(record.id); return s; }));
+    toggleMutation.mutate(
+      { id: record.id, values: { status: checked ? 'enabled' : 'disabled' } },
+      { onSuccess: () => Toast.success(checked ? '已启用' : '已停用') },
+    );
   }
 
   function handleTest(record: PaymentChannelConfig) {
-    setTestingIds((prev) => new Set(prev).add(record.id));
-    request
-      .post<{ success: boolean; message: string; latencyMs: number }>(`/api/payment/channels/${record.id}/test`, {})
-      .then((res) => {
-        if (res.code === 0) {
-          const { success, message, latencyMs } = res.data;
-          if (success) {
-            Toast.success(`连通性测试通过（${latencyMs}ms）：${message}`);
-          } else {
-            Toast.error(`连通性测试失败：${message}`);
-          }
-        } else {
-          Toast.error(`测试失败：${res.message}`);
-        }
-      })
-      .catch((err: unknown) => Toast.error(`测试异常：${err instanceof Error ? err.message : '未知错误'}`))
-      .finally(() => setTestingIds((prev) => { const s = new Set(prev); s.delete(record.id); return s; }));
+    testMutation.mutate(record.id, {
+      onSuccess: ({ success, message, latencyMs }) => {
+        if (success) Toast.success(`连通性测试通过（${latencyMs}ms）：${message}`);
+        else Toast.error(`连通性测试失败：${message}`);
+      },
+    });
   }
 
   function handleSetDefault(record: PaymentChannelConfig) {
-    setDefaultingIds((prev) => new Set(prev).add(record.id));
-    request
-      .post(`/api/payment/channels/${record.id}/default`, {})
-      .then((res) => {
-        if (res.code === 0) {
-          Toast.success(`已将「${record.name}」设为默认${PAYMENT_CHANNEL_LABELS[record.channel]}渠道`);
-          void fetchList();
-        } else {
-          Toast.error(`设置失败：${res.message}`);
-        }
-      })
-      .finally(() => setDefaultingIds((prev) => { const s = new Set(prev); s.delete(record.id); return s; }));
+    defaultMutation.mutate(record.id, {
+      onSuccess: () => Toast.success(`已将「${record.name}」设为默认${PAYMENT_CHANNEL_LABELS[record.channel]}渠道`),
+    });
   }
 
   const columns: ColumnProps<PaymentChannelConfig>[] = [
@@ -210,7 +164,7 @@ export default function PaymentChannelsPage() {
     {
       title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
       render: (_: unknown, r: PaymentChannelConfig) => (
-        <Switch checked={r.status === 'enabled'} loading={togglingIds.has(r.id)} disabled={!hasPermission('payment:channel:update')} size="small" onChange={(c) => handleToggle(r, c)} />
+        <Switch checked={r.status === 'enabled'} loading={togglingId === r.id} disabled={!hasPermission('payment:channel:update')} size="small" onChange={(c) => handleToggle(r, c)} />
       ),
     },
     createOperationColumn<PaymentChannelConfig>({
@@ -219,13 +173,13 @@ export default function PaymentChannelsPage() {
         ...(hasPermission('payment:channel:update') && !r.isDefault ? [{
           key: 'default',
           label: '设为默认',
-          loading: defaultingIds.has(r.id),
+          loading: defaultingId === r.id,
           onClick: () => handleSetDefault(r),
         }] : []),
         ...(hasPermission('payment:channel:update') ? [{
           key: 'test',
           label: '测试',
-          loading: testingIds.has(r.id),
+          loading: testingId === r.id,
           onClick: () => handleTest(r),
         }, {
           key: 'edit',
@@ -252,8 +206,8 @@ export default function PaymentChannelsPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="搜索名称..."
-      value={searchParams.keyword}
-      onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))}
+      value={draftParams.keyword}
+      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
       showClear
       style={{ width: 200 }}
       onEnterPress={handleSearch}
@@ -263,8 +217,8 @@ export default function PaymentChannelsPage() {
   const renderChannelFilter = () => (
     <Select
       placeholder="全部渠道"
-      value={searchParams.channel || undefined}
-      onChange={(v) => setSearchParams((p) => ({ ...p, channel: (v as string) ?? '' }))}
+      value={draftParams.channel || undefined}
+      onChange={(v) => setDraftParams((p) => ({ ...p, channel: (v as string) ?? '' }))}
       showClear
       style={{ width: 130 }}
       optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }]}
@@ -274,8 +228,8 @@ export default function PaymentChannelsPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="全部状态"
-      value={searchParams.status || undefined}
-      onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))}
+      value={draftParams.status || undefined}
+      onChange={(v) => setDraftParams((p) => ({ ...p, status: (v as string) ?? '' }))}
       showClear
       style={{ width: 120 }}
       optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]}
@@ -323,16 +277,16 @@ export default function PaymentChannelsPage() {
         bordered
         columns={columns}
         dataSource={data?.list ?? []}
-        loading={loading}
+        loading={listQuery.isFetching}
         rowKey="id"
         size="small"
         empty="暂无数据"
-        onRefresh={() => void fetchList()}
-        refreshLoading={loading}
-        pagination={buildPagination(data?.total ?? 0, fetchList)}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
+        pagination={buildPagination(data?.total ?? 0)}
       />
 
-      <AppModal title={editing ? '编辑支付渠道' : '新增支付渠道'} visible={modalVisible} onOk={handleOk} onCancel={closeModal} okButtonProps={{ loading: submitting, disabled: detailLoading }} width={660} closeOnEsc>
+      <AppModal title={editing ? '编辑支付渠道' : '新增支付渠道'} visible={modalVisible} onOk={handleOk} onCancel={closeModal} okButtonProps={{ loading: saveMutation.isPending, disabled: detailLoading }} width={660} closeOnEsc>
         <Spin spinning={detailLoading} wrapperClassName="modal-spin-wrapper">
           <Form key={editing?.id ?? 'new'} getFormApi={(api) => { formApi.current = api; }} allowEmpty initValues={formInit} labelPosition="left" labelWidth={96}
             onValueChange={(v) => { if (v.channel) setFormChannel(v.channel as PaymentChannel); }}>
@@ -356,8 +310,8 @@ export default function PaymentChannelsPage() {
                   <Col span={12}><Form.Input field="wechatMchId" label="商户号" placeholder="mchid" /></Col>
                 </Row>
                 <Form.Input field="wechatSerialNo" label="证书序列号" placeholder="商户 API 证书序列号" />
-                <Form.Input field="wechatApiV3Key" label="APIv3 Key" mode="password" placeholder={secretPlaceholder(editing?.hasWechatApiV3Key)} />
-                <Form.TextArea field="wechatPrivateKey" label="商户私钥" autosize rows={3} placeholder={secretPlaceholder(editing?.hasWechatPrivateKey)} />
+                <Form.Input field="wechatApiV3Key" label="APIv3 Key" mode="password" placeholder={secretPlaceholder(editingDetail?.hasWechatApiV3Key)} />
+                <Form.TextArea field="wechatPrivateKey" label="商户私钥" autosize rows={3} placeholder={secretPlaceholder(editingDetail?.hasWechatPrivateKey)} />
                 <Form.TextArea field="wechatPlatformCert" label="平台证书" autosize rows={3} placeholder="微信支付平台证书（PEM，验签用）" />
               </>
             )}
@@ -368,7 +322,7 @@ export default function PaymentChannelsPage() {
                   <Col span={12}><Form.Input field="alipayAppId" label="AppID" placeholder="支付宝应用 AppID" /></Col>
                   <Col span={12}><Form.Select field="alipaySignType" label="签名算法" style={{ width: '100%' }} optionList={[{ value: 'RSA2', label: 'RSA2' }, { value: 'RSA', label: 'RSA' }]} /></Col>
                 </Row>
-                <Form.TextArea field="alipayPrivateKey" label="应用私钥" autosize rows={3} placeholder={secretPlaceholder(editing?.hasAlipayPrivateKey)} />
+                <Form.TextArea field="alipayPrivateKey" label="应用私钥" autosize rows={3} placeholder={secretPlaceholder(editingDetail?.hasAlipayPrivateKey)} />
                 <Form.TextArea field="alipayPublicKey" label="支付宝公钥" autosize rows={3} placeholder="支付宝公钥（PEM，验签用）" />
                 <Form.Input field="alipayGateway" label="网关地址" placeholder="留空则按沙箱开关自动选择" />
               </>

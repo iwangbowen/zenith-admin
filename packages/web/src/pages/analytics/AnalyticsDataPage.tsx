@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Tabs,
   TabPane,
@@ -31,13 +32,23 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
 import AppModal from '@/components/AppModal';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
-import { request } from '@/utils/request';
+import {
+  analyticsKeys,
+  useAnalyticsEventDetail,
+  useAnalyticsEventMeta,
+  useAnalyticsEvents,
+  useAnalyticsRollup,
+  useAnalyticsSettings,
+  useCleanAnalyticsEvents,
+  useDeleteAnalyticsEventMeta,
+  useRebuildAnalyticsRollup,
+  useSaveAnalyticsEventMeta,
+  useSaveAnalyticsSettings,
+} from '@/hooks/queries/analytics';
 import type {
   AnalyticsEventMeta,
   AnalyticsSettings,
-  EventDetail,
   EventListItem,
-  PaginatedResponse,
 } from '@zenith/shared';
 
 const PAGE_SIZE = 20;
@@ -155,10 +166,6 @@ function buildQuery(params: Record<string, string | number | undefined>) {
   return query.toString();
 }
 
-function withQuery(url: string, query: string) {
-  return query ? `${url}?${query}` : url;
-}
-
 function parseDateRange(value: unknown): [Date, Date] | null {
   if (!Array.isArray(value) || value.length < 2) return null;
   const [start, end] = value;
@@ -203,48 +210,29 @@ function MetaStatusTag({ value }: Readonly<{ value: AnalyticsEventMeta['status']
 }
 
 export default function AnalyticsDataPage() {
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'events' | 'meta' | 'rollup' | 'settings'>('events');
 
-  const [events, setEvents] = useState<EventListItem[]>([]);
-  const [eventsTotal, setEventsTotal] = useState(0);
   const [eventsPage, setEventsPage] = useState(1);
   const [eventsPageSize, setEventsPageSize] = useState(PAGE_SIZE);
-  const [eventsLoading, setEventsLoading] = useState(false);
   const [eventSearch, setEventSearch] = useState<EventSearchParams>(defaultEventSearch);
-  const [cleanLoading, setCleanLoading] = useState(false);
+  const [submittedEventSearch, setSubmittedEventSearch] = useState<EventSearchParams>(defaultEventSearch);
   const [detailVisible, setDetailVisible] = useState(false);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [eventDetail, setEventDetail] = useState<EventDetail | null>(null);
-  const eventSearchRef = useRef(defaultEventSearch);
-  const eventsPageRef = useRef({ page: 1, pageSize: PAGE_SIZE });
-  eventSearchRef.current = eventSearch;
-  eventsPageRef.current = { page: eventsPage, pageSize: eventsPageSize };
+  const [detailEventId, setDetailEventId] = useState<number | undefined>(undefined);
 
-  const [metaList, setMetaList] = useState<AnalyticsEventMeta[]>([]);
-  const [metaTotal, setMetaTotal] = useState(0);
   const [metaPage, setMetaPage] = useState(1);
   const [metaPageSize, setMetaPageSize] = useState(PAGE_SIZE);
-  const [metaLoading, setMetaLoading] = useState(false);
   const [metaSearch, setMetaSearch] = useState<MetaSearchParams>(defaultMetaSearch);
+  const [submittedMetaSearch, setSubmittedMetaSearch] = useState<MetaSearchParams>(defaultMetaSearch);
   const [metaModalVisible, setMetaModalVisible] = useState(false);
   const [editingMeta, setEditingMeta] = useState<AnalyticsEventMeta | null>(null);
-  const [metaSubmitting, setMetaSubmitting] = useState(false);
-  const metaSearchRef = useRef(defaultMetaSearch);
-  const metaPageRef = useRef({ page: 1, pageSize: PAGE_SIZE });
   const metaFormApi = useRef<FormApi | null>(null);
-  metaSearchRef.current = metaSearch;
-  metaPageRef.current = { page: metaPage, pageSize: metaPageSize };
 
   const [rollupDays, setRollupDays] = useState(30);
-  const [rollupItems, setRollupItems] = useState<AnalyticsRollupItem[]>([]);
-  const [rollupLoading, setRollupLoading] = useState(false);
-  const [rollupRebuilding, setRollupRebuilding] = useState(false);
 
-  const [settings, setSettings] = useState<AnalyticsSettings | null>(null);
-  const [settingsLoading, setSettingsLoading] = useState(false);
-  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsDraft, setSettingsDraft] = useState<AnalyticsSettings | null>(null);
 
-  const buildEventFilterQuery = useCallback((params: EventSearchParams) => buildQuery({
+  const buildEventFilterQuery = (params: EventSearchParams) => buildQuery({
     eventType: params.eventType,
     eventName: params.eventName,
     username: params.username,
@@ -252,115 +240,62 @@ export default function AnalyticsDataPage() {
     deviceType: params.deviceType,
     startTime: params.startTime,
     endTime: params.endTime,
-  }), []);
+  });
 
-  const buildEventQuery = useCallback((p: number, ps: number, params: EventSearchParams) => buildQuery({
-    page: p,
-    pageSize: ps,
-    eventType: params.eventType,
-    eventName: params.eventName,
-    username: params.username,
-    pagePath: params.pagePath,
-    deviceType: params.deviceType,
-    startTime: params.startTime,
-    endTime: params.endTime,
-  }), []);
+  const eventsQuery = useAnalyticsEvents({
+    page: eventsPage,
+    pageSize: eventsPageSize,
+    eventType: submittedEventSearch.eventType || undefined,
+    eventName: submittedEventSearch.eventName || undefined,
+    username: submittedEventSearch.username || undefined,
+    pagePath: submittedEventSearch.pagePath || undefined,
+    deviceType: submittedEventSearch.deviceType || undefined,
+    startTime: submittedEventSearch.startTime || undefined,
+    endTime: submittedEventSearch.endTime || undefined,
+  });
+  const events = eventsQuery.data?.list ?? [];
+  const eventsTotal = eventsQuery.data?.total ?? 0;
 
-  const fetchEvents = useCallback(async (
-    p = eventsPageRef.current.page,
-    ps = eventsPageRef.current.pageSize,
-    params = eventSearchRef.current,
-  ) => {
-    setEventsLoading(true);
-    try {
-      const res = await request.get<PaginatedResponse<EventListItem>>(
-        `/api/analytics/events?${buildEventQuery(p, ps, params)}`,
-      );
-      if (res.code === 0) {
-        setEvents(res.data.list);
-        setEventsTotal(res.data.total);
-        setEventsPage(res.data.page);
-        setEventsPageSize(res.data.pageSize);
-      }
-    } finally {
-      setEventsLoading(false);
-    }
-  }, [buildEventQuery]);
+  const detailQuery = useAnalyticsEventDetail(detailEventId, detailVisible);
+  const eventDetail = detailQuery.data ?? null;
+  const detailLoading = detailQuery.isFetching;
 
-  const buildMetaQuery = useCallback((p: number, ps: number, params: MetaSearchParams) => buildQuery({
-    page: p,
-    pageSize: ps,
-    keyword: params.keyword,
-    status: params.status,
-    category: params.category,
-  }), []);
+  const metaQuery = useAnalyticsEventMeta({
+    page: metaPage,
+    pageSize: metaPageSize,
+    keyword: submittedMetaSearch.keyword || undefined,
+    status: submittedMetaSearch.status || undefined,
+    category: submittedMetaSearch.category || undefined,
+  });
+  const metaList = metaQuery.data?.list ?? [];
+  const metaTotal = metaQuery.data?.total ?? 0;
 
-  const fetchMeta = useCallback(async (
-    p = metaPageRef.current.page,
-    ps = metaPageRef.current.pageSize,
-    params = metaSearchRef.current,
-  ) => {
-    setMetaLoading(true);
-    try {
-      const res = await request.get<PaginatedResponse<AnalyticsEventMeta>>(
-        `/api/analytics/event-meta?${buildMetaQuery(p, ps, params)}`,
-      );
-      if (res.code === 0) {
-        setMetaList(res.data.list);
-        setMetaTotal(res.data.total);
-        setMetaPage(res.data.page);
-        setMetaPageSize(res.data.pageSize);
-      }
-    } finally {
-      setMetaLoading(false);
-    }
-  }, [buildMetaQuery]);
-
-  const fetchRollup = useCallback(async (days = rollupDays) => {
-    setRollupLoading(true);
-    try {
-      const res = await request.get<{ items: AnalyticsRollupItem[] }>(`/api/analytics/rollup?days=${days}`);
-      if (res.code === 0) setRollupItems(res.data.items);
-    } finally {
-      setRollupLoading(false);
-    }
-  }, [rollupDays]);
-
-  const fetchSettings = useCallback(async () => {
-    setSettingsLoading(true);
-    try {
-      const res = await request.get<AnalyticsSettings>('/api/analytics/settings');
-      if (res.code === 0) setSettings(res.data);
-    } finally {
-      setSettingsLoading(false);
-    }
-  }, []);
+  const rollupQuery = useAnalyticsRollup(rollupDays, activeTab === 'rollup');
+  const rollupItems = rollupQuery.data?.items ?? [];
+  const settingsQuery = useAnalyticsSettings(activeTab === 'settings');
+  const settings = settingsDraft;
 
   useEffect(() => {
-    if (activeTab === 'events') void fetchEvents();
-  }, [activeTab, fetchEvents]);
+    if (settingsQuery.data) setSettingsDraft(settingsQuery.data);
+  }, [settingsQuery.data]);
 
-  useEffect(() => {
-    if (activeTab === 'meta') void fetchMeta();
-  }, [activeTab, fetchMeta]);
-
-  useEffect(() => {
-    if (activeTab === 'rollup') void fetchRollup();
-  }, [activeTab, fetchRollup]);
-
-  useEffect(() => {
-    if (activeTab === 'settings') void fetchSettings();
-  }, [activeTab, fetchSettings]);
+  const cleanMutation = useCleanAnalyticsEvents();
+  const saveMetaMutation = useSaveAnalyticsEventMeta();
+  const deleteMetaMutation = useDeleteAnalyticsEventMeta();
+  const rebuildRollupMutation = useRebuildAnalyticsRollup();
+  const saveSettingsMutation = useSaveAnalyticsSettings();
 
   const handleEventSearch = () => {
     setEventsPage(1);
-    void fetchEvents(1, eventsPageSize);
+    setSubmittedEventSearch(eventSearch);
+    void queryClient.invalidateQueries({ queryKey: analyticsKeys.data.eventsLists });
   };
 
   const handleEventReset = () => {
     setEventSearch(defaultEventSearch);
+    setSubmittedEventSearch(defaultEventSearch);
     setEventsPage(1);
-    void fetchEvents(1, eventsPageSize, defaultEventSearch);
+    void queryClient.invalidateQueries({ queryKey: analyticsKeys.data.eventsLists });
   };
 
   const handleEventRangeChange = (value: unknown) => {
@@ -374,7 +309,7 @@ export default function AnalyticsDataPage() {
   };
 
   const buildExportQuery = () => {
-    const query = buildEventFilterQuery(eventSearchRef.current);
+    const query = buildEventFilterQuery(submittedEventSearch);
     return Object.fromEntries(new URLSearchParams(query).entries());
   };
 
@@ -387,43 +322,29 @@ export default function AnalyticsDataPage() {
       okButtonProps: { type: 'danger', theme: 'solid' },
       closeOnEsc: true,
       onOk: async () => {
-        setCleanLoading(true);
-        try {
-          const res = await request.delete(`/api/analytics/clean?days=${days}`);
-          if (res.code === 0) {
-            Toast.success(res.message || '清除成功');
-            setEventsPage(1);
-            void fetchEvents(1, eventsPageSize);
-            void fetchRollup();
-          }
-        } finally {
-          setCleanLoading(false);
-        }
+        await cleanMutation.mutateAsync(days);
+        Toast.success('清除成功');
+        setEventsPage(1);
       },
     });
   };
 
-  const openEventDetail = async (record: EventListItem) => {
+  const openEventDetail = (record: EventListItem) => {
     setDetailVisible(true);
-    setDetailLoading(true);
-    setEventDetail(null);
-    try {
-      const res = await request.get<EventDetail>(`/api/analytics/events/${record.id}`);
-      if (res.code === 0) setEventDetail(res.data);
-    } finally {
-      setDetailLoading(false);
-    }
+    setDetailEventId(record.id);
   };
 
   const handleMetaSearch = () => {
     setMetaPage(1);
-    void fetchMeta(1, metaPageSize);
+    setSubmittedMetaSearch(metaSearch);
+    void queryClient.invalidateQueries({ queryKey: analyticsKeys.data.metaLists });
   };
 
   const handleMetaReset = () => {
     setMetaSearch(defaultMetaSearch);
+    setSubmittedMetaSearch(defaultMetaSearch);
     setMetaPage(1);
-    void fetchMeta(1, metaPageSize, defaultMetaSearch);
+    void queryClient.invalidateQueries({ queryKey: analyticsKeys.data.metaLists });
   };
 
   const openCreateMeta = () => {
@@ -463,30 +384,15 @@ export default function AnalyticsDataPage() {
       propertySchema,
     };
 
-    setMetaSubmitting(true);
-    try {
-      const res = editingMeta
-        ? await request.put<AnalyticsEventMeta>(`/api/analytics/event-meta/${editingMeta.id}`, payload)
-        : await request.post<AnalyticsEventMeta>('/api/analytics/event-meta', payload);
-      if (res.code === 0) {
-        Toast.success(editingMeta ? '更新成功' : '创建成功');
-        setMetaModalVisible(false);
-        setEditingMeta(null);
-        void fetchMeta();
-      } else {
-        throw new Error(res.message);
-      }
-    } finally {
-      setMetaSubmitting(false);
-    }
+    await saveMetaMutation.mutateAsync({ id: editingMeta?.id, values: payload });
+    Toast.success(editingMeta ? '更新成功' : '创建成功');
+    setMetaModalVisible(false);
+    setEditingMeta(null);
   };
 
   const handleMetaDelete = async (record: AnalyticsEventMeta) => {
-    const res = await request.delete(`/api/analytics/event-meta/${record.id}`);
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      void fetchMeta();
-    }
+    await deleteMetaMutation.mutateAsync(record.id);
+    Toast.success('删除成功');
   };
 
   const handleRollupDaysChange = (value: unknown) => {
@@ -496,35 +402,20 @@ export default function AnalyticsDataPage() {
   };
 
   const handleRebuildRollup = async () => {
-    setRollupRebuilding(true);
-    try {
-      const res = await request.post(`/api/analytics/rollup/rebuild?days=${rollupDays}`);
-      if (res.code === 0) {
-        Toast.success(res.message || '重建完成');
-        void fetchRollup(rollupDays);
-      }
-    } finally {
-      setRollupRebuilding(false);
-    }
+    await rebuildRollupMutation.mutateAsync(rollupDays);
+    Toast.success('重建完成');
   };
 
   const updateSettings = <K extends keyof SettingsPayload>(key: K, value: SettingsPayload[K]) => {
-    setSettings((prev) => (prev ? { ...prev, [key]: value } : prev));
+    setSettingsDraft((prev) => (prev ? { ...prev, [key]: value } : prev));
   };
 
   const handleSaveSettings = async () => {
     if (!settings) return;
     const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...payload } = settings;
-    setSettingsSaving(true);
-    try {
-      const res = await request.put<AnalyticsSettings>('/api/analytics/settings', payload);
-      if (res.code === 0) {
-        setSettings(res.data);
-        Toast.success(res.message || '保存成功');
-      }
-    } finally {
-      setSettingsSaving(false);
-    }
+    const next = await saveSettingsMutation.mutateAsync(payload);
+    setSettingsDraft(next);
+    Toast.success('保存成功');
   };
 
   const metaFormInit: EventMetaFormValues = editingMeta
@@ -738,7 +629,7 @@ export default function AnalyticsDataPage() {
     if (!settings) {
       return (
         <Card bodyStyle={{ padding: 24 }}>
-          <Typography.Text type="tertiary">{settingsLoading ? '加载中...' : '暂无设置'}</Typography.Text>
+          <Typography.Text type="tertiary">{settingsQuery.isFetching ? '加载中...' : '暂无设置'}</Typography.Text>
         </Card>
       );
     }
@@ -818,7 +709,7 @@ export default function AnalyticsDataPage() {
             />
           </Form.Slot>
           <Form.Slot label=" ">
-            <Button type="primary" loading={settingsSaving} onClick={() => void handleSaveSettings()}>保存</Button>
+            <Button type="primary" loading={saveSettingsMutation.isPending} onClick={() => void handleSaveSettings()}>保存</Button>
           </Form.Slot>
         </Form>
       </Card>
@@ -892,7 +783,7 @@ export default function AnalyticsDataPage() {
   const renderEventExportButtons = () => <ExportButton entity="analytics.events" query={buildExportQuery()} />;
   const renderEventCleanButtons = () => (
     <SplitButtonGroup>
-      <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={cleanLoading} onClick={() => handleClean(90)}>清除数据</Button>
+      <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={cleanMutation.isPending} onClick={() => handleClean(90)}>清除数据</Button>
       <Dropdown trigger="click" position="bottomRight" clickToHide render={(
         <Dropdown.Menu>
           {CLEAN_DAY_OPTIONS.map((item) => (
@@ -919,7 +810,7 @@ export default function AnalyticsDataPage() {
           type={item.value === 0 ? 'danger' : 'tertiary'}
           theme="light"
           icon={<Trash2 size={14} />}
-          loading={cleanLoading}
+          loading={cleanMutation.isPending}
           onClick={() => handleClean(item.value)}
         >
           清除{item.label === '全部' ? '全部数据' : `${item.label}前数据`}
@@ -967,7 +858,7 @@ export default function AnalyticsDataPage() {
     <Select value={rollupDays} onChange={handleRollupDaysChange} optionList={ROLLUP_DAY_OPTIONS} style={{ width: 130 }} />
   );
   const renderRebuildRollupButton = () => (
-    <Button type="primary" loading={rollupRebuilding} onClick={() => void handleRebuildRollup()}>重建聚合</Button>
+    <Button type="primary" loading={rebuildRollupMutation.isPending} onClick={() => void handleRebuildRollup()}>重建聚合</Button>
   );
 
   return (
@@ -1014,11 +905,11 @@ export default function AnalyticsDataPage() {
           <ConfigurableTable
             bordered
             rowKey="id"
-            loading={eventsLoading}
+            loading={eventsQuery.isFetching}
             columns={eventColumns}
             dataSource={events}
-            onRefresh={() => void fetchEvents()}
-            refreshLoading={eventsLoading}
+            onRefresh={() => void eventsQuery.refetch()}
+            refreshLoading={eventsQuery.isFetching}
             scroll={{ x: 1500 }}
             pagination={{
               currentPage: eventsPage,
@@ -1026,12 +917,10 @@ export default function AnalyticsDataPage() {
               total: eventsTotal,
               onPageChange: (page) => {
                 setEventsPage(page);
-                void fetchEvents(page, eventsPageSize);
               },
               onPageSizeChange: (pageSize) => {
                 setEventsPage(1);
                 setEventsPageSize(pageSize);
-                void fetchEvents(1, pageSize);
               },
             }}
             empty="暂无数据"
@@ -1079,11 +968,11 @@ export default function AnalyticsDataPage() {
           <ConfigurableTable
             bordered
             rowKey="id"
-            loading={metaLoading}
+            loading={metaQuery.isFetching}
             columns={metaColumns}
             dataSource={metaList}
-            onRefresh={() => void fetchMeta()}
-            refreshLoading={metaLoading}
+            onRefresh={() => void metaQuery.refetch()}
+            refreshLoading={metaQuery.isFetching}
             scroll={{ x: 1120 }}
             pagination={{
               currentPage: metaPage,
@@ -1091,12 +980,10 @@ export default function AnalyticsDataPage() {
               total: metaTotal,
               onPageChange: (page) => {
                 setMetaPage(page);
-                void fetchMeta(page, metaPageSize);
               },
               onPageSizeChange: (pageSize) => {
                 setMetaPage(1);
                 setMetaPageSize(pageSize);
-                void fetchMeta(1, pageSize);
               },
             }}
             empty="暂无数据"
@@ -1106,8 +993,8 @@ export default function AnalyticsDataPage() {
             title={editingMeta ? '编辑事件字典' : '新增事件字典'}
             visible={metaModalVisible}
             onCancel={() => { setMetaModalVisible(false); setEditingMeta(null); }}
-            onOk={() => { void handleMetaSubmit().catch(() => undefined); }}
-            okButtonProps={{ loading: metaSubmitting }}
+            onOk={handleMetaSubmit}
+            okButtonProps={{ loading: saveMetaMutation.isPending }}
             width={640}
             closeOnEsc
           >
@@ -1151,11 +1038,11 @@ export default function AnalyticsDataPage() {
           <ConfigurableTable
             bordered
             rowKey="statDate"
-            loading={rollupLoading}
+            loading={rollupQuery.isFetching}
             columns={rollupColumns}
             dataSource={rollupItems}
-            onRefresh={() => void fetchRollup()}
-            refreshLoading={rollupLoading}
+            onRefresh={() => void rollupQuery.refetch()}
+            refreshLoading={rollupQuery.isFetching}
             pagination={false}
             scroll={{ y: 560 }}
             empty="暂无数据"

@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, DatePicker, Input, Select, Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search, RotateCcw } from 'lucide-react';
-import type { MemberRecharge, PaymentChannel, PaymentOrderStatus, PaginatedResponse } from '@zenith/shared';
+import type { MemberRecharge, PaymentChannel, PaymentOrderStatus } from '@zenith/shared';
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_METHOD_LABELS, PAYMENT_ORDER_STATUS_LABELS } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { usePagination } from '@/hooks/usePagination';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { renderEllipsis } from '../../utils/table-columns';
 import { formatDateForApi } from '@/utils/date';
+import { memberAdminKeys, useMemberRechargeList } from '@/hooks/queries/member-admin';
 
 interface SearchParams {
   keyword?: string;
@@ -28,42 +29,34 @@ const STATUS_COLORS: Record<PaymentOrderStatus, string> = {
 };
 
 export default function MemberRechargesPage() {
-  const [data, setData] = useState<MemberRecharge[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState<SearchParams>(defaultSearch);
-  const searchRef = useRef<SearchParams>(defaultSearch);
-  searchRef.current = search;
+  const queryClient = useQueryClient();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearch);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearch);
   const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [dateStart, dateEnd] = submittedParams.dateRange ?? [];
+  const listQuery = useMemberRechargeList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    status: submittedParams.status || undefined,
+    channel: submittedParams.channel || undefined,
+    dateStart: dateStart ? formatDateForApi(dateStart) : undefined,
+    dateEnd: dateEnd ? formatDateForApi(dateEnd) : undefined,
+  });
+  const data = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
 
-  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const current = params ?? searchRef.current;
-    setLoading(true);
-    try {
-      const [dateStart, dateEnd] = current.dateRange ?? [];
-      const q = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(current.keyword ? { keyword: current.keyword } : {}),
-        ...(current.status ? { status: current.status } : {}),
-        ...(current.channel ? { channel: current.channel } : {}),
-        ...(dateStart ? { dateStart: formatDateForApi(dateStart) } : {}),
-        ...(dateEnd ? { dateEnd: formatDateForApi(dateEnd) } : {}),
-      }).toString();
-      const res = await request.get<PaginatedResponse<MemberRecharge>>(`/api/member-recharges?${q}`);
-      if (res.code === 0) {
-        setData(res.data.list);
-        setTotal(res.data.total);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize]);
-
-  useEffect(() => { void fetchData(); }, [fetchData]);
-
-  const handleSearch = () => { setPage(1); void fetchData(1, pageSize); };
-  const handleReset = () => { setSearch(defaultSearch); setPage(1); void fetchData(1, pageSize, defaultSearch); };
+  const handleSearch = () => {
+    setPage(1);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: memberAdminKeys.rechargeLists });
+  };
+  const handleReset = () => {
+    setDraftParams(defaultSearch);
+    setSubmittedParams(defaultSearch);
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: memberAdminKeys.rechargeLists });
+  };
 
   const columns: ColumnProps<MemberRecharge>[] = [
     { title: '订单号', dataIndex: 'orderNo', width: 200, fixed: 'left', render: (v: string) => <span style={{ fontFamily: 'monospace' }}>{v}</span> },
@@ -82,10 +75,10 @@ export default function MemberRechargesPage() {
     <Input
       placeholder="会员昵称/手机号/订单号"
       prefix={<Search size={14} />}
-      value={search.keyword}
+      value={draftParams.keyword}
       showClear
       style={{ width: 220 }}
-      onChange={(value) => setSearch((prev) => ({ ...prev, keyword: value || undefined }))}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value || undefined }))}
       onEnterPress={handleSearch}
     />
   );
@@ -93,22 +86,22 @@ export default function MemberRechargesPage() {
   const renderChannelFilter = () => (
     <Select
       placeholder="全部渠道"
-      value={search.channel}
+      value={draftParams.channel}
       style={{ width: 120 }}
       showClear
       optionList={channelOptions}
-      onChange={(value) => setSearch((prev) => ({ ...prev, channel: value as PaymentChannel | undefined }))}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, channel: value as PaymentChannel | undefined }))}
     />
   );
 
   const renderStatusFilter = () => (
     <Select
       placeholder="全部状态"
-      value={search.status}
+      value={draftParams.status}
       style={{ width: 130 }}
       showClear
       optionList={statusOptions}
-      onChange={(value) => setSearch((prev) => ({ ...prev, status: value as PaymentOrderStatus | undefined }))}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, status: value as PaymentOrderStatus | undefined }))}
     />
   );
 
@@ -116,8 +109,8 @@ export default function MemberRechargesPage() {
     <DatePicker
       type="dateRange"
       placeholder={['开始日期', '结束日期']}
-      value={search.dateRange ?? undefined}
-      onChange={(value) => setSearch((prev) => ({ ...prev, dateRange: value ? (value as [Date, Date]) : null }))}
+      value={draftParams.dateRange ?? undefined}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, dateRange: value ? (value as [Date, Date]) : null }))}
       style={{ width: 300 }}
     />
   );
@@ -160,12 +153,12 @@ export default function MemberRechargesPage() {
         bordered
         columns={columns}
         dataSource={data}
-        loading={loading}
-        onRefresh={fetchData}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         rowKey="id"
         size="small"
-        pagination={buildPagination(total, fetchData)}
+        pagination={buildPagination(total)}
         empty="暂无充值记录"
         scroll={{ x: 1500 }}
       />

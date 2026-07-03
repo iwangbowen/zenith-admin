@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Button, Tag, Toast, SideSheet, Typography, Input, Empty, Select,
 } from '@douyinfe/semi-ui';
@@ -6,20 +6,10 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { FileText, RefreshCw, Search, Play, Square } from 'lucide-react';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-
-interface ServiceInfo {
-  name: string;
-  description: string;
-  loadState: string;
-  activeState: string;
-  subState: string;
-}
-
-type ServiceAction = 'start' | 'stop' | 'restart' | 'enable' | 'disable' | 'mask' | 'unmask';
+import { useServiceAction, useServiceList, useServiceLogs, type ServiceAction, type ServiceInfo } from '@/hooks/queries/services';
 const ACTION_MSG: Record<ServiceAction, string> = {
   start: '已启动', stop: '已停止', restart: '已重启', enable: '已设为开机自启', disable: '已取消开机自启', mask: '已屏蔽', unmask: '已取消屏蔽',
 };
@@ -40,7 +30,6 @@ async function fetchStream(
   const reader = resp.body?.getReader();
   if (!reader) return;
   const decoder = new TextDecoder();
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -49,17 +38,18 @@ async function fetchStream(
 }
 
 export default function ServicesPage() {
-  const [available, setAvailable] = useState<boolean | null>(null);
-  const [services, setServices] = useState<ServiceInfo[]>([]);
-  const [loading, setLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [stateFilter, setStateFilter] = useState<string>('');
-  const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
   const [logsService, setLogsService] = useState<ServiceInfo | null>(null);
   const [logs, setLogs] = useState('');
   const [logsFollowing, setLogsFollowing] = useState(false);
   const logsAbortRef = useRef<AbortController | null>(null);
   const logsPreRef = useRef<HTMLPreElement>(null);
+  const listQuery = useServiceList();
+  const services = listQuery.data?.services ?? [];
+  const available = listQuery.data?.available ?? null;
+  const actionMutation = useServiceAction();
+  const logsMutation = useServiceLogs();
 
   // 自动滚到底部
   useEffect(() => {
@@ -70,26 +60,9 @@ export default function ServicesPage() {
 
   useEffect(() => () => { logsAbortRef.current?.abort(); }, []);
 
-  const fetchServices = useCallback(async () => {
-    setLoading(true);
-    const chk = await request.get<{ available: boolean }>('/api/systemd/check', { silent: true });
-    if (chk.code !== 0 || !chk.data?.available) { setAvailable(false); setLoading(false); return; }
-    setAvailable(true);
-    const res = await request.get<ServiceInfo[]>('/api/systemd/');
-    setLoading(false);
-    if (res.code === 0 && res.data) setServices(res.data);
-  }, []);
-
-  useEffect(() => { void fetchServices(); }, [fetchServices]);
-
   const handleAction = async (name: string, action: ServiceAction) => {
-    setActionLoading((p) => ({ ...p, [name]: true }));
-    const res = await request.post(`/api/systemd/${name}/${action}`, {});
-    setActionLoading((p) => ({ ...p, [name]: false }));
-    if (res.code === 0) {
-      Toast.success({ content: ACTION_MSG[action], duration: 2 });
-      void fetchServices();
-    }
+    await actionMutation.mutateAsync({ name, action });
+    Toast.success({ content: ACTION_MSG[action], duration: 2 });
   };
 
   const openLogs = async (svc: ServiceInfo) => {
@@ -97,8 +70,8 @@ export default function ServicesPage() {
     setLogsService(svc);
     setLogs('');
     setLogsFollowing(false);
-    const res = await request.get<{ logs: string }>(`/api/systemd/${svc.name}/logs`);
-    if (res.code === 0 && res.data) setLogs(res.data.logs);
+    const res = await logsMutation.mutateAsync(svc.name);
+    setLogs(res.logs);
   };
 
   const closeLogs = () => {
@@ -166,7 +139,7 @@ export default function ServicesPage() {
       width: 230,
       desktopInlineKeys: ['toggle', 'restart', 'logs'],
       actions: (record) => {
-        const busy = !!actionLoading[record.name];
+        const busy = actionMutation.isPending && actionMutation.variables?.name === record.name;
         const isActive = record.activeState === 'active';
         return [
           {
@@ -244,13 +217,13 @@ export default function ServicesPage() {
                 失败服务 {failedCount}
               </Button>
             )}
-            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void fetchServices()}>刷新</Button>
+            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void listQuery.refetch()}>刷新</Button>
           </>
         )}
         mobilePrimary={(
           <>
             <Input prefix={<Search size={14} />} placeholder="搜索服务名 / 描述" showClear value={keyword} onChange={setKeyword} style={{ width: 240 }} />
-            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void fetchServices()}>刷新</Button>
+            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void listQuery.refetch()}>刷新</Button>
           </>
         )}
         mobileFilters={(
@@ -273,8 +246,8 @@ export default function ServicesPage() {
         onFilterReset={() => setStateFilter('')}
       />
       <ConfigurableTable
-        bordered rowKey="name" dataSource={filtered} columns={columns} loading={loading}
-        onRefresh={() => void fetchServices()} refreshLoading={loading}
+        bordered rowKey="name" dataSource={filtered} columns={columns} loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching}
         empty="未找到 systemd 服务" pagination={{ pageSize: 50, showSizeChanger: true }}
       />
 

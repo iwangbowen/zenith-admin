@@ -1,18 +1,25 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Col, Form, Input, Modal, Row, Select, Spin,
   Toast, Switch } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search } from 'lucide-react';
-import type { PaginatedResponse, SmsTemplate, SmsProvider } from '@zenith/shared';
+import type { SmsProvider, SmsTemplate } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
+import {
+  smsTemplateKeys,
+  useDeleteSmsTemplate,
+  useSaveSmsTemplate,
+  useSmsTemplateDetail,
+  useSmsTemplateList,
+} from '@/hooks/queries/sms-templates';
 
 const PROVIDER_OPTIONS = [
   { label: '阿里云', value: 'aliyun' },
@@ -22,84 +29,61 @@ const PROVIDER_OPTIONS = [
 export default function SmsTemplatesPage() {
   const { hasPermission: can } = usePermission();
   const { items: statusItems } = useDictItems('common_status');
+  const queryClient = useQueryClient();
 
   interface SearchParams { keyword: string; filterProvider: SmsProvider | undefined; filterStatus: string | undefined; }
   const defaultSearchParams: SearchParams = { keyword: '', filterProvider: undefined, filterStatus: undefined };
-  const [loading, setLoading] = useState(false);
-  const [list, setList] = useState<SmsTemplate[]>([]);
-  const [total, setTotal] = useState(0);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<SmsTemplate | null>(null);
-  const [modalDetailLoading, setModalDetailLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const formRef = useRef<FormApi>(null);
 
-  const fetchList = useCallback(
-    async (p = page, ps = pageSize, params?: SearchParams) => {
-      const { keyword: kw, filterProvider: pr, filterStatus: st } = params ?? searchParamsRef.current;
-      setLoading(true);
-      try {
-        const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-        if (kw) query.set('keyword', kw);
-        if (pr) query.set('provider', pr);
-        if (st) query.set('status', st);
-        const res = await request.get<PaginatedResponse<SmsTemplate>>(`/api/sms-templates?${query}`);
-        setList(res.data?.list ?? []);
-        setTotal(res.data?.total ?? 0);
-        setPage(res.data?.page ?? p);
-        setPageSize(res.data?.pageSize ?? ps);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [page, pageSize, setPage, setPageSize],
-  );
+  const listQuery = useSmsTemplateList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    provider: submittedParams.filterProvider,
+    status: submittedParams.filterStatus || undefined,
+  });
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const detailQuery = useSmsTemplateDetail(editingRecord?.id, modalVisible);
+  const editing = editingRecord ? (detailQuery.data ?? editingRecord) : null;
+  const modalDetailLoading = !!editingRecord && detailQuery.isFetching;
 
-  useEffect(() => { void fetchList(1); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  const saveMutation = useSaveSmsTemplate();
+  const toggleStatusMutation = useSaveSmsTemplate();
+  const deleteMutation = useDeleteSmsTemplate();
+  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
 
-  const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
-  const handleReset = () => {
-    setSearchParams(defaultSearchParams);
+  const handleSearch = () => {
     setPage(1);
-    void fetchList(1, pageSize, defaultSearchParams);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: smsTemplateKeys.lists });
+  };
+  const handleReset = () => {
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: smsTemplateKeys.lists });
   };
 
   const openCreate = () => { setEditingRecord(null); setModalVisible(true); };
-  const openEdit = async (record: SmsTemplate) => {
+  const openEdit = (record: SmsTemplate) => {
     setEditingRecord(record);
     setModalVisible(true);
-    setModalDetailLoading(true);
-    const res = await request.get<SmsTemplate>(`/api/sms-templates/${record.id}`);
-    setModalDetailLoading(false);
-    if (res.code === 0) {
-      setEditingRecord(res.data);
-    } else {
-      Toast.error(res.message || '获取信息失败');
-    }
   };
 
   const handleSubmit = async () => {
     let values: Awaited<ReturnType<FormApi['validate']>>;
-    try { values = (await formRef.current?.validate())!; } catch { return; }
-    setSubmitting(true);
-    try {
-      if (editingRecord) {
-        await request.put(`/api/sms-templates/${editingRecord.id}`, values);
-        Toast.success('更新成功');
-      } else {
-        await request.post('/api/sms-templates', values);
-        Toast.success('创建成功');
-      }
-      setModalVisible(false);
-      void fetchList();
-    } finally {
-      setSubmitting(false);
-    }
+    try { values = (await formRef.current!.validate())!; } catch { throw new Error('validation'); }
+    await saveMutation.mutateAsync({ id: editingRecord?.id, values });
+    Toast.success(editingRecord ? '更新成功' : '创建成功');
+    setModalVisible(false);
+    setEditingRecord(null);
   };
 
   const handleDelete = (id: number) => {
@@ -107,16 +91,13 @@ export default function SmsTemplatesPage() {
       title: '确定要删除该短信模板吗？',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        await request.delete(`/api/sms-templates/${id}`);
+        await deleteMutation.mutateAsync(id);
         Toast.success('删除成功');
-        void fetchList();
       },
     });
   };
 
-  const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null);
-
-  const handleToggleStatus = useCallback(async (tpl: SmsTemplate, newStatus: 'enabled' | 'disabled') => {
+  const handleToggleStatus = async (tpl: SmsTemplate, newStatus: 'enabled' | 'disabled') => {
     if (newStatus === 'disabled') {
       const confirmed = await new Promise<boolean>((resolve) => {
         Modal.confirm({
@@ -130,19 +111,9 @@ export default function SmsTemplatesPage() {
       });
       if (!confirmed) return;
     }
-    setTogglingStatusId(tpl.id);
-    try {
-      const res = await request.put(`/api/sms-templates/${tpl.id}`, { status: newStatus });
-      if (res.code === 0) {
-        Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
-        void fetchList();
-      } else {
-        Toast.error(res.message || '操作失败');
-      }
-    } finally {
-      setTogglingStatusId(null);
-    }
-  }, [fetchList]);
+    await toggleStatusMutation.mutateAsync({ id: tpl.id, values: { status: newStatus } });
+    Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
+  };
 
   const columns = [
     { title: '模板名称', dataIndex: 'name', width: 160 },
@@ -193,10 +164,10 @@ export default function SmsTemplatesPage() {
         primary={(
           <>
             <Input prefix={<Search size={14} />} placeholder="搜索模板名称/编码"
-              value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 220 }} />
-            <Select placeholder="服务商" value={searchParams.filterProvider} onChange={(v) => setSearchParams({ ...searchParams, filterProvider: v as SmsProvider | undefined })}
+              value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 220 }} />
+            <Select placeholder="服务商" value={draftParams.filterProvider} onChange={(v) => setDraftParams({ ...draftParams, filterProvider: v as SmsProvider | undefined })}
               optionList={PROVIDER_OPTIONS} showClear style={{ width: 120 }} />
-            <Select placeholder="状态" value={searchParams.filterStatus} onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as string | undefined })}
+            <Select placeholder="状态" value={draftParams.filterStatus} onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as string | undefined })}
               optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))} showClear style={{ width: 110 }} />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
@@ -208,7 +179,7 @@ export default function SmsTemplatesPage() {
         mobilePrimary={(
           <>
             <Input prefix={<Search size={14} />} placeholder="搜索模板名称/编码"
-              value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 220 }} />
+              value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 220 }} />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             {can('system:sms-template:create') && (
               <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
@@ -217,9 +188,9 @@ export default function SmsTemplatesPage() {
         )}
         mobileFilters={(
           <>
-            <Select placeholder="服务商" value={searchParams.filterProvider} onChange={(v) => setSearchParams({ ...searchParams, filterProvider: v as SmsProvider | undefined })}
+            <Select placeholder="服务商" value={draftParams.filterProvider} onChange={(v) => setDraftParams({ ...draftParams, filterProvider: v as SmsProvider | undefined })}
               optionList={PROVIDER_OPTIONS} showClear style={{ width: 120 }} />
-            <Select placeholder="状态" value={searchParams.filterStatus} onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as string | undefined })}
+            <Select placeholder="状态" value={draftParams.filterStatus} onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as string | undefined })}
               optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))} showClear style={{ width: 110 }} />
           </>
         )}
@@ -228,20 +199,20 @@ export default function SmsTemplatesPage() {
         onFilterReset={handleReset}
       />
 
-      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList()} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total, fetchList)}
+      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
+        pagination={buildPagination(total)}
         scroll={{ x: 1300 }} />
 
       <AppModal title={editingRecord ? '编辑短信模板' : '新增短信模板'} visible={modalVisible}
-        onOk={handleSubmit} onCancel={() => { setModalVisible(false); setEditingRecord(null); setModalDetailLoading(false); }}
-        confirmLoading={submitting} okButtonProps={{ disabled: modalDetailLoading }} width={720}>
+        onOk={handleSubmit} onCancel={() => { setModalVisible(false); setEditingRecord(null); }}
+        confirmLoading={saveMutation.isPending} okButtonProps={{ disabled: modalDetailLoading }} width={720}>
         <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form
-          key={editingRecord?.id ?? 'new'}
+          key={editing?.id ?? 'new'}
           getFormApi={(api) => { (formRef as { current: FormApi }).current = api; }}
           allowEmpty
           labelPosition="left" labelWidth={120}
-          initValues={editingRecord ?? { status: 'enabled', provider: 'aliyun' }}
+          initValues={editing ?? { status: 'enabled', provider: 'aliyun' }}
         >
           <Row gutter={16}>
             <Col span={12}>

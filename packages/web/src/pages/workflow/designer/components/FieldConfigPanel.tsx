@@ -5,10 +5,10 @@ import { useMemo, useState, useEffect } from 'react';
 import { Button, Input, InputNumber, Select, Switch, Typography, TextArea, TagInput, RadioGroup, Radio, Tooltip, Dropdown } from '@douyinfe/semi-ui';
 import { Plus, Trash2, Wand2, Ban } from 'lucide-react';
 import { pinyin } from 'pinyin-pro';
-import type { WorkflowFormField, WorkflowFormFieldType, WorkflowFormFieldOptionItem, WorkflowFormFieldCompareRule, WorkflowFieldVisibilityCondition, WorkflowDataSource, Dict, PaginatedResponse, WorkflowDefinition } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { WorkflowFormField, WorkflowFormFieldType, WorkflowFormFieldOptionItem, WorkflowFormFieldCompareRule, WorkflowFieldVisibilityCondition } from '@zenith/shared';
 import { CURRENCY_OPTIONS, DATE_FORMAT_OPTIONS, TIME_FORMAT_OPTIONS, REGION_LEVEL_OPTIONS, COLUMN_SPAN_OPTIONS, LABEL_POSITION_OPTIONS, LABEL_ALIGN_OPTIONS, DATE_LIMIT_OPTIONS, COMPARE_OPERATOR_OPTIONS, OPTION_COLOR_PRESETS, FORM_FIELD_TYPES, toDateFnsToken } from '../form-types';
 import { evalFormula, FORMULA_FN_GROUPS } from '../form-formula';
+import { useWorkflowDesignerDataSourceOptions, useWorkflowDesignerDictOptions, useWorkflowDesignerPublishedDefinitionOptions } from '@/hooks/queries/workflow-designer';
 
 interface FieldConfigPanelProps {
   field: WorkflowFormField;
@@ -1258,27 +1258,13 @@ export default function FieldConfigPanel({
 
 // ─── 关联流程选择器（设计态：限制可关联哪个审批流） ──────────────────
 
-let definitionListCache: WorkflowDefinition[] | null = null;
-
 function RelationDefinitionPicker({
   value,
   onChange,
 }: Readonly<{ value?: number; onChange: (id: number | undefined) => void }>) {
-  const [definitions, setDefinitions] = useState<WorkflowDefinition[]>(definitionListCache ?? []);
-  const [loading, setLoading] = useState(!definitionListCache);
-
-  useEffect(() => {
-    if (definitionListCache) return;
-    setLoading(true);
-    request.get<WorkflowDefinition[]>('/api/workflows/definitions/published', { silent: true })
-      .then((res) => {
-        if (res.code === 0 && res.data) {
-          definitionListCache = res.data;
-          setDefinitions(res.data);
-        }
-      })
-      .finally(() => setLoading(false));
-  }, []);
+  const definitionsQuery = useWorkflowDesignerPublishedDefinitionOptions();
+  const definitions = definitionsQuery.data ?? [];
+  const loading = definitionsQuery.isFetching;
 
   return (
     <Select
@@ -1300,28 +1286,14 @@ function RelationDefinitionPicker({
 // ─── 数据字典选择器（设计态：选择绑定哪个字典 code） ──────────────────
 
 interface DictOption { code: string; name: string }
-let dictListCache: DictOption[] | null = null;
 
 function DictCodePicker({
   value,
   onChange,
 }: Readonly<{ value?: string; onChange: (code: string | undefined) => void }>) {
-  const [dicts, setDicts] = useState<DictOption[]>(dictListCache ?? []);
-  const [loading, setLoading] = useState(!dictListCache);
-
-  useEffect(() => {
-    if (dictListCache) return;
-    setLoading(true);
-    request.get<PaginatedResponse<Dict>>('/api/dicts?page=1&pageSize=200', { silent: true })
-      .then((res) => {
-        if (res.code === 0 && res.data) {
-          const list = res.data.list.map((d) => ({ code: d.code, name: d.name }));
-          dictListCache = list;
-          setDicts(list);
-        }
-      })
-      .finally(() => setLoading(false));
-  }, []);
+  const dictsQuery = useWorkflowDesignerDictOptions();
+  const dicts: DictOption[] = dictsQuery.data ?? [];
+  const loading = dictsQuery.isFetching;
 
   return (
     <Select
@@ -1906,13 +1878,8 @@ function DataSourceSourceEditor({
   onRemoteChange: (remote: boolean) => void;
   onChange: (updates: Partial<WorkflowFormField>) => void;
 }>) {
-  const [sources, setSources] = useState<Array<{ id: number; name: string }>>([]);
-
-  useEffect(() => {
-    request.get<PaginatedResponse<WorkflowDataSource>>('/api/workflows/data-sources?page=1&pageSize=100&status=enabled', { silent: true })
-      .then((res) => { if (res.code === 0 && res.data) setSources(res.data.list.map((d) => ({ id: d.id, name: d.name }))); })
-      .catch(() => { /* 忽略加载失败 */ });
-  }, []);
+  const sourcesQuery = useWorkflowDesignerDataSourceOptions();
+  const sources = sourcesQuery.data ?? [];
 
   return (
     <div className="fd-form-config__field">

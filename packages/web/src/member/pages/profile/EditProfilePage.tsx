@@ -2,10 +2,9 @@ import { useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Input, Button, Toast, Select, Card, Avatar, Modal, Spin } from '@douyinfe/semi-ui';
 import { Camera, X } from 'lucide-react';
-import type { Member } from '@zenith/shared';
 import { useMemberAuth } from '../../hooks/useMemberAuth';
-import { memberRequest } from '../../utils/member-request';
 import { MemberPage } from '../../components/MemberPage';
+import { useUpdateMemberProfile, useUploadMemberAvatar } from '../../hooks/queries';
 
 const PRESET_AVATARS = Array.from({ length: 12 }, (_, i) => `/avatars/avatar-${String(i + 1).padStart(2, '0')}.svg`);
 
@@ -25,29 +24,25 @@ export default function EditProfilePage() {
   const [email, setEmail] = useState(member?.email ?? '');
   const [gender, setGender] = useState<string>(member?.gender ?? '');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(member?.avatar ?? null);
-  const [saving, setSaving] = useState(false);
-  const [avatarLoading, setAvatarLoading] = useState(false);
   const [presetVisible, setPresetVisible] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const updateProfileMutation = useUpdateMemberProfile();
+  const uploadAvatarMutation = useUploadMemberAvatar();
 
   const handleSave = async () => {
     if (!nickname.trim()) {
       Toast.warning('请输入昵称');
       return;
     }
-    setSaving(true);
-    const res = await memberRequest.put<Member>('/api/member/auth/profile', {
+    const updated = await updateProfileMutation.mutateAsync({
       nickname: nickname.trim(),
       email: email || null,
       gender: gender || null,
       avatar: avatarUrl,
     });
-    setSaving(false);
-    if (res.code === 0) {
-      updateMember(res.data);
-      Toast.success('已保存');
-      navigate(-1);
-    }
+    updateMember(updated);
+    Toast.success('已保存');
+    navigate(-1);
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -56,16 +51,12 @@ export default function EditProfilePage() {
     e.target.value = '';
     if (!file.type.startsWith('image/')) { Toast.warning('请选择图片文件'); return; }
     if (file.size > 2 * 1024 * 1024) { Toast.warning('图片不能超过 2MB'); return; }
-    setAvatarLoading(true);
     const formData = new FormData();
     formData.append('file', file);
-    const res = await memberRequest.post<{ url: string }>('/api/member/files/avatar', formData);
-    setAvatarLoading(false);
-    if (res.code === 0 && res.data?.url) {
-      setAvatarUrl(res.data.url);
+    const res = await uploadAvatarMutation.mutateAsync(formData);
+    if (res.url) {
+      setAvatarUrl(res.url);
       setPresetVisible(false);
-    } else {
-      Toast.error(res.message ?? '上传失败');
     }
   };
 
@@ -80,7 +71,7 @@ export default function EditProfilePage() {
       <Card style={{ maxWidth: 520, marginBottom: 16, marginLeft: 'auto', marginRight: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 20, padding: '8px 0 16px' }}>
           <div style={{ position: 'relative', cursor: 'pointer', flexShrink: 0 }} onClick={() => setPresetVisible(true)}>
-            {avatarLoading ? (
+            {uploadAvatarMutation.isPending ? (
               <div style={{ width: 80, height: 80, borderRadius: '50%', background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Spin />
               </div>
@@ -120,7 +111,7 @@ export default function EditProfilePage() {
       </Card>
 
       <div style={{ maxWidth: 520, margin: '0 auto' }}>
-        <Button theme="solid" loading={saving} onClick={handleSave} style={{ background: 'var(--m-primary)' }}>
+        <Button theme="solid" loading={updateProfileMutation.isPending} onClick={handleSave} style={{ background: 'var(--m-primary)' }}>
           保存
         </Button>
       </div>
@@ -158,7 +149,7 @@ export default function EditProfilePage() {
         </div>
         <div style={{ borderTop: '1px solid var(--m-border)', paddingTop: 16 }}>
           <div style={{ fontSize: 13, color: 'var(--m-text-secondary)', marginBottom: 8 }}>本地上传（≤ 2MB）</div>
-          <Button icon={<Camera size={14} />} loading={avatarLoading} onClick={() => fileInputRef.current?.click()}>
+          <Button icon={<Camera size={14} />} loading={uploadAvatarMutation.isPending} onClick={() => fileInputRef.current?.click()}>
             选择图片
           </Button>
           <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileChange} />
@@ -167,4 +158,3 @@ export default function EditProfilePage() {
     </MemberPage>
   );
 }
-

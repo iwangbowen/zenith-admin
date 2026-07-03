@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Input, Button, DatePicker, Select, Tabs, TabPane, InputNumber, SplitButtonGroup, Dropdown, Toast } from '@douyinfe/semi-ui';
 import AppModal from '@/components/AppModal';
 import { Search, RotateCcw, ChevronDown, Trash2 } from 'lucide-react';
@@ -8,8 +9,8 @@ import ExportButton from '@/components/ExportButton';
 import { OperationLogsTable } from '@/components/logs/OperationLogsTable';
 import { usePagination } from '@/hooks/usePagination';
 import { formatDateTimeForApi } from '@/utils/date';
-import type { OperationLog, PaginatedResponse } from '@zenith/shared';
 import OperationLogStatsPanel from './OperationLogStatsPanel';
+import { operationLogKeys, useCleanOperationLogs, useOperationLogList } from '@/hooks/queries/operation-logs';
 
 interface SearchParams {
   username: string;
@@ -27,58 +28,38 @@ interface SearchParams {
 const defaultParams: SearchParams = { username: '', module: '', description: '', method: '', path: '', ip: '', status: '', timeRange: null, minDurationMs: null, maxDurationMs: null };
 
 export default function OperationLogsPage() {
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'list' | 'stats'>('list');
-  const [data, setData] = useState<OperationLog[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [clearLogsLoading, setClearLogsLoading] = useState(false);
   const [clearModalVisible, setClearModalVisible] = useState(false);
   const [clearMonths, setClearMonths] = useState(0);
   const [clearPassword, setClearPassword] = useState('');
   const [clearPasswordError, setClearPasswordError] = useState('');
   const [clearVerifying, setClearVerifying] = useState(false);
-  const [total, setTotal] = useState(0);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultParams);
-  const searchParamsRef = useRef<SearchParams>(defaultParams);
-  searchParamsRef.current = searchParams;
-
-  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const activeParams = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(activeParams.username ? { username: activeParams.username } : {}),
-        ...(activeParams.module ? { module: activeParams.module } : {}),
-        ...(activeParams.description ? { description: activeParams.description } : {}),
-        ...(activeParams.ip ? { ip: activeParams.ip } : {}),
-        ...(activeParams.method ? { method: activeParams.method } : {}),
-        ...(activeParams.path ? { path: activeParams.path } : {}),
-        ...(activeParams.status ? { status: activeParams.status } : {}),
-        ...(activeParams.timeRange ? { startTime: formatDateTimeForApi(activeParams.timeRange[0]), endTime: formatDateTimeForApi(activeParams.timeRange[1]) } : {}),
-        ...(activeParams.minDurationMs === null ? {} : { minDurationMs: String(activeParams.minDurationMs) }),
-        ...(activeParams.maxDurationMs === null ? {} : { maxDurationMs: String(activeParams.maxDurationMs) }),
-      }).toString();
-      const res = await request.get<PaginatedResponse<OperationLog>>(`/api/operation-logs?${query}`);
-      setData(res.data.list);
-      setTotal(res.data.total);
-      setPage(res.data.page);
-      setPageSize(res.data.pageSize);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultParams);
+  const listQuery = useOperationLogList({
+    page,
+    pageSize,
+    username: submittedParams.username || undefined,
+    module: submittedParams.module || undefined,
+    description: submittedParams.description || undefined,
+    ip: submittedParams.ip || undefined,
+    method: submittedParams.method || undefined,
+    path: submittedParams.path || undefined,
+    status: submittedParams.status || undefined,
+    startTime: submittedParams.timeRange ? formatDateTimeForApi(submittedParams.timeRange[0]) : undefined,
+    endTime: submittedParams.timeRange ? formatDateTimeForApi(submittedParams.timeRange[1]) : undefined,
+    minDurationMs: submittedParams.minDurationMs ?? undefined,
+    maxDurationMs: submittedParams.maxDurationMs ?? undefined,
+  });
+  const data = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const cleanLogsMutation = useCleanOperationLogs();
+  const clearLogsLoading = cleanLogsMutation.isPending;
 
   const buildExportQuery = () => {
-    const p = searchParamsRef.current;
+    const p = draftParams;
     return {
       ...(p.username ? { username: p.username } : {}),
       ...(p.module ? { module: p.module } : {}),
@@ -95,13 +76,15 @@ export default function OperationLogsPage() {
 
   const handleSearch = () => {
     setPage(1);
-    fetchData(1, pageSize);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: operationLogKeys.all });
   };
 
   const handleReset = () => {
-    setSearchParams(defaultParams);
     setPage(1);
-    fetchData(1, pageSize, defaultParams);
+    setDraftParams(defaultParams);
+    setSubmittedParams(defaultParams);
+    void queryClient.invalidateQueries({ queryKey: operationLogKeys.all });
   };
 
   const clearLogsLabels: Record<number, string> = { 0: '全部', 1: '一个月', 3: '三个月', 6: '六个月', 12: '一年' };
@@ -125,25 +108,17 @@ export default function OperationLogsPage() {
       setClearVerifying(false);
     }
     setClearModalVisible(false);
-    setClearLogsLoading(true);
-    try {
-      const res = await request.delete(`/api/operation-logs/clean?months=${clearMonths}`);
-      if (res.code === 0) {
-        Toast.success(res.message || '清除成功');
-        setPage(1);
-        void fetchData(1, pageSize);
-      }
-    } finally {
-      setClearLogsLoading(false);
-    }
+    await cleanLogsMutation.mutateAsync(clearMonths);
+    Toast.success('清除成功');
+    setPage(1);
   };
 
   const renderUsernameSearch = () => (
     <Input
       prefix={<Search size={14} />}
       placeholder="请输入操作人"
-      value={searchParams.username}
-      onChange={(v) => setSearchParams({ ...searchParams, username: v })}
+      value={draftParams.username}
+      onChange={(v) => setDraftParams({ ...draftParams, username: v })}
       onEnterPress={handleSearch}
       style={{ width: 160 }}
       showClear
@@ -154,8 +129,8 @@ export default function OperationLogsPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="请输入功能模块"
-      value={searchParams.module}
-      onChange={(v) => setSearchParams({ ...searchParams, module: v })}
+      value={draftParams.module}
+      onChange={(v) => setDraftParams({ ...draftParams, module: v })}
       onEnterPress={handleSearch}
       style={{ width: 160 }}
       showClear
@@ -166,8 +141,8 @@ export default function OperationLogsPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="请输入操作描述"
-      value={searchParams.description}
-      onChange={(v) => setSearchParams({ ...searchParams, description: v })}
+      value={draftParams.description}
+      onChange={(v) => setDraftParams({ ...draftParams, description: v })}
       onEnterPress={handleSearch}
       style={{ width: 160 }}
       showClear
@@ -177,8 +152,8 @@ export default function OperationLogsPage() {
   const renderMethodFilter = () => (
     <Select
       placeholder="请求方法"
-      value={searchParams.method || undefined}
-      onChange={(v) => setSearchParams({ ...searchParams, method: v as string })}
+      value={draftParams.method || undefined}
+      onChange={(v) => setDraftParams({ ...draftParams, method: v as string })}
       style={{ width: 130 }}
       showClear
     >
@@ -194,8 +169,8 @@ export default function OperationLogsPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="请输入请求路径"
-      value={searchParams.path}
-      onChange={(v) => setSearchParams({ ...searchParams, path: v })}
+      value={draftParams.path}
+      onChange={(v) => setDraftParams({ ...draftParams, path: v })}
       onEnterPress={handleSearch}
       style={{ width: 180 }}
       showClear
@@ -206,8 +181,8 @@ export default function OperationLogsPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="请输入 IP 地址"
-      value={searchParams.ip}
-      onChange={(v) => setSearchParams({ ...searchParams, ip: v })}
+      value={draftParams.ip}
+      onChange={(v) => setDraftParams({ ...draftParams, ip: v })}
       onEnterPress={handleSearch}
       style={{ width: 160 }}
       showClear
@@ -217,8 +192,8 @@ export default function OperationLogsPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="操作状态"
-      value={searchParams.status || undefined}
-      onChange={(v) => setSearchParams({ ...searchParams, status: v as string })}
+      value={draftParams.status || undefined}
+      onChange={(v) => setDraftParams({ ...draftParams, status: v as string })}
       style={{ width: 130 }}
       showClear
     >
@@ -231,8 +206,8 @@ export default function OperationLogsPage() {
     <DatePicker
       type="dateTimeRange"
       placeholder={['开始时间', '结束时间']}
-      value={searchParams.timeRange ?? undefined}
-      onChange={(v) => setSearchParams({ ...searchParams, timeRange: v ? (v as [Date, Date]) : null })}
+      value={draftParams.timeRange ?? undefined}
+      onChange={(v) => setDraftParams({ ...draftParams, timeRange: v ? (v as [Date, Date]) : null })}
       style={{ width: 360 }}
     />
   );
@@ -241,16 +216,16 @@ export default function OperationLogsPage() {
     <>
       <InputNumber
         placeholder="耗时 ≥ (ms)"
-        value={searchParams.minDurationMs ?? undefined}
-        onChange={(v) => setSearchParams({ ...searchParams, minDurationMs: v !== '' && v != null ? Number(v) : null })}
+        value={draftParams.minDurationMs ?? undefined}
+        onChange={(v) => setDraftParams({ ...draftParams, minDurationMs: v !== '' && v != null ? Number(v) : null })}
         min={0}
         style={{ width: 130 }}
         hideButtons
       />
       <InputNumber
         placeholder="耗时 ≤ (ms)"
-        value={searchParams.maxDurationMs ?? undefined}
-        onChange={(v) => setSearchParams({ ...searchParams, maxDurationMs: v !== '' && v != null ? Number(v) : null })}
+        value={draftParams.maxDurationMs ?? undefined}
+        onChange={(v) => setDraftParams({ ...draftParams, maxDurationMs: v !== '' && v != null ? Number(v) : null })}
         min={0}
         style={{ width: 130 }}
         hideButtons
@@ -361,10 +336,10 @@ export default function OperationLogsPage() {
 
           <OperationLogsTable
             dataSource={data}
-            loading={loading}
-            onRefresh={() => void fetchData()}
+            loading={listQuery.isFetching}
+            onRefresh={() => void listQuery.refetch()}
             scroll={{ x: 1600 }}
-            pagination={buildPagination(total, fetchData)}
+            pagination={buildPagination(total)}
           />
         </TabPane>
         <TabPane tab="统计分析" itemKey="stats">

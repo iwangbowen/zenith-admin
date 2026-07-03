@@ -5,6 +5,7 @@ import { Crown, House, Coins, Wallet, Ticket, LogOut } from 'lucide-react';
 import { useMemberAuth } from '../hooks/useMemberAuth';
 import { AuthModal } from '../components/AuthModal';
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const PUBLIC_NAV = [
   { to: '/features', label: '会员特权' },
   { to: '/levels', label: '等级体系' },

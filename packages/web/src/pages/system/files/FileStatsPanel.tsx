@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { Spin, Row, Col } from '@douyinfe/semi-ui';
 import {
   BarChart,
@@ -9,9 +9,8 @@ import {
   useChartPalette,
 } from '@/components/charts';
 import { FileImage, Video, Music, FileText, File } from 'lucide-react';
-import { request } from '@/utils/request';
 import { formatFileSize } from '@/utils/file-utils';
-import type { FileStats } from '@zenith/shared';
+import { useFileStats } from '@/hooks/queries/files';
 
 const PROVIDER_LABELS: Record<string, string> = {
   local: '本地磁盘', oss: '阿里云 OSS', s3: 'S3 存储',
@@ -66,22 +65,8 @@ function StatCard({ title, value, sub }: StatCardProps) {
 
 export default function FileStatsPanel() {
   const palette = useChartPalette();
-  const [loading, setLoading] = useState(false);
-  const [stats, setStats] = useState<FileStats | null>(null);
-
-  const fetchStats = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await request.get<FileStats>('/api/files/stats');
-      if (res.code === 0) setStats(res.data);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchStats();
-  }, [fetchStats]);
+  const statsQuery = useFileStats();
+  const stats = statsQuery.data ?? null;
 
   const summary = stats?.summary;
   const totalFiles = summary?.totalFiles ?? 0;
@@ -133,7 +118,7 @@ export default function FileStatsPanel() {
   }), [palette, uploaderData]);
 
   return (
-    <Spin spinning={loading}>
+    <Spin spinning={statsQuery.isFetching}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         {/* 汇总卡片 */}

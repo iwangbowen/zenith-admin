@@ -1,10 +1,10 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Image, Input, Modal, Select, Spin, Tag, Toast, Banner, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search } from 'lucide-react';
-import type { PaginatedResponse, MpQrcode, MpQrcodeType } from '@zenith/shared';
+import type { MpQrcode, MpQrcodeType } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -13,6 +13,7 @@ import { createdAtColumn } from '../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
+import { mpQrcodeKeys, useCreateMpQrcode, useDeleteMpQrcode, useMpQrcodeList } from '@/hooks/queries/mp-qrcodes';
 
 const TYPE_OPTIONS = [
   { label: '永久二维码', value: 'permanent' },
@@ -25,58 +26,54 @@ const TYPE_META: Record<MpQrcodeType, { label: string; color: 'green' | 'orange'
 
 export default function MpQrcodesPage() {
   const { hasPermission: can } = usePermission();
-  const { accounts, currentId, currentIdRef, setCurrentId, loading: accountsLoading } = useMpAccounts();
+  const queryClient = useQueryClient();
+  const { accounts, currentId, setCurrentId, loading: accountsLoading } = useMpAccounts();
 
-  const [loading, setLoading] = useState(false);
-  const [list, setList] = useState<MpQrcode[]>([]);
-  const [total, setTotal] = useState(0);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
+  const { page, pageSize, setPage, buildPagination } = usePagination();
 
   interface SearchParams { filterType: MpQrcodeType | undefined; keyword: string; }
   const defaultSearch: SearchParams = { filterType: undefined, keyword: '' };
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearch);
-  const searchRef = useRef<SearchParams>(defaultSearch);
-  searchRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearch);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearch);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [modalType, setModalType] = useState<MpQrcodeType>('permanent');
-  const [submitting, setSubmitting] = useState(false);
   const formRef = useRef<FormApi>(null);
 
-  const fetchList = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    if (!currentId) { setList([]); setTotal(0); return; }
-    const reqId = currentId;
-    const { filterType, keyword } = params ?? searchRef.current;
-    setLoading(true);
-    try {
-      const q = new URLSearchParams({ page: String(p), pageSize: String(ps), accountId: String(currentId) });
-      if (filterType) q.set('type', filterType);
-      if (keyword) q.set('keyword', keyword);
-      const res = await request.get<PaginatedResponse<MpQrcode>>(`/api/mp/qrcodes?${q}`);
-      if (currentIdRef.current !== reqId) return; // 账号已切换，丢弃过期响应
-      setList(res.data?.list ?? []);
-      setTotal(res.data?.total ?? 0);
-      setPage(res.data?.page ?? p);
-      setPageSize(res.data?.pageSize ?? ps);
-    } finally {
-      if (currentIdRef.current === reqId) setLoading(false);
-    }
-  }, [page, pageSize, currentId, currentIdRef, setPage, setPageSize]);
+  const listQuery = useMpQrcodeList({
+    accountId: currentId,
+    page,
+    pageSize,
+    type: submittedParams.filterType,
+    keyword: submittedParams.keyword || undefined,
+  });
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const createMutation = useCreateMpQrcode();
+  const deleteMutation = useDeleteMpQrcode();
+  const submitting = createMutation.isPending;
 
   useEffect(() => {
     setPage(1);
-    void fetchList(1, pageSize, searchRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentId]);
+  }, [currentId, setPage]);
 
-  const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
-  const handleReset = () => { setSearchParams(defaultSearch); setPage(1); void fetchList(1, pageSize, defaultSearch); };
+  const handleSearch = () => {
+    setPage(1);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: mpQrcodeKeys.lists(currentId) });
+  };
+  const handleReset = () => {
+    setDraftParams(defaultSearch);
+    setSubmittedParams(defaultSearch);
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: mpQrcodeKeys.lists(currentId) });
+  };
 
   const openCreate = () => { setModalType('permanent'); setModalVisible(true); };
 
   const handleSubmit = async () => {
     let values: Awaited<ReturnType<FormApi['validate']>>;
-    try { values = (await formRef.current?.validate())!; } catch { return; }
+    try { values = (await formRef.current?.validate())!; } catch { throw new Error('validation'); }
     if (!currentId) return;
     const payload: Record<string, unknown> = {
       accountId: currentId,
@@ -87,16 +84,9 @@ export default function MpQrcodesPage() {
     if (modalType === 'temporary') payload.expireSeconds = values.expireSeconds;
     payload.rewardPoints = values.rewardPoints ?? 0;
 
-    setSubmitting(true);
-    try {
-      const res = await request.post('/api/mp/qrcodes', payload);
-      if (res.code !== 0) return;
-      Toast.success('生成成功');
-      setModalVisible(false);
-      void fetchList();
-    } finally {
-      setSubmitting(false);
-    }
+    await createMutation.mutateAsync(payload);
+    Toast.success('生成成功');
+    setModalVisible(false);
   };
 
   const handleDelete = (record: MpQrcode) => {
@@ -105,10 +95,8 @@ export default function MpQrcodesPage() {
       content: '删除后本地记录移除，已投放的二维码图片仍可能被扫描。',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete(`/api/mp/qrcodes/${record.id}`);
-        if (res.code !== 0) return;
+        await deleteMutation.mutateAsync(record.id);
         Toast.success('删除成功');
-        void fetchList();
       },
     });
   };
@@ -142,8 +130,8 @@ export default function MpQrcodesPage() {
   const renderTypeFilter = () => (
     <Select
       placeholder="类型"
-      value={searchParams.filterType}
-      onChange={(v) => setSearchParams({ ...searchParams, filterType: v as MpQrcodeType | undefined })}
+      value={draftParams.filterType}
+      onChange={(v) => setDraftParams({ ...draftParams, filterType: v as MpQrcodeType | undefined })}
       optionList={TYPE_OPTIONS}
       showClear
       style={{ width: 130 }}
@@ -153,8 +141,8 @@ export default function MpQrcodesPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="搜索名称 / 场景值"
-      value={searchParams.keyword}
-      onChange={(v) => setSearchParams({ ...searchParams, keyword: v })}
+      value={draftParams.keyword}
+      onChange={(v) => setDraftParams({ ...draftParams, keyword: v })}
       onEnterPress={handleSearch}
       showClear
       style={{ width: 200 }}
@@ -201,8 +189,8 @@ export default function MpQrcodesPage() {
         <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
       )}
 
-      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList()} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total, fetchList)} scroll={{ x: 1000 }} />
+      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
+        pagination={buildPagination(total)} scroll={{ x: 1000 }} />
 
       <AppModal title="生成带参二维码" visible={modalVisible}
         onOk={handleSubmit} onCancel={() => setModalVisible(false)} confirmLoading={submitting} width={560}>

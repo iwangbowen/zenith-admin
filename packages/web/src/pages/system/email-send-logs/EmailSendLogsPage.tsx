@@ -1,18 +1,25 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Input, Modal, Select, Tag,
   Toast } from '@douyinfe/semi-ui';
 import { AppModal } from '@/components/AppModal';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search } from 'lucide-react';
-import type { EmailSendLog, EmailTemplate, PaginatedResponse, SendStatus } from '@zenith/shared';
+import type { EmailSendLog, SendStatus } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { renderEllipsis } from '../../../utils/table-columns';
+import { useEmailTemplateList } from '@/hooks/queries/email-templates';
+import {
+  emailSendLogKeys,
+  useDeleteEmailSendLog,
+  useEmailSendLogList,
+  useTestEmailSendLog,
+} from '@/hooks/queries/email-send-logs';
 
 const STATUS_OPTIONS: { label: string; value: SendStatus; color: 'orange' | 'green' | 'red' }[] = [
   { label: '待发送', value: 'pending', color: 'orange' },
@@ -34,79 +41,60 @@ function StatusTag({ value }: Readonly<{ value: SendStatus }>) {
 
 export default function EmailSendLogsPage() {
   const { hasPermission: can } = usePermission();
+  const queryClient = useQueryClient();
 
-  const [loading, setLoading] = useState(false);
-  const [list, setList] = useState<EmailSendLog[]>([]);
-  const [total, setTotal] = useState(0);
   interface SearchParams { keyword: string; toEmail: string; filterStatus: SendStatus | undefined; filterSource: string | undefined; }
   const defaultSearchParams: SearchParams = { keyword: '', toEmail: '', filterStatus: undefined, filterSource: undefined };
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
 
   const [testVisible, setTestVisible] = useState(false);
-  const [templates, setTemplates] = useState<EmailTemplate[]>([]);
-  const [submitting, setSubmitting] = useState(false);
   const formRef = useRef<FormApi>(null);
 
-  const fetchList = useCallback(
-    async (p = page, ps = pageSize, params?: SearchParams) => {
-      const { keyword: kw, toEmail: te, filterStatus: st, filterSource: src } = params ?? searchParamsRef.current;
-      setLoading(true);
-      try {
-        const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-        if (kw) query.set('keyword', kw);
-        if (te) query.set('toEmail', te);
-        if (st) query.set('status', st);
-        if (src) query.set('source', src);
-        const res = await request.get<PaginatedResponse<EmailSendLog>>(`/api/email-send-logs?${query}`);
-        setList(res.data?.list ?? []);
-        setTotal(res.data?.total ?? 0);
-        setPage(res.data?.page ?? p);
-        setPageSize(res.data?.pageSize ?? ps);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [page, pageSize, setPage, setPageSize],
-  );
+  const listQuery = useEmailSendLogList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    toEmail: submittedParams.toEmail || undefined,
+    status: submittedParams.filterStatus,
+    source: submittedParams.filterSource || undefined,
+  });
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const templatesQuery = useEmailTemplateList({ page: 1, pageSize: 100, status: 'enabled' }, { enabled: testVisible });
+  const templates = templatesQuery.data?.list ?? [];
+  const testMutation = useTestEmailSendLog();
+  const deleteMutation = useDeleteEmailSendLog();
 
-  useEffect(() => { void fetchList(1); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
-
-  const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
-  const handleReset = () => {
-    setSearchParams(defaultSearchParams);
+  const handleSearch = () => {
     setPage(1);
-    void fetchList(1, pageSize, defaultSearchParams);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: emailSendLogKeys.lists });
+  };
+  const handleReset = () => {
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: emailSendLogKeys.lists });
   };
   const buildExportQuery = () => ({
-    ...(searchParams.keyword ? { keyword: searchParams.keyword } : {}),
-    ...(searchParams.toEmail ? { toEmail: searchParams.toEmail } : {}),
-    ...(searchParams.filterStatus ? { status: searchParams.filterStatus } : {}),
-    ...(searchParams.filterSource ? { source: searchParams.filterSource } : {}),
+    ...(draftParams.keyword ? { keyword: draftParams.keyword } : {}),
+    ...(draftParams.toEmail ? { toEmail: draftParams.toEmail } : {}),
+    ...(draftParams.filterStatus ? { status: draftParams.filterStatus } : {}),
+    ...(draftParams.filterSource ? { source: draftParams.filterSource } : {}),
   });
 
-  const openTest = async () => {
-    try {
-      const res = await request.get<PaginatedResponse<EmailTemplate>>('/api/email-templates?page=1&pageSize=100&status=enabled');
-      setTemplates(res.data?.list ?? []);
-    } catch { /* ignore */ }
+  const openTest = () => {
     setTestVisible(true);
   };
 
   const handleTest = async () => {
     let values: Awaited<ReturnType<FormApi['validate']>>;
-    try { values = (await formRef.current?.validate())!; } catch { return; }
-    setSubmitting(true);
-    try {
-      await request.post('/api/email-send-logs/test', values);
-      Toast.success('测试邮件已发送');
-      setTestVisible(false);
-      void fetchList(1);
-    } finally {
-      setSubmitting(false);
-    }
+    try { values = (await formRef.current!.validate())!; } catch { throw new Error('validation'); }
+    await testMutation.mutateAsync(values);
+    Toast.success('测试邮件已发送');
+    setTestVisible(false);
   };
 
   const handleDelete = (id: number) => {
@@ -114,9 +102,8 @@ export default function EmailSendLogsPage() {
       title: '确定要删除该记录吗？',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        await request.delete(`/api/email-send-logs/${id}`);
+        await deleteMutation.mutateAsync(id);
         Toast.success('删除成功');
-        void fetchList();
       },
     });
   };
@@ -154,12 +141,12 @@ export default function EmailSendLogsPage() {
         primary={(
           <>
             <Input prefix={<Search size={14} />} placeholder="主题/内容关键词"
-              value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 200 }} />
-            <Input placeholder="收件人邮箱" value={searchParams.toEmail} onChange={(v) => setSearchParams({ ...searchParams, toEmail: v })}
+              value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 200 }} />
+            <Input placeholder="收件人邮箱" value={draftParams.toEmail} onChange={(v) => setDraftParams({ ...draftParams, toEmail: v })}
               onEnterPress={handleSearch} showClear style={{ width: 200 }} />
-            <Select placeholder="状态" value={searchParams.filterStatus} onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as SendStatus | undefined })}
+            <Select placeholder="状态" value={draftParams.filterStatus} onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as SendStatus | undefined })}
               optionList={STATUS_OPTIONS} showClear style={{ width: 110 }} />
-            <Select placeholder="来源" value={searchParams.filterSource} onChange={(v) => setSearchParams({ ...searchParams, filterSource: v as string | undefined })}
+            <Select placeholder="来源" value={draftParams.filterSource} onChange={(v) => setDraftParams({ ...draftParams, filterSource: v as string | undefined })}
               optionList={SOURCE_OPTIONS} showClear style={{ width: 110 }} />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
@@ -178,7 +165,7 @@ export default function EmailSendLogsPage() {
         mobilePrimary={(
           <>
             <Input prefix={<Search size={14} />} placeholder="主题/内容关键词"
-              value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 200 }} />
+              value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 200 }} />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             {can('system:email-send-log:send') && (
               <Button type="primary" icon={<Plus size={14} />} onClick={openTest}>测试发送</Button>
@@ -187,11 +174,11 @@ export default function EmailSendLogsPage() {
         )}
         mobileFilters={(
           <>
-            <Input placeholder="收件人邮箱" value={searchParams.toEmail} onChange={(v) => setSearchParams({ ...searchParams, toEmail: v })}
+            <Input placeholder="收件人邮箱" value={draftParams.toEmail} onChange={(v) => setDraftParams({ ...draftParams, toEmail: v })}
               onEnterPress={handleSearch} showClear style={{ width: 200 }} />
-            <Select placeholder="状态" value={searchParams.filterStatus} onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as SendStatus | undefined })}
+            <Select placeholder="状态" value={draftParams.filterStatus} onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as SendStatus | undefined })}
               optionList={STATUS_OPTIONS} showClear style={{ width: 110 }} />
-            <Select placeholder="来源" value={searchParams.filterSource} onChange={(v) => setSearchParams({ ...searchParams, filterSource: v as string | undefined })}
+            <Select placeholder="来源" value={draftParams.filterSource} onChange={(v) => setDraftParams({ ...draftParams, filterSource: v as string | undefined })}
               optionList={SOURCE_OPTIONS} showClear style={{ width: 110 }} />
           </>
         )}
@@ -204,12 +191,12 @@ export default function EmailSendLogsPage() {
         onFilterReset={handleReset}
       />
 
-      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList()} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total, fetchList)}
+      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
+        pagination={buildPagination(total)}
         scroll={{ x: 1400 }} />
 
       <AppModal title="测试发送邮件" visible={testVisible} onOk={handleTest}
-        onCancel={() => setTestVisible(false)} confirmLoading={submitting} width={560}>
+        onCancel={() => setTestVisible(false)} confirmLoading={testMutation.isPending} width={560}>
         <Form key="test" getFormApi={(api) => { (formRef as { current: FormApi }).current = api; }}
           labelPosition="left" labelWidth={90} initValues={{}}>
           <Form.Select field="templateId" label="模板" style={{ width: '100%' }} showClear

@@ -1,22 +1,12 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState } from 'react';
 import { Button, Input, Tag, Select, Space, Modal, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search, RotateCcw } from 'lucide-react';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePermission } from '@/hooks/usePermission';
-
-interface PortEntry {
-  protocol: string;
-  localAddress: string;
-  localPort: number;
-  state: string;
-  pid: number | null;
-  processName: string | null;
-  serviceName: string | null;
-}
+import { useKillPortProcess, usePortList, type PortEntry } from '@/hooks/queries/ports';
 
 function localDisplay(entry: PortEntry): string {
   const addr = entry.localAddress === '0.0.0.0' || entry.localAddress === '::' || entry.localAddress === '*' ? '*' : entry.localAddress;
@@ -33,41 +23,19 @@ const REFRESH_OPTIONS = [
 export default function PortsPage() {
   const { hasPermission } = usePermission();
   const canKill = hasPermission('system:process:kill');
-  const [all, setAll] = useState<PortEntry[]>([]);
-  const [loading, setLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [protocol, setProtocol] = useState<string>('');
   const [refreshInterval, setRefreshInterval] = useState(0);
-  const [killingPid, setKillingPid] = useState<number | null>(null);
+  const listQuery = usePortList(refreshInterval > 0 ? refreshInterval : false);
+  const all = listQuery.data ?? [];
+  const killMutation = useKillPortProcess();
+  const killingPid = killMutation.isPending ? (killMutation.variables ?? null) : null;
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    const res = await request.get<PortEntry[]>('/api/ports', { silent: true });
-    setLoading(false);
-    if (res.code === 0 && res.data) setAll(res.data);
-  }, []);
-
-  useEffect(() => { void fetchData(); }, [fetchData]);
-
-  useEffect(() => {
-    if (refreshInterval <= 0) return;
-    const timer = globalThis.setInterval(() => void fetchData(), refreshInterval);
-    return () => globalThis.clearInterval(timer);
-  }, [refreshInterval, fetchData]);
-
-  const handleReset = () => { setKeyword(''); setProtocol(''); void fetchData(); };
+  const handleReset = () => { setKeyword(''); setProtocol(''); void listQuery.refetch(); };
 
   async function handleKill(pid: number) {
-    setKillingPid(pid);
-    try {
-      const res = await request.delete(`/api/ports/${pid}`);
-      if (res.code === 0) {
-        Toast.success('进程已结束');
-        void fetchData();
-      }
-    } finally {
-      setKillingPid(null);
-    }
+    await killMutation.mutateAsync(pid);
+    Toast.success('进程已结束');
   }
 
   const kw = keyword.trim().toLowerCase();
@@ -160,9 +128,9 @@ export default function PortsPage() {
         rowKey={(r) => `${r?.protocol}-${r?.localAddress}-${r?.localPort}`}
         dataSource={data}
         columns={columns}
-        loading={loading}
-        onRefresh={() => void fetchData()}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         empty="暂无监听端口数据"
         pagination={{ pageSize: 50, showSizeChanger: true }}
       />

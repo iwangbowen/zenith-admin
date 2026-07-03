@@ -3,7 +3,8 @@
  *
  * 提供事件订阅 CRUD + 启用/禁用 + 投递记录查看与重试。
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Col,
@@ -25,13 +26,11 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Search } from 'lucide-react';
 import type {
-  PaginatedResponse,
   WorkflowDefinition,
   WorkflowEventDelivery,
   WorkflowEventSubscription,
   WorkflowEventType,
 } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
@@ -39,6 +38,20 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
+import { useWorkflowDefinitionList } from '@/hooks/queries/workflow-definitions';
+import {
+  useDeleteWorkflowEventSubscription,
+  useReplayWorkflowEventDeliveries,
+  useRetryWorkflowEventDelivery,
+  useSaveWorkflowEventSubscription,
+  useToggleWorkflowEventSubscription,
+  useWorkflowEventDeliveries,
+  useWorkflowEventSubscriptionDetail,
+  useWorkflowEventSubscriptionList,
+  useWorkflowEventSubscriptionSecret,
+  workflowEventSubscriptionKeys,
+} from '@/hooks/queries/workflow-event-subscriptions';
+import { useWorkflowConnectorList } from '@/hooks/queries/workflow-connectors';
 
 const EVENT_OPTIONS: Array<{ value: WorkflowEventType; label: string }> = [
   { value: 'instance.created',   label: '实例创建' },
@@ -84,87 +97,83 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export default function WorkflowEventSubscriptionsPage() {
+  const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
-  const editingRequestIdRef = useRef<number | null>(null);
   const canManageEventSubscription = hasPermission('workflow:event-subscription:view');
-  const [loading, setLoading] = useState(false);
-  const [list, setList] = useState<WorkflowEventSubscription[]>([]);
-  const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, buildPagination } = usePagination();
   interface SearchParams { keyword: string; definitionId: number | ''; enabled: '' | 'true' | 'false' }
   const defaultSearchParams: SearchParams = { keyword: '', definitionId: '', enabled: '' };
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
+  const listQuery = useWorkflowEventSubscriptionList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    definitionId: submittedParams.definitionId === '' ? undefined : submittedParams.definitionId,
+    enabled: submittedParams.enabled || undefined,
+  });
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
 
-  const [defs, setDefs] = useState<WorkflowDefinition[]>([]);
-  const [connectorOptions, setConnectorOptions] = useState<Array<{ value: number; label: string }>>([]);
+  const definitionsQuery = useWorkflowDefinitionList({ page: 1, pageSize: 200 });
+  const defs: WorkflowDefinition[] = definitionsQuery.data?.list ?? [];
+  const connectorsQuery = useWorkflowConnectorList({ page: 1, pageSize: 100, status: 'enabled' });
+  const connectorOptions = (connectorsQuery.data?.list ?? []).map((cn) => ({ value: cn.id, label: `${cn.name}（${cn.type}）` }));
 
   // 编辑弹窗
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<WorkflowEventSubscription | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [modalDetailLoading, setModalDetailLoading] = useState(false);
+  const detailQuery = useWorkflowEventSubscriptionDetail(editing?.id, modalVisible && !!editing);
+  const saveMutation = useSaveWorkflowEventSubscription();
+  const toggleMutation = useToggleWorkflowEventSubscription();
+  const deleteMutation = useDeleteWorkflowEventSubscription();
+  const secretMutation = useWorkflowEventSubscriptionSecret();
 
   // 投递抽屉
   const [deliveryVisible, setDeliveryVisible] = useState(false);
   const [deliverySubId, setDeliverySubId] = useState<number | null>(null);
-  const [deliveries, setDeliveries] = useState<WorkflowEventDelivery[]>([]);
-  const [deliveriesTotal, setDeliveriesTotal] = useState(0);
   const { page: deliveryPage, pageSize: deliveryPageSize, setPage: setDeliveryPage, buildPagination: buildDeliveryPagination } = usePagination();
-  const [deliveryLoading, setDeliveryLoading] = useState(false);
+  const deliveriesQuery = useWorkflowEventDeliveries({
+    page: deliveryPage,
+    pageSize: deliveryPageSize,
+    subscriptionId: deliverySubId,
+  }, deliveryVisible);
+  const deliveries = deliveriesQuery.data?.list ?? [];
+  const deliveriesTotal = deliveriesQuery.data?.total ?? 0;
+  const retryDeliveryMutation = useRetryWorkflowEventDelivery();
+  const replayDeliveriesMutation = useReplayWorkflowEventDeliveries();
 
-  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const { keyword: kw, definitionId: did, enabled: enb } = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const q = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-      if (kw) q.set('keyword', kw);
-      if (did !== '') q.set('definitionId', String(did));
-      if (enb) q.set('enabled', enb);
-      const res = await request.get<PaginatedResponse<WorkflowEventSubscription>>(
-        `/api/workflows/event-subscriptions?${q.toString()}`,
-      );
-      if (res.code === 0) {
-        setList(res.data.list);
-        setTotal(res.data.total);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize]);
-
-  useEffect(() => { void fetchData(); }, [fetchData]);
-
-  // 流程定义下拉
   useEffect(() => {
-    request
-      .get<PaginatedResponse<WorkflowDefinition>>('/api/workflows/definitions?page=1&pageSize=200')
-      .then((res) => { if (res.code === 0) setDefs(res.data.list); })
-      .catch(() => { /* ignore */ });
-  }, []);
-
-  // 连接器下拉（启用态）
-  useEffect(() => {
-    request
-      .get<{ list: Array<{ id: number; name: string; type: string }> }>('/api/workflows/connectors?status=enabled&pageSize=100')
-      .then((res) => { if (res.code === 0) setConnectorOptions((res.data?.list ?? []).map((cn) => ({ value: cn.id, label: `${cn.name}（${cn.type}）` }))); })
-      .catch(() => { /* ignore */ });
-  }, []);
+    if (!modalVisible || !detailQuery.data) return;
+    setEditing(detailQuery.data);
+    setTimeout(() => formApi.current?.setValues({
+      name: detailQuery.data.name,
+      description: detailQuery.data.description ?? '',
+      definitionId: detailQuery.data.definitionId,
+      events: detailQuery.data.events,
+      url: detailQuery.data.url,
+      secret: '',
+      signMode: detailQuery.data.signMode,
+      headers: detailQuery.data.headers ? JSON.stringify(detailQuery.data.headers, null, 2) : '',
+      connectorId: detailQuery.data.connectorId,
+      enabled: detailQuery.data.enabled,
+    }), 0);
+  }, [detailQuery.data, modalVisible]);
 
   const handleSearch = () => {
     setPage(1);
-    void fetchData(1, pageSize);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: workflowEventSubscriptionKeys.lists });
   };
   const handleReset = () => {
-    setSearchParams(defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
     setPage(1);
-    void fetchData(1, pageSize, defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: workflowEventSubscriptionKeys.lists });
   };
 
   const openCreate = () => {
-    editingRequestIdRef.current = null;
     setEditing(null);
     setModalVisible(true);
     setTimeout(() => formApi.current?.setValues({
@@ -173,9 +182,7 @@ export default function WorkflowEventSubscriptionsPage() {
     }), 0);
   };
 
-  const openEdit = async (row: WorkflowEventSubscription) => {
-    const requestedId = row.id;
-    editingRequestIdRef.current = requestedId;
+  const openEdit = (row: WorkflowEventSubscription) => {
     setEditing(row);
     setModalVisible(true);
     setTimeout(() => formApi.current?.setValues({
@@ -190,30 +197,6 @@ export default function WorkflowEventSubscriptionsPage() {
       connectorId: row.connectorId,
       enabled: row.enabled,
     }), 0);
-    setModalDetailLoading(true);
-    try {
-      const res = await request.get<WorkflowEventSubscription>(`/api/workflows/event-subscriptions/${requestedId}`);
-      if (editingRequestIdRef.current !== requestedId) return;
-      if (res.code === 0 && res.data) {
-        setEditing(res.data);
-        setTimeout(() => formApi.current?.setValues({
-          name: res.data.name,
-          description: res.data.description ?? '',
-          definitionId: res.data.definitionId,
-          events: res.data.events,
-          url: res.data.url,
-          secret: '',
-          signMode: res.data.signMode,
-          headers: res.data.headers ? JSON.stringify(res.data.headers, null, 2) : '',
-          connectorId: res.data.connectorId,
-          enabled: res.data.enabled,
-        }), 0);
-      } else {
-        Toast.error(res.message || '获取订阅信息失败');
-      }
-    } finally {
-      if (editingRequestIdRef.current === requestedId) setModalDetailLoading(false);
-    }
   };
 
   const handleSubmit = async (vals: FormValues) => {
@@ -240,62 +223,43 @@ export default function WorkflowEventSubscriptionsPage() {
       connectorId: vals.connectorId ?? null,
       enabled: vals.enabled ?? true,
     };
-    setSaving(true);
+    await saveMutation.mutateAsync({ id: editing?.id, values: body });
+    Toast.success(editing ? '已更新' : '已创建');
+    setModalVisible(false);
+  };
+
+  const handleModalOk = async () => {
+    let values: FormValues;
     try {
-      const res = editing
-        ? await request.put<WorkflowEventSubscription>(`/api/workflows/event-subscriptions/${editing.id}`, body)
-        : await request.post<WorkflowEventSubscription>(`/api/workflows/event-subscriptions`, body);
-      if (res.code === 0) {
-        Toast.success(editing ? '已更新' : '已创建');
-        setModalVisible(false);
-        await fetchData();
-      }
-    } finally { setSaving(false); }
+      values = await formApi.current!.validate();
+    } catch {
+      throw new Error('validation');
+    }
+    await handleSubmit(values);
   };
 
   const handleToggle = async (row: WorkflowEventSubscription) => {
-    const res = await request.patch<WorkflowEventSubscription>(
-      `/api/workflows/event-subscriptions/${row.id}/toggle`,
-      { enabled: !row.enabled },
-    );
-    if (res.code === 0) { Toast.success('已切换'); await fetchData(); }
+    await toggleMutation.mutateAsync({ id: row.id, enabled: !row.enabled });
+    Toast.success('已切换');
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete(`/api/workflows/event-subscriptions/${id}`);
-    if (res.code === 0) { Toast.success('已删除'); await fetchData(); }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('已删除');
   };
 
   const handleViewSecret = async (id: number) => {
-    const res = await request.get<{ secret: string }>(`/api/workflows/event-subscriptions/${id}/secret`);
-    if (res.code === 0) {
-      Modal.info({ title: '订阅 Secret', content: <Typography.Text copyable>{res.data.secret}</Typography.Text> });
-    }
+    const secret = await secretMutation.mutateAsync(id);
+    Modal.info({ title: '订阅 Secret', content: <Typography.Text copyable>{secret.secret}</Typography.Text> });
   };
-
-  const fetchDeliveries = useCallback(async (p = deliveryPage) => {
-    if (deliverySubId === null) return;
-    setDeliveryLoading(true);
-    try {
-      const q = new URLSearchParams({
-        page: String(p), pageSize: String(deliveryPageSize), subscriptionId: String(deliverySubId),
-      });
-      const res = await request.get<PaginatedResponse<WorkflowEventDelivery>>(
-        `/api/workflows/event-subscriptions/deliveries/list?${q.toString()}`,
-      );
-      if (res.code === 0) { setDeliveries(res.data.list); setDeliveriesTotal(res.data.total); }
-    } finally { setDeliveryLoading(false); }
-  }, [deliverySubId, deliveryPage, deliveryPageSize]);
-
-  useEffect(() => { if (deliveryVisible) void fetchDeliveries(); }, [deliveryVisible, fetchDeliveries]);
 
   const openDeliveries = (row: WorkflowEventSubscription) => {
     setDeliverySubId(row.id); setDeliveryPage(1); setDeliveryVisible(true);
   };
 
   const handleRetryDelivery = async (id: number) => {
-    const res = await request.post(`/api/workflows/event-subscriptions/deliveries/${id}/retry`);
-    if (res.code === 0) { Toast.success('已加入重试'); await fetchDeliveries(); }
+    await retryDeliveryMutation.mutateAsync(id);
+    Toast.success('已加入重试');
   };
 
   // 4B 按筛选批量重放（订阅内：事件类型 + 状态 + 时间范围，含补发已成功）
@@ -303,7 +267,6 @@ export default function WorkflowEventSubscriptionsPage() {
   const [replayStatus, setReplayStatus] = useState<'all' | 'success' | 'failed' | 'pending'>('failed');
   const [replayEventType, setReplayEventType] = useState<WorkflowEventType | undefined>(undefined);
   const [replayRange, setReplayRange] = useState<Date[] | undefined>(undefined);
-  const [replaySubmitting, setReplaySubmitting] = useState(false);
 
   const openReplay = () => {
     setReplayStatus('failed'); setReplayEventType(undefined); setReplayRange(undefined); setReplayVisible(true);
@@ -311,26 +274,18 @@ export default function WorkflowEventSubscriptionsPage() {
 
   const handleReplay = async () => {
     if (deliverySubId === null) return;
-    setReplaySubmitting(true);
-    try {
-      const start = replayRange?.[0];
-      const end = replayRange?.[1];
-      const body: Record<string, unknown> = { subscriptionId: deliverySubId };
-      if (replayEventType) body.eventType = replayEventType;
-      if (replayStatus !== 'all') body.status = replayStatus;
-      if (start) body.startAt = formatDateTimeForApi(start);
-      if (end) body.endAt = formatDateTimeForApi(end);
-      const res = await request.post<{ count: number }>('/api/workflows/event-subscriptions/deliveries/replay', body);
-      if (res.code === 0) {
-        Toast.success(`已重放 ${res.data.count} 条投递`);
-        setReplayVisible(false);
-        await fetchDeliveries();
-      } else {
-        Toast.warning(res.message || '重放失败');
-      }
-    } finally {
-      setReplaySubmitting(false);
-    }
+    const start = replayRange?.[0];
+    const end = replayRange?.[1];
+    const body = { subscriptionId: deliverySubId };
+    const result = await replayDeliveriesMutation.mutateAsync({
+      ...body,
+      ...(replayEventType ? { eventType: replayEventType } : {}),
+      ...(replayStatus !== 'all' ? { status: replayStatus } : {}),
+      ...(start ? { startAt: formatDateTimeForApi(start) } : {}),
+      ...(end ? { endAt: formatDateTimeForApi(end) } : {}),
+    });
+    Toast.success(`已重放 ${result.count} 条投递`);
+    setReplayVisible(false);
   };
 
   const columns: ColumnProps<WorkflowEventSubscription>[] = [
@@ -357,7 +312,7 @@ export default function WorkflowEventSubscriptionsPage() {
     {
       title: '状态', dataIndex: 'enabled', width: 90, fixed: 'right',
       render: (v: boolean, r) => canManageEventSubscription
-        ? <Switch checked={v} onChange={() => handleToggle(r)} />
+        ? <Switch checked={v} loading={toggleMutation.isPending && toggleMutation.variables?.id === r.id} onChange={() => handleToggle(r)} />
         : (v ? <Tag color="green">启用</Tag> : <Tag color="grey">禁用</Tag>),
     },
     { title: '更新时间', dataIndex: 'updatedAt', width: 160, render: (v: string) => formatDateTime(v) },
@@ -431,8 +386,8 @@ export default function WorkflowEventSubscriptionsPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="名称 / URL"
-      value={searchParams.keyword}
-      onChange={v => setSearchParams(prev => ({ ...prev, keyword: v }))}
+      value={draftParams.keyword}
+      onChange={v => setDraftParams(prev => ({ ...prev, keyword: v }))}
       showClear
       style={{ width: 220 }}
       onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
@@ -442,8 +397,8 @@ export default function WorkflowEventSubscriptionsPage() {
   const renderDefinitionFilter = () => (
     <Select
       placeholder="所属流程"
-      value={searchParams.definitionId === '' ? undefined : searchParams.definitionId}
-      onChange={(v) => setSearchParams(prev => ({ ...prev, definitionId: (v as number) ?? '' }))}
+      value={draftParams.definitionId === '' ? undefined : draftParams.definitionId}
+      onChange={(v) => setDraftParams(prev => ({ ...prev, definitionId: (v as number) ?? '' }))}
       showClear
       style={{ width: 200 }}
       optionList={[{ value: '', label: '全部（含全局）' }, ...defs.map((d) => ({ value: d.id, label: d.name }))]}
@@ -453,8 +408,8 @@ export default function WorkflowEventSubscriptionsPage() {
   const renderEnabledFilter = () => (
     <Select
       placeholder="状态"
-      value={searchParams.enabled || undefined}
-      onChange={(v) => setSearchParams(prev => ({ ...prev, enabled: (v as 'true' | 'false') ?? '' }))}
+      value={draftParams.enabled || undefined}
+      onChange={(v) => setDraftParams(prev => ({ ...prev, enabled: (v as 'true' | 'false') ?? '' }))}
       showClear
       style={{ width: 120 }}
       optionList={[
@@ -509,26 +464,26 @@ export default function WorkflowEventSubscriptionsPage() {
 
       <ConfigurableTable<WorkflowEventSubscription>
         bordered
-        loading={loading}
+        loading={listQuery.isFetching}
         rowKey="id"
         dataSource={list}
         columns={columns}
-        pagination={buildPagination(total, fetchData)}
-        onRefresh={() => void fetchData()}
-        refreshLoading={loading}
+        pagination={buildPagination(total)}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
       />
 
       <AppModal
         title={editing ? '编辑订阅' : '新增订阅'}
         visible={modalVisible}
-        onCancel={() => { editingRequestIdRef.current = null; setModalVisible(false); setEditing(null); setModalDetailLoading(false); }}
-        onOk={() => formApi.current?.submitForm()}
-        confirmLoading={saving}
-        okButtonProps={{ disabled: modalDetailLoading }}
+        onCancel={() => { setModalVisible(false); setEditing(null); }}
+        onOk={handleModalOk}
+        confirmLoading={saveMutation.isPending}
+        okButtonProps={{ disabled: detailQuery.isFetching }}
         closeOnEsc
         width={680}
       >
-        <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
+        <Spin spinning={detailQuery.isFetching} wrapperClassName="modal-spin-wrapper">
         <Form<FormValues> getFormApi={(api) => (formApi.current = api)} onSubmit={handleSubmit} allowEmpty labelPosition="left" labelWidth={110}>
           <Row gutter={16}>
             <Col span={12}>
@@ -621,13 +576,13 @@ export default function WorkflowEventSubscriptionsPage() {
         )}
         <ConfigurableTable<WorkflowEventDelivery>
           bordered
-          loading={deliveryLoading}
+          loading={deliveriesQuery.isFetching}
           rowKey="id"
           dataSource={deliveries}
           columns={deliveryColumns}
-          pagination={{...buildDeliveryPagination(deliveriesTotal, (p) => void fetchDeliveries(p)), showSizeChanger: false}}
-          onRefresh={() => void fetchDeliveries(deliveryPage)}
-          refreshLoading={deliveryLoading}
+          pagination={{...buildDeliveryPagination(deliveriesTotal), showSizeChanger: false}}
+          onRefresh={() => void deliveriesQuery.refetch()}
+          refreshLoading={deliveriesQuery.isFetching}
         />
       </SideSheet>
 
@@ -636,7 +591,7 @@ export default function WorkflowEventSubscriptionsPage() {
         visible={replayVisible}
         onCancel={() => setReplayVisible(false)}
         onOk={() => void handleReplay()}
-        confirmLoading={replaySubmitting}
+        confirmLoading={replayDeliveriesMutation.isPending}
         okText="重放"
         closeOnEsc
         width={460}

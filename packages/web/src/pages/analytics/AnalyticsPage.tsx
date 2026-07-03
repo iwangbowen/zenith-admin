@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import type { CSSProperties, ReactNode } from 'react';
 import { Avatar, Button, Card, Empty, Input, Progress, Select, SideSheet, Skeleton, Spin, TabPane, Tabs, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -40,23 +41,31 @@ import {
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { formatDateTime } from '@/utils/date';
-import { request } from '@/utils/request';
+import {
+  analyticsKeys,
+  useAnalyzeFunnel,
+  useAnalyticsDimension,
+  useAnalyticsFeatureStats,
+  useAnalyticsHeatmap,
+  useAnalyticsHeatmapPages,
+  useAnalyticsOverview,
+  useAnalyticsPageStats,
+  useAnalyticsPath,
+  useAnalyticsRealtime,
+  useAnalyticsRetention,
+  useAnalyticsSessions,
+  useAnalyticsTrends,
+  useAnalyticsUserStats,
+  useAnalyticsUserTimeline,
+} from '@/hooks/queries/analytics';
 import type {
-  AnalyticsOverview,
   DimensionBreakdown,
   FeatureStats,
-  FunnelResult,
   HeatmapData,
   HeatmapPageListItem,
   PageStats,
-  PaginatedResponse,
-  PathResult,
-  RealtimeStats,
-  RetentionResult,
   SessionListItem,
-  TrendSeries,
   UserStats,
-  UserTimeline,
 } from '@zenith/shared';
 
 function msToReadable(ms: number | null): string {
@@ -82,6 +91,8 @@ const DEVICE_OPTIONS = [
   { label: '机器人', value: 'bot' },
   { label: '未知', value: 'unknown' },
 ];
+
+const EMPTY_HEATMAP_PAGES: HeatmapPageListItem[] = [];
 
 const DIMENSION_OPTIONS = [
   { label: '浏览器', value: 'browser' },
@@ -171,25 +182,11 @@ function chartColor(index: number, primary: string): string {
 function OverviewTab() {
   const palette = useChartPalette();
   const [days, setDays] = useState(7);
-  const [overview, setOverview] = useState<AnalyticsOverview | null>(null);
-  const [trends, setTrends] = useState<TrendSeries | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [overviewRes, trendsRes] = await Promise.all([
-        request.get<AnalyticsOverview>(`/api/analytics/overview?days=${days}`),
-        request.get<TrendSeries>(`/api/analytics/trends?days=${days}`),
-      ]);
-      if (overviewRes.code === 0) setOverview(overviewRes.data);
-      if (trendsRes.code === 0) setTrends(trendsRes.data);
-    } finally {
-      setLoading(false);
-    }
-  }, [days]);
-
-  useEffect(() => { void fetchData(); }, [fetchData]);
+  const overviewQuery = useAnalyticsOverview(days);
+  const trendsQuery = useAnalyticsTrends(days);
+  const overview = overviewQuery.data ?? null;
+  const trends = trendsQuery.data ?? null;
+  const loading = overviewQuery.isFetching || trendsQuery.isFetching;
 
   const chartData = useMemo<ChartRow[]>(() => {
     if (!trends) return [];
@@ -261,24 +258,9 @@ function OverviewTab() {
 
 function RealtimeTab() {
   const palette = useChartPalette();
-  const [data, setData] = useState<RealtimeStats | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const fetchData = useCallback(async (silent = false) => {
-    setLoading(!silent);
-    try {
-      const res = await request.get<RealtimeStats>('/api/analytics/realtime', silent ? { silent: true } : {});
-      if (res.code === 0) setData(res.data);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchData();
-    const timer = globalThis.setInterval(() => { void fetchData(true); }, 10_000);
-    return () => globalThis.clearInterval(timer);
-  }, [fetchData]);
+  const realtimeQuery = useAnalyticsRealtime();
+  const data = realtimeQuery.data ?? null;
+  const loading = realtimeQuery.isFetching;
 
   const realtimeAreaSpec = useMemo(() => makeAreaSpec({
     data: data?.perMinute ?? [],
@@ -289,7 +271,7 @@ function RealtimeTab() {
 
   return (
     <div style={sectionStyle}>
-      <SectionHeader title="实时看板" description="每 10 秒自动刷新" extra={<Button icon={<RefreshCcw size={14} />} onClick={() => void fetchData()} loading={loading}>刷新</Button>} />
+      <SectionHeader title="实时看板" description="每 10 秒自动刷新" extra={<Button icon={<RefreshCcw size={14} />} onClick={() => void realtimeQuery.refetch()} loading={loading}>刷新</Button>} />
       <div style={gridStyle}>
         <StatCard label="实时在线" value={numberText(data?.activeUsers ?? 0)} icon={<Users size={19} />} color="#22c55e" />
         <StatCard label="近30分钟浏览" value={numberText(data?.pageViewsLast30Min ?? 0)} icon={<Eye size={19} />} color={palette.primary} />
@@ -397,20 +379,9 @@ function buildDwellTreemap(rows: readonly PageStatsRow[]): TreemapNode {
 function DwellTab() {
   const palette = useChartPalette();
   const [days, setDays] = useState(7);
-  const [data, setData] = useState<PageStats | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await request.get<PageStats>(`/api/analytics/page-stats?days=${days}&limit=20`);
-      if (res.code === 0) setData(res.data);
-    } finally {
-      setLoading(false);
-    }
-  }, [days]);
-
-  useEffect(() => { void fetchData(); }, [fetchData]);
+  const pageStatsQuery = useAnalyticsPageStats(days);
+  const data = pageStatsQuery.data ?? null;
+  const loading = pageStatsQuery.isFetching;
 
   const rows = useMemo<PageStatsRow[]>(() => (data?.items ?? []).map((item) => ({ ...item, id: item.pagePath })), [data]);
   const maxAvg = useMemo(() => Math.max(1, ...rows.map((item) => item.avgMs ?? 0)), [rows]);
@@ -478,7 +449,7 @@ function DwellTab() {
         dataSource={rows}
         loading={loading}
         rowKey="id"
-        onRefresh={() => void fetchData()}
+        onRefresh={() => void pageStatsQuery.refetch()}
         refreshLoading={loading}
         pagination={false}
       />
@@ -538,20 +509,9 @@ function buildFeatureTreemap(rows: readonly FeatureStatsRow[]): TreemapNode {
 function FeatureTab() {
   const palette = useChartPalette();
   const [days, setDays] = useState(7);
-  const [data, setData] = useState<FeatureStats | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await request.get<FeatureStats>(`/api/analytics/feature-stats?days=${days}&limit=30`);
-      if (res.code === 0) setData(res.data);
-    } finally {
-      setLoading(false);
-    }
-  }, [days]);
-
-  useEffect(() => { void fetchData(); }, [fetchData]);
+  const featureStatsQuery = useAnalyticsFeatureStats(days);
+  const data = featureStatsQuery.data ?? null;
+  const loading = featureStatsQuery.isFetching;
 
   const rows = useMemo<FeatureStatsRow[]>(() => (data?.items ?? []).map((item, index) => ({
     ...item,
@@ -612,7 +572,7 @@ function FeatureTab() {
         dataSource={rows}
         loading={loading}
         rowKey="id"
-        onRefresh={() => void fetchData()}
+        onRefresh={() => void featureStatsQuery.refetch()}
         refreshLoading={loading}
         pagination={false}
       />
@@ -623,35 +583,24 @@ function FeatureTab() {
 type DeviceFilter = '' | 'desktop' | 'mobile' | 'tablet' | 'bot' | 'unknown';
 
 function SessionsTab() {
+  const queryClient = useQueryClient();
   const [usernameInput, setUsernameInput] = useState('');
   const [deviceInput, setDeviceInput] = useState<DeviceFilter>('');
   const [filters, setFilters] = useState({ username: '', deviceType: '' as DeviceFilter });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const [data, setData] = useState<PaginatedResponse<SessionListItem>>({ list: [], total: 0, page: 1, pageSize: 20 });
-  const [loading, setLoading] = useState(false);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({
-        page: String(page),
-        pageSize: String(pageSize),
-        username: filters.username,
-        deviceType: filters.deviceType,
-      });
-      const res = await request.get<PaginatedResponse<SessionListItem>>(`/api/analytics/sessions?${params.toString()}`);
-      if (res.code === 0) setData(res.data);
-    } finally {
-      setLoading(false);
-    }
-  }, [filters.deviceType, filters.username, page, pageSize]);
-
-  useEffect(() => { void fetchData(); }, [fetchData]);
+  const sessionsQuery = useAnalyticsSessions({
+    page,
+    pageSize,
+    username: filters.username || undefined,
+    deviceType: filters.deviceType || undefined,
+  });
+  const data = sessionsQuery.data ?? { list: [], total: 0, page: 1, pageSize: 20 };
 
   const handleSearch = () => {
     setPage(1);
     setFilters({ username: usernameInput.trim(), deviceType: deviceInput });
+    void queryClient.invalidateQueries({ queryKey: analyticsKeys.sessionsLists });
   };
 
   const handleReset = () => {
@@ -659,6 +608,7 @@ function SessionsTab() {
     setDeviceInput('');
     setPage(1);
     setFilters({ username: '', deviceType: '' });
+    void queryClient.invalidateQueries({ queryKey: analyticsKeys.sessionsLists });
   };
 
   const columns: ColumnProps<SessionListItem>[] = [
@@ -732,10 +682,10 @@ function SessionsTab() {
         bordered
         columns={columns}
         dataSource={data.list}
-        loading={loading}
+        loading={sessionsQuery.isFetching}
         rowKey="id"
-        onRefresh={() => void fetchData()}
-        refreshLoading={loading}
+        onRefresh={() => void sessionsQuery.refetch()}
+        refreshLoading={sessionsQuery.isFetching}
         pagination={{
           currentPage: page,
           pageSize,
@@ -765,8 +715,9 @@ function FunnelTab() {
     { id: 'step-1', label: '进入首页', pagePath: '/' },
     { id: 'step-2', label: '进入仪表盘', pagePath: '/dashboard' },
   ]);
-  const [result, setResult] = useState<FunnelResult | null>(null);
-  const [loading, setLoading] = useState(false);
+  const analyzeMutation = useAnalyzeFunnel();
+  const result = analyzeMutation.data ?? null;
+  const loading = analyzeMutation.isPending;
 
   const updateStep = (id: string, patch: Partial<Omit<FunnelStepDraft, 'id'>>) => {
     setSteps((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)));
@@ -798,21 +749,14 @@ function FunnelTab() {
   }), [funnelChartData, palette]);
 
   const analyze = async () => {
-    setLoading(true);
-    try {
-      const body = {
-        days,
-        steps: steps.map(({ label, pagePath, eventName }) => ({
-          label: label.trim(),
-          pagePath: pagePath?.trim() || undefined,
-          eventName: eventName?.trim() || undefined,
-        })),
-      };
-      const res = await request.post<FunnelResult>('/api/analytics/funnel', body);
-      if (res.code === 0) setResult(res.data);
-    } finally {
-      setLoading(false);
-    }
+    await analyzeMutation.mutateAsync({
+      days,
+      steps: steps.map(({ label, pagePath, eventName }) => ({
+        label: label.trim(),
+        pagePath: pagePath?.trim() || undefined,
+        eventName: eventName?.trim() || undefined,
+      })),
+    });
   };
 
   return (
@@ -867,20 +811,9 @@ function FunnelTab() {
 
 function RetentionTab() {
   const [days, setDays] = useState(14);
-  const [data, setData] = useState<RetentionResult | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await request.get<RetentionResult>(`/api/analytics/retention?days=${days}`);
-      if (res.code === 0) setData(res.data);
-    } finally {
-      setLoading(false);
-    }
-  }, [days]);
-
-  useEffect(() => { void fetchData(); }, [fetchData]);
+  const retentionQuery = useAnalyticsRetention(days);
+  const data = retentionQuery.data ?? null;
+  const loading = retentionQuery.isFetching;
 
   const periodMax = data ? Math.max(1, ...data.cohorts.flatMap((c) => c.values.filter((v): v is number => v != null))) : 100;
 
@@ -940,20 +873,9 @@ function RetentionTab() {
 function PathTab() {
   const palette = useChartPalette();
   const [days, setDays] = useState(7);
-  const [data, setData] = useState<PathResult | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await request.get<PathResult>(`/api/analytics/path?days=${days}&limit=12`);
-      if (res.code === 0) setData(res.data);
-    } finally {
-      setLoading(false);
-    }
-  }, [days]);
-
-  useEffect(() => { void fetchData(); }, [fetchData]);
+  const pathQuery = useAnalyticsPath(days);
+  const data = pathQuery.data ?? null;
+  const loading = pathQuery.isFetching;
 
   const nodeLabelMap = useMemo(() => new Map((data?.nodes ?? []).map((node) => [node.id, node.label])), [data]);
   const links = useMemo(() => [...(data?.links ?? [])].sort((a, b) => b.value - a.value), [data]);
@@ -993,32 +915,14 @@ type UserStatsRow = UserStats['items'][number] & { id: string; rank: number };
 
 function UsersTab() {
   const [days, setDays] = useState(7);
-  const [data, setData] = useState<UserStats | null>(null);
-  const [loading, setLoading] = useState(false);
   const [timelineVisible, setTimelineVisible] = useState(false);
   const [timelineUserId, setTimelineUserId] = useState<number | null>(null);
-  const [timeline, setTimeline] = useState<UserTimeline | null>(null);
-  const [timelineLoading, setTimelineLoading] = useState(false);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await request.get<UserStats>(`/api/analytics/user-stats?days=${days}&limit=20`);
-      if (res.code === 0) setData(res.data);
-    } finally {
-      setLoading(false);
-    }
-  }, [days]);
-
-  useEffect(() => { void fetchData(); }, [fetchData]);
-
-  useEffect(() => {
-    if (!timelineVisible || timelineUserId == null) return;
-    setTimelineLoading(true);
-    void request.get<UserTimeline>(`/api/analytics/user-timeline?userId=${timelineUserId}&limit=100`)
-      .then((res) => { if (res.code === 0) setTimeline(res.data); })
-      .finally(() => setTimelineLoading(false));
-  }, [timelineUserId, timelineVisible]);
+  const userStatsQuery = useAnalyticsUserStats(days);
+  const timelineQuery = useAnalyticsUserTimeline(timelineUserId, timelineVisible);
+  const data = userStatsQuery.data ?? null;
+  const loading = userStatsQuery.isFetching;
+  const timeline = timelineQuery.data ?? null;
+  const timelineLoading = timelineQuery.isFetching;
 
   const rows = useMemo<UserStatsRow[]>(() => (data?.items ?? []).map((item, index) => ({
     ...item,
@@ -1029,7 +933,6 @@ function UsersTab() {
 
   const openTimeline = (record: UserStatsRow) => {
     if (record.userId == null) return;
-    setTimeline(null);
     setTimelineUserId(record.userId);
     setTimelineVisible(true);
   };
@@ -1080,7 +983,7 @@ function UsersTab() {
         dataSource={rows}
         loading={loading}
         rowKey="id"
-        onRefresh={() => void fetchData()}
+        onRefresh={() => void userStatsQuery.refetch()}
         refreshLoading={loading}
         pagination={false}
         onRow={(record) => ({
@@ -1127,20 +1030,9 @@ function DimensionTab() {
   const palette = useChartPalette();
   const [days, setDays] = useState(7);
   const [dimension, setDimension] = useState('browser');
-  const [data, setData] = useState<DimensionBreakdown | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await request.get<DimensionBreakdown>(`/api/analytics/dimension?dimension=${dimension}&days=${days}&limit=12`);
-      if (res.code === 0) setData(res.data);
-    } finally {
-      setLoading(false);
-    }
-  }, [days, dimension]);
-
-  useEffect(() => { void fetchData(); }, [fetchData]);
+  const dimensionQuery = useAnalyticsDimension(dimension, days);
+  const data = dimensionQuery.data ?? null;
+  const loading = dimensionQuery.isFetching;
 
   const rows = useMemo<DimensionRow[]>(() => (data?.items ?? []).map((item) => ({ ...item, id: item.name })), [data]);
   const dimensionPieSpec = useMemo(() => makePieSpec({
@@ -1181,7 +1073,7 @@ function DimensionTab() {
           dataSource={rows}
           loading={loading}
           rowKey="id"
-          onRefresh={() => void fetchData()}
+          onRefresh={() => void dimensionQuery.refetch()}
           refreshLoading={loading}
           pagination={false}
         />
@@ -1229,29 +1121,20 @@ function ClickScatter({ data }: Readonly<{ data: HeatmapData }>) {
 
 function HeatmapTab() {
   const [days, setDays] = useState(7);
-  const [pages, setPages] = useState<HeatmapPageListItem[]>([]);
   const [pagePath, setPagePath] = useState('');
   const [componentArea, setComponentArea] = useState('');
-  const [data, setData] = useState<HeatmapData | null>(null);
-  const [pagesLoading, setPagesLoading] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const pagesQuery = useAnalyticsHeatmapPages(days);
+  const pages = pagesQuery.data?.pages ?? EMPTY_HEATMAP_PAGES;
+  const heatmapQuery = useAnalyticsHeatmap(pagePath, componentArea, days);
+  const data = heatmapQuery.data ?? null;
+  const pagesLoading = pagesQuery.isFetching;
+  const loading = heatmapQuery.isFetching;
 
-  const fetchPages = useCallback(async () => {
-    setPagesLoading(true);
-    try {
-      const res = await request.get<{ pages: HeatmapPageListItem[] }>(`/api/analytics/heatmap-pages?days=${days}`);
-      if (res.code === 0) {
-        setPages(res.data.pages);
-        const nextPage = res.data.pages.find((item) => item.pagePath === pagePath) ?? res.data.pages[0];
-        setPagePath(nextPage?.pagePath ?? '');
-        setComponentArea((prev) => (nextPage?.areas.includes(prev) ? prev : nextPage?.areas[0] ?? ''));
-      }
-    } finally {
-      setPagesLoading(false);
-    }
-  }, [days, pagePath]);
-
-  useEffect(() => { void fetchPages(); }, [fetchPages]);
+  useEffect(() => {
+    const nextPage = pages.find((item) => item.pagePath === pagePath) ?? pages[0];
+    setPagePath(nextPage?.pagePath ?? '');
+    setComponentArea((prev) => (nextPage?.areas.includes(prev) ? prev : nextPage?.areas[0] ?? ''));
+  }, [pages, pagePath]);
 
   const selectedPage = useMemo(() => pages.find((item) => item.pagePath === pagePath), [pagePath, pages]);
   const pageOptions = useMemo(() => pages.map((item) => ({ label: item.pageTitle ? `${item.pageTitle} · ${item.pagePath}` : item.pagePath, value: item.pagePath })), [pages]);
@@ -1261,23 +1144,6 @@ function HeatmapTab() {
     if (!selectedPage) return;
     if (!selectedPage.areas.includes(componentArea)) setComponentArea(selectedPage.areas[0] ?? '');
   }, [componentArea, selectedPage]);
-
-  const fetchHeatmap = useCallback(async () => {
-    if (!pagePath || !componentArea) {
-      setData(null);
-      return;
-    }
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ pagePath, componentArea, days: String(days) });
-      const res = await request.get<HeatmapData>(`/api/analytics/heatmap?${params.toString()}`);
-      if (res.code === 0) setData(res.data);
-    } finally {
-      setLoading(false);
-    }
-  }, [componentArea, days, pagePath]);
-
-  useEffect(() => { void fetchHeatmap(); }, [fetchHeatmap]);
 
   return (
     <div style={sectionStyle}>

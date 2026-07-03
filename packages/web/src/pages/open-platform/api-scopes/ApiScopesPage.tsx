@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Tag, Modal, Form, Toast, Typography, Select, Row, Col } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
 import { API_SCOPE_GROUPS, API_SCOPE_GROUP_LABELS } from '@zenith/shared';
-import type { ApiScope, PaginatedResponse } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { ApiScope } from '@zenith/shared';
 import { createdAtColumn } from '@/utils/table-columns';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
@@ -13,6 +13,13 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
+import {
+  openPlatformKeys,
+  useApiScopeList,
+  useBatchDeleteApiScopes,
+  useDeleteApiScope,
+  useSaveApiScope,
+} from '@/hooks/queries/open-platform';
 
 const { Text } = Typography;
 
@@ -32,58 +39,42 @@ type FormValues = {
 
 export default function ApiScopesPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const canManage = hasPermission('open:scope:manage');
   const formApi = useRef<FormApi | null>(null);
 
   interface SearchParams { keyword: string; scopeGroup?: string; status?: 'enabled' | 'disabled' }
   const defaultSearchParams: SearchParams = { keyword: '', scopeGroup: undefined, status: undefined };
-  const [data, setData] = useState<PaginatedResponse<ApiScope> | null>(null);
-  const [loading, setLoading] = useState(false);
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchRef = useRef<SearchParams>(defaultSearchParams);
-  searchRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<ApiScope | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
 
-  const fetchData = useCallback(
-    async (p = page, ps = pageSize, params?: SearchParams) => {
-      const sp = params ?? searchRef.current;
-      setLoading(true);
-      try {
-        const q: Record<string, string> = { page: String(p), pageSize: String(ps) };
-        if (sp.keyword) q.keyword = sp.keyword;
-        if (sp.scopeGroup) q.scopeGroup = sp.scopeGroup;
-        if (sp.status) q.status = sp.status;
-        const res = await request.get<PaginatedResponse<ApiScope>>(`/api/api-scopes?${new URLSearchParams(q)}`);
-        if (res.code === 0) {
-          setData(res.data);
-          setPage(res.data.page);
-          setSelectedRowKeys([]);
-        }
-      } finally {
-        setLoading(false);
-      }
-    },
-    [page, pageSize, setPage],
-  );
-
-  useEffect(() => {
-    void fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const listQuery = useApiScopeList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    scopeGroup: submittedParams.scopeGroup,
+    status: submittedParams.status,
+  });
+  const data = listQuery.data ?? null;
+  const saveMutation = useSaveApiScope();
+  const deleteMutation = useDeleteApiScope();
+  const batchDeleteMutation = useBatchDeleteApiScopes();
 
   function handleSearch() {
     setPage(1);
-    void fetchData(1, pageSize);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: openPlatformKeys.apiScopes.lists });
   }
   function handleReset() {
-    setSearchParams(defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
     setPage(1);
-    void fetchData(1, pageSize, defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: openPlatformKeys.apiScopes.lists });
   }
 
   function openCreate() {
@@ -118,29 +109,14 @@ export default function ApiScopesPage() {
       throw new Error('validation');
     }
     if (!values) throw new Error('validation');
-    setSubmitting(true);
-    try {
-      const res = editing
-        ? await request.put(`/api/api-scopes/${editing.id}`, values)
-        : await request.post('/api/api-scopes', values);
-      if (res.code === 0) {
-        Toast.success(editing ? '更新成功' : '创建成功');
-        closeModal();
-        void fetchData();
-      } else {
-        throw new Error(res.message);
-      }
-    } finally {
-      setSubmitting(false);
-    }
+    await saveMutation.mutateAsync({ id: editing?.id, values });
+    Toast.success(editing ? '更新成功' : '创建成功');
+    closeModal();
   }
 
   async function handleDelete(id: number) {
-    const res = await request.delete(`/api/api-scopes/${id}`);
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      void fetchData();
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   }
 
   function handleBatchDelete() {
@@ -149,11 +125,9 @@ export default function ApiScopesPage() {
       content: '删除后不可恢复',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete('/api/api-scopes/batch', { ids: selectedRowKeys });
-        if (res.code === 0) {
-          Toast.success('批量删除成功');
-          void fetchData();
-        }
+        await batchDeleteMutation.mutateAsync(selectedRowKeys);
+        Toast.success('批量删除成功');
+        setSelectedRowKeys([]);
       },
     });
   }
@@ -207,24 +181,24 @@ export default function ApiScopesPage() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索编码 / 名称"
-              value={searchParams.keyword}
-              onChange={(v) => setSearchParams({ ...searchParams, keyword: v })}
+              value={draftParams.keyword}
+              onChange={(v) => setDraftParams({ ...draftParams, keyword: v })}
               onEnterPress={handleSearch}
               showClear
               style={{ width: 200 }}
             />
             <Select
               placeholder="分组"
-              value={searchParams.scopeGroup}
-              onChange={(v) => setSearchParams({ ...searchParams, scopeGroup: v as string })}
+              value={draftParams.scopeGroup}
+              onChange={(v) => setDraftParams({ ...draftParams, scopeGroup: v as string })}
               optionList={GROUP_OPTIONS}
               showClear
               style={{ width: 120 }}
             />
             <Select
               placeholder="状态"
-              value={searchParams.status}
-              onChange={(v) => setSearchParams({ ...searchParams, status: v as 'enabled' | 'disabled' })}
+              value={draftParams.status}
+              onChange={(v) => setDraftParams({ ...draftParams, status: v as 'enabled' | 'disabled' })}
               optionList={STATUS_OPTIONS}
               showClear
               style={{ width: 110 }}
@@ -242,8 +216,8 @@ export default function ApiScopesPage() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索编码 / 名称"
-              value={searchParams.keyword}
-              onChange={(v) => setSearchParams({ ...searchParams, keyword: v })}
+              value={draftParams.keyword}
+              onChange={(v) => setDraftParams({ ...draftParams, keyword: v })}
               onEnterPress={handleSearch}
               showClear
               style={{ width: 200 }}
@@ -260,14 +234,14 @@ export default function ApiScopesPage() {
         bordered
         columns={columns}
         dataSource={data?.list ?? []}
-        loading={loading}
-        onRefresh={fetchData}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         rowKey="id"
         size="small"
         empty="暂无数据"
         rowSelection={canManage ? { selectedRowKeys, onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]) } : undefined}
-        pagination={buildPagination(data?.total ?? 0, fetchData)}
+        pagination={buildPagination(data?.total ?? 0)}
       />
 
       <AppModal
@@ -275,7 +249,7 @@ export default function ApiScopesPage() {
         visible={modalVisible}
         onOk={handleModalOk}
         onCancel={closeModal}
-        okButtonProps={{ loading: submitting }}
+        okButtonProps={{ loading: saveMutation.isPending }}
         width={520}
         closeOnEsc
       >

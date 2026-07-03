@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Col,
@@ -16,22 +17,27 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Search } from 'lucide-react';
 import type {
-  IdentityProviderConnectionTestResult,
-  IdentityProviderSyncResult,
   IdentityProviderType,
-  LdapDirectoryUser,
-  PaginatedResponse,
-  Role,
-  Tenant,
   TenantIdentityProvider,
 } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { AppModal } from '@/components/AppModal';
 import { usePagination } from '@/hooks/usePagination';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
+import { useAllRoles } from '@/hooks/queries/roles';
+import {
+  identityProviderKeys,
+  useDeleteIdentityProvider,
+  useIdentityProviderDetail,
+  useIdentityProviderList,
+  useIdentityProviderTenants,
+  useSaveIdentityProvider,
+  useSearchLdapDirectoryUsers,
+  useSyncIdentityProviderDirectory,
+  useTestIdentityProviderConnection,
+} from '@/hooks/queries/identity-providers';
 
 interface SearchParams {
   keyword: string;
@@ -114,72 +120,56 @@ function mappingForType(type: IdentityProviderType) {
 }
 
 export default function IdentityProvidersPage() {
+  const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
-  const [data, setData] = useState<TenantIdentityProvider[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<TenantIdentityProvider | null>(null);
   const [providerType, setProviderType] = useState<IdentityProviderType>('oidc');
   const [ldapSearchVisible, setLdapSearchVisible] = useState(false);
   const [ldapSearchProvider, setLdapSearchProvider] = useState<TenantIdentityProvider | null>(null);
   const [ldapSearchKeyword, setLdapSearchKeyword] = useState('');
-  const [ldapSearchLoading, setLdapSearchLoading] = useState(false);
-  const [ldapSearchUsers, setLdapSearchUsers] = useState<LdapDirectoryUser[]>([]);
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [tenantOptions, setTenantOptions] = useState<{ value: number; label: string }[]>([]);
-  const [roleOptions, setRoleOptions] = useState<{ value: number; label: string }[]>([]);
-
-  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const activeParams = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(activeParams.keyword ? { keyword: activeParams.keyword } : {}),
-        ...(activeParams.type ? { type: activeParams.type } : {}),
-        ...(activeParams.status ? { status: activeParams.status } : {}),
-        ...(activeParams.tenantId ? { tenantId: activeParams.tenantId } : {}),
-      }).toString();
-      const res = await request.get<PaginatedResponse<TenantIdentityProvider>>(`/api/identity-providers?${query}`);
-      if (res.code === 0) {
-        setData(res.data.list);
-        setTotal(res.data.total);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize]);
-
-  useEffect(() => { void fetchData(); }, [fetchData]);
+  const listQuery = useIdentityProviderList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    type: submittedParams.type || undefined,
+    status: submittedParams.status || undefined,
+    tenantId: submittedParams.tenantId || undefined,
+  });
+  const data = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const detailQuery = useIdentityProviderDetail(editing?.id, modalVisible);
+  const editingDetail = editing ? (detailQuery.data ?? editing) : null;
+  const tenantsQuery = useIdentityProviderTenants();
+  const rolesQuery = useAllRoles();
+  const tenantOptions = (tenantsQuery.data ?? []).map((item) => ({ value: item.id, label: `${item.name}（${item.code}）` }));
+  const roleOptions = (rolesQuery.data ?? []).map((item) => ({ value: item.id, label: item.name }));
+  const saveMutation = useSaveIdentityProvider();
+  const toggleStatusMutation = useSaveIdentityProvider();
+  const deleteMutation = useDeleteIdentityProvider();
+  const testConnectionMutation = useTestIdentityProviderConnection();
+  const ldapSearchMutation = useSearchLdapDirectoryUsers();
+  const syncDirectoryMutation = useSyncIdentityProviderDirectory();
+  const ldapSearchUsers = ldapSearchMutation.data ?? [];
 
   useEffect(() => {
-    void Promise.all([
-      request.get<Tenant[]>('/api/tenants/all', { silent: true }),
-      request.get<Role[]>('/api/roles/all', { silent: true }),
-    ]).then(([tenantRes, roleRes]) => {
-      if (tenantRes.code === 0) {
-        setTenantOptions(tenantRes.data.map((item) => ({ value: item.id, label: `${item.name}（${item.code}）` })));
-      }
-      if (roleRes.code === 0) {
-        setRoleOptions(roleRes.data.map((item) => ({ value: item.id, label: item.name })));
-      }
-    });
-  }, []);
+    if (detailQuery.data) setProviderType(detailQuery.data.type);
+  }, [detailQuery.data]);
 
   function handleSearch() {
     setPage(1);
-    void fetchData(1, pageSize);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: identityProviderKeys.lists });
   }
 
   function handleReset() {
-    setSearchParams(defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
     setPage(1);
-    void fetchData(1, pageSize, defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: identityProviderKeys.lists });
   }
 
   function openCreate() {
@@ -202,13 +192,10 @@ export default function IdentityProvidersPage() {
     });
   }
 
-  async function openEdit(row: TenantIdentityProvider) {
-    const res = await request.get<TenantIdentityProvider>(`/api/identity-providers/${row.id}`);
-    if (res.code === 0) {
-      setEditing(res.data);
-      setProviderType(res.data.type);
-      setModalVisible(true);
-    }
+  function openEdit(row: TenantIdentityProvider) {
+    setEditing(row);
+    setProviderType(row.type);
+    setModalVisible(true);
   }
 
   async function handleModalOk() {
@@ -233,25 +220,16 @@ export default function IdentityProvidersPage() {
       },
       defaultRoleIds: Array.isArray(values.defaultRoleIds) ? values.defaultRoleIds : [],
     };
-    const res = editing
-      ? await request.put<TenantIdentityProvider>(`/api/identity-providers/${editing.id}`, payload)
-      : await request.post<TenantIdentityProvider>('/api/identity-providers', payload);
-    if (res.code === 0) {
-      Toast.success(editing ? '更新成功' : '创建成功');
-      setModalVisible(false);
-      void fetchData();
-    } else {
-      throw new Error(res.message);
-    }
+    await saveMutation.mutateAsync({ id: editing?.id, values: payload });
+    Toast.success(editing ? '更新成功' : '创建成功');
+    setModalVisible(false);
   }
 
   function handleToggleStatus(row: TenantIdentityProvider, checked: boolean) {
-    void request.put<TenantIdentityProvider>(`/api/identity-providers/${row.id}`, { status: checked ? 'enabled' : 'disabled' }).then((res) => {
-      if (res.code === 0) {
-        Toast.success(checked ? '已启用' : '已停用');
-        void fetchData();
-      }
-    });
+    toggleStatusMutation.mutate(
+      { id: row.id, values: { status: checked ? 'enabled' : 'disabled' } },
+      { onSuccess: () => Toast.success(checked ? '已启用' : '已停用') },
+    );
   }
 
   function handleDelete(row: TenantIdentityProvider) {
@@ -260,48 +238,35 @@ export default function IdentityProvidersPage() {
       content: '删除后，已绑定的企业身份账号关系也会被移除。',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete(`/api/identity-providers/${row.id}`);
-        if (res.code === 0) {
-          Toast.success('删除成功');
-          void fetchData();
-        }
+        await deleteMutation.mutateAsync(row.id);
+        Toast.success('删除成功');
       },
     });
   }
 
   async function handleTestConnection(row: TenantIdentityProvider) {
-    const res = await request.post<IdentityProviderConnectionTestResult>(`/api/identity-providers/${row.id}/test`, {}, { silent: true });
-    if (res.code === 0) {
-      if (res.data.ok) Toast.success(res.data.message);
-      else Toast.error(res.data.message);
-      return;
+    try {
+      const result = await testConnectionMutation.mutateAsync(row.id);
+      if (result.ok) Toast.success(result.message);
+      else Toast.error(result.message);
+    } catch (err) {
+      Toast.error((err as Error).message);
     }
-    Toast.error(res.message);
   }
 
   function openLdapSearch(row: TenantIdentityProvider) {
     setLdapSearchProvider(row);
     setLdapSearchKeyword('');
-    setLdapSearchUsers([]);
+    ldapSearchMutation.reset();
     setLdapSearchVisible(true);
   }
 
   async function handleLdapSearch() {
     if (!ldapSearchProvider) return;
-    setLdapSearchLoading(true);
     try {
-      const query = new URLSearchParams({
-        limit: '20',
-        ...(ldapSearchKeyword ? { keyword: ldapSearchKeyword } : {}),
-      }).toString();
-      const res = await request.get<LdapDirectoryUser[]>(`/api/identity-providers/${ldapSearchProvider.id}/ldap/users?${query}`, { silent: true });
-      if (res.code === 0) {
-        setLdapSearchUsers(res.data);
-      } else {
-        Toast.error(res.message);
-      }
-    } finally {
-      setLdapSearchLoading(false);
+      await ldapSearchMutation.mutateAsync({ id: ldapSearchProvider.id, keyword: ldapSearchKeyword || undefined });
+    } catch (err) {
+      Toast.error((err as Error).message);
     }
   }
 
@@ -310,13 +275,13 @@ export default function IdentityProvidersPage() {
       title: `同步「${row.name}」目录用户？`,
       content: '将按同步过滤器读取目录用户，并创建、绑定或更新本地账号基础资料。',
       onOk: async () => {
-        const res = await request.post<IdentityProviderSyncResult>(`/api/identity-providers/${row.id}/sync`, { limit: 500 }, { silent: true });
-        if (res.code === 0) {
-          if (res.data.status === 'failed') Toast.error(res.data.message);
-          else Toast.success(res.data.message);
-          void fetchData();
-        } else {
-          Toast.error(res.message);
+        try {
+          const result = await syncDirectoryMutation.mutateAsync(row.id);
+          if (result.status === 'failed') Toast.error(result.message);
+          else Toast.success(result.message);
+          void queryClient.invalidateQueries({ queryKey: identityProviderKeys.lists });
+        } catch (err) {
+          Toast.error((err as Error).message);
         }
       },
     });
@@ -348,6 +313,7 @@ export default function IdentityProvidersPage() {
         <Switch
           size="small"
           checked={value === 'enabled'}
+          loading={toggleStatusMutation.isPending && toggleStatusMutation.variables?.id === row.id}
           onChange={(checked: boolean) => handleToggleStatus(row, checked)}
         />
       ),
@@ -369,8 +335,8 @@ export default function IdentityProvidersPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="搜索名称/编码"
-      value={searchParams.keyword}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
+      value={draftParams.keyword}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))}
       onEnterPress={handleSearch}
       style={{ width: 220, maxWidth: '100%' }}
       showClear
@@ -380,8 +346,8 @@ export default function IdentityProvidersPage() {
   const renderTypeFilter = () => (
     <Select
       placeholder="类型"
-      value={searchParams.type || undefined}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, type: (value as string) ?? '' }))}
+      value={draftParams.type || undefined}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, type: (value as string) ?? '' }))}
       style={{ width: 130, maxWidth: '100%' }}
       optionList={[{ value: '', label: '全部类型' }, ...providerTypeOptions]}
     />
@@ -390,24 +356,24 @@ export default function IdentityProvidersPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="状态"
-      value={searchParams.status || undefined}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
+      value={draftParams.status || undefined}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
       style={{ width: 130, maxWidth: '100%' }}
       optionList={[{ value: '', label: '全部状态' }, ...statusOptions]}
     />
   );
 
-  const initMapping = mappingForType(editing?.type ?? 'oidc');
-  const initValues = editing ? {
-    ...editing,
-    tenantId: editing.tenantId ?? undefined,
-    defaultRoleIds: editing.defaultRoleIds ?? [],
-    'attributeMapping.subject': editing.attributeMapping?.subject || initMapping.subject,
-    'attributeMapping.email': editing.attributeMapping?.email || initMapping.email,
-    'attributeMapping.username': editing.attributeMapping?.username || initMapping.username,
-    'attributeMapping.nickname': editing.attributeMapping?.nickname || initMapping.nickname,
-    'attributeMapping.phone': editing.attributeMapping?.phone || initMapping.phone,
-    'attributeMapping.department': editing.attributeMapping?.department || initMapping.department,
+  const initMapping = mappingForType(editingDetail?.type ?? 'oidc');
+  const initValues = editingDetail ? {
+    ...editingDetail,
+    tenantId: editingDetail.tenantId ?? undefined,
+    defaultRoleIds: editingDetail.defaultRoleIds ?? [],
+    'attributeMapping.subject': editingDetail.attributeMapping?.subject || initMapping.subject,
+    'attributeMapping.email': editingDetail.attributeMapping?.email || initMapping.email,
+    'attributeMapping.username': editingDetail.attributeMapping?.username || initMapping.username,
+    'attributeMapping.nickname': editingDetail.attributeMapping?.nickname || initMapping.nickname,
+    'attributeMapping.phone': editingDetail.attributeMapping?.phone || initMapping.phone,
+    'attributeMapping.department': editingDetail.attributeMapping?.department || initMapping.department,
   } : {
     type: 'oidc',
     status: 'disabled',
@@ -454,10 +420,10 @@ export default function IdentityProvidersPage() {
         columns={columns}
         dataSource={data}
         rowKey="id"
-        loading={loading}
-        onRefresh={fetchData}
-        refreshLoading={loading}
-        pagination={buildPagination(total, fetchData)}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
+        pagination={buildPagination(total)}
       />
 
       <AppModal
@@ -472,6 +438,7 @@ export default function IdentityProvidersPage() {
         width={760}
       >
         <Form
+          key={editingDetail?.id ?? 'new'}
           getFormApi={(api) => { formApi.current = api; }}
           allowEmpty
           initValues={initValues}
@@ -596,11 +563,11 @@ export default function IdentityProvidersPage() {
             onEnterPress={handleLdapSearch}
             showClear
           />
-          <Button type="primary" icon={<Search size={14} />} loading={ldapSearchLoading} onClick={handleLdapSearch}>搜索</Button>
+          <Button type="primary" icon={<Search size={14} />} loading={ldapSearchMutation.isPending} onClick={handleLdapSearch}>搜索</Button>
         </div>
         <Table
           size="small"
-          loading={ldapSearchLoading}
+          loading={ldapSearchMutation.isPending}
           dataSource={ldapSearchUsers}
           rowKey="dn"
           pagination={false}

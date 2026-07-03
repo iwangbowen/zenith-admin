@@ -10,7 +10,6 @@ import {
 } from '@douyinfe/semi-ui';
 import { ArrowLeft, X, Eye, Save, Settings, Monitor, Smartphone, Undo2, Redo2, Braces, Copy, Stethoscope, LayoutTemplate, SlidersHorizontal, AlertTriangle, CircleAlert, Share2 } from 'lucide-react';
 import type { WorkflowForm, WorkflowFormField, WorkflowFormFieldType, WorkflowFormSettings, WorkflowFormStatus } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { LABEL_POSITION_OPTIONS, LABEL_ALIGN_OPTIONS, COLUMN_SPAN_OPTIONS } from '../designer/form-types';
 import { validateFormSchema, countErrors, type FormIssue } from '../designer/form-validate';
@@ -18,6 +17,7 @@ import AppModal from '@/components/AppModal';
 import FieldDependencyGraph from '../designer/components/FieldDependencyGraph';
 import FormDesigner, { type FormHistoryControls } from '../designer/components/FormDesigner';
 import WorkflowFormRenderer from '../designer/components/WorkflowFormRenderer';
+import { useSaveWorkflowForm, useWorkflowFormDetail } from '@/hooks/queries/workflow-forms';
 
 type PreviewState = 'fill' | 'readonly' | 'approval';
 
@@ -99,9 +99,9 @@ export default function WorkflowFormInlineEditor({
 }: Readonly<WorkflowFormInlineEditorProps>) {
   const { categories } = useWorkflowCategories();
 
-  const [loading, setLoading] = useState(formId != null);
-  const [saving, setSaving] = useState(false);
   const [currentId, setCurrentId] = useState<number | null>(null);
+  const detailQuery = useWorkflowFormDetail(formId, formId != null && formId !== currentId);
+  const saveMutation = useSaveWorkflowForm();
 
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
@@ -137,27 +137,18 @@ export default function WorkflowFormInlineEditor({
 
   // ─── 加载（仅当外部指定的 formId 与当前已加载不一致时） ───────────────
   useEffect(() => {
-    if (formId == null || formId === currentId) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    request.get<WorkflowForm>(`/api/workflows/forms/${formId}`).then(res => {
-      if (res.code === 0 && res.data) {
-        setCurrentId(res.data.id);
-        setName(res.data.name);
-        setCode(res.data.code ?? '');
-        setDescription(res.data.description ?? '');
-        setCategoryId(res.data.categoryId ?? null);
-        setStatus(res.data.status);
-        setFields(res.data.schema?.fields ?? []);
-        setSettings(res.data.schema?.settings ?? DEFAULT_SETTINGS);
-      } else {
-        Toast.error('表单不存在或加载失败');
-      }
-    }).finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formId]);
+    if (formId == null) return;
+    const form = detailQuery.data;
+    if (!form || form.id === currentId) return;
+    setCurrentId(form.id);
+    setName(form.name);
+    setCode(form.code ?? '');
+    setDescription(form.description ?? '');
+    setCategoryId(form.categoryId ?? null);
+    setStatus(form.status);
+    setFields(form.schema?.fields ?? []);
+    setSettings(form.schema?.settings ?? DEFAULT_SETTINGS);
+  }, [currentId, detailQuery.data, formId]);
 
   // ─── 保存 ────────────────────────────────────────────────────────
   const handleSave = async () => {
@@ -171,27 +162,18 @@ export default function WorkflowFormInlineEditor({
       setHealthVisible(true);
       return;
     }
-    setSaving(true);
-    try {
-      const payload = {
-        name: name.trim(),
-        code: code.trim() || null,
-        description: description.trim() || null,
-        categoryId,
-        status,
-        schema: { fields, settings },
-      };
-      const res = currentId
-        ? await request.put<WorkflowForm>(`/api/workflows/forms/${currentId}`, payload)
-        : await request.post<WorkflowForm>('/api/workflows/forms', payload);
-      if (res.code === 0 && res.data) {
-        Toast.success('保存成功');
-        setCurrentId(res.data.id);
-        onSaved(res.data);
-      }
-    } finally {
-      setSaving(false);
-    }
+    const payload = {
+      name: name.trim(),
+      code: code.trim() || null,
+      description: description.trim() || null,
+      categoryId,
+      status,
+      schema: { fields, settings },
+    };
+    const saved = await saveMutation.mutateAsync({ id: currentId, values: payload });
+    Toast.success('保存成功');
+    setCurrentId(saved.id);
+    onSaved(saved);
   };
 
   // 表单级设置变更（纳入设计器撤销/重做历史）
@@ -310,7 +292,7 @@ export default function WorkflowFormInlineEditor({
     );
   }, [fields, settings, previewMode, previewState]);
 
-  if (loading) {
+  if (detailQuery.isFetching) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 240 }}>
         <Spin size="large" />
@@ -386,7 +368,7 @@ export default function WorkflowFormInlineEditor({
         <Button icon={<Settings size={14} />} type="tertiary" theme="borderless" size="small" onClick={() => setSettingsVisible(true)}>表单设置</Button>
         <Button icon={<Braces size={14} />} type="tertiary" theme="borderless" size="small" onClick={openJson}>JSON</Button>
         <Button icon={<Eye size={14} />} type="tertiary" theme="borderless" size="small" onClick={() => setPreviewVisible(true)}>预览</Button>
-        <Button icon={<Save size={14} />} type="primary" size="small" loading={saving} onClick={() => void handleSave()}>保存</Button>
+        <Button icon={<Save size={14} />} type="primary" size="small" loading={saveMutation.isPending} onClick={() => void handleSave()}>保存</Button>
       </div>
 
       {/* 字段设计器 */}

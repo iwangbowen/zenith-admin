@@ -1,18 +1,25 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Col, Form, Input, Modal, Row, Select, Spin, Tag,
   Toast, Switch } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search } from 'lucide-react';
-import type { InAppMessageType, InAppTemplate, PaginatedResponse } from '@zenith/shared';
+import type { InAppMessageType, InAppTemplate } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import { useDictItems } from '@/hooks/useDictItems';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
+import {
+  inAppTemplateKeys,
+  useDeleteInAppTemplate,
+  useInAppTemplateDetail,
+  useInAppTemplateList,
+  useSaveInAppTemplate,
+} from '@/hooks/queries/in-app-templates';
 
 const TYPE_OPTIONS: { label: string; value: InAppMessageType; color: 'blue' | 'green' | 'orange' | 'red' }[] = [
   { label: '通知', value: 'info', color: 'blue' },
@@ -24,84 +31,60 @@ const TYPE_OPTIONS: { label: string; value: InAppMessageType; color: 'blue' | 'g
 export default function InAppTemplatesPage() {
   const { hasPermission: can } = usePermission();
   const { items: statusItems } = useDictItems('common_status');
+  const queryClient = useQueryClient();
 
   interface SearchParams { keyword: string; filterType: InAppMessageType | undefined; filterStatus: string | undefined; }
   const defaultSearchParams: SearchParams = { keyword: '', filterType: undefined, filterStatus: undefined };
-  const [loading, setLoading] = useState(false);
-  const [list, setList] = useState<InAppTemplate[]>([]);
-  const [total, setTotal] = useState(0);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<InAppTemplate | null>(null);
-  const [modalDetailLoading, setModalDetailLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const formRef = useRef<FormApi>(null);
 
-  const fetchList = useCallback(
-    async (p = page, ps = pageSize, params?: SearchParams) => {
-      const { keyword: kw, filterType: t, filterStatus: st } = params ?? searchParamsRef.current;
-      setLoading(true);
-      try {
-        const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-        if (kw) query.set('keyword', kw);
-        if (t) query.set('type', t);
-        if (st) query.set('status', st);
-        const res = await request.get<PaginatedResponse<InAppTemplate>>(`/api/in-app-templates?${query}`);
-        setList(res.data?.list ?? []);
-        setTotal(res.data?.total ?? 0);
-        setPage(res.data?.page ?? p);
-        setPageSize(res.data?.pageSize ?? ps);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [page, pageSize, setPage, setPageSize],
-  );
+  const listQuery = useInAppTemplateList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    type: submittedParams.filterType,
+    status: submittedParams.filterStatus,
+  });
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const detailQuery = useInAppTemplateDetail(editingRecord?.id, modalVisible);
+  const editing = editingRecord ? (detailQuery.data ?? editingRecord) : null;
+  const modalDetailLoading = !!editingRecord && detailQuery.isFetching;
+  const saveMutation = useSaveInAppTemplate();
+  const toggleStatusMutation = useSaveInAppTemplate();
+  const deleteMutation = useDeleteInAppTemplate();
+  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
 
-  useEffect(() => { void fetchList(1); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
-
-  const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
-  const handleReset = () => {
-    setSearchParams(defaultSearchParams);
+  const handleSearch = () => {
     setPage(1);
-    void fetchList(1, pageSize, defaultSearchParams);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: inAppTemplateKeys.lists });
+  };
+  const handleReset = () => {
+    setPage(1);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: inAppTemplateKeys.lists });
   };
 
   const openCreate = () => { setEditingRecord(null); setModalVisible(true); };
-  const openEdit = async (record: InAppTemplate) => {
+  const openEdit = (record: InAppTemplate) => {
     setEditingRecord(record);
     setModalVisible(true);
-    setModalDetailLoading(true);
-    const res = await request.get<InAppTemplate>(`/api/in-app-templates/${record.id}`);
-    setModalDetailLoading(false);
-    if (res.code === 0) {
-      setEditingRecord(res.data);
-    } else {
-      Toast.error(res.message || '获取信息失败');
-    }
   };
 
   const handleSubmit = async () => {
     let values: Awaited<ReturnType<FormApi['validate']>>;
-    try { values = (await formRef.current?.validate())!; } catch { return; }
-    setSubmitting(true);
-    try {
-      if (editingRecord) {
-        await request.put(`/api/in-app-templates/${editingRecord.id}`, values);
-        Toast.success('更新成功');
-      } else {
-        await request.post('/api/in-app-templates', values);
-        Toast.success('创建成功');
-      }
-      setModalVisible(false);
-      void fetchList();
-    } finally {
-      setSubmitting(false);
-    }
+    try { values = (await formRef.current?.validate())!; } catch { throw new Error('validation'); }
+    await saveMutation.mutateAsync({ id: editingRecord?.id, values: values as Record<string, unknown> });
+    Toast.success(editingRecord ? '更新成功' : '创建成功');
+    setModalVisible(false);
+    setEditingRecord(null);
   };
 
   const handleDelete = (id: number) => {
@@ -109,16 +92,13 @@ export default function InAppTemplatesPage() {
       title: '确定要删除该站内信模板吗？',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        await request.delete(`/api/in-app-templates/${id}`);
+        await deleteMutation.mutateAsync(id);
         Toast.success('删除成功');
-        void fetchList();
       },
     });
   };
 
-  const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null);
-
-  const handleToggleStatus = useCallback(async (tpl: InAppTemplate, newStatus: 'enabled' | 'disabled') => {
+  const handleToggleStatus = async (tpl: InAppTemplate, newStatus: 'enabled' | 'disabled') => {
     if (newStatus === 'disabled') {
       const confirmed = await new Promise<boolean>((resolve) => {
         Modal.confirm({
@@ -132,19 +112,9 @@ export default function InAppTemplatesPage() {
       });
       if (!confirmed) return;
     }
-    setTogglingStatusId(tpl.id);
-    try {
-      const res = await request.put(`/api/in-app-templates/${tpl.id}`, { status: newStatus });
-      if (res.code === 0) {
-        Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
-        void fetchList();
-      } else {
-        Toast.error(res.message || '操作失败');
-      }
-    } finally {
-      setTogglingStatusId(null);
-    }
-  }, [fetchList]);
+    await toggleStatusMutation.mutateAsync({ id: tpl.id, values: { status: newStatus } });
+    Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
+  };
 
   const columns = [
     { title: '模板名称', dataIndex: 'name', width: 160 },
@@ -196,10 +166,10 @@ export default function InAppTemplatesPage() {
         primary={(
           <>
             <Input prefix={<Search size={14} />} placeholder="搜索模板名称/编码/标题"
-              value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 240 }} />
-            <Select placeholder="类型" value={searchParams.filterType} onChange={(v) => setSearchParams({ ...searchParams, filterType: v as InAppMessageType | undefined })}
+              value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 240 }} />
+            <Select placeholder="类型" value={draftParams.filterType} onChange={(v) => setDraftParams({ ...draftParams, filterType: v as InAppMessageType | undefined })}
               optionList={TYPE_OPTIONS} showClear style={{ width: 110 }} />
-            <Select placeholder="状态" value={searchParams.filterStatus} onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as string | undefined })}
+            <Select placeholder="状态" value={draftParams.filterStatus} onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as string | undefined })}
               optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))} showClear style={{ width: 110 }} />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
@@ -211,7 +181,7 @@ export default function InAppTemplatesPage() {
         mobilePrimary={(
           <>
             <Input prefix={<Search size={14} />} placeholder="搜索模板名称/编码/标题"
-              value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 240 }} />
+              value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 240 }} />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             {can('system:in-app-template:create') && (
               <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
@@ -220,9 +190,9 @@ export default function InAppTemplatesPage() {
         )}
         mobileFilters={(
           <>
-            <Select placeholder="类型" value={searchParams.filterType} onChange={(v) => setSearchParams({ ...searchParams, filterType: v as InAppMessageType | undefined })}
+            <Select placeholder="类型" value={draftParams.filterType} onChange={(v) => setDraftParams({ ...draftParams, filterType: v as InAppMessageType | undefined })}
               optionList={TYPE_OPTIONS} showClear style={{ width: 110 }} />
-            <Select placeholder="状态" value={searchParams.filterStatus} onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as string | undefined })}
+            <Select placeholder="状态" value={draftParams.filterStatus} onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as string | undefined })}
               optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))} showClear style={{ width: 110 }} />
           </>
         )}
@@ -231,20 +201,20 @@ export default function InAppTemplatesPage() {
         onFilterReset={handleReset}
       />
 
-      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList()} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total, fetchList)}
+      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
+        pagination={buildPagination(total)}
         scroll={{ x: 1100 }} />
 
       <AppModal title={editingRecord ? '编辑站内信模板' : '新增站内信模板'} visible={modalVisible}
-        onOk={handleSubmit} onCancel={() => { setModalVisible(false); setEditingRecord(null); setModalDetailLoading(false); }}
-        confirmLoading={submitting} okButtonProps={{ disabled: modalDetailLoading }} width={720}>
+        onOk={handleSubmit} onCancel={() => { setModalVisible(false); setEditingRecord(null); }}
+        confirmLoading={saveMutation.isPending} okButtonProps={{ disabled: modalDetailLoading }} width={720}>
         <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form
-          key={editingRecord?.id ?? 'new'}
+          key={editing?.id ?? 'new'}
           getFormApi={(api) => { (formRef as { current: FormApi }).current = api; }}
           allowEmpty
           labelPosition="left" labelWidth={120}
-          initValues={editingRecord ?? { status: 'enabled', type: 'info' }}
+          initValues={editing ?? { status: 'enabled', type: 'info' }}
         >
           <Row gutter={16}>
             <Col span={12}>
@@ -252,7 +222,7 @@ export default function InAppTemplatesPage() {
                 rules={[{ required: true, message: '请输入模板名称' }]} />
             </Col>
             <Col span={12}>
-              <Form.Input field="code" label="模板编码" disabled={!!editingRecord} placeholder="请输入模板编码"
+              <Form.Input field="code" label="模板编码" disabled={!!editing} placeholder="请输入模板编码"
                 rules={[{ required: true, message: '请输入模板编码' }]} />
             </Col>
           </Row>

@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, DatePicker, Form, Input, Tag, Toast } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search, RotateCcw, CalendarPlus } from 'lucide-react';
-import type { MemberCheckin, PaginatedResponse } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { MemberCheckin } from '@zenith/shared';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -12,6 +12,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { AppModal } from '@/components/AppModal';
 import { MemberSelect } from '@/components/MemberSelect';
 import { formatDateForApi } from '@/utils/date';
+import { memberAdminKeys, useCheckinLogList, useMakeupCheckin } from '@/hooks/queries/member-admin';
 
 interface SearchParams {
   memberKeyword?: string;
@@ -25,61 +26,47 @@ const defaultSearch: SearchParams = {
 
 export default function CheckinLogsPage() {
   const { hasPermission } = usePermission();
-  const [data, setData] = useState<MemberCheckin[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState<SearchParams>(defaultSearch);
-  const searchRef = useRef<SearchParams>(defaultSearch);
-  searchRef.current = search;
+  const queryClient = useQueryClient();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearch);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearch);
   const { page, pageSize, setPage, buildPagination } = usePagination();
   const [makeupVisible, setMakeupVisible] = useState(false);
   const makeupFormApi = useRef<FormApi | null>(null);
+  const [dateStart, dateEnd] = submittedParams.dateRange ?? [];
+  const listQuery = useCheckinLogList({
+    page,
+    pageSize,
+    memberKeyword: submittedParams.memberKeyword || undefined,
+    dateStart: dateStart ? formatDateForApi(dateStart) : undefined,
+    dateEnd: dateEnd ? formatDateForApi(dateEnd) : undefined,
+  });
+  const data = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const makeupMutation = useMakeupCheckin();
 
-  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const current = params ?? searchRef.current;
-    setLoading(true);
-    try {
-      const [dateStart, dateEnd] = current.dateRange ?? [];
-      const q = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(current.memberKeyword ? { memberKeyword: current.memberKeyword } : {}),
-        ...(dateStart ? { dateStart: formatDateForApi(dateStart) } : {}),
-        ...(dateEnd ? { dateEnd: formatDateForApi(dateEnd) } : {}),
-      }).toString();
-      const res = await request.get<PaginatedResponse<MemberCheckin>>(`/api/member-checkins?${q}`);
-      if (res.code === 0) {
-        setData(res.data.list);
-        setTotal(res.data.total);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize]);
-
-  useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
-
-  const handleSearch = () => { setPage(1); void fetchData(1, pageSize); };
-  const handleReset = () => { setSearch(defaultSearch); setPage(1); void fetchData(1, pageSize, defaultSearch); };
+  const handleSearch = () => {
+    setPage(1);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: memberAdminKeys.checkinLogLists });
+  };
+  const handleReset = () => {
+    setDraftParams(defaultSearch);
+    setSubmittedParams(defaultSearch);
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: memberAdminKeys.checkinLogLists });
+  };
 
   const handleMakeup = async () => {
     let values: { memberId?: number; date?: Date } | undefined;
     try {
-      values = await makeupFormApi.current?.validate();
+      values = await makeupFormApi.current!.validate();
     } catch {
       throw new Error('validation');
     }
     if (!values?.memberId || !values?.date) throw new Error('请完整填写补签信息');
-    const res = await request.post(`/api/members/${values.memberId}/checkin/makeup`, { date: formatDateForApi(values.date) });
-    if (res.code === 0) {
-      Toast.success('补签成功');
-      setMakeupVisible(false);
-      void fetchData();
-      return;
-    }
-    throw new Error(res.message);
+    await makeupMutation.mutateAsync({ memberId: values.memberId, date: formatDateForApi(values.date) });
+    Toast.success('补签成功');
+    setMakeupVisible(false);
   };
 
   const columns: ColumnProps<MemberCheckin>[] = [
@@ -104,10 +91,10 @@ export default function CheckinLogsPage() {
     <Input
       placeholder="会员ID/昵称"
       prefix={<Search size={14} />}
-      value={search.memberKeyword}
+      value={draftParams.memberKeyword}
       showClear
       style={{ width: 180 }}
-      onChange={(value) => setSearch((prev) => ({ ...prev, memberKeyword: value || undefined }))}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, memberKeyword: value || undefined }))}
       onEnterPress={handleSearch}
     />
   );
@@ -116,8 +103,8 @@ export default function CheckinLogsPage() {
     <DatePicker
       type="dateRange"
       placeholder={['开始日期', '结束日期']}
-      value={search.dateRange ?? undefined}
-      onChange={(value) => setSearch((prev) => ({ ...prev, dateRange: value ? (value as [Date, Date]) : null }))}
+      value={draftParams.dateRange ?? undefined}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, dateRange: value ? (value as [Date, Date]) : null }))}
       style={{ width: 300 }}
     />
   );
@@ -159,12 +146,12 @@ export default function CheckinLogsPage() {
         bordered
         columns={columns}
         dataSource={data}
-        loading={loading}
-        onRefresh={fetchData}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         rowKey="id"
         size="small"
-        pagination={buildPagination(total, fetchData)}
+        pagination={buildPagination(total)}
         empty="暂无签到记录"
       />
 

@@ -1,13 +1,20 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { Button, Modal, Toast, Tooltip, TextArea, Input, Tag, Typography, List as SemiList } from '@douyinfe/semi-ui';
 import { UserPlus, UserMinus, Crown, Pencil } from 'lucide-react';
-import { request } from '@/utils/request';
 import { UserAvatar } from '@/components/UserAvatar';
 import { UserSearchList } from './UserSearchList';
 import type { ChatConversation, ChatGroupMember } from '@zenith/shared';
 import type { ChatUser } from '../types';
+import {
+  useAddChatGroupMember,
+  useChatGroupMembers,
+  useRemoveChatGroupMember,
+  useTransferChatGroupOwner,
+  useUpdateChatGroupInfo,
+} from '@/hooks/queries/chat';
 
 const { Text } = Typography;
+const EMPTY_MEMBERS: ChatGroupMember[] = [];
 
 export function GroupMembersPanel({
   conversationId, currentUserId, conv, onConvUpdate, onlineUserIds,
@@ -18,24 +25,17 @@ export function GroupMembersPanel({
   onConvUpdate: (patch: Partial<ChatConversation>) => void;
   onlineUserIds?: Set<number>;
 }>) {
-  const [members, setMembers] = useState<ChatGroupMember[]>([]);
-  const [loading, setLoading] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
-  const [adding, setAdding] = useState(false);
   // 群信息编辑
   const [editName, setEditName] = useState('');
   const [editAnnouncement, setEditAnnouncement] = useState('');
-  const [savingInfo, setSavingInfo] = useState(false);
   const [showInfoEdit, setShowInfoEdit] = useState(false);
-
-  const fetchMembers = useCallback(async () => {
-    setLoading(true);
-    const res = await request.get<ChatGroupMember[]>(`/api/chat/conversations/${conversationId}/members`, { silent: true });
-    setLoading(false);
-    if (res.code === 0 && res.data) setMembers(res.data);
-  }, [conversationId]);
-
-  useEffect(() => { void fetchMembers(); }, [fetchMembers]);
+  const membersQuery = useChatGroupMembers(conversationId);
+  const addMemberMutation = useAddChatGroupMember();
+  const removeMemberMutation = useRemoveChatGroupMember();
+  const transferOwnerMutation = useTransferChatGroupOwner();
+  const updateGroupInfoMutation = useUpdateChatGroupInfo();
+  const members = membersQuery.data ?? EMPTY_MEMBERS;
 
   const myRole = members.find((m) => m.id === currentUserId)?.role ?? 'member';
   const isOwner = myRole === 'owner';
@@ -55,16 +55,13 @@ export function GroupMembersPanel({
   );
 
   const handleAdd = async (user: ChatUser) => {
-    setAdding(true);
-    const res = await request.post(`/api/chat/conversations/${conversationId}/members`, { userId: user.id });
-    setAdding(false);
-    if (res.code === 0) {
-      Toast.success(`已添加 ${user.nickname}`);
-      setShowAdd(false);
-      void fetchMembers();
-    } else {
-      Toast.error(res.message ?? '添加失败');
+    try {
+      await addMemberMutation.mutateAsync({ conversationId, userId: user.id });
+    } catch {
+      return;
     }
+    Toast.success(`已添加 ${user.nickname}`);
+    setShowAdd(false);
   };
 
   const handleRemoveMember = (member: ChatGroupMember) => {
@@ -73,13 +70,12 @@ export function GroupMembersPanel({
       content: '移除后该成员将无法看到群聊消息。',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete(`/api/chat/conversations/${conversationId}/members/${member.id}`);
-        if ((res as { code: number }).code === 0) {
-          Toast.success('已移除');
-          void fetchMembers();
-        } else {
-          Toast.error((res as { message?: string }).message ?? '移除失败');
+        try {
+          await removeMemberMutation.mutateAsync({ conversationId, memberId: member.id });
+        } catch {
+          return;
         }
+        Toast.success('已移除');
       },
     });
   };
@@ -90,32 +86,29 @@ export function GroupMembersPanel({
       content: '转让后你将成为普通成员，无法撤销。',
       okButtonProps: { type: 'warning', theme: 'solid' },
       onOk: async () => {
-        const res = await request.post(`/api/chat/conversations/${conversationId}/transfer`, { newOwnerId: member.id });
-        if ((res as { code: number }).code === 0) {
-          Toast.success('群主已转让');
-          void fetchMembers();
-        } else {
-          Toast.error((res as { message?: string }).message ?? '转让失败');
+        try {
+          await transferOwnerMutation.mutateAsync({ conversationId, newOwnerId: member.id });
+        } catch {
+          return;
         }
+        Toast.success('群主已转让');
       },
     });
   };
 
   const handleSaveInfo = async () => {
-    setSavingInfo(true);
     const body: { name?: string; announcement?: string | null } = {};
     if (editName.trim() !== (conv.name ?? '')) body.name = editName.trim();
     if (editAnnouncement !== (conv.announcement ?? '')) body.announcement = editAnnouncement || null;
-    if (Object.keys(body).length === 0) { setSavingInfo(false); setShowInfoEdit(false); return; }
-    const res = await request.patch(`/api/chat/conversations/${conversationId}/group-info`, body);
-    setSavingInfo(false);
-    if ((res as { code: number }).code === 0) {
-      Toast.success('已更新');
-      setShowInfoEdit(false);
-      onConvUpdate({ name: body.name ?? conv.name, announcement: body.announcement === undefined ? conv.announcement : body.announcement });
-    } else {
-      Toast.error((res as { message?: string }).message ?? '更新失败');
+    if (Object.keys(body).length === 0) { setShowInfoEdit(false); return; }
+    try {
+      await updateGroupInfoMutation.mutateAsync({ conversationId, values: body });
+    } catch {
+      return;
     }
+    Toast.success('已更新');
+    setShowInfoEdit(false);
+    onConvUpdate({ name: body.name ?? conv.name, announcement: body.announcement === undefined ? conv.announcement : body.announcement });
   };
 
   return (
@@ -159,7 +152,7 @@ export function GroupMembersPanel({
               autosize
             />
             <Text type="tertiary" size="small" style={{ fontSize: 11 }}>保存后，原公告将归入「群公告历史」记录</Text>
-            <Button size="small" theme="solid" loading={savingInfo} onClick={() => { void handleSaveInfo(); }}>保存</Button>
+            <Button size="small" theme="solid" loading={updateGroupInfoMutation.isPending} onClick={() => { void handleSaveInfo(); }}>保存</Button>
           </div>
         ) : (
           <>
@@ -180,7 +173,7 @@ export function GroupMembersPanel({
             <Button
               size="small" theme="borderless" type="primary"
               icon={<UserPlus size={14} />}
-              loading={adding}
+              loading={addMemberMutation.isPending}
               onClick={() => setShowAdd((v) => !v)}
             />
           </Tooltip>
@@ -193,7 +186,7 @@ export function GroupMembersPanel({
         )}
         <SemiList
           dataSource={sortedMembers}
-          loading={loading}
+          loading={membersQuery.isFetching}
           emptyContent={<Text type="tertiary" style={{ display: 'block', padding: '16px 0', textAlign: 'center', fontSize: 12 }}>暂无成员</Text>}
           renderItem={(m: ChatGroupMember) => {
             const isSelf = m.id === currentUserId;

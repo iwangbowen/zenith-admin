@@ -1,13 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Input, Tabs, Toast } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RotateCcw, Save, Search } from 'lucide-react';
-import type { IdentitySecurityPolicy, LoginRiskEvent, PaginatedResponse } from '@zenith/shared';
+import type { IdentitySecurityPolicy, LoginRiskEvent } from '@zenith/shared';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
+import { usePagination } from '@/hooks/usePagination';
+import {
+  identitySecurityKeys,
+  useIdentitySecurityPolicy,
+  useLoginRiskEventList,
+  useSaveIdentitySecurityPolicy,
+} from '@/hooks/queries/identity-security';
 
 const { TabPane } = Tabs;
 
@@ -35,25 +42,20 @@ const defaultPolicy: IdentitySecurityPolicy = {
 };
 
 export default function IdentitySecurityPage() {
+  const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
   const [policy, setPolicy] = useState<IdentitySecurityPolicy>(defaultPolicy);
-  const [policyLoading, setPolicyLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [keyword, setKeyword] = useState('');
-  const [riskData, setRiskData] = useState<PaginatedResponse<LoginRiskEvent> | null>(null);
-  const [riskLoading, setRiskLoading] = useState(false);
+  const [draftKeyword, setDraftKeyword] = useState('');
+  const [submittedKeyword, setSubmittedKeyword] = useState('');
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const policyQuery = useIdentitySecurityPolicy();
+  const savePolicyMutation = useSaveIdentitySecurityPolicy();
+  const riskQuery = useLoginRiskEventList({ page, pageSize, keyword: submittedKeyword.trim() || undefined });
+  const riskData = riskQuery.data ?? null;
 
   useEffect(() => {
-    void fetchPolicy();
-    void fetchRiskEvents();
-  }, []);
-
-  async function fetchPolicy() {
-    setPolicyLoading(true);
-    const res = await request.get<IdentitySecurityPolicy>('/api/identity-security/policy');
-    setPolicyLoading(false);
-    if (res.code === 0) setPolicy(res.data);
-  }
+    if (policyQuery.data) setPolicy(policyQuery.data);
+  }, [policyQuery.data]);
 
   async function handleSavePolicy() {
     let values: IdentitySecurityPolicy;
@@ -62,31 +64,22 @@ export default function IdentitySecurityPage() {
     } catch {
       return;
     }
-    setSaving(true);
-    const res = await request.put<IdentitySecurityPolicy>('/api/identity-security/policy', values);
-    setSaving(false);
-    if (res.code === 0) {
-      setPolicy(res.data);
-      Toast.success('身份安全策略已保存');
-    }
-  }
-
-  async function fetchRiskEvents(page = 1, pageSize = 10, kw = keyword) {
-    setRiskLoading(true);
-    const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
-    if (kw.trim()) query.set('keyword', kw.trim());
-    const res = await request.get<PaginatedResponse<LoginRiskEvent>>(`/api/identity-security/risk-events?${query}`);
-    setRiskLoading(false);
-    if (res.code === 0) setRiskData(res.data);
+    const saved = await savePolicyMutation.mutateAsync(values);
+    setPolicy(saved);
+    Toast.success('身份安全策略已保存');
   }
 
   function handleRiskSearch() {
-    void fetchRiskEvents(1, riskData?.pageSize ?? 10);
+    setPage(1);
+    setSubmittedKeyword(draftKeyword);
+    void queryClient.invalidateQueries({ queryKey: identitySecurityKeys.riskLists });
   }
 
   function handleRiskReset() {
-    setKeyword('');
-    void fetchRiskEvents(1, riskData?.pageSize ?? 10, '');
+    setDraftKeyword('');
+    setSubmittedKeyword('');
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: identitySecurityKeys.riskLists });
   }
 
   const riskColumns: ColumnProps<LoginRiskEvent>[] = [
@@ -109,8 +102,8 @@ export default function IdentitySecurityPage() {
       <Tabs type="line" keepDOM={false}>
         <TabPane tab="策略配置" itemKey="policy">
           <SearchToolbar>
-            <Button type="primary" icon={<Save size={14} />} loading={saving} onClick={handleSavePolicy}>保存</Button>
-            <Button type="tertiary" icon={<RotateCcw size={14} />} loading={policyLoading} onClick={fetchPolicy}>重载</Button>
+            <Button type="primary" icon={<Save size={14} />} loading={savePolicyMutation.isPending} onClick={handleSavePolicy}>保存</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} loading={policyQuery.isFetching} onClick={() => void policyQuery.refetch()}>重载</Button>
           </SearchToolbar>
           <div style={{ maxWidth: 760, padding: '4px 0' }}>
             <Form
@@ -164,8 +157,8 @@ export default function IdentitySecurityPage() {
           <SearchToolbar>
             <Input
               prefix={<Search size={14} />}
-              value={keyword}
-              onChange={setKeyword}
+              value={draftKeyword}
+              onChange={setDraftKeyword}
               onEnterPress={handleRiskSearch}
               placeholder="搜索账号、IP、原因"
               showClear
@@ -179,16 +172,10 @@ export default function IdentitySecurityPage() {
             columns={riskColumns}
             dataSource={riskData?.list ?? []}
             rowKey="id"
-            loading={riskLoading}
-            onRefresh={() => void fetchRiskEvents(riskData?.page ?? 1, riskData?.pageSize ?? 10)}
-            refreshLoading={riskLoading}
-            pagination={{
-              total: riskData?.total ?? 0,
-              currentPage: riskData?.page ?? 1,
-              pageSize: riskData?.pageSize ?? 10,
-              onPageChange: (page) => void fetchRiskEvents(page, riskData?.pageSize ?? 10),
-              onPageSizeChange: (pageSize) => void fetchRiskEvents(1, pageSize),
-            }}
+            loading={riskQuery.isFetching}
+            onRefresh={() => void riskQuery.refetch()}
+            refreshLoading={riskQuery.isFetching}
+            pagination={buildPagination(riskData?.total ?? 0)}
           />
         </TabPane>
       </Tabs>

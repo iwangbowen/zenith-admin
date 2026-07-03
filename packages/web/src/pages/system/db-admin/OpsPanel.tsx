@@ -1,91 +1,35 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Banner, Button, Empty, Modal, Space, Spin, Switch, Table, Tabs, TabPane,
   Tag, Toast, Tooltip, Typography,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RefreshCw, Activity, Wrench, KeyRound, GitCompare } from 'lucide-react';
-import { request } from '@/utils/request';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { copyToClipboard } from './sql-format';
+import {
+  useDbAdminActivity,
+  useDbAdminActivityAction,
+  useDbAdminIndexHealth,
+  useDbAdminMaintenance,
+  useDbAdminRunMaintenance,
+  useDbAdminSchemaDrift,
+  type DbAdminActivityConnection,
+  type DbAdminColumnDiff,
+  type DbAdminIndexInfoRow,
+  type DbAdminTableDrift,
+  type DbAdminTableMaintenance,
+} from '@/hooks/queries/db-admin';
 
 const { Text } = Typography;
 
 // ─── 类型 ──────────────────────────────────────────────────────────────────────
-interface ActivityConnection {
-  pid: number;
-  username: string | null;
-  applicationName: string | null;
-  clientAddr: string | null;
-  state: string | null;
-  waitEventType: string | null;
-  waitEvent: string | null;
-  backendType: string | null;
-  query: string | null;
-  querySeconds: number | null;
-  xactSeconds: number | null;
-  backendSeconds: number | null;
-  queryStart: string | null;
-  backendStart: string | null;
-  blockedBy: number[];
-  isCurrent: boolean;
-}
-
-interface TableMaintenance {
-  schema: string;
-  name: string;
-  liveTuples: number;
-  deadTuples: number;
-  deadRatio: number;
-  sizeBytes: number;
-  sizeText: string;
-  lastVacuum: string | null;
-  lastAutovacuum: string | null;
-  lastAnalyze: string | null;
-  lastAutoanalyze: string | null;
-}
-
-interface IndexInfoRow {
-  schema: string;
-  table: string;
-  index: string;
-  scans: number;
-  sizeBytes: number;
-  sizeText: string;
-  isUnique: boolean;
-  isPrimary: boolean;
-  columns: string[];
-  definition: string;
-}
-
-interface IndexHealth {
-  unused: IndexInfoRow[];
-  duplicate: Array<{ schema: string; table: string; columns: string[]; indexes: IndexInfoRow[] }>;
-  totalIndexes: number;
-  totalIndexBytes: number;
-}
-
-interface ColumnDiff {
-  column: string;
-  issue: 'missing_in_db' | 'extra_in_db' | 'type_mismatch' | 'nullable_mismatch';
-  expected: string | null;
-  actual: string | null;
-}
-
-interface TableDrift {
-  schema: string;
-  table: string;
-  status: 'missing_in_db' | 'extra_in_db' | 'column_diff';
-  columns: ColumnDiff[];
-}
-
-interface SchemaDrift {
-  inSync: boolean;
-  expectedTables: number;
-  actualTables: number;
-  drifts: TableDrift[];
-}
+type ActivityConnection = DbAdminActivityConnection;
+type TableMaintenance = DbAdminTableMaintenance;
+type IndexInfoRow = DbAdminIndexInfoRow;
+type ColumnDiff = DbAdminColumnDiff;
+type TableDrift = DbAdminTableDrift;
 
 function fmtDuration(seconds: number | null): string {
   if (seconds == null) return '-';
@@ -108,33 +52,15 @@ function stateColor(state: string | null): 'green' | 'amber' | 'grey' | 'red' {
 
 // ─── 活动连接 ────────────────────────────────────────────────────────────────────
 function ActivityPanel({ canMaintain }: Readonly<{ canMaintain: boolean }>) {
-  const [list, setList] = useState<ActivityConnection[]>([]);
-  const [loading, setLoading] = useState(false);
   const [auto, setAuto] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    const res = await request.get<ActivityConnection[]>('/api/db-admin/activity');
-    if (res.code === 0 && res.data) setList(res.data);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { void load(); }, [load]);
-
-  useEffect(() => {
-    if (auto) {
-      timerRef.current = setInterval(() => { void load(); }, 5000);
-      return () => { if (timerRef.current) clearInterval(timerRef.current); };
-    }
-  }, [auto, load]);
+  const activityQuery = useDbAdminActivity(auto);
+  const actionMutation = useDbAdminActivityAction();
+  const list = activityQuery.data ?? [];
+  const loading = activityQuery.isFetching;
 
   const act = async (pid: number, action: 'cancel' | 'terminate') => {
-    const res = await request.post<{ ok: boolean }>(`/api/db-admin/activity/${pid}/${action}`, {});
-    if (res.code === 0) {
-      Toast.success(res.data?.ok ? (action === 'cancel' ? '已请求取消查询' : '已终止连接') : '操作未生效（连接可能已结束）');
-      void load();
-    }
+    const res = await actionMutation.mutateAsync({ pid, action });
+    Toast.success(res.ok ? (action === 'cancel' ? '已请求取消查询' : '已终止连接') : '操作未生效（连接可能已结束）');
   };
 
   const blockingPids = new Set(list.flatMap((c) => c.blockedBy));
@@ -206,7 +132,7 @@ function ActivityPanel({ canMaintain }: Readonly<{ canMaintain: boolean }>) {
   return (
     <div>
       <Space style={{ marginBottom: 10 }} wrap>
-        <Button icon={<RefreshCw size={14} />} onClick={() => void load()} loading={loading}>刷新</Button>
+        <Button icon={<RefreshCw size={14} />} onClick={() => void activityQuery.refetch()} loading={loading}>刷新</Button>
         <Space spacing={4}><Switch size="small" checked={auto} onChange={setAuto} /><Text type="tertiary" size="small">自动刷新(5s)</Text></Space>
         <Tag color="blue">{list.length} 连接</Tag>
         <Tag color="green">{activeCount} 活动</Tag>
@@ -228,25 +154,18 @@ function ActivityPanel({ canMaintain }: Readonly<{ canMaintain: boolean }>) {
 
 // ─── 表维护 ──────────────────────────────────────────────────────────────────────
 function MaintenancePanel({ canMaintain }: Readonly<{ canMaintain: boolean }>) {
-  const [list, setList] = useState<TableMaintenance[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [busyKey, setBusyKey] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    const res = await request.get<TableMaintenance[]>('/api/db-admin/maintenance/tables');
-    if (res.code === 0 && res.data) setList(res.data);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { void load(); }, [load]);
+  const maintenanceQuery = useDbAdminMaintenance();
+  const runMaintenanceMutation = useDbAdminRunMaintenance();
+  const list = maintenanceQuery.data ?? [];
+  const loading = maintenanceQuery.isFetching;
+  const busyKey = runMaintenanceMutation.isPending
+    ? `${runMaintenanceMutation.variables?.schema}.${runMaintenanceMutation.variables?.table}`
+    : null;
 
   const run = async (r: TableMaintenance, action: 'vacuum' | 'vacuum_analyze' | 'analyze' | 'reindex') => {
     const key = `${r.schema}.${r.name}`;
-    setBusyKey(key);
-    const res = await request.post(`/api/db-admin/tables/${encodeURIComponent(r.schema)}/${encodeURIComponent(r.name)}/maintenance`, { action });
-    setBusyKey(null);
-    if (res.code === 0) { Toast.success(`${key} 已执行`); void load(); }
+    await runMaintenanceMutation.mutateAsync({ schema: r.schema, table: r.name, action });
+    Toast.success(`${key} 已执行`);
   };
 
   const columns: ColumnProps<TableMaintenance>[] = [
@@ -304,7 +223,7 @@ function MaintenancePanel({ canMaintain }: Readonly<{ canMaintain: boolean }>) {
   return (
     <div>
       <Space style={{ marginBottom: 10 }}>
-        <Button icon={<RefreshCw size={14} />} onClick={() => void load()} loading={loading}>刷新</Button>
+        <Button icon={<RefreshCw size={14} />} onClick={() => void maintenanceQuery.refetch()} loading={loading}>刷新</Button>
         <Text type="tertiary" size="small">按死元组数倒序 · 死元组占比偏高建议 VACUUM</Text>
       </Space>
       <ConfigurableTable<TableMaintenance>
@@ -323,17 +242,9 @@ function MaintenancePanel({ canMaintain }: Readonly<{ canMaintain: boolean }>) {
 
 // ─── 索引健康 ────────────────────────────────────────────────────────────────────
 function IndexHealthPanel() {
-  const [data, setData] = useState<IndexHealth | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    const res = await request.get<IndexHealth>('/api/db-admin/index-health');
-    if (res.code === 0 && res.data) setData(res.data);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { void load(); }, [load]);
+  const indexHealthQuery = useDbAdminIndexHealth();
+  const data = indexHealthQuery.data ?? null;
+  const loading = indexHealthQuery.isFetching;
 
   const copyDrop = (r: IndexInfoRow) => {
     void copyToClipboard(`DROP INDEX ${r.schema === 'public' ? '' : `"${r.schema}".`}"${r.index}";`).then((ok) => {
@@ -367,7 +278,7 @@ function IndexHealthPanel() {
   return (
     <div>
       <Space style={{ marginBottom: 10 }} wrap>
-        <Button icon={<RefreshCw size={14} />} onClick={() => void load()} loading={loading}>刷新</Button>
+        <Button icon={<RefreshCw size={14} />} onClick={() => void indexHealthQuery.refetch()} loading={loading}>刷新</Button>
         {data && <>
           <Tag color="blue">{data.totalIndexes} 索引</Tag>
           <Tag color="amber">{data.unused.length} 未使用</Tag>
@@ -427,22 +338,14 @@ const STATUS_LABEL: Record<TableDrift['status'], { text: string; color: 'red' | 
 };
 
 function DriftPanel() {
-  const [data, setData] = useState<SchemaDrift | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    const res = await request.get<SchemaDrift>('/api/db-admin/schema-drift');
-    if (res.code === 0 && res.data) setData(res.data);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { void load(); }, [load]);
+  const schemaDriftQuery = useDbAdminSchemaDrift();
+  const data = schemaDriftQuery.data ?? null;
+  const loading = schemaDriftQuery.isFetching;
 
   return (
     <div>
       <Space style={{ marginBottom: 10 }} wrap>
-        <Button icon={<RefreshCw size={14} />} onClick={() => void load()} loading={loading}>重新校验</Button>
+        <Button icon={<RefreshCw size={14} />} onClick={() => void schemaDriftQuery.refetch()} loading={loading}>重新校验</Button>
         {data && <Text type="tertiary" size="small">schema.ts 声明 {data.expectedTables} 表 · DB 实际 {data.actualTables} 表</Text>}
       </Space>
       {loading && !data && <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>}

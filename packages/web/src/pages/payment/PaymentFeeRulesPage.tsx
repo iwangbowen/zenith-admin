@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Modal, Select, Spin, Switch, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -7,12 +8,17 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
-import { request } from '@/utils/request';
 import { createdAtColumn } from '@/utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
+import {
+  paymentFeeKeys,
+  useDeletePaymentFeeRule,
+  usePaymentFeeRuleList,
+  useSavePaymentFeeRule,
+} from '@/hooks/queries/payment-fee';
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_METHOD_LABELS } from '@zenith/shared';
-import type { PaginatedResponse, PaymentChannel, PaymentFeeRule, PaymentMethod } from '@zenith/shared';
+import type { PaymentChannel, PaymentFeeRule, PaymentMethod } from '@zenith/shared';
 
 const yuan = (cents: number | null | undefined) => (cents == null ? '-' : `¥${(cents / 100).toFixed(2)}`);
 const channelOptions = Object.entries(PAYMENT_CHANNEL_LABELS).map(([value, label]) => ({ value, label }));
@@ -36,44 +42,30 @@ interface FeeFormValues {
 
 export default function PaymentFeeRulesPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
-  const [data, setData] = useState<PaginatedResponse<PaymentFeeRule> | null>(null);
-  const [loading, setLoading] = useState(false);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [search, setSearch] = useState<SearchParams>(defaultSearch);
-  const searchRef = useRef<SearchParams>(defaultSearch);
-  searchRef.current = search;
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearch);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearch);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<PaymentFeeRule | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
 
-  const fetchList = useCallback(
-    async (p = page, ps = pageSize, params?: SearchParams) => {
-      const active = params ?? searchRef.current;
-      setLoading(true);
-      try {
-        const query: Record<string, string> = { page: String(p), pageSize: String(ps) };
-        if (active.channel) query.channel = active.channel;
-        if (active.status) query.status = active.status;
-        const res = await request.get<PaginatedResponse<PaymentFeeRule>>(`/api/payment/fee-rules?${new URLSearchParams(query)}`);
-        if (res.code === 0) { setData(res.data); setPage(res.data.page); setPageSize(res.data.pageSize); }
-      } finally {
-        setLoading(false);
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [page, pageSize],
-  );
+  const listQuery = usePaymentFeeRuleList({
+    page,
+    pageSize,
+    channel: submittedParams.channel || undefined,
+    status: submittedParams.status || undefined,
+  });
+  const data = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const saveMutation = useSavePaymentFeeRule();
+  const toggleMutation = useSavePaymentFeeRule();
+  const deleteMutation = useDeletePaymentFeeRule();
+  const togglingId = toggleMutation.isPending ? (toggleMutation.variables?.id ?? null) : null;
 
-  useEffect(() => {
-    void fetchList();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function handleSearch() { setPage(1); void fetchList(1, pageSize); }
-  function handleReset() { setSearch(defaultSearch); setPage(1); void fetchList(1, pageSize, defaultSearch); }
+  function handleSearch() { setPage(1); setSubmittedParams(draftParams); void queryClient.invalidateQueries({ queryKey: paymentFeeKeys.lists }); }
+  function handleReset() { setDraftParams(defaultSearch); setPage(1); setSubmittedParams(defaultSearch); void queryClient.invalidateQueries({ queryKey: paymentFeeKeys.lists }); }
 
   function openCreate() { setEditing(null); setModalVisible(true); }
   function openEdit(record: PaymentFeeRule) { setEditing(record); setModalVisible(true); }
@@ -97,41 +89,31 @@ export default function PaymentFeeRulesPage() {
   async function handleOk() {
     let values: FeeFormValues;
     try { values = (await formApi.current?.validate()) as FeeFormValues; } catch { throw new Error('validation'); }
-    setSubmitting(true);
-    try {
-      const payload = {
-        name: values.name,
-        channel: values.channel,
-        payMethod: values.payMethod || undefined,
-        rateBps: Math.round((values.ratePercent ?? 0) * 100),
-        fixedFee: Math.round((values.fixedYuan ?? 0) * 100),
-        minFee: values.minYuan != null ? Math.round(values.minYuan * 100) : undefined,
-        maxFee: values.maxYuan != null ? Math.round(values.maxYuan * 100) : undefined,
-        priority: values.priority ?? 0,
-        status: values.status,
-        remark: values.remark || undefined,
-      };
-      const res = editing
-        ? await request.put<PaymentFeeRule>(`/api/payment/fee-rules/${editing.id}`, payload)
-        : await request.post<PaymentFeeRule>('/api/payment/fee-rules', payload);
-      if (res.code === 0) { Toast.success(editing ? '更新成功' : '创建成功'); closeModal(); void fetchList(); }
-      else throw new Error(res.message);
-    } finally {
-      setSubmitting(false);
-    }
+    const payload = {
+      name: values.name,
+      channel: values.channel,
+      payMethod: values.payMethod || undefined,
+      rateBps: Math.round((values.ratePercent ?? 0) * 100),
+      fixedFee: Math.round((values.fixedYuan ?? 0) * 100),
+      minFee: values.minYuan != null ? Math.round(values.minYuan * 100) : undefined,
+      maxFee: values.maxYuan != null ? Math.round(values.maxYuan * 100) : undefined,
+      priority: values.priority ?? 0,
+      status: values.status,
+      remark: values.remark || undefined,
+    };
+    await saveMutation.mutateAsync({ id: editing?.id, values: payload });
+    Toast.success(editing ? '更新成功' : '创建成功');
+    closeModal();
   }
 
-  function handleToggle(record: PaymentFeeRule, checked: boolean) {
-    setTogglingIds((prev) => new Set(prev).add(record.id));
-    request
-      .put<PaymentFeeRule>(`/api/payment/fee-rules/${record.id}`, { status: checked ? 'enabled' : 'disabled' })
-      .then((res) => { if (res.code === 0) { Toast.success(checked ? '已启用' : '已停用'); void fetchList(); } })
-      .finally(() => setTogglingIds((prev) => { const s = new Set(prev); s.delete(record.id); return s; }));
+  async function handleToggle(record: PaymentFeeRule, checked: boolean) {
+    await toggleMutation.mutateAsync({ id: record.id, values: { status: checked ? 'enabled' : 'disabled' } });
+    Toast.success(checked ? '已启用' : '已停用');
   }
 
   async function handleDelete(id: number) {
-    const res = await request.delete(`/api/payment/fee-rules/${id}`);
-    if (res.code === 0) { Toast.success('删除成功'); void fetchList(); }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   }
 
   const columns: ColumnProps<PaymentFeeRule>[] = [
@@ -146,7 +128,7 @@ export default function PaymentFeeRulesPage() {
     {
       title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
       render: (_: unknown, r: PaymentFeeRule) => (
-        <Switch checked={r.status === 'enabled'} loading={togglingIds.has(r.id)} disabled={!hasPermission('payment:fee:update')} size="small" onChange={(c) => handleToggle(r, c)} />
+        <Switch checked={r.status === 'enabled'} loading={togglingId === r.id} disabled={!hasPermission('payment:fee:update')} size="small" onChange={(c) => void handleToggle(r, c)} />
       ),
     },
     createOperationColumn<PaymentFeeRule>({
@@ -176,8 +158,8 @@ export default function PaymentFeeRulesPage() {
   const renderChannelFilter = () => (
     <Select
       placeholder="全部渠道"
-      value={search.channel || undefined}
-      onChange={(v) => setSearch((p) => ({ ...p, channel: (v as string) ?? '' }))}
+      value={draftParams.channel || undefined}
+      onChange={(v) => setDraftParams((p) => ({ ...p, channel: (v as string) ?? '' }))}
       showClear
       style={{ width: 130 }}
       optionList={channelOptions}
@@ -187,8 +169,8 @@ export default function PaymentFeeRulesPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="全部状态"
-      value={search.status || undefined}
-      onChange={(v) => setSearch((p) => ({ ...p, status: (v as string) ?? '' }))}
+      value={draftParams.status || undefined}
+      onChange={(v) => setDraftParams((p) => ({ ...p, status: (v as string) ?? '' }))}
       showClear
       style={{ width: 120 }}
       optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]}
@@ -231,11 +213,11 @@ export default function PaymentFeeRulesPage() {
       />
 
       <ConfigurableTable
-        bordered columns={columns} dataSource={data?.list ?? []} loading={loading} rowKey="id" size="small" empty="暂无数据"
-        onRefresh={() => void fetchList()} refreshLoading={loading} pagination={buildPagination(data?.total ?? 0, fetchList)}
+        bordered columns={columns} dataSource={data} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
+        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(total)}
       />
 
-      <AppModal title={editing ? '编辑费率规则' : '新增费率规则'} visible={modalVisible} onOk={handleOk} onCancel={closeModal} okButtonProps={{ loading: submitting }} width={700} closeOnEsc>
+      <AppModal title={editing ? '编辑费率规则' : '新增费率规则'} visible={modalVisible} onOk={handleOk} onCancel={closeModal} okButtonProps={{ loading: saveMutation.isPending }} width={700} closeOnEsc>
         <Spin spinning={false} wrapperClassName="modal-spin-wrapper">
           <Form key={editing?.id ?? 'new'} getFormApi={(api) => { formApi.current = api; }} initValues={formInit} labelPosition="left" labelWidth={124}>
             <Form.Input field="name" label="名称" placeholder="如：微信标准费率" rules={[{ required: true, message: '名称不能为空' }]} />

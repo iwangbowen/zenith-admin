@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Badge,
   Button,
@@ -42,7 +43,6 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
 import { useThemeController } from '@/providers/theme-controller';
-import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -50,7 +50,7 @@ import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { NavListPanel, NavListItem } from '@/components/NavListPanel';
 import { formatDateTime } from '@/utils/date';
 import { RowEditModal } from './RowEditModal';
-import { ErDiagram, type ErSchema } from './ErDiagram';
+import { ErDiagram } from './ErDiagram';
 import MonacoEditor from '@monaco-editor/react';
 import { buildDeleteSql, buildInsertSql, buildUpdateSql, generateCreateTableDdl } from './sql-format';
 import { OverviewPanel, KindTag } from './OverviewPanel';
@@ -69,64 +69,36 @@ import { useTableRowsInfinite } from './useTableRowsInfinite';
 import { ColumnFilterButton } from './ColumnFilterButton';
 import { GridContextMenu, type GridMenuState } from './GridContextMenu';
 import { QuickOpenDialog } from './QuickOpenDialog';
+import {
+  dbAdminKeys,
+  fetchDbAdminTableStructure,
+  useClearDbQueryHistory,
+  useDbAdminBatchMutateRows,
+  useDbAdminErSchema,
+  useDbAdminHistory,
+  useDbAdminRefreshMatview,
+  useDbAdminTables,
+  useDbAdminTableStructure,
+  useDbAdminTruncateTable,
+  useDeleteDbQueryHistory,
+  type DbAdminColumnInfo,
+  type DbAdminForeignKeyInfo,
+  type DbAdminIndexInfo,
+  type DbAdminQueryHistoryItem,
+  type DbAdminTableItem,
+  type DbAdminTableStructure,
+} from '@/hooks/queries/db-admin';
 import './db-admin.css';
 
 const { Title, Text } = Typography;
 
 
-interface TableItem {
-  schema: string;
-  name: string;
-  kind: 'table' | 'view' | 'matview';
-  rowEstimate: number;
-  sizeBytes: number;
-  sizeText: string;
-  comment: string | null;
-}
-
-interface ColumnInfo {
-  name: string;
-  dataType: string;
-  isNullable: boolean;
-  defaultValue: string | null;
-  isPrimaryKey: boolean;
-  comment: string | null;
-  maxLength: number | null;
-  enumValues?: string[] | null;
-}
-
-interface IndexInfo {
-  name: string; columns: string[]; isUnique: boolean; isPrimary: boolean; definition: string;
-}
-
-interface ForeignKeyInfo {
-  name: string; columns: string[]; referencedSchema: string; referencedTable: string;
-  referencedColumns: string[]; onUpdate: string; onDelete: string;
-}
-
-interface TableStructure {
-  columns: ColumnInfo[];
-  indexes: IndexInfo[];
-  foreignKeys: ForeignKeyInfo[];
-  primaryKey: string[];
-}
-
-interface HistoryItem {
-  id: number;
-  sqlText: string;
-  durationMs: number;
-  rowCount: number;
-  success: boolean;
-  errorMessage: string | null;
-  executedAt: string;
-}
-
-interface PaginatedResponse<T> {
-  list: T[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
+type TableItem = DbAdminTableItem;
+type ColumnInfo = DbAdminColumnInfo;
+type IndexInfo = DbAdminIndexInfo;
+type ForeignKeyInfo = DbAdminForeignKeyInfo;
+type TableStructure = DbAdminTableStructure;
+type HistoryItem = DbAdminQueryHistoryItem;
 
 const SYSTEM_SCHEMAS = new Set(['pg_catalog', 'information_schema', 'pg_toast', 'drizzle']);
 const SYSTEM_TABLES = new Set([
@@ -134,8 +106,10 @@ const SYSTEM_TABLES = new Set([
   'public.audit_logs',
   'public.__drizzle_migrations',
 ]);
+const EMPTY_TABLES: TableItem[] = [];
 
 export default function DbAdminPage() {
+  const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
   const canQuery = hasPermission('system:db-admin:query');
   const canExport = hasPermission('system:db-admin:export');
@@ -148,20 +122,12 @@ export default function DbAdminPage() {
   const sqlConsoleRef = useRef<SqlConsoleHandle | null>(null);
   const [quickOpenVisible, setQuickOpenVisible] = useState(false);
 
-  // ER 图
-  const [erSchema, setErSchema] = useState<ErSchema | null>(null);
-  const [erLoading, setErLoading] = useState(false);
-
   // 表浏览
-  const [tables, setTables] = useState<TableItem[]>([]);
-  const [tablesLoading, setTablesLoading] = useState(false);
   const [tableFilter, setTableFilter] = useState('');
   const [kindFilter, setKindFilter] = useState<'all' | 'table' | 'view'>('all');
   const [selected, setSelected] = useState<TableItem | null>(null);
 
   const [innerTab, setInnerTab] = useState<string>('structure');
-  const [structure, setStructure] = useState<TableStructure | null>(null);
-  const [structureLoading, setStructureLoading] = useState(false);
   const [rowsOrderBy, setRowsOrderBy] = useState<string | undefined>(undefined);
   const [rowsOrderDir, setRowsOrderDir] = useState<'asc' | 'desc' | undefined>(undefined);
   const [rowsFilters, setRowsFilters] = useState<Record<string, string>>({});
@@ -176,15 +142,11 @@ export default function DbAdminPage() {
   const [detailState, setDetailState] = useState<{ rowIndex: number; columnName: string | null } | null>(null);
   // 内联编辑暂存
   const [pendingCount, setPendingCount] = useState(0);
-  const [pendingSaving, setPendingSaving] = useState(false);
   const [sqlPreview, setSqlPreview] = useState<string | null>(null);
 
   // 历史
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [historyTotal, setHistoryTotal] = useState(0);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyPageSize, setHistoryPageSize] = useState(20);
-  const [historyLoading, setHistoryLoading] = useState(false);
 
   // 行编辑 Modal
   const [rowModalOpen, setRowModalOpen] = useState(false);
@@ -192,6 +154,26 @@ export default function DbAdminPage() {
   const [rowModalInitial, setRowModalInitial] = useState<Record<string, unknown> | undefined>(undefined);
   const [rowModalFocusField, setRowModalFocusField] = useState<string | undefined>(undefined);
   const [importOpen, setImportOpen] = useState(false);
+
+  const tablesQuery = useDbAdminTables();
+  const tables = tablesQuery.data ?? EMPTY_TABLES;
+  const tablesLoading = tablesQuery.isFetching;
+  const structureQuery = useDbAdminTableStructure(selected?.schema, selected?.name, selected !== null);
+  const structure = structureQuery.data ?? null;
+  const structureLoading = structureQuery.isFetching;
+  const historyQuery = useDbAdminHistory({ page: historyPage, pageSize: historyPageSize }, activeTab === 'history');
+  const history = historyQuery.data?.list ?? [];
+  const historyTotal = historyQuery.data?.total ?? 0;
+  const historyLoading = historyQuery.isFetching;
+  const erQuery = useDbAdminErSchema(activeTab === 'er');
+  const erSchema = erQuery.data ?? null;
+  const erLoading = erQuery.isFetching;
+  const deleteHistoryMutation = useDeleteDbQueryHistory();
+  const clearHistoryMutation = useClearDbQueryHistory();
+  const truncateTableMutation = useDbAdminTruncateTable();
+  const refreshMatviewMutation = useDbAdminRefreshMatview();
+  const batchMutateRowsMutation = useDbAdminBatchMutateRows();
+  const pendingSaving = batchMutateRowsMutation.isPending;
 
   const filteredTables = useMemo(() => {
     const kw = tableFilter.trim().toLowerCase();
@@ -229,49 +211,6 @@ export default function DbAdminPage() {
     whereRaw: rowsWhere,
   });
 
-  const loadTables = useCallback(async () => {
-    setTablesLoading(true);
-    const res = await request.get<TableItem[]>('/api/db-admin/tables');
-    if (res.code === 0 && res.data) setTables(res.data);
-    setTablesLoading(false);
-  }, []);
-
-  const loadStructure = useCallback(async (item: TableItem) => {
-    setStructureLoading(true);
-    const res = await request.get<TableStructure>(
-      `/api/db-admin/tables/${encodeURIComponent(item.schema)}/${encodeURIComponent(item.name)}/structure`,
-    );
-    if (res.code === 0 && res.data) {
-      setStructure(res.data);
-      structureColumnsCacheRef.current.set(
-        `${item.schema}.${item.name}`,
-        res.data.columns.map((c) => c.name),
-      );
-    }
-    setStructureLoading(false);
-  }, []);
-
-  const loadHistory = useCallback(async (page: number, pageSize: number) => {
-    setHistoryLoading(true);
-    const res = await request.get<PaginatedResponse<HistoryItem>>(
-      `/api/db-admin/query/history?page=${page}&pageSize=${pageSize}`,
-    );
-    if (res.code === 0 && res.data) {
-      setHistory(res.data.list);
-      setHistoryTotal(res.data.total);
-    }
-    setHistoryLoading(false);
-  }, []);
-
-  const loadEr = useCallback(async () => {
-    setErLoading(true);
-    const res = await request.get<ErSchema>('/api/db-admin/er-schema');
-    if (res.code === 0 && res.data) setErSchema(res.data);
-    setErLoading(false);
-  }, []);
-
-  useEffect(() => { void loadTables(); }, [loadTables]);
-
   // Ctrl+P / Cmd+P 快速打开（拦截浏览器打印）
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -285,17 +224,12 @@ export default function DbAdminPage() {
   }, []);
 
   useEffect(() => {
-    if (!selected) return;
-    void loadStructure(selected);
-  }, [selected, loadStructure]);
-
-  useEffect(() => {
-    if (activeTab === 'history') void loadHistory(historyPage, historyPageSize);
-  }, [activeTab, historyPage, historyPageSize, loadHistory]);
-
-  useEffect(() => {
-    if (activeTab === 'er' && erSchema === null && !erLoading) void loadEr();
-  }, [activeTab, erSchema, erLoading, loadEr]);
+    if (!selected || !structure) return;
+    structureColumnsCacheRef.current.set(
+      `${selected.schema}.${selected.name}`,
+      structure.columns.map((c) => c.name),
+    );
+  }, [selected, structure]);
 
   const handleSelectTable = (item: TableItem) => {
     // 重复选中同一张表（如双击）直接忽略：setSelected 同引用不会重跑加载 effect，
@@ -303,7 +237,6 @@ export default function DbAdminPage() {
     if (selected && selected.schema === item.schema && selected.name === item.name) return;
     const doSelect = () => {
       setSelected(item);
-      setStructure(null);
       setRowsOrderBy(undefined);
       setRowsOrderDir(undefined);
       setRowsFilters({});
@@ -430,40 +363,37 @@ export default function DbAdminPage() {
     let str: TableStructure | null =
       (selected?.schema === t.schema && selected?.name === t.name) ? structure : null;
     if (!str) {
-      const res = await request.get<TableStructure>(
-        `/api/db-admin/tables/${encodeURIComponent(t.schema)}/${encodeURIComponent(t.name)}/structure`,
-      );
-      if (res.code !== 0 || !res.data) { Toast.error('获取结构失败'); return; }
-      str = res.data;
+      try {
+        str = await queryClient.fetchQuery({
+          queryKey: dbAdminKeys.structure(t.schema, t.name),
+          queryFn: () => fetchDbAdminTableStructure(t.schema, t.name),
+        });
+      } catch {
+        Toast.error('获取结构失败');
+        return;
+      }
     }
+    if (!str) return;
     const ddl = generateCreateTableDdl(t.schema, t.name, str.columns, str.primaryKey);
     await copyToClipboard(ddl, '已复制 CREATE TABLE DDL');
   };
 
   const handleTruncateTable = async (t: TableItem) => {
-    const res = await request.post(
-      `/api/db-admin/tables/${encodeURIComponent(t.schema)}/${encodeURIComponent(t.name)}/truncate`,
-      {},
-    );
-    if (res.code === 0) {
+    try {
+      await truncateTableMutation.mutateAsync({ schema: t.schema, table: t.name });
       Toast.success(`已截断 ${fullName(t)}`);
       if (selected?.schema === t.schema && selected?.name === t.name) refreshRows();
-    } else {
-      Toast.error(res.message ?? '截断失败');
     }
+    catch (err) { Toast.error(err instanceof Error ? err.message : '截断失败'); }
   };
 
   const handleRefreshMatview = async (t: TableItem) => {
-    const res = await request.post(
-      `/api/db-admin/tables/${encodeURIComponent(t.schema)}/${encodeURIComponent(t.name)}/refresh`,
-      {},
-    );
-    if (res.code === 0) {
+    try {
+      await refreshMatviewMutation.mutateAsync({ schema: t.schema, table: t.name });
       Toast.success(`已刷新 ${fullName(t)}`);
       if (selected?.schema === t.schema && selected?.name === t.name) refreshRows();
-    } else {
-      Toast.error(res.message ?? '刷新失败');
     }
+    catch (err) { Toast.error(err instanceof Error ? err.message : '刷新失败'); }
   };
 
   const renderTableContextMenu = (t: TableItem) => {
@@ -540,20 +470,14 @@ export default function DbAdminPage() {
   };
 
   const deleteHistoryItem = async (id: number) => {
-    const res = await request.delete(`/api/db-admin/query/history/${id}`);
-    if (res.code === 0) {
-      Toast.success('已删除');
-      void loadHistory(historyPage, historyPageSize);
-    }
+    await deleteHistoryMutation.mutateAsync(id);
+    Toast.success('已删除');
   };
 
   const clearHistory = async () => {
-    const res = await request.delete('/api/db-admin/query/history');
-    if (res.code === 0) {
-      Toast.success('已清空');
-      setHistoryPage(1);
-      void loadHistory(1, historyPageSize);
-    }
+    await clearHistoryMutation.mutateAsync();
+    Toast.success('已清空');
+    setHistoryPage(1);
   };
 
   // ─── 渲染辅助 ────────────────────────────────────────────────────────────────
@@ -684,7 +608,6 @@ export default function DbAdminPage() {
       return;
     }
     setSelected(target);
-    setStructure(null);
     setRowsOrderBy(undefined);
     setRowsOrderDir(undefined);
     if (value != null && fk.referencedColumns.length === 1) {
@@ -777,29 +700,29 @@ export default function DbAdminPage() {
     if (!selected) return;
     const m = gridRef.current?.getMutations();
     if (!m || (m.inserts.length + m.updates.length + m.deletes.length === 0)) return;
-    setPendingSaving(true);
-    const res = await request.post<{ inserted: number; updated: number; deleted: number }>(
-      `/api/db-admin/tables/${encodeURIComponent(selected.schema)}/${encodeURIComponent(selected.name)}/batch-mutate`,
-      {
+    try {
+      const d = await batchMutateRowsMutation.mutateAsync({
+        schema: selected.schema,
+        table: selected.name,
+        values: {
         inserts: m.inserts.length > 0 ? m.inserts : undefined,
         updates: m.updates.length > 0 ? m.updates.map(({ pk, changes }) => ({ pk, changes })) : undefined,
         deletes: m.deletes.length > 0 ? m.deletes : undefined,
-      },
-    );
-    setPendingSaving(false);
-    if (res.code === 0) {
-      const d = res.data;
+        },
+      });
       const parts = [
-        d?.inserted ? `新增 ${d.inserted}` : '',
-        d?.updated ? `更新 ${d.updated}` : '',
-        d?.deleted ? `删除 ${d.deleted}` : '',
+        d.inserted ? `新增 ${d.inserted}` : '',
+        d.updated ? `更新 ${d.updated}` : '',
+        d.deleted ? `删除 ${d.deleted}` : '',
       ].filter(Boolean);
       Toast.success(`已保存：${parts.join('，') || '完成'}`);
       gridRef.current?.discardPending();
       setSqlPreview(null);
       await rowsData.refresh();
+    } catch {
+      // request 层已提示错误，保留暂存修改供用户修正或重试
     }
-  }, [selected, rowsData]);
+  }, [selected, batchMutateRowsMutation, rowsData]);
 
   const handleDiscardPending = useCallback(() => {
     gridRef.current?.discardPending();
@@ -937,7 +860,7 @@ export default function DbAdminPage() {
                         ]}
                       />
                       <Tooltip content="刷新">
-                        <Button icon={<RefreshCw size={14} />} onClick={() => void loadTables()} loading={tablesLoading} size="small" theme="borderless" />
+                        <Button icon={<RefreshCw size={14} />} onClick={() => void tablesQuery.refetch()} loading={tablesLoading} size="small" theme="borderless" />
                       </Tooltip>
                     </Space>
                   }
@@ -1257,7 +1180,7 @@ export default function DbAdminPage() {
         <TabPane tab={<span><History size={14} style={{ verticalAlign: -2, marginRight: 4 }} />查询历史</span>} itemKey="history" style={{ height: '100%', overflow: 'auto' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <Space>
-              <Button icon={<RefreshCw size={14} />} onClick={() => void loadHistory(historyPage, historyPageSize)} loading={historyLoading}>刷新</Button>
+              <Button icon={<RefreshCw size={14} />} onClick={() => void historyQuery.refetch()} loading={historyLoading}>刷新</Button>
               <Popconfirm title="确定清空所有历史？" onConfirm={clearHistory}>
                 <Button type="danger" icon={<Trash2 size={14} />}>清空</Button>
               </Popconfirm>
@@ -1274,8 +1197,8 @@ export default function DbAdminPage() {
                 currentPage: historyPage,
                 pageSize: historyPageSize,
                 total: historyTotal,
-                onPageChange: (p) => { setHistoryPage(p); void loadHistory(p, historyPageSize); },
-                onPageSizeChange: (size) => { setHistoryPageSize(size); setHistoryPage(1); void loadHistory(1, size); },
+                onPageChange: (p) => { setHistoryPage(p); },
+                onPageSizeChange: (size) => { setHistoryPageSize(size); setHistoryPage(1); },
               }}
             />
           </div>
@@ -1284,7 +1207,7 @@ export default function DbAdminPage() {
         <TabPane tab={<span><Network size={14} style={{ verticalAlign: -2, marginRight: 4 }} />ER 图</span>} itemKey="er">
           <Space vertical align="start" style={{ width: '100%' }}>
             <Space>
-              <Button icon={<RefreshCw size={14} />} onClick={() => void loadEr()} loading={erLoading}>刷新</Button>
+              <Button icon={<RefreshCw size={14} />} onClick={() => void erQuery.refetch()} loading={erLoading}>刷新</Button>
               <Text type="tertiary" size="small">
                 {erSchema ? `共 ${erSchema.tables.length} 张表，${erSchema.foreignKeys.length} 条外键关系` : ''}
               </Text>

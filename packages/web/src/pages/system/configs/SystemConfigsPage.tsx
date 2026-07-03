@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Form,
@@ -10,9 +11,8 @@ import {
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw } from 'lucide-react';
-import type { SystemConfig, PaginatedResponse } from '@zenith/shared';
+import type { SystemConfig } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
@@ -24,6 +24,13 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { renderEllipsis } from '../../../utils/table-columns';
+import {
+  systemConfigKeys,
+  useDeleteSystemConfig,
+  useSaveSystemConfig,
+  useSystemConfigDetail,
+  useSystemConfigList,
+} from '@/hooks/queries/system-configs';
 
 interface SearchParams {
   keyword: string;
@@ -34,92 +41,67 @@ const defaultSearchParams: SearchParams = { keyword: '', configType: '' };
 
 export default function SystemConfigsPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const { items: configTypeItems, loading: configTypeLoading } = useDictItems('system_config_type');
   const formApi = useRef<FormApi | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<SystemConfig[]>([]);
-  const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingConfig, setEditingConfig] = useState<SystemConfig | null>(null);
-  const [modalDetailLoading, setModalDetailLoading] = useState(false);
 
-  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const activeParams = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(activeParams.keyword ? { keyword: activeParams.keyword } : {}),
-        ...(activeParams.configType ? { configType: activeParams.configType } : {}),
-      }).toString();
-      const res = await request.get<PaginatedResponse<SystemConfig>>(`/api/system-configs?${query}`);
-      if (res.code === 0) {
-        setData(res.data.list);
-        setTotal(res.data.total);
-      }
-    } finally {
-      setLoading(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize]);
+  const listQuery = useSystemConfigList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    configType: submittedParams.configType || undefined,
+  });
+  const data = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const detailQuery = useSystemConfigDetail(editingConfig?.id, modalVisible);
+  const editing = editingConfig ? (detailQuery.data ?? editingConfig) : null;
+  const modalDetailLoading = !!editingConfig && detailQuery.isFetching;
+  const saveMutation = useSaveSystemConfig();
+  const deleteMutation = useDeleteSystemConfig();
 
-  useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
-
-  const handleSearch = () => { setPage(1); void fetchData(1); };
-  const handleReset = () => { setSearchParams(defaultSearchParams); setPage(1); void fetchData(1, pageSize, defaultSearchParams); };
+  const handleSearch = () => {
+    setPage(1);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: systemConfigKeys.lists });
+  };
+  const handleReset = () => {
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: systemConfigKeys.lists });
+  };
 
   const handleModalOk = async () => {
     let values;
-    try { values = await formApi.current?.validate(); } catch { throw new Error('validation'); }
+    try { values = await formApi.current!.validate(); } catch { throw new Error('validation'); }
 
-    const res = editingConfig
-      ? await request.put(`/api/system-configs/${editingConfig.id}`, values)
-      : await request.post('/api/system-configs', values);
-
-    if (res.code === 0) {
-      Toast.success(editingConfig ? '更新成功' : '创建成功');
-      setModalVisible(false);
-      setEditingConfig(null);
-      void fetchData();
-    } else {
-      throw new Error(res.message);
-    }
+    await saveMutation.mutateAsync({ id: editingConfig?.id, values });
+    Toast.success(editingConfig ? '更新成功' : '创建成功');
+    setModalVisible(false);
+    setEditingConfig(null);
   };
 
-  const openEdit = async (record: SystemConfig) => {
+  const openEdit = (record: SystemConfig) => {
     setEditingConfig(record);
     setModalVisible(true);
-    setModalDetailLoading(true);
-    const res = await request.get<SystemConfig>(`/api/system-configs/${record.id}`);
-    setModalDetailLoading(false);
-    if (res.code === 0 && res.data) {
-      setEditingConfig(res.data);
-    } else {
-      Toast.error(res.message || '获取信息失败');
-    }
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete(`/api/system-configs/${id}`);
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      void fetchData();
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   };
 
-  const formInitValues = editingConfig
+  const formInitValues = editing
     ? {
-        configKey: editingConfig.configKey,
-        configValue: editingConfig.configValue,
-        configType: editingConfig.configType,
-        description: editingConfig.description,
+        configKey: editing.configKey,
+        configValue: editing.configValue,
+        configType: editing.configType,
+        description: editing.description,
       }
     : { configType: 'string' };
 
@@ -128,8 +110,8 @@ export default function SystemConfigsPage() {
     ...configTypeItems.map((item) => ({ value: item.value, label: item.label })),
   ];
   const buildExportQuery = () => ({
-    ...(searchParams.keyword ? { keyword: searchParams.keyword } : {}),
-    ...(searchParams.configType ? { configType: searchParams.configType } : {}),
+    ...(submittedParams.keyword ? { keyword: submittedParams.keyword } : {}),
+    ...(submittedParams.configType ? { configType: submittedParams.configType } : {}),
   });
 
   const configTypeOptions = configTypeItems.map((item) => ({ value: item.value, label: item.label }));
@@ -182,16 +164,16 @@ export default function SystemConfigsPage() {
           <Input
             prefix={<Search size={14} />}
             placeholder="搜索配置键/描述"
-            value={searchParams.keyword}
-            onChange={(value) => setSearchParams((p) => ({ ...p, keyword: value }))}
+            value={draftParams.keyword}
+            onChange={(value) => setDraftParams((p) => ({ ...p, keyword: value }))}
             onEnterPress={handleSearch}
             style={{ width: 240 }}
             showClear
           />
           <Select
             placeholder="配置类型"
-            value={searchParams.configType || undefined}
-            onChange={(v) => setSearchParams((p) => ({ ...p, configType: (v as string) ?? '' }))}
+            value={draftParams.configType || undefined}
+            onChange={(v) => setDraftParams((p) => ({ ...p, configType: (v as string) ?? '' }))}
             style={{ width: 140 }}
             optionList={configTypeFilterOptions}
             loading={configTypeLoading}
@@ -213,8 +195,8 @@ export default function SystemConfigsPage() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索配置键/描述"
-              value={searchParams.keyword}
-              onChange={(value) => setSearchParams((p) => ({ ...p, keyword: value }))}
+              value={draftParams.keyword}
+              onChange={(value) => setDraftParams((p) => ({ ...p, keyword: value }))}
               onEnterPress={handleSearch}
               style={{ width: 240 }}
               showClear
@@ -228,8 +210,8 @@ export default function SystemConfigsPage() {
         mobileFilters={(
           <Select
             placeholder="配置类型"
-            value={searchParams.configType || undefined}
-            onChange={(v) => setSearchParams((p) => ({ ...p, configType: (v as string) ?? '' }))}
+            value={draftParams.configType || undefined}
+            onChange={(v) => setDraftParams((p) => ({ ...p, configType: (v as string) ?? '' }))}
             style={{ width: 140 }}
             optionList={configTypeFilterOptions}
             loading={configTypeLoading}
@@ -248,18 +230,18 @@ export default function SystemConfigsPage() {
         bordered
         columns={columns}
         dataSource={data}
-        loading={loading}
-        onRefresh={fetchData}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         rowKey="id"
-        pagination={buildPagination(total, fetchData)}
+        pagination={buildPagination(total)}
         empty="暂无数据"
       />
 
       <AppModal
-        title={editingConfig ? '编辑配置' : '新增配置'}
+        title={editing ? '编辑配置' : '新增配置'}
         visible={modalVisible}
-        onCancel={() => { setModalVisible(false); setEditingConfig(null); setModalDetailLoading(false); }}
+        onCancel={() => { setModalVisible(false); setEditingConfig(null); }}
         onOk={handleModalOk}
         okButtonProps={{ disabled: modalDetailLoading }}
         width={520}
@@ -277,7 +259,7 @@ export default function SystemConfigsPage() {
             field="configKey"
             label="配置键"
             rules={[{ required: true, message: '请输入配置键' }]}
-            disabled={!!editingConfig}
+            disabled={!!editing}
           />
           <Form.Input field="configValue" label="配置值" placeholder="请输入配置值" rules={[{ required: true, message: '请输入配置值' }]} />
           <Form.Select

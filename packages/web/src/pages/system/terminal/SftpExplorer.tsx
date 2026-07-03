@@ -8,33 +8,24 @@
  *  - 点击文件 → onOpenFile(`sftp://<profileId><path>`) 在编辑器中打开（可写）
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Tree, Button, Typography, Toast, Tooltip, Spin, Dropdown, Modal, Input } from '@douyinfe/semi-ui';
+import { useQueryClient } from '@tanstack/react-query';
+import { Tree, Button, Typography, Toast, Tooltip, Spin, Dropdown, Input } from '@douyinfe/semi-ui';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { Icon } from '@iconify/react';
 import {
   RefreshCw, Home, FilePlus, FolderPlus, Upload as UploadIcon, Folder, File as FileIcon,
 } from 'lucide-react';
-import { request } from '@/utils/request';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
 import { getFileIcon } from './fileIcons';
 import type { SshProfile } from './SshProfilesManager';
 import AppModal from '@/components/AppModal';
-
-interface SftpEntry {
-  name: string;
-  path: string;
-  type: 'dir' | 'file';
-  size: number;
-  mtime: string;
-  permissions?: string;
-}
-
-interface SftpListing {
-  path: string;
-  parent: string | null;
-  entries: SftpEntry[];
-}
+import {
+  fetchSftpDir,
+  sftpHomeQueryOptions,
+  useSftpFileMutation,
+  type SftpEntry,
+} from '@/hooks/queries/terminal-files';
 
 interface SftpNode extends TreeNodeData {
   fileType: 'dir' | 'file';
@@ -81,6 +72,8 @@ type DialogState =
   | { mode: 'chmod'; targetPath: string; value: string };
 
 export default function SftpExplorer({ profile, onOpenFile }: SftpExplorerProps) {
+  const queryClient = useQueryClient();
+  const fileMutation = useSftpFileMutation(profile.id);
   const [treeData, setTreeData] = useState<SftpNode[]>([]);
   const [rootPath, setRootPath] = useState('/');
   const [loading, setLoading] = useState(false);
@@ -93,31 +86,37 @@ export default function SftpExplorer({ profile, onOpenFile }: SftpExplorerProps)
   const api = `/api/ssh-sftp/${profile.id}`;
 
   const listDir = useCallback(async (dir: string): Promise<SftpEntry[] | null> => {
-    const res = await request.get<SftpListing>(`${api}/list?path=${encodeURIComponent(dir)}`, { silent: true });
-    if (res.code === 0 && res.data) return res.data.entries;
-    return null;
-  }, [api]);
+    try {
+      const res = await fetchSftpDir(queryClient, profile.id, dir, { silent: true });
+      return res.entries;
+    } catch {
+      return null;
+    }
+  }, [queryClient, profile.id]);
 
   const loadRoot = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const homeRes = await request.get<{ home: string }>(`${api}/home`, { silent: true });
-    if (homeRes.code !== 0 || !homeRes.data) {
+    let homeData: { home: string };
+    try {
+      homeData = await queryClient.fetchQuery(sftpHomeQueryOptions(profile.id));
+    } catch {
       setLoading(false);
-      setError(homeRes.message || '无法连接远程主机');
+      setError('无法连接远程主机');
       return;
     }
-    const home = homeRes.data.home || '/';
-    const res = await request.get<SftpListing>(`${api}/list?path=${encodeURIComponent(home)}`, { silent: true });
-    setLoading(false);
-    if (res.code === 0 && res.data) {
-      setRootPath(res.data.path);
-      setTreeData(res.data.entries.map(entryToNode));
+    const home = homeData.home || '/';
+    try {
+      const res = await fetchSftpDir(queryClient, profile.id, home, { silent: true });
+      setRootPath(res.path);
+      setTreeData(res.entries.map(entryToNode));
       setExpandedKeys([]);
-    } else {
-      setError(res.message || '加载远程目录失败');
+    } catch {
+      setError('加载远程目录失败');
+    } finally {
+      setLoading(false);
     }
-  }, [api]);
+  }, [queryClient, profile.id]);
 
   useEffect(() => { void loadRoot(); }, [loadRoot]);
 
@@ -154,25 +153,25 @@ export default function SftpExplorer({ profile, onOpenFile }: SftpExplorerProps)
     if (!name && dialog.mode !== 'rename') { Toast.warning('请输入名称'); return; }
     if (dialog.mode === 'rename') {
       const to = joinPosix(dialog.baseDir, name);
-      const res = await request.post(`${api}/rename`, { from: dialog.oldPath, to });
-      if (res.code === 0) { Toast.success('已重命名'); setDialog(null); void reloadDir(dialog.baseDir); }
+      await fileMutation.mutateAsync({ kind: 'rename', from: dialog.oldPath, to });
+      Toast.success('已重命名'); setDialog(null); void reloadDir(dialog.baseDir);
     } else if (dialog.mode === 'chmod') {
       const mode = Number.parseInt(name, 8);
       if (Number.isNaN(mode)) { Toast.error('请输入有效的八进制权限值，如 755'); return; }
-      const res = await request.post(`${api}/chmod`, { path: dialog.targetPath, mode });
-      if (res.code === 0) { Toast.success('权限已修改'); setDialog(null); void reloadDir(parentPosix(dialog.targetPath)); }
+      await fileMutation.mutateAsync({ kind: 'chmod', path: dialog.targetPath, mode });
+      Toast.success('权限已修改'); setDialog(null); void reloadDir(parentPosix(dialog.targetPath));
     } else {
       const target = joinPosix(dialog.baseDir, name);
       const type = dialog.mode === 'createDir' ? 'dir' : 'file';
-      const res = await request.post(`${api}/create`, { path: target, type });
-      if (res.code === 0) { Toast.success('已创建'); setDialog(null); void reloadDir(dialog.baseDir); }
+      await fileMutation.mutateAsync({ kind: 'create', path: target, type });
+      Toast.success('已创建'); setDialog(null); void reloadDir(dialog.baseDir);
     }
-  }, [dialog, api, reloadDir]);
+  }, [dialog, fileMutation, reloadDir]);
 
   const handleDelete = useCallback(async (node: SftpNode) => {
-    const res = await request.delete(`${api}/entry?path=${encodeURIComponent(node.fullPath)}`);
-    if (res.code === 0) { Toast.success('已删除'); void reloadDir(parentPosix(node.fullPath)); }
-  }, [api, reloadDir]);
+    await fileMutation.mutateAsync({ kind: 'delete', path: node.fullPath });
+    Toast.success('已删除'); void reloadDir(parentPosix(node.fullPath));
+  }, [fileMutation, reloadDir]);
 
   const handleDownload = useCallback(async (node: SftpNode) => {
     const token = localStorage.getItem(TOKEN_KEY) ?? '';

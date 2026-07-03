@@ -1,102 +1,83 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Col, Form, Input, Modal, Row, Select, Spin,
   Toast, Switch } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search } from 'lucide-react';
-import type { EmailTemplate, PaginatedResponse } from '@zenith/shared';
+import type { EmailTemplate } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import { useDictItems } from '@/hooks/useDictItems';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
+import {
+  emailTemplateKeys,
+  useDeleteEmailTemplate,
+  useEmailTemplateDetail,
+  useEmailTemplateList,
+  useSaveEmailTemplate,
+} from '@/hooks/queries/email-templates';
 
 export default function EmailTemplatesPage() {
   const { hasPermission: can } = usePermission();
   const { items: statusItems } = useDictItems('common_status');
+  const queryClient = useQueryClient();
 
   interface SearchParams { keyword: string; filterStatus: string | undefined; }
   const defaultSearchParams: SearchParams = { keyword: '', filterStatus: undefined };
-  const [loading, setLoading] = useState(false);
-  const [list, setList] = useState<EmailTemplate[]>([]);
-  const [total, setTotal] = useState(0);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<EmailTemplate | null>(null);
-  const [modalDetailLoading, setModalDetailLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const formRef = useRef<FormApi>(null);
 
-  const fetchList = useCallback(
-    async (p = page, ps = pageSize, params?: SearchParams) => {
-      const { keyword: kw, filterStatus: st } = params ?? searchParamsRef.current;
-      setLoading(true);
-      try {
-        const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-        if (kw) query.set('keyword', kw);
-        if (st) query.set('status', st);
-        const res = await request.get<PaginatedResponse<EmailTemplate>>(`/api/email-templates?${query}`);
-        setList(res.data?.list ?? []);
-        setTotal(res.data?.total ?? 0);
-        setPage(res.data?.page ?? p);
-        setPageSize(res.data?.pageSize ?? ps);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [page, pageSize, setPage, setPageSize],
-  );
+  const listQuery = useEmailTemplateList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    status: submittedParams.filterStatus || undefined,
+  });
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const detailQuery = useEmailTemplateDetail(editingRecord?.id, modalVisible);
+  const editing = editingRecord ? (detailQuery.data ?? editingRecord) : null;
+  const modalDetailLoading = !!editingRecord && detailQuery.isFetching;
 
-  useEffect(() => {
-    void fetchList(1);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const saveMutation = useSaveEmailTemplate();
+  const toggleStatusMutation = useSaveEmailTemplate();
+  const deleteMutation = useDeleteEmailTemplate();
+  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
 
-  const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
-  const handleReset = () => {
-    setSearchParams(defaultSearchParams);
+  const handleSearch = () => {
     setPage(1);
-    void fetchList(1, pageSize, defaultSearchParams);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: emailTemplateKeys.lists });
+  };
+  const handleReset = () => {
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: emailTemplateKeys.lists });
   };
 
   const openCreate = () => { setEditingRecord(null); setModalVisible(true); };
-  const openEdit = async (record: EmailTemplate) => {
+  const openEdit = (record: EmailTemplate) => {
     setEditingRecord(record);
     setModalVisible(true);
-    setModalDetailLoading(true);
-    const res = await request.get<EmailTemplate>(`/api/email-templates/${record.id}`);
-    setModalDetailLoading(false);
-    if (res.code === 0) {
-      setEditingRecord(res.data);
-    } else {
-      Toast.error(res.message || '获取信息失败');
-    }
   };
 
   const handleSubmit = async () => {
     let values: Awaited<ReturnType<FormApi['validate']>>;
-    try { values = (await formRef.current?.validate())!; } catch { return; }
-    setSubmitting(true);
-    try {
-      if (editingRecord) {
-        await request.put(`/api/email-templates/${editingRecord.id}`, values);
-        Toast.success('更新成功');
-      } else {
-        await request.post('/api/email-templates', values);
-        Toast.success('创建成功');
-      }
-      setModalVisible(false);
-      void fetchList();
-    } finally {
-      setSubmitting(false);
-    }
+    try { values = (await formRef.current!.validate())!; } catch { throw new Error('validation'); }
+    await saveMutation.mutateAsync({ id: editingRecord?.id, values });
+    Toast.success(editingRecord ? '更新成功' : '创建成功');
+    setModalVisible(false);
+    setEditingRecord(null);
   };
 
   const handleDelete = (id: number) => {
@@ -104,16 +85,13 @@ export default function EmailTemplatesPage() {
       title: '确定要删除该邮件模板吗？',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        await request.delete(`/api/email-templates/${id}`);
+        await deleteMutation.mutateAsync(id);
         Toast.success('删除成功');
-        void fetchList();
       },
     });
   };
 
-  const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null);
-
-  const handleToggleStatus = useCallback(async (tpl: EmailTemplate, newStatus: 'enabled' | 'disabled') => {
+  const handleToggleStatus = async (tpl: EmailTemplate, newStatus: 'enabled' | 'disabled') => {
     if (newStatus === 'disabled') {
       const confirmed = await new Promise<boolean>((resolve) => {
         Modal.confirm({
@@ -127,19 +105,9 @@ export default function EmailTemplatesPage() {
       });
       if (!confirmed) return;
     }
-    setTogglingStatusId(tpl.id);
-    try {
-      const res = await request.put(`/api/email-templates/${tpl.id}`, { status: newStatus });
-      if (res.code === 0) {
-        Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
-        void fetchList();
-      } else {
-        Toast.error(res.message || '操作失败');
-      }
-    } finally {
-      setTogglingStatusId(null);
-    }
-  }, [fetchList]);
+    await toggleStatusMutation.mutateAsync({ id: tpl.id, values: { status: newStatus } });
+    Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
+  };
 
   const columns = [
     { title: '模板名称', dataIndex: 'name', width: 160 },
@@ -186,8 +154,8 @@ export default function EmailTemplatesPage() {
         primary={(
           <>
             <Input prefix={<Search size={14} />} placeholder="搜索模板名称/编码/主题"
-              value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 220 }} />
-            <Select placeholder="状态" value={searchParams.filterStatus} onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as string | undefined })}
+              value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 220 }} />
+            <Select placeholder="状态" value={draftParams.filterStatus} onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as string | undefined })}
               optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))} showClear style={{ width: 110 }} />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
@@ -199,7 +167,7 @@ export default function EmailTemplatesPage() {
         mobilePrimary={(
           <>
             <Input prefix={<Search size={14} />} placeholder="搜索模板名称/编码/主题"
-              value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 220 }} />
+              value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 220 }} />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             {can('system:email-template:create') && (
               <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
@@ -207,7 +175,7 @@ export default function EmailTemplatesPage() {
           </>
         )}
         mobileFilters={(
-          <Select placeholder="状态" value={searchParams.filterStatus} onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as string | undefined })}
+          <Select placeholder="状态" value={draftParams.filterStatus} onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as string | undefined })}
             optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))} showClear style={{ width: 110 }} />
         )}
         filterTitle="邮件模板筛选"
@@ -215,20 +183,20 @@ export default function EmailTemplatesPage() {
         onFilterReset={handleReset}
       />
 
-      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList()} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total, fetchList)}
+      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
+        pagination={buildPagination(total)}
         scroll={{ x: 1200 }} />
 
       <AppModal title={editingRecord ? '编辑邮件模板' : '新增邮件模板'} visible={modalVisible}
-        onOk={handleSubmit} onCancel={() => { setModalVisible(false); setEditingRecord(null); setModalDetailLoading(false); }}
-        confirmLoading={submitting} okButtonProps={{ disabled: modalDetailLoading }} width={720}>
+        onOk={handleSubmit} onCancel={() => { setModalVisible(false); setEditingRecord(null); }}
+        confirmLoading={saveMutation.isPending} okButtonProps={{ disabled: modalDetailLoading }} width={720}>
         <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form
-          key={editingRecord?.id ?? 'new'}
+          key={editing?.id ?? 'new'}
           getFormApi={(api) => { (formRef as { current: FormApi }).current = api; }}
           allowEmpty
           labelPosition="left" labelWidth={120}
-          initValues={editingRecord ?? { status: 'enabled' }}
+          initValues={editing ?? { status: 'enabled' }}
         >
           <Row gutter={16}>
             <Col span={12}>

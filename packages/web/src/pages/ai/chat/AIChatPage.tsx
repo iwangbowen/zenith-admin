@@ -3,6 +3,7 @@ import { AIChatDialogue, AIChatInput, Typography, Button, RadioGroup, Radio, Sel
 import type { Message as AIChatMessage } from '@douyinfe/semi-ui/lib/es/aiChatDialogue';
 import type { RenderActionProps } from '@douyinfe/semi-ui/lib/es/aiChatDialogue/interface';
 import { MessageSquarePlus, Trash2, AlignLeft, AlignJustify, FileText, Settings, MoreHorizontal, Pencil, Pin, PinOff, Archive, ArchiveRestore, Sparkles, Inbox, Download } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { NavListPanel, NavListItem } from '@/components/NavListPanel';
 import AppModal from '@/components/AppModal';
@@ -12,7 +13,16 @@ import UserAiConfigModal from '../components/UserAiConfigModal';
 import { request } from '@/utils/request';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
-import type { AiConversation, AiMessage, AiProviderConfig, UserAiConfig, SystemConfig, AiPromptTemplate } from '@zenith/shared';
+import type { AiConversation, AiMessage, AiProviderConfig, UserAiConfig } from '@zenith/shared';
+import { useAiProviderList } from '@/hooks/queries/ai-providers';
+import { useAiAllowUserCustomKey, useAiUserConfigs, aiUserConfigKeys } from '@/hooks/queries/ai-user-config';
+import { useAvailableAiPrompts } from '@/hooks/queries/ai-prompts';
+import {
+  aiConversationKeys,
+  useAiConversationList,
+  useAiConversationMessages,
+  useCreateAiConversation,
+} from '@/hooks/queries/ai-conversations';
 
 const { Configure } = AIChatInput;
 const { Title } = Typography;
@@ -206,19 +216,16 @@ function PdfFileCard({ filename, size, onClick, url, uploading }: PdfFileCardPro
 }
 
 export default function AIChatPage() {
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const [conversations, setConversations] = useState<AiConversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [generating, setGenerating] = useState(false);
-  const [convsLoading, setConvsLoading] = useState(false);
-  const [msgsLoading, setMsgsLoading] = useState(false);
   const [renameConvId, setRenameConvId] = useState<number | null>(null);
   const [renameText, setRenameText] = useState('');
   const [modelOptions, setModelOptions] = useState<{ value: string; label: string; source: 'system' | 'user' }[]>(DEFAULT_MODEL_OPTIONS);
-  const userConfigsRef = useRef<UserAiConfig[]>([]);
   const [settingsVisible, setSettingsVisible] = useState(false);
-  const [allowUserCustomKey, setAllowUserCustomKey] = useState(false);
   const [align, setAlign] = useState<'leftRight' | 'leftAlign'>('leftRight');
   const [mode, setMode] = useState<'bubble' | 'noBubble' | 'userBubble'>('bubble');
   const configureValuesRef = React.useRef<Record<string, unknown>>({ model: '' });
@@ -227,12 +234,23 @@ export default function AIChatPage() {
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [pdfFileUrl, setPdfFileUrl] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const providersRef = useRef<AiProviderConfig[]>([]);
   const [searchKeyword, setSearchKeyword] = useState('');
+  const [debouncedSearchKeyword, setDebouncedSearchKeyword] = useState('');
   const [showArchived, setShowArchived] = useState(false);
-  const [promptTemplates, setPromptTemplates] = useState<AiPromptTemplate[]>([]);
   const didInitConvRef = useRef(false);
   const [dislikeMsgId, setDislikeMsgId] = useState<number | null>(null);
+  const allowUserCustomKeyQuery = useAiAllowUserCustomKey();
+  const allowUserCustomKey = allowUserCustomKeyQuery.data ?? false;
+  const providersQuery = useAiProviderList({});
+  const userConfigsQuery = useAiUserConfigs(allowUserCustomKey);
+  const promptTemplatesQuery = useAvailableAiPrompts();
+  const promptTemplates = promptTemplatesQuery.data ?? [];
+  const conversationsQuery = useAiConversationList({
+    keyword: debouncedSearchKeyword.trim() || undefined,
+    archived: showArchived ? 'true' : undefined,
+  });
+  const messagesQuery = useAiConversationMessages(activeConvId);
+  const createConversationMutation = useCreateAiConversation();
 
   // Load AI provider configs + user configs as model options
   const loadModelOptions = useCallback((providers: AiProviderConfig[], userConfigs: UserAiConfig[]) => {
@@ -248,68 +266,33 @@ export default function AIChatPage() {
   }, [setConfigureValues]);
 
   useEffect(() => {
-    void (async () => {
-      const [configsRes, providersRes] = await Promise.all([
-        request.get<{ list: SystemConfig[] }>('/api/system-configs?keys=ai_allow_user_custom_key').catch(() => null),
-        request.get<AiProviderConfig[]>('/api/ai/providers').catch(() => ({ data: [] as AiProviderConfig[] })),
-      ]);
-      const allowCustom = configsRes?.data?.list?.find((c) => c.configKey === 'ai_allow_user_custom_key')?.configValue === 'true';
-      setAllowUserCustomKey(allowCustom);
-      const providers = providersRes?.data ?? [];
-      providersRef.current = providers;
-      let userConfigs: UserAiConfig[] = [];
-      if (allowCustom) {
-        userConfigs = await request.get<UserAiConfig[]>('/api/ai/user-configs').then((r) => r.data ?? []).catch(() => []);
-      }
-      userConfigsRef.current = userConfigs;
-      loadModelOptions(providers, userConfigs);
-    })();
-  }, [loadModelOptions]);
+    loadModelOptions(providersQuery.data ?? [], allowUserCustomKey ? (userConfigsQuery.data ?? []) : []);
+  }, [allowUserCustomKey, loadModelOptions, providersQuery.data, userConfigsQuery.data]);
 
-  // 加载会话列表（支持搜索 + 归档筛选）
-  const loadConversations = useCallback((opts?: { keyword?: string; archived?: boolean }) => {
-    const keyword = (opts?.keyword ?? '').trim();
-    const archived = opts?.archived ?? false;
-    const params = new URLSearchParams();
-    if (keyword) params.set('keyword', keyword);
-    if (archived) params.set('archived', 'true');
-    const qs = params.toString();
-    setConvsLoading(true);
-    return request.get<AiConversation[]>(`/api/ai/conversations${qs ? `?${qs}` : ''}`).then((res) => {
-      const list = res.data ?? [];
-      setConversations(list);
-      if (!didInitConvRef.current && list.length > 0) setActiveConvId(list[0].id);
-      didInitConvRef.current = true;
-    }).catch(() => {}).finally(() => setConvsLoading(false));
-  }, []);
-
-  // 搜索 / 归档切换时重新加载（防抖）
   useEffect(() => {
-    const t = setTimeout(() => { void loadConversations({ keyword: searchKeyword, archived: showArchived }); }, 300);
+    const t = setTimeout(() => setDebouncedSearchKeyword(searchKeyword), 300);
     return () => clearTimeout(t);
-  }, [searchKeyword, showArchived, loadConversations]);
+  }, [searchKeyword]);
 
-  // 加载可用提示词模板（角色）
   useEffect(() => {
-    void request.get<AiPromptTemplate[]>('/api/ai/prompt-templates/available')
-      .then((r) => setPromptTemplates(r.data ?? [])).catch(() => {});
-  }, []);
+    const list = conversationsQuery.data;
+    if (!list) return;
+    setConversations(list);
+    if (!didInitConvRef.current && list.length > 0) setActiveConvId(list[0].id);
+    didInitConvRef.current = true;
+  }, [conversationsQuery.data]);
 
-  // Load messages when active conversation changes
   useEffect(() => {
     if (!activeConvId) {
       setMessages([]);
       return;
     }
-    setMsgsLoading(true);
-    let scrollTimer: ReturnType<typeof setTimeout> | undefined;
-    void request.get<AiMessage[]>(`/api/ai/conversations/${activeConvId}/messages`).then((res) => {
-      setMessages((res.data ?? []).map(convertApiMessage));
-      // 打开 / 切换对话后定位到最新一条消息
-      scrollTimer = setTimeout(() => dialogueRef.current?.scrollToBottom(false), 120);
-    }).catch(() => {}).finally(() => setMsgsLoading(false));
-    return () => { if (scrollTimer) clearTimeout(scrollTimer); };
-  }, [activeConvId]);
+    const apiMessages = messagesQuery.data;
+    if (!apiMessages) return;
+    setMessages(apiMessages.map(convertApiMessage));
+    const scrollTimer = setTimeout(() => dialogueRef.current?.scrollToBottom(false), 120);
+    return () => clearTimeout(scrollTimer);
+  }, [activeConvId, messagesQuery.data]);
 
   // AIChatInput 内置上传按钮的拦截处理：选择 PDF 后上传到系统文件服务
   const handleBeforeUpload = useCallback(
@@ -384,8 +367,7 @@ export default function AIChatPage() {
       let convId = activeConvId;
       if (!convId) {
         try {
-          const res = await request.post<AiConversation>('/api/ai/conversations', { title: '新对话' });
-          const newConv = res.data;
+          const newConv = await createConversationMutation.mutateAsync({ title: '新对话' });
           convId = newConv.id;
           setConversations((prev) => [newConv, ...prev]);
           setActiveConvId(convId);
@@ -488,10 +470,7 @@ export default function AIChatPage() {
                   setMessages((prev) =>
                     prev.map((m) => (m.id === assistantMsgId ? { ...m, status: 'completed' } : m))
                   );
-                  // Refresh conversations to get updated title
-                  void request.get<AiConversation[]>('/api/ai/conversations').then((r) => {
-                    setConversations(r.data ?? []);
-                  });
+                  void queryClient.invalidateQueries({ queryKey: aiConversationKeys.lists });
                 } else if (eventType === 'error') {
                   Toast.error((parsed.error as string | undefined) ?? 'AI 服务出错');
                   setMessages((prev) =>
@@ -517,7 +496,7 @@ export default function AIChatPage() {
         setTimeout(() => dialogueRef.current?.scrollToBottom(true), 100);
       }
     },
-    [activeConvId]
+    [activeConvId, createConversationMutation, queryClient]
   );
 
   const handleStopGenerate = useCallback(() => {
@@ -591,8 +570,7 @@ export default function AIChatPage() {
   const handleNewConversation = async () => {
     try {
       setShowArchived(false);
-      const res = await request.post<AiConversation>('/api/ai/conversations', { title: '新对话' });
-      const newConv = res.data;
+      const newConv = await createConversationMutation.mutateAsync({ title: '新对话' });
       setConversations((prev) => [newConv, ...prev]);
       setActiveConvId(newConv.id);
       setMessages([]);
@@ -604,6 +582,7 @@ export default function AIChatPage() {
   const handleDeleteConversation = async (id: number) => {
     try {
       await request.delete(`/api/ai/conversations/${id}`);
+      void queryClient.invalidateQueries({ queryKey: aiConversationKeys.all });
       setConversations((prev) => {
         const remaining = prev.filter((c) => c.id !== id);
         if (activeConvId === id) {
@@ -621,6 +600,7 @@ export default function AIChatPage() {
     if (!renameConvId || !renameText.trim()) return;
     try {
       await request.put(`/api/ai/conversations/${renameConvId}/rename`, { title: renameText.trim() });
+      void queryClient.invalidateQueries({ queryKey: aiConversationKeys.all });
       setConversations((prev) => prev.map((c) => c.id === renameConvId ? { ...c, title: renameText.trim() } : c));
       setRenameConvId(null);
     } catch {
@@ -631,6 +611,7 @@ export default function AIChatPage() {
   const handleTogglePin = async (id: number) => {
     try {
       const res = await request.put<{ isPinned: boolean }>(`/api/ai/conversations/${id}/pin`, {});
+      void queryClient.invalidateQueries({ queryKey: aiConversationKeys.all });
       const pinned = res.data?.isPinned ?? false;
       setConversations((prev) => {
         const updated = prev.map((c) => c.id === id ? { ...c, isPinned: pinned } : c);
@@ -646,6 +627,7 @@ export default function AIChatPage() {
   const handleToggleArchive = async (id: number) => {
     try {
       const res = await request.put<{ isArchived: boolean }>(`/api/ai/conversations/${id}/archive`, {});
+      void queryClient.invalidateQueries({ queryKey: aiConversationKeys.all });
       const archived = res.data?.isArchived ?? false;
       // 归档状态改变后，会话从当前视图（与归档状态相反）移除
       setConversations((prev) => prev.filter((c) => c.id !== id));
@@ -718,7 +700,7 @@ export default function AIChatPage() {
             </div>
           }
           search={{ value: searchKeyword, onChange: setSearchKeyword, placeholder: '搜索对话 / 消息内容' }}
-          loading={convsLoading}
+          loading={conversationsQuery.isFetching}
           emptyText={showArchived ? '暂无已归档对话' : (searchKeyword ? '未找到匹配的对话' : '暂无对话')}
           dataSource={conversations}
           renderItem={(conv) => (
@@ -877,7 +859,7 @@ export default function AIChatPage() {
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
                 {/* 对话内容 */}
                 <div style={{ flex: 1, overflow: 'hidden' }}>
-                  {msgsLoading ? (
+                  {messagesQuery.isFetching ? (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
                       <Spin size="large" />
                     </div>
@@ -1012,10 +994,7 @@ export default function AIChatPage() {
         visible={settingsVisible}
         onClose={() => setSettingsVisible(false)}
         onSaved={() => {
-          void request.get<UserAiConfig[]>('/api/ai/user-configs').then((r) => {
-            userConfigsRef.current = r.data ?? [];
-            loadModelOptions(providersRef.current, r.data ?? []);
-          }).catch(() => {});
+          void queryClient.invalidateQueries({ queryKey: aiUserConfigKeys.all });
         }}
       />
     )}

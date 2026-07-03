@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Form,
@@ -13,16 +14,25 @@ import {
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search, Tags, Trash2 } from 'lucide-react';
-import type { Tag, PaginatedResponse } from '@zenith/shared';
+import type { Tag } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn } from '../../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
+import {
+  tagKeys,
+  useBatchDeleteTags,
+  useDeleteTag,
+  useSaveTag,
+  useTagDetail,
+  useTagGroups,
+  useTagList,
+  useUpdateTagStatus,
+} from '@/hooks/queries/tags';
 
 const { Text } = Typography;
 
@@ -114,71 +124,56 @@ function ColorInput({ value, onChange }: { readonly value?: string; readonly onC
 
 export default function TagsPage() {
   const { hasPermission: can } = usePermission();
+  const queryClient = useQueryClient();
   const { items: statusItems } = useDictItems('common_status');
 
   interface SearchParams { keyword: string; filterStatus: string | undefined; filterGroup: string | undefined; }
   const defaultSearchParams: SearchParams = { keyword: '', filterStatus: undefined, filterGroup: undefined };
-  const [loading, setLoading] = useState(false);
-  const [list, setList] = useState<Tag[]>([]);
-  const [total, setTotal] = useState(0);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
-  const [groups, setGroups] = useState<string[]>([]);
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
 
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editRecord, setEditRecord] = useState<Tag | null>(null);
-  const [modalDetailLoading, setModalDetailLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const formRef = useRef<FormApi>(null);
   const [colorValue, setColorValue] = useState('');
 
-  const fetchGroups = useCallback(async () => {
-    try {
-      const res = await request.get<string[]>('/api/tags/groups');
-      setGroups(res.data ?? []);
-    } catch {
-      // 分组列表加载失败不影响主功能
-    }
-  }, []);
-
-  const fetchList = useCallback(
-    async (p = page, ps = pageSize, params?: SearchParams) => {
-      const { keyword: kw, filterStatus: st, filterGroup: gn } = params ?? searchParamsRef.current;
-      setLoading(true);
-      try {
-        const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-        if (kw) query.set('keyword', kw);
-        if (st) query.set('status', st);
-        if (gn) query.set('groupName', gn);
-        const res = await request.get<PaginatedResponse<Tag>>(`/api/tags?${query}`);
-        setList(res.data?.list ?? []);
-        setTotal(res.data?.total ?? 0);
-        setPage(res.data?.page ?? p);
-        setPageSize(res.data?.pageSize ?? ps);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [page, pageSize],
-  );
+  const listQuery = useTagList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    status: submittedParams.filterStatus || undefined,
+    groupName: submittedParams.filterGroup || undefined,
+  });
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const groupsQuery = useTagGroups();
+  const detailQuery = useTagDetail(editRecord?.id, modalVisible);
+  const editing = editRecord ? (detailQuery.data ?? editRecord) : null;
+  const modalDetailLoading = !!editRecord && detailQuery.isFetching;
+  const saveMutation = useSaveTag();
+  const deleteMutation = useDeleteTag();
+  const batchDeleteMutation = useBatchDeleteTags();
+  const toggleStatusMutation = useUpdateTagStatus();
+  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
 
   useEffect(() => {
-    void fetchList(1);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (modalVisible && editing) setColorValue(editing.color ?? '');
+  }, [modalVisible, editing]);
 
-  useEffect(() => { void fetchGroups(); }, [fetchGroups]);
-
-  const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
+  const handleSearch = () => {
+    setPage(1);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: tagKeys.lists });
+  };
 
   const handleReset = () => {
-    setSearchParams(defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
     setPage(1);
-    void fetchList(1, pageSize, defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: tagKeys.lists });
   };
 
   const openCreate = () => {
@@ -187,19 +182,10 @@ export default function TagsPage() {
     setModalVisible(true);
   };
 
-  const openEdit = async (record: Tag) => {
+  const openEdit = (record: Tag) => {
     setEditRecord(record);
     setColorValue(record.color ?? '');
     setModalVisible(true);
-    setModalDetailLoading(true);
-    const res = await request.get<Tag>(`/api/tags/${record.id}`);
-    setModalDetailLoading(false);
-    if (res.code === 0 && res.data) {
-      setEditRecord(res.data);
-      setColorValue(res.data.color ?? '');
-    } else {
-      Toast.error(res.message || '获取信息失败');
-    }
   };
 
   const handleSubmit = async () => {
@@ -209,25 +195,10 @@ export default function TagsPage() {
     } catch {
       throw new Error('validation');
     }
-    setSubmitting(true);
-    try {
-      const payload = { ...values, color: colorValue || null };
-      if (editRecord) {
-        await request.put(`/api/tags/${editRecord.id}`, payload);
-        Toast.success('更新成功');
-      } else {
-        await request.post('/api/tags', payload);
-        Toast.success('创建成功');
-      }
-      setModalVisible(false);
-      void fetchList();
-      void fetchGroups();
-    } catch (err: unknown) {
-      const msg = (err as { message?: string })?.message;
-      if (msg) Toast.error(msg);
-    } finally {
-      setSubmitting(false);
-    }
+    const payload = { ...values, color: colorValue || null };
+    await saveMutation.mutateAsync({ id: editRecord?.id, values: payload });
+    Toast.success(editRecord ? '更新成功' : '创建成功');
+    setModalVisible(false);
   };
 
   const handleDelete = (id: number) => {
@@ -235,10 +206,9 @@ export default function TagsPage() {
       title: '确定要删除该标签吗？',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        await request.delete(`/api/tags/${id}`);
+        await deleteMutation.mutateAsync(id);
         Toast.success('删除成功');
         setSelectedRowKeys(selectedRowKeys.filter((k) => k !== id));
-        void fetchList();
       },
     });
   };
@@ -250,17 +220,14 @@ export default function TagsPage() {
       content: '删除后无法恢复，请谨慎操作。',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        await request.delete('/api/tags/batch', { ids: selectedRowKeys });
+        await batchDeleteMutation.mutateAsync(selectedRowKeys);
         Toast.success(`已删除 ${selectedRowKeys.length} 条标签`);
         setSelectedRowKeys([]);
-        void fetchList();
       },
     });
   };
 
-  const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null);
-
-  const handleToggleStatus = useCallback(async (tag: Tag, newStatus: 'enabled' | 'disabled') => {
+  const handleToggleStatus = async (tag: Tag, newStatus: 'enabled' | 'disabled') => {
     if (newStatus === 'disabled') {
       const confirmed = await new Promise<boolean>((resolve) => {
         Modal.confirm({
@@ -274,19 +241,9 @@ export default function TagsPage() {
       });
       if (!confirmed) return;
     }
-    setTogglingStatusId(tag.id);
-    try {
-      const res = await request.put(`/api/tags/${tag.id}`, { status: newStatus });
-      if (res.code === 0) {
-        Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
-        void fetchList();
-      } else {
-        Toast.error(res.message || '操作失败');
-      }
-    } finally {
-      setTogglingStatusId(null);
-    }
-  }, [fetchList]);
+    await toggleStatusMutation.mutateAsync({ id: tag.id, status: newStatus });
+    Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
+  };
 
   const columns = [
     {
@@ -352,7 +309,7 @@ export default function TagsPage() {
     }),
   ];
 
-  const groupOptions = groups.map((g) => ({ label: g, value: g }));
+  const groupOptions = (groupsQuery.data ?? []).map((g) => ({ label: g, value: g }));
 
   return (
     <div className="page-container">
@@ -362,24 +319,24 @@ export default function TagsPage() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索标签名称或描述"
-              value={searchParams.keyword}
-              onChange={(v) => setSearchParams({ ...searchParams, keyword: v })}
+              value={draftParams.keyword}
+              onChange={(v) => setDraftParams({ ...draftParams, keyword: v })}
               onEnterPress={handleSearch}
               showClear
               style={{ width: 200 }}
             />
             <Select
               placeholder="所属分组"
-              value={searchParams.filterGroup}
-              onChange={(v) => setSearchParams({ ...searchParams, filterGroup: v as string | undefined })}
+              value={draftParams.filterGroup}
+              onChange={(v) => setDraftParams({ ...draftParams, filterGroup: v as string | undefined })}
               optionList={groupOptions}
               showClear
               style={{ width: 160 }}
             />
             <Select
               placeholder="状态"
-              value={searchParams.filterStatus}
-              onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as string | undefined })}
+              value={draftParams.filterStatus}
+              onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as string | undefined })}
               optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))}
               showClear
               style={{ width: 100 }}
@@ -405,8 +362,8 @@ export default function TagsPage() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索标签名称或描述"
-              value={searchParams.keyword}
-              onChange={(v) => setSearchParams({ ...searchParams, keyword: v })}
+              value={draftParams.keyword}
+              onChange={(v) => setDraftParams({ ...draftParams, keyword: v })}
               onEnterPress={handleSearch}
               showClear
               style={{ width: 200 }}
@@ -421,16 +378,16 @@ export default function TagsPage() {
           <>
             <Select
               placeholder="所属分组"
-              value={searchParams.filterGroup}
-              onChange={(v) => setSearchParams({ ...searchParams, filterGroup: v as string | undefined })}
+              value={draftParams.filterGroup}
+              onChange={(v) => setDraftParams({ ...draftParams, filterGroup: v as string | undefined })}
               optionList={groupOptions}
               showClear
               style={{ width: 160 }}
             />
             <Select
               placeholder="状态"
-              value={searchParams.filterStatus}
-              onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as string | undefined })}
+              value={draftParams.filterStatus}
+              onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as string | undefined })}
               optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))}
               showClear
               style={{ width: 100 }}
@@ -450,9 +407,9 @@ export default function TagsPage() {
 
       <ConfigurableTable
         bordered
-        loading={loading}
-        onRefresh={() => void fetchList()}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         columns={columns}
         dataSource={list}
         rowKey="id"
@@ -465,16 +422,16 @@ export default function TagsPage() {
               }
             : undefined
         }
-        pagination={buildPagination(total, fetchList)}
+        pagination={buildPagination(total)}
         scroll={{ x: 900 }}
       />
 
       <AppModal
-        title={editRecord ? '编辑标签' : '新增标签'}
+        title={editing ? '编辑标签' : '新增标签'}
         visible={modalVisible}
         onOk={handleSubmit}
-        onCancel={() => { setModalVisible(false); setEditRecord(null); setModalDetailLoading(false); }}
-        confirmLoading={submitting}
+        onCancel={() => { setModalVisible(false); setEditRecord(null); }}
+        confirmLoading={saveMutation.isPending}
         okButtonProps={{ disabled: modalDetailLoading }}
         afterClose={() => { setColorValue(''); }}
         width={520}
@@ -490,13 +447,13 @@ export default function TagsPage() {
           labelPosition="left"
           labelWidth={90}
           initValues={
-            editRecord
+            editing
               ? {
-                  name: editRecord.name,
-                  groupName: editRecord.groupName ?? undefined,
-                  description: editRecord.description ?? undefined,
-                  status: editRecord.status,
-                  sortOrder: editRecord.sortOrder,
+                  name: editing.name,
+                  groupName: editing.groupName ?? undefined,
+                  description: editing.description ?? undefined,
+                  status: editing.status,
+                  sortOrder: editing.sortOrder,
                 }
               : { status: 'enabled', sortOrder: 0 }
           }

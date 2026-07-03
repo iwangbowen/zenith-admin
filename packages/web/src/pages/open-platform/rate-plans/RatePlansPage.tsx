@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Tag, Modal, Form, Toast, Typography, Select, Row, Col } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Search } from 'lucide-react';
-import type { RatePlan, PaginatedResponse } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { RatePlan } from '@zenith/shared';
 import { createdAtColumn } from '@/utils/table-columns';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
@@ -12,6 +12,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
+import { openPlatformKeys, useDeleteRatePlan, useRatePlanList, useSaveRatePlan } from '@/hooks/queries/open-platform';
 
 const { Text } = Typography;
 
@@ -35,55 +36,38 @@ type FormValues = {
 
 export default function RatePlansPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const canManage = hasPermission('open:rate-plan:manage');
   const formApi = useRef<FormApi | null>(null);
 
   interface SearchParams { keyword: string; status?: 'enabled' | 'disabled' }
   const defaultSearchParams: SearchParams = { keyword: '', status: undefined };
-  const [data, setData] = useState<PaginatedResponse<RatePlan> | null>(null);
-  const [loading, setLoading] = useState(false);
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchRef = useRef<SearchParams>(defaultSearchParams);
-  searchRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<RatePlan | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  const fetchData = useCallback(
-    async (p = page, ps = pageSize, params?: SearchParams) => {
-      const sp = params ?? searchRef.current;
-      setLoading(true);
-      try {
-        const q: Record<string, string> = { page: String(p), pageSize: String(ps) };
-        if (sp.keyword) q.keyword = sp.keyword;
-        if (sp.status) q.status = sp.status;
-        const res = await request.get<PaginatedResponse<RatePlan>>(`/api/rate-plans?${new URLSearchParams(q)}`);
-        if (res.code === 0) {
-          setData(res.data);
-          setPage(res.data.page);
-        }
-      } finally {
-        setLoading(false);
-      }
-    },
-    [page, pageSize, setPage],
-  );
-
-  useEffect(() => {
-    void fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const listQuery = useRatePlanList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    status: submittedParams.status,
+  });
+  const data = listQuery.data ?? null;
+  const saveMutation = useSaveRatePlan();
+  const deleteMutation = useDeleteRatePlan();
 
   function handleSearch() {
     setPage(1);
-    void fetchData(1, pageSize);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: openPlatformKeys.ratePlans.lists });
   }
   function handleReset() {
-    setSearchParams(defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
     setPage(1);
-    void fetchData(1, pageSize, defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: openPlatformKeys.ratePlans.lists });
   }
 
   function openCreate() {
@@ -130,29 +114,14 @@ export default function RatePlansPage() {
       throw new Error('validation');
     }
     if (!values) throw new Error('validation');
-    setSubmitting(true);
-    try {
-      const res = editing
-        ? await request.put(`/api/rate-plans/${editing.id}`, values)
-        : await request.post('/api/rate-plans', values);
-      if (res.code === 0) {
-        Toast.success(editing ? '更新成功' : '创建成功');
-        closeModal();
-        void fetchData();
-      } else {
-        throw new Error(res.message);
-      }
-    } finally {
-      setSubmitting(false);
-    }
+    await saveMutation.mutateAsync({ id: editing?.id, values });
+    Toast.success(editing ? '更新成功' : '创建成功');
+    closeModal();
   }
 
   async function handleDelete(id: number) {
-    const res = await request.delete(`/api/rate-plans/${id}`);
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      void fetchData();
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   }
 
   const columns: ColumnProps<RatePlan>[] = [
@@ -211,16 +180,16 @@ export default function RatePlansPage() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索套餐编码 / 名称"
-              value={searchParams.keyword}
-              onChange={(v) => setSearchParams({ ...searchParams, keyword: v })}
+              value={draftParams.keyword}
+              onChange={(v) => setDraftParams({ ...draftParams, keyword: v })}
               onEnterPress={handleSearch}
               showClear
               style={{ width: 220 }}
             />
             <Select
               placeholder="状态"
-              value={searchParams.status}
-              onChange={(v) => setSearchParams({ ...searchParams, status: v as 'enabled' | 'disabled' })}
+              value={draftParams.status}
+              onChange={(v) => setDraftParams({ ...draftParams, status: v as 'enabled' | 'disabled' })}
               optionList={STATUS_OPTIONS}
               showClear
               style={{ width: 110 }}
@@ -235,8 +204,8 @@ export default function RatePlansPage() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索套餐"
-              value={searchParams.keyword}
-              onChange={(v) => setSearchParams({ ...searchParams, keyword: v })}
+              value={draftParams.keyword}
+              onChange={(v) => setDraftParams({ ...draftParams, keyword: v })}
               onEnterPress={handleSearch}
               showClear
               style={{ width: 200 }}
@@ -253,13 +222,13 @@ export default function RatePlansPage() {
         bordered
         columns={columns}
         dataSource={data?.list ?? []}
-        loading={loading}
-        onRefresh={fetchData}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         rowKey="id"
         size="small"
         empty="暂无数据"
-        pagination={buildPagination(data?.total ?? 0, fetchData)}
+        pagination={buildPagination(data?.total ?? 0)}
       />
 
       <AppModal
@@ -267,7 +236,7 @@ export default function RatePlansPage() {
         visible={modalVisible}
         onOk={handleModalOk}
         onCancel={closeModal}
-        okButtonProps={{ loading: submitting }}
+        okButtonProps={{ loading: saveMutation.isPending }}
         width={660}
         closeOnEsc
       >

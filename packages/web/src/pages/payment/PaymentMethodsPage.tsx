@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Switch, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -7,62 +8,45 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
-import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_METHOD_LABELS } from '@zenith/shared';
 import type { PaymentChannel, PaymentMethod, PaymentMethodConfig } from '@zenith/shared';
+import { paymentMethodKeys, usePaymentMethodList, useSavePaymentMethod } from '@/hooks/queries/payment-methods';
 
 interface MethodFormValues { label: string; icon?: string; sort?: number; enabled?: boolean; }
 
 export default function PaymentMethodsPage() {
   const { hasPermission } = usePermission();
   const canUpdate = hasPermission('payment:method:update');
+  const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
-  const [list, setList] = useState<PaymentMethodConfig[]>([]);
-  const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState<PaymentMethodConfig | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
-
-  const fetchList = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await request.get<PaymentMethodConfig[]>('/api/payment/methods');
-      if (res.code === 0) setList(res.data);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { void fetchList(); }, [fetchList]);
+  const listQuery = usePaymentMethodList();
+  const list = listQuery.data ?? [];
+  const saveMutation = useSavePaymentMethod();
+  const toggleMutation = useSavePaymentMethod();
+  const togglingId = toggleMutation.isPending ? (toggleMutation.variables?.id ?? null) : null;
 
   function openEdit(record: PaymentMethodConfig) { setEditing(record); }
   function closeModal() { setEditing(null); }
 
   function handleToggle(record: PaymentMethodConfig, checked: boolean) {
-    setTogglingIds((prev) => new Set(prev).add(record.id));
-    request
-      .put<PaymentMethodConfig>(`/api/payment/methods/${record.id}`, { enabled: checked })
-      .then((res) => { if (res.code === 0) { Toast.success(checked ? '已启用' : '已停用'); void fetchList(); } })
-      .finally(() => setTogglingIds((prev) => { const s = new Set(prev); s.delete(record.id); return s; }));
+    toggleMutation.mutate(
+      { id: record.id, values: { enabled: checked } },
+      { onSuccess: () => Toast.success(checked ? '已启用' : '已停用') },
+    );
   }
 
   async function handleOk() {
     let values: MethodFormValues;
     try { values = (await formApi.current?.validate()) as MethodFormValues; } catch { throw new Error('validation'); }
     if (!editing) return;
-    setSubmitting(true);
-    try {
-      const res = await request.put<PaymentMethodConfig>(`/api/payment/methods/${editing.id}`, {
-        label: values.label,
-        icon: values.icon || undefined,
-        sort: values.sort ?? 0,
-      });
-      if (res.code === 0) { Toast.success('更新成功'); closeModal(); void fetchList(); }
-      else throw new Error(res.message);
-    } finally {
-      setSubmitting(false);
-    }
+    await saveMutation.mutateAsync({
+      id: editing.id,
+      values: { label: values.label, icon: values.icon || undefined, sort: values.sort ?? 0 },
+    });
+    Toast.success('更新成功');
+    closeModal();
   }
 
   const columns: ColumnProps<PaymentMethodConfig>[] = [
@@ -74,7 +58,7 @@ export default function PaymentMethodsPage() {
     {
       title: '状态', dataIndex: 'enabled', width: 90, fixed: 'right',
       render: (_: unknown, r: PaymentMethodConfig) => (
-        <Switch checked={r.enabled} loading={togglingIds.has(r.id)} disabled={!canUpdate} size="small" onChange={(c) => handleToggle(r, c)} />
+        <Switch checked={r.enabled} loading={togglingId === r.id} disabled={!canUpdate} size="small" onChange={(c) => handleToggle(r, c)} />
       ),
     },
     createOperationColumn<PaymentMethodConfig>({
@@ -90,7 +74,7 @@ export default function PaymentMethodsPage() {
   ];
 
   const renderRefreshButton = () => (
-    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => void fetchList()}>刷新</Button>
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { void queryClient.invalidateQueries({ queryKey: paymentMethodKeys.lists }); }}>刷新</Button>
   );
 
   return (
@@ -98,11 +82,11 @@ export default function PaymentMethodsPage() {
       <SearchToolbar actions={renderRefreshButton()} mobileActions={renderRefreshButton()} />
 
       <ConfigurableTable
-        bordered columns={columns} dataSource={list} loading={loading} rowKey="id" size="small" empty="暂无数据"
-        onRefresh={() => void fetchList()} refreshLoading={loading} pagination={false}
+        bordered columns={columns} dataSource={list} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
+        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={false}
       />
 
-      <AppModal title="编辑支付方式" visible={!!editing} onOk={handleOk} onCancel={closeModal} okButtonProps={{ loading: submitting }} width={480} closeOnEsc>
+      <AppModal title="编辑支付方式" visible={!!editing} onOk={handleOk} onCancel={closeModal} okButtonProps={{ loading: saveMutation.isPending }} width={480} closeOnEsc>
         {editing && (
           <Form key={editing.id} getFormApi={(api) => { formApi.current = api; }} initValues={{ label: editing.label, icon: editing.icon ?? '', sort: editing.sort }} labelPosition="left" labelWidth={90}>
             <Form.Input field="label" label="展示名称" rules={[{ required: true, message: '名称不能为空' }]} />

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Tag, Space, Modal, Toast, Spin, Typography, Dropdown } from '@douyinfe/semi-ui';
 import { buildSearchMatchMap, findMatchRanges } from './logFilesSearch';
 import { RefreshCw, FileText, Activity, StopCircle, Download, Trash2, Search, ListOrdered, MoreHorizontal } from 'lucide-react';
@@ -10,41 +11,31 @@ import { formatFileSize } from '@/utils/file-utils';
 import { usePermission } from '@/hooks/usePermission';
 import { config } from '@/config';
 import { TOKEN_KEY } from '@zenith/shared';
+import { logFileKeys, type LogFile, useDeleteLogFile, useLogFileContent, useLogFiles } from '@/hooks/queries/log-files';
 
-interface LogFile {
-  name: string;
-  size: number;
-  modifiedAt: string;
-  isGzip: boolean;
-}
+const EMPTY_LOG_FILES: LogFile[] = [];
 
 export default function LogFilesPage() {
   const { hasPermission } = usePermission();
-  const [files, setFiles] = useState<LogFile[]>([]);
+  const queryClient = useQueryClient();
   const [keyword, setKeyword] = useState('');
   const [contentKeyword, setContentKeyword] = useState('');
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
-  const [listLoading, setListLoading] = useState(false);
   const [selected, setSelected] = useState<LogFile | null>(null);
   const [lines, setLines] = useState<string[]>([]);
-  const [contentLoading, setContentLoading] = useState(false);
   const [tailing, setTailing] = useState(false);
   const [showLineNumbers, setShowLineNumbers] = useState(true);
   const tailAbortRef = useRef<AbortController | null>(null);
   const preRef = useRef<HTMLPreElement | null>(null);
   const lineRefs = useRef<Array<HTMLSpanElement | null>>([]);
+  const filesQuery = useLogFiles();
+  const files = filesQuery.data ?? EMPTY_LOG_FILES;
+  const contentQuery = useLogFileContent(selected?.name, { lines: 5000 }, !!selected && !tailing);
+  const deleteMutation = useDeleteLogFile();
 
-  const fetchFiles = useCallback(async () => {
-    setListLoading(true);
-    try {
-      const res = await request.get<LogFile[]>('/api/log-files');
-      if (res.code === 0) setFiles(res.data ?? []);
-    } finally {
-      setListLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { fetchFiles(); }, [fetchFiles]);
+  useEffect(() => {
+    if (!tailing && contentQuery.data) setLines(contentQuery.data.lines ?? []);
+  }, [contentQuery.data, tailing]);
 
   const filteredFiles = useMemo(() => {
     const normalizedKeyword = keyword.trim().toLowerCase();
@@ -59,18 +50,6 @@ export default function LogFilesPage() {
     }
   }, [lines]);
 
-  const loadContent = useCallback(async (file: LogFile) => {
-    setLines([]);
-    setContentLoading(true);
-    try {
-      const query = new URLSearchParams({ lines: '5000' });
-      const res = await request.get<{ lines: string[] }>(`/api/log-files/${encodeURIComponent(file.name)}/content?${query.toString()}`);
-      if (res.code === 0) setLines(res.data.lines ?? []);
-    } finally {
-      setContentLoading(false);
-    }
-  }, []);
-
   const stopTail = useCallback(() => {
     tailAbortRef.current?.abort();
     tailAbortRef.current = null;
@@ -81,9 +60,9 @@ export default function LogFilesPage() {
     if (selected?.name === file.name) return;
     stopTail();
     setSelected(file);
+    setLines([]);
     setContentKeyword('');
     setActiveMatchIndex(0);
-    void loadContent(file);
   };
 
   const normalizedContentKeyword = contentKeyword.trim();
@@ -121,9 +100,10 @@ export default function LogFilesPage() {
     setActiveMatchIndex(0);
     stopTail();
     if (selected) {
-      void loadContent(selected);
+      void queryClient.invalidateQueries({ queryKey: logFileKeys.content(selected.name, { lines: 5000 }) });
+      void contentQuery.refetch();
     }
-  }, [loadContent, selected, stopTail]);
+  }, [contentQuery, queryClient, selected, stopTail]);
 
   const toggleTail = async () => {
     if (tailing) { stopTail(); return; }
@@ -219,15 +199,12 @@ export default function LogFilesPage() {
       content: '删除后无法恢复，请谨慎操作。',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete(`/api/log-files/${encodeURIComponent(file.name)}`);
-        if (res.code === 0) {
-          Toast.success('删除成功');
-          if (selected?.name === file.name) {
-            setSelected(null);
-            setLines([]);
-            stopTail();
-          }
-          void fetchFiles();
+        await deleteMutation.mutateAsync(file.name);
+        Toast.success('删除成功');
+        if (selected?.name === file.name) {
+          setSelected(null);
+          setLines([]);
+          stopTail();
         }
       },
     });
@@ -249,8 +226,8 @@ export default function LogFilesPage() {
                 icon={<RefreshCw size={13} />}
                 size="small"
                 theme="borderless"
-                loading={listLoading}
-                onClick={() => void fetchFiles()}
+                loading={filesQuery.isFetching}
+                onClick={() => void filesQuery.refetch()}
               />
             }
             search={{
@@ -258,7 +235,7 @@ export default function LogFilesPage() {
               onChange: (value) => setKeyword(value),
               placeholder: '搜索文件名',
             }}
-            loading={listLoading}
+            loading={filesQuery.isFetching}
             emptyText={files.length === 0 ? '暂无日志文件' : '未找到匹配的日志文件'}
             dataSource={filteredFiles}
             renderItem={(file) => {
@@ -405,7 +382,10 @@ export default function LogFilesPage() {
                   </Button>
                   {hasPermission('system:log:files') && (
                     <Button size="small" theme="borderless" icon={<RefreshCw size={13} />}
-                      onClick={() => void loadContent(selected)}>刷新</Button>
+                      onClick={() => {
+                        void queryClient.invalidateQueries({ queryKey: logFileKeys.content(selected.name, { lines: 5000 }) });
+                        void contentQuery.refetch();
+                      }}>刷新</Button>
                   )}
                   {hasPermission('system:log:files:download') && (
                     <Button size="small" theme="borderless" icon={<Download size={13} />}
@@ -420,7 +400,7 @@ export default function LogFilesPage() {
             </div>
 
             {/* 日志内容 */}
-            {contentLoading ? (
+            {contentQuery.isFetching && !tailing ? (
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Spin size="large" />
               </div>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Button,
   Descriptions,
@@ -15,7 +15,6 @@ import {
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Lock, Search, RotateCcw, Upload } from 'lucide-react';
-import type { PaginatedResponse, SslCertificate } from '@zenith/shared';
 import AppModal from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -25,10 +24,16 @@ import { usePermission } from '@/hooks/usePermission';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { renderEllipsis } from '@/utils/table-columns';
-
-interface SslCertificateRecord extends SslCertificate {
-  daysRemaining: number | null;
-}
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  sslCertificateKeys,
+  useDeleteSslCertificate,
+  useGenerateSslCertificate,
+  useSslCertificateDetail,
+  useSslCertificateList,
+  useUploadSslCertificate,
+  type SslCertificateRecord,
+} from '@/hooks/queries/ssl-certificates';
 
 interface SearchParams {
   keyword: string;
@@ -65,75 +70,49 @@ function renderDaysRemaining(daysRemaining: number | null) {
 
 export default function SslCertificatesPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const { page, pageSize, setPage, buildPagination } = usePagination();
   const generateFormApi = useRef<FormApi | null>(null);
   const uploadFormApi = useRef<FormApi | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<SslCertificateRecord[]>([]);
-  const [total, setTotal] = useState(0);
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
   const [generateVisible, setGenerateVisible] = useState(false);
   const [uploadVisible, setUploadVisible] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [detailVisible, setDetailVisible] = useState(false);
-  const [detailLoading, setDetailLoading] = useState(false);
   const [detail, setDetail] = useState<SslCertificateRecord | null>(null);
+  const listQuery = useSslCertificateList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword.trim() || undefined,
+    type: submittedParams.type || undefined,
+  });
+  const data = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const detailQuery = useSslCertificateDetail(detail?.id, detailVisible);
+  const displayDetail = detail ? (detailQuery.data ?? detail) : null;
+  const generateMutation = useGenerateSslCertificate();
+  const uploadMutation = useUploadSslCertificate();
+  const deleteMutation = useDeleteSslCertificate();
 
   const canCreate = hasPermission('system:ssl:create');
   const canDelete = hasPermission('system:ssl:delete');
 
-  const fetchData = useCallback(async (p = page, ps = pageSize, override?: SearchParams) => {
-    const params = override ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-      if (params.keyword.trim()) {
-        query.set('keyword', params.keyword.trim());
-      }
-      if (params.type) {
-        query.set('type', params.type);
-      }
-      const res = await request.get<PaginatedResponse<SslCertificateRecord>>(`/api/ssl-certificates?${query.toString()}`);
-      if (res.code === 0 && res.data) {
-        setData(res.data.list);
-        setTotal(res.data.total);
-        setPage(p);
-      }
-    } finally {
-      setLoading(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize]);
-
-  useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
-
   const handleSearch = () => {
     setPage(1);
-    void fetchData(1);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: sslCertificateKeys.lists });
   };
 
   const handleReset = () => {
-    setSearchParams(defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
     setPage(1);
-    void fetchData(1, pageSize, defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: sslCertificateKeys.lists });
   };
 
-  const openDetail = async (record: SslCertificateRecord) => {
+  const openDetail = (record: SslCertificateRecord) => {
     setDetailVisible(true);
     setDetail(record);
-    setDetailLoading(true);
-    try {
-      const res = await request.get<SslCertificateRecord>(`/api/ssl-certificates/${record.id}`);
-      if (res.code === 0 && res.data) {
-        setDetail(res.data);
-      }
-    } finally {
-      setDetailLoading(false);
-    }
   };
 
   const handleGenerate = async () => {
@@ -143,18 +122,10 @@ export default function SslCertificatesPage() {
     } catch {
       throw new Error('validation');
     }
-    setSubmitting(true);
-    try {
-      const res = await request.post('/api/ssl-certificates/generate', values);
-      if (res.code === 0) {
-        Toast.success('证书已生成');
-        setGenerateVisible(false);
-        generateFormApi.current?.reset();
-        void fetchData(1);
-      }
-    } finally {
-      setSubmitting(false);
-    }
+    await generateMutation.mutateAsync(values);
+    Toast.success('证书已生成');
+    setGenerateVisible(false);
+    generateFormApi.current?.reset();
   };
 
   const handleUpload = async () => {
@@ -164,36 +135,25 @@ export default function SslCertificatesPage() {
     } catch {
       throw new Error('validation');
     }
-    setSubmitting(true);
-    try {
-      const res = await request.post('/api/ssl-certificates/upload', values);
-      if (res.code === 0) {
-        Toast.success('证书已上传');
-        setUploadVisible(false);
-        uploadFormApi.current?.reset();
-        void fetchData(1);
-      }
-    } finally {
-      setSubmitting(false);
-    }
+    await uploadMutation.mutateAsync(values);
+    Toast.success('证书已上传');
+    setUploadVisible(false);
+    uploadFormApi.current?.reset();
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete(`/api/ssl-certificates/${id}`);
-    if (res.code === 0) {
-      Toast.success('证书已删除');
-      if (detail?.id === id) {
-        setDetailVisible(false);
-        setDetail(null);
-      }
-      void fetchData();
+    await deleteMutation.mutateAsync(id);
+    Toast.success('证书已删除');
+    if (detail?.id === id) {
+      setDetailVisible(false);
+      setDetail(null);
     }
   };
 
   const handleDownload = async (kind: 'cert' | 'key') => {
-    if (!detail) return;
+    if (!displayDetail) return;
     try {
-      await request.download(`/api/ssl-certificates/${detail.id}/download?kind=${kind}`, `${detail.domain}-${kind}.pem`);
+      await request.download(`/api/ssl-certificates/${displayDetail.id}/download?kind=${kind}`, `${displayDetail.domain}-${kind}.pem`);
       Toast.success(kind === 'cert' ? '证书下载成功' : '私钥下载成功');
     } catch {
       Toast.error('下载失败');
@@ -266,16 +226,16 @@ export default function SslCertificatesPage() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索名称或域名"
-              value={searchParams.keyword}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
+              value={draftParams.keyword}
+              onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))}
               onEnterPress={handleSearch}
               showClear
               style={{ width: 240 }}
             />
             <Select
               placeholder="证书类型"
-              value={searchParams.type || undefined}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, type: (value as string) ?? '' }))}
+              value={draftParams.type || undefined}
+              onChange={(value) => setDraftParams((prev) => ({ ...prev, type: (value as string) ?? '' }))}
               optionList={[
                 { value: '', label: '全部类型' },
                 { value: 'self_signed', label: '自签名' },
@@ -295,8 +255,8 @@ export default function SslCertificatesPage() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索名称或域名"
-              value={searchParams.keyword}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
+              value={draftParams.keyword}
+              onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))}
               onEnterPress={handleSearch}
               showClear
               style={{ width: 240 }}
@@ -309,8 +269,8 @@ export default function SslCertificatesPage() {
         mobileFilters={(
           <Select
             placeholder="证书类型"
-            value={searchParams.type || undefined}
-            onChange={(value) => setSearchParams((prev) => ({ ...prev, type: (value as string) ?? '' }))}
+            value={draftParams.type || undefined}
+            onChange={(value) => setDraftParams((prev) => ({ ...prev, type: (value as string) ?? '' }))}
             optionList={[
               { value: '', label: '全部类型' },
               { value: 'self_signed', label: '自签名' },
@@ -330,10 +290,10 @@ export default function SslCertificatesPage() {
         rowKey="id"
         columns={columns}
         dataSource={data}
-        loading={loading}
-        onRefresh={() => void fetchData()}
-        refreshLoading={loading}
-        pagination={buildPagination(total, fetchData)}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
+        pagination={buildPagination(total)}
         empty="暂无证书"
       />
 
@@ -342,7 +302,7 @@ export default function SslCertificatesPage() {
         visible={generateVisible}
         onCancel={() => setGenerateVisible(false)}
         onOk={handleGenerate}
-        okButtonProps={{ loading: submitting }}
+        okButtonProps={{ loading: generateMutation.isPending }}
         width={520}
         closeOnEsc
       >
@@ -365,7 +325,7 @@ export default function SslCertificatesPage() {
         visible={uploadVisible}
         onCancel={() => setUploadVisible(false)}
         onOk={handleUpload}
-        okButtonProps={{ loading: submitting }}
+        okButtonProps={{ loading: uploadMutation.isPending }}
         width={660}
         closeOnEsc
       >
@@ -382,13 +342,13 @@ export default function SslCertificatesPage() {
       </AppModal>
 
       <SideSheet
-        title={detail ? `证书详情 · ${detail.name}` : '证书详情'}
+        title={displayDetail ? `证书详情 · ${displayDetail.name}` : '证书详情'}
         visible={detailVisible}
         onCancel={() => setDetailVisible(false)}
         width={720}
       >
-        <Spin spinning={detailLoading}>
-          {detail && (
+        <Spin spinning={detailQuery.isFetching}>
+          {displayDetail && (
             <div style={{ padding: '8px 0 24px' }}>
               <Space style={{ marginBottom: 16 }}>
                 <Button type="primary" onClick={() => void handleDownload('cert')}>下载证书</Button>
@@ -398,22 +358,22 @@ export default function SslCertificatesPage() {
                 row
                 size="small"
                 data={[
-                  { key: '名称', value: detail.name },
-                  { key: '域名', value: detail.domain },
-                  { key: '类型', value: TYPE_LABELS[detail.type] },
-                  { key: '状态', value: <Tag color={STATUS_CONFIG[detail.status].color} size="small">{STATUS_CONFIG[detail.status].label}</Tag> },
-                  { key: '颁发者', value: detail.issuer ?? '—' },
-                  { key: '主题', value: detail.subject ?? '—' },
-                  { key: '生效时间', value: detail.validFrom ? formatDateTime(detail.validFrom) : '—' },
-                  { key: '失效时间', value: detail.validTo ? formatDateTime(detail.validTo) : '—' },
-                  { key: '剩余天数', value: renderDaysRemaining(detail.daysRemaining) },
-                  { key: '序列号', value: detail.serialNumber ?? '—' },
-                  { key: '指纹', value: detail.fingerprint ?? '—' },
-                  { key: '证书路径', value: detail.certPath ?? '—' },
-                  { key: '私钥路径', value: detail.keyPath ?? '—' },
-                  { key: '自动续期', value: detail.autoRenew ? '是' : '否' },
-                  { key: '创建时间', value: formatDateTime(detail.createdAt) },
-                  { key: '更新时间', value: formatDateTime(detail.updatedAt) },
+                  { key: '名称', value: displayDetail.name },
+                  { key: '域名', value: displayDetail.domain },
+                  { key: '类型', value: TYPE_LABELS[displayDetail.type] },
+                  { key: '状态', value: <Tag color={STATUS_CONFIG[displayDetail.status].color} size="small">{STATUS_CONFIG[displayDetail.status].label}</Tag> },
+                  { key: '颁发者', value: displayDetail.issuer ?? '—' },
+                  { key: '主题', value: displayDetail.subject ?? '—' },
+                  { key: '生效时间', value: displayDetail.validFrom ? formatDateTime(displayDetail.validFrom) : '—' },
+                  { key: '失效时间', value: displayDetail.validTo ? formatDateTime(displayDetail.validTo) : '—' },
+                  { key: '剩余天数', value: renderDaysRemaining(displayDetail.daysRemaining) },
+                  { key: '序列号', value: displayDetail.serialNumber ?? '—' },
+                  { key: '指纹', value: displayDetail.fingerprint ?? '—' },
+                  { key: '证书路径', value: displayDetail.certPath ?? '—' },
+                  { key: '私钥路径', value: displayDetail.keyPath ?? '—' },
+                  { key: '自动续期', value: displayDetail.autoRenew ? '是' : '否' },
+                  { key: '创建时间', value: formatDateTime(displayDetail.createdAt) },
+                  { key: '更新时间', value: formatDateTime(displayDetail.updatedAt) },
                 ]}
               />
             </div>

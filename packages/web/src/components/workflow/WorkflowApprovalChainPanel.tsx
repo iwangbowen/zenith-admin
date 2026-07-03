@@ -8,13 +8,14 @@
  * - 通过 `reloadKey` 受控刷新：发起页表单变更（防抖）或点击表头「刷新」时重新预测
  *   （条件分支展开 / 重新解析候选人），刷新期间保留旧链路避免闪烁。
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+/* eslint-disable react-refresh/only-export-components */
+import { useEffect, useMemo } from 'react';
 import { Button, Empty, Select, Spin, Tag, Timeline, Typography } from '@douyinfe/semi-ui';
 import { Clock, Flag, Mail, Send, UserPlus, type LucideIcon } from 'lucide-react';
 import type { WorkflowApproverPreviewNode } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { UserAvatar } from '@/components/UserAvatar';
 import { timelineDot } from '@/components/workflow/timeline-dot';
+import { useWorkflowApprovalPreview } from '@/hooks/queries/workflow-shared';
 
 export type SelectedInitiatorApprovers = Record<string, number[]>;
 
@@ -28,6 +29,7 @@ export interface InitiatorApproverSelectNode {
 type TagColor = 'blue' | 'orange' | 'purple' | 'grey';
 
 const METHOD_LABEL: Record<string, string> = { and: '会签', or: '或签', sequential: '顺序会签', ratio: '比例会签' };
+const EMPTY_NODES: WorkflowApproverPreviewNode[] = [];
 
 /** 预测态各节点类型的圆点图标/颜色 + 状态标签（运行前，统一显示"待…"） */
 const NODE_META: Record<string, { icon: LucideIcon; color: string; status: string; statusColor: TagColor }> = {
@@ -94,63 +96,23 @@ export default function WorkflowApprovalChainPanel({
   highlightMissing = false,
   reloadKey,
 }: Readonly<Props>) {
-  const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState(false);
-  const [nodes, setNodes] = useState<WorkflowApproverPreviewNode[]>([]);
-
-  const load = useCallback(async () => {
-    if (!definitionId) {
-      setNodes([]);
-      onNodesChange?.([]);
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await request.post<WorkflowApproverPreviewNode[]>(
-        `/api/workflows/definitions/${definitionId}/preview`,
-        { formData: getFormData ? getFormData() : null },
-        { silent: true },
-      );
-      if (res.code === 0) {
-        const data = res.data ?? [];
-        setNodes(data);
-        setLoadError(false);
-        const selectNodes: InitiatorApproverSelectNode[] = data
-          .filter((node) => node.selectionRequired)
-          .map((node) => ({
-            nodeKey: node.nodeKey,
-            nodeName: node.nodeName,
-            selectableApprovers: node.selectableApprovers ?? [],
-            selectionRequired: node.selectionRequired ?? false,
-          }));
-        onNodesChange?.(selectNodes);
-      } else {
-        setLoadError(true);
-        setNodes([]);
-        onNodesChange?.([]);
-      }
-    } catch {
-      setLoadError(true);
-      setNodes([]);
-      onNodesChange?.([]);
-    } finally {
-      setLoading(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [definitionId]);
+  const previewQuery = useWorkflowApprovalPreview(definitionId, reloadKey, getFormData);
+  const nodes = previewQuery.data ?? EMPTY_NODES;
+  const selectNodes = useMemo<InitiatorApproverSelectNode[]>(
+    () => nodes
+      .filter((node) => node.selectionRequired)
+      .map((node) => ({
+        nodeKey: node.nodeKey,
+        nodeName: node.nodeName,
+        selectableApprovers: node.selectableApprovers ?? [],
+        selectionRequired: node.selectionRequired ?? false,
+      })),
+    [nodes],
+  );
 
   useEffect(() => {
-    setNodes([]);
-    void load();
-  }, [load]);
-
-  // reloadKey 变化（发起页表单变更防抖 / 手动刷新）：重新预测，但不清空旧链路，避免闪烁
-  const reloadKeyInitRef = useRef(true);
-  useEffect(() => {
-    if (reloadKeyInitRef.current) { reloadKeyInitRef.current = false; return; }
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reloadKey]);
+    onNodesChange?.(selectNodes);
+  }, [onNodesChange, selectNodes]);
 
   if (!definitionId) return null;
 
@@ -229,14 +191,14 @@ export default function WorkflowApprovalChainPanel({
 
   return (
     <div>
-      {loading && nodes.length === 0 ? (
+      {previewQuery.isLoading && nodes.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 24 }}><Spin /></div>
-      ) : loadError ? (
+      ) : previewQuery.isError ? (
         <div style={{ textAlign: 'center', padding: 24 }}>
           <Typography.Text type="tertiary" style={{ display: 'block', marginBottom: 8 }}>
             审批链路预测失败
           </Typography.Text>
-          <Button size="small" onClick={() => void load()}>重试</Button>
+          <Button size="small" onClick={() => void previewQuery.refetch()}>重试</Button>
         </div>
       ) : flowNodes.length === 0 ? (
         <Empty description="该流程无需审批，提交后自动通过" style={{ padding: 24 }} />

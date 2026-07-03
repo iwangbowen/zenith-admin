@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Banner,
   Button,
@@ -21,43 +21,21 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePermission } from '@/hooks/usePermission';
-import { request } from '@/utils/request';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
-
-interface NginxInfo {
-  installed: boolean;
-  version: string | null;
-  configPath: string | null;
-  sitesAvailable: string | null;
-  sitesEnabled: string | null;
-  runningStatus: 'running' | 'stopped' | 'unknown';
-}
-
-interface NginxSite {
-  name: string;
-  enabled: boolean;
-  configPath: string;
-  serverName: string | null;
-  listenPort: number | null;
-  root: string | null;
-  sslEnabled: boolean;
-  createdAt: string | null;
-  updatedAt: string | null;
-}
-
-interface NginxSiteDetail extends NginxSite {
-  content: string;
-}
-
-interface CreateFormValues {
-  name: string;
-  serverName: string;
-  listenPort: number;
-  type: 'static' | 'proxy';
-  root?: string;
-  proxyPass?: string;
-  sslEnabled?: boolean;
-}
+import {
+  nginxSiteKeys,
+  useCreateNginxSite,
+  useNginxSiteAction,
+  useNginxSiteDetail,
+  useNginxSitesOverview,
+  useReloadNginx,
+  useTestNginxConfig,
+  useUpdateNginxSite,
+  type CreateNginxSiteValues,
+  type NginxInfo,
+  type NginxSite,
+} from '@/hooks/queries/nginx-sites';
+import { useQueryClient } from '@tanstack/react-query';
 
 const { Text } = Typography;
 
@@ -66,45 +44,34 @@ const RUNNING_STATUS_TAG: Record<NginxInfo['runningStatus'], { color: 'green' | 
   stopped: { color: 'red', text: '已停止' },
   unknown: { color: 'grey', text: '未知' },
 };
+const EMPTY_SITES: NginxSite[] = [];
 
 export default function NginxSitesPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const canManage = hasPermission('system:nginx:manage');
   const canReload = hasPermission('system:nginx:reload');
-  const [info, setInfo] = useState<NginxInfo | null>(null);
-  const [sites, setSites] = useState<NginxSite[]>([]);
   const [keyword, setKeyword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
   const [createVisible, setCreateVisible] = useState(false);
   const [editorVisible, setEditorVisible] = useState(false);
-  const [editorLoading, setEditorLoading] = useState(false);
-  const [savingEditor, setSavingEditor] = useState(false);
-  const [editorSite, setEditorSite] = useState<NginxSiteDetail | null>(null);
+  const [editorName, setEditorName] = useState<string | undefined>(undefined);
   const [editorContent, setEditorContent] = useState('');
-  const [testLoading, setTestLoading] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; output: string } | null>(null);
-  const [reloadLoading, setReloadLoading] = useState(false);
-  const [submittingCreate, setSubmittingCreate] = useState(false);
-  const createFormApi = useRef<FormApi<CreateFormValues> | null>(null);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [infoRes, sitesRes] = await Promise.all([
-        request.get<NginxInfo>('/api/nginx-sites/info', { silent: true }),
-        request.get<NginxSite[]>('/api/nginx-sites', { silent: true }),
-      ]);
-      if (infoRes.code === 0) setInfo(infoRes.data);
-      if (sitesRes.code === 0) setSites(sitesRes.data ?? []);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const createFormApi = useRef<FormApi<CreateNginxSiteValues> | null>(null);
+  const overviewQuery = useNginxSitesOverview();
+  const detailQuery = useNginxSiteDetail(editorName, editorVisible);
+  const createMutation = useCreateNginxSite();
+  const updateMutation = useUpdateNginxSite();
+  const actionMutation = useNginxSiteAction();
+  const testMutation = useTestNginxConfig();
+  const reloadMutation = useReloadNginx();
+  const info = overviewQuery.data?.info ?? null;
+  const sites = overviewQuery.data?.sites ?? EMPTY_SITES;
+  const editorSite = detailQuery.data ?? null;
 
   useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
+    if (editorVisible && detailQuery.data) setEditorContent(detailQuery.data.content);
+  }, [editorVisible, detailQuery.data]);
 
   const filteredSites = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
@@ -114,102 +81,48 @@ export default function NginxSitesPage() {
 
   const handleReset = () => {
     setKeyword('');
-    void fetchData();
+    void overviewQuery.refetch();
   };
 
-  const openEditor = async (name: string) => {
+  const openEditor = (name: string) => {
     setEditorVisible(true);
-    setEditorLoading(true);
-    setEditorSite(null);
+    setEditorName(name);
     setEditorContent('');
-    try {
-      const res = await request.get<NginxSiteDetail>(`/api/nginx-sites/${encodeURIComponent(name)}`);
-      if (res.code === 0 && res.data) {
-        setEditorSite(res.data);
-        setEditorContent(res.data.content);
-      } else {
-        setEditorVisible(false);
-      }
-    } finally {
-      setEditorLoading(false);
-    }
   };
 
   const handleCreate = async () => {
-    const values = await createFormApi.current?.validate();
-    if (!values) return;
-
-    setSubmittingCreate(true);
+    let values: CreateNginxSiteValues;
     try {
-      const res = await request.post('/api/nginx-sites', {
-        name: values.name,
-        serverName: values.serverName,
-        listenPort: values.listenPort,
-        sslEnabled: !!values.sslEnabled,
-        ...(values.type === 'proxy' ? { proxyPass: values.proxyPass } : { root: values.root }),
-      });
-      if (res.code === 0) {
-        Toast.success('站点已创建');
-        setCreateVisible(false);
-        createFormApi.current?.reset();
-        void fetchData();
-      }
-    } finally {
-      setSubmittingCreate(false);
+      values = await createFormApi.current!.validate();
+    } catch {
+      throw new Error('validation');
     }
+    await createMutation.mutateAsync(values);
+    Toast.success('站点已创建');
+    setCreateVisible(false);
+    createFormApi.current?.reset();
   };
 
   const handleSaveEditor = async () => {
     if (!editorSite) return;
-    setSavingEditor(true);
-    try {
-      const res = await request.put(`/api/nginx-sites/${encodeURIComponent(editorSite.name)}`, { content: editorContent });
-      if (res.code === 0) {
-        Toast.success('配置已保存');
-        setEditorVisible(false);
-        void fetchData();
-      }
-    } finally {
-      setSavingEditor(false);
-    }
+    await updateMutation.mutateAsync({ name: editorSite.name, content: editorContent });
+    Toast.success('配置已保存');
+    setEditorVisible(false);
   };
 
   const handleAction = async (siteName: string, action: 'enable' | 'disable' | 'delete') => {
-    setActionLoading((prev) => ({ ...prev, [siteName]: true }));
-    try {
-      const res = action === 'delete'
-        ? await request.delete(`/api/nginx-sites/${encodeURIComponent(siteName)}`)
-        : await request.post(`/api/nginx-sites/${encodeURIComponent(siteName)}/${action}`, {});
-      if (res.code === 0) {
-        Toast.success(action === 'enable' ? '站点已启用' : action === 'disable' ? '站点已禁用' : '站点已删除');
-        void fetchData();
-      }
-    } finally {
-      setActionLoading((prev) => ({ ...prev, [siteName]: false }));
-    }
+    await actionMutation.mutateAsync({ name: siteName, action });
+    Toast.success(action === 'enable' ? '站点已启用' : action === 'disable' ? '站点已禁用' : '站点已删除');
   };
 
   const handleTest = async () => {
-    setTestLoading(true);
-    try {
-      const res = await request.post<{ success: boolean; output: string }>('/api/nginx-sites/test', {});
-      if (res.code === 0 && res.data) setTestResult(res.data);
-    } finally {
-      setTestLoading(false);
-    }
+    const res = await testMutation.mutateAsync();
+    setTestResult(res);
   };
 
   const handleReload = async () => {
-    setReloadLoading(true);
-    try {
-      const res = await request.post('/api/nginx-sites/reload', {});
-      if (res.code === 0) {
-        Toast.success('Nginx 已重载');
-        void fetchData();
-      }
-    } finally {
-      setReloadLoading(false);
-    }
+    await reloadMutation.mutateAsync();
+    Toast.success('Nginx 已重载');
   };
 
   const columns: ColumnProps<NginxSite>[] = [
@@ -250,12 +163,12 @@ export default function NginxSitesPage() {
         {
           key: 'edit',
           label: '查看/编辑',
-          onClick: () => { void openEditor(record.name); },
+          onClick: () => { openEditor(record.name); },
         },
         {
           key: 'toggle',
           label: record.enabled ? '禁用' : '启用',
-          loading: !!actionLoading[record.name],
+          loading: actionMutation.isPending && actionMutation.variables?.name === record.name,
           hidden: !canManage,
           onClick: () => { void handleAction(record.name, record.enabled ? 'disable' : 'enable'); },
         },
@@ -263,7 +176,7 @@ export default function NginxSitesPage() {
           key: 'delete',
           label: '删除',
           danger: true,
-          loading: !!actionLoading[record.name],
+          loading: actionMutation.isPending && actionMutation.variables?.name === record.name,
           hidden: !canManage,
           onClick: () => {
             Modal.confirm({
@@ -324,29 +237,29 @@ export default function NginxSitesPage() {
         primary={(
           <>
             <Input prefix={<Search size={14} />} placeholder="搜索站点名 / 域名 / 配置路径" value={keyword} onChange={setKeyword} showClear style={{ width: 260 }} />
-            <Button type="primary" icon={<Search size={14} />} onClick={() => void fetchData()}>查询</Button>
+            <Button type="primary" icon={<Search size={14} />} onClick={() => { void queryClient.invalidateQueries({ queryKey: nginxSiteKeys.lists }); }}>查询</Button>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
             {canManage && <Button type="primary" icon={<Plus size={14} />} onClick={() => setCreateVisible(true)}>新增站点</Button>}
           </>
         )}
         actions={(
           <>
-            {canManage && <Button type="primary" theme="light" icon={<CheckCircle size={14} />} loading={testLoading} onClick={() => void handleTest()}>测试配置</Button>}
-            {canReload && <Button type="primary" theme="light" icon={<RefreshCw size={14} />} loading={reloadLoading} onClick={() => void handleReload()}>重载 Nginx</Button>}
+            {canManage && <Button type="primary" theme="light" icon={<CheckCircle size={14} />} loading={testMutation.isPending} onClick={() => void handleTest()}>测试配置</Button>}
+            {canReload && <Button type="primary" theme="light" icon={<RefreshCw size={14} />} loading={reloadMutation.isPending} onClick={() => void handleReload()}>重载 Nginx</Button>}
           </>
         )}
         mobilePrimary={(
           <>
             <Input prefix={<Search size={14} />} placeholder="搜索站点名 / 域名 / 配置路径" value={keyword} onChange={setKeyword} showClear style={{ width: 260 }} />
-            <Button type="primary" icon={<Search size={14} />} onClick={() => void fetchData()}>查询</Button>
+            <Button type="primary" icon={<Search size={14} />} onClick={() => { void queryClient.invalidateQueries({ queryKey: nginxSiteKeys.lists }); }}>查询</Button>
             {canManage && <Button type="primary" icon={<Plus size={14} />} onClick={() => setCreateVisible(true)}>新增站点</Button>}
           </>
         )}
         mobileActions={(
           <>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-            {canManage && <Button type="primary" theme="light" icon={<CheckCircle size={14} />} loading={testLoading} onClick={() => void handleTest()}>测试配置</Button>}
-            {canReload && <Button type="primary" theme="light" icon={<RefreshCw size={14} />} loading={reloadLoading} onClick={() => void handleReload()}>重载 Nginx</Button>}
+            {canManage && <Button type="primary" theme="light" icon={<CheckCircle size={14} />} loading={testMutation.isPending} onClick={() => void handleTest()}>测试配置</Button>}
+            {canReload && <Button type="primary" theme="light" icon={<RefreshCw size={14} />} loading={reloadMutation.isPending} onClick={() => void handleReload()}>重载 Nginx</Button>}
           </>
         )}
         actionTitle="Nginx 操作"
@@ -357,9 +270,9 @@ export default function NginxSitesPage() {
         rowKey="name"
         dataSource={filteredSites}
         columns={columns}
-        loading={loading}
-        onRefresh={() => void fetchData()}
-        refreshLoading={loading}
+        loading={overviewQuery.isFetching}
+        onRefresh={() => void overviewQuery.refetch()}
+        refreshLoading={overviewQuery.isFetching}
         empty="暂无 Nginx 站点配置"
         pagination={{ pageSize: 20, showSizeChanger: true }}
       />
@@ -368,11 +281,11 @@ export default function NginxSitesPage() {
         title="新增站点"
         visible={createVisible}
         onCancel={() => setCreateVisible(false)}
-        onOk={() => void handleCreate()}
-        okButtonProps={{ loading: submittingCreate }}
+        onOk={handleCreate}
+        okButtonProps={{ loading: createMutation.isPending }}
         width={660}
       >
-        <Form<CreateFormValues>
+        <Form<CreateNginxSiteValues>
           labelPosition="left"
           labelWidth={90}
           initValues={{ name: '', serverName: '', listenPort: 80, type: 'static', sslEnabled: false }}
@@ -416,12 +329,12 @@ export default function NginxSitesPage() {
         visible={editorVisible}
         onCancel={() => setEditorVisible(false)}
         onOk={() => void handleSaveEditor()}
-        okButtonProps={{ loading: savingEditor, disabled: editorLoading || !editorSite || !canManage }}
+        okButtonProps={{ loading: updateMutation.isPending, disabled: detailQuery.isFetching || !editorSite || !canManage }}
         footer={canManage && editorSite ? undefined : null}
         width={860}
       >
-        {editorLoading && <Text type="secondary">配置加载中…</Text>}
-        {!editorLoading && editorSite && (
+        {detailQuery.isFetching && <Text type="secondary">配置加载中…</Text>}
+        {!detailQuery.isFetching && editorSite && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
               <Tag color={editorSite.enabled ? 'green' : 'grey'}>{editorSite.enabled ? '启用中' : '已禁用'}</Tag>

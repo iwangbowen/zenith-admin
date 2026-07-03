@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { Button, Select, Input, Toast, Banner, Typography, Card, Tag } from '@douyinfe/semi-ui';
 import { Link2, Copy } from 'lucide-react';
-import { request } from '@/utils/request';
 import { config } from '@/config';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
+import { useGenerateMpJsConfig, useGenerateMpOAuthUrl } from '@/hooks/queries/mp-oauth';
 
 const SCOPE_OPTIONS = [
   { label: 'snsapi_base（静默授权，仅取 openid）', value: 'snsapi_base' },
@@ -18,20 +18,17 @@ export default function MpOAuthPage() {
   const [redirectUri, setRedirectUri] = useState('');
   const [state, setState] = useState('');
   const [genUrl, setGenUrl] = useState('');
-  const [loading, setLoading] = useState(false);
 
   const [jsUrl, setJsUrl] = useState('');
   const [jsConfig, setJsConfig] = useState<{ appId: string; timestamp: number; nonceStr: string; signature: string } | null>(null);
-  const [jsLoading, setJsLoading] = useState(false);
+  const generateUrlMutation = useGenerateMpOAuthUrl();
+  const jsConfigMutation = useGenerateMpJsConfig();
 
   const handleJsConfig = async () => {
     if (!currentId) { Toast.error('请先选择公众号'); return; }
     if (!jsUrl.trim()) { Toast.error('请填写页面 URL'); return; }
-    setJsLoading(true);
-    try {
-      const res = await request.post<{ appId: string; timestamp: number; nonceStr: string; signature: string }>('/api/mp/jssdk/config', { accountId: currentId, url: jsUrl.trim() });
-      if (res.code === 0 && res.data) setJsConfig(res.data);
-    } finally { setJsLoading(false); }
+    const data = await jsConfigMutation.mutateAsync({ accountId: currentId, url: jsUrl.trim() });
+    setJsConfig(data);
   };
 
   const callbackUrl = currentId ? `${config.apiBaseUrl}/api/public/mp/oauth/${currentId}` : '';
@@ -39,13 +36,10 @@ export default function MpOAuthPage() {
   const handleGenerate = async () => {
     if (!currentId) { Toast.error('请先选择公众号'); return; }
     if (!redirectUri.trim()) { Toast.error('请填写回调地址'); return; }
-    setLoading(true);
-    try {
-      const res = await request.post<{ url: string }>('/api/mp/oauth/url', {
-        accountId: currentId, redirectUri: redirectUri.trim(), scope, state: state.trim() || undefined,
-      });
-      if (res.code === 0 && res.data) setGenUrl(res.data.url);
-    } finally { setLoading(false); }
+    const data = await generateUrlMutation.mutateAsync({
+      accountId: currentId, redirectUri: redirectUri.trim(), scope, state: state.trim() || undefined,
+    });
+    setGenUrl(data.url);
   };
 
   const copy = async (text: string) => {
@@ -90,7 +84,7 @@ export default function MpOAuthPage() {
         </div>
 
         <div>
-          <Button type="primary" icon={<Link2 size={14} />} loading={loading} disabled={!currentId} onClick={handleGenerate}>生成授权链接</Button>
+          <Button type="primary" icon={<Link2 size={14} />} loading={generateUrlMutation.isPending} disabled={!currentId} onClick={handleGenerate}>生成授权链接</Button>
         </div>
 
         {genUrl && (
@@ -120,7 +114,7 @@ export default function MpOAuthPage() {
           <Input style={{ marginTop: 4 }} value={jsUrl} onChange={setJsUrl} placeholder="https://your-h5.example.com/page" />
         </div>
         <div>
-          <Button type="primary" icon={<Link2 size={14} />} loading={jsLoading} disabled={!currentId} onClick={handleJsConfig}>生成签名</Button>
+          <Button type="primary" icon={<Link2 size={14} />} loading={jsConfigMutation.isPending} disabled={!currentId} onClick={handleJsConfig}>生成签名</Button>
         </div>
         {jsConfig && (
           <Typography.Paragraph style={{ wordBreak: 'break-all', margin: 0, padding: 8, background: 'var(--semi-color-fill-0)', borderRadius: 6, fontSize: 12, fontFamily: 'monospace' }}>

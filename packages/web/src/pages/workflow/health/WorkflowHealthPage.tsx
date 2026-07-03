@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Button, Select, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Button, Select, Space, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RotateCcw, Search } from 'lucide-react';
 import type { WorkflowHealthIssue, WorkflowHealthSummary } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { useWorkflowHealthSummary, workflowHealthKeys } from '@/hooks/queries/workflow-health';
 
 const ISSUE_LABELS: Record<WorkflowHealthIssue['type'], string> = {
   external_dispatch_failed: '外部审批失败',
@@ -45,32 +46,23 @@ function SummaryItem({ label, value, danger }: Readonly<{ label: string; value: 
 }
 
 export default function WorkflowHealthPage() {
+  const queryClient = useQueryClient();
   const [thresholdMinutes, setThresholdMinutes] = useState(30);
+  const [submittedThresholdMinutes, setSubmittedThresholdMinutes] = useState(30);
   const [issueType, setIssueType] = useState<WorkflowHealthIssue['type'] | ''>('');
-  const [data, setData] = useState<WorkflowHealthSummary | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const fetchData = useCallback(async (threshold = thresholdMinutes) => {
-    setLoading(true);
-    try {
-      const res = await request.get<WorkflowHealthSummary>(`/api/workflows/health?thresholdMinutes=${threshold}`);
-      if (res.code === 0) setData(res.data);
-      else Toast.error(res.message || '巡检失败');
-    } finally {
-      setLoading(false);
-    }
-  }, [thresholdMinutes]);
-
-  useEffect(() => { void fetchData(); }, [fetchData]);
+  const summaryQuery = useWorkflowHealthSummary({ thresholdMinutes: submittedThresholdMinutes });
+  const data: WorkflowHealthSummary | null = summaryQuery.data ?? null;
 
   const handleSearch = () => {
-    void fetchData(thresholdMinutes);
+    setSubmittedThresholdMinutes(thresholdMinutes);
+    void queryClient.invalidateQueries({ queryKey: workflowHealthKeys.all });
   };
 
   const handleReset = () => {
     setThresholdMinutes(30);
+    setSubmittedThresholdMinutes(30);
     setIssueType('');
-    void fetchData(30);
+    void queryClient.invalidateQueries({ queryKey: workflowHealthKeys.all });
   };
 
   const columns: ColumnProps<WorkflowHealthIssue>[] = [
@@ -182,12 +174,12 @@ export default function WorkflowHealthPage() {
       <ConfigurableTable
         bordered
         rowKey="id"
-        loading={loading}
+        loading={summaryQuery.isFetching}
         dataSource={(data?.issues ?? []).filter((issue) => !issueType || issue.type === issueType)}
         columns={columns}
         pagination={false}
-        onRefresh={fetchData}
-        refreshLoading={loading}
+        onRefresh={() => void summaryQuery.refetch()}
+        refreshLoading={summaryQuery.isFetching}
       />
     </div>
   );

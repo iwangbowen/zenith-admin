@@ -1,15 +1,19 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Avatar, Button, Input, Toast, Banner, Spin, Empty, Select, Typography } from '@douyinfe/semi-ui';
 import { RefreshCw, Send, Paperclip } from 'lucide-react';
-import type { MpConversation, MpMessage, MpMessageType, MpMaterial, MpDraft } from '@zenith/shared';
+import type { MpConversation, MpMessage, MpMessageType } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
-import { request } from '@/utils/request';
-import type { PaginatedResponse } from '@zenith/shared';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { NavListPanel, NavListItem } from '@/components/NavListPanel';
 import AppModal from '@/components/AppModal';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
+import {
+  useMpConversations,
+  useMpMessageMediaOptions,
+  useMpMessageThread,
+  useSendMpMessage,
+} from '@/hooks/queries/mp-messages';
 
 function msgPreview(type: MpMessageType, content: string | null): string {
   switch (type) {
@@ -27,89 +31,38 @@ function msgPreview(type: MpMessageType, content: string | null): string {
 
 export default function MpMessagesPage() {
   const { hasPermission: can } = usePermission();
-  const { accounts, currentId, currentIdRef, setCurrentId, loading: accountsLoading } = useMpAccounts();
-
-  const [conversations, setConversations] = useState<MpConversation[]>([]);
-  const [convLoading, setConvLoading] = useState(false);
+  const { accounts, currentId, setCurrentId, loading: accountsLoading } = useMpAccounts();
   const [selectedOpenid, setSelectedOpenid] = useState<string | null>(null);
-
-  const [thread, setThread] = useState<MpMessage[]>([]);
-  const [threadLoading, setThreadLoading] = useState(false);
   const [reply, setReply] = useState('');
-  const [sending, setSending] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
-
-  const [materials, setMaterials] = useState<MpMaterial[]>([]);
-  const [drafts, setDrafts] = useState<MpDraft[]>([]);
   const [mediaModalVisible, setMediaModalVisible] = useState(false);
   const [mediaContentType, setMediaContentType] = useState<'image' | 'voice' | 'video' | 'news'>('image');
   const [mediaId, setMediaId] = useState<string>('');
   const [mediaTitle, setMediaTitle] = useState('');
 
-  const fetchConversations = useCallback(async (accountId: number) => {
-    setConvLoading(true);
-    try {
-      const res = await request.get<MpConversation[]>(`/api/mp/messages/conversations?accountId=${accountId}`);
-      if (currentIdRef.current !== accountId) return; // 账号已切换，丢弃过期响应
-      setConversations(res.data ?? []);
-    } finally {
-      setConvLoading(false);
-    }
-  }, [currentIdRef]);
-
-  const fetchThread = useCallback(async (accountId: number, openid: string) => {
-    setThreadLoading(true);
-    try {
-      const res = await request.get<PaginatedResponse<MpMessage>>(`/api/mp/messages?accountId=${accountId}&openid=${encodeURIComponent(openid)}&page=1&pageSize=50`);
-      if (currentIdRef.current !== accountId) return; // 账号已切换，丢弃过期响应
-      // 接口按 id 倒序返回，反转为时间正序（旧→新）展示
-      setThread([...(res.data?.list ?? [])].reverse());
-    } finally {
-      setThreadLoading(false);
-    }
-  }, [currentIdRef]);
-
-  const fetchMedia = useCallback(async (accountId: number) => {
-    const [m, d] = await Promise.all([
-      request.get<PaginatedResponse<MpMaterial>>(`/api/mp/materials?accountId=${accountId}&page=1&pageSize=200`),
-      request.get<PaginatedResponse<MpDraft>>(`/api/mp/drafts?accountId=${accountId}&page=1&pageSize=200`),
-    ]);
-    if (currentIdRef.current !== accountId) return;
-    setMaterials((m.data?.list ?? []).filter((x) => x.wechatMediaId));
-    setDrafts((d.data?.list ?? []).filter((x) => x.wechatMediaId));
-  }, [currentIdRef]);
+  const conversationsQuery = useMpConversations(currentId);
+  const threadQuery = useMpMessageThread(currentId, selectedOpenid);
+  const mediaQuery = useMpMessageMediaOptions(currentId);
+  const sendMutation = useSendMpMessage();
+  const conversations = conversationsQuery.data ?? [];
+  const thread = threadQuery.data;
+  const materials = mediaQuery.data?.materials ?? [];
+  const drafts = mediaQuery.data?.drafts ?? [];
 
   useEffect(() => {
     setSelectedOpenid(null);
-    setThread([]);
-    if (currentId) { void fetchConversations(currentId); void fetchMedia(currentId); }
-    else { setConversations([]); setMaterials([]); setDrafts([]); }
-  }, [currentId, fetchConversations, fetchMedia]);
+  }, [currentId]);
 
   useEffect(() => {
-    if (currentId && selectedOpenid) void fetchThread(currentId, selectedOpenid);
-  }, [currentId, selectedOpenid, fetchThread]);
-
-  useEffect(() => {
-    // 新消息后滚动到底部
     if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
   }, [thread]);
 
   const handleSend = async () => {
     const content = reply.trim();
     if (!content || !currentId || !selectedOpenid) return;
-    setSending(true);
-    try {
-      const res = await request.post<MpMessage>('/api/mp/messages/send', { accountId: currentId, openid: selectedOpenid, msgType: 'text', content });
-      if (res.code === 0) {
-        setReply('');
-        if (res.data) setThread((prev) => [...prev, res.data]);
-        void fetchConversations(currentId);
-        Toast.success('已发送');
-      }
-    } finally {
-      setSending(false);
-    }
+    await sendMutation.mutateAsync({ accountId: currentId, openid: selectedOpenid, msgType: 'text', content });
+    setReply('');
+    Toast.success('已发送');
   };
 
   const openMediaModal = () => { setMediaContentType('image'); setMediaId(''); setMediaTitle(''); setMediaModalVisible(true); };
@@ -117,20 +70,11 @@ export default function MpMessagesPage() {
   const handleSendMedia = async () => {
     if (!currentId || !selectedOpenid) return;
     if (!mediaId) { Toast.error('请选择素材'); return; }
-    setSending(true);
-    try {
-      const body: Record<string, unknown> = { accountId: currentId, openid: selectedOpenid, msgType: mediaContentType, mediaId };
-      if (mediaContentType === 'video' && mediaTitle) body.content = mediaTitle;
-      const res = await request.post<MpMessage>('/api/mp/messages/send', body);
-      if (res.code === 0) {
-        if (res.data) setThread((prev) => [...prev, res.data]);
-        void fetchConversations(currentId);
-        setMediaModalVisible(false);
-        Toast.success('已发送');
-      }
-    } finally {
-      setSending(false);
-    }
+    const body: Record<string, unknown> = { accountId: currentId, openid: selectedOpenid, msgType: mediaContentType, mediaId };
+    if (mediaContentType === 'video' && mediaTitle) body.content = mediaTitle;
+    await sendMutation.mutateAsync(body);
+    setMediaModalVisible(false);
+    Toast.success('已发送');
   };
 
   const mediaOptions = mediaContentType === 'news'
@@ -138,15 +82,16 @@ export default function MpMessagesPage() {
     : materials.filter((m) => m.type === mediaContentType).map((m) => ({ label: `${m.name}（${m.wechatMediaId}）`, value: m.wechatMediaId as string }));
 
   const selectedConv = conversations.find((c) => c.openid === selectedOpenid) ?? null;
+  const sending = sendMutation.isPending;
 
   const master = (
     <NavListPanel
       title="会话"
       headerExtra={(
-        <Button icon={<RefreshCw size={13} />} size="small" theme="borderless" loading={convLoading}
-          disabled={!currentId} onClick={() => currentId && void fetchConversations(currentId)} />
+        <Button icon={<RefreshCw size={13} />} size="small" theme="borderless" loading={conversationsQuery.isFetching}
+          disabled={!currentId} onClick={() => void conversationsQuery.refetch()} />
       )}
-      loading={convLoading}
+      loading={conversationsQuery.isFetching}
       emptyText="暂无会话，等待粉丝发起消息"
       dataSource={conversations}
       renderItem={(c: MpConversation) => (
@@ -179,10 +124,10 @@ export default function MpMessagesPage() {
       <div ref={bodyRef} style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 16, background: 'var(--semi-color-fill-0)' }}>
         {!selectedOpenid ? (
           <Empty description="请选择一个会话" style={{ paddingTop: 80 }} />
-        ) : threadLoading ? (
+        ) : threadQuery.isFetching ? (
           <div style={{ textAlign: 'center', paddingTop: 40 }}><Spin /></div>
         ) : (
-          thread.map((m) => (
+          (thread ?? []).map((m: MpMessage) => (
             <div key={m.id} style={{ display: 'flex', justifyContent: m.direction === 'out' ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
               <div style={{
                 maxWidth: '70%', padding: '8px 12px', borderRadius: 8, wordBreak: 'break-word', fontSize: 13, lineHeight: 1.5,

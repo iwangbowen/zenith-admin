@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Modal, Select, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import type { PaginatedResponse, WorkflowForm, WorkflowFormStatus } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { WorkflowForm, WorkflowFormStatus } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
@@ -12,6 +12,12 @@ import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import {
+  useDeleteWorkflowForm,
+  useDuplicateWorkflowForm,
+  useWorkflowFormList,
+  workflowFormKeys,
+} from '@/hooks/queries/workflow-forms';
 
 type StatusFilter = WorkflowFormStatus | '';
 type TagColor = 'green' | 'grey';
@@ -46,15 +52,23 @@ function toStatus(value: unknown): StatusFilter {
 }
 
 export default function WorkflowFormsPage() {
+  const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<PaginatedResponse<WorkflowForm> | null>(null);
   const { page, setPage, pageSize, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
   const { categories } = useWorkflowCategories();
+  const listQuery = useWorkflowFormList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    status: submittedParams.status || undefined,
+    categoryId: submittedParams.categoryId ?? undefined,
+  });
+  const data = listQuery.data ?? null;
+  const deleteMutation = useDeleteWorkflowForm();
+  const duplicateMutation = useDuplicateWorkflowForm();
 
   const categoryOptions = useMemo(
     () => [
@@ -69,60 +83,27 @@ export default function WorkflowFormsPage() {
     [categories],
   );
 
-  const fetchList = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const { keyword, status, categoryId } = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(keyword ? { keyword } : {}),
-        ...(status ? { status } : {}),
-        ...(categoryId === null ? {} : { categoryId: String(categoryId) }),
-      }).toString();
-      const res = await request.get<PaginatedResponse<WorkflowForm>>(`/api/workflows/forms?${query}`);
-      if (res.code === 0) {
-        setData(res.data);
-        setPage(res.data.page);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize]);
-
-  useEffect(() => {
-    void fetchList();
-  }, [fetchList]);
-
   const handleSearch = () => {
     setPage(1);
-    void fetchList(1, pageSize);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: workflowFormKeys.lists });
   };
 
   const handleReset = () => {
-    setSearchParams(defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
     setPage(1);
-    void fetchList(1, pageSize, defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: workflowFormKeys.lists });
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete<null>(`/api/workflows/forms/${id}`, undefined, { silent: true });
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      void fetchList();
-      return;
-    }
-    Toast.error(res.message || '删除失败');
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   };
 
   const handleDuplicate = async (id: number) => {
-    const res = await request.post<WorkflowForm>(`/api/workflows/forms/${id}/duplicate`, {}, { silent: true });
-    if (res.code === 0) {
-      Toast.success('复制成功');
-      void fetchList();
-      return;
-    }
-    Toast.error(res.message || '复制失败');
+    await duplicateMutation.mutateAsync(id);
+    Toast.success('复制成功');
   };
 
   const columns: ColumnProps<WorkflowForm>[] = [
@@ -216,8 +197,8 @@ export default function WorkflowFormsPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="搜索表单名称/标识"
-      value={searchParams.keyword}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
+      value={draftParams.keyword}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))}
       onEnterPress={handleSearch}
       showClear
       style={{ width: 220 }}
@@ -227,8 +208,8 @@ export default function WorkflowFormsPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="状态"
-      value={searchParams.status}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, status: toStatus(value) }))}
+      value={draftParams.status}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, status: toStatus(value) }))}
       optionList={STATUS_OPTIONS}
       showClear
       style={{ width: 120 }}
@@ -238,8 +219,8 @@ export default function WorkflowFormsPage() {
   const renderCategoryFilter = () => (
     <Select
       placeholder="分类"
-      value={searchParams.categoryId === null ? '' : String(searchParams.categoryId)}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, categoryId: toCategoryId(value) }))}
+      value={draftParams.categoryId === null ? '' : String(draftParams.categoryId)}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, categoryId: toCategoryId(value) }))}
       optionList={categoryOptions}
       showClear
       style={{ width: 160 }}
@@ -300,10 +281,10 @@ export default function WorkflowFormsPage() {
         columns={columns}
         dataSource={data?.list ?? []}
         rowKey="id"
-        loading={loading}
-        onRefresh={() => void fetchList()}
-        refreshLoading={loading}
-        pagination={buildPagination(data?.total ?? 0, fetchList)}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
+        pagination={buildPagination(data?.total ?? 0)}
       />
     </div>
   );

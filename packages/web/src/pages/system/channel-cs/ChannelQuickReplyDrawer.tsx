@@ -4,14 +4,18 @@
  * 快捷回复分两类：全局（channelId=null，所有运营号可用）与频道专属（绑定某运营号）。
  * 在此可对全部快捷回复做 CRUD；新建/编辑时作用域可选「全局」或「当前频道」。
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Button, Form, Modal, SideSheet, Table, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus } from 'lucide-react';
 import type { ChannelQuickReply } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { AppModal } from '@/components/AppModal';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import {
+  useChannelQuickReplies,
+  useDeleteChannelQuickReply,
+  useSaveChannelQuickReply,
+} from '@/hooks/queries/channel-cs';
 
 interface Props {
   channelId: number;
@@ -22,29 +26,13 @@ interface Props {
 }
 
 export function ChannelQuickReplyDrawer({ channelId, channelName, visible, onClose, onChanged }: Readonly<Props>) {
-  const [list, setList] = useState<ChannelQuickReply[]>([]);
-  const [loading, setLoading] = useState(false);
   const [editVisible, setEditVisible] = useState(false);
   const [editing, setEditing] = useState<ChannelQuickReply | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const [formValues, setFormValues] = useState<Record<string, unknown>>({});
-
-  const fetchList = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await request.get<ChannelQuickReply[]>(
-        `/api/channels/cs/quick-replies?channelId=${channelId}`,
-        { silent: true },
-      );
-      if (res.code === 0 && res.data) setList(res.data);
-    } finally {
-      setLoading(false);
-    }
-  }, [channelId]);
-
-  useEffect(() => {
-    if (visible) void fetchList();
-  }, [visible, fetchList]);
+  const listQuery = useChannelQuickReplies(channelId, visible && !!channelId);
+  const list = listQuery.data ?? [];
+  const saveMutation = useSaveChannelQuickReply();
+  const deleteMutation = useDeleteChannelQuickReply();
 
   const openCreate = () => { setEditing(null); setEditVisible(true); };
   const openEdit = (r: ChannelQuickReply) => { setEditing(r); setEditVisible(true); };
@@ -55,31 +43,22 @@ export function ChannelQuickReplyDrawer({ channelId, channelName, visible, onClo
     const content = values.content?.trim();
     if (!title) { Toast.error('请填写标题'); return; }
     if (!content) { Toast.error('请填写内容'); return; }
-    setSubmitting(true);
-    try {
-      const payload = {
-        channelId: (values.scope ?? 'global') === 'channel' ? channelId : null,
-        title,
-        content,
-        sort: Number(values.sort) || 0,
-      };
-      const res = editing
-        ? await request.put(`/api/channels/cs/quick-replies/${editing.id}`, payload)
-        : await request.post('/api/channels/cs/quick-replies', payload);
-      if (res.code === 0) {
-        Toast.success(editing ? '已更新' : '已创建');
-        setEditVisible(false);
-        void fetchList();
-        onChanged?.();
-      }
-    } finally {
-      setSubmitting(false);
-    }
+    const payload = {
+      channelId: (values.scope ?? 'global') === 'channel' ? channelId : null,
+      title,
+      content,
+      sort: Number(values.sort) || 0,
+    };
+    await saveMutation.mutateAsync({ id: editing?.id, values: payload });
+    Toast.success(editing ? '已更新' : '已创建');
+    setEditVisible(false);
+    onChanged?.();
   };
 
   const handleDelete = async (r: ChannelQuickReply) => {
-    const res = await request.delete(`/api/channels/cs/quick-replies/${r.id}`);
-    if (res.code === 0) { Toast.success('已删除'); void fetchList(); onChanged?.(); }
+    await deleteMutation.mutateAsync(r.id);
+    Toast.success('已删除');
+    onChanged?.();
   };
 
   const columns: ColumnProps<ChannelQuickReply>[] = [
@@ -132,7 +111,7 @@ export function ChannelQuickReplyDrawer({ channelId, channelName, visible, onClo
         columns={columns}
         dataSource={list}
         rowKey="id"
-        loading={loading}
+        loading={listQuery.isFetching}
         pagination={false}
         size="small"
       />
@@ -142,7 +121,7 @@ export function ChannelQuickReplyDrawer({ channelId, channelName, visible, onClo
         visible={editVisible}
         onCancel={() => setEditVisible(false)}
         onOk={() => void handleSubmit()}
-        confirmLoading={submitting}
+        confirmLoading={saveMutation.isPending}
         okText="保存"
         width={520}
       >

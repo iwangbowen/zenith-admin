@@ -13,12 +13,12 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
 import AppModal from '@/components/AppModal';
-import { request } from '@/utils/request';
 import { config } from '@/config';
 import { formatDateTime } from '@/utils/date';
 import { TOKEN_KEY } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import type { ProcessInfo, ProcessListResponse } from '@zenith/shared';
+import { useKillProcess, useProcessDetail, useSetProcessPriority } from '@/hooks/queries/processes';
 
 // 自定义进程表格 CSS
 const processesTableStyle = '';
@@ -88,18 +88,18 @@ export default function ProcessesPage() {
   // ─── 详情弹窗 ──────────────────────────────────────────────────────────
   const [detailVisible, setDetailVisible] = useState(false);
   const [detailProcess, setDetailProcess] = useState<ProcessInfo | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
 
   // ─── 结束进程弹窗 ──────────────────────────────────────────────────────
   const [killVisible, setKillVisible] = useState(false);
   const [killTarget, setKillTarget] = useState<ProcessInfo | null>(null);
   const [killSignal, setKillSignal] = useState('SIGTERM');
-  const [killing, setKilling] = useState(false);
 
   // ─── 优先级调整弹窗 ────────────────────────────────────────────────────
   const [priorityVisible, setPriorityVisible] = useState(false);
   const [priorityTarget, setPriorityTarget] = useState<ProcessInfo | null>(null);
-  const [settingPriority, setSettingPriority] = useState(false);
+  const detailQuery = useProcessDetail(detailProcess?.pid, detailVisible);
+  const killMutation = useKillProcess();
+  const priorityMutation = useSetProcessPriority();
 
   // ─── 虚拟表格高度（Semi UI 要求数字型 scroll.y）──────────────────────────
   const containerRef = useRef<HTMLDivElement>(null);
@@ -204,32 +204,23 @@ export default function ProcessesPage() {
     return () => sseAbortRef.current?.abort();
   }, [connectSse]);
 
+  useEffect(() => {
+    if (detailVisible && detailQuery.data) setDetailProcess(detailQuery.data);
+  }, [detailVisible, detailQuery.data]);
+
   // ─── 查看详情 ──────────────────────────────────────────────────────────
-  async function openDetail(p: ProcessInfo) {
+  function openDetail(p: ProcessInfo) {
     setDetailProcess(p);
     setDetailVisible(true);
-    setDetailLoading(true);
-    const res = await request.get<ProcessInfo>(`/api/processes/${p.pid}`);
-    setDetailLoading(false);
-    if (res.code === 0 && res.data) setDetailProcess(res.data);
   }
 
   // ─── 结束进程 ──────────────────────────────────────────────────────────
   async function confirmKill() {
     if (!killTarget) return;
-    setKilling(true);
-    try {
-      const res = await request.delete(`/api/processes/${killTarget.pid}`, { signal: killSignal });
-      if (res.code === 0) {
-        Toast.success(`已向进程 ${killTarget.name}（PID: ${killTarget.pid}）发送 ${killSignal}`);
-        setKillVisible(false);
-        setKillTarget(null);
-      } else {
-        Toast.error(res.message || '操作失败');
-      }
-    } finally {
-      setKilling(false);
-    }
+    await killMutation.mutateAsync({ pid: killTarget.pid, signal: killSignal });
+    Toast.success(`已向进程 ${killTarget.name}（PID: ${killTarget.pid}）发送 ${killSignal}`);
+    setKillVisible(false);
+    setKillTarget(null);
   }
 
   // ─── 调整优先级 ────────────────────────────────────────────────────────
@@ -239,19 +230,10 @@ export default function ProcessesPage() {
     try { values = await priorityFormApi.current?.validate() ?? {}; }
     catch { throw new Error('validation'); }
 
-    setSettingPriority(true);
-    try {
-      const res = await request.put(`/api/processes/${priorityTarget.pid}/priority`, values);
-      if (res.code === 0) {
-        Toast.success('优先级已调整');
-        setPriorityVisible(false);
-        setPriorityTarget(null);
-      } else {
-        throw new Error(res.message || '操作失败');
-      }
-    } finally {
-      setSettingPriority(false);
-    }
+    await priorityMutation.mutateAsync({ pid: priorityTarget.pid, values });
+    Toast.success('优先级已调整');
+    setPriorityVisible(false);
+    setPriorityTarget(null);
   }
 
   // ─── 表格列定义 ────────────────────────────────────────────────────────
@@ -545,7 +527,7 @@ export default function ProcessesPage() {
         width={640}
         closeOnEsc
       >
-        <Spin spinning={detailLoading}>
+        <Spin spinning={detailQuery.isFetching}>
           {detailProcess && (
             <>
             <Descriptions
@@ -650,7 +632,7 @@ export default function ProcessesPage() {
         visible={killVisible}
         onOk={confirmKill}
         onCancel={() => { setKillVisible(false); setKillTarget(null); }}
-        okButtonProps={{ type: 'danger', theme: 'solid', loading: killing }}
+        okButtonProps={{ type: 'danger', theme: 'solid', loading: killMutation.isPending }}
         okText="确认结束"
         width={440}
         closeOnEsc
@@ -682,7 +664,7 @@ export default function ProcessesPage() {
         visible={priorityVisible}
         onOk={confirmPriority}
         onCancel={() => { setPriorityVisible(false); setPriorityTarget(null); }}
-        okButtonProps={{ loading: settingPriority }}
+        okButtonProps={{ loading: priorityMutation.isPending }}
         okText="确认调整"
         width={420}
         closeOnEsc

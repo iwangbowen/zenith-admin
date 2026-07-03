@@ -5,8 +5,8 @@ import AppModal from '@/components/AppModal';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowVersionDiff } from '@zenith/shared';
-import { request } from '@/utils/request';
 import WorkflowVersionDiffView from './WorkflowVersionDiffView';
+import { useRestoreWorkflowDefinitionVersion, useWorkflowDefinitionDiff, useWorkflowDefinitionVersions } from '@/hooks/queries/workflow-definitions';
 
 interface Props {
   visible: boolean;
@@ -25,49 +25,40 @@ export default function WorkflowVersionsModal({
   onCancel,
   onRestored,
 }: Readonly<Props>) {
-  const [versions, setVersions] = useState<WorkflowDefinitionVersion[]>([]);
-  const [loading, setLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [diff, setDiff] = useState<WorkflowVersionDiff | null>(null);
-  const [diffLoading, setDiffLoading] = useState(false);
+  const [diffParams, setDiffParams] = useState<{ left: number; right: number } | null>(null);
+  const versionsQuery = useWorkflowDefinitionVersions(definitionId, visible);
+  const versions = versionsQuery.data ?? [];
+  const diffQuery = useWorkflowDefinitionDiff(
+    { definitionId, left: diffParams?.left ?? 0, right: diffParams?.right ?? 0 },
+    visible && !!diffParams,
+  );
+  const restoreMutation = useRestoreWorkflowDefinitionVersion();
+  const diffLoading = diffQuery.isFetching;
 
   useEffect(() => {
     if (!visible) return;
     setDiff(null);
+    setDiffParams(null);
     setSelectedIds([]);
-    setLoading(true);
-    request
-      .get<WorkflowDefinitionVersion[]>(`/api/workflows/definitions/${definitionId}/versions`)
-      .then(res => {
-        if (res.code === 0) setVersions(res.data ?? []);
-      })
-      .finally(() => setLoading(false));
   }, [visible, definitionId]);
 
-  const loadDiff = async (left: number, right: number) => {
-    setDiffLoading(true);
-    try {
-      const res = await request.get<WorkflowVersionDiff>(`/api/workflows/definitions/${definitionId}/diff?left=${left}&right=${right}`);
-      if (res.code === 0) setDiff(res.data);
-    } finally {
-      setDiffLoading(false);
-    }
-  };
+  useEffect(() => {
+    if (diffQuery.data) setDiff(diffQuery.data);
+  }, [diffQuery.data]);
+
+  const loadDiff = (left: number, right: number) => setDiffParams({ left, right });
 
   const handleRestore = (ver: WorkflowDefinitionVersion) => {
     Modal.confirm({
       title: `确认恢复到 v${ver.version}？`,
       content: '当前未保存的修改将被覆盖，流程将转为草稿状态，需要重新发布。',
       onOk: async () => {
-        const res = await request.post<WorkflowDefinition>(
-          `/api/workflows/definitions/${definitionId}/versions/${ver.id}/restore`,
-          {},
-        );
-        if (res.code === 0) {
-          Toast.success('已恢复为草稿');
-          onCancel();
-          onRestored?.(res.data);
-        }
+        const res = await restoreMutation.mutateAsync({ definitionId, versionId: ver.id });
+        Toast.success('已恢复为草稿');
+        onCancel();
+        onRestored?.(res);
       },
     });
   };
@@ -126,7 +117,7 @@ export default function WorkflowVersionsModal({
           </div>
           <Table
             dataSource={versions}
-            loading={loading}
+            loading={versionsQuery.isFetching}
             rowKey="id"
             pagination={false}
             columns={columns}

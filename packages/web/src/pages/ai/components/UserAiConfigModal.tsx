@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Button, Collapse, List, Popconfirm, SideSheet, Space, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { Plus } from 'lucide-react';
 import type { AiProvider, AiProviderConfig, UserAiConfig } from '@zenith/shared';
-import { request } from '@/utils/request';
 import AiProviderFormModal from './AiProviderFormModal';
+import { useAiProviderList } from '@/hooks/queries/ai-providers';
+import { useAiUserConfigs, useDeleteAiUserConfig } from '@/hooks/queries/ai-user-config';
 
 const { Text } = Typography;
 
@@ -28,42 +29,23 @@ interface GroupedItem {
 }
 
 export default function UserAiConfigModal({ visible, onClose, onSaved }: UserAiConfigModalProps) {
-  const [loading, setLoading] = useState(false);
-  const [systemConfigs, setSystemConfigs] = useState<AiProviderConfig[]>([]);
-  const [userConfigs, setUserConfigs] = useState<UserAiConfig[]>([]);
   const [formVisible, setFormVisible] = useState(false);
   const [formTarget, setFormTarget] = useState<UserAiConfig | undefined>(undefined);
-  const [deletingId, setDeletingId] = useState<number | null>(null);
-
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const [sysRes, userRes] = await Promise.all([
-        request.get<AiProviderConfig[]>('/api/ai/providers'),
-        request.get<UserAiConfig[]>('/api/ai/user-configs').catch(() => ({ data: [], code: 0, message: '' })),
-      ]);
-      setSystemConfigs(sysRes.data ?? []);
-      setUserConfigs(userRes.data ?? []);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (visible) void loadData();
-  }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
+  const systemConfigsQuery = useAiProviderList({}, { enabled: visible });
+  const userConfigsQuery = useAiUserConfigs(visible);
+  const deleteMutation = useDeleteAiUserConfig();
+  const systemConfigs = visible ? (systemConfigsQuery.data ?? []) : [];
+  const userConfigs = visible ? (userConfigsQuery.data ?? []) : [];
+  const loading = systemConfigsQuery.isFetching || userConfigsQuery.isFetching;
+  const deletingId = deleteMutation.isPending ? deleteMutation.variables : null;
 
   const handleDelete = async (id: number) => {
-    setDeletingId(id);
     try {
-      await request.delete(`/api/ai/user-configs/${id}`);
+      await deleteMutation.mutateAsync(id);
       Toast.success('删除成功');
-      setUserConfigs((prev) => prev.filter((c) => c.id !== id));
       onSaved();
     } catch {
       // handled by interceptor
-    } finally {
-      setDeletingId(null);
     }
   };
 
@@ -202,18 +184,8 @@ export default function UserAiConfigModal({ visible, onClose, onSaved }: UserAiC
         visible={formVisible}
         onClose={() => setFormVisible(false)}
         userConfig={formTarget}
-        onSaved={(savedCfg) => {
+        onSaved={() => {
           setFormVisible(false);
-          // 更新本地状态
-          setUserConfigs((prev) => {
-            const idx = prev.findIndex((c) => c.id === savedCfg.id);
-            if (idx >= 0) {
-              const next = [...prev];
-              next[idx] = savedCfg;
-              return next;
-            }
-            return [...prev, savedCfg];
-          });
           onSaved();
         }}
       />

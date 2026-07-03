@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { Button, Form, Input, Modal, Select, Switch, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -7,14 +7,22 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
+import { useQueryClient } from '@tanstack/react-query';
+import { useEnabledReportDatasets } from '@/hooks/queries/report-datasets';
+import {
+  reportAlertKeys,
+  useDeleteReportAlert,
+  useEvaluateReportAlert,
+  useReportAlertList,
+  useSaveReportAlert,
+  useToggleReportAlertEnabled,
+} from '@/hooks/queries/report-alerts';
 import type {
   CreateReportAlertInput,
-  PaginatedResponse,
   ReportAlertAggregate,
   ReportAlertOp,
   ReportAlertRule,
@@ -68,14 +76,13 @@ function formatRule(record: ReportAlertRule) {
 export default function AlertsPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
-  const [data, setData] = useState<PaginatedResponse<ReportAlertRule> | null>(null);
-  const [loading, setLoading] = useState(false);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const queryClient = useQueryClient();
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
 
-  const [datasets, setDatasets] = useState<ReportDataset[]>([]);
+  const datasetsQuery = useEnabledReportDatasets();
+  const datasets = useMemo<ReportDataset[]>(() => datasetsQuery.data ?? [], [datasetsQuery.data]);
   const datasetFieldMap = useMemo(() => {
     const map = new Map<number, ReportDataset['fields']>();
     datasets.forEach((dataset) => map.set(dataset.id, dataset.fields ?? []));
@@ -84,51 +91,37 @@ export default function AlertsPage() {
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<ReportAlertRule | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
   const [selectedDatasetId, setSelectedDatasetId] = useState<number | null>(null);
   const [selectedAggregate, setSelectedAggregate] = useState<ReportAlertAggregate>('sum');
   const [selectedChannels, setSelectedChannels] = useState<Array<'email' | 'inApp'>>(['inApp']);
 
   const selectedFields = selectedDatasetId ? datasetFieldMap.get(selectedDatasetId) ?? [] : [];
 
-  const fetchList = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const active = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const q: Record<string, string> = { page: String(p), pageSize: String(ps) };
-      if (active.keyword) q.keyword = active.keyword;
-      if (active.datasetId) q.datasetId = active.datasetId;
-      if (active.enabled) q.enabled = String(active.enabled === 'enabled');
-      const res = await request.get<PaginatedResponse<ReportAlertRule>>(`/api/report/alerts?${new URLSearchParams(q)}`);
-      if (res.code === 0) {
-        setData(res.data);
-        setPage(res.data.page);
-        setPageSize(res.data.pageSize);
-      }
-    } finally {
-      setLoading(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize]);
-
-  useEffect(() => {
-    void fetchList();
-    request.get<PaginatedResponse<ReportDataset>>('/api/report/datasets?page=1&pageSize=200').then((res) => {
-      if (res.code === 0) setDatasets(res.data.list.filter((dataset) => dataset.status === 'enabled'));
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const listQuery = useReportAlertList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    datasetId: submittedParams.datasetId || undefined,
+    enabled: submittedParams.enabled ? submittedParams.enabled === 'enabled' : undefined,
+  });
+  const data = listQuery.data ?? null;
+  const saveMutation = useSaveReportAlert();
+  const toggleMutation = useToggleReportAlertEnabled();
+  const evaluateMutation = useEvaluateReportAlert();
+  const deleteMutation = useDeleteReportAlert();
+  const togglingId = toggleMutation.isPending ? toggleMutation.variables?.id ?? null : null;
 
   function handleSearch() {
     setPage(1);
-    void fetchList(1, pageSize);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: reportAlertKeys.lists });
   }
 
   function handleReset() {
-    setSearchParams(defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
     setPage(1);
-    void fetchList(1, pageSize, defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: reportAlertKeys.lists });
   }
 
   function openCreate() {
@@ -190,36 +183,23 @@ export default function AlertsPage() {
     let values: Record<string, unknown>;
     try { values = await formApi.current?.validate() as Record<string, unknown>; } catch { throw new Error('validation'); }
     const payload = buildPayload(values);
-    setSubmitting(true);
     try {
-      const res = editing
-        ? await request.put<ReportAlertRule>(`/api/report/alerts/${editing.id}`, payload, { silent: true })
-        : await request.post<ReportAlertRule>('/api/report/alerts', payload, { silent: true });
-      if (res.code === 0) {
-        Toast.success(editing ? '更新成功' : '创建成功');
-        closeModal();
-        void fetchList();
-      } else {
-        Toast.error(res.message || '保存失败');
-      }
-    } finally {
-      setSubmitting(false);
+      await saveMutation.mutateAsync({ id: editing?.id, values: payload });
+      Toast.success(editing ? '更新成功' : '创建成功');
+      closeModal();
+    } catch (error) {
+      Toast.error(error instanceof Error ? error.message : '保存失败');
+      throw error;
     }
   }
 
   function handleToggleEnabled(record: ReportAlertRule, checked: boolean) {
     const doToggle = async () => {
-      setTogglingIds((prev) => new Set(prev).add(record.id));
       try {
-        const res = await request.put<ReportAlertRule>(`/api/report/alerts/${record.id}`, { enabled: checked }, { silent: true });
-        if (res.code === 0) {
-          Toast.success(checked ? '已启用' : '已停用');
-          void fetchList();
-        } else {
-          Toast.error(res.message || '状态更新失败');
-        }
-      } finally {
-        setTogglingIds((prev) => { const next = new Set(prev); next.delete(record.id); return next; });
+        await toggleMutation.mutateAsync({ id: record.id, enabled: checked });
+        Toast.success(checked ? '已启用' : '已停用');
+      } catch (error) {
+        Toast.error(error instanceof Error ? error.message : '状态更新失败');
       }
     };
     if (checked) void doToggle();
@@ -227,22 +207,20 @@ export default function AlertsPage() {
   }
 
   async function handleEvaluate(id: number) {
-    const res = await request.post<{ value: number; triggered: boolean }>(`/api/report/alerts/${id}/evaluate`, undefined, { silent: true });
-    if (res.code === 0) {
-      Toast.success(`实际值 ${res.data.value}，${res.data.triggered ? '已触发' : '未触发'}`);
-      void fetchList();
-    } else {
-      Toast.error(res.message || '评估失败');
+    try {
+      const res = await evaluateMutation.mutateAsync(id);
+      Toast.success(`实际值 ${res.value}，${res.triggered ? '已触发' : '未触发'}`);
+    } catch (error) {
+      Toast.error(error instanceof Error ? error.message : '评估失败');
     }
   }
 
   async function handleDelete(id: number) {
-    const res = await request.delete(`/api/report/alerts/${id}`, undefined, { silent: true });
-    if (res.code === 0) {
+    try {
+      await deleteMutation.mutateAsync(id);
       Toast.success('删除成功');
-      void fetchList();
-    } else {
-      Toast.error(res.message || '删除失败');
+    } catch (error) {
+      Toast.error(error instanceof Error ? error.message : '删除失败');
     }
   }
 
@@ -286,7 +264,7 @@ export default function AlertsPage() {
       render: (_: unknown, record: ReportAlertRule) => (
         <Switch
           checked={record.enabled}
-          loading={togglingIds.has(record.id)}
+          loading={togglingId === record.id}
           disabled={!hasPermission('report:alert:update')}
           onChange={(checked) => handleToggleEnabled(record, checked)}
           size="small"
@@ -310,15 +288,15 @@ export default function AlertsPage() {
   ];
 
   const renderKeyword = () => (
-    <Input prefix={<Search size={14} />} placeholder="搜索名称/备注" value={searchParams.keyword}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))} showClear style={{ width: 200 }} onEnterPress={handleSearch} />
+    <Input prefix={<Search size={14} />} placeholder="搜索名称/备注" value={draftParams.keyword}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))} showClear style={{ width: 200 }} onEnterPress={handleSearch} />
   );
   const renderDatasetFilter = () => (
-    <Select placeholder="全部数据集" value={searchParams.datasetId || undefined} onChange={(value) => setSearchParams((prev) => ({ ...prev, datasetId: value ? String(value) : '' }))}
+    <Select placeholder="全部数据集" value={draftParams.datasetId || undefined} onChange={(value) => setDraftParams((prev) => ({ ...prev, datasetId: value ? String(value) : '' }))}
       showClear filter style={{ width: 180 }} optionList={datasets.map((dataset) => ({ value: String(dataset.id), label: dataset.name }))} />
   );
   const renderStatusFilter = () => (
-    <Select placeholder="全部状态" value={searchParams.enabled || undefined} onChange={(value) => setSearchParams((prev) => ({ ...prev, enabled: (value as string) ?? '' }))}
+    <Select placeholder="全部状态" value={draftParams.enabled || undefined} onChange={(value) => setDraftParams((prev) => ({ ...prev, enabled: (value as string) ?? '' }))}
       showClear style={{ width: 120 }} optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} />
   );
   const renderSearchBtn = () => <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>;
@@ -339,11 +317,11 @@ export default function AlertsPage() {
       />
 
       <ConfigurableTable
-        bordered columns={columns} dataSource={data?.list ?? []} loading={loading} rowKey="id" size="small" empty="暂无预警"
-        onRefresh={() => void fetchList()} refreshLoading={loading} pagination={buildPagination(data?.total ?? 0, fetchList)}
+        bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无预警"
+        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(data?.total ?? 0)}
       />
 
-      <AppModal title={editing ? '编辑预警' : '新增预警'} visible={modalVisible} onOk={handleOk} onCancel={closeModal} okButtonProps={{ loading: submitting }} width={560}>
+      <AppModal title={editing ? '编辑预警' : '新增预警'} visible={modalVisible} onOk={handleOk} onCancel={closeModal} okButtonProps={{ loading: saveMutation.isPending }} width={560}>
         <Form key={editing?.id ?? 'new'} getFormApi={(api) => { formApi.current = api; }} initValues={initValues} labelPosition="left" labelWidth={90}
           onValueChange={(values) => {
             const nextDatasetId = values.datasetId ? Number(values.datasetId) : null;

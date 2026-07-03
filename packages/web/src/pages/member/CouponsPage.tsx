@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Select, Form, Toast, Tag, Modal, Row, Col } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search, RotateCcw, Plus } from 'lucide-react';
-import type { Coupon, CouponType, CouponTemplateStatus, PaginatedResponse } from '@zenith/shared';
+import type { Coupon, CouponType, CouponTemplateStatus } from '@zenith/shared';
 import { COUPON_TYPE_LABELS, COUPON_TEMPLATE_STATUS_LABELS } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -15,6 +15,13 @@ import { MemberSelect } from '@/components/MemberSelect';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
 import { formatDateTimeForApi } from '@/utils/date';
+import {
+  memberAdminKeys,
+  useCouponList,
+  useDeleteCoupon,
+  useIssueCoupon,
+  useSaveCoupon,
+} from '@/hooks/queries/member-admin';
 
 const typeOptions = (Object.keys(COUPON_TYPE_LABELS) as CouponType[]).map((v) => ({ value: v, label: COUPON_TYPE_LABELS[v] }));
 const statusOptions = (Object.keys(COUPON_TEMPLATE_STATUS_LABELS) as CouponTemplateStatus[]).map((v) => ({ value: v, label: COUPON_TEMPLATE_STATUS_LABELS[v] }));
@@ -37,15 +44,12 @@ interface FormValues {
 
 export default function CouponsPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const formApi = useRef<FormApi<FormValues> | null>(null);
   const issueFormApi = useRef<FormApi | null>(null);
-  const [data, setData] = useState<Coupon[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [search, setSearch] = useState<SearchParams>({});
-  const searchRef = useRef<SearchParams>({});
-  searchRef.current = search;
+  const [draftParams, setDraftParams] = useState<SearchParams>({});
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>({});
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<Coupon | null>(null);
@@ -54,26 +58,30 @@ export default function CouponsPage() {
 
   const [issueVisible, setIssueVisible] = useState(false);
   const [issuing, setIssuing] = useState<Coupon | null>(null);
+  const listQuery = useCouponList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    status: submittedParams.status || undefined,
+    type: submittedParams.type || undefined,
+  });
+  const data = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const saveMutation = useSaveCoupon();
+  const deleteMutation = useDeleteCoupon();
+  const issueMutation = useIssueCoupon();
 
-  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const ap = params ?? searchRef.current;
-    setLoading(true);
-    try {
-      const q = new URLSearchParams({
-        page: String(p), pageSize: String(ps),
-        ...(ap.keyword ? { keyword: ap.keyword } : {}),
-        ...(ap.status ? { status: ap.status } : {}),
-        ...(ap.type ? { type: ap.type } : {}),
-      }).toString();
-      const res = await request.get<PaginatedResponse<Coupon>>(`/api/coupons?${q}`);
-      if (res.code === 0) { setData(res.data.list); setTotal(res.data.total); }
-    } finally { setLoading(false); }
-  }, [page, pageSize]);
-
-  useEffect(() => { void fetchData(); }, [fetchData]);
-
-  const handleSearch = () => { setPage(1); void fetchData(1, pageSize); };
-  const handleReset = () => { setSearch({}); setPage(1); void fetchData(1, pageSize, {}); };
+  const handleSearch = () => {
+    setPage(1);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: memberAdminKeys.couponLists });
+  };
+  const handleReset = () => {
+    setDraftParams({});
+    setSubmittedParams({});
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: memberAdminKeys.couponLists });
+  };
 
   const openCreate = () => {
     setEditing(null);
@@ -125,17 +133,14 @@ export default function CouponsPage() {
       validEnd: v.validType === 'fixed' && v.validEnd ? formatDateTimeForApi(v.validEnd) : undefined,
       validDays: v.validType === 'relative' ? v.validDays ?? null : null,
     };
-    const res = editing
-      ? await request.put(`/api/coupons/${editing.id}`, payload)
-      : await request.post('/api/coupons', payload);
-    if (res.code === 0) { Toast.success(editing ? '已更新' : '已创建'); setModalVisible(false); void fetchData(); }
-    else throw new Error(res.message);
+    await saveMutation.mutateAsync({ id: editing?.id, values: payload });
+    Toast.success(editing ? '已更新' : '已创建');
+    setModalVisible(false);
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete(`/api/coupons/${id}`);
-    if (res.code === 0) { Toast.success('已删除'); void fetchData(); }
-    else Toast.error(res.message);
+    await deleteMutation.mutateAsync(id);
+    Toast.success('已删除');
   };
 
   const confirmDelete = (record: Coupon) => {
@@ -149,10 +154,10 @@ export default function CouponsPage() {
   const openIssue = (r: Coupon) => { setIssuing(r); setIssueVisible(true); };
   const handleIssue = async () => {
     let values: { memberId: number };
-    try { values = (await issueFormApi.current?.validate()) as { memberId: number }; } catch { throw new Error('validation'); }
-    const res = await request.post(`/api/coupons/${issuing!.id}/issue`, { memberId: values.memberId });
-    if (res.code === 0) { Toast.success('发放成功'); setIssueVisible(false); void fetchData(); }
-    else throw new Error(res.message);
+    try { values = (await issueFormApi.current!.validate()) as { memberId: number }; } catch { throw new Error('validation'); }
+    await issueMutation.mutateAsync({ id: issuing!.id, memberId: values.memberId });
+    Toast.success('发放成功');
+    setIssueVisible(false);
   };
 
   const canEdit = hasPermission('member:coupon:update');
@@ -187,10 +192,10 @@ export default function CouponsPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="券名称"
-      value={search.keyword}
+      value={draftParams.keyword}
       showClear
       style={{ width: 180 }}
-      onChange={(v) => setSearch((p) => ({ ...p, keyword: v || undefined }))}
+      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v || undefined }))}
       onEnterPress={handleSearch}
     />
   );
@@ -198,10 +203,10 @@ export default function CouponsPage() {
   const renderTypeFilter = () => (
     <Select
       placeholder="全部类型"
-      value={search.type}
+      value={draftParams.type}
       style={{ width: 120 }}
       showClear
-      onChange={(v) => setSearch((p) => ({ ...p, type: v as string | undefined }))}
+      onChange={(v) => setDraftParams((p) => ({ ...p, type: v as string | undefined }))}
       optionList={typeOptions}
     />
   );
@@ -209,10 +214,10 @@ export default function CouponsPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="全部状态"
-      value={search.status}
+      value={draftParams.status}
       style={{ width: 120 }}
       showClear
-      onChange={(v) => setSearch((p) => ({ ...p, status: v as string | undefined }))}
+      onChange={(v) => setDraftParams((p) => ({ ...p, status: v as string | undefined }))}
       optionList={statusOptions}
     />
   );
@@ -254,9 +259,9 @@ export default function CouponsPage() {
         onFilterReset={handleReset}
       />
 
-      <ConfigurableTable bordered columns={columns} dataSource={data} loading={loading}
-        onRefresh={fetchData} refreshLoading={loading} rowKey="id" size="small"
-        pagination={buildPagination(total, fetchData)} empty="暂无优惠券" scroll={{ x: 1200 }} />
+      <ConfigurableTable bordered columns={columns} dataSource={data} loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} rowKey="id" size="small"
+        pagination={buildPagination(total)} empty="暂无优惠券" scroll={{ x: 1200 }} />
 
       <AppModal title={editing ? '编辑优惠券' : '新增优惠券'} visible={modalVisible} width={700}
         onCancel={() => setModalVisible(false)} onOk={handleSubmit}>

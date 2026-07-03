@@ -1,43 +1,35 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Empty, Input, List, Space, Spin, Toast, Typography } from '@douyinfe/semi-ui';
 import { useNavigate } from 'react-router-dom';
 import { ExternalLink, RotateCcw, Search, Send } from 'lucide-react';
 import type { WorkflowDefinition } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import WorkflowLaunchForm, { type WorkflowLaunchFormHandle } from '@/components/workflow/WorkflowLaunchForm';
 import WorkflowSideSheet from '@/components/workflow/WorkflowSideSheet';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
+import { useLaunchWorkflowInstance, useLaunchableWorkflowDefinitions } from '@/hooks/queries/workflow-launch';
+import { workflowDefinitionKeys } from '@/hooks/queries/workflow-definitions';
 
 const UNCATEGORIZED = -1;
 
 export default function WorkflowLaunchpadPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { categories } = useWorkflowCategories();
-  const [loading, setLoading] = useState(false);
-  const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
   const [keyword, setKeyword] = useState('');
   const [activeKeyword, setActiveKeyword] = useState('');
 
   const launchFormRef = useRef<WorkflowLaunchFormHandle>(null);
   const [applyVisible, setApplyVisible] = useState(false);
   const [selectedDef, setSelectedDef] = useState<WorkflowDefinition | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [savingDraft, setSavingDraft] = useState(false);
-
-  const fetchList = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await request.get<WorkflowDefinition[]>('/api/workflows/definitions/published');
-      if (res.code === 0) setDefinitions(res.data ?? []);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchList();
-  }, [fetchList]);
+  const definitionsQuery = useLaunchableWorkflowDefinitions();
+  const launchMutation = useLaunchWorkflowInstance();
+  const draftMutation = useLaunchWorkflowInstance();
+  const definitions = useMemo(() => definitionsQuery.data ?? [], [definitionsQuery.data]);
+  const loading = definitionsQuery.isFetching;
+  const submitting = launchMutation.isPending;
+  const savingDraft = draftMutation.isPending;
 
   const categoryName = useMemo(() => {
     const map = new Map<number, string>();
@@ -82,10 +74,9 @@ export default function WorkflowLaunchpadPage() {
     const result = await launchFormRef.current?.collectFormData({ requireInitiatorApprovers: !asDraft });
     if (!result) return;
     const { values, formData } = result;
-    const setBusy = asDraft ? setSavingDraft : setSubmitting;
-    setBusy(true);
-    try {
-      const res = await request.post('/api/workflows/instances', {
+    const mutation = asDraft ? draftMutation : launchMutation;
+    await mutation.mutateAsync({
+      values: {
         definitionId: selectedDef.id,
         title: values.title,
         formData,
@@ -93,18 +84,21 @@ export default function WorkflowLaunchpadPage() {
         ccUserIds: Array.isArray(values.ccUserIds) ? values.ccUserIds : undefined,
         selectedInitiatorApprovers: result.selectedInitiatorApprovers,
         ...(asDraft ? { asDraft: true } : {}),
-      });
-      if (res.code === 0) {
-        Toast.success(asDraft ? '草稿已保存' : '申请已提交');
-        closeApply();
-      }
-    } finally {
-      setBusy(false);
-    }
+      },
+    });
+    Toast.success(asDraft ? '草稿已保存' : '申请已提交');
+    closeApply();
   };
 
-  const handleSearch = () => setActiveKeyword(keyword);
-  const handleReset = () => { setKeyword(''); setActiveKeyword(''); };
+  const handleSearch = () => {
+    setActiveKeyword(keyword);
+    void queryClient.invalidateQueries({ queryKey: workflowDefinitionKeys.published });
+  };
+  const handleReset = () => {
+    setKeyword('');
+    setActiveKeyword('');
+    void queryClient.invalidateQueries({ queryKey: workflowDefinitionKeys.published });
+  };
 
   const renderDefinitionCard = (def: WorkflowDefinition) => (
     <button

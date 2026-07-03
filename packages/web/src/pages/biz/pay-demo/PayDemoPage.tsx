@@ -5,7 +5,8 @@
  * createPayment 拿到二维码/跳转链接；③ 支付成功后由 paymentEventBus 订阅器按 bizType
  * 履约（置 paid、发放权益）。「模拟支付成功」用于在未配置真实渠道时演示完整闭环。
  */
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useRef, useState, type CSSProperties } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Banner, Button, Collapse, Form, Input, Modal, Select, Space, Tag, Toast, Tooltip, Typography,
 } from '@douyinfe/semi-ui';
@@ -14,14 +15,21 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Info, Plus, RotateCcw, Search } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { PAYMENT_METHOD_LABELS } from '@zenith/shared';
-import type { BizPayDemo, BizPayDemoStatus, CreatePaymentResult, PaymentMethod, PaginatedResponse } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { BizPayDemo, BizPayDemoStatus, CreatePaymentResult, PaymentMethod } from '@zenith/shared';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { createdAtColumn } from '@/utils/table-columns';
 import AppModal from '@/components/AppModal';
+import {
+  bizPayDemoKeys,
+  useBizPayDemoList,
+  useCreateBizPayDemo,
+  useDeleteBizPayDemo,
+  usePayBizPayDemo,
+  useSimulateBizPayDemoPaid,
+} from '@/hooks/queries/biz-pay-demo';
 
 type TagColor = 'grey' | 'blue' | 'green' | 'orange';
 
@@ -94,51 +102,44 @@ const DEFAULT_PAY_DEMO_SEARCH_PARAMS: PayDemoSearchParams = {
 };
 
 export default function PayDemoPage() {
-  const { page, pageSize, setPage, resetPage, buildPagination } = usePagination();
+  const queryClient = useQueryClient();
+  const { page, pageSize, setPage, buildPagination } = usePagination();
 
-  const [list, setList] = useState<BizPayDemo[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [searchParams, setSearchParams] = useState<PayDemoSearchParams>(DEFAULT_PAY_DEMO_SEARCH_PARAMS);
-  const searchParamsRef = useRef<PayDemoSearchParams>(DEFAULT_PAY_DEMO_SEARCH_PARAMS);
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<PayDemoSearchParams>(DEFAULT_PAY_DEMO_SEARCH_PARAMS);
+  const [submittedParams, setSubmittedParams] = useState<PayDemoSearchParams>(DEFAULT_PAY_DEMO_SEARCH_PARAMS);
 
   const [createVisible, setCreateVisible] = useState(false);
-  const [saving, setSaving] = useState(false);
   const createFormApi = useRef<FormApi | null>(null);
 
   const [payTarget, setPayTarget] = useState<BizPayDemo | null>(null);
-  const [paying, setPaying] = useState(false);
   const payFormApi = useRef<FormApi | null>(null);
 
   const [payResult, setPayResult] = useState<CreatePaymentResult | null>(null);
-  const [simulatingId, setSimulatingId] = useState<number | null>(null);
 
-  const fetchList = useCallback(async (p = page, ps = pageSize, params?: PayDemoSearchParams) => {
-    const activeParams = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const queryParams = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-      if (activeParams.keyword.trim()) queryParams.set('keyword', activeParams.keyword.trim());
-      if (activeParams.status) queryParams.set('status', activeParams.status);
-      const res = await request.get<PaginatedResponse<BizPayDemo>>(`/api/biz/pay-demos?${queryParams.toString()}`);
-      if (res.code === 0) { setList(res.data.list); setTotal(res.data.total); }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize]);
+  const listQuery = useBizPayDemoList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword.trim() || undefined,
+    status: submittedParams.status || undefined,
+  });
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const createMutation = useCreateBizPayDemo();
+  const payMutation = usePayBizPayDemo();
+  const simulateMutation = useSimulateBizPayDemoPaid();
+  const deleteMutation = useDeleteBizPayDemo();
+  const simulatingId = simulateMutation.isPending ? (simulateMutation.variables ?? null) : null;
 
-  useEffect(() => {
-    void fetchList(1, pageSize);
+  const handleSearch = () => {
     setPage(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleSearch = () => { resetPage(); void fetchList(1, pageSize); };
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: bizPayDemoKeys.lists });
+  };
   const handleReset = () => {
-    setSearchParams(DEFAULT_PAY_DEMO_SEARCH_PARAMS);
-    resetPage();
-    void fetchList(1, pageSize, DEFAULT_PAY_DEMO_SEARCH_PARAMS);
+    setPage(1);
+    setDraftParams(DEFAULT_PAY_DEMO_SEARCH_PARAMS);
+    setSubmittedParams(DEFAULT_PAY_DEMO_SEARCH_PARAMS);
+    void queryClient.invalidateQueries({ queryKey: bizPayDemoKeys.lists });
   };
 
   const openCreate = () => {
@@ -149,17 +150,13 @@ export default function PayDemoPage() {
   const handleCreate = async () => {
     if (!createFormApi.current) return;
     let values: Record<string, unknown>;
-    try { values = await createFormApi.current.validate() as Record<string, unknown>; } catch { return; }
-    setSaving(true);
-    try {
-      const res = await request.post<BizPayDemo>('/api/biz/pay-demos', {
-        subject: String(values.subject ?? ''),
-        amount: Math.round(Number(values.amount) * 100), // 元 → 分
-      });
-      if (res.code === 0) { Toast.success('创建成功'); setCreateVisible(false); void fetchList(); }
-    } finally {
-      setSaving(false);
-    }
+    try { values = await createFormApi.current.validate() as Record<string, unknown>; } catch { throw new Error('validation'); }
+    await createMutation.mutateAsync({
+      subject: String(values.subject ?? ''),
+      amount: Math.round(Number(values.amount) * 100),
+    });
+    Toast.success('创建成功');
+    setCreateVisible(false);
   };
 
   const openPay = (record: BizPayDemo) => {
@@ -170,36 +167,20 @@ export default function PayDemoPage() {
   const handlePay = async () => {
     if (!payTarget || !payFormApi.current) return;
     let values: Record<string, unknown>;
-    try { values = await payFormApi.current.validate() as Record<string, unknown>; } catch { return; }
-    setPaying(true);
-    try {
-      const res = await request.post<{ demo: BizPayDemo; payParams: CreatePaymentResult }>(
-        `/api/biz/pay-demos/${payTarget.id}/pay`,
-        { payMethod: values.payMethod as PaymentMethod },
-      );
-      if (res.code === 0) {
-        setPayTarget(null);
-        setPayResult(res.data.payParams);
-        void fetchList();
-      }
-    } finally {
-      setPaying(false);
-    }
+    try { values = await payFormApi.current.validate() as Record<string, unknown>; } catch { throw new Error('validation'); }
+    const data = await payMutation.mutateAsync({ id: payTarget.id, payMethod: values.payMethod as PaymentMethod });
+    setPayTarget(null);
+    setPayResult(data.payParams);
   };
 
   const handleSimulate = async (record: BizPayDemo) => {
-    setSimulatingId(record.id);
-    try {
-      const res = await request.post<BizPayDemo>(`/api/biz/pay-demos/${record.id}/simulate-paid`, {});
-      if (res.code === 0) { Toast.success('已模拟支付成功，自动完成履约'); void fetchList(); }
-    } finally {
-      setSimulatingId(null);
-    }
+    await simulateMutation.mutateAsync(record.id);
+    Toast.success('已模拟支付成功，自动完成履约');
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete(`/api/biz/pay-demos/${id}`);
-    if (res.code === 0) { Toast.success('已删除'); void fetchList(); }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('已删除');
   };
 
   const columns: ColumnProps<BizPayDemo>[] = [
@@ -284,8 +265,8 @@ export default function PayDemoPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="搜索示例事项"
-      value={searchParams.keyword}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
+      value={draftParams.keyword}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))}
       onEnterPress={handleSearch}
       showClear
       style={{ width: 220, maxWidth: '100%' }}
@@ -295,8 +276,8 @@ export default function PayDemoPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="状态"
-      value={searchParams.status || undefined}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as PayDemoSearchParams['status']) ?? '' }))}
+      value={draftParams.status || undefined}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, status: (value as PayDemoSearchParams['status']) ?? '' }))}
       showClear
       style={{ width: 140, maxWidth: '100%' }}
       optionList={(Object.keys(STATUS_MAP) as BizPayDemoStatus[]).map((value) => ({ value, label: STATUS_MAP[value].text }))}
@@ -344,12 +325,12 @@ export default function PayDemoPage() {
         bordered
         columns={columns}
         dataSource={list}
-        loading={loading}
+        loading={listQuery.isFetching}
         rowKey="id"
         columnSettingsKey="biz-pay-demo"
-        pagination={buildPagination(total, fetchList)}
-        onRefresh={() => void fetchList()}
-        refreshLoading={loading}
+        pagination={buildPagination(total)}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
       />
 
       <Collapse style={{ marginTop: 16 }}>
@@ -369,8 +350,8 @@ export default function PayDemoPage() {
         title="新建支付示例单"
         visible={createVisible}
         onCancel={() => setCreateVisible(false)}
-        onOk={() => void handleCreate()}
-        okButtonProps={{ loading: saving }}
+        onOk={handleCreate}
+        okButtonProps={{ loading: createMutation.isPending }}
         closeOnEsc
         width={480}
       >
@@ -384,8 +365,8 @@ export default function PayDemoPage() {
         title={`发起支付${payTarget ? ` · ${payTarget.subject}（${yuan(payTarget.amount)}）` : ''}`}
         visible={!!payTarget}
         onCancel={() => setPayTarget(null)}
-        onOk={() => void handlePay()}
-        okButtonProps={{ loading: paying }}
+        onOk={handlePay}
+        okButtonProps={{ loading: payMutation.isPending }}
         okText="发起支付"
         closeOnEsc
         width={480}

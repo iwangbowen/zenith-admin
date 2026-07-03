@@ -6,7 +6,8 @@
  *   - 自动发送站内信
  *   - Webhook 回调 / 回写表单字段
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Col,
@@ -27,13 +28,11 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag/interface';
 import { Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
 import type {
-  PaginatedResponse,
   WorkflowAutomation,
   WorkflowAutomationAction,
   WorkflowAutomationTrigger,
   WorkflowDefinition,
 } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
@@ -41,6 +40,14 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
+import { useWorkflowDefinitionList } from '@/hooks/queries/workflow-definitions';
+import {
+  useDeleteWorkflowAutomation,
+  useSaveWorkflowAutomation,
+  useWorkflowAutomationDetail,
+  useWorkflowAutomationList,
+  workflowAutomationKeys,
+} from '@/hooks/queries/workflow-automations';
 
 const TRIGGER_OPTIONS: Array<{ value: WorkflowAutomationTrigger; label: string; color: TagColor }> = [
   { value: 'created',   label: '流程发起时', color: 'blue' },
@@ -244,66 +251,63 @@ function draftToAction(d: ActionDraft): WorkflowAutomationAction | { __error: st
 }
 
 export default function WorkflowAutomationsPage() {
+  const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi<FormValues> | null>(null);
-  const editingRequestIdRef = useRef<number | null>(null);
   const canEditAutomation = hasPermission('workflow:definition:edit');
-  const [loading, setLoading] = useState(false);
-  const [list, setList] = useState<WorkflowAutomation[]>([]);
-  const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, buildPagination } = usePagination();
 
   interface SearchParams { definitionId: number | ''; trigger: WorkflowAutomationTrigger | ''; status: 'enabled' | 'disabled' | '' }
   const defaultSearchParams: SearchParams = { definitionId: '', trigger: '', status: '' };
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
+  const listQuery = useWorkflowAutomationList({
+    page,
+    pageSize,
+    definitionId: submittedParams.definitionId === '' ? undefined : submittedParams.definitionId,
+    trigger: submittedParams.trigger || undefined,
+    status: submittedParams.status || undefined,
+  });
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
 
-  const [defs, setDefs] = useState<WorkflowDefinition[]>([]);
+  const definitionsQuery = useWorkflowDefinitionList({ page: 1, pageSize: 200 });
+  const defs: WorkflowDefinition[] = useMemo(() => definitionsQuery.data?.list ?? [], [definitionsQuery.data]);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<WorkflowAutomation | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const [actions, setActions] = useState<ActionDraft[]>([]);
-
-  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const { definitionId: did, trigger: trg, status: sts } = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const q = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-      if (did !== '') q.set('definitionId', String(did));
-      if (trg) q.set('trigger', trg);
-      if (sts) q.set('status', sts);
-      const res = await request.get<PaginatedResponse<WorkflowAutomation>>(
-        `/api/workflows/automations?${q.toString()}`,
-      );
-      if (res.code === 0) {
-        setList(res.data.list);
-        setTotal(res.data.total);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize]);
-
-  useEffect(() => { void fetchData(); }, [fetchData]);
+  const detailQuery = useWorkflowAutomationDetail(editing?.id, modalVisible && !!editing);
+  const saveMutation = useSaveWorkflowAutomation();
+  const deleteMutation = useDeleteWorkflowAutomation();
 
   useEffect(() => {
-    request
-      .get<PaginatedResponse<WorkflowDefinition>>('/api/workflows/definitions?page=1&pageSize=200')
-      .then((res) => { if (res.code === 0) setDefs(res.data.list); })
-      .catch(() => { /* ignore */ });
-  }, []);
+    if (!modalVisible || !detailQuery.data) return;
+    setEditing(detailQuery.data);
+    setActions(detailQuery.data.actions.map(actionToDraft));
+    setTimeout(() => formApi.current?.setValues({
+      definitionId: detailQuery.data.definitionId,
+      name: detailQuery.data.name,
+      trigger: detailQuery.data.trigger,
+      status: detailQuery.data.status,
+      sort: detailQuery.data.sort,
+      actions: [],
+    }), 0);
+  }, [detailQuery.data, modalVisible]);
 
-  const handleSearch = () => { setPage(1); void fetchData(1, pageSize); };
+  const handleSearch = () => {
+    setPage(1);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: workflowAutomationKeys.lists });
+  };
   const handleReset = () => {
-    setSearchParams(defaultSearchParams);
-    setPage(1); void fetchData(1, pageSize, defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: workflowAutomationKeys.lists });
   };
 
   const openCreate = () => {
-    editingRequestIdRef.current = null;
     setEditing(null);
     setActions([]);
     setModalVisible(true);
@@ -312,9 +316,7 @@ export default function WorkflowAutomationsPage() {
     }), 0);
   };
 
-  const openEdit = async (row: WorkflowAutomation) => {
-    const requestedId = row.id;
-    editingRequestIdRef.current = requestedId;
+  const openEdit = (row: WorkflowAutomation) => {
     setEditing(row);
     const drafts = row.actions.map(actionToDraft);
     setActions(drafts);
@@ -327,28 +329,6 @@ export default function WorkflowAutomationsPage() {
       sort: row.sort,
       actions: [],
     }), 0);
-    setModalDetailLoading(true);
-    try {
-      const res = await request.get<WorkflowAutomation>(`/api/workflows/automations/${requestedId}`);
-      if (editingRequestIdRef.current !== requestedId) return;
-      if (res.code === 0 && res.data) {
-        setEditing(res.data);
-        const newDrafts = res.data.actions.map(actionToDraft);
-        setActions(newDrafts);
-        setTimeout(() => formApi.current?.setValues({
-          definitionId: res.data.definitionId,
-          name: res.data.name,
-          trigger: res.data.trigger,
-          status: res.data.status,
-          sort: res.data.sort,
-          actions: [],
-        }), 0);
-      } else {
-        Toast.error(res.message || '获取自动化规则信息失败');
-      }
-    } finally {
-      if (editingRequestIdRef.current === requestedId) setModalDetailLoading(false);
-    }
   };
 
   const addAction = (type: ActionDraft['type']) => {
@@ -384,22 +364,24 @@ export default function WorkflowAutomationsPage() {
       sort: vals.sort ?? 0,
       actions: built,
     };
-    setSaving(true);
+    await saveMutation.mutateAsync({ id: editing?.id, values: body });
+    Toast.success(editing ? '已更新' : '已创建');
+    setModalVisible(false);
+  };
+
+  const handleModalOk = async () => {
+    let values: FormValues;
     try {
-      const res = editing
-        ? await request.put<WorkflowAutomation>(`/api/workflows/automations/${editing.id}`, body)
-        : await request.post<WorkflowAutomation>(`/api/workflows/automations`, body);
-      if (res.code === 0) {
-        Toast.success(editing ? '已更新' : '已创建');
-        setModalVisible(false);
-        await fetchData();
-      }
-    } finally { setSaving(false); }
+      values = await formApi.current!.validate();
+    } catch {
+      throw new Error('validation');
+    }
+    await handleSubmit(values);
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete(`/api/workflows/automations/${id}`);
-    if (res.code === 0) { Toast.success('已删除'); await fetchData(); }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('已删除');
   };
 
   const defOptions = useMemo(
@@ -463,8 +445,8 @@ export default function WorkflowAutomationsPage() {
   const renderDefinitionFilter = () => (
     <Select
       placeholder="所属流程"
-      value={searchParams.definitionId === '' ? undefined : searchParams.definitionId}
-      onChange={(v) => setSearchParams(prev => ({ ...prev, definitionId: (v as number) ?? '' }))}
+      value={draftParams.definitionId === '' ? undefined : draftParams.definitionId}
+      onChange={(v) => setDraftParams(prev => ({ ...prev, definitionId: (v as number) ?? '' }))}
       showClear
       style={{ width: 220 }}
       optionList={launchableDefOptions}
@@ -474,8 +456,8 @@ export default function WorkflowAutomationsPage() {
   const renderTriggerFilter = () => (
     <Select
       placeholder="触发时机"
-      value={searchParams.trigger || undefined}
-      onChange={(v) => setSearchParams(prev => ({ ...prev, trigger: (v as WorkflowAutomationTrigger) ?? '' }))}
+      value={draftParams.trigger || undefined}
+      onChange={(v) => setDraftParams(prev => ({ ...prev, trigger: (v as WorkflowAutomationTrigger) ?? '' }))}
       showClear
       style={{ width: 140 }}
       optionList={TRIGGER_OPTIONS}
@@ -485,8 +467,8 @@ export default function WorkflowAutomationsPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="状态"
-      value={searchParams.status || undefined}
-      onChange={(v) => setSearchParams(prev => ({ ...prev, status: (v as 'enabled' | 'disabled') ?? '' }))}
+      value={draftParams.status || undefined}
+      onChange={(v) => setDraftParams(prev => ({ ...prev, status: (v as 'enabled' | 'disabled') ?? '' }))}
       showClear
       style={{ width: 120 }}
       optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '禁用' }]}
@@ -538,26 +520,26 @@ export default function WorkflowAutomationsPage() {
 
       <ConfigurableTable<WorkflowAutomation>
         bordered
-        loading={loading}
-        onRefresh={fetchData}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         rowKey="id"
         dataSource={list}
         columns={columns}
-        pagination={buildPagination(total, fetchData)}
+        pagination={buildPagination(total)}
       />
 
       <AppModal
         title={editing ? '编辑自动化规则' : '新增自动化规则'}
         visible={modalVisible}
-        onCancel={() => { editingRequestIdRef.current = null; setModalVisible(false); setEditing(null); setModalDetailLoading(false); }}
-        onOk={() => formApi.current?.submitForm()}
-        confirmLoading={saving}
-        okButtonProps={{ disabled: modalDetailLoading }}
+        onCancel={() => { setModalVisible(false); setEditing(null); }}
+        onOk={handleModalOk}
+        confirmLoading={saveMutation.isPending}
+        okButtonProps={{ disabled: detailQuery.isFetching }}
         closeOnEsc
         width={780}
       >
-        <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
+        <Spin spinning={detailQuery.isFetching} wrapperClassName="modal-spin-wrapper">
         <Form<FormValues> getFormApi={(api) => (formApi.current = api)} onSubmit={handleSubmit} labelPosition="left" labelWidth={96}>
           <Row gutter={16}>
             <Col span={12}>

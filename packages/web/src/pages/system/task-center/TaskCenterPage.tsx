@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Descriptions, InputNumber, Modal, Select, SideSheet, Switch, TabPane, Tabs, Tag, Toast, Typography, Input } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Eraser, RefreshCw, RotateCcw, Search, Trash2, XCircle } from 'lucide-react';
 import type { AsyncTask, AsyncTaskItem, AsyncTaskItemStatus, AsyncTaskStats, AsyncTaskStatus, AsyncTaskTypeMeta, PaginatedResponse } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
@@ -14,6 +14,19 @@ import { usePermission } from '@/hooks/usePermission';
 import { useTaskProgressEvents } from '@/hooks/useAsyncTasks';
 import { formatDateTime } from '@/utils/date';
 import { renderEllipsis } from '@/utils/table-columns';
+import {
+  asyncTaskKeys,
+  useAsyncTaskAction,
+  useAsyncTaskItems,
+  useAsyncTaskList,
+  useAsyncTaskStats,
+  useAsyncTaskTypes,
+  useBatchCancelAsyncTasks,
+  useBatchDeleteAsyncTasks,
+  useCleanupAsyncTasks,
+  useDeleteAsyncTask,
+  useUpdateAsyncTaskTypeConfig,
+} from '@/hooks/queries/async-tasks';
 
 type TabKey = 'tasks' | 'types';
 
@@ -59,6 +72,9 @@ const itemStatusOptions: Array<{ value: AsyncTaskItemStatus | ''; label: string 
 ];
 
 const AUTO_REFRESH_MS = 5000;
+const EMPTY_TASKS: AsyncTask[] = [];
+const EMPTY_TYPES: AsyncTaskTypeMeta[] = [];
+const EMPTY_ITEMS: AsyncTaskItem[] = [];
 
 function renderJson(value: Record<string, unknown> | null) {
   if (!value || Object.keys(value).length === 0) return <Typography.Text type="tertiary">-</Typography.Text>;
@@ -121,40 +137,64 @@ function StatsCards({ stats }: { stats: AsyncTaskStats | null }) {
 }
 
 export default function TaskCenterPage() {
+  const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
   const canManage = hasPermission('system:async-task:manage');
   const canCleanup = hasPermission('system:async-task:cleanup');
   const canConfig = hasPermission('system:async-task:config');
 
   const [activeTab, setActiveTab] = useState<TabKey>('tasks');
-  const [types, setTypes] = useState<AsyncTaskTypeMeta[]>([]);
-  const [typesLoading, setTypesLoading] = useState(false);
-  const [data, setData] = useState<AsyncTask[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [stats, setStats] = useState<AsyncTaskStats | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
-  const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
   const [detailTask, setDetailTask] = useState<AsyncTask | null>(null);
-  const [cleaning, setCleaning] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
-  const [batchLoading, setBatchLoading] = useState(false);
   const { page, pageSize, setPage, buildPagination } = usePagination();
 
   // 详情抽屉：任务项明细
-  const [items, setItems] = useState<AsyncTaskItem[]>([]);
-  const [itemsTotal, setItemsTotal] = useState(0);
-  const [itemsLoading, setItemsLoading] = useState(false);
   const [itemStatusFilter, setItemStatusFilter] = useState('');
-  const { pageSize: itemsPageSize, setPage: setItemsPage, buildPagination: buildItemsPagination } = usePagination(10);
+  const { page: itemsPage, pageSize: itemsPageSize, setPage: setItemsPage, buildPagination: buildItemsPagination } = usePagination(10);
 
   // 类型策略弹窗
   const [configType, setConfigType] = useState<AsyncTaskTypeMeta | null>(null);
-  const [configSaving, setConfigSaving] = useState(false);
   const [configDraft, setConfigDraft] = useState({ enabled: true, allowConcurrent: true, maxAttempts: 1, retryDelayMs: 5000, retentionDays: null as number | null });
+  const refetchInterval = autoRefresh && activeTab === 'tasks' ? AUTO_REFRESH_MS : false;
+  const listQuery = useAsyncTaskList({
+    page,
+    pageSize,
+    taskType: submittedParams.taskType || undefined,
+    status: submittedParams.status || undefined,
+    keyword: submittedParams.keyword || undefined,
+    createdBy: submittedParams.createdBy || undefined,
+  }, { refetchInterval });
+  const statsQuery = useAsyncTaskStats({ refetchInterval });
+  const typesQuery = useAsyncTaskTypes();
+  const itemsQuery = useAsyncTaskItems({
+    taskId: detailTask?.id ?? 0,
+    page: itemsPage,
+    pageSize: itemsPageSize,
+    status: itemStatusFilter || undefined,
+  }, detailTask != null);
+  const data = listQuery.data?.list ?? EMPTY_TASKS;
+  const total = listQuery.data?.total ?? 0;
+  const stats = statsQuery.data ?? null;
+  const types = typesQuery.data ?? EMPTY_TYPES;
+  const items = itemsQuery.data?.list ?? EMPTY_ITEMS;
+  const itemsTotal = itemsQuery.data?.total ?? 0;
+  const cancelMutation = useAsyncTaskAction('cancel');
+  const resumeMutation = useAsyncTaskAction('resume');
+  const restartMutation = useAsyncTaskAction('restart');
+  const deleteMutation = useDeleteAsyncTask();
+  const batchCancelMutation = useBatchCancelAsyncTasks();
+  const batchDeleteMutation = useBatchDeleteAsyncTasks();
+  const cleanupMutation = useCleanupAsyncTasks();
+  const updateTypeConfigMutation = useUpdateAsyncTaskTypeConfig();
+  const actionLoadingId =
+    (cancelMutation.isPending ? cancelMutation.variables : null)
+    ?? (resumeMutation.isPending ? resumeMutation.variables : null)
+    ?? (restartMutation.isPending ? restartMutation.variables : null)
+    ?? (deleteMutation.isPending ? deleteMutation.variables : null);
+  const batchLoading = batchCancelMutation.isPending || batchDeleteMutation.isPending;
 
   const typeOptions = useMemo(
     () => [
@@ -164,114 +204,37 @@ export default function TaskCenterPage() {
     [types],
   );
 
-  const fetchTypes = useCallback(async (opts?: { withLoading?: boolean }) => {
-    if (opts?.withLoading) setTypesLoading(true);
-    try {
-      const res = await request.get<AsyncTaskTypeMeta[]>('/api/async-tasks/types', { silent: true });
-      if (res.code === 0) setTypes(res.data);
-    } finally {
-      if (opts?.withLoading) setTypesLoading(false);
-    }
-  }, []);
-
-  const fetchStats = useCallback(async () => {
-    const res = await request.get<AsyncTaskStats>('/api/async-tasks/stats', { silent: true });
-    if (res.code === 0) setStats(res.data);
-  }, []);
-
-  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams, opts?: { silent?: boolean }) => {
-    const activeParams = params ?? searchParamsRef.current;
-    if (!opts?.silent) setLoading(true);
-    try {
-      const query = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(activeParams.taskType ? { taskType: activeParams.taskType } : {}),
-        ...(activeParams.status ? { status: activeParams.status } : {}),
-        ...(activeParams.keyword ? { keyword: activeParams.keyword } : {}),
-        ...(activeParams.createdBy ? { createdBy: activeParams.createdBy } : {}),
-      }).toString();
-      const res = await request.get<PaginatedResponse<AsyncTask>>(`/api/async-tasks?${query}`, { silent: opts?.silent });
-      if (res.code === 0) {
-        setData(res.data.list);
-        setTotal(res.data.total);
-        setSelectedRowKeys((prev) => prev.filter((id) => res.data.list.some((item) => item.id === id)));
-      }
-    } finally {
-      if (!opts?.silent) setLoading(false);
-    }
-  }, [page, pageSize]);
-
-  const fetchItems = useCallback(async (taskId: number, p = 1, ps = itemsPageSize, status = itemStatusFilter) => {
-    setItemsLoading(true);
-    try {
-      const query = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(status ? { status } : {}),
-      }).toString();
-      const res = await request.get<PaginatedResponse<AsyncTaskItem>>(`/api/async-tasks/${taskId}/items?${query}`, { silent: true });
-      if (res.code === 0) {
-        setItems(res.data.list);
-        setItemsTotal(res.data.total);
-      }
-    } finally {
-      setItemsLoading(false);
-    }
-  }, [itemsPageSize, itemStatusFilter]);
-
   useEffect(() => {
-    void fetchTypes();
-    void fetchStats();
-  }, [fetchTypes, fetchStats]);
-
-  useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
-
-  // 自动刷新（5s），保证看到其他用户任务的进度推进
-  useEffect(() => {
-    if (!autoRefresh || activeTab !== 'tasks') return;
-    const timer = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void fetchData(undefined, undefined, undefined, { silent: true });
-        void fetchStats();
-      }
-    }, AUTO_REFRESH_MS);
-    return () => clearInterval(timer);
-  }, [autoRefresh, activeTab, fetchData, fetchStats]);
+    setSelectedRowKeys((prev) => prev.filter((id) => data.some((item) => item.id === id)));
+  }, [data]);
 
   // 自己提交的任务走 WS 实时合并（其他用户任务靠自动刷新兜底）
   useTaskProgressEvents(
     useCallback((task: AsyncTask) => {
-      setData((prev) => prev.map((item) => (item.id === task.id ? task : item)));
+      queryClient.setQueriesData<PaginatedResponse<AsyncTask>>({ queryKey: asyncTaskKeys.lists }, (old) => (
+        old ? { ...old, list: old.list.map((item) => (item.id === task.id ? task : item)) } : old
+      ));
       setDetailTask((prev) => (prev && prev.id === task.id ? task : prev));
-    }, []),
+    }, [queryClient]),
   );
 
   const handleSearch = () => {
     setPage(1);
-    void fetchData(1);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: asyncTaskKeys.lists });
   };
 
   const handleReset = () => {
-    setSearchParams(defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
     setPage(1);
-    void fetchData(1, pageSize, defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: asyncTaskKeys.lists });
   };
 
   const runAction = async (record: AsyncTask, action: 'cancel' | 'resume' | 'restart', successMsg: string) => {
-    setActionLoadingId(record.id);
-    try {
-      const res = await request.post<AsyncTask>(`/api/async-tasks/${record.id}/${action}`);
-      if (res.code === 0) {
-        Toast.success(successMsg);
-        void fetchData();
-        void fetchStats();
-      }
-    } finally {
-      setActionLoadingId(null);
-    }
+    const mutation = action === 'cancel' ? cancelMutation : action === 'resume' ? resumeMutation : restartMutation;
+    await mutation.mutateAsync(record.id);
+    Toast.success(successMsg);
   };
 
   const handleDelete = (record: AsyncTask) => {
@@ -280,13 +243,9 @@ export default function TaskCenterPage() {
       content: `将删除任务 #${record.id}「${record.title}」的记录（含任务项明细），不可恢复。`,
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete<null>(`/api/async-tasks/${record.id}`);
-        if (res.code === 0) {
-          Toast.success('已删除');
-          setSelectedRowKeys((prev) => prev.filter((id) => id !== record.id));
-          void fetchData();
-          void fetchStats();
-        }
+        await deleteMutation.mutateAsync(record.id);
+        Toast.success('已删除');
+        setSelectedRowKeys((prev) => prev.filter((id) => id !== record.id));
       },
     });
   };
@@ -297,18 +256,9 @@ export default function TaskCenterPage() {
       title: '批量取消任务',
       content: `将对选中的 ${selectedRowKeys.length} 个任务发起取消（已结束的任务自动跳过）。`,
       onOk: async () => {
-        setBatchLoading(true);
-        try {
-          const res = await request.post<{ affected: number }>('/api/async-tasks/batch-cancel', { ids: selectedRowKeys });
-          if (res.code === 0) {
-            Toast.success(`已请求取消 ${res.data.affected} 个任务`);
-            setSelectedRowKeys([]);
-            void fetchData();
-            void fetchStats();
-          }
-        } finally {
-          setBatchLoading(false);
-        }
+        const data = await batchCancelMutation.mutateAsync(selectedRowKeys);
+        Toast.success(`已请求取消 ${data.affected} 个任务`);
+        setSelectedRowKeys([]);
       },
     });
   };
@@ -320,18 +270,9 @@ export default function TaskCenterPage() {
       content: `将删除选中任务中已结束的记录（进行中的自动跳过），不可恢复。`,
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        setBatchLoading(true);
-        try {
-          const res = await request.post<{ affected: number }>('/api/async-tasks/batch-delete', { ids: selectedRowKeys });
-          if (res.code === 0) {
-            Toast.success(`已删除 ${res.data.affected} 个任务记录`);
-            setSelectedRowKeys([]);
-            void fetchData();
-            void fetchStats();
-          }
-        } finally {
-          setBatchLoading(false);
-        }
+        const data = await batchDeleteMutation.mutateAsync(selectedRowKeys);
+        Toast.success(`已删除 ${data.affected} 个任务记录`);
+        setSelectedRowKeys([]);
       },
     });
   };
@@ -341,17 +282,8 @@ export default function TaskCenterPage() {
       title: '清理已结束任务',
       content: '将按保留策略删除过期的已结束任务记录（默认 30 天，任务类型可单独配置）。',
       onOk: async () => {
-        setCleaning(true);
-        try {
-          const res = await request.post<{ cleaned: number }>('/api/async-tasks/cleanup');
-          if (res.code === 0) {
-            Toast.success(`已清理 ${res.data.cleaned} 条任务记录`);
-            void fetchData();
-            void fetchStats();
-          }
-        } finally {
-          setCleaning(false);
-        }
+        const data = await cleanupMutation.mutateAsync();
+        Toast.success(`已清理 ${data.cleaned} 条任务记录`);
       },
     });
   };
@@ -372,7 +304,6 @@ export default function TaskCenterPage() {
     setDetailTask(record);
     setItemStatusFilter('');
     setItemsPage(1);
-    void fetchItems(record.id, 1, itemsPageSize, '');
   };
 
   const openConfig = (meta: AsyncTaskTypeMeta) => {
@@ -388,17 +319,9 @@ export default function TaskCenterPage() {
 
   const handleConfigSave = async () => {
     if (!configType) return;
-    setConfigSaving(true);
-    try {
-      const res = await request.put<AsyncTaskTypeMeta>(`/api/async-tasks/types/${configType.taskType}/config`, configDraft);
-      if (res.code === 0) {
-        Toast.success('策略已更新');
-        setConfigType(null);
-        void fetchTypes({ withLoading: true });
-      }
-    } finally {
-      setConfigSaving(false);
-    }
+    await updateTypeConfigMutation.mutateAsync({ taskType: configType.taskType, values: configDraft });
+    Toast.success('策略已更新');
+    setConfigType(null);
   };
 
   const columns: ColumnProps<AsyncTask>[] = [
@@ -574,40 +497,40 @@ export default function TaskCenterPage() {
           <SearchToolbar>
             <Select
               placeholder="任务类型"
-              value={searchParams.taskType || undefined}
+              value={draftParams.taskType || undefined}
               optionList={typeOptions}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, taskType: (value as string) ?? '' }))}
+              onChange={(value) => setDraftParams((prev) => ({ ...prev, taskType: (value as string) ?? '' }))}
               style={{ width: 210 }}
             />
             <Select
               placeholder="状态"
-              value={searchParams.status || undefined}
+              value={draftParams.status || undefined}
               optionList={statusOptions}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
+              onChange={(value) => setDraftParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
               style={{ width: 120 }}
             />
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索任务标题/类型"
-              value={searchParams.keyword}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
+              value={draftParams.keyword}
+              onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))}
               onEnterPress={handleSearch}
               style={{ width: 190 }}
               showClear
             />
             <Input
               placeholder="提交人（用户名/昵称）"
-              value={searchParams.createdBy}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, createdBy: value }))}
+              value={draftParams.createdBy}
+              onChange={(value) => setDraftParams((prev) => ({ ...prev, createdBy: value }))}
               onEnterPress={handleSearch}
               style={{ width: 170 }}
               showClear
             />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-            <Button icon={<RefreshCw size={14} />} onClick={() => { void fetchData(); void fetchStats(); }} loading={loading}>刷新</Button>
+            <Button icon={<RefreshCw size={14} />} onClick={() => { void listQuery.refetch(); void statsQuery.refetch(); }} loading={listQuery.isFetching}>刷新</Button>
             {canCleanup && (
-              <Button icon={<Eraser size={14} />} loading={cleaning} onClick={handleCleanup}>清理过期记录</Button>
+              <Button icon={<Eraser size={14} />} loading={cleanupMutation.isPending} onClick={handleCleanup}>清理过期记录</Button>
             )}
             {canManage && selectedRowKeys.length > 0 && (
               <>
@@ -629,10 +552,10 @@ export default function TaskCenterPage() {
             bordered
             columns={columns}
             dataSource={data}
-            loading={loading}
-            onRefresh={() => { void fetchData(); void fetchStats(); }}
-            refreshLoading={loading}
-            pagination={buildPagination(total, fetchData)}
+            loading={listQuery.isFetching}
+            onRefresh={() => { void listQuery.refetch(); void statsQuery.refetch(); }}
+            refreshLoading={listQuery.isFetching}
+            pagination={buildPagination(total)}
             rowKey="id"
             rowSelection={canManage ? {
               selectedRowKeys,
@@ -647,15 +570,15 @@ export default function TaskCenterPage() {
 
         <TabPane tab="任务类型" itemKey="types">
           <SearchToolbar>
-            <Button type="primary" icon={<RefreshCw size={14} />} onClick={() => void fetchTypes({ withLoading: true })} loading={typesLoading}>刷新</Button>
+            <Button type="primary" icon={<RefreshCw size={14} />} onClick={() => void typesQuery.refetch()} loading={typesQuery.isFetching}>刷新</Button>
           </SearchToolbar>
           <ConfigurableTable
             bordered
             columns={typeColumns}
             dataSource={types}
-            loading={typesLoading}
-            onRefresh={() => void fetchTypes({ withLoading: true })}
-            refreshLoading={typesLoading}
+            loading={typesQuery.isFetching}
+            onRefresh={() => void typesQuery.refetch()}
+            refreshLoading={typesQuery.isFetching}
             pagination={false}
             rowKey="taskType"
             size="small"
@@ -717,7 +640,6 @@ export default function TaskCenterPage() {
                     const next = (value as string) ?? '';
                     setItemStatusFilter(next);
                     setItemsPage(1);
-                    void fetchItems(detailTask.id, 1, itemsPageSize, next);
                   }}
                   style={{ width: 120 }}
                   size="small"
@@ -727,8 +649,8 @@ export default function TaskCenterPage() {
                 bordered
                 columns={itemColumns}
                 dataSource={items}
-                loading={itemsLoading}
-                pagination={buildItemsPagination(itemsTotal, (p, ps) => void fetchItems(detailTask.id, p, ps))}
+                loading={itemsQuery.isFetching}
+                pagination={buildItemsPagination(itemsTotal)}
                 rowKey="id"
                 size="small"
                 empty="该任务未上报行级明细"
@@ -745,7 +667,7 @@ export default function TaskCenterPage() {
         width={520}
         onCancel={() => setConfigType(null)}
         onOk={() => void handleConfigSave()}
-        okButtonProps={{ loading: configSaving }}
+        okButtonProps={{ loading: updateTypeConfigMutation.isPending }}
         closeOnEsc
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '8px 0' }}>

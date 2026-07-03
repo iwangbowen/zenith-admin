@@ -1,18 +1,26 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Col, Form, Input, Modal, Row, Select, Spin, Tag,
   Toast, Switch } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search } from 'lucide-react';
-import type { PaginatedResponse, SmsConfig, SmsProvider } from '@zenith/shared';
+import type { SmsConfig, SmsProvider } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
+import {
+  smsConfigKeys,
+  useDeleteSmsConfig,
+  useSaveSmsConfig,
+  useSetDefaultSmsConfig,
+  useSmsConfigDetail,
+  useSmsConfigList,
+} from '@/hooks/queries/sms-configs';
 
 const PROVIDER_OPTIONS = [
   { label: '阿里云', value: 'aliyun' },
@@ -22,92 +30,69 @@ const PROVIDER_OPTIONS = [
 export default function SmsConfigsPage() {
   const { hasPermission: can } = usePermission();
   const { items: statusItems } = useDictItems('common_status');
+  const queryClient = useQueryClient();
 
-  const [loading, setLoading] = useState(false);
-  const [list, setList] = useState<SmsConfig[]>([]);
-  const [total, setTotal] = useState(0);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
+  const { page, pageSize, setPage, buildPagination } = usePagination();
   interface SearchParams { keyword: string; filterProvider: SmsProvider | undefined; filterStatus: string | undefined; }
   const defaultSearchParams: SearchParams = { keyword: '', filterProvider: undefined, filterStatus: undefined };
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<SmsConfig | null>(null);
-  const [modalDetailLoading, setModalDetailLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const formRef = useRef<FormApi>(null);
 
-  const fetchList = useCallback(
-    async (p = page, ps = pageSize, params?: SearchParams) => {
-      const { keyword: kw, filterProvider: pr, filterStatus: st } = params ?? searchParamsRef.current;
-      setLoading(true);
-      try {
-        const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-        if (kw) query.set('keyword', kw);
-        if (pr) query.set('provider', pr);
-        if (st) query.set('status', st);
-        const res = await request.get<PaginatedResponse<SmsConfig>>(`/api/sms-configs?${query}`);
-        setList(res.data?.list ?? []);
-        setTotal(res.data?.total ?? 0);
-        setPage(res.data?.page ?? p);
-        setPageSize(res.data?.pageSize ?? ps);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [page, pageSize, setPage, setPageSize],
-  );
+  const listQuery = useSmsConfigList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    provider: submittedParams.filterProvider,
+    status: submittedParams.filterStatus || undefined,
+  });
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const detailQuery = useSmsConfigDetail(editingRecord?.id, modalVisible);
+  const editing = editingRecord ? (detailQuery.data ?? editingRecord) : null;
+  const modalDetailLoading = !!editingRecord && detailQuery.isFetching;
 
-  useEffect(() => { void fetchList(1); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  const saveMutation = useSaveSmsConfig();
+  const toggleStatusMutation = useSaveSmsConfig();
+  const setDefaultMutation = useSetDefaultSmsConfig();
+  const deleteMutation = useDeleteSmsConfig();
+  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
 
-  const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
-  const handleReset = () => {
-    setSearchParams(defaultSearchParams);
+  const handleSearch = () => {
     setPage(1);
-    void fetchList(1, pageSize, defaultSearchParams);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: smsConfigKeys.lists });
+  };
+  const handleReset = () => {
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: smsConfigKeys.lists });
   };
 
   const openCreate = () => { setEditingRecord(null); setModalVisible(true); };
-  const openEdit = async (record: SmsConfig) => {
+  const openEdit = (record: SmsConfig) => {
     setEditingRecord(record);
     setModalVisible(true);
-    setModalDetailLoading(true);
-    const res = await request.get<SmsConfig>(`/api/sms-configs/${record.id}`);
-    setModalDetailLoading(false);
-    if (res.code === 0) {
-      setEditingRecord(res.data);
-    } else {
-      Toast.error(res.message || '获取信息失败');
-    }
   };
 
   const handleSubmit = async () => {
     let values: Awaited<ReturnType<FormApi['validate']>>;
-    try { values = (await formRef.current?.validate())!; } catch { return; }
-    setSubmitting(true);
-    try {
-      if (editingRecord) {
-        const payload: Record<string, unknown> = { ...values };
-        if (!payload.accessKeySecret) delete payload.accessKeySecret;
-        await request.put(`/api/sms-configs/${editingRecord.id}`, payload);
-        Toast.success('更新成功');
-      } else {
-        await request.post('/api/sms-configs', values);
-        Toast.success('创建成功');
-      }
-      setModalVisible(false);
-      void fetchList();
-    } finally {
-      setSubmitting(false);
-    }
+    try { values = (await formRef.current!.validate())!; } catch { throw new Error('validation'); }
+    const payload = { ...values } as Partial<SmsConfig>;
+    if (editingRecord && !payload.accessKeySecret) delete payload.accessKeySecret;
+    await saveMutation.mutateAsync({ id: editingRecord?.id, values: payload });
+    Toast.success(editingRecord ? '更新成功' : '创建成功');
+    setModalVisible(false);
+    setEditingRecord(null);
   };
 
   const handleSetDefault = async (record: SmsConfig) => {
-    await request.post(`/api/sms-configs/${record.id}/default`);
+    await setDefaultMutation.mutateAsync(record.id);
     Toast.success('已设为默认');
-    void fetchList();
   };
 
   const handleDelete = (id: number) => {
@@ -115,16 +100,13 @@ export default function SmsConfigsPage() {
       title: '确定要删除该短信配置吗？',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        await request.delete(`/api/sms-configs/${id}`);
+        await deleteMutation.mutateAsync(id);
         Toast.success('删除成功');
-        void fetchList();
       },
     });
   };
 
-  const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null);
-
-  const handleToggleStatus = useCallback(async (cfg: SmsConfig, newStatus: 'enabled' | 'disabled') => {
+  const handleToggleStatus = async (cfg: SmsConfig, newStatus: 'enabled' | 'disabled') => {
     if (newStatus === 'disabled') {
       if (cfg.isDefault) {
         Toast.warning('默认配置不能禁用，请先将其他配置设为默认');
@@ -142,19 +124,9 @@ export default function SmsConfigsPage() {
       });
       if (!confirmed) return;
     }
-    setTogglingStatusId(cfg.id);
-    try {
-      const res = await request.put(`/api/sms-configs/${cfg.id}`, { status: newStatus });
-      if (res.code === 0) {
-        Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
-        void fetchList();
-      } else {
-        Toast.error(res.message || '操作失败');
-      }
-    } finally {
-      setTogglingStatusId(null);
-    }
-  }, [fetchList]);
+    await toggleStatusMutation.mutateAsync({ id: cfg.id, values: { status: newStatus } });
+    Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
+  };
 
   const columns = [
     { title: '名称', dataIndex: 'name', width: 160 },
@@ -214,10 +186,10 @@ export default function SmsConfigsPage() {
         primary={(
           <>
             <Input prefix={<Search size={14} />} placeholder="搜索名称/签名"
-              value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 200 }} />
-            <Select placeholder="服务商" value={searchParams.filterProvider} onChange={(v) => setSearchParams({ ...searchParams, filterProvider: v as SmsProvider | undefined })}
+              value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 200 }} />
+            <Select placeholder="服务商" value={draftParams.filterProvider} onChange={(v) => setDraftParams({ ...draftParams, filterProvider: v as SmsProvider | undefined })}
               optionList={PROVIDER_OPTIONS} showClear style={{ width: 120 }} />
-            <Select placeholder="状态" value={searchParams.filterStatus} onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as string | undefined })}
+            <Select placeholder="状态" value={draftParams.filterStatus} onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as string | undefined })}
               optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))} showClear style={{ width: 110 }} />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
@@ -229,7 +201,7 @@ export default function SmsConfigsPage() {
         mobilePrimary={(
           <>
             <Input prefix={<Search size={14} />} placeholder="搜索名称/签名"
-              value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 200 }} />
+              value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 200 }} />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             {can('system:sms-config:create') && (
               <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
@@ -238,9 +210,9 @@ export default function SmsConfigsPage() {
         )}
         mobileFilters={(
           <>
-            <Select placeholder="服务商" value={searchParams.filterProvider} onChange={(v) => setSearchParams({ ...searchParams, filterProvider: v as SmsProvider | undefined })}
+            <Select placeholder="服务商" value={draftParams.filterProvider} onChange={(v) => setDraftParams({ ...draftParams, filterProvider: v as SmsProvider | undefined })}
               optionList={PROVIDER_OPTIONS} showClear style={{ width: 120 }} />
-            <Select placeholder="状态" value={searchParams.filterStatus} onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as string | undefined })}
+            <Select placeholder="状态" value={draftParams.filterStatus} onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as string | undefined })}
               optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))} showClear style={{ width: 110 }} />
           </>
         )}
@@ -249,21 +221,21 @@ export default function SmsConfigsPage() {
         onFilterReset={handleReset}
       />
 
-      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList()} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total, fetchList)}
+      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
+        pagination={buildPagination(total)}
         scroll={{ x: 1300 }} />
 
       <AppModal title={editingRecord ? '编辑短信配置' : '新增短信配置'} visible={modalVisible}
-        onOk={handleSubmit} onCancel={() => { setModalVisible(false); setEditingRecord(null); setModalDetailLoading(false); }}
-        confirmLoading={submitting} okButtonProps={{ disabled: modalDetailLoading }} width={720}>
+        onOk={handleSubmit} onCancel={() => { setModalVisible(false); setEditingRecord(null); }}
+        confirmLoading={saveMutation.isPending} okButtonProps={{ disabled: modalDetailLoading }} width={720}>
         <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form
-          key={editingRecord?.id ?? 'new'}
+          key={editing?.id ?? 'new'}
           getFormApi={(api) => { (formRef as { current: FormApi }).current = api; }}
           allowEmpty
           labelPosition="left" labelWidth={120}
-          initValues={editingRecord
-            ? { ...editingRecord, accessKeySecret: '' }
+          initValues={editing
+            ? { ...editing, accessKeySecret: '' }
             : { status: 'enabled', isDefault: false, provider: 'aliyun' }}
         >
           <Row gutter={16}>

@@ -1,37 +1,30 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Input, Empty, Typography, List as SemiList } from '@douyinfe/semi-ui';
 import { Search } from 'lucide-react';
-import { request } from '@/utils/request';
 import { UserAvatar } from '@/components/UserAvatar';
 import type { ChatUser } from '../types';
+import { useChatUsers } from '@/hooks/queries/chat';
 
 const { Text } = Typography;
 
 export function UserSearchList({ onSelect, excludeIds }: Readonly<{ onSelect: (user: ChatUser) => void; excludeIds?: number[] }>) {
   const [keyword, setKeyword] = useState('');
-  const [ulist, setUlist] = useState<ChatUser[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [debouncedKeyword, setDebouncedKeyword] = useState('');
   const excludeIdKey = (excludeIds ?? []).join(',');
+  const usersQuery = useChatUsers({ keyword: debouncedKeyword || undefined });
 
-  const search = useCallback(async (kw: string) => {
-    setLoading(true);
-    const qs = kw ? `?keyword=${encodeURIComponent(kw)}` : '';
-    const res = await request.get<ChatUser[]>(`/api/chat/users${qs}`, { silent: true });
-    setLoading(false);
-    const excludeIdSet = new Set(excludeIdKey ? excludeIdKey.split(',').map(Number) : []);
-    if (res.code === 0 && res.data) setUlist(res.data.filter((u) => !excludeIdSet.has(u.id)));
-  }, [excludeIdKey]);
-
-  useEffect(() => { void search(''); }, [search]);
   useEffect(() => {
-    const t = setTimeout(() => { void search(keyword); }, 300);
+    const t = setTimeout(() => setDebouncedKeyword(keyword), 300);
     return () => clearTimeout(t);
-  }, [keyword, search]);
+  }, [keyword]);
+
+  const excludeIdSet = new Set(excludeIdKey ? excludeIdKey.split(',').map(Number) : []);
+  const ulist = (usersQuery.data ?? []).filter((u) => !excludeIdSet.has(u.id));
 
   return (
     <SemiList
       dataSource={ulist}
-      loading={loading}
+      loading={usersQuery.isFetching}
       split={false}
       style={{ marginTop: 8, maxHeight: 280, overflowY: 'auto' }}
       header={<Input prefix={<Search size={14} />} placeholder="搜索用户名 / 昵称" value={keyword} onChange={setKeyword} size="small" />}

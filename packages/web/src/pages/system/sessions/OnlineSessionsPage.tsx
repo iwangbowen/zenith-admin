@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Input,
@@ -11,10 +12,9 @@ import {
   Typography,
 } from '@douyinfe/semi-ui';
 import { Search, RotateCcw } from 'lucide-react';
-import type { OnlineUser, PaginatedResponse } from '@zenith/shared';
+import type { OnlineUser } from '@zenith/shared';
 import { TOKEN_KEY } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -22,18 +22,20 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { renderEllipsis } from '../../../utils/table-columns';
+import { sessionKeys, useForceLogoutSession, useSessionList } from '@/hooks/queries/sessions';
 
 export default function OnlineSessionsPage() {
   const { hasPermission } = usePermission();
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<OnlineUser[]>([]);
-  const [total, setTotal] = useState(0);
+  const queryClient = useQueryClient();
   interface SearchParams { keyword: string; }
   const defaultSearchParams: SearchParams = { keyword: '' };
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
+  const listQuery = useSessionList({ page, pageSize, keyword: submittedParams.keyword || undefined });
+  const data = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const forceLogoutMutation = useForceLogoutSession();
 
   // 从本地 JWT 解码当前会话 tokenId（jti），无需额外请求
   const currentTokenId = useMemo<string | null>(() => {
@@ -47,25 +49,18 @@ export default function OnlineSessionsPage() {
     }
   }, []);
 
-  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const { keyword: activeKw } = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-      if (activeKw) query.set('keyword', activeKw);
-      const res = await request.get<PaginatedResponse<OnlineUser>>(`/api/sessions?${query}`);
-      if (res.code === 0) {
-        setData(res.data.list);
-        setTotal(res.data.total);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize]);
+  const handleSearch = () => {
+    setPage(1);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: sessionKeys.lists });
+  };
 
-  useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
+  const handleReset = () => {
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: sessionKeys.lists });
+  };
 
   const handleForceLogout = (record: OnlineUser) => {
     // 模式引用，Modal.confirm 内部无法直接读 state，改用 ref
@@ -87,13 +82,8 @@ export default function OnlineSessionsPage() {
       ),
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = logoutMode === 'all'
-          ? await request.delete(`/api/sessions/user/${record.userId}`)
-          : await request.delete(`/api/sessions/${record.tokenId}`);
-        if (res.code === 0) {
-          Toast.success(logoutMode === 'all' ? '已强制下线全部会话' : '已强制下线');
-          void fetchData(page, pageSize);
-        }
+        await forceLogoutMutation.mutateAsync({ mode: logoutMode, tokenId: record.tokenId, userId: record.userId });
+        Toast.success(logoutMode === 'all' ? '已强制下线全部会话' : '已强制下线');
       },
     });
   };
@@ -148,14 +138,14 @@ export default function OnlineSessionsPage() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索用户名/昵称/IP"
-              value={searchParams.keyword}
-              onChange={(v) => setSearchParams({ keyword: v })}
-              onEnterPress={() => { setPage(1); void fetchData(1, pageSize); }}
+              value={draftParams.keyword}
+              onChange={(v) => setDraftParams({ keyword: v })}
+              onEnterPress={handleSearch}
               style={{ width: 240 }}
               showClear
             />
-            <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); void fetchData(1, pageSize); }}>查询</Button>
-            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setSearchParams(defaultSearchParams); setPage(1); void fetchData(1, pageSize, defaultSearchParams); }}>重置</Button>
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           </>
         )}
         mobilePrimary={(
@@ -163,17 +153,17 @@ export default function OnlineSessionsPage() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索用户名/昵称/IP"
-              value={searchParams.keyword}
-              onChange={(v) => setSearchParams({ keyword: v })}
-              onEnterPress={() => { setPage(1); void fetchData(1, pageSize); }}
+              value={draftParams.keyword}
+              onChange={(v) => setDraftParams({ keyword: v })}
+              onEnterPress={handleSearch}
               style={{ width: 240 }}
               showClear
             />
-            <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); void fetchData(1, pageSize); }}>查询</Button>
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
           </>
         )}
         mobileActions={(
-          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setSearchParams(defaultSearchParams); setPage(1); void fetchData(1, pageSize, defaultSearchParams); }}>重置</Button>
+          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
         )}
         actionTitle="会话操作"
       />
@@ -182,11 +172,11 @@ export default function OnlineSessionsPage() {
         bordered
         columns={columns}
         dataSource={data}
-        loading={loading}
-        onRefresh={fetchData}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         rowKey="tokenId"
-        pagination={buildPagination(total, fetchData)}
+        pagination={buildPagination(total)}
         empty="暂无在线用户"
       />
     </div>

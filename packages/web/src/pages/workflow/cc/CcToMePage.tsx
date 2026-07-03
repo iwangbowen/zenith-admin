@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Select, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RotateCcw, Search } from 'lucide-react';
-import type { WorkflowInstance, PaginatedResponse } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { WorkflowInstance } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -12,6 +12,8 @@ import { AppModal } from '@/components/AppModal';
 import WorkflowInstanceDetailSheet from '@/components/workflow/WorkflowInstanceDetailSheet';
 import { renderEllipsis } from '../../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
+import { useAllUsers } from '@/hooks/queries/users';
+import { useCcWorkflowInstances, useForwardWorkflowCc, useMarkWorkflowCcRead, workflowInstanceKeys } from '@/hooks/queries/workflow-instances';
 
 type TagColor = 'amber' | 'blue' | 'green' | 'grey' | 'orange' | 'purple' | 'red';
 
@@ -25,53 +27,37 @@ const INSTANCE_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
 };
 
 export default function CcToMePage() {
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<PaginatedResponse<WorkflowInstance> | null>(null);
+  const queryClient = useQueryClient();
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [keyword, setKeyword] = useState('');
-  const keywordRef = useRef('');
-  keywordRef.current = keyword;
+  const [draftKeyword, setDraftKeyword] = useState('');
+  const [submittedKeyword, setSubmittedKeyword] = useState('');
   const [detailVisible, setDetailVisible] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   // 转发抄送
   const [forwardTarget, setForwardTarget] = useState<WorkflowInstance | null>(null);
   const [forwardUserIds, setForwardUserIds] = useState<number[]>([]);
   const [forwardNote, setForwardNote] = useState('');
-  const [forwardLoading, setForwardLoading] = useState(false);
-  const [userOptions, setUserOptions] = useState<Array<{ label: string; value: number }>>([]);
-
-  const fetchList = useCallback(async (p = page, ps = pageSize, kw?: string) => {
-    const activeKeyword = kw ?? keywordRef.current;
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(activeKeyword ? { keyword: activeKeyword } : {}),
-      }).toString();
-      const res = await request.get<PaginatedResponse<WorkflowInstance>>(`/api/workflows/instances/cc-mine?${query}`);
-      if (res.code === 0) {
-        setData(res.data);
-        setPage(res.data.page);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize, setPage]);
-
-  useEffect(() => {
-    void fetchList();
-  }, [fetchList]);
+  const listQuery = useCcWorkflowInstances({ page, pageSize, keyword: submittedKeyword || undefined });
+  const data = listQuery.data;
+  const markReadMutation = useMarkWorkflowCcRead();
+  const forwardMutation = useForwardWorkflowCc();
+  const usersQuery = useAllUsers({ enabled: forwardTarget !== null });
+  const userOptions = useMemo(
+    () => (usersQuery.data ?? []).map((u) => ({ label: u.nickname ?? u.username, value: u.id })),
+    [usersQuery.data],
+  );
 
   const handleSearch = () => {
     setPage(1);
-    void fetchList(1);
+    setSubmittedKeyword(draftKeyword);
+    void queryClient.invalidateQueries({ queryKey: workflowInstanceKeys.lists });
   };
 
   const handleReset = () => {
-    setKeyword('');
+    setDraftKeyword('');
+    setSubmittedKeyword('');
     setPage(1);
-    void fetchList(1, pageSize, '');
+    void queryClient.invalidateQueries({ queryKey: workflowInstanceKeys.lists });
   };
 
   const openDetail = (record: WorkflowInstance) => {
@@ -79,22 +65,14 @@ export default function CcToMePage() {
     setDetailVisible(true);
     // 自动标记已读
     if (record.ccTaskId && !record.ccReadAt) {
-      request.post(`/api/workflows/instances/cc/${record.ccTaskId}/read`, {})
-        .then((res) => { if (res.code === 0) void fetchList(); })
-        .catch(() => { /* 标记已读失败不影响查看 */ });
+      markReadMutation.mutate(record.ccTaskId);
     }
   };
 
-  const openForward = async (record: WorkflowInstance) => {
+  const openForward = (record: WorkflowInstance) => {
     setForwardTarget(record);
     setForwardUserIds([]);
     setForwardNote('');
-    if (userOptions.length === 0) {
-      try {
-        const res = await request.get<Array<{ id: number; nickname: string; username: string }>>('/api/users/all');
-        if (res.code === 0) setUserOptions(res.data.map((u) => ({ label: u.nickname ?? u.username, value: u.id })));
-      } catch { /* ignore */ }
-    }
   };
 
   const handleForward = async () => {
@@ -102,20 +80,9 @@ export default function CcToMePage() {
       Toast.warning('请选择抄送人');
       return;
     }
-    setForwardLoading(true);
-    try {
-      const res = await request.post(`/api/workflows/instances/${forwardTarget.id}/forward`, {
-        userIds: forwardUserIds,
-        note: forwardNote || undefined,
-      });
-      if (res.code === 0) {
-        Toast.success(res.message || '已抄送');
-        setForwardTarget(null);
-        void fetchList();
-      }
-    } finally {
-      setForwardLoading(false);
-    }
+    await forwardMutation.mutateAsync({ id: forwardTarget.id, userIds: forwardUserIds, note: forwardNote || undefined });
+    Toast.success('已抄送');
+    setForwardTarget(null);
   };
 
   const columns: ColumnProps<WorkflowInstance>[] = [
@@ -145,7 +112,7 @@ export default function CcToMePage() {
       desktopInlineKeys: ['detail', 'forward'],
       actions: (record) => [
         { key: 'detail', label: '详情', onClick: () => openDetail(record) },
-        { key: 'forward', label: '转发', onClick: () => void openForward(record) },
+        { key: 'forward', label: '转发', onClick: () => openForward(record) },
       ],
     }),
   ];
@@ -154,8 +121,8 @@ export default function CcToMePage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="搜索标题 / 流程名称"
-      value={keyword}
-      onChange={setKeyword}
+      value={draftKeyword}
+      onChange={setDraftKeyword}
       onEnterPress={handleSearch}
       showClear
       style={{ width: 220 }}
@@ -193,10 +160,10 @@ export default function CcToMePage() {
         columns={columns}
         dataSource={data?.list ?? []}
         rowKey="id"
-        loading={loading}
-        pagination={buildPagination(data?.total ?? 0, fetchList)}
-        onRefresh={() => void fetchList()}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        pagination={buildPagination(data?.total ?? 0)}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
       />
       <WorkflowInstanceDetailSheet
         instanceId={selectedId}
@@ -209,7 +176,7 @@ export default function CcToMePage() {
         visible={forwardTarget !== null}
         onCancel={() => setForwardTarget(null)}
         onOk={() => void handleForward()}
-        confirmLoading={forwardLoading}
+        confirmLoading={forwardMutation.isPending}
         okText="确定转发"
         closeOnEsc
       >

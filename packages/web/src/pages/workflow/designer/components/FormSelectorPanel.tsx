@@ -2,14 +2,15 @@
  * 流程设计器 · 第二步「表单」— 从表单库选择已设计的表单
  * 下拉选择 + 刷新 + 只读预览；新建/编辑表单时在下方内联展示表单设计器（不再新开页面）。
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Select, Typography, Empty, Spin } from '@douyinfe/semi-ui';
 import { Plus, RefreshCw, Pencil } from 'lucide-react';
 import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
 import type { WorkflowForm } from '@zenith/shared';
-import { request } from '@/utils/request';
 import WorkflowFormRenderer from './WorkflowFormRenderer';
 import WorkflowFormInlineEditor from '../../forms/WorkflowFormInlineEditor';
+import { useWorkflowDesignerFormOptions, workflowDesignerKeys } from '@/hooks/queries/workflow-designer';
 
 interface FormSelectorPanelProps {
   formId: number | null;
@@ -19,30 +20,12 @@ interface FormSelectorPanelProps {
 }
 
 export default function FormSelectorPanel({ formId, formName, onSelect }: Readonly<FormSelectorPanelProps>) {
-  const [forms, setForms] = useState<WorkflowForm[]>([]);
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorFormId, setEditorFormId] = useState<number | null>(null);
-
-  const loadForms = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await request.get<WorkflowForm[]>('/api/workflows/forms/enabled');
-      let list = res.code === 0 && Array.isArray(res.data) ? res.data : [];
-      // 绑定的表单若已停用，不在启用列表中，单独拉取补全以便回显与预览
-      if (formId && !list.some(f => f.id === formId)) {
-        const detail = await request.get<WorkflowForm>(`/api/workflows/forms/${formId}`, { silent: true });
-        if (detail.code === 0 && detail.data) list = [detail.data, ...list];
-      }
-      setForms(list);
-    } finally {
-      setLoading(false);
-    }
-  }, [formId]);
-
-  useEffect(() => {
-    void loadForms();
-  }, [loadForms]);
+  const formsQuery = useWorkflowDesignerFormOptions(formId);
+  const forms = formsQuery.data ?? [];
+  const loading = formsQuery.isFetching;
 
   const selected = forms.find(f => f.id === formId) ?? null;
   const fields = selected?.schema?.fields ?? [];
@@ -60,7 +43,7 @@ export default function FormSelectorPanel({ formId, formName, onSelect }: Readon
   // 内联设计器保存成功：刷新列表并自动选中
   const handleSaved = (form: WorkflowForm) => {
     setEditorOpen(false);
-    void loadForms();
+    void queryClient.invalidateQueries({ queryKey: workflowDesignerKeys.formOptions(formId) });
     onSelect(form);
   };
 
@@ -89,7 +72,7 @@ export default function FormSelectorPanel({ formId, formName, onSelect }: Readon
           )}
         </div>
         <div className="fd-form-selector__bar-right">
-          <Button icon={<RefreshCw size={14} />} type="tertiary" theme="borderless" disabled={editorOpen} onClick={() => void loadForms()}>
+          <Button icon={<RefreshCw size={14} />} type="tertiary" theme="borderless" disabled={editorOpen} onClick={() => void formsQuery.refetch()}>
             刷新
           </Button>
           {selected && (

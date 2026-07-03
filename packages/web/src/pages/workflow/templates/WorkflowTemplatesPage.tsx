@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Modal, Space, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { LayoutTemplate, RotateCcw, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { WorkflowTemplate, WorkflowDefinition } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -12,34 +12,34 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePermission } from '@/hooks/usePermission';
 import { renderEllipsis } from '@/utils/table-columns';
 import WorkflowTemplateFormModal, { type WorkflowTemplateFormValues } from '../components/WorkflowTemplateFormModal';
+import {
+  useCloneWorkflowTemplate,
+  useDeleteWorkflowTemplate,
+  useUpdateWorkflowTemplate,
+  useWorkflowTemplates,
+  workflowTemplateKeys,
+} from '@/hooks/queries/workflow-templates';
 
 export default function WorkflowTemplatesPage() {
   const { hasPermission } = usePermission();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const canEdit = hasPermission('workflow:definition:edit');
   const canCreate = hasPermission('workflow:definition:create');
 
-  const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
-  const [loading, setLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [activeKeyword, setActiveKeyword] = useState('');
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<WorkflowTemplate | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [cloningId, setCloningId] = useState<number | null>(null);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await request.get<WorkflowTemplate[]>('/api/workflows/templates');
-      if (res.code === 0) setTemplates(res.data ?? []);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { void fetchData(); }, [fetchData]);
+  const templatesQuery = useWorkflowTemplates();
+  const updateMutation = useUpdateWorkflowTemplate();
+  const deleteMutation = useDeleteWorkflowTemplate();
+  const cloneMutation = useCloneWorkflowTemplate();
+  const templates = useMemo(() => templatesQuery.data ?? [], [templatesQuery.data]);
+  const loading = templatesQuery.isFetching;
+  const saving = updateMutation.isPending;
+  const cloningId = cloneMutation.isPending ? (cloneMutation.variables?.id ?? null) : null;
 
   const filtered = useMemo(() => {
     const kw = activeKeyword.trim().toLowerCase();
@@ -50,8 +50,15 @@ export default function WorkflowTemplatesPage() {
     );
   }, [templates, activeKeyword]);
 
-  const handleSearch = () => setActiveKeyword(keyword);
-  const handleReset = () => { setKeyword(''); setActiveKeyword(''); };
+  const handleSearch = () => {
+    setActiveKeyword(keyword);
+    void queryClient.invalidateQueries({ queryKey: workflowTemplateKeys.lists });
+  };
+  const handleReset = () => {
+    setKeyword('');
+    setActiveKeyword('');
+    void queryClient.invalidateQueries({ queryKey: workflowTemplateKeys.lists });
+  };
 
   const openEdit = (record: WorkflowTemplate) => {
     setEditing(record);
@@ -65,9 +72,9 @@ export default function WorkflowTemplatesPage() {
 
   const handleSubmit = async (values: WorkflowTemplateFormValues) => {
     if (!editing) return;
-    setSaving(true);
-    try {
-      const res = await request.put<WorkflowTemplate>(`/api/workflows/templates/${editing.id}`, {
+    await updateMutation.mutateAsync({
+      id: editing.id,
+      values: {
         name: values.name,
         code: values.code?.trim() ? values.code.trim() : null,
         description: values.description?.trim() ? values.description.trim() : null,
@@ -75,36 +82,21 @@ export default function WorkflowTemplatesPage() {
         icon: values.icon?.trim() ? values.icon.trim() : null,
         color: values.color?.trim() ? values.color.trim() : null,
         sort: values.sort ?? 0,
-      });
-      if (res.code === 0) {
-        Toast.success('已更新');
-        closeModal();
-        void fetchData();
-      }
-    } finally {
-      setSaving(false);
-    }
+      },
+    });
+    Toast.success('已更新');
+    closeModal();
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete(`/api/workflows/templates/${id}`);
-    if (res.code === 0) {
-      Toast.success('已删除');
-      void fetchData();
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('已删除');
   };
 
   const handleCloneToDefinition = async (record: WorkflowTemplate) => {
-    setCloningId(record.id);
-    try {
-      const res = await request.post<WorkflowDefinition>(`/api/workflows/templates/${record.id}/clone`, {});
-      if (res.code === 0) {
-        Toast.success('已从模板创建流程');
-        navigate(`/workflow/designer/${res.data.id}`);
-      }
-    } finally {
-      setCloningId(null);
-    }
+    const res = await cloneMutation.mutateAsync({ id: record.id });
+    Toast.success('已从模板创建流程');
+    navigate(`/workflow/designer/${(res as WorkflowDefinition).id}`);
   };
 
   const columns: ColumnProps<WorkflowTemplate>[] = [
@@ -239,7 +231,7 @@ export default function WorkflowTemplatesPage() {
       <ConfigurableTable<WorkflowTemplate>
         bordered
         loading={loading}
-        onRefresh={() => void fetchData()}
+        onRefresh={() => void templatesQuery.refetch()}
         refreshLoading={loading}
         rowKey="id"
         dataSource={filtered}

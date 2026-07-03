@@ -16,7 +16,6 @@ import { format as formatSql } from 'sql-formatter';
 import { TOKEN_KEY } from '@zenith/shared';
 import type { DbQueryFavorite } from '@zenith/shared';
 import { config } from '@/config';
-import { request } from '@/utils/request';
 import { AppModal } from '@/components/AppModal';
 import { DataGrid, CellDetailDrawer, type CellPos, type DataGridColumn, type DataGridHandle } from '@/components/data-grid';
 import { formatDateTime } from '@/utils/date';
@@ -24,6 +23,15 @@ import { ExplainView } from './ExplainView';
 import { ResultChart } from './ResultChart';
 import { rowsToJson, rowsToMarkdown } from './result-format';
 import { copyToClipboard } from './sql-format';
+import {
+  useDbAdminCancelQuery,
+  useDbAdminExecuteQuery,
+  useDbAdminExplain,
+  useDbQueryFavorites,
+  useDeleteDbQueryFavorite,
+  useSaveDbQueryFavorite,
+  type DbAdminQueryResult,
+} from '@/hooks/queries/db-admin';
 
 const PAGE_SIZE = 100;
 const SAVE_FAVORITE_LABEL_WIDTH = 72;
@@ -34,18 +42,6 @@ function genQueryId(): string {
 }
 
 const { Text } = Typography;
-
-interface QueryResult {
-  columns: Array<{ name: string; dataType: string }>;
-  rows: Array<Record<string, unknown>>;
-  rowCount: number;
-  durationMs: number;
-  truncated: boolean;
-  paginated: boolean;
-  total: number | null;
-  page: number | null;
-  pageSize: number | null;
-}
 
 interface ConsoleTableRef {
   schema: string;
@@ -59,7 +55,7 @@ interface ConsoleTab {
   id: number;
   title: string;
   sql: string;
-  result: QueryResult | null;
+  result: DbAdminQueryResult | null;
   error: string | null;
   /** 产生当前结果的 SQL（服务端分页翻页时复用） */
   executedSql: string | null;
@@ -99,26 +95,20 @@ export const SqlConsole = forwardRef<SqlConsoleHandle, SqlConsoleProps>(function
   const [activeId, setActiveId] = useState(1);
   const nextIdRef = useRef(2);
 
-  const [queryLoading, setQueryLoading] = useState(false);
   const [runningQueryId, setRunningQueryId] = useState<string | null>(null);
-  const [cancelling, setCancelling] = useState(false);
   const [showChart, setShowChart] = useState(false);
   const [exportCsvLoading, setExportCsvLoading] = useState(false);
   const [exportJsonLoading, setExportJsonLoading] = useState(false);
 
   // EXPLAIN
   const [explainOpen, setExplainOpen] = useState(false);
-  const [explainLoading, setExplainLoading] = useState(false);
   const [explainData, setExplainData] = useState<unknown>(null);
   const [explainAnalyzed, setExplainAnalyzed] = useState(false);
   const [explainDuration, setExplainDuration] = useState(0);
 
   // 收藏夹
   const [favOpen, setFavOpen] = useState(false);
-  const [favorites, setFavorites] = useState<DbQueryFavorite[]>([]);
-  const [favLoading, setFavLoading] = useState(false);
   const [saveFavOpen, setSaveFavOpen] = useState(false);
-  const [saveFavLoading, setSaveFavLoading] = useState(false);
   const [editFav, setEditFav] = useState<DbQueryFavorite | null>(null);
 
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
@@ -126,6 +116,18 @@ export const SqlConsole = forwardRef<SqlConsoleHandle, SqlConsoleProps>(function
   const runQueryRef = useRef<() => void>(() => undefined);
 
   const activeTab = tabs.find((t) => t.id === activeId) ?? tabs[0];
+  const executeQueryMutation = useDbAdminExecuteQuery();
+  const cancelQueryMutation = useDbAdminCancelQuery();
+  const explainMutation = useDbAdminExplain();
+  const favoritesQuery = useDbQueryFavorites(favOpen);
+  const saveFavoriteMutation = useSaveDbQueryFavorite();
+  const deleteFavoriteMutation = useDeleteDbQueryFavorite();
+  const queryLoading = executeQueryMutation.isPending;
+  const cancelling = cancelQueryMutation.isPending;
+  const explainLoading = explainMutation.isPending;
+  const favLoading = favoritesQuery.isFetching;
+  const favorites = favoritesQuery.data ?? [];
+  const saveFavLoading = saveFavoriteMutation.isPending;
 
   useEffect(() => { completionTables = tables; }, [tables]);
   useEffect(() => { completionColumns = structureColumnsCache.current ?? new Map(); }, [structureColumnsCache, tables]);
@@ -168,26 +170,21 @@ export const SqlConsole = forwardRef<SqlConsoleHandle, SqlConsoleProps>(function
   const runPage = useCallback(async (sqlText: string, page: number, resetView: boolean) => {
     const queryId = genQueryId();
     setRunningQueryId(queryId);
-    setQueryLoading(true);
     if (resetView) { patchActive({ error: null, result: null }); setShowChart(false); }
-    const res = await request.post<QueryResult>(
-      '/api/db-admin/query',
-      { sql: sqlText, queryId, page, pageSize: PAGE_SIZE },
-      { silent: true },
-    );
-    setQueryLoading(false);
-    setRunningQueryId(null);
-    if (res.code === 0 && res.data) {
-      patchActive({ result: res.data, error: null, executedSql: sqlText });
+    try {
+      const data = await executeQueryMutation.mutateAsync({ sql: sqlText, queryId, page, pageSize: PAGE_SIZE });
+      patchActive({ result: data, error: null, executedSql: sqlText });
       if (resetView) {
-        if (res.data.paginated) Toast.success(`共 ${res.data.total?.toLocaleString()} 行 · 第 ${res.data.page} 页 / ${res.data.durationMs}ms`);
-        else if (res.data.truncated) Toast.warning('结果超出 5000 行已截断');
-        else Toast.success(`返回 ${res.data.rowCount} 行 / ${res.data.durationMs}ms`);
+        if (data.paginated) Toast.success(`共 ${data.total?.toLocaleString()} 行 · 第 ${data.page} 页 / ${data.durationMs}ms`);
+        else if (data.truncated) Toast.warning('结果超出 5000 行已截断');
+        else Toast.success(`返回 ${data.rowCount} 行 / ${data.durationMs}ms`);
       }
-    } else {
-      patchActive({ error: res.message ?? '执行失败', result: resetView ? null : activeTab.result });
+    } catch (err) {
+      patchActive({ error: err instanceof Error ? err.message : '执行失败', result: resetView ? null : activeTab.result });
+    } finally {
+      setRunningQueryId(null);
     }
-  }, [patchActive, activeTab.result]);
+  }, [executeQueryMutation, patchActive, activeTab.result]);
 
   const runQuery = useCallback(async () => {
     const text = editorRef.current?.getValue() ?? activeTab.sql;
@@ -202,32 +199,26 @@ export const SqlConsole = forwardRef<SqlConsoleHandle, SqlConsoleProps>(function
 
   const cancelRunning = useCallback(async () => {
     if (!runningQueryId) return;
-    setCancelling(true);
-    await request.post('/api/db-admin/query/cancel', { queryId: runningQueryId }, { silent: true });
-    setCancelling(false);
+    await cancelQueryMutation.mutateAsync(runningQueryId);
     Toast.info('已请求取消查询');
-  }, [runningQueryId]);
+  }, [cancelQueryMutation, runningQueryId]);
 
   useEffect(() => { runQueryRef.current = () => { void runQuery(); }; });
 
   const runExplain = useCallback(async (analyze: boolean) => {
     const text = editorRef.current?.getValue() ?? activeTab.sql;
     if (!text.trim()) { Toast.warning('请输入 SQL'); return; }
-    setExplainLoading(true);
     setExplainOpen(true);
-    const res = await request.post<{ plan: unknown; durationMs: number; analyzed: boolean }>(
-      '/api/db-admin/explain', { sql: text, analyze }, { silent: true },
-    );
-    setExplainLoading(false);
-    if (res.code === 0 && res.data) {
-      setExplainData(res.data.plan);
-      setExplainAnalyzed(res.data.analyzed);
-      setExplainDuration(res.data.durationMs);
-    } else {
+    try {
+      const data = await explainMutation.mutateAsync({ sql: text, analyze });
+      setExplainData(data.plan);
+      setExplainAnalyzed(data.analyzed);
+      setExplainDuration(data.durationMs);
+    } catch (err) {
       setExplainOpen(false);
-      Toast.error(res.message ?? 'EXPLAIN 失败');
+      Toast.error(err instanceof Error ? err.message : 'EXPLAIN 失败');
     }
-  }, [activeTab.sql]);
+  }, [activeTab.sql, explainMutation]);
 
   const formatCurrentSql = useCallback(() => {
     const text = editorRef.current?.getValue() ?? activeTab.sql;
@@ -283,14 +274,10 @@ export const SqlConsole = forwardRef<SqlConsoleHandle, SqlConsoleProps>(function
   }, [activeTab.result]);
 
   // ─── 收藏夹 ─────────────────────────────────────────────────────────────────
-  const loadFavorites = useCallback(async () => {
-    setFavLoading(true);
-    const res = await request.get<DbQueryFavorite[]>('/api/db-admin/query-favorites');
-    if (res.code === 0) setFavorites(res.data ?? []);
-    setFavLoading(false);
-  }, []);
-
-  const openFavorites = useCallback(() => { setFavOpen(true); void loadFavorites(); }, [loadFavorites]);
+  const openFavorites = useCallback(() => {
+    setFavOpen(true);
+    void favoritesQuery.refetch();
+  }, [favoritesQuery]);
 
   const closeSaveFavorite = useCallback(() => {
     setSaveFavOpen(false);
@@ -299,24 +286,21 @@ export const SqlConsole = forwardRef<SqlConsoleHandle, SqlConsoleProps>(function
   }, []);
 
   const handleSaveFavorite = useCallback(async (values: FavoriteFormValues) => {
-    setSaveFavLoading(true);
-    try {
-      const tags = values.tags ? values.tags.split(',').map((t) => t.trim()).filter(Boolean) : [];
-      if (editFav) {
-        const res = await request.put<DbQueryFavorite>(`/api/db-admin/query-favorites/${editFav.id}`, {
-          name: values.name, description: values.description, tags, sql: editFav.sql,
-        });
-        if (res.code === 0) { Toast.success('已更新'); closeSaveFavorite(); void loadFavorites(); }
-      } else {
-        const res = await request.post<DbQueryFavorite>('/api/db-admin/query-favorites', {
-          name: values.name, sql: editorRef.current?.getValue() ?? activeTab.sql, description: values.description, tags,
-        });
-        if (res.code === 0) { Toast.success('已收藏'); closeSaveFavorite(); void loadFavorites(); }
-      }
-    } finally {
-      setSaveFavLoading(false);
+    const tags = values.tags ? values.tags.split(',').map((t) => t.trim()).filter(Boolean) : [];
+    if (editFav) {
+      await saveFavoriteMutation.mutateAsync({
+        id: editFav.id,
+        values: { name: values.name, description: values.description, tags, sql: editFav.sql },
+      });
+      Toast.success('已更新');
+    } else {
+      await saveFavoriteMutation.mutateAsync({
+        values: { name: values.name, sql: editorRef.current?.getValue() ?? activeTab.sql, description: values.description, tags },
+      });
+      Toast.success('已收藏');
     }
-  }, [editFav, activeTab.sql, loadFavorites, closeSaveFavorite]);
+    closeSaveFavorite();
+  }, [editFav, activeTab.sql, closeSaveFavorite, saveFavoriteMutation]);
 
   const submitSaveFavorite = useCallback(async () => {
     if (!saveFavFormApi.current) return;
@@ -330,9 +314,9 @@ export const SqlConsole = forwardRef<SqlConsoleHandle, SqlConsoleProps>(function
   }, [handleSaveFavorite]);
 
   const handleDeleteFavorite = useCallback(async (id: number) => {
-    const res = await request.delete(`/api/db-admin/query-favorites/${id}`);
-    if (res.code === 0) { Toast.success('已删除'); void loadFavorites(); }
-  }, [loadFavorites]);
+    await deleteFavoriteMutation.mutateAsync(id);
+    Toast.success('已删除');
+  }, [deleteFavoriteMutation]);
 
   const loadFavoriteToEditor = useCallback((fav: DbQueryFavorite) => {
     addTab(fav.sql, fav.name.slice(0, 12));

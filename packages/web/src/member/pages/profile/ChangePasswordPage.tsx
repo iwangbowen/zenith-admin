@@ -2,8 +2,8 @@ import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Input, Button, Toast, Card } from '@douyinfe/semi-ui';
 import { useMemberAuth } from '../../hooks/useMemberAuth';
-import { memberRequest } from '../../utils/member-request';
 import { MemberPage } from '../../components/MemberPage';
+import { useChangeMemberPassword } from '../../hooks/queries';
 
 function FieldRow({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
   return (
@@ -21,7 +21,7 @@ export default function ChangePasswordPage() {
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirm, setConfirm] = useState('');
-  const [saving, setSaving] = useState(false);
+  const changePasswordMutation = useChangeMemberPassword();
 
   const handleSave = async () => {
     if (needOld && !oldPassword) {
@@ -36,16 +36,12 @@ export default function ChangePasswordPage() {
       Toast.warning('两次输入的密码不一致');
       return;
     }
-    setSaving(true);
-    const res = await memberRequest.put('/api/member/auth/password', {
+    await changePasswordMutation.mutateAsync({
       oldPassword: needOld ? oldPassword : undefined,
       newPassword,
     });
-    setSaving(false);
-    if (res.code === 0) {
-      Toast.success('密码已修改');
-      navigate(-1);
-    }
+    Toast.success('密码已修改');
+    navigate(-1);
   };
 
   return (
@@ -66,7 +62,7 @@ export default function ChangePasswordPage() {
       <div style={{ maxWidth: 520, margin: '0 auto' }}>
         <Button
           theme="solid"
-          loading={saving}
+          loading={changePasswordMutation.isPending}
           onClick={handleSave}
           style={{ background: 'var(--m-primary)' }}
         >

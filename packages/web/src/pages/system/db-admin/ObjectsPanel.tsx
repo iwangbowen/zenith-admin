@@ -1,46 +1,30 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   Button, Collapse, Empty, Space, Spin, Tag, Typography,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RefreshCw, ListOrdered, FunctionSquare, Zap, Tags, Package } from 'lucide-react';
-import { request } from '@/utils/request';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
+import { useDbAdminObjects, type DbAdminObjects } from '@/hooks/queries/db-admin';
 
 const { Text } = Typography;
-
-interface DbObjects {
-  sequences: Array<{ schema: string; name: string; dataType: string; startValue: string; incrementBy: string; lastValue: string | null }>;
-  functions: Array<{ schema: string; name: string; kind: string; language: string; args: string; result: string; definition: string | null }>;
-  triggers: Array<{ schema: string; table: string; name: string; enabled: boolean; definition: string }>;
-  enums: Array<{ schema: string; name: string; values: string[] }>;
-  extensions: Array<{ name: string; version: string; schema: string; comment: string | null }>;
-}
 
 function fullName(schema: string, name: string): string {
   return schema === 'public' ? name : `${schema}.${name}`;
 }
 
 export function ObjectsPanel({ active }: Readonly<{ active: boolean }>) {
-  const [data, setData] = useState<DbObjects | null>(null);
-  const [loading, setLoading] = useState(false);
+  const objectsQuery = useDbAdminObjects(active);
+  const data = objectsQuery.data ?? null;
+  const loading = objectsQuery.isFetching;
   const [defTitle, setDefTitle] = useState('');
   const [defText, setDefText] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const res = await request.get<DbObjects>('/api/db-admin/objects');
-    if (res.code === 0 && res.data) setData(res.data);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { if (active && data === null) void load(); }, [active, data, load]);
-
   const showDef = (title: string, text: string | null) => { setDefTitle(title); setDefText(text); };
 
-  const seqColumns: ColumnProps<DbObjects['sequences'][number]>[] = [
+  const seqColumns: ColumnProps<DbAdminObjects['sequences'][number]>[] = [
     { title: '名称', render: (_: unknown, r) => <Text strong>{fullName(r.schema, r.name)}</Text> },
     { title: '类型', dataIndex: 'dataType', width: 100 },
     { title: '当前值', dataIndex: 'lastValue', width: 120, render: (v: string | null) => v ?? <Text type="tertiary">未初始化</Text> },
@@ -48,13 +32,13 @@ export function ObjectsPanel({ active }: Readonly<{ active: boolean }>) {
     { title: '起始值', dataIndex: 'startValue', width: 100 },
   ];
 
-  const fnColumns: ColumnProps<DbObjects['functions'][number]>[] = [
+  const fnColumns: ColumnProps<DbAdminObjects['functions'][number]>[] = [
     { title: '名称', width: 220, render: (_: unknown, r) => <Text strong>{fullName(r.schema, r.name)}</Text> },
     { title: '类型', dataIndex: 'kind', width: 100, render: (v: string) => <Tag size="small" color="blue">{v}</Tag> },
     { title: '语言', dataIndex: 'language', width: 90 },
     { title: '参数', dataIndex: 'args', ellipsis: { showTitle: true }, render: (v: string) => <Text type="tertiary" size="small" style={{ fontFamily: 'monospace' }}>{v || '()'}</Text> },
     { title: '返回', dataIndex: 'result', width: 140, ellipsis: { showTitle: true } },
-    createOperationColumn<DbObjects['functions'][number]>({
+    createOperationColumn<DbAdminObjects['functions'][number]>({
       width: 100,
       actions: (record) => [
         {
@@ -67,11 +51,11 @@ export function ObjectsPanel({ active }: Readonly<{ active: boolean }>) {
     }),
   ];
 
-  const trgColumns: ColumnProps<DbObjects['triggers'][number]>[] = [
+  const trgColumns: ColumnProps<DbAdminObjects['triggers'][number]>[] = [
     { title: '触发器', dataIndex: 'name', width: 220, render: (v: string) => <Text strong>{v}</Text> },
     { title: '表', width: 200, render: (_: unknown, r) => fullName(r.schema, r.table) },
     { title: '状态', dataIndex: 'enabled', width: 90, render: (v: boolean) => v ? <Tag size="small" color="green">启用</Tag> : <Tag size="small" color="grey">禁用</Tag> },
-    createOperationColumn<DbObjects['triggers'][number]>({
+    createOperationColumn<DbAdminObjects['triggers'][number]>({
       width: 100,
       actions: (record) => [
         {
@@ -83,14 +67,14 @@ export function ObjectsPanel({ active }: Readonly<{ active: boolean }>) {
     }),
   ];
 
-  const enumColumns: ColumnProps<DbObjects['enums'][number]>[] = [
+  const enumColumns: ColumnProps<DbAdminObjects['enums'][number]>[] = [
     { title: '类型名', width: 240, render: (_: unknown, r) => <Text strong>{fullName(r.schema, r.name)}</Text> },
     { title: '取值', dataIndex: 'values', render: (v: string[]) => (
       <Space wrap spacing={4}>{v.map((x) => <Tag key={x} size="small" color="violet">{x}</Tag>)}</Space>
     )},
   ];
 
-  const extColumns: ColumnProps<DbObjects['extensions'][number]>[] = [
+  const extColumns: ColumnProps<DbAdminObjects['extensions'][number]>[] = [
     { title: '扩展', dataIndex: 'name', width: 200, render: (v: string) => <Text strong>{v}</Text> },
     { title: '版本', dataIndex: 'version', width: 100, render: (v: string) => <Tag size="small">{v}</Tag> },
     { title: 'Schema', dataIndex: 'schema', width: 140 },
@@ -104,7 +88,7 @@ export function ObjectsPanel({ active }: Readonly<{ active: boolean }>) {
   return (
     <div style={{ height: '100%', overflow: 'auto', padding: 4 }}>
       <Space style={{ marginBottom: 10 }}>
-        <Button icon={<RefreshCw size={14} />} onClick={() => void load()} loading={loading}>刷新</Button>
+        <Button icon={<RefreshCw size={14} />} onClick={() => void objectsQuery.refetch()} loading={loading}>刷新</Button>
         {data && <Text type="tertiary" size="small">
           {data.sequences.length} 序列 · {data.functions.length} 函数 · {data.triggers.length} 触发器 · {data.enums.length} 枚举 · {data.extensions.length} 扩展
         </Text>}

@@ -1,11 +1,13 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
-  Button, Input, Tag, Typography, Toast, Select, Switch,
+  Button, Input, Tag, Typography, Select, Switch,
 } from '@douyinfe/semi-ui';
 import { FolderOpen, Play, Square, Search, FileText, Download } from 'lucide-react';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
 import { request } from '@/utils/request';
+import { logViewerKeys, useLogViewerContent } from '@/hooks/queries/log-viewer';
 
 // ─── ANSI 颜色解析器 ────────────────────────────────────────────────────────
 const ANSI_FG = ['#3c3c3c','#c0392b','#27ae60','#d4ac0d','#2980b9','#8e44ad','#17a589','#bdc3c7'];
@@ -120,7 +122,6 @@ async function fetchStream(
   const reader = resp.body?.getReader();
   if (!reader) return;
   const decoder = new TextDecoder();
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -129,16 +130,18 @@ async function fetchStream(
 }
 
 export default function LogViewerPage() {
+  const queryClient = useQueryClient();
   const [filePath, setFilePath] = useState('');
+  const [submittedPath, setSubmittedPath] = useState('');
   const [keyword, setKeyword] = useState('');
   const [filterOnly, setFilterOnly] = useState(false);
   const [levelFilter, setLevelFilter] = useState<string>('');
   const [content, setContent] = useState('');
-  const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [following, setFollowing] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const contentQuery = useLogViewerContent({ path: submittedPath, lines: 500 }, !!submittedPath && !following);
 
 
   // 追踪模式下自动滚到底部
@@ -151,19 +154,25 @@ export default function LogViewerPage() {
   // 组件卸载清理
   useEffect(() => () => { abortRef.current?.abort(); }, []);
 
-  const loadContent = useCallback(async () => {
-    if (!filePath.trim()) return;
-    setLoading(true);
-    const res = await request.get<{ content: string }>(
-      `/api/log-viewer/content?path=${encodeURIComponent(filePath.trim())}&lines=500`,
-    );
-    setLoading(false);
-    if (res.code === 0 && res.data) {
-      setContent(res.data.content);
-    } else {
-      Toast.error({ content: `读取失败：${res.message ?? '未知错误'}`, duration: 3 });
+  useEffect(() => {
+    if (!following && contentQuery.data) {
+      setContent(contentQuery.data.content);
     }
-  }, [filePath]);
+  }, [contentQuery.data, following]);
+
+  const loadContent = useCallback(() => {
+    const path = filePath.trim();
+    if (!path) return;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setFollowing(false);
+    if (path === submittedPath) {
+      void queryClient.invalidateQueries({ queryKey: logViewerKeys.content({ path, lines: 500 }) });
+      void contentQuery.refetch();
+      return;
+    }
+    setSubmittedPath(path);
+  }, [contentQuery, filePath, queryClient, submittedPath]);
 
   const startFollow = useCallback(() => {
     if (!filePath.trim()) return;
@@ -236,7 +245,7 @@ export default function LogViewerPage() {
             optionList={COMMON_LOG_PATHS.map((p) => ({ value: p, label: p.split('/').pop() ?? p }))}
           />
         </div>
-        <Button type="primary" icon={<FolderOpen size={13} />} loading={loading} onClick={() => void loadContent()}>
+        <Button type="primary" icon={<FolderOpen size={13} />} loading={contentQuery.isFetching} onClick={() => void loadContent()}>
           加载
         </Button>
         {!following
@@ -301,7 +310,7 @@ export default function LogViewerPage() {
               ))
             : (
               <Typography.Text type="tertiary" style={{ fontStyle: 'italic' }}>
-                {loading ? '加载中...' : '请选择日志文件并点击「加载」'}
+                {contentQuery.isFetching ? '加载中...' : '请选择日志文件并点击「加载」'}
               </Typography.Text>
             )
           }

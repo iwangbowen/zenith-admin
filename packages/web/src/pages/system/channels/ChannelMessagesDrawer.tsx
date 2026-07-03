@@ -4,16 +4,21 @@
  * 展示某频道的群发消息记录，支持按状态筛选（全部 / 已发 / 草稿 / 定时）。
  * 草稿与定时消息可编辑、删除、立即发送；已发消息只读。
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Modal, SideSheet, Table, Tabs, TabPane, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import type { ChannelAdmin, ChannelMessage, ChannelMessageStatus, PaginatedResponse } from '@zenith/shared';
+import type { ChannelAdmin, ChannelMessage, ChannelMessageStatus } from '@zenith/shared';
 import { CHANNEL_MESSAGE_STATUS_LABELS, CHANNEL_MESSAGE_TYPE_LABELS } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { ChannelPublishModal } from './ChannelPublishModal';
+import {
+  useChannelMessages,
+  useDeleteChannelMessage,
+  usePublishChannelMessageNow,
+  useRetractChannelMessage,
+} from '@/hooks/queries/channels';
 
 interface Props {
   channel: ChannelAdmin | null;
@@ -41,64 +46,50 @@ export function ChannelMessagesDrawer({ channel, visible, onClose }: Readonly<Pr
   const canManage = hasPermission('channel:message:publish');
 
   const [tab, setTab] = useState<TabKey>('all');
-  const [list, setList] = useState<ChannelMessage[]>([]);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(false);
 
   const [editing, setEditing] = useState<ChannelMessage | null>(null);
   const [editVisible, setEditVisible] = useState(false);
 
-  const fetchList = useCallback(async (p = 1, t: TabKey = 'all') => {
-    if (!channel) return;
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ page: String(p), pageSize: String(PAGE_SIZE) });
-      if (t !== 'all') params.set('status', t);
-      const res = await request.get<PaginatedResponse<ChannelMessage>>(
-        `/api/channels/admin/${channel.id}/messages?${params.toString()}`,
-        { silent: true },
-      );
-      if (res.code === 0 && res.data) {
-        setList(res.data.list);
-        setTotal(res.data.total);
-        setPage(res.data.page);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [channel]);
+  const listQuery = useChannelMessages(channel?.id, {
+    page,
+    pageSize: PAGE_SIZE,
+    status: tab === 'all' ? undefined : tab,
+  }, visible && !!channel);
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const deleteMutation = useDeleteChannelMessage();
+  const publishNowMutation = usePublishChannelMessageNow();
+  const retractMutation = useRetractChannelMessage();
 
   useEffect(() => {
     if (visible) {
       setTab('all');
       setPage(1);
-      void fetchList(1, 'all');
     }
-  }, [visible, fetchList]);
+  }, [visible]);
 
   const handleTabChange = (key: string) => {
     const next = key as TabKey;
     setTab(next);
     setPage(1);
-    void fetchList(1, next);
   };
 
   const openEdit = (m: ChannelMessage) => { setEditing(m); setEditVisible(true); };
 
   const handleDelete = async (m: ChannelMessage) => {
-    const res = await request.delete(`/api/channels/admin/messages/${m.id}`);
-    if (res.code === 0) { Toast.success('已删除'); void fetchList(page, tab); }
+    await deleteMutation.mutateAsync(m.id);
+    Toast.success('已删除');
   };
 
   const handleSendNow = async (m: ChannelMessage) => {
-    const res = await request.post(`/api/channels/admin/messages/${m.id}/publish`);
-    if (res.code === 0) { Toast.success('已发送'); void fetchList(page, tab); }
+    await publishNowMutation.mutateAsync(m.id);
+    Toast.success('已发送');
   };
 
   const handleRetract = async (m: ChannelMessage) => {
-    const res = await request.post(`/api/channels/admin/messages/${m.id}/retract`);
-    if (res.code === 0) { Toast.success('已撤回'); void fetchList(page, tab); }
+    await retractMutation.mutateAsync(m.id);
+    Toast.success('已撤回');
   };
 
   const columns: ColumnProps<ChannelMessage>[] = [
@@ -206,14 +197,14 @@ export function ChannelMessagesDrawer({ channel, visible, onClose }: Readonly<Pr
         columns={columns}
         dataSource={list}
         rowKey="id"
-        loading={loading}
+        loading={listQuery.isFetching}
         size="small"
         scroll={{ x: 'max-content' }}
         pagination={{
           currentPage: page,
           pageSize: PAGE_SIZE,
           total,
-          onPageChange: (p: number) => { setPage(p); void fetchList(p, tab); },
+          onPageChange: (p: number) => { setPage(p); },
         }}
       />
 
@@ -222,7 +213,7 @@ export function ChannelMessagesDrawer({ channel, visible, onClose }: Readonly<Pr
         editing={editing}
         visible={editVisible}
         onClose={() => { setEditVisible(false); setEditing(null); }}
-        onSuccess={() => void fetchList(page, tab)}
+        onSuccess={() => void listQuery.refetch()}
       />
     </SideSheet>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card, Typography, Tag, Space, Skeleton, Empty, List, Avatar, Descriptions } from '@douyinfe/semi-ui';
 import {
@@ -19,34 +19,25 @@ const GithubIcon = ({ size = 18 }: { size?: number }) => (
     <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
   </svg>
 );
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
-import type { Announcement } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import AnnouncementDetailModal from '@/components/AnnouncementDetailModal';
 import MonthCalendar from '@/components/MonthCalendar';
+import {
+  type DashboardAnnouncement,
+  type DashboardCharts,
+  type DashboardStats,
+  useDashboardAnnouncementDetail,
+  useDashboardAnnouncements,
+  useDashboardCharts,
+  useDashboardStats,
+  useMarkDashboardAnnouncementRead,
+} from '@/hooks/queries/dashboard';
 import './DashboardPage.css';
 
 const { Text } = Typography;
 
-type AnnouncementWithRead = Announcement & { isRead: boolean };
-
-interface DashboardStats {
-  totalUsers: number;
-  activeUsers: number;
-  onlineUsers: number;
-  todayLogins: number;
-  todayOperations: number;
-}
-
-interface LoginTrendItem { date: string; successCount: number; failCount: number; }
-interface OperationTypeItem { module: string; count: number; fill?: string; }
-interface UserActivityItem { date: string; activeUsers: number; }
-interface DashboardCharts {
-  loginTrend: LoginTrendItem[];
-  operationTypes: OperationTypeItem[];
-  userActivity: UserActivityItem[];
-}
+type AnnouncementWithRead = DashboardAnnouncement;
 
 const PIE_COLORS = [
   '#4A90E2', '#52C41A', '#FA8C16', '#13C2C2',
@@ -84,9 +75,6 @@ const ANNOUNCEMENT_PRIORITY_MAP: Record<string, { label: string; color: TagColor
   low: { label: '低', color: 'green' },
 };
 
-const markReadById = (id: number) => (n: AnnouncementWithRead) =>
-  n.id === id ? { ...n, isRead: true } : n;
-
 function stripHtml(html: string): string {
   const tmp = document.createElement('div');
   tmp.innerHTML = html;
@@ -99,14 +87,20 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const palette = useChartPalette();
   const isAdmin = permissions.includes('*');
-  const [notices, setNotices] = useState<AnnouncementWithRead[]>([]);
-  const [loading, setLoading] = useState(true);
   const [selectedNotice, setSelectedNotice] = useState<AnnouncementWithRead | null>(null);
-  const [noticeDetailLoading, setNoticeDetailLoading] = useState(false);
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [statsLoading, setStatsLoading] = useState(false);
-  const [charts, setCharts] = useState<DashboardCharts | null>(null);
-  const [chartsLoading, setChartsLoading] = useState(false);
+  const noticesQuery = useDashboardAnnouncements();
+  const statsQuery = useDashboardStats(isAdmin);
+  const chartsQuery = useDashboardCharts(isAdmin);
+  const detailQuery = useDashboardAnnouncementDetail(selectedNotice?.id, selectedNotice !== null);
+  const markReadMutation = useMarkDashboardAnnouncementRead();
+  const notices = noticesQuery.data ?? [];
+  const stats: DashboardStats | null = statsQuery.data ?? null;
+  const charts: DashboardCharts | null = chartsQuery.data ?? null;
+  const selectedNoticeDetail = selectedNotice ? (detailQuery.data ? { ...detailQuery.data, isRead: true } : selectedNotice) : null;
+  const loading = noticesQuery.isLoading;
+  const statsLoading = statsQuery.isFetching;
+  const chartsLoading = chartsQuery.isFetching;
+  const noticeDetailLoading = detailQuery.isFetching;
 
   const architectureItems = [
     { key: '前端框架', value: 'React 19 + Vite' },
@@ -116,34 +110,6 @@ export default function DashboardPage() {
     { key: 'ORM', value: 'Drizzle ORM' },
     { key: '认证方案', value: 'JWT Bearer Token' },
   ];
-
-  useEffect(() => {
-    request.get<AnnouncementWithRead[]>('/api/announcements/published', { silent: true })
-      .then((res) => {
-        if (res.code === 0) setNotices(res.data);
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    if (!isAdmin) return;
-    setStatsLoading(true);
-    request.get<DashboardStats>('/api/dashboard/stats', { silent: true })
-      .then((res) => {
-        if (res.code === 0) setStats(res.data);
-      })
-      .finally(() => setStatsLoading(false));
-  }, [isAdmin]);
-
-  useEffect(() => {
-    if (!isAdmin) return;
-    setChartsLoading(true);
-    request.get<DashboardCharts>('/api/dashboard/charts', { silent: true })
-      .then((res) => {
-        if (res.code === 0) setCharts(res.data);
-      })
-      .finally(() => setChartsLoading(false));
-  }, [isAdmin]);
 
   const loginTrendSpec = useMemo(() => makeLineSpec({
     data: charts?.loginTrend ?? [],
@@ -169,24 +135,12 @@ export default function DashboardPage() {
   }), [charts?.userActivity, palette]);
 
   function markAsRead(id: number) {
-    request.post(`/api/announcements/${id}/read`, undefined, { silent: true }).then((res) => {
-      if (res.code !== 0) return;
-      setNotices((prev) => prev.map(markReadById(id)));
-    });
+    markReadMutation.mutate(id);
   }
 
   async function openNotice(n: AnnouncementWithRead) {
-    setSelectedNotice(n);
+    setSelectedNotice({ ...n, isRead: true });
     if (!n.isRead) markAsRead(n.id);
-    setNoticeDetailLoading(true);
-    try {
-      const res = await request.get<Announcement>(`/api/announcements/${n.id}`, { silent: true });
-      if (res.code === 0 && res.data) {
-        setSelectedNotice({ ...res.data, isRead: true });
-      }
-    } finally {
-      setNoticeDetailLoading(false);
-    }
   }
 
   function renderOperationPie() {
@@ -509,7 +463,7 @@ export default function DashboardPage() {
       {/* ===== 通知详情 Modal ===== */}
       <AnnouncementDetailModal
         visible={selectedNotice !== null}
-        announcement={selectedNotice}
+        announcement={selectedNoticeDetail}
         loading={noticeDetailLoading}
         onClose={() => setSelectedNotice(null)}
       />

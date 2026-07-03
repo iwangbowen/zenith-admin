@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button, Form, Input, Select, Spin, Toast, Switch, Modal,
   Row, Col, Typography, Tag, Empty,
@@ -10,11 +11,17 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
-import { request } from '@/utils/request';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
-import type { WorkflowDataSource, WorkflowDataSourceOption, PaginatedResponse } from '@zenith/shared';
+import type { WorkflowDataSource, WorkflowDataSourceOption } from '@zenith/shared';
+import {
+  useDeleteWorkflowDataSource,
+  useSaveWorkflowDataSource,
+  useTestWorkflowDataSource,
+  useWorkflowDataSourceList,
+  workflowDataSourceKeys,
+} from '@/hooks/queries/workflow-data-sources';
 
 const STATUS_OPTIONS = [
   { value: 'enabled', label: '启用' },
@@ -38,55 +45,45 @@ interface DataSourceFormValues {
 }
 
 export default function WorkflowDataSourcesPage() {
+  const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
 
-  const [data, setData] = useState<PaginatedResponse<WorkflowDataSource> | null>(null);
-  const [loading, setLoading] = useState(false);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
+  const listQuery = useWorkflowDataSourceList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    status: submittedParams.status || undefined,
+  });
+  const data = listQuery.data ?? null;
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<WorkflowDataSource | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
+  const saveMutation = useSaveWorkflowDataSource();
+  const toggleStatusMutation = useSaveWorkflowDataSource();
+  const deleteMutation = useDeleteWorkflowDataSource();
+  const testMutation = useTestWorkflowDataSource();
 
   // 测试拉取结果
   const [testVisible, setTestVisible] = useState(false);
-  const [testLoading, setTestLoading] = useState(false);
   const [testSource, setTestSource] = useState<WorkflowDataSource | null>(null);
   const [testOptions, setTestOptions] = useState<WorkflowDataSourceOption[]>([]);
   const [testError, setTestError] = useState('');
 
-  const fetchList = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const active = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const queryObj: Record<string, string> = { page: String(p), pageSize: String(ps) };
-      if (active.keyword) queryObj.keyword = active.keyword;
-      if (active.status) queryObj.status = active.status;
-      const query = new URLSearchParams(queryObj).toString();
-      const res = await request.get<PaginatedResponse<WorkflowDataSource>>(`/api/workflows/data-sources?${query}`);
-      if (res.code === 0) {
-        setData(res.data);
-        setPage(res.data.page);
-        setPageSize(res.data.pageSize);
-      }
-    } finally {
-      setLoading(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize]);
-
-  useEffect(() => {
-    void fetchList();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function handleSearch() { setPage(1); void fetchList(1, pageSize); }
-  function handleReset() { setSearchParams(defaultSearchParams); setPage(1); void fetchList(1, pageSize, defaultSearchParams); }
+  function handleSearch() {
+    setPage(1);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: workflowDataSourceKeys.lists });
+  }
+  function handleReset() {
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: workflowDataSourceKeys.lists });
+  }
 
   function openCreate() { setEditing(null); setModalVisible(true); }
   function openEdit(record: WorkflowDataSource) { setEditing(record); setModalVisible(true); }
@@ -137,40 +134,20 @@ export default function WorkflowDataSourcesPage() {
       headers,
       remark: values.remark?.trim() || undefined,
     };
-    setSubmitting(true);
-    try {
-      const res = editing
-        ? await request.put(`/api/workflows/data-sources/${editing.id}`, payload)
-        : await request.post('/api/workflows/data-sources', payload);
-      if (res.code === 0) {
-        Toast.success(editing ? '更新成功' : '创建成功');
-        closeModal();
-        void fetchList();
-      } else {
-        throw new Error(res.message);
-      }
-    } finally {
-      setSubmitting(false);
-    }
+    await saveMutation.mutateAsync({ id: editing?.id, values: payload });
+    Toast.success(editing ? '更新成功' : '创建成功');
+    closeModal();
   }
 
   async function handleDelete(id: number) {
-    const res = await request.delete(`/api/workflows/data-sources/${id}`);
-    if (res.code === 0) { Toast.success('删除成功'); void fetchList(); }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   }
 
   function handleToggleStatus(record: WorkflowDataSource, checked: boolean) {
     const doToggle = async () => {
-      setTogglingIds((prev) => new Set(prev).add(record.id));
-      try {
-        await request.put(`/api/workflows/data-sources/${record.id}`, { status: checked ? 'enabled' : 'disabled' });
-        Toast.success(checked ? '已启用' : '已停用');
-        void fetchList();
-      } catch (err: unknown) {
-        Toast.error((err as { message?: string })?.message || '操作失败');
-      } finally {
-        setTogglingIds((prev) => { const s = new Set(prev); s.delete(record.id); return s; });
-      }
+      await toggleStatusMutation.mutateAsync({ id: record.id, values: { status: checked ? 'enabled' : 'disabled' } });
+      Toast.success(checked ? '已启用' : '已停用');
     };
     if (checked) void doToggle();
     else Modal.confirm({ title: '确认停用', content: `停用后「${record.name}」将不再可被表单字段使用，确认停用？`, onOk: () => void doToggle() });
@@ -179,13 +156,14 @@ export default function WorkflowDataSourcesPage() {
   async function handleTest(record: WorkflowDataSource) {
     setTestSource(record);
     setTestVisible(true);
-    setTestLoading(true);
     setTestError('');
     setTestOptions([]);
-    const res = await request.get<WorkflowDataSourceOption[]>(`/api/workflows/data-sources/${record.id}/options`, { silent: true });
-    setTestLoading(false);
-    if (res.code === 0 && res.data) setTestOptions(res.data);
-    else setTestError(res.message || '拉取失败');
+    try {
+      const options = await testMutation.mutateAsync(record.id);
+      setTestOptions(options);
+    } catch (err) {
+      setTestError((err as Error).message || '拉取失败');
+    }
   }
 
   const columns: ColumnProps<WorkflowDataSource>[] = [
@@ -200,7 +178,7 @@ export default function WorkflowDataSourcesPage() {
       render: (_: unknown, record: WorkflowDataSource) => (
         <Switch
           checked={record.status === 'enabled'}
-          loading={togglingIds.has(record.id)}
+          loading={toggleStatusMutation.isPending && toggleStatusMutation.variables?.id === record.id}
           disabled={!hasPermission('workflow:datasource:update')}
           onChange={(checked) => handleToggleStatus(record, checked)}
           size="small"
@@ -240,8 +218,8 @@ export default function WorkflowDataSourcesPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="搜索名称 / 地址..."
-      value={searchParams.keyword}
-      onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))}
+      value={draftParams.keyword}
+      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
       showClear
       style={{ width: 220 }}
       onEnterPress={handleSearch}
@@ -251,8 +229,8 @@ export default function WorkflowDataSourcesPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="全部状态"
-      value={searchParams.status || undefined}
-      onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))}
+      value={draftParams.status || undefined}
+      onChange={(v) => setDraftParams((p) => ({ ...p, status: (v as string) ?? '' }))}
       showClear
       style={{ width: 120 }}
       optionList={STATUS_OPTIONS}
@@ -300,13 +278,13 @@ export default function WorkflowDataSourcesPage() {
         bordered
         columns={columns}
         dataSource={data?.list ?? []}
-        loading={loading}
+        loading={listQuery.isFetching}
         rowKey="id"
         size="small"
         empty="暂无数据"
-        onRefresh={() => void fetchList()}
-        refreshLoading={loading}
-        pagination={buildPagination(data?.total ?? 0, fetchList)}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
+        pagination={buildPagination(data?.total ?? 0)}
       />
 
       <AppModal
@@ -314,7 +292,7 @@ export default function WorkflowDataSourcesPage() {
         visible={modalVisible}
         onOk={handleModalOk}
         onCancel={closeModal}
-        okButtonProps={{ loading: submitting }}
+        okButtonProps={{ loading: saveMutation.isPending }}
         width={660}
         closeOnEsc
       >
@@ -369,11 +347,11 @@ export default function WorkflowDataSourcesPage() {
         width={480}
         closeOnEsc
       >
-        <Spin spinning={testLoading} wrapperClassName="modal-spin-wrapper">
+        <Spin spinning={testMutation.isPending} wrapperClassName="modal-spin-wrapper">
           {testError ? (
             <Typography.Text type="danger">{testError}</Typography.Text>
           ) : testOptions.length === 0 ? (
-            <Empty description={testLoading ? '拉取中...' : '无选项'} />
+            <Empty description={testMutation.isPending ? '拉取中...' : '无选项'} />
           ) : (
             <div>
               <Typography.Paragraph type="tertiary" size="small" style={{ marginBottom: 8 }}>

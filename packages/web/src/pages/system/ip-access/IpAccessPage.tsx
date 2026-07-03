@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button, Card, Switch, TextArea, Toast, Spin, Typography,
   Tabs, TabPane, Tag, Input, Select,
@@ -6,22 +7,15 @@ import {
 import { usePagination } from '@/hooks/usePagination';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import type { IpAccessLog, PaginatedResponse, SystemConfig } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { IpAccessLog } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { Search, RotateCcw } from 'lucide-react';
 import { formatDateTime } from '@/utils/date';
 import { renderEllipsis } from '../../../utils/table-columns';
+import { ipAccessKeys, useIpAccessConfigs, useIpAccessLogs, useSaveIpAccessSection } from '@/hooks/queries/ip-access';
 
 const { Title, Text } = Typography;
-
-interface IpConfigMap {
-  ip_whitelist_enabled?: SystemConfig;
-  ip_whitelist?: SystemConfig;
-  ip_blacklist_enabled?: SystemConfig;
-  ip_blacklist?: SystemConfig;
-}
 
 function parseList(raw: string): string {
   try {
@@ -40,50 +34,33 @@ function toJsonArray(text: string): string {
 // ─── 拦截日志子页面 ─────────────────────────────────────────────
 
 function IpAccessLogsTab() {
-  const [tableLoading, setTableLoading] = useState(false);
-  const [logList, setLogList] = useState<IpAccessLog[]>([]);
-  const [total, setTotal] = useState(0);
+  const queryClient = useQueryClient();
   const { page, setPage, pageSize, buildPagination } = usePagination();
 
-  const [filterIp, setFilterIp] = useState('');
-  const [filterBlockType, setFilterBlockType] = useState<string | undefined>(undefined);
   interface SearchParams { filterIp: string; filterBlockType: string | undefined; }
   const defaultSearchParams: SearchParams = { filterIp: '', filterBlockType: undefined };
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
-
-  const fetchLogs = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const { filterIp: ip, filterBlockType: blockType } = params ?? searchParamsRef.current;
-    setTableLoading(true);
-    try {
-      const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-      if (ip) query.set('ip', ip);
-      if (blockType) query.set('blockType', blockType);
-      const res = await request.get<PaginatedResponse<IpAccessLog>>(`/api/ip-access-logs?${query}`);
-      if (res.code === 0) {
-        setLogList(res.data.list);
-        setTotal(res.data.total);
-        setPage(p);
-      }
-    } finally {
-      setTableLoading(false);
-    }
-  }, [page, pageSize]);
-
-  useEffect(() => { void fetchLogs(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
+  const logsQuery = useIpAccessLogs({
+    page,
+    pageSize,
+    ip: submittedParams.filterIp || undefined,
+    blockType: submittedParams.filterBlockType || undefined,
+  });
+  const logList = logsQuery.data?.list ?? [];
+  const total = logsQuery.data?.total ?? 0;
 
   const handleSearch = () => {
     setPage(1);
-    void fetchLogs(1, pageSize);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: ipAccessKeys.logs });
   };
 
   const handleReset = () => {
-    setFilterIp('');
-    setFilterBlockType(undefined);
-    setSearchParams(defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
     setPage(1);
-    void fetchLogs(1, pageSize, defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: ipAccessKeys.logs });
   };
 
   const columns: ColumnProps<IpAccessLog>[] = [
@@ -113,15 +90,15 @@ function IpAccessLogsTab() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索 IP 地址"
-              value={filterIp}
-              onChange={(v) => { setFilterIp(v); setSearchParams((prev) => ({ ...prev, filterIp: v })); }}
+              value={draftParams.filterIp}
+              onChange={(v) => { setDraftParams((prev) => ({ ...prev, filterIp: v })); }}
               showClear
               style={{ width: 200 }}
             />
             <Select
               placeholder="拦截类型"
-              value={filterBlockType}
-              onChange={(v) => { setFilterBlockType(v as string | undefined); setSearchParams((prev) => ({ ...prev, filterBlockType: v as string | undefined })); }}
+              value={draftParams.filterBlockType}
+              onChange={(v) => { setDraftParams((prev) => ({ ...prev, filterBlockType: v as string | undefined })); }}
               showClear
               style={{ width: 140 }}
             >
@@ -137,8 +114,8 @@ function IpAccessLogsTab() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索 IP 地址"
-              value={filterIp}
-              onChange={(v) => { setFilterIp(v); setSearchParams((prev) => ({ ...prev, filterIp: v })); }}
+              value={draftParams.filterIp}
+              onChange={(v) => { setDraftParams((prev) => ({ ...prev, filterIp: v })); }}
               showClear
               style={{ width: 200 }}
             />
@@ -148,8 +125,8 @@ function IpAccessLogsTab() {
         mobileFilters={(
           <Select
             placeholder="拦截类型"
-            value={filterBlockType}
-            onChange={(v) => { setFilterBlockType(v as string | undefined); setSearchParams((prev) => ({ ...prev, filterBlockType: v as string | undefined })); }}
+            value={draftParams.filterBlockType}
+            onChange={(v) => { setDraftParams((prev) => ({ ...prev, filterBlockType: v as string | undefined })); }}
             showClear
             style={{ width: 140 }}
           >
@@ -165,11 +142,11 @@ function IpAccessLogsTab() {
         bordered
         columns={columns}
         dataSource={logList}
-        loading={tableLoading}
+        loading={logsQuery.isFetching}
         rowKey="id"
-        pagination={buildPagination(total, fetchLogs)}
-        onRefresh={() => void fetchLogs()}
-        refreshLoading={tableLoading}
+        pagination={buildPagination(total)}
+        onRefresh={() => void logsQuery.refetch()}
+        refreshLoading={logsQuery.isFetching}
       />
     </>
   );
@@ -182,74 +159,34 @@ export default function IpAccessPage() {
   const canUpdate = hasPermission('system:ip-access:update');
   const canViewLog = hasPermission('system:ip-access:log');
 
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState<'whitelist' | 'blacklist' | null>(null);
-  const [configs, setConfigs] = useState<IpConfigMap>({});
   const [whitelistEnabled, setWhitelistEnabled] = useState(false);
   const [whitelistText, setWhitelistText] = useState('');
   const [blacklistEnabled, setBlacklistEnabled] = useState(false);
   const [blacklistText, setBlacklistText] = useState('');
+  const configsQuery = useIpAccessConfigs();
+  const configs = useMemo(() => configsQuery.data ?? {}, [configsQuery.data]);
+  const saveMutation = useSaveIpAccessSection();
+  const saving = saveMutation.isPending ? (saveMutation.variables?.section ?? null) : null;
 
-  const fetchConfigs = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await request.get<{ list: SystemConfig[] }>('/api/system-configs?keyword=ip_&pageSize=20');
-      if (res.code === 0) {
-        const map: IpConfigMap = {};
-        for (const item of res.data.list) {
-          if (item.configKey === 'ip_whitelist_enabled') map.ip_whitelist_enabled = item;
-          if (item.configKey === 'ip_whitelist') map.ip_whitelist = item;
-          if (item.configKey === 'ip_blacklist_enabled') map.ip_blacklist_enabled = item;
-          if (item.configKey === 'ip_blacklist') map.ip_blacklist = item;
-        }
-        setConfigs(map);
-        setWhitelistEnabled(map.ip_whitelist_enabled?.configValue === 'true');
-        setBlacklistEnabled(map.ip_blacklist_enabled?.configValue === 'true');
-        setWhitelistText(parseList(map.ip_whitelist?.configValue ?? '[]'));
-        setBlacklistText(parseList(map.ip_blacklist?.configValue ?? '[]'));
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { fetchConfigs(); }, [fetchConfigs]);
-
-  const upsertConfig = (
-    existing: SystemConfig | undefined,
-    configKey: string,
-    configType: string,
-    configValue: string,
-    description: string,
-  ) => {
-    if (existing?.id) {
-      return request.put(`/api/system-configs/${existing.id}`, { configValue });
-    }
-    return request.post('/api/system-configs', { configKey, configType, configValue, description });
-  };
+  useEffect(() => {
+    if (!configsQuery.data) return;
+    setWhitelistEnabled(configs.ip_whitelist_enabled?.configValue === 'true');
+    setBlacklistEnabled(configs.ip_blacklist_enabled?.configValue === 'true');
+    setWhitelistText(parseList(configs.ip_whitelist?.configValue ?? '[]'));
+    setBlacklistText(parseList(configs.ip_blacklist?.configValue ?? '[]'));
+  }, [configs, configsQuery.data]);
 
   const saveSection = async (section: 'whitelist' | 'blacklist') => {
-    setSaving(section);
-    try {
-      if (section === 'whitelist') {
-        await Promise.all([
-          upsertConfig(configs.ip_whitelist_enabled, 'ip_whitelist_enabled', 'boolean', String(whitelistEnabled), '是否开启IP白名单访问控制'),
-          upsertConfig(configs.ip_whitelist, 'ip_whitelist', 'json', toJsonArray(whitelistText), 'IP白名单列表（支持CIDR，JSON数组）'),
-        ]);
-      } else {
-        await Promise.all([
-          upsertConfig(configs.ip_blacklist_enabled, 'ip_blacklist_enabled', 'boolean', String(blacklistEnabled), '是否开启IP黑名单访问控制'),
-          upsertConfig(configs.ip_blacklist, 'ip_blacklist', 'json', toJsonArray(blacklistText), 'IP黑名单列表（支持CIDR，JSON数组）'),
-        ]);
-      }
-      Toast.success('保存成功');
-      fetchConfigs();
-    } finally {
-      setSaving(null);
-    }
+    await saveMutation.mutateAsync({
+      configs,
+      section,
+      enabled: section === 'whitelist' ? whitelistEnabled : blacklistEnabled,
+      listJson: section === 'whitelist' ? toJsonArray(whitelistText) : toJsonArray(blacklistText),
+    });
+    Toast.success('保存成功');
   };
 
-  const configContent = loading ? (
+  const configContent = configsQuery.isFetching && !configsQuery.data ? (
     <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
       <Spin size="large" />
     </div>

@@ -3,7 +3,7 @@
  *
  * 优先级（后端 matchAutoReply）：subscribe → keyword(exact 优先 contains，按 sort) → default。
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Button, Form, Modal, SideSheet, Space, Table, Tag, Toast, Typography, Upload } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ImagePlus, Plus, Trash2 } from 'lucide-react';
@@ -11,11 +11,15 @@ import type { ChannelAutoReply, ChannelMessageType, ChannelRichReplyExtra } from
 import {
   CHANNEL_AUTO_REPLY_MATCH_LABELS, CHANNEL_AUTO_REPLY_KEYWORD_MODE_LABELS,
 } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { config } from '@/config';
 import { usePermission } from '@/hooks/usePermission';
 import { AppModal } from '@/components/AppModal';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import {
+  useChannelAutoReplies,
+  useDeleteChannelAutoReply,
+  useSaveChannelAutoReply,
+} from '@/hooks/queries/channels';
 
 interface Props {
   channelId: number;
@@ -55,28 +59,15 @@ export function ChannelAutoReplyDrawer({ channelId, channelName, visible, onClos
   const canSave = hasPermission('channel:reply:save');
   const canDelete = hasPermission('channel:reply:delete');
 
-  const [list, setList] = useState<ChannelAutoReply[]>([]);
-  const [loading, setLoading] = useState(false);
   const [editVisible, setEditVisible] = useState(false);
   const [editing, setEditing] = useState<ChannelAutoReply | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const [formValues, setFormValues] = useState<Record<string, unknown>>({});
   const [imageUrl, setImageUrl] = useState('');
   const [coverUrl, setCoverUrl] = useState('');
-
-  const fetchList = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await request.get<ChannelAutoReply[]>(`/api/channels/${channelId}/auto-replies`, { silent: true });
-      if (res.code === 0 && res.data) setList(res.data);
-    } finally {
-      setLoading(false);
-    }
-  }, [channelId]);
-
-  useEffect(() => {
-    if (visible) void fetchList();
-  }, [visible, fetchList]);
+  const listQuery = useChannelAutoReplies(channelId, visible && !!channelId);
+  const list = listQuery.data ?? [];
+  const saveMutation = useSaveChannelAutoReply();
+  const deleteMutation = useDeleteChannelAutoReply();
 
   const openCreate = () => {
     setEditing(null);
@@ -125,33 +116,27 @@ export function ChannelAutoReplyDrawer({ channelId, channelName, visible, onClos
       };
     }
 
-    setSubmitting(true);
-    try {
-      const payload = {
-        keyword: values.matchType === 'keyword' ? (values.keyword ?? '').trim() : null,
-        keywordMode: values.keywordMode ?? 'contains',
-        replyType,
-        replyContent,
-        replyExtra,
-        status: values.status ?? 'enabled',
-        sort: Number(values.sort) || 0,
-      };
-      const res = editing
-        ? await request.put(`/api/channels/${channelId}/auto-replies/${editing.id}`, payload)
-        : await request.post(`/api/channels/${channelId}/auto-replies`, { matchType: values.matchType, ...payload });
-      if (res.code === 0) {
-        Toast.success(editing ? '已更新' : '已创建');
-        setEditVisible(false);
-        void fetchList();
-      }
-    } finally {
-      setSubmitting(false);
-    }
+    const payload = {
+      keyword: values.matchType === 'keyword' ? (values.keyword ?? '').trim() : null,
+      keywordMode: values.keywordMode ?? 'contains',
+      replyType,
+      replyContent,
+      replyExtra,
+      status: values.status ?? 'enabled',
+      sort: Number(values.sort) || 0,
+    };
+    await saveMutation.mutateAsync({
+      channelId,
+      id: editing?.id,
+      values: editing ? payload : { matchType: values.matchType, ...payload },
+    });
+    Toast.success(editing ? '已更新' : '已创建');
+    setEditVisible(false);
   };
 
   const handleDelete = async (r: ChannelAutoReply) => {
-    const res = await request.delete(`/api/channels/${channelId}/auto-replies/${r.id}`);
-    if (res.code === 0) { Toast.success('已删除'); void fetchList(); }
+    await deleteMutation.mutateAsync({ channelId, id: r.id });
+    Toast.success('已删除');
   };
 
   const columns: ColumnProps<ChannelAutoReply>[] = [
@@ -222,7 +207,7 @@ export function ChannelAutoReplyDrawer({ channelId, channelName, visible, onClos
         columns={columns}
         dataSource={list}
         rowKey="id"
-        loading={loading}
+        loading={listQuery.isFetching}
         pagination={false}
         size="small"
       />
@@ -232,7 +217,7 @@ export function ChannelAutoReplyDrawer({ channelId, channelName, visible, onClos
         visible={editVisible}
         onCancel={() => setEditVisible(false)}
         onOk={() => void handleSubmit()}
-        confirmLoading={submitting}
+        confirmLoading={saveMutation.isPending}
         okText="保存"
         width={520}
       >

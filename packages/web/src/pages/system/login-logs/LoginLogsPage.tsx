@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Input, Button, Select, DatePicker, Tabs, TabPane, SplitButtonGroup, Dropdown, Toast } from '@douyinfe/semi-ui';
 import AppModal from '@/components/AppModal';
 import { Search, RotateCcw, ChevronDown, Trash2 } from 'lucide-react';
@@ -8,10 +9,11 @@ import ExportButton from '@/components/ExportButton';
 import { LoginLogsTable } from '@/components/logs/LoginLogsTable';
 import { usePagination } from '@/hooks/usePagination';
 import { formatDateTimeForApi } from '@/utils/date';
-import type { LoginLog, PaginatedResponse } from '@zenith/shared';
 import LoginLogStatsPanel from './LoginLogStatsPanel';
+import { loginLogKeys, useCleanLoginLogs, useLoginLogList } from '@/hooks/queries/login-logs';
 
 export default function LoginLogsPage() {
+  const queryClient = useQueryClient();
   interface SearchParams {
     username: string;
     eventType: string;
@@ -20,62 +22,40 @@ export default function LoginLogsPage() {
   }
 
   const defaultParams: SearchParams = { username: '', eventType: '', status: '', timeRange: null };
-  const [data, setData] = useState<LoginLog[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [clearLogsLoading, setClearLogsLoading] = useState(false);
   const [clearModalVisible, setClearModalVisible] = useState(false);
   const [clearMonths, setClearMonths] = useState(0);
   const [clearPassword, setClearPassword] = useState('');
   const [clearPasswordError, setClearPasswordError] = useState('');
   const [clearVerifying, setClearVerifying] = useState(false);
-  const [total, setTotal] = useState(0);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
+  const { page, pageSize, setPage, buildPagination } = usePagination();
 
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultParams);
-  const searchParamsRef = useRef<SearchParams>(defaultParams);
-  searchParamsRef.current = searchParams;
-
-  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const activeParams = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(activeParams.username ? { username: activeParams.username } : {}),
-        ...(activeParams.eventType ? { eventType: activeParams.eventType } : {}),
-        ...(activeParams.status ? { status: activeParams.status } : {}),
-      });
-      if (activeParams.timeRange) {
-        query.set('startTime', formatDateTimeForApi(activeParams.timeRange[0]));
-        query.set('endTime', formatDateTimeForApi(activeParams.timeRange[1]));
-      }
-      const res = await request.get<PaginatedResponse<LoginLog>>(`/api/login-logs?${query.toString()}`);
-      setData(res.data.list);
-      setTotal(res.data.total);
-      setPage(res.data.page);
-      setPageSize(res.data.pageSize);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultParams);
+  const listQuery = useLoginLogList({
+    page,
+    pageSize,
+    username: submittedParams.username || undefined,
+    eventType: submittedParams.eventType || undefined,
+    status: submittedParams.status || undefined,
+    startTime: submittedParams.timeRange ? formatDateTimeForApi(submittedParams.timeRange[0]) : undefined,
+    endTime: submittedParams.timeRange ? formatDateTimeForApi(submittedParams.timeRange[1]) : undefined,
+  });
+  const data = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const cleanLogsMutation = useCleanLoginLogs();
+  const clearLogsLoading = cleanLogsMutation.isPending;
 
   const handleSearch = () => {
     setPage(1);
-    fetchData(1, pageSize);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: loginLogKeys.all });
   };
 
   const handleReset = () => {
-    setSearchParams(defaultParams);
     setPage(1);
-    fetchData(1, pageSize, defaultParams);
+    setDraftParams(defaultParams);
+    setSubmittedParams(defaultParams);
+    void queryClient.invalidateQueries({ queryKey: loginLogKeys.all });
   };
 
   const clearLogsLabels: Record<number, string> = { 0: '全部', 1: '一个月', 3: '三个月', 6: '六个月', 12: '一年' };
@@ -99,25 +79,17 @@ export default function LoginLogsPage() {
       setClearVerifying(false);
     }
     setClearModalVisible(false);
-    setClearLogsLoading(true);
-    try {
-      const res = await request.delete(`/api/login-logs/clean?months=${clearMonths}`);
-      if (res.code === 0) {
-        Toast.success(res.message || '清除成功');
-        setPage(1);
-        void fetchData(1, pageSize);
-      }
-    } finally {
-      setClearLogsLoading(false);
-    }
+    await cleanLogsMutation.mutateAsync(clearMonths);
+    Toast.success('清除成功');
+    setPage(1);
   };
 
   const renderUsernameSearch = () => (
     <Input
       prefix={<Search size={14} />}
       placeholder="请输入用户名"
-      value={searchParams.username}
-      onChange={(v) => setSearchParams({ ...searchParams, username: v })}
+      value={draftParams.username}
+      onChange={(v) => setDraftParams({ ...draftParams, username: v })}
       onEnterPress={handleSearch}
       style={{ width: 180 }}
       showClear
@@ -127,8 +99,8 @@ export default function LoginLogsPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="请选择状态"
-      value={searchParams.status || undefined}
-      onChange={(v) => setSearchParams({ ...searchParams, status: v as string })}
+      value={draftParams.status || undefined}
+      onChange={(v) => setDraftParams({ ...draftParams, status: v as string })}
       style={{ width: 150 }}
     >
       <Select.Option value="">全部</Select.Option>
@@ -140,8 +112,8 @@ export default function LoginLogsPage() {
   const renderEventTypeFilter = () => (
     <Select
       placeholder="请选择事件"
-      value={searchParams.eventType || undefined}
-      onChange={(v) => setSearchParams({ ...searchParams, eventType: v as string })}
+      value={draftParams.eventType || undefined}
+      onChange={(v) => setDraftParams({ ...draftParams, eventType: v as string })}
       style={{ width: 150 }}
     >
       <Select.Option value="">全部事件</Select.Option>
@@ -154,20 +126,20 @@ export default function LoginLogsPage() {
     <DatePicker
       type="dateTimeRange"
       placeholder={['开始时间', '结束时间']}
-      value={searchParams.timeRange ?? undefined}
-      onChange={(v) => setSearchParams({ ...searchParams, timeRange: v ? (v as [Date, Date]) : null })}
+      value={draftParams.timeRange ?? undefined}
+      onChange={(v) => setDraftParams({ ...draftParams, timeRange: v ? (v as [Date, Date]) : null })}
       style={{ width: 360 }}
     />
   );
 
   const buildExportQuery = () => ({
-    ...(searchParams.username ? { username: searchParams.username } : {}),
-    ...(searchParams.eventType ? { eventType: searchParams.eventType } : {}),
-    ...(searchParams.status ? { status: searchParams.status } : {}),
-    ...(searchParams.timeRange
+    ...(draftParams.username ? { username: draftParams.username } : {}),
+    ...(draftParams.eventType ? { eventType: draftParams.eventType } : {}),
+    ...(draftParams.status ? { status: draftParams.status } : {}),
+    ...(draftParams.timeRange
       ? {
-          startTime: formatDateTimeForApi(searchParams.timeRange[0]),
-          endTime: formatDateTimeForApi(searchParams.timeRange[1]),
+          startTime: formatDateTimeForApi(draftParams.timeRange[0]),
+          endTime: formatDateTimeForApi(draftParams.timeRange[1]),
         }
       : {}),
   });
@@ -259,9 +231,9 @@ export default function LoginLogsPage() {
 
           <LoginLogsTable
             dataSource={data}
-            loading={loading}
-            onRefresh={() => void fetchData()}
-            pagination={buildPagination(total, fetchData)}
+            loading={listQuery.isFetching}
+            onRefresh={() => void listQuery.refetch()}
+            pagination={buildPagination(total)}
           />
         </TabPane>
         <TabPane tab="统计分析" itemKey="stats">

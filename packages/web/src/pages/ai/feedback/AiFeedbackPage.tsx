@@ -1,10 +1,10 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { Button, Form, Tag, Typography, Select, Toast } from '@douyinfe/semi-ui';
 import { RotateCcw, Search, ThumbsUp, ThumbsDown } from 'lucide-react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { AiFeedbackStatus, AiMessage } from '@zenith/shared';
-import { request } from '@/utils/request';
+import { useQueryClient } from '@tanstack/react-query';
 import { formatDateTime } from '@/utils/date';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -13,6 +13,7 @@ import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import AppModal from '@/components/AppModal';
 import { renderEllipsis } from '@/utils/table-columns';
+import { aiFeedbackKeys, useAiFeedbackList, useHandleAiFeedback } from '@/hooks/queries/ai-feedback';
 
 const { Text } = Typography;
 
@@ -71,36 +72,34 @@ function normalizeRemark(value: unknown) {
 
 export default function AiFeedbackPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
-  const [feedbackFilter, setFeedbackFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const { page, pageSize, setPage, setPageSize } = usePagination();
-  const [data, setData] = useState<{ list: AiMessage[]; total: number } | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [draftParams, setDraftParams] = useState({ feedback: '', status: '' });
+  const [submittedParams, setSubmittedParams] = useState({ feedback: '', status: '' });
+  const { page, pageSize, setPage, buildPagination } = usePagination();
   const [modalVisible, setModalVisible] = useState(false);
   const [handlingMessage, setHandlingMessage] = useState<AiMessage | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const listQuery = useAiFeedbackList({
+    page,
+    pageSize,
+    feedback: submittedParams.feedback || undefined,
+    status: submittedParams.status || undefined,
+  });
+  const data = listQuery.data ?? null;
+  const handleMutation = useHandleAiFeedback();
 
-  const fetchData = useCallback(async (p = page, ps = pageSize, fb = feedbackFilter, status = statusFilter) => {
-    setLoading(true);
-    try {
-      const qs = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-      if (fb) qs.set('feedback', fb);
-      if (status) qs.set('status', status);
-      const res = await request.get<{ list: AiMessage[]; total: number; page: number; pageSize: number }>(
-        `/api/ai/conversations/admin/feedback?${qs.toString()}`
-      );
-      if (res.code === 0 && res.data) setData(res.data);
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize, feedbackFilter, statusFilter]);
-
-  // Initial load
-  useEffect(() => { void fetchData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleSearch = () => { setPage(1); void fetchData(1, pageSize, feedbackFilter, statusFilter); };
-  const handleReset = () => { setFeedbackFilter(''); setStatusFilter(''); setPage(1); void fetchData(1, pageSize, '', ''); };
+  const handleSearch = () => {
+    setPage(1);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: aiFeedbackKeys.lists });
+  };
+  const handleReset = () => {
+    const nextParams = { feedback: '', status: '' };
+    setDraftParams(nextParams);
+    setSubmittedParams(nextParams);
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: aiFeedbackKeys.lists });
+  };
 
   function openHandleModal(record: AiMessage) {
     setHandlingMessage(record);
@@ -121,22 +120,15 @@ export default function AiFeedbackPage() {
       throw new Error('validation');
     }
 
-    setSubmitting(true);
-    try {
-      const res = await request.put<null>(`/api/ai/conversations/admin/feedback/${handlingMessage.id}`, {
+    await handleMutation.mutateAsync({
+      id: handlingMessage.id,
+      values: {
         status: values.status,
         remark: normalizeRemark(values.remark),
-      });
-      if (res.code === 0) {
-        Toast.success('处理成功');
-        closeModal();
-        void fetchData();
-      } else {
-        throw new Error(res.message || '处理失败');
-      }
-    } finally {
-      setSubmitting(false);
-    }
+      },
+    });
+    Toast.success('处理成功');
+    closeModal();
   }
 
   const formInitValues: FeedbackHandleFormValues = {
@@ -213,8 +205,8 @@ export default function AiFeedbackPage() {
 
   const renderFeedbackFilter = () => (
     <Select
-      value={feedbackFilter}
-      onChange={(v) => setFeedbackFilter(String(v))}
+    value={draftParams.feedback}
+    onChange={(v) => setDraftParams((prev) => ({ ...prev, feedback: String(v) }))}
       optionList={FEEDBACK_OPTIONS}
       style={{ width: 120 }}
       placeholder="反馈类型"
@@ -223,8 +215,8 @@ export default function AiFeedbackPage() {
 
   const renderStatusFilter = () => (
     <Select
-      value={statusFilter}
-      onChange={(v) => setStatusFilter(String(v))}
+    value={draftParams.status}
+    onChange={(v) => setDraftParams((prev) => ({ ...prev, status: String(v) }))}
       optionList={STATUS_FILTER_OPTIONS}
       style={{ width: 120 }}
       placeholder="处理状态"
@@ -267,18 +259,14 @@ export default function AiFeedbackPage() {
           rowKey="id"
           columns={columns}
           dataSource={data?.list ?? []}
-          loading={loading}
-          onRefresh={() => void fetchData()}
-          refreshLoading={loading}
+          loading={listQuery.isFetching}
+          onRefresh={() => void listQuery.refetch()}
+          refreshLoading={listQuery.isFetching}
           pagination={{
-            total: data?.total ?? 0,
-            currentPage: page,
-            pageSize,
+            ...buildPagination(data?.total ?? 0),
             pageSizeOpts: [10, 20, 50],
             showSizeChanger: true,
             showTotal: true,
-            onPageChange: (p) => { setPage(p); void fetchData(p, pageSize, feedbackFilter, statusFilter); },
-            onPageSizeChange: (ps) => { setPageSize(ps); setPage(1); void fetchData(1, ps, feedbackFilter, statusFilter); },
           }}
         />
       </div>
@@ -287,7 +275,7 @@ export default function AiFeedbackPage() {
         visible={modalVisible}
         onOk={handleModalOk}
         onCancel={closeModal}
-        okButtonProps={{ loading: submitting }}
+        okButtonProps={{ loading: handleMutation.isPending }}
         width={500}
         closeOnEsc
       >

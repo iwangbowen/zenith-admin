@@ -5,21 +5,15 @@ import { Save } from 'lucide-react';
 import type { editor } from 'monaco-editor';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
-import { request } from '@/utils/request';
 import { useThemeController } from '@/providers/theme-controller';
 import { useTerminalPreferences } from './useTerminalPreferences';
 import { resolveTheme, toMonacoTheme, monacoThemeName } from './themes';
+import { useFileContent, useSaveFileContent } from '@/hooks/queries/terminal-files';
 
 interface EditorTabProps {
   readonly filePath: string;
   readonly active: boolean;
   readonly onDirtyChange?: (dirty: boolean) => void;
-}
-
-interface FileContent {
-  path: string;
-  content: string;
-  size: number;
 }
 
 const LANGUAGE_MAP: Record<string, string> = {
@@ -171,8 +165,6 @@ export default function EditorTab({ filePath, active, onDirtyChange }: EditorTab
   const themeName = monacoThemeName(theme);
 
   const [content, setContent] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
 
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
@@ -181,30 +173,25 @@ export default function EditorTab({ filePath, active, onDirtyChange }: EditorTab
   const onDirtyChangeRef = useRef(onDirtyChange);
   onDirtyChangeRef.current = onDirtyChange;
 
-  // 加载文件内容（仅依赖 filePath，图片文件跳过）
+  const contentQuery = useFileContent(filePath, fileRef.readUrl, active && !isImg);
+  const saveMutation = useSaveFileContent(filePath);
+
   useEffect(() => {
     if (isImg) return;
-    let cancelled = false;
-    setLoading(true);
+    setContent(null);
+    setDirty(false);
+    onDirtyChangeRef.current?.(false);
+  }, [filePath, isImg]);
 
-    request
-      .get<FileContent | { content: string }>(fileRef.readUrl)
-      .then((res) => {
-        if (cancelled) return;
-        const data = res.code === 0 ? res.data : null;
-        const text = data && 'content' in data ? data.content ?? '' : '';
-        savedRef.current = text;
-        setContent(text);
-        setDirty(false);
-        onDirtyChangeRef.current?.(false);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [fileRef, isImg]);
+  // 加载文件内容（仅依赖 filePath，图片文件跳过）
+  useEffect(() => {
+    if (isImg || !contentQuery.data || dirty) return;
+    const text = 'content' in contentQuery.data ? contentQuery.data.content ?? '' : '';
+    savedRef.current = text;
+    setContent(text);
+    setDirty(false);
+    onDirtyChangeRef.current?.(false);
+  }, [contentQuery.data, dirty, isImg]);
 
   // 注册并应用自定义主题（与终端配色一致）
   useEffect(() => {
@@ -226,16 +213,12 @@ export default function EditorTab({ filePath, active, onDirtyChange }: EditorTab
     const ed = editorRef.current;
     if (!ed || !fileRef.writeUrl) return;
     const value = ed.getValue();
-    setSaving(true);
-    const res = await request.put<FileContent>(fileRef.writeUrl, fileRef.buildWriteBody(value));
-    setSaving(false);
-    if (res.code === 0) {
-      savedRef.current = value;
-      setDirty(false);
-      onDirtyChangeRef.current?.(false);
-      Toast.success('已保存');
-    }
-  }, [fileRef]);
+    await saveMutation.mutateAsync({ url: fileRef.writeUrl, body: fileRef.buildWriteBody(value) });
+    savedRef.current = value;
+    setDirty(false);
+    onDirtyChangeRef.current?.(false);
+    Toast.success('已保存');
+  }, [fileRef, saveMutation]);
   const handleSaveRef = useRef(handleSave);
   handleSaveRef.current = handleSave;
 
@@ -275,7 +258,7 @@ export default function EditorTab({ filePath, active, onDirtyChange }: EditorTab
             theme="solid"
             type="primary"
             icon={<Save size={13} />}
-            loading={saving}
+            loading={saveMutation.isPending}
             disabled={!dirty}
             onClick={() => void handleSave()}
           >
@@ -287,7 +270,7 @@ export default function EditorTab({ filePath, active, onDirtyChange }: EditorTab
         )}
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
-        {loading ? (
+        {contentQuery.isFetching && content === null ? (
           <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Spin />
           </div>

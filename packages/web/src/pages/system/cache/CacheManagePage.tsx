@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { AppModal } from '@/components/AppModal';
 import {
   Badge,
@@ -19,45 +20,31 @@ import {
 } from '@douyinfe/semi-ui';
 import { Search, RotateCcw, RefreshCw, Trash2, MoreHorizontal, Pencil, Clock } from 'lucide-react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { NavListPanel, NavListItem } from '@/components/NavListPanel';
-
-interface CacheItem {
-  key: string;
-  displayKey: string;
-  segment: string;
-  category: string;
-  type: string;
-  ttl: number;
-  size: number;
-  value: string | null;
-}
+import {
+  cacheKeys,
+  type CacheItem,
+  type CacheOverview,
+  useBatchDeleteCacheKeys,
+  useCacheValue,
+  useCacheList,
+  useCacheOverview,
+  useClearAllCache,
+  useDeleteCacheCategory,
+  useDeleteCacheKey,
+  useUpdateCacheTtl,
+  useUpdateCacheValue,
+} from '@/hooks/queries/cache';
 
 interface CategoryRow {
   category: string;
   segment: string;
   count: number;
-}
-
-interface CacheOverview {
-  connected: boolean;
-  version: string;
-  uptimeSeconds: number;
-  connectedClients: number;
-  usedMemory: number;
-  usedMemoryHuman: string;
-  maxMemory: number;
-  memFragmentationRatio: number;
-  keyspaceHits: number;
-  keyspaceMisses: number;
-  hitRate: number;
-  totalKeys: number;
-  keyPrefix: string;
 }
 
 const TYPE_COLORS: Record<string, 'blue' | 'green' | 'orange' | 'purple' | 'cyan'> = {
@@ -117,74 +104,56 @@ function OverviewStat({ label, value, tone }: Readonly<{ label: string; value: s
 }
 
 export default function CacheManagePage() {
+  const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
   const { pageSize } = usePagination();
   const canEdit = hasPermission('system:cache:update');
   const canDelete = hasPermission('system:cache:delete');
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<CacheItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<CategoryRow | null>(null);
   const [keyword, setKeyword] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [viewingItem, setViewingItem] = useState<CacheItem | null>(null);
   const [fullValue, setFullValue] = useState<string | null>(null);
-  const [fullValueLoading, setFullValueLoading] = useState(false);
-  const [overview, setOverview] = useState<CacheOverview | null>(null);
-  const [overviewLoading, setOverviewLoading] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [editMode, setEditMode] = useState(false);
   const [editValue, setEditValue] = useState('');
-  const [savingValue, setSavingValue] = useState(false);
   const [ttlEditItem, setTtlEditItem] = useState<CacheItem | null>(null);
   const [ttlMode, setTtlMode] = useState<'persist' | 'custom'>('custom');
   const [ttlSeconds, setTtlSeconds] = useState<number>(3600);
-  const [savingTtl, setSavingTtl] = useState(false);
+  const listQuery = useCacheList();
+  const overviewQuery = useCacheOverview();
+  const valueQuery = useCacheValue(viewingItem?.key, !!viewingItem);
+  const data = listQuery.data?.list ?? [];
+  const overview: CacheOverview | null = overviewQuery.data ?? null;
+  const loading = listQuery.isFetching;
+  const overviewLoading = overviewQuery.isFetching;
+  const deleteKeyMutation = useDeleteCacheKey();
+  const batchDeleteMutation = useBatchDeleteCacheKeys();
+  const deleteCategoryMutation = useDeleteCacheCategory();
+  const clearAllMutation = useClearAllCache();
+  const updateTtlMutation = useUpdateCacheTtl();
+  const updateValueMutation = useUpdateCacheValue();
+  const savingTtl = updateTtlMutation.isPending;
+  const savingValue = updateValueMutation.isPending;
 
   const openValueModal = async (item: CacheItem) => {
     setViewingItem(item);
     setFullValue(null);
     setEditMode(false);
-    setFullValueLoading(true);
-    try {
-      const res = await request.get<string | null>(`/api/cache/value?key=${encodeURIComponent(item.key)}`);
-      if (res.code === 0) setFullValue(res.data);
-    } finally {
-      setFullValueLoading(false);
-    }
   };
-
-  const fetchOverview = useCallback(async () => {
-    setOverviewLoading(true);
-    try {
-      const res = await request.get<CacheOverview>('/api/cache/overview', { silent: true });
-      if (res.code === 0) setOverview(res.data);
-    } finally {
-      setOverviewLoading(false);
-    }
-  }, []);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await request.get<{ list: CacheItem[]; total: number }>('/api/cache');
-      if (res.code === 0) {
-        setData(res.data.list);
-        setSelectedKeys([]);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const fullValueLoading = valueQuery.isFetching;
 
   useEffect(() => {
-    void fetchData();
-    void fetchOverview();
-  }, [fetchData, fetchOverview]);
+    if (viewingItem) setFullValue(valueQuery.data ?? null);
+  }, [viewingItem, valueQuery.data]);
 
-  const refreshAll = useCallback(() => {
-    void fetchData();
-    void fetchOverview();
-  }, [fetchData, fetchOverview]);
+  const refreshAll = () => {
+    void queryClient.invalidateQueries({ queryKey: cacheKeys.all });
+  };
+
+  useEffect(() => {
+    setSelectedKeys([]);
+  }, [listQuery.data]);
 
   // 按分类聚合
   const categoryRows: CategoryRow[] = (() => {
@@ -228,13 +197,13 @@ export default function CacheManagePage() {
 
   const handleSearch = () => {
     setKeyword(searchInput);
-    void fetchData();
+    void queryClient.invalidateQueries({ queryKey: cacheKeys.lists });
   };
 
   const handleReset = () => {
     setSearchInput('');
     setKeyword('');
-    void fetchData();
+    void queryClient.invalidateQueries({ queryKey: cacheKeys.lists });
   };
 
   const handleDeleteKey = (item: CacheItem) => {
@@ -243,11 +212,8 @@ export default function CacheManagePage() {
       content: <span>Key：<code>{item.displayKey}</code></span>,
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete<null>('/api/cache', { key: item.key });
-        if (res.code === 0) {
-          Toast.success('删除成功');
-          refreshAll();
-        }
+        await deleteKeyMutation.mutateAsync(item.key);
+        Toast.success('删除成功');
       },
     });
   };
@@ -259,11 +225,8 @@ export default function CacheManagePage() {
       content: '操作不可撤销，请谨慎。',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete<{ count: number }>('/api/cache/batch', { keys: selectedKeys });
-        if (res.code === 0) {
-          Toast.success(`已删除 ${res.data?.count ?? 0} 条缓存`);
-          refreshAll();
-        }
+        const res = await batchDeleteMutation.mutateAsync(selectedKeys);
+        Toast.success(`已删除 ${res.count ?? 0} 条缓存`);
       },
     });
   };
@@ -274,14 +237,10 @@ export default function CacheManagePage() {
       content: `共 ${row.count} 条缓存将被删除，操作不可撤销。`,
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete<{ count: number }>('/api/cache/by-category', { segment: row.segment });
-        if (res.code === 0) {
-          Toast.success(`已删除 ${res.data?.count ?? 0} 条缓存`);
-          // 若选中的分类被删除，则清除选中状态
-          if (selectedCategory?.category === row.category) {
-            setSelectedCategory(null);
-          }
-          refreshAll();
+        const res = await deleteCategoryMutation.mutateAsync(row.segment);
+        Toast.success(`已删除 ${res.count ?? 0} 条缓存`);
+        if (selectedCategory?.category === row.category) {
+          setSelectedCategory(null);
         }
       },
     });
@@ -293,12 +252,9 @@ export default function CacheManagePage() {
       content: '此操作将删除当前命名空间下的全部缓存，包括会话数据，操作不可撤销，请谨慎！',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete<{ count: number }>('/api/cache/all', {});
-        if (res.code === 0) {
-          Toast.success(`已清空 ${res.data?.count ?? 0} 条缓存`);
-          setSelectedCategory(null);
-          refreshAll();
-        }
+        const res = await clearAllMutation.mutateAsync();
+        Toast.success(`已清空 ${res.count ?? 0} 条缓存`);
+        setSelectedCategory(null);
       },
     });
   };
@@ -321,17 +277,9 @@ export default function CacheManagePage() {
       Toast.warning('请输入大于 0 的秒数');
       return;
     }
-    setSavingTtl(true);
-    try {
-      const res = await request.put<null>('/api/cache/ttl', { key: ttlEditItem.key, ttl });
-      if (res.code === 0) {
-        Toast.success('修改成功');
-        setTtlEditItem(null);
-        refreshAll();
-      }
-    } finally {
-      setSavingTtl(false);
-    }
+    await updateTtlMutation.mutateAsync({ key: ttlEditItem.key, ttl });
+    Toast.success('修改成功');
+    setTtlEditItem(null);
   };
 
   const startEditValue = () => {
@@ -341,18 +289,10 @@ export default function CacheManagePage() {
 
   const handleSaveValue = async () => {
     if (!viewingItem) return;
-    setSavingValue(true);
-    try {
-      const res = await request.put<null>('/api/cache/value', { key: viewingItem.key, value: editValue });
-      if (res.code === 0) {
-        Toast.success('修改成功');
-        setFullValue(editValue);
-        setEditMode(false);
-        refreshAll();
-      }
-    } finally {
-      setSavingValue(false);
-    }
+    await updateValueMutation.mutateAsync({ key: viewingItem.key, value: editValue });
+    Toast.success('修改成功');
+    setFullValue(editValue);
+    setEditMode(false);
   };
 
   const keyColumns: ColumnProps<CacheItem>[] = [
@@ -614,7 +554,7 @@ export default function CacheManagePage() {
             aria-label="刷新概览"
             title="刷新概览"
             disabled={overviewLoading}
-            onClick={() => void fetchOverview()}
+            onClick={() => void overviewQuery.refetch()}
           />
         </div>
       )}

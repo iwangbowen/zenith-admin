@@ -1,5 +1,5 @@
 import type React from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Card, Typography, Skeleton, Empty } from '@douyinfe/semi-ui';
 import {
   AreaChart,
@@ -14,8 +14,8 @@ import {
   useChartPalette,
 } from '@/components/charts';
 import { Users, UserPlus, CalendarPlus, Activity, Coins, Wallet, CalendarCheck, Ticket } from 'lucide-react';
-import type { MemberStatsOverview, MemberStatsCharts } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { MemberStatsOverview } from '@zenith/shared';
+import { useMemberStatsCharts, useMemberStatsOverview } from '@/hooks/queries/member-admin';
 
 const { Text } = Typography;
 
@@ -70,22 +70,11 @@ function ChartCard({ title, children }: Readonly<{ title: string; children: Reac
 
 export default function MemberDashboardPage() {
   const palette = useChartPalette();
-  const [overview, setOverview] = useState<MemberStatsOverview | null>(null);
-  const [charts, setCharts] = useState<MemberStatsCharts | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    setLoading(true);
-    void Promise.all([
-      request.get<MemberStatsOverview>('/api/member-stats/overview'),
-      request.get<MemberStatsCharts>('/api/member-stats/charts'),
-    ])
-      .then(([o, c]) => {
-        if (o.code === 0) setOverview(o.data);
-        if (c.code === 0) setCharts(c.data);
-      })
-      .finally(() => setLoading(false));
-  }, []);
+  const overviewQuery = useMemberStatsOverview();
+  const chartsQuery = useMemberStatsCharts();
+  const overview = overviewQuery.data ?? null;
+  const charts = chartsQuery.data ?? null;
+  const loading = overviewQuery.isLoading || chartsQuery.isLoading;
 
   const registerSpec = useMemo(() => makeAreaSpec({
     data: charts?.registerTrend ?? [],

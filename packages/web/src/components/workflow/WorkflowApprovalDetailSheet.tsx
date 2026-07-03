@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { AppModal } from '@/components/AppModal';
 import {
   Banner,
@@ -13,7 +14,7 @@ import {
 } from '@douyinfe/semi-ui';
 import { ChevronDown } from 'lucide-react';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import type { WorkflowActionButtonConfig, WorkflowActionButtonKey, WorkflowDefinition, WorkflowInstance, WorkflowSelectableNextApproverGroup, WorkflowTask } from '@zenith/shared';
+import type { WorkflowActionButtonConfig, WorkflowActionButtonKey, WorkflowDefinition, WorkflowInstance, WorkflowTask } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { resolveRejectTargetHint } from '@/utils/workflow-reject';
 import { resolveWorkflowDetailDefinition } from '@/utils/workflow-snapshot';
@@ -24,6 +25,12 @@ import { uploadedFileToAttachment } from '@/components/FileAttachment/utils';
 import WorkflowInstanceDetailPanel, { WorkflowDetailSkeleton } from '@/components/workflow/WorkflowInstanceDetailPanel';
 import WorkflowSideSheet from '@/components/workflow/WorkflowSideSheet';
 import { useUserOptions } from '@/hooks/useUserOptions';
+import {
+  fetchWorkflowInstanceWithDefinition,
+  useWorkflowInstanceWithDefinition,
+  useWorkflowSelectableNextApprovers,
+  workflowSharedKeys,
+} from '@/hooks/queries/workflow-shared';
 
 type ApprovalInitialAction = 'approve' | 'reject' | null;
 type AddSignPosition = 'before' | 'after' | 'parallel';
@@ -80,6 +87,7 @@ export default function WorkflowApprovalDetailSheet({
   onClose,
   onActionDone,
 }: Readonly<Props>) {
+  const queryClient = useQueryClient();
   const approveFormApi = useRef<FormApi | null>(null);
   const rejectFormApi = useRef<FormApi | null>(null);
   const transferFormApi = useRef<FormApi | null>(null);
@@ -97,9 +105,6 @@ export default function WorkflowApprovalDetailSheet({
   const [reduceSignVisible, setReduceSignVisible] = useState(false);
   const [returnVisible, setReturnVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [detail, setDetail] = useState<WorkflowInstance | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailDef, setDetailDef] = useState<WorkflowDefinition | null>(null);
   const [viewId, setViewId] = useState<number | null>(instanceId);
   const [rejectInstance, setRejectInstance] = useState<WorkflowInstance | null>(null);
   const [rejectDef, setRejectDef] = useState<WorkflowDefinition | null>(null);
@@ -107,12 +112,14 @@ export default function WorkflowApprovalDetailSheet({
   const [actionAttachments, setActionAttachments] = useState<Record<ActionAttachmentKey, UploadedFile[]>>(() => ({ ...EMPTY_ACTION_ATTACHMENTS }));
   const [approveSignature, setApproveSignature] = useState('');
   const { userOptions, ensureLoaded: ensureUserOptions } = useUserOptions();
-  const [selectedNextGroups, setSelectedNextGroups] = useState<WorkflowSelectableNextApproverGroup[]>([]);
-  const [nextApproversLoading, setNextApproversLoading] = useState(false);
   const [selectedNextApprovers, setSelectedNextApprovers] = useState<Record<string, number[]>>({});
   const [addSignPosition, setAddSignPosition] = useState<AddSignPosition>('after');
   const [signMode, setSignMode] = useState<AddSignMode>('and');
   const { renderPhraseBar, phraseManageModal } = useQuickPhrases();
+  const detailQuery = useWorkflowInstanceWithDefinition(viewId, visible);
+  const detail = detailQuery.data?.instance ?? null;
+  const detailDef = detailQuery.data?.definition ?? null;
+  const detailLoading = detailQuery.isFetching;
 
   const setAttachmentsFor = useCallback((key: ActionAttachmentKey, files: UploadedFile[]) => {
     setActionAttachments((prev) => ({ ...prev, [key]: files }));
@@ -156,8 +163,6 @@ export default function WorkflowApprovalDetailSheet({
 
   useEffect(() => {
     if (!visible) {
-      setDetail(null);
-      setDetailDef(null);
       setRejectInstance(null);
       setRejectDef(null);
       setApproveVisible(false);
@@ -172,26 +177,7 @@ export default function WorkflowApprovalDetailSheet({
       setSelectedNextApprovers({});
       initialActionKeyRef.current = null;
     }
-  }, [visible]);
-
-  useEffect(() => {
-    if (!visible || !viewId) return;
-    setDetailLoading(true);
-    setDetail(null);
-    setDetailDef(null);
-    const p = request.get<WorkflowInstance>(`/api/workflows/instances/${viewId}`)
-      .then((res) => {
-        if (res.code === 0) {
-          setDetail(res.data);
-          if (res.data.definitionSnapshot) return null;
-          return request.get<WorkflowDefinition>(`/api/workflows/definitions/${res.data.definitionId}`, { silent: true });
-        }
-        return null;
-      })
-      .then((defRes) => { if (defRes?.code === 0) setDetailDef(defRes.data); })
-      .finally(() => setDetailLoading(false));
-    p.catch(() => undefined);
-  }, [visible, viewId]);
+  }, [resetActionAttachments, visible]);
 
   const currentTask: WorkflowTask | null = useMemo(() => {
     if (!detail || taskId == null) return null;
@@ -276,23 +262,9 @@ export default function WorkflowApprovalDetailSheet({
   // 候选人已按各节点 selectScope（成员/角色/部门/用户组）在服务端解析收窄，前端无需自行计算范围。
   // 审批操作可用时（pending 且为当前实例）即预取「下一节点自选审批人」候选：
   // 既供审批弹窗使用，也用于判断「同意」能否走一键快速通道（无下游自选才允许）。
-  useEffect(() => {
-    if (taskId == null || detail?.id !== instanceId || currentTask?.status !== 'pending') {
-      setSelectedNextGroups([]);
-      return;
-    }
-    let cancelled = false;
-    setNextApproversLoading(true);
-    request
-      .get<WorkflowSelectableNextApproverGroup[]>(`/api/workflows/tasks/${taskId}/selectable-next-approvers`)
-      .then((res) => {
-        if (cancelled) return;
-        setSelectedNextGroups(res.code === 0 && Array.isArray(res.data) ? res.data : []);
-      })
-      .catch(() => { if (!cancelled) setSelectedNextGroups([]); })
-      .finally(() => { if (!cancelled) setNextApproversLoading(false); });
-    return () => { cancelled = true; };
-  }, [taskId, detail?.id, instanceId, currentTask?.status]);
+  const nextApproversEnabled = taskId != null && detail?.id === instanceId && currentTask?.status === 'pending';
+  const nextApproversQuery = useWorkflowSelectableNextApprovers(taskId, nextApproversEnabled);
+  const selectedNextGroups = nextApproversEnabled ? (nextApproversQuery.data ?? []) : [];
   const hasApproverSelectDownstream = selectedNextGroups.length > 0;
 
   // 一键快速同意的门槛：通过按钮无必填附件、节点无意见必填 / 签名要求、且下一节点无需自选审批人。
@@ -306,7 +278,7 @@ export default function WorkflowApprovalDetailSheet({
     || (currentNodeConfig?.operations?.includes('signature') ?? false)
     || (currentTask?.signatureRequired ?? false)
     || hasApproverSelectDownstream;
-  const canQuickApprove = !approveNeedsModal && !nextApproversLoading;
+  const canQuickApprove = !approveNeedsModal && !nextApproversQuery.isFetching;
 
 
   const openReject = useCallback(async () => {
@@ -321,17 +293,17 @@ export default function WorkflowApprovalDetailSheet({
     setRejectDef(null);
     setRejectHintLoading(true);
     try {
-      const instRes = await request.get<WorkflowInstance>(`/api/workflows/instances/${instanceId}`);
-      if (instRes.code === 0) {
-        setRejectInstance(instRes.data);
-        if (instRes.data.definitionSnapshot) return;
-        const defRes = await request.get<WorkflowDefinition>(`/api/workflows/definitions/${instRes.data.definitionId}`, { silent: true });
-        if (defRes.code === 0) setRejectDef(defRes.data);
-      }
+      const result = await queryClient.fetchQuery({
+        queryKey: workflowSharedKeys.instanceDetail(instanceId),
+        queryFn: () => fetchWorkflowInstanceWithDefinition(instanceId),
+        staleTime: 0,
+      });
+      setRejectInstance(result.instance);
+      setRejectDef(result.definition);
     } finally {
       setRejectHintLoading(false);
     }
-  }, [detail, detailDef, instanceId]);
+  }, [detail, detailDef, instanceId, queryClient]);
 
   useEffect(() => {
     if (!visible || !initialAction) return;
@@ -346,7 +318,7 @@ export default function WorkflowApprovalDetailSheet({
     } else if (initialAction === 'reject') {
       void openReject();
     }
-  }, [initialAction, instanceId, openReject, taskId, visible]);
+  }, [initialAction, instanceId, openReject, setAttachmentsFor, taskId, visible]);
 
   const rejectHint = useMemo(
     () => resolveRejectTargetHint(rejectInstance, resolveWorkflowDetailDefinition(rejectInstance, rejectDef)?.flowData ?? null),
@@ -699,7 +671,7 @@ export default function WorkflowApprovalDetailSheet({
                 <Select
                   multiple
                   filter
-                  loading={nextApproversLoading}
+                  loading={nextApproversQuery.isFetching}
                   style={{ width: '100%' }}
                   placeholder="请选择审批人"
                   emptyContent="暂无可选审批人"

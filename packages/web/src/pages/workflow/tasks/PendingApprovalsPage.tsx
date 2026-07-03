@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { AppModal } from '@/components/AppModal';
 import {
   Button,
@@ -12,8 +13,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Search } from 'lucide-react';
-import type { WorkflowInstance, WorkflowDefinition, PaginatedResponse, WorkflowSlaLevel } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { WorkflowInstance, WorkflowSlaLevel } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -24,6 +24,18 @@ import WorkflowApprovalDetailSheet from '@/components/workflow/WorkflowApprovalD
 import { usePagination } from '@/hooks/usePagination';
 import { useQuickPhrases } from '@/hooks/useQuickPhrases';
 import { renderEllipsis } from '../../../utils/table-columns';
+import { useAllUsers } from '@/hooks/queries/users';
+import {
+  fetchPendingWorkflowTasks,
+  useBatchApproveWorkflowTasks,
+  useBatchRejectWorkflowTasks,
+  useConsultWorkflowTask,
+  useMyWorkflowConsults,
+  usePendingWorkflowTasks,
+  useReplyWorkflowConsult,
+  useWorkflowTaskDefinitions,
+  workflowTaskKeys,
+} from '@/hooks/queries/workflow-tasks';
 
 interface SearchParams {
   keyword: string;
@@ -36,88 +48,56 @@ type PendingItem = WorkflowInstance & { pendingTaskId: number; pendingSignatureR
 type SheetState = { instanceId: number; taskId: number; action: 'approve' | 'reject' | null };
 
 export default function PendingApprovalsPage() {
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<PaginatedResponse<PendingItem> | null>(null);
+  const queryClient = useQueryClient();
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
-  const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
   const [sheet, setSheet] = useState<SheetState | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [userOptions, setUserOptions] = useState<Array<{ label: string; value: number }>>([]);
   const { renderPhraseBar, phraseManageModal } = useQuickPhrases();
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const [batchMode, setBatchMode] = useState<'approve' | 'reject' | null>(null);
   const [batchComment, setBatchComment] = useState('');
-  const [batchSubmitting, setBatchSubmitting] = useState(false);
   const [consultVisible, setConsultVisible] = useState(false);
   const [consultTaskId, setConsultTaskId] = useState<number | null>(null);
   const [consultUserIds, setConsultUserIds] = useState<number[]>([]);
   const [consultQuestion, setConsultQuestion] = useState('');
   const [myConsultsVisible, setMyConsultsVisible] = useState(false);
-  const [myConsults, setMyConsults] = useState<import('@zenith/shared').WorkflowTaskConsult[]>([]);
   const [replyDraft, setReplyDraft] = useState<Record<number, string>>({});
-
-  const loadUserOptions = useCallback(async () => {
-    if (userOptions.length > 0) return;
-    try {
-      const res = await request.get<Array<{ id: number; nickname: string; username: string }>>('/api/users/all');
-      if (res.code === 0) {
-        setUserOptions(res.data.map((u) => ({ label: `${u.nickname ?? u.username}`, value: u.id })));
-      }
-    } catch {
-      // ignore
-    }
-  }, [userOptions.length]);
-
-  const fetchList = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const { keyword: kw, definitionId: did } = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(kw ? { keyword: kw } : {}),
-        ...(did === null ? {} : { definitionId: String(did) }),
-      }).toString();
-      const res = await request.get<PaginatedResponse<PendingItem>>(`/api/workflows/instances/pending-mine?${query}`);
-      if (res.code === 0) {
-        setData(res.data);
-        setPage(res.data.page);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize, setPage]);
-
-  const fetchPendingSnapshot = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const { keyword: kw, definitionId: did } = params ?? searchParamsRef.current;
-    const query = new URLSearchParams({
-      page: String(p),
-      pageSize: String(ps),
-      ...(kw ? { keyword: kw } : {}),
-      ...(did === null ? {} : { definitionId: String(did) }),
-    }).toString();
-    const res = await request.get<PaginatedResponse<PendingItem>>(`/api/workflows/instances/pending-mine?${query}`, { silent: true });
-    return res.code === 0 ? res.data : null;
-  }, [page, pageSize]);
-
-  useEffect(() => {
-    void fetchList();
-    request.get<WorkflowDefinition[]>('/api/workflows/definitions/published')
-      .then((res) => { if (res.code === 0 && res.data) setDefinitions(res.data); });
-  }, [fetchList]);
+  const listParams = {
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    definitionId: submittedParams.definitionId ?? undefined,
+  };
+  const listQuery = usePendingWorkflowTasks(listParams);
+  const definitionsQuery = useWorkflowTaskDefinitions();
+  const usersQuery = useAllUsers({ enabled: consultVisible });
+  const myConsultsQuery = useMyWorkflowConsults(myConsultsVisible);
+  const batchApproveMutation = useBatchApproveWorkflowTasks();
+  const batchRejectMutation = useBatchRejectWorkflowTasks();
+  const consultMutation = useConsultWorkflowTask();
+  const replyMutation = useReplyWorkflowConsult();
+  const data = listQuery.data;
+  const definitions = definitionsQuery.data ?? [];
+  const userOptions = useMemo(
+    () => (usersQuery.data ?? []).map((u) => ({ label: `${u.nickname ?? u.username}`, value: u.id })),
+    [usersQuery.data],
+  );
+  const myConsults = myConsultsQuery.data?.list ?? [];
+  const batchSubmitting = batchApproveMutation.isPending || batchRejectMutation.isPending;
+  const submitting = consultMutation.isPending;
 
   const handleSearch = () => {
     setPage(1);
-    void fetchList(1, pageSize);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: workflowTaskKeys.pendingLists });
   };
 
   const handleReset = () => {
-    setSearchParams(defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
     setPage(1);
-    void fetchList(1, pageSize, defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: workflowTaskKeys.pendingLists });
   };
 
   const handleBatch = async () => {
@@ -128,51 +108,35 @@ export default function PendingApprovalsPage() {
       .filter((v): v is number => typeof v === 'number');
     if (taskIds.length === 0) { Toast.warning('请先选择待审批项'); return; }
     if (batchMode === 'reject' && !batchComment.trim()) { Toast.error('请填写驳回原因'); return; }
-    setBatchSubmitting(true);
     try {
-      const latest = await fetchPendingSnapshot();
+      const latest = await fetchPendingWorkflowTasks(listParams);
       const latestMap = new Map((latest?.list ?? []).map((item) => [item.id, item.pendingTaskId]));
       const staleKeys = selectedRowKeys.filter((instanceId) => latestMap.get(instanceId) == null
         || !taskIds.includes(latestMap.get(instanceId) as number));
       if (staleKeys.length > 0) {
         Toast.warning('部分任务状态已变化，请刷新后重试');
-        if (latest) {
-          setData(latest);
-          setPage(latest.page);
-        } else {
-          void fetchList();
-        }
+        setPage(latest.page);
+        void queryClient.setQueryData(workflowTaskKeys.pendingList(listParams), latest);
         setSelectedRowKeys((keys) => keys.filter((key) => !staleKeys.includes(key)));
         return;
       }
-      const path = batchMode === 'approve' ? 'batch-approve' : 'batch-reject';
-      const payload = batchMode === 'reject'
-        ? { taskIds, comment: batchComment.trim() }
-        : { taskIds, comment: batchComment.trim() || undefined };
-      const res = await request.post<{ succeeded: number; failed: number; results?: Array<{ taskId: number; success: boolean; message?: string }> }>(
-        `/api/workflows/tasks/${path}`,
-        payload,
-        { headers: { 'X-Idempotency-Key': `workflow-${path}-${taskIds.join('-')}` } },
-      );
-      if (res.code === 0) {
-        const failed = res.data?.failed ?? 0;
-        if (failed > 0) {
-          const reasons = [...new Set((res.data?.results ?? [])
-            .filter((r) => !r.success && r.message)
-            .map((r) => r.message as string))];
-          Toast.warning(reasons.length > 0 ? `${res.message}（${reasons.join('；')}）` : (res.message || '部分任务未处理'));
-        } else {
-          Toast.success(res.message || '批量处理完成');
-        }
-        setBatchMode(null);
-        setBatchComment('');
-        setSelectedRowKeys([]);
-        void fetchList();
+      const res = batchMode === 'reject'
+        ? await batchRejectMutation.mutateAsync({ taskIds, comment: batchComment.trim() })
+        : await batchApproveMutation.mutateAsync({ taskIds, comment: batchComment.trim() || undefined });
+      const failed = res.failed ?? 0;
+      if (failed > 0) {
+        const reasons = [...new Set((res.results ?? [])
+          .filter((r) => !r.success && r.message)
+          .map((r) => r.message as string))];
+        Toast.warning(reasons.length > 0 ? `批量处理完成（${reasons.join('；')}）` : '部分任务未处理');
       } else {
-        Toast.error(res.message || '批量处理失败');
+        Toast.success('批量处理完成');
       }
-    } finally {
-      setBatchSubmitting(false);
+      setBatchMode(null);
+      setBatchComment('');
+      setSelectedRowKeys([]);
+    } catch {
+      // request 层已提示
     }
   };
 
@@ -180,34 +144,24 @@ export default function PendingApprovalsPage() {
     setConsultTaskId(record.pendingTaskId);
     setConsultUserIds([]);
     setConsultQuestion('');
-    void loadUserOptions();
     setConsultVisible(true);
   };
 
   const submitConsult = async () => {
     if (!consultTaskId) return;
     if (consultUserIds.length === 0) { Toast.warning('请选择协办人'); return; }
-    setSubmitting(true);
-    try {
-      const res = await request.post(`/api/workflows/tasks/${consultTaskId}/consult`, { consulteeIds: consultUserIds, question: consultQuestion || undefined });
-      if (res.code === 0) { Toast.success('已发起协办'); setConsultVisible(false); }
-      else Toast.error(res.message || '发起失败');
-    } finally { setSubmitting(false); }
+    await consultMutation.mutateAsync({ taskId: consultTaskId, consulteeIds: consultUserIds, question: consultQuestion || undefined });
+    Toast.success('已发起协办');
+    setConsultVisible(false);
   };
 
-  const loadMyConsults = useCallback(async () => {
-    const res = await request.get<PaginatedResponse<import('@zenith/shared').WorkflowTaskConsult>>('/api/workflows/instances/consults/mine?pageSize=50');
-    if (res.code === 0) setMyConsults(res.data.list ?? []);
-  }, []);
-
-  const openMyConsults = () => { setMyConsultsVisible(true); void loadMyConsults(); };
+  const openMyConsults = () => { setMyConsultsVisible(true); };
 
   const submitReply = async (id: number) => {
     const opinion = (replyDraft[id] ?? '').trim();
     if (!opinion) { Toast.warning('请填写协办意见'); return; }
-    const res = await request.post(`/api/workflows/instances/consults/${id}/reply`, { opinion });
-    if (res.code === 0) { Toast.success('已回复'); void loadMyConsults(); }
-    else Toast.error(res.message || '回复失败');
+    await replyMutation.mutateAsync({ id, opinion });
+    Toast.success('已回复');
   };
 
   const columns: ColumnProps<PendingItem>[] = [
@@ -284,8 +238,8 @@ export default function PendingApprovalsPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="请输入审批标题"
-      value={searchParams.keyword}
-      onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
+      value={draftParams.keyword}
+      onChange={(v) => setDraftParams((prev) => ({ ...prev, keyword: v }))}
       onEnterPress={handleSearch}
       style={{ width: 200 }}
       showClear
@@ -295,8 +249,8 @@ export default function PendingApprovalsPage() {
   const renderDefinitionFilter = () => (
     <Select
       placeholder="流程类型"
-      value={searchParams.definitionId ?? undefined}
-      onChange={(v) => setSearchParams((prev) => ({ ...prev, definitionId: typeof v === 'number' ? v : null }))}
+      value={draftParams.definitionId ?? undefined}
+      onChange={(v) => setDraftParams((prev) => ({ ...prev, definitionId: typeof v === 'number' ? v : null }))}
       style={{ width: 180 }}
       showClear
     >
@@ -365,10 +319,10 @@ export default function PendingApprovalsPage() {
         columns={columns}
         dataSource={data?.list ?? []}
         rowKey="id"
-        loading={loading}
-        onRefresh={() => void fetchList()}
-        refreshLoading={loading}
-        pagination={buildPagination(data?.total ?? 0, fetchList)}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
+        pagination={buildPagination(data?.total ?? 0)}
         rowSelection={{
           selectedRowKeys,
           getCheckboxProps: (record: PendingItem) => ({ disabled: !!record.requiresIndividual }),
@@ -382,7 +336,7 @@ export default function PendingApprovalsPage() {
         initialAction={sheet?.action ?? null}
         visible={!!sheet}
         onClose={() => setSheet(null)}
-        onActionDone={() => { void fetchList(); }}
+        onActionDone={() => { void queryClient.invalidateQueries({ queryKey: ['workflow'] }); }}
       />
 
       <AppModal

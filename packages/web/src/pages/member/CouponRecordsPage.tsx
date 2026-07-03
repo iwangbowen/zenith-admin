@@ -1,16 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input, InputNumber, Select, Toast, Tag, Modal } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search, RotateCcw } from 'lucide-react';
-import type { MemberCoupon, MemberCouponStatus, PaginatedResponse } from '@zenith/shared';
+import type { MemberCoupon, MemberCouponStatus } from '@zenith/shared';
 import { MEMBER_COUPON_STATUS_LABELS } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { renderEllipsis } from '../../utils/table-columns';
+import { memberAdminKeys, useCouponRecordList, useRevokeCouponRecord } from '@/hooks/queries/member-admin';
 
 const statusOptions = (Object.keys(MEMBER_COUPON_STATUS_LABELS) as MemberCouponStatus[]).map((v) => ({ value: v, label: MEMBER_COUPON_STATUS_LABELS[v] }));
 const STATUS_COLORS: Record<string, string> = { unused: 'blue', used: 'green', expired: 'grey', frozen: 'orange' };
@@ -19,38 +20,36 @@ interface SearchParams { memberKeyword?: string; couponId?: number; status?: str
 
 export default function CouponRecordsPage() {
   const { hasPermission } = usePermission();
-  const [data, setData] = useState<MemberCoupon[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [search, setSearch] = useState<SearchParams>({});
-  const searchRef = useRef<SearchParams>({});
-  searchRef.current = search;
+  const [draftParams, setDraftParams] = useState<SearchParams>({});
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>({});
+  const listQuery = useCouponRecordList({
+    page,
+    pageSize,
+    memberKeyword: submittedParams.memberKeyword || undefined,
+    couponId: submittedParams.couponId,
+    status: submittedParams.status || undefined,
+  });
+  const data = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const revokeMutation = useRevokeCouponRecord();
 
-  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const ap = params ?? searchRef.current;
-    setLoading(true);
-    try {
-      const q = new URLSearchParams({
-        page: String(p), pageSize: String(ps),
-        ...(ap.memberKeyword ? { memberKeyword: ap.memberKeyword } : {}),
-        ...(ap.couponId ? { couponId: String(ap.couponId) } : {}),
-        ...(ap.status ? { status: ap.status } : {}),
-      }).toString();
-      const res = await request.get<PaginatedResponse<MemberCoupon>>(`/api/coupons/records?${q}`);
-      if (res.code === 0) { setData(res.data.list); setTotal(res.data.total); }
-    } finally { setLoading(false); }
-  }, [page, pageSize]);
-
-  useEffect(() => { void fetchData(); }, [fetchData]);
-
-  const handleSearch = () => { setPage(1); void fetchData(1, pageSize); };
-  const handleReset = () => { setSearch({}); setPage(1); void fetchData(1, pageSize, {}); };
+  const handleSearch = () => {
+    setPage(1);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: memberAdminKeys.couponRecordLists });
+  };
+  const handleReset = () => {
+    setDraftParams({});
+    setSubmittedParams({});
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: memberAdminKeys.couponRecordLists });
+  };
 
   const handleRevoke = async (id: number) => {
-    const res = await request.post(`/api/coupons/records/${id}/revoke`, {});
-    if (res.code === 0) { Toast.success('已作废'); void fetchData(); }
-    else Toast.error(res.message);
+    await revokeMutation.mutateAsync(id);
+    Toast.success('已作废');
   };
 
   const confirmRevoke = (record: MemberCoupon) => {
@@ -92,10 +91,10 @@ export default function CouponRecordsPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="会员ID/昵称"
-      value={search.memberKeyword}
+      value={draftParams.memberKeyword}
       showClear
       style={{ width: 180 }}
-      onChange={(v) => setSearch((p) => ({ ...p, memberKeyword: v || undefined }))}
+      onChange={(v) => setDraftParams((p) => ({ ...p, memberKeyword: v || undefined }))}
       onEnterPress={handleSearch}
     />
   );
@@ -103,20 +102,20 @@ export default function CouponRecordsPage() {
   const renderCouponIdFilter = () => (
     <InputNumber
       placeholder="优惠券ID"
-      value={search.couponId}
+      value={draftParams.couponId}
       min={1}
       style={{ width: 120 }}
-      onChange={(v) => setSearch((p) => ({ ...p, couponId: (v as number) || undefined }))}
+      onChange={(v) => setDraftParams((p) => ({ ...p, couponId: (v as number) || undefined }))}
     />
   );
 
   const renderStatusFilter = () => (
     <Select
       placeholder="全部状态"
-      value={search.status}
+      value={draftParams.status}
       style={{ width: 130 }}
       showClear
-      onChange={(v) => setSearch((p) => ({ ...p, status: v as string | undefined }))}
+      onChange={(v) => setDraftParams((p) => ({ ...p, status: v as string | undefined }))}
       optionList={statusOptions}
     />
   );
@@ -153,9 +152,9 @@ export default function CouponRecordsPage() {
         onFilterReset={handleReset}
       />
 
-      <ConfigurableTable bordered columns={columns} dataSource={data} loading={loading}
-        onRefresh={fetchData} refreshLoading={loading} rowKey="id" size="small"
-        pagination={buildPagination(total, fetchData)} empty="暂无领券记录" scroll={{ x: 1100 }} />
+      <ConfigurableTable bordered columns={columns} dataSource={data} loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} rowKey="id" size="small"
+        pagination={buildPagination(total)} empty="暂无领券记录" scroll={{ x: 1100 }} />
     </div>
   );
 }

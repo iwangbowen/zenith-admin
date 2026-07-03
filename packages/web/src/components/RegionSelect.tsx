@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react';
 import { Cascader } from '@douyinfe/semi-ui';
 import type { CSSProperties } from 'react';
 import type { Region } from '@zenith/shared';
-import { request } from '@/utils/request';
+import { useRegionLookupTree } from '@/hooks/queries/regions';
 
 interface CascaderItem {
   label: string;
@@ -53,19 +52,9 @@ export default function RegionSelect({
   className,
   changeOnSelect = true,
 }: Readonly<RegionSelectProps>) {
-  const [treeData, setTreeData] = useState<CascaderItem[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    setLoading(true);
-    request.get<Region[]>('/api/regions', { silent: true })
-      .then((res) => {
-        if (res.code === 0) {
-          setTreeData(regionsToCascader(res.data));
-        }
-      })
-      .finally(() => setLoading(false));
-  }, []);
+  const regionsQuery = useRegionLookupTree();
+  const loading = regionsQuery.isLoading;
+  const treeData = regionsToCascader(regionsQuery.data ?? []);
 
   return (
     <Cascader

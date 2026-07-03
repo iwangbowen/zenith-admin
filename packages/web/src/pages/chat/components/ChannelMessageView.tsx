@@ -7,7 +7,7 @@
  *
  * 复用 MessageBubble 渲染气泡，订阅 WS channel:message 实时追加（按 id 去重）。
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Dropdown, Empty, Rating, Spin, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import { ArrowLeft, BadgeCheck, ChevronUp, ExternalLink, Send, Star } from 'lucide-react';
 import type { Channel, ChannelMenu, ChannelMessage, ChatMessage, ChatCardAction, WsMessage } from '@zenith/shared';
@@ -16,6 +16,7 @@ import { useWebSocket } from '@/hooks/useWebSocket';
 import { UserAvatar } from '@/components/UserAvatar';
 import AppModal from '@/components/AppModal';
 import { MessageBubble } from './MessageBubble';
+import { useChannelMenus, useChannelMessages } from '@/hooks/queries/chat';
 
 const { Text } = Typography;
 
@@ -28,7 +29,7 @@ interface Props {
   onOpenWorkflow: (instanceId: number, taskId: number | null) => void;
 }
 
-function toChatMessage(m: ChannelMessage, channel: Channel): ChatMessage {
+function toChatMessage(m: ChannelMessage, channel: Pick<Channel, 'name' | 'avatar'>): ChatMessage {
   const isIn = m.direction === 'in';
   return {
     id: m.id,
@@ -55,8 +56,6 @@ const noop = () => { /* 频道气泡：禁用交互 */ };
 export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscribe, onCardAction, onOpenWorkflow }: Readonly<Props>) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [retractedIds, setRetractedIds] = useState<Set<number>>(new Set());
-  const [menus, setMenus] = useState<ChannelMenu[]>([]);
-  const [loading, setLoading] = useState(false);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [rateVisible, setRateVisible] = useState(false);
@@ -65,6 +64,11 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
   const [rateSubmitting, setRateSubmitting] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const isBusiness = channel.type === 'business';
+  const channelMessagesQuery = useChannelMessages({ channelId: channel.id, page: 1, pageSize: 50 });
+  const channelMenusQuery = useChannelMenus(channel.id, isBusiness);
+  const menus = channelMenusQuery.data ?? [];
+  const loading = channelMessagesQuery.isFetching && messages.length === 0;
+  const channelSender = useMemo(() => ({ name: channel.name, avatar: channel.avatar }), [channel.name, channel.avatar]);
 
   const scrollToBottom = useCallback(() => {
     requestAnimationFrame(() => {
@@ -84,7 +88,7 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
       });
     }
     setMessages((prev) => {
-      const mapped = toChatMessage(m, channel);
+      const mapped = toChatMessage(m, channelSender);
       const idx = prev.findIndex((x) => x.id === m.id);
       if (idx >= 0) {
         const next = [...prev];
@@ -93,46 +97,24 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
       }
       return [...prev, mapped];
     });
-  }, [channel]);
+  }, [channel.id, channelSender]);
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
     setMessages([]);
     setRetractedIds(new Set());
-    setMenus([]);
     setInput('');
-    void (async () => {
-      const res = await request.get<{ list: ChannelMessage[]; total: number }>(
-        `/api/channels/${channel.id}/messages?page=1&pageSize=50`,
-        { silent: true },
-      );
-      if (cancelled) return;
-      setLoading(false);
-      if (res.code === 0 && res.data) {
-        const ordered = [...res.data.list].reverse();
-        setMessages(ordered.map((m) => toChatMessage(m, channel)));
-        setRetractedIds(new Set(ordered.filter((m) => m.isRetracted).map((m) => m.id)));
-        scrollToBottom();
-      }
-      void request.post(`/api/channels/${channel.id}/read`, {}, { silent: true });
-    })();
-    return () => { cancelled = true; };
     // 仅在切换频道（channel.id 变化）时重载消息；频道元信息（lastMessage/未读数）更新会生成新的 channel 对象，
     // 不应据此清空并重拉消息，否则审批置灰卡片等推送会导致整页闪烁。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channel.id, scrollToBottom]);
+  }, [channel.id]);
 
-  // 运营号加载底部菜单
   useEffect(() => {
-    if (!isBusiness) return;
-    let cancelled = false;
-    void (async () => {
-      const res = await request.get<ChannelMenu[]>(`/api/channels/${channel.id}/menus`, { silent: true });
-      if (!cancelled && res.code === 0 && res.data) setMenus(res.data);
-    })();
-    return () => { cancelled = true; };
-  }, [channel.id, isBusiness]);
+    if (!channelMessagesQuery.data) return;
+    const ordered = [...channelMessagesQuery.data.list].reverse();
+    setMessages(ordered.map((m) => toChatMessage(m, channelSender)));
+    setRetractedIds(new Set(ordered.filter((m) => m.isRetracted).map((m) => m.id)));
+    scrollToBottom();
+    void request.post(`/api/channels/${channel.id}/read`, {}, { silent: true });
+  }, [channel.id, channelMessagesQuery.data, channelSender, scrollToBottom]);
 
   const handleWs = useCallback((wsMsg: WsMessage) => {
     if (wsMsg.type === 'channel:message-retract') {
@@ -154,7 +136,7 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
     appendMessage(m);
     scrollToBottom();
     void request.post(`/api/channels/${channel.id}/read`, {}, { silent: true });
-  }, [channel, currentUserId, appendMessage, scrollToBottom]);
+  }, [channel.id, currentUserId, appendMessage, scrollToBottom]);
 
   useWebSocket(handleWs);
 

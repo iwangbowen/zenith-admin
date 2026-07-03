@@ -1,10 +1,10 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Modal, Select, Spin, Tag, Toast, Banner, Typography, Tooltip, Input, Descriptions } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search } from 'lucide-react';
-import type { PaginatedResponse, MpBroadcast, MpBroadcastType, MpBroadcastTarget, MpBroadcastStatus, MpBroadcastResult, MpTag, MpMaterial, MpDraft } from '@zenith/shared';
+import type { MpBroadcast, MpBroadcastType, MpBroadcastTarget, MpBroadcastStatus } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
-import { request } from '@/utils/request';
 import { formatDateTimeForApi } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
@@ -14,6 +14,16 @@ import { createdAtColumn } from '../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
+import {
+  mpBroadcastKeys,
+  useDeleteMpBroadcast,
+  useMpBroadcastAux,
+  useMpBroadcastList,
+  useMpBroadcastResult,
+  usePreviewMpBroadcast,
+  useSaveMpBroadcast,
+  useSendMpBroadcast,
+} from '@/hooks/queries/mp-broadcasts';
 
 const TYPE_OPTIONS = [
   { label: '文本', value: 'text' },
@@ -34,102 +44,65 @@ const STATUS_META: Record<MpBroadcastStatus, { label: string; color: 'grey' | 'g
 
 export default function MpBroadcastsPage() {
   const { hasPermission: can } = usePermission();
-  const { accounts, currentId, currentIdRef, setCurrentId, loading: accountsLoading } = useMpAccounts();
+  const queryClient = useQueryClient();
+  const { accounts, currentId, setCurrentId, loading: accountsLoading } = useMpAccounts();
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftStatus, setDraftStatus] = useState<MpBroadcastStatus | undefined>(undefined);
+  const [submittedStatus, setSubmittedStatus] = useState<MpBroadcastStatus | undefined>(undefined);
 
-  const [loading, setLoading] = useState(false);
-  const [list, setList] = useState<MpBroadcast[]>([]);
-  const [total, setTotal] = useState(0);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [filterStatus, setFilterStatus] = useState<MpBroadcastStatus | undefined>(undefined);
-
-  const [tags, setTags] = useState<MpTag[]>([]);
-  const [materials, setMaterials] = useState<MpMaterial[]>([]);
-  const [drafts, setDrafts] = useState<MpDraft[]>([]);
+  const listQuery = useMpBroadcastList(currentId, { page, pageSize, status: submittedStatus });
+  const auxQuery = useMpBroadcastAux(currentId);
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const tags = auxQuery.data?.tags ?? [];
+  const materials = auxQuery.data?.materials ?? [];
+  const drafts = auxQuery.data?.drafts ?? [];
   const tagMap = new Map(tags.map((t) => [t.id, t.name]));
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<MpBroadcast | null>(null);
   const [modalType, setModalType] = useState<MpBroadcastType>('text');
   const [modalTarget, setModalTarget] = useState<MpBroadcastTarget>('all');
-  const [submitting, setSubmitting] = useState(false);
-  const [sendingId, setSendingId] = useState<number | null>(null);
   const formRef = useRef<FormApi>(null);
 
   const [previewState, setPreviewState] = useState<{ visible: boolean; id: number | null }>({ visible: false, id: null });
   const [previewOpenid, setPreviewOpenid] = useState('');
-  const [previewing, setPreviewing] = useState(false);
-  const [resultState, setResultState] = useState<{ visible: boolean; data: MpBroadcastResult | null }>({ visible: false, data: null });
-  const [loadingResult, setLoadingResult] = useState(false);
+  const [resultState, setResultState] = useState<{ visible: boolean; id: number | null }>({ visible: false, id: null });
+  const resultQuery = useMpBroadcastResult(resultState.id, resultState.visible);
 
-  const fetchList = useCallback(async (p = page, ps = pageSize, status = filterStatus) => {
-    if (!currentId) { setList([]); setTotal(0); return; }
-    const reqId = currentId;
-    setLoading(true);
-    try {
-      const q = new URLSearchParams({ page: String(p), pageSize: String(ps), accountId: String(currentId) });
-      if (status) q.set('status', status);
-      const res = await request.get<PaginatedResponse<MpBroadcast>>(`/api/mp/broadcasts?${q}`);
-      if (currentIdRef.current !== reqId) return; // 账号已切换，丢弃过期响应
-      setList(res.data?.list ?? []);
-      setTotal(res.data?.total ?? 0);
-      setPage(res.data?.page ?? p);
-      setPageSize(res.data?.pageSize ?? ps);
-    } finally {
-      if (currentIdRef.current === reqId) setLoading(false);
-    }
-  }, [page, pageSize, currentId, currentIdRef, filterStatus, setPage, setPageSize]);
+  const saveMutation = useSaveMpBroadcast();
+  const sendMutation = useSendMpBroadcast();
+  const previewMutation = usePreviewMpBroadcast();
+  const deleteMutation = useDeleteMpBroadcast();
+  const sendingId = sendMutation.isPending ? (sendMutation.variables ?? null) : null;
 
-  const fetchAux = useCallback(async (accountId: number) => {
-    const [t, m, d] = await Promise.all([
-      request.get<PaginatedResponse<MpTag>>(`/api/mp/tags?accountId=${accountId}&page=1&pageSize=200`),
-      request.get<PaginatedResponse<MpMaterial>>(`/api/mp/materials?accountId=${accountId}&page=1&pageSize=200`),
-      request.get<PaginatedResponse<MpDraft>>(`/api/mp/drafts?accountId=${accountId}&page=1&pageSize=200`),
-    ]);
-    if (currentIdRef.current !== accountId) return;
-    setTags(t.data?.list ?? []);
-    setMaterials((m.data?.list ?? []).filter((x) => x.type === 'image' && x.wechatMediaId));
-    setDrafts((d.data?.list ?? []).filter((x) => x.wechatMediaId));
-  }, [currentIdRef]);
-
-  useEffect(() => {
+  const handleSearch = () => {
     setPage(1);
-    void fetchList(1, pageSize, filterStatus);
-    if (currentId) void fetchAux(currentId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentId]);
-
-  const handleSearch = () => { setPage(1); void fetchList(1, pageSize, filterStatus); };
-  const handleReset = () => { setFilterStatus(undefined); setPage(1); void fetchList(1, pageSize, undefined); };
+    setSubmittedStatus(draftStatus);
+    void queryClient.invalidateQueries({ queryKey: mpBroadcastKeys.lists(currentId) });
+  };
+  const handleReset = () => {
+    setDraftStatus(undefined);
+    setSubmittedStatus(undefined);
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: mpBroadcastKeys.lists(currentId) });
+  };
 
   const openCreate = () => { setEditingRecord(null); setModalType('text'); setModalTarget('all'); setModalVisible(true); };
   const openEdit = (record: MpBroadcast) => { setEditingRecord(record); setModalType(record.msgType); setModalTarget(record.target); setModalVisible(true); };
 
   const handleSubmit = async () => {
     let values: Awaited<ReturnType<FormApi['validate']>>;
-    try { values = (await formRef.current?.validate())!; } catch { return; }
+    try { values = (await formRef.current?.validate())!; } catch { throw new Error('validation'); }
     if (!currentId) return;
     const payload: Record<string, unknown> = { msgType: modalType, target: modalTarget };
     if (modalType === 'text') payload.content = values.content;
     else payload.mediaId = values.mediaId;
     if (modalTarget === 'tag') payload.tagId = values.tagId;
     payload.scheduledAt = values.scheduledAt ? formatDateTimeForApi(values.scheduledAt as Date) : null;
-
-    setSubmitting(true);
-    try {
-      if (editingRecord) {
-        const res = await request.put(`/api/mp/broadcasts/${editingRecord.id}`, payload);
-        if (res.code !== 0) return;
-        Toast.success('更新成功');
-      } else {
-        const res = await request.post('/api/mp/broadcasts', { ...payload, accountId: currentId });
-        if (res.code !== 0) return;
-        Toast.success('已创建群发草稿');
-      }
-      setModalVisible(false);
-      void fetchList();
-    } finally {
-      setSubmitting(false);
-    }
+    await saveMutation.mutateAsync({ id: editingRecord?.id, values: editingRecord ? payload : { ...payload, accountId: currentId } });
+    Toast.success(editingRecord ? '更新成功' : '已创建群发草稿');
+    setModalVisible(false);
   };
 
   const handleSend = (record: MpBroadcast) => {
@@ -138,11 +111,8 @@ export default function MpBroadcastsPage() {
       content: '发送后将立即推送给目标粉丝，且不可撤回。',
       okButtonProps: { type: 'primary', theme: 'solid' },
       onOk: async () => {
-        setSendingId(record.id);
-        try {
-          const res = await request.post(`/api/mp/broadcasts/${record.id}/send`);
-          if (res.code === 0) { Toast.success('发送成功'); void fetchList(); }
-        } finally { setSendingId(null); }
+        await sendMutation.mutateAsync(record.id);
+        Toast.success('发送成功');
       },
     });
   };
@@ -152,31 +122,21 @@ export default function MpBroadcastsPage() {
       title: '确定要删除该群发记录吗？',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete(`/api/mp/broadcasts/${record.id}`);
-        if (res.code !== 0) return;
+        await deleteMutation.mutateAsync(record.id);
         Toast.success('删除成功');
-        void fetchList();
       },
     });
   };
 
   const handlePreview = async () => {
     if (!previewState.id || !previewOpenid.trim()) { Toast.warning('请输入预览 openid'); return; }
-    setPreviewing(true);
-    try {
-      const res = await request.post(`/api/mp/broadcasts/${previewState.id}/preview`, { openid: previewOpenid.trim() });
-      if (res.code === 0) { Toast.success('预览已发送'); setPreviewState({ visible: false, id: null }); }
-    } finally { setPreviewing(false); }
+    await previewMutation.mutateAsync({ id: previewState.id, openid: previewOpenid.trim() });
+    Toast.success('预览已发送');
+    setPreviewState({ visible: false, id: null });
   };
 
-  const openResult = async (record: MpBroadcast) => {
-    setResultState({ visible: true, data: null });
-    setLoadingResult(true);
-    try {
-      const res = await request.get<MpBroadcastResult>(`/api/mp/broadcasts/${record.id}/result`);
-      if (res.code === 0) setResultState({ visible: true, data: res.data ?? null });
-      else setResultState({ visible: false, data: null });
-    } finally { setLoadingResult(false); }
+  const openResult = (record: MpBroadcast) => {
+    setResultState({ visible: true, id: record.id });
   };
 
   const summarize = (r: MpBroadcast): string => {
@@ -220,7 +180,7 @@ export default function MpBroadcastsPage() {
           hidden: !can('mp:broadcast:send'),
           onClick: () => { setPreviewOpenid(''); setPreviewState({ visible: true, id: record.id }); },
         },
-        { key: 'result', label: '结果', hidden: record.status !== 'sent', onClick: () => void openResult(record) },
+        { key: 'result', label: '结果', hidden: record.status !== 'sent', onClick: () => openResult(record) },
         { key: 'edit', label: '编辑', hidden: record.status === 'sent' || !can('mp:broadcast:update'), onClick: () => openEdit(record) },
         { key: 'delete', label: '删除', danger: true, hidden: !can('mp:broadcast:delete'), onClick: () => handleDelete(record) },
       ],
@@ -237,8 +197,8 @@ export default function MpBroadcastsPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="状态"
-      value={filterStatus}
-      onChange={(v) => setFilterStatus(v as MpBroadcastStatus | undefined)}
+      value={draftStatus}
+      onChange={(v) => setDraftStatus(v as MpBroadcastStatus | undefined)}
       optionList={STATUS_OPTIONS}
       showClear
       style={{ width: 130 }}
@@ -283,12 +243,12 @@ export default function MpBroadcastsPage() {
         <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
       )}
 
-      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList()} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total, fetchList)} scroll={{ x: 1100 }} />
+      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
+        pagination={buildPagination(total)} scroll={{ x: 1100 }} />
 
       <AppModal title={editingRecord ? '编辑群发草稿' : '新增群发'} visible={modalVisible}
         onOk={handleSubmit} onCancel={() => { setModalVisible(false); setEditingRecord(null); }}
-        confirmLoading={submitting} width={600}>
+        confirmLoading={saveMutation.isPending} width={600}>
         <Spin spinning={false} wrapperClassName="modal-spin-wrapper">
           <Form
             key={editingRecord?.id ?? `new-${modalType}-${modalTarget}`}
@@ -331,22 +291,22 @@ export default function MpBroadcastsPage() {
         </Spin>
       </AppModal>
 
-      <AppModal title="群发预览" visible={previewState.visible} confirmLoading={previewing}
+      <AppModal title="群发预览" visible={previewState.visible} confirmLoading={previewMutation.isPending}
         onOk={() => void handlePreview()} okText="发送预览" onCancel={() => setPreviewState({ visible: false, id: null })} width={420}>
         <Banner type="info" fullMode={false} description="预览将把该群发内容发送给指定的测试 openid（需已关注），用于发送前检查效果。" style={{ marginBottom: 12 }} />
         <Input value={previewOpenid} onChange={setPreviewOpenid} placeholder="输入测试粉丝 openid" onEnterPress={() => void handlePreview()} />
       </AppModal>
 
       <AppModal title="群发发送结果" visible={resultState.visible} footer={null}
-        onCancel={() => setResultState({ visible: false, data: null })} width={420}>
-        <Spin spinning={loadingResult}>
-          {resultState.data ? (
+        onCancel={() => setResultState({ visible: false, id: null })} width={420}>
+        <Spin spinning={resultQuery.isFetching}>
+          {resultQuery.data ? (
             <Descriptions row size="medium" data={[
-              { key: '发送状态', value: resultState.data.msgStatus },
-              { key: '目标总数', value: String(resultState.data.totalCount ?? '—') },
-              { key: '过滤后', value: String(resultState.data.filterCount ?? '—') },
-              { key: '送达数', value: String(resultState.data.sentCount ?? '—') },
-              { key: '失败数', value: String(resultState.data.errorCount ?? '—') },
+              { key: '发送状态', value: resultQuery.data.msgStatus },
+              { key: '目标总数', value: String(resultQuery.data.totalCount ?? '—') },
+              { key: '过滤后', value: String(resultQuery.data.filterCount ?? '—') },
+              { key: '送达数', value: String(resultQuery.data.sentCount ?? '—') },
+              { key: '失败数', value: String(resultQuery.data.errorCount ?? '—') },
             ]} />
           ) : <div style={{ padding: 24, textAlign: 'center', color: 'var(--semi-color-text-2)' }}>暂无数据</div>}
         </Spin>

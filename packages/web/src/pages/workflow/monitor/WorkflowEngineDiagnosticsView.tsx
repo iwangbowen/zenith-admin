@@ -5,12 +5,10 @@ import { Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, CheckCircle2, Da
 import type {
   WorkflowEngineActionKey,
   WorkflowEngineActionPreview,
-  WorkflowEngineActionResult,
   WorkflowEngineActionSampleJob,
   WorkflowEngineComponent,
   WorkflowEngineComponentStatus,
   WorkflowEngineDefinitionValidationItem,
-  WorkflowEngineHealthHistory,
   WorkflowEngineHistogramBucket,
   WorkflowEngineIntrospection,
   WorkflowEngineOutboxEvent,
@@ -22,9 +20,13 @@ import type {
 } from '@zenith/shared';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { AreaChart, LineChart, chartOptions, makeAreaSpec, makeLineSpec, useChartPalette, type ChartPalette } from '@/components/charts';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import WorkflowBatchRecoveryModal from './WorkflowBatchRecoveryModal';
+import {
+  useWorkflowEngineAction,
+  useWorkflowEngineActionPreview,
+  useWorkflowEngineDiagnostics,
+} from '@/hooks/queries/workflow-monitor';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
 
@@ -534,38 +536,18 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
   const [thresholdMinutes, setThresholdMinutes] = useState(30);
   const [autoRefresh, setAutoRefresh] = useState(0);
   const [historyHours, setHistoryHours] = useState(24);
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<WorkflowEngineIntrospection | null>(null);
-  const [history, setHistory] = useState<WorkflowEngineHealthHistory | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
+  const diagnosticsQuery = useWorkflowEngineDiagnostics(
+    { thresholdMinutes, historyHours },
+    autoRefresh > 0 ? autoRefresh * 1000 : false,
+  );
+  const data = diagnosticsQuery.data?.introspection ?? null;
+  const history = diagnosticsQuery.data?.history ?? null;
+  const lastUpdated = diagnosticsQuery.data?.fetchedAt ?? null;
+  const loading = diagnosticsQuery.isFetching;
   const [nowTick, setNowTick] = useState(Date.now());
   const [actionLoading, setActionLoading] = useState<WorkflowEngineActionKey | null>(null);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [res, hist] = await Promise.all([
-        request.get<WorkflowEngineIntrospection>(`/api/workflows/engine/introspection?thresholdMinutes=${thresholdMinutes}`),
-        request.get<WorkflowEngineHealthHistory>(`/api/workflows/engine/health-history?hours=${historyHours}`),
-      ]);
-      if (res.code === 0) setData(res.data);
-      if (hist.code === 0) setHistory(hist.data);
-      setLastUpdated(Date.now());
-    } finally {
-      setLoading(false);
-    }
-  }, [thresholdMinutes, historyHours]);
-
-  useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
-
-  // 自动刷新
-  useEffect(() => {
-    if (autoRefresh <= 0) return;
-    const id = window.setInterval(() => { void fetchData(); }, autoRefresh * 1000);
-    return () => window.clearInterval(id);
-  }, [autoRefresh, fetchData]);
+  const actionPreviewMutation = useWorkflowEngineActionPreview();
+  const actionMutation = useWorkflowEngineAction();
 
   // 「更新于 Xs 前」每秒滴答
   useEffect(() => {
@@ -594,41 +576,31 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
   const previewAction = useCallback(async (key: WorkflowEngineActionKey, filter: { instanceId?: number; olderThanMinutes?: number; limit: number }) => {
     setActionPreviewLoading(true);
     try {
-      const res = await request.post<WorkflowEngineActionPreview>(`/api/workflows/engine/actions/${key}/preview`, {
-        instanceId: filter.instanceId,
-        olderThanMinutes: filter.olderThanMinutes,
-        limit: filter.limit,
-      });
-      if (res.code === 0 && res.data) setActionPreview(res.data);
-    } catch {
-      Toast.error('预览失败');
+      const result = await actionPreviewMutation.mutateAsync({ key, filter });
+      setActionPreview(result);
     } finally {
       setActionPreviewLoading(false);
     }
-  }, []);
+  }, [actionPreviewMutation]);
 
   const confirmAction = useCallback(async () => {
     if (!actionModal) return;
     setActionLoading(actionModal.key);
     try {
-      const res = await request.post<WorkflowEngineActionResult>(`/api/workflows/engine/actions/${actionModal.key}`, {
-        instanceId: actionFilter.instanceId,
-        olderThanMinutes: actionFilter.olderThanMinutes,
-        limit: actionFilter.limit,
-      });
-      if (res.code === 0 && res.data?.ok) {
-        Toast.success({ content: res.data.message, duration: 4 });
+      const result = await actionMutation.mutateAsync({ key: actionModal.key, filter: actionFilter });
+      if (result.ok) {
+        Toast.success({ content: result.message, duration: 4 });
       } else {
-        Toast.warning({ content: res.data?.message || `${actionModal.label}未成功`, duration: 4 });
+        Toast.warning({ content: result.message || `${actionModal.label}未成功`, duration: 4 });
       }
       setActionModal(null);
-      await fetchData();
+      await diagnosticsQuery.refetch();
     } catch {
       Toast.error(`${actionModal.label}执行失败`);
     } finally {
       setActionLoading(null);
     }
-  }, [actionModal, actionFilter, fetchData]);
+  }, [actionModal, actionFilter, actionMutation, diagnosticsQuery]);
 
   const exportReport = useCallback(() => {
     if (!data) return;
@@ -898,7 +870,7 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
           <Button icon={<Download size={14} />} onClick={exportReport}>导出</Button>
           <Select value={autoRefresh} optionList={AUTO_REFRESH_OPTIONS} style={{ width: 116 }} onChange={(v) => setAutoRefresh(Number(v))} />
           <Select value={thresholdMinutes} optionList={THRESHOLD_OPTIONS} style={{ width: 116 }} onChange={(value) => setThresholdMinutes(Number(value))} />
-          <Button type="primary" icon={<RefreshCw size={14} />} loading={loading} onClick={() => void fetchData()}>刷新</Button>
+          <Button type="primary" icon={<RefreshCw size={14} />} loading={loading} onClick={() => void diagnosticsQuery.refetch()}>刷新</Button>
         </Space>
       </div>
 

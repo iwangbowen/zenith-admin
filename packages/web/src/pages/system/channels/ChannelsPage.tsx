@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Input, Modal, Space, Tag, Toast, Typography, Upload } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ImagePlus, Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
-import type { ChannelAdmin, PaginatedResponse } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { ChannelAdmin } from '@zenith/shared';
 import { config } from '@/config';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
@@ -19,6 +19,12 @@ import { ChannelAutoReplyDrawer } from './ChannelAutoReplyDrawer';
 import { ChannelPublishModal } from './ChannelPublishModal';
 import { ChannelMessagesDrawer } from './ChannelMessagesDrawer';
 import { ChannelSubscribersDrawer } from './ChannelSubscribersDrawer';
+import {
+  channelKeys,
+  useChannelList,
+  useDeleteChannel,
+  useSaveChannel,
+} from '@/hooks/queries/channels';
 
 const TYPE_META: Record<string, { text: string; color: 'green' | 'blue' }> = {
   system: { text: '系统号', color: 'green' },
@@ -26,18 +32,15 @@ const TYPE_META: Record<string, { text: string; color: 'green' | 'blue' }> = {
 };
 
 export default function ChannelsPage() {
+  const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<PaginatedResponse<ChannelAdmin> | null>(null);
   const { page, setPage, pageSize, buildPagination } = usePagination();
-  const [keyword, setKeyword] = useState('');
-  const keywordRef = useRef('');
-  keywordRef.current = keyword;
+  const [draftKeyword, setDraftKeyword] = useState('');
+  const [submittedKeyword, setSubmittedKeyword] = useState('');
 
   const [editVisible, setEditVisible] = useState(false);
   const [editing, setEditing] = useState<ChannelAdmin | null>(null);
   const [formApi, setFormApi] = useState<FormApi | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState('');
 
   const [publishVisible, setPublishVisible] = useState(false);
@@ -48,19 +51,26 @@ export default function ChannelsPage() {
   const [messagesDrawer, setMessagesDrawer] = useState<ChannelAdmin | null>(null);
   const [subscribersDrawer, setSubscribersDrawer] = useState<ChannelAdmin | null>(null);
 
-  const fetchList = useCallback(async (p = page, ps = pageSize, kw = keywordRef.current) => {
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({ page: String(p), pageSize: String(ps), ...(kw ? { keyword: kw } : {}) }).toString();
-      const res = await request.get<PaginatedResponse<ChannelAdmin>>(`/api/channels/admin?${query}`);
-      if (res.code === 0) { setData(res.data); setPage(res.data.page); }
-    } finally { setLoading(false); }
-  }, [page, pageSize, setPage]);
+  const listQuery = useChannelList({
+    page,
+    pageSize,
+    keyword: submittedKeyword || undefined,
+  });
+  const data = listQuery.data ?? null;
+  const saveMutation = useSaveChannel();
+  const deleteMutation = useDeleteChannel();
 
-  useEffect(() => { void fetchList(); }, [fetchList]);
-
-  const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
-  const handleReset = () => { setKeyword(''); setPage(1); void fetchList(1, pageSize, ''); };
+  const handleSearch = () => {
+    setPage(1);
+    setSubmittedKeyword(draftKeyword);
+    void queryClient.invalidateQueries({ queryKey: channelKeys.lists });
+  };
+  const handleReset = () => {
+    setDraftKeyword('');
+    setSubmittedKeyword('');
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: channelKeys.lists });
+  };
 
   const openCreate = () => { setEditing(null); setAvatarUrl(''); setEditVisible(true); };
   const openEdit = (ch: ChannelAdmin) => { setEditing(ch); setAvatarUrl(ch.avatar ?? ''); setEditVisible(true); };
@@ -73,18 +83,20 @@ export default function ChannelsPage() {
 
   const handleSubmit = async () => {
     if (!formApi) return;
+    let values: Record<string, unknown>;
     try {
-      const values = await formApi.validate() as Record<string, unknown>;
-      setSubmitting(true);
-      const res = editing
-        ? await request.put(`/api/channels/${editing.id}`, {
-          name: values.name, avatar: avatarUrl || null, description: values.description || null, status: values.status,
-        })
-        : await request.post('/api/channels', {
-          code: values.code, name: values.name, avatar: avatarUrl || null, description: values.description || null,
-        });
-      if (res.code === 0) { Toast.success(editing ? '已更新' : '已创建'); setEditVisible(false); void fetchList(); }
-    } catch { /* validation failed */ } finally { setSubmitting(false); }
+      values = await formApi.validate() as Record<string, unknown>;
+    } catch {
+      throw new Error('validation');
+    }
+    await saveMutation.mutateAsync({
+      id: editing?.id,
+      values: editing
+        ? { name: values.name, avatar: avatarUrl || null, description: values.description || null, status: values.status }
+        : { code: values.code, name: values.name, avatar: avatarUrl || null, description: values.description || null },
+    });
+    Toast.success(editing ? '已更新' : '已创建');
+    setEditVisible(false);
   };
 
   const handleDelete = (ch: ChannelAdmin) => {
@@ -93,8 +105,8 @@ export default function ChannelsPage() {
       content: '该频道下的所有消息与订阅将一并删除',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete(`/api/channels/${ch.id}`);
-        if (res.code === 0) { Toast.success('已删除'); void fetchList(); }
+        await deleteMutation.mutateAsync(ch.id);
+        Toast.success('已删除');
       },
     });
   };
@@ -172,7 +184,7 @@ export default function ChannelsPage() {
       <SearchToolbar
         primary={(
           <>
-            <Input prefix={<Search size={14} />} placeholder="搜索频道名称/编码" value={keyword} onChange={setKeyword} onEnterPress={handleSearch} showClear style={{ width: 220 }} />
+            <Input prefix={<Search size={14} />} placeholder="搜索频道名称/编码" value={draftKeyword} onChange={setDraftKeyword} onEnterPress={handleSearch} showClear style={{ width: 220 }} />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
             {hasPermission('channel:channel:create') && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>}
@@ -180,7 +192,7 @@ export default function ChannelsPage() {
         )}
         mobilePrimary={(
           <>
-            <Input prefix={<Search size={14} />} placeholder="搜索频道名称/编码" value={keyword} onChange={setKeyword} onEnterPress={handleSearch} showClear style={{ width: 220 }} />
+            <Input prefix={<Search size={14} />} placeholder="搜索频道名称/编码" value={draftKeyword} onChange={setDraftKeyword} onEnterPress={handleSearch} showClear style={{ width: 220 }} />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             {hasPermission('channel:channel:create') && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>}
           </>
@@ -194,18 +206,18 @@ export default function ChannelsPage() {
         columns={columns}
         dataSource={data?.list ?? []}
         rowKey="id"
-        loading={loading}
-        onRefresh={() => void fetchList()}
-        refreshLoading={loading}
-        pagination={buildPagination(data?.total ?? 0, fetchList)}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
+        pagination={buildPagination(data?.total ?? 0)}
       />
 
       <AppModal
         title={editing ? '编辑频道' : '新建运营号'}
         visible={editVisible}
         onCancel={() => setEditVisible(false)}
-        onOk={() => void handleSubmit()}
-        confirmLoading={submitting}
+        onOk={handleSubmit}
+        confirmLoading={saveMutation.isPending}
         okText="保存"
         width={520}
       >
@@ -268,7 +280,7 @@ export default function ChannelsPage() {
         channel={publishTarget}
         visible={publishVisible}
         onClose={() => setPublishVisible(false)}
-        onSuccess={() => void fetchList()}
+        onSuccess={() => void listQuery.refetch()}
       />
 
       {menuDrawer && (

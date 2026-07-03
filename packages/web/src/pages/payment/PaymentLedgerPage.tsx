@@ -1,16 +1,21 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState } from 'react';
 import type { CSSProperties } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Banner, Button, DatePicker, Input, Row, Col, Select, Skeleton, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search, RotateCcw } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
-import { request } from '@/utils/request';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
+import {
+  paymentLedgerKeys,
+  usePaymentLedgerList,
+  usePaymentLedgerSummary,
+} from '@/hooks/queries/payment-ledger';
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_LEDGER_DIRECTION_LABELS, PAYMENT_LEDGER_TYPE_LABELS } from '@zenith/shared';
-import type { PaginatedResponse, PaymentChannel, PaymentLedgerDirection, PaymentLedgerEntry, PaymentLedgerSummary, PaymentLedgerType } from '@zenith/shared';
+import type { PaymentChannel, PaymentLedgerDirection, PaymentLedgerEntry, PaymentLedgerType } from '@zenith/shared';
 
 const yuan = (cents: number) => `¥${(cents / 100).toFixed(2)}`;
 const sectionStyle: CSSProperties = {
@@ -47,14 +52,11 @@ const defaultSearch: SearchParams = { keyword: '', direction: '', type: '', chan
 
 export default function PaymentLedgerPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const canView = hasPermission('payment:ledger:list');
-  const [data, setData] = useState<PaginatedResponse<PaymentLedgerEntry> | null>(null);
-  const [summary, setSummary] = useState<PaymentLedgerSummary | null>(null);
-  const [loading, setLoading] = useState(false);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearch);
-  const searchRef = useRef<SearchParams>(defaultSearch);
-  searchRef.current = searchParams;
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearch);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearch);
 
   function buildQuery(active: SearchParams): Record<string, string> {
     const q: Record<string, string> = {};
@@ -69,35 +71,16 @@ export default function PaymentLedgerPage() {
     return q;
   }
 
-  const fetchList = useCallback(
-    async (p = page, ps = pageSize, params?: SearchParams) => {
-      if (!canView) return;
-      const active = params ?? searchRef.current;
-      setLoading(true);
-      try {
-        const filters = buildQuery(active);
-        const listQuery = { page: String(p), pageSize: String(ps), ...filters };
-        const [listRes, summaryRes] = await Promise.all([
-          request.get<PaginatedResponse<PaymentLedgerEntry>>(`/api/payment/ledger/entries?${new URLSearchParams(listQuery)}`),
-          request.get<PaymentLedgerSummary>(`/api/payment/ledger/summary?${new URLSearchParams(filters)}`),
-        ]);
-        if (listRes.code === 0) { setData(listRes.data); setPage(listRes.data.page); setPageSize(listRes.data.pageSize); }
-        if (summaryRes.code === 0) setSummary(summaryRes.data);
-      } finally {
-        setLoading(false);
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [page, pageSize, canView],
-  );
+  const filters = buildQuery(submittedParams);
+  const listQuery = usePaymentLedgerList({ page, pageSize, ...filters }, canView);
+  const summaryQuery = usePaymentLedgerSummary(filters, canView);
+  const data = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const summary = summaryQuery.data ?? null;
+  const loading = listQuery.isFetching || summaryQuery.isFetching;
 
-  useEffect(() => {
-    void fetchList();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function handleSearch() { setPage(1); void fetchList(1, pageSize); }
-  function handleReset() { setSearchParams(defaultSearch); setPage(1); void fetchList(1, pageSize, defaultSearch); }
+  function handleSearch() { setPage(1); setSubmittedParams(draftParams); void queryClient.invalidateQueries({ queryKey: paymentLedgerKeys.all }); }
+  function handleReset() { setDraftParams(defaultSearch); setPage(1); setSubmittedParams(defaultSearch); void queryClient.invalidateQueries({ queryKey: paymentLedgerKeys.all }); }
 
   const columns: ColumnProps<PaymentLedgerEntry>[] = [
     { title: '流水号', dataIndex: 'entryNo', width: 190, render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }} copyable={{ content: v }} style={{ maxWidth: 170 }}>{v}</Typography.Text> },
@@ -115,8 +98,8 @@ export default function PaymentLedgerPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="订单号..."
-      value={searchParams.keyword}
-      onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))}
+      value={draftParams.keyword}
+      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
       showClear
       style={{ width: 200 }}
       onEnterPress={handleSearch}
@@ -126,8 +109,8 @@ export default function PaymentLedgerPage() {
   const renderDirectionFilter = () => (
     <Select
       placeholder="收支方向"
-      value={searchParams.direction || undefined}
-      onChange={(v) => setSearchParams((p) => ({ ...p, direction: (v as string) ?? '' }))}
+      value={draftParams.direction || undefined}
+      onChange={(v) => setDraftParams((p) => ({ ...p, direction: (v as string) ?? '' }))}
       showClear
       style={{ width: 120 }}
       optionList={Object.entries(PAYMENT_LEDGER_DIRECTION_LABELS).map(([value, label]) => ({ value, label }))}
@@ -137,8 +120,8 @@ export default function PaymentLedgerPage() {
   const renderTypeFilter = () => (
     <Select
       placeholder="流水类型"
-      value={searchParams.type || undefined}
-      onChange={(v) => setSearchParams((p) => ({ ...p, type: (v as string) ?? '' }))}
+      value={draftParams.type || undefined}
+      onChange={(v) => setDraftParams((p) => ({ ...p, type: (v as string) ?? '' }))}
       showClear
       style={{ width: 120 }}
       optionList={Object.entries(PAYMENT_LEDGER_TYPE_LABELS).map(([value, label]) => ({ value, label }))}
@@ -148,8 +131,8 @@ export default function PaymentLedgerPage() {
   const renderChannelFilter = () => (
     <Select
       placeholder="全部渠道"
-      value={searchParams.channel || undefined}
-      onChange={(v) => setSearchParams((p) => ({ ...p, channel: (v as string) ?? '' }))}
+      value={draftParams.channel || undefined}
+      onChange={(v) => setDraftParams((p) => ({ ...p, channel: (v as string) ?? '' }))}
       showClear
       style={{ width: 120 }}
       optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }]}
@@ -160,8 +143,8 @@ export default function PaymentLedgerPage() {
     <DatePicker
       type="dateTimeRange"
       placeholder={['开始时间', '结束时间']}
-      value={searchParams.timeRange ?? undefined}
-      onChange={(v) => setSearchParams((p) => ({ ...p, timeRange: v ? (v as [Date, Date]) : null }))}
+      value={draftParams.timeRange ?? undefined}
+      onChange={(v) => setDraftParams((p) => ({ ...p, timeRange: v ? (v as [Date, Date]) : null }))}
       style={{ width: 330 }}
     />
   );
@@ -249,8 +232,8 @@ export default function PaymentLedgerPage() {
       )}
 
       <ConfigurableTable
-        bordered columns={columns} dataSource={data?.list ?? []} loading={loading} rowKey="id" size="small" empty="暂无数据"
-        onRefresh={() => void fetchList()} refreshLoading={loading} pagination={buildPagination(data?.total ?? 0, fetchList)}
+        bordered columns={columns} dataSource={data} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
+        onRefresh={() => { void listQuery.refetch(); void summaryQuery.refetch(); }} refreshLoading={loading} pagination={buildPagination(total)}
       />
     </div>
   );

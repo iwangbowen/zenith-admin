@@ -1,14 +1,21 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Button, Input, Modal, Tag, Toast, Switch } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Search, ChevronsUpDown, ChevronsDownUp } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
-import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import type { AiProvider, AiProviderConfig } from '@zenith/shared';
 import AiProviderFormModal from '../components/AiProviderFormModal';
+import {
+  aiProviderKeys,
+  useAiProviderList,
+  useDeleteAiProvider,
+  useSaveAiProvider,
+  useSetDefaultAiProvider,
+} from '@/hooks/queries/ai-providers';
 
 const PROVIDER_LABELS: Record<AiProvider, string> = {
   openai_compatible: 'OpenAI Compatible',
@@ -31,29 +38,26 @@ interface ProviderGroupRow {
 }
 
 type TableRow = ProviderGroupRow | AiProviderConfigWithKey;
+const EMPTY_PROVIDER_CONFIGS: AiProviderConfig[] = [];
 
 export default function AIProvidersPage() {
   const { hasPermission } = usePermission();
-  const [list, setList] = useState<AiProviderConfig[]>([]);
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [expandedRowKeys, setExpandedRowKeys] = useState<string[]>([]);
   const [editTarget, setEditTarget] = useState<AiProviderConfig | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
-  const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
+  const listQuery = useAiProviderList({});
+  const list = listQuery.data ?? EMPTY_PROVIDER_CONFIGS;
+  const toggleStatusMutation = useSaveAiProvider();
+  const deleteMutation = useDeleteAiProvider();
+  const setDefaultMutation = useSetDefaultAiProvider();
+  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
 
   const handleToggleStatus = (record: AiProviderConfig, checked: boolean) => {
     const doToggle = async () => {
-      setTogglingIds((prev) => new Set(prev).add(record.id));
-      try {
-        await request.put(`/api/ai/providers/${record.id}`, { isEnabled: checked });
-        Toast.success(checked ? '已启用' : '已禁用');
-        void loadData();
-      } catch (err: unknown) {
-        Toast.error((err as { message?: string })?.message || '操作失败');
-      } finally {
-        setTogglingIds((prev) => { const s = new Set(prev); s.delete(record.id); return s; });
-      }
+      await toggleStatusMutation.mutateAsync({ id: record.id, values: { isEnabled: checked } });
+      Toast.success(checked ? '已启用' : '已禁用');
     };
     if (checked) {
       void doToggle();
@@ -66,19 +70,14 @@ export default function AIProvidersPage() {
     }
   };
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await request.get<AiProviderConfig[]>('/api/ai/providers');
-      setList(res.data ?? []);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  function handleSearch() {
+    void queryClient.invalidateQueries({ queryKey: aiProviderKeys.lists });
+  }
 
-  useEffect(() => {
-    void loadData();
-  }, [loadData]);
+  function handleReset() {
+    setSearch('');
+    void queryClient.invalidateQueries({ queryKey: aiProviderKeys.lists });
+  }
 
   const openCreate = () => {
     setEditTarget(null);
@@ -91,15 +90,13 @@ export default function AIProvidersPage() {
   };
 
   const handleDelete = async (id: number) => {
-    await request.delete(`/api/ai/providers/${id}`);
+    await deleteMutation.mutateAsync(id);
     Toast.success('删除成功');
-    void loadData();
   };
 
   const handleSetDefault = async (id: number) => {
-    await request.post(`/api/ai/providers/${id}/set-default`, {});
+    await setDefaultMutation.mutateAsync(id);
     Toast.success('已设为默认');
-    void loadData();
   };
 
   // 按供应商类型聚合为树形数据
@@ -183,7 +180,7 @@ export default function AIProvidersPage() {
         return (
           <Switch
             checked={record.isEnabled}
-            loading={togglingIds.has(record.id)}
+            loading={togglingStatusId === record.id}
             disabled={!hasPermission('ai:provider:edit')}
             onChange={(checked) => handleToggleStatus(record, checked)}
             size="small"
@@ -234,19 +231,19 @@ export default function AIProvidersPage() {
       showClear
       value={search}
       onChange={(v) => setSearch(String(v ?? ''))}
-      onEnterPress={() => void loadData()}
+      onEnterPress={handleSearch}
       style={{ width: 220 }}
     />
   );
 
   const renderSearchButton = () => (
-    <Button type="primary" icon={<Search size={14} />} onClick={() => void loadData()}>
+    <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>
       查询
     </Button>
   );
 
   const renderResetButton = () => (
-    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setSearch(''); void loadData(); }}>
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
       重置
     </Button>
   );
@@ -297,9 +294,9 @@ export default function AIProvidersPage() {
         bordered
         columns={columns}
         dataSource={treeData}
-        loading={loading}
-        onRefresh={loadData}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         rowKey="key"
         pagination={false}
         expandedRowKeys={expandedRowKeys}
@@ -313,7 +310,7 @@ export default function AIProvidersPage() {
         visible={modalVisible}
         editTarget={editTarget}
         onClose={() => { setModalVisible(false); setEditTarget(null); }}
-        onSaved={() => { setModalVisible(false); setEditTarget(null); void loadData(); }}
+        onSaved={() => { setModalVisible(false); setEditTarget(null); }}
       />
     </div>
   );

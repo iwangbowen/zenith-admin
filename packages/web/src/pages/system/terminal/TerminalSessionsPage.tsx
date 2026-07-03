@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Modal, Select, Space, Tag, Toast, Typography, SideSheet, Switch } from '@douyinfe/semi-ui';
 import { Search, RotateCcw, Monitor as MonitorIcon } from 'lucide-react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -6,7 +7,6 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { TOKEN_KEY } from '@zenith/shared';
 import '@xterm/xterm/css/xterm.css';
-import { request } from '@/utils/request';
 import { config } from '@/config';
 import { usePermission } from '@/hooks/usePermission';
 import { useThemeController } from '@/providers/theme-controller';
@@ -17,33 +17,13 @@ import { usePagination } from '@/hooks/usePagination';
 import { renderEllipsis } from '../../../utils/table-columns';
 import { useTerminalPreferences } from './useTerminalPreferences';
 import { resolveTheme, toXtermTheme } from './themes';
-
-type TerminalKind = 'local' | 'ssh' | 'docker';
-
-interface TerminalSessionItem {
-  sessionId: string;
-  userId: number;
-  username: string;
-  kind: TerminalKind;
-  label: string;
-  clientIp: string;
-  cols: number;
-  rows: number;
-  connected: boolean;
-  observerCount: number;
-  takenOver: boolean;
-  startedAt: string;
-  lastActivityAt: string;
-  idleSeconds: number;
-  durationSeconds: number;
-}
-
-interface PaginatedResponse<T> {
-  list: T[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
+import {
+  terminalKeys,
+  useTerminateTerminalSession,
+  useTerminalSessionList,
+  type TerminalKind,
+  type TerminalSessionItem,
+} from '@/hooks/queries/terminal';
 
 const KIND_META: Record<TerminalKind, { label: string; color: 'blue' | 'green' | 'cyan' }> = {
   local: { label: '本地', color: 'blue' },
@@ -136,55 +116,46 @@ function MonitorTerminal({ sessionId, takeover }: { readonly sessionId: string; 
 
 export default function TerminalSessionsPage() {
   const { hasPermission } = usePermission();
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<TerminalSessionItem[]>([]);
-  const [total, setTotal] = useState(0);
+  const queryClient = useQueryClient();
   const [autoRefresh, setAutoRefresh] = useState(false);
 
   interface SearchParams { keyword: string; kind: TerminalKind | '' }
   const defaultSearchParams: SearchParams = { keyword: '', kind: '' };
   const { page, pageSize, setPage, buildPagination } = usePagination();
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
 
   // 监控 SideSheet 状态
   const [watching, setWatching] = useState<TerminalSessionItem | null>(null);
   const [takeover, setTakeover] = useState(false);
 
-  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const { keyword, kind } = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-      if (keyword) query.set('keyword', keyword);
-      if (kind) query.set('kind', kind);
-      const res = await request.get<PaginatedResponse<TerminalSessionItem>>(`/api/terminal-sessions?${query}`, { silent: true });
-      if (res.code === 0) {
-        setData(res.data.list);
-        setTotal(res.data.total);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize]);
+  const listQuery = useTerminalSessionList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    kind: submittedParams.kind || undefined,
+  }, { refetchInterval: autoRefresh ? 5000 : false });
+  const data = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const terminateMutation = useTerminateTerminalSession();
 
-  useEffect(() => { void fetchData(); }, [fetchData]);
+  const handleSearch = () => {
+    setPage(1);
+    setSubmittedParams(searchParams);
+    void queryClient.invalidateQueries({ queryKey: terminalKeys.sessionLists });
+  };
 
-  // 自动刷新（5s）
-  useEffect(() => {
-    if (!autoRefresh) return;
-    const timer = setInterval(() => { void fetchData(); }, 5000);
-    return () => clearInterval(timer);
-  }, [autoRefresh, fetchData]);
+  const handleReset = () => {
+    setSearchParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: terminalKeys.sessionLists });
+  };
 
-  const handleTerminate = useCallback(async (record: TerminalSessionItem) => {
-    const res = await request.post(`/api/terminal-sessions/${encodeURIComponent(record.sessionId)}/terminate`, {});
-    if (res.code === 0) {
-      Toast.success('已强制终止');
-      void fetchData(page, pageSize);
-    }
-  }, [fetchData, page, pageSize]);
+  const handleTerminate = async (record: TerminalSessionItem) => {
+    await terminateMutation.mutateAsync(record.sessionId);
+    Toast.success('已强制终止');
+  };
 
   const openWatch = (record: TerminalSessionItem) => {
     setTakeover(false);
@@ -252,14 +223,21 @@ export default function TerminalSessionsPage() {
               placeholder="搜索用户/主机/IP"
               value={searchParams.keyword}
               onChange={(v) => setSearchParams((s) => ({ ...s, keyword: v }))}
-              onEnterPress={() => { setPage(1); void fetchData(1, pageSize); }}
+              onEnterPress={handleSearch}
               style={{ width: 220 }}
               showClear
             />
             <Select
               placeholder="类型"
               value={searchParams.kind || undefined}
-              onChange={(v) => { const kind = (v as TerminalKind | undefined) ?? ''; setSearchParams((s) => ({ ...s, kind })); setPage(1); void fetchData(1, pageSize, { ...searchParamsRef.current, kind }); }}
+              onChange={(v) => {
+                const kind = (v as TerminalKind | undefined) ?? '';
+                const next: SearchParams = { ...searchParams, kind };
+                setSearchParams(next);
+                setSubmittedParams(next);
+                setPage(1);
+                void queryClient.invalidateQueries({ queryKey: terminalKeys.sessionLists });
+              }}
               style={{ width: 120 }}
               showClear
             >
@@ -267,8 +245,8 @@ export default function TerminalSessionsPage() {
               <Select.Option value="ssh">SSH</Select.Option>
               <Select.Option value="docker">Docker</Select.Option>
             </Select>
-            <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); void fetchData(1, pageSize); }}>查询</Button>
-            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setSearchParams(defaultSearchParams); setPage(1); void fetchData(1, pageSize, defaultSearchParams); }}>重置</Button>
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
             <Space spacing={4} style={{ marginLeft: 4 }}>
               <Switch size="small" checked={autoRefresh} onChange={setAutoRefresh} />
               <Typography.Text type="tertiary" size="small">自动刷新</Typography.Text>
@@ -282,11 +260,11 @@ export default function TerminalSessionsPage() {
               placeholder="搜索用户/主机/IP"
               value={searchParams.keyword}
               onChange={(v) => setSearchParams((s) => ({ ...s, keyword: v }))}
-              onEnterPress={() => { setPage(1); void fetchData(1, pageSize); }}
+              onEnterPress={handleSearch}
               style={{ width: 220 }}
               showClear
             />
-            <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); void fetchData(1, pageSize); }}>查询</Button>
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
           </>
         )}
         mobileFilters={(
@@ -294,7 +272,14 @@ export default function TerminalSessionsPage() {
             <Select
               placeholder="类型"
               value={searchParams.kind || undefined}
-              onChange={(v) => { const kind = (v as TerminalKind | undefined) ?? ''; setSearchParams((s) => ({ ...s, kind })); setPage(1); void fetchData(1, pageSize, { ...searchParamsRef.current, kind }); }}
+              onChange={(v) => {
+                const kind = (v as TerminalKind | undefined) ?? '';
+                const next: SearchParams = { ...searchParams, kind };
+                setSearchParams(next);
+                setSubmittedParams(next);
+                setPage(1);
+                void queryClient.invalidateQueries({ queryKey: terminalKeys.sessionLists });
+              }}
               style={{ width: 120 }}
               showClear
             >
@@ -309,23 +294,23 @@ export default function TerminalSessionsPage() {
           </>
         )}
         mobileActions={(
-          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setSearchParams(defaultSearchParams); setPage(1); void fetchData(1, pageSize, defaultSearchParams); }}>重置</Button>
+          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
         )}
         filterTitle="终端会话筛选"
         actionTitle="终端会话操作"
-        onFilterApply={() => { setPage(1); void fetchData(1, pageSize); }}
-        onFilterReset={() => { setSearchParams(defaultSearchParams); setPage(1); void fetchData(1, pageSize, defaultSearchParams); }}
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
       />
 
       <ConfigurableTable
         bordered
         columns={columns}
         dataSource={data}
-        loading={loading}
-        onRefresh={fetchData}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         rowKey="sessionId"
-        pagination={buildPagination(total, fetchData)}
+        pagination={buildPagination(total)}
         empty="暂无活动终端会话"
       />
 

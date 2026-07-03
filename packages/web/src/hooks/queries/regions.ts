@@ -13,6 +13,7 @@ export const regionKeys = {
   all: ['regions'] as const,
   trees: ['regions', 'tree'] as const,
   tree: (params: RegionTreeParams) => ['regions', 'tree', params] as const,
+  lookupTree: ['regions', 'lookup-tree'] as const,
   flat: ['regions', 'flat'] as const,
   detail: (id: number | undefined) => ['regions', 'detail', id] as const,
 };
@@ -30,6 +31,14 @@ export function useFlatRegions(options?: { enabled?: boolean }) {
     queryFn: () => request.get<Region[]>('/api/regions/flat').then(unwrap),
     staleTime: LOOKUP_STALE_TIME,
     enabled: options?.enabled ?? true,
+  });
+}
+
+export function useRegionLookupTree() {
+  return useQuery({
+    queryKey: regionKeys.lookupTree,
+    queryFn: () => request.get<Region[]>('/api/regions', { silent: true }).then(unwrap),
+    staleTime: LOOKUP_STALE_TIME,
   });
 }
 

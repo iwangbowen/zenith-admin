@@ -33,7 +33,9 @@ import { ArrowLeft, Copy, Diamond, GitFork, Plus, Save, Trash2 } from 'lucide-re
 import type { WorkflowDefinition, WorkflowNodeConfig, WorkflowEdgeCondition, WorkflowConditionOperator } from '@zenith/shared';
 import { WORKFLOW_CONDITION_OPERATORS } from '@zenith/shared';
 import { AppModal } from '@/components/AppModal';
-import { request } from '@/utils/request';
+import { useAllUsers } from '@/hooks/queries/users';
+import { useWorkflowDefinitionDetail } from '@/hooks/queries/workflow-definitions';
+import { useSaveWorkflowDesignerDefinition } from '@/hooks/queries/workflow-designer';
 
 // ─── Custom Node Component ────────────────────────────────────────────────────
 
@@ -245,8 +247,6 @@ export default function WorkflowDesignerPage() {
   const editFormApi = useRef<FormApi | null>(null);
   const condFormApi = useRef<FormApi | null>(null);
 
-  const [pageLoading, setPageLoading] = useState(!isNew);
-  const [saving, setSaving] = useState(false);
   const [definition, setDefinition] = useState<WorkflowDefinition | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState(getDefaultNodes());
   const [edges, setEdges, onEdgesChange] = useEdgesState(getDefaultEdges());
@@ -255,34 +255,25 @@ export default function WorkflowDesignerPage() {
   const [nodeEditVisible, setNodeEditVisible] = useState(false);
   const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
   const [edgeEditVisible, setEdgeEditVisible] = useState(false);
-  const [users, setUsers] = useState<UserOption[]>([]);
+  const definitionId = id && id !== 'new' ? Number(id) : null;
+  const definitionQuery = useWorkflowDefinitionDetail(definitionId, !isNew);
+  const allUsersQuery = useAllUsers();
+  const saveMutation = useSaveWorkflowDesignerDefinition();
+  const users = (allUsersQuery.data ?? []) as UserOption[];
 
   // 加载现有流程定义
   useEffect(() => {
-    if (!isNew && id) {
-      setPageLoading(true);
-      request.get<WorkflowDefinition>(`/api/workflows/definitions/${id}`).then(res => {
-        if (res.code === 0 && res.data) {
-          setDefinition(res.data);
-          const fd = res.data.flowData;
-          if (fd?.nodes?.length) {
-            setNodes(fd.nodes.map(n => ({ ...n, type: 'workflowNode' } as WorkflowNode)));
-            setEdges(fd.edges ?? []);
-          }
-        }
-      }).finally(() => setPageLoading(false));
+    const data = definitionQuery.data;
+    if (!isNew && data) {
+      setDefinition(data);
+      const fd = data.flowData;
+      if (fd?.nodes?.length) {
+        setNodes(fd.nodes.map(n => ({ ...n, type: 'workflowNode' } as WorkflowNode)));
+        setEdges(fd.edges ?? []);
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, isNew]);
-
-  // 加载用户列表（用于审批人选择）
-  useEffect(() => {
-    request.get<UserOption[]>('/api/users/all').then(res => {
-      if (res.code === 0 && res.data) {
-        setUsers(res.data);
-      }
-    });
-  }, []);
+  }, [definitionQuery.data, isNew]);
 
   const onConnect = useCallback((params: Connection) => {
     setEdges(eds => addEdge({ ...params, type: 'conditionEdge' }, eds));
@@ -411,36 +402,25 @@ export default function WorkflowDesignerPage() {
   };
 
   const doSave = async (meta: { name: string; description?: string | null }) => {
-    setSaving(true);
-    try {
-      const flowData = { nodes, edges };
-      const payload = {
-        name: meta.name,
-        description: meta.description ?? null,
-        flowData,
-      };
+    const flowData = { nodes, edges };
+    const payload = {
+      name: meta.name,
+      description: meta.description ?? null,
+      flowData,
+    };
 
-      let res;
-      if (isNew) {
-        res = await request.post<WorkflowDefinition>('/api/workflows/definitions', payload);
-      } else {
-        res = await request.put<WorkflowDefinition>(`/api/workflows/definitions/${id}`, payload);
-      }
-
-      if (res.code === 0) {
-        Toast.success('保存成功');
-        if (isNew && res.data) {
-          navigate(`/workflow/designer/${res.data.id}`, { replace: true });
-        }
-        setMetaModalVisible(false);
-        setDefinition(res.data ?? null);
-      }
-    } finally {
-      setSaving(false);
+    const saved = await saveMutation.mutateAsync({ id: isNew ? null : definitionId, values: payload });
+    Toast.success('保存成功');
+    if (isNew && saved) {
+      navigate(`/workflow/designer/${saved.id}`, { replace: true });
     }
+    setMetaModalVisible(false);
+    setDefinition(saved);
   };
 
   const isEditable = definition?.status !== 'published';
+  const pageLoading = !isNew && definitionQuery.isFetching && !definition;
+  const saving = saveMutation.isPending;
   const selectedNodeData = selectedNode?.data as WorkflowNodeData | undefined;
   const selectedEdgeData = selectedEdge?.data as ConditionEdgeData | undefined;
 

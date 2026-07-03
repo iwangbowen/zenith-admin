@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Avatar, Badge, Banner, Button, Empty, Form, Input, Modal, Rating, Select, Space, Spin, Tabs, TabPane, Tag, Toast, Typography,
 } from '@douyinfe/semi-ui';
@@ -7,16 +8,27 @@ import {
   Search, RotateCcw, RefreshCw, Settings, Send, UserCheck, ArrowRightLeft, XCircle, MessageSquare, Star,
 } from 'lucide-react';
 import type {
-  MpKfSession, MpKfSessionDetail, MpKfSessionStats, MpKfRoutingConfig, MpKfSessionStatus,
-  MpKfSessionEventType, MpKfSessionCloseReason, MpMessage, PaginatedResponse, WsMessage,
+  MpKfSessionStatus, MpKfSessionEventType, MpKfSessionCloseReason, MpMessage, WsMessage,
 } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
-import { request } from '@/utils/request';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
+import {
+  mpKfKeys,
+  useAcceptMpKfSession,
+  useCloseMpKfSession,
+  useMpKfRoutingConfig,
+  useMpKfSessionDetail,
+  useMpKfSessionList,
+  useMpKfSessionStats,
+  useRateMpKfSession,
+  useReplyMpKfSession,
+  useSaveMpKfRoutingConfig,
+  useTransferMpKfSession,
+} from '@/hooks/queries/mp-kf';
 
 const { Text, Title } = Typography;
 
@@ -45,120 +57,76 @@ function msgPreview(m: Pick<MpMessage, 'msgType' | 'content'>): string {
 
 export default function MpKfSessionsPage() {
   const { hasPermission: can } = usePermission();
-  const { accounts, currentId, currentIdRef, setCurrentId, loading: accountsLoading } = useMpAccounts();
-
+  const queryClient = useQueryClient();
+  const { accounts, currentId, setCurrentId, loading: accountsLoading } = useMpAccounts();
   const [tab, setTab] = useState<MpKfSessionStatus>('waiting');
-  const tabRef = useRef<MpKfSessionStatus>('waiting');
-  tabRef.current = tab;
-
   const [keyword, setKeyword] = useState('');
-  const keywordRef = useRef('');
-  keywordRef.current = keyword;
-
-  const [sessions, setSessions] = useState<MpKfSession[]>([]);
-  const [listLoading, setListLoading] = useState(false);
-  const [stats, setStats] = useState<MpKfSessionStats | null>(null);
-
+  const [submittedKeyword, setSubmittedKeyword] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const selectedIdRef = useRef<number | null>(null);
-  selectedIdRef.current = selectedId;
-  const [detail, setDetail] = useState<MpKfSessionDetail | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-
   const [replyText, setReplyText] = useState('');
-  const [sending, setSending] = useState(false);
-
   const [pickModal, setPickModal] = useState<{ mode: 'accept' | 'transfer'; visible: boolean }>({ mode: 'accept', visible: false });
   const [pickKfId, setPickKfId] = useState<number | null>(null);
   const [pickRemark, setPickRemark] = useState('');
-  const [acting, setActing] = useState(false);
-
   const [configVisible, setConfigVisible] = useState(false);
-  const [config, setConfig] = useState<MpKfRoutingConfig | null>(null);
-  const [savingConfig, setSavingConfig] = useState(false);
   const configFormRef = useRef<FormApi>(null);
-
   const [rateVisible, setRateVisible] = useState(false);
   const [rateValue, setRateValue] = useState(5);
   const [rateRemark, setRateRemark] = useState('');
-  const [rating, setRating] = useState(false);
 
-  const handleRate = async () => {
-    if (!detail) return;
-    setRating(true);
-    try {
-      const res = await request.post(`/api/mp/kf-sessions/${detail.id}/rate`, { rating: rateValue, remark: rateRemark || undefined });
-      if (res.code === 0) { Toast.success('已记录评分'); setRateVisible(false); void fetchDetail(detail.id); void fetchStats(); }
-    } finally { setRating(false); }
-  };
+  const listQuery = useMpKfSessionList(currentId, { status: tab, keyword: submittedKeyword || undefined, page: 1, pageSize: 50 });
+  const statsQuery = useMpKfSessionStats(currentId);
+  const detailQuery = useMpKfSessionDetail(selectedId);
+  const configQuery = useMpKfRoutingConfig(currentId, configVisible);
+  const sessions = listQuery.data?.list ?? [];
+  const stats = statsQuery.data ?? null;
+  const detail = detailQuery.data ?? null;
+  const config = configQuery.data ?? null;
 
-  const fetchSessions = useCallback(async (status = tabRef.current, kw = keywordRef.current) => {
-    if (!currentId) { setSessions([]); return; }
-    const reqId = currentId;
-    setListLoading(true);
-    try {
-      const q = new URLSearchParams({ accountId: String(currentId), status, page: '1', pageSize: '50' });
-      if (kw) q.set('keyword', kw);
-      const res = await request.get<PaginatedResponse<MpKfSession>>(`/api/mp/kf-sessions?${q}`);
-      if (currentIdRef.current !== reqId || tabRef.current !== status) return;
-      setSessions(res.data?.list ?? []);
-    } finally {
-      if (currentIdRef.current === reqId) setListLoading(false);
-    }
-  }, [currentId, currentIdRef]);
+  const rateMutation = useRateMpKfSession();
+  const acceptMutation = useAcceptMpKfSession();
+  const transferMutation = useTransferMpKfSession();
+  const closeMutation = useCloseMpKfSession();
+  const replyMutation = useReplyMpKfSession();
+  const saveConfigMutation = useSaveMpKfRoutingConfig();
 
-  const fetchStats = useCallback(async () => {
-    if (!currentId) { setStats(null); return; }
-    const reqId = currentId;
-    const res = await request.get<MpKfSessionStats>(`/api/mp/kf-sessions/stats?accountId=${currentId}`);
-    if (currentIdRef.current !== reqId) return;
-    setStats(res.data ?? null);
-  }, [currentId, currentIdRef]);
+  const refreshAll = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: mpKfKeys.sessionLists(currentId) });
+    void queryClient.invalidateQueries({ queryKey: mpKfKeys.sessionStats(currentId) });
+    if (selectedId) void queryClient.invalidateQueries({ queryKey: mpKfKeys.sessionDetail(selectedId) });
+  }, [currentId, queryClient, selectedId]);
 
-  const fetchDetail = useCallback(async (id: number) => {
-    setDetailLoading(true);
-    try {
-      const res = await request.get<MpKfSessionDetail>(`/api/mp/kf-sessions/${id}`);
-      if (selectedIdRef.current !== id) return;
-      setDetail(res.data ?? null);
-    } finally {
-      if (selectedIdRef.current === id) setDetailLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    setSelectedId(null);
-    setDetail(null);
-    void fetchSessions(tabRef.current);
-    void fetchStats();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentId]);
-
-  const selectSession = (id: number) => {
-    setSelectedId(id);
-    void fetchDetail(id);
-  };
-
-  // 实时：收到本公众号的会话事件即刷新列表/概览；命中当前会话则刷新详情
   useWebSocket(useCallback((msg: WsMessage) => {
     if (!msg.type.startsWith('mp-kf:')) return;
     const accountId = (msg.payload as { accountId?: number }).accountId;
-    if (accountId !== currentIdRef.current) return;
-    void fetchSessions();
-    void fetchStats();
-    const sid = (msg.payload as { sessionId?: number; id?: number }).sessionId ?? (msg.payload as { id?: number }).id;
-    if (sid && sid === selectedIdRef.current) void fetchDetail(sid);
-  }, [currentIdRef, fetchSessions, fetchStats, fetchDetail]));
+    if (accountId !== currentId) return;
+    refreshAll();
+  }, [currentId, refreshAll]));
+
+  const handleRate = async () => {
+    if (!detail) return;
+    await rateMutation.mutateAsync({ id: detail.id, values: { rating: rateValue, remark: rateRemark || undefined } });
+    Toast.success('已记录评分');
+    setRateVisible(false);
+  };
+
+  const selectSession = (id: number) => {
+    setSelectedId(id);
+  };
 
   const handleTabChange = (key: string) => {
     setTab(key as MpKfSessionStatus);
-    tabRef.current = key as MpKfSessionStatus;
     setSelectedId(null);
-    setDetail(null);
-    void fetchSessions(key as MpKfSessionStatus);
   };
 
-  const refreshAll = () => { void fetchSessions(); void fetchStats(); if (selectedIdRef.current) void fetchDetail(selectedIdRef.current); };
+  const handleSearch = () => {
+    setSubmittedKeyword(keyword);
+    void queryClient.invalidateQueries({ queryKey: mpKfKeys.sessionLists(currentId) });
+  };
+  const handleReset = () => {
+    setKeyword('');
+    setSubmittedKeyword('');
+    void queryClient.invalidateQueries({ queryKey: mpKfKeys.sessionLists(currentId) });
+  };
 
   const openPick = (mode: 'accept' | 'transfer') => {
     const agents = (stats?.agents ?? []).filter((a) => a.status === 'enabled' && (mode === 'accept' || a.kfId !== detail?.kfId));
@@ -168,21 +136,15 @@ export default function MpKfSessionsPage() {
   };
 
   const handlePickConfirm = async () => {
-    if (!detail || !pickKfId) { Toast.warning('请选择客服'); return; }
-    setActing(true);
-    try {
-      if (pickModal.mode === 'accept') {
-        const res = await request.post(`/api/mp/kf-sessions/${detail.id}/accept`, { kfId: pickKfId });
-        if (res.code !== 0) return;
-        Toast.success('已接入');
-      } else {
-        const res = await request.post(`/api/mp/kf-sessions/${detail.id}/transfer`, { toKfId: pickKfId, remark: pickRemark || undefined });
-        if (res.code !== 0) return;
-        Toast.success('已转接');
-      }
-      setPickModal((p) => ({ ...p, visible: false }));
-      refreshAll();
-    } finally { setActing(false); }
+    if (!detail || !pickKfId) { Toast.warning('请选择客服'); throw new Error('validation'); }
+    if (pickModal.mode === 'accept') {
+      await acceptMutation.mutateAsync({ id: detail.id, kfId: pickKfId });
+      Toast.success('已接入');
+    } else {
+      await transferMutation.mutateAsync({ id: detail.id, toKfId: pickKfId, remark: pickRemark || undefined });
+      Toast.success('已转接');
+    }
+    setPickModal((p) => ({ ...p, visible: false }));
   };
 
   const handleClose = () => {
@@ -191,48 +153,34 @@ export default function MpKfSessionsPage() {
       title: '结束会话', content: '确定结束当前会话吗？',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.post(`/api/mp/kf-sessions/${detail.id}/close`, {});
-        if (res.code !== 0) return;
+        await closeMutation.mutateAsync(detail.id);
         Toast.success('已结束');
-        refreshAll();
       },
     });
   };
 
   const handleSend = async () => {
     if (!detail || !replyText.trim()) return;
-    setSending(true);
-    try {
-      const res = await request.post(`/api/mp/kf-sessions/${detail.id}/reply`, { msgType: 'text', content: replyText.trim() });
-      if (res.code !== 0) return;
-      setReplyText('');
-      void fetchDetail(detail.id);
-      void fetchSessions();
-    } finally { setSending(false); }
+    await replyMutation.mutateAsync({ id: detail.id, values: { msgType: 'text', content: replyText.trim() } });
+    setReplyText('');
   };
 
-  const openConfig = async () => {
+  const openConfig = () => {
     if (!currentId) return;
-    const res = await request.get<MpKfRoutingConfig>(`/api/mp/kf-sessions/config?accountId=${currentId}`);
-    setConfig(res.data ?? null);
     setConfigVisible(true);
   };
 
   const handleSaveConfig = async () => {
     if (!currentId) return;
     let values: Record<string, unknown>;
-    try { values = (await configFormRef.current?.validate())!; } catch { return; }
-    setSavingConfig(true);
-    try {
-      const res = await request.put(`/api/mp/kf-sessions/config?accountId=${currentId}`, values);
-      if (res.code !== 0) return;
-      Toast.success('已保存');
-      setConfigVisible(false);
-      refreshAll();
-    } finally { setSavingConfig(false); }
+    try { values = (await configFormRef.current?.validate())!; } catch { throw new Error('validation'); }
+    await saveConfigMutation.mutateAsync({ accountId: currentId, values });
+    Toast.success('已保存');
+    setConfigVisible(false);
   };
 
   const agentOptions = (stats?.agents ?? []).filter((a) => a.status === 'enabled' && (pickModal.mode === 'accept' || a.kfId !== detail?.kfId));
+  const acting = acceptMutation.isPending || transferMutation.isPending;
 
   const renderAccountFilter = () => (
     <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
@@ -243,18 +191,18 @@ export default function MpKfSessionsPage() {
       placeholder="搜索 openid / 粉丝昵称"
       value={keyword}
       onChange={setKeyword}
-      onEnterPress={() => void fetchSessions()}
+      onEnterPress={handleSearch}
       showClear
       style={{ width: 200 }}
     />
   );
-  const renderSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={() => void fetchSessions()}>查询</Button>;
+  const renderSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>;
   const renderResetButton = () => (
-    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setKeyword(''); keywordRef.current = ''; void fetchSessions(undefined, ''); }}>重置</Button>
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
   );
   const renderSessionActions = () => {
     const configButton = can('mp:kf:session:config') ? (
-      <Button icon={<Settings size={14} />} disabled={!currentId} onClick={() => void openConfig()}>路由配置</Button>
+      <Button icon={<Settings size={14} />} disabled={!currentId} onClick={openConfig}>路由配置</Button>
     ) : null;
     return (
       <>
@@ -286,15 +234,14 @@ export default function MpKfSessionsPage() {
         mobileActions={renderSessionActions()}
         filterTitle="会话筛选"
         actionTitle="会话操作"
-        onFilterApply={() => void fetchSessions()}
-        onFilterReset={() => { setKeyword(''); keywordRef.current = ''; void fetchSessions(undefined, ''); }}
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
       />
 
       {!accountsLoading && accounts.length === 0 && (
         <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
       )}
 
-      {/* 概览统计 */}
       {stats && (
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
           <StatCard label="排队待接入" value={stats.waiting} color="#fa8c16" />
@@ -314,7 +261,6 @@ export default function MpKfSessionsPage() {
         </div>
       )}
 
-      {/* 工作台：左列表 + 右详情 */}
       <div style={{ display: 'flex', gap: 12, height: 'calc(100vh - 280px)', minHeight: 420 }}>
         <div style={{ width: 340, border: '1px solid var(--semi-color-border)', borderRadius: 8, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <Tabs type="line" activeKey={tab} onChange={handleTabChange} style={{ padding: '0 8px' }}>
@@ -323,7 +269,7 @@ export default function MpKfSessionsPage() {
             <TabPane tab="已结束" itemKey="closed" />
           </Tabs>
           <div style={{ flex: 1, overflowY: 'auto' }}>
-            <Spin spinning={listLoading}>
+            <Spin spinning={listQuery.isFetching}>
               {sessions.length === 0 ? (
                 <Empty description="暂无会话" style={{ padding: 32 }} />
               ) : sessions.map((s) => (
@@ -389,7 +335,7 @@ export default function MpKfSessionsPage() {
                 </Space>
               </div>
 
-              <Spin spinning={detailLoading} wrapperClassName="kf-detail-spin" style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
+              <Spin spinning={detailQuery.isFetching} wrapperClassName="kf-detail-spin" style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                   <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {detail.messages.length === 0 && <Empty description="暂无消息" style={{ margin: 'auto' }} />}
@@ -410,7 +356,6 @@ export default function MpKfSessionsPage() {
                     })}
                   </div>
 
-                  {/* 事件时间线 */}
                   {detail.events.length > 0 && (
                     <div style={{ borderTop: '1px dashed var(--semi-color-border)', padding: '6px 16px', maxHeight: 84, overflowY: 'auto', background: 'var(--semi-color-fill-0)' }}>
                       {detail.events.map((e) => (
@@ -425,8 +370,8 @@ export default function MpKfSessionsPage() {
                   {detail.status === 'active' && can('mp:kf:session:reply') && (
                     <div style={{ borderTop: '1px solid var(--semi-color-border)', padding: 12, display: 'flex', gap: 8 }}>
                       <Input value={replyText} onChange={setReplyText} placeholder="输入回复内容，回车发送"
-                        onEnterPress={() => void handleSend()} disabled={sending} />
-                      <Button type="primary" theme="solid" icon={<Send size={14} />} loading={sending}
+                        onEnterPress={() => void handleSend()} disabled={replyMutation.isPending} />
+                      <Button type="primary" theme="solid" icon={<Send size={14} />} loading={replyMutation.isPending}
                         disabled={!replyText.trim()} onClick={() => void handleSend()}>发送</Button>
                     </div>
                   )}
@@ -437,7 +382,6 @@ export default function MpKfSessionsPage() {
         </div>
       </div>
 
-      {/* 接入 / 转接 客服选择 */}
       <AppModal title={pickModal.mode === 'accept' ? '接入会话' : '转接会话'} visible={pickModal.visible}
         onOk={handlePickConfirm} onCancel={() => setPickModal((p) => ({ ...p, visible: false }))} confirmLoading={acting} width={420}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -456,9 +400,8 @@ export default function MpKfSessionsPage() {
         </div>
       </AppModal>
 
-      {/* 路由治理配置 */}
       <AppModal title="多客服路由治理配置" visible={configVisible}
-        onOk={handleSaveConfig} onCancel={() => setConfigVisible(false)} confirmLoading={savingConfig} width={520}>
+        onOk={handleSaveConfig} onCancel={() => setConfigVisible(false)} confirmLoading={saveConfigMutation.isPending} width={520}>
         {config && (
           <Form key={config.id} getFormApi={(api) => { (configFormRef as { current: FormApi }).current = api; }}
             labelPosition="left" labelWidth={140}
@@ -479,7 +422,7 @@ export default function MpKfSessionsPage() {
         )}
       </AppModal>
 
-      <AppModal title="会话满意度评分" visible={rateVisible} confirmLoading={rating}
+      <AppModal title="会话满意度评分" visible={rateVisible} confirmLoading={rateMutation.isPending}
         onOk={() => void handleRate()} onCancel={() => setRateVisible(false)} width={400}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center', padding: '8px 0' }}>
           <Rating value={rateValue} onChange={setRateValue} size={28} />

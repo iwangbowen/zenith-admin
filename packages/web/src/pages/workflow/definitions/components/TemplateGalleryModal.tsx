@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Button, Modal, Spin, Toast, Input, TextArea, Typography } from '@douyinfe/semi-ui';
 import { LayoutTemplate, ArrowLeft } from 'lucide-react';
 import type { WorkflowTemplate, WorkflowDefinition } from '@zenith/shared';
-import { request } from '@/utils/request';
+import { useCloneWorkflowTemplate, useWorkflowTemplates } from '@/hooks/queries/workflow-templates';
 
 interface Props {
   visible: boolean;
@@ -13,24 +13,19 @@ interface Props {
 }
 
 export function TemplateGalleryModal({ visible, onCancel, categoryId = null, onCreated }: Props) {
-  const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [creating, setCreating] = useState(false);
   // 参数化步骤：选中模板后填写新流程的名称/描述再创建
   const [picked, setPicked] = useState<WorkflowTemplate | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const templatesQuery = useWorkflowTemplates({ enabled: visible });
+  const cloneMutation = useCloneWorkflowTemplate();
+  const templates = templatesQuery.data ?? [];
+  const loading = templatesQuery.isFetching;
+  const creating = cloneMutation.isPending;
 
   useEffect(() => {
     if (!visible) return;
     setPicked(null);
-    setLoading(true);
-    void request
-      .get<WorkflowTemplate[]>('/api/workflows/templates')
-      .then((res) => {
-        if (res.code === 0) setTemplates(res.data ?? []);
-      })
-      .finally(() => setLoading(false));
   }, [visible]);
 
   const pickTemplate = (tpl: WorkflowTemplate) => {
@@ -45,19 +40,12 @@ export function TemplateGalleryModal({ visible, onCancel, categoryId = null, onC
       Toast.warning('请填写流程名称');
       return;
     }
-    setCreating(true);
-    try {
-      const res = await request.post<WorkflowDefinition>(
-        `/api/workflows/templates/${picked.id}/clone`,
-        { name: name.trim(), description: description.trim() || null, ...(categoryId == null ? {} : { categoryId }) },
-      );
-      if (res.code === 0) {
-        Toast.success('已从模板创建流程');
-        onCreated(res.data.id);
-      }
-    } finally {
-      setCreating(false);
-    }
+    const res = await cloneMutation.mutateAsync({
+      id: picked.id,
+      values: { name: name.trim(), description: description.trim() || null, ...(categoryId == null ? {} : { categoryId }) },
+    });
+    Toast.success('已从模板创建流程');
+    onCreated((res as WorkflowDefinition).id);
   };
 
   return (

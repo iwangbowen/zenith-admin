@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Modal, Select, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -7,13 +8,18 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
-import { request } from '@/utils/request';
 import { formatDateTime, formatDateForApi } from '@/utils/date';
 import { createdAtColumn } from '@/utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
+import {
+  paymentSettlementKeys,
+  useGeneratePaymentSettlement,
+  usePaymentSettlementList,
+  useUpdatePaymentSettlementStatus,
+} from '@/hooks/queries/payment-settlements';
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_SETTLEMENT_STATUS_LABELS } from '@zenith/shared';
-import type { PaginatedResponse, PaymentChannel, PaymentSettlementBatch, PaymentSettlementStatus } from '@zenith/shared';
+import type { PaymentChannel, PaymentSettlementBatch, PaymentSettlementStatus } from '@zenith/shared';
 
 const yuan = (cents: number) => `¥${(cents / 100).toFixed(2)}`;
 const channelOptions = Object.entries(PAYMENT_CHANNEL_LABELS).map(([value, label]) => ({ value, label }));
@@ -26,69 +32,46 @@ interface GenerateFormValues { channel: PaymentChannel; period: [Date, Date]; re
 
 export default function PaymentSettlementsPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const canSettle = hasPermission('payment:settlement:settle');
   const formApi = useRef<FormApi | null>(null);
-  const [data, setData] = useState<PaginatedResponse<PaymentSettlementBatch> | null>(null);
-  const [loading, setLoading] = useState(false);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [search, setSearch] = useState<SearchParams>(defaultSearch);
-  const searchRef = useRef<SearchParams>(defaultSearch);
-  searchRef.current = search;
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearch);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearch);
 
   const [genVisible, setGenVisible] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [transitioningIds, setTransitioningIds] = useState<Set<number>>(new Set());
 
-  const fetchList = useCallback(
-    async (p = page, ps = pageSize, params?: SearchParams) => {
-      const active = params ?? searchRef.current;
-      setLoading(true);
-      try {
-        const query: Record<string, string> = { page: String(p), pageSize: String(ps) };
-        if (active.channel) query.channel = active.channel;
-        if (active.status) query.status = active.status;
-        const res = await request.get<PaginatedResponse<PaymentSettlementBatch>>(`/api/payment/settlements?${new URLSearchParams(query)}`);
-        if (res.code === 0) { setData(res.data); setPage(res.data.page); setPageSize(res.data.pageSize); }
-      } finally {
-        setLoading(false);
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [page, pageSize],
-  );
+  const listQuery = usePaymentSettlementList({
+    page,
+    pageSize,
+    channel: submittedParams.channel || undefined,
+    status: submittedParams.status || undefined,
+  });
+  const data = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const generateMutation = useGeneratePaymentSettlement();
+  const transitionMutation = useUpdatePaymentSettlementStatus();
+  const transitioningId = transitionMutation.isPending ? (transitionMutation.variables?.id ?? null) : null;
 
-  useEffect(() => {
-    void fetchList();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function handleSearch() { setPage(1); void fetchList(1, pageSize); }
-  function handleReset() { setSearch(defaultSearch); setPage(1); void fetchList(1, pageSize, defaultSearch); }
+  function handleSearch() { setPage(1); setSubmittedParams(draftParams); void queryClient.invalidateQueries({ queryKey: paymentSettlementKeys.lists }); }
+  function handleReset() { setDraftParams(defaultSearch); setPage(1); setSubmittedParams(defaultSearch); void queryClient.invalidateQueries({ queryKey: paymentSettlementKeys.lists }); }
 
   async function handleGenerate() {
     let values: GenerateFormValues;
     try { values = (await formApi.current?.validate()) as GenerateFormValues; } catch { throw new Error('validation'); }
-    setSubmitting(true);
-    try {
-      const res = await request.post<PaymentSettlementBatch>('/api/payment/settlements/generate', {
-        channel: values.channel,
-        periodStart: formatDateForApi(values.period[0]),
-        periodEnd: formatDateForApi(values.period[1]),
-        remark: values.remark || undefined,
-      });
-      if (res.code === 0) { Toast.success('生成成功'); setGenVisible(false); void fetchList(); }
-      else throw new Error(res.message);
-    } finally {
-      setSubmitting(false);
-    }
+    await generateMutation.mutateAsync({
+      channel: values.channel,
+      periodStart: formatDateForApi(values.period[0]),
+      periodEnd: formatDateForApi(values.period[1]),
+      remark: values.remark || undefined,
+    });
+    Toast.success('生成成功');
+    setGenVisible(false);
   }
 
-  function handleTransition(record: PaymentSettlementBatch, status: PaymentSettlementStatus) {
-    setTransitioningIds((prev) => new Set(prev).add(record.id));
-    request
-      .post<PaymentSettlementBatch>(`/api/payment/settlements/${record.id}/status`, { status })
-      .then((res) => { if (res.code === 0) { Toast.success('操作成功'); void fetchList(); } else Toast.error(res.message); })
-      .finally(() => setTransitioningIds((prev) => { const s = new Set(prev); s.delete(record.id); return s; }));
+  async function handleTransition(record: PaymentSettlementBatch, status: PaymentSettlementStatus) {
+    await transitionMutation.mutateAsync({ id: record.id, status });
+    Toast.success('操作成功');
   }
 
   const columns: ColumnProps<PaymentSettlementBatch>[] = [
@@ -108,13 +91,13 @@ export default function PaymentSettlementsPage() {
       emptyContent: <Typography.Text type="tertiary">—</Typography.Text>,
       actions: (r) => {
         if (!canSettle || r.status === 'settled' || r.status === 'failed') return [];
-        const busy = transitioningIds.has(r.id);
+        const busy = transitioningId === r.id;
         return [
           ...(r.status === 'pending' ? [{
             key: 'start',
             label: '开始结算',
             loading: busy,
-            onClick: () => handleTransition(r, 'settling'),
+            onClick: () => void handleTransition(r, 'settling'),
           }] : []),
           ...(r.status === 'settling' ? [{
             key: 'settled',
@@ -147,8 +130,8 @@ export default function PaymentSettlementsPage() {
   const renderChannelFilter = () => (
     <Select
       placeholder="全部渠道"
-      value={search.channel || undefined}
-      onChange={(v) => setSearch((p) => ({ ...p, channel: (v as string) ?? '' }))}
+      value={draftParams.channel || undefined}
+      onChange={(v) => setDraftParams((p) => ({ ...p, channel: (v as string) ?? '' }))}
       showClear
       style={{ width: 130 }}
       optionList={channelOptions}
@@ -158,8 +141,8 @@ export default function PaymentSettlementsPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="全部状态"
-      value={search.status || undefined}
-      onChange={(v) => setSearch((p) => ({ ...p, status: (v as string) ?? '' }))}
+      value={draftParams.status || undefined}
+      onChange={(v) => setDraftParams((p) => ({ ...p, status: (v as string) ?? '' }))}
       showClear
       style={{ width: 120 }}
       optionList={Object.entries(PAYMENT_SETTLEMENT_STATUS_LABELS).map(([value, label]) => ({ value, label }))}
@@ -202,11 +185,11 @@ export default function PaymentSettlementsPage() {
       />
 
       <ConfigurableTable
-        bordered columns={columns} dataSource={data?.list ?? []} loading={loading} rowKey="id" size="small" empty="暂无数据"
-        onRefresh={() => void fetchList()} refreshLoading={loading} pagination={buildPagination(data?.total ?? 0, fetchList)}
+        bordered columns={columns} dataSource={data} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
+        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(total)}
       />
 
-      <AppModal title="生成结算批次" visible={genVisible} onOk={handleGenerate} onCancel={() => setGenVisible(false)} okButtonProps={{ loading: submitting }} width={520} closeOnEsc>
+      <AppModal title="生成结算批次" visible={genVisible} onOk={handleGenerate} onCancel={() => setGenVisible(false)} okButtonProps={{ loading: generateMutation.isPending }} width={520} closeOnEsc>
         <Form key={genVisible ? 'gen' : 'closed'} getFormApi={(api) => { formApi.current = api; }} initValues={{ channel: 'wechat' }} labelPosition="left" labelWidth={90}>
           <Form.Select field="channel" label="渠道" style={{ width: '100%' }} optionList={channelOptions} rules={[{ required: true, message: '请选择渠道' }]} />
           <Form.DatePicker

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { Button, Form, Input, Select, Switch, Tag, Toast, Modal, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -7,13 +7,20 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  reportDatasourceKeys,
+  useDeleteReportDatasource,
+  useReportDatasourceList,
+  useSaveReportDatasource,
+  useTestReportDatasourceConnection,
+} from '@/hooks/queries/report-datasources';
 import type {
-  ReportDatasource, ReportDatasourceType, ReportApiDatasourceConfig, ReportExternalDbConfig, PaginatedResponse,
+  ReportDatasource, ReportDatasourceType, ReportApiDatasourceConfig, ReportExternalDbConfig,
 } from '@zenith/shared';
 
 interface SearchParams { keyword: string; type: string; status: string }
@@ -44,41 +51,31 @@ function isExternalDbType(type: unknown): type is 'mysql' | 'postgresql' | 'sqls
 export default function DataSourcesPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
+  const queryClient = useQueryClient();
 
-  const [data, setData] = useState<PaginatedResponse<ReportDatasource> | null>(null);
-  const [loading, setLoading] = useState(false);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<ReportDatasource | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
 
-  const fetchList = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const active = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const q: Record<string, string> = { page: String(p), pageSize: String(ps) };
-      if (active.keyword) q.keyword = active.keyword;
-      if (active.type) q.type = active.type;
-      if (active.status) q.status = active.status;
-      const res = await request.get<PaginatedResponse<ReportDatasource>>(`/api/report/datasources?${new URLSearchParams(q)}`);
-      if (res.code === 0) { setData(res.data); setPage(res.data.page); setPageSize(res.data.pageSize); }
-    } finally { setLoading(false); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize]);
+  const listQuery = useReportDatasourceList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    type: submittedParams.type || undefined,
+    status: submittedParams.status || undefined,
+  });
+  const data = listQuery.data ?? null;
+  const saveMutation = useSaveReportDatasource();
+  const toggleMutation = useSaveReportDatasource();
+  const deleteMutation = useDeleteReportDatasource();
+  const testConnectionMutation = useTestReportDatasourceConnection();
+  const togglingId = toggleMutation.isPending ? toggleMutation.variables?.id ?? null : null;
 
-  useEffect(() => {
-    void fetchList();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function handleSearch() { setPage(1); void fetchList(1, pageSize); }
-  function handleReset() { setSearchParams(defaultSearchParams); setPage(1); void fetchList(1, pageSize, defaultSearchParams); }
+  function handleSearch() { setPage(1); setSubmittedParams(draftParams); void queryClient.invalidateQueries({ queryKey: reportDatasourceKeys.lists }); }
+  function handleReset() { setDraftParams(defaultSearchParams); setSubmittedParams(defaultSearchParams); setPage(1); void queryClient.invalidateQueries({ queryKey: reportDatasourceKeys.lists }); }
 
   function openCreate() { setEditing(null); setModalVisible(true); }
   function openEdit(record: ReportDatasource) { setEditing(record); setModalVisible(true); }
@@ -135,14 +132,9 @@ export default function DataSourcesPage() {
     }
 
     const payload = { name: values.name, type, config, status: values.status, remark: values.remark || undefined };
-    setSubmitting(true);
-    try {
-      const res = editing
-        ? await request.put(`/api/report/datasources/${editing.id}`, payload)
-        : await request.post('/api/report/datasources', payload);
-      if (res.code === 0) { Toast.success(editing ? '更新成功' : '创建成功'); closeModal(); void fetchList(); }
-      else throw new Error(res.message);
-    } finally { setSubmitting(false); }
+    await saveMutation.mutateAsync({ id: editing?.id, values: payload });
+    Toast.success(editing ? '更新成功' : '创建成功');
+    closeModal();
   }
 
   async function handleTestConnection() {
@@ -155,40 +147,28 @@ export default function DataSourcesPage() {
     const port = Number(values.port);
     if (!host || !port || !database || !user) { Toast.warning('请先填写连接信息'); return; }
     const password = String(values.password ?? '').trim();
-    setTesting(true);
     try {
-      const res = await request.post<{ ok: boolean; message: string; latencyMs?: number }>(
-        '/api/report/datasources/test',
-        {
-          id: editing?.id,
-          type,
-          config: { host, port, database, user, ssl: !!values.ssl, ...(password ? { password } : {}) },
-        },
-        { silent: true },
-      );
-      if (res.code === 0 && res.data.ok) {
-        Toast.success(res.data.latencyMs != null ? `连接成功（${res.data.latencyMs}ms）` : '连接成功');
-      } else {
-        Toast.error(res.data?.message || res.message || '连接失败');
-      }
-    } finally {
-      setTesting(false);
+      const res = await testConnectionMutation.mutateAsync({
+        id: editing?.id,
+        type,
+        config: { host, port, database, user, ssl: !!values.ssl, ...(password ? { password } : {}) },
+      });
+      if (res.ok) Toast.success(res.latencyMs != null ? `连接成功（${res.latencyMs}ms）` : '连接成功');
+      else Toast.error(res.message || '连接失败');
+    } catch (error) {
+      Toast.error(error instanceof Error ? error.message : '连接失败');
     }
   }
 
   async function handleDelete(id: number) {
-    const res = await request.delete(`/api/report/datasources/${id}`);
-    if (res.code === 0) { Toast.success('删除成功'); void fetchList(); }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   }
 
   function handleToggleStatus(record: ReportDatasource, checked: boolean) {
     const doToggle = async () => {
-      setTogglingIds((p) => new Set(p).add(record.id));
-      try {
-        await request.put(`/api/report/datasources/${record.id}`, { status: checked ? 'enabled' : 'disabled' });
-        Toast.success(checked ? '已启用' : '已停用');
-        void fetchList();
-      } finally { setTogglingIds((p) => { const s = new Set(p); s.delete(record.id); return s; }); }
+      await toggleMutation.mutateAsync({ id: record.id, values: { status: checked ? 'enabled' : 'disabled' } });
+      Toast.success(checked ? '已启用' : '已停用');
     };
     if (checked) void doToggle();
     else Modal.confirm({ title: '确认停用', content: `停用后「${record.name}」将不可用于取数，确认停用？`, onOk: () => void doToggle() });
@@ -217,7 +197,7 @@ export default function DataSourcesPage() {
       render: (_: unknown, record: ReportDatasource) => (
         <Switch
           checked={record.status === 'enabled'}
-          loading={togglingIds.has(record.id)}
+          loading={togglingId === record.id}
           disabled={!hasPermission('report:datasource:update')}
           onChange={(c) => handleToggleStatus(record, c)}
           size="small"
@@ -238,15 +218,15 @@ export default function DataSourcesPage() {
   ];
 
   const renderKeyword = () => (
-    <Input prefix={<Search size={14} />} placeholder="搜索名称/备注..." value={searchParams.keyword}
-      onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))} showClear style={{ width: 220 }} onEnterPress={handleSearch} />
+    <Input prefix={<Search size={14} />} placeholder="搜索名称/备注..." value={draftParams.keyword}
+      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} showClear style={{ width: 220 }} onEnterPress={handleSearch} />
   );
   const renderTypeFilter = () => (
-    <Select placeholder="全部类型" value={searchParams.type || undefined} onChange={(v) => setSearchParams((p) => ({ ...p, type: (v as string) ?? '' }))}
+    <Select placeholder="全部类型" value={draftParams.type || undefined} onChange={(v) => setDraftParams((p) => ({ ...p, type: (v as string) ?? '' }))}
       showClear style={{ width: 140 }} optionList={TYPE_OPTIONS} />
   );
   const renderStatusFilter = () => (
-    <Select placeholder="全部状态" value={searchParams.status || undefined} onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))}
+    <Select placeholder="全部状态" value={draftParams.status || undefined} onChange={(v) => setDraftParams((p) => ({ ...p, status: (v as string) ?? '' }))}
       showClear style={{ width: 120 }} optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} />
   );
   const renderSearchBtn = () => <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>;
@@ -267,8 +247,8 @@ export default function DataSourcesPage() {
       />
 
       <ConfigurableTable
-        bordered columns={columns} dataSource={data?.list ?? []} loading={loading} rowKey="id" size="small" empty="暂无数据"
-        onRefresh={() => void fetchList()} refreshLoading={loading} pagination={buildPagination(data?.total ?? 0, fetchList)}
+        bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
+        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(data?.total ?? 0)}
       />
 
       <AppModal
@@ -276,7 +256,7 @@ export default function DataSourcesPage() {
         visible={modalVisible}
         onOk={handleModalOk}
         onCancel={closeModal}
-        okButtonProps={{ loading: submitting }}
+        okButtonProps={{ loading: saveMutation.isPending }}
         width={560}
       >
         <Form key={editing?.id ?? 'new'} getFormApi={(api) => { formApi.current = api; }} initValues={formInitValues} labelPosition="left" labelWidth={72}>
@@ -316,7 +296,7 @@ export default function DataSourcesPage() {
                   />
                   <Form.Switch field="ssl" label="SSL" />
                   <Form.Slot label=" ">
-                    <Button onClick={handleTestConnection} loading={testing}>测试连接</Button>
+                    <Button onClick={handleTestConnection} loading={testConnectionMutation.isPending}>测试连接</Button>
                   </Form.Slot>
                 </>
               ) : values.type === 'static' ? (

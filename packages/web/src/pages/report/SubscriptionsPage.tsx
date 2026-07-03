@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { Button, Form, Input, Tag, Toast, Modal } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -8,44 +8,51 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import { CronBuilderPopover } from '@/components/CronBuilderPopover';
-import { request } from '@/utils/request';
 import { renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
-import type { ReportDashboardSubscription, ReportDashboard, PaginatedResponse } from '@zenith/shared';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  reportSubscriptionKeys,
+  useDeleteReportSubscription,
+  useReportSubscriptionDashboardOptions,
+  useReportSubscriptionList,
+  useRunReportSubscription,
+  useSaveReportSubscription,
+} from '@/hooks/queries/report-subscriptions';
+import type { ReportDashboardSubscription } from '@zenith/shared';
 
 export default function SubscriptionsPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
-  const [data, setData] = useState<PaginatedResponse<ReportDashboardSubscription> | null>(null);
-  const [loading, setLoading] = useState(false);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [keyword, setKeyword] = useState('');
-  const keywordRef = useRef('');
-  keywordRef.current = keyword;
-  const [dashboards, setDashboards] = useState<ReportDashboard[]>([]);
+  const queryClient = useQueryClient();
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftKeyword, setDraftKeyword] = useState('');
+  const [submittedKeyword, setSubmittedKeyword] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<ReportDashboardSubscription | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const [cronExprValue, setCronExprValue] = useState('');
 
-  const fetchList = useCallback(async (p = page, ps = pageSize, kw?: string) => {
-    const k = kw ?? keywordRef.current;
-    setLoading(true);
-    try {
-      const q: Record<string, string> = { page: String(p), pageSize: String(ps) };
-      if (k) q.keyword = k;
-      const res = await request.get<PaginatedResponse<ReportDashboardSubscription>>(`/api/report/subscriptions?${new URLSearchParams(q)}`);
-      if (res.code === 0) { setData(res.data); setPage(res.data.page); setPageSize(res.data.pageSize); }
-    } finally { setLoading(false); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize]);
+  const listQuery = useReportSubscriptionList({ page, pageSize, keyword: submittedKeyword || undefined });
+  const data = listQuery.data ?? null;
+  const dashboardsQuery = useReportSubscriptionDashboardOptions();
+  const dashboards = dashboardsQuery.data ?? [];
+  const saveMutation = useSaveReportSubscription();
+  const runMutation = useRunReportSubscription();
+  const deleteMutation = useDeleteReportSubscription();
 
-  useEffect(() => {
-    void fetchList();
-    request.get<PaginatedResponse<ReportDashboard>>('/api/report/dashboards?page=1&pageSize=200').then((res) => { if (res.code === 0) setDashboards(res.data.list); });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  function handleSearch() {
+    setPage(1);
+    setSubmittedKeyword(draftKeyword);
+    void queryClient.invalidateQueries({ queryKey: reportSubscriptionKeys.lists });
+  }
+
+  function handleReset() {
+    setDraftKeyword('');
+    setSubmittedKeyword('');
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: reportSubscriptionKeys.lists });
+  }
 
   function openCreate() { setEditing(null); setCronExprValue('0 0 9 * * *'); setModalVisible(true); }
   function openEdit(r: ReportDashboardSubscription) { setEditing(r); setCronExprValue(r.cron); setModalVisible(true); }
@@ -59,20 +66,18 @@ export default function SubscriptionsPage() {
     let v: Record<string, unknown>;
     try { v = await formApi.current?.validate() as Record<string, unknown>; } catch { throw new Error('validation'); }
     const payload = { dashboardId: v.dashboardId, cron: v.cron, channels: v.channels, recipients: v.recipients || undefined, enabled: v.enabled === 'enabled', remark: v.remark || undefined };
-    setSubmitting(true);
-    try {
-      const res = editing ? await request.put(`/api/report/subscriptions/${editing.id}`, payload) : await request.post('/api/report/subscriptions', payload);
-      if (res.code === 0) { Toast.success(editing ? '更新成功' : '创建成功'); closeModal(); void fetchList(); } else throw new Error(res.message);
-    } finally { setSubmitting(false); }
+    await saveMutation.mutateAsync({ id: editing?.id, values: payload });
+    Toast.success(editing ? '更新成功' : '创建成功');
+    closeModal();
   }
 
   async function handleRun(id: number) {
-    const res = await request.post(`/api/report/subscriptions/${id}/run`);
-    if (res.code === 0) { Toast.success('已推送'); void fetchList(); }
+    await runMutation.mutateAsync(id);
+    Toast.success('已推送');
   }
   async function handleDelete(id: number) {
-    const res = await request.delete(`/api/report/subscriptions/${id}`);
-    if (res.code === 0) { Toast.success('删除成功'); void fetchList(); }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   }
 
   const columns: ColumnProps<ReportDashboardSubscription>[] = [
@@ -92,20 +97,20 @@ export default function SubscriptionsPage() {
     }),
   ];
 
-  const renderKeyword = () => <Input prefix={<Search size={14} />} placeholder="搜索 Cron/备注" value={keyword} onChange={setKeyword} showClear style={{ width: 200 }} onEnterPress={() => { setPage(1); void fetchList(1, pageSize); }} />;
+  const renderKeyword = () => <Input prefix={<Search size={14} />} placeholder="搜索 Cron/备注" value={draftKeyword} onChange={setDraftKeyword} showClear style={{ width: 200 }} onEnterPress={handleSearch} />;
   const renderCreate = () => hasPermission('report:subscription:create') ? <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button> : null;
 
   return (
     <div className="page-container">
       <SearchToolbar
-        primary={<>{renderKeyword()}<Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); void fetchList(1, pageSize); }}>查询</Button><Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setKeyword(''); setPage(1); void fetchList(1, pageSize, ''); }}>重置</Button></>}
+        primary={<>{renderKeyword()}<Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button><Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button></>}
         actions={renderCreate()}
         mobilePrimary={<>{renderKeyword()}{renderCreate()}</>}
       />
-      <ConfigurableTable bordered columns={columns} dataSource={data?.list ?? []} loading={loading} rowKey="id" size="small" empty="暂无订阅"
-        onRefresh={() => void fetchList()} refreshLoading={loading} pagination={buildPagination(data?.total ?? 0, fetchList)} />
+      <ConfigurableTable bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无订阅"
+        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(data?.total ?? 0)} />
 
-      <AppModal title={editing ? '编辑订阅' : '新增订阅'} visible={modalVisible} onOk={handleOk} onCancel={closeModal} okButtonProps={{ loading: submitting }} width={560}>
+      <AppModal title={editing ? '编辑订阅' : '新增订阅'} visible={modalVisible} onOk={handleOk} onCancel={closeModal} okButtonProps={{ loading: saveMutation.isPending }} width={560}>
         <Form key={editing?.id ?? 'new'} getFormApi={(api) => { formApi.current = api; }} initValues={initValues} labelPosition="left" labelWidth={110}
           onValueChange={(v: Record<string, unknown>) => { if (typeof v.cron === 'string') setCronExprValue(v.cron); }}>
           <Form.Select field="dashboardId" label="仪表盘" style={{ width: '100%' }} rules={[{ required: true, message: '请选择仪表盘' }]} filter

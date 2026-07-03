@@ -1,24 +1,24 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import type { WorkflowCategory } from '@zenith/shared';
 import { request } from '@/utils/request';
+import { LOOKUP_STALE_TIME, unwrap } from '@/lib/query';
+
+export const workflowCategoryKeys = {
+  all: ['workflow', 'categories'] as const,
+};
 
 export function useWorkflowCategories() {
-  const [categories, setCategories] = useState<WorkflowCategory[]>([]);
-  const [loading, setLoading] = useState(false);
+  const categoriesQuery = useQuery({
+    queryKey: workflowCategoryKeys.all,
+    queryFn: () => request.get<WorkflowCategory[]>('/api/workflows/categories/all').then(unwrap),
+    staleTime: LOOKUP_STALE_TIME,
+  });
+  const { data, isFetching, refetch: refetchCategories } = categoriesQuery;
 
   const refetch = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await request.get<WorkflowCategory[]>('/api/workflows/categories/all');
-      if (res.code === 0 && res.data) setCategories(res.data);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    await refetchCategories();
+  }, [refetchCategories]);
 
-  useEffect(() => {
-    void refetch();
-  }, [refetch]);
-
-  return { categories, loading, refetch };
+  return { categories: data ?? [], loading: isFetching, refetch };
 }

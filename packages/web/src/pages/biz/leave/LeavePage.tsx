@@ -4,8 +4,9 @@
  * 演示「业务模块自存数据 + 工作流编排」：请假数据存 biz_leaves，提交审批时由后端
  * 通过 workflow-biz-bridge 发起并关联工作流；列表展示业务状态，详情跳转到流程实例整页。
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button, Form, Input, Modal, Select, Space, Tag, Toast, Typography,
 } from '@douyinfe/semi-ui';
@@ -13,14 +14,21 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Search, Send } from 'lucide-react';
 import dayjs from 'dayjs';
-import type { BizLeave, PaginatedResponse } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { BizLeave } from '@zenith/shared';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { formatDateForApi } from '@/utils/date';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
+import {
+  bizLeaveKeys,
+  type SaveBizLeavePayload,
+  useBizLeaveList,
+  useDeleteBizLeave,
+  useSaveBizLeave,
+  useSubmitBizLeave,
+} from '@/hooks/queries/biz-leave';
 
 type TagColor = 'grey' | 'blue' | 'green' | 'red' | 'orange';
 
@@ -53,45 +61,41 @@ const DEFAULT_LEAVE_SEARCH_PARAMS: LeaveSearchParams = {
 
 export default function LeavePage() {
   const navigate = useNavigate();
-  const { page, pageSize, setPage, resetPage, buildPagination } = usePagination();
-  const [list, setList] = useState<BizLeave[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [searchParams, setSearchParams] = useState<LeaveSearchParams>(DEFAULT_LEAVE_SEARCH_PARAMS);
-  const searchParamsRef = useRef<LeaveSearchParams>(DEFAULT_LEAVE_SEARCH_PARAMS);
-  searchParamsRef.current = searchParams;
+  const queryClient = useQueryClient();
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftParams, setDraftParams] = useState<LeaveSearchParams>(DEFAULT_LEAVE_SEARCH_PARAMS);
+  const [submittedParams, setSubmittedParams] = useState<LeaveSearchParams>(DEFAULT_LEAVE_SEARCH_PARAMS);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<BizLeave | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [submittingApproval, setSubmittingApproval] = useState(false);
   const formApi = useRef<FormApi | null>(null);
 
-  const fetchList = useCallback(async (p = page, ps = pageSize, params?: LeaveSearchParams) => {
-    const activeParams = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const queryParams = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-      if (activeParams.keyword.trim()) queryParams.set('keyword', activeParams.keyword.trim());
-      if (activeParams.status) queryParams.set('status', activeParams.status);
-      const res = await request.get<PaginatedResponse<BizLeave>>(`/api/biz/leaves?${queryParams.toString()}`);
-      if (res.code === 0) { setList(res.data.list); setTotal(res.data.total); }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize]);
+  const listQuery = useBizLeaveList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword.trim() || undefined,
+    status: submittedParams.status || undefined,
+  });
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const saveMutation = useSaveBizLeave();
+  const saveForApprovalMutation = useSaveBizLeave();
+  const submitApprovalMutation = useSubmitBizLeave();
+  const submitFromListMutation = useSubmitBizLeave();
+  const deleteMutation = useDeleteBizLeave();
+  const saving = saveMutation.isPending;
+  const submittingApproval = saveForApprovalMutation.isPending || submitApprovalMutation.isPending;
 
-  useEffect(() => {
-    void fetchList(1, pageSize);
+  const handleSearch = () => {
     setPage(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleSearch = () => { resetPage(); void fetchList(1, pageSize); };
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: bizLeaveKeys.lists });
+  };
   const handleReset = () => {
-    setSearchParams(DEFAULT_LEAVE_SEARCH_PARAMS);
-    resetPage();
-    void fetchList(1, pageSize, DEFAULT_LEAVE_SEARCH_PARAMS);
+    setPage(1);
+    setDraftParams(DEFAULT_LEAVE_SEARCH_PARAMS);
+    setSubmittedParams(DEFAULT_LEAVE_SEARCH_PARAMS);
+    void queryClient.invalidateQueries({ queryKey: bizLeaveKeys.lists });
   };
 
   const openCreate = () => { setEditing(null); setModalVisible(true); setTimeout(() => formApi.current?.reset(), 0); };
@@ -123,52 +127,39 @@ export default function LeavePage() {
     };
   };
 
-  const saveLeave = async (payload: Awaited<ReturnType<typeof collectPayload>>) => {
+  const saveLeave = async (
+    payload: Awaited<ReturnType<typeof collectPayload>>,
+    mutation: typeof saveMutation,
+  ) => {
     if (!payload) return null;
-    const res = editing
-      ? await request.put<BizLeave>(`/api/biz/leaves/${editing.id}`, payload)
-      : await request.post<BizLeave>('/api/biz/leaves', payload);
-    return res.code === 0 ? res.data : null;
+    return mutation.mutateAsync({ id: editing?.id, values: payload as SaveBizLeavePayload });
   };
 
   const handleSubmit = async () => {
     const payload = await collectPayload();
     if (!payload) return;
-    setSaving(true);
-    try {
-      const saved = await saveLeave(payload);
-      if (saved) { Toast.success('保存成功'); setModalVisible(false); void fetchList(); }
-    } finally {
-      setSaving(false);
-    }
+    const saved = await saveLeave(payload, saveMutation);
+    if (saved) { Toast.success('保存成功'); setModalVisible(false); }
   };
 
   const handleSubmitFromModal = async () => {
     const payload = await collectPayload();
     if (!payload) return;
-    setSubmittingApproval(true);
-    try {
-      const saved = await saveLeave(payload);
-      if (!saved) return;
-      const res = await request.post<BizLeave>(`/api/biz/leaves/${saved.id}/submit`, {});
-      if (res.code === 0) {
-        Toast.success('已提交审批');
-        setModalVisible(false);
-        void fetchList();
-      }
-    } finally {
-      setSubmittingApproval(false);
-    }
+    const saved = await saveLeave(payload, saveForApprovalMutation);
+    if (!saved) return;
+    await submitApprovalMutation.mutateAsync(saved.id);
+    Toast.success('已提交审批');
+    setModalVisible(false);
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete(`/api/biz/leaves/${id}`);
-    if (res.code === 0) { Toast.success('已删除'); void fetchList(); }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('已删除');
   };
 
   const handleSubmitApproval = async (id: number) => {
-    const res = await request.post(`/api/biz/leaves/${id}/submit`, {});
-    if (res.code === 0) { Toast.success('已提交审批'); void fetchList(); }
+    await submitFromListMutation.mutateAsync(id);
+    Toast.success('已提交审批');
   };
 
   const openWorkflow = (record: BizLeave) => {
@@ -234,8 +225,8 @@ export default function LeavePage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="搜索事由"
-      value={searchParams.keyword}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
+      value={draftParams.keyword}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))}
       onEnterPress={handleSearch}
       showClear
       style={{ width: 220, maxWidth: '100%' }}
@@ -245,8 +236,8 @@ export default function LeavePage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="状态"
-      value={searchParams.status || undefined}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as LeaveSearchParams['status']) ?? '' }))}
+      value={draftParams.status || undefined}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, status: (value as LeaveSearchParams['status']) ?? '' }))}
       showClear
       style={{ width: 140, maxWidth: '100%' }}
       optionList={Object.entries(STATUS_MAP).map(([value, s]) => ({ value, label: s.text }))}
@@ -286,12 +277,12 @@ export default function LeavePage() {
         bordered
         columns={columns}
         dataSource={list}
-        loading={loading}
+        loading={listQuery.isFetching}
         rowKey="id"
         columnSettingsKey="biz-leave"
-        pagination={buildPagination(total, fetchList)}
-        onRefresh={() => void fetchList()}
-        refreshLoading={loading}
+        pagination={buildPagination(total)}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
       />
 
       <Modal

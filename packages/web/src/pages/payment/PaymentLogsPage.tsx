@@ -1,16 +1,17 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState } from 'react';
 import type { CSSProperties } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, DatePicker, Input, Modal, Select, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search, RotateCcw } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
-import { request } from '@/utils/request';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { usePagination } from '@/hooks/usePagination';
 import { PAYMENT_CHANNEL_LABELS } from '@zenith/shared';
-import type { PaymentChannel, PaymentNotifyLog, PaginatedResponse } from '@zenith/shared';
+import type { PaymentChannel, PaymentNotifyLog } from '@zenith/shared';
+import { paymentLogKeys, usePaymentLogList } from '@/hooks/queries/payment-logs';
 
 interface SearchParams { keyword: string; channel: string; scene: string; signatureValid: string; timeRange: [Date, Date] | null; }
 const defaultSearch: SearchParams = { keyword: '', channel: '', scene: '', signatureValid: '', timeRange: null };
@@ -26,45 +27,30 @@ const codeBlockStyle: CSSProperties = {
 };
 
 export default function PaymentLogsPage() {
-  const [data, setData] = useState<PaginatedResponse<PaymentNotifyLog> | null>(null);
-  const [loading, setLoading] = useState(false);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearch);
-  const searchRef = useRef<SearchParams>(defaultSearch);
-  searchRef.current = searchParams;
+  const queryClient = useQueryClient();
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearch);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearch);
   const [detailLog, setDetailLog] = useState<PaymentNotifyLog | null>(null);
 
-  const fetchList = useCallback(
-    async (p = page, ps = pageSize, params?: SearchParams) => {
-      const active = params ?? searchRef.current;
-      setLoading(true);
-      try {
-        const query: Record<string, string> = { page: String(p), pageSize: String(ps) };
-        if (active.keyword) query.keyword = active.keyword;
-        if (active.channel) query.channel = active.channel;
-        if (active.scene) query.scene = active.scene;
-        if (active.signatureValid) query.signatureValid = active.signatureValid;
-        if (active.timeRange) {
-          query.startTime = formatDateTimeForApi(active.timeRange[0]);
-          query.endTime = formatDateTimeForApi(active.timeRange[1]);
-        }
-        const res = await request.get<PaginatedResponse<PaymentNotifyLog>>(`/api/payment/logs?${new URLSearchParams(query)}`);
-        if (res.code === 0) { setData(res.data); setPage(res.data.page); setPageSize(res.data.pageSize); }
-      } finally {
-        setLoading(false);
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [page, pageSize],
-  );
+  function buildQuery(active: SearchParams): Record<string, string> {
+    const query: Record<string, string> = {};
+    if (active.keyword) query.keyword = active.keyword;
+    if (active.channel) query.channel = active.channel;
+    if (active.scene) query.scene = active.scene;
+    if (active.signatureValid) query.signatureValid = active.signatureValid;
+    if (active.timeRange) {
+      query.startTime = formatDateTimeForApi(active.timeRange[0]);
+      query.endTime = formatDateTimeForApi(active.timeRange[1]);
+    }
+    return query;
+  }
 
-  useEffect(() => {
-    void fetchList();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const listQuery = usePaymentLogList({ page, pageSize, ...buildQuery(submittedParams) });
+  const data = listQuery.data ?? null;
 
-  function handleSearch() { setPage(1); void fetchList(1, pageSize); }
-  function handleReset() { setSearchParams(defaultSearch); setPage(1); void fetchList(1, pageSize, defaultSearch); }
+  function handleSearch() { setPage(1); setSubmittedParams(draftParams); void queryClient.invalidateQueries({ queryKey: paymentLogKeys.lists }); }
+  function handleReset() { setDraftParams(defaultSearch); setSubmittedParams(defaultSearch); setPage(1); void queryClient.invalidateQueries({ queryKey: paymentLogKeys.lists }); }
 
   const columns: ColumnProps<PaymentNotifyLog>[] = [
     { title: 'ID', dataIndex: 'id', width: 80 },
@@ -92,8 +78,8 @@ export default function PaymentLogsPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="订单号..."
-      value={searchParams.keyword}
-      onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))}
+      value={draftParams.keyword}
+      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
       showClear
       style={{ width: 200 }}
       onEnterPress={handleSearch}
@@ -103,8 +89,8 @@ export default function PaymentLogsPage() {
   const renderChannelFilter = () => (
     <Select
       placeholder="全部渠道"
-      value={searchParams.channel || undefined}
-      onChange={(v) => setSearchParams((p) => ({ ...p, channel: (v as string) ?? '' }))}
+      value={draftParams.channel || undefined}
+      onChange={(v) => setDraftParams((p) => ({ ...p, channel: (v as string) ?? '' }))}
       showClear
       style={{ width: 120 }}
       optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }]}
@@ -114,8 +100,8 @@ export default function PaymentLogsPage() {
   const renderSceneFilter = () => (
     <Select
       placeholder="全部场景"
-      value={searchParams.scene || undefined}
-      onChange={(v) => setSearchParams((p) => ({ ...p, scene: (v as string) ?? '' }))}
+      value={draftParams.scene || undefined}
+      onChange={(v) => setDraftParams((p) => ({ ...p, scene: (v as string) ?? '' }))}
       showClear
       style={{ width: 120 }}
       optionList={[{ value: 'payment', label: '支付回调' }, { value: 'refund', label: '退款回调' }]}
@@ -125,8 +111,8 @@ export default function PaymentLogsPage() {
   const renderSignatureFilter = () => (
     <Select
       placeholder="验签结果"
-      value={searchParams.signatureValid || undefined}
-      onChange={(v) => setSearchParams((p) => ({ ...p, signatureValid: (v as string) ?? '' }))}
+      value={draftParams.signatureValid || undefined}
+      onChange={(v) => setDraftParams((p) => ({ ...p, signatureValid: (v as string) ?? '' }))}
       showClear
       style={{ width: 120 }}
       optionList={[{ value: 'true', label: '验签通过' }, { value: 'false', label: '验签失败' }]}
@@ -137,8 +123,8 @@ export default function PaymentLogsPage() {
     <DatePicker
       type="dateTimeRange"
       placeholder={['开始时间', '结束时间']}
-      value={searchParams.timeRange ?? undefined}
-      onChange={(v) => setSearchParams((p) => ({ ...p, timeRange: v ? (v as [Date, Date]) : null }))}
+      value={draftParams.timeRange ?? undefined}
+      onChange={(v) => setDraftParams((p) => ({ ...p, timeRange: v ? (v as [Date, Date]) : null }))}
       style={{ width: 330 }}
     />
   );
@@ -180,8 +166,8 @@ export default function PaymentLogsPage() {
       />
 
       <ConfigurableTable
-        bordered columns={columns} dataSource={data?.list ?? []} loading={loading} rowKey="id" size="small" empty="暂无数据"
-        onRefresh={() => void fetchList()} refreshLoading={loading} pagination={buildPagination(data?.total ?? 0, fetchList)}
+        bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
+        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(data?.total ?? 0)}
       />
 
       <Modal

@@ -1,10 +1,10 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Avatar, Button, Form, Input, Modal, Space, Spin, Tag, Toast, Banner } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search, RefreshCw } from 'lucide-react';
-import type { PaginatedResponse, MpKfAccount } from '@zenith/shared';
+import type { MpKfAccount } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -13,6 +13,13 @@ import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
+import {
+  mpKfKeys,
+  useDeleteMpKfAccount,
+  useMpKfAccountList,
+  useSaveMpKfAccount,
+  useSyncMpKfAccounts,
+} from '@/hooks/queries/mp-kf';
 
 const INVITE_LABEL: Record<string, { label: string; color: 'green' | 'orange' | 'grey' }> = {
   none: { label: '未邀请', color: 'grey' },
@@ -23,56 +30,38 @@ const INVITE_LABEL: Record<string, { label: string; color: 'green' | 'orange' | 
 
 export default function MpKfAccountsPage() {
   const { hasPermission: can } = usePermission();
-  const { accounts, currentId, currentIdRef, setCurrentId, loading: accountsLoading } = useMpAccounts();
-
-  const [loading, setLoading] = useState(false);
-  const [list, setList] = useState<MpKfAccount[]>([]);
-  const [total, setTotal] = useState(0);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [keyword, setKeyword] = useState('');
-  const keywordRef = useRef('');
-  keywordRef.current = keyword;
+  const queryClient = useQueryClient();
+  const { accounts, currentId, setCurrentId, loading: accountsLoading } = useMpAccounts();
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftKeyword, setDraftKeyword] = useState('');
+  const [submittedKeyword, setSubmittedKeyword] = useState('');
+  const listQuery = useMpKfAccountList(currentId, { page, pageSize, keyword: submittedKeyword || undefined });
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<MpKfAccount | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const formRef = useRef<FormApi>(null);
+  const syncMutation = useSyncMpKfAccounts();
+  const saveMutation = useSaveMpKfAccount();
+  const deleteMutation = useDeleteMpKfAccount();
 
-  const fetchList = useCallback(async (p = page, ps = pageSize, kw = keywordRef.current) => {
-    if (!currentId) { setList([]); setTotal(0); return; }
-    const reqId = currentId;
-    setLoading(true);
-    try {
-      const q = new URLSearchParams({ page: String(p), pageSize: String(ps), accountId: String(currentId) });
-      if (kw) q.set('keyword', kw);
-      const res = await request.get<PaginatedResponse<MpKfAccount>>(`/api/mp/kf-accounts?${q}`);
-      if (currentIdRef.current !== reqId) return;
-      setList(res.data?.list ?? []);
-      setTotal(res.data?.total ?? 0);
-      setPage(res.data?.page ?? p);
-      setPageSize(res.data?.pageSize ?? ps);
-    } finally {
-      if (currentIdRef.current === reqId) setLoading(false);
-    }
-  }, [page, pageSize, currentId, currentIdRef, setPage, setPageSize]);
-
-  useEffect(() => {
+  const handleSearch = () => {
     setPage(1);
-    void fetchList(1, pageSize, keywordRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentId]);
-
-  const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
-  const handleReset = () => { setKeyword(''); setPage(1); void fetchList(1, pageSize, ''); };
+    setSubmittedKeyword(draftKeyword);
+    void queryClient.invalidateQueries({ queryKey: mpKfKeys.accountLists(currentId) });
+  };
+  const handleReset = () => {
+    setDraftKeyword('');
+    setSubmittedKeyword('');
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: mpKfKeys.accountLists(currentId) });
+  };
 
   const handleSync = async () => {
     if (!currentId) return;
-    setSyncing(true);
-    try {
-      const res = await request.post(`/api/mp/kf-accounts/sync`, { accountId: currentId });
-      if (res.code === 0) { Toast.success('同步完成'); void fetchList(); }
-    } finally { setSyncing(false); }
+    await syncMutation.mutateAsync(currentId);
+    Toast.success('同步完成');
   };
 
   const openCreate = () => { setEditingRecord(null); setModalVisible(true); };
@@ -80,22 +69,14 @@ export default function MpKfAccountsPage() {
 
   const handleSubmit = async () => {
     let values: Awaited<ReturnType<FormApi['validate']>>;
-    try { values = (await formRef.current?.validate())!; } catch { return; }
+    try { values = (await formRef.current?.validate())!; } catch { throw new Error('validation'); }
     if (!currentId) return;
-    setSubmitting(true);
-    try {
-      if (editingRecord) {
-        const res = await request.put(`/api/mp/kf-accounts/${editingRecord.id}`, { nickname: values.nickname });
-        if (res.code !== 0) return;
-        Toast.success('更新成功');
-      } else {
-        const res = await request.post('/api/mp/kf-accounts', { accountId: currentId, kfAccount: values.kfAccount, nickname: values.nickname });
-        if (res.code !== 0) return;
-        Toast.success('创建成功');
-      }
-      setModalVisible(false);
-      void fetchList();
-    } finally { setSubmitting(false); }
+    await saveMutation.mutateAsync({
+      id: editingRecord?.id,
+      values: editingRecord ? { nickname: values.nickname } : { accountId: currentId, kfAccount: values.kfAccount, nickname: values.nickname },
+    });
+    Toast.success(editingRecord ? '更新成功' : '创建成功');
+    setModalVisible(false);
   };
 
   const handleDelete = (record: MpKfAccount) => {
@@ -104,10 +85,8 @@ export default function MpKfAccountsPage() {
       content: '将同时删除微信侧客服账号。',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete(`/api/mp/kf-accounts/${record.id}`);
-        if (res.code !== 0) return;
+        await deleteMutation.mutateAsync(record.id);
         Toast.success('删除成功');
-        void fetchList();
       },
     });
   };
@@ -147,8 +126,8 @@ export default function MpKfAccountsPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="搜索客服昵称"
-      value={keyword}
-      onChange={setKeyword}
+      value={draftKeyword}
+      onChange={setDraftKeyword}
       onEnterPress={handleSearch}
       showClear
       style={{ width: 180 }}
@@ -160,7 +139,7 @@ export default function MpKfAccountsPage() {
     <Button type="primary" icon={<Plus size={14} />} disabled={!currentId} onClick={openCreate}>添加客服</Button>
   ) : null;
   const renderSyncButton = () => can('mp:kf:sync') ? (
-    <Button icon={<RefreshCw size={14} />} loading={syncing} disabled={!currentId} onClick={() => void handleSync()}>从微信同步</Button>
+    <Button icon={<RefreshCw size={14} />} loading={syncMutation.isPending} disabled={!currentId} onClick={() => void handleSync()}>从微信同步</Button>
   ) : null;
 
   return (
@@ -195,12 +174,12 @@ export default function MpKfAccountsPage() {
         <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
       )}
 
-      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList()} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total, fetchList)} scroll={{ x: 1000 }} />
+      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
+        pagination={buildPagination(total)} scroll={{ x: 1000 }} />
 
       <AppModal title={editingRecord ? '编辑客服' : '添加客服'} visible={modalVisible}
         onOk={handleSubmit} onCancel={() => { setModalVisible(false); setEditingRecord(null); }}
-        confirmLoading={submitting} width={520}>
+        confirmLoading={saveMutation.isPending} width={520}>
         <Spin spinning={false} wrapperClassName="modal-spin-wrapper">
           <Form
             key={editingRecord?.id ?? 'new'}

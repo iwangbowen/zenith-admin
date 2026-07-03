@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   Button,
   Card,
@@ -11,7 +11,6 @@ import {
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Gauge, Plus, RotateCcw, ShieldOff, Zap } from 'lucide-react';
-import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
@@ -23,47 +22,19 @@ import {
   makeLineSpec,
   useChartPalette,
 } from '@/components/charts';
+import {
+  type RateLimitKeyType,
+  type RateLimitRule,
+  type RateLimitStats,
+  useDeleteRateLimitRule,
+  useRateLimitApiPaths,
+  useRateLimitDashboard,
+  useResetRateLimitStats,
+  useSaveRateLimitRule,
+  useUnblockRateLimitKey,
+} from '@/hooks/queries/rate-limit';
 
 const { Title, Text } = Typography;
-
-type RateLimitKeyType = 'ip' | 'user' | 'ip_path';
-
-interface RateLimitRule {
-  id: number;
-  name: string;
-  description: string | null;
-  windowMs: number;
-  limit: number;
-  keyType: RateLimitKeyType;
-  enabled: boolean;
-  blockedMessage: string | null;
-  pathPatterns: string[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface RecentBlock {
-  at: string;
-  key: string;
-  path: string;
-}
-interface RateLimitStatItem {
-  name: string;
-  description: string | null;
-  windowMs: number;
-  limit: number;
-  keyType: string;
-  enabled: boolean;
-  hitCount: number;
-  blockedCount: number;
-  blockRate: number;
-  recentBlocks: RecentBlock[];
-  hourlySeries: { hour: string; hits: number; blocked: number }[];
-}
-
-interface RateLimitStats {
-  items: RateLimitStatItem[];
-}
 
 interface UpdateForm {
   windowMs: number;
@@ -107,101 +78,51 @@ export default function RateLimitPage() {
   const { hasPermission } = usePermission();
   const canManage = hasPermission('system:rate-limit:manage');
   const palette = useChartPalette();
-  const [rules, setRules] = useState<RateLimitRule[]>([]);
-  const [stats, setStats] = useState<RateLimitStats>({ items: [] });
-  const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState<RateLimitRule | null>(null);
   const [creating, setCreating] = useState(false);
   const [formApi, setFormApi] = useState<FormApi<UpdateForm> | null>(null);
   const [createFormApi, setCreateFormApi] = useState<FormApi<CreateForm> | null>(null);
-  const [apiPaths, setApiPaths] = useState<{ label: string; value: string }[]>([]);
-
-  // 加载 OpenAPI 路径列表（用于路径绑定选择器）
-  useEffect(() => {
-    fetch('/api/openapi.json')
-      .then((r) => r.json())
-      .then((spec: { paths?: Record<string, unknown> }) => {
-        if (spec?.paths) {
-          const opts = Object.keys(spec.paths)
-            .filter((p) => p.startsWith('/api/'))
-            .sort((a, b) => a.localeCompare(b))
-            .map((p) => ({ label: p, value: p }));
-          setApiPaths(opts);
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [rulesRes, statsRes] = await Promise.all([
-        request.get<RateLimitRule[]>('/api/rate-limit/rules'),
-        request.get<RateLimitStats>('/api/rate-limit/stats'),
-      ]);
-      if (rulesRes.code === 0) setRules(rulesRes.data);
-      if (statsRes.code === 0) setStats(statsRes.data);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
-
-  // 自动刷新统计（30s）
-  useEffect(() => {
-    const timer = setInterval(() => { fetchData(); }, 30 * 1000);
-    return () => clearInterval(timer);
-  }, [fetchData]);
+  const dashboardQuery = useRateLimitDashboard();
+  const apiPathsQuery = useRateLimitApiPaths();
+  const saveMutation = useSaveRateLimitRule();
+  const deleteMutation = useDeleteRateLimitRule();
+  const unblockMutation = useUnblockRateLimitKey();
+  const resetStatsMutation = useResetRateLimitStats();
+  const rules = dashboardQuery.data?.rules ?? [];
+  const stats: RateLimitStats = dashboardQuery.data?.stats ?? { items: [] };
+  const apiPaths = apiPathsQuery.data ?? [];
 
   const handleSave = async () => {
     if (!editing || !formApi) return;
-    try {
-      const values = await formApi.validate();
-      const res = await request.patch<RateLimitRule>(`/api/rate-limit/rules/${editing.id}`, values);
-      if (res.code === 0) {
-        Toast.success('规则已更新');
-        setEditing(null);
-        await fetchData();
-      }
-    } catch { /* validation error */ }
+    let values;
+    try { values = await formApi.validate(); } catch { throw new Error('validation'); }
+    await saveMutation.mutateAsync({ id: editing.id, values });
+    Toast.success('规则已更新');
+    setEditing(null);
   };
 
   const handleCreate = async () => {
     if (!createFormApi) return;
-    try {
-      const values = await createFormApi.validate();
-      const res = await request.post<RateLimitRule>('/api/rate-limit/rules', values);
-      if (res.code === 0) {
-        Toast.success('规则已创建');
-        setCreating(false);
-        await fetchData();
-      }
-    } catch { /* validation error */ }
+    let values;
+    try { values = await createFormApi.validate(); } catch { throw new Error('validation'); }
+    await saveMutation.mutateAsync({ values });
+    Toast.success('规则已创建');
+    setCreating(false);
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete<null>(`/api/rate-limit/rules/${id}`);
-    if (res.code === 0) {
-      Toast.success('已删除');
-      await fetchData();
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('已删除');
   };
 
   const handleUnblock = async (name: string, key: string) => {
-    const res = await request.post<null>('/api/rate-limit/unblock', { name, key });
-    if (res.code === 0) {
-      Toast.success(`已解封：${key}`);
-      await fetchData();
-    }
+    await unblockMutation.mutateAsync({ name, key });
+    Toast.success(`已解封：${key}`);
   };
 
   const handleResetStats = async (name: string) => {
-    const res = await request.post<null>('/api/rate-limit/reset-stats', { name });
-    if (res.code === 0) {
-      Toast.success('统计已清空');
-      await fetchData();
-    }
+    await resetStatsMutation.mutateAsync(name);
+    Toast.success('统计已清空');
   };
 
   const statsByName = new Map(stats.items.map((s) => [s.name, s]));
@@ -219,7 +140,7 @@ export default function RateLimitPage() {
                 新增规则
               </Button>
             )}
-            <Button type="primary" icon={<RotateCcw size={14} />} onClick={fetchData} loading={loading}>
+            <Button type="primary" icon={<RotateCcw size={14} />} onClick={() => void dashboardQuery.refetch()} loading={dashboardQuery.isFetching}>
               刷新
             </Button>
           </>
@@ -231,7 +152,7 @@ export default function RateLimitPage() {
                 新增规则
               </Button>
             )}
-            <Button type="primary" icon={<RotateCcw size={14} />} onClick={fetchData} loading={loading}>
+            <Button type="primary" icon={<RotateCcw size={14} />} onClick={() => void dashboardQuery.refetch()} loading={dashboardQuery.isFetching}>
               刷新
             </Button>
           </>
@@ -330,9 +251,9 @@ export default function RateLimitPage() {
       <ConfigurableTable
         bordered
         rowKey="_rowId"
-        loading={loading}
-        onRefresh={fetchData}
-        refreshLoading={loading}
+        loading={dashboardQuery.isFetching}
+        onRefresh={() => void dashboardQuery.refetch()}
+        refreshLoading={dashboardQuery.isFetching}
         dataSource={stats.items.flatMap((s) =>
           s.recentBlocks.map((b, idx) => ({
             _rowId: `${s.name}-${b.at}-${b.key}-${idx}`,

@@ -1,17 +1,24 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Tag, Toast, Modal } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw } from 'lucide-react';
-import type { CheckinMilestone, CheckinMilestoneRewardType, Coupon, PaginatedResponse } from '@zenith/shared';
+import type { CheckinMilestone, CheckinMilestoneRewardType } from '@zenith/shared';
 import { CHECKIN_MILESTONE_REWARD_TYPE_LABELS } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { AppModal } from '@/components/AppModal';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { renderEllipsis } from '../../utils/table-columns';
+import {
+  memberAdminKeys,
+  useCheckinMilestones,
+  useCouponList,
+  useDeleteCheckinMilestone,
+  useSaveCheckinMilestone,
+} from '@/hooks/queries/member-admin';
 
 interface CouponOption {
   value: number;
@@ -20,33 +27,17 @@ interface CouponOption {
 
 export default function CheckinMilestonesPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
-  const [data, setData] = useState<CheckinMilestone[]>([]);
-  const [coupons, setCoupons] = useState<CouponOption[]>([]);
-  const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<CheckinMilestone | null>(null);
   const [rewardType, setRewardType] = useState<CheckinMilestoneRewardType>('points');
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await request.get<CheckinMilestone[]>('/api/checkin-milestones');
-      if (res.code === 0) setData(res.data);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const fetchCoupons = useCallback(async () => {
-    const res = await request.get<PaginatedResponse<Coupon>>('/api/coupons?page=1&pageSize=100');
-    if (res.code === 0) setCoupons(res.data.list.map((c) => ({ value: c.id, label: c.name })));
-  }, []);
-
-  useEffect(() => {
-    void fetchData();
-    void fetchCoupons();
-  }, [fetchData, fetchCoupons]);
+  const listQuery = useCheckinMilestones();
+  const couponsQuery = useCouponList({ page: 1, pageSize: 100 });
+  const data = listQuery.data ?? [];
+  const coupons: CouponOption[] = (couponsQuery.data?.list ?? []).map((c) => ({ value: c.id, label: c.name }));
+  const saveMutation = useSaveCheckinMilestone();
+  const deleteMutation = useDeleteCheckinMilestone();
 
   const openModal = (record: CheckinMilestone | null) => {
     setEditing(record);
@@ -57,7 +48,7 @@ export default function CheckinMilestonesPage() {
   const handleOk = async () => {
     let values: Record<string, unknown> | undefined;
     try {
-      values = await formApi.current?.validate();
+      values = await formApi.current!.validate();
     } catch {
       throw new Error('validation');
     }
@@ -66,17 +57,10 @@ export default function CheckinMilestonesPage() {
       couponId: values?.rewardType === 'coupon' ? values.couponId : null,
       rewardPoints: values?.rewardType === 'points' ? values.rewardPoints : 0,
     };
-    const res = editing
-      ? await request.put<CheckinMilestone>(`/api/checkin-milestones/${editing.id}`, payload)
-      : await request.post<CheckinMilestone>('/api/checkin-milestones', payload);
-    if (res.code === 0) {
-      Toast.success(editing ? '更新成功' : '创建成功');
-      setModalVisible(false);
-      setEditing(null);
-      void fetchData();
-      return;
-    }
-    throw new Error(res.message);
+    await saveMutation.mutateAsync({ id: editing?.id, values: payload });
+    Toast.success(editing ? '更新成功' : '创建成功');
+    setModalVisible(false);
+    setEditing(null);
   };
 
   const handleDelete = (record: CheckinMilestone) => {
@@ -85,11 +69,8 @@ export default function CheckinMilestonesPage() {
       content: '删除后该累计天数的奖励配置将失效。',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete(`/api/checkin-milestones/${record.id}`);
-        if (res.code === 0) {
-          Toast.success('删除成功');
-          void fetchData();
-        }
+        await deleteMutation.mutateAsync(record.id);
+        Toast.success('删除成功');
       },
     });
   };
@@ -133,7 +114,7 @@ export default function CheckinMilestonesPage() {
   ];
 
   const renderRefreshButton = () => (
-    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => void fetchData()}>刷新</Button>
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => void queryClient.invalidateQueries({ queryKey: memberAdminKeys.checkinMilestones })}>刷新</Button>
   );
 
   const renderCreateButton = () => hasPermission('member:checkin:milestone:create') ? (
@@ -155,9 +136,9 @@ export default function CheckinMilestonesPage() {
         bordered
         columns={columns}
         dataSource={data}
-        loading={loading}
-        onRefresh={fetchData}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         rowKey="id"
         size="small"
         pagination={false}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Spin, Row, Col, Select } from '@douyinfe/semi-ui';
 import {
   AreaChart,
@@ -10,9 +10,9 @@ import {
   makePieSpec,
   useChartPalette,
 } from '@/components/charts';
-import { request } from '@/utils/request';
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_ORDER_STATUS_LABELS } from '@zenith/shared';
-import type { PaymentChannel, PaymentOrderStatus, PaymentStats, PaymentTrendPoint } from '@zenith/shared';
+import type { PaymentChannel, PaymentOrderStatus } from '@zenith/shared';
+import { usePaymentStats, usePaymentTrend } from '@/hooks/queries/payment-stats';
 
 const yuan = (cents: number) => `¥${((Number(cents) || 0) / 100).toFixed(2)}`;
 
@@ -56,30 +56,14 @@ function StatCard({ title, value, sub, accent }: StatCardProps) {
 
 export default function PaymentStatsPanel() {
   const palette = useChartPalette();
-  const [loading, setLoading] = useState(false);
-  const [stats, setStats] = useState<PaymentStats | null>(null);
-  const [trend, setTrend] = useState<PaymentTrendPoint[]>([]);
   const [days, setDays] = useState(30);
-
-  const fetchStats = useCallback(async () => {
-    const res = await request.get<PaymentStats>('/api/payment/stats');
-    if (res.code === 0) setStats(res.data);
-  }, []);
-
-  const fetchTrend = useCallback(async (d: number) => {
-    const res = await request.get<PaymentTrendPoint[]>(`/api/payment/trend?days=${d}`);
-    if (res.code === 0) setTrend(res.data);
-  }, []);
-
-  useEffect(() => {
-    setLoading(true);
-    Promise.all([fetchStats(), fetchTrend(days)]).finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const statsQuery = usePaymentStats();
+  const trendQuery = usePaymentTrend(days);
+  const stats = statsQuery.data ?? null;
+  const trend = trendQuery.data ?? [];
 
   function handleDaysChange(d: number) {
     setDays(d);
-    void fetchTrend(d);
   }
 
   const channelData = (stats?.byChannel ?? []).map((c) => ({
@@ -132,7 +116,7 @@ export default function PaymentStatsPanel() {
   }), [palette, statusData]);
 
   return (
-    <Spin spinning={loading}>
+    <Spin spinning={statsQuery.isFetching || trendQuery.isFetching}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {/* 汇总卡片 */}
         <Row gutter={[16, 16]} type="flex">

@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button, Form, Input, Select, Spin, Toast, Switch, Modal,
   Row, Col, Typography, Tag, Banner, SideSheet, Table,
@@ -10,11 +11,18 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
-import { request } from '@/utils/request';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
-import type { WorkflowConnector, WorkflowConnectorType, WorkflowConnectorBreakerState, WorkflowConnectorInvokeResult, WorkflowConnectorHttpConfig, WorkflowConnectorStats, WorkflowConnectorInvocation, PaginatedResponse } from '@zenith/shared';
+import type { WorkflowConnector, WorkflowConnectorType, WorkflowConnectorBreakerState, WorkflowConnectorInvokeResult, WorkflowConnectorHttpConfig, WorkflowConnectorInvocation } from '@zenith/shared';
+import {
+  useDeleteWorkflowConnector,
+  useSaveWorkflowConnector,
+  useTestWorkflowConnector,
+  useWorkflowConnectorList,
+  useWorkflowConnectorMonitor,
+  workflowConnectorKeys,
+} from '@/hooks/queries/workflow-connectors';
 
 const TYPE_OPTIONS: Array<{ value: WorkflowConnectorType; label: string }> = [
   { value: 'http', label: 'HTTP' },
@@ -59,23 +67,30 @@ function parseJsonObject(text: string | undefined, label: string): Record<string
 }
 
 export default function WorkflowConnectorsPage() {
+  const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
 
-  const [data, setData] = useState<PaginatedResponse<WorkflowConnector> | null>(null);
-  const [loading, setLoading] = useState(false);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
+  const listQuery = useWorkflowConnectorList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    type: submittedParams.type || undefined,
+    status: submittedParams.status || undefined,
+  });
+  const data = listQuery.data ?? null;
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<WorkflowConnector | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
+  const saveMutation = useSaveWorkflowConnector();
+  const toggleStatusMutation = useSaveWorkflowConnector();
+  const deleteMutation = useDeleteWorkflowConnector();
+  const testMutation = useTestWorkflowConnector();
 
   const [testVisible, setTestVisible] = useState(false);
-  const [testLoading, setTestLoading] = useState(false);
   const [testTarget, setTestTarget] = useState<WorkflowConnector | null>(null);
   const [testPath, setTestPath] = useState('');
   const [testResult, setTestResult] = useState<WorkflowConnectorInvokeResult | null>(null);
@@ -83,33 +98,21 @@ export default function WorkflowConnectorsPage() {
   const [monitorVisible, setMonitorVisible] = useState(false);
   const [monitorTarget, setMonitorTarget] = useState<WorkflowConnector | null>(null);
   const [monitorDays, setMonitorDays] = useState(7);
-  const [monitorLoading, setMonitorLoading] = useState(false);
-  const [monitorStats, setMonitorStats] = useState<WorkflowConnectorStats | null>(null);
-  const [monitorRows, setMonitorRows] = useState<WorkflowConnectorInvocation[]>([]);
+  const monitorQuery = useWorkflowConnectorMonitor(monitorTarget?.id, monitorDays, monitorVisible);
+  const monitorStats = monitorQuery.data?.stats ?? null;
+  const monitorRows: WorkflowConnectorInvocation[] = monitorQuery.data?.invocations ?? [];
 
-  const fetchList = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const active = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const queryObj: Record<string, string> = { page: String(p), pageSize: String(ps) };
-      if (active.keyword) queryObj.keyword = active.keyword;
-      if (active.type) queryObj.type = active.type;
-      if (active.status) queryObj.status = active.status;
-      const res = await request.get<PaginatedResponse<WorkflowConnector>>(`/api/workflows/connectors?${new URLSearchParams(queryObj).toString()}`);
-      if (res.code === 0) { setData(res.data); setPage(res.data.page); setPageSize(res.data.pageSize); }
-    } finally {
-      setLoading(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize]);
-
-  useEffect(() => {
-    void fetchList();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function handleSearch() { setPage(1); void fetchList(1, pageSize); }
-  function handleReset() { setSearchParams(defaultSearchParams); setPage(1); void fetchList(1, pageSize, defaultSearchParams); }
+  function handleSearch() {
+    setPage(1);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: workflowConnectorKeys.lists });
+  }
+  function handleReset() {
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: workflowConnectorKeys.lists });
+  }
   function openCreate() { setEditing(null); setModalVisible(true); }
   function openEdit(record: WorkflowConnector) { setEditing(record); setModalVisible(true); }
   function closeModal() { setModalVisible(false); setEditing(null); }
@@ -163,35 +166,20 @@ export default function WorkflowConnectorsPage() {
     if (hasCred) payload.credentials = credEntries;
     if (editing && values.clearCredentials) payload.clearCredentials = true;
 
-    setSubmitting(true);
-    try {
-      const res = editing
-        ? await request.put(`/api/workflows/connectors/${editing.id}`, payload)
-        : await request.post('/api/workflows/connectors', payload);
-      if (res.code === 0) { Toast.success(editing ? '更新成功' : '创建成功'); closeModal(); void fetchList(); }
-      else throw new Error(res.message);
-    } finally {
-      setSubmitting(false);
-    }
+    await saveMutation.mutateAsync({ id: editing?.id, values: payload });
+    Toast.success(editing ? '更新成功' : '创建成功');
+    closeModal();
   }
 
   async function handleDelete(id: number) {
-    const res = await request.delete(`/api/workflows/connectors/${id}`);
-    if (res.code === 0) { Toast.success('删除成功'); void fetchList(); }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   }
 
   function handleToggleStatus(record: WorkflowConnector, checked: boolean) {
     const doToggle = async () => {
-      setTogglingIds((prev) => new Set(prev).add(record.id));
-      try {
-        await request.put(`/api/workflows/connectors/${record.id}`, { status: checked ? 'enabled' : 'disabled' });
-        Toast.success(checked ? '已启用' : '已停用');
-        void fetchList();
-      } catch (err: unknown) {
-        Toast.error((err as { message?: string })?.message || '操作失败');
-      } finally {
-        setTogglingIds((prev) => { const s = new Set(prev); s.delete(record.id); return s; });
-      }
+      await toggleStatusMutation.mutateAsync({ id: record.id, values: { status: checked ? 'enabled' : 'disabled' } });
+      Toast.success(checked ? '已启用' : '已停用');
     };
     if (checked) void doToggle();
     else Modal.confirm({ title: '确认停用', content: `停用后「${record.name}」将无法被调用，确认停用？`, onOk: () => void doToggle() });
@@ -202,34 +190,16 @@ export default function WorkflowConnectorsPage() {
   }
   async function runTest() {
     if (!testTarget) return;
-    setTestLoading(true);
     setTestResult(null);
     try {
-      const res = await request.post<WorkflowConnectorInvokeResult>(`/api/workflows/connectors/${testTarget.id}/test`, testPath.trim() ? { path: testPath.trim() } : {}, { silent: true });
-      if (res.code === 0) setTestResult(res.data);
-      else Toast.error(res.message || '测试失败');
-    } finally {
-      setTestLoading(false);
+      setTestResult(await testMutation.mutateAsync({ id: testTarget.id, path: testPath.trim() || undefined }));
+    } catch (err) {
+      Toast.error((err as Error).message || '测试失败');
     }
   }
 
-  const fetchMonitor = useCallback(async (id: number, days: number) => {
-    setMonitorLoading(true);
-    try {
-      const [statsRes, invRes] = await Promise.all([
-        request.get<WorkflowConnectorStats>(`/api/workflows/connectors/${id}/stats?days=${days}`, { silent: true }),
-        request.get<WorkflowConnectorInvocation[]>(`/api/workflows/connectors/${id}/invocations?limit=50`, { silent: true }),
-      ]);
-      if (statsRes.code === 0) setMonitorStats(statsRes.data);
-      if (invRes.code === 0) setMonitorRows(invRes.data);
-    } finally {
-      setMonitorLoading(false);
-    }
-  }, []);
-
   function openMonitor(record: WorkflowConnector) {
-    setMonitorTarget(record); setMonitorDays(7); setMonitorStats(null); setMonitorRows([]); setMonitorVisible(true);
-    void fetchMonitor(record.id, 7);
+    setMonitorTarget(record); setMonitorDays(7); setMonitorVisible(true);
   }
 
   const columns: ColumnProps<WorkflowConnector>[] = [
@@ -243,7 +213,7 @@ export default function WorkflowConnectorsPage() {
     {
       title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
       render: (_: unknown, record: WorkflowConnector) => (
-        <Switch checked={record.status === 'enabled'} loading={togglingIds.has(record.id)} disabled={!hasPermission('workflow:connector:update')} onChange={(checked) => handleToggleStatus(record, checked)} size="small" />
+        <Switch checked={record.status === 'enabled'} loading={toggleStatusMutation.isPending && toggleStatusMutation.variables?.id === record.id} disabled={!hasPermission('workflow:connector:update')} onChange={(checked) => handleToggleStatus(record, checked)} size="small" />
       ),
     },
     createOperationColumn<WorkflowConnector>({
@@ -262,13 +232,13 @@ export default function WorkflowConnectorsPage() {
   ];
 
   const renderKeyword = () => (
-    <Input prefix={<Search size={14} />} placeholder="搜索名称 / 编码..." value={searchParams.keyword} onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))} showClear style={{ width: 220 }} onEnterPress={handleSearch} />
+    <Input prefix={<Search size={14} />} placeholder="搜索名称 / 编码..." value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} showClear style={{ width: 220 }} onEnterPress={handleSearch} />
   );
   const renderTypeFilter = () => (
-    <Select placeholder="全部类型" value={searchParams.type || undefined} onChange={(v) => setSearchParams((p) => ({ ...p, type: (v as string) ?? '' }))} showClear style={{ width: 130 }} optionList={TYPE_OPTIONS} />
+    <Select placeholder="全部类型" value={draftParams.type || undefined} onChange={(v) => setDraftParams((p) => ({ ...p, type: (v as string) ?? '' }))} showClear style={{ width: 130 }} optionList={TYPE_OPTIONS} />
   );
   const renderStatusFilter = () => (
-    <Select placeholder="全部状态" value={searchParams.status || undefined} onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))} showClear style={{ width: 120 }} optionList={STATUS_OPTIONS} />
+    <Select placeholder="全部状态" value={draftParams.status || undefined} onChange={(v) => setDraftParams((p) => ({ ...p, status: (v as string) ?? '' }))} showClear style={{ width: 120 }} optionList={STATUS_OPTIONS} />
   );
   const renderCreate = () => hasPermission('workflow:connector:create') ? <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button> : null;
 
@@ -287,16 +257,16 @@ export default function WorkflowConnectorsPage() {
         bordered
         columns={columns}
         dataSource={data?.list ?? []}
-        loading={loading}
+        loading={listQuery.isFetching}
         rowKey="id"
         size="small"
         empty="暂无连接器"
-        onRefresh={() => void fetchList()}
-        refreshLoading={loading}
-        pagination={buildPagination(data?.total ?? 0, fetchList)}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
+        pagination={buildPagination(data?.total ?? 0)}
       />
 
-      <AppModal title={editing ? '编辑连接器' : '新增连接器'} visible={modalVisible} onOk={handleModalOk} onCancel={closeModal} okButtonProps={{ loading: submitting }} width={720} closeOnEsc>
+      <AppModal title={editing ? '编辑连接器' : '新增连接器'} visible={modalVisible} onOk={handleModalOk} onCancel={closeModal} okButtonProps={{ loading: saveMutation.isPending }} width={720} closeOnEsc>
         <Form key={editing?.id ?? 'new'} getFormApi={(api) => { formApi.current = api; }} allowEmpty initValues={formInitValues} labelPosition="left" labelWidth={104}>
           <Row gutter={16}>
             <Col span={12}><Form.Input field="name" label="名称" placeholder="请输入名称" rules={[{ required: true, message: '名称不能为空' }]} /></Col>
@@ -353,12 +323,12 @@ export default function WorkflowConnectorsPage() {
         onCancel={() => setTestVisible(false)}
         onOk={() => void runTest()}
         okText="发送测试"
-        okButtonProps={{ loading: testLoading }}
+        okButtonProps={{ loading: testMutation.isPending }}
         width={560}
         closeOnEsc
       >
         <Input prefix="路径" value={testPath} onChange={setTestPath} placeholder="可选，相对基础地址的路径，如 /health" style={{ marginBottom: 12 }} showClear />
-        <Spin spinning={testLoading} wrapperClassName="modal-spin-wrapper">
+        <Spin spinning={testMutation.isPending} wrapperClassName="modal-spin-wrapper">
           {!testResult ? (
             <Typography.Text type="tertiary" size="small">点击「发送测试」对连接器发起一次探测请求。</Typography.Text>
           ) : (
@@ -383,12 +353,12 @@ export default function WorkflowConnectorsPage() {
         onCancel={() => setMonitorVisible(false)}
         width={760}
       >
-        <Spin spinning={monitorLoading}>
+        <Spin spinning={monitorQuery.isFetching}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
             <Typography.Text type="tertiary" size="small">统计窗口</Typography.Text>
             <Select
               size="small" value={monitorDays} style={{ width: 120 }}
-              onChange={(v) => { const d = v as number; setMonitorDays(d); if (monitorTarget) void fetchMonitor(monitorTarget.id, d); }}
+              onChange={(v) => setMonitorDays(v as number)}
               optionList={[{ value: 7, label: '近 7 天' }, { value: 30, label: '近 30 天' }, { value: 90, label: '近 90 天' }]}
             />
           </div>

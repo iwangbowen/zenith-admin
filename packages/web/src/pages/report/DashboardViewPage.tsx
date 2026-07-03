@@ -5,13 +5,18 @@ import { ArrowLeft, RotateCcw, PencilRuler, Maximize, Image, MessageSquare, Send
 import { toPng } from 'html-to-image';
 import './report-grid.css';
 import './report-screen.css';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { ScreenCanvas } from './widgets/ScreenCanvas';
-import { useWidgetData } from './widgets/useWidgetData';
 import { FilterBar } from './widgets/FilterBar';
-import type { ReportDashboard, ReportWidget, ReportFilter, ReportGridItem, ReportCanvasItem, ReportDashboardComment } from '@zenith/shared';
+import type { ReportWidget, ReportFilter, ReportGridItem, ReportCanvasItem } from '@zenith/shared';
+import {
+  useCreateReportDashboardComment,
+  useDeleteReportDashboardComment,
+  useReportDashboardComments,
+  useReportDashboardDetail,
+  useReportDashboardWidgetData,
+} from '@/hooks/queries/report-dashboards';
 
 function defaultFilterValue(f: ReportFilter): unknown {
   if (f.defaultValue !== undefined) return f.defaultValue;
@@ -25,52 +30,39 @@ export default function DashboardViewPage() {
   const [searchParams] = useSearchParams();
   const { hasPermission } = usePermission();
 
-  const [loading, setLoading] = useState(true);
-  const [dashboard, setDashboard] = useState<ReportDashboard | null>(null);
   const [filterValues, setFilterValues] = useState<Record<string, unknown>>({});
   const rootRef = useRef<HTMLDivElement | null>(null);
   const exportRef = useRef<HTMLDivElement | null>(null);
   const [exporting, setExporting] = useState(false);
   const [isFs, setIsFs] = useState(false);
   const [commentsVisible, setCommentsVisible] = useState(false);
-  const [commentsLoading, setCommentsLoading] = useState(false);
-  const [comments, setComments] = useState<ReportDashboardComment[]>([]);
   const [commentText, setCommentText] = useState('');
-  const [commentSubmitting, setCommentSubmitting] = useState(false);
 
+  const dashboardQuery = useReportDashboardDetail(dashboardId, !!dashboardId);
+  const dashboard = dashboardQuery.data ?? null;
   const widgets = useMemo(() => dashboard?.widgets ?? [], [dashboard]);
   const filters = dashboard?.filters ?? [];
   const isDark = dashboard?.config?.theme === 'dark';
   const isCanvas = dashboard?.config?.layoutMode === 'canvas';
   const screen = dashboard?.config?.screenConfig;
   const aspect = isCanvas ? `${screen?.width || 1920} / ${screen?.height || 1080}` : undefined;
+  const refreshInterval = dashboard?.config?.refreshInterval && dashboard.config.refreshInterval > 0 ? dashboard.config.refreshInterval * 1000 : false;
 
-  const { get: getData, refresh } = useWidgetData(widgets, filterValues);
+  const { get: getData, refresh } = useReportDashboardWidgetData(dashboardId, widgets, filterValues, { refetchInterval: refreshInterval });
+  const commentsQuery = useReportDashboardComments(dashboardId, commentsVisible);
+  const comments = commentsQuery.data ?? [];
+  const createCommentMutation = useCreateReportDashboardComment();
+  const deleteCommentMutation = useDeleteReportDashboardComment();
 
   useEffect(() => {
-    if (!dashboardId) return;
-    setLoading(true);
-    request.get<ReportDashboard>(`/api/report/dashboards/${dashboardId}`).then((res) => {
-      if (res.code === 0) {
-        const fv: Record<string, unknown> = {};
-        for (const f of res.data.filters ?? []) {
-          const fromUrl = searchParams.get(f.id);
-          fv[f.id] = fromUrl != null ? fromUrl : defaultFilterValue(f);
-        }
-        setDashboard(res.data);
-        setFilterValues(fv);
-      } else Toast.error(res.message || '加载失败');
-    }).finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dashboardId]);
-
-  // 自动刷新
-  useEffect(() => {
-    const sec = dashboard?.config?.refreshInterval ?? 0;
-    if (!sec || sec <= 0) return;
-    const t = setInterval(() => refresh(), sec * 1000);
-    return () => clearInterval(t);
-  }, [dashboard?.config?.refreshInterval, refresh]);
+    if (!dashboard) return;
+    const fv: Record<string, unknown> = {};
+    for (const f of dashboard.filters ?? []) {
+      const fromUrl = searchParams.get(f.id);
+      fv[f.id] = fromUrl != null ? fromUrl : defaultFilterValue(f);
+    }
+    setFilterValues(fv);
+  }, [dashboard, searchParams]);
 
   useEffect(() => {
     const onFs = () => setIsFs(!!document.fullscreenElement);
@@ -111,56 +103,32 @@ export default function DashboardViewPage() {
     } catch { Toast.error('导出失败，请重试'); } finally { setExporting(false); }
   }
 
-  async function fetchComments() {
-    if (!dashboardId) return;
-    setCommentsLoading(true);
-    try {
-      const res = await request.get<ReportDashboardComment[]>(`/api/report/dashboards/${dashboardId}/comments`, { silent: true });
-      if (res.code === 0) setComments(res.data);
-      else Toast.error(res.message || '评论加载失败');
-    } finally {
-      setCommentsLoading(false);
-    }
-  }
-
   function openComments() {
     setCommentsVisible(true);
-    void fetchComments();
   }
 
   async function submitComment() {
     const content = commentText.trim();
     if (!content) { Toast.warning('请输入评论内容'); return; }
-    setCommentSubmitting(true);
     try {
-      const res = await request.post<ReportDashboardComment>(
-        `/api/report/dashboards/${dashboardId}/comments`,
-        { widgetId: null, content },
-        { silent: true },
-      );
-      if (res.code === 0) {
-        setComments((prev) => [res.data, ...prev]);
-        setCommentText('');
-        Toast.success('发表成功');
-      } else {
-        Toast.error(res.message || '发表失败');
-      }
-    } finally {
-      setCommentSubmitting(false);
+      await createCommentMutation.mutateAsync({ dashboardId, content });
+      setCommentText('');
+      Toast.success('发表成功');
+    } catch (error) {
+      Toast.error(error instanceof Error ? error.message : '发表失败');
     }
   }
 
   async function deleteComment(commentId: number) {
-    const res = await request.delete(`/api/report/dashboards/${dashboardId}/comments/${commentId}`, undefined, { silent: true });
-    if (res.code === 0) {
-      setComments((prev) => prev.filter((comment) => comment.id !== commentId));
+    try {
+      await deleteCommentMutation.mutateAsync({ dashboardId, commentId });
       Toast.success('删除成功');
-    } else {
-      Toast.error(res.message || '删除失败');
+    } catch (error) {
+      Toast.error(error instanceof Error ? error.message : '删除失败');
     }
   }
 
-  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spin size="large" /></div>;
+  if (dashboardQuery.isFetching && !dashboard) return <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spin size="large" /></div>;
 
   const canvasState = (w: ReportWidget) => getData(w);
 
@@ -227,7 +195,7 @@ export default function DashboardViewPage() {
       >
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
           <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
-            {commentsLoading ? (
+            {commentsQuery.isFetching ? (
               <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}><Spin /></div>
             ) : comments.length === 0 ? (
               <Empty description="暂无评论" style={{ padding: '32px 0' }} />
@@ -267,7 +235,7 @@ export default function DashboardViewPage() {
               showClear
             />
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
-              <Button type="primary" icon={<Send size={14} />} loading={commentSubmitting} onClick={() => void submitComment()}>发表</Button>
+              <Button type="primary" icon={<Send size={14} />} loading={createCommentMutation.isPending} onClick={() => void submitComment()}>发表</Button>
             </div>
           </div>
         </div>

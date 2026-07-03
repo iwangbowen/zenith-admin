@@ -1,17 +1,7 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useState } from 'react';
 import { Table, Typography } from '@douyinfe/semi-ui';
-import type { PaginatedResponse } from '@zenith/shared';
-import { memberRequest } from '../utils/member-request';
 import { formatDateTime } from '@/utils/date';
-
-interface TxRecord {
-  id: number;
-  type: string;
-  amount: number;
-  remark?: string | null;
-  bizType?: string | null;
-  createdAt: string;
-}
+import { useMemberTransactions } from '../hooks/queries';
 
 interface TransactionListProps {
   fetchUrl: string;
@@ -22,32 +12,10 @@ interface TransactionListProps {
 const PAGE_SIZE = 15;
 
 export function TransactionList({ fetchUrl, typeLabels, formatAmount }: TransactionListProps) {
-  const [list, setList] = useState<TxRecord[]>([]);
   const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
-
-  const load = useCallback(
-    async (p: number) => {
-      setLoading(true);
-      const sep = fetchUrl.includes('?') ? '&' : '?';
-      const res = await memberRequest.get<PaginatedResponse<TxRecord>>(
-        `${fetchUrl}${sep}page=${p}&pageSize=${PAGE_SIZE}`,
-        { silent: true },
-      );
-      setLoading(false);
-      if (res.code === 0) {
-        setList(res.data.list);
-        setTotal(res.data.total);
-        setPage(p);
-      }
-    },
-    [fetchUrl],
-  );
-
-  useEffect(() => {
-    load(1);
-  }, [load]);
+  const query = useMemberTransactions(fetchUrl, { page, pageSize: PAGE_SIZE });
+  const data = query.data?.list ?? [];
+  const total = query.data?.total ?? 0;
 
   const columns = [
     {
@@ -86,8 +54,8 @@ export function TransactionList({ fetchUrl, typeLabels, formatAmount }: Transact
   return (
     <Table
       columns={columns}
-      dataSource={list}
-      loading={loading}
+      dataSource={data}
+      loading={query.isFetching}
       rowKey="id"
       size="small"
       pagination={{
@@ -95,7 +63,7 @@ export function TransactionList({ fetchUrl, typeLabels, formatAmount }: Transact
         pageSize: PAGE_SIZE,
         currentPage: page,
         showSizeChanger: false,
-        onPageChange: (p: number) => load(p),
+        onPageChange: (p: number) => setPage(p),
       }}
       empty={<div className="m-empty">暂无记录</div>}
     />

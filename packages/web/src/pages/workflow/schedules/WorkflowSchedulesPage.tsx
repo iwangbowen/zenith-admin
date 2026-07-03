@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Form,
@@ -12,8 +13,7 @@ import {
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Search } from 'lucide-react';
-import type { PaginatedResponse, WorkflowDefinition, WorkflowSchedule } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { WorkflowSchedule } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
@@ -22,14 +22,17 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
+import { usePublishedWorkflowDefinitions } from '@/hooks/queries/workflow-definitions';
+import { useAllUsers } from '@/hooks/queries/users';
+import {
+  useDeleteWorkflowSchedule,
+  useRunWorkflowSchedule,
+  useSaveWorkflowSchedule,
+  useWorkflowScheduleList,
+  workflowScheduleKeys,
+} from '@/hooks/queries/workflow-schedules';
 
 type ScheduleStatus = WorkflowSchedule['status'];
-
-interface UserOptionSource {
-  id: number;
-  nickname: string;
-  username: string;
-}
 
 interface SearchParams {
   definitionId: number | '';
@@ -80,96 +83,55 @@ function renderLastRunStatus(status: string | null, message: string | null) {
 }
 
 export default function WorkflowSchedulesPage() {
+  const queryClient = useQueryClient();
   const formApi = useRef<FormApi<FormValues> | null>(null);
   const { hasPermission } = usePermission();
-  const [loading, setLoading] = useState(false);
-  const [list, setList] = useState<WorkflowSchedule[]>([]);
-  const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, buildPagination } = usePagination();
 
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
+  const listQuery = useWorkflowScheduleList({
+    page,
+    pageSize,
+    definitionId: submittedParams.definitionId === '' ? undefined : submittedParams.definitionId,
+    status: submittedParams.status || undefined,
+  });
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
 
-  const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
-  const [userOptions, setUserOptions] = useState<Array<{ label: string; value: number }>>([]);
+  const definitionsQuery = usePublishedWorkflowDefinitions();
+  const usersQuery = useAllUsers();
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<WorkflowSchedule | null>(null);
-  const [saving, setSaving] = useState(false);
   const [cronExprValue, setCronExprValue] = useState('');
-  const [runningId, setRunningId] = useState<number | null>(null);
+  const saveMutation = useSaveWorkflowSchedule();
+  const deleteMutation = useDeleteWorkflowSchedule();
+  const runMutation = useRunWorkflowSchedule();
   const canCreate = hasPermission('workflow:schedule:create');
   const canEdit = hasPermission('workflow:schedule:edit');
   const canDelete = hasPermission('workflow:schedule:delete');
 
   const definitionOptions = useMemo(
-    () => definitions.map((item) => ({ value: item.id, label: item.name })),
-    [definitions],
+    () => (definitionsQuery.data ?? []).map((item) => ({ value: item.id, label: item.name })),
+    [definitionsQuery.data],
   );
-
-  const fetchData = useCallback(
-    async (p = page, ps = pageSize, params?: SearchParams) => {
-      const currentParams = params ?? searchParamsRef.current;
-      setLoading(true);
-      try {
-        const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-        if (currentParams.definitionId !== '') {
-          query.set('definitionId', String(currentParams.definitionId));
-        }
-        if (currentParams.status) {
-          query.set('status', currentParams.status);
-        }
-        const res = await request.get<PaginatedResponse<WorkflowSchedule>>(
-          `/api/workflows/schedules?${query.toString()}`,
-        );
-        if (res.code === 0) {
-          setList(res.data.list);
-          setTotal(res.data.total);
-        }
-      } finally {
-        setLoading(false);
-      }
-    },
-    [page, pageSize],
+  const userOptions = useMemo(
+    () => (usersQuery.data ?? []).map((user) => ({ value: user.id, label: user.nickname || user.username })),
+    [usersQuery.data],
   );
-
-  useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
-
-  useEffect(() => {
-    request
-      .get<WorkflowDefinition[]>('/api/workflows/definitions/published')
-      .then((res) => {
-        if (res.code === 0) setDefinitions(res.data);
-      })
-      .catch(() => {});
-
-    request
-      .get<UserOptionSource[]>('/api/users/all')
-      .then((res) => {
-        if (res.code === 0) {
-          setUserOptions(
-            res.data.map((user) => ({
-              value: user.id,
-              label: user.nickname || user.username,
-            })),
-          );
-        }
-      })
-      .catch(() => {});
-  }, []);
 
   const handleSearch = () => {
     setPage(1);
-    void fetchData(1, pageSize);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: workflowScheduleKeys.lists });
   };
 
   const handleReset = () => {
-    setSearchParams(defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
     setPage(1);
-    void fetchData(1, pageSize, defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: workflowScheduleKeys.lists });
   };
 
   const openCreate = () => {
@@ -217,41 +179,30 @@ export default function WorkflowSchedulesPage() {
       status: values.status ?? 'enabled',
     };
 
-    setSaving(true);
+    await saveMutation.mutateAsync({ id: editing?.id, values: body });
+    Toast.success(editing ? '更新成功' : '创建成功');
+    setModalVisible(false);
+    setEditing(null);
+  };
+
+  const handleModalOk = async () => {
+    let values: FormValues;
     try {
-      const res = editing
-        ? await request.put<WorkflowSchedule>(`/api/workflows/schedules/${editing.id}`, body)
-        : await request.post<WorkflowSchedule>('/api/workflows/schedules', body);
-      if (res.code === 0) {
-        Toast.success(editing ? '更新成功' : '创建成功');
-        setModalVisible(false);
-        setEditing(null);
-        void fetchData();
-      }
-    } finally {
-      setSaving(false);
+      values = await formApi.current!.validate();
+    } catch {
+      throw new Error('validation');
     }
+    await handleSubmit(values);
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete(`/api/workflows/schedules/${id}`);
-    if (res.code === 0) {
-      Toast.success('已删除');
-      void fetchData();
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('已删除');
   };
 
   const handleRunOnce = async (row: WorkflowSchedule) => {
-    setRunningId(row.id);
-    try {
-      const res = await request.post<WorkflowSchedule>(`/api/workflows/schedules/${row.id}/run`);
-      if (res.code === 0) {
-        Toast.success(res.message || '已触发');
-        void fetchData();
-      }
-    } finally {
-      setRunningId(null);
-    }
+    await runMutation.mutateAsync(row.id);
+    Toast.success('已触发');
   };
 
   const columns: ColumnProps<WorkflowSchedule>[] = [
@@ -318,8 +269,8 @@ export default function WorkflowSchedulesPage() {
           key: 'run-once',
           label: '立即执行',
           hidden: !canEdit,
-          loading: runningId === record.id,
-          disabled: runningId !== null,
+          loading: runMutation.isPending && runMutation.variables === record.id,
+          disabled: runMutation.isPending,
           onClick: () => handleRunOnce(record),
         },
         {
@@ -342,9 +293,9 @@ export default function WorkflowSchedulesPage() {
   const renderDefinitionFilter = () => (
     <Select
       placeholder="流程"
-      value={searchParams.definitionId === '' ? undefined : searchParams.definitionId}
+      value={draftParams.definitionId === '' ? undefined : draftParams.definitionId}
       onChange={(value) =>
-        setSearchParams((prev) => ({ ...prev, definitionId: (value as number) ?? '' }))
+        setDraftParams((prev) => ({ ...prev, definitionId: (value as number) ?? '' }))
       }
       optionList={definitionOptions}
       filter
@@ -356,9 +307,9 @@ export default function WorkflowSchedulesPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="状态"
-      value={searchParams.status || undefined}
+      value={draftParams.status || undefined}
       onChange={(value) =>
-        setSearchParams((prev) => ({ ...prev, status: (value as ScheduleStatus) ?? '' }))
+        setDraftParams((prev) => ({ ...prev, status: (value as ScheduleStatus) ?? '' }))
       }
       optionList={STATUS_OPTIONS}
       showClear
@@ -411,13 +362,13 @@ export default function WorkflowSchedulesPage() {
 
       <ConfigurableTable<WorkflowSchedule>
         bordered
-        loading={loading}
-        onRefresh={fetchData}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         rowKey="id"
         dataSource={list}
         columns={columns}
-        pagination={buildPagination(total, fetchData)}
+        pagination={buildPagination(total)}
       />
 
       <AppModal
@@ -427,8 +378,8 @@ export default function WorkflowSchedulesPage() {
           setModalVisible(false);
           setEditing(null);
         }}
-        onOk={() => formApi.current?.submitForm()}
-        confirmLoading={saving}
+        onOk={handleModalOk}
+        confirmLoading={saveMutation.isPending}
         okText={editing ? '保存' : '创建'}
         closeOnEsc
         width={620}

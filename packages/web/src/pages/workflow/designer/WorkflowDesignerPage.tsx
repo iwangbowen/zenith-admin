@@ -5,9 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, Modal, RadioGroup, Radio, Spin, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import { ArrowLeft, Download, Eye, History, Minus, Play, Plus, Redo2, RotateCcw, Save, Send, Stethoscope, Undo2, Upload } from 'lucide-react';
-import type { WorkflowDefinition, WorkflowDefinitionSnapshot, WorkflowFlowData, WorkflowFormField, WorkflowFormType, WorkflowCustomFormConfig, WorkflowDefinitionHealthReport, WorkflowDefinitionHealthIssue } from '@zenith/shared';
+import type { WorkflowDefinition, WorkflowDefinitionSnapshot, WorkflowFlowData, WorkflowFormField, WorkflowFormType, WorkflowCustomFormConfig, WorkflowDefinitionHealthIssue } from '@zenith/shared';
 import { WORKFLOW_FORM_TYPES, WORKFLOW_FORM_TYPE_LABELS, resolveApproverDedupMode } from '@zenith/shared';
-import { request } from '@/utils/request';
 
 import WorkflowVersionsModal from '../components/WorkflowVersionsModal';
 
@@ -50,6 +49,17 @@ import WorkflowHealthCheckDrawer from './components/WorkflowHealthCheckDrawer';
 import { useFlowHealth } from './hooks/useFlowHealth';
 import type { AdvancedSettingsData } from './components/AdvancedSettingsPanel';
 import { DEFAULT_ADVANCED_SETTINGS } from './components/advanced-settings';
+import { useAllUsers } from '@/hooks/queries/users';
+import { useAllRoles } from '@/hooks/queries/roles';
+import { useFlatDepartments } from '@/hooks/queries/departments';
+import { usePublishedWorkflowDefinitions, useWorkflowDefinitionDetail } from '@/hooks/queries/workflow-definitions';
+import {
+  usePublishWorkflowDesignerDefinition,
+  useSaveWorkflowDesignerDefinition,
+  useWorkflowDesignerHealthCheck,
+  useWorkflowDesignerPositionOptions,
+  useWorkflowDesignerUserGroupOptions,
+} from '@/hooks/queries/workflow-designer';
 import './styles/flow-designer.css';
 
 // ─── 选项数据类型 ─────────────────────────────────────────────────────
@@ -81,17 +91,8 @@ export default function WorkflowDesignerPage({
   const navigate = useNavigate();
   const isNew = !presetDefinition && id === 'new';
 
-  const [pageLoading, setPageLoading] = useState(!presetDefinition && !isNew);
-  const [saving, setSaving] = useState(false);
-  const [publishing, setPublishing] = useState(false);
   const [definition, setDefinition] = useState<WorkflowDefinition | null>(null);
   const [process, setProcess, history] = useHistoryState<FlowProcess>(createDefaultProcess());
-  const [users, setUsers] = useState<UserOption[]>([]);
-  const [roles, setRoles] = useState<RoleOption[]>([]);
-  const [departments, setDepartments] = useState<DepartmentOption[]>([]);
-  const [userGroups, setUserGroups] = useState<Array<{ id: number; name: string }>>([]);
-  const [positions, setPositions] = useState<Array<{ id: number; name: string }>>([]);
-  const [subProcessOptions, setSubProcessOptions] = useState<Array<{ value: number; label: string; fields?: Array<{ key: string; label: string; type?: string }> }>>([]);
 
   // 节点编辑抽屉
   const [editingNode, setEditingNode] = useState<FlowNode | null>(null);
@@ -144,6 +145,39 @@ export default function WorkflowDesignerPage({
     return Number.isFinite(n) ? n : null;
   })();
   const [metaCategoryId, setMetaCategoryId] = useState<number | null>(initialCategoryId);
+  const definitionId = id && id !== 'new' ? Number(id) : null;
+  const definitionQuery = useWorkflowDefinitionDetail(definitionId, !presetDefinition && !isNew);
+  const allUsersQuery = useAllUsers();
+  const allRolesQuery = useAllRoles();
+  const flatDepartmentsQuery = useFlatDepartments();
+  const userGroupsQuery = useWorkflowDesignerUserGroupOptions();
+  const positionsQuery = useWorkflowDesignerPositionOptions();
+  const publishedDefinitionsQuery = usePublishedWorkflowDefinitions();
+  const saveMutation = useSaveWorkflowDesignerDefinition();
+  const publishMutation = usePublishWorkflowDesignerDefinition();
+  const healthCheckMutation = useWorkflowDesignerHealthCheck();
+  const users = (allUsersQuery.data ?? []) as UserOption[];
+  const roles = (allRolesQuery.data ?? []) as RoleOption[];
+  const departments = useMemo<DepartmentOption[]>(
+    () => (flatDepartmentsQuery.data ?? []).map((d) => ({ id: d.id, name: d.name, parentId: d.parentId ?? null })),
+    [flatDepartmentsQuery.data],
+  );
+  const userGroups = userGroupsQuery.data ?? [];
+  const positions = positionsQuery.data ?? [];
+  const subProcessOptions = useMemo(
+    () => (publishedDefinitionsQuery.data ?? [])
+      .filter((d) => d.id !== definitionId)
+      .map((d) => ({
+        value: d.id,
+        label: d.name,
+        fields: Array.isArray(d.formFields)
+          ? (d.formFields as Array<{ key?: string; label?: string; type?: string }>)
+              .filter((f) => f && typeof f.key === 'string' && f.key)
+              .map((f) => ({ key: f.key as string, label: f.label ?? (f.key as string), type: f.type }))
+          : [],
+      })),
+    [definitionId, publishedDefinitionsQuery.data],
+  );
 
   // 同步表单字段到视图：设计器表单取所选表单字段；自定义表单取声明的流程变量
   const VARIABLE_TYPE_TO_FIELD: Record<string, WorkflowFormField['type']> = {
@@ -162,41 +196,37 @@ export default function WorkflowDesignerPage({
   // ─── 加载数据 ─────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!presetDefinition && !isNew && id) {
-      setPageLoading(true);
-      request.get<WorkflowDefinition>(`/api/workflows/definitions/${id}`).then(res => {
-        if (res.code === 0 && res.data) {
-          setDefinition(res.data);
-          setMetaName(res.data.name);
-          setMetaDesc(res.data.description ?? '');
-          setMetaCategoryId(res.data.categoryId ?? null);
-          setMetaInitiatorScopeType(res.data.initiatorScopeType ?? 'all');
-          setMetaInitiatorScopeIds(res.data.initiatorScopeIds ?? []);
-          setFormId(res.data.formId ?? null);
-          setFormType(res.data.formType ?? 'designer');
-          setCustomForm(res.data.customForm ?? null);
-          if (res.data.formFields) setLocalFormFields(res.data.formFields);
-          const fd = res.data.flowData;
-          if (fd && 'process' in fd && (fd as unknown as Record<string, unknown>).process) {
-            history.reset((fd as unknown as Record<string, unknown>).process);
-          }
-          if (fd && 'settings' in fd && (fd as unknown as Record<string, unknown>).settings) {
-            const loaded = (fd as unknown as Record<string, unknown>).settings as Partial<AdvancedSettingsData>;
-            const normalized: AdvancedSettingsData = {
-              ...DEFAULT_ADVANCED_SETTINGS,
-              ...loaded,
-              approverDedupMode: resolveApproverDedupMode(loaded),
-            };
-            delete normalized.autoApproveIfSameUser;
-            setAdvancedSettings(normalized);
-          }
-        }
-      }).finally(() => setPageLoading(false));
+    const data = definitionQuery.data;
+    if (!presetDefinition && !isNew && data) {
+      setDefinition(data);
+      setMetaName(data.name);
+      setMetaDesc(data.description ?? '');
+      setMetaCategoryId(data.categoryId ?? null);
+      setMetaInitiatorScopeType(data.initiatorScopeType ?? 'all');
+      setMetaInitiatorScopeIds(data.initiatorScopeIds ?? []);
+      setFormId(data.formId ?? null);
+      setFormType(data.formType ?? 'designer');
+      setCustomForm(data.customForm ?? null);
+      if (data.formFields) setLocalFormFields(data.formFields);
+      const fd = data.flowData;
+      if (fd && 'process' in fd && (fd as unknown as Record<string, unknown>).process) {
+        history.reset((fd as unknown as Record<string, unknown>).process);
+      }
+      if (fd && 'settings' in fd && (fd as unknown as Record<string, unknown>).settings) {
+        const loaded = (fd as unknown as Record<string, unknown>).settings as Partial<AdvancedSettingsData>;
+        const normalized: AdvancedSettingsData = {
+          ...DEFAULT_ADVANCED_SETTINGS,
+          ...loaded,
+          approverDedupMode: resolveApproverDedupMode(loaded),
+        };
+        delete normalized.autoApproveIfSameUser;
+        setAdvancedSettings(normalized);
+      }
     }
     // history.reset 是稳定的 useCallback，不需要追踪；
     // 不能将 history 对象本身加入依赖，否则每次添加节点（pastLen 变化）都会重新触发数据加载
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, isNew, presetDefinition]);
+  }, [definitionQuery.data, isNew, presetDefinition]);
 
   // 预置定义数据（如流程定义快照）：直接用其初始化，跳过路由拉取
   useEffect(() => {
@@ -224,55 +254,8 @@ export default function WorkflowDesignerPage({
       delete normalized.autoApproveIfSameUser;
       setAdvancedSettings(normalized);
     }
-    setPageLoading(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presetDefinition]);
-
-  useEffect(() => {
-    request.get<UserOption[]>('/api/users/all').then(res => {
-      if (res.code === 0 && res.data) {
-        setUsers(res.data);
-      }
-    });
-    request.get<RoleOption[]>('/api/roles/all').then(res => {
-      if (res.code === 0 && res.data) {
-        setRoles(res.data);
-      }
-    });
-    request.get<DepartmentOption[]>('/api/departments/flat').then((res) => {
-      if (res.code === 0 && res.data) {
-        setDepartments(res.data.map((d) => ({ id: d.id, name: d.name, parentId: d.parentId ?? null })));
-      }
-    });
-    request.get<Array<{ id: number; name: string }>>('/api/user-groups/all').then(res => {
-      if (res.code === 0 && res.data) {
-        setUserGroups(res.data.map(g => ({ id: g.id, name: g.name })));
-      }
-    });
-    request.get<Array<{ id: number; name: string }>>('/api/positions/all').then(res => {
-      if (res.code === 0 && res.data) {
-        setPositions(res.data.map(p => ({ id: p.id, name: p.name })));
-      }
-    });
-    request.get<WorkflowDefinition[]>('/api/workflows/definitions/published').then((res) => {
-      if (res.code === 0 && Array.isArray(res.data)) {
-        const currentId = id && id !== 'new' ? Number(id) : null;
-        setSubProcessOptions(
-          res.data
-            .filter((d) => d.id !== currentId)
-            .map((d) => ({
-              value: d.id,
-              label: d.name,
-              fields: Array.isArray(d.formFields)
-                ? (d.formFields as Array<{ key?: string; label?: string; type?: string }>)
-                    .filter((f) => f && typeof f.key === 'string' && f.key)
-                    .map((f) => ({ key: f.key as string, label: f.label ?? (f.key as string), type: f.type }))
-                : [],
-            })),
-        );
-      }
-    });
-  }, [id]);
 
   // ─── 节点操作 ─────────────────────────────────────────────────────
 
@@ -528,58 +511,38 @@ export default function WorkflowDesignerPage({
     initiatorScopeType: 'all' | 'users' | 'departments' | 'roles';
     initiatorScopeIds: number[] | null;
   }, options: { showToast?: boolean } = {}): Promise<WorkflowDefinition | null> => {
-    setSaving(true);
-    try {
-      const flowData = buildCurrentFlowData();
-      const payload = {
-        name: meta.name,
-        description: meta.description ?? null,
-        categoryId: meta.categoryId,
-        initiatorScopeType: meta.initiatorScopeType,
-        initiatorScopeIds: meta.initiatorScopeIds,
-        flowData,
-        formId: formType === 'designer' ? formId : null,
-        formType,
-        customForm: formType === 'custom' || formType === 'external' ? customForm : null,
-      };
+    const flowData = buildCurrentFlowData();
+    const payload = {
+      name: meta.name,
+      description: meta.description ?? null,
+      categoryId: meta.categoryId,
+      initiatorScopeType: meta.initiatorScopeType,
+      initiatorScopeIds: meta.initiatorScopeIds,
+      flowData,
+      formId: formType === 'designer' ? formId : null,
+      formType,
+      customForm: formType === 'custom' || formType === 'external' ? customForm : null,
+    };
 
-      let res;
-      if (isNew) {
-        res = await request.post<WorkflowDefinition>('/api/workflows/definitions', payload);
-      } else {
-        res = await request.put<WorkflowDefinition>(`/api/workflows/definitions/${id}`, payload);
-      }
-
-      if (res.code === 0) {
-        if (options.showToast !== false) Toast.success('保存成功');
-        if (isNew && res.data) {
-          navigate(`/workflow/designer/${res.data.id}`, { replace: true });
-        }
-        setDefinition(res.data ?? null);
-        return res.data ?? null;
-      }
-      return null;
-    } finally {
-      setSaving(false);
+    const saved = await saveMutation.mutateAsync({ id: isNew ? null : definitionId, values: payload });
+    if (options.showToast !== false) Toast.success('保存成功');
+    if (isNew && saved) {
+      navigate(`/workflow/designer/${saved.id}`, { replace: true });
     }
+    setDefinition(saved);
+    return saved;
   };
 
   /** 发布前体检：拉取最新体检并返回严重（critical）问题，用于阻断发布 */
   const fetchCriticalIssues = async (): Promise<WorkflowDefinitionHealthIssue[]> => {
     const flowData = buildCurrentFlowData();
     const fieldPayload = formFields.filter((f) => f.key).map((f) => ({ key: f.key, type: f.type }));
-    const res = await request.post<WorkflowDefinitionHealthReport>(
-      '/api/workflows/definitions/health-check',
-      { flowData, formFields: fieldPayload },
-      { silent: true },
-    );
-    if (res.code !== 0) return [];
-    return res.data.checks.flatMap((c) => c.issues).filter((i) => i.severity === 'critical');
+    const report = await healthCheckMutation.mutateAsync({ flowData, formFields: fieldPayload, silent: true });
+    return report.checks.flatMap((c) => c.issues).filter((i) => i.severity === 'critical');
   };
 
   const handlePublish = async () => {
     if (isNew || !id || !validateBeforeSave()) return;
-    setPublishing(true);
     try {
       // 发布前 gate：存在严重问题则阻断，引导去修复 / 打开流程体检
       const criticals = await fetchCriticalIssues();
@@ -608,13 +571,11 @@ export default function WorkflowDesignerPage({
       }
       const saved = await doSave(buildCurrentMeta(), { showToast: false });
       if (!saved) return;
-      const res = await request.post<WorkflowDefinition>(`/api/workflows/definitions/${id}/publish`, {});
-      if (res.code === 0) {
-        Toast.success('发布成功');
-        setDefinition(res.data ?? { ...saved, status: 'published', version: saved.version + 1 });
-      }
-    } finally {
-      setPublishing(false);
+      const published = await publishMutation.mutateAsync(Number(id));
+      Toast.success('发布成功');
+      setDefinition(published ?? { ...saved, status: 'published', version: saved.version + 1 });
+    } catch {
+      // request 层负责错误提示
     }
   };
 
@@ -671,6 +632,9 @@ export default function WorkflowDesignerPage({
     if (isNew || !id) return;
     setHistoryModalVisible(true);
   };
+  const pageLoading = !presetDefinition && !isNew && definitionQuery.isFetching && !definition;
+  const saving = saveMutation.isPending;
+  const publishing = publishMutation.isPending || healthCheckMutation.isPending;
 
   if (pageLoading) {
     return (

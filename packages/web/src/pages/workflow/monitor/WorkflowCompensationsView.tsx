@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Button, Descriptions, Divider, Empty, Input, Modal, Select, SideSheet, Space, Tag, Timeline, Toast, TextArea, Typography, Upload } from '@douyinfe/semi-ui';
+import { useState } from 'react';
+import { Button, Descriptions, Divider, Empty, Modal, Select, SideSheet, Space, Tag, Timeline, Toast, TextArea, Typography, Upload } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RotateCcw, Paperclip } from 'lucide-react';
-import type { PaginatedResponse, WorkflowCompensation, WorkflowCompensationDetail } from '@zenith/shared';
+import type { WorkflowCompensation } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { formatDateTime } from '@/utils/date';
@@ -11,6 +11,11 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
+import {
+  useWorkflowCompensationAction,
+  useWorkflowCompensationDetail,
+  useWorkflowCompensationList,
+} from '@/hooks/queries/workflow-monitor';
 
 const STATUS: Record<string, { text: string; color: string }> = {
   pending: { text: '待修复', color: 'amber' },
@@ -35,53 +40,54 @@ export default function WorkflowCompensationsView() {
   const { hasPermission } = usePermission();
   const canOperate = hasPermission('workflow:engine:operate');
   const { page, pageSize, buildPagination } = usePagination();
-  const [data, setData] = useState<PaginatedResponse<WorkflowCompensation> | null>(null);
-  const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string | undefined>('pending');
-
-  const fetchList = useCallback(async () => {
-    setLoading(true);
-    try {
-      const qs = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
-      if (status) qs.set('status', status);
-      const res = await request.get<PaginatedResponse<WorkflowCompensation>>(`/api/workflows/compensation/list?${qs}`);
-      if (res.data) setData(res.data);
-    } finally { setLoading(false); }
-  }, [page, pageSize, status]);
-
-  useEffect(() => { fetchList(); }, [fetchList]);
-
-  const [detail, setDetail] = useState<WorkflowCompensationDetail | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
+  const listQuery = useWorkflowCompensationList({ page, pageSize, status });
+  const data = listQuery.data ?? null;
+  const [detailId, setDetailId] = useState<number | undefined>();
+  const detailQuery = useWorkflowCompensationDetail(detailId, detailId !== undefined);
+  const detail = detailQuery.data ?? null;
+  const detailLoading = detailQuery.isFetching;
   const [noteText, setNoteText] = useState('');
   const [pendingAtt, setPendingAtt] = useState<Attachment[]>([]);
-  const [acting, setActing] = useState(false);
+  const actionMutation = useWorkflowCompensationAction();
+  const acting = actionMutation.isPending;
 
-  const openDetail = async (id: number) => {
-    setDetailLoading(true); setDetail(null); setNoteText(''); setPendingAtt([]);
-    try {
-      const res = await request.get<WorkflowCompensationDetail>(`/api/workflows/compensation/${id}`);
-      if (res.data) setDetail(res.data);
-    } finally { setDetailLoading(false); }
+  const openDetail = (id: number) => {
+    setDetailId(id);
+    setNoteText('');
+    setPendingAtt([]);
   };
-  const refreshDetail = async (id: number) => { const res = await request.get<WorkflowCompensationDetail>(`/api/workflows/compensation/${id}`); if (res.data) setDetail(res.data); };
 
   const resolve = (r: WorkflowCompensation, action: 'resolve' | 'terminate') => { Modal.confirm({
     title: action === 'resolve' ? '标记修复放行' : '终止流程',
     content: action === 'resolve' ? '确认异常已处理，流程继续？' : '将终止该实例并跳过待办，不可恢复',
     okButtonProps: action === 'terminate' ? { type: 'danger' } : undefined,
-    onOk: async () => { const res = await request.post(`/api/workflows/compensation/${r.id}/resolve`, { action }); if (res.code === 0) { Toast.success('已处理'); fetchList(); if (detail?.id === r.id) setDetail(null); } },
+    onOk: async () => {
+      await actionMutation.mutateAsync({ id: r.id, action: 'resolve', body: { action } });
+      Toast.success('已处理');
+      if (detail?.id === r.id) setDetailId(undefined);
+    },
   }); };
 
   const doResume = (id: number) => { Modal.confirm({
     title: '恢复后继续推进', content: '确认补偿已完成？将从失败节点继续推进流程。',
-    onOk: async () => { setActing(true); try { const res = await request.post(`/api/workflows/compensation/${id}/resume`, {}); if (res.code === 0) { Toast.success('已恢复推进'); await refreshDetail(id); fetchList(); } } finally { setActing(false); } },
+    onOk: async () => {
+      await actionMutation.mutateAsync({ id, action: 'resume' });
+      Toast.success('已恢复推进');
+      void detailQuery.refetch();
+    },
   }); };
-  const doRetry = async (id: number) => { setActing(true); try { const res = await request.post(`/api/workflows/compensation/${id}/retry`, {}); if (res.code === 0) { Toast.success('已重新入队'); await refreshDetail(id); fetchList(); } } finally { setActing(false); } };
+  const doRetry = async (id: number) => {
+    await actionMutation.mutateAsync({ id, action: 'retry' });
+    Toast.success('已重新入队');
+    void detailQuery.refetch();
+  };
   const doNote = async (id: number) => {
     if (!noteText.trim() && !pendingAtt.length) { Toast.warning('请输入备注或添加附件'); return; }
-    setActing(true);
-    try { const res = await request.post(`/api/workflows/compensation/${id}/note`, { note: noteText.trim() || undefined, attachments: pendingAtt.length ? pendingAtt : undefined }); if (res.code === 0) { setNoteText(''); setPendingAtt([]); await refreshDetail(id); } } finally { setActing(false); }
+    await actionMutation.mutateAsync({ id, action: 'note', body: { note: noteText.trim() || undefined, attachments: pendingAtt.length ? pendingAtt : undefined } });
+    setNoteText('');
+    setPendingAtt([]);
+    void detailQuery.refetch();
   };
 
   const columns: ColumnProps<WorkflowCompensation>[] = [
@@ -108,13 +114,13 @@ export default function WorkflowCompensationsView() {
         <Space>
           <Select value={status} onChange={(v) => setStatus(v as string)} placeholder="状态" style={{ width: 130 }} showClear
             optionList={[{ value: 'pending', label: '待修复' }, { value: 'resolved', label: '已放行' }, { value: 'terminated', label: '已终止' }]} />
-          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => fetchList()}>刷新</Button>
+          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => void listQuery.refetch()}>刷新</Button>
           <Typography.Text type="tertiary" size="small">异常捕获 / 补偿产生的修复工单</Typography.Text>
         </Space>
       )} />
-      <ConfigurableTable bordered columns={columns} dataSource={data?.list ?? []} loading={loading} onRefresh={fetchList} refreshLoading={loading} rowKey="id" size="small" empty="暂无补偿工单" pagination={buildPagination(data?.total ?? 0, fetchList)} />
+      <ConfigurableTable bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} rowKey="id" size="small" empty="暂无补偿工单" pagination={buildPagination(data?.total ?? 0)} />
 
-      <SideSheet title={`补偿工单 #${detail?.id ?? ''}`} visible={!!detail || detailLoading} onCancel={() => setDetail(null)} width={520}>
+      <SideSheet title={`补偿工单 #${detail?.id ?? ''}`} visible={detailId !== undefined || detailLoading} onCancel={() => setDetailId(undefined)} width={520}>
         {detail && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <Descriptions row size="small" data={[

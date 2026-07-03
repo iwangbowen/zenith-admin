@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AppModal } from '@/components/AppModal';
 import {
   Button,
@@ -15,9 +15,8 @@ import {
   Typography,
 } from '@douyinfe/semi-ui';
 import { Folder, ChevronLeft, ChevronRight, LayoutGrid, List as ListIcon } from 'lucide-react';
-import type { FileStorageConfig, FolderEntry, ManagedFile, StorageBrowseResult } from '@zenith/shared';
+import type { FileStorageConfig, FolderEntry, ManagedFile } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { canPreviewFile, fetchProtectedFile, formatFileSize, getFileFullUrl, getFileTypeIcon } from '@/utils/file-utils';
 import { renderEllipsis } from '@/utils/table-columns';
@@ -27,6 +26,8 @@ import FilePreviewModal from '@/components/FilePreviewModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { FileGridCard } from '../files/components/FileGridCard';
+import { useDeleteFile, useFileDetail } from '@/hooks/queries/files';
+import { useStorageBrowse } from '@/hooks/queries/file-storage-configs';
 import './StorageFileBrowser.css';
 
 const { Text } = Typography;
@@ -40,10 +41,12 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
   const { hasPermission } = usePermission();
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [currentPath, setCurrentPath] = useState('');
-  const [browseData, setBrowseData] = useState<StorageBrowseResult | null>(null);
-  const [loading, setLoading] = useState(false);
   const { page, setPage } = usePagination();
   const PAGE_SIZE = 50;
+  const browseQuery = useStorageBrowse(config?.id, currentPath, !!config);
+  const browseData = browseQuery.data ?? null;
+  const loading = browseQuery.isFetching;
+  const deleteMutation = useDeleteFile();
 
   // Navigation history for back/forward
   const [historyStack, setHistoryStack] = useState<string[]>(['']);
@@ -59,31 +62,16 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
   const [filePreview, setFilePreview] = useState<{ id: string; url: string; name: string; mimeType: string } | null>(null);
   const [downloadLoadingId, setDownloadLoadingId] = useState<string | null>(null);
   const [detailFile, setDetailFile] = useState<ManagedFile | null>(null);
-  const [detailFileLoading, setDetailFileLoading] = useState(false);
+  const detailQuery = useFileDetail(detailFile?.id, !!detailFile);
+  const displayedDetailFile = detailQuery.data ?? detailFile;
+  const detailFileLoading = detailQuery.isFetching;
   const previewBlobUrlsRef = useRef<string[]>([]);
   const previewSessionRef = useRef(0);
-
-  const fetchBrowseData = useCallback(async (configId: number, path: string) => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ storageConfigId: String(configId) });
-      if (path) params.set('path', path);
-      const res = await request.get<StorageBrowseResult>(`/api/files/browse?${params.toString()}`);
-      if (res.code === 0) {
-        setBrowseData(res.data);
-      } else {
-        Toast.error(res.message || '加载失败');
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   // Reset state whenever the config changes (different storage or re-open)
   useEffect(() => {
     if (config) {
       setCurrentPath('');
-      setBrowseData(null);
       setViewMode('list');
       setPage(1);
       setHistoryStack(['']);
@@ -92,14 +80,12 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
       setFilePreview(null);
       setPreviewVisible(false);
       previewSessionRef.current += 1;
-      void fetchBrowseData(config.id, '');
     }
-  }, [config, fetchBrowseData]);
+  }, [config, setPage]);
 
   const navigateTo = (path: string, pushHistory = true) => {
     setCurrentPath(path);
     setPage(1);
-    void fetchBrowseData(config!.id, path);
     if (pushHistory) {
       setHistoryStack((prev) => {
         const next = prev.slice(0, historyIndex + 1);
@@ -120,7 +106,6 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
     setHistoryIndex(newIndex);
     setCurrentPath(path);
     setPage(1);
-    void fetchBrowseData(config!.id, path);
   };
 
   const goForward = () => {
@@ -129,7 +114,6 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
     setHistoryIndex(newIndex);
     setCurrentPath(path);
     setPage(1);
-    void fetchBrowseData(config!.id, path);
   };
 
   // Build breadcrumb segments from currentPath
@@ -224,26 +208,13 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
   };
 
   const handleDelete = async (file: ManagedFile) => {
-    const res = await request.delete(`/api/files/${file.id}`);
-    if (res.code === 0) {
-      Toast.success('文件已删除');
-      void fetchBrowseData(config!.id, currentPath);
-    }
+    await deleteMutation.mutateAsync(file.id);
+    Toast.success('文件已删除');
+    void browseQuery.refetch();
   };
 
-  const handleOpenDetail = async (file: ManagedFile) => {
+  const handleOpenDetail = (file: ManagedFile) => {
     setDetailFile(file);
-    setDetailFileLoading(true);
-    try {
-      const res = await request.get<ManagedFile>(`/api/files/${file.id}`);
-      if (res.code === 0 && res.data) {
-        setDetailFile(res.data);
-      } else {
-        Toast.error(res.message || '获取文件信息失败');
-      }
-    } finally {
-      setDetailFileLoading(false);
-    }
   };
 
   const handleCopyUrl = async (file: ManagedFile) => {
@@ -456,7 +427,7 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
                   return 'id' in record ? `file-${record.id}` : `folder-${record.path}`;
                 }}
                 loading={false}
-                onRefresh={() => config && void fetchBrowseData(config.id, currentPath)}
+                onRefresh={() => void browseQuery.refetch()}
                 refreshLoading={loading}
                 size="small"
                 pagination={false}
@@ -579,29 +550,29 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
       <AppModal
         title="文件详情"
         visible={!!detailFile}
-        onCancel={() => { setDetailFile(null); setDetailFileLoading(false); }}
+        onCancel={() => setDetailFile(null)}
         footer={
           <Space>
-            <Button onClick={() => detailFile && handleCopyUrl(detailFile)}>复制链接</Button>
+            <Button onClick={() => displayedDetailFile && handleCopyUrl(displayedDetailFile)}>复制链接</Button>
             <Button type="primary" onClick={() => setDetailFile(null)}>关闭</Button>
           </Space>
         }
         width={560}
       >
         <Spin spinning={detailFileLoading} tip="加载中..." size="small">
-          {detailFile && (
+          {displayedDetailFile && (
             <Descriptions
               align="left"
               size="medium"
               data={[
-                { key: '文件名', value: detailFile.originalName },
-                { key: '存储服务', value: detailFile.storageName },
-                { key: 'MIME 类型', value: detailFile.mimeType || '—' },
-                { key: '文件大小', value: formatFileSize(detailFile.size) },
-                { key: '上传人', value: detailFile.uploaderName || '—' },
-                { key: '对象键', value: <Text copyable style={{ fontSize: 12, wordBreak: 'break-all' }}>{detailFile.objectKey}</Text> },
-                { key: '访问链接', value: <Text copyable style={{ fontSize: 12, wordBreak: 'break-all' }}>{getFileFullUrl(detailFile.url)}</Text> },
-                { key: '上传时间', value: formatDateTime(detailFile.createdAt) },
+                { key: '文件名', value: displayedDetailFile.originalName },
+                { key: '存储服务', value: displayedDetailFile.storageName },
+                { key: 'MIME 类型', value: displayedDetailFile.mimeType || '—' },
+                { key: '文件大小', value: formatFileSize(displayedDetailFile.size) },
+                { key: '上传人', value: displayedDetailFile.uploaderName || '—' },
+                { key: '对象键', value: <Text copyable style={{ fontSize: 12, wordBreak: 'break-all' }}>{displayedDetailFile.objectKey}</Text> },
+                { key: '访问链接', value: <Text copyable style={{ fontSize: 12, wordBreak: 'break-all' }}>{getFileFullUrl(displayedDetailFile.url)}</Text> },
+                { key: '上传时间', value: formatDateTime(displayedDetailFile.createdAt) },
               ]}
             />
           )}

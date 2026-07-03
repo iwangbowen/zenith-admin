@@ -1,48 +1,41 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Space, Modal, Form, Toast, Tag, Row, Col } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw } from 'lucide-react';
 import type { MemberLevel } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { renderEllipsis } from '../../utils/table-columns';
+import { memberAdminKeys, useDeleteMemberLevel, useMemberLevels, useSaveMemberLevel } from '@/hooks/queries/member-admin';
 
 const statusOptions = [{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }];
 
 export default function MemberLevelsPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
-  const [data, setData] = useState<MemberLevel[]>([]);
-  const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<MemberLevel | null>(null);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await request.get<MemberLevel[]>('/api/member-levels');
-      if (res.code === 0) setData(res.data);
-    } finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { void fetchData(); }, [fetchData]);
+  const listQuery = useMemberLevels();
+  const data = listQuery.data ?? [];
+  const saveMutation = useSaveMemberLevel();
+  const deleteMutation = useDeleteMemberLevel();
 
   const openCreate = () => { setEditing(null); setModalVisible(true); };
   const openEdit = (record: MemberLevel) => { setEditing(record); setModalVisible(true); };
 
   const handleModalOk = async () => {
     let values;
-    try { values = await formApi.current?.validate(); } catch { throw new Error('validation'); }
-    const res = editing
-      ? await request.put(`/api/member-levels/${editing.id}`, values)
-      : await request.post('/api/member-levels', values);
-    if (res.code === 0) { Toast.success(editing ? '更新成功' : '创建成功'); setModalVisible(false); setEditing(null); void fetchData(); }
-    else throw new Error(res.message);
+    try { values = await formApi.current!.validate(); } catch { throw new Error('validation'); }
+    await saveMutation.mutateAsync({ id: editing?.id, values });
+    Toast.success(editing ? '更新成功' : '创建成功');
+    setModalVisible(false);
+    setEditing(null);
   };
 
   const handleDelete = (record: MemberLevel) => {
@@ -51,8 +44,8 @@ export default function MemberLevelsPage() {
       content: '删除后该等级下会员的等级将被置空。',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete(`/api/member-levels/${record.id}`);
-        if (res.code === 0) { Toast.success('删除成功'); void fetchData(); }
+        await deleteMutation.mutateAsync(record.id);
+        Toast.success('删除成功');
       },
     });
   };
@@ -83,7 +76,7 @@ export default function MemberLevelsPage() {
   ];
 
   const renderRefreshButton = () => (
-    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => void fetchData()}>刷新</Button>
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => void queryClient.invalidateQueries({ queryKey: memberAdminKeys.levels })}>刷新</Button>
   );
 
   const renderCreateButton = () => hasPermission('member:level:create') ? (
@@ -101,8 +94,8 @@ export default function MemberLevelsPage() {
         )}
       />
 
-      <ConfigurableTable bordered columns={columns} dataSource={data} loading={loading}
-        onRefresh={fetchData} refreshLoading={loading} rowKey="id" size="small" pagination={false} empty="暂无数据" />
+      <ConfigurableTable bordered columns={columns} dataSource={data} loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} rowKey="id" size="small" pagination={false} empty="暂无数据" />
 
       <AppModal title={editing ? '编辑等级' : '新增等级'} visible={modalVisible} width={660}
         onCancel={() => { setModalVisible(false); setEditing(null); }} onOk={handleModalOk}>

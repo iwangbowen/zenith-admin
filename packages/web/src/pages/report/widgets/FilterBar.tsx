@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react';
 import { DatePicker, Select, Input, InputNumber, Space } from '@douyinfe/semi-ui';
-import { request } from '@/utils/request';
 import { formatDateForApi } from '@/utils/date';
-import type { ReportFilter, ReportDataResult } from '@zenith/shared';
+import { useReportFilterDynamicOptions } from '@/hooks/queries/report-designer';
+import type { ReportFilter } from '@zenith/shared';
 
 interface FilterBarProps {
   filters: ReportFilter[];
@@ -14,25 +13,7 @@ interface FilterBarProps {
 
 /** 全局筛选器运行时渲染（视图 / 设计器预览共用）*/
 export function FilterBar({ filters, values, onChange, disableDynamicOptions }: Readonly<FilterBarProps>) {
-  const [dynOptions, setDynOptions] = useState<Record<string, { value: string; label: string }[]>>({});
-
-  useEffect(() => {
-    if (disableDynamicOptions) return;
-    for (const f of filters) {
-      const src = f.optionSource;
-      if ((f.type === 'select' || f.type === 'multiSelect') && src?.kind === 'dataset' && src.datasetId) {
-        request.post<ReportDataResult>(`/api/report/datasets/${src.datasetId}/data`, { limit: 500 }, { silent: true }).then((res) => {
-          if (res.code === 0) {
-            const vf = src.valueField || res.data.columns[0];
-            const lf = src.labelField || vf;
-            const opts = res.data.rows.map((r) => ({ value: String(r[vf] ?? ''), label: String(r[lf] ?? r[vf] ?? '') })).filter((o) => o.value !== '');
-            setDynOptions((m) => ({ ...m, [f.id]: opts }));
-          }
-        });
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(filters.map((f) => [f.id, f.optionSource?.datasetId]))]);
+  const dynOptions = useReportFilterDynamicOptions(filters, disableDynamicOptions);
 
   function optionsOf(f: ReportFilter) {
     if (f.optionSource?.kind === 'static') return f.optionSource.options ?? [];

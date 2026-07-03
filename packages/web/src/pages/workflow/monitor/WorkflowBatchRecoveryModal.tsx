@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Select, Input, InputNumber, Toast, Typography, Space } from '@douyinfe/semi-ui';
-import type { WorkflowDefinition, WorkflowFlowData, WorkflowRecoveryBatchResult } from '@zenith/shared';
+import type { WorkflowDefinition, WorkflowFlowData } from '@zenith/shared';
 import { request } from '@/utils/request';
+import { unwrap } from '@/lib/query';
 import AppModal from '@/components/AppModal';
+import { useWorkflowBatchRecovery, useWorkflowDefinitionDetail } from '@/hooks/queries/workflow-monitor';
 
 interface Props {
   visible: boolean;
@@ -14,38 +17,34 @@ interface Props {
  * 自包含：自行加载已发布流程与所选流程的节点列表，无需父组件透传。
  */
 export default function WorkflowBatchRecoveryModal({ visible, onClose }: Readonly<Props>) {
-  const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
   const [definitionId, setDefinitionId] = useState<number | undefined>();
-  const [nodeOptions, setNodeOptions] = useState<Array<{ label: string; value: string }>>([]);
   const [nodeKey, setNodeKey] = useState<string | undefined>();
   const [olderThanMinutes, setOlderThanMinutes] = useState<number | undefined>();
   const [reason, setReason] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const recoveryMutation = useWorkflowBatchRecovery();
+  const definitionsQuery = useQuery({
+    queryKey: ['workflow', 'definitions', 'options'] as const,
+    queryFn: () => request.get<WorkflowDefinition[]>('/api/workflows/definitions/published').then(unwrap),
+    enabled: visible,
+  });
+  const definitionQuery = useWorkflowDefinitionDetail(definitionId, visible && definitionId !== undefined);
+  const definitions = definitionsQuery.data ?? [];
+  const flow = (definitionQuery.data?.flowData ?? null) as WorkflowFlowData | null;
+  const nodeOptions = (flow?.nodes ?? [])
+    .filter((n) => n.data.type !== 'start' && n.data.type !== 'end')
+    .map((n) => ({ label: `${n.data.label || n.data.key}（${n.data.key}）`, value: n.data.key }));
 
   useEffect(() => {
     if (!visible) return;
     setDefinitionId(undefined);
     setNodeKey(undefined);
-    setNodeOptions([]);
     setOlderThanMinutes(undefined);
     setReason('');
-    void request.get<WorkflowDefinition[]>('/api/workflows/definitions/published').then((res) => {
-      if (res.code === 0) setDefinitions(res.data ?? []);
-    });
   }, [visible]);
 
-  const onPickDefinition = async (id: number) => {
+  const onPickDefinition = (id: number) => {
     setDefinitionId(id);
     setNodeKey(undefined);
-    setNodeOptions([]);
-    const res = await request.get<WorkflowDefinition>(`/api/workflows/definitions/${id}`);
-    if (res.code === 0) {
-      const flow = (res.data.flowData ?? null) as WorkflowFlowData | null;
-      const opts = (flow?.nodes ?? [])
-        .filter((n) => n.data.type !== 'start' && n.data.type !== 'end')
-        .map((n) => ({ label: `${n.data.label || n.data.key}（${n.data.key}）`, value: n.data.key }));
-      setNodeOptions(opts);
-    }
   };
 
   const submit = async () => {
@@ -53,21 +52,14 @@ export default function WorkflowBatchRecoveryModal({ visible, onClose }: Readonl
       Toast.warning('请选择流程定义与卡死节点');
       return;
     }
-    setSubmitting(true);
-    try {
-      const res = await request.post<WorkflowRecoveryBatchResult>('/api/workflows/instances/batch-skip-stuck', {
-        definitionId,
-        nodeKey,
-        ...(olderThanMinutes ? { olderThanMinutes } : {}),
-        ...(reason.trim() ? { reason: reason.trim() } : {}),
-      });
-      if (res.code === 0) {
-        Toast.success(res.message || `已推进 ${res.data.success}/${res.data.total} 个实例`);
-        onClose();
-      }
-    } finally {
-      setSubmitting(false);
-    }
+    const result = await recoveryMutation.mutateAsync({
+      definitionId,
+      nodeKey,
+      ...(olderThanMinutes ? { olderThanMinutes } : {}),
+      ...(reason.trim() ? { reason: reason.trim() } : {}),
+    });
+    Toast.success(`已推进 ${result.success}/${result.total} 个实例`);
+    onClose();
   };
 
   return (
@@ -77,7 +69,7 @@ export default function WorkflowBatchRecoveryModal({ visible, onClose }: Readonl
       onCancel={onClose}
       onOk={() => void submit()}
       okText="确认推进"
-      okButtonProps={{ loading: submitting }}
+      okButtonProps={{ loading: recoveryMutation.isPending }}
       width={520}
     >
       <Space vertical align="start" style={{ width: '100%' }} spacing={12}>
@@ -92,7 +84,7 @@ export default function WorkflowBatchRecoveryModal({ visible, onClose }: Readonl
             value={definitionId}
             filter
             optionList={definitions.map((d) => ({ label: d.name, value: d.id }))}
-            onChange={(v) => void onPickDefinition(Number(v))}
+            onChange={(v) => onPickDefinition(Number(v))}
           />
         </div>
         <div style={{ width: '100%' }}>

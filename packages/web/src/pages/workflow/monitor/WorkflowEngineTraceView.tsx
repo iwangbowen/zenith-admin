@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Banner, Button, Empty, Spin, Space, Tag, Timeline, Tooltip, Typography } from '@douyinfe/semi-ui';
 import { AlertTriangle, Clock, RefreshCw } from 'lucide-react';
-import type { WorkflowEngineTraceEntry, WorkflowInstanceTrace, WorkflowJobType } from '@zenith/shared';
-import { request } from '@/utils/request';
-import { formatDateTime } from '@/utils/date';
+import type { WorkflowEngineTraceEntry } from '@zenith/shared';
+import { useWorkflowInstanceTrace, workflowMonitorKeys } from '@/hooks/queries/workflow-monitor';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'orange' | 'red' | 'violet' | 'light-blue';
 type TimelineType = 'default' | 'ongoing' | 'success' | 'warning' | 'error';
@@ -11,12 +10,6 @@ type TimelineType = 'default' | 'ongoing' | 'success' | 'warning' | 'error';
 interface Props {
   instanceId: number;
 }
-
-const JOB_TYPE_LABEL: Record<WorkflowJobType, string> = {
-  delay_wake: '延时唤醒', task_timeout: '任务超时', trigger_dispatch: '触发器调度', external_dispatch: '外部审批',
-  subprocess_spawn: '子流程派生', subprocess_join: '子流程汇聚', event_dispatch: '事件派发', webhook_delivery: 'Webhook 投递',
-  compensation_action: '补偿动作',
-};
 
 const STATUS_META: Record<string, { text: string; color: TagColor; timeline: TimelineType }> = {
   pending: { text: '待处理', color: 'grey', timeline: 'default' },
@@ -67,20 +60,10 @@ function renderExecutions(entry: WorkflowEngineTraceEntry) {
 }
 
 export default function WorkflowEngineTraceView({ instanceId }: Props) {
-  const [data, setData] = useState<WorkflowInstanceTrace | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const fetchTrace = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await request.get<WorkflowInstanceTrace>(`/api/workflows/instances/${instanceId}/trace`);
-      if (res.code === 0) setData(res.data);
-    } finally {
-      setLoading(false);
-    }
-  }, [instanceId]);
-
-  useEffect(() => { void fetchTrace(); }, [fetchTrace]);
+  const queryClient = useQueryClient();
+  const traceQuery = useWorkflowInstanceTrace(instanceId);
+  const data = traceQuery.data ?? null;
+  const loading = traceQuery.isFetching;
 
   if (loading && !data) return <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>;
   if (!data) return <Empty description="暂无运行轨迹" />;
@@ -90,7 +73,15 @@ export default function WorkflowEngineTraceView({ instanceId }: Props) {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-        <Button size="small" theme="borderless" icon={<RefreshCw size={14} className={loading ? 'spin' : ''} />} disabled={loading} onClick={() => void fetchTrace()}>刷新</Button>
+        <Button
+          size="small"
+          theme="borderless"
+          icon={<RefreshCw size={14} className={loading ? 'spin' : ''} />}
+          disabled={loading}
+          onClick={() => void queryClient.invalidateQueries({ queryKey: workflowMonitorKeys.trace(instanceId) })}
+        >
+          刷新
+        </Button>
       </div>
 
       {/* 引擎解释 */}

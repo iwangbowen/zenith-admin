@@ -3,7 +3,15 @@ import { Button, Input, Select, InputNumber, Tag, Typography, Tabs, TabPane } fr
 import { Play, Square, Wifi, Search } from 'lucide-react';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
-import { request } from '@/utils/request';
+import {
+  useDnsLookup,
+  useHttpProbe,
+  useNetworkInterfaces,
+  useNslookup,
+  usePortCheck,
+  useReverseLookup,
+  type DnsType,
+} from '@/hooks/queries/network-diag';
 
 const TOOL_OPTIONS = [
   { value: 'ping', label: 'Ping', desc: '检测主机连通性和延迟' },
@@ -17,7 +25,6 @@ const TOOL_OPTIONS = [
 ] as const;
 
 type ToolType = (typeof TOOL_OPTIONS)[number]['value'];
-type DnsType = 'A' | 'AAAA' | 'MX' | 'TXT' | 'NS' | 'CNAME' | 'SOA';
 
 const STREAMING_TOOLS = new Set<ToolType>(['ping', 'traceroute']);
 /** 无需主机输入的工具 */
@@ -143,7 +150,6 @@ async function fetchStream(
   const reader = resp.body?.getReader();
   if (!reader) return;
   const decoder = new TextDecoder();
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -160,6 +166,12 @@ export default function NetworkDiagPage() {
   const [output, setOutput] = useState('');
   const abortRef = useRef<AbortController | null>(null);
   const preRef = useRef<HTMLPreElement>(null);
+  const nslookupMutation = useNslookup();
+  const dnsLookupMutation = useDnsLookup();
+  const reverseLookupMutation = useReverseLookup();
+  const httpProbeMutation = useHttpProbe();
+  const interfacesMutation = useNetworkInterfaces();
+  const portCheckMutation = usePortCheck();
 
   const hops = useMemo(() => (tool === 'traceroute' ? parseTraceroute(output) : []), [output, tool]);
 
@@ -190,78 +202,51 @@ export default function NetworkDiagPage() {
       }
       abortRef.current = null;
     } else if (tool === 'nslookup') {
-      const res = await request.get<{ output: string }>(
-        `/api/network-diag/nslookup?host=${encodeURIComponent(host.trim())}`,
-      );
-      setOutput(res.code === 0 && res.data ? res.data.output : '查询失败');
+      const res = await nslookupMutation.mutateAsync(host.trim());
+      setOutput(res.output);
     } else if (tool === 'dns') {
-      const res = await request.get<{ type: string; records: string[] }>(
-        `/api/network-diag/dns?host=${encodeURIComponent(host.trim())}&type=${dnsType}`,
-      );
-      if (res.code === 0 && res.data) {
-        const { records } = res.data;
-        setOutput(records.length
-          ? `${dnsType} 记录（${host.trim()}）:\n\n${records.map((r) => `  ${r}`).join('\n')}`
-          : `未找到 ${dnsType} 记录`);
-      } else setOutput('查询失败');
+      const res = await dnsLookupMutation.mutateAsync({ host: host.trim(), type: dnsType });
+      const { records } = res;
+      setOutput(records.length
+        ? `${dnsType} 记录（${host.trim()}）:\n\n${records.map((r) => `  ${r}`).join('\n')}`
+        : `未找到 ${dnsType} 记录`);
     } else if (tool === 'reverse') {
-      const res = await request.get<{ hostnames: string[] }>(
-        `/api/network-diag/reverse?ip=${encodeURIComponent(host.trim())}`,
-      );
-      if (res.code === 0 && res.data) {
-        setOutput(res.data.hostnames.length
-          ? `${host.trim()} 反查结果:\n\n${res.data.hostnames.map((h) => `  ${h}`).join('\n')}`
-          : '未找到 PTR 记录');
-      } else setOutput(res.message ?? '查询失败');
+      const res = await reverseLookupMutation.mutateAsync(host.trim());
+      setOutput(res.hostnames.length
+        ? `${host.trim()} 反查结果:\n\n${res.hostnames.map((h) => `  ${h}`).join('\n')}`
+        : '未找到 PTR 记录');
     } else if (tool === 'http') {
-      const res = await request.post<{
-        ok: boolean; status: number; statusText: string; latencyMs: number;
-        server: string | null; contentType: string | null; contentLength: string | null;
-        redirectLocation: string | null; error: string | null;
-      }>('/api/network-diag/http-probe', { url: host.trim() });
-      if (res.code === 0 && res.data) {
-        const d = res.data;
-        if (d.error) {
-          setOutput(`❌ 探测失败：${d.error}（耗时 ${d.latencyMs} ms）`);
-        } else {
-          const lines = [
-            `${d.ok ? '✅' : '⚠️'} ${host.trim()}`,
-            ``,
-            `状态码      : ${d.status} ${d.statusText}`,
-            `响应耗时    : ${d.latencyMs} ms`,
-            `Server      : ${d.server ?? '—'}`,
-            `Content-Type: ${d.contentType ?? '—'}`,
-            `内容长度    : ${d.contentLength ?? '—'}`,
-            ...(d.redirectLocation ? [`重定向到    : ${d.redirectLocation}`] : []),
-          ];
-          setOutput(lines.join('\n'));
-        }
-      } else setOutput(res.message ?? '探测失败');
-    } else if (tool === 'interfaces') {
-      const res = await request.get<Array<{ name: string; address: string; netmask: string; family: string; mac: string; internal: boolean; cidr: string | null }>>(
-        '/api/network-diag/interfaces',
-      );
-      if (res.code === 0 && res.data) {
-        const rows = res.data.map((i) =>
-          `${i.name.padEnd(12)} ${i.family.padEnd(6)} ${i.address.padEnd(40)} ${i.internal ? '(internal)' : ''} ${i.mac && i.mac !== '00:00:00:00:00:00' ? i.mac : ''}`.trimEnd(),
-        );
-        setOutput(`本机网卡（${res.data.length} 条）:\n\n${rows.join('\n')}`);
-      } else setOutput('获取失败');
-    } else if (tool === 'port-check') {
-      const res = await request.post<{ open: boolean; latencyMs: number }>(
-        '/api/network-diag/port-check',
-        { host: host.trim(), port },
-      );
-      if (res.code === 0 && res.data) {
-        const { open, latencyMs } = res.data;
-        setOutput(open
-          ? `✅ ${host.trim()}:${port} 端口开放（延迟 ${latencyMs} ms）`
-          : `❌ ${host.trim()}:${port} 端口不可达（超时 ${latencyMs} ms）`,
-        );
+      const d = await httpProbeMutation.mutateAsync(host.trim());
+      if (d.error) {
+        setOutput(`❌ 探测失败：${d.error}（耗时 ${d.latencyMs} ms）`);
+      } else {
+        const lines = [
+          `${d.ok ? '✅' : '⚠️'} ${host.trim()}`,
+          ``,
+          `状态码      : ${d.status} ${d.statusText}`,
+          `响应耗时    : ${d.latencyMs} ms`,
+          `Server      : ${d.server ?? '—'}`,
+          `Content-Type: ${d.contentType ?? '—'}`,
+          `内容长度    : ${d.contentLength ?? '—'}`,
+          ...(d.redirectLocation ? [`重定向到    : ${d.redirectLocation}`] : []),
+        ];
+        setOutput(lines.join('\n'));
       }
+    } else if (tool === 'interfaces') {
+      const res = await interfacesMutation.mutateAsync();
+      const rows = res.map((i) =>
+        `${i.name.padEnd(12)} ${i.family.padEnd(6)} ${i.address.padEnd(40)} ${i.internal ? '(internal)' : ''} ${i.mac && i.mac !== '00:00:00:00:00:00' ? i.mac : ''}`.trimEnd(),
+      );
+      setOutput(`本机网卡（${res.length} 条）:\n\n${rows.join('\n')}`);
+    } else if (tool === 'port-check') {
+      const { open, latencyMs } = await portCheckMutation.mutateAsync({ host: host.trim(), port });
+      setOutput(open
+        ? `✅ ${host.trim()}:${port} 端口开放（延迟 ${latencyMs} ms）`
+        : `❌ ${host.trim()}:${port} 端口不可达（超时 ${latencyMs} ms）`,
+      );
     }
     setRunning(false);
-  }, [tool, host, port, dnsType]);
+  }, [tool, host, port, dnsType, nslookupMutation, dnsLookupMutation, reverseLookupMutation, httpProbeMutation, interfacesMutation, portCheckMutation]);
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();

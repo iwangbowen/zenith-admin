@@ -1,4 +1,5 @@
-﻿import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Empty,
@@ -16,8 +17,7 @@ import {
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ExternalLink, Megaphone, Plus, RotateCcw, Search, Undo2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import type { WorkflowDefinition, WorkflowInstance, PaginatedResponse } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { WorkflowDefinition, WorkflowInstance } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -30,14 +30,25 @@ import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { renderEllipsis } from '../../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { normalizeWorkflowFormSnapshot } from '@/utils/workflow-snapshot';
+import { useAllUsers } from '@/hooks/queries/users';
+import { useWorkflowInstanceWithDefinition } from '@/hooks/queries/workflow-shared';
+import {
+  useAddWorkflowCc,
+  useBatchUrgeWorkflowInstances,
+  useBatchWithdrawWorkflowInstances,
+  useCreateWorkflowInstance,
+  useDeleteWorkflowInstance,
+  useMyWorkflowInstances,
+  useResubmitWorkflowInstance,
+  useSubmitWorkflowDraft,
+  useUpdateWorkflowDraft,
+  useUrgeWorkflowInstance,
+  useWithdrawWorkflowInstance,
+  workflowInstanceKeys,
+} from '@/hooks/queries/workflow-instances';
+import { usePublishedWorkflowDefinitions } from '@/hooks/queries/workflow-definitions';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
-
-type WorkflowInstanceBatchActionResponse = {
-  succeeded: number;
-  failed: number;
-  results: Array<{ instanceId: number; success: boolean; message?: string }>;
-};
 
 const INSTANCE_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
   draft: { text: '草稿', color: 'grey' },
@@ -158,42 +169,26 @@ function InstanceDetailDrawer({
   onClose: () => void;
   onRefresh: () => void;
 }>) {
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<WorkflowInstance | null>(null);
-  const [definition, setDefinition] = useState<WorkflowDefinition | null>(null);
   const [viewId, setViewId] = useState<number | null>(instanceId);
   const navigate = useNavigate();
+  const detailQuery = useWorkflowInstanceWithDefinition(viewId, visible);
+  const data = detailQuery.data?.instance ?? null;
+  const definition = detailQuery.data?.definition ?? null;
+  const loading = detailQuery.isFetching;
+  const withdrawMutation = useWithdrawWorkflowInstance();
+  const urgeMutation = useUrgeWorkflowInstance();
+  const addCcMutation = useAddWorkflowCc();
 
   useEffect(() => {
     if (visible) setViewId(instanceId);
   }, [visible, instanceId]);
 
-  useEffect(() => {
-    if (!visible || !viewId) return;
-    setLoading(true);
-    setDefinition(null);
-    const p = request.get<WorkflowInstance>(`/api/workflows/instances/${viewId}`)
-      .then(res => {
-        if (res.code === 0) {
-          setData(res.data);
-          if (res.data.definitionSnapshot) return null;
-          return request.get<WorkflowDefinition>(`/api/workflows/definitions/${res.data.definitionId}`, { silent: true });
-        }
-        return null;
-      })
-      .then(defRes => { if (defRes?.code === 0) setDefinition(defRes.data); })
-      .finally(() => setLoading(false));
-    p.catch(() => undefined);
-  }, [visible, viewId]);
-
   const handleWithdraw = async () => {
     if (!viewId) return;
-    const res = await request.post(`/api/workflows/instances/${viewId}/withdraw`, {});
-    if (res.code === 0) {
-      Toast.success('已撤回');
-      onRefresh();
-      onClose();
-    }
+    await withdrawMutation.mutateAsync({ id: viewId });
+    Toast.success('已撤回');
+    onRefresh();
+    onClose();
   };
 
   const handlePrint = () => {
@@ -215,22 +210,14 @@ function InstanceDetailDrawer({
 
   const [urgeVisible, setUrgeVisible] = useState(false);
   const [urgeMessage, setUrgeMessage] = useState('');
-  const [urgeLoading, setUrgeLoading] = useState(false);
   const handleUrge = async () => {
     if (!viewId) return;
-    setUrgeLoading(true);
     try {
-      const res = await request.post<unknown>(`/api/workflows/instances/${viewId}/urge`, { message: urgeMessage || undefined });
-      if (res.code === 0) {
-        Toast.success(res.message || '已催办');
-        setUrgeVisible(false);
-        setUrgeMessage('');
-      } else if (res.code === 429) {
-        Toast.warning(res.message);
-      }
-    } finally {
-      setUrgeLoading(false);
-    }
+      await urgeMutation.mutateAsync({ id: viewId, message: urgeMessage || undefined });
+      Toast.success('已催办');
+      setUrgeVisible(false);
+      setUrgeMessage('');
+    } catch { /* request 层已提示 */ }
   };
 
   const ccNodeOptions = (definition?.flowData?.nodes ?? [])
@@ -239,37 +226,25 @@ function InstanceDetailDrawer({
   const [ccVisible, setCcVisible] = useState(false);
   const [ccNodeKey, setCcNodeKey] = useState<string | undefined>(undefined);
   const [ccUserIds, setCcUserIds] = useState<number[]>([]);
-  const [ccUserOptions, setCcUserOptions] = useState<Array<{ label: string; value: number }>>([]);
-  const [ccLoading, setCcLoading] = useState(false);
-  const openCcModal = async () => {
+  const usersQuery = useAllUsers({ enabled: ccVisible });
+  const ccUserOptions = useMemo(
+    () => (usersQuery.data ?? []).map((u) => ({ label: u.nickname ?? u.username, value: u.id })),
+    [usersQuery.data],
+  );
+  const openCcModal = () => {
     setCcNodeKey(ccNodeOptions[0]?.value);
     setCcUserIds([]);
     setCcVisible(true);
-    if (ccUserOptions.length === 0) {
-      try {
-        const res = await request.get<Array<{ id: number; nickname: string; username: string }>>('/api/users/all');
-        if (res.code === 0) {
-          setCcUserOptions(res.data.map((u) => ({ label: u.nickname ?? u.username, value: u.id })));
-        }
-      } catch { /* ignore */ }
-    }
   };
   const handleAddCc = async () => {
     if (!viewId || !ccNodeKey || ccUserIds.length === 0) {
       Toast.warning('请选择抄送节点与抄送人');
       return;
     }
-    setCcLoading(true);
-    try {
-      const res = await request.post<unknown>(`/api/workflows/instances/${viewId}/cc/add`, { nodeKey: ccNodeKey, userIds: ccUserIds });
-      if (res.code === 0) {
-        Toast.success(res.message || '已补加抄送');
-        setCcVisible(false);
-        onRefresh();
-      }
-    } finally {
-      setCcLoading(false);
-    }
+    await addCcMutation.mutateAsync({ id: viewId, nodeKey: ccNodeKey, userIds: ccUserIds });
+    Toast.success('已补加抄送');
+    setCcVisible(false);
+    onRefresh();
   };
 
   const printAction = data ? (
@@ -300,7 +275,7 @@ function InstanceDetailDrawer({
           <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
             <Button onClick={() => { setUrgeMessage(''); setUrgeVisible(true); }}>催办</Button>
             {ccNodeOptions.length > 0 && (
-              <Button onClick={() => void openCcModal()}>添加抄送人</Button>
+              <Button onClick={() => openCcModal()}>添加抄送人</Button>
             )}
             {data?.allowWithdraw !== false && (
               <Popconfirm title="确定要撤回吗？" onConfirm={() => void handleWithdraw()}>
@@ -329,7 +304,7 @@ function InstanceDetailDrawer({
         visible={urgeVisible}
         onCancel={() => setUrgeVisible(false)}
         onOk={() => void handleUrge()}
-        confirmLoading={urgeLoading}
+        confirmLoading={urgeMutation.isPending}
         okText="发送催办"
       >
         <Typography.Text type="tertiary" size="small">将对当前实例所有待办人发起催办（5 分钟内已被催办过的人员会被跳过）</Typography.Text>
@@ -347,7 +322,7 @@ function InstanceDetailDrawer({
         visible={ccVisible}
         onCancel={() => setCcVisible(false)}
         onOk={() => void handleAddCc()}
-        confirmLoading={ccLoading}
+        confirmLoading={addCcMutation.isPending}
         okText="提交"
       >
         <Typography.Text type="tertiary" size="small">为运行中的流程实例的抄送节点动态补加抄送人（自动去重，不会重复抄送）。</Typography.Text>
@@ -379,87 +354,62 @@ function InstanceDetailDrawer({
 }
 
 export default function MyApplicationsPage() {
+  const queryClient = useQueryClient();
   const launchFormRef = useRef<WorkflowLaunchFormHandle>(null);
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<PaginatedResponse<WorkflowInstance> | null>(null);
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<{ status: string }>({ status: '' });
-  const searchParamsRef = useRef<{ status: string }>({ status: '' });
-  searchParamsRef.current = searchParams;
-  const [priorityFilter, setPriorityFilter] = useState<string>('');
-  const [userOptions, setUserOptions] = useState<Array<{ label: string; value: number }>>([]);
+  const [draftParams, setDraftParams] = useState<{ status: string; priority: string }>({ status: '', priority: '' });
+  const [submittedParams, setSubmittedParams] = useState<{ status: string; priority: string }>({ status: '', priority: '' });
   const [detailVisible, setDetailVisible] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [applyVisible, setApplyVisible] = useState(false);
-  const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
   const [selectedDef, setSelectedDef] = useState<WorkflowDefinition | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [savingDraft, setSavingDraft] = useState(false);
   const [applyCategoryId, setApplyCategoryId] = useState<number | null>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const [batchWithdrawVisible, setBatchWithdrawVisible] = useState(false);
   const [batchWithdrawComment, setBatchWithdrawComment] = useState('');
-  const [batchWithdrawLoading, setBatchWithdrawLoading] = useState(false);
   const [batchUrgeVisible, setBatchUrgeVisible] = useState(false);
   const [batchUrgeMessage, setBatchUrgeMessage] = useState('');
-  const [batchUrgeLoading, setBatchUrgeLoading] = useState(false);
   const { categories } = useWorkflowCategories();
   // draft editing state
   const [editingDraft, setEditingDraft] = useState<WorkflowInstance | null>(null);
   const [dynamicFormInitValues, setDynamicFormInitValues] = useState<Record<string, unknown>>({});
   const [formKey, setFormKey] = useState(0);
-  const priorityFilterRef = useRef('');
-  priorityFilterRef.current = priorityFilter;
-
-  const fetchList = useCallback(async (p = page, ps = pageSize, params?: { status: string }) => {
-    const { status: activeStatus } = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(activeStatus ? { status: activeStatus } : {}),
-        ...(priorityFilterRef.current ? { priority: priorityFilterRef.current } : {}),
-      }).toString();
-      const res = await request.get<PaginatedResponse<WorkflowInstance>>(`/api/workflows/instances?${query}`);
-      if (res.code === 0) {
-        setData(res.data);
-        setPage(res.data.page);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize, setPage]);
-
-  useEffect(() => {
-    void fetchList();
-  }, [fetchList]);
+  const listQuery = useMyWorkflowInstances({
+    page,
+    pageSize,
+    status: submittedParams.status || undefined,
+    priority: submittedParams.priority || undefined,
+  });
+  const data = listQuery.data;
+  const definitionsQuery = usePublishedWorkflowDefinitions({ enabled: applyVisible });
+  const definitions = definitionsQuery.data ?? [];
+  const submitMutation = useCreateWorkflowInstance();
+  const saveDraftMutation = useCreateWorkflowInstance();
+  const updateDraftMutation = useUpdateWorkflowDraft();
+  const submitDraftMutation = useSubmitWorkflowDraft();
+  const deleteMutation = useDeleteWorkflowInstance();
+  const resubmitMutation = useResubmitWorkflowInstance();
+  const batchWithdrawMutation = useBatchWithdrawWorkflowInstances();
+  const batchUrgeMutation = useBatchUrgeWorkflowInstances();
+  const submitting = submitMutation.isPending || submitDraftMutation.isPending;
+  const savingDraft = saveDraftMutation.isPending || updateDraftMutation.isPending;
 
   const loadDefinitions = async (): Promise<WorkflowDefinition[]> => {
-    if (userOptions.length === 0) {
-      void request.get<Array<{ id: number; nickname: string; username: string }>>('/api/users/all').then((res) => {
-        if (res.code === 0 && res.data) setUserOptions(res.data.map((u) => ({ label: u.nickname ?? u.username, value: u.id })));
-      });
-    }
-    const res = await request.get<WorkflowDefinition[]>('/api/workflows/definitions/published');
-    if (res.code === 0 && res.data) {
-      setDefinitions(res.data);
-      return res.data;
-    }
-    return definitions;
+    const res = await definitionsQuery.refetch();
+    return res.data ?? definitions;
   };
 
   const handleSearch = () => {
     setPage(1);
-    void fetchList(1);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: workflowInstanceKeys.lists });
   };
 
   const handleReset = () => {
-    setSearchParams({ status: '' });
-    setPriorityFilter('');
-    priorityFilterRef.current = '';
+    setDraftParams({ status: '', priority: '' });
+    setSubmittedParams({ status: '', priority: '' });
     setPage(1);
-    void fetchList(1, pageSize, { status: '' });
+    void queryClient.invalidateQueries({ queryKey: workflowInstanceKeys.lists });
   };
 
   const openDetail = (id: number) => {
@@ -502,26 +452,21 @@ export default function MyApplicationsPage() {
     const result = await launchFormRef.current?.collectFormData({ requireInitiatorApprovers: true });
     if (!result) return;
     const { values, formData } = result;
-    setSubmitting(true);
-    try {
-      if (!launchSubmitNonceRef.current) launchSubmitNonceRef.current = crypto.randomUUID();
-      const res = await request.post('/api/workflows/instances', {
+    if (!launchSubmitNonceRef.current) launchSubmitNonceRef.current = crypto.randomUUID();
+    await submitMutation.mutateAsync({
+      values: {
         definitionId: selectedDef.id,
         title: values.title,
         formData,
         priority: values.priority ?? 'normal',
         ccUserIds: Array.isArray(values.ccUserIds) ? values.ccUserIds : undefined,
         selectedInitiatorApprovers: result.selectedInitiatorApprovers,
-      }, { headers: { 'X-Idempotency-Key': `workflow-launch-${launchSubmitNonceRef.current}` } });
-      if (res.code === 0) {
-        launchSubmitNonceRef.current = '';
-        Toast.success('申请已提交');
-        closeApply();
-        void fetchList();
-      }
-    } finally {
-      setSubmitting(false);
-    }
+      },
+      idempotencyKey: `workflow-launch-${launchSubmitNonceRef.current}`,
+    });
+    launchSubmitNonceRef.current = '';
+    Toast.success('申请已提交');
+    closeApply();
   };
 
   const handleSaveDraft = async () => {
@@ -529,24 +474,18 @@ export default function MyApplicationsPage() {
     const result = await launchFormRef.current?.collectFormData({ requireInitiatorApprovers: false });
     if (!result) return;
     const { values, formData } = result;
-    setSavingDraft(true);
-    try {
-      const res = await request.post('/api/workflows/instances', {
+    await saveDraftMutation.mutateAsync({
+      values: {
         definitionId: selectedDef.id,
         title: values.title,
         formData,
         priority: values.priority ?? 'normal',
         ccUserIds: Array.isArray(values.ccUserIds) ? values.ccUserIds : undefined,
         asDraft: true,
-      });
-      if (res.code === 0) {
-        Toast.success('草稿已保存');
-        closeApply();
-        void fetchList();
-      }
-    } finally {
-      setSavingDraft(false);
-    }
+      },
+    });
+    Toast.success('草稿已保存');
+    closeApply();
   };
 
   const handleUpdateDraft = async () => {
@@ -554,20 +493,15 @@ export default function MyApplicationsPage() {
     const result = await launchFormRef.current?.collectFormData({ requireInitiatorApprovers: false });
     if (!result) return;
     const { values, formData } = result;
-    setSavingDraft(true);
-    try {
-      const res = await request.put(`/api/workflows/instances/${editingDraft.id}/draft`, {
+    await updateDraftMutation.mutateAsync({
+      id: editingDraft.id,
+      values: {
         title: values.title,
         formData,
-      });
-      if (res.code === 0) {
-        Toast.success('草稿已更新');
-        closeApply();
-        void fetchList();
-      }
-    } finally {
-      setSavingDraft(false);
-    }
+      },
+    });
+    Toast.success('草稿已更新');
+    closeApply();
   };
 
   const handleSaveAndSubmitDraft = async () => {
@@ -575,48 +509,36 @@ export default function MyApplicationsPage() {
     const result = await launchFormRef.current?.collectFormData({ requireInitiatorApprovers: true });
     if (!result) return;
     const { values, formData } = result;
-    setSubmitting(true);
-    try {
-      const updateRes = await request.put(`/api/workflows/instances/${editingDraft.id}/draft`, {
+    await updateDraftMutation.mutateAsync({
+      id: editingDraft.id,
+      values: {
         title: values.title,
         formData,
-      });
-      if (updateRes.code !== 0) return;
-      const submitRes = await request.post(`/api/workflows/instances/${editingDraft.id}/submit`, {
+      },
+    });
+    await submitDraftMutation.mutateAsync({
+      id: editingDraft.id,
+      values: {
         selectedInitiatorApprovers: result.selectedInitiatorApprovers,
-      });
-      if (submitRes.code === 0) {
-        Toast.success('申请已提交');
-        closeApply();
-        void fetchList();
-      }
-    } finally {
-      setSubmitting(false);
-    }
+      },
+    });
+    Toast.success('申请已提交');
+    closeApply();
   };
 
   const handleDirectSubmitDraft = async (id: number) => {
-    const res = await request.post(`/api/workflows/instances/${id}/submit`, {});
-    if (res.code === 0) {
-      Toast.success('申请已提交');
-      void fetchList();
-    }
+    await submitDraftMutation.mutateAsync({ id });
+    Toast.success('申请已提交');
   };
 
   const handleDeleteDraft = async (id: number) => {
-    const res = await request.delete(`/api/workflows/instances/${id}`);
-    if (res.code === 0) {
-      Toast.success('已删除');
-      void fetchList();
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('已删除');
   };
 
   const handleResubmit = async (id: number) => {
-    const res = await request.post<WorkflowInstance>(`/api/workflows/instances/${id}/resubmit`, {});
-    if (res.code === 0) {
-      Toast.success('已生成草稿，请在草稿箱中编辑提交');
-      void fetchList();
-    }
+    await resubmitMutation.mutateAsync(id);
+    Toast.success('已生成草稿，请在草稿箱中编辑提交');
   };
 
   const selectedRunningIds = selectedRowKeys.filter((id) => (data?.list ?? []).some((item) => item.id === id && item.status === 'running'));
@@ -638,22 +560,11 @@ export default function MyApplicationsPage() {
       Toast.warning('请选择审批中且允许撤回的申请');
       return;
     }
-    setBatchWithdrawLoading(true);
-    try {
-      const res = await request.post<WorkflowInstanceBatchActionResponse>('/api/workflows/instances/batch-withdraw', {
-        instanceIds,
-        comment: batchWithdrawComment.trim() || undefined,
-      });
-      if (res.code === 0) {
-        Toast.success(res.message || `成功 ${res.data.succeeded} 条，失败 ${res.data.failed} 条`);
-        setBatchWithdrawVisible(false);
-        setBatchWithdrawComment('');
-        setSelectedRowKeys([]);
-        void fetchList();
-      }
-    } finally {
-      setBatchWithdrawLoading(false);
-    }
+    const res = await batchWithdrawMutation.mutateAsync({ instanceIds, comment: batchWithdrawComment.trim() || undefined });
+    Toast.success(`成功 ${res.succeeded} 条，失败 ${res.failed} 条`);
+    setBatchWithdrawVisible(false);
+    setBatchWithdrawComment('');
+    setSelectedRowKeys([]);
   };
 
   const openBatchUrge = () => {
@@ -671,22 +582,11 @@ export default function MyApplicationsPage() {
       Toast.warning('请选择审批中的申请');
       return;
     }
-    setBatchUrgeLoading(true);
-    try {
-      const res = await request.post<WorkflowInstanceBatchActionResponse>('/api/workflows/instances/batch-urge', {
-        instanceIds,
-        message: batchUrgeMessage.trim() || undefined,
-      });
-      if (res.code === 0) {
-        Toast.success(res.message || `成功 ${res.data.succeeded} 条，失败 ${res.data.failed} 条`);
-        setBatchUrgeVisible(false);
-        setBatchUrgeMessage('');
-        setSelectedRowKeys([]);
-        void fetchList();
-      }
-    } finally {
-      setBatchUrgeLoading(false);
-    }
+    const res = await batchUrgeMutation.mutateAsync({ instanceIds, message: batchUrgeMessage.trim() || undefined });
+    Toast.success(`成功 ${res.succeeded} 条，失败 ${res.failed} 条`);
+    setBatchUrgeVisible(false);
+    setBatchUrgeMessage('');
+    setSelectedRowKeys([]);
   };
 
   const columns: ColumnProps<WorkflowInstance>[] = [
@@ -804,8 +704,8 @@ export default function MyApplicationsPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="全部状态"
-      value={searchParams.status || undefined}
-      onChange={v => setSearchParams({ status: typeof v === 'string' ? v : '' })}
+      value={draftParams.status || undefined}
+      onChange={v => setDraftParams((prev) => ({ ...prev, status: typeof v === 'string' ? v : '' }))}
       showClear
       style={{ width: 140 }}
     >
@@ -818,8 +718,8 @@ export default function MyApplicationsPage() {
   const renderPriorityFilter = () => (
     <Select
       placeholder="全部优先级"
-      value={priorityFilter || undefined}
-      onChange={v => setPriorityFilter(typeof v === 'string' ? v : '')}
+      value={draftParams.priority || undefined}
+      onChange={v => setDraftParams((prev) => ({ ...prev, priority: typeof v === 'string' ? v : '' }))}
       showClear
       style={{ width: 130 }}
       optionList={WORKFLOW_PRIORITY_OPTIONS}
@@ -886,10 +786,10 @@ export default function MyApplicationsPage() {
         columns={columns}
         dataSource={data?.list ?? []}
         rowKey="id"
-        loading={loading}
-        pagination={buildPagination(data?.total ?? 0, fetchList)}
-        onRefresh={() => void fetchList()}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        pagination={buildPagination(data?.total ?? 0)}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         rowSelection={{
           selectedRowKeys,
           onChange: (keys) => setSelectedRowKeys(((keys as (string | number)[]) ?? []).map(Number)),
@@ -902,7 +802,7 @@ export default function MyApplicationsPage() {
         instanceId={selectedId}
         visible={detailVisible}
         onClose={() => setDetailVisible(false)}
-        onRefresh={() => void fetchList()}
+        onRefresh={() => void queryClient.invalidateQueries({ queryKey: ['workflow'] })}
       />
 
       {/* 发起 / 编辑草稿 */}
@@ -991,7 +891,7 @@ export default function MyApplicationsPage() {
         visible={batchWithdrawVisible}
         onCancel={() => setBatchWithdrawVisible(false)}
         onOk={() => void handleBatchWithdraw()}
-        confirmLoading={batchWithdrawLoading}
+        confirmLoading={batchWithdrawMutation.isPending}
         okText="确认撤回"
       >
         <Typography.Text>确定撤回选中的 {selectedWithdrawableIds.length} 个申请吗？</Typography.Text>
@@ -1010,7 +910,7 @@ export default function MyApplicationsPage() {
         visible={batchUrgeVisible}
         onCancel={() => setBatchUrgeVisible(false)}
         onOk={() => void handleBatchUrge()}
-        confirmLoading={batchUrgeLoading}
+        confirmLoading={batchUrgeMutation.isPending}
         okText="发送催办"
       >
         <Typography.Text type="tertiary" size="small">将对选中的运行中申请发起催办（5 分钟内已被催办过的人员会被跳过）</Typography.Text>

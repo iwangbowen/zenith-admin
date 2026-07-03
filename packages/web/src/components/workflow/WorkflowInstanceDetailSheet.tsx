@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Spin } from '@douyinfe/semi-ui';
-import type { WorkflowInstance, WorkflowDefinition } from '@zenith/shared';
-import { request } from '@/utils/request';
 import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceDetailPanel';
 import WorkflowSideSheet from '@/components/workflow/WorkflowSideSheet';
+import { useWorkflowInstanceWithDefinition } from '@/hooks/queries/workflow-shared';
 
 /**
  * 只读流程实例详情抽屉（抄送我的 / 我已办 等场景复用）。
@@ -20,38 +19,15 @@ export default function WorkflowInstanceDetailSheet({
   onClose: () => void;
   title?: string;
 }>) {
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<WorkflowInstance | null>(null);
-  const [definition, setDefinition] = useState<WorkflowDefinition | null>(null);
   const [viewId, setViewId] = useState<number | null>(instanceId);
-  const requestSeq = useRef(0);
+  const detailQuery = useWorkflowInstanceWithDefinition(viewId, visible);
+  const loading = detailQuery.isFetching;
+  const data = detailQuery.data?.instance ?? null;
+  const definition = detailQuery.data?.definition ?? null;
 
   useEffect(() => {
     if (visible) setViewId(instanceId);
   }, [visible, instanceId]);
-
-  useEffect(() => {
-    if (!visible || !viewId) return;
-    const seq = requestSeq.current + 1;
-    requestSeq.current = seq;
-    const controller = new AbortController();
-    setLoading(true);
-    setDefinition(null);
-    const p = request.get<WorkflowInstance>(`/api/workflows/instances/${viewId}`, { signal: controller.signal, silent: true })
-      .then((res) => {
-        if (requestSeq.current !== seq) return null;
-        if (res.code === 0) {
-          setData(res.data);
-          if (res.data.definitionSnapshot) return null;
-          return request.get<WorkflowDefinition>(`/api/workflows/definitions/${res.data.definitionId}`, { silent: true, signal: controller.signal });
-        }
-        return null;
-      })
-      .then((defRes) => { if (requestSeq.current === seq && defRes?.code === 0) setDefinition(defRes.data); })
-      .finally(() => { if (requestSeq.current === seq) setLoading(false); });
-    p.catch(() => undefined);
-    return () => controller.abort();
-  }, [visible, viewId]);
 
   return (
     <WorkflowSideSheet

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Col,
@@ -19,11 +20,9 @@ import type {
   CreateFileStorageConfigInput,
   FileStorageConfig,
   FileStorageProvider,
-  PaginatedResponse,
   UpdateFileStorageConfigInput,
 } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { request } from '@/utils/request';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -34,6 +33,15 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import StorageFileBrowser from './StorageFileBrowser';
+import {
+  fileStorageConfigKeys,
+  useDeleteFileStorageConfig,
+  useFileStorageConfigDetail,
+  useFileStorageConfigList,
+  useSaveFileStorageConfig,
+  useSetDefaultFileStorageConfig,
+  useTestFileStorageConfig,
+} from '@/hooks/queries/file-storage-configs';
 import './FileStorageConfigsPage.css';
 
 const { Text } = Typography;
@@ -199,6 +207,7 @@ function getStorageSummary(config: FileStorageConfig) {
 }
 
 export default function FileStorageConfigsPage() {
+  const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
   interface SearchParams {
     status: string;
@@ -207,61 +216,50 @@ export default function FileStorageConfigsPage() {
 
   const defaultSearchParams: SearchParams = { status: '', timeRange: null };
   const formApi = useRef<FormApi | null>(null);
-  const [configs, setConfigs] = useState<FileStorageConfig[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [total, setTotal] = useState(0);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingConfig, setEditingConfig] = useState<FileStorageConfig | null>(null);
-  const [modalDetailLoading, setModalDetailLoading] = useState(false);
-  const [modalTestLoading, setModalTestLoading] = useState(false);
-  const [testingConfigId, setTestingConfigId] = useState<number | null>(null);
   const [formProvider, setFormProvider] = useState<FileStorageProvider>('local');
   const [formIsDefault, setFormIsDefault] = useState(false);
   const [browsingConfig, setBrowsingConfig] = useState<FileStorageConfig | null>(null);
-
-  const fetchConfigs = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const activeParams = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
-        ...(activeParams.status ? { status: activeParams.status } : {}),
-        ...(activeParams.timeRange
-          ? {
-            startTime: formatDateTimeForApi(activeParams.timeRange[0]),
-            endTime: formatDateTimeForApi(activeParams.timeRange[1]),
-          }
-          : {}),
-        page: String(p),
-        pageSize: String(ps),
-      }).toString();
-      const url = query ? `/api/file-storage-configs?${query}` : '/api/file-storage-configs';
-      const res = await request.get<PaginatedResponse<FileStorageConfig>>(url);
-      if (res.code === 0) {
-        setConfigs(res.data.list);
-        setTotal(res.data.total);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize]);
+  const listQuery = useFileStorageConfigList({
+    page,
+    pageSize,
+    status: submittedParams.status || undefined,
+    startTime: submittedParams.timeRange ? formatDateTimeForApi(submittedParams.timeRange[0]) : undefined,
+    endTime: submittedParams.timeRange ? formatDateTimeForApi(submittedParams.timeRange[1]) : undefined,
+  });
+  const configs = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const detailQuery = useFileStorageConfigDetail(editingConfig?.id, modalVisible && !!editingConfig);
+  const modalDetailLoading = !!editingConfig && detailQuery.isFetching;
+  const saveMutation = useSaveFileStorageConfig();
+  const deleteMutation = useDeleteFileStorageConfig();
+  const setDefaultMutation = useSetDefaultFileStorageConfig();
+  const testMutation = useTestFileStorageConfig();
+  const modalTestLoading = testMutation.isPending && !testMutation.variables?.id;
+  const testingConfigId = testMutation.isPending ? (testMutation.variables?.id ?? null) : null;
 
   useEffect(() => {
-    void fetchConfigs();
-  }, [fetchConfigs]);
+    if (!detailQuery.data) return;
+    setEditingConfig(detailQuery.data);
+    setFormProvider(detailQuery.data.provider);
+    setFormIsDefault(detailQuery.data.isDefault);
+  }, [detailQuery.data]);
 
   const handleSearch = () => {
     setPage(1);
-    void fetchConfigs(1, pageSize);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: fileStorageConfigKeys.lists });
   };
 
   const handleReset = () => {
     setPage(1);
-    setSearchParams(defaultSearchParams);
-    void fetchConfigs(1, pageSize, defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: fileStorageConfigKeys.lists });
   };
 
   const openCreate = () => {
@@ -271,21 +269,11 @@ export default function FileStorageConfigsPage() {
     setModalVisible(true);
   };
 
-  const openEdit = async (config: FileStorageConfig) => {
+  const openEdit = (config: FileStorageConfig) => {
     setEditingConfig(config);
     setFormProvider(config.provider);
     setFormIsDefault(config.isDefault);
     setModalVisible(true);
-    setModalDetailLoading(true);
-    const res = await request.get<FileStorageConfig>(`/api/file-storage-configs/${config.id}`);
-    setModalDetailLoading(false);
-    if (res.code === 0 && res.data) {
-      setEditingConfig(res.data);
-      setFormProvider(res.data.provider);
-      setFormIsDefault(res.data.isDefault);
-    } else {
-      Toast.error(res.message || '获取信息失败');
-    }
   };
 
   const handleModalOk = async () => {
@@ -297,17 +285,10 @@ export default function FileStorageConfigsPage() {
     }
     if (!values) throw new Error('validation');
     const payload = buildPayload(formProvider, formIsDefault, values);
-    const res = editingConfig
-      ? await request.put<FileStorageConfig>(`/api/file-storage-configs/${editingConfig.id}`, payload)
-      : await request.post<FileStorageConfig>('/api/file-storage-configs', payload);
-    if (res.code === 0) {
-      Toast.success(editingConfig ? '文件服务配置已更新' : '文件服务配置已创建');
-      setModalVisible(false);
-      setEditingConfig(null);
-      fetchConfigs();
-    } else {
-      throw new Error(res.message);
-    }
+    await saveMutation.mutateAsync({ id: editingConfig?.id, values: payload });
+    Toast.success(editingConfig ? '文件服务配置已更新' : '文件服务配置已创建');
+    setModalVisible(false);
+    setEditingConfig(null);
   };
 
   const handleModalTest = async () => {
@@ -319,48 +300,28 @@ export default function FileStorageConfigsPage() {
     }
     if (!values) return;
     const payload = buildPayload(formProvider, formIsDefault, values);
-    setModalTestLoading(true);
-    try {
-      const res = editingConfig
-        ? await request.post(`/api/file-storage-configs/${editingConfig.id}/test`, payload)
-        : await request.post('/api/file-storage-configs/test', payload);
-      if (res.code === 0) Toast.success(res.message || '存储连接测试通过');
-      else Toast.error(res.message || '存储连接测试失败');
-    } finally {
-      setModalTestLoading(false);
-    }
+    await testMutation.mutateAsync({ id: editingConfig?.id, values: payload });
+    Toast.success('存储连接测试通过');
   };
 
   const handleDelete = async (config: FileStorageConfig) => {
-    const res = await request.delete(`/api/file-storage-configs/${config.id}`);
-    if (res.code === 0) {
-      Toast.success('文件服务配置已删除');
-      fetchConfigs();
-    }
+    await deleteMutation.mutateAsync(config.id);
+    Toast.success('文件服务配置已删除');
   };
 
   const handleSetDefault = async (config: FileStorageConfig) => {
-    const res = await request.put<FileStorageConfig>(`/api/file-storage-configs/${config.id}/default`);
-    if (res.code === 0) {
-      Toast.success('默认文件服务已更新');
-      fetchConfigs();
-    }
+    await setDefaultMutation.mutateAsync(config.id);
+    Toast.success('默认文件服务已更新');
   };
 
   const handleTestSaved = async (config: FileStorageConfig) => {
-    setTestingConfigId(config.id);
-    try {
-      const res = await request.post(`/api/file-storage-configs/${config.id}/test`, {});
-      if (res.code === 0) Toast.success(res.message || '存储连接测试通过');
-      else Toast.error(res.message || '存储连接测试失败');
-    } finally {
-      setTestingConfigId(null);
-    }
+    await testMutation.mutateAsync({ id: config.id, values: {} });
+    Toast.success('存储连接测试通过');
   };
 
-  const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null);
+  const togglingStatusId = saveMutation.isPending ? (saveMutation.variables?.id ?? null) : null;
 
-  const handleToggleStatus = useCallback(async (config: FileStorageConfig, newStatus: 'enabled' | 'disabled') => {
+  const handleToggleStatus = async (config: FileStorageConfig, newStatus: 'enabled' | 'disabled') => {
     if (newStatus === 'disabled') {
       if (config.isDefault) {
         Toast.warning('默认配置不能禁用，请先将其他配置设为默认');
@@ -378,19 +339,9 @@ export default function FileStorageConfigsPage() {
       });
       if (!confirmed) return;
     }
-    setTogglingStatusId(config.id);
-    try {
-      const res = await request.put(`/api/file-storage-configs/${config.id}`, { status: newStatus });
-      if (res.code === 0) {
-        Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
-        fetchConfigs();
-      } else {
-        Toast.error(res.message || '操作失败');
-      }
-    } finally {
-      setTogglingStatusId(null);
-    }
-  }, [fetchConfigs]);
+    await saveMutation.mutateAsync({ id: config.id, values: { status: newStatus } });
+    Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
+  };
 
   const columns: ColumnProps<FileStorageConfig>[] = [
     {
@@ -581,11 +532,11 @@ export default function FileStorageConfigsPage() {
       remark: '',
     };
   const buildExportQuery = () => ({
-    ...(searchParams.status ? { status: searchParams.status } : {}),
-    ...(searchParams.timeRange
+    ...(submittedParams.status ? { status: submittedParams.status } : {}),
+    ...(submittedParams.timeRange
       ? {
-          startTime: formatDateTimeForApi(searchParams.timeRange[0]),
-          endTime: formatDateTimeForApi(searchParams.timeRange[1]),
+          startTime: formatDateTimeForApi(submittedParams.timeRange[0]),
+          endTime: formatDateTimeForApi(submittedParams.timeRange[1]),
         }
       : {}),
   });
@@ -597,8 +548,8 @@ export default function FileStorageConfigsPage() {
           <>
             <Select
               placeholder="请选择状态"
-              value={searchParams.status || undefined}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
+              value={draftParams.status || undefined}
+              onChange={(value) => setDraftParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
               style={{ width: 140 }}
             >
               <Select.Option value="">全部状态</Select.Option>
@@ -608,8 +559,8 @@ export default function FileStorageConfigsPage() {
             <DatePicker
               type="dateTimeRange"
               placeholder={['开始时间', '结束时间']}
-              value={searchParams.timeRange ?? undefined}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
+              value={draftParams.timeRange ?? undefined}
+              onChange={(value) => setDraftParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
               style={{ width: 360 }}
             />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
@@ -626,8 +577,8 @@ export default function FileStorageConfigsPage() {
           <>
             <Select
               placeholder="请选择状态"
-              value={searchParams.status || undefined}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
+              value={draftParams.status || undefined}
+              onChange={(value) => setDraftParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
               style={{ width: 140 }}
             >
               <Select.Option value="">全部状态</Select.Option>
@@ -642,8 +593,8 @@ export default function FileStorageConfigsPage() {
           <DatePicker
             type="dateTimeRange"
             placeholder={['开始时间', '结束时间']}
-            value={searchParams.timeRange ?? undefined}
-            onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
+            value={draftParams.timeRange ?? undefined}
+            onChange={(value) => setDraftParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
             style={{ width: 360 }}
           />
         )}
@@ -664,10 +615,10 @@ export default function FileStorageConfigsPage() {
         columns={columns}
         dataSource={configs}
         rowKey="id"
-        loading={loading}
-        onRefresh={fetchConfigs}
-        refreshLoading={loading}
-        pagination={buildPagination(total, (p, ps) => void fetchConfigs(p, ps))}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
+        pagination={buildPagination(total)}
         size="small"
       />
 
@@ -677,7 +628,6 @@ export default function FileStorageConfigsPage() {
         onCancel={() => {
           setModalVisible(false);
           setEditingConfig(null);
-          setModalDetailLoading(false);
         }}
         onOk={handleModalOk}
         okButtonProps={{ disabled: modalDetailLoading }}

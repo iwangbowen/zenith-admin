@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Input,
@@ -18,9 +19,8 @@ import {
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Plus, RotateCcw, Search } from 'lucide-react';
 import { OAUTH2_GRANT_TYPES, OAUTH2_SCOPES } from '@zenith/shared';
-import type { OAuth2Client, OAuth2ClientCreated, PaginatedResponse, RatePlan, ApiScope } from '@zenith/shared';
+import type { OAuth2Client } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { request } from '@/utils/request';
 import { createdAtColumn } from '@/utils/table-columns';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
@@ -28,6 +28,16 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
+import {
+  oauth2AppKeys,
+  useDeleteOAuth2App,
+  useOAuth2ApiScopes,
+  useOAuth2AppDetail,
+  useOAuth2AppList,
+  useOAuth2RatePlans,
+  useRegenerateOAuth2AppSecret,
+  useSaveOAuth2App,
+} from '@/hooks/queries/oauth2-apps';
 
 const { Text, Paragraph } = Typography;
 
@@ -60,22 +70,15 @@ type FormValues = {
 
 export default function OAuth2AppsPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const canManage = hasPermission('system:oauth2-apps:manage');
-  const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
+  const toggleStatusMutation = useSaveOAuth2App();
 
   const handleToggleStatus = (record: OAuth2Client, checked: boolean) => {
     const newStatus = checked ? 'enabled' : 'disabled';
     const doToggle = async () => {
-      setTogglingIds((prev) => new Set(prev).add(record.id));
-      try {
-        await request.put(`/api/oauth2/clients/${record.id}`, { status: newStatus });
-        Toast.success(checked ? '已启用' : '已禁用');
-        void fetchData();
-      } catch (err: unknown) {
-        Toast.error((err as { message?: string })?.message || '操作失败');
-      } finally {
-        setTogglingIds((prev) => { const s = new Set(prev); s.delete(record.id); return s; });
-      }
+      await toggleStatusMutation.mutateAsync({ id: record.id, values: { status: newStatus } });
+      Toast.success(checked ? '已启用' : '已禁用');
     };
     if (checked) {
       void doToggle();
@@ -92,20 +95,13 @@ export default function OAuth2AppsPage() {
   // ─── 状态 ──────────────────────────────────────────────────────────────
   interface SearchParams { keyword: string; }
   const defaultSearchParams: SearchParams = { keyword: '' };
-  const [data, setData] = useState<PaginatedResponse<OAuth2Client> | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [ratePlans, setRatePlans] = useState<RatePlan[]>([]);
-  const [scopeOptions, setScopeOptions] = useState<ApiScope[]>([]);
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
 
   // 弹窗状态
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<OAuth2Client | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [modalDetailLoading, setModalDetailLoading] = useState(false);
 
   // 一次性 Secret 展示
   const [secretModal, setSecretModal] = useState(false);
@@ -113,53 +109,50 @@ export default function OAuth2AppsPage() {
   const [oneTimeClientId, setOneTimeClientId] = useState('');
 
   // ─── 数据加载 ──────────────────────────────────────────────────────────
-  const fetchData = useCallback(
-    async (p = page, ps = pageSize, params?: SearchParams) => {
-      const { keyword: activeKw } = params ?? searchParamsRef.current;
-      setLoading(true);
-      try {
-        const queryObj: Record<string, string> = { page: String(p), pageSize: String(ps) };
-        if (activeKw) queryObj.keyword = activeKw;
-        const qs = new URLSearchParams(queryObj).toString();
-        const res = await request.get<PaginatedResponse<OAuth2Client>>(`/api/oauth2/clients?${qs}`);
-        if (res.code === 0) {
-          setData(res.data);
-          setPage(res.data.page);
-        }
-      } finally {
-        setLoading(false);
-      }
-    },
-    [page, pageSize],
-  );
+  const listQuery = useOAuth2AppList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+  });
+  const data = listQuery.data ?? null;
+  const ratePlans = useOAuth2RatePlans().data ?? [];
+  const scopeOptions = useOAuth2ApiScopes().data ?? [];
+  const detailQuery = useOAuth2AppDetail(editing?.id, modalVisible);
+  const editingDetail = editing ? (detailQuery.data ?? editing) : null;
+  const modalDetailLoading = !!editing && detailQuery.isFetching;
+  const saveMutation = useSaveOAuth2App();
+  const deleteMutation = useDeleteOAuth2App();
+  const regenerateMutation = useRegenerateOAuth2AppSecret();
+  const togglingId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
 
   useEffect(() => {
-    void fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // 加载限流套餐与 scope 注册表（供应用配置下拉）
-  useEffect(() => {
-    void (async () => {
-      const [planRes, scopeRes] = await Promise.all([
-        request.get<RatePlan[]>('/api/rate-plans/options', { silent: true }),
-        request.get<ApiScope[]>('/api/api-scopes/options', { silent: true }),
-      ]);
-      if (planRes.code === 0 && planRes.data) setRatePlans(planRes.data);
-      if (scopeRes.code === 0 && scopeRes.data) setScopeOptions(scopeRes.data);
-    })();
-  }, []);
+    if (!detailQuery.data) return;
+    formApi.current?.setValues({
+      name: detailQuery.data.name,
+      description: detailQuery.data.description ?? '',
+      logoUrl: detailQuery.data.logoUrl ?? '',
+      redirectUris: detailQuery.data.redirectUris,
+      allowedScopes: detailQuery.data.allowedScopes,
+      grantTypes: detailQuery.data.grantTypes,
+      isPublic: detailQuery.data.isPublic,
+      ratePlanId: detailQuery.data.ratePlanId ?? undefined,
+      signEnabled: detailQuery.data.signEnabled ?? false,
+      status: detailQuery.data.status,
+    });
+  }, [detailQuery.data]);
 
   // ─── 搜索 / 重置 ────────────────────────────────────────────────────────
   function handleSearch() {
     setPage(1);
-    void fetchData(1, pageSize);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: oauth2AppKeys.lists });
   }
 
   function handleReset() {
-    setSearchParams(defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
     setPage(1);
-    void fetchData(1, pageSize, defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: oauth2AppKeys.lists });
   }
 
   // ─── 新增 ──────────────────────────────────────────────────────────────
@@ -169,50 +162,28 @@ export default function OAuth2AppsPage() {
   }
 
   // ─── 编辑：先弹窗再异步回填 ──────────────────────────────────────────────
-  async function openEdit(record: OAuth2Client) {
+  function openEdit(record: OAuth2Client) {
     setEditing(record);
     setModalVisible(true);
-    setModalDetailLoading(true);
-    const res = await request.get<OAuth2Client>(`/api/oauth2/clients/${record.id}`);
-    setModalDetailLoading(false);
-    if (res.code === 0 && res.data) {
-      setEditing(res.data);
-      // initValues 仅在 Form 挂载时生效，主动 setValues 保证回填最新数据
-      formApi.current?.setValues({
-        name: res.data.name,
-        description: res.data.description ?? '',
-        logoUrl: res.data.logoUrl ?? '',
-        redirectUris: res.data.redirectUris,
-        allowedScopes: res.data.allowedScopes,
-        grantTypes: res.data.grantTypes,
-        isPublic: res.data.isPublic,
-        ratePlanId: res.data.ratePlanId ?? undefined,
-        signEnabled: res.data.signEnabled ?? false,
-        status: res.data.status,
-      });
-    } else {
-      Toast.error(res.message || '获取应用信息失败');
-    }
   }
 
   function closeModal() {
     setModalVisible(false);
     setEditing(null);
-    setModalDetailLoading(false);
   }
 
-  const formInitValues: Partial<FormValues> = editing
+  const formInitValues: Partial<FormValues> = editingDetail
     ? {
-        name: editing.name,
-        description: editing.description ?? '',
-        logoUrl: editing.logoUrl ?? '',
-        redirectUris: editing.redirectUris,
-        allowedScopes: editing.allowedScopes,
-        grantTypes: editing.grantTypes,
-        isPublic: editing.isPublic,
-        ratePlanId: editing.ratePlanId ?? undefined,
-        signEnabled: editing.signEnabled ?? false,
-        status: editing.status,
+        name: editingDetail.name,
+        description: editingDetail.description ?? '',
+        logoUrl: editingDetail.logoUrl ?? '',
+        redirectUris: editingDetail.redirectUris,
+        allowedScopes: editingDetail.allowedScopes,
+        grantTypes: editingDetail.grantTypes,
+        isPublic: editingDetail.isPublic,
+        ratePlanId: editingDetail.ratePlanId ?? undefined,
+        signEnabled: editingDetail.signEnabled ?? false,
+        status: editingDetail.status,
       }
     : { isPublic: false, signEnabled: false, allowedScopes: ['openid', 'profile'], grantTypes: ['authorization_code', 'refresh_token'] };
 
@@ -226,51 +197,32 @@ export default function OAuth2AppsPage() {
     if (!values) throw new Error('validation');
     // 未选套餐时显式置 null，便于解绑
     const payload: FormValues = { ...values, ratePlanId: values.ratePlanId ?? null, signEnabled: values.signEnabled ?? false };
-    setSubmitting(true);
-    try {
-      if (editing) {
-        const res = await request.put(`/api/oauth2/clients/${editing.id}`, payload);
-        if (res.code === 0) {
-          Toast.success('更新成功');
-          closeModal();
-          void fetchData();
-        } else {
-          throw new Error(res.message);
-        }
-      } else {
-        const res = await request.post<OAuth2ClientCreated>('/api/oauth2/clients', payload);
-        if (res.code === 0) {
-          closeModal();
-          void fetchData();
-          if (res.data?.clientSecret) {
-            setOneTimeClientId(res.data.clientId);
-            setOneTimeSecret(res.data.clientSecret);
-            setSecretModal(true);
-          }
-        } else {
-          throw new Error(res.message);
-        }
+    const result = await saveMutation.mutateAsync({ id: editing?.id, values: payload as Record<string, unknown> });
+    if (editing) {
+      Toast.success('更新成功');
+      closeModal();
+    } else {
+      closeModal();
+      if ('clientSecret' in result && typeof result.clientSecret === 'string' && result.clientSecret) {
+        setOneTimeClientId(String(result.clientId));
+        setOneTimeSecret(result.clientSecret);
+        setSecretModal(true);
       }
-    } finally {
-      setSubmitting(false);
     }
   }
 
   // ─── 删除 ──────────────────────────────────────────────────────────────
   async function handleDelete(id: number) {
-    const res = await request.delete(`/api/oauth2/clients/${id}`);
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      void fetchData();
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   }
 
   // ─── 重置 Secret ────────────────────────────────────────────────────────
   async function handleRegenerate(row: OAuth2Client) {
-    const res = await request.post<{ clientId: string; clientSecret: string }>(`/api/oauth2/clients/${row.id}/regenerate-secret`);
-    if (res.code === 0 && res.data?.clientSecret) {
-      setOneTimeClientId(res.data.clientId);
-      setOneTimeSecret(res.data.clientSecret);
+    const result = await regenerateMutation.mutateAsync(row.id);
+    if (result.clientSecret) {
+      setOneTimeClientId(result.clientId);
+      setOneTimeSecret(result.clientSecret);
       setSecretModal(true);
     }
   }
@@ -334,7 +286,7 @@ export default function OAuth2AppsPage() {
       render: (v: string, record: OAuth2Client) => (
         <Switch
           checked={v === 'enabled'}
-          loading={togglingIds.has(record.id)}
+          loading={togglingId === record.id}
           disabled={!canManage}
           onChange={(checked) => handleToggleStatus(record, checked)}
           size="small"
@@ -356,7 +308,7 @@ export default function OAuth2AppsPage() {
           onClick: () => {
             Modal.confirm({
               title: '重置 client_secret？此操作不可撤销',
-              onOk: () => handleRegenerate(record),
+              onOk: () => { void handleRegenerate(record); },
             });
           },
         },
@@ -386,8 +338,8 @@ export default function OAuth2AppsPage() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索应用名称"
-              value={searchParams.keyword}
-              onChange={(v) => setSearchParams({ keyword: v })}
+              value={draftParams.keyword}
+              onChange={(v) => setDraftParams({ keyword: v })}
               onEnterPress={handleSearch}
               showClear
               style={{ width: 220 }}
@@ -404,8 +356,8 @@ export default function OAuth2AppsPage() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索应用名称"
-              value={searchParams.keyword}
-              onChange={(v) => setSearchParams({ keyword: v })}
+              value={draftParams.keyword}
+              onChange={(v) => setDraftParams({ keyword: v })}
               onEnterPress={handleSearch}
               showClear
               style={{ width: 220 }}
@@ -424,13 +376,13 @@ export default function OAuth2AppsPage() {
         bordered
         columns={columns}
         dataSource={data?.list ?? []}
-        loading={loading}
-        onRefresh={fetchData}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         rowKey="id"
         size="small"
         empty="暂无数据"
-        pagination={buildPagination(data?.total ?? 0, fetchData)}
+        pagination={buildPagination(data?.total ?? 0)}
       />
 
       {/* 新增 / 编辑弹窗 */}
@@ -439,7 +391,7 @@ export default function OAuth2AppsPage() {
         visible={modalVisible}
         onOk={handleModalOk}
         onCancel={closeModal}
-        okButtonProps={{ loading: submitting, disabled: modalDetailLoading }}
+        okButtonProps={{ loading: saveMutation.isPending, disabled: modalDetailLoading }}
         width={660}
         closeOnEsc
       >

@@ -1,4 +1,5 @@
-import { lazy, Suspense, useState, useEffect, useCallback, useRef } from 'react';
+import { lazy, Suspense, useState, useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Table,
   Button,
@@ -21,9 +22,8 @@ import {
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Trash2 } from 'lucide-react';
-import type { Announcement, AnnouncementRecipient, AnnouncementTargetType, PaginatedResponse, User, Role, Department, AnnouncementReadStats, AnnouncementAttachment } from '@zenith/shared';
+import type { Announcement, AnnouncementTargetType, AnnouncementReadStats, AnnouncementAttachment } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { request } from '@/utils/request';
 import { UserAvatar } from '@/components/UserAvatar';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
@@ -36,6 +36,18 @@ import DictTag from '@/components/DictTag';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
+import {
+  announcementKeys,
+  useAnnouncementDetail,
+  useAnnouncementList,
+  useAnnouncementReadStats,
+  useAnnouncementRecipientOptions,
+  useAnnouncementUserSearch,
+  useBatchDeleteAnnouncements,
+  useDeleteAnnouncement,
+  useSaveAnnouncement,
+  useUpdateAnnouncementStatus,
+} from '@/hooks/queries/announcements';
 
 const RichTextEditor = lazy(() => import('@/components/RichTextEditor'));
 const editorLoadingFallback = (
@@ -70,19 +82,14 @@ type SearchParams = {
 
 export default function AnnouncementsPage() {
   const { hasPermission } = usePermission();
-  const [data, setData] = useState<Announcement[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [total, setTotal] = useState(0);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
+  const queryClient = useQueryClient();
+  const { page, pageSize, setPage, buildPagination } = usePagination();
   const defaultSearchParams: SearchParams = { title: '', type: '', publishStatus: '', timeRange: null };
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingNotice, setEditingNotice] = useState<Announcement | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const [formApi, setFormApi] = useState<FormApi | null>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const [contentHtml, setContentHtml] = useState('');
@@ -94,10 +101,8 @@ export default function AnnouncementsPage() {
   const [selectedRoleIds, setSelectedRoleIds] = useState<number[]>([]);
   const [selectedDeptIds, setSelectedDeptIds] = useState<number[]>([]);
   const [userOptions, setUserOptions] = useState<{ value: number; label: string }[]>([]);
-  const [roleOptions, setRoleOptions] = useState<{ value: number; label: string }[]>([]);
-  const [deptOptions, setDeptOptions] = useState<{ value: number; label: string }[]>([]);
-  const [loadingOptions, setLoadingOptions] = useState(false);
   const userSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [userSearchKeyword, setUserSearchKeyword] = useState('');
 
   // 附件相关状态
   const [attachmentFileIds, setAttachmentFileIds] = useState<string[]>([]);
@@ -116,134 +121,114 @@ export default function AnnouncementsPage() {
   // ─── 已读统计 ─────────────────────────────────────────────────────────────────────────────
   const [statsDrawerVisible, setStatsDrawerVisible] = useState(false);
   const [statsNotice, setStatsNotice] = useState<Announcement | null>(null);
-  const [statsData, setStatsData] = useState<AnnouncementReadStats | null>(null);
-  const [statsLoading, setStatsLoading] = useState(false);
   const [statsTab, setStatsTab] = useState<'read' | 'unread'>('read');
+  const [statsPage, setStatsPage] = useState(1);
 
-  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const activeParams = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(activeParams.title ? { title: activeParams.title } : {}),
-        ...(activeParams.type ? { type: activeParams.type } : {}),
-        ...(activeParams.publishStatus ? { publishStatus: activeParams.publishStatus } : {}),
-        ...(activeParams.timeRange
-          ? {
-            startTime: formatDateTimeForApi(activeParams.timeRange[0]),
-            endTime: formatDateTimeForApi(activeParams.timeRange[1]),
-          }
-          : {}),
-      }).toString();
-      const res = await request.get<PaginatedResponse<Announcement>>(`/api/announcements?${query}`);
-      if (res.code === 0) {
-        setData(res.data.list);
-        setTotal(res.data.total);
-        setPage(res.data.page);
-        setPageSize(res.data.pageSize);
-      }
-    } finally {
-      setLoading(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  const listQuery = useAnnouncementList({
+    page,
+    pageSize,
+    title: submittedParams.title || undefined,
+    type: submittedParams.type || undefined,
+    publishStatus: submittedParams.publishStatus || undefined,
+    startTime: submittedParams.timeRange ? formatDateTimeForApi(submittedParams.timeRange[0]) : undefined,
+    endTime: submittedParams.timeRange ? formatDateTimeForApi(submittedParams.timeRange[1]) : undefined,
+  });
+  const data = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const detailQuery = useAnnouncementDetail(editingNotice?.id, modalVisible && !!editingNotice);
+  const modalDetailLoading = !!editingNotice && detailQuery.isFetching;
+  const recipientOptionsQuery = useAnnouncementRecipientOptions(modalVisible);
+  const roleOptions = recipientOptionsQuery.data?.roles ?? [];
+  const deptOptions = recipientOptionsQuery.data?.departments ?? [];
+  const userSearchQuery = useAnnouncementUserSearch(userSearchKeyword, modalVisible);
+  const statsQuery = useAnnouncementReadStats(
+    { id: statsNotice?.id, tab: statsTab, page: statsPage, pageSize: 10 },
+    statsDrawerVisible,
+  );
+  const statsData = statsQuery.data ?? null;
+  const statsLoading = statsQuery.isFetching;
+  const saveMutation = useSaveAnnouncement();
+  const deleteMutation = useDeleteAnnouncement();
+  const batchDeleteMutation = useBatchDeleteAnnouncements();
+  const updateStatusMutation = useUpdateAnnouncementStatus();
 
   useEffect(() => {
-    const handler = () => { void fetchData(); };
+    const handler = () => { void queryClient.invalidateQueries({ queryKey: announcementKeys.lists }); };
     globalThis.addEventListener('announcement:refresh', handler);
     return () => globalThis.removeEventListener('announcement:refresh', handler);
-  }, [fetchData]);
+  }, [queryClient]);
+
+  useEffect(() => {
+    if (!modalVisible || !detailQuery.data) return;
+    const { targetType: t, recipients = [], attachments = [] } = detailQuery.data;
+    setUploadedAttachments(attachments);
+    setAttachmentFileIds(attachments.map((a) => a.fileId));
+    setTargetType(t ?? 'all');
+    setSelectedUserIds(recipients.filter((r) => r.recipientType === 'user').map((r) => r.recipientId));
+    setSelectedRoleIds(recipients.filter((r) => r.recipientType === 'role').map((r) => r.recipientId));
+    setSelectedDeptIds(recipients.filter((r) => r.recipientType === 'dept').map((r) => r.recipientId));
+    const userRecipients = recipients.filter((r) => r.recipientType === 'user');
+    if (userRecipients.length > 0) {
+      setUserOptions((prev) => {
+        const existingIds = new Set(prev.map((o) => o.value));
+        const newOpts = userRecipients
+          .filter((r) => !existingIds.has(r.recipientId))
+          .map((r) => ({ value: r.recipientId, label: r.recipientLabel ?? String(r.recipientId) }));
+        return [...prev, ...newOpts];
+      });
+    }
+  }, [modalVisible, detailQuery.data]);
+
+  useEffect(() => {
+    if (!userSearchQuery.data) return;
+    const currentSelectedIds = [...selectedUserIds];
+    setUserOptions((prev) => mergeUserOptions(prev, userSearchQuery.data ?? [], new Set(currentSelectedIds)));
+  }, [selectedUserIds, userSearchQuery.data]);
 
   const handleSearch = () => {
     setPage(1);
-    fetchData(1, pageSize);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: announcementKeys.lists });
   };
 
   const handleReset = () => {
     const empty = defaultSearchParams;
-    setSearchParams(empty);
+    setDraftParams(empty);
+    setSubmittedParams(empty);
     setPage(1);
-    fetchData(1, pageSize, empty);
+    void queryClient.invalidateQueries({ queryKey: announcementKeys.lists });
   };
   const buildExportQuery = () => ({
-    ...(searchParams.title ? { title: searchParams.title } : {}),
-    ...(searchParams.type ? { type: searchParams.type } : {}),
-    ...(searchParams.publishStatus ? { publishStatus: searchParams.publishStatus } : {}),
-    ...(searchParams.timeRange
+    ...(submittedParams.title ? { title: submittedParams.title } : {}),
+    ...(submittedParams.type ? { type: submittedParams.type } : {}),
+    ...(submittedParams.publishStatus ? { publishStatus: submittedParams.publishStatus } : {}),
+    ...(submittedParams.timeRange
       ? {
-          startTime: formatDateTimeForApi(searchParams.timeRange[0]),
-          endTime: formatDateTimeForApi(searchParams.timeRange[1]),
+          startTime: formatDateTimeForApi(submittedParams.timeRange[0]),
+          endTime: formatDateTimeForApi(submittedParams.timeRange[1]),
         }
       : {}),
   });
 
-  const fetchStatsData = async (notice: Announcement, page: number, tab: 'read' | 'unread') => {
-    setStatsLoading(true);
-    try {
-      const res = await request.get<AnnouncementReadStats>(
-        `/api/announcements/${notice.id}/read-stats?tab=${tab}&page=${page}&pageSize=10`,
-      );
-      if (res.code === 0) setStatsData(res.data);
-    } finally {
-      setStatsLoading(false);
-    }
-  };
-
   const openStatsDrawer = (notice: Announcement) => {
     setStatsNotice(notice);
     setStatsTab('read');
-    setStatsData(null);
+    setStatsPage(1);
     setStatsDrawerVisible(true);
-    void fetchStatsData(notice, 1, 'read');
-  };
-
-  const loadRecipientOptions = async () => {
-    setLoadingOptions(true);
-    try {
-      const [rolesRes, deptsRes] = await Promise.all([
-        request.get<Role[]>('/api/roles/all'),
-        request.get<Department[]>('/api/departments/flat'),
-      ]);
-      if (rolesRes.code === 0) {
-        setRoleOptions(rolesRes.data.map((r) => ({ value: r.id, label: r.name })));
-      }
-      if (deptsRes.code === 0) {
-        setDeptOptions(deptsRes.data.map((d) => ({ value: d.id, label: d.name })));
-      }
-    } finally {
-      setLoadingOptions(false);
-    }
   };
 
   const handleUserSearch = (keyword: string) => {
     if (userSearchTimer.current) clearTimeout(userSearchTimer.current);
     if (!keyword.trim()) return;
     const trimmed = keyword.trim();
-    const currentSelectedIds = [...selectedUserIds];
     userSearchTimer.current = setTimeout(() => {
-      void doFetchUsers(trimmed, currentSelectedIds);
+      setUserSearchKeyword(trimmed);
     }, 300);
-  };
-
-  const doFetchUsers = async (keyword: string, currentSelectedIds: number[]) => {
-    const res = await request.get<PaginatedResponse<User>>(
-      `/api/users?page=1&pageSize=20&username=${encodeURIComponent(keyword)}`,
-    );
-    if (res.code !== 0) return;
-    const newResults = res.data.list.map((u) => ({ value: u.id, label: `${u.nickname}（${u.username}）` }));
-    setUserOptions((prev) => mergeUserOptions(prev, newResults, new Set(currentSelectedIds)));
   };
 
   const openCreateModal = () => {
     setViewOnly(false);
     setEditingNotice(null);
-    setModalDetailLoading(false);
     setContentHtml('');
     setEditorKey((k) => k + 1);
     setTargetType('all');
@@ -253,7 +238,6 @@ export default function AnnouncementsPage() {
     setUserOptions([]);
     setAttachmentFileIds([]);
     setUploadedAttachments([]);
-    void loadRecipientOptions();
     setModalVisible(true);
   };
 
@@ -271,43 +255,6 @@ export default function AnnouncementsPage() {
     setUploadedAttachments([]);
     setModalVisible(true);
 
-    // 异步加载选项和详情（详情包含收件人和附件）
-    setModalDetailLoading(true);
-    try {
-      const [, detailRes] = await Promise.all([
-        loadRecipientOptions(),
-        request.get<Announcement & { recipients: AnnouncementRecipient[]; attachments: AnnouncementAttachment[] }>(`/api/announcements/${record.id}`),
-      ]);
-
-      if (detailRes.code === 0 && detailRes.data) {
-        const { targetType: t, recipients = [], attachments = [] } = detailRes.data;
-
-        // 设置附件
-        setUploadedAttachments(attachments);
-        setAttachmentFileIds(attachments.map(a => a.fileId));
-
-        // 设置收件人
-        setTargetType(t ?? 'all');
-        setSelectedUserIds(recipients.filter((r) => r.recipientType === 'user').map((r) => r.recipientId));
-        setSelectedRoleIds(recipients.filter((r) => r.recipientType === 'role').map((r) => r.recipientId));
-        setSelectedDeptIds(recipients.filter((r) => r.recipientType === 'dept').map((r) => r.recipientId));
-        // 预填用户选项（含 label）
-        const userRecipients = recipients.filter((r) => r.recipientType === 'user');
-        if (userRecipients.length > 0) {
-          setUserOptions((prev) => {
-            const existingIds = new Set(prev.map((o) => o.value));
-            const newOpts = userRecipients
-              .filter((r) => !existingIds.has(r.recipientId))
-              .map((r) => ({ value: r.recipientId, label: r.recipientLabel ?? String(r.recipientId) }));
-            return [...prev, ...newOpts];
-          });
-        }
-      } else {
-        Toast.error(detailRes.message || '获取公告详情失败');
-      }
-    } finally {
-      setModalDetailLoading(false);
-    }
   };
 
   const openViewModal = async (record: Announcement) => {
@@ -315,35 +262,23 @@ export default function AnnouncementsPage() {
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete<null>(`/api/announcements/${id}`);
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      void fetchData();
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   };
 
   const handlePublish = async (id: number) => {
-    const res = await request.put<Announcement>(`/api/announcements/${id}`, { publishStatus: 'published' });
-    if (res.code === 0) {
-      Toast.success('发布成功');
-      void fetchData();
-    }
+    await updateStatusMutation.mutateAsync({ id, values: { publishStatus: 'published' } });
+    Toast.success('发布成功');
   };
 
   const handleRecall = async (id: number) => {
-    const res = await request.put<Announcement>(`/api/announcements/${id}`, { publishStatus: 'recalled' });
-    if (res.code === 0) {
-      Toast.success('撤回成功');
-      void fetchData();
-    }
+    await updateStatusMutation.mutateAsync({ id, values: { publishStatus: 'recalled' } });
+    Toast.success('撤回成功');
   };
 
   const handleCancelSchedule = async (id: number) => {
-    const res = await request.put<Announcement>(`/api/announcements/${id}`, { publishStatus: 'draft', publishTime: null });
-    if (res.code === 0) {
-      Toast.success('已取消定时发布');
-      void fetchData();
-    }
+    await updateStatusMutation.mutateAsync({ id, values: { publishStatus: 'draft', publishTime: null } });
+    Toast.success('已取消定时发布');
   };
 
   const handleBatchDelete = () => {
@@ -352,12 +287,9 @@ export default function AnnouncementsPage() {
       content: '删除后无法恢复，请确认操作',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete<null>('/api/announcements/batch', { ids: selectedRowKeys });
-        if (res.code === 0) {
-          Toast.success(res.message ?? '删除成功');
-          setSelectedRowKeys([]);
-          fetchData(1, pageSize, searchParamsRef.current);
-        }
+        await batchDeleteMutation.mutateAsync(selectedRowKeys);
+        Toast.success('删除成功');
+        setSelectedRowKeys([]);
       },
     });
   };
@@ -368,61 +300,46 @@ export default function AnnouncementsPage() {
     try {
       values = await formApi.validate();
     } catch {
+      throw new Error('validation');
+    }
+    const isContentEmpty = !contentHtml || contentHtml === '<p><br></p>';
+    if (isContentEmpty) {
+      Toast.warning('请输入公告内容');
       return;
     }
-    setSubmitting(true);
-    try {
-      const isContentEmpty = !contentHtml || contentHtml === '<p><br></p>';
-      if (isContentEmpty) {
-        Toast.warning('请输入公告内容');
-        setSubmitting(false);
+    const recipients =
+      targetType === 'specific'
+        ? [
+            ...selectedUserIds.map((id) => ({ recipientType: 'user' as const, recipientId: id })),
+            ...selectedRoleIds.map((id) => ({ recipientType: 'role' as const, recipientId: id })),
+            ...selectedDeptIds.map((id) => ({ recipientType: 'dept' as const, recipientId: id })),
+          ]
+        : [];
+    const scheduledDate = values.scheduledPublishTime as Date | undefined | null;
+    let finalPublishStatus = (values.publishStatus as string) || 'draft';
+    let finalPublishTime: string | null = null;
+    if (scheduledDate) {
+      if (scheduledDate <= new Date()) {
+        Toast.warning('定时发布时间必须是未来时间');
         return;
       }
-      const recipients =
-        targetType === 'specific'
-          ? [
-              ...selectedUserIds.map((id) => ({ recipientType: 'user' as const, recipientId: id })),
-              ...selectedRoleIds.map((id) => ({ recipientType: 'role' as const, recipientId: id })),
-              ...selectedDeptIds.map((id) => ({ recipientType: 'dept' as const, recipientId: id })),
-            ]
-          : [];
-      const scheduledDate = values.scheduledPublishTime as Date | undefined | null;
-      let finalPublishStatus = (values.publishStatus as string) || 'draft';
-      let finalPublishTime: string | null = null;
-      if (scheduledDate) {
-        if (scheduledDate <= new Date()) {
-          Toast.warning('定时发布时间必须是未来时间');
-          setSubmitting(false);
-          return;
-        }
-        finalPublishStatus = 'scheduled';
-        finalPublishTime = formatDateTimeForApi(scheduledDate);
-      }
-      const payload = {
-        title: values.title,
-        content: contentHtml,
-        type: values.type || 'notice',
-        publishStatus: finalPublishStatus,
-        priority: values.priority || 'medium',
-        targetType,
-        recipients,
-        publishTime: finalPublishTime,
-        fileIds: attachmentFileIds,
-      };
-      let res;
-      if (editingNotice) {
-        res = await request.put<Announcement>(`/api/announcements/${editingNotice.id}`, payload);
-      } else {
-        res = await request.post<Announcement>('/api/announcements', payload);
-      }
-      if (res.code === 0) {
-        Toast.success(editingNotice ? '更新成功' : '创建成功');
-        setModalVisible(false);
-        fetchData(editingNotice ? page : 1, pageSize, searchParamsRef.current);
-      }
-    } finally {
-      setSubmitting(false);
+      finalPublishStatus = 'scheduled';
+      finalPublishTime = formatDateTimeForApi(scheduledDate);
     }
+    const payload = {
+      title: values.title,
+      content: contentHtml,
+      type: values.type || 'notice',
+      publishStatus: finalPublishStatus,
+      priority: values.priority || 'medium',
+      targetType,
+      recipients,
+      publishTime: finalPublishTime,
+      fileIds: attachmentFileIds,
+    };
+    await saveMutation.mutateAsync({ id: editingNotice?.id, values: payload });
+    Toast.success(editingNotice ? '更新成功' : '创建成功');
+    setModalVisible(false);
   };
 
   /** 渲染已读统计 SideSheet 内容 */
@@ -472,7 +389,7 @@ export default function AnnouncementsPage() {
           onChange={(tab) => {
             const t = tab as 'read' | 'unread';
             setStatsTab(t);
-            if (statsNotice) void fetchStatsData(statsNotice, 1, t);
+            setStatsPage(1);
           }}
         >
           <TabPane tab={`已读 (${statsData.readCount})`} itemKey="read">
@@ -487,7 +404,7 @@ export default function AnnouncementsPage() {
                 currentPage: statsData.page,
                 pageSize: statsData.pageSize,
                 onPageChange: (p: number) => {
-                  if (statsNotice) void fetchStatsData(statsNotice, p, 'read');
+                  setStatsPage(p);
                 },
               }}
               columns={[
@@ -513,7 +430,7 @@ export default function AnnouncementsPage() {
                 currentPage: statsData.page,
                 pageSize: statsData.pageSize,
                 onPageChange: (p: number) => {
-                  if (statsNotice) void fetchStatsData(statsNotice, p, 'unread');
+                  setStatsPage(p);
                 },
               }}
               columns={userColumns}
@@ -758,24 +675,24 @@ export default function AnnouncementsPage() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索标题"
-              value={searchParams.title}
-              onChange={(v) => setSearchParams((prev) => ({ ...prev, title: v }))}
+              value={draftParams.title}
+              onChange={(v) => setDraftParams((prev) => ({ ...prev, title: v }))}
               onEnterPress={handleSearch}
               style={{ width: 200 }}
               showClear
             />
             <Select
               placeholder="公告类型"
-              value={searchParams.type || undefined}
-              onChange={(v) => setSearchParams((prev) => ({ ...prev, type: typeof v === 'string' ? v : '' }))}
+              value={draftParams.type || undefined}
+              onChange={(v) => setDraftParams((prev) => ({ ...prev, type: typeof v === 'string' ? v : '' }))}
               optionList={typeItems.map((i) => ({ label: i.label, value: i.value }))}
               showClear
               style={{ width: 140 }}
             />
             <Select
               placeholder="发布状态"
-              value={searchParams.publishStatus || undefined}
-              onChange={(v) => setSearchParams((prev) => ({ ...prev, publishStatus: typeof v === 'string' ? v : '' }))}
+              value={draftParams.publishStatus || undefined}
+              onChange={(v) => setDraftParams((prev) => ({ ...prev, publishStatus: typeof v === 'string' ? v : '' }))}
               optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))}
               showClear
               style={{ width: 140 }}
@@ -783,8 +700,8 @@ export default function AnnouncementsPage() {
             <DatePicker
               type="dateTimeRange"
               placeholder={['开始时间', '结束时间']}
-              value={searchParams.timeRange ?? undefined}
-              onChange={(v) => setSearchParams((prev) => ({ ...prev, timeRange: v ? (v as [Date, Date]) : null }))}
+              value={draftParams.timeRange ?? undefined}
+              onChange={(v) => setDraftParams((prev) => ({ ...prev, timeRange: v ? (v as [Date, Date]) : null }))}
               style={{ width: 360 }}
             />
             <Button icon={<Search size={14} />} type="primary" onClick={handleSearch}>查询</Button>
@@ -807,8 +724,8 @@ export default function AnnouncementsPage() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索标题"
-              value={searchParams.title}
-              onChange={(v) => setSearchParams((prev) => ({ ...prev, title: v }))}
+              value={draftParams.title}
+              onChange={(v) => setDraftParams((prev) => ({ ...prev, title: v }))}
               onEnterPress={handleSearch}
               style={{ width: 200 }}
               showClear
@@ -821,16 +738,16 @@ export default function AnnouncementsPage() {
           <>
             <Select
               placeholder="公告类型"
-              value={searchParams.type || undefined}
-              onChange={(v) => setSearchParams((prev) => ({ ...prev, type: typeof v === 'string' ? v : '' }))}
+              value={draftParams.type || undefined}
+              onChange={(v) => setDraftParams((prev) => ({ ...prev, type: typeof v === 'string' ? v : '' }))}
               optionList={typeItems.map((i) => ({ label: i.label, value: i.value }))}
               showClear
               style={{ width: 140 }}
             />
             <Select
               placeholder="发布状态"
-              value={searchParams.publishStatus || undefined}
-              onChange={(v) => setSearchParams((prev) => ({ ...prev, publishStatus: typeof v === 'string' ? v : '' }))}
+              value={draftParams.publishStatus || undefined}
+              onChange={(v) => setDraftParams((prev) => ({ ...prev, publishStatus: typeof v === 'string' ? v : '' }))}
               optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))}
               showClear
               style={{ width: 140 }}
@@ -838,8 +755,8 @@ export default function AnnouncementsPage() {
             <DatePicker
               type="dateTimeRange"
               placeholder={['开始时间', '结束时间']}
-              value={searchParams.timeRange ?? undefined}
-              onChange={(v) => setSearchParams((prev) => ({ ...prev, timeRange: v ? (v as [Date, Date]) : null }))}
+              value={draftParams.timeRange ?? undefined}
+              onChange={(v) => setDraftParams((prev) => ({ ...prev, timeRange: v ? (v as [Date, Date]) : null }))}
               style={{ width: 360 }}
             />
           </>
@@ -864,16 +781,16 @@ export default function AnnouncementsPage() {
         bordered
         columns={columns}
         dataSource={data}
-        loading={loading}
-        onRefresh={fetchData}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         rowKey="id"
         scroll={{ x: 1520 }}
         rowSelection={{
           selectedRowKeys,
           onChange: (keys) => setSelectedRowKeys(keys as number[]),
         }}
-        pagination={buildPagination(total, fetchData)}
+        pagination={buildPagination(total)}
       />
 
       <SideSheet
@@ -881,7 +798,7 @@ export default function AnnouncementsPage() {
         visible={modalVisible}
         onCancel={() => setModalVisible(false)}
         width={860}
-        afterVisibleChange={(visible) => { if (!visible) { formApi?.reset(); setModalDetailLoading(false); } }}
+        afterVisibleChange={(visible) => { if (!visible) { formApi?.reset(); } }}
         footer={
           viewOnly ? (
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -890,7 +807,7 @@ export default function AnnouncementsPage() {
           ) : (
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <Button onClick={() => setModalVisible(false)}>取消</Button>
-              <Button type="primary" loading={submitting} disabled={modalDetailLoading} onClick={handleSubmit}>
+              <Button type="primary" loading={saveMutation.isPending} disabled={modalDetailLoading} onClick={handleSubmit}>
                 {editingNotice ? '保存' : '创建'}
               </Button>
             </div>
@@ -994,7 +911,7 @@ export default function AnnouncementsPage() {
                     multiple
                     showClear
                     filter
-                    loading={loadingOptions}
+                    loading={recipientOptionsQuery.isFetching}
                     placeholder="请选择角色"
                     value={selectedRoleIds}
                     optionList={roleOptions}
@@ -1009,7 +926,7 @@ export default function AnnouncementsPage() {
                     multiple
                     showClear
                     filter
-                    loading={loadingOptions}
+                    loading={recipientOptionsQuery.isFetching}
                     placeholder="请选择部门"
                     value={selectedDeptIds}
                     optionList={deptOptions}

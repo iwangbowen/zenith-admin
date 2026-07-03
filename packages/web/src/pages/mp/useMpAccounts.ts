@@ -1,6 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { request } from '@/utils/request';
-import type { MpAccount, PaginatedResponse } from '@zenith/shared';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useMpAccountOptions } from '@/hooks/queries/mp-accounts';
 
 const STORAGE_KEY = 'mp_current_account';
 
@@ -9,12 +8,12 @@ const STORAGE_KEY = 'mp_current_account';
  * 额外暴露 `currentIdRef`：供页面在异步请求返回后判断账号是否已切换，丢弃过期响应（防止账号 A 的数据渲染到账号 B）。
  */
 export function useMpAccounts() {
-  const [accounts, setAccounts] = useState<MpAccount[]>([]);
   const [currentId, setCurrentIdState] = useState<number | null>(() => {
     const v = localStorage.getItem(STORAGE_KEY);
     return v ? Number(v) : null;
   });
-  const [loading, setLoading] = useState(false);
+  const accountsQuery = useMpAccountOptions();
+  const accounts = useMemo(() => accountsQuery.data?.list ?? [], [accountsQuery.data?.list]);
 
   // 始终指向最新 currentId，供异步回调比对
   const currentIdRef = useRef<number | null>(currentId);
@@ -27,26 +26,17 @@ export function useMpAccounts() {
   }, []);
 
   useEffect(() => {
-    let active = true;
-    setLoading(true);
-    request.get<PaginatedResponse<MpAccount>>('/api/mp/accounts?page=1&pageSize=100')
-      .then((res) => {
-        if (!active) return;
-        const list = res.data?.list ?? [];
-        setAccounts(list);
-        const stored = localStorage.getItem(STORAGE_KEY);
-        const storedId = stored ? Number(stored) : null;
-        if (storedId && list.some((a) => a.id === storedId)) {
-          setCurrentIdState(storedId);
-        } else {
-          const pick = (list.find((a) => a.isDefault) ?? list[0])?.id ?? null;
-          setCurrentId(pick);
-        }
-      })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (!accountsQuery.isSuccess) return;
+    const stored = localStorage.getItem(STORAGE_KEY);
+    const storedId = stored ? Number(stored) : null;
+    if (storedId && accounts.some((a) => a.id === storedId)) {
+      if (currentId !== storedId) setCurrentIdState(storedId);
+      return;
+    }
+    if (currentId && accounts.some((a) => a.id === currentId)) return;
+    const pick = (accounts.find((a) => a.isDefault) ?? accounts[0])?.id ?? null;
+    if (currentId !== pick) setCurrentId(pick);
+  }, [accounts, accountsQuery.isSuccess, currentId, setCurrentId]);
 
-  return { accounts, currentId, currentIdRef, setCurrentId, loading };
+  return { accounts, currentId, currentIdRef, setCurrentId, loading: accountsQuery.isFetching };
 }

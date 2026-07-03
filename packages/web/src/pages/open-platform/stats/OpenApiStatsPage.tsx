@@ -1,20 +1,24 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, DatePicker, Select, Typography, Tag, Space, Row, Col, Card } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RotateCcw } from 'lucide-react';
 import dayjs from 'dayjs';
 import type {
-  OpenApiStatsOverview,
-  OpenApiStatsTrendPoint,
-  OpenApiStatsGroupItem,
   OpenApiCallLog,
-  PaginatedResponse,
 } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { usePagination } from '@/hooks/usePagination';
 import { AreaChart, BarChart, chartOptions, makeAreaSpec, makeBarSpec, useChartPalette, EmptyChart } from '@/components/charts';
+import {
+  openPlatformKeys,
+  useOpenApiCallLogs,
+  useOpenApiStatsByApp,
+  useOpenApiStatsByEndpoint,
+  useOpenApiStatsOverview,
+  useOpenApiStatsTrend,
+} from '@/hooks/queries/open-platform';
 
 const { Text, Title } = Typography;
 
@@ -30,69 +34,30 @@ function StatCard({ label, value, hint, color }: { label: string; value: string 
 
 export default function OpenApiStatsPage() {
   const palette = useChartPalette();
+  const queryClient = useQueryClient();
   const [range, setRange] = useState<[Date, Date]>(() => [dayjs().subtract(6, 'day').toDate(), new Date()]);
   const [granularity, setGranularity] = useState<'hour' | 'day'>('day');
-
-  const [overview, setOverview] = useState<OpenApiStatsOverview | null>(null);
-  const [trend, setTrend] = useState<OpenApiStatsTrendPoint[]>([]);
-  const [byApp, setByApp] = useState<OpenApiStatsGroupItem[]>([]);
-  const [byEndpoint, setByEndpoint] = useState<OpenApiStatsGroupItem[]>([]);
-  const [statLoading, setStatLoading] = useState(false);
-
-  const [logs, setLogs] = useState<PaginatedResponse<OpenApiCallLog> | null>(null);
-  const [logLoading, setLogLoading] = useState(false);
   const { page, pageSize, setPage, buildPagination } = usePagination();
 
-  const rangeParams = useCallback(() => ({
+  const rangeParams = useMemo(() => ({
     startTime: dayjs(range[0]).startOf('day').format('YYYY-MM-DD HH:mm:ss'),
     endTime: dayjs(range[1]).endOf('day').format('YYYY-MM-DD HH:mm:ss'),
   }), [range]);
-
-  const fetchStats = useCallback(async () => {
-    setStatLoading(true);
-    try {
-      const { startTime, endTime } = rangeParams();
-      const base = `startTime=${encodeURIComponent(startTime)}&endTime=${encodeURIComponent(endTime)}`;
-      const [ov, tr, ba, be] = await Promise.all([
-        request.get<OpenApiStatsOverview>(`/api/open-api-stats/overview?${base}`, { silent: true }),
-        request.get<OpenApiStatsTrendPoint[]>(`/api/open-api-stats/trend?${base}&granularity=${granularity}`, { silent: true }),
-        request.get<OpenApiStatsGroupItem[]>(`/api/open-api-stats/by-app?${base}&limit=8`, { silent: true }),
-        request.get<OpenApiStatsGroupItem[]>(`/api/open-api-stats/by-endpoint?${base}&limit=8`, { silent: true }),
-      ]);
-      if (ov.code === 0) setOverview(ov.data);
-      if (tr.code === 0) setTrend(tr.data ?? []);
-      if (ba.code === 0) setByApp(ba.data ?? []);
-      if (be.code === 0) setByEndpoint(be.data ?? []);
-    } finally {
-      setStatLoading(false);
-    }
-  }, [rangeParams, granularity]);
-
-  const fetchLogs = useCallback(async (p = page, ps = pageSize) => {
-    setLogLoading(true);
-    try {
-      const { startTime, endTime } = rangeParams();
-      const q = new URLSearchParams({ page: String(p), pageSize: String(ps), startTime, endTime });
-      const res = await request.get<PaginatedResponse<OpenApiCallLog>>(`/api/open-api-stats/logs?${q}`);
-      if (res.code === 0) {
-        setLogs(res.data);
-        setPage(res.data.page);
-      }
-    } finally {
-      setLogLoading(false);
-    }
-  }, [page, pageSize, rangeParams, setPage]);
-
-  useEffect(() => {
-    void fetchStats();
-    void fetchLogs(1, pageSize);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const overviewQuery = useOpenApiStatsOverview(rangeParams);
+  const trendQuery = useOpenApiStatsTrend({ ...rangeParams, granularity });
+  const byAppQuery = useOpenApiStatsByApp(rangeParams);
+  const byEndpointQuery = useOpenApiStatsByEndpoint(rangeParams);
+  const logsQuery = useOpenApiCallLogs({ ...rangeParams, page, pageSize });
+  const overview = overviewQuery.data ?? null;
+  const trend = useMemo(() => trendQuery.data ?? [], [trendQuery.data]);
+  const byApp = useMemo(() => byAppQuery.data ?? [], [byAppQuery.data]);
+  const byEndpoint = useMemo(() => byEndpointQuery.data ?? [], [byEndpointQuery.data]);
+  const logs = logsQuery.data ?? null;
+  const statLoading = overviewQuery.isFetching || trendQuery.isFetching || byAppQuery.isFetching || byEndpointQuery.isFetching;
 
   function handleApply() {
-    void fetchStats();
-    void fetchLogs(1, pageSize);
     setPage(1);
+    void queryClient.invalidateQueries({ queryKey: openPlatformKeys.stats.all });
   }
   function handleReset() {
     setRange([dayjs().subtract(6, 'day').toDate(), new Date()]);
@@ -219,13 +184,13 @@ export default function OpenApiStatsPage() {
           bordered
           columns={logColumns}
           dataSource={logs?.list ?? []}
-          loading={logLoading}
-          onRefresh={() => fetchLogs()}
-          refreshLoading={logLoading}
+          loading={logsQuery.isFetching}
+          onRefresh={() => void logsQuery.refetch()}
+          refreshLoading={logsQuery.isFetching}
           rowKey="id"
           size="small"
           empty="暂无调用记录"
-          pagination={buildPagination(logs?.total ?? 0, fetchLogs)}
+          pagination={buildPagination(logs?.total ?? 0)}
         />
       </Card>
     </div>

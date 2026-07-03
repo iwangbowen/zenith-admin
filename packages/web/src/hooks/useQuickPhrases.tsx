@@ -1,9 +1,15 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AppModal } from '@/components/AppModal';
-import { Button, Input, Popconfirm, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Input, Popconfirm, Space, Tag, Typography } from '@douyinfe/semi-ui';
 import { Plus } from 'lucide-react';
 import type { WorkflowQuickPhrase } from '@zenith/shared';
 import { request } from '@/utils/request';
+import { unwrap } from '@/lib/query';
+
+const quickPhraseKeys = {
+  all: ['workflow', 'quick-phrases'] as const,
+};
 
 export function useQuickPhrases(): {
   quickPhrases: WorkflowQuickPhrase[];
@@ -11,35 +17,49 @@ export function useQuickPhrases(): {
   renderPhraseBar: (onPick: (text: string) => void) => ReactNode;
   phraseManageModal: ReactNode;
 } {
-  const [quickPhrases, setQuickPhrases] = useState<WorkflowQuickPhrase[]>([]);
+  const queryClient = useQueryClient();
   const [phraseManageVisible, setPhraseManageVisible] = useState(false);
   const [newPhrase, setNewPhrase] = useState('');
   const [editingPhraseId, setEditingPhraseId] = useState<number | null>(null);
   const [editingPhraseContent, setEditingPhraseContent] = useState('');
+  const quickPhrasesQuery = useQuery({
+    queryKey: quickPhraseKeys.all,
+    queryFn: () => request.get<WorkflowQuickPhrase[]>('/api/workflows/quick-phrases').then(unwrap),
+  });
+  const { data: quickPhraseData, refetch: refetchQuickPhrases } = quickPhrasesQuery;
+  const quickPhrases = quickPhraseData ?? [];
 
   const reload = useCallback(async () => {
-    try {
-      const res = await request.get<WorkflowQuickPhrase[]>('/api/workflows/quick-phrases');
-      if (res.code === 0) setQuickPhrases(res.data ?? []);
-    } catch {
-      // ignore
-    }
-  }, []);
+    await refetchQuickPhrases();
+  }, [refetchQuickPhrases]);
 
-  useEffect(() => { void reload(); }, [reload]);
+  const invalidate = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: quickPhraseKeys.all });
+  }, [queryClient]);
+
+  const addPhraseMutation = useMutation({
+    mutationFn: (content: string) => request.post('/api/workflows/quick-phrases', { content }).then(unwrap),
+    onSuccess: invalidate,
+  });
+  const deletePhraseMutation = useMutation({
+    mutationFn: (id: number) => request.delete(`/api/workflows/quick-phrases/${id}`).then(unwrap),
+    onSuccess: invalidate,
+  });
+  const updatePhraseMutation = useMutation({
+    mutationFn: ({ id, content }: { id: number; content: string }) =>
+      request.put(`/api/workflows/quick-phrases/${id}`, { content }).then(unwrap),
+    onSuccess: invalidate,
+  });
 
   const handleAddPhrase = async () => {
     const text = newPhrase.trim();
     if (!text) return;
-    const res = await request.post('/api/workflows/quick-phrases', { content: text });
-    if (res.code === 0) { setNewPhrase(''); void reload(); }
-    else Toast.error(res.message || '新增失败');
+    await addPhraseMutation.mutateAsync(text);
+    setNewPhrase('');
   };
 
   const handleDeletePhrase = async (id: number) => {
-    const res = await request.delete(`/api/workflows/quick-phrases/${id}`);
-    if (res.code === 0) void reload();
-    else Toast.error(res.message || '删除失败');
+    await deletePhraseMutation.mutateAsync(id);
   };
 
   const startEditPhrase = (p: WorkflowQuickPhrase) => {
@@ -55,9 +75,8 @@ export function useQuickPhrases(): {
   const handleUpdatePhrase = async (id: number) => {
     const text = editingPhraseContent.trim();
     if (!text) return;
-    const res = await request.put(`/api/workflows/quick-phrases/${id}`, { content: text });
-    if (res.code === 0) { cancelEditPhrase(); void reload(); }
-    else Toast.error(res.message || '更新失败');
+    await updatePhraseMutation.mutateAsync({ id, content: text });
+    cancelEditPhrase();
   };
 
   const renderPhraseBar = (onPick: (text: string) => void) => (

@@ -4,31 +4,20 @@
  * 审批人在流程详情里看到的请假业务数据：按 bizId 从业务模块自己的接口拉取，
  * 业务数据始终留在 biz_leaves 表，流程不存储。
  */
-import { useEffect, useState } from 'react';
 import { Descriptions, Spin, Empty, Typography, Tag } from '@douyinfe/semi-ui';
 import { CalendarClock } from 'lucide-react';
-import type { BizLeave } from '@zenith/shared';
-import { request } from '@/utils/request';
 import type { WorkflowBusinessFormProps } from '@/components/workflow/BusinessFormHost';
+import { useBizLeaveDetail } from '@/hooks/queries/biz-leave';
 
 const LEAVE_TYPE_TEXT: Record<string, string> = {
   annual: '年假', sick: '病假', personal: '事假', marriage: '婚假', other: '其他',
 };
 
 export default function LeaveApprovalView({ bizId }: Readonly<WorkflowBusinessFormProps>) {
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<BizLeave | null>(null);
+  const detailQuery = useBizLeaveDetail(bizId);
+  const data = detailQuery.data ?? null;
 
-  useEffect(() => {
-    if (!bizId) return;
-    setLoading(true);
-    request.get<BizLeave>(`/api/biz/leaves/${bizId}/detail`, { silent: true })
-      .then((res) => { if (res.code === 0) setData(res.data); })
-      .catch(() => undefined)
-      .finally(() => setLoading(false));
-  }, [bizId]);
-
-  if (loading) return <div style={{ textAlign: 'center', padding: 24 }}><Spin /></div>;
+  if (detailQuery.isFetching) return <div style={{ textAlign: 'center', padding: 24 }}><Spin /></div>;
   if (!data) return <Empty title="无法加载请假详情" style={{ padding: 24 }} />;
 
   return (

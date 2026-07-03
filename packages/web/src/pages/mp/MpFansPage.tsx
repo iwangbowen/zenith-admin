@@ -1,10 +1,10 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Avatar, Button, Form, Input, Modal, Select, Space, Spin, Tag, Toast, Banner } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { RotateCcw, Search, RefreshCw, Ban } from 'lucide-react';
-import type { PaginatedResponse, MpFan, MpTag, MpFanSubscribe } from '@zenith/shared';
+import type { MpFan, MpFanSubscribe } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -13,6 +13,17 @@ import { renderEllipsis } from '../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
+import {
+  mpFanKeys,
+  useCreateMpFanMember,
+  useMpFanList,
+  useSaveMpFan,
+  useSetMpFanBlacklist,
+  useSyncMpBlacklist,
+  useSyncMpFans,
+  useUnbindMpFanMember,
+} from '@/hooks/queries/mp-fans';
+import { useMpTagOptions } from '@/hooks/queries/mp-tags';
 
 const SEX_LABELS: Record<number, string> = { 0: '未知', 1: '男', 2: '女' };
 const SUBSCRIBE_OPTIONS = [
@@ -22,110 +33,88 @@ const SUBSCRIBE_OPTIONS = [
 
 export default function MpFansPage() {
   const { hasPermission: can } = usePermission();
-  const { accounts, currentId, currentIdRef, setCurrentId, loading: accountsLoading } = useMpAccounts();
+  const queryClient = useQueryClient();
+  const { accounts, currentId, setCurrentId, loading: accountsLoading } = useMpAccounts();
 
-  const [loading, setLoading] = useState(false);
-  const [list, setList] = useState<MpFan[]>([]);
-  const [total, setTotal] = useState(0);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
+  const { page, pageSize, setPage, buildPagination } = usePagination();
 
-  const [tags, setTags] = useState<MpTag[]>([]);
+  const tagsQuery = useMpTagOptions(currentId);
+  const tags = tagsQuery.data?.list ?? [];
   const tagMap = new Map(tags.map((t) => [t.id, t.name]));
 
   interface SearchParams { keyword: string; subscribe: MpFanSubscribe | undefined; tagId: number | undefined; blacklisted: 'true' | 'false' | undefined; }
   const defaultSearch: SearchParams = { keyword: '', subscribe: undefined, tagId: undefined, blacklisted: undefined };
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearch);
-  const searchRef = useRef<SearchParams>(defaultSearch);
-  searchRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearch);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearch);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<MpFan | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const formRef = useRef<FormApi>(null);
 
-  const fetchTags = useCallback(async (accountId: number) => {
-    const res = await request.get<PaginatedResponse<MpTag>>(`/api/mp/tags?page=1&pageSize=200&accountId=${accountId}`);
-    if (currentIdRef.current !== accountId) return; // 账号已切换，丢弃过期标签
-    setTags(res.data?.list ?? []);
-  }, [currentIdRef]);
-
-  const fetchList = useCallback(
-    async (p = page, ps = pageSize, params?: SearchParams) => {
-      if (!currentId) { setList([]); setTotal(0); return; }
-      const reqId = currentId;
-      const { keyword, subscribe, tagId, blacklisted } = params ?? searchRef.current;
-      setLoading(true);
-      try {
-        const query = new URLSearchParams({ page: String(p), pageSize: String(ps), accountId: String(currentId) });
-        if (keyword) query.set('keyword', keyword);
-        if (subscribe) query.set('subscribe', subscribe);
-        if (tagId) query.set('tagId', String(tagId));
-        if (blacklisted) query.set('blacklisted', blacklisted);
-        const res = await request.get<PaginatedResponse<MpFan>>(`/api/mp/fans?${query}`);
-        if (currentIdRef.current !== reqId) return; // 账号已切换，丢弃过期响应
-        setList(res.data?.list ?? []);
-        setTotal(res.data?.total ?? 0);
-        setPage(res.data?.page ?? p);
-        setPageSize(res.data?.pageSize ?? ps);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [page, pageSize, currentId, currentIdRef, setPage, setPageSize],
-  );
+  const listQuery = useMpFanList({
+    accountId: currentId,
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    subscribe: submittedParams.subscribe,
+    tagId: submittedParams.tagId,
+    blacklisted: submittedParams.blacklisted,
+  });
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const syncFansMutation = useSyncMpFans();
+  const syncBlacklistMutation = useSyncMpBlacklist();
+  const blacklistMutation = useSetMpFanBlacklist();
+  const saveMutation = useSaveMpFan();
+  const createMemberMutation = useCreateMpFanMember();
+  const unbindMemberMutation = useUnbindMpFanMember();
+  const syncing = syncFansMutation.isPending || syncBlacklistMutation.isPending;
+  const submitting = saveMutation.isPending;
 
   useEffect(() => {
-    if (currentId) void fetchTags(currentId);
     setPage(1);
-    void fetchList(1, pageSize, searchRef.current);
-    /* eslint-disable-next-line react-hooks/exhaustive-deps */
-  }, [currentId]);
+  }, [currentId, setPage]);
 
-  const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
-  const handleReset = () => { setSearchParams(defaultSearch); setPage(1); void fetchList(1, pageSize, defaultSearch); };
+  const handleSearch = () => {
+    setPage(1);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: mpFanKeys.lists(currentId) });
+  };
+  const handleReset = () => {
+    setDraftParams(defaultSearch);
+    setSubmittedParams(defaultSearch);
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: mpFanKeys.lists(currentId) });
+  };
 
   const handleSync = async () => {
     if (!currentId) return;
-    setSyncing(true);
-    try {
-      const res = await request.post<{ synced: number; total: number }>('/api/mp/fans/sync', { accountId: currentId });
-      if (res.code === 0) {
-        Toast.success(`同步完成：共处理 ${res.data?.synced ?? 0} 个粉丝`);
-        void fetchList();
-      }
-    } finally {
-      setSyncing(false);
-    }
+    const data = await syncFansMutation.mutateAsync(currentId);
+    Toast.success(`同步完成：共处理 ${data.synced ?? 0} 个粉丝`);
   };
 
   const handleBlacklist = async (record: MpFan) => {
     if (!currentId) return;
-    const res = await request.post(`/api/mp/fans/${record.blacklisted ? 'unblacklist' : 'blacklist'}`, { accountId: currentId, openids: [record.openid] });
-    if (res.code === 0) { Toast.success(record.blacklisted ? '已移出黑名单' : '已拉黑'); void fetchList(); }
+    await blacklistMutation.mutateAsync({ accountId: currentId, openid: record.openid, blacklisted: record.blacklisted });
+    Toast.success(record.blacklisted ? '已移出黑名单' : '已拉黑');
   };
 
   const handleSyncBlacklist = async () => {
     if (!currentId) return;
-    setSyncing(true);
-    try {
-      const res = await request.post<{ synced: number }>('/api/mp/fans/sync-blacklist', { accountId: currentId });
-      if (res.code === 0) { Toast.success(`黑名单同步完成：共 ${res.data?.synced ?? 0} 个`); void fetchList(); }
-    } finally {
-      setSyncing(false);
-    }
+    const data = await syncBlacklistMutation.mutateAsync(currentId);
+    Toast.success(`黑名单同步完成：共 ${data.synced ?? 0} 个`);
   };
 
   const openEdit = (record: MpFan) => { setEditingRecord(record); setModalVisible(true); };
 
   const handleCreateMember = async (record: MpFan) => {
-    const res = await request.post(`/api/mp/fans/${record.id}/create-member`);
-    if (res.code === 0) { Toast.success('会员已创建并绑定'); void fetchList(); }
+    await createMemberMutation.mutateAsync(record.id);
+    Toast.success('会员已创建并绑定');
   };
 
   const handleUnbindMember = async (record: MpFan) => {
-    const res = await request.post(`/api/mp/fans/${record.id}/unbind-member`);
-    if (res.code === 0) { Toast.success('已解绑会员'); void fetchList(); }
+    await unbindMemberMutation.mutateAsync(record.id);
+    Toast.success('已解绑会员');
   };
 
   const confirmUnbindMember = (record: MpFan) => {
@@ -146,18 +135,11 @@ export default function MpFansPage() {
 
   const handleSubmit = async () => {
     let values: Awaited<ReturnType<FormApi['validate']>>;
-    try { values = (await formRef.current?.validate())!; } catch { return; }
+    try { values = (await formRef.current?.validate())!; } catch { throw new Error('validation'); }
     if (!editingRecord) return;
-    setSubmitting(true);
-    try {
-      const res = await request.put(`/api/mp/fans/${editingRecord.id}`, { remark: values.remark ?? '', tagIds: values.tagIds ?? [] });
-      if (res.code !== 0) return;
-      Toast.success('保存成功');
-      setModalVisible(false);
-      void fetchList();
-    } finally {
-      setSubmitting(false);
-    }
+    await saveMutation.mutateAsync({ id: editingRecord.id, values: { remark: values.remark ?? '', tagIds: values.tagIds ?? [] } });
+    Toast.success('保存成功');
+    setModalVisible(false);
   };
 
   const columns = [
@@ -229,8 +211,8 @@ export default function MpFansPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="搜索昵称/openid/备注"
-      value={searchParams.keyword}
-      onChange={(v) => setSearchParams({ ...searchParams, keyword: v })}
+      value={draftParams.keyword}
+      onChange={(v) => setDraftParams({ ...draftParams, keyword: v })}
       onEnterPress={handleSearch}
       showClear
       style={{ width: 200 }}
@@ -239,8 +221,8 @@ export default function MpFansPage() {
   const renderSubscribeFilter = () => (
     <Select
       placeholder="关注状态"
-      value={searchParams.subscribe}
-      onChange={(v) => setSearchParams({ ...searchParams, subscribe: v as MpFanSubscribe | undefined })}
+      value={draftParams.subscribe}
+      onChange={(v) => setDraftParams({ ...draftParams, subscribe: v as MpFanSubscribe | undefined })}
       optionList={SUBSCRIBE_OPTIONS}
       showClear
       style={{ width: 120 }}
@@ -249,8 +231,8 @@ export default function MpFansPage() {
   const renderTagFilter = () => (
     <Select
       placeholder="标签"
-      value={searchParams.tagId}
-      onChange={(v) => setSearchParams({ ...searchParams, tagId: v as number | undefined })}
+      value={draftParams.tagId}
+      onChange={(v) => setDraftParams({ ...draftParams, tagId: v as number | undefined })}
       optionList={tags.map((t) => ({ label: t.name, value: t.id }))}
       showClear
       filter
@@ -260,8 +242,8 @@ export default function MpFansPage() {
   const renderBlacklistFilter = () => (
     <Select
       placeholder="黑名单"
-      value={searchParams.blacklisted}
-      onChange={(v) => setSearchParams({ ...searchParams, blacklisted: v as 'true' | 'false' | undefined })}
+      value={draftParams.blacklisted}
+      onChange={(v) => setDraftParams({ ...draftParams, blacklisted: v as 'true' | 'false' | undefined })}
       optionList={[{ label: '黑名单', value: 'true' }, { label: '正常', value: 'false' }]}
       showClear
       style={{ width: 110 }}
@@ -319,8 +301,8 @@ export default function MpFansPage() {
         <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
       )}
 
-      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList()} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total, fetchList)}
+      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
+        pagination={buildPagination(total)}
         scroll={{ x: 1320 }} />
 
       <AppModal title="编辑粉丝" visible={modalVisible}

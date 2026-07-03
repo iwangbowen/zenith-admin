@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Banner, Button, Collapse, Empty, Progress, SideSheet, Space, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import { RefreshCw } from 'lucide-react';
 import type { WorkflowDefinitionHealthIssue, WorkflowDefinitionHealthReport, WorkflowFlowData } from '@zenith/shared';
-import { request } from '@/utils/request';
+import { useWorkflowDesignerHealthCheck } from '@/hooks/queries/workflow-designer';
 
 interface Props {
   visible: boolean;
@@ -46,19 +46,15 @@ function renderIssue(issue: WorkflowDefinitionHealthIssue, idx: number) {
 
 export default function WorkflowHealthCheckDrawer({ visible, flowData, definitionId, formFields, onClose }: Props) {
   const [report, setReport] = useState<WorkflowDefinitionHealthReport | null>(null);
-  const [loading, setLoading] = useState(false);
+  const healthCheckMutation = useWorkflowDesignerHealthCheck();
+  const loading = healthCheckMutation.isPending;
 
   const runCheck = useCallback(async () => {
-    setLoading(true);
     try {
-      const fieldPayload = formFields?.filter((f) => f.key).map((f) => ({ key: f.key, type: f.type }));
-      const body = flowData?.nodes?.length
-        ? { flowData, ...(fieldPayload?.length ? { formFields: fieldPayload } : {}) }
-        : { definitionId };
-      const res = await request.post<WorkflowDefinitionHealthReport>('/api/workflows/definitions/health-check', body);
-      if (res.code === 0) setReport(res.data);
-    } finally {
-      setLoading(false);
+      const next = await healthCheckMutation.mutateAsync({ flowData, definitionId, formFields });
+      setReport(next);
+    } catch {
+      // request 层负责错误提示
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [definitionId]);

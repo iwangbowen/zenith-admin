@@ -1,17 +1,24 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Button, Col, Form, Input, Modal, Row, Select, Spin, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Plus, RotateCcw, Search } from 'lucide-react';
-import type { AiPromptTemplate, AiPromptScope, CreateAiPromptTemplateInput, PaginatedResponse } from '@zenith/shared';
+import { useQueryClient } from '@tanstack/react-query';
+import type { AiPromptTemplate, AiPromptScope, CreateAiPromptTemplateInput } from '@zenith/shared';
 import { AppModal } from '@/components/AppModal';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
-import { request } from '@/utils/request';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
+import {
+  aiPromptKeys,
+  useAiPromptDetail,
+  useAiPromptList,
+  useDeleteAiPrompt,
+  useSaveAiPrompt,
+} from '@/hooks/queries/ai-prompts';
 
 interface SearchParams {
   keyword: string;
@@ -56,59 +63,37 @@ function normalizeNullable(value: unknown) {
 
 export default function PromptTemplatesPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
-  const [data, setData] = useState<PaginatedResponse<AiPromptTemplate> | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
+  const { page, pageSize, setPage, buildPagination } = usePagination();
   const [modalVisible, setModalVisible] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<AiPromptTemplate | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [modalDetailLoading, setModalDetailLoading] = useState(false);
-
-  searchParamsRef.current = searchParams;
-
-  const fetchTemplates = useCallback(
-    async (p = page, ps = pageSize, params?: SearchParams) => {
-      const activeParams = params ?? searchParamsRef.current;
-      setLoading(true);
-      try {
-        const queryObj: Record<string, string> = {
-          page: String(p),
-          pageSize: String(ps),
-        };
-        if (activeParams.keyword) queryObj.keyword = activeParams.keyword;
-        if (activeParams.scope) queryObj.scope = activeParams.scope;
-        const query = new URLSearchParams(queryObj).toString();
-        const res = await request.get<PaginatedResponse<AiPromptTemplate>>(`/api/ai/prompt-templates?${query}`);
-        if (res.code === 0) {
-          setData(res.data);
-          setPage(res.data.page);
-          setPageSize(res.data.pageSize);
-        }
-      } finally {
-        setLoading(false);
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [page, pageSize],
-  );
-
-  useEffect(() => {
-    void fetchTemplates();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const listQuery = useAiPromptList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    scope: submittedParams.scope || undefined,
+  });
+  const data = listQuery.data ?? null;
+  const detailQuery = useAiPromptDetail(editingTemplate?.id, modalVisible);
+  const editing = editingTemplate ? (detailQuery.data ?? editingTemplate) : null;
+  const modalDetailLoading = !!editingTemplate && detailQuery.isFetching;
+  const saveMutation = useSaveAiPrompt();
+  const deleteMutation = useDeleteAiPrompt();
 
   function handleSearch() {
     setPage(1);
-    void fetchTemplates(1, pageSize);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: aiPromptKeys.lists });
   }
 
   function handleReset() {
-    setSearchParams(defaultSearchParams);
     setPage(1);
-    void fetchTemplates(1, pageSize, defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: aiPromptKeys.lists });
   }
 
   function openCreate() {
@@ -116,37 +101,25 @@ export default function PromptTemplatesPage() {
     setModalVisible(true);
   }
 
-  async function openEdit(record: AiPromptTemplate) {
+  function openEdit(record: AiPromptTemplate) {
     setEditingTemplate(record);
     setModalVisible(true);
-    setModalDetailLoading(true);
-    try {
-      const res = await request.get<AiPromptTemplate>(`/api/ai/prompt-templates/${record.id}`);
-      if (res.code === 0 && res.data) {
-        setEditingTemplate(res.data);
-      } else {
-        Toast.error(res.message || '获取模板详情失败');
-      }
-    } finally {
-      setModalDetailLoading(false);
-    }
   }
 
   function closeModal() {
     setModalVisible(false);
     setEditingTemplate(null);
-    setModalDetailLoading(false);
   }
 
-  const formInitValues: PromptTemplateFormValues = editingTemplate
+  const formInitValues: PromptTemplateFormValues = editing
     ? {
-        name: editingTemplate.name,
-        content: editingTemplate.content,
-        description: editingTemplate.description ?? '',
-        category: editingTemplate.category ?? '',
-        scope: editingTemplate.scope,
-        sort: editingTemplate.sort,
-        isEnabled: editingTemplate.isEnabled,
+        name: editing.name,
+        content: editing.content,
+        description: editing.description ?? '',
+        category: editing.category ?? '',
+        scope: editing.scope,
+        sort: editing.sort,
+        isEnabled: editing.isEnabled,
       }
     : {
         name: '',
@@ -176,29 +149,14 @@ export default function PromptTemplatesPage() {
       isEnabled: Boolean(values.isEnabled),
     };
 
-    setSubmitting(true);
-    try {
-      const res = editingTemplate
-        ? await request.put<AiPromptTemplate>(`/api/ai/prompt-templates/${editingTemplate.id}`, payload)
-        : await request.post<AiPromptTemplate>('/api/ai/prompt-templates', payload);
-      if (res.code === 0) {
-        Toast.success(editingTemplate ? '更新成功' : '创建成功');
-        closeModal();
-        void fetchTemplates();
-      } else {
-        throw new Error(res.message || '保存失败');
-      }
-    } finally {
-      setSubmitting(false);
-    }
+    await saveMutation.mutateAsync({ id: editingTemplate?.id, values: payload });
+    Toast.success(editingTemplate ? '更新成功' : '创建成功');
+    closeModal();
   }
 
   async function handleDelete(id: number) {
-    const res = await request.delete<null>(`/api/ai/prompt-templates/${id}`);
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      void fetchTemplates();
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   }
 
   const columns: ColumnProps<AiPromptTemplate>[] = [
@@ -247,8 +205,8 @@ export default function PromptTemplatesPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="搜索名称/描述"
-      value={searchParams.keyword}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: String(value ?? '') }))}
+      value={draftParams.keyword}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: String(value ?? '') }))}
       onEnterPress={handleSearch}
       showClear
       style={{ width: 220 }}
@@ -257,9 +215,9 @@ export default function PromptTemplatesPage() {
 
   const renderScopeFilter = () => (
     <Select
-      value={searchParams.scope}
+      value={draftParams.scope}
       optionList={scopeSearchOptions}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, scope: (value as AiPromptScope | undefined) ?? '' }))}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, scope: (value as AiPromptScope | undefined) ?? '' }))}
       showClear
       style={{ width: 140 }}
     />
@@ -312,27 +270,27 @@ export default function PromptTemplatesPage() {
         bordered
         columns={columns}
         dataSource={data?.list ?? []}
-        loading={loading}
+        loading={listQuery.isFetching}
         rowKey="id"
         size="small"
         empty="暂无提示词模板"
-        onRefresh={() => void fetchTemplates()}
-        refreshLoading={loading}
-        pagination={buildPagination(data?.total ?? 0, fetchTemplates)}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
+        pagination={buildPagination(data?.total ?? 0)}
       />
 
       <AppModal
-        title={editingTemplate ? '编辑提示词模板' : '新增提示词模板'}
+        title={editing ? '编辑提示词模板' : '新增提示词模板'}
         visible={modalVisible}
         onOk={handleModalOk}
         onCancel={closeModal}
-        okButtonProps={{ loading: submitting, disabled: modalDetailLoading }}
+        okButtonProps={{ loading: saveMutation.isPending, disabled: modalDetailLoading }}
         width={660}
         closeOnEsc
       >
         <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
           <Form
-            key={editingTemplate?.id ?? 'new'}
+            key={editing?.id ?? 'new'}
             getFormApi={(api) => {
               formApi.current = api;
             }}

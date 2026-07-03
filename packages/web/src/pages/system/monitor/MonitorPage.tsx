@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Descriptions, Progress, Skeleton, Tabs, TabPane, Toast, Typography, Select, Tag, Table } from '@douyinfe/semi-ui';
 import { LineChart, chartOptions, makeLineSpec, useChartPalette } from '@/components/charts';
 import { RefreshCw, Cpu, HardDrive, Database, Server, MemoryStick, Layers, Activity, Network, Wifi, History, Thermometer, ListTree } from 'lucide-react';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { config } from '@/config';
 import { TOKEN_KEY } from '@zenith/shared';
+import { useMonitorHistory, useMonitorSnapshot } from '@/hooks/queries/monitor';
 import './MonitorPage.css';
 
 const { Text } = Typography;
@@ -106,14 +106,11 @@ interface TimeseriesPoint {
   loopLagMean: number; loopLagP99: number; qps: number; errorRate: number;
   netRxBps?: number; netTxBps?: number; diskReadBps?: number; diskWriteBps?: number;
 }
-interface TimeseriesData { intervalSec: number; capacity: number; points: TimeseriesPoint[]; }
-
 interface HistoryPoint {
   t: string; cpu: number; memory: number; disk: number; swap: number; load1: number;
   procCpu: number; heap: number; loopLag: number; qps: number; errorRate: number;
   netRxBps: number; netTxBps: number; diskReadBps: number; diskWriteBps: number;
 }
-interface HistoryData { range: string; bucketSec: number; points: HistoryPoint[]; }
 
 const HISTORY_RANGES: { label: string; value: string }[] = [
   { label: '近 1 小时', value: '1h' },
@@ -198,6 +195,7 @@ function formatTimestamp(ms: number): string {
 }
 
 const SKELETON_ROW_KEYS = ['r0','r1','r2','r3','r4','r5','r6','r7','r8','r9','r10','r11'] as const;
+const EMPTY_HISTORY: HistoryPoint[] = [];
 
 const REFRESH_OPTIONS = [
   { label: '实时推送 (SSE)', value: -1 },
@@ -228,61 +226,33 @@ export default function MonitorPage() {
   const [data, setData] = useState<MonitorData | null>(null);
   const [series, setSeries] = useState<TimeseriesPoint[]>([]);
   const [wsMetrics, setWsMetrics] = useState<WsMetrics | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [sseLoading, setSseLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshInterval, setRefreshInterval] = useState<number>(30000);
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [historyRange, setHistoryRange] = useState<string>('1h');
-  const [history, setHistory] = useState<HistoryPoint[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
   /** SSE 连接状态，仅在 SSE 模式下展示 */
   const [sseStatus, setSseStatus] = useState<'idle' | 'connecting' | 'open' | 'error'>('idle');
   const sseAbortRef = useRef<AbortController | null>(null);
 
-  const intervalRef = useRef<number>(refreshInterval);
-  intervalRef.current = refreshInterval;
+  const snapshotQuery = useMonitorSnapshot<MonitorData, TimeseriesPoint, WsMetrics>(
+    refreshInterval > 0 ? refreshInterval : false,
+    refreshInterval !== -1,
+  );
+  const historyQuery = useMonitorHistory<HistoryPoint>(historyRange, activeTab === 'history');
+  const history = historyQuery.data?.points ?? EMPTY_HISTORY;
+  const historyLoading = historyQuery.isFetching;
+  const loading = refreshInterval === -1 ? sseLoading : snapshotQuery.isFetching;
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [statusRes, tsRes, wsRes] = await Promise.all([
-        request.get<MonitorData>('/api/monitor', { silent: true }),
-        request.get<TimeseriesData>('/api/monitor/timeseries', { silent: true }),
-        request.get<WsMetrics>('/api/monitor/ws', { silent: true }),
-      ]);
-      if (statusRes.code === 0 && statusRes.data) {
-        setData(statusRes.data);
-        setLastUpdated(new Date());
-      } else {
-        Toast.error('获取监控数据失败');
-      }
-      if (tsRes.code === 0 && tsRes.data) {
-        setSeries(tsRes.data.points);
-      }
-      if (wsRes.code === 0 && wsRes.data) {
-        setWsMetrics(wsRes.data);
-      }
-    } catch {
-      Toast.error('网络请求失败');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // 首次进入页面拉一次（总览 + 时序）
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (!snapshotQuery.data) return;
+    setData(snapshotQuery.data.data);
+    setSeries(snapshotQuery.data.series);
+    setWsMetrics(snapshotQuery.data.wsMetrics);
+    setLastUpdated(new Date(snapshotQuery.dataUpdatedAt));
+  }, [snapshotQuery.data, snapshotQuery.dataUpdatedAt]);
 
-  /**
-   * 轮询模式：refreshInterval > 0 时生效
-   * SSE 模式（值=-1）与“暂停”（值=0）跳过
-   */
-  useEffect(() => {
-    if (refreshInterval <= 0) return;
-    const timer = globalThis.setInterval(fetchData, refreshInterval);
-    return () => globalThis.clearInterval(timer);
-  }, [fetchData, refreshInterval]);
+  const fetchData = () => snapshotQuery.refetch();
 
   /**
    * SSE 订阅模式：refreshInterval === -1 时生效
@@ -292,8 +262,10 @@ export default function MonitorPage() {
   useEffect(() => {
     if (refreshInterval !== -1) {
       setSseStatus('idle');
+      setSseLoading(false);
       return;
     }
+    setSseLoading(true);
     setSseStatus('connecting');
     const ctrl = new AbortController();
     sseAbortRef.current = ctrl;
@@ -328,6 +300,7 @@ export default function MonitorPage() {
         if (!res.ok || !res.body) {
           Toast.error('实时推送连接失败');
           setSseStatus('error');
+          setSseLoading(false);
           return;
         }
         setSseStatus('open');
@@ -352,7 +325,7 @@ export default function MonitorPage() {
               if (currentEvent === 'metrics') {
                 setData(payload as MonitorData);
                 setLastUpdated(new Date());
-                setLoading(false);
+                setSseLoading(false);
               } else if (currentEvent === 'metrics:diff') {
                 setData((prev) => (prev ? (mergePatch(prev, payload) as MonitorData) : prev));
                 setLastUpdated(new Date());
@@ -364,6 +337,7 @@ export default function MonitorPage() {
         if (e instanceof Error && e.name === 'AbortError') return;
         Toast.error('实时推送连接中断');
         setSseStatus('error');
+        setSseLoading(false);
       }
     })();
     return () => { ctrl.abort(); };
@@ -373,23 +347,6 @@ export default function MonitorPage() {
     () => series.map((p) => ({ ...p, time: formatTimestamp(p.t) })),
     [series],
   );
-
-  const fetchHistory = useCallback(async (range: string) => {
-    setHistoryLoading(true);
-    try {
-      const res = await request.get<HistoryData>(`/api/monitor/history?range=${range}`, { silent: true });
-      if (res.code === 0 && res.data) setHistory(res.data.points);
-    } catch {
-      // 静默
-    } finally {
-      setHistoryLoading(false);
-    }
-  }, []);
-
-  // 进入「历史趋势」标签或切换时间范围时拉取历史数据
-  useEffect(() => {
-    if (activeTab === 'history') fetchHistory(historyRange);
-  }, [activeTab, historyRange, fetchHistory]);
 
   const historyChartData = useMemo(
     () => history.map((p) => ({ ...p, time: p.t.length > 10 ? p.t.slice(5, 16) : p.t })),
@@ -483,7 +440,7 @@ export default function MonitorPage() {
               style={{ width: 130 }}
               size="small"
             />
-            <Button size="small" icon={<RefreshCw size={14} />} onClick={() => fetchHistory(historyRange)} loading={historyLoading}>刷新</Button>
+            <Button size="small" icon={<RefreshCw size={14} />} onClick={() => void historyQuery.refetch()} loading={historyLoading}>刷新</Button>
           </div>
         </div>
         {history.length === 0 ? (

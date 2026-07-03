@@ -1,4 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Card,
@@ -25,6 +26,7 @@ import { Download, FileText, RotateCcw, Search } from 'lucide-react';
 import dayjs from 'dayjs';
 import type { WorkflowApproveMethod, WorkflowAssigneeType, WorkflowCategory, WorkflowDefinition, WorkflowExecutionToken, WorkflowFlowData, WorkflowInstance, WorkflowNodeConfig, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTask, WorkflowTriggerExecution } from '@zenith/shared';
 import { request } from '@/utils/request';
+import { unwrap } from '@/lib/query';
 import { UserAvatar } from '@/components/UserAvatar';
 import AppModal from '@/components/AppModal';
 import { formatDateTime } from '@/utils/date';
@@ -47,6 +49,16 @@ import WorkflowCompensationsView from './WorkflowCompensationsView';
 import WorkflowEngineTraceView from './WorkflowEngineTraceView';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { renderEllipsis } from '../../../utils/table-columns';
+import {
+  useWorkflowDefinitionDetail,
+  useWorkflowInstanceDetail,
+  useWorkflowMigratePreflight,
+  useWorkflowMonitorList,
+  useWorkflowRuntimeDiagnostics,
+  useWorkflowStateMutation,
+  workflowMonitorKeys,
+} from '@/hooks/queries/workflow-monitor';
+import { useAllUsers } from '@/hooks/queries/users';
 
 /** 只读流程设计器（懒加载）：用于在诊断 SideSheet 内查看发起时的流程定义快照 */
 const WorkflowDesignerPage = lazy(() => import('@/pages/workflow/designer/WorkflowDesignerPage'));
@@ -383,23 +395,6 @@ function buildFocusDiagnosis(diagnostics: WorkflowRuntimeDiagnostics, diagNodes:
   };
 }
 
-interface MonitorStats {
-  total: number;
-  running: number;
-  approved: number;
-  rejected: number;
-  withdrawn: number;
-  cancelled: number;
-}
-
-interface MonitorResponse {
-  stats: MonitorStats;
-  list: WorkflowInstance[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
-
 /** 状态统计卡片 */
 function StatCard({
   label,
@@ -443,105 +438,91 @@ function StatCard({
 }
 
 export default function WorkflowMonitorPage() {
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<MonitorResponse | null>(null);
+  const queryClient = useQueryClient();
   const { page, pageSize, setPage, buildPagination } = usePagination();
   interface SearchParams { keyword: string; initiator: string; status: string; categoryId: number | ''; priority: string }
   const defaultSearchParams: SearchParams = { keyword: '', initiator: '', status: '', categoryId: '', priority: '' };
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
+  const listQuery = useWorkflowMonitorList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    status: submittedParams.status || undefined,
+    categoryId: submittedParams.categoryId === '' ? undefined : submittedParams.categoryId,
+    initiatorKeyword: submittedParams.initiator || undefined,
+    priority: submittedParams.priority || undefined,
+  });
+  const data = listQuery.data ?? null;
 
   const { categories } = useWorkflowCategories();
   const { hasPermission } = usePermission();
-  const [detail, setDetail] = useState<WorkflowInstance | null>(null);
-  const [detailDef, setDetailDef] = useState<WorkflowDefinition | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailVisible, setDetailVisible] = useState(false);
+  const [detailId, setDetailId] = useState<number | undefined>();
+  const detailQuery = useWorkflowInstanceDetail(detailId, detailVisible);
+  const detail = detailQuery.data ?? null;
+  const detailDefinitionQuery = useWorkflowDefinitionDetail(
+    detail && !detail.definitionSnapshot ? detail.definitionId : undefined,
+    detailVisible && !!detail && !detail.definitionSnapshot,
+    { silent: true },
+  );
+  const detailDef = detailDefinitionQuery.data ?? null;
+  const detailLoading = detailQuery.isFetching || detailDefinitionQuery.isFetching;
 
   // 详情弹窗
-  const [detailVisible, setDetailVisible] = useState(false);
   const [diagnosticsVisible, setDiagnosticsVisible] = useState(false);
-  const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
-  const [diagnostics, setDiagnostics] = useState<WorkflowRuntimeDiagnostics | null>(null);
+  const [diagnosticsId, setDiagnosticsId] = useState<number | undefined>();
+  const diagnosticsQuery = useWorkflowRuntimeDiagnostics(diagnosticsId, diagnosticsVisible);
+  const diagnostics = diagnosticsQuery.data ?? null;
+  const diagnosticsLoading = diagnosticsQuery.isFetching;
   const [diagnosticsTab, setDiagnosticsTab] = useState('nodes');
   const [defSnapshotVisible, setDefSnapshotVisible] = useState(false);
 
   // 流程定义（用于数据分析筛选 + 强制跳转节点选择）
-  const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
+  const definitionsQuery = useQuery({
+    queryKey: ['workflow', 'definitions', 'options'] as const,
+    queryFn: () => request.get<WorkflowDefinition[]>('/api/workflows/definitions/published').then(unwrap),
+  });
+  const definitions = definitionsQuery.data ?? [];
   // 管理员：强制跳转
   const [jumpRecord, setJumpRecord] = useState<WorkflowInstance | null>(null);
   const [jumpNodes, setJumpNodes] = useState<Array<{ label: string; value: string }>>([]);
-  const [jumpSubmitting, setJumpSubmitting] = useState(false);
   const jumpFormApi = useRef<FormApi | null>(null);
   // 管理员：改派处理人
   const [reassignRecord, setReassignRecord] = useState<WorkflowInstance | null>(null);
   const [reassignTasks, setReassignTasks] = useState<Array<{ label: string; value: number }>>([]);
-  const [reassignSubmitting, setReassignSubmitting] = useState(false);
-  const [userOptions, setUserOptions] = useState<Array<{ label: string; value: number }>>([]);
   const reassignFormApi = useRef<FormApi | null>(null);
+  const stateMutation = useWorkflowStateMutation();
+  const migratePreflightMutation = useWorkflowMigratePreflight();
+  const allUsersQuery = useAllUsers({ enabled: !!reassignRecord });
+  const userOptions = (allUsersQuery.data ?? []).map((u) => ({ label: u.nickname ?? u.username, value: u.id }));
 
   const canAdmin = hasPermission('workflow:instance:cancel');
 
-  const fetchList = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const { keyword: kw, status: st, categoryId: cat, initiator: initKw, priority: pr } = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const qs = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-      if (kw) qs.set('keyword', kw);
-      if (st) qs.set('status', st);
-      if (cat !== '') qs.set('categoryId', String(cat));
-      if (initKw) qs.set('initiatorKeyword', initKw);
-      if (pr) qs.set('priority', pr);
-      const res = await request.get<MonitorResponse>(`/api/workflows/instances/all?${qs.toString()}`);
-      if (res.code === 0) {
-        setData(res.data);
-        setPage(res.data.page);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize]);
-
-  useEffect(() => {
-    void fetchList();
-    request.get<WorkflowDefinition[]>('/api/workflows/definitions/published')
-      .then((res) => { if (res.code === 0 && res.data) setDefinitions(res.data); });
-  }, [fetchList]);
-
   const handleSearch = () => {
     setPage(1);
-    void fetchList(1, pageSize);
+    setSubmittedParams(searchParams);
+    void queryClient.invalidateQueries({ queryKey: workflowMonitorKeys.monitorLists });
   };
 
   const handleReset = () => {
     setSearchParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
     setPage(1);
-    void fetchList(1, pageSize, defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: workflowMonitorKeys.monitorLists });
   };
 
   const handleStatCardClick = (st: string) => {
     const next = searchParams.status === st ? '' : st;
     const newParams = { ...searchParams, status: next };
     setSearchParams(newParams);
+    setSubmittedParams(newParams);
     setPage(1);
-    void fetchList(1, pageSize, newParams);
+    void queryClient.invalidateQueries({ queryKey: workflowMonitorKeys.monitorLists });
   };
 
   const loadDetail = (instanceId: number) => {
-    setDetailLoading(true);
-    setDetailDef(null);
-    const p = request.get<WorkflowInstance>(`/api/workflows/instances/${instanceId}`)
-      .then(res => {
-        if (res.code === 0) {
-          setDetail(res.data);
-          if (res.data.definitionSnapshot) return null;
-          return request.get<WorkflowDefinition>(`/api/workflows/definitions/${res.data.definitionId}`, { silent: true });
-        }
-        return null;
-      })
-      .then(defRes => { if (defRes?.code === 0) setDetailDef(defRes.data); })
-      .finally(() => setDetailLoading(false));
-    p.catch(() => undefined);
+    setDetailId(instanceId);
   };
 
   const openDetail = (item: WorkflowInstance) => {
@@ -551,27 +532,16 @@ export default function WorkflowMonitorPage() {
 
   const openDiagnosticsById = (instanceId: number) => {
     setDiagnosticsVisible(true);
-    setDiagnostics(null);
+    setDiagnosticsId(instanceId);
     setDiagnosticsTab('nodes');
-    setDiagnosticsLoading(true);
-    request.get<WorkflowRuntimeDiagnostics>(`/api/workflows/instances/${instanceId}/diagnostics`)
-      .then((res) => {
-        if (res.code === 0) setDiagnostics(res.data);
-        else Toast.error(res.message || '加载诊断信息失败');
-      })
-      .finally(() => setDiagnosticsLoading(false));
   };
   const openDiagnostics = (item: WorkflowInstance) => openDiagnosticsById(item.id);
 
   /** Token 运营恢复操作（跳过卡死 / 从节点重放），成功后刷新诊断 */
   const runTokenOp = async (tokenId: number, op: 'skip' | 'replay') => {
-    const res = await request.post(`/api/workflows/instances/tokens/${tokenId}/${op}`);
-    if (res.code === 0) {
-      Toast.success(op === 'skip' ? '已跳过并推进' : '已从该节点重放');
-      if (diagnostics) openDiagnosticsById(diagnostics.instance.id);
-    } else {
-      Toast.error(res.message || '操作失败');
-    }
+    await stateMutation.mutateAsync({ url: `/api/workflows/instances/tokens/${tokenId}/${op}` });
+    Toast.success(op === 'skip' ? '已跳过并推进' : '已从该节点重放');
+    if (diagnostics) void diagnosticsQuery.refetch();
   };
 
   /** 导出实例诊断包（诊断 + 轨迹 + 执行 Token）为 JSON 文件 */
@@ -598,23 +568,22 @@ export default function WorkflowMonitorPage() {
       okButtonProps: { type: 'warning', theme: 'solid' },
       cancelText: '关闭',
       onOk: async () => {
-        const res = await request.post(`/api/workflows/instances/${record.id}/cancel`);
-        if (res.code === 0) {
-          Toast.success('流程已取消');
-          void fetchList();
-        }
+        await stateMutation.mutateAsync({ url: `/api/workflows/instances/${record.id}/cancel` });
+        Toast.success('流程已取消');
       },
     });
   };
 
   const handleMigrate = async (record: WorkflowInstance) => {
-    const pre = await request.get<{ migratable: boolean; fromVersion: number; toVersion: number; blocked: string[] }>(`/api/workflows/instances/${record.id}/migrate/preflight`);
-    const p = pre.data;
+    const p = await migratePreflightMutation.mutateAsync(record.id);
     if (!p) return;
     if (!p.migratable) { Toast.warning(p.blocked.length ? `无法迁移：新版本缺失节点 ${p.blocked.join(', ')}` : '无需迁移或已是最新版本'); return; }
     Modal.confirm({
       title: '迁移到最新版本', content: `将实例「${record.title}」从 v${p.fromVersion} 迁移到 v${p.toVersion}？`,
-      onOk: async () => { const r = await request.post(`/api/workflows/instances/${record.id}/migrate`); if (r.code === 0) { Toast.success('迁移成功'); void fetchList(); } },
+      onOk: async () => {
+        await stateMutation.mutateAsync({ url: `/api/workflows/instances/${record.id}/migrate` });
+        Toast.success('迁移成功');
+      },
     });
   };
 
@@ -626,82 +595,58 @@ export default function WorkflowMonitorPage() {
       okButtonProps: { type: 'danger', theme: 'solid' },
       cancelText: '取消',
       onOk: async () => {
-        const res = await request.delete(`/api/workflows/instances/${record.id}`);
-        if (res.code === 0) {
-          Toast.success('流程已删除');
-          void fetchList();
-        }
+        await stateMutation.mutateAsync({ url: `/api/workflows/instances/${record.id}`, method: 'delete' });
+        Toast.success('流程已删除');
       },
     });
   };
 
   const stats = data?.stats ?? { total: 0, running: 0, approved: 0, rejected: 0, withdrawn: 0, cancelled: 0 };
 
-  const loadUserOptions = useCallback(async () => {
-    if (userOptions.length > 0) return;
-    const res = await request.get<Array<{ id: number; nickname: string; username: string }>>('/api/users/all');
-    if (res.code === 0) setUserOptions(res.data.map((u) => ({ label: u.nickname ?? u.username, value: u.id })));
-  }, [userOptions.length]);
-
   const openJump = async (record: WorkflowInstance) => {
     setJumpRecord(record);
     setJumpNodes([]);
-    const res = await request.get<WorkflowDefinition>(`/api/workflows/definitions/${record.definitionId}`);
-    if (res.code === 0) {
-      const nodes = (res.data.flowData?.nodes ?? [])
-        .filter((n) => n.data.type === 'approve' || n.data.type === 'handler')
-        .map((n) => ({ label: n.data.label ?? n.data.key, value: n.data.key }));
-      setJumpNodes(nodes);
-    }
+    const definition = await queryClient.fetchQuery({
+      queryKey: workflowMonitorKeys.definitionDetail(record.definitionId),
+      queryFn: () => request.get<WorkflowDefinition>(`/api/workflows/definitions/${record.definitionId}`).then(unwrap),
+    });
+    const nodes = (definition.flowData?.nodes ?? [])
+      .filter((n) => n.data.type === 'approve' || n.data.type === 'handler')
+      .map((n) => ({ label: n.data.label ?? n.data.key, value: n.data.key }));
+    setJumpNodes(nodes);
   };
 
   const submitJump = async () => {
     if (!jumpRecord) return;
     try {
       const values = await jumpFormApi.current?.validate() as { targetNodeKey: string; comment?: string };
-      setJumpSubmitting(true);
-      const res = await request.post(`/api/workflows/instances/${jumpRecord.id}/jump`, values);
-      if (res.code === 0) {
-        Toast.success('已强制跳转');
-        setJumpRecord(null);
-        void fetchList();
-      } else {
-        Toast.error(res.message || '跳转失败');
-      }
-    } catch { /* validation */ } finally {
-      setJumpSubmitting(false);
-    }
+      await stateMutation.mutateAsync({ url: `/api/workflows/instances/${jumpRecord.id}/jump`, body: values });
+      Toast.success('已强制跳转');
+      setJumpRecord(null);
+    } catch { /* validation */ }
   };
 
   const openReassign = async (record: WorkflowInstance) => {
     setReassignRecord(record);
     setReassignTasks([]);
-    void loadUserOptions();
-    const res = await request.get<WorkflowInstance>(`/api/workflows/instances/${record.id}`);
-    if (res.code === 0) {
-      const tasks = (res.data.tasks ?? [])
-        .filter((t: WorkflowTask) => t.status === 'pending')
-        .map((t: WorkflowTask) => ({ label: `${t.nodeName} · ${t.assigneeName ?? '未指派'}`, value: t.id }));
-      setReassignTasks(tasks);
-    }
+    const instance = await queryClient.fetchQuery({
+      queryKey: workflowMonitorKeys.monitorDetail(record.id),
+      queryFn: () => request.get<WorkflowInstance>(`/api/workflows/instances/${record.id}`).then(unwrap),
+    });
+    const tasks = (instance.tasks ?? [])
+      .filter((t: WorkflowTask) => t.status === 'pending')
+      .map((t: WorkflowTask) => ({ label: `${t.nodeName} · ${t.assigneeName ?? '未指派'}`, value: t.id }));
+    setReassignTasks(tasks);
   };
 
   const submitReassign = async () => {
     if (!reassignRecord) return;
     try {
       const values = await reassignFormApi.current?.validate() as { taskId: number; targetUserId: number; comment?: string };
-      setReassignSubmitting(true);
-      const res = await request.post(`/api/workflows/tasks/${values.taskId}/reassign`, { targetUserId: values.targetUserId, comment: values.comment });
-      if (res.code === 0) {
-        Toast.success('已改派');
-        setReassignRecord(null);
-        void fetchList();
-      } else {
-        Toast.error(res.message || '改派失败');
-      }
-    } catch { /* validation */ } finally {
-      setReassignSubmitting(false);
-    }
+      await stateMutation.mutateAsync({ url: `/api/workflows/tasks/${values.taskId}/reassign`, body: { targetUserId: values.targetUserId, comment: values.comment } });
+      Toast.success('已改派');
+      setReassignRecord(null);
+    } catch { /* validation */ }
   };
 
   const renderJsonBlock = (value: unknown) => {
@@ -1243,7 +1188,7 @@ export default function WorkflowMonitorPage() {
   );
 
   const buildExportQuery = () => {
-    const { keyword, status, categoryId, initiator, priority } = searchParamsRef.current;
+    const { keyword, status, categoryId, initiator, priority } = searchParams;
     return {
       ...(keyword ? { keyword } : {}),
       ...(status ? { status } : {}),
@@ -1278,8 +1223,9 @@ export default function WorkflowMonitorPage() {
         onApply={(filters) => {
           const next = { ...defaultSearchParams, ...(filters as Partial<SearchParams>) };
           setSearchParams(next);
+          setSubmittedParams(next);
           setPage(1);
-          void fetchList(1, pageSize, next);
+          void queryClient.invalidateQueries({ queryKey: workflowMonitorKeys.monitorLists });
         }}
       />
       <SearchToolbar
@@ -1325,11 +1271,11 @@ export default function WorkflowMonitorPage() {
         columns={columns}
         dataSource={data?.list ?? []}
         rowKey="id"
-        loading={loading}
-        onRefresh={() => void fetchList()}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         scroll={{ x: 1470 }}
-        pagination={buildPagination(data?.total ?? 0, (p, ps) => void fetchList(p, ps))}
+        pagination={buildPagination(data?.total ?? 0)}
       />
         </TabPane>
         <TabPane tab="数据分析" itemKey="analytics">
@@ -1350,7 +1296,7 @@ export default function WorkflowMonitorPage() {
       <SideSheet
         title="流程详情"
         visible={detailVisible}
-        onCancel={() => { setDetailVisible(false); setDetail(null); setDetailDef(null); }}
+        onCancel={() => { setDetailVisible(false); setDetailId(undefined); }}
         width={1080}
         bodyStyle={{ padding: 0, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
       >
@@ -1366,7 +1312,7 @@ export default function WorkflowMonitorPage() {
       <SideSheet
         title="运行时诊断"
         visible={diagnosticsVisible}
-        onCancel={() => { setDiagnosticsVisible(false); setDiagnostics(null); setDefSnapshotVisible(false); }}
+        onCancel={() => { setDiagnosticsVisible(false); setDiagnosticsId(undefined); setDefSnapshotVisible(false); }}
         width={980}
         bodyStyle={{ padding: 16 }}
       >
@@ -1396,7 +1342,7 @@ export default function WorkflowMonitorPage() {
         visible={!!jumpRecord}
         onCancel={() => setJumpRecord(null)}
         onOk={() => void submitJump()}
-        okButtonProps={{ loading: jumpSubmitting, type: 'warning', theme: 'solid' }}
+        okButtonProps={{ loading: stateMutation.isPending, type: 'warning', theme: 'solid' }}
         okText="确认跳转"
         closeOnEsc
         width={460}
@@ -1416,7 +1362,7 @@ export default function WorkflowMonitorPage() {
         visible={!!reassignRecord}
         onCancel={() => setReassignRecord(null)}
         onOk={() => void submitReassign()}
-        okButtonProps={{ loading: reassignSubmitting, type: 'primary' }}
+        okButtonProps={{ loading: stateMutation.isPending, type: 'primary' }}
         okText="确认改派"
         closeOnEsc
         width={460}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Tree, Button, Upload, Toast, Typography, Tooltip, Dropdown, Modal, Input, Collapse, Progress } from '@douyinfe/semi-ui';
 import { Icon } from '@iconify/react';
 import {
@@ -22,20 +23,15 @@ import { config } from '@/config';
 import { useTerminalPreferences } from './useTerminalPreferences';
 import { getFileIcon, getFolderIcon } from './fileIcons';
 import AppModal from '@/components/AppModal';
+import {
+  fetchLocalDir,
+  rootInfoQueryOptions,
+  useLocalFileMutation,
+  useLocalFileUpload,
+  type FileEntry,
+  type RootInfo,
+} from '@/hooks/queries/terminal-files';
 
-interface FileEntry {
-  name: string;
-  path: string;
-  type: 'dir' | 'file';
-  size: number;
-  mtime: string;
-}
-
-interface DirListing {
-  path: string;
-  parent: string | null;
-  entries: FileEntry[];
-}
 
 /** Semi Tree 节点（附带 fileType 自定义字段） */
 interface FileNode {
@@ -119,12 +115,6 @@ function uploadOneXhr(
   });
 }
 
-interface RootInfo {
-  home: string;
-  isWindows: boolean;
-  drives: string[];
-}
-
 interface FileExplorerProps {
   readonly active: boolean;
   readonly onOpenFile: (path: string) => void;
@@ -132,6 +122,9 @@ interface FileExplorerProps {
 }
 
 export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: FileExplorerProps) {
+  const queryClient = useQueryClient();
+  const fileMutation = useLocalFileMutation();
+  const uploadMutation = useLocalFileUpload();
   const { terminal, setTerminalPref } = useTerminalPreferences();
   const favorites = terminal.favorites;
 
@@ -173,9 +166,13 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
   const loadRoot = useCallback(async () => {
     setLoading(true);
     // 第一步：获取根信息（home 目录、是否 Windows、盘符列表）
-    const infoRes = await request.get<RootInfo>('/api/terminal-files/root-info');
-    if (infoRes.code !== 0 || !infoRes.data) { setLoading(false); return; }
-    const info = infoRes.data;
+    let info: RootInfo;
+    try {
+      info = await queryClient.fetchQuery(rootInfoQueryOptions());
+    } catch {
+      setLoading(false);
+      return;
+    }
     setRootInfo(info);
 
     // 确定树根：Unix = "/"，Windows = 主目录所在盘符根（如 C:\\)
@@ -187,16 +184,17 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
       treeRoot = '/';
     }
 
-    const res = await request.get<DirListing>(`/api/terminal-files/list?path=${encodeURIComponent(treeRoot)}`);
-    setLoading(false);
-    if (res.code === 0 && res.data) {
-      setRootPath(res.data.path);
-      setSelectedDir(res.data.path);
-      setTreeData(res.data.entries.map(entryToNode));
+    try {
+      const res = await fetchLocalDir(queryClient, treeRoot);
+      setRootPath(res.path);
+      setSelectedDir(res.path);
+      setTreeData(res.entries.map(entryToNode));
       setExpandedKeys([]);
       setSelectedKey('');
       // 定位到 home 目录，传入当前根路径避免依赖 state
-      void locateInTree(info.home, res.data.path);
+      void locateInTree(info.home, res.path);
+    } finally {
+      setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -204,16 +202,17 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
   /** 加载指定目录为新根（Windows 切换盘符时使用） */
   const loadDir = useCallback(async (dir: string) => {
     setLoading(true);
-    const res = await request.get<DirListing>(`/api/terminal-files/list?path=${encodeURIComponent(dir)}`);
-    setLoading(false);
-    if (res.code === 0 && res.data) {
-      setRootPath(res.data.path);
-      setSelectedDir(res.data.path);
-      setTreeData(res.data.entries.map(entryToNode));
+    try {
+      const res = await fetchLocalDir(queryClient, dir);
+      setRootPath(res.path);
+      setSelectedDir(res.path);
+      setTreeData(res.entries.map(entryToNode));
       setExpandedKeys([]);
       setSelectedKey('');
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  }, [queryClient]);
 
   // 侧边栏首次显示时加载根目录
   useEffect(() => {
@@ -228,14 +227,10 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
     if (!node || node.isLeaf || (node as unknown as FileNode).fileType === 'file') return Promise.resolve();
     const dir = String(node.value);
     const key = String(node.key);
-    return request
-      .get<DirListing>(`/api/terminal-files/list?path=${encodeURIComponent(dir)}`)
-      .then((res) => {
-        if (res.code === 0 && res.data) {
-          setTreeData((prev) => setChildren(prev, key, res.data.entries.map(entryToNode)));
-        }
-      });
-  }, []);
+    return fetchLocalDir(queryClient, dir).then((res) => {
+      setTreeData((prev) => setChildren(prev, key, res.entries.map(entryToNode)));
+    });
+  }, [queryClient]);
 
   // 刷新指定目录（根目录走 loadRoot）
   const refreshDir = useCallback(
@@ -244,15 +239,11 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
         void loadRoot();
         return;
       }
-      void request
-        .get<DirListing>(`/api/terminal-files/list?path=${encodeURIComponent(dirPath)}`)
-        .then((res) => {
-          if (res.code === 0 && res.data) {
-            setTreeData((prev) => setChildren(prev, dirPath, res.data.entries.map(entryToNode)));
-          }
-        });
+      void fetchLocalDir(queryClient, dirPath).then((res) => {
+        setTreeData((prev) => setChildren(prev, dirPath, res.entries.map(entryToNode)));
+      });
     },
-    [rootPath, loadRoot],
+    [rootPath, loadRoot, queryClient],
   );
 
   // 在文件树中逐级展开并定位到指定目录，支持传入显式根路径（首次加载时 rootPath state 可能尚未更新）
@@ -287,13 +278,8 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
       if (ancestors.length > 0) {
         const results: { dir: string; entries: FileNode[] }[] = [];
         for (const dir of ancestors) {
-          const res = await request.get<DirListing>(
-            `/api/terminal-files/list?path=${encodeURIComponent(dir)}`,
-            { silent: true },
-          );
-          if (res.code === 0 && res.data) {
-            results.push({ dir, entries: res.data.entries.map(entryToNode) });
-          }
+          const res = await fetchLocalDir(queryClient, dir, { silent: true });
+          results.push({ dir, entries: res.entries.map(entryToNode) });
         }
         if (results.length > 0) {
           setTreeData((prev) => {
@@ -315,7 +301,7 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
         treeRef.current?.scrollTo({ key: target, align: 'auto' });
       }, 150);
     },
-    [rootPath],
+    [rootPath, queryClient],
   );
 
   const isFavorite = (path: string) => favorites.some((f) => f.path === path);
@@ -372,10 +358,10 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
         const fd = new FormData();
         fd.append('path', targetDir);
         fd.append('file', file);
-        return request.postForm<FileEntry>('/api/terminal-files/upload', fd, { silent: true });
+        return uploadMutation.mutateAsync({ formData: fd, silent: true });
       });
-      const results = await Promise.all(uploads);
-      const success = results.filter((r) => r.code === 0).length;
+      const results = await Promise.allSettled(uploads);
+      const success = results.filter((r) => r.status === 'fulfilled').length;
       const fail = results.length - success;
       if (success > 0) {
         const failNote = fail > 0 ? `，${fail} 个失败` : '';
@@ -385,7 +371,7 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
         Toast.error('上传失败');
       }
     },
-    [selectedDir, rootPath, refreshDir],
+    [selectedDir, rootPath, refreshDir, uploadMutation],
   );
 
   // -----------------------------------
@@ -408,12 +394,10 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
       okText: '删除',
       cancelText: '取消',
       onOk: async () => {
-        const res = await request.delete(`/api/terminal-files/entry?path=${encodeURIComponent(node.value)}`);
-        if (res.code === 0) {
-          Toast.success('已删除');
-          if (isFavorite(node.value)) toggleFavorite(node.value, node.label);
-          refreshDir(parentOf(node.value));
-        }
+        await fileMutation.mutateAsync({ kind: 'delete', path: node.value });
+        Toast.success('已删除');
+        if (isFavorite(node.value)) toggleFavorite(node.value, node.label);
+        refreshDir(parentOf(node.value));
       },
     });
   };
@@ -429,8 +413,8 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
       onOk: async () => {
         let success = 0;
         for (const path of checkedKeys) {
-          const res = await request.delete(`/api/terminal-files/entry?path=${encodeURIComponent(path)}`);
-          if (res.code === 0) success++;
+          await fileMutation.mutateAsync({ kind: 'delete', path });
+          success++;
         }
         Toast.success(`已删除 ${success}/${checkedKeys.length} 项`);
         setCheckedKeys([]);
@@ -449,21 +433,17 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
     }
     const target = joinPath(dialog.baseDir, name);
     if (dialog.mode === 'rename') {
-      const res = await request.post('/api/terminal-files/rename', { from: dialog.oldPath, to: target });
-      if (res.code === 0) {
-        Toast.success('已重命名');
-        setDialog(null);
-        refreshDir(dialog.baseDir);
-      }
+      await fileMutation.mutateAsync({ kind: 'rename', from: dialog.oldPath, to: target });
+      Toast.success('已重命名');
+      setDialog(null);
+      refreshDir(dialog.baseDir);
     } else {
       const type = dialog.mode === 'createDir' ? 'dir' : 'file';
-      const res = await request.post<FileEntry>('/api/terminal-files/create', { path: target, type });
-      if (res.code === 0) {
-        Toast.success('已创建');
-        setDialog(null);
-        refreshDir(dialog.baseDir);
-        if (type === 'file' && res.data) onOpenFile(res.data.path);
-      }
+      const entry = await fileMutation.mutateAsync({ kind: 'create', path: target, type });
+      Toast.success('已创建');
+      setDialog(null);
+      refreshDir(dialog.baseDir);
+      if (type === 'file' && entry) onOpenFile(entry.path);
     }
   };
 
@@ -497,7 +477,6 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
       Toast.error('上传失败');
     }
     setUploading([]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshDir]);
 
   const nodeMenu = (node: FileNode) => {
@@ -616,16 +595,12 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
             fd.append('path', selectedDir || rootPath);
             const inst = (file as unknown as { fileInstance: File }).fileInstance;
             fd.append('file', inst);
-            request
-              .postForm<FileEntry>('/api/terminal-files/upload', fd)
+            uploadMutation
+              .mutateAsync({ formData: fd })
               .then((res) => {
-                if (res.code === 0) {
-                  Toast.success('上传成功');
-                  onSuccess?.(res.data ?? {});
-                  refreshDir(selectedDir || rootPath);
-                } else {
-                  onError?.({ status: 0 });
-                }
+                Toast.success('上传成功');
+                onSuccess?.(res ?? {});
+                refreshDir(selectedDir || rootPath);
               })
               .catch(() => onError?.({ status: 0 }));
           }}

@@ -9,10 +9,9 @@ import { Form, Select, Button, Typography, Row, Col, Divider, Rating, Toast, wit
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, Eraser, Trash2 } from 'lucide-react';
 import dayjs from 'dayjs';
-import type { WorkflowFormField, WorkflowFormFieldColumn, WorkflowFormFieldOptionItem, WorkflowFormFieldCompareRule, WorkflowFieldVisibilityCondition, WorkflowFieldVisibilityRuleGroup, WorkflowRelationOption, WorkflowDataSourceOption } from '@zenith/shared';
+import type { WorkflowFormField, WorkflowFormFieldColumn, WorkflowFormFieldOptionItem, WorkflowFormFieldCompareRule, WorkflowFieldVisibilityCondition, WorkflowFieldVisibilityRuleGroup, WorkflowRelationOption } from '@zenith/shared';
 import { CURRENCY_OPTIONS, toDateFnsToken } from '../form-types';
 import { evalFormula } from '../form-formula';
-import { request } from '@/utils/request';
 import { rmbUpper } from '@/utils/rmb';
 import FileAttachment from '@/components/FileAttachment';
 import { uploadedFileToAttachment } from '@/components/FileAttachment/utils';
@@ -22,6 +21,7 @@ import UserSelect from '@/components/UserSelect';
 import DepartmentSelect from '@/components/DepartmentSelect';
 import DictSelect from '@/components/DictSelect';
 import ColorPickerInput from '@/components/ColorPickerInput';
+import { useWorkflowDesignerRelationOptions, useWorkflowDesignerRemoteDataSourceOptions } from '@/hooks/queries/workflow-designer';
 
 const PHONE_REGEX = /^1[3-9]\d{9}$/;
 const EMAIL_REGEX = /^[\w.+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
@@ -77,31 +77,18 @@ function RelationSelect({
   showClear = true,
   style,
 }: Readonly<RelationSelectProps>) {
-  const [options, setOptions] = useState<WorkflowRelationOption[]>([]);
-  const [loading, setLoading] = useState(false);
-  const requestSeq = useRef(0);
-  const keywordRef = useRef('');
-
-  const loadOptions = async (keyword = '') => {
-    const seq = ++requestSeq.current;
-    setLoading(true);
-    const params = new URLSearchParams();
-    if (relationDefinitionId) params.set('definitionId', String(relationDefinitionId));
-    if (keyword.trim()) params.set('keyword', keyword.trim());
-    params.set('limit', '20');
-    try {
-      const res = await request.get<WorkflowRelationOption[]>(`/api/workflows/instances/relation-options?${params.toString()}`, { silent: true });
-      if (seq === requestSeq.current && res.code === 0 && res.data) {
-        setOptions(res.data);
-      }
-    } finally {
-      if (seq === requestSeq.current) setLoading(false);
-    }
-  };
+  const [keyword, setKeyword] = useState('');
+  const [active, setActive] = useState(false);
+  const optionsQuery = useWorkflowDesignerRelationOptions(
+    { definitionId: relationDefinitionId, keyword: keyword.trim() || undefined, limit: 20 },
+    active,
+  );
+  const options = optionsQuery.data ?? [];
+  const loading = optionsQuery.isFetching;
 
   useEffect(() => {
-    setOptions([]);
-    keywordRef.current = '';
+    setKeyword('');
+    setActive(false);
   }, [relationDefinitionId]);
 
   const selectedIds = (Array.isArray(value) ? value : value === undefined || value === null ? [] : [value])
@@ -137,8 +124,8 @@ function RelationSelect({
       multiple={multiple}
       filter
       remote
-      onSearch={(keyword) => { keywordRef.current = keyword; void loadOptions(keyword); }}
-      onFocus={() => { void loadOptions(keywordRef.current); }}
+      onSearch={(nextKeyword) => { setKeyword(nextKeyword); setActive(true); }}
+      onFocus={() => { setActive(true); }}
       placeholder={loading ? '加载中...' : placeholder}
       disabled={disabled}
       showClear={showClear}
@@ -160,25 +147,19 @@ interface DataSourceSelectProps {
 }
 
 function DataSourceSelect({ value, onChange, dataSourceId, placeholder, disabled, showClear = true, style }: Readonly<DataSourceSelectProps>) {
-  const [options, setOptions] = useState<WorkflowDataSourceOption[]>([]);
-  const [loading, setLoading] = useState(false);
-  const seqRef = useRef(0);
+  const [keyword, setKeyword] = useState('');
+  const [active, setActive] = useState(false);
+  const optionsQuery = useWorkflowDesignerRemoteDataSourceOptions(
+    { dataSourceId, keyword: keyword.trim() || undefined },
+    active && !!dataSourceId,
+  );
+  const options = optionsQuery.data ?? [];
+  const loading = optionsQuery.isFetching;
 
-  const load = async (keyword = '') => {
-    if (!dataSourceId) return;
-    const seq = ++seqRef.current;
-    setLoading(true);
-    const params = new URLSearchParams();
-    if (keyword.trim()) params.set('keyword', keyword.trim());
-    try {
-      const res = await request.get<WorkflowDataSourceOption[]>(`/api/workflows/data-sources/${dataSourceId}/options?${params.toString()}`, { silent: true });
-      if (seq === seqRef.current && res.code === 0 && res.data) setOptions(res.data);
-    } finally {
-      if (seq === seqRef.current) setLoading(false);
-    }
-  };
-
-  useEffect(() => { setOptions([]); }, [dataSourceId]);
+  useEffect(() => {
+    setKeyword('');
+    setActive(false);
+  }, [dataSourceId]);
 
   const current = value === undefined || value === null ? '' : String(value);
   const optionList = [
@@ -192,8 +173,8 @@ function DataSourceSelect({ value, onChange, dataSourceId, placeholder, disabled
       onChange={(v) => onChange?.((v as string) ?? undefined)}
       filter
       remote
-      onSearch={(keyword) => { void load(keyword); }}
-      onFocus={() => { if (options.length === 0) void load(); }}
+      onSearch={(nextKeyword) => { setKeyword(nextKeyword); setActive(true); }}
+      onFocus={() => { setActive(true); }}
       placeholder={loading ? '加载中...' : placeholder}
       disabled={disabled}
       showClear={showClear}
@@ -489,7 +470,7 @@ function fieldLabelNode(field: WorkflowFormField, required: boolean | undefined 
   return <span>{field.label}<span style={{ color: 'var(--semi-color-danger)' }}> *</span></span>;
 }
 
-export function flattenFields(fields: WorkflowFormField[]): WorkflowFormField[] {
+function flattenFields(fields: WorkflowFormField[]): WorkflowFormField[] {
   const out: WorkflowFormField[] = [];
   for (const f of fields) {
     out.push(f);
@@ -557,7 +538,7 @@ function evalRuleGroup(group: WorkflowFieldVisibilityRuleGroup, values: Record<s
     : rules.every(r => evalCondition(r, values));
 }
 
-export function isFieldVisible(field: WorkflowFormField, values: Record<string, unknown>): boolean {
+function isFieldVisible(field: WorkflowFormField, values: Record<string, unknown>): boolean {
   // 高级联动（多条件 and/or）优先，完全决定显隐
   if (field.visibilityRules && (field.visibilityRules.rules?.length ?? 0) > 0) {
     return evalRuleGroup(field.visibilityRules, values);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import {
   Banner,
   Button,
@@ -12,23 +12,20 @@ import {
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Wrench, Power, PowerOff, RefreshCw } from 'lucide-react';
-import type { MaintenanceLog, PaginatedResponse } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { MaintenanceLog } from '@zenith/shared';
+import { useQueryClient } from '@tanstack/react-query';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
+import {
+  maintenanceKeys,
+  useMaintenanceLogs,
+  useMaintenanceStatus,
+  useUpdateMaintenanceStatus,
+} from '@/hooks/queries/maintenance';
 
 const { Title, Text } = Typography;
-
-interface MaintenanceStatus {
-  enabled: boolean;
-  message: string;
-  estimatedEndAt: string | null;
-  startedAt: string | null;
-  startedByName: string | null;
-  updatedAt: string;
-}
 
 interface FormValues {
   message: string;
@@ -53,59 +50,30 @@ export default function MaintenancePage() {
   const { hasPermission } = usePermission();
   const canManage = hasPermission('system:maintenance:manage');
   const formApi = useRef<FormApi | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [status, setStatus] = useState<MaintenanceStatus | null>(null);
+  const queryClient = useQueryClient();
 
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [logs, setLogs] = useState<MaintenanceLog[]>([]);
-  const [logsTotal, setLogsTotal] = useState(0);
-  const [logsLoading, setLogsLoading] = useState(false);
-
-  const fetchLogs = useCallback(async (p = page, ps = pageSize) => {
-    setLogsLoading(true);
-    try {
-      const res = await request.get<PaginatedResponse<MaintenanceLog>>(`/api/maintenance/logs?page=${p}&pageSize=${ps}`);
-      if (res.code === 0) {
-        setLogs(res.data.list);
-        setLogsTotal(res.data.total);
-      }
-    } finally {
-      setLogsLoading(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const statusQuery = useMaintenanceStatus();
+  const logsQuery = useMaintenanceLogs({ page, pageSize });
+  const updateMutation = useUpdateMaintenanceStatus();
+  const status = statusQuery.data ?? null;
+  const logs = logsQuery.data?.list ?? [];
+  const logsTotal = logsQuery.data?.total ?? 0;
 
   useEffect(() => {
-    void fetchLogs();
-  }, [fetchLogs]);
-
-  const fetchStatus = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await request.get<MaintenanceStatus>('/api/maintenance');
-      if (res.code === 0) {
-        setStatus(res.data);
-        formApi.current?.setValues({
-          message: res.data.message,
-          estimatedEndAt: res.data.estimatedEndAt ? new Date(res.data.estimatedEndAt) : null,
-        });
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchStatus();
-  }, [fetchStatus]);
+    if (!status) return;
+    formApi.current?.setValues({
+      message: status.message,
+      estimatedEndAt: status.estimatedEndAt ? new Date(status.estimatedEndAt) : null,
+    });
+  }, [status]);
 
   // 横幅关闭维护后同步刷新页面状态
   useEffect(() => {
-    const handler = () => void fetchStatus();
+    const handler = () => void queryClient.invalidateQueries({ queryKey: maintenanceKeys.status });
     globalThis.addEventListener('maintenance:statusChanged', handler);
     return () => globalThis.removeEventListener('maintenance:statusChanged', handler);
-  }, [fetchStatus]);
+  }, [queryClient]);
 
   const handleToggle = async (enable: boolean) => {
     if (!canManage) return;
@@ -127,26 +95,18 @@ export default function MaintenancePage() {
     }
 
     const values = formApi.current?.getValues() as FormValues | undefined;
-    setSubmitting(true);
-    try {
-      const res = await request.put<MaintenanceStatus>('/api/maintenance', {
-        enabled: enable,
-        message: values?.message || '系统维护中，请稍后重试',
-        estimatedEndAt: values?.estimatedEndAt ? formatDateTimeForApi(values.estimatedEndAt) : null,
-      });
-      if (res.code === 0) {
-        setStatus(res.data);
-        Toast.success(enable ? '维护模式已开启' : '维护模式已关闭');
-        globalThis.dispatchEvent(new CustomEvent('maintenance:statusChanged', { detail: res.data }));
-        setPage(1);
-        void fetchLogs(1, pageSize);
-      }
-    } finally {
-      setSubmitting(false);
-    }
+    const data = await updateMutation.mutateAsync({
+      enabled: enable,
+      message: values?.message || '系统维护中，请稍后重试',
+      estimatedEndAt: values?.estimatedEndAt ? formatDateTimeForApi(values.estimatedEndAt) : null,
+    });
+    Toast.success(enable ? '维护模式已开启' : '维护模式已关闭');
+    globalThis.dispatchEvent(new CustomEvent('maintenance:statusChanged', { detail: data }));
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: maintenanceKeys.logs });
   };
 
-  if (loading && !status) {
+  if (statusQuery.isFetching && !status) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0' }}>
         <Spin size="large" />
@@ -224,8 +184,8 @@ export default function MaintenancePage() {
             icon={<RefreshCw size={13} />}
             size="small"
             theme="borderless"
-            loading={loading}
-            onClick={fetchStatus}
+            loading={statusQuery.isFetching}
+            onClick={() => void statusQuery.refetch()}
           >
             刷新
           </Button>
@@ -309,7 +269,7 @@ export default function MaintenancePage() {
                 type="tertiary"
                 theme="solid"
                 icon={<Power size={14} />}
-                loading={submitting}
+                loading={updateMutation.isPending}
                 onClick={() => void handleToggle(false)}
               >
                 关闭维护模式
@@ -319,7 +279,7 @@ export default function MaintenancePage() {
                 type="warning"
                 theme="solid"
                 icon={<PowerOff size={14} />}
-                loading={submitting}
+                loading={updateMutation.isPending}
                 onClick={() => void handleToggle(true)}
               >
                 开启维护模式
@@ -351,11 +311,11 @@ export default function MaintenancePage() {
           rowKey="id"
           columns={logColumns}
           dataSource={logs}
-          loading={logsLoading}
+          loading={logsQuery.isFetching}
           empty="暂无维护记录"
-          onRefresh={() => void fetchLogs(page, pageSize)}
-          refreshLoading={logsLoading}
-          pagination={buildPagination(logsTotal, fetchLogs)}
+          onRefresh={() => void logsQuery.refetch()}
+          refreshLoading={logsQuery.isFetching}
+          pagination={buildPagination(logsTotal)}
         />
       </div>
     </div>

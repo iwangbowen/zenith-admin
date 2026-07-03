@@ -1,14 +1,15 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Select, Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RotateCcw, Search } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { renderEllipsis } from '@/utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
-import type { MonitorAlertEvent, MonitorMetric, PaginatedResponse } from '@zenith/shared';
+import type { MonitorAlertEvent, MonitorMetric } from '@zenith/shared';
+import { monitorAlertKeys, useMonitorAlertEventList } from '@/hooks/queries/monitor-alerts';
 
 const METRIC_LABELS: Record<MonitorMetric, string> = {
   cpu: 'CPU 使用率', memory: '内存使用率', disk: '磁盘使用率', swap: 'Swap 使用率',
@@ -41,42 +42,30 @@ function fmt(metric: MonitorMetric, value: number): string {
 interface Filters { metric?: string; level?: string; status?: string; }
 
 export default function MonitorAlertEventsPage() {
-  const [data, setData] = useState<PaginatedResponse<MonitorAlertEvent> | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [filters, setFilters] = useState<Filters>({});
-  const filtersRef = useRef<Filters>({});
-  filtersRef.current = filters;
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
+  const queryClient = useQueryClient();
+  const [draftFilters, setDraftFilters] = useState<Filters>({});
+  const [submittedFilters, setSubmittedFilters] = useState<Filters>({});
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const listQuery = useMonitorAlertEventList({
+    page,
+    pageSize,
+    metric: submittedFilters.metric || undefined,
+    level: submittedFilters.level || undefined,
+    status: submittedFilters.status || undefined,
+  });
+  const data = listQuery.data ?? null;
 
-  const fetchEvents = useCallback(async (p = page, ps = pageSize, f?: Filters) => {
-    const active = f ?? filtersRef.current;
-    setLoading(true);
-    try {
-      const q: Record<string, string> = { page: String(p), pageSize: String(ps) };
-      if (active.metric) q.metric = active.metric;
-      if (active.level) q.level = active.level;
-      if (active.status) q.status = active.status;
-      const res = await request.get<PaginatedResponse<MonitorAlertEvent>>(`/api/monitor-alerts/events?${new URLSearchParams(q).toString()}`);
-      if (res.code === 0) {
-        setData(res.data);
-        setPage(res.data.page);
-        setPageSize(res.data.pageSize);
-      }
-    } finally {
-      setLoading(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize]);
-
-  useEffect(() => {
-    void fetchEvents();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  function handleSearch() {
+    setPage(1);
+    setSubmittedFilters(draftFilters);
+    void queryClient.invalidateQueries({ queryKey: monitorAlertKeys.eventLists });
+  }
 
   function handleReset() {
-    setFilters({});
+    setDraftFilters({});
+    setSubmittedFilters({});
     setPage(1);
-    void fetchEvents(1, pageSize, {});
+    void queryClient.invalidateQueries({ queryKey: monitorAlertKeys.eventLists });
   }
 
   const columns: ColumnProps<MonitorAlertEvent>[] = [
@@ -108,29 +97,29 @@ export default function MonitorAlertEventsPage() {
           <>
             <Select
               placeholder="全部指标"
-              value={filters.metric}
-              onChange={(v) => setFilters((p) => ({ ...p, metric: v as string }))}
+              value={draftFilters.metric}
+              onChange={(v) => setDraftFilters((p) => ({ ...p, metric: v as string }))}
               showClear
               style={{ width: 150 }}
               optionList={METRIC_OPTIONS}
             />
             <Select
               placeholder="全部级别"
-              value={filters.level}
-              onChange={(v) => setFilters((p) => ({ ...p, level: v as string }))}
+              value={draftFilters.level}
+              onChange={(v) => setDraftFilters((p) => ({ ...p, level: v as string }))}
               showClear
               style={{ width: 120 }}
               optionList={Object.entries(LEVEL_CONFIG).map(([v, c]) => ({ value: v, label: c.label }))}
             />
             <Select
               placeholder="全部状态"
-              value={filters.status}
-              onChange={(v) => setFilters((p) => ({ ...p, status: v as string }))}
+              value={draftFilters.status}
+              onChange={(v) => setDraftFilters((p) => ({ ...p, status: v as string }))}
               showClear
               style={{ width: 120 }}
               optionList={[{ value: 'firing', label: '告警中' }, { value: 'resolved', label: '已恢复' }]}
             />
-            <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); void fetchEvents(1, pageSize); }}>查询</Button>
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           </>
         )}
@@ -138,29 +127,29 @@ export default function MonitorAlertEventsPage() {
           <>
             <Select
               placeholder="全部指标"
-              value={filters.metric}
-              onChange={(v) => setFilters((p) => ({ ...p, metric: v as string }))}
+              value={draftFilters.metric}
+              onChange={(v) => setDraftFilters((p) => ({ ...p, metric: v as string }))}
               showClear
               style={{ width: 150 }}
               optionList={METRIC_OPTIONS}
             />
-            <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); void fetchEvents(1, pageSize); }}>查询</Button>
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
           </>
         )}
         mobileFilters={(
           <>
             <Select
               placeholder="全部级别"
-              value={filters.level}
-              onChange={(v) => setFilters((p) => ({ ...p, level: v as string }))}
+              value={draftFilters.level}
+              onChange={(v) => setDraftFilters((p) => ({ ...p, level: v as string }))}
               showClear
               style={{ width: 120 }}
               optionList={Object.entries(LEVEL_CONFIG).map(([v, c]) => ({ value: v, label: c.label }))}
             />
             <Select
               placeholder="全部状态"
-              value={filters.status}
-              onChange={(v) => setFilters((p) => ({ ...p, status: v as string }))}
+              value={draftFilters.status}
+              onChange={(v) => setDraftFilters((p) => ({ ...p, status: v as string }))}
               showClear
               style={{ width: 120 }}
               optionList={[{ value: 'firing', label: '告警中' }, { value: 'resolved', label: '已恢复' }]}
@@ -168,7 +157,7 @@ export default function MonitorAlertEventsPage() {
           </>
         )}
         filterTitle="告警事件筛选"
-        onFilterApply={() => { setPage(1); void fetchEvents(1, pageSize); }}
+        onFilterApply={handleSearch}
         onFilterReset={handleReset}
       />
 
@@ -176,13 +165,13 @@ export default function MonitorAlertEventsPage() {
         bordered
         columns={columns}
         dataSource={data?.list ?? []}
-        loading={loading}
+        loading={listQuery.isFetching}
         rowKey="id"
         size="small"
         empty="暂无告警记录"
-        onRefresh={() => void fetchEvents()}
-        refreshLoading={loading}
-        pagination={buildPagination(data?.total ?? 0, fetchEvents)}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
+        pagination={buildPagination(data?.total ?? 0)}
       />
     </div>
   );

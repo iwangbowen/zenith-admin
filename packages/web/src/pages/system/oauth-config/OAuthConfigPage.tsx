@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Form, Button, Toast, Space, Spin, Typography, Divider, Tabs, TabPane } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Save } from 'lucide-react';
 import { Icon } from '@iconify/react';
-import type { OAuthConfig, OAuthProviderType } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { OAuthProviderType } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
+import { useOAuthConfigs, useSaveOAuthConfig } from '@/hooks/queries/oauth-config';
 
 const { Title, Text } = Typography;
 
@@ -39,41 +39,25 @@ const PROVIDERS: ProviderMeta[] = [
 export default function OAuthConfigPage() {
   const { hasPermission } = usePermission();
   const canUpdate = hasPermission('system:oauth-config:update');
-  const [loading, setLoading] = useState(false);
-  const [configs, setConfigs] = useState<OAuthConfig[]>([]);
-  const [savingProvider, setSavingProvider] = useState<string | null>(null);
   const [formApis, setFormApis] = useState<Record<string, FormApi>>({});
-
-  useEffect(() => {
-    setLoading(true);
-    request
-      .get<OAuthConfig[]>('/api/oauth-config')
-      .then((res) => {
-        if (res.code === 0 && res.data) {
-          setConfigs(res.data);
-        }
-      })
-      .finally(() => setLoading(false));
-  }, []);
+  const configsQuery = useOAuthConfigs();
+  const saveMutation = useSaveOAuthConfig();
+  const configs = configsQuery.data ?? [];
+  const savingProvider = saveMutation.isPending ? (saveMutation.variables?.provider ?? null) : null;
 
   const handleSave = async (provider: OAuthProviderType) => {
     const api = formApis[provider];
     if (!api) return;
     try {
       const values = await api.validate();
-      setSavingProvider(provider);
-      const res = await request.put<OAuthConfig>(`/api/oauth-config/${provider}`, values);
-      if (res.code === 0) {
-        Toast.success(`${PROVIDERS.find((p) => p.key === provider)?.label} 配置保存成功`);
-      }
+      await saveMutation.mutateAsync({ provider, values: values as Record<string, unknown> });
+      Toast.success(`${PROVIDERS.find((p) => p.key === provider)?.label} 配置保存成功`);
     } catch {
       // validation failed
-    } finally {
-      setSavingProvider(null);
     }
   };
 
-  if (loading) {
+  if (configsQuery.isFetching) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
         <Spin size="large" />

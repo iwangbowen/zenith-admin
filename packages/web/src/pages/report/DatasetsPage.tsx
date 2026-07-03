@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { Button, Form, Input, Select, Table, Tag, Toast, Modal, Space, Typography, Empty, Switch, InputNumber, TextArea } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -8,13 +8,24 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import ExportButton from '@/components/ExportButton';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  reportDatasetKeys,
+  useDeleteReportDataset,
+  useEnabledReportDatasources,
+  useGenerateReportDatasetSql,
+  useParseReportDatasetFile,
+  usePreviewReportDataset,
+  useRefreshReportDatasetMaterialize,
+  useReportDatasetList,
+  useSaveReportDataset,
+} from '@/hooks/queries/report-datasets';
 import type {
   ReportDataset, ReportDatasource, ReportDatasourceType, ReportField, ReportDataResult,
-  ReportApiDatasetContent, ReportSqlDatasetContent, ReportComputedField, PaginatedResponse,
+  ReportApiDatasetContent, ReportSqlDatasetContent, ReportComputedField,
   ReportStaticDatasetContent, ReportFieldFormat,
 } from '@zenith/shared';
 
@@ -60,12 +71,6 @@ const FIELD_FORMAT_KIND_OPTIONS = [
   { value: 'dict', label: '字典' },
 ];
 
-interface ParseFileResult {
-  columns: string[];
-  rows: Record<string, unknown>[];
-  total: number;
-}
-
 function inferColumns(rows: Record<string, unknown>[]): string[] {
   const set = new Set<string>();
   rows.forEach((row) => Object.keys(row).forEach((key) => set.add(key)));
@@ -88,15 +93,14 @@ export default function DatasetsPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
   const staticFileInputRef = useRef<HTMLInputElement | null>(null);
+  const queryClient = useQueryClient();
 
-  const [data, setData] = useState<PaginatedResponse<ReportDataset> | null>(null);
-  const [loading, setLoading] = useState(false);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
 
-  const [datasources, setDatasources] = useState<ReportDatasource[]>([]);
+  const datasourcesQuery = useEnabledReportDatasources();
+  const datasources = useMemo<ReportDatasource[]>(() => datasourcesQuery.data ?? [], [datasourcesQuery.data]);
   const dsTypeMap = useMemo(() => {
     const m = new Map<number, ReportDatasourceType>();
     datasources.forEach((d) => m.set(d.id, d.type));
@@ -105,45 +109,34 @@ export default function DatasetsPage() {
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<ReportDataset | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const [selectedDsId, setSelectedDsId] = useState<number | null>(null);
   const [fields, setFields] = useState<ReportField[]>([]);
   const [computedFields, setComputedFields] = useState<ReportComputedField[]>([]);
   const [materialize, setMaterialize] = useState<{ enabled: boolean; cron?: string }>({ enabled: false, cron: '' });
   const [staticJsonText, setStaticJsonText] = useState('[]');
   const [staticColumns, setStaticColumns] = useState<string[]>([]);
-  const [staticUploading, setStaticUploading] = useState(false);
   const [preview, setPreview] = useState<ReportDataResult | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
   const [aiAskVisible, setAiAskVisible] = useState(false);
   const [aiQuestion, setAiQuestion] = useState('');
-  const [aiGenerating, setAiGenerating] = useState(false);
 
   const selectedType: ReportDatasourceType | null = selectedDsId ? dsTypeMap.get(selectedDsId) ?? editing?.type ?? null : null;
 
-  const fetchList = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const active = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const q: Record<string, string> = { page: String(p), pageSize: String(ps) };
-      if (active.keyword) q.keyword = active.keyword;
-      if (active.status) q.status = active.status;
-      const res = await request.get<PaginatedResponse<ReportDataset>>(`/api/report/datasets?${new URLSearchParams(q)}`);
-      if (res.code === 0) { setData(res.data); setPage(res.data.page); setPageSize(res.data.pageSize); }
-    } finally { setLoading(false); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize]);
+  const listQuery = useReportDatasetList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    status: submittedParams.status || undefined,
+  });
+  const data = listQuery.data ?? null;
+  const saveMutation = useSaveReportDataset();
+  const deleteMutation = useDeleteReportDataset();
+  const previewMutation = usePreviewReportDataset();
+  const parseFileMutation = useParseReportDatasetFile();
+  const generateSqlMutation = useGenerateReportDatasetSql();
+  const refreshMaterializeMutation = useRefreshReportDatasetMaterialize();
 
-  useEffect(() => {
-    void fetchList();
-    request.get<PaginatedResponse<ReportDatasource>>('/api/report/datasources?page=1&pageSize=200').then((res) => {
-      if (res.code === 0) setDatasources(res.data.list.filter((d) => d.status === 'enabled'));
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function handleSearch() { setPage(1); void fetchList(1, pageSize); }
-  function handleReset() { setSearchParams(defaultSearchParams); setPage(1); void fetchList(1, pageSize, defaultSearchParams); }
+  function handleSearch() { setPage(1); setSubmittedParams(draftParams); void queryClient.invalidateQueries({ queryKey: reportDatasetKeys.lists }); }
+  function handleReset() { setDraftParams(defaultSearchParams); setSubmittedParams(defaultSearchParams); setPage(1); void queryClient.invalidateQueries({ queryKey: reportDatasetKeys.lists }); }
 
   function resetModalExtra(ds: ReportDataset | null) {
     setSelectedDsId(ds?.datasourceId ?? null);
@@ -218,19 +211,14 @@ export default function DatasetsPage() {
   async function handleStaticFile(file: File) {
     const formData = new FormData();
     formData.append('file', file);
-    setStaticUploading(true);
     try {
-      const res = await request.postForm<ParseFileResult>('/api/report/datasets/parse-file', formData, { silent: true });
-      if (res.code !== 0) {
-        Toast.error(res.message || '文件解析失败');
-        return;
-      }
-      setStaticJsonText(JSON.stringify(res.data.rows, null, 2));
-      applyStaticPreview(res.data.rows, res.data.columns);
-      setFields(fieldsFromColumns(res.data.columns, res.data.rows));
-      Toast.success(`解析成功，共 ${res.data.total} 行`);
-    } finally {
-      setStaticUploading(false);
+      const res = await parseFileMutation.mutateAsync(formData);
+      setStaticJsonText(JSON.stringify(res.rows, null, 2));
+      applyStaticPreview(res.rows, res.columns);
+      setFields(fieldsFromColumns(res.columns, res.rows));
+      Toast.success(`解析成功，共 ${res.total} 行`);
+    } catch (error) {
+      Toast.error(error instanceof Error ? error.message : '文件解析失败');
     }
   }
 
@@ -297,36 +285,24 @@ export default function DatasetsPage() {
     if (content === null) return;
     const normalizedComputedFields = normalizeComputedFields();
     if (normalizedComputedFields === null) return;
-    setPreviewLoading(true);
     try {
-      const res = await request.post<ReportDataResult>(
-        '/api/report/datasets/preview',
-        { datasourceId: selectedDsId, content, computedFields: normalizedComputedFields, limit: 50 },
-        { silent: true },
-      );
-      if (res.code === 0) { setPreview(res.data); }
-      else { Toast.error(res.message || '预览失败'); setPreview(null); }
-    } finally { setPreviewLoading(false); }
+      const res = await previewMutation.mutateAsync({ datasourceId: selectedDsId, content, computedFields: normalizedComputedFields, limit: 50 });
+      setPreview(res);
+    } catch (error) {
+      Toast.error(error instanceof Error ? error.message : '预览失败');
+      setPreview(null);
+    }
   }
 
   async function handleGenerateSql() {
     const question = aiQuestion.trim();
     if (!question) { Toast.warning('请先输入问题'); return; }
-    setAiGenerating(true);
     try {
-      const res = await request.post<{ sql: string }>(
-        '/api/report/ai/nl2sql',
-        { question, datasetId: editing?.id },
-        { silent: true },
-      );
-      if (res.code === 0) {
-        formApi.current?.setValue('sql', res.data.sql);
-        Toast.success('SQL 已生成');
-      } else {
-        Toast.error(res.message || '生成失败');
-      }
-    } finally {
-      setAiGenerating(false);
+      const res = await generateSqlMutation.mutateAsync({ question, datasetId: editing?.id });
+      formApi.current?.setValue('sql', res.sql);
+      Toast.success('SQL 已生成');
+    } catch (error) {
+      Toast.error(error instanceof Error ? error.message : '生成失败');
     }
   }
 
@@ -360,24 +336,19 @@ export default function DatasetsPage() {
       status: values.status,
       remark: values.remark || undefined,
     };
-    setSubmitting(true);
-    try {
-      const res = editing
-        ? await request.put(`/api/report/datasets/${editing.id}`, payload)
-        : await request.post('/api/report/datasets', payload);
-      if (res.code === 0) { Toast.success(editing ? '更新成功' : '创建成功'); closeModal(); void fetchList(); }
-      else throw new Error(res.message);
-    } finally { setSubmitting(false); }
+    await saveMutation.mutateAsync({ id: editing?.id, values: payload });
+    Toast.success(editing ? '更新成功' : '创建成功');
+    closeModal();
   }
 
   async function handleDelete(id: number) {
-    const res = await request.delete(`/api/report/datasets/${id}`);
-    if (res.code === 0) { Toast.success('删除成功'); void fetchList(); }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   }
 
   async function handleRefreshMaterialize(record: ReportDataset) {
-    const res = await request.post(`/api/report/datasets/${record.id}/materialize`);
-    if (res.code === 0) Toast.success(res.message || '物化刷新成功');
+    await refreshMaterializeMutation.mutateAsync(record.id);
+    Toast.success('物化刷新成功');
   }
 
   function updateField(index: number, patch: Partial<ReportField>) {
@@ -450,11 +421,11 @@ export default function DatasetsPage() {
   const previewData = (preview?.rows ?? []).map((r, i) => ({ ...r, __rk: i }));
 
   const renderKeyword = () => (
-    <Input prefix={<Search size={14} />} placeholder="搜索名称/备注..." value={searchParams.keyword}
-      onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))} showClear style={{ width: 220 }} onEnterPress={handleSearch} />
+    <Input prefix={<Search size={14} />} placeholder="搜索名称/备注..." value={draftParams.keyword}
+      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} showClear style={{ width: 220 }} onEnterPress={handleSearch} />
   );
   const renderStatusFilter = () => (
-    <Select placeholder="全部状态" value={searchParams.status || undefined} onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))}
+    <Select placeholder="全部状态" value={draftParams.status || undefined} onChange={(v) => setDraftParams((p) => ({ ...p, status: (v as string) ?? '' }))}
       showClear style={{ width: 120 }} optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} />
   );
   const renderSearchBtn = () => <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>;
@@ -475,8 +446,8 @@ export default function DatasetsPage() {
       />
 
       <ConfigurableTable
-        bordered columns={columns} dataSource={data?.list ?? []} loading={loading} rowKey="id" size="small" empty="暂无数据"
-        onRefresh={() => void fetchList()} refreshLoading={loading} pagination={buildPagination(data?.total ?? 0, fetchList)}
+        bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
+        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(data?.total ?? 0)}
       />
 
       <AppModal
@@ -484,7 +455,7 @@ export default function DatasetsPage() {
         visible={modalVisible}
         onOk={handleModalOk}
         onCancel={closeModal}
-        okButtonProps={{ loading: submitting }}
+        okButtonProps={{ loading: saveMutation.isPending }}
         width={760}
       >
         <Form key={editing?.id ?? 'new'} getFormApi={(api) => { formApi.current = api; }} initValues={formInitValues}
@@ -518,7 +489,7 @@ export default function DatasetsPage() {
                         placeholder="例如：统计最近 7 天每天的订单金额"
                         autosize={{ minRows: 2, maxRows: 4 }}
                       />
-                      <Button type="primary" icon={<Sparkles size={14} />} loading={aiGenerating} onClick={handleGenerateSql}>生成 SQL</Button>
+                      <Button type="primary" icon={<Sparkles size={14} />} loading={generateSqlMutation.isPending} onClick={handleGenerateSql}>生成 SQL</Button>
                     </Space>
                   )}
                 </div>
@@ -545,7 +516,7 @@ export default function DatasetsPage() {
               </Form.Slot>
               <Form.Slot label="文件">
                 <Space>
-                  <Button icon={<UploadIcon size={14} />} loading={staticUploading} onClick={() => staticFileInputRef.current?.click()}>上传 Excel/CSV</Button>
+                  <Button icon={<UploadIcon size={14} />} loading={parseFileMutation.isPending} onClick={() => staticFileInputRef.current?.click()}>上传 Excel/CSV</Button>
                   <Typography.Text type="tertiary" size="small">支持 .xlsx / .xls / .csv，解析后自动生成字段</Typography.Text>
                 </Space>
                 <input
@@ -586,7 +557,7 @@ export default function DatasetsPage() {
 
         <div style={{ borderTop: '1px solid var(--semi-color-border)', marginTop: 8, paddingTop: 12 }}>
           <Space style={{ marginBottom: 8 }}>
-            <Button icon={<Play size={14} />} onClick={handlePreview} loading={previewLoading} disabled={!selectedDsId}>试跑预览</Button>
+            <Button icon={<Play size={14} />} onClick={handlePreview} loading={previewMutation.isPending} disabled={!selectedDsId}>试跑预览</Button>
             <Button onClick={applyFieldsFromPreview} disabled={!preview}>用结果生成字段</Button>
             <Typography.Text type="tertiary" size="small">
               当前字段：{fields.length} 个{fields.length ? `（${fields.slice(0, 6).map((f) => f.name).join(', ')}${fields.length > 6 ? '…' : ''}）` : ''}

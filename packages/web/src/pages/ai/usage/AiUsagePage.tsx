@@ -1,53 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Button, Card, DatePicker, Row, Col, Spin, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { CommonChart, chartOptions, makeMixedBarLineSpec, useChartPalette } from '@/components/charts';
 import { Bot, Coins, MessageCircle, Search, RotateCcw, Users } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { formatDateForApi } from '@/utils/date';
-import { request } from '@/utils/request';
+import { aiUsageKeys, useAiUsageStats } from '@/hooks/queries/ai-usage';
+import type { AiUsageByModel, AiUsageByUser } from '@/hooks/queries/ai-usage';
 
 const { Text } = Typography;
-
-interface AiUsageOverview {
-  totalConversations: number;
-  totalMessages: number;
-  tokensInput: number;
-  tokensOutput: number;
-  totalTokens: number;
-  activeUsers: number;
-}
-
-interface AiUsageByModel {
-  model: string;
-  messages: number;
-  tokensInput: number;
-  tokensOutput: number;
-  totalTokens: number;
-}
-
-interface AiUsageByUser {
-  userId: number;
-  username: string;
-  nickname: string;
-  conversations: number;
-  messages: number;
-  totalTokens: number;
-}
-
-interface AiUsageTrend {
-  date: string;
-  messages: number;
-  totalTokens: number;
-}
-
-interface AiUsageStats {
-  overview: AiUsageOverview;
-  byModel: AiUsageByModel[];
-  byUser: AiUsageByUser[];
-  trend: AiUsageTrend[];
-}
 
 function getDefaultRange(): [Date, Date] {
   const end = new Date();
@@ -103,39 +66,26 @@ function StatCard({ title, value, icon, color, secondary }: StatCardProps) {
 }
 
 export default function AiUsagePage() {
-  const [dateRange, setDateRange] = useState<[Date, Date]>(getDefaultRange);
-  const [stats, setStats] = useState<AiUsageStats | null>(null);
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
+  const [draftRange, setDraftRange] = useState<[Date, Date]>(getDefaultRange);
+  const [submittedRange, setSubmittedRange] = useState<[Date, Date]>(draftRange);
   const palette = useChartPalette();
-
-  const fetchStats = useCallback(async (range = dateRange) => {
-    const [startDate, endDate] = range;
-    const query = new URLSearchParams({
-      startDate: formatDateForApi(startDate),
-      endDate: formatDateForApi(endDate),
-    }).toString();
-    setLoading(true);
-    try {
-      const res = await request.get<AiUsageStats>(`/api/ai/usage/stats?${query}`);
-      if (res.code === 0) setStats(res.data);
-    } finally {
-      setLoading(false);
-    }
-  }, [dateRange]);
-
-  useEffect(() => {
-    void fetchStats();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const statsQuery = useAiUsageStats({
+    startDate: formatDateForApi(submittedRange[0]),
+    endDate: formatDateForApi(submittedRange[1]),
+  });
+  const stats = statsQuery.data ?? null;
 
   function handleSearch() {
-    void fetchStats(dateRange);
+    setSubmittedRange(draftRange);
+    void queryClient.invalidateQueries({ queryKey: aiUsageKeys.statsRoot });
   }
 
   function handleReset() {
     const nextRange = getDefaultRange();
-    setDateRange(nextRange);
-    void fetchStats(nextRange);
+    setDraftRange(nextRange);
+    setSubmittedRange(nextRange);
+    void queryClient.invalidateQueries({ queryKey: aiUsageKeys.statsRoot });
   }
 
   const modelData = useMemo(
@@ -198,10 +148,10 @@ export default function AiUsagePage() {
     <DatePicker
       type="dateRange"
       placeholder={['开始日期', '结束日期']}
-      value={dateRange}
+      value={draftRange}
       onChange={(value) => {
         if (Array.isArray(value) && value.length >= 2 && value[0] instanceof Date && value[1] instanceof Date) {
-          setDateRange([value[0], value[1]]);
+          setDraftRange([value[0], value[1]]);
         }
       }}
       style={{ width: 300 }}
@@ -237,7 +187,7 @@ export default function AiUsagePage() {
         onFilterReset={handleReset}
       />
 
-      <Spin spinning={loading}>
+      <Spin spinning={statsQuery.isFetching}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <Row gutter={[16, 16]} type="flex">
             <Col xs={24} sm={12} xl={6}>
@@ -271,13 +221,13 @@ export default function AiUsagePage() {
                   bordered
                   columns={modelColumns}
                   dataSource={modelData}
-                  loading={loading}
+                  loading={statsQuery.isFetching}
                   rowKey="model"
                   size="small"
                   pagination={false}
                   empty="暂无模型用量"
-                  onRefresh={() => void fetchStats()}
-                  refreshLoading={loading}
+                  onRefresh={() => void statsQuery.refetch()}
+                  refreshLoading={statsQuery.isFetching}
                 />
               </Card>
             </Col>
@@ -287,13 +237,13 @@ export default function AiUsagePage() {
                   bordered
                   columns={userColumns}
                   dataSource={userData}
-                  loading={loading}
+                  loading={statsQuery.isFetching}
                   rowKey="userId"
                   size="small"
                   pagination={false}
                   empty="暂无用户用量"
-                  onRefresh={() => void fetchStats()}
-                  refreshLoading={loading}
+                  onRefresh={() => void statsQuery.refetch()}
+                  refreshLoading={statsQuery.isFetching}
                 />
               </Card>
             </Col>

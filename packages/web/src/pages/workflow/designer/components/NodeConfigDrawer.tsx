@@ -11,7 +11,6 @@
 import { useEffect, useState } from 'react';
 import { SideSheet, Tabs, TabPane, Input, TextArea, Typography, Form, Select, InputNumber, Switch, RadioGroup, Radio, Button } from '@douyinfe/semi-ui';
 import { Plus, Trash2, AlertTriangle } from 'lucide-react';
-import { request } from '@/utils/request';
 import type { FlowNode, FlowNodeType, AssigneeType, ApproveMethod, ApprovalType, RejectStrategy, EmptyAssigneeStrategy, OperationPermission, FieldPermission, TimeoutConfig, SameInitiatorStrategy, DeduplicateStrategy, ActionButtonsConfig, NodeHealthInfo, NodeHealthIssue } from '../types';
 import type { NodeListenerConfig } from '@zenith/shared';
 import { ADDABLE_NODE_TYPES, DEFAULT_APPROVER_OPERATIONS, DELAY_UNIT_OPTIONS, TRIGGER_TYPE_OPTIONS } from '../constants';
@@ -23,6 +22,7 @@ import { normalizeActionButtons } from '../action-buttons';
 import NodeListenersTab from './tabs/NodeListenersTab';
 import FailurePolicySection from './FailurePolicySection';
 import type { WorkflowNodeFailurePolicy } from '@zenith/shared';
+import { useWorkflowDesignerConnectorOptions, useWorkflowDesignerDecisionTableOptions } from '@/hooks/queries/workflow-designer';
 
 interface UserOption { id: number; nickname: string; }
 interface RoleOption { id: number; name: string; }
@@ -253,20 +253,6 @@ export default function NodeConfigDrawer({
     onSave(node.id, { name, key: trimmedKey, props: nextProps });
   };
 
-  const [connectorOptions, setConnectorOptions] = useState<Array<{ value: number; label: string }>>([]);
-  useEffect(() => {
-    if (!visible || node?.type !== 'trigger') return;
-    void request.get<{ list: Array<{ id: number; name: string; type: string }> }>('/api/workflows/connectors?status=enabled&pageSize=100')
-      .then((res) => { if (res.code === 0) setConnectorOptions((res.data?.list ?? []).map((c) => ({ value: c.id, label: `${c.name}（${c.type}）` }))); });
-  }, [visible, node?.type]);
-
-  const [decisionTableOptions, setDecisionTableOptions] = useState<Array<{ value: string; label: string }>>([]);
-  useEffect(() => {
-    if (!visible || node?.type !== 'routeBranch') return;
-    void request.get<{ list: Array<{ key: string; name: string }> }>('/api/rules/decision-tables?status=published&pageSize=100')
-      .then((res) => { if (res.code === 0) setDecisionTableOptions((res.data?.list ?? []).map((t) => ({ value: t.key, label: `${t.name}（${t.key}）` }))); });
-  }, [visible, node?.type]);
-
   // 判断哪些 Tab 可用
   const isApprover = node?.type === 'approver';
   const isHandler = node?.type === 'handler';
@@ -276,6 +262,10 @@ export default function NodeConfigDrawer({
   const isTrigger = node?.type === 'trigger';
   const isSubProcess = node?.type === 'subProcess';
   const isRouteBranch = node?.type === 'routeBranch';
+  const connectorOptionsQuery = useWorkflowDesignerConnectorOptions(visible && isTrigger);
+  const decisionTableOptionsQuery = useWorkflowDesignerDecisionTableOptions(visible && isRouteBranch);
+  const connectorOptions = connectorOptionsQuery.data ?? [];
+  const decisionTableOptions = decisionTableOptionsQuery.data ?? [];
   const hasAssigneeSettings = isApprover || isHandler || isCc;
   const hasFormPermission = isApprover || isHandler || isCc || isInitiator;
   const hasOperationPermission = isApprover;

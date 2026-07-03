@@ -5,12 +5,11 @@
  * ② 业务接口调用 submitAsyncTask 提交任务（写 async_tasks + 入 pg-boss 队列）；
  * ③ 前端 useMyAsyncTasks 实时展示进度（WS 推送 + 轮询兜底），支持取消 / 断点恢复 / 重新开始。
  */
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { Banner, Button, Collapse, InputNumber, Modal, Select, SideSheet, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Info, Play, RefreshCw } from 'lucide-react';
-import type { AsyncTask, AsyncTaskItem, AsyncTaskItemStatus, AsyncTaskStatus, AsyncTaskTypeMeta, PaginatedResponse } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { AsyncTask, AsyncTaskItem, AsyncTaskItemStatus, AsyncTaskStatus } from '@zenith/shared';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
@@ -19,6 +18,7 @@ import { useMyAsyncTasks } from '@/hooks/useAsyncTasks';
 import { usePagination } from '@/hooks/usePagination';
 import { formatDateTime } from '@/utils/date';
 import { renderEllipsis } from '@/utils/table-columns';
+import { useBizTaskDemoAction, useBizTaskDemoItems, useBizTaskDemoTypes, useSubmitTaskDemo } from '@/hooks/queries/biz-pay-demo';
 
 const DEMO_TASK_TYPES = ['demo-batch', 'demo-serial'];
 
@@ -95,73 +95,57 @@ export default function TaskDemoPage() {
   const [failAtItem, setFailAtItem] = useState<number | null>(null);
   const [failEveryN, setFailEveryN] = useState<number | null>(null);
   const [stageDelayMs, setStageDelayMs] = useState(4000);
-  const [submitting, setSubmitting] = useState(false);
-  const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
-  const [types, setTypes] = useState<AsyncTaskTypeMeta[]>([]);
 
   // 行级明细抽屉
   const [itemsTask, setItemsTask] = useState<AsyncTask | null>(null);
-  const [items, setItems] = useState<AsyncTaskItem[]>([]);
-  const [itemsTotal, setItemsTotal] = useState(0);
-  const [itemsLoading, setItemsLoading] = useState(false);
-  const { pageSize: itemsPageSize, setPage: setItemsPage, buildPagination: buildItemsPagination } = usePagination(10);
+  const { page: itemsPage, pageSize: itemsPageSize, setPage: setItemsPage, buildPagination: buildItemsPagination } = usePagination(10);
 
   const { tasks, loading, refresh } = useMyAsyncTasks({ taskTypes: DEMO_TASK_TYPES });
-
-  useEffect(() => {
-    void request.get<AsyncTaskTypeMeta[]>('/api/async-tasks/types', { silent: true }).then((res) => {
-      if (res.code === 0) setTypes(res.data.filter((t) => DEMO_TASK_TYPES.includes(t.taskType)));
-    });
-  }, []);
+  const typesQuery = useBizTaskDemoTypes();
+  const types = useMemo(
+    () => (typesQuery.data ?? []).filter((t) => DEMO_TASK_TYPES.includes(t.taskType)),
+    [typesQuery.data],
+  );
+  const itemsQuery = useBizTaskDemoItems({
+    taskId: itemsTask?.id ?? 0,
+    page: itemsPage,
+    pageSize: itemsPageSize,
+  }, !!itemsTask);
+  const items = itemsQuery.data?.list ?? [];
+  const itemsTotal = itemsQuery.data?.total ?? 0;
+  const submitMutation = useSubmitTaskDemo();
+  const cancelMutation = useBizTaskDemoAction('cancel');
+  const resumeMutation = useBizTaskDemoAction('resume');
+  const restartMutation = useBizTaskDemoAction('restart');
+  const actionLoadingId = cancelMutation.isPending
+    ? (cancelMutation.variables ?? null)
+    : resumeMutation.isPending
+      ? (resumeMutation.variables ?? null)
+      : restartMutation.isPending
+        ? (restartMutation.variables ?? null)
+        : null;
 
   const currentTypeMeta = types.find((t) => t.taskType === taskType);
-
-  const fetchItems = async (taskId: number, p = 1, ps = itemsPageSize) => {
-    setItemsLoading(true);
-    try {
-      const res = await request.get<PaginatedResponse<AsyncTaskItem>>(`/api/async-tasks/${taskId}/items?page=${p}&pageSize=${ps}`, { silent: true });
-      if (res.code === 0) {
-        setItems(res.data.list);
-        setItemsTotal(res.data.total);
-      }
-    } finally {
-      setItemsLoading(false);
-    }
-  };
 
   const openItems = (task: AsyncTask) => {
     setItemsTask(task);
     setItemsPage(1);
-    void fetchItems(task.id, 1);
   };
 
   const handleSubmit = async () => {
-    setSubmitting(true);
-    try {
-      const body = taskType === 'demo-batch'
-        ? { taskType, totalItems, itemDelayMs, ...(failAtItem ? { failAtItem } : {}), ...(failEveryN ? { failEveryN } : {}) }
-        : { taskType, stageDelayMs };
-      const res = await request.post<AsyncTask>('/api/task-demo/submit', body);
-      if (res.code === 0) {
-        Toast.success('任务已提交，可在下方列表查看实时进度');
-        void refresh();
-      }
-    } finally {
-      setSubmitting(false);
-    }
+    const body = taskType === 'demo-batch'
+      ? { taskType, totalItems, itemDelayMs, ...(failAtItem ? { failAtItem } : {}), ...(failEveryN ? { failEveryN } : {}) }
+      : { taskType, stageDelayMs };
+    await submitMutation.mutateAsync(body);
+    Toast.success('任务已提交，可在下方列表查看实时进度');
+    void refresh();
   };
 
   const runAction = async (record: AsyncTask, action: 'cancel' | 'resume' | 'restart', successMsg: string) => {
-    setActionLoadingId(record.id);
-    try {
-      const res = await request.post<AsyncTask>(`/api/async-tasks/${record.id}/${action}`);
-      if (res.code === 0) {
-        Toast.success(successMsg);
-        void refresh();
-      }
-    } finally {
-      setActionLoadingId(null);
-    }
+    const mutation = action === 'cancel' ? cancelMutation : action === 'resume' ? resumeMutation : restartMutation;
+    await mutation.mutateAsync(record.id);
+    Toast.success(successMsg);
+    void refresh();
   };
 
   const handleShowResult = (record: AsyncTask) => {
@@ -313,7 +297,7 @@ export default function TaskDemoPage() {
         ) : (
           <InputNumber prefix="阶段耗时(ms)" value={stageDelayMs} min={500} max={30000} step={500} onNumberChange={(v) => setStageDelayMs(v || 4000)} style={{ width: 190 }} />
         )}
-        <Button type="primary" icon={<Play size={14} />} loading={submitting} onClick={() => void handleSubmit()}>提交任务</Button>
+        <Button type="primary" icon={<Play size={14} />} loading={submitMutation.isPending} onClick={() => void handleSubmit()}>提交任务</Button>
         <Button icon={<RefreshCw size={14} />} loading={loading} onClick={() => void refresh()}>刷新</Button>
         {currentTypeMeta && !currentTypeMeta.allowConcurrent && (
           <Typography.Text type="tertiary" size="small">该类型不允许重复提交：存在未结束任务时会被拒绝</Typography.Text>
@@ -354,8 +338,10 @@ export default function TaskDemoPage() {
             bordered
             columns={itemColumns}
             dataSource={items}
-            loading={itemsLoading}
-            pagination={buildItemsPagination(itemsTotal, (p, ps) => void fetchItems(itemsTask.id, p, ps))}
+            loading={itemsQuery.isFetching}
+            pagination={buildItemsPagination(itemsTotal)}
+            onRefresh={() => void itemsQuery.refetch()}
+            refreshLoading={itemsQuery.isFetching}
             rowKey="id"
             size="small"
             empty="该任务尚未上报行级明细"

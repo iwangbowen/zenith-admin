@@ -2,7 +2,8 @@
  * 工作流触发器执行记录
  * 列表 + 详情抽屉，支持按状态 / 实例 ID / 节点 key 过滤
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Input,
@@ -14,7 +15,6 @@ import {
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RotateCcw, Search } from 'lucide-react';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { createdAtColumn } from '@/utils/table-columns';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -22,11 +22,15 @@ import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import type {
-  PaginatedResponse,
   WorkflowTriggerExecution,
   WorkflowTriggerExecutionStatus,
   WorkflowTriggerType,
 } from '@zenith/shared/types';
+import {
+  useWorkflowTriggerExecutionDetail,
+  useWorkflowTriggerExecutionList,
+  workflowTriggerExecutionKeys,
+} from '@/hooks/queries/workflow-trigger-executions';
 
 const STATUS_MAP: Record<WorkflowTriggerExecutionStatus, { label: string; color: 'grey' | 'blue' | 'green' | 'red' | 'orange' }> = {
   pending: { label: '待执行', color: 'grey' },
@@ -51,58 +55,41 @@ const STATUS_OPTIONS = [
 ];
 
 export default function WorkflowTriggerExecutionsPage() {
-  const [list, setList] = useState<WorkflowTriggerExecution[]>([]);
-  const [total, setTotal] = useState(0);
+  const queryClient = useQueryClient();
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [loading, setLoading] = useState(false);
 
   interface SearchParams { status: WorkflowTriggerExecutionStatus | ''; instanceId: number | undefined; nodeKey: string }
   const defaultSearchParams: SearchParams = { status: '', instanceId: undefined, nodeKey: '' };
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
 
-  const [detail, setDetail] = useState<WorkflowTriggerExecution | null>(null);
-
-  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const { status, instanceId, nodeKey } = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      params.set('page', String(p));
-      params.set('pageSize', String(ps));
-      if (status) params.set('status', status);
-      if (instanceId) params.set('instanceId', String(instanceId));
-      if (nodeKey) params.set('nodeKey', nodeKey);
-      const res = await request.get<PaginatedResponse<WorkflowTriggerExecution>>(
-        `/api/workflows/trigger-executions?${params.toString()}`,
-      );
-      if (res.code === 0) {
-        setList(res.data.list);
-        setTotal(res.data.total);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize]);
-
-  useEffect(() => { void fetchData(); }, [fetchData]);
+  const listQuery = useWorkflowTriggerExecutionList({
+    page,
+    pageSize,
+    status: submittedParams.status || undefined,
+    instanceId: submittedParams.instanceId,
+    nodeKey: submittedParams.nodeKey || undefined,
+  });
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const [detailId, setDetailId] = useState<number | null>(null);
+  const detailQuery = useWorkflowTriggerExecutionDetail(detailId, detailId !== null);
+  const detail = detailQuery.data ?? null;
 
   const handleSearch = () => {
     setPage(1);
-    void fetchData(1, pageSize);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: workflowTriggerExecutionKeys.lists });
   };
   const handleReset = () => {
-    setSearchParams(defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
     setPage(1);
-    void fetchData(1, pageSize, defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: workflowTriggerExecutionKeys.lists });
   };
 
-  const openDetail = async (row: WorkflowTriggerExecution) => {
-    const res = await request.get<WorkflowTriggerExecution>(
-      `/api/workflows/trigger-executions/${row.id}`,
-    );
-    if (res.code === 0) setDetail(res.data);
+  const openDetail = (row: WorkflowTriggerExecution) => {
+    setDetailId(row.id);
   };
 
   const columns: ColumnProps<WorkflowTriggerExecution>[] = [
@@ -168,8 +155,8 @@ export default function WorkflowTriggerExecutionsPage() {
   const renderNodeKeySearch = () => (
     <Input
       prefix={<Search size={14} />}
-      value={searchParams.nodeKey}
-      onChange={(v) => setSearchParams(prev => ({ ...prev, nodeKey: v }))}
+      value={draftParams.nodeKey}
+      onChange={(v) => setDraftParams(prev => ({ ...prev, nodeKey: v }))}
       placeholder="节点 key"
       showClear
       style={{ width: 180 }}
@@ -178,8 +165,8 @@ export default function WorkflowTriggerExecutionsPage() {
 
   const renderStatusFilter = () => (
     <Select
-      value={searchParams.status}
-      onChange={(v) => setSearchParams(prev => ({ ...prev, status: v as WorkflowTriggerExecutionStatus | '' }))}
+      value={draftParams.status}
+      onChange={(v) => setDraftParams(prev => ({ ...prev, status: v as WorkflowTriggerExecutionStatus | '' }))}
       style={{ width: 140 }}
       optionList={STATUS_OPTIONS}
     />
@@ -187,8 +174,8 @@ export default function WorkflowTriggerExecutionsPage() {
 
   const renderInstanceIdFilter = () => (
     <InputNumber
-      value={searchParams.instanceId}
-      onChange={(v) => setSearchParams(prev => ({ ...prev, instanceId: typeof v === 'number' ? v : undefined }))}
+      value={draftParams.instanceId}
+      onChange={(v) => setDraftParams(prev => ({ ...prev, instanceId: typeof v === 'number' ? v : undefined }))}
       placeholder="实例 ID"
       min={1}
       style={{ width: 140 }}
@@ -235,18 +222,18 @@ export default function WorkflowTriggerExecutionsPage() {
       <ConfigurableTable
         bordered
         rowKey="id"
-        loading={loading}
+        loading={listQuery.isFetching}
         dataSource={list}
         columns={columns}
-        pagination={buildPagination(total, fetchData)}
-        onRefresh={fetchData}
-        refreshLoading={loading}
+        pagination={buildPagination(total)}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
       />
 
       <SideSheet
         title={`执行记录详情 #${detail?.id ?? ''}`}
-        visible={!!detail}
-        onCancel={() => setDetail(null)}
+        visible={detailId !== null}
+        onCancel={() => setDetailId(null)}
         width={720}
       >
         {detail && (

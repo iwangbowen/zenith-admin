@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Modal, Tag, Toast, Dropdown, SplitButtonGroup, Typography, Space, DatePicker, Select } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search, RotateCcw, Trash2, ChevronDown, Copy, Terminal, Star } from 'lucide-react';
@@ -10,24 +11,16 @@ import { usePagination } from '@/hooks/usePagination';
 import { useUserOptions } from '@/hooks/useUserOptions';
 import { formatDateTimeForApi } from '@/utils/date';
 import RecordingPlayer from './RecordingPlayer';
-
-type RecordingEvent = [number, 'o' | 'i', string];
-
-interface Recording {
-  id: number;
-  title: string;
-  username: string;
-  shell: string | null;
-  cols: number;
-  rows: number;
-  duration: number;
-  commandCount: number;
-  createdAt: string;
-}
-
-interface RecordingDetail extends Recording {
-  events: RecordingEvent[];
-}
+import {
+  terminalKeys,
+  useCleanTerminalRecordings,
+  useDeleteTerminalRecording,
+  useTerminalRecordingDetail,
+  useTerminalRecordingList,
+  type Recording,
+  type RecordingDetail,
+  type RecordingEvent,
+} from '@/hooks/queries/terminal';
 
 interface SearchParams {
   keyword: string;
@@ -117,79 +110,71 @@ function getKeyCommandLabel(cmd: string): string | null {
 }
 
 export default function TerminalRecordingsPage() {
-  const [list, setList] = useState<Recording[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
   const [playRec, setPlayRec] = useState<RecordingDetail | null>(null);
   const [playStartTime, setPlayStartTime] = useState(0);
-  const [playLoading, setPlayLoading] = useState(false);
   const [detailRec, setDetailRec] = useState<RecordingDetail | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [clearLoading, setClearLoading] = useState(false);
   const [exportingId, setExportingId] = useState<number | null>(null);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
   const { userOptions, loading: userOptionsLoading, ensureLoaded } = useUserOptions({ immediate: true });
 
   const { page, pageSize, resetPage, buildPagination } = usePagination();
 
-  const fetchList = useCallback(async (p: number, ps: number, filters = searchParamsRef.current) => {
-    setLoading(true);
-    const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-    if (filters.keyword) query.set('keyword', filters.keyword);
-    if (filters.operatorUserId) query.set('operatorUserId', String(filters.operatorUserId));
-    if (filters.timeRange) {
-      query.set('startTime', formatDateTimeForApi(filters.timeRange[0]));
-      query.set('endTime', formatDateTimeForApi(filters.timeRange[1]));
-    }
-    const res = await request.get<{ list: Recording[]; total: number; page: number; pageSize: number }>(
-      `/api/terminal-recordings?${query.toString()}`,
-    );
-    setLoading(false);
-    if (res.code === 0 && res.data) {
-      setList(res.data.list);
-      setTotal(res.data.total);
-    }
-  }, []);
+  const listQuery = useTerminalRecordingList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    operatorUserId: submittedParams.operatorUserId ?? undefined,
+    startTime: submittedParams.timeRange ? formatDateTimeForApi(submittedParams.timeRange[0]) : undefined,
+    endTime: submittedParams.timeRange ? formatDateTimeForApi(submittedParams.timeRange[1]) : undefined,
+  });
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const [playId, setPlayId] = useState<number | undefined>();
+  const [detailId, setDetailId] = useState<number | undefined>();
+  const playQuery = useTerminalRecordingDetail(playId, playId !== undefined);
+  const detailQuery = useTerminalRecordingDetail(detailId, detailId !== undefined);
+  const deleteMutation = useDeleteTerminalRecording();
+  const cleanMutation = useCleanTerminalRecordings();
 
-  // 初始加载
-  useEffect(() => { void fetchList(1, pageSize); }, [fetchList, pageSize]);
+  useEffect(() => {
+    if (playQuery.data) setPlayRec(playQuery.data);
+  }, [playQuery.data]);
+
+  useEffect(() => {
+    if (detailQuery.data) setDetailRec(detailQuery.data);
+  }, [detailQuery.data]);
 
   const handleSearch = () => {
     resetPage();
-    void fetchList(1, pageSize, searchParams);
+    setSubmittedParams(searchParams);
+    void queryClient.invalidateQueries({ queryKey: terminalKeys.recordingLists });
   };
 
   const handleReset = () => {
     setSearchParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
     resetPage();
-    void fetchList(1, pageSize, defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: terminalKeys.recordingLists });
   };
 
-  const handlePlay = async (id: number, startTime = 0) => {
-    setPlayLoading(true);
-    const res = await request.get<RecordingDetail>(`/api/terminal-recordings/${id}`);
-    setPlayLoading(false);
-    if (res.code === 0 && res.data) {
-      setPlayStartTime(startTime);
-      setPlayRec(res.data);
-    }
+  const handlePlay = (id: number, startTime = 0) => {
+    setPlayStartTime(startTime);
+    const cached = queryClient.getQueryData<RecordingDetail>(terminalKeys.recordingDetail(id));
+    if (cached) setPlayRec(cached);
+    setPlayId(id);
   };
 
-  const handleDetail = async (id: number) => {
-    setDetailLoading(true);
-    const res = await request.get<RecordingDetail>(`/api/terminal-recordings/${id}`);
-    setDetailLoading(false);
-    if (res.code === 0 && res.data) setDetailRec(res.data);
+  const handleDetail = (id: number) => {
+    const cached = queryClient.getQueryData<RecordingDetail>(terminalKeys.recordingDetail(id));
+    if (cached) setDetailRec(cached);
+    setDetailId(id);
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete(`/api/terminal-recordings/${id}`);
-    if (res.code === 0) {
-      Toast.success('已删除');
-      void fetchList(page, pageSize);
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('已删除');
   };
 
   const clearLabels: Record<number, string> = { 0: '全部', 1: '一个月', 3: '三个月', 6: '六个月', 12: '一年' };
@@ -203,15 +188,9 @@ export default function TerminalRecordingsPage() {
       okText: '确认清除',
       cancelText: '取消',
       onOk: async () => {
-        setClearLoading(true);
-        const params = new URLSearchParams({ months: String(months) });
-        const res = await request.delete(`/api/terminal-recordings/clean?${params.toString()}`);
-        setClearLoading(false);
-        if (res.code === 0) {
-          Toast.success(res.message ?? '清除成功');
-          resetPage();
-          void fetchList(1, pageSize);
-        }
+        const message = await cleanMutation.mutateAsync(months);
+        Toast.success(message ?? '清除成功');
+        resetPage();
       },
     });
   };
@@ -280,13 +259,13 @@ export default function TerminalRecordingsPage() {
         {
           key: 'play',
           label: '播放',
-          loading: playLoading,
+          loading: playQuery.isFetching,
           onClick: () => { void handlePlay(record.id); },
         },
         {
           key: 'detail',
           label: '详情',
-          loading: detailLoading,
+          loading: detailQuery.isFetching,
           onClick: () => { void handleDetail(record.id); },
         },
         {
@@ -353,7 +332,7 @@ export default function TerminalRecordingsPage() {
               type="danger"
               theme="light"
               icon={<Trash2 size={14} />}
-              loading={clearLoading}
+              loading={cleanMutation.isPending}
               onClick={() => handleClear(12)}
             >
               清除录屏
@@ -419,13 +398,13 @@ export default function TerminalRecordingsPage() {
                 type="danger"
                 theme="light"
                 icon={<Trash2 size={14} />}
-                loading={clearLoading}
+                loading={cleanMutation.isPending}
                 onClick={() => handleClear(m)}
               >
                 清除{clearLabels[m]}前的录屏
               </Button>
             ))}
-            <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={clearLoading} onClick={() => handleClear(0)}>
+            <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={cleanMutation.isPending} onClick={() => handleClear(0)}>
               清除全部录屏
             </Button>
           </>
@@ -438,17 +417,17 @@ export default function TerminalRecordingsPage() {
         rowKey="id"
         dataSource={list}
         columns={columns}
-        loading={loading}
-        pagination={buildPagination(total, fetchList)}
-        onRefresh={() => void fetchList(page, pageSize)}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        pagination={buildPagination(total)}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         empty="暂无录屏记录，使用 Web 终端后会自动保存"
       />
 
       <Modal
         title={playRec?.title || '播放录屏'}
         visible={!!playRec}
-        onCancel={() => setPlayRec(null)}
+        onCancel={() => { setPlayRec(null); setPlayId(undefined); }}
         footer={null}
         closeOnEsc
         width={900}
@@ -491,7 +470,7 @@ export default function TerminalRecordingsPage() {
               </Space>
             }
             visible
-            onCancel={() => setDetailRec(null)}
+            onCancel={() => { setDetailRec(null); setDetailId(undefined); }}
             footer={null}
             closeOnEsc
             width={700}

@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { useQuery } from '@tanstack/react-query';
 import { Modal, Spin, Toast, AudioPlayer, VideoPlayer, Typography } from '@douyinfe/semi-ui';
 import { X } from 'lucide-react';
 import { useThemeController } from '@/providers/theme-controller';
@@ -7,6 +8,7 @@ import { fetchProtectedFile, isSpreadsheetFile, isWordFile, isMarkdownFile, isPl
 import { PDFPreviewPanel } from '@/pages/ai/chat/PDFPreviewPanel';
 import { request } from '@/utils/request';
 import AppModal from '@/components/AppModal';
+import { unwrap } from '@/lib/query';
 import type { IWorkbookData } from '@univerjs/presets';
 import type { CSSProperties, ReactNode } from 'react';
 import './filePreview.css';
@@ -37,6 +39,27 @@ interface FilePreviewModalProps {
   style?: CSSProperties;
 }
 
+type PreviewKind = 'spreadsheet' | 'word' | 'markdown' | 'plainText' | 'zip' | 'json' | 'svg' | 'code' | 'pdf' | 'audio' | 'video';
+
+type PreviewData =
+  | { kind: 'spreadsheet'; data: IWorkbookData }
+  | { kind: 'word'; blob: Blob }
+  | { kind: 'markdown'; text: string }
+  | { kind: 'plainText'; text: string }
+  | { kind: 'zip'; blob: Blob }
+  | { kind: 'json'; text: string }
+  | { kind: 'svg'; url: string }
+  | { kind: 'code'; text: string }
+  | { kind: 'pdf'; file: File }
+  | { kind: 'audio'; url: string }
+  | { kind: 'video'; url: string };
+
+function revokePreviewUrl(data: PreviewData | undefined) {
+  if (data?.kind === 'audio' || data?.kind === 'video' || data?.kind === 'svg') {
+    URL.revokeObjectURL(data.url);
+  }
+}
+
 export default function FilePreviewModal({
   fileUrl,
   fileId,
@@ -46,17 +69,6 @@ export default function FilePreviewModal({
   onClose,
   onFallback,
 }: Readonly<FilePreviewModalProps>) {
-  const [loading, setLoading] = useState(false);
-  const [pdfFile, setPdfFile] = useState<File | null>(null);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [sheetData, setSheetData] = useState<IWorkbookData | null>(null);
-  const [docxBlob, setDocxBlob] = useState<Blob | null>(null);
-  const [markdownText, setMarkdownText] = useState<string | null>(null);
-  const [zipBlob, setZipBlob] = useState<Blob | null>(null);
-  const [jsonText, setJsonText] = useState<string | null>(null);
-  const [svgUrl, setSvgUrl] = useState<string | null>(null);
-  const [codeContent, setCodeContent] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   // sheetKey 用于全屏切换时重建 Univer，sheetTransitioning 显示过渡 spinner
   const [sheetKey, setSheetKey] = useState(0);
@@ -70,141 +82,87 @@ export default function FilePreviewModal({
     }, 360);
   }, []);
   const { isDark } = useThemeController();
-  const abortRef = useRef<AbortController | null>(null);
 
-  const cleanup = useCallback(() => {
-    abortRef.current?.abort();
-    abortRef.current = null;
-    if (audioUrl) { URL.revokeObjectURL(audioUrl); }
-    if (videoUrl) { URL.revokeObjectURL(videoUrl); }
-    if (svgUrl) { URL.revokeObjectURL(svgUrl); }
-  }, [audioUrl, videoUrl, svgUrl]);
+  const previewKind = useMemo<PreviewKind | 'unsupported' | 'image' | null>(() => {
+    if (!mimeType) return null;
+    const isImage = mimeType.startsWith('image/');
+    const tsExtPattern = /\.(ts|tsx)$/i;
+    const isMpegTsAsCode = mimeType === 'video/mp2t' && tsExtPattern.test(fileName);
+    if (isSpreadsheetFile(mimeType)) return 'spreadsheet';
+    if (isWordFile(mimeType)) return 'word';
+    if (isMarkdownFile(mimeType)) return 'markdown';
+    if (isPlainTextFile(mimeType)) return 'plainText';
+    if (isZipFile(mimeType)) return 'zip';
+    if (isJsonFile(mimeType)) return 'json';
+    if (isSvgFile(mimeType)) return 'svg';
+    if (isCodeFile(mimeType) || isMpegTsAsCode) return 'code';
+    if (mimeType === 'application/pdf') return 'pdf';
+    if (mimeType.startsWith('audio/')) return 'audio';
+    if (mimeType.startsWith('video/') && !isMpegTsAsCode) return 'video';
+    if (isImage) return 'image';
+    return 'unsupported';
+  }, [fileName, mimeType]);
+
+  const previewQuery = useQuery({
+    queryKey: ['files', 'preview', visible, fileUrl, fileId ?? null, fileName, mimeType ?? null],
+    queryFn: async (): Promise<PreviewData> => {
+      if (previewKind === 'spreadsheet') {
+        if (!fileId) throw new Error('预览 Excel 表格需要传入 fileId');
+        const data = await request.get<IWorkbookData>(`/api/files/${fileId}/sheet-preview`, { silent: true }).then(unwrap);
+        return { kind: 'spreadsheet', data };
+      }
+      const blob = await fetchProtectedFile(fileUrl);
+      if (previewKind === 'word') return { kind: 'word', blob };
+      if (previewKind === 'markdown') return { kind: 'markdown', text: await blob.text() };
+      if (previewKind === 'plainText') return { kind: 'plainText', text: await blob.text() };
+      if (previewKind === 'zip') return { kind: 'zip', blob };
+      if (previewKind === 'json') return { kind: 'json', text: await blob.text() };
+      if (previewKind === 'svg') return { kind: 'svg', url: URL.createObjectURL(blob) };
+      if (previewKind === 'code') return { kind: 'code', text: await blob.text() };
+      if (previewKind === 'pdf') return { kind: 'pdf', file: new File([blob], fileName, { type: 'application/pdf' }) };
+      if (previewKind === 'audio') return { kind: 'audio', url: URL.createObjectURL(blob) };
+      if (previewKind === 'video') return { kind: 'video', url: URL.createObjectURL(blob) };
+      throw new Error('文件加载失败');
+    },
+    enabled: visible && !!previewKind && previewKind !== 'unsupported' && previewKind !== 'image',
+    staleTime: 0,
+    gcTime: 0,
+  });
+  const previewData = previewQuery.data;
+
+  useEffect(() => {
+    return () => revokePreviewUrl(previewData);
+  }, [previewData]);
 
   useEffect(() => {
     if (!visible) {
-      cleanup();
-      setPdfFile(null);
-      setAudioUrl(null);
-      setVideoUrl(null);
-      setSheetData(null);
-      setDocxBlob(null);
-      setMarkdownText(null);
-      setZipBlob(null);
-      setJsonText(null);
-      setSvgUrl(null);
-      setCodeContent(null);
       setFullscreen(false);
       setSheetKey(0);
       setSheetTransitioning(false);
       return;
     }
-
     if (!mimeType) {
       onClose();
       return;
     }
-
-    const isImage = mimeType.startsWith('image/');
-    const isPdf = mimeType === 'application/pdf';
-    const isAudio = mimeType.startsWith('audio/');
-    // .ts 文件扩展名与 MPEG-2 TS 视频流共用，服务器可能误判为 video/mp2t。
-    // 当文件名以 .ts/.tsx 结尾时强制排除出视频分支。
-    const tsExtPattern = /\.(ts|tsx)$/i;
-    const isMpegTsAsCode = mimeType === 'video/mp2t' && tsExtPattern.test(fileName);
-    const isVideo = mimeType.startsWith('video/') && !isMpegTsAsCode;
-    const isSpreadsheet = isSpreadsheetFile(mimeType);
-    const isWord = isWordFile(mimeType);
-    const isMarkdown = isMarkdownFile(mimeType);
-    const isPlainText = isPlainTextFile(mimeType);
-    const isZip = isZipFile(mimeType);
-    const isJson = isJsonFile(mimeType);
-    const isSvg = isSvgFile(mimeType);
-    const isCode = isCodeFile(mimeType) || isMpegTsAsCode;
-
-    if (!isImage && !isPdf && !isAudio && !isVideo && !isSpreadsheet && !isWord && !isMarkdown && !isPlainText && !isZip && !isJson && !isSvg && !isCode) {
+    if (previewKind === 'unsupported') {
       onFallback?.(fileUrl, fileName, mimeType);
       onClose();
       return;
     }
-
-    if (isImage && !isSvg) {
-      // 普通图片不在这个组件中预览，由调用方自行处理 ImagePreview（SVG 归入此分支导公处理）
+    if (previewKind === 'image') {
       onClose();
-      return;
     }
+  }, [fileName, fileUrl, mimeType, onClose, onFallback, previewKind, visible]);
 
-    setLoading(true);
-    abortRef.current = new AbortController();
-
-    (async () => {
-      try {
-        if (isSpreadsheet) {
-          if (!fileId) throw new Error('预览 Excel 表格需要传入 fileId');
-          const res = await request.get<IWorkbookData>(`/api/files/${fileId}/sheet-preview`, { silent: true });
-          if (res.code !== 0 || !res.data) throw new Error(res.message || '表格预览加载失败');
-          setSheetData(res.data);
-          return;
-        }
-        const blob = await fetchProtectedFile(fileUrl);
-        if (isWord) {
-          setDocxBlob(blob);
-          return;
-        }
-        if (isMarkdown) {
-          const text = await blob.text();
-          setMarkdownText(text);
-          return;
-        }
-        if (isPlainText) {
-          const text = await blob.text();
-          setCodeContent(text);
-          return;
-        }
-        if (isZip) {
-          setZipBlob(blob);
-          return;
-        }
-        if (isJson) {
-          const text = await blob.text();
-          setJsonText(text);
-          return;
-        }
-        if (isSvg) {
-          const url = URL.createObjectURL(blob);
-          setSvgUrl(url);
-          return;
-        }
-        if (isCode) {
-          const text = await blob.text();
-          setCodeContent(text);
-          return;
-        }
-        if (isPdf) {
-          const file = new File([blob], fileName, { type: 'application/pdf' });
-          setPdfFile(file);
-        } else if (isAudio) {
-          const url = URL.createObjectURL(blob);
-          setAudioUrl(url);
-        } else if (isVideo) {
-          const url = URL.createObjectURL(blob);
-          setVideoUrl(url);
-        }
-      } catch (e) {
-        Toast.error(e instanceof Error ? e.message : '文件加载失败');
-        onClose();
-      } finally {
-        setLoading(false);
-      }
-    })();
-
-    return () => {
-      cleanup();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, fileUrl, fileId, fileName, mimeType]);
+  useEffect(() => {
+    if (previewQuery.error) {
+      Toast.error(previewQuery.error instanceof Error ? previewQuery.error.message : '文件加载失败');
+      onClose();
+    }
+  }, [onClose, previewQuery.error]);
 
   const handleClose = () => {
-    cleanup();
     onClose();
   };
 
@@ -227,7 +185,7 @@ export default function FilePreviewModal({
 
   if (!visible) return null;
 
-  if (loading) {
+  if (previewQuery.isLoading) {
     return (
       <AppModal
         visible
@@ -243,7 +201,7 @@ export default function FilePreviewModal({
     );
   }
 
-  if (pdfFile) {
+  if (previewData?.kind === 'pdf') {
     return (
       <Modal
         visible
@@ -258,7 +216,7 @@ export default function FilePreviewModal({
         keepDOM={false}
       >
         <PDFPreviewPanel
-          file={pdfFile}
+          file={previewData.file}
           onClose={handleClose}
           fullscreen={fullscreen}
           onToggleFullscreen={toggleFullscreen}
@@ -268,7 +226,7 @@ export default function FilePreviewModal({
     );
   }
 
-  if (sheetData) {
+  if (previewData?.kind === 'spreadsheet') {
     return (
       <AppModal
         visible
@@ -294,14 +252,14 @@ export default function FilePreviewModal({
               <Spin size="large" tip="切换中..." />
             </div>
           ) : (
-            <ExcelPreviewPanel key={sheetKey} data={sheetData} style={{ flex: 1, minHeight: 0 }} />
+            <ExcelPreviewPanel key={sheetKey} data={previewData.data} style={{ flex: 1, minHeight: 0 }} />
           )}
         </Suspense>
       </AppModal>
     );
   }
 
-  if (docxBlob) {
+  if (previewData?.kind === 'word') {
     return (
       <AppModal
         visible
@@ -322,15 +280,15 @@ export default function FilePreviewModal({
             </div>
           }
         >
-          <DocxPreviewPanel blob={docxBlob} style={{ flex: 1, minHeight: 0 }} />
+          <DocxPreviewPanel blob={previewData.blob} style={{ flex: 1, minHeight: 0 }} />
         </Suspense>
       </AppModal>
     );
   }
 
-  if (markdownText !== null) {
-    const isRawText = markdownText.startsWith('\u0000PLAINTEXT\u0000');
-    const displayContent = isRawText ? markdownText.slice('\u0000PLAINTEXT\u0000'.length) : markdownText;
+  if (previewData?.kind === 'markdown') {
+    const isRawText = previewData.text.startsWith('\u0000PLAINTEXT\u0000');
+    const displayContent = isRawText ? previewData.text.slice('\u0000PLAINTEXT\u0000'.length) : previewData.text;
     return (
       <AppModal
         visible
@@ -361,7 +319,7 @@ export default function FilePreviewModal({
     );
   }
 
-  if (zipBlob) {
+  if (previewData?.kind === 'zip') {
     return (
       <AppModal
         visible
@@ -382,13 +340,13 @@ export default function FilePreviewModal({
             </div>
           }
         >
-          <ZipPreviewPanel blob={zipBlob} style={{ flex: 1, minHeight: 0 }} />
+          <ZipPreviewPanel blob={previewData.blob} style={{ flex: 1, minHeight: 0 }} />
         </Suspense>
       </AppModal>
     );
   }
 
-  if (jsonText !== null) {
+  if (previewData?.kind === 'json') {
     return (
       <AppModal
         visible
@@ -409,13 +367,13 @@ export default function FilePreviewModal({
             </div>
           }
         >
-          <JsonPreviewPanel content={jsonText} style={{ flex: 1, minHeight: 0 }} />
+          <JsonPreviewPanel content={previewData.text} style={{ flex: 1, minHeight: 0 }} />
         </Suspense>
       </AppModal>
     );
   }
 
-  if (codeContent !== null) {
+  if (previewData?.kind === 'code' || previewData?.kind === 'plainText') {
     return (
       <AppModal
         visible
@@ -437,7 +395,7 @@ export default function FilePreviewModal({
           }
         >
           <MonacoPreviewPanel
-            content={codeContent}
+            content={previewData.text}
             fileName={fileName}
             style={{ flex: 1, minHeight: 0 }}
           />
@@ -446,7 +404,7 @@ export default function FilePreviewModal({
     );
   }
 
-  if (svgUrl) {
+  if (previewData?.kind === 'svg') {
     return (
       <AppModal
         visible
@@ -469,7 +427,7 @@ export default function FilePreviewModal({
         keepDOM={false}
       >
         <img
-          src={svgUrl}
+          src={previewData.url}
           alt={fileName}
           style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
         />
@@ -477,7 +435,7 @@ export default function FilePreviewModal({
     );
   }
 
-  if (audioUrl) {
+  if (previewData?.kind === 'audio') {
     // 音频固定在页面底部以播放条形式呈现，避免在窄弹窗内控件（播放键）被裁切
     return createPortal(
       <div className="zenith-audio-dock" role="region" aria-label="音频播放器">
@@ -485,7 +443,7 @@ export default function FilePreviewModal({
           <div className="zenith-audio-dock__player">
             <AudioPlayer
               className="zenith-audio-preview"
-              audioUrl={{ src: audioUrl, title: fileName }}
+              audioUrl={{ src: previewData.url, title: fileName }}
               theme={isDark ? 'dark' : 'light'}
               autoPlay
               style={{ width: '100%' }}
@@ -505,7 +463,7 @@ export default function FilePreviewModal({
     );
   }
 
-  if (videoUrl) {
+  if (previewData?.kind === 'video') {
     return (
       <AppModal
         visible
@@ -519,7 +477,7 @@ export default function FilePreviewModal({
         keepDOM={false}
       >
         <VideoPlayer
-          src={videoUrl}
+          src={previewData.url}
           theme={isDark ? 'dark' : 'light'}
           width="100%"
           autoPlay={false}

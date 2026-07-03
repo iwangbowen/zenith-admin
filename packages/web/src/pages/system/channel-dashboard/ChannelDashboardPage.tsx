@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Button, Card, Empty, Progress, Skeleton, Table, Typography } from '@douyinfe/semi-ui';
 import {
   LineChart,
@@ -9,7 +9,6 @@ import {
   useChartPalette,
 } from '@/components/charts';
 import { Radio, Users, MessageSquare, Send, Inbox, Clock, RotateCcw, Reply, BarChart3 } from 'lucide-react';
-import { request } from '@/utils/request';
 import {
   CHANNEL_CONVERSATION_STATUS_LABELS,
   CHANNEL_AUTO_REPLY_MATCH_LABELS,
@@ -18,6 +17,7 @@ import {
   type ChannelDashboardChannelRank,
 } from '@zenith/shared';
 import './ChannelDashboardPage.css';
+import { useChannelDashboard } from '@/hooks/queries/channel-dashboard';
 
 const { Text, Title } = Typography;
 
@@ -41,21 +41,9 @@ function shortDate(dateStr: string) {
 
 export default function ChannelDashboardPage() {
   const palette = useChartPalette();
-  const [data, setData] = useState<ChannelDashboard | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const fetchData = useCallback(() => {
-    setLoading(true);
-    request.get<ChannelDashboard>('/api/channels/dashboard')
-      .then((res) => {
-        if (res.code === 0) setData(res.data);
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  const dashboardQuery = useChannelDashboard();
+  const data = dashboardQuery.data ?? null;
+  const loading = dashboardQuery.isFetching;
 
   const overview = data?.overview;
   const statItems: StatItem[] = [
@@ -162,7 +150,7 @@ export default function ChannelDashboardPage() {
         <Button
           icon={<RotateCcw size={14} />}
           theme="light"
-          onClick={fetchData}
+          onClick={() => void dashboardQuery.refetch()}
           loading={loading}
         >
           刷新

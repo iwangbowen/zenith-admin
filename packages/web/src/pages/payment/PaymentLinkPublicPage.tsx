@@ -3,18 +3,14 @@ import { useParams } from 'react-router-dom';
 import { Button, Card, Form, Space, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { QRCodeSVG } from 'qrcode.react';
-import { request } from '@/utils/request';
 import { PAYMENT_LINK_STATUS_LABELS, PAYMENT_METHOD_LABELS } from '@zenith/shared';
 import type { CreatePaymentResult, PaymentLinkPublic, PaymentLinkStatus, PaymentMethod } from '@zenith/shared';
+import { usePayPublicPaymentLink, usePublicPaymentLink } from '@/hooks/queries/payment-links';
 
 const yuan = (cents: number | null | undefined) => (cents == null ? '自定义金额' : `¥${(cents / 100).toFixed(2)}`);
 const publicPayMethods: PaymentMethod[] = ['wechat_native', 'wechat_h5', 'alipay_page', 'alipay_wap'];
 const methodOptions = publicPayMethods.map((value) => ({ value, label: PAYMENT_METHOD_LABELS[value] }));
 const LINK_STATUS_COLOR = { active: 'green', disabled: 'grey', expired: 'red' } as const satisfies Record<PaymentLinkStatus, string>;
-
-function paymentLinkApi(token: string) {
-  return `/api/public/payment/link/${encodeURIComponent(token)}`;
-}
 
 interface PayFormValues {
   amountYuan?: number;
@@ -24,26 +20,14 @@ interface PayFormValues {
 export default function PaymentLinkPublicPage() {
   const { token = '' } = useParams();
   const formApi = useRef<FormApi | null>(null);
-  const [link, setLink] = useState<PaymentLinkPublic | null>(null);
   const [payResult, setPayResult] = useState<CreatePaymentResult | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const linkQuery = usePublicPaymentLink(token);
+  const payMutation = usePayPublicPaymentLink();
+  const link: PaymentLinkPublic | null = linkQuery.data ?? null;
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    request
-      .get<PaymentLinkPublic>(paymentLinkApi(token), { skipAuth: true, silent: true })
-      .then((res) => {
-        if (cancelled) return;
-        if (res.code === 0) setLink(res.data);
-        else Toast.error(res.message);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [token]);
+    if (linkQuery.error instanceof Error) Toast.error(linkQuery.error.message);
+  }, [linkQuery.error]);
 
   async function submitPay() {
     if (!link || link.status !== 'active') return;
@@ -64,24 +48,16 @@ export default function PaymentLinkPublicPage() {
       return;
     }
 
-    setSubmitting(true);
     try {
-      const res = await request.post<{ orderNo: string; payParams: CreatePaymentResult }>(
-        `${paymentLinkApi(token)}/pay`,
-        {
-          amount: link.amount == null ? amount : undefined,
-          payMethod: link.payMethod == null ? payMethod : undefined,
-        },
-        { skipAuth: true, silent: true },
-      );
-      if (res.code === 0) {
-        Toast.success('下单成功');
-        setPayResult(res.data.payParams);
-      } else {
-        Toast.error(res.message);
-      }
-    } finally {
-      setSubmitting(false);
+      const res = await payMutation.mutateAsync({
+        token,
+        amount: link.amount == null ? amount : undefined,
+        payMethod: link.payMethod == null ? payMethod : undefined,
+      });
+      Toast.success('下单成功');
+      setPayResult(res.payParams);
+    } catch (err) {
+      Toast.error(err instanceof Error ? err.message : '下单失败');
     }
   }
 
@@ -91,7 +67,7 @@ export default function PaymentLinkPublicPage() {
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg, #f0fdf4 0%, #f8fafc 42%, #ffffff 100%)', padding: '40px 16px' }}>
       <Card style={{ maxWidth: 460, margin: '0 auto' }} bodyStyle={{ padding: 24 }}>
-        <Spin spinning={loading}>
+        <Spin spinning={linkQuery.isFetching}>
           {link ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
               <div style={{ textAlign: 'center' }}>
@@ -128,7 +104,7 @@ export default function PaymentLinkPublicPage() {
                   ) : (
                     <Form.Slot label="支付方式">{PAYMENT_METHOD_LABELS[link.payMethod]}</Form.Slot>
                   )}
-                  <Button type="primary" block loading={submitting} disabled={disabled} onClick={submitPay}>立即支付</Button>
+                  <Button type="primary" block loading={payMutation.isPending} disabled={disabled} onClick={submitPay}>立即支付</Button>
                 </Form>
               ) : (
                 <div style={{ textAlign: 'center' }}>

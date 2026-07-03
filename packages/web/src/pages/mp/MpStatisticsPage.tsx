@@ -1,12 +1,13 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Spin, Banner, Typography, Skeleton, Card, DatePicker, Button, Toast } from '@douyinfe/semi-ui';
 import { Users, UserCheck, UserMinus, Tags, Image, FileText, MessageSquare, Reply, BarChart3 } from 'lucide-react';
-import type { MpStats, MpDatacube } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { MpStats } from '@zenith/shared';
 import { formatDateForApi } from '@/utils/date';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import { BarChart, chartOptions, makeBarSpec, useChartPalette } from '@/components/charts';
+import { mpStatsKeys, useMpDatacube, useMpStats, type MpDatacubeParams } from '@/hooks/queries/mp-stats';
 
 const CARD_DEFS: { key: keyof MpStats; label: string; icon: React.ReactNode; color: string }[] = [
   { key: 'fanTotal', label: '粉丝总数', icon: <Users size={20} />, color: '#3b82f6' },
@@ -19,48 +20,33 @@ const CARD_DEFS: { key: keyof MpStats; label: string; icon: React.ReactNode; col
   { key: 'autoReplyTotal', label: '自动回复', icon: <Reply size={20} />, color: '#14b8a6' },
 ];
 
+const defaultRange = (): [Date, Date] => {
+  const end = new Date(); end.setDate(end.getDate() - 1);
+  const begin = new Date(); begin.setDate(begin.getDate() - 7);
+  return [begin, end];
+};
+
 export default function MpStatisticsPage() {
-  const { accounts, currentId, currentIdRef, setCurrentId, loading: accountsLoading } = useMpAccounts();
-  const [stats, setStats] = useState<MpStats | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const load = useCallback(async (accountId: number) => {
-    setLoading(true);
-    try {
-      const res = await request.get<MpStats>(`/api/mp/stats?accountId=${accountId}`);
-      if (currentIdRef.current !== accountId) return; // 账号已切换，丢弃过期响应
-      setStats(res.data ?? null);
-    } finally { setLoading(false); }
-  }, [currentIdRef]);
-
-  useEffect(() => { if (currentId) void load(currentId); else setStats(null); }, [currentId, load]);
-
-  // ── 微信数据立方（真实接口） ──
-  const [datacube, setDatacube] = useState<MpDatacube | null>(null);
-  const [dcLoading, setDcLoading] = useState(false);
-  const defaultRange = (): [Date, Date] => {
-    const end = new Date(); end.setDate(end.getDate() - 1);
-    const begin = new Date(); begin.setDate(begin.getDate() - 7);
-    return [begin, end];
-  };
+  const queryClient = useQueryClient();
+  const { accounts, currentId, setCurrentId, loading: accountsLoading } = useMpAccounts();
+  const statsQuery = useMpStats(currentId);
+  const stats = statsQuery.data ?? null;
   const [dcRange, setDcRange] = useState<[Date, Date]>(defaultRange());
+  const [dcParams, setDcParams] = useState<MpDatacubeParams | null>(null);
+  const datacubeQuery = useMpDatacube(currentId, dcParams ?? { beginDate: '', endDate: '' }, !!dcParams);
+  const datacube = datacubeQuery.data ?? null;
 
-  const loadDatacube = useCallback(async () => {
+  useEffect(() => {
+    setDcParams(null);
+  }, [currentId]);
+
+  const loadDatacube = () => {
     if (!currentId) { Toast.error('请先选择公众号'); return; }
     const [begin, end] = dcRange;
-    const reqId = currentId;
-    setDcLoading(true);
-    try {
-      const q = new URLSearchParams({ accountId: String(currentId), beginDate: formatDateForApi(begin), endDate: formatDateForApi(end) });
-      const res = await request.get<MpDatacube>(`/api/mp/stats/datacube?${q}`);
-      if (currentIdRef.current !== reqId) return;
-      if (res.code === 0) setDatacube(res.data ?? null);
-    } finally {
-      if (currentIdRef.current === reqId) setDcLoading(false);
-    }
-  }, [currentId, currentIdRef, dcRange]);
-
-  useEffect(() => { setDatacube(null); }, [currentId]);
+    const params = { beginDate: formatDateForApi(begin), endDate: formatDateForApi(end) };
+    setDcParams(params);
+    void queryClient.invalidateQueries({ queryKey: mpStatsKeys.datacube(currentId, params) });
+  };
 
   const palette = useChartPalette();
   const fanSpec = makeBarSpec({
@@ -93,8 +79,8 @@ export default function MpStatisticsPage() {
         <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
       )}
 
-      <Spin spinning={loading && !!stats}>
-        {(loading && !stats) ? (
+      <Spin spinning={statsQuery.isFetching && !!stats}>
+        {(statsQuery.isFetching && !stats) ? (
           <Skeleton
             loading
             active
@@ -123,28 +109,27 @@ export default function MpStatisticsPage() {
             }
           >{null}</Skeleton>
         ) : (
-          <>{/* 指标卡片 */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
-          {CARD_DEFS.map((c) => (
-            <div key={c.key} style={{ border: '1px solid var(--semi-color-border)', borderRadius: 8, padding: 16, background: 'var(--semi-color-bg-1)', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ width: 40, height: 40, borderRadius: 8, background: `${c.color}1a`, color: c.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{c.icon}</div>
-              <div>
-                <div style={{ fontSize: 22, fontWeight: 600, lineHeight: 1.1 }}>{(stats?.[c.key] as number) ?? 0}</div>
-                <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)' }}>{c.label}</div>
-              </div>
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
+              {CARD_DEFS.map((c) => (
+                <div key={c.key} style={{ border: '1px solid var(--semi-color-border)', borderRadius: 8, padding: 16, background: 'var(--semi-color-bg-1)', display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 8, background: `${c.color}1a`, color: c.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{c.icon}</div>
+                  <div>
+                    <div style={{ fontSize: 22, fontWeight: 600, lineHeight: 1.1 }}>{(stats?.[c.key] as number) ?? 0}</div>
+                    <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)' }}>{c.label}</div>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
 
-        {/* 趋势 */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
-          <TrendCard title="近 7 日粉丝增长">
-            <BarChart {...fanSpec} options={chartOptions} height={160} />
-          </TrendCard>
-          <TrendCard title="近 7 日消息收发">
-            <BarChart {...msgSpec} options={chartOptions} height={160} />
-          </TrendCard>
-        </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
+              <TrendCard title="近 7 日粉丝增长">
+                <BarChart {...fanSpec} options={chartOptions} height={160} />
+              </TrendCard>
+              <TrendCard title="近 7 日消息收发">
+                <BarChart {...msgSpec} options={chartOptions} height={160} />
+              </TrendCard>
+            </div>
           </>
         )}
       </Spin>
@@ -154,7 +139,7 @@ export default function MpStatisticsPage() {
           <Typography.Title heading={6} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}><BarChart3 size={16} /> 微信数据立方（真实接口）</Typography.Title>
           <DatePicker type="dateRange" density="compact" value={dcRange} style={{ width: 260 }}
             onChange={(v) => { if (Array.isArray(v) && v.length === 2) setDcRange([v[0] as Date, v[1] as Date]); }} />
-          <Button type="primary" size="small" loading={dcLoading} disabled={!currentId} onClick={() => void loadDatacube()}>查询</Button>
+          <Button type="primary" size="small" loading={datacubeQuery.isFetching} disabled={!currentId} onClick={() => void loadDatacube()}>查询</Button>
           <Typography.Text type="tertiary" size="small">跨度 ≤ 7 天；数据 T+1，需账号已认证并有数据权限</Typography.Text>
         </div>
 

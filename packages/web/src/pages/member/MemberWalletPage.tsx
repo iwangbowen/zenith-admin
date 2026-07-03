@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Select, Form, Toast, Tag } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search, RotateCcw, WalletCards, Undo2 } from 'lucide-react';
-import type { MemberWalletTransaction, PaginatedResponse } from '@zenith/shared';
+import type { MemberWalletTransaction } from '@zenith/shared';
 import { WALLET_TX_TYPE_LABELS } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -13,6 +13,12 @@ import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { MemberSelect } from '@/components/MemberSelect';
 import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
+import {
+  memberAdminKeys,
+  useAdjustMemberWallet,
+  useMemberWalletTransactions,
+  useRefundMemberWallet,
+} from '@/hooks/queries/member-admin';
 
 const typeOptions = (Object.keys(WALLET_TX_TYPE_LABELS) as (keyof typeof WALLET_TX_TYPE_LABELS)[]).map((v) => ({ value: v, label: WALLET_TX_TYPE_LABELS[v] }));
 const TYPE_COLORS: Record<string, string> = { recharge: 'green', consume: 'orange', refund: 'cyan', adjust: 'blue' };
@@ -22,46 +28,45 @@ interface SearchParams { memberKeyword?: string; type?: string }
 
 export default function MemberWalletPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
-  const [data, setData] = useState<MemberWalletTransaction[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [search, setSearch] = useState<SearchParams>({});
-  const searchRef = useRef<SearchParams>({});
-  searchRef.current = search;
+  const [draftParams, setDraftParams] = useState<SearchParams>({});
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>({});
   const [modalVisible, setModalVisible] = useState(false);
   const [mode, setMode] = useState<'adjust' | 'refund'>('adjust');
+  const listQuery = useMemberWalletTransactions({
+    page,
+    pageSize,
+    memberKeyword: submittedParams.memberKeyword || undefined,
+    type: submittedParams.type || undefined,
+  });
+  const data = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const adjustMutation = useAdjustMemberWallet();
+  const refundMutation = useRefundMemberWallet();
 
-  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const ap = params ?? searchRef.current;
-    setLoading(true);
-    try {
-      const q = new URLSearchParams({
-        page: String(p), pageSize: String(ps),
-        ...(ap.memberKeyword ? { memberKeyword: ap.memberKeyword } : {}),
-        ...(ap.type ? { type: ap.type } : {}),
-      }).toString();
-      const res = await request.get<PaginatedResponse<MemberWalletTransaction>>(`/api/member-wallets/transactions?${q}`);
-      if (res.code === 0) { setData(res.data.list); setTotal(res.data.total); }
-    } finally { setLoading(false); }
-  }, [page, pageSize]);
-
-  useEffect(() => { void fetchData(); }, [fetchData]);
-
-  const handleSearch = () => { setPage(1); void fetchData(1, pageSize); };
-  const handleReset = () => { setSearch({}); setPage(1); void fetchData(1, pageSize, {}); };
+  const handleSearch = () => {
+    setPage(1);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: memberAdminKeys.walletLists });
+  };
+  const handleReset = () => {
+    setDraftParams({});
+    setSubmittedParams({});
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: memberAdminKeys.walletLists });
+  };
 
   const openModal = (m: 'adjust' | 'refund') => { setMode(m); setModalVisible(true); };
 
   const handleSubmit = async () => {
     let values: { memberId: number; amount: number; remark?: string };
-    try { values = (await formApi.current?.validate()) as { memberId: number; amount: number; remark?: string }; } catch { throw new Error('validation'); }
+    try { values = (await formApi.current!.validate()) as { memberId: number; amount: number; remark?: string }; } catch { throw new Error('validation'); }
     const payload = { memberId: values.memberId, amount: Math.round(values.amount * 100), remark: values.remark };
-    const url = mode === 'adjust' ? '/api/member-wallets/adjust' : '/api/member-wallets/refund';
-    const res = await request.post(url, payload);
-    if (res.code === 0) { Toast.success(mode === 'adjust' ? '已调整' : '已退款'); setModalVisible(false); void fetchData(); }
-    else throw new Error(res.message);
+    await (mode === 'adjust' ? adjustMutation : refundMutation).mutateAsync(payload);
+    Toast.success(mode === 'adjust' ? '已调整' : '已退款');
+    setModalVisible(false);
   };
 
   const columns: ColumnProps<MemberWalletTransaction>[] = [
@@ -78,10 +83,10 @@ export default function MemberWalletPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="会员ID/昵称"
-      value={search.memberKeyword}
+      value={draftParams.memberKeyword}
       showClear
       style={{ width: 180 }}
-      onChange={(v) => setSearch((p) => ({ ...p, memberKeyword: v || undefined }))}
+      onChange={(v) => setDraftParams((p) => ({ ...p, memberKeyword: v || undefined }))}
       onEnterPress={handleSearch}
     />
   );
@@ -89,10 +94,10 @@ export default function MemberWalletPage() {
   const renderTypeFilter = () => (
     <Select
       placeholder="全部类型"
-      value={search.type}
+      value={draftParams.type}
       style={{ width: 130 }}
       showClear
-      onChange={(v) => setSearch((p) => ({ ...p, type: v as string | undefined }))}
+      onChange={(v) => setDraftParams((p) => ({ ...p, type: v as string | undefined }))}
       optionList={typeOptions}
     />
   );
@@ -133,9 +138,9 @@ export default function MemberWalletPage() {
         onFilterReset={handleReset}
       />
 
-      <ConfigurableTable bordered columns={columns} dataSource={data} loading={loading}
-        onRefresh={fetchData} refreshLoading={loading} rowKey="id" size="small"
-        pagination={buildPagination(total, fetchData)} empty="暂无钱包流水" />
+      <ConfigurableTable bordered columns={columns} dataSource={data} loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} rowKey="id" size="small"
+        pagination={buildPagination(total)} empty="暂无钱包流水" />
 
       <AppModal title={mode === 'adjust' ? '调整会员余额' : '会员钱包退款'} visible={modalVisible} width={480}
         onCancel={() => setModalVisible(false)} onOk={handleSubmit}>

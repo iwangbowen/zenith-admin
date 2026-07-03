@@ -10,14 +10,18 @@ import sheetsCoreZhCN from '@univerjs/preset-sheets-core/locales/zh-CN';
 import { ArrowLeft, Eye, PanelRightOpen, Plus, Save, Settings2, Trash2 } from 'lucide-react';
 import '@univerjs/preset-sheets-core/lib/index.css';
 import '../report-grid.css';
-import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import { useThemeController } from '@/providers/theme-controller';
 import AppModal from '@/components/AppModal';
 import PrintReportView from '../PrintReportView';
 import { createBlankWorkbook, gridToUniver, univerToGrid } from './print-univer';
+import { useReportDesignerDatasets } from '@/hooks/queries/report-designer';
+import {
+  useRenderReportPrintTemplate,
+  useReportPrintTemplateDetail,
+  useSaveReportPrintTemplate,
+} from '@/hooks/queries/report-print';
 import type {
-  PaginatedResponse,
   ReportDataset,
   ReportDatasetParam,
   ReportFieldType,
@@ -50,6 +54,7 @@ const DEFAULT_PAGE_CONFIG: ReportPrintPageConfig = {
   orientation: 'portrait',
   margin: DEFAULT_MARGIN,
 };
+const EMPTY_DATASETS: ReportDataset[] = [];
 
 const AGGREGATIONS = ['SUM', 'COUNT', 'AVG', 'MAX', 'MIN'] as const;
 
@@ -103,11 +108,9 @@ export default function PrintDesignerPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const bundleRef = useRef<UniverBundle | null>(null);
   const univerAPIRef = useRef<UniverBundle['univerAPI'] | null>(null);
+  const seededTemplateId = useRef<number | null>(null);
 
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [template, setTemplate] = useState<ReportPrintTemplate | null>(null);
-  const [datasets, setDatasets] = useState<ReportDataset[]>([]);
   const [name, setName] = useState('');
   const [datasetId, setDatasetId] = useState<number | null>(null);
   const [status, setStatus] = useState<ReportPrintTemplate['status']>('enabled');
@@ -117,39 +120,34 @@ export default function PrintDesignerPage() {
   const [panelVisible, setPanelVisible] = useState(true);
   const [activePanel, setActivePanel] = useState<PanelKey>('fields');
   const [previewVisible, setPreviewVisible] = useState(false);
-  const [previewLoading, setPreviewLoading] = useState(false);
   const [previewResult, setPreviewResult] = useState<ReportPrintRenderResult | null>(null);
   const [workbookSeed, setWorkbookSeed] = useState<Partial<IWorkbookData> | null>(null);
 
+  const templateQuery = useReportPrintTemplateDetail(templateId, !!templateId);
+  const datasetsQuery = useReportDesignerDatasets(template?.datasetId);
+  const saveMutation = useSaveReportPrintTemplate();
+  const renderMutation = useRenderReportPrintTemplate();
+  const datasets = datasetsQuery.data ?? EMPTY_DATASETS;
   const selectedDataset = useMemo(() => datasets.find((d) => d.id === datasetId) ?? null, [datasetId, datasets]);
 
   useEffect(() => {
-    if (!templateId) return;
-    setLoading(true);
-    Promise.all([
-      request.get<ReportPrintTemplate>(`/api/report/print/${templateId}`),
-      request.get<PaginatedResponse<ReportDataset>>('/api/report/datasets?page=1&pageSize=200'),
-    ]).then(([tplRes, dsRes]) => {
-      if (tplRes.code === 0) {
-        const tpl = tplRes.data;
-        setTemplate(tpl);
-        setName(tpl.name);
-        setDatasetId(tpl.datasetId ?? null);
-        setStatus(tpl.status);
-        setRemark(tpl.remark ?? '');
-        setParams(tpl.params ?? []);
-        setPageConfig({ ...DEFAULT_PAGE_CONFIG, ...(tpl.pageConfig ?? {}), margin: { ...DEFAULT_MARGIN, ...(tpl.pageConfig?.margin ?? {}) } });
-        const workbook = tpl.content?.workbook as Partial<IWorkbookData> | undefined;
-        setWorkbookSeed(workbook ?? (tpl.content?.grid ? gridToUniver(tpl.content.grid, tpl.name) : createBlankWorkbook(tpl.name)));
-      } else {
-        Toast.error(tplRes.message || '加载模板失败');
-      }
-      if (dsRes.code === 0) {
-        const list = dsRes.data.list.filter((d) => d.status === 'enabled' || d.id === tplRes.data?.datasetId);
-        setDatasets(list);
-      }
-    }).finally(() => setLoading(false));
+    seededTemplateId.current = null;
   }, [templateId]);
+
+  useEffect(() => {
+    const tpl = templateQuery.data;
+    if (!tpl || seededTemplateId.current === tpl.id) return;
+    seededTemplateId.current = tpl.id;
+    setTemplate(tpl);
+    setName(tpl.name);
+    setDatasetId(tpl.datasetId ?? null);
+    setStatus(tpl.status);
+    setRemark(tpl.remark ?? '');
+    setParams(tpl.params ?? []);
+    setPageConfig({ ...DEFAULT_PAGE_CONFIG, ...(tpl.pageConfig ?? {}), margin: { ...DEFAULT_MARGIN, ...(tpl.pageConfig?.margin ?? {}) } });
+    const workbook = tpl.content?.workbook as Partial<IWorkbookData> | undefined;
+    setWorkbookSeed(workbook ?? (tpl.content?.grid ? gridToUniver(tpl.content.grid, tpl.name) : createBlankWorkbook(tpl.name)));
+  }, [templateQuery.data]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -215,7 +213,6 @@ export default function PrintDesignerPage() {
       Toast.error('请完整填写参数名称和标签');
       return null;
     }
-    setSaving(true);
     try {
       const payload = {
         name: name.trim(),
@@ -226,19 +223,15 @@ export default function PrintDesignerPage() {
         status,
         remark: remark || undefined,
       } satisfies UpdateReportPrintTemplateInput;
-      const res = await request.put<ReportPrintTemplate>(`/api/report/print/${templateId}`, payload);
-      if (res.code === 0) {
-        setTemplate(res.data);
-        setParams(res.data.params ?? normalizedParams);
-        if (options?.toast !== false) Toast.success('已保存');
-        return res.data;
-      }
-      Toast.error(res.message || '保存失败');
+      const saved = await saveMutation.mutateAsync({ id: templateId, values: payload });
+      setTemplate(saved);
+      setParams(saved.params ?? normalizedParams);
+      if (options?.toast !== false) Toast.success('已保存');
+      return saved;
+    } catch {
       return null;
-    } finally {
-      setSaving(false);
     }
-  }, [datasetId, extractSnapshot, name, pageConfig, params, remark, status, templateId]);
+  }, [datasetId, extractSnapshot, name, pageConfig, params, remark, saveMutation, status, templateId]);
 
   async function handlePreview() {
     const saved = await saveTemplate({ toast: false });
@@ -246,14 +239,8 @@ export default function PrintDesignerPage() {
     const renderParams = defaultRenderParams(saved.params ?? []);
     setPreviewVisible(true);
     setPreviewResult(null);
-    setPreviewLoading(true);
-    try {
-      const res = await request.post<ReportPrintRenderResult>(`/api/report/print/${templateId}/render`, { params: renderParams, limit: 100 }, { silent: true });
-      if (res.code === 0) setPreviewResult(res.data);
-      else Toast.error(res.message || '预览失败');
-    } finally {
-      setPreviewLoading(false);
-    }
+    const result = await renderMutation.mutateAsync({ id: templateId, params: renderParams, limit: 100 });
+    setPreviewResult(result);
   }
 
   function updateParam(index: number, patch: Partial<ReportDatasetParam>) {
@@ -276,7 +263,7 @@ export default function PrintDesignerPage() {
     setPageConfig((prev) => ({ ...prev, margin: { ...margin, [key]: typeof value === 'number' ? value : 0 } }));
   }
 
-  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spin size="large" /></div>;
+  if (templateQuery.isPending || datasetsQuery.isPending) return <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spin size="large" /></div>;
 
   return (
     <div className="report-designer">
@@ -304,7 +291,7 @@ export default function PrintDesignerPage() {
         <Button icon={<Settings2 size={14} />} onClick={() => { setPanelVisible(true); setActivePanel('params'); }}>参数</Button>
         <Button icon={<Settings2 size={14} />} onClick={() => { setPanelVisible(true); setActivePanel('page'); }}>页面设置</Button>
         <Button icon={<Eye size={14} />} onClick={() => void handlePreview()}>预览</Button>
-        <Button type="primary" icon={<Save size={14} />} loading={saving} disabled={!canSave} onClick={() => void saveTemplate()}>保存</Button>
+        <Button type="primary" icon={<Save size={14} />} loading={saveMutation.isPending} disabled={!canSave} onClick={() => void saveTemplate()}>保存</Button>
       </div>
 
       <div className="report-designer__main">
@@ -434,9 +421,9 @@ export default function PrintDesignerPage() {
         width="92vw"
         style={{ maxWidth: 1180 }}
       >
-        {previewLoading && <div style={{ padding: 32, textAlign: 'center' }}>正在生成预览...</div>}
-        {!previewLoading && previewResult && <PrintReportView result={previewResult} params={defaultRenderParams(params)} />}
-        {!previewLoading && !previewResult && <div style={{ padding: 32, textAlign: 'center', color: 'var(--semi-color-text-2)' }}>暂无预览内容</div>}
+        {renderMutation.isPending && <div style={{ padding: 32, textAlign: 'center' }}>正在生成预览...</div>}
+        {!renderMutation.isPending && previewResult && <PrintReportView result={previewResult} params={defaultRenderParams(params)} />}
+        {!renderMutation.isPending && !previewResult && <div style={{ padding: 32, textAlign: 'center', color: 'var(--semi-color-text-2)' }}>暂无预览内容</div>}
       </AppModal>
 
       <Modal

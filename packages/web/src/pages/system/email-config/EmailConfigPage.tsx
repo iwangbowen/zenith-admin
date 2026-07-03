@@ -1,59 +1,32 @@
-import { useState, useEffect, useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Form, Button, Toast, Space, Spin, Typography, Divider, Input } from '@douyinfe/semi-ui';
 import AppModal from '@/components/AppModal';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Save, Send, Mail } from 'lucide-react';
-import type { EmailConfig } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
+import { useEmailConfig, useSaveEmailConfig, useTestEmailConfig } from '@/hooks/queries/email-config';
 
 const { Title, Text } = Typography;
 
 export default function EmailConfigPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [saveLoading, setSaveLoading] = useState(false);
   const [testModalVisible, setTestModalVisible] = useState(false);
   const [testEmail, setTestEmail] = useState('');
-  const [testLoading, setTestLoading] = useState(false);
 
-  useEffect(() => {
-    setLoading(true);
-    request
-      .get<EmailConfig>('/api/email-config')
-      .then((res) => {
-        if (res.code === 0 && res.data && formApi.current) {
-          formApi.current.setValues({
-            smtpHost: res.data.smtpHost,
-            smtpPort: res.data.smtpPort,
-            smtpUser: res.data.smtpUser,
-            // smtpPassword is intentionally not returned by the API to avoid leaking credentials
-            fromName: res.data.fromName,
-            fromEmail: res.data.fromEmail,
-            encryption: res.data.encryption,
-            status: res.data.status,
-          });
-        }
-      })
-      .finally(() => setLoading(false));
-  }, []);
+  const configQuery = useEmailConfig();
+  const saveMutation = useSaveEmailConfig();
+  const testMutation = useTestEmailConfig();
+  const config = configQuery.data;
 
   const handleSave = async () => {
     if (!formApi.current) return;
     try {
       const values = await formApi.current.validate();
-      setSaveLoading(true);
-      const res = await request.put<EmailConfig>('/api/email-config', values);
-      if (res.code === 0) {
-        Toast.success('邮件配置保存成功');
-      } else {
-        Toast.error(res.message ?? '保存失败');
-      }
+      await saveMutation.mutateAsync(values);
+      Toast.success('邮件配置保存成功');
     } catch {
       // validation failed
-    } finally {
-      setSaveLoading(false);
     }
   };
 
@@ -62,19 +35,13 @@ export default function EmailConfigPage() {
       Toast.warning('请输入收件邮箱');
       return;
     }
-    setTestLoading(true);
-    const res = await request.post<null>('/api/email-config/test', { email: testEmail });
-    setTestLoading(false);
-    if (res.code === 0) {
-      Toast.success('测试邮件发送成功！请检查收件箱');
-      setTestModalVisible(false);
-      setTestEmail('');
-    } else {
-      Toast.error(res.message ?? '发送失败');
-    }
+    await testMutation.mutateAsync(testEmail);
+    Toast.success('测试邮件发送成功！请检查收件箱');
+    setTestModalVisible(false);
+    setTestEmail('');
   };
 
-  if (loading) {
+  if (configQuery.isFetching && !config) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
         <Spin size="large" />
@@ -93,6 +60,7 @@ export default function EmailConfigPage() {
       </div>
 
       <Form
+        key={config?.updatedAt ?? 'new'}
         getFormApi={(api) => {
           formApi.current = api;
         }}
@@ -100,7 +68,17 @@ export default function EmailConfigPage() {
         labelPosition="left"
         labelWidth={120}
         style={{ width: '100%' }}
-        initValues={{ encryption: 'ssl', smtpPort: 465, status: 'enabled', fromName: 'Zenith Admin' }}
+        initValues={config
+          ? {
+              smtpHost: config.smtpHost,
+              smtpPort: config.smtpPort,
+              smtpUser: config.smtpUser,
+              fromName: config.fromName,
+              fromEmail: config.fromEmail,
+              encryption: config.encryption,
+              status: config.status,
+            }
+          : { encryption: 'ssl', smtpPort: 465, status: 'enabled', fromName: 'Zenith Admin' }}
       >
         <Form.Input
           field="smtpHost"
@@ -152,7 +130,7 @@ export default function EmailConfigPage() {
       {hasPermission('system:email-config:update') && (
         <div style={{ marginTop: 24 }}>
           <Space>
-            <Button type="primary" icon={<Save size={14} />} loading={saveLoading} onClick={handleSave}>
+            <Button type="primary" icon={<Save size={14} />} loading={saveMutation.isPending} onClick={handleSave}>
               保存配置
             </Button>
             <Button icon={<Send size={14} />} onClick={() => setTestModalVisible(true)}>
@@ -176,7 +154,7 @@ export default function EmailConfigPage() {
         }}
         onOk={handleTest}
         okText="发送"
-        confirmLoading={testLoading}
+        confirmLoading={testMutation.isPending}
       >
         <div style={{ padding: '8px 0' }}>
           <Text>请输入收件邮箱，系统将发送一封测试邮件：</Text>

@@ -1,20 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
-import { Button, Form, Toast, Typography, Banner, Tag, Card, Space, Spin } from '@douyinfe/semi-ui';
+import { useRef } from 'react';
+import { Button, Form, Typography, Banner, Tag, Card, Space, Spin } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { RefreshCw, KeyRound } from 'lucide-react';
-import type { OpenSignatureResult } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
+import { useSignatureAlgorithm, useVerifySignature, type SignatureVerifyValues } from '@/hooks/queries/open-platform';
 
 const { Text, Title, Paragraph } = Typography;
-
-interface AlgorithmDoc {
-  algorithm: string;
-  timestampWindow: number;
-  headers: { appKey: string; timestamp: string; nonce: string; signature: string };
-  stringToSignFormat: string;
-  steps: string[];
-}
 
 const codeBlockStyle: React.CSSProperties = {
   background: 'var(--semi-color-fill-0)',
@@ -39,18 +30,10 @@ export default function SignatureToolPage() {
   const canUse = hasPermission('open:signature:use');
   const formApi = useRef<FormApi | null>(null);
 
-  const [doc, setDoc] = useState<AlgorithmDoc | null>(null);
-  const [docLoading, setDocLoading] = useState(false);
-  const [result, setResult] = useState<OpenSignatureResult | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    if (!canUse) return;
-    setDocLoading(true);
-    void request.get<AlgorithmDoc>('/api/open-signature/algorithm', { silent: true })
-      .then((res) => { if (res.code === 0 && res.data) setDoc(res.data); })
-      .finally(() => setDocLoading(false));
-  }, [canUse]);
+  const docQuery = useSignatureAlgorithm(canUse);
+  const verifyMutation = useVerifySignature();
+  const doc = docQuery.data ?? null;
+  const result = verifyMutation.data ?? null;
 
   function fillTimestamp() {
     formApi.current?.setValue('timestamp', String(Math.floor(Date.now() / 1000)));
@@ -66,18 +49,7 @@ export default function SignatureToolPage() {
     } catch {
       return;
     }
-    setSubmitting(true);
-    setResult(null);
-    try {
-      const res = await request.post<OpenSignatureResult>('/api/open-signature/verify', values);
-      if (res.code === 0 && res.data) {
-        setResult(res.data);
-      } else {
-        Toast.error(res.message || '计算失败');
-      }
-    } finally {
-      setSubmitting(false);
-    }
+    await verifyMutation.mutateAsync(values as unknown as SignatureVerifyValues);
   }
 
   if (!canUse) {
@@ -87,7 +59,7 @@ export default function SignatureToolPage() {
   return (
     <div className="page-container">
       <Card style={{ marginBottom: 16 }} title={<Title heading={6} style={{ margin: 0 }}>签名算法说明</Title>}>
-        <Spin spinning={docLoading}>
+        <Spin spinning={docQuery.isFetching}>
           {doc ? (
             <div>
               <Space spacing={8} wrap style={{ marginBottom: 12 }}>
@@ -148,7 +120,7 @@ export default function SignatureToolPage() {
           />
           <Form.Input field="signature" label="待校验签名" placeholder="可选；填写后返回是否匹配" />
           <div style={{ textAlign: 'right' }}>
-            <Button type="primary" loading={submitting} onClick={handleSign}>计算签名</Button>
+            <Button type="primary" loading={verifyMutation.isPending} onClick={handleSign}>计算签名</Button>
           </div>
         </Form>
 

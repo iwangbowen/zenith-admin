@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import {
   Form, Button, Typography, Toast, Tag, Space, Spin,
-  Modal, Cropper, Input, Tabs, DatePicker, List as SemiList, Descriptions,
+  Modal, Cropper, Input, Tabs, List as SemiList, Descriptions,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { UserRound, Shield, Monitor, List, Key, LogOut, Plus, Copy, CheckCircle, RotateCcw, RotateCw, Smartphone } from 'lucide-react';
@@ -9,8 +9,8 @@ import { Icon } from '@iconify/react';
 import { QRCodeSVG } from 'qrcode.react';
 
 import type {
-  User as UserType, LoginLog, OperationLog, OAuthAccount, OAuthProviderType,
-  UserSession, UserApiToken, UserApiTokenCreated, MfaFactor, TotpSetupResult,
+  User as UserType, OAuthProviderType,
+  UserSession, UserApiTokenCreated, MfaFactor, TotpSetupResult,
 } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { AppModal } from '@/components/AppModal';
@@ -23,6 +23,26 @@ import { useDictItems } from '@/hooks/useDictItems';
 import DictTag from '@/components/DictTag';
 import { LoginLogsTable } from '@/components/logs/LoginLogsTable';
 import { OperationLogsTable } from '@/components/logs/OperationLogsTable';
+import {
+  useBeginTotpSetup,
+  useChangeProfilePassword,
+  useCreateApiToken,
+  useDeleteApiToken,
+  useDisableMfaFactor,
+  useKickOtherProfileSessions,
+  useKickProfileSession,
+  useProfileApiTokens,
+  useProfileLoginLogs,
+  useProfileMfaFactors,
+  useProfileOauthAccounts,
+  useProfileOAuthBindUrl,
+  useProfileOperationLogs,
+  useProfilePasswordPolicy,
+  useProfileSessions,
+  useUnbindProfileOAuth,
+  useUpdateProfile,
+  useVerifyTotpSetup,
+} from '@/hooks/queries/profile';
 import './ProfilePage.css';
 import { createdAtColumn } from '../../utils/table-columns';
 
@@ -135,7 +155,6 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
   const [activeSection, setActiveSection] = useState<SectionKey>('profile');
 
   // ─── 基本信息 ────────────────────────────────────────────────────────────────
-  const [profileLoading, setProfileLoading] = useState(false);
   const { items: genderItems } = useDictItems('user_gender');
 
   // ─── 头像裁剪 ────────────────────────────────────────────────────────────────
@@ -147,183 +166,112 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
   const [cropRotate, setCropRotate] = useState(0);
   const [avatarLoading, setAvatarLoading] = useState(false);  const [presetModalVisible, setPresetModalVisible] = useState(false);
   // ─── 账号安全 ────────────────────────────────────────────────────────────────
-  const [pwdLoading, setPwdLoading] = useState(false);
-  const [passwordPolicy, setPasswordPolicy] = useState<PasswordPolicy | null>(null);
   const [changePwdVal, setChangePwdVal] = useState('');
-  const [oauthAccounts, setOauthAccounts] = useState<OAuthAccount[]>([]);
-  const [oauthLoading, setOauthLoading] = useState(false);
-  const [oauthLoaded, setOauthLoaded] = useState(false);
-  const [mfaFactors, setMfaFactors] = useState<MfaFactor[]>([]);
-  const [mfaLoading, setMfaLoading] = useState(false);
   const [totpSetup, setTotpSetup] = useState<TotpSetupResult | null>(null);
   const [totpCode, setTotpCode] = useState('');
-  const [totpSubmitting, setTotpSubmitting] = useState(false);
 
   // ─── 我的设备 ────────────────────────────────────────────────────────────────
-  const [sessions, setSessions] = useState<UserSession[]>([]);
-  const [sessionsLoading, setSessionsLoading] = useState(false);
-  const [kickOthersLoading, setKickOthersLoading] = useState(false);
 
   // ─── 操作日志 ────────────────────────────────────────────────────────────────
 
-  const [logsLoaded, setLogsLoaded] = useState(false);
-  const [loginLogs, setLoginLogs] = useState<LoginLog[]>([]);
-  const [loginLogsLoading, setLoginLogsLoading] = useState(false);
   const [loginLogsPage, setLoginLogsPage] = useState(1);
-  const [loginLogsTotal, setLoginLogsTotal] = useState(0);
-  const [operationLogs, setOperationLogs] = useState<OperationLog[]>([]);
-  const [operationLogsLoading, setOperationLogsLoading] = useState(false);
   const [operationLogsPage, setOperationLogsPage] = useState(1);
-  const [operationLogsTotal, setOperationLogsTotal] = useState(0);
 
   // ─── API Token ───────────────────────────────────────────────────────────────
-  const [apiTokens, setApiTokens] = useState<UserApiToken[]>([]);
-  const [apiTokensLoading, setApiTokensLoading] = useState(false);
   const [newTokenVisible, setNewTokenVisible] = useState(false);
-  const [newTokenName, setNewTokenName] = useState('');
-  const [newTokenExpiresAt, setNewTokenExpiresAt] = useState<Date | null>(null);
-  const [newTokenCreating, setNewTokenCreating] = useState(false);
   const [createdToken, setCreatedToken] = useState<UserApiTokenCreated | null>(null);
   const newTokenFormApi = useRef<FormApi | null>(null);
   const [tokenCopied, setTokenCopied] = useState(false);
 
-  useEffect(() => {
-    request.get<PasswordPolicy>('/api/system-configs/password-policy')
-      .then((res) => { if (res.code === 0) setPasswordPolicy(res.data); })
-      .catch(() => {});
-  }, []);
+  const passwordPolicyQuery = useProfilePasswordPolicy();
+  const oauthAccountsQuery = useProfileOauthAccounts(activeSection === 'security');
+  const mfaFactorsQuery = useProfileMfaFactors(activeSection === 'security');
+  const sessionsQuery = useProfileSessions(activeSection === 'devices');
+  const loginLogsQuery = useProfileLoginLogs({ page: loginLogsPage, pageSize: 10 }, activeSection === 'login');
+  const operationLogsQuery = useProfileOperationLogs({ page: operationLogsPage, pageSize: 10 }, activeSection === 'operation');
+  const apiTokensQuery = useProfileApiTokens(activeSection === 'api-tokens');
 
-  useEffect(() => {
-    if (activeSection === 'security' && !oauthLoaded) {
-      void fetchOauthAccounts();
-      void fetchMfaFactors();
-    }
-    if (activeSection === 'devices') void fetchSessions();
-    if ((activeSection === 'login' || activeSection === 'operation') && !logsLoaded) {
-      void fetchLoginLogs(1);
-      void fetchOperationLogs(1);
-      setLogsLoaded(true);
-    }
-    if (activeSection === 'api-tokens') void fetchApiTokens();
-  }, [activeSection, oauthLoaded, logsLoaded]);
+  const passwordPolicy: PasswordPolicy | null = passwordPolicyQuery.data ?? null;
+  const oauthAccounts = oauthAccountsQuery.data ?? [];
+  const mfaFactors = mfaFactorsQuery.data ?? [];
+  const sessions = sessionsQuery.data ?? [];
+  const loginLogs = loginLogsQuery.data?.list ?? [];
+  const loginLogsTotal = loginLogsQuery.data?.total ?? 0;
+  const operationLogs = operationLogsQuery.data?.list ?? [];
+  const operationLogsTotal = operationLogsQuery.data?.total ?? 0;
+  const apiTokens = apiTokensQuery.data ?? [];
 
-  useEffect(() => {
-    if (activeSection === 'login') void fetchLoginLogs(loginLogsPage);
-    else if (activeSection === 'operation') void fetchOperationLogs(operationLogsPage);
-  }, [activeSection, loginLogsPage, operationLogsPage]);
+  const updateProfileMutation = useUpdateProfile();
+  const updateAvatarMutation = useUpdateProfile();
+  const changePasswordMutation = useChangeProfilePassword();
+  const oauthBindUrlMutation = useProfileOAuthBindUrl();
+  const oauthUnbindMutation = useUnbindProfileOAuth();
+  const beginTotpSetupMutation = useBeginTotpSetup();
+  const verifyTotpSetupMutation = useVerifyTotpSetup();
+  const disableMfaMutation = useDisableMfaFactor();
+  const kickOthersMutation = useKickOtherProfileSessions();
+  const kickSessionMutation = useKickProfileSession();
+  const createTokenMutation = useCreateApiToken();
+  const deleteTokenMutation = useDeleteApiToken();
 
-  // ─── 数据获取 ────────────────────────────────────────────────────────────────
-
-  async function fetchOauthAccounts() {
-    setOauthLoading(true);
-    const res = await request.get<OAuthAccount[]>('/api/auth/oauth/accounts');
-    setOauthLoading(false);
-    if (res.code === 0 && res.data) { setOauthAccounts(res.data); setOauthLoaded(true); }
-  }
-
-  async function fetchMfaFactors() {
-    setMfaLoading(true);
-    const res = await request.get<MfaFactor[]>('/api/auth/mfa/factors');
-    setMfaLoading(false);
-    if (res.code === 0 && res.data) setMfaFactors(res.data);
-  }
-
-  async function fetchSessions() {
-    setSessionsLoading(true);
-    const res = await request.get<UserSession[]>('/api/auth/my-sessions');
-    setSessionsLoading(false);
-    if (res.code === 0 && res.data) setSessions(res.data);
-  }
-
-  async function fetchLoginLogs(page = 1) {
-    setLoginLogsLoading(true);
-    const res = await request.get<{ list: LoginLog[]; total: number }>(`/api/auth/my-login-logs?page=${page}&pageSize=10`);
-    setLoginLogsLoading(false);
-    if (res.code === 0 && res.data) {
-      setLoginLogs(res.data.list);
-      setLoginLogsTotal(res.data.total);
-      setLoginLogsPage(page);
-    }
-  }
-
-  async function fetchOperationLogs(page = 1) {
-    setOperationLogsLoading(true);
-    const res = await request.get<{ list: OperationLog[]; total: number }>(`/api/auth/my-operation-logs?page=${page}&pageSize=10`);
-    setOperationLogsLoading(false);
-    if (res.code === 0 && res.data) {
-      setOperationLogs(res.data.list);
-      setOperationLogsTotal(res.data.total);
-      setOperationLogsPage(page);
-    }
-  }
-
-  async function fetchApiTokens() {
-    setApiTokensLoading(true);
-    const res = await request.get<UserApiToken[]>('/api/api-tokens');
-    setApiTokensLoading(false);
-    if (res.code === 0 && res.data) setApiTokens(res.data);
-  }
+  const profileLoading = updateProfileMutation.isPending;
+  const pwdLoading = changePasswordMutation.isPending;
+  const oauthLoading = oauthAccountsQuery.isFetching;
+  const mfaLoading = mfaFactorsQuery.isFetching;
+  const sessionsLoading = sessionsQuery.isFetching;
+  const kickOthersLoading = kickOthersMutation.isPending;
+  const loginLogsLoading = loginLogsQuery.isFetching;
+  const operationLogsLoading = operationLogsQuery.isFetching;
+  const apiTokensLoading = apiTokensQuery.isFetching;
+  const newTokenCreating = createTokenMutation.isPending;
+  const totpSubmitting = beginTotpSetupMutation.isPending || verifyTotpSetupMutation.isPending;
 
   // ─── 事件处理 ────────────────────────────────────────────────────────────────
 
   async function handleUpdateProfile(values: { nickname: string; email: string; phone?: string; gender?: string | null }) {
-    setProfileLoading(true);
     const payload = { ...values, gender: values.gender ?? null };
-    const res = await request.put<Omit<UserType, 'password'>>('/api/auth/profile', payload);
-    setProfileLoading(false);
-    if (res.code === 0) { Toast.success('资料已更新'); applyUserUpdate(res.data); }
+    const updated = await updateProfileMutation.mutateAsync(payload);
+    Toast.success('资料已更新');
+    applyUserUpdate(updated);
   }
 
   async function handleChangePassword(values: { oldPassword: string; newPassword: string; confirmPassword: string }) {
     if (values.newPassword !== values.confirmPassword) { Toast.error('两次密码输入不一致'); return; }
-    setPwdLoading(true);
-    const res = await request.put('/api/auth/password', { oldPassword: values.oldPassword, newPassword: values.newPassword });
-    setPwdLoading(false);
-    if (res.code === 0) { Toast.success('密码修改成功，请重新登录'); setChangePwdVal(''); }
+    await changePasswordMutation.mutateAsync({ oldPassword: values.oldPassword, newPassword: values.newPassword });
+    Toast.success('密码修改成功，请重新登录');
+    setChangePwdVal('');
   }
 
   async function handleOAuthBind(provider: OAuthProviderType) {
-    const res = await request.get<{ authUrl: string; state: string }>(`/api/auth/oauth/${provider}`);
-    if (res.code === 0 && res.data?.authUrl) {
+    const res = await oauthBindUrlMutation.mutateAsync(provider);
+    if (res.authUrl) {
       sessionStorage.setItem('oauth_bind_provider', provider);
-      globalThis.location.href = res.data.authUrl;
+      globalThis.location.href = res.authUrl;
     }
   }
 
   async function handleOAuthUnbind(provider: OAuthProviderType) {
-    const res = await request.delete(`/api/auth/oauth/unbind/${provider}`);
-    if (res.code === 0) { Toast.success('已解绑'); setOauthAccounts((prev) => prev.filter((a) => a.provider !== provider)); }
+    await oauthUnbindMutation.mutateAsync(provider);
+    Toast.success('已解绑');
   }
 
   async function handleBeginTotpSetup() {
-    setTotpSubmitting(true);
-    const res = await request.post<TotpSetupResult>('/api/auth/mfa/totp/setup');
-    setTotpSubmitting(false);
-    if (res.code === 0) {
-      setTotpSetup(res.data);
-      setTotpCode('');
-    }
+    const res = await beginTotpSetupMutation.mutateAsync();
+    setTotpSetup(res);
+    setTotpCode('');
   }
 
   async function handleVerifyTotpSetup() {
     if (!totpSetup) return;
-    setTotpSubmitting(true);
-    const res = await request.post('/api/auth/mfa/totp/verify', { factorId: totpSetup.factorId, code: totpCode });
-    setTotpSubmitting(false);
-    if (res.code === 0) {
-      Toast.success('TOTP 已绑定');
-      setTotpSetup(null);
-      setTotpCode('');
-      void fetchMfaFactors();
-    }
+    await verifyTotpSetupMutation.mutateAsync({ factorId: totpSetup.factorId, code: totpCode });
+    Toast.success('TOTP 已绑定');
+    setTotpSetup(null);
+    setTotpCode('');
   }
 
   async function handleDisableMfaFactor(id: number) {
-    const res = await request.delete(`/api/auth/mfa/factors/${id}`);
-    if (res.code === 0) {
-      Toast.success('已停用');
-      void fetchMfaFactors();
-    }
+    await disableMfaMutation.mutateAsync(id);
+    Toast.success('已停用');
   }
 
   function handleAvatarFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -361,55 +309,47 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
     setAvatarLoading(true);
     canvas.toBlob(async (blob) => {
       if (!blob) { setAvatarLoading(false); return; }
-      const formData = new FormData();
-      formData.append('file', blob, 'avatar.jpg');
-      const uploadRes = await request.post<{ url: string }>('/api/files/upload-one', formData);
-      const uploadedUrl = uploadRes.data?.url;
-      if (uploadRes.code === 0 && uploadedUrl) {
-        const profileRes = await request.put<Omit<UserType, 'password'>>('/api/auth/profile', { avatar: uploadedUrl });
-        if (profileRes.code === 0) { applyUserUpdate(profileRes.data); Toast.success('头像已更新'); closeCropper(); }
-        else Toast.error(profileRes.message ?? '头像更新失败');
-      } else {
-        Toast.error(uploadRes.message ?? '上传失败');
+      try {
+        const formData = new FormData();
+        formData.append('file', blob, 'avatar.jpg');
+        const uploadRes = await request.post<{ url: string }>('/api/files/upload-one', formData);
+        const uploadedUrl = uploadRes.data?.url;
+        if (uploadRes.code === 0 && uploadedUrl) {
+          const updated = await updateAvatarMutation.mutateAsync({ avatar: uploadedUrl });
+          applyUserUpdate(updated);
+          Toast.success('头像已更新');
+          closeCropper();
+        } else {
+          Toast.error(uploadRes.message ?? '上传失败');
+        }
+      } finally {
+        setAvatarLoading(false);
       }
-      setAvatarLoading(false);
     }, 'image/jpeg', 0.85);
   }
 
   async function handleKickOthers() {
-    setKickOthersLoading(true);
-    const res = await request.delete<{ count: number }>('/api/auth/my-sessions/others');
-    setKickOthersLoading(false);
-    if (res.code === 0) { Toast.success(res.message || '操作成功'); void fetchSessions(); }
+    await kickOthersMutation.mutateAsync();
+    Toast.success('操作成功');
   }
 
   async function handleKickSession(tokenId: string) {
-    const res = await request.delete(`/api/auth/my-sessions/${tokenId}`);
-    if (res.code === 0) { Toast.success('已退出该设备'); setSessions((prev) => prev.filter((s) => s.tokenId !== tokenId)); }
+    await kickSessionMutation.mutateAsync(tokenId);
+    Toast.success('已退出该设备');
   }
 
   function closeNewTokenModal() {
     setNewTokenVisible(false);
-    setNewTokenName('');
-    setNewTokenExpiresAt(null);
     newTokenFormApi.current = null;
   }
 
   async function handleCreateToken(values: { name: string; expiresAt?: Date | string | null }) {
     if (!values.name.trim()) { Toast.error('请填写 Token 名称'); return; }
-    setNewTokenCreating(true);
-    try {
-      const body: { name: string; expiresAt?: string } = { name: values.name.trim() };
-      if (values.expiresAt) body.expiresAt = formatDateTimeForApi(values.expiresAt);
-      const res = await request.post<UserApiTokenCreated>('/api/api-tokens', body);
-      if (res.code === 0) {
-        setCreatedToken(res.data);
-        closeNewTokenModal();
-        void fetchApiTokens();
-      }
-    } finally {
-      setNewTokenCreating(false);
-    }
+    const body: { name: string; expiresAt?: string } = { name: values.name.trim() };
+    if (values.expiresAt) body.expiresAt = formatDateTimeForApi(values.expiresAt);
+    const res = await createTokenMutation.mutateAsync(body);
+    setCreatedToken(res);
+    closeNewTokenModal();
   }
 
   async function handleCreateTokenOk() {
@@ -418,14 +358,14 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
     try {
       values = await newTokenFormApi.current.validate() as { name: string; expiresAt?: Date | string | null };
     } catch {
-      return;
+      throw new Error('validation');
     }
     await handleCreateToken(values);
   }
 
   async function handleDeleteToken(id: number) {
-    const res = await request.delete(`/api/api-tokens/${id}`);
-    if (res.code === 0) { Toast.success('Token 已撤销'); setApiTokens((prev) => prev.filter((t) => t.id !== id)); }
+    await deleteTokenMutation.mutateAsync(id);
+    Toast.success('Token 已撤销');
   }
 
   function copyToken(token: string) {
@@ -442,10 +382,13 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
         setAvatarLoading(true);
-        const res = await request.put<Omit<UserType, 'password'>>('/api/auth/profile', { avatar: null });
-        setAvatarLoading(false);
-        if (res.code === 0) { applyUserUpdate(res.data); Toast.success('头像已移除'); }
-        else Toast.error(res.message ?? '移除失败');
+        try {
+          const updated = await updateAvatarMutation.mutateAsync({ avatar: null });
+          applyUserUpdate(updated);
+          Toast.success('头像已移除');
+        } finally {
+          setAvatarLoading(false);
+        }
       },
     });
   }
@@ -457,10 +400,13 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
   async function handleApplyPreset(url: string) {
     setAvatarLoading(true);
     setPresetModalVisible(false);
-    const res = await request.put<Omit<UserType, 'password'>>('/api/auth/profile', { avatar: url });
-    setAvatarLoading(false);
-    if (res.code === 0) { applyUserUpdate(res.data); Toast.success('头像已更新'); }
-    else Toast.error(res.message ?? '更新失败');
+    try {
+      const updated = await updateAvatarMutation.mutateAsync({ avatar: url });
+      applyUserUpdate(updated);
+      Toast.success('头像已更新');
+    } finally {
+      setAvatarLoading(false);
+    }
   }
 
   // ─── 预设头像 ──────────────────────────────────────────────────────────────
@@ -798,14 +744,14 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                 <LoginLogsTable
                   loading={loginLogsLoading}
                   dataSource={loginLogs}
-                  onRefresh={() => void fetchLoginLogs(loginLogsPage)}
+                  onRefresh={() => void loginLogsQuery.refetch()}
                   columnSettingsKey="profile-login-logs"
                   pagination={{
                     total: loginLogsTotal,
                     currentPage: loginLogsPage,
                     pageSize: 10,
                     showSizeChanger: false,
-                    onPageChange: (page) => void fetchLoginLogs(page),
+                    onPageChange: (page) => setLoginLogsPage(page),
                   }}
                 />
               </div>
@@ -820,14 +766,14 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                 <OperationLogsTable
                   loading={operationLogsLoading}
                   dataSource={operationLogs}
-                  onRefresh={() => void fetchOperationLogs(operationLogsPage)}
+                  onRefresh={() => void operationLogsQuery.refetch()}
                   columnSettingsKey="profile-operation-logs"
                   pagination={{
                     total: operationLogsTotal,
                     currentPage: operationLogsPage,
                     pageSize: 10,
                     showSizeChanger: false,
-                    onPageChange: (page) => void fetchOperationLogs(page),
+                    onPageChange: (page) => setOperationLogsPage(page),
                   }}
                 />
               </div>
@@ -855,7 +801,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                       bordered
                       dataSource={apiTokens}
                       rowKey="id"
-                      onRefresh={fetchApiTokens}
+                      onRefresh={() => void apiTokensQuery.refetch()}
                       refreshLoading={apiTokensLoading}
                       pagination={false}
                       columns={[

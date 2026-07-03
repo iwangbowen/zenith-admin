@@ -5,12 +5,12 @@
  * - 系统号（system）：订阅者为全员，只读，不可手动增减。
  * - 运营号（business）：可添加订阅者（用户选择器）、按行移除、导出。
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Banner, Button, Input, Modal, SideSheet, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, Search, RotateCcw } from 'lucide-react';
-import type { ChannelAdmin, ChannelSubscriber, PaginatedResponse } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { ChannelAdmin, ChannelSubscriber } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
@@ -21,6 +21,11 @@ import { UserAvatar } from '@/components/UserAvatar';
 import UserSelect from '@/components/UserSelect';
 import { AppModal } from '@/components/AppModal';
 import { ExportButton } from '@/components/ExportButton';
+import {
+  useAddChannelSubscribers,
+  useChannelSubscribers,
+  useRemoveChannelSubscriber,
+} from '@/hooks/queries/channels';
 
 interface Props {
   channel: ChannelAdmin | null;
@@ -29,70 +34,62 @@ interface Props {
 }
 
 export function ChannelSubscribersDrawer({ channel, visible, onClose }: Readonly<Props>) {
+  const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
   const canManage = hasPermission('channel:channel:update');
   const isSystem = channel?.type === 'system';
 
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<PaginatedResponse<ChannelSubscriber> | null>(null);
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [keyword, setKeyword] = useState('');
+  const [draftKeyword, setDraftKeyword] = useState('');
+  const [submittedKeyword, setSubmittedKeyword] = useState('');
 
   const [addVisible, setAddVisible] = useState(false);
   const [addUserIds, setAddUserIds] = useState<number[]>([]);
-  const [submitting, setSubmitting] = useState(false);
+  const listQuery = useChannelSubscribers(channel?.id, {
+    page,
+    pageSize,
+    keyword: submittedKeyword || undefined,
+  }, visible && !!channel);
+  const data = listQuery.data ?? null;
+  const addMutation = useAddChannelSubscribers();
+  const removeMutation = useRemoveChannelSubscriber();
   const exportQuery = channel
-    ? { channelId: channel.id, ...(keyword.trim() ? { keyword: keyword.trim() } : {}) }
+    ? { channelId: channel.id, ...(submittedKeyword.trim() ? { keyword: submittedKeyword.trim() } : {}) }
     : {};
-
-  const fetchList = useCallback(async (p = 1, ps = pageSize, kw = keyword) => {
-    if (!channel) return;
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(kw ? { keyword: kw } : {}),
-      }).toString();
-      const res = await request.get<PaginatedResponse<ChannelSubscriber>>(
-        `/api/channels/admin/${channel.id}/subscribers?${query}`,
-        { silent: true },
-      );
-      if (res.code === 0 && res.data) { setData(res.data); setPage(res.data.page); }
-    } finally {
-      setLoading(false);
-    }
-  }, [channel, pageSize, keyword, setPage]);
 
   useEffect(() => {
     if (visible && channel) {
-      setKeyword('');
+      setDraftKeyword('');
+      setSubmittedKeyword('');
       setPage(1);
-      void fetchList(1, pageSize, '');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, channel]);
+  }, [visible, channel, setPage]);
 
-  const handleSearch = () => { setPage(1); void fetchList(1, pageSize, keyword); };
-  const handleReset = () => { setKeyword(''); setPage(1); void fetchList(1, pageSize, ''); };
+  const handleSearch = () => {
+    setPage(1);
+    setSubmittedKeyword(draftKeyword);
+    if (channel) void queryClient.invalidateQueries({ queryKey: ['channels', 'subscribers', channel.id] });
+  };
+  const handleReset = () => {
+    setDraftKeyword('');
+    setSubmittedKeyword('');
+    setPage(1);
+    if (channel) void queryClient.invalidateQueries({ queryKey: ['channels', 'subscribers', channel.id] });
+  };
 
   const openAdd = () => { setAddUserIds([]); setAddVisible(true); };
 
   const handleAdd = async () => {
     if (!channel || addUserIds.length === 0) { Toast.warning('请选择要添加的用户'); return; }
-    setSubmitting(true);
-    try {
-      const res = await request.post(`/api/channels/admin/${channel.id}/subscribers`, { userIds: addUserIds });
-      if (res.code === 0) { Toast.success('已添加'); setAddVisible(false); void fetchList(page, pageSize, keyword); }
-    } finally {
-      setSubmitting(false);
-    }
+    await addMutation.mutateAsync({ channelId: channel.id, userIds: addUserIds });
+    Toast.success('已添加');
+    setAddVisible(false);
   };
 
   const handleRemove = async (sub: ChannelSubscriber) => {
     if (!channel) return;
-    const res = await request.delete(`/api/channels/admin/${channel.id}/subscribers/${sub.userId}`);
-    if (res.code === 0) { Toast.success('已移除'); void fetchList(page, pageSize, keyword); }
+    await removeMutation.mutateAsync({ channelId: channel.id, userId: sub.userId });
+    Toast.success('已移除');
   };
 
   const columns: ColumnProps<ChannelSubscriber>[] = [
@@ -159,8 +156,8 @@ export function ChannelSubscribersDrawer({ channel, visible, onClose }: Readonly
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索用户姓名"
-              value={keyword}
-              onChange={setKeyword}
+              value={draftKeyword}
+              onChange={setDraftKeyword}
               onEnterPress={handleSearch}
               showClear
               style={{ width: 200 }}
@@ -178,8 +175,8 @@ export function ChannelSubscribersDrawer({ channel, visible, onClose }: Readonly
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索用户姓名"
-              value={keyword}
-              onChange={setKeyword}
+              value={draftKeyword}
+              onChange={setDraftKeyword}
               onEnterPress={handleSearch}
               showClear
               style={{ width: 200 }}
@@ -204,10 +201,10 @@ export function ChannelSubscribersDrawer({ channel, visible, onClose }: Readonly
         columns={columns}
         dataSource={data?.list ?? []}
         rowKey="userId"
-        loading={loading}
-        onRefresh={() => void fetchList(page, pageSize, keyword)}
-        refreshLoading={loading}
-        pagination={buildPagination(data?.total ?? 0, (p, ps) => fetchList(p, ps, keyword))}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
+        pagination={buildPagination(data?.total ?? 0)}
       />
 
       <AppModal
@@ -215,7 +212,7 @@ export function ChannelSubscribersDrawer({ channel, visible, onClose }: Readonly
         visible={addVisible}
         onCancel={() => setAddVisible(false)}
         onOk={() => void handleAdd()}
-        confirmLoading={submitting}
+        confirmLoading={addMutation.isPending}
         okText="添加"
         width={460}
       >

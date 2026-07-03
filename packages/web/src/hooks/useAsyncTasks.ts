@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AsyncTask, PaginatedResponse, WsMessage } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { useWebSocket } from '@/hooks/useWebSocket';
+import { unwrap } from '@/lib/query';
 
 const ACTIVE_STATUSES = new Set<AsyncTask['status']>(['pending', 'running']);
 /** 轮询兜底间隔（毫秒）：WS 正常时进度已实时推送，轮询只兜底断线与 Demo 模式 */
@@ -24,30 +26,35 @@ export function useMyAsyncTasks(options: UseMyAsyncTasksOptions = {}) {
     () => (taskTypesKey ? new Set(taskTypesKey.split(',')) : null),
     [taskTypesKey],
   );
-  const [tasks, setTasks] = useState<AsyncTask[]>([]);
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
+  const [manualLoading, setManualLoading] = useState(false);
   const taskTypesRef = useRef(taskTypes);
   taskTypesRef.current = taskTypes;
+  const queryKey = useMemo(() => ['async-tasks', 'mine', { pageSize, taskTypes: taskTypesKey }] as const, [pageSize, taskTypesKey]);
+
+  const tasksQuery = useQuery({
+    queryKey,
+    queryFn: async () => {
+      const data = await request
+        .get<PaginatedResponse<AsyncTask>>(`/api/async-tasks/mine?page=1&pageSize=${pageSize}`, { silent: true })
+        .then(unwrap);
+      const filter = taskTypesRef.current;
+      return filter ? data.list.filter((t) => filter.has(t.taskType)) : data.list;
+    },
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some((t) => ACTIVE_STATUSES.has(t.status)) ? POLL_INTERVAL_MS : false,
+  });
+  const tasks = tasksQuery.data ?? [];
+  const { refetch, isLoading } = tasksQuery;
 
   const refresh = useCallback(async (opts?: { silent?: boolean }) => {
-    if (!opts?.silent) setLoading(true);
+    if (!opts?.silent) setManualLoading(true);
     try {
-      const res = await request.get<PaginatedResponse<AsyncTask>>(
-        `/api/async-tasks/mine?page=1&pageSize=${pageSize}`,
-        { silent: true },
-      );
-      if (res.code === 0) {
-        const filter = taskTypesRef.current;
-        setTasks(filter ? res.data.list.filter((t) => filter.has(t.taskType)) : res.data.list);
-      }
+      await refetch();
     } finally {
-      if (!opts?.silent) setLoading(false);
+      if (!opts?.silent) setManualLoading(false);
     }
-  }, [pageSize]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  }, [refetch]);
 
   // WS 实时推送：合并单条任务更新（新任务插入头部）
   useWebSocket(
@@ -56,27 +63,20 @@ export function useMyAsyncTasks(options: UseMyAsyncTasksOptions = {}) {
       const task = message.payload;
       const filter = taskTypesRef.current;
       if (filter && !filter.has(task.taskType)) return;
-      setTasks((prev) => {
+      queryClient.setQueryData<AsyncTask[]>(queryKey, (prev = []) => {
         const idx = prev.findIndex((t) => t.id === task.id);
         if (idx === -1) return [task, ...prev];
         const next = [...prev];
         next[idx] = task;
         return next;
       });
-    }, []),
+    }, [queryClient, queryKey]),
   );
 
   // 轮询兜底：仅当存在进行中任务时轮询（Demo 模式无 WS，全靠这里驱动进度）
   const hasActive = tasks.some((t) => ACTIVE_STATUSES.has(t.status));
-  useEffect(() => {
-    if (!hasActive) return;
-    const timer = setInterval(() => {
-      if (document.visibilityState === 'visible') void refresh({ silent: true });
-    }, POLL_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [hasActive, refresh]);
 
-  return { tasks, loading, refresh, hasActive };
+  return { tasks, loading: isLoading || manualLoading, refresh, hasActive };
 }
 
 /** 订阅任务进度 WS 事件（页面级自定义处理，如任务中心列表合并更新） */

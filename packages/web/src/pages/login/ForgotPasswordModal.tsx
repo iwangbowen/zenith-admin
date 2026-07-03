@@ -3,7 +3,7 @@ import { Form, Toast } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import AppModal from '@/components/AppModal';
 import { Mail } from 'lucide-react';
-import { request } from '@/utils/request';
+import { useForgotPassword } from '@/hooks/queries/auth-public';
 
 interface ForgotPasswordModalProps {
   visible: boolean;
@@ -11,21 +11,17 @@ interface ForgotPasswordModalProps {
 }
 
 export default function ForgotPasswordModal({ visible, onClose }: Readonly<ForgotPasswordModalProps>) {
-  const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const formApi = useRef<FormApi | null>(null);
+  const forgotPasswordMutation = useForgotPassword();
+  const loading = forgotPasswordMutation.isPending;
 
   const handleSubmit = async (values: { email: string }) => {
-    setLoading(true);
     try {
-      const res = await request.post<null>('/api/auth/forgot-password', { email: values.email }, { silent: true });
-      if (res.code === 0) {
-        setSent(true);
-      } else {
-        Toast.error(res.message || '发送失败，请稍后重试');
-      }
-    } finally {
-      setLoading(false);
+      await forgotPasswordMutation.mutateAsync({ email: values.email });
+      setSent(true);
+    } catch (err) {
+      Toast.error(err instanceof Error ? err.message : '发送失败，请稍后重试');
     }
   };
 
@@ -45,7 +41,7 @@ export default function ForgotPasswordModal({ visible, onClose }: Readonly<Forgo
     try {
       values = await formApi.current.validate() as { email: string };
     } catch {
-      return;
+      throw new Error('validation');
     }
     await handleSubmit(values);
   };

@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
 import type { CSSProperties } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Input, Modal, Select, Space, Spin, Switch, Tabs, TabPane, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -8,12 +9,20 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
+import {
+  paymentWebhookKeys,
+  useDeletePaymentWebhookEndpoint,
+  usePaymentWebhookDeliveries,
+  usePaymentWebhookEndpointDetail,
+  usePaymentWebhookEndpoints,
+  useRedeliverPaymentWebhookDelivery,
+  useSavePaymentWebhookEndpoint,
+} from '@/hooks/queries/payment-webhooks';
 import { PAYMENT_WEBHOOK_DELIVERY_STATUS_LABELS } from '@zenith/shared';
-import type { PaginatedResponse, PaymentWebhookDelivery, PaymentWebhookEndpoint } from '@zenith/shared';
+import type { PaymentWebhookDelivery, PaymentWebhookEndpoint } from '@zenith/shared';
 
 const EVENT_OPTIONS = [
   { value: 'payment.succeeded', label: '支付成功' },
@@ -52,117 +61,85 @@ function formatRaw(raw: unknown): string {
 
 export default function PaymentWebhooksPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const endpointFormApi = useRef<FormApi | null>(null);
   const [activeTab, setActiveTab] = useState<'endpoints' | 'deliveries'>('endpoints');
 
-  const [endpointData, setEndpointData] = useState<PaginatedResponse<PaymentWebhookEndpoint> | null>(null);
-  const [endpointLoading, setEndpointLoading] = useState(false);
   const {
     page: endpointPage,
     pageSize: endpointPageSize,
     setPage: setEndpointPage,
-    setPageSize: setEndpointPageSize,
     buildPagination: buildEndpointPagination,
   } = usePagination();
   const [endpointSearch, setEndpointSearch] = useState<EndpointSearchParams>(defaultEndpointSearch);
-  const endpointSearchRef = useRef<EndpointSearchParams>(defaultEndpointSearch);
-  endpointSearchRef.current = endpointSearch;
+  const [submittedEndpointSearch, setSubmittedEndpointSearch] = useState<EndpointSearchParams>(defaultEndpointSearch);
 
-  const [deliveryData, setDeliveryData] = useState<PaginatedResponse<PaymentWebhookDelivery> | null>(null);
-  const [deliveryLoading, setDeliveryLoading] = useState(false);
   const {
     page: deliveryPage,
     pageSize: deliveryPageSize,
     setPage: setDeliveryPage,
-    setPageSize: setDeliveryPageSize,
     buildPagination: buildDeliveryPagination,
   } = usePagination();
   const [deliverySearch, setDeliverySearch] = useState<DeliverySearchParams>(defaultDeliverySearch);
-  const deliverySearchRef = useRef<DeliverySearchParams>(defaultDeliverySearch);
-  deliverySearchRef.current = deliverySearch;
+  const [submittedDeliverySearch, setSubmittedDeliverySearch] = useState<DeliverySearchParams>(defaultDeliverySearch);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<PaymentWebhookEndpoint | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
   const [detailDelivery, setDetailDelivery] = useState<PaymentWebhookDelivery | null>(null);
-  const [redeliveringIds, setRedeliveringIds] = useState<Set<number>>(new Set());
 
-  const fetchEndpoints = useCallback(
-    async (p = endpointPage, ps = endpointPageSize, params?: EndpointSearchParams) => {
-      const active = params ?? endpointSearchRef.current;
-      setEndpointLoading(true);
-      try {
-        const query: Record<string, string> = { page: String(p), pageSize: String(ps) };
-        if (active.keyword) query.keyword = active.keyword;
-        if (active.status) query.status = active.status;
-        const res = await request.get<PaginatedResponse<PaymentWebhookEndpoint>>(`/api/payment/webhooks/endpoints?${new URLSearchParams(query)}`);
-        if (res.code === 0) { setEndpointData(res.data); setEndpointPage(res.data.page); setEndpointPageSize(res.data.pageSize); }
-      } finally {
-        setEndpointLoading(false);
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [endpointPage, endpointPageSize],
-  );
+  const endpointQuery = usePaymentWebhookEndpoints({
+    page: endpointPage,
+    pageSize: endpointPageSize,
+    keyword: submittedEndpointSearch.keyword || undefined,
+    status: submittedEndpointSearch.status || undefined,
+  });
+  const endpointData = endpointQuery.data?.list ?? [];
+  const endpointTotal = endpointQuery.data?.total ?? 0;
+  const deliveryQuery = usePaymentWebhookDeliveries({
+    page: deliveryPage,
+    pageSize: deliveryPageSize,
+    keyword: submittedDeliverySearch.keyword || undefined,
+    status: submittedDeliverySearch.status || undefined,
+  });
+  const deliveryData = deliveryQuery.data?.list ?? [];
+  const deliveryTotal = deliveryQuery.data?.total ?? 0;
+  const detailQuery = usePaymentWebhookEndpointDetail(editing?.id, modalVisible && !!editing);
+  const editingDetail = editing ? (detailQuery.data ?? editing) : null;
+  const detailLoading = !!editing && detailQuery.isFetching;
+  const saveEndpointMutation = useSavePaymentWebhookEndpoint();
+  const toggleEndpointMutation = useSavePaymentWebhookEndpoint();
+  const deleteEndpointMutation = useDeletePaymentWebhookEndpoint();
+  const redeliverMutation = useRedeliverPaymentWebhookDelivery();
+  const togglingId = toggleEndpointMutation.isPending ? (toggleEndpointMutation.variables?.id ?? null) : null;
+  const redeliveringId = redeliverMutation.isPending ? (redeliverMutation.variables ?? null) : null;
 
-  const fetchDeliveries = useCallback(
-    async (p = deliveryPage, ps = deliveryPageSize, params?: DeliverySearchParams) => {
-      const active = params ?? deliverySearchRef.current;
-      setDeliveryLoading(true);
-      try {
-        const query: Record<string, string> = { page: String(p), pageSize: String(ps) };
-        if (active.keyword) query.keyword = active.keyword;
-        if (active.status) query.status = active.status;
-        const res = await request.get<PaginatedResponse<PaymentWebhookDelivery>>(`/api/payment/webhooks/deliveries?${new URLSearchParams(query)}`);
-        if (res.code === 0) { setDeliveryData(res.data); setDeliveryPage(res.data.page); setDeliveryPageSize(res.data.pageSize); }
-      } finally {
-        setDeliveryLoading(false);
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [deliveryPage, deliveryPageSize],
-  );
-
-  useEffect(() => {
-    void fetchEndpoints();
-    void fetchDeliveries();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function handleEndpointSearch() { setEndpointPage(1); void fetchEndpoints(1, endpointPageSize); }
-  function handleEndpointReset() { setEndpointSearch(defaultEndpointSearch); setEndpointPage(1); void fetchEndpoints(1, endpointPageSize, defaultEndpointSearch); }
-  function handleDeliverySearch() { setDeliveryPage(1); void fetchDeliveries(1, deliveryPageSize); }
-  function handleDeliveryReset() { setDeliverySearch(defaultDeliverySearch); setDeliveryPage(1); void fetchDeliveries(1, deliveryPageSize, defaultDeliverySearch); }
+  function handleEndpointSearch() { setEndpointPage(1); setSubmittedEndpointSearch(endpointSearch); void queryClient.invalidateQueries({ queryKey: paymentWebhookKeys.endpointLists }); }
+  function handleEndpointReset() { setEndpointSearch(defaultEndpointSearch); setEndpointPage(1); setSubmittedEndpointSearch(defaultEndpointSearch); void queryClient.invalidateQueries({ queryKey: paymentWebhookKeys.endpointLists }); }
+  function handleDeliverySearch() { setDeliveryPage(1); setSubmittedDeliverySearch(deliverySearch); void queryClient.invalidateQueries({ queryKey: paymentWebhookKeys.deliveryLists }); }
+  function handleDeliveryReset() { setDeliverySearch(defaultDeliverySearch); setDeliveryPage(1); setSubmittedDeliverySearch(defaultDeliverySearch); void queryClient.invalidateQueries({ queryKey: paymentWebhookKeys.deliveryLists }); }
 
   function openCreate() {
     setEditing(null);
     setModalVisible(true);
   }
-  async function openEdit(record: PaymentWebhookEndpoint) {
+  function openEdit(record: PaymentWebhookEndpoint) {
     setEditing(record);
     setModalVisible(true);
-    setDetailLoading(true);
-    const res = await request.get<PaymentWebhookEndpoint>(`/api/payment/webhooks/endpoints/${record.id}`);
-    setDetailLoading(false);
-    if (res.code === 0 && res.data) setEditing(res.data);
   }
   function closeModal() {
     setModalVisible(false);
     setEditing(null);
-    setDetailLoading(false);
   }
 
-  const formInit = editing
+  const formInit = editingDetail
     ? {
-        name: editing.name,
-        url: editing.url,
-        bizType: editing.bizType ?? '',
-        events: editing.events ?? [],
-        status: editing.status,
+        name: editingDetail.name,
+        url: editingDetail.url,
+        bizType: editingDetail.bizType ?? '',
+        events: editingDetail.events ?? [],
+        status: editingDetail.status,
         secret: '',
-        remark: editing.remark ?? '',
+        remark: editingDetail.remark ?? '',
       }
     : { status: 'enabled', events: [] };
 
@@ -173,64 +150,31 @@ export default function PaymentWebhooksPage() {
     } catch {
       throw new Error('validation');
     }
-    setSubmitting(true);
-    try {
-      const payload = {
-        ...values,
-        bizType: values.bizType || undefined,
-        events: values.events ?? [],
-        secret: values.secret || undefined,
-        remark: values.remark || undefined,
-      };
-      const res = editing
-        ? await request.put<PaymentWebhookEndpoint>(`/api/payment/webhooks/endpoints/${editing.id}`, payload)
-        : await request.post<PaymentWebhookEndpoint>('/api/payment/webhooks/endpoints', payload);
-      if (res.code === 0) {
-        Toast.success(editing ? '更新成功' : '创建成功');
-        closeModal();
-        void fetchEndpoints();
-      } else {
-        throw new Error(res.message);
-      }
-    } finally {
-      setSubmitting(false);
-    }
+    const payload = {
+      ...values,
+      bizType: values.bizType || undefined,
+      events: values.events ?? [],
+      secret: values.secret || undefined,
+      remark: values.remark || undefined,
+    };
+    await saveEndpointMutation.mutateAsync({ id: editing?.id, values: payload });
+    Toast.success(editing ? '更新成功' : '创建成功');
+    closeModal();
   }
 
-  function handleToggle(record: PaymentWebhookEndpoint, checked: boolean) {
-    setTogglingIds((prev) => new Set(prev).add(record.id));
-    request
-      .put<PaymentWebhookEndpoint>(`/api/payment/webhooks/endpoints/${record.id}`, { status: checked ? 'enabled' : 'disabled' })
-      .then((res) => {
-        if (res.code === 0) {
-          Toast.success(checked ? '已启用' : '已停用');
-          void fetchEndpoints();
-        }
-      })
-      .finally(() => setTogglingIds((prev) => { const s = new Set(prev); s.delete(record.id); return s; }));
+  async function handleToggle(record: PaymentWebhookEndpoint, checked: boolean) {
+    await toggleEndpointMutation.mutateAsync({ id: record.id, values: { status: checked ? 'enabled' : 'disabled' } });
+    Toast.success(checked ? '已启用' : '已停用');
   }
 
   async function handleDelete(id: number) {
-    const res = await request.delete(`/api/payment/webhooks/endpoints/${id}`);
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      void fetchEndpoints();
-    }
+    await deleteEndpointMutation.mutateAsync(id);
+    Toast.success('删除成功');
   }
 
-  function handleRedeliver(record: PaymentWebhookDelivery) {
-    setRedeliveringIds((prev) => new Set(prev).add(record.id));
-    request
-      .post<PaymentWebhookDelivery>(`/api/payment/webhooks/deliveries/${record.id}/redeliver`, {})
-      .then((res) => {
-        if (res.code === 0) {
-          Toast.success('重投成功');
-          void fetchDeliveries();
-        } else {
-          Toast.error(`重投失败：${res.message}`);
-        }
-      })
-      .finally(() => setRedeliveringIds((prev) => { const s = new Set(prev); s.delete(record.id); return s; }));
+  async function handleRedeliver(record: PaymentWebhookDelivery) {
+    await redeliverMutation.mutateAsync(record.id);
+    Toast.success('重投成功');
   }
 
   const endpointColumns: ColumnProps<PaymentWebhookEndpoint>[] = [
@@ -243,7 +187,7 @@ export default function PaymentWebhooksPage() {
     {
       title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
       render: (_: unknown, r: PaymentWebhookEndpoint) => (
-        <Switch checked={r.status === 'enabled'} loading={togglingIds.has(r.id)} disabled={!hasPermission('payment:webhook:update')} size="small" onChange={(c) => handleToggle(r, c)} />
+        <Switch checked={r.status === 'enabled'} loading={togglingId === r.id} disabled={!hasPermission('payment:webhook:update')} size="small" onChange={(c) => void handleToggle(r, c)} />
       ),
     },
     createOperationColumn<PaymentWebhookEndpoint>({
@@ -290,8 +234,8 @@ export default function PaymentWebhooksPage() {
         ...(r.status !== 'success' ? [{
           key: 'redeliver',
           label: '重投',
-          loading: redeliveringIds.has(r.id),
-          onClick: () => handleRedeliver(r),
+          loading: redeliveringId === r.id,
+          onClick: () => void handleRedeliver(r),
         }] : []),
       ],
     }),
@@ -375,8 +319,8 @@ export default function PaymentWebhooksPage() {
             onFilterReset={handleEndpointReset}
           />
           <ConfigurableTable
-            bordered columns={endpointColumns} dataSource={endpointData?.list ?? []} loading={endpointLoading} rowKey="id" size="small" empty="暂无数据"
-            onRefresh={() => void fetchEndpoints()} refreshLoading={endpointLoading} pagination={buildEndpointPagination(endpointData?.total ?? 0, fetchEndpoints)}
+            bordered columns={endpointColumns} dataSource={endpointData} loading={endpointQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
+            onRefresh={() => void endpointQuery.refetch()} refreshLoading={endpointQuery.isFetching} pagination={buildEndpointPagination(endpointTotal)}
           />
         </TabPane>
         <TabPane tab="投递日志" itemKey="deliveries">
@@ -401,13 +345,13 @@ export default function PaymentWebhooksPage() {
             onFilterReset={handleDeliveryReset}
           />
           <ConfigurableTable
-            bordered columns={deliveryColumns} dataSource={deliveryData?.list ?? []} loading={deliveryLoading} rowKey="id" size="small" empty="暂无数据"
-            onRefresh={() => void fetchDeliveries()} refreshLoading={deliveryLoading} pagination={buildDeliveryPagination(deliveryData?.total ?? 0, fetchDeliveries)}
+            bordered columns={deliveryColumns} dataSource={deliveryData} loading={deliveryQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
+            onRefresh={() => void deliveryQuery.refetch()} refreshLoading={deliveryQuery.isFetching} pagination={buildDeliveryPagination(deliveryTotal)}
           />
         </TabPane>
       </Tabs>
 
-      <AppModal title={editing ? '编辑 Webhook 端点' : '新增 Webhook 端点'} visible={modalVisible} onOk={handleEndpointOk} onCancel={closeModal} okButtonProps={{ loading: submitting, disabled: detailLoading }} width={680} closeOnEsc>
+      <AppModal title={editing ? '编辑 Webhook 端点' : '新增 Webhook 端点'} visible={modalVisible} onOk={handleEndpointOk} onCancel={closeModal} okButtonProps={{ loading: saveEndpointMutation.isPending, disabled: detailLoading }} width={680} closeOnEsc>
         <Spin spinning={detailLoading} wrapperClassName="modal-spin-wrapper">
           <Form key={editing?.id ?? 'new'} getFormApi={(api) => { endpointFormApi.current = api; }} allowEmpty initValues={formInit} labelPosition="left" labelWidth={96}>
             <Form.Input field="name" label="名称" placeholder="如：订单系统回调" rules={[{ required: true, message: '名称不能为空' }]} />

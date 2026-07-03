@@ -50,6 +50,7 @@ import WorkflowApprovalDetailSheet from '@/components/workflow/WorkflowApprovalD
 import { useVoiceRecorder } from './useVoiceRecorder';
 import { getChatNotifyPrefs, setChatNotifyPrefs } from './notifyPrefs';
 import { callManager } from '@/webrtc/useCallManager';
+import { useDiscoverableChannels } from '@/hooks/queries/chat';
 
 const { Text, Title } = Typography;
 
@@ -166,8 +167,8 @@ export default function ChatPage({
   const [channels, setChannels] = useState<Channel[]>([]);
   const [activeChannelId, setActiveChannelId] = useState<number | null>(null);
   const [discoverVisible, setDiscoverVisible] = useState(false);
-  const [discoverList, setDiscoverList] = useState<Channel[]>([]);
   const [discoverKeyword, setDiscoverKeyword] = useState('');
+  const [debouncedDiscoverKeyword, setDebouncedDiscoverKeyword] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [mentionClosed, setMentionClosed] = useState(false);
@@ -392,14 +393,12 @@ export default function ChatPage({
   }, [fetchChannels]);
 
   const loadDiscoverList = useCallback(async (keyword: string) => {
-    const kw = keyword.trim();
-    const qs = kw ? `?keyword=${encodeURIComponent(kw)}` : '';
-    const res = await request.get<Channel[]>(`/api/channels/discoverable${qs}`, { silent: true });
-    if (res.code === 0 && res.data) setDiscoverList(res.data);
+    setDebouncedDiscoverKeyword(keyword.trim());
   }, []);
 
   const openDiscover = useCallback(() => {
     setDiscoverKeyword('');
+    setDebouncedDiscoverKeyword('');
     setDiscoverVisible(true);
   }, []);
 
@@ -410,14 +409,21 @@ export default function ChatPage({
     return () => clearTimeout(handler);
   }, [discoverVisible, discoverKeyword, loadDiscoverList]);
 
+  const discoverableChannelsQuery = useDiscoverableChannels(
+    { keyword: debouncedDiscoverKeyword || undefined },
+    discoverVisible,
+  );
+  const { data: discoverableChannels, refetch: refetchDiscoverableChannels } = discoverableChannelsQuery;
+  const discoverList = discoverableChannels ?? [];
+
   const handleSubscribeChannel = useCallback(async (ch: Channel) => {
     const res = await request.post(`/api/channels/${ch.id}/subscribe`, {});
     if (res.code === 0) {
       Toast.success('已订阅');
-      setDiscoverList((prev) => prev.filter((c) => c.id !== ch.id));
+      void refetchDiscoverableChannels();
       void fetchChannels();
     }
-  }, [fetchChannels]);
+  }, [fetchChannels, refetchDiscoverableChannels]);
 
   // 初始化时从 localStorage 加载所有草稿
   useEffect(() => {

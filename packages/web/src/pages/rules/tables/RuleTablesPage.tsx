@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input, InputNumber, Select, Space, Tag, Modal, Form, Toast, Typography, SideSheet, List, Empty } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Save, Search } from 'lucide-react';
-import type { RuleDecisionTable, RuleEvaluateResult, RuleVersionDiff, RuleTestRunResult, RuleDecisionExecution, PaginatedResponse, RuleHitPolicy, RuleTestCase } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { RuleDecisionTable, RuleEvaluateResult, RuleTestRunResult, RuleHitPolicy, RuleTestCase } from '@zenith/shared';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
@@ -14,6 +14,22 @@ import { buildExpectedValues, buildTestScope, coerceRuleValue, diffCaseOutputs, 
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
+import {
+  ruleKeys,
+  useDeleteRuleDecisionTable,
+  useDeleteRuleTestCase,
+  usePublishRuleDecisionTable,
+  useRollbackRuleDecisionTable,
+  useRuleDecisionTableList,
+  useRuleExecutions,
+  useRuleTestCases,
+  useRuleVersionDiff,
+  useRuleVersions,
+  useRunRuleTestCases,
+  useSaveRuleDecisionTable,
+  useSaveRuleTestCase,
+  useTestRuleDecisionTable,
+} from '@/hooks/queries/rules';
 
 const { Text } = Typography;
 
@@ -34,51 +50,54 @@ const sample = JSON.stringify;
 
 export default function RuleTablesPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const canEdit = hasPermission('rule:table:update');
   const canCreate = hasPermission('rule:table:create');
   const canDelete = hasPermission('rule:table:delete');
   const canPublish = hasPermission('rule:table:publish');
   const { page, pageSize, setPage, buildPagination } = usePagination();
 
-  const [data, setData] = useState<PaginatedResponse<RuleDecisionTable> | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [keyword, setKeyword] = useState('');
+  const [draftKeyword, setDraftKeyword] = useState('');
+  const [submittedKeyword, setSubmittedKeyword] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
   const [editorFullscreen, setEditorFullscreen] = useState(false);
   const [editorHitPolicy, setEditorHitPolicy] = useState<RuleHitPolicy>('first');
   const [editing, setEditing] = useState<RuleDecisionTable | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const [testRow, setTestRow] = useState<RuleDecisionTable | null>(null);
   const [testForm, setTestForm] = useState<Record<string, unknown>>({});
   const [testResult, setTestResult] = useState<RuleEvaluateResult | null>(null);
   const [testScope, setTestScope] = useState<Record<string, unknown>>({});
   const [testExplanations, setTestExplanations] = useState<ReturnType<typeof explainDecisionRows>>([]);
-  const [savingCase, setSavingCase] = useState(false);
   const [verRow, setVerRow] = useState<RuleDecisionTable | null>(null);
-  const [versions, setVersions] = useState<Array<{ version: number; name: string; publishedAt: string }>>([]);
-  const [diff, setDiff] = useState<RuleVersionDiff | null>(null);
+  const [diffVersion, setDiffVersion] = useState<number | null>(null);
   const [caseRow, setCaseRow] = useState<RuleDecisionTable | null>(null);
-  const [cases, setCases] = useState<RuleTestCase[]>([]);
   const [editingCase, setEditingCase] = useState<RuleTestCase | null>(null);
   const [caseForm, setCaseForm] = useState<{ name: string; inputValues: Record<string, unknown>; expectedValues: Record<string, unknown> }>({ name: '', inputValues: {}, expectedValues: {} });
-  const [caseSaving, setCaseSaving] = useState(false);
   const [runRes, setRunRes] = useState<RuleTestRunResult | null>(null);
   const [execRow, setExecRow] = useState<RuleDecisionTable | null>(null);
-  const [execs, setExecs] = useState<RuleDecisionExecution[]>([]);
   const [draft, setDraft] = useState<{ inputs: RuleDecisionTable['inputs']; outputs: RuleDecisionTable['outputs']; rules: RuleDecisionTable['rules'] }>({ inputs: [], outputs: [], rules: [] });
   const formApi = useRef<FormApi | null>(null);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const qs = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
-      if (keyword) qs.set('keyword', keyword);
-      const res = await request.get<PaginatedResponse<RuleDecisionTable>>(`/api/rules/decision-tables?${qs}`);
-      if (res.data) setData(res.data);
-    } finally { setLoading(false); }
-  }, [page, pageSize, keyword]);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
+  const listQuery = useRuleDecisionTableList({ page, pageSize, keyword: submittedKeyword || undefined });
+  const data = listQuery.data ?? null;
+  const versionsQuery = useRuleVersions(verRow?.id, !!verRow);
+  const versions = versionsQuery.data ?? [];
+  const diffQuery = useRuleVersionDiff(verRow?.id, diffVersion, !!verRow && diffVersion !== null);
+  const diff = diffQuery.data ?? null;
+  const casesQuery = useRuleTestCases(caseRow?.id, !!caseRow);
+  const cases = casesQuery.data ?? [];
+  const execsQuery = useRuleExecutions({ tableId: execRow?.id, limit: 50 }, !!execRow);
+  const execs = execsQuery.data ?? [];
+  const saveMutation = useSaveRuleDecisionTable();
+  const publishMutation = usePublishRuleDecisionTable();
+  const deleteMutation = useDeleteRuleDecisionTable();
+  const rollbackMutation = useRollbackRuleDecisionTable();
+  const saveCaseMutation = useSaveRuleTestCase();
+  const deleteCaseMutation = useDeleteRuleTestCase();
+  const runCasesMutation = useRunRuleTestCases();
+  const runTestMutation = useTestRuleDecisionTable();
+  const runSingleCaseMutation = useTestRuleDecisionTable();
+  const saveCurrentTestAsCaseMutation = useSaveRuleTestCase();
 
   const draftIssues = useMemo(() => inspectDecisionDraft(draft, editorHitPolicy), [draft, editorHitPolicy]);
   const draftErrors = draftIssues.filter((issue) => issue.severity === 'error');
@@ -121,13 +140,9 @@ export default function RuleTablesPage() {
       return;
     }
     const payload = { name: v.name, description: v.description ?? null, hitPolicy, ...draft };
-    setSubmitting(true);
-    try {
-      if (editing) await request.put(`/api/rules/decision-tables/${editing.id}`, payload);
-      else await request.post('/api/rules/decision-tables', { ...payload, key: v.key });
-      Toast.success(editing ? '更新成功' : '创建成功');
-      setModalVisible(false); setEditorFullscreen(false); fetchData();
-    } finally { setSubmitting(false); }
+    await saveMutation.mutateAsync({ id: editing?.id, values: editing ? payload : { ...payload, key: v.key } });
+    Toast.success(editing ? '更新成功' : '创建成功');
+    setModalVisible(false); setEditorFullscreen(false);
   };
 
   const handlePublish = (r: RuleDecisionTable) => {
@@ -140,30 +155,25 @@ export default function RuleTablesPage() {
     const warnings = issues.filter((issue) => issue.severity === 'warning');
     Modal.confirm({
     title: `发布「${r.name}」？`, content: warnings.length ? <div><Text type="warning">规则体检有 {warnings.length} 项提醒，发布接口仍会执行用例门禁。</Text><div style={{ marginTop: 8 }}>{renderIssueList(warnings, 6)}</div></div> : '将生成版本快照并置为已发布',
-    onOk: async () => { await request.post(`/api/rules/decision-tables/${r.id}/publish`); Toast.success('发布成功'); fetchData(); },
+    onOk: async () => { await publishMutation.mutateAsync(r.id); Toast.success('发布成功'); },
   }); };
   const handleDelete = (r: RuleDecisionTable) => { Modal.confirm({
     title: '确定删除？', content: '删除后不可恢复', okButtonProps: { type: 'danger' },
-    onOk: async () => { await request.delete(`/api/rules/decision-tables/${r.id}`); Toast.success('删除成功'); fetchData(); },
+    onOk: async () => { await deleteMutation.mutateAsync(r.id); Toast.success('删除成功'); },
   }); };
   const openTest = (r: RuleDecisionTable) => { setTestRow(r); setTestForm({}); setTestScope({}); setTestResult(null); setTestExplanations([]); };
-  const openVersions = async (r: RuleDecisionTable) => {
-    setVerRow(r); setDiff(null);
-    const res = await request.get<typeof versions>(`/api/rules/decision-tables/${r.id}/versions`);
-    setVersions(res.data ?? []);
+  const openVersions = (r: RuleDecisionTable) => {
+    setVerRow(r); setDiffVersion(null);
   };
-  const showDiff = async (v: number) => {
-    const res = await request.get<RuleVersionDiff>(`/api/rules/decision-tables/${verRow!.id}/diff?from=${v}&to=0`);
-    if (res.data) setDiff(res.data);
+  const showDiff = (v: number) => {
+    setDiffVersion(v);
   };
   const rollback = (v: number) => Modal.confirm({
     title: `回滚到 v${v}？`, content: '将以该版本快照覆盖当前编辑态并置为草稿',
-    onOk: async () => { await request.post(`/api/rules/decision-tables/${verRow!.id}/rollback/${v}`); Toast.success('回滚成功'); setVerRow(null); fetchData(); },
+    onOk: async () => { await rollbackMutation.mutateAsync({ id: verRow!.id, version: v }); Toast.success('回滚成功'); setVerRow(null); },
   });
-  const openCases = async (r: RuleDecisionTable) => {
+  const openCases = (r: RuleDecisionTable) => {
     setCaseRow(r); setRunRes(null); setEditingCase(null);
-    const res = await request.get<typeof cases>(`/api/rules/decision-tables/${r.id}/cases`);
-    setCases(res.data ?? []);
   };
   const resetCaseEditor = (row = caseRow) => {
     if (!row) return;
@@ -194,15 +204,9 @@ export default function RuleTablesPage() {
       input: buildTestScope(caseRow.inputs, caseForm.inputValues),
       expected: buildExpectedValues(caseRow.outputs, caseForm.expectedValues),
     };
-    setCaseSaving(true);
-    try {
-      if (editingCase) await request.put(`/api/rules/decision-tables/${caseRow.id}/cases/${editingCase.id}`, payload);
-      else await request.post(`/api/rules/decision-tables/${caseRow.id}/cases`, payload);
-      Toast.success(editingCase ? '用例已更新' : '用例已新增');
-      const res = await request.get<typeof cases>(`/api/rules/decision-tables/${caseRow.id}/cases`);
-      setCases(res.data ?? []);
-      setEditingCase(null);
-    } finally { setCaseSaving(false); }
+    await saveCaseMutation.mutateAsync({ tableId: caseRow.id, caseId: editingCase?.id, values: payload });
+    Toast.success(editingCase ? '用例已更新' : '用例已新增');
+    setEditingCase(null);
   };
   const duplicateCase = (item: RuleTestCase) => {
     if (!caseRow) return;
@@ -225,34 +229,32 @@ export default function RuleTablesPage() {
     });
   };
   const runCases = async () => {
-    const res = await request.post<RuleTestRunResult>(`/api/rules/decision-tables/${caseRow!.id}/cases/run`, {});
-    if (res.data) setRunRes(res.data);
+    const res = await runCasesMutation.mutateAsync(caseRow!.id);
+    setRunRes(res);
   };
   const runSingleCase = async (item: RuleTestCase) => {
     if (!caseRow) return;
-    const res = await request.post<RuleEvaluateResult>(`/api/rules/decision-tables/${caseRow.id}/test`, { input: item.input });
-    if (res.data) {
-      const pass = sample(res.data.outputs) === sample(item.expected);
+    const res = await runSingleCaseMutation.mutateAsync({ tableId: caseRow.id, input: item.input });
+    if (res) {
+      const pass = sample(res.outputs) === sample(item.expected);
       setRunRes((prev) => {
         const base = prev ?? { total: cases.length, passed: 0, failed: 0, coverage: 0, uncoveredRowIds: caseRow.rules.map((r) => r.id), cases: [] };
-        const nextCases = [...base.cases.filter((c) => c.id !== item.id), { id: item.id, name: item.name, pass, expected: item.expected, actual: res.data!.outputs }];
+        const nextCases = [...base.cases.filter((c) => c.id !== item.id), { id: item.id, name: item.name, pass, expected: item.expected, actual: res.outputs }];
         return { ...base, cases: nextCases, passed: nextCases.filter((c) => c.pass).length, failed: nextCases.filter((c) => !c.pass).length };
       });
       Toast[pass ? 'success' : 'error'](pass ? '单条用例通过' : '单条用例失败');
     }
   };
-  const delCase = async (cid: number) => { await request.delete(`/api/rules/decision-tables/${caseRow!.id}/cases/${cid}`); openCases(caseRow!); };
-  const openExec = async (r: RuleDecisionTable) => {
+  const delCase = async (cid: number) => { await deleteCaseMutation.mutateAsync({ tableId: caseRow!.id, caseId: cid }); };
+  const openExec = (r: RuleDecisionTable) => {
     setExecRow(r);
-    const res = await request.get<RuleDecisionExecution[]>(`/api/rules/decision-tables/executions?tableId=${r.id}&limit=50`);
-    setExecs(res.data ?? []);
   };
   const runTest = async () => {
     const scope = buildTestScope(testRow!.inputs, testForm);
     setTestScope(scope);
-    const res = await request.post<RuleEvaluateResult>(`/api/rules/decision-tables/${testRow!.id}/test`, { input: scope });
-    if (res.data) {
-      setTestResult(res.data);
+    const res = await runTestMutation.mutateAsync({ tableId: testRow!.id, input: scope });
+    if (res) {
+      setTestResult(res);
       setTestExplanations(explainDecisionRows(testRow!, scope));
     }
   };
@@ -261,12 +263,9 @@ export default function RuleTablesPage() {
     if (!testRow || !testResult) return;
     const name = prompt('用例名称', `${testRow.name} 手动测试 ${cases.length + 1}`);
     if (!name) return;
-    setSavingCase(true);
-    try {
-      const input = Object.keys(testScope).length ? testScope : buildTestScope(testRow.inputs, testForm);
-      await request.post(`/api/rules/decision-tables/${testRow.id}/cases`, { name, input, expected: testResult.outputs });
-      Toast.success('已保存为测试用例');
-    } finally { setSavingCase(false); }
+    const input = Object.keys(testScope).length ? testScope : buildTestScope(testRow.inputs, testForm);
+    await saveCurrentTestAsCaseMutation.mutateAsync({ tableId: testRow.id, values: { name, input, expected: testResult.outputs } });
+    Toast.success('已保存为测试用例');
   };
 
   const renderTestInput = (i: RuleDecisionTable['inputs'][number]) => {
@@ -370,7 +369,7 @@ export default function RuleTablesPage() {
             </div>
           </div>
           <Space spacing={8}>
-            <Button size="small" type="primary" loading={caseSaving} onClick={saveCase}>{editingCase ? '保存用例' : '新增用例'}</Button>
+            <Button size="small" type="primary" loading={saveCaseMutation.isPending} onClick={saveCase}>{editingCase ? '保存用例' : '新增用例'}</Button>
             {editingCase && <Button size="small" theme="borderless" onClick={() => resetCaseEditor()}>取消编辑</Button>}
           </Space>
         </Space>
@@ -426,21 +425,21 @@ export default function RuleTablesPage() {
       <SearchToolbar
         primary={(
           <>
-            <Input prefix={<Search size={14} />} placeholder="搜索名称" value={keyword} onChange={setKeyword} onEnterPress={() => { setPage(1); fetchData(); }} showClear style={{ width: 220 }} />
-            <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); fetchData(); }}>查询</Button>
-            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setKeyword(''); setPage(1); }}>重置</Button>
+            <Input prefix={<Search size={14} />} placeholder="搜索名称" value={draftKeyword} onChange={setDraftKeyword} onEnterPress={() => { setPage(1); setSubmittedKeyword(draftKeyword); void queryClient.invalidateQueries({ queryKey: ruleKeys.decisionTables.lists }); }} showClear style={{ width: 220 }} />
+            <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); setSubmittedKeyword(draftKeyword); void queryClient.invalidateQueries({ queryKey: ruleKeys.decisionTables.lists }); }}>查询</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setDraftKeyword(''); setSubmittedKeyword(''); setPage(1); void queryClient.invalidateQueries({ queryKey: ruleKeys.decisionTables.lists }); }}>重置</Button>
             {canCreate && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>}
           </>
         )}
       />
-      <ConfigurableTable bordered columns={columns} dataSource={data?.list ?? []} loading={loading} onRefresh={fetchData} refreshLoading={loading} rowKey="id" size="small" empty="暂无数据" pagination={buildPagination(data?.total ?? 0, fetchData)} />
+      <ConfigurableTable bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据" pagination={buildPagination(data?.total ?? 0)} />
 
       <AppModal
         title={editing ? '编辑决策表' : '新增决策表'}
         visible={modalVisible}
         onOk={handleSubmit}
         onCancel={() => { setModalVisible(false); setEditorFullscreen(false); }}
-        okButtonProps={{ loading: submitting, disabled: draftErrors.length > 0 }}
+        okButtonProps={{ loading: saveMutation.isPending, disabled: draftErrors.length > 0 }}
         width={1180}
         fullscreen={editorFullscreen}
         onToggleFullscreen={() => setEditorFullscreen((v) => !v)}
@@ -483,7 +482,7 @@ export default function RuleTablesPage() {
             <Space spacing={8} align="center">
               <Tag color={testResult.matched ? 'green' : 'red'}>{testResult.matched ? '命中' : '未命中'}</Tag>
               {testResult.matched && <Text type="tertiary" size="small">命中行 {testResult.matchedRowIds.join(', ')}</Text>}
-              <Button size="small" theme="borderless" icon={<Save size={14} />} loading={savingCase} onClick={saveCurrentTestAsCase}>保存为用例</Button>
+              <Button size="small" theme="borderless" icon={<Save size={14} />} loading={saveCurrentTestAsCaseMutation.isPending} onClick={saveCurrentTestAsCase}>保存为用例</Button>
             </Space>
             <pre style={{ margin: '8px 0 0', whiteSpace: 'pre-wrap' }}>{sample(testResult.outputs, null, 2)}</pre>
             {testExplanations.length > 0 && (

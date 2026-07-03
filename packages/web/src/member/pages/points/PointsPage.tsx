@@ -1,10 +1,8 @@
-import { useEffect, useState } from 'react';
-import type { MemberPointAccount } from '@zenith/shared';
 import { POINT_TX_TYPE_LABELS } from '@zenith/shared';
 import { Coins } from 'lucide-react';
-import { memberRequest } from '../../utils/member-request';
 import { MemberPage } from '../../components/MemberPage';
 import { TransactionList } from '../../components/TransactionList';
+import { useMemberPointAccount } from '../../hooks/queries';
 
 function StatCard({ label, value, accent }: Readonly<{ label: React.ReactNode; value: React.ReactNode; accent?: boolean }>) {
   return (
@@ -26,13 +24,7 @@ function StatCard({ label, value, accent }: Readonly<{ label: React.ReactNode; v
 }
 
 export default function PointsPage() {
-  const [account, setAccount] = useState<MemberPointAccount | null>(null);
-
-  useEffect(() => {
-    memberRequest.get<MemberPointAccount>('/api/member/points/account', { silent: true }).then((r) => {
-      if (r.code === 0) setAccount(r.data);
-    });
-  }, []);
+  const account = useMemberPointAccount().data ?? null;
 
   return (
     <MemberPage title="我的积分" showBack noTabbar>

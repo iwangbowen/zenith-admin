@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
 import {
   Button, Form, Input, Modal, Space, Tag, Toast, Banner, Typography, Empty, Select, Divider,
 } from '@douyinfe/semi-ui';
@@ -6,7 +6,6 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Trash2, FlaskConical } from 'lucide-react';
 import type { MpConditionalMenu, MpMenuButton, MpMenuMatchRule } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -14,6 +13,13 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
+import {
+  useDeleteMpConditionalMenu,
+  useMpConditionalMenus,
+  usePublishMpConditionalMenu,
+  useSaveMpConditionalMenu,
+  useTryMatchMpConditionalMenu,
+} from '@/hooks/queries/mp-menu';
 
 const { Text } = Typography;
 
@@ -84,44 +90,33 @@ function ButtonEditor({ value, onChange }: { value: EditableButton[]; onChange: 
 
 export default function MpConditionalMenusPage() {
   const { hasPermission: can } = usePermission();
-  const { accounts, currentId, currentIdRef, setCurrentId, loading: accountsLoading } = useMpAccounts();
+  const { accounts, currentId, setCurrentId, loading: accountsLoading } = useMpAccounts();
 
-  const [loading, setLoading] = useState(false);
-  const [list, setList] = useState<MpConditionalMenu[]>([]);
-  const { page, setPage, buildPagination } = usePagination();
+  const { buildPagination } = usePagination();
+  const listQuery = useMpConditionalMenus(currentId);
+  const list = listQuery.data ?? [];
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<MpConditionalMenu | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const [buttons, setButtons] = useState<EditableButton[]>([]);
   const formRef = useRef<FormApi>(null);
 
   const [matchVisible, setMatchVisible] = useState(false);
   const [matchUserId, setMatchUserId] = useState('');
   const [matchResult, setMatchResult] = useState<MpMenuButton[] | null>(null);
-  const [matching, setMatching] = useState(false);
-
-  const fetchList = useCallback(async () => {
-    if (!currentId) { setList([]); return; }
-    const reqId = currentId;
-    setLoading(true);
-    try {
-      const res = await request.get<MpConditionalMenu[]>(`/api/mp/conditional-menus?accountId=${currentId}`);
-      if (currentIdRef.current !== reqId) return;
-      setList(res.data ?? []);
-    } finally {
-      if (currentIdRef.current === reqId) setLoading(false);
-    }
-  }, [currentId, currentIdRef]);
-
-  useEffect(() => { void fetchList(); }, [fetchList]);
+  const saveMutation = useSaveMpConditionalMenu();
+  const publishMutation = usePublishMpConditionalMenu();
+  const deleteMutation = useDeleteMpConditionalMenu();
+  const tryMatchMutation = useTryMatchMpConditionalMenu();
+  const submitting = saveMutation.isPending;
+  const matching = tryMatchMutation.isPending;
 
   const openCreate = () => { setEditing(null); setButtons([{ name: '菜单', type: 'view', url: '' }]); setModalVisible(true); };
   const openEdit = (r: MpConditionalMenu) => { setEditing(r); setButtons((r.buttons as EditableButton[]) ?? []); setModalVisible(true); };
 
   const handleSubmit = async () => {
     let values: Record<string, unknown>;
-    try { values = (await formRef.current?.validate())!; } catch { return; }
+    try { values = (await formRef.current?.validate())!; } catch { throw new Error('validation'); }
     if (!currentId) return;
     if (buttons.length === 0) { Toast.warning('请至少添加一个一级菜单'); return; }
     const matchRule: MpMenuMatchRule = {
@@ -134,43 +129,29 @@ export default function MpConditionalMenusPage() {
       language: (values.language as string) || undefined,
     };
     if (!Object.values(matchRule).some(Boolean)) { Toast.warning('请至少设置一个匹配条件'); return; }
-    setSubmitting(true);
-    try {
-      if (editing) {
-        const res = await request.put(`/api/mp/conditional-menus/${editing.id}`, { name: values.name, buttons, matchRule });
-        if (res.code !== 0) return;
-        Toast.success('已保存');
-      } else {
-        const res = await request.post('/api/mp/conditional-menus', { accountId: currentId, name: values.name, buttons, matchRule });
-        if (res.code !== 0) return;
-        Toast.success('已创建');
-      }
-      setModalVisible(false);
-      void fetchList();
-    } finally { setSubmitting(false); }
+    await saveMutation.mutateAsync({ id: editing?.id, accountId: currentId, name: values.name, buttons, matchRule });
+    Toast.success(editing ? '已保存' : '已创建');
+    setModalVisible(false);
   };
 
   const handlePublish = (r: MpConditionalMenu) => {
     Modal.confirm({
       title: `发布「${r.name}」？`, content: '将向微信下发该个性化菜单。',
-      onOk: async () => { const res = await request.post(`/api/mp/conditional-menus/${r.id}/publish`, {}); if (res.code === 0) { Toast.success('已发布'); void fetchList(); } },
+      onOk: async () => { await publishMutation.mutateAsync(r.id); Toast.success('已发布'); },
     });
   };
 
   const handleDelete = (r: MpConditionalMenu) => {
     Modal.confirm({
       title: `删除「${r.name}」？`, content: '将同时删除微信侧个性化菜单。', okButtonProps: { type: 'danger', theme: 'solid' },
-      onOk: async () => { const res = await request.delete(`/api/mp/conditional-menus/${r.id}`); if (res.code === 0) { Toast.success('已删除'); void fetchList(); } },
+      onOk: async () => { await deleteMutation.mutateAsync(r.id); Toast.success('已删除'); },
     });
   };
 
   const handleTryMatch = async () => {
     if (!currentId || !matchUserId.trim()) { Toast.warning('请输入 openid 或微信号'); return; }
-    setMatching(true);
-    try {
-      const res = await request.post<{ buttons: MpMenuButton[] }>(`/api/mp/conditional-menus/trymatch`, { accountId: currentId, userId: matchUserId.trim() });
-      if (res.code === 0) setMatchResult(res.data?.buttons ?? []);
-    } finally { setMatching(false); }
+    const data = await tryMatchMutation.mutateAsync({ accountId: currentId, userId: matchUserId.trim() });
+    setMatchResult(data.buttons ?? []);
   };
 
   const columns = [
@@ -194,7 +175,7 @@ export default function MpConditionalMenusPage() {
     <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
   );
   const renderRefreshButton = () => (
-    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => void fetchList()}>刷新</Button>
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => void listQuery.refetch()}>刷新</Button>
   );
   const renderCreateButton = () => can('mp:condmenu:create') ? (
     <Button type="primary" icon={<Plus size={14} />} disabled={!currentId} onClick={openCreate}>新增个性化菜单</Button>
@@ -224,7 +205,7 @@ export default function MpConditionalMenusPage() {
         mobileActions={renderMatchButton()}
         filterTitle="个性化菜单筛选"
         actionTitle="个性化菜单操作"
-        onFilterApply={() => void fetchList()}
+        onFilterApply={() => void listQuery.refetch()}
       />
 
       {!accountsLoading && accounts.length === 0 && (
@@ -232,8 +213,8 @@ export default function MpConditionalMenusPage() {
       )}
       <Banner type="info" fullMode={false} description="个性化菜单按匹配规则（标签/性别/地区/客户端/语言）向不同人群下发不同菜单；未命中任何个性化菜单的用户将看到默认自定义菜单。" style={{ marginBottom: 12 }} />
 
-      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList()} refreshLoading={loading}
-        columns={columns} dataSource={list} rowKey="id" pagination={buildPagination(list.length, () => { setPage(page); })} scroll={{ x: 900 }} />
+      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching}
+        columns={columns} dataSource={list} rowKey="id" pagination={buildPagination(list.length)} scroll={{ x: 900 }} />
 
       <AppModal title={editing ? '编辑个性化菜单' : '新增个性化菜单'} visible={modalVisible}
         onOk={handleSubmit} onCancel={() => setModalVisible(false)} confirmLoading={submitting} width={680}>

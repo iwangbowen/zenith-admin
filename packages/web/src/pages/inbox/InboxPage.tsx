@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { AppModal } from '@/components/AppModal';
 import {
   Button, Tag, Space, Tabs, TabPane, Toast, Empty, Badge, Popconfirm, Spin,
@@ -8,9 +9,16 @@ import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag';
 import { CheckCheck } from 'lucide-react';
 import type { InAppMessage } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import {
+  inboxKeys,
+  useDeleteInboxMessage,
+  useInboxList,
+  useInboxMessageDetail,
+  useMarkAllInboxMessagesRead,
+  useMarkInboxMessageRead,
+} from '@/hooks/queries/inbox';
 
 const TYPE_COLOR: Record<string, TagColor> = {
   info: 'blue',
@@ -27,72 +35,48 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 export default function InboxPage() {
-  const [list, setList] = useState<InAppMessage[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [total, setTotal] = useState(0);
+  const queryClient = useQueryClient();
   const { page, setPage } = usePagination();
   const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'read'>('all');
-  const [markAllLoading, setMarkAllLoading] = useState(false);
 
   const [selected, setSelected] = useState<InAppMessage | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
 
-  const fetchList = useCallback(async (p = 1, tab = activeTab) => {
-    setLoading(true);
-    const qs = new URLSearchParams({ page: String(p), pageSize: '10' });
-    if (tab === 'unread') qs.set('isRead', 'false');
-    else if (tab === 'read') qs.set('isRead', 'true');
-    const res = await request.get<{ list: InAppMessage[]; total: number }>(
-      `/api/in-app-messages?${qs.toString()}`,
-    );
-    setLoading(false);
-    if (res.code === 0 && res.data) {
-      setList(res.data.list);
-      setTotal(res.data.total);
-      setPage(p);
-    }
-  }, [activeTab]);
+  let isRead: string | undefined;
+  if (activeTab === 'unread') isRead = 'false';
+  else if (activeTab === 'read') isRead = 'true';
 
-  useEffect(() => {
-    void fetchList(1, activeTab);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
+  const listParams = { page, pageSize: 10, isRead };
+  const listQuery = useInboxList(listParams);
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const detailQuery = useInboxMessageDetail(selected?.id, selected !== null);
+  const selectedMessage = selected ? (detailQuery.data ? { ...detailQuery.data, isRead: true } : selected) : null;
+  const markReadMutation = useMarkInboxMessageRead();
+  const markAllReadMutation = useMarkAllInboxMessagesRead();
+  const deleteMutation = useDeleteInboxMessage();
+  const loading = listQuery.isFetching;
+  const detailLoading = detailQuery.isFetching;
+  const markAllLoading = markAllReadMutation.isPending;
 
   const openMessage = async (item: InAppMessage) => {
     if (!item.isRead) {
-      await request.post(`/api/in-app-messages/${item.id}/read`, undefined, { silent: true });
-      setList((prev) => prev.map((n) => n.id === item.id ? { ...n, isRead: true } : n));
+      await markReadMutation.mutateAsync(item.id);
+      queryClient.setQueryData(inboxKeys.list(listParams), (old: typeof listQuery.data) =>
+        old ? { ...old, list: old.list.map((n) => (n.id === item.id ? { ...n, isRead: true } : n)) } : old,
+      );
     }
     setSelected({ ...item, isRead: true });
-    setDetailLoading(true);
-    try {
-      const res = await request.get<InAppMessage>(`/api/in-app-messages/${item.id}`);
-      if (res.code === 0 && res.data) {
-        setSelected({ ...res.data, isRead: true });
-      } else {
-        Toast.error(res.message || '获取消息详情失败');
-      }
-    } finally {
-      setDetailLoading(false);
-    }
   };
 
   const handleMarkAllRead = async () => {
-    setMarkAllLoading(true);
-    const res = await request.post('/api/in-app-messages/read-all', {});
-    setMarkAllLoading(false);
-    if (res.code === 0) {
-      Toast.success('已全部标记为已读');
-      void fetchList(1, activeTab);
-    }
+    await markAllReadMutation.mutateAsync();
+    Toast.success('已全部标记为已读');
+    setPage(1);
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete(`/api/in-app-messages/${id}`);
-    if (res.code === 0) {
-      Toast.success('已删除');
-      void fetchList(page, activeTab);
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('已删除');
   };
 
   const handleTabChange = (key: string) => {
@@ -209,7 +193,7 @@ export default function InboxPage() {
         <ConfigurableTable
           bordered
           loading={loading}
-          onRefresh={() => void fetchList(page)}
+          onRefresh={() => void listQuery.refetch()}
           refreshLoading={loading}
           dataSource={list}
           rowKey="id"
@@ -219,7 +203,7 @@ export default function InboxPage() {
             currentPage: page,
             pageSize: 10,
             showSizeChanger: false,
-            onPageChange: (p) => void fetchList(p),
+            onPageChange: (p) => setPage(p),
           }}
           onRow={(record) => ({
             style: { opacity: (record as InAppMessage).isRead ? 0.7 : 1 },
@@ -228,21 +212,21 @@ export default function InboxPage() {
       )}
 
       <AppModal
-        title={selected?.title ?? ''}
-        visible={selected !== null}
-        onCancel={() => { setSelected(null); setDetailLoading(false); }}
+        title={selectedMessage?.title ?? ''}
+        visible={selectedMessage !== null}
+        onCancel={() => setSelected(null)}
         footer={null}
         width={640}
         closeOnEsc
       >
         <Spin spinning={detailLoading} tip="加载中..." size="small">
-          {selected && (
+          {selectedMessage && (
             <div>
               <div style={{ marginBottom: 12, color: 'var(--semi-color-text-3)', fontSize: 12 }}>
-                {selected.senderName ?? '系统'} · {formatDateTime(selected.createdAt)}
+                {selectedMessage.senderName ?? '系统'} · {formatDateTime(selectedMessage.createdAt)}
               </div>
               <div style={{ lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
-                {selected.content}
+                {selectedMessage.content}
               </div>
             </div>
           )}

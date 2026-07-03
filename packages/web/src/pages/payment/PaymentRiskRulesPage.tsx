@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Modal, Select, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -7,12 +8,17 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
-import { request } from '@/utils/request';
 import { createdAtColumn } from '@/utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
+import {
+  paymentRiskKeys,
+  useDeletePaymentRiskRule,
+  usePaymentRiskRuleList,
+  useSavePaymentRiskRule,
+} from '@/hooks/queries/payment-risk';
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_RISK_SCOPE_LABELS } from '@zenith/shared';
-import type { PaginatedResponse, PaymentChannel, PaymentRiskRule, PaymentRiskScope } from '@zenith/shared';
+import type { PaymentChannel, PaymentRiskRule, PaymentRiskScope } from '@zenith/shared';
 
 const yuan = (cents: number | null | undefined) => (cents == null ? '-' : `¥${(cents / 100).toFixed(2)}`);
 const channelOptions = Object.entries(PAYMENT_CHANNEL_LABELS).map(([value, label]) => ({ value, label }));
@@ -36,45 +42,31 @@ interface RiskFormValues {
 
 export default function PaymentRiskRulesPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
-  const [data, setData] = useState<PaginatedResponse<PaymentRiskRule> | null>(null);
-  const [loading, setLoading] = useState(false);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [search, setSearch] = useState<SearchParams>(defaultSearch);
-  const searchRef = useRef<SearchParams>(defaultSearch);
-  searchRef.current = search;
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearch);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearch);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<PaymentRiskRule | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const [scopeWatch, setScopeWatch] = useState<PaymentRiskScope>('global');
-  const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
 
-  const fetchList = useCallback(
-    async (p = page, ps = pageSize, params?: SearchParams) => {
-      const active = params ?? searchRef.current;
-      setLoading(true);
-      try {
-        const query: Record<string, string> = { page: String(p), pageSize: String(ps) };
-        if (active.scope) query.scope = active.scope;
-        if (active.status) query.status = active.status;
-        const res = await request.get<PaginatedResponse<PaymentRiskRule>>(`/api/payment/risk-rules?${new URLSearchParams(query)}`);
-        if (res.code === 0) { setData(res.data); setPage(res.data.page); setPageSize(res.data.pageSize); }
-      } finally {
-        setLoading(false);
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [page, pageSize],
-  );
+  const listQuery = usePaymentRiskRuleList({
+    page,
+    pageSize,
+    scope: submittedParams.scope || undefined,
+    status: submittedParams.status || undefined,
+  });
+  const data = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const saveMutation = useSavePaymentRiskRule();
+  const toggleMutation = useSavePaymentRiskRule();
+  const deleteMutation = useDeletePaymentRiskRule();
+  const togglingId = toggleMutation.isPending ? (toggleMutation.variables?.id ?? null) : null;
 
-  useEffect(() => {
-    void fetchList();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function handleSearch() { setPage(1); void fetchList(1, pageSize); }
-  function handleReset() { setSearch(defaultSearch); setPage(1); void fetchList(1, pageSize, defaultSearch); }
+  function handleSearch() { setPage(1); setSubmittedParams(draftParams); void queryClient.invalidateQueries({ queryKey: paymentRiskKeys.lists }); }
+  function handleReset() { setDraftParams(defaultSearch); setPage(1); setSubmittedParams(defaultSearch); void queryClient.invalidateQueries({ queryKey: paymentRiskKeys.lists }); }
 
   function openCreate() { setEditing(null); setScopeWatch('global'); setModalVisible(true); }
   function openEdit(record: PaymentRiskRule) { setEditing(record); setScopeWatch(record.scope); setModalVisible(true); }
@@ -98,41 +90,31 @@ export default function PaymentRiskRulesPage() {
   async function handleOk() {
     let values: RiskFormValues;
     try { values = (await formApi.current?.validate()) as RiskFormValues; } catch { throw new Error('validation'); }
-    setSubmitting(true);
-    try {
-      const payload = {
-        name: values.name,
-        scope: values.scope,
-        channel: values.scope === 'channel' ? values.channel : undefined,
-        bizType: values.scope === 'bizType' ? values.bizType : undefined,
-        singleLimit: values.singleYuan != null ? Math.round(values.singleYuan * 100) : undefined,
-        dailyLimit: values.dailyYuan != null ? Math.round(values.dailyYuan * 100) : undefined,
-        dailyCountLimit: values.dailyCountLimit ?? undefined,
-        blocklist: values.blocklist ?? [],
-        status: values.status,
-        remark: values.remark || undefined,
-      };
-      const res = editing
-        ? await request.put<PaymentRiskRule>(`/api/payment/risk-rules/${editing.id}`, payload)
-        : await request.post<PaymentRiskRule>('/api/payment/risk-rules', payload);
-      if (res.code === 0) { Toast.success(editing ? '更新成功' : '创建成功'); closeModal(); void fetchList(); }
-      else throw new Error(res.message);
-    } finally {
-      setSubmitting(false);
-    }
+    const payload = {
+      name: values.name,
+      scope: values.scope,
+      channel: values.scope === 'channel' ? values.channel : undefined,
+      bizType: values.scope === 'bizType' ? values.bizType : undefined,
+      singleLimit: values.singleYuan != null ? Math.round(values.singleYuan * 100) : undefined,
+      dailyLimit: values.dailyYuan != null ? Math.round(values.dailyYuan * 100) : undefined,
+      dailyCountLimit: values.dailyCountLimit ?? undefined,
+      blocklist: values.blocklist ?? [],
+      status: values.status,
+      remark: values.remark || undefined,
+    };
+    await saveMutation.mutateAsync({ id: editing?.id, values: payload });
+    Toast.success(editing ? '更新成功' : '创建成功');
+    closeModal();
   }
 
-  function handleToggle(record: PaymentRiskRule, checked: boolean) {
-    setTogglingIds((prev) => new Set(prev).add(record.id));
-    request
-      .put<PaymentRiskRule>(`/api/payment/risk-rules/${record.id}`, { status: checked ? 'enabled' : 'disabled' })
-      .then((res) => { if (res.code === 0) { Toast.success(checked ? '已启用' : '已停用'); void fetchList(); } })
-      .finally(() => setTogglingIds((prev) => { const s = new Set(prev); s.delete(record.id); return s; }));
+  async function handleToggle(record: PaymentRiskRule, checked: boolean) {
+    await toggleMutation.mutateAsync({ id: record.id, values: { status: checked ? 'enabled' : 'disabled' } });
+    Toast.success(checked ? '已启用' : '已停用');
   }
 
   async function handleDelete(id: number) {
-    const res = await request.delete(`/api/payment/risk-rules/${id}`);
-    if (res.code === 0) { Toast.success('删除成功'); void fetchList(); }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   }
 
   const columns: ColumnProps<PaymentRiskRule>[] = [
@@ -147,7 +129,7 @@ export default function PaymentRiskRulesPage() {
     {
       title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
       render: (_: unknown, r: PaymentRiskRule) => (
-        <Switch checked={r.status === 'enabled'} loading={togglingIds.has(r.id)} disabled={!hasPermission('payment:risk:update')} size="small" onChange={(c) => handleToggle(r, c)} />
+        <Switch checked={r.status === 'enabled'} loading={togglingId === r.id} disabled={!hasPermission('payment:risk:update')} size="small" onChange={(c) => void handleToggle(r, c)} />
       ),
     },
     createOperationColumn<PaymentRiskRule>({
@@ -177,8 +159,8 @@ export default function PaymentRiskRulesPage() {
   const renderScopeFilter = () => (
     <Select
       placeholder="全部作用域"
-      value={search.scope || undefined}
-      onChange={(v) => setSearch((p) => ({ ...p, scope: (v as string) ?? '' }))}
+      value={draftParams.scope || undefined}
+      onChange={(v) => setDraftParams((p) => ({ ...p, scope: (v as string) ?? '' }))}
       showClear
       style={{ width: 130 }}
       optionList={scopeOptions}
@@ -188,8 +170,8 @@ export default function PaymentRiskRulesPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="全部状态"
-      value={search.status || undefined}
-      onChange={(v) => setSearch((p) => ({ ...p, status: (v as string) ?? '' }))}
+      value={draftParams.status || undefined}
+      onChange={(v) => setDraftParams((p) => ({ ...p, status: (v as string) ?? '' }))}
       showClear
       style={{ width: 120 }}
       optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]}
@@ -232,11 +214,11 @@ export default function PaymentRiskRulesPage() {
       />
 
       <ConfigurableTable
-        bordered columns={columns} dataSource={data?.list ?? []} loading={loading} rowKey="id" size="small" empty="暂无数据"
-        onRefresh={() => void fetchList()} refreshLoading={loading} pagination={buildPagination(data?.total ?? 0, fetchList)}
+        bordered columns={columns} dataSource={data} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
+        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(total)}
       />
 
-      <AppModal title={editing ? '编辑风控规则' : '新增风控规则'} visible={modalVisible} onOk={handleOk} onCancel={closeModal} okButtonProps={{ loading: submitting }} width={700} closeOnEsc>
+      <AppModal title={editing ? '编辑风控规则' : '新增风控规则'} visible={modalVisible} onOk={handleOk} onCancel={closeModal} okButtonProps={{ loading: saveMutation.isPending }} width={700} closeOnEsc>
         <Form
           key={editing?.id ?? 'new'}
           getFormApi={(api) => { formApi.current = api; }}

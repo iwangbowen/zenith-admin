@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Input, Modal, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Copy, Plus, RotateCcw, Search } from 'lucide-react';
-import type { ChatConversation, ChatWebhook, PaginatedResponse } from '@zenith/shared';
+import type { ChatWebhook } from '@zenith/shared';
 import { UserAvatar } from '@/components/UserAvatar';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -11,9 +12,16 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
+import {
+  chatBotKeys,
+  useChatBotGroupConversations,
+  useChatBotList,
+  useDeleteChatBot,
+  useRegenerateChatBotToken,
+  useSaveChatBot,
+} from '@/hooks/queries/chat-bots';
 
 const { Text } = Typography;
 
@@ -65,54 +73,26 @@ async function copyText(text: string) {
 
 export default function ChatBotsPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const formApi = useRef<FormApi<BotFormValues> | null>(null);
-  const [data, setData] = useState<PaginatedResponse<ChatWebhook> | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [keyword, setKeyword] = useState('');
-  const keywordRef = useRef(keyword);
-  keywordRef.current = keyword;
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
+  const [draftKeyword, setDraftKeyword] = useState('');
+  const [submittedKeyword, setSubmittedKeyword] = useState('');
+  const { page, pageSize, setPage, buildPagination } = usePagination();
   const [modalVisible, setModalVisible] = useState(false);
   const [editingBot, setEditingBot] = useState<ChatWebhook | null>(null);
-  const [groupConversations, setGroupConversations] = useState<ChatConversation[]>([]);
-  const [conversationLoading, setConversationLoading] = useState(false);
   const [secretInfo, setSecretInfo] = useState<ChatWebhook | null>(null);
 
-  const fetchBots = useCallback(async (p = page, ps = pageSize, activeKeyword = keywordRef.current) => {
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(activeKeyword.trim() ? { keyword: activeKeyword.trim() } : {}),
-      });
-      const res = await request.get<PaginatedResponse<ChatWebhook>>(`/api/chat-bots?${query.toString()}`);
-      if (res.code === 0) {
-        setData(res.data);
-        setPage(res.data.page);
-        setPageSize(res.data.pageSize);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize, setPage, setPageSize]);
-
-  useEffect(() => {
-    void fetchBots();
-  }, [fetchBots]);
-
-  const loadGroupConversations = useCallback(async () => {
-    setConversationLoading(true);
-    try {
-      const res = await request.get<ChatConversation[]>('/api/chat/conversations');
-      if (res.code === 0) {
-        setGroupConversations(res.data.filter((item) => item.type === 'group'));
-      }
-    } finally {
-      setConversationLoading(false);
-    }
-  }, []);
+  const listQuery = useChatBotList({
+    page,
+    pageSize,
+    keyword: submittedKeyword.trim() || undefined,
+  });
+  const data = listQuery.data ?? null;
+  const groupConversationsQuery = useChatBotGroupConversations(modalVisible);
+  const groupConversations = useMemo(() => groupConversationsQuery.data ?? [], [groupConversationsQuery.data]);
+  const saveMutation = useSaveChatBot();
+  const regenerateMutation = useRegenerateChatBotToken();
+  const deleteMutation = useDeleteChatBot();
 
   const conversationOptions = useMemo(() => {
     const options = groupConversations.map((conv) => ({
@@ -140,19 +120,20 @@ export default function ChatBotsPage() {
 
   function handleSearch() {
     setPage(1);
-    void fetchBots(1, pageSize, keyword);
+    setSubmittedKeyword(draftKeyword);
+    void queryClient.invalidateQueries({ queryKey: chatBotKeys.lists });
   }
 
   function handleReset() {
-    setKeyword('');
+    setDraftKeyword('');
+    setSubmittedKeyword('');
     setPage(1);
-    void fetchBots(1, pageSize, '');
+    void queryClient.invalidateQueries({ queryKey: chatBotKeys.lists });
   }
 
   function openCreateModal() {
     setEditingBot(null);
     setModalVisible(true);
-    void loadGroupConversations();
   }
 
   function openEditModal(row: ChatWebhook) {
@@ -172,7 +153,7 @@ export default function ChatBotsPage() {
     try {
       values = await formApi.current.validate();
     } catch {
-      return;
+      throw new Error('validation');
     }
 
     const name = values.name.trim();
@@ -188,41 +169,29 @@ export default function ChatBotsPage() {
       return;
     }
 
-    setSubmitting(true);
-    try {
-      const res = editingBot
-        ? await request.patch<ChatWebhook>(`/api/chat-bots/${editingBot.id}`, commonPayload)
-        : await request.post<ChatWebhook>('/api/chat-bots', {
+    const result = await saveMutation.mutateAsync({
+      id: editingBot?.id,
+      values: editingBot
+        ? commonPayload
+        : {
             ...commonPayload,
             conversationId: Number(values.conversationId),
-          });
-
-      if (res.code === 0) {
-        Toast.success(editingBot ? '更新成功' : '创建成功');
-        closeFormModal();
-        if (!editingBot) setSecretInfo(res.data);
-        void fetchBots();
-      }
-    } finally {
-      setSubmitting(false);
-    }
+          },
+    });
+    Toast.success(editingBot ? '更新成功' : '创建成功');
+    closeFormModal();
+    if (!editingBot) setSecretInfo(result);
   }
 
   async function handleRegenerate(row: ChatWebhook) {
-    const res = await request.post<ChatWebhook>(`/api/chat-bots/${row.id}/regenerate-token`, {});
-    if (res.code === 0) {
-      Toast.success('令牌已重置');
-      setSecretInfo(res.data);
-      void fetchBots();
-    }
+    const result = await regenerateMutation.mutateAsync(row.id);
+    Toast.success('令牌已重置');
+    setSecretInfo(result);
   }
 
   async function handleDelete(id: number) {
-    const res = await request.delete<null>(`/api/chat-bots/${id}`);
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      void fetchBots();
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   }
 
   const columns: ColumnProps<ChatWebhook>[] = [
@@ -334,8 +303,8 @@ export default function ChatBotsPage() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索机器人名称"
-              value={keyword}
-              onChange={setKeyword}
+              value={draftKeyword}
+              onChange={setDraftKeyword}
               onEnterPress={handleSearch}
               style={{ width: 260 }}
               showClear
@@ -352,8 +321,8 @@ export default function ChatBotsPage() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索机器人名称"
-              value={keyword}
-              onChange={setKeyword}
+              value={draftKeyword}
+              onChange={setDraftKeyword}
               onEnterPress={handleSearch}
               style={{ width: 260 }}
               showClear
@@ -372,10 +341,10 @@ export default function ChatBotsPage() {
         bordered
         columns={columns}
         dataSource={data?.list ?? []}
-        loading={loading}
-        onRefresh={() => void fetchBots()}
-        refreshLoading={loading}
-        pagination={buildPagination(data?.total ?? 0, fetchBots)}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
+        pagination={buildPagination(data?.total ?? 0)}
         rowKey="id"
         size="small"
         empty="暂无数据"
@@ -386,7 +355,7 @@ export default function ChatBotsPage() {
         visible={modalVisible}
         onCancel={closeFormModal}
         onOk={handleSubmit}
-        okButtonProps={{ loading: submitting }}
+        okButtonProps={{ loading: saveMutation.isPending }}
         width={520}
         closeOnEsc
       >
@@ -405,7 +374,7 @@ export default function ChatBotsPage() {
             placeholder="请选择目标群聊"
             rules={[{ required: true, message: '请选择目标会话' }]}
             optionList={conversationOptions}
-            loading={conversationLoading}
+            loading={groupConversationsQuery.isFetching}
             disabled={!!editingBot}
             filter
             style={{ width: '100%' }}

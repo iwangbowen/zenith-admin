@@ -9,21 +9,28 @@
  * 角色通过 /api/roles/all 加载为 Select multiple。
  * 封面图通过 /api/files/upload-one 上传得到 URL。
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button, Col, Form, Input, Row, Select, Space, Toast, Typography, Upload, withField } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { ImagePlus, Save, Send, Settings2, Trash2, Users } from 'lucide-react';
 import type {
   ChannelAdmin, ChannelMessage, ChannelMessageTemplate, ChannelMessageType, ChannelPublishAudienceMode,
-  ChannelSendMode, ChatCard, ChatMessageExtra, Role,
+  ChannelSendMode, ChatCard, ChatMessageExtra,
 } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { config } from '@/config';
 import { formatDateTimeForApi } from '@/utils/date';
 import { AppModal } from '@/components/AppModal';
 import UserSelect from '@/components/UserSelect';
 import DepartmentSelect from '@/components/DepartmentSelect';
 import { ChannelTemplateDrawer } from './ChannelTemplateDrawer';
+import { useAllRoles } from '@/hooks/queries/roles';
+import {
+  useAudienceEstimate,
+  useChannelTemplates,
+  usePublishChannelMessage,
+  useSaveChannelTemplate,
+  useTestSendChannelMessage,
+} from '@/hooks/queries/channels';
 
 const FormUserSelect = withField(UserSelect);
 const FormDeptSelect = withField(DepartmentSelect);
@@ -83,29 +90,26 @@ function toDateValue(v: string | null | undefined): Date | undefined {
 
 export function ChannelPublishModal({ channel, editing, visible, onClose, onSuccess }: Readonly<Props>) {
   const [formApi, setFormApi] = useState<FormApi<PublishFormValues> | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const [coverUrl, setCoverUrl] = useState<string>('');
   const [imageUrl, setImageUrl] = useState<string>('');
-  const [roleOptions, setRoleOptions] = useState<Array<{ label: string; value: number }>>([]);
   const [modalType, setModalType] = useState<ChannelMessageType>('text');
 
   const [audienceSel, setAudienceSel] = useState<AudienceSelection>({
     mode: 'all', userIds: [], departmentIds: [], roleIds: [],
   });
   const [estimateCount, setEstimateCount] = useState<number | null>(null);
-  const [estimating, setEstimating] = useState(false);
 
-  const [templates, setTemplates] = useState<ChannelMessageTemplate[]>([]);
   const [tplDrawerVisible, setTplDrawerVisible] = useState(false);
   const [saveTplVisible, setSaveTplVisible] = useState(false);
   const [saveTplName, setSaveTplName] = useState('');
-  const [savingTpl, setSavingTpl] = useState(false);
-  const [testing, setTesting] = useState(false);
-
-  const fetchTemplates = useCallback(async () => {
-    const res = await request.get<ChannelMessageTemplate[]>('/api/channels/templates', { silent: true });
-    if (res.code === 0 && res.data) setTemplates(res.data);
-  }, []);
+  const rolesQuery = useAllRoles({ enabled: visible });
+  const templatesQuery = useChannelTemplates(visible);
+  const templates = templatesQuery.data ?? [];
+  const roleOptions = useMemo(() => (rolesQuery.data ?? []).map((r) => ({ label: r.name, value: r.id })), [rolesQuery.data]);
+  const publishMutation = usePublishChannelMessage();
+  const testSendMutation = useTestSendChannelMessage();
+  const saveTemplateMutation = useSaveChannelTemplate();
+  const audienceEstimateMutation = useAudienceEstimate();
 
   const card = editing?.extra?.card ?? null;
   const initSendMode: ChannelSendMode = editing?.status === 'draft'
@@ -119,13 +123,7 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
     setModalType(editing?.type === 'news' ? 'news' : editing?.type === 'image' ? 'image' : 'text');
     setAudienceSel({ mode: 'all', userIds: [], departmentIds: [], roleIds: [] });
     setEstimateCount(null);
-    request.get<Role[]>('/api/roles/all', { silent: true }).then((res) => {
-      if (res.code === 0 && res.data) {
-        setRoleOptions(res.data.map((r) => ({ label: r.name, value: r.id })));
-      }
-    });
-    void fetchTemplates();
-  }, [visible, editing?.id, editing?.type, editing?.content, card?.cover, fetchTemplates]);
+  }, [visible, editing?.id, editing?.type, editing?.content, card?.cover]);
 
   const audienceKey = JSON.stringify(audienceSel);
   useEffect(() => {
@@ -144,18 +142,12 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
     if (mode === 'departments') audience.departmentIds = departmentIds;
     if (mode === 'roles') audience.roleIds = roleIds;
 
-    let cancelled = false;
     const timer = setTimeout(() => {
-      setEstimating(true);
-      request.post<{ count: number }>('/api/channels/audience-estimate', { audience }, { silent: true })
-        .then((res) => {
-          if (cancelled) return;
-          setEstimateCount(res.code === 0 && res.data ? res.data.count : null);
-        })
-        .catch(() => { if (!cancelled) setEstimateCount(null); })
-        .finally(() => { if (!cancelled) setEstimating(false); });
+      audienceEstimateMutation.mutateAsync(audience as unknown as Record<string, unknown>)
+        .then((res) => setEstimateCount(res.count))
+        .catch(() => setEstimateCount(null));
     }, 300);
-    return () => { cancelled = true; clearTimeout(timer); };
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, audienceKey]);
 
@@ -248,21 +240,12 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
     const body = buildBody(values);
     if (!body) return;
 
-    setSubmitting(true);
-    try {
-      const res = editing
-        ? await request.put(`/api/channels/admin/messages/${editing.id}`, body)
-        : await request.post(`/api/channels/${channel.id}/publish`, body);
-      if (res.code === 0) {
-        const okMsg = values.sendMode === 'draft' ? '已保存草稿'
-          : values.sendMode === 'scheduled' ? '已设置定时发送' : '已群发';
-        Toast.success(editing ? '已保存' : okMsg);
-        onClose();
-        onSuccess();
-      }
-    } finally {
-      setSubmitting(false);
-    }
+    await publishMutation.mutateAsync({ channelId: channel.id, id: editing?.id, values: body });
+    const okMsg = values.sendMode === 'draft' ? '已保存草稿'
+      : values.sendMode === 'scheduled' ? '已设置定时发送' : '已群发';
+    Toast.success(editing ? '已保存' : okMsg);
+    onClose();
+    onSuccess();
   };
 
   const handleTestSend = async () => {
@@ -276,13 +259,8 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
     const body = buildBody(values);
     if (!body) return;
 
-    setTesting(true);
-    try {
-      const res = await request.post(`/api/channels/${channel.id}/test-send`, body);
-      if (res.code === 0) Toast.success('测试消息已发送，请在消息中心查看');
-    } finally {
-      setTesting(false);
-    }
+    await testSendMutation.mutateAsync({ channelId: channel.id, values: body });
+    Toast.success('测试消息已发送，请在消息中心查看');
   };
 
   /** 把当前表单内容抽取为模板内容（不含受众/发送方式） */
@@ -355,18 +333,10 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
     if (tpl.type === 'image' && !tpl.content) { Toast.error('请先上传图片'); return; }
     if (tpl.type === 'news' && !tpl.title) { Toast.error('图文模板请先填写标题'); return; }
 
-    setSavingTpl(true);
-    try {
-      const res = await request.post('/api/channels/templates', { name, ...tpl });
-      if (res.code === 0) {
-        Toast.success('已存为模板');
-        setSaveTplVisible(false);
-        setSaveTplName('');
-        void fetchTemplates();
-      }
-    } finally {
-      setSavingTpl(false);
-    }
+    await saveTemplateMutation.mutateAsync({ values: { name, ...tpl } });
+    Toast.success('已存为模板');
+    setSaveTplVisible(false);
+    setSaveTplName('');
   };
 
   const titleText = editing ? '编辑消息' : `向「${channel?.name ?? ''}」群发`;
@@ -380,15 +350,15 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
       <Button
         icon={<Send size={14} />}
-        loading={testing}
-        disabled={submitting}
+        loading={testSendMutation.isPending}
+        disabled={publishMutation.isPending}
         onClick={() => void handleTestSend()}
       >
         测试发送
       </Button>
       <Space>
         <Button onClick={onClose}>取消</Button>
-        <Button type="primary" loading={submitting} onClick={() => void handleSubmit()}>
+        <Button type="primary" loading={publishMutation.isPending} onClick={() => void handleSubmit()}>
           {editing ? '保存' : '提交'}
         </Button>
       </Space>
@@ -401,7 +371,7 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
       title={titleText}
       visible={visible}
       onCancel={onClose}
-      confirmLoading={submitting}
+      confirmLoading={publishMutation.isPending}
       footer={footer}
       width={modalType === 'news' ? 900 : 620}
     >
@@ -477,7 +447,7 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
                       <Space align="center" style={{ color: 'var(--semi-color-text-2)' }}>
                         <Users size={14} />
                         <Typography.Text type="tertiary" size="small">
-                          {estimating
+                          {audienceEstimateMutation.isPending
                             ? '计算中...'
                             : <>预计触达 <Typography.Text strong>{estimateCount ?? '-'}</Typography.Text> 人</>}
                         </Typography.Text>
@@ -624,7 +594,7 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
       onCancel={() => setSaveTplVisible(false)}
       onOk={() => void handleSaveTemplate()}
       okText="保存"
-      confirmLoading={savingTpl}
+      confirmLoading={saveTemplateMutation.isPending}
       width={420}
     >
       <Input
@@ -639,7 +609,7 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
     <ChannelTemplateDrawer
       visible={tplDrawerVisible}
       onClose={() => setTplDrawerVisible(false)}
-      onChanged={fetchTemplates}
+      onChanged={() => void templatesQuery.refetch()}
     />
     </>
   );

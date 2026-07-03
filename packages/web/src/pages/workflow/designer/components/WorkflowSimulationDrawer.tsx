@@ -6,12 +6,12 @@ import { Banner, Button, Input, Select, SideSheet, Space, Switch, Tag, TextArea,
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { AlertTriangle, Bookmark, Bug, CheckCircle2, ChevronLeft, ChevronRight, CircleDashed, Clock, FastForward, GitCompare, Keyboard, ListChecks, Minus, PanelRightClose, Pause, Play, Plus, RotateCcw, RotateCw, Save, Send, SlidersHorizontal, Trash2, Wand2, XCircle } from 'lucide-react';
 import type { WorkflowFlowData, WorkflowFormField, WorkflowSimulationCase, WorkflowSimulationDecision, WorkflowSimulationHealthIssue, WorkflowSimulationResult } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { formatDateForApi } from '@/utils/date';
 import AppModal from '@/components/AppModal';
 import WorkflowFormRenderer from './WorkflowFormRenderer';
 import FlowRenderer from './FlowRenderer';
 import type { FlowBranch, FlowNode, FlowProcess, NodeRuntimeInfo } from '../types';
+import { useDeleteWorkflowSimulationCase, useSaveWorkflowSimulationCase, useWorkflowDesignerSimulation, useWorkflowSimulationCases } from '@/hooks/queries/workflow-designer';
 
 interface UserOption {
   id: number;
@@ -68,6 +68,7 @@ const BLOCK_META: Record<'humanTask' | 'delay' | 'external' | 'subProcess' | 'bl
   subProcess: { label: '子流程', color: 'violet' },
   blocked: { label: '阻塞', color: 'red' },
 };
+const EMPTY_SIMULATION_CASES: WorkflowSimulationCase[] = [];
 
 /** 分钟 → 人类可读时长 */
 function formatSimDuration(min: number): string {
@@ -367,7 +368,6 @@ export default function WorkflowSimulationDrawer({
   const [formData, setFormData] = useState<Record<string, unknown>>(() => defaultFormDataFromFields(formFields));
   const [formRenderKey, setFormRenderKey] = useState(0);
   const [jsonDraft, setJsonDraft] = useState('{}');
-  const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<WorkflowSimulationResult | null>(null);
   const [previousResult, setPreviousResult] = useState<WorkflowSimulationResult | null>(null);
   const [activeStep, setActiveStep] = useState(0);
@@ -375,14 +375,19 @@ export default function WorkflowSimulationDrawer({
   const [decisions, setDecisions] = useState<WorkflowSimulationDecision[]>([]);
   const [breakpoints, setBreakpoints] = useState<Set<string>>(new Set());
   const [selectedBranch, setSelectedBranch] = useState<SelectedSimulationBranch | null>(null);
-  const [savedCases, setSavedCases] = useState<WorkflowSimulationCase[]>([]);
   const [selectedCaseId, setSelectedCaseId] = useState<number | undefined>(undefined);
   const [saveCaseModalVisible, setSaveCaseModalVisible] = useState(false);
   const [caseName, setCaseName] = useState('');
-  const [caseSaving, setCaseSaving] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [debugMode, setDebugMode] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(true);
+  const simulationMutation = useWorkflowDesignerSimulation();
+  const casesQuery = useWorkflowSimulationCases(definitionId, visible);
+  const saveCaseMutation = useSaveWorkflowSimulationCase();
+  const deleteCaseMutation = useDeleteWorkflowSimulationCase(definitionId);
+  const savedCases = casesQuery.data ?? EMPTY_SIMULATION_CASES;
+  const submitting = simulationMutation.isPending;
+  const caseSaving = saveCaseMutation.isPending;
 
   useEffect(() => () => {
     if (replayTimer.current !== null) window.clearInterval(replayTimer.current);
@@ -415,7 +420,7 @@ export default function WorkflowSimulationDrawer({
     if (!canvas) return;
     const target = canvas.querySelector<HTMLElement>(`[data-fd-node-key="${cssAttrValue(currentItem.nodeKey)}"]`);
     if (target) keepNodeVisibleInCanvas(canvas, target);
-  }, [currentItem?.nodeKey, currentStep, visible]);
+  }, [currentItem, currentStep, visible]);
 
   // 键盘快捷键：←/→ 上一步/下一步，空格 播放/暂停（输入态不拦截）
   useEffect(() => {
@@ -508,10 +513,9 @@ export default function WorkflowSimulationDrawer({
     const values = overrideValues ?? await effectiveFormData();
     if (!values) return;
     const nextDecisions = overrideDecisions ?? decisions;
-    setSubmitting(true);
     stopReplay();
     try {
-      const res = await request.post<WorkflowSimulationResult>('/api/workflows/definitions/simulate', {
+      const nextResult = await simulationMutation.mutateAsync({
         definitionId: definitionId ?? undefined,
         flowData,
         formData: values,
@@ -524,18 +528,16 @@ export default function WorkflowSimulationDrawer({
           expandSubProcess: false,
         },
       });
-      if (res.code === 0 && res.data) {
-        if (result) setPreviousResult(result);
-        setResult(res.data);
-        setFormData(values);
-        setDecisions(nextDecisions);
-        setActiveStep(res.data.timeline.length > 0 ? 1 : 0);
-        setSelectedBranch(null);
-        setInspectorOpen(true);
-        Toast.success(toastText);
-      }
-    } finally {
-      setSubmitting(false);
+      if (result) setPreviousResult(result);
+      setResult(nextResult);
+      setFormData(values);
+      setDecisions(nextDecisions);
+      setActiveStep(nextResult.timeline.length > 0 ? 1 : 0);
+      setSelectedBranch(null);
+      setInspectorOpen(true);
+      Toast.success(toastText);
+    } catch {
+      // request 层负责错误提示
     }
   };
 
@@ -667,12 +669,6 @@ export default function WorkflowSimulationDrawer({
     moveStep(index >= 0 ? index + 1 : totalSteps);
   };
 
-  const loadCases = async () => {
-    if (!definitionId) { setSavedCases([]); return; }
-    const res = await request.get<WorkflowSimulationCase[]>(`/api/workflows/simulation-cases?definitionId=${definitionId}`, { silent: true });
-    if (res.code === 0) setSavedCases(res.data ?? []);
-  };
-
   const openSaveCase = async () => {
     if (!definitionId) { Toast.warning('请先保存流程后再保存用例'); return; }
     const values = await effectiveFormData();
@@ -687,21 +683,15 @@ export default function WorkflowSimulationDrawer({
     if (!name) { Toast.warning('请输入用例名称'); return; }
     const values = await effectiveFormData();
     if (!values) return;
-    setCaseSaving(true);
     try {
-      const res = await request.post<WorkflowSimulationCase>('/api/workflows/simulation-cases', {
+      const saved = await saveCaseMutation.mutateAsync({
         definitionId, name, starterUserId: starterUserId ?? null, formData: values, decisions,
       });
-      if (res.code === 0) {
-        Toast.success('仿真用例已保存');
-        setSaveCaseModalVisible(false);
-        setSelectedCaseId(res.data.id);
-        await loadCases();
-      } else {
-        Toast.warning(res.message || '保存失败');
-      }
-    } finally {
-      setCaseSaving(false);
+      Toast.success('仿真用例已保存');
+      setSaveCaseModalVisible(false);
+      setSelectedCaseId(saved.id);
+    } catch {
+      // request 层负责错误提示
     }
   };
 
@@ -723,19 +713,14 @@ export default function WorkflowSimulationDrawer({
 
   const deleteCase = async () => {
     if (!selectedCaseId) return;
-    const res = await request.delete(`/api/workflows/simulation-cases/${selectedCaseId}`);
-    if (res.code === 0) {
+    try {
+      await deleteCaseMutation.mutateAsync(selectedCaseId);
       Toast.success('已删除用例');
       setSelectedCaseId(undefined);
-      await loadCases();
+    } catch {
+      // request 层负责错误提示
     }
   };
-
-  // 打开抽屉时从后端拉取该定义已保存的仿真用例
-  useEffect(() => {
-    if (visible) void loadCases();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, definitionId]);
 
   const simulationNodeRuntime = useMemo(() => {
     if (!result || currentStep <= 0) return undefined;

@@ -8,6 +8,7 @@
  *  - 容器操作：启动 / 停止 / 重启 / logs / stats / attach shell
  */
 import { useState, useCallback, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Tree, Typography, Button, Toast, Spin, Dropdown, Modal, Space } from '@douyinfe/semi-ui';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import {
@@ -26,6 +27,8 @@ import {
 import { Icon } from '@iconify/react';
 import { request } from '@/utils/request';
 import { getFileIcon } from './fileIcons';
+import { fetchDockerDir, useDockerExplorerAction } from '@/hooks/queries/terminal-files';
+import { useDockerContainers, useDockerFetchStats } from '@/hooks/queries/docker';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -161,10 +164,12 @@ function patchTreeChildren(nodes: DockerTreeNode[], key: string, children: Docke
 // ─── Component ─────────────────────────────────────────────────────────────
 
 export default function DockerExplorer({ active, onOpenFile, onAttachShell }: DockerExplorerProps) {
+  const queryClient = useQueryClient();
   const [treeData, setTreeData] = useState<DockerTreeNode[]>([]);
-  const [loading, setLoading] = useState(false);
   const [dockerAvailable, setDockerAvailable] = useState<boolean | null>(null);
-  const [actionKey, setActionKey] = useState<string | null>(null);
+  const containersQuery = useDockerContainers({ enabled: active, silent: true });
+  const actionMutation = useDockerExplorerAction();
+  const statsMutation = useDockerFetchStats();
   const [logsModal, setLogsModal] = useState<{
     visible: boolean;
     container: ContainerInfo | null;
@@ -179,16 +184,8 @@ export default function DockerExplorer({ active, onOpenFile, onAttachShell }: Do
     loading: boolean;
   }>({ visible: false, container: null, stats: null, loading: false });
 
-  const fetchContainers = useCallback(async () => {
-    setLoading(true);
-    const res = await request.get<ContainerInfo[]>('/api/docker', { silent: true });
-    setLoading(false);
-    if (res.code !== 0 || !res.data) {
-      setDockerAvailable(false);
-      return;
-    }
+  const applyContainers = useCallback((containers: ContainerInfo[]) => {
     setDockerAvailable(true);
-    const containers = res.data;
 
     // 按 Compose 项目分组
     const groups: Record<string, ContainerInfo[]> = {};
@@ -223,30 +220,26 @@ export default function DockerExplorer({ active, onOpenFile, onAttachShell }: Do
   }, []);
 
   useEffect(() => {
-    if (active) void fetchContainers();
-  }, [active, fetchContainers]);
+    if (containersQuery.isError) {
+      setDockerAvailable(false);
+      return;
+    }
+    if (containersQuery.data) applyContainers(containersQuery.data);
+  }, [applyContainers, containersQuery.data, containersQuery.isError]);
 
   const runContainerAction = useCallback(async (
     container: ContainerInfo,
     action: 'start' | 'stop' | 'restart',
   ) => {
     const name = containerName(container);
-    setActionKey(`${container.id}:${action}`);
-    try {
-      const res = await request.post(`/api/docker/${container.id}/${action}`, {});
-      if (res.code === 0) {
-        const successText: Record<typeof action, string> = {
-          start: '启动成功',
-          stop: '停止成功',
-          restart: '重启成功',
-        };
-        Toast.success({ content: `${name} ${successText[action]}`, duration: 2 });
-        await fetchContainers();
-      }
-    } finally {
-      setActionKey(null);
-    }
-  }, [fetchContainers]);
+    await actionMutation.mutateAsync({ id: container.id, action });
+    const successText: Record<typeof action, string> = {
+      start: '启动成功',
+      stop: '停止成功',
+      restart: '重启成功',
+    };
+    Toast.success({ content: `${name} ${successText[action]}`, duration: 2 });
+  }, [actionMutation]);
 
   const confirmContainerAction = useCallback((container: ContainerInfo, action: 'stop' | 'restart') => {
     const name = containerName(container);
@@ -272,13 +265,17 @@ export default function DockerExplorer({ active, onOpenFile, onAttachShell }: Do
 
   const fetchContainerStats = useCallback(async (container: ContainerInfo) => {
     setStatsModal({ visible: true, container, stats: null, loading: true });
-    const res = await request.get<ContainerStats>(`/api/docker/${container.id}/stats`);
-    setStatsModal((prev) => (
-      prev.container?.id === container.id
-        ? { ...prev, stats: res.code === 0 && res.data ? res.data : null, loading: false }
-        : prev
-    ));
-  }, []);
+    try {
+      const res = await statsMutation.mutateAsync(container.id);
+      setStatsModal((prev) => (
+        prev.container?.id === container.id
+          ? { ...prev, stats: res as ContainerStats, loading: false }
+          : prev
+      ));
+    } finally {
+      setStatsModal((prev) => (prev.container?.id === container.id ? { ...prev, loading: false } : prev));
+    }
+  }, [statsMutation]);
 
   const loadData = useCallback(async (node: DockerTreeNode): Promise<void> => {
     const key = String(node.key ?? '');
@@ -287,8 +284,8 @@ export default function DockerExplorer({ active, onOpenFile, onAttachShell }: Do
       const containerId = key.slice('container:'.length);
       if (!containerId) return;
       try {
-        const res = await request.get<FileEntry[]>(`/api/docker/${containerId}/files?path=/`, { silent: true });
-        const children = res.code === 0 && res.data ? buildFileNodes(res.data, containerId) : [];
+        const res = await fetchDockerDir(queryClient, containerId, '/', { silent: true });
+        const children = buildFileNodes(res as FileEntry[], containerId);
         setTreeData((prev) => patchTreeChildren(prev, key, children));
       } catch {
         setTreeData((prev) => patchTreeChildren(prev, key, []));
@@ -302,17 +299,14 @@ export default function DockerExplorer({ active, onOpenFile, onAttachShell }: Do
       const filePath = withoutPrefix.slice(firstColon + 1);
       if (!containerId || !filePath) return;
       try {
-        const res = await request.get<FileEntry[]>(
-          `/api/docker/${containerId}/files?path=${encodeURIComponent(filePath)}`,
-          { silent: true },
-        );
-        const children = res.code === 0 && res.data ? buildFileNodes(res.data, containerId) : [];
+        const res = await fetchDockerDir(queryClient, containerId, filePath, { silent: true });
+        const children = buildFileNodes(res as FileEntry[], containerId);
         setTreeData((prev) => patchTreeChildren(prev, key, children));
       } catch {
         setTreeData((prev) => patchTreeChildren(prev, key, []));
       }
     }
-  }, []);
+  }, [queryClient]);
 
   const handleSelect = useCallback((keys: unknown) => {
     const selectedKey = Array.isArray(keys) ? (keys[0] as string | undefined) : (typeof keys === 'string' ? keys : undefined);
@@ -358,9 +352,9 @@ export default function DockerExplorer({ active, onOpenFile, onAttachShell }: Do
 
   const renderContainerMenu = useCallback((container: ContainerInfo) => {
     const isRunning = container.state === 'running';
-    const isStarting = actionKey === `${container.id}:start`;
-    const isStopping = actionKey === `${container.id}:stop`;
-    const isRestarting = actionKey === `${container.id}:restart`;
+    const isStarting = actionMutation.isPending && actionMutation.variables?.id === container.id && actionMutation.variables.action === 'start';
+    const isStopping = actionMutation.isPending && actionMutation.variables?.id === container.id && actionMutation.variables.action === 'stop';
+    const isRestarting = actionMutation.isPending && actionMutation.variables?.id === container.id && actionMutation.variables.action === 'restart';
     return (
       <Dropdown.Menu>
         <Dropdown.Item
@@ -401,7 +395,7 @@ export default function DockerExplorer({ active, onOpenFile, onAttachShell }: Do
         </Dropdown.Item>
       </Dropdown.Menu>
     );
-  }, [actionKey, confirmContainerAction, fetchContainerLogs, fetchContainerStats, runContainerAction]);
+  }, [actionMutation.isPending, actionMutation.variables, confirmContainerAction, fetchContainerLogs, fetchContainerStats, runContainerAction]);
 
   const renderLabel = useCallback((label: React.ReactNode, data: DockerTreeNode) => {
     if (data.nodeType === 'group') {
@@ -490,14 +484,14 @@ export default function DockerExplorer({ active, onOpenFile, onAttachShell }: Do
         <Button
           size="small" theme="borderless" type="tertiary"
           icon={<RefreshCw size={13} />}
-          loading={loading}
-          onClick={() => void fetchContainers()}
+          loading={containersQuery.isFetching}
+          onClick={() => void containersQuery.refetch()}
         />
       </div>
 
       {/* 树 */}
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 0' }}>
-        {loading && treeData.length === 0
+        {containersQuery.isFetching && treeData.length === 0
           ? <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}><Spin size="small" /></div>
           : (
             <Tree
@@ -510,7 +504,7 @@ export default function DockerExplorer({ active, onOpenFile, onAttachShell }: Do
             />
           )
         }
-        {!loading && dockerAvailable && treeData.length === 0 && (
+        {!containersQuery.isFetching && dockerAvailable && treeData.length === 0 && (
           <div style={{ padding: '24px 16px', textAlign: 'center' }}>
             <Typography.Text type="tertiary" size="small">未找到 Docker 容器</Typography.Text>
           </div>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import type { RegionSelectProps } from './RegionSelect';
 import RegionSelect from './RegionSelect';
@@ -12,7 +13,16 @@ vi.mock('@/utils/request', () => ({
 }));
 
 function renderRegionSelect(props: RegionSelectProps = {}) {
-  return render(<RegionSelect {...props} />);
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+    },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <RegionSelect {...props} />
+    </QueryClientProvider>,
+  );
 }
 
 async function waitForRegionsLoaded(container: HTMLElement) {

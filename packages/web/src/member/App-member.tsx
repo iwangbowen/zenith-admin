@@ -1,7 +1,9 @@
 import { type ReactNode } from 'react';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Spin } from '@douyinfe/semi-ui';
 import { MemberAuthProvider, useMemberAuth } from './hooks/useMemberAuth';
+import { memberQueryClient } from './lib/member-query';
 import PublicLayout from './layouts/PublicLayout';
 import MemberLayout from './layouts/MemberLayout';
 import LandingPage from './pages/landing/LandingPage';
@@ -85,10 +87,12 @@ function AppRoutes() {
 
 export default function MemberApp() {
   return (
-    <MemberAuthProvider>
-      <HashRouter>
-        <AppRoutes />
-      </HashRouter>
-    </MemberAuthProvider>
+    <QueryClientProvider client={memberQueryClient}>
+      <MemberAuthProvider>
+        <HashRouter>
+          <AppRoutes />
+        </HashRouter>
+      </MemberAuthProvider>
+    </QueryClientProvider>
   );
 }

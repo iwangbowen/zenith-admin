@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RotateCcw, Search } from 'lucide-react';
-import type { WorkflowInstance, PaginatedResponse } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { WorkflowInstance } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -11,6 +11,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import WorkflowInstanceDetailSheet from '@/components/workflow/WorkflowInstanceDetailSheet';
 import { renderEllipsis } from '../../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
+import { useHandledWorkflowInstances, workflowInstanceKeys } from '@/hooks/queries/workflow-instances';
 
 type TagColor = 'amber' | 'blue' | 'green' | 'grey' | 'orange' | 'purple' | 'red';
 
@@ -29,47 +30,31 @@ const MY_TASK_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
 };
 
 export default function HandledPage() {
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<PaginatedResponse<WorkflowInstance> | null>(null);
+  const queryClient = useQueryClient();
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [keyword, setKeyword] = useState('');
-  const keywordRef = useRef('');
-  keywordRef.current = keyword;
+  const [draftKeyword, setDraftKeyword] = useState('');
+  const [submittedKeyword, setSubmittedKeyword] = useState('');
   const [detailVisible, setDetailVisible] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
-  const fetchList = useCallback(async (p = page, ps = pageSize, kw?: string) => {
-    const activeKeyword = kw ?? keywordRef.current;
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(activeKeyword ? { keyword: activeKeyword } : {}),
-      }).toString();
-      const res = await request.get<PaginatedResponse<WorkflowInstance>>(`/api/workflows/instances/handled-mine?${query}`);
-      if (res.code === 0) {
-        setData(res.data);
-        setPage(res.data.page);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize]);
-
-  useEffect(() => {
-    void fetchList();
-  }, [fetchList]);
+  const listQuery = useHandledWorkflowInstances({
+    page,
+    pageSize,
+    keyword: submittedKeyword || undefined,
+  });
+  const data = listQuery.data;
 
   const handleSearch = () => {
     setPage(1);
-    void fetchList(1);
+    setSubmittedKeyword(draftKeyword);
+    void queryClient.invalidateQueries({ queryKey: workflowInstanceKeys.lists });
   };
 
   const handleReset = () => {
-    setKeyword('');
+    setDraftKeyword('');
+    setSubmittedKeyword('');
     setPage(1);
-    void fetchList(1, pageSize, '');
+    void queryClient.invalidateQueries({ queryKey: workflowInstanceKeys.lists });
   };
 
   const openDetail = (id: number) => {
@@ -115,8 +100,8 @@ export default function HandledPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="搜索标题 / 流程名称"
-      value={keyword}
-      onChange={setKeyword}
+      value={draftKeyword}
+      onChange={setDraftKeyword}
       onEnterPress={handleSearch}
       showClear
       style={{ width: 220 }}
@@ -154,10 +139,10 @@ export default function HandledPage() {
         columns={columns}
         dataSource={data?.list ?? []}
         rowKey="id"
-        loading={loading}
-        pagination={buildPagination(data?.total ?? 0, fetchList)}
-        onRefresh={() => void fetchList()}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        pagination={buildPagination(data?.total ?? 0)}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
       />
       <WorkflowInstanceDetailSheet
         instanceId={selectedId}

@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button, Form, Input, Space, Spin, Toast, Modal, Switch, Tag, Row, Col,
 } from '@douyinfe/semi-ui';
@@ -9,11 +10,17 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
-import type { MonitorAlertRule, MonitorMetric, PaginatedResponse } from '@zenith/shared';
+import type { MonitorAlertRule, MonitorMetric } from '@zenith/shared';
+import {
+  monitorAlertKeys,
+  useDeleteMonitorAlert,
+  useMonitorAlertList,
+  useSaveMonitorAlert,
+  useToggleMonitorAlert,
+} from '@/hooks/queries/monitor-alerts';
 
 const METRIC_LABELS: Record<MonitorMetric, string> = {
   cpu: 'CPU 使用率', memory: '内存使用率', disk: '磁盘使用率', swap: 'Swap 使用率',
@@ -55,39 +62,22 @@ function formatThreshold(metric: MonitorMetric, value: number): string {
 
 export default function MonitorAlertsPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
 
-  const [data, setData] = useState<PaginatedResponse<MonitorAlertRule> | null>(null);
-  const [loading, setLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
+  const { page, pageSize, buildPagination } = usePagination();
+  const listQuery = useMonitorAlertList({ page, pageSize });
+  const data = listQuery.data ?? null;
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<MonitorAlertRule | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
 
   const canManage = hasPermission('system:monitor:alert:manage');
-
-  const fetchRules = useCallback(async (p = page, ps = pageSize) => {
-    setLoading(true);
-    try {
-      const res = await request.get<PaginatedResponse<MonitorAlertRule>>(`/api/monitor-alerts?page=${p}&pageSize=${ps}`);
-      if (res.code === 0) {
-        setData(res.data);
-        setPage(res.data.page);
-        setPageSize(res.data.pageSize);
-      }
-    } finally {
-      setLoading(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize]);
-
-  useEffect(() => {
-    void fetchRules();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const saveMutation = useSaveMonitorAlert();
+  const deleteMutation = useDeleteMonitorAlert();
+  const toggleMutation = useToggleMonitorAlert();
+  const togglingId = toggleMutation.isPending ? (toggleMutation.variables?.id ?? null) : null;
 
   const filtered = (data?.list ?? []).filter((r) => !keyword || r.name.toLowerCase().includes(keyword.toLowerCase()));
 
@@ -120,46 +110,22 @@ export default function MonitorAlertsPage() {
     } catch {
       throw new Error('validation');
     }
-    setSubmitting(true);
-    try {
-      const body = { ...values, webhookUrl: (values.webhookUrl as string) || null };
-      const res = editing
-        ? await request.put(`/api/monitor-alerts/${editing.id}`, body)
-        : await request.post('/api/monitor-alerts', body);
-      if (res.code === 0) {
-        Toast.success(editing ? '更新成功' : '创建成功');
-        closeModal();
-        void fetchRules();
-      } else {
-        throw new Error(res.message);
-      }
-    } finally {
-      setSubmitting(false);
-    }
+    const body = { ...values, webhookUrl: (values.webhookUrl as string) || null };
+    await saveMutation.mutateAsync({ id: editing?.id, values: body });
+    Toast.success(editing ? '更新成功' : '创建成功');
+    closeModal();
   }
 
   async function handleDelete(id: number) {
-    const res = await request.delete(`/api/monitor-alerts/${id}`);
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      void fetchRules();
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   }
 
   function handleToggle(record: MonitorAlertRule, checked: boolean) {
-    const run = async () => {
-      setTogglingIds((prev) => new Set(prev).add(record.id));
-      try {
-        const res = await request.patch(`/api/monitor-alerts/${record.id}/enabled`, { enabled: checked });
-        if (res.code === 0) {
-          Toast.success(checked ? '已启用' : '已停用');
-          void fetchRules();
-        }
-      } finally {
-        setTogglingIds((prev) => { const s = new Set(prev); s.delete(record.id); return s; });
-      }
-    };
-    void run();
+    toggleMutation.mutate(
+      { id: record.id, enabled: checked },
+      { onSuccess: () => Toast.success(checked ? '已启用' : '已停用') },
+    );
   }
 
   const columns: ColumnProps<MonitorAlertRule>[] = [
@@ -202,7 +168,7 @@ export default function MonitorAlertsPage() {
             : <Tag color="green" size="small">正常</Tag>}
           <Switch
             checked={r.enabled}
-            loading={togglingIds.has(r.id)}
+            loading={togglingId === r.id}
             disabled={!canManage}
             onChange={(c) => handleToggle(r, c)}
             size="small"
@@ -250,7 +216,7 @@ export default function MonitorAlertsPage() {
               showClear
               style={{ width: 220 }}
             />
-            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setKeyword(''); void fetchRules(); }}>重置</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setKeyword(''); void queryClient.invalidateQueries({ queryKey: monitorAlertKeys.lists }); }}>重置</Button>
             {canManage && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增规则</Button>}
           </>
         )}
@@ -268,7 +234,7 @@ export default function MonitorAlertsPage() {
           </>
         )}
         mobileActions={(
-          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setKeyword(''); void fetchRules(); }}>重置</Button>
+          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setKeyword(''); void queryClient.invalidateQueries({ queryKey: monitorAlertKeys.lists }); }}>重置</Button>
         )}
         actionTitle="告警规则操作"
       />
@@ -277,13 +243,13 @@ export default function MonitorAlertsPage() {
         bordered
         columns={columns}
         dataSource={filtered}
-        loading={loading}
+        loading={listQuery.isFetching}
         rowKey="id"
         size="small"
         empty="暂无告警规则"
-        onRefresh={() => void fetchRules()}
-        refreshLoading={loading}
-        pagination={buildPagination(data?.total ?? 0, fetchRules)}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
+        pagination={buildPagination(data?.total ?? 0)}
       />
 
       <AppModal
@@ -291,7 +257,7 @@ export default function MonitorAlertsPage() {
         visible={modalVisible}
         onOk={handleModalOk}
         onCancel={closeModal}
-        okButtonProps={{ loading: submitting }}
+        okButtonProps={{ loading: saveMutation.isPending }}
         width={660}
         closeOnEsc
       >

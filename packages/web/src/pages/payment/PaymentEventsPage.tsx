@@ -1,15 +1,16 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Select, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search, RotateCcw } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
-import type { PaginatedResponse, PaymentOutboxEvent } from '@zenith/shared';
+import type { PaymentOutboxEvent } from '@zenith/shared';
+import { paymentEventKeys, usePaymentEventList, useRedispatchPaymentEvent } from '@/hooks/queries/payment-events';
 
 const EVENT_STATUS_LABELS = { pending: '待处理', done: '已完成', failed: '失败' } as const satisfies Record<PaymentOutboxEvent['status'], string>;
 const EVENT_STATUS_COLOR = { pending: 'blue', done: 'green', failed: 'red' } as const satisfies Record<PaymentOutboxEvent['status'], string>;
@@ -19,54 +20,26 @@ const defaultSearch: SearchParams = { keyword: '', status: '', type: '' };
 
 export default function PaymentEventsPage() {
   const { hasPermission } = usePermission();
-  const [data, setData] = useState<PaginatedResponse<PaymentOutboxEvent> | null>(null);
-  const [loading, setLoading] = useState(false);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearch);
-  const searchRef = useRef<SearchParams>(defaultSearch);
-  searchRef.current = searchParams;
-  const [redispatchingIds, setRedispatchingIds] = useState<Set<number>>(new Set());
+  const queryClient = useQueryClient();
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearch);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearch);
+  const listQuery = usePaymentEventList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    status: submittedParams.status || undefined,
+    type: submittedParams.type || undefined,
+  });
+  const data = listQuery.data ?? null;
+  const redispatchMutation = useRedispatchPaymentEvent();
+  const redispatchingId = redispatchMutation.isPending ? (redispatchMutation.variables ?? null) : null;
 
-  const fetchList = useCallback(
-    async (p = page, ps = pageSize, params?: SearchParams) => {
-      const active = params ?? searchRef.current;
-      setLoading(true);
-      try {
-        const query: Record<string, string> = { page: String(p), pageSize: String(ps) };
-        if (active.keyword) query.keyword = active.keyword;
-        if (active.status) query.status = active.status;
-        if (active.type) query.type = active.type;
-        const res = await request.get<PaginatedResponse<PaymentOutboxEvent>>(`/api/payment/ops/events?${new URLSearchParams(query)}`);
-        if (res.code === 0) { setData(res.data); setPage(res.data.page); setPageSize(res.data.pageSize); }
-      } finally {
-        setLoading(false);
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [page, pageSize],
-  );
-
-  useEffect(() => {
-    void fetchList();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function handleSearch() { setPage(1); void fetchList(1, pageSize); }
-  function handleReset() { setSearchParams(defaultSearch); setPage(1); void fetchList(1, pageSize, defaultSearch); }
+  function handleSearch() { setPage(1); setSubmittedParams(draftParams); void queryClient.invalidateQueries({ queryKey: paymentEventKeys.lists }); }
+  function handleReset() { setDraftParams(defaultSearch); setSubmittedParams(defaultSearch); setPage(1); void queryClient.invalidateQueries({ queryKey: paymentEventKeys.lists }); }
 
   function handleRedispatch(record: PaymentOutboxEvent) {
-    setRedispatchingIds((prev) => new Set(prev).add(record.id));
-    request
-      .post<PaymentOutboxEvent>(`/api/payment/ops/events/${record.id}/redispatch`, {})
-      .then((res) => {
-        if (res.code === 0) {
-          Toast.success('重投成功');
-          void fetchList();
-        } else {
-          Toast.error(`重投失败：${res.message}`);
-        }
-      })
-      .finally(() => setRedispatchingIds((prev) => { const s = new Set(prev); s.delete(record.id); return s; }));
+    redispatchMutation.mutate(record.id, { onSuccess: () => Toast.success('重投成功') });
   }
 
   const columns: ColumnProps<PaymentOutboxEvent>[] = [
@@ -84,7 +57,7 @@ export default function PaymentEventsPage() {
         ...(r.status !== 'done' && hasPermission('payment:ops:manage') ? [{
           key: 'redispatch',
           label: '重投',
-          loading: redispatchingIds.has(r.id),
+          loading: redispatchingId === r.id,
           onClick: () => handleRedispatch(r),
         }] : []),
       ],
@@ -95,8 +68,8 @@ export default function PaymentEventsPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="订单号..."
-      value={searchParams.keyword}
-      onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))}
+      value={draftParams.keyword}
+      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
       showClear
       style={{ width: 200 }}
       onEnterPress={handleSearch}
@@ -106,8 +79,8 @@ export default function PaymentEventsPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="全部状态"
-      value={searchParams.status || undefined}
-      onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))}
+      value={draftParams.status || undefined}
+      onChange={(v) => setDraftParams((p) => ({ ...p, status: (v as string) ?? '' }))}
       showClear
       style={{ width: 120 }}
       optionList={Object.entries(EVENT_STATUS_LABELS).map(([value, label]) => ({ value, label }))}
@@ -118,8 +91,8 @@ export default function PaymentEventsPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="事件类型..."
-      value={searchParams.type}
-      onChange={(v) => setSearchParams((p) => ({ ...p, type: v }))}
+      value={draftParams.type}
+      onChange={(v) => setDraftParams((p) => ({ ...p, type: v }))}
       showClear
       style={{ width: 180 }}
       onEnterPress={handleSearch}
@@ -159,8 +132,8 @@ export default function PaymentEventsPage() {
       />
 
       <ConfigurableTable
-        bordered columns={columns} dataSource={data?.list ?? []} loading={loading} rowKey="id" size="small" empty="暂无数据"
-        onRefresh={() => void fetchList()} refreshLoading={loading} pagination={buildPagination(data?.total ?? 0, fetchList)}
+        bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
+        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(data?.total ?? 0)}
       />
     </div>
   );

@@ -1,8 +1,8 @@
-import { useEffect, useState, useCallback, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { Tabs, TabPane, Button, Toast, Spin, Tag } from '@douyinfe/semi-ui';
-import type { MemberCoupon, Coupon, PaginatedResponse } from '@zenith/shared';
-import { memberRequest } from '../../utils/member-request';
+import type { Coupon } from '@zenith/shared';
 import { MemberPage } from '../../components/MemberPage';
+import { useAvailableCoupons, useInfiniteMemberCoupons, useReceiveCoupon } from '../../hooks/queries';
 
 const STATUS_TAG: Record<string, ReactNode> = {
   unused: <Tag color="green">可用</Tag>,
@@ -62,30 +62,10 @@ function CouponCard({ coupon, disabled, extra, subDate }: Readonly<CouponCardPro
 }
 
 function MyCoupons() {
-  const [list, setList] = useState<MemberCoupon[]>([]);
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const query = useInfiniteMemberCoupons(10);
+  const list = query.data?.pages.flatMap((page) => page.list) ?? [];
 
-  const load = useCallback(async (p: number) => {
-    setLoading(true);
-    const res = await memberRequest.get<PaginatedResponse<MemberCoupon>>(
-      `/api/member/coupons?page=${p}&pageSize=10`,
-      { silent: true },
-    );
-    setLoading(false);
-    if (res.code === 0) {
-      setList((prev) => (p === 1 ? res.data.list : [...prev, ...res.data.list]));
-      setTotal(res.data.total);
-      setPage(p);
-    }
-  }, []);
-
-  useEffect(() => {
-    load(1);
-  }, [load]);
-
-  if (loading && list.length === 0) {
+  if (query.isFetching && list.length === 0) {
     return <div className="m-loading-wrap"><Spin /></div>;
   }
   if (list.length === 0) {
@@ -105,9 +85,9 @@ function MyCoupons() {
           />
         ) : null,
       )}
-      {list.length < total && (
+      {query.hasNextPage && (
         <div style={{ textAlign: 'center', paddingTop: 8 }}>
-          <Button theme="borderless" loading={loading} onClick={() => load(page + 1)}>
+          <Button theme="borderless" loading={query.isFetchingNextPage} onClick={() => query.fetchNextPage()}>
             加载更多
           </Button>
         </div>
@@ -117,32 +97,16 @@ function MyCoupons() {
 }
 
 function AvailableCoupons() {
-  const [list, setList] = useState<Coupon[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [receiving, setReceiving] = useState<number | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    const res = await memberRequest.get<Coupon[]>('/api/member/coupons/available', { silent: true });
-    setLoading(false);
-    if (res.code === 0) setList(res.data);
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const query = useAvailableCoupons();
+  const receiveMutation = useReceiveCoupon();
+  const list = query.data ?? [];
 
   const receive = async (couponId: number) => {
-    setReceiving(couponId);
-    const res = await memberRequest.post<MemberCoupon>('/api/member/coupons/receive', { couponId });
-    setReceiving(null);
-    if (res.code === 0) {
-      Toast.success('领取成功');
-      load();
-    }
+    await receiveMutation.mutateAsync(couponId);
+    Toast.success('领取成功');
   };
 
-  if (loading) {
+  if (query.isFetching) {
     return <div className="m-loading-wrap"><Spin /></div>;
   }
   if (list.length === 0) {
@@ -159,7 +123,7 @@ function AvailableCoupons() {
             <Button
               size="small"
               theme="solid"
-              loading={receiving === c.id}
+              loading={receiveMutation.isPending && receiveMutation.variables === c.id}
               onClick={() => receive(c.id)}
               style={{ background: 'var(--m-primary)' }}
             >

@@ -140,7 +140,7 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
           return null;
         }
       },
-    }), [def, initiatorSelectNodes, selectedInitiatorApprovers]);
+    }), [def, initiatorSelectNodes]);
 
     const getPreviewFormData = () => (
       def.formType === 'custom'

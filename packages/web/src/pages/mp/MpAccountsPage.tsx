@@ -1,14 +1,14 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button, Col, Form, Input, Modal, Row, Select, Spin, Tag,
   Toast, Switch, Typography, Banner,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search } from 'lucide-react';
-import type { PaginatedResponse, MpAccount, MpAccountType } from '@zenith/shared';
+import type { MpAccount, MpAccountType } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
-import { request } from '@/utils/request';
 import { config } from '@/config';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
@@ -16,6 +16,15 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
+import {
+  mpAccountKeys,
+  useDeleteMpAccount,
+  useMpAccountDetail,
+  useMpAccountList,
+  useSaveMpAccount,
+  useSetDefaultMpAccount,
+  useTestMpAccount,
+} from '@/hooks/queries/mp-accounts';
 
 const TYPE_OPTIONS = [
   { label: '订阅号', value: 'subscribe' },
@@ -44,112 +53,78 @@ function buildCallbackUrl(id: number): string {
 
 export default function MpAccountsPage() {
   const { hasPermission: can } = usePermission();
+  const queryClient = useQueryClient();
   const { items: statusItems } = useDictItems('common_status');
 
-  const [loading, setLoading] = useState(false);
-  const [list, setList] = useState<MpAccount[]>([]);
-  const [total, setTotal] = useState(0);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
+  const { page, pageSize, setPage, buildPagination } = usePagination();
 
   interface SearchParams { keyword: string; filterType: MpAccountType | undefined; filterStatus: string | undefined; }
   const defaultSearchParams: SearchParams = { keyword: '', filterType: undefined, filterStatus: undefined };
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<MpAccount | null>(null);
-  const [modalDetailLoading, setModalDetailLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const formRef = useRef<FormApi>(null);
-  const editingDetailIdRef = useRef<number | null>(null);
 
   const [configRecord, setConfigRecord] = useState<MpAccount | null>(null);
-  const [testingId, setTestingId] = useState<number | null>(null);
-  const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null);
+  const listQuery = useMpAccountList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    type: submittedParams.filterType,
+    status: submittedParams.filterStatus,
+  });
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const detailQuery = useMpAccountDetail(editingRecord?.id, modalVisible);
+  const editing = editingRecord ? (detailQuery.data ?? editingRecord) : null;
+  const modalDetailLoading = !!editingRecord && detailQuery.isFetching;
+  const saveMutation = useSaveMpAccount();
+  const setDefaultMutation = useSetDefaultMpAccount();
+  const testMutation = useTestMpAccount();
+  const deleteMutation = useDeleteMpAccount();
+  const toggleStatusMutation = useSaveMpAccount();
+  const submitting = saveMutation.isPending;
+  const testingId = testMutation.isPending ? (testMutation.variables ?? null) : null;
+  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
 
-  const fetchList = useCallback(
-    async (p = page, ps = pageSize, params?: SearchParams) => {
-      const { keyword: kw, filterType: tp, filterStatus: st } = params ?? searchParamsRef.current;
-      setLoading(true);
-      try {
-        const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-        if (kw) query.set('keyword', kw);
-        if (tp) query.set('type', tp);
-        if (st) query.set('status', st);
-        const res = await request.get<PaginatedResponse<MpAccount>>(`/api/mp/accounts?${query}`);
-        setList(res.data?.list ?? []);
-        setTotal(res.data?.total ?? 0);
-        setPage(res.data?.page ?? p);
-        setPageSize(res.data?.pageSize ?? ps);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [page, pageSize, setPage, setPageSize],
-  );
-
-  useEffect(() => {
-    void fetchList(1);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
-  const handleReset = () => {
-    setSearchParams(defaultSearchParams);
+  const handleSearch = () => {
     setPage(1);
-    void fetchList(1, pageSize, defaultSearchParams);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: mpAccountKeys.lists });
+  };
+  const handleReset = () => {
+    setPage(1);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: mpAccountKeys.lists });
   };
 
   const openCreate = () => { setEditingRecord(null); setModalVisible(true); };
-  const openEdit = async (record: MpAccount) => {
+  const openEdit = (record: MpAccount) => {
     setEditingRecord(record);
     setModalVisible(true);
-    setModalDetailLoading(true);
-    editingDetailIdRef.current = record.id;
-    const res = await request.get<MpAccount>(`/api/mp/accounts/${record.id}`);
-    if (editingDetailIdRef.current !== record.id) return; // 已打开其它记录，丢弃过期详情
-    setModalDetailLoading(false);
-    if (res.code === 0 && res.data) setEditingRecord(res.data);
   };
 
   const handleSubmit = async () => {
     let values: Awaited<ReturnType<FormApi['validate']>>;
-    try { values = (await formRef.current?.validate())!; } catch { return; }
-    setSubmitting(true);
-    try {
-      if (editingRecord) {
-        const payload: Record<string, unknown> = { ...values };
-        if (!payload.appSecret) delete payload.appSecret;
-        const res = await request.put(`/api/mp/accounts/${editingRecord.id}`, payload);
-        if (res.code !== 0) return;
-        Toast.success('更新成功');
-      } else {
-        const res = await request.post('/api/mp/accounts', values);
-        if (res.code !== 0) return;
-        Toast.success('创建成功');
-      }
-      setModalVisible(false);
-      void fetchList();
-    } finally {
-      setSubmitting(false);
-    }
+    try { values = (await formRef.current?.validate())!; } catch { throw new Error('validation'); }
+    const payload: Record<string, unknown> = { ...values };
+    if (editingRecord && !payload.appSecret) delete payload.appSecret;
+    await saveMutation.mutateAsync({ id: editingRecord?.id, values: payload });
+    Toast.success(editingRecord ? '更新成功' : '创建成功');
+    setModalVisible(false);
   };
 
   const handleSetDefault = async (record: MpAccount) => {
-    const res = await request.post(`/api/mp/accounts/${record.id}/default`);
-    if (res.code !== 0) return;
+    await setDefaultMutation.mutateAsync(record.id);
     Toast.success('已设为默认');
-    void fetchList();
   };
 
   const handleTest = async (record: MpAccount) => {
-    setTestingId(record.id);
-    try {
-      const res = await request.post<{ success: boolean; message: string }>(`/api/mp/accounts/${record.id}/test`);
-      if (res.code === 0) Toast.success(res.data?.message || '连接成功');
-    } finally {
-      setTestingId(null);
-    }
+    const data = await testMutation.mutateAsync(record.id);
+    Toast.success(data.message || '连接成功');
   };
 
   const handleDelete = (record: MpAccount) => {
@@ -157,30 +132,20 @@ export default function MpAccountsPage() {
       title: `确定要删除公众号「${record.name}」吗？`,
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete(`/api/mp/accounts/${record.id}`);
-        if (res.code !== 0) return;
+        await deleteMutation.mutateAsync(record.id);
         Toast.success('删除成功');
-        void fetchList();
       },
     });
   };
 
-  const handleToggleStatus = useCallback(async (record: MpAccount, newStatus: 'enabled' | 'disabled') => {
+  const handleToggleStatus = async (record: MpAccount, newStatus: 'enabled' | 'disabled') => {
     if (newStatus === 'disabled' && record.isDefault) {
       Toast.warning('默认公众号不能禁用，请先将其他公众号设为默认');
       return;
     }
-    setTogglingStatusId(record.id);
-    try {
-      const res = await request.put(`/api/mp/accounts/${record.id}`, { status: newStatus });
-      if (res.code === 0) {
-        Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
-        void fetchList();
-      }
-    } finally {
-      setTogglingStatusId(null);
-    }
-  }, [fetchList]);
+    await toggleStatusMutation.mutateAsync({ id: record.id, values: { status: newStatus } });
+    Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
+  };
 
   const columns = [
     { title: '公众号名称', dataIndex: 'name', width: 160, render: renderEllipsis },
@@ -222,7 +187,7 @@ export default function MpAccountsPage() {
           hidden: !can('mp:account:default'),
           onClick: () => void handleSetDefault(record),
         },
-        { key: 'edit', label: '编辑', hidden: !can('mp:account:update'), onClick: () => void openEdit(record) },
+        { key: 'edit', label: '编辑', hidden: !can('mp:account:update'), onClick: () => openEdit(record) },
         {
           key: 'test',
           label: testingId === record.id ? '测试中...' : '测试连接',
@@ -239,8 +204,8 @@ export default function MpAccountsPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="搜索名称/微信号/AppID"
-      value={searchParams.keyword}
-      onChange={(v) => setSearchParams({ ...searchParams, keyword: v })}
+      value={draftParams.keyword}
+      onChange={(v) => setDraftParams({ ...draftParams, keyword: v })}
       onEnterPress={handleSearch}
       showClear
       style={{ width: 220 }}
@@ -249,8 +214,8 @@ export default function MpAccountsPage() {
   const renderTypeFilter = () => (
     <Select
       placeholder="类型"
-      value={searchParams.filterType}
-      onChange={(v) => setSearchParams({ ...searchParams, filterType: v as MpAccountType | undefined })}
+      value={draftParams.filterType}
+      onChange={(v) => setDraftParams({ ...draftParams, filterType: v as MpAccountType | undefined })}
       optionList={TYPE_OPTIONS}
       showClear
       style={{ width: 120 }}
@@ -259,8 +224,8 @@ export default function MpAccountsPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="状态"
-      value={searchParams.filterStatus}
-      onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as string | undefined })}
+      value={draftParams.filterStatus}
+      onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as string | undefined })}
       optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))}
       showClear
       style={{ width: 110 }}
@@ -303,21 +268,21 @@ export default function MpAccountsPage() {
         onFilterReset={handleReset}
       />
 
-      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList()} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total, fetchList)}
+      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
+        pagination={buildPagination(total)}
       />
 
       <AppModal title={editingRecord ? '编辑公众号' : '新增公众号'} visible={modalVisible}
-        onOk={handleSubmit} onCancel={() => { setModalVisible(false); setEditingRecord(null); setModalDetailLoading(false); }}
+        onOk={handleSubmit} onCancel={() => { setModalVisible(false); setEditingRecord(null); }}
         confirmLoading={submitting} okButtonProps={{ disabled: modalDetailLoading }} width={720}>
         <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
           <Form
-            key={editingRecord?.id ?? 'new'}
+            key={editing?.id ?? 'new'}
             getFormApi={(api) => { (formRef as { current: FormApi }).current = api; }}
             allowEmpty
             labelPosition="left" labelWidth={120}
-            initValues={editingRecord
-              ? { ...editingRecord, appSecret: '' }
+            initValues={editing
+              ? { ...editing, appSecret: '' }
               : { status: 'enabled', isDefault: false, type: 'service', encryptMode: 'plaintext' }}
           >
             <Row gutter={16}>
@@ -342,8 +307,8 @@ export default function MpAccountsPage() {
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Input field="appSecret" label="AppSecret" mode="password"
-                  placeholder={editingRecord ? '不修改请留空' : '请输入 AppSecret'}
-                  rules={editingRecord ? [] : [{ required: true, message: '请输入 AppSecret' }]} />
+                  placeholder={editing ? '不修改请留空' : '请输入 AppSecret'}
+                  rules={editing ? [] : [{ required: true, message: '请输入 AppSecret' }]} />
               </Col>
               <Col span={12}>
                 <Form.Input field="token" label="Token" placeholder="服务器配置 Token，仅限字母数字"

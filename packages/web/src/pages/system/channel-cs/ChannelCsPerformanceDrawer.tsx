@@ -4,11 +4,9 @@
  * 打开时拉取 GET /api/channels/cs/performance，展示每位客服的回复数、解决数、
  * 平均响应时长与平均评分。
  */
-import { useEffect, useState } from 'react';
 import { Empty, SideSheet, Spin, Table } from '@douyinfe/semi-ui';
 import { Star } from 'lucide-react';
-import type { ChannelCsPerformance } from '@zenith/shared';
-import { request } from '@/utils/request';
+import { useChannelCsPerformance } from '@/hooks/queries/channel-cs';
 
 interface Props {
   visible: boolean;
@@ -16,22 +14,9 @@ interface Props {
 }
 
 export function ChannelCsPerformanceDrawer({ visible, onClose }: Readonly<Props>) {
-  const [loading, setLoading] = useState(false);
-  const [list, setList] = useState<ChannelCsPerformance[]>([]);
-
-  useEffect(() => {
-    if (!visible) return;
-    let cancelled = false;
-    setLoading(true);
-    setList([]);
-    void (async () => {
-      const res = await request.get<ChannelCsPerformance[]>('/api/channels/cs/performance', { silent: true });
-      if (cancelled) return;
-      setLoading(false);
-      if (res.code === 0 && res.data) setList(res.data);
-    })();
-    return () => { cancelled = true; };
-  }, [visible]);
+  const performanceQuery = useChannelCsPerformance(visible);
+  const list = performanceQuery.data ?? [];
+  const loading = performanceQuery.isFetching;
 
   const columns = [
     { title: '客服', dataIndex: 'agentName', key: 'agentName' },

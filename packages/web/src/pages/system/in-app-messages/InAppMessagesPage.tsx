@@ -1,17 +1,27 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Col, Form, Input, Modal, Row, Select, Tag,
   Toast } from '@douyinfe/semi-ui';
 import { AppModal } from '@/components/AppModal';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { CheckCheck, Plus, RotateCcw, Search } from 'lucide-react';
-import type { InAppMessage, InAppMessageType, InAppTemplate, PaginatedResponse, User } from '@zenith/shared';
+import type { InAppMessage, InAppMessageType } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
+import { useAllUsers } from '@/hooks/queries/users';
+import {
+  inAppMessageKeys,
+  useDeleteInAppMessage,
+  useEnabledInAppTemplates,
+  useInAppMessageList,
+  useMarkAllInAppMessagesRead,
+  useMarkInAppMessageRead,
+  useSendInAppMessage,
+} from '@/hooks/queries/in-app-messages';
 
 const TYPE_OPTIONS: { label: string; value: InAppMessageType; color: 'blue' | 'green' | 'orange' | 'red' }[] = [
   { label: '通知', value: 'info', color: 'blue' },
@@ -27,68 +37,54 @@ const READ_OPTIONS = [
 
 export default function InAppMessagesPage() {
   const { hasPermission: can } = usePermission();
+  const queryClient = useQueryClient();
 
   interface SearchParams { keyword: string; filterType: InAppMessageType | undefined; filterRead: string | undefined; }
   const defaultSearchParams: SearchParams = { keyword: '', filterType: undefined, filterRead: undefined };
-  const [loading, setLoading] = useState(false);
-  const [list, setList] = useState<InAppMessage[]>([]);
-  const [total, setTotal] = useState(0);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
 
   const [sendVisible, setSendVisible] = useState(false);
-  const [templates, setTemplates] = useState<InAppTemplate[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [submitting, setSubmitting] = useState(false);
   const formRef = useRef<FormApi>(null);
 
-  const fetchList = useCallback(
-    async (p = page, ps = pageSize, params?: SearchParams) => {
-      const { keyword: kw, filterType: t, filterRead: isRead } = params ?? searchParamsRef.current;
-      setLoading(true);
-      try {
-        const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-        if (kw) query.set('keyword', kw);
-        if (t) query.set('type', t);
-        if (isRead !== undefined) query.set('isRead', isRead);
-        const res = await request.get<PaginatedResponse<InAppMessage>>(`/api/in-app-messages/admin?${query}`);
-        setList(res.data?.list ?? []);
-        setTotal(res.data?.total ?? 0);
-        setPage(res.data?.page ?? p);
-        setPageSize(res.data?.pageSize ?? ps);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [page, pageSize, setPage, setPageSize],
-  );
+  const listQuery = useInAppMessageList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    type: submittedParams.filterType,
+    isRead: submittedParams.filterRead,
+  });
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const templatesQuery = useEnabledInAppTemplates(sendVisible);
+  const usersQuery = useAllUsers({ enabled: sendVisible });
+  const templates = templatesQuery.data?.list ?? [];
+  const users = usersQuery.data ?? [];
+  const sendMutation = useSendInAppMessage();
+  const markReadMutation = useMarkInAppMessageRead();
+  const markAllReadMutation = useMarkAllInAppMessagesRead();
+  const deleteMutation = useDeleteInAppMessage();
 
-  useEffect(() => { void fetchList(1); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
-
-  const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
-  const handleReset = () => {
-    setSearchParams(defaultSearchParams);
+  const handleSearch = () => {
     setPage(1);
-    void fetchList(1, pageSize, defaultSearchParams);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: inAppMessageKeys.lists });
+  };
+  const handleReset = () => {
+    setPage(1);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: inAppMessageKeys.lists });
   };
 
-  const openSend = async () => {
-    try {
-      const [tplRes, userRes] = await Promise.all([
-        request.get<PaginatedResponse<InAppTemplate>>('/api/in-app-templates?page=1&pageSize=100&status=enabled'),
-        request.get<PaginatedResponse<User>>('/api/users?page=1&pageSize=100'),
-      ]);
-      setTemplates(tplRes.data?.list ?? []);
-      setUsers(userRes.data?.list ?? []);
-    } catch { /* ignore */ }
+  const openSend = () => {
     setSendVisible(true);
   };
 
   const handleSend = async () => {
     let values: Awaited<ReturnType<FormApi['validate']>>;
-    try { values = (await formRef.current?.validate())!; } catch { return; }
+    try { values = (await formRef.current?.validate())!; } catch { throw new Error('validation'); }
     // 变量字段是 JSON 字符串，提交前解析为对象
     if (typeof values.variables === 'string') {
       const raw = values.variables.trim();
@@ -109,36 +105,25 @@ export default function InAppMessagesPage() {
         delete values.variables;
       }
     }
-    setSubmitting(true);
-    try {
-      const res = await request.post('/api/in-app-messages/send', values);
-      if (res.code !== 0) return;
-      Toast.success('发送成功');
-      setSendVisible(false);
-      globalThis.dispatchEvent(new CustomEvent('in-app-messages:refresh'));
-      void fetchList(1, pageSize);
-    } finally {
-      setSubmitting(false);
-    }
+    await sendMutation.mutateAsync(values as Record<string, unknown>);
+    Toast.success('发送成功');
+    setSendVisible(false);
+    globalThis.dispatchEvent(new CustomEvent('in-app-messages:refresh'));
   };
 
   const handleMarkRead = async (id: number) => {
-    const res = await request.post(`/api/in-app-messages/admin/${id}/read`);
-    if (res.code !== 0) return;
+    await markReadMutation.mutateAsync(id);
     Toast.success('已标记为已读');
     globalThis.dispatchEvent(new CustomEvent('in-app-messages:refresh'));
-    void fetchList();
   };
 
   const handleMarkAllRead = () => {
     Modal.confirm({
       title: '确定要将所有未读消息标记为已读吗？',
       onOk: async () => {
-        const res = await request.post('/api/in-app-messages/admin/read-all');
-        if (res.code !== 0) return;
+        await markAllReadMutation.mutateAsync();
         Toast.success('已全部标记为已读');
         globalThis.dispatchEvent(new CustomEvent('in-app-messages:refresh'));
-        void fetchList();
       },
     });
   };
@@ -148,11 +133,9 @@ export default function InAppMessagesPage() {
       title: '确定要删除该消息吗？',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete(`/api/in-app-messages/admin/${id}`);
-        if (res.code !== 0) return;
+        await deleteMutation.mutateAsync(id);
         Toast.success('删除成功');
         globalThis.dispatchEvent(new CustomEvent('in-app-messages:refresh'));
-        void fetchList();
       },
     });
   };
@@ -201,10 +184,10 @@ export default function InAppMessagesPage() {
         primary={(
           <>
             <Input prefix={<Search size={14} />} placeholder="标题/内容关键词"
-              value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 200 }} />
-            <Select placeholder="类型" value={searchParams.filterType} onChange={(v) => setSearchParams({ ...searchParams, filterType: v as InAppMessageType | undefined })}
+              value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 200 }} />
+            <Select placeholder="类型" value={draftParams.filterType} onChange={(v) => setDraftParams({ ...draftParams, filterType: v as InAppMessageType | undefined })}
               optionList={TYPE_OPTIONS} showClear style={{ width: 110 }} />
-            <Select placeholder="阅读状态" value={searchParams.filterRead} onChange={(v) => setSearchParams({ ...searchParams, filterRead: v as string | undefined })}
+            <Select placeholder="阅读状态" value={draftParams.filterRead} onChange={(v) => setDraftParams({ ...draftParams, filterRead: v as string | undefined })}
               optionList={READ_OPTIONS} showClear style={{ width: 120 }} />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
@@ -219,7 +202,7 @@ export default function InAppMessagesPage() {
         mobilePrimary={(
           <>
             <Input prefix={<Search size={14} />} placeholder="标题/内容关键词"
-              value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 200 }} />
+              value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 200 }} />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             {can('system:in-app-message:send') && (
               <Button type="primary" icon={<Plus size={14} />} onClick={openSend}>发送站内信</Button>
@@ -228,9 +211,9 @@ export default function InAppMessagesPage() {
         )}
         mobileFilters={(
           <>
-            <Select placeholder="类型" value={searchParams.filterType} onChange={(v) => setSearchParams({ ...searchParams, filterType: v as InAppMessageType | undefined })}
+            <Select placeholder="类型" value={draftParams.filterType} onChange={(v) => setDraftParams({ ...draftParams, filterType: v as InAppMessageType | undefined })}
               optionList={TYPE_OPTIONS} showClear style={{ width: 110 }} />
-            <Select placeholder="阅读状态" value={searchParams.filterRead} onChange={(v) => setSearchParams({ ...searchParams, filterRead: v as string | undefined })}
+            <Select placeholder="阅读状态" value={draftParams.filterRead} onChange={(v) => setDraftParams({ ...draftParams, filterRead: v as string | undefined })}
               optionList={READ_OPTIONS} showClear style={{ width: 120 }} />
           </>
         )}
@@ -243,12 +226,12 @@ export default function InAppMessagesPage() {
         onFilterReset={handleReset}
       />
 
-      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList()} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total, fetchList)}
+      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
+        pagination={buildPagination(total)}
         scroll={{ x: 1400 }} />
 
       <AppModal title="发送站内信" visible={sendVisible} onOk={handleSend}
-        onCancel={() => setSendVisible(false)} confirmLoading={submitting} width={720}>
+        onCancel={() => setSendVisible(false)} confirmLoading={sendMutation.isPending} width={720}>
         <Form key="send" getFormApi={(api) => { (formRef as { current: FormApi }).current = api; }}
           allowEmpty labelPosition="left" labelWidth={120} initValues={{ type: 'info' }}>
           <Row gutter={16}>

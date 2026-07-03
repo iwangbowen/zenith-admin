@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Descriptions, Modal, Select, SideSheet, Space, Table, Tag, Toast, Typography, Input } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, RefreshCw, RotateCcw, Search, Trash2 } from 'lucide-react';
-import type { ExportEntityMeta, ExportJob, ExportJobCreateResult, ExportJobDownload, ExportJobFormat, ExportJobStatus, PaginatedResponse } from '@zenith/shared';
+import type { ExportEntityMeta, ExportJob, ExportJobDownload, ExportJobFormat, ExportJobStatus } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -11,6 +12,17 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { formatDateTime } from '@/utils/date';
 import { renderEllipsis } from '@/utils/table-columns';
+import {
+  exportJobKeys,
+  useBatchDeleteExportJobs,
+  useCancelExportJob,
+  useDeleteExportJob,
+  useExportEntities,
+  useExportJobDownloads,
+  useExportJobList,
+  useRerunExportJob,
+  useRetryExportJob,
+} from '@/hooks/queries/export-jobs';
 
 interface SearchParams {
   entity: string;
@@ -25,6 +37,8 @@ const defaultSearchParams: SearchParams = {
   format: '',
   keyword: '',
 };
+const EMPTY_ENTITIES: ExportEntityMeta[] = [];
+const EMPTY_EXPORT_JOBS: ExportJob[] = [];
 
 const statusOptions: Array<{ value: ExportJobStatus | ''; label: string }> = [
   { value: '', label: '全部状态' },
@@ -69,19 +83,40 @@ function renderProgress(record: ExportJob) {
 
 export default function ExportJobsPage() {
   const navigate = useNavigate();
-  const [entities, setEntities] = useState<ExportEntityMeta[]>([]);
-  const [data, setData] = useState<ExportJob[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const queryClient = useQueryClient();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
   const [logsVisible, setLogsVisible] = useState(false);
   const [currentJob, setCurrentJob] = useState<ExportJob | null>(null);
-  const [downloadLogs, setDownloadLogs] = useState<ExportJobDownload[]>([]);
-  const [logsLoading, setLogsLoading] = useState(false);
-  const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
+  const [downloadLoadingId, setDownloadLoadingId] = useState<number | null>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
-  const [batchDeleting, setBatchDeleting] = useState(false);
   const { page, pageSize, setPage, buildPagination } = usePagination();
+  const entitiesQuery = useExportEntities();
+  const entities = entitiesQuery.data ?? EMPTY_ENTITIES;
+  const listQuery = useExportJobList({
+    page,
+    pageSize,
+    entity: submittedParams.entity || undefined,
+    status: submittedParams.status || undefined,
+    format: submittedParams.format || undefined,
+    keyword: submittedParams.keyword || undefined,
+  });
+  const data = listQuery.data?.list ?? EMPTY_EXPORT_JOBS;
+  const total = listQuery.data?.total ?? 0;
+  const downloadsQuery = useExportJobDownloads(currentJob?.id, logsVisible && currentJob != null);
+  const cancelMutation = useCancelExportJob();
+  const retryMutation = useRetryExportJob();
+  const rerunMutation = useRerunExportJob();
+  const deleteMutation = useDeleteExportJob();
+  const batchDeleteMutation = useBatchDeleteExportJobs();
+
+  const actionLoadingId =
+    downloadLoadingId
+    ?? (cancelMutation.isPending ? cancelMutation.variables : null)
+    ?? (retryMutation.isPending ? retryMutation.variables : null)
+    ?? (rerunMutation.isPending ? rerunMutation.variables?.id : null)
+    ?? (deleteMutation.isPending ? deleteMutation.variables : null);
+  const batchDeleting = batchDeleteMutation.isPending;
 
   const entityOptions = useMemo(
     () => [
@@ -92,108 +127,48 @@ export default function ExportJobsPage() {
   );
   const entityMap = useMemo(() => new Map(entities.map((item) => [item.entity, item])), [entities]);
 
-  const fetchEntities = useCallback(async () => {
-    const res = await request.get<ExportEntityMeta[]>('/api/export-jobs/entities', { silent: true });
-    if (res.code === 0) setEntities(res.data);
-  }, []);
-
-  const fetchData = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(params.entity ? { entity: params.entity } : {}),
-        ...(params.status ? { status: params.status } : {}),
-        ...(params.format ? { format: params.format } : {}),
-        ...(params.keyword ? { keyword: params.keyword } : {}),
-      }).toString();
-      const res = await request.get<PaginatedResponse<ExportJob>>(`/api/export-jobs?${query}`);
-      if (res.code === 0) {
-        setData(res.data.list);
-        setTotal(res.data.total);
-        setSelectedRowKeys((prev) => prev.filter((id) => res.data.list.some((item) => item.id === id)));
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize, searchParams]);
-
   useEffect(() => {
-    void fetchEntities();
-  }, [fetchEntities]);
+    setSelectedRowKeys((prev) => prev.filter((id) => data.some((item) => item.id === id)));
+  }, [data]);
 
-  useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
 
   const handleSearch = () => {
     setPage(1);
-    void fetchData(1);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: exportJobKeys.lists });
   };
 
   const handleReset = () => {
-    setSearchParams(defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
     setPage(1);
-    void fetchData(1, pageSize, defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: exportJobKeys.lists });
   };
 
   const handleDownload = async (record: ExportJob) => {
-    setActionLoadingId(record.id);
+    setDownloadLoadingId(record.id);
     try {
       await request.download(`/api/export-jobs/${record.id}/download`, record.filename ?? `export-${record.id}.${record.format}`);
       Toast.success('下载完成');
-      void fetchData();
+      void queryClient.invalidateQueries({ queryKey: exportJobKeys.all });
     } finally {
-      setActionLoadingId(null);
+      setDownloadLoadingId(null);
     }
   };
 
   const handleCancel = async (record: ExportJob) => {
-    setActionLoadingId(record.id);
-    try {
-      const res = await request.post<ExportJob>(`/api/export-jobs/${record.id}/cancel`);
-      if (res.code === 0) {
-        Toast.success('已取消');
-        void fetchData();
-      }
-    } finally {
-      setActionLoadingId(null);
-    }
+    await cancelMutation.mutateAsync(record.id);
+    Toast.success('已取消');
   };
 
   const handleRetry = async (record: ExportJob) => {
-    setActionLoadingId(record.id);
-    try {
-      const res = await request.post<ExportJob>(`/api/export-jobs/${record.id}/retry`);
-      if (res.code === 0) {
-        Toast.success('已提交重试');
-        void fetchData();
-      }
-    } finally {
-      setActionLoadingId(null);
-    }
+    await retryMutation.mutateAsync(record.id);
+    Toast.success('已提交重试');
   };
 
   const handleRerun = async (record: ExportJob) => {
-    setActionLoadingId(record.id);
-    try {
-      const res = await request.post<ExportJobCreateResult>('/api/export-jobs', {
-        entity: record.entity,
-        format: record.format,
-        query: record.query ?? {},
-        columns: record.columns ?? undefined,
-        raw: record.raw,
-        watermark: record.watermark,
-        executionMode: record.executionMode,
-      });
-      if (res.code === 0) {
-        Toast.success(res.data.mode === 'async' ? '已重新提交导出任务' : '已重新导出');
-        void fetchData();
-      }
-    } finally {
-      setActionLoadingId(null);
-    }
+    const data = await rerunMutation.mutateAsync(record);
+    Toast.success(data.mode === 'async' ? '已重新提交导出任务' : '已重新导出');
   };
 
   const handleCopyQuery = async (record: ExportJob) => {
@@ -232,12 +207,9 @@ export default function ExportJobsPage() {
       content: record.fileDeletedAt ? '将删除该任务记录。' : '将删除该任务记录，已生成的导出文件会随保留策略清理。',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete<null>(`/api/export-jobs/${record.id}`);
-        if (res.code === 0) {
-          Toast.success('已删除');
-          setSelectedRowKeys((prev) => prev.filter((id) => id !== record.id));
-          void fetchData();
-        }
+        await deleteMutation.mutateAsync(record.id);
+        Toast.success('已删除');
+        setSelectedRowKeys((prev) => prev.filter((id) => id !== record.id));
       },
     });
   };
@@ -249,29 +221,16 @@ export default function ExportJobsPage() {
       content: `将删除选中的 ${selectedRowKeys.length} 个导出任务记录。`,
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        setBatchDeleting(true);
-        try {
-          await Promise.all(selectedRowKeys.map((id) => request.delete<null>(`/api/export-jobs/${id}`, { silent: true })));
-          Toast.success(`已删除 ${selectedRowKeys.length} 个任务`);
-          setSelectedRowKeys([]);
-          void fetchData();
-        } finally {
-          setBatchDeleting(false);
-        }
+        await batchDeleteMutation.mutateAsync(selectedRowKeys);
+        Toast.success(`已删除 ${selectedRowKeys.length} 个任务`);
+        setSelectedRowKeys([]);
       },
     });
   };
 
-  const openDownloadLogs = async (record: ExportJob) => {
+  const openDownloadLogs = (record: ExportJob) => {
     setCurrentJob(record);
     setLogsVisible(true);
-    setLogsLoading(true);
-    try {
-      const res = await request.get<ExportJobDownload[]>(`/api/export-jobs/${record.id}/downloads`);
-      if (res.code === 0) setDownloadLogs(res.data);
-    } finally {
-      setLogsLoading(false);
-    }
   };
 
   const columns: ColumnProps<ExportJob>[] = [
@@ -395,37 +354,37 @@ export default function ExportJobsPage() {
       <SearchToolbar>
         <Select
           placeholder="模块"
-          value={searchParams.entity || undefined}
+          value={draftParams.entity || undefined}
           optionList={entityOptions}
-          onChange={(value) => setSearchParams((prev) => ({ ...prev, entity: (value as string) ?? '' }))}
+          onChange={(value) => setDraftParams((prev) => ({ ...prev, entity: (value as string) ?? '' }))}
           style={{ width: 160 }}
         />
         <Select
           placeholder="状态"
-          value={searchParams.status || undefined}
+          value={draftParams.status || undefined}
           optionList={statusOptions}
-          onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
+          onChange={(value) => setDraftParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
           style={{ width: 140 }}
         />
         <Select
           placeholder="格式"
-          value={searchParams.format || undefined}
+          value={draftParams.format || undefined}
           optionList={formatOptions}
-          onChange={(value) => setSearchParams((prev) => ({ ...prev, format: (value as string) ?? '' }))}
+          onChange={(value) => setDraftParams((prev) => ({ ...prev, format: (value as string) ?? '' }))}
           style={{ width: 120 }}
         />
         <Input
           prefix={<Search size={14} />}
           placeholder="搜索文件名/模块"
-          value={searchParams.keyword}
-          onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
+          value={draftParams.keyword}
+          onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))}
           onEnterPress={handleSearch}
           style={{ width: 240 }}
           showClear
         />
         <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        <Button icon={<RefreshCw size={14} />} onClick={() => void fetchData()} loading={loading}>刷新</Button>
+        <Button icon={<RefreshCw size={14} />} onClick={() => void listQuery.refetch()} loading={listQuery.isFetching}>刷新</Button>
         {selectedRowKeys.length > 0 && (
           <Button type="danger" icon={<Trash2 size={14} />} loading={batchDeleting} onClick={handleBatchDelete}>
             批量删除 ({selectedRowKeys.length})
@@ -437,10 +396,10 @@ export default function ExportJobsPage() {
         bordered
         columns={columns}
         dataSource={data}
-        loading={loading}
-        onRefresh={() => void fetchData()}
-        refreshLoading={loading}
-        pagination={buildPagination(total, fetchData)}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
+        pagination={buildPagination(total)}
         rowKey="id"
         rowSelection={{
           selectedRowKeys,
@@ -472,9 +431,9 @@ export default function ExportJobsPage() {
         )}
         <Table
           bordered
-          loading={logsLoading}
+          loading={downloadsQuery.isFetching}
           columns={downloadLogColumns}
-          dataSource={downloadLogs}
+          dataSource={downloadsQuery.data ?? []}
           rowKey="id"
           pagination={false}
           size="small"

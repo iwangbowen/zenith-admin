@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Form, Input, Select, Tag, Toast, Modal } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -9,12 +9,20 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import { ShareModal, VersionModal } from './components/DashboardOpsModals';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
-import type { ReportDashboard, ReportWidget, ReportDashboardCategory, PaginatedResponse } from '@zenith/shared';
+import type { ReportDashboard, ReportWidget } from '@zenith/shared';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  reportDashboardKeys,
+  useDeleteReportDashboard,
+  useReportDashboardCategories,
+  useReportDashboardList,
+  useSaveReportDashboard,
+  useToggleReportDashboardFavorite,
+} from '@/hooks/queries/report-dashboards';
 
 interface SearchParams { keyword: string; status: string; categoryId?: number; favorited: boolean }
 const defaultSearchParams: SearchParams = { keyword: '', status: '', favorited: false };
@@ -23,45 +31,35 @@ export default function DashboardListPage() {
   const { hasPermission } = usePermission();
   const navigate = useNavigate();
   const formApi = useRef<FormApi | null>(null);
+  const queryClient = useQueryClient();
 
-  const [data, setData] = useState<PaginatedResponse<ReportDashboard> | null>(null);
-  const [loading, setLoading] = useState(false);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<ReportDashboard | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [categories, setCategories] = useState<ReportDashboardCategory[]>([]);
   const [shareTarget, setShareTarget] = useState<number | null>(null);
   const [versionTarget, setVersionTarget] = useState<number | null>(null);
-  const [favTogglingIds, setFavTogglingIds] = useState<Set<number>>(new Set());
 
-  const fetchList = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const active = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const q: Record<string, string> = { page: String(p), pageSize: String(ps) };
-      if (active.keyword) q.keyword = active.keyword;
-      if (active.status) q.status = active.status;
-      if (active.categoryId) q.categoryId = String(active.categoryId);
-      if (active.favorited) q.favorited = 'true';
-      const res = await request.get<PaginatedResponse<ReportDashboard>>(`/api/report/dashboards?${new URLSearchParams(q)}`);
-      if (res.code === 0) { setData(res.data); setPage(res.data.page); setPageSize(res.data.pageSize); }
-    } finally { setLoading(false); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize]);
+  const listQuery = useReportDashboardList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    status: submittedParams.status || undefined,
+    categoryId: submittedParams.categoryId,
+    favorited: submittedParams.favorited || undefined,
+  });
+  const data = listQuery.data ?? null;
+  const categoriesQuery = useReportDashboardCategories();
+  const categories = categoriesQuery.data ?? [];
+  const saveMutation = useSaveReportDashboard();
+  const deleteMutation = useDeleteReportDashboard();
+  const favoriteMutation = useToggleReportDashboardFavorite();
+  const favTogglingId = favoriteMutation.isPending ? favoriteMutation.variables ?? null : null;
 
-  useEffect(() => {
-    void fetchList();
-    request.get<ReportDashboardCategory[]>('/api/report/categories').then((res) => { if (res.code === 0) setCategories(res.data); });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function handleSearch() { setPage(1); void fetchList(1, pageSize); }
-  function handleReset() { setSearchParams(defaultSearchParams); setPage(1); void fetchList(1, pageSize, defaultSearchParams); }
+  function handleSearch() { setPage(1); setSubmittedParams(draftParams); void queryClient.invalidateQueries({ queryKey: reportDashboardKeys.lists }); }
+  function handleReset() { setDraftParams(defaultSearchParams); setSubmittedParams(defaultSearchParams); setPage(1); void queryClient.invalidateQueries({ queryKey: reportDashboardKeys.lists }); }
 
   function openCreate() { setEditing(null); setModalVisible(true); }
   function openEdit(record: ReportDashboard) { setEditing(record); setModalVisible(true); }
@@ -75,38 +73,35 @@ export default function DashboardListPage() {
     let values: Record<string, unknown>;
     try { values = await formApi.current?.validate() as Record<string, unknown>; }
     catch { throw new Error('validation'); }
-    const payload = { name: values.name, status: values.status, remark: values.remark || undefined, categoryId: values.categoryId ?? null };
-    setSubmitting(true);
-    try {
-      if (editing) {
-        const res = await request.put<ReportDashboard>(`/api/report/dashboards/${editing.id}`, payload);
-        if (res.code === 0) { Toast.success('更新成功'); closeModal(); void fetchList(); }
-        else throw new Error(res.message);
-      } else {
-        // 新建后直接进入设计器
-        const res = await request.post<ReportDashboard>('/api/report/dashboards', { ...payload, layout: [], widgets: [] });
-        if (res.code === 0) { Toast.success('创建成功'); closeModal(); navigate(`/report/dashboards/${res.data.id}/design`); }
-        else throw new Error(res.message);
-      }
-    } finally { setSubmitting(false); }
+    const payload: Partial<ReportDashboard> = {
+      name: String(values.name ?? ''),
+      status: values.status as ReportDashboard['status'],
+      remark: values.remark ? String(values.remark) : undefined,
+      categoryId: values.categoryId == null ? null : Number(values.categoryId),
+    };
+    const saved = await saveMutation.mutateAsync({
+      id: editing?.id,
+      values: editing ? payload : { ...payload, layout: [], widgets: [] },
+    });
+    Toast.success(editing ? '更新成功' : '创建成功');
+    closeModal();
+    if (!editing) navigate(`/report/dashboards/${saved.id}/design`);
   }
 
   async function handleDelete(id: number) {
-    const res = await request.delete(`/api/report/dashboards/${id}`);
-    if (res.code === 0) { Toast.success('删除成功'); void fetchList(); }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   }
 
   async function toggleFavorite(record: ReportDashboard) {
-    setFavTogglingIds((p) => new Set(p).add(record.id));
-    try { const res = await request.post(`/api/report/dashboards/${record.id}/favorite`); if (res.code === 0) void fetchList(); }
-    finally { setFavTogglingIds((p) => { const s = new Set(p); s.delete(record.id); return s; }); }
+    await favoriteMutation.mutateAsync(record.id);
   }
 
   const columns: ColumnProps<ReportDashboard>[] = [
     {
       title: '', dataIndex: '__fav', width: 44, align: 'center',
       render: (_: unknown, r: ReportDashboard) => (
-        <Star size={15} style={{ cursor: 'pointer', color: r.favorited ? 'var(--semi-color-warning)' : 'var(--semi-color-text-3)', fill: r.favorited ? 'var(--semi-color-warning)' : 'none', opacity: favTogglingIds.has(r.id) ? 0.4 : 1 }} onClick={() => toggleFavorite(r)} />
+        <Star size={15} style={{ cursor: 'pointer', color: r.favorited ? 'var(--semi-color-warning)' : 'var(--semi-color-text-3)', fill: r.favorited ? 'var(--semi-color-warning)' : 'none', opacity: favTogglingId === r.id ? 0.4 : 1 }} onClick={() => void toggleFavorite(r)} />
       ),
     },
     { title: '名称', dataIndex: 'name', width: 200 },
@@ -130,11 +125,11 @@ export default function DashboardListPage() {
   ];
 
   const renderKeyword = () => (
-    <Input prefix={<Search size={14} />} placeholder="搜索名称/备注..." value={searchParams.keyword}
-      onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))} showClear style={{ width: 220 }} onEnterPress={handleSearch} />
+    <Input prefix={<Search size={14} />} placeholder="搜索名称/备注..." value={draftParams.keyword}
+      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} showClear style={{ width: 220 }} onEnterPress={handleSearch} />
   );
   const renderStatusFilter = () => (
-    <Select placeholder="全部状态" value={searchParams.status || undefined} onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))}
+    <Select placeholder="全部状态" value={draftParams.status || undefined} onChange={(v) => setDraftParams((p) => ({ ...p, status: (v as string) ?? '' }))}
       showClear style={{ width: 120 }} optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} />
   );
   const renderSearchBtn = () => <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>;
@@ -142,12 +137,18 @@ export default function DashboardListPage() {
   const renderCreateBtn = () => hasPermission('report:dashboard:create')
     ? <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button> : null;
   const renderCategoryFilter = () => (
-    <Select placeholder="全部分类" value={searchParams.categoryId} onChange={(v) => setSearchParams((p) => ({ ...p, categoryId: v as number | undefined }))}
+    <Select placeholder="全部分类" value={draftParams.categoryId} onChange={(v) => setDraftParams((p) => ({ ...p, categoryId: v as number | undefined }))}
       showClear style={{ width: 140 }} optionList={categories.map((c) => ({ value: c.id, label: c.name }))} />
   );
   const renderFavToggle = () => (
-    <Button theme={searchParams.favorited ? 'solid' : 'light'} type={searchParams.favorited ? 'warning' : 'tertiary'} icon={<Star size={14} />}
-      onClick={() => setSearchParams((p) => { const np = { ...p, favorited: !p.favorited }; setPage(1); void fetchList(1, pageSize, np); return np; })}>收藏</Button>
+    <Button theme={draftParams.favorited ? 'solid' : 'light'} type={draftParams.favorited ? 'warning' : 'tertiary'} icon={<Star size={14} />}
+      onClick={() => setDraftParams((p) => {
+        const np = { ...p, favorited: !p.favorited };
+        setSubmittedParams(np);
+        setPage(1);
+        void queryClient.invalidateQueries({ queryKey: reportDashboardKeys.lists });
+        return np;
+      })}>收藏</Button>
   );
 
   return (
@@ -163,8 +164,8 @@ export default function DashboardListPage() {
       />
 
       <ConfigurableTable
-        bordered columns={columns} dataSource={data?.list ?? []} loading={loading} rowKey="id" size="small" empty="暂无数据"
-        onRefresh={() => void fetchList()} refreshLoading={loading} pagination={buildPagination(data?.total ?? 0, fetchList)}
+        bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
+        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(data?.total ?? 0)}
       />
 
       <AppModal
@@ -172,7 +173,7 @@ export default function DashboardListPage() {
         visible={modalVisible}
         onOk={handleModalOk}
         onCancel={closeModal}
-        okButtonProps={{ loading: submitting }}
+        okButtonProps={{ loading: saveMutation.isPending }}
         width={520}
       >
         <Form key={editing?.id ?? 'new'} getFormApi={(api) => { formApi.current = api; }} initValues={formInitValues} labelPosition="left" labelWidth={72}>
@@ -186,7 +187,7 @@ export default function DashboardListPage() {
       </AppModal>
 
       <ShareModal visible={shareTarget !== null} dashboardId={shareTarget} onClose={() => setShareTarget(null)} />
-      <VersionModal visible={versionTarget !== null} dashboardId={versionTarget} onClose={() => setVersionTarget(null)} onRestored={() => void fetchList()} />
+      <VersionModal visible={versionTarget !== null} dashboardId={versionTarget} onClose={() => setVersionTarget(null)} onRestored={() => void queryClient.invalidateQueries({ queryKey: reportDashboardKeys.lists })} />
     </div>
   );
 }

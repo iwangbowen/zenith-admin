@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { Tabs, TabPane, Select, Input, Typography, Banner, Button, Toast, Space, Card } from '@douyinfe/semi-ui';
 import { Copy } from 'lucide-react';
-import { request } from '@/utils/request';
 import { config } from '@/config';
+import { useOpenAppOptions } from '@/hooks/queries/open-platform';
 
 const { Text, Title } = Typography;
 
@@ -29,19 +29,14 @@ function CodeBlock({ code }: { code: string }) {
 }
 
 export default function SdkExamplesPage() {
-  const [appOptions, setAppOptions] = useState<{ clientId: string; name: string }[]>([]);
   const [appKey, setAppKey] = useState('YOUR_APP_KEY');
   const [secret, setSecret] = useState('YOUR_APP_SECRET');
+  const appOptionsQuery = useOpenAppOptions();
+  const appOptions = appOptionsQuery.data ?? [];
 
   const base = useMemo(() => {
     const origin = config.apiBaseUrl || window.location.origin;
     return `${origin.replace(/\/$/, '')}/api/open/v1`;
-  }, []);
-
-  useEffect(() => {
-    void request.get<{ clientId: string; name: string }[]>('/api/oauth2/clients/options', { silent: true }).then((res) => {
-      if (res.code === 0 && res.data) setAppOptions(res.data);
-    });
   }, []);
 
   const snippets = useMemo(() => buildSnippets(appKey, secret, base), [appKey, secret, base]);

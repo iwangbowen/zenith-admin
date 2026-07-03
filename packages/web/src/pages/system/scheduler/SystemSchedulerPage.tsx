@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Col, Descriptions, Form, Input, Modal, Row, Select, Space, TabPane, Tabs, Tag, Toast, Typography, withField } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { AlertTriangle, CheckCircle2, RefreshCw, RotateCcw, Search, Trash2 } from 'lucide-react';
 import type {
-  PaginatedResponse,
   SystemSchedulerAlertChannel,
   SystemSchedulerNode,
   SystemSchedulerRun,
@@ -14,7 +14,6 @@ import type {
   SystemSchedulerTriggerType,
 } from '@zenith/shared';
 import UserSelect from '@/components/UserSelect';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -22,6 +21,17 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { renderEllipsis } from '@/utils/table-columns';
+import {
+  systemSchedulerKeys,
+  useAcknowledgeSystemSchedulerAlert,
+  useCleanupSystemSchedulerRuns,
+  useRunSystemSchedulerTask,
+  useSaveSystemSchedulerTaskConfig,
+  useSystemSchedulerNodes,
+  useSystemSchedulerRunDetail,
+  useSystemSchedulerRuns,
+  useSystemSchedulerTasks,
+} from '@/hooks/queries/system-scheduler';
 
 type TabKey = 'tasks' | 'runs' | 'nodes';
 
@@ -56,17 +66,12 @@ interface TaskConfigForm {
   manualSingleton: boolean;
 }
 
-interface CleanupResult {
-  message: string;
-  deletedByAge: number;
-  deletedByCount: number;
-  totalBefore: number;
-  totalAfter: number;
-}
-
 const defaultTaskSearch: TaskSearchParams = { keyword: '', module: '', taskType: '', status: '' };
 const defaultRunSearch: RunSearchParams = { taskName: '', taskType: '', triggerType: '', status: '', alertStatus: '', startTime: '', endTime: '' };
 const FormUserSelect = withField(UserSelect);
+const EMPTY_TASKS: SystemSchedulerTask[] = [];
+const EMPTY_RUNS: SystemSchedulerRun[] = [];
+const EMPTY_NODES: SystemSchedulerNode[] = [];
 
 const taskTypeMap = {
   recurring: { label: '周期任务', color: 'blue' },
@@ -124,89 +129,50 @@ function renderNode(hostname: string | null, pid: number | null) {
 }
 
 export default function SystemSchedulerPage() {
+  const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
   const [activeTab, setActiveTab] = useState<TabKey>('tasks');
-  const [tasks, setTasks] = useState<SystemSchedulerTask[]>([]);
-  const [tasksLoading, setTasksLoading] = useState(false);
   const [taskSearch, setTaskSearch] = useState<TaskSearchParams>(defaultTaskSearch);
-  const [runs, setRuns] = useState<SystemSchedulerRun[]>([]);
-  const [runsTotal, setRunsTotal] = useState(0);
-  const [runsLoading, setRunsLoading] = useState(false);
-  const [runSearch, setRunSearch] = useState<RunSearchParams>(defaultRunSearch);
-  const [nodes, setNodes] = useState<SystemSchedulerNode[]>([]);
-  const [nodesTotal, setNodesTotal] = useState(0);
-  const [nodesLoading, setNodesLoading] = useState(false);
-  const [runningTaskName, setRunningTaskName] = useState<string | null>(null);
+  const [draftRunSearch, setDraftRunSearch] = useState<RunSearchParams>(defaultRunSearch);
+  const [submittedRunSearch, setSubmittedRunSearch] = useState<RunSearchParams>(defaultRunSearch);
   const [configTask, setConfigTask] = useState<SystemSchedulerTask | null>(null);
-  const [savingConfig, setSavingConfig] = useState(false);
-  const [cleanupLoading, setCleanupLoading] = useState(false);
   const [detailRun, setDetailRun] = useState<SystemSchedulerRun | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [ackLoading, setAckLoading] = useState(false);
   const configFormApi = useRef<FormApi | null>(null);
   const { page, pageSize, setPage, buildPagination } = usePagination(20);
   const { page: nodesPage, pageSize: nodesPageSize, buildPagination: buildNodesPagination } = usePagination(10);
+  const tasksQuery = useSystemSchedulerTasks();
+  const runsQuery = useSystemSchedulerRuns({
+    page,
+    pageSize,
+    taskName: submittedRunSearch.taskName || undefined,
+    taskType: submittedRunSearch.taskType || undefined,
+    triggerType: submittedRunSearch.triggerType || undefined,
+    status: submittedRunSearch.status || undefined,
+    alertStatus: submittedRunSearch.alertStatus || undefined,
+    startTime: submittedRunSearch.startTime || undefined,
+    endTime: submittedRunSearch.endTime || undefined,
+  }, activeTab === 'runs');
+  const nodesQuery = useSystemSchedulerNodes({ page: nodesPage, pageSize: nodesPageSize }, activeTab === 'nodes');
+  const detailQuery = useSystemSchedulerRunDetail(detailRun?.id, detailRun != null);
+  const runTaskMutation = useRunSystemSchedulerTask();
+  const saveConfigMutation = useSaveSystemSchedulerTaskConfig();
+  const ackAlertMutation = useAcknowledgeSystemSchedulerAlert();
+  const cleanupRunsMutation = useCleanupSystemSchedulerRuns();
+  const tasks = tasksQuery.data ?? EMPTY_TASKS;
+  const runs = runsQuery.data?.list ?? EMPTY_RUNS;
+  const runsTotal = runsQuery.data?.total ?? 0;
+  const nodes = nodesQuery.data?.list ?? EMPTY_NODES;
+  const nodesTotal = nodesQuery.data?.total ?? 0;
+  const runningTaskName = runTaskMutation.isPending ? runTaskMutation.variables : null;
 
   const canRun = hasPermission('system:scheduler:run');
   const canConfig = hasPermission('system:scheduler:config');
   const canCleanup = hasPermission('system:scheduler:cleanup');
   const canAckAlert = hasPermission('system:scheduler:alert');
 
-  const fetchTasks = useCallback(async () => {
-    setTasksLoading(true);
-    try {
-      const res = await request.get<SystemSchedulerTask[]>('/api/system-scheduler/tasks');
-      if (res.code === 0) setTasks(res.data);
-    } finally {
-      setTasksLoading(false);
-    }
-  }, []);
-
-  const fetchRuns = useCallback(async (p = page, ps = pageSize, params = runSearch) => {
-    setRunsLoading(true);
-    try {
-      const query = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(params.taskName ? { taskName: params.taskName } : {}),
-        ...(params.taskType ? { taskType: params.taskType } : {}),
-        ...(params.triggerType ? { triggerType: params.triggerType } : {}),
-        ...(params.status ? { status: params.status } : {}),
-        ...(params.alertStatus ? { alertStatus: params.alertStatus } : {}),
-        ...(params.startTime ? { startTime: params.startTime } : {}),
-        ...(params.endTime ? { endTime: params.endTime } : {}),
-      }).toString();
-      const res = await request.get<PaginatedResponse<SystemSchedulerRun>>(`/api/system-scheduler/runs?${query}`);
-      if (res.code === 0) {
-        setRuns(res.data.list);
-        setRunsTotal(res.data.total);
-      }
-    } finally {
-      setRunsLoading(false);
-    }
-  }, [page, pageSize, runSearch]);
-
-  const fetchNodes = useCallback(async (p = nodesPage, ps = nodesPageSize) => {
-    setNodesLoading(true);
-    try {
-      const res = await request.get<PaginatedResponse<SystemSchedulerNode>>(`/api/system-scheduler/nodes?page=${p}&pageSize=${ps}`);
-      if (res.code === 0) {
-        setNodes(res.data.list);
-        setNodesTotal(res.data.total);
-      }
-    } finally {
-      setNodesLoading(false);
-    }
-  }, [nodesPage, nodesPageSize]);
-
   useEffect(() => {
-    void fetchTasks();
-  }, [fetchTasks]);
-
-  useEffect(() => {
-    if (activeTab === 'runs') void fetchRuns();
-    if (activeTab === 'nodes') void fetchNodes();
-  }, [activeTab, fetchRuns, fetchNodes]);
+    if (detailRun && detailQuery.data && detailRun !== detailQuery.data) setDetailRun(detailQuery.data);
+  }, [detailQuery.data, detailRun]);
 
   const moduleOptions = useMemo(() => {
     const modules = Array.from(new Set(tasks.map((item) => item.module))).sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
@@ -238,26 +204,21 @@ export default function SystemSchedulerPage() {
       content: `确定要投递「${record.title}」到后台执行吗？`,
       okText: '执行',
       onOk: async () => {
-        setRunningTaskName(record.name);
-        try {
-          const res = await request.post<{ message: string; runId?: number; jobId?: string | null }>(`/api/system-scheduler/tasks/${encodeURIComponent(record.name)}/run`);
-          if (res.code === 0) {
-            Toast.success(res.data.message || '任务已投递后台执行');
-            await Promise.all([fetchTasks(), fetchRuns(1, pageSize)]);
-          }
-        } finally {
-          setRunningTaskName(null);
-        }
+        const data = await runTaskMutation.mutateAsync(record.name);
+        Toast.success(data.message || '任务已投递后台执行');
+        setSubmittedRunSearch((prev) => ({ ...prev }));
+        void queryClient.invalidateQueries({ queryKey: systemSchedulerKeys.all });
       },
     });
   };
 
   const openTaskRuns = (record: SystemSchedulerTask) => {
     const next = { ...defaultRunSearch, taskName: record.name };
-    setRunSearch(next);
+    setDraftRunSearch(next);
+    setSubmittedRunSearch(next);
     setPage(1);
     setActiveTab('runs');
-    void fetchRuns(1, pageSize, next);
+    void queryClient.invalidateQueries({ queryKey: systemSchedulerKeys.runs });
   };
 
   const openTaskConfig = (record: SystemSchedulerTask) => {
@@ -269,9 +230,9 @@ export default function SystemSchedulerPage() {
     const alertEmails = values.alertEmailsText
       ? values.alertEmailsText.split(/[\n,;，；]/).map((item) => item.trim()).filter(Boolean)
       : [];
-    setSavingConfig(true);
-    try {
-      const res = await request.put(`/api/system-scheduler/tasks/${encodeURIComponent(configTask.name)}/config`, {
+    await saveConfigMutation.mutateAsync({
+      name: configTask.name,
+      values: {
         enabled: configTask.taskType === 'queue' ? true : Boolean(values.enabled),
         logRetentionDays: Number(values.logRetentionDays),
         logRetentionRuns: Number(values.logRetentionRuns),
@@ -283,15 +244,10 @@ export default function SystemSchedulerPage() {
         alertEmails,
         alertWebhookUrl: values.alertWebhookUrl?.trim() || null,
         manualSingleton: configTask.allowManualRun ? Boolean(values.manualSingleton) : false,
-      });
-      if (res.code === 0) {
-        Toast.success('策略已保存');
-        setConfigTask(null);
-        await fetchTasks();
-      }
-    } finally {
-      setSavingConfig(false);
-    }
+      },
+    });
+    Toast.success('策略已保存');
+    setConfigTask(null);
   };
 
   const handleConfigModalOk = async () => {
@@ -305,15 +261,8 @@ export default function SystemSchedulerPage() {
     await handleSaveConfig(values);
   };
 
-  const openRunDetail = async (record: SystemSchedulerRun) => {
+  const openRunDetail = (record: SystemSchedulerRun) => {
     setDetailRun(record);
-    setDetailLoading(true);
-    try {
-      const res = await request.get<SystemSchedulerRun>(`/api/system-scheduler/runs/${record.id}`);
-      if (res.code === 0) setDetailRun(res.data);
-    } finally {
-      setDetailLoading(false);
-    }
   };
 
   const handleAcknowledgeAlert = async (record = detailRun) => {
@@ -323,17 +272,9 @@ export default function SystemSchedulerPage() {
       content: `确认已处理运行日志 #${record.id} 的告警吗？`,
       okText: '确认',
       onOk: async () => {
-        setAckLoading(true);
-        try {
-          const res = await request.post<SystemSchedulerRun>(`/api/system-scheduler/runs/${record.id}/ack-alert`, { note: null });
-          if (res.code === 0) {
-            Toast.success('告警已确认');
-            setDetailRun(res.data);
-            await Promise.all([fetchTasks(), fetchRuns()]);
-          }
-        } finally {
-          setAckLoading(false);
-        }
+        const data = await ackAlertMutation.mutateAsync({ id: record.id, note: null });
+        Toast.success('告警已确认');
+        setDetailRun(data);
       },
     });
   };
@@ -341,21 +282,12 @@ export default function SystemSchedulerPage() {
   const handleCleanupRuns = () => {
     Modal.confirm({
       title: '清理系统调度运行日志',
-      content: runSearch.taskName ? '将按当前任务的留存策略清理运行日志。' : '将按所有任务的留存策略清理运行日志。',
+      content: submittedRunSearch.taskName ? '将按当前任务的留存策略清理运行日志。' : '将按所有任务的留存策略清理运行日志。',
       okText: '清理',
       okButtonProps: { type: 'danger' },
       onOk: async () => {
-        setCleanupLoading(true);
-        try {
-          const query = runSearch.taskName ? `?taskName=${encodeURIComponent(runSearch.taskName)}` : '';
-          const res = await request.post<CleanupResult>(`/api/system-scheduler/runs/cleanup${query}`);
-          if (res.code === 0) {
-            Toast.success(res.data.message);
-            await Promise.all([fetchTasks(), fetchRuns(1, pageSize)]);
-          }
-        } finally {
-          setCleanupLoading(false);
-        }
+        const data = await cleanupRunsMutation.mutateAsync(submittedRunSearch.taskName || undefined);
+        Toast.success(data.message);
       },
     });
   };
@@ -572,13 +504,15 @@ export default function SystemSchedulerPage() {
 
   const handleRunSearch = () => {
     setPage(1);
-    void fetchRuns(1, pageSize);
+    setSubmittedRunSearch(draftRunSearch);
+    void queryClient.invalidateQueries({ queryKey: systemSchedulerKeys.runs });
   };
 
   const handleRunReset = () => {
-    setRunSearch(defaultRunSearch);
+    setDraftRunSearch(defaultRunSearch);
+    setSubmittedRunSearch(defaultRunSearch);
     setPage(1);
-    void fetchRuns(1, pageSize, defaultRunSearch);
+    void queryClient.invalidateQueries({ queryKey: systemSchedulerKeys.runs });
   };
 
   return (
@@ -621,9 +555,18 @@ export default function SystemSchedulerPage() {
               onChange={(value) => setTaskSearch((prev) => ({ ...prev, status: String(value ?? '') }))}
               style={{ width: 120 }}
             />
-            <Button type="primary" icon={<Search size={14} />} onClick={fetchTasks}>查询</Button>
-            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => setTaskSearch(defaultTaskSearch)}>重置</Button>
-            <Button icon={<RefreshCw size={14} />} onClick={fetchTasks} loading={tasksLoading}>刷新</Button>
+            <Button type="primary" icon={<Search size={14} />} onClick={() => void queryClient.invalidateQueries({ queryKey: systemSchedulerKeys.tasks })}>查询</Button>
+            <Button
+              type="tertiary"
+              icon={<RotateCcw size={14} />}
+              onClick={() => {
+                setTaskSearch(defaultTaskSearch);
+                void queryClient.invalidateQueries({ queryKey: systemSchedulerKeys.tasks });
+              }}
+            >
+              重置
+            </Button>
+            <Button icon={<RefreshCw size={14} />} onClick={() => void tasksQuery.refetch()} loading={tasksQuery.isFetching}>刷新</Button>
           </SearchToolbar>
 
           <ConfigurableTable
@@ -631,89 +574,89 @@ export default function SystemSchedulerPage() {
             rowKey="name"
             columns={taskColumns}
             dataSource={filteredTasks}
-            loading={tasksLoading}
+            loading={tasksQuery.isFetching}
             pagination={false}
             scroll={{ x: 2760 }}
             columnSettingsKey="system-scheduler-tasks"
-            onRefresh={fetchTasks}
-            refreshLoading={tasksLoading}
+            onRefresh={() => void tasksQuery.refetch()}
+            refreshLoading={tasksQuery.isFetching}
           />
         </TabPane>
 
         <TabPane tab="运行日志" itemKey="runs">
           <SearchToolbar>
             <Select
-              value={runSearch.taskName}
+              value={draftRunSearch.taskName}
               optionList={taskOptions}
               filter
-              onChange={(value) => setRunSearch((prev) => ({ ...prev, taskName: String(value ?? '') }))}
+              onChange={(value) => setDraftRunSearch((prev) => ({ ...prev, taskName: String(value ?? '') }))}
               style={{ width: 220 }}
             />
             <Select
-              value={runSearch.taskType}
+              value={draftRunSearch.taskType}
               optionList={[
                 { value: '', label: '全部类型' },
                 { value: 'recurring', label: '周期任务' },
                 { value: 'queue', label: '队列 Worker' },
               ]}
-              onChange={(value) => setRunSearch((prev) => ({ ...prev, taskType: String(value ?? '') }))}
+              onChange={(value) => setDraftRunSearch((prev) => ({ ...prev, taskType: String(value ?? '') }))}
               style={{ width: 140 }}
             />
             <Select
-              value={runSearch.triggerType}
+              value={draftRunSearch.triggerType}
               optionList={[
                 { value: '', label: '全部触发' },
                 { value: 'schedule', label: '自动调度' },
                 { value: 'manual', label: '手动执行' },
                 { value: 'queue', label: '队列触发' },
               ]}
-              onChange={(value) => setRunSearch((prev) => ({ ...prev, triggerType: String(value ?? '') }))}
+              onChange={(value) => setDraftRunSearch((prev) => ({ ...prev, triggerType: String(value ?? '') }))}
               style={{ width: 140 }}
             />
             <Select
-              value={runSearch.status}
+              value={draftRunSearch.status}
               optionList={[
                 { value: '', label: '全部状态' },
                 { value: 'running', label: '运行中' },
                 { value: 'success', label: '成功' },
                 { value: 'failed', label: '失败' },
               ]}
-              onChange={(value) => setRunSearch((prev) => ({ ...prev, status: String(value ?? '') }))}
+              onChange={(value) => setDraftRunSearch((prev) => ({ ...prev, status: String(value ?? '') }))}
               style={{ width: 120 }}
             />
             <Select
-              value={runSearch.alertStatus}
+              value={draftRunSearch.alertStatus}
               optionList={[
                 { value: '', label: '全部告警' },
                 { value: 'alerted', label: '有告警' },
                 { value: 'unacked', label: '未确认' },
               ]}
-              onChange={(value) => setRunSearch((prev) => ({ ...prev, alertStatus: String(value ?? '') }))}
+              onChange={(value) => setDraftRunSearch((prev) => ({ ...prev, alertStatus: String(value ?? '') }))}
               style={{ width: 120 }}
             />
             <Input
               placeholder="开始时间"
-              value={runSearch.startTime}
-              onChange={(value) => setRunSearch((prev) => ({ ...prev, startTime: value }))}
+              value={draftRunSearch.startTime}
+              onChange={(value) => setDraftRunSearch((prev) => ({ ...prev, startTime: value }))}
               showClear
               style={{ width: 180 }}
             />
             <Input
               placeholder="结束时间"
-              value={runSearch.endTime}
-              onChange={(value) => setRunSearch((prev) => ({ ...prev, endTime: value }))}
+              value={draftRunSearch.endTime}
+              onChange={(value) => setDraftRunSearch((prev) => ({ ...prev, endTime: value }))}
               showClear
               style={{ width: 180 }}
             />
             <Button type="primary" icon={<Search size={14} />} onClick={handleRunSearch}>查询</Button>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleRunReset}>重置</Button>
-            <Button icon={<RefreshCw size={14} />} onClick={() => fetchRuns()} loading={runsLoading}>刷新</Button>
+            <Button icon={<RefreshCw size={14} />} onClick={() => void runsQuery.refetch()} loading={runsQuery.isFetching}>刷新</Button>
             <Button
               type="danger"
               theme="light"
               icon={<Trash2 size={14} />}
               onClick={handleCleanupRuns}
-              loading={cleanupLoading}
+              loading={cleanupRunsMutation.isPending}
               disabled={!canCleanup}
             >
               清理
@@ -725,18 +668,18 @@ export default function SystemSchedulerPage() {
             rowKey="id"
             columns={runColumns}
             dataSource={runs}
-            loading={runsLoading}
-            pagination={buildPagination(runsTotal, fetchRuns)}
+            loading={runsQuery.isFetching}
+            pagination={buildPagination(runsTotal)}
             scroll={{ x: 2220 }}
             columnSettingsKey="system-scheduler-runs"
-            onRefresh={() => fetchRuns()}
-            refreshLoading={runsLoading}
+            onRefresh={() => void runsQuery.refetch()}
+            refreshLoading={runsQuery.isFetching}
           />
         </TabPane>
 
         <TabPane tab="执行节点" itemKey="nodes">
           <SearchToolbar>
-            <Button type="primary" icon={<RefreshCw size={14} />} onClick={() => void fetchNodes()} loading={nodesLoading}>刷新</Button>
+            <Button type="primary" icon={<RefreshCw size={14} />} onClick={() => void nodesQuery.refetch()} loading={nodesQuery.isFetching}>刷新</Button>
           </SearchToolbar>
 
           <ConfigurableTable
@@ -744,12 +687,12 @@ export default function SystemSchedulerPage() {
             rowKey="nodeId"
             columns={nodeColumns}
             dataSource={nodes}
-            loading={nodesLoading}
-            pagination={buildNodesPagination(nodesTotal, fetchNodes)}
+            loading={nodesQuery.isFetching}
+            pagination={buildNodesPagination(nodesTotal)}
             scroll={{ x: 1160 }}
             columnSettingsKey="system-scheduler-nodes"
-            onRefresh={() => void fetchNodes()}
-            refreshLoading={nodesLoading}
+            onRefresh={() => void nodesQuery.refetch()}
+            refreshLoading={nodesQuery.isFetching}
           />
         </TabPane>
       </Tabs>
@@ -763,7 +706,7 @@ export default function SystemSchedulerPage() {
           configFormApi.current = null;
         }}
         onOk={handleConfigModalOk}
-        confirmLoading={savingConfig}
+        confirmLoading={saveConfigMutation.isPending}
         okText="保存"
         cancelText="取消"
       >
@@ -844,7 +787,7 @@ export default function SystemSchedulerPage() {
         footer={detailRun?.alertMessage && !detailRun.alertAckAt ? (
           <Space>
             <Button onClick={() => setDetailRun(null)}>关闭</Button>
-            <Button type="primary" icon={<CheckCircle2 size={14} />} loading={ackLoading} disabled={!canAckAlert} onClick={() => void handleAcknowledgeAlert()}>
+            <Button type="primary" icon={<CheckCircle2 size={14} />} loading={ackAlertMutation.isPending} disabled={!canAckAlert} onClick={() => void handleAcknowledgeAlert()}>
               确认告警
             </Button>
           </Space>
@@ -886,7 +829,7 @@ export default function SystemSchedulerPage() {
                 </Typography.Paragraph>
               </div>
             )}
-            {detailLoading && <Typography.Text type="tertiary">正在刷新详情...</Typography.Text>}
+            {detailQuery.isFetching && <Typography.Text type="tertiary">正在刷新详情...</Typography.Text>}
           </Space>
         )}
       </AppModal>

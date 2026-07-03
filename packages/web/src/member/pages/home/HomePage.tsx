@@ -1,33 +1,20 @@
-import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Avatar } from '@douyinfe/semi-ui';
 import { Coins, Wallet, Ticket, Crown } from 'lucide-react';
-import type { MemberPointAccount, MemberWallet, MemberCoupon, PaginatedResponse } from '@zenith/shared';
 import { useMemberAuth } from '../../hooks/useMemberAuth';
-import { memberRequest } from '../../utils/member-request';
 import { MemberPage } from '../../components/MemberPage';
 import { formatYuan } from '../../utils/format';
+import { useMemberCouponList, useMemberPointAccount, useMemberWallet } from '../../hooks/queries';
 
 export default function HomePage() {
   const navigate = useNavigate();
   const { member } = useMemberAuth();
-  const [points, setPoints] = useState<number | null>(null);
-  const [wallet, setWallet] = useState<number | null>(null);
-  const [couponCount, setCouponCount] = useState<number | null>(null);
-
-  useEffect(() => {
-    memberRequest.get<MemberPointAccount>('/api/member/points/account', { silent: true }).then((r) => {
-      if (r.code === 0) setPoints(r.data.balance);
-    });
-    memberRequest.get<MemberWallet>('/api/member/wallet', { silent: true }).then((r) => {
-      if (r.code === 0) setWallet(r.data.balance);
-    });
-    memberRequest
-      .get<PaginatedResponse<MemberCoupon>>('/api/member/coupons?status=unused&page=1&pageSize=1', { silent: true })
-      .then((r) => {
-        if (r.code === 0) setCouponCount(r.data.total);
-      });
-  }, []);
+  const pointsQuery = useMemberPointAccount();
+  const walletQuery = useMemberWallet();
+  const couponQuery = useMemberCouponList({ status: 'unused', page: 1, pageSize: 1 });
+  const points = pointsQuery.data?.balance ?? null;
+  const wallet = walletQuery.data?.balance ?? null;
+  const couponCount = couponQuery.data?.total ?? null;
 
   return (
     <MemberPage title="会员概览">

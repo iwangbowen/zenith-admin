@@ -1,10 +1,10 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Col, Form, Input, Modal, Row, Select, Space, Spin, Tag, Toast, Switch, Banner, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search, Trash2, Flame } from 'lucide-react';
-import type { PaginatedResponse, MpAutoReply, MpAutoReplyType, MpReplyContentType, MpReplyArticle, MpMaterial, MpUnmatchedKeyword } from '@zenith/shared';
+import type { MpAutoReply, MpAutoReplyType, MpReplyContentType, MpReplyArticle } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -13,6 +13,15 @@ import { createdAtColumn } from '../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
+import {
+  mpAutoReplyKeys,
+  useDeleteMpAutoReply,
+  useDeleteMpUnmatchedKeyword,
+  useMpAutoReplyList,
+  useMpAutoReplyMaterials,
+  useMpUnmatchedKeywords,
+  useSaveMpAutoReply,
+} from '@/hooks/queries/mp-auto-replies';
 
 const REPLY_TYPE_OPTIONS = [
   { label: '关注回复', value: 'subscribe' },
@@ -50,67 +59,54 @@ const emptyArticle = (): MpReplyArticle => ({ title: '', description: '', picUrl
 
 export default function MpAutoRepliesPage() {
   const { hasPermission: can } = usePermission();
-  const { accounts, currentId, currentIdRef, setCurrentId, loading: accountsLoading } = useMpAccounts();
+  const queryClient = useQueryClient();
+  const { accounts, currentId, setCurrentId, loading: accountsLoading } = useMpAccounts();
 
-  const [loading, setLoading] = useState(false);
-  const [list, setList] = useState<MpAutoReply[]>([]);
-  const [total, setTotal] = useState(0);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
+  const { page, pageSize, setPage, buildPagination } = usePagination();
 
   interface SearchParams { filterType: MpAutoReplyType | undefined; keyword: string; }
   const defaultSearch: SearchParams = { filterType: undefined, keyword: '' };
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearch);
-  const searchRef = useRef<SearchParams>(defaultSearch);
-  searchRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearch);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearch);
 
-  const [materials, setMaterials] = useState<MpMaterial[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<MpAutoReply | null>(null);
   const [modalType, setModalType] = useState<MpAutoReplyType>('keyword');
   const [contentType, setContentType] = useState<MpReplyContentType>('text');
   const [articles, setArticles] = useState<MpReplyArticle[]>([emptyArticle()]);
-  const [submitting, setSubmitting] = useState(false);
   const formRef = useRef<FormApi>(null);
-  const [togglingId, setTogglingId] = useState<number | null>(null);
-
-  const fetchList = useCallback(
-    async (p = page, ps = pageSize, params?: SearchParams) => {
-      if (!currentId) { setList([]); setTotal(0); return; }
-      const reqId = currentId;
-      const { filterType, keyword } = params ?? searchRef.current;
-      setLoading(true);
-      try {
-        const query = new URLSearchParams({ page: String(p), pageSize: String(ps), accountId: String(currentId) });
-        if (filterType) query.set('replyType', filterType);
-        if (keyword) query.set('keyword', keyword);
-        const res = await request.get<PaginatedResponse<MpAutoReply>>(`/api/mp/auto-replies?${query}`);
-        if (currentIdRef.current !== reqId) return; // 账号已切换，丢弃过期响应
-        setList(res.data?.list ?? []);
-        setTotal(res.data?.total ?? 0);
-        setPage(res.data?.page ?? p);
-        setPageSize(res.data?.pageSize ?? ps);
-      } finally {
-        if (currentIdRef.current === reqId) setLoading(false);
-      }
-    },
-    [page, pageSize, currentId, currentIdRef, setPage, setPageSize],
-  );
-
-  const fetchMaterials = useCallback(async (accountId: number) => {
-    const res = await request.get<PaginatedResponse<MpMaterial>>(`/api/mp/materials?accountId=${accountId}&page=1&pageSize=200`);
-    if (currentIdRef.current !== accountId) return;
-    setMaterials((res.data?.list ?? []).filter((m) => m.wechatMediaId));
-  }, [currentIdRef]);
+  const listQuery = useMpAutoReplyList({
+    accountId: currentId,
+    page,
+    pageSize,
+    replyType: submittedParams.filterType,
+    keyword: submittedParams.keyword || undefined,
+  });
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const materialsQuery = useMpAutoReplyMaterials(currentId);
+  const materials = (materialsQuery.data?.list ?? []).filter((m) => m.wechatMediaId);
+  const saveMutation = useSaveMpAutoReply();
+  const toggleMutation = useSaveMpAutoReply();
+  const deleteMutation = useDeleteMpAutoReply();
+  const submitting = saveMutation.isPending;
+  const togglingId = toggleMutation.isPending ? (toggleMutation.variables?.id ?? null) : null;
 
   useEffect(() => {
     setPage(1);
-    void fetchList(1, pageSize, searchRef.current);
-    if (currentId) void fetchMaterials(currentId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentId]);
+  }, [currentId, setPage]);
 
-  const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
-  const handleReset = () => { setSearchParams(defaultSearch); setPage(1); void fetchList(1, pageSize, defaultSearch); };
+  const handleSearch = () => {
+    setPage(1);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: mpAutoReplyKeys.lists(currentId) });
+  };
+  const handleReset = () => {
+    setDraftParams(defaultSearch);
+    setSubmittedParams(defaultSearch);
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: mpAutoReplyKeys.lists(currentId) });
+  };
 
   const openCreate = () => {
     setEditingRecord(null); setModalType('keyword'); setContentType('text'); setArticles([emptyArticle()]); setModalVisible(true);
@@ -126,7 +122,7 @@ export default function MpAutoRepliesPage() {
 
   const handleSubmit = async () => {
     let values: Awaited<ReturnType<FormApi['validate']>>;
-    try { values = (await formRef.current?.validate())!; } catch { return; }
+    try { values = (await formRef.current?.validate())!; } catch { throw new Error('validation'); }
     if (!currentId) return;
 
     const payload: Record<string, unknown> = {
@@ -148,30 +144,14 @@ export default function MpAutoRepliesPage() {
       if (contentType === 'video') payload.content = values.content || undefined;
     }
 
-    setSubmitting(true);
-    try {
-      if (editingRecord) {
-        const res = await request.put(`/api/mp/auto-replies/${editingRecord.id}`, payload);
-        if (res.code !== 0) return;
-        Toast.success('更新成功');
-      } else {
-        const res = await request.post('/api/mp/auto-replies', { ...payload, accountId: currentId, replyType: modalType });
-        if (res.code !== 0) return;
-        Toast.success('创建成功');
-      }
-      setModalVisible(false);
-      void fetchList();
-    } finally {
-      setSubmitting(false);
-    }
+    await saveMutation.mutateAsync({ id: editingRecord?.id, values: editingRecord ? payload : { ...payload, accountId: currentId, replyType: modalType } });
+    Toast.success(editingRecord ? '更新成功' : '创建成功');
+    setModalVisible(false);
   };
 
   const handleToggle = async (record: MpAutoReply, status: 'enabled' | 'disabled') => {
-    setTogglingId(record.id);
-    try {
-      const res = await request.put(`/api/mp/auto-replies/${record.id}`, { status });
-      if (res.code === 0) { Toast.success(status === 'enabled' ? '已启用' : '已禁用'); void fetchList(); }
-    } finally { setTogglingId(null); }
+    await toggleMutation.mutateAsync({ id: record.id, values: { status } });
+    Toast.success(status === 'enabled' ? '已启用' : '已禁用');
   };
 
   const handleDelete = (record: MpAutoReply) => {
@@ -179,10 +159,8 @@ export default function MpAutoRepliesPage() {
       title: '确定要删除该自动回复吗？',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete(`/api/mp/auto-replies/${record.id}`);
-        if (res.code !== 0) return;
+        await deleteMutation.mutateAsync(record.id);
         Toast.success('删除成功');
-        void fetchList();
       },
     });
   };
@@ -220,22 +198,17 @@ export default function MpAutoRepliesPage() {
   ];
 
   const [hotwordsVisible, setHotwordsVisible] = useState(false);
-  const [hotwords, setHotwords] = useState<MpUnmatchedKeyword[]>([]);
-  const [hotwordsLoading, setHotwordsLoading] = useState(false);
+  const hotwordsQuery = useMpUnmatchedKeywords(currentId, hotwordsVisible);
+  const hotwords = hotwordsQuery.data?.list ?? [];
+  const deleteHotwordMutation = useDeleteMpUnmatchedKeyword();
 
-  const openHotwords = async () => {
+  const openHotwords = () => {
     if (!currentId) return;
     setHotwordsVisible(true);
-    setHotwordsLoading(true);
-    try {
-      const res = await request.get<PaginatedResponse<MpUnmatchedKeyword>>(`/api/mp/auto-replies/unmatched?accountId=${currentId}&page=1&pageSize=50`);
-      setHotwords(res.data?.list ?? []);
-    } finally { setHotwordsLoading(false); }
   };
 
   const handleDeleteHotword = async (id: number) => {
-    const res = await request.delete(`/api/mp/auto-replies/unmatched/${id}`);
-    if (res.code === 0) setHotwords((prev) => prev.filter((h) => h.id !== id));
+    await deleteHotwordMutation.mutateAsync(id);
   };
 
   const renderAccountFilter = () => (
@@ -244,8 +217,8 @@ export default function MpAutoRepliesPage() {
   const renderTypeFilter = () => (
     <Select
       placeholder="回复类型"
-      value={searchParams.filterType}
-      onChange={(v) => setSearchParams({ ...searchParams, filterType: v as MpAutoReplyType | undefined })}
+      value={draftParams.filterType}
+      onChange={(v) => setDraftParams({ ...draftParams, filterType: v as MpAutoReplyType | undefined })}
       optionList={REPLY_TYPE_OPTIONS}
       showClear
       style={{ width: 140 }}
@@ -255,8 +228,8 @@ export default function MpAutoRepliesPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="搜索关键词"
-      value={searchParams.keyword}
-      onChange={(v) => setSearchParams({ ...searchParams, keyword: v })}
+      value={draftParams.keyword}
+      onChange={(v) => setDraftParams({ ...draftParams, keyword: v })}
       onEnterPress={handleSearch}
       showClear
       style={{ width: 180 }}
@@ -309,8 +282,8 @@ export default function MpAutoRepliesPage() {
         <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
       )}
 
-      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList()} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total, fetchList)} scroll={{ x: 1100 }} />
+      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
+        pagination={buildPagination(total)} scroll={{ x: 1100 }} />
 
       <AppModal title={editingRecord ? '编辑自动回复' : '新增自动回复'} visible={modalVisible}
         onOk={handleSubmit} onCancel={() => { setModalVisible(false); setEditingRecord(null); }}
@@ -410,7 +383,7 @@ export default function MpAutoRepliesPage() {
 
       <AppModal title="未命中热词（优化关键词库参考）" visible={hotwordsVisible} footer={null}
         onCancel={() => setHotwordsVisible(false)} width={520}>
-        <Spin spinning={hotwordsLoading}>
+        <Spin spinning={hotwordsQuery.isFetching}>
           {hotwords.length === 0 ? <Typography.Text type="tertiary">暂无未命中热词记录</Typography.Text> : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 360, overflowY: 'auto' }}>
               {hotwords.map((h) => (

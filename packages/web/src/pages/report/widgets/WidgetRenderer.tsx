@@ -10,8 +10,8 @@ import {
   useChartPalette, chartOptions, type ChartPalette,
 } from '@/components/charts';
 import { formatReportValue } from '@zenith/shared';
-import type { ReportWidget, ReportField, ReportDataResult, ReportConditionalFormat, ReportWidgetOptions, DictItem } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { ReportWidget, ReportField, ReportDataResult, ReportConditionalFormat, ReportWidgetOptions } from '@zenith/shared';
+import { useReportWidgetDictMaps } from '@/hooks/queries/report-designer';
 
 // ─── 工具 ────────────────────────────────────────────────────────────────────
 function toNumber(v: unknown): number {
@@ -118,7 +118,6 @@ interface WidgetRendererProps {
 export function WidgetRenderer({ widget, data, loading, error, filterValues, onCategoryClick }: Readonly<WidgetRendererProps>) {
   const palette = useChartPalette();
   const { ref, width, height } = useElementSize<HTMLDivElement>();
-  const [dictMaps, setDictMaps] = useState<Record<string, Record<string, string>>>({});
   // 多级原地钻取：按 drilldown.fields 逐层下钻的当前路径（{字段,值}）
   const [drillPath, setDrillPath] = useState<{ field: string; value: string }[]>([]);
 
@@ -139,21 +138,7 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
       .map((col) => col.format?.kind === 'dict' ? col.format.dictCode?.trim() : '')
       .filter((code): code is string => !!code)));
   }, [widget]);
-
-  useEffect(() => {
-    if (!tableDictCodes.length) return;
-    let cancelled = false;
-    void Promise.all(tableDictCodes.map(async (code) => {
-      const res = await request.get<DictItem[]>(`/api/dicts/code/${encodeURIComponent(code)}/items`, { silent: true });
-      if (res.code !== 0) return [code, {}] as const;
-      const map = Object.fromEntries(res.data.map((item) => [item.value, item.label]));
-      return [code, map] as const;
-    })).then((entries) => {
-      if (cancelled) return;
-      setDictMaps((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
-    });
-    return () => { cancelled = true; };
-  }, [tableDictCodes]);
+  const dictMaps = useReportWidgetDictMaps(tableDictCodes);
 
   const content = useMemo(() => {
     const baseOptions = widget.options ?? {};

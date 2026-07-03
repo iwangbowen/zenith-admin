@@ -1,12 +1,10 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Input, Modal, Select, Spin, Tag, Toast, Banner, Upload, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search, RefreshCw, UploadCloud } from 'lucide-react';
-import { TOKEN_KEY } from '@zenith/shared';
-import type { PaginatedResponse, MpMaterial, MpMaterialType } from '@zenith/shared';
+import type { MpMaterial, MpMaterialType } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
-import { request } from '@/utils/request';
-import { config } from '@/config';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -15,6 +13,14 @@ import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
+import {
+  mpMaterialKeys,
+  useDeleteMpMaterial,
+  useMpMaterialList,
+  useSaveMpMaterial,
+  useSyncMpMaterials,
+  useUploadMpMaterial,
+} from '@/hooks/queries/mp-materials';
 
 const TYPE_OPTIONS = [
   { label: '图片', value: 'image' },
@@ -30,67 +36,56 @@ function fmtSize(bytes: number | null): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+interface SearchParams { filterType: MpMaterialType | undefined; keyword: string; }
+const defaultSearch: SearchParams = { filterType: undefined, keyword: '' };
+
 export default function MpMaterialsPage() {
   const { hasPermission: can } = usePermission();
-  const { accounts, currentId, currentIdRef, setCurrentId, loading: accountsLoading } = useMpAccounts();
+  const queryClient = useQueryClient();
+  const { accounts, currentId, setCurrentId, loading: accountsLoading } = useMpAccounts();
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearch);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearch);
 
-  const [loading, setLoading] = useState(false);
-  const [list, setList] = useState<MpMaterial[]>([]);
-  const [total, setTotal] = useState(0);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-
-  interface SearchParams { filterType: MpMaterialType | undefined; keyword: string; }
-  const defaultSearch: SearchParams = { filterType: undefined, keyword: '' };
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearch);
-  const searchRef = useRef<SearchParams>(defaultSearch);
-  searchRef.current = searchParams;
+  const listQuery = useMpMaterialList(currentId, {
+    page,
+    pageSize,
+    type: submittedParams.filterType,
+    keyword: submittedParams.keyword || undefined,
+  });
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<MpMaterial | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const formRef = useRef<FormApi>(null);
-
   const [uploadVisible, setUploadVisible] = useState(false);
   const [uploadType, setUploadType] = useState<MpMaterialType>('image');
   const [uploadName, setUploadName] = useState('');
-  const [uploading, setUploading] = useState(false);
+
+  const saveMutation = useSaveMpMaterial();
+  const deleteMutation = useDeleteMpMaterial();
+  const syncMutation = useSyncMpMaterials();
+  const uploadMutation = useUploadMpMaterial();
 
   const ACCEPT_MAP: Record<MpMaterialType, string> = { image: 'image/*', thumb: 'image/*', voice: 'audio/*', video: 'video/*' };
 
-  const fetchList = useCallback(
-    async (p = page, ps = pageSize, params?: SearchParams) => {
-      if (!currentId) { setList([]); setTotal(0); return; }
-      const reqId = currentId;
-      const { filterType, keyword } = params ?? searchRef.current;
-      setLoading(true);
-      try {
-        const query = new URLSearchParams({ page: String(p), pageSize: String(ps), accountId: String(currentId) });
-        if (filterType) query.set('type', filterType);
-        if (keyword) query.set('keyword', keyword);
-        const res = await request.get<PaginatedResponse<MpMaterial>>(`/api/mp/materials?${query}`);
-        if (currentIdRef.current !== reqId) return; // 账号已切换，丢弃过期响应
-        setList(res.data?.list ?? []);
-        setTotal(res.data?.total ?? 0);
-        setPage(res.data?.page ?? p);
-        setPageSize(res.data?.pageSize ?? ps);
-      } finally { setLoading(false); }
-    },
-    [page, pageSize, currentId, currentIdRef, setPage, setPageSize],
-  );
-
-  useEffect(() => { setPage(1); void fetchList(1, pageSize, searchRef.current); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [currentId]);
-
-  const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
-  const handleReset = () => { setSearchParams(defaultSearch); setPage(1); void fetchList(1, pageSize, defaultSearch); };
+  const handleSearch = () => {
+    setPage(1);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: mpMaterialKeys.lists(currentId) });
+  };
+  const handleReset = () => {
+    setDraftParams(defaultSearch);
+    setSubmittedParams(defaultSearch);
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: mpMaterialKeys.lists(currentId) });
+  };
 
   const handleSync = async () => {
     if (!currentId) return;
-    setSyncing(true);
-    try {
-      const res = await request.post<{ created: number; updated: number }>('/api/mp/materials/sync', { accountId: currentId });
-      if (res.code === 0) { Toast.success(`同步完成：新增 ${res.data?.created ?? 0}，更新 ${res.data?.updated ?? 0}`); void fetchList(); }
-    } finally { setSyncing(false); }
+    const data = await syncMutation.mutateAsync(currentId);
+    Toast.success(`同步完成：新增 ${data.created ?? 0}，更新 ${data.updated ?? 0}`);
   };
 
   const openCreate = () => { setEditingRecord(null); setModalVisible(true); };
@@ -98,22 +93,11 @@ export default function MpMaterialsPage() {
 
   const handleSubmit = async () => {
     let values: Awaited<ReturnType<FormApi['validate']>>;
-    try { values = (await formRef.current?.validate())!; } catch { return; }
+    try { values = (await formRef.current?.validate())!; } catch { throw new Error('validation'); }
     if (!currentId) return;
-    setSubmitting(true);
-    try {
-      if (editingRecord) {
-        const res = await request.put(`/api/mp/materials/${editingRecord.id}`, { name: values.name });
-        if (res.code !== 0) return;
-        Toast.success('更新成功');
-      } else {
-        const res = await request.post('/api/mp/materials', { ...values, accountId: currentId });
-        if (res.code !== 0) return;
-        Toast.success('创建成功');
-      }
-      setModalVisible(false);
-      void fetchList();
-    } finally { setSubmitting(false); }
+    await saveMutation.mutateAsync({ id: editingRecord?.id, values: editingRecord ? { name: values.name } : { ...values, accountId: currentId } });
+    Toast.success(editingRecord ? '更新成功' : '创建成功');
+    setModalVisible(false);
   };
 
   const handleDelete = (record: MpMaterial) => {
@@ -121,10 +105,8 @@ export default function MpMaterialsPage() {
       title: `确定要删除素材「${record.name}」吗？`,
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete(`/api/mp/materials/${record.id}`);
-        if (res.code !== 0) return;
+        await deleteMutation.mutateAsync(record.id);
         Toast.success('删除成功');
-        void fetchList();
       },
     });
   };
@@ -160,8 +142,8 @@ export default function MpMaterialsPage() {
   const renderTypeFilter = () => (
     <Select
       placeholder="类型"
-      value={searchParams.filterType}
-      onChange={(v) => setSearchParams({ ...searchParams, filterType: v as MpMaterialType | undefined })}
+      value={draftParams.filterType}
+      onChange={(v) => setDraftParams({ ...draftParams, filterType: v as MpMaterialType | undefined })}
       optionList={TYPE_OPTIONS}
       showClear
       style={{ width: 120 }}
@@ -171,8 +153,8 @@ export default function MpMaterialsPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="搜索素材名称"
-      value={searchParams.keyword}
-      onChange={(v) => setSearchParams({ ...searchParams, keyword: v })}
+      value={draftParams.keyword}
+      onChange={(v) => setDraftParams({ ...draftParams, keyword: v })}
       onEnterPress={handleSearch}
       showClear
       style={{ width: 180 }}
@@ -185,7 +167,7 @@ export default function MpMaterialsPage() {
   ) : null;
   const renderMaterialActions = () => {
     const syncButton = can('mp:material:sync') ? (
-      <Button icon={<RefreshCw size={14} />} loading={syncing} disabled={!currentId} onClick={() => void handleSync()}>从微信同步</Button>
+      <Button icon={<RefreshCw size={14} />} loading={syncMutation.isPending} disabled={!currentId} onClick={() => void handleSync()}>从微信同步</Button>
     ) : null;
     const uploadButton = can('mp:material:create') ? (
       <Button icon={<UploadCloud size={14} />} disabled={!currentId} onClick={() => { setUploadType('image'); setUploadName(''); setUploadVisible(true); }}>上传素材</Button>
@@ -231,12 +213,12 @@ export default function MpMaterialsPage() {
         <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
       )}
 
-      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList()} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total, fetchList)} scroll={{ x: 1000 }} />
+      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
+        pagination={buildPagination(total)} scroll={{ x: 1000 }} />
 
       <AppModal title={editingRecord ? '重命名素材' : '新增素材'} visible={modalVisible}
         onOk={handleSubmit} onCancel={() => { setModalVisible(false); setEditingRecord(null); }}
-        confirmLoading={submitting} width={520}>
+        confirmLoading={saveMutation.isPending} width={520}>
         <Spin spinning={false} wrapperClassName="modal-spin-wrapper">
           <Form
             key={editingRecord?.id ?? 'new'}
@@ -266,18 +248,28 @@ export default function MpMaterialsPage() {
             <Input style={{ marginTop: 4 }} value={uploadName} onChange={setUploadName} placeholder="请输入素材名称" maxLength={200} />
           </div>
           <Upload
-            action={`${config.apiBaseUrl}/api/mp/materials/upload`}
-            headers={{ Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` }}
+            action=""
             name="file"
             limit={1}
             accept={ACCEPT_MAP[uploadType]}
             showUploadList
-            disabled={uploading || !currentId}
-            data={() => ({ accountId: String(currentId ?? ''), type: uploadType, name: uploadName, ...(uploadType === 'video' ? { title: uploadName } : {}) })}
-            onChange={({ fileList }) => setUploading(fileList.some((f) => f.status === 'uploading'))}
-            onSuccess={(res) => {
-              if (res?.code === 0) { Toast.success('上传成功'); setUploadVisible(false); void fetchList(); }
-              else Toast.error(res?.message || '上传失败');
+            disabled={uploadMutation.isPending || !currentId}
+            customRequest={async ({ fileInstance, onProgress, onSuccess, onError }) => {
+              if (!currentId) return;
+              try {
+                const formData = new FormData();
+                formData.append('file', fileInstance);
+                formData.append('accountId', String(currentId));
+                formData.append('type', uploadType);
+                if (uploadName) formData.append('name', uploadName);
+                if (uploadType === 'video' && uploadName) formData.append('title', uploadName);
+                await uploadMutation.mutateAsync({ formData, onProgress: (percent) => onProgress?.({ total: 100, loaded: percent }) });
+                Toast.success('上传成功');
+                setUploadVisible(false);
+                onSuccess?.({});
+              } catch {
+                onError?.({ status: 0 });
+              }
             }}
             onError={() => Toast.error('上传失败，请重试')}
             draggable

@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Input, Modal, Select, Space, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -8,13 +9,13 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
-import { request } from '@/utils/request';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { createdAtColumn } from '@/utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { PAYMENT_METHOD_LABELS, PAYMENT_LINK_STATUS_LABELS } from '@zenith/shared';
-import type { PaginatedResponse, PaymentLink, PaymentLinkStatus, PaymentMethod } from '@zenith/shared';
+import type { PaymentLink, PaymentLinkStatus, PaymentMethod } from '@zenith/shared';
+import { paymentLinkKeys, useDeletePaymentLink, usePaymentLinkDetail, usePaymentLinkList, useSavePaymentLink } from '@/hooks/queries/payment-links';
 
 const yuan = (cents: number | null | undefined) => (cents == null ? '用户填写' : `¥${(cents / 100).toFixed(2)}`);
 const methodOptions = Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => ({ value, label }));
@@ -43,100 +44,79 @@ interface LinkFormValues {
 
 export default function PaymentLinksPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
   const qrContainerRef = useRef<HTMLDivElement | null>(null);
-  const [data, setData] = useState<PaginatedResponse<PaymentLink> | null>(null);
-  const [loading, setLoading] = useState(false);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [search, setSearch] = useState<SearchParams>(defaultSearch);
-  const searchRef = useRef<SearchParams>(defaultSearch);
-  searchRef.current = search;
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearch);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearch);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<PaymentLink | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const [qrLink, setQrLink] = useState<PaymentLink | null>(null);
-  const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
 
-  const fetchList = useCallback(
-    async (p = page, ps = pageSize, params?: SearchParams) => {
-      const active = params ?? searchRef.current;
-      setLoading(true);
-      try {
-        const query: Record<string, string> = { page: String(p), pageSize: String(ps) };
-        if (active.keyword) query.keyword = active.keyword;
-        if (active.status) query.status = active.status;
-        const res = await request.get<PaginatedResponse<PaymentLink>>(`/api/payment/links?${new URLSearchParams(query)}`);
-        if (res.code === 0) { setData(res.data); setPage(res.data.page); setPageSize(res.data.pageSize); }
-      } finally {
-        setLoading(false);
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [page, pageSize],
-  );
+  const listQuery = usePaymentLinkList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    status: submittedParams.status || undefined,
+  });
+  const data = listQuery.data ?? null;
+  const detailQuery = usePaymentLinkDetail(editing?.id, modalVisible);
+  const editingLink = editing ? (detailQuery.data ?? editing) : null;
+  const saveMutation = useSavePaymentLink();
+  const toggleMutation = useSavePaymentLink();
+  const deleteMutation = useDeletePaymentLink();
+  const togglingId = toggleMutation.isPending ? (toggleMutation.variables?.id ?? null) : null;
 
-  useEffect(() => {
-    void fetchList();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function handleSearch() { setPage(1); void fetchList(1, pageSize); }
-  function handleReset() { setSearch(defaultSearch); setPage(1); void fetchList(1, pageSize, defaultSearch); }
+  function handleSearch() { setPage(1); setSubmittedParams(draftParams); void queryClient.invalidateQueries({ queryKey: paymentLinkKeys.lists }); }
+  function handleReset() { setDraftParams(defaultSearch); setSubmittedParams(defaultSearch); setPage(1); void queryClient.invalidateQueries({ queryKey: paymentLinkKeys.lists }); }
 
   function openCreate() { setEditing(null); setModalVisible(true); }
   function openEdit(record: PaymentLink) { setEditing(record); setModalVisible(true); }
   function closeModal() { setModalVisible(false); setEditing(null); }
 
-  const formInit: Partial<LinkFormValues> = editing
+  const formInit: Partial<LinkFormValues> = editingLink
     ? {
-        subject: editing.subject,
-        amountYuan: editing.amount != null ? editing.amount / 100 : undefined,
-        payMethod: editing.payMethod ?? undefined,
-        bizType: editing.bizType,
-        maxUses: editing.maxUses ?? undefined,
-        expiredAt: editing.expiredAt ? new Date(editing.expiredAt) : undefined,
-        status: editing.status === 'disabled' ? 'disabled' : 'active',
-        remark: editing.remark ?? '',
+        subject: editingLink.subject,
+        amountYuan: editingLink.amount != null ? editingLink.amount / 100 : undefined,
+        payMethod: editingLink.payMethod ?? undefined,
+        bizType: editingLink.bizType,
+        maxUses: editingLink.maxUses ?? undefined,
+        expiredAt: editingLink.expiredAt ? new Date(editingLink.expiredAt) : undefined,
+        status: editingLink.status === 'disabled' ? 'disabled' : 'active',
+        remark: editingLink.remark ?? '',
       }
     : { bizType: 'general', status: 'active' };
 
   async function handleOk() {
     let values: LinkFormValues;
     try { values = (await formApi.current?.validate()) as LinkFormValues; } catch { throw new Error('validation'); }
-    setSubmitting(true);
-    try {
-      const payload = {
-        subject: values.subject,
-        amount: values.amountYuan != null ? Math.round(values.amountYuan * 100) : undefined,
-        payMethod: values.payMethod || undefined,
-        bizType: values.bizType,
-        maxUses: values.maxUses ?? undefined,
-        expiredAt: values.expiredAt ? formatDateTimeForApi(values.expiredAt) : undefined,
-        status: values.status,
-        remark: values.remark || undefined,
-      };
-      const res = editing
-        ? await request.put<PaymentLink>(`/api/payment/links/${editing.id}`, payload)
-        : await request.post<PaymentLink>('/api/payment/links', payload);
-      if (res.code === 0) { Toast.success(editing ? '更新成功' : '创建成功'); closeModal(); void fetchList(); }
-      else throw new Error(res.message);
-    } finally {
-      setSubmitting(false);
-    }
+    const payload = {
+      subject: values.subject,
+      amount: values.amountYuan != null ? Math.round(values.amountYuan * 100) : undefined,
+      payMethod: values.payMethod || undefined,
+      bizType: values.bizType,
+      maxUses: values.maxUses ?? undefined,
+      expiredAt: values.expiredAt ? formatDateTimeForApi(values.expiredAt) : undefined,
+      status: values.status,
+      remark: values.remark || undefined,
+    };
+    await saveMutation.mutateAsync({ id: editing?.id, values: payload });
+    Toast.success(editing ? '更新成功' : '创建成功');
+    closeModal();
   }
 
   function handleToggle(record: PaymentLink, checked: boolean) {
-    setTogglingIds((prev) => new Set(prev).add(record.id));
-    request
-      .put<PaymentLink>(`/api/payment/links/${record.id}`, { status: checked ? 'active' : 'disabled' })
-      .then((res) => { if (res.code === 0) { Toast.success(checked ? '已启用' : '已停用'); void fetchList(); } })
-      .finally(() => setTogglingIds((prev) => { const s = new Set(prev); s.delete(record.id); return s; }));
+    toggleMutation.mutate(
+      { id: record.id, values: { status: checked ? 'active' : 'disabled' } },
+      { onSuccess: () => Toast.success(checked ? '已启用' : '已停用') },
+    );
   }
 
   async function handleDelete(id: number) {
-    const res = await request.delete(`/api/payment/links/${id}`);
-    if (res.code === 0) { Toast.success('删除成功'); void fetchList(); }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   }
 
   async function copyPublicLink(link: PaymentLink) {
@@ -180,7 +160,7 @@ export default function PaymentLinksPage() {
         <Space spacing={4}>
           <Tag color={LINK_STATUS_COLOR[r.status]}>{PAYMENT_LINK_STATUS_LABELS[r.status]}</Tag>
           {hasPermission('payment:link:update') && (
-            <Switch checked={r.status !== 'disabled'} loading={togglingIds.has(r.id)} size="small" onChange={(c) => handleToggle(r, c)} />
+            <Switch checked={r.status !== 'disabled'} loading={togglingId === r.id} size="small" onChange={(c) => handleToggle(r, c)} />
           )}
         </Space>
       ),
@@ -218,8 +198,8 @@ export default function PaymentLinksPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="标题..."
-      value={search.keyword}
-      onChange={(v) => setSearch((p) => ({ ...p, keyword: v }))}
+      value={draftParams.keyword}
+      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
       showClear
       style={{ width: 200 }}
       onEnterPress={handleSearch}
@@ -229,8 +209,8 @@ export default function PaymentLinksPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="全部状态"
-      value={search.status || undefined}
-      onChange={(v) => setSearch((p) => ({ ...p, status: (v as string) ?? '' }))}
+      value={draftParams.status || undefined}
+      onChange={(v) => setDraftParams((p) => ({ ...p, status: (v as string) ?? '' }))}
       showClear
       style={{ width: 120 }}
       optionList={[{ value: 'active', label: '生效中' }, { value: 'disabled', label: '已停用' }]}
@@ -269,11 +249,11 @@ export default function PaymentLinksPage() {
       />
 
       <ConfigurableTable
-        bordered columns={columns} dataSource={data?.list ?? []} loading={loading} rowKey="id" size="small" empty="暂无数据"
-        onRefresh={() => void fetchList()} refreshLoading={loading} pagination={buildPagination(data?.total ?? 0, fetchList)}
+        bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
+        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(data?.total ?? 0)}
       />
 
-      <AppModal title={editing ? '编辑支付链接' : '新增支付链接'} visible={modalVisible} onOk={handleOk} onCancel={closeModal} okButtonProps={{ loading: submitting }} width={700} closeOnEsc>
+      <AppModal title={editing ? '编辑支付链接' : '新增支付链接'} visible={modalVisible} onOk={handleOk} onCancel={closeModal} okButtonProps={{ loading: saveMutation.isPending, disabled: !!editing && detailQuery.isFetching }} width={700} closeOnEsc>
         <Form key={editing?.id ?? 'new'} getFormApi={(api) => { formApi.current = api; }} initValues={formInit} labelPosition="left" labelWidth={100}>
           <Form.Input field="subject" label="标题" placeholder="如：会员年费收款" rules={[{ required: true, message: '标题不能为空' }]} />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: 16 }}>

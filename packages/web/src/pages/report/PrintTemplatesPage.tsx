@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Input, Modal, Select, Switch, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -9,16 +10,21 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import ExportButton from '@/components/ExportButton';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
+import { useReportDesignerDatasets } from '@/hooks/queries/report-designer';
+import {
+  reportPrintKeys,
+  useDeleteReportPrintTemplate,
+  useRenderReportPrintTemplate,
+  useReportPrintTemplateList,
+  useSaveReportPrintTemplate,
+} from '@/hooks/queries/report-print';
 import PrintReportView from './PrintReportView';
 import type {
   CreateReportPrintTemplateInput,
-  PaginatedResponse,
-  ReportDataset,
   ReportPrintRenderResult,
   ReportPrintTemplate,
   UpdateReportPrintTemplateInput,
@@ -38,50 +44,45 @@ function defaultParamValues(template: ReportPrintTemplate) {
 export default function PrintTemplatesPage() {
   const navigate = useNavigate();
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
 
-  const [data, setData] = useState<PaginatedResponse<ReportPrintTemplate> | null>(null);
-  const [datasets, setDatasets] = useState<ReportDataset[]>([]);
-  const [loading, setLoading] = useState(false);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<ReportPrintTemplate | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
   const [previewVisible, setPreviewVisible] = useState(false);
-  const [previewLoading, setPreviewLoading] = useState(false);
   const [previewResult, setPreviewResult] = useState<ReportPrintRenderResult | null>(null);
   const [previewParams, setPreviewParams] = useState<Record<string, unknown>>({});
 
-  const fetchList = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const active = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const q: Record<string, string> = { page: String(p), pageSize: String(ps) };
-      if (active.keyword) q.keyword = active.keyword;
-      if (active.status) q.status = active.status;
-      const res = await request.get<PaginatedResponse<ReportPrintTemplate>>(`/api/report/print?${new URLSearchParams(q)}`);
-      if (res.code === 0) { setData(res.data); setPage(res.data.page); setPageSize(res.data.pageSize); }
-    } finally {
-      setLoading(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize]);
+  const listQuery = useReportPrintTemplateList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    status: submittedParams.status || undefined,
+  });
+  const data = listQuery.data ?? null;
+  const datasetsQuery = useReportDesignerDatasets();
+  const datasets = datasetsQuery.data ?? [];
+  const saveMutation = useSaveReportPrintTemplate();
+  const toggleStatusMutation = useSaveReportPrintTemplate();
+  const deleteMutation = useDeleteReportPrintTemplate();
+  const renderMutation = useRenderReportPrintTemplate();
+  const togglingId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
 
-  useEffect(() => {
-    void fetchList();
-    request.get<PaginatedResponse<ReportDataset>>('/api/report/datasets?page=1&pageSize=200').then((res) => {
-      if (res.code === 0) setDatasets(res.data.list.filter((d) => d.status === 'enabled'));
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function handleSearch() { setPage(1); void fetchList(1, pageSize); }
-  function handleReset() { setSearchParams(defaultSearchParams); setPage(1); void fetchList(1, pageSize, defaultSearchParams); }
+  function handleSearch() {
+    setPage(1);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: reportPrintKeys.lists });
+  }
+  function handleReset() {
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: reportPrintKeys.lists });
+  }
 
   function openCreate() { setEditing(null); setModalVisible(true); }
   function openEdit(record: ReportPrintTemplate) { setEditing(record); setModalVisible(true); }
@@ -107,39 +108,21 @@ export default function PrintTemplatesPage() {
       status: values.status as ReportPrintTemplate['status'],
       remark: values.remark ? String(values.remark) : undefined,
     };
-    setSubmitting(true);
-    try {
-      const res = editing
-        ? await request.put<ReportPrintTemplate>(`/api/report/print/${editing.id}`, basePayload satisfies UpdateReportPrintTemplateInput)
-        : await request.post<ReportPrintTemplate>('/api/report/print', basePayload satisfies CreateReportPrintTemplateInput);
-      if (res.code === 0) {
-        Toast.success(editing ? '更新成功' : '创建成功');
-        closeModal();
-        if (editing) void fetchList();
-        else navigate(`/report/print/${res.data.id}/design`);
-      } else {
-        throw new Error(res.message);
-      }
-    } finally {
-      setSubmitting(false);
-    }
+    const saved = await saveMutation.mutateAsync({ id: editing?.id, values: basePayload satisfies CreateReportPrintTemplateInput | UpdateReportPrintTemplateInput });
+    Toast.success(editing ? '更新成功' : '创建成功');
+    closeModal();
+    if (!editing) navigate(`/report/print/${saved.id}/design`);
   }
 
   async function handleDelete(id: number) {
-    const res = await request.delete(`/api/report/print/${id}`);
-    if (res.code === 0) { Toast.success('删除成功'); void fetchList(); }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   }
 
   function handleToggleStatus(record: ReportPrintTemplate, checked: boolean) {
     const doToggle = async () => {
-      setTogglingIds((p) => new Set(p).add(record.id));
-      try {
-        await request.put(`/api/report/print/${record.id}`, { status: checked ? 'enabled' : 'disabled' });
-        Toast.success(checked ? '已启用' : '已停用');
-        void fetchList();
-      } finally {
-        setTogglingIds((p) => { const s = new Set(p); s.delete(record.id); return s; });
-      }
+      await toggleStatusMutation.mutateAsync({ id: record.id, values: { status: checked ? 'enabled' : 'disabled' } });
+      Toast.success(checked ? '已启用' : '已停用');
     };
     if (checked) void doToggle();
     else Modal.confirm({ title: '确认停用', content: `停用后「${record.name}」将不可用于打印报表，确认停用？`, onOk: () => void doToggle() });
@@ -150,14 +133,8 @@ export default function PrintTemplatesPage() {
     setPreviewResult(null);
     const params = defaultParamValues(record);
     setPreviewParams(params);
-    setPreviewLoading(true);
-    try {
-      const res = await request.post<ReportPrintRenderResult>(`/api/report/print/${record.id}/render`, { params, limit: 100 }, { silent: true });
-      if (res.code === 0) setPreviewResult(res.data);
-      else Toast.error(res.message || '预览失败');
-    } finally {
-      setPreviewLoading(false);
-    }
+    const result = await renderMutation.mutateAsync({ id: record.id, params, limit: 100 });
+    setPreviewResult(result);
   }
 
   const columns: ColumnProps<ReportPrintTemplate>[] = [
@@ -170,7 +147,7 @@ export default function PrintTemplatesPage() {
       render: (_: unknown, record: ReportPrintTemplate) => (
         <Switch
           checked={record.status === 'enabled'}
-          loading={togglingIds.has(record.id)}
+          loading={togglingId === record.id}
           disabled={!hasPermission('report:print:update')}
           onChange={(checked) => handleToggleStatus(record, checked)}
           size="small"
@@ -202,11 +179,11 @@ export default function PrintTemplatesPage() {
   ];
 
   const renderKeyword = () => (
-    <Input prefix={<Search size={14} />} placeholder="搜索名称/备注..." value={searchParams.keyword}
-      onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))} showClear style={{ width: 220 }} onEnterPress={handleSearch} />
+    <Input prefix={<Search size={14} />} placeholder="搜索名称/备注..." value={draftParams.keyword}
+      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} showClear style={{ width: 220 }} onEnterPress={handleSearch} />
   );
   const renderStatusFilter = () => (
-    <Select placeholder="全部状态" value={searchParams.status || undefined} onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))}
+    <Select placeholder="全部状态" value={draftParams.status || undefined} onChange={(v) => setDraftParams((p) => ({ ...p, status: (v as string) ?? '' }))}
       showClear style={{ width: 120 }} optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} />
   );
   const renderSearchBtn = () => <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>;
@@ -227,8 +204,8 @@ export default function PrintTemplatesPage() {
       />
 
       <ConfigurableTable
-        bordered columns={columns} dataSource={data?.list ?? []} loading={loading} rowKey="id" size="small" empty="暂无数据"
-        onRefresh={() => void fetchList()} refreshLoading={loading} pagination={buildPagination(data?.total ?? 0, fetchList)}
+        bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
+        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(data?.total ?? 0)}
       />
 
       <AppModal
@@ -236,7 +213,7 @@ export default function PrintTemplatesPage() {
         visible={modalVisible}
         onOk={handleModalOk}
         onCancel={closeModal}
-        okButtonProps={{ loading: submitting }}
+        okButtonProps={{ loading: saveMutation.isPending }}
         width={560}
       >
         <Form key={editing?.id ?? 'new'} getFormApi={(api) => { formApi.current = api; }} initValues={formInitValues} labelPosition="left" labelWidth={72}>
@@ -263,9 +240,9 @@ export default function PrintTemplatesPage() {
         width="92vw"
         style={{ maxWidth: 1180 }}
       >
-        {previewLoading && <div style={{ padding: 32, textAlign: 'center' }}>正在生成预览...</div>}
-        {!previewLoading && previewResult && <PrintReportView result={previewResult} params={previewParams} />}
-        {!previewLoading && !previewResult && <div style={{ padding: 32, textAlign: 'center', color: 'var(--semi-color-text-2)' }}>暂无预览内容</div>}
+        {renderMutation.isPending && <div style={{ padding: 32, textAlign: 'center' }}>正在生成预览...</div>}
+        {!renderMutation.isPending && previewResult && <PrintReportView result={previewResult} params={previewParams} />}
+        {!renderMutation.isPending && !previewResult && <div style={{ padding: 32, textAlign: 'center', color: 'var(--semi-color-text-2)' }}>暂无预览内容</div>}
       </AppModal>
     </div>
   );

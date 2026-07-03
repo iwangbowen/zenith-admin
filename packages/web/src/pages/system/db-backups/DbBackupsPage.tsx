@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Tag, Select, Modal, Toast, Form } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, RotateCcw, Plus } from 'lucide-react';
 import type { DbBackup, BackupType, BackupStatus } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { AppModal } from '@/components/AppModal';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -11,61 +11,48 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { createdAtColumn } from '../../../utils/table-columns';
+import {
+  dbBackupKeys,
+  useCreateDbBackup,
+  useDbBackupList,
+  useDeleteDbBackup,
+} from '@/hooks/queries/db-backups';
+import { request } from '@/utils/request';
 
 export default function DbBackupsPage() {
-  const [list, setList] = useState<DbBackup[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [total, setTotal] = useState(0);
+  const queryClient = useQueryClient();
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<{ status: string; type: string }>({ status: '', type: '' });
-  const searchParamsRef = useRef<{ status: string; type: string }>({ status: '', type: '' });
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<{ status: string; type: string }>({ status: '', type: '' });
+  const [submittedParams, setSubmittedParams] = useState<{ status: string; type: string }>({ status: '', type: '' });
   const [createVisible, setCreateVisible] = useState(false);
-  const [createLoading, setCreateLoading] = useState(false);
   const createFormApi = useRef<FormApi | null>(null);
   const { hasPermission } = usePermission();
+  const listQuery = useDbBackupList({
+    page,
+    pageSize,
+    status: submittedParams.status || undefined,
+    type: submittedParams.type || undefined,
+  });
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const createMutation = useCreateDbBackup();
+  const deleteMutation = useDeleteDbBackup();
 
-  const fetchList = useCallback(async (p = page, ps = pageSize, overrideParams?: { status: string; type: string }) => {
-    const { status: fs, type: ft } = overrideParams ?? searchParamsRef.current;
-    setLoading(true);
-    const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-    if (fs) query.set('status', fs);
-    if (ft) query.set('type', ft);
-    const res = await request.get<{ list: DbBackup[]; total: number }>(`/api/db-backups?${query}`);
-    setLoading(false);
-    if (res.code === 0 && res.data) {
-      setList(res.data.list);
-      setTotal(res.data.total);
-      setPage(p);
-    }
-  }, [page, pageSize]);
-
-  useEffect(() => { void fetchList(); }, [fetchList]);
-
-  const handleSearch = () => { setPage(1); void fetchList(1); };
-  const handleReset = () => {
-    setSearchParams({ status: '', type: '' });
+  const handleSearch = () => {
     setPage(1);
-    void fetchList(1, pageSize, { status: '', type: '' });
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: dbBackupKeys.lists });
+  };
+  const handleReset = () => {
+    setPage(1);
+    setDraftParams({ status: '', type: '' });
+    setSubmittedParams({ status: '', type: '' });
+    void queryClient.invalidateQueries({ queryKey: dbBackupKeys.lists });
   };
 
   const closeCreateModal = () => {
     setCreateVisible(false);
     createFormApi.current = null;
-  };
-
-  const handleCreate = async (values: { type: BackupType; name?: string }) => {
-    setCreateLoading(true);
-    try {
-      const res = await request.post('/api/db-backups', values);
-      if (res.code === 0) {
-        Toast.success('备份任务已创建');
-        closeCreateModal();
-        fetchList(1);
-      }
-    } finally {
-      setCreateLoading(false);
-    }
   };
 
   const handleCreateOk = async () => {
@@ -74,17 +61,17 @@ export default function DbBackupsPage() {
     try {
       values = await createFormApi.current.validate() as { type: BackupType; name?: string };
     } catch {
-      return;
+      throw new Error('validation');
     }
-    await handleCreate(values);
+    await createMutation.mutateAsync(values);
+    Toast.success('备份任务已创建');
+    closeCreateModal();
+    setPage(1);
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete(`/api/db-backups/${id}`);
-    if (res.code === 0) {
-      Toast.success('已删除');
-      fetchList();
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('已删除');
   };
 
   const handleDownload = async (record: DbBackup) => {
@@ -172,8 +159,8 @@ export default function DbBackupsPage() {
           <>
             <Select
               placeholder="备份类型"
-              value={searchParams.type}
-              onChange={(v) => setSearchParams((prev) => ({ ...prev, type: v as string }))}
+              value={draftParams.type}
+              onChange={(v) => setDraftParams((prev) => ({ ...prev, type: v as string }))}
               optionList={[
                 { label: '全部类型', value: '' },
                 { label: 'pg_dump', value: 'pg_dump' },
@@ -184,8 +171,8 @@ export default function DbBackupsPage() {
             />
             <Select
               placeholder="状态"
-              value={searchParams.status}
-              onChange={(v) => setSearchParams((prev) => ({ ...prev, status: v as string }))}
+              value={draftParams.status}
+              onChange={(v) => setDraftParams((prev) => ({ ...prev, status: v as string }))}
               optionList={[
                 { label: '全部状态', value: '' },
                 { label: '等待中', value: 'pending' },
@@ -207,8 +194,8 @@ export default function DbBackupsPage() {
           <>
             <Select
               placeholder="备份类型"
-              value={searchParams.type}
-              onChange={(v) => setSearchParams((prev) => ({ ...prev, type: v as string }))}
+              value={draftParams.type}
+              onChange={(v) => setDraftParams((prev) => ({ ...prev, type: v as string }))}
               optionList={[
                 { label: '全部类型', value: '' },
                 { label: 'pg_dump', value: 'pg_dump' },
@@ -226,8 +213,8 @@ export default function DbBackupsPage() {
         mobileFilters={(
           <Select
             placeholder="状态"
-            value={searchParams.status}
-            onChange={(v) => setSearchParams((prev) => ({ ...prev, status: v as string }))}
+            value={draftParams.status}
+            onChange={(v) => setDraftParams((prev) => ({ ...prev, status: v as string }))}
             optionList={[
               { label: '全部状态', value: '' },
               { label: '等待中', value: 'pending' },
@@ -246,13 +233,13 @@ export default function DbBackupsPage() {
 
       <ConfigurableTable
         bordered
-        loading={loading}
-        onRefresh={fetchList}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         dataSource={list}
         columns={columns}
         rowKey="id"
-        pagination={buildPagination(total, fetchList)}
+        pagination={buildPagination(total)}
       />
 
       <AppModal
@@ -262,7 +249,7 @@ export default function DbBackupsPage() {
         onOk={handleCreateOk}
         okText="确定"
         cancelText="取消"
-        okButtonProps={{ loading: createLoading }}
+        okButtonProps={{ loading: createMutation.isPending }}
         closeOnEsc
       >
         <Form

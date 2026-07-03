@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import { Button, Dropdown, Space, SplitButtonGroup, Toast } from '@douyinfe/semi-ui';
 import { ChevronDown, Download } from 'lucide-react';
 import type { ExportJobCreateResult, ExportJobFormat, ExportJobRequestMode } from '@zenith/shared';
 import { request } from '@/utils/request';
+import { unwrap } from '@/lib/query';
 
 interface ExportButtonProps {
   entity: string;
@@ -29,20 +31,22 @@ export function ExportButton({
   const isFlat = variant === 'flat';
   const buttonTheme = isFlat ? 'borderless' : undefined;
   const rootClassName = `export-button${isFlat ? ' export-button--flat' : ''}`;
-
-  const runExport = async (format: ExportJobFormat) => {
-    setLoadingFormat(format);
-    try {
-      const res = await request.post<ExportJobCreateResult>('/api/export-jobs', {
+  const exportMutation = useMutation({
+    mutationFn: (format: ExportJobFormat) =>
+      request.post<ExportJobCreateResult>('/api/export-jobs', {
         entity,
         format,
         query: query ?? {},
         raw,
         watermark,
         executionMode,
-      });
-      if (res.code !== 0) return;
-      const { job, mode } = res.data;
+      }).then(unwrap),
+  });
+
+  const runExport = async (format: ExportJobFormat) => {
+    setLoadingFormat(format);
+    try {
+      const { job, mode } = await exportMutation.mutateAsync(format);
       if (job.status === 'success' && job.fileId) {
         await request.download(`/api/export-jobs/${job.id}/download`, job.filename ?? `${entity}.${format}`);
         Toast.success('导出完成');

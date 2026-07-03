@@ -1,14 +1,15 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState } from 'react';
 import type { CSSProperties } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Banner, Button, DatePicker, Row, Col, Select, Spin } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { BarChart, chartOptions, makeBarSpec, useChartPalette } from '@/components/charts';
 import { Search, RotateCcw } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
-import { request } from '@/utils/request';
 import { formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
+import { paymentReportKeys, usePaymentReportSummary } from '@/hooks/queries/payment-reports';
 import { PAYMENT_REPORT_GROUP_BY_LABELS } from '@zenith/shared';
 import type { PaymentReportGroupBy, PaymentReportRow } from '@zenith/shared';
 
@@ -27,47 +28,26 @@ function StatCard({ title, value, accent }: StatCardProps) {
   );
 }
 
-interface ReportSummary {
-  groupBy: PaymentReportGroupBy;
-  rows: PaymentReportRow[];
-  totalGross: number;
-  totalFee: number;
-  totalRefund: number;
-  totalNet: number;
-  totalCount: number;
-}
+interface SearchParams { groupBy: PaymentReportGroupBy; timeRange: [Date, Date] | null; }
+const defaultSearch: SearchParams = { groupBy: 'bizType', timeRange: null };
 
 export default function PaymentReportsPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const canView = hasPermission('payment:report:view');
   const palette = useChartPalette();
-  const [loading, setLoading] = useState(false);
-  const [summary, setSummary] = useState<ReportSummary | null>(null);
-  const [groupBy, setGroupBy] = useState<PaymentReportGroupBy>('bizType');
-  const [timeRange, setTimeRange] = useState<[Date, Date] | null>(null);
-  const stateRef = useRef({ groupBy, timeRange });
-  stateRef.current = { groupBy, timeRange };
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearch);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearch);
+  const summaryQuery = usePaymentReportSummary({
+    groupBy: submittedParams.groupBy,
+    startTime: submittedParams.timeRange ? formatDateTimeForApi(submittedParams.timeRange[0]) : undefined,
+    endTime: submittedParams.timeRange ? formatDateTimeForApi(submittedParams.timeRange[1]) : undefined,
+  }, canView);
+  const summary = summaryQuery.data ?? null;
+  const loading = summaryQuery.isFetching;
 
-  const fetchSummary = useCallback(async () => {
-    if (!canView) return;
-    const { groupBy: gb, timeRange: tr } = stateRef.current;
-    setLoading(true);
-    try {
-      const query: Record<string, string> = { groupBy: gb };
-      if (tr) { query.startTime = formatDateTimeForApi(tr[0]); query.endTime = formatDateTimeForApi(tr[1]); }
-      const res = await request.get<ReportSummary>(`/api/payment/reports/summary?${new URLSearchParams(query)}`);
-      if (res.code === 0) setSummary(res.data);
-    } finally {
-      setLoading(false);
-    }
-  }, [canView]);
-
-  useEffect(() => {
-    void fetchSummary();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function handleReset() { setGroupBy('bizType'); setTimeRange(null); stateRef.current = { groupBy: 'bizType', timeRange: null }; void fetchSummary(); }
+  function handleSearch() { setSubmittedParams(draftParams); void queryClient.invalidateQueries({ queryKey: paymentReportKeys.lists }); }
+  function handleReset() { setDraftParams(defaultSearch); setSubmittedParams(defaultSearch); void queryClient.invalidateQueries({ queryKey: paymentReportKeys.lists }); }
 
   const chartData = (summary?.rows ?? []).map((r) => ({ name: r.label, 收款: Number((r.gross / 100).toFixed(2)), 净额: Number((r.net / 100).toFixed(2)) }));
   const barSpec = makeBarSpec({
@@ -93,8 +73,8 @@ export default function PaymentReportsPage() {
 
   const renderGroupByFilter = () => (
     <Select
-      value={groupBy}
-      onChange={(v) => setGroupBy(v as PaymentReportGroupBy)}
+      value={draftParams.groupBy}
+      onChange={(v) => setDraftParams((p) => ({ ...p, groupBy: v as PaymentReportGroupBy }))}
       style={{ width: 140 }}
       optionList={groupByOptions}
       placeholder="选择维度"
@@ -105,13 +85,13 @@ export default function PaymentReportsPage() {
     <DatePicker
       type="dateTimeRange"
       placeholder={['开始时间', '结束时间']}
-      value={timeRange ?? undefined}
-      onChange={(v) => setTimeRange(v ? (v as [Date, Date]) : null)}
+      value={draftParams.timeRange ?? undefined}
+      onChange={(v) => setDraftParams((p) => ({ ...p, timeRange: v ? (v as [Date, Date]) : null }))}
       style={{ width: 330 }}
     />
   );
 
-  const renderSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={() => void fetchSummary()} disabled={!canView}>查询</Button>;
+  const renderSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleSearch} disabled={!canView}>查询</Button>;
   const renderResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset} disabled={!canView}>重置</Button>;
 
   return (
@@ -133,7 +113,7 @@ export default function PaymentReportsPage() {
           </>
         )}
         filterTitle="财务报表筛选"
-        onFilterApply={() => void fetchSummary()}
+        onFilterApply={handleSearch}
         onFilterReset={handleReset}
       />
 
@@ -164,7 +144,7 @@ export default function PaymentReportsPage() {
 
           <ConfigurableTable
             bordered columns={columns} dataSource={summary?.rows ?? []} loading={loading} rowKey="key" size="small" empty="暂无数据"
-            onRefresh={() => void fetchSummary()} refreshLoading={loading} pagination={false}
+            onRefresh={() => void summaryQuery.refetch()} refreshLoading={loading} pagination={false}
           />
         </div>
       </Spin>

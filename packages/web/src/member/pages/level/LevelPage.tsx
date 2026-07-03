@@ -1,10 +1,8 @@
-import { useEffect, useState } from 'react';
 import { Card, Spin, Tag } from '@douyinfe/semi-ui';
 import { Crown, Check } from 'lucide-react';
-import type { MemberLevel } from '@zenith/shared';
 import { useMemberAuth } from '../../hooks/useMemberAuth';
-import { memberRequest } from '../../utils/member-request';
 import { MemberPage } from '../../components/MemberPage';
+import { useMemberLevels } from '../../hooks/queries';
 
 function discountText(discount: number): string {
   if (discount >= 100) return '无折扣';
@@ -13,15 +11,8 @@ function discountText(discount: number): string {
 
 export default function LevelPage() {
   const { member } = useMemberAuth();
-  const [levels, setLevels] = useState<MemberLevel[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    memberRequest.get<MemberLevel[]>('/api/member/levels', { silent: true }).then((r) => {
-      setLoading(false);
-      if (r.code === 0) setLevels(r.data);
-    });
-  }, []);
+  const levelsQuery = useMemberLevels();
+  const levels = levelsQuery.data ?? [];
 
   return (
     <MemberPage title="等级权益" showBack noTabbar>
@@ -46,7 +37,7 @@ export default function LevelPage() {
         </div>
       </div>
 
-      {loading ? (
+      {levelsQuery.isFetching ? (
         <div className="m-loading-wrap"><Spin /></div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>

@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Button, Input, Tabs, TabPane, Toast } from '@douyinfe/semi-ui';
-import { request } from '@/utils/request';
 import { UserSearchList } from './UserSearchList';
 import type { ChatConversation } from '@zenith/shared';
 import type { ChatUser } from '../types';
+import { useCreateChatGroup } from '@/hooks/queries/chat';
 
 export function NewChatPanel({
   onSelectUser, onGroupCreated,
@@ -12,18 +12,17 @@ export function NewChatPanel({
   onGroupCreated: (conv: ChatConversation) => void;
 }>) {
   const [groupName, setGroupName] = useState('');
-  const [creating, setCreating] = useState(false);
+  const createGroupMutation = useCreateChatGroup();
 
   const handleCreateGroup = async () => {
     if (!groupName.trim()) { Toast.warning('请输入群聊名称'); return; }
-    setCreating(true);
-    const res = await request.post<ChatConversation>('/api/chat/conversations/group', { name: groupName.trim() });
-    setCreating(false);
-    if (res.code === 0 && res.data) {
-      onGroupCreated(res.data);
-    } else {
-      Toast.error(res.message ?? '创建失败');
+    let conv: ChatConversation;
+    try {
+      conv = await createGroupMutation.mutateAsync(groupName.trim());
+    } catch {
+      return;
     }
+    onGroupCreated(conv);
   };
 
   return (
@@ -41,7 +40,7 @@ export function NewChatPanel({
             onChange={setGroupName}
             maxLength={64}
           />
-          <Button type="primary" loading={creating} onClick={() => { void handleCreateGroup(); }} block>
+          <Button type="primary" loading={createGroupMutation.isPending} onClick={() => { void handleCreateGroup(); }} block>
             创建群聊
           </Button>
         </div>

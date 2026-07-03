@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Input,
@@ -17,15 +18,24 @@ import {
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Database, Plus, RotateCcw, Search } from 'lucide-react';
-import type { DataMaskConfig, MaskType, Role, PaginatedResponse, SensitiveField } from '@zenith/shared';
+import type { DataMaskConfig, MaskType, SensitiveField } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
+import {
+  dataMaskKeys,
+  useBatchCreateDataMask,
+  useDataMaskDetail,
+  useDataMaskList,
+  useDataMaskRoleOptions,
+  useDeleteDataMask,
+  useSaveDataMask,
+  useScanDataMaskFields,
+} from '@/hooks/queries/data-mask';
 
 const { Text } = Typography;
 
@@ -75,21 +85,14 @@ const defaultSearchParams: SearchParams = { keyword: '', maskType: '', enabled: 
 
 export default function DataMaskPage() {
   const { hasPermission } = usePermission();
-  const [data, setData] = useState<DataMaskConfig[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<DataMaskConfig | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [modalDetailLoading, setModalDetailLoading] = useState(false);
-  const [roleOptions, setRoleOptions] = useState<{ value: string; label: string }[]>([]);
   const [maskTypePreview, setMaskTypePreview] = useState<MaskType>('phone');
   const formRef = useRef<FormApi>(null);
-  const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
 
   // ─── 扫描状态 ─────────────────────────────────────────────────────────────────
   const [scanVisible, setScanVisible] = useState(false);
@@ -98,19 +101,30 @@ export default function DataMaskPage() {
   const [scanSelected, setScanSelected] = useState<string[]>([]);
   const [scanEdits, setScanEdits] = useState<Record<string, { maskType: MaskType; label: string; entity: string }>>({});
   const [creatingBatch, setCreatingBatch] = useState(false);
+  const listQuery = useDataMaskList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    maskType: submittedParams.maskType || undefined,
+    enabled: submittedParams.enabled || undefined,
+  });
+  const data = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const detailQuery = useDataMaskDetail(editing?.id, modalVisible);
+  const editingDetail = editing ? (detailQuery.data ?? editing) : null;
+  const modalDetailLoading = !!editing && detailQuery.isFetching;
+  const roleOptions = useDataMaskRoleOptions().data ?? [];
+  const saveMutation = useSaveDataMask();
+  const toggleStatusMutation = useSaveDataMask();
+  const deleteMutation = useDeleteDataMask();
+  const scanMutation = useScanDataMaskFields();
+  const batchCreateMutation = useBatchCreateDataMask();
+  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
 
   const handleToggleStatus = (record: DataMaskConfig, checked: boolean) => {
     const doToggle = async () => {
-      setTogglingIds((prev) => new Set(prev).add(record.id));
-      try {
-        await request.put(`/api/data-mask-configs/${record.id}`, { enabled: checked });
-        Toast.success(checked ? '已启用' : '已停用');
-        void fetchData();
-      } catch (err: unknown) {
-        Toast.error((err as { message?: string })?.message || '操作失败');
-      } finally {
-        setTogglingIds((prev) => { const s = new Set(prev); s.delete(record.id); return s; });
-      }
+      await toggleStatusMutation.mutateAsync({ id: record.id, values: { enabled: checked } });
+      Toast.success(checked ? '已启用' : '已停用');
     };
     if (checked) {
       void doToggle();
@@ -123,46 +137,21 @@ export default function DataMaskPage() {
     }
   };
 
-  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const params2 = params ?? searchParamsRef.current;
-    const { keyword: kw } = params2;
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(kw ? { keyword: kw } : {}),
-        ...(params2.maskType ? { maskType: params2.maskType } : {}),
-        ...(params2.enabled ? { enabled: params2.enabled } : {}),
-      }).toString();
-      const res = await request.get<PaginatedResponse<DataMaskConfig>>(`/api/data-mask-configs?${query}`);
-      if (res.code === 0) {
-        setData(res.data.list);
-        setTotal(res.data.total);
-        setPage(res.data.page);
-      }
-    } catch {
-      Toast.error('加载脉敏规则失败');
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize]);
-
-  useEffect(() => { void fetchData(); }, [fetchData]);
-
-  useEffect(() => {
-    request.get<Role[]>('/api/roles/all').then((res) => {
-      setRoleOptions((res.data ?? []).map((r) => ({ value: r.code, label: r.name })));
-    }).catch(() => {});
-  }, []);
-
-  const handleSearch = () => { setPage(1); void fetchData(1, pageSize); };
-  const handleReset = () => { setSearchParams(defaultSearchParams); setPage(1); void fetchData(1, pageSize, defaultSearchParams); };
+  const handleSearch = () => {
+    setPage(1);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: dataMaskKeys.lists });
+  };
+  const handleReset = () => {
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: dataMaskKeys.lists });
+  };
 
   const closeModal = () => {
     setModalVisible(false);
     setEditing(null);
-    setModalDetailLoading(false);
   };
 
   const openCreate = () => {
@@ -171,30 +160,15 @@ export default function DataMaskPage() {
     setModalVisible(true);
   };
 
-  const openEdit = async (row: DataMaskConfig) => {
+  const openEdit = (row: DataMaskConfig) => {
     setEditing(row);
     setMaskTypePreview(row.maskType);
     setModalVisible(true);
-    setModalDetailLoading(true);
-    const res = await request.get<DataMaskConfig>(`/api/data-mask-configs/${row.id}`);
-    setModalDetailLoading(false);
-    if (res.code === 0 && res.data) {
-      setEditing(res.data);
-      setMaskTypePreview(res.data.maskType);
-    } else {
-      Toast.error(res.message || '获取规则详情失败');
-    }
   };
 
   const handleDelete = async (id: number) => {
-    try {
-      await request.delete(`/api/data-mask-configs/${id}`);
-      Toast.success('删除成功');
-      void fetchData();
-    } catch (err: unknown) {
-      const msg = (err as { message?: string })?.message;
-      Toast.error(msg || '删除失败');
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   };
 
   // ─── 扫描处理 ──────────────────────────────────────────────────────────────────
@@ -216,17 +190,10 @@ export default function DataMaskPage() {
   const handleScan = async () => {
     setScanLoading(true);
     try {
-      const res = await request.get<SensitiveField[]>('/api/data-mask-configs/scan');
-      if (res.code === 0) {
-        const results = res.data ?? [];
-        setScanResults(results);
-        setScanSelected(results.filter((r) => !r.hasRule).map((r) => `${r.tableName}:${r.columnName}`));
-        setScanEdits({});
-      } else {
-        Toast.error(res.message || '扫描失败');
-      }
-    } catch (err: unknown) {
-      Toast.error((err as { message?: string })?.message || '扫描失败');
+      const results = await scanMutation.mutateAsync();
+      setScanResults(results);
+      setScanSelected(results.filter((r) => !r.hasRule).map((r) => `${r.tableName}:${r.columnName}`));
+      setScanEdits({});
     } finally {
       setScanLoading(false);
     }
@@ -261,69 +228,48 @@ export default function DataMaskPage() {
     });
     setCreatingBatch(true);
     try {
-      const res = await request.post<{ created: number; skipped: number }>('/api/data-mask-configs/batch-create', { items });
-      if (res.code === 0) {
-        const skippedMsg = res.data.skipped > 0 ? `，跳过 ${res.data.skipped} 条（已有规则）` : '';
-        Toast.success(`已生成 ${res.data.created} 条规则${skippedMsg}`);
-        closeScan();
-        void fetchData();
-      } else {
-        Toast.error(res.message || '生成规则失败');
-      }
-    } catch (err: unknown) {
-      Toast.error((err as { message?: string })?.message || '生成规则失败');
+      const res = await batchCreateMutation.mutateAsync(items);
+      const skippedMsg = res.skipped > 0 ? `，跳过 ${res.skipped} 条（已有规则）` : '';
+      Toast.success(`已生成 ${res.created} 条规则${skippedMsg}`);
+      closeScan();
     } finally {
       setCreatingBatch(false);
     }
   };
 
   const handleSubmit = async () => {
-    try {
-      let values: FormValues;
-      try { values = (await formRef.current?.validate())!; } catch { return; }
-      setSubmitting(true);
-      const body = {
-        entity:          values.entity.trim(),
-        field:           values.field.trim(),
-        label:           values.label.trim(),
-        maskType:        values.maskType,
-        exemptRoleCodes: values.exemptRoleCodes ?? [],
-        enabled:         values.enabled,
-        remark:          values.remark?.trim() || undefined,
-        customRule: values.maskType === 'custom'
-          ? { prefixKeep: values.prefixKeep ?? 3, suffixKeep: values.suffixKeep ?? 4, maskChar: values.maskChar || '*' }
-          : undefined,
-      };
-      if (editing) {
-        await request.put(`/api/data-mask-configs/${editing.id}`, body);
-        Toast.success('更新成功');
-      } else {
-        await request.post('/api/data-mask-configs', body);
-        Toast.success('创建成功');
-      }
-      closeModal();
-      void fetchData();
-    } catch (err: unknown) {
-      const msg = (err as { message?: string })?.message;
-      if (msg && !msg.includes('validate')) Toast.error(msg || '保存失败');
-    } finally {
-      setSubmitting(false);
-    }
+    let values: FormValues;
+    try { values = (await formRef.current?.validate())!; } catch { throw new Error('validation'); }
+    const body = {
+      entity:          values.entity.trim(),
+      field:           values.field.trim(),
+      label:           values.label.trim(),
+      maskType:        values.maskType,
+      exemptRoleCodes: values.exemptRoleCodes ?? [],
+      enabled:         values.enabled,
+      remark:          values.remark?.trim() || undefined,
+      customRule: values.maskType === 'custom'
+        ? { prefixKeep: values.prefixKeep ?? 3, suffixKeep: values.suffixKeep ?? 4, maskChar: values.maskChar || '*' }
+        : undefined,
+    };
+    await saveMutation.mutateAsync({ id: editing?.id, values: body });
+    Toast.success(editing ? '更新成功' : '创建成功');
+    closeModal();
   };
 
   const getInitValues = (): Partial<FormValues> => {
-    if (!editing) return { enabled: true, exemptRoleCodes: [], maskType: 'phone', prefixKeep: 3, suffixKeep: 4, maskChar: '*' };
+    if (!editingDetail) return { enabled: true, exemptRoleCodes: [], maskType: 'phone', prefixKeep: 3, suffixKeep: 4, maskChar: '*' };
     return {
-      entity:          editing.entity,
-      field:           editing.field,
-      label:           editing.label,
-      maskType:        editing.maskType,
-      exemptRoleCodes: editing.exemptRoleCodes,
-      enabled:         editing.enabled,
-      remark:          editing.remark ?? undefined,
-      prefixKeep:      editing.customRule?.prefixKeep ?? 3,
-      suffixKeep:      editing.customRule?.suffixKeep ?? 4,
-      maskChar:        editing.customRule?.maskChar ?? '*',
+      entity:          editingDetail.entity,
+      field:           editingDetail.field,
+      label:           editingDetail.label,
+      maskType:        editingDetail.maskType,
+      exemptRoleCodes: editingDetail.exemptRoleCodes,
+      enabled:         editingDetail.enabled,
+      remark:          editingDetail.remark ?? undefined,
+      prefixKeep:      editingDetail.customRule?.prefixKeep ?? 3,
+      suffixKeep:      editingDetail.customRule?.suffixKeep ?? 4,
+      maskChar:        editingDetail.customRule?.maskChar ?? '*',
     };
   };
 
@@ -352,7 +298,7 @@ export default function DataMaskPage() {
       render: (v: boolean, record: DataMaskConfig) => (
         <Switch
           checked={v}
-          loading={togglingIds.has(record.id)}
+          loading={togglingStatusId === record.id}
           disabled={!hasPermission('system:data-mask:update')}
           onChange={(checked) => handleToggleStatus(record, checked)}
           size="small"
@@ -393,16 +339,16 @@ export default function DataMaskPage() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索实体 / 字段"
-              value={searchParams.keyword}
-              onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
-              onEnterPress={() => { setPage(1); void fetchData(1, pageSize); }}
+              value={draftParams.keyword}
+              onChange={(v) => setDraftParams((prev) => ({ ...prev, keyword: v }))}
+              onEnterPress={handleSearch}
               showClear
               style={{ width: 200 }}
             />
             <Select
               placeholder="脱敏类型"
-              value={searchParams.maskType || undefined}
-              onChange={(v) => setSearchParams((prev) => ({ ...prev, maskType: typeof v === 'string' ? v : '' }))}
+              value={draftParams.maskType || undefined}
+              onChange={(v) => setDraftParams((prev) => ({ ...prev, maskType: typeof v === 'string' ? v : '' }))}
               showClear
               style={{ width: 160 }}
             >
@@ -412,8 +358,8 @@ export default function DataMaskPage() {
             </Select>
             <Select
               placeholder="启用状态"
-              value={searchParams.enabled || undefined}
-              onChange={(v) => setSearchParams((prev) => ({ ...prev, enabled: typeof v === 'string' ? v : '' }))}
+              value={draftParams.enabled || undefined}
+              onChange={(v) => setDraftParams((prev) => ({ ...prev, enabled: typeof v === 'string' ? v : '' }))}
               showClear
               style={{ width: 120 }}
             >
@@ -439,9 +385,9 @@ export default function DataMaskPage() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索实体 / 字段"
-              value={searchParams.keyword}
-              onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
-              onEnterPress={() => { setPage(1); void fetchData(1, pageSize); }}
+              value={draftParams.keyword}
+              onChange={(v) => setDraftParams((prev) => ({ ...prev, keyword: v }))}
+              onEnterPress={handleSearch}
               showClear
               style={{ width: 200 }}
             />
@@ -455,8 +401,8 @@ export default function DataMaskPage() {
           <>
             <Select
               placeholder="脱敏类型"
-              value={searchParams.maskType || undefined}
-              onChange={(v) => setSearchParams((prev) => ({ ...prev, maskType: typeof v === 'string' ? v : '' }))}
+              value={draftParams.maskType || undefined}
+              onChange={(v) => setDraftParams((prev) => ({ ...prev, maskType: typeof v === 'string' ? v : '' }))}
               showClear
               style={{ width: 160 }}
             >
@@ -466,8 +412,8 @@ export default function DataMaskPage() {
             </Select>
             <Select
               placeholder="启用状态"
-              value={searchParams.enabled || undefined}
-              onChange={(v) => setSearchParams((prev) => ({ ...prev, enabled: typeof v === 'string' ? v : '' }))}
+              value={draftParams.enabled || undefined}
+              onChange={(v) => setDraftParams((prev) => ({ ...prev, enabled: typeof v === 'string' ? v : '' }))}
               showClear
               style={{ width: 120 }}
             >
@@ -489,11 +435,11 @@ export default function DataMaskPage() {
         bordered
         columns={columns}
         dataSource={data}
-        loading={loading}
-        onRefresh={() => void fetchData()}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         rowKey="id"
-        pagination={buildPagination(total, fetchData)}
+        pagination={buildPagination(total)}
         scroll={{ x: 'max-content' }}
       />
 
@@ -502,7 +448,7 @@ export default function DataMaskPage() {
         onCancel={closeModal}
         onOk={handleSubmit}
         okText={editing ? '保存' : '创建'}
-        okButtonProps={{ loading: submitting, disabled: modalDetailLoading }}
+        okButtonProps={{ loading: saveMutation.isPending, disabled: modalDetailLoading }}
         width={660}
       >
         <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">

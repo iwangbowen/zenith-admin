@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import {
   Button, Form, Toast, Typography, Tag, Space, Popconfirm,
   Select, Row, Col, Collapse, Input, Tooltip,
@@ -6,29 +6,16 @@ import {
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { AppModal } from '@/components/AppModal';
 import { Plus, Pencil, Trash2, Server, ChevronUp, ChevronDown, Search, FolderOpen } from 'lucide-react';
-import { request } from '@/utils/request';
+import {
+  useDeleteSshProfile,
+  useSaveSshProfile,
+  useSshProfiles,
+  useUpdateSshProfileOrder,
+  type SshAuthType,
+  type SshProfile,
+} from '@/hooks/queries/terminal';
 
-export type SshAuthType = 'password' | 'key_path' | 'key_content' | 'agent';
-
-export interface SshProfile {
-  id: number;
-  userId: number;
-  name: string;
-  host: string;
-  port: number;
-  username: string;
-  authType: SshAuthType;
-  hasPassword: boolean;
-  keyPath: string | null;
-  hasKeyContent: boolean;
-  hasKeyPassphrase: boolean;
-  envVars: Record<string, string>;
-  groupName: string | null;
-  tags: string[];
-  orderNum: number;
-  createdAt: string;
-  updatedAt: string;
-}
+export type { SshAuthType, SshProfile };
 
 interface SshProfileFormData {
   name: string;
@@ -52,26 +39,22 @@ interface SshProfilesManagerProps {
 }
 
 const UNGROUPED_KEY = '__ungrouped__';
+const EMPTY_PROFILES: SshProfile[] = [];
 
 export default function SshProfilesManager({ onConnect, onBrowseSftp }: Readonly<SshProfilesManagerProps>) {
-  const [profiles, setProfiles] = useState<SshProfile[]>([]);
-  const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingProfile, setEditingProfile] = useState<SshProfile | null>(null);
-  const [saving, setSaving] = useState(false);
   const [formAuthType, setFormAuthType] = useState<'password' | 'key_path' | 'key_content' | 'agent'>('password');
   const [keyword, setKeyword] = useState('');
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const profileFormApi = useRef<FormApi | null>(null);
 
-  const fetchProfiles = useCallback(async () => {
-    setLoading(true);
-    const res = await request.get<SshProfile[]>('/api/ssh-profiles');
-    setLoading(false);
-    if (res.code === 0 && res.data) setProfiles(res.data);
-  }, []);
-
-  useEffect(() => { void fetchProfiles(); }, [fetchProfiles]);
+  const profilesQuery = useSshProfiles();
+  const profiles = profilesQuery.data ?? EMPTY_PROFILES;
+  const loading = profilesQuery.isFetching;
+  const saveMutation = useSaveSshProfile();
+  const deleteMutation = useDeleteSshProfile();
+  const reorderMutation = useUpdateSshProfileOrder();
 
   const openCreate = () => {
     setEditingProfile(null);
@@ -114,22 +97,9 @@ export default function SshProfilesManager({ onConnect, onBrowseSftp }: Readonly
       groupName: values.groupName?.trim() || null,
       tags: (values.tags ?? []).map((t) => t.trim()).filter(Boolean),
     };
-    setSaving(true);
-    try {
-      let res;
-      if (editingProfile) {
-        res = await request.put(`/api/ssh-profiles/${editingProfile.id}`, body);
-      } else {
-        res = await request.post('/api/ssh-profiles', body);
-      }
-      if (res.code === 0) {
-        Toast.success(editingProfile ? '更新成功' : '创建成功');
-        closeModal();
-        void fetchProfiles();
-      }
-    } finally {
-      setSaving(false);
-    }
+    await saveMutation.mutateAsync({ id: editingProfile?.id, values: body });
+    Toast.success(editingProfile ? '更新成功' : '创建成功');
+    closeModal();
   };
 
   const handleModalOk = async () => {
@@ -138,28 +108,24 @@ export default function SshProfilesManager({ onConnect, onBrowseSftp }: Readonly
     try {
       values = await profileFormApi.current.validate() as SshProfileFormData;
     } catch {
-      return;
+      throw new Error('validation');
     }
     await handleSave(values);
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete(`/api/ssh-profiles/${id}`);
-    if (res.code === 0) {
-      Toast.success('已删除');
-      void fetchProfiles();
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('已删除');
   };
 
   const handleReorder = async (profile: SshProfile, direction: 'up' | 'down', groupList: SshProfile[]) => {
     const idx = groupList.findIndex((p) => p.id === profile.id);
     const other = direction === 'up' ? groupList[idx - 1] : groupList[idx + 1];
     if (!other) return;
-    await Promise.all([
-      request.put(`/api/ssh-profiles/${profile.id}`, { orderNum: other.orderNum }),
-      request.put(`/api/ssh-profiles/${other.id}`, { orderNum: profile.orderNum }),
+    await reorderMutation.mutateAsync([
+      { id: profile.id, orderNum: other.orderNum },
+      { id: other.id, orderNum: profile.orderNum },
     ]);
-    void fetchProfiles();
   };
 
   const getInitialValues = (p: SshProfile | null): Partial<SshProfileFormData> => {
@@ -368,7 +334,7 @@ export default function SshProfilesManager({ onConnect, onBrowseSftp }: Readonly
         onOk={handleModalOk}
         okText="保存"
         cancelText="取消"
-        okButtonProps={{ loading: saving }}
+        okButtonProps={{ loading: saveMutation.isPending }}
         fullscreenable={false}
         width={680}
         style={{ top: '5vh' }}

@@ -1,28 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Modal, Button, Toast, RadioGroup, Radio, InputNumber } from '@douyinfe/semi-ui';
 import { Plus, RefreshCw, Wallet } from 'lucide-react';
-import type { MemberWallet } from '@zenith/shared';
 import { WALLET_TX_TYPE_LABELS } from '@zenith/shared';
-import { memberRequest } from '../../utils/member-request';
 import { MemberPage } from '../../components/MemberPage';
 import { TransactionList } from '../../components/TransactionList';
 import { formatYuan } from '../../utils/format';
+import { memberKeys, useCreateRechargeOrder, useMemberWallet } from '../../hooks/queries';
 
 const QUICK_AMOUNTS = [10, 50, 100, 200, 500];
 const PAY_METHODS = [
   { value: 'wechat_h5', label: '微信支付' },
   { value: 'alipay_wap', label: '支付宝' },
 ];
-
-interface RechargeResult {
-  orderNo: string;
-  payMethod: string;
-  channel: string;
-  codeUrl?: string;
-  payUrl?: string;
-  formHtml?: string;
-  expiredAt?: string;
-}
 
 function StatCard({ label, value }: Readonly<{ label: React.ReactNode; value: React.ReactNode }>) {
   return (
@@ -42,48 +32,44 @@ function StatCard({ label, value }: Readonly<{ label: React.ReactNode; value: Re
 }
 
 export default function WalletPage() {
-  const [wallet, setWallet] = useState<MemberWallet | null>(null);
+  const queryClient = useQueryClient();
+  const wallet = useMemberWallet().data ?? null;
+  const rechargeMutation = useCreateRechargeOrder();
   const [modalOpen, setModalOpen] = useState(false);
   const [amount, setAmount] = useState<number>(100);
   const [payMethod, setPayMethod] = useState('wechat_h5');
-  const [submitting, setSubmitting] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-
-  useEffect(() => {
-    memberRequest.get<MemberWallet>('/api/member/wallet', { silent: true }).then((r) => {
-      if (r.code === 0) setWallet(r.data);
-    });
-  }, [refreshKey]);
 
   const handleRecharge = async () => {
     if (!amount || amount <= 0) {
       Toast.warning('请输入充值金额');
       return;
     }
-    setSubmitting(true);
-    const res = await memberRequest.post<RechargeResult>('/api/member/wallet/recharge', {
+    const r = await rechargeMutation.mutateAsync({
       amount: Math.round(amount * 100),
       payMethod,
     });
-    setSubmitting(false);
-    if (res.code === 0) {
-      setModalOpen(false);
-      const r = res.data;
-      if (r.payUrl) {
-        globalThis.location.href = r.payUrl;
-        return;
-      }
-      if (r.formHtml) {
-        globalThis.document.open();
-        globalThis.document.write(r.formHtml);
-        globalThis.document.close();
-        return;
-      }
-      Modal.info({
-        title: '充值订单已创建',
-        content: `订单号：${r.orderNo}，支付完成后余额将自动到账。`,
-      });
+    setModalOpen(false);
+    if (r.payUrl) {
+      globalThis.location.href = r.payUrl;
+      return;
     }
+    if (r.formHtml) {
+      globalThis.document.open();
+      globalThis.document.write(r.formHtml);
+      globalThis.document.close();
+      return;
+    }
+    Modal.info({
+      title: '充值订单已创建',
+      content: `订单号：${r.orderNo}，支付完成后余额将自动到账。`,
+    });
+  };
+
+  const handleRefresh = () => {
+    setRefreshKey((k) => k + 1);
+    void queryClient.invalidateQueries({ queryKey: memberKeys.wallet.all });
+    void queryClient.invalidateQueries({ queryKey: memberKeys.transactions.lists });
   };
 
   return (
@@ -94,7 +80,7 @@ export default function WalletPage() {
           theme="borderless"
           size="small"
           icon={<RefreshCw size={14} />}
-          onClick={() => setRefreshKey((k) => k + 1)}
+          onClick={handleRefresh}
         >
           刷新
         </Button>
@@ -139,7 +125,7 @@ export default function WalletPage() {
         visible={modalOpen}
         onCancel={() => setModalOpen(false)}
         footer={
-          <Button theme="solid" loading={submitting} onClick={handleRecharge} style={{ background: 'var(--m-primary)' }}>
+          <Button theme="solid" loading={rechargeMutation.isPending} onClick={handleRecharge} style={{ background: 'var(--m-primary)' }}>
             确认充值 ¥{amount || 0}
           </Button>
         }

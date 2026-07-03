@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Button, Col, Form, Row, Spin, Toast } from '@douyinfe/semi-ui';
 import type { AiProvider, AiProviderConfig, UserAiConfig } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { AppModal } from '@/components/AppModal';
+import { useAiProviderDetail, useSaveAiProvider, useTestAiProviderConnection } from '@/hooks/queries/ai-providers';
+import { useSaveAiUserConfig } from '@/hooks/queries/ai-user-config';
 
 const PROVIDER_OPTIONS: { value: AiProvider; label: string }[] = [
   { value: 'openai_compatible', label: 'OpenAI Compatible' },
@@ -58,18 +59,21 @@ type AiProviderFormModalProps = SystemModeProps | UserModeProps;
 
 export default function AiProviderFormModal(props: AiProviderFormModalProps) {
   const { visible, onClose } = props;
-
-  const [submitLoading, setSubmitLoading] = useState(false);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [testLoading, setTestLoading] = useState(false);
+  const isUser = props.mode === 'user';
+  const editTarget = isUser ? undefined : props.editTarget;
+  const existingUserConfig = isUser ? (props as { mode: 'user'; userConfig?: UserAiConfig | null }).userConfig ?? null : null;
+  const detailQuery = useAiProviderDetail(editTarget?.id, visible && !isUser && !!editTarget);
+  const saveProviderMutation = useSaveAiProvider();
+  const saveUserConfigMutation = useSaveAiUserConfig();
+  const testConnectionMutation = useTestAiProviderConnection();
   const [formKey, setFormKey] = useState(0);
   const [initValues, setInitValues] = useState<FormValues>(SYSTEM_DEFAULTS);
   const formApiRef = useRef<{ getValues: () => FormValues; validate: () => Promise<FormValues> } | null>(null);
 
   useEffect(() => {
     if (!visible) return;
-    if (props.mode === 'user') {
-      const uc = props.userConfig;
+    if (isUser) {
+      const uc = existingUserConfig;
       setInitValues(
         uc
           ? {
@@ -88,7 +92,7 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
       );
       setFormKey((k) => k + 1);
     } else {
-      const et = props.editTarget;
+      const et = detailQuery.data ?? editTarget;
       if (et) {
         setInitValues({
           name: et.name,
@@ -103,37 +107,12 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
           isEnabled: et.isEnabled,
         });
         setFormKey((k) => k + 1);
-        setDetailLoading(true);
-        request
-          .get<AiProviderConfig>(`/api/ai/providers/${et.id}`)
-          .then((res) => {
-            if (res.code === 0 && res.data) {
-              setInitValues({
-                name: res.data.name,
-                provider: res.data.provider,
-                baseUrl: res.data.baseUrl,
-                apiKey: res.data.apiKey,
-                model: res.data.model,
-                systemPrompt: res.data.systemPrompt,
-                maxTokens: res.data.maxTokens,
-                temperature: res.data.temperature,
-                isDefault: res.data.isDefault,
-                isEnabled: res.data.isEnabled,
-              });
-              setFormKey((k) => k + 1);
-            } else {
-              Toast.error(res.message || '获取服务商信息失败');
-            }
-          })
-          .catch(() => {})
-          .finally(() => setDetailLoading(false));
       } else {
         setInitValues(SYSTEM_DEFAULTS);
         setFormKey((k) => k + 1);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible]);
+  }, [detailQuery.data, editTarget, existingUserConfig, isUser, visible]);
 
   const handleOk = async () => {
     if (!formApiRef.current) return;
@@ -144,13 +123,11 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
       // validation failed, semi design will show field errors
       return;
     }
-    setSubmitLoading(true);
     try {
-      if (props.mode === 'user') {
-        const uc = props.userConfig;
-        let res: { data?: UserAiConfig; code: number; message: string };
-        if (uc) {
-          res = await request.put<UserAiConfig>(`/api/ai/user-configs/${uc.id}`, {
+      if (isUser) {
+        const saved = await saveUserConfigMutation.mutateAsync({
+          id: existingUserConfig?.id,
+          values: {
             name: values.name || null,
             provider: values.provider,
             baseUrl: values.baseUrl || null,
@@ -160,50 +137,26 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
             maxTokens: values.maxTokens || null,
             systemPrompt: values.systemPrompt || null,
             isEnabled: values.isEnabled,
-          });
-        } else {
-          res = await request.post<UserAiConfig>('/api/ai/user-configs', {
-            name: values.name || null,
-            provider: values.provider,
-            baseUrl: values.baseUrl || null,
-            apiKey: values.apiKey || null,
-            model: values.model || null,
-            temperature: values.temperature || null,
-            maxTokens: values.maxTokens || null,
-            systemPrompt: values.systemPrompt || null,
-            isEnabled: values.isEnabled,
-          });
-        }
-        if (res.data) {
-          Toast.success('保存成功');
-          props.onSaved(res.data);
-          onClose();
-        }
+          },
+        });
+        Toast.success('保存成功');
+        props.onSaved(saved);
+        onClose();
       } else {
-        const et = props.editTarget;
-        let res;
-        if (et) {
-          res = await request.put(`/api/ai/providers/${et.id}`, values);
-        } else {
-          res = await request.post('/api/ai/providers', values);
-        }
-        if (res.code === 0) {
-          Toast.success(et ? '修改成功' : '创建成功');
-          props.onSaved();
-          onClose();
-        }
+        await saveProviderMutation.mutateAsync({ id: editTarget?.id, values });
+        Toast.success(editTarget ? '修改成功' : '创建成功');
+        props.onSaved();
+        onClose();
       }
     } catch {
       // handled by request interceptor
-    } finally {
-      setSubmitLoading(false);
     }
   };
 
-  const isUser = props.mode === 'user';
-  const editTarget = isUser ? undefined : props.editTarget;
-  const existingUserConfig = isUser ? (props as { mode: 'user'; userConfig?: UserAiConfig | null }).userConfig ?? null : null;
   const isEditing = isUser ? !!existingUserConfig : !!editTarget;
+  const submitLoading = saveProviderMutation.isPending || saveUserConfigMutation.isPending;
+  const detailLoading = !isUser && !!editTarget && detailQuery.isFetching;
+  const testLoading = testConnectionMutation.isPending;
   let title = '新增服务商';
   if (isUser) title = '我的 AI 配置';
   else if (editTarget) title = '编辑服务商';
@@ -215,9 +168,14 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
       Toast.warning('请先填写 API 地址和模型名称');
       return;
     }
-    setTestLoading(true);
     try {
-      const body: Record<string, unknown> = {
+      const body: {
+        id?: number;
+        provider?: AiProvider;
+        baseUrl: string;
+        apiKey?: string;
+        model: string;
+      } = {
         provider: values.provider ?? 'openai_compatible',
         baseUrl: values.baseUrl,
         model: values.model,
@@ -231,16 +189,14 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
         body.apiKey = apiKey;
       }
 
-      const res = await request.post<{ success: boolean; message: string }>('/api/ai/providers/test-connection', body);
-      if (res.data?.success) {
+      const res = await testConnectionMutation.mutateAsync(body);
+      if (res.success) {
         Toast.success('连接测试成功');
       } else {
-        Toast.error(`连接测试失败：${res.data?.message ?? '未知错误'}`);
+        Toast.error(`连接测试失败：${res.message ?? '未知错误'}`);
       }
     } catch {
       // handled by request interceptor
-    } finally {
-      setTestLoading(false);
     }
   };
 

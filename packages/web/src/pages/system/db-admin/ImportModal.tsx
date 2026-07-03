@@ -5,7 +5,7 @@ import {
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Upload as UploadIcon, FileText } from 'lucide-react';
 import { AppModal } from '@/components/AppModal';
-import { request } from '@/utils/request';
+import { useDbAdminImportRows } from '@/hooks/queries/db-admin';
 import { parseCsv, parseJsonRows } from './csv-parse';
 
 // Univer 体积大，仅在切到「从 Excel 粘贴」页签时按需加载
@@ -62,7 +62,7 @@ export function ImportModal(props: Readonly<Props>) {
   const [rawRows, setRawRows] = useState<Array<Record<string, unknown>>>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [parseError, setParseError] = useState<string | null>(null);
-  const [importing, setImporting] = useState(false);
+  const importRowsMutation = useDbAdminImportRows();
   const resetRef = useRef<(() => void) | null>(null);
 
   const reset = () => {
@@ -138,19 +138,13 @@ export function ImportModal(props: Readonly<Props>) {
       return out;
     });
 
-    setImporting(true);
-    const res = await request.post<{ inserted: number }>(
-      `/api/db-admin/tables/${encodeURIComponent(schema)}/${encodeURIComponent(table)}/import`,
-      { rows: payloadRows },
-      { silent: true },
-    );
-    setImporting(false);
-    if (res.code === 0 && res.data) {
-      Toast.success(`成功导入 ${res.data.inserted} 行`);
+    try {
+      const res = await importRowsMutation.mutateAsync({ schema, table, rows: payloadRows });
+      Toast.success(`成功导入 ${res.inserted} 行`);
       reset();
       onSuccess();
-    } else {
-      Toast.error(res.message ?? '导入失败');
+    } catch (err) {
+      Toast.error(err instanceof Error ? err.message : '导入失败');
     }
   };
 
@@ -162,7 +156,7 @@ export function ImportModal(props: Readonly<Props>) {
       onOk={() => void handleImport()}
       okText={rawRows.length > 0 ? `导入 ${rawRows.length} 行` : '导入'}
       cancelText="取消"
-      okButtonProps={{ loading: importing, disabled: mappedCount === 0 || rawRows.length === 0 }}
+      okButtonProps={{ loading: importRowsMutation.isPending, disabled: mappedCount === 0 || rawRows.length === 0 }}
       width={860}
     >
       <Space vertical align="start" style={{ width: '100%' }} spacing={12}>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Spin, Select } from '@douyinfe/semi-ui';
 import {
   AreaChart,
@@ -12,8 +12,7 @@ import {
   makePieSpec,
 } from '@/components/charts';
 import dayjs from 'dayjs';
-import { request } from '@/utils/request';
-import type { OperationLogStats } from '@zenith/shared';
+import { useOperationLogStats } from '@/hooks/queries/operation-logs';
 
 const DAYS_OPTIONS = [
   { label: '最近 7 天', value: 7 },
@@ -92,24 +91,8 @@ const EMPTY_PLACEHOLDER_STYLE: React.CSSProperties = {
 export default function OperationLogStatsPanel() {
   const palette = useChartPalette();
   const [days, setDays] = useState<number>(30);
-  const [loading, setLoading] = useState(false);
-  const [stats, setStats] = useState<OperationLogStats | null>(null);
-
-  const fetchStats = useCallback(async (d: number) => {
-    setLoading(true);
-    try {
-      const res = await request.get<OperationLogStats>(`/api/operation-logs/stats?days=${d}`);
-      setStats(res.data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchStats(days);
-  }, [days, fetchStats]);
+  const statsQuery = useOperationLogStats({ days });
+  const stats = statsQuery.data ?? null;
 
   const moduleChartData = useMemo(() => [...(stats?.moduleStats ?? [])].slice(0, 10).reverse(), [stats]);
   const userChartData = useMemo(() => [...(stats?.userStats ?? [])].reverse(), [stats]);
@@ -230,7 +213,7 @@ export default function OperationLogStatsPanel() {
         </Select>
       </div>
 
-      <Spin spinning={loading}>
+      <Spin spinning={statsQuery.isFetching}>
         {/* ── 汇总指标卡 ── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
           <StatCard title="总请求数" value={summary ? summary.total.toLocaleString() : '—'} sub={`近 ${days} 天累计`} color="#3b82f6" />

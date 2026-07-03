@@ -1,9 +1,9 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Modal, Select, Space, Switch, Tag, Toast, Tabs, TabPane, Banner, Typography, TextArea } from '@douyinfe/semi-ui';
 import { RotateCcw, Search, RefreshCw, Briefcase } from 'lucide-react';
-import type { PaginatedResponse, MpMessageTemplate, MpTemplateSendLog } from '@zenith/shared';
+import type { MpMessageTemplate } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -12,77 +12,65 @@ import { renderEllipsis } from '../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
+import {
+  mpTemplateKeys,
+  useBatchSendMpTemplate,
+  useDeleteMpTemplate,
+  useMpTemplateIndustry,
+  useMpTemplateList,
+  useMpTemplateLogList,
+  useSaveMpTemplateIndustry,
+  useSendMpTemplate,
+  useSyncMpTemplates,
+} from '@/hooks/queries/mp-templates';
 
 export default function MpTemplateMessagesPage() {
   const { hasPermission: can } = usePermission();
-  const { accounts, currentId, currentIdRef, setCurrentId, loading: accountsLoading } = useMpAccounts();
+  const queryClient = useQueryClient();
+  const { accounts, currentId, setCurrentId, loading: accountsLoading } = useMpAccounts();
 
   const [tab, setTab] = useState('templates');
-  const [tplLoading, setTplLoading] = useState(false);
-  const [templates, setTemplates] = useState<MpMessageTemplate[]>([]);
-  const [tplTotal, setTplTotal] = useState(0);
   const tplPg = usePagination();
-  const [syncing, setSyncing] = useState(false);
-
-  const [logLoading, setLogLoading] = useState(false);
-  const [logs, setLogs] = useState<MpTemplateSendLog[]>([]);
-  const [logTotal, setLogTotal] = useState(0);
-  const [logStatus, setLogStatus] = useState<string | undefined>(undefined);
   const logPg = usePagination();
+  const [draftLogStatus, setDraftLogStatus] = useState<string | undefined>(undefined);
+  const [submittedLogStatus, setSubmittedLogStatus] = useState<string | undefined>(undefined);
+
+  const templateQuery = useMpTemplateList(currentId, { page: tplPg.page, pageSize: tplPg.pageSize });
+  const logQuery = useMpTemplateLogList(currentId, { page: logPg.page, pageSize: logPg.pageSize, status: submittedLogStatus });
+  const templates = templateQuery.data?.list ?? [];
+  const tplTotal = templateQuery.data?.total ?? 0;
+  const logs = logQuery.data?.list ?? [];
+  const logTotal = logQuery.data?.total ?? 0;
+
+  const syncMutation = useSyncMpTemplates();
+  const sendMutation = useSendMpTemplate();
+  const batchSendMutation = useBatchSendMpTemplate();
+  const saveIndustryMutation = useSaveMpTemplateIndustry();
+  const deleteMutation = useDeleteMpTemplate();
 
   const [sendVisible, setSendVisible] = useState(false);
   const [sendTpl, setSendTpl] = useState<MpMessageTemplate | null>(null);
   const [sendOpenid, setSendOpenid] = useState('');
   const [sendUrl, setSendUrl] = useState('');
   const [sendData, setSendData] = useState('{\n  "key1": { "value": "示例内容" }\n}');
-  const [sending, setSending] = useState(false);
   const [sendBatch, setSendBatch] = useState(false);
 
   const [industryVisible, setIndustryVisible] = useState(false);
-  const [industry, setIndustry] = useState<{ primaryIndustry: { firstClass: string; secondClass: string } | null; secondaryIndustry: { firstClass: string; secondClass: string } | null } | null>(null);
+  const industryQuery = useMpTemplateIndustry(currentId, industryVisible);
   const [industryId1, setIndustryId1] = useState('');
   const [industryId2, setIndustryId2] = useState('');
-  const [savingIndustry, setSavingIndustry] = useState(false);
 
-  const fetchTemplates = useCallback(async (p = 1, ps = tplPg.pageSize) => {
-    if (!currentId) { setTemplates([]); setTplTotal(0); return; }
-    const reqId = currentId;
-    setTplLoading(true);
-    try {
-      const res = await request.get<PaginatedResponse<MpMessageTemplate>>(`/api/mp/templates?accountId=${currentId}&page=${p}&pageSize=${ps}`);
-      if (currentIdRef.current !== reqId) return; // 账号已切换，丢弃过期响应
-      setTemplates(res.data?.list ?? []);
-      setTplTotal(res.data?.total ?? 0);
-      tplPg.setPage(res.data?.page ?? p);
-      tplPg.setPageSize(res.data?.pageSize ?? ps);
-    } finally { setTplLoading(false); }
-  }, [currentId, currentIdRef, tplPg]);
-
-  const fetchLogs = useCallback(async (p = 1, ps = logPg.pageSize, status = logStatus) => {
-    if (!currentId) { setLogs([]); setLogTotal(0); return; }
-    const reqId = currentId;
-    setLogLoading(true);
-    try {
-      const q = new URLSearchParams({ accountId: String(currentId), page: String(p), pageSize: String(ps) });
-      if (status) q.set('status', status);
-      const res = await request.get<PaginatedResponse<MpTemplateSendLog>>(`/api/mp/templates/logs?${q}`);
-      if (currentIdRef.current !== reqId) return; // 账号已切换，丢弃过期响应
-      setLogs(res.data?.list ?? []);
-      setLogTotal(res.data?.total ?? 0);
-      logPg.setPage(res.data?.page ?? p);
-      logPg.setPageSize(res.data?.pageSize ?? ps);
-    } finally { setLogLoading(false); }
-  }, [currentId, currentIdRef, logStatus, logPg]);
-
-  useEffect(() => { void fetchTemplates(1); void fetchLogs(1); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [currentId]);
+  useEffect(() => {
+    if (!industryVisible) return;
+    setIndustryId1('');
+    setIndustryId2('');
+  }, [industryVisible]);
 
   const handleSync = async () => {
     if (!currentId) return;
-    setSyncing(true);
-    try {
-      const res = await request.post<{ created: number; updated: number }>('/api/mp/templates/sync', { accountId: currentId });
-      if (res.code === 0) { Toast.success(`同步完成：新增 ${res.data?.created ?? 0}，更新 ${res.data?.updated ?? 0}`); void fetchTemplates(1); }
-    } finally { setSyncing(false); }
+    const data = await syncMutation.mutateAsync(currentId);
+    Toast.success(`同步完成：新增 ${data.created ?? 0}，更新 ${data.updated ?? 0}`);
+    tplPg.setPage(1);
   };
 
   const openSend = (tpl: MpMessageTemplate) => { setSendTpl(tpl); setSendOpenid(''); setSendUrl(''); setSendBatch(false); setSendData('{\n  "key1": { "value": "示例内容" }\n}'); setSendVisible(true); };
@@ -90,37 +78,31 @@ export default function MpTemplateMessagesPage() {
   const handleSend = async () => {
     if (!currentId || !sendTpl) return;
     let data: Record<string, unknown>;
-    try { data = JSON.parse(sendData); } catch { Toast.error('模板数据不是合法 JSON'); return; }
+    try { data = JSON.parse(sendData); } catch { Toast.error('模板数据不是合法 JSON'); throw new Error('validation'); }
     const openids = sendOpenid.split(/[\s,，]+/).map((s) => s.trim()).filter(Boolean);
-    if (openids.length === 0) { Toast.error('请填写接收粉丝 openid'); return; }
-    setSending(true);
-    try {
-      if (sendBatch) {
-        const res = await request.post<{ success: number; failed: number; total: number }>('/api/mp/templates/batch-send', { accountId: currentId, templateId: sendTpl.templateId, openids, url: sendUrl.trim() || undefined, data });
-        if (res.code === 0) { Toast.success(`批量发送完成：成功 ${res.data?.success ?? 0}，失败 ${res.data?.failed ?? 0}`); setSendVisible(false); void fetchLogs(1); }
-      } else {
-        const res = await request.post('/api/mp/templates/send', { accountId: currentId, templateId: sendTpl.templateId, openid: openids[0], url: sendUrl.trim() || undefined, data });
-        if (res.code === 0) { Toast.success('发送成功'); setSendVisible(false); void fetchLogs(1); }
-      }
-    } finally { setSending(false); }
+    if (openids.length === 0) { Toast.error('请填写接收粉丝 openid'); throw new Error('validation'); }
+    if (sendBatch) {
+      const res = await batchSendMutation.mutateAsync({ accountId: currentId, templateId: sendTpl.templateId, openids, url: sendUrl.trim() || undefined, data });
+      Toast.success(`批量发送完成：成功 ${res.success ?? 0}，失败 ${res.failed ?? 0}`);
+    } else {
+      await sendMutation.mutateAsync({ accountId: currentId, templateId: sendTpl.templateId, openid: openids[0], url: sendUrl.trim() || undefined, data });
+      Toast.success('发送成功');
+    }
+    setSendVisible(false);
+    logPg.setPage(1);
   };
 
-  const openIndustry = async () => {
+  const openIndustry = () => {
     if (!currentId) return;
     setIndustryVisible(true);
-    setIndustry(null);
-    const res = await request.get<typeof industry>(`/api/mp/templates/industry?accountId=${currentId}`);
-    if (res.code === 0) setIndustry(res.data ?? null);
   };
 
   const handleSaveIndustry = async () => {
     if (!currentId) return;
-    if (!industryId1.trim() || !industryId2.trim()) { Toast.warning('请填写主营/副营行业代码'); return; }
-    setSavingIndustry(true);
-    try {
-      const res = await request.put('/api/mp/templates/industry', { accountId: currentId, industryId1: industryId1.trim(), industryId2: industryId2.trim() });
-      if (res.code === 0) { Toast.success('行业设置成功'); setIndustryVisible(false); }
-    } finally { setSavingIndustry(false); }
+    if (!industryId1.trim() || !industryId2.trim()) { Toast.warning('请填写主营/副营行业代码'); throw new Error('validation'); }
+    await saveIndustryMutation.mutateAsync({ accountId: currentId, industryId1: industryId1.trim(), industryId2: industryId2.trim() });
+    Toast.success('行业设置成功');
+    setIndustryVisible(false);
   };
 
   const handleDeleteTpl = (record: MpMessageTemplate) => {
@@ -128,10 +110,8 @@ export default function MpTemplateMessagesPage() {
       title: `确定删除模板「${record.title}」吗？`,
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete(`/api/mp/templates/${record.id}`);
-        if (res.code !== 0) return;
+        await deleteMutation.mutateAsync(record.id);
         Toast.success('删除成功');
-        void fetchTemplates();
       },
     });
   };
@@ -167,30 +147,38 @@ export default function MpTemplateMessagesPage() {
     <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
   );
   const renderTemplateRefreshButton = () => (
-    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => void fetchTemplates(1)}>刷新</Button>
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { tplPg.setPage(1); void queryClient.invalidateQueries({ queryKey: mpTemplateKeys.lists(currentId) }); }}>刷新</Button>
   );
   const renderTemplateActions = () => {
     if (!can('mp:template:sync')) return null;
     return (
       <>
-        <Button icon={<RefreshCw size={14} />} loading={syncing} disabled={!currentId} onClick={() => void handleSync()}>从微信同步模板</Button>
-        <Button icon={<Briefcase size={14} />} disabled={!currentId} onClick={() => void openIndustry()}>行业设置</Button>
+        <Button icon={<RefreshCw size={14} />} loading={syncMutation.isPending} disabled={!currentId} onClick={() => void handleSync()}>从微信同步模板</Button>
+        <Button icon={<Briefcase size={14} />} disabled={!currentId} onClick={openIndustry}>行业设置</Button>
       </>
     );
   };
   const renderLogStatusFilter = () => (
     <Select
       placeholder="状态"
-      value={logStatus}
-      onChange={(v) => { setLogStatus(v as string | undefined); void fetchLogs(1, logPg.pageSize, v as string | undefined); }}
+      value={draftLogStatus}
+      onChange={(v) => setDraftLogStatus(v as string | undefined)}
       optionList={[{ label: '成功', value: 'success' }, { label: '失败', value: 'failed' }]}
       showClear
       style={{ width: 120 }}
     />
   );
+  const refreshLogs = () => {
+    logPg.setPage(1);
+    setSubmittedLogStatus(draftLogStatus);
+    void queryClient.invalidateQueries({ queryKey: mpTemplateKeys.logLists(currentId) });
+  };
   const renderLogRefreshButton = () => (
-    <Button type="tertiary" icon={<Search size={14} />} onClick={() => void fetchLogs(1)}>刷新</Button>
+    <Button type="tertiary" icon={<Search size={14} />} onClick={refreshLogs}>刷新</Button>
   );
+
+  const sending = sendMutation.isPending || batchSendMutation.isPending;
+  const industry = industryQuery.data;
 
   return (
     <div className="page-container">
@@ -216,9 +204,9 @@ export default function MpTemplateMessagesPage() {
             mobileActions={renderTemplateActions()}
             actionTitle="模板库操作"
           />
-          <ConfigurableTable bordered loading={tplLoading} onRefresh={() => void fetchTemplates()} refreshLoading={tplLoading}
+          <ConfigurableTable bordered loading={templateQuery.isFetching} onRefresh={() => void templateQuery.refetch()} refreshLoading={templateQuery.isFetching}
             columns={tplColumns} dataSource={templates} rowKey="id"
-            pagination={tplPg.buildPagination(tplTotal, (p, ps) => fetchTemplates(p, ps))} scroll={{ x: 1000 }} />
+            pagination={tplPg.buildPagination(tplTotal)} scroll={{ x: 1000 }} />
         </TabPane>
         <TabPane tab="发送记录" itemKey="logs">
           <SearchToolbar
@@ -231,11 +219,11 @@ export default function MpTemplateMessagesPage() {
             mobilePrimary={renderLogRefreshButton()}
             mobileFilters={renderLogStatusFilter()}
             filterTitle="发送记录筛选"
-            onFilterApply={() => void fetchLogs(1)}
+            onFilterApply={refreshLogs}
           />
-          <ConfigurableTable bordered loading={logLoading} onRefresh={() => void fetchLogs()} refreshLoading={logLoading}
+          <ConfigurableTable bordered loading={logQuery.isFetching} onRefresh={() => void logQuery.refetch()} refreshLoading={logQuery.isFetching}
             columns={logColumns} dataSource={logs} rowKey="id"
-            pagination={logPg.buildPagination(logTotal, (p, ps) => fetchLogs(p, ps))} scroll={{ x: 1000 }} />
+            pagination={logPg.buildPagination(logTotal)} scroll={{ x: 1000 }} />
         </TabPane>
       </Tabs>
 
@@ -263,7 +251,7 @@ export default function MpTemplateMessagesPage() {
       </AppModal>
 
       <AppModal title="模板消息行业设置" visible={industryVisible}
-        onOk={() => void handleSaveIndustry()} confirmLoading={savingIndustry} onCancel={() => setIndustryVisible(false)} width={460}>
+        onOk={() => void handleSaveIndustry()} confirmLoading={saveIndustryMutation.isPending} onCancel={() => setIndustryVisible(false)} width={460}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {industry && (industry.primaryIndustry || industry.secondaryIndustry) && (
             <Banner type="info" fullMode={false} description={`当前行业：${[industry.primaryIndustry, industry.secondaryIndustry].filter(Boolean).map((i) => `${i!.firstClass}/${i!.secondClass}`).join('，') || '未设置'}`} />

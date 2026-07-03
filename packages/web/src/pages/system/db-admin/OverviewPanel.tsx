@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
 import { Button, Empty, Spin, Typography, Tag, Space } from '@douyinfe/semi-ui';
 import { BarChart, chartOptions, makeBarSpec, useChartPalette, datumNumber, datumText } from '@/components/charts';
 import { RefreshCw, Database, Table as TableIcon, Eye, KeyRound, Network, Activity, HardDrive, Server } from 'lucide-react';
-import { request } from '@/utils/request';
+import { useDbAdminOverview } from '@/hooks/queries/db-admin';
 
 const { Text } = Typography;
 
@@ -80,18 +79,10 @@ function StatCard({ icon, label, value, sub, accent }: Readonly<StatCardProps>) 
 }
 
 export function OverviewPanel({ onSelectTable }: Readonly<{ onSelectTable?: (schema: string, name: string) => void }>) {
-  const [data, setData] = useState<DbOverview | null>(null);
-  const [loading, setLoading] = useState(false);
+  const overviewQuery = useDbAdminOverview();
+  const data = overviewQuery.data ?? null;
+  const loading = overviewQuery.isFetching;
   const palette = useChartPalette();
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    const res = await request.get<DbOverview>('/api/db-admin/overview');
-    if (res.code === 0 && res.data) setData(res.data);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { void load(); }, [load]);
 
   const chartData = (data?.topTables ?? []).map((t, i) => ({
     label: t.name,
@@ -128,7 +119,7 @@ export function OverviewPanel({ onSelectTable }: Readonly<{ onSelectTable?: (sch
   return (
     <div style={{ height: '100%', overflow: 'auto', padding: 4 }}>
       <Space style={{ marginBottom: 12 }}>
-        <Button icon={<RefreshCw size={14} />} onClick={() => void load()} loading={loading}>刷新</Button>
+        <Button icon={<RefreshCw size={14} />} onClick={() => void overviewQuery.refetch()} loading={loading}>刷新</Button>
         {data && (
           <Text type="tertiary" size="small">
             <Server size={13} style={{ verticalAlign: -2, marginRight: 4 }} />

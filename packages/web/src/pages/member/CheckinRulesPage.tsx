@@ -1,84 +1,66 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Toast, Modal } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Settings } from 'lucide-react';
-import type { CheckinRule, CheckinSettings } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { CheckinRule } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { AppModal } from '@/components/AppModal';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { renderEllipsis } from '../../utils/table-columns';
+import {
+  memberAdminKeys,
+  useCheckinRules,
+  useCheckinSettings,
+  useDeleteCheckinRule,
+  useSaveCheckinRule,
+  useSaveCheckinSettings,
+} from '@/hooks/queries/member-admin';
 
 export default function CheckinRulesPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
   const settingsFormApi = useRef<FormApi | null>(null);
-  const [data, setData] = useState<CheckinRule[]>([]);
-  const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<CheckinRule | null>(null);
   const [settingsVisible, setSettingsVisible] = useState(false);
-  const [settings, setSettings] = useState<CheckinSettings | null>(null);
+  const listQuery = useCheckinRules();
+  const settingsQuery = useCheckinSettings(settingsVisible);
+  const data = listQuery.data ?? [];
+  const settings = settingsQuery.data ?? null;
+  const saveSettingsMutation = useSaveCheckinSettings();
+  const saveRuleMutation = useSaveCheckinRule();
+  const deleteRuleMutation = useDeleteCheckinRule();
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await request.get<CheckinRule[]>('/api/checkin-rules');
-      if (res.code === 0) setData(res.data);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
-
-  const openSettings = async () => {
-    const res = await request.get<CheckinSettings>('/api/checkin-settings');
-    if (res.code === 0) {
-      setSettings(res.data);
-      setSettingsVisible(true);
-    }
-  };
+  const openSettings = () => setSettingsVisible(true);
 
   const handleSaveSettings = async () => {
     let values: Record<string, unknown> | undefined;
     try {
-      values = await settingsFormApi.current?.validate();
+      values = await settingsFormApi.current!.validate();
     } catch {
       throw new Error('validation');
     }
-    const res = await request.put<CheckinSettings>('/api/checkin-settings', values);
-    if (res.code === 0) {
-      Toast.success('保存成功');
-      setSettingsVisible(false);
-      return;
-    }
-    throw new Error(res.message);
+    await saveSettingsMutation.mutateAsync(values ?? {});
+    Toast.success('保存成功');
+    setSettingsVisible(false);
   };
 
   const handleOk = async () => {
     let values: Record<string, unknown> | undefined;
     try {
-      values = await formApi.current?.validate();
+      values = await formApi.current!.validate();
     } catch {
       throw new Error('validation');
     }
-    const res = editing
-      ? await request.put<CheckinRule>(`/api/checkin-rules/${editing.id}`, values)
-      : await request.post<CheckinRule>('/api/checkin-rules', values);
-    if (res.code === 0) {
-      Toast.success(editing ? '更新成功' : '创建成功');
-      setModalVisible(false);
-      setEditing(null);
-      void fetchData();
-      return;
-    }
-    throw new Error(res.message);
+    await saveRuleMutation.mutateAsync({ id: editing?.id, values: values ?? {} });
+    Toast.success(editing ? '更新成功' : '创建成功');
+    setModalVisible(false);
+    setEditing(null);
   };
 
   const handleDelete = (record: CheckinRule) => {
@@ -87,11 +69,8 @@ export default function CheckinRulesPage() {
       content: '删除后该连续天数的奖励配置将失效。',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete(`/api/checkin-rules/${record.id}`);
-        if (res.code === 0) {
-          Toast.success('删除成功');
-          void fetchData();
-        }
+        await deleteRuleMutation.mutateAsync(record.id);
+        Toast.success('删除成功');
       },
     });
   };
@@ -124,13 +103,13 @@ export default function CheckinRulesPage() {
   ];
 
   const renderRefreshButton = () => (
-    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => void fetchData()}>
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => void queryClient.invalidateQueries({ queryKey: memberAdminKeys.checkinRules })}>
       刷新
     </Button>
   );
 
   const renderSettingsButton = () => hasPermission('member:checkin:setting:update') ? (
-    <Button type="tertiary" icon={<Settings size={14} />} onClick={() => void openSettings()}>
+    <Button type="tertiary" icon={<Settings size={14} />} onClick={openSettings}>
       签到设置
     </Button>
   ) : null;
@@ -164,9 +143,9 @@ export default function CheckinRulesPage() {
         bordered
         columns={columns}
         dataSource={data}
-        loading={loading}
-        onRefresh={fetchData}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         rowKey="id"
         size="small"
         pagination={false}

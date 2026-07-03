@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Card, Empty, Spin, Typography, Select, Tag } from '@douyinfe/semi-ui';
 import {
   BarChart,
@@ -10,8 +10,8 @@ import {
   makePieSpec,
   useChartPalette,
 } from '@/components/charts';
-import type { WorkflowAnalytics, WorkflowDefinition, WorkflowOverdueTask, PaginatedResponse } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { WorkflowDefinition } from '@zenith/shared';
+import { useWorkflowAnalytics, useWorkflowOverdueTasks } from '@/hooks/queries/workflow-monitor';
 
 const STATUS_META: Record<string, { text: string; color: string }> = {
   draft: { text: '草稿', color: '#8c8c8c' },
@@ -59,23 +59,12 @@ function ChartCard({ title, children }: Readonly<{ title: string; children: Reac
 
 export default function WorkflowAnalyticsView({ definitions }: Readonly<{ definitions: WorkflowDefinition[] }>) {
   const palette = useChartPalette();
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<WorkflowAnalytics | null>(null);
-  const [overdue, setOverdue] = useState<WorkflowOverdueTask[]>([]);
   const [definitionId, setDefinitionId] = useState<number | ''>('');
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    const qs = definitionId === '' ? '' : `?definitionId=${definitionId}`;
-    request.get<WorkflowAnalytics>(`/api/workflows/instances/analytics${qs}`)
-      .then((res) => { if (!cancelled && res.code === 0) setData(res.data); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    const oqs = definitionId === '' ? '?pageSize=50' : `?pageSize=50&definitionId=${definitionId}`;
-    request.get<PaginatedResponse<WorkflowOverdueTask>>(`/api/workflows/instances/overdue${oqs}`)
-      .then((res) => { if (!cancelled && res.code === 0) setOverdue(res.data.list ?? []); });
-    return () => { cancelled = true; };
-  }, [definitionId]);
+  const selectedDefinitionId = definitionId === '' ? undefined : definitionId;
+  const analyticsQuery = useWorkflowAnalytics(selectedDefinitionId);
+  const overdueQuery = useWorkflowOverdueTasks(selectedDefinitionId);
+  const data = analyticsQuery.data ?? null;
+  const overdue = overdueQuery.data?.list ?? [];
 
   const statusPie = useMemo(
     () => (data?.statusCounts ?? [])
@@ -137,7 +126,7 @@ export default function WorkflowAnalyticsView({ definitions }: Readonly<{ defini
     categoryAxisWidth: 100,
   }), [approverWorkloadData, palette]);
 
-  if (loading && !data) {
+  if (analyticsQuery.isFetching && !data) {
     return <div style={{ textAlign: 'center', padding: 60 }}><Spin /></div>;
   }
   if (!data) return <Empty title="暂无分析数据" style={{ padding: 60 }} />;

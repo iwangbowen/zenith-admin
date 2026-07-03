@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { FloatButton, Spin } from '@douyinfe/semi-ui';
 import { MessageCircle, X } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -6,6 +7,7 @@ import type { ChatConversation, WsMessage } from '@zenith/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useWebSocket, useWsConnected } from '@/hooks/useWebSocket';
 import { request } from '@/utils/request';
+import { unwrap } from '@/lib/query';
 import './QuickChatButton.css';
 
 const QuickChatPanel = lazy(() => import('@/pages/chat/ChatPage'));
@@ -26,6 +28,11 @@ export default function QuickChatButton({ onHide }: Readonly<{ onHide?: () => vo
   const floatBtnRef = useRef<HTMLDivElement>(null);
   const wsHasConnectedRef = useRef(false);
   const wsDisconnectedSinceReadyRef = useRef(false);
+  const { data: unreadConversations, refetch: refetchUnreadCount } = useQuery({
+    queryKey: ['chat', 'quick-unread-conversations'],
+    queryFn: () => request.get<ChatConversation[]>('/api/chat/conversations', { silent: true }).then(unwrap),
+    enabled: !location.pathname.startsWith('/chat'),
+  });
 
   const closePanel = useCallback(() => {
     openRef.current = false;
@@ -47,16 +54,11 @@ export default function QuickChatButton({ onHide }: Readonly<{ onHide?: () => vo
     setOpen(true);
   }, [closePanel]);
 
-  const fetchUnreadCount = useCallback(async () => {
-    const res = await request.get<ChatConversation[]>('/api/chat/conversations', { silent: true });
-    if (res.code === 0 && res.data) {
-      setUnreadCount(res.data.reduce((sum, item) => sum + (item.unreadCount ?? 0), 0));
-    }
-  }, []);
-
   useEffect(() => {
-    void fetchUnreadCount();
-  }, [fetchUnreadCount]);
+    if (unreadConversations) {
+      setUnreadCount(unreadConversations.reduce((sum, item) => sum + (item.unreadCount ?? 0), 0));
+    }
+  }, [unreadConversations]);
 
   useEffect(() => {
     if (!open) return;
@@ -94,9 +96,9 @@ export default function QuickChatButton({ onHide }: Readonly<{ onHide?: () => vo
     }
 
     if (wsMsg.type === 'chat:read' && wsMsg.payload.userId === currentUserId) {
-      void fetchUnreadCount();
+      void refetchUnreadCount();
     }
-  }, [currentUserId, fetchUnreadCount, location.pathname]);
+  }, [currentUserId, location.pathname, refetchUnreadCount]);
 
   useWebSocket(handleWsMessage);
   const wsConnected = useWsConnected();
@@ -115,8 +117,8 @@ export default function QuickChatButton({ onHide }: Readonly<{ onHide?: () => vo
 
     if (!wsDisconnectedSinceReadyRef.current) return;
     wsDisconnectedSinceReadyRef.current = false;
-    void fetchUnreadCount();
-  }, [fetchUnreadCount, wsConnected]);
+    void refetchUnreadCount();
+  }, [refetchUnreadCount, wsConnected]);
 
   const handleOpenFullPage = useCallback((convId?: number | null) => {
     openRef.current = false;

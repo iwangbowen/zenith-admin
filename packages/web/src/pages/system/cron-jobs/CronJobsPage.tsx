@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Col,
@@ -21,9 +22,8 @@ import {
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, ScrollText, Trash2, ChevronDown, HelpCircle } from 'lucide-react';
-import type { CronJob, PaginatedResponse } from '@zenith/shared';
+import type { CronJob } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { CronExpressionParser } from 'cron-parser';
@@ -37,22 +37,23 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { renderEllipsis } from '../../../utils/table-columns';
 import CronJobDashboard from './CronJobDashboard';
+import {
+  cronJobKeys,
+  useClearCronJobLogs,
+  useCronJobAllLogs,
+  useCronJobDetail,
+  useCronJobHandlers,
+  useCronJobList,
+  useCronJobLogs,
+  useDeleteCronJob,
+  useRunCronJob,
+  useSaveCronJob,
+  useUpdateCronJobStatus,
+} from '@/hooks/queries/cron-jobs';
 
 interface SearchParams {
   keyword: string;
   status: string;
-}
-
-interface CronJobLog {
-  id: number;
-  jobId: number;
-  jobName: string;
-  executionCount: number;
-  startedAt: string;
-  endedAt: string | null;
-  durationMs: number | null;
-  status: 'success' | 'fail' | 'running';
-  output: string | null;
 }
 
 const defaultSearchParams: SearchParams = { keyword: '', status: '' };
@@ -60,67 +61,67 @@ const defaultSearchParams: SearchParams = { keyword: '', status: '' };
 export default function CronJobsPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<CronJob[]>([]);
-  const [total, setTotal] = useState(0);
+  const queryClient = useQueryClient();
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingJob, setEditingJob] = useState<CronJob | null>(null);
-  const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const [cronExprValue, setCronExprValue] = useState('');
-  const [handlers, setHandlers] = useState<string[]>([]);
   const [logsDrawerVisible, setLogsDrawerVisible] = useState(false);
   const [logsJobName, setLogsJobName] = useState('');
   const [logsJobId, setLogsJobId] = useState<number | null>(null);
-  const [logsData, setLogsData] = useState<CronJobLog[]>([]);
-  const [logsTotal, setLogsTotal] = useState(0);
   const [logsPage, setLogsPage] = useState(1);
-  const [logsLoading, setLogsLoading] = useState(false);
-  const logsPageSize = 20;;
+  const logsPageSize = 20;
   const [allLogsDrawerVisible, setAllLogsDrawerVisible] = useState(false);
-  const [allLogsData, setAllLogsData] = useState<CronJobLog[]>([]);
-  const [allLogsTotal, setAllLogsTotal] = useState(0);
   const [allLogsPage, setAllLogsPage] = useState(1);
-  const [allLogsLoading, setAllLogsLoading] = useState(false);
   const [allLogsJobFilter, setAllLogsJobFilter] = useState<number | null>(null);
-  const [switchLoadingIds, setSwitchLoadingIds] = useState<Set<number>>(new Set());
-  const [clearLogsLoading, setClearLogsLoading] = useState(false);
+  const listQuery = useCronJobList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    status: submittedParams.status || undefined,
+  });
+  const data = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const handlersQuery = useCronJobHandlers();
+  const handlers = handlersQuery.data ?? [];
+  const detailQuery = useCronJobDetail(editingJob?.id, modalVisible && !!editingJob);
+  const modalDetailLoading = !!editingJob && detailQuery.isFetching;
+  const jobLogsQuery = useCronJobLogs({ jobId: logsJobId ?? 0, page: logsPage, pageSize: logsPageSize }, logsDrawerVisible && logsJobId != null);
+  const allLogsQuery = useCronJobAllLogs({
+    page: allLogsPage,
+    pageSize: logsPageSize,
+    jobId: allLogsJobFilter ?? undefined,
+  }, allLogsDrawerVisible);
 
-  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const activeParams = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(activeParams.keyword ? { keyword: activeParams.keyword } : {}),
-        ...(activeParams.status ? { status: activeParams.status } : {}),
-      }).toString();
-      const res = await request.get<PaginatedResponse<CronJob>>(`/api/cron-jobs?${query}`);
-      if (res.code === 0) {
-        setData(res.data.list);
-        setTotal(res.data.total);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize]);
+  const saveMutation = useSaveCronJob();
+  const deleteMutation = useDeleteCronJob();
+  const runMutation = useRunCronJob();
+  const toggleStatusMutation = useUpdateCronJobStatus();
+  const clearLogsMutation = useClearCronJobLogs();
+  const switchLoadingId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
 
   useEffect(() => {
-    void fetchData();
-    request.get<string[]>('/api/cron-jobs/handlers').then((res) => {
-      if (res.code === 0) setHandlers(res.data);
-    });
-  }, [fetchData]);
+    if (!modalVisible || !detailQuery.data) return;
+    setEditingJob(detailQuery.data);
+    setCronExprValue(detailQuery.data.cronExpression ?? '');
+  }, [detailQuery.data, modalVisible]);
 
-  const handleSearch = () => { setPage(1); void fetchData(1, pageSize); };
-  const handleReset = () => { setSearchParams(defaultSearchParams); setPage(1); void fetchData(1, pageSize, defaultSearchParams); };
+  const handleSearch = () => {
+    setPage(1);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: cronJobKeys.lists });
+  };
+  const handleReset = () => {
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: cronJobKeys.lists });
+  };
   const buildExportQuery = () => ({
-    ...(searchParams.keyword ? { keyword: searchParams.keyword } : {}),
-    ...(searchParams.status ? { status: searchParams.status } : {}),
+    ...(submittedParams.keyword ? { keyword: submittedParams.keyword } : {}),
+    ...(submittedParams.status ? { status: submittedParams.status } : {}),
   });
 
   const handleRunOnce = (id: number, name: string) => {
@@ -128,11 +129,8 @@ export default function CronJobsPage() {
       title: '确定要立即执行一次吗？',
       content: `任务：${name}`,
       onOk: async () => {
-        const res = await request.post(`/api/cron-jobs/${id}/run`);
-        if (res.code === 0) {
-          Toast.success('已触发执行');
-          void fetchData();
-        }
+        await runMutation.mutateAsync(id);
+        Toast.success('已触发执行');
       },
     });
   };
@@ -141,61 +139,29 @@ export default function CronJobsPage() {
     let values;
     try { values = await formApi.current?.validate(); } catch { throw new Error('validation'); }
 
-    const res = editingJob
-      ? await request.put(`/api/cron-jobs/${editingJob.id}`, values)
-      : await request.post('/api/cron-jobs', values);
-
-    if (res.code === 0) {
-      Toast.success(editingJob ? '更新成功' : '创建成功');
-      setModalVisible(false);
-      setEditingJob(null);
-      setCronExprValue('');
-      void fetchData();
-    } else {
-      throw new Error(res.message);
-    }
+    await saveMutation.mutateAsync({ id: editingJob?.id, values: values as Partial<CronJob> });
+    Toast.success(editingJob ? '更新成功' : '创建成功');
+    setModalVisible(false);
+    setEditingJob(null);
+    setCronExprValue('');
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete(`/api/cron-jobs/${id}`);
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      void fetchData();
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   };
 
-  const openEdit = async (record: CronJob) => {
+  const openEdit = (record: CronJob) => {
     setEditingJob(record);
     setCronExprValue(record.cronExpression ?? '');
     setModalVisible(true);
-    setModalDetailLoading(true);
-    const res = await request.get<CronJob>(`/api/cron-jobs/${record.id}`);
-    setModalDetailLoading(false);
-    if (res.code === 0 && res.data) {
-      setEditingJob(res.data);
-      setCronExprValue(res.data.cronExpression ?? '');
-    } else {
-      Toast.error(res.message || '获取信息失败');
-    }
   };
 
   const handleToggleStatus = (id: number, currentStatus: string, name: string) => {
     const newStatus = currentStatus === 'enabled' ? 'disabled' : 'enabled';
     const doToggle = async () => {
-      setSwitchLoadingIds((prev) => new Set([...prev, id]));
-      try {
-        const res = await request.put(`/api/cron-jobs/${id}/status`, { status: newStatus });
-        if (res.code === 0) {
-          Toast.success(newStatus === 'enabled' ? '已启用' : '已暂停');
-          void fetchData();
-        }
-      } finally {
-        setSwitchLoadingIds((prev) => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
-      }
+      await toggleStatusMutation.mutateAsync({ id, status: newStatus });
+      Toast.success(newStatus === 'enabled' ? '已启用' : '已暂停');
     };
     if (newStatus === 'disabled') {
       Modal.confirm({
@@ -211,45 +177,11 @@ export default function CronJobsPage() {
     }
   };
 
-  const fetchJobLogs = useCallback(async (jobId: number, p = 1) => {
-    setLogsLoading(true);
-    try {
-      const query = new URLSearchParams({ page: String(p), pageSize: String(logsPageSize) }).toString();
-      const res = await request.get<PaginatedResponse<CronJobLog>>(`/api/cron-jobs/${jobId}/logs?${query}`);
-      if (res.code === 0) {
-        setLogsData(res.data.list);
-        setLogsTotal(res.data.total);
-        setLogsPage(res.data.page);
-      }
-    } finally {
-      setLogsLoading(false);
-    }
-  }, [logsPageSize]);
-
-  const fetchAllLogs = useCallback(async (p = 1, jobId: number | null = allLogsJobFilter) => {
-    setAllLogsLoading(true);
-    try {
-      const params: Record<string, string> = { page: String(p), pageSize: String(logsPageSize) };
-      if (jobId) params.jobId = String(jobId);
-      const query = new URLSearchParams(params).toString();
-      const res = await request.get<PaginatedResponse<CronJobLog>>(`/api/cron-jobs/logs?${query}`);
-      if (res.code === 0) {
-        setAllLogsData(res.data.list);
-        setAllLogsTotal(res.data.total);
-        setAllLogsPage(res.data.page);
-      }
-    } finally {
-      setAllLogsLoading(false);
-    }
-  }, [logsPageSize, allLogsJobFilter]);
-
   const openLogsDrawer = (record: CronJob) => {
     setLogsJobId(record.id);
     setLogsJobName(record.name);
-    setLogsData([]);
     setLogsPage(1);
     setLogsDrawerVisible(true);
-    void fetchJobLogs(record.id, 1);
   };
 
   const clearLogsLabels: Record<number, string> = { 0: '全部', 1: '一个月', 3: '三个月', 6: '六个月', 12: '一年' };
@@ -261,25 +193,10 @@ export default function CronJobsPage() {
       content: `将删除${label}的执行日志，此操作不可恢复，确认继续吗？`,
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        setClearLogsLoading(true);
-        try {
-          const url = jobId !== null && jobId !== undefined
-            ? `/api/cron-jobs/${jobId}/logs/clean?months=${months}`
-            : `/api/cron-jobs/logs/clean?months=${months}`;
-          const res = await request.delete(url);
-          if (res.code === 0) {
-            Toast.success(res.message || '清除成功');
-            if (jobId !== null && jobId !== undefined) {
-              setLogsPage(1);
-              void fetchJobLogs(jobId, 1);
-            } else {
-              setAllLogsPage(1);
-              void fetchAllLogs(1, allLogsJobFilter);
-            }
-          }
-        } finally {
-          setClearLogsLoading(false);
-        }
+        await clearLogsMutation.mutateAsync({ months, jobId });
+        Toast.success('清除成功');
+        if (jobId !== null && jobId !== undefined) setLogsPage(1);
+        else setAllLogsPage(1);
       },
     });
   };
@@ -405,7 +322,7 @@ export default function CronJobsPage() {
       render: (v: string, record: CronJob) => (
         <Switch
           checked={v === 'enabled'}
-          loading={switchLoadingIds.has(record.id)}
+          loading={switchLoadingId === record.id}
           size="small"
           onChange={() => { handleToggleStatus(record.id, v, record.name); }}
           disabled={!hasPermission('system:cronjob:update')}
@@ -426,7 +343,7 @@ export default function CronJobsPage() {
           key: 'edit',
           label: '编辑',
           hidden: !hasPermission('system:cronjob:update'),
-          onClick: () => { void openEdit(record); },
+          onClick: () => openEdit(record),
         },
         {
           key: 'delete',
@@ -461,16 +378,16 @@ export default function CronJobsPage() {
                 <Input
                   prefix={<Search size={14} />}
                   placeholder="搜索任务名称/处理器"
-                  value={searchParams.keyword}
-                  onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))}
+                  value={draftParams.keyword}
+                  onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
                   onEnterPress={handleSearch}
                   style={{ width: 240 }}
                   showClear
                 />
                 <Select
                   placeholder="状态"
-                  value={searchParams.status || undefined}
-                  onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))}
+                  value={draftParams.status || undefined}
+                  onChange={(v) => setDraftParams((p) => ({ ...p, status: (v as string) ?? '' }))}
                   style={{ width: 140 }}
                   optionList={[
                     { value: '', label: '全部' },
@@ -484,7 +401,7 @@ export default function CronJobsPage() {
             )}
             actions={(
               <>
-                <Button icon={<ScrollText size={14} />} onClick={() => { setAllLogsPage(1); setAllLogsJobFilter(null); setAllLogsDrawerVisible(true); void fetchAllLogs(1, null); }}>全部执行日志</Button>
+                <Button icon={<ScrollText size={14} />} onClick={() => { setAllLogsPage(1); setAllLogsJobFilter(null); setAllLogsDrawerVisible(true); }}>全部执行日志</Button>
                 <ExportButton entity="system.cron-jobs" query={buildExportQuery()} />
                 {hasPermission('system:cronjob:create') && (
                   <Button type="primary" icon={<Plus size={14} />} onClick={() => { setEditingJob(null); setCronExprValue(''); setModalVisible(true); }}>新增</Button>
@@ -496,8 +413,8 @@ export default function CronJobsPage() {
                 <Input
                   prefix={<Search size={14} />}
                   placeholder="搜索任务名称/处理器"
-                  value={searchParams.keyword}
-                  onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))}
+                  value={draftParams.keyword}
+                  onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
                   onEnterPress={handleSearch}
                   style={{ width: 240 }}
                   showClear
@@ -511,8 +428,8 @@ export default function CronJobsPage() {
             mobileFilters={(
               <Select
                 placeholder="状态"
-                value={searchParams.status || undefined}
-                onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))}
+                value={draftParams.status || undefined}
+                onChange={(v) => setDraftParams((p) => ({ ...p, status: (v as string) ?? '' }))}
                 style={{ width: 140 }}
                 optionList={[
                   { value: '', label: '全部' },
@@ -523,7 +440,7 @@ export default function CronJobsPage() {
             )}
             mobileActions={(
               <>
-                <Button icon={<ScrollText size={14} />} onClick={() => { setAllLogsPage(1); setAllLogsJobFilter(null); setAllLogsDrawerVisible(true); void fetchAllLogs(1, null); }}>全部执行日志</Button>
+                <Button icon={<ScrollText size={14} />} onClick={() => { setAllLogsPage(1); setAllLogsJobFilter(null); setAllLogsDrawerVisible(true); }}>全部执行日志</Button>
                 <ExportButton entity="system.cron-jobs" query={buildExportQuery()} variant="flat" />
               </>
             )}
@@ -537,11 +454,11 @@ export default function CronJobsPage() {
         bordered
         columns={columns}
         dataSource={data}
-        loading={loading}
-        onRefresh={fetchData}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         rowKey="id"
-        pagination={buildPagination(total, fetchData)}
+        pagination={buildPagination(total)}
         empty="暂无数据"
       />
         </Tabs.TabPane>
@@ -553,7 +470,7 @@ export default function CronJobsPage() {
       <AppModal
         title={editingJob ? '编辑定时任务' : '新增定时任务'}
         visible={modalVisible}
-        onCancel={() => { setModalVisible(false); setEditingJob(null); setCronExprValue(''); setModalDetailLoading(false); }}
+        onCancel={() => { setModalVisible(false); setEditingJob(null); setCronExprValue(''); }}
         onOk={handleModalOk}
         okButtonProps={{ disabled: modalDetailLoading }}
         width={720}
@@ -667,7 +584,6 @@ export default function CronJobsPage() {
               const jobId = (v as number | undefined) ?? null;
               setAllLogsJobFilter(jobId);
               setAllLogsPage(1);
-              void fetchAllLogs(1, jobId);
             }}
             style={{ width: 220 }}
             showClear
@@ -675,7 +591,7 @@ export default function CronJobsPage() {
           />
           {hasPermission('system:cronjob:delete') && (
             <SplitButtonGroup>
-              <Button icon={<Trash2 size={14} />} type="danger" theme="light" loading={clearLogsLoading} onClick={() => handleClearLogs(12, null)}>清除日志</Button>
+              <Button icon={<Trash2 size={14} />} type="danger" theme="light" loading={clearLogsMutation.isPending} onClick={() => handleClearLogs(12, null)}>清除日志</Button>
               <Dropdown
                 trigger="click"
                 position="bottomRight"
@@ -701,8 +617,8 @@ export default function CronJobsPage() {
           bordered
           size="small"
           rowKey="id"
-          loading={allLogsLoading}
-          dataSource={allLogsData}
+          loading={allLogsQuery.isFetching}
+          dataSource={allLogsQuery.data?.list ?? []}
           scroll={{ x: 'max-content' }}
           columns={[
             {
@@ -754,8 +670,8 @@ export default function CronJobsPage() {
           pagination={{
             currentPage: allLogsPage,
             pageSize: logsPageSize,
-            total: allLogsTotal,
-            onPageChange: (p) => { setAllLogsPage(p); void fetchAllLogs(p, allLogsJobFilter); },
+            total: allLogsQuery.data?.total ?? 0,
+            onPageChange: (p) => { setAllLogsPage(p); },
             showTotal: true,
           }}
         />
@@ -772,7 +688,7 @@ export default function CronJobsPage() {
         {hasPermission('system:cronjob:delete') && (
           <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'flex-end' }}>
             <SplitButtonGroup>
-              <Button icon={<Trash2 size={14} />} type="danger" theme="light" loading={clearLogsLoading} onClick={() => handleClearLogs(12, logsJobId)}>清除日志</Button>
+              <Button icon={<Trash2 size={14} />} type="danger" theme="light" loading={clearLogsMutation.isPending} onClick={() => handleClearLogs(12, logsJobId)}>清除日志</Button>
               <Dropdown
                 trigger="click"
                 position="bottomRight"
@@ -798,8 +714,8 @@ export default function CronJobsPage() {
           bordered
           size="small"
           rowKey="id"
-          loading={logsLoading}
-          dataSource={logsData}
+          loading={jobLogsQuery.isFetching}
+          dataSource={jobLogsQuery.data?.list ?? []}
           scroll={{ x: 'max-content' }}
           columns={[
             {
@@ -845,9 +761,9 @@ export default function CronJobsPage() {
           pagination={{
             currentPage: logsPage,
             pageSize: logsPageSize,
-            total: logsTotal,
+            total: jobLogsQuery.data?.total ?? 0,
             onPageChange: (p) => {
-              if (logsJobId != null) void fetchJobLogs(logsJobId, p);
+              setLogsPage(p);
             },
             showTotal: true,
           }}

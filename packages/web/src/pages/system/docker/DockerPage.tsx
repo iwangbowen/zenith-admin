@@ -1,5 +1,5 @@
 
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Button,
   Tag,
@@ -37,55 +37,61 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { formatDateTime } from '@/utils/date';
 import AppModal from '@/components/AppModal';
+import {
+  useDockerAvailable,
+  useDockerContainerAction,
+  useDockerContainers,
+  useDockerCreateNetwork,
+  useDockerCreateVolume,
+  useDockerFetchStats,
+  useDockerImages,
+  useDockerInspect,
+  useDockerNetworks,
+  useDockerPrune,
+  useDockerPullImage,
+  useDockerRemoveImage,
+  useDockerRemoveNetwork,
+  useDockerRemoveVolume,
+  useDockerVolumes,
+  type ContainerInfo,
+  type ImageInfo,
+  type NetworkInfo,
+  type PortBinding,
+  type PruneResultData,
+  type StatsInfo,
+  type VolumeInfo,
+} from '@/hooks/queries/docker';
 
 // ─── Prune（清理）辅助 ──────────────────────────────────────────────────────────
-interface PruneResultData {
-  containersDeleted?: number; imagesDeleted?: number; networksDeleted?: number; volumesDeleted?: number; spaceReclaimed?: number;
-}
-function runPrune(url: string, title: string, content: string, onDone: () => void): void {
+function runPrune(url: string, title: string, content: string, prune: (url: string) => Promise<PruneResultData>): void {
   Modal.confirm({
     title,
     content,
     okText: '确定清理',
     cancelText: '取消',
     onOk: async () => {
-      const res = await request.post<PruneResultData>(url);
-      if (res.code === 0 && res.data) {
-        const d = res.data;
-        const parts: string[] = [];
-        if (d.containersDeleted) parts.push(`容器 ${d.containersDeleted}`);
-        if (d.imagesDeleted) parts.push(`镜像 ${d.imagesDeleted}`);
-        if (d.networksDeleted) parts.push(`网络 ${d.networksDeleted}`);
-        if (d.volumesDeleted) parts.push(`卷 ${d.volumesDeleted}`);
-        const space = d.spaceReclaimed ? `，释放 ${(d.spaceReclaimed / 1024 / 1024).toFixed(1)} MB` : '';
-        Toast.success(`${title}完成：${parts.length ? parts.join('、') : '无可清理项'}${space}`);
-        onDone();
-      }
+      const d = await prune(url);
+      const parts: string[] = [];
+      if (d.containersDeleted) parts.push(`容器 ${d.containersDeleted}`);
+      if (d.imagesDeleted) parts.push(`镜像 ${d.imagesDeleted}`);
+      if (d.networksDeleted) parts.push(`网络 ${d.networksDeleted}`);
+      if (d.volumesDeleted) parts.push(`卷 ${d.volumesDeleted}`);
+      const space = d.spaceReclaimed ? `，释放 ${(d.spaceReclaimed / 1024 / 1024).toFixed(1)} MB` : '';
+      Toast.success(`${title}完成：${parts.length ? parts.join('、') : '无可清理项'}${space}`);
     },
   });
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface PortBinding { privatePort: number; publicPort?: number; type: string }
-interface ContainerInfo {
-  id: string; shortId: string; names: string[]; image: string; imageId: string;
-  command: string; created: number; state: string; status: string;
-  ports: PortBinding[]; composeProject: string | null; composeService: string | null;
-}
-interface StatsInfo { cpuPercent: number; memUsage: number; memLimit: number }
-interface ImageInfo { id: string; shortId: string; repoTags: string[]; size: number; created: number; containers: number }
-interface NetworkInfo {
-  id: string; name: string; driver: string; scope: string;
-  ipam: { driver: string; subnet?: string; gateway?: string };
-  internal: boolean; created: string; containers: number;
-}
-interface VolumeInfo { name: string; driver: string; mountpoint: string; scope: string; created: string; labels: Record<string, string> }
 interface ImageRow {
   id: string; name: string; isGroup: boolean; repoTags: string[];
   size: number; created: number; containers: number; shortId: string;
   versionCount?: number; children?: ImageRow[];
 }
+
+const EMPTY_CONTAINERS: ContainerInfo[] = [];
+const EMPTY_IMAGES: ImageInfo[] = [];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -137,10 +143,7 @@ function groupByCompose(containers: ContainerInfo[]): (ContainerInfo & { childre
 // ─── Containers Tab ───────────────────────────────────────────────────────────
 
 function ContainersTab() {
-  const [containers, setContainers] = useState<ContainerInfo[]>([]);
-  const [loading, setLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
-  const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
   const [logsContainer, setLogsContainer] = useState<ContainerInfo | null>(null);
   const [logs, setLogs] = useState('');
   const [logsLoading, setLogsLoading] = useState(false);
@@ -155,14 +158,12 @@ function ContainersTab() {
   const logsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const logsPreRef = useRef<HTMLPreElement>(null);
 
-  const fetchContainers = useCallback(async () => {
-    setLoading(true);
-    const res = await request.get<ContainerInfo[]>('/api/docker');
-    setLoading(false);
-    if (res.code === 0 && res.data) setContainers(res.data);
-  }, []);
-
-  useEffect(() => { void fetchContainers(); }, [fetchContainers]);
+  const containersQuery = useDockerContainers();
+  const containers = containersQuery.data ?? EMPTY_CONTAINERS;
+  const actionMutation = useDockerContainerAction();
+  const pruneMutation = useDockerPrune();
+  const statsMutation = useDockerFetchStats();
+  const inspectMutation = useDockerInspect();
 
   // 新增 Compose 分组时自动展开，已有分组保持状态
   useEffect(() => {
@@ -186,14 +187,9 @@ function ContainersTab() {
   useEffect(() => () => { if (logsIntervalRef.current) clearInterval(logsIntervalRef.current); }, []);
 
   const handleAction = async (id: string, action: 'start' | 'stop' | 'restart') => {
-    setActionLoading((p) => ({ ...p, [id]: true }));
-    const res = await request.post(`/api/docker/${id}/${action}`, {});
-    setActionLoading((p) => ({ ...p, [id]: false }));
-    if (res.code === 0) {
-      const msgMap = { start: '已启动', stop: '已停止', restart: '已重启' } as const;
-      Toast.success({ content: msgMap[action], duration: 2 });
-      void fetchContainers();
-    }
+    await actionMutation.mutateAsync({ id, action });
+    const msgMap = { start: '已启动', stop: '已停止', restart: '已重启' } as const;
+    Toast.success({ content: msgMap[action], duration: 2 });
   };
 
   const openLogs = async (c: ContainerInfo) => {
@@ -231,16 +227,22 @@ function ContainersTab() {
 
   const openStats = async (c: ContainerInfo) => {
     setStatsContainer(c); setStatsLoading(true); setStats(null);
-    const res = await request.get<StatsInfo>(`/api/docker/${c.id}/stats`);
-    setStatsLoading(false);
-    if (res.code === 0 && res.data) setStats(res.data);
+    try {
+      const res = await statsMutation.mutateAsync(c.id);
+      setStats(res);
+    } finally {
+      setStatsLoading(false);
+    }
   };
 
   const openInspect = async (c: ContainerInfo) => {
     setInspectTarget(c); setInspectLoading(true); setInspectData('');
-    const res = await request.get<Record<string, unknown>>(`/api/docker/${c.id}/inspect`);
-    setInspectLoading(false);
-    if (res.code === 0 && res.data) setInspectData(JSON.stringify(res.data, null, 2));
+    try {
+      const res = await inspectMutation.mutateAsync(c.id);
+      setInspectData(JSON.stringify(res, null, 2));
+    } finally {
+      setInspectLoading(false);
+    }
   };
 
   const isGroup = (r: ContainerInfo) => r.id.startsWith('__compose__');
@@ -308,7 +310,7 @@ function ContainersTab() {
       actions: (record) => {
         if (isGroup(record)) return [];
         const isRunning = record.state === 'running';
-        const busy = !!actionLoading[record.id];
+        const busy = actionMutation.isPending && actionMutation.variables?.id === record.id;
         return [
           {
             key: 'toggle',
@@ -358,7 +360,7 @@ function ContainersTab() {
         primary={(
           <>
             <Input prefix={<Search size={14} />} placeholder="搜索容器名 / 镜像 / Compose 项目" showClear value={keyword} onChange={setKeyword} style={{ width: 280 }} />
-            <Button type="primary" icon={<RefreshCw size={14} />} onClick={() => void fetchContainers()}>刷新</Button>
+            <Button type="primary" icon={<RefreshCw size={14} />} onClick={() => void containersQuery.refetch()}>刷新</Button>
           </>
         )}
         actions={(
@@ -370,9 +372,9 @@ function ContainersTab() {
             )}
             <Dropdown trigger="click" clickToHide position="bottomRight" render={(
               <Dropdown.Menu>
-                <Dropdown.Item onClick={() => runPrune('/api/docker/prune/containers', '清理停止容器', '将删除所有已停止的容器，确定继续？', () => void fetchContainers())}>清理已停止容器</Dropdown.Item>
+                <Dropdown.Item onClick={() => runPrune('/api/docker/prune/containers', '清理停止容器', '将删除所有已停止的容器，确定继续？', pruneMutation.mutateAsync)}>清理已停止容器</Dropdown.Item>
                 <Dropdown.Divider />
-                <Dropdown.Item type="danger" onClick={() => runPrune('/api/docker/prune/system', '系统清理', '将清理：已停止容器 + 悬空镜像 + 未使用网络（不含数据卷），确定继续？', () => void fetchContainers())}>系统清理</Dropdown.Item>
+                <Dropdown.Item type="danger" onClick={() => runPrune('/api/docker/prune/system', '系统清理', '将清理：已停止容器 + 悬空镜像 + 未使用网络（不含数据卷），确定继续？', pruneMutation.mutateAsync)}>系统清理</Dropdown.Item>
               </Dropdown.Menu>
             )}>
               <Button icon={<Trash2 size={14} />}>清理</Button>
@@ -382,7 +384,7 @@ function ContainersTab() {
         mobilePrimary={(
           <>
             <Input prefix={<Search size={14} />} placeholder="搜索容器名 / 镜像 / Compose 项目" showClear value={keyword} onChange={setKeyword} style={{ width: 280 }} />
-            <Button type="primary" icon={<RefreshCw size={14} />} onClick={() => void fetchContainers()}>刷新</Button>
+            <Button type="primary" icon={<RefreshCw size={14} />} onClick={() => void containersQuery.refetch()}>刷新</Button>
           </>
         )}
         mobileActions={(
@@ -392,14 +394,14 @@ function ContainersTab() {
                 {allExpanded ? '全部折叠' : '全部展开'}
               </Button>
             )}
-            <Button icon={<Trash2 size={14} />} onClick={() => runPrune('/api/docker/prune/containers', '清理停止容器', '将删除所有已停止的容器，确定继续？', () => void fetchContainers())}>清理已停止容器</Button>
-            <Button type="danger" icon={<Trash2 size={14} />} onClick={() => runPrune('/api/docker/prune/system', '系统清理', '将清理：已停止容器 + 悬空镜像 + 未使用网络（不含数据卷），确定继续？', () => void fetchContainers())}>系统清理</Button>
+            <Button icon={<Trash2 size={14} />} onClick={() => runPrune('/api/docker/prune/containers', '清理停止容器', '将删除所有已停止的容器，确定继续？', pruneMutation.mutateAsync)}>清理已停止容器</Button>
+            <Button type="danger" icon={<Trash2 size={14} />} onClick={() => runPrune('/api/docker/prune/system', '系统清理', '将清理：已停止容器 + 悬空镜像 + 未使用网络（不含数据卷），确定继续？', pruneMutation.mutateAsync)}>系统清理</Button>
           </>
         )}
         actionTitle="容器操作"
       />
-      <ConfigurableTable bordered rowKey="id" dataSource={filtered} columns={columns} loading={loading}
-        onRefresh={() => void fetchContainers()} refreshLoading={loading}
+      <ConfigurableTable bordered rowKey="id" dataSource={filtered} columns={columns} loading={containersQuery.isFetching}
+        onRefresh={() => void containersQuery.refetch()} refreshLoading={containersQuery.isFetching}
         empty="未检测到 Docker 容器" pagination={false}
         expandedRowKeys={expandedKeys}
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -519,22 +521,16 @@ function buildImageTree(images: ImageInfo[], keyword: string): ImageRow[] {
 }
 
 function ImagesTab() {
-  const [images, setImages] = useState<ImageInfo[]>([]);
-  const [loading, setLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [pullVisible, setPullVisible] = useState(false);
   const [pullTag, setPullTag] = useState('');
-  const [pulling, setPulling] = useState(false);
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
 
-  const fetchImages = useCallback(async () => {
-    setLoading(true);
-    const res = await request.get<ImageInfo[]>('/api/docker/images');
-    setLoading(false);
-    if (res.code === 0 && res.data) setImages(res.data);
-  }, []);
-
-  useEffect(() => { void fetchImages(); }, [fetchImages]);
+  const imagesQuery = useDockerImages();
+  const images = imagesQuery.data ?? EMPTY_IMAGES;
+  const removeImageMutation = useDockerRemoveImage();
+  const pullImageMutation = useDockerPullImage();
+  const pruneMutation = useDockerPrune();
 
   // Auto-expand all groups when images load
   useEffect(() => {
@@ -552,20 +548,15 @@ function ImagesTab() {
   }, [images]);
 
   const handleRemove = async (id: string) => {
-    const res = await request.delete(`/api/docker/images/${id}`);
-    if (res.code === 0) { Toast.success({ content: '已删除', duration: 2 }); void fetchImages(); }
+    await removeImageMutation.mutateAsync(id);
+    Toast.success({ content: '已删除', duration: 2 });
   };
 
   const handlePull = async () => {
     if (!pullTag.trim()) return;
-    setPulling(true);
-    const res = await request.post('/api/docker/images/pull', { repoTag: pullTag.trim() });
-    setPulling(false);
-    if (res.code === 0) {
-      Toast.success({ content: `镜像 ${pullTag} 拉取成功`, duration: 3 });
-      setPullVisible(false); setPullTag('');
-      void fetchImages();
-    }
+    await pullImageMutation.mutateAsync(pullTag.trim());
+    Toast.success({ content: `镜像 ${pullTag} 拉取成功`, duration: 3 });
+    setPullVisible(false); setPullTag('');
   };
 
   const treeData = useMemo(() => buildImageTree(images, keyword), [images, keyword]);
@@ -653,7 +644,7 @@ function ImagesTab() {
         primary={(
           <>
             <Input prefix={<Search size={14} />} placeholder="搜索镜像名 / 标签 / ID" showClear value={keyword} onChange={setKeyword} style={{ width: 260 }} />
-            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void fetchImages()}>刷新</Button>
+            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void imagesQuery.refetch()}>刷新</Button>
             <Button type="primary" icon={<Download size={14} />} onClick={() => setPullVisible(true)}>拉取镜像</Button>
           </>
         )}
@@ -669,8 +660,8 @@ function ImagesTab() {
             )}
             <Dropdown trigger="click" clickToHide position="bottomRight" render={(
               <Dropdown.Menu>
-                <Dropdown.Item onClick={() => runPrune('/api/docker/prune/images', '清理悬空镜像', '将删除所有悬空（dangling）镜像，确定继续？', () => void fetchImages())}>清理悬空镜像</Dropdown.Item>
-                <Dropdown.Item type="danger" onClick={() => runPrune('/api/docker/prune/images?all=true', '清理所有未用镜像', '将删除所有未被容器使用的镜像，确定继续？', () => void fetchImages())}>清理所有未用镜像</Dropdown.Item>
+                <Dropdown.Item onClick={() => runPrune('/api/docker/prune/images', '清理悬空镜像', '将删除所有悬空（dangling）镜像，确定继续？', pruneMutation.mutateAsync)}>清理悬空镜像</Dropdown.Item>
+                <Dropdown.Item type="danger" onClick={() => runPrune('/api/docker/prune/images?all=true', '清理所有未用镜像', '将删除所有未被容器使用的镜像，确定继续？', pruneMutation.mutateAsync)}>清理所有未用镜像</Dropdown.Item>
               </Dropdown.Menu>
             )}>
               <Button icon={<Trash2 size={14} />}>清理</Button>
@@ -685,7 +676,7 @@ function ImagesTab() {
         )}
         mobileActions={(
           <>
-            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void fetchImages()}>刷新</Button>
+            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void imagesQuery.refetch()}>刷新</Button>
             {allGroupIds.length > 0 && (
               <Button type="tertiary"
                 icon={allExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -694,14 +685,14 @@ function ImagesTab() {
                 {allExpanded ? '全部折叠' : '全部展开'}
               </Button>
             )}
-            <Button icon={<Trash2 size={14} />} onClick={() => runPrune('/api/docker/prune/images', '清理悬空镜像', '将删除所有悬空（dangling）镜像，确定继续？', () => void fetchImages())}>清理悬空镜像</Button>
-            <Button type="danger" icon={<Trash2 size={14} />} onClick={() => runPrune('/api/docker/prune/images?all=true', '清理所有未用镜像', '将删除所有未被容器使用的镜像，确定继续？', () => void fetchImages())}>清理所有未用镜像</Button>
+            <Button icon={<Trash2 size={14} />} onClick={() => runPrune('/api/docker/prune/images', '清理悬空镜像', '将删除所有悬空（dangling）镜像，确定继续？', pruneMutation.mutateAsync)}>清理悬空镜像</Button>
+            <Button type="danger" icon={<Trash2 size={14} />} onClick={() => runPrune('/api/docker/prune/images?all=true', '清理所有未用镜像', '将删除所有未被容器使用的镜像，确定继续？', pruneMutation.mutateAsync)}>清理所有未用镜像</Button>
           </>
         )}
         actionTitle="镜像操作"
       />
-      <ConfigurableTable bordered rowKey="id" dataSource={treeData} columns={columns} loading={loading}
-        onRefresh={() => void fetchImages()} refreshLoading={loading}
+      <ConfigurableTable bordered rowKey="id" dataSource={treeData} columns={columns} loading={imagesQuery.isFetching}
+        onRefresh={() => void imagesQuery.refetch()} refreshLoading={imagesQuery.isFetching}
         empty="未检测到 Docker 镜像" pagination={false}
         expandedRowKeys={expandedKeys}
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -715,7 +706,7 @@ function ImagesTab() {
       />
 
       <AppModal title="拉取镜像" visible={pullVisible} onCancel={() => { setPullVisible(false); setPullTag(''); }}
-        onOk={() => void handlePull()} okText="开始拉取" okButtonProps={{ loading: pulling }} width={440}>
+        onOk={() => void handlePull()} okText="开始拉取" okButtonProps={{ loading: pullImageMutation.isPending }} width={440}>
         <Form labelPosition="left" labelWidth={90}>
           <Form.Slot label="镜像标签">
             <Input placeholder="nginx:latest" value={pullTag} onChange={(v) => setPullTag(v)} style={{ width: '100%' }} />
@@ -732,37 +723,26 @@ function ImagesTab() {
 // ─── Networks Tab ─────────────────────────────────────────────────────────────
 
 function NetworksTab() {
-  const [networks, setNetworks] = useState<NetworkInfo[]>([]);
-  const [loading, setLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [createVisible, setCreateVisible] = useState(false);
   const [createForm, setCreateForm] = useState({ name: '', driver: 'bridge', internal: false });
-  const [creating, setCreating] = useState(false);
 
-  const fetchNetworks = useCallback(async () => {
-    setLoading(true);
-    const res = await request.get<NetworkInfo[]>('/api/docker/networks');
-    setLoading(false);
-    if (res.code === 0 && res.data) setNetworks(res.data);
-  }, []);
-
-  useEffect(() => { void fetchNetworks(); }, [fetchNetworks]);
+  const networksQuery = useDockerNetworks();
+  const networks = networksQuery.data ?? [];
+  const createNetworkMutation = useDockerCreateNetwork();
+  const removeNetworkMutation = useDockerRemoveNetwork();
+  const pruneMutation = useDockerPrune();
 
   const handleRemove = async (id: string) => {
-    const res = await request.delete(`/api/docker/networks/${id}`);
-    if (res.code === 0) { Toast.success({ content: '已删除', duration: 2 }); void fetchNetworks(); }
+    await removeNetworkMutation.mutateAsync(id);
+    Toast.success({ content: '已删除', duration: 2 });
   };
 
   const handleCreate = async () => {
     if (!createForm.name.trim()) return;
-    setCreating(true);
-    const res = await request.post('/api/docker/networks', createForm);
-    setCreating(false);
-    if (res.code === 0) {
-      Toast.success({ content: `网络 ${createForm.name} 创建成功`, duration: 2 });
-      setCreateVisible(false); setCreateForm({ name: '', driver: 'bridge', internal: false });
-      void fetchNetworks();
-    }
+    await createNetworkMutation.mutateAsync(createForm);
+    Toast.success({ content: `网络 ${createForm.name} 创建成功`, duration: 2 });
+    setCreateVisible(false); setCreateForm({ name: '', driver: 'bridge', internal: false });
   };
 
   const SYSTEM_NETWORKS = new Set(['bridge', 'host', 'none']);
@@ -815,11 +795,11 @@ function NetworksTab() {
         primary={(
           <>
             <Input prefix={<Search size={14} />} placeholder="搜索网络名 / 驱动" showClear value={keyword} onChange={setKeyword} style={{ width: 260 }} />
-            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void fetchNetworks()}>刷新</Button>
+            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void networksQuery.refetch()}>刷新</Button>
             <Button type="primary" icon={<Plus size={14} />} onClick={() => setCreateVisible(true)}>创建网络</Button>
           </>
         )}
-        actions={<Button icon={<Trash2 size={14} />} onClick={() => runPrune('/api/docker/prune/networks', '清理未用网络', '将删除所有未被容器使用的网络，确定继续？', () => void fetchNetworks())}>清理</Button>}
+        actions={<Button icon={<Trash2 size={14} />} onClick={() => runPrune('/api/docker/prune/networks', '清理未用网络', '将删除所有未被容器使用的网络，确定继续？', pruneMutation.mutateAsync)}>清理</Button>}
         mobilePrimary={(
           <>
             <Input prefix={<Search size={14} />} placeholder="搜索网络名 / 驱动" showClear value={keyword} onChange={setKeyword} style={{ width: 260 }} />
@@ -828,18 +808,18 @@ function NetworksTab() {
         )}
         mobileActions={(
           <>
-            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void fetchNetworks()}>刷新</Button>
-            <Button icon={<Trash2 size={14} />} onClick={() => runPrune('/api/docker/prune/networks', '清理未用网络', '将删除所有未被容器使用的网络，确定继续？', () => void fetchNetworks())}>清理</Button>
+            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void networksQuery.refetch()}>刷新</Button>
+            <Button icon={<Trash2 size={14} />} onClick={() => runPrune('/api/docker/prune/networks', '清理未用网络', '将删除所有未被容器使用的网络，确定继续？', pruneMutation.mutateAsync)}>清理</Button>
           </>
         )}
         actionTitle="网络操作"
       />
-      <ConfigurableTable bordered rowKey="id" dataSource={filtered} columns={columns} loading={loading}
-        onRefresh={() => void fetchNetworks()} refreshLoading={loading}
+      <ConfigurableTable bordered rowKey="id" dataSource={filtered} columns={columns} loading={networksQuery.isFetching}
+        onRefresh={() => void networksQuery.refetch()} refreshLoading={networksQuery.isFetching}
         empty="未检测到 Docker 网络" pagination={false} />
 
       <AppModal title="创建网络" visible={createVisible} onCancel={() => setCreateVisible(false)}
-        onOk={() => void handleCreate()} okText="创建" okButtonProps={{ loading: creating }} width={440}>
+        onOk={() => void handleCreate()} okText="创建" okButtonProps={{ loading: createNetworkMutation.isPending }} width={440}>
         <Form labelPosition="left" labelWidth={90}>
           <Form.Slot label="网络名称">
             <Input placeholder="my-network" value={createForm.name}
@@ -868,37 +848,25 @@ function NetworksTab() {
 // ─── Volumes Tab ──────────────────────────────────────────────────────────────
 
 function VolumesTab() {
-  const [volumes, setVolumes] = useState<VolumeInfo[]>([]);
-  const [loading, setLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [createVisible, setCreateVisible] = useState(false);
   const [createForm, setCreateForm] = useState({ name: '', driver: 'local' });
-  const [creating, setCreating] = useState(false);
-
-  const fetchVolumes = useCallback(async () => {
-    setLoading(true);
-    const res = await request.get<VolumeInfo[]>('/api/docker/volumes');
-    setLoading(false);
-    if (res.code === 0 && res.data) setVolumes(res.data);
-  }, []);
-
-  useEffect(() => { void fetchVolumes(); }, [fetchVolumes]);
+  const volumesQuery = useDockerVolumes();
+  const volumes = volumesQuery.data ?? [];
+  const createVolumeMutation = useDockerCreateVolume();
+  const removeVolumeMutation = useDockerRemoveVolume();
+  const pruneMutation = useDockerPrune();
 
   const handleRemove = async (name: string) => {
-    const res = await request.delete(`/api/docker/volumes/${name}`);
-    if (res.code === 0) { Toast.success({ content: '已删除', duration: 2 }); void fetchVolumes(); }
+    await removeVolumeMutation.mutateAsync(name);
+    Toast.success({ content: '已删除', duration: 2 });
   };
 
   const handleCreate = async () => {
     if (!createForm.name.trim()) return;
-    setCreating(true);
-    const res = await request.post('/api/docker/volumes', createForm);
-    setCreating(false);
-    if (res.code === 0) {
-      Toast.success({ content: `存储卷 ${createForm.name} 创建成功`, duration: 2 });
-      setCreateVisible(false); setCreateForm({ name: '', driver: 'local' });
-      void fetchVolumes();
-    }
+    await createVolumeMutation.mutateAsync(createForm);
+    Toast.success({ content: `存储卷 ${createForm.name} 创建成功`, duration: 2 });
+    setCreateVisible(false); setCreateForm({ name: '', driver: 'local' });
   };
 
   const filtered = keyword
@@ -939,11 +907,11 @@ function VolumesTab() {
         primary={(
           <>
             <Input prefix={<Search size={14} />} placeholder="搜索卷名 / 驱动" showClear value={keyword} onChange={setKeyword} style={{ width: 260 }} />
-            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void fetchVolumes()}>刷新</Button>
+            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void volumesQuery.refetch()}>刷新</Button>
             <Button type="primary" icon={<Plus size={14} />} onClick={() => setCreateVisible(true)}>创建存储卷</Button>
           </>
         )}
-        actions={<Button type="danger" icon={<Trash2 size={14} />} onClick={() => runPrune('/api/docker/prune/volumes', '清理未用存储卷', '将删除所有未被容器使用的存储卷（数据不可恢复），确定继续？', () => void fetchVolumes())}>清理</Button>}
+        actions={<Button type="danger" icon={<Trash2 size={14} />} onClick={() => runPrune('/api/docker/prune/volumes', '清理未用存储卷', '将删除所有未被容器使用的存储卷（数据不可恢复），确定继续？', pruneMutation.mutateAsync)}>清理</Button>}
         mobilePrimary={(
           <>
             <Input prefix={<Search size={14} />} placeholder="搜索卷名 / 驱动" showClear value={keyword} onChange={setKeyword} style={{ width: 260 }} />
@@ -952,18 +920,18 @@ function VolumesTab() {
         )}
         mobileActions={(
           <>
-            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void fetchVolumes()}>刷新</Button>
-            <Button type="danger" icon={<Trash2 size={14} />} onClick={() => runPrune('/api/docker/prune/volumes', '清理未用存储卷', '将删除所有未被容器使用的存储卷（数据不可恢复），确定继续？', () => void fetchVolumes())}>清理</Button>
+            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void volumesQuery.refetch()}>刷新</Button>
+            <Button type="danger" icon={<Trash2 size={14} />} onClick={() => runPrune('/api/docker/prune/volumes', '清理未用存储卷', '将删除所有未被容器使用的存储卷（数据不可恢复），确定继续？', pruneMutation.mutateAsync)}>清理</Button>
           </>
         )}
         actionTitle="存储卷操作"
       />
-      <ConfigurableTable bordered rowKey="name" dataSource={filtered} columns={columns} loading={loading}
-        onRefresh={() => void fetchVolumes()} refreshLoading={loading}
+      <ConfigurableTable bordered rowKey="name" dataSource={filtered} columns={columns} loading={volumesQuery.isFetching}
+        onRefresh={() => void volumesQuery.refetch()} refreshLoading={volumesQuery.isFetching}
         empty="未检测到 Docker 存储卷" pagination={false} />
 
       <AppModal title="创建存储卷" visible={createVisible} onCancel={() => setCreateVisible(false)}
-        onOk={() => void handleCreate()} okText="创建" okButtonProps={{ loading: creating }} width={400}>
+        onOk={() => void handleCreate()} okText="创建" okButtonProps={{ loading: createVolumeMutation.isPending }} width={400}>
         <Form labelPosition="left" labelWidth={90}>
           <Form.Slot label="卷名称">
             <Input placeholder="my-volume" value={createForm.name}
@@ -985,13 +953,8 @@ function VolumesTab() {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DockerPage() {
-  const [dockerAvailable, setDockerAvailable] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    void request.get<unknown[]>('/api/docker', { silent: true }).then((res) => {
-      setDockerAvailable(res.code === 0);
-    });
-  }, []);
+  const dockerAvailableQuery = useDockerAvailable();
+  const dockerAvailable = dockerAvailableQuery.isError ? false : null;
 
   if (dockerAvailable === false) {
     return (

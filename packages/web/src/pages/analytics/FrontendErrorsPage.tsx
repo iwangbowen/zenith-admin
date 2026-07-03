@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Tabs,
   TabPane,
@@ -60,10 +61,8 @@ import type {
   ErrorEvent,
   ErrorGroup,
   ErrorLevel,
-  ErrorOverview,
   ErrorStatus,
   FrontendErrorType,
-  PaginatedResponse,
   SourceMapItem,
 } from '@zenith/shared';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
@@ -71,7 +70,23 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { usePagination } from '@/hooks/usePagination';
 import { formatDateTime } from '@/utils/date';
-import { request } from '@/utils/request';
+import {
+  analyticsKeys,
+  useBatchDeleteFrontendErrorGroups,
+  useBatchUpdateFrontendErrorGroups,
+  useDeleteFrontendAlert,
+  useDeleteFrontendSourceMap,
+  useFrontendAdminUsers,
+  useFrontendAlerts,
+  useFrontendErrorEvents,
+  useFrontendErrorGroupDetail,
+  useFrontendErrorGroups,
+  useFrontendErrorOverview,
+  useFrontendSourceMaps,
+  useSaveFrontendAlert,
+  useSubmitFrontendSourceMap,
+  useUpdateFrontendErrorGroup,
+} from '@/hooks/queries/analytics';
 
 const { Text, Title, Paragraph } = Typography;
 
@@ -113,21 +128,6 @@ const CHANNEL_CONFIG: Record<string, { label: string; color: TagColor }> = {
 
 const CHART_COLORS = ['#f93920', '#ff8800', '#f5b70a', '#6a5af9', '#00b42a', '#14c9c9', '#8a38f5'];
 
-interface ErrorGroupDetail {
-  group: ErrorGroup;
-  symbolicatedStack: string | null;
-  trend: { date: string; count: number }[];
-  browsers: { name: string; value: number }[];
-  os: { name: string; value: number }[];
-  recentEvents: ErrorEvent[];
-}
-
-interface AdminUserOption {
-  id: number;
-  nickname?: string | null;
-  username: string;
-}
-
 interface IssueFilters {
   status: ErrorStatus | '';
   errorType: FrontendErrorType | '';
@@ -164,6 +164,7 @@ interface AlertFormState {
 type TabKey = 'overview' | 'issues' | 'events' | 'sourcemaps' | 'alerts';
 
 const defaultIssueFilters: IssueFilters = { status: '', errorType: '', level: '', keyword: '' };
+const EMPTY_ADMIN_USERS: { id: number; nickname?: string | null; username: string }[] = [];
 
 const defaultAlertForm: AlertFormState = {
   name: '',
@@ -179,15 +180,6 @@ const defaultAlertForm: AlertFormState = {
 };
 
 const defaultSourceMapUpload: SourceMapUploadForm = { release: '', fileName: '', content: '' };
-
-function buildQuery(params: Record<string, string | number | null | undefined>) {
-  const search = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== '') search.set(key, String(value));
-  });
-  const query = search.toString();
-  return query ? `?${query}` : '';
-}
 
 function labelOptions(config: Record<string, { label: string }>) {
   return Object.entries(config).map(([value, item]) => ({ label: item.label, value }));
@@ -339,16 +331,14 @@ function BreadcrumbTimeline({ breadcrumbs }: { readonly breadcrumbs: ErrorBreadc
 
 export default function FrontendErrorsPage() {
   const palette = useChartPalette();
+  const queryClient = useQueryClient();
 
   const [activeTab, setActiveTab] = useState<TabKey>('issues');
 
   const [overviewDays, setOverviewDays] = useState(30);
-  const [overview, setOverview] = useState<ErrorOverview | null>(null);
-  const [overviewLoading, setOverviewLoading] = useState(false);
 
   const [issueFilters, setIssueFilters] = useState<IssueFilters>(defaultIssueFilters);
-  const [groups, setGroups] = useState<PaginatedResponse<ErrorGroup> | null>(null);
-  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [submittedIssueFilters, setSubmittedIssueFilters] = useState<IssueFilters>(defaultIssueFilters);
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const {
     page: groupPage,
@@ -358,16 +348,10 @@ export default function FrontendErrorsPage() {
   } = usePagination(20);
 
   const [detailVisible, setDetailVisible] = useState(false);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detail, setDetail] = useState<ErrorGroupDetail | null>(null);
+  const [detailGroupId, setDetailGroupId] = useState<number | undefined>(undefined);
   const [showSymbolicated, setShowSymbolicated] = useState(true);
   const [groupForm, setGroupForm] = useState<GroupHandleForm>({ status: 'unresolved', level: 'error', assigneeId: null, note: '' });
-  const [groupSaving, setGroupSaving] = useState(false);
-  const [adminUsers, setAdminUsers] = useState<AdminUserOption[]>([]);
-  const [adminUsersLoaded, setAdminUsersLoaded] = useState(false);
 
-  const [events, setEvents] = useState<PaginatedResponse<ErrorEvent> | null>(null);
-  const [eventsLoading, setEventsLoading] = useState(false);
   const [eventDetail, setEventDetail] = useState<ErrorEvent | null>(null);
   const {
     page: eventPage,
@@ -376,11 +360,9 @@ export default function FrontendErrorsPage() {
   } = usePagination(20);
 
   const [sourceRelease, setSourceRelease] = useState('');
-  const [sourceMaps, setSourceMaps] = useState<PaginatedResponse<SourceMapItem> | null>(null);
-  const [sourceMapsLoading, setSourceMapsLoading] = useState(false);
+  const [submittedSourceRelease, setSubmittedSourceRelease] = useState('');
   const [uploadVisible, setUploadVisible] = useState(false);
   const [uploadForm, setUploadForm] = useState<SourceMapUploadForm>(defaultSourceMapUpload);
-  const [uploadSubmitting, setUploadSubmitting] = useState(false);
   const {
     page: sourceMapPage,
     pageSize: sourceMapPageSize,
@@ -388,116 +370,72 @@ export default function FrontendErrorsPage() {
     buildPagination: buildSourceMapPagination,
   } = usePagination(20);
 
-  const [alerts, setAlerts] = useState<PaginatedResponse<ErrorAlertRule> | null>(null);
-  const [alertsLoading, setAlertsLoading] = useState(false);
   const [alertModalVisible, setAlertModalVisible] = useState(false);
   const [editingAlert, setEditingAlert] = useState<ErrorAlertRule | null>(null);
   const [alertForm, setAlertForm] = useState<AlertFormState>(defaultAlertForm);
-  const [alertSubmitting, setAlertSubmitting] = useState(false);
   const {
     page: alertPage,
     pageSize: alertPageSize,
     buildPagination: buildAlertPagination,
   } = usePagination(20);
-
-  // 镜像筛选条件与分页到 ref，使列表拉取函数保持稳定：
-  // 避免输入框每次按键都重建 fetch 触发请求，也避免翻页时 effect 与分页回调重复拉取。
-  const issueFiltersRef = useRef(issueFilters);
-  issueFiltersRef.current = issueFilters;
-  const groupPageRef = useRef(groupPage);
-  groupPageRef.current = groupPage;
-  const groupPageSizeRef = useRef(groupPageSize);
-  groupPageSizeRef.current = groupPageSize;
-  const eventPageRef = useRef(eventPage);
-  eventPageRef.current = eventPage;
-  const eventPageSizeRef = useRef(eventPageSize);
-  eventPageSizeRef.current = eventPageSize;
-  const sourceReleaseRef = useRef(sourceRelease);
-  sourceReleaseRef.current = sourceRelease;
-  const sourceMapPageRef = useRef(sourceMapPage);
-  sourceMapPageRef.current = sourceMapPage;
-  const sourceMapPageSizeRef = useRef(sourceMapPageSize);
-  sourceMapPageSizeRef.current = sourceMapPageSize;
-  const alertPageRef = useRef(alertPage);
-  alertPageRef.current = alertPage;
-  const alertPageSizeRef = useRef(alertPageSize);
-  alertPageSizeRef.current = alertPageSize;
-
   const typeOptions = useMemo(() => labelOptions(ERROR_TYPE_CONFIG), []);
   const levelOptions = useMemo(() => labelOptions(LEVEL_CONFIG), []);
   const statusOptions = useMemo(() => labelOptions(STATUS_CONFIG), []);
+  const overviewQuery = useFrontendErrorOverview(overviewDays, activeTab === 'overview');
+  const overview = overviewQuery.data ?? null;
+  const groupsQuery = useFrontendErrorGroups({
+    page: groupPage,
+    pageSize: groupPageSize,
+    status: submittedIssueFilters.status || undefined,
+    errorType: submittedIssueFilters.errorType || undefined,
+    level: submittedIssueFilters.level || undefined,
+    keyword: submittedIssueFilters.keyword.trim() || undefined,
+  }, activeTab === 'issues');
+  const groups = groupsQuery.data ?? null;
+  const detailQuery = useFrontendErrorGroupDetail(detailGroupId, detailVisible);
+  const detail = detailQuery.data ?? null;
+  const adminUsersQuery = useFrontendAdminUsers(detailVisible);
+  const adminUsers = adminUsersQuery.data?.list ?? EMPTY_ADMIN_USERS;
+  const eventsQuery = useFrontendErrorEvents({ page: eventPage, pageSize: eventPageSize }, activeTab === 'events');
+  const events = eventsQuery.data ?? null;
+  const sourceMapsQuery = useFrontendSourceMaps({ page: sourceMapPage, pageSize: sourceMapPageSize, release: submittedSourceRelease.trim() || undefined }, activeTab === 'sourcemaps');
+  const sourceMaps = sourceMapsQuery.data ?? null;
+  const alertsQuery = useFrontendAlerts({ page: alertPage, pageSize: alertPageSize }, activeTab === 'alerts');
+  const alerts = alertsQuery.data ?? null;
+  const updateGroupMutation = useUpdateFrontendErrorGroup();
+  const batchStatusMutation = useBatchUpdateFrontendErrorGroups();
+  const batchDeleteMutation = useBatchDeleteFrontendErrorGroups();
+  const deleteSourceMapMutation = useDeleteFrontendSourceMap();
+  const submitSourceMapMutation = useSubmitFrontendSourceMap();
+  const saveAlertMutation = useSaveFrontendAlert();
+  const deleteAlertMutation = useDeleteFrontendAlert();
   const adminOptions = useMemo(
     () => adminUsers.map((item) => ({ label: item.nickname || item.username, value: item.id })),
     [adminUsers],
   );
 
-  const loadOverview = useCallback(async (days = overviewDays) => {
-    setOverviewLoading(true);
-    try {
-      const res = await request.get<ErrorOverview>(`/api/frontend-errors/overview?days=${days}`);
-      if (res.code === 0) setOverview(res.data);
-    } finally {
-      setOverviewLoading(false);
-    }
-  }, [overviewDays]);
-
-  const fetchGroups = useCallback(async (page = groupPageRef.current, pageSize = groupPageSizeRef.current) => {
-    setGroupsLoading(true);
-    try {
-      const f = issueFiltersRef.current;
-      const query = buildQuery({
-        page,
-        pageSize,
-        status: f.status,
-        errorType: f.errorType,
-        level: f.level,
-        keyword: f.keyword.trim(),
+  useEffect(() => {
+    if (detail) {
+      setGroupForm({
+        status: detail.group.status,
+        level: detail.group.level,
+        assigneeId: detail.group.assigneeId,
+        note: detail.group.note ?? '',
       });
-      const res = await request.get<PaginatedResponse<ErrorGroup>>(`/api/frontend-errors/groups${query}`);
-      if (res.code === 0) setGroups(res.data);
-    } finally {
-      setGroupsLoading(false);
     }
+  }, [detail]);
+
+  const openGroupDetail = useCallback((groupId: number) => {
+    setDetailVisible(true);
+    setDetailGroupId(groupId);
+    setShowSymbolicated(true);
   }, []);
 
-  const loadAdminUsers = useCallback(async () => {
-    if (adminUsersLoaded) return;
-    const res = await request.get<PaginatedResponse<AdminUserOption>>('/api/users?page=1&pageSize=100');
-    if (res.code === 0) {
-      setAdminUsers(res.data.list);
-      setAdminUsersLoaded(true);
-    }
-  }, [adminUsersLoaded]);
-
-  const openGroupDetail = useCallback(async (groupId: number) => {
-    setDetailVisible(true);
-    setDetailLoading(true);
-    setShowSymbolicated(true);
-    void loadAdminUsers();
-    try {
-      const res = await request.get<ErrorGroupDetail>(`/api/frontend-errors/groups/${groupId}`);
-      if (res.code === 0) {
-        setDetail(res.data);
-        setGroupForm({
-          status: res.data.group.status,
-          level: res.data.group.level,
-          assigneeId: res.data.group.assigneeId,
-          note: res.data.group.note ?? '',
-        });
-      }
-    } finally {
-      setDetailLoading(false);
-    }
-  }, [loadAdminUsers]);
-
   const updateGroupStatus = useCallback(async (id: number, status: ErrorStatus) => {
-    const res = await request.put<ErrorGroup>(`/api/frontend-errors/groups/${id}`, { status });
-    if (res.code === 0) {
-      Toast.success('状态已更新');
-      void fetchGroups();
-      if (detail?.group.id === id) void openGroupDetail(id);
-    }
-  }, [detail?.group.id, fetchGroups, openGroupDetail]);
+    await updateGroupMutation.mutateAsync({ id, values: { status } });
+    Toast.success('状态已更新');
+    if (detail?.group.id === id) void queryClient.invalidateQueries({ queryKey: analyticsKeys.frontendErrors.groupDetail(id) });
+  }, [detail?.group.id, queryClient, updateGroupMutation]);
 
   const batchUpdateStatus = useCallback((status: ErrorStatus) => {
     if (selectedRowKeys.length === 0) return;
@@ -505,15 +443,12 @@ export default function FrontendErrorsPage() {
       title: `确认批量${STATUS_CONFIG[status]?.label ?? '更新'}？`,
       content: `即将处理 ${selectedRowKeys.length} 个错误 Issue。`,
       onOk: async () => {
-        const res = await request.post<null>(`/api/frontend-errors/groups/batch-status?status=${status}`, { ids: selectedRowKeys });
-        if (res.code === 0) {
-          Toast.success(res.message || '更新成功');
-          setSelectedRowKeys([]);
-          void fetchGroups();
-        }
+        await batchStatusMutation.mutateAsync({ ids: selectedRowKeys, status });
+        Toast.success('更新成功');
+        setSelectedRowKeys([]);
       },
     });
-  }, [fetchGroups, selectedRowKeys]);
+  }, [batchStatusMutation, selectedRowKeys]);
 
   const batchDeleteGroups = useCallback(() => {
     if (selectedRowKeys.length === 0) return;
@@ -522,64 +457,32 @@ export default function FrontendErrorsPage() {
       content: '删除后无法恢复，请确认操作。',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete<null>('/api/frontend-errors/groups/batch', { ids: selectedRowKeys });
-        if (res.code === 0) {
-          Toast.success(res.message || '删除成功');
-          setSelectedRowKeys([]);
-          void fetchGroups();
-        }
+        await batchDeleteMutation.mutateAsync(selectedRowKeys);
+        Toast.success('删除成功');
+        setSelectedRowKeys([]);
       },
     });
-  }, [fetchGroups, selectedRowKeys]);
+  }, [batchDeleteMutation, selectedRowKeys]);
 
   const saveGroupHandle = useCallback(async () => {
     if (!detail) return;
-    setGroupSaving(true);
-    try {
-      const res = await request.put<ErrorGroup>(`/api/frontend-errors/groups/${detail.group.id}`, {
+    await updateGroupMutation.mutateAsync({
+      id: detail.group.id,
+      values: {
         status: groupForm.status,
         level: groupForm.level,
         assigneeId: groupForm.assigneeId,
         note: groupForm.note.trim() || null,
-      });
-      if (res.code === 0) {
-        Toast.success('保存成功');
-        setDetail((prev) => (prev ? { ...prev, group: res.data } : prev));
-        void fetchGroups();
-      }
-    } finally {
-      setGroupSaving(false);
-    }
-  }, [detail, fetchGroups, groupForm]);
-
-  const fetchEvents = useCallback(async (page = eventPageRef.current, pageSize = eventPageSizeRef.current) => {
-    setEventsLoading(true);
-    try {
-      const res = await request.get<PaginatedResponse<ErrorEvent>>(`/api/frontend-errors/events?page=${page}&pageSize=${pageSize}`);
-      if (res.code === 0) setEvents(res.data);
-    } finally {
-      setEventsLoading(false);
-    }
-  }, []);
-
-  const fetchSourceMaps = useCallback(async (page = sourceMapPageRef.current, pageSize = sourceMapPageSizeRef.current) => {
-    setSourceMapsLoading(true);
-    try {
-      const query = buildQuery({ page, pageSize, release: sourceReleaseRef.current.trim() });
-      const res = await request.get<PaginatedResponse<SourceMapItem>>(`/api/frontend-errors/source-maps${query}`);
-      if (res.code === 0) setSourceMaps(res.data);
-    } finally {
-      setSourceMapsLoading(false);
-    }
-  }, []);
+      },
+    });
+    Toast.success('保存成功');
+    void queryClient.invalidateQueries({ queryKey: analyticsKeys.frontendErrors.groupDetail(detail.group.id) });
+  }, [detail, groupForm, queryClient, updateGroupMutation]);
 
   const deleteSourceMap = useCallback(async (id: number) => {
-    const res = await request.delete<null>(`/api/frontend-errors/source-maps/${id}`);
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      void fetchSourceMaps();
-    }
-  }, [fetchSourceMaps]);
+    await deleteSourceMapMutation.mutateAsync(id);
+    Toast.success('删除成功');
+  }, [deleteSourceMapMutation]);
 
   const submitSourceMap = useCallback(async () => {
     if (!uploadForm.release.trim()) {
@@ -590,33 +493,16 @@ export default function FrontendErrorsPage() {
       Toast.warning('请选择 Source Map 文件');
       return;
     }
-    setUploadSubmitting(true);
-    try {
-      const res = await request.post<SourceMapItem>('/api/frontend-errors/source-maps', {
-        release: uploadForm.release.trim(),
-        fileName: uploadForm.fileName.trim(),
-        content: uploadForm.content,
-      });
-      if (res.code === 0) {
-        Toast.success('上传成功');
-        setUploadVisible(false);
-        setUploadForm(defaultSourceMapUpload);
-        void fetchSourceMaps(1, sourceMapPageSize);
-      }
-    } finally {
-      setUploadSubmitting(false);
-    }
-  }, [fetchSourceMaps, sourceMapPageSize, uploadForm]);
-
-  const fetchAlerts = useCallback(async (page = alertPageRef.current, pageSize = alertPageSizeRef.current) => {
-    setAlertsLoading(true);
-    try {
-      const res = await request.get<PaginatedResponse<ErrorAlertRule>>(`/api/frontend-errors/alerts?page=${page}&pageSize=${pageSize}`);
-      if (res.code === 0) setAlerts(res.data);
-    } finally {
-      setAlertsLoading(false);
-    }
-  }, []);
+    await submitSourceMapMutation.mutateAsync({
+      release: uploadForm.release.trim(),
+      fileName: uploadForm.fileName.trim(),
+      content: uploadForm.content,
+    });
+    Toast.success('上传成功');
+    setUploadVisible(false);
+    setUploadForm(defaultSourceMapUpload);
+    setSourceMapPage(1);
+  }, [setSourceMapPage, submitSourceMapMutation, uploadForm]);
 
   const openAlertModal = useCallback((rule?: ErrorAlertRule) => {
     setEditingAlert(rule ?? null);
@@ -640,90 +526,56 @@ export default function FrontendErrorsPage() {
       Toast.warning('请输入规则名称');
       return;
     }
-    setAlertSubmitting(true);
-    try {
-      const body = {
-        name: alertForm.name.trim(),
-        errorType: alertForm.errorType,
-        level: alertForm.level,
-        condition: alertForm.condition,
-        thresholdCount: alertForm.thresholdCount,
-        windowMinutes: alertForm.windowMinutes,
-        channels: alertForm.channels,
-        webhookUrl: alertForm.webhookUrl.trim() || null,
-        recipients: alertForm.recipients,
-        enabled: alertForm.enabled,
-      };
-      const res = editingAlert
-        ? await request.put<ErrorAlertRule>(`/api/frontend-errors/alerts/${editingAlert.id}`, body)
-        : await request.post<ErrorAlertRule>('/api/frontend-errors/alerts', body);
-      if (res.code === 0) {
-        Toast.success(editingAlert ? '更新成功' : '创建成功');
-        setAlertModalVisible(false);
-        void fetchAlerts();
-      }
-    } finally {
-      setAlertSubmitting(false);
-    }
-  }, [alertForm, editingAlert, fetchAlerts]);
+    const body = {
+      name: alertForm.name.trim(),
+      errorType: alertForm.errorType,
+      level: alertForm.level,
+      condition: alertForm.condition,
+      thresholdCount: alertForm.thresholdCount,
+      windowMinutes: alertForm.windowMinutes,
+      channels: alertForm.channels,
+      webhookUrl: alertForm.webhookUrl.trim() || null,
+      recipients: alertForm.recipients,
+      enabled: alertForm.enabled,
+    };
+    await saveAlertMutation.mutateAsync({ id: editingAlert?.id, values: body });
+    Toast.success(editingAlert ? '更新成功' : '创建成功');
+    setAlertModalVisible(false);
+  }, [alertForm, editingAlert, saveAlertMutation]);
 
   const deleteAlert = useCallback(async (id: number) => {
-    const res = await request.delete<null>(`/api/frontend-errors/alerts/${id}`);
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      void fetchAlerts();
-    }
-  }, [fetchAlerts]);
+    await deleteAlertMutation.mutateAsync(id);
+    Toast.success('删除成功');
+  }, [deleteAlertMutation]);
 
   const toggleAlert = useCallback(async (rule: ErrorAlertRule, enabled: boolean) => {
-    const res = await request.put<ErrorAlertRule>(`/api/frontend-errors/alerts/${rule.id}`, { enabled });
-    if (res.code === 0) {
-      Toast.success(enabled ? '已启用' : '已停用');
-      void fetchAlerts();
-    }
-  }, [fetchAlerts]);
+    await saveAlertMutation.mutateAsync({ id: rule.id, values: { enabled } });
+    Toast.success(enabled ? '已启用' : '已停用');
+  }, [saveAlertMutation]);
 
   const handleIssueSearch = () => {
     setGroupPage(1);
-    void fetchGroups(1, groupPageSize);
+    setSubmittedIssueFilters(issueFilters);
+    void queryClient.invalidateQueries({ queryKey: analyticsKeys.frontendErrors.groupsLists });
   };
 
   const handleIssueReset = () => {
     setIssueFilters(defaultIssueFilters);
-    issueFiltersRef.current = defaultIssueFilters;
+    setSubmittedIssueFilters(defaultIssueFilters);
     setGroupPage(1);
-    void fetchGroups(1, groupPageSize);
+    void queryClient.invalidateQueries({ queryKey: analyticsKeys.frontendErrors.groupsLists });
   };
 
   const handleSourceMapSearch = () => {
     setSourceMapPage(1);
-    void fetchSourceMaps(1, sourceMapPageSize);
+    setSubmittedSourceRelease(sourceRelease);
+    void queryClient.invalidateQueries({ queryKey: analyticsKeys.frontendErrors.sourceMapsLists });
   };
 
   const openSourceMapUpload = () => {
     setUploadForm(defaultSourceMapUpload);
     setUploadVisible(true);
   };
-
-  useEffect(() => {
-    if (activeTab === 'overview') void loadOverview();
-  }, [activeTab, loadOverview]);
-
-  useEffect(() => {
-    if (activeTab === 'issues') void fetchGroups();
-  }, [activeTab, fetchGroups]);
-
-  useEffect(() => {
-    if (activeTab === 'events') void fetchEvents();
-  }, [activeTab, fetchEvents]);
-
-  useEffect(() => {
-    if (activeTab === 'sourcemaps') void fetchSourceMaps();
-  }, [activeTab, fetchSourceMaps]);
-
-  useEffect(() => {
-    if (activeTab === 'alerts') void fetchAlerts();
-  }, [activeTab, fetchAlerts]);
 
   const rawStack = detail?.recentEvents[0]?.stack ?? '暂无堆栈';
   const activeStack = showSymbolicated && detail?.symbolicatedStack ? detail.symbolicatedStack : rawStack;
@@ -988,7 +840,7 @@ export default function FrontendErrorsPage() {
     />
   );
   const renderOverviewRefreshButton = () => (
-    <Button type="primary" icon={<RefreshCcw size={14} />} loading={overviewLoading} onClick={() => void loadOverview()}>刷新</Button>
+    <Button type="primary" icon={<RefreshCcw size={14} />} loading={overviewQuery.isFetching} onClick={() => void overviewQuery.refetch()}>刷新</Button>
   );
   const renderIssueStatusFilter = () => (
     <Select
@@ -1168,7 +1020,7 @@ export default function FrontendErrorsPage() {
                 ) : <Empty title="暂无高频错误" />}
               </Card>
             </Space>
-          ) : <Empty title={overviewLoading ? '正在加载概览...' : '暂无概览数据'} />}
+          ) : <Empty title={overviewQuery.isFetching ? '正在加载概览...' : '暂无概览数据'} />}
         </TabPane>
 
         <TabPane tab="错误 Issue" itemKey="issues">
@@ -1209,10 +1061,10 @@ export default function FrontendErrorsPage() {
             rowKey="id"
             columns={issueColumns}
             dataSource={groups?.list ?? []}
-            loading={groupsLoading}
-            onRefresh={() => void fetchGroups()}
-            refreshLoading={groupsLoading}
-            pagination={buildGroupPagination(groups?.total ?? 0, fetchGroups)}
+            loading={groupsQuery.isFetching}
+            onRefresh={() => void groupsQuery.refetch()}
+            refreshLoading={groupsQuery.isFetching}
+            pagination={buildGroupPagination(groups?.total ?? 0)}
             rowSelection={{
               selectedRowKeys,
               onChange: (keys) => setSelectedRowKeys(keys as number[]),
@@ -1228,10 +1080,10 @@ export default function FrontendErrorsPage() {
             rowKey="id"
             columns={eventColumns}
             dataSource={events?.list ?? []}
-            loading={eventsLoading}
-            onRefresh={() => void fetchEvents()}
-            refreshLoading={eventsLoading}
-            pagination={buildEventPagination(events?.total ?? 0, fetchEvents)}
+            loading={eventsQuery.isFetching}
+            onRefresh={() => void eventsQuery.refetch()}
+            refreshLoading={eventsQuery.isFetching}
+            pagination={buildEventPagination(events?.total ?? 0)}
             style={{ width: '100%' }}
             scroll={{ x: '100%' }}
             empty="暂无错误事件"
@@ -1261,10 +1113,10 @@ export default function FrontendErrorsPage() {
             rowKey="id"
             columns={sourceMapColumns}
             dataSource={sourceMaps?.list ?? []}
-            loading={sourceMapsLoading}
-            onRefresh={() => void fetchSourceMaps()}
-            refreshLoading={sourceMapsLoading}
-            pagination={buildSourceMapPagination(sourceMaps?.total ?? 0, fetchSourceMaps)}
+            loading={sourceMapsQuery.isFetching}
+            onRefresh={() => void sourceMapsQuery.refetch()}
+            refreshLoading={sourceMapsQuery.isFetching}
+            pagination={buildSourceMapPagination(sourceMaps?.total ?? 0)}
             scroll={{ x: 900 }}
             empty="暂无 Source Map"
           />
@@ -1281,10 +1133,10 @@ export default function FrontendErrorsPage() {
             rowKey="id"
             columns={alertColumns}
             dataSource={alerts?.list ?? []}
-            loading={alertsLoading}
-            onRefresh={() => void fetchAlerts()}
-            refreshLoading={alertsLoading}
-            pagination={buildAlertPagination(alerts?.total ?? 0, fetchAlerts)}
+            loading={alertsQuery.isFetching}
+            onRefresh={() => void alertsQuery.refetch()}
+            refreshLoading={alertsQuery.isFetching}
+            pagination={buildAlertPagination(alerts?.total ?? 0)}
             scroll={{ x: 1320 }}
             empty="暂无告警规则"
           />
@@ -1297,7 +1149,7 @@ export default function FrontendErrorsPage() {
         onCancel={() => setDetailVisible(false)}
         width={720}
       >
-        {detail && !detailLoading ? (
+        {detail && !detailQuery.isFetching ? (
           <Space vertical align="start" style={{ width: '100%' }}>
             <Space wrap>
               <TypeTag type={detail.group.errorType} />
@@ -1375,7 +1227,7 @@ export default function FrontendErrorsPage() {
                     onChange={(value) => setGroupForm((prev) => ({ ...prev, note: value }))}
                   />
                 </Form.Slot>
-                <Button type="primary" loading={groupSaving} onClick={() => void saveGroupHandle()}>保存</Button>
+                <Button type="primary" loading={updateGroupMutation.isPending} onClick={() => void saveGroupHandle()}>保存</Button>
               </Form>
             </Card>
 
@@ -1451,7 +1303,7 @@ export default function FrontendErrorsPage() {
         visible={uploadVisible}
         onCancel={() => setUploadVisible(false)}
         onOk={() => void submitSourceMap()}
-        confirmLoading={uploadSubmitting}
+        confirmLoading={submitSourceMapMutation.isPending}
         width={640}
         closeOnEsc
       >
@@ -1491,7 +1343,7 @@ export default function FrontendErrorsPage() {
         visible={alertModalVisible}
         onCancel={() => setAlertModalVisible(false)}
         onOk={() => void saveAlert()}
-        confirmLoading={alertSubmitting}
+        confirmLoading={saveAlertMutation.isPending}
         width={680}
         closeOnEsc
       >

@@ -1,9 +1,9 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Modal, Space, Spin, Tag, Toast, Banner, Typography, TextArea } from '@douyinfe/semi-ui';
 import { Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
-import type { PaginatedResponse, MpDraft, MpArticle } from '@zenith/shared';
+import type { MpDraft, MpArticle } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -12,59 +12,57 @@ import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
+import {
+  mpDraftKeys,
+  useDeleteMpDraft,
+  useMpDraftDetail,
+  useMpDraftList,
+  usePushMpDraft,
+  useSaveMpDraft,
+} from '@/hooks/queries/mp-drafts';
 
 const blankArticle = (): MpArticle => ({ title: '', author: '', digest: '', content: '', thumbUrl: '', showCoverPic: true });
 
 export default function MpDraftsPage() {
   const { hasPermission: can } = usePermission();
-  const { accounts, currentId, currentIdRef, setCurrentId, loading: accountsLoading } = useMpAccounts();
+  const queryClient = useQueryClient();
+  const { accounts, currentId, setCurrentId, loading: accountsLoading } = useMpAccounts();
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftKeyword, setDraftKeyword] = useState('');
+  const [submittedKeyword, setSubmittedKeyword] = useState('');
 
-  const [loading, setLoading] = useState(false);
-  const [list, setList] = useState<MpDraft[]>([]);
-  const [total, setTotal] = useState(0);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [keyword, setKeyword] = useState('');
-  const keywordRef = useRef('');
-  keywordRef.current = keyword;
+  const listQuery = useMpDraftList(currentId, { page, pageSize, keyword: submittedKeyword || undefined });
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
 
   const [modalVisible, setModalVisible] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingRecord, setEditingRecord] = useState<MpDraft | null>(null);
   const [articles, setArticles] = useState<MpArticle[]>([blankArticle()]);
-  const [submitting, setSubmitting] = useState(false);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const editDetailIdRef = useRef<number | null>(null);
-  const [pushingId, setPushingId] = useState<number | null>(null);
+  const detailQuery = useMpDraftDetail(editingRecord?.id, modalVisible);
 
-  const fetchList = useCallback(async (p = page, ps = pageSize, kw = keywordRef.current) => {
-    if (!currentId) { setList([]); setTotal(0); return; }
-    const reqId = currentId;
-    setLoading(true);
-    try {
-      const q = new URLSearchParams({ page: String(p), pageSize: String(ps), accountId: String(currentId) });
-      if (kw) q.set('keyword', kw);
-      const res = await request.get<PaginatedResponse<MpDraft>>(`/api/mp/drafts?${q}`);
-      if (currentIdRef.current !== reqId) return; // 账号已切换，丢弃过期响应
-      setList(res.data?.list ?? []);
-      setTotal(res.data?.total ?? 0);
-      setPage(res.data?.page ?? p);
-      setPageSize(res.data?.pageSize ?? ps);
-    } finally { setLoading(false); }
-  }, [page, pageSize, currentId, currentIdRef, setPage, setPageSize]);
+  const saveMutation = useSaveMpDraft();
+  const pushMutation = usePushMpDraft();
+  const deleteMutation = useDeleteMpDraft();
+  const pushingId = pushMutation.isPending ? (pushMutation.variables ?? null) : null;
 
-  useEffect(() => { setPage(1); void fetchList(1, pageSize, keywordRef.current); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [currentId]);
+  useEffect(() => {
+    if (modalVisible && editingRecord) setArticles(detailQuery.data?.articles.length ? detailQuery.data.articles : [blankArticle()]);
+  }, [modalVisible, editingRecord, detailQuery.data]);
 
-  const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
-  const handleReset = () => { setKeyword(''); setPage(1); void fetchList(1, pageSize, ''); };
-
-  const openCreate = () => { setEditingId(null); setArticles([blankArticle()]); setModalVisible(true); };
-  const openEdit = async (record: MpDraft) => {
-    setEditingId(record.id); setArticles([blankArticle()]); setModalVisible(true); setDetailLoading(true);
-    editDetailIdRef.current = record.id;
-    const res = await request.get<MpDraft>(`/api/mp/drafts/${record.id}`);
-    if (editDetailIdRef.current !== record.id) return; // 已打开其它草稿，丢弃过期详情
-    setDetailLoading(false);
-    if (res.code === 0 && res.data) setArticles(res.data.articles.length ? res.data.articles : [blankArticle()]);
+  const handleSearch = () => {
+    setPage(1);
+    setSubmittedKeyword(draftKeyword);
+    void queryClient.invalidateQueries({ queryKey: mpDraftKeys.lists(currentId) });
   };
+  const handleReset = () => {
+    setDraftKeyword('');
+    setSubmittedKeyword('');
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: mpDraftKeys.lists(currentId) });
+  };
+
+  const openCreate = () => { setEditingRecord(null); setArticles([blankArticle()]); setModalVisible(true); };
+  const openEdit = (record: MpDraft) => { setEditingRecord(record); setArticles([blankArticle()]); setModalVisible(true); };
 
   const updateArticle = (i: number, patch: Partial<MpArticle>) => setArticles((prev) => prev.map((a, idx) => (idx === i ? { ...a, ...patch } : a)));
   const addArticle = () => setArticles((prev) => [...prev, blankArticle()]);
@@ -73,31 +71,17 @@ export default function MpDraftsPage() {
   const handleSubmit = async () => {
     if (!currentId) return;
     for (const a of articles) {
-      if (!a.title.trim()) { Toast.error('每篇图文都需要标题'); return; }
-      if (!a.content.trim()) { Toast.error('每篇图文都需要正文'); return; }
+      if (!a.title.trim()) { Toast.error('每篇图文都需要标题'); throw new Error('validation'); }
+      if (!a.content.trim()) { Toast.error('每篇图文都需要正文'); throw new Error('validation'); }
     }
-    setSubmitting(true);
-    try {
-      if (editingId) {
-        const res = await request.put(`/api/mp/drafts/${editingId}`, { articles });
-        if (res.code !== 0) return;
-        Toast.success('更新成功');
-      } else {
-        const res = await request.post('/api/mp/drafts', { accountId: currentId, articles });
-        if (res.code !== 0) return;
-        Toast.success('创建成功');
-      }
-      setModalVisible(false);
-      void fetchList();
-    } finally { setSubmitting(false); }
+    await saveMutation.mutateAsync({ id: editingRecord?.id, accountId: currentId, articles });
+    Toast.success(editingRecord ? '更新成功' : '创建成功');
+    setModalVisible(false);
   };
 
   const handlePush = async (record: MpDraft) => {
-    setPushingId(record.id);
-    try {
-      const res = await request.post(`/api/mp/drafts/${record.id}/push`);
-      if (res.code === 0) { Toast.success('已推送到微信草稿箱'); void fetchList(); }
-    } finally { setPushingId(null); }
+    await pushMutation.mutateAsync(record.id);
+    Toast.success('已推送到微信草稿箱');
   };
 
   const handleDelete = (record: MpDraft) => {
@@ -105,10 +89,8 @@ export default function MpDraftsPage() {
       title: `确定删除图文「${record.title}」吗？`,
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete(`/api/mp/drafts/${record.id}`);
-        if (res.code !== 0) return;
+        await deleteMutation.mutateAsync(record.id);
         Toast.success('删除成功');
-        void fetchList();
       },
     });
   };
@@ -127,7 +109,7 @@ export default function MpDraftsPage() {
       desktopInlineKeys: ['edit', 'push', 'delete'],
       menuAriaLabel: '图文草稿操作',
       actions: (record) => [
-        { key: 'edit', label: '编辑', hidden: !can('mp:draft:update'), onClick: () => void openEdit(record) },
+        { key: 'edit', label: '编辑', hidden: !can('mp:draft:update'), onClick: () => openEdit(record) },
         { key: 'push', label: '推送', loading: pushingId === record.id, hidden: !can('mp:draft:push'), onClick: () => void handlePush(record) },
         { key: 'delete', label: '删除', danger: true, hidden: !can('mp:draft:delete'), onClick: () => handleDelete(record) },
       ],
@@ -141,8 +123,8 @@ export default function MpDraftsPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="搜索标题"
-      value={keyword}
-      onChange={setKeyword}
+      value={draftKeyword}
+      onChange={setDraftKeyword}
       onEnterPress={handleSearch}
       showClear
       style={{ width: 180 }}
@@ -183,13 +165,13 @@ export default function MpDraftsPage() {
         <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
       )}
 
-      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList()} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total, fetchList)} scroll={{ x: 1000 }} />
+      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
+        pagination={buildPagination(total)} scroll={{ x: 1000 }} />
 
-      <AppModal title={editingId ? '编辑图文' : '新增图文'} visible={modalVisible}
-        onOk={handleSubmit} onCancel={() => setModalVisible(false)} confirmLoading={submitting}
-        okButtonProps={{ disabled: detailLoading }} width={760}>
-        <Spin spinning={detailLoading} wrapperClassName="modal-spin-wrapper">
+      <AppModal title={editingRecord ? '编辑图文' : '新增图文'} visible={modalVisible}
+        onOk={handleSubmit} onCancel={() => setModalVisible(false)} confirmLoading={saveMutation.isPending}
+        okButtonProps={{ disabled: !!editingRecord && detailQuery.isFetching }} width={760}>
+        <Spin spinning={!!editingRecord && detailQuery.isFetching} wrapperClassName="modal-spin-wrapper">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxHeight: '60vh', overflow: 'auto' }}>
             {articles.map((a, i) => (
               <div key={i} style={{ border: '1px solid var(--semi-color-border)', borderRadius: 8, padding: 12 }}>

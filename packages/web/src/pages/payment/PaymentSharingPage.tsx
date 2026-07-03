@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Input, Modal, Select, Switch, Tabs, TabPane, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -7,13 +8,21 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { createdAtColumn } from '@/utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
+import {
+  paymentSharingKeys,
+  useCreatePaymentSharingOrder,
+  useDeletePaymentSharingReceiver,
+  useEnabledPaymentSharingReceivers,
+  usePaymentSharingOrders,
+  usePaymentSharingReceivers,
+  useSavePaymentSharingReceiver,
+} from '@/hooks/queries/payment-sharing';
 import { PAYMENT_SHARING_RECEIVER_TYPE_LABELS, PAYMENT_SHARING_ORDER_STATUS_LABELS } from '@zenith/shared';
-import type { PaginatedResponse, PaymentSharingOrder, PaymentSharingOrderStatus, PaymentSharingReceiver, PaymentSharingReceiverType } from '@zenith/shared';
+import type { PaymentSharingOrder, PaymentSharingOrderStatus, PaymentSharingReceiver, PaymentSharingReceiverType } from '@zenith/shared';
 
 const yuan = (cents: number) => `¥${(cents / 100).toFixed(2)}`;
 const receiverTypeOptions = Object.entries(PAYMENT_SHARING_RECEIVER_TYPE_LABELS).map(([value, label]) => ({ value, label }));
@@ -24,6 +33,7 @@ interface DispatchFormValues { orderNo: string; receiverId: number; amountYuan?:
 
 export default function PaymentSharingPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const canManage = hasPermission('payment:sharing:manage');
   const canDispatch = hasPermission('payment:sharing:dispatch');
   const receiverFormApi = useRef<FormApi | null>(null);
@@ -31,69 +41,41 @@ export default function PaymentSharingPage() {
   const [activeTab, setActiveTab] = useState<'receivers' | 'orders'>('receivers');
 
   // ── 接收方 ──
-  const [receiverData, setReceiverData] = useState<PaginatedResponse<PaymentSharingReceiver> | null>(null);
-  const [receiverLoading, setReceiverLoading] = useState(false);
-  const { page: rPage, pageSize: rPageSize, setPage: setRPage, setPageSize: setRPageSize, buildPagination: buildRPagination } = usePagination();
+  const { page: rPage, pageSize: rPageSize, setPage: setRPage, buildPagination: buildRPagination } = usePagination();
   const [receiverKeyword, setReceiverKeyword] = useState('');
-  const receiverKeywordRef = useRef('');
-  receiverKeywordRef.current = receiverKeyword;
+  const [submittedReceiverKeyword, setSubmittedReceiverKeyword] = useState('');
   const [receiverModal, setReceiverModal] = useState(false);
   const [editingReceiver, setEditingReceiver] = useState<PaymentSharingReceiver | null>(null);
-  const [receiverSubmitting, setReceiverSubmitting] = useState(false);
-  const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
 
   // ── 分账单 ──
-  const [orderData, setOrderData] = useState<PaginatedResponse<PaymentSharingOrder> | null>(null);
-  const [orderLoading, setOrderLoading] = useState(false);
-  const { page: oPage, pageSize: oPageSize, setPage: setOPage, setPageSize: setOPageSize, buildPagination: buildOPagination } = usePagination();
+  const { page: oPage, pageSize: oPageSize, setPage: setOPage, buildPagination: buildOPagination } = usePagination();
   const [orderKeyword, setOrderKeyword] = useState('');
   const [orderStatus, setOrderStatus] = useState('');
-  const orderSearchRef = useRef({ keyword: '', status: '' });
-  orderSearchRef.current = { keyword: orderKeyword, status: orderStatus };
+  const [submittedOrderParams, setSubmittedOrderParams] = useState({ keyword: '', status: '' });
   const [dispatchModal, setDispatchModal] = useState(false);
-  const [dispatchSubmitting, setDispatchSubmitting] = useState(false);
-  const [enabledReceivers, setEnabledReceivers] = useState<PaymentSharingReceiver[]>([]);
 
-  const fetchReceivers = useCallback(
-    async (p = rPage, ps = rPageSize, keyword?: string) => {
-      const kw = keyword ?? receiverKeywordRef.current;
-      setReceiverLoading(true);
-      try {
-        const query: Record<string, string> = { page: String(p), pageSize: String(ps) };
-        if (kw) query.keyword = kw;
-        const res = await request.get<PaginatedResponse<PaymentSharingReceiver>>(`/api/payment/sharing/receivers?${new URLSearchParams(query)}`);
-        if (res.code === 0) { setReceiverData(res.data); setRPage(res.data.page); setRPageSize(res.data.pageSize); }
-      } finally {
-        setReceiverLoading(false);
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rPage, rPageSize],
-  );
-
-  const fetchOrders = useCallback(
-    async (p = oPage, ps = oPageSize, params?: { keyword: string; status: string }) => {
-      const active = params ?? orderSearchRef.current;
-      setOrderLoading(true);
-      try {
-        const query: Record<string, string> = { page: String(p), pageSize: String(ps) };
-        if (active.keyword) query.keyword = active.keyword;
-        if (active.status) query.status = active.status;
-        const res = await request.get<PaginatedResponse<PaymentSharingOrder>>(`/api/payment/sharing/orders?${new URLSearchParams(query)}`);
-        if (res.code === 0) { setOrderData(res.data); setOPage(res.data.page); setOPageSize(res.data.pageSize); }
-      } finally {
-        setOrderLoading(false);
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [oPage, oPageSize],
-  );
-
-  useEffect(() => {
-    void fetchReceivers();
-    void fetchOrders();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const receiverQuery = usePaymentSharingReceivers({
+    page: rPage,
+    pageSize: rPageSize,
+    keyword: submittedReceiverKeyword || undefined,
+  });
+  const receiverData = receiverQuery.data?.list ?? [];
+  const receiverTotal = receiverQuery.data?.total ?? 0;
+  const orderQuery = usePaymentSharingOrders({
+    page: oPage,
+    pageSize: oPageSize,
+    keyword: submittedOrderParams.keyword || undefined,
+    status: submittedOrderParams.status || undefined,
+  });
+  const orderData = orderQuery.data?.list ?? [];
+  const orderTotal = orderQuery.data?.total ?? 0;
+  const enabledReceiversQuery = useEnabledPaymentSharingReceivers(dispatchModal);
+  const enabledReceivers = enabledReceiversQuery.data ?? [];
+  const saveReceiverMutation = useSavePaymentSharingReceiver();
+  const toggleReceiverMutation = useSavePaymentSharingReceiver();
+  const deleteReceiverMutation = useDeletePaymentSharingReceiver();
+  const createOrderMutation = useCreatePaymentSharingOrder();
+  const togglingId = toggleReceiverMutation.isPending ? (toggleReceiverMutation.variables?.id ?? null) : null;
 
   // ── 接收方处理 ──
   function openCreateReceiver() { setEditingReceiver(null); setReceiverModal(true); }
@@ -105,54 +87,38 @@ export default function PaymentSharingPage() {
   async function handleReceiverOk() {
     let values: ReceiverFormValues;
     try { values = (await receiverFormApi.current?.validate()) as ReceiverFormValues; } catch { throw new Error('validation'); }
-    setReceiverSubmitting(true);
-    try {
-      const payload = { name: values.name, receiverType: values.receiverType, account: values.account, ratioBps: values.ratioPercent != null ? Math.round(values.ratioPercent * 100) : undefined, status: values.status, remark: values.remark || undefined };
-      const res = editingReceiver
-        ? await request.put<PaymentSharingReceiver>(`/api/payment/sharing/receivers/${editingReceiver.id}`, payload)
-        : await request.post<PaymentSharingReceiver>('/api/payment/sharing/receivers', payload);
-      if (res.code === 0) { Toast.success(editingReceiver ? '更新成功' : '创建成功'); setReceiverModal(false); setEditingReceiver(null); void fetchReceivers(); }
-      else throw new Error(res.message);
-    } finally {
-      setReceiverSubmitting(false);
-    }
+    const payload = { name: values.name, receiverType: values.receiverType, account: values.account, ratioBps: values.ratioPercent != null ? Math.round(values.ratioPercent * 100) : undefined, status: values.status, remark: values.remark || undefined };
+    await saveReceiverMutation.mutateAsync({ id: editingReceiver?.id, values: payload });
+    Toast.success(editingReceiver ? '更新成功' : '创建成功');
+    setReceiverModal(false);
+    setEditingReceiver(null);
   }
 
-  function handleReceiverToggle(r: PaymentSharingReceiver, checked: boolean) {
-    setTogglingIds((prev) => new Set(prev).add(r.id));
-    request
-      .put<PaymentSharingReceiver>(`/api/payment/sharing/receivers/${r.id}`, { status: checked ? 'enabled' : 'disabled' })
-      .then((res) => { if (res.code === 0) { Toast.success(checked ? '已启用' : '已停用'); void fetchReceivers(); } })
-      .finally(() => setTogglingIds((prev) => { const s = new Set(prev); s.delete(r.id); return s; }));
+  async function handleReceiverToggle(r: PaymentSharingReceiver, checked: boolean) {
+    await toggleReceiverMutation.mutateAsync({ id: r.id, values: { status: checked ? 'enabled' : 'disabled' } });
+    Toast.success(checked ? '已启用' : '已停用');
   }
 
   async function handleDeleteReceiver(id: number) {
-    const res = await request.delete(`/api/payment/sharing/receivers/${id}`);
-    if (res.code === 0) { Toast.success('删除成功'); void fetchReceivers(); }
+    await deleteReceiverMutation.mutateAsync(id);
+    Toast.success('删除成功');
   }
 
   // ── 分账处理 ──
-  async function openDispatch() {
-    const res = await request.get<PaginatedResponse<PaymentSharingReceiver>>('/api/payment/sharing/receivers?page=1&pageSize=100&status=enabled');
-    if (res.code === 0) setEnabledReceivers(res.data.list.filter((r) => r.status === 'enabled'));
+  function openDispatch() {
     setDispatchModal(true);
   }
   async function handleDispatchOk() {
     let values: DispatchFormValues;
     try { values = (await dispatchFormApi.current?.validate()) as DispatchFormValues; } catch { throw new Error('validation'); }
-    setDispatchSubmitting(true);
-    try {
-      const res = await request.post<PaymentSharingOrder>('/api/payment/sharing/orders', {
-        orderNo: values.orderNo,
-        receiverId: values.receiverId,
-        amount: values.amountYuan != null ? Math.round(values.amountYuan * 100) : undefined,
-        remark: values.remark || undefined,
-      });
-      if (res.code === 0) { Toast.success('分账已发起'); setDispatchModal(false); void fetchOrders(); }
-      else throw new Error(res.message);
-    } finally {
-      setDispatchSubmitting(false);
-    }
+    await createOrderMutation.mutateAsync({
+      orderNo: values.orderNo,
+      receiverId: values.receiverId,
+      amount: values.amountYuan != null ? Math.round(values.amountYuan * 100) : undefined,
+      remark: values.remark || undefined,
+    });
+    Toast.success('分账已发起');
+    setDispatchModal(false);
   }
 
   const receiverColumns: ColumnProps<PaymentSharingReceiver>[] = [
@@ -163,7 +129,7 @@ export default function PaymentSharingPage() {
     createdAtColumn as ColumnProps<PaymentSharingReceiver>,
     {
       title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (_: unknown, r: PaymentSharingReceiver) => <Switch checked={r.status === 'enabled'} loading={togglingIds.has(r.id)} disabled={!canManage} size="small" onChange={(c) => handleReceiverToggle(r, c)} />,
+      render: (_: unknown, r: PaymentSharingReceiver) => <Switch checked={r.status === 'enabled'} loading={togglingId === r.id} disabled={!canManage} size="small" onChange={(c) => void handleReceiverToggle(r, c)} />,
     },
     createOperationColumn<PaymentSharingReceiver>({
       width: 120,
@@ -201,22 +167,26 @@ export default function PaymentSharingPage() {
 
   const handleReceiverSearch = () => {
     setRPage(1);
-    void fetchReceivers(1, rPageSize);
+    setSubmittedReceiverKeyword(receiverKeyword);
+    void queryClient.invalidateQueries({ queryKey: paymentSharingKeys.receiverLists });
   };
   const handleReceiverReset = () => {
     setReceiverKeyword('');
     setRPage(1);
-    void fetchReceivers(1, rPageSize, '');
+    setSubmittedReceiverKeyword('');
+    void queryClient.invalidateQueries({ queryKey: paymentSharingKeys.receiverLists });
   };
   const handleOrderSearch = () => {
     setOPage(1);
-    void fetchOrders(1, oPageSize);
+    setSubmittedOrderParams({ keyword: orderKeyword, status: orderStatus });
+    void queryClient.invalidateQueries({ queryKey: paymentSharingKeys.orderLists });
   };
   const handleOrderReset = () => {
     setOrderKeyword('');
     setOrderStatus('');
     setOPage(1);
-    void fetchOrders(1, oPageSize, { keyword: '', status: '' });
+    setSubmittedOrderParams({ keyword: '', status: '' });
+    void queryClient.invalidateQueries({ queryKey: paymentSharingKeys.orderLists });
   };
 
   const renderReceiverKeywordSearch = () => (
@@ -260,7 +230,7 @@ export default function PaymentSharingPage() {
   const renderOrderSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleOrderSearch}>查询</Button>;
   const renderOrderResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleOrderReset}>重置</Button>;
   const renderDispatchButton = () => canDispatch ? (
-    <Button type="primary" icon={<Plus size={14} />} onClick={() => void openDispatch()}>发起分账</Button>
+    <Button type="primary" icon={<Plus size={14} />} onClick={openDispatch}>发起分账</Button>
   ) : null;
 
   return (
@@ -285,8 +255,8 @@ export default function PaymentSharingPage() {
             )}
           />
           <ConfigurableTable
-            bordered columns={receiverColumns} dataSource={receiverData?.list ?? []} loading={receiverLoading} rowKey="id" size="small" empty="暂无数据"
-            onRefresh={() => void fetchReceivers()} refreshLoading={receiverLoading} pagination={buildRPagination(receiverData?.total ?? 0, fetchReceivers)}
+            bordered columns={receiverColumns} dataSource={receiverData} loading={receiverQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
+            onRefresh={() => void receiverQuery.refetch()} refreshLoading={receiverQuery.isFetching} pagination={buildRPagination(receiverTotal)}
           />
         </TabPane>
         <TabPane tab="分账单" itemKey="orders">
@@ -313,13 +283,13 @@ export default function PaymentSharingPage() {
             onFilterReset={handleOrderReset}
           />
           <ConfigurableTable
-            bordered columns={orderColumns} dataSource={orderData?.list ?? []} loading={orderLoading} rowKey="id" size="small" empty="暂无数据"
-            onRefresh={() => void fetchOrders()} refreshLoading={orderLoading} pagination={buildOPagination(orderData?.total ?? 0, fetchOrders)}
+            bordered columns={orderColumns} dataSource={orderData} loading={orderQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
+            onRefresh={() => void orderQuery.refetch()} refreshLoading={orderQuery.isFetching} pagination={buildOPagination(orderTotal)}
           />
         </TabPane>
       </Tabs>
 
-      <AppModal title={editingReceiver ? '编辑分账接收方' : '新增分账接收方'} visible={receiverModal} onOk={handleReceiverOk} onCancel={() => { setReceiverModal(false); setEditingReceiver(null); }} okButtonProps={{ loading: receiverSubmitting }} width={520} closeOnEsc>
+      <AppModal title={editingReceiver ? '编辑分账接收方' : '新增分账接收方'} visible={receiverModal} onOk={handleReceiverOk} onCancel={() => { setReceiverModal(false); setEditingReceiver(null); }} okButtonProps={{ loading: saveReceiverMutation.isPending }} width={520} closeOnEsc>
         <Form key={editingReceiver?.id ?? 'new'} getFormApi={(api) => { receiverFormApi.current = api; }} initValues={receiverInit} labelPosition="left" labelWidth={104}>
           <Form.Input field="name" label="名称" placeholder="如：合作商户 A" rules={[{ required: true, message: '名称不能为空' }]} />
           <Form.Select field="receiverType" label="类型" style={{ width: '100%' }} optionList={receiverTypeOptions} rules={[{ required: true, message: '请选择类型' }]} />
@@ -330,7 +300,7 @@ export default function PaymentSharingPage() {
         </Form>
       </AppModal>
 
-      <AppModal title="发起分账" visible={dispatchModal} onOk={handleDispatchOk} onCancel={() => setDispatchModal(false)} okButtonProps={{ loading: dispatchSubmitting }} width={520} closeOnEsc>
+      <AppModal title="发起分账" visible={dispatchModal} onOk={handleDispatchOk} onCancel={() => setDispatchModal(false)} okButtonProps={{ loading: createOrderMutation.isPending }} width={520} closeOnEsc>
         <Form key={dispatchModal ? 'dispatch' : 'closed'} getFormApi={(api) => { dispatchFormApi.current = api; }} labelPosition="left" labelWidth={104}>
           <Form.Input field="orderNo" label="订单号" placeholder="已支付成功的支付订单号" rules={[{ required: true, message: '订单号不能为空' }]} />
           <Form.Select field="receiverId" label="接收方" style={{ width: '100%' }} rules={[{ required: true, message: '请选择接收方' }]}

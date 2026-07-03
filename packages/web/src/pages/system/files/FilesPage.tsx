@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { AppModal } from '@/components/AppModal';
 import {
   Button,
@@ -21,10 +22,9 @@ import {
   Typography,
 } from '@douyinfe/semi-ui';
 import { Plus, Search, RotateCcw, Trash2, FolderDown, LayoutGrid, List as ListIcon, CheckCircle2, XCircle, X } from 'lucide-react';
-import type { FileStorageConfig, ManagedFile, PaginatedResponse } from '@zenith/shared';
+import type { ManagedFile } from '@zenith/shared';
 import { TOKEN_KEY } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { request } from '@/utils/request';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { formatFileSize, getFileTypeIcon, fetchProtectedFile, getFileFullUrl, canPreviewFile } from '@/utils/file-utils';
 import { chunkedUpload, CHUNK_SIZE } from '@/utils/chunked-upload';
@@ -39,6 +39,8 @@ import { usePagination } from '@/hooks/usePagination';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { useDefaultFileStorageConfig } from '@/hooks/queries/file-storage-configs';
+import { fileKeys, useBatchDeleteFiles, useDeleteFile, useFileDetail, useFileList, useUploadFile } from '@/hooks/queries/files';
 import './FilesPage.css';
 
 const { Text } = Typography;
@@ -62,6 +64,7 @@ function uploadSingleFile(
   apiBaseUrl: string,
   token: string | null,
   setItems: React.Dispatch<React.SetStateAction<UploadItem[]>>,
+  uploadFile: (formData: FormData, onProgress: (percent: number) => void) => Promise<unknown>,
 ) {
   const updateItem = (updater: (item: UploadItem) => UploadItem) =>
     setItems(prev => prev.map(item => item.uid === uid ? updater(item) : item));
@@ -79,26 +82,9 @@ function uploadSingleFile(
   }
   const formData = new FormData();
   formData.append('file', file);
-  const xhr = new XMLHttpRequest();
-  xhr.upload.onprogress = (e) => {
-    if (e.lengthComputable)
-      updateItem(item => ({ ...item, progress: Math.round((e.loaded / e.total) * 100) }));
-  };
-  xhr.onload = () => {
-    try {
-      const resp = JSON.parse(xhr.responseText) as { code: number; message?: string };
-      if (xhr.status === 200 && resp.code === 0)
-        updateItem(item => ({ ...item, progress: 100, status: 'success' }));
-      else
-        updateItem(item => ({ ...item, status: 'error', errorMsg: resp.message || '上传失败' }));
-    } catch {
-      updateItem(item => ({ ...item, status: 'error', errorMsg: '解析响应失败' }));
-    }
-  };
-  xhr.onerror = () => updateItem(item => ({ ...item, status: 'error', errorMsg: '网络错误' }));
-  xhr.open('POST', `${apiBaseUrl}/api/files/upload`);
-  if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-  xhr.send(formData);
+  void uploadFile(formData, (percent) => updateItem(item => ({ ...item, progress: percent })))
+    .then(() => updateItem(item => ({ ...item, progress: 100, status: 'success' })))
+    .catch((err: unknown) => updateItem(item => ({ ...item, status: 'error', errorMsg: err instanceof Error ? err.message : '上传失败' })));
 }
 
 /** 加载图片并返回其分辨率，失败时返回 null */
@@ -125,6 +111,7 @@ async function loadImageResolution(file: { url: string }): Promise<{ width: numb
 }
 
 export default function FilesPage() {
+  const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
   const { preferences, setPreferences } = usePreferences();
   interface SearchParams {
@@ -138,13 +125,10 @@ export default function FilesPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   /** 区分"页面内点击切换"与"偏好面板外部修改"，防止双重请求 */
   const isInternalToggleRef = useRef(false);
-  const [data, setData] = useState<PaginatedResponse<ManagedFile> | null>(null);
-  const [loading, setLoading] = useState(false);
   const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
   const [uploadProgressVisible, setUploadProgressVisible] = useState(false);
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
   const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination(
     (preferences.filesViewMode ?? 'list') === 'grid' ? FILE_GRID_PAGE_SIZE : FILE_LIST_PAGE_SIZE,
   );
@@ -158,22 +142,38 @@ export default function FilesPage() {
   const previewBlobUrlsRef = useRef<string[]>([]);
   // previewSessionRef: increments each time a new preview session starts, used to cancel stale bg loads
   const previewSessionRef = useRef(0);
-  const [defaultConfig, setDefaultConfig] = useState<FileStorageConfig | null>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
-  const [batchDeleteLoading, setBatchDeleteLoading] = useState(false);
   const [batchDownloadLoading, setBatchDownloadLoading] = useState(false);
   const [detailFile, setDetailFile] = useState<ManagedFile | null>(null);
-  const [detailFileLoading, setDetailFileLoading] = useState(false);
   const [imageResolution, setImageResolution] = useState<{ width: number; height: number } | null>(null);
 
   const viewMode = preferences.filesViewMode ?? 'list';
+  const defaultConfigQuery = useDefaultFileStorageConfig();
+  const defaultConfig = defaultConfigQuery.data ?? null;
+  const listQuery = useFileList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    provider: submittedParams.provider || undefined,
+    fileType: submittedParams.fileType || undefined,
+    startTime: submittedParams.timeRange ? formatDateTimeForApi(submittedParams.timeRange[0]) : undefined,
+    endTime: submittedParams.timeRange ? formatDateTimeForApi(submittedParams.timeRange[1]) : undefined,
+  });
+  const data = listQuery.data ?? null;
+  const uploadFileMutation = useUploadFile();
+  const deleteMutation = useDeleteFile();
+  const batchDeleteMutation = useBatchDeleteFiles();
+  const detailQuery = useFileDetail(detailFile?.id, !!detailFile);
+  const displayedDetailFile = detailQuery.data ?? detailFile;
+  const detailFileLoading = detailQuery.isFetching;
 
   const toggleViewMode = (mode: 'list' | 'grid') => {
     isInternalToggleRef.current = true;
     setPreferences({ filesViewMode: mode });
     const newPageSize = mode === 'grid' ? FILE_GRID_PAGE_SIZE : FILE_LIST_PAGE_SIZE;
     setPage(1);
-    void fetchFiles(1, newPageSize);
+    setPageSize(newPageSize);
+    void queryClient.invalidateQueries({ queryKey: fileKeys.lists });
   };
 
   const handleGridSelect = (id: string, checked: boolean) => {
@@ -197,75 +197,10 @@ export default function FilesPage() {
     }
   };
 
-  const handleOpenDetail = async (file: ManagedFile) => {
+  const handleOpenDetail = (file: ManagedFile) => {
     setDetailFile(file);
     setImageResolution(null);
-    setDetailFileLoading(true);
-    try {
-      const res = await request.get<ManagedFile>(`/api/files/${file.id}`);
-      if (res.code === 0 && res.data) {
-        setDetailFile(res.data);
-        // 图片文件：异步加载分辨率
-        if (res.data.mimeType?.startsWith('image/')) {
-          void loadImageResolution(res.data).then((r) => { if (r) setImageResolution(r); });
-        }
-      } else {
-        Toast.error(res.message || '获取文件信息失败');
-      }
-    } finally {
-      setDetailFileLoading(false);
-    }
   };
-
-  const fetchDefaultConfig = useCallback(async () => {
-    const res = await request.get<FileStorageConfig | null>('/api/file-storage-configs/default');
-    if (res.code === 0) {
-      setDefaultConfig(res.data);
-    }
-  }, []);
-
-  const fetchFiles = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const activeParams = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(activeParams.keyword ? { keyword: activeParams.keyword } : {}),
-        ...(activeParams.provider ? { provider: activeParams.provider } : {}),
-        ...(activeParams.fileType ? { fileType: activeParams.fileType } : {}),
-        ...(activeParams.timeRange
-          ? {
-            startTime: formatDateTimeForApi(activeParams.timeRange[0]),
-            endTime: formatDateTimeForApi(activeParams.timeRange[1]),
-          }
-          : {}),
-      }).toString();
-      const res = await request.get<PaginatedResponse<ManagedFile>>(`/api/files?${query}`);
-      if (res.code === 0) {
-        setData(res.data);
-        setPage(res.data.page);
-        setPageSize(res.data.pageSize);
-      }
-    } finally {
-      setLoading(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize]);
-
-  const fetchFilesRef = useRef(fetchFiles);
-
-  useEffect(() => {
-    fetchFilesRef.current = fetchFiles;
-  }, [fetchFiles]);
-
-  useEffect(() => {
-    fetchDefaultConfig();
-  }, [fetchDefaultConfig]);
-
-  useEffect(() => {
-    void fetchFiles();
-  }, [fetchFiles]);
 
   // 偏好面板修改视图模式时同步 pageSize 并重新拉取数据
   useEffect(() => {
@@ -275,8 +210,16 @@ export default function FilesPage() {
     }
     const newPageSize = viewMode === 'grid' ? FILE_GRID_PAGE_SIZE : FILE_LIST_PAGE_SIZE;
     setPage(1);
-    void fetchFilesRef.current(1, newPageSize);
-  }, [viewMode]);
+    setPageSize(newPageSize);
+    void queryClient.invalidateQueries({ queryKey: fileKeys.lists });
+  }, [viewMode, setPage, setPageSize, queryClient]);
+
+  useEffect(() => {
+    const file = detailQuery.data;
+    if (file?.mimeType?.startsWith('image/')) {
+      void loadImageResolution(file).then((r) => { if (r) setImageResolution(r); });
+    }
+  }, [detailQuery.data]);
 
   useEffect(() => {
     if (uploadProgressVisible && uploadItems.length > 0 &&
@@ -286,23 +229,25 @@ export default function FilesPage() {
         setUploadProgressVisible(false);
         if (successCount > 0) {
           Toast.success(successCount > 1 ? `成功上传 ${successCount} 个文件` : '文件上传成功');
-          void fetchDefaultConfig();
-          void fetchFiles(1);
+          setPage(1);
+          void queryClient.invalidateQueries({ queryKey: fileKeys.all });
         }
       }, 1000);
       return () => clearTimeout(timer);
     }
-  }, [uploadItems, uploadProgressVisible, fetchDefaultConfig, fetchFiles]);
+  }, [uploadItems, uploadProgressVisible, queryClient, setPage]);
 
   function handleSearch() {
     setPage(1);
-    void fetchFiles(1, pageSize);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: fileKeys.lists });
   }
 
   function handleReset() {
-    setSearchParams(defaultSearchParams);
     setPage(1);
-    void fetchFiles(1, pageSize, defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: fileKeys.lists });
   }
 
   const handlePickFile = () => {
@@ -318,7 +263,14 @@ export default function FilesPage() {
     setUploadProgressVisible(true);
     const token = localStorage.getItem(TOKEN_KEY);
     for (const [i, file] of files.entries()) {
-      uploadSingleFile(file, items[i].uid, config.apiBaseUrl, token, setUploadItems);
+      uploadSingleFile(
+        file,
+        items[i].uid,
+        config.apiBaseUrl,
+        token,
+        setUploadItems,
+        (formData, onProgress) => uploadFileMutation.mutateAsync({ formData, onProgress }),
+      );
     }
   };
 
@@ -424,11 +376,8 @@ export default function FilesPage() {
   };
 
   const handleDelete = async (file: ManagedFile) => {
-    const res = await request.delete(`/api/files/${file.id}`);
-    if (res.code === 0) {
-      Toast.success('文件已删除');
-      fetchFiles();
-    }
+    await deleteMutation.mutateAsync(file.id);
+    Toast.success('文件已删除');
   };
 
   const handleBatchDelete = () => {
@@ -437,17 +386,9 @@ export default function FilesPage() {
       content: '删除后将同步尝试删除实际存储对象，无法恢复。',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        setBatchDeleteLoading(true);
-        try {
-          const res = await request.delete<null>('/api/files/batch', { ids: selectedRowKeys });
-          if (res.code === 0) {
-            Toast.success(res.message || '批量删除成功');
-            setSelectedRowKeys([]);
-            void fetchFiles();
-          }
-        } finally {
-          setBatchDeleteLoading(false);
-        }
+        await batchDeleteMutation.mutateAsync(selectedRowKeys);
+        Toast.success('批量删除成功');
+        setSelectedRowKeys([]);
       },
     });
   };
@@ -603,16 +544,16 @@ export default function FilesPage() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索文件名 / 对象键 / 文件服务"
-              value={searchParams.keyword}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
+              value={draftParams.keyword}
+              onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))}
               onEnterPress={handleSearch}
               style={{ width: 'min(280px, 100%)' }}
               showClear
             />
             <Select
               placeholder="存储类型"
-              value={searchParams.provider || undefined}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, provider: (value as string) ?? '' }))}
+              value={draftParams.provider || undefined}
+              onChange={(value) => setDraftParams((prev) => ({ ...prev, provider: (value as string) ?? '' }))}
               style={{ width: 140 }}
               optionList={[
                 { value: '', label: '全部类型' },
@@ -624,8 +565,8 @@ export default function FilesPage() {
             />
             <Select
               placeholder="文件类型"
-              value={searchParams.fileType || undefined}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, fileType: (value as string) ?? '' }))}
+              value={draftParams.fileType || undefined}
+              onChange={(value) => setDraftParams((prev) => ({ ...prev, fileType: (value as string) ?? '' }))}
               style={{ width: 120 }}
               optionList={[
                 { value: '', label: '全部' },
@@ -638,8 +579,8 @@ export default function FilesPage() {
             <DatePicker
               type="dateTimeRange"
               placeholder={['开始时间', '结束时间']}
-              value={searchParams.timeRange ?? undefined}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
+              value={draftParams.timeRange ?? undefined}
+              onChange={(value) => setDraftParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
               style={{ width: 'min(360px, 100%)' }}
             />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
@@ -654,7 +595,7 @@ export default function FilesPage() {
               </Button>
             )}
             {selectedRowKeys.length > 0 && hasPermission('system:file:delete') && (
-              <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={batchDeleteLoading} onClick={handleBatchDelete}>
+              <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={batchDeleteMutation.isPending} onClick={handleBatchDelete}>
                 批量删除 ({selectedRowKeys.length})
               </Button>
             )}
@@ -682,8 +623,8 @@ export default function FilesPage() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索文件名 / 对象键 / 文件服务"
-              value={searchParams.keyword}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
+              value={draftParams.keyword}
+              onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))}
               onEnterPress={handleSearch}
               style={{ width: 'min(280px, 100%)' }}
               showClear
@@ -706,8 +647,8 @@ export default function FilesPage() {
           <>
             <Select
               placeholder="存储类型"
-              value={searchParams.provider || undefined}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, provider: (value as string) ?? '' }))}
+              value={draftParams.provider || undefined}
+              onChange={(value) => setDraftParams((prev) => ({ ...prev, provider: (value as string) ?? '' }))}
               style={{ width: 140 }}
               optionList={[
                 { value: '', label: '全部类型' },
@@ -719,8 +660,8 @@ export default function FilesPage() {
             />
             <Select
               placeholder="文件类型"
-              value={searchParams.fileType || undefined}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, fileType: (value as string) ?? '' }))}
+              value={draftParams.fileType || undefined}
+              onChange={(value) => setDraftParams((prev) => ({ ...prev, fileType: (value as string) ?? '' }))}
               style={{ width: 120 }}
               optionList={[
                 { value: '', label: '全部' },
@@ -733,8 +674,8 @@ export default function FilesPage() {
             <DatePicker
               type="dateTimeRange"
               placeholder={['开始时间', '结束时间']}
-              value={searchParams.timeRange ?? undefined}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
+              value={draftParams.timeRange ?? undefined}
+              onChange={(value) => setDraftParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
               style={{ width: 'min(360px, 100%)' }}
             />
           </>
@@ -745,7 +686,7 @@ export default function FilesPage() {
               批量下载 ({selectedRowKeys.length})
             </Button>
             {selectedRowKeys.length > 0 && hasPermission('system:file:delete') && (
-              <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={batchDeleteLoading} onClick={handleBatchDelete}>
+              <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={batchDeleteMutation.isPending} onClick={handleBatchDelete}>
                 批量删除 ({selectedRowKeys.length})
               </Button>
             )}
@@ -860,30 +801,30 @@ export default function FilesPage() {
       <AppModal
         title="文件详情"
         visible={!!detailFile}
-        onCancel={() => { setDetailFile(null); setDetailFileLoading(false); setImageResolution(null); }}
+        onCancel={() => { setDetailFile(null); setImageResolution(null); }}
         footer={
           <Space>
-            <Button onClick={() => detailFile && handleCopyUrl(detailFile)}>复制链接</Button>
+            <Button onClick={() => displayedDetailFile && handleCopyUrl(displayedDetailFile)}>复制链接</Button>
             <Button type="primary" onClick={() => setDetailFile(null)}>关闭</Button>
           </Space>
         }
         width={560}
       >
         <Spin spinning={detailFileLoading} tip="加载中..." size="small">
-          {detailFile && (
+          {displayedDetailFile && (
             <Descriptions
               align="left"
               size="medium"
               data={[
-                { key: '文件名', value: detailFile.originalName },
-                { key: '存储服务', value: detailFile.storageName },
-                { key: 'MIME 类型', value: detailFile.mimeType || '—' },
-                { key: '文件大小', value: formatFileSize(detailFile.size) },
+                { key: '文件名', value: displayedDetailFile.originalName },
+                { key: '存储服务', value: displayedDetailFile.storageName },
+                { key: 'MIME 类型', value: displayedDetailFile.mimeType || '—' },
+                { key: '文件大小', value: formatFileSize(displayedDetailFile.size) },
                 ...(imageResolution ? [{ key: '分辨率', value: `${imageResolution.width} × ${imageResolution.height} px` }] : []),
-                { key: '上传人', value: detailFile.uploaderName || '—' },
-                { key: '对象键', value: <Text copyable style={{ fontSize: 12, wordBreak: 'break-all' }}>{detailFile.objectKey}</Text> },
-                { key: '访问链接', value: <Text copyable style={{ fontSize: 12, wordBreak: 'break-all' }}>{getFileFullUrl(detailFile.url)}</Text> },
-                { key: '上传时间', value: formatDateTime(detailFile.createdAt) },
+                { key: '上传人', value: displayedDetailFile.uploaderName || '—' },
+                { key: '对象键', value: <Text copyable style={{ fontSize: 12, wordBreak: 'break-all' }}>{displayedDetailFile.objectKey}</Text> },
+                { key: '访问链接', value: <Text copyable style={{ fontSize: 12, wordBreak: 'break-all' }}>{getFileFullUrl(displayedDetailFile.url)}</Text> },
+                { key: '上传时间', value: formatDateTime(displayedDetailFile.createdAt) },
               ]}
             />
           )}
@@ -909,12 +850,12 @@ export default function FilesPage() {
             selectedRowKeys,
             onChange: (keys) => setSelectedRowKeys((keys ?? []).map(String)),
           } : undefined}
-          loading={loading}
-          onRefresh={() => void fetchFiles()}
-          refreshLoading={loading}
+          loading={listQuery.isFetching}
+          onRefresh={() => void listQuery.refetch()}
+          refreshLoading={listQuery.isFetching}
           size="small"
           empty="暂无文件记录"
-          pagination={{ ...buildPagination(data?.total ?? 0, fetchFiles), pageSizeOpts: FILE_LIST_PAGE_SIZE_OPTIONS }}
+          pagination={{ ...buildPagination(data?.total ?? 0), pageSizeOpts: FILE_LIST_PAGE_SIZE_OPTIONS }}
         />
       ) : (
         <>
@@ -964,7 +905,7 @@ export default function FilesPage() {
               xxl: 2,
             }}
             dataSource={data?.list ?? []}
-            loading={loading}
+            loading={listQuery.isFetching}
             split={false}
             emptyContent={<div className="files-grid-empty">暂无文件记录</div>}
             renderItem={(file) => (
@@ -991,8 +932,8 @@ export default function FilesPage() {
                 currentPage={page}
                 pageSize={pageSize}
                 total={data?.total ?? 0}
-                onPageChange={(p) => { void fetchFiles(p, pageSize); }}
-                onPageSizeChange={(size) => { void fetchFiles(1, size); }}
+                onPageChange={(p) => { setPage(p); }}
+                onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
                 showSizeChanger
                 showTotal
                 pageSizeOpts={FILE_GRID_PAGE_SIZE_OPTIONS}

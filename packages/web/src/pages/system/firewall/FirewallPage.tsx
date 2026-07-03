@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Button,
   Form,
@@ -15,43 +15,17 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
-import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
-
-interface FirewallStatus {
-  enabled: boolean;
-  type: 'ufw' | 'firewalld' | 'iptables' | 'unknown';
-  version: string | null;
-  defaultIncoming: string | null;
-  defaultOutgoing: string | null;
-}
-
-interface FirewallRule {
-  id: string;
-  type: 'allow' | 'deny' | 'reject';
-  protocol: 'tcp' | 'udp' | 'any';
-  port: string;
-  from: string;
-  to: string;
-  direction: 'in' | 'out' | 'any';
-  comment: string | null;
-  raw?: string;
-}
-
-interface FirewallRuleList {
-  type: FirewallStatus['type'];
-  rules: FirewallRule[];
-}
-
-interface AddFirewallRuleFormValues {
-  type: FirewallRule['type'];
-  protocol: FirewallRule['protocol'];
-  port: string;
-  from: string;
-  to: string;
-  direction: FirewallRule['direction'];
-  comment?: string;
-}
+import {
+  useAddFirewallRule,
+  useDeleteFirewallRule,
+  useFirewallRules,
+  useFirewallStatus,
+  useToggleFirewall,
+  type AddFirewallRuleFormValues,
+  type FirewallRule,
+  type FirewallStatus,
+} from '@/hooks/queries/firewall';
 
 const RULE_TYPE_CONFIG: Record<FirewallRule['type'], { label: string; color: 'green' | 'red' | 'orange' }> = {
   allow: { label: '允许', color: 'green' },
@@ -77,6 +51,7 @@ const STATUS_TYPE_LABELS: Record<FirewallStatus['type'], string> = {
   iptables: 'iptables',
   unknown: '未知',
 };
+const EMPTY_RULES: FirewallRule[] = [];
 
 function FieldBlock({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
   return (
@@ -92,48 +67,18 @@ export default function FirewallPage() {
   const formApi = useRef<FormApi<AddFirewallRuleFormValues> | null>(null);
   const canManage = hasPermission('system:firewall:manage');
 
-  const [status, setStatus] = useState<FirewallStatus | null>(null);
-  const [rules, setRules] = useState<FirewallRule[]>([]);
-  const [listLoading, setListLoading] = useState(false);
-  const [statusLoading, setStatusLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [switching, setSwitching] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-
-  const fetchStatus = useCallback(async () => {
-    setStatusLoading(true);
-    try {
-      const res = await request.get<FirewallStatus>('/api/firewall', { silent: true });
-      if (res.code === 0 && res.data) {
-        setStatus(res.data);
-      }
-    } finally {
-      setStatusLoading(false);
-    }
-  }, []);
-
-  const fetchRules = useCallback(async () => {
-    setListLoading(true);
-    try {
-      const res = await request.get<FirewallRuleList>('/api/firewall/rules', { silent: true });
-      if (res.code === 0 && res.data) {
-        setRules(res.data.rules ?? []);
-        setStatus((prev) => (prev ? { ...prev, type: res.data.type } : prev));
-      }
-    } finally {
-      setListLoading(false);
-    }
-  }, []);
-
-  const fetchAll = useCallback(async () => {
-    await Promise.all([fetchStatus(), fetchRules()]);
-  }, [fetchRules, fetchStatus]);
-
-  useEffect(() => {
-    void fetchAll();
-  }, [fetchAll]);
+  const statusQuery = useFirewallStatus();
+  const rulesQuery = useFirewallRules();
+  const addRuleMutation = useAddFirewallRule();
+  const deleteRuleMutation = useDeleteFirewallRule();
+  const toggleFirewallMutation = useToggleFirewall();
+  const status = statusQuery.data ?? null;
+  const rules = rulesQuery.data?.rules ?? EMPTY_RULES;
+  const fetchAll = async () => {
+    await Promise.all([statusQuery.refetch(), rulesQuery.refetch()]);
+  };
 
   const filteredRules = useMemo(() => {
     const lowerKeyword = keyword.trim().toLowerCase();
@@ -166,48 +111,19 @@ export default function FirewallPage() {
       throw new Error('validation');
     }
 
-    setSubmitting(true);
-    try {
-      const res = await request.post('/api/firewall/rules', {
-        ...values,
-        from: values.from?.trim() || 'any',
-        to: values.to?.trim() || 'any',
-        comment: values.comment?.trim() || undefined,
-      });
-      if (res.code === 0) {
-        Toast.success('规则已添加');
-        closeModal();
-        await fetchAll();
-      }
-    } finally {
-      setSubmitting(false);
-    }
+    await addRuleMutation.mutateAsync(values);
+    Toast.success('规则已添加');
+    closeModal();
   }
 
   async function handleDelete(id: string) {
-    setDeletingId(id);
-    try {
-      const res = await request.delete(`/api/firewall/rules/${encodeURIComponent(id)}`);
-      if (res.code === 0) {
-        Toast.success('规则已删除');
-        await fetchAll();
-      }
-    } finally {
-      setDeletingId(null);
-    }
+    await deleteRuleMutation.mutateAsync(id);
+    Toast.success('规则已删除');
   }
 
   async function handleToggle(enabled: boolean) {
-    setSwitching(true);
-    try {
-      const res = await request.post(enabled ? '/api/firewall/enable' : '/api/firewall/disable');
-      if (res.code === 0) {
-        Toast.success(enabled ? '防火墙已启用' : '防火墙已关闭');
-        await fetchAll();
-      }
-    } finally {
-      setSwitching(false);
-    }
+    await toggleFirewallMutation.mutateAsync(enabled);
+    Toast.success(enabled ? '防火墙已启用' : '防火墙已关闭');
   }
 
   const columns: ColumnProps<FirewallRule>[] = [
@@ -250,7 +166,7 @@ export default function FirewallPage() {
           key: 'delete',
           label: '删除',
           danger: true,
-          loading: deletingId === record.id,
+          loading: deleteRuleMutation.isPending && deleteRuleMutation.variables === record.id,
           hidden: !canManage,
           onClick: () => {
             Modal.confirm({
@@ -264,12 +180,15 @@ export default function FirewallPage() {
     }),
   ];
 
-  const currentStatus = status ?? {
-    enabled: false,
-    type: 'unknown' as const,
-    version: null,
-    defaultIncoming: null,
-    defaultOutgoing: null,
+  const currentStatus = {
+    ...(status ?? {
+      enabled: false,
+      type: 'unknown' as const,
+      version: null,
+      defaultIncoming: null,
+      defaultOutgoing: null,
+    }),
+    type: rulesQuery.data?.type ?? status?.type ?? 'unknown' as const,
   };
 
   return (
@@ -296,12 +215,12 @@ export default function FirewallPage() {
             <FieldBlock label="默认出站">{currentStatus.defaultOutgoing ?? '—'}</FieldBlock>
           </Space>
           <Space>
-            <Button icon={<RefreshCw size={14} />} loading={statusLoading || listLoading} onClick={() => void fetchAll()}>刷新</Button>
+            <Button icon={<RefreshCw size={14} />} loading={statusQuery.isFetching || rulesQuery.isFetching} onClick={() => void fetchAll()}>刷新</Button>
             {canManage && (
               currentStatus.enabled ? (
-                <Button type="danger" icon={<ShieldOff size={14} />} loading={switching} onClick={() => void handleToggle(false)}>禁用</Button>
+                <Button type="danger" icon={<ShieldOff size={14} />} loading={toggleFirewallMutation.isPending} onClick={() => void handleToggle(false)}>禁用</Button>
               ) : (
-                <Button type="primary" icon={<Shield size={14} />} loading={switching} onClick={() => void handleToggle(true)}>启用</Button>
+                <Button type="primary" icon={<Shield size={14} />} loading={toggleFirewallMutation.isPending} onClick={() => void handleToggle(true)}>启用</Button>
               )
             )}
           </Space>
@@ -320,7 +239,7 @@ export default function FirewallPage() {
               style={{ width: 240 }}
             />
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setKeyword(''); void fetchAll(); }}>重置</Button>
-            <Button icon={<RefreshCw size={14} />} loading={listLoading} onClick={() => void fetchAll()}>刷新</Button>
+            <Button icon={<RefreshCw size={14} />} loading={rulesQuery.isFetching} onClick={() => void fetchAll()}>刷新</Button>
             {canManage && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增规则</Button>}
           </>
         )}
@@ -340,7 +259,7 @@ export default function FirewallPage() {
         mobileActions={(
           <>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setKeyword(''); void fetchAll(); }}>重置</Button>
-            <Button icon={<RefreshCw size={14} />} loading={listLoading} onClick={() => void fetchAll()}>刷新</Button>
+            <Button icon={<RefreshCw size={14} />} loading={rulesQuery.isFetching} onClick={() => void fetchAll()}>刷新</Button>
           </>
         )}
         actionTitle="防火墙操作"
@@ -351,9 +270,9 @@ export default function FirewallPage() {
         rowKey="id"
         columns={columns}
         dataSource={filteredRules}
-        loading={listLoading}
+        loading={rulesQuery.isFetching}
         onRefresh={() => void fetchAll()}
-        refreshLoading={listLoading}
+        refreshLoading={rulesQuery.isFetching}
         empty="暂无防火墙规则"
         pagination={{ pageSize: 20, showSizeChanger: true }}
       />
@@ -365,7 +284,7 @@ export default function FirewallPage() {
         onOk={handleSubmit}
         okText="保存"
         width={620}
-        okButtonProps={{ loading: submitting }}
+        okButtonProps={{ loading: addRuleMutation.isPending }}
         closeOnEsc
       >
         <Form<AddFirewallRuleFormValues>

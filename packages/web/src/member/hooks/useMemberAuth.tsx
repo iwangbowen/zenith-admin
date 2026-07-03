@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, type React
 import { MEMBER_TOKEN_KEY, MEMBER_REFRESH_TOKEN_KEY } from '@zenith/shared';
 import type { ApiResponse, Member, MemberLoginResult } from '@zenith/shared';
 import { memberRequest } from '../utils/member-request';
+import { memberQueryClient } from '../lib/member-query';
 
 export interface MemberLoginParams {
   loginType: 'password' | 'sms';
@@ -88,6 +89,7 @@ export function MemberAuthProvider({ children }: Readonly<{ children: ReactNode 
   const logout = () => {
     localStorage.removeItem(MEMBER_TOKEN_KEY);
     localStorage.removeItem(MEMBER_REFRESH_TOKEN_KEY);
+    memberQueryClient.clear();
     setState({ member: null, loading: false });
     // best-effort 通知服务端删除会话
     memberRequest.post('/api/member/auth/logout', {}, { silent: true }).catch(() => {});
@@ -104,6 +106,7 @@ export function MemberAuthProvider({ children }: Readonly<{ children: ReactNode 
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useMemberAuth(): MemberAuthContextValue {
   const ctx = useContext(MemberAuthContext);
   if (!ctx) {

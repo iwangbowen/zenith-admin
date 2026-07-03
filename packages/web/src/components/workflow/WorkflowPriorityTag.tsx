@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { Tag } from '@douyinfe/semi-ui';
 import type { WorkflowInstancePriority } from '@zenith/shared';
 

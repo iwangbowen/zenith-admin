@@ -1,22 +1,10 @@
-import { useEffect, useState } from 'react';
 import { SideSheet, Tag, Descriptions, Table, Spin, Avatar, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import type { Member, MemberPointAccount, MemberWallet, MemberPointTransaction, MemberWalletTransaction, MemberLoginLog } from '@zenith/shared';
+import type { MemberPointTransaction, MemberWalletTransaction, MemberLoginLog } from '@zenith/shared';
 import { MEMBER_STATUS_LABELS, POINT_TX_TYPE_LABELS, WALLET_TX_TYPE_LABELS } from '@zenith/shared';
-import { request } from '@/utils/request';
+import { useMemberOverview } from '@/hooks/queries/member-admin';
 
 const { Text } = Typography;
-
-interface MemberOverview {
-  member: Member;
-  points: MemberPointAccount;
-  wallet: MemberWallet;
-  recentPointTxs: MemberPointTransaction[];
-  recentWalletTxs: MemberWalletTransaction[];
-  recentLoginLogs: MemberLoginLog[];
-  activeCouponCount: number;
-  loginLogCount: number;
-}
 
 interface Props {
   memberId: number | null;
@@ -66,17 +54,8 @@ function StatCard({ label, value, sub }: Readonly<{ label: string; value: React.
 }
 
 export function MemberDetailDrawer({ memberId, onClose }: Readonly<Props>) {
-  const [overview, setOverview] = useState<MemberOverview | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!memberId) { setOverview(null); return; }
-    setLoading(true);
-    void request.get<MemberOverview>(`/api/members/${memberId}/overview`)
-      .then((res) => { if (res.code === 0) setOverview(res.data); })
-      .finally(() => setLoading(false));
-  }, [memberId]);
-
+  const overviewQuery = useMemberOverview(memberId, !!memberId);
+  const overview = overviewQuery.data ?? null;
   const m = overview?.member;
 
   return (
@@ -87,7 +66,7 @@ export function MemberDetailDrawer({ memberId, onClose }: Readonly<Props>) {
       width={680}
       bodyStyle={{ padding: 0, overflow: 'auto' }}
     >
-      <Spin spinning={loading}>
+      <Spin spinning={overviewQuery.isFetching}>
         {overview && (
           <div style={{ padding: '20px 24px' }}>
             {/* 会员头像 + 基本信息 */}

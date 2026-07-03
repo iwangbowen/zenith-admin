@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button, Tag, Space, Tabs, TabPane, Toast, Empty, Badge,
 } from '@douyinfe/semi-ui';
@@ -6,14 +7,20 @@ import { usePagination } from '@/hooks/usePagination';
 import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag';
 import { CheckCheck } from 'lucide-react';
-import type { Announcement } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import AnnouncementDetailModal from '@/components/AnnouncementDetailModal';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import {
+  announcementKeys,
+  type MyAnnouncement,
+  useMarkAllMyAnnouncementsRead,
+  useMarkMyAnnouncementRead,
+  useMyAnnouncementDetail,
+  useMyAnnouncementList,
+} from '@/hooks/queries/announcements';
 
-type AnnouncementWithRead = Announcement & { isRead: boolean };
+type AnnouncementWithRead = MyAnnouncement;
 type AnnouncementTab = 'all' | 'unread' | 'read';
 
 const TYPE_LABEL: Record<string, string> = {
@@ -35,72 +42,45 @@ const PRIORITY_LABEL: Record<string, string> = {
 };
 
 export default function AnnouncementsPage() {
-  const [list, setList] = useState<AnnouncementWithRead[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [total, setTotal] = useState(0);
+  const queryClient = useQueryClient();
   const { page, setPage } = usePagination();
   const [activeTab, setActiveTab] = useState<AnnouncementTab>('all');
-  const [markAllLoading, setMarkAllLoading] = useState(false);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [selected, setSelected] = useState<AnnouncementWithRead | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
-  const [detailLoading, setDetailLoading] = useState(false);
 
-  const fetchList = useCallback(async (p = 1, tab = activeTab) => {
-    setLoading(true);
-    let isRead: string | undefined;
-    if (tab === 'unread') isRead = 'false';
-    else if (tab === 'read') isRead = 'true';
-    const qs = new URLSearchParams({ page: String(p), pageSize: '10' });
-    if (isRead !== undefined) qs.set('isRead', isRead);
-    const res = await request.get<{ list: AnnouncementWithRead[]; total: number }>(
-      `/api/announcements/inbox?${qs.toString()}`,
-    );
-    setLoading(false);
-    if (res.code === 0 && res.data) {
-      setList(res.data.list);
-      setTotal(res.data.total);
-      setPage(p);
-    }
-  }, [activeTab, setPage]);
+  let isRead: string | undefined;
+  if (activeTab === 'unread') isRead = 'false';
+  else if (activeTab === 'read') isRead = 'true';
+
+  const listQuery = useMyAnnouncementList({ page, pageSize: 10, isRead });
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const detailQuery = useMyAnnouncementDetail(selected?.id, modalVisible);
+  const selectedAnnouncement = selected ? (detailQuery.data ? { ...detailQuery.data, isRead: true } : selected) : null;
+  const markReadMutation = useMarkMyAnnouncementRead();
+  const markAllReadMutation = useMarkAllMyAnnouncementsRead();
+  const loading = listQuery.isFetching;
+  const detailLoading = detailQuery.isFetching;
+  const markAllLoading = markAllReadMutation.isPending;
 
   useEffect(() => {
-    void fetchList(1, activeTab);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
-
-  useEffect(() => {
-    const handler = () => { void fetchList(page, activeTab); };
+    const handler = () => {
+      void queryClient.invalidateQueries({ queryKey: announcementKeys.myLists });
+    };
     globalThis.addEventListener('announcement:refresh', handler);
     return () => globalThis.removeEventListener('announcement:refresh', handler);
-  }, [fetchList, page, activeTab]);
+  }, [queryClient]);
 
   const openNotice = async (item: AnnouncementWithRead, index: number) => {
     if (!item.isRead) {
-      await request.post(`/api/announcements/${item.id}/read`, undefined, { silent: true });
+      await markReadMutation.mutateAsync(item.id);
     }
 
-    // 显示弹窗并开始加载
     setSelectedIndex(index);
     setModalVisible(true);
-    setDetailLoading(true);
-
-    try {
-      // 获取最新的公告详情（包含附件）
-      const res = await request.get<Announcement>(`/api/announcements/${item.id}`);
-      if (res.code === 0 && res.data) {
-        setSelected({ ...res.data, isRead: true });
-      } else {
-        Toast.error(res.message || '获取公告详情失败');
-        setSelected({ ...item, isRead: true }); // 降级使用列表数据
-      }
-    } catch {
-      Toast.error('网络错误，获取公告详情失败');
-      setSelected({ ...item, isRead: true }); // 降级使用列表数据
-    } finally {
-      setDetailLoading(false);
-    }
+    setSelected({ ...item, isRead: true });
   };
 
   const handlePrev = () => {
@@ -112,13 +92,9 @@ export default function AnnouncementsPage() {
   };
 
   const handleMarkAllRead = async () => {
-    setMarkAllLoading(true);
-    const res = await request.post('/api/announcements/read-all', {});
-    setMarkAllLoading(false);
-    if (res.code === 0) {
-      Toast.success('已全部标记为已读');
-      void fetchList(1, activeTab);
-    }
+    await markAllReadMutation.mutateAsync();
+    Toast.success('已全部标记为已读');
+    setPage(1);
   };
 
   const handleTabChange = (key: string) => {
@@ -235,7 +211,7 @@ export default function AnnouncementsPage() {
           <ConfigurableTable
             bordered
             loading={loading}
-            onRefresh={() => void fetchList(page)}
+            onRefresh={() => void listQuery.refetch()}
             refreshLoading={loading}
             dataSource={list}
             rowKey="id"
@@ -245,7 +221,7 @@ export default function AnnouncementsPage() {
               currentPage: page,
               pageSize: 10,
               showSizeChanger: false,
-              onPageChange: (p) => void fetchList(p),
+              onPageChange: (p) => setPage(p),
             }}
             onRow={(record) => ({
               style: { opacity: (record as AnnouncementWithRead).isRead ? 0.7 : 1 },
@@ -282,14 +258,14 @@ export default function AnnouncementsPage() {
 
       <AnnouncementDetailModal
         visible={modalVisible}
-        announcement={selected}
+        announcement={selectedAnnouncement}
         loading={detailLoading}
         onClose={() => setModalVisible(false)}
         onPrev={handlePrev}
         onNext={handleNext}
         hasPrev={selectedIndex > 0}
         hasNext={selectedIndex < list.length - 1}
-        indexLabel={selected ? `${selectedIndex + 1} / ${list.length}` : undefined}
+        indexLabel={selectedAnnouncement ? `${selectedIndex + 1} / ${list.length}` : undefined}
       />
     </div>
   );

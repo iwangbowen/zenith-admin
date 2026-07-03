@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Spin, Select } from '@douyinfe/semi-ui';
 import { LogIn, CheckCircle2, XCircle, Users } from 'lucide-react';
 import {
@@ -16,8 +16,7 @@ import {
   isEmptyValues,
 } from '@/components/charts';
 import dayjs from 'dayjs';
-import { request } from '@/utils/request';
-import type { LoginLogStats } from '@zenith/shared';
+import { useLoginLogStats } from '@/hooks/queries/login-logs';
 
 const DAYS_OPTIONS = [
   { label: '最近 7 天', value: 7 },
@@ -88,24 +87,8 @@ function ChartShell({ title, children, danger }: Readonly<{ title: React.ReactNo
 export default function LoginLogStatsPanel() {
   const palette = useChartPalette();
   const [days, setDays] = useState<number>(30);
-  const [loading, setLoading] = useState(false);
-  const [stats, setStats] = useState<LoginLogStats | null>(null);
-
-  const fetchStats = useCallback(async (d: number) => {
-    setLoading(true);
-    try {
-      const res = await request.get<LoginLogStats>(`/api/login-logs/stats?days=${d}`);
-      setStats(res.data);
-    } catch {
-      setStats(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchStats(days);
-  }, [days, fetchStats]);
+  const statsQuery = useLoginLogStats({ days });
+  const stats = statsQuery.data ?? null;
 
   const filledDailyStats = useMemo(() => {
     if (!stats) return [];
@@ -284,7 +267,7 @@ export default function LoginLogStatsPanel() {
         </Select>
       </div>
 
-      <Spin spinning={loading}>
+      <Spin spinning={statsQuery.isFetching}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginBottom: 16 }}>
           <StatCard title="总登录次数" value={summary ? summary.total.toLocaleString() : '—'} sub={`近 ${days} 天累计`} icon={<LogIn size={22} />} accent="var(--semi-color-primary)" />
           <StatCard

@@ -1,17 +1,29 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Tag, Space, Modal, Form, Toast, Typography, Select, Banner, SideSheet, Descriptions } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Search } from 'lucide-react';
 import { OPEN_WEBHOOK_DELIVERY_STATUS_LABELS, OPEN_WEBHOOK_EVENT_LABELS } from '@zenith/shared';
-import type { AppWebhookSubscription, AppWebhookSubscriptionCreated, AppWebhookDelivery, OpenWebhookEventMeta, PaginatedResponse } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { AppWebhookSubscription, AppWebhookDelivery } from '@zenith/shared';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
+import {
+  openPlatformKeys,
+  useDeleteWebhook,
+  useOpenAppOptions,
+  useRegenerateWebhookSecret,
+  useRetryWebhookDelivery,
+  useSaveWebhook,
+  useTestWebhook,
+  useWebhookDeliveries,
+  useWebhookEvents,
+  useWebhookList,
+} from '@/hooks/queries/open-platform';
 
 const { Text, Paragraph } = Typography;
 
@@ -38,77 +50,58 @@ type FormValues = {
 
 export default function WebhooksPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const canManage = hasPermission('open:webhook:manage');
   const formApi = useRef<FormApi | null>(null);
 
   interface SearchParams { keyword: string; clientId?: string; status?: 'enabled' | 'disabled' }
   const defaultSearchParams: SearchParams = { keyword: '', clientId: undefined, status: undefined };
-  const [data, setData] = useState<PaginatedResponse<AppWebhookSubscription> | null>(null);
-  const [loading, setLoading] = useState(false);
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchRef = useRef<SearchParams>(defaultSearchParams);
-  searchRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
 
-  const [appOptions, setAppOptions] = useState<{ clientId: string; name: string }[]>([]);
-  const [eventOptions, setEventOptions] = useState<OpenWebhookEventMeta[]>([]);
+  const appOptionsQuery = useOpenAppOptions();
+  const eventOptionsQuery = useWebhookEvents();
+  const appOptions = appOptionsQuery.data ?? [];
+  const eventOptions = eventOptionsQuery.data ?? [];
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<AppWebhookSubscription | null>(null);
-  const [submitting, setSubmitting] = useState(false);
 
   const [secretModal, setSecretModal] = useState(false);
   const [oneTimeSecret, setOneTimeSecret] = useState('');
 
   // 投递日志抽屉
   const [drawerSub, setDrawerSub] = useState<AppWebhookSubscription | null>(null);
-  const [deliveries, setDeliveries] = useState<PaginatedResponse<AppWebhookDelivery> | null>(null);
-  const [deliveryLoading, setDeliveryLoading] = useState(false);
   const [deliveryPage, setDeliveryPage] = useState(1);
   const [detailDelivery, setDetailDelivery] = useState<AppWebhookDelivery | null>(null);
 
-  const fetchData = useCallback(
-    async (p = page, ps = pageSize, params?: SearchParams) => {
-      const sp = params ?? searchRef.current;
-      setLoading(true);
-      try {
-        const q: Record<string, string> = { page: String(p), pageSize: String(ps) };
-        if (sp.keyword) q.keyword = sp.keyword;
-        if (sp.clientId) q.clientId = sp.clientId;
-        if (sp.status) q.status = sp.status;
-        const res = await request.get<PaginatedResponse<AppWebhookSubscription>>(`/api/app-webhooks?${new URLSearchParams(q)}`);
-        if (res.code === 0) {
-          setData(res.data);
-          setPage(res.data.page);
-        }
-      } finally {
-        setLoading(false);
-      }
-    },
-    [page, pageSize, setPage],
-  );
-
-  useEffect(() => {
-    void fetchData();
-    void (async () => {
-      const [apps, evs] = await Promise.all([
-        request.get<{ clientId: string; name: string }[]>('/api/oauth2/clients/options', { silent: true }),
-        request.get<OpenWebhookEventMeta[]>('/api/app-webhooks/events', { silent: true }),
-      ]);
-      if (apps.code === 0 && apps.data) setAppOptions(apps.data);
-      if (evs.code === 0 && evs.data) setEventOptions(evs.data);
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const listQuery = useWebhookList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    clientId: submittedParams.clientId,
+    status: submittedParams.status,
+  });
+  const data = listQuery.data ?? null;
+  const deliveryQuery = useWebhookDeliveries({ subscriptionId: drawerSub?.id, page: deliveryPage, pageSize: 10 }, !!drawerSub);
+  const deliveries = deliveryQuery.data ?? null;
+  const saveMutation = useSaveWebhook();
+  const deleteMutation = useDeleteWebhook();
+  const regenerateMutation = useRegenerateWebhookSecret();
+  const testMutation = useTestWebhook();
+  const retryMutation = useRetryWebhookDelivery();
 
   function handleSearch() {
     setPage(1);
-    void fetchData(1, pageSize);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: openPlatformKeys.webhooks.lists });
   }
   function handleReset() {
-    setSearchParams(defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
     setPage(1);
-    void fetchData(1, pageSize, defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: openPlatformKeys.webhooks.lists });
   }
 
   function openCreate() {
@@ -165,57 +158,40 @@ export default function WebhooksPage() {
     }
     const payload = { clientId: values.clientId, name: values.name, url: values.url, events: values.events, signMode: values.signMode, headers, status: values.status };
 
-    setSubmitting(true);
-    try {
-      if (editing) {
-        const { clientId: _c, ...rest } = payload;
-        const res = await request.put(`/api/app-webhooks/${editing.id}`, rest);
-        if (res.code === 0) { Toast.success('更新成功'); closeModal(); void fetchData(); } else throw new Error(res.message);
-      } else {
-        const res = await request.post<AppWebhookSubscriptionCreated>('/api/app-webhooks', payload);
-        if (res.code === 0) {
-          closeModal();
-          void fetchData();
-          if (res.data?.secret) { setOneTimeSecret(res.data.secret); setSecretModal(true); }
-        } else throw new Error(res.message);
-      }
-    } finally {
-      setSubmitting(false);
+    if (editing) {
+      const { clientId: _c, ...rest } = payload;
+      await saveMutation.mutateAsync({ id: editing.id, values: rest });
+      Toast.success('更新成功');
+      closeModal();
+      return;
     }
+    const created = await saveMutation.mutateAsync({ values: payload });
+    closeModal();
+    const secret = 'secret' in created && typeof created.secret === 'string' ? created.secret : '';
+    if (secret) { setOneTimeSecret(secret); setSecretModal(true); }
   }
 
   async function handleDelete(id: number) {
-    const res = await request.delete(`/api/app-webhooks/${id}`);
-    if (res.code === 0) { Toast.success('删除成功'); void fetchData(); }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   }
   async function handleRegenerate(id: number) {
-    const res = await request.post<{ id: number; secret: string }>(`/api/app-webhooks/${id}/regenerate-secret`);
-    if (res.code === 0 && res.data?.secret) { setOneTimeSecret(res.data.secret); setSecretModal(true); }
+    const res = await regenerateMutation.mutateAsync(id);
+    if (res.secret) { setOneTimeSecret(res.secret); setSecretModal(true); }
   }
   async function handleTest(id: number) {
-    const res = await request.post(`/api/app-webhooks/${id}/test`);
-    if (res.code === 0) Toast.success('已发送测试投递，请在投递日志中查看结果');
+    await testMutation.mutateAsync(id);
+    Toast.success('已发送测试投递，请在投递日志中查看结果');
   }
 
   // ─── 投递日志 ──────────────────────────────────────────────────────────────
-  const fetchDeliveries = useCallback(async (subId: number, p = 1) => {
-    setDeliveryLoading(true);
-    try {
-      const q = new URLSearchParams({ page: String(p), pageSize: '10', subscriptionId: String(subId) });
-      const res = await request.get<PaginatedResponse<AppWebhookDelivery>>(`/api/app-webhooks/deliveries?${q}`);
-      if (res.code === 0) { setDeliveries(res.data); setDeliveryPage(res.data.page); }
-    } finally {
-      setDeliveryLoading(false);
-    }
-  }, []);
-
   function openDeliveries(sub: AppWebhookSubscription) {
     setDrawerSub(sub);
-    void fetchDeliveries(sub.id, 1);
+    setDeliveryPage(1);
   }
   async function retryDelivery(id: number) {
-    const res = await request.post(`/api/app-webhooks/deliveries/${id}/retry`);
-    if (res.code === 0) { Toast.success('已触发重试'); if (drawerSub) void fetchDeliveries(drawerSub.id, deliveryPage); }
+    await retryMutation.mutateAsync(id);
+    Toast.success('已触发重试');
   }
 
   const columns: ColumnProps<AppWebhookSubscription>[] = [
@@ -287,9 +263,9 @@ export default function WebhooksPage() {
       <SearchToolbar
         primary={(
           <>
-            <Input prefix={<Search size={14} />} placeholder="搜索名称 / URL" value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 200 }} />
-            <Select placeholder="所属应用" value={searchParams.clientId} onChange={(v) => setSearchParams({ ...searchParams, clientId: v as string })} optionList={appOptions.map((a) => ({ value: a.clientId, label: a.name }))} showClear filter style={{ width: 180 }} />
-            <Select placeholder="状态" value={searchParams.status} onChange={(v) => setSearchParams({ ...searchParams, status: v as 'enabled' | 'disabled' })} optionList={STATUS_OPTIONS} showClear style={{ width: 110 }} />
+            <Input prefix={<Search size={14} />} placeholder="搜索名称 / URL" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 200 }} />
+            <Select placeholder="所属应用" value={draftParams.clientId} onChange={(v) => setDraftParams({ ...draftParams, clientId: v as string })} optionList={appOptions.map((a) => ({ value: a.clientId, label: a.name }))} showClear filter style={{ width: 180 }} />
+            <Select placeholder="状态" value={draftParams.status} onChange={(v) => setDraftParams({ ...draftParams, status: v as 'enabled' | 'disabled' })} optionList={STATUS_OPTIONS} showClear style={{ width: 110 }} />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
             {canManage && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>}
@@ -297,7 +273,7 @@ export default function WebhooksPage() {
         )}
         mobilePrimary={(
           <>
-            <Input prefix={<Search size={14} />} placeholder="搜索名称 / URL" value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 200 }} />
+            <Input prefix={<Search size={14} />} placeholder="搜索名称 / URL" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 200 }} />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             {canManage && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>}
           </>
@@ -310,13 +286,13 @@ export default function WebhooksPage() {
         bordered
         columns={columns}
         dataSource={data?.list ?? []}
-        loading={loading}
-        onRefresh={fetchData}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         rowKey="id"
         size="small"
         empty="暂无 Webhook 订阅"
-        pagination={buildPagination(data?.total ?? 0, fetchData)}
+        pagination={buildPagination(data?.total ?? 0)}
       />
 
       {/* 新增 / 编辑 */}
@@ -325,7 +301,7 @@ export default function WebhooksPage() {
         visible={modalVisible}
         onOk={handleModalOk}
         onCancel={closeModal}
-        okButtonProps={{ loading: submitting }}
+        okButtonProps={{ loading: saveMutation.isPending }}
         width={600}
         closeOnEsc
       >
@@ -352,9 +328,9 @@ export default function WebhooksPage() {
           bordered
           columns={deliveryColumns}
           dataSource={deliveries?.list ?? []}
-          loading={deliveryLoading}
-          onRefresh={() => drawerSub && fetchDeliveries(drawerSub.id, deliveryPage)}
-          refreshLoading={deliveryLoading}
+          loading={deliveryQuery.isFetching}
+          onRefresh={() => void deliveryQuery.refetch()}
+          refreshLoading={deliveryQuery.isFetching}
           rowKey="id"
           size="small"
           empty="暂无投递记录"
@@ -362,7 +338,7 @@ export default function WebhooksPage() {
             currentPage: deliveryPage,
             pageSize: 10,
             total: deliveries?.total ?? 0,
-            onPageChange: (p: number) => { if (drawerSub) void fetchDeliveries(drawerSub.id, p); },
+            onPageChange: (p: number) => setDeliveryPage(p),
           }}
         />
       </SideSheet>

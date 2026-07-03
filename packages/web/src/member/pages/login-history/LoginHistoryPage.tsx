@@ -1,18 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Table, Tag, Typography } from '@douyinfe/semi-ui';
-import type { MemberLoginLog } from '@zenith/shared';
 import { Clock } from 'lucide-react';
-import { memberRequest } from '../../utils/member-request';
 import { MemberPage } from '../../components/MemberPage';
+import { useMemberLoginLogs } from '../../hooks/queries';
 
 const { Text } = Typography;
-
-interface LoginLogListResponse {
-  list: MemberLoginLog[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
 
 const STATUS_TAG: Record<string, { color: string; label: string }> = {
   success: { color: 'green', label: '成功' },
@@ -20,28 +12,11 @@ const STATUS_TAG: Record<string, { color: string; label: string }> = {
 };
 
 export default function LoginHistoryPage() {
-  const [data, setData] = useState<MemberLoginLog[]>([]);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(false);
   const pageSize = 15;
-
-  const fetchLogs = async (p: number) => {
-    setLoading(true);
-    try {
-      const res = await memberRequest.get<LoginLogListResponse>(
-        `/api/member/login-logs?page=${p}&pageSize=${pageSize}`,
-      );
-      if (res.code === 0) {
-        setData(res.data.list);
-        setTotal(res.data.total);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { void fetchLogs(page); }, [page]);
+  const logsQuery = useMemberLoginLogs({ page, pageSize });
+  const data = logsQuery.data?.list ?? [];
+  const total = logsQuery.data?.total ?? 0;
 
   const columns = [
     {
@@ -98,7 +73,7 @@ export default function LoginHistoryPage() {
       <Table
         columns={columns}
         dataSource={data}
-        loading={loading}
+        loading={logsQuery.isFetching}
         rowKey="id"
         size="small"
         bordered

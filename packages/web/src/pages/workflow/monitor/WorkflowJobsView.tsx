@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Col,
@@ -26,7 +27,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Download, RotateCcw, Search } from 'lucide-react';
-import type { PaginatedResponse, WorkflowJob, WorkflowJobBatchResult, WorkflowJobChain, WorkflowJobExecution, WorkflowJobStatus, WorkflowJobSummaryItem, WorkflowJobType } from '@zenith/shared';
+import type { WorkflowJob, WorkflowJobExecution, WorkflowJobStatus, WorkflowJobSummaryItem, WorkflowJobType } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -34,6 +35,21 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
+import {
+  type FailureCluster,
+  type WorkflowJobReplayResult,
+  useWorkflowJobActionMutation,
+  useWorkflowJobBatchMutation,
+  useWorkflowJobChain,
+  useWorkflowJobDetail,
+  useWorkflowJobFailureClusters,
+  useWorkflowJobList,
+  useWorkflowJobReplayDead,
+  useWorkflowJobReplayPreview,
+  useWorkflowJobRuntimeStatus,
+  useWorkflowJobSummary,
+  workflowMonitorKeys,
+} from '@/hooks/queries/workflow-monitor';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'orange' | 'red' | 'violet';
 
@@ -52,39 +68,7 @@ const JOB_TYPE_META: Record<WorkflowJobType, { text: string; color: TagColor }> 
 const JOB_TYPES = Object.keys(JOB_TYPE_META) as WorkflowJobType[];
 const JOB_TYPE_OPTIONS = JOB_TYPES.map((value) => ({ value, label: JOB_TYPE_META[value].text }));
 
-// ── 死信聚类 / 条件重放（A2 限流 + B1 多维聚类） ──
 type ClusterDimension = 'reason' | 'jobType' | 'instance' | 'trace';
-interface FailureCluster {
-  dimension: ClusterDimension;
-  key: string;
-  label: string;
-  count: number;
-  jobTypes: string[];
-  instanceId: number | null;
-  traceId: string | null;
-  reasonKeyword: string | null;
-}
-interface WorkflowJobReplayResult {
-  total: number;
-  success: number;
-  skipped: number;
-  matched: number;
-  ratePerSecond: number;
-  limit: number;
-}
-interface WorkflowJobRuntimeStatus {
-  activeWorkers: number;
-  totalWorkers: number;
-  workers: Array<{ nodeId: string; hostname: string | null; runningJobCount: number; lastHeartbeatAt: string | null; fresh: boolean }>;
-  runningJobs: number;
-  stuckRunningJobs: number;
-  backlog: number;
-  deadLetter: number;
-  lastClaimedAt: string | null;
-  failureRate: number;
-  avgDurationMs: number | null;
-  recentExecutions: number;
-}
 interface ReplayFilterState {
   status: 'dead' | 'failed';
   jobType?: WorkflowJobType;
@@ -158,8 +142,6 @@ function renderExecutionTimeline(executions: WorkflowJobExecution[]) {
 
 const JOB_STATUS_OPTIONS = (Object.keys(JOB_STATUS_META) as WorkflowJobStatus[]).map((value) => ({ value, label: JOB_STATUS_META[value].text }));
 
-type WorkflowJobDetail = WorkflowJob & { executions: WorkflowJobExecution[] };
-
 const EMPTY_SUMMARY = (jobType: WorkflowJobType): WorkflowJobSummaryItem => ({ jobType, total: 0, pending: 0, running: 0, succeeded: 0, failed: 0, dead: 0, canceled: 0 });
 
 function renderStatusTag(status: WorkflowJobStatus) {
@@ -204,40 +186,47 @@ interface JobTypePanelProps {
 
 function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const canOperate = hasPermission('workflow:engine:operate');
 
-  const [data, setData] = useState<PaginatedResponse<WorkflowJob> | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<WorkflowJobStatus | undefined>(undefined);
+  const [status, setStatus] = useState<WorkflowJobStatus | undefined>();
   const [keyword, setKeyword] = useState('');
-  const { page, pageSize, setPage, resetPage, buildPagination } = usePagination();
+  const [submittedStatus, setSubmittedStatus] = useState<WorkflowJobStatus | undefined>();
+  const [submittedKeyword, setSubmittedKeyword] = useState('');
+  const { page, pageSize, resetPage, buildPagination } = usePagination();
+  const listQuery = useWorkflowJobList({
+    page,
+    pageSize,
+    jobType,
+    status: submittedStatus,
+    keyword: submittedKeyword.trim() || undefined,
+  });
+  const data = listQuery.data ?? null;
 
-  const [detail, setDetail] = useState<WorkflowJobDetail | null>(null);
+  const [detailId, setDetailId] = useState<number | undefined>();
   const [detailVisible, setDetailVisible] = useState(false);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [actingId, setActingId] = useState<number | null>(null);
+  const detailQuery = useWorkflowJobDetail(detailId, detailVisible);
+  const detail = detailQuery.data ?? null;
+  const detailLoading = detailQuery.isFetching;
   const [execView, setExecView] = useState<'timeline' | 'table'>('timeline');
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
-  const [clusters, setClusters] = useState<FailureCluster[] | null>(null);
+  const [clustersOpen, setClustersOpen] = useState(false);
   const [clusterDim, setClusterDim] = useState<ClusterDimension>('reason');
-  const [clusterLoading, setClusterLoading] = useState(false);
+  const clustersQuery = useWorkflowJobFailureClusters(clusterDim, clustersOpen);
+  const clusters = clustersQuery.data ?? [];
   const [replayOpen, setReplayOpen] = useState(false);
-  const [replayLoading, setReplayLoading] = useState(false);
-  const [previewLoading, setPreviewLoading] = useState(false);
   const [replayPreview, setReplayPreview] = useState<number | null>(null);
   const [replayFilter, setReplayFilter] = useState<ReplayFilterState>({ status: 'dead', jobType, ratePerSecond: 20, limit: 500 });
   const [replayFormKey, setReplayFormKey] = useState(0);
+  const replayPreviewMutation = useWorkflowJobReplayPreview();
+  const replayMutation = useWorkflowJobReplayDead();
+  const batchMutation = useWorkflowJobBatchMutation();
+  const jobActionMutation = useWorkflowJobActionMutation();
+  const actingId = jobActionMutation.isPending ? (jobActionMutation.variables?.id ?? null) : null;
 
-  const openClusters = async (dim: ClusterDimension = clusterDim) => {
+  const openClusters = (dim: ClusterDimension = clusterDim) => {
     setClusterDim(dim);
-    setClusters((prev) => prev ?? []);
-    setClusterLoading(true);
-    try {
-      const r = await request.get<FailureCluster[]>(`/api/workflows/engine/jobs/failure-clusters?dimension=${dim}`);
-      setClusters(r.data ?? []);
-    } finally {
-      setClusterLoading(false);
-    }
+    setClustersOpen(true);
   };
 
   const openReplay = (prefill?: Partial<ReplayFilterState>) => {
@@ -253,7 +242,7 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
         : c.dimension === 'instance' ? { instanceId: c.instanceId ?? undefined, jobType: undefined, reasonKeyword: undefined, traceId: undefined }
           : c.dimension === 'trace' ? { traceId: c.traceId ?? undefined, jobType: undefined, reasonKeyword: undefined, instanceId: undefined }
             : { reasonKeyword: c.reasonKeyword ?? undefined, jobType: undefined, instanceId: undefined, traceId: undefined };
-    setClusters(null);
+    setClustersOpen(false);
     openReplay(prefill);
   };
 
@@ -267,118 +256,66 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
   });
 
   const doPreview = async () => {
-    setPreviewLoading(true);
-    try {
-      const r = await request.post<{ matched: number }>('/api/workflows/engine/jobs/replay-preview', buildReplayBody(replayFilter));
-      if (r.code === 0) setReplayPreview(r.data?.matched ?? 0);
-    } finally {
-      setPreviewLoading(false);
-    }
+    const result = await replayPreviewMutation.mutateAsync(buildReplayBody(replayFilter));
+    setReplayPreview(result.matched ?? 0);
   };
 
   const doReplay = async () => {
-    setReplayLoading(true);
-    try {
-      const r = await request.post<WorkflowJobReplayResult>('/api/workflows/engine/jobs/replay-dead', { ...buildReplayBody(replayFilter), ratePerSecond: replayFilter.ratePerSecond, limit: replayFilter.limit });
-      if (r.code === 0 && r.data) {
-        Toast.success(r.message || `已重放 ${r.data.success}/${r.data.total}`);
-        setReplayOpen(false);
-        void fetchList();
-        onMutated();
-      } else {
-        Toast.warning(r.message || '重放失败');
-      }
-    } finally {
-      setReplayLoading(false);
-    }
+    const result = await replayMutation.mutateAsync({ ...buildReplayBody(replayFilter), ratePerSecond: replayFilter.ratePerSecond, limit: replayFilter.limit }) as WorkflowJobReplayResult;
+    Toast.success(`已重放 ${result.success}/${result.total}`);
+    setReplayOpen(false);
+    onMutated();
   };
-  const [batchLoading, setBatchLoading] = useState(false);
-  const [chain, setChain] = useState<WorkflowJobChain | null>(null);
+  const batchLoading = batchMutation.isPending;
+  const [chainTraceId, setChainTraceId] = useState<string | undefined>();
   const [chainVisible, setChainVisible] = useState(false);
-  const [chainLoading, setChainLoading] = useState(false);
-
-  const fetchList = useCallback(async (p = page, ps = pageSize, st = status, kw = keyword) => {
-    setLoading(true);
-    try {
-      const qs = new URLSearchParams({ page: String(p), pageSize: String(ps), jobType });
-      if (st) qs.set('status', st);
-      if (kw.trim()) qs.set('keyword', kw.trim());
-      const res = await request.get<PaginatedResponse<WorkflowJob>>(`/api/workflows/engine/jobs?${qs.toString()}`);
-      if (res.code === 0) setData(res.data);
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize, status, keyword, jobType]);
-
-  useEffect(() => {
-    void fetchList(1, pageSize, undefined, '');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobType]);
+  const chainQuery = useWorkflowJobChain(chainTraceId, chainVisible);
+  const chain = chainQuery.data ?? null;
+  const chainLoading = chainQuery.isFetching;
 
   const handleSearch = useCallback(() => {
     setSelectedRowKeys([]);
     resetPage();
-    void fetchList(1, pageSize, status, keyword);
-  }, [fetchList, pageSize, resetPage, status, keyword]);
+    setSubmittedStatus(status);
+    setSubmittedKeyword(keyword);
+    void queryClient.invalidateQueries({ queryKey: workflowMonitorKeys.jobLists });
+  }, [keyword, queryClient, resetPage, status]);
 
   const handleReset = useCallback(() => {
     setStatus(undefined);
     setKeyword('');
+    setSubmittedStatus(undefined);
+    setSubmittedKeyword('');
     setSelectedRowKeys([]);
     resetPage();
-    void fetchList(1, pageSize, undefined, '');
-  }, [fetchList, pageSize, resetPage]);
+    void queryClient.invalidateQueries({ queryKey: workflowMonitorKeys.jobLists });
+  }, [queryClient, resetPage]);
 
-  // 4C 死信中心：点状态汇总徽标即按该状态快速筛选（配合批量重试/跳过形成 DLQ 处置闭环）
   const filterByStatus = useCallback((st: WorkflowJobStatus) => {
     setStatus(st);
+    setSubmittedStatus(st);
+    setSubmittedKeyword(keyword);
     setSelectedRowKeys([]);
     resetPage();
-    void fetchList(1, pageSize, st, keyword);
-  }, [fetchList, pageSize, keyword, resetPage]);
+    void queryClient.invalidateQueries({ queryKey: workflowMonitorKeys.jobLists });
+  }, [keyword, queryClient, resetPage]);
 
   const handleBatch = useCallback(async (action: 'retry' | 'skip') => {
     if (selectedRowKeys.length === 0) return;
-    setBatchLoading(true);
-    try {
-      const res = await request.post<WorkflowJobBatchResult>(`/api/workflows/engine/jobs/batch-${action}`, { ids: selectedRowKeys });
-      if (res.code === 0) {
-        Toast.success(res.message || `已${action === 'retry' ? '重试' : '跳过'} ${res.data.success} 项`);
-        setSelectedRowKeys([]);
-        await fetchList();
-        onMutated();
-      } else {
-        Toast.warning(res.message || '批量操作失败');
-      }
-    } catch {
-      Toast.error('批量操作失败');
-    } finally {
-      setBatchLoading(false);
-    }
-  }, [selectedRowKeys, fetchList, onMutated]);
+    const result = await batchMutation.mutateAsync({ action, ids: selectedRowKeys });
+    Toast.success(`已${action === 'retry' ? '重试' : '跳过'} ${result.success} 项`);
+    setSelectedRowKeys([]);
+    onMutated();
+  }, [batchMutation, selectedRowKeys, onMutated]);
 
-  const openDetail = useCallback(async (id: number) => {
+  const openDetail = useCallback((id: number) => {
     setDetailVisible(true);
-    setDetail(null);
-    setDetailLoading(true);
-    try {
-      const res = await request.get<WorkflowJobDetail>(`/api/workflows/engine/jobs/${id}`);
-      if (res.code === 0) setDetail(res.data);
-    } finally {
-      setDetailLoading(false);
-    }
+    setDetailId(id);
   }, []);
 
-  const openChain = useCallback(async (traceId: string) => {
+  const openChain = useCallback((traceId: string) => {
     setChainVisible(true);
-    setChain(null);
-    setChainLoading(true);
-    try {
-      const res = await request.get<WorkflowJobChain>(`/api/workflows/engine/jobs/chain/${encodeURIComponent(traceId)}`);
-      if (res.code === 0) setChain(res.data);
-    } finally {
-      setChainLoading(false);
-    }
+    setChainTraceId(traceId);
   }, []);
 
   // 4A traceId 诊断包：聚合该链路涉及实例的诊断/轨迹/Token，导出 JSON 供工单留档/离线分析
@@ -403,42 +340,18 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
   }, []);
 
   const handleRetry = useCallback(async (id: number) => {
-    setActingId(id);
-    try {
-      const res = await request.post<WorkflowJob>(`/api/workflows/engine/jobs/${id}/retry`);
-      if (res.code === 0) {
-        Toast.success('已重新入队');
-        await fetchList();
-        onMutated();
-        if (detail?.id === id) await openDetail(id);
-      } else {
-        Toast.warning(res.message || '重试失败');
-      }
-    } catch {
-      Toast.error('重试失败');
-    } finally {
-      setActingId(null);
-    }
-  }, [detail?.id, fetchList, onMutated, openDetail]);
+    await jobActionMutation.mutateAsync({ id, action: 'retry' });
+    Toast.success('已重新入队');
+    onMutated();
+    if (detail?.id === id) void detailQuery.refetch();
+  }, [detail?.id, detailQuery, jobActionMutation, onMutated]);
 
   const handleSkip = useCallback(async (id: number) => {
-    setActingId(id);
-    try {
-      const res = await request.post<WorkflowJob>(`/api/workflows/engine/jobs/${id}/skip`);
-      if (res.code === 0) {
-        Toast.success('已跳过');
-        await fetchList();
-        onMutated();
-        if (detail?.id === id) await openDetail(id);
-      } else {
-        Toast.warning(res.message || '跳过失败');
-      }
-    } catch {
-      Toast.error('跳过失败');
-    } finally {
-      setActingId(null);
-    }
-  }, [detail?.id, fetchList, onMutated, openDetail]);
+    await jobActionMutation.mutateAsync({ id, action: 'skip' });
+    Toast.success('已跳过');
+    onMutated();
+    if (detail?.id === id) void detailQuery.refetch();
+  }, [detail?.id, detailQuery, jobActionMutation, onMutated]);
 
   const columns: ColumnProps<WorkflowJob>[] = [
     { title: 'ID', dataIndex: 'id', width: 80 },
@@ -636,9 +549,9 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
         columns={columns}
         dataSource={data?.list ?? []}
         rowKey="id"
-        loading={loading}
-        onRefresh={() => void fetchList()}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         scroll={{ x: 1340 }}
         rowSelection={canOperate ? {
           selectedRowKeys,
@@ -647,7 +560,7 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
             disabled: !(record.status === 'pending' || record.status === 'failed' || record.status === 'dead' || record.status === 'canceled'),
           }),
         } : undefined}
-        pagination={buildPagination(data?.total ?? 0, (p, ps) => { setPage(p); void fetchList(p, ps); })}
+        pagination={buildPagination(data?.total ?? 0)}
       />
 
       <SideSheet
@@ -738,7 +651,7 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
       <SideSheet
         title={chain ? `作业链路（${chain.stats.total}）` : '作业链路'}
         visible={chainVisible}
-        onCancel={() => setChainVisible(false)}
+        onCancel={() => { setChainVisible(false); setChainTraceId(undefined); }}
         width="min(720px, 96vw)"
       >
         {chainLoading && <Empty description="加载中…" />}
@@ -773,13 +686,13 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
           </Space>
         )}
       </SideSheet>
-      <Modal title="失败原因聚类" visible={clusters !== null} onCancel={() => setClusters(null)} footer={null} width={680}>
+      <Modal title="失败原因聚类" visible={clustersOpen} onCancel={() => setClustersOpen(false)} footer={null} width={680}>
         <div style={{ marginBottom: 12 }}>
           <RadioGroup type="button" value={clusterDim} onChange={(e) => void openClusters(e.target.value as ClusterDimension)}>
             {CLUSTER_DIM_OPTIONS.map((o) => <Radio key={o.value} value={o.value}>{o.label}</Radio>)}
           </RadioGroup>
         </div>
-        {clusterLoading ? (
+        {clustersQuery.isFetching ? (
           <Typography.Text type="tertiary">加载中…</Typography.Text>
         ) : clusters?.length ? clusters.map((c, i) => {
           const canReplayCluster = canOperate && (c.dimension !== 'reason' || !!c.reasonKeyword);
@@ -802,7 +715,7 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
         okText="确认重放"
         cancelText="取消"
         onOk={() => void doReplay()}
-        okButtonProps={{ loading: replayLoading, type: 'warning' }}
+        okButtonProps={{ loading: replayMutation.isPending, type: 'warning' }}
         width={640}
       >
         <Form
@@ -848,7 +761,7 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
             </Col>
           </Row>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 4 }}>
-            <Button size="small" theme="light" loading={previewLoading} onClick={() => void doPreview()}>预览匹配数</Button>
+            <Button size="small" theme="light" loading={replayPreviewMutation.isPending} onClick={() => void doPreview()}>预览匹配数</Button>
             {replayPreview !== null && (
               <Typography.Text type="tertiary" size="small">
                 匹配 <b>{replayPreview}</b> 条，本次将重放 <b>{Math.min(replayPreview, replayFilter.limit)}</b> 条，预计约 {Math.max(1, Math.ceil(Math.min(replayPreview, replayFilter.limit) / Math.max(1, replayFilter.ratePerSecond)))} 秒错峰完成
@@ -867,18 +780,8 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
 const RT_STAT: CSSProperties = { display: 'flex', flexDirection: 'column', minWidth: 84 };
 
 function RuntimeStatusBar() {
-  const [status, setStatus] = useState<WorkflowJobRuntimeStatus | null>(null);
-  const [loading, setLoading] = useState(false);
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const r = await request.get<WorkflowJobRuntimeStatus>('/api/workflows/engine/jobs/runtime-status');
-      if (r.code === 0) setStatus(r.data);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-  useEffect(() => { void load(); }, [load]);
+  const statusQuery = useWorkflowJobRuntimeStatus();
+  const status = statusQuery.data ?? null;
 
   const stat = (label: string, value: ReactNode, danger?: boolean) => (
     <div style={RT_STAT}>
@@ -904,25 +807,19 @@ function RuntimeStatusBar() {
       {stat('最后领取', status?.lastClaimedAt ?? '—')}
       {stat('失败率(1h)', status ? `${status.failureRate}%` : '-', !!status && status.failureRate >= 20)}
       {stat('平均耗时(1h)', status?.avgDurationMs != null ? `${status.avgDurationMs}ms` : '—')}
-      <Button size="small" theme="borderless" icon={<RotateCcw size={14} />} loading={loading} onClick={() => void load()} style={{ marginLeft: 'auto' }}>刷新</Button>
+      <Button size="small" theme="borderless" icon={<RotateCcw size={14} />} loading={statusQuery.isFetching} onClick={() => void statusQuery.refetch()} style={{ marginLeft: 'auto' }}>刷新</Button>
     </div>
   );
 }
 
 export default function WorkflowJobsView() {
   const [activeType, setActiveType] = useState<WorkflowJobType>(JOB_TYPES[0]);
-  const [summaryMap, setSummaryMap] = useState<Record<string, WorkflowJobSummaryItem>>({});
-
-  const loadSummary = useCallback(async () => {
-    const res = await request.get<WorkflowJobSummaryItem[]>('/api/workflows/engine/jobs/summary');
-    if (res.code === 0) {
-      const next: Record<string, WorkflowJobSummaryItem> = {};
-      for (const item of res.data) next[item.jobType] = item;
-      setSummaryMap(next);
-    }
-  }, []);
-
-  useEffect(() => { void loadSummary(); }, [loadSummary]);
+  const summaryQuery = useWorkflowJobSummary();
+  const summaryMap = useMemo(() => {
+    const next: Record<string, WorkflowJobSummaryItem> = {};
+    for (const item of summaryQuery.data ?? []) next[item.jobType] = item;
+    return next;
+  }, [summaryQuery.data]);
 
   return (
     <>
@@ -953,7 +850,7 @@ export default function WorkflowJobsView() {
                 </span>
               )}
             >
-              {activeType === t && <JobTypePanel jobType={t} summary={item} onMutated={loadSummary} />}
+              {activeType === t && <JobTypePanel jobType={t} summary={item} onMutated={() => void summaryQuery.refetch()} />}
             </TabPane>
           );
         })}

@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Input, Button, Toast } from '@douyinfe/semi-ui';
 import { Crown } from 'lucide-react';
-import { memberRequest } from '../../utils/member-request';
 import { useSmsCode } from '../../hooks/useSmsCode';
+import { useResetMemberPassword } from '../../hooks/queries';
 
 const PHONE_REGEX = /^1[3-9]\d{9}$/;
 
@@ -13,7 +13,7 @@ export default function ForgotPasswordPage() {
   const [phone, setPhone] = useState('');
   const [smsCode, setSmsCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [loading, setLoading] = useState(false);
+  const resetPasswordMutation = useResetMemberPassword();
 
   const handleReset = async () => {
     if (!PHONE_REGEX.test(phone)) {
@@ -28,18 +28,12 @@ export default function ForgotPasswordPage() {
       Toast.warning('新密码至少 6 位');
       return;
     }
-    setLoading(true);
-    const res = await memberRequest.post(
-      '/api/member/auth/reset-password',
-      { phone, smsCode, newPassword },
-      { silent: true },
-    );
-    setLoading(false);
-    if (res.code === 0) {
+    try {
+      await resetPasswordMutation.mutateAsync({ phone, smsCode, newPassword });
       Toast.success('密码已重置，请重新登录');
       navigate('/login', { replace: true });
-    } else {
-      Toast.error(res.message || '重置失败');
+    } catch (err) {
+      Toast.error(err instanceof Error ? err.message : '重置失败');
     }
   };
 
@@ -85,7 +79,7 @@ export default function ForgotPasswordPage() {
           size="large"
           theme="solid"
           block
-          loading={loading}
+          loading={resetPasswordMutation.isPending}
           onClick={handleReset}
           style={{ background: 'var(--m-primary)' }}
         >

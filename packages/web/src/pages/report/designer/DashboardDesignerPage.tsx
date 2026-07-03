@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Button, Input, Select, Spin, Toast, Typography, Empty, Tooltip, Modal, Form, Space } from '@douyinfe/semi-ui';
+import { Button, Input, Select, Spin, Toast, Typography, Empty, Tooltip, Form, Space } from '@douyinfe/semi-ui';
 import { Save, ArrowLeft, Eye, Trash2, Copy, Undo2, Redo2, SlidersHorizontal, LayoutGrid, Monitor, Settings2, Images } from 'lucide-react';
 import RGL, { WidthProvider, type Layout } from 'react-grid-layout/legacy';
 import { Rnd } from 'react-rnd';
@@ -8,7 +8,6 @@ import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import '../report-grid.css';
 import '../report-screen.css';
-import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import { WidgetRenderer } from '../widgets/WidgetRenderer';
 import { WIDGET_TYPES, type WidgetTypeMeta } from '../widgets/widget-meta';
@@ -17,8 +16,14 @@ import { FilterBar } from '../widgets/FilterBar';
 import { ConfigPanel } from './ConfigPanel';
 import { FilterConfigModal } from './FilterConfigModal';
 import AppModal from '@/components/AppModal';
+import { useReportDashboardDetail } from '@/hooks/queries/report-dashboards';
+import {
+  useReportDesignerDashboardLookup,
+  useReportDesignerDatasets,
+  useSaveReportDashboardDesign,
+} from '@/hooks/queries/report-designer';
 import type {
-  ReportDashboard, ReportDataset, ReportWidget, ReportWidgetType, ReportGridItem, ReportCanvasItem,
+  ReportDataset, ReportWidget, ReportWidgetType, ReportGridItem, ReportCanvasItem,
   ReportWidgetOptions, ReportFilter, ReportDashboardConfig, ReportScreenConfig, ReportCarouselConfig,
 } from '@zenith/shared';
 
@@ -51,15 +56,11 @@ export default function DashboardDesignerPage() {
   const { hasPermission } = usePermission();
   const canSave = hasPermission('report:dashboard:update');
 
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
   const [status, setStatus] = useState<'enabled' | 'disabled'>('enabled');
   const [remark, setRemark] = useState<string | null>(null);
   const [doc, setDoc] = useState<Doc>({ layout: [], canvasLayout: [], widgets: [], filters: [], config: {} });
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [datasets, setDatasets] = useState<ReportDataset[]>([]);
-  const [dashboards, setDashboards] = useState<{ id: number; name: string }[]>([]);
   const [filterValues, setFilterValues] = useState<Record<string, unknown>>({});
   const [filterModal, setFilterModal] = useState(false);
   const [screenModal, setScreenModal] = useState(false);
@@ -71,6 +72,7 @@ export default function DashboardDesignerPage() {
   const docRef = useRef(doc); docRef.current = doc;
   const past = useRef<Doc[]>([]);
   const future = useRef<Doc[]>([]);
+  const seededDashboardId = useRef<number | null>(null);
 
   const layoutMode = doc.config.layoutMode ?? 'grid';
   const screenConfig = useMemo(() => ({ ...DEFAULT_SCREEN, ...(doc.config.screenConfig ?? {}) }), [doc.config.screenConfig]);
@@ -99,26 +101,27 @@ export default function DashboardDesignerPage() {
   const redo = useCallback(() => { const next = future.current.pop(); if (!next) return; past.current.push(docRef.current); setDoc(next); }, []);
 
   const { get: getData } = useWidgetData(doc.widgets, filterValues);
+  const dashboardQuery = useReportDashboardDetail(dashboardId, !!dashboardId);
+  const datasetsQuery = useReportDesignerDatasets();
+  const dashboardsQuery = useReportDesignerDashboardLookup(dashboardId);
+  const saveMutation = useSaveReportDashboardDesign();
+  const datasets: ReportDataset[] = datasetsQuery.data ?? [];
+  const dashboards = dashboardsQuery.data ?? [];
 
   useEffect(() => {
-    if (!dashboardId) return;
-    setLoading(true);
-    Promise.all([
-      request.get<ReportDashboard>(`/api/report/dashboards/${dashboardId}`),
-      request.get<{ list: ReportDataset[] }>('/api/report/datasets?page=1&pageSize=200'),
-      request.get<{ list: { id: number; name: string }[] }>('/api/report/dashboards?page=1&pageSize=200'),
-    ]).then(([dRes, dsRes, dashRes]) => {
-      if (dRes.code === 0) {
-        setName(dRes.data.name); setStatus(dRes.data.status); setRemark(dRes.data.remark ?? null);
-        setDoc({ layout: (dRes.data.layout ?? []) as Layout, canvasLayout: dRes.data.canvasLayout ?? [], widgets: dRes.data.widgets ?? [], filters: dRes.data.filters ?? [], config: dRes.data.config ?? {} });
-        const fv: Record<string, unknown> = {};
-        for (const f of dRes.data.filters ?? []) fv[f.id] = defaultFilterValue(f);
-        setFilterValues(fv);
-      } else Toast.error(dRes.message || '加载失败');
-      if (dsRes.code === 0) setDatasets(dsRes.data.list.filter((d) => d.status === 'enabled'));
-      if (dashRes.code === 0) setDashboards(dashRes.data.list.filter((d) => d.id !== dashboardId));
-    }).finally(() => setLoading(false));
+    seededDashboardId.current = null;
   }, [dashboardId]);
+
+  useEffect(() => {
+    const dashboard = dashboardQuery.data;
+    if (!dashboard || seededDashboardId.current === dashboard.id) return;
+    seededDashboardId.current = dashboard.id;
+    setName(dashboard.name); setStatus(dashboard.status); setRemark(dashboard.remark ?? null);
+    setDoc({ layout: (dashboard.layout ?? []) as Layout, canvasLayout: dashboard.canvasLayout ?? [], widgets: dashboard.widgets ?? [], filters: dashboard.filters ?? [], config: dashboard.config ?? {} });
+    const fv: Record<string, unknown> = {};
+    for (const f of dashboard.filters ?? []) fv[f.id] = defaultFilterValue(f);
+    setFilterValues(fv);
+  }, [dashboardQuery.data]);
 
   // 画布缩放：等比适配可视区（宽高都装得下），保证进入时整屏居中可见
   useEffect(() => {
@@ -198,12 +201,9 @@ export default function DashboardDesignerPage() {
   }
 
   async function handleSave() {
-    setSaving(true);
-    try {
-      const payload = { name, status, remark: remark || undefined, layout: cleanLayout(doc.layout), canvasLayout: doc.canvasLayout, widgets: doc.widgets, filters: doc.filters, config: doc.config };
-      const res = await request.put(`/api/report/dashboards/${dashboardId}`, payload);
-      if (res.code === 0) Toast.success('已保存');
-    } finally { setSaving(false); }
+    const payload = { name, status, remark: remark || undefined, layout: cleanLayout(doc.layout), canvasLayout: doc.canvasLayout, widgets: doc.widgets, filters: doc.filters, config: doc.config };
+    await saveMutation.mutateAsync({ id: dashboardId, values: payload });
+    Toast.success('已保存');
   }
 
   function applyScreenConfig(patch: Partial<ReportScreenConfig>) {
@@ -223,7 +223,7 @@ export default function DashboardDesignerPage() {
     return cols.map((c) => ({ value: c, label: c }));
   }, [selectedWidget, selectedDataset, getData]);
 
-  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spin size="large" /></div>;
+  if (dashboardQuery.isPending || datasetsQuery.isPending || dashboardsQuery.isPending) return <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spin size="large" /></div>;
 
   const renderWidgetCard = (w: ReportWidget, opts?: { drag?: boolean }) => {
     const ds = getData(w);
@@ -274,7 +274,7 @@ export default function DashboardDesignerPage() {
               optionList={[{ value: 'light', label: '浅色' }, { value: 'dark', label: '深色' }]} />}
         <div style={{ flex: 1 }} />
         <Button icon={<Eye size={16} />} onClick={() => navigate(`/report/dashboards/${dashboardId}/view`)}>预览</Button>
-        <Button type="primary" icon={<Save size={16} />} loading={saving} disabled={!canSave} onClick={handleSave}>保存</Button>
+        <Button type="primary" icon={<Save size={16} />} loading={saveMutation.isPending} disabled={!canSave} onClick={handleSave}>保存</Button>
       </div>
 
       <div className="report-designer__main">

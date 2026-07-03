@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Select, Modal, Form, Toast, Tag, Spin, Row, Col, Dropdown } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search, Plus, RotateCcw, KeyRound, ChevronDown } from 'lucide-react';
-import type { Member, MemberLevel, PaginatedResponse } from '@zenith/shared';
+import type { Member } from '@zenith/shared';
 import { MEMBER_STATUS_LABELS } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -16,6 +16,16 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
 import { MemberDetailDrawer } from './MemberDetailDrawer';
+import {
+  memberAdminKeys,
+  useBatchMemberLevel,
+  useBatchMemberStatus,
+  useDeleteMember,
+  useMemberLevels,
+  useMemberList,
+  useResetMemberPassword,
+  useSaveMember,
+} from '@/hooks/queries/member-admin';
 
 const STATUS_COLORS: Record<string, 'green' | 'grey' | 'red'> = { active: 'green', inactive: 'grey', banned: 'red' };
 const statusOptions = (['active', 'inactive', 'banned'] as const).map((v) => ({ value: v, label: MEMBER_STATUS_LABELS[v] }));
@@ -25,16 +35,12 @@ const defaultSearch: SearchParams = { keyword: '', status: '', levelId: undefine
 
 export default function MembersPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
   const pwdFormApi = useRef<FormApi | null>(null);
-  const [data, setData] = useState<Member[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [search, setSearch] = useState<SearchParams>(defaultSearch);
-  const searchRef = useRef<SearchParams>(defaultSearch);
-  searchRef.current = search;
-  const [levels, setLevels] = useState<MemberLevel[]>([]);
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearch);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearch);
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<Member | null>(null);
   const [pwdVisible, setPwdVisible] = useState(false);
@@ -45,38 +51,39 @@ export default function MembersPage() {
   const [batchLevelVisible, setBatchLevelVisible] = useState(false);
   const [batchStatus, setBatchStatus] = useState<string>('');
   const [batchLevelId, setBatchLevelId] = useState<number | undefined>(undefined);
-  const [batchLoading, setBatchLoading] = useState(false);
   // detail drawer
   const [detailMemberId, setDetailMemberId] = useState<number | null>(null);
+  const listQuery = useMemberList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    status: submittedParams.status || undefined,
+    levelId: submittedParams.levelId,
+  });
+  const levelsQuery = useMemberLevels();
+  const data = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const levels = levelsQuery.data ?? [];
+  const saveMutation = useSaveMember();
+  const deleteMutation = useDeleteMember();
+  const resetPasswordMutation = useResetMemberPassword();
+  const batchStatusMutation = useBatchMemberStatus();
+  const batchLevelMutation = useBatchMemberLevel();
 
-  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const ap = params ?? searchRef.current;
-    setLoading(true);
-    try {
-      const q = new URLSearchParams({
-        page: String(p), pageSize: String(ps),
-        ...(ap.keyword ? { keyword: ap.keyword } : {}),
-        ...(ap.status ? { status: ap.status } : {}),
-        ...(ap.levelId ? { levelId: String(ap.levelId) } : {}),
-      }).toString();
-      const res = await request.get<PaginatedResponse<Member>>(`/api/members?${q}`);
-      if (res.code === 0) { setData(res.data.list); setTotal(res.data.total); }
-    } finally { setLoading(false); }
-  }, [page, pageSize]);
-
-  useEffect(() => { void fetchData(); }, [fetchData]);
-  useEffect(() => {
-    void (async () => {
-      const res = await request.get<MemberLevel[]>('/api/member-levels');
-      if (res.code === 0) setLevels(res.data);
-    })();
-  }, []);
-
-  const handleSearch = () => { setPage(1); void fetchData(1, pageSize); };
-  const handleReset = () => { setSearch(defaultSearch); setPage(1); void fetchData(1, pageSize, defaultSearch); };
+  const handleSearch = () => {
+    setPage(1);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: memberAdminKeys.memberLists });
+  };
+  const handleReset = () => {
+    setDraftParams(defaultSearch);
+    setSubmittedParams(defaultSearch);
+    setPage(1);
+    void queryClient.invalidateQueries({ queryKey: memberAdminKeys.memberLists });
+  };
 
   const buildExportQuery = () => {
-    const ap = searchRef.current;
+    const ap = submittedParams;
     return {
       ...(ap.keyword ? { keyword: ap.keyword } : {}),
       ...(ap.status ? { status: ap.status } : {}),
@@ -89,14 +96,11 @@ export default function MembersPage() {
 
   const handleModalOk = async () => {
     let values;
-    try { values = await formApi.current?.validate(); } catch { throw new Error('validation'); }
-    const res = editing
-      ? await request.put(`/api/members/${editing.id}`, values)
-      : await request.post('/api/members', values);
-    if (res.code === 0) {
-      Toast.success(editing ? '更新成功' : '创建成功');
-      setModalVisible(false); setEditing(null); void fetchData();
-    } else { throw new Error(res.message); }
+    try { values = await formApi.current!.validate(); } catch { throw new Error('validation'); }
+    await saveMutation.mutateAsync({ id: editing?.id, values });
+    Toast.success(editing ? '更新成功' : '创建成功');
+    setModalVisible(false);
+    setEditing(null);
   };
 
   const handleDelete = (record: Member) => {
@@ -105,8 +109,8 @@ export default function MembersPage() {
       content: '会员的积分、钱包、优惠券将一并删除，且无法恢复。',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete(`/api/members/${record.id}`);
-        if (res.code === 0) { Toast.success('删除成功'); void fetchData(); }
+        await deleteMutation.mutateAsync(record.id);
+        Toast.success('删除成功');
       },
     });
   };
@@ -114,37 +118,30 @@ export default function MembersPage() {
   const openResetPwd = (record: Member) => { setPwdMember(record); setPwdVisible(true); };
   const handleResetPwd = async () => {
     let values;
-    try { values = await pwdFormApi.current?.validate(); } catch { throw new Error('validation'); }
+    try { values = await pwdFormApi.current!.validate(); } catch { throw new Error('validation'); }
     if (!pwdMember) return;
-    const res = await request.post(`/api/members/${pwdMember.id}/reset-password`, values);
-    if (res.code === 0) { Toast.success('密码已重置'); setPwdVisible(false); setPwdMember(null); }
-    else throw new Error(res.message);
+    await resetPasswordMutation.mutateAsync({ id: pwdMember.id, values });
+    Toast.success('密码已重置');
+    setPwdVisible(false);
+    setPwdMember(null);
   };
 
   // ── 批量操作 ──────────────────────────────────────────────────────────────
   const handleBatchStatus = async () => {
     if (!batchStatus) return;
-    setBatchLoading(true);
-    try {
-      const res = await request.put('/api/members/batch-status', { ids: selectedRowKeys, status: batchStatus });
-      if (res.code === 0) {
-        Toast.success(res.message ?? '已更新');
-        setBatchStatusVisible(false); setBatchStatus(''); setSelectedRowKeys([]);
-        void fetchData();
-      } else throw new Error(res.message);
-    } finally { setBatchLoading(false); }
+    await batchStatusMutation.mutateAsync({ ids: selectedRowKeys, status: batchStatus });
+    Toast.success('已更新');
+    setBatchStatusVisible(false);
+    setBatchStatus('');
+    setSelectedRowKeys([]);
   };
 
   const handleBatchLevel = async () => {
-    setBatchLoading(true);
-    try {
-      const res = await request.put('/api/members/batch-level', { ids: selectedRowKeys, levelId: batchLevelId ?? null });
-      if (res.code === 0) {
-        Toast.success(res.message ?? '已更新');
-        setBatchLevelVisible(false); setBatchLevelId(undefined); setSelectedRowKeys([]);
-        void fetchData();
-      } else throw new Error(res.message);
-    } finally { setBatchLoading(false); }
+    await batchLevelMutation.mutateAsync({ ids: selectedRowKeys, levelId: batchLevelId ?? null });
+    Toast.success('已更新');
+    setBatchLevelVisible(false);
+    setBatchLevelId(undefined);
+    setSelectedRowKeys([]);
   };
 
   const formInit = editing
@@ -191,9 +188,9 @@ export default function MembersPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="昵称/手机号/用户名/邮箱"
-      value={search.keyword}
+      value={draftParams.keyword}
       showClear
-      onChange={(v) => setSearch((p) => ({ ...p, keyword: v }))}
+      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
       onEnterPress={handleSearch}
       style={{ width: 240 }}
     />
@@ -202,9 +199,9 @@ export default function MembersPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="全部状态"
-      value={search.status || undefined}
+      value={draftParams.status || undefined}
       style={{ width: 130 }}
-      onChange={(v) => setSearch((p) => ({ ...p, status: (v as string) ?? '' }))}
+      onChange={(v) => setDraftParams((p) => ({ ...p, status: (v as string) ?? '' }))}
       optionList={[{ value: '', label: '全部状态' }, ...statusOptions]}
     />
   );
@@ -212,10 +209,10 @@ export default function MembersPage() {
   const renderLevelFilter = () => (
     <Select
       placeholder="全部等级"
-      value={search.levelId}
+      value={draftParams.levelId}
       style={{ width: 140 }}
       showClear
-      onChange={(v) => setSearch((p) => ({ ...p, levelId: v as number | undefined }))}
+      onChange={(v) => setDraftParams((p) => ({ ...p, levelId: v as number | undefined }))}
       optionList={levels.map((l) => ({ value: l.id, label: l.name }))}
     />
   );
@@ -290,10 +287,10 @@ export default function MembersPage() {
         </div>
       )}
 
-      <ConfigurableTable bordered columns={columns} dataSource={data} loading={loading}
-        onRefresh={fetchData} refreshLoading={loading} rowKey="id" size="small"
+      <ConfigurableTable bordered columns={columns} dataSource={data} loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} rowKey="id" size="small"
         rowSelection={{ selectedRowKeys, onChange: (keys) => setSelectedRowKeys(keys as number[]) }}
-        pagination={buildPagination(total, fetchData)} empty="暂无数据" />
+        pagination={buildPagination(total)} empty="暂无数据" />
 
       {/* 编辑 / 新增 Modal */}
       <AppModal title={editing ? '编辑会员' : '新增会员'} visible={modalVisible} width={660}
@@ -337,7 +334,7 @@ export default function MembersPage() {
       <AppModal
         title="批量更改状态"
         visible={batchStatusVisible}
-        okButtonProps={{ loading: batchLoading }}
+        okButtonProps={{ loading: batchStatusMutation.isPending }}
         onOk={handleBatchStatus}
         onCancel={() => { setBatchStatusVisible(false); setBatchStatus(''); }}
         width={460}
@@ -350,7 +347,7 @@ export default function MembersPage() {
       <AppModal
         title="批量调整等级"
         visible={batchLevelVisible}
-        okButtonProps={{ loading: batchLoading }}
+        okButtonProps={{ loading: batchLevelMutation.isPending }}
         onOk={handleBatchLevel}
         onCancel={() => { setBatchLevelVisible(false); setBatchLevelId(undefined); }}
         width={460}

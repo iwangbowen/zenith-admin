@@ -2,46 +2,50 @@
  * 用户收藏菜单 hook
  * 在内存中维护有序的收藏菜单 ID 列表，与后端同步。
  */
-import { useState, useCallback, useEffect } from 'react';
+import { useCallback, useMemo } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { request } from '@/utils/request';
+import { unwrap } from '@/lib/query';
+
+const favoriteMenuKeys = {
+  all: ['auth', 'favorite-menus'] as const,
+};
 
 export function useFavoriteMenus() {
-  const [favorites, setFavorites] = useState<number[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const queryClient = useQueryClient();
+  const favoritesQuery = useQuery({
+    queryKey: favoriteMenuKeys.all,
+    queryFn: () => request.get<number[]>('/api/auth/favorite-menus').then(unwrap),
+  });
+  const favorites = useMemo(() => favoritesQuery.data ?? [], [favoritesQuery.data]);
 
-  // 从后端加载
-  useEffect(() => {
-    request.get<number[]>('/api/auth/favorite-menus').then((res) => {
-      if (res.code === 0) setFavorites(res.data ?? []);
-      setLoaded(true);
-    });
-  }, []);
-
-  // 保存到后端（防抖延迟 600ms）
-  const save = useCallback((ids: number[]) => {
-    request.put('/api/auth/favorite-menus', { menuIds: ids }).catch(() => null);
-  }, []);
+  const saveMutation = useMutation({
+    mutationFn: (ids: number[]) => request.put('/api/auth/favorite-menus', { menuIds: ids }).then(unwrap),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: favoriteMenuKeys.all }),
+  });
+  const { mutate: saveFavoriteMenus } = saveMutation;
 
   const isFavorite = useCallback((menuId: number) => favorites.includes(menuId), [favorites]);
 
+  const save = useCallback((ids: number[]) => {
+    queryClient.setQueryData(favoriteMenuKeys.all, ids);
+    saveFavoriteMenus(ids);
+  }, [queryClient, saveFavoriteMenus]);
+
   const toggle = useCallback(
     (menuId: number) => {
-      setFavorites((prev) => {
-        const next = prev.includes(menuId) ? prev.filter((id) => id !== menuId) : [...prev, menuId];
-        save(next);
-        return next;
-      });
+      const next = favorites.includes(menuId) ? favorites.filter((id) => id !== menuId) : [...favorites, menuId];
+      save(next);
     },
-    [save],
+    [favorites, save],
   );
 
   const reorder = useCallback(
     (ids: number[]) => {
-      setFavorites(ids);
       save(ids);
     },
     [save],
   );
 
-  return { favorites, loaded, isFavorite, toggle, reorder };
+  return { favorites, loaded: !favoritesQuery.isLoading, isFavorite, toggle, reorder };
 }

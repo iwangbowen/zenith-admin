@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Form,
@@ -10,8 +11,7 @@ import {
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Search } from 'lucide-react';
-import type { WorkflowDelegation, WorkflowDefinition, PaginatedResponse, User } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { WorkflowDelegation } from '@zenith/shared';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
@@ -19,6 +19,14 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
+import { useWorkflowDefinitionList } from '@/hooks/queries/workflow-definitions';
+import { useAllUsers } from '@/hooks/queries/users';
+import {
+  useDeleteWorkflowDelegation,
+  useSaveWorkflowDelegation,
+  useWorkflowDelegationList,
+  workflowDelegationKeys,
+} from '@/hooks/queries/workflow-delegations';
 
 type Scope = 'mine' | 'all';
 
@@ -52,85 +60,49 @@ function renderDelegationStatus(record: WorkflowDelegation) {
 }
 
 export default function WorkflowDelegationsPage() {
+  const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi<FormValues> | null>(null);
 
-  const [loading, setLoading] = useState(false);
-  const [list, setList] = useState<WorkflowDelegation[]>([]);
-  const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, buildPagination } = usePagination();
 
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
+  const listQuery = useWorkflowDelegationList({ page, pageSize, scope: submittedParams.scope });
+  const list = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<WorkflowDelegation | null>(null);
-  const [saving, setSaving] = useState(false);
 
-  const [userOptions, setUserOptions] = useState<Array<{ label: string; value: number }>>([]);
-  const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
+  const usersQuery = useAllUsers();
+  const definitionsQuery = useWorkflowDefinitionList({ page: 1, pageSize: 200 });
+  const saveMutation = useSaveWorkflowDelegation();
+  const deleteMutation = useDeleteWorkflowDelegation();
 
   const canManage = hasPermission('workflow:delegation:manage');
 
-  useEffect(() => {
-    request
-      .get<PaginatedResponse<User>>('/api/users?page=1&pageSize=200')
-      .then((res) => {
-        if (res.code === 0) {
-          setUserOptions(
-            res.data.list.map((u) => ({ label: u.nickname ?? u.username, value: u.id })),
-          );
-        }
-      })
-      .catch(() => {});
-
-    request
-      .get<PaginatedResponse<WorkflowDefinition>>('/api/workflows/definitions?page=1&pageSize=200')
-      .then((res) => {
-        if (res.code === 0) setDefinitions(res.data.list);
-      })
-      .catch(() => {});
-  }, []);
+  const userOptions = useMemo(
+    () => (usersQuery.data ?? []).map((u) => ({ label: u.nickname ?? u.username, value: u.id })),
+    [usersQuery.data],
+  );
 
   const defOptions = useMemo(
-    () => definitions.map((d) => ({ value: d.id, label: d.name })),
-    [definitions],
+    () => (definitionsQuery.data?.list ?? []).map((d) => ({ value: d.id, label: d.name })),
+    [definitionsQuery.data],
   );
-
-  const fetchData = useCallback(
-    async (p = page, ps = pageSize, params?: SearchParams) => {
-      const { scope } = params ?? searchParamsRef.current;
-      setLoading(true);
-      try {
-        const q = new URLSearchParams({ page: String(p), pageSize: String(ps), scope });
-        const res = await request.get<PaginatedResponse<WorkflowDelegation>>(
-          `/api/workflows/delegations?${q.toString()}`,
-        );
-        if (res.code === 0) {
-          setList(res.data.list);
-          setTotal(res.data.total);
-        }
-      } finally {
-        setLoading(false);
-      }
-    },
-    [page, pageSize],
-  );
-
-  useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
 
   const handleSearch = () => {
     setPage(1);
-    void fetchData(1, pageSize);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: workflowDelegationKeys.lists });
   };
 
   const handleReset = () => {
-    setSearchParams(defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
     setPage(1);
-    void fetchData(1, pageSize, defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: workflowDelegationKeys.lists });
   };
 
   const openCreate = () => {
@@ -166,13 +138,8 @@ export default function WorkflowDelegationsPage() {
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete(`/api/workflows/delegations/${id}`);
-    if (res.code === 0) {
-      Toast.success('已删除');
-      void fetchData();
-    } else {
-      Toast.error(res.message || '删除失败');
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('已删除');
   };
 
   const handleSubmit = async (vals: FormValues) => {
@@ -185,22 +152,20 @@ export default function WorkflowDelegationsPage() {
       reason: typeof vals.reason === 'string' && vals.reason.trim() ? vals.reason.trim() : null,
       enabled: vals.enabled ?? true,
     };
-    setSaving(true);
+    await saveMutation.mutateAsync({ id: editing?.id, values: body });
+    Toast.success(editing ? '更新成功' : '创建成功');
+    setModalVisible(false);
+    setEditing(null);
+  };
+
+  const handleModalOk = async () => {
+    let values: FormValues;
     try {
-      const res = editing
-        ? await request.put(`/api/workflows/delegations/${editing.id}`, body)
-        : await request.post('/api/workflows/delegations', body);
-      if (res.code === 0) {
-        Toast.success(editing ? '更新成功' : '创建成功');
-        setModalVisible(false);
-        setEditing(null);
-        void fetchData();
-      } else {
-        Toast.error(res.message || '操作失败');
-      }
-    } finally {
-      setSaving(false);
+      values = await formApi.current!.validate();
+    } catch {
+      throw new Error('validation');
     }
+    await handleSubmit(values);
   };
 
   const columns: ColumnProps<WorkflowDelegation>[] = [
@@ -276,9 +241,9 @@ export default function WorkflowDelegationsPage() {
   const renderScopeFilter = () => (
     <Select
       placeholder="数据范围"
-      value={searchParams.scope}
+      value={draftParams.scope}
       onChange={(v) =>
-        setSearchParams((prev) => ({ ...prev, scope: (v as Scope) ?? 'mine' }))
+      setDraftParams((prev) => ({ ...prev, scope: (v as Scope) ?? 'mine' }))
       }
       style={{ width: 140 }}
       optionList={[
@@ -331,13 +296,13 @@ export default function WorkflowDelegationsPage() {
 
       <ConfigurableTable<WorkflowDelegation>
         bordered
-        loading={loading}
-        onRefresh={fetchData}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         rowKey="id"
         dataSource={list}
         columns={columns}
-        pagination={buildPagination(total, fetchData)}
+        pagination={buildPagination(total)}
       />
 
       {canManage && (
@@ -348,8 +313,8 @@ export default function WorkflowDelegationsPage() {
             setModalVisible(false);
             setEditing(null);
           }}
-          onOk={() => formApi.current?.submitForm()}
-          confirmLoading={saving}
+          onOk={handleModalOk}
+          confirmLoading={saveMutation.isPending}
           closeOnEsc
           width={560}
         >

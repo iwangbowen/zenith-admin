@@ -1,104 +1,51 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import dayjs from 'dayjs';
 import { Button, DatePicker, Spin, Table, Tag, Toast } from '@douyinfe/semi-ui';
-import type { MemberCheckin, MemberCheckinStatus, MemberMilestoneStatus, MakeupCheckinResult, PaginatedResponse } from '@zenith/shared';
 import { CalendarCheck, CalendarPlus, Flame, Gift, Trophy } from 'lucide-react';
 import MonthCalendar from '@/components/MonthCalendar';
 import AppModal from '@/components/AppModal';
-import { memberRequest } from '../../utils/member-request';
 import { MemberPage } from '../../components/MemberPage';
 import { useMemberAuth } from '../../hooks/useMemberAuth';
+import {
+  useCheckinCalendar,
+  useCheckinHistory,
+  useCheckinMilestones,
+  useCheckinStatus,
+  useMakeupCheckin,
+  useMemberCheckin,
+} from '../../hooks/queries';
 
 const HISTORY_PAGE_SIZE = 10;
 
-interface CheckinResult {
-  consecutiveDays: number;
-  points: number;
-  experience: number;
-  checkinDate: string;
-}
-
 export default function CheckinPage() {
   const { refresh } = useMemberAuth();
-  const [status, setStatus] = useState<MemberCheckinStatus | null>(null);
-  const [history, setHistory] = useState<MemberCheckin[]>([]);
-  const [historyTotal, setHistoryTotal] = useState(0);
   const [historyPage, setHistoryPage] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [historyLoading, setHistoryLoading] = useState(false);
   const [displayMonth, setDisplayMonth] = useState(() => dayjs().startOf('month'));
-  const [calendarDates, setCalendarDates] = useState<Set<string>>(new Set());
-  const [calendarLoading, setCalendarLoading] = useState(false);
-  const [milestones, setMilestones] = useState<MemberMilestoneStatus | null>(null);
   const [makeupVisible, setMakeupVisible] = useState(false);
   const [makeupDate, setMakeupDate] = useState<Date | null>(null);
-  const [makeupLoading, setMakeupLoading] = useState(false);
-
-  const loadStatus = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await memberRequest.get<MemberCheckinStatus>('/api/member/checkin/status', { silent: true });
-      if (res.code === 0) setStatus(res.data);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const loadMilestones = useCallback(async () => {
-    const res = await memberRequest.get<MemberMilestoneStatus>('/api/member/checkin/milestones', { silent: true });
-    if (res.code === 0) setMilestones(res.data);
-  }, []);
-
-  const loadCalendarDates = useCallback(async (month: typeof displayMonth) => {
-    setCalendarLoading(true);
-    try {
-      const dateStart = month.format('YYYY-MM-DD');
-      const dateEnd = month.endOf('month').format('YYYY-MM-DD');
-      const res = await memberRequest.get<PaginatedResponse<MemberCheckin>>(
-        `/api/member/checkin/history?page=1&pageSize=31&dateStart=${dateStart}&dateEnd=${dateEnd}`,
-        { silent: true },
-      );
-      if (res.code === 0) {
-        setCalendarDates(new Set(res.data.list.map((r) => r.checkinDate)));
-      }
-    } finally {
-      setCalendarLoading(false);
-    }
-  }, []);
-
-  const loadHistory = useCallback(async (page = 1) => {
-    setHistoryLoading(true);
-    try {
-      const res = await memberRequest.get<PaginatedResponse<MemberCheckin>>(
-        `/api/member/checkin/history?page=${page}&pageSize=${HISTORY_PAGE_SIZE}`,
-        { silent: true },
-      );
-      if (res.code === 0) {
-        setHistory(res.data.list);
-        setHistoryTotal(res.data.total);
-        setHistoryPage(page);
-      }
-    } finally {
-      setHistoryLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadStatus();
-    void loadHistory(1);
-    void loadMilestones();
-  }, [loadHistory, loadStatus, loadMilestones]);
-
-  useEffect(() => {
-    void loadCalendarDates(displayMonth);
-  }, [loadCalendarDates, displayMonth]);
+  const monthKey = displayMonth.format('YYYY-MM');
+  const dateStart = displayMonth.format('YYYY-MM-DD');
+  const dateEnd = displayMonth.endOf('month').format('YYYY-MM-DD');
+  const statusQuery = useCheckinStatus();
+  const historyQuery = useCheckinHistory({ page: historyPage, pageSize: HISTORY_PAGE_SIZE });
+  const calendarQuery = useCheckinCalendar(monthKey, dateStart, dateEnd);
+  const milestonesQuery = useCheckinMilestones();
+  const checkinMutation = useMemberCheckin();
+  const makeupMutation = useMakeupCheckin();
+  const status = statusQuery.data ?? null;
+  const history = historyQuery.data?.list ?? [];
+  const historyTotal = historyQuery.data?.total ?? 0;
+  const calendarDates = useMemo(
+    () => new Set((calendarQuery.data?.list ?? []).map((r) => r.checkinDate)),
+    [calendarQuery.data],
+  );
+  const milestones = milestonesQuery.data ?? null;
 
   const handleCheckin = async () => {
-    const res = await memberRequest.post<CheckinResult>('/api/member/checkin', {});
-    if (res.code === 0) {
-      Toast.success(`签到成功，获得 ${res.data.points} 积分 / ${res.data.experience} 经验`);
-      await Promise.all([loadStatus(), loadHistory(1), loadCalendarDates(displayMonth), loadMilestones(), refresh()]);
-    }
+    const res = await checkinMutation.mutateAsync();
+    Toast.success(`签到成功，获得 ${res.points} 积分 / ${res.experience} 经验`);
+    setHistoryPage(1);
+    await refresh();
   };
 
   const handleMakeup = async () => {
@@ -106,20 +53,12 @@ export default function CheckinPage() {
       Toast.warning('请选择补签日期');
       return;
     }
-    setMakeupLoading(true);
-    try {
-      const res = await memberRequest.post<MakeupCheckinResult>('/api/member/checkin/makeup', {
-        date: dayjs(makeupDate).format('YYYY-MM-DD'),
-      });
-      if (res.code === 0) {
-        Toast.success(`补签成功，消耗 ${res.data.costPoints} 积分，获得 ${res.data.pointsAwarded} 积分`);
-        setMakeupVisible(false);
-        setMakeupDate(null);
-        await Promise.all([loadStatus(), loadHistory(1), loadCalendarDates(displayMonth), loadMilestones(), refresh()]);
-      }
-    } finally {
-      setMakeupLoading(false);
-    }
+    const res = await makeupMutation.mutateAsync(dayjs(makeupDate).format('YYYY-MM-DD'));
+    Toast.success(`补签成功，消耗 ${res.costPoints} 积分，获得 ${res.pointsAwarded} 积分`);
+    setMakeupVisible(false);
+    setMakeupDate(null);
+    setHistoryPage(1);
+    await refresh();
   };
 
   const handleCalendarMonthChange = (month: typeof displayMonth) => {
@@ -153,7 +92,7 @@ export default function CheckinPage() {
             <Button
               type="primary"
               theme="solid"
-              loading={loading}
+              loading={checkinMutation.isPending || statusQuery.isFetching}
               disabled={status?.checkedToday}
               onClick={handleCheckin}
               style={{ background: '#fff', color: 'var(--m-primary)', borderColor: '#fff' }}
@@ -228,7 +167,7 @@ export default function CheckinPage() {
       )}
 
       <div style={{ background: '#fff', border: '1px solid var(--m-border)', borderRadius: 12, overflow: 'hidden', marginBottom: 20 }}>
-        <Spin spinning={calendarLoading} size="middle">
+        <Spin spinning={calendarQuery.isFetching} size="middle">
           <MonthCalendar
             month={displayMonth}
             onMonthChange={handleCalendarMonthChange}
@@ -269,7 +208,7 @@ export default function CheckinPage() {
             { title: '签到时间', dataIndex: 'createdAt' },
           ]}
           dataSource={history}
-          loading={historyLoading}
+          loading={historyQuery.isFetching}
           rowKey="id"
           size="small"
           bordered
@@ -277,7 +216,7 @@ export default function CheckinPage() {
             currentPage: historyPage,
             pageSize: HISTORY_PAGE_SIZE,
             total: historyTotal,
-            onChange: (page) => void loadHistory(page),
+            onChange: (page) => setHistoryPage(page),
             showSizeChanger: false,
           }}
           empty={<div className="m-empty">暂无签到记录</div>}
@@ -289,7 +228,7 @@ export default function CheckinPage() {
         visible={makeupVisible}
         onCancel={() => { setMakeupVisible(false); setMakeupDate(null); }}
         onOk={handleMakeup}
-        okButtonProps={{ loading: makeupLoading }}
+        okButtonProps={{ loading: makeupMutation.isPending }}
         okText="确认补签"
         cancelText="取消"
       >

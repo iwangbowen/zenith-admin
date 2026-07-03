@@ -1,10 +1,11 @@
-import { type ChangeEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Modal, Select, Space, Tag, Typography,
   Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Ban, CircleCheck, GitCompare, Layers, LayoutTemplate, Plus, RotateCcw, Save, Search, Trash2, Upload } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import type { WorkflowDefinition, WorkflowDefinitionVersion, PaginatedResponse, WorkflowFormType } from '@zenith/shared';
+import type { WorkflowDefinition, WorkflowFormType, WorkflowVersionDiff as WorkflowVersionDiffData } from '@zenith/shared';
 import { WORKFLOW_FORM_TYPE_LABELS } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
@@ -20,6 +21,22 @@ import { TemplateGalleryModal } from './components/TemplateGalleryModal';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { renderEllipsis } from '../../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
+import {
+  useBatchDeleteWorkflowDefinitions,
+  useBatchDisableWorkflowDefinitions,
+  useBatchEnableWorkflowDefinitions,
+  useDeleteWorkflowDefinition,
+  useDisableWorkflowDefinition,
+  useDuplicateWorkflowDefinition,
+  useEnableWorkflowDefinition,
+  useImportWorkflowDefinition,
+  usePublishWorkflowDefinition,
+  useSaveWorkflowDefinitionAsTemplate,
+  useWorkflowDefinitionDiff,
+  useWorkflowDefinitionList,
+  useWorkflowDefinitionVersions,
+  workflowDefinitionKeys,
+} from '@/hooks/queries/workflow-definitions';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
 
@@ -59,27 +76,6 @@ interface WorkflowDefinitionImportPayload {
   form?: unknown;
 }
 
-interface WorkflowVersionDiffSide {
-  version: number;
-  name: string;
-  label: string;
-  flowData: unknown;
-  publishedAt: string | null;
-}
-
-interface DiffFieldChange { field: string; before: string; after: string }
-interface DiffNodeChange { kind: 'added' | 'removed' | 'modified'; nodeKey: string; nodeName: string; nodeType: string; fields: DiffFieldChange[] }
-interface DiffEdgeChange { kind: 'added' | 'removed' | 'modified'; from: string; to: string; before: string | null; after: string | null }
-interface DiffSummary { nodesAdded: number; nodesRemoved: number; nodesModified: number; edgesAdded: number; edgesRemoved: number; edgesModified: number }
-
-interface WorkflowVersionDiffData {
-  left: WorkflowVersionDiffSide;
-  right: WorkflowVersionDiffSide;
-  summary: DiffSummary;
-  nodeChanges: DiffNodeChange[];
-  edgeChanges: DiffEdgeChange[];
-}
-
 const DIFF_KIND_META: Record<'added' | 'removed' | 'modified', { text: string; color: 'green' | 'red' | 'orange' }> = {
   added: { text: '新增', color: 'green' },
   removed: { text: '删除', color: 'red' },
@@ -93,108 +89,100 @@ const stringifyFlowData = (value: unknown) => JSON.stringify(value ?? null, null
 export default function WorkflowDefinitionsPage() {
   const { hasPermission } = usePermission();
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<PaginatedResponse<WorkflowDefinition> | null>(null);
+  const queryClient = useQueryClient();
   const { page, setPage, pageSize, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const canBatchOperate = hasPermission('workflow:definition:publish') || hasPermission('workflow:definition:delete');
   const [historyTarget, setHistoryTarget] = useState<WorkflowDefinition | null>(null);
   const [templateGalleryVisible, setTemplateGalleryVisible] = useState(false);
   const [saveAsTarget, setSaveAsTarget] = useState<WorkflowDefinition | null>(null);
-  const [saveAsLoading, setSaveAsLoading] = useState(false);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const [importing, setImporting] = useState(false);
   const [diffTarget, setDiffTarget] = useState<WorkflowDefinition | null>(null);
-  const [versions, setVersions] = useState<WorkflowDefinitionVersion[]>([]);
-  const [versionsLoading, setVersionsLoading] = useState(false);
   const [leftVersionId, setLeftVersionId] = useState(0);
   const [rightVersionId, setRightVersionId] = useState(0);
-  const [diffLoading, setDiffLoading] = useState(false);
   const [diffData, setDiffData] = useState<WorkflowVersionDiffData | null>(null);
   const { categories, refetch: refetchCategories } = useWorkflowCategories();
   // 窄屏（单栏）响应式：默认展示列表，点「分类」按钮切到分类侧栏，选中后自动返回
   const [isLayoutNarrow, setIsLayoutNarrow] = useState(false);
   const [showCategorySidebar, setShowCategorySidebar] = useState(false);
 
-  const fetchList = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const { keyword: kw, status: st, selectedCategoryId: cid } = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(kw ? { keyword: kw } : {}),
-        ...(st ? { status: st } : {}),
-        ...(cid === null ? {} : { categoryId: String(cid) }),
-      }).toString();
-      const res = await request.get<PaginatedResponse<WorkflowDefinition>>(`/api/workflows/definitions?${query}`);
-      if (res.code === 0) {
-        setData(res.data);
-        setPage(res.data.page);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize]);
+  const listQuery = useWorkflowDefinitionList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    status: submittedParams.status || undefined,
+    categoryId: submittedParams.selectedCategoryId ?? undefined,
+  });
+  const data = listQuery.data;
+  const publishMutation = usePublishWorkflowDefinition();
+  const disableMutation = useDisableWorkflowDefinition();
+  const enableMutation = useEnableWorkflowDefinition();
+  const deleteMutation = useDeleteWorkflowDefinition();
+  const batchDisableMutation = useBatchDisableWorkflowDefinitions();
+  const batchEnableMutation = useBatchEnableWorkflowDefinitions();
+  const batchDeleteMutation = useBatchDeleteWorkflowDefinitions();
+  const duplicateMutation = useDuplicateWorkflowDefinition();
+  const importMutation = useImportWorkflowDefinition();
+  const saveAsMutation = useSaveWorkflowDefinitionAsTemplate();
+  const versionsQuery = useWorkflowDefinitionVersions(diffTarget?.id, !!diffTarget);
+  const versions = useMemo(() => versionsQuery.data ?? [], [versionsQuery.data]);
+  const diffQuery = useWorkflowDefinitionDiff({ definitionId: diffTarget?.id, left: leftVersionId, right: rightVersionId }, false);
 
   useEffect(() => {
-    void fetchList();
-  }, [fetchList]);
+    if (!diffTarget || versions.length === 0) return;
+    const latest = versions.reduce(
+      (max, item) => (!max || item.version > max.version ? item : max),
+      versions[0],
+    );
+    setLeftVersionId(latest?.id ?? 0);
+  }, [diffTarget, versions]);
 
   const handleSelectCategory = (id: number | null) => {
     setSelectedRowKeys([]);
-    setSearchParams((prev) => ({ ...prev, selectedCategoryId: id }));
+    const next = { ...draftParams, selectedCategoryId: id };
+    setDraftParams(next);
+    setSubmittedParams(next);
     setPage(1);
     setShowCategorySidebar(false);
-    void fetchList(1, pageSize, { ...searchParamsRef.current, selectedCategoryId: id });
+    void queryClient.invalidateQueries({ queryKey: workflowDefinitionKeys.lists });
   };
 
   const handleSearch = () => {
     setSelectedRowKeys([]);
     setPage(1);
-    void fetchList(1, pageSize);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: workflowDefinitionKeys.lists });
   };
 
   const handleReset = () => {
     setSelectedRowKeys([]);
-    setSearchParams(defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
     setPage(1);
-    void fetchList(1, pageSize, defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: workflowDefinitionKeys.lists });
   };
 
   const handlePublish = async (record: WorkflowDefinition) => {
-    const res = await request.post(`/api/workflows/definitions/${record.id}/publish`, {});
-    if (res.code === 0) {
-      Toast.success('发布成功');
-      void fetchList();
-    }
+    await publishMutation.mutateAsync(record.id);
+    Toast.success('发布成功');
   };
 
   const handleDisable = async (record: WorkflowDefinition) => {
-    const res = await request.post(`/api/workflows/definitions/${record.id}/disable`, {});
-    if (res.code === 0) {
-      Toast.success('已禁用');
-      void fetchList();
-    }
+    await disableMutation.mutateAsync(record.id);
+    Toast.success('已禁用');
   };
 
   const handleEnable = async (record: WorkflowDefinition) => {
-    const res = await request.post(`/api/workflows/definitions/${record.id}/enable`, {});
-    if (res.code === 0) {
-      Toast.success('已启用');
-      void fetchList();
-    }
+    await enableMutation.mutateAsync(record.id);
+    Toast.success('已启用');
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete(`/api/workflows/definitions/${id}`);
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      void fetchList();
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   };
 
   const batchDisable = () => {
@@ -204,12 +192,9 @@ export default function WorkflowDefinitionsPage() {
       content: '仅「已发布」状态的流程会被禁用，禁用后不可发起新申请。',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.post('/api/workflows/definitions/batch-disable', { ids: selectedRowKeys });
-        if (res.code === 0) {
-          Toast.success(res.message || '操作成功');
-          setSelectedRowKeys([]);
-          void fetchList();
-        }
+        await batchDisableMutation.mutateAsync(selectedRowKeys);
+        Toast.success('操作成功');
+        setSelectedRowKeys([]);
       },
     });
   };
@@ -220,12 +205,9 @@ export default function WorkflowDefinitionsPage() {
       title: `确定启用选中的 ${selectedRowKeys.length} 个流程？`,
       content: '仅「已禁用」状态的流程会被启用，启用后恢复为已发布状态。',
       onOk: async () => {
-        const res = await request.post('/api/workflows/definitions/batch-enable', { ids: selectedRowKeys });
-        if (res.code === 0) {
-          Toast.success(res.message || '操作成功');
-          setSelectedRowKeys([]);
-          void fetchList();
-        }
+        await batchEnableMutation.mutateAsync(selectedRowKeys);
+        Toast.success('操作成功');
+        setSelectedRowKeys([]);
       },
     });
   };
@@ -237,22 +219,16 @@ export default function WorkflowDefinitionsPage() {
       content: '仅「非已发布」且无发起实例的流程会被删除，删除后无法恢复。',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.post('/api/workflows/definitions/batch-delete', { ids: selectedRowKeys });
-        if (res.code === 0) {
-          Toast.success(res.message || '删除成功');
-          setSelectedRowKeys([]);
-          void fetchList();
-        }
+        await batchDeleteMutation.mutateAsync(selectedRowKeys);
+        Toast.success('删除成功');
+        setSelectedRowKeys([]);
       },
     });
   };
 
   const handleDuplicate = async (record: WorkflowDefinition) => {
-    const res = await request.post<WorkflowDefinition>(`/api/workflows/definitions/${record.id}/duplicate`, {});
-    if (res.code === 0) {
-      Toast.success('已复制为新草稿');
-      void fetchList();
-    }
+    await duplicateMutation.mutateAsync(record.id);
+    Toast.success('已复制为新草稿');
   };
 
   const handleExport = async (record: WorkflowDefinition) => {
@@ -298,75 +274,39 @@ export default function WorkflowDefinitionsPage() {
         flowData: parsed.flowData,
         form: parsed.form,
       };
-      const res = await request.post<WorkflowDefinition>('/api/workflows/definitions/import', payload);
-      if (res.code === 0) {
-        Toast.success('已导入为新草稿');
-        void fetchList();
-      }
+      await importMutation.mutateAsync(payload);
+      Toast.success('已导入为新草稿');
     } finally {
       setImporting(false);
     }
   };
 
-  const openDiffModal = async (record: WorkflowDefinition) => {
+  const openDiffModal = (record: WorkflowDefinition) => {
     setDiffTarget(record);
-    setVersions([]);
     setDiffData(null);
     setLeftVersionId(0);
     setRightVersionId(0);
-    setVersionsLoading(true);
-    try {
-      const res = await request.get<WorkflowDefinitionVersion[]>(`/api/workflows/definitions/${record.id}/versions`);
-      if (res.code === 0) {
-        const list = res.data ?? [];
-        setVersions(list);
-        const latest = list.reduce<WorkflowDefinitionVersion | null>(
-          (max, item) => (!max || item.version > max.version ? item : max),
-          null,
-        );
-        setLeftVersionId(latest?.id ?? 0);
-      }
-    } finally {
-      setVersionsLoading(false);
-    }
   };
 
   const handleDiff = async () => {
     if (!diffTarget) return;
-    setDiffLoading(true);
-    try {
-      const query = new URLSearchParams({
-        left: String(leftVersionId),
-        right: String(rightVersionId),
-      }).toString();
-      const res = await request.get<WorkflowVersionDiffData>(`/api/workflows/definitions/${diffTarget.id}/diff?${query}`);
-      if (res.code === 0) setDiffData(res.data);
-    } finally {
-      setDiffLoading(false);
-    }
+    const res = await diffQuery.refetch();
+    if (res.data) setDiffData(res.data);
   };
 
   const closeDiffModal = () => {
     setDiffTarget(null);
-    setVersions([]);
     setDiffData(null);
   };
 
   const handleSaveAsTemplate = async (values: WorkflowTemplateFormValues) => {
     if (!saveAsTarget) return;
-    setSaveAsLoading(true);
-    try {
-      const res = await request.post('/api/workflows/templates/save-as', {
-        definitionId: saveAsTarget.id,
-        ...values,
-      });
-      if (res.code === 0) {
-        Toast.success('已保存为模板');
-        setSaveAsTarget(null);
-      }
-    } finally {
-      setSaveAsLoading(false);
-    }
+    await saveAsMutation.mutateAsync({
+      definitionId: saveAsTarget.id,
+      ...values,
+    });
+    Toast.success('已保存为模板');
+    setSaveAsTarget(null);
   };
 
   const columns: ColumnProps<WorkflowDefinition>[] = [
@@ -528,8 +468,8 @@ export default function WorkflowDefinitionsPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="搜索流程名称"
-      value={searchParams.keyword}
-      onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
+      value={draftParams.keyword}
+      onChange={(v) => setDraftParams((prev) => ({ ...prev, keyword: v }))}
       showClear
       style={{ width: 200 }}
     />
@@ -538,8 +478,8 @@ export default function WorkflowDefinitionsPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="状态"
-      value={searchParams.status || undefined}
-      onChange={(v) => setSearchParams((prev) => ({ ...prev, status: typeof v === 'string' ? v : '' }))}
+      value={draftParams.status || undefined}
+      onChange={(v) => setDraftParams((prev) => ({ ...prev, status: typeof v === 'string' ? v : '' }))}
       showClear
       style={{ width: 120 }}
     >
@@ -559,7 +499,7 @@ export default function WorkflowDefinitionsPage() {
 
   const renderCreateButton = () => hasPermission('workflow:definition:create') ? (
     <Button type="primary" icon={<Plus size={14} />} onClick={() => {
-      const qs = searchParams.selectedCategoryId === null ? '' : `?categoryId=${searchParams.selectedCategoryId}`;
+      const qs = draftParams.selectedCategoryId === null ? '' : `?categoryId=${draftParams.selectedCategoryId}`;
       navigate(`/workflow/designer/new${qs}`);
     }}>
       新建流程
@@ -615,9 +555,9 @@ export default function WorkflowDefinitionsPage() {
       master={
         <CategorySidebar
           categories={categories}
-          selectedId={searchParams.selectedCategoryId}
+          selectedId={draftParams.selectedCategoryId}
           onSelect={handleSelectCategory}
-          onChanged={() => { refetchCategories(); void fetchList(); }}
+          onChanged={() => { refetchCategories(); void queryClient.invalidateQueries({ queryKey: workflowDefinitionKeys.lists }); }}
           canManage={hasPermission('workflow:definition:create')}
         />
       }
@@ -670,10 +610,10 @@ export default function WorkflowDefinitionsPage() {
             columns={columns}
             dataSource={data?.list ?? []}
             rowKey="id"
-            loading={loading}
-            onRefresh={() => void fetchList()}
-            refreshLoading={loading}
-            pagination={buildPagination(data?.total ?? 0, fetchList)}
+            loading={listQuery.isFetching}
+            onRefresh={() => void listQuery.refetch()}
+            refreshLoading={listQuery.isFetching}
+            pagination={buildPagination(data?.total ?? 0)}
             rowSelection={canBatchOperate ? {
               selectedRowKeys,
               onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
@@ -686,13 +626,13 @@ export default function WorkflowDefinitionsPage() {
               currentVersion={historyTarget.version}
               currentStatus={historyTarget.status}
               onCancel={() => setHistoryTarget(null)}
-              onRestored={() => { void fetchList(); }}
+              onRestored={() => { void queryClient.invalidateQueries({ queryKey: workflowDefinitionKeys.all }); }}
             />
           )}
           <TemplateGalleryModal
             visible={templateGalleryVisible}
             onCancel={() => setTemplateGalleryVisible(false)}
-            categoryId={searchParams.selectedCategoryId}
+            categoryId={draftParams.selectedCategoryId}
             onCreated={(id) => {
               setTemplateGalleryVisible(false);
               navigate(`/workflow/designer/${id}`);
@@ -703,7 +643,7 @@ export default function WorkflowDefinitionsPage() {
             visible={!!saveAsTarget}
             formKey={saveAsTarget?.id ?? 'save-as'}
             okIcon={<Save size={14} />}
-            confirmLoading={saveAsLoading}
+            confirmLoading={saveAsMutation.isPending}
             onCancel={() => setSaveAsTarget(null)}
             onSubmit={handleSaveAsTemplate}
             initValues={{ name: saveAsTarget?.name ?? '' }}
@@ -720,7 +660,7 @@ export default function WorkflowDefinitionsPage() {
               <Select
                 placeholder="左侧版本"
                 value={leftVersionId}
-                loading={versionsLoading}
+                loading={versionsQuery.isFetching}
                 onChange={(v) => setLeftVersionId(Number(v ?? 0))}
                 style={{ width: 240 }}
               >
@@ -734,7 +674,7 @@ export default function WorkflowDefinitionsPage() {
               <Select
                 placeholder="右侧版本"
                 value={rightVersionId}
-                loading={versionsLoading}
+                loading={versionsQuery.isFetching}
                 onChange={(v) => setRightVersionId(Number(v ?? 0))}
                 style={{ width: 240 }}
               >
@@ -745,7 +685,7 @@ export default function WorkflowDefinitionsPage() {
                   </Select.Option>
                 ))}
               </Select>
-              <Button type="primary" icon={<GitCompare size={14} />} loading={diffLoading} onClick={() => { void handleDiff(); }}>
+              <Button type="primary" icon={<GitCompare size={14} />} loading={diffQuery.isFetching} onClick={() => { void handleDiff(); }}>
                 对比
               </Button>
             </Space>

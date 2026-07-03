@@ -25,6 +25,13 @@ import FilePreviewModal from '@/components/FilePreviewModal';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import AppModal from '@/components/AppModal';
 import { getFileIcon, getFolderIcon } from '../terminal/fileIcons';
+import {
+  useDeleteTerminalEntries,
+  useTerminalFileList,
+  useTerminalFileOperation,
+  useTerminalRootInfo,
+  useUploadTerminalFile,
+} from '@/hooks/queries/file-manager';
 import './FileManagerPage.css';
 
 // ── 类型定义 ─────────────────────────────────────────────────────────────────
@@ -44,12 +51,6 @@ interface DirListing {
   path: string;
   parent: string | null;
   entries: FsEntry[];
-}
-
-interface RootInfo {
-  home: string;
-  isWindows: boolean;
-  drives: string[];
 }
 
 type ViewMode = 'list' | 'grid';
@@ -87,33 +88,6 @@ function dialogTitle(mode: string | undefined): string {
   if (mode === 'compress') return '压缩为 ZIP';
   if (mode === 'chmod') return '修改权限（chmod）';
   return '';
-}
-
-/** 模块级 XHR 上传（避免嵌套超深） */
-function uploadOneXhrFM(
-  file: File,
-  dir: string,
-  base: string,
-  token: string,
-  onProgress: (pct: number) => void,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    const fd = new FormData();
-    fd.append('path', dir);
-    fd.append('file', file);
-    xhr.upload.onprogress = (ev) => {
-      if (ev.lengthComputable) onProgress(Math.round((ev.loaded / ev.total) * 100));
-    };
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) resolve();
-      else reject(new Error(`HTTP ${xhr.status}`));
-    };
-    xhr.onerror = () => reject(new Error('网络错误'));
-    xhr.open('POST', `${base}/api/terminal-files/upload`);
-    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-    xhr.send(fd);
-  });
 }
 
 // ── 文件预览辅助 ──────────────────────────────────────────────────────────────
@@ -483,10 +457,7 @@ function VirtualGrid({ entries, selectedPaths, onSelect, onOpen, onContextMenu }
 // ── 主组件 ───────────────────────────────────────────────────────────────────
 
 export default function FileManagerPage() {
-  const [rootInfo, setRootInfo] = useState<RootInfo | null>(null);
   const [currentPath, setCurrentPath] = useState('');
-  const [entries, setEntries] = useState<FsEntry[]>([]);
-  const [loading, setLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(() => new Set());
@@ -527,6 +498,14 @@ export default function FileManagerPage() {
   const [showHidden, setShowHidden] = useState(false);
   const [propsEntry, setPropsEntry] = useState<FsEntry | null>(null);
   const [propsChecksum, setPropsChecksum] = useState<{ algo: 'md5' | 'sha1' | 'sha256'; hash: string; loading: boolean } | null>(null);
+  const rootInfoQuery = useTerminalRootInfo();
+  const rootInfo = rootInfoQuery.data ?? null;
+  const listQuery = useTerminalFileList(currentPath, currentPath !== '');
+  const entries = listQuery.data?.entries ?? [];
+  const loading = rootInfoQuery.isFetching || listQuery.isFetching;
+  const fileOperationMutation = useTerminalFileOperation();
+  const deleteEntriesMutation = useDeleteTerminalEntries();
+  const uploadTerminalFileMutation = useUploadTerminalFile();
 
   useEffect(() => {
     const el = contentRef.current;
@@ -541,44 +520,36 @@ export default function FileManagerPage() {
   // 切换属性面板时清空校验和
   useEffect(() => { setPropsChecksum(null); }, [propsEntry]);
 
-  // ── 初始化 ────────────────────────────────────────────────────────────────
-
   useEffect(() => {
-    void init();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function init() {
-    const infoRes = await request.get<RootInfo>('/api/terminal-files/root-info');
-    if (infoRes.code !== 0 || !infoRes.data) return;
-    setRootInfo(infoRes.data);
-    const { home, isWindows, drives } = infoRes.data;
+    if (!rootInfo || currentPath) return;
+    const { home, isWindows, drives } = rootInfo;
     const rootPath = isWindows ? ((/^([A-Za-z]:)/.exec(home)?.[1] ?? drives[0] ?? 'C:') + '\\') : '/';
     void navigateTo(rootPath);
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rootInfo, currentPath]);
+
+  useEffect(() => {
+    if (listQuery.data?.path && listQuery.data.path !== currentPath) {
+      setCurrentPath(listQuery.data.path);
+    }
+  }, [listQuery.data, currentPath]);
 
   // ── 导航 ─────────────────────────────────────────────────────────────────
 
   const navigateTo = useCallback(async (p: string, pushHistory = true) => {
-    setLoading(true);
     setSelectedPaths(new Set());
     setKeyword('');
-    const res = await request.get<DirListing>(`/api/terminal-files/list?path=${encodeURIComponent(p)}`);
-    setLoading(false);
-    if (res.code === 0 && res.data) {
-      setCurrentPath(res.data.path);
-      setEntries(res.data.entries);
-      if (pushHistory) {
-        const h = historyRef.current;
-        const newStack = [...h.paths.slice(0, h.index + 1), res.data.path];
-        historyRef.current = { paths: newStack, index: newStack.length - 1 };
-        setCanBack(newStack.length > 1);
-        setCanForward(false);
-      }
+    setCurrentPath(p);
+    if (pushHistory) {
+      const h = historyRef.current;
+      const newStack = [...h.paths.slice(0, h.index + 1), p];
+      historyRef.current = { paths: newStack, index: newStack.length - 1 };
+      setCanBack(newStack.length > 1);
+      setCanForward(false);
     }
   }, []);
 
-  const refresh = useCallback(() => void navigateTo(currentPath), [navigateTo, currentPath]);
+  const refresh = useCallback(() => void listQuery.refetch(), [listQuery]);
 
   const goBack = useCallback(async () => {
     const h = historyRef.current;
@@ -632,12 +603,9 @@ export default function FileManagerPage() {
   // ── 文件操作 ──────────────────────────────────────────────────────────────
 
   const handleDelete = async (paths: string[]) => {
-    for (const p of paths) {
-      await request.delete(`/api/terminal-files/entry?path=${encodeURIComponent(p)}`);
-    }
+    await deleteEntriesMutation.mutateAsync(paths);
     Toast.success(`已删除 ${paths.length} 项`);
     clearSelect();
-    refresh();
   };
 
   const handleDownload = (entry: FsEntry) => {
@@ -669,13 +637,12 @@ export default function FileManagerPage() {
     for (const e of pickedEntries) {
       const destName = e.path.split(/[\\/]/).pop() ?? e.name;
       const dest = `${destDir.replace(/[/\\]+$/, '')}${sep}${destName}`;
-      const res = await request.post(endpoint, { from: e.path, to: dest });
-      if (res.code === 0) success++;
+      await fileOperationMutation.mutateAsync({ endpoint, values: { from: e.path, to: dest } });
+      success++;
     }
     const verb = mode === 'move' ? '移动' : '复制';
     Toast.success(`已${verb} ${success}/${pickedEntries.length} 项`);
     setFolderPicker(null);
-    refresh();
   };
 
   const cleanupPreviewBlobs = () => {
@@ -750,11 +717,10 @@ export default function FileManagerPage() {
       const destName = p.split(/[\\/]/).pop() ?? p;
       const dest = `${currentPath.replace(/[/\\]+$/, '')}${sep}${destName}`;
       const endpoint = op === 'copy' ? '/api/terminal-files/copy' : '/api/terminal-files/move';
-      await request.post(endpoint, { from: p, to: dest });
+      await fileOperationMutation.mutateAsync({ endpoint, values: { from: p, to: dest } });
     }
     Toast.success(`已${op === 'copy' ? '复制' : '移动'} ${paths.length} 项`);
     if (clipboard.op === 'cut') setClipboard(null);
-    refresh();
   };
 
   const confirmDialog = async () => {
@@ -765,29 +731,29 @@ export default function FileManagerPage() {
 
     if (dialog.mode === 'rename') {
       const dest = `${dialog.entry.path.replace(/[/\\]+[^/\\]+$/, '')}${sep}${val}`;
-      const res = await request.post('/api/terminal-files/rename', { from: dialog.entry.path, to: dest });
-      if (res.code === 0) { Toast.success('已重命名'); setDialog(null); refresh(); }
+      await fileOperationMutation.mutateAsync({ endpoint: '/api/terminal-files/rename', values: { from: dialog.entry.path, to: dest } });
+      Toast.success('已重命名'); setDialog(null);
     } else if (dialog.mode === 'newFile' || dialog.mode === 'newDir') {
       const type = dialog.mode === 'newDir' ? 'dir' : 'file';
       const newPath = `${currentPath.replace(/[/\\]+$/, '')}${sep}${val}`;
-      const res = await request.post('/api/terminal-files/create', { path: newPath, type });
-      if (res.code === 0) { Toast.success('已创建'); setDialog(null); refresh(); }
+      await fileOperationMutation.mutateAsync({ endpoint: '/api/terminal-files/create', values: { path: newPath, type } });
+      Toast.success('已创建'); setDialog(null);
     } else if (dialog.mode === 'move') {
-      const res = await request.post('/api/terminal-files/move', { from: dialog.entry.path, to: val });
-      if (res.code === 0) { Toast.success('已移动'); setDialog(null); refresh(); }
+      await fileOperationMutation.mutateAsync({ endpoint: '/api/terminal-files/move', values: { from: dialog.entry.path, to: val } });
+      Toast.success('已移动'); setDialog(null);
     } else if (dialog.mode === 'copy') {
-      const res = await request.post('/api/terminal-files/copy', { from: dialog.entry.path, to: val });
-      if (res.code === 0) { Toast.success('已复制'); setDialog(null); refresh(); }
+      await fileOperationMutation.mutateAsync({ endpoint: '/api/terminal-files/copy', values: { from: dialog.entry.path, to: val } });
+      Toast.success('已复制'); setDialog(null);
     } else if (dialog.mode === 'compress') {
       const paths = dialog.selEntries.map((e) => e.path);
       const dest = `${currentPath.replace(/[/\\]+$/, '')}${sep}${val}`;
-      const res = await request.post('/api/terminal-files/compress', { paths, destPath: dest });
-      if (res.code === 0) { Toast.success('压缩成功'); setDialog(null); refresh(); }
+      await fileOperationMutation.mutateAsync({ endpoint: '/api/terminal-files/compress', values: { paths, destPath: dest } });
+      Toast.success('压缩成功'); setDialog(null);
     } else if (dialog.mode === 'chmod') {
       const mode = Number.parseInt(val, 8);
       if (Number.isNaN(mode)) { Toast.error('请输入有效的八进制权限值，如 755'); return; }
-      const res = await request.post('/api/terminal-files/chmod', { path: dialog.entry.path, mode });
-      if (res.code === 0) { Toast.success('权限已修改'); setDialog(null); refresh(); }
+      await fileOperationMutation.mutateAsync({ endpoint: '/api/terminal-files/chmod', values: { path: dialog.entry.path, mode } });
+      Toast.success('权限已修改'); setDialog(null);
     }
   };
 
@@ -797,18 +763,20 @@ export default function FileManagerPage() {
     const files = Array.from(e.target.files ?? []);
     if (!files.length) return;
     const dir = ctxUploadDirRef.current || currentPath;
-    const token = localStorage.getItem(TOKEN_KEY) ?? '';
-    const base = appConfig.apiBaseUrl || '';
     setUploading(files.map((f) => ({ name: f.name, progress: 0 })));
 
     const makeProgressHandler = (i: number) => (pct: number) => setUploading((prev) => updateUploadPct(prev, i, pct));
     Promise.allSettled(
-      files.map((f, i) => uploadOneXhrFM(f, dir, base, token, makeProgressHandler(i))),
+      files.map((f, i) => {
+        const formData = new FormData();
+        formData.append('path', dir);
+        formData.append('file', f);
+        return uploadTerminalFileMutation.mutateAsync({ formData, onProgress: makeProgressHandler(i) });
+      }),
     ).then((results) => {
       const success = results.filter((r) => r.status === 'fulfilled').length;
       Toast.success(`已上传 ${success}/${files.length} 个文件`);
       setUploading([]);
-      refresh();
     });
     e.target.value = '';
   };
@@ -819,8 +787,8 @@ export default function FileManagerPage() {
 
   const handleExtract = async (entry: FsEntry) => {
     Toast.info({ content: '正在解压…', duration: 1 });
-    const res = await request.post('/api/terminal-files/extract', { path: entry.path });
-    if (res.code === 0) { Toast.success('解压成功'); refresh(); }
+    await fileOperationMutation.mutateAsync({ endpoint: '/api/terminal-files/extract', values: { path: entry.path } });
+    Toast.success('解压成功');
   };
 
   const fetchChecksum = async (entry: FsEntry, algo: 'md5' | 'sha1' | 'sha256') => {

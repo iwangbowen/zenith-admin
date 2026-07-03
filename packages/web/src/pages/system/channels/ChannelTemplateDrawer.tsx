@@ -8,17 +8,21 @@
  *   - image：content 为图片 URL
  *   - news：extra.card = { title, cover, text(摘要), actions:[{ url }] }
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Button, Form, Modal, SideSheet, Space, Tag, Toast, Typography, Upload } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ImagePlus, Plus, Trash2 } from 'lucide-react';
 import type { ChannelMessageTemplate, ChannelMessageType, ChatCard, ChatMessageExtra } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { config } from '@/config';
 import { formatDateTime } from '@/utils/date';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import {
+  useChannelTemplates,
+  useDeleteChannelTemplate,
+  useSaveChannelTemplate,
+} from '@/hooks/queries/channels';
 
 interface Props {
   visible: boolean;
@@ -57,28 +61,15 @@ interface TemplateFormValues {
 }
 
 export function ChannelTemplateDrawer({ visible, onClose, onChanged }: Readonly<Props>) {
-  const [list, setList] = useState<ChannelMessageTemplate[]>([]);
-  const [loading, setLoading] = useState(false);
   const [editVisible, setEditVisible] = useState(false);
   const [editing, setEditing] = useState<ChannelMessageTemplate | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const [formValues, setFormValues] = useState<TemplateFormValues>({});
   const [imageUrl, setImageUrl] = useState('');
   const [coverUrl, setCoverUrl] = useState('');
-
-  const fetchList = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await request.get<ChannelMessageTemplate[]>('/api/channels/templates', { silent: true });
-      if (res.code === 0 && res.data) setList(res.data);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (visible) void fetchList();
-  }, [visible, fetchList]);
+  const listQuery = useChannelTemplates(visible);
+  const list = listQuery.data ?? [];
+  const saveMutation = useSaveChannelTemplate();
+  const deleteMutation = useDeleteChannelTemplate();
 
   const openCreate = () => {
     setEditing(null);
@@ -134,29 +125,16 @@ export function ChannelTemplateDrawer({ visible, onClose, onChanged }: Readonly<
 
     const payload = { name, type, title: payloadTitle, content: payloadContent, extra };
 
-    setSubmitting(true);
-    try {
-      const res = editing
-        ? await request.put(`/api/channels/templates/${editing.id}`, payload)
-        : await request.post('/api/channels/templates', payload);
-      if (res.code === 0) {
-        Toast.success(editing ? '已更新' : '已创建');
-        setEditVisible(false);
-        void fetchList();
-        onChanged?.();
-      }
-    } finally {
-      setSubmitting(false);
-    }
+    await saveMutation.mutateAsync({ id: editing?.id, values: payload });
+    Toast.success(editing ? '已更新' : '已创建');
+    setEditVisible(false);
+    onChanged?.();
   };
 
   const handleDelete = async (t: ChannelMessageTemplate) => {
-    const res = await request.delete(`/api/channels/templates/${t.id}`);
-    if (res.code === 0) {
-      Toast.success('已删除');
-      void fetchList();
-      onChanged?.();
-    }
+    await deleteMutation.mutateAsync(t.id);
+    Toast.success('已删除');
+    onChanged?.();
   };
 
   const columns: ColumnProps<ChannelMessageTemplate>[] = [
@@ -206,7 +184,7 @@ export function ChannelTemplateDrawer({ visible, onClose, onChanged }: Readonly<
         columns={columns}
         dataSource={list}
         rowKey="id"
-        loading={loading}
+        loading={listQuery.isFetching}
         pagination={false}
         size="small"
       />
@@ -216,7 +194,7 @@ export function ChannelTemplateDrawer({ visible, onClose, onChanged }: Readonly<
         visible={editVisible}
         onCancel={() => setEditVisible(false)}
         onOk={() => void handleSubmit()}
-        confirmLoading={submitting}
+        confirmLoading={saveMutation.isPending}
         okText="保存"
         width={520}
       >

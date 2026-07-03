@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Row, Col, Card, Table, Typography, Tag, Empty, Spin } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import {
@@ -10,9 +10,9 @@ import {
   useChartPalette,
 } from '@/components/charts';
 import { CronExpressionParser } from 'cron-parser';
-import type { CronJob, CronJobStats, CronJobStatsPerJob, CronJobRecentLog, CronRunStatus } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { CronJob, CronJobStatsPerJob, CronJobRecentLog, CronRunStatus } from '@zenith/shared';
 import dayjs from 'dayjs';
+import { useCronJobStats } from '@/hooks/queries/cron-jobs';
 
 const SUCCESS_COLOR = '#10b981';
 const FAIL_COLOR = '#ef4444';
@@ -76,21 +76,10 @@ function calcUpcoming(jobs: CronJob[], total = 30): UpcomingItem[] {
 
 export default function CronJobDashboard({ jobs }: Readonly<Props>) {
   const palette = useChartPalette();
-  const [stats, setStats] = useState<CronJobStats | null>(null);
-  const [loading, setLoading] = useState(false);
+  const statsQuery = useCronJobStats();
+  const stats = statsQuery.data ?? null;
+  const loading = statsQuery.isFetching;
   const upcoming = useMemo(() => calcUpcoming(jobs, 30), [jobs]);
-
-  const fetchStats = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await request.get<CronJobStats>('/api/cron-jobs/stats');
-      if (res.code === 0) setStats(res.data);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { void fetchStats(); }, [fetchStats]);
 
   const todaySuccessRate =
     stats && stats.todayRuns > 0 ? Math.round((stats.todaySuccesses / stats.todayRuns) * 100) : null;

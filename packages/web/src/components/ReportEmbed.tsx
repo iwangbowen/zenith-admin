@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { Spin, Empty } from '@douyinfe/semi-ui';
 import '@/pages/report/report-grid.css';
 import '@/pages/report/report-screen.css';
-import { request } from '@/utils/request';
 import { ScreenCanvas } from '@/pages/report/widgets/ScreenCanvas';
 import { useWidgetData } from '@/pages/report/widgets/useWidgetData';
 import { FilterBar } from '@/pages/report/widgets/FilterBar';
-import type { ReportDashboard, ReportWidget, ReportFilter, ReportGridItem, ReportCanvasItem } from '@zenith/shared';
+import type { ReportWidget, ReportFilter, ReportGridItem, ReportCanvasItem } from '@zenith/shared';
+import { useReportEmbedDashboard } from '@/hooks/queries/reports-embed';
 
 function defaultFilterValue(f: ReportFilter): unknown {
   if (f.defaultValue !== undefined) return f.defaultValue;
@@ -33,9 +33,9 @@ export interface ReportEmbedProps {
  * <ReportEmbed dashboardId={5} filterValues={{ f_dept: deptId }} height={420} />
  */
 export function ReportEmbed({ dashboardId, filterValues: external, showFilters, height, className, style }: Readonly<ReportEmbedProps>) {
-  const [loading, setLoading] = useState(true);
-  const [dashboard, setDashboard] = useState<ReportDashboard | null>(null);
   const [innerValues, setInnerValues] = useState<Record<string, unknown>>({});
+  const dashboardQuery = useReportEmbedDashboard(dashboardId);
+  const dashboard = dashboardQuery.data ?? null;
 
   const widgets = useMemo(() => dashboard?.widgets ?? [], [dashboard]);
   const filters = dashboard?.filters ?? [];
@@ -48,19 +48,13 @@ export function ReportEmbed({ dashboardId, filterValues: external, showFilters, 
   const { get: getData } = useWidgetData(widgets, effectiveValues);
 
   useEffect(() => {
-    if (!dashboardId) return;
-    setLoading(true);
-    request.get<ReportDashboard>(`/api/report/dashboards/${dashboardId}`, { silent: true }).then((res) => {
-      if (res.code === 0) {
-        setDashboard(res.data);
-        const fv: Record<string, unknown> = {};
-        for (const f of res.data.filters ?? []) fv[f.id] = defaultFilterValue(f);
-        setInnerValues(fv);
-      }
-    }).finally(() => setLoading(false));
-  }, [dashboardId]);
+    if (!dashboard) return;
+    const fv: Record<string, unknown> = {};
+    for (const f of dashboard.filters ?? []) fv[f.id] = defaultFilterValue(f);
+    setInnerValues(fv);
+  }, [dashboard]);
 
-  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: 40, ...style }} className={className}><Spin /></div>;
+  if (dashboardQuery.isLoading) return <div style={{ display: 'flex', justifyContent: 'center', padding: 40, ...style }} className={className}><Spin /></div>;
   if (!dashboard) return <Empty description="仪表盘不存在或无权访问" style={{ padding: 40, ...style }} />;
 
   return (

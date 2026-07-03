@@ -1,15 +1,16 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Form, Button, Toast, Typography, Tabs, TabPane, Divider } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { User, Lock, Mail, AtSign, Building2, ShieldCheck, BriefcaseBusiness } from 'lucide-react';
 import { Icon } from '@iconify/react';
-import { REFRESH_TOKEN_KEY, TOKEN_KEY, type RegisterInput, type OAuthProviderType, type LoginResult, type LoginResponse, type EnterpriseIdentityDiscovery, type TenantIdentityProviderSummary } from '@zenith/shared';
+import { REFRESH_TOKEN_KEY, TOKEN_KEY, type RegisterInput, type OAuthProviderType, type LoginResult, type LoginResponse, type TenantIdentityProviderSummary } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { config } from '@/config';
 import AppLogo from '@/components/AppLogo';
 import AppModal from '@/components/AppModal';
 import ForgotPasswordModal from './ForgotPasswordModal';
+import { useEnterpriseProviders, usePublicCaptcha, usePublicSystemConfig } from '@/hooks/queries/auth-public';
 import './LoginPage.css';
 
 const { Title, Text } = Typography;
@@ -42,66 +43,31 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
   }, [retrySeconds]);
   const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
 
-  // Captcha state
-  const [captchaEnabled, setCaptchaEnabled] = useState(false);
-  const [captchaId, setCaptchaId] = useState('');
-  const [captchaSvg, setCaptchaSvg] = useState('');
-  const [allowRegistration, setAllowRegistration] = useState(false);
-  const [forgotPasswordEnabled, setForgotPasswordEnabled] = useState(false);
+  const captchaQuery = usePublicCaptcha();
+  const allowRegistrationQuery = usePublicSystemConfig('allow_registration');
+  const forgotPasswordQuery = usePublicSystemConfig('forgot_password_enabled');
   const [forgotPasswordVisible, setForgotPasswordVisible] = useState(false);
   const [mfaChallenge, setMfaChallenge] = useState<Extract<LoginResult, { mfaRequired: true }> | null>(null);
   const [tenantCode, setTenantCode] = useState('');
-  const [enterpriseProviders, setEnterpriseProviders] = useState<TenantIdentityProviderSummary[]>([]);
+  const [debouncedTenantCode, setDebouncedTenantCode] = useState('');
   const [directoryProvider, setDirectoryProvider] = useState<TenantIdentityProviderSummary | null>(null);
   const [directoryLoginLoading, setDirectoryLoginLoading] = useState(false);
   const directoryFormApi = useRef<FormApi | null>(null);
 
-  const fetchCaptcha = useCallback(async () => {
-    try {
-      const res = await request.get<{ captchaId: string; svg: string; enabled: boolean }>('/api/auth/captcha', { silent: true });
-      if (res.code === 0) {
-        setCaptchaEnabled(res.data.enabled);
-        if (res.data.enabled) {
-          setCaptchaId(res.data.captchaId);
-          setCaptchaSvg(res.data.svg);
-        }
-      }
-    } catch { /* captcha endpoint not available */ }
-  }, []);
-
-  useEffect(() => { fetchCaptcha(); }, [fetchCaptcha]);
-
-  useEffect(() => {
-    request.get<{ configValue: string }>('/api/system-configs/public/allow_registration', { silent: true })
-      .then(res => {
-        if (res.code === 0 && res.data) {
-          setAllowRegistration(res.data.configValue === 'true');
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    request.get<{ configValue: string }>('/api/system-configs/public/forgot_password_enabled', { silent: true })
-      .then(res => {
-        if (res.code === 0 && res.data) {
-          setForgotPasswordEnabled(res.data.configValue === 'true');
-        }
-      })
-      .catch(() => {});
-  }, []);
-
   useEffect(() => {
     const timer = setTimeout(() => {
-      const query = tenantCode ? `?tenantCode=${encodeURIComponent(tenantCode)}` : '';
-      request.get<EnterpriseIdentityDiscovery>(`/api/auth/enterprise/providers${query}`, { silent: true })
-        .then((res) => {
-          if (res.code === 0) setEnterpriseProviders(res.data.providers);
-        })
-        .catch(() => setEnterpriseProviders([]));
+      setDebouncedTenantCode(tenantCode);
     }, 250);
     return () => clearTimeout(timer);
   }, [tenantCode]);
+  const enterpriseProvidersQuery = useEnterpriseProviders(debouncedTenantCode);
+  const captchaEnabled = captchaQuery.data?.enabled ?? false;
+  const captchaId = captchaQuery.data?.captchaId ?? '';
+  const captchaSvg = captchaQuery.data?.svg ?? '';
+  const allowRegistration = allowRegistrationQuery.data?.configValue === 'true';
+  const forgotPasswordEnabled = forgotPasswordQuery.data?.configValue === 'true';
+  const enterpriseProviders = enterpriseProvidersQuery.data?.providers ?? [];
+  const fetchCaptcha = () => { void captchaQuery.refetch(); };
 
   const handleLogin = async (values: Record<string, string>) => {
     if (retrySeconds > 0) return;
