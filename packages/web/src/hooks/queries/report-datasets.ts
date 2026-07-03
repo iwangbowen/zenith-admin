@@ -107,7 +107,10 @@ export function useGenerateReportDatasetSql() {
 }
 
 export function useRefreshReportDatasetMaterialize() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => request.post<null>(`/api/report/datasets/${id}/materialize`).then(unwrap),
+    // 物化刷新改变数据集行数/更新时间，需失效列表与详情缓存
+    onSuccess: () => qc.invalidateQueries({ queryKey: reportDatasetKeys.all }),
   });
 }

@@ -223,7 +223,7 @@ export default function DashboardDesignerPage() {
     return cols.map((c) => ({ value: c, label: c }));
   }, [selectedWidget, selectedDataset, getData]);
 
-  if (dashboardQuery.isPending || datasetsQuery.isPending || dashboardsQuery.isPending) return <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spin size="large" /></div>;
+  if ((!!dashboardId && dashboardQuery.isPending) || datasetsQuery.isPending || dashboardsQuery.isPending) return <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spin size="large" /></div>;
 
   const renderWidgetCard = (w: ReportWidget, opts?: { drag?: boolean }) => {
     const ds = getData(w);

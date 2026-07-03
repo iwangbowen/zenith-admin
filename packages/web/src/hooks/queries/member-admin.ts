@@ -146,7 +146,11 @@ export function useSaveMember() {
   return useMutation({
     mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
       (id ? request.put<Member>(`/api/members/${id}`, values) : request.post<Member>('/api/members', values)).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: memberAdminKeys.all }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: memberAdminKeys.all });
+      // 同步失效 MemberSelect 等会员下拉源缓存（members-lookup.ts）
+      void qc.invalidateQueries({ queryKey: ['members'] });
+    },
   });
 }
 
@@ -154,7 +158,10 @@ export function useDeleteMember() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => request.delete<null>(`/api/members/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: memberAdminKeys.all }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: memberAdminKeys.all });
+      void qc.invalidateQueries({ queryKey: ['members'] });
+    },
   });
 }
 

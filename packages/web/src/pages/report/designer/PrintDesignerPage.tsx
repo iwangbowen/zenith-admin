@@ -263,7 +263,7 @@ export default function PrintDesignerPage() {
     setPageConfig((prev) => ({ ...prev, margin: { ...margin, [key]: typeof value === 'number' ? value : 0 } }));
   }
 
-  if (templateQuery.isPending || datasetsQuery.isPending) return <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spin size="large" /></div>;
+  if ((!!templateId && templateQuery.isPending) || datasetsQuery.isPending) return <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spin size="large" /></div>;
 
   return (
     <div className="report-designer">
