@@ -97,6 +97,8 @@ export interface DataGridHandle {
   stageDeleteRows: (rowIndexes: number[]) => void;
   /** 取消删除标记 */
   unstageDeleteRows: (rowIndexes: number[]) => void;
+  /** 克隆行为新增草稿（自动清空主键列），返回克隆数量 */
+  cloneRows: (rowIndexes: number[]) => number;
   /** 撤销 / 重做暂存变更 */
   undo: () => boolean;
   redo: () => boolean;

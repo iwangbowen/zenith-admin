@@ -503,6 +503,29 @@ export interface RowsParams {
   filters?: Record<string, string>;
   /** 全列模糊搜索关键字（对所有列 col::text ILIKE %kw% 取 OR） */
   search?: string;
+  /** 原生 WHERE 片段（需 query 权限；只读事务内执行，经 sanitizeWhereFragment 校验） */
+  whereRaw?: string;
+}
+
+const WHERE_FRAGMENT_MAX = 2000;
+
+/**
+ * 校验原生 WHERE 片段：仅允许单个布尔表达式。
+ * 只读事务 + statement_timeout 已兜底破坏性操作；此处再拦截语句拼接与注释绕过。
+ */
+export function sanitizeWhereFragment(input: string): string | undefined {
+  const s = input.trim();
+  if (!s) return undefined;
+  if (s.length > WHERE_FRAGMENT_MAX) {
+    throw new HTTPException(400, { message: `WHERE 条件过长（上限 ${WHERE_FRAGMENT_MAX} 字符）` });
+  }
+  if (s.includes(';')) {
+    throw new HTTPException(400, { message: 'WHERE 条件不允许包含分号' });
+  }
+  if (s.includes('--') || s.includes('/*') || s.includes('*/')) {
+    throw new HTTPException(400, { message: 'WHERE 条件不允许包含注释' });
+  }
+  return s;
 }
 
 export async function getTableRows(params: RowsParams): Promise<{
@@ -511,9 +534,10 @@ export async function getTableRows(params: RowsParams): Promise<{
   page: number;
   pageSize: number;
 }> {
-  const { schema, name, page, pageSize, orderBy, orderDir = 'asc', filters, search } = params;
+  const { schema, name, page, pageSize, orderBy, orderDir = 'asc', filters, search, whereRaw } = params;
   assertIdent(schema, 'schema');
   assertIdent(name, 'table');
+  const safeWhereRaw = whereRaw === undefined ? undefined : sanitizeWhereFragment(whereRaw);
 
   // 收集需要校验存在性的列（orderBy + filters 列名），一次性查 information_schema
   const filterEntries: Array<[string, string]> = filters
@@ -613,23 +637,39 @@ export async function getTableRows(params: RowsParams): Promise<{
       }
     });
     if (searchCond) conds.push(searchCond);
+    if (safeWhereRaw) conds.push(sql`(${sql.raw(safeWhereRaw)})`);
     if (conds.length === 0) return sql.raw('');
     return sql`WHERE ${sql.join(conds, sql.raw(' AND '))}`;
   })();
 
-  return runReadOnly(async (tx) => {
-    const [listRows, totalRows] = await Promise.all([
-      tx.execute(sql`SELECT * FROM ${sql.raw(fullName)} ${whereSql} ${orderClause} LIMIT ${pageSize} OFFSET ${offset}`),
-      tx.execute(sql`SELECT count(*)::bigint AS c FROM ${sql.raw(fullName)} ${whereSql}`),
-    ]);
-    const total = Number((totalRows as unknown as Array<{ c: string | number }>)[0]?.c ?? 0);
-    return {
-      list: (listRows as unknown as Array<Record<string, unknown>>).map(serializeRow),
-      total,
-      page,
-      pageSize,
-    };
-  });
+  try {
+    return await runReadOnly(async (tx) => {
+      const [listRows, totalRows] = await Promise.all([
+        tx.execute(sql`SELECT * FROM ${sql.raw(fullName)} ${whereSql} ${orderClause} LIMIT ${pageSize} OFFSET ${offset}`),
+        tx.execute(sql`SELECT count(*)::bigint AS c FROM ${sql.raw(fullName)} ${whereSql}`),
+      ]);
+      const total = Number((totalRows as unknown as Array<{ c: string | number }>)[0]?.c ?? 0);
+      return {
+        list: (listRows as unknown as Array<Record<string, unknown>>).map(serializeRow),
+        total,
+        page,
+        pageSize,
+      };
+    });
+  } catch (err) {
+    if (err instanceof HTTPException) throw err;
+    // 原生 WHERE 片段语法/类型错误 → 400 透出给用户修正
+    if (safeWhereRaw) {
+      // drizzle 包装的错误信息含完整 SQL 噪音，优先取 PG 原生 cause
+      const cause = (err as { cause?: unknown })?.cause;
+      const msg =
+        cause instanceof Error ? cause.message
+        : err instanceof Error ? err.message
+        : String(err);
+      throw new HTTPException(400, { message: `WHERE 条件执行失败：${msg}` });
+    }
+    throw err;
+  }
 }
 
 // ─── 3.5. 表数据写入（INSERT / UPDATE / DELETE） ────────────────────────────────

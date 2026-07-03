@@ -1,16 +1,19 @@
 import { useMemo } from 'react';
 import { Dropdown, Toast } from '@douyinfe/semi-ui';
+import { FileDown, FileSpreadsheet, FileText } from 'lucide-react';
 
 import type { CellPos, DataGridColumn, SelectionSnapshot } from '@/components/data-grid';
 import {
   columnKind,
   copyValue,
+  snapshotColumnNames,
   snapshotToCsv,
   snapshotToJson,
   snapshotToMarkdown,
   snapshotToTsv,
   writeClipboard,
 } from '@/components/data-grid';
+import { buildXlsx, downloadBlob } from '@/components/data-grid/xlsx-write';
 import { buildInsertSql, buildUpdateSql } from './sql-format';
 
 export interface GridMenuState {
@@ -34,6 +37,8 @@ interface GridContextMenuProps {
   onOpenDetail: (pos: CellPos) => void;
   onEditRow: (rowIndex: number, focusField?: string) => void;
   onDeleteRows: (rowIndexes: number[]) => void;
+  /** 克隆行为新增草稿 */
+  onCloneRows?: (rowIndexes: number[]) => void;
   /** 暂存「设为 NULL」（内联编辑启用时提供） */
   onSetNull?: (rowIndex: number, columnName: string) => void;
 }
@@ -48,7 +53,7 @@ async function copyAndToast(text: string, msg: string): Promise<void> {
 export function GridContextMenu(props: GridContextMenuProps) {
   const {
     menu, onClose, rows, schema, table, primaryKey,
-    canEditRows, onFilterByValue, onOpenDetail, onEditRow, onDeleteRows, onSetNull,
+    canEditRows, onFilterByValue, onOpenDetail, onEditRow, onDeleteRows, onCloneRows, onSetNull,
   } = props;
 
   const menuContent = useMemo(() => {
@@ -97,6 +102,47 @@ export function GridContextMenu(props: GridContextMenuProps) {
 
     const filterValue = cellIsNull ? '' : copyValue(cellValue, kind);
 
+    const exportBase = `${schema ?? 'query'}_${table ?? 'result'}`;
+    /** 导出目标：有选区导出选区，否则导出已加载全部行 */
+    const exportCtx = () => {
+      if (snapshot.cellCount > 1) return { ctx: serializeCtx, label: '选区' };
+      const rowIndexes = rows.map((_, i) => i);
+      const matrix = rowIndexes.map((row) => columns.map((_, col) => ({ row, col })));
+      return {
+        ctx: { snapshot: { mode: 'cells' as const, rowIndexes, matrix, cellCount: rowIndexes.length * columns.length }, rows, columns },
+        label: '已加载行',
+      };
+    };
+
+    const exportXlsx = async () => {
+      const { ctx, label } = exportCtx();
+      const headers = snapshotColumnNames(ctx);
+      const kinds = headers.map((h) => columnKind(columns.find((c) => c.name === h)?.dataType));
+      const dataRows = ctx.snapshot.matrix.map((line) => line.map((p, i) => {
+        const raw = ctx.rows[p.row]?.[ctx.columns[p.col]?.name ?? ''];
+        if (raw === null || raw === undefined) return null;
+        if (typeof raw === 'number' || typeof raw === 'boolean') return raw;
+        return copyValue(raw, kinds[i]);
+      }));
+      const blob = await buildXlsx(table ?? 'data', headers, dataRows);
+      downloadBlob(blob, `${exportBase}_${Date.now()}.xlsx`);
+      Toast.success(`已导出${label} XLSX（${dataRows.length} 行）`);
+    };
+
+    const exportMarkdown = () => {
+      const { ctx, label } = exportCtx();
+      const blob = new Blob([snapshotToMarkdown(ctx)], { type: 'text/markdown;charset=utf-8' });
+      downloadBlob(blob, `${exportBase}_${Date.now()}.md`);
+      Toast.success(`已导出${label} Markdown`);
+    };
+
+    const exportCsvFile = () => {
+      const { ctx, label } = exportCtx();
+      const blob = new Blob(['\ufeff' + snapshotToCsv(ctx)], { type: 'text/csv;charset=utf-8' });
+      downloadBlob(blob, `${exportBase}_${Date.now()}.csv`);
+      Toast.success(`已导出${label} CSV`);
+    };
+
     return (
       <Dropdown.Menu>
         <Dropdown.Item onClick={() => { void copyAndToast(copyValue(cellValue, kind), '已复制值'); onClose(); }}>
@@ -125,6 +171,16 @@ export function GridContextMenu(props: GridContextMenuProps) {
             </Dropdown.Item>
           </>
         )}
+        <Dropdown.Divider />
+        <Dropdown.Item icon={<FileSpreadsheet size={13} />} onClick={() => { void exportXlsx(); onClose(); }}>
+          导出 XLSX{snapshot.cellCount > 1 ? '（选区）' : '（已加载行）'}
+        </Dropdown.Item>
+        <Dropdown.Item icon={<FileDown size={13} />} onClick={() => { exportCsvFile(); onClose(); }}>
+          导出 CSV{snapshot.cellCount > 1 ? '（选区）' : '（已加载行）'}
+        </Dropdown.Item>
+        <Dropdown.Item icon={<FileText size={13} />} onClick={() => { exportMarkdown(); onClose(); }}>
+          导出 Markdown{snapshot.cellCount > 1 ? '（选区）' : '（已加载行）'}
+        </Dropdown.Item>
         {canSql && selRowIndexes.length > 0 && (
           <>
             <Dropdown.Divider />
@@ -178,6 +234,16 @@ export function GridContextMenu(props: GridContextMenuProps) {
             <Dropdown.Item onClick={() => { onEditRow(pos.row, column?.name); onClose(); }}>
               编辑行
             </Dropdown.Item>
+            {onCloneRows && (
+              <Dropdown.Item
+                onClick={() => {
+                  onCloneRows(selRowIndexes.length > 0 ? selRowIndexes : [pos.row]);
+                  onClose();
+                }}
+              >
+                克隆为新行{selRowIndexes.length > 1 ? `（${selRowIndexes.length} 行）` : ''}
+              </Dropdown.Item>
+            )}
             <Dropdown.Item
               type="danger"
               onClick={() => {
@@ -191,7 +257,7 @@ export function GridContextMenu(props: GridContextMenuProps) {
         )}
       </Dropdown.Menu>
     );
-  }, [menu, rows, schema, table, primaryKey, canEditRows, onFilterByValue, onOpenDetail, onEditRow, onDeleteRows, onSetNull, onClose]);
+  }, [menu, rows, schema, table, primaryKey, canEditRows, onFilterByValue, onOpenDetail, onEditRow, onDeleteRows, onCloneRows, onSetNull, onClose]);
 
   if (!menu) return null;
 

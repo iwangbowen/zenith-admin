@@ -1,9 +1,11 @@
 import { memo, useMemo } from 'react';
-import { Button, Checkbox, Popover, Spin, Typography } from '@douyinfe/semi-ui';
+import { Button, Checkbox, Popover, RadioGroup, Radio, Spin, Typography } from '@douyinfe/semi-ui';
 import { Columns3 } from 'lucide-react';
 import type { DataGridColumn } from './types';
 
 const { Text } = Typography;
+
+export type RowStatusFilterValue = 'all' | 'modified' | 'new' | 'deleted';
 
 interface GridStatusBarProps {
   loaded: number;
@@ -18,6 +20,10 @@ interface GridStatusBarProps {
   hiddenColumns: Set<string>;
   onToggleColumn: (name: string, visible: boolean) => void;
   onResetColumns: () => void;
+  /** 行状态筛选（有暂存变更时显示） */
+  rowStatusFilter?: RowStatusFilterValue;
+  onRowStatusFilterChange?: (v: RowStatusFilterValue) => void;
+  pendingCounts?: { modified: number; added: number; deleted: number; total: number };
   extra?: React.ReactNode;
 }
 
@@ -26,7 +32,8 @@ export const GridStatusBar = memo(function GridStatusBar(props: GridStatusBarPro
   const {
     loaded, total, hasMore, loadingMore, refreshing,
     selectedRowCount, selectedCellCount,
-    columns, hiddenColumns, onToggleColumn, onResetColumns, extra,
+    columns, hiddenColumns, onToggleColumn, onResetColumns,
+    rowStatusFilter, onRowStatusFilterChange, pendingCounts, extra,
   } = props;
 
   const columnPanel = useMemo(() => (
@@ -58,12 +65,29 @@ export const GridStatusBar = memo(function GridStatusBar(props: GridStatusBarPro
     loadedText = `已加载 ${loaded.toLocaleString()} 行`;
   }
 
+  const showStatusFilter = Boolean(
+    onRowStatusFilterChange && rowStatusFilter && (pendingCounts?.total ?? 0) > 0,
+  );
+
   return (
     <div className="dg-statusbar">
       {extra}
+      {showStatusFilter && (
+        <RadioGroup
+          type="button"
+          buttonSize="small"
+          value={rowStatusFilter}
+          onChange={(e) => onRowStatusFilterChange?.(e.target.value as RowStatusFilterValue)}
+        >
+          <Radio value="all">全部</Radio>
+          <Radio value="modified" disabled={(pendingCounts?.modified ?? 0) === 0}>已修改</Radio>
+          <Radio value="new" disabled={(pendingCounts?.added ?? 0) === 0}>新增</Radio>
+          <Radio value="deleted" disabled={(pendingCounts?.deleted ?? 0) === 0}>删除</Radio>
+        </RadioGroup>
+      )}
       <span>{loadedText}</span>
       {(loadingMore || refreshing) && <Spin size="small" />}
-      {!hasMore && total !== undefined && loaded < total && (
+      {!hasMore && total !== undefined && loaded < total && (rowStatusFilter ?? 'all') === 'all' && (
         <Text type="warning" size="small">已达查询上限</Text>
       )}
       {selectedRowCount > 0 && (

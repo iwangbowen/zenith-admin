@@ -20,6 +20,8 @@ interface Params {
   orderDir?: 'asc' | 'desc';
   filters: Record<string, string>;
   search: string;
+  /** 原生 WHERE 片段（需 query 权限） */
+  whereRaw?: string;
 }
 
 /**
@@ -28,7 +30,7 @@ interface Params {
  * 新数据到达后一次性替换（refreshing 标记）；换表则立即清空。
  */
 export function useTableRowsInfinite(params: Params) {
-  const { schema, table, enabled, orderBy, orderDir, filters, search } = params;
+  const { schema, table, enabled, orderBy, orderDir, filters, search, whereRaw } = params;
   const [rows, setRows] = useState<Array<Record<string, unknown>>>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -54,6 +56,7 @@ export function useTableRowsInfinite(params: Params) {
     const active = Object.fromEntries(Object.entries(filters).filter(([, v]) => v.length > 0));
     if (Object.keys(active).length > 0) qs.set('filters', JSON.stringify(active));
     if (search.trim()) qs.set('search', search.trim());
+    if (whereRaw?.trim()) qs.set('where', whereRaw.trim());
     const res = await request.get<TableRowsResponse>(
       `/api/db-admin/tables/${encodeURIComponent(schema)}/${encodeURIComponent(table)}/rows?${qs.toString()}`,
     );
@@ -61,7 +64,7 @@ export function useTableRowsInfinite(params: Params) {
     return res.data;
     // filtersKey 代表 filters 的稳定序列化，避免对象引用抖动
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schema, table, orderBy, orderDir, filtersKey, search]);
+  }, [schema, table, orderBy, orderDir, filtersKey, search, whereRaw]);
 
   // 参数变化：重置并加载第一页（同表保留旧数据防闪烁；换表立即清空）
   useEffect(() => {

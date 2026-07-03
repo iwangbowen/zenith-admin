@@ -68,6 +68,7 @@ import {
 import { useTableRowsInfinite } from './useTableRowsInfinite';
 import { ColumnFilterButton } from './ColumnFilterButton';
 import { GridContextMenu, type GridMenuState } from './GridContextMenu';
+import { QuickOpenDialog } from './QuickOpenDialog';
 import './db-admin.css';
 
 const { Title, Text } = Typography;
@@ -145,6 +146,7 @@ export default function DbAdminPage() {
 
   const [activeTab, setActiveTab] = useState<string>('overview');
   const sqlConsoleRef = useRef<SqlConsoleHandle | null>(null);
+  const [quickOpenVisible, setQuickOpenVisible] = useState(false);
 
   // ER 图
   const [erSchema, setErSchema] = useState<ErSchema | null>(null);
@@ -165,6 +167,8 @@ export default function DbAdminPage() {
   const [rowsFilters, setRowsFilters] = useState<Record<string, string>>({});
   const [rowsSearch, setRowsSearch] = useState('');
   const [rowsSearchInput, setRowsSearchInput] = useState('');
+  const [rowsWhere, setRowsWhere] = useState('');
+  const [rowsWhereInput, setRowsWhereInput] = useState('');
   const [selectedRowIndexes, setSelectedRowIndexes] = useState<Set<number>>(new Set());
   // 数据网格
   const gridRef = useRef<DataGridHandle | null>(null);
@@ -222,6 +226,7 @@ export default function DbAdminPage() {
     orderDir: rowsOrderDir,
     filters: rowsFilters,
     search: rowsSearch,
+    whereRaw: rowsWhere,
   });
 
   const loadTables = useCallback(async () => {
@@ -267,6 +272,18 @@ export default function DbAdminPage() {
 
   useEffect(() => { void loadTables(); }, [loadTables]);
 
+  // Ctrl+P / Cmd+P 快速打开（拦截浏览器打印）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P') && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        setQuickOpenVisible(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   useEffect(() => {
     if (!selected) return;
     void loadStructure(selected);
@@ -289,6 +306,8 @@ export default function DbAdminPage() {
       setRowsFilters({});
       setRowsSearch('');
       setRowsSearchInput('');
+      setRowsWhere('');
+      setRowsWhereInput('');
       setSelectedRowIndexes(new Set());
       setPendingCount(0);
       gridRef.current?.discardPending();
@@ -319,6 +338,18 @@ export default function DbAdminPage() {
     setRowsFilters({});
     setRowsSearch('');
     setRowsSearchInput('');
+    setRowsWhere('');
+    setRowsWhereInput('');
+  };
+
+  const handleApplyWhere = (raw: string) => {
+    const s = raw.trim();
+    if (s.includes(';') || s.includes('--') || s.includes('/*')) {
+      Toast.warning('WHERE 条件不允许包含分号或注释');
+      return;
+    }
+    gridRef.current?.clearSelection();
+    setRowsWhere(s);
   };
 
   const handleRunSearch = (kw: string) => {
@@ -1029,6 +1060,7 @@ export default function DbAdminPage() {
                             {rowsOrderBy && (<> · 排序：<Text code>{rowsOrderBy} {rowsOrderDir}</Text></>)}
                             {Object.keys(rowsFilters).length > 0 && (<> · 筛选：<Text code>{Object.keys(rowsFilters).join(', ')}</Text></>)}
                             {rowsSearch && (<> · 搜索：<Text code>{rowsSearch}</Text></>)}
+                            {rowsWhere && (<> · WHERE：<Text code>{rowsWhere.length > 40 ? rowsWhere.slice(0, 40) + '…' : rowsWhere}</Text></>)}
                             {readOnlyReason && (
                               <> · <Text type="warning">{readOnlyReason}</Text></>
                             )}
@@ -1037,6 +1069,19 @@ export default function DbAdminPage() {
                             )}
                           </Text>
                           <Space wrap>
+                            {canQuery && (
+                              <Input
+                                size="small"
+                                prefix={<Text size="small" strong style={{ color: 'var(--semi-color-warning)', paddingLeft: 6 }}>WHERE</Text>}
+                                placeholder={'status = \'failed\' AND duration_ms > 100'}
+                                value={rowsWhereInput}
+                                onChange={setRowsWhereInput}
+                                onEnterPress={() => handleApplyWhere(rowsWhereInput)}
+                                showClear
+                                onClear={() => { setRowsWhereInput(''); handleApplyWhere(''); }}
+                                style={{ width: 300, fontFamily: 'Menlo, Monaco, Consolas, monospace' }}
+                              />
+                            )}
                             <Input
                               size="small"
                               prefix={<Search size={14} />}
@@ -1071,7 +1116,7 @@ export default function DbAdminPage() {
                                 disabled={!structure}
                               >导入</Button>
                             )}
-                            {(rowsOrderBy || Object.keys(rowsFilters).length > 0 || rowsSearch) && (
+                            {(rowsOrderBy || Object.keys(rowsFilters).length > 0 || rowsSearch || rowsWhere) && (
                               <Button size="small" theme="borderless" onClick={handleRowsResetAll}>重置排序 / 筛选</Button>
                             )}
                           </Space>
@@ -1320,6 +1365,10 @@ export default function DbAdminPage() {
           if (row) openEditRow(row, focusField);
         }}
         onDeleteRows={handleGridDeleteRows}
+        onCloneRows={canEditRows ? (rowIndexes) => {
+          const n = gridRef.current?.cloneRows(rowIndexes) ?? 0;
+          if (n > 0) Toast.success(`已克隆 ${n} 行为新增草稿（主键已清空）`);
+        } : undefined}
         onSetNull={handleStageNull}
       />
 
@@ -1360,6 +1409,20 @@ export default function DbAdminPage() {
           以上语句将在同一事务中执行，任意一条失败即整体回滚。
         </Text>
       </Modal>
+
+      <QuickOpenDialog
+        visible={quickOpenVisible}
+        tables={tables}
+        onClose={() => setQuickOpenVisible(false)}
+        onSelect={(t) => {
+          const target = tables.find((x) => x.schema === t.schema && x.name === t.name);
+          if (target) {
+            setActiveTab('browse');
+            handleSelectTable(target);
+            setInnerTab('data');
+          }
+        }}
+      />
     </div>
   );
 }

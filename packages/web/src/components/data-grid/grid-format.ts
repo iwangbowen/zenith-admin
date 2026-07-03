@@ -84,3 +84,10 @@ export function hasDetail(v: unknown, kind: CellKind): boolean {
   if (kind === 'json') return true;
   return typeof v === 'string' && v.length > LONG_TEXT_THRESHOLD;
 }
+
+const IMAGE_URL_RE = /^(https?:\/\/\S+\.(png|jpe?g|gif|webp|svg|avif|bmp|ico)(\?\S*)?|data:image\/[a-z+.-]+;base64,[\w+/=]+)$/i;
+
+/** 值是否为可预览的图片地址 */
+export function isImageUrl(v: unknown): v is string {
+  return typeof v === 'string' && v.length < 4096 && IMAGE_URL_RE.test(v.trim());
+}

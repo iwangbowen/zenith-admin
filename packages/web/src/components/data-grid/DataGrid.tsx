@@ -206,13 +206,36 @@ export const DataGrid = forwardRef<DataGridHandle, DataGridProps>(function DataG
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // ── 内联编辑：暂存层（需先于行管线声明，行状态筛选依赖它） ──
+  const pkColumns = useMemo(
+    () => columns.filter((c) => c.isPrimaryKey).map((c) => c.name),
+    [columns],
+  );
+  const gridEditor = useGridEditor({ pkColumns, onCountsChange: onPendingCountChange });
+  const gridEditorRef = useRef(gridEditor);
+  gridEditorRef.current = gridEditor;
+  const pkColumnsRef = useRef(pkColumns);
+  pkColumnsRef.current = pkColumns;
+
   // ── 当前页本地排序（与服务端排序互斥；纯内存重排，零请求零闪烁） ──
   const [localSort, setLocalSort] = useState<SortState | null>(null);
+  // ── 行状态筛选（借鉴 dbx rowStatusFilter：审查暂存变更时聚焦） ──
+  const [rowStatusFilter, setRowStatusFilter] = useState<'all' | 'modified' | 'new' | 'deleted'>('all');
   const rows = useMemo(() => {
-    if (!localSort) return rawRows;
+    let out = rawRows;
+    if (rowStatusFilter === 'new') {
+      out = [];
+    } else if (rowStatusFilter === 'modified') {
+      out = out.filter((r) => gridEditor.dirtyColumnsOfRow(r) !== undefined);
+    } else if (rowStatusFilter === 'deleted') {
+      out = out.filter((r) => gridEditor.isRowDeleted(r));
+    }
+    if (!localSort) return out;
     const col = columns.find((c) => c.name === localSort.column);
-    return sortRowsLocally(rawRows, col, localSort.dir);
-  }, [rawRows, localSort, columns]);
+    return sortRowsLocally(out, col, localSort.dir);
+    // gridEditor.state 驱动过滤重算
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawRows, localSort, columns, rowStatusFilter, gridEditor.state]);
 
   // ── 列状态：隐藏 + 宽度（storageKey 持久化） ──
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
@@ -317,12 +340,7 @@ export const DataGrid = forwardRef<DataGridHandle, DataGridProps>(function DataG
     onSelectedRowsChangeRef.current?.(new Set(selection.rows));
   }, [selection.rows]);
 
-  // ── 内联编辑：暂存层 + 编辑态 ──
-  const pkColumns = useMemo(
-    () => columns.filter((c) => c.isPrimaryKey).map((c) => c.name),
-    [columns],
-  );
-  const gridEditor = useGridEditor({ pkColumns, onCountsChange: onPendingCountChange });
+  // ── 内联编辑：编辑态 ──
   /** 编辑态：新增行草稿用 clientId 跟随（滚动加载追加数据后仍指向同一草稿行） */
   const [editing, setEditing] = useState<{ pos: CellPos; initialText?: string; newRowClientId?: number } | null>(null);
   const editingRef = useRef(editing);
@@ -330,13 +348,28 @@ export const DataGrid = forwardRef<DataGridHandle, DataGridProps>(function DataG
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
 
-  // 换表时清空暂存与编辑态与本地排序
+  // 换表时清空暂存与编辑态与本地排序与行状态筛选
   useEffect(() => {
     gridEditor.discardAll();
     setEditing(null);
     setLocalSort(null);
+    setRowStatusFilter('all');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [columnsKey, storageKey]);
+
+  // 切换行状态筛选：下标语义变化，清空选区与编辑态
+  const handleRowStatusFilterChange = useCallback((v: 'all' | 'modified' | 'new' | 'deleted') => {
+    setRowStatusFilter(v);
+    setEditing(null);
+    dispatchSel({ type: 'clear' });
+  }, []);
+
+  // 暂存全部清空（保存/放弃后）自动回到「全部」视图
+  useEffect(() => {
+    if (gridEditor.counts.total === 0 && rowStatusFilter !== 'all') {
+      setRowStatusFilter('all');
+    }
+  }, [gridEditor.counts.total, rowStatusFilter]);
 
   // 数据重载时关闭编辑器（滚动加载的纯追加不打断编辑）
   const prevRowsForEditRef = useRef(rows);
@@ -397,10 +430,11 @@ export const DataGrid = forwardRef<DataGridHandle, DataGridProps>(function DataG
   useEffect(() => {
     if (!hasMore || loadingMore || rows.length === 0) return;
     if (editingRef.current?.newRowClientId !== undefined) return;
+    if (rowStatusFilter !== 'all') return;
     if (lastVisibleIndex >= rows.length - LOAD_MORE_THRESHOLD) {
       onLoadMoreRef.current?.();
     }
-  }, [lastVisibleIndex, hasMore, loadingMore, rows.length]);
+  }, [lastVisibleIndex, hasMore, loadingMore, rows.length, rowStatusFilter]);
 
   // ── 滚动定位 ──
   const ensureCellVisible = useCallback((pos: CellPos) => {
@@ -434,8 +468,6 @@ export const DataGrid = forwardRef<DataGridHandle, DataGridProps>(function DataG
   // ── 编辑生命周期 ──
   const canEditColumnRef = useRef(canEditColumn);
   canEditColumnRef.current = canEditColumn;
-  const gridEditorRef = useRef(gridEditor);
-  gridEditorRef.current = gridEditor;
 
   const startEdit = useCallback((pos: CellPos, initialText?: string): boolean => {
     if (!editable) return false;
@@ -812,6 +844,27 @@ export const DataGrid = forwardRef<DataGridHandle, DataGridProps>(function DataG
         .filter((r): r is Record<string, unknown> => Boolean(r));
       if (existing.length > 0) gridEditorRef.current.unstageDeleteRows(existing);
     },
+    cloneRows: (rowIndexes: number[]) => {
+      // 克隆自暂存后的有效值，清空主键列（由 DB 默认值生成）
+      const pkSet = new Set(pkColumnsRef.current);
+      let cloned = 0;
+      for (const idx of rowIndexes.slice().sort((a, b) => a - b)) {
+        const src = displayRowsRef.current[idx];
+        if (!src) continue;
+        const initial: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(src)) {
+          if (!pkSet.has(k) && v !== undefined) initial[k] = v;
+        }
+        gridEditorRef.current.addNewRow(initial);
+        cloned++;
+      }
+      if (cloned > 0) {
+        requestAnimationFrame(() => {
+          rowVirtualizer.scrollToIndex(dataRowCountRef.current + gridEditorRef.current.state.newRows.length - 1);
+        });
+      }
+      return cloned;
+    },
     undo: () => gridEditorRef.current.undo(),
     redo: () => gridEditorRef.current.redo(),
   }), [doCopySelection, rowVirtualizer]);
@@ -1011,6 +1064,9 @@ export const DataGrid = forwardRef<DataGridHandle, DataGridProps>(function DataG
           hiddenColumns={hiddenColumns}
           onToggleColumn={handleToggleColumn}
           onResetColumns={handleResetColumns}
+          rowStatusFilter={editable ? rowStatusFilter : undefined}
+          onRowStatusFilterChange={editable ? handleRowStatusFilterChange : undefined}
+          pendingCounts={gridEditor.counts}
           extra={statusExtra}
         />
       )}

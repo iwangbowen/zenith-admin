@@ -1,6 +1,8 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { HTTPException } from 'hono/http-exception';
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditAfterData, setAuditBeforeData } from '../middleware/guard';
+import { isSuperAdmin, getUserPermissions } from '../lib/permissions';
 import {
   PaginationQuery,
   jsonContent,
@@ -89,6 +91,8 @@ const RowsQuery = PaginationQuery.extend({
   filters: z.string().optional(),
   /** 全列模糊搜索关键字 */
   search: z.string().optional(),
+  /** 原生 WHERE 片段（需 system:db-admin:query 权限，可跨表子查询） */
+  where: z.string().max(2000).optional(),
 });
 
 const sqlBodySchema = z.object({ sql: z.string().min(1, 'SQL 不能为空').max(50000) });
@@ -153,7 +157,7 @@ const tableRowsRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { schema, name } = c.req.valid('param');
-    const { page, pageSize, orderBy, orderDir, filters: filtersStr, search } = c.req.valid('query');
+    const { page, pageSize, orderBy, orderDir, filters: filtersStr, search, where } = c.req.valid('query');
     let filters: Record<string, string> | undefined;
     if (filtersStr) {
       try {
@@ -168,7 +172,20 @@ const tableRowsRoute = defineOpenAPIRoute({
         // ignore invalid JSON; fall through with undefined filters
       }
     }
-    const data = await getTableRows({ schema, name, page, pageSize, orderBy, orderDir, filters, search });
+    // 原生 WHERE 片段可含跨表子查询，要求与 SQL 控制台一致的 query 权限
+    if (where?.trim()) {
+      const user = c.get('user');
+      if (!isSuperAdmin(user.roles)) {
+        const perms = await getUserPermissions(user.userId);
+        if (!perms.includes('system:db-admin:query')) {
+          throw new HTTPException(403, { message: '使用 WHERE 条件需要 SQL 查询权限（system:db-admin:query）' });
+        }
+      }
+    }
+    const data = await getTableRows({
+      schema, name, page, pageSize, orderBy, orderDir, filters, search,
+      whereRaw: where?.trim() ? where : undefined,
+    });
     return c.json(okBody(data), 200);
   },
 });
