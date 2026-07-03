@@ -5,6 +5,7 @@
  * 保存时调用 PUT /api/channels/cs/{channelId}/conversations/{userId}/tags。
  */
 import { useEffect, useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import { TagInput, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ChannelConversation } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -23,7 +24,13 @@ interface Props {
 
 export function ConversationTagModal({ channelId, conversation, visible, onClose, onSaved }: Readonly<Props>) {
   const [tags, setTags] = useState<string[]>([]);
-  const [submitting, setSubmitting] = useState(false);
+  const saveTagsMutation = useMutation({
+    mutationFn: ({ userId, values }: { userId: number; values: string[] }) =>
+      request.put(
+        `/api/channels/cs/${channelId}/conversations/${userId}/tags`,
+        { tags: values },
+      ),
+  });
 
   useEffect(() => {
     if (visible) setTags(conversation?.tags ?? []);
@@ -45,19 +52,11 @@ export function ConversationTagModal({ channelId, conversation, visible, onClose
 
   const handleSubmit = async () => {
     if (conversation == null) return;
-    setSubmitting(true);
-    try {
-      const res = await request.put(
-        `/api/channels/cs/${channelId}/conversations/${conversation.userId}/tags`,
-        { tags },
-      );
-      if (res.code === 0) {
-        Toast.success('标签已更新');
-        onClose();
-        onSaved?.();
-      }
-    } finally {
-      setSubmitting(false);
+    const res = await saveTagsMutation.mutateAsync({ userId: conversation.userId, values: tags });
+    if (res.code === 0) {
+      Toast.success('标签已更新');
+      onClose();
+      onSaved?.();
     }
   };
 
@@ -67,7 +66,7 @@ export function ConversationTagModal({ channelId, conversation, visible, onClose
       visible={visible}
       onCancel={onClose}
       onOk={() => void handleSubmit()}
-      confirmLoading={submitting}
+      confirmLoading={saveTagsMutation.isPending}
       okText="保存"
       width={460}
       fullscreenable={false}

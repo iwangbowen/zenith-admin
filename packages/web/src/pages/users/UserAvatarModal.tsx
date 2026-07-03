@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import {
   Modal, Button, Space, Spin, Cropper, Toast,
 } from '@douyinfe/semi-ui';
@@ -54,8 +55,14 @@ export function UserAvatarModal({ visible, user, onClose, onUpdated }: UserAvata
   const [cropperVisible, setCropperVisible] = useState(false);
   const [cropperSrc, setCropperSrc] = useState('');
   const [cropRotate, setCropRotate] = useState(0);
-  const [avatarLoading, setAvatarLoading] = useState(false);
   const [presetVisible, setPresetVisible] = useState(false);
+  const uploadAvatarMutation = useMutation({
+    mutationFn: (formData: FormData) => request.post<{ url: string }>('/api/files/upload-one', formData),
+  });
+  const updateAvatarMutation = useMutation({
+    mutationFn: (avatar: string | null) => request.put<User>(`/api/users/${user.id}`, { avatar }),
+  });
+  const avatarLoading = uploadAvatarMutation.isPending || updateAvatarMutation.isPending;
 
   function closeCropper() {
     setCropperVisible(false);
@@ -89,15 +96,14 @@ export function UserAvatarModal({ visible, user, onClose, onUpdated }: UserAvata
   async function handleCropConfirm() {
     const canvas = cropperRef.current?.getCropperCanvas();
     if (!canvas) return;
-    setAvatarLoading(true);
     canvas.toBlob(async (blob) => {
-      if (!blob) { setAvatarLoading(false); return; }
+      if (!blob) return;
       const formData = new FormData();
       formData.append('file', blob, 'avatar.jpg');
-      const uploadRes = await request.post<{ url: string }>('/api/files/upload-one', formData);
+      const uploadRes = await uploadAvatarMutation.mutateAsync(formData);
       const uploadedUrl = uploadRes.data?.url;
       if (uploadRes.code === 0 && uploadedUrl) {
-        const updateRes = await request.put<User>(`/api/users/${user.id}`, { avatar: uploadedUrl });
+        const updateRes = await updateAvatarMutation.mutateAsync(uploadedUrl);
         if (updateRes.code === 0) {
           onUpdated(updateRes.data);
           Toast.success('头像已更新');
@@ -109,15 +115,12 @@ export function UserAvatarModal({ visible, user, onClose, onUpdated }: UserAvata
       } else {
         Toast.error(uploadRes.message ?? '上传失败');
       }
-      setAvatarLoading(false);
     }, 'image/jpeg', 0.85);
   }
 
   async function handleApplyPreset(url: string) {
-    setAvatarLoading(true);
     setPresetVisible(false);
-    const res = await request.put<User>(`/api/users/${user.id}`, { avatar: url });
-    setAvatarLoading(false);
+    const res = await updateAvatarMutation.mutateAsync(url);
     if (res.code === 0) { onUpdated(res.data); Toast.success('头像已更新'); onClose(); }
     else Toast.error(res.message ?? '更新失败');
   }
@@ -128,9 +131,7 @@ export function UserAvatarModal({ visible, user, onClose, onUpdated }: UserAvata
       content: '移除后将使用昵称缩写作为默认头像。',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        setAvatarLoading(true);
-        const res = await request.put<User>(`/api/users/${user.id}`, { avatar: null });
-        setAvatarLoading(false);
+        const res = await updateAvatarMutation.mutateAsync(null);
         if (res.code === 0) { onUpdated(res.data); Toast.success('头像已移除'); onClose(); }
         else Toast.error(res.message ?? '移除失败');
       },

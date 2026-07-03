@@ -30,6 +30,7 @@ export const fileManagerKeys = {
   rootInfo: ['file-manager', 'root-info'] as const,
   browseRoot: ['file-manager', 'browse'] as const,
   browse: (path: string) => ['file-manager', 'browse', path] as const,
+  picker: (path: string) => ['file-manager', 'picker', path] as const,
   checksum: (path: string | undefined, algo: string | undefined) => ['file-manager', 'checksum', path, algo] as const,
   search: (dir: string, keyword: string) => ['file-manager', 'search', dir, keyword] as const,
 };
@@ -47,6 +48,14 @@ export function useTerminalFileList(path: string, enabled = true) {
     queryFn: () => request.get<DirListing>(`/api/terminal-files/list${toQueryString({ path })}`).then(unwrap),
     enabled: enabled && path !== '',
     placeholderData: keepPreviousData,
+  });
+}
+
+export function useTerminalPickerList(path: string, enabled = true) {
+  return useQuery({
+    queryKey: fileManagerKeys.picker(path),
+    queryFn: () => request.get<DirListing>(`/api/terminal-files/list${toQueryString({ path })}`).then(unwrap),
+    enabled: enabled && path !== '',
   });
 }
 

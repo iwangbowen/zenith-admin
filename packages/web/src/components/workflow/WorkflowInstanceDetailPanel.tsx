@@ -4,6 +4,7 @@
  */
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import {
   Descriptions, Empty, Skeleton, Tabs, TabPane, Tag, Typography, Button,
   Avatar, TextArea, Select, Toast, Popconfirm,
@@ -56,7 +57,11 @@ function InstanceComments({ instance }: Readonly<{ instance: WorkflowInstance }>
   const [comments, setComments] = useState<WorkflowComment[]>(instance.comments ?? []);
   const [content, setContent] = useState('');
   const [mentions, setMentions] = useState<number[]>([]);
-  const [submitting, setSubmitting] = useState(false);
+  const commentMutation = useMutation({
+    mutationFn: ({ id, text, mentionIds }: { id: number; text: string; mentionIds: number[] }) =>
+      request.post<WorkflowComment>(`/api/workflows/instances/${id}/comments`, { content: text, mentions: mentionIds }),
+  });
+  const submitting = commentMutation.isPending;
 
   useEffect(() => { setComments(instance.comments ?? []); }, [instance.id, instance.comments]);
 
@@ -73,9 +78,8 @@ function InstanceComments({ instance }: Readonly<{ instance: WorkflowInstance }>
   const submit = async () => {
     const text = content.trim();
     if (!text) { Toast.warning('请输入评论内容'); return; }
-    setSubmitting(true);
     try {
-      const res = await request.post<WorkflowComment>(`/api/workflows/instances/${instance.id}/comments`, { content: text, mentions });
+      const res = await commentMutation.mutateAsync({ id: instance.id, text, mentionIds: mentions });
       if (res.code === 0 && res.data) {
         setComments((prev) => [...prev, res.data as WorkflowComment]);
         setContent('');
@@ -85,8 +89,6 @@ function InstanceComments({ instance }: Readonly<{ instance: WorkflowInstance }>
       }
     } catch {
       Toast.error('评论失败');
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -169,6 +171,9 @@ export default function WorkflowInstanceDetailPanel({
   instance, definition, loading, extraActions, onOpenInstance, onRecalled,
 }: Readonly<Props>) {
   const { user } = useAuth();
+  const recallMutation = useMutation({
+    mutationFn: (id: number) => request.post(`/api/workflows/tasks/${id}/recall`, {}),
+  });
   if (loading) {
     return <WorkflowDetailSkeleton />;
   }
@@ -183,7 +188,7 @@ export default function WorkflowInstanceDetailPanel({
   const handleRecall = async () => {
     if (!myRecallableTask) return;
     try {
-      const res = await request.post(`/api/workflows/tasks/${myRecallableTask.id}/recall`, {});
+      const res = await recallMutation.mutateAsync(myRecallableTask.id);
       if (res.code === 0) { Toast.success('已撤回'); onRecalled?.(); }
       else Toast.error(res.message || '撤回失败');
     } catch { Toast.error('撤回失败'); }

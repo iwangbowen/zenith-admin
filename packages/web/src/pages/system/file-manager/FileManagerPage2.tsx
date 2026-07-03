@@ -3,6 +3,7 @@
  */
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import {
   Button, Input, Space, Tooltip, Modal, Toast,
   Typography, Tag, Spin, Breadcrumb, Popconfirm, ImagePreview, Checkbox, SideSheet,
@@ -17,6 +18,7 @@ import {
   Eye, EyeOff, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { request } from '@/utils/request';
+import { toQueryString, unwrap } from '@/lib/query';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config as appConfig } from '@/config';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -29,6 +31,7 @@ import {
   useDeleteTerminalEntries,
   useTerminalFileList,
   useTerminalFileOperation,
+  useTerminalPickerList,
   useTerminalRootInfo,
   useUploadTerminalFile,
 } from '@/hooks/queries/file-manager';
@@ -45,12 +48,6 @@ interface FsEntry {
   permissions?: string;
   uid?: number;
   gid?: number;
-}
-
-interface DirListing {
-  path: string;
-  parent: string | null;
-  entries: FsEntry[];
 }
 
 type ViewMode = 'list' | 'grid';
@@ -247,31 +244,27 @@ interface FolderPickerModalProps {
 
 function FolderPickerModal({ visible, title, initialPath, drives = [], onConfirm, onCancel }: Readonly<FolderPickerModalProps>) {
   const [pickerPath, setPickerPath] = useState('');
-  const [pickerParent, setPickerParent] = useState<string | null>(null);
-  const [pickerFolders, setPickerFolders] = useState<{ name: string; path: string }[]>([]);
-  const [pickerLoading, setPickerLoading] = useState(false);
   const [initialized, setInitialized] = useState(false);
+  const pickerQuery = useTerminalPickerList(pickerPath, visible && initialized);
 
   useEffect(() => {
     if (visible && !initialized) {
-      void loadPickerDir(initialPath || '/');
+      setPickerPath(initialPath || '/');
       setInitialized(true);
     }
     if (!visible) setInitialized(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, initialPath]);
+  }, [visible, initialPath, initialized]);
 
-  async function loadPickerDir(path: string) {
-    setPickerLoading(true);
-    const res = await request.get<DirListing>(`/api/terminal-files/list?path=${encodeURIComponent(path)}`);
-    setPickerLoading(false);
-    if (res.code === 0 && res.data) {
-      setPickerPath(res.data.path);
-      setPickerParent(res.data.parent);
-      setPickerFolders(res.data.entries.filter((e) => e.type === 'dir').map((e) => ({ name: e.name, path: e.path })));
+  useEffect(() => {
+    if (pickerQuery.data?.path && pickerQuery.data.path !== pickerPath) {
+      setPickerPath(pickerQuery.data.path);
     }
-  }
+  }, [pickerPath, pickerQuery.data]);
 
+  const loadPickerDir = (path: string) => setPickerPath(path);
+  const pickerParent = pickerQuery.data?.parent ?? null;
+  const pickerFolders = pickerQuery.data?.entries.filter((e) => e.type === 'dir').map((e) => ({ name: e.name, path: e.path })) ?? [];
+  const pickerLoading = pickerQuery.isFetching;
   const pickerBreadcrumbs = pickerPath ? buildBreadcrumbs(pickerPath) : [];
   const folderPickerOkText = title.includes('移') ? '移动到此处' : '复制到此处';
 
@@ -477,7 +470,6 @@ export default function FileManagerPage() {
   const [checksum, setChecksum] = useState<{ entry: FsEntry; algo: 'md5' | 'sha1' | 'sha256'; hash: string; size: number; loading: boolean } | null>(null);
   const [searchKw, setSearchKw] = useState('');
   const [searchResults, setSearchResults] = useState<FsEntry[] | null>(null);
-  const [searching, setSearching] = useState(false);
   const [preview, setPreview] = useState<{ url: string; name: string; mimeType: string } | null>(null);
   // 图片画廈预览
   const [previewVisible, setPreviewVisible] = useState(false);
@@ -506,6 +498,15 @@ export default function FileManagerPage() {
   const fileOperationMutation = useTerminalFileOperation();
   const deleteEntriesMutation = useDeleteTerminalEntries();
   const uploadTerminalFileMutation = useUploadTerminalFile();
+  const checksumMutation = useMutation({
+    mutationFn: ({ path, algo }: { path: string; algo: 'md5' | 'sha1' | 'sha256' }) =>
+      request.get<{ algo: string; hash: string; size: number }>(`/api/terminal-files/checksum${toQueryString({ path, algo })}`).then(unwrap),
+  });
+  const searchMutation = useMutation({
+    mutationFn: ({ dir, keyword }: { dir: string; keyword: string }) =>
+      request.get<FsEntry[]>(`/api/terminal-files/search${toQueryString({ dir, keyword })}`).then(unwrap),
+  });
+  const searching = searchMutation.isPending;
 
   useEffect(() => {
     const el = contentRef.current;
@@ -573,11 +574,13 @@ export default function FileManagerPage() {
 
   const fetchPropsChecksum = useCallback(async (entry: FsEntry, algo: 'md5' | 'sha1' | 'sha256') => {
     setPropsChecksum({ algo, hash: '', loading: true });
-    const res = await request.get<{ algo: string; hash: string; size: number }>(
-      `/api/terminal-files/checksum?path=${encodeURIComponent(entry.path)}&algo=${algo}`,
-    );
-    setPropsChecksum({ algo, hash: res.code === 0 && res.data ? res.data.hash : '计算失败', loading: false });
-  }, []);
+    try {
+      const res = await checksumMutation.mutateAsync({ path: entry.path, algo });
+      setPropsChecksum({ algo, hash: res.hash, loading: false });
+    } catch {
+      setPropsChecksum({ algo, hash: '计算失败', loading: false });
+    }
+  }, [checksumMutation]);
 
   // ── 过滤 + 侧栏 ───────────────────────────────────────────────────────────
 
@@ -793,22 +796,19 @@ export default function FileManagerPage() {
 
   const fetchChecksum = async (entry: FsEntry, algo: 'md5' | 'sha1' | 'sha256') => {
     setChecksum({ entry, algo, hash: '', size: entry.size, loading: true });
-    const res = await request.get<{ algo: string; hash: string; size: number }>(
-      `/api/terminal-files/checksum?path=${encodeURIComponent(entry.path)}&algo=${algo}`,
-    );
-    setChecksum({ entry, algo, hash: res.code === 0 && res.data ? res.data.hash : '计算失败', size: res.data?.size ?? entry.size, loading: false });
+    try {
+      const res = await checksumMutation.mutateAsync({ path: entry.path, algo });
+      setChecksum({ entry, algo, hash: res.hash, size: res.size, loading: false });
+    } catch {
+      setChecksum({ entry, algo, hash: '计算失败', size: entry.size, loading: false });
+    }
   };
 
   const runSearch = async () => {
     const kw = searchKw.trim();
     if (!kw) { setSearchResults(null); return; }
-    setSearching(true);
-    try {
-      const res = await request.get<FsEntry[]>(`/api/terminal-files/search?dir=${encodeURIComponent(currentPath)}&keyword=${encodeURIComponent(kw)}`);
-      setSearchResults(res.code === 0 && res.data ? res.data : []);
-    } finally {
-      setSearching(false);
-    }
+    const res = await searchMutation.mutateAsync({ dir: currentPath, keyword: kw });
+    setSearchResults(res ?? []);
   };
 
   const openCtxMenu = (e: React.MouseEvent, entry: FsEntry) => {

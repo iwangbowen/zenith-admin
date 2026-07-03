@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
+import { useEffect, useMemo, useRef, type JSX } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import { Form, Tag, Banner, Tooltip } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Info } from 'lucide-react';
@@ -63,8 +64,23 @@ function toApiValue(v: unknown, col: ColumnInfo, kind: FieldKind): unknown {
 
 export function RowEditModal(props: Readonly<Props>): JSX.Element {
   const { open, mode, schema, table, columns, primaryKey, initial, focusField, onClose, onSuccess } = props;
-  const [submitting, setSubmitting] = useState(false);
   const formRef = useRef<FormApi | null>(null);
+  const rowMutation = useMutation({
+    mutationFn: (variables:
+      | { mode: 'create'; values: Record<string, unknown> }
+      | { mode: 'edit'; pk: Record<string, unknown>; changes: Record<string, unknown> }) => {
+      if (variables.mode === 'create') {
+        return request.post(
+          `/api/db-admin/tables/${encodeURIComponent(schema)}/${encodeURIComponent(table)}/rows`,
+          { values: variables.values },
+        );
+      }
+      return request.patch(
+        `/api/db-admin/tables/${encodeURIComponent(schema)}/${encodeURIComponent(table)}/rows`,
+        { pk: variables.pk, changes: variables.changes },
+      );
+    },
+  });
 
   const kinds = useMemo(() => {
     const m = new Map<string, FieldKind>();
@@ -97,47 +113,36 @@ export function RowEditModal(props: Readonly<Props>): JSX.Element {
     const values = await formRef.current?.validate();
     if (!values) return;
 
-    setSubmitting(true);
-    try {
-      if (mode === 'create') {
-        const payload: Record<string, unknown> = {};
-        for (const c of columns) {
-          const raw = (values as Record<string, unknown>)[c.name];
-          if (raw === undefined && c.defaultValue) continue;
-          payload[c.name] = toApiValue(raw, c, getKind(c.name));
-        }
-        await request.post(
-          `/api/db-admin/tables/${encodeURIComponent(schema)}/${encodeURIComponent(table)}/rows`,
-          { values: payload },
-        );
-      } else {
-        const changes: Record<string, unknown> = {};
-        const pk: Record<string, unknown> = {};
-        for (const c of columns) {
-          if (primaryKey.includes(c.name)) {
-            pk[c.name] = initial?.[c.name];
-            continue;
-          }
-          const kind = getKind(c.name);
-          const formVal = toApiValue((values as Record<string, unknown>)[c.name], c, kind);
-          const initVal = toApiValue(toFormValue(initial?.[c.name], kind), c, kind);
-          if (JSON.stringify(formVal) !== JSON.stringify(initVal)) {
-            changes[c.name] = formVal;
-          }
-        }
-        if (Object.keys(changes).length === 0) {
-          onClose();
-          return;
-        }
-        await request.patch(
-          `/api/db-admin/tables/${encodeURIComponent(schema)}/${encodeURIComponent(table)}/rows`,
-          { pk, changes },
-        );
+    if (mode === 'create') {
+      const payload: Record<string, unknown> = {};
+      for (const c of columns) {
+        const raw = (values as Record<string, unknown>)[c.name];
+        if (raw === undefined && c.defaultValue) continue;
+        payload[c.name] = toApiValue(raw, c, getKind(c.name));
       }
-      onSuccess();
-    } finally {
-      setSubmitting(false);
+      await rowMutation.mutateAsync({ mode: 'create', values: payload });
+    } else {
+      const changes: Record<string, unknown> = {};
+      const pk: Record<string, unknown> = {};
+      for (const c of columns) {
+        if (primaryKey.includes(c.name)) {
+          pk[c.name] = initial?.[c.name];
+          continue;
+        }
+        const kind = getKind(c.name);
+        const formVal = toApiValue((values as Record<string, unknown>)[c.name], c, kind);
+        const initVal = toApiValue(toFormValue(initial?.[c.name], kind), c, kind);
+        if (JSON.stringify(formVal) !== JSON.stringify(initVal)) {
+          changes[c.name] = formVal;
+        }
+      }
+      if (Object.keys(changes).length === 0) {
+        onClose();
+        return;
+      }
+      await rowMutation.mutateAsync({ mode: 'edit', pk, changes });
     }
+    onSuccess();
   };
 
   const renderField = (c: ColumnInfo): JSX.Element => {
@@ -202,7 +207,7 @@ export function RowEditModal(props: Readonly<Props>): JSX.Element {
       okText={mode === 'create' ? '插入' : '保存'}
       cancelText="取消"
       width={880}
-      confirmLoading={submitting}
+      confirmLoading={rowMutation.isPending}
       bodyStyle={{ maxHeight: '70vh', overflowY: 'auto' }}
     >
       {mode === 'edit' && primaryKey.length === 0 && (

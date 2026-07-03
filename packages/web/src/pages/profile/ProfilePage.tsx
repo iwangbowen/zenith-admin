@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import {
   Form, Button, Typography, Toast, Tag, Space, Spin,
   Modal, Cropper, Input, Tabs, List as SemiList, Descriptions,
@@ -164,7 +165,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
   const [cropperVisible, setCropperVisible] = useState(false);
   const [cropperSrc, setCropperSrc] = useState('');
   const [cropRotate, setCropRotate] = useState(0);
-  const [avatarLoading, setAvatarLoading] = useState(false);  const [presetModalVisible, setPresetModalVisible] = useState(false);
+  const [presetModalVisible, setPresetModalVisible] = useState(false);
   // ─── 账号安全 ────────────────────────────────────────────────────────────────
   const [changePwdVal, setChangePwdVal] = useState('');
   const [totpSetup, setTotpSetup] = useState<TotpSetupResult | null>(null);
@@ -203,6 +204,9 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
 
   const updateProfileMutation = useUpdateProfile();
   const updateAvatarMutation = useUpdateProfile();
+  const uploadAvatarMutation = useMutation({
+    mutationFn: (formData: FormData) => request.post<{ url: string }>('/api/files/upload-one', formData),
+  });
   const changePasswordMutation = useChangeProfilePassword();
   const oauthBindUrlMutation = useProfileOAuthBindUrl();
   const oauthUnbindMutation = useUnbindProfileOAuth();
@@ -225,6 +229,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
   const apiTokensLoading = apiTokensQuery.isFetching;
   const newTokenCreating = createTokenMutation.isPending;
   const totpSubmitting = beginTotpSetupMutation.isPending || verifyTotpSetupMutation.isPending;
+  const avatarLoading = uploadAvatarMutation.isPending || updateAvatarMutation.isPending;
 
   // ─── 事件处理 ────────────────────────────────────────────────────────────────
 
@@ -306,24 +311,19 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
   async function handleCropConfirm() {
     const canvas = cropperRef.current?.getCropperCanvas();
     if (!canvas) return;
-    setAvatarLoading(true);
     canvas.toBlob(async (blob) => {
-      if (!blob) { setAvatarLoading(false); return; }
-      try {
-        const formData = new FormData();
-        formData.append('file', blob, 'avatar.jpg');
-        const uploadRes = await request.post<{ url: string }>('/api/files/upload-one', formData);
-        const uploadedUrl = uploadRes.data?.url;
-        if (uploadRes.code === 0 && uploadedUrl) {
-          const updated = await updateAvatarMutation.mutateAsync({ avatar: uploadedUrl });
-          applyUserUpdate(updated);
-          Toast.success('头像已更新');
-          closeCropper();
-        } else {
-          Toast.error(uploadRes.message ?? '上传失败');
-        }
-      } finally {
-        setAvatarLoading(false);
+      if (!blob) return;
+      const formData = new FormData();
+      formData.append('file', blob, 'avatar.jpg');
+      const uploadRes = await uploadAvatarMutation.mutateAsync(formData);
+      const uploadedUrl = uploadRes.data?.url;
+      if (uploadRes.code === 0 && uploadedUrl) {
+        const updated = await updateAvatarMutation.mutateAsync({ avatar: uploadedUrl });
+        applyUserUpdate(updated);
+        Toast.success('头像已更新');
+        closeCropper();
+      } else {
+        Toast.error(uploadRes.message ?? '上传失败');
       }
     }, 'image/jpeg', 0.85);
   }
@@ -381,14 +381,9 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
       content: '移除后将使用昵称缩写作为默认头像。',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        setAvatarLoading(true);
-        try {
-          const updated = await updateAvatarMutation.mutateAsync({ avatar: null });
-          applyUserUpdate(updated);
-          Toast.success('头像已移除');
-        } finally {
-          setAvatarLoading(false);
-        }
+        const updated = await updateAvatarMutation.mutateAsync({ avatar: null });
+        applyUserUpdate(updated);
+        Toast.success('头像已移除');
       },
     });
   }
@@ -398,15 +393,10 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
   }
 
   async function handleApplyPreset(url: string) {
-    setAvatarLoading(true);
     setPresetModalVisible(false);
-    try {
-      const updated = await updateAvatarMutation.mutateAsync({ avatar: url });
-      applyUserUpdate(updated);
-      Toast.success('头像已更新');
-    } finally {
-      setAvatarLoading(false);
-    }
+    const updated = await updateAvatarMutation.mutateAsync({ avatar: url });
+    applyUserUpdate(updated);
+    Toast.success('头像已更新');
   }
 
   // ─── 预设头像 ──────────────────────────────────────────────────────────────

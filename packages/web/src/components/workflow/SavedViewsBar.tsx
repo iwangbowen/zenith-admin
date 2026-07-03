@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Space, Tag, Toast } from '@douyinfe/semi-ui';
 import { Bookmark } from 'lucide-react';
 import type { WorkflowSavedView } from '@zenith/shared';
 import { request } from '@/utils/request';
+import { unwrap } from '@/lib/query';
 import AppModal from '@/components/AppModal';
 
 /**
@@ -20,37 +22,42 @@ export default function SavedViewsBar({
   currentFilters: Record<string, unknown>;
   onApply: (filters: Record<string, unknown>) => void;
 }>) {
-  const [views, setViews] = useState<WorkflowSavedView[]>([]);
+  const queryClient = useQueryClient();
   const [activeId, setActiveId] = useState<number | null>(null);
   const [saveVisible, setSaveVisible] = useState(false);
   const [name, setName] = useState('');
-  const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
-    const res = await request.get<WorkflowSavedView[]>(`/api/workflows/saved-views?pageKey=${encodeURIComponent(pageKey)}`);
-    if (res.code === 0) setViews(res.data ?? []);
-  }, [pageKey]);
+  const savedViewsQuery = useQuery({
+    queryKey: ['workflow', 'saved-views', pageKey],
+    queryFn: () => request.get<WorkflowSavedView[]>(`/api/workflows/saved-views?pageKey=${encodeURIComponent(pageKey)}`).then(unwrap),
+    staleTime: 30_000,
+  });
 
-  useEffect(() => { void load(); }, [load]);
+  const invalidateSavedViews = () => queryClient.invalidateQueries({ queryKey: ['workflow', 'saved-views'] });
+  const saveMutation = useMutation({
+    mutationFn: (payload: { pageKey: string; name: string; filters: Record<string, unknown> }) =>
+      request.post<WorkflowSavedView>('/api/workflows/saved-views', payload).then(unwrap),
+    onSuccess: () => { void invalidateSavedViews(); },
+  });
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => request.delete(`/api/workflows/saved-views/${id}`).then(unwrap),
+    onSuccess: () => { void invalidateSavedViews(); },
+  });
+
+  const views = savedViewsQuery.data ?? [];
 
   const handleSave = async () => {
     if (!name.trim()) { Toast.warning('请输入视图名称'); return; }
-    setSaving(true);
-    try {
-      const res = await request.post('/api/workflows/saved-views', { pageKey, name: name.trim(), filters: currentFilters });
-      if (res.code === 0) { Toast.success('已保存视图'); setSaveVisible(false); setName(''); await load(); }
-    } finally {
-      setSaving(false);
-    }
+    await saveMutation.mutateAsync({ pageKey, name: name.trim(), filters: currentFilters });
+    Toast.success('已保存视图');
+    setSaveVisible(false);
+    setName('');
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete(`/api/workflows/saved-views/${id}`);
-    if (res.code === 0) {
-      Toast.success('已删除');
-      if (activeId === id) setActiveId(null);
-      await load();
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('已删除');
+    if (activeId === id) setActiveId(null);
   };
 
   return (
@@ -82,7 +89,7 @@ export default function SavedViewsBar({
         visible={saveVisible}
         onCancel={() => setSaveVisible(false)}
         onOk={() => void handleSave()}
-        okButtonProps={{ loading: saving }}
+        okButtonProps={{ loading: saveMutation.isPending }}
         closeOnEsc
         width={420}
       >

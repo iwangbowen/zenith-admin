@@ -2,6 +2,7 @@
  * 流程定义页左侧分类侧栏
  */
 import { useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import { Button, Dropdown, Modal, Toast, Form } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { MoreHorizontal, Plus, Layers, LayoutGrid, Pencil, Trash2 } from 'lucide-react';
@@ -24,9 +25,17 @@ export default function CategorySidebar({ categories, selectedId, onSelect, onCh
   const [editVisible, setEditVisible] = useState(false);
   const [editing, setEditing] = useState<WorkflowCategory | null>(null);
   const [editKey, setEditKey] = useState(0);
-  const [submitting, setSubmitting] = useState(false);
   const [formApi, setFormApi] = useState<FormApi | null>(null);
   const [selectedColor, setSelectedColor] = useState<string>('');
+  const saveCategoryMutation = useMutation({
+    mutationFn: ({ id, payload }: { id?: number; payload: Record<string, unknown> }) =>
+      id
+        ? request.put(`/api/workflows/categories/${id}`, payload)
+        : request.post('/api/workflows/categories', payload),
+  });
+  const deleteCategoryMutation = useMutation({
+    mutationFn: (id: number) => request.delete(`/api/workflows/categories/${id}`),
+  });
 
   const openNew = () => {
     setEditing(null);
@@ -46,7 +55,6 @@ export default function CategorySidebar({ categories, selectedId, onSelect, onCh
     if (!formApi) return;
     try {
       const values = await formApi.validate() as Record<string, unknown>;
-      setSubmitting(true);
       const payload = {
         name: values.name,
         code: values.code || null,
@@ -55,9 +63,7 @@ export default function CategorySidebar({ categories, selectedId, onSelect, onCh
         sort: typeof values.sort === 'number' ? values.sort : Number(values.sort) || 0,
         description: values.description || null,
       };
-      const res = editing
-        ? await request.put(`/api/workflows/categories/${editing.id}`, payload)
-        : await request.post('/api/workflows/categories', payload);
+      const res = await saveCategoryMutation.mutateAsync({ id: editing?.id, payload });
       if (res.code === 0) {
         Toast.success(editing ? '已更新' : '已新增');
         setEditVisible(false);
@@ -65,13 +71,11 @@ export default function CategorySidebar({ categories, selectedId, onSelect, onCh
       }
     } catch {
       // validation failed
-    } finally {
-      setSubmitting(false);
     }
   };
 
   const handleDelete = async (c: WorkflowCategory) => {
-    const res = await request.delete(`/api/workflows/categories/${c.id}`);
+    const res = await deleteCategoryMutation.mutateAsync(c.id);
     if (res.code === 0) {
       Toast.success('已删除');
       if (selectedId === c.id) onSelect(null);
@@ -156,7 +160,7 @@ export default function CategorySidebar({ categories, selectedId, onSelect, onCh
         visible={editVisible}
         onCancel={() => setEditVisible(false)}
         onOk={() => void handleSubmit()}
-        confirmLoading={submitting}
+        confirmLoading={saveCategoryMutation.isPending}
         okText="保存"
         width={520}
 

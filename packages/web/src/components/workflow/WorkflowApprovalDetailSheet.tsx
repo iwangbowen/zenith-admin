@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AppModal } from '@/components/AppModal';
 import {
   Banner,
@@ -104,7 +104,6 @@ export default function WorkflowApprovalDetailSheet({
   const [addSignVisible, setAddSignVisible] = useState(false);
   const [reduceSignVisible, setReduceSignVisible] = useState(false);
   const [returnVisible, setReturnVisible] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [viewId, setViewId] = useState<number | null>(instanceId);
   const [rejectInstance, setRejectInstance] = useState<WorkflowInstance | null>(null);
   const [rejectDef, setRejectDef] = useState<WorkflowDefinition | null>(null);
@@ -330,6 +329,32 @@ export default function WorkflowApprovalDetailSheet({
     onClose();
   }, [onActionDone, onClose]);
 
+  const approveMutation = useMutation({
+    mutationFn: ({ id, body }: { id: number; body: Record<string, unknown> }) =>
+      request.post(
+        `/api/workflows/tasks/${id}/approve`,
+        body,
+        { headers: { 'X-Idempotency-Key': `workflow-approve-${id}` } },
+      ),
+  });
+  const rejectMutation = useMutation({
+    mutationFn: ({ id, body }: { id: number; body: Record<string, unknown> }) =>
+      request.post(
+        `/api/workflows/tasks/${id}/reject`,
+        body,
+        { headers: { 'X-Idempotency-Key': `workflow-reject-${id}` } },
+      ),
+  });
+  const simpleActionMutation = useMutation({
+    mutationFn: ({ id, path, body }: { id: number; path: string; body: Record<string, unknown> }) =>
+      request.post(
+        `/api/workflows/tasks/${id}/${path}`,
+        body,
+        { headers: { 'X-Idempotency-Key': `workflow-${path}-${id}` } },
+      ),
+  });
+  const submitting = approveMutation.isPending || rejectMutation.isPending || simpleActionMutation.isPending;
+
   const handleApprove = async () => {
     if (taskId == null) return;
     if (submitting) return;
@@ -348,17 +373,15 @@ export default function WorkflowApprovalDetailSheet({
           return;
         }
       }
-      setSubmitting(true);
-      const res = await request.post(
-        `/api/workflows/tasks/${taskId}/approve`,
-        {
+      const res = await approveMutation.mutateAsync({
+        id: taskId,
+        body: {
           comment: values?.comment ?? '',
           attachments: attachmentsPayload('approve'),
           signature: approveSignature || undefined,
           selectedNextApprovers: hasApproverSelectDownstream ? selectedNextApprovers : undefined,
         },
-        { headers: { 'X-Idempotency-Key': `workflow-approve-${taskId}` } },
-      );
+      });
       if (res.code === 0) {
         Toast.success('审批通过');
         setApproveVisible(false);
@@ -369,8 +392,6 @@ export default function WorkflowApprovalDetailSheet({
       }
     } catch {
       // validation failed
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -380,12 +401,10 @@ export default function WorkflowApprovalDetailSheet({
     try {
       const values = await rejectFormApi.current?.validate() as Record<string, unknown>;
       if (!ensureUploadSatisfied(btnReject, 'reject')) return;
-      setSubmitting(true);
-      const res = await request.post(
-        `/api/workflows/tasks/${taskId}/reject`,
-        { comment: values.comment as string, attachments: attachmentsPayload('reject') },
-        { headers: { 'X-Idempotency-Key': `workflow-reject-${taskId}` } },
-      );
+      const res = await rejectMutation.mutateAsync({
+        id: taskId,
+        body: { comment: values.comment as string, attachments: attachmentsPayload('reject') },
+      });
       if (res.code === 0) {
         Toast.success('已驳回');
         setRejectVisible(false);
@@ -394,8 +413,6 @@ export default function WorkflowApprovalDetailSheet({
       }
     } catch {
       // validation failed
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -407,20 +424,11 @@ export default function WorkflowApprovalDetailSheet({
   ) => {
     if (taskId == null) return;
     if (submitting) return;
-    try {
-      setSubmitting(true);
-      const res = await request.post(
-        `/api/workflows/tasks/${taskId}/${path}`,
-        body,
-        { headers: { 'X-Idempotency-Key': `workflow-${path}-${taskId}` } },
-      );
-      if (res.code === 0) {
-        Toast.success(successMsg);
-        closer();
-        closeAfterAction();
-      }
-    } finally {
-      setSubmitting(false);
+    const res = await simpleActionMutation.mutateAsync({ id: taskId, path, body });
+    if (res.code === 0) {
+      Toast.success(successMsg);
+      closer();
+      closeAfterAction();
     }
   };
 
@@ -529,22 +537,15 @@ export default function WorkflowApprovalDetailSheet({
 
   const handleQuickApprove = async () => {
     if (taskId == null || submitting) return;
-    setSubmitting(true);
     try {
-      const res = await request.post(
-        `/api/workflows/tasks/${taskId}/approve`,
-        { comment: '' },
-        { headers: { 'X-Idempotency-Key': `workflow-approve-${taskId}` } },
-      );
+      const res = await approveMutation.mutateAsync({ id: taskId, body: { comment: '' } });
       if (res.code === 0) {
         Toast.success('审批通过');
         closeAfterAction();
       } else {
         Toast.error(res.message || '处理失败');
       }
-    } finally {
-      setSubmitting(false);
-    }
+    } catch { /* request failed */ }
   };
 
   const moreActions: Array<{ key: string; label: string; onClick: () => void }> = [];
