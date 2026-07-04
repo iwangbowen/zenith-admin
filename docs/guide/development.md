@@ -66,7 +66,7 @@ npm run docs:preview
 
 ### 数据库迁移不要手改 SQL
 
-修改 `packages/server/src/db/schema.ts` 后，应该通过 Drizzle 生成迁移，而不是直接改已有 SQL 文件。
+修改 `packages/server/src/db/schema/` 下的表定义后，应该通过 Drizzle 生成迁移，而不是直接改已有 SQL 文件。
 
 ### 时间显示统一格式
 

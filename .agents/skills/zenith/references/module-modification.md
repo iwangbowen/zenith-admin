@@ -10,7 +10,7 @@
 
 ### 后端
 
-1. **Schema**（Step 1）：在 `packages/server/src/db/schema.ts` 的 `xxxs` 表中添加新字段
+1. **Schema**（Step 1）：在 `packages/server/src/db/schema/` 对应业务域文件的 `xxxs` 表中添加新字段
 2. **迁移**（Step 2）：`npm run db:generate && npm run db:migrate`
 3. **Zod Schema**（Step 3）：在 `packages/shared/src/validation.ts` 的 `createXxxSchema` 和 `updateXxxSchema` 中添加新字段
 4. **TS Interface**（Step 4）：在 `packages/shared/src/types.ts` 的 `Xxx` 接口中添加新字段

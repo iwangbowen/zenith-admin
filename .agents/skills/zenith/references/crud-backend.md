@@ -1,12 +1,14 @@
 # CRUD 后端实现参考（以「xxx管理」为范例）
 
-本文档提供后端各层的代码模板，对照 `packages/server/src/routes/users.ts` 和 `packages/server/src/db/schema.ts` 的实际实现。
+本文档提供后端各层的代码模板，对照 `packages/server/src/routes/users.ts` 和 `packages/server/src/db/schema/core.ts` 的实际实现。
 
 > **占位符约定**：`xxx` = 小写（表名、API 路径、文件名）；`Xxx` = 大驼峰（TypeScript 类型、组件名）；替换时请将所有 `xxx`/`Xxx` 替换为实际实体名。
 
 ---
 
-## Step 1：数据库 Schema（`packages/server/src/db/schema.ts`）
+## Step 1：数据库 Schema（`packages/server/src/db/schema/{业务域}.ts`）
+
+> Schema 按业务域拆分在 `db/schema/` 目录（`core.ts` / `payment.ts` / `member.ts` 等），由 `db/schema.ts` barrel 统一 re-export，业务代码导入方式不变（`from '../db/schema'`）。新表放入对应业务域文件（没有合适的就新建域文件并在 barrel 中登记）；`xxxRelations` 统一维护在 `db/schema/relations.ts`。
 
 ### 基础表模板
 
@@ -556,7 +558,7 @@ const assignRoute = defineOpenAPIRoute({
 ### 前提：业务表必须有 `department_id` 字段
 
 ```ts
-// packages/server/src/db/schema.ts
+// packages/server/src/db/schema/{业务域}.ts
 export const xxxs = pgTable('xxxs', {
   // ...其他字段
   departmentId: integer('department_id').references(() => departments.id),
@@ -753,7 +755,7 @@ try {
 
 ### Step 1：添加业务类型枚举
 
-**1.1 在 `packages/server/src/db/schema.ts` 中添加 pgEnum 值**
+**1.1 在 `packages/server/src/db/schema/files.ts` 中添加 pgEnum 值**
 
 ```ts
 // 找到现有的 businessTypeEnum，添加新的业务类型

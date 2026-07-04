@@ -41,7 +41,7 @@ sequenceDiagram
 | `paid_at` / `fulfill_remark` | 履约结果（支付成功时回写） |
 
 ```ts
-// packages/server/src/db/schema.ts
+// packages/server/src/db/schema/biz.ts
 export const bizPayDemoStatusEnum = pgEnum('biz_pay_demo_status', ['pending', 'paying', 'paid', 'closed']);
 
 export const bizPayDemos = pgTable('biz_pay_demos', {

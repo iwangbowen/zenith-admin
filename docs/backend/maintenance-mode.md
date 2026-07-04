@@ -150,7 +150,7 @@
 
 | 文件 | 说明 |
 |------|------|
-| `packages/server/src/db/schema.ts` | `maintenanceMode` 表定义 |
+| `packages/server/src/db/schema/system.ts` | `maintenanceMode` 表定义 |
 | `packages/server/src/services/maintenance.service.ts` | 业务逻辑 + 缓存管理 |
 | `packages/server/src/middleware/maintenance.ts` | 请求拦截中间件 |
 | `packages/server/src/routes/maintenance.ts` | API 路由定义 |

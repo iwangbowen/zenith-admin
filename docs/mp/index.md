@@ -1,6 +1,6 @@
 # 微信公众号
 
-公众号管理是一个**一级菜单目录**，将微信公众平台的开发者能力（账号、粉丝、消息、菜单、素材、群发、模板消息、网页授权、客服、数据等）整合进后台，支持**多公众号统一管理**。所有路由挂载在 `/api/mp` 前缀下，业务表集中在 `packages/server/src/db/schema.ts` 的 `mp_*` 系列表，前端页面集中在「公众号管理」目录（`packages/web/src/pages/mp/`）。
+公众号管理是一个**一级菜单目录**，将微信公众平台的开发者能力（账号、粉丝、消息、菜单、素材、群发、模板消息、网页授权、客服、数据等）整合进后台，支持**多公众号统一管理**。所有路由挂载在 `/api/mp` 前缀下，业务表集中在 `packages/server/src/db/schema/mp.ts` 的 `mp_*` 系列表，前端页面集中在「公众号管理」目录（`packages/web/src/pages/mp/`）。
 
 > 与微信的所有交互统一通过 `packages/server/src/lib/wechat/` 封装，外呼走 `http-client`，`access_token` / `jsapi_ticket` 经 Redis 缓存。示例种子账号未配置真实 AppSecret，调用真实接口时会返回 `40013 invalid appid`，并被统一映射为 `400` 业务错误（便于在未接入真实公众号时演示页面）。
 

@@ -72,7 +72,7 @@ CREATE TABLE tenants (
 - `managed_files`（文件记录）
 - `system_configs`（系统配置）
 - `login_logs` / `operation_logs`（日志）
-- 支付、通知、工作流、数据分析等业务表（参见 `packages/server/src/db/schema.ts` 中带 `tenant_id` 的表）
+- 支付、通知、工作流、数据分析等业务表（参见 `packages/server/src/db/schema/` 各业务域文件中带 `tenant_id` 的表）
 
 多数租户业务表的 `tenant_id` 外键使用 `ON DELETE CASCADE`，删除租户时关联业务数据会随租户删除；少数记录类表按业务语义使用 `SET NULL` 或非外键字段。
 
@@ -186,7 +186,7 @@ export async function listBusinessRows() {
 ### 1. Schema 中添加 `tenant_id` 字段
 
 ```ts
-// packages/server/src/db/schema.ts
+// packages/server/src/db/schema/{业务域}.ts
 export const orders = pgTable('orders', {
   id: serial('id').primaryKey(),
   // ... 其他字段
