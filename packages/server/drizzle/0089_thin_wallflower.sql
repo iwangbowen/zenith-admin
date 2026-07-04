@@ -1,1 +1,0 @@
-ALTER TABLE "dict_items" ADD COLUMN "metadata" jsonb;

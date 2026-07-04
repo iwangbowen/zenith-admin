@@ -1,1 +1,0 @@
-ALTER TABLE "workflow_tasks" ADD COLUMN "wake_at" timestamp with time zone;

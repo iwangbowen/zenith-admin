@@ -1,1 +1,0 @@
-ALTER TABLE "oauth2_clients" ADD COLUMN "client_secret_encrypted" text;

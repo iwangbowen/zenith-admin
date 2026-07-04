@@ -1,1 +1,0 @@
-ALTER TABLE "notice_reads" ADD CONSTRAINT "uniq_notice_user" UNIQUE("notice_id","user_id");

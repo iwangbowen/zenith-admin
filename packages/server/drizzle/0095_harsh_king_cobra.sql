@@ -1,1 +1,0 @@
-ALTER TABLE "rate_limit_rules" ADD COLUMN "path_patterns" text[] DEFAULT '{}' NOT NULL;

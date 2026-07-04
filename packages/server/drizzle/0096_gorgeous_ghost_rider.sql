@@ -1,1 +1,0 @@
-ALTER TABLE "managed_files" ADD COLUMN "bucket_name" varchar(256);

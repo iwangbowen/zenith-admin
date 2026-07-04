@@ -1,1 +1,0 @@
-ALTER TABLE "user_ai_configs" ADD COLUMN "name" varchar(100);

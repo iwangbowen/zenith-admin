@@ -1,2 +1,0 @@
-ALTER TABLE "chat_conversation_members" ADD COLUMN "is_pinned" boolean DEFAULT false NOT NULL;--> statement-breakpoint
-ALTER TABLE "chat_conversation_members" ADD COLUMN "is_starred" boolean DEFAULT false NOT NULL;

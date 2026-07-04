@@ -1,1 +1,0 @@
-ALTER TABLE "operation_logs" ADD COLUMN "response_body" text;

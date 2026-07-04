@@ -1,2 +1,0 @@
-ALTER TABLE "dict_items" ADD COLUMN "parent_id" integer;--> statement-breakpoint
-ALTER TABLE "dict_items" ADD CONSTRAINT "dict_items_parent_id_dict_items_id_fk" FOREIGN KEY ("parent_id") REFERENCES "public"."dict_items"("id") ON DELETE cascade ON UPDATE no action;

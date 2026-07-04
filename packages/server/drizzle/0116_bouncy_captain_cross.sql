@@ -1,1 +1,0 @@
-DROP TABLE "frontend_errors" CASCADE;

@@ -1,2 +1,0 @@
-CREATE TYPE "public"."workflow_node_type" AS ENUM('start', 'approve', 'end', 'exclusiveGateway', 'parallelGateway', 'ccNode');--> statement-breakpoint
-ALTER TABLE "workflow_tasks" ADD COLUMN "node_type" "workflow_node_type";

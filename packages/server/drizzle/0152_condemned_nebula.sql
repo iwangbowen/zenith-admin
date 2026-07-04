@@ -1,1 +1,0 @@
-CREATE UNIQUE INDEX "mp_messages_account_msgid_uq" ON "mp_messages" USING btree ("account_id","msg_id") WHERE "mp_messages"."msg_id" IS NOT NULL;

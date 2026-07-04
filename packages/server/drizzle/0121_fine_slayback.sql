@@ -1,1 +1,0 @@
-ALTER TABLE "workflow_tasks" ADD COLUMN "return_origin_node_key" varchar(64);

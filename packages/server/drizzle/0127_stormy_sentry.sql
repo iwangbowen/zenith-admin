@@ -1,1 +1,0 @@
-ALTER TABLE "workflow_instances" ADD COLUMN "priority" varchar(16) DEFAULT 'normal' NOT NULL;

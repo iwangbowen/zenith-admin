@@ -31,6 +31,17 @@ npm run db:seed
 
 正确方式是修改 `schema.ts`，然后生成新的迁移文件。
 
+### 迁移基线化（Baseline）
+
+历史迁移链（`0000..0200`，共 201 条）已在基线化时压缩为单条基线迁移 `0000_baseline.sql`（含全部表结构与表/列注释），此后的新迁移在其之上正常追加。
+
+- **全新环境**：`npm run db:migrate` 直接执行基线，一步建库。
+- **存量环境（已跑完旧链 0200）**：`src/db/migrate.ts` 中的 `adoptBaseline()` 会在启动迁移前自动「收养」——将 `drizzle.__drizzle_migrations` 中的 201 条旧记录原子替换为 1 条基线记录（不重放任何 SQL），并把 3 个历史遗留的唯一索引原地转换为同名唯一约束（`UNIQUE USING INDEX`，零重建）。该过程幂等。
+- **过旧环境（未升到旧链头）**：migrate 会直接报错拒绝启动，需先升级到 v0.79.x 跑完全部旧迁移，再升级到基线版本（**检查点规则**）。
+- 已知无害差异：部分枚举值的物理排序（`enumsortorder`）在存量库与新库间不同（旧链 `ADD VALUE` 追加所致，PostgreSQL 不支持重排）。业务代码不依赖枚举物理排序，无需处理。
+
+再次基线化（如未来迁移又积累过多）时按同样流程操作：确认 `db:generate` 无漂移 → 审计数据迁移是否已被 seed 覆盖 → 删除 `drizzle/` 重新 `generate` → 更新 `migrate.ts` 中的 `LEGACY_HEAD_WHEN` / `LEGACY_HEAD_TAG` 为旧链头的 journal `when` 与 tag → 用两个空库（旧链 vs 基线）做结构化 schema diff 验证。
+
 ### 枚举需要三处保持一致
 
 以下三者必须同步：

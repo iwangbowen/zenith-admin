@@ -1,1 +1,0 @@
-ALTER TYPE "public"."workflow_instance_status" ADD VALUE 'cancelled';
