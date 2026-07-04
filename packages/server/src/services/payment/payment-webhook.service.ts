@@ -233,17 +233,30 @@ async function dispatchEvent(event: PaymentEvent): Promise<void> {
     .select()
     .from(paymentWebhookEndpoints)
     .where(and(eq(paymentWebhookEndpoints.status, 'enabled'), or(isNull(paymentWebhookEndpoints.bizType), eq(paymentWebhookEndpoints.bizType, event.bizType))));
-  for (const ep of endpoints) {
+  const matched = endpoints.filter((ep) => {
     const events = ep.events ?? [];
-    if (events.length > 0 && !events.includes(event.type)) continue;
-    const payload = JSON.stringify(event);
-    const exists = await db.$count(paymentWebhookDeliveries, and(eq(paymentWebhookDeliveries.endpointId, ep.id), eq(paymentWebhookDeliveries.payload, payload)));
-    if (exists > 0) continue;
-    const [delivery] = await db
-      .insert(paymentWebhookDeliveries)
-      .values({ endpointId: ep.id, eventType: event.type, orderNo: event.orderNo, payload, status: 'pending', tenantId: ep.tenantId })
-      .returning();
-    void sendDelivery(delivery, ep).catch((err) => logger.error('[payment-webhook] send failed', { id: delivery.id, err }));
+    return events.length === 0 || events.includes(event.type);
+  });
+  if (matched.length === 0) return;
+
+  const payload = JSON.stringify(event);
+  // 单查询批量去重（替代逐端点 $count 的 N+1）
+  const existing = await db
+    .select({ endpointId: paymentWebhookDeliveries.endpointId })
+    .from(paymentWebhookDeliveries)
+    .where(and(inArray(paymentWebhookDeliveries.endpointId, matched.map((ep) => ep.id)), eq(paymentWebhookDeliveries.payload, payload)));
+  const dispatchedIds = new Set(existing.map((r) => r.endpointId));
+  const targets = matched.filter((ep) => !dispatchedIds.has(ep.id));
+  if (targets.length === 0) return;
+
+  const deliveries = await db
+    .insert(paymentWebhookDeliveries)
+    .values(targets.map((ep) => ({ endpointId: ep.id, eventType: event.type, orderNo: event.orderNo, payload, status: 'pending' as const, tenantId: ep.tenantId })))
+    .returning();
+  const endpointById = new Map(targets.map((ep) => [ep.id, ep]));
+  for (const delivery of deliveries) {
+    const ep = endpointById.get(delivery.endpointId);
+    if (ep) void sendDelivery(delivery, ep).catch((err) => logger.error('[payment-webhook] send failed', { id: delivery.id, err }));
   }
 }
 
@@ -255,9 +268,22 @@ export async function retryPendingDeliveries(): Promise<number> {
     .from(paymentWebhookDeliveries)
     .where(and(inArray(paymentWebhookDeliveries.status, ['pending', 'failed']), lte(paymentWebhookDeliveries.attempts, MAX_ATTEMPTS - 1), or(isNull(paymentWebhookDeliveries.nextRetryAt), lte(paymentWebhookDeliveries.nextRetryAt, now))))
     .limit(100);
-  for (const row of rows) {
-    const [ep] = await db.select().from(paymentWebhookEndpoints).where(eq(paymentWebhookEndpoints.id, row.endpointId)).limit(1);
-    if (ep && ep.status === 'enabled') await sendDelivery(row, ep);
+  if (rows.length === 0) return 0;
+
+  // 单查询批量取端点（替代逐行 select 的 N+1）
+  const endpointIds = [...new Set(rows.map((r) => r.endpointId))];
+  const endpoints = await db.select().from(paymentWebhookEndpoints).where(inArray(paymentWebhookEndpoints.id, endpointIds));
+  const endpointById = new Map(endpoints.map((ep) => [ep.id, ep]));
+
+  // HTTP 重投按小批并行（原实现串行等待每个 HTTP 往返）
+  const CONCURRENCY = 10;
+  for (let i = 0; i < rows.length; i += CONCURRENCY) {
+    await Promise.allSettled(
+      rows.slice(i, i + CONCURRENCY).map((row) => {
+        const ep = endpointById.get(row.endpointId);
+        return ep && ep.status === 'enabled' ? sendDelivery(row, ep) : Promise.resolve();
+      }),
+    );
   }
   return rows.length;
 }

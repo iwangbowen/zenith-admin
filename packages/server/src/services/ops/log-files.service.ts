@@ -1,8 +1,11 @@
-import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import path from 'node:path';
 import zlib from 'node:zlib';
+import { promisify } from 'node:util';
 import { config } from '../../config';
 import { formatDateTime } from '../../lib/datetime';
+
+const gunzipAsync = promisify(zlib.gunzip);
 
 export const LOG_DIR = path.resolve(config.log.dir);
 
@@ -37,21 +40,34 @@ function filterLogLines(lines: string[], keyword?: string): string[] {
   return lines.filter((line) => line.toLowerCase().includes(normalizedKeyword));
 }
 
-export function readLastLines(filepath: string, n: number, keyword?: string): string[] {
-  const content = fs.readFileSync(filepath, 'utf-8');
+export async function readLastLines(filepath: string, n: number, keyword?: string): Promise<string[]> {
+  const content = await fsp.readFile(filepath, 'utf-8');
   const lines = normalizeLogLines(content);
   return filterLogLines(lines, keyword).slice(-n);
 }
 
 /** 读取 gzip 文件最后 N 行 */
-export function readGzipLastLines(filepath: string, n: number, keyword?: string): string[] {
-  const compressed = fs.readFileSync(filepath);
-  const content = zlib.gunzipSync(compressed).toString('utf-8');
+export async function readGzipLastLines(filepath: string, n: number, keyword?: string): Promise<string[]> {
+  const compressed = await fsp.readFile(filepath);
+  const content = (await gunzipAsync(compressed)).toString('utf-8');
   const lines = normalizeLogLines(content);
   return filterLogLines(lines, keyword).slice(-n);
 }
 
-/** 轮询文件新增内容并回调，直到 signal 中止 */
+/** 可中止的延时（abort 时提前 resolve） */
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) { resolve(); return; }
+    const onAbort = () => { clearTimeout(timer); resolve(); };
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+/** 轮询文件新增内容并回调，直到 signal 中止（全程异步 I/O，await 回调形成背压） */
 export async function watchTail(
   filepath: string,
   signal: AbortSignal,
@@ -59,71 +75,71 @@ export async function watchTail(
   onLines: (lines: string[], newPosition: number) => Promise<void>,
 ): Promise<void> {
   let position = initialPosition;
-  return new Promise<void>((resolve) => {
-    if (signal.aborted) { resolve(); return; }
+  while (!signal.aborted) {
+    await sleep(1000, signal);
+    if (signal.aborted) return;
 
-    const interval = setInterval(() => {
-      if (signal.aborted) { clearInterval(interval); resolve(); return; }
-      if (!fs.existsSync(filepath)) { clearInterval(interval); resolve(); return; }
-      const stat = fs.statSync(filepath);
-      if (stat.size > position) {
-        const fd = fs.openSync(filepath, 'r');
-        const newBytes = stat.size - position;
-        const buf = Buffer.alloc(newBytes);
-        fs.readSync(fd, buf, 0, newBytes, position);
-        fs.closeSync(fd);
-        position = stat.size;
-        const newLines = buf.toString('utf-8').split(/\r?\n/).filter(l => l.trim() !== '');
-        if (newLines.length > 0) {
-          void onLines(newLines, position);
-        }
-      }
-    }, 1000);
+    let stat: Awaited<ReturnType<typeof fsp.stat>>;
+    try {
+      stat = await fsp.stat(filepath);
+    } catch {
+      return; // 文件被删除/轮转
+    }
+    if (stat.size <= position) continue;
 
-    signal.addEventListener('abort', () => { clearInterval(interval); resolve(); });
-  });
+    const newBytes = stat.size - position;
+    const buf = Buffer.alloc(newBytes);
+    const fh = await fsp.open(filepath, 'r');
+    try {
+      await fh.read(buf, 0, newBytes, position);
+    } finally {
+      await fh.close();
+    }
+    position = stat.size;
+    const newLines = buf.toString('utf-8').split(/\r?\n/).filter(l => l.trim() !== '');
+    if (newLines.length > 0) {
+      await onLines(newLines, position);
+    }
+  }
 }
 
 // ─── 业务逻辑 ─────────────────────────────────────────────────────────────────
 import { HTTPException } from 'hono/http-exception';
 
-export function listLogFiles() {
-  if (!fs.existsSync(LOG_DIR)) return [];
-  const entries = fs.readdirSync(LOG_DIR, { withFileTypes: true });
-  return entries
-    .filter(e => e.isFile() && (e.name.endsWith('.log') || e.name.endsWith('.log.gz')))
-    .map(e => {
-      const stat = fs.statSync(path.join(LOG_DIR, e.name));
-      return {
-        name: e.name,
-        size: stat.size,
-        modifiedAt: formatDateTime(stat.mtime),
-        isGzip: e.name.endsWith('.gz'),
-      };
-    })
-    .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
+export async function listLogFiles() {
+  let entries;
+  try {
+    entries = await fsp.readdir(LOG_DIR, { withFileTypes: true });
+  } catch {
+    return []; // 日志目录尚未创建
+  }
+  const logEntries = entries.filter(e => e.isFile() && (e.name.endsWith('.log') || e.name.endsWith('.log.gz')));
+  const files = await Promise.all(logEntries.map(async (e) => {
+    const stat = await fsp.stat(path.join(LOG_DIR, e.name));
+    return {
+      name: e.name,
+      size: stat.size,
+      modifiedAt: formatDateTime(stat.mtime),
+      isGzip: e.name.endsWith('.gz'),
+    };
+  }));
+  return files.sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
 }
 
-export function readLogFileLines(filename: string, lines: number, keyword?: string) {
-  const name = safeFilename(filename);
-  if (!name) throw new HTTPException(400, { message: '无效的文件名' });
-  const filepath = resolveLogPath(name);
-  if (!filepath || !fs.existsSync(filepath)) throw new HTTPException(404, { message: '文件不存在' });
+export async function readLogFileLines(filename: string, lines: number, keyword?: string) {
+  const { name, filepath } = await resolveLogFile(filename);
   const isGzip = name.endsWith('.gz');
   return isGzip ? readGzipLastLines(filepath, lines, keyword) : readLastLines(filepath, lines, keyword);
 }
 
-export function deleteLogFile(filename: string) {
-  const name = safeFilename(filename);
-  if (!name) throw new HTTPException(400, { message: '无效的文件名' });
-  const filepath = resolveLogPath(name);
-  if (!filepath || !fs.existsSync(filepath)) throw new HTTPException(404, { message: '文件不存在' });
-  fs.unlinkSync(filepath);
+export async function deleteLogFile(filename: string) {
+  const { filepath } = await resolveLogFile(filename);
+  await fsp.unlink(filepath);
 }
 
-export function getLogFileBeforeAudit(filename: string) {
-  const { name, filepath } = resolveLogFile(filename);
-  const stat = fs.statSync(filepath);
+export async function getLogFileBeforeAudit(filename: string) {
+  const { name, filepath } = await resolveLogFile(filename);
+  const stat = await fsp.stat(filepath);
   return {
     name,
     size: stat.size,
@@ -132,10 +148,15 @@ export function getLogFileBeforeAudit(filename: string) {
   };
 }
 
-export function resolveLogFile(filename: string) {
+export async function resolveLogFile(filename: string) {
   const name = safeFilename(filename);
   if (!name) throw new HTTPException(400, { message: '无效的文件名' });
   const filepath = resolveLogPath(name);
-  if (!filepath || !fs.existsSync(filepath)) throw new HTTPException(404, { message: '文件不存在' });
+  if (!filepath) throw new HTTPException(404, { message: '文件不存在' });
+  try {
+    await fsp.access(filepath);
+  } catch {
+    throw new HTTPException(404, { message: '文件不存在' });
+  }
   return { name, filepath };
 }

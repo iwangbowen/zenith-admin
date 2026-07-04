@@ -119,12 +119,12 @@ async function dispatchAlert(rule: ErrorAlertRuleRow, detail: string): Promise<v
 
 export async function evaluateAlerts(): Promise<{ evaluated: number; triggered: number }> {
   const rules = await db.select().from(errorAlertRules).where(eq(errorAlertRules.enabled, true));
-  let triggered = 0;
   const now = Date.now();
 
-  for (const rule of rules) {
+  // 规则间相互独立：并行评估，避免串行累积多次 COUNT 往返
+  const results = await Promise.all(rules.map(async (rule) => {
     // 去抖：上次触发距今不足一个窗口则跳过
-    if (rule.lastTriggeredAt && now - rule.lastTriggeredAt.getTime() < rule.windowMinutes * 60_000) continue;
+    if (rule.lastTriggeredAt && now - rule.lastTriggeredAt.getTime() < rule.windowMinutes * 60_000) return false;
 
     const windowStart = new Date(now - rule.windowMinutes * 60_000);
     const tId = tenantFilter(rule.tenantId);
@@ -151,21 +151,23 @@ export async function evaluateAlerts(): Promise<{ evaluated: number; triggered: 
       if (c > 0) { hit = true; detail = `${rule.windowMinutes} 分钟内新增 ${c} 类新错误`; }
     } else if (rule.condition === 'spike') {
       const prevStart = new Date(now - rule.windowMinutes * 2 * 60_000);
-      const cur = await db.$count(errorEvents, evWhere);
       const prevConds = [gte(errorEvents.createdAt, prevStart), lt(errorEvents.createdAt, windowStart)];
       if (rule.errorType) prevConds.push(eq(errorEvents.errorType, rule.errorType));
       if (rule.level) prevConds.push(eq(errorEvents.level, rule.level));
       if (tId != null) prevConds.push(eq(errorEvents.tenantId, tId)); else prevConds.push(isNull(errorEvents.tenantId));
-      const prev = await db.$count(errorEvents, and(...prevConds));
+      const [cur, prev] = await Promise.all([
+        db.$count(errorEvents, evWhere),
+        db.$count(errorEvents, and(...prevConds)),
+      ]);
       if (cur >= rule.thresholdCount && cur > prev * 2) { hit = true; detail = `错误激增：当前周期 ${cur} 次，上一周期 ${prev} 次`; }
     }
 
     if (hit) {
       await dispatchAlert(rule, detail);
       await db.update(errorAlertRules).set({ lastTriggeredAt: new Date() }).where(eq(errorAlertRules.id, rule.id));
-      triggered += 1;
     }
-  }
+    return hit;
+  }));
 
-  return { evaluated: rules.length, triggered };
+  return { evaluated: rules.length, triggered: results.filter(Boolean).length };
 }

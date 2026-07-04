@@ -2,7 +2,7 @@
 
 `FilePreviewModal` 是全站统一的文件预览弹窗，支持图片、PDF、音频、视频、Excel/CSV 表格、Word 文档、Markdown、纯文本、JSON、SVG、代码文件和 ZIP 压缩包。调用方只需传入文件元数据，无需自行判断格式或引入额外组件。
 
-**文件位置**：`packages/web/src/components/FilePreviewModal/index.tsx`
+**文件位置**：`packages/web/src/components/FilePreviewModal/`
 
 ---
 
@@ -114,7 +114,7 @@ const isPreviewable = canPreviewFile(record.mimeType);
 
 #### 本地化加载（去 CDN）
 
-`@embedpdf` 默认会在运行时从外部 CDN 拉取若干资源。为保证**内网/国内网络（jsDelivr、Google Fonts 不可达）**下也能正常预览，`PDFPreviewPanel`（`packages/web/src/pages/ai/chat/PDFPreviewPanel.tsx`）通过 `PDFViewer` 的 `config` 将其全部本地化或关闭：
+`@embedpdf` 默认会在运行时从外部 CDN 拉取若干资源。为保证**内网/国内网络（jsDelivr、Google Fonts 不可达）**下也能正常预览，`PDFPreviewPanel`通过 `PDFViewer` 的 `config` 将其全部本地化或关闭：
 
 | 默认 CDN 资源 | 默认来源 | 处理方式 |
 | --- | --- | --- |
@@ -152,7 +152,7 @@ const pdfiumWasmAbsUrl = new URL(pdfiumWasmUrl, globalThis.location.origin).href
 
 通过 `fetchProtectedFile(fileUrl)` 携带 Bearer Token 下载 Blob，调用 `Blob.text()` 将内容读取为 UTF-8 字符串后，**懒加载** `MarkdownPreviewPanel`，使用 `react-markdown` 渲染为 React 组件树。**无 `dangerouslySetInnerHTML`，无 XSS 风险，无需后端改动**。
 
-`MarkdownPreviewPanel`（`packages/web/src/components/MarkdownPreviewPanel.tsx`）插件配置：
+`MarkdownPreviewPanel`插件配置：
 
 ```text
 remarkPlugins: [remarkGfm]   // GFM：表格、任务列表、删除线、自动链接
@@ -194,7 +194,7 @@ SVG 文件（`image/svg+xml`）通过 `fetchProtectedFile(fileUrl)` 下载 Blob 
 
 通过 `fetchProtectedFile(fileUrl)` 携带 Bearer Token 下载 Blob，**懒加载** `DocxPreviewPanel` 后直接将 Blob 交给 `docx-preview` 的 `renderAsync()` 在浏览器端渲染为 HTML。整个过程**无需后端转换**。
 
-`DocxPreviewPanel`（`packages/web/src/components/DocxPreviewPanel.tsx`）关键配置：
+`DocxPreviewPanel`关键配置：
 
 ```text
 renderAsync(blob, container, undefined, {
@@ -262,7 +262,7 @@ Excel 预览分为**后端转换**和**前端渲染**两个阶段，后端零新
 
 `FilePreviewModal` 通过 `request.get<IWorkbookData>('/api/files/{id}/sheet-preview')` 拉取数据后，**懒加载** `ExcelPreviewPanel`（`React.lazy`），避免 Univer 体积影响首屏。
 
-`ExcelPreviewPanel`（`packages/web/src/components/ExcelPreviewPanel.tsx`）：
+`ExcelPreviewPanel`：
 
 ```text
 createUniver({
@@ -297,7 +297,7 @@ fWorkbook.setEditable(false)   // 设为只读，禁止编辑
 
 通过 `fetchProtectedFile(fileUrl)` 携带 Bearer Token 下载 Blob，**懒加载** `ZipPreviewPanel`，使用 `JSZip.loadAsync(blob)` 在浏览器端解析 ZIP，将所有目录/文件条目转换为 Semi Design `Tree` 组件的 `TreeNodeData` 结构并渲染。**无需后端改动**。
 
-`ZipPreviewPanel`（`packages/web/src/components/ZipPreviewPanel.tsx`）关键功能：
+`ZipPreviewPanel`关键功能：
 
 ```text
 JSZip.loadAsync(blob)解析所有条目

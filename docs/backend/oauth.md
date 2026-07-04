@@ -69,7 +69,7 @@ JWT token 存入 localStorage，跳转至仪表盘
 
 ### 前端回调页
 
-`/oauth/callback/:provider` 页面（`packages/web/src/pages/oauth/OAuthCallbackPage.tsx`）负责：
+`/oauth/callback/:provider` 页面负责：
 
 1. 从路由参数中提取 `provider`，并从 URL query params 中提取 `code`
 2. 调用 `POST /api/auth/oauth/{provider}/callback` 完成 token 换取

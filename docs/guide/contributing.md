@@ -55,6 +55,12 @@ VitePress 配置已按环境自动切换 `base` 路径：
 
 无需手动修改，CI 通过环境变量 `GITHUB_REPOSITORY` 自动确定。
 
+### 文档写作约定
+
+- **避免在文档中引用具体代码文件路径**（如 `packages/server/src/routes/ai/ai-chat.ts`）：代码重构/搬迁时这类引用会批量失效且难以发现。描述实现位置时使用**模块名/组件名/目录级**表述（如「`ExportButton` 组件」「`packages/web/src/member/` 目录」）。
+- 例外（允许引用文件路径）：面向开发者的**规范性指引**——告诉读者「该从哪个模块 import / 在哪个位置创建文件」的内容（如 `lib/datetime.ts` 的时间函数、`src/pages/<module>/<ComponentName>.tsx` 创建模板），以及代码示例内的注释。
+- `AGENTS.md` 与 `.agents/skills/` 不受此限制（AI 协作指引需要精确路径），但重构时必须同步更新。
+
 ---
 
 ## 版本发布

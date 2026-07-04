@@ -1056,8 +1056,10 @@ export async function reconcileMultiSubProcess(
 
   if (!decision) return;
 
-  const [pt] = await db.select().from(workflowTasks).where(eq(workflowTasks.id, decision.parentTaskId)).limit(1);
-  const [pi] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, decision.parentInstId)).limit(1);
+  const [[pt], [pi]] = await Promise.all([
+    db.select().from(workflowTasks).where(eq(workflowTasks.id, decision.parentTaskId)).limit(1),
+    db.select().from(workflowInstances).where(eq(workflowInstances.id, decision.parentInstId)).limit(1),
+  ]);
   if (!pt || !pi || pi.status !== 'running') return;
 
   if (decision.action === 'approve') {
@@ -1118,10 +1120,12 @@ export async function applySubProcessOutputAndResume(
   outcome: 'approved' | 'rejected',
   actor: WorkflowEventActor,
 ): Promise<void> {
-  // 先重读父实例最新状态，避免在 spawn 期间被其他流程修改
-  const [latestParent] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, parentInst.id)).limit(1);
+  // 先重读父实例/父任务最新状态，避免在 spawn 期间被其他流程修改
+  const [[latestParent], [latestTask]] = await Promise.all([
+    db.select().from(workflowInstances).where(eq(workflowInstances.id, parentInst.id)).limit(1),
+    db.select().from(workflowTasks).where(eq(workflowTasks.id, parentTask.id)).limit(1),
+  ]);
   if (!latestParent || latestParent.status !== 'running') return;
-  const [latestTask] = await db.select().from(workflowTasks).where(eq(workflowTasks.id, parentTask.id)).limit(1);
   if (!latestTask || latestTask.status !== 'waiting') return;
 
   if (outcome === 'approved') {

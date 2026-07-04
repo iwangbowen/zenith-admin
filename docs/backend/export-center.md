@@ -95,7 +95,7 @@ export const xxxExportDefinition = defineExport<Record<string, unknown>, XxxExpo
 
 ## 前端接入
 
-列表页统一使用 `packages/web/src/components/ExportButton.tsx`。
+列表页统一使用 `ExportButton` 组件。
 
 ```tsx
 function buildExportQuery(): Record<string, unknown> {

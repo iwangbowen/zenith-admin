@@ -1,6 +1,7 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { streamSSE } from 'hono/streaming';
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
 import { validationHook, commonErrorResponses, ok, okMsg, ErrorResponse, jsonContent, okBody, errBody } from '../../lib/openapi-schemas';
@@ -19,7 +20,7 @@ const listRoute = defineOpenAPIRoute({
     middleware: [authMiddleware, guard({ permission: 'system:log:files' })] as const,
     responses: { ...ok(z.array(LogFileDTO), '日志文件列表'), ...commonErrorResponses },
   }),
-  handler: async (c) => c.json(okBody(listLogFiles(), 'success'), 200),
+  handler: async (c) => c.json(okBody(await listLogFiles(), 'success'), 200),
 });
 
 const contentRoute = defineOpenAPIRoute({
@@ -43,7 +44,7 @@ const contentRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const q = c.req.valid('query');
-    const lines = readLogFileLines(c.req.param('filename'), q.lines ?? 500, q.keyword);
+    const lines = await readLogFileLines(c.req.param('filename'), q.lines ?? 500, q.keyword);
     return c.json(okBody({ lines }, 'success'), 200);
   },
 });
@@ -68,8 +69,8 @@ const deleteApiRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const filename = c.req.param('filename');
-    setAuditBeforeData(c, getLogFileBeforeAudit(filename));
-    deleteLogFile(filename);
+    setAuditBeforeData(c, await getLogFileBeforeAudit(filename));
+    await deleteLogFile(filename);
     return c.json(okBody(null, '删除成功'), 200);
   },
 });
@@ -78,8 +79,8 @@ router.openapiRoutes([listRoute, contentRoute, deleteApiRoute] as const);
 
 // 非 OpenAPI 路由：下载 & SSE
 router.get('/:filename/download', authMiddleware, guard({ permission: 'system:log:files:download' }), async (c) => {
-  const { name, filepath } = resolveLogFile(c.req.param('filename'));
-  const stat = fs.statSync(filepath);
+  const { name, filepath } = await resolveLogFile(c.req.param('filename'));
+  const stat = await fsp.stat(filepath);
   const stream = fs.createReadStream(filepath);
   const { Readable } = await import('node:stream');
   const webStream = Readable.toWeb(stream) as ReadableStream;
@@ -95,13 +96,13 @@ router.get('/:filename/download', authMiddleware, guard({ permission: 'system:lo
 router.get('/:filename/tail', authMiddleware, guard({ permission: 'system:log:files' }), async (c) => {
   const rawName = c.req.param('filename');
   if (rawName.endsWith('.gz')) return c.json(errBody('压缩文件不支持实时追踪'), 400);
-  const { filepath } = resolveLogFile(rawName);
+  const { filepath } = await resolveLogFile(rawName);
   return streamSSE(c, async (stream) => {
-    const initialLines = readLastLines(filepath, 100);
+    const initialLines = await readLastLines(filepath, 100);
     for (const line of initialLines) {
       await stream.writeSSE({ data: line, event: 'log' });
     }
-    let position = fs.statSync(filepath).size;
+    let position = (await fsp.stat(filepath)).size;
     const signal = c.req.raw.signal;
     await watchTail(filepath, signal, position, async (newLines, newPos) => {
       position = newPos;

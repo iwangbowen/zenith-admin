@@ -287,7 +287,8 @@ export default function UsersPage() {
         status: 'enabled',
       };
 
-  const handleToggleStatus = async (user: User, newStatus: 'enabled' | 'disabled') => {
+  const { mutate: toggleStatus } = toggleStatusMutation;
+  const handleToggleStatus = useCallback(async (user: User, newStatus: 'enabled' | 'disabled') => {
     if (newStatus === 'disabled') {
       const confirmed = await new Promise<boolean>((resolve) => {
         Modal.confirm({
@@ -302,11 +303,11 @@ export default function UsersPage() {
       });
       if (!confirmed) return;
     }
-    toggleStatusMutation.mutate(
+    toggleStatus(
       { id: user.id, ids: [user.id], status: newStatus },
       { onSuccess: () => Toast.success(newStatus === 'enabled' ? '已启用' : '已停用') },
     );
-  };
+  }, [toggleStatus]);
 
   function handleSearch() {
     setPage(1);
@@ -422,17 +423,24 @@ export default function UsersPage() {
     importFileRef.current = null;
   };
 
-  const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync(id);
+  const { mutateAsync: deleteUser } = deleteMutation;
+  const handleDelete = useCallback(async (id: number) => {
+    await deleteUser(id);
     Toast.success('删除成功');
-  };
+  }, [deleteUser]);
 
-  const handleUnlock = async (id: number) => {
-    await unlockMutation.mutateAsync(id);
+  const { mutateAsync: unlockUser } = unlockMutation;
+  const handleUnlock = useCallback(async (id: number) => {
+    await unlockUser(id);
     Toast.success('解锁成功');
-  };
+  }, [unlockUser]);
 
-  const columns: ColumnProps<User>[] = [
+  const { mutateAsync: kickUserSessions } = kickSessionsMutation;
+  const { refetch: refetchUserList } = listQuery;
+
+  // 列定义 memo 化：搜索框每次击键都会触发页面重渲染，
+  // 若每次都重建 columns（含所有 render 闭包），表格会整体重渲染所有行
+  const columns: ColumnProps<User>[] = useMemo(() => [
     {
       title: '用户',
       dataIndex: 'nickname',
@@ -629,9 +637,9 @@ export default function UsersPage() {
                 content: `确定要强制下线用户「${record.nickname}（${record.username}）」的全部会话吗？`,
                 okButtonProps: { type: 'danger', theme: 'solid' },
                 onOk: async () => {
-                  await kickSessionsMutation.mutateAsync(record.id);
+                  await kickUserSessions(record.id);
                   Toast.success('已强制下线');
-                  void listQuery.refetch();
+                  void refetchUserList();
                 },
               });
             },
@@ -639,7 +647,7 @@ export default function UsersPage() {
         ];
       },
     }),
-  ];
+  ], [hasPermission, togglingStatusId, handleToggleStatus, handleDelete, handleUnlock, kickUserSessions, refetchUserList]);
 
   const [showDeptTree, setShowDeptTree] = useState(false);
   const [isLayoutNarrow, setIsLayoutNarrow] = useState(false);

@@ -240,11 +240,8 @@
 前台会员端是独立 SPA：
 
 - HTML 入口：`packages/web/member.html`
-- React 入口：`packages/web/src/member/main-member.tsx`
+- 代码目录：`packages/web/src/member/`（入口、认证 Provider、独立请求客户端、布局）
 - 路由：`HashRouter`
-- 认证 Provider：`packages/web/src/member/hooks/useMemberAuth.tsx`
-- 请求客户端：`packages/web/src/member/utils/member-request.ts`
-- 布局：`packages/web/src/member/layouts/MemberLayout.tsx`
 
 `member-request.ts` 自动携带 `zenith_member_token`，遇到 401 会调用 `/api/member/auth/refresh` 刷新 Access Token；刷新失败时清理会员 Token 并跳转到 `member.html#/login`。
 

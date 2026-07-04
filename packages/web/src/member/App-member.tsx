@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react';
+import React, { Suspense, type ReactNode } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Spin } from '@douyinfe/semi-ui';
@@ -6,22 +6,30 @@ import { MemberAuthProvider, useMemberAuth } from './hooks/useMemberAuth';
 import { memberQueryClient } from './lib/member-query';
 import PublicLayout from './layouts/PublicLayout';
 import MemberLayout from './layouts/MemberLayout';
-import LandingPage from './pages/landing/LandingPage';
-import FeaturesPage from './pages/features/FeaturesPage';
-import LevelsPage from './pages/levels/LevelsPage';
-import PromotionsPage from './pages/promotions/PromotionsPage';
-import AboutPage from './pages/about/AboutPage';
-import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
-import HomePage from './pages/home/HomePage';
-import PointsPage from './pages/points/PointsPage';
-import WalletPage from './pages/wallet/WalletPage';
-import CouponsPage from './pages/coupons/CouponsPage';
-import CheckinPage from './pages/checkin/CheckinPage';
-import LevelPage from './pages/level/LevelPage';
-import ProfilePage from './pages/profile/ProfilePage';
-import EditProfilePage from './pages/profile/EditProfilePage';
-import ChangePasswordPage from './pages/profile/ChangePasswordPage';
-import LoginHistoryPage from './pages/login-history/LoginHistoryPage';
+
+// 路由级代码分割：各页面按需加载，避免落地页访客下载全部会员中心页面
+const LandingPage = React.lazy(() => import('./pages/landing/LandingPage'));
+const FeaturesPage = React.lazy(() => import('./pages/features/FeaturesPage'));
+const LevelsPage = React.lazy(() => import('./pages/levels/LevelsPage'));
+const PromotionsPage = React.lazy(() => import('./pages/promotions/PromotionsPage'));
+const AboutPage = React.lazy(() => import('./pages/about/AboutPage'));
+const ForgotPasswordPage = React.lazy(() => import('./pages/auth/ForgotPasswordPage'));
+const HomePage = React.lazy(() => import('./pages/home/HomePage'));
+const PointsPage = React.lazy(() => import('./pages/points/PointsPage'));
+const WalletPage = React.lazy(() => import('./pages/wallet/WalletPage'));
+const CouponsPage = React.lazy(() => import('./pages/coupons/CouponsPage'));
+const CheckinPage = React.lazy(() => import('./pages/checkin/CheckinPage'));
+const LevelPage = React.lazy(() => import('./pages/level/LevelPage'));
+const ProfilePage = React.lazy(() => import('./pages/profile/ProfilePage'));
+const EditProfilePage = React.lazy(() => import('./pages/profile/EditProfilePage'));
+const ChangePasswordPage = React.lazy(() => import('./pages/profile/ChangePasswordPage'));
+const LoginHistoryPage = React.lazy(() => import('./pages/login-history/LoginHistoryPage'));
+
+const routeFallback = (
+  <div className="m-loading-wrap">
+    <Spin size="large" />
+  </div>
+);
 
 /** 受保护路由：未登录跳转首页（可通过弹窗登录） */
 function RequireMember({ children }: Readonly<{ children: ReactNode }>) {
@@ -43,6 +51,7 @@ function RequireMember({ children }: Readonly<{ children: ReactNode }>) {
 function AppRoutes() {
   const { member } = useMemberAuth();
   return (
+    <Suspense fallback={routeFallback}>
     <Routes>
       {/* Public routes under shared top-nav layout */}
       <Route element={<PublicLayout />}>
@@ -82,6 +91,7 @@ function AppRoutes() {
 
       <Route path="*" element={<Navigate to={member ? '/home' : '/'} replace />} />
     </Routes>
+    </Suspense>
   );
 }
 

@@ -579,6 +579,16 @@ export async function importUsers(file: File): Promise<ImportUsersResult> {
   const importTenantId = getCreateTenantId(user);
   const tenantUserLimit = await getTenantUserLimit(importTenantId);
 
+  // bcrypt.hash 单次约 100ms：批量导入常复用同一初始密码，按唯一密码缓存哈希
+  const passwordHashCache = new Map<string, string>();
+  const hashPassword = async (password: string): Promise<string> => {
+    const cached = passwordHashCache.get(password);
+    if (cached) return cached;
+    const hashed = await bcrypt.hash(password, 10);
+    passwordHashCache.set(password, hashed);
+    return hashed;
+  };
+
   for (const row of dataRows) {
     const rowNum = row.number;
     const username = getCellText(row, 1);
@@ -625,7 +635,7 @@ export async function importUsers(file: File): Promise<ImportUsersResult> {
     if (tenantUserLimit != null && existingUsersList.length + success >= tenantUserLimit) {
       errors.push({ row: rowNum, message: `超出租户用户数上限（${tenantUserLimit}），后续行已跳过` }); continue;
     }
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await hashPassword(password);
     try {
       await db.transaction(async (tx) => {
         const [newUser] = await tx.insert(users).values({

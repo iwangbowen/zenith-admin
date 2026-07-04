@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import { MEMBER_TOKEN_KEY, MEMBER_REFRESH_TOKEN_KEY } from '@zenith/shared';
 import type { ApiResponse, Member, MemberLoginResult } from '@zenith/shared';
 import { memberRequest } from '../utils/member-request';
@@ -66,7 +66,7 @@ export function MemberAuthProvider({ children }: Readonly<{ children: ReactNode 
     fetchMember();
   }, [fetchMember]);
 
-  const login = async (params: MemberLoginParams) => {
+  const login = useCallback(async (params: MemberLoginParams) => {
     const res = await memberRequest.post<MemberLoginResult>('/api/member/auth/login', params, { silent: true });
     if (res.code === 0) {
       localStorage.setItem(MEMBER_TOKEN_KEY, res.data.token.accessToken);
@@ -74,9 +74,9 @@ export function MemberAuthProvider({ children }: Readonly<{ children: ReactNode 
       setState({ member: res.data.member, loading: false });
     }
     return res;
-  };
+  }, []);
 
-  const register = async (params: MemberRegisterParams) => {
+  const register = useCallback(async (params: MemberRegisterParams) => {
     const res = await memberRequest.post<MemberLoginResult>('/api/member/auth/register', params, { silent: true });
     if (res.code === 0) {
       localStorage.setItem(MEMBER_TOKEN_KEY, res.data.token.accessToken);
@@ -84,23 +84,29 @@ export function MemberAuthProvider({ children }: Readonly<{ children: ReactNode 
       setState({ member: res.data.member, loading: false });
     }
     return res;
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     localStorage.removeItem(MEMBER_TOKEN_KEY);
     localStorage.removeItem(MEMBER_REFRESH_TOKEN_KEY);
     memberQueryClient.clear();
     setState({ member: null, loading: false });
     // best-effort 通知服务端删除会话
     memberRequest.post('/api/member/auth/logout', {}, { silent: true }).catch(() => {});
-  };
+  }, []);
 
-  const updateMember = (member: Member) => {
+  const updateMember = useCallback((member: Member) => {
     setState((prev) => ({ ...prev, member }));
-  };
+  }, []);
+
+  // 稳定引用：避免 Provider 每次渲染都生成新 value 导致所有消费组件级联重渲染
+  const value = useMemo(
+    () => ({ ...state, login, register, logout, refresh: fetchMember, updateMember }),
+    [state, login, register, logout, fetchMember, updateMember],
+  );
 
   return (
-    <MemberAuthContext.Provider value={{ ...state, login, register, logout, refresh: fetchMember, updateMember }}>
+    <MemberAuthContext.Provider value={value}>
       {children}
     </MemberAuthContext.Provider>
   );
