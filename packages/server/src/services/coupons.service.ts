@@ -5,7 +5,7 @@
  * - 核销 redeemCoupon() 预留统一入口，供未来订单系统接入
  */
 import crypto from 'node:crypto';
-import { and, desc, eq, ilike, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gt, ilike, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
 import { coupons, memberCoupons, members } from '../db/schema';
@@ -186,8 +186,9 @@ function computeExpireAt(coupon: CouponRow): Date | null {
 
 /** 在事务内将一张券发放给会员（原子库存扣减 + 限领校验）*/
 async function grantCoupon(tx: DbTransaction, coupon: CouponRow, memberId: number): Promise<MemberCouponRow> {
-  // 每人限领校验
+  // 每人限领校验：先锁模板行串行化同一模板的并发发放，防止「先数后写」竞态突破限领
   if (coupon.perLimit > 0) {
+    await tx.select({ id: coupons.id }).from(coupons).where(eq(coupons.id, coupon.id)).for('update');
     const held = await tx.$count(memberCoupons, and(eq(memberCoupons.couponId, coupon.id), eq(memberCoupons.memberId, memberId)));
     if (held >= coupon.perLimit) throw new HTTPException(400, { message: '已达每人限领数量' });
   }
@@ -245,23 +246,33 @@ export async function receiveCoupon(couponId: number) {
 }
 
 // ─── 核销 / 作废 / 过期 ───────────────────────────────────────────────────────
-/** 核销券码（预留统一入口，供未来订单系统调用）*/
+/** 核销券码（预留统一入口，供未来订单系统调用）。
+ * 单条原子条件更新（code + unused + 未过期），并发核销同一券码仅一次成功，防双花。 */
 export async function redeemCoupon(code: string, opts?: { bizType?: string; bizId?: string }) {
-  return db.transaction(async (tx) => {
-    const [mc] = await tx.select().from(memberCoupons).where(eq(memberCoupons.code, code)).limit(1);
-    if (!mc) throw new HTTPException(404, { message: '券码不存在' });
-    if (mc.status !== 'unused') throw new HTTPException(400, { message: '优惠券不可用' });
-    if (mc.expireAt && mc.expireAt < new Date()) {
-      await tx.update(memberCoupons).set({ status: 'expired' }).where(eq(memberCoupons.id, mc.id));
-      throw new HTTPException(400, { message: '优惠券已过期' });
-    }
-    const [updated] = await tx
+  const now = new Date();
+  const [updated] = await db
+    .update(memberCoupons)
+    .set({ status: 'used', usedAt: now, bizType: opts?.bizType ?? null, bizId: opts?.bizId ?? null })
+    .where(and(
+      eq(memberCoupons.code, code),
+      eq(memberCoupons.status, 'unused'),
+      or(isNull(memberCoupons.expireAt), gt(memberCoupons.expireAt, now)),
+    ))
+    .returning();
+  if (updated) return mapMemberCoupon(updated);
+
+  // 未命中：区分券码不存在 / 已过期 / 其它不可用
+  const [mc] = await db.select().from(memberCoupons).where(eq(memberCoupons.code, code)).limit(1);
+  if (!mc) throw new HTTPException(404, { message: '券码不存在' });
+  if (mc.status === 'unused' && mc.expireAt && mc.expireAt <= now) {
+    // 独立落库过期标记（不在抛错事务内，不会被回滚）
+    await db
       .update(memberCoupons)
-      .set({ status: 'used', usedAt: new Date(), bizType: opts?.bizType ?? null, bizId: opts?.bizId ?? null })
-      .where(eq(memberCoupons.id, mc.id))
-      .returning();
-    return mapMemberCoupon(updated);
-  });
+      .set({ status: 'expired' })
+      .where(and(eq(memberCoupons.id, mc.id), eq(memberCoupons.status, 'unused')));
+    throw new HTTPException(400, { message: '优惠券已过期' });
+  }
+  throw new HTTPException(400, { message: '优惠券不可用' });
 }
 
 /** 后台作废券码（冻结，未使用的券才能作废）*/

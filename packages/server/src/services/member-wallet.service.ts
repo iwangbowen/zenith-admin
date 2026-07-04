@@ -5,11 +5,12 @@
  * - rechargeWallet() 发起充值：调用支付中心 createPayment（bizType='member_recharge'）
  * - creditWalletOnRecharge() 由支付成功事件触发入账，按支付单号幂等
  */
-import { and, desc, eq, ilike, inArray, type SQL } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
 import { members, memberWallets, memberWalletTransactions, paymentOrders } from '../db/schema';
 import type { MemberWalletRow, MemberWalletTransactionRow } from '../db/schema';
+import type { DbTransaction } from '../db/types';
 import { formatDateTime } from '../lib/datetime';
 import { currentMemberId } from '../lib/member-context';
 import { withOptimisticRetry, OptimisticLockError } from '../lib/optimistic';
@@ -52,8 +53,11 @@ export function mapWalletTransaction(row: MemberWalletTransactionRow, memberName
 export async function ensureWallet(memberId: number): Promise<MemberWalletRow> {
   const [w] = await db.select().from(memberWallets).where(eq(memberWallets.memberId, memberId)).limit(1);
   if (w) return w;
-  const [created] = await db.insert(memberWallets).values({ memberId }).returning();
-  return created;
+  // 兜底按需创建；并发首建时 onConflictDoNothing 容忍撞唯一索引，回读胜者行
+  const [created] = await db.insert(memberWallets).values({ memberId }).onConflictDoNothing().returning();
+  if (created) return created;
+  const [existing] = await db.select().from(memberWallets).where(eq(memberWallets.memberId, memberId)).limit(1);
+  return existing;
 }
 
 export async function getWallet(memberId: number) {
@@ -108,42 +112,43 @@ export function computeWalletChange(
   };
 }
 
+/** 事务内应用一次钱包变动（乐观锁 CAS + 原子写流水）。版本冲突抛 OptimisticLockError，由调用方重试整个事务。 */
+async function applyWalletChange(tx: DbTransaction, input: ChangeWalletInput): Promise<MemberWalletRow> {
+  const [w] = await tx.select().from(memberWallets).where(eq(memberWallets.memberId, input.memberId)).limit(1);
+  if (!w) throw new HTTPException(404, { message: '钱包不存在' });
+
+  const { newBalance, newTotalRecharge, newTotalConsume } = computeWalletChange(w, input.type, input.amount);
+
+  const updated = await tx
+    .update(memberWallets)
+    .set({
+      balance: newBalance,
+      totalRecharge: newTotalRecharge,
+      totalConsume: newTotalConsume,
+      version: w.version + 1,
+    })
+    .where(and(eq(memberWallets.id, w.id), eq(memberWallets.version, w.version)))
+    .returning();
+  if (updated.length === 0) throw new OptimisticLockError();
+
+  await tx.insert(memberWalletTransactions).values({
+    memberId: input.memberId,
+    type: input.type,
+    amount: input.amount,
+    balanceAfter: newBalance,
+    bizType: input.bizType ?? null,
+    bizId: input.bizId ?? null,
+    paymentOrderId: input.paymentOrderId ?? null,
+    remark: input.remark ?? null,
+    operatorId: input.operatorId ?? null,
+  });
+  return updated[0];
+}
+
 export async function changeWallet(input: ChangeWalletInput): Promise<MemberWalletRow> {
   if (input.amount === 0) throw new HTTPException(400, { message: '金额变动不能为 0' });
 
-  return withOptimisticRetry(() =>
-    db.transaction(async (tx) => {
-      const [w] = await tx.select().from(memberWallets).where(eq(memberWallets.memberId, input.memberId)).limit(1);
-      if (!w) throw new HTTPException(404, { message: '钱包不存在' });
-
-      const { newBalance, newTotalRecharge, newTotalConsume } = computeWalletChange(w, input.type, input.amount);
-
-      const updated = await tx
-        .update(memberWallets)
-        .set({
-          balance: newBalance,
-          totalRecharge: newTotalRecharge,
-          totalConsume: newTotalConsume,
-          version: w.version + 1,
-        })
-        .where(and(eq(memberWallets.id, w.id), eq(memberWallets.version, w.version)))
-        .returning();
-      if (updated.length === 0) throw new OptimisticLockError();
-
-      await tx.insert(memberWalletTransactions).values({
-        memberId: input.memberId,
-        type: input.type,
-        amount: input.amount,
-        balanceAfter: newBalance,
-        bizType: input.bizType ?? null,
-        bizId: input.bizId ?? null,
-        paymentOrderId: input.paymentOrderId ?? null,
-        remark: input.remark ?? null,
-        operatorId: input.operatorId ?? null,
-      });
-      return updated[0];
-    }),
-  );
+  return withOptimisticRetry(() => db.transaction((tx) => applyWalletChange(tx, input)));
 }
 
 /** 消费扣款（amount 取负，校验余额）*/
@@ -177,33 +182,41 @@ export async function rechargeWallet(memberId: number, amount: number, payMethod
   return payParams;
 }
 
-/** 支付成功事件触发钱包入账（按支付单号幂等，防重投重复入账）*/
+/** 支付成功事件触发钱包入账（按支付单号幂等，防重投重复入账）。
+ * 事务级咨询锁串行化同一支付单的并发重投；幂等检查与入账同一事务提交，杜绝双入账。 */
 export async function creditWalletOnRecharge(event: { bizId: string; orderNo: string; amount: number }): Promise<void> {
   const memberId = Number(event.bizId);
   if (!Number.isInteger(memberId) || memberId <= 0) {
     logger.warn('[MemberWallet] 充值入账 bizId 非法', { bizId: event.bizId });
     return;
   }
-  // 幂等：该支付单是否已入账
-  const [exist] = await db
-    .select({ id: memberWalletTransactions.id })
-    .from(memberWalletTransactions)
-    .where(and(eq(memberWalletTransactions.bizType, WALLET_RECHARGE_BIZ_TYPE), eq(memberWalletTransactions.bizId, event.orderNo)))
-    .limit(1);
-  if (exist) return;
-
-  const [order] = await db.select({ id: paymentOrders.id }).from(paymentOrders).where(eq(paymentOrders.orderNo, event.orderNo)).limit(1);
   await ensureWallet(memberId);
-  await changeWallet({
-    memberId,
-    type: 'recharge',
-    amount: event.amount,
-    bizType: WALLET_RECHARGE_BIZ_TYPE,
-    bizId: event.orderNo,
-    paymentOrderId: order?.id,
-    remark: '钱包充值到账',
-  });
-  logger.info('[MemberWallet] 充值到账', { memberId, orderNo: event.orderNo, amount: event.amount });
+  const credited = await withOptimisticRetry(() =>
+    db.transaction(async (tx) => {
+      // 按支付单号获取事务级咨询锁（事务结束自动释放），并发重投在此排队
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`wallet-recharge:${event.orderNo}`}))`);
+      // 拿到锁后检查是否已入账（可见先前持锁事务已提交的流水）
+      const [exist] = await tx
+        .select({ id: memberWalletTransactions.id })
+        .from(memberWalletTransactions)
+        .where(and(eq(memberWalletTransactions.bizType, WALLET_RECHARGE_BIZ_TYPE), eq(memberWalletTransactions.bizId, event.orderNo)))
+        .limit(1);
+      if (exist) return false;
+
+      const [order] = await tx.select({ id: paymentOrders.id }).from(paymentOrders).where(eq(paymentOrders.orderNo, event.orderNo)).limit(1);
+      await applyWalletChange(tx, {
+        memberId,
+        type: 'recharge',
+        amount: event.amount,
+        bizType: WALLET_RECHARGE_BIZ_TYPE,
+        bizId: event.orderNo,
+        paymentOrderId: order?.id,
+        remark: '钱包充值到账',
+      });
+      return true;
+    }),
+  );
+  if (credited) logger.info('[MemberWallet] 充值到账', { memberId, orderNo: event.orderNo, amount: event.amount });
 }
 
 // ─── 流水查询 ─────────────────────────────────────────────────────────────────

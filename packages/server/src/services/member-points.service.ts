@@ -46,9 +46,11 @@ export function mapPointTransaction(row: MemberPointTransactionRow, memberName?:
 export async function ensurePointAccount(memberId: number): Promise<MemberPointAccountRow> {
   const [acc] = await db.select().from(memberPointAccounts).where(eq(memberPointAccounts.memberId, memberId)).limit(1);
   if (acc) return acc;
-  // 兜底：账户缺失时按需创建（正常注册时已创建）
-  const [created] = await db.insert(memberPointAccounts).values({ memberId }).returning();
-  return created;
+  // 兜底：账户缺失时按需创建（正常注册时已创建）；并发首建时 onConflictDoNothing 容忍撞唯一索引，回读胜者行
+  const [created] = await db.insert(memberPointAccounts).values({ memberId }).onConflictDoNothing().returning();
+  if (created) return created;
+  const [existing] = await db.select().from(memberPointAccounts).where(eq(memberPointAccounts.memberId, memberId)).limit(1);
+  return existing;
 }
 
 export async function getPointAccount(memberId: number) {

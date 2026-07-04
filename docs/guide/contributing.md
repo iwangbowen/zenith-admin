@@ -65,13 +65,15 @@ Zenith Admin 采用 **tag 触发 Release** 的自动化发布流程：
 
 1. 更新四个 `package.json` 中的版本号（根 / server / web / shared）
 2. 在项目根目录执行 `npm install --package-lock-only`，同步 `package-lock.json`
-3. 在 `docs/changelog/index.md` 顶部追加当前版本的变更记录
-4. 使用 Node.js 24 执行 `npm run build` 做发布前构建校验
-5. 提交并推送到 `master`
-6. 本地打 tag 并推送，触发 Release 工作流
+3. 执行 `npm test` 运行全部测试（涉及资金链路改动时，另跑 `MEMBER_FUNDS_DB_IT=1` 的 DB 集成测试）
+4. 在 `docs/changelog/index.md` 顶部追加当前版本的变更记录
+5. 使用 Node.js 24 执行 `npm run build` 做发布前构建校验
+6. 提交并推送到 `master`
+7. 本地打 tag 并推送，触发 Release 工作流
 
 ```bash
 npm install --package-lock-only
+npm test
 npm run build
 
 git add .
@@ -82,7 +84,7 @@ git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-> 如本地构建未通过，请先修复问题再继续发布，避免 CI 在 Release 流程中失败。
+> 如本地测试或构建未通过，请先修复问题再继续发布，避免 CI 在 Release 流程中失败。
 
 ### Release 工作流（`release.yml`）
 

@@ -36,7 +36,33 @@ npm install --package-lock-only
 
 ---
 
-## Step 4：本地构建验证
+## Step 4：运行测试
+
+提交前必须确认全部测试通过：
+
+```bash
+npm test
+```
+
+该命令依次运行 server 与 web 两个包的全部 vitest 测试，全部通过（退出码 0）后再进行下一步。如有失败须先修复再继续。
+
+同时建议运行核心资金链路 DB 集成测试（积分 / 钱包 / 优惠券的「事务 + 乐观锁」并发正确性，默认跳过，需本地 PostgreSQL 可用）：
+
+```powershell
+# PowerShell（在 packages/server 目录执行）
+$env:MEMBER_FUNDS_DB_IT='1'; npx vitest run src/services/member-funds.it.test.ts
+```
+
+```bash
+# Bash（在 packages/server 目录执行）
+MEMBER_FUNDS_DB_IT=1 npx vitest run src/services/member-funds.it.test.ts
+```
+
+> 本次发布涉及积分 / 钱包 / 优惠券 / 支付相关改动时，该集成测试**必须**运行并通过；其余改动 PG 不可用时可跳过。
+
+---
+
+## Step 5：本地构建验证
 
 提交前必须确认本地构建通过，避免 CI 失败：
 
@@ -64,7 +90,7 @@ Demo 构建成功后方可继续。如有错误须先修复（Demo 构建使用 
 
 ---
 
-## Step 5：更新 `docs/changelog/index.md`
+## Step 6：更新 `docs/changelog/index.md`
 
 在文件顶部（第一个 `---` 分隔符之后，上一版本记录之前）**追加**当前版本的变更记录：
 
@@ -89,7 +115,7 @@ Demo 构建成功后方可继续。如有错误须先修复（Demo 构建使用 
 
 ---
 
-## Step 6：提交并推送 tag
+## Step 7：提交并推送 tag
 
 ```bash
 # 将变更提交到 master
@@ -104,7 +130,7 @@ git push origin vX.Y.Z
 
 ---
 
-## Step 7：等待 GitHub Actions 完成
+## Step 8：等待 GitHub Actions 完成
 
 - `release.yml` 触发后会自动：构建产物 → 打包 zip → 提取 Changelog → 发布 GitHub Release
 - 发布产物包含：`zenith-admin-server-vX.Y.Z.zip`（后端）和 `zenith-admin-web-vX.Y.Z.zip`（前端静态文件）
