@@ -4,6 +4,38 @@
 
 ---
 
+## v0.80.0 - 2026-07-04
+
+### Changed
+
+#### 数据库 Schema 按业务域拆分
+
+- **schema 多文件化**：5500+ 行单体 `db/schema.ts` 按业务域拆分为 `db/schema/` 下 29 个文件（`core` / `payment` / `workflow` / `member` / `mp` / `report` 等），143 个 `xxxRelations` 统一收敛至 `relations.ts`；`schema.ts` 改为纯 re-export barrel，全仓 230+ 处导入方式与 drizzle 配置零改动。拆分经导出清单快照对比（482 项完全一致）与 `drizzle-kit generate` 零 diff 双重验证
+- **迁移基线化**：201 条历史迁移压缩为单条基线迁移，全新环境初始化更快、迁移目录更易维护
+
+#### 首屏性能优化（首屏 JS gzip 2.20MB → 0.58MB，−74%）
+
+- **入口静态图治理**：VChart 主题初始化从入口下沉至图表收口模块；PDF 预览面板（@embedpdf ~1MB）、快捷聊天、音视频通话宿主、聊天通知、锁屏（lunar 农历）全部改为懒加载；拼音搜索词典（pinyin-pro ~290KB）改为空闲预热的异步单例，未就绪时自动回退子串匹配
+- **分包策略迁移至 rolldown 原生 `codeSplitting.groups`**：修复 manualChunks 兼容层静默改写分组导致 react 运行时被并入重型 vendor 包、`__vitePreload` helper 被打进 PDF 引擎包等问题；react 运行时与 Vite 虚拟模块设最高优先级独立分组；关闭组递归捕获避免公共内件被巨型组吞并；semi-foundation 按模块拆分
+- **Semi barrel 摇树修复**：官方 barrel 因内联 base.css 被声明为 sideEffect，导致 AIChatDialogue（tiptap/prosemirror）、MarkdownRender（acorn）等重组件无条件进入首屏；通过本地无副作用影子 barrel + 精确别名接管裸导入恢复摇树，base.css 改由入口显式引入
+- **lucide 图标双实例隔离**：全量图标注册表（~600KB）改为从独立模块实例异步加载（`useLucideIconsReady` / `useAllIconNames` 钩子），静态按需图标走自动分包，各页面仅携带自己使用的图标
+- **@zenith/shared 声明 `sideEffects: false`**：修复入口因引用常量被迫携带 zod schema 与 demo 种子数据的问题（种子数据不再进入生产包）
+- **member 前台入口**：移除多余的 VChart 主题静态初始化（前台无图表页面）
+
+#### 前端数据获取规范统一
+
+- **TanStack Query 重构**：工作流（待审批 / 模板 / 触发器执行 / 保存视图）、用户数据权限与菜单权限、会员管理等模块改用 react-query 域 hooks 管理服务端状态，移除手写 loading / fetch / useEffect 拉取模式，统一缓存失效策略
+- **文档**：新增前端数据获取与服务端状态规范文档
+
+### Fixed
+
+- **代码质量**：清零全仓 eslint error（移除工作流实例服务中已由 `workflow_jobs` 账本取代的死代码 `wakeAt` / `timeoutAt` / `isPending`、身份提供者服务未使用变量、工作流版本比较冗余常量等 7 处）
+- **错误监控文档**：补充 Promise 拒绝与 ApiError 处理说明
+
+### Docs
+
+- **文档瘦身**：移除各模块文档中的「相关文件 / 实现位置 / 相关目录」类源码路径清单段落（易过时且用户可自行检索），IAM 前端页面表保留路由与交互说明、去除文件路径列
+
 ## v0.79.0 - 2026-07-03
 
 ### Added
