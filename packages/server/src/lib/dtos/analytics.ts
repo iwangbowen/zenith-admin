@@ -79,10 +79,13 @@ export const AnalyticsOverviewDTO = z
   })
   .openapi('AnalyticsOverview');
 
+const TrendSeriesItemDTO = z.object({ key: z.string(), name: z.string(), data: z.array(z.number()) });
+
 export const TrendSeriesDTO = z
   .object({
     dates: z.array(z.string()),
-    series: z.array(z.object({ key: z.string(), name: z.string(), data: z.array(z.number()) })),
+    series: z.array(TrendSeriesItemDTO),
+    compare: z.object({ dates: z.array(z.string()), series: z.array(TrendSeriesItemDTO) }).optional(),
   })
   .openapi('TrendSeries');
 
@@ -233,6 +236,56 @@ export const UserTimelineDTO = z
     items: z.array(UserTimelineEventDTO),
   })
   .openapi('UserTimeline');
+
+// ─── 会话时间轴 ───────────────────────────────────────────────────────────────
+export const SessionTimelineEventDTO = z
+  .object({
+    id: z.number().int(),
+    eventType: eventTypeEnum,
+    eventName: z.string().nullable(),
+    pagePath: z.string(),
+    pageTitle: z.string().nullable(),
+    elementLabel: z.string().nullable(),
+    componentArea: z.string().nullable(),
+    durationMs: z.number().int().nullable(),
+    properties: z.record(z.string(), z.unknown()).nullable(),
+    createdAt: z.string(),
+  })
+  .openapi('SessionTimelineEvent');
+export const SessionTimelineDTO = z
+  .object({
+    sessionId: z.string(),
+    username: z.string().nullable(),
+    userId: z.number().int().nullable(),
+    startedAt: z.string().nullable(),
+    durationMs: z.number().int().nullable(),
+    entryPage: z.string().nullable(),
+    deviceType: z.string().nullable(),
+    browser: z.string().nullable(),
+    os: z.string().nullable(),
+    items: z.array(SessionTimelineEventDTO),
+  })
+  .openapi('SessionTimeline');
+
+// ─── 保存的分析报表 ───────────────────────────────────────────────────────────
+export const AnalyticsSavedReportDTO = z
+  .object({
+    id: z.number().int(),
+    name: z.string(),
+    reportType: z.string(),
+    config: z.record(z.string(), z.unknown()),
+    createdBy: z.number().int().nullable(),
+    createdByName: z.string().nullable(),
+    createdAt: z.string(),
+  })
+  .openapi('AnalyticsSavedReport');
+export const CreateAnalyticsSavedReportDTO = z
+  .object({
+    name: z.string().min(1).max(128),
+    reportType: z.enum(['funnel']).default('funnel'),
+    config: z.record(z.string(), z.unknown()),
+  })
+  .openapi('CreateAnalyticsSavedReport');
 
 // ─── 维度分布 ─────────────────────────────────────────────────────────────────
 export const DimensionBreakdownDTO = z

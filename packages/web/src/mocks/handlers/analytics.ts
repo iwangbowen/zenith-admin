@@ -4,6 +4,7 @@ import type {
   TrendSeries, RealtimeStats, SessionListItem, FunnelResult, RetentionResult, PathResult,
   UserTimeline, DimensionBreakdown, PerfStats, EventListItem, EventDetail, AnalyticsEventMeta,
   AnalyticsSettings, AnalyticsPublicConfig, PaginatedResponse, AnalyticsRollupItem, UserBehaviorEventType,
+  SessionTimeline, AnalyticsSavedReport,
 } from '@zenith/shared';
 import { mockDateTime, mockDateTimeOffset, mockDateOffset } from '../utils/date';
 
@@ -15,6 +16,19 @@ function daysAxis(days: number): string[] {
   return arr;
 }
 function rand(min: number, max: number): number { return Math.floor(min + Math.random() * (max - min)); }
+
+/** 日期字符串按天偏移（YYYY-MM-DD） */
+function shiftDate(dateStr: string, deltaDays: number): string {
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setDate(d.getDate() + deltaDays);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+let mockSavedReports: AnalyticsSavedReport[] = [
+  { id: 1, name: '注册转化漏斗', reportType: 'funnel', config: { days: 30, steps: [{ label: '进入首页', pagePath: '/' }, { label: '进入用户管理', pagePath: '/users' }, { label: '新增用户', eventName: '$autocapture' }] }, createdBy: 1, createdByName: 'admin', createdAt: mockDateTimeOffset(-5 * 86400000) },
+];
+let nextReportId = 2;
 
 // ─── 静态基础数据 ─────────────────────────────────────────────────────────────
 const MOCK_PAGES: PageStats = {
@@ -125,17 +139,25 @@ export const analyticsHandlers = [
   })),
 
   http.get('/api/analytics/trends', ({ request }) => {
-    const days = Number(new URL(request.url).searchParams.get('days')) || 30;
+    const u = new URL(request.url);
+    const startDate = u.searchParams.get('startDate');
+    const endDate = u.searchParams.get('endDate');
+    const compare = u.searchParams.get('compare') === 'true';
+    const days = startDate && endDate
+      ? Math.min(Math.max(Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000) + 1, 1), 365)
+      : Number(u.searchParams.get('days')) || 30;
     const dates = daysAxis(days);
     const gen = (base: number, jitter: number) => dates.map(() => rand(base - jitter, base + jitter));
+    const buildSeries = () => ([
+      { key: 'pv', name: '浏览量(PV)', data: gen(620, 180) },
+      { key: 'uv', name: '访客数(UV)', data: gen(120, 40) },
+      { key: 'sessions', name: '会话数', data: gen(200, 60) },
+      { key: 'events', name: '事件数', data: gen(1400, 400) },
+    ]);
     return ok<TrendSeries>({
       dates,
-      series: [
-        { key: 'pv', name: '浏览量(PV)', data: gen(620, 180) },
-        { key: 'uv', name: '访客数(UV)', data: gen(120, 40) },
-        { key: 'sessions', name: '会话数', data: gen(200, 60) },
-        { key: 'events', name: '事件数', data: gen(1400, 400) },
-      ],
+      series: buildSeries(),
+      ...(compare ? { compare: { dates: dates.map((d) => shiftDate(d, -days)), series: buildSeries() } } : {}),
     });
   }),
 
@@ -218,6 +240,34 @@ export const analyticsHandlers = [
       userId, username: USERNAMES[(userId - 1) % USERNAMES.length], totalEvents: rand(200, 1200), firstSeenAt: mockDateTimeOffset(-30 * 86400000), lastSeenAt: mockDateTime(),
       items: MOCK_EVENTS.slice(0, 60).map((e) => ({ id: e.id, eventType: e.eventType, eventName: e.eventName, pagePath: e.pagePath, pageTitle: e.pageTitle, elementLabel: e.elementLabel, componentArea: e.componentArea, durationMs: e.durationMs, sessionId: e.sessionId, properties: null, createdAt: e.createdAt })),
     });
+  }),
+
+  http.get('/api/analytics/session-timeline', ({ request }) => {
+    const sessionId = new URL(request.url).searchParams.get('sessionId') ?? 'sess-1000';
+    return ok<SessionTimeline>({
+      sessionId,
+      username: USERNAMES[0],
+      userId: 1,
+      startedAt: mockDateTimeOffset(-1800000),
+      durationMs: rand(60000, 1800000),
+      entryPage: '/dashboard',
+      deviceType: 'desktop',
+      browser: 'Chrome',
+      os: 'Windows',
+      items: MOCK_EVENTS.slice(0, 40).map((e, i) => ({ id: e.id, eventType: e.eventType, eventName: e.eventName, pagePath: e.pagePath, pageTitle: e.pageTitle, elementLabel: e.elementLabel, componentArea: e.componentArea, durationMs: e.durationMs, properties: null, createdAt: mockDateTimeOffset(-1800000 + i * 42000) })),
+    });
+  }),
+
+  http.get('/api/analytics/reports', () => ok({ list: mockSavedReports })),
+  http.post('/api/analytics/reports', async ({ request }) => {
+    const body = (await request.json()) as { name: string; reportType?: string; config: Record<string, unknown> };
+    const item: AnalyticsSavedReport = { id: nextReportId++, name: body.name, reportType: body.reportType ?? 'funnel', config: body.config, createdBy: 1, createdByName: 'admin', createdAt: mockDateTime() };
+    mockSavedReports.unshift(item);
+    return ok(item, '保存成功');
+  }),
+  http.delete('/api/analytics/reports/:id', ({ params }) => {
+    mockSavedReports = mockSavedReports.filter((r) => r.id !== Number(params.id));
+    return ok(null, '删除成功');
   }),
 
   http.get('/api/analytics/dimension', ({ request }) => {

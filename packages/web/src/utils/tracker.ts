@@ -308,8 +308,13 @@ class Tracker {
       const tag = el.tagName.toLowerCase();
       const key = dataKey || (el.id ? `${tag}#${el.id}` : label ? `${tag}:${label.slice(0, 24)}` : tag);
       const area = el.closest<HTMLElement>('[data-area]')?.getAttribute('data-area') || el.getAttribute('data-track-area') || undefined;
+      // 视口相对坐标（百分比），支撑零配置全页点击热力图
+      const vw = globalThis.innerWidth;
+      const vh = globalThis.innerHeight;
+      const clickX = vw > 0 ? Math.max(0, Math.min(100, Math.round((e.clientX / vw) * 1000) / 10)) : undefined;
+      const clickY = vh > 0 ? Math.max(0, Math.min(100, Math.round((e.clientY / vh) * 1000) / 10)) : undefined;
       addBreadcrumb({ type: 'click', message: label || key, data: { tag } });
-      this.track({ eventType: 'feature_use', eventName: '$autocapture', pagePath: globalThis.location.pathname, elementKey: key.slice(0, 128), elementLabel: label || key, componentArea: area ?? undefined });
+      this.track({ eventType: 'feature_use', eventName: '$autocapture', pagePath: globalThis.location.pathname, elementKey: key.slice(0, 128), elementLabel: label || key, componentArea: area ?? undefined, clickX, clickY });
     }, { capture: true, passive: true });
   }
 

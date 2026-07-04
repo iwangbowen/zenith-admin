@@ -343,3 +343,23 @@ export const sourceMaps = pgTable('source_maps', {
 export type SourceMapRow = typeof sourceMaps.$inferSelect;
 
 export type NewSourceMap = typeof sourceMaps.$inferInsert;
+
+// 保存的分析报表配置（漏斗步骤等），供复用加载
+export const analyticsSavedReports = pgTable('analytics_saved_reports', {
+  id: serial('id').primaryKey(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 128 }).notNull(),
+  reportType: varchar('report_type', { length: 32 }).notNull().default('funnel'),
+  config: jsonb('config').$type<Record<string, unknown>>().notNull(),
+  createdBy: integer('created_by'),
+  createdByName: varchar('created_by_name', { length: 64 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (t) => [
+  index('analytics_saved_reports_tenant_idx').on(t.tenantId),
+  index('analytics_saved_reports_type_idx').on(t.reportType),
+]);
+
+export type AnalyticsSavedReportRow = typeof analyticsSavedReports.$inferSelect;
+
+export type NewAnalyticsSavedReport = typeof analyticsSavedReports.$inferInsert;

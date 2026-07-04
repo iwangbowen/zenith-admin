@@ -1,4 +1,4 @@
-import { and, eq, gte, lt, isNotNull, sql, countDistinct, desc, like, notExists, inArray, type SQL } from 'drizzle-orm';
+import { and, eq, gte, lt, lte, isNotNull, sql, countDistinct, desc, like, notExists, inArray, type SQL } from 'drizzle-orm';
 import { alias, type PgColumn } from 'drizzle-orm/pg-core';
 import { db } from '../../db';
 import { userEvents, analyticsSessions, analyticsDailyRollup } from '../../db/schema';
@@ -6,7 +6,7 @@ import type { TrackEventInput, UserBehaviorEventType } from '@zenith/shared';
 import { currentUserOrNull } from '../../lib/context';
 import { tenantScope, getCreateTenantId } from '../../lib/tenant';
 import { mergeWhere, escapeLike } from '../../lib/where-helpers';
-import { formatNullableDateTime, formatDateTime, formatDate, APP_TIME_ZONE, parseDateRangeStart } from '../../lib/datetime';
+import { formatNullableDateTime, formatDateTime, formatDate, APP_TIME_ZONE, parseDateRangeStart, parseDateRangeEnd } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { parseClientEnv, lookupIpGeo, clampDays, clampLimit, startOfDaysAgo } from '../../lib/analytics-helpers';
 import { touchEventMeta } from './analytics-event-meta.service';
@@ -153,11 +153,26 @@ function pctDelta(cur: number, prev: number): number {
   return Math.round(((cur - prev) / prev) * 1000) / 10;
 }
 
-export async function getOverview(daysRaw: unknown) {
-  const days = clampDays(daysRaw, 30);
+export interface OverviewRangeInput { days?: unknown; startDate?: string; endDate?: string }
+
+/** 解析统计区间：优先自定义 startDate/endDate（含端点日），否则最近 N 天滚动窗口。 */
+function resolveRange(input: OverviewRangeInput): { start: Date; endExclusive: Date; rangeMs: number } {
+  const startParsed = input.startDate ? parseDateRangeStart(input.startDate) : null;
+  const endParsed = input.endDate ? parseDateRangeEnd(input.endDate) : null;
+  if (startParsed && endParsed && endParsed > startParsed) {
+    const endExclusive = new Date(Math.min(endParsed.getTime() + 1, Date.now()));
+    return { start: startParsed, endExclusive, rangeMs: endExclusive.getTime() - startParsed.getTime() };
+  }
+  const days = clampDays(input.days, 30);
   const now = new Date();
   const start = startOfDaysAgo(days);
-  const prevStart = startOfDaysAgo(days * 2);
+  return { start, endExclusive: now, rangeMs: now.getTime() - start.getTime() };
+}
+
+export async function getOverview(input: OverviewRangeInput) {
+  const { start, endExclusive, rangeMs } = resolveRange(input);
+  const now = new Date();
+  const prevStart = new Date(start.getTime() - rangeMs);
   const priorUserEvents = alias(userEvents, 'prior_user_events');
 
   const evScope = (s: Date, e: Date) =>
@@ -188,9 +203,9 @@ export async function getOverview(daysRaw: unknown) {
       .where(sessScope(s, e));
 
   const [cur, prev, sessCur, newUsersRow, activeRow] = await Promise.all([
-    eventAgg(start, now),
+    eventAgg(start, endExclusive),
     eventAgg(prevStart, start),
-    sessionAgg(start, now),
+    sessionAgg(start, endExclusive),
     db
       .select({ n: countDistinct(userEvents.distinctId) })
       .from(userEvents)
@@ -198,6 +213,7 @@ export async function getOverview(daysRaw: unknown) {
         mergeWhere(
           and(
             gte(userEvents.createdAt, start),
+            lt(userEvents.createdAt, endExclusive),
             isNotNull(userEvents.distinctId),
             notExists(
               db
@@ -261,12 +277,22 @@ const TREND_METRICS = ['pv', 'uv', 'sessions', 'events'] as const;
 type TrendMetric = (typeof TREND_METRICS)[number];
 type TrendPoint = Record<TrendMetric, number>;
 
-export async function getTrends(daysRaw: unknown) {
-  const days = clampDays(daysRaw, 30);
-  const dates = dateAxis(days);
-  const today = dates[dates.length - 1];
+/** 起止日期（含端点）展开为日期轴，超长自动截断。 */
+function dateAxisRange(startDate: string, endDate: string, maxDays = 365): string[] {
+  const start = parseDateRangeStart(startDate);
+  const end = parseDateRangeStart(endDate);
+  if (!start || !end || end < start) return [];
+  const n = Math.min(Math.floor((end.getTime() - start.getTime()) / DAY_MS) + 1, maxDays);
+  return Array.from({ length: n }, (_, i) => formatDate(new Date(start.getTime() + i * DAY_MS)));
+}
 
-  // ── 历史完整日优先读每日预聚合，避免全扫原始事件表 ──────────────────────────
+/** 按日期轴取每日指标：历史完整日读预聚合，今天与缺失日期回退原始表。 */
+async function trendPointsForDates(dates: string[]): Promise<Map<string, TrendPoint>> {
+  const byDay = new Map<string, TrendPoint>();
+  if (dates.length === 0) return byDay;
+  const today = formatDate(new Date());
+  const endExclusive = parseDateRangeEnd(dates[dates.length - 1]) ?? new Date();
+
   const rollupRows = await db
     .select({
       statDate: analyticsDailyRollup.statDate,
@@ -278,24 +304,26 @@ export async function getTrends(daysRaw: unknown) {
       and(
         eq(analyticsDailyRollup.dimType, 'overall'),
         gte(analyticsDailyRollup.statDate, dates[0]),
+        lte(analyticsDailyRollup.statDate, dates[dates.length - 1]),
         inArray(analyticsDailyRollup.metric, [...TREND_METRICS]),
       ),
       rollupTenantScope(),
     ))
     .groupBy(analyticsDailyRollup.statDate, analyticsDailyRollup.metric);
 
-  const byDay = new Map<string, TrendPoint>();
   for (const r of rollupRows) {
     const item = byDay.get(r.statDate) ?? { pv: 0, uv: 0, sessions: 0, events: 0 };
     item[r.metric as TrendMetric] = Number(r.value);
     byDay.set(r.statDate, item);
   }
 
-  // ── 今天（rollup 只聚合完整自然日）与缺失日期（cron 未跑）回退原始表实时聚合 ──
   const missing = dates.filter((d) => d === today || !byDay.has(d));
   if (missing.length > 0) {
-    const rawStart = parseDateRangeStart(missing[0]) ?? startOfDaysAgo(days);
-    const where = mergeWhere(gte(userEvents.createdAt, rawStart), tenantScope(userEvents));
+    const rawStart = parseDateRangeStart(missing[0]) ?? new Date();
+    const where = mergeWhere(
+      and(gte(userEvents.createdAt, rawStart), lt(userEvents.createdAt, endExclusive)),
+      tenantScope(userEvents),
+    );
     const rows = await db
       .select({
         day: sql<string>`to_char(timezone(${APP_TIME_ZONE}, ${userEvents.createdAt}), 'YYYY-MM-DD')`,
@@ -314,18 +342,43 @@ export async function getTrends(daysRaw: unknown) {
       byDay.set(r.day, { pv: Number(r.pv), uv: Number(r.uv), sessions: Number(r.sessions), events: Number(r.events) });
     }
   }
+  return byDay;
+}
 
+function buildTrendSeries(dates: string[], byDay: Map<string, TrendPoint>) {
   const pick = (key: TrendMetric) => dates.map((d) => Number(byDay.get(d)?.[key] ?? 0));
+  return [
+    { key: 'pv', name: '浏览量(PV)', data: pick('pv') },
+    { key: 'uv', name: '访客数(UV)', data: pick('uv') },
+    { key: 'sessions', name: '会话数', data: pick('sessions') },
+    { key: 'events', name: '事件数', data: pick('events') },
+  ];
+}
 
-  return {
-    dates,
-    series: [
-      { key: 'pv', name: '浏览量(PV)', data: pick('pv') },
-      { key: 'uv', name: '访客数(UV)', data: pick('uv') },
-      { key: 'sessions', name: '会话数', data: pick('sessions') },
-      { key: 'events', name: '事件数', data: pick('events') },
-    ],
-  };
+export interface TrendsInput { days?: unknown; startDate?: string; endDate?: string; compare?: boolean }
+
+export async function getTrends(input: TrendsInput) {
+  const dates = input.startDate && input.endDate
+    ? dateAxisRange(input.startDate, input.endDate)
+    : dateAxis(clampDays(input.days, 30));
+  if (dates.length === 0) return { dates: [], series: buildTrendSeries([], new Map()) };
+
+  const byDay = await trendPointsForDates(dates);
+  const result: {
+    dates: string[];
+    series: ReturnType<typeof buildTrendSeries>;
+    compare?: { dates: string[]; series: ReturnType<typeof buildTrendSeries> };
+  } = { dates, series: buildTrendSeries(dates, byDay) };
+
+  if (input.compare) {
+    // 上一周期：紧邻的等长区间
+    const firstStart = parseDateRangeStart(dates[0]) ?? new Date();
+    const prevDates = Array.from({ length: dates.length }, (_, i) =>
+      formatDate(new Date(firstStart.getTime() - (dates.length - i) * DAY_MS)));
+    const prevByDay = await trendPointsForDates(prevDates);
+    result.compare = { dates: prevDates, series: buildTrendSeries(prevDates, prevByDay) };
+  }
+  return result;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -417,21 +470,22 @@ export async function getFeatureStats(q: FeatureStatsQuery) {
   return { items, totalEvents };
 }
 
-export interface HeatmapQuery { pagePath: string; componentArea: string; days?: number }
+const HEATMAP_EVENT_TYPES = ['area_click', 'feature_use'] as const;
+
+export interface HeatmapQuery { pagePath: string; componentArea?: string; days?: number }
 export async function getHeatmapData(q: HeatmapQuery) {
   const days = clampDays(q.days, 30);
   const start = startOfDaysAgo(days);
-  const where = mergeWhere(
-    and(
-      eq(userEvents.eventType, 'area_click'),
-      eq(userEvents.pagePath, q.pagePath),
-      eq(userEvents.componentArea, q.componentArea),
-      isNotNull(userEvents.clickX),
-      isNotNull(userEvents.clickY),
-      gte(userEvents.createdAt, start),
-    ),
-    tenantScope(userEvents),
-  );
+  // componentArea 为空 = 全页模式：聚合该页所有带坐标的点击（含 autocapture 视口坐标）
+  const conditions = [
+    inArray(userEvents.eventType, [...HEATMAP_EVENT_TYPES]),
+    eq(userEvents.pagePath, q.pagePath),
+    isNotNull(userEvents.clickX),
+    isNotNull(userEvents.clickY),
+    gte(userEvents.createdAt, start),
+  ];
+  if (q.componentArea) conditions.push(eq(userEvents.componentArea, q.componentArea));
+  const where = mergeWhere(and(...conditions), tenantScope(userEvents));
   const rows = await db.select({ x: userEvents.clickX, y: userEvents.clickY }).from(userEvents).where(where).limit(5000);
 
   const BINS = 50;
@@ -447,7 +501,7 @@ export async function getHeatmapData(q: HeatmapQuery) {
     const [cx, cy] = key.split(',').map(Number);
     return { x: (cx / BINS) * 100 + 100 / BINS / 2, y: (cy / BINS) * 100 + 100 / BINS / 2, value };
   });
-  return { pagePath: q.pagePath, componentArea: q.componentArea, points, total: rows.length };
+  return { pagePath: q.pagePath, componentArea: q.componentArea ?? '', points, total: rows.length };
 }
 
 export interface HeatmapPageListQuery { days?: number }
@@ -455,7 +509,7 @@ export async function getHeatmapPageList(q: HeatmapPageListQuery) {
   const days = clampDays(q.days, 30);
   const start = startOfDaysAgo(days);
   const where = mergeWhere(
-    and(eq(userEvents.eventType, 'area_click'), isNotNull(userEvents.pagePath), isNotNull(userEvents.componentArea), gte(userEvents.createdAt, start)),
+    and(inArray(userEvents.eventType, [...HEATMAP_EVENT_TYPES]), isNotNull(userEvents.clickX), isNotNull(userEvents.pagePath), gte(userEvents.createdAt, start)),
     tenantScope(userEvents),
   );
   const rows = await db
@@ -467,9 +521,8 @@ export async function getHeatmapPageList(q: HeatmapPageListQuery) {
 
   const pageMap = new Map<string, { pagePath: string; pageTitle: string | null; areas: Set<string> }>();
   for (const r of rows) {
-    if (!r.componentArea) continue;
     if (!pageMap.has(r.pagePath)) pageMap.set(r.pagePath, { pagePath: r.pagePath, pageTitle: r.pageTitle, areas: new Set() });
-    pageMap.get(r.pagePath)!.areas.add(r.componentArea);
+    if (r.componentArea) pageMap.get(r.pagePath)!.areas.add(r.componentArea);
   }
   return { pages: Array.from(pageMap.values()).map((p) => ({ pagePath: p.pagePath, pageTitle: p.pageTitle, areas: Array.from(p.areas) })) };
 }
@@ -766,6 +819,61 @@ export async function getUserTimeline(input: { userId?: number; username?: strin
       componentArea: r.componentArea,
       durationMs: r.durationMs,
       sessionId: r.sessionId,
+      properties: r.properties ?? null,
+      createdAt: formatDateTime(r.createdAt),
+    })),
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// 会话时间轴（单会话事件序列回放）
+// ════════════════════════════════════════════════════════════════════════════
+
+export async function getSessionTimeline(sessionId: string, limitRaw?: number) {
+  const limit = clampLimit(limitRaw, 300, 1000);
+  const [session] = await db
+    .select()
+    .from(analyticsSessions)
+    .where(mergeWhere(eq(analyticsSessions.sessionId, sessionId), tenantScope(analyticsSessions)))
+    .limit(1);
+
+  const rows = await db
+    .select({
+      id: userEvents.id,
+      eventType: userEvents.eventType,
+      eventName: userEvents.eventName,
+      pagePath: userEvents.pagePath,
+      pageTitle: userEvents.pageTitle,
+      elementLabel: userEvents.elementLabel,
+      componentArea: userEvents.componentArea,
+      durationMs: userEvents.durationMs,
+      properties: userEvents.properties,
+      createdAt: userEvents.createdAt,
+    })
+    .from(userEvents)
+    .where(mergeWhere(eq(userEvents.sessionId, sessionId), tenantScope(userEvents)))
+    .orderBy(userEvents.createdAt, userEvents.id)
+    .limit(limit);
+
+  return {
+    sessionId,
+    username: session?.username ?? null,
+    userId: session?.userId ?? null,
+    startedAt: session ? formatDateTime(session.startedAt) : null,
+    durationMs: session?.durationMs ?? null,
+    entryPage: session?.entryPage ?? null,
+    deviceType: session?.deviceType ?? null,
+    browser: session?.browser ?? null,
+    os: session?.os ?? null,
+    items: rows.map((r) => ({
+      id: r.id,
+      eventType: r.eventType,
+      eventName: r.eventName,
+      pagePath: r.pagePath,
+      pageTitle: r.pageTitle,
+      elementLabel: r.elementLabel,
+      componentArea: r.componentArea,
+      durationMs: r.durationMs,
       properties: r.properties ?? null,
       createdAt: formatDateTime(r.createdAt),
     })),

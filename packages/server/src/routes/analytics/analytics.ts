@@ -15,6 +15,7 @@ import {
   UserTimelineDTO, DimensionBreakdownDTO, PerfStatsDTO, RealtimeStatsDTO,
   EventListItemDTO, EventDetailDTO, AnalyticsEventMetaDTO, CreateAnalyticsEventMetaDTO,
   UpdateAnalyticsEventMetaDTO, AnalyticsSettingsDTO, UpdateAnalyticsSettingsDTO, AnalyticsRollupSummaryDTO,
+  SessionTimelineDTO, AnalyticsSavedReportDTO, CreateAnalyticsSavedReportDTO,
 } from '../../lib/openapi-dtos';
 import { getClientIp } from '../../lib/request-helpers';
 import { parseDateRangeStart, parseDateRangeEnd } from '../../lib/datetime';
@@ -22,15 +23,18 @@ import {
   batchInsertEvents, getOverview, getTrends, getPageStats, getFeatureStats, getHeatmapData,
   getHeatmapPageList, getUserStats, listSessions, getFunnel, getRetention, getPathAnalysis,
   getUserTimeline, getDimensionBreakdown, getPerfStats, getRealtime, listAnalyticsEvents,
-  getEventDetail, cleanAnalyticsEvents,
+  getEventDetail, cleanAnalyticsEvents, getSessionTimeline,
 } from '../../services/analytics/analytics.service';
 import { getPublicConfig, getSettings, updateSettings } from '../../services/analytics/analytics-settings.service';
 import { listEventMeta, createEventMeta, updateEventMeta, deleteEventMeta } from '../../services/analytics/analytics-event-meta.service';
 import { rebuildRollup, getRollupSummary } from '../../services/analytics/analytics-rollup.service';
+import { listSavedReports, createSavedReport, deleteSavedReport } from '../../services/analytics/analytics-reports.service';
 
 const r = new OpenAPIHono({ defaultHook: validationHook });
 
 const daysQuery = z.object({ days: z.coerce.number().int().min(1).max(365).optional().default(30) });
+const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const rangeQuery = daysQuery.extend({ startDate: dateStr.optional(), endDate: dateStr.optional() });
 
 // ─── 采集 ─────────────────────────────────────────────────────────────────────
 const ingestRoute = defineOpenAPIRoute({
@@ -60,19 +64,23 @@ const configRoute = defineOpenAPIRoute({
 const overviewRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'get', path: '/overview', tags: ['Analytics'], summary: '概览 KPI', security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'analytics:view' })] as const, request: { query: daysQuery },
+    middleware: [authMiddleware, guard({ permission: 'analytics:view' })] as const, request: { query: rangeQuery },
     responses: { ...ok(AnalyticsOverviewDTO, '概览'), ...commonErrorResponses },
   }),
-  handler: async (c) => c.json(okBody(await getOverview(c.req.valid('query').days)), 200),
+  handler: async (c) => c.json(okBody(await getOverview(c.req.valid('query'))), 200),
 });
 
 const trendsRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'get', path: '/trends', tags: ['Analytics'], summary: 'PV/UV/会话/事件趋势', security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'analytics:view' })] as const, request: { query: daysQuery },
+    middleware: [authMiddleware, guard({ permission: 'analytics:view' })] as const,
+    request: { query: rangeQuery.extend({ compare: z.enum(['true', 'false']).optional().default('false') }) },
     responses: { ...ok(TrendSeriesDTO, '趋势'), ...commonErrorResponses },
   }),
-  handler: async (c) => c.json(okBody(await getTrends(c.req.valid('query').days)), 200),
+  handler: async (c) => {
+    const q = c.req.valid('query');
+    return c.json(okBody(await getTrends({ ...q, compare: q.compare === 'true' })), 200);
+  },
 });
 
 const realtimeRoute = defineOpenAPIRoute({
@@ -108,7 +116,7 @@ const heatmapRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'get', path: '/heatmap', tags: ['Analytics'], summary: '点击热力图', security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'analytics:view' })] as const,
-    request: { query: z.object({ pagePath: z.string().min(1), componentArea: z.string().min(1), days: z.coerce.number().int().min(1).max(365).optional().default(30) }) },
+    request: { query: z.object({ pagePath: z.string().min(1), componentArea: z.string().optional(), days: z.coerce.number().int().min(1).max(365).optional().default(30) }) },
     responses: { ...ok(HeatmapDataDTO, '热力图'), ...commonErrorResponses },
   }),
   handler: async (c) => c.json(okBody(await getHeatmapData(c.req.valid('query'))), 200),
@@ -181,6 +189,52 @@ const userTimelineRoute = defineOpenAPIRoute({
     responses: { ...ok(UserTimelineDTO, '时间线'), ...commonErrorResponses },
   }),
   handler: async (c) => c.json(okBody(await getUserTimeline(c.req.valid('query'))), 200),
+});
+
+const sessionTimelineRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/session-timeline', tags: ['Analytics'], summary: '会话事件时间轴', security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'analytics:view' })] as const,
+    request: { query: z.object({ sessionId: z.string().min(1).max(36), limit: z.coerce.number().int().min(1).max(1000).optional().default(300) }) },
+    responses: { ...ok(SessionTimelineDTO, '会话时间轴'), ...commonErrorResponses },
+  }),
+  handler: async (c) => {
+    const q = c.req.valid('query');
+    return c.json(okBody(await getSessionTimeline(q.sessionId, q.limit)), 200);
+  },
+});
+
+// ─── 保存的分析报表 ───────────────────────────────────────────────────────────
+const reportListRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/reports', tags: ['Analytics'], summary: '保存的报表列表', security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'analytics:view' })] as const,
+    request: { query: z.object({ type: z.enum(['funnel']).optional().default('funnel') }) },
+    responses: { ...ok(z.object({ list: z.array(AnalyticsSavedReportDTO) }), '报表列表'), ...commonErrorResponses },
+  }),
+  handler: async (c) => c.json(okBody({ list: await listSavedReports(c.req.valid('query').type) }), 200),
+});
+
+const reportCreateRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/reports', tags: ['Analytics'], summary: '保存报表配置', security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'analytics:view' })] as const,
+    request: { body: { content: { 'application/json': { schema: CreateAnalyticsSavedReportDTO } }, required: true } },
+    responses: { ...ok(AnalyticsSavedReportDTO, '保存成功'), ...commonErrorResponses },
+  }),
+  handler: async (c) => c.json(okBody(await createSavedReport(c.req.valid('json')), '保存成功'), 200),
+});
+
+const reportDeleteRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete', path: '/reports/{id}', tags: ['Analytics'], summary: '删除保存的报表', security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'analytics:view' })] as const, request: { params: IdParam },
+    responses: { ...okMsg('删除成功'), ...commonErrorResponses },
+  }),
+  handler: async (c) => {
+    await deleteSavedReport(c.req.valid('param').id);
+    return c.json(okBody(null, '删除成功'), 200);
+  },
 });
 
 const dimensionRoute = defineOpenAPIRoute({
@@ -345,7 +399,8 @@ r.openapiRoutes([
   ingestRoute, configRoute,
   overviewRoute, trendsRoute, realtimeRoute,
   pageStatsRoute, featureStatsRoute, heatmapRoute, heatmapPagesRoute, userStatsRoute,
-  sessionsRoute, funnelRoute, retentionRoute, pathRoute, userTimelineRoute, dimensionRoute, perfRoute,
+  sessionsRoute, funnelRoute, retentionRoute, pathRoute, userTimelineRoute, sessionTimelineRoute, dimensionRoute, perfRoute,
+  reportListRoute, reportCreateRoute, reportDeleteRoute,
   eventListRoute, eventDetailRoute, cleanRoute,
   metaListRoute, metaCreateRoute, metaUpdateRoute, metaDeleteRoute,
   settingsGetRoute, settingsUpdateRoute,

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { CSSProperties, ReactNode } from 'react';
-import { Avatar, Button, Card, Empty, Input, Progress, Select, SideSheet, Skeleton, Spin, TabPane, Tabs, Tag, Typography } from '@douyinfe/semi-ui';
+import { Avatar, Button, Card, DatePicker, Dropdown, Empty, Input, Modal, Progress, Select, SideSheet, Skeleton, Spin, Switch, TabPane, Tabs, Tag, Timeline, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import {
   Activity,
   BarChart3,
+  Bookmark,
   Clock,
   Eye,
   Flame,
@@ -40,7 +41,7 @@ import {
 } from '@/components/charts';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
-import { formatDateTime } from '@/utils/date';
+import { formatDateTime, formatDateForApi } from '@/utils/date';
 import {
   analyticsKeys,
   useAnalyzeFunnel,
@@ -57,8 +58,13 @@ import {
   useAnalyticsTrends,
   useAnalyticsUserStats,
   useAnalyticsUserTimeline,
+  useSessionTimeline,
+  useSavedFunnelReports,
+  useSaveFunnelReport,
+  useDeleteFunnelReport,
 } from '@/hooks/queries/analytics';
 import type {
+  AnalyticsSavedReport,
   DimensionBreakdown,
   FeatureStats,
   HeatmapData,
@@ -182,8 +188,14 @@ function chartColor(index: number, primary: string): string {
 function OverviewTab() {
   const palette = useChartPalette();
   const [days, setDays] = useState(7);
-  const overviewQuery = useAnalyticsOverview(days);
-  const trendsQuery = useAnalyticsTrends(days);
+  const [customRange, setCustomRange] = useState<[string, string] | null>(null);
+  const [compare, setCompare] = useState(false);
+  const range = useMemo(
+    () => (customRange ? { days, startDate: customRange[0], endDate: customRange[1] } : { days }),
+    [customRange, days],
+  );
+  const overviewQuery = useAnalyticsOverview(range);
+  const trendsQuery = useAnalyticsTrends(range, compare);
   const overview = overviewQuery.data ?? null;
   const trends = trendsQuery.data ?? null;
   const loading = overviewQuery.isFetching || trendsQuery.isFetching;
@@ -193,19 +205,33 @@ function OverviewTab() {
     return trends.dates.map((date, index) => ({
       date,
       ...Object.fromEntries(trends.series.map((item) => [item.key, item.data[index] ?? 0])),
+      // 上一周期按位对齐到主轴（虚拟对照）
+      ...(trends.compare
+        ? Object.fromEntries(trends.compare.series.map((item) => [`${item.key}_prev`, item.data[index] ?? 0]))
+        : {}),
     }));
   }, [trends]);
 
-  const trendSpec = useMemo(() => makeLineSpec({
-    data: chartData,
-    xField: 'date',
-    series: (trends?.series ?? []).map((item, index) => ({
+  const trendSpec = useMemo(() => {
+    const mainSeries = (trends?.series ?? []).map((item, index) => ({
       field: item.key,
       name: item.name,
       color: index === 0 ? palette.primary : ACCENT_COLORS[(index - 1) % ACCENT_COLORS.length],
-    })),
-    palette,
-  }), [chartData, palette, trends?.series]);
+    }));
+    const compareSeries = trends?.compare
+      ? trends.compare.series.map((item, index) => ({
+          field: `${item.key}_prev`,
+          name: `上期${item.name}`,
+          color: `${index === 0 ? palette.primary : ACCENT_COLORS[(index - 1) % ACCENT_COLORS.length]}55`,
+        }))
+      : [];
+    return makeLineSpec({
+      data: chartData,
+      xField: 'date',
+      series: [...mainSeries, ...compareSeries],
+      palette,
+    });
+  }, [chartData, palette, trends?.series, trends?.compare]);
 
   const cards = overview ? [
     { label: '浏览量 PV', value: numberText(overview.pv), icon: <Eye size={19} />, color: palette.primary, sub: <DeltaText value={overview.pvDelta} /> },
@@ -224,7 +250,25 @@ function OverviewTab() {
       <SectionHeader
         title="行为概览"
         description="关键指标与趋势"
-        extra={<Select value={days} optionList={DAYS_OPTIONS} onChange={(v) => setDays(Number(v))} style={{ width: 120 }} />}
+        extra={(
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <Typography.Text type="tertiary" size="small">环比对照</Typography.Text>
+              <Switch size="small" checked={compare} onChange={setCompare} />
+            </div>
+            <DatePicker
+              type="dateRange"
+              density="compact"
+              placeholder="自定义日期区间"
+              style={{ width: 240 }}
+              onChange={(value) => {
+                const [s, e] = Array.isArray(value) ? value : [];
+                setCustomRange(s && e ? [formatDateForApi(s as Date), formatDateForApi(e as Date)] : null);
+              }}
+            />
+            <Select value={days} optionList={DAYS_OPTIONS} disabled={!!customRange} onChange={(v) => setDays(Number(v))} style={{ width: 120 }} />
+          </div>
+        )}
       />
       {loading && !overview ? (
         <Skeleton
@@ -582,6 +626,74 @@ function FeatureTab() {
 
 type DeviceFilter = '' | 'desktop' | 'mobile' | 'tablet' | 'bot' | 'unknown';
 
+const TIMELINE_EVENT_META: Record<string, { label: string; color: 'blue' | 'green' | 'orange' | 'grey' | 'red' | 'purple' }> = {
+  page_view: { label: '进入页面', color: 'blue' },
+  page_leave: { label: '离开页面', color: 'grey' },
+  feature_use: { label: '点击', color: 'green' },
+  area_click: { label: '区域点击', color: 'green' },
+  api_request: { label: 'API 请求', color: 'orange' },
+  perf: { label: '性能采样', color: 'purple' },
+  custom: { label: '自定义事件', color: 'purple' },
+  identify: { label: '身份识别', color: 'grey' },
+};
+
+function SessionTimelineSheet({ sessionId, onClose }: { sessionId: string | null; onClose: () => void }) {
+  const timelineQuery = useSessionTimeline(sessionId, sessionId != null);
+  const data = timelineQuery.data ?? null;
+
+  return (
+    <SideSheet
+      title="会话时间轴"
+      visible={sessionId != null}
+      onCancel={onClose}
+      width={560}
+    >
+      <Spin spinning={timelineQuery.isFetching}>
+        {!data ? <Empty description="暂无数据" /> : (
+          <div style={{ display: 'grid', gap: 16 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <Tag color="blue">{data.username || (data.userId == null ? '匿名访客' : `用户 #${data.userId}`)}</Tag>
+              <Tag>{data.deviceType || 'unknown'} · {data.browser || '–'} / {data.os || '–'}</Tag>
+              {data.startedAt && <Tag color="grey">开始 {data.startedAt}</Tag>}
+              {data.durationMs != null && <Tag color="grey">时长 {msToReadable(data.durationMs)}</Tag>}
+            </div>
+            {data.items.length === 0 ? <Empty description="该会话暂无事件明细" /> : (
+              <Timeline mode="left">
+                {data.items.map((item) => {
+                  const meta = TIMELINE_EVENT_META[item.eventType] ?? { label: item.eventType, color: 'grey' as const };
+                  return (
+                    <Timeline.Item
+                      key={item.id}
+                      time={item.createdAt.slice(11)}
+                      type={item.eventType === 'api_request' ? 'warning' : item.eventType === 'page_view' ? 'ongoing' : 'default'}
+                    >
+                      <div style={{ display: 'grid', gap: 2 }}>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <Tag size="small" color={meta.color}>{meta.label}</Tag>
+                          <Typography.Text strong ellipsis={{ showTooltip: true }} style={{ maxWidth: 320 }}>
+                            {item.eventType === 'feature_use' || item.eventType === 'area_click'
+                              ? item.elementLabel || item.eventName || '–'
+                              : item.pageTitle || item.pagePath}
+                          </Typography.Text>
+                        </div>
+                        <Typography.Text size="small" type="tertiary" ellipsis={{ showTooltip: true }} style={{ maxWidth: 420 }}>
+                          {item.pagePath}
+                          {item.componentArea ? ` · ${item.componentArea}` : ''}
+                          {item.durationMs != null ? ` · ${msToReadable(item.durationMs)}` : ''}
+                        </Typography.Text>
+                      </div>
+                    </Timeline.Item>
+                  );
+                })}
+              </Timeline>
+            )}
+          </div>
+        )}
+      </Spin>
+    </SideSheet>
+  );
+}
+
 function SessionsTab() {
   const queryClient = useQueryClient();
   const [usernameInput, setUsernameInput] = useState('');
@@ -589,6 +701,7 @@ function SessionsTab() {
   const [filters, setFilters] = useState({ username: '', deviceType: '' as DeviceFilter });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [timelineSessionId, setTimelineSessionId] = useState<string | null>(null);
   const sessionsQuery = useAnalyticsSessions({
     page,
     pageSize,
@@ -631,7 +744,16 @@ function SessionsTab() {
     },
     { title: '地域', dataIndex: 'region', width: 120, render: (_value, record) => record.region || '–' },
     { title: '跳出', dataIndex: 'isBounce', width: 90, render: (_value, record) => <Tag color={record.isBounce ? 'red' : 'green'}>{record.isBounce ? '是' : '否'}</Tag> },
-    { title: '开始时间', dataIndex: 'startedAt', width: 180, render: (_value, record) => formatDateTime(record.startedAt), fixed: 'right' },
+    { title: '开始时间', dataIndex: 'startedAt', width: 180, render: (_value, record) => formatDateTime(record.startedAt) },
+    {
+      title: '操作',
+      dataIndex: 'sessionId',
+      width: 90,
+      fixed: 'right',
+      render: (_value, record) => (
+        <Button theme="borderless" size="small" onClick={() => setTimelineSessionId(record.sessionId)}>时间轴</Button>
+      ),
+    },
   ];
 
   const renderUsernameSearch = () => (
@@ -697,6 +819,7 @@ function SessionsTab() {
           },
         }}
       />
+      <SessionTimelineSheet sessionId={timelineSessionId} onClose={() => setTimelineSessionId(null)} />
     </div>
   );
 }
@@ -718,6 +841,33 @@ function FunnelTab() {
   const analyzeMutation = useAnalyzeFunnel();
   const result = analyzeMutation.data ?? null;
   const loading = analyzeMutation.isPending;
+  const savedReportsQuery = useSavedFunnelReports();
+  const savedReports = savedReportsQuery.data?.list ?? [];
+  const saveReportMutation = useSaveFunnelReport();
+  const deleteReportMutation = useDeleteFunnelReport();
+  const [saveName, setSaveName] = useState('');
+  const [saveVisible, setSaveVisible] = useState(false);
+
+  const saveReport = async () => {
+    const name = saveName.trim();
+    if (!name) { Toast.warning('请输入报表名称'); return; }
+    await saveReportMutation.mutateAsync({
+      name,
+      config: { days, steps: steps.map(({ label, pagePath, eventName }) => ({ label, pagePath, eventName })) },
+    });
+    Toast.success('已保存');
+    setSaveVisible(false);
+    setSaveName('');
+  };
+
+  const loadReport = (report: AnalyticsSavedReport) => {
+    const config = report.config as { days?: number; steps?: Array<{ label?: string; pagePath?: string; eventName?: string }> };
+    if (config.days) setDays(config.days);
+    if (Array.isArray(config.steps) && config.steps.length >= 2) {
+      setSteps(config.steps.map((s, i) => ({ id: `step-${Date.now()}-${i}`, label: s.label ?? `步骤 ${i + 1}`, pagePath: s.pagePath, eventName: s.eventName })));
+    }
+    Toast.info(`已加载「${report.name}」`);
+  };
 
   const updateStep = (id: string, patch: Partial<Omit<FunnelStepDraft, 'id'>>) => {
     setSteps((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)));
@@ -778,10 +928,52 @@ function FunnelTab() {
             </div>
           ))}
         </div>
-        <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+        <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
           <Button icon={<Plus size={14} />} onClick={addStep}>添加步骤</Button>
           <Button type="primary" icon={<Target size={14} />} loading={loading} disabled={steps.length < 2} onClick={() => void analyze()}>分析</Button>
+          <Button icon={<Bookmark size={14} />} onClick={() => setSaveVisible(true)}>保存配置</Button>
+          <Dropdown
+            trigger="click"
+            position="bottomLeft"
+            render={(
+              <Dropdown.Menu>
+                {savedReports.length === 0 && <Dropdown.Item disabled>暂无保存的漏斗</Dropdown.Item>}
+                {savedReports.map((report) => (
+                  <Dropdown.Item key={report.id}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
+                      <span style={{ flex: 1, cursor: 'pointer' }} onClick={() => loadReport(report)}>{report.name}</span>
+                      <Button
+                        theme="borderless"
+                        type="danger"
+                        size="small"
+                        icon={<Trash2 size={12} />}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          Modal.confirm({
+                            title: `删除报表「${report.name}」？`,
+                            okButtonProps: { type: 'danger', theme: 'solid' },
+                            onOk: () => deleteReportMutation.mutateAsync(report.id).then(() => Toast.success('已删除')),
+                          });
+                        }}
+                      />
+                    </div>
+                  </Dropdown.Item>
+                ))}
+              </Dropdown.Menu>
+            )}
+          >
+            <Button loading={savedReportsQuery.isFetching}>加载配置 ({savedReports.length})</Button>
+          </Dropdown>
         </div>
+        <Modal
+          title="保存漏斗配置"
+          visible={saveVisible}
+          onCancel={() => setSaveVisible(false)}
+          onOk={() => void saveReport()}
+          confirmLoading={saveReportMutation.isPending}
+        >
+          <Input placeholder="报表名称，如「注册转化漏斗」" value={saveName} onChange={setSaveName} />
+        </Modal>
       </Card>
       <Card title="漏斗结果" bodyStyle={{ padding: 16 }}>
         {!result ? emptyOrSpin(loading, '请配置步骤后点击分析') : (
@@ -1133,16 +1325,19 @@ function HeatmapTab() {
   useEffect(() => {
     const nextPage = pages.find((item) => item.pagePath === pagePath) ?? pages[0];
     setPagePath(nextPage?.pagePath ?? '');
-    setComponentArea((prev) => (nextPage?.areas.includes(prev) ? prev : nextPage?.areas[0] ?? ''));
+    setComponentArea((prev) => (prev && nextPage?.areas.includes(prev) ? prev : ''));
   }, [pages, pagePath]);
 
   const selectedPage = useMemo(() => pages.find((item) => item.pagePath === pagePath), [pagePath, pages]);
   const pageOptions = useMemo(() => pages.map((item) => ({ label: item.pageTitle ? `${item.pageTitle} · ${item.pagePath}` : item.pagePath, value: item.pagePath })), [pages]);
-  const areaOptions = useMemo(() => (selectedPage?.areas ?? []).map((area) => ({ label: area, value: area })), [selectedPage]);
+  const areaOptions = useMemo(() => [
+    { label: '全页（自动采集）', value: '' },
+    ...(selectedPage?.areas ?? []).map((area) => ({ label: area, value: area })),
+  ], [selectedPage]);
 
   useEffect(() => {
     if (!selectedPage) return;
-    if (!selectedPage.areas.includes(componentArea)) setComponentArea(selectedPage.areas[0] ?? '');
+    if (componentArea && !selectedPage.areas.includes(componentArea)) setComponentArea('');
   }, [componentArea, selectedPage]);
 
   return (
@@ -1154,7 +1349,7 @@ function HeatmapTab() {
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <Select value={days} optionList={DAYS_OPTIONS} onChange={(v) => setDays(Number(v))} style={{ width: 120 }} />
             <Select placeholder="选择页面" value={pagePath || undefined} optionList={pageOptions} loading={pagesLoading} onChange={(v) => setPagePath(String(v ?? ''))} style={{ width: 280 }} />
-            <Select placeholder="选择区域" value={componentArea || undefined} optionList={areaOptions} onChange={(v) => setComponentArea(String(v ?? ''))} style={{ width: 180 }} />
+            <Select placeholder="选择区域" value={componentArea} optionList={areaOptions} onChange={(v) => setComponentArea(String(v ?? ''))} style={{ width: 180 }} />
           </div>
         )}
       />
@@ -1164,7 +1359,7 @@ function HeatmapTab() {
             <div>
               <ClickScatter data={data} />
               <Typography.Text type="tertiary" style={{ display: 'block', marginTop: 10 }}>
-                {numberText(data.total)} 次点击 · {data.pagePath} · {data.componentArea}
+                {numberText(data.total)} 次点击 · {data.pagePath} · {data.componentArea || '全页'}
               </Typography.Text>
             </div>
           )}

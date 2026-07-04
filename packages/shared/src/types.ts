@@ -961,6 +961,7 @@ export interface AnalyticsOverview {
 export interface TrendSeries {
   dates: string[];
   series: { key: string; name: string; data: number[] }[];
+  compare?: { dates: string[]; series: { key: string; name: string; data: number[] }[] };
 }
 
 export interface SessionListItem {
@@ -1036,6 +1037,41 @@ export interface UserTimeline {
   firstSeenAt: string | null;
   lastSeenAt: string | null;
   items: UserTimelineEvent[];
+}
+
+export interface SessionTimelineEvent {
+  id: number;
+  eventType: UserBehaviorEventType;
+  eventName: string | null;
+  pagePath: string;
+  pageTitle: string | null;
+  elementLabel: string | null;
+  componentArea: string | null;
+  durationMs: number | null;
+  properties: Record<string, unknown> | null;
+  createdAt: string;
+}
+export interface SessionTimeline {
+  sessionId: string;
+  username: string | null;
+  userId: number | null;
+  startedAt: string | null;
+  durationMs: number | null;
+  entryPage: string | null;
+  deviceType: string | null;
+  browser: string | null;
+  os: string | null;
+  items: SessionTimelineEvent[];
+}
+
+export interface AnalyticsSavedReport {
+  id: number;
+  name: string;
+  reportType: string;
+  config: Record<string, unknown>;
+  createdBy: number | null;
+  createdByName: string | null;
+  createdAt: string;
 }
 
 export interface DimensionBreakdownItem { name: string; value: number; percent: number }

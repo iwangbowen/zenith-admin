@@ -17,6 +17,8 @@ import type {
   RealtimeStats,
   RetentionResult,
   SessionListItem,
+  SessionTimeline,
+  AnalyticsSavedReport,
   TrendSeries,
   UserStats,
   UserTimeline,
@@ -81,10 +83,16 @@ export interface FrontendSimplePageParams {
   pageSize: number;
 }
 
+export interface AnalyticsRangeParams {
+  days: number;
+  startDate?: string;
+  endDate?: string;
+}
+
 export const analyticsKeys = {
   all: ['analytics'] as const,
-  overview: (days: number) => ['analytics', 'overview', days] as const,
-  trends: (days: number) => ['analytics', 'trends', days] as const,
+  overview: (range: AnalyticsRangeParams) => ['analytics', 'overview', range] as const,
+  trends: (range: AnalyticsRangeParams, compare: boolean) => ['analytics', 'trends', range, compare] as const,
   realtime: ['analytics', 'realtime'] as const,
   pageStats: (days: number) => ['analytics', 'page-stats', days] as const,
   featureStats: (days: number) => ['analytics', 'feature-stats', days] as const,
@@ -124,17 +132,23 @@ export const analyticsKeys = {
   },
 };
 
-export function useAnalyticsOverview(days: number) {
+function rangeQuery(range: AnalyticsRangeParams): string {
+  return range.startDate && range.endDate
+    ? toQueryString({ startDate: range.startDate, endDate: range.endDate })
+    : toQueryString({ days: range.days });
+}
+
+export function useAnalyticsOverview(range: AnalyticsRangeParams) {
   return useQuery({
-    queryKey: analyticsKeys.overview(days),
-    queryFn: () => request.get<AnalyticsOverview>(`/api/analytics/overview?days=${days}`).then(unwrap),
+    queryKey: analyticsKeys.overview(range),
+    queryFn: () => request.get<AnalyticsOverview>(`/api/analytics/overview${rangeQuery(range)}`).then(unwrap),
   });
 }
 
-export function useAnalyticsTrends(days: number) {
+export function useAnalyticsTrends(range: AnalyticsRangeParams, compare = false) {
   return useQuery({
-    queryKey: analyticsKeys.trends(days),
-    queryFn: () => request.get<TrendSeries>(`/api/analytics/trends?days=${days}`).then(unwrap),
+    queryKey: analyticsKeys.trends(range, compare),
+    queryFn: () => request.get<TrendSeries>(`/api/analytics/trends${rangeQuery(range)}${compare ? '&compare=true' : ''}`).then(unwrap),
   });
 }
 
@@ -204,6 +218,39 @@ export function useAnalyticsUserTimeline(userId: number | null, enabled = true) 
   });
 }
 
+export function useSessionTimeline(sessionId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['analytics', 'session-timeline', sessionId] as const,
+    queryFn: () => request.get<SessionTimeline>(`/api/analytics/session-timeline${toQueryString({ sessionId })}`).then(unwrap),
+    enabled: enabled && !!sessionId,
+  });
+}
+
+export function useSavedFunnelReports(enabled = true) {
+  return useQuery({
+    queryKey: ['analytics', 'saved-reports', 'funnel'] as const,
+    queryFn: () => request.get<{ list: AnalyticsSavedReport[] }>('/api/analytics/reports?type=funnel').then(unwrap),
+    enabled,
+  });
+}
+
+export function useSaveFunnelReport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (values: { name: string; config: Record<string, unknown> }) =>
+      request.post<AnalyticsSavedReport>('/api/analytics/reports', { ...values, reportType: 'funnel' }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['analytics', 'saved-reports'] }),
+  });
+}
+
+export function useDeleteFunnelReport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.delete<null>(`/api/analytics/reports/${id}`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['analytics', 'saved-reports'] }),
+  });
+}
+
 export function useAnalyticsDimension(dimension: string, days: number) {
   return useQuery({
     queryKey: analyticsKeys.dimension(dimension, days),
@@ -221,8 +268,8 @@ export function useAnalyticsHeatmapPages(days: number) {
 export function useAnalyticsHeatmap(pagePath: string, componentArea: string, days: number) {
   return useQuery({
     queryKey: analyticsKeys.heatmap(pagePath, componentArea, days),
-    queryFn: () => request.get<HeatmapData>(`/api/analytics/heatmap${toQueryString({ pagePath, componentArea, days })}`).then(unwrap),
-    enabled: !!pagePath && !!componentArea,
+    queryFn: () => request.get<HeatmapData>(`/api/analytics/heatmap${toQueryString({ pagePath, componentArea: componentArea || undefined, days })}`).then(unwrap),
+    enabled: !!pagePath,
   });
 }
 
