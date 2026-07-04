@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { RouteErrorBoundary } from '@/components/PageErrorBoundary';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -6,7 +6,7 @@ import { BackTop, Badge, Banner, Breadcrumb, Button, ColorPicker, Divider, Dropd
 import { AppModal } from '@/components/AppModal';
 import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
 import { Bell, Building2, Check, Info, Expand, Shrink, Megaphone, Sun, Moon, Monitor, MoreHorizontal, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2, Lock, Copy, Route, Keyboard, Search, Star, Clock, Wrench, ExternalLink, Menu as MenuIcon, Files } from 'lucide-react';
-import { match as pinyinMatch } from 'pinyin-pro';
+import { pinyinMatch, ensurePinyin } from '@/utils/pinyin';
 import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput';
 import type { User, Menu, InAppMessage, Announcement, Tenant, WsMessage, SystemConfig } from '@zenith/shared';
 import type { ThemeMode } from '@/hooks/useTheme';
@@ -22,16 +22,17 @@ import { config } from '@/config';
 import { renderLucideIcon } from '@/utils/icons';
 import NProgress from '@/components/NProgress';
 import Watermark from '@/components/Watermark';
-import QuickChatButton from '@/components/QuickChatButton';
-import CallOverlayHost from '@/webrtc/CallOverlayHost';
-import { useChatNotifier } from '@/pages/chat/useChatNotifier';
+// 重依赖懒加载：快捷聊天（Semi Chat 组件树）、音视频通话、聊天通知、锁屏（lunar 农历 ~300KB）均不进首屏 chunk
+const QuickChatButton = lazy(() => import('@/components/QuickChatButton'));
+const CallOverlayHost = lazy(() => import('@/webrtc/CallOverlayHost'));
+const ChatNotifierHost = lazy(() => import('@/pages/chat/ChatNotifierHost'));
+const LockScreen = lazy(() => import('@/components/LockScreen').then((m) => ({ default: m.LockScreen })));
 import AppLogo from '@/components/AppLogo';
 import AnnouncementDetailModal from '@/components/AnnouncementDetailModal';
 import TaskTray from '@/components/TaskTray';
 import BreadcrumbMenuPopover from '@/components/BreadcrumbMenuPopover';
 import { TopNavWithOverflow } from './TopNavWithOverflow';
 import { TabSwitcher } from './TabSwitcher';
-import { LockScreen } from '@/components/LockScreen';
 import { useLockScreen } from '@/hooks/useLockScreen';
 import { useFavoriteMenus } from '@/hooks/useFavoriteMenus';
 import { useRecentMenus } from '@/hooks/useRecentMenus';
@@ -626,8 +627,11 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
 
   const { disconnect: disconnectWs } = useWebSocket(handleWsMessage);
 
-  // 全局聊天通知（桌面通知 + 提示音）
-  useChatNotifier(displayUser?.id ?? null);
+  // 空闲时预热拼音词典（菜单/标签/命令面板搜索用），不占首屏关键路径
+  useEffect(() => {
+    if ('requestIdleCallback' in window) requestIdleCallback(() => { void ensurePinyin(); });
+    else setTimeout(() => { void ensurePinyin(); }, 2000);
+  }, []);
 
   const markAsRead = (id: number) => {
     request.post(`/api/in-app-messages/${id}/read`, undefined, { silent: true }).then((res) => {
@@ -2792,19 +2796,32 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
 
       {/* ===== 锁屏遮罩 ===== */}
       {isLocked && (
-        <LockScreen
-          user={user}
-          onVerify={verifyLockPassword}
-          onUnlocked={doUnlock}
-          onReLogin={() => { clearLockPassword(); disconnectWs(); onLogout(); }}
-        />
+        <Suspense fallback={null}>
+          <LockScreen
+            user={user}
+            onVerify={verifyLockPassword}
+            onUnlocked={doUnlock}
+            onReLogin={() => { clearLockPassword(); disconnectWs(); onLogout(); }}
+          />
+        </Suspense>
       )}
 
       {/* ===== 快捷聊天浮动按钮 ===== */}
-      {quickChatEnabled && (preferences.showQuickChat ?? true) && <QuickChatButton onHide={() => setPreferences({ showQuickChat: false })} />}
+      {quickChatEnabled && (preferences.showQuickChat ?? true) && (
+        <Suspense fallback={null}>
+          <QuickChatButton onHide={() => setPreferences({ showQuickChat: false })} />
+        </Suspense>
+      )}
 
       {/* ===== 音视频通话全局宿主 ===== */}
-      <CallOverlayHost />
+      <Suspense fallback={null}>
+        <CallOverlayHost />
+      </Suspense>
+
+      {/* ===== 全局聊天通知（桌面通知 + 提示音）===== */}
+      <Suspense fallback={null}>
+        <ChatNotifierHost userId={displayUser?.id ?? null} />
+      </Suspense>
 
       {/* ===== 消息详情 Modal ===== */}
       <AppModal

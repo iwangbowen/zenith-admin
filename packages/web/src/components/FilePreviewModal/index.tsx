@@ -5,7 +5,6 @@ import { Modal, Spin, Toast, AudioPlayer, VideoPlayer, Typography } from '@douyi
 import { X } from 'lucide-react';
 import { useThemeController } from '@/providers/theme-controller';
 import { fetchProtectedFile, isSpreadsheetFile, isWordFile, isMarkdownFile, isPlainTextFile, isZipFile, isJsonFile, isSvgFile, isCodeFile, getFileTypeIcon } from '@/utils/file-utils';
-import { PDFPreviewPanel } from '@/pages/ai/chat/PDFPreviewPanel';
 import { request } from '@/utils/request';
 import AppModal from '@/components/AppModal';
 import { unwrap } from '@/lib/query';
@@ -15,6 +14,10 @@ import './filePreview.css';
 
 // Univer 体积较大，懒加载，避免进入文件管理页即拉取
 const ExcelPreviewPanel = lazy(() => import('@/components/ExcelPreviewPanel'));
+// @embedpdf 引擎 ~1MB，懒加载，避免经 FileAttachment 链进入首屏
+const PDFPreviewPanel = lazy(() =>
+  import('@/pages/ai/chat/PDFPreviewPanel').then((m) => ({ default: m.PDFPreviewPanel })),
+);
 // docx-preview 懒加载，避免影响首屏
 const DocxPreviewPanel = lazy(() => import('@/components/DocxPreviewPanel'));
 // react-markdown 懒加载
@@ -215,13 +218,21 @@ export default function FilePreviewModal({
         closable={false}
         keepDOM={false}
       >
-        <PDFPreviewPanel
-          file={previewData.file}
-          onClose={handleClose}
-          fullscreen={fullscreen}
-          onToggleFullscreen={toggleFullscreen}
-          style={{ width: '100%', borderLeft: 'none' }}
-        />
+        <Suspense
+          fallback={
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+              <Spin size="large" />
+            </div>
+          }
+        >
+          <PDFPreviewPanel
+            file={previewData.file}
+            onClose={handleClose}
+            fullscreen={fullscreen}
+            onToggleFullscreen={toggleFullscreen}
+            style={{ width: '100%', borderLeft: 'none' }}
+          />
+        </Suspense>
       </Modal>
     );
   }

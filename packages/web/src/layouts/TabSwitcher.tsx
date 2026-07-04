@@ -7,7 +7,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Button, Input, List, Popover, Typography } from '@douyinfe/semi-ui';
 import { ChevronDown, Search, X } from 'lucide-react';
-import { match as pinyinMatch } from 'pinyin-pro';
+import { pinyinMatch } from '@/utils/pinyin';
 import { renderLucideIcon } from '@/utils/icons';
 import type { TabItem } from '@/hooks/useTabsStore';
 

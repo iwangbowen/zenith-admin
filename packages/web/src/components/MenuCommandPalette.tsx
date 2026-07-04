@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Modal } from '@douyinfe/semi-ui';
-import { match as pinyinMatch } from 'pinyin-pro';
+import { pinyinMatch } from '@/utils/pinyin';
 import { Search, Clock, Hash } from 'lucide-react';
 import { renderLucideIcon } from '@/utils/icons';
 import type { FlatMenuItem } from './MenuSearchInput';

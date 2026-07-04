@@ -94,47 +94,71 @@ export default defineConfig(({ mode }) => {
           member: fileURLToPath(new URL('./member.html', import.meta.url)),
         },
         output: {
-          manualChunks(id) {
-            const normalizedId = id.replaceAll('\\', '/');
+          // 使用 rolldown 原生 codeSplitting.groups（替代 rollup 兼容的 manualChunks 函数）：
+          // 兼容层的分组指派是"建议性"的——rolldown 为满足执行顺序约束会把模块挪出指派分组
+          // （react 本体曾被并进 vendor-charts / vendor-dnd-kit，jsx-runtime 曾被并进
+          // vendor-embedpdf），导致入口 HTML 被迫 preload 这些重型包、首屏体积暴涨。
+          // 原生 groups 的指派是权威的，且动态 name() 完整保留了原有按包分组策略。
+          codeSplitting: {
+            groups: [
+              {
+                // Vite 运行时 helper（preload polyfill 等虚拟模块）必须独立成组且优先级最高：
+                // 它被所有含动态 import 的 chunk 依赖，若落入自动分组会被 rolldown 打进
+                // 任意重型 vendor 包（曾被并进 vendor-embedpdf，导致入口为拿 __vitePreload
+                // 被迫静态预载 1MB PDF 引擎）。
+                name: 'vite-runtime',
+                test: (id: string) => id.includes('vite/preload-helper') || id.includes('vite/modulepreload-polyfill') || id.includes('vite/dynamic-import-helper') || id.includes('commonjsHelpers'),
+                priority: 20,
+              },
+              {
+                // react 运行时（含 jsx-runtime）独立成组且最高优先级：全应用共享，
+                // 绝不允许被合并进任何业务/vendor 大包
+                name: 'vendor-react-core',
+                test: /node_modules[\\/](?:react|react-dom|scheduler)[\\/]/,
+                priority: 10,
+              },
+              {
+                name(id: string): string | null {
+                  const normalizedId = id.replaceAll('\\', '/');
 
-            if (!normalizedId.includes('node_modules')) {
-              return undefined;
-            }
+                  if (!normalizedId.includes('node_modules')) {
+                    return null;
+                  }
 
-            if (normalizedId.includes('/node_modules/@wangeditor/editor-for-react/')) {
-              return 'vendor-editor-react';
-            }
+                  if (normalizedId.includes('/node_modules/@wangeditor/editor-for-react/')) {
+                    return 'vendor-editor-react';
+                  }
 
-            if (normalizedId.includes('/node_modules/@wangeditor/editor/')) {
-              return 'vendor-editor-core';
-            }
+                  if (normalizedId.includes('/node_modules/@wangeditor/editor/')) {
+                    return 'vendor-editor-core';
+                  }
 
-            if (normalizedId.includes('/node_modules/@visactor/')) {
-              return 'vendor-charts';
-            }
+                  if (normalizedId.includes('/node_modules/@douyinfe/semi-ui/lib/es/')) {
+                    const componentName = normalizedId.split('/node_modules/@douyinfe/semi-ui/lib/es/')[1]?.split('/')[0];
+                    if (componentName) {
+                      return `vendor-semi-${sanitizeChunkName(componentName)}`;
+                    }
+                  }
 
-            if (normalizedId.includes('/node_modules/@douyinfe/semi-ui/lib/es/')) {
-              const componentName = normalizedId.split('/node_modules/@douyinfe/semi-ui/lib/es/')[1]?.split('/')[0];
-              if (componentName) {
-                return `vendor-semi-${sanitizeChunkName(componentName)}`;
-              }
-            }
+                  // ⚠️ 必须用 /node_modules/ 前缀精确匹配包目录，不能用宽泛子串：
+                  // 曾用 includes('/react/') 把 @tiptap/react、@monaco-editor/react 等
+                  // 错聚进 vendor-react，诱发跨组合并把重库拖进首屏
+                  if (
+                    normalizedId.includes('/node_modules/react-router/')
+                    || normalizedId.includes('/node_modules/react-router-dom/')
+                  ) {
+                    return 'vendor-react-router';
+                  }
 
-            if (
-              normalizedId.includes('/react/')
-              || normalizedId.includes('/react-dom/')
-              || normalizedId.includes('/react-router/')
-              || normalizedId.includes('/react-router-dom/')
-            ) {
-              return 'vendor-react';
-            }
+                  if (normalizedId.includes('/node_modules/@iconify/react/')) {
+                    return 'vendor-iconify';
+                  }
 
-            if (normalizedId.includes('/node_modules/@iconify/react/')) {
-              return 'vendor-iconify';
-            }
-
-            const packageName = getPackageName(normalizedId);
-            return packageName ? `vendor-${sanitizeChunkName(packageName)}` : 'vendor-misc';
+                  const packageName = getPackageName(normalizedId);
+                  return packageName ? `vendor-${sanitizeChunkName(packageName)}` : 'vendor-misc';
+                },
+              },
+            ],
           },
         },
       },

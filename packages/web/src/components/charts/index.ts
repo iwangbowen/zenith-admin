@@ -4,9 +4,14 @@
  * 页面统一从这里导入图表组件与工具：
  *   import { AreaChart, makeAreaSpec, useChartPalette, chartOptions } from '@/components/charts';
  *
- * 主题（亮/暗、主题色）已在 main.tsx 通过 initVChartSemiTheme 接入，
+ * 主题（亮/暗、主题色）在本模块首次加载时通过 initVChartSemiTheme 接入（见下方副作用），
  * 配色通过 useChartPalette() 读取 Semi CSS 变量，随主题切换自动刷新。
  */
+import { setupVChartSemiTheme } from '@/lib/vchart-theme';
+
+// 主题注册副作用：本模块只存在于懒加载页面 chunk 中，模块求值先于任何图表组件渲染，
+// 既保证 VChart 实例创建前主题已就绪，又让 ~2MB 的 vchart 依赖不进入首屏。
+setupVChartSemiTheme();
 
 // VChart 图表组件
 export {

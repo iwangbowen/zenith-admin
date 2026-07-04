@@ -4,9 +4,6 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import './styles/global.css';
 import { enableMocking } from './mocks';
-import { setupVChartSemiTheme } from './lib/vchart-theme';
-
-setupVChartSemiTheme();
 
 async function bootstrap() {
   await enableMocking();
