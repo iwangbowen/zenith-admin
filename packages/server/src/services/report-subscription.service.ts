@@ -94,7 +94,7 @@ async function buildSummary(row: ReportDashboardSubscriptionRow): Promise<{ titl
       const rows = data[w.i]?.rows ?? [];
       const f = w.options?.valueField;
       const agg = w.options?.aggregate ?? 'sum';
-      let v = 0;
+      let v: number;
       if (f) {
         const nums = rows.map((r) => toNumber(r[f]));
         v = agg === 'avg' ? (nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0)

@@ -796,7 +796,6 @@ type ProviderSyncAction = 'created' | 'linked' | 'updated' | 'skipped';
 
 async function syncUserForProvider(provider: typeof tenantIdentityProviders.$inferSelect, profile: Record<string, unknown>): Promise<ProviderSyncAction> {
   const external = normalizeExternalProfile(provider, profile);
-  const now = new Date();
   const [existingAccount] = await db
     .select()
     .from(userIdentityAccounts)

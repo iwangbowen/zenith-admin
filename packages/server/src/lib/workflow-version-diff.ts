@@ -28,8 +28,6 @@ const ASSIGNEE_TYPE_LABEL: Record<string, string> = {
   startUserDeptResponsible: '部门分管领导', manager: '直属主管', expression: '表达式', formUser: '表单字段', self: '自选', decision: '决策表',
 };
 
-const ASSIGNEE_TYPES = ['user', 'role', 'department', 'userGroup', 'post', 'deptMember', 'expression'] as const;
-
 function assigneeSummary(cfg: WorkflowNodeConfig): string {
   if (cfg.assigneeType) {
     const label = ASSIGNEE_TYPE_LABEL[cfg.assigneeType] ?? cfg.assigneeType;

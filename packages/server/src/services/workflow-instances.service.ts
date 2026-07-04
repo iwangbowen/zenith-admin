@@ -234,7 +234,7 @@ import { recordCompensation, addCompensationLog } from './workflow-compensations
 import { resolveFormSnapshot } from './workflow-forms.service';
 import type { DbExecutor } from '../db/types';
 import { createHash, randomBytes } from 'node:crypto';
-import { enqueueJob, cancelJobs } from '../lib/workflow-jobs/engine';
+import { enqueueJob } from '../lib/workflow-jobs/engine';
 import { computeTimeoutAt } from '../lib/workflow-timeout';
 import type { WorkflowTriggerNodeConfig, WorkflowNodeFailurePolicy, WorkflowSerialNoConfig } from '@zenith/shared';
 import type { WorkflowSelectableNextApproverGroup } from '@zenith/shared';
@@ -1712,7 +1712,6 @@ async function expandTasksToRows(
     }
 
     if (t.nodeType === 'delay') {
-      const wakeAt = computeDelayWakeAt(t.nodeConfig, ctx.formData ?? {});
       rows.push({
         instanceId: ctx.instanceId,
         nodeKey: t.nodeKey,
@@ -1960,10 +1959,8 @@ async function expandTasksToRows(
     const ratioPct = method === 'ratio'
       ? Math.min(100, Math.max(1, t.nodeConfig.approveRatio ?? 51))
       : null;
-    const timeoutAt = computeTimeoutAt(t.nodeConfig.timeout);
     const assignList = await applyDelegations(effectiveUserIds);
     assignList.forEach(({ assigneeId, delegatedFromId }, idx) => {
-      const isPending = !(method === 'sequential' && idx > 0);
       rows.push({
         instanceId: ctx.instanceId,
         nodeKey: t.nodeKey,
