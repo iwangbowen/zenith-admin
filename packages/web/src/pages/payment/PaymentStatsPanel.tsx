@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { formatYuan } from '@/utils/payment';
 import { Spin, Row, Col, Select } from '@douyinfe/semi-ui';
 import {
   AreaChart,
@@ -14,7 +15,7 @@ import { PAYMENT_CHANNEL_LABELS, PAYMENT_ORDER_STATUS_LABELS } from '@zenith/sha
 import type { PaymentChannel, PaymentOrderStatus } from '@zenith/shared';
 import { usePaymentStats, usePaymentTrend } from '@/hooks/queries/payment-stats';
 
-const yuan = (cents: number) => `¥${((Number(cents) || 0) / 100).toFixed(2)}`;
+const yuan = formatYuan;
 
 const CHANNEL_COLORS: Record<string, string> = { wechat: '#10b981', alipay: '#3b82f6' };
 const STATUS_COLORS: Record<string, string> = {

@@ -60,6 +60,14 @@ export function useDeletePaymentLink() {
   });
 }
 
+export function useRotatePaymentLinkToken() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.post<PaymentLink>(`/api/payment/links/${id}/rotate-token`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: paymentLinkKeys.all }),
+  });
+}
+
 export function usePublicPaymentLink(token: string | undefined) {
   return useQuery({
     queryKey: paymentLinkKeys.public(token),

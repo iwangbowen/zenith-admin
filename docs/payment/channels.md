@@ -6,6 +6,7 @@
 | --- | --- | --- |
 | 微信支付 | `wechatPayAdapter` | `wechat_native`（Native 扫码）/ `wechat_jsapi` / `wechat_h5` |
 | 支付宝 | `alipayAdapter` | `alipay_page`（电脑网站）/ `alipay_wap`（手机网站）/ `alipay_app` |
+| 云闪付 | `unionpayAdapter` | `unionpay_qr`（银联二维码申码；全渠道 5.1.0 `signMethod=01` RSA-SHA256 签名；`sandbox=true` 模拟） |
 
 ## 1. 适配器接口（需求 ①⑤）
 
@@ -80,6 +81,9 @@ export function getAdapter(channel: PaymentChannel): PaymentChannelAdapter { /* 
 | `alipayAppId` / `alipaySignType` / `alipayGateway` | 支付宝 AppID / 签名算法（`RSA2` / `RSA`）/ 网关地址 |
 | `alipayPrivateKeyEncrypted` | 支付宝应用私钥（加密） |
 | `alipayPublicKey` | 支付宝公钥（验签用） |
+| `unionpayMerId` / `unionpayCertId` / `unionpayGateway` | 云闪付商户号 / 证书序列号 / 网关地址 |
+| `unionpayPrivateKeyEncrypted` | 云闪付商户私钥（加密） |
+| `unionpayPublicKey` | 银联验签公钥 |
 
 ### 密钥脱敏
 

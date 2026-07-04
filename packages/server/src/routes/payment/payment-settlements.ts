@@ -6,7 +6,7 @@ import { PaymentSettlementBatchDTO } from '../../lib/openapi-dtos';
 import { listSettlements, getSettlement, generateSettlement, transitionSettlement, deleteSettlement } from '../../services/payment/payment-settlement.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
-const channelEnum = z.enum(['wechat', 'alipay']);
+const channelEnum = z.enum(['wechat', 'alipay', 'unionpay']);
 const settlementStatusEnum = z.enum(['pending', 'settling', 'settled', 'failed']);
 const periodDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '账期须为 YYYY-MM-DD');
 

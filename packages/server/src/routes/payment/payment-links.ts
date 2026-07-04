@@ -4,7 +4,7 @@ import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditAfterData, setAuditBeforeData } from '../../middleware/guard';
 import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody } from '../../lib/openapi-schemas';
 import { PaymentLinkDTO } from '../../lib/openapi-dtos';
-import { listLinks, getLink, createLink, updateLink, deleteLink } from '../../services/payment/payment-link.service';
+import { listLinks, getLink, createLink, updateLink, deleteLink, rotateLinkToken } from '../../services/payment/payment-link.service';
 import type { PaymentLink } from '@zenith/shared';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -83,6 +83,21 @@ const deleteRoute = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRoute, detailRoute, createRouteDef, updateRoute, deleteRoute] as const);
+const rotateTokenRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/rotate-token', tags: ['支付中心-支付链接'], summary: '重置链接 token（安全轮换，旧链接立即失效）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'payment:link:update', audit: { description: '重置支付链接 token', module: '支付中心', recordResponseBody: false } })] as const,
+    request: { params: IdParam },
+    responses: { ...ok(PaymentLinkDTO, '已重置'), ...commonErrorResponses },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    setAuditBeforeData(c, maskPaymentLinkForAudit(await getLink(id)));
+    return c.json(okBody(await rotateLinkToken(id), 'token 已重置，旧链接已失效'), 200);
+  },
+});
+
+router.openapiRoutes([listRoute, detailRoute, createRouteDef, updateRoute, rotateTokenRoute, deleteRoute] as const);
 
 export default router;

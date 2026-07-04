@@ -88,7 +88,7 @@ export const paymentHandlers = [
     return c ? HttpResponse.json({ code: 0, message: 'ok', data: c }) : HttpResponse.json({ code: 404, message: '不存在', data: null });
   }),
   http.post('/api/payment/channels', async ({ request }) => {
-    const body = (await request.json()) as Partial<PaymentChannelConfig> & { wechatApiV3Key?: string; wechatPrivateKey?: string; alipayPrivateKey?: string };
+    const body = (await request.json()) as Partial<PaymentChannelConfig> & { wechatApiV3Key?: string; wechatPrivateKey?: string; alipayPrivateKey?: string; unionpayPrivateKey?: string };
     const now = mockDateTime();
     const item: PaymentChannelConfig = {
       id: getNextPaymentChannelId(),
@@ -109,6 +109,11 @@ export const paymentHandlers = [
       alipaySignType: body.alipaySignType ?? 'RSA2',
       alipayGateway: body.alipayGateway ?? null,
       hasAlipayPrivateKey: Boolean(body.alipayPrivateKey),
+      unionpayMerId: body.unionpayMerId ?? null,
+      unionpayCertId: body.unionpayCertId ?? null,
+      unionpayPublicKey: body.unionpayPublicKey ?? null,
+      unionpayGateway: body.unionpayGateway ?? null,
+      hasUnionpayPrivateKey: Boolean(body.unionpayPrivateKey),
       remark: body.remark ?? null,
       createdAt: now,
       updatedAt: now,
@@ -121,6 +126,10 @@ export const paymentHandlers = [
     if (!c) return HttpResponse.json({ code: 404, message: '不存在', data: null });
     const body = (await request.json()) as Record<string, unknown>;
     Object.assign(c, body, { updatedAt: mockDateTime() });
+    if (body.unionpayPrivateKey) c.hasUnionpayPrivateKey = true;
+    if (body.wechatApiV3Key) c.hasWechatApiV3Key = true;
+    if (body.wechatPrivateKey) c.hasWechatPrivateKey = true;
+    if (body.alipayPrivateKey) c.hasAlipayPrivateKey = true;
     return HttpResponse.json({ code: 0, message: '更新成功', data: c });
   }),
   http.delete('/api/payment/channels/:id', ({ params }) => {

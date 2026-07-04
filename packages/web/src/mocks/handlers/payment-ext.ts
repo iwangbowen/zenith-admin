@@ -297,6 +297,15 @@ export function recordMockRefundSucceeded(refund: typeof mockPaymentRefunds[numb
 }
 
 const opsHandlers = [
+  http.get('/api/payment/ops/health', () => ok({
+    outboxPending: 2,
+    outboxFailed: 1,
+    webhookPending: 3,
+    webhookFailed24h: 1,
+    sharingProcessing: 1,
+    transferProcessing: 1,
+    reconPendingDiff: 1,
+  })),
   http.get('/api/payment/ops/events', ({ request }) => {
     const url = new URL(request.url);
     const status = url.searchParams.get('status') ?? '';

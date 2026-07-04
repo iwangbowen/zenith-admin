@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { formatYuan } from '@/utils/payment';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Modal, Select, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -20,7 +21,7 @@ import {
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_RISK_SCOPE_LABELS } from '@zenith/shared';
 import type { PaymentChannel, PaymentRiskRule, PaymentRiskScope } from '@zenith/shared';
 
-const yuan = (cents: number | null | undefined) => (cents == null ? '-' : `¥${(cents / 100).toFixed(2)}`);
+const yuan = formatYuan;
 const channelOptions = Object.entries(PAYMENT_CHANNEL_LABELS).map(([value, label]) => ({ value, label }));
 const scopeOptions = Object.entries(PAYMENT_RISK_SCOPE_LABELS).map(([value, label]) => ({ value, label }));
 

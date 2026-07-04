@@ -55,8 +55,8 @@ import { getPaymentStats, getPaymentTrend } from '../../services/payment/payment
 
 const paymentRouter = new OpenAPIHono({ defaultHook: validationHook });
 
-const channelEnum = z.enum(['wechat', 'alipay']);
-const payMethodEnum = z.enum(['wechat_native', 'wechat_jsapi', 'wechat_h5', 'alipay_page', 'alipay_wap', 'alipay_app']);
+const channelEnum = z.enum(['wechat', 'alipay', 'unionpay']);
+const payMethodEnum = z.enum(['wechat_native', 'wechat_jsapi', 'wechat_h5', 'alipay_page', 'alipay_wap', 'alipay_app', 'unionpay_qr']);
 
 const channelCreateSchema = z.object({
   name: z.string().min(1).max(64),

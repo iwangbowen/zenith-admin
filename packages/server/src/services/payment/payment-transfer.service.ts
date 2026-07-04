@@ -26,6 +26,7 @@ import { recordLedgerEntry } from './payment-ledger.service';
 import { getAdapter } from '../../lib/payment/registry';
 import logger from '../../lib/logger';
 import type { CreatePaymentTransferInput, PaymentChannel, PaymentTransfer, PaymentTransferStatus } from '@zenith/shared';
+import { PAYMENT_CHANNEL_LABELS } from '@zenith/shared';
 
 const MAX_TRANSFER_ATTEMPTS = 3;
 
@@ -68,7 +69,7 @@ async function resolveTransferConfig(channel: PaymentChannel, channelConfigId?: 
     .from(paymentChannelConfigs)
     .where(and(eq(paymentChannelConfigs.channel, channel), eq(paymentChannelConfigs.isDefault, true), eq(paymentChannelConfigs.status, 'enabled'), tc))
     .limit(1);
-  if (!row) throw new HTTPException(400, { message: `未配置默认${channel === 'wechat' ? '微信' : '支付宝'}支付渠道` });
+  if (!row) throw new HTTPException(400, { message: `未配置默认${PAYMENT_CHANNEL_LABELS[channel]}支付渠道` });
   return row;
 }
 

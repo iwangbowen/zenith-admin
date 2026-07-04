@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Input, Select, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Col, Input, Row, Select, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search, RotateCcw } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -10,10 +10,19 @@ import { formatDateTime } from '@/utils/date';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import type { PaymentOutboxEvent } from '@zenith/shared';
-import { paymentEventKeys, usePaymentEventList, useRedispatchPaymentEvent } from '@/hooks/queries/payment-events';
+import { paymentEventKeys, usePaymentEventList, usePaymentOpsHealth, useRedispatchPaymentEvent } from '@/hooks/queries/payment-events';
 
 const EVENT_STATUS_LABELS = { pending: '待处理', done: '已完成', failed: '失败' } as const satisfies Record<PaymentOutboxEvent['status'], string>;
 const EVENT_STATUS_COLOR = { pending: 'blue', done: 'green', failed: 'red' } as const satisfies Record<PaymentOutboxEvent['status'], string>;
+const HEALTH_LABELS = [
+  ['outboxPending', 'Outbox 积压'],
+  ['outboxFailed', 'Outbox 死信'],
+  ['webhookPending', 'Webhook 待投递'],
+  ['webhookFailed24h', 'Webhook 24h失败'],
+  ['sharingProcessing', '分账处理中'],
+  ['transferProcessing', '转账处理中'],
+  ['reconPendingDiff', '待处理对账差异'],
+] as const;
 
 interface SearchParams { keyword: string; status: string; type: string; }
 const defaultSearch: SearchParams = { keyword: '', status: '', type: '' };
@@ -32,6 +41,8 @@ export default function PaymentEventsPage() {
     type: submittedParams.type || undefined,
   });
   const data = listQuery.data ?? null;
+  const healthQuery = usePaymentOpsHealth();
+  const health = healthQuery.data ?? null;
   const redispatchMutation = useRedispatchPaymentEvent();
   const redispatchingId = redispatchMutation.isPending ? (redispatchMutation.variables ?? null) : null;
 
@@ -101,6 +112,26 @@ export default function PaymentEventsPage() {
 
   const renderSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>;
   const renderResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>;
+  const renderHealthCards = () => (
+    <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
+      {HEALTH_LABELS.map(([key, label]) => {
+        const value = health?.[key] ?? 0;
+        const danger = (key === 'outboxFailed' || key === 'webhookFailed24h') && value > 0;
+        return (
+          <Col key={key} xs={12} sm={8} xl={3}>
+            <div style={{ background: 'var(--semi-color-bg-1)', border: '1px solid var(--semi-color-border)', borderRadius: 6, padding: '12px 14px' }}>
+              <Typography.Text type="tertiary" size="small">{label}</Typography.Text>
+              <div style={{ marginTop: 6 }}>
+                <Typography.Text strong type={danger ? 'danger' : undefined} style={{ fontSize: 22, lineHeight: '28px' }}>
+                  {value}
+                </Typography.Text>
+              </div>
+            </div>
+          </Col>
+        );
+      })}
+    </Row>
+  );
 
   return (
     <div className="page-container">
@@ -130,6 +161,8 @@ export default function PaymentEventsPage() {
         onFilterApply={handleSearch}
         onFilterReset={handleReset}
       />
+
+      {renderHealthCards()}
 
       <ConfigurableTable
         bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"

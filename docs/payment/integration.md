@@ -20,7 +20,8 @@ closePayment(orderNo: string): Promise<void>;
 - 业务模块直接 `import { createPayment } from '../services/payment.service'`，**无需 HTTP 往返**；
 - 同时提供后台 HTTP 路由 `/api/payment/*`（发起、查询、手动退款），供后台运营使用；
 - 下单 / 退款接口挂 [`idempotencyGuard`](../backend/idempotency)（15s 窗口，自动指纹或客户端 `X-Idempotency-Key`）防重复提交；
-- **业务级下单幂等**：同 `bizType + bizId` 存在未过期活跃单（`pending` / `paying`）时**直接复用**（重新生成支付参数返回同一 `orderNo`，渠道侧同 `outTradeNo` 幂等）；金额或支付方式变化时先查单防边界支付、再关旧单新建；并发下单由部分唯一索引 `payment_orders_active_biz_uq` 兜底（冲突方复用对方刚创建的订单）。同一业务单已支付成功再下单会抛 400。
+- **业务级下单幂等**：同 `bizType + bizId` 存在未过期活跃单（`pending` / `paying`）时**直接复用**（重新生成支付参数返回同一 `orderNo`，渠道侧同 `outTradeNo` 幂等）；金额或支付方式变化时先查单防边界支付、再关旧单新建；并发下单由部分唯一索引 `payment_orders_active_biz_uq` 兜底（冲突方复用对方刚创建的订单）。同一业务单已支付成功再下单会抛 400；
+- **App 维度下单**：入参可选 `appKey`（「应用管理」页维护），支付中心路由到该应用绑定的对应渠道配置并在订单落 `appId` 归属；`appKey` 与 `channelConfigId` 同时提供时 `appKey` 优先。
 
 ### 字段约定
 

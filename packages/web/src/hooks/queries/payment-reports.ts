@@ -3,9 +3,7 @@ import type { PaymentReportGroupBy, PaymentReportRow } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { toQueryString, unwrap } from '@/lib/query';
 
-export interface PaymentReportSummary {
-  groupBy: PaymentReportGroupBy;
-  rows: PaymentReportRow[];
+export interface PaymentReportTotals {
   totalGross: number;
   totalFee: number;
   totalRefund: number;
@@ -13,10 +11,18 @@ export interface PaymentReportSummary {
   totalCount: number;
 }
 
+export interface PaymentReportSummary extends PaymentReportTotals {
+  groupBy: PaymentReportGroupBy;
+  rows: PaymentReportRow[];
+  /** 环比周期汇总（compare=true 且提供时间范围时返回） */
+  prev?: PaymentReportTotals | null;
+}
+
 export interface PaymentReportSummaryParams {
   groupBy: PaymentReportGroupBy;
   startTime?: string;
   endTime?: string;
+  compare?: 'true';
 }
 
 export const paymentReportKeys = {

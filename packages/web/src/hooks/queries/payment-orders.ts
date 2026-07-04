@@ -64,7 +64,13 @@ export function usePaymentOrderByNo(orderNo: string | undefined, enabled = true)
     queryKey: paymentOrderKeys.byNo(orderNo),
     queryFn: () => request.get<PaymentOrder>(`/api/payment/orders/by-no/${encodeURIComponent(orderNo ?? '')}`).then(unwrap),
     enabled: enabled && !!orderNo,
-    refetchInterval: enabled && orderNo ? 3000 : false,
+    // 终态（成功/关闭/退款/失败）自动停止轮询，避免弹窗未及时关闭时空转
+    refetchInterval: (query) => {
+      if (!enabled || !orderNo) return false;
+      const s = query.state.data?.status;
+      if (s === 'success' || s === 'closed' || s === 'refunded' || s === 'failed') return false;
+      return 3000;
+    },
   });
 }
 

@@ -16,7 +16,7 @@ import { createPayment } from './payment.service';
 import type { CreatePaymentLinkInput, UpdatePaymentLinkInput } from '@zenith/shared';
 import type { CreatePaymentResult, PaymentLink, PaymentLinkPublic, PaymentLinkStatus, PaymentMethod } from '@zenith/shared';
 
-const PUBLIC_LINK_PAY_METHODS = new Set<PaymentMethod>(['wechat_native', 'wechat_h5', 'alipay_page', 'alipay_wap']);
+const PUBLIC_LINK_PAY_METHODS = new Set<PaymentMethod>(['wechat_native', 'wechat_h5', 'alipay_page', 'alipay_wap', 'unionpay_qr']);
 
 function genLinkNo(): string {
   return `LINK${Date.now()}${randomInt(1000, 9999)}`;
@@ -143,6 +143,14 @@ export async function updateLink(id: number, input: UpdatePaymentLinkInput): Pro
 export async function deleteLink(id: number): Promise<void> {
   await ensureLink(id);
   await db.delete(paymentLinks).where(eq(paymentLinks.id, id));
+}
+
+/** 重置链接 token（安全轮换）：生成新 token，旧分享链接立即失效。 */
+export async function rotateLinkToken(id: number): Promise<PaymentLink> {
+  await ensureLink(id);
+  const tc = tenantCondition(paymentLinks, currentUser());
+  const [row] = await db.update(paymentLinks).set({ token: genToken() }).where(and(eq(paymentLinks.id, id), tc)).returning();
+  return mapLink(row);
 }
 
 // ─── 公开端点 ─────────────────────────────────────────────────────────────────

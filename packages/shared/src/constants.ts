@@ -85,12 +85,13 @@ export const OAUTH2_TOKEN_EXPIRY = {
 } as const;
 
 // ─── 支付中心 ────────────────────────────────────────────────────────
-export const PAYMENT_CHANNELS = ['wechat', 'alipay'] as const;
+export const PAYMENT_CHANNELS = ['wechat', 'alipay', 'unionpay'] as const;
 export type PaymentChannel = typeof PAYMENT_CHANNELS[number];
 
 export const PAYMENT_METHODS = [
   'wechat_native', 'wechat_jsapi', 'wechat_h5',
   'alipay_page', 'alipay_wap', 'alipay_app',
+  'unionpay_qr',
 ] as const;
 export type PaymentMethod = typeof PAYMENT_METHODS[number];
 
@@ -108,11 +109,13 @@ export const PAYMENT_METHOD_CHANNEL: Record<PaymentMethod, PaymentChannel> = {
   alipay_page: 'alipay',
   alipay_wap: 'alipay',
   alipay_app: 'alipay',
+  unionpay_qr: 'unionpay',
 };
 
 export const PAYMENT_CHANNEL_LABELS: Record<PaymentChannel, string> = {
   wechat: '微信支付',
   alipay: '支付宝',
+  unionpay: '云闪付',
 };
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -122,6 +125,7 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   alipay_page: '支付宝电脑网站',
   alipay_wap: '支付宝手机网站',
   alipay_app: '支付宝 APP',
+  unionpay_qr: '云闪付扫码',
 };
 
 export const PAYMENT_ORDER_STATUS_LABELS: Record<PaymentOrderStatus, string> = {

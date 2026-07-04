@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { formatYuan, PAYMENT_CHANNEL_TAG_COLOR } from '@/utils/payment';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, DatePicker, Form, Input, Select, Tag, Toast, Typography, Descriptions } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -24,7 +25,7 @@ import {
 
 const STATUS_COLOR = { pending: 'grey', processing: 'blue', success: 'green', failed: 'red' } as const satisfies Record<PaymentRefundStatus, string>;
 const APPROVAL_COLOR = { none: 'grey', pending: 'amber', approved: 'green', rejected: 'red' } as const satisfies Record<PaymentRefundApprovalStatus, string>;
-const yuan = (cents: number) => `¥${(cents / 100).toFixed(2)}`;
+const yuan = formatYuan;
 
 interface SearchParams { keyword: string; channel: string; status: string; approvalStatus: string; timeRange: [Date, Date] | null; }
 const defaultSearch: SearchParams = { keyword: '', channel: '', status: '', approvalStatus: '', timeRange: null };
@@ -89,7 +90,7 @@ export default function PaymentRefundsPage() {
     { title: '原订单号', dataIndex: 'orderNo', width: 200, render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }} copyable={{ content: v }} style={{ maxWidth: 180 }}>{v}</Typography.Text> },
     { title: '退款金额', dataIndex: 'refundAmount', width: 110, render: (v: number) => yuan(v) },
     { title: '原单金额', dataIndex: 'totalAmount', width: 110, render: (v: number) => yuan(v) },
-    { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => <Tag color={v === 'wechat' ? 'green' : 'blue'}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
+    { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => <Tag color={PAYMENT_CHANNEL_TAG_COLOR[v]}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
     { title: '退款时间', dataIndex: 'refundedAt', width: 170, render: (t: string | null) => (t ? formatDateTime(t) : '-') },
     { title: '创建时间', dataIndex: 'createdAt', width: 170, render: (t: string) => formatDateTime(t) },
     {
@@ -146,7 +147,7 @@ export default function PaymentRefundsPage() {
       onChange={(v) => setDraftParams((p) => ({ ...p, channel: (v as string) ?? '' }))}
       showClear
       style={{ width: 120 }}
-      optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }]}
+      optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }, { value: 'unionpay', label: '云闪付' }]}
     />
   );
 

@@ -22,6 +22,7 @@ export const paymentChannelKeys = {
   lists: ['payment-channels', 'list'] as const,
   list: (params: PaymentChannelListParams) => ['payment-channels', 'list', params] as const,
   detail: (id: number | undefined) => ['payment-channels', 'detail', id] as const,
+  lookup: ['payment-channels', 'lookup'] as const,
 };
 
 export function usePaymentChannelList(params: PaymentChannelListParams) {
@@ -37,6 +38,14 @@ export function usePaymentChannelDetail(id: number | undefined, enabled = true) 
     queryKey: paymentChannelKeys.detail(id),
     queryFn: () => request.get<PaymentChannelConfig>(`/api/payment/channels/${id}`).then(unwrap),
     enabled: enabled && id !== undefined,
+  });
+}
+
+export function useAllPaymentChannelConfigsLookup(enabled = true) {
+  return useQuery({
+    queryKey: paymentChannelKeys.lookup,
+    queryFn: () => request.get<PaymentChannelConfig[]>('/api/payment/channels/all').then(unwrap),
+    enabled,
   });
 }
 

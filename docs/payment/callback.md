@@ -60,6 +60,7 @@ flowchart LR
 | `generateDailySettlements` | T+1 自动结算：每日为昨日账期按渠道 × 租户生成结算批次（无交易跳过，唯一索引幂等） |
 | `syncPaymentTransfers` | 查询渠道转账结果，同步 `processing` 转账单终态（成功自动记台账） |
 | `autoPaymentRecon` | 每日拉取昨日渠道账单自动对账（沙箱渠道生成模拟账单；已有批次跳过） |
+| `rebuildPaymentReportDaily` | 每日重建近 2 天财务报表日切快照（历史查询走快照降实时聚合压力） |
 
 ### 对账自动拉取
 

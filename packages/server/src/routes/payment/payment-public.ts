@@ -14,7 +14,7 @@ import { getClientIp } from '../../lib/request-helpers';
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
 const NotifyParam = z.object({
-  channel: z.enum(['wechat', 'alipay']).openapi({ param: { name: 'channel', in: 'path' }, example: 'wechat' }),
+  channel: z.enum(['wechat', 'alipay', 'unionpay']).openapi({ param: { name: 'channel', in: 'path' }, example: 'wechat' }),
 });
 
 const notifyRoute = defineOpenAPIRoute({

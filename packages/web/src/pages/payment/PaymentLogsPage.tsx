@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { PAYMENT_CHANNEL_TAG_COLOR } from '@/utils/payment';
 import type { CSSProperties } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, DatePicker, Input, Modal, Select, Tag, Typography } from '@douyinfe/semi-ui';
@@ -54,7 +55,7 @@ export default function PaymentLogsPage() {
 
   const columns: ColumnProps<PaymentNotifyLog>[] = [
     { title: 'ID', dataIndex: 'id', width: 80 },
-    { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => <Tag color={v === 'wechat' ? 'green' : 'blue'}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
+    { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => <Tag color={PAYMENT_CHANNEL_TAG_COLOR[v]}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
     { title: '场景', dataIndex: 'scene', width: 100, render: (v: string) => (v === 'refund' ? '退款回调' : '支付回调') },
     { title: '订单号', dataIndex: 'orderNo', width: 200, render: (v: string | null) => v || '-' },
     { title: '验签', dataIndex: 'signatureValid', width: 90, render: (v: boolean) => <Tag color={v ? 'green' : 'red'}>{v ? '通过' : '失败'}</Tag> },
@@ -93,7 +94,7 @@ export default function PaymentLogsPage() {
       onChange={(v) => setDraftParams((p) => ({ ...p, channel: (v as string) ?? '' }))}
       showClear
       style={{ width: 120 }}
-      optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }]}
+      optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }, { value: 'unionpay', label: '云闪付' }]}
     />
   );
 
@@ -181,7 +182,7 @@ export default function PaymentLogsPage() {
         {detailLog && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-              <Tag color={detailLog.channel === 'wechat' ? 'green' : 'blue'}>{PAYMENT_CHANNEL_LABELS[detailLog.channel]}</Tag>
+              <Tag color={PAYMENT_CHANNEL_TAG_COLOR[detailLog.channel]}>{PAYMENT_CHANNEL_LABELS[detailLog.channel]}</Tag>
               <Tag color="grey">{detailLog.scene === 'refund' ? '退款回调' : '支付回调'}</Tag>
               <Tag color={detailLog.signatureValid ? 'green' : 'red'}>{detailLog.signatureValid ? '验签通过' : '验签失败'}</Tag>
               {detailLog.orderNo && <Typography.Text type="tertiary">订单号：{detailLog.orderNo}</Typography.Text>}

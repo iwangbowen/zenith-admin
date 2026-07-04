@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { formatYuan, PAYMENT_CHANNEL_TAG_COLOR } from '@/utils/payment';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Modal, Select, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -21,7 +22,7 @@ import {
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_SETTLEMENT_STATUS_LABELS } from '@zenith/shared';
 import type { PaymentChannel, PaymentSettlementBatch, PaymentSettlementStatus } from '@zenith/shared';
 
-const yuan = (cents: number) => `¥${(cents / 100).toFixed(2)}`;
+const yuan = formatYuan;
 const channelOptions = Object.entries(PAYMENT_CHANNEL_LABELS).map(([value, label]) => ({ value, label }));
 const STATUS_COLOR = { pending: 'grey', settling: 'blue', settled: 'green', failed: 'red' } as const satisfies Record<PaymentSettlementStatus, string>;
 
@@ -76,7 +77,7 @@ export default function PaymentSettlementsPage() {
 
   const columns: ColumnProps<PaymentSettlementBatch>[] = [
     { title: '批次号', dataIndex: 'batchNo', width: 190, render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }} copyable={{ content: v }} style={{ maxWidth: 170 }}>{v}</Typography.Text> },
-    { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => <Tag color={v === 'wechat' ? 'green' : 'blue'}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
+    { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => <Tag color={PAYMENT_CHANNEL_TAG_COLOR[v]}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
     { title: '账期', dataIndex: 'periodStart', width: 200, render: (_: unknown, r: PaymentSettlementBatch) => `${r.periodStart} ~ ${r.periodEnd}` },
     { title: '订单数', dataIndex: 'orderCount', width: 80 },
     { title: '收款', dataIndex: 'grossAmount', width: 110, render: (v: number) => yuan(v) },

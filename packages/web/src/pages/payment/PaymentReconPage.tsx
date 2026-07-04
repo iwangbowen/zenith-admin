@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { formatYuan, PAYMENT_CHANNEL_TAG_COLOR } from '@/utils/payment';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Modal, Select, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -32,7 +33,7 @@ const HANDLE_ACTION_OPTIONS = [
   { value: 'suspended', label: '挂账（暂缓处理，保留差异）' },
   { value: 'ignored', label: '忽略（确认无需处理）' },
 ];
-const yuan = (cents: number) => `¥${(cents / 100).toFixed(2)}`;
+const yuan = formatYuan;
 
 interface SearchParams { channel: string; status: string; }
 const defaultSearch: SearchParams = { channel: '', status: '' };
@@ -182,7 +183,7 @@ export default function PaymentReconPage() {
 
   const columns: ColumnProps<PaymentReconBatch>[] = [
     { title: '批次号', dataIndex: 'batchNo', width: 190, render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }} copyable={{ content: v }} style={{ maxWidth: 170 }}>{v}</Typography.Text> },
-    { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => <Tag color={v === 'wechat' ? 'green' : 'blue'}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
+    { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => <Tag color={PAYMENT_CHANNEL_TAG_COLOR[v]}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
     { title: '账单日期', dataIndex: 'billDate', width: 120 },
     { title: '本地笔数/金额', dataIndex: 'localCount', width: 150, render: (_: unknown, r: PaymentReconBatch) => `${r.localCount} / ${yuan(r.localAmount)}` },
     { title: '渠道笔数/金额', dataIndex: 'channelCount', width: 150, render: (_: unknown, r: PaymentReconBatch) => `${r.channelCount} / ${yuan(r.channelAmount)}` },
@@ -250,7 +251,7 @@ export default function PaymentReconPage() {
       onChange={(v) => setDraftParams((p) => ({ ...p, channel: (v as string) ?? '' }))}
       showClear
       style={{ width: 120 }}
-      optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }]}
+      optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }, { value: 'unionpay', label: '云闪付' }]}
     />
   );
 
@@ -312,7 +313,7 @@ export default function PaymentReconPage() {
 
       <AppModal title="新建对账" visible={modalVisible} onOk={handleOk} onCancel={closeModal} okButtonProps={{ loading: createMutation.isPending }} width={720} closeOnEsc>
         <Form key={modalVisible ? 'new' : 'closed'} getFormApi={(api) => { formApi.current = api; }} initValues={{ channel: 'wechat' }} labelPosition="left" labelWidth={100}>
-          <Form.Select field="channel" label="渠道" style={{ width: '100%' }} optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }]} rules={[{ required: true, message: '请选择渠道' }]} />
+          <Form.Select field="channel" label="渠道" style={{ width: '100%' }} optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }, { value: 'unionpay', label: '云闪付' }]} rules={[{ required: true, message: '请选择渠道' }]} />
           <Form.DatePicker field="billDate" label="账单日期" type="date" style={{ width: '100%' }} rules={[{ required: true, message: '请选择账单日期' }]} />
           <Button type="tertiary" loading={sampleBillMutation.isPending} onClick={handleSampleBill} style={{ marginLeft: 100, marginBottom: 12 }}>生成模拟账单</Button>
           <Form.TextArea field="billText" label="账单内容" rows={8} placeholder="订单号,渠道交易号,金额(分),状态" rules={[{ required: true, message: '请输入账单内容' }]} />
@@ -337,7 +338,7 @@ export default function PaymentReconPage() {
 
       <AppModal title="自动拉取渠道账单对账" visible={autoModalVisible} onOk={handleAutoOk} onCancel={() => { setAutoModalVisible(false); autoFormApi.current = null; }} okButtonProps={{ loading: autoMutation.isPending }} width={480} closeOnEsc>
         <Form key={autoModalVisible ? 'auto' : 'closed'} getFormApi={(api) => { autoFormApi.current = api; }} initValues={{ channel: 'wechat' }} labelPosition="left" labelWidth={100}>
-          <Form.Select field="channel" label="渠道" style={{ width: '100%' }} optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }]} rules={[{ required: true, message: '请选择渠道' }]} />
+          <Form.Select field="channel" label="渠道" style={{ width: '100%' }} optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }, { value: 'unionpay', label: '云闪付' }]} rules={[{ required: true, message: '请选择渠道' }]} />
           <Form.DatePicker field="billDate" label="账单日期" type="date" style={{ width: '100%' }} rules={[{ required: true, message: '请选择账单日期' }]} />
           <Typography.Text type="tertiary" size="small">沙箱渠道生成模拟账单演示闭环；生产微信渠道自动下载交易账单，支付宝暂需手动上传。</Typography.Text>
         </Form>

@@ -2009,7 +2009,7 @@ export type UpdateDbQueryFavoriteInput = z.infer<typeof updateDbQueryFavoriteSch
 // ─── 支付中心 ────────────────────────────────────────────────────────
 export const createPaymentChannelConfigSchema = z.object({
   name: z.string().min(1, '名称不能为空').max(64),
-  channel: z.enum(['wechat', 'alipay']),
+  channel: z.enum(['wechat', 'alipay', 'unionpay']),
   status: z.enum(['enabled', 'disabled']).default('enabled'),
   isDefault: z.boolean().default(false),
   sandbox: z.boolean().default(false),
@@ -2027,6 +2027,12 @@ export const createPaymentChannelConfigSchema = z.object({
   alipayPublicKey: z.string().optional(),
   alipaySignType: z.enum(['RSA2', 'RSA']).default('RSA2'),
   alipayGateway: z.string().max(256).optional(),
+  // 云闪付（银联全渠道）
+  unionpayMerId: z.string().max(64).optional(),
+  unionpayPrivateKey: z.string().optional(),
+  unionpayCertId: z.string().max(64).optional(),
+  unionpayPublicKey: z.string().optional(),
+  unionpayGateway: z.string().max(256).optional(),
   remark: z.string().max(256).optional(),
 });
 
@@ -2039,8 +2045,10 @@ export const createPaymentSchema = z.object({
   subject: z.string().min(1).max(256),
   body: z.string().max(512).optional(),
   amount: z.number().int().positive('金额必须大于 0'), // 分
-  payMethod: z.enum(['wechat_native', 'wechat_jsapi', 'wechat_h5', 'alipay_page', 'alipay_wap', 'alipay_app']),
+  payMethod: z.enum(['wechat_native', 'wechat_jsapi', 'wechat_h5', 'alipay_page', 'alipay_wap', 'alipay_app', 'unionpay_qr']),
   channelConfigId: z.number().int().positive().optional(),
+  /** 按应用下单：路由到该应用绑定的渠道配置（与 channelConfigId 互斥，appKey 优先） */
+  appKey: z.string().max(64).optional(),
   openId: z.string().max(128).optional(),
   userId: z.number().int().positive().optional(),
   expireMinutes: z.number().int().positive().max(1440).default(30),
@@ -2059,8 +2067,8 @@ export type CreatePaymentInput = z.infer<typeof createPaymentSchema>;
 export type CreateRefundInput = z.infer<typeof createRefundSchema>;
 
 // ─── 支付中心扩展 · B 档（费率 / 分账 / 支付链接 / 风控 / 支付方式）──────────────
-const paymentChannelZ = z.enum(['wechat', 'alipay']);
-const paymentMethodZ = z.enum(['wechat_native', 'wechat_jsapi', 'wechat_h5', 'alipay_page', 'alipay_wap', 'alipay_app']);
+const paymentChannelZ = z.enum(['wechat', 'alipay', 'unionpay']);
+const paymentMethodZ = z.enum(['wechat_native', 'wechat_jsapi', 'wechat_h5', 'alipay_page', 'alipay_wap', 'alipay_app', 'unionpay_qr']);
 
 /** 手续费/费率规则 */
 export const createPaymentFeeRuleSchema = z.object({
@@ -2107,6 +2115,18 @@ export const createPaymentTransferSchema = z.object({
   bizId: z.string().max(128).optional(),
 });
 
+/** 支付应用（App 维度） */
+export const createPaymentAppSchema = z.object({
+  name: z.string().min(1).max(64),
+  appKey: z.string().min(3).max(64).regex(/^[a-zA-Z0-9_-]+$/, 'appKey 仅允许字母/数字/下划线/中划线'),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  wechatConfigId: z.number().int().positive().nullable().optional(),
+  alipayConfigId: z.number().int().positive().nullable().optional(),
+  unionpayConfigId: z.number().int().positive().nullable().optional(),
+  remark: z.string().max(256).optional(),
+});
+export const updatePaymentAppSchema = createPaymentAppSchema.partial();
+
 /** 支付链接 */
 export const createPaymentLinkSchema = z.object({
   subject: z.string().min(1).max(256),
@@ -2149,6 +2169,8 @@ export type CreatePaymentSharingReceiverInput = z.infer<typeof createPaymentShar
 export type UpdatePaymentSharingReceiverInput = z.infer<typeof updatePaymentSharingReceiverSchema>;
 export type HandlePaymentReconItemInput = z.infer<typeof handlePaymentReconItemSchema>;
 export type CreatePaymentTransferInput = z.infer<typeof createPaymentTransferSchema>;
+export type CreatePaymentAppInput = z.infer<typeof createPaymentAppSchema>;
+export type UpdatePaymentAppInput = z.infer<typeof updatePaymentAppSchema>;
 export type CreatePaymentLinkInput = z.infer<typeof createPaymentLinkSchema>;
 export type UpdatePaymentLinkInput = z.infer<typeof updatePaymentLinkSchema>;
 export type CreatePaymentRiskRuleInput = z.infer<typeof createPaymentRiskRuleSchema>;
@@ -2439,7 +2461,7 @@ export const createBizPayDemoSchema = z.object({
 
 /** 发起支付（选择支付方式，微信 JSAPI 需 openId） */
 export const payBizPayDemoSchema = z.object({
-  payMethod: z.enum(['wechat_native', 'wechat_jsapi', 'wechat_h5', 'alipay_page', 'alipay_wap', 'alipay_app']),
+  payMethod: z.enum(['wechat_native', 'wechat_jsapi', 'wechat_h5', 'alipay_page', 'alipay_wap', 'alipay_app', 'unionpay_qr']),
   openId: z.string().max(128).optional(),
 });
 

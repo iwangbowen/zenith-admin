@@ -370,6 +370,8 @@ export const SEED_MENUS: Menu[] = [
   { id: 795, parentId: 700, title: '财务报表', name: 'PaymentReports',   path: '/payment/reports',     component: 'payment/PaymentReportsPage',     icon: 'ChartColumn',  type: 'menu',   sort: 15, status: 'enabled', visible: true,  permission: 'payment:report:view',       createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 796, parentId: 700, title: '转账管理', name: 'PaymentTransfers', path: '/payment/transfers',   component: 'payment/PaymentTransfersPage',   icon: 'SendHorizontal', type: 'menu', sort: 16, status: 'enabled', visible: true,  permission: 'payment:transfer:list',     createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 797, parentId: 796, title: '发起转账', name: undefined,          path: undefined,              component: undefined,                        icon: undefined,      type: 'button', sort: 1,  status: 'enabled', visible: true,  permission: 'payment:transfer:create',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 798, parentId: 700, title: '应用管理', name: 'PaymentApps',      path: '/payment/apps',        component: 'payment/PaymentAppsPage',        icon: 'LayoutGrid',   type: 'menu',   sort: 17, status: 'enabled', visible: true,  permission: 'payment:app:list',          createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 799, parentId: 798, title: '管理应用', name: undefined,          path: undefined,              component: undefined,                        icon: undefined,      type: 'button', sort: 1,  status: 'enabled', visible: true,  permission: 'payment:app:manage',        createdAt: SEED_DATE, updatedAt: SEED_DATE },
 
   // ── 会员中心 ─────────────────────────────────────────────────────────────────
   { id: 800, parentId: 0,   title: '会员中心', name: 'MemberCenter',   path: undefined,                 component: undefined,                    icon: 'Crown',       type: 'directory', sort: 10, status: 'enabled', visible: true,  createdAt: SEED_DATE, updatedAt: SEED_DATE },
@@ -1047,6 +1049,24 @@ export const SEED_CRON_JOBS: CronJob[] = [
     params: null,
     status: 'enabled',
     description: '每日 02:00 拉取昨日渠道账单自动对账（沙箱渠道生成模拟账单；已有批次跳过）',
+    retryCount: 0,
+    retryInterval: 0,
+    retryBackoff: false,
+    monitorTimeout: null,
+    lastRunAt: null,
+    lastRunStatus: null,
+    lastRunMessage: null,
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+  },
+  {
+    id: 26,
+    name: '支付报表快照重建',
+    cronExpression: '0 20 0 * * *',
+    handler: 'rebuildPaymentReportDaily',
+    params: '2',
+    status: 'enabled',
+    description: '每日 00:20 重建近 2 天财务报表日切快照（历史查询走快照降实时聚合压力）',
     retryCount: 0,
     retryInterval: 0,
     retryBackoff: false,
@@ -1779,6 +1799,7 @@ export const SEED_PAYMENT_METHOD_CONFIGS: SeedPaymentMethodConfig[] = [
   { id: 4, method: 'alipay_page', channel: 'alipay', label: '支付宝电脑网站', icon: 'Monitor', enabled: true, sort: 4 },
   { id: 5, method: 'alipay_wap', channel: 'alipay', label: '支付宝手机网站', icon: 'Smartphone', enabled: true, sort: 5 },
   { id: 6, method: 'alipay_app', channel: 'alipay', label: '支付宝 APP', icon: 'AppWindow', enabled: true, sort: 6 },
+  { id: 7, method: 'unionpay_qr', channel: 'unionpay', label: '云闪付扫码', icon: 'QrCode', enabled: true, sort: 7 },
 ];
 
 // ─── Channel（站内公众号 / 系统号）────────────────────────────────────────────

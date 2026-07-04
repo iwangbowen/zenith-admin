@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { PAYMENT_CHANNEL_TAG_COLOR } from '@/utils/payment';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Input, Modal, Select, Spin, Toast, Switch, Tag, Row, Col } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -111,6 +112,10 @@ export default function PaymentChannelsPage() {
         alipayPublicKey: editingDetail.alipayPublicKey ?? '',
         alipaySignType: editingDetail.alipaySignType ?? 'RSA2',
         alipayGateway: editingDetail.alipayGateway ?? '',
+        unionpayMerId: editingDetail.unionpayMerId ?? '',
+        unionpayCertId: editingDetail.unionpayCertId ?? '',
+        unionpayPublicKey: editingDetail.unionpayPublicKey ?? '',
+        unionpayGateway: editingDetail.unionpayGateway ?? '',
       }
     : { channel: 'wechat', status: 'enabled', isDefault: false, sandbox: false, alipaySignType: 'RSA2' };
 
@@ -157,7 +162,7 @@ export default function PaymentChannelsPage() {
 
   const columns: ColumnProps<PaymentChannelConfig>[] = [
     { title: '名称', dataIndex: 'name', width: 180 },
-    { title: '渠道', dataIndex: 'channel', width: 110, render: (v: PaymentChannel) => <Tag color={v === 'wechat' ? 'green' : 'blue'}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
+    { title: '渠道', dataIndex: 'channel', width: 110, render: (v: PaymentChannel) => <Tag color={PAYMENT_CHANNEL_TAG_COLOR[v]}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
     { title: '默认', dataIndex: 'isDefault', width: 80, render: (v: boolean) => (v ? <Tag color="amber">默认</Tag> : '-') },
     { title: '沙箱', dataIndex: 'sandbox', width: 80, render: (v: boolean) => (v ? <Tag color="grey">沙箱</Tag> : '-') },
     { title: '创建时间', dataIndex: 'createdAt', width: 170, render: (t: string) => formatDateTime(t) },
@@ -221,7 +226,7 @@ export default function PaymentChannelsPage() {
       onChange={(v) => setDraftParams((p) => ({ ...p, channel: (v as string) ?? '' }))}
       showClear
       style={{ width: 130 }}
-      optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }]}
+      optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }, { value: 'unionpay', label: '云闪付' }]}
     />
   );
 
@@ -292,7 +297,7 @@ export default function PaymentChannelsPage() {
             onValueChange={(v) => { if (v.channel) setFormChannel(v.channel as PaymentChannel); }}>
             <Row gutter={16}>
               <Col span={12}><Form.Input field="name" label="名称" placeholder="如：微信主商户" rules={[{ required: true, message: '名称不能为空' }]} /></Col>
-              <Col span={12}><Form.Select field="channel" label="渠道" style={{ width: '100%' }} disabled={!!editing} optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }]} rules={[{ required: true }]} /></Col>
+              <Col span={12}><Form.Select field="channel" label="渠道" style={{ width: '100%' }} disabled={!!editing} optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }, { value: 'unionpay', label: '云闪付' }]} rules={[{ required: true }]} /></Col>
             </Row>
             <Row gutter={16}>
               <Col span={12}><Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} /></Col>
@@ -325,6 +330,18 @@ export default function PaymentChannelsPage() {
                 <Form.TextArea field="alipayPrivateKey" label="应用私钥" autosize rows={3} placeholder={secretPlaceholder(editingDetail?.hasAlipayPrivateKey)} />
                 <Form.TextArea field="alipayPublicKey" label="支付宝公钥" autosize rows={3} placeholder="支付宝公钥（PEM，验签用）" />
                 <Form.Input field="alipayGateway" label="网关地址" placeholder="留空则按沙箱开关自动选择" />
+              </>
+            )}
+
+            {formChannel === 'unionpay' && (
+              <>
+                <Row gutter={16}>
+                  <Col span={12}><Form.Input field="unionpayMerId" label="商户号" placeholder="云闪付商户号" rules={[{ required: true, message: '商户号不能为空' }]} /></Col>
+                  <Col span={12}><Form.Input field="unionpayCertId" label="证书序列号" placeholder="证书序列号" /></Col>
+                </Row>
+                <Form.TextArea field="unionpayPrivateKey" label="商户私钥" autosize rows={3} placeholder={secretPlaceholder(editingDetail?.hasUnionpayPrivateKey)} />
+                <Form.TextArea field="unionpayPublicKey" label="银联公钥" autosize rows={3} placeholder="银联验签公钥" />
+                <Form.Input field="unionpayGateway" label="网关地址" placeholder="https://gateway.95516.com/gateway/api/backTransReq.do" />
               </>
             )}
 

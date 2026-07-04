@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { formatYuan, PAYMENT_CHANNEL_TAG_COLOR } from '@/utils/payment';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Card, DatePicker, Form, Input, InputNumber, Select, Tabs, TabPane, Toast, Tag, Timeline, Typography, Modal, Descriptions } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -34,7 +35,7 @@ const STATUS_COLOR = {
   pending: 'grey', paying: 'blue', success: 'green', closed: 'grey', refunding: 'amber', refunded: 'orange', failed: 'red',
 } as const satisfies Record<PaymentOrderStatus, string>;
 const REFUND_STATUS_COLOR = { pending: 'grey', processing: 'blue', success: 'green', failed: 'red' } as const satisfies Record<PaymentRefundStatus, string>;
-const yuan = (cents: number) => `¥${(cents / 100).toFixed(2)}`;
+const yuan = formatYuan;
 
 interface SearchParams {
   keyword: string;
@@ -208,7 +209,7 @@ export default function PaymentOrdersPage() {
     { title: '订单号', dataIndex: 'orderNo', width: 200, render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }} copyable={{ content: v }} style={{ maxWidth: 180 }}>{v}</Typography.Text> },
     { title: '标题', dataIndex: 'subject', width: 180, render: (v: string) => v || '-' },
     { title: '金额', dataIndex: 'amount', width: 110, render: (v: number) => yuan(v) },
-    { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => <Tag color={v === 'wechat' ? 'green' : 'blue'}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
+    { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => <Tag color={PAYMENT_CHANNEL_TAG_COLOR[v]}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
     { title: '方式', dataIndex: 'payMethod', width: 130, render: (v: PaymentMethod) => PAYMENT_METHOD_LABELS[v] },
     { title: '业务类型', dataIndex: 'bizType', width: 120, render: (v: string) => v || '-' },
     { title: '支付时间', dataIndex: 'paidAt', width: 170, render: (t: string | null) => (t ? formatDateTime(t) : '-') },
@@ -288,7 +289,7 @@ export default function PaymentOrdersPage() {
       onChange={(v) => setDraftParams((p) => ({ ...p, channel: (v as string) ?? '' }))}
       showClear
       style={{ width: 110 }}
-      optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }]}
+      optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }, { value: 'unionpay', label: '云闪付' }]}
     />
   );
 

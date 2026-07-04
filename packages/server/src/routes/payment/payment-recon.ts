@@ -26,7 +26,7 @@ import {
 import { handlePaymentReconItemSchema } from '@zenith/shared';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
-const channelEnum = z.enum(['wechat', 'alipay']);
+const channelEnum = z.enum(['wechat', 'alipay', 'unionpay']);
 const reconStatusEnum = z.enum(['pending', 'comparing', 'done', 'failed']);
 const reconResultEnum = z.enum(['matched', 'local_only', 'channel_only', 'amount_diff', 'status_diff']);
 const reconHandleStatusEnum = z.enum(['pending', 'adjusted', 'suspended', 'ignored']);

@@ -3,10 +3,18 @@
  * Outbox 事件查看与手动重投、模拟支付成功回调（演示/联调用），
  * 帮助运营快速排障与复现支付履约链路。
  */
-import { and, desc, eq, like } from 'drizzle-orm';
+import { and, desc, eq, gte, like } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import { paymentEvents, paymentOrders, type PaymentEventRow } from '../../db/schema';
+import {
+  paymentEvents,
+  paymentOrders,
+  paymentReconItems,
+  paymentSharingOrders,
+  paymentTransfers,
+  paymentWebhookDeliveries,
+  type PaymentEventRow,
+} from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { tenantCondition } from '../../lib/tenant';
 import { mergeWhere, escapeLike, withPagination } from '../../lib/where-helpers';
@@ -26,6 +34,32 @@ export function mapOutboxEvent(row: PaymentEventRow): PaymentOutboxEvent {
     createdAt: formatDateTime(row.createdAt),
     processedAt: formatNullableDateTime(row.processedAt),
   };
+}
+
+export interface PaymentHealth {
+  outboxPending: number;
+  outboxFailed: number;
+  webhookPending: number;
+  webhookFailed24h: number;
+  sharingProcessing: number;
+  transferProcessing: number;
+  reconPendingDiff: number;
+}
+
+/** 支付链路运维健康指标：outbox 积压/死信、webhook 待投/24h 失败、处理中分账/转账、待处理对账差异。
+ * orderNo 天然贯穿订单→事件→Webhook 投递，可作为排障 trace 键。 */
+export async function getPaymentHealth(): Promise<PaymentHealth> {
+  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [outboxPending, outboxFailed, webhookPending, webhookFailed24h, sharingProcessing, transferProcessing, reconPendingDiff] = await Promise.all([
+    db.$count(paymentEvents, eq(paymentEvents.status, 'pending')),
+    db.$count(paymentEvents, eq(paymentEvents.status, 'failed')),
+    db.$count(paymentWebhookDeliveries, eq(paymentWebhookDeliveries.status, 'pending')),
+    db.$count(paymentWebhookDeliveries, and(eq(paymentWebhookDeliveries.status, 'failed'), gte(paymentWebhookDeliveries.updatedAt, since24h))),
+    db.$count(paymentSharingOrders, eq(paymentSharingOrders.status, 'processing')),
+    db.$count(paymentTransfers, eq(paymentTransfers.status, 'processing')),
+    db.$count(paymentReconItems, eq(paymentReconItems.handleStatus, 'pending')),
+  ]);
+  return { outboxPending, outboxFailed, webhookPending, webhookFailed24h, sharingProcessing, transferProcessing, reconPendingDiff };
 }
 
 export interface ListEventsQuery {

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { formatYuan, PAYMENT_CHANNEL_TAG_COLOR } from '@/utils/payment';
 import type { CSSProperties } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Banner, Button, DatePicker, Input, Row, Col, Select, Skeleton, Tag, Typography } from '@douyinfe/semi-ui';
@@ -17,7 +18,7 @@ import {
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_LEDGER_DIRECTION_LABELS, PAYMENT_LEDGER_TYPE_LABELS } from '@zenith/shared';
 import type { PaymentChannel, PaymentLedgerDirection, PaymentLedgerEntry, PaymentLedgerType } from '@zenith/shared';
 
-const yuan = (cents: number) => `¥${(cents / 100).toFixed(2)}`;
+const yuan = formatYuan;
 const sectionStyle: CSSProperties = {
   background: 'var(--semi-color-bg-1)',
   border: '1px solid var(--semi-color-border)',
@@ -89,7 +90,7 @@ export default function PaymentLedgerPage() {
     { title: '金额', dataIndex: 'amount', width: 120, render: (v: number, r: PaymentLedgerEntry) => <Typography.Text type={r.direction === 'in' ? 'success' : 'danger'}>{yuan(v)}</Typography.Text> },
     { title: '订单号', dataIndex: 'orderNo', width: 180, render: (v: string | null) => v || '-' },
     { title: '退款单号', dataIndex: 'refundNo', width: 180, render: (v: string | null) => v || '-' },
-    { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel | null) => (v ? <Tag color={v === 'wechat' ? 'green' : 'blue'}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> : '-') },
+    { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel | null) => (v ? <Tag color={PAYMENT_CHANNEL_TAG_COLOR[v]}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> : '-') },
     { title: '业务类型', dataIndex: 'bizType', width: 120, render: (v: string | null) => v || '-' },
     { title: '创建时间', dataIndex: 'createdAt', width: 170, render: (t: string) => formatDateTime(t) },
   ];
@@ -135,7 +136,7 @@ export default function PaymentLedgerPage() {
       onChange={(v) => setDraftParams((p) => ({ ...p, channel: (v as string) ?? '' }))}
       showClear
       style={{ width: 120 }}
-      optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }]}
+      optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }, { value: 'unionpay', label: '云闪付' }]}
     />
   );
 

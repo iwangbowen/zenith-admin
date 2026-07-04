@@ -15,7 +15,7 @@ const router = new OpenAPIHono({ defaultHook: validationHook });
 const TokenParam = z.object({
   token: z.string().min(8).max(64).openapi({ param: { name: 'token', in: 'path' }, example: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6' }),
 });
-const payMethodEnum = z.enum(['wechat_native', 'wechat_h5', 'alipay_page', 'alipay_wap']);
+const payMethodEnum = z.enum(['wechat_native', 'wechat_h5', 'alipay_page', 'alipay_wap', 'unionpay_qr']);
 
 const getRoute = defineOpenAPIRoute({
   route: createRoute({

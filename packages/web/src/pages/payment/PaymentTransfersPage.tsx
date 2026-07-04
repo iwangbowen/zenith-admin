@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { formatYuan, PAYMENT_CHANNEL_TAG_COLOR } from '@/utils/payment';
 import { useQueryClient } from '@tanstack/react-query';
 import { Banner, Button, Form, Input, Modal, Select, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -23,7 +24,7 @@ import {
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_TRANSFER_STATUS_LABELS } from '@zenith/shared';
 import type { PaymentChannel, PaymentTransfer, PaymentTransferStatus } from '@zenith/shared';
 
-const yuan = (cents: number) => `¥${(cents / 100).toFixed(2)}`;
+const yuan = formatYuan;
 const STATUS_COLOR = { pending: 'grey', processing: 'blue', success: 'green', failed: 'red' } as const satisfies Record<PaymentTransferStatus, string>;
 
 interface SearchParams { keyword: string; channel: string; status: string; }
@@ -101,7 +102,7 @@ export default function PaymentTransfersPage() {
 
   const columns: ColumnProps<PaymentTransfer>[] = [
     { title: '转账单号', dataIndex: 'transferNo', width: 190, render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }} copyable={{ content: v }} style={{ maxWidth: 170 }}>{v}</Typography.Text> },
-    { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => <Tag color={v === 'wechat' ? 'green' : 'blue'}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
+    { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => <Tag color={PAYMENT_CHANNEL_TAG_COLOR[v]}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
     { title: '收款账号', dataIndex: 'receiverAccount', width: 180, render: (v: string, r: PaymentTransfer) => (
       <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 160 }}>{r.receiverName ? `${r.receiverName}（${v}）` : v}</Typography.Text>
     ) },
@@ -142,7 +143,7 @@ export default function PaymentTransfersPage() {
   );
   const renderChannelFilter = () => (
     <Select placeholder="全部渠道" value={draftParams.channel || undefined} onChange={(v) => setDraftParams((p) => ({ ...p, channel: (v as string) ?? '' }))}
-      showClear style={{ width: 120 }} optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }]} />
+      showClear style={{ width: 120 }} optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }, { value: 'unionpay', label: '云闪付' }]} />
   );
   const renderStatusFilter = () => (
     <Select placeholder="全部状态" value={draftParams.status || undefined} onChange={(v) => setDraftParams((p) => ({ ...p, status: (v as string) ?? '' }))}

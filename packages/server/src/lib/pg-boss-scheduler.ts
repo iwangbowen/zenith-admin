@@ -686,6 +686,13 @@ handlerRegistry.set('autoPaymentRecon', async () => {
   return `自动对账：生成 ${r.generated} 个批次，跳过 ${r.skipped} 个`;
 });
 
+handlerRegistry.set('rebuildPaymentReportDaily', async (params) => {
+  const { rebuildPaymentReportDaily } = await import('../services/payment/payment-report.service');
+  const days = Number(params) || 2;
+  const n = await rebuildPaymentReportDaily(days);
+  return `重建支付报表日切快照 ${n} 条（近 ${days} 天）`;
+});
+
 handlerRegistry.set('analyticsRollupDaily', async (params) => {
   const { rebuildRollup } = await import('../services/analytics/analytics-rollup.service');
   const days = Number(params) || 2;

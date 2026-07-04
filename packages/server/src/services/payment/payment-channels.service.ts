@@ -39,6 +39,11 @@ export function mapChannelConfig(row: PaymentChannelConfigRow): PaymentChannelCo
     alipaySignType: row.alipaySignType ?? null,
     alipayGateway: row.alipayGateway ?? null,
     hasAlipayPrivateKey: Boolean(row.alipayPrivateKeyEncrypted),
+    unionpayMerId: row.unionpayMerId ?? null,
+    unionpayCertId: row.unionpayCertId ?? null,
+    unionpayPublicKey: row.unionpayPublicKey ?? null,
+    unionpayGateway: row.unionpayGateway ?? null,
+    hasUnionpayPrivateKey: Boolean(row.unionpayPrivateKeyEncrypted),
     remark: row.remark ?? null,
     createdAt: formatDateTime(row.createdAt),
     updatedAt: formatDateTime(row.updatedAt),
@@ -110,6 +115,11 @@ export async function createChannelConfig(input: CreatePaymentChannelConfigInput
     alipayPublicKey: input.alipayPublicKey ?? null,
     alipaySignType: input.alipaySignType ?? 'RSA2',
     alipayGateway: input.alipayGateway ?? null,
+    unionpayMerId: input.unionpayMerId ?? null,
+    unionpayPrivateKeyEncrypted: input.unionpayPrivateKey ? encryptField(input.unionpayPrivateKey) : null,
+    unionpayCertId: input.unionpayCertId ?? null,
+    unionpayPublicKey: input.unionpayPublicKey ?? null,
+    unionpayGateway: input.unionpayGateway ?? null,
     remark: input.remark ?? null,
     tenantId: getCreateTenantId(user),
   };
@@ -143,10 +153,15 @@ export async function updateChannelConfig(id: number, input: UpdatePaymentChanne
   if (input.alipayPublicKey !== undefined) set.alipayPublicKey = input.alipayPublicKey;
   if (input.alipaySignType !== undefined) set.alipaySignType = input.alipaySignType;
   if (input.alipayGateway !== undefined) set.alipayGateway = input.alipayGateway;
+  if (input.unionpayMerId !== undefined) set.unionpayMerId = input.unionpayMerId;
+  if (input.unionpayCertId !== undefined) set.unionpayCertId = input.unionpayCertId;
+  if (input.unionpayPublicKey !== undefined) set.unionpayPublicKey = input.unionpayPublicKey;
+  if (input.unionpayGateway !== undefined) set.unionpayGateway = input.unionpayGateway;
   if (input.remark !== undefined) set.remark = input.remark;
   if (input.wechatApiV3Key) set.wechatApiV3KeyEncrypted = encryptField(input.wechatApiV3Key);
   if (input.wechatPrivateKey) set.wechatPrivateKeyEncrypted = encryptField(input.wechatPrivateKey);
   if (input.alipayPrivateKey) set.alipayPrivateKeyEncrypted = encryptField(input.alipayPrivateKey);
+  if (input.unionpayPrivateKey) set.unionpayPrivateKeyEncrypted = encryptField(input.unionpayPrivateKey);
 
   if (Object.keys(set).length === 0) return mapChannelConfig(existing);
 

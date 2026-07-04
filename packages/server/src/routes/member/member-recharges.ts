@@ -10,7 +10,7 @@ const memberRechargesRouter = new OpenAPIHono({ defaultHook: validationHook });
 const listQuery = PaginationQuery.extend({
   keyword: z.string().optional(),
   status: z.enum(['pending', 'paying', 'success', 'closed', 'refunding', 'refunded', 'failed']).optional(),
-  channel: z.enum(['wechat', 'alipay']).optional(),
+  channel: z.enum(['wechat', 'alipay', 'unionpay']).optional(),
   dateStart: z.string().optional(),
   dateEnd: z.string().optional(),
 });

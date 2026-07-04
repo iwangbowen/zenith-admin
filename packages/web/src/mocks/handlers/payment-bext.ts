@@ -1,5 +1,5 @@
 import { http } from 'msw';
-import { PAYMENT_MOCK_SEED_TIME, getNextPaymentOrderId, mockPaymentOrders, mockPaymentRefunds } from '@/mocks/data/payment';
+import { PAYMENT_MOCK_SEED_TIME, getNextPaymentOrderId, mockPaymentChannels, mockPaymentOrders, mockPaymentRefunds } from '@/mocks/data/payment';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 import { ok, notFound, badRequest, paginate } from '@/mocks/utils/handlers';
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_METHOD_CHANNEL, SEED_PAYMENT_METHOD_CONFIGS } from '@zenith/shared';
@@ -7,6 +7,7 @@ import { recordMockLedgerEntry } from './payment-ext';
 import type {
   CreatePaymentResult,
   PaymentChannel,
+  PaymentApp,
   PaymentFeeRule,
   PaymentLink,
   PaymentLinkPublic,
@@ -256,6 +257,13 @@ const linkHandlers = [
     Object.assign(l, b, { updatedAt: mockDateTime() });
     return ok({ ...l, status: computeLinkStatus(l) }, '更新成功');
   }),
+  http.post('/api/payment/links/:id/rotate-token', ({ params }) => {
+    const l = links.find((x) => x.id === Number(params.id));
+    if (!l) return notFound('支付链接不存在');
+    l.token = `demotoken${Date.now()}`;
+    l.updatedAt = mockDateTime();
+    return ok({ ...l, status: computeLinkStatus(l) }, 'token 已重置');
+  }),
   http.delete('/api/payment/links/:id', ({ params }) => {
     const i = links.findIndex((x) => x.id === Number(params.id));
     if (i === -1) return notFound('支付链接不存在');
@@ -309,6 +317,71 @@ const linkHandlers = [
       payUrl: channel === 'alipay' ? `https://openapi.alipaydev.com/gateway.do?out_trade_no=${orderNo}` : undefined,
     };
     return ok({ orderNo, payParams }, '下单成功');
+  }),
+];
+
+// ─── 支付应用（App 维度）───────────────────────────────────────────────────────
+const apps: PaymentApp[] = [
+  { id: 1, name: '官网商城', appKey: 'web-mall', status: 'enabled', wechatConfigId: 1, wechatConfigName: '微信主配置', alipayConfigId: 2, alipayConfigName: '支付宝主配置', unionpayConfigId: null, unionpayConfigName: null, remark: '官网下单应用', createdAt: SEED, updatedAt: SEED },
+  { id: 2, name: 'App 客户端', appKey: 'mobile-app', status: 'enabled', wechatConfigId: null, wechatConfigName: null, alipayConfigId: null, alipayConfigName: null, unionpayConfigId: null, unionpayConfigName: null, remark: null, createdAt: SEED, updatedAt: SEED },
+];
+let nextAppId = 3;
+
+function fillPaymentAppConfigNames(app: PaymentApp) {
+  const wechat = app.wechatConfigId ? mockPaymentChannels.find((c) => c.id === app.wechatConfigId) : null;
+  const alipay = app.alipayConfigId ? mockPaymentChannels.find((c) => c.id === app.alipayConfigId) : null;
+  const unionpay = app.unionpayConfigId ? mockPaymentChannels.find((c) => c.id === app.unionpayConfigId) : null;
+  app.wechatConfigName = app.wechatConfigName ?? wechat?.name ?? null;
+  app.alipayConfigName = app.alipayConfigName ?? alipay?.name ?? null;
+  app.unionpayConfigName = app.unionpayConfigName ?? unionpay?.name ?? null;
+  if (!app.wechatConfigId) app.wechatConfigName = null;
+  if (!app.alipayConfigId) app.alipayConfigName = null;
+  if (!app.unionpayConfigId) app.unionpayConfigName = null;
+  return app;
+}
+
+const appHandlers = [
+  http.get('/api/payment/apps', ({ request }) => {
+    const url = new URL(request.url);
+    const keyword = url.searchParams.get('keyword') ?? '';
+    const status = url.searchParams.get('status') ?? '';
+    const filtered = apps.filter((a) => (!keyword || a.name.includes(keyword) || a.appKey.includes(keyword)) && (!status || a.status === status));
+    return ok(paginate([...filtered].reverse().map((a) => fillPaymentAppConfigNames({ ...a })), url));
+  }),
+  http.get('/api/payment/apps/:id', ({ params }) => {
+    const app = apps.find((x) => x.id === Number(params.id));
+    return app ? ok(fillPaymentAppConfigNames({ ...app })) : notFound('支付应用不存在');
+  }),
+  http.post('/api/payment/apps', async ({ request }) => {
+    const b = (await request.json()) as Partial<PaymentApp>;
+    const now = mockDateTime();
+    const item: PaymentApp = {
+      id: nextAppId++, name: b.name ?? '', appKey: b.appKey ?? '', status: b.status ?? 'enabled',
+      wechatConfigId: b.wechatConfigId ?? null, wechatConfigName: null,
+      alipayConfigId: b.alipayConfigId ?? null, alipayConfigName: null,
+      unionpayConfigId: b.unionpayConfigId ?? null, unionpayConfigName: null,
+      remark: b.remark ?? null, createdAt: now, updatedAt: now,
+    };
+    apps.push(fillPaymentAppConfigNames(item));
+    return ok(item, '创建成功');
+  }),
+  http.put('/api/payment/apps/:id', async ({ params, request }) => {
+    const app = apps.find((x) => x.id === Number(params.id));
+    if (!app) return notFound('支付应用不存在');
+    const b = (await request.json()) as Partial<PaymentApp>;
+    Object.assign(app, b, {
+      wechatConfigName: null,
+      alipayConfigName: null,
+      unionpayConfigName: null,
+      updatedAt: mockDateTime(),
+    });
+    return ok(fillPaymentAppConfigNames(app), '更新成功');
+  }),
+  http.delete('/api/payment/apps/:id', ({ params }) => {
+    const i = apps.findIndex((x) => x.id === Number(params.id));
+    if (i === -1) return notFound('支付应用不存在');
+    apps.splice(i, 1);
+    return ok(null, '删除成功');
   }),
 ];
 
@@ -417,7 +490,7 @@ const reportHandlers = [
       return { key, label, gross: g.gross, fee: g.fee, refund: g.refund, net: g.gross - g.fee - g.refund, count: g.count };
     });
     rows.sort((a, b) => a.key.localeCompare(b.key));
-    return ok({
+    const summary = {
       groupBy,
       rows,
       totalGross: rows.reduce((s, r) => s + r.gross, 0),
@@ -425,6 +498,17 @@ const reportHandlers = [
       totalRefund: rows.reduce((s, r) => s + r.refund, 0),
       totalNet: rows.reduce((s, r) => s + r.net, 0),
       totalCount: rows.reduce((s, r) => s + r.count, 0),
+    };
+    const compare = url.searchParams.get('compare') === 'true';
+    return ok({
+      ...summary,
+      prev: compare ? {
+        totalGross: Math.round(summary.totalGross * 0.8),
+        totalFee: Math.round(summary.totalFee * 0.8),
+        totalRefund: Math.round(summary.totalRefund * 0.8),
+        totalNet: Math.round(summary.totalNet * 0.8),
+        totalCount: Math.round(summary.totalCount * 0.8),
+      } : null,
     });
   }),
 ];
@@ -510,6 +594,7 @@ export const paymentBExtHandlers = [
   ...settlementHandlers,
   ...sharingHandlers,
   ...linkHandlers,
+  ...appHandlers,
   ...riskHandlers,
   ...methodHandlers,
   ...reportHandlers,

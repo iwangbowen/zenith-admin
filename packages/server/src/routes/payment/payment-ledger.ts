@@ -6,7 +6,7 @@ import { PaymentLedgerEntryDTO, PaymentLedgerSummaryDTO } from '../../lib/openap
 import { listLedgerEntries, getLedgerSummary } from '../../services/payment/payment-ledger.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
-const channelEnum = z.enum(['wechat', 'alipay']);
+const channelEnum = z.enum(['wechat', 'alipay', 'unionpay']);
 const directionEnum = z.enum(['in', 'out']);
 const typeEnum = z.enum(['payment', 'refund', 'fee', 'settlement', 'adjust']);
 

@@ -2,8 +2,8 @@ import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-opena
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
 import { PaginationQuery, validationHook, commonErrorResponses, ok, okPaginated, IdParam, okBody } from '../../lib/openapi-schemas';
-import { PaymentOutboxEventDTO, PaymentOrderDTO } from '../../lib/openapi-dtos';
-import { getPaymentEvent, listPaymentEvents, redispatchEvent, simulateOrderPaid } from '../../services/payment/payment-ops.service';
+import { PaymentOutboxEventDTO, PaymentOrderDTO, PaymentOpsHealthDTO } from '../../lib/openapi-dtos';
+import { getPaymentEvent, getPaymentHealth, listPaymentEvents, redispatchEvent, simulateOrderPaid } from '../../services/payment/payment-ops.service';
 import { getOrderDetail } from '../../services/payment/payment.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -50,6 +50,17 @@ const simulateRoute = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listEventsRoute, redispatchRoute, simulateRoute] as const);
+const healthRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/health', tags: ['支付中心-运营'], summary: '支付链路健康指标',
+    description: 'Outbox 积压/死信、Webhook 待投递/24h 失败、处理中分账/转账、待处理对账差异，用于运维监控与告警。',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'payment:ops:manage' })] as const,
+    responses: { ...ok(PaymentOpsHealthDTO, '健康指标'), ...commonErrorResponses },
+  }),
+  handler: async (c) => c.json(okBody(await getPaymentHealth()), 200),
+});
+
+router.openapiRoutes([listEventsRoute, healthRoute, redispatchRoute, simulateRoute] as const);
 
 export default router;

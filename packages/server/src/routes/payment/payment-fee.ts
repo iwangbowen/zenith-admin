@@ -7,7 +7,7 @@ import { PaymentFeeRuleDTO } from '../../lib/openapi-dtos';
 import { listFeeRules, getFeeRule, createFeeRule, updateFeeRule, deleteFeeRule } from '../../services/payment/payment-fee.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
-const channelEnum = z.enum(['wechat', 'alipay']);
+const channelEnum = z.enum(['wechat', 'alipay', 'unionpay']);
 
 const listRoute = defineOpenAPIRoute({
   route: createRoute({

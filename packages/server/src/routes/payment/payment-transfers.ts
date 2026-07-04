@@ -19,7 +19,7 @@ import {
 } from '../../services/payment/payment-transfer.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
-const channelEnum = z.enum(['wechat', 'alipay']);
+const channelEnum = z.enum(['wechat', 'alipay', 'unionpay']);
 const transferStatusEnum = z.enum(['pending', 'processing', 'success', 'failed']);
 
 const listRoute = defineOpenAPIRoute({

@@ -9,12 +9,14 @@ export const mockPaymentChannels: PaymentChannelConfig[] = [
     wechatAppId: 'wx1234567890abcd', wechatMchId: '1600000000', wechatSerialNo: '5F2D...A1B2', wechatPlatformCert: null,
     hasWechatApiV3Key: true, hasWechatPrivateKey: true,
     alipayAppId: null, alipayPublicKey: null, alipaySignType: null, alipayGateway: null, hasAlipayPrivateKey: false,
+    unionpayMerId: null, unionpayCertId: null, unionpayPublicKey: null, unionpayGateway: null, hasUnionpayPrivateKey: false,
     remark: '演示数据', createdAt: SEED, updatedAt: SEED,
   },
   {
     id: 2, name: '支付宝主商户', channel: 'alipay', status: 'enabled', isDefault: true, sandbox: true, notifyUrl: 'https://demo.zenith.dev',
     wechatAppId: null, wechatMchId: null, wechatSerialNo: null, wechatPlatformCert: null, hasWechatApiV3Key: false, hasWechatPrivateKey: false,
     alipayAppId: '2021000000000000', alipayPublicKey: 'MIIBIjANBgkqhkiG9w0...', alipaySignType: 'RSA2', alipayGateway: null, hasAlipayPrivateKey: true,
+    unionpayMerId: null, unionpayCertId: null, unionpayPublicKey: null, unionpayGateway: null, hasUnionpayPrivateKey: false,
     remark: '沙箱演示', createdAt: SEED, updatedAt: SEED,
   },
 ];

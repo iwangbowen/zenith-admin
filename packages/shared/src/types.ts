@@ -5562,6 +5562,12 @@ export interface PaymentChannelConfig {
   alipaySignType?: string | null;
   alipayGateway?: string | null;
   hasAlipayPrivateKey?: boolean;
+  // 云闪付（银联全渠道）
+  unionpayMerId?: string | null;
+  unionpayCertId?: string | null;
+  unionpayPublicKey?: string | null;
+  unionpayGateway?: string | null;
+  hasUnionpayPrivateKey?: boolean;
   remark?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -5797,6 +5803,22 @@ export interface PaymentTransfer {
   bizId?: string | null;
   finishedAt?: string | null;
   operatorName?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaymentApp {
+  id: number;
+  name: string;
+  appKey: string;
+  status: 'enabled' | 'disabled';
+  wechatConfigId?: number | null;
+  wechatConfigName?: string | null;
+  alipayConfigId?: number | null;
+  alipayConfigName?: string | null;
+  unionpayConfigId?: number | null;
+  unionpayConfigName?: string | null;
+  remark?: string | null;
   createdAt: string;
   updatedAt: string;
 }

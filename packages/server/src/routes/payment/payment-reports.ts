@@ -17,11 +17,15 @@ const summaryRoute = defineOpenAPIRoute({
         groupBy: z.enum(['bizType', 'channel', 'day']).optional(),
         startTime: z.string().optional(),
         endTime: z.string().optional(),
+        compare: z.enum(['true', 'false']).optional().openapi({ description: '环比：附带上一等长周期汇总（需提供时间范围）' }),
       }),
     },
     responses: { ...ok(PaymentReportSummaryDTO, '财务报表汇总'), ...commonErrorResponses },
   }),
-  handler: async (c) => c.json(okBody(await getReportSummary(c.req.valid('query'))), 200),
+  handler: async (c) => {
+    const q = c.req.valid('query');
+    return c.json(okBody(await getReportSummary({ ...q, compare: q.compare === 'true' })), 200);
+  },
 });
 
 router.openapiRoutes([summaryRoute] as const);

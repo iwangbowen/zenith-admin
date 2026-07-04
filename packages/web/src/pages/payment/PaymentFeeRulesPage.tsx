@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { formatYuan, PAYMENT_CHANNEL_TAG_COLOR } from '@/utils/payment';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Modal, Select, Spin, Switch, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -20,7 +21,7 @@ import {
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_METHOD_LABELS } from '@zenith/shared';
 import type { PaymentChannel, PaymentFeeRule, PaymentMethod } from '@zenith/shared';
 
-const yuan = (cents: number | null | undefined) => (cents == null ? '-' : `¥${(cents / 100).toFixed(2)}`);
+const yuan = formatYuan;
 const channelOptions = Object.entries(PAYMENT_CHANNEL_LABELS).map(([value, label]) => ({ value, label }));
 const methodOptions = Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => ({ value, label }));
 
@@ -118,7 +119,7 @@ export default function PaymentFeeRulesPage() {
 
   const columns: ColumnProps<PaymentFeeRule>[] = [
     { title: '名称', dataIndex: 'name', width: 160 },
-    { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => <Tag color={v === 'wechat' ? 'green' : 'blue'}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
+    { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => <Tag color={PAYMENT_CHANNEL_TAG_COLOR[v]}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
     { title: '支付方式', dataIndex: 'payMethod', width: 130, render: (v: PaymentMethod | null) => (v ? PAYMENT_METHOD_LABELS[v] : '全部') },
     { title: '费率', dataIndex: 'rateBps', width: 90, render: (v: number) => `${(v / 100).toFixed(2)}%` },
     { title: '固定费', dataIndex: 'fixedFee', width: 100, render: (v: number) => yuan(v) },

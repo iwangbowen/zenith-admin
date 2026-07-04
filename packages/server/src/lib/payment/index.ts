@@ -6,6 +6,7 @@
 import { registerAdapter } from './registry';
 import { wechatPayAdapter } from './wechat.adapter';
 import { alipayAdapter } from './alipay.adapter';
+import { unionpayAdapter } from './unionpay.adapter';
 
 let initialized = false;
 
@@ -14,6 +15,7 @@ export function initPaymentAdapters(): void {
   if (initialized) return;
   registerAdapter(wechatPayAdapter);
   registerAdapter(alipayAdapter);
+  registerAdapter(unionpayAdapter);
   initialized = true;
 }
 

@@ -11,10 +11,21 @@ export interface PaymentEventListParams {
   type?: string;
 }
 
+export interface PaymentOpsHealth {
+  outboxPending: number;
+  outboxFailed: number;
+  webhookPending: number;
+  webhookFailed24h: number;
+  sharingProcessing: number;
+  transferProcessing: number;
+  reconPendingDiff: number;
+}
+
 export const paymentEventKeys = {
   all: ['payment-events'] as const,
   lists: ['payment-events', 'list'] as const,
   list: (params: PaymentEventListParams) => ['payment-events', 'list', params] as const,
+  health: ['payment-events', 'health'] as const,
 };
 
 export function usePaymentEventList(params: PaymentEventListParams) {
@@ -30,5 +41,14 @@ export function useRedispatchPaymentEvent() {
   return useMutation({
     mutationFn: (id: number) => request.post<PaymentOutboxEvent>(`/api/payment/ops/events/${id}/redispatch`, {}).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: paymentEventKeys.all }),
+  });
+}
+
+export function usePaymentOpsHealth(enabled = true) {
+  return useQuery({
+    queryKey: paymentEventKeys.health,
+    queryFn: () => request.get<PaymentOpsHealth>('/api/payment/ops/health').then(unwrap),
+    refetchInterval: 30000,
+    enabled,
   });
 }

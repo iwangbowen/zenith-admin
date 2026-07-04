@@ -50,6 +50,27 @@
       "when": 1783173949873,
       "tag": "0006_mushy_gunslinger",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783176097176,
+      "tag": "0007_short_mojo",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783176443823,
+      "tag": "0008_fat_calypso",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783176508451,
+      "tag": "0009_silent_krista_starr",
+      "breakpoints": true
     }
   ]
 }

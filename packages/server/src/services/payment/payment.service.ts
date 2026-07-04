@@ -29,7 +29,7 @@ import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../.
 import { decryptField } from '../../lib/encryption';
 import { isPgUniqueViolation } from '../../lib/db-errors';
 import logger from '../../lib/logger';
-import { PAYMENT_METHOD_CHANNEL } from '@zenith/shared';
+import { PAYMENT_METHOD_CHANNEL, PAYMENT_CHANNEL_LABELS } from '@zenith/shared';
 import type {
   CreatePaymentInput,
   CreatePaymentResult,
@@ -46,6 +46,7 @@ import type { PaymentEvent, PaymentEventType } from '../../lib/payment-event-bus
 import { recordEvent, processEvent } from './payment-outbox.service';
 import { assertMethodEnabled } from './payment-method.service';
 import { assertWithinRiskLimits } from './payment-risk.service';
+import { resolveAppChannelConfig } from './payment-apps.service';
 
 // ─── 工具 ─────────────────────────────────────────────────────────────────────
 
@@ -77,6 +78,7 @@ export function buildAdapterContext(config: PaymentChannelConfigRow): AdapterCon
     wechatApiV3Key: decryptField(config.wechatApiV3KeyEncrypted) ?? undefined,
     wechatPrivateKey: decryptField(config.wechatPrivateKeyEncrypted) ?? undefined,
     alipayPrivateKey: decryptField(config.alipayPrivateKeyEncrypted) ?? undefined,
+    unionpayPrivateKey: decryptField(config.unionpayPrivateKeyEncrypted) ?? undefined,
   };
   return { config, secrets, notifyUrl: resolveNotifyUrl(config.channel, config) };
 }
@@ -93,7 +95,7 @@ async function resolveChannelConfig(channel: PaymentChannel, channelConfigId?: n
     .from(paymentChannelConfigs)
     .where(and(eq(paymentChannelConfigs.channel, channel), eq(paymentChannelConfigs.isDefault, true), eq(paymentChannelConfigs.status, 'enabled'), tc))
     .limit(1);
-  if (!row) throw new HTTPException(400, { message: `未配置默认${channel === 'wechat' ? '微信' : '支付宝'}支付渠道` });
+  if (!row) throw new HTTPException(400, { message: `未配置默认${PAYMENT_CHANNEL_LABELS[channel]}支付渠道` });
   return row;
 }
 
@@ -336,7 +338,15 @@ export async function createPayment(input: InternalCreatePaymentInput): Promise<
   if (input.payMethod === 'wechat_jsapi' && !input.openId?.trim()) {
     throw new HTTPException(400, { message: '微信 JSAPI 支付必须提供 OpenID' });
   }
-  const config = await resolveChannelConfig(channel, input.channelConfigId, input.tenantId);
+  // App 维度：按 appKey 路由到应用绑定的渠道配置（优先于 channelConfigId）
+  let appId: number | null = null;
+  let channelConfigId = input.channelConfigId;
+  if (input.appKey) {
+    const resolved = await resolveAppChannelConfig(input.appKey, channel);
+    appId = resolved.appId;
+    channelConfigId = resolved.channelConfigId;
+  }
+  const config = await resolveChannelConfig(channel, channelConfigId, input.tenantId);
 
   const user = currentUserOrNull();
   const tenantId = input.tenantId !== undefined ? input.tenantId : user ? getCreateTenantId(user) : null;
@@ -376,6 +386,7 @@ export async function createPayment(input: InternalCreatePaymentInput): Promise<
         currency: 'CNY',
         channel,
         channelConfigId: config.id,
+        appId,
         payMethod: input.payMethod,
         status: 'pending',
         userId,

@@ -3,8 +3,8 @@
  */
 import { z } from '@hono/zod-openapi';
 
-const channelEnum = z.enum(['wechat', 'alipay']);
-const payMethodEnum = z.enum(['wechat_native', 'wechat_jsapi', 'wechat_h5', 'alipay_page', 'alipay_wap', 'alipay_app']);
+const channelEnum = z.enum(['wechat', 'alipay', 'unionpay']);
+const payMethodEnum = z.enum(['wechat_native', 'wechat_jsapi', 'wechat_h5', 'alipay_page', 'alipay_wap', 'alipay_app', 'unionpay_qr']);
 const orderStatusEnum = z.enum(['pending', 'paying', 'success', 'closed', 'refunding', 'refunded', 'failed']);
 const refundStatusEnum = z.enum(['pending', 'processing', 'success', 'failed']);
 const refundApprovalEnum = z.enum(['none', 'pending', 'approved', 'rejected']);
@@ -34,6 +34,11 @@ export const PaymentChannelConfigDTO = z
     alipaySignType: z.string().nullable().optional(),
     alipayGateway: z.string().nullable().optional(),
     hasAlipayPrivateKey: z.boolean().optional(),
+    unionpayMerId: z.string().nullable().optional(),
+    unionpayCertId: z.string().nullable().optional(),
+    unionpayPublicKey: z.string().nullable().optional(),
+    unionpayGateway: z.string().nullable().optional(),
+    hasUnionpayPrivateKey: z.boolean().optional(),
     remark: z.string().nullable().optional(),
     createdAt: z.string(),
     updatedAt: z.string(),
@@ -480,5 +485,46 @@ export const PaymentReportSummaryDTO = z
     totalRefund: z.number().int(),
     totalNet: z.number().int(),
     totalCount: z.number().int(),
+    prev: z
+      .object({
+        totalGross: z.number().int(),
+        totalFee: z.number().int(),
+        totalRefund: z.number().int(),
+        totalNet: z.number().int(),
+        totalCount: z.number().int(),
+      })
+      .nullable()
+      .optional()
+      .openapi({ description: '环比周期汇总（compare=true 且提供时间范围时返回）' }),
   })
   .openapi('PaymentReportSummary');
+
+export const PaymentOpsHealthDTO = z
+  .object({
+    outboxPending: z.number().int(),
+    outboxFailed: z.number().int(),
+    webhookPending: z.number().int(),
+    webhookFailed24h: z.number().int(),
+    sharingProcessing: z.number().int(),
+    transferProcessing: z.number().int(),
+    reconPendingDiff: z.number().int(),
+  })
+  .openapi('PaymentOpsHealth');
+
+export const PaymentAppDTO = z
+  .object({
+    id: z.number().int(),
+    name: z.string(),
+    appKey: z.string(),
+    status: z.enum(['enabled', 'disabled']),
+    wechatConfigId: z.number().int().nullable().optional(),
+    wechatConfigName: z.string().nullable().optional(),
+    alipayConfigId: z.number().int().nullable().optional(),
+    alipayConfigName: z.string().nullable().optional(),
+    unionpayConfigId: z.number().int().nullable().optional(),
+    unionpayConfigName: z.string().nullable().optional(),
+    remark: z.string().nullable().optional(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('PaymentApp');

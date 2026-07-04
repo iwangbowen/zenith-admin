@@ -70,8 +70,9 @@
 | 支付链接 | `/payment/links` | `payment:link:list` | 生成可分享收款链接 / 收款码（固定或用户填写金额，可限次 / 限时），公开页下单 |
 | 风控限额 | `/payment/risk-rules` | `payment:risk:list` | 全局 / 按渠道 / 按业务类型限额规则（单笔上限、当日累计、当日笔数、黑名单），下单前拦截 |
 | 支付方式 | `/payment/methods` | `payment:method:list` | 管理可用支付方式（启停 / 排序 / 名称 / 图标），控制下单可选项 |
-| 财务报表 | `/payment/reports` | `payment:report:view` | 按业务类型 / 渠道 / 日聚合收款·手续费·退款·净额·笔数，柱状图可视化 |
+| 财务报表 | `/payment/reports` | `payment:report:view` | 按业务类型 / 渠道 / 日聚合收款·手续费·退款·净额·笔数，柱状图可视化；历史走日切快照（cron 预聚合），支持环比对照 |
 | 转账管理 | `/payment/transfers` | `payment:transfer:list` | 发起转账/代付（微信零钱 / 支付宝账户），查单同步、失败重试（仅渠道未受理），成功自动记台账 |
+| 应用管理 | `/payment/apps` | `payment:app:list` | App 维度：业务方按 appKey 下单，路由到应用绑定的各渠道配置（微信/支付宝/云闪付各一） |
 
 ### 手续费 / 费率
 
@@ -101,10 +102,12 @@
 - **资金安全**：`outTransferNo` 为渠道幂等键（`(channel, out_transfer_no)` 唯一）；**仅渠道未受理**（`channelTransferNo` 为空）且未达重试上限（3 次）的失败单允许人工重试，杜绝双付；发起/重试接口挂 `idempotencyGuard` 防重复提交并写审计日志；
 - **台账联动**：转账成功自动记资金台账（`type=transfer`, `direction=out`，按转账单号幂等）。
 
-### 支付链接 / 收款码
+### 支付链接 / 收款码（聚合收银台）
 
 - 后台 CRUD，自动生成唯一 `token`；金额留空表示由用户填写，支持限制使用次数与失效时间；
+- **token 轮换**：`POST /api/payment/links/{id}/rotate-token` 重置 token（安全轮换），旧分享链接立即失效；
 - 列表内「收款码」按钮基于 `qrcode.react` 展示二维码并可复制链接；
+- **聚合收银台（一码多付）**：公开收款页按 UA 识别运行环境并推荐/过滤支付方式——支付宝内置浏览器自动选 WAP 并下单后直接唤起收银台；手机浏览器推荐微信 H5 / 支付宝 WAP / 云闪付；桌面推荐扫码 / 电脑网站；微信内置浏览器（H5/扫码均被拦截）引导复制链接到外部浏览器打开；
 - **公开端点**（无需登录，`security:[]`）：
 
 | 接口 | 说明 |
@@ -136,6 +139,9 @@
 | `GET /api/payment/settlements`，`POST /api/payment/settlements/generate`，`POST /api/payment/settlements/{id}/status`，`DELETE /api/payment/settlements/{id}` | 结算批次：列表 / 生成 / 状态流转 / 删除 |
 | `GET/POST /api/payment/sharing/receivers`，`GET/PUT/DELETE /api/payment/sharing/receivers/{id}`，`GET/POST /api/payment/sharing/orders` | 分账接收方 CRUD 与分账单列表 / 发起 |
 | `GET/POST /api/payment/transfers`，`GET /api/payment/transfers/summary`，`GET /api/payment/transfers/{id}`，`POST /api/payment/transfers/{id}/query`，`POST /api/payment/transfers/{id}/retry` | 转账单列表 / 发起 / 汇总 / 详情 / 查单同步 / 失败重试 |
+| `GET/POST /api/payment/apps`，`GET/PUT/DELETE /api/payment/apps/{id}` | 支付应用（App 维度）CRUD |
+| `POST /api/payment/links/{id}/rotate-token` | 重置支付链接 token（旧链接立即失效） |
+| `GET /api/payment/ops/health` | 支付链路健康指标（Outbox 积压/死信、Webhook 待投/24h 失败、处理中分账/转账、待处理对账差异） |
 | `GET/POST /api/payment/links`，`GET/PUT/DELETE /api/payment/links/{id}` | 支付链接 CRUD |
 | `GET/POST /api/payment/risk-rules`，`GET/PUT/DELETE /api/payment/risk-rules/{id}` | 风控规则 CRUD |
 | `GET /api/payment/methods`，`GET /api/payment/methods/enabled`，`PUT /api/payment/methods/{id}` | 支付方式配置列表 / 可用列表 / 编辑 |

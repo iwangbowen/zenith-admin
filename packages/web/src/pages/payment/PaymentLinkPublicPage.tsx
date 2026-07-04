@@ -1,16 +1,38 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { formatYuan } from '@/utils/payment';
 import { useParams } from 'react-router-dom';
-import { Button, Card, Form, Space, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Card, Form, Space, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { QRCodeSVG } from 'qrcode.react';
 import { PAYMENT_LINK_STATUS_LABELS, PAYMENT_METHOD_LABELS } from '@zenith/shared';
 import type { CreatePaymentResult, PaymentLinkPublic, PaymentLinkStatus, PaymentMethod } from '@zenith/shared';
 import { usePayPublicPaymentLink, usePublicPaymentLink } from '@/hooks/queries/payment-links';
 
-const yuan = (cents: number | null | undefined) => (cents == null ? '自定义金额' : `¥${(cents / 100).toFixed(2)}`);
-const publicPayMethods: PaymentMethod[] = ['wechat_native', 'wechat_h5', 'alipay_page', 'alipay_wap'];
-const methodOptions = publicPayMethods.map((value) => ({ value, label: PAYMENT_METHOD_LABELS[value] }));
+const yuan = (cents: number | null | undefined) => formatYuan(cents, '自定义金额');
+const publicPayMethods: PaymentMethod[] = ['wechat_native', 'wechat_h5', 'alipay_page', 'alipay_wap', 'unionpay_qr'];
 const LINK_STATUS_COLOR = { active: 'green', disabled: 'grey', expired: 'red' } as const satisfies Record<PaymentLinkStatus, string>;
+
+/** 聚合收银台环境识别：根据 UA 判断运行环境，推荐/过滤合适的支付方式（一码多付核心）。 */
+type CashierEnv = 'wechat' | 'alipay' | 'mobile' | 'desktop';
+
+function detectCashierEnv(): CashierEnv {
+  const ua = navigator.userAgent;
+  if (/MicroMessenger/i.test(ua)) return 'wechat';
+  if (/AlipayClient/i.test(ua)) return 'alipay';
+  if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua)) return 'mobile';
+  return 'desktop';
+}
+
+/** 各环境可用的支付方式（按推荐顺序）：
+ * 微信内置浏览器：H5/扫码均被拦截且 JSAPI 需 OAuth（未开放公开页）→ 引导外部浏览器打开；
+ * 支付宝内置浏览器：直接唤起支付宝 WAP 收银台；
+ * 手机浏览器：微信 H5 / 支付宝 WAP / 云闪付；桌面：扫码 / 电脑网站。 */
+const ENV_METHODS: Record<CashierEnv, PaymentMethod[]> = {
+  wechat: [],
+  alipay: ['alipay_wap'],
+  mobile: ['wechat_h5', 'alipay_wap', 'unionpay_qr'],
+  desktop: ['wechat_native', 'alipay_page', 'unionpay_qr'],
+};
 
 interface PayFormValues {
   amountYuan?: number;
@@ -25,9 +47,29 @@ export default function PaymentLinkPublicPage() {
   const payMutation = usePayPublicPaymentLink();
   const link: PaymentLinkPublic | null = linkQuery.data ?? null;
 
+  const env = useMemo(detectCashierEnv, []);
+  // 环境可用方式 ∩ 公开页支持方式；链接固定方式时不做环境过滤（保持商户设定）
+  const availableMethods = useMemo(() => {
+    if (link?.payMethod) return publicPayMethods.includes(link.payMethod) ? [link.payMethod] : [];
+    const envMethods = ENV_METHODS[env];
+    return envMethods.length > 0 ? envMethods : publicPayMethods;
+  }, [env, link?.payMethod]);
+  const methodOptions = useMemo(
+    () => availableMethods.map((value) => ({ value, label: PAYMENT_METHOD_LABELS[value] })),
+    [availableMethods],
+  );
+  const wechatInAppBlocked = env === 'wechat' && !link?.payMethod;
+
   useEffect(() => {
     if (linkQuery.error instanceof Error) Toast.error(linkQuery.error.message);
   }, [linkQuery.error]);
+
+  // 智能默认：按环境推荐的首个方式自动选中
+  useEffect(() => {
+    if (link && !link.payMethod && !wechatInAppBlocked && availableMethods.length > 0) {
+      formApi.current?.setValue('payMethod', availableMethods[0]);
+    }
+  }, [link, availableMethods, wechatInAppBlocked]);
 
   async function submitPay() {
     if (!link || link.status !== 'active') return;
@@ -55,6 +97,10 @@ export default function PaymentLinkPublicPage() {
         payMethod: link.payMethod == null ? payMethod : undefined,
       });
       Toast.success('下单成功');
+      // 移动端跳转类支付直接唤起收银台，减少一步点击
+      if (res.payParams.payUrl && (env === 'alipay' || env === 'mobile')) {
+        window.location.href = res.payParams.payUrl;
+      }
       setPayResult(res.payParams);
     } catch (err) {
       Toast.error(err instanceof Error ? err.message : '下单失败');
@@ -62,7 +108,16 @@ export default function PaymentLinkPublicPage() {
   }
 
   const unsupportedFixedMethod = !!link?.payMethod && !publicPayMethods.includes(link.payMethod);
-  const disabled = !link || link.status !== 'active' || unsupportedFixedMethod;
+  const disabled = !link || link.status !== 'active' || unsupportedFixedMethod || wechatInAppBlocked;
+
+  async function copyPageUrl() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      Toast.success('链接已复制，请在浏览器中打开');
+    } catch {
+      Toast.info('请通过右上角菜单选择「在浏览器打开」');
+    }
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg, #f0fdf4 0%, #f8fafc 42%, #ffffff 100%)', padding: '40px 16px' }}>
@@ -89,6 +144,14 @@ export default function PaymentLinkPublicPage() {
 
               {!payResult ? (
                 <Form getFormApi={(api) => { formApi.current = api; }} labelPosition="left" labelWidth={86}>
+                  {wechatInAppBlocked && (
+                    <Banner
+                      type="info"
+                      closeIcon={null}
+                      style={{ marginBottom: 12 }}
+                      description="微信内暂不支持直接支付，请复制链接后在手机浏览器中打开完成付款。"
+                    />
+                  )}
                   {link.amount == null && (
                     <Form.InputNumber
                       field="amountYuan"
@@ -100,11 +163,15 @@ export default function PaymentLinkPublicPage() {
                     />
                   )}
                   {link.payMethod == null ? (
-                    <Form.Select field="payMethod" label="支付方式" style={{ width: '100%' }} optionList={methodOptions} rules={[{ required: true, message: '请选择支付方式' }]} />
+                    <Form.Select field="payMethod" label="支付方式" style={{ width: '100%' }} optionList={methodOptions} disabled={wechatInAppBlocked} rules={[{ required: true, message: '请选择支付方式' }]} />
                   ) : (
                     <Form.Slot label="支付方式">{PAYMENT_METHOD_LABELS[link.payMethod]}</Form.Slot>
                   )}
-                  <Button type="primary" block loading={payMutation.isPending} disabled={disabled} onClick={submitPay}>立即支付</Button>
+                  {wechatInAppBlocked ? (
+                    <Button type="primary" block onClick={copyPageUrl}>复制链接去浏览器支付</Button>
+                  ) : (
+                    <Button type="primary" block loading={payMutation.isPending} disabled={disabled} onClick={submitPay}>立即支付</Button>
+                  )}
                 </Form>
               ) : (
                 <div style={{ textAlign: 'center' }}>

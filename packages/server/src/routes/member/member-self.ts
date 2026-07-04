@@ -37,7 +37,7 @@ const memberSelf = new OpenAPIHono({ defaultHook: validationHook });
 const pointTypeEnum = z.enum(['earn', 'redeem', 'expire', 'adjust', 'refund']);
 const walletTypeEnum = z.enum(['recharge', 'consume', 'refund', 'adjust']);
 const memberCouponStatusEnum = z.enum(['unused', 'used', 'expired', 'frozen']);
-const payMethodEnum = z.enum(['wechat_native', 'wechat_jsapi', 'wechat_h5', 'alipay_page', 'alipay_wap', 'alipay_app']);
+const payMethodEnum = z.enum(['wechat_native', 'wechat_jsapi', 'wechat_h5', 'alipay_page', 'alipay_wap', 'alipay_app', 'unionpay_qr']);
 
 const rechargeSchema = z.object({
   amount: z.number().int().positive('充值金额必须大于 0'),

@@ -13,6 +13,7 @@ export interface DecryptedSecrets {
   wechatApiV3Key?: string;
   wechatPrivateKey?: string;
   alipayPrivateKey?: string;
+  unionpayPrivateKey?: string;
 }
 
 /** 适配器上下文：持有完整渠道配置 + 已解密凭据 + 回调地址 */

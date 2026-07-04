@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { formatYuan } from '@/utils/payment';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Input, Modal, Select, Space, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -15,9 +16,9 @@ import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { PAYMENT_METHOD_LABELS, PAYMENT_LINK_STATUS_LABELS } from '@zenith/shared';
 import type { PaymentLink, PaymentLinkStatus, PaymentMethod } from '@zenith/shared';
-import { paymentLinkKeys, useDeletePaymentLink, usePaymentLinkDetail, usePaymentLinkList, useSavePaymentLink } from '@/hooks/queries/payment-links';
+import { paymentLinkKeys, useDeletePaymentLink, usePaymentLinkDetail, usePaymentLinkList, useRotatePaymentLinkToken, useSavePaymentLink } from '@/hooks/queries/payment-links';
 
-const yuan = (cents: number | null | undefined) => (cents == null ? '用户填写' : `¥${(cents / 100).toFixed(2)}`);
+const yuan = (cents: number | null | undefined) => formatYuan(cents, '用户填写');
 const methodOptions = Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => ({ value, label }));
 const LINK_STATUS_COLOR = { active: 'green', disabled: 'grey', expired: 'red' } as const satisfies Record<PaymentLinkStatus, string>;
 
@@ -67,6 +68,7 @@ export default function PaymentLinksPage() {
   const saveMutation = useSavePaymentLink();
   const toggleMutation = useSavePaymentLink();
   const deleteMutation = useDeletePaymentLink();
+  const rotateTokenMutation = useRotatePaymentLinkToken();
   const togglingId = toggleMutation.isPending ? (toggleMutation.variables?.id ?? null) : null;
 
   function handleSearch() { setPage(1); setSubmittedParams(draftParams); void queryClient.invalidateQueries({ queryKey: paymentLinkKeys.lists }); }
@@ -117,6 +119,11 @@ export default function PaymentLinksPage() {
   async function handleDelete(id: number) {
     await deleteMutation.mutateAsync(id);
     Toast.success('删除成功');
+  }
+
+  async function handleRotateToken(id: number) {
+    await rotateTokenMutation.mutateAsync(id);
+    Toast.success('token 已重置，旧链接已失效');
   }
 
   async function copyPublicLink(link: PaymentLink) {
@@ -177,6 +184,17 @@ export default function PaymentLinksPage() {
           key: 'edit',
           label: '编辑',
           onClick: () => openEdit(r),
+        }, {
+          key: 'rotate-token',
+          label: '重置链接',
+          loading: rotateTokenMutation.isPending && rotateTokenMutation.variables === r.id,
+          onClick: () => {
+            Modal.confirm({
+              title: '重置链接',
+              content: '重置后旧链接立即失效，确定？',
+              onOk: () => handleRotateToken(r.id),
+            });
+          },
         }] : []),
         ...(hasPermission('payment:link:delete') ? [{
           key: 'delete',

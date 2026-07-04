@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { PAYMENT_CHANNEL_TAG_COLOR } from '@/utils/payment';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Switch, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -53,7 +54,7 @@ export default function PaymentMethodsPage() {
     { title: '排序', dataIndex: 'sort', width: 70 },
     { title: '支付方式', dataIndex: 'method', width: 150, render: (v: PaymentMethod) => PAYMENT_METHOD_LABELS[v] },
     { title: '展示名称', dataIndex: 'label', width: 160 },
-    { title: '渠道', dataIndex: 'channel', width: 110, render: (v: PaymentChannel) => <Tag color={v === 'wechat' ? 'green' : 'blue'}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
+    { title: '渠道', dataIndex: 'channel', width: 110, render: (v: PaymentChannel) => <Tag color={PAYMENT_CHANNEL_TAG_COLOR[v]}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
     { title: '图标', dataIndex: 'icon', width: 140, render: (v: string | null) => v || '-' },
     {
       title: '状态', dataIndex: 'enabled', width: 90, fixed: 'right',

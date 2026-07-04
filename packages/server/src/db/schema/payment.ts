@@ -6,11 +6,12 @@ import { auditColumns, departments, tenants, users } from './core';
 // ═══════════════════════════════════════════════════════════════════════════
 // 支付中心（Payment Center）
 // ═══════════════════════════════════════════════════════════════════════════
-export const paymentChannelEnum = pgEnum('payment_channel', ['wechat', 'alipay']);
+export const paymentChannelEnum = pgEnum('payment_channel', ['wechat', 'alipay', 'unionpay']);
 
 export const paymentMethodEnum = pgEnum('payment_method', [
   'wechat_native', 'wechat_jsapi', 'wechat_h5',
   'alipay_page', 'alipay_wap', 'alipay_app',
+  'unionpay_qr',
 ]);
 
 export const paymentOrderStatusEnum = pgEnum('payment_order_status', [
@@ -47,6 +48,12 @@ export const paymentChannelConfigs = pgTable('payment_channel_configs', {
   alipayPublicKey: text('alipay_public_key'),
   alipaySignType: varchar('alipay_sign_type', { length: 16 }).default('RSA2'),
   alipayGateway: varchar('alipay_gateway', { length: 256 }),
+  // 云闪付（银联全渠道）
+  unionpayMerId: varchar('unionpay_mer_id', { length: 64 }),
+  unionpayPrivateKeyEncrypted: text('unionpay_private_key_encrypted'),
+  unionpayCertId: varchar('unionpay_cert_id', { length: 64 }),
+  unionpayPublicKey: text('unionpay_public_key'),
+  unionpayGateway: varchar('unionpay_gateway', { length: 256 }),
   remark: varchar('remark', { length: 256 }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
@@ -72,6 +79,8 @@ export const paymentOrders = pgTable('payment_orders', {
   currency: varchar('currency', { length: 8 }).notNull().default('CNY'),
   channel: paymentChannelEnum('channel').notNull(),
   channelConfigId: integer('channel_config_id').references(() => paymentChannelConfigs.id, { onDelete: 'set null' }),
+  /** 下单归属应用（App 维度，可空 = 未按应用下单） */
+  appId: integer('app_id').references(() => paymentApps.id, { onDelete: 'set null' }),
   payMethod: paymentMethodEnum('pay_method').notNull(),
   status: paymentOrderStatusEnum('status').notNull().default('pending'),
   userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
@@ -496,6 +505,45 @@ export const paymentTransfers = pgTable('payment_transfers', {
 export type PaymentTransferRow = typeof paymentTransfers.$inferSelect;
 
 export type NewPaymentTransfer = typeof paymentTransfers.$inferInsert;
+
+// ─── 财务报表日切快照（预聚合，降大表实时聚合压力）───────────────────────────
+export const paymentReportDaily = pgTable('payment_report_daily', {
+  id: serial('id').primaryKey(),
+  statDate: varchar('stat_date', { length: 10 }).notNull(),
+  /** 渠道（文本冗余存储，'' = 未知） */
+  channel: varchar('channel', { length: 16 }).notNull().default(''),
+  /** 业务类型（'' = 未知） */
+  bizType: varchar('biz_type', { length: 64 }).notNull().default(''),
+  gross: integer('gross').notNull().default(0),
+  fee: integer('fee').notNull().default(0),
+  refund: integer('refund').notNull().default(0),
+  count: integer('count').notNull().default(0),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [index('payment_report_daily_date_idx').on(t.statDate)]);
+
+export type PaymentReportDailyRow = typeof paymentReportDaily.$inferSelect;
+
+// ─── 支付应用（App 维度：业务方按 appKey 下单，路由到该应用绑定的渠道配置）────
+export const paymentApps = pgTable('payment_apps', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 64 }).notNull(),
+  /** 业务方下单标识（createPayment 入参 appKey） */
+  appKey: varchar('app_key', { length: 64 }).notNull().unique(),
+  status: statusEnum('status').notNull().default('enabled'),
+  wechatConfigId: integer('wechat_config_id').references(() => paymentChannelConfigs.id, { onDelete: 'set null' }),
+  alipayConfigId: integer('alipay_config_id').references(() => paymentChannelConfigs.id, { onDelete: 'set null' }),
+  unionpayConfigId: integer('unionpay_config_id').references(() => paymentChannelConfigs.id, { onDelete: 'set null' }),
+  remark: varchar('remark', { length: 256 }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type PaymentAppRow = typeof paymentApps.$inferSelect;
+
+export type NewPaymentApp = typeof paymentApps.$inferInsert;
 
 // ─── 支付方式配置 ─────────────────────────────────────────────────────────────
 export const paymentMethodConfigs = pgTable('payment_method_configs', {  id: serial('id').primaryKey(),

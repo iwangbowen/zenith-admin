@@ -217,7 +217,7 @@ export const MemberRechargeDTO = z
     memberPhone: z.string().nullable(),
     subject: z.string(),
     amount: z.number().int(),
-    channel: z.enum(['wechat', 'alipay']),
+    channel: z.enum(['wechat', 'alipay', 'unionpay']),
     payMethod: z.string(),
     status: z.enum(['pending', 'paying', 'success', 'closed', 'refunding', 'refunded', 'failed']),
     paidAmount: z.number().int().nullable(),
