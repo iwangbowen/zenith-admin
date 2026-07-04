@@ -154,3 +154,18 @@ export function clampDays(days: unknown, fallback = 30, max = 365): number {
 export function clampLimit(limit: unknown, fallback = 20, max = 100): number {
   return Math.min(Math.max(Number(limit) || fallback, 1), max);
 }
+
+// ─── IP 匿名化 ────────────────────────────────────────────────────────────────
+/** IPv4 抹掉末段（/24），IPv6 保留前 3 组；解析失败返回 'anonymized'。 */
+export function anonymizeIpAddr(ip: string): string {
+  if (!ip) return ip;
+  if (ip.includes('.')) {
+    const parts = ip.split('.');
+    if (parts.length === 4) return `${parts[0]}.${parts[1]}.${parts[2]}.0`;
+  }
+  if (ip.includes(':')) {
+    const groups = ip.split(':');
+    if (groups.length >= 3) return `${groups.slice(0, 3).join(':')}::`;
+  }
+  return 'anonymized';
+}

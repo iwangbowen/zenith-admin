@@ -36,6 +36,7 @@ let mockGroups: ErrorGroup[] = Array.from({ length: 48 }, (_, i) => ({
   firstSeenAt: mockDateTimeOffset(-rand(1, 30) * 86400000),
   lastSeenAt: mockDateTime(),
   resolvedAt: null,
+  trend: Array.from({ length: 7 }, () => rand(0, 30)),
 }));
 
 function buildEvents(groupId: number, n: number): ErrorEvent[] {
@@ -216,6 +217,7 @@ export const frontendErrorsHandlers = [
     mockAlerts = mockAlerts.filter((a) => a.id !== Number(params.id));
     return ok(null, '删除成功');
   }),
+  http.post('/api/frontend-errors/alerts/:id/test', () => ok(null, '测试消息已发送，请检查各通知渠道')),
 
   http.get('/api/frontend-errors/alert-logs', ({ request }) => {
     const u = new URL(request.url);

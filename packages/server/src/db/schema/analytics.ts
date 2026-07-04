@@ -175,6 +175,7 @@ export const analyticsSettings = pgTable('analytics_settings', {
   trackApi: boolean('track_api').notNull().default(true),
   maskInputs: boolean('mask_inputs').notNull().default(true),
   respectDnt: boolean('respect_dnt').notNull().default(false),
+  anonymizeIp: boolean('anonymize_ip').notNull().default(false),
   blacklistPaths: jsonb('blacklist_paths').$type<string[]>().notNull().default([]),
   retentionDays: integer('retention_days').notNull().default(180),
   errorRetentionDays: integer('error_retention_days').notNull().default(90),

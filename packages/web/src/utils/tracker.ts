@@ -22,6 +22,28 @@ const SAMPLED_KEY = 'zenith_tracker_sampled';
 const ANON_KEY = 'zenith_anon_id';
 const QUEUE_KEY = 'zenith_tracker_queue';
 const SESSION_IDLE_MS = 30 * 60_000;
+const WHITE_SCREEN_CHECK_DELAY_MS = 6000;
+const RAGE_CLICK_WINDOW_MS = 2000;
+const RAGE_CLICK_THRESHOLD = 3;
+
+// ─── 滚动深度（页面级最大滚动百分比，usePageTracker 在 page_leave 时读取）─────
+let maxScrollDepth = 0;
+let scrollTicking = false;
+
+function measureScrollDepth(): void {
+  try {
+    const doc = document.documentElement;
+    const scrollable = doc.scrollHeight - doc.clientHeight;
+    const depth = scrollable <= 0 ? 100 : Math.min(100, Math.round(((doc.scrollTop + doc.clientHeight) / doc.scrollHeight) * 100));
+    if (depth > maxScrollDepth) maxScrollDepth = depth;
+  } catch { /* ignore */ }
+}
+
+/** 当前页面的最大滚动深度（0-100）。 */
+export function getMaxScrollDepth(): number { return maxScrollDepth; }
+
+/** 路由切换时重置滚动深度统计。 */
+export function resetScrollDepth(): void { maxScrollDepth = 0; measureScrollDepth(); }
 
 const DEFAULT_CONFIG: AnalyticsPublicConfig = {
   enabled: true,
@@ -145,7 +167,34 @@ class Tracker {
     void this.loadConfig();
     this.flushTimer = setInterval(() => this.flush(), FLUSH_INTERVAL_MS);
     this.setupUnloadFlush();
+    this.setupScrollDepth();
+    this.setupWhiteScreenCheck();
     this.flushQueue();
+  }
+
+  private setupScrollDepth(): void {
+    document.addEventListener('scroll', () => {
+      if (scrollTicking) return;
+      scrollTicking = true;
+      requestAnimationFrame(() => { measureScrollDepth(); scrollTicking = false; });
+    }, { capture: true, passive: true });
+  }
+
+  /** 白屏检测：应用启动数秒后根节点仍无可见内容则上报。 */
+  private setupWhiteScreenCheck(): void {
+    setTimeout(() => {
+      try {
+        if (!this.config.trackErrors) return;
+        const root = document.querySelector('#root');
+        const hasContent = !!root && (root.children.length > 0 || (root.textContent ?? '').trim().length > 0);
+        if (!hasContent) {
+          reportError('white_screen', '检测到疑似白屏：根节点无渲染内容', {
+            level: 'fatal',
+            context: { readyState: document.readyState, path: globalThis.location.pathname },
+          });
+        }
+      } catch { /* ignore */ }
+    }, WHITE_SCREEN_CHECK_DELAY_MS);
   }
 
   private async loadConfig(): Promise<void> {
@@ -211,6 +260,7 @@ class Tracker {
       screenW: event.screenW ?? globalThis.screen?.width,
       screenH: event.screenH ?? globalThis.screen?.height,
       language: event.language ?? navigator.language,
+      ts: event.ts ?? Date.now(),
       ...(event.eventType === 'page_view' ? this.utm : {}),
     };
     this.buffer.push(enriched);
@@ -294,6 +344,27 @@ class Tracker {
   }
 
   // ─── 自动采集：点击 ───────────────────────────────────────────────────────
+  private rageState: { key: string; count: number; lastTs: number } | null = null;
+
+  /** Rage click 检测：同元素短时间连点，暗示按钮失效或 UI 卡顿。 */
+  private detectRageClick(key: string, label: string): void {
+    const now = Date.now();
+    if (this.rageState?.key === key && now - this.rageState.lastTs < RAGE_CLICK_WINDOW_MS) {
+      this.rageState.count += 1;
+      this.rageState.lastTs = now;
+      if (this.rageState.count === RAGE_CLICK_THRESHOLD) {
+        this.track({
+          eventType: 'custom', eventName: '$rage_click', pagePath: globalThis.location.pathname,
+          elementKey: key.slice(0, 128), elementLabel: label.slice(0, 128),
+          properties: { clicks: RAGE_CLICK_THRESHOLD, windowMs: RAGE_CLICK_WINDOW_MS },
+        });
+        addBreadcrumb({ type: 'custom', message: `rage click: ${label || key}`, level: 'warning' });
+      }
+    } else {
+      this.rageState = { key, count: 1, lastTs: now };
+    }
+  }
+
   private setupAutocapture(): void {
     document.addEventListener('click', (e) => {
       const target = e.target as HTMLElement | null;
@@ -314,6 +385,7 @@ class Tracker {
       const clickX = vw > 0 ? Math.max(0, Math.min(100, Math.round((e.clientX / vw) * 1000) / 10)) : undefined;
       const clickY = vh > 0 ? Math.max(0, Math.min(100, Math.round((e.clientY / vh) * 1000) / 10)) : undefined;
       addBreadcrumb({ type: 'click', message: label || key, data: { tag } });
+      this.detectRageClick(key, label || key);
       this.track({ eventType: 'feature_use', eventName: '$autocapture', pagePath: globalThis.location.pathname, elementKey: key.slice(0, 128), elementLabel: label || key, componentArea: area ?? undefined, clickX, clickY });
     }, { capture: true, passive: true });
   }
@@ -400,9 +472,9 @@ export function trackPageView(pagePath: string, pageTitle?: string): void {
   tracker.track({ eventType: 'page_view', eventName: '$pageview', pagePath, pageTitle });
 }
 
-/** 页面离开（携带停留时长）。 */
-export function trackPageLeave(pagePath: string, durationMs: number, pageTitle?: string): void {
-  tracker.track({ eventType: 'page_leave', eventName: '$pageleave', pagePath, durationMs, pageTitle });
+/** 页面离开（携带可见停留时长与最大滚动深度）。 */
+export function trackPageLeave(pagePath: string, durationMs: number, pageTitle?: string, scrollDepth?: number): void {
+  tracker.track({ eventType: 'page_leave', eventName: '$pageleave', pagePath, durationMs, pageTitle, scrollDepth });
 }
 
 /** 功能点击（手动埋点）。 */

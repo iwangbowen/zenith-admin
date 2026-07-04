@@ -2233,6 +2233,7 @@ export const trackEventInputSchema = z.object({
   language: z.string().max(16).optional(),
   metricName: z.string().max(32).optional(),
   metricValue: z.number().optional(),
+  ts: z.number().int().positive().optional(),
 });
 
 export const batchTrackEventsSchema = z.object({
@@ -2355,6 +2356,7 @@ export const updateAnalyticsSettingsSchema = z.object({
   trackApi: z.boolean().optional(),
   maskInputs: z.boolean().optional(),
   respectDnt: z.boolean().optional(),
+  anonymizeIp: z.boolean().optional(),
   blacklistPaths: z.array(z.string().max(256)).optional(),
   retentionDays: z.number().int().min(1).max(3650).optional(),
   errorRetentionDays: z.number().int().min(1).max(3650).optional(),

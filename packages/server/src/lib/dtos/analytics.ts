@@ -38,6 +38,7 @@ export const UserEventInputDTO = z
     language: z.string().max(16).optional(),
     metricName: z.string().max(32).optional(),
     metricValue: z.number().optional(),
+    ts: z.number().int().positive().optional(),
   })
   .openapi('UserEventInput');
 
@@ -296,6 +297,15 @@ export const DimensionBreakdownDTO = z
   })
   .openapi('DimensionBreakdown');
 
+export const DimensionCrossDTO = z
+  .object({
+    dim1: z.string(),
+    dim2: z.string(),
+    columns: z.array(z.string()),
+    rows: z.array(z.object({ name: z.string(), total: z.number().int(), values: z.array(z.number().int()) })),
+  })
+  .openapi('DimensionCross');
+
 // ─── 性能 ─────────────────────────────────────────────────────────────────────
 export const PerfStatsDTO = z
   .object({
@@ -445,6 +455,7 @@ export const AnalyticsSettingsDTO = z
     trackApi: z.boolean(),
     maskInputs: z.boolean(),
     respectDnt: z.boolean(),
+    anonymizeIp: z.boolean(),
     blacklistPaths: z.array(z.string()),
     retentionDays: z.number().int(),
     errorRetentionDays: z.number().int(),
@@ -465,6 +476,7 @@ export const UpdateAnalyticsSettingsDTO = z
     trackApi: z.boolean().optional(),
     maskInputs: z.boolean().optional(),
     respectDnt: z.boolean().optional(),
+    anonymizeIp: z.boolean().optional(),
     blacklistPaths: z.array(z.string().max(256)).optional(),
     retentionDays: z.number().int().min(1).max(3650).optional(),
     errorRetentionDays: z.number().int().min(1).max(3650).optional(),

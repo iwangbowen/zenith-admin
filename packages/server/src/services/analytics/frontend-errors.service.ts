@@ -180,7 +180,36 @@ export async function listGroups(q: GroupListQuery) {
     db.select().from(errorGroups).where(where).orderBy(desc(errorGroups.lastSeenAt)).limit(pageSize).offset(pageOffset(page, pageSize)),
     db.$count(errorGroups, where),
   ]);
-  return { list: list.map(mapGroup), total, page, pageSize };
+
+  // 页内分组的近 7 日发生趋势（迷你曲线），一次查询批量取回
+  const trendByGroup = new Map<number, Map<string, number>>();
+  if (list.length > 0) {
+    const trendStart = startOfDaysAgo(7);
+    const rows = await db
+      .select({
+        groupId: errorEvents.groupId,
+        date: sql<string>`to_char(timezone(${APP_TIME_ZONE}, ${errorEvents.createdAt}), 'YYYY-MM-DD')`,
+        count: sql<number>`COUNT(*)::int`,
+      })
+      .from(errorEvents)
+      .where(and(inArray(errorEvents.groupId, list.map((g) => g.id)), gte(errorEvents.createdAt, trendStart)))
+      .groupBy(errorEvents.groupId, sql`2`);
+    for (const r of rows) {
+      if (!trendByGroup.has(r.groupId)) trendByGroup.set(r.groupId, new Map());
+      trendByGroup.get(r.groupId)!.set(r.date, Number(r.count));
+    }
+  }
+  const axis = dateAxis(7);
+
+  return {
+    list: list.map((g) => ({
+      ...mapGroup(g),
+      trend: axis.map((d) => trendByGroup.get(g.id)?.get(d) ?? 0),
+    })),
+    total,
+    page,
+    pageSize,
+  };
 }
 
 export async function ensureGroupExists(id: number) {
@@ -206,10 +235,13 @@ export async function getGroupDetail(id: number) {
     db.select({ n: countDistinct(errorEvents.userId) }).from(errorEvents).where(eq(errorEvents.groupId, id)),
   ]);
 
-  // 缓存影响用户数
+  // 原子回写影响用户数（避免读-改-写竞态）
   const affectedUsers = Number(affected[0]?.n ?? 0);
   if (affectedUsers !== group.affectedUsers) {
-    await db.update(errorGroups).set({ affectedUsers }).where(eq(errorGroups.id, id));
+    await db
+      .update(errorGroups)
+      .set({ affectedUsers: sql`(SELECT COUNT(DISTINCT ${errorEvents.userId}) FROM ${errorEvents} WHERE ${errorEvents.groupId} = ${id})::int` })
+      .where(eq(errorGroups.id, id));
   }
 
   // 堆栈还原：取最近事件 stack + 该 release 的 source maps

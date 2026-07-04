@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import type {
   PageStats, FeatureStats, HeatmapData, HeatmapPageListItem, UserStats, AnalyticsOverview,
   TrendSeries, RealtimeStats, SessionListItem, FunnelResult, RetentionResult, PathResult,
-  UserTimeline, DimensionBreakdown, PerfStats, EventListItem, EventDetail, AnalyticsEventMeta,
+  UserTimeline, DimensionBreakdown, DimensionCross, PerfStats, EventListItem, EventDetail, AnalyticsEventMeta,
   AnalyticsSettings, AnalyticsPublicConfig, PaginatedResponse, AnalyticsRollupItem, UserBehaviorEventType,
   SessionTimeline, AnalyticsSavedReport,
 } from '@zenith/shared';
@@ -95,7 +95,7 @@ let nextMetaId = 5;
 
 let mockSettings: AnalyticsSettings = {
   id: 1, enabled: true, sampleRate: 1, trackPageviews: true, trackClicks: true, trackPerformance: true,
-  trackErrors: true, trackApi: true, maskInputs: true, respectDnt: false, blacklistPaths: ['/login'],
+  trackErrors: true, trackApi: true, maskInputs: true, respectDnt: false, anonymizeIp: false, blacklistPaths: ['/login'],
   retentionDays: 180, errorRetentionDays: 90, sessionTimeoutMinutes: 30, createdAt: mockDateTimeOffset(-60 * 86400000), updatedAt: mockDateTime(),
 };
 
@@ -277,6 +277,24 @@ export const analyticsHandlers = [
     const raw = names.map((n) => ({ name: n, value: rand(50, 800) }));
     const total = raw.reduce((s, r) => s + r.value, 0);
     return ok<DimensionBreakdown>({ dimension: dim, total, items: raw.map((r) => ({ ...r, percent: Math.round((r.value / total) * 1000) / 10 })) });
+  }),
+
+  http.get('/api/analytics/dimension-cross', ({ request }) => {
+    const u = new URL(request.url);
+    const dim1 = u.searchParams.get('dim1') ?? 'browser';
+    const dim2 = u.searchParams.get('dim2') ?? 'os';
+    const sets: Record<string, string[]> = { browser: BROWSERS, os: OSES, device: ['desktop', 'mobile', 'tablet'], region: ['广东', '北京', '上海', '浙江', '江苏'], source: ['google', 'direct', 'baidu'], referrer: ['直接访问', 'google.com'], page: MOCK_PAGES.items.slice(0, 5).map((p) => p.pagePath) };
+    const rowNames = sets[dim1] ?? BROWSERS;
+    const columns = sets[dim2] ?? OSES;
+    return ok<DimensionCross>({
+      dim1,
+      dim2,
+      columns,
+      rows: rowNames.map((name) => {
+        const values = columns.map(() => rand(20, 400));
+        return { name, total: values.reduce((s, v) => s + v, 0), values };
+      }),
+    });
   }),
 
   http.get('/api/analytics/perf-stats', () => ok<PerfStats>({

@@ -60,6 +60,7 @@ export const ErrorGroupDTO = z
     firstSeenAt: z.string(),
     lastSeenAt: z.string(),
     resolvedAt: z.string().nullable(),
+    trend: z.array(z.number().int()).optional(),
   })
   .openapi('ErrorGroup');
 
@@ -196,6 +197,6 @@ export const SourceMapUploadDTO = z
   .object({
     release: z.string().min(1).max(64),
     fileName: z.string().min(1).max(256),
-    content: z.string().min(1),
+    content: z.string().min(1).max(20_000_000, 'Source Map 超出 20MB 大小限制'),
   })
   .openapi('SourceMapUpload');

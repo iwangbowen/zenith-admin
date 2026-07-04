@@ -29,6 +29,13 @@
       "when": 1783168982053,
       "tag": "0003_lying_power_pack",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783170433434,
+      "tag": "0004_early_big_bertha",
+      "breakpoints": true
     }
   ]
 }

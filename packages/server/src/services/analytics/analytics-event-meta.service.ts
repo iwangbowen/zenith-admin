@@ -48,6 +48,24 @@ export async function touchEventMeta(events: TrackEventInput[], tenantId: number
   }
 }
 
+// ─── 字典封禁名单（采集入口拒收 status='blocked' 的事件）──────────────────────
+const BLOCKED_CACHE_TTL_MS = 60_000;
+let blockedCache: { names: Set<string>; fetchedAt: number } | null = null;
+
+export async function getBlockedEventNames(): Promise<Set<string>> {
+  const now = Date.now();
+  if (blockedCache && now - blockedCache.fetchedAt < BLOCKED_CACHE_TTL_MS) return blockedCache.names;
+  const rows = await db
+    .select({ eventName: analyticsEventMeta.eventName })
+    .from(analyticsEventMeta)
+    .where(eq(analyticsEventMeta.status, 'blocked'));
+  blockedCache = { names: new Set(rows.map((r) => r.eventName)), fetchedAt: now };
+  return blockedCache.names;
+}
+
+/** 字典状态变更后立即失效缓存。 */
+export function invalidateBlockedEventCache(): void { blockedCache = null; }
+
 export interface EventMetaListQuery { page?: number; pageSize?: number; keyword?: string; status?: string; category?: string }
 export async function listEventMeta(q: EventMetaListQuery) {
   const page = Math.max(Number(q.page) || 1, 1);
@@ -85,6 +103,7 @@ export async function createEventMeta(input: CreateAnalyticsEventMetaInput) {
         status: input.status ?? 'active',
       })
       .returning();
+    invalidateBlockedEventCache();
     return mapEventMeta(row);
   } catch (err) {
     rethrowPgUniqueViolation(err, '事件名称已存在');
@@ -106,10 +125,12 @@ export async function updateEventMeta(id: number, input: UpdateAnalyticsEventMet
     })
     .where(eq(analyticsEventMeta.id, id))
     .returning();
+  invalidateBlockedEventCache();
   return mapEventMeta(row);
 }
 
 export async function deleteEventMeta(id: number) {
   await ensureEventMetaExists(id);
   await db.delete(analyticsEventMeta).where(eq(analyticsEventMeta.id, id));
+  invalidateBlockedEventCache();
 }

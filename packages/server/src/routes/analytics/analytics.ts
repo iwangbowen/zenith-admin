@@ -12,7 +12,7 @@ import {
   BatchUserEventsBodyDTO, AnalyticsPublicConfigDTO, AnalyticsOverviewDTO, TrendSeriesDTO,
   PageStatsDTO, FeatureStatsDTO, HeatmapDataDTO, HeatmapPageListDTO, UserStatsDTO,
   SessionListItemDTO, FunnelResultDTO, FunnelQueryBodyDTO, RetentionResultDTO, PathResultDTO,
-  UserTimelineDTO, DimensionBreakdownDTO, PerfStatsDTO, RealtimeStatsDTO,
+  UserTimelineDTO, DimensionBreakdownDTO, DimensionCrossDTO, PerfStatsDTO, RealtimeStatsDTO,
   EventListItemDTO, EventDetailDTO, AnalyticsEventMetaDTO, CreateAnalyticsEventMetaDTO,
   UpdateAnalyticsEventMetaDTO, AnalyticsSettingsDTO, UpdateAnalyticsSettingsDTO, AnalyticsRollupSummaryDTO,
   SessionTimelineDTO, AnalyticsSavedReportDTO, CreateAnalyticsSavedReportDTO,
@@ -22,7 +22,7 @@ import { parseDateRangeStart, parseDateRangeEnd } from '../../lib/datetime';
 import {
   batchInsertEvents, getOverview, getTrends, getPageStats, getFeatureStats, getHeatmapData,
   getHeatmapPageList, getUserStats, listSessions, getFunnel, getRetention, getPathAnalysis,
-  getUserTimeline, getDimensionBreakdown, getPerfStats, getRealtime, listAnalyticsEvents,
+  getUserTimeline, getDimensionBreakdown, getDimensionCross, getPerfStats, getRealtime, listAnalyticsEvents,
   getEventDetail, cleanAnalyticsEvents, getSessionTimeline,
 } from '../../services/analytics/analytics.service';
 import { getPublicConfig, getSettings, updateSettings } from '../../services/analytics/analytics-settings.service';
@@ -175,7 +175,7 @@ const pathRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'get', path: '/path', tags: ['Analytics'], summary: '路径分析', security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'analytics:view' })] as const,
-    request: { query: z.object({ days: z.coerce.number().int().min(1).max(365).optional().default(30), limit: z.coerce.number().int().min(1).max(30).optional().default(12) }) },
+    request: { query: z.object({ days: z.coerce.number().int().min(1).max(365).optional().default(30), limit: z.coerce.number().int().min(1).max(30).optional().default(12), startPage: z.string().max(256).optional() }) },
     responses: { ...ok(PathResultDTO, '路径'), ...commonErrorResponses },
   }),
   handler: async (c) => c.json(okBody(await getPathAnalysis(c.req.valid('query'))), 200),
@@ -245,6 +245,16 @@ const dimensionRoute = defineOpenAPIRoute({
     responses: { ...ok(DimensionBreakdownDTO, '维度分布'), ...commonErrorResponses },
   }),
   handler: async (c) => c.json(okBody(await getDimensionBreakdown(c.req.valid('query'))), 200),
+});
+
+const dimensionCrossRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/dimension-cross', tags: ['Analytics'], summary: '双维交叉分布', security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'analytics:view' })] as const,
+    request: { query: z.object({ dim1: z.string().default('browser'), dim2: z.string().default('os'), days: z.coerce.number().int().min(1).max(365).optional().default(30), limit: z.coerce.number().int().min(1).max(20).optional().default(10) }) },
+    responses: { ...ok(DimensionCrossDTO, '交叉分布'), ...commonErrorResponses },
+  }),
+  handler: async (c) => c.json(okBody(await getDimensionCross(c.req.valid('query'))), 200),
 });
 
 const perfRoute = defineOpenAPIRoute({
@@ -399,7 +409,7 @@ r.openapiRoutes([
   ingestRoute, configRoute,
   overviewRoute, trendsRoute, realtimeRoute,
   pageStatsRoute, featureStatsRoute, heatmapRoute, heatmapPagesRoute, userStatsRoute,
-  sessionsRoute, funnelRoute, retentionRoute, pathRoute, userTimelineRoute, sessionTimelineRoute, dimensionRoute, perfRoute,
+  sessionsRoute, funnelRoute, retentionRoute, pathRoute, userTimelineRoute, sessionTimelineRoute, dimensionRoute, dimensionCrossRoute, perfRoute,
   reportListRoute, reportCreateRoute, reportDeleteRoute,
   eventListRoute, eventDetailRoute, cleanRoute,
   metaListRoute, metaCreateRoute, metaUpdateRoute, metaDeleteRoute,

@@ -8,15 +8,26 @@ import { tenantScope, getCreateTenantId } from '../../lib/tenant';
 import { mergeWhere, escapeLike } from '../../lib/where-helpers';
 import { formatNullableDateTime, formatDateTime, formatDate, APP_TIME_ZONE, parseDateRangeStart, parseDateRangeEnd } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
-import { parseClientEnv, lookupIpGeo, clampDays, clampLimit, startOfDaysAgo } from '../../lib/analytics-helpers';
-import { touchEventMeta } from './analytics-event-meta.service';
+import { parseClientEnv, lookupIpGeo, clampDays, clampLimit, startOfDaysAgo, anonymizeIpAddr } from '../../lib/analytics-helpers';
+import { touchEventMeta, getBlockedEventNames } from './analytics-event-meta.service';
+import { getIngestPolicy } from './analytics-settings.service';
 import { rollupTenantScope, ROLLUP_DIM_TYPES } from './analytics-rollup.service';
+import { broadcast } from '../../lib/ws-manager';
 
 // ════════════════════════════════════════════════════════════════════════════
 // 采集（ingest）
 // ════════════════════════════════════════════════════════════════════════════
 
 export interface IngestReqCtx { ip: string; ua: string }
+
+const CLIENT_TS_MAX_SKEW_MS = 24 * 3600_000;
+
+/** 采用客户端时间戳（离线重放保真），偏差超 ±24h 视为不可信回退服务器时间。 */
+function resolveEventTime(ts: number | undefined): Date | undefined {
+  if (!ts) return undefined;
+  if (Math.abs(Date.now() - ts) > CLIENT_TS_MAX_SKEW_MS) return undefined;
+  return new Date(ts);
+}
 
 function resolveDistinctId(e: TrackEventInput, userId: number | null): string {
   if (e.distinctId) return e.distinctId.slice(0, 64);
@@ -25,12 +36,19 @@ function resolveDistinctId(e: TrackEventInput, userId: number | null): string {
   return e.sessionId;
 }
 
-export async function batchInsertEvents(events: TrackEventInput[], reqCtx: IngestReqCtx): Promise<void> {
+export async function batchInsertEvents(rawEvents: TrackEventInput[], reqCtx: IngestReqCtx): Promise<void> {
+  if (rawEvents.length === 0) return;
+  // 字典封禁：status='blocked' 的事件名在入口拒收（60s 缓存，best-effort）
+  const blocked = await getBlockedEventNames().catch(() => new Set<string>());
+  const events = blocked.size > 0 ? rawEvents.filter((e) => !e.eventName || !blocked.has(e.eventName)) : rawEvents;
   if (events.length === 0) return;
+
   const user = currentUserOrNull();
   const tenantId = user ? getCreateTenantId(user) : null;
   const env = parseClientEnv(reqCtx.ua);
-  const geo = lookupIpGeo(reqCtx.ip);
+  const geo = lookupIpGeo(reqCtx.ip); // 先地理解析，再按策略匿名化存储
+  const { anonymizeIp } = await getIngestPolicy().catch(() => ({ anonymizeIp: false }));
+  const storedIp = (anonymizeIp ? anonymizeIpAddr(reqCtx.ip) : reqCtx.ip).slice(0, 64);
 
   const rows = events.map((e) => ({
     tenantId,
@@ -66,18 +84,31 @@ export async function batchInsertEvents(events: TrackEventInput[], reqCtx: Inges
     screenH: e.screenH ?? null,
     language: e.language ?? null,
     userAgent: reqCtx.ua.slice(0, 512),
-    ip: reqCtx.ip.slice(0, 64),
+    ip: storedIp,
     country: geo.country,
     region: geo.region,
     city: geo.city,
     metricName: e.metricName ?? null,
     metricValue: e.metricValue ?? null,
+    ...(resolveEventTime(e.ts) ? { createdAt: resolveEventTime(e.ts) } : {}),
   }));
 
   await db.insert(userEvents).values(rows);
   await upsertSessions(events, { tenantId, userId: user?.userId ?? null, username: user?.username ?? null, env, geo });
   // 事件字典登记（best-effort，不阻塞）
   void touchEventMeta(events, tenantId).catch(() => { /* ignore */ });
+  notifyIngest(events.length);
+}
+
+// 实时看板推送：节流广播「有新事件」信号，前端收到后即时刷新（轮询兜底仍在）
+let lastIngestBroadcastAt = 0;
+const INGEST_BROADCAST_MIN_INTERVAL_MS = 5000;
+
+function notifyIngest(count: number): void {
+  const nowMs = Date.now();
+  if (nowMs - lastIngestBroadcastAt < INGEST_BROADCAST_MIN_INTERVAL_MS) return;
+  lastIngestBroadcastAt = nowMs;
+  try { broadcast({ type: 'analytics:ingest', payload: { count } }); } catch { /* ignore */ }
 }
 
 async function upsertSessions(
@@ -103,45 +134,48 @@ async function upsertSessions(
   }
 
   const now = new Date();
-  for (const [sessionId, s] of bySession) {
-    await db
-      .insert(analyticsSessions)
-      .values({
-        tenantId: ctx.tenantId,
-        sessionId,
-        distinctId: ctx.userId != null ? `u:${ctx.userId}` : sessionId,
-        userId: ctx.userId,
-        username: ctx.username,
-        startedAt: now,
-        endedAt: now,
-        durationMs: 0,
-        pageCount: s.pageviews,
-        eventCount: s.events,
-        entryPage: s.firstPage,
-        exitPage: s.lastPage,
-        referrer: s.referrer,
-        utmSource: s.utmSource,
-        browser: ctx.env.browser,
-        os: ctx.env.os,
-        deviceType: ctx.env.deviceType,
-        country: ctx.geo.country,
-        region: ctx.geo.region,
-        isBounce: s.pageviews <= 1,
-      })
-      .onConflictDoUpdate({
-        target: analyticsSessions.sessionId,
-        set: {
-          endedAt: now,
-          exitPage: s.lastPage,
-          pageCount: sql`${analyticsSessions.pageCount} + ${s.pageviews}`,
-          eventCount: sql`${analyticsSessions.eventCount} + ${s.events}`,
-          durationMs: sql`GREATEST(0, EXTRACT(EPOCH FROM (NOW() - ${analyticsSessions.startedAt})) * 1000)::integer`,
-          isBounce: sql`(${analyticsSessions.pageCount} + ${s.pageviews}) <= 1`,
-          userId: sql`COALESCE(${analyticsSessions.userId}, ${ctx.userId})`,
-          username: sql`COALESCE(${analyticsSessions.username}, ${ctx.username})`,
-        },
-      });
-  }
+  const values = [...bySession].map(([sessionId, s]) => ({
+    tenantId: ctx.tenantId,
+    sessionId,
+    distinctId: ctx.userId != null ? `u:${ctx.userId}` : sessionId,
+    userId: ctx.userId,
+    username: ctx.username,
+    startedAt: now,
+    endedAt: now,
+    durationMs: 0,
+    pageCount: s.pageviews,
+    eventCount: s.events,
+    entryPage: s.firstPage,
+    exitPage: s.lastPage,
+    referrer: s.referrer,
+    utmSource: s.utmSource,
+    browser: ctx.env.browser,
+    os: ctx.env.os,
+    deviceType: ctx.env.deviceType,
+    country: ctx.geo.country,
+    region: ctx.geo.region,
+    isBounce: s.pageviews <= 1,
+  }));
+  if (values.length === 0) return;
+
+  // 单条多值 UPSERT：LEAST/GREATEST 防批次乱序导致起止时间倒挂
+  await db
+    .insert(analyticsSessions)
+    .values(values)
+    .onConflictDoUpdate({
+      target: analyticsSessions.sessionId,
+      set: {
+        startedAt: sql`LEAST(${analyticsSessions.startedAt}, excluded.started_at)`,
+        endedAt: sql`GREATEST(${analyticsSessions.endedAt}, excluded.ended_at)`,
+        exitPage: sql`excluded.exit_page`,
+        pageCount: sql`${analyticsSessions.pageCount} + excluded.page_count`,
+        eventCount: sql`${analyticsSessions.eventCount} + excluded.event_count`,
+        durationMs: sql`GREATEST(0, EXTRACT(EPOCH FROM (GREATEST(${analyticsSessions.endedAt}, excluded.ended_at) - LEAST(${analyticsSessions.startedAt}, excluded.started_at))) * 1000)::integer`,
+        isBounce: sql`(${analyticsSessions.pageCount} + excluded.page_count) <= 1`,
+        userId: sql`COALESCE(${analyticsSessions.userId}, excluded.user_id)`,
+        username: sql`COALESCE(${analyticsSessions.username}, excluded.username)`,
+      },
+    });
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -721,39 +755,35 @@ export async function getRetention(daysRaw: unknown) {
 // 路径分析（页面跳转 Sankey）
 // ════════════════════════════════════════════════════════════════════════════
 
-export async function getPathAnalysis(input: { days?: number; limit?: number }) {
+export async function getPathAnalysis(input: { days?: number; limit?: number; startPage?: string }) {
   const days = clampDays(input.days, 30);
   const limit = clampLimit(input.limit, 12, 30);
   const start = startOfDaysAgo(days);
-  const where = mergeWhere(and(eq(userEvents.eventType, 'page_view'), gte(userEvents.createdAt, start)), tenantScope(userEvents));
+  const where = mergeWhere(and(eq(userEvents.eventType, 'page_view'), gte(userEvents.createdAt, start)), tenantScope(userEvents))!;
+  const startFilter = input.startPage ? sql` AND seq.page_path = ${input.startPage}` : sql``;
 
-  // 取每个会话的页面访问序列，构造相邻跳转
-  const rows = await db
-    .select({ sessionId: userEvents.sessionId, pagePath: userEvents.pagePath, createdAt: userEvents.createdAt })
-    .from(userEvents)
-    .where(where)
-    .orderBy(userEvents.sessionId, userEvents.createdAt)
-    .limit(50_000);
+  // LEAD 窗口函数在库内构造相邻跳转，替代全量拉取内存扫描
+  const rows = (await db.execute(sql`
+    WITH seq AS (
+      SELECT ${userEvents.sessionId} AS session_id,
+             ${userEvents.pagePath} AS page_path,
+             LEAD(${userEvents.pagePath}) OVER (PARTITION BY ${userEvents.sessionId} ORDER BY ${userEvents.createdAt}, ${userEvents.id}) AS next_page
+      FROM ${userEvents}
+      WHERE ${where}
+    )
+    SELECT seq.page_path AS source, seq.next_page AS target, COUNT(*)::int AS value
+    FROM seq
+    WHERE seq.next_page IS NOT NULL AND seq.next_page <> seq.page_path${startFilter}
+    GROUP BY 1, 2
+    ORDER BY 3 DESC
+    LIMIT ${limit}
+  `)) as unknown as Array<{ source: string; target: string; value: number }>;
 
-  const transitions = new Map<string, number>();
-  let lastSession: string | null = null;
-  let lastPage: string | null = null;
-  for (const r of rows) {
-    if (r.sessionId !== lastSession) { lastSession = r.sessionId; lastPage = r.pagePath; continue; }
-    if (lastPage && lastPage !== r.pagePath) {
-      const key = `${lastPage}\u0001${r.pagePath}`;
-      transitions.set(key, (transitions.get(key) ?? 0) + 1);
-    }
-    lastPage = r.pagePath;
-  }
-
-  const sorted = [...transitions.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit);
   const nodeSet = new Set<string>();
-  const links = sorted.map(([key, value]) => {
-    const [source, target] = key.split('\u0001');
-    nodeSet.add(source);
-    nodeSet.add(target);
-    return { source, target, value };
+  const links = rows.map((r) => {
+    nodeSet.add(r.source);
+    nodeSet.add(r.target);
+    return { source: r.source, target: r.target, value: Number(r.value) };
   });
   const nodeValue = new Map<string, number>();
   for (const l of links) nodeValue.set(l.source, (nodeValue.get(l.source) ?? 0) + l.value);
@@ -963,6 +993,65 @@ export async function getDimensionBreakdown(input: { days?: number; dimension: s
       percent: total > 0 ? Math.round((value / total) * 1000) / 10 : 0,
     }));
   return { dimension, total, items };
+}
+
+/** 双维交叉分布：dim1 取 Top N 行，dim2 取全局 Top 8 列（其余归入「其他」）。 */
+export async function getDimensionCross(input: { days?: number; dim1: string; dim2: string; limit?: number }) {
+  const days = clampDays(input.days, 30);
+  const limit = clampLimit(input.limit, 10, 20);
+  const dim1 = input.dim1 in DIMENSION_COLUMN ? input.dim1 : 'browser';
+  const dim2 = input.dim2 in DIMENSION_COLUMN && input.dim2 !== dim1 ? input.dim2 : (dim1 === 'os' ? 'browser' : 'os');
+  const col1 = DIMENSION_COLUMN[dim1];
+  const col2 = DIMENSION_COLUMN[dim2];
+  const start = startOfDaysAgo(days);
+  const conditions = [gte(userEvents.createdAt, start)];
+  if (dim1 === 'page' || dim2 === 'page') conditions.push(eq(userEvents.eventType, 'page_view'));
+  const where = mergeWhere(and(...conditions), tenantScope(userEvents));
+
+  const rows = await db
+    .select({
+      d1: sql<string | null>`${col1}`,
+      d2: sql<string | null>`${col2}`,
+      value: sql<number>`COUNT(*)::int`,
+    })
+    .from(userEvents)
+    .where(where)
+    .groupBy(col1, col2);
+
+  const MAX_COLUMNS = 8;
+  const rowTotals = new Map<string, number>();
+  const colTotals = new Map<string, number>();
+  for (const r of rows) {
+    const k1 = r.d1 ?? '未知';
+    const k2 = r.d2 ?? '未知';
+    rowTotals.set(k1, (rowTotals.get(k1) ?? 0) + Number(r.value));
+    colTotals.set(k2, (colTotals.get(k2) ?? 0) + Number(r.value));
+  }
+  const topRows = [...rowTotals.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([k]) => k);
+  const topCols = [...colTotals.entries()].sort((a, b) => b[1] - a[1]).slice(0, MAX_COLUMNS).map(([k]) => k);
+  const hasOther = colTotals.size > topCols.length;
+  const columns = hasOther ? [...topCols, '其他'] : topCols;
+
+  const cells = new Map<string, number>();
+  for (const r of rows) {
+    const k1 = r.d1 ?? '未知';
+    if (!topRows.includes(k1)) continue;
+    const rawK2 = r.d2 ?? '未知';
+    const k2 = topCols.includes(rawK2) ? rawK2 : '其他';
+    const key = `${k1}\u0001${k2}`;
+    cells.set(key, (cells.get(key) ?? 0) + Number(r.value));
+  }
+
+  return {
+    dim1,
+    dim2,
+    columns,
+    rows: topRows.map((name) => ({
+      name,
+      total: rowTotals.get(name) ?? 0,
+      values: columns.map((c) => cells.get(`${name}\u0001${c}`) ?? 0),
+    })),
+  };
 }
 
 // ════════════════════════════════════════════════════════════════════════════

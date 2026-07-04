@@ -18,6 +18,7 @@ export function mapSettings(row: AnalyticsSettingsRow) {
     trackApi: row.trackApi,
     maskInputs: row.maskInputs,
     respectDnt: row.respectDnt,
+    anonymizeIp: row.anonymizeIp,
     blacklistPaths: row.blacklistPaths ?? [],
     retentionDays: row.retentionDays,
     errorRetentionDays: row.errorRetentionDays,
@@ -49,6 +50,7 @@ export async function updateSettings(input: UpdateAnalyticsSettingsInput) {
       ...(input.trackApi !== undefined ? { trackApi: input.trackApi } : {}),
       ...(input.maskInputs !== undefined ? { maskInputs: input.maskInputs } : {}),
       ...(input.respectDnt !== undefined ? { respectDnt: input.respectDnt } : {}),
+      ...(input.anonymizeIp !== undefined ? { anonymizeIp: input.anonymizeIp } : {}),
       ...(input.blacklistPaths !== undefined ? { blacklistPaths: input.blacklistPaths } : {}),
       ...(input.retentionDays !== undefined ? { retentionDays: input.retentionDays } : {}),
       ...(input.errorRetentionDays !== undefined ? { errorRetentionDays: input.errorRetentionDays } : {}),
@@ -71,6 +73,12 @@ const DEFAULT_PUBLIC_CONFIG: AnalyticsPublicConfig = {
   respectDnt: false,
   blacklistPaths: [],
 };
+
+/** 服务端采集行为配置（匿名化等，不下发 SDK）。 */
+export async function getIngestPolicy(): Promise<{ anonymizeIp: boolean }> {
+  const [row] = await db.select({ anonymizeIp: analyticsSettings.anonymizeIp }).from(analyticsSettings).orderBy(analyticsSettings.id).limit(1);
+  return { anonymizeIp: row?.anonymizeIp ?? false };
+}
 
 /** SDK 公开配置（无需鉴权，匿名亦可获取）。 */
 export async function getPublicConfig(): Promise<AnalyticsPublicConfig> {

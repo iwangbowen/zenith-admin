@@ -695,6 +695,8 @@ export interface ErrorGroup {
   firstSeenAt: string;
   lastSeenAt: string;
   resolvedAt: string | null;
+  /** 近 7 日每日发生次数（列表迷你趋势） */
+  trend?: number[];
 }
 
 /** 单次错误事件 */
@@ -884,6 +886,8 @@ export interface TrackEventInput {
   language?: string;
   metricName?: string;
   metricValue?: number;
+  /** 客户端事件时间戳（epoch ms），离线重放时保留真实时间 */
+  ts?: number;
 }
 
 /** SDK 远程配置 */
@@ -898,6 +902,7 @@ export interface AnalyticsSettings {
   trackApi: boolean;
   maskInputs: boolean;
   respectDnt: boolean;
+  anonymizeIp: boolean;
   blacklistPaths: string[];
   retentionDays: number;
   errorRetentionDays: number;
@@ -1079,6 +1084,13 @@ export interface DimensionBreakdown {
   dimension: string;
   total: number;
   items: DimensionBreakdownItem[];
+}
+
+export interface DimensionCross {
+  dim1: string;
+  dim2: string;
+  columns: string[];
+  rows: { name: string; total: number; values: number[] }[];
 }
 
 export interface PerfStatItem {
@@ -1651,7 +1663,8 @@ export type WsMessage =
   | { type: 'task:progress'; payload: AsyncTask }
   | { type: 'mp-kf:session-new'; payload: MpKfSession }
   | { type: 'mp-kf:session-update'; payload: MpKfSession }
-  | { type: 'mp-kf:session-message'; payload: { sessionId: number; accountId: number; openid: string; direction: MpMessageDirection; msgType: MpMessageType; content: string | null; createdAt: string } };
+  | { type: 'mp-kf:session-message'; payload: { sessionId: number; accountId: number; openid: string; direction: MpMessageDirection; msgType: MpMessageType; content: string | null; createdAt: string } }
+  | { type: 'analytics:ingest'; payload: { count: number } };
 
 /** Terminal WebSocket 消息（独立端点 /api/ws/terminal） */
 export type TerminalMessage =

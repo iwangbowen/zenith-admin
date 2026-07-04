@@ -19,6 +19,7 @@ import type {
   SessionListItem,
   SessionTimeline,
   AnalyticsSavedReport,
+  DimensionCross,
   TrendSeries,
   UserStats,
   UserTimeline,
@@ -196,10 +197,10 @@ export function useAnalyticsRetention(days: number) {
   });
 }
 
-export function useAnalyticsPath(days: number) {
+export function useAnalyticsPath(days: number, startPage?: string) {
   return useQuery({
-    queryKey: analyticsKeys.path(days),
-    queryFn: () => request.get<PathResult>(`/api/analytics/path?days=${days}&limit=12`).then(unwrap),
+    queryKey: [...analyticsKeys.path(days), startPage ?? ''] as const,
+    queryFn: () => request.get<PathResult>(`/api/analytics/path${toQueryString({ days, limit: 12, startPage: startPage || undefined })}`).then(unwrap),
   });
 }
 
@@ -255,6 +256,14 @@ export function useAnalyticsDimension(dimension: string, days: number) {
   return useQuery({
     queryKey: analyticsKeys.dimension(dimension, days),
     queryFn: () => request.get<{ items: Array<{ name: string; value: number; percent: number }>; total: number }>(`/api/analytics/dimension?dimension=${dimension}&days=${days}&limit=12`).then(unwrap),
+  });
+}
+
+export function useAnalyticsDimensionCross(dim1: string, dim2: string, days: number, enabled = true) {
+  return useQuery({
+    queryKey: ['analytics', 'dimension-cross', dim1, dim2, days] as const,
+    queryFn: () => request.get<DimensionCross>(`/api/analytics/dimension-cross${toQueryString({ dim1, dim2, days })}`).then(unwrap),
+    enabled,
   });
 }
 
@@ -484,5 +493,11 @@ export function useFrontendAlertLogs(params: FrontendSimplePageParams, enabled =
     queryFn: () => request.get<PaginatedResponse<ErrorAlertLog>>(`/api/frontend-errors/alert-logs${toQueryString(params)}`).then(unwrap),
     placeholderData: keepPreviousData,
     enabled,
+  });
+}
+
+export function useTestFrontendAlert() {
+  return useMutation({
+    mutationFn: (id: number) => request.post<null>(`/api/frontend-errors/alerts/${id}/test`).then(unwrap),
   });
 }

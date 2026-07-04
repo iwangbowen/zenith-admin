@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { CSSProperties, ReactNode } from 'react';
 import { Avatar, Button, Card, DatePicker, Dropdown, Empty, Input, Modal, Progress, Select, SideSheet, Skeleton, Spin, Switch, TabPane, Tabs, Tag, Timeline, Toast, Typography } from '@douyinfe/semi-ui';
@@ -42,10 +42,12 @@ import {
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { formatDateTime, formatDateForApi } from '@/utils/date';
+import { useWebSocket } from '@/hooks/useWebSocket';
 import {
   analyticsKeys,
   useAnalyzeFunnel,
   useAnalyticsDimension,
+  useAnalyticsDimensionCross,
   useAnalyticsFeatureStats,
   useAnalyticsHeatmap,
   useAnalyticsHeatmapPages,
@@ -302,9 +304,15 @@ function OverviewTab() {
 
 function RealtimeTab() {
   const palette = useChartPalette();
+  const queryClient = useQueryClient();
   const realtimeQuery = useAnalyticsRealtime();
   const data = realtimeQuery.data ?? null;
   const loading = realtimeQuery.isFetching;
+
+  // 服务端有新事件入库时推送信号，即时刷新（10s 轮询保留兜底）
+  useWebSocket(useCallback((msg) => {
+    if (msg.type === 'analytics:ingest') void queryClient.invalidateQueries({ queryKey: analyticsKeys.realtime });
+  }, [queryClient]));
 
   const realtimeAreaSpec = useMemo(() => makeAreaSpec({
     data: data?.perMinute ?? [],
@@ -315,7 +323,7 @@ function RealtimeTab() {
 
   return (
     <div style={sectionStyle}>
-      <SectionHeader title="实时看板" description="每 10 秒自动刷新" extra={<Button icon={<RefreshCcw size={14} />} onClick={() => void realtimeQuery.refetch()} loading={loading}>刷新</Button>} />
+      <SectionHeader title="实时看板" description="事件推送即时刷新 · 每 10 秒轮询兜底" extra={<Button icon={<RefreshCcw size={14} />} onClick={() => void realtimeQuery.refetch()} loading={loading}>刷新</Button>} />
       <div style={gridStyle}>
         <StatCard label="实时在线" value={numberText(data?.activeUsers ?? 0)} icon={<Users size={19} />} color="#22c55e" />
         <StatCard label="近30分钟浏览" value={numberText(data?.pageViewsLast30Min ?? 0)} icon={<Eye size={19} />} color={palette.primary} />
@@ -1065,7 +1073,9 @@ function RetentionTab() {
 function PathTab() {
   const palette = useChartPalette();
   const [days, setDays] = useState(7);
-  const pathQuery = useAnalyticsPath(days);
+  const [startPageInput, setStartPageInput] = useState('');
+  const [startPage, setStartPage] = useState('');
+  const pathQuery = useAnalyticsPath(days, startPage || undefined);
   const data = pathQuery.data ?? null;
   const loading = pathQuery.isFetching;
 
@@ -1078,7 +1088,22 @@ function PathTab() {
       <SectionHeader
         title="页面跳转路径"
         description="按跳转次数排序的路径流"
-        extra={<Select value={days} optionList={DAYS_OPTIONS} onChange={(v) => setDays(Number(v))} style={{ width: 120 }} />}
+        extra={(
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="起点页面（可选），如 /users"
+              value={startPageInput}
+              showClear
+              onChange={setStartPageInput}
+              onClear={() => setStartPage('')}
+              onKeyDown={(e) => { if (e.key === 'Enter') setStartPage(startPageInput.trim()); }}
+              style={{ width: 220 }}
+            />
+            <Button type="primary" icon={<Search size={14} />} onClick={() => setStartPage(startPageInput.trim())}>查询</Button>
+            <Select value={days} optionList={DAYS_OPTIONS} onChange={(v) => setDays(Number(v))} style={{ width: 120 }} />
+          </div>
+        )}
       />
       <Card bodyStyle={{ padding: 16 }}>
         {!links.length ? emptyOrSpin(loading, '暂无路径数据') : (
@@ -1222,8 +1247,11 @@ function DimensionTab() {
   const palette = useChartPalette();
   const [days, setDays] = useState(7);
   const [dimension, setDimension] = useState('browser');
+  const [crossDim, setCrossDim] = useState('');
   const dimensionQuery = useAnalyticsDimension(dimension, days);
+  const crossQuery = useAnalyticsDimensionCross(dimension, crossDim, days, !!crossDim);
   const data = dimensionQuery.data ?? null;
+  const cross = crossQuery.data ?? null;
   const loading = dimensionQuery.isFetching;
 
   const rows = useMemo<DimensionRow[]>(() => (data?.items ?? []).map((item) => ({ ...item, id: item.name })), [data]);
@@ -1235,6 +1263,25 @@ function DimensionTab() {
     colors: rows.map((_, index) => chartColor(index, palette.primary)),
     palette,
   }), [palette, rows]);
+
+  const crossOptions = useMemo(() => [
+    { label: '不交叉', value: '' },
+    ...DIMENSION_OPTIONS.filter((o) => o.value !== dimension),
+  ], [dimension]);
+
+  const crossChartData = useMemo(() => (cross?.rows ?? []).map((row) => ({
+    name: row.name,
+    ...Object.fromEntries((cross?.columns ?? []).map((c, i) => [c, row.values[i] ?? 0])),
+  })), [cross]);
+
+  const crossBarSpec = useMemo(() => makeBarSpec({
+    data: crossChartData,
+    xField: 'name',
+    series: (cross?.columns ?? []).map((c, index) => ({ field: c, name: c, color: chartColor(index, palette.primary) })),
+    palette,
+    stack: true,
+  }), [cross?.columns, crossChartData, palette]);
+
   const columns: ColumnProps<DimensionRow>[] = [
     { title: '名称', dataIndex: 'name', render: (value) => <Typography.Text ellipsis={{ showTooltip: true }}>{String(value)}</Typography.Text> },
     { title: '数量', dataIndex: 'value', width: 120, render: (value) => numberText(Number(value)) },
@@ -1247,12 +1294,20 @@ function DimensionTab() {
         title="维度分布"
         description={`总计 ${numberText(data?.total ?? 0)}`}
         extra={(
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <Select value={dimension} optionList={DIMENSION_OPTIONS} onChange={(v) => setDimension(String(v))} style={{ width: 130 }} />
+            <Select prefix="交叉" value={crossDim} optionList={crossOptions} onChange={(v) => setCrossDim(String(v ?? ''))} style={{ width: 150 }} />
             <Select value={days} optionList={DAYS_OPTIONS} onChange={(v) => setDays(Number(v))} style={{ width: 120 }} />
           </div>
         )}
       />
+      {crossDim && (
+        <Card title={`交叉分布：${DIMENSION_OPTIONS.find((o) => o.value === dimension)?.label ?? dimension} × ${DIMENSION_OPTIONS.find((o) => o.value === crossDim)?.label ?? crossDim}`} bodyStyle={{ padding: 16 }}>
+          {!crossChartData.length ? emptyOrSpin(crossQuery.isFetching) : (
+            <BarChart {...crossBarSpec} options={chartOptions} height={320} />
+          )}
+        </Card>
+      )}
       <div style={chartGridStyle}>
         <Card title="占比" bodyStyle={{ padding: 16 }}>
           {!rows.length ? emptyOrSpin(loading) : (

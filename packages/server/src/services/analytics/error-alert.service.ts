@@ -234,6 +234,25 @@ export async function evaluateAlertsForError(input: {
   }));
 }
 
+/**
+ * 测试发送告警通知：验证渠道配置，不影响去抖状态（lastTriggeredAt），
+ * 历史记录 source='test' 便于区分。
+ */
+export async function testAlertRule(id: number): Promise<void> {
+  const rule = await ensureRuleExists(id);
+  const detail = '这是一条测试告警消息，用于验证通知渠道配置是否可用';
+  await db.insert(errorAlertLogs).values({
+    tenantId: rule.tenantId,
+    ruleId: rule.id,
+    ruleName: rule.name,
+    condition: rule.condition,
+    detail,
+    channels: rule.channels ?? [],
+    source: 'test',
+  });
+  await dispatchAlert(rule, detail);
+}
+
 // ─── 告警触发历史 ─────────────────────────────────────────────────────────────
 export function mapAlertLog(row: ErrorAlertLogRow) {
   return {

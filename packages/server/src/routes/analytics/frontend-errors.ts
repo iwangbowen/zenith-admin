@@ -16,7 +16,7 @@ import {
   reportError, getErrorOverview, listGroups, getGroupDetail, updateGroup, batchUpdateGroupStatus,
   deleteGroups, listErrorEvents, cleanErrors, uploadSourceMap, listSourceMaps, deleteSourceMap,
 } from '../../services/analytics/frontend-errors.service';
-import { listAlertRules, createAlertRule, updateAlertRule, deleteAlertRule, listAlertLogs } from '../../services/analytics/error-alert.service';
+import { listAlertRules, createAlertRule, updateAlertRule, deleteAlertRule, listAlertLogs, testAlertRule } from '../../services/analytics/error-alert.service';
 
 const r = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -219,12 +219,24 @@ const alertLogListRoute = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await listAlertLogs(c.req.valid('query'))), 200),
 });
 
+const alertTestRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/alerts/{id}/test', tags: ['FrontendErrors'], summary: '测试发送告警通知', security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'monitor:alert:manage' })] as const, request: { params: IdParam },
+    responses: { ...okMsg('测试已发送'), ...commonErrorResponses },
+  }),
+  handler: async (c) => {
+    await testAlertRule(c.req.valid('param').id);
+    return c.json(okBody(null, '测试消息已发送，请检查各通知渠道'), 200);
+  },
+});
+
 r.openapiRoutes([
   reportRoute, overviewRoute,
   groupListRoute, batchStatusRoute, batchDeleteRoute, groupDetailRoute, groupUpdateRoute,
   eventListRoute, cleanRoute,
   sourceMapListRoute, sourceMapUploadRoute, sourceMapDeleteRoute,
-  alertListRoute, alertCreateRoute, alertUpdateRoute, alertDeleteRoute, alertLogListRoute,
+  alertListRoute, alertCreateRoute, alertUpdateRoute, alertDeleteRoute, alertLogListRoute, alertTestRoute,
 ] as const);
 
 export default r;

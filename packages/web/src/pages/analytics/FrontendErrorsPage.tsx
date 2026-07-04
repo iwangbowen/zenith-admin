@@ -87,6 +87,7 @@ import {
   useFrontendSourceMaps,
   useSaveFrontendAlert,
   useSubmitFrontendSourceMap,
+  useTestFrontendAlert,
   useUpdateFrontendErrorGroup,
 } from '@/hooks/queries/analytics';
 
@@ -331,6 +332,26 @@ function BreadcrumbTimeline({ breadcrumbs }: { readonly breadcrumbs: ErrorBreadc
   );
 }
 
+const TIMELINE_SPARK_W = 96;
+const TIMELINE_SPARK_H = 26;
+
+/** 表格内嵌迷你趋势曲线（近 7 日发生次数） */
+function TrendSparkline({ data }: Readonly<{ data?: number[] }>) {
+  if (!data || data.length < 2 || data.every((v) => v === 0)) {
+    return <Text type="tertiary" size="small">–</Text>;
+  }
+  const max = Math.max(...data, 1);
+  const stepX = TIMELINE_SPARK_W / (data.length - 1);
+  const points = data.map((v, i) => `${(i * stepX).toFixed(1)},${(TIMELINE_SPARK_H - 3 - (v / max) * (TIMELINE_SPARK_H - 6)).toFixed(1)}`).join(' ');
+  const rising = data[data.length - 1] > data[0];
+  const color = rising ? 'var(--semi-color-danger)' : 'var(--semi-color-success)';
+  return (
+    <svg width={TIMELINE_SPARK_W} height={TIMELINE_SPARK_H} aria-label="近 7 日趋势">
+      <polyline points={points} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export default function FrontendErrorsPage() {
   const palette = useChartPalette();
   const queryClient = useQueryClient();
@@ -418,6 +439,7 @@ export default function FrontendErrorsPage() {
   const submitSourceMapMutation = useSubmitFrontendSourceMap();
   const saveAlertMutation = useSaveFrontendAlert();
   const deleteAlertMutation = useDeleteFrontendAlert();
+  const testAlertMutation = useTestFrontendAlert();
   const adminOptions = useMemo(
     () => adminUsers.map((item) => ({ label: item.nickname || item.username, value: item.id })),
     [adminUsers],
@@ -628,6 +650,12 @@ export default function FrontendErrorsPage() {
       width: 100,
       render: (_value, record) => <Tag color={record.count >= 10 ? 'red' : 'grey'}>{record.count}</Tag>,
     },
+    {
+      title: '7日趋势',
+      dataIndex: 'trend',
+      width: 120,
+      render: (_value, record) => <TrendSparkline data={record.trend} />,
+    },
     { title: '影响用户', dataIndex: 'affectedUsers', width: 110 },
     {
       title: '处理人',
@@ -768,13 +796,20 @@ export default function FrontendErrorsPage() {
       render: (_value, record) => <Switch size="small" checked={record.enabled} onChange={(checked) => void toggleAlert(record, checked)} />,
     },
     createOperationColumn<ErrorAlertRule>({
-      width: 130,
-      desktopInlineKeys: ['edit', 'delete'],
+      width: 170,
+      desktopInlineKeys: ['edit', 'test', 'delete'],
       actions: (record) => [
         {
           key: 'edit',
           label: '编辑',
           onClick: () => openAlertModal(record),
+        },
+        {
+          key: 'test',
+          label: '测试',
+          onClick: () => {
+            void testAlertMutation.mutateAsync(record.id).then(() => Toast.success('测试消息已发送，请检查通知渠道'));
+          },
         },
         {
           key: 'delete',
@@ -790,7 +825,7 @@ export default function FrontendErrorsPage() {
         },
       ],
     }),
-  ], [deleteAlert, openAlertModal, toggleAlert]);
+  ], [deleteAlert, openAlertModal, testAlertMutation, toggleAlert]);
 
   const alertLogColumns = useMemo<ColumnProps<ErrorAlertLog>[]>(() => [
     { title: '触发时间', dataIndex: 'createdAt', width: 180, render: (_value, record) => formatDateTime(record.createdAt) },

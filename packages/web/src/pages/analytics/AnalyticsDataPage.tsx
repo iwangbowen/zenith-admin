@@ -676,6 +676,12 @@ export default function AnalyticsDataPage() {
           <Form.Slot label="尊重 DNT">
             <Switch checked={settings.respectDnt} onChange={(checked) => updateSettings('respectDnt', checked)} />
           </Form.Slot>
+          <Form.Slot label="IP 匿名化">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Switch checked={settings.anonymizeIp} onChange={(checked) => updateSettings('anonymizeIp', checked)} />
+              <Typography.Text type="tertiary" size="small">开启后仅存储网段（IPv4 抹掉末段），地理解析不受影响</Typography.Text>
+            </div>
+          </Form.Slot>
           <Form.Slot label="黑名单路径">
             <TagInput
               value={settings.blacklistPaths}
