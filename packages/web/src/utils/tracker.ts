@@ -13,6 +13,8 @@ import { reportError } from './error-reporter';
 
 const FLUSH_INTERVAL_MS = 15_000;
 const MAX_BUFFER_SIZE = 50;
+const PRE_BUFFER_MAX = 100;
+const UNLOAD_CHUNK_SIZE = 20; // 卸载兜底分片大小，规避 sendBeacon/keepalive 64KB body 上限
 const SLOW_API_MS = 2000;
 const SESSION_KEY = 'zenith_tracker_sid';
 const SESSION_TS_KEY = 'zenith_tracker_sid_ts';
@@ -40,6 +42,29 @@ function uuid(): string {
   try { return crypto.randomUUID(); } catch { return `${Date.now()}-${Math.random().toString(16).slice(2)}`; }
 }
 
+// maskInputs=true 时对采集文本脱敏：手机号 / 邮箱 / 身份证号
+const SENSITIVE_PATTERNS: RegExp[] = [
+  /1[3-9]\d{9}/g,
+  /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g,
+  /\d{17}[\dXx]|\d{15}/g,
+];
+
+function maskSensitiveText(text: string): string {
+  let out = text;
+  for (const re of SENSITIVE_PATTERNS) out = out.replace(re, '***');
+  return out;
+}
+
+// 事件类型 → 远程采集开关映射（identify / custom 恒定开启）
+const TYPE_SWITCH: Partial<Record<UserBehaviorEventType, keyof AnalyticsPublicConfig>> = {
+  page_view: 'trackPageviews',
+  page_leave: 'trackPageviews',
+  feature_use: 'trackClicks',
+  area_click: 'trackClicks',
+  perf: 'trackPerformance',
+  api_request: 'trackApi',
+};
+
 function parseUtm(): Partial<TrackEventInput> {
   try {
     const p = new URLSearchParams(globalThis.location.search);
@@ -55,6 +80,7 @@ function parseUtm(): Partial<TrackEventInput> {
 
 class Tracker {
   private buffer: TrackEventInput[] = [];
+  private preBuffer: PendingEvent[] = [];
   private config: AnalyticsPublicConfig = DEFAULT_CONFIG;
   private configLoaded = false;
   private distinctId: string | null = null;
@@ -130,6 +156,7 @@ class Tracker {
       if (json.code === 0 && json.data) this.config = json.data;
     } catch { /* keep defaults */ } finally {
       this.configLoaded = true;
+      this.drainPreBuffer();
       if (this.isEnabled()) {
         if (this.config.trackClicks) this.setupAutocapture();
         if (this.config.trackPerformance) this.setupWebVitals();
@@ -138,10 +165,21 @@ class Tracker {
     }
   }
 
+  /** 配置就绪后按最终配置重放 pre-buffer 事件（disabled/未采样则丢弃）。 */
+  private drainPreBuffer(): void {
+    const pending = this.preBuffer.splice(0);
+    for (const e of pending) this.doTrack(e);
+  }
+
   private isEnabled(): boolean {
     if (!this.config.enabled) return false;
     if (this.config.respectDnt && (navigator.doNotTrack === '1' || (globalThis as { doNotTrack?: string }).doNotTrack === '1')) return false;
     return true;
+  }
+
+  private isTypeEnabled(eventType: UserBehaviorEventType): boolean {
+    const key = TYPE_SWITCH[eventType];
+    return key ? this.config[key] !== false : true;
   }
 
   private isBlacklisted(path: string): boolean {
@@ -150,9 +188,19 @@ class Tracker {
 
   // ─── 核心 track ───────────────────────────────────────────────────────────
   track(event: PendingEvent): void {
-    if (this.configLoaded && !this.isEnabled()) return;
+    // 远程配置返回前暂存，就绪后按最终配置过滤重放，避免首屏事件绕过开关/采样
+    if (!this.configLoaded) {
+      if (this.preBuffer.length < PRE_BUFFER_MAX) this.preBuffer.push(event);
+      return;
+    }
+    this.doTrack(event);
+  }
+
+  private doTrack(event: PendingEvent): void {
+    if (!this.isEnabled()) return;
+    if (!this.isTypeEnabled(event.eventType)) return;
     if (this.isBlacklisted(event.pagePath)) return;
-    if (this.configLoaded && !this.isSampled()) return;
+    if (!this.isSampled()) return;
 
     const enriched: TrackEventInput = {
       ...event,
@@ -185,18 +233,34 @@ class Tracker {
   }
 
   private flushSync(): void {
+    // 卸载前配置未就绪时，按默认配置（全开）放行 pre-buffer，避免首屏事件全丢
+    if (!this.configLoaded) this.drainPreBuffer();
     if (this.buffer.length === 0) return;
     const events = this.buffer.splice(0);
-    try {
-      const apiBase = (import.meta.env.VITE_API_BASE_URL as string) || '/api';
-      const token = localStorage.getItem(TOKEN_KEY);
-      fetch(`${apiBase}/analytics/events`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ events }),
-        keepalive: true,
-      }).catch(() => this.enqueue(events));
-    } catch { this.enqueue(events); }
+    const apiBase = (import.meta.env.VITE_API_BASE_URL as string) || '/api';
+    const url = `${apiBase}/analytics/events`;
+    // 分片规避 sendBeacon / keepalive 的 64KB body 上限
+    for (let i = 0; i < events.length; i += UNLOAD_CHUNK_SIZE) {
+      const chunk = events.slice(i, i + UNLOAD_CHUNK_SIZE);
+      const body = JSON.stringify({ events: chunk });
+      let sent = false;
+      try {
+        // sendBeacon 专为卸载上报设计：浏览器保证页面关闭后继续发送
+        if (typeof navigator.sendBeacon === 'function') {
+          sent = navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
+        }
+      } catch { sent = false; }
+      if (sent) continue;
+      try {
+        const token = localStorage.getItem(TOKEN_KEY);
+        fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body,
+          keepalive: true,
+        }).catch(() => this.enqueue(chunk));
+      } catch { this.enqueue(chunk); }
+    }
   }
 
   private enqueue(events: TrackEventInput[]): void {
@@ -237,7 +301,10 @@ class Tracker {
       const el = target.closest<HTMLElement>('[data-track],button,a,[role="button"],input[type="submit"],input[type="button"]');
       if (!el) return;
       const dataKey = el.getAttribute('data-track');
-      const label = (el.getAttribute('data-track-label') || el.getAttribute('aria-label') || el.textContent || el.getAttribute('title') || '').trim().slice(0, 60);
+      // data-sensitive 元素（或其后代）不采集任何文本，仅保留 tag / 显式 key
+      const sensitive = el.closest('[data-sensitive]') != null;
+      const rawLabel = sensitive ? '' : (el.getAttribute('data-track-label') || el.getAttribute('aria-label') || el.textContent || el.getAttribute('title') || '').trim().slice(0, 60);
+      const label = this.config.maskInputs ? maskSensitiveText(rawLabel) : rawLabel;
       const tag = el.tagName.toLowerCase();
       const key = dataKey || (el.id ? `${tag}#${el.id}` : label ? `${tag}:${label.slice(0, 24)}` : tag);
       const area = el.closest<HTMLElement>('[data-area]')?.getAttribute('data-area') || el.getAttribute('data-track-area') || undefined;

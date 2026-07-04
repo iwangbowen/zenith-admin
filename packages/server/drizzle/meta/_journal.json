@@ -8,6 +8,13 @@
       "when": 1783128968507,
       "tag": "0000_baseline",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783166052499,
+      "tag": "0001_magenta_nitro",
+      "breakpoints": true
     }
   ]
 }

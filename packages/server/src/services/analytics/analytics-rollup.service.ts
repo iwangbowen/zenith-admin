@@ -1,8 +1,12 @@
 import { and, gte, lt, sql, eq } from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { userEvents, analyticsSessions, analyticsDailyRollup, analyticsSettings, errorEvents, errorGroups } from '../../db/schema';
 import { clampDays } from '../../lib/analytics-helpers';
 import { APP_TIME_ZONE, formatDate, parseDateRangeStart } from '../../lib/datetime';
+import { config } from '../../config';
+import { currentUser } from '../../lib/context';
+import { isPlatformAdmin, getEffectiveTenantId } from '../../lib/tenant';
 
 interface RollupRow { tenantId: number; statDate: string; metric: string; value: number }
 
@@ -10,6 +14,18 @@ const DAY_MS = 86_400_000;
 
 function appTodayStart(): Date {
   return parseDateRangeStart(formatDate(new Date())) ?? new Date();
+}
+
+/**
+ * rollup 表租户过滤：语义对齐 `tenantScope`，区别是 rollup 的 tenantId 非空，
+ * NULL 租户以 0 哨兵存储（见表定义注释）。
+ */
+export function rollupTenantScope(): SQL | undefined {
+  if (!config.multiTenantMode) return undefined;
+  const user = currentUser();
+  const effective = getEffectiveTenantId(user);
+  if (isPlatformAdmin(user) && effective === null) return undefined;
+  return eq(analyticsDailyRollup.tenantId, effective ?? 0);
 }
 
 /** 重建最近 days 个完整自然日的每日聚合（overall 维度）。 */

@@ -1,0 +1,3 @@
+CREATE INDEX "error_events_group_created_idx" ON "error_events" USING btree ("group_id","created_at");--> statement-breakpoint
+CREATE INDEX "user_events_tenant_created_type_idx" ON "user_events" USING btree ("tenant_id","created_at","event_type");--> statement-breakpoint
+CREATE INDEX "user_events_perf_metric_idx" ON "user_events" USING btree ("metric_name","created_at") WHERE "user_events"."event_type" = 'perf';

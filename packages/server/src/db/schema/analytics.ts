@@ -1,4 +1,5 @@
 import { pgTable, serial, varchar, timestamp, pgEnum, integer, bigint, boolean, text, uniqueIndex, index, jsonb, smallint, real, date, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { auditColumns, tenants, users } from './core';
 
 // ─── 枚举 ────────────────────────────────────────────────────────────────────
@@ -66,6 +67,10 @@ export const userEvents = pgTable('user_events', {
   index('user_events_session_idx').on(t.sessionId),
   index('user_events_tenant_idx').on(t.tenantId),
   index('user_events_distinct_idx').on(t.distinctId),
+  // 趋势/概览/维度分析主查询路径（tenant + 时间范围 + 事件类型过滤）
+  index('user_events_tenant_created_type_idx').on(t.tenantId, t.createdAt, t.eventType),
+  // Web Vitals 性能统计（perf 事件占比小，部分索引降低维护成本）
+  index('user_events_perf_metric_idx').on(t.metricName, t.createdAt).where(sql`${t.eventType} = 'perf'`),
 ]);
 
 export type UserEventRow = typeof userEvents.$inferSelect;
@@ -264,6 +269,8 @@ export const errorEvents = pgTable('error_events', {
   index('error_events_created_idx').on(t.createdAt),
   index('error_events_user_idx').on(t.userId),
   index('error_events_tenant_idx').on(t.tenantId),
+  // 分组详情「最近事件 / 影响用户」查询路径
+  index('error_events_group_created_idx').on(t.groupId, t.createdAt),
 ]);
 
 export type ErrorEventRow = typeof errorEvents.$inferSelect;

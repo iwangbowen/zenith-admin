@@ -1,7 +1,7 @@
-import { and, eq, gte, lt, isNotNull, sql, countDistinct, desc, like, notExists } from 'drizzle-orm';
+import { and, eq, gte, lt, isNotNull, sql, countDistinct, desc, like, notExists, inArray } from 'drizzle-orm';
 import { alias, type PgColumn } from 'drizzle-orm/pg-core';
 import { db } from '../../db';
-import { userEvents, analyticsSessions } from '../../db/schema';
+import { userEvents, analyticsSessions, analyticsDailyRollup } from '../../db/schema';
 import type { TrackEventInput, UserBehaviorEventType } from '@zenith/shared';
 import { currentUserOrNull } from '../../lib/context';
 import { tenantScope, getCreateTenantId } from '../../lib/tenant';
@@ -10,6 +10,7 @@ import { formatNullableDateTime, formatDateTime, formatDate, APP_TIME_ZONE, pars
 import { pageOffset } from '../../lib/pagination';
 import { parseClientEnv, lookupIpGeo, clampDays, clampLimit, startOfDaysAgo } from '../../lib/analytics-helpers';
 import { touchEventMeta } from './analytics-event-meta.service';
+import { rollupTenantScope } from './analytics-rollup.service';
 
 // ════════════════════════════════════════════════════════════════════════════
 // 采集（ingest）
@@ -256,27 +257,65 @@ function dateAxis(days: number): string[] {
   return arr;
 }
 
+const TREND_METRICS = ['pv', 'uv', 'sessions', 'events'] as const;
+type TrendMetric = (typeof TREND_METRICS)[number];
+type TrendPoint = Record<TrendMetric, number>;
+
 export async function getTrends(daysRaw: unknown) {
   const days = clampDays(daysRaw, 30);
-  const start = startOfDaysAgo(days);
-  const where = mergeWhere(gte(userEvents.createdAt, start), tenantScope(userEvents));
-
-  const rows = await db
-    .select({
-      day: sql<string>`to_char(timezone(${APP_TIME_ZONE}, ${userEvents.createdAt}), 'YYYY-MM-DD')`,
-      pv: sql<number>`COUNT(*) FILTER (WHERE ${userEvents.eventType} = 'page_view')::int`,
-      uv: countDistinct(userEvents.distinctId),
-      sessions: countDistinct(userEvents.sessionId),
-      events: sql<number>`COUNT(*)::int`,
-    })
-    .from(userEvents)
-    .where(where)
-    .groupBy(sql`1`)
-    .orderBy(sql`1`);
-
-  const byDay = new Map(rows.map((r) => [r.day, r]));
   const dates = dateAxis(days);
-  const pick = (key: 'pv' | 'uv' | 'sessions' | 'events') => dates.map((d) => Number(byDay.get(d)?.[key] ?? 0));
+  const today = dates[dates.length - 1];
+
+  // ── 历史完整日优先读每日预聚合，避免全扫原始事件表 ──────────────────────────
+  const rollupRows = await db
+    .select({
+      statDate: analyticsDailyRollup.statDate,
+      metric: analyticsDailyRollup.metric,
+      value: sql<number>`SUM(${analyticsDailyRollup.value})`,
+    })
+    .from(analyticsDailyRollup)
+    .where(mergeWhere(
+      and(
+        eq(analyticsDailyRollup.dimType, 'overall'),
+        gte(analyticsDailyRollup.statDate, dates[0]),
+        inArray(analyticsDailyRollup.metric, [...TREND_METRICS]),
+      ),
+      rollupTenantScope(),
+    ))
+    .groupBy(analyticsDailyRollup.statDate, analyticsDailyRollup.metric);
+
+  const byDay = new Map<string, TrendPoint>();
+  for (const r of rollupRows) {
+    const item = byDay.get(r.statDate) ?? { pv: 0, uv: 0, sessions: 0, events: 0 };
+    item[r.metric as TrendMetric] = Number(r.value);
+    byDay.set(r.statDate, item);
+  }
+
+  // ── 今天（rollup 只聚合完整自然日）与缺失日期（cron 未跑）回退原始表实时聚合 ──
+  const missing = dates.filter((d) => d === today || !byDay.has(d));
+  if (missing.length > 0) {
+    const rawStart = parseDateRangeStart(missing[0]) ?? startOfDaysAgo(days);
+    const where = mergeWhere(gte(userEvents.createdAt, rawStart), tenantScope(userEvents));
+    const rows = await db
+      .select({
+        day: sql<string>`to_char(timezone(${APP_TIME_ZONE}, ${userEvents.createdAt}), 'YYYY-MM-DD')`,
+        pv: sql<number>`COUNT(*) FILTER (WHERE ${userEvents.eventType} = 'page_view')::int`,
+        uv: countDistinct(userEvents.distinctId),
+        sessions: countDistinct(userEvents.sessionId),
+        events: sql<number>`COUNT(*)::int`,
+      })
+      .from(userEvents)
+      .where(where)
+      .groupBy(sql`1`);
+
+    const missingSet = new Set(missing);
+    for (const r of rows) {
+      if (!missingSet.has(r.day)) continue;
+      byDay.set(r.day, { pv: Number(r.pv), uv: Number(r.uv), sessions: Number(r.sessions), events: Number(r.events) });
+    }
+  }
+
+  const pick = (key: TrendMetric) => dates.map((d) => Number(byDay.get(d)?.[key] ?? 0));
 
   return {
     dates,
