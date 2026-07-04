@@ -1,4 +1,4 @@
-import { and, eq, gte, lt, isNotNull, sql, countDistinct, desc, like, notExists, inArray } from 'drizzle-orm';
+import { and, eq, gte, lt, isNotNull, sql, countDistinct, desc, like, notExists, inArray, type SQL } from 'drizzle-orm';
 import { alias, type PgColumn } from 'drizzle-orm/pg-core';
 import { db } from '../../db';
 import { userEvents, analyticsSessions, analyticsDailyRollup } from '../../db/schema';
@@ -10,7 +10,7 @@ import { formatNullableDateTime, formatDateTime, formatDate, APP_TIME_ZONE, pars
 import { pageOffset } from '../../lib/pagination';
 import { parseClientEnv, lookupIpGeo, clampDays, clampLimit, startOfDaysAgo } from '../../lib/analytics-helpers';
 import { touchEventMeta } from './analytics-event-meta.service';
-import { rollupTenantScope } from './analytics-rollup.service';
+import { rollupTenantScope, ROLLUP_DIM_TYPES } from './analytics-rollup.service';
 
 // ════════════════════════════════════════════════════════════════════════════
 // 采集（ingest）
@@ -577,29 +577,29 @@ export interface FunnelStep { eventType?: UserBehaviorEventType; eventName?: str
 export async function getFunnel(input: { days: number; steps: FunnelStep[] }) {
   const days = clampDays(input.days, 30);
   const start = startOfDaysAgo(days);
+  if (input.steps.length === 0) return { steps: [], totalUsers: 0, overallConversionRate: 0 };
 
-  const stepUserSets: Set<string>[] = [];
-  for (const step of input.steps) {
+  // 递进 CTE 全库内求交（集合语义，与原实现一致）：s0 = 完成第 1 步的用户集，
+  // sN = sN-1 ∩ 完成第 N+1 步；不再受 10 万行内存截断限制
+  const ctes: SQL[] = input.steps.map((step, i) => {
     const conditions = [gte(userEvents.createdAt, start), isNotNull(userEvents.distinctId)];
     if (step.eventType) conditions.push(eq(userEvents.eventType, step.eventType));
     if (step.eventName) conditions.push(eq(userEvents.eventName, step.eventName));
     if (step.pagePath) conditions.push(eq(userEvents.pagePath, step.pagePath));
     if (step.elementKey) conditions.push(eq(userEvents.elementKey, step.elementKey));
-    const where = mergeWhere(and(...conditions), tenantScope(userEvents));
-    const rows = await db.selectDistinct({ distinctId: userEvents.distinctId }).from(userEvents).where(where).limit(100_000);
-    stepUserSets.push(new Set(rows.map((r) => r.distinctId).filter((d): d is string => d != null)));
-  }
+    const where = mergeWhere(and(...conditions), tenantScope(userEvents))!;
+    return i === 0
+      ? sql`${sql.raw(`s${i}`)} AS (SELECT DISTINCT ${userEvents.distinctId} AS distinct_id FROM ${userEvents} WHERE ${where})`
+      : sql`${sql.raw(`s${i}`)} AS (SELECT DISTINCT ${userEvents.distinctId} AS distinct_id FROM ${userEvents} JOIN ${sql.raw(`s${i - 1}`)} prev ON prev.distinct_id = ${userEvents.distinctId} WHERE ${where})`;
+  });
+  const countSelects = input.steps.map((_, i) => sql`(SELECT COUNT(*) FROM ${sql.raw(`s${i}`)})::int AS ${sql.raw(`c${i}`)}`);
+  const rows = (await db.execute(sql`WITH ${sql.join(ctes, sql`, `)} SELECT ${sql.join(countSelects, sql`, `)}`)) as unknown as Array<Record<string, number>>;
+  const countRow = rows[0] ?? {};
 
-  let cumulative = stepUserSets[0] ?? new Set<string>();
-  const totalUsers = cumulative.size;
+  const totalUsers = Number(countRow.c0 ?? 0);
   let prevUsers = totalUsers;
   const steps = input.steps.map((step, i) => {
-    if (i > 0) {
-      const next = new Set<string>();
-      for (const d of cumulative) if (stepUserSets[i].has(d)) next.add(d);
-      cumulative = next;
-    }
-    const users = cumulative.size;
+    const users = Number(countRow[`c${i}`] ?? 0);
     const result = {
       label: step.label,
       users,
@@ -622,36 +622,40 @@ export async function getFunnel(input: { days: number; steps: FunnelStep[] }) {
 export async function getRetention(daysRaw: unknown) {
   const days = clampDays(daysRaw, 14, 60);
   const start = startOfDaysAgo(days);
-  const where = mergeWhere(and(gte(userEvents.createdAt, start), isNotNull(userEvents.distinctId)), tenantScope(userEvents));
+  const where = mergeWhere(and(gte(userEvents.createdAt, start), isNotNull(userEvents.distinctId)), tenantScope(userEvents))!;
 
-  const rows = await db
-    .select({ distinctId: userEvents.distinctId, day: sql<string>`to_char(timezone(${APP_TIME_ZONE}, ${userEvents.createdAt}), 'YYYY-MM-DD')` })
-    .from(userEvents)
-    .where(where)
-    .groupBy(sql`1, 2`);
+  // 单条 SQL 产出（首访日 × 活跃日）去重用户矩阵，避免全量用户-日期对进内存
+  const rows = (await db.execute(sql`
+    WITH user_days AS (
+      SELECT DISTINCT ${userEvents.distinctId} AS distinct_id,
+             to_char(timezone(${APP_TIME_ZONE}, ${userEvents.createdAt}), 'YYYY-MM-DD') AS day
+      FROM ${userEvents}
+      WHERE ${where}
+    ),
+    first_day AS (
+      SELECT distinct_id, MIN(day) AS cohort_date FROM user_days GROUP BY 1
+    )
+    SELECT f.cohort_date AS cohort_date, ud.day AS day, COUNT(*)::int AS active
+    FROM user_days ud
+    JOIN first_day f ON f.distinct_id = ud.distinct_id
+    GROUP BY 1, 2
+  `)) as unknown as Array<{ cohort_date: string; day: string; active: number }>;
 
-  const userDays = new Map<string, Set<string>>();
-  for (const r of rows) {
-    if (!r.distinctId) continue;
-    if (!userDays.has(r.distinctId)) userDays.set(r.distinctId, new Set());
-    userDays.get(r.distinctId)!.add(r.day);
-  }
-
-  const firstDayOf = new Map<string, string>();
-  for (const [u, set] of userDays) firstDayOf.set(u, Array.from(set).sort()[0]);
+  const matrix = new Map<string, number>();
+  for (const r of rows) matrix.set(`${r.cohort_date}\u0001${r.day}`, Number(r.active));
 
   const axis = dateAxis(days);
   const maxPeriods = Math.min(days, 8);
   const periods = Array.from({ length: maxPeriods }, (_, i) => i);
 
   const cohorts = axis.map((cohortDate, ci) => {
-    const cohortUsers = [...firstDayOf.entries()].filter(([, d]) => d === cohortDate).map(([u]) => u);
-    const size = cohortUsers.length;
+    // 队列用户首日必然活跃：矩阵对角线即队列规模
+    const size = matrix.get(`${cohortDate}\u0001${cohortDate}`) ?? 0;
     const values = periods.map((p) => {
       const targetStr = axis[ci + p];
       if (targetStr === undefined) return null;
       if (size === 0) return 0;
-      const active = cohortUsers.filter((u) => userDays.get(u)?.has(targetStr)).length;
+      const active = matrix.get(`${cohortDate}\u0001${targetStr}`) ?? 0;
       return Math.round((active / size) * 1000) / 10;
     });
     return { cohortDate, cohortSize: size, values };
@@ -787,28 +791,69 @@ export async function getDimensionBreakdown(input: { days?: number; dimension: s
   const limit = clampLimit(input.limit, 12, 50);
   const dimension = input.dimension in DIMENSION_COLUMN ? input.dimension : 'browser';
   const col = DIMENSION_COLUMN[dimension];
-  const start = startOfDaysAgo(days);
   const onlyPv = dimension === 'page';
-  const conditions = [gte(userEvents.createdAt, start)];
-  if (onlyPv) conditions.push(eq(userEvents.eventType, 'page_view'));
-  const where = mergeWhere(and(...conditions), tenantScope(userEvents));
+  const dates = dateAxis(days);
+  const today = dates[dates.length - 1];
+  const unknownLabel = dimension === 'referrer' || dimension === 'source' ? '直接访问' : '未知';
 
-  const [rows, total] = await Promise.all([
-    db
-      .select({ name: sql<string | null>`${col}`, value: sql<number>`COUNT(*)::int` })
+  const counts = new Map<string, number>(); // key: 维度值（'' = NULL 哨兵）
+  let total = 0;
+  const coveredDays = new Set<string>();
+
+  // ── 低基数维度历史日走预聚合（referrer/source 基数不可控，始终走 raw）────────
+  if (ROLLUP_DIM_TYPES.has(dimension)) {
+    const rows = await db
+      .select({
+        statDate: analyticsDailyRollup.statDate,
+        dimValue: analyticsDailyRollup.dimValue,
+        value: sql<number>`SUM(${analyticsDailyRollup.value})`,
+      })
+      .from(analyticsDailyRollup)
+      .where(mergeWhere(
+        and(eq(analyticsDailyRollup.dimType, dimension), gte(analyticsDailyRollup.statDate, dates[0])),
+        rollupTenantScope(),
+      ))
+      .groupBy(analyticsDailyRollup.statDate, analyticsDailyRollup.dimValue);
+    for (const r of rows) {
+      coveredDays.add(r.statDate);
+      counts.set(r.dimValue, (counts.get(r.dimValue) ?? 0) + Number(r.value));
+      total += Number(r.value);
+    }
+  }
+
+  // ── 今天与 rollup 未覆盖的日期回退原始表 ────────────────────────────────────
+  const missing = dates.filter((d) => d === today || !coveredDays.has(d));
+  if (missing.length > 0) {
+    const rawStart = parseDateRangeStart(missing[0]) ?? startOfDaysAgo(days);
+    const conditions = [gte(userEvents.createdAt, rawStart)];
+    if (onlyPv) conditions.push(eq(userEvents.eventType, 'page_view'));
+    const where = mergeWhere(and(...conditions), tenantScope(userEvents));
+    const rows = await db
+      .select({
+        day: sql<string>`to_char(timezone(${APP_TIME_ZONE}, ${userEvents.createdAt}), 'YYYY-MM-DD')`,
+        name: sql<string | null>`${col}`,
+        value: sql<number>`COUNT(*)::int`,
+      })
       .from(userEvents)
       .where(where)
-      .groupBy(col)
-      .orderBy(sql`COUNT(*) DESC`)
-      .limit(limit),
-    db.$count(userEvents, where),
-  ]);
+      .groupBy(sql`1`, col);
+    const missingSet = new Set(missing);
+    for (const r of rows) {
+      if (!missingSet.has(r.day)) continue;
+      const key = r.name ?? '';
+      counts.set(key, (counts.get(key) ?? 0) + Number(r.value));
+      total += Number(r.value);
+    }
+  }
 
-  const items = rows.map((r) => ({
-    name: r.name ?? (dimension === 'referrer' || dimension === 'source' ? '直接访问' : '未知'),
-    value: Number(r.value),
-    percent: total > 0 ? Math.round((Number(r.value) / total) * 1000) / 10 : 0,
-  }));
+  const items = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([name, value]) => ({
+      name: name || unknownLabel,
+      value,
+      percent: total > 0 ? Math.round((value / total) * 1000) / 10 : 0,
+    }));
   return { dimension, total, items };
 }
 

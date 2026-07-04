@@ -11,6 +11,7 @@ import { formatDateTime, formatNullableDateTime, formatDate, APP_TIME_ZONE, pars
 import { pageOffset } from '../../lib/pagination';
 import { parseClientEnv, computeErrorFingerprint, startOfDaysAgo, clampDays, clampLimit } from '../../lib/analytics-helpers';
 import { symbolicateStack } from '../../lib/source-map-symbolicate';
+import { evaluateAlertsForError } from './error-alert.service';
 
 export interface ErrorReqCtx { ip: string; ua: string }
 
@@ -148,6 +149,10 @@ export async function reportError(input: {
     httpMethod: input.httpMethod ?? null,
     httpUrl: input.httpUrl ?? null,
   });
+
+  // 实时告警联动（best-effort，不阻塞上报响应）；count===1 表示本次新建分组
+  void evaluateAlertsForError({ tenantId, errorType: input.errorType, level, isNewGroup: group.count === 1 })
+    .catch(() => { /* cron 保底，评估失败不影响上报 */ });
 }
 
 // ─── 分组列表 ─────────────────────────────────────────────────────────────────

@@ -15,6 +15,13 @@
       "when": 1783166052499,
       "tag": "0001_magenta_nitro",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783167536131,
+      "tag": "0002_uneven_thunderbolt_ross",
+      "breakpoints": true
     }
   ]
 }

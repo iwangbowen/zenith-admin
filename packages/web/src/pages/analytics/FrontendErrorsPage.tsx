@@ -56,6 +56,7 @@ import {
 import AppModal from '@/components/AppModal';
 import type {
   ErrorAlertCondition,
+  ErrorAlertLog,
   ErrorAlertRule,
   ErrorBreadcrumb,
   ErrorEvent,
@@ -77,6 +78,7 @@ import {
   useDeleteFrontendAlert,
   useDeleteFrontendSourceMap,
   useFrontendAdminUsers,
+  useFrontendAlertLogs,
   useFrontendAlerts,
   useFrontendErrorEvents,
   useFrontendErrorGroupDetail,
@@ -161,7 +163,7 @@ interface AlertFormState {
   enabled: boolean;
 }
 
-type TabKey = 'overview' | 'issues' | 'events' | 'sourcemaps' | 'alerts';
+type TabKey = 'overview' | 'issues' | 'events' | 'sourcemaps' | 'alerts' | 'alertlogs';
 
 const defaultIssueFilters: IssueFilters = { status: '', errorType: '', level: '', keyword: '' };
 const EMPTY_ADMIN_USERS: { id: number; nickname?: string | null; username: string }[] = [];
@@ -378,6 +380,11 @@ export default function FrontendErrorsPage() {
     pageSize: alertPageSize,
     buildPagination: buildAlertPagination,
   } = usePagination(20);
+  const {
+    page: alertLogPage,
+    pageSize: alertLogPageSize,
+    buildPagination: buildAlertLogPagination,
+  } = usePagination(20);
   const typeOptions = useMemo(() => labelOptions(ERROR_TYPE_CONFIG), []);
   const levelOptions = useMemo(() => labelOptions(LEVEL_CONFIG), []);
   const statusOptions = useMemo(() => labelOptions(STATUS_CONFIG), []);
@@ -402,6 +409,8 @@ export default function FrontendErrorsPage() {
   const sourceMaps = sourceMapsQuery.data ?? null;
   const alertsQuery = useFrontendAlerts({ page: alertPage, pageSize: alertPageSize }, activeTab === 'alerts');
   const alerts = alertsQuery.data ?? null;
+  const alertLogsQuery = useFrontendAlertLogs({ page: alertLogPage, pageSize: alertLogPageSize }, activeTab === 'alertlogs');
+  const alertLogs = alertLogsQuery.data ?? null;
   const updateGroupMutation = useUpdateFrontendErrorGroup();
   const batchStatusMutation = useBatchUpdateFrontendErrorGroups();
   const batchDeleteMutation = useBatchDeleteFrontendErrorGroups();
@@ -783,6 +792,33 @@ export default function FrontendErrorsPage() {
     }),
   ], [deleteAlert, openAlertModal, toggleAlert]);
 
+  const alertLogColumns = useMemo<ColumnProps<ErrorAlertLog>[]>(() => [
+    { title: '触发时间', dataIndex: 'createdAt', width: 180, render: (_value, record) => formatDateTime(record.createdAt) },
+    { title: '规则', dataIndex: 'ruleName', width: 180 },
+    { title: '条件', dataIndex: 'condition', width: 100, render: (_value, record) => CONDITION_CONFIG[record.condition] },
+    { title: '详情', dataIndex: 'detail' },
+    {
+      title: '渠道',
+      dataIndex: 'channels',
+      width: 180,
+      render: (_value, record) => (
+        <Space spacing={4} wrap>
+          {record.channels.length > 0 ? record.channels.map((channel) => (
+            <Tag key={channel} color={CHANNEL_CONFIG[channel]?.color ?? 'grey'}>{CHANNEL_CONFIG[channel]?.label ?? channel}</Tag>
+          )) : <Text type="tertiary">未配置</Text>}
+        </Space>
+      ),
+    },
+    {
+      title: '来源',
+      dataIndex: 'source',
+      width: 100,
+      render: (_value, record) => (
+        <Tag color={record.source === 'realtime' ? 'orange' : 'blue'}>{record.source === 'realtime' ? '实时触发' : '定时评估'}</Tag>
+      ),
+    },
+  ], []);
+
   const overviewTypeData = (overview?.byType ?? []).map((item) => ({
     name: ERROR_TYPE_CONFIG[item.errorType]?.label ?? item.errorType,
     value: item.occurrences,
@@ -1139,6 +1175,21 @@ export default function FrontendErrorsPage() {
             pagination={buildAlertPagination(alerts?.total ?? 0)}
             scroll={{ x: 1320 }}
             empty="暂无告警规则"
+          />
+        </TabPane>
+
+        <TabPane tab="告警历史" itemKey="alertlogs">
+          <ConfigurableTable<ErrorAlertLog>
+            bordered
+            rowKey="id"
+            columns={alertLogColumns}
+            dataSource={alertLogs?.list ?? []}
+            loading={alertLogsQuery.isFetching}
+            onRefresh={() => void alertLogsQuery.refetch()}
+            refreshLoading={alertLogsQuery.isFetching}
+            pagination={buildAlertLogPagination(alertLogs?.total ?? 0)}
+            scroll={{ x: 1100 }}
+            empty="暂无告警触发记录"
           />
         </TabPane>
       </Tabs>

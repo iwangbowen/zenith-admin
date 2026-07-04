@@ -167,6 +167,19 @@ export const CreateErrorAlertRuleDTO = z
   .openapi('CreateErrorAlertRule');
 export const UpdateErrorAlertRuleDTO = CreateErrorAlertRuleDTO.partial().openapi('UpdateErrorAlertRule');
 
+export const ErrorAlertLogDTO = z
+  .object({
+    id: z.number().int(),
+    ruleId: z.number().int().nullable(),
+    ruleName: z.string(),
+    condition: conditionEnum,
+    detail: z.string(),
+    channels: z.array(z.string()),
+    source: z.string(),
+    createdAt: z.string(),
+  })
+  .openapi('ErrorAlertLog');
+
 // ─── Source Map ──────────────────────────────────────────────────────────────
 export const SourceMapItemDTO = z
   .object({

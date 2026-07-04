@@ -773,6 +773,17 @@ export interface ErrorAlertRule {
   updatedAt: string;
 }
 
+export interface ErrorAlertLog {
+  id: number;
+  ruleId: number | null;
+  ruleName: string;
+  condition: ErrorAlertCondition;
+  detail: string;
+  channels: string[];
+  source: string;
+  createdAt: string;
+}
+
 // ─── 系统监控告警 ─────────────────────────────────────────────────────────────
 export type MonitorMetric =
   | 'cpu' | 'memory' | 'disk' | 'swap' | 'load1' | 'procCpu' | 'heap'

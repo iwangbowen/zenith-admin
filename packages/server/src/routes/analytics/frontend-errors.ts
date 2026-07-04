@@ -8,7 +8,7 @@ import {
 } from '../../lib/openapi-schemas';
 import {
   ErrorReportInputDTO, ErrorGroupDTO, ErrorGroupDetailDTO, ErrorEventDTO, ErrorOverviewDTO,
-  UpdateErrorGroupDTO, ErrorAlertRuleDTO, CreateErrorAlertRuleDTO, UpdateErrorAlertRuleDTO,
+  UpdateErrorGroupDTO, ErrorAlertRuleDTO, CreateErrorAlertRuleDTO, UpdateErrorAlertRuleDTO, ErrorAlertLogDTO,
   SourceMapItemDTO, SourceMapUploadDTO,
 } from '../../lib/openapi-dtos';
 import { getClientIp } from '../../lib/request-helpers';
@@ -16,7 +16,7 @@ import {
   reportError, getErrorOverview, listGroups, getGroupDetail, updateGroup, batchUpdateGroupStatus,
   deleteGroups, listErrorEvents, cleanErrors, uploadSourceMap, listSourceMaps, deleteSourceMap,
 } from '../../services/analytics/frontend-errors.service';
-import { listAlertRules, createAlertRule, updateAlertRule, deleteAlertRule } from '../../services/analytics/error-alert.service';
+import { listAlertRules, createAlertRule, updateAlertRule, deleteAlertRule, listAlertLogs } from '../../services/analytics/error-alert.service';
 
 const r = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -209,12 +209,22 @@ const alertDeleteRoute = defineOpenAPIRoute({
   },
 });
 
+const alertLogListRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/alert-logs', tags: ['FrontendErrors'], summary: '告警触发历史', security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'monitor:alert:list' })] as const,
+    request: { query: PaginationQuery.extend({ ruleId: z.coerce.number().int().optional() }) },
+    responses: { ...okPaginated(ErrorAlertLogDTO, '告警历史'), ...commonErrorResponses },
+  }),
+  handler: async (c) => c.json(okBody(await listAlertLogs(c.req.valid('query'))), 200),
+});
+
 r.openapiRoutes([
   reportRoute, overviewRoute,
   groupListRoute, batchStatusRoute, batchDeleteRoute, groupDetailRoute, groupUpdateRoute,
   eventListRoute, cleanRoute,
   sourceMapListRoute, sourceMapUploadRoute, sourceMapDeleteRoute,
-  alertListRoute, alertCreateRoute, alertUpdateRoute, alertDeleteRoute,
+  alertListRoute, alertCreateRoute, alertUpdateRoute, alertDeleteRoute, alertLogListRoute,
 ] as const);
 
 export default r;

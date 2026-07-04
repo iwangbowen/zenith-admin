@@ -8,9 +8,21 @@ import { config } from '../../config';
 import { currentUser } from '../../lib/context';
 import { isPlatformAdmin, getEffectiveTenantId } from '../../lib/tenant';
 
-interface RollupRow { tenantId: number; statDate: string; metric: string; value: number }
+interface RollupRow { tenantId: number; statDate: string; metric: string; dimType: string; dimValue: string; value: number }
 
 const DAY_MS = 86_400_000;
+
+// 参与每日预聚合的低基数维度（referrer/utmSource 基数不可控，留在 raw 查询路径）
+const DIM_SOURCES = [
+  { dimType: 'browser', col: userEvents.browser, metric: 'events', onlyPv: false },
+  { dimType: 'os', col: userEvents.os, metric: 'events', onlyPv: false },
+  { dimType: 'device', col: userEvents.deviceType, metric: 'events', onlyPv: false },
+  { dimType: 'region', col: userEvents.region, metric: 'events', onlyPv: false },
+  { dimType: 'page', col: userEvents.pagePath, metric: 'pv', onlyPv: true },
+] as const;
+
+/** getDimensionBreakdown 可走预聚合的维度集合。 */
+export const ROLLUP_DIM_TYPES: ReadonlySet<string> = new Set(DIM_SOURCES.map((d) => d.dimType));
 
 function appTodayStart(): Date {
   return parseDateRangeStart(formatDate(new Date())) ?? new Date();
@@ -28,7 +40,7 @@ export function rollupTenantScope(): SQL | undefined {
   return eq(analyticsDailyRollup.tenantId, effective ?? 0);
 }
 
-/** 重建最近 days 个完整自然日的每日聚合（overall 维度）。 */
+/** 重建最近 days 个完整自然日的每日聚合（overall 总量 + 低基数维度分布）。 */
 export async function rebuildRollup(daysRaw: unknown): Promise<number> {
   const days = clampDays(daysRaw, 30, 730);
   const todayStart = appTodayStart();
@@ -59,28 +71,49 @@ export async function rebuildRollup(daysRaw: unknown): Promise<number> {
     .groupBy(sql`1, 2`);
 
   const upserts: RollupRow[] = [];
+  const overall = (r: { tenantId: number; statDate: string }, metric: string, value: number) =>
+    upserts.push({ tenantId: Number(r.tenantId), statDate: r.statDate, metric, dimType: 'overall', dimValue: '', value });
+
   for (const r of eventRows) {
-    upserts.push(
-      { tenantId: Number(r.tenantId), statDate: r.statDate, metric: 'pv', value: Number(r.pv) },
-      { tenantId: Number(r.tenantId), statDate: r.statDate, metric: 'uv', value: Number(r.uv) },
-      { tenantId: Number(r.tenantId), statDate: r.statDate, metric: 'events', value: Number(r.events) },
-      { tenantId: Number(r.tenantId), statDate: r.statDate, metric: 'sessions', value: Number(r.sessions) },
-    );
+    overall(r, 'pv', Number(r.pv));
+    overall(r, 'uv', Number(r.uv));
+    overall(r, 'events', Number(r.events));
+    overall(r, 'sessions', Number(r.sessions));
   }
   for (const r of sessionRows) {
-    upserts.push(
-      { tenantId: Number(r.tenantId), statDate: r.statDate, metric: 'bounce_sessions', value: Number(r.bounce) },
-      { tenantId: Number(r.tenantId), statDate: r.statDate, metric: 'total_dwell_ms', value: Number(r.dwell) },
-    );
+    overall(r, 'bounce_sessions', Number(r.bounce));
+    overall(r, 'total_dwell_ms', Number(r.dwell));
   }
 
-  for (const u of upserts) {
+  // ── 维度聚合（NULL 维度值以 '' 哨兵存储，查询侧映射回「未知」）──────────────
+  for (const dim of DIM_SOURCES) {
+    const conditions = [gte(userEvents.createdAt, start), lt(userEvents.createdAt, todayStart)];
+    if (dim.onlyPv) conditions.push(eq(userEvents.eventType, 'page_view'));
+    const rows = await db
+      .select({
+        tenantId: sql<number>`COALESCE(${userEvents.tenantId}, 0)`,
+        statDate: sql<string>`to_char(timezone(${APP_TIME_ZONE}, ${userEvents.createdAt}), 'YYYY-MM-DD')`,
+        dimValue: sql<string>`COALESCE(${dim.col}::text, '')`,
+        value: sql<number>`COUNT(*)::int`,
+      })
+      .from(userEvents)
+      .where(and(...conditions))
+      .groupBy(sql`1, 2, 3`);
+    for (const r of rows) {
+      upserts.push({ tenantId: Number(r.tenantId), statDate: r.statDate, metric: dim.metric, dimType: dim.dimType, dimValue: r.dimValue.slice(0, 256), value: Number(r.value) });
+    }
+  }
+
+  // 批量 UPSERT（分片规避参数上限；同批内 (tenant,date,metric,dim,dimValue) 天然唯一）
+  const CHUNK = 500;
+  for (let i = 0; i < upserts.length; i += CHUNK) {
+    const chunk = upserts.slice(i, i + CHUNK);
     await db
       .insert(analyticsDailyRollup)
-      .values({ tenantId: u.tenantId, statDate: u.statDate, metric: u.metric, dimType: 'overall', dimValue: '', value: u.value })
+      .values(chunk)
       .onConflictDoUpdate({
         target: [analyticsDailyRollup.tenantId, analyticsDailyRollup.statDate, analyticsDailyRollup.metric, analyticsDailyRollup.dimType, analyticsDailyRollup.dimValue],
-        set: { value: u.value },
+        set: { value: sql`excluded.value` },
       });
   }
 

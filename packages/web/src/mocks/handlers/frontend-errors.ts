@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import type {
-  ErrorGroup, ErrorEvent, ErrorOverview, SourceMapItem, ErrorAlertRule, PaginatedResponse,
+  ErrorGroup, ErrorEvent, ErrorOverview, SourceMapItem, ErrorAlertRule, ErrorAlertLog, PaginatedResponse,
   FrontendErrorType, ErrorLevel,
 } from '@zenith/shared';
 import { mockDateTime, mockDateTimeOffset, mockDateOffset } from '../utils/date';
@@ -86,6 +86,17 @@ let mockAlerts: ErrorAlertRule[] = [
   { id: 2, name: '错误激增告警', errorType: null, level: null, condition: 'spike', thresholdCount: 50, windowMinutes: 30, channels: ['inapp'], webhookUrl: null, recipients: [], enabled: true, lastTriggeredAt: null, createdAt: mockDateTimeOffset(-8 * 86400000), updatedAt: mockDateTime() },
 ];
 let nextAlertId = 3;
+
+const mockAlertLogs: ErrorAlertLog[] = Array.from({ length: 26 }, (_, i) => ({
+  id: 500 - i,
+  ruleId: (i % 3 === 0 ? 2 : 1),
+  ruleName: i % 3 === 0 ? '错误激增告警' : '致命错误即时告警',
+  condition: (i % 3 === 0 ? 'spike' : 'new_error') as ErrorAlertLog['condition'],
+  detail: i % 3 === 0 ? `错误激增：当前周期 ${rand(60, 160)} 次，上一周期 ${rand(5, 25)} 次` : '出现新类型错误（实时检测）',
+  channels: i % 3 === 0 ? ['inapp'] : ['email', 'webhook'],
+  source: i % 2 === 0 ? 'realtime' : 'cron',
+  createdAt: mockDateTimeOffset(-i * 5400000),
+}));
 
 export const frontendErrorsHandlers = [
   http.post('/api/frontend-errors', () => ok(null, '上报成功')),
@@ -204,6 +215,15 @@ export const frontendErrorsHandlers = [
   http.delete('/api/frontend-errors/alerts/:id', ({ params }) => {
     mockAlerts = mockAlerts.filter((a) => a.id !== Number(params.id));
     return ok(null, '删除成功');
+  }),
+
+  http.get('/api/frontend-errors/alert-logs', ({ request }) => {
+    const u = new URL(request.url);
+    const page = Number(u.searchParams.get('page')) || 1;
+    const pageSize = Number(u.searchParams.get('pageSize')) || 20;
+    const ruleId = u.searchParams.get('ruleId');
+    const list = ruleId ? mockAlertLogs.filter((l) => l.ruleId === Number(ruleId)) : mockAlertLogs;
+    return ok<PaginatedResponse<ErrorAlertLog>>({ list: list.slice((page - 1) * pageSize, page * pageSize), total: list.length, page, pageSize });
   }),
 ];
 

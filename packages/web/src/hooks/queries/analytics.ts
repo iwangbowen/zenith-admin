@@ -4,6 +4,7 @@ import type {
   AnalyticsOverview,
   AnalyticsSettings,
   ErrorAlertRule,
+  ErrorAlertLog,
   ErrorEvent,
   ErrorGroup,
   ErrorOverview,
@@ -118,6 +119,7 @@ export const analyticsKeys = {
     sourceMaps: (params: FrontendSourceMapParams) => ['analytics', 'frontend-errors', 'source-maps', params] as const,
     alertsLists: ['analytics', 'frontend-errors', 'alerts'] as const,
     alerts: (params: FrontendSimplePageParams) => ['analytics', 'frontend-errors', 'alerts', params] as const,
+    alertLogs: (params: FrontendSimplePageParams) => ['analytics', 'frontend-errors', 'alert-logs', params] as const,
     adminUsers: ['analytics', 'frontend-errors', 'admin-users'] as const,
   },
 };
@@ -426,5 +428,14 @@ export function useDeleteFrontendAlert() {
   return useMutation({
     mutationFn: (id: number) => request.delete<null>(`/api/frontend-errors/alerts/${id}`).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: analyticsKeys.frontendErrors.alertsLists }),
+  });
+}
+
+export function useFrontendAlertLogs(params: FrontendSimplePageParams, enabled = true) {
+  return useQuery({
+    queryKey: analyticsKeys.frontendErrors.alertLogs(params),
+    queryFn: () => request.get<PaginatedResponse<ErrorAlertLog>>(`/api/frontend-errors/alert-logs${toQueryString(params)}`).then(unwrap),
+    placeholderData: keepPreviousData,
+    enabled,
   });
 }

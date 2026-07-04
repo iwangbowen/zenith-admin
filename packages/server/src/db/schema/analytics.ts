@@ -303,6 +303,27 @@ export type ErrorAlertRuleRow = typeof errorAlertRules.$inferSelect;
 
 export type NewErrorAlertRule = typeof errorAlertRules.$inferInsert;
 
+// 告警触发历史（规则命中即记录，供回溯与审计）
+export const errorAlertLogs = pgTable('error_alert_logs', {
+  id: serial('id').primaryKey(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ruleId: integer('rule_id').references(() => errorAlertRules.id, { onDelete: 'set null' }),
+  ruleName: varchar('rule_name', { length: 128 }).notNull(),
+  condition: errorAlertConditionEnum('condition').notNull(),
+  detail: text('detail').notNull(),
+  channels: jsonb('channels').$type<string[]>().notNull().default([]),
+  source: varchar('source', { length: 16 }).notNull().default('cron'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('error_alert_logs_created_idx').on(t.createdAt),
+  index('error_alert_logs_rule_idx').on(t.ruleId),
+  index('error_alert_logs_tenant_idx').on(t.tenantId),
+]);
+
+export type ErrorAlertLogRow = typeof errorAlertLogs.$inferSelect;
+
+export type NewErrorAlertLog = typeof errorAlertLogs.$inferInsert;
+
 // Source Map（用于压缩堆栈还原）— 服务层以 replace 语义维护，无需唯一约束
 export const sourceMaps = pgTable('source_maps', {
   id: serial('id').primaryKey(),
