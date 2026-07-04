@@ -36,7 +36,7 @@ export function usePaymentReconBatchList(params: PaymentReconBatchListParams) {
 export function usePaymentReconItems(params: PaymentReconItemListParams, enabled = true) {
   const { batchId, ...query } = params;
   return useQuery({
-    queryKey: paymentReconKeys.items(params),
+    queryKey: paymentReconKeys.items({ batchId, ...query }),
     queryFn: () => request.get<PaginatedResponse<PaymentReconItem>>(`/api/payment/recon/batches/${batchId}/items${toQueryString(query)}`).then(unwrap),
     placeholderData: keepPreviousData,
     enabled: enabled && batchId !== undefined,

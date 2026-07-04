@@ -86,7 +86,7 @@ export const dockerBrowseQueryOptions = (containerId: string, path: string, opti
 });
 
 export const fileContentQueryOptions = (filePath: string, readUrl: string) => ({
-  queryKey: ['terminal-files', 'content', filePath] as const,
+  queryKey: ['terminal-files', 'content', filePath, readUrl] as const,
   queryFn: () => request.get<FileContent | { content: string }>(readUrl).then(unwrap),
 });
 

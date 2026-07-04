@@ -86,7 +86,7 @@ export const memberKeys = {
     milestones: ['member', 'checkin', 'milestones'] as const,
     historyLists: ['member', 'checkin', 'history'] as const,
     history: (params: MemberListParams) => ['member', 'checkin', 'history', params] as const,
-    calendar: (month: string) => ['member', 'checkin', 'calendar', month] as const,
+    calendar: (month: string, dateStart: string, dateEnd: string) => ['member', 'checkin', 'calendar', month, dateStart, dateEnd] as const,
   },
   transactions: {
     lists: ['member', 'transactions', 'list'] as const,
@@ -192,7 +192,7 @@ export function useCheckinHistory(params: MemberListParams) {
 
 export function useCheckinCalendar(monthKey: string, dateStart: string, dateEnd: string) {
   return useQuery({
-    queryKey: memberKeys.checkin.calendar(monthKey),
+    queryKey: memberKeys.checkin.calendar(monthKey, dateStart, dateEnd),
     queryFn: () =>
       memberRequest
         .get<PaginatedResponse<MemberCheckin>>(

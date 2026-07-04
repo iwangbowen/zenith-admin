@@ -502,6 +502,8 @@ export default function FileManagerPage() {
     mutationFn: ({ path, algo }: { path: string; algo: 'md5' | 'sha1' | 'sha256' }) =>
       request.get<{ algo: string; hash: string; size: number }>(`/api/terminal-files/checksum${toQueryString({ path, algo })}`).then(unwrap),
   });
+  // mutateAsync 引用稳定，可安全作为 useCallback 依赖
+  const { mutateAsync: checksumMutateAsync } = checksumMutation;
   const searchMutation = useMutation({
     mutationFn: ({ dir, keyword }: { dir: string; keyword: string }) =>
       request.get<FsEntry[]>(`/api/terminal-files/search${toQueryString({ dir, keyword })}`).then(unwrap),
@@ -575,12 +577,12 @@ export default function FileManagerPage() {
   const fetchPropsChecksum = useCallback(async (entry: FsEntry, algo: 'md5' | 'sha1' | 'sha256') => {
     setPropsChecksum({ algo, hash: '', loading: true });
     try {
-      const res = await checksumMutation.mutateAsync({ path: entry.path, algo });
+      const res = await checksumMutateAsync({ path: entry.path, algo });
       setPropsChecksum({ algo, hash: res.hash, loading: false });
     } catch {
       setPropsChecksum({ algo, hash: '计算失败', loading: false });
     }
-  }, [checksumMutation]);
+  }, [checksumMutateAsync]);
 
   // ── 过滤 + 侧栏 ───────────────────────────────────────────────────────────
 

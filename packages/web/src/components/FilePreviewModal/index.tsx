@@ -107,7 +107,7 @@ export default function FilePreviewModal({
   }, [fileName, mimeType]);
 
   const previewQuery = useQuery({
-    queryKey: ['files', 'preview', visible, fileUrl, fileId ?? null, fileName, mimeType ?? null],
+    queryKey: ['files', 'preview', visible, fileUrl, fileId ?? null, fileName, mimeType ?? null, previewKind],
     queryFn: async (): Promise<PreviewData> => {
       if (previewKind === 'spreadsheet') {
         if (!fileId) throw new Error('预览 Excel 表格需要传入 fileId');

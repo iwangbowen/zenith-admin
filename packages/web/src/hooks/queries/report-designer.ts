@@ -80,26 +80,27 @@ function errorMessage(error: unknown) {
 }
 
 export function useReportDatasetDataMap(datasetIds: number[], limit = 500) {
+  const queryClient = useQueryClient();
   const ids = useMemo(() => Array.from(new Set(datasetIds.filter((id) => id > 0))).sort((a, b) => a - b), [datasetIds]);
-  const queries = useQueries({
+  // combine：返回值引用稳定（仅底层查询结果变化时重算），可安全用于下游依赖
+  const stateMap = useQueries({
     queries: ids.map((id) => ({
       queryKey: reportDesignerKeys.datasetData(id, {}, limit),
       queryFn: () => request.get<ReportDataResult>(`/api/report/datasets/${id}/data?limit=${limit}`, { silent: true }).then(unwrap),
     })),
-  });
-
-  const stateMap = useMemo(() => {
-    const map = new Map<number, DatasetDataState>();
-    ids.forEach((id, index) => {
-      const query = queries[index];
-      map.set(id, {
-        data: query?.data ?? null,
-        loading: query?.isFetching ?? false,
-        error: query?.error ? errorMessage(query.error) : null,
+    combine: (results) => {
+      const map = new Map<number, DatasetDataState>();
+      ids.forEach((id, index) => {
+        const query = results[index];
+        map.set(id, {
+          data: query?.data ?? null,
+          loading: query?.isFetching ?? false,
+          error: query?.error ? errorMessage(query.error) : null,
+        });
       });
-    });
-    return map;
-  }, [ids, queries]);
+      return map;
+    },
+  });
 
   const get = useCallback((id: number | null | undefined): DatasetDataState => {
     if (!id) return EMPTY_DATASET_STATE;
@@ -107,13 +108,14 @@ export function useReportDatasetDataMap(datasetIds: number[], limit = 500) {
   }, [stateMap]);
 
   const refresh = useCallback(() => {
-    void Promise.all(queries.map((query) => query.refetch()));
-  }, [queries]);
+    void queryClient.refetchQueries({ queryKey: [...reportDesignerKeys.all, 'dataset-data'], type: 'active' });
+  }, [queryClient]);
 
   return { get, refresh };
 }
 
 export function useReportWidgetData(widgets: ReportWidget[], filterValues: Record<string, unknown>, limit = 500) {
+  const queryClient = useQueryClient();
   const entries = useMemo(() => {
     const map = new Map<string, { key: string; datasetId: number; params: Record<string, unknown> }>();
     for (const widget of widgets ?? []) {
@@ -125,25 +127,24 @@ export function useReportWidgetData(widgets: ReportWidget[], filterValues: Recor
     return Array.from(map.values());
   }, [widgets, filterValues]);
 
-  const queries = useQueries({
+  const stateMap = useQueries({
     queries: entries.map((entry) => ({
       queryKey: reportDesignerKeys.datasetData(entry.datasetId, entry.params, limit),
       queryFn: () => request.post<ReportDataResult>(`/api/report/datasets/${entry.datasetId}/data`, { params: entry.params, limit }, { silent: true }).then(unwrap),
     })),
-  });
-
-  const stateMap = useMemo(() => {
-    const map = new Map<string, DatasetDataState>();
-    entries.forEach((entry, index) => {
-      const query = queries[index];
-      map.set(entry.key, {
-        data: query?.data ?? null,
-        loading: query?.isFetching ?? false,
-        error: query?.error ? errorMessage(query.error) : null,
+    combine: (results) => {
+      const map = new Map<string, DatasetDataState>();
+      entries.forEach((entry, index) => {
+        const query = results[index];
+        map.set(entry.key, {
+          data: query?.data ?? null,
+          loading: query?.isFetching ?? false,
+          error: query?.error ? errorMessage(query.error) : null,
+        });
       });
-    });
-    return map;
-  }, [entries, queries]);
+      return map;
+    },
+  });
 
   const get = useCallback((widget: ReportWidget): DatasetDataState => {
     if (!widget.datasetId) return EMPTY_DATASET_STATE;
@@ -152,8 +153,8 @@ export function useReportWidgetData(widgets: ReportWidget[], filterValues: Recor
   }, [filterValues, stateMap]);
 
   const refresh = useCallback(() => {
-    void Promise.all(queries.map((query) => query.refetch()));
-  }, [queries]);
+    void queryClient.refetchQueries({ queryKey: [...reportDesignerKeys.all, 'dataset-data'], type: 'active' });
+  }, [queryClient]);
 
   return { get, refresh };
 }
@@ -171,39 +172,39 @@ export function useReportFilterDynamicOptions(filters: ReportFilter[], disabled?
       enabled: !disabled,
       staleTime: LOOKUP_STALE_TIME,
     })),
+    combine: (results) => {
+      const options: Record<string, { value: string; label: string }[]> = {};
+      sources.forEach((entry, index) => {
+        const result = results[index]?.data;
+        if (!result) return;
+        const valueField = entry.source.valueField || result.columns[0];
+        const labelField = entry.source.labelField || valueField;
+        options[entry.filterId] = result.rows
+          .map((row) => ({ value: String(row[valueField] ?? ''), label: String(row[labelField] ?? row[valueField] ?? '') }))
+          .filter((option) => option.value !== '');
+      });
+      return options;
+    },
   });
 
-  return useMemo(() => {
-    const options: Record<string, { value: string; label: string }[]> = {};
-    sources.forEach((entry, index) => {
-      const result = queries[index]?.data;
-      if (!result) return;
-      const valueField = entry.source.valueField || result.columns[0];
-      const labelField = entry.source.labelField || valueField;
-      options[entry.filterId] = result.rows
-        .map((row) => ({ value: String(row[valueField] ?? ''), label: String(row[labelField] ?? row[valueField] ?? '') }))
-        .filter((option) => option.value !== '');
-    });
-    return options;
-  }, [queries, sources]);
+  return queries;
 }
 
 export function useReportWidgetDictMaps(codes: string[]) {
   const normalizedCodes = useMemo(() => Array.from(new Set(codes.map((code) => code.trim()).filter(Boolean))).sort(), [codes]);
-  const queries = useQueries({
+  return useQueries({
     queries: normalizedCodes.map((code) => ({
       queryKey: reportDesignerKeys.dictItems(code),
       queryFn: () => request.get<DictItem[]>(`/api/dicts/code/${encodeURIComponent(code)}/items`, { silent: true }).then(unwrap),
       staleTime: LOOKUP_STALE_TIME,
     })),
+    combine: (results) => {
+      const maps: Record<string, Record<string, string>> = {};
+      normalizedCodes.forEach((code, index) => {
+        const items = results[index]?.data ?? [];
+        maps[code] = Object.fromEntries(items.map((item) => [item.value, item.label]));
+      });
+      return maps;
+    },
   });
-
-  return useMemo(() => {
-    const maps: Record<string, Record<string, string>> = {};
-    normalizedCodes.forEach((code, index) => {
-      const items = queries[index]?.data ?? [];
-      maps[code] = Object.fromEntries(items.map((item) => [item.value, item.label]));
-    });
-    return maps;
-  }, [normalizedCodes, queries]);
 }

@@ -200,6 +200,7 @@ export function useReportDashboardWidgetData(
   filterValues: Record<string, unknown>,
   options?: { limit?: number; refetchInterval?: number | false },
 ) {
+  const queryClient = useQueryClient();
   const limit = options?.limit ?? 500;
   const entries = useMemo(() => {
     const map = new Map<string, { key: string; datasetId: number; params: Record<string, unknown> }>();
@@ -212,27 +213,27 @@ export function useReportDashboardWidgetData(
     return Array.from(map.values());
   }, [widgets, filterValues]);
 
-  const queries = useQueries({
+  const stateMap = useQueries({
     queries: entries.map((entry) => ({
       queryKey: reportDashboardKeys.widgetData(dashboardId, entry.datasetId, entry.params, limit),
       queryFn: () => request.post<ReportDataResult>(`/api/report/datasets/${entry.datasetId}/data`, { params: entry.params, limit }, { silent: true }).then(unwrap),
       enabled: !!dashboardId,
       refetchInterval: options?.refetchInterval,
     })),
-  });
-
-  const stateMap = useMemo(() => {
-    const map = new Map<string, DashboardWidgetDataState>();
-    entries.forEach((entry, index) => {
-      const query = queries[index];
-      map.set(entry.key, {
-        data: query?.data ?? null,
-        loading: query?.isFetching ?? false,
-        error: query?.error instanceof Error ? query.error.message : null,
+    // combine：返回值引用稳定（仅底层查询结果变化时重算），可安全用于下游依赖
+    combine: (results) => {
+      const map = new Map<string, DashboardWidgetDataState>();
+      entries.forEach((entry, index) => {
+        const query = results[index];
+        map.set(entry.key, {
+          data: query?.data ?? null,
+          loading: query?.isFetching ?? false,
+          error: query?.error instanceof Error ? query.error.message : null,
+        });
       });
-    });
-    return map;
-  }, [entries, queries]);
+      return map;
+    },
+  });
 
   const get = useCallback((widget: ReportWidget): DashboardWidgetDataState => {
     if (!widget.datasetId) return EMPTY_WIDGET_STATE;
@@ -241,8 +242,8 @@ export function useReportDashboardWidgetData(
   }, [filterValues, stateMap]);
 
   const refresh = useCallback(() => {
-    void Promise.all(queries.map((query) => query.refetch()));
-  }, [queries]);
+    void queryClient.refetchQueries({ queryKey: reportDashboardKeys.widgetDataAll(dashboardId), type: 'active' });
+  }, [queryClient, dashboardId]);
 
   return { get, refresh };
 }

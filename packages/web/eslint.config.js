@@ -2,11 +2,20 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
+import pluginQuery from '@tanstack/eslint-plugin-query';
 
 export default [
   { ignores: ['dist/**', 'node_modules/**', 'public/mockServiceWorker.js'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
+  ...pluginQuery.configs['flat/recommended'],
+  {
+    rules: {
+      // queryFn 引用变量必须进 queryKey 的检查误报较多（如 silent 等仅影响行为不影响数据的选项），
+      // 关闭此条；插件其余规则（no-unstable-deps 等）保留
+      '@tanstack/query/exhaustive-deps': 'off',
+    },
+  },
   {
     languageOptions: {
       parserOptions: {
