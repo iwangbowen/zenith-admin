@@ -19,6 +19,9 @@ export interface SessionInfo {
 /** Session TTL: 8 hours (seconds) */
 const SESSION_TTL = 8 * 60 * 60;
 
+/** lastActiveAt 回写节流间隔（毫秒）：TTL 每请求都续，活跃时间戳按此粒度更新 */
+const ACTIVE_AT_REFRESH_MS = 60_000;
+
 /** Blacklist TTL: 2 hours (matches accessToken lifetime, seconds) */
 const BLACKLIST_TTL = 2 * 60 * 60;
 
@@ -45,11 +48,17 @@ export async function registerSession(info: Omit<SessionInfo, 'lastActiveAt'>): 
 /** Refresh session activity timestamp and reset TTL. Returns true if session existed, false if not found. */
 export async function touchSession(tokenId: string): Promise<boolean> {
   const key = `${SESSION_PREFIX}${tokenId}`;
-  const raw = await redis.get(key);
+  // GETEX 单次往返完成读取 + TTL 续期（替代 GET+SET 两次往返）
+  const raw = await redis.getex(key, 'EX', SESSION_TTL);
   if (!raw) return false;
   const session: SessionInfo = JSON.parse(raw);
-  session.lastActiveAt = new Date();
-  await redis.set(key, JSON.stringify(session), 'EX', SESSION_TTL);
+  // lastActiveAt 仅按分钟级精度回写，避免每个请求都 JSON.stringify + SET
+  const lastActive = new Date(session.lastActiveAt).getTime();
+  if (!Number.isFinite(lastActive) || Date.now() - lastActive >= ACTIVE_AT_REFRESH_MS) {
+    session.lastActiveAt = new Date();
+    // XX：仅当 key 仍存在时写入，避免与 forceLogout 的 del 竞争后复活会话
+    await redis.set(key, JSON.stringify(session), 'EX', SESSION_TTL, 'XX');
+  }
   return true;
 }
 

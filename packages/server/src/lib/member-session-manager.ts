@@ -28,6 +28,8 @@ export interface MemberSessionInfo {
 const SESSION_TTL = 8 * 60 * 60;
 /** Blacklist TTL: 2 小时（与 accessToken 一致，秒）*/
 const BLACKLIST_TTL = 2 * 60 * 60;
+/** lastActiveAt 回写节流间隔（毫秒）：TTL 每请求都续，活跃时间戳按此粒度更新 */
+const ACTIVE_AT_REFRESH_MS = 60_000;
 
 const { keyPrefix } = config.redis;
 const SESSION_PREFIX = `${keyPrefix}member-session:`;
@@ -47,11 +49,17 @@ export async function registerMemberSession(info: Omit<MemberSessionInfo, 'lastA
 /** 刷新会话活跃时间并重置 TTL。返回 false 表示会话不存在。 */
 export async function touchMemberSession(tokenId: string): Promise<boolean> {
   const key = `${SESSION_PREFIX}${tokenId}`;
-  const raw = await redis.get(key);
+  // GETEX 单次往返完成读取 + TTL 续期（替代 GET+SET 两次往返）
+  const raw = await redis.getex(key, 'EX', SESSION_TTL);
   if (!raw) return false;
   const session: MemberSessionInfo = JSON.parse(raw);
-  session.lastActiveAt = new Date();
-  await redis.set(key, JSON.stringify(session), 'EX', SESSION_TTL);
+  // lastActiveAt 仅按分钟级精度回写，避免每个请求都 JSON.stringify + SET
+  const lastActive = new Date(session.lastActiveAt).getTime();
+  if (!Number.isFinite(lastActive) || Date.now() - lastActive >= ACTIVE_AT_REFRESH_MS) {
+    session.lastActiveAt = new Date();
+    // XX：仅当 key 仍存在时写入，避免与强制下线的 del 竞争后复活会话
+    await redis.set(key, JSON.stringify(session), 'EX', SESSION_TTL, 'XX');
+  }
   return true;
 }
 

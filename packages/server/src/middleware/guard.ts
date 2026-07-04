@@ -134,27 +134,31 @@ export function guard(opts: GuardOptions) {
       // 捕获操作前快照（由路由处理器通过 setAuditBeforeData 注入）
       const beforeData = c.get('auditBeforeData') as string | undefined;
       const manualAfterData = c.get('auditAfterData') as string | undefined;
-      // 捕获响应体作为操作后快照，同时记录完整响应体
-      let afterData: string | undefined = manualAfterData;
-      let responseBodyStr: string | undefined;
-      try {
-        const cloned = c.res.clone();
-        const rawText = await cloned.text();
-        // 完整响应体（限长 16KB，避免超大 payload）
-        if (rawText && opts.audit.recordResponseBody !== false) {
-          responseBodyStr = rawText.length > 16384 ? `${rawText.slice(0, 16384)}…` : rawText;
-        }
-        const resJson = JSON.parse(rawText) as { code?: number; data?: unknown };
-        if (afterData === undefined && resJson.code === 0 && resJson.data != null) {
-          afterData = JSON.stringify(resJson.data);
-        }
-      } catch {
-        // 响应体非 JSON 或无 data，忽略
-      }
       const durationMs = Date.now() - start;
       const auditOpts = opts.audit;
+      // clone 必须在响应流被消费前同步执行；body 读取与 JSON 解析延后到响应发出之后，
+      // 避免为写审计日志而增加请求延迟
+      const cloned = c.res.clone();
       setImmediate(() => {
-        writeOperationLog(c, auditOpts, durationMs, body, beforeData, afterData, responseBodyStr).catch(() => {});
+        (async () => {
+          // 捕获响应体作为操作后快照，同时记录完整响应体
+          let afterData: string | undefined = manualAfterData;
+          let responseBodyStr: string | undefined;
+          try {
+            const rawText = await cloned.text();
+            // 完整响应体（限长 16KB，避免超大 payload）
+            if (rawText && auditOpts.recordResponseBody !== false) {
+              responseBodyStr = rawText.length > 16384 ? `${rawText.slice(0, 16384)}…` : rawText;
+            }
+            const resJson = JSON.parse(rawText) as { code?: number; data?: unknown };
+            if (afterData === undefined && resJson.code === 0 && resJson.data != null) {
+              afterData = JSON.stringify(resJson.data);
+            }
+          } catch {
+            // 响应体非 JSON 或无 data，忽略
+          }
+          await writeOperationLog(c, auditOpts, durationMs, body, beforeData, afterData, responseBodyStr);
+        })().catch(() => {});
       });
       return;
     }

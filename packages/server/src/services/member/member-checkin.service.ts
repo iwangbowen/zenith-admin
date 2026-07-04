@@ -163,11 +163,16 @@ async function awardMilestones(tx: DbTransaction, memberId: number, totalDays: n
     .where(eq(memberCheckinMilestoneAwards.memberId, memberId));
   const awardedSet = new Set(awardedRows.map((a) => a.milestoneId));
 
-  for (const m of milestones) {
-    if (awardedSet.has(m.id)) continue;
+  const pending = milestones.filter((m) => !awardedSet.has(m.id));
+  if (pending.length === 0) return;
+  // 积分账户只需确保一次，无需每个里程碑重复查询
+  if (pending.some((m) => m.rewardType === 'points' && m.rewardPoints > 0)) {
+    await ensurePointAccount(tx, memberId);
+  }
+
+  for (const m of pending) {
     if (m.rewardType === 'points') {
       if (m.rewardPoints > 0) {
-        await ensurePointAccount(tx, memberId);
         const [acc] = await tx.update(memberPointAccounts).set({
           balance: sql`${memberPointAccounts.balance} + ${m.rewardPoints}`,
           totalEarned: sql`${memberPointAccounts.totalEarned} + ${m.rewardPoints}`,

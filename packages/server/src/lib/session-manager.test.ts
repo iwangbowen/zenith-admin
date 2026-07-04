@@ -30,6 +30,7 @@ import {
 vi.mock('./redis', () => ({
   default: {
     get: vi.fn(),
+    getex: vi.fn(),
     set: vi.fn(),
     del: vi.fn(),
     exists: vi.fn(),
@@ -105,9 +106,22 @@ describe('registerSession', () => {
 });
 
 describe('touchSession', () => {
-  it('session 存在时更新 lastActiveAt 并续期 TTL', async () => {
+  it('session 存在时通过 GETEX 原子续期 TTL', async () => {
     const session = makeSessionInfo({ tokenId: 'xyz' });
-    redisMock.get.mockResolvedValueOnce(JSON.stringify({ ...session, lastActiveAt: new Date() }));
+    redisMock.getex.mockResolvedValueOnce(JSON.stringify({ ...session, lastActiveAt: new Date() }));
+
+    const result = await touchSession('xyz');
+
+    expect(result).toBe(true);
+    expect(redisMock.getex).toHaveBeenCalledWith('zenith:session:xyz', 'EX', 8 * 60 * 60);
+    // lastActiveAt 新鲜（< 60s）时不回写 JSON，节流生效
+    expect(redisMock.set).not.toHaveBeenCalled();
+  });
+
+  it('lastActiveAt 超过节流间隔时回写新的活跃时间（XX 防复活）', async () => {
+    const session = makeSessionInfo({ tokenId: 'xyz' });
+    const staleActiveAt = new Date(Date.now() - 5 * 60 * 1000); // 5 分钟前
+    redisMock.getex.mockResolvedValueOnce(JSON.stringify({ ...session, lastActiveAt: staleActiveAt }));
 
     await touchSession('xyz');
 
@@ -116,16 +130,18 @@ describe('touchSession', () => {
       expect.any(String),
       'EX',
       8 * 60 * 60,
+      'XX',
     );
     const updated = JSON.parse(redisMock.set.mock.calls[0][1] as string);
-    expect(updated).toHaveProperty('lastActiveAt');
+    expect(new Date(updated.lastActiveAt).getTime()).toBeGreaterThan(staleActiveAt.getTime());
   });
 
   it('session 不存在时为 no-op（不写 Redis）', async () => {
-    redisMock.get.mockResolvedValueOnce(null);
+    redisMock.getex.mockResolvedValueOnce(null);
 
-    await touchSession('nonexistent');
+    const result = await touchSession('nonexistent');
 
+    expect(result).toBe(false);
     expect(redisMock.set).not.toHaveBeenCalled();
   });
 });

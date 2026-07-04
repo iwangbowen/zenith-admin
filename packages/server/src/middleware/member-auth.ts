@@ -52,29 +52,32 @@ export const memberAuthMiddleware = createMiddleware<MemberAuthEnv>(async (c, ne
       return c.json(errBody('无效的会员令牌', 401), 401);
     }
 
-    // 强制下线检查（best-effort）
+    // 黑名单检查与会话续期相互独立——并行执行（均 best-effort，Redis 故障不阻断请求）
     if (payload.jti) {
-      try {
-        if (await isMemberTokenBlacklisted(payload.jti)) {
-          return c.json(errBody('会话已被强制下线', 401), 401);
-        }
-      } catch (redisErr) {
-        logger.warn('[MemberAuth] Redis blacklist check failed, allowing request:', redisErr);
+      const jti = payload.jti;
+      const [blacklisted, touched] = await Promise.all([
+        Promise.resolve(isMemberTokenBlacklisted(jti)).catch((redisErr) => {
+          logger.warn('[MemberAuth] Redis blacklist check failed, allowing request:', redisErr);
+          return false;
+        }),
+        Promise.resolve(touchMemberSession(jti)).catch((redisErr) => {
+          logger.warn('[MemberAuth] Redis session touch failed, allowing request:', redisErr);
+          return true; // 状态未知——跳过懒重注册
+        }),
+      ]);
+      if (blacklisted) {
+        return c.json(errBody('会话已被强制下线', 401), 401);
       }
-    }
-
-    // 刷新会话活跃度（best-effort，Redis 重启后懒重注册）
-    if (payload.jti) {
-      try {
-        const existed = await touchMemberSession(payload.jti);
-        if (!existed) {
+      // 会话缺失（如 Redis 重启）——懒重注册保持在线列表准确（best-effort，失败不阻断请求）
+      if (!touched) {
+        try {
           const ip = getClientIp(c);
           const ua = c.req.header('user-agent') ?? '';
           const { browser, os } = parseUserAgent(ua);
           const [m] = await db.select({ nickname: members.nickname }).from(members).where(eq(members.id, payload.memberId)).limit(1);
           if (m) {
             registerMemberSession({
-              tokenId: payload.jti,
+              tokenId: jti,
               memberId: payload.memberId,
               identifier: payload.identifier,
               nickname: m.nickname,
@@ -86,9 +89,9 @@ export const memberAuthMiddleware = createMiddleware<MemberAuthEnv>(async (c, ne
               loginAt: new Date(),
             }).catch(() => { /* best-effort */ });
           }
+        } catch (err) {
+          logger.warn('[MemberAuth] Session lazy re-register failed, allowing request:', err);
         }
-      } catch (redisErr) {
-        logger.warn('[MemberAuth] Redis session touch failed, allowing request:', redisErr);
       }
     }
 

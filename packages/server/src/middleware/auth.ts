@@ -49,31 +49,34 @@ export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
       return c.json(errBody('无效的访问令牌', 401), 401);
     }
 
-    // Check if this token has been force-logged-out (best-effort, don't block on Redis errors)
+    // Blacklist check + session touch are independent Redis ops — run in parallel
+    // (each best-effort: Redis errors log a warning and never block the request)
     if (payload.jti) {
-      try {
-        const blacklisted = await isTokenBlacklisted(payload.jti);
-        if (blacklisted) {
-          return c.json(errBody('会话已被强制下线', 401), 401);
-        }
-      } catch (redisErr) {
-        logger.warn('[Auth] Redis blacklist check failed, allowing request:', redisErr);
+      const jti = payload.jti;
+      const [blacklisted, touched] = await Promise.all([
+        Promise.resolve(isTokenBlacklisted(jti)).catch((redisErr) => {
+          logger.warn('[Auth] Redis blacklist check failed, allowing request:', redisErr);
+          return false;
+        }),
+        Promise.resolve(touchSession(jti)).catch((redisErr) => {
+          logger.warn('[Auth] Redis session touch failed, allowing request:', redisErr);
+          return true; // unknown state — skip lazy re-register
+        }),
+      ]);
+      if (blacklisted) {
+        return c.json(errBody('会话已被强制下线', 401), 401);
       }
-    }
-
-    // Refresh session activity (best-effort, don't block on Redis errors)
-    if (payload.jti) {
-      try {
-        const existed = await touchSession(payload.jti);
-        // Session missing (e.g. Redis restarted) — lazily re-register to keep online-users list accurate
-        if (!existed) {
+      // Session missing (e.g. Redis restarted) — lazily re-register to keep online-users list accurate
+      // (best-effort: any failure here must not block the request)
+      if (!touched) {
+        try {
           const ip = getClientIp(c);
           const ua = c.req.header('user-agent') ?? '';
           const { browser, os } = parseUserAgent(ua);
           const [u] = await db.select({ nickname: users.nickname }).from(users).where(eq(users.id, payload.userId)).limit(1);
           if (u) {
             registerSession({
-              tokenId: payload.jti,
+              tokenId: jti,
               userId: payload.userId,
               username: payload.username,
               nickname: u.nickname,
@@ -85,9 +88,9 @@ export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
               loginAt: new Date(),
             }).catch(() => { /* best-effort, ignore errors */ });
           }
+        } catch (err) {
+          logger.warn('[Auth] Session lazy re-register failed, allowing request:', err);
         }
-      } catch (redisErr) {
-        logger.warn('[Auth] Redis session touch failed, allowing request:', redisErr);
       }
     }
 

@@ -1186,16 +1186,17 @@ export async function deleteMessagesForUser(messageIds: number[]): Promise<void>
   });
   if (msgs.length === 0) return;
 
-  // 校验当前用户是这些消息所在会话的成员
+  // 校验当前用户是这些消息所在会话的成员（单查询批量校验）
   const convIds = [...new Set(msgs.map((m) => m.conversationId))];
-  for (const convId of convIds) {
-    const member = await db.query.chatConversationMembers.findFirst({
-      where: and(
-        eq(chatConversationMembers.conversationId, convId),
-        eq(chatConversationMembers.userId, me.userId),
-      ),
-    });
-    if (!member) throw new HTTPException(403, { message: '无权操作该会话的消息' });
+  const memberships = await db.select({ conversationId: chatConversationMembers.conversationId })
+    .from(chatConversationMembers)
+    .where(and(
+      inArray(chatConversationMembers.conversationId, convIds),
+      eq(chatConversationMembers.userId, me.userId),
+    ));
+  const memberConvIds = new Set(memberships.map((m) => m.conversationId));
+  if (convIds.some((convId) => !memberConvIds.has(convId))) {
+    throw new HTTPException(403, { message: '无权操作该会话的消息' });
   }
 
   // 批量更新 extra.hiddenFor，追加当前用户 ID
