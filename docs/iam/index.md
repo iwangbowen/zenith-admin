@@ -379,16 +379,16 @@ await getDataScopeCondition({
 
 ## 前端页面
 
-| 页面文件 | 路由 | 主要交互 |
-|----------|------|----------|
-| `packages/web/src/pages/users/UsersPage.tsx` | `/system/users` | 部门主从布局、用户列表、创建/编辑、头像、角色/岗位/部门分配、批量删除、批量启停、批量重置密码、导入导出、解锁、强制下线入口 |
-| `packages/web/src/pages/users/UserMenuPermissionModal.tsx` | 用户管理弹窗 | 读取 `/api/menus` 与 `/api/users/{id}/effective-permissions`，展示角色继承、用户直接授权与最终菜单权限 |
-| `packages/web/src/pages/users/UserDataScopeModal.tsx` | 用户管理弹窗 | 读取和保存 `/api/users/{id}/data-permission`，支持用户级 `dataScope` 与指定部门 |
-| `packages/web/src/pages/system/roles/RolesPage.tsx` | `/system/roles` | 角色列表、创建/编辑、状态切换、菜单权限分配、数据权限设置、关联用户分配、导出 |
-| `packages/web/src/pages/system/menus/MenusPage.tsx` | `/system/menus` | 菜单树维护、目录/菜单/按钮类型、状态切换、可见性、权限码 |
-| `packages/web/src/pages/system/departments/DepartmentsPage.tsx` | `/system/departments` | 部门树、负责人、部门成员预览、创建/编辑/删除、状态切换、导出 |
-| `packages/web/src/pages/system/positions/PositionsPage.tsx` | `/system/positions` | 岗位列表、成员管理、批量删除、状态切换、导出 |
-| `packages/web/src/pages/system/user-groups/UserGroupsPage.tsx` | `/system/user-groups` | 用户组列表、负责人/部门、成员管理、批量删除、状态切换 |
+| 页面 | 路由 | 主要交互 |
+|------|------|----------|
+| 用户管理 | `/system/users` | 部门主从布局、用户列表、创建/编辑、头像、角色/岗位/部门分配、批量删除、批量启停、批量重置密码、导入导出、解锁、强制下线入口 |
+| 用户菜单权限弹窗 | 用户管理弹窗 | 读取 `/api/menus` 与 `/api/users/{id}/effective-permissions`，展示角色继承、用户直接授权与最终菜单权限 |
+| 用户数据权限弹窗 | 用户管理弹窗 | 读取和保存 `/api/users/{id}/data-permission`，支持用户级 `dataScope` 与指定部门 |
+| 角色管理 | `/system/roles` | 角色列表、创建/编辑、状态切换、菜单权限分配、数据权限设置、关联用户分配、导出 |
+| 菜单管理 | `/system/menus` | 菜单树维护、目录/菜单/按钮类型、状态切换、可见性、权限码 |
+| 部门管理 | `/system/departments` | 部门树、负责人、部门成员预览、创建/编辑/删除、状态切换、导出 |
+| 岗位管理 | `/system/positions` | 岗位列表、成员管理、批量删除、状态切换、导出 |
+| 用户组管理 | `/system/user-groups` | 用户组列表、负责人/部门、成员管理、批量删除、状态切换 |
 
 前端按钮展示通过 `usePermission()` 读取当前用户权限码控制，例如 `system:user:create` 控制用户创建按钮，`system:role:assign` 控制角色菜单权限与关联用户操作。后端路由守卫仍是最终权限校验来源。
 

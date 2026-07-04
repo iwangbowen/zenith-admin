@@ -89,10 +89,4 @@ export function registerBizLeaveSubscribers() {
 
 ## 参考实现
 
-| 文件 | 说明 |
-| --- | --- |
-| `packages/server/src/services/biz-leave.service.ts` | 业务保存、提交和详情权限 |
-| `packages/server/src/services/biz-leave-subscribers.ts` | 流程结果回写业务状态 |
-| `packages/server/src/routes/biz-leave.ts` | 业务 API |
-| `packages/web/src/pages/biz/leave/LeavePage.tsx` | 业务列表页 |
-| `packages/web/src/pages/biz/leave/LeaveApprovalView.tsx` | 审批查看组件 |
+完整的端到端范例见内置的「请假申请」演示模块（`biz-leave`），覆盖业务保存、提交发起流程、审批结果回写业务状态与前端审批查看的全部环节。

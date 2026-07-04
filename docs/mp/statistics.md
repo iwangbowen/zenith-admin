@@ -43,8 +43,6 @@
 - **主动测试**：`POST /api/mp/security/check-text` 校验一段文本，返回 `{ pass, suggest }`。
 - **发送前前置**：账号开启 `content_check_enabled` 后，群发发送（含定时）、客服消息下发、会话内回复均先调用 `assertContentSafe` 做敏感词检测，命中违规（微信 `87014`）抛 `400` 拦截发送；校验接口本身异常时放行（避免风控接口抖动阻断正常业务，最终仍由微信发送接口把关）。
 
-实现位置：`lib/wechat/security.ts`（`msgSecCheck`）+ `services/mp-security.service.ts`（`checkMpContent` / `assertContentSafe`）。
-
 ---
 
 ## 接口一览

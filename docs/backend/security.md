@@ -237,6 +237,5 @@ REQUEST_TIMEOUT_MS=0
 - 后台「系统设置 → 接口限流」通过 `GET /api/rate-limit/rules`、`PATCH /api/rate-limit/rules/{id}`、`POST /api/rate-limit/rules` 动态管理规则，保存后立即热更新
 - 自定义规则可通过 `pathPatterns` 绑定路径，支持精确路径与 `/*` 前缀匹配；全局 `pathBoundRateLimit` 会自动应用匹配规则
 - 支持 `POST /api/rate-limit/unblock` 解封指定 key，以及 `POST /api/rate-limit/reset-stats` 清空指定规则统计
-- 实现位置：`packages/server/src/middleware/rate-limit.ts`
 
 > **反代注意**：确保 Nginx 正确透传 `X-Forwarded-For` 或 `X-Real-IP`，否则计数可能落在反向代理或连接层 IP 上，导致正常请求被误限。

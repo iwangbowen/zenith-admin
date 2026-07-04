@@ -10,15 +10,6 @@
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/zenith_admin
 ```
 
-## 相关目录
-
-- `packages/server/src/db/schema.ts`：schema barrel（统一 re-export，业务导入入口）
-- `packages/server/src/db/schema/`：按业务域拆分的表定义（`core.ts` / `payment.ts` / `workflow.ts` / `member.ts` / `mp.ts` 等；所有 `xxxRelations` 统一在 `relations.ts`）
-- `packages/server/src/db/types.ts`：统一数据库类型别名（`Db` / `DbTransaction` / `DbExecutor`）
-- `packages/server/src/db/migrate.ts`：迁移执行入口
-- `packages/server/src/db/seed.ts`：种子数据入口
-- `packages/server/drizzle/`：生成的迁移文件
-
 ## 迁移流程
 
 当你修改数据库 schema 后：

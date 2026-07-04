@@ -144,19 +144,3 @@
 
 后端使用 **5 秒内存缓存**（TTL）避免每次请求都查数据库，同时在写入后自动失效缓存（`invalidateMaintenanceCache()`）。
 
----
-
-## 相关文件
-
-| 文件 | 说明 |
-|------|------|
-| `packages/server/src/db/schema/system.ts` | `maintenanceMode` 表定义 |
-| `packages/server/src/services/maintenance.service.ts` | 业务逻辑 + 缓存管理 |
-| `packages/server/src/middleware/maintenance.ts` | 请求拦截中间件 |
-| `packages/server/src/routes/maintenance.ts` | API 路由定义 |
-| `packages/web/src/pages/system/maintenance/MaintenancePage.tsx` | 管理页面 |
-| `packages/web/src/components/MaintenanceOverlay.tsx` | 全屏维护遮罩组件 |
-| `packages/web/src/utils/request.ts` | 503 拦截逻辑 |
-| `packages/web/src/App.tsx` | 全局维护状态管理 |
-| `packages/web/src/layouts/AdminLayout.tsx` | 超管维护横幅 |
-| `packages/web/src/mocks/handlers/maintenance.ts` | MSW Mock Handler |
