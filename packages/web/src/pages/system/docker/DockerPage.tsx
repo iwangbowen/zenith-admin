@@ -165,15 +165,16 @@ function ContainersTab() {
   const statsMutation = useDockerFetchStats();
   const inspectMutation = useDockerInspect();
 
-  // 新增 Compose 分组时自动展开，已有分组保持状态
+  // 新增 Compose 分组时自动展开；已见过的分组保持用户展开/折叠状态（防轮询刷新/页签切回弹回展开）
+  const seenComposeGroupsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const groupIds = [...new Set(containers
       .filter(c => c.composeProject)
       .map(c => `__compose__${c.composeProject}`))];
-    setExpandedKeys(prev => {
-      const newIds = groupIds.filter(id => !prev.includes(id));
-      return newIds.length > 0 ? [...prev, ...newIds] : prev;
-    });
+    const newIds = groupIds.filter(id => !seenComposeGroupsRef.current.has(id));
+    if (newIds.length === 0) return;
+    newIds.forEach(id => seenComposeGroupsRef.current.add(id));
+    setExpandedKeys(prev => [...prev, ...newIds]);
   }, [containers]);
 
   // 追踪模式下自动滚到底部
@@ -532,7 +533,8 @@ function ImagesTab() {
   const pullImageMutation = useDockerPullImage();
   const pruneMutation = useDockerPrune();
 
-  // Auto-expand all groups when images load
+  // 新出现的镜像分组自动展开（含首次加载）；已见过的分组保持用户展开/折叠状态（防刷新/页签切回弹回展开）
+  const seenImageGroupsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const groupIds = [...new Set(images.map((img) => {
       const validTags = img.repoTags.filter((t) => t !== '<none>:<none>');
@@ -541,10 +543,10 @@ function ImagesTab() {
       const colon = first.lastIndexOf(':');
       return `__img__${colon !== -1 ? first.slice(0, colon) : first}`;
     }))];
-    setExpandedKeys((prev) => {
-      const newIds = groupIds.filter((id) => !prev.includes(id));
-      return newIds.length > 0 ? [...prev, ...newIds] : prev;
-    });
+    const newIds = groupIds.filter((id) => !seenImageGroupsRef.current.has(id));
+    if (newIds.length === 0) return;
+    newIds.forEach((id) => seenImageGroupsRef.current.add(id));
+    setExpandedKeys((prev) => [...prev, ...newIds]);
   }, [images]);
 
   const handleRemove = async (id: string) => {

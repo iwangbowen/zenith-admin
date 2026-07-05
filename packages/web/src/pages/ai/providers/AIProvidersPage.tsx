@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Button, Input, Modal, Tag, Toast, Switch } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Search, ChevronsUpDown, ChevronsDownUp } from 'lucide-react';
@@ -136,10 +136,15 @@ export default function AIProvidersPage() {
     setExpandedRowKeys(isAllExpanded ? [] : allGroupKeys);
   }
 
+  // 首次出现的分组自动展开（含首次加载全展开）；已见过的分组保持用户展开/折叠状态，
+  // 避免数据刷新或 keepAlive 页签切回（effect 重放）时把用户手动折叠的分组弹回展开
+  const seenGroupKeysRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    setExpandedRowKeys(allGroupKeys);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allGroupKeys.join(',')]);
+    const newKeys = allGroupKeys.filter((k) => !seenGroupKeysRef.current.has(k));
+    if (newKeys.length === 0) return;
+    newKeys.forEach((k) => seenGroupKeysRef.current.add(k));
+    setExpandedRowKeys((prev) => [...prev, ...newKeys]);
+  }, [allGroupKeys]);
 
   const columns: ColumnProps<TableRow>[] = [
     {

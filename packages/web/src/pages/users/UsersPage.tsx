@@ -254,9 +254,13 @@ export default function UsersPage() {
     [allDepartments]
   );
 
+  // 首次加载完成后默认全展开；此后（keepAlive 页签切回 / 数据刷新触发 effect 重放）保持用户手动展开/折叠状态
+  const deptTreeExpandInitedRef = useRef(false);
   useEffect(() => {
+    if (deptTreeExpandInitedRef.current || allDepartments.length === 0) return;
+    deptTreeExpandInitedRef.current = true;
     setDeptTreeExpandedKeys(allDeptExpandedKeys);
-  }, [allDeptExpandedKeys]);
+  }, [allDeptExpandedKeys, allDepartments.length]);
 
   const isAllDeptExpanded = allDeptExpandedKeys.length > 0 && deptTreeExpandedKeys.length >= allDeptExpandedKeys.length;
 

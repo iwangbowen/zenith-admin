@@ -111,9 +111,14 @@ export default function DictsPage() {
     });
   }, [dictListQuery.data]);
 
+  // 每个字典的条目首次加载完成时默认全展开；同一字典内（数据刷新 / keepAlive 页签切回）保持用户展开/折叠状态
+  const expandInitedDictIdRef = useRef<number | null>(null);
   useEffect(() => {
+    if (!selectedDict || itemsQuery.data === undefined) return;
+    if (expandInitedDictIdRef.current === selectedDict.id) return;
+    expandInitedDictIdRef.current = selectedDict.id;
     setExpandedRowKeys(items.map((i) => i.id));
-  }, [items]);
+  }, [selectedDict, items, itemsQuery.data]);
 
   useEffect(() => {
     if (!itemModalVisible || !itemDetailQuery.data) return;
