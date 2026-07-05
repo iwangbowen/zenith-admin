@@ -17,6 +17,8 @@ export interface Tenant {
   packageName?: string | null;
   userCount?: number;
   remark?: string | null;
+  /** 自动初始化的租户管理员账号（仅创建响应返回，password 一次性可见） */
+  initialAdmin?: { username: string; email: string; password: string } | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -345,3 +345,55 @@ export async function sendInApp(input: SendInAppInput) {
   );
   return { sentCount: rows.length };
 }
+
+/**
+ * 系统级站内信发送（供定时任务/后台流程调用）。
+ * 与 sendInApp 的区别：不依赖请求上下文（无 currentUser），senderId 为空，tenantId 显式指定。
+ */
+export async function sendSystemInApp(input: {
+  userIds: number[];
+  title: string;
+  content: string;
+  type?: InAppMessageType;
+  tenantId?: number | null;
+}) {
+  if (input.userIds.length === 0) return { sentCount: 0 };
+  const recipients = await db.select({ id: users.id }).from(users).where(inArray(users.id, input.userIds));
+  if (recipients.length === 0) return { sentCount: 0 };
+  const type: InAppMessageType = input.type ?? 'warning';
+  const tenantId = input.tenantId ?? null;
+  const rows = recipients.map((r) => ({
+    templateId: null,
+    senderId: null,
+    userId: r.id,
+    title: input.title,
+    content: input.content,
+    type,
+    isRead: false,
+    tenantId,
+  }));
+  await db.insert(inAppMessages).values(rows);
+  scheduleSendToUsers(
+    recipients.map((r) => ({ userId: r.id })),
+    {
+      type: 'in-app-message:new',
+      payload: {
+        id: 0,
+        templateId: null,
+        userId: 0,
+        userName: null,
+        title: input.title,
+        content: input.content,
+        type,
+        isRead: false,
+        readAt: null,
+        source: 'system',
+        senderId: null,
+        senderName: null,
+        tenantId,
+        createdAt: formatDateTime(new Date()),
+      },
+    },
+  );
+  return { sentCount: rows.length };
+}

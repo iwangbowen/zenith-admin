@@ -15,6 +15,7 @@ import {
   Progress,
   Descriptions,
   Tag,
+  Divider,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw } from 'lucide-react';
@@ -105,11 +106,41 @@ export default function TenantsPage() {
       expireAt: values.expireAt ? formatDateTimeForApi(values.expireAt) : null,
       packageId: values.packageId ?? null,
     };
-    await saveMutation.mutateAsync({ id: editingRecord?.id, values: payload });
+    const saved = await saveMutation.mutateAsync({ id: editingRecord?.id, values: payload });
     Toast.success(editingRecord ? '更新成功' : '创建成功');
     setModalVisible(false);
     setEditingRecord(null);
+    if (!editingRecord && saved?.initialAdmin) {
+      showInitialAdminModal(saved.name, saved.initialAdmin);
+    }
   };
+
+  /** 展示自动初始化的管理员账号（初始密码仅此一次可见） */
+  function showInitialAdminModal(tenantName: string, admin: { username: string; email: string; password: string }) {
+    Modal.success({
+      title: `租户「${tenantName}」管理员已初始化`,
+      width: 460,
+      okText: '我已保存',
+      content: (
+        <div style={{ lineHeight: 2 }}>
+          <div>用户名：<strong>{admin.username}</strong></div>
+          <div>邮箱：<strong>{admin.email}</strong></div>
+          <div>
+            初始密码：<strong style={{ fontFamily: 'monospace' }}>{admin.password}</strong>
+            <Button
+              size="small"
+              theme="borderless"
+              style={{ marginLeft: 8 }}
+              onClick={() => { void navigator.clipboard.writeText(admin.password).then(() => Toast.success('已复制')); }}
+            >
+              复制
+            </Button>
+          </div>
+          <div style={{ color: 'var(--semi-color-warning)', marginTop: 8 }}>初始密码仅此一次展示，请妥善保存并及时修改。</div>
+        </div>
+      ),
+    });
+  }
 
   const handleDelete = async (id: number) => {
     await deleteMutation.mutateAsync(id);
@@ -384,6 +415,27 @@ export default function TenantsPage() {
               <Form.TextArea field="remark" label="备注" placeholder="请输入备注" rows={3} />
             </Col>
           </Row>
+          {!editingTenant && (
+            <>
+              <Divider margin={12} align="left">初始管理员（选填）</Divider>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Input field="adminUsername" label="管理员账号" placeholder="不填则跳过初始化" />
+                </Col>
+                <Col span={12}>
+                  <Form.Input field="adminPassword" label="初始密码" mode="password" placeholder="不填则自动生成" />
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Input field="adminNickname" label="管理员昵称" placeholder="默认：租户管理员" />
+                </Col>
+                <Col span={12}>
+                  <Form.Input field="adminEmail" label="管理员邮箱" placeholder="不填则自动生成" />
+                </Col>
+              </Row>
+            </>
+          )}
         </Form>
         </Spin>
       </AppModal>

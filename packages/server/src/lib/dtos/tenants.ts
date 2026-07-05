@@ -19,6 +19,14 @@ export const TenantDTO = z
     packageName: z.string().nullable().optional(),
     userCount: z.number().int().optional().openapi({ description: '租户当前用户数（列表返回）' }),
     remark: z.string().nullable().optional(),
+    initialAdmin: z
+      .object({
+        username: z.string(),
+        email: z.string(),
+        password: z.string().openapi({ description: '初始密码，仅创建响应中一次性返回' }),
+      })
+      .optional()
+      .openapi({ description: '自动初始化的租户管理员账号（仅创建且指定 adminUsername 时返回）' }),
     ...auditFields,
     createdAt: z.string().optional(),
     updatedAt: z.string().optional(),

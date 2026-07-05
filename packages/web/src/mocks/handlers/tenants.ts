@@ -67,9 +67,9 @@ export const tenantsHandlers = [
     return HttpResponse.json({ code: 0, message: 'ok', data: withPackageName(tenant) });
   }),
 
-  // 新增租户
+  // 新增租户（支持初始管理员自动初始化）
   http.post('/api/tenants', async ({ request }) => {
-    const body = await request.json() as Partial<Tenant>;
+    const body = await request.json() as Partial<Tenant> & { adminUsername?: string; adminPassword?: string; adminEmail?: string };
     const newTenant: Tenant = {
       id: getNextTenantId(),
       name: body.name ?? '',
@@ -86,7 +86,18 @@ export const tenantsHandlers = [
       updatedAt: mockDateTime(),
     };
     mockTenants.push(newTenant);
-    return HttpResponse.json({ code: 0, message: '新增成功', data: withPackageName(newTenant) });
+    const initialAdmin = body.adminUsername
+      ? {
+          username: body.adminUsername,
+          email: body.adminEmail || `${body.adminUsername}@${newTenant.code}.tenant`,
+          password: body.adminPassword || 'Mock#Passw0rd16',
+        }
+      : undefined;
+    return HttpResponse.json({
+      code: 0,
+      message: '新增成功',
+      data: { ...withPackageName(newTenant), ...(initialAdmin ? { initialAdmin } : {}) },
+    });
   }),
 
   // 更新租户

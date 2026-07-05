@@ -1,7 +1,7 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { createMiddleware } from 'hono/factory';
 import { authMiddleware } from '../../middleware/auth';
-import { guard, setAuditBeforeData } from '../../middleware/guard';
+import { guard, setAuditBeforeData, setAuditAfterData } from '../../middleware/guard';
 import { isPlatformAdmin } from '../../lib/tenant';
 import type { AppEnv } from '../../lib/context';
 import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody } from '../../lib/openapi-schemas';
@@ -43,8 +43,12 @@ const createTenantSchema = z.object({
   maxUsers: z.number().int().positive().optional().nullable(),
   packageId: z.number().int().positive().optional().nullable(),
   remark: z.string().max(500).optional(),
+  adminUsername: z.string().min(2).max(64).optional().openapi({ description: '初始管理员用户名；不传则跳过自动初始化' }),
+  adminPassword: z.string().min(6).max(64).optional().openapi({ description: '初始管理员密码；不传则自动生成并在响应中一次性返回' }),
+  adminNickname: z.string().max(64).optional(),
+  adminEmail: z.string().email().max(128).optional(),
 });
-const updateTenantSchema = createTenantSchema.partial();
+const updateTenantSchema = createTenantSchema.omit({ adminUsername: true, adminPassword: true, adminNickname: true, adminEmail: true }).partial();
 
 const listRoute = defineOpenAPIRoute({
   route: createRoute({
@@ -85,11 +89,18 @@ const createRouteDef = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/', tags: ['Tenants'], summary: '创建租户',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, platformAdminMiddleware, guard({ audit: { module: '租户管理', description: '创建租户' } })] as const,
+    // recordResponseBody: false — 创建响应可能含初始管理员一次性密码，不落审计日志
+    middleware: [authMiddleware, platformAdminMiddleware, guard({ audit: { module: '租户管理', description: '创建租户', recordResponseBody: false } })] as const,
     request: { body: { content: jsonContent(createTenantSchema), required: true } },
     responses: { ...ok(TenantDTO, '创建成功'), ...commonErrorResponses },
   }),
-  handler: async (c) => c.json(okBody(await createTenant(c.req.valid('json')), '创建成功'), 200),
+  handler: async (c) => {
+    const created = await createTenant(c.req.valid('json'));
+    // 审计快照剔除初始密码
+    const { initialAdmin, ...tenantOnly } = created as typeof created & { initialAdmin?: { username: string; email: string; password: string } };
+    setAuditAfterData(c, initialAdmin ? { ...tenantOnly, initialAdmin: { username: initialAdmin.username, email: initialAdmin.email } } : tenantOnly);
+    return c.json(okBody(created, '创建成功'), 200);
+  },
 });
 
 const updateRouteDef = defineOpenAPIRoute({

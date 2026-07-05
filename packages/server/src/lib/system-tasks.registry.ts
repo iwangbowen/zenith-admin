@@ -120,8 +120,7 @@ export async function registerSystemTasks(): Promise<void> {
     run: runWorkflowEngineHealthCapture,
   });
 
-  const { registerAsyncTaskWorker, drainAsyncTasks, cleanupAsyncTasks } = await import('./task-center');
-  await registerAsyncTaskWorker();
+  const { registerAsyncTaskWorker, drainAsyncTasks, cleanupAsyncTasks } = await import('./task-center');  await registerAsyncTaskWorker();
   await registerSystemRecurringJob({
     name: 'async-tasks-drain',
     title: '异步任务兜底扫描',
@@ -145,5 +144,16 @@ export async function registerSystemTasks(): Promise<void> {
       const cleaned = await cleanupAsyncTasks();
       return `清理了 ${cleaned} 条已结束任务记录`;
     },
+  });
+
+  const { runTenantExpiryCheck } = await import('../services/identity/tenant-lifecycle.service');
+  await registerSystemRecurringJob({
+    name: 'tenant-expiry-check',
+    title: '租户到期巡检',
+    module: '租户管理',
+    cronExpression: '30 1 * * *',
+    description: '每天自动停用已过期租户（并吊销其用户会话），到期前 7/3/1 天向租户管理员与平台超管发送站内信提醒。',
+    allowManualRun: true,
+    run: runTenantExpiryCheck,
   });
 }

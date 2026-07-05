@@ -536,9 +536,15 @@ export const createTenantSchema = z.object({
   maxUsers: z.number().int().positive().optional().nullable(),
   packageId: z.number().int().positive().optional().nullable(),
   remark: z.string().max(500).optional(),
+  adminUsername: z.string().min(2, '管理员用户名至少 2 个字符').max(64).optional(),
+  adminPassword: z.string().min(6, '管理员密码至少 6 个字符').max(64).optional(),
+  adminNickname: z.string().max(64).optional(),
+  adminEmail: z.string().email('管理员邮箱格式不正确').max(128).optional(),
 });
 
-export const updateTenantSchema = createTenantSchema.partial();
+export const updateTenantSchema = createTenantSchema
+  .omit({ adminUsername: true, adminPassword: true, adminNickname: true, adminEmail: true })
+  .partial();
 
 export const switchTenantSchema = z.object({
   tenantId: z.number().int().positive().nullable(),
