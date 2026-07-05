@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowEngineIntrospection, WorkflowEngineOutboxEvent, WorkflowEngineRuntimeTask, WorkflowFlowData, WorkflowFormField, WorkflowInstance, WorkflowInstanceFormSnapshot, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowSerialNoConfig, WorkflowSimulationCase, WorkflowSimulationDecision, WorkflowSimulationResult, WorkflowTask, WorkflowTaskUrge } from '@zenith/shared';
-import { findNextApproverSelectNodes, renderWorkflowSerialNo, resolveNodeFieldPermissions, resolveSerialPeriodKey, sanitizeFormUpdatesByNodePerms, WORKFLOW_SERIAL_SAMPLE_VARS } from '@zenith/shared';
+import { buildWorkflowSummaryItems, findNextApproverSelectNodes, renderWorkflowSerialNo, resolveNodeFieldPermissions, resolveSerialPeriodKey, sanitizeFormUpdatesByNodePerms, WORKFLOW_SERIAL_SAMPLE_VARS } from '@zenith/shared';
 import {
   mockWorkflowDefinitions,
   mockWorkflowInstances,
@@ -1516,7 +1516,14 @@ export const workflowHandlers = [
         { slaLevel: 'none', slaOverdueSec: null, slaDeadline: null },
       ];
       const sla = slaCases[idx % slaCases.length];
-      return { ...withActiveNodes(inst), pendingTaskId: taskId, tasks: undefined, ...sla };
+      // 列表摘要：与后端一致，按定义 settings.summaryFields + 表单快照解析
+      const def = mockWorkflowDefinitions.find(d => d.id === inst.definitionId);
+      const settings = ((inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData?.settings
+        ?? (def?.flowData as WorkflowFlowData | undefined)?.settings);
+      const snap = inst.formSnapshot as { fields?: WorkflowFormField[] } | WorkflowFormField[] | null;
+      const snapFields = Array.isArray(snap) ? snap : snap?.fields ?? [];
+      const summary = buildWorkflowSummaryItems(snapFields, (inst.formData ?? {}) as Record<string, unknown>, settings?.summaryFields);
+      return { ...withActiveNodes(inst), pendingTaskId: taskId, tasks: undefined, ...sla, summary };
     }).filter(Boolean) as (WorkflowInstance & { pendingTaskId: number })[];
 
     if (keyword) list = list.filter(i => i.title?.includes(keyword));

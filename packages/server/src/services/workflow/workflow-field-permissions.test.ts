@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyFieldPermissionsToFields,
+  buildWorkflowSummaryItems,
   hasEditableFieldPermission,
   resolveNodeFieldPermissions,
   sanitizeFormUpdatesByNodePerms,
@@ -108,5 +109,53 @@ describe('applyFieldPermissionsToFields', () => {
     const before = JSON.stringify(fields);
     applyFieldPermissionsToFields(fields, perms);
     expect(JSON.stringify(fields)).toBe(before);
+  });
+});
+
+describe('buildWorkflowSummaryItems', () => {
+  const summaryFields: WorkflowFormField[] = [
+    { key: 'leaveType', label: '请假类型', type: 'select', optionItems: [{ value: 'annual', label: '年假' }] },
+    { key: 'leaveDates', label: '起止日期', type: 'dateRange' },
+    { key: 'days', label: '天数', type: 'number', unit: '天' },
+    { key: 'ok', label: '是否加急', type: 'switch' },
+    { key: 'files', label: '附件', type: 'attachment' },
+    {
+      key: 'layout', label: '分栏', type: 'row',
+      columns: [{ span: 12, fields: [{ key: 'inner', label: '内部字段', type: 'text' }] }],
+    },
+  ];
+  const formData = {
+    leaveType: 'annual',
+    leaveDates: ['2026-07-01', '2026-07-03'],
+    days: 3,
+    ok: true,
+    files: [{ name: 'a.pdf' }],
+    inner: '嵌套值',
+  };
+
+  it('按配置顺序输出，选项映射 label、区间拼接、单位追加、开关转是/否', () => {
+    const items = buildWorkflowSummaryItems(summaryFields, formData, ['leaveType', 'leaveDates', 'days', 'ok'], 4);
+    expect(items).toEqual([
+      { key: 'leaveType', label: '请假类型', value: '年假' },
+      { key: 'leaveDates', label: '起止日期', value: '2026-07-01 ~ 2026-07-03' },
+      { key: 'days', label: '天数', value: '3 天' },
+      { key: 'ok', label: '是否加急', value: '是' },
+    ]);
+  });
+
+  it('默认最多 3 条，超出截断', () => {
+    const items = buildWorkflowSummaryItems(summaryFields, formData, ['leaveType', 'leaveDates', 'days', 'ok']);
+    expect(items).toHaveLength(3);
+  });
+
+  it('不可摘要类型（附件）与已删除字段跳过，容器内字段可命中', () => {
+    const items = buildWorkflowSummaryItems(summaryFields, formData, ['files', 'ghost', 'inner']);
+    expect(items).toEqual([{ key: 'inner', label: '内部字段', value: '嵌套值' }]);
+  });
+
+  it('空值输出 -，未配置 summaryFields 返回空数组', () => {
+    expect(buildWorkflowSummaryItems(summaryFields, {}, ['days'])).toEqual([{ key: 'days', label: '天数', value: '-' }]);
+    expect(buildWorkflowSummaryItems(summaryFields, formData, undefined)).toEqual([]);
+    expect(buildWorkflowSummaryItems(summaryFields, formData, [])).toEqual([]);
   });
 });

@@ -1298,7 +1298,7 @@ export const SEED_WORKFLOW_TEMPLATES: SeedWorkflowTemplate[] = [
     color: '#52c41a',
     flowData: buildLinearFlow([
       { key: 'approve_manager', name: '直属主管审批', props: { assigneeType: 'manager', managerLevel: 1 } },
-    ], TEMPLATE_SETTINGS),
+    ], { ...TEMPLATE_SETTINGS, summaryFields: ['leaveType', 'leaveDates', 'days'] }),
     formSchema: SEED_WORKFLOW_FORMS[0].schema as unknown as Record<string, unknown>,
     sort: 1,
     builtin: true,
@@ -1317,7 +1317,7 @@ export const SEED_WORKFLOW_TEMPLATES: SeedWorkflowTemplate[] = [
     flowData: buildLinearFlow([
       { key: 'approve_manager', name: '直属主管审批', props: { assigneeType: 'manager', managerLevel: 1 } },
       { key: 'approve_dept_head', name: '部门负责人审批', props: { assigneeType: 'department' } },
-    ], TEMPLATE_SETTINGS),
+    ], { ...TEMPLATE_SETTINGS, summaryFields: ['expenseType', 'amount', 'occurDate'] }),
     formSchema: SEED_WORKFLOW_FORMS[1].schema as unknown as Record<string, unknown>,
     sort: 2,
     builtin: true,
