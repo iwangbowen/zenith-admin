@@ -143,6 +143,8 @@ export interface Menu {
   permission?: string;
   query?: string | null;
   isExternal?: boolean;
+  /** 外链打开方式：false=新窗口，true=系统内 iframe 内嵌 */
+  embed?: boolean;
   sort: number;
   status: EntityStatus;
   visible: boolean;

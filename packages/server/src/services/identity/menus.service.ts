@@ -24,6 +24,7 @@ export function mapMenu(row: typeof menus.$inferSelect): Omit<Menu, 'children'> 
     permission: row.permission ?? undefined,
     query: row.query ?? null,
     isExternal: row.isExternal,
+    embed: row.embed,
     sort: row.sort,
     status: row.status,
     visible: row.visible,
@@ -74,6 +75,9 @@ export interface CreateMenuInput {
   icon?: string;
   type?: 'directory' | 'menu' | 'button';
   permission?: string;
+  query?: string | null;
+  isExternal?: boolean;
+  embed?: boolean;
   sort?: number;
   status?: 'enabled' | 'disabled';
   visible?: boolean;
@@ -131,6 +135,9 @@ export async function createMenu(input: CreateMenuInput): Promise<Omit<Menu, 'ch
       icon: input.icon,
       type: input.type ?? 'menu',
       permission: input.permission,
+      query: input.query ?? null,
+      isExternal: input.isExternal ?? false,
+      embed: input.embed ?? false,
       sort: input.sort ?? 0,
       status: input.status ?? 'enabled',
       visible: input.visible ?? true,

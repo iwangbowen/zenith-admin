@@ -95,6 +95,10 @@ function menuToNavItem(menu: Menu): NavItem | null {
       .filter((item): item is NavItem => item !== null);
     return { itemKey: menu.name ?? `dir-${menu.id}`, text: menu.title, icon, items: children };
   }
+  // 外链内嵌：转为内部路由 /embed/{id}，走正常导航（iframe 打开）；非内嵌外链保持新窗口
+  if (menu.isExternal && menu.embed) {
+    return { itemKey: `/embed/${menu.id}`, text: menu.title, icon, isExternal: false };
+  }
   return { itemKey: menu.path ?? `menu-${menu.id}`, text: menu.title, icon, isExternal: menu.isExternal ?? false };
 }
 
@@ -198,7 +202,9 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
     const walk = (nodes: Menu[], parents: string[]) => {
       for (const node of nodes) {
         if (node.type === 'menu' && node.path && node.status === 'enabled' && node.visible) {
-          result.push({ id: node.id, title: node.title, path: node.path, icon: node.icon, breadcrumb: parents });
+          // 外链内嵌菜单的实际访问路径是内部路由 /embed/{id}（页签/搜索/收藏按此匹配）
+          const path = node.isExternal && node.embed ? `/embed/${node.id}` : node.path;
+          result.push({ id: node.id, title: node.title, path, icon: node.icon, breadcrumb: parents });
         }
         if (node.children?.length) walk(node.children, node.type === 'directory' ? [...parents, node.title] : parents);
       }

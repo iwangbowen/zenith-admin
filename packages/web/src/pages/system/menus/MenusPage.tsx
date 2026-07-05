@@ -198,6 +198,8 @@ export default function MenusPage() {
       parentId: parentId ?? 0,
       icon: iconValue || undefined,
       visible: values.visible === undefined ? true : values.visible === 'show',
+      // 内嵌仅对外链有意义，非外链时强制归位
+      embed: values.isExternal ? (values.embed ?? false) : false,
     };
     await saveMutation.mutateAsync({ id: editingMenu?.id, values: payload });
     Toast.success(editingMenu ? '更新成功' : '创建成功');
@@ -450,8 +452,8 @@ export default function MenusPage() {
           key={editingMenu ? `edit-${editingMenu.id}` : 'create'}
           initValues={
             editingMenu
-              ? { ...editingMenu, visible: editingMenu.visible ? 'show' : 'hidden', isExternal: editingMenu.isExternal ?? false }
-                : { type: 'menu', status: 'enabled', visible: 'show', sort: 0, parentId: parentId ?? 0, isExternal: false }
+              ? { ...editingMenu, visible: editingMenu.visible ? 'show' : 'hidden', isExternal: editingMenu.isExternal ?? false, embed: editingMenu.embed ?? false }
+                : { type: 'menu', status: 'enabled', visible: 'show', sort: 0, parentId: parentId ?? 0, isExternal: false, embed: false }
           }
           labelPosition="left"
           labelWidth={90}
@@ -530,6 +532,19 @@ export default function MenusPage() {
                 >
                   <Radio value={true}>是</Radio>
                   <Radio value={false}>否</Radio>
+                </Form.RadioGroup>
+              </Col>
+            )}
+            {(menuType === 'menu' || menuType === 'directory') && isExternalVal && (
+              <Col span={12}>
+                <Form.RadioGroup
+                  field="embed"
+                  label={<Tooltip content="内嵌：在系统内以 iframe 打开外链，保留侧边栏与页签；新窗口：浏览器新标签页打开">打开方式</Tooltip>}
+                  type="button"
+                  initValue={false}
+                >
+                  <Radio value={false}>新窗口</Radio>
+                  <Radio value={true}>内嵌</Radio>
                 </Form.RadioGroup>
               </Col>
             )}

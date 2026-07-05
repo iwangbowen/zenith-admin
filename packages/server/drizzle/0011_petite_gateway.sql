@@ -1,0 +1,1 @@
+ALTER TABLE "menus" ADD COLUMN "embed" boolean DEFAULT false NOT NULL;

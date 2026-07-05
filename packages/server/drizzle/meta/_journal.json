@@ -78,6 +78,13 @@
       "when": 1783219740720,
       "tag": "0010_flashy_cloak",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1783222290793,
+      "tag": "0011_petite_gateway",
+      "breakpoints": true
     }
   ]
 }

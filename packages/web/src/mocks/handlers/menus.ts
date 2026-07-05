@@ -42,6 +42,7 @@ export const menusHandlers = [
       permission: body.permission,
       query: body.query ?? null,
       isExternal: body.isExternal ?? false,
+      embed: body.embed ?? false,
       sort: body.sort ?? 0,
       status: body.status ?? 'enabled',
       visible: body.visible ?? true,

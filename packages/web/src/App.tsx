@@ -31,6 +31,7 @@ const ForbiddenPage = React.lazy(() => import('@/pages/forbidden/ForbiddenPage')
 const OAuthCallbackPage = React.lazy(() => import('@/pages/oauth/OAuthCallbackPage'));
 const EnterpriseCallbackPage = React.lazy(() => import('@/pages/oauth/EnterpriseCallbackPage'));
 const OAuth2AuthorizePage = React.lazy(() => import('@/pages/oauth2/OAuth2AuthorizePage'));
+const EmbedPage = React.lazy(() => import('@/pages/embed/EmbedPage'));
 const PaymentLinkPublicPage = React.lazy(() => import('@/pages/payment/PaymentLinkPublicPage'));
 const PublicDashboardPage = React.lazy(() => import('@/pages/report/PublicDashboardPage'));
 const WorkflowDesignerPage = React.lazy(() => import('@/pages/workflow/designer/WorkflowDesignerPage'));
@@ -124,6 +125,20 @@ function flattenMenus(menus: Menu[]): Menu[] {
   return routes;
 }
 
+/** 收集「外链 + 内嵌」菜单，注册为 /embed/{id} 内部路由 */
+function flattenEmbedMenus(menus: Menu[]): Menu[] {
+  const result: Menu[] = [];
+  for (const m of menus) {
+    if (m.isExternal && m.embed && m.path) {
+      result.push(m);
+    }
+    if (m.children?.length) {
+      result.push(...flattenEmbedMenus(m.children));
+    }
+  }
+  return result;
+}
+
 /**
  * 从所有菜单中提取「path → component」映射，用于判断某个路径是否对应一个已存在的页面组件。
  * 这样可以在 catch-all 路由中区分 403（页面存在但无权限）和 404（页面不存在）。
@@ -169,6 +184,7 @@ function AdminRouteLoader({ user, permissions, logout, updateUser }: Readonly<Ad
   }, []);
 
   const dynamicRoutes = useMemo(() => flattenMenus(menus), [menus]);
+  const embedRoutes = useMemo(() => flattenEmbedMenus(menus), [menus]);
 
   if (loading) {
     return <PageLoadingDots />;
@@ -228,6 +244,15 @@ function AdminRouteLoader({ user, permissions, logout, updateUser }: Readonly<Ad
             />
           );
         })}
+
+        {/* 外链内嵌路由：iframe 打开外部页面 */}
+        {embedRoutes.map((m) => (
+          <Route
+            key={`embed-${m.id}`}
+            path={`embed/${m.id}`}
+            element={<Suspense fallback={routeFallback}><EmbedPage src={m.path!} title={m.title} /></Suspense>}
+          />
+        ))}
 
         <Route path="*" element={<Suspense fallback={routeFallback}><NotFoundOrForbidden allMenuPaths={allMenuPaths} /></Suspense>} />
       </Route>
