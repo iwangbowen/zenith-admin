@@ -4,7 +4,7 @@ import { authMiddleware } from '../../../middleware/auth';
 import { guard } from '../../../middleware/guard';
 import { ErrorResponse, PaginationQuery, jsonContent, commonErrorResponses, ok, okPaginated, IdParam, okBody } from '../../../lib/openapi-schemas';
 import { WorkflowInstanceDTO, WorkflowInstanceListItemDTO, WorkflowInstanceAllDTO, WorkflowAnalyticsDTO, WorkflowOverdueTaskDTO, WorkflowRelationOptionDTO } from '../../../lib/openapi-dtos';
-import { listMyInstances, listPendingMine, listAllInstances, listMyCc, listMyHandled, getInstanceDetail, countMyCcUnread, listRelationOptions } from '../../../services/workflow/workflow-instances.service';
+import { listMyInstances, listPendingMine, listAllInstances, listMyCc, listMyHandled, getInstanceDetail, countMyCcUnread, countPendingMine, listRelationOptions } from '../../../services/workflow/workflow-instances.service';
 import { getWorkflowAnalytics, listOverdueTasks } from '../../../services/workflow/workflow-analytics.service';
 
 export const listRoute = defineOpenAPIRoute({
@@ -27,6 +27,16 @@ export const pendingMineRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okPaginated(WorkflowInstanceListItemDTO, 'ok') },
   }),
   handler: async (c) => c.json(okBody(await listPendingMine(c.req.valid('query'))), 200),
+});
+
+export const pendingMineCountRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/instances/pending-mine/count', tags: ['WorkflowInstances'], summary: '待我审批总数',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:task:handle' })] as const,
+    responses: { ...commonErrorResponses, ...ok(z.object({ count: z.number().int() }), 'ok') },
+  }),
+  handler: async (c) => c.json(okBody({ count: await countPendingMine() }), 200),
 });
 
 export const allRoute = defineOpenAPIRoute({

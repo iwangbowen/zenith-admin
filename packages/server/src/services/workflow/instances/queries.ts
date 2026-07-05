@@ -213,6 +213,24 @@ export async function countMyCcUnread(): Promise<number> {
   return Number(total);
 }
 
+/** 待我审批总数：菜单角标与实时提醒使用（与 listPendingMine 同源过滤条件） */
+export async function countPendingMine(): Promise<number> {
+  const user = currentUser();
+  const tc = tenantCondition(workflowInstances, user);
+  const conditions = [
+    eq(workflowTasks.assigneeId, user.userId),
+    eq(workflowTasks.status, 'pending'),
+    eq(workflowInstances.status, 'running'),
+  ];
+  if (tc) conditions.push(tc);
+  const [{ total }] = await db
+    .select({ total: countDistinct(workflowInstances.id) })
+    .from(workflowTasks)
+    .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
+    .where(and(...conditions));
+  return Number(total);
+}
+
 /** T2-2 关联审批单候选：当前用户可见（本人发起或参与）的非草稿实例，供 relation 字段检索 */
 export async function listRelationOptions(query: { definitionId?: number; keyword?: string; limit?: number }) {
   const user = currentUser();

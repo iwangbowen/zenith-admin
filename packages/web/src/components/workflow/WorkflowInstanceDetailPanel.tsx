@@ -10,7 +10,9 @@ import {
   Avatar, TextArea, Select, Toast, Popconfirm,
 } from '@douyinfe/semi-ui';
 import { CornerUpLeft, Send, Undo2 } from 'lucide-react';
-import type { WorkflowDefinition, WorkflowInstance, WorkflowComment, WorkflowTaskConsult } from '@zenith/shared';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
+import type { WorkflowDefinition, WorkflowFieldPermission, WorkflowInstance, WorkflowComment, WorkflowTaskConsult } from '@zenith/shared';
+import { applyFieldPermissionsToFields } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { useAuth } from '@/hooks/useAuth';
 import { formatDateTime } from '@/utils/date';
@@ -50,6 +52,12 @@ interface Props {
   onOpenInstance?: (id: number) => void;
   /** 撤回已办成功后的回调（刷新详情） */
   onRecalled?: () => void;
+  /** 查看者所处节点的字段权限（hidden 字段将被隐藏；edit 字段在 formEditable 时可编辑） */
+  viewerFieldPermissions?: Record<string, WorkflowFieldPermission> | null;
+  /** 是否允许编辑权限为 edit 的字段（当前待办处理人查看时为 true） */
+  formEditable?: boolean;
+  /** formEditable 时暴露表单 FormApi，供审批提交前 validate/getValues 收集修改 */
+  onFormApiReady?: (api: FormApi) => void;
 }
 
 /** 流程沟通时间线（自由评论 + @提及），自管理状态与请求 */
@@ -169,6 +177,7 @@ export function WorkflowDetailSkeleton() {
 
 export default function WorkflowInstanceDetailPanel({
   instance, definition, loading, extraActions, onOpenInstance, onRecalled,
+  viewerFieldPermissions, formEditable = false, onFormApiReady,
 }: Readonly<Props>) {
   const { user } = useAuth();
   const recallMutation = useMutation({
@@ -197,10 +206,12 @@ export default function WorkflowInstanceDetailPanel({
   const effectiveDefinition = resolveWorkflowDetailDefinition(instance, definition);
   // 历史实例渲染冻结快照（发起时绑定），不受表单后续修改影响；无快照时回退到当前表单
   const formFields = resolveWorkflowFormFields(instance, effectiveDefinition);
+  // 按查看者节点字段权限过滤：hidden 移除、非 edit 只读（未传权限时原样渲染，兼容监控/发起人视角）
+  const visibleFormFields = applyFieldPermissionsToFields(formFields, viewerFieldPermissions ?? undefined);
   const formSettings = resolveWorkflowFormSettings(instance, effectiveDefinition);
   const formType = resolveWorkflowFormType(instance, effectiveDefinition);
   const customForm = resolveWorkflowCustomForm(instance, effectiveDefinition);
-  const hasFormFields = formFields.length > 0;
+  const hasFormFields = visibleFormFields.length > 0;
   const flowData = (resolveWorkflowFlowData(instance, effectiveDefinition) ?? null) as { process?: import('@/pages/workflow/designer/types').FlowProcess } | null;
   const childInstances = instance.childInstances ?? [];
   const activeNodeNames = (instance.currentNodeNames && instance.currentNodeNames.length > 0)
@@ -227,14 +238,20 @@ export default function WorkflowInstanceDetailPanel({
     if (hasFormFields) {
       return (
         <WorkflowFormRenderer
-          fields={formFields}
+          key={formEditable ? `edit-${instance.id}` : `view-${instance.id}`}
+          fields={visibleFormFields}
           initValues={(instance.formData as Record<string, unknown>) ?? {}}
-          readOnly
+          readOnly={!formEditable}
+          getFormApi={formEditable ? onFormApiReady : undefined}
           labelPosition={formSettings?.labelPosition}
           labelAlign={formSettings?.labelAlign}
           labelWidth={formSettings?.labelWidth}
         />
       );
+    }
+    // 有表单定义但当前节点全部字段被隐藏：给出提示而非回退展示原始数据，避免泄露 hidden 字段值
+    if (formFields.length > 0) {
+      return <Empty title="当前节点无可见表单字段" />;
     }
     const formatValue = (v: unknown): string => {
       if (v === null || v === undefined) return '';

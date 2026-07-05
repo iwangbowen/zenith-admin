@@ -10,6 +10,7 @@ import { RefreshCw } from 'lucide-react';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import dayjs from 'dayjs';
 import type { WorkflowDefinition } from '@zenith/shared';
+import { applyFieldPermissionsToFields } from '@zenith/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserOptions } from '@/hooks/useUserOptions';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
@@ -160,6 +161,12 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
         : {}
     ), [def.formFields, user]);
 
+    // 发起节点字段权限：hidden 不渲染、read 只读（与服务端 sanitizeFormByStartPerms 白名单一致）
+    const launchFields = useMemo(() => {
+      const startPerms = def.flowData?.nodes.find((n) => n.data.type === 'start')?.data.fieldPermissions;
+      return applyFieldPermissionsToFields(def.formFields ?? [], startPerms);
+    }, [def.flowData, def.formFields]);
+
     const renderFormBody = () => {
       if (def.formType === 'external') {
         return (
@@ -186,7 +193,7 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
         return (
           <WorkflowFormRenderer
             key={`form-${def.id}`}
-            fields={def.formFields}
+            fields={launchFields}
             initValues={{ ...dynamicDefaults, ...(initialFormData ?? {}) }}
             getFormApi={(api) => { dynamicFormApi.current = api; }}
             onValueChange={scheduleChainReload}

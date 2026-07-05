@@ -22,6 +22,7 @@ export {
   listPendingMine,
   listMyCc,
   countMyCcUnread,
+  countPendingMine,
   listRelationOptions,
   listMyHandled,
   listAllInstances,

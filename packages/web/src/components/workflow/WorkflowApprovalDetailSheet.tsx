@@ -14,7 +14,8 @@ import {
 } from '@douyinfe/semi-ui';
 import { ChevronDown } from 'lucide-react';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import type { WorkflowActionButtonConfig, WorkflowActionButtonKey, WorkflowDefinition, WorkflowInstance, WorkflowTask } from '@zenith/shared';
+import type { WorkflowActionButtonConfig, WorkflowActionButtonKey, WorkflowDefinition, WorkflowFieldPermission, WorkflowInstance, WorkflowTask } from '@zenith/shared';
+import { hasEditableFieldPermission } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { resolveRejectTargetHint } from '@/utils/workflow-reject';
 import { resolveWorkflowDetailDefinition } from '@/utils/workflow-snapshot';
@@ -279,6 +280,31 @@ export default function WorkflowApprovalDetailSheet({
     || hasApproverSelectDownstream;
   const canQuickApprove = !approveNeedsModal && !nextApproversQuery.isFetching;
 
+  // 节点表单字段权限：hidden 过滤 + edit 可编辑（仅当前待办处理人可编辑）
+  const viewerFieldPermissions = (currentNodeConfig?.fieldPermissions ?? null) as Record<string, WorkflowFieldPermission> | null;
+  const formEditable = currentTask?.status === 'pending'
+    && detail?.id === instanceId
+    && hasEditableFieldPermission(viewerFieldPermissions);
+  const detailFormApi = useRef<FormApi | null>(null);
+
+  /** 校验并收集「可编辑」字段的修改值；无可编辑字段返回 undefined，校验失败抛错 */
+  const collectFormUpdates = async (): Promise<Record<string, unknown> | undefined> => {
+    if (!formEditable || !viewerFieldPermissions) return undefined;
+    const api = detailFormApi.current;
+    if (!api) return undefined;
+    try {
+      const values = await api.validate() as Record<string, unknown>;
+      const updates: Record<string, unknown> = {};
+      for (const [key, perm] of Object.entries(viewerFieldPermissions)) {
+        if (perm === 'edit' && key in values) updates[key] = values[key];
+      }
+      return Object.keys(updates).length > 0 ? updates : undefined;
+    } catch (err) {
+      Toast.error('表单填写有误，请检查可编辑字段');
+      throw err;
+    }
+  };
+
 
   const openReject = useCallback(async () => {
     if (!instanceId) return;
@@ -373,6 +399,7 @@ export default function WorkflowApprovalDetailSheet({
           return;
         }
       }
+      const formUpdates = await collectFormUpdates();
       const res = await approveMutation.mutateAsync({
         id: taskId,
         body: {
@@ -380,6 +407,7 @@ export default function WorkflowApprovalDetailSheet({
           attachments: attachmentsPayload('approve'),
           signature: approveSignature || undefined,
           selectedNextApprovers: hasApproverSelectDownstream ? selectedNextApprovers : undefined,
+          formUpdates,
         },
       });
       if (res.code === 0) {
@@ -538,7 +566,8 @@ export default function WorkflowApprovalDetailSheet({
   const handleQuickApprove = async () => {
     if (taskId == null || submitting) return;
     try {
-      const res = await approveMutation.mutateAsync({ id: taskId, body: { comment: '' } });
+      const formUpdates = await collectFormUpdates();
+      const res = await approveMutation.mutateAsync({ id: taskId, body: { comment: '', formUpdates } });
       if (res.code === 0) {
         Toast.success('审批通过');
         closeAfterAction();
@@ -625,6 +654,9 @@ export default function WorkflowApprovalDetailSheet({
             definition={detailDef}
             loading={detailLoading}
             onOpenInstance={(id) => setViewId(id)}
+            viewerFieldPermissions={detail?.id === instanceId ? viewerFieldPermissions : null}
+            formEditable={formEditable}
+            onFormApiReady={(api) => { detailFormApi.current = api; }}
           />
         )}
       </WorkflowSideSheet>

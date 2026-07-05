@@ -4,7 +4,7 @@
  * 放在 shared 是为了让「前端审批弹窗 / 后端校验 / MSW Mock」三处对
  * 「下一节点审批人自选」的判定保持**完全一致**，避免各自实现产生偏差。
  */
-import type { WorkflowFlowData, WorkflowNodeConfig, WorkflowNodeFailurePolicy } from './types';
+import type { WorkflowFieldPermission, WorkflowFlowData, WorkflowFormField, WorkflowNodeConfig, WorkflowNodeFailurePolicy } from './types';
 
 type WorkflowFlowNode = WorkflowFlowData['nodes'][number];
 
@@ -99,5 +99,85 @@ export function resolveFailurePolicy(node: WorkflowNodeConfig | null | undefined
     if (of === 'retry') return { action: 'retry', maxRetries: node.triggerConfig?.maxRetries };
   }
   return null;
+}
+
+// ─── 节点级表单字段权限（read / edit / hidden）──────────────────────────────────
+//
+// 设计器 FormPermissionTab 按节点为每个字段 key 配置权限；未配置的字段默认 `read`。
+// 以下纯函数让「前端渲染 / 后端写入白名单 / MSW Mock」三处语义完全一致：
+// - hidden：当前节点不可见（渲染时整体移除，包含布局容器的子字段）
+// - read  ：可见但不可编辑（默认）
+// - edit  ：可见且可编辑，审批提交时允许写回
+
+/** 读取流程图中指定节点的字段权限表；节点不存在或未配置时返回 undefined */
+export function resolveNodeFieldPermissions(
+  flowData: WorkflowFlowData | null | undefined,
+  nodeKey: string | null | undefined,
+): Record<string, WorkflowFieldPermission> | undefined {
+  if (!flowData || !nodeKey) return undefined;
+  const node = flowData.nodes.find((n) => n.data.key === nodeKey);
+  return node?.data.fieldPermissions;
+}
+
+/** 权限表中是否存在至少一个可编辑字段 */
+export function hasEditableFieldPermission(
+  perms: Record<string, WorkflowFieldPermission> | null | undefined,
+): boolean {
+  if (!perms) return false;
+  return Object.values(perms).includes('edit');
+}
+
+/**
+ * 将节点字段权限应用到表单字段树（递归处理分栏/标签页/分步/分组/明细容器）：
+ * - hidden → 整体移除（容器被隐藏时其子字段随之移除）
+ * - read（含未配置）→ 克隆为 `readOnly: true`（同时取消 required，只读字段不参与必填校验）
+ * - edit → 原样保留
+ *
+ * 返回新数组，不修改入参。`perms` 为空时原样返回（兼容未配置权限的旧流程）。
+ */
+export function applyFieldPermissionsToFields(
+  fields: WorkflowFormField[],
+  perms: Record<string, WorkflowFieldPermission> | null | undefined,
+): WorkflowFormField[] {
+  if (!perms || Object.keys(perms).length === 0) return fields;
+  const walk = (list: WorkflowFormField[]): WorkflowFormField[] => {
+    const out: WorkflowFormField[] = [];
+    for (const f of list) {
+      const perm = perms[f.key];
+      if (perm === 'hidden') continue;
+      let next: WorkflowFormField = f;
+      if (f.type === 'row' && f.columns) {
+        next = { ...next, columns: f.columns.map((col) => ({ ...col, fields: walk(col.fields) })) };
+      } else if ((f.type === 'tabs' || f.type === 'steps') && f.panes) {
+        next = { ...next, panes: f.panes.map((pane) => ({ ...pane, fields: walk(pane.fields) })) };
+      } else if ((f.type === 'group' || f.type === 'detail') && f.children) {
+        next = { ...next, children: walk(f.children) };
+      }
+      // 显式 edit 才可编辑；read / 未配置一律只读（与 FormPermissionTab 默认「可读」一致）
+      if (perm !== 'edit') {
+        next = { ...next, readOnly: true, required: false };
+      }
+      out.push(next);
+    }
+    return out;
+  };
+  return walk(fields);
+}
+
+/**
+ * 审批提交表单变更的服务端白名单过滤：仅保留权限为 `edit` 的字段 key。
+ * 节点无权限配置（perms 为空）时视为**无可编辑字段**，返回空对象——
+ * 写权限必须显式声明，与「未配置默认可读」保持一致的安全语义。
+ */
+export function sanitizeFormUpdatesByNodePerms(
+  perms: Record<string, WorkflowFieldPermission> | null | undefined,
+  updates: Record<string, unknown> | null | undefined,
+): Record<string, unknown> {
+  if (!perms || !updates) return {};
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(updates)) {
+    if (perms[key] === 'edit') out[key] = value;
+  }
+  return out;
 }
 

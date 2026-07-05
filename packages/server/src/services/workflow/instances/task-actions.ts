@@ -4,7 +4,7 @@ import { db } from '../../../db';
 import { workflowInstances, workflowTasks } from '../../../db/schema';
 import { findReturnPrevTarget } from '../../../lib/workflow-engine';
 import type { WorkflowFlowData, WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonConfig } from '@zenith/shared';
-import { findNextApproverSelectNodes } from '@zenith/shared';
+import { findNextApproverSelectNodes, resolveNodeFieldPermissions, sanitizeFormUpdatesByNodePerms } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../../lib/context';
 import { buildStarterContext, listSelectableApprovers } from '../workflow-assignee-resolver.service';
@@ -71,7 +71,7 @@ export async function listTaskSelectableNextApprovers(taskId: number): Promise<W
   })));
 }
 
-export async function approveTask(taskId: number, comment?: string, attachments?: Array<{ name: string; url: string; size?: number }>, selectedNextApprovers?: Record<string, number[]>, signature?: string): Promise<ApproveResult> {
+export async function approveTask(taskId: number, comment?: string, attachments?: Array<{ name: string; url: string; size?: number }>, selectedNextApprovers?: Record<string, number[]>, signature?: string, formUpdates?: Record<string, unknown>): Promise<ApproveResult> {
   const user = currentUser();
   const [task] = await db.select().from(workflowTasks).where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.assigneeId, user.userId))).limit(1);
   if (!task) throw new HTTPException(404, { message: '任务不存在或无权操作' });
@@ -94,9 +94,9 @@ export async function approveTask(taskId: number, comment?: string, attachments?
   }
   // 委派回执：若由委派人操作，不推进流程，仅生成回执任务给原委派人
   if (task.delegatedFromId && task.delegatedFromId !== user.userId) {
-    return processDelegatedReceipt(task, inst, 'approved', comment, { userId: user.userId, name: user.username }, attachments);
+    return processDelegatedReceipt(task, inst, 'approved', comment, { userId: user.userId, name: user.username }, attachments, formUpdates);
   }
-  return approveTaskCore(task, inst, comment, { userId: user.userId, name: user.username }, { selectedNextApprovers, signature, attachments });
+  return approveTaskCore(task, inst, comment, { userId: user.userId, name: user.username }, { selectedNextApprovers, signature, attachments, formUpdates });
 }
 
 /** 外部审批回调：根据 callbackId 找到 waiting 任务并审批通过 */
@@ -129,7 +129,7 @@ export async function approveTaskCore(
   inst: typeof workflowInstances.$inferSelect,
   comment: string | undefined,
   actor: WorkflowEventActor,
-  options?: { selectedNextApprovers?: Record<string, number[]>; signature?: string; attachments?: Array<{ name: string; url: string; size?: number }> },
+  options?: { selectedNextApprovers?: Record<string, number[]>; signature?: string; attachments?: Array<{ name: string; url: string; size?: number }>; formUpdates?: Record<string, unknown> },
 ): Promise<ApproveResult> {
   const taskId = task.id;
   const snapshot = inst.definitionSnapshot as { flowData?: WorkflowFlowData };
@@ -153,6 +153,19 @@ export async function approveTaskCore(
     }).where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.status, task.status))).returning();
     if (!approvedTask) throw new HTTPException(409, { message: '任务已被处理，请刷新后重试' });
 
+    // 审批人「可编辑」字段写回：按节点 fieldPermissions 白名单过滤后合并进实例 formData，
+    // 在会签早退（节点未推进）时同样持久化，后续推进与分支条件均使用合并后的数据
+    const baseFormData = (lockedInst.formData ?? inst.formData ?? {}) as Record<string, unknown>;
+    const sanitizedUpdates = sanitizeFormUpdatesByNodePerms(
+      resolveNodeFieldPermissions(flowData, task.nodeKey),
+      options?.formUpdates,
+    );
+    const hasFormUpdates = Object.keys(sanitizedUpdates).length > 0;
+    const mergedFormData = hasFormUpdates ? { ...baseFormData, ...sanitizedUpdates } : baseFormData;
+    if (hasFormUpdates) {
+      await tx.update(workflowInstances).set({ formData: mergedFormData }).where(eq(workflowInstances.id, inst.id));
+    }
+
     // 检查当前节点是否已足够推进（会签/或签/顺序会签）
     const { completed } = await checkNodeCompletion(tx, inst.id, task.nodeKey, flowData);
     if (!completed) {
@@ -163,7 +176,7 @@ export async function approveTaskCore(
       return { row, finished: false, rejected: false, advanced: false, approvedTask, newTasks: [] as typeof workflowTasks.$inferSelect[] };
     }
 
-    const formData = (lockedInst.formData ?? inst.formData ?? {}) as Record<string, unknown>;
+    const formData = mergedFormData;
     const starter = await buildStarterContext(inst.initiatorId, tx);
     // 退回模式 backToOrigin：被退回任务通过后，直接跳回发起退回的来源节点（而非继续后续路径）
     const originCfg = task.returnOriginNodeKey
@@ -535,6 +548,7 @@ async function processDelegatedReceipt(
   comment: string | undefined,
   actor: WorkflowEventActor,
   attachments?: Array<{ name: string; url: string; size?: number }>,
+  formUpdates?: Record<string, unknown>,
 ): Promise<ApproveResult> {
   const delegatorId = task.delegatedFromId;
   if (!delegatorId) throw new HTTPException(500, { message: '委派回执缺失原始审批人' });
@@ -550,6 +564,18 @@ async function processDelegatedReceipt(
       actionAt: new Date(),
     }).where(and(eq(workflowTasks.id, task.id), eq(workflowTasks.status, task.status))).returning();
     if (!closedTask) throw new HTTPException(409, { message: '任务已被处理，请刷新后重试' });
+    // 委派人同样是节点合法处理人：其「可编辑」字段修改按同一白名单合并进实例表单
+    const receiptFlow = (inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData;
+    const sanitizedUpdates = sanitizeFormUpdatesByNodePerms(
+      resolveNodeFieldPermissions(receiptFlow, task.nodeKey),
+      formUpdates,
+    );
+    if (Object.keys(sanitizedUpdates).length > 0) {
+      const [locked] = await tx.select({ formData: workflowInstances.formData })
+        .from(workflowInstances).where(eq(workflowInstances.id, inst.id)).for('update').limit(1);
+      const base = (locked?.formData ?? inst.formData ?? {}) as Record<string, unknown>;
+      await tx.update(workflowInstances).set({ formData: { ...base, ...sanitizedUpdates } }).where(eq(workflowInstances.id, inst.id));
+    }
     const [newTask] = await tx.insert(workflowTasks).values({
       instanceId: task.instanceId,
       nodeKey: task.nodeKey,

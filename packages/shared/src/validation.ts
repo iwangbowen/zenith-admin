@@ -1270,6 +1270,8 @@ export const approveWorkflowTaskSchema = z.object({
   attachments: workflowTaskAttachmentsSchema.optional(),
   /** 当紧邻的下一节点为 approverSelect 类型时，由当前审批人按节点指定审批人：{ [nodeKey]: userIds } */
   selectedNextApprovers: workflowSelectedApproversSchema.optional(),
+  /** 审批人对节点「可编辑」字段的修改（{ 字段key: 新值 }），服务端按节点 fieldPermissions 白名单过滤后合并进实例 formData */
+  formUpdates: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const rejectWorkflowTaskSchema = z.object({

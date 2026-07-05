@@ -3,7 +3,7 @@ import { Badge, Nav } from '@douyinfe/semi-ui';
 
 export type TopNavItem = {
   itemKey: string;
-  text: string;
+  text: React.ReactNode;
   icon?: React.ReactNode;
   items?: TopNavItem[];
   badge?: { count: number; overflowCount?: number };

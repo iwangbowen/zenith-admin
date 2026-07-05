@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowEngineIntrospection, WorkflowEngineOutboxEvent, WorkflowEngineRuntimeTask, WorkflowFlowData, WorkflowFormField, WorkflowInstance, WorkflowInstanceFormSnapshot, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowSerialNoConfig, WorkflowSimulationCase, WorkflowSimulationDecision, WorkflowSimulationResult, WorkflowTask, WorkflowTaskUrge } from '@zenith/shared';
-import { findNextApproverSelectNodes, renderWorkflowSerialNo, resolveSerialPeriodKey, WORKFLOW_SERIAL_SAMPLE_VARS } from '@zenith/shared';
+import { findNextApproverSelectNodes, renderWorkflowSerialNo, resolveNodeFieldPermissions, resolveSerialPeriodKey, sanitizeFormUpdatesByNodePerms, WORKFLOW_SERIAL_SAMPLE_VARS } from '@zenith/shared';
 import {
   mockWorkflowDefinitions,
   mockWorkflowInstances,
@@ -1484,6 +1484,15 @@ export const workflowHandlers = [
   }),
 
   // 待我审批列表（assigneeId=1 且 status=pending 的任务所对应的实例）
+  http.get('/api/workflows/instances/pending-mine/count', () => {
+    const count = mockWorkflowTasks.filter((t) => {
+      if (t.assigneeId !== 1 || t.status !== 'pending') return false;
+      const inst = mockWorkflowInstances.find((i) => i.id === t.instanceId);
+      return inst?.status === 'running';
+    }).length;
+    return ok({ count });
+  }),
+
   http.get('/api/workflows/instances/pending-mine', ({ request }) => {
     const url = new URL(request.url);
     const page = Number(url.searchParams.get('page')) || 1;
@@ -2211,7 +2220,7 @@ export const workflowHandlers = [
   http.post('/api/workflows/tasks/:taskId/approve', async ({ params, request }) => {
     const cached = readIdempotentResponse(request);
     if (cached) return cached;
-    const body = await request.json() as { comment?: string; signature?: string; attachments?: Array<{ name: string; url: string; size?: number }>; selectedNextApprovers?: Record<string, number[]> };
+    const body = await request.json() as { comment?: string; signature?: string; attachments?: Array<{ name: string; url: string; size?: number }>; selectedNextApprovers?: Record<string, number[]>; formUpdates?: Record<string, unknown> };
     const taskIdx = mockWorkflowTasks.findIndex(t => t.id === Number(params.taskId));
     if (taskIdx === -1) return err('任务不存在', 404);
     if (mockWorkflowTasks[taskIdx].status !== 'pending') return err('该任务已处理');
@@ -2219,6 +2228,20 @@ export const workflowHandlers = [
     const now = mockDateTime();
     const attachments = body.attachments && body.attachments.length > 0 ? body.attachments : undefined;
     const current = mockWorkflowTasks[taskIdx];
+
+    // 可编辑字段写回：与服务端一致，按节点 fieldPermissions 白名单过滤后合并进实例 formData
+    if (body.formUpdates) {
+      const instForUpdate = mockWorkflowInstances.find(i => i.id === current.instanceId);
+      if (instForUpdate) {
+        const flow = (instForUpdate.definitionSnapshot?.flowData
+          ?? mockWorkflowDefinitions.find(d => d.id === instForUpdate.definitionId)?.flowData) as WorkflowFlowData | undefined;
+        const sanitized = sanitizeFormUpdatesByNodePerms(resolveNodeFieldPermissions(flow, current.nodeKey), body.formUpdates);
+        if (Object.keys(sanitized).length > 0) {
+          instForUpdate.formData = { ...(instForUpdate.formData ?? {}), ...sanitized };
+          instForUpdate.updatedAt = now;
+        }
+      }
+    }
 
     // 委派回执：仅关闭当前任务、为原委派人生成新 pending，不推进流程
     if (current.delegatedFromId) {

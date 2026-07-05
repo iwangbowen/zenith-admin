@@ -17,6 +17,7 @@ import { useTabsStore } from '@/hooks/useTabsStore';
 import { TabsMetaContext } from '@/hooks/useTabMeta';
 import KeepAliveOutlet from './KeepAliveOutlet';
 import { useWebSocket } from '@/hooks/useWebSocket';
+import { usePendingApprovalCount, useWorkflowRealtime } from '@/hooks/useWorkflowNotifications';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { config } from '@/config';
@@ -80,7 +81,7 @@ const markAnnouncementRead = (id: number) => (prev: (Announcement & { isRead: bo
 
 type NavItem = {
   itemKey: string;
-  text: string;
+  text: React.ReactNode;
   icon?: React.ReactNode;
   items?: NavItem[];
   badge?: { count: number; overflowCount?: number };
@@ -560,6 +561,11 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
     });
   }, []);
 
+  // ─── 工作流待办角标 + 实时刷新 ──────────────────────────────────────────────
+  const hasPendingApprovalMenu = useMemo(() => flatMenus.some((m) => m.path === '/workflow/pending'), [flatMenus]);
+  const pendingApprovalCount = usePendingApprovalCount(hasPendingApprovalMenu).data ?? 0;
+  useWorkflowRealtime();
+
   // ─── WebSocket ──────────────────────────────────────────────────────────────
   const handleWsMessage = useCallback((msg: WsMessage) => {
     if (msg.type === 'in-app-message:new') {
@@ -726,15 +732,33 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
 
   const iconsReady = useLucideIconsReady();
   const navItems = useMemo(
-    () => menuTree.map(menuToNavItem).filter((item): item is NavItem => item !== null).map((item) => {
-      if (item.itemKey === '/chat' && chatUnreadCount > 0) {
-        return { ...item, badge: { count: chatUnreadCount, overflowCount: 99 } };
-      }
-      return item;
-    }),
+    () => {
+      // 待我审批角标：以内联 Badge 注入 text（侧边栏/双栏子导航/顶栏下拉均按 ReactNode 渲染，避免与顶栏 badge 装饰重复）
+      const decorate = (item: NavItem): NavItem => {
+        const next = item.items?.length ? { ...item, items: item.items.map(decorate) } : item;
+        if (next.itemKey === '/workflow/pending' && pendingApprovalCount > 0) {
+          return {
+            ...next,
+            text: (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <span>{next.text}</span>
+                <Badge count={pendingApprovalCount} overflowCount={99} type="danger" />
+              </span>
+            ),
+          };
+        }
+        return next;
+      };
+      return menuTree.map(menuToNavItem).filter((item): item is NavItem => item !== null).map((item) => {
+        if (item.itemKey === '/chat' && chatUnreadCount > 0) {
+          return { ...item, badge: { count: chatUnreadCount, overflowCount: 99 } };
+        }
+        return decorate(item);
+      });
+    },
     // iconsReady: 图标注册表异步加载完成后重建 nav 项以补齐菜单图标
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [menuTree, chatUnreadCount, iconsReady]
+    [menuTree, chatUnreadCount, pendingApprovalCount, iconsReady]
   );
 
   const handleSidebarOpenChange = useCallback(

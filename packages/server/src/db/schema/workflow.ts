@@ -450,7 +450,8 @@ export const workflowInstances = pgTable('workflow_instances', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (t) => [
-  uniqueIndex('workflow_instances_biz_key_uniq').on(t.bizType, t.bizId),
+  // 业务键租户内唯一：tenant_id 可空（平台级/单租户数据），用 coalesce 归一为 0 保证空租户下依旧防重
+  uniqueIndex('workflow_instances_biz_key_uniq').on(sql`coalesce(${t.tenantId}, 0)`, t.bizType, t.bizId),
   uniqueIndex('workflow_instances_parent_task_item_key_idx').on(t.parentTaskId, t.parentTaskItemKey),
 ]);
 
