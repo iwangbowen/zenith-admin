@@ -11,7 +11,7 @@ import { pageOffset } from '../../lib/pagination';
 import { getDataScopeCondition } from '../../lib/data-scope';
 import { escapeLike } from '../../lib/where-helpers';
 import { getPasswordPolicy, validatePassword } from '../../lib/password-policy';
-import { unlockUser as unlockUserSession, batchCheckLoginLock, getOnlineSessions } from '../../lib/session-manager';
+import { unlockUser as unlockUserSession, batchCheckLoginLock, getOnlineSessions, forceLogoutAllByUsers } from '../../lib/session-manager';
 import { streamToExcel, streamToCsv, formatDateTimeForExcel } from '../../lib/excel-export';
 import { clearUserPermissionCache } from '../../lib/permissions';
 import type { JwtPayload } from '../../middleware/auth';
@@ -20,6 +20,7 @@ import { currentUser } from '../../lib/context';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
 import { applyEntityMasking } from '../platform/data-mask.service';
+import logger from '../../lib/logger';
 
 // ─── 关联查询配置 ─────────────────────────────────────────────────────────────
 
@@ -36,6 +37,16 @@ const PROTECTED_ADMIN_USERNAME = 'admin';
 
 function isProtectedAdminUser(username: string) {
   return username.trim().toLowerCase() === PROTECTED_ADMIN_USERNAME;
+}
+
+/** 删除/禁用用户后吊销其全部在线会话（best-effort，失败不影响主流程） */
+async function revokeUserSessions(userIds: number[]) {
+  if (userIds.length === 0) return;
+  try {
+    await forceLogoutAllByUsers(userIds);
+  } catch (err) {
+    logger.error('吊销用户会话失败', { userIds, err });
+  }
 }
 
 async function ensureNoProtectedAdminInIds(ids: number[], action: '删除' | '禁用' | '修改密码') {
@@ -293,7 +304,10 @@ export async function batchDeleteUsers(ids: number[]) {
   if (validIds.length === 0) throw new HTTPException(400, { message: '用户ID格式无效' });
   const tc = tenantCondition(users, user);
   await ensureNoProtectedAdminInIds(validIds, '删除');
-  await db.delete(users).where(tc ? and(inArray(users.id, validIds), tc) : inArray(users.id, validIds));
+  const deleted = await db.delete(users)
+    .where(tc ? and(inArray(users.id, validIds), tc) : inArray(users.id, validIds))
+    .returning({ id: users.id });
+  await revokeUserSessions(deleted.map((r) => r.id));
   return validIds.length;
 }
 
@@ -305,7 +319,12 @@ export async function batchUpdateUserStatus(ids: number[], status: 'enabled' | '
   if (status === 'disabled') {
     await ensureNoProtectedAdminInIds(validIds, '禁用');
   }
-  await db.update(users).set({ status }).where(tc ? and(inArray(users.id, validIds), tc) : inArray(users.id, validIds));
+  const updated = await db.update(users).set({ status })
+    .where(tc ? and(inArray(users.id, validIds), tc) : inArray(users.id, validIds))
+    .returning({ id: users.id });
+  if (status === 'disabled') {
+    await revokeUserSessions(updated.map((r) => r.id));
+  }
 }
 
 export async function getUsersBeforeAudit(ids: number[]) {
@@ -406,6 +425,7 @@ export async function updateUser(id: number, data: UpdateUserInput) {
   });
   if (!updated) throw new HTTPException(404, { message: '用户不存在' });
   if (nextRoleIds !== undefined) clearUserPermissionCache(id);
+  if (data.status === 'disabled') await revokeUserSessions([id]);
   const full = await findUserWithRelations({ where: eq(users.id, updated.id) });
   if (!full) throw new HTTPException(404, { message: '用户不存在' });
   return mapUser(full);
@@ -417,6 +437,7 @@ export async function deleteUser(id: number) {
   await ensureNoProtectedAdminInIds([id], '删除');
   const [deleted] = await db.delete(users).where(tc ? and(eq(users.id, id), tc) : eq(users.id, id)).returning();
   if (!deleted) throw new HTTPException(404, { message: '用户不存在' });
+  await revokeUserSessions([id]);
 }
 
 export async function batchResetUsersPassword(ids: number[], password: string) {

@@ -74,6 +74,7 @@ vi.mock('../../lib/session-manager', () => ({
   clearLoginAttempts: vi.fn(),
   getOnlineSessions: vi.fn().mockResolvedValue([]),
   unlockUser: vi.fn(),
+  forceLogoutAllByUsers: vi.fn().mockResolvedValue([]),
   // 列表查询经 users.service 调用，批量返回各用户锁定计数；空 Map = 均未锁定
   batchCheckLoginLock: vi.fn().mockResolvedValue(new Map()),
 }));

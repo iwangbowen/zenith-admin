@@ -177,6 +177,11 @@ export async function deleteUserGroup(id: number): Promise<void> {
   const tc = tenantCondition(userGroups, currentUser());
   const [grp] = await db.select({ id: userGroups.id }).from(userGroups).where(and(eq(userGroups.id, id), tc)).limit(1);
   if (!grp) throw new HTTPException(404, { message: '用户组不存在' });
+  // 在用保护：仍有成员的用户组不允许删除，避免级联清空成员关系
+  const memberCount = await db.$count(userGroupMembers, eq(userGroupMembers.groupId, id));
+  if (memberCount > 0) {
+    throw new HTTPException(409, { message: `该用户组下仍有 ${memberCount} 名成员，请先移除成员后再删除` });
+  }
   await db.delete(userGroups).where(and(eq(userGroups.id, id), tc));
 }
 
@@ -184,7 +189,19 @@ export async function batchDeleteUserGroups(ids: number[]): Promise<{ count: num
   if (!Array.isArray(ids) || ids.length === 0) throw new HTTPException(400, { message: '请选择要删除的用户组' });
   const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
   if (validIds.length === 0) throw new HTTPException(400, { message: '用户组ID格式无效' });
-  await db.delete(userGroups).where(and(inArray(userGroups.id, validIds), tenantCondition(userGroups, currentUser())));
+  const tc = tenantCondition(userGroups, currentUser());
+  // 在用保护：任一选中用户组仍有成员时整体拒绝，并列出组名
+  const blocked = await db
+    .selectDistinct({ id: userGroups.id, name: userGroups.name })
+    .from(userGroups)
+    .innerJoin(userGroupMembers, eq(userGroupMembers.groupId, userGroups.id))
+    .where(and(inArray(userGroups.id, validIds), tc));
+  if (blocked.length > 0) {
+    const names = blocked.slice(0, 3).map((g) => `「${g.name}」`).join('、');
+    const suffix = blocked.length > 3 ? ` 等 ${blocked.length} 个用户组` : '';
+    throw new HTTPException(409, { message: `${names}${suffix}仍有成员，请先移除成员后再删除` });
+  }
+  await db.delete(userGroups).where(and(inArray(userGroups.id, validIds), tc));
   return { count: validIds.length };
 }
 

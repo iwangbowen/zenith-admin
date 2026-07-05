@@ -161,6 +161,11 @@ export async function deleteRole(id: number) {
   const [existing] = await db.select({ code: roles.code }).from(roles).where(and(eq(roles.id, id), tenantCondition(roles, user))).limit(1);
   if (!existing) throw new HTTPException(404, { message: '角色不存在' });
   if (existing.code === 'super_admin') throw new HTTPException(400, { message: '超级管理员角色不允许删除' });
+  // 在用保护：已分配给用户的角色不允许删除，避免级联删除导致用户静默失权
+  const boundUsers = await db.$count(userRoles, eq(userRoles.roleId, id));
+  if (boundUsers > 0) {
+    throw new HTTPException(409, { message: `该角色已分配给 ${boundUsers} 个用户，请先解除用户关联后再删除` });
+  }
   const [deleted] = await db.delete(roles).where(and(eq(roles.id, id), tenantCondition(roles, user))).returning();
   if (!deleted) throw new HTTPException(404, { message: '角色不存在' });
 }

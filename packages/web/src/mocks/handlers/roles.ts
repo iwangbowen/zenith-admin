@@ -63,10 +63,21 @@ export const rolesHandlers = [
     return HttpResponse.json({ code: 0, message: '更新成功', data: role });
   }),
 
-  // 删除角色
+  // 删除角色（在用保护：已分配用户的角色返回 409）
   http.delete('/api/roles/:id', ({ params }) => {
     const index = mockRoles.findIndex((r) => r.id === Number(params.id));
     if (index === -1) return HttpResponse.json({ code: 404, message: '角色不存在', data: null });
+    const role = mockRoles[index];
+    if (role.code === 'super_admin') {
+      return HttpResponse.json({ code: 400, message: '超级管理员角色不允许删除', data: null }, { status: 400 });
+    }
+    const boundUsers = role.userCount ?? 0;
+    if (boundUsers > 0) {
+      return HttpResponse.json(
+        { code: 409, message: `该角色已分配给 ${boundUsers} 个用户，请先解除用户关联后再删除`, data: null },
+        { status: 409 },
+      );
+    }
     mockRoles.splice(index, 1);
     return HttpResponse.json({ code: 0, message: '删除成功', data: null });
   }),

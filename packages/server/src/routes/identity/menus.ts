@@ -1,7 +1,7 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
-import { jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam, okBody } from '../../lib/openapi-schemas';
+import { jsonContent, validationHook, commonErrorResponses, conflictResponse, ok, okMsg, IdParam, okBody } from '../../lib/openapi-schemas';
 import { MenuDTO } from '../../lib/openapi-dtos';
 import {
   listUserMenuTree,
@@ -166,6 +166,7 @@ const deleteMenuRoute = defineOpenAPIRoute({
     request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
+      ...conflictResponse,
       ...okMsg('删除成功'),
     },
   }),

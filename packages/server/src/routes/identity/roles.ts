@@ -2,7 +2,7 @@ import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-opena
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
 import { createRoleSchema, updateRoleSchema, assignRoleMenusSchema, assignRoleUsersSchema } from '@zenith/shared';
-import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody } from '../../lib/openapi-schemas';
+import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, conflictResponse, ok, okPaginated, okMsg, IdParam, okBody } from '../../lib/openapi-schemas';
 import { RoleDTO, UserDTO } from '../../lib/openapi-dtos';
 import {
   listAllRoles,
@@ -95,7 +95,7 @@ const deleteRouteDef = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:role:delete', audit: { description: '删除角色', module: '角色管理' } })] as const,
     request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...okMsg('删除成功') },
+    responses: { ...commonErrorResponses, ...conflictResponse, ...okMsg('删除成功') },
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');

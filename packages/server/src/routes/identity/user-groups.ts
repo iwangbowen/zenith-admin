@@ -1,7 +1,7 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditAfterData, setAuditBeforeData } from '../../middleware/guard';
-import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody } from '../../lib/openapi-schemas';
+import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, conflictResponse, ok, okPaginated, okMsg, IdParam, okBody } from '../../lib/openapi-schemas';
 import { UserGroupDTO, UserGroupMemberDTO } from '../../lib/openapi-dtos';
 import {
   listAllUserGroups,
@@ -105,7 +105,7 @@ const batchDeleteRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:user-groups:delete', audit: { description: '批量删除用户组', module: '用户组管理' } })] as const,
     request: { body: { content: jsonContent(BatchDeleteBody), required: true } },
-    responses: { ...okMsg('删除成功'), ...commonErrorResponses },
+    responses: { ...okMsg('删除成功'), ...commonErrorResponses, ...conflictResponse },
   }),
   handler: async (c) => {
     const { ids } = c.req.valid('json');
@@ -122,7 +122,7 @@ const deleteRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:user-groups:delete', audit: { description: '删除用户组', module: '用户组管理' } })] as const,
     request: { params: IdParam },
-    responses: { ...okMsg('删除成功'), ...commonErrorResponses },
+    responses: { ...okMsg('删除成功'), ...commonErrorResponses, ...conflictResponse },
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');

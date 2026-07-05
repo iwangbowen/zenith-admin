@@ -1,6 +1,6 @@
-import { eq, asc, inArray } from 'drizzle-orm';
+import { eq, and, ne, asc, inArray, countDistinct } from 'drizzle-orm';
 import { db } from '../../db';
-import { menus } from '../../db/schema';
+import { menus, roleMenus, userMenus, roles } from '../../db/schema';
 import type { Menu } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
@@ -155,7 +155,27 @@ export async function deleteMenu(id: number): Promise<void> {
       toDelete.add(cur);
       all.filter((m) => m.parentId === cur).forEach((m) => queue.push(m.id));
     }
-    await tx.delete(menus).where(inArray(menus.id, [...toDelete]));
+    const ids = [...toDelete];
+    // 在用保护：被角色（超管的全量绑定除外）或用户直接授权引用的菜单不允许删除
+    const [[roleRef], [userRef]] = await Promise.all([
+      tx.select({ count: countDistinct(roleMenus.roleId) })
+        .from(roleMenus)
+        .innerJoin(roles, eq(roles.id, roleMenus.roleId))
+        .where(and(inArray(roleMenus.menuId, ids), ne(roles.code, 'super_admin'))),
+      tx.select({ count: countDistinct(userMenus.userId) })
+        .from(userMenus)
+        .where(inArray(userMenus.menuId, ids)),
+    ]);
+    const roleCount = Number(roleRef?.count ?? 0);
+    const userCount = Number(userRef?.count ?? 0);
+    if (roleCount > 0 || userCount > 0) {
+      const parts = [
+        roleCount > 0 ? `${roleCount} 个角色` : null,
+        userCount > 0 ? `${userCount} 个用户` : null,
+      ].filter(Boolean).join('、');
+      throw new HTTPException(409, { message: `该菜单（含子菜单）仍被 ${parts} 授权引用，请先解除授权后再删除` });
+    }
+    await tx.delete(menus).where(inArray(menus.id, ids));
   });
 }
 

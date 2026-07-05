@@ -82,17 +82,22 @@ export async function forceLogout(tokenId: string): Promise<boolean> {
 
 /** Force logout all sessions belonging to a specific user */
 export async function forceLogoutAllByUser(userId: number): Promise<string[]> {
+  return forceLogoutAllByUsers([userId]);
+}
+
+/** Force logout all sessions belonging to any of the specified users (single SCAN + pipeline) */
+export async function forceLogoutAllByUsers(userIds: number[]): Promise<string[]> {
+  if (userIds.length === 0) return [];
+  const idSet = new Set(userIds);
   const sessions = await getOnlineSessions();
-  const targets = sessions.filter((s) => s.userId === userId);
+  const targets = sessions.filter((s) => idSet.has(s.userId));
   if (targets.length === 0) return [];
-  await Promise.all(
-    targets.map((s) =>
-      Promise.all([
-        redis.set(`${BLACKLIST_PREFIX}${s.tokenId}`, '1', 'EX', BLACKLIST_TTL),
-        redis.del(`${SESSION_PREFIX}${s.tokenId}`),
-      ]),
-    ),
-  );
+  const pipeline = redis.pipeline();
+  for (const s of targets) {
+    pipeline.set(`${BLACKLIST_PREFIX}${s.tokenId}`, '1', 'EX', BLACKLIST_TTL);
+    pipeline.del(`${SESSION_PREFIX}${s.tokenId}`);
+  }
+  await pipeline.exec();
   return targets.map((s) => s.tokenId);
 }
 

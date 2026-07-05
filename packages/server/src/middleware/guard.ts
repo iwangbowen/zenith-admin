@@ -9,6 +9,7 @@ import { operationLogs } from '../db/schema';
 import { errBody } from '../lib/openapi-schemas';
 import { getClientIp, parseUserAgent } from '../lib/request-helpers';
 import { lookupIpLocation } from '../lib/ip-location';
+import { getEffectiveTenantId } from '../lib/tenant';
 
 export interface AuditLogOptions {
   description: string;
@@ -76,6 +77,8 @@ async function writeOperationLog(
       userAgent: ua.slice(0, 512) || null,
       os: osName === 'Unknown' ? null : osName,
       browser: browserName === 'Unknown' ? null : browserName,
+      // 归属租户：租户用户记自身租户；平台超管在租户视角下记该租户，平台视角记 null
+      tenantId: user ? getEffectiveTenantId(user) : null,
     });
   } catch {
     // 日志写入失败不影响主流程

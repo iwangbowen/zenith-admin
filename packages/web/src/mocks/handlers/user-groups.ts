@@ -128,6 +128,16 @@ export const userGroupsHandlers = [
   http.delete('/api/user-groups/batch', async ({ request }) => {
     const body = await request.json() as { ids: number[] };
     const ids = body?.ids ?? [];
+    // 在用保护：任一选中用户组仍有成员时整体拒绝
+    const blocked = mockUserGroups.filter((g) => ids.includes(g.id) && (g.memberCount ?? 0) > 0);
+    if (blocked.length > 0) {
+      const names = blocked.slice(0, 3).map((g) => `「${g.name}」`).join('、');
+      const suffix = blocked.length > 3 ? ` 等 ${blocked.length} 个用户组` : '';
+      return HttpResponse.json(
+        { code: 409, message: `${names}${suffix}仍有成员，请先移除成员后再删除`, data: null },
+        { status: 409 },
+      );
+    }
     ids.forEach((id) => {
       const idx = mockUserGroups.findIndex((g) => g.id === id);
       if (idx !== -1) mockUserGroups.splice(idx, 1);
@@ -138,6 +148,14 @@ export const userGroupsHandlers = [
   http.delete('/api/user-groups/:id', ({ params }) => {
     const idx = mockUserGroups.findIndex((g) => g.id === Number(params.id));
     if (idx === -1) return HttpResponse.json({ code: 404, message: '用户组不存在', data: null });
+    const grp = mockUserGroups[idx];
+    const memberCount = grp.memberCount ?? 0;
+    if (memberCount > 0) {
+      return HttpResponse.json(
+        { code: 409, message: `该用户组下仍有 ${memberCount} 名成员，请先移除成员后再删除`, data: null },
+        { status: 409 },
+      );
+    }
     mockUserGroups.splice(idx, 1);
     return HttpResponse.json({ code: 0, message: '删除成功', data: null });
   }),

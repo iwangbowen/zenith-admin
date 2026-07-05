@@ -101,6 +101,11 @@ export const commonErrorResponses = {
   500: { content: jsonContent(ErrorResponse), description: '服务端错误' },
 } as const;
 
+/** 409 冲突响应（删除对象仍被引用等场景），与 commonErrorResponses 配合展开使用 */
+export const conflictResponse = {
+  409: { content: jsonContent(ErrorResponse), description: '存在关联数据，操作冲突' },
+} as const;
+
 /** id 参数 schema（path/query 通用） */
 export const IdParam = z.object({
   id: z.coerce
