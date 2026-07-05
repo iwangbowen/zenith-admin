@@ -100,10 +100,11 @@ export default defineConfig(({ mode }) => {
           moduleSideEffects: (id: string): boolean | undefined =>
             id.replaceAll('\\', '/').endsWith('/src/lib/semi-ui-barrel.ts') ? false : undefined,
         },
-        // 多入口：后台管理（index.html）+ 会员前台（member.html）
+        // 多入口：后台管理（index.html）+ 会员前台（member.html）+ 移动审批轻页（approval.html）
         input: {
           main: fileURLToPath(new URL('./index.html', import.meta.url)),
           member: fileURLToPath(new URL('./member.html', import.meta.url)),
+          approval: fileURLToPath(new URL('./approval.html', import.meta.url)),
         },
         output: {
           // 使用 rolldown 原生 codeSplitting.groups（替代 rollup 兼容的 manualChunks 函数）：
