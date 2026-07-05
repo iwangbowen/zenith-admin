@@ -89,4 +89,8 @@ export {
   skipStuckToken,
   replayFromToken,
   batchSkipStuckTokens,
+  suspendInstance,
+  resumeInstance,
+  previewHandover,
+  handoverTasks,
 } from './instances/admin-ops';

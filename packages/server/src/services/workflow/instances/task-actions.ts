@@ -88,7 +88,7 @@ export async function approveTask(taskId: number, comment?: string, attachments?
   if (task.status !== 'pending') throw new HTTPException(400, { message: '任务已处理' });
   const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
   if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
-  if (inst.status !== 'running') throw new HTTPException(400, { message: '流程实例不在进行中' });
+  if (inst.status !== 'running') throw new HTTPException(400, { message: inst.status === 'suspended' ? '流程已挂起，暂不可处理' : '流程实例不在进行中' });
   // 校验"操作按钮设置"中通过按钮的附件必填（uploadMode === 'required'）
   const flowData = (inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData;
   const nodeCfg = flowData?.nodes.find((n) => n.data.key === task.nodeKey)?.data;
@@ -119,7 +119,7 @@ export async function approveTaskByCallback(callbackId: string, comment: string 
     return { instance: mapInstance(inst), message: '回调已处理' };
   }
   if (task.status !== 'waiting') throw new HTTPException(409, { message: '回调任务已处理' });
-  if (inst.status !== 'running') throw new HTTPException(400, { message: '流程实例不在进行中' });
+  if (inst.status !== 'running') throw new HTTPException(400, { message: inst.status === 'suspended' ? '流程已挂起，暂不可处理' : '流程实例不在进行中' });
   try {
     return await approveTaskCore(task, inst, comment, { userId: 0, name: `external:${approverName}` });
   } catch (err) {
@@ -285,7 +285,7 @@ export async function rejectTask(taskId: number, comment: string, attachments?: 
   if (task.status !== 'pending') throw new HTTPException(400, { message: '任务已处理' });
   const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
   if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
-  if (inst.status !== 'running') throw new HTTPException(400, { message: '流程实例不在进行中' });
+  if (inst.status !== 'running') throw new HTTPException(400, { message: inst.status === 'suspended' ? '流程已挂起，暂不可处理' : '流程实例不在进行中' });
   if (!comment.trim()) throw new HTTPException(400, { message: '请填写拒绝原因' });
   assertActionUploadRequirement(inst, task.nodeKey, 'reject', attachments);
   if (task.delegatedFromId && task.delegatedFromId !== user.userId) {
@@ -304,7 +304,7 @@ export async function rejectTaskByCallback(callbackId: string, comment: string, 
     return { instance: mapInstance(inst), message: '回调已处理' };
   }
   if (task.status !== 'waiting') throw new HTTPException(409, { message: '回调任务已处理' });
-  if (inst.status !== 'running') throw new HTTPException(400, { message: '流程实例不在进行中' });
+  if (inst.status !== 'running') throw new HTTPException(400, { message: inst.status === 'suspended' ? '流程已挂起，暂不可处理' : '流程实例不在进行中' });
   try {
     return await rejectTaskCore(task, inst, comment, { userId: 0, name: `external:${approverName}` });
   } catch (err) {
@@ -546,7 +546,7 @@ export async function getOwnPendingTask(taskId: number) {
   const [inst] = await db.select().from(workflowInstances)
     .where(eq(workflowInstances.id, task.instanceId)).limit(1);
   if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
-  if (inst.status !== 'running') throw new HTTPException(400, { message: '流程实例不在进行中' });
+  if (inst.status !== 'running') throw new HTTPException(400, { message: inst.status === 'suspended' ? '流程已挂起，暂不可处理' : '流程实例不在进行中' });
   return { task, inst, actor: { userId: user.userId, name: user.username } };
 }
 

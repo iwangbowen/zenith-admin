@@ -46,7 +46,8 @@
 | `workflow:instance:monitor` | 全局实例监控、数据分析、诊断、运行轨迹 |
 | `workflow:instance:cancel` | 取消流程、强制跳转、Token 重放等高危操作 |
 | `workflow:instance:delete` | 删除流程实例 |
-| `workflow:engine:operate` | 引擎恢复动作、实例迁移、补偿工单处理 |
+| `workflow:engine:operate` | 引擎恢复动作、实例迁移、补偿工单处理、挂起/恢复实例 |
+| `workflow:task:handover` | 离职交接：批量移交某人名下待办并停用其审批代理 |
 | `workflow:health:view` | 健康巡检页面 |
 
 ### 集成与计划

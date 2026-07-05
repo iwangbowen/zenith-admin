@@ -37,6 +37,7 @@ type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'orange' | 'purpl
 const INSTANCE_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
   draft: { text: '草稿', color: 'grey' },
   running: { text: '审批中', color: 'blue' },
+  suspended: { text: '已挂起', color: 'grey' },
   approved: { text: '已通过', color: 'green' },
   rejected: { text: '已驳回', color: 'red' },
   withdrawn: { text: '已撤回', color: 'orange' },
@@ -310,6 +311,12 @@ export default function WorkflowInstanceDetailPanel({
           </>
         )}
       </div>
+      {instance.status === 'suspended' && (
+        <div style={{ marginTop: 8, padding: '6px 10px', borderRadius: 6, background: 'var(--semi-color-warning-light-default)', fontSize: 12, color: 'var(--semi-color-warning-dark)' }}>
+          该流程已挂起{instance.suspendedAt ? `（${formatDateTime(instance.suspendedAt)}）` : ''}，待办暂不可处理，超时计时已冻结。
+          {instance.suspendReason ? ` 原因：${instance.suspendReason}` : ''}
+        </div>
+      )}
       {(instance.parentInstanceId || extraActions || myRecallableTask) ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
           {instance.parentInstanceId ? (

@@ -20,6 +20,7 @@ type TagColor = 'amber' | 'blue' | 'green' | 'grey' | 'orange' | 'purple' | 'red
 const INSTANCE_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
   draft: { text: '草稿', color: 'grey' },
   running: { text: '审批中', color: 'blue' },
+  suspended: { text: '已挂起', color: 'amber' },
   approved: { text: '已通过', color: 'green' },
   rejected: { text: '已驳回', color: 'red' },
   withdrawn: { text: '已撤回', color: 'orange' },

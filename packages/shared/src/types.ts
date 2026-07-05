@@ -1947,7 +1947,7 @@ export interface UserApiTokenCreated {
 
 // ─── 工作流引擎 ───────────────────────────────────────────────────────────────
 export type WorkflowDefinitionStatus = 'draft' | 'published' | 'disabled';
-export type WorkflowInstanceStatus = 'draft' | 'running' | 'approved' | 'rejected' | 'withdrawn' | 'cancelled';
+export type WorkflowInstanceStatus = 'draft' | 'running' | 'suspended' | 'approved' | 'rejected' | 'withdrawn' | 'cancelled';
 export type WorkflowTaskStatus = 'pending' | 'approved' | 'rejected' | 'skipped' | 'waiting';
 export type WorkflowTaskExternalDispatchStatus = 'pending' | 'dispatched' | 'failed' | 'fallback';
 export type WorkflowNodeType =
@@ -2487,6 +2487,26 @@ export interface WorkflowInstanceSummaryItem {
   key: string;
   label: string;
   value: string;
+}
+
+/** 离职交接影响范围预览 */
+export interface WorkflowHandoverPreview {
+  fromUserName: string;
+  pendingTaskCount: number;
+  waitingTaskCount: number;
+  /** 交接人名下启用中的审批代理规则数 */
+  delegationCount: number;
+  /** 已发布定义中将其写死为「指定成员」审批人的节点清单（仅提示，需人工调整定义） */
+  affectedDefinitions: Array<{ id: number; name: string; nodeNames: string[] }>;
+}
+
+/** 离职交接执行结果（逐条改派互不阻断） */
+export interface WorkflowHandoverResult {
+  taskTotal: number;
+  succeeded: number;
+  failed: number;
+  delegationsDisabled: number;
+  results: Array<{ taskId: number; title: string; nodeName: string; success: boolean; message?: string }>;
 }
 
 // 表单字段类型
@@ -3257,6 +3277,10 @@ export interface WorkflowInstance {
   bizType?: string | null;
   /** 业务实体接入：业务记录主键（与 bizType 组成 businessKey） */
   bizId?: string | null;
+  /** 挂起时间（status=suspended 时有值） */
+  suspendedAt?: string | null;
+  /** 挂起原因 */
+  suspendReason?: string | null;
   /** 子流程：本实例发起的子实例摘要列表（仅详情场景填充） */
   childInstances?: WorkflowChildInstanceSummary[] | null;
   tasks?: WorkflowTask[];

@@ -9,6 +9,9 @@ stateDiagram-v2
   [*] --> draft
   draft --> running: 提交草稿
   [*] --> running: 直接发起
+  running --> suspended: 管理员挂起
+  suspended --> running: 管理员恢复
+  suspended --> cancelled: 管理员取消
   running --> approved: 所有路径通过
   running --> rejected: 驳回并终止
   running --> withdrawn: 发起人撤回
@@ -21,6 +24,7 @@ stateDiagram-v2
 | --- | --- |
 | `draft` | 已保存但未进入流转 |
 | `running` | 正在执行 |
+| `suspended` | 管理员挂起：待办不可处理，SLA 超时与延迟计时冻结，恢复后按剩余时长续跑 |
 | `approved` | 已通过 |
 | `rejected` | 已驳回 |
 | `withdrawn` | 已撤回 |
@@ -73,7 +77,10 @@ stateDiagram-v2
 
 | 操作 | 说明 |
 | --- | --- |
-| 取消流程 | 强制终止运行实例，状态变为 `cancelled` |
+| 取消流程 | 强制终止运行/挂起实例，状态变为 `cancelled` |
+| 挂起流程 | 冻结流转：待办不可处理、外部回调拒绝、`task_timeout`/`delay_wake` 计时作业暂停计时（记录剩余时长） |
+| 恢复流程 | 从挂起恢复为 `running`，计时作业按挂起前剩余时长重排续跑 |
+| 离职交接 | 把某人名下全部未处理待办批量改派给接手人（转办链留痕、逐条互不阻断），可同时停用其审批代理规则，并提示将其写死为审批人的定义清单 |
 | 删除实例 | 删除实例及关联任务 |
 | 强制跳转 | 跳转到指定节点重新生成活动路径 |
 | 改派处理人 | 将待办改派给其他用户 |

@@ -284,7 +284,7 @@ export const WorkflowInstanceDTO = z
     formData: z.unknown().nullable(),
     formSnapshot: z.unknown().nullable().optional(),
     definitionSnapshot: z.unknown().nullable().optional(),
-    status: z.enum(['draft', 'running', 'approved', 'rejected', 'withdrawn', 'cancelled']),
+    status: z.enum(['draft', 'running', 'suspended', 'approved', 'rejected', 'withdrawn', 'cancelled']),
     currentNodeKey: z.string().nullable(),
     currentNodeKeys: z.array(z.string()).optional(),
     currentNodeName: z.string().nullable().optional(),
@@ -299,10 +299,12 @@ export const WorkflowInstanceDTO = z
     parentTaskItemIndex: z.number().int().nullable().optional(),
     bizType: z.string().nullable().optional(),
     bizId: z.string().nullable().optional(),
+    suspendedAt: z.string().nullable().optional(),
+    suspendReason: z.string().nullable().optional(),
     childInstances: z.array(z.object({
       id: z.number().int(),
       title: z.string(),
-      status: z.enum(['draft', 'running', 'approved', 'rejected', 'withdrawn', 'cancelled']),
+      status: z.enum(['draft', 'running', 'suspended', 'approved', 'rejected', 'withdrawn', 'cancelled']),
       parentTaskNodeKey: z.string().nullable().optional(),
       createdAt: z.string(),
     })).nullable().optional(),
@@ -346,8 +348,33 @@ export const WorkflowInstanceAllDTO = z
   })
   .openapi('WorkflowInstanceAll');
 
-export const WorkflowAutomationDTO = z
+export const WorkflowHandoverPreviewDTO = z
   .object({
+    fromUserName: z.string(),
+    pendingTaskCount: z.number().int(),
+    waitingTaskCount: z.number().int(),
+    delegationCount: z.number().int(),
+    affectedDefinitions: z.array(z.object({ id: z.number().int(), name: z.string(), nodeNames: z.array(z.string()) })),
+  })
+  .openapi('WorkflowHandoverPreview');
+
+export const WorkflowHandoverResultDTO = z
+  .object({
+    taskTotal: z.number().int(),
+    succeeded: z.number().int(),
+    failed: z.number().int(),
+    delegationsDisabled: z.number().int(),
+    results: z.array(z.object({
+      taskId: z.number().int(),
+      title: z.string(),
+      nodeName: z.string(),
+      success: z.boolean(),
+      message: z.string().optional(),
+    })),
+  })
+  .openapi('WorkflowHandoverResult');
+
+export const WorkflowAutomationDTO = z  .object({
     id: z.number().int(),
     definitionId: z.number().int(),
     definitionName: z.string().nullable().optional(),
@@ -604,7 +631,7 @@ export const WorkflowRelationOptionDTO = z
     title: z.string(),
     serialNo: z.string().nullable(),
     definitionName: z.string().nullable(),
-    status: z.enum(['draft', 'running', 'approved', 'rejected', 'withdrawn', 'cancelled']),
+    status: z.enum(['draft', 'running', 'suspended', 'approved', 'rejected', 'withdrawn', 'cancelled']),
     createdAt: z.string(),
   })
   .openapi('WorkflowRelationOption');
@@ -612,7 +639,7 @@ export const WorkflowRelationOptionDTO = z
 export const WorkflowAnalyticsDTO = z
   .object({
     statusCounts: z.array(z.object({
-      status: z.enum(['draft', 'running', 'approved', 'rejected', 'withdrawn', 'cancelled']),
+      status: z.enum(['draft', 'running', 'suspended', 'approved', 'rejected', 'withdrawn', 'cancelled']),
       count: z.number().int(),
     })),
     total: z.number().int(),

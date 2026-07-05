@@ -30,7 +30,7 @@ export const workflowDefinitionStatusEnum = pgEnum('workflow_definition_status',
 
 export const workflowFormTypeEnum = pgEnum('workflow_form_type', ['designer', 'custom', 'external']);
 
-export const workflowInstanceStatusEnum = pgEnum('workflow_instance_status', ['draft', 'running', 'approved', 'rejected', 'withdrawn', 'cancelled']);
+export const workflowInstanceStatusEnum = pgEnum('workflow_instance_status', ['draft', 'running', 'suspended', 'approved', 'rejected', 'withdrawn', 'cancelled']);
 
 export const workflowTaskStatusEnum = pgEnum('workflow_task_status', ['pending', 'approved', 'rejected', 'skipped', 'waiting']);
 
@@ -446,6 +446,10 @@ export const workflowInstances = pgTable('workflow_instances', {
   bizType: varchar('biz_type', { length: 64 }),
   /** 业务实体接入：业务记录主键（字符串，兼容各类业务 PK），与 bizType 组成 businessKey */
   bizId: varchar('biz_id', { length: 64 }),
+  /** 挂起时间（status=suspended 时有值，恢复后清空） */
+  suspendedAt: timestamp('suspended_at'),
+  /** 挂起原因（管理员填写） */
+  suspendReason: varchar('suspend_reason', { length: 500 }),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),

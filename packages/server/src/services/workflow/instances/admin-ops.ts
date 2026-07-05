@@ -1,9 +1,9 @@
 // ─── 管理员强制操作与令牌运维恢复（拆分自 workflow-instances.service.ts）───
 import { eq, and, asc, lte, inArray, gt } from 'drizzle-orm';
 import { db } from '../../../db';
-import { workflowInstances, workflowTasks, workflowTokens, users } from '../../../db/schema';
+import { workflowInstances, workflowJobs, workflowTasks, workflowTokens, workflowDefinitions, workflowDelegations, users } from '../../../db/schema';
 import { tenantCondition } from '../../../lib/tenant';
-import type { WorkflowFlowData, WorkflowRecoveryBatchResult } from '@zenith/shared';
+import type { WorkflowFlowData, WorkflowHandoverPreview, WorkflowHandoverResult, WorkflowRecoveryBatchResult } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../../lib/context';
 import { buildStarterContext } from '../workflow-assignee-resolver.service';
@@ -63,8 +63,96 @@ export async function jumpInstance(id: number, targetNodeKey: string, comment?: 
   return mapInstance(instance);
 }
 
-/** 管理员改派：将未处理任务的处理人替换为指定用户 */
-export async function reassignTask(taskId: number, targetUserId: number, comment?: string) {
+/** 挂起时冻结计时的作业类型（SLA 超时 / 延迟唤醒暂停计时，恢复后按剩余时长续跑） */const SUSPEND_FREEZE_JOB_TYPES = ['task_timeout', 'delay_wake'] as const;
+/** 冻结哨兵时间：挂起期间计时作业 runAt 推至远期，杜绝被 Worker 领取 */
+const SUSPEND_FREEZE_RUN_AT = new Date('2200-01-01T00:00:00Z');
+/** payload 中记录剩余毫秒数的键（恢复时据此重排 runAt） */
+const SUSPEND_REMAINING_KEY = 'suspendRemainingMs';
+
+/** 挂起实例：冻结待办操作与计时作业，用于争议冻结/外部故障排查（仅 running 可挂起） */
+export async function suspendInstance(id: number, reason: string) {
+  const user = currentUser();
+  const tc = tenantCondition(workflowInstances, user);
+  const conds = [eq(workflowInstances.id, id)];
+  if (tc) conds.push(tc);
+  const [inst] = await db.select().from(workflowInstances).where(and(...conds)).limit(1);
+  if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
+  if (inst.status !== 'running') throw new HTTPException(400, { message: '仅审批中的流程可挂起' });
+
+  const instance = await db.transaction(async (tx) => {
+    const [locked] = await tx.select({ status: workflowInstances.status })
+      .from(workflowInstances).where(eq(workflowInstances.id, id)).for('update').limit(1);
+    if (!locked || locked.status !== 'running') {
+      throw new HTTPException(409, { message: '流程状态已变化，无法挂起' });
+    }
+    const now = new Date();
+    // 冻结计时作业：payload 记录剩余时长，runAt 推远期（暂停计时而非恢复即超时）
+    const jobs = await tx.select({ id: workflowJobs.id, runAt: workflowJobs.runAt, payload: workflowJobs.payload })
+      .from(workflowJobs)
+      .where(and(
+        eq(workflowJobs.instanceId, id),
+        eq(workflowJobs.status, 'pending'),
+        inArray(workflowJobs.jobType, [...SUSPEND_FREEZE_JOB_TYPES]),
+      ));
+    for (const job of jobs) {
+      const remainingMs = Math.max(0, job.runAt.getTime() - now.getTime());
+      await tx.update(workflowJobs)
+        .set({ runAt: SUSPEND_FREEZE_RUN_AT, payload: { ...(job.payload as Record<string, unknown>), [SUSPEND_REMAINING_KEY]: remainingMs } })
+        .where(and(eq(workflowJobs.id, job.id), eq(workflowJobs.status, 'pending')));
+    }
+    const [updated] = await tx.update(workflowInstances)
+      .set({ status: 'suspended', suspendedAt: now, suspendReason: reason })
+      .where(eq(workflowInstances.id, id)).returning();
+    return updated;
+  });
+  logger.info('workflow instance suspended', { instanceId: id, operator: user.userId, reason });
+  return mapInstance(instance);
+}
+
+/** 恢复挂起实例：计时作业按挂起前剩余时长重排后继续流转 */
+export async function resumeInstance(id: number) {
+  const user = currentUser();
+  const tc = tenantCondition(workflowInstances, user);
+  const conds = [eq(workflowInstances.id, id)];
+  if (tc) conds.push(tc);
+  const [inst] = await db.select().from(workflowInstances).where(and(...conds)).limit(1);
+  if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
+  if (inst.status !== 'suspended') throw new HTTPException(400, { message: '仅已挂起的流程可恢复' });
+
+  const instance = await db.transaction(async (tx) => {
+    const [locked] = await tx.select({ status: workflowInstances.status })
+      .from(workflowInstances).where(eq(workflowInstances.id, id)).for('update').limit(1);
+    if (!locked || locked.status !== 'suspended') {
+      throw new HTTPException(409, { message: '流程状态已变化，无法恢复' });
+    }
+    const now = new Date();
+    const jobs = await tx.select({ id: workflowJobs.id, payload: workflowJobs.payload })
+      .from(workflowJobs)
+      .where(and(
+        eq(workflowJobs.instanceId, id),
+        eq(workflowJobs.status, 'pending'),
+        inArray(workflowJobs.jobType, [...SUSPEND_FREEZE_JOB_TYPES]),
+      ));
+    for (const job of jobs) {
+      const payload = (job.payload ?? {}) as Record<string, unknown>;
+      const remaining = Number(payload[SUSPEND_REMAINING_KEY]);
+      if (!Number.isFinite(remaining)) continue; // 非挂起冻结的作业不动
+      const rest = { ...payload };
+      delete rest[SUSPEND_REMAINING_KEY];
+      await tx.update(workflowJobs)
+        .set({ runAt: new Date(now.getTime() + Math.max(0, remaining)), payload: rest })
+        .where(and(eq(workflowJobs.id, job.id), eq(workflowJobs.status, 'pending')));
+    }
+    const [updated] = await tx.update(workflowInstances)
+      .set({ status: 'running', suspendedAt: null, suspendReason: null })
+      .where(eq(workflowInstances.id, id)).returning();
+    return updated;
+  });
+  logger.info('workflow instance resumed', { instanceId: id, operator: user.userId });
+  return mapInstance(instance);
+}
+
+/** 管理员改派：将未处理任务的处理人替换为指定用户 */export async function reassignTask(taskId: number, targetUserId: number, comment?: string) {
   const user = currentUser();
   const [task] = await db.select().from(workflowTasks).where(eq(workflowTasks.id, taskId)).limit(1);
   if (!task) throw new HTTPException(404, { message: '任务不存在' });
@@ -274,4 +362,107 @@ export async function batchSkipStuckTokens(input: { definitionId: number; nodeKe
     }
   }
   return { total: rows.length, success, failed };
+}
+
+// ─── 离职交接：把某人名下未处理审批事务批量移交接手人 ─────────────────────────────
+
+/** 离职交接影响范围预览（不落库） */
+export async function previewHandover(fromUserId: number): Promise<WorkflowHandoverPreview> {
+  const user = currentUser();
+  const [from] = await db.select({ id: users.id, nickname: users.nickname, username: users.username })
+    .from(users).where(eq(users.id, fromUserId)).limit(1);
+  if (!from) throw new HTTPException(404, { message: '交接人不存在' });
+
+  const tc = tenantCondition(workflowInstances, user);
+  const taskConds = [
+    eq(workflowTasks.assigneeId, fromUserId),
+    inArray(workflowTasks.status, ['pending', 'waiting']),
+    inArray(workflowInstances.status, ['running', 'suspended']),
+  ];
+  if (tc) taskConds.push(tc);
+  const tasks = await db.select({ id: workflowTasks.id, status: workflowTasks.status })
+    .from(workflowTasks)
+    .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
+    .where(and(...taskConds));
+
+  const delegations = await db.select({ id: workflowDelegations.id }).from(workflowDelegations)
+    .where(and(eq(workflowDelegations.principalId, fromUserId), eq(workflowDelegations.enabled, true)));
+
+  // 检测报告：已发布定义中把该用户写死为「指定成员」审批人的节点（仅提示，不自动改定义）
+  const defTc = tenantCondition(workflowDefinitions, user);
+  const defConds = [eq(workflowDefinitions.status, 'published')];
+  if (defTc) defConds.push(defTc);
+  const defs = await db.select({ id: workflowDefinitions.id, name: workflowDefinitions.name, flowData: workflowDefinitions.flowData })
+    .from(workflowDefinitions).where(and(...defConds));
+  const affectedDefinitions: WorkflowHandoverPreview['affectedDefinitions'] = [];
+  for (const def of defs) {
+    const flow = def.flowData as WorkflowFlowData | null;
+    if (!flow?.nodes) continue;
+    const nodes = flow.nodes.filter((n) => {
+      const d = n.data;
+      if (d.assigneeType !== 'user') return false;
+      const ids = [d.assigneeId, ...(d.assigneeIds ?? []), ...(d.userIds ?? [])].filter((v): v is number => typeof v === 'number');
+      return ids.includes(fromUserId);
+    });
+    if (nodes.length > 0) {
+      affectedDefinitions.push({ id: def.id, name: def.name, nodeNames: nodes.map((n) => n.data.label || n.data.key) });
+    }
+  }
+
+  return {
+    fromUserName: from.nickname || from.username,
+    pendingTaskCount: tasks.filter((t) => t.status === 'pending').length,
+    waitingTaskCount: tasks.filter((t) => t.status === 'waiting').length,
+    delegationCount: delegations.length,
+    affectedDefinitions,
+  };
+}
+
+/** 执行离职交接：逐条改派待办（互不阻断）+ 可选停用其审批代理规则 */
+export async function handoverTasks(input: { fromUserId: number; toUserId: number; disableDelegations?: boolean; comment?: string }): Promise<WorkflowHandoverResult> {
+  const user = currentUser();
+  const { fromUserId, toUserId, disableDelegations = true, comment } = input;
+  if (fromUserId === toUserId) throw new HTTPException(400, { message: '接手人不能与交接人相同' });
+  const [tgt] = await db.select({ id: users.id }).from(users).where(eq(users.id, toUserId)).limit(1);
+  if (!tgt) throw new HTTPException(400, { message: '接手人不存在' });
+
+  const tc = tenantCondition(workflowInstances, user);
+  const taskConds = [
+    eq(workflowTasks.assigneeId, fromUserId),
+    inArray(workflowTasks.status, ['pending', 'waiting']),
+    inArray(workflowInstances.status, ['running', 'suspended']),
+  ];
+  if (tc) taskConds.push(tc);
+  const tasks = await db.select({ id: workflowTasks.id, nodeName: workflowTasks.nodeName, title: workflowInstances.title })
+    .from(workflowTasks)
+    .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
+    .where(and(...taskConds))
+    .orderBy(asc(workflowTasks.id));
+
+  const note = `[离职交接]${comment ? ' ' + comment : ''}`;
+  const results: WorkflowHandoverResult['results'] = [];
+  let succeeded = 0;
+  // 逐条小事务改派：单条失败不阻断其余，完整复用改派的转办链/事件/通知链路
+  for (const t of tasks) {
+    try {
+      await reassignTask(t.id, toUserId, note);
+      succeeded += 1;
+      results.push({ taskId: t.id, title: t.title, nodeName: t.nodeName, success: true });
+    } catch (err) {
+      const message = err instanceof HTTPException ? err.message : '改派失败';
+      results.push({ taskId: t.id, title: t.title, nodeName: t.nodeName, success: false, message });
+      logger.warn('workflow handover reassign failed', { taskId: t.id, fromUserId, toUserId, err });
+    }
+  }
+
+  let delegationsDisabled = 0;
+  if (disableDelegations) {
+    const disabled = await db.update(workflowDelegations).set({ enabled: false })
+      .where(and(eq(workflowDelegations.principalId, fromUserId), eq(workflowDelegations.enabled, true)))
+      .returning({ id: workflowDelegations.id });
+    delegationsDisabled = disabled.length;
+  }
+
+  logger.info('workflow handover done', { fromUserId, toUserId, total: tasks.length, succeeded, delegationsDisabled, operator: user.userId });
+  return { taskTotal: tasks.length, succeeded, failed: tasks.length - succeeded, delegationsDisabled, results };
 }

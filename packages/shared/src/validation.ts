@@ -1419,6 +1419,20 @@ export const reassignWorkflowTaskSchema = z.object({
   comment: z.string().max(500).optional(),
 });
 
+/** 管理员挂起流程实例 */
+export const suspendWorkflowInstanceSchema = z.object({
+  reason: z.string().min(1, '请填写挂起原因').max(500),
+});
+
+/** 离职交接：把 fromUser 名下未处理待办批量移交 toUser */
+export const workflowHandoverSchema = z.object({
+  fromUserId: z.number().int().positive('请选择交接人'),
+  toUserId: z.number().int().positive('请选择接手人'),
+  /** 同时停用交接人名下启用中的审批代理规则（默认 true） */
+  disableDelegations: z.boolean().optional(),
+  comment: z.string().max(255).optional(),
+});
+
 // ── 流程模板 ──
 export const createWorkflowTemplateSchema = z.object({
   name: z.string().min(1, '模板名称不能为空').max(64),

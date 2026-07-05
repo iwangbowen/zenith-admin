@@ -22,7 +22,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Download, FileText, RotateCcw, Search } from 'lucide-react';
+import { Download, FileText, RotateCcw, Search, UserRoundCog } from 'lucide-react';
 import dayjs from 'dayjs';
 import type { WorkflowApproveMethod, WorkflowAssigneeType, WorkflowCategory, WorkflowDefinition, WorkflowExecutionToken, WorkflowFlowData, WorkflowInstance, WorkflowNodeConfig, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTask, WorkflowTriggerExecution } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -43,6 +43,7 @@ import WorkflowGraphView from '@/components/workflow/WorkflowGraphView';
 import { NODE_RT_STATUS_COLOR, NODE_RT_STATUS_LABEL } from '@/components/workflow/workflow-runtime';
 import { resolveWorkflowFlowData } from '@/utils/workflow-snapshot';
 import WorkflowAnalyticsView from './WorkflowAnalyticsView';
+import WorkflowHandoverModal from './WorkflowHandoverModal';
 import WorkflowEngineDiagnosticsView from './WorkflowEngineDiagnosticsView';
 import WorkflowJobsView from './WorkflowJobsView';
 import WorkflowCompensationsView from './WorkflowCompensationsView';
@@ -68,13 +69,14 @@ type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light
 const INSTANCE_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
   draft:     { text: '草稿',  color: 'grey'   },
   running:   { text: '审批中', color: 'blue'   },
+  suspended: { text: '已挂起', color: 'amber'  },
   approved:  { text: '已通过', color: 'green'  },
   rejected:  { text: '已驳回', color: 'red'    },
   withdrawn: { text: '已撤回', color: 'orange' },
   cancelled: { text: '已取消', color: 'purple' },
 };
 
-const RUNNING_STATUSES = new Set(['draft', 'running']);
+const RUNNING_STATUSES = new Set(['draft', 'running', 'suspended']);
 
 const ISSUE_SEVERITY_MAP: Record<WorkflowRuntimeIssue['severity'], { text: string; color: TagColor }> = {
   info: { text: '信息', color: 'blue' },
@@ -492,6 +494,8 @@ export default function WorkflowMonitorPage() {
   const [reassignRecord, setReassignRecord] = useState<WorkflowInstance | null>(null);
   const [reassignTasks, setReassignTasks] = useState<Array<{ label: string; value: number }>>([]);
   const reassignFormApi = useRef<FormApi | null>(null);
+  // 管理员：离职交接
+  const [handoverVisible, setHandoverVisible] = useState(false);
   const stateMutation = useWorkflowStateMutation();
   const migratePreflightMutation = useWorkflowMigratePreflight();
   const allUsersQuery = useAllUsers({ enabled: !!reassignRecord });
@@ -570,6 +574,43 @@ export default function WorkflowMonitorPage() {
       onOk: async () => {
         await stateMutation.mutateAsync({ url: `/api/workflows/instances/${record.id}/cancel` });
         Toast.success('流程已取消');
+      },
+    });
+  };
+
+  const handleSuspend = (record: WorkflowInstance) => {
+    let reason = '';
+    Modal.confirm({
+      title: '挂起流程',
+      content: (
+        <div>
+          <Typography.Paragraph>
+            挂起后流程「{record.title}」暂停流转：待办不可处理、SLA 超时与延迟计时冻结，恢复后按剩余时长继续。
+          </Typography.Paragraph>
+          <Input placeholder="请填写挂起原因（必填）" onChange={(v) => { reason = v; }} maxLength={500} />
+        </div>
+      ),
+      okText: '确定挂起',
+      okButtonProps: { type: 'warning', theme: 'solid' },
+      cancelText: '关闭',
+      onOk: async () => {
+        if (!reason.trim()) { Toast.warning('请填写挂起原因'); return Promise.reject(new Error('validation')); }
+        await stateMutation.mutateAsync({ url: `/api/workflows/instances/${record.id}/suspend`, body: { reason: reason.trim() } });
+        Toast.success('流程已挂起，计时已冻结');
+      },
+    });
+  };
+
+  const handleResume = (record: WorkflowInstance) => {
+    Modal.confirm({
+      title: '恢复流程',
+      content: `确定恢复流程「${record.title}」吗？恢复后待办可继续处理，超时计时按挂起前剩余时长续跑。${record.suspendReason ? `挂起原因：${record.suspendReason}` : ''}`,
+      okText: '确定恢复',
+      okButtonProps: { type: 'primary', theme: 'solid' },
+      cancelText: '关闭',
+      onOk: async () => {
+        await stateMutation.mutateAsync({ url: `/api/workflows/instances/${record.id}/resume` });
+        Toast.success('流程已恢复流转');
       },
     });
   };
@@ -1084,9 +1125,10 @@ export default function WorkflowMonitorPage() {
       width: 180,
       desktopInlineKeys: ['detail', 'diagnostics'],
       actions: (record) => {
-        const canCancel = hasPermission('workflow:instance:cancel') && record.status === 'running';
+        const canCancel = hasPermission('workflow:instance:cancel') && (record.status === 'running' || record.status === 'suspended');
         const canDelete = hasPermission('workflow:instance:delete') && !RUNNING_STATUSES.has(record.status);
         const canJump = canAdmin && record.status === 'running';
+        const canOperate = hasPermission('workflow:engine:operate');
         return [
           { key: 'detail', label: '详情', onClick: () => openDetail(record) },
           { key: 'diagnostics', label: '诊断', onClick: () => openDiagnostics(record) },
@@ -1098,6 +1140,18 @@ export default function WorkflowMonitorPage() {
           },
           { key: 'reassign', label: '改派处理人', hidden: !canJump, onClick: () => void openReassign(record) },
           { key: 'migrate', label: '迁移版本', hidden: !canJump, onClick: () => void handleMigrate(record) },
+          {
+            key: 'suspend',
+            label: '挂起',
+            hidden: !canOperate || record.status !== 'running',
+            onClick: () => handleSuspend(record),
+          },
+          {
+            key: 'resume',
+            label: '恢复',
+            hidden: !canOperate || record.status !== 'suspended',
+            onClick: () => handleResume(record),
+          },
           {
             key: 'cancel',
             label: '取消',
@@ -1160,6 +1214,7 @@ export default function WorkflowMonitorPage() {
       style={{ width: 140 }}
       optionList={[
         { label: '审批中', value: 'running' },
+        { label: '已挂起', value: 'suspended' },
         { label: '已通过', value: 'approved' },
         { label: '已驳回', value: 'rejected' },
         { label: '已撤回', value: 'withdrawn' },
@@ -1202,6 +1257,12 @@ export default function WorkflowMonitorPage() {
     <ExportButton entity="workflow.instances" query={buildExportQuery()} formats={['xlsx']} />
   );
 
+  const renderHandoverButton = () => (
+    hasPermission('workflow:task:handover') ? (
+      <Button type="primary" icon={<UserRoundCog size={14} />} onClick={() => setHandoverVisible(true)}>离职交接</Button>
+    ) : null
+  );
+
   return (
     <div className="page-container page-tabs-page">
       <Tabs type="line">
@@ -1239,6 +1300,7 @@ export default function WorkflowMonitorPage() {
             {renderSearchButton()}
             {renderResetButton()}
             {renderExportButton()}
+            {renderHandoverButton()}
           </>
         )}
         mobilePrimary={(
@@ -1259,6 +1321,7 @@ export default function WorkflowMonitorPage() {
           <>
             {renderResetButton()}
             {renderExportButton()}
+            {renderHandoverButton()}
           </>
         )}
         filterTitle="实例监控筛选"
@@ -1373,6 +1436,9 @@ export default function WorkflowMonitorPage() {
           <Form.TextArea field="comment" label="说明" placeholder="可选" rows={2} />
         </Form>
       </AppModal>
+
+      {/* 管理员：离职交接 */}
+      <WorkflowHandoverModal visible={handoverVisible} onClose={() => setHandoverVisible(false)} />
     </div>
   );
 }

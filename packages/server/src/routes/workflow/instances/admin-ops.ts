@@ -2,10 +2,11 @@
 import { createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../../../middleware/auth';
 import { guard, setAuditAfterData, setAuditBeforeData } from '../../../middleware/guard';
-import { batchSkipStuckTokensSchema, jumpWorkflowInstanceSchema, reassignWorkflowTaskSchema, recallWorkflowTaskSchema } from '@zenith/shared';
+import { idempotencyGuard } from '../../../middleware/idempotency';
+import { batchSkipStuckTokensSchema, jumpWorkflowInstanceSchema, reassignWorkflowTaskSchema, recallWorkflowTaskSchema, suspendWorkflowInstanceSchema, workflowHandoverSchema } from '@zenith/shared';
 import { ErrorResponse, jsonContent, commonErrorResponses, ok, IdParam, okBody } from '../../../lib/openapi-schemas';
-import { WorkflowInstanceDTO, WorkflowRecoveryBatchResultDTO, WorkflowTaskDTO } from '../../../lib/openapi-dtos';
-import { skipStuckToken, replayFromToken, batchSkipStuckTokens, getInstanceForAdminAudit, getWorkflowTaskBeforeAudit, getWorkflowTaskForAdminAudit, jumpInstance, reassignTask, recallTask } from '../../../services/workflow/workflow-instances.service';
+import { WorkflowInstanceDTO, WorkflowRecoveryBatchResultDTO, WorkflowTaskDTO, WorkflowHandoverPreviewDTO, WorkflowHandoverResultDTO } from '../../../lib/openapi-dtos';
+import { skipStuckToken, replayFromToken, batchSkipStuckTokens, getInstanceForAdminAudit, getWorkflowTaskBeforeAudit, getWorkflowTaskForAdminAudit, jumpInstance, reassignTask, recallTask, suspendInstance, resumeInstance, previewHandover, handoverTasks } from '../../../services/workflow/workflow-instances.service';
 import { taskIdParam } from './shared';
 
 export const TokenOpBody = z.object({ reason: z.string().max(255).optional() });
@@ -113,5 +114,83 @@ export const recallRoute = defineOpenAPIRoute({
     const before = await getWorkflowTaskBeforeAudit(taskId);
     if (before) setAuditBeforeData(c, before);
     return c.json(okBody(await recallTask(taskId, body?.comment), '已撤回'), 200);
+  },
+});
+
+export const suspendInstanceRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/instances/{id}/suspend', tags: ['WorkflowInstances'], summary: '挂起流程实例',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:engine:operate', audit: { description: '挂起流程实例', module: '工作流管理' } })] as const,
+    request: { params: IdParam, body: { content: jsonContent(suspendWorkflowInstanceSchema), required: true } },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(WorkflowInstanceDTO, '已挂起'),
+      400: { content: jsonContent(ErrorResponse), description: '状态不允许' },
+      404: { content: jsonContent(ErrorResponse), description: '不存在' },
+    },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const { reason } = c.req.valid('json');
+    const before = await getInstanceForAdminAudit(id);
+    if (before) setAuditBeforeData(c, before);
+    return c.json(okBody(await suspendInstance(id, reason), '已挂起，计时已冻结'), 200);
+  },
+});
+
+export const resumeInstanceRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/instances/{id}/resume', tags: ['WorkflowInstances'], summary: '恢复挂起的流程实例',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:engine:operate', audit: { description: '恢复挂起流程实例', module: '工作流管理' } })] as const,
+    request: { params: IdParam },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(WorkflowInstanceDTO, '已恢复'),
+      400: { content: jsonContent(ErrorResponse), description: '状态不允许' },
+      404: { content: jsonContent(ErrorResponse), description: '不存在' },
+    },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const before = await getInstanceForAdminAudit(id);
+    if (before) setAuditBeforeData(c, before);
+    return c.json(okBody(await resumeInstance(id), '已恢复流转，计时按剩余时长续跑'), 200);
+  },
+});
+
+export const handoverPreviewRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/tasks/handover-preview', tags: ['WorkflowInstances'], summary: '离职交接影响范围预览',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:task:handover' })] as const,
+    request: { query: z.object({ fromUserId: z.coerce.number().int().positive() }) },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(WorkflowHandoverPreviewDTO, 'ok'),
+      404: { content: jsonContent(ErrorResponse), description: '交接人不存在' },
+    },
+  }),
+  handler: async (c) => c.json(okBody(await previewHandover(c.req.valid('query').fromUserId)), 200),
+});
+
+export const handoverRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/tasks/handover', tags: ['WorkflowInstances'], summary: '离职交接（批量移交待办）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, idempotencyGuard({ ttlSeconds: 10 }), guard({ permission: 'workflow:task:handover', audit: { description: '离职交接待办', module: '工作流管理' } })] as const,
+    request: { body: { content: jsonContent(workflowHandoverSchema), required: true } },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(WorkflowHandoverResultDTO, '交接结果'),
+      400: { content: jsonContent(ErrorResponse), description: '参数错误' },
+    },
+  }),
+  handler: async (c) => {
+    const body = c.req.valid('json');
+    const res = await handoverTasks(body);
+    setAuditAfterData(c, { fromUserId: body.fromUserId, toUserId: body.toUserId, ...res, results: undefined });
+    return c.json(okBody(res, `已交接 ${res.succeeded}/${res.taskTotal} 条待办`), 200);
   },
 });

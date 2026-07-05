@@ -110,6 +110,8 @@ export function mapInstance(
     parentTaskItemIndex: row.parentTaskItemIndex ?? null,
     bizType: row.bizType ?? null,
     bizId: row.bizId ?? null,
+    suspendedAt: row.suspendedAt != null ? formatNullableDateTime(row.suspendedAt) : null,
+    suspendReason: row.suspendReason ?? null,
     childInstances: extras.childInstances ?? null,
     tasks: extras.tasks ?? null,
     comments: extras.comments,

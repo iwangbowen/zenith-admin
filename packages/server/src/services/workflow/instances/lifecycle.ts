@@ -244,18 +244,18 @@ export async function cancelInstance(id: number) {
   if (tc) conditions.push(tc);
   const [inst] = await db.select().from(workflowInstances).where(and(...conditions)).limit(1);
   if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
-  if (inst.status !== 'running') throw new HTTPException(400, { message: '只能取消进行中的流程' });
+  if (inst.status !== 'running' && inst.status !== 'suspended') throw new HTTPException(400, { message: '只能取消进行中或已挂起的流程' });
   const { row: updated, cancelledTasks } = await db.transaction(async (tx) => {
     const [locked] = await tx.select({ status: workflowInstances.status })
       .from(workflowInstances).where(and(...conditions)).for('update').limit(1);
-    if (!locked || locked.status !== 'running') {
-      throw new HTTPException(400, { message: '只能取消进行中的流程' });
+    if (!locked || (locked.status !== 'running' && locked.status !== 'suspended')) {
+      throw new HTTPException(400, { message: '只能取消进行中或已挂起的流程' });
     }
     const cancelled = await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date() })
       .where(and(eq(workflowTasks.instanceId, id), inArray(workflowTasks.status, ['pending', 'waiting'])))
       .returning();
     await killInstanceTokens(tx, id);
-    const [row] = await tx.update(workflowInstances).set({ status: 'cancelled', currentNodeKey: null }).where(and(...conditions)).returning();
+    const [row] = await tx.update(workflowInstances).set({ status: 'cancelled', currentNodeKey: null, suspendedAt: null, suspendReason: null }).where(and(...conditions)).returning();
     return { row, cancelledTasks: cancelled };
   });
   const instanceDto = mapInstance(updated);

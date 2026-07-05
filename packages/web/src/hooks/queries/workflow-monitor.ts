@@ -10,6 +10,8 @@ import type {
   WorkflowEngineActionResult,
   WorkflowEngineHealthHistory,
   WorkflowEngineIntrospection,
+  WorkflowHandoverPreview,
+  WorkflowHandoverResult,
   WorkflowInstance,
   WorkflowInstanceTrace,
   WorkflowJob,
@@ -352,6 +354,24 @@ export function useWorkflowBatchRecovery() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: WorkflowRecoveryBatchInput) => request.post<WorkflowRecoveryBatchResult>('/api/workflows/instances/batch-skip-stuck', body).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: workflowMonitorKeys.all }),
+  });
+}
+
+export function useWorkflowHandoverPreview() {
+  return useMutation({
+    mutationFn: (fromUserId: number) =>
+      request.get<WorkflowHandoverPreview>(`/api/workflows/tasks/handover-preview${toQueryString({ fromUserId })}`).then(unwrap),
+  });
+}
+
+export function useWorkflowHandover() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { fromUserId: number; toUserId: number; disableDelegations?: boolean; comment?: string }) =>
+      request.post<WorkflowHandoverResult>('/api/workflows/tasks/handover', body, {
+        headers: { 'X-Idempotency-Key': `workflow-handover-${body.fromUserId}-${body.toUserId}` },
+      }).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: workflowMonitorKeys.all }),
   });
 }

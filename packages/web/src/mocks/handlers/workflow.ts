@@ -2166,11 +2166,13 @@ export const workflowHandlers = [
   http.post('/api/workflows/instances/:id/cancel', ({ params }) => {
     const idx = mockWorkflowInstances.findIndex(i => i.id === Number(params.id));
     if (idx === -1) return err('流程实例不存在', 404);
-    if (mockWorkflowInstances[idx].status !== 'running') return err('只能取消进行中的流程');
+    if (mockWorkflowInstances[idx].status !== 'running' && mockWorkflowInstances[idx].status !== 'suspended') return err('只能取消进行中或已挂起的流程');
     mockWorkflowInstances[idx] = {
       ...mockWorkflowInstances[idx],
       status: 'cancelled',
       currentNodeKey: null,
+      suspendedAt: null,
+      suspendReason: null,
       updatedAt: mockDateTime(),
     };
     mockWorkflowTasks
@@ -2180,6 +2182,89 @@ export const workflowHandlers = [
         t.actionAt = mockDateTime();
       });
     return ok(mockWorkflowInstances[idx]);
+  }),
+
+  // 挂起流程实例（冻结待办与计时）
+  http.post('/api/workflows/instances/:id/suspend', async ({ params, request }) => {
+    const body = await request.json() as { reason?: string };
+    const idx = mockWorkflowInstances.findIndex(i => i.id === Number(params.id));
+    if (idx === -1) return err('流程实例不存在', 404);
+    if (mockWorkflowInstances[idx].status !== 'running') return err('仅审批中的流程可挂起');
+    mockWorkflowInstances[idx] = {
+      ...mockWorkflowInstances[idx],
+      status: 'suspended',
+      suspendedAt: mockDateTime(),
+      suspendReason: body.reason ?? null,
+      updatedAt: mockDateTime(),
+    };
+    return ok(mockWorkflowInstances[idx], '已挂起，计时已冻结');
+  }),
+
+  // 恢复挂起的流程实例
+  http.post('/api/workflows/instances/:id/resume', ({ params }) => {
+    const idx = mockWorkflowInstances.findIndex(i => i.id === Number(params.id));
+    if (idx === -1) return err('流程实例不存在', 404);
+    if (mockWorkflowInstances[idx].status !== 'suspended') return err('仅已挂起的流程可恢复');
+    mockWorkflowInstances[idx] = {
+      ...mockWorkflowInstances[idx],
+      status: 'running',
+      suspendedAt: null,
+      suspendReason: null,
+      updatedAt: mockDateTime(),
+    };
+    return ok(mockWorkflowInstances[idx], '已恢复流转');
+  }),
+
+  // 离职交接：影响范围预览
+  http.get('/api/workflows/tasks/handover-preview', ({ request }) => {
+    const url = new URL(request.url);
+    const fromUserId = Number(url.searchParams.get('fromUserId'));
+    const from = mockUsers.find(u => u.id === fromUserId);
+    if (!from) return err('交接人不存在', 404);
+    const open = mockWorkflowTasks.filter(t => {
+      if (t.assigneeId !== fromUserId) return false;
+      if (t.status !== 'pending' && t.status !== 'waiting') return false;
+      const inst = mockWorkflowInstances.find(i => i.id === t.instanceId);
+      return inst?.status === 'running' || inst?.status === 'suspended';
+    });
+    return ok({
+      fromUserName: from.nickname ?? from.username,
+      pendingTaskCount: open.filter(t => t.status === 'pending').length,
+      waitingTaskCount: open.filter(t => t.status === 'waiting').length,
+      delegationCount: 0,
+      affectedDefinitions: [],
+    });
+  }),
+
+  // 离职交接：批量移交待办
+  http.post('/api/workflows/tasks/handover', async ({ request }) => {
+    const cached = readIdempotentResponse(request);
+    if (cached) return cached;
+    const body = await request.json() as { fromUserId: number; toUserId: number; disableDelegations?: boolean; comment?: string };
+    if (body.fromUserId === body.toUserId) return err('接手人不能与交接人相同');
+    const target = mockUsers.find(u => u.id === body.toUserId);
+    if (!target) return err('接手人不存在');
+    const open = mockWorkflowTasks.filter(t => {
+      if (t.assigneeId !== body.fromUserId) return false;
+      if (t.status !== 'pending' && t.status !== 'waiting') return false;
+      const inst = mockWorkflowInstances.find(i => i.id === t.instanceId);
+      return inst?.status === 'running' || inst?.status === 'suspended';
+    });
+    const results = open.map(t => {
+      const inst = mockWorkflowInstances.find(i => i.id === t.instanceId);
+      t.transferChain = [...new Set([...(t.transferChain ?? []), t.assigneeId].filter((v): v is number => v != null))];
+      t.assigneeId = body.toUserId;
+      t.assigneeName = target.nickname ?? target.username;
+      t.comment = `[离职交接]${body.comment ? ' ' + body.comment : ''}`;
+      return { taskId: t.id, title: inst?.title ?? `实例#${t.instanceId}`, nodeName: t.nodeName, success: true };
+    });
+    return okIdempotent(request, {
+      taskTotal: open.length,
+      succeeded: open.length,
+      failed: 0,
+      delegationsDisabled: body.disableDelegations === false ? 0 : 1,
+      results,
+    }, `已交接 ${open.length}/${open.length} 条待办`);
   }),
 
   // 删除流程实例（仅终态可删，级联删除任务）
