@@ -7194,6 +7194,10 @@ export interface ReportDashboardShare {
   enabled: boolean;
   hasPassword?: boolean;
   expireAt?: string | null;
+  /** 累计访问次数（只读聚合，含被拒绝的尝试） */
+  accessCount?: number;
+  /** 最近访问时间（只读聚合） */
+  lastAccessAt?: string | null;
   createdBy?: number | null;
   createdAt: string;
   updatedAt: string;
@@ -7346,6 +7350,10 @@ export interface ReportAlertRule {
   channels: ('email' | 'inApp')[];
   /** 收件人邮箱（逗号分隔）；inApp 推给创建者 */
   recipients?: string | null;
+  /** 静默期（分钟）：持续触发时，距上次通知不足该时长不重复通知；0=每次触发都通知 */
+  silenceMins: number;
+  /** 从触发恢复正常时是否发送恢复通知 */
+  notifyOnRecover: boolean;
   enabled: boolean;
   /** 最近评估时间（只读） */
   lastCheckedAt?: string | null;
@@ -7353,6 +7361,8 @@ export interface ReportAlertRule {
   lastTriggered?: boolean | null;
   /** 最近评估的实际值（只读） */
   lastValue?: number | null;
+  /** 最近一次发送通知时间（只读，静默窗口基准） */
+  lastNotifiedAt?: string | null;
   remark?: string | null;
   createdBy?: number | null;
   createdAt: string;

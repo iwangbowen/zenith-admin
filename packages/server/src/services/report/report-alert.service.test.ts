@@ -1,8 +1,8 @@
 /**
- * 报表预警纯函数单测：行集聚合 + 阈值比较。
+ * 报表预警纯函数单测：行集聚合 + 阈值比较 + 静默窗口判定。
  */
 import { describe, it, expect } from 'vitest';
-import { aggregate, compare } from './report-alert.service';
+import { aggregate, compare, shouldNotifyTrigger } from './report-alert.service';
 import type { ReportAlertAggregate, ReportAlertOp } from '@zenith/shared';
 
 const rows = [{ v: 10 }, { v: 20 }, { v: 30 }];
@@ -39,5 +39,32 @@ describe('compare', () => {
   ];
   it.each(cases)('compare(%i, %s, %i) === %s', (value, op, threshold, expected) => {
     expect(compare(value, op, threshold)).toBe(expected);
+  });
+});
+
+describe('shouldNotifyTrigger（静默窗口）', () => {
+  const now = new Date('2026-07-05 12:00:00');
+  const minsAgo = (m: number) => new Date(now.getTime() - m * 60_000);
+
+  it('新触发（上次未触发）无视静默期立即通知', () => {
+    expect(shouldNotifyTrigger(false, 60, minsAgo(1), now)).toBe(true);
+    expect(shouldNotifyTrigger(false, 60, null, now)).toBe(true);
+  });
+  it('持续触发且在静默窗口内不重复通知', () => {
+    expect(shouldNotifyTrigger(true, 60, minsAgo(30), now)).toBe(false);
+    expect(shouldNotifyTrigger(true, 60, minsAgo(59), now)).toBe(false);
+  });
+  it('持续触发但静默期已过则再次通知', () => {
+    expect(shouldNotifyTrigger(true, 60, minsAgo(60), now)).toBe(true);
+    expect(shouldNotifyTrigger(true, 60, minsAgo(120), now)).toBe(true);
+  });
+  it('silenceMins=0 每次触发都通知', () => {
+    expect(shouldNotifyTrigger(true, 0, minsAgo(1), now)).toBe(true);
+  });
+  it('持续触发但从未通知过（历史数据）则通知', () => {
+    expect(shouldNotifyTrigger(true, 60, null, now)).toBe(true);
+  });
+  it('负数静默期按 0 处理', () => {
+    expect(shouldNotifyTrigger(true, -5, minsAgo(1), now)).toBe(true);
   });
 });

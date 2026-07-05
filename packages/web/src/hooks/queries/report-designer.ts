@@ -11,7 +11,7 @@ import type {
 } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { LOOKUP_STALE_TIME, unwrap } from '@/lib/query';
-import { reportDashboardKeys } from './report-dashboards';
+import { reportDashboardKeys, reportDataLimiter } from './report-dashboards';
 
 export interface DatasetDataState {
   data: ReportDataResult | null;
@@ -86,7 +86,8 @@ export function useReportDatasetDataMap(datasetIds: number[], limit = 500) {
   const stateMap = useQueries({
     queries: ids.map((id) => ({
       queryKey: reportDesignerKeys.datasetData(id, {}, limit),
-      queryFn: () => request.get<ReportDataResult>(`/api/report/datasets/${id}/data?limit=${limit}`, { silent: true }).then(unwrap),
+      queryFn: () => reportDataLimiter(() =>
+        request.get<ReportDataResult>(`/api/report/datasets/${id}/data?limit=${limit}`, { silent: true }).then(unwrap)),
     })),
     combine: (results) => {
       const map = new Map<number, DatasetDataState>();
@@ -130,7 +131,8 @@ export function useReportWidgetData(widgets: ReportWidget[], filterValues: Recor
   const stateMap = useQueries({
     queries: entries.map((entry) => ({
       queryKey: reportDesignerKeys.datasetData(entry.datasetId, entry.params, limit),
-      queryFn: () => request.post<ReportDataResult>(`/api/report/datasets/${entry.datasetId}/data`, { params: entry.params, limit }, { silent: true }).then(unwrap),
+      queryFn: () => reportDataLimiter(() =>
+        request.post<ReportDataResult>(`/api/report/datasets/${entry.datasetId}/data`, { params: entry.params, limit }, { silent: true }).then(unwrap)),
     })),
     combine: (results) => {
       const map = new Map<string, DatasetDataState>();
@@ -168,7 +170,8 @@ export function useReportFilterDynamicOptions(filters: ReportFilter[], disabled?
   const queries = useQueries({
     queries: sources.map((entry) => ({
       queryKey: reportDesignerKeys.datasetData(entry.datasetId, {}, 500),
-      queryFn: () => request.post<ReportDataResult>(`/api/report/datasets/${entry.datasetId}/data`, { limit: 500 }, { silent: true }).then(unwrap),
+      queryFn: () => reportDataLimiter(() =>
+        request.post<ReportDataResult>(`/api/report/datasets/${entry.datasetId}/data`, { limit: 500 }, { silent: true }).then(unwrap)),
       enabled: !disabled,
       staleTime: LOOKUP_STALE_TIME,
     })),

@@ -20,7 +20,7 @@ import { appWebhookDeliveries, appWebhookSubscriptions, oauth2AuthorizationCodes
 import { checkinMilestones, coupons, memberCheckinMilestoneAwards, memberCheckins, memberCoupons, memberLevels, memberPointAccounts, memberPointTransactions, members, memberWallets, memberWalletTransactions } from './member';
 import { monitorAlertEvents, monitorAlertRules } from './monitor';
 import { mpAccounts, mpAutoReplies, mpBroadcasts, mpConditionalMenus, mpDrafts, mpFans, mpKfAccounts, mpKfRoutingConfigs, mpKfSessionEvents, mpKfSessions, mpMaterials, mpMenus, mpMessages, mpMessageTemplates, mpQrcodes, mpTags, mpTemplateSendLogs, mpUnmatchedKeywords } from './mp';
-import { reportAlertRules, reportDashboardCategories, reportDashboardComments, reportDashboards, reportDashboardShares, reportDashboardSubscriptions, reportDashboardVersions, reportDatasets, reportDatasources, reportPrintTemplates } from './report';
+import { reportAlertRules, reportDashboardCategories, reportDashboardComments, reportDashboards, reportDashboardShares, reportDashboardSubscriptions, reportDashboardVersions, reportDatasets, reportDatasources, reportPrintTemplates, reportShareAccessLogs } from './report';
 
 // ─── 关联关系 ────────────────────────────────────────────────────────────────
 export const errorGroupsRelations = relations(errorGroups, ({ many, one }) => ({
@@ -813,8 +813,13 @@ export const reportDashboardVersionsRelations = relations(reportDashboardVersion
   dashboard: one(reportDashboards, { fields: [reportDashboardVersions.dashboardId], references: [reportDashboards.id] }),
 }));
 
-export const reportDashboardSharesRelations = relations(reportDashboardShares, ({ one }) => ({
+export const reportDashboardSharesRelations = relations(reportDashboardShares, ({ one, many }) => ({
   dashboard: one(reportDashboards, { fields: [reportDashboardShares.dashboardId], references: [reportDashboards.id] }),
+  accessLogs: many(reportShareAccessLogs),
+}));
+
+export const reportShareAccessLogsRelations = relations(reportShareAccessLogs, ({ one }) => ({
+  share: one(reportDashboardShares, { fields: [reportShareAccessLogs.shareId], references: [reportDashboardShares.id] }),
 }));
 
 export const reportDashboardSubscriptionsRelations = relations(reportDashboardSubscriptions, ({ one }) => ({

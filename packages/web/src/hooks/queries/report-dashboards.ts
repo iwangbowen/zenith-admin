@@ -13,7 +13,10 @@ import type {
   ReportWidget,
 } from '@zenith/shared';
 import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import { createLimiter, toQueryString, unwrap } from '@/lib/query';
+
+/** 报表组件取数共享并发闸门（查看页/设计器/嵌入共用，一屏大盘不至于瞬时打爆后端） */
+export const reportDataLimiter = createLimiter(6);
 
 export interface ReportDashboardListParams {
   page: number;
@@ -127,8 +130,8 @@ export function useReportDashboardShares(id: number | undefined, enabled = true)
 export function useCreateReportDashboardShare() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ dashboardId, password }: { dashboardId: number; password?: string }) =>
-      request.post<ReportDashboardShare>(`/api/report/dashboards/${dashboardId}/shares`, { enabled: true, password: password || undefined }).then(unwrap),
+    mutationFn: ({ dashboardId, password, expireAt }: { dashboardId: number; password?: string; expireAt?: string | null }) =>
+      request.post<ReportDashboardShare>(`/api/report/dashboards/${dashboardId}/shares`, { enabled: true, password: password || undefined, expireAt }).then(unwrap),
     onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: reportDashboardKeys.shares(vars.dashboardId) }),
   });
 }
@@ -216,7 +219,8 @@ export function useReportDashboardWidgetData(
   const stateMap = useQueries({
     queries: entries.map((entry) => ({
       queryKey: reportDashboardKeys.widgetData(dashboardId, entry.datasetId, entry.params, limit),
-      queryFn: () => request.post<ReportDataResult>(`/api/report/datasets/${entry.datasetId}/data`, { params: entry.params, limit }, { silent: true }).then(unwrap),
+      queryFn: () => reportDataLimiter(() =>
+        request.post<ReportDataResult>(`/api/report/datasets/${entry.datasetId}/data`, { params: entry.params, limit }, { silent: true }).then(unwrap)),
       enabled: !!dashboardId,
       refetchInterval: options?.refetchInterval,
     })),

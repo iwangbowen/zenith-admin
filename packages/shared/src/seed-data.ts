@@ -676,6 +676,18 @@ export const SEED_RATE_LIMIT_RULES = [
     createdAt: SEED_DATE,
     updatedAt: SEED_DATE,
   },
+  {
+    name: 'report_public_share',
+    description: '报表公开分享访问限流（无需登录，防滥用/防爆破）',
+    windowMs: 60 * 1000,
+    limit: 120,
+    keyType: 'ip' as const,
+    enabled: true,
+    blockedMessage: '访问过于频繁，请稍后再试',
+    pathPatterns: ['/api/report/public/*'],
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+  },
 ];
 
 // ─── 定时任务 ─────────────────────────────────────────────────────────────────

@@ -156,10 +156,12 @@ export default function AlertsPage() {
         cron: editing.cron ?? '',
         channels: editing.channels,
         recipients: editing.recipients ?? '',
+        silenceMins: editing.silenceMins ?? 60,
+        notifyOnRecover: editing.notifyOnRecover ?? false,
         enabled: editing.enabled ? 'enabled' : 'disabled',
         remark: editing.remark ?? '',
       }
-    : { aggregate: 'sum', op: 'gt', channels: ['inApp'], enabled: 'enabled' };
+    : { aggregate: 'sum', op: 'gt', channels: ['inApp'], silenceMins: 60, notifyOnRecover: false, enabled: 'enabled' };
 
   function buildPayload(values: Record<string, unknown>): CreateReportAlertInput {
     const aggregate = values.aggregate as ReportAlertAggregate;
@@ -174,6 +176,8 @@ export default function AlertsPage() {
       cron: values.cron ? String(values.cron) : null,
       channels,
       recipients: channels.includes('email') && values.recipients ? String(values.recipients) : undefined,
+      silenceMins: Number(values.silenceMins ?? 60),
+      notifyOnRecover: Boolean(values.notifyOnRecover),
       enabled: values.enabled === 'enabled',
       remark: values.remark ? String(values.remark) : undefined,
     };
@@ -351,6 +355,9 @@ export default function AlertsPage() {
           {selectedChannels.includes('email') && (
             <Form.Input field="recipients" label="收件人邮箱" placeholder="多个用逗号分隔" showClear />
           )}
+          <Form.InputNumber field="silenceMins" label="静默期(分)" min={0} max={10080} step={10} style={{ width: '100%' }}
+            helpText="持续触发时，距上次通知不足该时长不重复通知；0=每次触发都通知" />
+          <Form.Switch field="notifyOnRecover" label="恢复通知" extraText="从触发恢复正常时发送一条恢复通知" />
           <Form.Select field="enabled" label="状态" style={{ width: '100%' }} optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} />
           <Form.TextArea field="remark" label="备注" maxLength={256} autosize={{ minRows: 1, maxRows: 3 }} />
         </Form>

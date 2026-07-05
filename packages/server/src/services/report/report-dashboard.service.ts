@@ -11,6 +11,7 @@ import { escapeLike } from '../../lib/where-helpers';
 import { formatDateTime } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { currentUserOrNull } from '../../lib/context';
+import { mapWithConcurrency } from '../../lib/concurrency';
 import { getDatasetData } from './report-dataset.service';
 import type { ReportDashboardRow } from '../../db/schema';
 import type {
@@ -154,21 +155,33 @@ function computeWidgetParams(widget: ReportWidget, filterValues: Record<string, 
   return params;
 }
 
-/** 解析整个仪表盘的数据：返回 { [widgetId]: ReportDataResult }，相同(dataset+params)只取一次 */
+/** 单次仪表盘批量取数的最大并发子查询数（防大盘扇出打爆连接池/外部库） */
+const DASHBOARD_DATA_CONCURRENCY = 5;
+
+/** 解析整个仪表盘的数据：返回 { [widgetId]: ReportDataResult }，相同(dataset+params)只取一次，取数并发受限 */
 export async function getDashboardData(
   widgets: ReportWidget[],
   filterValues: Record<string, unknown>,
   limit?: number,
 ): Promise<Record<string, ReportDataResult>> {
   const out: Record<string, ReportDataResult> = {};
-  const cache = new Map<string, Promise<ReportDataResult>>();
-  await Promise.all((widgets ?? []).map(async (w) => {
-    if (!w.datasetId) return;
+  const entryMap = new Map<string, { datasetId: number; params: Record<string, unknown>; widgetIds: string[] }>();
+  for (const w of widgets ?? []) {
+    if (!w.datasetId) continue;
     const params = computeWidgetParams(w, filterValues);
     const key = `${w.datasetId}:${JSON.stringify(params)}:${limit ?? ''}`;
-    let p = cache.get(key);
-    if (!p) { p = getDatasetData(w.datasetId, params, limit); cache.set(key, p); }
-    try { out[w.i] = await p; } catch { out[w.i] = { columns: [], rows: [], total: 0 }; }
-  }));
+    const entry = entryMap.get(key);
+    if (entry) entry.widgetIds.push(w.i);
+    else entryMap.set(key, { datasetId: w.datasetId, params, widgetIds: [w.i] });
+  }
+  await mapWithConcurrency([...entryMap.values()], DASHBOARD_DATA_CONCURRENCY, async (entry) => {
+    let result: ReportDataResult;
+    try {
+      result = await getDatasetData(entry.datasetId, entry.params, limit);
+    } catch {
+      result = { columns: [], rows: [], total: 0 };
+    }
+    for (const id of entry.widgetIds) out[id] = result;
+  });
   return out;
 }

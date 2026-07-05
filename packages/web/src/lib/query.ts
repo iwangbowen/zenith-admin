@@ -32,6 +32,28 @@ export function toQueryString(params: object): string {
 /** 变化频率低的 lookup 数据（字典项、部门树、用户下拉源等）的默认 staleTime */
 export const LOOKUP_STALE_TIME = 5 * 60 * 1000;
 
+/**
+ * 轻量并发信号量：限制同类请求的最大并发数。
+ * 用于仪表盘/设计器组件取数（一屏可能扇出数十个数据集查询），防止一次性打爆后端。
+ */
+export function createLimiter(max: number): <T>(fn: () => Promise<T>) => Promise<T> {
+  let active = 0;
+  const queue: Array<() => void> = [];
+  const release = () => {
+    active--;
+    queue.shift()?.();
+  };
+  return async function limit<T>(fn: () => Promise<T>): Promise<T> {
+    if (active >= max) await new Promise<void>((resolve) => queue.push(resolve));
+    active++;
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
+  };
+}
+
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

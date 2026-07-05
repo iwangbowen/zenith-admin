@@ -3016,13 +3016,14 @@ export type CreateReportVersionInput = z.input<typeof createReportVersionSchema>
 
 // ─── 公开分享 ────────────────────────────────────────────────────────────────
 export const createReportShareSchema = z.object({
-  expireAt: z.string().optional(),
-  password: z.string().max(64).optional(),
+  /** 过期时间：不传=默认 30 天；null=永久有效 */
+  expireAt: z.string().nullable().optional(),
+  password: z.string().min(8, '访问密码至少 8 位').max(64).optional(),
   enabled: z.boolean().default(true),
 });
 export const updateReportShareSchema = z.object({
   expireAt: z.string().nullable().optional(),
-  password: z.string().max(64).nullable().optional(),
+  password: z.string().min(8, '访问密码至少 8 位').max(64).nullable().optional(),
   enabled: z.boolean().optional(),
 });
 export type CreateReportShareInput = z.input<typeof createReportShareSchema>;
@@ -3125,6 +3126,10 @@ export const createReportAlertSchema = z.object({
   cron: z.string().max(64).nullable().optional(),
   channels: z.array(z.enum(['email', 'inApp'])).min(1, '至少选择一个通知通道'),
   recipients: z.string().max(512).optional(),
+  /** 静默期（分钟）：持续触发时距上次通知不足该时长不重复通知；0=每次触发都通知（上限 7 天） */
+  silenceMins: z.number().int().min(0).max(10080).default(60),
+  /** 从触发恢复正常时是否发送恢复通知 */
+  notifyOnRecover: z.boolean().default(false),
   enabled: z.boolean().default(true),
   remark: z.string().max(256).optional(),
 });

@@ -99,10 +99,16 @@ export const reportAlertRules = pgTable('report_alert_rules', {
   /** 通知渠道：email / inApp */
   channels: jsonb('channels').$type<Array<'email' | 'inApp'>>().notNull().default(sql`'[]'::jsonb`),
   recipients: varchar('recipients', { length: 512 }),
+  /** 静默期（分钟）：持续触发时距上次通知不足该时长不重复通知；0=每次触发都通知 */
+  silenceMins: integer('silence_mins').notNull().default(60),
+  /** 从触发恢复正常时是否发送恢复通知 */
+  notifyOnRecover: boolean('notify_on_recover').notNull().default(false),
   enabled: boolean('enabled').notNull().default(true),
   lastCheckedAt: timestamp('last_checked_at'),
   lastTriggered: boolean('last_triggered'),
   lastValue: real('last_value'),
+  /** 最近一次发送通知时间（静默窗口基准） */
+  lastNotifiedAt: timestamp('last_notified_at'),
   remark: varchar('remark', { length: 256 }),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -206,6 +212,25 @@ export const reportDashboardShares = pgTable('report_dashboard_shares', {
 export type ReportDashboardShareRow = typeof reportDashboardShares.$inferSelect;
 
 export type NewReportDashboardShare = typeof reportDashboardShares.$inferInsert;
+
+/** 公开分享访问日志（无登录访问的审计线索；含被拒绝的尝试） */
+export const reportShareAccessLogs = pgTable('report_share_access_logs', {
+  id: serial('id').primaryKey(),
+  shareId: integer('share_id').notNull().references(() => reportDashboardShares.id, { onDelete: 'cascade' }),
+  /** 冗余仪表盘 id（分享删除后日志级联删除，此列便于按盘检索） */
+  dashboardId: integer('dashboard_id').notNull(),
+  /** 动作：view=拉取定义；data=取数 */
+  action: varchar('action', { length: 16 }).notNull(),
+  clientIp: varchar('client_ip', { length: 64 }),
+  /** 是否通过校验（false=密码错误/链接过期被拒） */
+  ok: boolean('ok').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  index('report_share_access_logs_share_idx').on(t.shareId),
+  index('report_share_access_logs_created_idx').on(t.createdAt),
+]);
+
+export type ReportShareAccessLogRow = typeof reportShareAccessLogs.$inferSelect;
 
 /** 仪表盘收藏（用户 ↔ 仪表盘，纯关联表）*/
 export const reportDashboardFavorites = pgTable('report_dashboard_favorites', {

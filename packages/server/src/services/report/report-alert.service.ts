@@ -2,6 +2,7 @@
  * 报表数据预警 Service —— CRUD + 阈值评估 + Cron 到期分发。
  * 评估：对数据集取数结果按聚合方式算出实际值，与阈值按运算符比较；
  * 触发时经站内信/邮件通知。复用 getDatasetData 取数与既有通知通道。
+ * 通知风暴防护：静默期内（silenceMins）持续触发不重复通知；从触发恢复正常可选发送恢复通知（notifyOnRecover）。
  */
 import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, ilike, or } from 'drizzle-orm';
@@ -39,10 +40,13 @@ export function mapAlert(row: AlertRowExt): ReportAlertRule {
     cron: row.cron ?? null,
     channels: (row.channels ?? []) as Array<'email' | 'inApp'>,
     recipients: row.recipients ?? null,
+    silenceMins: row.silenceMins ?? 60,
+    notifyOnRecover: row.notifyOnRecover ?? false,
     enabled: row.enabled,
     lastCheckedAt: formatNullableDateTime(row.lastCheckedAt),
     lastTriggered: row.lastTriggered ?? null,
     lastValue: row.lastValue ?? null,
+    lastNotifiedAt: formatNullableDateTime(row.lastNotifiedAt),
     remark: row.remark ?? null,
     createdBy: row.createdBy ?? null,
     createdAt: formatDateTime(row.createdAt),
@@ -101,6 +105,8 @@ export async function createAlert(input: CreateReportAlertInput): Promise<Report
       cron: input.cron ?? null,
       channels: (input.channels ?? []) as Array<'email' | 'inApp'>,
       recipients: input.recipients,
+      silenceMins: input.silenceMins ?? 60,
+      notifyOnRecover: input.notifyOnRecover ?? false,
       enabled: input.enabled ?? true,
       remark: input.remark,
     }).returning();
@@ -125,6 +131,8 @@ export async function updateAlert(id: number, input: UpdateReportAlertInput): Pr
     cron: input.cron,
     channels: input.channels as Array<'email' | 'inApp'> | undefined,
     recipients: input.recipients,
+    silenceMins: input.silenceMins,
+    notifyOnRecover: input.notifyOnRecover,
     enabled: input.enabled,
     remark: input.remark,
   }).where(eq(reportAlertRules.id, id)).returning();
@@ -168,31 +176,64 @@ export function compare(value: number, op: ReportAlertOp, threshold: number): bo
   }
 }
 
-/** 评估单条规则：取数→聚合→比较；触发则通知。返回 { value, triggered } */
+/** 按通道发送预警/恢复通知（邮件按 recipients，站内信推给创建者） */
+async function notifyAlert(row: ReportAlertRuleRow, title: string, content: string, type: 'warning' | 'info'): Promise<void> {
+  const channels = (row.channels ?? []) as Array<'email' | 'inApp'>;
+  if (channels.includes('inApp') && row.createdBy) {
+    try { await sendInApp({ userIds: [row.createdBy], title, content, type }); }
+    catch (e) { logger.warn('数据预警站内信失败', { id: row.id, err: e instanceof Error ? e.message : String(e) }); }
+  }
+  if (channels.includes('email') && row.recipients) {
+    for (const email of row.recipients.split(',').map((s) => s.trim()).filter(Boolean)) {
+      try { await sendEmail({ toEmail: email, subject: title, content }); }
+      catch (e) { logger.warn('数据预警邮件失败', { email, err: e instanceof Error ? e.message : String(e) }); }
+    }
+  }
+}
+
+/**
+ * 静默窗口判定（纯函数）：
+ * - 新触发（上次未触发）→ 立即通知；
+ * - 持续触发时，silenceMins=0 或距上次通知已超静默期 → 再次通知，否则静默。
+ */
+export function shouldNotifyTrigger(wasTriggered: boolean, silenceMins: number, lastNotifiedAt: Date | null, now: Date): boolean {
+  if (!wasTriggered) return true;
+  const silenceMs = Math.max(0, silenceMins) * 60_000;
+  if (silenceMs === 0 || !lastNotifiedAt) return true;
+  return now.getTime() - lastNotifiedAt.getTime() >= silenceMs;
+}
+
+/**
+ * 评估单条规则：取数→聚合→比较。返回 { value, triggered }
+ * 通知策略：
+ * - 新触发（上次未触发→本次触发）立即通知；
+ * - 持续触发时，距上次通知不足 silenceMins 分钟不重复通知（0=每次触发都通知）；
+ * - 触发→恢复且开启 notifyOnRecover 时发送恢复通知。
+ */
 export async function evaluateAlert(row: ReportAlertRuleRow): Promise<{ value: number; triggered: boolean }> {
   const data = await getDatasetData(row.datasetId, undefined, 5000);
   const value = aggregate(data.rows, row.field, row.aggregate as ReportAlertAggregate);
   const triggered = compare(value, row.op as ReportAlertOp, row.threshold ?? 0);
+  const now = new Date();
+  const wasTriggered = row.lastTriggered === true;
+  const opLabel = OP_LABEL[row.op as ReportAlertOp] ?? row.op;
+  const condition = `${row.aggregate}(${row.field ?? '行数'}) ${opLabel} ${row.threshold}`;
+  let lastNotifiedAt = row.lastNotifiedAt ?? null;
 
   if (triggered) {
-    const title = `数据预警 · ${row.name}`;
-    const opLabel = OP_LABEL[row.op as ReportAlertOp] ?? row.op;
-    const content = `预警规则「${row.name}」已触发。\n实际值：${value}\n条件：${row.aggregate}(${row.field ?? '行数'}) ${opLabel} ${row.threshold}\n触发时间：${formatDateTime(new Date())}`;
-    const channels = (row.channels ?? []) as Array<'email' | 'inApp'>;
-    if (channels.includes('inApp') && row.createdBy) {
-      try { await sendInApp({ userIds: [row.createdBy], title, content, type: 'warning' }); }
-      catch (e) { logger.warn('数据预警站内信失败', { id: row.id, err: e instanceof Error ? e.message : String(e) }); }
+    if (shouldNotifyTrigger(wasTriggered, row.silenceMins ?? 0, lastNotifiedAt, now)) {
+      const content = `预警规则「${row.name}」已触发。\n实际值：${value}\n条件：${condition}\n触发时间：${formatDateTime(now)}`;
+      await notifyAlert(row, `数据预警 · ${row.name}`, content, 'warning');
+      lastNotifiedAt = now;
     }
-    if (channels.includes('email') && row.recipients) {
-      for (const email of row.recipients.split(',').map((s) => s.trim()).filter(Boolean)) {
-        try { await sendEmail({ toEmail: email, subject: title, content }); }
-        catch (e) { logger.warn('数据预警邮件失败', { email, err: e instanceof Error ? e.message : String(e) }); }
-      }
-    }
+  } else if (wasTriggered && row.notifyOnRecover) {
+    const content = `预警规则「${row.name}」已恢复正常。\n当前值：${value}\n条件：${condition}\n恢复时间：${formatDateTime(now)}`;
+    await notifyAlert(row, `预警恢复 · ${row.name}`, content, 'info');
+    lastNotifiedAt = now;
   }
 
   await db.update(reportAlertRules)
-    .set({ lastCheckedAt: new Date(), lastTriggered: triggered, lastValue: value })
+    .set({ lastCheckedAt: now, lastTriggered: triggered, lastValue: value, lastNotifiedAt })
     .where(eq(reportAlertRules.id, row.id));
   return { value, triggered };
 }

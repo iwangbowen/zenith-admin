@@ -102,10 +102,13 @@ function coerceParam(value: unknown, type: ReportFieldType): unknown {
   return String(value);
 }
 
-/** 解析有效参数：数据集默认值 + 运行时传入，required 校验 */
+/** 解析有效参数：数据集默认值 + 运行时传入，required 校验。`__` 前缀为系统变量保留命名空间，剥离客户端伪造值 */
 export function resolveDatasetParams(defs: ReportDatasetParam[] | undefined, provided?: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...(provided ?? {}) };
+  const out: Record<string, unknown> = Object.fromEntries(
+    Object.entries(provided ?? {}).filter(([k]) => !k.startsWith('__')),
+  );
   for (const d of defs ?? []) {
+    if (d.name.startsWith('__')) continue;
     const raw = provided?.[d.name];
     const val = (raw === undefined || raw === null || raw === '') ? (d.defaultValue ?? null) : coerceParam(raw, d.type);
     out[d.name] = val;
@@ -120,19 +123,27 @@ export function resolveDatasetParams(defs: ReportDatasetParam[] | undefined, pro
  * 数据权限系统变量（JEECG 风格）：以绑定参数注入当前登录用户上下文，
  * 供数据集 SQL 通过 ${__userId} / ${__deptId} 等做行级过滤。
  * 这些变量由服务端权威赋值，客户端无法伪造（始终覆盖同名入参）。
- * - __userId / __username / __tenantId：零额外查询。
- * - __deptId：仅当 SQL 文本引用时才查库解析当前用户所属部门。
+ *
+ * 仅注入 SQL 文本**实际引用**的变量（按需注入）：
+ * - 未引用任何系统变量的公共数据集，其结果与用户无关 —— 不注入可让结果缓存跨用户复用（大屏降压）；
+ * - API / 静态数据集（sqlText 为空）不注入 —— 防止内部用户 ID/用户名/租户 ID 混入外发的第三方 HTTP 请求参数。
  */
 async function buildSystemParams(sqlText: string): Promise<Record<string, unknown>> {
+  const referenced = new Set<string>();
+  for (const m of sqlText.matchAll(/\$\{\s*(__\w+)\s*\}/g)) referenced.add(m[1]);
+  if (referenced.size === 0) return {};
   const user = currentUserOrNull();
   const out: Record<string, unknown> = {};
-  if (!user) return { __userId: null, __username: null, __tenantId: null, __deptId: null };
-  out.__userId = user.userId;
-  out.__username = user.username;
-  out.__tenantId = user.tenantId ?? null;
-  if (/\$\{\s*__deptId\s*\}/.test(sqlText)) {
-    const [row] = await db.select({ deptId: users.departmentId }).from(users).where(eq(users.id, user.userId)).limit(1);
-    out.__deptId = row?.deptId ?? null;
+  if (referenced.has('__userId')) out.__userId = user?.userId ?? null;
+  if (referenced.has('__username')) out.__username = user?.username ?? null;
+  if (referenced.has('__tenantId')) out.__tenantId = user?.tenantId ?? null;
+  if (referenced.has('__deptId')) {
+    if (user) {
+      const [row] = await db.select({ deptId: users.departmentId }).from(users).where(eq(users.id, user.userId)).limit(1);
+      out.__deptId = row?.deptId ?? null;
+    } else {
+      out.__deptId = null;
+    }
   }
   return out;
 }
@@ -422,12 +433,15 @@ export async function runReportData(
   return applyComputedFields({ columns, rows: sliced, total: arr.length }, computedFields);
 }
 
-/** 试跑预览（不落库）：用未保存的数据源 + content + 运行时参数取数 */
+/** 试跑预览（不落库）：用未保存的数据源 + content + 运行时参数取数（`__` 前缀由系统变量权威注入，剥离客户端伪造值） */
 export async function previewDataset(input: ReportDatasetPreviewInput): Promise<ReportDataResult> {
   const ds = await ensureDatasourceExists(input.datasourceId);
   const content = normalizeDatasetContent(ds.type, input.content);
   const sqlText = isSqlLikeType(ds.type) ? ((content as ReportSqlDatasetContent).sql ?? '') : '';
-  const params = { ...((input.params ?? {}) as Record<string, unknown>), ...await buildSystemParams(sqlText) };
+  const provided = Object.fromEntries(
+    Object.entries((input.params ?? {}) as Record<string, unknown>).filter(([k]) => !k.startsWith('__')),
+  );
+  const params = { ...provided, ...await buildSystemParams(sqlText) };
   const computed = (input.computedFields ?? []) as ReportComputedField[];
   return runReportData(ds.type, (ds.config ?? {}) as ReportDatasourceConfig, content, params, input.limit ?? PREVIEW_LIMIT, computed);
 }

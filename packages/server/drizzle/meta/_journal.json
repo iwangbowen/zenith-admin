@@ -92,6 +92,13 @@
       "when": 1783223204279,
       "tag": "0012_dapper_venus",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1783242966376,
+      "tag": "0013_crazy_strong_guy",
+      "breakpoints": true
     }
   ]
 }

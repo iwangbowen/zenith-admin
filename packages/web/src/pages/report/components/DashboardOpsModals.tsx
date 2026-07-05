@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Button, Input, Switch, Toast, Space, Typography, Empty, Tag, List } from '@douyinfe/semi-ui';
+import { Button, Input, Select, Switch, Toast, Space, Typography, Empty, Tag, List } from '@douyinfe/semi-ui';
 import { Copy, Plus, Trash2, RotateCcw } from 'lucide-react';
+import dayjs from 'dayjs';
 import AppModal from '@/components/AppModal';
-import { formatDateTime } from '@/utils/date';
+import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import type { ReportDashboardShare } from '@zenith/shared';
 import {
   useCreateReportDashboardShare,
@@ -15,8 +16,16 @@ import {
 } from '@/hooks/queries/report-dashboards';
 
 // ─── 分享链接弹窗 ────────────────────────────────────────────────────────────
+const EXPIRE_OPTIONS = [
+  { value: 7, label: '7 天有效' },
+  { value: 30, label: '30 天有效' },
+  { value: 90, label: '90 天有效' },
+  { value: 0, label: '永久有效' },
+];
+
 export function ShareModal({ visible, dashboardId, onClose }: Readonly<{ visible: boolean; dashboardId: number | null; onClose: () => void }>) {
   const [password, setPassword] = useState('');
+  const [expireDays, setExpireDays] = useState(30);
   const sharesQuery = useReportDashboardShares(dashboardId ?? undefined, visible);
   const shares = sharesQuery.data ?? [];
   const createMutation = useCreateReportDashboardShare();
@@ -25,7 +34,12 @@ export function ShareModal({ visible, dashboardId, onClose }: Readonly<{ visible
 
   async function create() {
     if (!dashboardId) return;
-    await createMutation.mutateAsync({ dashboardId, password });
+    if (password && password.length < 8) {
+      Toast.warning('访问密码至少 8 位');
+      return;
+    }
+    const expireAt = expireDays > 0 ? formatDateTimeForApi(dayjs().add(expireDays, 'day').toDate()) : null;
+    await createMutation.mutateAsync({ dashboardId, password, expireAt });
     Toast.success('已创建分享链接');
     setPassword('');
   }
@@ -43,7 +57,8 @@ export function ShareModal({ visible, dashboardId, onClose }: Readonly<{ visible
   return (
     <AppModal title="公开分享" visible={visible} onCancel={onClose} onOk={onClose} okText="完成" width={640} fullscreenable={false}>
       <Space style={{ marginBottom: 12 }}>
-        <Input prefix="访问密码" placeholder="可选" value={password} onChange={setPassword} style={{ width: 220 }} mode="password" />
+        <Input prefix="访问密码" placeholder="可选，至少 8 位" value={password} onChange={setPassword} style={{ width: 220 }} mode="password" />
+        <Select value={expireDays} onChange={(v) => setExpireDays(Number(v ?? 30))} optionList={EXPIRE_OPTIONS} style={{ width: 130 }} />
         <Button type="primary" icon={<Plus size={14} />} loading={createMutation.isPending} onClick={create}>生成链接</Button>
       </Space>
       {shares.length === 0 ? <Empty description="还没有分享链接" style={{ padding: '12px 0' }} /> : (
@@ -56,7 +71,10 @@ export function ShareModal({ visible, dashboardId, onClose }: Readonly<{ visible
                   {s.hasPassword && <Tag size="small" color="amber">有密码</Tag>}
                   {!s.enabled && <Tag size="small" color="grey">已停用</Tag>}
                 </Space>
-                <Typography.Text type="tertiary" size="small">创建于 {formatDateTime(s.createdAt)}{s.expireAt ? ` · 过期 ${s.expireAt}` : ''}</Typography.Text>
+                <Typography.Text type="tertiary" size="small">
+                  创建于 {formatDateTime(s.createdAt)}{s.expireAt ? ` · 过期 ${s.expireAt}` : ' · 永久有效'}
+                  {` · 访问 ${s.accessCount ?? 0} 次`}{s.lastAccessAt ? `（最近 ${s.lastAccessAt}）` : ''}
+                </Typography.Text>
               </Space>
             )}
             extra={(

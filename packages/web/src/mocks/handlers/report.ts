@@ -9,7 +9,7 @@ import {
   getNextReportAlertId, getNextReportPrintId, getNextReportSubscriptionId, getNextReportCommentId,
   getNextReportVersionId, getNextReportShareId,
 } from '@/mocks/data/report';
-import { mockDateTime } from '@/mocks/utils/date';
+import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 import type {
   ReportDatasource, ReportDataset, ReportDashboard, ReportDashboardCategory, ReportAlertRule,
   ReportPrintTemplate, ReportDashboardSubscription, ReportPrintGrid,
@@ -145,10 +145,14 @@ export const reportHandlers = [
 
   http.get('/api/report/dashboards/:id/shares', ({ params }) =>
     ok(mockReportShares.filter((s) => s.dashboardId === Number(params.id)))),
-  http.post('/api/report/dashboards/:id/shares', ({ params }) => {
+  http.post('/api/report/dashboards/:id/shares', async ({ params, request }) => {
+    const body = await request.json().catch(() => ({})) as { password?: string; expireAt?: string | null };
+    // 与后端一致：未传 expireAt 默认 30 天；显式 null = 永久
+    const expireAt = body.expireAt === undefined ? mockDateTimeOffset(30 * 24 * 3600 * 1000) : body.expireAt;
     const item = {
       id: getNextReportShareId(), dashboardId: Number(params.id), token: `demo${Math.random().toString(36).slice(2, 10)}`,
-      enabled: true, hasPassword: false, expireAt: null, createdBy: 1, createdAt: mockDateTime(), updatedAt: mockDateTime(),
+      enabled: true, hasPassword: !!body.password, expireAt, accessCount: 0, lastAccessAt: null,
+      createdBy: 1, createdAt: mockDateTime(), updatedAt: mockDateTime(),
     };
     mockReportShares.push(item);
     return ok(item, '已创建分享链接');
@@ -282,7 +286,8 @@ export const reportHandlers = [
       id: getNextReportAlertId(), name: body.name ?? '未命名预警', datasetId: body.datasetId ?? 1,
       field: body.field ?? null, aggregate: body.aggregate ?? 'sum', op: body.op ?? 'gt', threshold: body.threshold ?? 0,
       cron: body.cron ?? null, channels: body.channels ?? ['inApp'], recipients: body.recipients ?? null,
-      enabled: body.enabled ?? true, lastCheckedAt: null, lastTriggered: null, lastValue: null,
+      silenceMins: body.silenceMins ?? 60, notifyOnRecover: body.notifyOnRecover ?? false,
+      enabled: body.enabled ?? true, lastCheckedAt: null, lastTriggered: null, lastValue: null, lastNotifiedAt: null,
       remark: body.remark ?? null, createdBy: 1, createdAt: mockDateTime(), updatedAt: mockDateTime(),
     };
     mockReportAlerts.push(item);
