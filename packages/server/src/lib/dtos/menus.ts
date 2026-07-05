@@ -18,6 +18,7 @@ export const MenuDTO: z.ZodType = z
     query: z.string().nullable().optional(),
     isExternal: z.boolean().optional(),
     embed: z.boolean().optional().openapi({ description: '外链打开方式：false=新窗口，true=iframe 内嵌' }),
+    keepAlive: z.boolean().optional().openapi({ description: '页面缓存：多页签模式下切走保留组件状态' }),
     sort: z.number().int().openapi({ example: 1 }),
     status: z.enum(['enabled', 'disabled']),
     visible: z.boolean().openapi({ example: true }),

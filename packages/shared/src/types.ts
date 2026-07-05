@@ -145,6 +145,8 @@ export interface Menu {
   isExternal?: boolean;
   /** 外链打开方式：false=新窗口，true=系统内 iframe 内嵌 */
   embed?: boolean;
+  /** 页面缓存：多页签模式下切走保留组件状态（React Activity） */
+  keepAlive?: boolean;
   sort: number;
   status: EntityStatus;
   visible: boolean;

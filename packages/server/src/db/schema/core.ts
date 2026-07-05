@@ -146,6 +146,8 @@ export const menus = pgTable('menus', {
   isExternal: boolean('is_external').notNull().default(false),
   // 外链打开方式：false=新窗口，true=系统内 iframe 内嵌（仅 isExternal=true 时有意义）
   embed: boolean('embed').notNull().default(false),
+  // 页面缓存：开启后该页面在多页签模式下切走保留状态（React Activity），关闭页签时释放
+  keepAlive: boolean('keep_alive').notNull().default(false),
   sort: integer('sort').notNull().default(0),
   status: statusEnum('status').notNull().default('enabled'),
   visible: boolean('visible').notNull().default(true),

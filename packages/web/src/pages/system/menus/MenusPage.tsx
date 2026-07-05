@@ -452,8 +452,8 @@ export default function MenusPage() {
           key={editingMenu ? `edit-${editingMenu.id}` : 'create'}
           initValues={
             editingMenu
-              ? { ...editingMenu, visible: editingMenu.visible ? 'show' : 'hidden', isExternal: editingMenu.isExternal ?? false, embed: editingMenu.embed ?? false }
-                : { type: 'menu', status: 'enabled', visible: 'show', sort: 0, parentId: parentId ?? 0, isExternal: false, embed: false }
+              ? { ...editingMenu, visible: editingMenu.visible ? 'show' : 'hidden', isExternal: editingMenu.isExternal ?? false, embed: editingMenu.embed ?? false, keepAlive: editingMenu.keepAlive ?? false }
+                : { type: 'menu', status: 'enabled', visible: 'show', sort: 0, parentId: parentId ?? 0, isExternal: false, embed: false, keepAlive: false }
           }
           labelPosition="left"
           labelWidth={90}
@@ -545,6 +545,19 @@ export default function MenusPage() {
                 >
                   <Radio value={false}>新窗口</Radio>
                   <Radio value={true}>内嵌</Radio>
+                </Form.RadioGroup>
+              </Col>
+            )}
+            {menuType === 'menu' && (
+              <Col span={12}>
+                <Form.RadioGroup
+                  field="keepAlive"
+                  label={<Tooltip content="开启后，多页签模式下切换页签保留该页面状态（搜索条件、滚动位置等），关闭页签时释放">页面缓存</Tooltip>}
+                  type="button"
+                  initValue={false}
+                >
+                  <Radio value={true}>开启</Radio>
+                  <Radio value={false}>关闭</Radio>
                 </Form.RadioGroup>
               </Col>
             )}

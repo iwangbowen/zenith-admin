@@ -25,6 +25,7 @@ export function mapMenu(row: typeof menus.$inferSelect): Omit<Menu, 'children'> 
     query: row.query ?? null,
     isExternal: row.isExternal,
     embed: row.embed,
+    keepAlive: row.keepAlive,
     sort: row.sort,
     status: row.status,
     visible: row.visible,
@@ -78,6 +79,7 @@ export interface CreateMenuInput {
   query?: string | null;
   isExternal?: boolean;
   embed?: boolean;
+  keepAlive?: boolean;
   sort?: number;
   status?: 'enabled' | 'disabled';
   visible?: boolean;
@@ -138,6 +140,7 @@ export async function createMenu(input: CreateMenuInput): Promise<Omit<Menu, 'ch
       query: input.query ?? null,
       isExternal: input.isExternal ?? false,
       embed: input.embed ?? false,
+      keepAlive: input.keepAlive ?? false,
       sort: input.sort ?? 0,
       status: input.status ?? 'enabled',
       visible: input.visible ?? true,

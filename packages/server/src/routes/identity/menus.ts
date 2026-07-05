@@ -31,6 +31,7 @@ const createMenuSchema = z.object({
   query: z.string().max(512).nullish(),
   isExternal: z.boolean().default(false),
   embed: z.boolean().default(false),
+  keepAlive: z.boolean().default(false),
   sort: z.coerce.number().int().default(0),
   status: z.enum(['enabled', 'disabled']).default('enabled'),
   visible: z.boolean().default(true),

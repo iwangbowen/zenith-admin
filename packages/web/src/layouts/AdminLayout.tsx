@@ -15,6 +15,7 @@ import { THEME_COLOR_PRESETS, getThemeColorVars } from '@/lib/theme-color';
 import { useThemeController } from '@/providers/theme-controller';
 import { useTabsStore } from '@/hooks/useTabsStore';
 import { TabsMetaContext } from '@/hooks/useTabMeta';
+import KeepAliveOutlet from './KeepAliveOutlet';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
@@ -920,6 +921,28 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
   };
 
   const outletRefreshKey = `${location.pathname}:${tabRefreshVersion[location.pathname] ?? 0}`;
+
+  // 页面缓存白名单：菜单开启 keepAlive 的路径（外链内嵌菜单取内部路由 /embed/{id}）
+  const keepAlivePaths = useMemo(() => {
+    const result = new Set<string>();
+    const walk = (nodes: Menu[]) => {
+      for (const node of nodes) {
+        if (node.type === 'menu' && node.keepAlive && node.path && node.status === 'enabled') {
+          if (node.isExternal) {
+            if (node.embed) result.add(`/embed/${node.id}`);
+          } else {
+            result.add(node.path);
+          }
+        }
+        if (node.children?.length) walk(node.children);
+      }
+    };
+    walk(menuTree);
+    return result;
+  }, [menuTree]);
+  const openTabPaths = useMemo(() => new Set(tabs.map((t) => t.key)), [tabs]);
+  const pageCacheEnabled = preferences.enableTabs && (preferences.enablePageCache ?? true) && keepAlivePaths.size > 0;
+
   const recentMenus = recents
     .map((id) => flatMenus.find((m) => m.id === id))
     .filter((menu): menu is FlatMenuItem => Boolean(menu));
@@ -2021,15 +2044,26 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
           <div className="admin-content" style={{ background: 'var(--color-layout-bg)', overflow: 'auto', position: 'relative' }}>
             <RouteErrorBoundary>
               <TabsMetaContext.Provider value={tabsMetaValue}>
-                <div
-                  key={outletRefreshKey}
-                  style={{ height: '100%' }}
-                  className={preferences.routeAnimation && preferences.routeAnimation !== 'none'
-                    ? `route-anim--${preferences.routeAnimation}`
-                    : undefined}
-                >
-                  <Outlet key={outletRefreshKey} />
-                </div>
+                {pageCacheEnabled ? (
+                  <KeepAliveOutlet
+                    keepAlivePaths={keepAlivePaths}
+                    openPaths={openTabPaths}
+                    refreshVersion={tabRefreshVersion}
+                    animationClass={preferences.routeAnimation && preferences.routeAnimation !== 'none'
+                      ? `route-anim--${preferences.routeAnimation}`
+                      : undefined}
+                  />
+                ) : (
+                  <div
+                    key={outletRefreshKey}
+                    style={{ height: '100%' }}
+                    className={preferences.routeAnimation && preferences.routeAnimation !== 'none'
+                      ? `route-anim--${preferences.routeAnimation}`
+                      : undefined}
+                  >
+                    <Outlet key={outletRefreshKey} />
+                  </div>
+                )}
               </TabsMetaContext.Provider>
             </RouteErrorBoundary>
             {(preferences.showBackTop ?? true) && (
@@ -2469,6 +2503,17 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
                   </Tooltip>
                 </span>
                 <Switch checked={preferences.keepTabs ?? true} onChange={(v) => setPreferences({ keepTabs: v })} />
+              </div>
+              )}
+              {(preferences.enableTabs || !!prefsSearch.trim()) && matchesPref(['页面缓存', 'keepalive', 'keep-alive', '缓存', '标签页', '标签']) && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  页面缓存
+                  <Tooltip content="菜单管理中开启「页面缓存」的页面，切换标签页时保留状态（搜索条件、滚动位置等），关闭标签页时释放" position="right">
+                    <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
+                  </Tooltip>
+                </span>
+                <Switch checked={preferences.enablePageCache ?? true} onChange={(v) => setPreferences({ enablePageCache: v })} />
               </div>
               )}
               {(preferences.enableTabs || !!prefsSearch.trim()) && matchesPref(['标签图标', '图标', '标签页', '标签']) && (

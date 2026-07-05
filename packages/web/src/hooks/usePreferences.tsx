@@ -64,6 +64,8 @@ export interface TerminalPreferences {
 export interface UserPreferences {
   enableTabs: boolean;
   keepTabs: boolean;
+  /** 页面缓存：菜单开启 keepAlive 的页面在切换页签时保留组件状态（React Activity） */
+  enablePageCache: boolean;
   tabsMaxCount: number;
   showTabIcon: boolean;
   tabStyle: TabStyle;
@@ -131,6 +133,7 @@ export interface UserPreferences {
 export const defaultPreferences: UserPreferences = {
   enableTabs: true,
   keepTabs: true,
+  enablePageCache: true,
   tabsMaxCount: 20,
   showTabIcon: true,
   tabStyle: 'line',
