@@ -302,13 +302,14 @@ export async function batchDeleteUsers(ids: number[]) {
   if (ids.length === 0) throw new HTTPException(400, { message: '请选择要删除的用户' });
   const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
   if (validIds.length === 0) throw new HTTPException(400, { message: '用户ID格式无效' });
+  if (validIds.includes(user.userId)) throw new HTTPException(400, { message: '不允许删除当前登录账号' });
   const tc = tenantCondition(users, user);
   await ensureNoProtectedAdminInIds(validIds, '删除');
   const deleted = await db.delete(users)
     .where(tc ? and(inArray(users.id, validIds), tc) : inArray(users.id, validIds))
     .returning({ id: users.id });
   await revokeUserSessions(deleted.map((r) => r.id));
-  return validIds.length;
+  return deleted.length;
 }
 
 export async function batchUpdateUserStatus(ids: number[], status: 'enabled' | 'disabled') {
@@ -317,6 +318,7 @@ export async function batchUpdateUserStatus(ids: number[], status: 'enabled' | '
   const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
   const tc = tenantCondition(users, user);
   if (status === 'disabled') {
+    if (validIds.includes(user.userId)) throw new HTTPException(400, { message: '不允许禁用当前登录账号' });
     await ensureNoProtectedAdminInIds(validIds, '禁用');
   }
   const updated = await db.update(users).set({ status })
@@ -408,6 +410,7 @@ export async function updateUser(id: number, data: UpdateUserInput) {
   if (usernameDup[0]) throw new HTTPException(400, { message: '用户名已存在' });
   if (emailDup[0]) throw new HTTPException(400, { message: '邮箱已存在' });
   if (data.status === 'disabled') {
+    if (id === user.userId) throw new HTTPException(400, { message: '不允许禁用当前登录账号' });
     if (!disabledTarget[0]) throw new HTTPException(404, { message: '用户不存在' });
     if (isProtectedAdminUser(disabledTarget[0].username)) throw new HTTPException(400, { message: 'admin 账号不允许禁用' });
   }
@@ -433,6 +436,7 @@ export async function updateUser(id: number, data: UpdateUserInput) {
 
 export async function deleteUser(id: number) {
   const user = currentUser();
+  if (id === user.userId) throw new HTTPException(400, { message: '不允许删除当前登录账号' });
   const tc = tenantCondition(users, user);
   await ensureNoProtectedAdminInIds([id], '删除');
   const [deleted] = await db.delete(users).where(tc ? and(eq(users.id, id), tc) : eq(users.id, id)).returning();

@@ -97,8 +97,26 @@ export async function updateRegion(id: number, data: UpdateRegionInput) {
   if (!current) throw new HTTPException(404, { message: '地区不存在' });
   if (data.parentCode) {
     if (data.parentCode === current.code) throw new HTTPException(400, { message: '父级地区不能选择自身' });
-    const [parent] = await db.select({ code: regions.code }).from(regions).where(eq(regions.code, data.parentCode));
-    if (!parent) throw new HTTPException(400, { message: '父级地区不存在' });
+    const all = await db.select({ code: regions.code, parentCode: regions.parentCode }).from(regions);
+    if (!all.some((r) => r.code === data.parentCode)) throw new HTTPException(400, { message: '父级地区不存在' });
+    // 环引用防护：父级不能落在自身的子孙中（A→B→C 后再把 A 挂到 C 下会成环）
+    const childrenByParent = new Map<string, string[]>();
+    for (const r of all) {
+      if (!r.parentCode) continue;
+      const arr = childrenByParent.get(r.parentCode);
+      if (arr) arr.push(r.code);
+      else childrenByParent.set(r.parentCode, [r.code]);
+    }
+    const descendants = new Set<string>();
+    const queue = [current.code];
+    while (queue.length > 0) {
+      const code = queue.shift();
+      if (code === undefined) continue;
+      for (const child of childrenByParent.get(code) ?? []) {
+        if (!descendants.has(child)) { descendants.add(child); queue.push(child); }
+      }
+    }
+    if (descendants.has(data.parentCode)) throw new HTTPException(400, { message: '父级地区不能选择自身的下级地区' });
   }
   try {
     const [row] = await db.update(regions).set({ ...data }).where(eq(regions.id, id)).returning();

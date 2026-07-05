@@ -131,8 +131,8 @@ const batchDeleteRouteDef = defineOpenAPIRoute({
     const { ids } = c.req.valid('json');
     const before = await getTenantPackagesBeforeAudit(ids);
     if (before.length > 0) setAuditBeforeData(c, before);
-    await batchDeleteTenantPackages(ids);
-    return c.json(okBody(null, `已删除 ${ids.length} 条记录`), 200);
+    const count = await batchDeleteTenantPackages(ids);
+    return c.json(okBody(null, `已删除 ${count} 条记录`), 200);
   },
 });
 

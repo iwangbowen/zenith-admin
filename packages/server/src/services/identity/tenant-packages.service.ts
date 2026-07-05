@@ -154,5 +154,6 @@ export async function deleteTenantPackage(id: number) {
 
 export async function batchDeleteTenantPackages(ids: number[]) {
   if (ids.length === 0) throw new HTTPException(400, { message: '请选择要删除的记录' });
-  await db.delete(tenantPackages).where(inArray(tenantPackages.id, ids));
+  const deleted = await db.delete(tenantPackages).where(inArray(tenantPackages.id, ids)).returning({ id: tenantPackages.id });
+  return deleted.length;
 }

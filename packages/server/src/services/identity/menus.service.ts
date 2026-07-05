@@ -86,6 +86,27 @@ export interface CreateMenuInput {
 }
 export type UpdateMenuInput = Partial<CreateMenuInput>;
 
+// ─── 业务校验 ─────────────────────────────────────────────────────────────────
+
+/** 校验父级菜单：存在性 +（更新时）自身/子孙环引用防护 */
+async function ensureMenuParentValid(parentId: number, currentId?: number) {
+  if (parentId === 0) return;
+  const allMenus = await db.select({ id: menus.id, parentId: menus.parentId }).from(menus);
+  if (!allMenus.some((m) => m.id === parentId)) throw new HTTPException(400, { message: '父级菜单不存在' });
+  if (currentId === undefined) return;
+  if (parentId === currentId) throw new HTTPException(400, { message: '父级菜单不能选择自身' });
+  const descendants = new Set<number>();
+  const queue = [currentId];
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (current === undefined) continue;
+    for (const item of allMenus) {
+      if (item.parentId === current && !descendants.has(item.id)) { descendants.add(item.id); queue.push(item.id); }
+    }
+  }
+  if (descendants.has(parentId)) throw new HTTPException(400, { message: '父级菜单不能选择自身的子菜单' });
+}
+
 // ─── 业务方法 ─────────────────────────────────────────────────────────────────
 
 /** 当前登录用户可见的菜单树 */
@@ -126,6 +147,7 @@ export async function listMenusFlat(): Promise<Omit<Menu, 'children'>[]> {
 }
 
 export async function createMenu(input: CreateMenuInput): Promise<Omit<Menu, 'children'>> {
+  await ensureMenuParentValid(input.parentId ?? 0);
   const [row] = await db
     .insert(menus)
     .values({
@@ -150,6 +172,9 @@ export async function createMenu(input: CreateMenuInput): Promise<Omit<Menu, 'ch
 }
 
 export async function updateMenu(id: number, input: UpdateMenuInput): Promise<Omit<Menu, 'children'>> {
+  if (input.parentId !== undefined) {
+    await ensureMenuParentValid(input.parentId, id);
+  }
   const [row] = await db.update(menus).set({ ...input }).where(eq(menus.id, id)).returning();
   if (!row) throw new HTTPException(404, { message: '菜单不存在' });
   return mapMenu(row);

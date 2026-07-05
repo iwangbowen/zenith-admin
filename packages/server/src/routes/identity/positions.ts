@@ -93,7 +93,9 @@ const updatePositionRoute = defineOpenAPIRoute({
     const { id } = c.req.valid('param');
     const before = await getPositionBeforeAudit(id);
     if (before) setAuditBeforeData(c, before);
-    return c.json(okBody(await updatePosition(id, c.req.valid('json')), '更新成功'), 200);
+    const updated = await updatePosition(id, c.req.valid('json'));
+    setAuditAfterData(c, updated);
+    return c.json(okBody(updated, '更新成功'), 200);
   },
 });
 
