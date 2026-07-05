@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Select, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -69,6 +70,18 @@ export default function CcToMePage() {
       markReadMutation.mutate(record.ccTaskId);
     }
   };
+
+  // 通知深链：/workflow/cc?instanceId= 自动弹出抄送详情（消费后清掉参数）
+  const [urlParams, setUrlParams] = useSearchParams();
+  useEffect(() => {
+    const instanceId = Number(urlParams.get('instanceId'));
+    if (instanceId > 0) {
+      setSelectedId(instanceId);
+      setDetailVisible(true);
+      setUrlParams({}, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const openForward = (record: WorkflowInstance) => {
     setForwardTarget(record);

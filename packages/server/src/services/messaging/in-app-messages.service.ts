@@ -66,6 +66,7 @@ export async function listMyInAppMessages(q: ListInAppMessagesQuery) {
       content: r.msg.content,
       type: r.msg.type,
       isRead: r.msg.isRead,
+      link: r.msg.link ?? null,
       readAt: r.msg.readAt ? formatDateTime(r.msg.readAt) : null,
       createdAt: formatDateTime(r.msg.createdAt),
     })),
@@ -102,6 +103,7 @@ export async function getMyInAppMessage(id: number) {
     content: row.msg.content,
     type: row.msg.type,
     isRead: row.msg.isRead,
+    link: row.msg.link ?? null,
     readAt: row.msg.readAt ? formatDateTime(row.msg.readAt) : null,
     createdAt: formatDateTime(row.msg.createdAt),
   };
@@ -131,6 +133,7 @@ export async function getInAppMessageBeforeAudit(id: number) {
     content: row.msg.content,
     type: row.msg.type,
     isRead: row.msg.isRead,
+    link: row.msg.link ?? null,
     readAt: row.msg.readAt ? formatDateTime(row.msg.readAt) : null,
     createdAt: formatDateTime(row.msg.createdAt),
   };
@@ -184,6 +187,7 @@ export async function listAllInAppMessages(q: Omit<ListInAppMessagesQuery, 'reci
       content: r.msg.content,
       type: r.msg.type,
       isRead: r.msg.isRead,
+      link: r.msg.link ?? null,
       readAt: r.msg.readAt ? formatDateTime(r.msg.readAt) : null,
       createdAt: formatDateTime(r.msg.createdAt),
     })),

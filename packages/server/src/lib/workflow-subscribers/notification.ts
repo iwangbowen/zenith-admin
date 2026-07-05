@@ -44,6 +44,8 @@ async function insertMessage(input: {
   content: string;
   type: InAppMessageType;
   tenantId: number | null;
+  /** 深链地址（站内路由，点击消息跳转到对应审批页） */
+  link?: string | null;
 }): Promise<void> {
   try {
     await db.insert(inAppMessages).values({
@@ -53,11 +55,17 @@ async function insertMessage(input: {
       type: input.type,
       source: 'system',
       tenantId: input.tenantId,
+      link: input.link ?? null,
     });
   } catch (err) {
     logger.error('[workflow notification] in-app insert failed', { err, userId: input.userId });
   }
 }
+
+/** 待办处理深链（待我审批页自动弹出对应详情） */
+const pendingLink = (instanceId: number, taskId: number) => `/workflow/pending?instanceId=${instanceId}&taskId=${taskId}`;
+/** 实例查看深链（我的申请页自动弹出详情，参与人均可查看） */
+const instanceLink = (instanceId: number) => `/workflow/applications?instanceId=${instanceId}`;
 
 /** 通过邮件/短信渠道通知用户（上下文无关，失败仅记录日志） */
 async function notifyExternalChannels(
@@ -113,6 +121,7 @@ export function registerNotificationWorkflowSubscriber(): void {
         : `你有一条新的待办：流程「${label}」（节点：${task.nodeName}），请及时处理`,
       type: 'info',
       tenantId: event.tenantId,
+      link: isCc ? `/workflow/cc?instanceId=${event.instanceId}` : pendingLink(event.instanceId, task.id),
     });
     if (!isCc) {
       await notifyExternalChannels(
@@ -136,6 +145,7 @@ export function registerNotificationWorkflowSubscriber(): void {
       content: `流程「${label}」（节点：${task.nodeName}）有人催办${extra}，请尽快处理`,
       type: 'warning',
       tenantId: event.tenantId,
+      link: pendingLink(event.instanceId, task.id),
     });
   });
 
@@ -149,6 +159,7 @@ export function registerNotificationWorkflowSubscriber(): void {
       content: `流程「${label}」（节点：${task.nodeName}）的审批任务已转交给你，请及时处理`,
       type: 'info',
       tenantId: event.tenantId,
+      link: pendingLink(event.instanceId, task.id),
     });
   });
 
@@ -165,7 +176,7 @@ export function registerNotificationWorkflowSubscriber(): void {
     const m = map[status];
     const { channels, notifyInitiator: shouldNotify } = await loadNotifyContext(event.instanceId);
     if (!shouldNotify) return;
-    await insertMessage({ userId: inst.initiatorId, title: m.title, content: m.content, type: m.type, tenantId: event.tenantId });
+    await insertMessage({ userId: inst.initiatorId, title: m.title, content: m.content, type: m.type, tenantId: event.tenantId, link: instanceLink(event.instanceId) });
     await notifyExternalChannels(inst.initiatorId, channels, `【${m.title}】${label}`, m.content, { title: label, status: m.title });
   };
 

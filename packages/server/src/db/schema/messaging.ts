@@ -177,6 +177,8 @@ export const inAppMessages = pgTable('in_app_messages', {
   readAt: timestamp('read_at', { withTimezone: true }),
   source: sendSourceEnum('source').default('system').notNull(),
   senderId: integer('sender_id').references(() => users.id, { onDelete: 'set null' }),
+  /** 深链地址（站内路由，如 /workflow/pending?instanceId=1，点击消息跳转） */
+  link: varchar('link', { length: 512 }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });

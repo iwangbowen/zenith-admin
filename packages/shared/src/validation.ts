@@ -1379,6 +1379,8 @@ export const importWorkflowDefinitionSchema = z.object({
 export const createWorkflowCommentSchema = z.object({
   content: z.string().min(1, '评论内容不能为空').max(2000),
   taskId: z.number().int().positive().nullable().optional(),
+  /** 回复引用的父评论 ID（须属于同一实例） */
+  parentId: z.number().int().positive().nullable().optional(),
   mentions: z.array(z.number().int().positive()).max(50).optional(),
   attachments: z.array(z.object({
     name: z.string().max(255),

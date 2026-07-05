@@ -36,6 +36,7 @@ export const InAppMessageDTO = z
     source: z.enum(['manual', 'test', 'system', 'api']),
     senderId: z.number().int().nullable(),
     senderName: z.string().nullable(),
+    link: z.string().nullable().optional(),
     createdAt: z.string(),
   })
   .openapi('InAppMessage');

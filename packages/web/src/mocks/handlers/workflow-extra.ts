@@ -562,18 +562,27 @@ export const workflowExtraHandlers = [
     return ok(list);
   }),
   http.post('/api/workflows/instances/:id/comments', async ({ params, request }) => {
-    const body = await request.json() as { content: string; mentions?: number[]; taskId?: number | null };
+    const body = await request.json() as { content: string; mentions?: number[]; taskId?: number | null; parentId?: number | null; attachments?: Array<{ name: string; url: string; size?: number }> };
+    // 回复引用：父评论须属于同一实例
+    const parent = body.parentId
+      ? mockComments.find((c) => c.id === body.parentId && c.instanceId === Number(params.id)) ?? null
+      : null;
+    if (body.parentId && !parent) return err('被回复的评论不存在');
     const comment: WorkflowComment = {
       id: nextCommentId++,
       instanceId: Number(params.id),
       taskId: body.taskId ?? null,
+      parentId: parent?.id ?? null,
+      parentSummary: parent
+        ? { userName: parent.userName ?? `用户#${parent.userId}`, content: parent.content.length > 60 ? `${parent.content.slice(0, 60)}…` : parent.content }
+        : null,
       userId: 1,
       userName: '张三',
       userAvatar: null,
       content: body.content,
       mentions: body.mentions ?? [],
       mentionNames: (body.mentions ?? []).map((m) => `用户#${m}`),
-      attachments: [],
+      attachments: body.attachments ?? [],
       createdAt: mockDateTime(),
     };
     mockComments.push(comment);

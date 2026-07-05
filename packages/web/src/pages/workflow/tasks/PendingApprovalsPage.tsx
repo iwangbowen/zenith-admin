@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { AppModal } from '@/components/AppModal';
 import {
@@ -54,6 +55,17 @@ export default function PendingApprovalsPage() {
   const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
   const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
   const [sheet, setSheet] = useState<SheetState | null>(null);
+  // 通知深链：/workflow/pending?instanceId=&taskId= 自动弹出对应审批详情（消费后清掉参数）
+  const [urlParams, setUrlParams] = useSearchParams();
+  useEffect(() => {
+    const instanceId = Number(urlParams.get('instanceId'));
+    const taskId = Number(urlParams.get('taskId'));
+    if (instanceId > 0 && taskId > 0) {
+      setSheet({ instanceId, taskId, action: null });
+      setUrlParams({}, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const { renderPhraseBar, phraseManageModal } = useQuickPhrases();
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const [batchMode, setBatchMode] = useState<'approve' | 'reject' | null>(null);

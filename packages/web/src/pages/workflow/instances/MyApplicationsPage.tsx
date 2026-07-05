@@ -16,7 +16,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ExternalLink, Megaphone, Plus, RotateCcw, Search, Undo2 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { WorkflowDefinition, WorkflowInstance } from '@zenith/shared';
 import { buildWorkflowSummaryItems } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
@@ -419,6 +419,17 @@ export default function MyApplicationsPage() {
     setSelectedId(id);
     setDetailVisible(true);
   };
+
+  // 通知深链：/workflow/applications?instanceId= 自动弹出实例详情（消费后清掉参数）
+  const [urlParams, setUrlParams] = useSearchParams();
+  useEffect(() => {
+    const instanceId = Number(urlParams.get('instanceId'));
+    if (instanceId > 0) {
+      openDetail(instanceId);
+      setUrlParams({}, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const closeApply = () => {
     setApplyVisible(false);

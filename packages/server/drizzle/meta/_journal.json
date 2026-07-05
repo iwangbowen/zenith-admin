@@ -127,6 +127,13 @@
       "when": 1783256406260,
       "tag": "0017_mighty_sister_grimm",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1783257742652,
+      "tag": "0018_cloudy_deathstrike",
+      "breakpoints": true
     }
   ]
 }

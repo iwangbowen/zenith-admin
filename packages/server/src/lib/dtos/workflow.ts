@@ -234,6 +234,8 @@ export const WorkflowCommentDTO = z
     id: z.number().int(),
     instanceId: z.number().int(),
     taskId: z.number().int().nullable().optional(),
+    parentId: z.number().int().nullable().optional(),
+    parentSummary: z.object({ userName: z.string().nullable(), content: z.string() }).nullable().optional(),
     userId: z.number().int(),
     userName: z.string().nullable().optional(),
     userAvatar: z.string().nullable().optional(),

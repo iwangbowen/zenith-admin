@@ -3305,6 +3305,10 @@ export interface WorkflowComment {
   id: number;
   instanceId: number;
   taskId?: number | null;
+  /** 回复引用的父评论 ID（一层引用） */
+  parentId?: number | null;
+  /** 父评论摘要（展示引用块用：作者 + 内容截断） */
+  parentSummary?: { userName: string | null; content: string } | null;
   userId: number;
   userName?: string | null;
   userAvatar?: string | null;
@@ -5154,6 +5158,8 @@ export interface InAppMessage {
   source: SendSource;
   senderId: number | null;
   senderName?: string | null;
+  /** 深链地址（站内路由，点击消息跳转） */
+  link?: string | null;
   tenantId?: number | null;
   createdAt: string;
 }

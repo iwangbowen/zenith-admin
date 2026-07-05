@@ -13,12 +13,14 @@ type CommentRow = typeof workflowComments.$inferSelect;
 
 export function mapComment(
   row: CommentRow,
-  extras: { userName?: string | null; userAvatar?: string | null; mentionNames?: string[] | null } = {},
+  extras: { userName?: string | null; userAvatar?: string | null; mentionNames?: string[] | null; parentSummary?: { userName: string | null; content: string } | null } = {},
 ): WorkflowComment {
   return {
     id: row.id,
     instanceId: row.instanceId,
     taskId: row.taskId ?? null,
+    parentId: row.parentId ?? null,
+    parentSummary: extras.parentSummary ?? null,
     userId: row.userId,
     userName: extras.userName ?? null,
     userAvatar: extras.userAvatar ?? null,
@@ -70,10 +72,22 @@ export async function loadInstanceCommentsForDetail(instanceId: number): Promise
   if (rows.length === 0) return [];
   const nameIds = rows.flatMap((r) => [r.userId, ...(Array.isArray(r.mentions) ? r.mentions : [])]);
   const names = await loadUserNames(nameIds);
+  // 回复引用：同实例内自查父评论构建摘要（作者 + 截断内容）
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const parentSummaryOf = (r: CommentRow) => {
+    if (!r.parentId) return null;
+    const parent = byId.get(r.parentId);
+    if (!parent) return null;
+    return {
+      userName: names.get(parent.userId)?.name ?? `用户#${parent.userId}`,
+      content: parent.content.length > 60 ? `${parent.content.slice(0, 60)}…` : parent.content,
+    };
+  };
   return rows.map((r) => mapComment(r, {
     userName: names.get(r.userId)?.name ?? null,
     userAvatar: names.get(r.userId)?.avatar ?? null,
     mentionNames: (Array.isArray(r.mentions) ? r.mentions : []).map((id) => names.get(id)?.name ?? `用户#${id}`),
+    parentSummary: parentSummaryOf(r),
   }));
 }
 
@@ -90,9 +104,19 @@ export async function addInstanceComment(instanceId: number, input: CreateWorkfl
   }
   const user = currentUser();
   const mentions = [...new Set(input.mentions ?? [])].filter((v) => v > 0);
+  // 回复引用：父评论必须属于同一实例（防跨实例引用泄露）
+  let parentRow: CommentRow | null = null;
+  if (input.parentId) {
+    const [parent] = await db.select().from(workflowComments)
+      .where(and(eq(workflowComments.id, input.parentId), eq(workflowComments.instanceId, instanceId)))
+      .limit(1);
+    if (!parent) throw new HTTPException(400, { message: '被回复的评论不存在' });
+    parentRow = parent;
+  }
   const [row] = await db.insert(workflowComments).values({
     instanceId,
     taskId: input.taskId ?? null,
+    parentId: parentRow?.id ?? null,
     userId: user.userId,
     content: input.content,
     mentions,
@@ -100,7 +124,7 @@ export async function addInstanceComment(instanceId: number, input: CreateWorkfl
     tenantId: inst.tenantId,
   }).returning();
 
-  // @ 提及：向被提及用户发送站内信
+  // @ 提及：向被提及用户发送站内信（带实例详情深链）
   if (mentions.length > 0) {
     const label = inst.serialNo ? `${inst.title}（${inst.serialNo}）` : inst.title;
     try {
@@ -111,16 +135,23 @@ export async function addInstanceComment(instanceId: number, input: CreateWorkfl
         type: 'info' as const,
         source: 'system' as const,
         tenantId: inst.tenantId,
+        link: `/workflow/applications?instanceId=${instanceId}`,
       })));
     } catch (err) {
       logger.error('[workflow comment] mention notify failed', { err, instanceId });
     }
   }
 
-  const names = await loadUserNames([user.userId, ...mentions]);
+  const names = await loadUserNames([user.userId, ...mentions, ...(parentRow ? [parentRow.userId] : [])]);
   return mapComment(row, {
     userName: names.get(user.userId)?.name ?? user.username,
     userAvatar: names.get(user.userId)?.avatar ?? null,
     mentionNames: mentions.map((id) => names.get(id)?.name ?? `用户#${id}`),
+    parentSummary: parentRow
+      ? {
+          userName: names.get(parentRow.userId)?.name ?? `用户#${parentRow.userId}`,
+          content: parentRow.content.length > 60 ? `${parentRow.content.slice(0, 60)}…` : parentRow.content,
+        }
+      : null,
   });
 }

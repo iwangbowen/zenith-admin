@@ -6,6 +6,7 @@
  *   推送，失效相关 TanStack Query 缓存并对新待办弹出提醒（挂载于 AdminLayout，一处生效）
  */
 import { useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Notification } from '@douyinfe/semi-ui';
 import type { WsMessage } from '@zenith/shared';
@@ -29,16 +30,38 @@ export function usePendingApprovalCount(enabled: boolean) {
   });
 }
 
-/** 消费工作流 WS 事件：刷新待办角标与列表缓存，新待办弹出提醒 */
+/** 消费工作流 WS 事件：刷新待办角标与列表缓存，新待办弹出提醒（点击跳转处理） */
 export function useWorkflowRealtime() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const handler = useCallback((msg: WsMessage) => {
     if (msg.type === 'workflow:taskCreated') {
       void queryClient.invalidateQueries({ queryKey: workflowPendingCountKey });
       void queryClient.invalidateQueries({ queryKey: ['workflow', 'tasks'] });
+      const { instanceId, taskId, instanceTitle, nodeName } = msg.payload;
+      const notifyId = `workflow-task-${taskId}`;
       Notification.info({
+        id: notifyId,
         title: '新的审批待办',
-        content: `「${msg.payload.instanceTitle}」等待你处理（节点：${msg.payload.nodeName}）`,
+        content: (
+          <span
+            style={{ cursor: 'pointer' }}
+            role="link"
+            tabIndex={0}
+            onClick={() => {
+              Notification.close(notifyId);
+              navigate(`/workflow/pending?instanceId=${instanceId}&taskId=${taskId}`);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                Notification.close(notifyId);
+                navigate(`/workflow/pending?instanceId=${instanceId}&taskId=${taskId}`);
+              }
+            }}
+          >
+            「{instanceTitle}」等待你处理（节点：{nodeName}），点击查看
+          </span>
+        ),
         duration: 5,
         position: 'topRight',
       });
@@ -50,6 +73,6 @@ export function useWorkflowRealtime() {
       // 发起人视角：申请结束（通过/驳回/撤回），刷新我的申请/抄送/详情等全量工作流缓存
       void queryClient.invalidateQueries({ queryKey: ['workflow'] });
     }
-  }, [queryClient]);
+  }, [queryClient, navigate]);
   useWebSocket(handler);
 }

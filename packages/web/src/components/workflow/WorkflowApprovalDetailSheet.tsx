@@ -585,7 +585,8 @@ export default function WorkflowApprovalDetailSheet({
   if (btnReturn.enabled) moreActions.push({ key: 'return', label: btnReturn.displayName ?? '退回', onClick: () => setReturnVisible(true) });
 
   const approveLabel = btnApprove.displayName ?? '同意';
-  const extraActions = taskId != null && detail?.id === instanceId ? (
+  // 仅当前 pending 任务显示操作按钮（深链打开已处理任务时只读查看）
+  const extraActions = taskId != null && detail?.id === instanceId && currentTask?.status === 'pending' ? (
     <Space>
       {btnApprove.enabled !== false && (
         canQuickApprove ? (

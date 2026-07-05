@@ -9,7 +9,7 @@ import {
   Descriptions, Empty, Skeleton, Tabs, TabPane, Tag, Typography, Button,
   Avatar, TextArea, Select, Toast, Popconfirm,
 } from '@douyinfe/semi-ui';
-import { CornerUpLeft, Send, Undo2 } from 'lucide-react';
+import { CornerUpLeft, Reply, Send, Undo2, X } from 'lucide-react';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { WorkflowDefinition, WorkflowFieldPermission, WorkflowInstance, WorkflowComment, WorkflowTaskConsult } from '@zenith/shared';
 import { applyFieldPermissionsToFields } from '@zenith/shared';
@@ -17,6 +17,8 @@ import { request } from '@/utils/request';
 import { useAuth } from '@/hooks/useAuth';
 import { formatDateTime } from '@/utils/date';
 import ApprovalTimeline from '@/components/ApprovalTimeline';
+import FileAttachment from '@/components/FileAttachment';
+import { uploadedFileToAttachment } from '@/components/FileAttachment/utils';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
 import BusinessFormHost from '@/components/workflow/BusinessFormHost';
 import WorkflowGraphView from './WorkflowGraphView';
@@ -61,18 +63,21 @@ interface Props {
   onFormApiReady?: (api: FormApi) => void;
 }
 
-/** 流程沟通时间线（自由评论 + @提及），自管理状态与请求 */
+/** 流程沟通时间线（自由评论 + @提及 + 附件 + 回复引用），自管理状态与请求 */
 function InstanceComments({ instance }: Readonly<{ instance: WorkflowInstance }>) {
   const [comments, setComments] = useState<WorkflowComment[]>(instance.comments ?? []);
   const [content, setContent] = useState('');
   const [mentions, setMentions] = useState<number[]>([]);
+  const [attachments, setAttachments] = useState<Array<{ name: string; url: string; size?: number }>>([]);
+  const [replyTo, setReplyTo] = useState<WorkflowComment | null>(null);
   const commentMutation = useMutation({
-    mutationFn: ({ id, text, mentionIds }: { id: number; text: string; mentionIds: number[] }) =>
-      request.post<WorkflowComment>(`/api/workflows/instances/${id}/comments`, { content: text, mentions: mentionIds }),
+    mutationFn: ({ id, text, mentionIds, files, parentId }: { id: number; text: string; mentionIds: number[]; files: Array<{ name: string; url: string; size?: number }>; parentId: number | null }) =>
+      request.post<WorkflowComment>(`/api/workflows/instances/${id}/comments`, { content: text, mentions: mentionIds, attachments: files, parentId }),
   });
   const submitting = commentMutation.isPending;
 
   useEffect(() => { setComments(instance.comments ?? []); }, [instance.id, instance.comments]);
+  useEffect(() => { setReplyTo(null); setAttachments([]); }, [instance.id]);
 
   // @提及候选：发起人 + 各任务处理人（去重）
   const mentionOptions = (() => {
@@ -88,11 +93,19 @@ function InstanceComments({ instance }: Readonly<{ instance: WorkflowInstance }>
     const text = content.trim();
     if (!text) { Toast.warning('请输入评论内容'); return; }
     try {
-      const res = await commentMutation.mutateAsync({ id: instance.id, text, mentionIds: mentions });
+      const res = await commentMutation.mutateAsync({
+        id: instance.id,
+        text,
+        mentionIds: mentions,
+        files: attachments,
+        parentId: replyTo?.id ?? null,
+      });
       if (res.code === 0 && res.data) {
         setComments((prev) => [...prev, res.data as WorkflowComment]);
         setContent('');
         setMentions([]);
+        setAttachments([]);
+        setReplyTo(null);
       } else {
         Toast.error(res.message || '评论失败');
       }
@@ -116,8 +129,25 @@ function InstanceComments({ instance }: Readonly<{ instance: WorkflowInstance }>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Typography.Text strong>{c.userName ?? `用户#${c.userId}`}</Typography.Text>
                   <Typography.Text type="tertiary" size="small">{formatDateTime(c.createdAt)}</Typography.Text>
+                  {instance.allowComment !== false && (
+                    <Button theme="borderless" size="small" icon={<Reply size={12} />} onClick={() => setReplyTo(c)}>回复</Button>
+                  )}
                 </div>
+                {c.parentSummary && (
+                  <div style={{
+                    marginTop: 4, padding: '4px 8px', borderLeft: '2px solid var(--semi-color-border)',
+                    background: 'var(--semi-color-fill-0)', borderRadius: 4, fontSize: 12, color: 'var(--semi-color-text-2)',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {c.parentSummary.userName ?? '—'}：{c.parentSummary.content}
+                  </div>
+                )}
                 <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: 2 }}>{c.content}</div>
+                {c.attachments && c.attachments.length > 0 && (
+                  <div style={{ marginTop: 4 }}>
+                    <FileAttachment mode="view" showTitle={false} value={c.attachments.map((a, i) => uploadedFileToAttachment(a, i))} />
+                  </div>
+                )}
                 {c.mentionNames && c.mentionNames.length > 0 && (
                   <div style={{ marginTop: 4, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                     {c.mentionNames.map((n) => <Tag key={n} size="small" color="light-blue">@{n}</Tag>)}
@@ -134,12 +164,30 @@ function InstanceComments({ instance }: Readonly<{ instance: WorkflowInstance }>
         </div>
       ) : (
         <div style={{ borderTop: '1px solid var(--semi-color-border)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {replyTo && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px',
+              background: 'var(--semi-color-fill-0)', borderRadius: 4, fontSize: 12, color: 'var(--semi-color-text-2)',
+            }}>
+              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                回复 {replyTo.userName ?? `用户#${replyTo.userId}`}：{replyTo.content}
+              </span>
+              <Button theme="borderless" size="small" icon={<X size={12} />} onClick={() => setReplyTo(null)} aria-label="取消回复" />
+            </div>
+          )}
           <TextArea
             value={content}
             onChange={setContent}
-            placeholder="发表评论，与流程相关人员沟通…"
+            placeholder={replyTo ? `回复 ${replyTo.userName ?? '评论'}…` : '发表评论，与流程相关人员沟通…'}
             autosize={{ minRows: 2, maxRows: 5 }}
             maxCount={2000}
+          />
+          <FileAttachment
+            mode="edit"
+            showTitle={false}
+            limit={5}
+            value={attachments.map((a, i) => uploadedFileToAttachment(a, i))}
+            onChange={(items) => setAttachments(items.map((a) => ({ name: a.file.originalName, url: a.file.url, size: a.file.size })))}
           />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
             <Select

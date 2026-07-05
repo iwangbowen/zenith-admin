@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, unique, text, uniqueIndex, index, jsonb, smallint, real } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, unique, text, uniqueIndex, index, jsonb, smallint, real, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { statusEnum } from './common';
 import { auditColumns, tenants, users } from './core';
@@ -669,6 +669,8 @@ export const workflowComments = pgTable('workflow_comments', {
   instanceId: integer('instance_id').notNull().references(() => workflowInstances.id, { onDelete: 'cascade' }),
   /** 关联的任务（在某审批任务上下文中评论时填写，可为空） */
   taskId: integer('task_id').references(() => workflowTasks.id, { onDelete: 'set null' }),
+  /** 回复引用的父评论（楼中楼一层引用，父删除后置空保留本条） */
+  parentId: integer('parent_id').references((): AnyPgColumn => workflowComments.id, { onDelete: 'set null' }),
   userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   content: text('content').notNull(),
   /** @ 提及的用户 ID 列表 */

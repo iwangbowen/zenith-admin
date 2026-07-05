@@ -1422,7 +1422,9 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
                     onClick={() => {
                       if (!item.isRead) markAsRead(item.id);
                       setMessagePopVisible(false);
-                      setSelectedMessage(item);
+                      // 带深链的消息（如待办提醒）直接跳转对应页面并自动弹出详情
+                      if (item.link) navigate(item.link);
+                      else setSelectedMessage(item);
                     }}
                     header={null}
                     main={
