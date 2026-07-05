@@ -2451,6 +2451,8 @@ export interface WorkflowAdvancedSettings {
   timeoutAction?: 'none' | 'auto-approve' | 'auto-reject' | 'notify';
   /** 是否允许在实例下自由评论（默认 true） */
   allowComment?: boolean;
+  /** 待办/列表摘要字段（≤3 个表单字段 key，钉钉式卡片摘要） */
+  summaryFields?: string[];
   /** 业务编号生成规则 */
   serialNo?: WorkflowSerialNoConfig;
   /** 待办/结果的多渠道通知（站内信始终开启；email/sms 可选） */
@@ -2478,6 +2480,13 @@ export interface WorkflowFlowData {
   /** 钉钉/飞书风格流程树结构（新版设计器使用） */
   process?: Record<string, unknown>;
   settings?: WorkflowAdvancedSettings;
+}
+
+/** 待办/实例列表摘要项（由 summaryFields 配置 + 表单快照解析得到） */
+export interface WorkflowInstanceSummaryItem {
+  key: string;
+  label: string;
+  value: string;
 }
 
 // 表单字段类型

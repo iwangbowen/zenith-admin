@@ -332,6 +332,8 @@ export const WorkflowInstanceListItemDTO = WorkflowInstanceDTO.omit({
   slaLevel: z.enum(['none', 'safe', 'warning', 'overdue']).optional(),
   slaDeadline: z.string().nullable().optional(),
   slaOverdueSec: z.number().int().nullable().optional(),
+  /** 列表摘要（流程「更多设置 → 列表摘要字段」配置，≤3 项） */
+  summary: z.array(z.object({ key: z.string(), label: z.string(), value: z.string() })).optional(),
 }).openapi('WorkflowInstanceListItem');
 
 export const WorkflowInstanceAllDTO = z

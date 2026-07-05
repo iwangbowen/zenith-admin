@@ -262,7 +262,7 @@ export default function WorkflowApprovalDetailSheet({
   // 候选人已按各节点 selectScope（成员/角色/部门/用户组）在服务端解析收窄，前端无需自行计算范围。
   // 审批操作可用时（pending 且为当前实例）即预取「下一节点自选审批人」候选：
   // 既供审批弹窗使用，也用于判断「同意」能否走一键快速通道（无下游自选才允许）。
-  const nextApproversEnabled = taskId != null && detail?.id === instanceId && currentTask?.status === 'pending';
+  const nextApproversEnabled = visible && taskId != null && detail?.id === instanceId && currentTask?.status === 'pending';
   const nextApproversQuery = useWorkflowSelectableNextApprovers(taskId, nextApproversEnabled);
   const selectedNextGroups = nextApproversEnabled ? (nextApproversQuery.data ?? []) : [];
   const hasApproverSelectDownstream = selectedNextGroups.length > 0;

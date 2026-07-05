@@ -2203,6 +2203,8 @@ export const workflowHandlers = [
   http.get('/api/workflows/tasks/:taskId/selectable-next-approvers', ({ params }) => {
     const task = mockWorkflowTasks.find(t => t.id === Number(params.taskId));
     if (!task) return err('任务不存在', 404);
+    // 与服务端一致：已处理任务无需再选下一审批人，返回空组而非报错
+    if (task.status !== 'pending') return ok([]);
     const inst = mockWorkflowInstances.find(i => i.id === task.instanceId);
     if (!inst) return err('流程实例不存在', 404);
     const def = mockWorkflowDefinitions.find(d => d.id === inst.definitionId);

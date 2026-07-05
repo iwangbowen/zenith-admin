@@ -4,7 +4,7 @@
  * 放在 shared 是为了让「前端审批弹窗 / 后端校验 / MSW Mock」三处对
  * 「下一节点审批人自选」的判定保持**完全一致**，避免各自实现产生偏差。
  */
-import type { WorkflowFieldPermission, WorkflowFlowData, WorkflowFormField, WorkflowNodeConfig, WorkflowNodeFailurePolicy } from './types';
+import type { WorkflowFieldPermission, WorkflowFlowData, WorkflowFormField, WorkflowInstanceSummaryItem, WorkflowNodeConfig, WorkflowNodeFailurePolicy } from './types';
 
 type WorkflowFlowNode = WorkflowFlowData['nodes'][number];
 
@@ -181,3 +181,81 @@ export function sanitizeFormUpdatesByNodePerms(
   return out;
 }
 
+// ─── 待办/列表摘要字段（钉钉式卡片摘要）────────────────────────────────────────
+//
+// 流程「更多设置」可配置 `summaryFields`（≤3 个字段 key），待办/申请列表在标题下
+// 直接展示关键表单值。以下纯函数供「后端列表映射 / MSW Mock / 设计器选项过滤」共用。
+
+export const WORKFLOW_SUMMARY_MAX_FIELDS = 3;
+
+/** 布局与复杂值类型不适合做摘要（无标量文本表示或值为 ID/文件对象） */
+const SUMMARY_EXCLUDED_FIELD_TYPES = new Set([
+  'row', 'tabs', 'steps', 'group', 'divider', 'description', 'detail',
+  'attachment', 'image', 'signature', 'richtext', 'userSelect', 'deptSelect', 'relation', 'password',
+]);
+
+/** 字段类型是否可作为列表摘要字段（设计器选择器与运行时格式化共用同一判定） */
+export function isWorkflowSummaryCapableField(type: string): boolean {
+  return !SUMMARY_EXCLUDED_FIELD_TYPES.has(type);
+}
+
+function flattenWorkflowFormFields(fields: WorkflowFormField[]): WorkflowFormField[] {
+  const out: WorkflowFormField[] = [];
+  for (const f of fields) {
+    out.push(f);
+    if (f.type === 'row' && f.columns) for (const col of f.columns) out.push(...flattenWorkflowFormFields(col.fields));
+    else if ((f.type === 'tabs' || f.type === 'steps') && f.panes) for (const pane of f.panes) out.push(...flattenWorkflowFormFields(pane.fields));
+    else if ((f.type === 'group' || f.type === 'detail') && f.children) out.push(...flattenWorkflowFormFields(f.children));
+  }
+  return out;
+}
+
+function summaryOptionLabel(field: WorkflowFormField, value: unknown): string {
+  const raw = String(value);
+  const item = field.optionItems?.find((o) => o.value === raw);
+  return item?.label || raw;
+}
+
+/** 单字段值 → 摘要文本；无法表达（对象/排除类型）返回 null，空值返回 '-' */
+function formatSummaryValue(field: WorkflowFormField, value: unknown): string | null {
+  if (!isWorkflowSummaryCapableField(field.type)) return null;
+  if (value === null || value === undefined || value === '') return '-';
+  if (field.type === 'switch') return value ? '是' : '否';
+  if (Array.isArray(value)) {
+    if (value.length === 0) return '-';
+    if (value.some((v) => typeof v === 'object' && v !== null)) return null;
+    const parts = value.map((v) => summaryOptionLabel(field, v));
+    if (field.type === 'dateRange') return parts.join(' ~ ');
+    if (field.type === 'region') return parts.join(' / ');
+    return parts.join('、');
+  }
+  if (typeof value === 'object') return null;
+  if (field.type === 'select' || field.type === 'radio') return summaryOptionLabel(field, value);
+  const text = String(value);
+  if ((field.type === 'number' || field.type === 'amount') && field.unit) return `${text} ${field.unit}`;
+  return text;
+}
+
+/**
+ * 按 `summaryFields` 配置从表单快照与表单数据构建摘要项（顺序跟随配置，最多 max 条）。
+ * 未配置、字段已被删除或值无法文本化的项自动跳过。
+ */
+export function buildWorkflowSummaryItems(
+  fields: WorkflowFormField[] | null | undefined,
+  formData: Record<string, unknown> | null | undefined,
+  summaryKeys: string[] | null | undefined,
+  max: number = WORKFLOW_SUMMARY_MAX_FIELDS,
+): WorkflowInstanceSummaryItem[] {
+  if (!summaryKeys?.length || !fields?.length) return [];
+  const byKey = new Map(flattenWorkflowFormFields(fields).map((f) => [f.key, f]));
+  const out: WorkflowInstanceSummaryItem[] = [];
+  for (const key of summaryKeys) {
+    if (out.length >= max) break;
+    const field = byKey.get(key);
+    if (!field) continue;
+    const value = formatSummaryValue(field, (formData ?? {})[key]);
+    if (value === null) continue;
+    out.push({ key, label: field.label || key, value });
+  }
+  return out;
+}

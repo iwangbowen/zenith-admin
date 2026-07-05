@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse, WorkflowDefinition, WorkflowInstance, WorkflowTaskConsult, WorkflowSlaLevel } from '@zenith/shared';
+import type { PaginatedResponse, WorkflowDefinition, WorkflowInstance, WorkflowInstanceSummaryItem, WorkflowTaskConsult, WorkflowSlaLevel } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { toQueryString, unwrap } from '@/lib/query';
 
@@ -10,6 +10,8 @@ export type PendingWorkflowItem = WorkflowInstance & {
   slaLevel?: WorkflowSlaLevel;
   slaOverdueSec?: number | null;
   slaDeadline?: string | null;
+  /** 列表摘要（流程「更多设置 → 列表摘要字段」配置） */
+  summary?: WorkflowInstanceSummaryItem[];
 };
 
 export interface PendingWorkflowListParams {

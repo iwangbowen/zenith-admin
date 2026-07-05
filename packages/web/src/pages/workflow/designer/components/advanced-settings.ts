@@ -9,6 +9,8 @@ export interface AdvancedSettingsData {
   /** @deprecated 已被 approverDedupMode 取代，仅用于读取旧数据 */
   autoApproveIfSameUser?: boolean;
   allowComment?: boolean;
+  /** 待办/列表摘要字段（≤3 个表单字段 key） */
+  summaryFields?: string[];
   serialNo?: WorkflowSerialNoConfig;
   notifyChannels?: WorkflowNotifyChannels;
 }

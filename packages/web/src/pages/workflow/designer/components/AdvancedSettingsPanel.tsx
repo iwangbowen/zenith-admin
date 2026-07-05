@@ -8,6 +8,8 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { WorkflowSerialNoConfig, WorkflowNotifyChannels } from '@zenith/shared';
 import {
   WORKFLOW_APPROVER_DEDUP_OPTIONS,
+  WORKFLOW_SUMMARY_MAX_FIELDS,
+  isWorkflowSummaryCapableField,
   resolveApproverDedupMode,
   renderWorkflowSerialNo,
   WORKFLOW_SERIAL_DATE_FORMAT_OPTIONS,
@@ -24,12 +26,17 @@ interface AdvancedSettingsProps {
   settings: AdvancedSettingsData;
   onChange: (settings: AdvancedSettingsData) => void;
   readOnly?: boolean;
+  /** 当前流程可选表单字段（用于列表摘要字段选择） */
+  formFields?: Array<{ key: string; label: string; type: string }>;
 }
 
-export default function AdvancedSettingsPanel({ settings, onChange, readOnly = false }: Readonly<AdvancedSettingsProps>) {
+export default function AdvancedSettingsPanel({ settings, onChange, readOnly = false, formFields = [] }: Readonly<AdvancedSettingsProps>) {
   const serialNo: Required<WorkflowSerialNoConfig> = { ...DEFAULT_SERIAL_NO, ...settings.serialNo };
   const notify: WorkflowNotifyChannels = settings.notifyChannels ?? {};
   const formApiRef = useRef<FormApi | null>(null);
+  const summaryFieldOptions = formFields
+    .filter((f) => f.key && isWorkflowSummaryCapableField(f.type))
+    .map((f) => ({ value: f.key, label: f.label || f.key }));
 
   const preview = renderWorkflowSerialNo(serialNo, {
     ordinal: 1,
@@ -76,6 +83,18 @@ export default function AdvancedSettingsPanel({ settings, onChange, readOnly = f
             ))}
           </Form.RadioGroup>
           <Form.Switch field="allowComment" label="允许流程中评论" />
+          <Form.Select
+            field="summaryFields"
+            label="列表摘要字段"
+            multiple
+            filter
+            showClear
+            max={WORKFLOW_SUMMARY_MAX_FIELDS}
+            placeholder={summaryFieldOptions.length > 0 ? `最多选择 ${WORKFLOW_SUMMARY_MAX_FIELDS} 个字段` : '当前流程无可用表单字段'}
+            optionList={summaryFieldOptions}
+            style={{ width: '100%' }}
+            extraText="待办 / 我的申请列表在标题下直接展示所选字段的值（钉钉式卡片摘要），最多 3 个"
+          />
 
           {/* 业务编号 / 流水号 */}
           <Form.Slot>

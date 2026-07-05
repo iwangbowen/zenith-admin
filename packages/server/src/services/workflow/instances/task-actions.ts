@@ -56,9 +56,19 @@ export interface ApproveResult {
 export async function listTaskSelectableNextApprovers(taskId: number): Promise<WorkflowSelectableNextApproverGroup[]> {
   const user = currentUser();
   const [task] = await db.select().from(workflowTasks)
-    .where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.assigneeId, user.userId), eq(workflowTasks.status, 'pending')))
+    .where(eq(workflowTasks.id, taskId))
     .limit(1);
   if (!task) throw new HTTPException(404, { message: '任务不存在或无权操作' });
+  if (task.assigneeId !== user.userId) {
+    // 任务已转办/委派给他人：曾经手的用户返回空组而非 404（审批面板关闭前的缓存刷新会重取本查询）
+    const chain: number[] = Array.isArray(task.transferChain) ? task.transferChain : [];
+    const wasMine = chain.includes(user.userId) || task.originalAssigneeId === user.userId || task.delegatedFromId === user.userId;
+    if (!wasMine) throw new HTTPException(404, { message: '任务不存在或无权操作' });
+    return [];
+  }
+  // 已处理（同意/拒绝/退回等）的任务无需再选下一审批人：返回空组而非 404，
+  // 避免审批成功后前端 invalidateQueries 立即重取本查询时误报「任务不存在或无权操作」
+  if (task.status !== 'pending') return [];
   const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
   if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
   const flowData = (inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData;

@@ -16,6 +16,7 @@ import { Plus, RotateCcw, Search } from 'lucide-react';
 import type { WorkflowInstance, WorkflowSlaLevel } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import WorkflowSummaryLine from '@/components/workflow/WorkflowSummaryLine';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import WorkflowPriorityTag from '@/components/workflow/WorkflowPriorityTag';
@@ -170,11 +171,14 @@ export default function PendingApprovalsPage() {
       dataIndex: 'title',
       width: 220,
       render: (v: string, record: PendingItem) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-          <Typography.Text ellipsis={{ showTooltip: true }} style={{ flex: 1, minWidth: 0 }}>{v}</Typography.Text>
-          {record.requiresIndividual && (
-            <Tag size="small" color="amber" style={{ flexShrink: 0 }}>需单独审批</Tag>
-          )}
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            <Typography.Text ellipsis={{ showTooltip: true }} style={{ flex: 1, minWidth: 0 }}>{v}</Typography.Text>
+            {record.requiresIndividual && (
+              <Tag size="small" color="amber" style={{ flexShrink: 0 }}>需单独审批</Tag>
+            )}
+          </div>
+          <WorkflowSummaryLine items={record.summary} />
         </div>
       ),
     },

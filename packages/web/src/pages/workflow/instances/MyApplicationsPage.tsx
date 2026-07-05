@@ -18,6 +18,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ExternalLink, Megaphone, Plus, RotateCcw, Search, Undo2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { WorkflowDefinition, WorkflowInstance } from '@zenith/shared';
+import { buildWorkflowSummaryItems } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -30,6 +31,7 @@ import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { renderEllipsis } from '../../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { normalizeWorkflowFormSnapshot } from '@/utils/workflow-snapshot';
+import WorkflowSummaryLine from '@/components/workflow/WorkflowSummaryLine';
 import { useAllUsers } from '@/hooks/queries/users';
 import { useWorkflowInstanceWithDefinition } from '@/hooks/queries/workflow-shared';
 import {
@@ -594,7 +596,18 @@ export default function MyApplicationsPage() {
       title: '申请标题',
       dataIndex: 'title',
       width: 200,
-      render: renderEllipsis,
+      render: (v: string, record: WorkflowInstance) => {
+        // 客户端按定义快照 settings.summaryFields + 表单快照计算摘要（列表 DTO 含完整快照）
+        const summaryKeys = record.definitionSnapshot?.flowData?.settings?.summaryFields;
+        const snapFields = normalizeWorkflowFormSnapshot(record.formSnapshot)?.fields ?? [];
+        const items = buildWorkflowSummaryItems(snapFields, (record.formData ?? {}) as Record<string, unknown>, summaryKeys);
+        return (
+          <div style={{ minWidth: 0 }}>
+            <Typography.Text ellipsis={{ showTooltip: true }} style={{ display: 'block', minWidth: 0 }}>{v}</Typography.Text>
+            <WorkflowSummaryLine items={items} />
+          </div>
+        );
+      },
     },
     {
       title: '业务编号',

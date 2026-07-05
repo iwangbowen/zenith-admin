@@ -7,8 +7,8 @@ import { pageOffset } from '../../../lib/pagination';
 import { workflowInstances, workflowTasks, workflowDefinitions, workflowCategories, users } from '../../../db/schema';
 import { tenantCondition } from '../../../lib/tenant';
 import { getDataScopeCondition } from '../../../lib/data-scope';
-import type { WorkflowFlowData } from '@zenith/shared';
-import { findNextApproverSelectNodes } from '@zenith/shared';
+import type { WorkflowFlowData, WorkflowFormField } from '@zenith/shared';
+import { buildWorkflowSummaryItems, findNextApproverSelectNodes } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../../lib/context';
 import { loadInstanceCommentsForDetail } from '../workflow-comments.service';
@@ -20,8 +20,7 @@ type InstanceStatus = 'draft' | 'running' | 'approved' | 'rejected' | 'withdrawn
 /** 优先级排序：urgent > high > normal > low（用于审批/申请列表置顶加急） */
 const priorityRankOrder = sql`CASE ${workflowInstances.priority} WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END`;
 
-async function loadActiveNodeKeysByInstance(instanceIds: number[]): Promise<Map<number, string[]>> {
-  if (instanceIds.length === 0) return new Map();
+async function loadActiveNodeKeysByInstance(instanceIds: number[]): Promise<Map<number, string[]>> {  if (instanceIds.length === 0) return new Map();
   const rows = await db.select({
     instanceId: workflowTasks.instanceId,
     nodeKey: workflowTasks.nodeKey,
@@ -92,6 +91,18 @@ function computeTaskSla(timeout: SlaTimeoutInput, createdAt: Date): { slaLevel: 
   return { slaLevel, slaDeadline: formatDateTime(new Date(deadlineMs)), slaOverdueSec: overdueSec };
 }
 
+/** 从实例的表单快照 + 流程设置 summaryFields 构建列表摘要（未配置返回空数组） */
+function resolveInstanceSummary(
+  inst: { formSnapshot: unknown; formData: unknown },
+  flow: WorkflowFlowData | undefined,
+) {
+  const summaryKeys = flow?.settings?.summaryFields;
+  if (!summaryKeys?.length) return [];
+  const snap = inst.formSnapshot as { fields?: WorkflowFormField[] } | WorkflowFormField[] | null;
+  const fields = Array.isArray(snap) ? snap : snap?.fields ?? [];
+  return buildWorkflowSummaryItems(fields, (inst.formData ?? {}) as Record<string, unknown>, summaryKeys);
+}
+
 export async function listPendingMine(query: { page?: number; pageSize?: number; keyword?: string; definitionId?: number }) {
   const user = currentUser();
   const { page = 1, pageSize = 20, keyword, definitionId } = query;
@@ -136,7 +147,8 @@ export async function listPendingMine(query: { page?: number; pageSize?: number;
       // 紧邻下一节点为「审批人自选」的任务无法批量审批（需逐个指定下一节点审批人），列表提前标注
       const requiresIndividual = flow ? findNextApproverSelectNodes(flow, r.task.nodeKey).length > 0 : false;
       const sla = computeTaskSla(node?.timeout, r.task.createdAt);
-      return { ...mapInstance(r.inst, { ...r, currentNodeKeys: activeNodeKeys.get(r.inst.id) }), pendingTaskId: r.task.id, pendingSignatureRequired, requiresIndividual, ...sla };
+      const summary = resolveInstanceSummary(r.inst, flow);
+      return { ...mapInstance(r.inst, { ...r, currentNodeKeys: activeNodeKeys.get(r.inst.id) }), pendingTaskId: r.task.id, pendingSignatureRequired, requiresIndividual, summary, ...sla };
     }),
     total: Number(total),
     page,

@@ -877,6 +877,7 @@ export default function WorkflowDesignerPage({
           settings={advancedSettings}
           onChange={setAdvancedSettings}
           readOnly={readOnly}
+          formFields={formFields}
         />
       )}
 
