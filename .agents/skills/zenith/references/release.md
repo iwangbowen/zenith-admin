@@ -36,9 +36,17 @@ npm install --package-lock-only
 
 ---
 
-## Step 4：运行测试
+## Step 4：运行 Lint 与测试
 
-提交前必须确认全部测试通过：
+提交前必须先通过 Lint（与 CI 的 `Lint / Test / Build` 流水线保持一致，CI 会在 lint error 时直接失败）：
+
+```bash
+npm run lint
+```
+
+该命令依次运行 server 与 web 两个包的 eslint，**0 error** 方可继续（warning 不阻塞）。如有 error 须先修复再继续。
+
+随后确认全部测试通过：
 
 ```bash
 npm test
