@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse, ReportDataset, ReportDataResult, ReportDatasource, ReportDatasetPreviewInput } from '@zenith/shared';
+import type { PaginatedResponse, ReportDataset, ReportDataResult, ReportDatasource, ReportDatasetPreviewInput, ReportDatasetRefs, ReportMetaColumn } from '@zenith/shared';
 import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import { LOOKUP_STALE_TIME, toQueryString, unwrap } from '@/lib/query';
 
 export interface ReportDatasetListParams {
   page: number;
@@ -21,8 +21,11 @@ export const reportDatasetKeys = {
   lists: ['report', 'datasets', 'list'] as const,
   list: (params: ReportDatasetListParams) => ['report', 'datasets', 'list', params] as const,
   detail: (id: number | undefined) => ['report', 'datasets', 'detail', id] as const,
+  refs: (id: number | undefined) => ['report', 'datasets', 'refs', id] as const,
   enabledDatasets: ['report', 'datasets', 'enabled'] as const,
   enabledDatasources: ['report', 'datasets', 'enabled-datasources'] as const,
+  metaTables: ['report', 'datasets', 'meta-tables'] as const,
+  metaColumns: (table: string) => ['report', 'datasets', 'meta-columns', table] as const,
 };
 
 export function useReportDatasetList(params: ReportDatasetListParams) {
@@ -38,6 +41,35 @@ export function useReportDatasetDetail(id: number | undefined, enabled = true) {
     queryKey: reportDatasetKeys.detail(id),
     queryFn: () => request.get<ReportDataset>(`/api/report/datasets/${id}`).then(unwrap),
     enabled: enabled && !!id,
+  });
+}
+
+/** 数据集下游引用（血缘弹窗） */
+export function useReportDatasetRefs(id: number | undefined, enabled = true) {
+  return useQuery({
+    queryKey: reportDatasetKeys.refs(id),
+    queryFn: () => request.get<ReportDatasetRefs>(`/api/report/datasets/${id}/refs`).then(unwrap),
+    enabled: enabled && !!id,
+  });
+}
+
+/** 可视化建模：内置库可用表清单 */
+export function useReportMetaTables(enabled = true) {
+  return useQuery({
+    queryKey: reportDatasetKeys.metaTables,
+    queryFn: () => request.get<string[]>('/api/report/meta/tables').then(unwrap),
+    staleTime: LOOKUP_STALE_TIME,
+    enabled,
+  });
+}
+
+/** 可视化建模：某表列清单 */
+export function useReportMetaColumns(table: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: reportDatasetKeys.metaColumns(table ?? ''),
+    queryFn: () => request.get<ReportMetaColumn[]>(`/api/report/meta/tables/${encodeURIComponent(table!)}/columns`).then(unwrap),
+    staleTime: LOOKUP_STALE_TIME,
+    enabled: enabled && !!table,
   });
 }
 

@@ -5,56 +5,25 @@
  * 生成结果仅返回给前端填入 SQL 编辑器，由既有只读执行器预览，绝不自动写库。
  */
 import { HTTPException } from 'hono/http-exception';
-import { sql } from 'drizzle-orm';
-import { db } from '../../db';
 import { getRawDefaultProviderConfig } from '../ai/ai-providers.service';
 import { ensureDatasetExists } from './report-dataset.service';
 import { streamChat } from '../../lib/ai/factory';
+import { loadSchemaMeta } from '../../lib/report-schema-meta';
 import type { ReportField, ReportSqlDatasetContent } from '@zenith/shared';
 
 const MAX_SCHEMA_CHARS = 6000;
 const WRITE_KEYWORDS = /\b(insert|update|delete|drop|alter|truncate|create|grant|revoke|merge|call|do)\b/i;
-const SCHEMA_CACHE_TTL_MS = 5 * 60_000;
 
-/** 敏感表：含凭据/密钥/会话等，不纳入 AI schema 上下文，避免 NL2SQL 轻易拖取 */
-const SENSITIVE_TABLE_RE = /(^|_)(password|secret|token|tokens|session|sessions|credential|oauth|sso|api_keys?|sms_config|email_config|ai_provider|file_storage|provider_config)s?($|_)/i;
-const SENSITIVE_TABLES = new Set([
-  'users', 'ai_provider_configs', 'oauth2_clients', 'api_tokens', 'file_storage_configs',
-  'email_configs', 'sms_configs', 'user_ai_configs', 'report_datasources',
-]);
-/** 敏感列：即便所在表暴露，也从 schema 上下文里抹掉这些列名 */
-const SENSITIVE_COLUMN_RE = /(password|secret|token|api_?key|client_secret|salt|private_key|access_key|refresh_token)/i;
-
-function isSensitiveTable(t: string): boolean {
-  return SENSITIVE_TABLES.has(t) || SENSITIVE_TABLE_RE.test(t);
-}
-
-let schemaCache: { text: string; expire: number } | null = null;
-
-/** 读取 public schema 表/字段（脱敏 + 缓存），供 NL2SQL 上下文 */
+/** 读取 public schema 表/字段（脱敏 + 缓存由 report-schema-meta 统一负责），供 NL2SQL 上下文 */
 async function loadSchemaText(): Promise<string> {
-  if (schemaCache && schemaCache.expire > Date.now()) return schemaCache.text;
-  const rows = (await db.execute(sql.raw(
-    `SELECT table_name, column_name FROM information_schema.columns
-     WHERE table_schema = 'public' AND table_name NOT LIKE 'drizzle%'
-     ORDER BY table_name, ordinal_position`,
-  ))) as unknown as { table_name: string; column_name: string }[];
-
-  const byTable = new Map<string, string[]>();
-  for (const r of rows ?? []) {
-    if (isSensitiveTable(r.table_name)) continue; // 跳过敏感表
-    if (SENSITIVE_COLUMN_RE.test(r.column_name)) continue; // 抹掉敏感列
-    if (!byTable.has(r.table_name)) byTable.set(r.table_name, []);
-    byTable.get(r.table_name)!.push(r.column_name);
-  }
+  const byTable = await loadSchemaMeta();
   let schemaText = '';
   for (const [t, cols] of byTable) {
     if (!cols.length) continue;
-    const line = `${t}(${cols.join(', ')})\n`;
+    const line = `${t}(${cols.map((c) => c.name).join(', ')})\n`;
     if (schemaText.length + line.length > MAX_SCHEMA_CHARS) { schemaText += '... (schema 已截断)\n'; break; }
     schemaText += line;
   }
-  schemaCache = { text: schemaText, expire: Date.now() + SCHEMA_CACHE_TTL_MS };
   return schemaText;
 }
 

@@ -32,6 +32,7 @@ export default function SubscriptionsPage() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<ReportDashboardSubscription | null>(null);
   const [cronExprValue, setCronExprValue] = useState('');
+  const [selectedChannels, setSelectedChannels] = useState<string[]>(['inApp']);
 
   const listQuery = useReportSubscriptionList({ page, pageSize, keyword: submittedKeyword || undefined });
   const data = listQuery.data ?? null;
@@ -54,18 +55,24 @@ export default function SubscriptionsPage() {
     void queryClient.invalidateQueries({ queryKey: reportSubscriptionKeys.lists });
   }
 
-  function openCreate() { setEditing(null); setCronExprValue('0 0 9 * * *'); setModalVisible(true); }
-  function openEdit(r: ReportDashboardSubscription) { setEditing(r); setCronExprValue(r.cron); setModalVisible(true); }
+  function openCreate() { setEditing(null); setCronExprValue('0 0 9 * * *'); setSelectedChannels(['inApp']); setModalVisible(true); }
+  function openEdit(r: ReportDashboardSubscription) { setEditing(r); setCronExprValue(r.cron); setSelectedChannels(r.channels); setModalVisible(true); }
   function closeModal() { setModalVisible(false); setEditing(null); }
 
   const initValues = editing
-    ? { dashboardId: editing.dashboardId, cron: editing.cron, channels: editing.channels, recipients: editing.recipients ?? '', enabled: editing.enabled ? 'enabled' : 'disabled', remark: editing.remark ?? '' }
+    ? { dashboardId: editing.dashboardId, cron: editing.cron, channels: editing.channels, recipients: editing.recipients ?? '', webhookUrl: editing.webhookUrl ?? '', enabled: editing.enabled ? 'enabled' : 'disabled', remark: editing.remark ?? '' }
     : { cron: '0 0 9 * * *', channels: ['inApp'], enabled: 'enabled' };
 
   async function handleOk() {
     let v: Record<string, unknown>;
     try { v = await formApi.current?.validate() as Record<string, unknown>; } catch { throw new Error('validation'); }
-    const payload = { dashboardId: v.dashboardId, cron: v.cron, channels: v.channels, recipients: v.recipients || undefined, enabled: v.enabled === 'enabled', remark: v.remark || undefined };
+    const channels = (v.channels ?? []) as string[];
+    const payload = {
+      dashboardId: v.dashboardId, cron: v.cron, channels: v.channels,
+      recipients: v.recipients || undefined,
+      webhookUrl: channels.includes('webhook') && v.webhookUrl ? String(v.webhookUrl) : null,
+      enabled: v.enabled === 'enabled', remark: v.remark || undefined,
+    };
     await saveMutation.mutateAsync({ id: editing?.id, values: payload });
     Toast.success(editing ? '更新成功' : '创建成功');
     closeModal();
@@ -83,7 +90,7 @@ export default function SubscriptionsPage() {
   const columns: ColumnProps<ReportDashboardSubscription>[] = [
     { title: '仪表盘', dataIndex: 'dashboardName', width: 180, render: (v: string) => v || '-' },
     { title: 'Cron', dataIndex: 'cron', width: 130 },
-    { title: '通道', dataIndex: 'channels', width: 140, render: (ch: string[]) => (ch ?? []).map((c) => <Tag key={c} size="small" color={c === 'email' ? 'blue' : 'green'} style={{ marginRight: 4 }}>{c === 'email' ? '邮件' : '站内信'}</Tag>) },
+    { title: '通道', dataIndex: 'channels', width: 170, render: (ch: string[]) => (ch ?? []).map((c) => <Tag key={c} size="small" color={c === 'email' ? 'blue' : c === 'webhook' ? 'purple' : 'green'} style={{ marginRight: 4 }}>{c === 'email' ? '邮件' : c === 'webhook' ? 'Webhook' : '站内信'}</Tag>) },
     { title: '收件邮箱', dataIndex: 'recipients', width: 200, render: renderEllipsis },
     { title: '上次推送', dataIndex: 'lastRunAt', width: 170, render: (v: string) => v || '—' },
     { title: '状态', dataIndex: 'enabled', width: 70, fixed: 'right', render: (e: boolean) => e ? <Tag color="green" size="small">启用</Tag> : <Tag color="grey" size="small">停用</Tag> },
@@ -112,14 +119,23 @@ export default function SubscriptionsPage() {
 
       <AppModal title={editing ? '编辑订阅' : '新增订阅'} visible={modalVisible} onOk={handleOk} onCancel={closeModal} okButtonProps={{ loading: saveMutation.isPending }} width={560}>
         <Form key={editing?.id ?? 'new'} getFormApi={(api) => { formApi.current = api; }} initValues={initValues} labelPosition="left" labelWidth={110}
-          onValueChange={(v: Record<string, unknown>) => { if (typeof v.cron === 'string') setCronExprValue(v.cron); }}>
+          onValueChange={(v: Record<string, unknown>) => {
+            if (typeof v.cron === 'string') setCronExprValue(v.cron);
+            if (Array.isArray(v.channels)) setSelectedChannels(v.channels as string[]);
+          }}>
           <Form.Select field="dashboardId" label="仪表盘" style={{ width: '100%' }} rules={[{ required: true, message: '请选择仪表盘' }]} filter
             optionList={dashboards.map((d) => ({ value: d.id, label: d.name }))} />
           <Form.Input field="cron" label="Cron 表达式" rules={[{ required: true, message: '请输入 Cron 表达式' }]} placeholder="如 0 0 9 * * *（每天 9 点）"
             addonAfter={<CronBuilderPopover value={cronExprValue} onApply={(expr) => { formApi.current?.setValue('cron', expr); setCronExprValue(expr); }} />} />
           <Form.Select field="channels" label="推送通道" multiple style={{ width: '100%' }} rules={[{ required: true, message: '至少一个通道' }]}
-            optionList={[{ value: 'inApp', label: '站内信（推给创建者）' }, { value: 'email', label: '邮件' }]} />
-          <Form.Input field="recipients" label="收件邮箱" placeholder="多个用逗号分隔（仅邮件通道）" />
+            optionList={[{ value: 'inApp', label: '站内信（推给创建者）' }, { value: 'email', label: '邮件' }, { value: 'webhook', label: 'Webhook（企微/钉钉机器人）' }]} />
+          {selectedChannels.includes('email') && (
+            <Form.Input field="recipients" label="收件邮箱" placeholder="多个用逗号分隔（仅邮件通道）" />
+          )}
+          {selectedChannels.includes('webhook') && (
+            <Form.Input field="webhookUrl" label="Webhook 地址" placeholder="企微/钉钉机器人 Webhook URL 或通用 JSON 端点"
+              rules={[{ required: true, message: '请填写 Webhook 地址' }]} showClear />
+          )}
           <Form.Select field="enabled" label="状态" style={{ width: '100%' }} optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} />
           <Form.TextArea field="remark" label="备注" maxLength={256} autosize={{ minRows: 1, maxRows: 3 }} />
         </Form>

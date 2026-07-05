@@ -1,7 +1,7 @@
 import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryKey, uniqueIndex, index, jsonb, real, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 // 报表中心 jsonb 列形态（前后端共享契约；type-only 导入，编译期即擦除）
-import type { ReportDatasourceConfig, ReportDatasetContent, ReportField, ReportGridItem, ReportWidget, ReportDatasetParam, ReportFilter, ReportDashboardConfig, ReportDashboardVersionSnapshot, ReportComputedField, ReportCanvasItem, ReportPrintContent, ReportPrintPageConfig, ReportDatasetMaterialize } from '@zenith/shared';
+import type { ReportDatasourceConfig, ReportDatasetContent, ReportField, ReportGridItem, ReportWidget, ReportDatasetParam, ReportFilter, ReportDashboardConfig, ReportDashboardVersionSnapshot, ReportComputedField, ReportCanvasItem, ReportPrintContent, ReportPrintPageConfig, ReportDatasetMaterialize, ReportNotifyChannel, ReportRowRule } from '@zenith/shared';
 import { statusEnum } from './common';
 import { auditColumns, users } from './core';
 
@@ -47,6 +47,8 @@ export const reportDatasets = pgTable('report_datasets', {
   cacheTtl: integer('cache_ttl').notNull().default(0),
   /** 物化快照配置（定时刷新到持久层） */
   materialize: jsonb('materialize').$type<ReportDatasetMaterialize>().notNull().default(sql`'{}'::jsonb`),
+  /** 行级权限规则（仅 SQL 型数据集生效；按角色命中 OR 拼接 WHERE） */
+  rowRules: jsonb('row_rules').$type<ReportRowRule[]>().notNull().default(sql`'[]'::jsonb`),
   status: statusEnum('status').notNull().default('enabled'),
   remark: varchar('remark', { length: 256 }),
   ...auditColumns(),
@@ -88,6 +90,8 @@ export const reportAlertRules = pgTable('report_alert_rules', {
   datasetId: integer('dataset_id').notNull().references((): AnyPgColumn => reportDatasets.id, { onDelete: 'cascade' }),
   /** 监控字段（count 可空） */
   field: varchar('field', { length: 128 }),
+  /** 分组维度（可空=全局聚合；有值=按组聚合，任一组命中即触发） */
+  groupByField: varchar('group_by_field', { length: 128 }),
   /** 聚合方式：sum/avg/max/min/count/first */
   aggregate: varchar('aggregate', { length: 16 }).notNull().default('sum'),
   /** 比较运算符：gt/gte/lt/lte/eq/neq */
@@ -96,9 +100,11 @@ export const reportAlertRules = pgTable('report_alert_rules', {
   threshold: real('threshold').notNull().default(0),
   /** 评估 Cron（留空=仅手动） */
   cron: varchar('cron', { length: 64 }),
-  /** 通知渠道：email / inApp */
-  channels: jsonb('channels').$type<Array<'email' | 'inApp'>>().notNull().default(sql`'[]'::jsonb`),
+  /** 通知渠道：email / inApp / webhook */
+  channels: jsonb('channels').$type<ReportNotifyChannel[]>().notNull().default(sql`'[]'::jsonb`),
   recipients: varchar('recipients', { length: 512 }),
+  /** Webhook 通知地址（企微/钉钉机器人或通用 JSON 端点） */
+  webhookUrl: varchar('webhook_url', { length: 512 }),
   /** 静默期（分钟）：持续触发时距上次通知不足该时长不重复通知；0=每次触发都通知 */
   silenceMins: integer('silence_mins').notNull().default(60),
   /** 从触发恢复正常时是否发送恢复通知 */
@@ -246,8 +252,10 @@ export const reportDashboardSubscriptions = pgTable('report_dashboard_subscripti
   id: serial('id').primaryKey(),
   dashboardId: integer('dashboard_id').notNull().references(() => reportDashboards.id, { onDelete: 'cascade' }),
   cron: varchar('cron', { length: 64 }).notNull(),
-  channels: jsonb('channels').$type<Array<'email' | 'inApp'>>().notNull().default(sql`'[]'::jsonb`),
+  channels: jsonb('channels').$type<ReportNotifyChannel[]>().notNull().default(sql`'[]'::jsonb`),
   recipients: varchar('recipients', { length: 512 }),
+  /** Webhook 通知地址（企微/钉钉机器人或通用 JSON 端点） */
+  webhookUrl: varchar('webhook_url', { length: 512 }),
   enabled: boolean('enabled').notNull().default(true),
   remark: varchar('remark', { length: 256 }),
   lastRunAt: timestamp('last_run_at', { withTimezone: true }),

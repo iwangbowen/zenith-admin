@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { HTTPException } from 'hono/http-exception';
-import { resolveDatasetParams, buildExternalParamSql } from './report-dataset.service';
+import { resolveDatasetParams, buildExternalParamSql, applyRowRulesToSql } from './report-dataset.service';
 import type { ReportDatasetParam } from '@zenith/shared';
 
 describe('resolveDatasetParams', () => {
@@ -32,6 +32,27 @@ describe('resolveDatasetParams', () => {
   });
   it('额外入参透传保留', () => {
     expect(resolveDatasetParams([], { extra: 1 })).toEqual({ extra: 1 });
+  });
+  it('剥离 __ 前缀的客户端伪造系统变量', () => {
+    expect(resolveDatasetParams([], { __userId: 999, ok: 1 })).toEqual({ ok: 1 });
+  });
+});
+
+describe('applyRowRulesToSql - 行级权限包裹', () => {
+  it('无规则原样返回', () => {
+    expect(applyRowRulesToSql('SELECT * FROM t', [])).toBe('SELECT * FROM t');
+  });
+  it('单规则包裹子查询', () => {
+    const out = applyRowRulesToSql('SELECT * FROM t;', [{ where: 'dept_id = ${__deptId}' }]);
+    expect(out).toBe('SELECT * FROM (\nSELECT * FROM t\n) AS _rls WHERE (dept_id = ${__deptId})');
+  });
+  it('多规则 OR 合并', () => {
+    const out = applyRowRulesToSql('SELECT * FROM t', [{ where: 'a = 1' }, { where: 'b = 2' }]);
+    expect(out).toContain('WHERE (a = 1) OR (b = 2)');
+  });
+  it('原 SQL 尾分号被剥离（防拼接多语句）', () => {
+    const out = applyRowRulesToSql('SELECT 1;  ', [{ where: 'x > 0' }]);
+    expect(out).not.toContain(';');
   });
 });
 

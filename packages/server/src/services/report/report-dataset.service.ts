@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 import { CronExpressionParser } from 'cron-parser';
 import { and, desc, eq, ilike, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
-import { reportDatasets, users } from '../../db/schema';
+import { reportDatasets, reportDashboards, reportPrintTemplates, reportAlertRules, users } from '../../db/schema';
 import { config } from '../../config';
 import redis from '../../lib/redis';
 import logger from '../../lib/logger';
@@ -28,6 +28,7 @@ import type {
   ReportDataset, ReportDataResult, ReportField, ReportFieldType, ReportDatasetContent, ReportDatasetParam,
   ReportDatasourceType, ReportDatasourceConfig, ReportComputedField, ReportExternalDbConfig,
   ReportApiDatasourceConfig, ReportApiDatasetContent, ReportSqlDatasetContent, ReportStaticDatasetContent, ReportDatasetMaterialize,
+  ReportRowRule, ReportDatasetRefs, ReportWidget, ReportFilter,
   CreateReportDatasetInput, UpdateReportDatasetInput, ReportDatasetPreviewInput,
 } from '@zenith/shared';
 
@@ -54,6 +55,7 @@ export function mapDataset(row: DatasetRowWithDs): ReportDataset {
     computedFields: (row.computedFields ?? []) as ReportComputedField[],
     cacheTtl: row.cacheTtl ?? 0,
     materialize: (row.materialize ?? {}) as ReportDatasetMaterialize,
+    rowRules: (row.rowRules ?? []) as ReportRowRule[],
     status: row.status,
     remark: row.remark ?? null,
     createdBy: row.createdBy ?? null,
@@ -70,7 +72,11 @@ function normalizeDatasetContent(
 ): ReportDatasetContent {
   const c = (content ?? {}) as Record<string, unknown>;
   if (isSqlLikeType(type)) {
-    return { sql: typeof c.sql === 'string' ? c.sql : '' };
+    return {
+      sql: typeof c.sql === 'string' ? c.sql : '',
+      // 可视化建模模型（回显编辑用；SQL 为最终执行内容）
+      ...(c.visual && typeof c.visual === 'object' ? { visual: c.visual as ReportSqlDatasetContent['visual'] } : {}),
+    };
   }
   if (type === 'static') {
     const rawData = Array.isArray(c.data) ? (c.data as Record<string, unknown>[]) : [];
@@ -208,6 +214,32 @@ async function runReadonlySql(text: string, params: Record<string, unknown>, lim
   }
 }
 
+// ─── 行级权限（Row-Level Rules）────────────────────────────────────────────────
+
+/**
+ * 解析当前用户命中的行级规则：
+ * - 规则未启用 / where 为空或含分号（防拼接多语句）→ 忽略；
+ * - 无用户上下文（Cron 评估 / 订阅推送 / 公开分享）→ 跳过行级过滤（创建者已过权限门槛且属主动公开）；
+ * - 超级管理员不受限；规则未配置 roles = 对所有登录用户生效。
+ */
+function resolveEffectiveRowRules(rules: ReportRowRule[] | null | undefined): ReportRowRule[] {
+  const list = (rules ?? []).filter((r) =>
+    (r.enabled ?? true) && typeof r.where === 'string' && r.where.trim() && !r.where.includes(';'));
+  if (!list.length) return [];
+  const user = currentUserOrNull();
+  if (!user) return [];
+  const roles = user.roles ?? [];
+  if (roles.includes('super_admin')) return [];
+  return list.filter((r) => !r.roles?.length || r.roles.some((code) => roles.includes(code)));
+}
+
+/** 把命中的行级规则以 OR 拼接为 WHERE，包裹原查询（子查询别名 _rls；PG/MySQL/SQL Server 通用） */
+export function applyRowRulesToSql(sqlText: string, rules: ReportRowRule[]): string {
+  if (!rules.length) return sqlText;
+  const where = rules.map((r) => `(${r.where.trim()})`).join(' OR ');
+  return `SELECT * FROM (\n${sqlText.trim().replace(/;\s*$/, '')}\n) AS _rls WHERE ${where}`;
+}
+
 export async function ensureDatasetExists(id: number): Promise<ReportDatasetRow> {
   const [row] = await db.select().from(reportDatasets).where(eq(reportDatasets.id, id)).limit(1);
   if (!row) throw new HTTPException(404, { message: '数据集不存在' });
@@ -270,14 +302,15 @@ export async function listDatasets(query: {
 
 /**
  * 物化前置校验：物化为「全局快照」，忽略运行时参数且不含用户上下文。
- * 因此禁止在 ① 使用数据权限系统变量(${__userId} 等) ② 声明了任何参数 的数据集上启用，
- * 否则会出现跨用户数据串号 / 筛选被静默忽略。
+ * 因此禁止在 ① 使用数据权限系统变量(${__userId} 等) ② 声明了任何参数 ③ 配置了行级权限规则
+ * 的数据集上启用，否则会出现跨用户数据串号 / 筛选被静默忽略。
  */
 function assertMaterializable(
   materialize: ReportDatasetMaterialize | null | undefined,
   type: ReportDatasourceType,
   content: ReportDatasetContent,
   params: ReportDatasetParam[] | undefined,
+  rowRules?: ReportRowRule[] | null,
 ): void {
   if (!materialize?.enabled) return;
   const sqlText = isSqlLikeType(type) ? ((content as ReportSqlDatasetContent).sql ?? '') : '';
@@ -287,12 +320,15 @@ function assertMaterializable(
   if ((params ?? []).length > 0) {
     throw new HTTPException(400, { message: '含参数的数据集不支持物化：物化为全局快照会忽略运行时参数/筛选，请先移除参数或关闭物化' });
   }
+  if ((rowRules ?? []).some((r) => r.enabled ?? true)) {
+    throw new HTTPException(400, { message: '配置了行级权限规则的数据集不支持物化：物化快照对所有人一致，会绕过行级过滤' });
+  }
 }
 
 export async function createDataset(input: CreateReportDatasetInput): Promise<ReportDataset> {
   const ds = await ensureDatasourceExists(input.datasourceId);
   const content = normalizeDatasetContent(ds.type, input.content);
-  assertMaterializable(input.materialize as ReportDatasetMaterialize | undefined, ds.type, content, input.params as ReportDatasetParam[] | undefined);
+  assertMaterializable(input.materialize as ReportDatasetMaterialize | undefined, ds.type, content, input.params as ReportDatasetParam[] | undefined, input.rowRules as ReportRowRule[] | undefined);
   try {
     const [row] = await db.insert(reportDatasets).values({
       name: input.name,
@@ -304,6 +340,7 @@ export async function createDataset(input: CreateReportDatasetInput): Promise<Re
       computedFields: (input.computedFields ?? []) as ReportComputedField[],
       cacheTtl: input.cacheTtl ?? 0,
       materialize: (input.materialize ?? {}) as ReportDatasetMaterialize,
+      rowRules: (input.rowRules ?? []) as ReportRowRule[],
       status: input.status ?? 'enabled',
       remark: input.remark,
     }).returning();
@@ -327,7 +364,8 @@ export async function updateDataset(id: number, input: UpdateReportDatasetInput)
   const effMaterialize = (input.materialize ?? current.materialize) as ReportDatasetMaterialize | undefined;
   const effContent = (content ?? current.content) as ReportDatasetContent;
   const effParams = (input.params ?? current.params) as ReportDatasetParam[] | undefined;
-  assertMaterializable(effMaterialize, type, effContent, effParams);
+  const effRowRules = (input.rowRules ?? current.rowRules) as ReportRowRule[] | undefined;
+  assertMaterializable(effMaterialize, type, effContent, effParams, effRowRules);
   try {
     const [row] = await db.update(reportDatasets).set({
       name: input.name,
@@ -339,6 +377,7 @@ export async function updateDataset(id: number, input: UpdateReportDatasetInput)
       computedFields: input.computedFields as ReportComputedField[] | undefined,
       cacheTtl: input.cacheTtl,
       materialize: input.materialize as ReportDatasetMaterialize | undefined,
+      rowRules: input.rowRules as ReportRowRule[] | undefined,
       status: input.status,
       remark: input.remark,
     }).where(eq(reportDatasets.id, id)).returning();
@@ -351,8 +390,40 @@ export async function updateDataset(id: number, input: UpdateReportDatasetInput)
   }
 }
 
+// ─── 血缘（下游引用）────────────────────────────────────────────────────────────
+
+/** 收集数据集的下游引用：仪表盘（组件绑定/筛选器动态选项）、打印模板、预警规则 */
+export async function collectDatasetRefs(id: number): Promise<ReportDatasetRefs> {
+  const [dashRows, printRows, alertRows] = await Promise.all([
+    db.select({ id: reportDashboards.id, name: reportDashboards.name, widgets: reportDashboards.widgets, filters: reportDashboards.filters }).from(reportDashboards),
+    db.select({ id: reportPrintTemplates.id, name: reportPrintTemplates.name }).from(reportPrintTemplates).where(eq(reportPrintTemplates.datasetId, id)),
+    db.select({ id: reportAlertRules.id, name: reportAlertRules.name }).from(reportAlertRules).where(eq(reportAlertRules.datasetId, id)),
+  ]);
+  const dashboards = dashRows
+    .map((d) => {
+      const widgets = ((d.widgets ?? []) as ReportWidget[])
+        .filter((w) => w.datasetId === id)
+        .map((w) => w.title || w.i);
+      const filterIds = ((d.filters ?? []) as ReportFilter[])
+        .filter((f) => f.optionSource?.kind === 'dataset' && f.optionSource.datasetId === id)
+        .map((f) => f.label || f.id);
+      return { id: d.id, name: d.name, widgets, filterIds };
+    })
+    .filter((d) => d.widgets.length > 0 || d.filterIds.length > 0);
+  return { dashboards, printTemplates: printRows, alerts: alertRows };
+}
+
+/** 删除数据集：存在下游引用时拒绝（防仪表盘悄悄失效 / 预警被级联误删） */
 export async function deleteDataset(id: number): Promise<void> {
   await ensureDatasetExists(id);
+  const refs = await collectDatasetRefs(id);
+  const parts: string[] = [];
+  if (refs.dashboards.length) parts.push(`仪表盘 ${refs.dashboards.map((d) => `《${d.name}》`).join('、')}`);
+  if (refs.printTemplates.length) parts.push(`打印报表 ${refs.printTemplates.map((t) => `《${t.name}》`).join('、')}`);
+  if (refs.alerts.length) parts.push(`预警规则 ${refs.alerts.map((a) => `《${a.name}》`).join('、')}`);
+  if (parts.length) {
+    throw new HTTPException(400, { message: `该数据集正被引用，无法删除：${parts.join('；')}。请先在「血缘」中查看并解除引用` });
+  }
   await db.delete(reportDatasets).where(eq(reportDatasets.id, id));
   await clearDatasetCache(id);
 }
@@ -462,7 +533,7 @@ export async function clearDatasetCache(id: number): Promise<void> {
   } catch { /* 缓存清理失败不阻断主流程 */ }
 }
 
-/** 取已保存数据集的数据（供仪表盘组件运行时调用，支持参数 + Redis 缓存）*/
+/** 取已保存数据集的数据（供仪表盘组件运行时调用，支持参数 + 行级权限 + Redis 缓存）*/
 export async function getDatasetData(id: number, params?: Record<string, unknown>, limit?: number): Promise<ReportDataResult> {
   const row = await db.query.reportDatasets.findFirst({
     where: eq(reportDatasets.id, id),
@@ -471,13 +542,12 @@ export async function getDatasetData(id: number, params?: Record<string, unknown
   if (!row) throw new HTTPException(404, { message: '数据集不存在' });
   if (row.status !== 'enabled') throw new HTTPException(400, { message: '数据集已停用' });
   const config = (row.datasource?.config ?? {}) as ReportDatasourceConfig;
-  const content = (row.content ?? {}) as ReportDatasetContent;
+  const rawContent = (row.content ?? {}) as ReportDatasetContent;
   const isSqlLike = isSqlLikeType(row.type);
-  const sqlText = isSqlLike ? ((content as ReportSqlDatasetContent).sql ?? '') : '';
   const computed = (row.computedFields ?? []) as ReportComputedField[];
   const effLimit = limit ?? PREVIEW_LIMIT;
 
-  // 物化快照优先：返回持久化全局快照（保存时已校验无参数/无系统变量，故与运行时参数/用户无关）
+  // 物化快照优先：返回持久化全局快照（保存时已校验无参数/无系统变量/无行级规则，故与运行时参数/用户无关）
   const materialize = (row.materialize ?? {}) as ReportDatasetMaterialize;
   if (materialize.enabled) {
     try {
@@ -485,19 +555,28 @@ export async function getDatasetData(id: number, params?: Record<string, unknown
       if (snap) return JSON.parse(snap) as ReportDataResult;
     } catch { /* 快照读取失败回源 */ }
     // 首次填充：统一用 MAX_LIMIT 保证快照行数与 cron 刷新一致
-    const live = await runReportData(row.type, config, content, {}, MAX_LIMIT, computed);
+    const live = await runReportData(row.type, config, rawContent, {}, MAX_LIMIT, computed);
     try { await redis.set(`${MATVIEW_PREFIX}${id}`, JSON.stringify(live), 'EX', MATVIEW_TTL_SECONDS); } catch { /* 落快照失败忽略 */ }
     return live;
   }
+
+  // 行级权限：命中规则以 OR 包裹原查询（仅 SQL 型；无上下文/超管/未命中 = 不受限）
+  const effectiveRules = isSqlLike ? resolveEffectiveRowRules(row.rowRules as ReportRowRule[] | null) : [];
+  const rawSqlText = isSqlLike ? ((rawContent as ReportSqlDatasetContent).sql ?? '') : '';
+  const sqlText = effectiveRules.length ? applyRowRulesToSql(rawSqlText, effectiveRules) : rawSqlText;
+  const content: ReportDatasetContent = effectiveRules.length
+    ? { ...(rawContent as ReportSqlDatasetContent), sql: sqlText }
+    : rawContent;
 
   const sysParams = await buildSystemParams(sqlText);
   const resolved = { ...resolveDatasetParams((row.params ?? []) as ReportDatasetParam[], params), ...sysParams };
   const cacheTtl = row.cacheTtl ?? 0;
 
-  // 命中缓存
+  // 命中缓存（key 纳入生效的行级规则，不同权限视角互不串扰）
   let cacheKey = '';
   if (cacheTtl > 0) {
-    const hash = createHash('md5').update(JSON.stringify({ resolved, effLimit })).digest('hex');
+    const rls = effectiveRules.map((r) => r.where);
+    const hash = createHash('md5').update(JSON.stringify({ resolved, effLimit, rls })).digest('hex');
     cacheKey = `${CACHE_PREFIX}${id}:${hash}`;
     try {
       const cached = await redis.get(cacheKey);

@@ -6,10 +6,10 @@ import {
   ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, IdParam, okBody, errBody,
 } from '../../lib/openapi-schemas';
-import { ReportDatasetDTO, ReportDataResultDTO } from '../../lib/openapi-dtos';
+import { ReportDatasetDTO, ReportDataResultDTO, ReportDatasetRefsDTO } from '../../lib/openapi-dtos';
 import {
   listDatasets, getDataset, createDataset, updateDataset, deleteDataset,
-  ensureDatasetExists, previewDataset, getDatasetData, refreshMaterialization,
+  ensureDatasetExists, previewDataset, getDatasetData, refreshMaterialization, collectDatasetRefs,
 } from '../../services/report/report-dataset.service';
 import { parseDataFile } from '../../lib/report-file-parse';
 
@@ -138,8 +138,24 @@ const materializeRoute = defineOpenAPIRoute({
   },
 });
 
+const refsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}/refs',
+    tags: ['报表数据集'], summary: '数据集下游引用（血缘）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'report:dataset:list' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(ReportDatasetRefsDTO, '引用明细'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    await ensureDatasetExists(id);
+    return c.json(okBody(await collectDatasetRefs(id)), 200);
+  },
+});
+
 router.openapiRoutes([
-  listRoute, previewRoute, dataRoute, materializeRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_,
+  listRoute, previewRoute, dataRoute, materializeRoute, refsRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_,
 ] as const);
 
 // 文件数据集解析（Excel/CSV 上传 → {columns,rows}）—— multipart，使用原生路由

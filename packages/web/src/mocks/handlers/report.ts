@@ -79,6 +79,38 @@ export const reportHandlers = [
     const rows = getMockDatasetData(d.id).total ?? 0;
     return ok(null, `已刷新物化快照（${rows} 行）`);
   }),
+  // 血缘：扫描 mock 仪表盘 widgets/filters + 打印模板 + 预警
+  http.get('/api/report/datasets/:id/refs', ({ params }) => {
+    const id = Number(params.id);
+    if (!mockReportDatasets.some((x) => x.id === id)) return notFound('数据集不存在');
+    const dashboards = mockReportDashboards
+      .map((d) => ({
+        id: d.id,
+        name: d.name,
+        widgets: (d.widgets ?? []).filter((w) => w.datasetId === id).map((w) => w.title || w.i),
+        filterIds: (d.filters ?? []).filter((f) => f.optionSource?.kind === 'dataset' && f.optionSource.datasetId === id).map((f) => f.label || f.id),
+      }))
+      .filter((d) => d.widgets.length || d.filterIds.length);
+    return ok({
+      dashboards,
+      printTemplates: mockReportPrintTemplates.filter((t) => t.datasetId === id).map((t) => ({ id: t.id, name: t.name })),
+      alerts: mockReportAlerts.filter((a) => a.datasetId === id).map((a) => ({ id: a.id, name: a.name })),
+    });
+  }),
+  // 可视化建模元数据（Demo 固定表清单）
+  http.get('/api/report/meta/tables', () => ok(['departments', 'dict_items', 'dicts', 'menus', 'positions', 'roles'])),
+  http.get('/api/report/meta/tables/:table/columns', ({ params }) => {
+    const columns: Record<string, Array<{ name: string; type: string }>> = {
+      menus: [{ name: 'id', type: 'integer' }, { name: 'title', type: 'varchar' }, { name: 'type', type: 'varchar' }, { name: 'status', type: 'varchar' }, { name: 'sort', type: 'integer' }],
+      departments: [{ name: 'id', type: 'integer' }, { name: 'name', type: 'varchar' }, { name: 'category', type: 'varchar' }, { name: 'status', type: 'varchar' }],
+      roles: [{ name: 'id', type: 'integer' }, { name: 'name', type: 'varchar' }, { name: 'code', type: 'varchar' }, { name: 'status', type: 'varchar' }],
+      positions: [{ name: 'id', type: 'integer' }, { name: 'name', type: 'varchar' }, { name: 'code', type: 'varchar' }, { name: 'status', type: 'varchar' }],
+      dicts: [{ name: 'id', type: 'integer' }, { name: 'name', type: 'varchar' }, { name: 'code', type: 'varchar' }],
+      dict_items: [{ name: 'id', type: 'integer' }, { name: 'label', type: 'varchar' }, { name: 'value', type: 'varchar' }, { name: 'sort', type: 'integer' }],
+    };
+    const cols = columns[String(params.table)];
+    return cols ? ok(cols) : notFound('表不存在或不可访问');
+  }),
   http.get('/api/report/datasets', ({ request }) => {
     const url = new URL(request.url);
     const keyword = url.searchParams.get('keyword') ?? '';
@@ -99,7 +131,7 @@ export const reportHandlers = [
     const item: ReportDataset = {
       id: getNextReportDatasetId(), name: body.name ?? '未命名数据集', datasourceId: body.datasourceId ?? 1,
       type: body.type ?? 'sql', content: body.content ?? {}, fields: body.fields ?? [], params: body.params ?? [],
-      computedFields: body.computedFields ?? [], cacheTtl: body.cacheTtl ?? 0, status: body.status ?? 'enabled',
+      computedFields: body.computedFields ?? [], cacheTtl: body.cacheTtl ?? 0, rowRules: body.rowRules ?? [], status: body.status ?? 'enabled',
       remark: body.remark ?? null, createdAt: mockDateTime(), updatedAt: mockDateTime(),
     };
     mockReportDatasets.push(item);
@@ -112,8 +144,20 @@ export const reportHandlers = [
     return ok(d, '更新成功');
   }),
   http.delete('/api/report/datasets/:id', ({ params }) => {
-    const i = mockReportDatasets.findIndex((x) => x.id === Number(params.id));
+    const id = Number(params.id);
+    const i = mockReportDatasets.findIndex((x) => x.id === id);
     if (i === -1) return notFound('数据集不存在');
+    // 与后端一致：存在下游引用时拒绝删除
+    const refDash = mockReportDashboards.filter((d) =>
+      (d.widgets ?? []).some((w) => w.datasetId === id)
+      || (d.filters ?? []).some((f) => f.optionSource?.kind === 'dataset' && f.optionSource.datasetId === id));
+    const refPrint = mockReportPrintTemplates.filter((t) => t.datasetId === id);
+    const refAlert = mockReportAlerts.filter((a) => a.datasetId === id);
+    const parts: string[] = [];
+    if (refDash.length) parts.push(`仪表盘 ${refDash.map((d) => `《${d.name}》`).join('、')}`);
+    if (refPrint.length) parts.push(`打印报表 ${refPrint.map((t) => `《${t.name}》`).join('、')}`);
+    if (refAlert.length) parts.push(`预警规则 ${refAlert.map((a) => `《${a.name}》`).join('、')}`);
+    if (parts.length) return HttpResponse.json({ code: 400, message: `该数据集正被引用，无法删除：${parts.join('；')}。请先在「血缘」中查看并解除引用`, data: null });
     mockReportDatasets.splice(i, 1);
     return ok(null, '删除成功');
   }),
@@ -265,10 +309,26 @@ export const reportHandlers = [
     const a = mockReportAlerts.find((x) => x.id === Number(params.id));
     if (!a) return notFound('预警规则不存在');
     const data = getMockDatasetData(a.datasetId);
-    const value = (data.rows ?? []).reduce((s, r) => s + Number(r[a.field ?? 'value'] ?? 0), 0);
-    const triggered = a.op === 'gt' ? value > a.threshold : a.op === 'lt' ? value < a.threshold : value === a.threshold;
+    const rows = data.rows ?? [];
+    const compareOne = (value: number) => a.op === 'gt' ? value > a.threshold : a.op === 'lt' ? value < a.threshold : value === a.threshold;
+    let value: number;
+    let triggered: boolean;
+    let hits: Array<{ group: string; value: number }> | undefined;
+    if (a.groupByField) {
+      const groups = new Map<string, number>();
+      for (const r of rows) {
+        const key = String(r[a.groupByField] ?? '（空）');
+        groups.set(key, (groups.get(key) ?? 0) + Number(r[a.field ?? 'value'] ?? 0));
+      }
+      hits = [...groups.entries()].filter(([, v]) => compareOne(v)).map(([group, v]) => ({ group, value: v }));
+      triggered = hits.length > 0;
+      value = hits.length ? Math.max(...hits.map((h) => h.value)) : Math.max(0, ...groups.values());
+    } else {
+      value = rows.reduce((s, r) => s + Number(r[a.field ?? 'value'] ?? 0), 0);
+      triggered = compareOne(value);
+    }
     a.lastCheckedAt = mockDateTime(); a.lastTriggered = triggered; a.lastValue = value;
-    return ok({ value, triggered });
+    return ok({ value, triggered, ...(hits ? { hits: hits.slice(0, 10) } : {}) });
   }),
   http.get('/api/report/alerts', ({ request }) => {
     const url = new URL(request.url);
@@ -284,8 +344,10 @@ export const reportHandlers = [
     const body = await request.json() as Partial<ReportAlertRule>;
     const item: ReportAlertRule = {
       id: getNextReportAlertId(), name: body.name ?? '未命名预警', datasetId: body.datasetId ?? 1,
-      field: body.field ?? null, aggregate: body.aggregate ?? 'sum', op: body.op ?? 'gt', threshold: body.threshold ?? 0,
+      field: body.field ?? null, groupByField: body.groupByField ?? null,
+      aggregate: body.aggregate ?? 'sum', op: body.op ?? 'gt', threshold: body.threshold ?? 0,
       cron: body.cron ?? null, channels: body.channels ?? ['inApp'], recipients: body.recipients ?? null,
+      webhookUrl: body.webhookUrl ?? null,
       silenceMins: body.silenceMins ?? 60, notifyOnRecover: body.notifyOnRecover ?? false,
       enabled: body.enabled ?? true, lastCheckedAt: null, lastTriggered: null, lastValue: null, lastNotifiedAt: null,
       remark: body.remark ?? null, createdBy: 1, createdAt: mockDateTime(), updatedAt: mockDateTime(),

@@ -2,7 +2,7 @@
  * 报表预警纯函数单测：行集聚合 + 阈值比较 + 静默窗口判定。
  */
 import { describe, it, expect } from 'vitest';
-import { aggregate, compare, shouldNotifyTrigger } from './report-alert.service';
+import { aggregate, compare, shouldNotifyTrigger, evaluateGroups } from './report-alert.service';
 import type { ReportAlertAggregate, ReportAlertOp } from '@zenith/shared';
 
 const rows = [{ v: 10 }, { v: 20 }, { v: 30 }];
@@ -66,5 +66,49 @@ describe('shouldNotifyTrigger（静默窗口）', () => {
   });
   it('负数静默期按 0 处理', () => {
     expect(shouldNotifyTrigger(true, -5, minsAgo(1), now)).toBe(true);
+  });
+});
+
+describe('evaluateGroups（分组维度评估）', () => {
+  const rows = [
+    { dept: '技术部', v: 30 }, { dept: '技术部', v: 40 },
+    { dept: '销售部', v: 10 }, { dept: '销售部', v: 20 },
+    { dept: '行政部', v: 5 },
+  ];
+
+  it('任一组命中即触发，hits 列出命中组', () => {
+    const r = evaluateGroups(rows, 'dept', 'v', 'sum', 'gt', 50);
+    expect(r.triggered).toBe(true);
+    expect(r.hits).toEqual([{ group: '技术部', value: 70 }]);
+    expect(r.value).toBe(70);
+  });
+  it('多组命中：gt 取最大命中值', () => {
+    const r = evaluateGroups(rows, 'dept', 'v', 'sum', 'gt', 20);
+    expect(r.hits.map((h) => h.group).sort((a, b) => a.localeCompare(b))).toEqual(['技术部', '销售部']);
+    expect(r.value).toBe(70);
+  });
+  it('lt 语义：取最小命中值', () => {
+    const r = evaluateGroups(rows, 'dept', 'v', 'sum', 'lt', 40);
+    expect(r.triggered).toBe(true);
+    expect(r.value).toBe(5);
+  });
+  it('未命中时 value 返回最极端组值（观察接近程度）', () => {
+    const r = evaluateGroups(rows, 'dept', 'v', 'sum', 'gt', 100);
+    expect(r.triggered).toBe(false);
+    expect(r.hits).toEqual([]);
+    expect(r.value).toBe(70);
+  });
+  it('count 聚合按组行数', () => {
+    const r = evaluateGroups(rows, 'dept', null, 'count', 'gte', 2);
+    expect(r.hits.length).toBe(2);
+  });
+  it('空值分组归入（空）', () => {
+    const r = evaluateGroups([{ dept: null, v: 99 }], 'dept', 'v', 'sum', 'gt', 50);
+    expect(r.hits).toEqual([{ group: '（空）', value: 99 }]);
+  });
+  it('空行集不触发', () => {
+    const r = evaluateGroups([], 'dept', 'v', 'sum', 'gt', 0);
+    expect(r.triggered).toBe(false);
+    expect(r.value).toBe(0);
   });
 });

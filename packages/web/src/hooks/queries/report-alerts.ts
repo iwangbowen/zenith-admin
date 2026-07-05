@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CreateReportAlertInput, PaginatedResponse, ReportAlertRule } from '@zenith/shared';
+import type { CreateReportAlertInput, PaginatedResponse, ReportAlertRule, ReportAlertEvalResult } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { toQueryString, unwrap } from '@/lib/query';
 
@@ -58,7 +58,7 @@ export function useToggleReportAlertEnabled() {
 export function useEvaluateReportAlert() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) => request.post<{ value: number; triggered: boolean }>(`/api/report/alerts/${id}/evaluate`, undefined, { silent: true }).then(unwrap),
+    mutationFn: (id: number) => request.post<ReportAlertEvalResult>(`/api/report/alerts/${id}/evaluate`, undefined, { silent: true }).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: reportAlertKeys.all }),
   });
 }

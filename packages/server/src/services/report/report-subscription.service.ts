@@ -14,9 +14,10 @@ import logger from '../../lib/logger';
 import { ensureDashboardExists, getDashboardData } from './report-dashboard.service';
 import { sendEmail } from '../messaging/email-send-logs.service';
 import { sendInApp } from '../messaging/in-app-messages.service';
+import { sendWebhookNotification } from '../../lib/webhook-notify';
 import type { ReportDashboardSubscriptionRow } from '../../db/schema';
 import type {
-  ReportDashboardSubscription, ReportWidget, ReportDataResult,
+  ReportDashboardSubscription, ReportWidget, ReportDataResult, ReportNotifyChannel,
   CreateReportSubscriptionInput, UpdateReportSubscriptionInput,
 } from '@zenith/shared';
 
@@ -25,8 +26,9 @@ type SubRowExt = ReportDashboardSubscriptionRow & { dashboard?: { name: string }
 export function mapSubscription(row: SubRowExt): ReportDashboardSubscription {
   return {
     id: row.id, dashboardId: row.dashboardId, dashboardName: row.dashboard?.name ?? null,
-    cron: row.cron, channels: (row.channels ?? []) as Array<'email' | 'inApp'>,
-    recipients: row.recipients ?? null, enabled: row.enabled, remark: row.remark ?? null,
+    cron: row.cron, channels: (row.channels ?? []) as ReportNotifyChannel[],
+    recipients: row.recipients ?? null, webhookUrl: row.webhookUrl ?? null,
+    enabled: row.enabled, remark: row.remark ?? null,
     lastRunAt: formatNullableDateTime(row.lastRunAt), createdBy: row.createdBy ?? null,
     createdAt: formatDateTime(row.createdAt), updatedAt: formatDateTime(row.updatedAt),
   };
@@ -52,21 +54,34 @@ export async function listSubscriptions(query: { page?: number; pageSize?: numbe
   return { list: rows.map(mapSubscription), total, page, pageSize };
 }
 
+/** channels 含 webhook 时必须提供 webhookUrl */
+function validateWebhook(channels: ReportNotifyChannel[] | undefined, webhookUrl: string | null | undefined): void {
+  if (channels?.includes('webhook') && !webhookUrl) {
+    throw new HTTPException(400, { message: '选择 Webhook 通道时必须填写 Webhook 地址' });
+  }
+}
+
 export async function createSubscription(input: CreateReportSubscriptionInput): Promise<ReportDashboardSubscription> {
   await ensureDashboardExists(input.dashboardId);
   validateCron(input.cron);
+  validateWebhook(input.channels as ReportNotifyChannel[] | undefined, input.webhookUrl);
   const [row] = await db.insert(reportDashboardSubscriptions).values({
-    dashboardId: input.dashboardId, cron: input.cron, channels: input.channels as Array<'email' | 'inApp'>,
-    recipients: input.recipients, enabled: input.enabled ?? true, remark: input.remark,
+    dashboardId: input.dashboardId, cron: input.cron, channels: input.channels as ReportNotifyChannel[],
+    recipients: input.recipients, webhookUrl: input.webhookUrl ?? null, enabled: input.enabled ?? true, remark: input.remark,
   }).returning();
   return mapSubscription(row);
 }
 
 export async function updateSubscription(id: number, input: UpdateReportSubscriptionInput): Promise<ReportDashboardSubscription> {
+  const current = await ensureSubscriptionExists(id);
   if (input.cron) validateCron(input.cron);
+  validateWebhook(
+    (input.channels ?? current.channels) as ReportNotifyChannel[],
+    input.webhookUrl === undefined ? current.webhookUrl : input.webhookUrl,
+  );
   const [row] = await db.update(reportDashboardSubscriptions).set({
-    dashboardId: input.dashboardId, cron: input.cron, channels: input.channels as Array<'email' | 'inApp'> | undefined,
-    recipients: input.recipients, enabled: input.enabled, remark: input.remark,
+    dashboardId: input.dashboardId, cron: input.cron, channels: input.channels as ReportNotifyChannel[] | undefined,
+    recipients: input.recipients, webhookUrl: input.webhookUrl, enabled: input.enabled, remark: input.remark,
   }).where(eq(reportDashboardSubscriptions.id, id)).returning();
   if (!row) throw new HTTPException(404, { message: '订阅不存在' });
   return mapSubscription(row);
@@ -157,7 +172,7 @@ async function buildSummary(row: ReportDashboardSubscriptionRow): Promise<{ titl
 /** 立即推送某订阅（推送后落本期 KPI 快照，供下期环比） */
 export async function runSubscription(row: ReportDashboardSubscriptionRow): Promise<void> {
   const { title, text, html, snapshot } = await buildSummary(row);
-  const channels = (row.channels ?? []) as Array<'email' | 'inApp'>;
+  const channels = (row.channels ?? []) as ReportNotifyChannel[];
   if (channels.includes('inApp') && row.createdBy) {
     try { await sendInApp({ userIds: [row.createdBy], title, content: text, type: 'info' }); }
     catch (e) { logger.warn('报表订阅站内信推送失败', { err: e instanceof Error ? e.message : String(e) }); }
@@ -167,6 +182,10 @@ export async function runSubscription(row: ReportDashboardSubscriptionRow): Prom
       try { await sendEmail({ toEmail: email, subject: title, content: html }); }
       catch (e) { logger.warn('报表订阅邮件推送失败', { email, err: e instanceof Error ? e.message : String(e) }); }
     }
+  }
+  if (channels.includes('webhook') && row.webhookUrl) {
+    try { await sendWebhookNotification(row.webhookUrl, title, text); }
+    catch (e) { logger.warn('报表订阅 Webhook 推送失败', { id: row.id, err: e instanceof Error ? e.message : String(e) }); }
   }
   try { await db.update(reportDashboardSubscriptions).set({ lastSummary: snapshot }).where(eq(reportDashboardSubscriptions.id, row.id)); }
   catch (e) { logger.warn('报表订阅快照落库失败', { id: row.id, err: e instanceof Error ? e.message : String(e) }); }

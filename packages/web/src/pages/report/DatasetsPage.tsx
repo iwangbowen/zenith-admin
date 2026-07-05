@@ -2,7 +2,7 @@ import { useState, useRef, useMemo } from 'react';
 import { Button, Form, Input, Select, Table, Tag, Toast, Modal, Space, Typography, Empty, Switch, InputNumber, TextArea } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, RotateCcw, Plus, Play, Upload as UploadIcon, Sparkles } from 'lucide-react';
+import { Search, RotateCcw, Plus, Play, Upload as UploadIcon, Sparkles, Blocks } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -26,8 +26,11 @@ import {
 import type {
   ReportDataset, ReportDatasource, ReportDatasourceType, ReportField, ReportDataResult,
   ReportApiDatasetContent, ReportSqlDatasetContent, ReportComputedField,
-  ReportStaticDatasetContent, ReportFieldFormat, ReportDatasetParam,
+  ReportStaticDatasetContent, ReportFieldFormat, ReportDatasetParam, ReportRowRule, ReportVisualModel,
 } from '@zenith/shared';
+import { useAllRoles } from '@/hooks/queries/roles';
+import VisualModelBuilder from './components/VisualModelBuilder';
+import DatasetRefsModal from './components/DatasetRefsModal';
 
 interface SearchParams { keyword: string; status: string }
 const defaultSearchParams: SearchParams = { keyword: '', status: '' };
@@ -114,6 +117,10 @@ export default function DatasetsPage() {
   const [computedFields, setComputedFields] = useState<ReportComputedField[]>([]);
   const [paramDefs, setParamDefs] = useState<ReportDatasetParam[]>([]);
   const [previewParamValues, setPreviewParamValues] = useState<Record<string, unknown>>({});
+  const [rowRules, setRowRules] = useState<ReportRowRule[]>([]);
+  const [visualVisible, setVisualVisible] = useState(false);
+  const [visualModel, setVisualModel] = useState<ReportVisualModel | null>(null);
+  const [refsTarget, setRefsTarget] = useState<ReportDataset | null>(null);
   const [materialize, setMaterialize] = useState<{ enabled: boolean; cron?: string }>({ enabled: false, cron: '' });
   const [staticJsonText, setStaticJsonText] = useState('[]');
   const [staticColumns, setStaticColumns] = useState<string[]>([]);
@@ -122,6 +129,9 @@ export default function DatasetsPage() {
   const [aiQuestion, setAiQuestion] = useState('');
 
   const selectedType: ReportDatasourceType | null = selectedDsId ? dsTypeMap.get(selectedDsId) ?? editing?.type ?? null : null;
+
+  const rolesQuery = useAllRoles({ enabled: modalVisible });
+  const roleOptions = (rolesQuery.data ?? []).map((role) => ({ value: role.code, label: role.name }));
 
   const listQuery = useReportDatasetList({
     page,
@@ -146,6 +156,9 @@ export default function DatasetsPage() {
     setComputedFields(ds?.computedFields ?? []);
     setParamDefs(ds?.params ?? []);
     setPreviewParamValues({});
+    setRowRules(ds?.rowRules ?? []);
+    setVisualVisible(false);
+    setVisualModel(((ds?.content ?? {}) as ReportSqlDatasetContent).visual ?? null);
     setMaterialize({ enabled: ds?.materialize?.enabled ?? false, cron: ds?.materialize?.cron ?? '' });
     setAiAskVisible(false);
     setAiQuestion('');
@@ -229,7 +242,7 @@ export default function DatasetsPage() {
   /** 根据当前表单值构造 content（按选中数据源类型）*/
   function buildContent(values: Record<string, unknown>): Record<string, unknown> | null {
     if (isSqlAuthoringType(selectedType)) {
-      return { sql: String(values.sql ?? '') };
+      return { sql: String(values.sql ?? ''), ...(visualModel ? { visual: visualModel } : {}) };
     }
     if (selectedType === 'api') {
       let params: Record<string, string> | undefined;
@@ -286,6 +299,21 @@ export default function DatasetsPage() {
     }
     if (list.some((p) => p.name.startsWith('__'))) {
       Toast.error('参数名不能以 __ 开头（系统变量保留前缀）');
+      return null;
+    }
+    return list;
+  }
+
+  function normalizeRowRules(): ReportRowRule[] | null {
+    const list = rowRules
+      .map((r) => ({ ...r, where: r.where.trim() }))
+      .filter((r) => r.where || r.roles?.length || r.remark);
+    if (list.some((r) => !r.where)) {
+      Toast.error('请填写行级规则的 WHERE 片段');
+      return null;
+    }
+    if (list.some((r) => r.where.includes(';'))) {
+      Toast.error('行级规则的 WHERE 片段不能包含分号');
       return null;
     }
     return list;
@@ -361,6 +389,8 @@ export default function DatasetsPage() {
     if (normalizedComputedFields === null) throw new Error('computedFields');
     const normalizedParams = normalizeParamDefs();
     if (normalizedParams === null) throw new Error('params');
+    const normalizedRowRules = isSqlAuthoringType(selectedType) ? normalizeRowRules() : [];
+    if (normalizedRowRules === null) throw new Error('rowRules');
 
     const payload = {
       name: values.name,
@@ -369,6 +399,7 @@ export default function DatasetsPage() {
       fields: normalizeFields(),
       params: normalizedParams,
       computedFields: normalizedComputedFields,
+      rowRules: normalizedRowRules,
       cacheTtl: Number(values.cacheTtl) || 0,
       materialize: {
         enabled: materialize.enabled,
@@ -426,6 +457,10 @@ export default function DatasetsPage() {
     setParamDefs((prev) => prev.map((p, i) => (i === index ? { ...p, ...patch } : p)));
   }
 
+  function updateRowRule(index: number, patch: Partial<ReportRowRule>) {
+    setRowRules((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+  }
+
   const columns: ColumnProps<ReportDataset>[] = [
     { title: '名称', dataIndex: 'name', width: 180 },
     { title: '数据源', dataIndex: 'datasourceName', width: 160, render: (v: string) => v || '-' },
@@ -454,6 +489,7 @@ export default function DatasetsPage() {
       actions: (record) => [
         ...(record.materialize?.enabled && hasPermission('report:dataset:update') ? [{ key: 'refreshMaterialize', label: '刷新物化', onClick: () => void handleRefreshMaterialize(record) }] : []),
         ...(hasPermission('report:dataset:update') ? [{ key: 'edit', label: '编辑', onClick: () => openEdit(record) }] : []),
+        { key: 'refs', label: '血缘', onClick: () => setRefsTarget(record) },
         ...(hasPermission('report:dataset:delete') ? [{
           key: 'delete', label: '删除', danger: true,
           onClick: () => { Modal.confirm({ title: '确定要删除吗？', content: '删除后不可恢复', onOk: () => handleDelete(record.id) }); },
@@ -523,9 +559,12 @@ export default function DatasetsPage() {
               <Form.TextArea field="sql" label="SQL" placeholder="SELECT col1, col2 FROM your_table WHERE ..."
                 autosize={{ minRows: 4, maxRows: 10 }} style={{ fontFamily: 'var(--semi-font-family-mono, monospace)' }}
                 rules={[{ required: true, message: '请输入 SQL' }]} />
-              <Form.Slot label="AI 问数">
+              <Form.Slot label="辅助生成">
                 <div style={{ width: '100%' }}>
-                  <Button icon={<Sparkles size={14} />} onClick={() => setAiAskVisible((v) => !v)}>AI 问数</Button>
+                  <Space>
+                    <Button icon={<Sparkles size={14} />} onClick={() => { setAiAskVisible((v) => !v); setVisualVisible(false); }}>AI 问数</Button>
+                    <Button icon={<Blocks size={14} />} onClick={() => { setVisualVisible((v) => !v); setAiAskVisible(false); }}>可视化建模</Button>
+                  </Space>
                   {aiAskVisible && (
                     <Space vertical align="start" style={{ width: '100%', marginTop: 8 }}>
                       <TextArea
@@ -536,6 +575,15 @@ export default function DatasetsPage() {
                       />
                       <Button type="primary" icon={<Sparkles size={14} />} loading={generateSqlMutation.isPending} onClick={handleGenerateSql}>生成 SQL</Button>
                     </Space>
+                  )}
+                  {visualVisible && (
+                    <VisualModelBuilder
+                      initial={visualModel}
+                      onGenerate={(sql, model) => {
+                        formApi.current?.setValue('sql', sql);
+                        setVisualModel(model);
+                      }}
+                    />
                   )}
                 </div>
               </Form.Slot>
@@ -735,6 +783,39 @@ export default function DatasetsPage() {
           </div>
         )}
 
+        {isSqlAuthoringType(selectedType) && (
+          <div style={{ borderTop: '1px solid var(--semi-color-border)', marginTop: 12, paddingTop: 12 }}>
+            <Space style={{ marginBottom: 6 }}>
+              <Typography.Text strong>行级权限</Typography.Text>
+              <Button size="small" onClick={() => setRowRules((prev) => [...prev, { roles: [], where: '', enabled: true }])}>添加规则</Button>
+            </Space>
+            <div>
+              <Typography.Text type="tertiary" size="small">
+                命中规则的用户仅能看到满足条件的行（多条命中规则按「或」合并）；未命中任何规则或超级管理员不受限。
+                WHERE 片段可用 {'${__userId}'} / {'${__deptId}'} 等系统变量，如 dept_id = {'${__deptId}'}。
+              </Typography.Text>
+            </div>
+            {rowRules.length > 0 && (
+              <Space vertical align="start" style={{ width: '100%', marginTop: 8 }}>
+                {rowRules.map((rule, index) => (
+                  <Space key={index} align="start" style={{ width: '100%' }}>
+                    <Select multiple filter placeholder="全部角色" value={rule.roles ?? []} style={{ width: 180 }} maxTagCount={2}
+                      optionList={roleOptions}
+                      onChange={(v) => updateRowRule(index, { roles: (v as string[]) ?? [] })} />
+                    <Input placeholder={'WHERE 片段，如 dept_id = ${__deptId}'} value={rule.where} style={{ width: 280 }} showClear
+                      onChange={(v) => updateRowRule(index, { where: v })} />
+                    <Space style={{ height: 32 }}>
+                      <Typography.Text type="tertiary" size="small">启用</Typography.Text>
+                      <Switch size="small" checked={rule.enabled ?? true} onChange={(enabled) => updateRowRule(index, { enabled })} />
+                    </Space>
+                    <Button theme="borderless" type="danger" onClick={() => setRowRules((prev) => prev.filter((_, i) => i !== index))}>删除</Button>
+                  </Space>
+                ))}
+              </Space>
+            )}
+          </div>
+        )}
+
         <div style={{ borderTop: '1px solid var(--semi-color-border)', marginTop: 12, paddingTop: 12 }}>
           <Space style={{ marginBottom: 6 }}>
             <Typography.Text strong>计算字段</Typography.Text>
@@ -765,6 +846,8 @@ export default function DatasetsPage() {
           )}
         </div>
       </AppModal>
+
+      <DatasetRefsModal dataset={refsTarget} onClose={() => setRefsTarget(null)} />
     </div>
   );
 }

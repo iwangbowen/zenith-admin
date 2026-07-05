@@ -105,6 +105,12 @@ export const ReportDatasetDTO = z
       refreshedAt: z.string().nullable().optional(),
       refreshedAtMs: z.number().nullable().optional(),
     }).optional(),
+    rowRules: z.array(z.object({
+      roles: z.array(z.string()).optional(),
+      where: z.string(),
+      enabled: z.boolean().optional(),
+      remark: z.string().optional(),
+    })).optional(),
     status: z.enum(['enabled', 'disabled']),
     remark: z.string().nullable().optional(),
     ...auditFields,
@@ -112,6 +118,25 @@ export const ReportDatasetDTO = z
     updatedAt: z.string(),
   })
   .openapi('ReportDataset');
+
+/** 数据集下游引用（血缘） */
+export const ReportDatasetRefsDTO = z
+  .object({
+    dashboards: z.array(z.object({
+      id: z.number().int(),
+      name: z.string(),
+      widgets: z.array(z.string()),
+      filterIds: z.array(z.string()),
+    })),
+    printTemplates: z.array(z.object({ id: z.number().int(), name: z.string() })),
+    alerts: z.array(z.object({ id: z.number().int(), name: z.string() })),
+  })
+  .openapi('ReportDatasetRefs');
+
+/** 可视化建模元数据：列 */
+export const ReportMetaColumnDTO = z
+  .object({ name: z.string(), type: z.string() })
+  .openapi('ReportMetaColumn');
 
 export const ReportDashboardDTO = z
   .object({
@@ -185,14 +210,17 @@ export const ReportDashboardShareDTO = z
   })
   .openapi('ReportDashboardShare');
 
+const ReportNotifyChannelDTO = z.enum(['email', 'inApp', 'webhook']);
+
 export const ReportDashboardSubscriptionDTO = z
   .object({
     id: z.number().int(),
     dashboardId: z.number().int(),
     dashboardName: z.string().nullable().optional(),
     cron: z.string(),
-    channels: z.array(z.enum(['email', 'inApp'])),
+    channels: z.array(ReportNotifyChannelDTO),
     recipients: z.string().nullable().optional(),
+    webhookUrl: z.string().nullable().optional(),
     enabled: z.boolean(),
     remark: z.string().nullable().optional(),
     lastRunAt: z.string().nullable().optional(),
@@ -281,12 +309,14 @@ export const ReportAlertRuleDTO = z
     datasetId: z.number().int(),
     datasetName: z.string().nullable().optional(),
     field: z.string().nullable().optional(),
+    groupByField: z.string().nullable().optional(),
     aggregate: z.enum(['sum', 'avg', 'max', 'min', 'count', 'first']),
     op: z.enum(['gt', 'gte', 'lt', 'lte', 'eq', 'neq']),
     threshold: z.number(),
     cron: z.string().nullable().optional(),
-    channels: z.array(z.enum(['email', 'inApp'])),
+    channels: z.array(ReportNotifyChannelDTO),
     recipients: z.string().nullable().optional(),
+    webhookUrl: z.string().nullable().optional(),
     silenceMins: z.number().int(),
     notifyOnRecover: z.boolean(),
     enabled: z.boolean(),
@@ -303,7 +333,11 @@ export const ReportAlertRuleDTO = z
 
 /** 预警评估结果 */
 export const ReportAlertEvalResultDTO = z
-  .object({ value: z.number(), triggered: z.boolean() })
+  .object({
+    value: z.number(),
+    triggered: z.boolean(),
+    hits: z.array(z.object({ group: z.string(), value: z.number() })).optional(),
+  })
   .openapi('ReportAlertEvalResult');
 
 // ─── 仪表盘评论 ──────────────────────────────────────────────────────────────

@@ -64,13 +64,15 @@ const opSymbolMap: Record<ReportAlertOp, string> = {
   neq: '≠',
 };
 
-const channelLabelMap: Record<'email' | 'inApp', string> = {
+const channelLabelMap: Record<'email' | 'inApp' | 'webhook', string> = {
   email: '邮件',
   inApp: '站内信',
+  webhook: 'Webhook',
 };
 
 function formatRule(record: ReportAlertRule) {
-  return `${record.aggregate}(${record.aggregate === 'count' ? '*' : record.field || '-'}) ${opSymbolMap[record.op]} ${record.threshold}`;
+  const scope = record.groupByField ? `按${record.groupByField}分组 · ` : '';
+  return `${scope}${record.aggregate}(${record.aggregate === 'count' ? '*' : record.field || '-'}) ${opSymbolMap[record.op]} ${record.threshold}`;
 }
 
 export default function AlertsPage() {
@@ -93,7 +95,7 @@ export default function AlertsPage() {
   const [editing, setEditing] = useState<ReportAlertRule | null>(null);
   const [selectedDatasetId, setSelectedDatasetId] = useState<number | null>(null);
   const [selectedAggregate, setSelectedAggregate] = useState<ReportAlertAggregate>('sum');
-  const [selectedChannels, setSelectedChannels] = useState<Array<'email' | 'inApp'>>(['inApp']);
+  const [selectedChannels, setSelectedChannels] = useState<Array<'email' | 'inApp' | 'webhook'>>(['inApp']);
 
   const selectedFields = selectedDatasetId ? datasetFieldMap.get(selectedDatasetId) ?? [] : [];
 
@@ -151,11 +153,13 @@ export default function AlertsPage() {
         datasetId: editing.datasetId,
         aggregate: editing.aggregate,
         field: editing.field ?? undefined,
+        groupByField: editing.groupByField ?? undefined,
         op: editing.op,
         threshold: editing.threshold,
         cron: editing.cron ?? '',
         channels: editing.channels,
         recipients: editing.recipients ?? '',
+        webhookUrl: editing.webhookUrl ?? '',
         silenceMins: editing.silenceMins ?? 60,
         notifyOnRecover: editing.notifyOnRecover ?? false,
         enabled: editing.enabled ? 'enabled' : 'disabled',
@@ -165,17 +169,19 @@ export default function AlertsPage() {
 
   function buildPayload(values: Record<string, unknown>): CreateReportAlertInput {
     const aggregate = values.aggregate as ReportAlertAggregate;
-    const channels = (values.channels ?? []) as Array<'email' | 'inApp'>;
+    const channels = (values.channels ?? []) as Array<'email' | 'inApp' | 'webhook'>;
     return {
       name: String(values.name ?? ''),
       datasetId: Number(values.datasetId),
       field: aggregate === 'count' ? null : (values.field ? String(values.field) : null),
+      groupByField: values.groupByField ? String(values.groupByField) : null,
       aggregate,
       op: values.op as ReportAlertOp,
       threshold: Number(values.threshold),
       cron: values.cron ? String(values.cron) : null,
       channels,
       recipients: channels.includes('email') && values.recipients ? String(values.recipients) : undefined,
+      webhookUrl: channels.includes('webhook') && values.webhookUrl ? String(values.webhookUrl) : null,
       silenceMins: Number(values.silenceMins ?? 60),
       notifyOnRecover: Boolean(values.notifyOnRecover),
       enabled: values.enabled === 'enabled',
@@ -213,7 +219,8 @@ export default function AlertsPage() {
   async function handleEvaluate(id: number) {
     try {
       const res = await evaluateMutation.mutateAsync(id);
-      Toast.success(`实际值 ${res.value}，${res.triggered ? '已触发' : '未触发'}`);
+      const hitText = res.hits?.length ? `，命中组：${res.hits.slice(0, 5).map((h) => `${h.group}(${h.value})`).join('、')}${res.hits.length > 5 ? '…' : ''}` : '';
+      Toast.success(`实际值 ${res.value}，${res.triggered ? '已触发' : '未触发'}${hitText}`);
     } catch (error) {
       Toast.error(error instanceof Error ? error.message : '评估失败');
     }
@@ -236,8 +243,8 @@ export default function AlertsPage() {
       title: '通道',
       dataIndex: 'channels',
       width: 140,
-      render: (channels: Array<'email' | 'inApp'>) => (channels ?? []).map((channel) => (
-        <Tag key={channel} size="small" color={channel === 'email' ? 'blue' : 'green'} style={{ marginRight: 4 }}>
+      render: (channels: Array<'email' | 'inApp' | 'webhook'>) => (channels ?? []).map((channel) => (
+        <Tag key={channel} size="small" color={channel === 'email' ? 'blue' : channel === 'webhook' ? 'purple' : 'green'} style={{ marginRight: 4 }}>
           {channelLabelMap[channel]}
         </Tag>
       )),
@@ -336,7 +343,7 @@ export default function AlertsPage() {
             const nextAggregate = (values.aggregate ?? 'sum') as ReportAlertAggregate;
             setSelectedAggregate(nextAggregate);
             if (nextAggregate === 'count') formApi.current?.setValue('field', undefined);
-            setSelectedChannels(((values.channels ?? []) as Array<'email' | 'inApp'>));
+            setSelectedChannels(((values.channels ?? []) as Array<'email' | 'inApp' | 'webhook'>));
           }}
         >
           <Form.Input field="name" label="名称" rules={[{ required: true, message: '请输入名称' }]} maxLength={64} showClear />
@@ -347,13 +354,20 @@ export default function AlertsPage() {
             placeholder={selectedAggregate === 'count' ? 'count 不需要选择字段' : '请选择监控字段'}
             rules={selectedAggregate === 'count' ? [] : [{ required: true, message: '请选择监控字段' }]}
             optionList={selectedFields.map((field) => ({ value: field.name, label: field.label ? `${field.label}（${field.name}）` : field.name }))} />
+          <Form.Select field="groupByField" label="分组维度" style={{ width: '100%' }} showClear
+            placeholder="可选；按该字段分组聚合，任一组命中即触发"
+            optionList={selectedFields.map((field) => ({ value: field.name, label: field.label ? `${field.label}（${field.name}）` : field.name }))} />
           <Form.Select field="op" label="运算符" style={{ width: '100%' }} optionList={opOptions} />
           <Form.InputNumber field="threshold" label="阈值" style={{ width: '100%' }} rules={[{ required: true, message: '请输入阈值' }]} />
           <Form.Input field="cron" label="评估Cron" placeholder="0 */5 * * * *" helpText="留空=仅手动" showClear />
           <Form.Select field="channels" label="通知通道" multiple style={{ width: '100%' }} rules={[{ required: true, message: '至少选择一个通道' }]}
-            optionList={[{ value: 'email', label: '邮件' }, { value: 'inApp', label: '站内信' }]} />
+            optionList={[{ value: 'email', label: '邮件' }, { value: 'inApp', label: '站内信' }, { value: 'webhook', label: 'Webhook（企微/钉钉机器人）' }]} />
           {selectedChannels.includes('email') && (
             <Form.Input field="recipients" label="收件人邮箱" placeholder="多个用逗号分隔" showClear />
+          )}
+          {selectedChannels.includes('webhook') && (
+            <Form.Input field="webhookUrl" label="Webhook 地址" placeholder="企微/钉钉机器人 Webhook URL 或通用 JSON 端点"
+              rules={[{ required: true, message: '请填写 Webhook 地址' }]} showClear />
           )}
           <Form.InputNumber field="silenceMins" label="静默期(分)" min={0} max={10080} step={10} style={{ width: '100%' }}
             helpText="持续触发时，距上次通知不足该时长不重复通知；0=每次触发都通知" />

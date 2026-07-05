@@ -6804,9 +6804,41 @@ export interface ReportComputedField {
   type?: ReportFieldType;
 }
 
+/** 可视化建模：指标（聚合列） */
+export interface ReportVisualMetric {
+  field: string;
+  aggregate: 'sum' | 'avg' | 'max' | 'min' | 'count';
+  alias?: string;
+}
+/** 可视化建模：筛选条件 */
+export interface ReportVisualFilter {
+  field: string;
+  op: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'like';
+  value: string;
+}
+/** 可视化建模模型（选表拖字段生成 SQL，内置库专用） */
+export interface ReportVisualModel {
+  table: string;
+  /** 维度列（GROUP BY） */
+  dimensions: string[];
+  /** 指标列（聚合） */
+  metrics: ReportVisualMetric[];
+  filters?: ReportVisualFilter[];
+  orderBy?: { field: string; order: 'asc' | 'desc' } | null;
+  limit?: number | null;
+}
+
+/** 可视化建模：内置库列元数据 */
+export interface ReportMetaColumn {
+  name: string;
+  type: string;
+}
+
 /** SQL 数据集内容 */
 export interface ReportSqlDatasetContent {
   sql: string;
+  /** 可视化建模模型（回显编辑用；SQL 为最终执行内容） */
+  visual?: ReportVisualModel | null;
 }
 /** API 数据集内容 */
 export interface ReportApiDatasetContent {
@@ -6846,12 +6878,28 @@ export interface ReportDataset {
   cacheTtl: number;
   /** 物化快照配置（定时刷新到持久层，给大屏降压） */
   materialize?: ReportDatasetMaterialize;
+  /** 行级权限规则（仅 SQL 型数据集生效） */
+  rowRules?: ReportRowRule[];
   status: 'enabled' | 'disabled';
   remark?: string | null;
   createdBy?: number | null;
   updatedBy?: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * 数据集行级权限规则（仅 SQL 型数据集生效）。
+ * 取数时：登录用户命中的规则（角色匹配）以 OR 拼接为 WHERE 包裹原查询；
+ * 未命中任何规则 = 不受限；超级管理员与无用户上下文场景（Cron/公开分享）跳过。
+ */
+export interface ReportRowRule {
+  /** 生效角色 code 列表；空/缺省 = 对所有登录用户生效 */
+  roles?: string[];
+  /** WHERE 片段（不含 WHERE 关键字），可引用 ${__userId} 等系统变量与数据集参数；禁止分号 */
+  where: string;
+  enabled?: boolean;
+  remark?: string;
 }
 
 /** 数据集物化快照配置 */
@@ -7202,15 +7250,20 @@ export interface ReportDashboardShare {
   updatedAt: string;
 }
 
+/** 通知渠道（预警/订阅共用）：邮件 / 站内信 / Webhook（企微/钉钉机器人或通用端点） */
+export type ReportNotifyChannel = 'email' | 'inApp' | 'webhook';
+
 /** 订阅推送（按 Cron 推送报表摘要） */
 export interface ReportDashboardSubscription {
   id: number;
   dashboardId: number;
   dashboardName?: string | null;
   cron: string;
-  channels: ('email' | 'inApp')[];
+  channels: ReportNotifyChannel[];
   /** 收件人邮箱（逗号分隔）；inApp 推给创建者 */
   recipients?: string | null;
+  /** Webhook 通知地址（channels 含 webhook 时必填） */
+  webhookUrl?: string | null;
   enabled: boolean;
   remark?: string | null;
   lastRunAt?: string | null;
@@ -7337,6 +7390,8 @@ export interface ReportAlertRule {
   datasetName?: string | null;
   /** 监控字段（count 可空） */
   field?: string | null;
+  /** 分组维度（可空=全局聚合；有值=按组聚合，任一组命中即触发） */
+  groupByField?: string | null;
   /** 聚合方式 */
   aggregate: ReportAlertAggregate;
   /** 比较运算符 */
@@ -7346,9 +7401,11 @@ export interface ReportAlertRule {
   /** 评估 Cron（留空=仅手动） */
   cron?: string | null;
   /** 通知渠道 */
-  channels: ('email' | 'inApp')[];
+  channels: ReportNotifyChannel[];
   /** 收件人邮箱（逗号分隔）；inApp 推给创建者 */
   recipients?: string | null;
+  /** Webhook 通知地址（channels 含 webhook 时必填） */
+  webhookUrl?: string | null;
   /** 静默期（分钟）：持续触发时，距上次通知不足该时长不重复通知；0=每次触发都通知 */
   silenceMins: number;
   /** 从触发恢复正常时是否发送恢复通知 */
@@ -7366,6 +7423,27 @@ export interface ReportAlertRule {
   createdBy?: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** 预警评估命中组明细（分组维度评估时返回） */
+export interface ReportAlertEvalHit {
+  group: string;
+  value: number;
+}
+/** 预警评估结果 */
+export interface ReportAlertEvalResult {
+  value: number;
+  triggered: boolean;
+  /** 分组评估时的命中组明细（最多 10 条） */
+  hits?: ReportAlertEvalHit[];
+}
+
+/** 数据集下游引用（血缘：删除保护与影响分析） */
+export interface ReportDatasetRefs {
+  /** 引用该数据集的仪表盘（组件绑定或筛选器动态选项） */
+  dashboards: Array<{ id: number; name: string; widgets: string[]; filterIds: string[] }>;
+  printTemplates: Array<{ id: number; name: string }>;
+  alerts: Array<{ id: number; name: string }>;
 }
 
 /** 仪表盘评论（协作批注） */

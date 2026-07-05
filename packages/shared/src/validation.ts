@@ -2880,6 +2880,13 @@ export const reportDatasetMaterializeSchema = z.object({
   enabled: z.boolean().default(false),
   cron: z.string().max(64).optional(),
 });
+/** 行级权限规则：where 片段禁止分号（防拼接后多语句） */
+export const reportRowRuleSchema = z.object({
+  roles: z.array(z.string().max(64)).max(32).optional(),
+  where: z.string().min(1, 'WHERE 片段不能为空').max(512).refine((s) => !s.includes(';'), 'WHERE 片段不能包含分号'),
+  enabled: z.boolean().optional(),
+  remark: z.string().max(128).optional(),
+});
 export const createReportDatasetSchema = z.object({
   name: z.string().min(1, '名称不能为空').max(64),
   datasourceId: z.number().int().positive('请选择数据源'),
@@ -2889,6 +2896,7 @@ export const createReportDatasetSchema = z.object({
   computedFields: z.array(reportComputedFieldSchema).default([]),
   cacheTtl: z.number().int().min(0).max(86_400).default(0),
   materialize: reportDatasetMaterializeSchema.optional(),
+  rowRules: z.array(reportRowRuleSchema).max(32).default([]),
   status: z.enum(['enabled', 'disabled']).default('enabled'),
   remark: z.string().max(256).optional(),
 });
@@ -3035,11 +3043,13 @@ export const reportPublicAccessSchema = z.object({
 export type ReportPublicAccessInput = z.input<typeof reportPublicAccessSchema>;
 
 // ─── 订阅推送 ────────────────────────────────────────────────────────────────
+export const reportNotifyChannelSchema = z.enum(['email', 'inApp', 'webhook']);
 export const createReportSubscriptionSchema = z.object({
   dashboardId: z.number().int().positive(),
   cron: z.string().min(1, '请填写 Cron 表达式').max(64),
-  channels: z.array(z.enum(['email', 'inApp'])).min(1, '至少选择一个推送通道'),
+  channels: z.array(reportNotifyChannelSchema).min(1, '至少选择一个推送通道'),
   recipients: z.string().max(512).optional(),
+  webhookUrl: z.url('Webhook 地址必须是合法 URL').max(512).nullable().optional(),
   enabled: z.boolean().default(true),
   remark: z.string().max(256).optional(),
 });
@@ -3120,12 +3130,15 @@ export const createReportAlertSchema = z.object({
   name: z.string().min(1, '名称不能为空').max(64),
   datasetId: z.number().int().positive('请选择数据集'),
   field: z.string().max(128).nullable().optional(),
+  /** 分组维度（可空=全局聚合；有值=按组聚合，任一组命中即触发） */
+  groupByField: z.string().max(128).nullable().optional(),
   aggregate: z.enum(['sum', 'avg', 'max', 'min', 'count', 'first']).default('sum'),
   op: z.enum(['gt', 'gte', 'lt', 'lte', 'eq', 'neq']).default('gt'),
   threshold: z.number(),
   cron: z.string().max(64).nullable().optional(),
-  channels: z.array(z.enum(['email', 'inApp'])).min(1, '至少选择一个通知通道'),
+  channels: z.array(reportNotifyChannelSchema).min(1, '至少选择一个通知通道'),
   recipients: z.string().max(512).optional(),
+  webhookUrl: z.url('Webhook 地址必须是合法 URL').max(512).nullable().optional(),
   /** 静默期（分钟）：持续触发时距上次通知不足该时长不重复通知；0=每次触发都通知（上限 7 天） */
   silenceMins: z.number().int().min(0).max(10080).default(60),
   /** 从触发恢复正常时是否发送恢复通知 */

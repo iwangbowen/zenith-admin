@@ -66,8 +66,8 @@ export const mockReportCategories: ReportDashboardCategory[] = [
 
 export const mockReportAlerts: ReportAlertRule[] = [
   {
-    id: 1, name: '菜单总数异常预警', datasetId: 1, datasetName: '菜单类型分布', field: 'value', aggregate: 'sum',
-    op: 'gt', threshold: 200, cron: '0 9 * * *', channels: ['inApp'], recipients: null,
+    id: 1, name: '菜单总数异常预警', datasetId: 1, datasetName: '菜单类型分布', field: 'value', groupByField: null, aggregate: 'sum',
+    op: 'gt', threshold: 200, cron: '0 9 * * *', channels: ['inApp'], recipients: null, webhookUrl: null,
     silenceMins: 60, notifyOnRecover: false, enabled: true,
     lastCheckedAt: mockDateTimeOffset(-3600000), lastTriggered: false, lastValue: 86, lastNotifiedAt: null, remark: '示例预警规则',
     createdBy: 1, createdAt: mockDateTime(), updatedAt: mockDateTime(),
@@ -98,7 +98,7 @@ export const mockReportPrintTemplates: ReportPrintTemplate[] = [
 export const mockReportSubscriptions: ReportDashboardSubscription[] = [
   {
     id: 1, dashboardId: 1, dashboardName: '示例仪表盘', cron: '0 8 * * 1', channels: ['email'],
-    recipients: 'ops@example.com', enabled: true, remark: '每周一早 8 点推送', lastRunAt: mockDateTimeOffset(-86400000),
+    recipients: 'ops@example.com', webhookUrl: null, enabled: true, remark: '每周一早 8 点推送', lastRunAt: mockDateTimeOffset(-86400000),
     createdBy: 1, createdAt: mockDateTime(), updatedAt: mockDateTime(),
   },
 ];
