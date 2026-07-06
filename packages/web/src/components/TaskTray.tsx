@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Badge, Button, Empty, Popover, Tag, Toast, Typography } from '@douyinfe/semi-ui';
-import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
+import { IllustrationIdle, IllustrationIdleDark } from '@douyinfe/semi-illustrations';
 import { ListChecks } from 'lucide-react';
 import type { AsyncTask, AsyncTaskStatus } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -73,8 +73,8 @@ export default function TaskTray() {
           </div>
           {trayTasks.length === 0 ? (
             <Empty
-              image={<IllustrationNoContent style={{ width: 100, height: 100 }} />}
-              darkModeImage={<IllustrationNoContentDark style={{ width: 100, height: 100 }} />}
+              image={<IllustrationIdle style={{ width: 100, height: 100 }} />}
+              darkModeImage={<IllustrationIdleDark style={{ width: 100, height: 100 }} />}
               description="暂无进行中的任务"
               style={{ padding: '24px 0 28px' }}
             />

@@ -4,7 +4,7 @@ import { RouteErrorBoundary } from '@/components/PageErrorBoundary';
 import { UserAvatar } from '@/components/UserAvatar';
 import { BackTop, Badge, Banner, Breadcrumb, Button, ColorPicker, Divider, Dropdown, Empty, Input, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio, Toast } from '@douyinfe/semi-ui';
 import { AppModal } from '@/components/AppModal';
-import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
+import { IllustrationIdle, IllustrationIdleDark } from '@douyinfe/semi-illustrations';
 import { Bell, Building2, Check, Info, Expand, Shrink, Megaphone, Sun, Moon, Monitor, MoreHorizontal, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2, Lock, Copy, Route, Keyboard, Search, Star, Clock, Wrench, ExternalLink, Menu as MenuIcon, Files, Smartphone } from 'lucide-react';
 import { pinyinMatch, ensurePinyin } from '@/utils/pinyin';
 import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput';
@@ -1325,8 +1325,8 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
             </div>
             {recentAnnouncements.length === 0 ? (
               <Empty
-                image={<IllustrationNoContent style={{ width: 80, height: 80 }} />}
-                darkModeImage={<IllustrationNoContentDark style={{ width: 80, height: 80 }} />}
+                image={<IllustrationIdle style={{ width: 80, height: 80 }} />}
+                darkModeImage={<IllustrationIdleDark style={{ width: 80, height: 80 }} />}
                 description="暂无公告" style={{ padding: '24px 0' }} />
             ) : (
               <List
@@ -1388,8 +1388,8 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
             </div>
             {inAppMessages.length === 0 ? (
               <Empty
-                image={<IllustrationNoContent style={{ width: 80, height: 80 }} />}
-                darkModeImage={<IllustrationNoContentDark style={{ width: 80, height: 80 }} />}
+                image={<IllustrationIdle style={{ width: 80, height: 80 }} />}
+                darkModeImage={<IllustrationIdleDark style={{ width: 80, height: 80 }} />}
                 description="暂无消息" style={{ padding: '24px 0' }} />
             ) : (
               <List

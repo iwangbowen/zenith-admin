@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Select, Typography, Empty, Spin } from '@douyinfe/semi-ui';
 import { Plus, RefreshCw, Pencil } from 'lucide-react';
-import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
+import { IllustrationIdle, IllustrationIdleDark, IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
 import type { WorkflowForm } from '@zenith/shared';
 import WorkflowFormRenderer from './WorkflowFormRenderer';
 import WorkflowFormInlineEditor from '../../forms/WorkflowFormInlineEditor';
@@ -112,8 +112,8 @@ export default function FormSelectorPanel({ formId, formName, onSelect }: Readon
             <div style={{ display: 'flex', justifyContent: 'center', padding: '60px 0' }}><Spin /></div>
           ) : !selected ? (
             <Empty
-              image={<IllustrationNoContent style={{ width: 140, height: 140 }} />}
-              darkModeImage={<IllustrationNoContentDark style={{ width: 140, height: 140 }} />}
+              image={<IllustrationIdle style={{ width: 140, height: 140 }} />}
+              darkModeImage={<IllustrationIdleDark style={{ width: 140, height: 140 }} />}
               title="未选择表单"
               description="从上方下拉选择一个已设计的表单，或点击「新建表单」在下方创建"
               style={{ padding: '48px 0' }}

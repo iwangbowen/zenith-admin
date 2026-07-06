@@ -9,7 +9,7 @@
  */
 import { Suspense, useMemo } from 'react';
 import { Empty, Spin, Typography } from '@douyinfe/semi-ui';
-import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
+import { IllustrationFailure, IllustrationFailureDark } from '@douyinfe/semi-illustrations';
 import type { WorkflowCustomFormConfig, WorkflowCustomFormVariable } from '@zenith/shared';
 import { lazyPageComponent } from '@/utils/page-registry';
 
@@ -65,8 +65,8 @@ interface BusinessFormHostProps {
 function MissingComponent({ path }: Readonly<{ path: string | null }>) {
   return (
     <Empty
-      image={<IllustrationNoContent style={{ width: 140, height: 140 }} />}
-      darkModeImage={<IllustrationNoContentDark style={{ width: 140, height: 140 }} />}
+      image={<IllustrationFailure style={{ width: 140, height: 140 }} />}
+      darkModeImage={<IllustrationFailureDark style={{ width: 140, height: 140 }} />}
       title="未找到业务表单组件"
       description={
         <Typography.Text type="tertiary">
