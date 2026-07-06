@@ -1,7 +1,10 @@
 /* 移动审批轻页样式：移动优先、safe-area、底部操作条 */
+/* 固定视口 + .ap-body 内部滚动：admin 共用的 global.css 将 body 设为 overflow hidden，
+   文档流滚动不可用；同时内部滚动让下拉刷新的 scrollTop 判断真正生效 */
 .ap-page {
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   background: var(--semi-color-bg-0);
   display: flex;
   flex-direction: column;
@@ -10,9 +13,7 @@
 }
 
 .ap-header {
-  position: sticky;
-  top: 0;
-  z-index: 10;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -34,8 +35,11 @@
 
 .ap-body {
   flex: 1;
+  min-height: 0;
   padding: 12px 12px calc(16px + env(safe-area-inset-bottom));
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
 }
 
 .ap-body--with-footer {
@@ -110,6 +114,7 @@
 }
 
 .ap-tabs {
+  flex-shrink: 0;
   padding: 0 12px;
   background: var(--semi-color-bg-1);
 }
@@ -121,6 +126,7 @@
 }
 
 .ap-search {
+  flex-shrink: 0;
   padding: 8px 12px;
   background: var(--semi-color-bg-1);
   border-bottom: 1px solid var(--semi-color-border);
@@ -277,8 +283,9 @@
 }
 
 .ap-login {
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   justify-content: center;
