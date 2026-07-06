@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { REPORT_DATASOURCE_TYPES, REPORT_WIDGET_TYPES } from './types';
 import type { WorkflowFormField, MpMenuButton, MpArticle } from './types';
+import { FILE_OBJECT_ACL_SUPPORT } from './constants';
 
 const DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
 const dateTimeStringSchema = z.string().regex(DATE_TIME_PATTERN, '日期时间格式必须为 YYYY-MM-DD HH:mm:ss');
@@ -186,6 +187,8 @@ const baseFileStorageConfigSchema = z.object({
   status: z.enum(['enabled', 'disabled']).default('enabled'),
   isDefault: z.boolean().default(false),
   basePath: z.string().max(256).optional(),
+  // 对象读写权限（仅 oss/s3/cos/obs/bos 生效）；default = 继承 Bucket
+  objectAcl: z.enum(['default', 'private', 'public-read', 'public-read-write']).default('default'),
   // 本地存储
   localRootPath: z.string().max(512).optional(),
   // 阿里云 OSS
@@ -239,6 +242,13 @@ const baseFileStorageConfigSchema = z.object({
 });
 
 export const createFileStorageConfigSchema = baseFileStorageConfigSchema.superRefine((data, ctx) => {
+  const supportedAcls = FILE_OBJECT_ACL_SUPPORT[data.provider];
+  if (data.objectAcl !== 'default' && !(supportedAcls ?? []).includes(data.objectAcl)) {
+    const message = supportedAcls
+      ? `该存储类型的对象读写权限仅支持：${supportedAcls.join(' / ')}`
+      : '该存储类型不支持设置对象读写权限';
+    ctx.addIssue({ code: 'custom', message, path: ['objectAcl'] });
+  }
   if (data.provider === 'local' && !data.localRootPath) {
     ctx.addIssue({ code: 'custom', message: '本地磁盘配置需要填写存储目录', path: ['localRootPath'] });
   }

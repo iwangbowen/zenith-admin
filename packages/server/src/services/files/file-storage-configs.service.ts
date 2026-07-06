@@ -1,6 +1,7 @@
 import { fileStorageConfigs, managedFiles } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import type { createFileStorageConfigSchema } from '@zenith/shared';
+import { FILE_OBJECT_ACL_SUPPORT } from '@zenith/shared';
 import type { z } from '@hono/zod-openapi';
 import { formatDateTime, parseDateTimeInput } from '../../lib/datetime';
 import { randomUUID } from 'node:crypto';
@@ -60,12 +61,16 @@ const EMPTY_PROVIDER_FIELDS = {
 };
 
 export function toStoragePayload(input: StorageInput) {
+  // 对象 ACL 仅在 provider 支持时保留（更新接口为 partial schema，此处按支持矩阵兜底回落 default）
+  const supportedAcls = FILE_OBJECT_ACL_SUPPORT[input.provider];
+  const objectAcl = supportedAcls?.includes(input.objectAcl ?? 'default') ? (input.objectAcl ?? 'default') : 'default' as const;
   const base = {
     name: input.name,
     provider: input.provider,
     status: input.status,
     isDefault: input.isDefault,
     basePath: input.basePath ?? null,
+    objectAcl,
     remark: input.remark ?? null,
     ...EMPTY_PROVIDER_FIELDS,
   };

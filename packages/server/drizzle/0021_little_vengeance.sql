@@ -1,0 +1,2 @@
+CREATE TYPE "public"."file_object_acl" AS ENUM('default', 'private', 'public-read', 'public-read-write');--> statement-breakpoint
+ALTER TABLE "file_storage_configs" ADD COLUMN "object_acl" "file_object_acl" DEFAULT 'default' NOT NULL;

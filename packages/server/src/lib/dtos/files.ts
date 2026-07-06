@@ -12,6 +12,7 @@ export const FileStorageConfigDTO = z
     status: z.enum(['enabled', 'disabled']),
     isDefault: z.boolean(),
     basePath: z.string().nullable().optional(),
+    objectAcl: z.enum(['default', 'private', 'public-read', 'public-read-write']),
     localRootPath: z.string().nullable().optional(),
     // 阿里云 OSS（不含 AccessKeySecret）
     ossRegion: z.string().nullable().optional(),

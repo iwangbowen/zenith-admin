@@ -10,6 +10,19 @@ export const USER_STATUSES = ['enabled', 'disabled'] as const;
 export const SUPER_ADMIN_CODE = 'super_admin';
 export const TENANT_ADMIN_CODE = 'tenant_admin';
 export const FILE_STORAGE_PROVIDERS = ['local', 'oss', 's3', 'cos', 'obs', 'kodo', 'bos', 'azure', 'sftp'] as const;
+export const FILE_OBJECT_ACLS = ['default', 'private', 'public-read', 'public-read-write'] as const;
+/**
+ * 各 provider 支持的对象级读写权限（canned ACL）；default = 继承 Bucket（上传时不发送 ACL 参数）。
+ * COS 对象级 ACL 无 public-read-write；BOS 对象级 ACL 仅 private / public-read。
+ * 未列出的 provider（local/kodo/azure/sftp）不支持对象级 ACL。
+ */
+export const FILE_OBJECT_ACL_SUPPORT: Partial<Record<(typeof FILE_STORAGE_PROVIDERS)[number], readonly (typeof FILE_OBJECT_ACLS)[number][]>> = {
+  oss: ['default', 'private', 'public-read', 'public-read-write'],
+  s3: ['default', 'private', 'public-read', 'public-read-write'],
+  cos: ['default', 'private', 'public-read'],
+  obs: ['default', 'private', 'public-read', 'public-read-write'],
+  bos: ['default', 'private', 'public-read'],
+};
 export const CONFIG_TYPES = ['string', 'number', 'boolean', 'json'] as const;
 export const CRON_JOB_STATUSES = ['enabled', 'disabled'] as const;
 export const CRON_RUN_STATUSES = ['success', 'fail', 'running'] as const;

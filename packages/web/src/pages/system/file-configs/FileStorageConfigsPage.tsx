@@ -6,6 +6,7 @@ import {
   DatePicker,
   Form,
   Modal,
+  Radio,
   Row,
   Select,
   Spin,
@@ -18,10 +19,12 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Plus, Search, RotateCcw, PlugZap } from 'lucide-react';
 import type {
   CreateFileStorageConfigInput,
+  FileObjectAcl,
   FileStorageConfig,
   FileStorageProvider,
   UpdateFileStorageConfigInput,
 } from '@zenith/shared';
+import { FILE_OBJECT_ACL_SUPPORT } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
@@ -48,6 +51,16 @@ const { Text } = Typography;
 
 type FileStorageConfigFormValues = UpdateFileStorageConfigInput;
 
+/** 支持对象级读写权限（canned ACL）的 provider */
+const OBJECT_ACL_PROVIDERS = Object.keys(FILE_OBJECT_ACL_SUPPORT) as FileStorageProvider[];
+
+const OBJECT_ACL_LABELS: Record<FileObjectAcl, string> = {
+  'default': '继承 Bucket',
+  'private': '私有',
+  'public-read': '公共读',
+  'public-read-write': '公共读写',
+};
+
 function normalizeOptional(value?: string): string {
   return value?.trim() ?? '';
 }
@@ -60,6 +73,7 @@ function buildPayload(provider: FileStorageProvider, isDefault: boolean, values:
       status: values.status ?? 'enabled',
       isDefault,
       basePath: normalizeOptional(values.basePath),
+      objectAcl: 'default',
       localRootPath: normalizeOptional(values.localRootPath),
       remark: normalizeOptional(values.remark),
     };
@@ -72,6 +86,7 @@ function buildPayload(provider: FileStorageProvider, isDefault: boolean, values:
       status: values.status ?? 'enabled',
       isDefault,
       basePath: normalizeOptional(values.basePath),
+      objectAcl: values.objectAcl ?? 'default',
       ossRegion: normalizeOptional(values.ossRegion),
       ossEndpoint: normalizeOptional(values.ossEndpoint),
       ossBucket: normalizeOptional(values.ossBucket),
@@ -88,6 +103,7 @@ function buildPayload(provider: FileStorageProvider, isDefault: boolean, values:
       status: values.status ?? 'enabled',
       isDefault,
       basePath: normalizeOptional(values.basePath),
+      objectAcl: values.objectAcl ?? 'default',
       s3Region: normalizeOptional(values.s3Region),
       s3Endpoint: normalizeOptional(values.s3Endpoint),
       s3Bucket: normalizeOptional(values.s3Bucket),
@@ -106,6 +122,7 @@ function buildPayload(provider: FileStorageProvider, isDefault: boolean, values:
       status: values.status ?? 'enabled',
       isDefault,
       basePath: normalizeOptional(values.basePath),
+      objectAcl: values.objectAcl ?? 'default',
       cosRegion: normalizeOptional(values.cosRegion),
       cosBucket: normalizeOptional(values.cosBucket),
       cosSecretId: normalizeOptional(values.cosSecretId),
@@ -121,6 +138,7 @@ function buildPayload(provider: FileStorageProvider, isDefault: boolean, values:
       status: values.status ?? 'enabled',
       isDefault,
       basePath: normalizeOptional(values.basePath),
+      objectAcl: values.objectAcl ?? 'default',
       obsEndpoint: normalizeOptional(values.obsEndpoint),
       obsBucket: normalizeOptional(values.obsBucket),
       obsAccessKeyId: normalizeOptional(values.obsAccessKeyId),
@@ -136,6 +154,7 @@ function buildPayload(provider: FileStorageProvider, isDefault: boolean, values:
       status: values.status ?? 'enabled',
       isDefault,
       basePath: normalizeOptional(values.basePath),
+      objectAcl: 'default',
       kodoAccessKey: normalizeOptional(values.kodoAccessKey),
       kodoSecretKey: normalizeOptional(values.kodoSecretKey),
       kodoBucket: normalizeOptional(values.kodoBucket),
@@ -152,6 +171,7 @@ function buildPayload(provider: FileStorageProvider, isDefault: boolean, values:
       status: values.status ?? 'enabled',
       isDefault,
       basePath: normalizeOptional(values.basePath),
+      objectAcl: values.objectAcl ?? 'default',
       bosEndpoint: normalizeOptional(values.bosEndpoint),
       bosBucket: normalizeOptional(values.bosBucket),
       bosAccessKeyId: normalizeOptional(values.bosAccessKeyId),
@@ -167,6 +187,7 @@ function buildPayload(provider: FileStorageProvider, isDefault: boolean, values:
       status: values.status ?? 'enabled',
       isDefault,
       basePath: normalizeOptional(values.basePath),
+      objectAcl: 'default',
       azureAccountName: normalizeOptional(values.azureAccountName),
       azureAccountKey: normalizeOptional(values.azureAccountKey),
       azureContainerName: normalizeOptional(values.azureContainerName),
@@ -182,6 +203,7 @@ function buildPayload(provider: FileStorageProvider, isDefault: boolean, values:
     status: values.status ?? 'enabled',
     isDefault,
     basePath: normalizeOptional(values.basePath),
+    objectAcl: 'default',
     sftpHost: normalizeOptional(values.sftpHost),
     sftpPort: values.sftpPort,
     sftpUsername: normalizeOptional(values.sftpUsername),
@@ -406,6 +428,23 @@ export default function FileStorageConfigsPage() {
       render: (value?: string) => renderEllipsis(value),
     },
     {
+      title: '读写权限',
+      dataIndex: 'objectAcl',
+      width: 110,
+      align: 'center',
+      render: (value: FileObjectAcl | undefined, record: FileStorageConfig) => {
+        if (!OBJECT_ACL_PROVIDERS.includes(record.provider)) return <span className="table-cell-placeholder">—</span>;
+        const colorMap: Record<FileObjectAcl, 'grey' | 'blue' | 'orange' | 'red'> = {
+          'default': 'grey',
+          'private': 'blue',
+          'public-read': 'orange',
+          'public-read-write': 'red',
+        };
+        const acl = value ?? 'default';
+        return <Tag color={colorMap[acl]} size="small">{OBJECT_ACL_LABELS[acl]}</Tag>;
+      },
+    },
+    {
       title: '更新时间',
       dataIndex: 'updatedAt',
       width: 180,
@@ -480,6 +519,7 @@ export default function FileStorageConfigsPage() {
     ? {
       ...editingConfig,
       basePath: editingConfig.basePath ?? '',
+      objectAcl: editingConfig.objectAcl ?? 'default',
       localRootPath: editingConfig.localRootPath ?? '',
       ossRegion: editingConfig.ossRegion ?? '',
       ossEndpoint: editingConfig.ossEndpoint ?? '',
@@ -528,6 +568,7 @@ export default function FileStorageConfigsPage() {
       status: 'enabled',
       isDefault: false,
       basePath: 'uploads',
+      objectAcl: 'default',
       localRootPath: 'storage/local',
       remark: '',
     };
@@ -662,7 +703,14 @@ export default function FileStorageConfigsPage() {
                 field="provider"
                 label="存储类型"
                 style={{ width: '100%' }}
-                onChange={(value) => setFormProvider(value as FileStorageProvider)}
+                onChange={(value) => {
+                  const next = value as FileStorageProvider;
+                  setFormProvider(next);
+                  const currentAcl = formApi.current?.getValue('objectAcl') as FileObjectAcl | undefined;
+                  if (currentAcl && !(FILE_OBJECT_ACL_SUPPORT[next] ?? []).includes(currentAcl)) {
+                    formApi.current?.setValue('objectAcl', 'default');
+                  }
+                }}
                 placeholder="请选择存储类型"
               >
                 <Select.Option value="local">本地磁盘</Select.Option>
@@ -688,6 +736,21 @@ export default function FileStorageConfigsPage() {
               <Form.Input field="basePath" label="基础路径" placeholder="例如 uploads / images" />
             </Col>
           </Row>
+
+          {OBJECT_ACL_PROVIDERS.includes(formProvider) && (
+            <Form.RadioGroup
+              field="objectAcl"
+              label="读写权限"
+              type="button"
+              extraText={formProvider === 's3'
+                ? '上传文件将按此权限设置对象 ACL。注意：AWS S3 新建桶默认禁用 ACL（Bucket owner enforced），启用前请先在桶设置中开启；MinIO / Cloudflare R2 不支持对象 ACL，请保持「继承 Bucket」。'
+                : '上传文件将按此权限设置对象 ACL；「继承 Bucket」表示不单独指定、跟随 Bucket 权限。公共读 / 公共读写存在数据泄露风险，请谨慎选择。'}
+            >
+              {(FILE_OBJECT_ACL_SUPPORT[formProvider] ?? []).map((acl) => (
+                <Radio key={acl} value={acl}>{OBJECT_ACL_LABELS[acl]}</Radio>
+              ))}
+            </Form.RadioGroup>
+          )}
 
           {formProvider === 'local' && (
             <Row gutter={16}>

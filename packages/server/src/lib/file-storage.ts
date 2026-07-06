@@ -11,6 +11,7 @@ import { Readable, PassThrough } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import type { FileStorageConfigRow, ManagedFileRow } from '../db/schema';
+import { FILE_OBJECT_ACL_SUPPORT } from '@zenith/shared';
 import { formatDate } from './datetime';
 
 // esdk-obs-nodejs 是 CJS 模块，无官方类型声明，运行时通过 require 加载
@@ -32,7 +33,7 @@ interface BosStreamClient {
 }
 
 interface OssMultipartClient {
-  initMultipartUpload(name: string, options?: { mime?: string }): Promise<{ uploadId?: string }>;
+  initMultipartUpload(name: string, options?: { mime?: string; headers?: Record<string, string> }): Promise<{ uploadId?: string }>;
   _uploadPart(name: string, uploadId: string, partNo: number, data: { size: number; stream: Readable }): Promise<{ etag?: string }>;
   completeMultipartUpload(name: string, uploadId: string, parts: Array<{ number: number; etag: string }>): Promise<unknown>;
   abortMultipartUpload(name: string, uploadId: string): Promise<unknown>;
@@ -73,6 +74,14 @@ function resolveLocalRoot(config: FileStorageConfigRow) {
   return path.isAbsolute(configuredRoot)
     ? configuredRoot
     : path.resolve(process.cwd(), configuredRoot);
+}
+
+/** 解析上传对象 ACL；default（继承 Bucket）或该 provider 不支持的取值返回 null，表示不发送 ACL 参数 */
+function resolveObjectAcl(config: FileStorageConfigRow): 'private' | 'public-read' | 'public-read-write' | null {
+  const acl = config.objectAcl;
+  if (!acl || acl === 'default') return null;
+  const supported = FILE_OBJECT_ACL_SUPPORT[config.provider];
+  return supported?.includes(acl) ? acl : null;
 }
 
 function createOssClient(config: FileStorageConfigRow) {
@@ -238,6 +247,7 @@ interface UploadObjectInput {
 /** 按存储配置上传一个对象（参数化 objectKey + Node 流），供简单上传与分片合并复用 */
 export async function uploadObjectByConfig(config: FileStorageConfigRow, input: UploadObjectInput): Promise<void> {
   const { objectKey, stream, size, mimeType } = input;
+  const objectAcl = resolveObjectAcl(config);
 
   if (config.provider === 'local') {
     const rootPath = resolveLocalRoot(config);
@@ -249,6 +259,7 @@ export async function uploadObjectByConfig(config: FileStorageConfigRow, input: 
     await client.putStream(objectKey, stream, {
       contentLength: size,
       ...(mimeType ? { mime: mimeType } : {}),
+      ...(objectAcl ? { headers: { 'x-oss-object-acl': objectAcl } } : {}),
     } as unknown as OSS.PutStreamOptions);
   } else if (config.provider === 's3') {
     const client = createS3Client(config);
@@ -258,9 +269,12 @@ export async function uploadObjectByConfig(config: FileStorageConfigRow, input: 
       Body: stream,
       ContentLength: size,
       ...(mimeType ? { ContentType: mimeType } : {}),
+      ...(objectAcl ? { ACL: objectAcl } : {}),
     }));
   } else if (config.provider === 'cos') {
     const cos = createCosClient(config);
+    // COS 对象级 ACL 不支持 public-read-write（service 层已钳制，此处类型收窄兜底）
+    const cosAcl = objectAcl === 'public-read-write' ? null : objectAcl;
     await new Promise<void>((resolve, reject) => {
       cos.putObject({
         Bucket: config.cosBucket!,
@@ -269,6 +283,7 @@ export async function uploadObjectByConfig(config: FileStorageConfigRow, input: 
         Body: stream,
         ContentLength: size,
         ...(mimeType ? { ContentType: mimeType } : {}),
+        ...(cosAcl ? { ACL: cosAcl } : {}),
       }, (err) => {
         if (err) reject(new Error(String(err.message ?? err)));
         else resolve();
@@ -283,6 +298,7 @@ export async function uploadObjectByConfig(config: FileStorageConfigRow, input: 
         Body: stream,
         ContentLength: size,
         ...(mimeType ? { ContentType: mimeType } : {}),
+        ...(objectAcl ? { ACL: objectAcl } : {}),
       }, (err) => {
         if (err) reject(new Error(String((err as { message?: string }).message ?? JSON.stringify(err))));
         else resolve();
@@ -301,6 +317,7 @@ export async function uploadObjectByConfig(config: FileStorageConfigRow, input: 
     await (bosClient as unknown as BosStreamClient).putObject(config.bosBucket!, objectKey, stream, {
       'Content-Type': mimeType || 'application/octet-stream',
       'Content-Length': size,
+      ...(objectAcl ? { 'x-bce-acl': objectAcl } : {}),
     });
   } else if (config.provider === 'azure') {
     const containerClient = createAzureBlobClient(config);
@@ -366,10 +383,12 @@ function sortMultipartParts(parts: MultipartUploadPart[]) {
 const s3MultipartDriver: MultipartDriver = {
   async init(config, objectKey, mimeType) {
     const client = createS3Client(config);
+    const objectAcl = resolveObjectAcl(config);
     const res = await client.send(new CreateMultipartUploadCommand({
       Bucket: config.s3Bucket!,
       Key: objectKey,
       ...(mimeType ? { ContentType: mimeType } : {}),
+      ...(objectAcl ? { ACL: objectAcl } : {}),
     }));
     if (!res.UploadId) throw new Error('S3 初始化分片上传失败：未返回 UploadId');
     return res.UploadId;
@@ -409,7 +428,12 @@ const s3MultipartDriver: MultipartDriver = {
 const ossMultipartDriver: MultipartDriver = {
   async init(config, objectKey, mimeType) {
     const client = createOssClient(config) as unknown as OssMultipartClient;
-    const res = await client.initMultipartUpload(objectKey, mimeType ? { mime: mimeType } : undefined);
+    const objectAcl = resolveObjectAcl(config);
+    const options = {
+      ...(mimeType ? { mime: mimeType } : {}),
+      ...(objectAcl ? { headers: { 'x-oss-object-acl': objectAcl } } : {}),
+    };
+    const res = await client.initMultipartUpload(objectKey, Object.keys(options).length > 0 ? options : undefined);
     if (!res.uploadId) throw new Error('OSS 初始化分片上传失败：未返回 uploadId');
     return res.uploadId;
   },
@@ -439,11 +463,15 @@ const ossMultipartDriver: MultipartDriver = {
 const cosMultipartDriver: MultipartDriver = {
   async init(config, objectKey, mimeType) {
     const cos = createCosClient(config);
+    const objectAcl = resolveObjectAcl(config);
+    // COS 对象级 ACL 不支持 public-read-write（service 层已钳制，此处类型收窄兜底）
+    const cosAcl = objectAcl === 'public-read-write' ? null : objectAcl;
     const res = await cos.multipartInit({
       Bucket: config.cosBucket!,
       Region: config.cosRegion!,
       Key: objectKey,
       ...(mimeType ? { ContentType: mimeType } : {}),
+      ...(cosAcl ? { ACL: cosAcl } : {}),
     });
     if (!res.UploadId) throw new Error('COS 初始化分片上传失败：未返回 UploadId');
     return res.UploadId;
@@ -495,10 +523,12 @@ function assertObsOk<T>(result: ObsMultipartResult<T>, action: string): T {
 const obsMultipartDriver: MultipartDriver = {
   async init(config, objectKey, mimeType) {
     const obs = createObsClient(config) as ObsMultipartClient;
+    const objectAcl = resolveObjectAcl(config);
     const result = assertObsOk(await obs.initiateMultipartUpload({
       Bucket: config.obsBucket!,
       Key: objectKey,
       ...(mimeType ? { ContentType: mimeType } : {}),
+      ...(objectAcl ? { ACL: objectAcl } : {}),
     }), '初始化分片上传');
     if (!result.UploadId) throw new Error('OBS 初始化分片上传失败：未返回 UploadId');
     return result.UploadId;
@@ -563,8 +593,12 @@ const azureMultipartDriver: MultipartDriver = {
 const bosMultipartDriver: MultipartDriver = {
   async init(config, objectKey, mimeType) {
     const client = createBosClient(config) as unknown as BosMultipartClient;
+    const objectAcl = resolveObjectAcl(config);
     const res = await client.initiateMultipartUpload(config.bosBucket!, objectKey, {
-      headers: { 'Content-Type': mimeType ?? 'application/octet-stream' },
+      headers: {
+        'Content-Type': mimeType ?? 'application/octet-stream',
+        ...(objectAcl ? { 'x-bce-acl': objectAcl } : {}),
+      },
     });
     if (!res.body?.uploadId) throw new Error('BOS 初始化分片上传失败：未返回 uploadId');
     return res.body.uploadId;

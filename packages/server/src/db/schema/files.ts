@@ -5,6 +5,9 @@ import { auditColumns, tenants } from './core';
 
 export const fileStorageProviderEnum = pgEnum('file_storage_provider', ['local', 'oss', 's3', 'cos', 'obs', 'kodo', 'bos', 'azure', 'sftp']);
 
+/** 对象读写权限（canned ACL）；default = 继承 Bucket（上传时不发送 ACL 参数） */
+export const fileObjectAclEnum = pgEnum('file_object_acl', ['default', 'private', 'public-read', 'public-read-write']);
+
 // ─── 文件存储配置表 ──────────────────────────────────────────────────────────
 export const fileStorageConfigs = pgTable('file_storage_configs', {
   id: serial('id').primaryKey(),
@@ -13,6 +16,8 @@ export const fileStorageConfigs = pgTable('file_storage_configs', {
   status: statusEnum('status').notNull().default('enabled'),
   isDefault: boolean('is_default').notNull().default(false),
   basePath: varchar('base_path', { length: 256 }),
+  // 上传对象的读写权限，仅 oss/s3/cos/obs/bos 生效
+  objectAcl: fileObjectAclEnum('object_acl').notNull().default('default'),
   localRootPath: varchar('local_root_path', { length: 512 }),
   ossRegion: varchar('oss_region', { length: 64 }),
   ossEndpoint: varchar('oss_endpoint', { length: 128 }),

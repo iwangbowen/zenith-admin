@@ -254,6 +254,9 @@ export interface DictItem {
 // ─── 文件管理 ─────────────────────────────────────────────────────────────────
 export type FileStorageProvider = 'local' | 'oss' | 's3' | 'cos' | 'obs' | 'kodo' | 'bos' | 'azure' | 'sftp';
 
+/** 对象读写权限（canned ACL）；default = 继承 Bucket */
+export type FileObjectAcl = 'default' | 'private' | 'public-read' | 'public-read-write';
+
 export interface FileStorageConfig {
   id: number;
   name: string;
@@ -261,6 +264,8 @@ export interface FileStorageConfig {
   status: EntityStatus;
   isDefault: boolean;
   basePath?: string;
+  /** 对象读写权限（仅 oss/s3/cos/obs/bos 生效）；default = 继承 Bucket */
+  objectAcl?: FileObjectAcl;
   localRootPath?: string;
   // 阿里云 OSS
   ossRegion?: string;
