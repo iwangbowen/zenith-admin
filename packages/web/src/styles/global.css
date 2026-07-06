@@ -111,6 +111,11 @@ body {
   border-radius: 8px;
 }
 
+/* footer={null} 时 Semi Modal 底部间距缺失（默认由 footer 的 margin 提供），body 为最后一个元素时补齐 */
+.semi-modal-content > .semi-modal-body:last-child {
+  padding-bottom: 20px;
+}
+
 /* 窄屏 Modal 宽度自适应，防止溢出屏幕 */
 @media (--sm-down) {
   .semi-modal-wrap .semi-modal {
