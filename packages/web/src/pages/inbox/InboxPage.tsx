@@ -7,12 +7,14 @@ import {
 import { usePagination } from '@/hooks/usePagination';
 import { IllustrationIdle, IllustrationIdleDark } from '@douyinfe/semi-illustrations';
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag';
-import { CheckCheck } from 'lucide-react';
+import { CheckCheck, Trash2 } from 'lucide-react';
 import type { InAppMessage } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import {
   inboxKeys,
+  useBatchDeleteInboxMessages,
+  useBatchMarkInboxMessagesRead,
   useDeleteInboxMessage,
   useInboxList,
   useInboxMessageDetail,
@@ -40,6 +42,7 @@ export default function InboxPage() {
   const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'read'>('all');
 
   const [selected, setSelected] = useState<InAppMessage | null>(null);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
   let isRead: string | undefined;
   if (activeTab === 'unread') isRead = 'false';
@@ -54,6 +57,8 @@ export default function InboxPage() {
   const markReadMutation = useMarkInboxMessageRead();
   const markAllReadMutation = useMarkAllInboxMessagesRead();
   const deleteMutation = useDeleteInboxMessage();
+  const batchReadMutation = useBatchMarkInboxMessagesRead();
+  const batchDeleteMutation = useBatchDeleteInboxMessages();
   const loading = listQuery.isFetching;
   const detailLoading = detailQuery.isFetching;
   const markAllLoading = markAllReadMutation.isPending;
@@ -76,11 +81,25 @@ export default function InboxPage() {
 
   const handleDelete = async (id: number) => {
     await deleteMutation.mutateAsync(id);
+    setSelectedIds((prev) => prev.filter((x) => x !== id));
+    Toast.success('已删除');
+  };
+
+  const handleBatchRead = async () => {
+    await batchReadMutation.mutateAsync(selectedIds);
+    setSelectedIds([]);
+    Toast.success('已标记为已读');
+  };
+
+  const handleBatchDelete = async () => {
+    await batchDeleteMutation.mutateAsync(selectedIds);
+    setSelectedIds([]);
     Toast.success('已删除');
   };
 
   const handleTabChange = (key: string) => {
     setActiveTab(key as 'all' | 'unread' | 'read');
+    setSelectedIds([]);
     setPage(1);
   };
 
@@ -167,15 +186,36 @@ export default function InboxPage() {
             />
             <TabPane tab="已读" itemKey="read" />
           </Tabs>
-          <Button
-            type="primary"
-            icon={<CheckCheck size={14} />}
-            loading={markAllLoading}
-            onClick={handleMarkAllRead}
-            style={{ visibility: activeTab === 'read' ? 'hidden' : 'visible' }}
-          >
-            全部标记为已读
-          </Button>
+          <Space>
+            {selectedIds.length > 0 && activeTab !== 'read' && (
+              <Button
+                icon={<CheckCheck size={14} />}
+                loading={batchReadMutation.isPending}
+                onClick={() => void handleBatchRead()}
+              >
+                标记已读 ({selectedIds.length})
+              </Button>
+            )}
+            {selectedIds.length > 0 && (
+              <Popconfirm
+                title={`确定要删除选中的 ${selectedIds.length} 条消息吗？`}
+                onConfirm={() => void handleBatchDelete()}
+              >
+                <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={batchDeleteMutation.isPending}>
+                  批量删除 ({selectedIds.length})
+                </Button>
+              </Popconfirm>
+            )}
+            <Button
+              type="primary"
+              icon={<CheckCheck size={14} />}
+              loading={markAllLoading}
+              onClick={handleMarkAllRead}
+              style={{ visibility: activeTab === 'read' ? 'hidden' : 'visible' }}
+            >
+              全部标记为已读
+            </Button>
+          </Space>
         </div>
 
       {list.length === 0 && !loading ? (
@@ -198,12 +238,19 @@ export default function InboxPage() {
           dataSource={list}
           rowKey="id"
           columns={columns}
+          rowSelection={{
+            selectedRowKeys: selectedIds,
+            onChange: (keys) => setSelectedIds((keys ?? []) as number[]),
+          }}
           pagination={{
             total,
             currentPage: page,
             pageSize: 10,
             showSizeChanger: false,
-            onPageChange: (p) => setPage(p),
+            onPageChange: (p) => {
+              setPage(p);
+              setSelectedIds([]);
+            },
           }}
           onRow={(record) => ({
             style: { opacity: (record as InAppMessage).isRead ? 0.7 : 1 },

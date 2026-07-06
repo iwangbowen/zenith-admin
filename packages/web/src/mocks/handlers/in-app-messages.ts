@@ -100,6 +100,21 @@ export const inAppMessagesHandlers = [
     return HttpResponse.json({ code: 0, message: `已标记 ${count} 条为已读`, data: { count } });
   }),
 
+  http.post('/api/in-app-messages/batch-read', async ({ request }) => {
+    const body = await request.json() as { ids: number[] };
+    const ids = new Set(body.ids ?? []);
+    const now = mockDateTime();
+    let count = 0;
+    mockInAppMessages.forEach((m) => {
+      if (ids.has(m.id) && !m.isRead) {
+        m.isRead = true;
+        m.readAt = now;
+        count++;
+      }
+    });
+    return HttpResponse.json({ code: 0, message: `已标记 ${count} 条为已读`, data: null });
+  }),
+
   http.post('/api/in-app-messages/send', async ({ request }) => {
     const body = await request.json() as {
       userIds: number[];
@@ -135,13 +150,6 @@ export const inAppMessagesHandlers = [
     return HttpResponse.json({ code: 0, message: `已发送 ${created.length} 条站内信`, data: { count: created.length } });
   }),
 
-  http.delete('/api/in-app-messages/:id', ({ params }) => {
-    const idx = mockInAppMessages.findIndex((x) => x.id === Number(params.id));
-    if (idx === -1) return HttpResponse.json({ code: 404, message: '站内信不存在', data: null }, { status: 404 });
-    mockInAppMessages.splice(idx, 1);
-    return HttpResponse.json({ code: 0, message: '删除成功', data: null });
-  }),
-
   http.delete('/api/in-app-messages/batch', async ({ request }) => {
     const body = await request.json() as { ids: number[] };
     const ids = new Set(body.ids ?? []);
@@ -153,5 +161,12 @@ export const inAppMessagesHandlers = [
       }
     }
     return HttpResponse.json({ code: 0, message: `已删除 ${count} 条记录`, data: null });
+  }),
+
+  http.delete('/api/in-app-messages/:id', ({ params }) => {
+    const idx = mockInAppMessages.findIndex((x) => x.id === Number(params.id));
+    if (idx === -1) return HttpResponse.json({ code: 404, message: '站内信不存在', data: null }, { status: 404 });
+    mockInAppMessages.splice(idx, 1);
+    return HttpResponse.json({ code: 0, message: '删除成功', data: null });
   }),
 ];

@@ -48,6 +48,22 @@ export function useMarkAllInboxMessagesRead() {
   });
 }
 
+export function useBatchMarkInboxMessagesRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: number[]) => request.post<null>('/api/in-app-messages/batch-read', { ids }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: inboxKeys.all }),
+  });
+}
+
+export function useBatchDeleteInboxMessages() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: number[]) => request.delete<null>('/api/in-app-messages/batch', { ids }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: inboxKeys.all }),
+  });
+}
+
 export function useDeleteInboxMessage() {
   const qc = useQueryClient();
   return useMutation({

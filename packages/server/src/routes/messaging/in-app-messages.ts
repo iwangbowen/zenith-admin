@@ -3,13 +3,13 @@ import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditAfterData, setAuditBeforeData } from '../../middleware/guard';
 import {
   PaginationQuery, jsonContent, validationHook, commonErrorResponses,
-  ok, okPaginated, okMsg, IdParam, okBody,
+  ok, okPaginated, okMsg, IdParam, okBody, BatchIdsBody,
 } from '../../lib/openapi-schemas';
 import { sendInAppSchema, IN_APP_MESSAGE_TYPES } from '@zenith/shared';
 import { InAppMessageDTO, InAppSendResultDTO, UnreadCountDTO } from '../../lib/openapi-dtos';
 import {
   listMyInAppMessages, getMyInAppMessage, markAsRead, markAllAsRead, unreadCount,
-  deleteInAppMessage, sendInApp,
+  deleteInAppMessage, sendInApp, batchMarkAsRead, batchDeleteInAppMessages,
   listAllInAppMessages, adminDeleteInAppMessage, adminMarkAsRead, adminMarkAllAsRead,
   getInAppMessageBeforeAudit,
 } from '../../services/messaging/in-app-messages.service';
@@ -92,6 +92,34 @@ const markAllReadRoute = defineOpenAPIRoute({
   handler: async (c) => {
     await markAllAsRead();
     return c.json(okBody(null, '已全部标记'), 200);
+  },
+});
+
+const batchReadRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/batch-read', tags: ['InAppMessages'], summary: '批量标记为已读',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:in-app-message:read' })] as const,
+    request: { body: { content: jsonContent(BatchIdsBody), required: true } },
+    responses: { ...commonErrorResponses, ...okMsg('已标记') },
+  }),
+  handler: async (c) => {
+    const { count } = await batchMarkAsRead(c.req.valid('json').ids);
+    return c.json(okBody(null, `已标记 ${count} 条为已读`), 200);
+  },
+});
+
+const batchDeleteRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete', path: '/batch', tags: ['InAppMessages'], summary: '批量删除站内信',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:in-app-message:delete' })] as const,
+    request: { body: { content: jsonContent(BatchIdsBody), required: true } },
+    responses: { ...commonErrorResponses, ...okMsg('删除成功') },
+  }),
+  handler: async (c) => {
+    const { count } = await batchDeleteInAppMessages(c.req.valid('json').ids);
+    return c.json(okBody(null, `已删除 ${count} 条消息`), 200);
   },
 });
 
@@ -185,7 +213,8 @@ const adminDeleteRoute = defineOpenAPIRoute({
 
 inAppMessagesRouter.openapiRoutes([
   listRoute, adminListRoute, adminMarkAllReadRoute, adminMarkReadRoute, adminDeleteRoute,
-  unreadCountRoute, sendRoute, markAllReadRoute, detailRoute, markReadRoute, deleteRoute,
+  unreadCountRoute, sendRoute, markAllReadRoute, batchReadRoute, batchDeleteRoute,
+  detailRoute, markReadRoute, deleteRoute,
 ] as const);
 
 export default inAppMessagesRouter;

@@ -274,6 +274,26 @@ export async function markAllAsRead() {
   return { count: result.length };
 }
 
+/** 批量标记我的站内信为已读（仅处理属于当前用户且未读的） */
+export async function batchMarkAsRead(ids: number[]) {
+  if (ids.length === 0) return { count: 0 };
+  const me = currentUser();
+  const where = mergeWhere(and(
+    inArray(inAppMessages.id, ids),
+    eq(inAppMessages.userId, me.userId),
+    eq(inAppMessages.isRead, false),
+    tenantScope(inAppMessages),
+  ));
+  const result = await db.update(inAppMessages)
+    .set({ isRead: true, readAt: new Date() })
+    .where(where ?? sql`true`)
+    .returning({ id: inAppMessages.id });
+  for (const row of result) {
+    scheduleSendToUsers([{ userId: me.userId }], { type: 'in-app-message:read', payload: { id: row.id } });
+  }
+  return { count: result.length };
+}
+
 export async function deleteInAppMessage(id: number) {
   const me = currentUser();
   const [row] = await db.select().from(inAppMessages)
@@ -281,6 +301,24 @@ export async function deleteInAppMessage(id: number) {
   if (!row) throw new HTTPException(404, { message: '消息不存在' });
   await db.delete(inAppMessages).where(eq(inAppMessages.id, id));
   scheduleSendToUsers([{ userId: row.userId }], { type: 'in-app-message:deleted', payload: { id } });
+}
+
+/** 批量删除我的站内信（仅删除属于当前用户的） */
+export async function batchDeleteInAppMessages(ids: number[]) {
+  if (ids.length === 0) return { count: 0 };
+  const me = currentUser();
+  const where = mergeWhere(and(
+    inArray(inAppMessages.id, ids),
+    eq(inAppMessages.userId, me.userId),
+    tenantScope(inAppMessages),
+  ));
+  const result = await db.delete(inAppMessages)
+    .where(where ?? sql`false`)
+    .returning({ id: inAppMessages.id });
+  for (const row of result) {
+    scheduleSendToUsers([{ userId: me.userId }], { type: 'in-app-message:deleted', payload: { id: row.id } });
+  }
+  return { count: result.length };
 }
 
 /** 发送站内信（向多名用户批量发送） */
