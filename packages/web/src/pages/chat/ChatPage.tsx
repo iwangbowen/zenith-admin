@@ -3,7 +3,7 @@ import { AppModal } from '@/components/AppModal';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Input, Button, Badge, Typography, Empty, Spin, Toast, Tooltip, Modal, Tag, Select, DatePicker, Dropdown, ImagePreview, Popover, Progress, Switch,
-  List as SemiList,
+  List as SemiList, Tabs, TabPane,
 } from '@douyinfe/semi-ui';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 
@@ -46,6 +46,8 @@ import { VotePollModal } from './components/VotePollModal';
 import { MessageBubble } from './components/MessageBubble';
 import { ChannelMessageView } from './components/ChannelMessageView';
 import { ComposerExtras } from './components/ComposerExtras';
+import { StickerPanel } from './components/StickerPanel';
+import { JoinInviteModal } from './components/JoinInviteModal';
 
 import { MessageContent } from './components/MessageContent';
 import WorkflowApprovalDetailSheet from '@/components/workflow/WorkflowApprovalDetailSheet';
@@ -55,7 +57,8 @@ import { usePermission } from '@/hooks/usePermission';
 import { callManager } from '@/webrtc/useCallManager';
 import { useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { useDiscoverableChannels, chatKeys } from '@/hooks/queries/chat';
+import { useDiscoverableChannels, chatKeys, useAddChatCustomEmoji } from '@/hooks/queries/chat';
+import type { ChatCustomEmoji } from '@zenith/shared';
 
 const { Text, Title } = Typography;
 
@@ -372,6 +375,12 @@ export default function ChatPage({
   // 已归档会话折叠分组：是否展开查看归档列表
   const [showArchived, setShowArchived] = useState(false);
 
+  // 邀请链接落地（?invite=TOKEN）
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
+
+  // 收藏表情
+  const addEmojiMutation = useAddChatCustomEmoji();
+
   // 禁言状态：个人禁言优先；全员禁言豁免群主/管理员
   const [muteTick, setMuteTick] = useState(0);
   const muteState = useMemo(() => {
@@ -528,6 +537,16 @@ export default function ChatPage({
     void handleSelectConv(conv);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversations, isQuick]);
+
+  // 读取 URL ?invite= 邀请令牌，弹出入群确认
+  useEffect(() => {
+    if (isQuick) return;
+    const invite = searchParams.get('invite');
+    if (!invite) return;
+    setInviteToken(invite);
+    setSearchParams((prev) => { prev.delete('invite'); return prev; }, { replace: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isQuick]);
 
   const cleanupPreviewBlobs = useCallback(() => {
     previewBlobUrlsRef.current.forEach((u) => { if (u) URL.revokeObjectURL(u); });
@@ -904,8 +923,10 @@ export default function ChatPage({
     const uploadRes = await request.postForm<{ id: string; url: string; originalName: string; size: number }>('/api/files/upload-one', fd, { onProgress });
     if (uploadRes.code !== 0 || !uploadRes.data) return false;
     const { id: fileId, url, originalName, size } = uploadRes.data;
+    // 视频文件走 video 消息类型（内联播放），其余为普通文件
+    const isVideo = (file.type || '').startsWith('video/');
     const asset: ChatAssetMeta = {
-      kind: 'file',
+      kind: isVideo ? 'video' : 'file',
       name: originalName,
       size,
       mimeType: file.type || null,
@@ -914,12 +935,47 @@ export default function ChatPage({
     };
     const msgRes = await request.post<ChatMessage>(`/api/chat/conversations/${activeConvId}/messages`, {
       content: url,
-      type: 'file',
+      type: isVideo ? 'video' : 'file',
       extra: { asset },
     });
     if (msgRes.code === 0 && msgRes.data) appendMessageOnce(msgRes.data);
     return msgRes.code === 0;
   }, [activeConvId, appendMessageOnce]);
+
+  // 发送收藏表情（作为图片消息）
+  const sendSticker = useCallback(async (emoji: ChatCustomEmoji) => {
+    if (!activeConvId) return;
+    const asset: ChatAssetMeta = {
+      kind: 'image',
+      name: emoji.name ?? '表情',
+      size: 0,
+      mimeType: null,
+      extension: null,
+      fileId: emoji.fileId,
+      width: emoji.width,
+      height: emoji.height,
+      thumbnailUrl: emoji.url,
+    };
+    const res = await request.post<ChatMessage>(`/api/chat/conversations/${activeConvId}/messages`, {
+      content: emoji.url,
+      type: 'image',
+      extra: { asset },
+    });
+    if (res.code === 0 && res.data) appendMessageOnce(res.data);
+    setEmojiVisible(false);
+  }, [activeConvId, appendMessageOnce]);
+
+  // 图片消息 → 收藏为自定义表情
+  const handleSaveAsEmoji = useCallback((msg: ChatMessage) => {
+    const asset = msg.extra?.asset;
+    void addEmojiMutation.mutateAsync({
+      url: msg.content,
+      fileId: asset?.fileId ?? null,
+      name: asset?.name ?? null,
+      width: asset?.width ?? null,
+      height: asset?.height ?? null,
+    }).then(() => Toast.success('已收藏为表情')).catch(() => undefined);
+  }, [addEmojiMutation]);
 
   const handleTyping = useCallback((newValue: string) => {
     if (!activeConvId || !currentUserId || !newValue.trim()) return;
@@ -3002,6 +3058,7 @@ export default function ChatPage({
                           onEdit={handleEditMessage}
                           onVote={handleVoteMessage}
                           isHighlighted={highlightedMessageId === msg.id}
+                          onSaveAsEmoji={handleSaveAsEmoji}
                           onOpenFilePreview={(fileMsg) => {
                             const asset = fileMsg.extra?.asset;
                             if (!asset || !canPreviewFile(asset.mimeType)) return;
@@ -3510,16 +3567,27 @@ export default function ChatPage({
                     bottom: window.innerHeight - emojiAnchor.top + 4,
                     left: emojiAnchor.left,
                     zIndex: 9999,
+                    background: 'var(--semi-color-bg-3)',
+                    borderRadius: 10,
+                    boxShadow: 'var(--semi-shadow-elevated)',
+                    overflow: 'hidden',
                   }}
                 >
-                  <Picker
-                    data={data}
-                    onEmojiSelect={handleEmojiSelect}
-                    theme="auto"
-                    locale="zh"
-                    previewPosition="none"
-                    skinTonePosition="none"
-                  />
+                  <Tabs size="small" type="line" tabPaneMotion={false} style={{ padding: '0 8px' }}>
+                    <TabPane tab="表情" itemKey="emoji">
+                      <Picker
+                        data={data}
+                        onEmojiSelect={handleEmojiSelect}
+                        theme="auto"
+                        locale="zh"
+                        previewPosition="none"
+                        skinTonePosition="none"
+                      />
+                    </TabPane>
+                    <TabPane tab="收藏" itemKey="stickers">
+                      <StickerPanel onSelect={(emoji) => { void sendSticker(emoji); }} />
+                    </TabPane>
+                  </Tabs>
                 </div>
               )}
 
@@ -3712,6 +3780,19 @@ export default function ChatPage({
           </div>
         )}
       />
+      {inviteToken && (
+        <JoinInviteModal
+          token={inviteToken}
+          onClose={() => setInviteToken(null)}
+          onJoined={(convId) => {
+            void fetchConversations().then(() => {
+              setActiveConvId(convId);
+              setActiveChannelId(null);
+              void fetchMessages(convId);
+            });
+          }}
+        />
+      )}
       <AppModal
         title="发现频道"
         visible={discoverVisible}

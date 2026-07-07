@@ -32,6 +32,18 @@ interface MockScheduled {
 const mockScheduledMessages: MockScheduled[] = [];
 let nextScheduledId = 1;
 
+// ── 自定义表情（内存态） ──
+interface MockCustomEmoji { id: number; url: string; fileId: string | null; name: string | null; width: number | null; height: number | null; createdAt: string }
+const mockCustomEmojis: MockCustomEmoji[] = [];
+let nextEmojiId = 1;
+
+// ── 群邀请 / 入群申请（内存态） ──
+const mockInvites: Record<number, { id: number; conversationId: number; token: string; expiresAt: string; maxUses: null; usedCount: number; enabled: boolean; createdAt: string }> = {};
+let nextInviteId = 1;
+interface MockJoinRequest { id: number; conversationId: number; userId: number; nickname: string; avatar: null; message: string | null; status: 'pending' | 'approved' | 'rejected'; createdAt: string }
+const mockJoinRequests: MockJoinRequest[] = [];
+let nextJoinRequestId = 1;
+
 function convDisplayName(convId: number): string | null {
   const conv = mockChatConversations.find((c) => c.id === convId);
   if (!conv) return null;
@@ -594,6 +606,132 @@ export const chatHandlers = [
     if (item.status !== 'pending') return HttpResponse.json({ code: 400, message: '仅待发送的定时消息可取消', data: null }, { status: 400 });
     item.status = 'canceled';
     item.updatedAt = mockDateTime();
+    return HttpResponse.json({ code: 0, message: 'ok', data: null });
+  }),
+
+  // ── 自定义表情 ──
+  http.get('/api/chat/custom-emojis', () =>
+    HttpResponse.json({ code: 0, message: 'ok', data: [...mockCustomEmojis].sort((a, b) => b.id - a.id) }),
+  ),
+
+  http.post('/api/chat/custom-emojis', async ({ request }) => {
+    const body = await request.json() as { url: string; fileId?: string | null; name?: string | null; width?: number | null; height?: number | null };
+    const dup = mockCustomEmojis.find((e) => e.url === body.url);
+    if (dup) return HttpResponse.json({ code: 0, message: 'ok', data: dup });
+    const item: MockCustomEmoji = {
+      id: nextEmojiId++, url: body.url, fileId: body.fileId ?? null, name: body.name ?? null,
+      width: body.width ?? null, height: body.height ?? null, createdAt: mockDateTime(),
+    };
+    mockCustomEmojis.push(item);
+    return HttpResponse.json({ code: 0, message: 'ok', data: item });
+  }),
+
+  http.delete('/api/chat/custom-emojis/:id', ({ params }) => {
+    const id = Number(params.id);
+    const idx = mockCustomEmojis.findIndex((e) => e.id === id);
+    if (idx === -1) return HttpResponse.json({ code: 404, message: '表情不存在', data: null }, { status: 404 });
+    mockCustomEmojis.splice(idx, 1);
+    return HttpResponse.json({ code: 0, message: 'ok', data: null });
+  }),
+
+  // ── 群邀请链接 ──
+  http.post('/api/chat/conversations/:id/invite', ({ params }) => {
+    const convId = Number(params.id);
+    let invite = mockInvites[convId];
+    if (!invite?.enabled) {
+      invite = {
+        id: nextInviteId++, conversationId: convId,
+        token: `mock-invite-${convId}-${Math.random().toString(16).slice(2, 10)}`,
+        expiresAt: mockDateTimeOffset(7 * 24 * 3600 * 1000), maxUses: null, usedCount: 0, enabled: true,
+        createdAt: mockDateTime(),
+      };
+      mockInvites[convId] = invite;
+    }
+    return HttpResponse.json({ code: 0, message: 'ok', data: invite });
+  }),
+
+  http.post('/api/chat/conversations/:id/invite/reset', ({ params }) => {
+    const convId = Number(params.id);
+    const invite = {
+      id: nextInviteId++, conversationId: convId,
+      token: `mock-invite-${convId}-${Math.random().toString(16).slice(2, 10)}`,
+      expiresAt: mockDateTimeOffset(7 * 24 * 3600 * 1000), maxUses: null, usedCount: 0, enabled: true,
+      createdAt: mockDateTime(),
+    };
+    mockInvites[convId] = invite;
+    return HttpResponse.json({ code: 0, message: 'ok', data: invite });
+  }),
+
+  http.get('/api/chat/invites/:token', ({ params }) => {
+    const token = String(params.token);
+    const invite = Object.values(mockInvites).find((i) => i.token === token && i.enabled);
+    if (!invite) return HttpResponse.json({ code: 404, message: '邀请链接不存在或已失效', data: null }, { status: 404 });
+    const conv = mockChatConversations.find((c) => c.id === invite.conversationId);
+    return HttpResponse.json({
+      code: 0, message: 'ok',
+      data: {
+        conversationId: invite.conversationId,
+        groupName: conv?.name ?? '群聊',
+        memberCount: (mockGroupMembers[invite.conversationId] ?? []).length,
+        joinApproval: (conv as { joinApproval?: boolean } | undefined)?.joinApproval ?? false,
+        alreadyMember: (mockGroupMembers[invite.conversationId] ?? []).some((m) => m.id === CURRENT_USER_ID),
+      },
+    });
+  }),
+
+  http.post('/api/chat/invites/:token/join', async ({ params, request }) => {
+    const token = String(params.token);
+    const body = await request.json() as { message?: string };
+    const invite = Object.values(mockInvites).find((i) => i.token === token && i.enabled);
+    if (!invite) return HttpResponse.json({ code: 404, message: '邀请链接不存在或已失效', data: null }, { status: 404 });
+    const conv = mockChatConversations.find((c) => c.id === invite.conversationId);
+    const members = mockGroupMembers[invite.conversationId] ?? [];
+    if (members.some((m) => m.id === CURRENT_USER_ID)) {
+      return HttpResponse.json({ code: 400, message: '你已在该群聊中', data: null }, { status: 400 });
+    }
+    if ((conv as { joinApproval?: boolean } | undefined)?.joinApproval) {
+      mockJoinRequests.push({
+        id: nextJoinRequestId++, conversationId: invite.conversationId, userId: CURRENT_USER_ID,
+        nickname: CURRENT_USER_NICKNAME, avatar: null, message: body.message ?? null,
+        status: 'pending', createdAt: mockDateTime(),
+      });
+      return HttpResponse.json({ code: 0, message: 'ok', data: { joined: false } });
+    }
+    members.push({ id: CURRENT_USER_ID, nickname: CURRENT_USER_NICKNAME, username: 'admin', avatar: null, role: 'member', mutedUntil: null });
+    invite.usedCount += 1;
+    addSystemMessage(invite.conversationId, `${CURRENT_USER_NICKNAME} 通过邀请链接加入了群聊`);
+    return HttpResponse.json({ code: 0, message: 'ok', data: { joined: true } });
+  }),
+
+  http.get('/api/chat/conversations/:id/join-requests', ({ params }) => {
+    const convId = Number(params.id);
+    const list = mockJoinRequests.filter((r) => r.conversationId === convId && r.status === 'pending');
+    return HttpResponse.json({ code: 0, message: 'ok', data: list });
+  }),
+
+  http.patch('/api/chat/join-requests/:id', async ({ params, request }) => {
+    const id = Number(params.id);
+    const body = await request.json() as { approve: boolean };
+    const req = mockJoinRequests.find((r) => r.id === id);
+    if (!req) return HttpResponse.json({ code: 404, message: '申请不存在', data: null }, { status: 404 });
+    if (req.status !== 'pending') return HttpResponse.json({ code: 400, message: '该申请已处理', data: null }, { status: 400 });
+    req.status = body.approve ? 'approved' : 'rejected';
+    if (body.approve) {
+      const members = mockGroupMembers[req.conversationId] ?? [];
+      if (!members.some((m) => m.id === req.userId)) {
+        members.push({ id: req.userId, nickname: req.nickname, username: `user${req.userId}`, avatar: null, role: 'member', mutedUntil: null });
+      }
+      addSystemMessage(req.conversationId, `${req.nickname} 通过邀请链接加入了群聊`);
+    }
+    return HttpResponse.json({ code: 0, message: 'ok', data: null });
+  }),
+
+  http.patch('/api/chat/conversations/:id/join-approval', async ({ params, request }) => {
+    const convId = Number(params.id);
+    const body = await request.json() as { enabled: boolean };
+    const conv = mockChatConversations.find((c) => c.id === convId);
+    if (!conv) return HttpResponse.json({ code: 404, message: '会话不存在', data: null }, { status: 404 });
+    (conv as { joinApproval?: boolean }).joinApproval = body.enabled;
     return HttpResponse.json({ code: 0, message: 'ok', data: null });
   }),
 

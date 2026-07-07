@@ -1,17 +1,21 @@
 import { useState, useMemo } from 'react';
 import { Button, Modal, Toast, Tooltip, TextArea, Input, Tag, Typography, List as SemiList, Switch, Dropdown, Tabs, TabPane } from '@douyinfe/semi-ui';
-import { UserPlus, UserMinus, Crown, Pencil, Shield, MicOff, Mic } from 'lucide-react';
+import { UserPlus, UserMinus, Crown, Pencil, Shield, MicOff, Mic, Link2, UserCheck } from 'lucide-react';
 import dayjs from 'dayjs';
 import { UserAvatar } from '@/components/UserAvatar';
 import { UserSearchList } from './UserSearchList';
 import { OrgTreePicker } from './OrgTreePicker';
+import { GroupInviteModal } from './GroupInviteModal';
 import type { ChatConversation, ChatGroupMember } from '@zenith/shared';
 import type { ChatUser } from '../types';
 import {
   useAddChatGroupMember,
   useChatGroupMembers,
+  useChatJoinRequests,
+  useHandleChatJoinRequest,
   useMuteChatMember,
   useRemoveChatGroupMember,
+  useSetChatJoinApproval,
   useSetChatMemberRole,
   useSetChatMuteAll,
   useTransferChatGroupOwner,
@@ -50,6 +54,7 @@ export function GroupMembersPanel({
   onlineUserIds?: Set<number>;
 }>) {
   const [showAdd, setShowAdd] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
   // 群信息编辑
   const [editName, setEditName] = useState('');
   const [editAnnouncement, setEditAnnouncement] = useState('');
@@ -62,11 +67,15 @@ export function GroupMembersPanel({
   const setMemberRoleMutation = useSetChatMemberRole();
   const muteMemberMutation = useMuteChatMember();
   const setMuteAllMutation = useSetChatMuteAll();
+  const setJoinApprovalMutation = useSetChatJoinApproval();
+  const handleJoinRequestMutation = useHandleChatJoinRequest();
   const members = membersQuery.data ?? EMPTY_MEMBERS;
 
   const myRole = members.find((m) => m.id === currentUserId)?.role ?? 'member';
   const isOwner = myRole === 'owner';
   const canManage = isOwner || myRole === 'admin';
+  const joinRequestsQuery = useChatJoinRequests(conversationId, canManage);
+  const joinRequests = joinRequestsQuery.data ?? [];
   const memberIds = members.map((m) => m.id);
   const sortedMembers = useMemo(
     () => [...members].sort((a, b) => {
@@ -211,6 +220,22 @@ export function GroupMembersPanel({
             />
           </div>
         )}
+        {canManage && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+            <Text type="tertiary" style={{ flex: 1, fontSize: 12 }}>入群审批</Text>
+            <Switch
+              size="small"
+              checked={conv.joinApproval ?? false}
+              loading={setJoinApprovalMutation.isPending}
+              onChange={(v) => {
+                void setJoinApprovalMutation.mutateAsync({ conversationId, enabled: v }).then(() => {
+                  onConvUpdate({ joinApproval: v });
+                  Toast.success(v ? '已开启入群审批' : '已关闭入群审批');
+                }).catch(() => undefined);
+              }}
+            />
+          </div>
+        )}
         {!canManage && conv.muteAll && (
           <Tag size="small" color="red" style={{ marginBottom: 6 }}>全员禁言中</Tag>
         )}
@@ -248,6 +273,15 @@ export function GroupMembersPanel({
       <div style={{ flex: 1, padding: '8px 12px', overflowY: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8, gap: 6 }}>
           <Text strong style={{ flex: 1, fontSize: 13 }}>成员（{members.length}）</Text>
+          {canManage && (
+            <Tooltip content="邀请入群（链接/二维码）">
+              <Button
+                size="small" theme="borderless" type="primary"
+                icon={<Link2 size={14} />}
+                onClick={() => setShowInvite(true)}
+              />
+            </Tooltip>
+          )}
           <Tooltip content="添加成员">
             <Button
               size="small" theme="borderless" type="primary"
@@ -257,6 +291,37 @@ export function GroupMembersPanel({
             />
           </Tooltip>
         </div>
+        {canManage && joinRequests.length > 0 && (
+          <div style={{ marginBottom: 10, padding: 8, background: 'var(--semi-color-warning-light-default)', borderRadius: 6 }}>
+            <Text strong style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6, fontSize: 12 }}>
+              <UserCheck size={13} />入群申请（{joinRequests.length}）
+            </Text>
+            {joinRequests.map((req) => (
+              <div key={req.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0' }}>
+                <UserAvatar name={req.nickname} avatar={req.avatar} size={24} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontSize: 12, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{req.nickname}</Text>
+                  {req.message && <Text type="tertiary" style={{ fontSize: 11, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{req.message}</Text>}
+                </div>
+                <Button
+                  size="small" theme="borderless" type="primary"
+                  loading={handleJoinRequestMutation.isPending}
+                  onClick={() => { void handleJoinRequestMutation.mutateAsync({ id: req.id, approve: true }).then(() => Toast.success('已通过')).catch(() => undefined); }}
+                  style={{ padding: '2px 6px', height: 'auto', minWidth: 'auto' }}
+                >
+                  通过
+                </Button>
+                <Button
+                  size="small" theme="borderless" type="danger"
+                  onClick={() => { void handleJoinRequestMutation.mutateAsync({ id: req.id, approve: false }).then(() => Toast.success('已拒绝')).catch(() => undefined); }}
+                  style={{ padding: '2px 6px', height: 'auto', minWidth: 'auto' }}
+                >
+                  拒绝
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
         {showAdd && (
           <div style={{ marginBottom: 10, padding: 8, background: 'var(--semi-color-fill-0)', borderRadius: 6 }}>
             <Tabs size="small" defaultActiveKey="search">
@@ -403,6 +468,12 @@ export function GroupMembersPanel({
           }}
         />
       </div>
+      <GroupInviteModal
+        conversationId={conversationId}
+        groupName={conv.name ?? '群聊'}
+        visible={showInvite}
+        onClose={() => setShowInvite(false)}
+      />
     </div>
   );
 }

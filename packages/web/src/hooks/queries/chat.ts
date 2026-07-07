@@ -4,7 +4,11 @@ import type {
   ChannelMenu,
   ChannelMessage,
   ChatConversation,
+  ChatCustomEmoji,
+  ChatGroupInvite,
+  ChatGroupJoinRequest,
   ChatGroupMember,
+  ChatInviteInfo,
   ChatOrgData,
   ChatQuickReply,
   ChatScheduledMessage,
@@ -39,6 +43,8 @@ export const chatKeys = {
   orgData: ['chat', 'org-data'] as const,
   quickReplies: ['chat', 'quick-replies'] as const,
   scheduledMessages: ['chat', 'scheduled-messages'] as const,
+  customEmojis: ['chat', 'custom-emojis'] as const,
+  joinRequests: (conversationId: number | undefined) => ['chat', 'conversations', conversationId, 'join-requests'] as const,
   channelMessages: (params: ChannelMessageParams) => ['chat', 'list', 'channel-messages', params] as const,
   channelMenus: (channelId: number | undefined) => ['chat', 'channels', channelId, 'menus'] as const,
 };
@@ -187,6 +193,94 @@ export function useCancelScheduledMessage() {
   return useMutation({
     mutationFn: (id: number) => request.patch<null>(`/api/chat/scheduled-messages/${id}/cancel`, {}).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: chatKeys.scheduledMessages }),
+  });
+}
+
+// ─── 自定义表情 ───────────────────────────────────────────────────────────────
+
+export function useChatCustomEmojis(enabled = true) {
+  return useQuery({
+    queryKey: chatKeys.customEmojis,
+    queryFn: () => request.get<ChatCustomEmoji[]>('/api/chat/custom-emojis', { silent: true }).then(unwrap),
+    enabled,
+    staleTime: LOOKUP_STALE_TIME,
+  });
+}
+
+export function useAddChatCustomEmoji() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (values: { url: string; fileId?: string | null; name?: string | null; width?: number | null; height?: number | null }) =>
+      request.post<ChatCustomEmoji>('/api/chat/custom-emojis', values).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: chatKeys.customEmojis }),
+  });
+}
+
+export function useDeleteChatCustomEmoji() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.delete<null>(`/api/chat/custom-emojis/${id}`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: chatKeys.customEmojis }),
+  });
+}
+
+// ─── 群邀请 / 入群审批 ────────────────────────────────────────────────────────
+
+export function useChatGroupInvite() {
+  return useMutation({
+    mutationFn: (conversationId: number) =>
+      request.post<ChatGroupInvite>(`/api/chat/conversations/${conversationId}/invite`, {}).then(unwrap),
+  });
+}
+
+export function useResetChatGroupInvite() {
+  return useMutation({
+    mutationFn: (conversationId: number) =>
+      request.post<ChatGroupInvite>(`/api/chat/conversations/${conversationId}/invite/reset`, {}).then(unwrap),
+  });
+}
+
+export function useChatInviteInfo(token: string | null) {
+  return useQuery({
+    queryKey: ['chat', 'invite-info', token] as const,
+    queryFn: () => request.get<ChatInviteInfo>(`/api/chat/invites/${token}`, { silent: true }).then(unwrap),
+    enabled: !!token,
+    retry: false,
+  });
+}
+
+export function useJoinChatByInvite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ token, message }: { token: string; message?: string }) =>
+      request.post<{ joined: boolean }>(`/api/chat/invites/${token}/join`, { ...(message ? { message } : {}) }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: chatKeys.all }),
+  });
+}
+
+export function useChatJoinRequests(conversationId: number | undefined, enabled = true) {
+  return useQuery({
+    queryKey: chatKeys.joinRequests(conversationId),
+    queryFn: () => request.get<ChatGroupJoinRequest[]>(`/api/chat/conversations/${conversationId}/join-requests`, { silent: true }).then(unwrap),
+    enabled: enabled && conversationId !== undefined,
+  });
+}
+
+export function useHandleChatJoinRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, approve }: { id: number; approve: boolean }) =>
+      request.patch<null>(`/api/chat/join-requests/${id}`, { approve }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: chatKeys.all }),
+  });
+}
+
+export function useSetChatJoinApproval() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ conversationId, enabled }: { conversationId: number; enabled: boolean }) =>
+      request.patch<null>(`/api/chat/conversations/${conversationId}/join-approval`, { enabled }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: chatKeys.conversations }),
   });
 }
 

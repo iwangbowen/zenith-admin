@@ -13,6 +13,8 @@ export const chatConversations = pgTable('chat_conversations', {
   announcement: varchar('announcement', { length: 500 }),
   /** 全员禁言开关（群主/管理员不受限） */
   muteAll: boolean('mute_all').notNull().default(false),
+  /** 入群审批开关：开启后通过邀请链接加群需群主/管理员审批 */
+  joinApproval: boolean('join_approval').notNull().default(false),
   ...auditColumns(),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -46,7 +48,7 @@ export const chatConversationMembers = pgTable('chat_conversation_members', {
 export type ChatConversationMemberRow = typeof chatConversationMembers.$inferSelect;
 
 // ─── 聊天消息表 ───────────────────────────────────────────────────────────────
-export const chatMessageTypeEnum = pgEnum('chat_message_type', ['text', 'image', 'file', 'system', 'forward', 'vote', 'voice', 'card']);
+export const chatMessageTypeEnum = pgEnum('chat_message_type', ['text', 'image', 'file', 'system', 'forward', 'vote', 'voice', 'card', 'video']);
 
 export const chatMessages = pgTable('chat_messages', {
   id: serial('id').primaryKey(),
@@ -144,3 +146,64 @@ export const chatScheduledMessages = pgTable('chat_scheduled_messages', {
 ]);
 
 export type ChatScheduledMessageRow = typeof chatScheduledMessages.$inferSelect;
+
+// ─── 自定义表情（个人收藏） ───────────────────────────────────────────────────
+export const chatCustomEmojis = pgTable('chat_custom_emojis', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** 图片访问 URL */
+  url: varchar('url', { length: 512 }).notNull(),
+  /** 托管文件 ID（认证预览用，可空） */
+  fileId: varchar('file_id', { length: 64 }),
+  name: varchar('name', { length: 64 }),
+  width: integer('width'),
+  height: integer('height'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  index('chat_custom_emojis_user_idx').on(t.userId),
+]);
+
+export type ChatCustomEmojiRow = typeof chatCustomEmojis.$inferSelect;
+
+// ─── 群邀请链接 ───────────────────────────────────────────────────────────────
+export const chatGroupInvites = pgTable('chat_group_invites', {
+  id: serial('id').primaryKey(),
+  conversationId: integer('conversation_id').notNull().references(() => chatConversations.id, { onDelete: 'cascade' }),
+  /** 邀请令牌（链接/二维码携带） */
+  token: varchar('token', { length: 64 }).notNull().unique(),
+  createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
+  /** 过期时间（null = 永久有效） */
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  /** 最大使用次数（null = 不限） */
+  maxUses: integer('max_uses'),
+  usedCount: integer('used_count').notNull().default(0),
+  enabled: boolean('enabled').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  index('chat_group_invites_conv_idx').on(t.conversationId),
+]);
+
+export type ChatGroupInviteRow = typeof chatGroupInvites.$inferSelect;
+
+// ─── 入群申请 ─────────────────────────────────────────────────────────────────
+export const chatJoinRequestStatusEnum = pgEnum('chat_join_request_status', ['pending', 'approved', 'rejected']);
+
+export const chatGroupJoinRequests = pgTable('chat_group_join_requests', {
+  id: serial('id').primaryKey(),
+  conversationId: integer('conversation_id').notNull().references(() => chatConversations.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  inviteId: integer('invite_id').references(() => chatGroupInvites.id, { onDelete: 'set null' }),
+  status: chatJoinRequestStatusEnum('status').notNull().default('pending'),
+  /** 申请附言 */
+  message: varchar('message', { length: 255 }),
+  handledBy: integer('handled_by').references(() => users.id, { onDelete: 'set null' }),
+  handledAt: timestamp('handled_at', { withTimezone: true }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  index('chat_group_join_requests_conv_status_idx').on(t.conversationId, t.status),
+  index('chat_group_join_requests_user_idx').on(t.userId),
+]);
+
+export type ChatGroupJoinRequestRow = typeof chatGroupJoinRequests.$inferSelect;

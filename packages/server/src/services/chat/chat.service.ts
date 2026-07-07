@@ -313,12 +313,13 @@ function buildMessageSearchSnippet(message: ChatMessage): string {
   if (message.type === 'image') return `[图片] ${message.extra?.asset?.name ?? ''}`.trim();
   if (message.type === 'file') return `[文件] ${message.extra?.asset?.name ?? ''}`.trim();
   if (message.type === 'voice') return '[语音]';
+  if (message.type === 'video') return '[视频]';
   if (message.type === 'card') return `[卡片] ${message.extra?.card?.title ?? ''}`.trim();
   if (message.type === 'system') return `[系统] ${message.content}`;
   return message.content;
 }
 
-async function appendSystemMessage(
+export async function appendSystemMessage(
   conversationId: number,
   content: string,
   extra: ChatMessageExtra | null = null,
@@ -527,6 +528,7 @@ export async function listConversations(): Promise<ChatConversation[]> {
     isMuted: mutedMap.get(conv.id) ?? false,
     isArchived: archivedMap.get(conv.id) ?? false,
     muteAll: conv.muteAll,
+    joinApproval: conv.joinApproval,
     myRole: myRoleMap.get(conv.id) ?? 'member',
     myMutedUntil: formatNullableDateTime(myMutedUntilMap.get(conv.id) ?? null),
     createdAt: formatDateTime(conv.createdAt),

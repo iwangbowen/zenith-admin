@@ -9,6 +9,7 @@ import {
   ChatMessageDTO, ChatConversationDTO, ChatUserDTO, ChatGroupMemberDTO, ChatLinkPreviewDTO, ChatMessageExtraDTO,
   ChatMessageSearchItemDTO, ChatMessageContextDTO, ChatReactionGroupDTO, ChatReadStateDTO, ChatPresenceDTO, RtcConfigDTO,
   ChatOrgDataDTO, ChatQuickReplyDTO, ChatScheduledMessageDTO,
+  ChatCustomEmojiDTO, ChatGroupInviteDTO, ChatInviteInfoDTO, ChatGroupJoinRequestDTO,
 } from '../../lib/openapi-dtos';
 import { chatCallRecordSchema } from '@zenith/shared';
 import {
@@ -29,6 +30,13 @@ import {
 import {
   createScheduledMessage, listMyScheduledMessages, cancelScheduledMessage,
 } from '../../services/chat/chat-scheduled.service';
+import {
+  listMyCustomEmojis, addCustomEmoji, deleteCustomEmoji,
+} from '../../services/chat/chat-stickers.service';
+import {
+  getOrCreateInvite, resetInvite, getInviteInfo, joinByInvite,
+  listJoinRequests, handleJoinRequest, setJoinApproval,
+} from '../../services/chat/chat-invites.service';
 
 const chatRouter = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -249,7 +257,7 @@ chatRouter.openapi(
 
 const sendMessageSchema = z.object({
   content: z.string().min(1, '消息不能为空').max(4096),
-  type: z.enum(['text', 'image', 'file', 'forward', 'vote', 'voice']).default('text'),
+  type: z.enum(['text', 'image', 'file', 'forward', 'vote', 'voice', 'video']).default('text'),
   replyToId: z.number().int().positive().nullable().optional(),
   extra: ChatMessageExtraDTO.nullable().optional(),
 });
@@ -603,6 +611,180 @@ chatRouter.openapi(
   async (c) => {
     const { id } = c.req.valid('param');
     await cancelScheduledMessage(id);
+    return c.json(okBody(null), 200);
+  },
+);
+
+// ─── 自定义表情 ───────────────────────────────────────────────────────────────
+
+chatRouter.openapi(
+  createRoute({
+    method: 'get', path: '/custom-emojis', tags: ['Chat'], summary: '我的自定义表情列表',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    responses: { ...commonErrorResponses, ...ok(z.array(ChatCustomEmojiDTO), '表情列表') },
+  }),
+  async (c) => {
+    const list = await listMyCustomEmojis();
+    return c.json(okBody(list), 200);
+  },
+);
+
+chatRouter.openapi(
+  createRoute({
+    method: 'post', path: '/custom-emojis', tags: ['Chat'], summary: '添加自定义表情',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: {
+      body: {
+        content: jsonContent(z.object({
+          url: z.string().min(1).max(512),
+          fileId: z.string().max(64).nullable().optional(),
+          name: z.string().max(64).nullable().optional(),
+          width: z.number().int().positive().nullable().optional(),
+          height: z.number().int().positive().nullable().optional(),
+        })),
+      },
+    },
+    responses: { ...commonErrorResponses, ...ok(ChatCustomEmojiDTO, '表情') },
+  }),
+  async (c) => {
+    const body = c.req.valid('json');
+    const item = await addCustomEmoji(body);
+    return c.json(okBody(item), 200);
+  },
+);
+
+chatRouter.openapi(
+  createRoute({
+    method: 'delete', path: '/custom-emojis/{id}', tags: ['Chat'], summary: '删除自定义表情',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...okMsg('删除成功') },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    await deleteCustomEmoji(id);
+    return c.json(okBody(null), 200);
+  },
+);
+
+// ─── 群邀请链接 / 入群审批 ────────────────────────────────────────────────────
+
+chatRouter.openapi(
+  createRoute({
+    method: 'post', path: '/conversations/{id}/invite', tags: ['Chat'], summary: '获取/生成群邀请链接（群主/管理员）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(ChatGroupInviteDTO, '邀请信息') },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const invite = await getOrCreateInvite(id);
+    return c.json(okBody(invite), 200);
+  },
+);
+
+chatRouter.openapi(
+  createRoute({
+    method: 'post', path: '/conversations/{id}/invite/reset', tags: ['Chat'], summary: '重置群邀请链接（群主/管理员）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(ChatGroupInviteDTO, '新邀请信息') },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const invite = await resetInvite(id);
+    return c.json(okBody(invite), 200);
+  },
+);
+
+chatRouter.openapi(
+  createRoute({
+    method: 'get', path: '/invites/{token}', tags: ['Chat'], summary: '查看邀请链接对应的群信息',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { params: z.object({ token: z.string().min(8).max(64) }) },
+    responses: { ...commonErrorResponses, ...ok(ChatInviteInfoDTO, '群概况') },
+  }),
+  async (c) => {
+    const { token } = c.req.valid('param');
+    const info = await getInviteInfo(token);
+    return c.json(okBody(info), 200);
+  },
+);
+
+chatRouter.openapi(
+  createRoute({
+    method: 'post', path: '/invites/{token}/join', tags: ['Chat'], summary: '通过邀请链接加入群聊',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: {
+      params: z.object({ token: z.string().min(8).max(64) }),
+      body: { content: jsonContent(z.object({ message: z.string().max(255).optional() })) },
+    },
+    responses: { ...commonErrorResponses, ...ok(z.object({ joined: z.boolean() }), '加入结果') },
+  }),
+  async (c) => {
+    const { token } = c.req.valid('param');
+    const { message } = c.req.valid('json');
+    const result = await joinByInvite(token, message);
+    return c.json(okBody(result), 200);
+  },
+);
+
+chatRouter.openapi(
+  createRoute({
+    method: 'get', path: '/conversations/{id}/join-requests', tags: ['Chat'], summary: '待审批入群申请列表（群主/管理员）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(z.array(ChatGroupJoinRequestDTO), '申请列表') },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const list = await listJoinRequests(id);
+    return c.json(okBody(list), 200);
+  },
+);
+
+chatRouter.openapi(
+  createRoute({
+    method: 'patch', path: '/join-requests/{id}', tags: ['Chat'], summary: '审批入群申请（群主/管理员）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: {
+      params: IdParam,
+      body: { content: jsonContent(z.object({ approve: z.boolean() })) },
+    },
+    responses: { ...commonErrorResponses, ...okMsg('处理成功') },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { approve } = c.req.valid('json');
+    await handleJoinRequest(id, approve);
+    return c.json(okBody(null), 200);
+  },
+);
+
+chatRouter.openapi(
+  createRoute({
+    method: 'patch', path: '/conversations/{id}/join-approval', tags: ['Chat'], summary: '开启/关闭入群审批（群主/管理员）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: {
+      params: IdParam,
+      body: { content: jsonContent(z.object({ enabled: z.boolean() })) },
+    },
+    responses: { ...commonErrorResponses, ...okMsg('设置成功') },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { enabled } = c.req.valid('json');
+    await setJoinApproval(id, enabled);
     return c.json(okBody(null), 200);
   },
 );

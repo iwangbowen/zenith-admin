@@ -55,7 +55,7 @@ export const ChatLinkPreviewDTO = z
 
 export const ChatAssetMetaDTO = z
   .object({
-    kind: z.enum(['image', 'file', 'voice']),
+    kind: z.enum(['image', 'file', 'voice', 'video']),
     name: z.string(),
     size: z.number().int(),
     mimeType: z.string().nullable(),
@@ -88,7 +88,7 @@ export const ChatAnnouncementHistoryDTO = z
 export const ChatForwardedItemDTO = z
   .object({
     senderName: z.string().nullable(),
-    type: z.enum(['text', 'image', 'file', 'system', 'forward', 'vote', 'voice', 'card']),
+    type: z.enum(['text', 'image', 'file', 'system', 'forward', 'vote', 'voice', 'card', 'video']),
     content: z.string(),
     createdAt: z.string(),
     asset: ChatAssetMetaDTO.nullable().optional(),
@@ -188,7 +188,7 @@ export const ChatMessageDTO = z
     senderId: z.number().int().nullable(),
     senderName: z.string().nullable(),
     senderAvatar: z.string().nullable().optional(),
-    type: z.enum(['text', 'image', 'file', 'system', 'forward', 'vote', 'voice', 'card']),
+    type: z.enum(['text', 'image', 'file', 'system', 'forward', 'vote', 'voice', 'card', 'video']),
     content: z.string(),
     replyToId: z.number().int().nullable().optional(),
     isRecalled: z.boolean(),
@@ -232,6 +232,7 @@ export const ChatConversationDTO = z
     isStarred: z.boolean(),
     isArchived: z.boolean().optional(),
     muteAll: z.boolean().optional(),
+    joinApproval: z.boolean().optional(),
     myRole: z.enum(['owner', 'admin', 'member']).optional(),
     myMutedUntil: z.string().nullable().optional(),
     ...auditFields,
@@ -255,7 +256,7 @@ export const ChatScheduledMessageDTO = z
     id: z.number().int(),
     conversationId: z.number().int(),
     conversationName: z.string().nullable(),
-    type: z.enum(['text', 'image', 'file', 'system', 'forward', 'vote', 'voice', 'card']),
+    type: z.enum(['text', 'image', 'file', 'system', 'forward', 'vote', 'voice', 'card', 'video']),
     content: z.string(),
     extra: ChatMessageExtraDTO.nullable().optional(),
     scheduledAt: z.string(),
@@ -266,6 +267,54 @@ export const ChatScheduledMessageDTO = z
     updatedAt: z.string(),
   })
   .openapi('ChatScheduledMessage');
+
+export const ChatCustomEmojiDTO = z
+  .object({
+    id: z.number().int(),
+    url: z.string(),
+    fileId: z.string().nullable(),
+    name: z.string().nullable(),
+    width: z.number().int().nullable(),
+    height: z.number().int().nullable(),
+    createdAt: z.string(),
+  })
+  .openapi('ChatCustomEmoji');
+
+export const ChatGroupInviteDTO = z
+  .object({
+    id: z.number().int(),
+    conversationId: z.number().int(),
+    token: z.string(),
+    expiresAt: z.string().nullable(),
+    maxUses: z.number().int().nullable(),
+    usedCount: z.number().int(),
+    enabled: z.boolean(),
+    createdAt: z.string(),
+  })
+  .openapi('ChatGroupInvite');
+
+export const ChatInviteInfoDTO = z
+  .object({
+    conversationId: z.number().int(),
+    groupName: z.string().nullable(),
+    memberCount: z.number().int(),
+    joinApproval: z.boolean(),
+    alreadyMember: z.boolean(),
+  })
+  .openapi('ChatInviteInfo');
+
+export const ChatGroupJoinRequestDTO = z
+  .object({
+    id: z.number().int(),
+    conversationId: z.number().int(),
+    userId: z.number().int(),
+    nickname: z.string(),
+    avatar: z.string().nullable(),
+    message: z.string().nullable(),
+    status: z.enum(['pending', 'approved', 'rejected']),
+    createdAt: z.string(),
+  })
+  .openapi('ChatGroupJoinRequest');
 
 export const ChatReadStateDTO = z
   .object({

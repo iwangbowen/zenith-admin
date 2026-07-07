@@ -3,6 +3,7 @@ import { getFileTypeIcon, formatFileSize, canPreviewFile } from '@/utils/file-ut
 import { getMessageExtra, renderTextWithMentions } from '../utils';
 import type { ChatMessage, ChatMessageExtra, ChatCardAction } from '@zenith/shared';
 import { VoiceMessage } from './VoiceMessage';
+import { VideoMessage } from './VideoMessage';
 import { CardMessage } from './CardMessage';
 
 const { Text } = Typography;
@@ -17,6 +18,7 @@ function getForwardedItemPreview(item: ForwardedMessageItem): string {
   if (item.type === 'image') return '[图片，点击查看]';
   if (item.type === 'file') return `[文件] ${item.asset?.name ?? ''}`;
   if (item.type === 'voice') return '[语音]';
+  if (item.type === 'video') return `[视频] ${item.asset?.name ?? ''}`;
   return item.content;
 }
 
@@ -188,6 +190,10 @@ export function MessageContent({
 
   if (msg.type === 'voice') {
     return <VoiceMessage msg={msg} isSelf={isSelf} />;
+  }
+
+  if (msg.type === 'video') {
+    return <VideoMessage msg={msg} isSelf={isSelf} />;
   }
 
   if (msg.type === 'card') {

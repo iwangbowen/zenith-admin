@@ -12,7 +12,7 @@ import { workflowAutomations, workflowCategories, workflowComments, workflowDefi
 import { emailSendLogs, emailTemplates, inAppMessages, inAppTemplates, smsConfigs, smsSendLogs, smsTemplates } from './messaging';
 import { dbBackups } from './db-admin';
 import { ruleDecisionTables, ruleDecisionTableVersions, ruleTestCases } from './rules';
-import { chatConversationMembers, chatConversations, chatMessageReactions, chatMessages, chatWebhooks, chatQuickReplies, chatScheduledMessages } from './chat';
+import { chatConversationMembers, chatConversations, chatMessageReactions, chatMessages, chatWebhooks, chatQuickReplies, chatScheduledMessages, chatCustomEmojis, chatGroupInvites, chatGroupJoinRequests } from './chat';
 import { channelAutoReplies, channelConversations, channelMenus, channelMessages, channelMessageTargets, channelQuickReplies, channels, channelSubscriptions } from './channels';
 import { paymentApps, paymentChannelConfigs, paymentOrders, paymentReconBatches, paymentReconItems, paymentRefunds, paymentSharingOrders, paymentSharingReceivers, paymentTransfers, paymentWebhookDeliveries, paymentWebhookEndpoints } from './payment';
 import { aiConversations, aiMessages, aiPromptTemplates, aiProviderConfigs, userAiConfigs } from './ai';
@@ -529,6 +529,21 @@ export const chatQuickRepliesRelations = relations(chatQuickReplies, ({ one }) =
 export const chatScheduledMessagesRelations = relations(chatScheduledMessages, ({ one }) => ({
   conversation: one(chatConversations, { fields: [chatScheduledMessages.conversationId], references: [chatConversations.id] }),
   sender: one(users, { fields: [chatScheduledMessages.senderId], references: [users.id] }),
+}));
+
+export const chatCustomEmojisRelations = relations(chatCustomEmojis, ({ one }) => ({
+  user: one(users, { fields: [chatCustomEmojis.userId], references: [users.id] }),
+}));
+
+export const chatGroupInvitesRelations = relations(chatGroupInvites, ({ one }) => ({
+  conversation: one(chatConversations, { fields: [chatGroupInvites.conversationId], references: [chatConversations.id] }),
+  creator: one(users, { fields: [chatGroupInvites.createdBy], references: [users.id] }),
+}));
+
+export const chatGroupJoinRequestsRelations = relations(chatGroupJoinRequests, ({ one }) => ({
+  conversation: one(chatConversations, { fields: [chatGroupJoinRequests.conversationId], references: [chatConversations.id] }),
+  user: one(users, { fields: [chatGroupJoinRequests.userId], references: [users.id] }),
+  invite: one(chatGroupInvites, { fields: [chatGroupJoinRequests.inviteId], references: [chatGroupInvites.id] }),
 }));
 
 // ─── 通知模块 relations ─────────────────────────────────────────────────────

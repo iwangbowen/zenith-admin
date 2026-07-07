@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button, Toast, Tooltip, Dropdown, Typography, Popconfirm } from '@douyinfe/semi-ui';
 import {
-  CornerDownLeft, RotateCcw, Copy, Bookmark, Pin, Trash2, Forward, CheckSquare, Square, Download, Pencil, Check, X as XIcon, BadgeCheck,
+  CornerDownLeft, RotateCcw, Copy, Bookmark, Pin, Trash2, Forward, CheckSquare, Square, Download, Pencil, Check, X as XIcon, BadgeCheck, SmilePlus,
 } from 'lucide-react';
 import { formatDateTime } from '@/utils/date';
 import type { ChatMessage, ChatMessageExtra, ChatCardAction } from '@zenith/shared';
@@ -35,7 +35,7 @@ export function MessageBubble({
   msg, isSelf, onReply, onRecall, onOpenImage, shouldShowTime, getReplyMessage, onScrollToMessage,
   onToggleFavorite, onTogglePin, onEditRecalled, recalledDraft, multiSelectMode, isSelected,
   onToggleSelect, onForwardSingle, onOpenForwardView, onDeleteMessage, onReaction, onPickReactionEmoji,
-  currentUserId, onEdit, onVote, isHighlighted, onOpenFilePreview, readReceipt, onCardAction, onOpenWorkflow, verifiedSender,
+  currentUserId, onEdit, onVote, isHighlighted, onOpenFilePreview, readReceipt, onCardAction, onOpenWorkflow, verifiedSender, onSaveAsEmoji,
 }: Readonly<{
   msg: ChatMessage;
   isSelf: boolean;
@@ -66,6 +66,8 @@ export function MessageBubble({
   onCardAction?: (msg: ChatMessage, action: ChatCardAction) => void;
   onOpenWorkflow?: (instanceId: number, taskId: number | null) => void;
   verifiedSender?: boolean;
+  /** 图片消息：收藏为自定义表情 */
+  onSaveAsEmoji?: (msg: ChatMessage) => void;
 }>) {
   const fullTimeStr = formatDateTime(msg.createdAt);
   // 机器人/系统消息（senderId 为空）的展示身份取自 extra.bot
@@ -611,6 +613,14 @@ export function MessageBubble({
                     onClick={() => { void handleCopyImage(); setContextMenuPos(null); }}
                   >
                     复制
+                  </Dropdown.Item>
+                )}
+                {msg.type === 'image' && !msg.isRecalled && onSaveAsEmoji && (
+                  <Dropdown.Item
+                    icon={<SmilePlus size={12} />}
+                    onClick={() => { onSaveAsEmoji(msg); setContextMenuPos(null); }}
+                  >
+                    收藏为表情
                   </Dropdown.Item>
                 )}
                 {msg.type === 'file' && (

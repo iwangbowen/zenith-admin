@@ -4545,7 +4545,7 @@ export interface WorkflowHealthSummary {
 
 // ─── 聊天 ─────────────────────────────────────────────────────────────────────
 export type ChatConversationType = 'direct' | 'group';
-export type ChatMessageType = 'text' | 'image' | 'file' | 'system' | 'forward' | 'vote' | 'voice' | 'card';
+export type ChatMessageType = 'text' | 'image' | 'file' | 'system' | 'forward' | 'vote' | 'voice' | 'card' | 'video';
 
 export interface ChatVoteOption {
   id: string;
@@ -4579,7 +4579,7 @@ export interface ChatLinkPreview {
 }
 
 export interface ChatAssetMeta {
-  kind: 'image' | 'file' | 'voice';
+  kind: 'image' | 'file' | 'voice' | 'video';
   name: string;
   size: number;
   mimeType: string | null;
@@ -4761,6 +4761,8 @@ export interface ChatConversation {
   isArchived?: boolean;
   /** 全员禁言开关（群聊） */
   muteAll?: boolean;
+  /** 入群审批开关（群聊，开启后邀请入群需审批） */
+  joinApproval?: boolean;
   /** 我在该会话中的角色 */
   myRole?: ChatMemberRole;
   /** 我被禁言至（null = 未禁言） */
@@ -4834,6 +4836,55 @@ export interface ChatScheduledMessage {
   sentMessageId: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** 自定义表情（个人收藏贴图） */
+export interface ChatCustomEmoji {
+  id: number;
+  url: string;
+  fileId: string | null;
+  name: string | null;
+  width: number | null;
+  height: number | null;
+  createdAt: string;
+}
+
+/** 群邀请链接 */
+export interface ChatGroupInvite {
+  id: number;
+  conversationId: number;
+  token: string;
+  /** 过期时间（null = 永久有效） */
+  expiresAt: string | null;
+  maxUses: number | null;
+  usedCount: number;
+  enabled: boolean;
+  createdAt: string;
+}
+
+/** 邀请链接落地信息（加入前展示） */
+export interface ChatInviteInfo {
+  conversationId: number;
+  groupName: string | null;
+  memberCount: number;
+  /** 是否需要群主/管理员审批 */
+  joinApproval: boolean;
+  /** 当前用户是否已在群内 */
+  alreadyMember: boolean;
+}
+
+export type ChatJoinRequestStatus = 'pending' | 'approved' | 'rejected';
+
+/** 入群申请 */
+export interface ChatGroupJoinRequest {
+  id: number;
+  conversationId: number;
+  userId: number;
+  nickname: string;
+  avatar: string | null;
+  message: string | null;
+  status: ChatJoinRequestStatus;
+  createdAt: string;
 }
 
 /** 聊天入站 Webhook 机器人 */
