@@ -2,7 +2,7 @@
  * 会员数据看板统计服务（只读聚合）。
  * 概览卡片 + 图表（注册趋势 / 等级分布 / 积分收支 / 签到人数）。
  */
-import { count, sql, and, gte, lt, eq } from 'drizzle-orm';
+import { count, sql, and, gte, lt, eq, isNull } from 'drizzle-orm';
 import { db } from '../../db';
 import {
   members, memberLevels, memberPointAccounts, memberWallets,
@@ -35,19 +35,36 @@ export async function getMemberStats() {
   const days30Ago = shiftDays(todayStart, -29);
   const todayStr = formatDate(todayStart);
 
+  // 统计口径统一排除软删除会员；积分/余额为当前负债，随会员删除移出统计
+  const notDeleted = isNull(members.deletedAt);
   const [
     totalMembers, todayNewMembers, monthNewMembers, activeMembers30d,
-    pointSumRow, walletSumRow, todayCheckins, availableCoupons,
+    pointSumRow, walletSumRow, todayCheckinRows, availableCouponRows,
   ] = await Promise.all([
-    db.$count(members),
-    db.$count(members, and(gte(members.createdAt, todayStart), lt(members.createdAt, todayEnd))),
-    db.$count(members, gte(members.createdAt, monthStart)),
-    db.$count(members, gte(members.lastLoginAt, days30Ago)),
-    db.select({ v: sql<number>`coalesce(sum(${memberPointAccounts.balance}), 0)::int` }).from(memberPointAccounts),
-    db.select({ v: sql<number>`coalesce(sum(${memberWallets.balance}), 0)::int` }).from(memberWallets),
-    db.$count(memberCheckins, eq(memberCheckins.checkinDate, todayStr)),
-    db.$count(memberCoupons, eq(memberCoupons.status, 'unused')),
+    db.$count(members, notDeleted),
+    db.$count(members, and(notDeleted, gte(members.createdAt, todayStart), lt(members.createdAt, todayEnd))),
+    db.$count(members, and(notDeleted, gte(members.createdAt, monthStart))),
+    db.$count(members, and(notDeleted, gte(members.lastLoginAt, days30Ago))),
+    db.select({ v: sql<number>`coalesce(sum(${memberPointAccounts.balance}), 0)::int` })
+      .from(memberPointAccounts)
+      .innerJoin(members, eq(members.id, memberPointAccounts.memberId))
+      .where(notDeleted),
+    db.select({ v: sql<number>`coalesce(sum(${memberWallets.balance}), 0)::int` })
+      .from(memberWallets)
+      .innerJoin(members, eq(members.id, memberWallets.memberId))
+      .where(notDeleted),
+    db.select({ v: count() })
+      .from(memberCheckins)
+      .innerJoin(members, eq(members.id, memberCheckins.memberId))
+      .where(and(eq(memberCheckins.checkinDate, todayStr), notDeleted)),
+    db.select({ v: count() })
+      .from(memberCoupons)
+      .innerJoin(members, eq(members.id, memberCoupons.memberId))
+      .where(and(eq(memberCoupons.status, 'unused'), notDeleted)),
   ]);
+
+  const todayCheckins = todayCheckinRows[0]?.v ?? 0;
+  const availableCoupons = availableCouponRows[0]?.v ?? 0;
 
   const totalPoints = pointSumRow[0]?.v ?? 0;
   const totalWalletBalance = walletSumRow[0]?.v ?? 0;
@@ -77,7 +94,7 @@ export async function getMemberCharts() {
       count: count(),
     })
       .from(members)
-      .where(gte(members.createdAt, days30Ago))
+      .where(and(isNull(members.deletedAt), gte(members.createdAt, days30Ago)))
       .groupBy(sql`date(${members.createdAt})`)
       .orderBy(sql`date(${members.createdAt})`),
     db.select({
@@ -87,6 +104,7 @@ export async function getMemberCharts() {
     })
       .from(members)
       .leftJoin(memberLevels, eq(memberLevels.id, members.levelId))
+      .where(isNull(members.deletedAt))
       .groupBy(members.levelId, memberLevels.name),
     db.select({
       date: sql<string>`to_char(date(${memberPointTransactions.createdAt}), 'YYYY-MM-DD')`,

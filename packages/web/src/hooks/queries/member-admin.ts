@@ -172,6 +172,18 @@ export function useResetMemberPassword() {
   });
 }
 
+export function useAdjustMemberGrowth() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }: { id: number; values: { delta: number; remark?: string } }) =>
+      request.post<Member>(`/api/members/${id}/growth`, values).then(unwrap),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: memberAdminKeys.all });
+      void qc.invalidateQueries({ queryKey: ['members'] });
+    },
+  });
+}
+
 export function useBatchMemberStatus() {
   const qc = useQueryClient();
   return useMutation({

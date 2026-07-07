@@ -18,6 +18,7 @@ import { pageOffset } from '../../lib/pagination';
 import { escapeLike } from '../../lib/where-helpers';
 import logger from '../../lib/logger';
 import { createPayment } from '../payment/payment.service';
+import { ensureMemberExists } from './member-auth.service';
 import type { WalletTxType, PaymentMethod } from '@zenith/shared';
 
 /** 钱包充值的支付业务类型标识 */
@@ -156,13 +157,15 @@ export function consumeWallet(memberId: number, amount: number, opts?: { bizType
   return changeWallet({ memberId, type: 'consume', amount: -Math.abs(amount), ...opts });
 }
 
-/** 退款入账（amount 取正）*/
-export function refundWallet(memberId: number, amount: number, opts?: { bizType?: string; bizId?: string; remark?: string; operatorId?: number }) {
+/** 退款入账（amount 取正）；后台入口需保证会员存在且未删除 */
+export async function refundWallet(memberId: number, amount: number, opts?: { bizType?: string; bizId?: string; remark?: string; operatorId?: number }) {
+  await ensureMemberExists(memberId);
   return changeWallet({ memberId, type: 'refund', amount: Math.abs(amount), ...opts });
 }
 
-/** 后台手动调整（delta 可正可负）*/
-export function adjustWallet(memberId: number, delta: number, operatorId: number, remark?: string) {
+/** 后台手动调整（delta 可正可负）；校验会员存在且未删除 */
+export async function adjustWallet(memberId: number, delta: number, operatorId: number, remark?: string) {
+  await ensureMemberExists(memberId);
   return changeWallet({ memberId, type: 'adjust', amount: delta, bizType: 'admin_adjust', remark, operatorId });
 }
 

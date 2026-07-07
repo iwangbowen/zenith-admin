@@ -18,6 +18,7 @@ import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
 import { MemberDetailDrawer } from './MemberDetailDrawer';
 import {
   memberAdminKeys,
+  useAdjustMemberGrowth,
   useBatchMemberLevel,
   useBatchMemberStatus,
   useDeleteMember,
@@ -45,6 +46,9 @@ export default function MembersPage() {
   const [editing, setEditing] = useState<Member | null>(null);
   const [pwdVisible, setPwdVisible] = useState(false);
   const [pwdMember, setPwdMember] = useState<Member | null>(null);
+  const [growthVisible, setGrowthVisible] = useState(false);
+  const [growthMember, setGrowthMember] = useState<Member | null>(null);
+  const growthFormApi = useRef<FormApi | null>(null);
   // batch operations
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const [batchStatusVisible, setBatchStatusVisible] = useState(false);
@@ -67,6 +71,7 @@ export default function MembersPage() {
   const saveMutation = useSaveMember();
   const deleteMutation = useDeleteMember();
   const resetPasswordMutation = useResetMemberPassword();
+  const adjustGrowthMutation = useAdjustMemberGrowth();
   const batchStatusMutation = useBatchMemberStatus();
   const batchLevelMutation = useBatchMemberLevel();
 
@@ -106,13 +111,24 @@ export default function MembersPage() {
   const handleDelete = (record: Member) => {
     Modal.confirm({
       title: `确认删除会员「${record.nickname}」？`,
-      content: '会员的积分、钱包、优惠券将一并删除，且无法恢复。',
+      content: '删除后该会员将无法登录、不再出现在列表中；其积分/钱包流水、券码与签到记录将保留用于审计对账。',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
         await deleteMutation.mutateAsync(record.id);
         Toast.success('删除成功');
       },
     });
+  };
+
+  const openAdjustGrowth = (record: Member) => { setGrowthMember(record); setGrowthVisible(true); };
+  const handleAdjustGrowth = async () => {
+    let values;
+    try { values = await growthFormApi.current!.validate(); } catch { throw new Error('validation'); }
+    if (!growthMember) return;
+    await adjustGrowthMutation.mutateAsync({ id: growthMember.id, values: values as { delta: number; remark?: string } });
+    Toast.success('成长值已调整');
+    setGrowthVisible(false);
+    setGrowthMember(null);
   };
 
   const openResetPwd = (record: Member) => { setPwdMember(record); setPwdVisible(true); };
@@ -178,6 +194,7 @@ export default function MembersPage() {
       actions: (record) => [
         { key: 'detail', label: '详情', onClick: () => setDetailMemberId(record.id) },
         { key: 'edit', label: '编辑', hidden: !hasPermission('member:member:update'), onClick: () => openEdit(record) },
+        { key: 'adjust-growth', label: '调整成长值', hidden: !hasPermission('member:member:update'), onClick: () => openAdjustGrowth(record) },
         { key: 'reset-password', label: '重置密码', hidden: !hasPermission('member:member:update'), onClick: () => openResetPwd(record) },
         { key: 'delete', label: '删除', danger: true, hidden: !hasPermission('member:member:delete'), onClick: () => handleDelete(record) },
       ],
@@ -328,6 +345,26 @@ export default function MembersPage() {
               placeholder="请输入新密码（至少6位）" rules={[{ required: true, message: '请输入新密码' }, { min: 6, message: '至少6位' }]} />
           </Form>
         </Spin>
+      </AppModal>
+
+      {/* 调整成长值 Modal */}
+      <AppModal title="调整成长值" visible={growthVisible} width={480}
+        okButtonProps={{ loading: adjustGrowthMutation.isPending }}
+        onCancel={() => { setGrowthVisible(false); setGrowthMember(null); }} onOk={handleAdjustGrowth}>
+        <p style={{ marginBottom: 12, fontSize: 13, color: '#6b7280' }}>
+          会员「{growthMember?.nickname}」当前成长值 <strong>{growthMember?.growthValue ?? 0}</strong>，
+          调整后将按等级门槛自动重新定级。
+        </p>
+        <Form key={growthMember?.id ?? 'growth'} getFormApi={(api) => { growthFormApi.current = api; }}
+          labelPosition="left" labelWidth={90}>
+          <Form.InputNumber field="delta" label="变动量" style={{ width: '100%' }}
+            placeholder="正数增加，负数扣减" precision={0}
+            rules={[
+              { required: true, message: '请输入变动量' },
+              { validator: (_r, v) => v !== 0, message: '变动量不能为 0' },
+            ]} />
+          <Form.Input field="remark" label="调整原因" placeholder="选填，将记入操作审计" maxLength={256} />
+        </Form>
       </AppModal>
 
       {/* 批量更改状态确认 Modal */}

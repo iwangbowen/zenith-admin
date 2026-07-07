@@ -77,6 +77,19 @@ export const memberAdminHandlers = [
   http.post('/api/members', () => ok(memberView(mockMembers[0]), '创建成功')),
   http.put('/api/members/:id/status', () => ok(null, '状态已更新')),
   http.post('/api/members/:id/reset-password', () => ok(null, '密码已重置')),
+  http.post('/api/members/:id/growth', async ({ params, request }) => {
+    const m = mockMembers.find((x) => x.id === Number(params.id));
+    if (!m) return HttpResponse.json({ code: 404, message: '会员不存在', data: null }, { status: 404 });
+    const body = (await request.json().catch(() => ({}))) as { delta?: number };
+    m.growthValue = Math.max(0, m.growthValue + (body.delta ?? 0));
+    // 与后端一致：按成长值门槛自动重定级
+    const lvl = [...mockMemberLevels]
+      .filter((l) => l.status === 'enabled' && l.growthThreshold <= m.growthValue)
+      .sort((a, b) => b.growthThreshold - a.growthThreshold)[0];
+    m.levelId = lvl?.id ?? null;
+    m.levelName = lvl?.name ?? null;
+    return ok(memberView(m), '已调整');
+  }),
   http.put('/api/members/:id', () => ok(memberView(mockMembers[0]), '更新成功')),
   http.delete('/api/members/:id', () => ok(null, '删除成功')),
 

@@ -6,7 +6,7 @@
  * - 注册时在事务内初始化积分账户 + 钱包账户
  */
 import bcrypt from 'bcryptjs';
-import { asc, eq, or } from 'drizzle-orm';
+import { and, asc, eq, isNull, or } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { members, memberLevels, memberPointAccounts, memberWallets, memberLoginLogs } from '../../db/schema';
@@ -97,16 +97,20 @@ async function getDefaultLevelId(): Promise<number | null> {
 }
 
 async function ensureIdentifiersAvailable(ids: { username?: string; phone?: string; email?: string }): Promise<void> {
+  // 仅检查未删除会员：软删除后释放的标识符允许再次注册（与部分唯一索引一致）
   if (ids.username) {
-    const [e] = await db.select({ id: members.id }).from(members).where(eq(members.username, ids.username)).limit(1);
+    const [e] = await db.select({ id: members.id }).from(members)
+      .where(and(eq(members.username, ids.username), isNull(members.deletedAt))).limit(1);
     if (e) throw new HTTPException(400, { message: '用户名已被注册' });
   }
   if (ids.phone) {
-    const [e] = await db.select({ id: members.id }).from(members).where(eq(members.phone, ids.phone)).limit(1);
+    const [e] = await db.select({ id: members.id }).from(members)
+      .where(and(eq(members.phone, ids.phone), isNull(members.deletedAt))).limit(1);
     if (e) throw new HTTPException(400, { message: '手机号已被注册' });
   }
   if (ids.email) {
-    const [e] = await db.select({ id: members.id }).from(members).where(eq(members.email, ids.email)).limit(1);
+    const [e] = await db.select({ id: members.id }).from(members)
+      .where(and(eq(members.email, ids.email), isNull(members.deletedAt))).limit(1);
     if (e) throw new HTTPException(400, { message: '邮箱已被注册' });
   }
 }
@@ -115,13 +119,17 @@ async function findMemberByAccount(account: string): Promise<MemberRow | undefin
   const [m] = await db
     .select()
     .from(members)
-    .where(or(eq(members.username, account), eq(members.phone, account), eq(members.email, account)))
+    .where(and(
+      or(eq(members.username, account), eq(members.phone, account), eq(members.email, account)),
+      isNull(members.deletedAt),
+    ))
     .limit(1);
   return m;
 }
 
 export async function ensureMemberExists(id: number): Promise<MemberRow> {
-  const [row] = await db.select().from(members).where(eq(members.id, id)).limit(1);
+  const [row] = await db.select().from(members)
+    .where(and(eq(members.id, id), isNull(members.deletedAt))).limit(1);
   if (!row) throw new HTTPException(404, { message: '会员不存在' });
   return row;
 }
@@ -221,7 +229,8 @@ export async function loginMember(input: MemberLoginServiceInput): Promise<Membe
       recordMemberLoginLog({ ip: input.ip, ua: input.ua, status: 'fail', message: '验证码错误或已过期' });
       throw new HTTPException(400, { message: '验证码错误或已过期' });
     }
-    [member] = await db.select().from(members).where(eq(members.phone, input.phone)).limit(1);
+    [member] = await db.select().from(members)
+      .where(and(eq(members.phone, input.phone), isNull(members.deletedAt))).limit(1);
     if (!member) {
       recordMemberLoginLog({ ip: input.ip, ua: input.ua, status: 'fail', message: '该手机号未注册' });
       throw new HTTPException(400, { message: '该手机号未注册' });
@@ -308,7 +317,8 @@ export async function refreshMemberToken(refreshToken: string): Promise<{ access
   if (payload.type !== 'member-refresh' || !payload.memberId) {
     throw new HTTPException(401, { message: '无效的刷新令牌' });
   }
-  const [member] = await db.select().from(members).where(eq(members.id, payload.memberId)).limit(1);
+  const [member] = await db.select().from(members)
+    .where(and(eq(members.id, payload.memberId), isNull(members.deletedAt))).limit(1);
   if (!member) throw new HTTPException(401, { message: '会员不存在' });
   if (member.status !== 'active') throw new HTTPException(403, { message: '账号不可用' });
 
@@ -335,7 +345,7 @@ export async function logoutMember(): Promise<void> {
 export async function getMyMemberProfile() {
   const { memberId } = currentMember();
   const row = await db.query.members.findFirst({
-    where: eq(members.id, memberId),
+    where: and(eq(members.id, memberId), isNull(members.deletedAt)),
     with: {
       level: { columns: { name: true } },
       pointAccount: { columns: { balance: true } },
@@ -371,7 +381,8 @@ export async function updateMyMemberProfile(input: MemberUpdateProfileInput) {
 
 export async function changeMyMemberPassword(input: MemberChangePasswordInput): Promise<void> {
   const { memberId } = currentMember();
-  const [member] = await db.select().from(members).where(eq(members.id, memberId)).limit(1);
+  const [member] = await db.select().from(members)
+    .where(and(eq(members.id, memberId), isNull(members.deletedAt))).limit(1);
   if (!member) throw new HTTPException(404, { message: '会员不存在' });
   // 已设密码时需校验原密码
   if (member.password) {
@@ -387,7 +398,8 @@ export async function changeMyMemberPassword(input: MemberChangePasswordInput): 
 export async function resetMemberPassword(input: MemberResetPasswordInput): Promise<void> {
   const ok = await verifyMemberSmsCode(input.phone, 'reset', input.smsCode);
   if (!ok) throw new HTTPException(400, { message: '验证码错误或已过期' });
-  const [member] = await db.select().from(members).where(eq(members.phone, input.phone)).limit(1);
+  const [member] = await db.select().from(members)
+    .where(and(eq(members.phone, input.phone), isNull(members.deletedAt))).limit(1);
   if (!member) throw new HTTPException(400, { message: '该手机号未注册' });
   const hashed = await bcrypt.hash(input.newPassword, 10);
   await db.update(members).set({ password: hashed }).where(eq(members.id, member.id));

@@ -1,10 +1,10 @@
 /**
- * 会员签到服务单测（连续签到计数 + 阶梯奖励 + 防重复 + 里程碑发放）。
+ * 会员签到服务单测（连续签到计数 + 阶梯奖励 + 防重复 + 里程碑发放 + 成长值闭环）。
  *
  * 覆盖要点：
  *  1. doCheckin：当日重复签到 400、首次签到 consecutive=1、昨日连续 +1、
  *     阶梯奖励精确命中 / 向下回退 / 超出最后档取最后档、无规则零奖励、
- *     并发唯一约束 → 400、积分入账 + 流水 + 经验值更新
+ *     并发唯一约束 → 400、积分入账 + 流水 + 经验值更新 + 成长值定级
  *  2. 里程碑：达标未领 → 原子加积分 + 发放记录；已领过跳过
  *
  * Mock 策略：db / member-context / coupons.service(grantCouponInTx) mock；
@@ -65,13 +65,17 @@ const RULES = [
 /**
  * doCheckin 的 select 序列：
  *  1. 今日签到记录  2. 昨日签到记录  3. 签到规则
- *  4.（points>0 时）积分账户  5. 里程碑列表  6. 已领里程碑
+ *  4.（points>0 时）积分账户
+ *  5.（experience>0 时）applyGrowthDeltaInTx：会员成长值  6. 匹配等级
+ *  7. 里程碑列表  8. 已领里程碑
  */
 function mockCheckinFlow(opts: {
   today?: unknown[];
   yesterday?: unknown[];
   rules?: unknown[];
   account?: unknown[];
+  growth?: unknown[];
+  matchedLevel?: unknown[];
   milestones?: unknown[];
   awarded?: unknown[];
 }) {
@@ -79,9 +83,12 @@ function mockCheckinFlow(opts: {
   if ((opts.today ?? []).length > 0) return;
   dbMock.select.mockReturnValueOnce(createChain(opts.yesterday ?? []));
   dbMock.select.mockReturnValueOnce(createChain(opts.rules ?? RULES));
-  const hasPoints = (opts.rules ?? RULES).length > 0;
-  if (hasPoints) {
+  const hasReward = (opts.rules ?? RULES).length > 0;
+  if (hasReward) {
     dbMock.select.mockReturnValueOnce(createChain(opts.account ?? [{ id: 1 }]));
+    // 成长值闭环：applyGrowthDeltaInTx 读会员成长值 + 匹配等级
+    dbMock.select.mockReturnValueOnce(createChain(opts.growth ?? [{ growthValue: 100 }]));
+    dbMock.select.mockReturnValueOnce(createChain(opts.matchedLevel ?? []));
   }
   dbMock.select.mockReturnValueOnce(createChain(opts.milestones ?? []));
   if ((opts.milestones ?? []).length > 0) {
@@ -161,7 +168,7 @@ describe('doCheckin - 阶梯奖励匹配', () => {
 });
 
 describe('doCheckin - 入账与里程碑', () => {
-  it('积分入账：原子加余额 + 写 earn 流水 + 更新经验值', async () => {
+  it('积分入账：原子加余额 + 写 earn 流水 + 更新经验值与成长值定级', async () => {
     mockCheckinFlow({ yesterday: [] });
     const checkinInsert = createChain([]);
     const txInsert = createChain([]);
@@ -175,7 +182,23 @@ describe('doCheckin - 入账与里程碑', () => {
     expect(txInsert.values).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'earn', amount: 5, bizType: 'checkin', balanceAfter: 105 }),
     );
-    expect(dbMock.update).toHaveBeenCalledTimes(2); // 积分账户 + 会员经验
+    expect(dbMock.update).toHaveBeenCalledTimes(3); // 积分账户 + 会员经验 + 成长值定级
+  });
+
+  it('经验值同步累加成长值并按阈值重定级（等级成长闭环）', async () => {
+    mockCheckinFlow({ yesterday: [], growth: [{ growthValue: 100 }], matchedLevel: [{ id: 3 }] });
+    const updates: ReturnType<typeof createChain>[] = [];
+    dbMock.update.mockImplementation(() => {
+      const c = createChain([{ balance: 105 }]);
+      updates.push(c);
+      return c;
+    });
+
+    await doCheckin();
+
+    // 第 3 次 update 为 applyGrowthDeltaInTx：growthValue = 100 + 2（第 1 天经验），命中等级 3
+    expect(updates).toHaveLength(3);
+    expect(updates[2].set).toHaveBeenCalledWith({ growthValue: 102, levelId: 3 });
   });
 
   it('积分账户不存在时先初始化再入账', async () => {

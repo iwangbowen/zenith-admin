@@ -1,6 +1,7 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditAfterData, setAuditBeforeData } from '../../middleware/guard';
+import { idempotencyGuard } from '../../middleware/idempotency';
 import {
   ErrorResponse, jsonContent, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, okBody, IdParam, PaginationQuery, BatchIdsBody,
@@ -12,6 +13,7 @@ import {
   resetMemberPasswordByAdmin, deleteMember,
   getMemberBeforeAudit, getMembersBeforeAudit,
 } from '../../services/member/admin-members.service';
+import { addGrowthValue } from '../../services/member/member-levels.service';
 import { doMakeupCheckin, getMakeupCheckinBeforeAudit } from '../../services/member/member-checkin.service';
 
 const membersRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -50,6 +52,10 @@ const updateMemberSchema = z.object({
 });
 const setStatusSchema = z.object({ status: statusEnum });
 const resetPwdSchema = z.object({ newPassword: z.string().min(6).max(64) });
+const adjustGrowthSchema = z.object({
+  delta: z.number().int().refine((v) => v !== 0, '变动量不能为 0'),
+  remark: z.string().max(256).optional(),
+});
 
 // ─── PUT /batch-status — 批量更改状态 ────────────────────────────────────────
 const batchStatusRoute = defineOpenAPIRoute({
@@ -242,6 +248,26 @@ const resetPwdRoute = defineOpenAPIRoute({
   },
 });
 
+// ─── POST /{id}/growth — 调整成长值（自动按阈值重定级）──────────────────────
+const adjustGrowthRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/growth', tags: ['会员管理'], summary: '调整会员成长值',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'member:member:update', audit: { description: '调整会员成长值', module: '会员管理' } }), idempotencyGuard({ ttlSeconds: 10 })] as const,
+    request: { params: IdParam, body: { content: jsonContent(adjustGrowthSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(MemberDTO, '已调整'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const { delta, remark } = c.req.valid('json');
+    setAuditBeforeData(c, await getMemberBeforeAudit(id));
+    await addGrowthValue(id, delta);
+    const after = await getMemberDetail(id);
+    setAuditAfterData(c, { ...after, adjustRemark: remark ?? null });
+    return c.json(okBody(after, '已调整'), 200);
+  },
+});
+
 // ─── DELETE /{id} — 删除会员 ─────────────────────────────────────────────────
 const deleteRoute_ = defineOpenAPIRoute({
   route: createRoute({
@@ -261,7 +287,7 @@ const deleteRoute_ = defineOpenAPIRoute({
 
 membersRouter.openapiRoutes([
   batchStatusRoute, batchLevelRoute, overviewRoute,
-  listRoute, optionsRoute, loginLogsRoute, makeupCheckinRoute, getOneRoute, createRoute_, updateRoute_, setStatusRoute, resetPwdRoute, deleteRoute_,
+  listRoute, optionsRoute, loginLogsRoute, makeupCheckinRoute, adjustGrowthRoute, getOneRoute, createRoute_, updateRoute_, setStatusRoute, resetPwdRoute, deleteRoute_,
 ] as const);
 
 export default membersRouter;

@@ -14,6 +14,7 @@ import { currentMemberId } from '../../lib/member-context';
 import { withOptimisticRetry, OptimisticLockError } from '../../lib/optimistic';
 import { pageOffset } from '../../lib/pagination';
 import { escapeLike } from '../../lib/where-helpers';
+import { ensureMemberExists } from './member-auth.service';
 import type { PointTxType } from '@zenith/shared';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
@@ -155,8 +156,9 @@ export function redeemPoints(memberId: number, amount: number, opts?: { bizType?
   return changePoints({ memberId, type: 'redeem', amount: -Math.abs(amount), ...opts });
 }
 
-/** 后台手动调整（delta 可正可负）*/
-export function adjustPoints(memberId: number, delta: number, operatorId: number, remark?: string) {
+/** 后台手动调整（delta 可正可负）；校验会员存在且未删除 */
+export async function adjustPoints(memberId: number, delta: number, operatorId: number, remark?: string) {
+  await ensureMemberExists(memberId);
   return changePoints({ memberId, type: 'adjust', amount: delta, bizType: 'admin_adjust', remark, operatorId });
 }
 

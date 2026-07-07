@@ -213,7 +213,7 @@ export async function issueCoupon(couponId: number, memberId: number) {
     const [coupon] = await tx.select().from(coupons).where(eq(coupons.id, couponId)).limit(1);
     if (!coupon) throw new HTTPException(404, { message: '优惠券不存在' });
     const [m] = await tx.select({ id: members.id, levelId: members.levelId, growthValue: members.growthValue })
-      .from(members).where(eq(members.id, memberId)).limit(1);
+      .from(members).where(and(eq(members.id, memberId), isNull(members.deletedAt))).limit(1);
     if (!m) throw new HTTPException(404, { message: '会员不存在' });
     // 规则中心资格判定（可选）：若已发布 coupon_eligibility 决策表且判定不通过则拒发；表缺失/异常默认放行
     const decision = await getDecisionOutputs('coupon_eligibility', { member: m, coupon: { id: coupon.id, faceValue: coupon.faceValue, type: coupon.type } });

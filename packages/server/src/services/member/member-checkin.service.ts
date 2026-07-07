@@ -1,5 +1,5 @@
 import dayjs from 'dayjs';
-import { and, asc, desc, eq, gte, ilike, inArray, lte, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import {
@@ -20,6 +20,7 @@ import { escapeLike, withPagination } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { getCheckinSettingsRow } from './checkin-settings.service';
 import { grantCouponInTx } from './coupons.service';
+import { applyGrowthDeltaInTx } from './member-levels.service';
 import { getMemberDetail } from './admin-members.service';
 import { getPointAccountBeforeAudit } from './member-points.service';
 
@@ -320,6 +321,8 @@ export async function doCheckin() {
         await tx.update(members).set({
           experience: sql`${members.experience} + ${experience}`,
         }).where(eq(members.id, memberId));
+        // 经验值同步累加成长值并按阈值自动重定级（等级成长闭环）
+        await applyGrowthDeltaInTx(tx, memberId, experience);
       }
 
       const totalDays = await tx.$count(memberCheckins, eq(memberCheckins.memberId, memberId));
@@ -377,7 +380,8 @@ export async function doMakeupCheckin(params: { memberId: number; date: string; 
   const earliestStr = dayjs().subtract(settings.makeupMaxDays, 'day').format('YYYY-MM-DD');
   if (dateStr < earliestStr) throw new HTTPException(400, { message: `仅可补签最近 ${settings.makeupMaxDays} 天内的签到` });
 
-  const [member] = await db.select({ id: members.id }).from(members).where(eq(members.id, memberId)).limit(1);
+  const [member] = await db.select({ id: members.id }).from(members)
+    .where(and(eq(members.id, memberId), isNull(members.deletedAt))).limit(1);
   if (!member) throw new HTTPException(404, { message: '会员不存在' });
 
   const [existing] = await db.select({ id: memberCheckins.id }).from(memberCheckins)
@@ -441,6 +445,8 @@ export async function doMakeupCheckin(params: { memberId: number; date: string; 
         await tx.update(members).set({
           experience: sql`${members.experience} + ${experience}`,
         }).where(eq(members.id, memberId));
+        // 经验值同步累加成长值并按阈值自动重定级（等级成长闭环）
+        await applyGrowthDeltaInTx(tx, memberId, experience);
       }
 
       const totalDays = await tx.$count(memberCheckins, eq(memberCheckins.memberId, memberId));

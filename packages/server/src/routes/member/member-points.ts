@@ -1,6 +1,7 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
+import { idempotencyGuard } from '../../middleware/idempotency';
 import {
   jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okBody, IdParam, PaginationQuery,
 } from '../../lib/openapi-schemas';
@@ -47,7 +48,7 @@ const adjustRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/adjust', tags: ['会员积分'], summary: '手动调整积分',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'member:point:adjust', audit: { description: '调整会员积分', module: '会员积分' } })] as const,
+    middleware: [authMiddleware, guard({ permission: 'member:point:adjust', audit: { description: '调整会员积分', module: '会员积分' } }), idempotencyGuard({ ttlSeconds: 10 })] as const,
     request: { body: { content: jsonContent(adjustSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(MemberPointAccountDTO, '已调整') },
   }),

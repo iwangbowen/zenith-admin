@@ -1,4 +1,5 @@
 import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, unique, uniqueIndex, index, jsonb, date, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { statusEnum } from './common';
 import { auditColumns, tenants, users } from './core';
 import { loginStatusEnum } from './logs';
@@ -70,14 +71,17 @@ export const members = pgTable('members', {
   lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
   lastLoginIp: varchar('last_login_ip', { length: 64 }),
   remark: varchar('remark', { length: 256 }),
+  /** 软删除时间（非 null 即已删除；资金流水/券码等历史数据保留）*/
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (t) => [
-  uniqueIndex('members_phone_unique').on(t.phone),
-  uniqueIndex('members_email_unique').on(t.email),
-  uniqueIndex('members_username_unique').on(t.username),
+  // 部分唯一索引：仅约束未删除的会员，软删除后手机号/邮箱/用户名可再次注册
+  uniqueIndex('members_phone_unique').on(t.phone).where(sql`${t.deletedAt} is null`),
+  uniqueIndex('members_email_unique').on(t.email).where(sql`${t.deletedAt} is null`),
+  uniqueIndex('members_username_unique').on(t.username).where(sql`${t.deletedAt} is null`),
   index('members_status_idx').on(t.status),
 ]);
 

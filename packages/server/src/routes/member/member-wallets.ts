@@ -1,6 +1,7 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
+import { idempotencyGuard } from '../../middleware/idempotency';
 import {
   jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okBody, IdParam, PaginationQuery,
 } from '../../lib/openapi-schemas';
@@ -52,7 +53,7 @@ const adjustRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/adjust', tags: ['会员钱包'], summary: '手动调整余额',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'member:wallet:adjust', audit: { description: '调整会员余额', module: '会员钱包' } })] as const,
+    middleware: [authMiddleware, guard({ permission: 'member:wallet:adjust', audit: { description: '调整会员余额', module: '会员钱包' } }), idempotencyGuard({ ttlSeconds: 10 })] as const,
     request: { body: { content: jsonContent(adjustSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(MemberWalletDTO, '已调整') },
   }),
@@ -68,7 +69,7 @@ const refundRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/refund', tags: ['会员钱包'], summary: '钱包退款入账',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'member:wallet:refund', audit: { description: '会员钱包退款', module: '会员钱包' } })] as const,
+    middleware: [authMiddleware, guard({ permission: 'member:wallet:refund', audit: { description: '会员钱包退款', module: '会员钱包' } }), idempotencyGuard({ ttlSeconds: 10 })] as const,
     request: { body: { content: jsonContent(refundSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(MemberWalletDTO, '已退款') },
   }),

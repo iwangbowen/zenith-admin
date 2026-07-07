@@ -1,6 +1,7 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditAfterData, setAuditBeforeData } from '../../middleware/guard';
+import { idempotencyGuard } from '../../middleware/idempotency';
 import {
   ErrorResponse, jsonContent, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, okBody, IdParam, PaginationQuery,
@@ -133,7 +134,7 @@ const issueRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/{id}/issue', tags: ['优惠券'], summary: '发券给会员',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'member:coupon:issue', audit: { description: '发放优惠券', module: '优惠券' } })] as const,
+    middleware: [authMiddleware, guard({ permission: 'member:coupon:issue', audit: { description: '发放优惠券', module: '优惠券' } }), idempotencyGuard({ ttlSeconds: 10 })] as const,
     request: { params: IdParam, body: { content: jsonContent(issueSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(MemberCouponDTO, '发放成功') },
   }),

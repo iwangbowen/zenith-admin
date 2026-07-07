@@ -80,6 +80,14 @@
 
 系统种子等级包括普通会员、银卡会员、金卡会员、钻石会员，成长值门槛分别为 `0`、`1000`、`5000`、`20000`，折扣分别为 `100`、`98`、`95`、`90`。
 
+### 成长值与自动定级
+
+成长值（`members.growth_value`）驱动等级：任何成长值变动都会在同一事务内按 `growth_threshold` 匹配「最高满足档」自动升降级，低于所有阈值时等级置空，成长值下限钳制为 `0`。
+
+- **签到 / 补签**：规则中的 `experience` 奖励在累加 `members.experience` 的同时，等额累加成长值并自动重定级（`applyGrowthDeltaInTx()`，与签到同事务）。
+- **后台调整**：`POST /api/members/{id}/growth`（权限码 `member:member:update`，带审计与 `idempotencyGuard`），`delta` 可正可负，调整原因记入操作审计。
+- **手动指定等级**：后台编辑会员或批量调整等级时，系统会把成长值抬升至目标等级门槛（`GREATEST(growth_value, threshold)`），避免后续成长值变动时被自动定级回退。
+
 ---
 
 ## 积分体系
@@ -95,7 +103,7 @@
 
 `changePoints()` 是统一记账入口：在数据库事务中读取账户，计算余额，使用 `version` 乐观锁更新账户，并原子写入流水。余额不足时返回业务错误，乐观锁冲突通过 `withOptimisticRetry()` 重试。
 
-后台管理员可通过 `POST /api/member-points/adjust` 手动调整积分，权限码为 `member:point:adjust`，流水 `bizType` 为 `admin_adjust`，并记录操作人 `operatorId`。
+后台管理员可通过 `POST /api/member-points/adjust` 手动调整积分，权限码为 `member:point:adjust`，流水 `bizType` 为 `admin_adjust`，并记录操作人 `operatorId`。该接口带 `idempotencyGuard({ ttlSeconds: 10 })` 防止双击/网络重试导致重复入账。
 
 ---
 
@@ -121,10 +129,19 @@
 
 支付成功后，`paymentEventBus` 触发 `payment.succeeded` 事件，`payment-subscribers.ts` 监听 `bizType = 'member_recharge'` 并调用 `creditWalletOnRecharge()` 入账。入账按支付单号做幂等校验：若 `member_wallet_transactions` 中已存在 `biz_type = 'member_recharge'` 且 `biz_id = orderNo` 的流水，则不重复入账。
 
-后台支持手动调整余额与退款入账：
+后台支持手动调整余额与退款入账（两个接口均带 `idempotencyGuard({ ttlSeconds: 10 })` 防重复提交）：
 
 - `POST /api/member-wallets/adjust`：权限码 `member:wallet:adjust`，流水 `bizType = 'admin_adjust'`
 - `POST /api/member-wallets/refund`：权限码 `member:wallet:refund`，流水 `bizType = 'admin_refund'`
+
+---
+
+## 会员软删除
+
+后台删除会员（`DELETE /api/members/{id}`）为**软删除**：仅设置 `members.deleted_at` 并强制下线全部会话，积分/钱包账户与流水、券码、签到与登录日志全部保留，用于审计与财务对账。
+
+- `phone` / `email` / `username` 的唯一约束为**部分唯一索引**（`WHERE deleted_at IS NULL`），删除后同一标识符可再次注册。
+- 已删除会员对列表、详情、下拉、导出、看板统计全部不可见；无法登录、无法刷新 Token；资金调整、发券、补签等操作会返回 404。
 
 ---
 
@@ -167,7 +184,7 @@
 - 超过最大 `day_number` 时使用最后一条规则
 - 未精确命中时使用不大于连续天数的最近规则
 
-执行签到时，系统在事务内写入签到记录；若奖励积分大于 0，会原子累加积分账户 `balance`、`total_earned` 与 `version`，并写入 `bizType = 'checkin'` 的积分流水。经验奖励累加到 `members.experience`。
+执行签到时，系统在事务内写入签到记录；若奖励积分大于 0，会原子累加积分账户 `balance`、`total_earned` 与 `version`，并写入 `bizType = 'checkin'` 的积分流水。经验奖励累加到 `members.experience`，并等额累加成长值触发自动定级（见「成长值与自动定级」）。
 
 前台签到接口 `POST /api/member/checkin` 带 `idempotencyGuard({ ttlSeconds: 5 })`。
 
@@ -208,8 +225,8 @@
 |------|------|--------|
 | `/api/members` | `GET /`、`GET /{id}`、`GET /{id}/overview` | `member:member:list` |
 | `/api/members` | `POST /` | `member:member:create` |
-| `/api/members` | `PUT /{id}`、`PUT /{id}/status`、`POST /{id}/reset-password`、`PUT /batch-status`、`PUT /batch-level` | `member:member:update` |
-| `/api/members` | `DELETE /{id}` | `member:member:delete` |
+| `/api/members` | `PUT /{id}`、`PUT /{id}/status`、`POST /{id}/reset-password`、`POST /{id}/growth`、`PUT /batch-status`、`PUT /batch-level` | `member:member:update` |
+| `/api/members` | `DELETE /{id}`（软删除） | `member:member:delete` |
 | `/api/member-levels` | `GET /`、`GET /{id}` | `member:level:list` |
 | `/api/member-levels` | `POST /` | `member:level:create` |
 | `/api/member-levels` | `PUT /{id}` | `member:level:update` |

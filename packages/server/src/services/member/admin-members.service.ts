@@ -3,10 +3,10 @@
  * 复用 member-auth.service 的 mapMember / ensureMemberExists。
  */
 import bcrypt from 'bcryptjs';
-import { and, asc, desc, eq, gte, lte, inArray, ilike, or, count, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, lte, inArray, ilike, isNull, or, count, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import { members, memberPointAccounts, memberWallets, memberPointTransactions, memberWalletTransactions, memberCoupons, memberLoginLogs } from '../../db/schema';
+import { members, memberLevels, memberPointAccounts, memberWallets, memberPointTransactions, memberWalletTransactions, memberCoupons, memberLoginLogs } from '../../db/schema';
 import type { MemberRow } from '../../db/schema';
 import { mapMember, ensureMemberExists } from './member-auth.service';
 import { forceLogoutAllByMember } from '../../lib/member-session-manager';
@@ -27,7 +27,8 @@ export interface ListMembersQuery {
 }
 
 export function buildMemberWhere(q: { keyword?: string; status?: MemberStatus; levelId?: number }): SQL | undefined {
-  const conds: SQL[] = [];
+  // 软删除的会员对列表/下拉/导出一律不可见
+  const conds: SQL[] = [isNull(members.deletedAt)];
   if (q.keyword) {
     const kw = `%${escapeLike(q.keyword)}%`;
     const orCond = or(ilike(members.nickname, kw), ilike(members.phone, kw), ilike(members.username, kw), ilike(members.email, kw));
@@ -35,7 +36,7 @@ export function buildMemberWhere(q: { keyword?: string; status?: MemberStatus; l
   }
   if (q.status) conds.push(eq(members.status, q.status));
   if (q.levelId) conds.push(eq(members.levelId, q.levelId));
-  return conds.length ? and(...conds) : undefined;
+  return and(...conds);
 }
 
 // ─── 列表 / 详情 ──────────────────────────────────────────────────────────────
@@ -90,7 +91,7 @@ export async function getMemberOptions(keyword?: string) {
 
 export async function getMemberDetail(id: number) {
   const row = await db.query.members.findFirst({
-    where: eq(members.id, id),
+    where: and(eq(members.id, id), isNull(members.deletedAt)),
     with: {
       level: { columns: { name: true } },
       pointAccount: { columns: { balance: true } },
@@ -113,7 +114,7 @@ export async function getMembersBeforeAudit(ids: number[]) {
   const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
   if (validIds.length === 0) return [];
   const rows = await db.query.members.findMany({
-    where: inArray(members.id, validIds),
+    where: and(inArray(members.id, validIds), isNull(members.deletedAt)),
     with: {
       level: { columns: { name: true } },
       pointAccount: { columns: { balance: true } },
@@ -185,6 +186,16 @@ export interface AdminUpdateMemberInput {
   remark?: string | null;
 }
 
+/** 手动指定等级时抬升成长值至该等级门槛，避免下一次成长值变动触发自动定级时被回退 */
+async function raiseGrowthToLevelThreshold(ids: number[], levelId: number): Promise<void> {
+  const [lvl] = await db.select({ growthThreshold: memberLevels.growthThreshold })
+    .from(memberLevels).where(eq(memberLevels.id, levelId)).limit(1);
+  if (!lvl || lvl.growthThreshold <= 0) return;
+  await db.update(members)
+    .set({ growthValue: sql`GREATEST(${members.growthValue}, ${lvl.growthThreshold})` })
+    .where(and(inArray(members.id, ids), isNull(members.deletedAt)));
+}
+
 export async function updateMember(id: number, input: AdminUpdateMemberInput) {
   await ensureMemberExists(id);
   const patch: Record<string, unknown> = {};
@@ -204,6 +215,7 @@ export async function updateMember(id: number, input: AdminUpdateMemberInput) {
       throw err;
     }
   }
+  if (typeof input.levelId === 'number') await raiseGrowthToLevelThreshold([id], input.levelId);
   // 状态被改为非 active 时强制下线
   if (input.status && input.status !== 'active') await forceLogoutAllByMember(id);
   return getMemberDetail(id);
@@ -219,8 +231,9 @@ export async function setMemberStatus(id: number, status: MemberStatus) {
 export async function deleteMember(id: number) {
   await ensureMemberExists(id);
   await forceLogoutAllByMember(id);
-  // 积分账户/钱包/流水/券码均为 ON DELETE CASCADE，随会员一并删除
-  await db.delete(members).where(eq(members.id, id));
+  // 软删除：保留积分/钱包流水、券码、签到等历史数据用于审计与对账；
+  // 唯一索引为部分索引（deleted_at IS NULL），删除后手机号/邮箱/用户名可再次注册
+  await db.update(members).set({ deletedAt: new Date() }).where(eq(members.id, id));
 }
 
 export async function resetMemberPasswordByAdmin(id: number, newPassword: string) {
@@ -233,23 +246,30 @@ export async function resetMemberPasswordByAdmin(id: number, newPassword: string
 // ─── 批量操作 ─────────────────────────────────────────────────────────────────
 export async function batchSetMemberStatus(ids: number[], status: MemberStatus): Promise<number> {
   if (ids.length === 0) return 0;
-  await db.update(members).set({ status }).where(inArray(members.id, ids));
+  const updated = await db.update(members).set({ status })
+    .where(and(inArray(members.id, ids), isNull(members.deletedAt)))
+    .returning({ id: members.id });
   if (status !== 'active') {
-    await Promise.all(ids.map((id) => forceLogoutAllByMember(id)));
+    await Promise.all(updated.map((r) => forceLogoutAllByMember(r.id)));
   }
-  return ids.length;
+  return updated.length;
 }
 
 export async function batchSetMemberLevel(ids: number[], levelId: number | null): Promise<number> {
   if (ids.length === 0) return 0;
-  await db.update(members).set({ levelId }).where(inArray(members.id, ids));
-  return ids.length;
+  const updated = await db.update(members).set({ levelId })
+    .where(and(inArray(members.id, ids), isNull(members.deletedAt)))
+    .returning({ id: members.id });
+  if (typeof levelId === 'number' && updated.length > 0) {
+    await raiseGrowthToLevelThreshold(updated.map((r) => r.id), levelId);
+  }
+  return updated.length;
 }
 
 // ─── 会员概览（后台详情侧滑）──────────────────────────────────────────────────
 export async function getMemberOverview(id: number) {
   const row = await db.query.members.findFirst({
-    where: eq(members.id, id),
+    where: and(eq(members.id, id), isNull(members.deletedAt)),
     with: {
       level: { columns: { name: true } },
       pointAccount: { columns: { balance: true } },
