@@ -5,6 +5,29 @@
 import { z } from '@hono/zod-openapi';
 import { MemberLoginLogDTO } from './logs';
 
+// ─── 会员标签 ─────────────────────────────────────────────────────────────────
+export const MemberTagDTO = z
+  .object({
+    id: z.number().int(),
+    name: z.string(),
+    color: z.string().nullable().optional(),
+    description: z.string().nullable().optional(),
+    sort: z.number().int(),
+    status: z.enum(['enabled', 'disabled']),
+    memberCount: z.number().int().optional(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('MemberTag');
+
+export const MemberTagBriefDTO = z
+  .object({
+    id: z.number().int(),
+    name: z.string(),
+    color: z.string().nullable(),
+  })
+  .openapi('MemberTagBrief');
+
 // ─── 会员实体 ─────────────────────────────────────────────────────────────────
 export const MemberDTO = z
   .object({
@@ -29,6 +52,7 @@ export const MemberDTO = z
     hasPassword: z.boolean().optional(),
     pointBalance: z.number().int().optional(),
     walletBalance: z.number().int().optional(),
+    tags: z.array(MemberTagBriefDTO).optional(),
     createdAt: z.string(),
     updatedAt: z.string(),
   })
@@ -169,6 +193,7 @@ export const CouponDTO = z
     validStart: z.string().nullable().optional(),
     validEnd: z.string().nullable().optional(),
     validDays: z.number().int().nullable().optional(),
+    exchangePoints: z.number().int(),
     status: z.enum(['draft', 'active', 'paused', 'expired']),
     description: z.string().nullable().optional(),
     createdAt: z.string(),
@@ -248,6 +273,8 @@ export const MemberStatsChartsDTO = z
     levelDistribution: z.array(z.object({ name: z.string(), value: z.number().int() })),
     pointTrend: z.array(z.object({ date: z.string(), earned: z.number().int(), spent: z.number().int() })),
     checkinTrend: z.array(z.object({ date: z.string(), count: z.number().int() })),
+    activitySegments: z.array(z.object({ name: z.string(), value: z.number().int() })),
+    rechargeSegments: z.array(z.object({ name: z.string(), value: z.number().int() })),
   })
   .openapi('MemberStatsCharts');
 

@@ -6,7 +6,7 @@ import bcrypt from 'bcryptjs';
 import { and, asc, desc, eq, gte, lte, inArray, ilike, isNull, or, count, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import { members, memberLevels, memberPointAccounts, memberWallets, memberPointTransactions, memberWalletTransactions, memberCoupons, memberLoginLogs } from '../../db/schema';
+import { members, memberLevels, memberPointAccounts, memberWallets, memberPointTransactions, memberWalletTransactions, memberCoupons, memberLoginLogs, memberTagBindings } from '../../db/schema';
 import type { MemberRow } from '../../db/schema';
 import { mapMember, ensureMemberExists } from './member-auth.service';
 import { forceLogoutAllByMember } from '../../lib/member-session-manager';
@@ -22,11 +22,12 @@ export interface ListMembersQuery {
   keyword?: string;
   status?: MemberStatus;
   levelId?: number;
+  tagId?: number;
   page: number;
   pageSize: number;
 }
 
-export function buildMemberWhere(q: { keyword?: string; status?: MemberStatus; levelId?: number }): SQL | undefined {
+export function buildMemberWhere(q: { keyword?: string; status?: MemberStatus; levelId?: number; tagId?: number }): SQL | undefined {
   // 软删除的会员对列表/下拉/导出一律不可见
   const conds: SQL[] = [isNull(members.deletedAt)];
   if (q.keyword) {
@@ -36,21 +37,38 @@ export function buildMemberWhere(q: { keyword?: string; status?: MemberStatus; l
   }
   if (q.status) conds.push(eq(members.status, q.status));
   if (q.levelId) conds.push(eq(members.levelId, q.levelId));
+  if (q.tagId) {
+    conds.push(inArray(
+      members.id,
+      db.select({ id: memberTagBindings.memberId }).from(memberTagBindings).where(eq(memberTagBindings.tagId, q.tagId)),
+    ));
+  }
   return and(...conds);
 }
 
 // ─── 列表 / 详情 ──────────────────────────────────────────────────────────────
+type TagBindingWithTag = { tag: { id: number; name: string; color: string | null } | null };
+
+function mapBoundTags(bindings?: TagBindingWithTag[]) {
+  return (bindings ?? [])
+    .filter((b): b is TagBindingWithTag & { tag: NonNullable<TagBindingWithTag['tag']> } => !!b.tag)
+    .map((b) => ({ id: b.tag.id, name: b.tag.name, color: b.tag.color ?? null }));
+}
+
+const memberRelationSelect = {
+  level: { columns: { name: true } },
+  pointAccount: { columns: { balance: true } },
+  wallet: { columns: { balance: true } },
+  tagBindings: { with: { tag: { columns: { id: true, name: true, color: true } } } },
+} as const;
+
 export async function listMembers(q: ListMembersQuery) {
   const where = buildMemberWhere(q);
   const [total, rows] = await Promise.all([
     db.$count(members, where),
     db.query.members.findMany({
       where,
-      with: {
-        level: { columns: { name: true } },
-        pointAccount: { columns: { balance: true } },
-        wallet: { columns: { balance: true } },
-      },
+      with: memberRelationSelect,
       orderBy: desc(members.id),
       limit: q.pageSize,
       offset: pageOffset(q.page, q.pageSize),
@@ -62,6 +80,7 @@ export async function listMembers(q: ListMembersQuery) {
         levelName: r.level?.name ?? null,
         pointBalance: r.pointAccount?.balance ?? 0,
         walletBalance: r.wallet?.balance ?? 0,
+        tags: mapBoundTags(r.tagBindings),
       }),
     ),
     total,
@@ -92,17 +111,14 @@ export async function getMemberOptions(keyword?: string) {
 export async function getMemberDetail(id: number) {
   const row = await db.query.members.findFirst({
     where: and(eq(members.id, id), isNull(members.deletedAt)),
-    with: {
-      level: { columns: { name: true } },
-      pointAccount: { columns: { balance: true } },
-      wallet: { columns: { balance: true } },
-    },
+    with: memberRelationSelect,
   });
   if (!row) throw new HTTPException(404, { message: '会员不存在' });
   return mapMember(row, {
     levelName: row.level?.name ?? null,
     pointBalance: row.pointAccount?.balance ?? 0,
     walletBalance: row.wallet?.balance ?? 0,
+    tags: mapBoundTags(row.tagBindings),
   });
 }
 
@@ -270,11 +286,7 @@ export async function batchSetMemberLevel(ids: number[], levelId: number | null)
 export async function getMemberOverview(id: number) {
   const row = await db.query.members.findFirst({
     where: and(eq(members.id, id), isNull(members.deletedAt)),
-    with: {
-      level: { columns: { name: true } },
-      pointAccount: { columns: { balance: true } },
-      wallet: { columns: { balance: true } },
-    },
+    with: memberRelationSelect,
   });
   if (!row) throw new HTTPException(404, { message: '会员不存在' });
 
@@ -303,6 +315,7 @@ export async function getMemberOverview(id: number) {
       levelName: row.level?.name ?? null,
       pointBalance: row.pointAccount?.balance ?? 0,
       walletBalance: row.wallet?.balance ?? 0,
+      tags: mapBoundTags(row.tagBindings),
     }),
     points: mapPointAccount(pointAcc),
     wallet: mapWallet(wallet),

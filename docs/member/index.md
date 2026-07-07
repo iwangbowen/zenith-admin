@@ -78,6 +78,14 @@
 
 前台通过 `GET /api/member/levels` 查看启用等级权益；后台通过 `/api/member-levels` 管理等级。
 
+### 会员标签（运营分群）
+
+标签存储在 `member_tags` 表，绑定关系在 `member_tag_bindings`（`member_id + tag_id` 唯一，均级联删除）。
+
+- 标签管理：`/api/member-tags`（列表带各标签会员数；增删改权限码 `member:member:update`，带审计）。前端入口在会员管理页「标签管理」弹窗。
+- 会员打标：`PUT /api/members/{id}/tags`（覆盖式）、`PUT /api/members/batch-tags`（批量追加，`onConflictDoNothing` 跳过已有绑定）。
+- 会员列表 / 详情 / 概览通过 RQB `tagBindings.tag` 附带 `tags` 数组；列表与导出支持 `tagId` 筛选。
+
 系统种子等级包括普通会员、银卡会员、金卡会员、钻石会员，成长值门槛分别为 `0`、`1000`、`5000`、`20000`，折扣分别为 `100`、`98`、`95`、`90`。
 
 ### 成长值与自动定级
@@ -151,7 +159,8 @@
 
 1. **优惠券过期**：`member_coupons` 中已过 `expire_at` 的未使用券批量置为 `expired`，保证统计与展示口径准确。
 2. **积分不活跃过期**：由 system_config `member_point_expire_days` 控制（默认 `0` 不启用）；账户超过 N 天无任何积分变动时，余额通过 `changePoints(type='expire')` 清零并写 `bizType = 'points_inactive_expire'` 流水，可审计可对账。
-3. **登录日志清理**：由 system_config `member_login_log_retention_days` 控制（默认 `180`，`0` 不清理），删除超期的 `member_login_logs`（表带 `(member_id, created_at)` 复合索引）。
+3. **生日礼发放**：见「生日礼自动发放」章节。
+4. **登录日志清理**：由 system_config `member_login_log_retention_days` 控制（默认 `180`，`0` 不清理），删除超期的 `member_login_logs`（表带 `(member_id, created_at)` 复合索引）。
 
 会员域已注册 6 个导出中心实体（execution 为 `auto`，大数据量自动转异步任务）：
 
@@ -173,7 +182,7 @@
 
 | 表 | 关键字段 |
 |----|----------|
-| `coupons` | `type`、`face_value`、`threshold`、`max_discount`、`total_quantity`、`issued_quantity`、`per_limit`、`valid_type`、`valid_start`、`valid_end`、`valid_days`、`status` |
+| `coupons` | `type`、`face_value`、`threshold`、`max_discount`、`total_quantity`、`issued_quantity`、`per_limit`、`valid_type`、`valid_start`、`valid_end`、`valid_days`、`exchange_points`、`status` |
 | `member_coupons` | `coupon_id`、`member_id`、`code`、`status`、`received_at`、`used_at`、`expire_at`、`biz_type`、`biz_id` |
 
 券模板类型：
@@ -186,6 +195,25 @@
 发券使用事务内原子库存扣减：`issued_quantity + 1` 与库存条件在同一条 `UPDATE` 中完成，`total_quantity = 0` 表示不限量；同时校验 `per_limit` 每人限领数量。券码以 `CP` 开头并全局唯一。
 
 前台会员可查看可领取优惠券、领取优惠券、查看自己的卡券列表；后台可管理模板、发券给指定会员、查看领券记录、作废未使用券码。服务层提供 `redeemCoupon(code)` 核销入口，会将可用券更新为 `used` 并写入 `used_at`、`biz_type`、`biz_id`。
+
+### 积分兑换优惠券
+
+模板配置 `exchange_points > 0` 后即可被积分兑换（积分出口最小闭环）：
+
+- `GET /api/member/coupons/exchangeable`：可兑换券列表（active + 有库存 + 未过期）。
+- `POST /api/member/coupons/exchange`：兑换（带 `idempotencyGuard`）。事务内先**条件 UPDATE 扣积分**（`balance >= cost`，防超扣），写 `bizType = 'coupon_exchange'` 积分流水，再走 `grantCoupon()`（库存/限领校验），券记录标记 `bizType = 'points_exchange'`；任一步失败整体回滚。
+- 前台 SPA「我的卡券 → 积分兑换」Tab 展示余额与兑换入口；后台券表单可配置「兑换积分」。
+
+### 生日礼自动发放
+
+每日例行维护任务在生日当天（`birthday` 的 MM-DD 匹配）为启用会员发放礼包，**按年幂等**（每年最多一次）：
+
+- `member_birthday_points`（system_config，默认 `0` 不发）：积分礼，流水 `bizType = 'birthday'`、`bizId = 年份`，以流水查重防重发。
+- `member_birthday_coupon_id`（system_config，默认 `0` 不发）：券礼，`member_coupons` 以同样标记查重；库存不足等业务异常跳过该会员不阻断整体。
+
+### 券到期提醒
+
+前台「我的卡券」对 7 天内到期的可用券展示「即将过期」红色标记（基于 `expireAt` 前端计算）。
 
 ---
 
@@ -236,8 +264,10 @@
 | `/api/member` | `POST /wallet/recharge` | 发起钱包充值 |
 | `/api/member` | `GET /levels` | 等级权益 |
 | `/api/member` | `GET /coupons/available` | 可领取优惠券 |
+| `/api/member` | `GET /coupons/exchangeable` | 可积分兑换优惠券 |
 | `/api/member` | `GET /coupons` | 我的优惠券 |
 | `/api/member` | `POST /coupons/receive` | 领取优惠券 |
+| `/api/member` | `POST /coupons/exchange` | 积分兑换优惠券 |
 | `/api/member` | `GET /checkin/status` | 今日签到状态 |
 | `/api/member` | `POST /checkin` | 执行签到 |
 | `/api/member` | `GET /checkin/history` | 我的签到历史 |
@@ -249,8 +279,10 @@
 |------|------|--------|
 | `/api/members` | `GET /`、`GET /{id}`、`GET /{id}/overview` | `member:member:list` |
 | `/api/members` | `POST /` | `member:member:create` |
-| `/api/members` | `PUT /{id}`、`PUT /{id}/status`、`POST /{id}/reset-password`、`POST /{id}/growth`、`PUT /batch-status`、`PUT /batch-level` | `member:member:update` |
+| `/api/members` | `PUT /{id}`、`PUT /{id}/status`、`POST /{id}/reset-password`、`POST /{id}/growth`、`PUT /{id}/tags`、`PUT /batch-status`、`PUT /batch-level`、`PUT /batch-tags` | `member:member:update` |
 | `/api/members` | `DELETE /{id}`（软删除） | `member:member:delete` |
+| `/api/member-tags` | `GET /` | `member:member:list` |
+| `/api/member-tags` | `POST /`、`PUT /{id}`、`DELETE /{id}` | `member:member:update` |
 | `/api/member-levels` | `GET /`、`GET /{id}` | `member:level:list` |
 | `/api/member-levels` | `POST /` | `member:level:create` |
 | `/api/member-levels` | `PUT /{id}` | `member:level:update` |

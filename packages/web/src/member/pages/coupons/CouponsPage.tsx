@@ -1,8 +1,16 @@
 import { type ReactNode } from 'react';
-import { Tabs, TabPane, Button, Toast, Spin, Tag } from '@douyinfe/semi-ui';
+import { Tabs, TabPane, Button, Toast, Spin, Tag, Modal } from '@douyinfe/semi-ui';
+import dayjs from 'dayjs';
 import type { Coupon } from '@zenith/shared';
 import { MemberPage } from '../../components/MemberPage';
-import { useAvailableCoupons, useInfiniteMemberCoupons, useReceiveCoupon } from '../../hooks/queries';
+import {
+  useAvailableCoupons,
+  useExchangeCoupon,
+  useExchangeableCoupons,
+  useInfiniteMemberCoupons,
+  useMemberPointAccount,
+  useReceiveCoupon,
+} from '../../hooks/queries';
 
 const STATUS_TAG: Record<string, ReactNode> = {
   unused: <Tag color="green">可用</Tag>,
@@ -64,6 +72,7 @@ function CouponCard({ coupon, disabled, extra, subDate }: Readonly<CouponCardPro
 function MyCoupons() {
   const query = useInfiniteMemberCoupons(10);
   const list = query.data?.pages.flatMap((page) => page.list) ?? [];
+  const soonThreshold = dayjs().add(7, 'day');
 
   if (query.isFetching && list.length === 0) {
     return <div className="m-loading-wrap"><Spin /></div>;
@@ -74,17 +83,25 @@ function MyCoupons() {
 
   return (
     <div style={{ paddingTop: 12 }}>
-      {list.map((mc) =>
-        mc.coupon ? (
+      {list.map((mc) => {
+        if (!mc.coupon) return null;
+        // 7 天内到期的可用券高亮提醒
+        const expiringSoon = mc.status === 'unused' && !!mc.expireAt && dayjs(mc.expireAt).isBefore(soonThreshold);
+        return (
           <CouponCard
             key={mc.id}
             coupon={mc.coupon}
             disabled={mc.status !== 'unused'}
             subDate={mc.expireAt ? `有效期至 ${mc.expireAt.slice(0, 10)}` : undefined}
-            extra={STATUS_TAG[mc.status]}
+            extra={
+              <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                {expiringSoon && <Tag color="red" size="small">即将过期</Tag>}
+                {STATUS_TAG[mc.status]}
+              </span>
+            }
           />
-        ) : null,
-      )}
+        );
+      })}
       {query.hasNextPage && (
         <div style={{ textAlign: 'center', paddingTop: 8 }}>
           <Button theme="borderless" loading={query.isFetchingNextPage} onClick={() => query.fetchNextPage()}>
@@ -136,6 +153,67 @@ function AvailableCoupons() {
   );
 }
 
+function ExchangeCoupons() {
+  const query = useExchangeableCoupons();
+  const pointQuery = useMemberPointAccount();
+  const exchangeMutation = useExchangeCoupon();
+  const list = query.data ?? [];
+  const balance = pointQuery.data?.balance ?? 0;
+
+  const exchange = (coupon: Coupon) => {
+    const cost = coupon.exchangePoints ?? 0;
+    Modal.confirm({
+      title: `兑换「${coupon.name}」？`,
+      content: `将消耗 ${cost} 积分（当前余额 ${balance}）`,
+      okText: '确认兑换',
+      onOk: async () => {
+        await exchangeMutation.mutateAsync(coupon.id);
+        Toast.success('兑换成功');
+      },
+    });
+  };
+
+  if (query.isFetching) {
+    return <div className="m-loading-wrap"><Spin /></div>;
+  }
+  if (list.length === 0) {
+    return <div className="m-empty">暂无可兑换的优惠券</div>;
+  }
+
+  return (
+    <div style={{ paddingTop: 12 }}>
+      <div style={{ fontSize: 13, color: 'var(--m-text-secondary)', marginBottom: 8 }}>
+        当前积分余额：<strong style={{ color: 'var(--m-primary)' }}>{balance}</strong>
+      </div>
+      {list.map((c) => {
+        const cost = c.exchangePoints ?? 0;
+        const enough = balance >= cost;
+        return (
+          <CouponCard
+            key={c.id}
+            coupon={c}
+            extra={
+              <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center', width: '100%', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 12, color: 'var(--m-warning)' }}>{cost} 积分</span>
+                <Button
+                  size="small"
+                  theme="solid"
+                  disabled={!enough}
+                  loading={exchangeMutation.isPending && exchangeMutation.variables === c.id}
+                  onClick={() => exchange(c)}
+                  style={enough ? { background: 'var(--m-primary)' } : undefined}
+                >
+                  {enough ? '立即兑换' : '积分不足'}
+                </Button>
+              </span>
+            }
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 export default function CouponsPage() {
   return (
     <MemberPage title="我的卡券">
@@ -145,6 +223,9 @@ export default function CouponsPage() {
         </TabPane>
         <TabPane tab="领券中心" itemKey="available">
           <AvailableCoupons />
+        </TabPane>
+        <TabPane tab="积分兑换" itemKey="exchange">
+          <ExchangeCoupons />
         </TabPane>
       </Tabs>
     </MemberPage>

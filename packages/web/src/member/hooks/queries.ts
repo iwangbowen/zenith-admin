@@ -74,6 +74,7 @@ export const memberKeys = {
     lists: ['member', 'coupons', 'list'] as const,
     list: (params: MemberListParams) => ['member', 'coupons', 'list', params] as const,
     available: ['member', 'coupons', 'available'] as const,
+    exchangeable: ['member', 'coupons', 'exchangeable'] as const,
   },
   levels: ['member', 'levels'] as const,
   loginLogs: {
@@ -142,6 +143,13 @@ export function useAvailableCoupons() {
   return useQuery({
     queryKey: memberKeys.coupons.available,
     queryFn: () => memberRequest.get<Coupon[]>('/api/member/coupons/available', { silent: true }).then(unwrap),
+  });
+}
+
+export function useExchangeableCoupons() {
+  return useQuery({
+    queryKey: memberKeys.coupons.exchangeable,
+    queryFn: () => memberRequest.get<Coupon[]>('/api/member/coupons/exchangeable', { silent: true }).then(unwrap),
   });
 }
 
@@ -218,6 +226,18 @@ export function useReceiveCoupon() {
     mutationFn: (couponId: number) =>
       memberRequest.post<MemberCoupon>('/api/member/coupons/receive', { couponId }).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: memberKeys.coupons.all }),
+  });
+}
+
+export function useExchangeCoupon() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (couponId: number) =>
+      memberRequest.post<MemberCoupon>('/api/member/coupons/exchange', { couponId }).then(unwrap),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: memberKeys.coupons.all });
+      void qc.invalidateQueries({ queryKey: memberKeys.points.all });
+    },
   });
 }
 

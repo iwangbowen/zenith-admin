@@ -1,28 +1,26 @@
 /**
  * 会员数据例行维护（系统周期任务 member-housekeeping 调用）。
  *
- * - expireMemberCoupons()：将已过 expireAt 的未使用券批量置为 expired，修正统计口径
+ * - 券过期：复用 coupons.service 的 expireCoupons()，修正统计口径
  * - expireInactivePoints()：按 system_config `member_point_expire_days`（0=关闭）
  *   清零长期无积分变动账户的余额，走 changePoints(type='expire') 记流水，可审计可对账
+ * - grantBirthdayGifts()：生日当天自动发放积分/优惠券（system_configs 控制，按年幂等防重发）
  * - cleanupMemberLoginLogs()：按 system_config `member_login_log_retention_days`（0=不清理）
  *   删除超期登录日志，防止无限增长
  */
-import { and, eq, gt, isNull, lt, lte } from 'drizzle-orm';
+import dayjs from 'dayjs';
+import { and, eq, gt, isNull, like, lt, lte } from 'drizzle-orm';
+import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import { memberCoupons, memberLoginLogs, memberPointAccounts, members } from '../../db/schema';
+import { memberCoupons, memberLoginLogs, memberPointAccounts, memberPointTransactions, members } from '../../db/schema';
 import { getConfigNumber } from '../../lib/system-config';
 import logger from '../../lib/logger';
-import { changePoints } from './member-points.service';
+import { changePoints, earnPoints, ensurePointAccount } from './member-points.service';
+import { expireCoupons, grantCouponInTx } from './coupons.service';
 
 /** 未使用且已过实际过期时间的券批量置为 expired，返回处理数量 */
 export async function expireMemberCoupons(): Promise<number> {
-  const now = new Date();
-  const updated = await db
-    .update(memberCoupons)
-    .set({ status: 'expired' })
-    .where(and(eq(memberCoupons.status, 'unused'), lt(memberCoupons.expireAt, now)))
-    .returning({ id: memberCoupons.id });
-  return updated.length;
+  return expireCoupons();
 }
 
 /**
@@ -78,10 +76,71 @@ export async function cleanupMemberLoginLogs(): Promise<number> {
   return deleted.length;
 }
 
-/** 每日例行维护入口（券过期 → 积分不活跃过期 → 登录日志清理）*/
+/**
+ * 生日礼自动发放：生日为今天（MM-DD 匹配）的启用会员，
+ * 发放 `member_birthday_points` 积分与/或 `member_birthday_coupon_id` 优惠券。
+ * 幂等：积分以流水 (bizType='birthday', bizId=年份) 查重；券以 member_coupons 同标记查重，每年最多一次。
+ */
+export async function grantBirthdayGifts(): Promise<{ points: number; coupons: number; skipped: number }> {
+  const [giftPoints, giftCouponId] = await Promise.all([
+    getConfigNumber('member_birthday_points', 0),
+    getConfigNumber('member_birthday_coupon_id', 0),
+  ]);
+  if (giftPoints <= 0 && giftCouponId <= 0) return { points: 0, coupons: 0, skipped: 0 };
+
+  const monthDay = dayjs().format('MM-DD');
+  const year = String(dayjs().year());
+  // birthday 存储为 YYYY-MM-DD，按后 5 位匹配今天
+  const birthdayMembers = await db
+    .select({ id: members.id })
+    .from(members)
+    .where(and(eq(members.status, 'active'), isNull(members.deletedAt), like(members.birthday, `%-${monthDay}`)));
+
+  let pointsGranted = 0;
+  let couponsGranted = 0;
+  let skipped = 0;
+  for (const m of birthdayMembers) {
+    try {
+      if (giftPoints > 0) {
+        const [exist] = await db.select({ id: memberPointTransactions.id }).from(memberPointTransactions)
+          .where(and(
+            eq(memberPointTransactions.memberId, m.id),
+            eq(memberPointTransactions.bizType, 'birthday'),
+            eq(memberPointTransactions.bizId, year),
+          )).limit(1);
+        if (!exist) {
+          await ensurePointAccount(m.id);
+          await earnPoints(m.id, giftPoints, { bizType: 'birthday', bizId: year, remark: `${year} 年生日礼积分` });
+          pointsGranted += 1;
+        }
+      }
+      if (giftCouponId > 0) {
+        const [exist] = await db.select({ id: memberCoupons.id }).from(memberCoupons)
+          .where(and(
+            eq(memberCoupons.memberId, m.id),
+            eq(memberCoupons.bizType, 'birthday'),
+            eq(memberCoupons.bizId, year),
+          )).limit(1);
+        if (!exist) {
+          await db.transaction((tx) => grantCouponInTx(tx, giftCouponId, m.id, { bizType: 'birthday', bizId: year }));
+          couponsGranted += 1;
+        }
+      }
+    } catch (err) {
+      // 库存不足/限领等业务异常跳过该会员，不阻断整体发放
+      skipped += 1;
+      const msg = err instanceof HTTPException ? err.message : (err as Error).message;
+      logger.warn(`[MemberHousekeeping] 生日礼发放跳过 memberId=${m.id}: ${msg}`);
+    }
+  }
+  return { points: pointsGranted, coupons: couponsGranted, skipped };
+}
+
+/** 每日例行维护入口（券过期 → 积分不活跃过期 → 生日礼发放 → 登录日志清理）*/
 export async function runMemberHousekeeping(): Promise<string> {
   const coupons = await expireMemberCoupons();
   const points = await expireInactivePoints();
+  const birthday = await grantBirthdayGifts();
   const logs = await cleanupMemberLoginLogs();
-  return `券过期 ${coupons} 张；积分过期 ${points.expired} 户（跳过 ${points.skipped}）；清理登录日志 ${logs} 条`;
+  return `券过期 ${coupons} 张；积分过期 ${points.expired} 户（跳过 ${points.skipped}）；生日礼积分 ${birthday.points} 人/发券 ${birthday.coupons} 人（跳过 ${birthday.skipped}）；清理登录日志 ${logs} 条`;
 }

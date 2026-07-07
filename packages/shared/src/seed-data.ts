@@ -8,7 +8,7 @@
  * 修改数据时只需改这一处，两端自动同步。
  */
 
-import type { Menu, Role, Department, Position, Dict, DictItem, SystemConfig, CronJob, WorkflowForm, WorkflowCategory, WorkflowDataSource, Tag, DataMaskConfig, MemberLevel, Coupon, EmailTemplate, SmsTemplate, InAppTemplate, Tenant, TenantPackage, AiPromptTemplate, MpAccount, MpTag, MpFan, MpMessage, MpAutoReply, MpMenu, MpMaterial, MpDraft, MpMessageTemplate, MpBroadcast, MpQrcode, MpKfAccount, MpKfSessionStatus, MpKfSessionCloseReason, MpKfSessionEventType, MpKfRoutingStrategy, MpMenuButton, MpMenuMatchRule, MpMenuStatus, ReportDatasource, ReportDataset, ReportDashboard, ApiScope, RatePlan, ReportPrintTemplate } from './types';
+import type { Menu, Role, Department, Position, Dict, DictItem, SystemConfig, CronJob, WorkflowForm, WorkflowCategory, WorkflowDataSource, Tag, DataMaskConfig, MemberLevel, MemberTag, Coupon, EmailTemplate, SmsTemplate, InAppTemplate, Tenant, TenantPackage, AiPromptTemplate, MpAccount, MpTag, MpFan, MpMessage, MpAutoReply, MpMenu, MpMaterial, MpDraft, MpMessageTemplate, MpBroadcast, MpQrcode, MpKfAccount, MpKfSessionStatus, MpKfSessionCloseReason, MpKfSessionEventType, MpKfRoutingStrategy, MpMenuButton, MpMenuMatchRule, MpMenuStatus, ReportDatasource, ReportDataset, ReportDashboard, ApiScope, RatePlan, ReportPrintTemplate } from './types';
 
 const SEED_DATE = '2024-01-01 00:00:00';
 
@@ -659,6 +659,8 @@ export const SEED_SYSTEM_CONFIGS: SystemConfig[] = [
   { id: 30, configKey: 'login_risk_new_device_action',   configValue: 'allow', configType: 'string',  description: '新设备登录动作：allow/challenge',        createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 31, configKey: 'member_point_expire_days',       configValue: '0',     configType: 'number',  description: '会员积分不活跃过期天数：账户超过 N 天无任何积分变动时余额自动过期清零（expire 流水可审计），0 表示积分永不过期', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 32, configKey: 'member_login_log_retention_days', configValue: '180',  configType: 'number',  description: '会员登录日志保留天数，超期日志由每日例行维护任务删除，0 表示不清理', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 33, configKey: 'member_birthday_points',         configValue: '0',     configType: 'number',  description: '会员生日礼积分：生日当天自动发放的积分数量（每年一次，流水 bizType=birthday），0 表示不发放', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 34, configKey: 'member_birthday_coupon_id',      configValue: '0',     configType: 'number',  description: '会员生日礼优惠券模板 ID：生日当天自动发放该券（每年一次），0 表示不发放', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 限流规则 ─────────────────────────────────────────────────────────────────
@@ -1541,8 +1543,15 @@ export const SEED_MEMBER_LEVELS: MemberLevel[] = [
 // ─── 优惠券模板 ──────────────────────────────────────────────────────────────
 
 export const SEED_COUPONS: Coupon[] = [
-  { id: 1, name: '新人满100减10', type: 'amount',  faceValue: 1000, threshold: 10000, maxDiscount: null, totalQuantity: 1000, issuedQuantity: 0, perLimit: 1, validType: 'relative', validStart: null, validEnd: null, validDays: 30, status: 'active', description: '新人专享满减券',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 2, name: '全场9折券',    type: 'percent', faceValue: 90,   threshold: 0,     maxDiscount: 5000, totalQuantity: 500,  issuedQuantity: 0, perLimit: 1, validType: 'relative', validStart: null, validEnd: null, validDays: 15, status: 'active', description: '限时9折，最高减50元', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1, name: '新人满100减10', type: 'amount',  faceValue: 1000, threshold: 10000, maxDiscount: null, totalQuantity: 1000, issuedQuantity: 0, perLimit: 1, validType: 'relative', validStart: null, validEnd: null, validDays: 30, exchangePoints: 0,   status: 'active', description: '新人专享满减券',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, name: '全场9折券',    type: 'percent', faceValue: 90,   threshold: 0,     maxDiscount: 5000, totalQuantity: 500,  issuedQuantity: 0, perLimit: 1, validType: 'relative', validStart: null, validEnd: null, validDays: 15, exchangePoints: 200, status: 'active', description: '限时9折，最高减50元；可用 200 积分兑换', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+// ─── 会员标签（示例）──────────────────────────────────────────────────────────
+export const SEED_MEMBER_TAGS: MemberTag[] = [
+  { id: 1, name: '高价值', color: 'red',    description: '累计充值较高的重点会员', sort: 1, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, name: '易流失', color: 'orange', description: '长期未登录，需要唤醒运营', sort: 2, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 3, name: '新客',   color: 'green',  description: '注册 30 天内的新会员', sort: 3, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 公众号账号（示例占位，需填实际凭证后启用）──────────────────────────────────

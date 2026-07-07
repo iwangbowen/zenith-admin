@@ -84,7 +84,9 @@ export const memberFrontHandlers = [
   // ── 自助：优惠券 ──────────────────────────────────────────────────────────
   http.get('/api/member/coupons', () => paginated(mockMemberCoupons)),
   http.get('/api/member/coupons/available', () => ok(mockCoupons)),
+  http.get('/api/member/coupons/exchangeable', () => ok(mockCoupons.filter((c) => (c.exchangePoints ?? 0) > 0))),
   http.post('/api/member/coupons/receive', () => ok(mockMemberCoupons[0], '领取成功')),
+  http.post('/api/member/coupons/exchange', () => ok(mockMemberCoupons[0], '兑换成功')),
 
   // ── 自助：登录历史 ────────────────────────────────────────────────────────
   http.get('/api/member/login-logs', ({ request }) => {

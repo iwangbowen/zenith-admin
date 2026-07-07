@@ -1,5 +1,6 @@
 import { mockDateTime, mockDateOffset } from '../utils/date';
-import { SEED_MEMBER_LEVELS, SEED_COUPONS } from '@zenith/shared';
+import { SEED_MEMBER_LEVELS, SEED_MEMBER_TAGS, SEED_COUPONS } from '@zenith/shared';
+import type { MemberTagBrief } from '@zenith/shared';
 
 const now = mockDateTime();
 
@@ -24,6 +25,7 @@ export interface MockMember {
   hasPassword: boolean;
   pointBalance: number;
   walletBalance: number;
+  tags: MemberTagBrief[];
   createdAt: string;
   updatedAt: string;
   /** 仅 mock 登录校验用 */
@@ -41,10 +43,24 @@ export const mockMemberLevels = SEED_MEMBER_LEVELS.map((l, i) => ({
   updatedAt: now,
 }));
 
+// 会员标签（与种子对齐 + 会员数）
+const _tagMemberCounts = [1, 1, 1];
+export const mockMemberTags = SEED_MEMBER_TAGS.map((t, i) => ({
+  ...t,
+  memberCount: _tagMemberCounts[i] ?? 0,
+  createdAt: now,
+  updatedAt: now,
+}));
+
+const tagBrief = (id: number): MemberTagBrief => {
+  const t = SEED_MEMBER_TAGS.find((x) => x.id === id)!;
+  return { id: t.id, name: t.name, color: t.color ?? null };
+};
+
 export const mockMembers: MockMember[] = [
-  { id: 1, username: null, phone: '13800138000', email: 'demo@member.dev', nickname: '演示会员', avatar: null, gender: 'male', birthday: null, status: 'active', levelId: 2, levelName: '银卡会员', growthValue: 1280, experience: 520, registerSource: 'seed', registerIp: '127.0.0.1', lastLoginAt: now, remark: null, hasPassword: true, pointBalance: 1280, walletBalance: 5000, createdAt: now, updatedAt: now, password: '123456' },
-  { id: 2, username: 'alice', phone: '13900139001', email: 'alice@member.dev', nickname: 'Alice', avatar: null, gender: 'female', birthday: null, status: 'active', levelId: 1, levelName: '普通会员', growthValue: 320, experience: 120, registerSource: 'web', registerIp: '127.0.0.1', lastLoginAt: now, remark: null, hasPassword: true, pointBalance: 320, walletBalance: 0, createdAt: now, updatedAt: now, password: '123456' },
-  { id: 3, username: null, phone: '13700137002', email: null, nickname: '老用户', avatar: null, gender: null, birthday: null, status: 'inactive', levelId: 3, levelName: '金卡会员', growthValue: 6200, experience: 1880, registerSource: 'h5', registerIp: '127.0.0.1', lastLoginAt: null, remark: '长期未登录', hasPassword: false, pointBalance: 80, walletBalance: 19900, createdAt: now, updatedAt: now, password: '' },
+  { id: 1, username: null, phone: '13800138000', email: 'demo@member.dev', nickname: '演示会员', avatar: null, gender: 'male', birthday: null, status: 'active', levelId: 2, levelName: '银卡会员', growthValue: 1280, experience: 520, registerSource: 'seed', registerIp: '127.0.0.1', lastLoginAt: now, remark: null, hasPassword: true, pointBalance: 1280, walletBalance: 5000, tags: [tagBrief(1)], createdAt: now, updatedAt: now, password: '123456' },
+  { id: 2, username: 'alice', phone: '13900139001', email: 'alice@member.dev', nickname: 'Alice', avatar: null, gender: 'female', birthday: null, status: 'active', levelId: 1, levelName: '普通会员', growthValue: 320, experience: 120, registerSource: 'web', registerIp: '127.0.0.1', lastLoginAt: now, remark: null, hasPassword: true, pointBalance: 320, walletBalance: 0, tags: [tagBrief(3)], createdAt: now, updatedAt: now, password: '123456' },
+  { id: 3, username: null, phone: '13700137002', email: null, nickname: '老用户', avatar: null, gender: null, birthday: null, status: 'inactive', levelId: 3, levelName: '金卡会员', growthValue: 6200, experience: 1880, registerSource: 'h5', registerIp: '127.0.0.1', lastLoginAt: null, remark: '长期未登录', hasPassword: false, pointBalance: 80, walletBalance: 19900, tags: [tagBrief(2)], createdAt: now, updatedAt: now, password: '' },
 ];
 
 export const mockMemberPointAccount = { memberId: 1, balance: 1280, frozen: 0, totalEarned: 1500, totalSpent: 220 };
@@ -123,5 +139,18 @@ export const mockMemberStatsCharts = {
     spent: 600 + ((i * 89 + 100) % 1100),
   })),
   checkinTrend: buildTrend(7, (i) => ({ count: 260 + ((i * 53 + 40) % 160) })),
+  activitySegments: [
+    { name: '7天活跃', value: 486 },
+    { name: '30天活跃', value: 312 },
+    { name: '90天活跃', value: 187 },
+    { name: '沉睡', value: 243 },
+    { name: '从未登录', value: 58 },
+  ],
+  rechargeSegments: [
+    { name: '未充值', value: 764 },
+    { name: '100元以下', value: 318 },
+    { name: '100-500元', value: 152 },
+    { name: '500元以上', value: 52 },
+  ],
 };
 

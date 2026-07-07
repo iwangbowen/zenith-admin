@@ -14,6 +14,7 @@ import {
   getMemberBeforeAudit, getMembersBeforeAudit,
 } from '../../services/member/admin-members.service';
 import { addGrowthValue } from '../../services/member/member-levels.service';
+import { setMemberTags, batchAddMemberTags } from '../../services/member/member-tags.service';
 import { doMakeupCheckin, getMakeupCheckinBeforeAudit } from '../../services/member/member-checkin.service';
 
 const membersRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -28,6 +29,7 @@ const listQuery = PaginationQuery.extend({
   keyword: z.string().optional(),
   status: statusEnum.optional(),
   levelId: z.coerce.number().int().positive().optional(),
+  tagId: z.coerce.number().int().positive().optional(),
 });
 const createMemberSchema = z.object({
   username: z.string().min(2).max(32).optional(),
@@ -55,6 +57,11 @@ const resetPwdSchema = z.object({ newPassword: z.string().min(6).max(64) });
 const adjustGrowthSchema = z.object({
   delta: z.number().int().refine((v) => v !== 0, '变动量不能为 0'),
   remark: z.string().max(256).optional(),
+});
+const setTagsSchema = z.object({ tagIds: z.array(z.number().int().positive()).max(50) });
+const batchTagsSchema = z.object({
+  ids: BatchIdsBody.shape.ids,
+  tagIds: z.array(z.number().int().positive()).min(1).max(50),
 });
 
 // ─── PUT /batch-status — 批量更改状态 ────────────────────────────────────────
@@ -274,6 +281,45 @@ const adjustGrowthRoute = defineOpenAPIRoute({
   },
 });
 
+// ─── PUT /{id}/tags — 设置会员标签（覆盖式）─────────────────────────────────
+const setTagsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put', path: '/{id}/tags', tags: ['会员管理'], summary: '设置会员标签',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'member:member:update', audit: { description: '设置会员标签', module: '会员管理' } })] as const,
+    request: { params: IdParam, body: { content: jsonContent(setTagsSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(MemberDTO, '已更新'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await getMemberBeforeAudit(id));
+    await setMemberTags(id, c.req.valid('json').tagIds);
+    const after = await getMemberDetail(id);
+    setAuditAfterData(c, after);
+    return c.json(okBody(after, '已更新'), 200);
+  },
+});
+
+// ─── PUT /batch-tags — 批量追加标签 ──────────────────────────────────────────
+const batchTagsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put', path: '/batch-tags', tags: ['会员管理'], summary: '批量为会员追加标签',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'member:member:update', audit: { description: '批量打标签', module: '会员管理' } })] as const,
+    request: { body: { content: jsonContent(batchTagsSchema), required: true } },
+    responses: { ...commonErrorResponses, ...okMsg('已更新') },
+  }),
+  handler: async (c) => {
+    const { ids, tagIds } = c.req.valid('json');
+    const before = await getMembersBeforeAudit(ids);
+    if (before.length > 0) setAuditBeforeData(c, before);
+    const count = await batchAddMemberTags(ids, tagIds);
+    const after = await getMembersBeforeAudit(ids);
+    if (after.length > 0) setAuditAfterData(c, after);
+    return c.json(okBody(null, `已为 ${count} 名会员追加标签`), 200);
+  },
+});
+
 // ─── DELETE /{id} — 删除会员 ─────────────────────────────────────────────────
 const deleteRoute_ = defineOpenAPIRoute({
   route: createRoute({
@@ -292,8 +338,8 @@ const deleteRoute_ = defineOpenAPIRoute({
 });
 
 membersRouter.openapiRoutes([
-  batchStatusRoute, batchLevelRoute, overviewRoute,
-  listRoute, optionsRoute, loginLogsRoute, makeupCheckinRoute, adjustGrowthRoute, getOneRoute, createRoute_, updateRoute_, setStatusRoute, resetPwdRoute, deleteRoute_,
+  batchStatusRoute, batchLevelRoute, batchTagsRoute, overviewRoute,
+  listRoute, optionsRoute, loginLogsRoute, makeupCheckinRoute, adjustGrowthRoute, setTagsRoute, getOneRoute, createRoute_, updateRoute_, setStatusRoute, resetPwdRoute, deleteRoute_,
 ] as const);
 
 export default membersRouter;

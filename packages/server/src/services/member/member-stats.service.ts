@@ -87,8 +87,11 @@ export async function getMemberCharts() {
   const todayStart = startOfToday();
   const days30Ago = shiftDays(todayStart, -29);
   const days7Ago = shiftDays(todayStart, -6);
+  const active7 = shiftDays(todayStart, -6);
+  const active30 = shiftDays(todayStart, -29);
+  const active90 = shiftDays(todayStart, -89);
 
-  const [registerRows, levelRows, pointRows, checkinRows] = await Promise.all([
+  const [registerRows, levelRows, pointRows, checkinRows, activityRows, rechargeRows] = await Promise.all([
     db.select({
       date: sql<string>`to_char(date(${members.createdAt}), 'YYYY-MM-DD')`,
       count: count(),
@@ -123,6 +126,33 @@ export async function getMemberCharts() {
       .where(gte(memberCheckins.checkinDate, formatDate(days7Ago)))
       .groupBy(memberCheckins.checkinDate)
       .orderBy(memberCheckins.checkinDate),
+    // 活跃分层（按最后登录时间分桶，RFM 中的 Recency）
+    // 注：select 投影中的参数无列类型上下文，需显式转 timestamptz
+    db.select({
+      segment: sql<string>`case
+        when ${members.lastLoginAt} >= ${active7.toISOString()}::timestamptz then '7天活跃'
+        when ${members.lastLoginAt} >= ${active30.toISOString()}::timestamptz then '30天活跃'
+        when ${members.lastLoginAt} >= ${active90.toISOString()}::timestamptz then '90天活跃'
+        when ${members.lastLoginAt} is not null then '沉睡'
+        else '从未登录' end`,
+      count: count(),
+    })
+      .from(members)
+      .where(isNull(members.deletedAt))
+      .groupBy(sql`1`),
+    // 充值能力分层（累计充值金额分档，RFM 中的 Monetary；单位分）
+    db.select({
+      segment: sql<string>`case
+        when ${memberWallets.totalRecharge} = 0 then '未充值'
+        when ${memberWallets.totalRecharge} < 10000 then '100元以下'
+        when ${memberWallets.totalRecharge} < 50000 then '100-500元'
+        else '500元以上' end`,
+      count: count(),
+    })
+      .from(memberWallets)
+      .innerJoin(members, eq(members.id, memberWallets.memberId))
+      .where(isNull(members.deletedAt))
+      .groupBy(sql`1`),
   ]);
 
   const axis30 = buildDateAxis(days30Ago, 30);
@@ -139,5 +169,16 @@ export async function getMemberCharts() {
 
   const levelDistribution = levelRows.map((r) => ({ name: r.name ?? '无等级', value: r.count }));
 
-  return { registerTrend, levelDistribution, pointTrend, checkinTrend };
+  // 固定展示顺序（SQL group 结果无序）
+  const ACTIVITY_ORDER = ['7天活跃', '30天活跃', '90天活跃', '沉睡', '从未登录'];
+  const activityMap = new Map(activityRows.map((r) => [r.segment, r.count]));
+  const activitySegments = ACTIVITY_ORDER
+    .map((name) => ({ name, value: activityMap.get(name) ?? 0 }))
+    .filter((s) => s.value > 0);
+
+  const RECHARGE_ORDER = ['未充值', '100元以下', '100-500元', '500元以上'];
+  const rechargeMap = new Map(rechargeRows.map((r) => [r.segment, r.count]));
+  const rechargeSegments = RECHARGE_ORDER.map((name) => ({ name, value: rechargeMap.get(name) ?? 0 }));
+
+  return { registerTrend, levelDistribution, pointTrend, checkinTrend, activitySegments, rechargeSegments };
 }

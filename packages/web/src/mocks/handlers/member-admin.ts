@@ -1,7 +1,9 @@
 import { http, HttpResponse } from 'msw';
+import { mockDateTime } from '../utils/date';
 import {
   mockMembers,
   mockMemberLevels,
+  mockMemberTags,
   mockMemberPointTxs,
   mockMemberWalletTxs,
   mockMemberCoupons,
@@ -35,6 +37,21 @@ function paginated<T>(list: T[], page = 1, pageSize = 10) {
 export const memberAdminHandlers = [
   http.put('/api/members/batch-status', () => ok(null, '已更新状态')),
   http.put('/api/members/batch-level', () => ok(null, '已调整等级')),
+  http.put('/api/members/batch-tags', async ({ request }) => {
+    const body = (await request.json().catch(() => ({}))) as { ids?: number[]; tagIds?: number[] };
+    const tagIds = body.tagIds ?? [];
+    for (const id of body.ids ?? []) {
+      const m = mockMembers.find((x) => x.id === id);
+      if (!m) continue;
+      const existing = new Set(m.tags.map((t) => t.id));
+      for (const tid of tagIds) {
+        if (existing.has(tid)) continue;
+        const tag = mockMemberTags.find((t) => t.id === tid);
+        if (tag) m.tags.push({ id: tag.id, name: tag.name, color: tag.color ?? null });
+      }
+    }
+    return ok(null, `已为 ${(body.ids ?? []).length} 名会员追加标签`);
+  }),
   http.get('/api/members', () => paginated(mockMembers.map(memberView))),
   http.get('/api/members/options', ({ request }) => {
     const kw = (new URL(request.url).searchParams.get('keyword') ?? '').trim().toLowerCase();
@@ -90,8 +107,52 @@ export const memberAdminHandlers = [
     m.levelName = lvl?.name ?? null;
     return ok(memberView(m), '已调整');
   }),
+  http.put('/api/members/:id/tags', async ({ params, request }) => {
+    const m = mockMembers.find((x) => x.id === Number(params.id));
+    if (!m) return HttpResponse.json({ code: 404, message: '会员不存在', data: null }, { status: 404 });
+    const body = (await request.json().catch(() => ({}))) as { tagIds?: number[] };
+    m.tags = (body.tagIds ?? [])
+      .map((tid) => mockMemberTags.find((t) => t.id === tid))
+      .filter((t): t is NonNullable<typeof t> => !!t)
+      .map((t) => ({ id: t.id, name: t.name, color: t.color ?? null }));
+    return ok(memberView(m), '已更新');
+  }),
   http.put('/api/members/:id', () => ok(memberView(mockMembers[0]), '更新成功')),
   http.delete('/api/members/:id', () => ok(null, '删除成功')),
+
+  // ── 会员标签 ─────────────────────────────────────────────────────────────
+  http.get('/api/member-tags', () => ok(mockMemberTags)),
+  http.post('/api/member-tags', async ({ request }) => {
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const created = {
+      id: mockMemberTags.length ? Math.max(...mockMemberTags.map((t) => t.id)) + 1 : 1,
+      name: String(body.name ?? '新标签'),
+      color: (body.color as string | null) ?? 'blue',
+      description: (body.description as string | null) ?? null,
+      sort: Number(body.sort ?? 0),
+      status: (body.status as 'enabled' | 'disabled') ?? 'enabled',
+      memberCount: 0,
+      createdAt: mockDateTime(),
+      updatedAt: mockDateTime(),
+    };
+    mockMemberTags.push(created);
+    return ok(created, '创建成功');
+  }),
+  http.put('/api/member-tags/:id', async ({ params, request }) => {
+    const t = mockMemberTags.find((x) => x.id === Number(params.id));
+    if (!t) return HttpResponse.json({ code: 404, message: '标签不存在', data: null }, { status: 404 });
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    Object.assign(t, body, { updatedAt: mockDateTime() });
+    return ok(t, '更新成功');
+  }),
+  http.delete('/api/member-tags/:id', ({ params }) => {
+    const idx = mockMemberTags.findIndex((x) => x.id === Number(params.id));
+    if (idx >= 0) {
+      const [removed] = mockMemberTags.splice(idx, 1);
+      for (const m of mockMembers) m.tags = m.tags.filter((t) => t.id !== removed.id);
+    }
+    return ok(null, '删除成功');
+  }),
 
   // ── 会员充值记录 ─────────────────────────────────────────────────────────────
   http.get('/api/member-recharges', ({ request }) => {

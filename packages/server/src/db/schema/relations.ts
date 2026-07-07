@@ -17,7 +17,7 @@ import { channelAutoReplies, channelConversations, channelMenus, channelMessages
 import { paymentApps, paymentChannelConfigs, paymentOrders, paymentReconBatches, paymentReconItems, paymentRefunds, paymentSharingOrders, paymentSharingReceivers, paymentTransfers, paymentWebhookDeliveries, paymentWebhookEndpoints } from './payment';
 import { aiConversations, aiMessages, aiPromptTemplates, aiProviderConfigs, userAiConfigs } from './ai';
 import { appWebhookDeliveries, appWebhookSubscriptions, oauth2AuthorizationCodes, oauth2Clients, oauth2Tokens, oauth2UserGrants, ratePlans } from './open-platform';
-import { checkinMilestones, coupons, memberCheckinMilestoneAwards, memberCheckins, memberCoupons, memberLevels, memberPointAccounts, memberPointTransactions, members, memberWallets, memberWalletTransactions } from './member';
+import { checkinMilestones, coupons, memberCheckinMilestoneAwards, memberCheckins, memberCoupons, memberLevels, memberPointAccounts, memberPointTransactions, members, memberTagBindings, memberTags, memberWallets, memberWalletTransactions } from './member';
 import { monitorAlertEvents, monitorAlertRules } from './monitor';
 import { mpAccounts, mpAutoReplies, mpBroadcasts, mpConditionalMenus, mpDrafts, mpFans, mpKfAccounts, mpKfRoutingConfigs, mpKfSessionEvents, mpKfSessions, mpMaterials, mpMenus, mpMessages, mpMessageTemplates, mpQrcodes, mpTags, mpTemplateSendLogs, mpUnmatchedKeywords } from './mp';
 import { reportAlertRules, reportDashboardCategories, reportDashboardComments, reportDashboards, reportDashboardShares, reportDashboardSubscriptions, reportDashboardVersions, reportDatasets, reportDatasources, reportPrintTemplates, reportShareAccessLogs } from './report';
@@ -676,6 +676,16 @@ export const membersRelations = relations(members, ({ one, many }) => ({
   walletTransactions: many(memberWalletTransactions),
   memberCoupons: many(memberCoupons),
   checkins: many(memberCheckins),
+  tagBindings: many(memberTagBindings),
+}));
+
+export const memberTagsRelations = relations(memberTags, ({ many }) => ({
+  bindings: many(memberTagBindings),
+}));
+
+export const memberTagBindingsRelations = relations(memberTagBindings, ({ one }) => ({
+  member: one(members, { fields: [memberTagBindings.memberId], references: [members.id] }),
+  tag: one(memberTags, { fields: [memberTagBindings.tagId], references: [memberTags.id] }),
 }));
 
 export const monitorAlertRulesRelations = relations(monitorAlertRules, ({ many }) => ({

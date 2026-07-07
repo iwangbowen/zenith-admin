@@ -37,7 +37,12 @@ import type {
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 export function mapMember(
   row: MemberRow,
-  extra?: { levelName?: string | null; pointBalance?: number; walletBalance?: number },
+  extra?: {
+    levelName?: string | null;
+    pointBalance?: number;
+    walletBalance?: number;
+    tags?: { id: number; name: string; color: string | null }[];
+  },
 ) {
   return {
     id: row.id,
@@ -61,6 +66,7 @@ export function mapMember(
     hasPassword: !!row.password,
     pointBalance: extra?.pointBalance,
     walletBalance: extra?.walletBalance,
+    tags: extra?.tags,
     createdAt: formatDateTime(row.createdAt),
     updatedAt: formatDateTime(row.updatedAt),
   };

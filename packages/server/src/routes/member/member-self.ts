@@ -24,7 +24,7 @@ import { getClientInfo } from '../../services/identity/auth.service';
 import { getMyPointAccount, listMyPointTransactions } from '../../services/member/member-points.service';
 import { getMyWallet, listMyWalletTransactions, rechargeWallet } from '../../services/member/member-wallet.service';
 import { getEnabledLevels } from '../../services/member/member-levels.service';
-import { listMyCoupons, getAvailableCoupons, receiveCoupon } from '../../services/member/coupons.service';
+import { listMyCoupons, getAvailableCoupons, receiveCoupon, getExchangeableCoupons, exchangePointsForCoupon } from '../../services/member/coupons.service';
 import { doCheckin, getMemberCheckinStatus, getMyCheckinHistory, doMyMakeupCheckin, getMyMilestones } from '../../services/member/member-checkin.service';
 import { db } from '../../db';
 import { memberLoginLogs } from '../../db/schema';
@@ -164,6 +164,33 @@ const receiveCouponRoute = defineOpenAPIRoute({
   },
 });
 
+// ─── GET /coupons/exchangeable — 可积分兑换的优惠券 ──────────────────────────
+const exchangeableCouponsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/coupons/exchangeable', tags: ['MemberSelf'], summary: '可积分兑换的优惠券',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    responses: { ...commonErrorResponses, ...ok(z.array(CouponDTO), 'ok') },
+  }),
+  handler: async (c) => c.json(okBody(await getExchangeableCoupons()), 200),
+});
+
+// ─── POST /coupons/exchange — 积分兑换优惠券 ─────────────────────────────────
+const exchangeCouponRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/coupons/exchange', tags: ['MemberSelf'], summary: '积分兑换优惠券',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware, idempotencyGuard({ ttlSeconds: 5 })] as const,
+    request: { body: { content: jsonContent(receiveCouponSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(MemberCouponDTO, '兑换成功') },
+  }),
+  handler: async (c) => {
+    const { couponId } = c.req.valid('json');
+    const r = await exchangePointsForCoupon(couponId);
+    return c.json(okBody(r, '兑换成功'), 200);
+  },
+});
+
 // ─── GET /checkin/status — 今日签到状态 ────────────────────────────────────────
 const checkinStatusRoute = defineOpenAPIRoute({
   route: createRoute({
@@ -279,8 +306,10 @@ memberSelf.openapiRoutes([
   checkinMakeupRoute,
   checkinMilestonesRoute,
   availableCouponsRoute,
+  exchangeableCouponsRoute,
   myCouponsRoute,
   receiveCouponRoute,
+  exchangeCouponRoute,
   loginLogsRoute,
 ] as const);
 

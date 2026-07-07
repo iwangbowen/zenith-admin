@@ -3,8 +3,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Select, Modal, Form, Toast, Tag, Spin, Row, Col, Dropdown } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Search, Plus, RotateCcw, KeyRound, ChevronDown } from 'lucide-react';
-import type { Member } from '@zenith/shared';
+import { Search, Plus, RotateCcw, KeyRound, ChevronDown, Tags } from 'lucide-react';
+import type { Member, MemberTag } from '@zenith/shared';
 import { MEMBER_STATUS_LABELS } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
@@ -16,23 +16,28 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
 import { MemberDetailDrawer } from './MemberDetailDrawer';
+import { MemberTagsManageModal } from './MemberTagsManageModal';
 import {
   memberAdminKeys,
   useAdjustMemberGrowth,
   useBatchMemberLevel,
   useBatchMemberStatus,
+  useBatchMemberTags,
   useDeleteMember,
   useMemberLevels,
   useMemberList,
+  useMemberTags,
   useResetMemberPassword,
   useSaveMember,
+  useSetMemberTags,
 } from '@/hooks/queries/member-admin';
 
 const STATUS_COLORS: Record<string, 'green' | 'grey' | 'red'> = { active: 'green', inactive: 'grey', banned: 'red' };
 const statusOptions = (['active', 'inactive', 'banned'] as const).map((v) => ({ value: v, label: MEMBER_STATUS_LABELS[v] }));
+const TAG_FALLBACK_COLOR = 'blue';
 
-interface SearchParams { keyword: string; status: string; levelId?: number }
-const defaultSearch: SearchParams = { keyword: '', status: '', levelId: undefined };
+interface SearchParams { keyword: string; status: string; levelId?: number; tagId?: number }
+const defaultSearch: SearchParams = { keyword: '', status: '', levelId: undefined, tagId: undefined };
 
 export default function MembersPage() {
   const { hasPermission } = usePermission();
@@ -49,6 +54,12 @@ export default function MembersPage() {
   const [growthVisible, setGrowthVisible] = useState(false);
   const [growthMember, setGrowthMember] = useState<Member | null>(null);
   const growthFormApi = useRef<FormApi | null>(null);
+  // member tags
+  const [tagsMember, setTagsMember] = useState<Member | null>(null);
+  const [tagsDraft, setTagsDraft] = useState<number[]>([]);
+  const [tagsManageVisible, setTagsManageVisible] = useState(false);
+  const [batchTagsVisible, setBatchTagsVisible] = useState(false);
+  const [batchTagIds, setBatchTagIds] = useState<number[]>([]);
   // batch operations
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const [batchStatusVisible, setBatchStatusVisible] = useState(false);
@@ -63,17 +74,23 @@ export default function MembersPage() {
     keyword: submittedParams.keyword || undefined,
     status: submittedParams.status || undefined,
     levelId: submittedParams.levelId,
+    tagId: submittedParams.tagId,
   });
   const levelsQuery = useMemberLevels();
+  const tagsQuery = useMemberTags();
   const data = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
   const levels = levelsQuery.data ?? [];
+  const memberTags = tagsQuery.data ?? [];
+  const enabledTags = memberTags.filter((t: MemberTag) => t.status === 'enabled');
   const saveMutation = useSaveMember();
   const deleteMutation = useDeleteMember();
   const resetPasswordMutation = useResetMemberPassword();
   const adjustGrowthMutation = useAdjustMemberGrowth();
   const batchStatusMutation = useBatchMemberStatus();
   const batchLevelMutation = useBatchMemberLevel();
+  const setTagsMutation = useSetMemberTags();
+  const batchTagsMutation = useBatchMemberTags();
 
   const handleSearch = () => {
     setPage(1);
@@ -93,6 +110,7 @@ export default function MembersPage() {
       ...(ap.keyword ? { keyword: ap.keyword } : {}),
       ...(ap.status ? { status: ap.status } : {}),
       ...(ap.levelId ? { levelId: String(ap.levelId) } : {}),
+      ...(ap.tagId ? { tagId: String(ap.tagId) } : {}),
     };
   };
 
@@ -129,6 +147,26 @@ export default function MembersPage() {
     Toast.success('成长值已调整');
     setGrowthVisible(false);
     setGrowthMember(null);
+  };
+
+  // ── 标签操作 ──────────────────────────────────────────────────────────────
+  const openSetTags = (record: Member) => {
+    setTagsMember(record);
+    setTagsDraft((record.tags ?? []).map((t) => t.id));
+  };
+  const handleSetTags = async () => {
+    if (!tagsMember) return;
+    await setTagsMutation.mutateAsync({ id: tagsMember.id, tagIds: tagsDraft });
+    Toast.success('标签已更新');
+    setTagsMember(null);
+  };
+  const handleBatchTags = async () => {
+    if (batchTagIds.length === 0) return;
+    await batchTagsMutation.mutateAsync({ ids: selectedRowKeys, tagIds: batchTagIds });
+    Toast.success('已批量打标签');
+    setBatchTagsVisible(false);
+    setBatchTagIds([]);
+    setSelectedRowKeys([]);
   };
 
   const openResetPwd = (record: Member) => { setPwdMember(record); setPwdVisible(true); };
@@ -181,6 +219,12 @@ export default function MembersPage() {
     { title: '手机号', dataIndex: 'phone', width: 130, render: (v: string | null) => v || '-' },
     { title: '邮箱', dataIndex: 'email', width: 180, render: renderEllipsis },
     { title: '等级', dataIndex: 'levelName', width: 100, render: (v: string | null) => (v ? <Tag color="amber">{v}</Tag> : '-') },
+    {
+      title: '标签', dataIndex: 'tags', width: 160,
+      render: (v?: Member['tags']) => (v && v.length > 0
+        ? <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{v.map((t) => <Tag key={t.id} size="small" color={(t.color || TAG_FALLBACK_COLOR) as 'blue'}>{t.name}</Tag>)}</div>
+        : '-'),
+    },
     { title: '积分', dataIndex: 'pointBalance', width: 90, render: (v?: number) => v ?? 0 },
     { title: '余额(元)', dataIndex: 'walletBalance', width: 100, render: (v?: number) => ((v ?? 0) / 100).toFixed(2) },
     createdAtColumn,
@@ -194,6 +238,7 @@ export default function MembersPage() {
       actions: (record) => [
         { key: 'detail', label: '详情', onClick: () => setDetailMemberId(record.id) },
         { key: 'edit', label: '编辑', hidden: !hasPermission('member:member:update'), onClick: () => openEdit(record) },
+        { key: 'set-tags', label: '设置标签', hidden: !hasPermission('member:member:update'), onClick: () => openSetTags(record) },
         { key: 'adjust-growth', label: '调整成长值', hidden: !hasPermission('member:member:update'), onClick: () => openAdjustGrowth(record) },
         { key: 'reset-password', label: '重置密码', hidden: !hasPermission('member:member:update'), onClick: () => openResetPwd(record) },
         { key: 'delete', label: '删除', danger: true, hidden: !hasPermission('member:member:delete'), onClick: () => handleDelete(record) },
@@ -234,10 +279,24 @@ export default function MembersPage() {
     />
   );
 
+  const renderTagFilter = () => (
+    <Select
+      placeholder="全部标签"
+      value={draftParams.tagId}
+      style={{ width: 140 }}
+      showClear
+      onChange={(v) => setDraftParams((p) => ({ ...p, tagId: v as number | undefined }))}
+      optionList={memberTags.map((t: MemberTag) => ({ value: t.id, label: t.name }))}
+    />
+  );
+
   const renderSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>;
   const renderResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>;
   const renderCreateButton = () => hasPermission('member:member:create') ? (
     <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+  ) : null;
+  const renderTagsManageButton = () => hasPermission('member:member:update') ? (
+    <Button type="tertiary" icon={<Tags size={14} />} onClick={() => setTagsManageVisible(true)}>标签管理</Button>
   ) : null;
 
   const renderExportButtons = () => hasPermission('member:member:list') ? (
@@ -256,9 +315,11 @@ export default function MembersPage() {
             {renderKeywordSearch()}
             {renderStatusFilter()}
             {renderLevelFilter()}
+            {renderTagFilter()}
             {renderSearchButton()}
             {renderResetButton()}
             {renderExportButtons()}
+            {renderTagsManageButton()}
             {renderCreateButton()}
           </>
         )}
@@ -273,6 +334,7 @@ export default function MembersPage() {
           <>
             {renderStatusFilter()}
             {renderLevelFilter()}
+            {renderTagFilter()}
           </>
         )}
         mobileActions={renderMobileExportActions()}
@@ -300,6 +362,7 @@ export default function MembersPage() {
             <Button size="small" type="primary" theme="light" icon={<ChevronDown size={13} />} iconPosition="right">批量更改状态</Button>
           </Dropdown>
           <Button size="small" type="primary" theme="light" onClick={() => setBatchLevelVisible(true)}>批量调整等级</Button>
+          <Button size="small" type="primary" theme="light" onClick={() => setBatchTagsVisible(true)}>批量打标签</Button>
           <Button size="small" type="tertiary" onClick={() => setSelectedRowKeys([])}>取消选择</Button>
         </div>
       )}
@@ -398,6 +461,31 @@ export default function MembersPage() {
           placeholder="请选择等级"
         />
       </AppModal>
+
+      {/* 设置标签 Modal */}
+      <AppModal title="设置会员标签" visible={!!tagsMember} width={480}
+        okButtonProps={{ loading: setTagsMutation.isPending }}
+        onCancel={() => setTagsMember(null)} onOk={handleSetTags}>
+        <p style={{ marginBottom: 12, fontSize: 13, color: '#6b7280' }}>
+          为会员「{tagsMember?.nickname}」设置标签（覆盖原有标签）：
+        </p>
+        <Select multiple filter placeholder="选择标签" value={tagsDraft} style={{ width: '100%' }}
+          onChange={(v) => setTagsDraft((v as number[]) ?? [])}
+          optionList={enabledTags.map((t: MemberTag) => ({ value: t.id, label: t.name }))} />
+      </AppModal>
+
+      {/* 批量打标签 Modal */}
+      <AppModal title="批量打标签" visible={batchTagsVisible} width={480}
+        okButtonProps={{ loading: batchTagsMutation.isPending, disabled: batchTagIds.length === 0 }}
+        onCancel={() => { setBatchTagsVisible(false); setBatchTagIds([]); }} onOk={handleBatchTags}>
+        <p style={{ marginBottom: 12 }}>为已选 <strong>{selectedRowKeys.length}</strong> 名会员追加标签（已有标签保留）：</p>
+        <Select multiple filter placeholder="选择标签" value={batchTagIds} style={{ width: '100%' }}
+          onChange={(v) => setBatchTagIds((v as number[]) ?? [])}
+          optionList={enabledTags.map((t: MemberTag) => ({ value: t.id, label: t.name }))} />
+      </AppModal>
+
+      {/* 标签管理 Modal */}
+      <MemberTagsManageModal visible={tagsManageVisible} onClose={() => setTagsManageVisible(false)} />
 
       {/* 会员详情侧滑 */}
       <MemberDetailDrawer memberId={detailMemberId} onClose={() => setDetailMemberId(null)} />

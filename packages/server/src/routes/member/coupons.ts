@@ -41,6 +41,7 @@ const createCouponSchema = z.object({
   validStart: z.string().optional(),
   validEnd: z.string().optional(),
   validDays: z.number().int().min(1).nullable().optional(),
+  exchangePoints: z.number().int().min(0).optional(),
   status: couponStatusEnum.optional(),
   description: z.string().max(256).nullable().optional(),
 });

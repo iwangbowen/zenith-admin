@@ -37,7 +37,7 @@ const renderQuantity = (r: Coupon) => `${r.issuedQuantity}/${r.totalQuantity > 0
 interface SearchParams { keyword?: string; status?: CouponType | string; type?: string }
 interface FormValues {
   name: string; type: CouponType; faceValue: number; threshold?: number; maxDiscount?: number;
-  totalQuantity?: number; perLimit?: number; validType: 'fixed' | 'relative';
+  totalQuantity?: number; perLimit?: number; exchangePoints?: number; validType: 'fixed' | 'relative';
   validStart?: string | Date; validEnd?: string | Date; validDays?: number;
   status: CouponTemplateStatus; description?: string;
 }
@@ -97,7 +97,7 @@ export default function CouponsPage() {
   };
 
   const initValues = (): Partial<FormValues> => {
-    if (!editing) return { type: 'amount', validType: 'fixed', status: 'draft', threshold: 0, totalQuantity: 0, perLimit: 0 };
+    if (!editing) return { type: 'amount', validType: 'fixed', status: 'draft', threshold: 0, totalQuantity: 0, perLimit: 0, exchangePoints: 0 };
     return {
       name: editing.name,
       type: editing.type,
@@ -106,6 +106,7 @@ export default function CouponsPage() {
       maxDiscount: editing.maxDiscount ? editing.maxDiscount / 100 : undefined,
       totalQuantity: editing.totalQuantity,
       perLimit: editing.perLimit,
+      exchangePoints: editing.exchangePoints ?? 0,
       validType: editing.validType,
       validStart: editing.validStart ?? undefined,
       validEnd: editing.validEnd ?? undefined,
@@ -128,6 +129,7 @@ export default function CouponsPage() {
       maxDiscount: v.type === 'percent' && v.maxDiscount ? Math.round(v.maxDiscount * 100) : null,
       totalQuantity: v.totalQuantity ?? 0,
       perLimit: v.perLimit ?? 0,
+      exchangePoints: v.exchangePoints ?? 0,
       validType: v.validType,
       validStart: v.validType === 'fixed' && v.validStart ? formatDateTimeForApi(v.validStart) : undefined,
       validEnd: v.validType === 'fixed' && v.validEnd ? formatDateTimeForApi(v.validEnd) : undefined,
@@ -172,6 +174,7 @@ export default function CouponsPage() {
     { title: '门槛', dataIndex: 'threshold', width: 110, render: renderThreshold },
     { title: '已发/总量', dataIndex: 'totalQuantity', width: 110, render: (_: number, r: Coupon) => renderQuantity(r) },
     { title: '每人限领', dataIndex: 'perLimit', width: 90, render: (v: number) => (v > 0 ? v : '不限') },
+    { title: '兑换积分', dataIndex: 'exchangePoints', width: 90, render: (v?: number) => (v && v > 0 ? v : '-') },
     { title: '有效期', dataIndex: 'validType', width: 200, render: (_: string, r: Coupon) => <span style={{ fontSize: 12 }}>{renderValid(r)}</span> },
     { title: '状态', dataIndex: 'status', width: 90, render: (v: CouponTemplateStatus) => <Tag color={STATUS_COLORS[v] as 'green'}>{COUPON_TEMPLATE_STATUS_LABELS[v]}</Tag> },
     createdAtColumn,
@@ -306,6 +309,12 @@ export default function CouponsPage() {
             </Col>
             <Col span={12}>
               <Form.InputNumber field="perLimit" label="每人限领" style={{ width: '100%' }} min={0} placeholder="0 表示不限" />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.InputNumber field="exchangePoints" label="兑换积分" style={{ width: '100%' }} min={0} precision={0}
+                placeholder="0 表示不可积分兑换" extraText="配置后会员可在前台用积分兑换本券" />
             </Col>
           </Row>
           <Row gutter={16}>

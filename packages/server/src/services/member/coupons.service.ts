@@ -5,10 +5,10 @@
  * - 核销 redeemCoupon() 预留统一入口，供未来订单系统接入
  */
 import crypto from 'node:crypto';
-import { and, desc, eq, gt, ilike, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, ilike, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import { coupons, memberCoupons, members } from '../../db/schema';
+import { coupons, memberCoupons, memberPointAccounts, memberPointTransactions, members } from '../../db/schema';
 import type { CouponRow, MemberCouponRow } from '../../db/schema';
 import type { DbTransaction } from '../../db/types';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
@@ -35,6 +35,7 @@ export function mapCoupon(row: CouponRow) {
     validStart: formatNullableDateTime(row.validStart),
     validEnd: formatNullableDateTime(row.validEnd),
     validDays: row.validDays ?? null,
+    exchangePoints: row.exchangePoints,
     status: row.status,
     description: row.description ?? null,
     createdAt: formatDateTime(row.createdAt),
@@ -78,6 +79,8 @@ export interface CreateCouponInput {
   validStart?: string | null;
   validEnd?: string | null;
   validDays?: number | null;
+  /** 积分兑换所需积分（0 = 不可积分兑换）*/
+  exchangePoints?: number;
   status?: CouponTemplateStatus;
   description?: string | null;
 }
@@ -134,6 +137,7 @@ export async function createCoupon(input: CreateCouponInput) {
         validStart: parseDateTimeInput(input.validStart ?? undefined),
         validEnd: parseDateTimeInput(input.validEnd ?? undefined),
         validDays: input.validDays ?? null,
+        exchangePoints: input.exchangePoints ?? 0,
         status: input.status ?? 'draft',
         description: input.description ?? null,
       })
@@ -159,6 +163,7 @@ export async function updateCoupon(id: number, input: UpdateCouponInput) {
   if (input.validStart !== undefined) patch.validStart = parseDateTimeInput(input.validStart ?? undefined);
   if (input.validEnd !== undefined) patch.validEnd = parseDateTimeInput(input.validEnd ?? undefined);
   if (input.validDays !== undefined) patch.validDays = input.validDays;
+  if (input.exchangePoints !== undefined) patch.exchangePoints = input.exchangePoints;
   if (input.status !== undefined) patch.status = input.status;
   if (input.description !== undefined) patch.description = input.description;
   const [row] = await db.update(coupons).set(patch).where(eq(coupons.id, id)).returning();
@@ -185,7 +190,12 @@ function computeExpireAt(coupon: CouponRow): Date | null {
 }
 
 /** 在事务内将一张券发放给会员（原子库存扣减 + 限领校验）*/
-async function grantCoupon(tx: DbTransaction, coupon: CouponRow, memberId: number): Promise<MemberCouponRow> {
+async function grantCoupon(
+  tx: DbTransaction,
+  coupon: CouponRow,
+  memberId: number,
+  opts?: { bizType?: string; bizId?: string },
+): Promise<MemberCouponRow> {
   // 每人限领校验：先锁模板行串行化同一模板的并发发放，防止「先数后写」竞态突破限领
   if (coupon.perLimit > 0) {
     await tx.select({ id: coupons.id }).from(coupons).where(eq(coupons.id, coupon.id)).for('update');
@@ -202,7 +212,15 @@ async function grantCoupon(tx: DbTransaction, coupon: CouponRow, memberId: numbe
 
   const [mc] = await tx
     .insert(memberCoupons)
-    .values({ couponId: coupon.id, memberId, code: genCouponCode(), status: 'unused', expireAt: computeExpireAt(coupon) })
+    .values({
+      couponId: coupon.id,
+      memberId,
+      code: genCouponCode(),
+      status: 'unused',
+      expireAt: computeExpireAt(coupon),
+      bizType: opts?.bizType ?? null,
+      bizId: opts?.bizId ?? null,
+    })
     .returning();
   return mc;
 }
@@ -222,12 +240,17 @@ export async function issueCoupon(couponId: number, memberId: number) {
   });
 }
 
-/** 在已有事务内向会员发放指定模板的一张券（供签到里程碑等内部流程复用）。
+/** 在已有事务内向会员发放指定模板的一张券（供签到里程碑、生日礼等内部流程复用）。
  * 库存不足 / 超限会抛 HTTPException，由调用方决定是否吞掉。 */
-export async function grantCouponInTx(tx: DbTransaction, couponId: number, memberId: number): Promise<MemberCouponRow> {
+export async function grantCouponInTx(
+  tx: DbTransaction,
+  couponId: number,
+  memberId: number,
+  opts?: { bizType?: string; bizId?: string },
+): Promise<MemberCouponRow> {
   const [coupon] = await tx.select().from(coupons).where(eq(coupons.id, couponId)).limit(1);
   if (!coupon) throw new HTTPException(404, { message: '优惠券不存在' });
-  return grantCoupon(tx, coupon, memberId);
+  return grantCoupon(tx, coupon, memberId, opts);
 }
 
 /** 前台：会员自助领券 */
@@ -242,6 +265,41 @@ export async function receiveCoupon(couponId: number) {
       throw new HTTPException(400, { message: '优惠券已过期' });
     }
     return mapMemberCoupon(await grantCoupon(tx, coupon, memberId), coupon);
+  });
+}
+
+/** 前台：积分兑换优惠券（事务内条件扣积分 + 发券，防超扣防超发）*/
+export async function exchangePointsForCoupon(couponId: number) {
+  const memberId = currentMemberId();
+  return db.transaction(async (tx) => {
+    const [coupon] = await tx.select().from(coupons).where(eq(coupons.id, couponId)).limit(1);
+    if (!coupon) throw new HTTPException(404, { message: '优惠券不存在' });
+    if (coupon.status !== 'active' || coupon.exchangePoints <= 0) {
+      throw new HTTPException(400, { message: '该优惠券不支持积分兑换' });
+    }
+    const now = new Date();
+    if (coupon.validType === 'fixed' && coupon.validEnd && coupon.validEnd < now) {
+      throw new HTTPException(400, { message: '优惠券已过期' });
+    }
+    const cost = coupon.exchangePoints;
+    // 条件扣减防超扣（同补签模式）：余额不足时 UPDATE 不命中
+    const deducted = await tx.update(memberPointAccounts).set({
+      balance: sql`${memberPointAccounts.balance} - ${cost}`,
+      totalSpent: sql`${memberPointAccounts.totalSpent} + ${cost}`,
+      version: sql`${memberPointAccounts.version} + 1`,
+    }).where(and(eq(memberPointAccounts.memberId, memberId), gte(memberPointAccounts.balance, cost))).returning();
+    if (deducted.length === 0) throw new HTTPException(400, { message: '积分余额不足' });
+    await tx.insert(memberPointTransactions).values({
+      memberId,
+      type: 'redeem',
+      amount: -cost,
+      balanceAfter: deducted[0].balance,
+      bizType: 'coupon_exchange',
+      bizId: String(coupon.id),
+      remark: `积分兑换「${coupon.name}」`,
+    });
+    const mc = await grantCoupon(tx, coupon, memberId, { bizType: 'points_exchange', bizId: String(coupon.id) });
+    return mapMemberCoupon(mc, coupon);
   });
 }
 
@@ -301,6 +359,21 @@ export async function getAvailableCoupons() {
     .select()
     .from(coupons)
     .where(and(eq(coupons.status, 'active'), or(eq(coupons.totalQuantity, 0), lt(coupons.issuedQuantity, coupons.totalQuantity))))
+    .orderBy(desc(coupons.id));
+  return rows.filter((c) => !(c.validType === 'fixed' && c.validEnd && c.validEnd < now)).map(mapCoupon);
+}
+
+/** 前台：可积分兑换的优惠券（active + 配置兑换积分 + 未领完 + 未过期）*/
+export async function getExchangeableCoupons() {
+  const now = new Date();
+  const rows = await db
+    .select()
+    .from(coupons)
+    .where(and(
+      eq(coupons.status, 'active'),
+      gt(coupons.exchangePoints, 0),
+      or(eq(coupons.totalQuantity, 0), lt(coupons.issuedQuantity, coupons.totalQuantity)),
+    ))
     .orderBy(desc(coupons.id));
   return rows.filter((c) => !(c.validType === 'fixed' && c.validEnd && c.validEnd < now)).map(mapCoupon);
 }

@@ -14,6 +14,7 @@ import type {
   MemberRecharge,
   MemberStatsCharts,
   MemberStatsOverview,
+  MemberTag,
   MemberWallet,
   MemberWalletTransaction,
   PaginatedResponse,
@@ -27,6 +28,7 @@ export interface MemberListParams {
   keyword?: string;
   status?: string;
   levelId?: number;
+  tagId?: number;
 }
 
 export interface MemberTransactionListParams {
@@ -97,6 +99,7 @@ export const memberAdminKeys = {
   memberList: (params: MemberListParams) => ['member-admin', 'members', 'list', params] as const,
   memberOverview: (id: number | null | undefined) => ['member-admin', 'members', 'overview', id] as const,
   levels: ['member-admin', 'levels'] as const,
+  memberTags: ['member-admin', 'member-tags'] as const,
   points: ['member-admin', 'points'] as const,
   pointLists: ['member-admin', 'points', 'list'] as const,
   pointList: (params: MemberTransactionListParams) => ['member-admin', 'points', 'list', params] as const,
@@ -143,6 +146,49 @@ export function useMemberLevels() {
   return useQuery({
     queryKey: memberAdminKeys.levels,
     queryFn: () => request.get<MemberLevel[]>('/api/member-levels').then(unwrap),
+  });
+}
+
+// ─── 会员标签 ─────────────────────────────────────────────────────────────────
+export function useMemberTags() {
+  return useQuery({
+    queryKey: memberAdminKeys.memberTags,
+    queryFn: () => request.get<MemberTag[]>('/api/member-tags').then(unwrap),
+  });
+}
+
+export function useSaveMemberTag() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
+      (id ? request.put<MemberTag>(`/api/member-tags/${id}`, values) : request.post<MemberTag>('/api/member-tags', values)).then(unwrap),
+    onSuccess: () => invalidate(qc, [memberAdminKeys.memberTags, memberAdminKeys.members]),
+  });
+}
+
+export function useDeleteMemberTag() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.delete<null>(`/api/member-tags/${id}`).then(unwrap),
+    onSuccess: () => invalidate(qc, [memberAdminKeys.memberTags, memberAdminKeys.members]),
+  });
+}
+
+export function useSetMemberTags() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, tagIds }: { id: number; tagIds: number[] }) =>
+      request.put<Member>(`/api/members/${id}/tags`, { tagIds }).then(unwrap),
+    onSuccess: () => invalidate(qc, [memberAdminKeys.members, memberAdminKeys.memberTags]),
+  });
+}
+
+export function useBatchMemberTags() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (values: { ids: number[]; tagIds: number[] }) =>
+      request.put<null>('/api/members/batch-tags', values).then(unwrap),
+    onSuccess: () => invalidate(qc, [memberAdminKeys.members, memberAdminKeys.memberTags]),
   });
 }
 

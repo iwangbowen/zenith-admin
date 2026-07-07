@@ -169,6 +169,13 @@
       "when": 1783421832869,
       "tag": "0023_lazy_doctor_octopus",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1783422668289,
+      "tag": "0024_magenta_la_nuit",
+      "breakpoints": true
     }
   ]
 }

@@ -112,6 +112,22 @@ export default function MemberDashboardPage() {
     axis: { xLabel: shortDate },
   }), [charts?.checkinTrend, palette]);
 
+  const activitySpec = useMemo(() => makePieSpec({
+    data: charts?.activitySegments ?? [],
+    categoryField: 'name',
+    valueField: 'value',
+    donut: true,
+    colors: (charts?.activitySegments ?? []).map((_, i) => PIE_COLORS[i % PIE_COLORS.length]),
+    palette,
+  }), [charts?.activitySegments, palette]);
+
+  const rechargeSpec = useMemo(() => makeBarSpec({
+    data: charts?.rechargeSegments ?? [],
+    xField: 'name',
+    series: [{ field: 'value', name: '会员数', color: '#1677FF' }],
+    palette,
+  }), [charts?.rechargeSegments, palette]);
+
   if (loading) {
     const skeletonPlaceholder = (
       <div className="page-container">
@@ -171,6 +187,16 @@ export default function MemberDashboardPage() {
 
         <ChartCard title="近7天签到人数">
           <BarChart {...checkinSpec} options={chartOptions} height={260} />
+        </ChartCard>
+
+        <ChartCard title="会员活跃分层（最近登录）">
+          {(charts?.activitySegments?.length ?? 0) > 0 ? (
+            <PieChart {...activitySpec} options={chartOptions} height={260} />
+          ) : <Empty description="暂无数据" style={{ padding: '60px 0' }} />}
+        </ChartCard>
+
+        <ChartCard title="充值能力分层（累计充值）">
+          <BarChart {...rechargeSpec} options={chartOptions} height={260} />
         </ChartCard>
       </div>
 

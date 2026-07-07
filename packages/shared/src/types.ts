@@ -612,6 +612,10 @@ export interface MemberStatsCharts {
   levelDistribution: { name: string; value: number }[];
   pointTrend: { date: string; earned: number; spent: number }[];
   checkinTrend: { date: string; count: number }[];
+  /** 活跃分层（按最后登录时间：7天/30天/90天/沉睡/从未登录）*/
+  activitySegments: { name: string; value: number }[];
+  /** 充值能力分层（按累计充值金额分档）*/
+  rechargeSegments: { name: string; value: number }[];
 }
 
 // ─── 用户行为分析 ────────────────────────────────────────────
@@ -6086,8 +6090,31 @@ export interface Member {
   pointBalance?: number;
   /** 钱包余额（分，关联查询时附加）*/
   walletBalance?: number;
+  /** 会员标签（后台列表/详情附加）*/
+  tags?: MemberTagBrief[];
   createdAt: string;
   updatedAt: string;
+}
+
+/** 会员标签（运营分群）*/
+export interface MemberTag {
+  id: number;
+  name: string;
+  color?: string | null;
+  description?: string | null;
+  sort: number;
+  status: EntityStatus;
+  /** 绑定会员数（列表附加）*/
+  memberCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 会员身上的标签摘要 */
+export interface MemberTagBrief {
+  id: number;
+  name: string;
+  color: string | null;
 }
 
 /** 会员轻量下拉选项（积分/钱包调整、发券搜索选择）*/
@@ -6156,6 +6183,8 @@ export interface Coupon {
   validStart?: string | null;
   validEnd?: string | null;
   validDays?: number | null;
+  /** 积分兑换所需积分（0 = 不可积分兑换）*/
+  exchangePoints?: number;
   status: CouponTemplateStatus;
   description?: string | null;
   createdAt: string;

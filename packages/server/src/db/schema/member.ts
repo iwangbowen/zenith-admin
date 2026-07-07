@@ -89,6 +89,39 @@ export type MemberRow = typeof members.$inferSelect;
 
 export type NewMember = typeof members.$inferInsert;
 
+// ─── 会员标签（运营分群基础）──────────────────────────────────────────────────
+export const memberTags = pgTable('member_tags', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 32 }).notNull(),
+  /** 展示颜色（Semi Tag color 或 hex）*/
+  color: varchar('color', { length: 20 }),
+  description: varchar('description', { length: 256 }),
+  sort: integer('sort').notNull().default(0),
+  status: statusEnum('status').notNull().default('enabled'),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [unique('member_tags_name_unique').on(t.name)]);
+
+export type MemberTagRow = typeof memberTags.$inferSelect;
+
+export type NewMemberTag = typeof memberTags.$inferInsert;
+
+// ─── 会员-标签绑定 ────────────────────────────────────────────────────────────
+export const memberTagBindings = pgTable('member_tag_bindings', {
+  id: serial('id').primaryKey(),
+  memberId: integer('member_id').notNull().references(() => members.id, { onDelete: 'cascade' }),
+  tagId: integer('tag_id').notNull().references(() => memberTags.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  unique('member_tag_bindings_unique').on(t.memberId, t.tagId),
+  index('member_tag_bindings_tag_idx').on(t.tagId),
+]);
+
+export type MemberTagBindingRow = typeof memberTagBindings.$inferSelect;
+
+export type NewMemberTagBinding = typeof memberTagBindings.$inferInsert;
+
 // ─── 会员积分账户表（一会员一账户，version 乐观锁）──────────────────────────────
 export const memberPointAccounts = pgTable('member_point_accounts', {
   id: serial('id').primaryKey(),
@@ -207,6 +240,8 @@ export const coupons = pgTable('coupons', {
   validEnd: timestamp('valid_end', { withTimezone: true }),
   /** relative 型：领取后有效天数 */
   validDays: integer('valid_days'),
+  /** 积分兑换所需积分（0 = 不可积分兑换）*/
+  exchangePoints: integer('exchange_points').notNull().default(0),
   status: couponTemplateStatusEnum('status').notNull().default('draft'),
   description: varchar('description', { length: 256 }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
