@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Checkbox, Input, Modal, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
-import { Check, CheckCheck, CircleCheckBig, ClipboardCheck, FilePlus2, ListChecks, LogOut, Plus, RefreshCw, Search, Send, type LucideIcon } from 'lucide-react';
+import { Check, CheckCheck, CircleCheckBig, ClipboardCheck, FilePlus2, ListChecks, LogOut, Plus, Search, Send, type LucideIcon } from 'lucide-react';
 import { TOKEN_KEY, REFRESH_TOKEN_KEY } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -267,13 +267,6 @@ export default function TaskListPage() {
     <div className="ap-page">
       <div className="ap-header">
         <span className="ap-header__title">移动审批</span>
-        <Button
-          theme="borderless"
-          icon={<RefreshCw size={16} />}
-          loading={listQuery.isFetching && !refreshing}
-          onClick={() => void refetch()}
-          aria-label="刷新"
-        />
         <Button theme="borderless" icon={<LogOut size={16} />} onClick={logout} aria-label="退出" />
       </div>
       <div className="ap-search">

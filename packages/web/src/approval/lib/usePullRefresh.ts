@@ -15,24 +15,24 @@ export function usePullRefresh(onRefresh: () => Promise<unknown> | void, thresho
     const el = ref.current;
     if (!el) return;
 
-    const onTouchStart = (e: TouchEvent) => {
+    const begin = (clientY: number) => {
       if (el.scrollTop <= 0) {
-        startY.current = e.touches[0].clientY;
+        startY.current = clientY;
         pulling.current = true;
       }
     };
-    const onTouchMove = (e: TouchEvent) => {
-      if (!pulling.current || startY.current == null) return;
-      const dy = e.touches[0].clientY - startY.current;
+    const move = (clientY: number): boolean => {
+      if (!pulling.current || startY.current == null) return false;
+      const dy = clientY - startY.current;
       if (dy > 0 && el.scrollTop <= 0) {
         // 阻尼系数 0.4，最大 96px
         setPull(Math.min(96, dy * 0.4));
-        if (e.cancelable) e.preventDefault();
-      } else {
-        setPull(0);
+        return true;
       }
+      setPull(0);
+      return false;
     };
-    const onTouchEnd = () => {
+    const end = () => {
       if (!pulling.current) return;
       pulling.current = false;
       startY.current = null;
@@ -49,13 +49,39 @@ export function usePullRefresh(onRefresh: () => Promise<unknown> | void, thresho
       });
     };
 
+    const onTouchStart = (e: TouchEvent) => begin(e.touches[0].clientY);
+    const onTouchMove = (e: TouchEvent) => {
+      if (move(e.touches[0].clientY) && e.cancelable) e.preventDefault();
+    };
+    // 桌面鼠标拖拽：move/up 绑到 window，拖出容器仍可松手
+    const onMouseMove = (e: MouseEvent) => {
+      if (move(e.clientY)) e.preventDefault();
+    };
+    const onMouseUp = () => {
+      end();
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      begin(e.clientY);
+      if (pulling.current) {
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+      }
+    };
+
     el.addEventListener('touchstart', onTouchStart, { passive: true });
     el.addEventListener('touchmove', onTouchMove, { passive: false });
-    el.addEventListener('touchend', onTouchEnd);
+    el.addEventListener('touchend', end);
+    el.addEventListener('mousedown', onMouseDown);
     return () => {
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
-      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchend', end);
+      el.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
     };
   }, [onRefresh, threshold]);
 
