@@ -2,7 +2,14 @@
  * 公众号管理 DTO
  */
 import { z } from '@hono/zod-openapi';
+import { mpMenuButtonSchema } from '@zenith/shared';
 import { auditFields } from './_audit';
+
+/**
+ * 递归菜单按钮 schema 的 OpenAPI ref 注册（sub_button 自引用），
+ * 防止 OpenAPI 文档生成时无限展开栈溢出。原理同 dtos/workflow.ts 的 WorkflowFormFieldDTO。
+ */
+export const MpMenuButtonDTO = mpMenuButtonSchema.openapi('MpMenuButton');
 
 export const MpAccountDTO = z
   .object({

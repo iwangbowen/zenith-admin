@@ -2,7 +2,17 @@
  * 工作流相关 DTO
  */
 import { z } from '@hono/zod-openapi';
+import { workflowFormFieldSchema } from '@zenith/shared';
 import { auditFields } from './_audit';
+
+/**
+ * 递归表单字段 schema 的 OpenAPI ref 注册。
+ * `workflowFormFieldSchema` 是 z.lazy 自引用递归结构，若不注册 refId，
+ * OpenAPI 文档生成时会无限展开导致栈溢出（/api/openapi.json 500）。
+ * zod-to-openapi 对 ZodLazy 调用 .openapi(refId) 会把元数据回写到原实例，
+ * 因此内部 children 自引用也会命中同一 refId，生成 $ref 终止递归。
+ */
+export const WorkflowFormFieldDTO = workflowFormFieldSchema.openapi('WorkflowFormField');
 
 export const WorkflowCategoryDTO = z
   .object({

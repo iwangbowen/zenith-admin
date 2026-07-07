@@ -2623,7 +2623,8 @@ export type CreateMpAutoReplyInput = z.infer<typeof createMpAutoReplySchema>;
 export type UpdateMpAutoReplyInput = z.infer<typeof updateMpAutoReplySchema>;
 
 // 公众号自定义菜单
-const mpMenuButtonSchema: z.ZodType<MpMenuButton> = z.lazy(() => z.object({
+// 递归 schema：server 侧会为其注册 OpenAPI refId（见 packages/server/src/lib/dtos/mp.ts）
+export const mpMenuButtonSchema: z.ZodType<MpMenuButton> = z.lazy(() => z.object({
   name: z.string().min(1, '按钮名称不能为空').max(60),
   type: z.string().max(32).optional(),
   key: z.string().max(128).optional(),
