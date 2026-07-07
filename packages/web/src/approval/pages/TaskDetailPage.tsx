@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Avatar, Banner, Button, Empty, Form, Popconfirm, SideSheet, Skeleton, Tag, TextArea, Toast, Typography,
@@ -12,6 +12,7 @@ import ApprovalTimeline from '@/components/ApprovalTimeline';
 import FileAttachment from '@/components/FileAttachment';
 import { uploadedFileToAttachment } from '@/components/FileAttachment/utils';
 import SignaturePad from '@/components/SignaturePad';
+import { UserAvatar } from '@/components/UserAvatar';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
 import WorkflowPriorityTag from '@/components/workflow/WorkflowPriorityTag';
 import { linearizeApprovalNodes } from '@/components/workflow/workflow-runtime';
@@ -23,6 +24,7 @@ import {
 } from '@/utils/workflow-snapshot';
 import ApproverPickerField from '../components/ApproverPicker';
 import {
+  fetchNextPendingTask,
   useAddApprovalComment, useApprovalDetail, useApprovalMe, useApprovalQuickPhrases, useApprovalUsers,
   useSelectableNextApprovers, useTaskAction, useUrgeInstance, useWithdrawInstance,
 } from '../lib/queries';
@@ -93,6 +95,16 @@ export default function TaskDetailPage() {
   const [transferTarget, setTransferTarget] = useState<number[]>([]);
   const actionFormApi = useRef<FormApi | null>(null);
   const detailFormApi = useRef<FormApi | null>(null);
+
+  // 连续审批跳转到下一条时复用组件实例，需重置操作状态
+  useEffect(() => {
+    setAction(null);
+    setSignature('');
+    setCommentDraft('');
+    setSelectedNext({});
+    setHighlightNextMissing(false);
+    setTransferTarget([]);
+  }, [instanceId, taskId]);
 
   const phrasesQuery = useApprovalQuickPhrases(action === 'approve' || action === 'reject');
 
@@ -204,8 +216,20 @@ export default function TaskDetailPage() {
         body = { targetUserId: transferTarget[0], comment: values.comment };
       }
       await actionMutation.mutateAsync({ taskId, action, body });
-      Toast.success(action === 'approve' ? '已同意' : action === 'reject' ? '已驳回' : '已转办');
       setAction(null);
+      // 连续审批（对标钉钉）：处理完自动进入下一条待办，清零后回列表
+      const doneLabel = action === 'approve' ? '已同意' : action === 'reject' ? '已驳回' : '已转办';
+      try {
+        const { next, remaining } = await fetchNextPendingTask(instanceId);
+        if (next) {
+          Toast.success(`${doneLabel} · 还剩 ${remaining} 条待办，已进入下一条`);
+          navigate(`/detail/${next.instanceId}/${next.taskId}`, { replace: true });
+          return;
+        }
+        Toast.success(`${doneLabel} · 待办已清零 🎉`);
+      } catch {
+        Toast.success(doneLabel);
+      }
       navigate('/', { replace: true });
     } catch { /* 表单校验失败或请求失败（request 层已 Toast） */ }
   };
@@ -292,13 +316,17 @@ export default function TaskDetailPage() {
 
         {/* 基本信息 + 当前进度 */}
         <div className="ap-section">
-          <div className="ap-card__meta" style={{ marginTop: 0 }}>
-            {(detail.priority === 'high' || detail.priority === 'urgent') && <WorkflowPriorityTag priority={detail.priority} />}
-            <span>{detail.definitionName ?? '—'}</span>
-            <span>·</span>
-            <span>{detail.initiatorName ?? '—'} 发起</span>
-            <span>·</span>
-            <span>{formatDateTime(detail.createdAt)}</span>
+          <div className="ap-detail-head">
+            <UserAvatar name={detail.initiatorName ?? '—'} avatar={detail.initiatorAvatar ?? undefined} size={40} />
+            <div className="ap-detail-head__info">
+              <div className="ap-detail-head__name">{detail.initiatorName ?? '—'}</div>
+              <div className="ap-detail-head__meta">
+                {(detail.priority === 'high' || detail.priority === 'urgent') && <WorkflowPriorityTag priority={detail.priority} />}
+                <span>{detail.definitionName ?? '—'}</span>
+                <span>·</span>
+                <span>{formatDateTime(detail.createdAt)}</span>
+              </div>
+            </div>
           </div>
           {detail.status === 'running' && pendingTasks.length > 0 && (
             <div className="ap-progress-hint">

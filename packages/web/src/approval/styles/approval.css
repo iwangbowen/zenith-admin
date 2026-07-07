@@ -42,6 +42,25 @@
   overscroll-behavior-y: contain;
 }
 
+/* 页面切换入场：导航状态反馈（150-250ms，ease-out） */
+@media (prefers-reduced-motion: no-preference) {
+  .ap-body {
+    animation: ap-page-in 0.18s cubic-bezier(0.25, 1, 0.5, 1);
+  }
+
+  @keyframes ap-page-in {
+    from {
+      opacity: 0.4;
+      transform: translateY(8px);
+    }
+
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
+
 .ap-body--with-footer {
   padding-bottom: calc(76px + env(safe-area-inset-bottom));
 }
@@ -57,6 +76,21 @@
 
 .ap-card:active {
   background: var(--semi-color-fill-0);
+}
+
+/* 批量审批模式：勾选/不可选状态 */
+.ap-card--checked {
+  border-color: var(--semi-color-primary);
+  background: var(--semi-color-primary-light-default);
+}
+
+.ap-card--dim {
+  opacity: 0.55;
+}
+
+.ap-card__check {
+  pointer-events: none;
+  flex-shrink: 0;
 }
 
 .ap-card__title-row {
@@ -111,6 +145,51 @@
   text-align: center;
   color: var(--semi-color-text-2);
   font-size: 13px;
+}
+
+/* 批量审批操作条（批量模式下替换 TabBar） */
+.ap-batchbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+  background: var(--semi-color-bg-1);
+  border-top: 1px solid var(--semi-color-border);
+}
+
+.ap-batchbar__count {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--semi-color-text-2);
+}
+
+/* 详情页发起人头部块 */
+.ap-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ap-detail-head__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.ap-detail-head__name {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.ap-detail-head__meta {
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--semi-color-text-2);
 }
 
 /* 底部标签栏：主流 App TabBar（图标+文字纵排、均分、角标、safe-area） */
@@ -178,9 +257,21 @@
 
 .ap-search {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   padding: 8px 12px;
   background: var(--semi-color-bg-1);
   border-bottom: 1px solid var(--semi-color-border);
+}
+
+.ap-search .semi-input-wrapper {
+  flex: 1;
+  min-width: 0;
+}
+
+.ap-search > .semi-button {
+  flex-shrink: 0;
 }
 
 .ap-dot {

@@ -236,3 +236,17 @@ export function useApprovalUsers(enabled: boolean) {
     staleTime: 5 * 60_000,
   });
 }
+
+/** 连续审批：处理完一条后取下一条待办（排除当前实例），供详情页自动跳转 */
+export async function fetchNextPendingTask(
+  excludeInstanceId: number,
+): Promise<{ next: { instanceId: number; taskId: number } | null; remaining: number }> {
+  const data = await approvalRequest
+    .get<PaginatedResponse<ApprovalListItem>>('/api/workflows/instances/pending-mine?page=1&pageSize=5', { silent: true })
+    .then(unwrapApproval);
+  const item = data.list.find((i) => i.id !== excludeInstanceId && i.pendingTaskId != null);
+  return {
+    next: item?.pendingTaskId != null ? { instanceId: item.id, taskId: item.pendingTaskId } : null,
+    remaining: data.total,
+  };
+}
