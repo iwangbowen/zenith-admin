@@ -661,6 +661,7 @@ export const SEED_SYSTEM_CONFIGS: SystemConfig[] = [
   { id: 32, configKey: 'member_login_log_retention_days', configValue: '180',  configType: 'number',  description: '会员登录日志保留天数，超期日志由每日例行维护任务删除，0 表示不清理', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 33, configKey: 'member_birthday_points',         configValue: '0',     configType: 'number',  description: '会员生日礼积分：生日当天自动发放的积分数量（每年一次，流水 bizType=birthday），0 表示不发放', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 34, configKey: 'member_birthday_coupon_id',      configValue: '0',     configType: 'number',  description: '会员生日礼优惠券模板 ID：生日当天自动发放该券（每年一次），0 表示不发放', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 35, configKey: 'member_invite_reward_points',    configValue: '0',     configType: 'number',  description: '邀请奖励积分：新会员通过邀请码注册成功后发给邀请人的积分（流水 bizType=invite），0 表示不奖励', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 限流规则 ─────────────────────────────────────────────────────────────────

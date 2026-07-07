@@ -303,6 +303,16 @@ export async function exchangePointsForCoupon(couponId: number) {
   });
 }
 
+/** 按券码查询券详情（核销前预览）*/
+export async function getMemberCouponByCode(code: string) {
+  const row = await db.query.memberCoupons.findFirst({
+    where: eq(memberCoupons.code, code.trim()),
+    with: { coupon: true, member: { columns: { nickname: true } } },
+  });
+  if (!row) throw new HTTPException(404, { message: '券码不存在' });
+  return mapMemberCoupon(row, row.coupon, row.member?.nickname);
+}
+
 // ─── 核销 / 作废 / 过期 ───────────────────────────────────────────────────────
 /** 核销券码（预留统一入口，供未来订单系统调用）。
  * 单条原子条件更新（code + unused + 未过期），并发核销同一券码仅一次成功，防双花。 */

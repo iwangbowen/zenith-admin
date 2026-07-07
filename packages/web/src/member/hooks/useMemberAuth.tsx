@@ -19,6 +19,7 @@ export interface MemberRegisterParams {
   password?: string;
   smsCode?: string;
   nickname?: string;
+  inviteCode?: string;
 }
 
 interface MemberAuthState {

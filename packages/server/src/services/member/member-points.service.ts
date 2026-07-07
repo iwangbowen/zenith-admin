@@ -156,10 +156,18 @@ export function redeemPoints(memberId: number, amount: number, opts?: { bizType?
   return changePoints({ memberId, type: 'redeem', amount: -Math.abs(amount), ...opts });
 }
 
-/** 后台手动调整（delta 可正可负）；校验会员存在且未删除 */
+/** 后台手动调整（delta 可正可负）；校验会员存在且未删除，并发站内通知 */
 export async function adjustPoints(memberId: number, delta: number, operatorId: number, remark?: string) {
   await ensureMemberExists(memberId);
-  return changePoints({ memberId, type: 'adjust', amount: delta, bizType: 'admin_adjust', remark, operatorId });
+  const acc = await changePoints({ memberId, type: 'adjust', amount: delta, bizType: 'admin_adjust', remark, operatorId });
+  const { createMemberNotification } = await import('./member-notifications.service');
+  await createMemberNotification({
+    memberId,
+    type: 'point_adjust',
+    title: '积分变动通知',
+    content: `管理员${delta > 0 ? '增加' : '扣减'}了你的 ${Math.abs(delta)} 积分${remark ? `（${remark}）` : ''}，当前余额 ${acc.balance}。`,
+  }).catch(() => undefined);
+  return acc;
 }
 
 // ─── 流水查询 ─────────────────────────────────────────────────────────────────

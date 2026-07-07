@@ -87,7 +87,19 @@ export function MemberDetailDrawer({ memberId, onClose }: Readonly<Props>) {
                   { key: '邮箱', value: <Text type="tertiary" ellipsis={{ showTooltip: true }} style={{ maxWidth: 180 }}>{m?.email ?? '—'}</Text> },
                   { key: '注册来源', value: m?.registerSource },
                   { key: '最后登录', value: m?.lastLoginAt ?? '—' },
+                  { key: '成长值', value: `${m?.growthValue ?? 0}（经验 ${m?.experience ?? 0}）` },
+                  { key: '邀请人', value: overview.inviter ? `${overview.inviter.nickname} #${overview.inviter.id}` : '—' },
+                  { key: '邀请码', value: overview.inviteCode ?? '—' },
+                  { key: '已邀请', value: `${overview.invitedCount} 人` },
                 ]} />
+                {(m?.tags?.length || overview.mpFans.length > 0) ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                    {m?.tags?.map((t) => <Tag key={t.id} size="small" color={(t.color || 'blue') as 'blue'}>{t.name}</Tag>)}
+                    {overview.mpFans.map((f) => (
+                      <Tag key={`fan-${f.id}`} size="small" color="lime">公众号粉丝 · {f.nickname || f.openid.slice(0, 8)}</Tag>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -96,7 +108,7 @@ export function MemberDetailDrawer({ memberId, onClose }: Readonly<Props>) {
               <StatCard label="积分余额" value={overview.points.balance} sub={`累计 ${overview.points.totalEarned}`} />
               <StatCard label="钱包余额(元)" value={(overview.wallet.balance / 100).toFixed(2)} sub={`累计充值 ${(overview.wallet.totalRecharge / 100).toFixed(2)} 元`} />
               <StatCard label="可用卡券" value={overview.activeCouponCount} />
-              <StatCard label="登录次数" value={overview.loginLogCount} />
+              <StatCard label="累计签到" value={overview.checkinTotal} sub={`登录 ${overview.loginLogCount} 次`} />
             </div>
 
             {/* 最近积分流水 */}

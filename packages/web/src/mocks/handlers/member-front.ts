@@ -9,7 +9,11 @@ import {
   mockCoupons,
   mockMemberCoupons,
   mockMemberLoginLogs,
+  mockMemberBenefits,
+  mockMemberNotifications,
+  mockInviteSummary,
 } from '../data/members';
+import { mockDateTime } from '../utils/date';
 
 const MEMBER_TOKEN = 'mock-member-token-demo';
 const MEMBER_REFRESH = 'mock-member-refresh-demo';
@@ -80,6 +84,27 @@ export const memberFrontHandlers = [
 
   // ── 自助：等级 ────────────────────────────────────────────────────────────
   http.get('/api/member/levels', () => ok(mockMemberLevels)),
+  http.get('/api/member/benefits', () => ok(mockMemberBenefits)),
+
+  // ── 自助：通知 ────────────────────────────────────────────────────────────
+  http.get('/api/member/notifications/unread-count', () =>
+    ok({ count: mockMemberNotifications.filter((n) => !n.readAt).length })),
+  http.get('/api/member/notifications', () => paginated(mockMemberNotifications)),
+  http.put('/api/member/notifications/read-all', () => {
+    for (const n of mockMemberNotifications) n.readAt = n.readAt ?? mockDateTime();
+    return ok(null, '已全部已读');
+  }),
+  http.put('/api/member/notifications/:id/read', ({ params }) => {
+    const n = mockMemberNotifications.find((x) => x.id === Number(params.id));
+    if (n) n.readAt = n.readAt ?? mockDateTime();
+    return ok(null, '已读');
+  }),
+
+  // ── 自助：邀请 ────────────────────────────────────────────────────────────
+  http.get('/api/member/invite/summary', () => ok(mockInviteSummary)),
+
+  // ── 自助：注销 ────────────────────────────────────────────────────────────
+  http.post('/api/member/auth/deactivate', () => ok(null, '账户已注销')),
 
   // ── 自助：优惠券 ──────────────────────────────────────────────────────────
   http.get('/api/member/coupons', () => paginated(mockMemberCoupons)),

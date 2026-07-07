@@ -228,6 +228,11 @@ export const MemberOverviewDTO = z
     recentLoginLogs: z.array(MemberLoginLogDTO),
     activeCouponCount: z.number().int(),
     loginLogCount: z.number().int(),
+    checkinTotal: z.number().int(),
+    inviteCode: z.string().nullable(),
+    inviter: z.object({ id: z.number().int(), nickname: z.string() }).nullable(),
+    invitedCount: z.number().int(),
+    mpFans: z.array(z.object({ id: z.number().int(), nickname: z.string().nullable(), openid: z.string() })),
   })
   .openapi('MemberOverview');
 
@@ -370,3 +375,48 @@ export const MakeupCheckinResultDTO = z
     consecutiveDays: z.number().int(),
   })
   .openapi('MakeupCheckinResult');
+
+// ─── 会员站内通知 ─────────────────────────────────────────────────────────────
+export const MemberNotificationDTO = z
+  .object({
+    id: z.number().int(),
+    memberId: z.number().int(),
+    type: z.string(),
+    title: z.string(),
+    content: z.string().nullable().optional(),
+    readAt: z.string().nullable().optional(),
+    createdAt: z.string(),
+  })
+  .openapi('MemberNotification');
+
+// ─── 会员权益（等级折扣）──────────────────────────────────────────────────────
+export const MemberBenefitsDTO = z
+  .object({
+    growthValue: z.number().int(),
+    discount: z.number().int(),
+    levelId: z.number().int().nullable(),
+    levelName: z.string().nullable(),
+    benefits: z.array(z.string()),
+    nextLevel: z.object({
+      id: z.number().int(),
+      name: z.string(),
+      growthThreshold: z.number().int(),
+      discount: z.number().int(),
+      growthGap: z.number().int(),
+    }).nullable(),
+  })
+  .openapi('MemberBenefits');
+
+// ─── 会员邀请汇总 ─────────────────────────────────────────────────────────────
+export const MemberInviteSummaryDTO = z
+  .object({
+    inviteCode: z.string(),
+    invitedCount: z.number().int(),
+    totalRewardPoints: z.number().int(),
+    recentInvitees: z.array(z.object({
+      id: z.number().int(),
+      nickname: z.string(),
+      createdAt: z.string(),
+    })),
+  })
+  .openapi('MemberInviteSummary');

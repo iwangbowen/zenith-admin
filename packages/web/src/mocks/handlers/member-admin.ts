@@ -85,6 +85,11 @@ export const memberAdminHandlers = [
       recentLoginLogs: mockMemberLoginLogs.slice(0, 5).map(loginLogView),
       activeCouponCount: 2,
       loginLogCount: 8,
+      checkinTotal: 15,
+      inviteCode: 'ZENITH88',
+      inviter: null,
+      invitedCount: 2,
+      mpFans: [{ id: 1, nickname: '小明', openid: 'oDemoFan0000000000000001' }],
     });
   }),
   http.get('/api/members/:id', ({ params }) => {
@@ -196,9 +201,23 @@ export const memberAdminHandlers = [
   http.post('/api/member-wallets/adjust', () => ok(null, '余额已调整')),
   http.post('/api/member-wallets/refund', () => ok(null, '已退款')),
 
-  // ── 优惠券（/records 必须在 /:id 之前）───────────────────────────────────
+  // ── 优惠券（/records、/code、/redeem 必须在 /:id 之前）────────────────────
   http.get('/api/coupons/records', () => paginated(mockMemberCoupons)),
   http.post('/api/coupons/records/:id/revoke', () => ok(null, '券码已作废')),
+  http.get('/api/coupons/code/:code', ({ params }) => {
+    const mc = mockMemberCoupons.find((c) => c.code === String(params.code));
+    if (!mc) return HttpResponse.json({ code: 404, message: '券码不存在', data: null }, { status: 404 });
+    return ok(mc);
+  }),
+  http.post('/api/coupons/redeem', async ({ request }) => {
+    const body = (await request.json().catch(() => ({}))) as { code?: string };
+    const mc = mockMemberCoupons.find((c) => c.code === body.code);
+    if (!mc) return HttpResponse.json({ code: 404, message: '券码不存在', data: null }, { status: 404 });
+    if (mc.status !== 'unused') return HttpResponse.json({ code: 400, message: '优惠券不可用', data: null }, { status: 400 });
+    mc.status = 'used';
+    mc.usedAt = mockDateTime();
+    return ok(mc, '核销成功');
+  }),
   http.get('/api/coupons', () => paginated(mockCoupons)),
   http.get('/api/coupons/:id', ({ params }) => ok(mockCoupons.find((c) => c.id === Number(params.id)) ?? null)),
   http.post('/api/coupons/:id/issue', () => ok(null, '发券成功')),

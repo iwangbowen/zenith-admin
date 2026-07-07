@@ -90,6 +90,11 @@ export interface MemberOverview {
   recentLoginLogs: MemberLoginLog[];
   activeCouponCount: number;
   loginLogCount: number;
+  checkinTotal: number;
+  inviteCode: string | null;
+  inviter: { id: number; nickname: string } | null;
+  invitedCount: number;
+  mpFans: { id: number; nickname: string | null; openid: string }[];
 }
 
 export const memberAdminKeys = {
@@ -400,6 +405,24 @@ export function useRevokeCouponRecord() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => request.post<null>(`/api/coupons/records/${id}/revoke`, {}).then(unwrap),
+    onSuccess: () => invalidate(qc, [memberAdminKeys.couponRecords, memberAdminKeys.members, memberAdminKeys.stats]),
+  });
+}
+
+export function useCouponByCode(code: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['member-admin', 'coupon-code', code] as const,
+    queryFn: () => request.get<MemberCoupon>(`/api/coupons/code/${encodeURIComponent(code)}`).then(unwrap),
+    enabled: enabled && code.length >= 4,
+    retry: false,
+  });
+}
+
+export function useRedeemCoupon() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (values: { code: string; remark?: string }) =>
+      request.post<MemberCoupon>('/api/coupons/redeem', values).then(unwrap),
     onSuccess: () => invalidate(qc, [memberAdminKeys.couponRecords, memberAdminKeys.members, memberAdminKeys.stats]),
   });
 }

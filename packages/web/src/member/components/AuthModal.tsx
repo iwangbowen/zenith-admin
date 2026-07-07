@@ -31,6 +31,11 @@ export function AuthModal({ visible, onClose, defaultTab = 'login' }: Readonly<A
   const [regCode, setRegCode] = useState('');
   const [nickname, setNickname] = useState('');
   const [regPassword, setRegPassword] = useState('');
+  // 邀请码：支持从邀请链接 #/?invite=XXXX 预填
+  const [inviteCode, setInviteCode] = useState(() => {
+    const hashQuery = window.location.hash.split('?')[1];
+    return new URLSearchParams(hashQuery ?? '').get('invite') ?? '';
+  });
 
   useEffect(() => {
     if (visible) setMode(defaultTab);
@@ -67,6 +72,7 @@ export function AuthModal({ visible, onClose, defaultTab = 'login' }: Readonly<A
       smsCode: regCode,
       nickname: nickname || undefined,
       password: regPassword || undefined,
+      inviteCode: inviteCode.trim() || undefined,
     });
     setLoading(false);
     if (res.code === 0) {
@@ -149,7 +155,8 @@ export function AuthModal({ visible, onClose, defaultTab = 'login' }: Readonly<A
               </Button>
             </div>
             <Input size="large" placeholder="昵称（选填）" value={nickname} onChange={setNickname} style={{ marginBottom: 12 }} />
-            <Input size="large" mode="password" placeholder="设置密码（选填，至少 6 位）" value={regPassword} onChange={setRegPassword} onEnterPress={handleRegister} style={{ marginBottom: 20 }} />
+            <Input size="large" mode="password" placeholder="设置密码（选填，至少 6 位）" value={regPassword} onChange={setRegPassword} style={{ marginBottom: 12 }} />
+            <Input size="large" placeholder="邀请码（选填）" value={inviteCode} onChange={setInviteCode} onEnterPress={handleRegister} style={{ marginBottom: 20 }} />
             <Button size="large" theme="solid" block loading={loading} onClick={handleRegister} style={{ background: 'var(--m-primary)' }}>
               注册并登录
             </Button>

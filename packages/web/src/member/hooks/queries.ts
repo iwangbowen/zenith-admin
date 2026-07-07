@@ -2,12 +2,15 @@ import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClie
 import type {
   Coupon,
   Member,
+  MemberBenefits,
   MemberCheckin,
   MemberCheckinStatus,
   MemberCoupon,
+  MemberInviteSummary,
   MemberLevel,
   MemberLoginLog,
   MemberMilestoneStatus,
+  MemberNotification,
   MemberPointAccount,
   MemberWallet,
   PaginatedResponse,
@@ -93,6 +96,14 @@ export const memberKeys = {
     lists: ['member', 'transactions', 'list'] as const,
     list: (fetchUrl: string, params: MemberListParams) => ['member', 'transactions', 'list', fetchUrl, params] as const,
   },
+  benefits: ['member', 'benefits'] as const,
+  notifications: {
+    all: ['member', 'notifications'] as const,
+    lists: ['member', 'notifications', 'list'] as const,
+    list: (params: MemberListParams) => ['member', 'notifications', 'list', params] as const,
+    unreadCount: ['member', 'notifications', 'unread-count'] as const,
+  },
+  invite: ['member', 'invite', 'summary'] as const,
 };
 
 export function useMemberMe() {
@@ -238,6 +249,61 @@ export function useExchangeCoupon() {
       void qc.invalidateQueries({ queryKey: memberKeys.coupons.all });
       void qc.invalidateQueries({ queryKey: memberKeys.points.all });
     },
+  });
+}
+
+// ─── 权益 / 通知 / 邀请 / 注销 ────────────────────────────────────────────────
+export function useMyBenefits() {
+  return useQuery({
+    queryKey: memberKeys.benefits,
+    queryFn: () => memberRequest.get<MemberBenefits>('/api/member/benefits', { silent: true }).then(unwrap),
+  });
+}
+
+export function useMyNotifications(params: MemberListParams) {
+  return useQuery({
+    queryKey: memberKeys.notifications.list(params),
+    queryFn: () => memberRequest.get<PaginatedResponse<MemberNotification>>(`/api/member/notifications${toQueryString(params)}`).then(unwrap),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useUnreadNotificationCount(enabled = true) {
+  return useQuery({
+    queryKey: memberKeys.notifications.unreadCount,
+    queryFn: () => memberRequest.get<{ count: number }>('/api/member/notifications/unread-count', { silent: true }).then(unwrap),
+    enabled,
+    refetchInterval: 60_000,
+  });
+}
+
+export function useMarkNotificationRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => memberRequest.put<null>(`/api/member/notifications/${id}/read`, {}).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: memberKeys.notifications.all }),
+  });
+}
+
+export function useMarkAllNotificationsRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => memberRequest.put<null>('/api/member/notifications/read-all', {}).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: memberKeys.notifications.all }),
+  });
+}
+
+export function useInviteSummary() {
+  return useQuery({
+    queryKey: memberKeys.invite,
+    queryFn: () => memberRequest.get<MemberInviteSummary>('/api/member/invite/summary').then(unwrap),
+  });
+}
+
+export function useDeactivateAccount() {
+  return useMutation({
+    mutationFn: (values: { password?: string; smsCode?: string }) =>
+      memberRequest.post<null>('/api/member/auth/deactivate', values).then(unwrap),
   });
 }
 

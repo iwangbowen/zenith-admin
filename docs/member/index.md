@@ -213,7 +213,47 @@
 
 ### 券到期提醒
 
-前台「我的卡券」对 7 天内到期的可用券展示「即将过期」红色标记（基于 `expireAt` 前端计算）。
+前台「我的卡券」对 7 天内到期的可用券展示「即将过期」红色标记（基于 `expireAt` 前端计算）；每日例行维护任务同时扫描 7 天内到期券并发送站内通知（以券记录 ID 防重，每张券仅提醒一次）。
+
+### 券码核销工具
+
+后台「领券记录」页提供核销入口（权限码 `member:coupon:update`，带审计与幂等）：
+
+- `GET /api/coupons/code/{code}`：核销前预览券详情（券信息 / 持有会员 / 状态 / 有效期）。
+- `POST /api/coupons/redeem`：核销（`redeemCoupon()` 原子条件更新防双花），核销来源标记 `bizType = 'manual_redeem'`。
+
+---
+
+## 站内通知 / 邀请裂变 / 账户注销
+
+### 会员站内通知
+
+通知存储在 `member_notifications` 表（`(member_id, created_at)` 索引 + `(type, biz_id)` 防重索引）。
+
+- 发送入口：`createMemberNotification()`（带 `bizId` 时按 `(memberId, type, bizId)` 幂等）。已接入：生日礼、券到期提醒、管理员积分/余额调整、邀请奖励。
+- 前台自助：`GET /api/member/notifications`（分页/`unreadOnly`）、`GET /notifications/unread-count`、`PUT /notifications/{id}/read`、`PUT /notifications/read-all`；消息中心页 `/messages`，侧边栏与移动端 TabBar 均带未读红点（60s 轮询）。
+
+### 邀请裂变
+
+- `members.invite_code`（部分唯一索引，首次访问邀请页懒生成）+ `invited_by`（邀请关系）。
+- 注册接口支持 `inviteCode`（选填）：注册成功后绑定邀请关系，按 system_config `member_invite_reward_points`（默认 `0` 关闭）给邀请人发积分（流水 `bizType='invite'`、`bizId=新会员ID`，天然幂等）并发站内通知；处理为 best-effort，不阻断注册。
+- 前台：邀请页 `/invite`（邀请码/邀请链接复制、已邀人数、累计奖励、最近邀请列表）；注册弹窗支持邀请码输入并可从链接 `#/?invite=CODE` 预填。
+
+### 账户自助注销
+
+`POST /api/member/auth/deactivate`（限流保护）：已设密码的验证密码，否则验证手机短信验证码；通过后**软删除** + 强制下线全部会话。数据按软删除策略保留，标识符立即可重新注册。前台入口在「个人设置」危险区。
+
+### 移动端适配
+
+前台会员中心在 `≤768px` 视口下隐藏侧边导航，改用底部固定 TabBar（首页/卡券/签到/消息/我的），消息项带未读徽标。
+
+### 等级折扣消费侧接入
+
+`services/member/member-benefits.service.ts` 提供订单/支付链路的统一接入点：
+
+- `getMemberDiscount(memberId)`：返回会员当前折扣百分比（无等级/等级停用 = 100）。
+- `applyDiscount(amountFen, discount)`：按折扣计算应付金额（分）。
+- 前台 `GET /api/member/benefits` 返回当前折扣、权益列表与下一等级升级差距；等级权益页展示升级进度条。
 
 ---
 

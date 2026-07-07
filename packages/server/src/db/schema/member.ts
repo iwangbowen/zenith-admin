@@ -73,6 +73,10 @@ export const members = pgTable('members', {
   remark: varchar('remark', { length: 256 }),
   /** 软删除时间（非 null 即已删除；资金流水/券码等历史数据保留）*/
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  /** 邀请码（懒生成，全局唯一）*/
+  inviteCode: varchar('invite_code', { length: 16 }),
+  /** 邀请人会员 ID */
+  invitedBy: integer('invited_by').references((): AnyPgColumn => members.id, { onDelete: 'set null' }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -82,7 +86,9 @@ export const members = pgTable('members', {
   uniqueIndex('members_phone_unique').on(t.phone).where(sql`${t.deletedAt} is null`),
   uniqueIndex('members_email_unique').on(t.email).where(sql`${t.deletedAt} is null`),
   uniqueIndex('members_username_unique').on(t.username).where(sql`${t.deletedAt} is null`),
+  uniqueIndex('members_invite_code_unique').on(t.inviteCode).where(sql`${t.inviteCode} is not null`),
   index('members_status_idx').on(t.status),
+  index('members_invited_by_idx').on(t.invitedBy),
 ]);
 
 export type MemberRow = typeof members.$inferSelect;
@@ -395,3 +401,24 @@ export const memberCheckinMilestoneAwards = pgTable('member_checkin_milestone_aw
 export type MemberCheckinMilestoneAwardRow = typeof memberCheckinMilestoneAwards.$inferSelect;
 
 export type NewMemberCheckinMilestoneAward = typeof memberCheckinMilestoneAwards.$inferInsert;
+
+// ─── 会员站内通知 ─────────────────────────────────────────────────────────────
+export const memberNotifications = pgTable('member_notifications', {
+  id: serial('id').primaryKey(),
+  memberId: integer('member_id').notNull().references(() => members.id, { onDelete: 'cascade' }),
+  /** 通知类型：birthday / coupon_expiring / point_adjust / wallet_adjust / invite_reward / system ... */
+  type: varchar('type', { length: 32 }).notNull(),
+  title: varchar('title', { length: 128 }).notNull(),
+  content: varchar('content', { length: 512 }),
+  /** 业务标识（配合 type 做防重，如券记录 ID / 年份）*/
+  bizId: varchar('biz_id', { length: 128 }),
+  readAt: timestamp('read_at', { withTimezone: true }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  index('member_notifications_member_idx').on(t.memberId, t.createdAt),
+  index('member_notifications_biz_idx').on(t.type, t.bizId),
+]);
+
+export type MemberNotificationRow = typeof memberNotifications.$inferSelect;
+
+export type NewMemberNotification = typeof memberNotifications.$inferInsert;

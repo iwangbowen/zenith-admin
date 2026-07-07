@@ -2,7 +2,7 @@ import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-opena
 import { memberAuthMiddleware } from '../../middleware/member-auth';
 import { idempotencyGuard } from '../../middleware/idempotency';
 import {
-  jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okBody, PaginationQuery,
+  jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, okBody, PaginationQuery, IdParam,
 } from '../../lib/openapi-schemas';
 import {
   MemberPointAccountDTO,
@@ -18,6 +18,9 @@ import {
   MemberCheckinDTO,
   MemberMilestoneStatusDTO,
   MakeupCheckinResultDTO,
+  MemberNotificationDTO,
+  MemberBenefitsDTO,
+  MemberInviteSummaryDTO,
 } from '../../lib/openapi-dtos';
 import { currentMemberId } from '../../lib/member-context';
 import { getClientInfo } from '../../services/identity/auth.service';
@@ -26,6 +29,9 @@ import { getMyWallet, listMyWalletTransactions, rechargeWallet } from '../../ser
 import { getEnabledLevels } from '../../services/member/member-levels.service';
 import { listMyCoupons, getAvailableCoupons, receiveCoupon, getExchangeableCoupons, exchangePointsForCoupon } from '../../services/member/coupons.service';
 import { doCheckin, getMemberCheckinStatus, getMyCheckinHistory, doMyMakeupCheckin, getMyMilestones } from '../../services/member/member-checkin.service';
+import { getMyBenefits } from '../../services/member/member-benefits.service';
+import { listMyNotifications, getMyUnreadCount, markMyNotificationRead, markAllMyNotificationsRead } from '../../services/member/member-notifications.service';
+import { getMyInviteSummary } from '../../services/member/member-invite.service';
 import { db } from '../../db';
 import { memberLoginLogs } from '../../db/schema';
 import { desc, eq } from 'drizzle-orm';
@@ -293,6 +299,77 @@ const loginLogsRoute = defineOpenAPIRoute({
   },
 });
 
+// ─── GET /benefits — 我的权益（等级折扣 + 升级进度）──────────────────────────
+const benefitsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/benefits', tags: ['MemberSelf'], summary: '我的权益（折扣与升级进度）',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    responses: { ...commonErrorResponses, ...ok(MemberBenefitsDTO, 'ok') },
+  }),
+  handler: async (c) => c.json(okBody(await getMyBenefits()), 200),
+});
+
+// ─── 站内通知 ─────────────────────────────────────────────────────────────────
+const notificationsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/notifications', tags: ['MemberSelf'], summary: '我的通知列表',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    request: { query: PaginationQuery.extend({ unreadOnly: z.coerce.boolean().optional() }) },
+    responses: { ...commonErrorResponses, ...okPaginated(MemberNotificationDTO, 'ok') },
+  }),
+  handler: async (c) => c.json(okBody(await listMyNotifications(c.req.valid('query'))), 200),
+});
+
+const unreadCountRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/notifications/unread-count', tags: ['MemberSelf'], summary: '未读通知数',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    responses: { ...commonErrorResponses, ...ok(z.object({ count: z.number().int() }), 'ok') },
+  }),
+  handler: async (c) => c.json(okBody({ count: await getMyUnreadCount() }), 200),
+});
+
+const markReadRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put', path: '/notifications/{id}/read', tags: ['MemberSelf'], summary: '标记通知已读',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...okMsg('已读') },
+  }),
+  handler: async (c) => {
+    await markMyNotificationRead(c.req.valid('param').id);
+    return c.json(okBody(null, '已读'), 200);
+  },
+});
+
+const markAllReadRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put', path: '/notifications/read-all', tags: ['MemberSelf'], summary: '全部标记已读',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    responses: { ...commonErrorResponses, ...okMsg('已全部已读') },
+  }),
+  handler: async (c) => {
+    const n = await markAllMyNotificationsRead();
+    return c.json(okBody(null, `已读 ${n} 条`), 200);
+  },
+});
+
+// ─── GET /invite/summary — 我的邀请 ──────────────────────────────────────────
+const inviteSummaryRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/invite/summary', tags: ['MemberSelf'], summary: '我的邀请汇总',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    responses: { ...commonErrorResponses, ...ok(MemberInviteSummaryDTO, 'ok') },
+  }),
+  handler: async (c) => c.json(okBody(await getMyInviteSummary()), 200),
+});
+
 memberSelf.openapiRoutes([
   pointAccountRoute,
   pointTxRoute,
@@ -300,6 +377,7 @@ memberSelf.openapiRoutes([
   walletTxRoute,
   rechargeRoute,
   levelsRoute,
+  benefitsRoute,
   checkinStatusRoute,
   checkinRoute,
   checkinHistoryRoute,
@@ -311,6 +389,11 @@ memberSelf.openapiRoutes([
   receiveCouponRoute,
   exchangeCouponRoute,
   loginLogsRoute,
+  notificationsRoute,
+  unreadCountRoute,
+  markAllReadRoute,
+  markReadRoute,
+  inviteSummaryRoute,
 ] as const);
 
 export default memberSelf;

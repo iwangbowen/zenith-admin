@@ -17,6 +17,7 @@ import {
   updateMyMemberProfile,
   changeMyMemberPassword,
   resetMemberPassword,
+  deactivateMyAccount,
 } from '../../services/member/member-auth.service';
 import { sendMemberSmsCode } from '../../services/member/member-sms.service';
 import { getClientInfo } from '../../services/identity/auth.service';
@@ -33,6 +34,7 @@ const registerSchema = z.object({
   password: z.string().min(6).max(64).optional(),
   smsCode: z.string().length(6).optional(),
   nickname: z.string().min(1).max(32).optional(),
+  inviteCode: z.string().min(4).max(16).optional(),
 });
 const loginSchema = z.object({
   loginType: z.enum(['password', 'sms']).default('password'),
@@ -218,6 +220,25 @@ const passwordRoute = defineOpenAPIRoute({
   },
 });
 
+// ─── POST /deactivate — 自助注销账户 ─────────────────────────────────────────
+const deactivateSchema = z.object({
+  password: z.string().max(64).optional(),
+  smsCode: z.string().length(6).optional(),
+});
+const deactivateRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/deactivate', tags: ['MemberAuth'], summary: '自助注销账户（软删除）',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware, sensitiveRateLimit] as const,
+    request: { body: { content: jsonContent(deactivateSchema), required: true } },
+    responses: { ...commonErrorResponses, ...okMsg('已注销') },
+  }),
+  handler: async (c) => {
+    await deactivateMyAccount(c.req.valid('json'));
+    return c.json(okBody(null, '账户已注销'), 200);
+  },
+});
+
 memberAuth.openapiRoutes([
   smsCodeRoute,
   registerRoute,
@@ -228,6 +249,7 @@ memberAuth.openapiRoutes([
   meRoute,
   profileRoute,
   passwordRoute,
+  deactivateRoute,
 ] as const);
 
 export default memberAuth;

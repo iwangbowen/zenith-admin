@@ -87,7 +87,7 @@ export const mockCoupons = SEED_COUPONS.map((c, i) => ({
   updatedAt: now,
 }));
 
-export const mockMemberCoupons = [
+export const mockMemberCoupons: import('@zenith/shared').MemberCoupon[] = [
   { id: 1, couponId: 1, memberId: 1, code: 'SEEDCOUPON0001', status: 'unused', receivedAt: now, usedAt: null, expireAt: '2027-01-01 00:00:00', coupon: mockCoupons[0], memberName: '演示会员', createdAt: now },
   { id: 2, couponId: 2, memberId: 1, code: 'SEEDCOUPON0002', status: 'used', receivedAt: now, usedAt: now, expireAt: '2027-01-01 00:00:00', coupon: mockCoupons[1], memberName: '演示会员', createdAt: now },
 ];
@@ -151,6 +151,32 @@ export const mockMemberStatsCharts = {
     { name: '100元以下', value: 318 },
     { name: '100-500元', value: 152 },
     { name: '500元以上', value: 52 },
+  ],
+};
+
+// ─── P3：权益 / 通知 / 邀请 ───────────────────────────────────────────────────
+export const mockMemberBenefits = {
+  growthValue: 1280,
+  discount: 98,
+  levelId: 2,
+  levelName: '银卡会员',
+  benefits: ['98 折优惠', '生日积分翻倍'],
+  nextLevel: { id: 3, name: '金卡会员', growthThreshold: 5000, discount: 95, growthGap: 3720 },
+};
+
+export const mockMemberNotifications: import('@zenith/shared').MemberNotification[] = [
+  { id: 1, memberId: 1, type: 'coupon_expiring', title: '优惠券即将过期', content: '你的「全场9折券」将于 3 天后过期，记得及时使用。', readAt: null, createdAt: now },
+  { id: 2, memberId: 1, type: 'point_adjust', title: '积分变动通知', content: '管理员增加了你的 100 积分（客服补偿），当前余额 1280。', readAt: null, createdAt: now },
+  { id: 3, memberId: 1, type: 'birthday', title: '生日快乐 🎂', content: '生日礼 88 积分已到账，祝你生日快乐！', readAt: now, createdAt: now },
+];
+
+export const mockInviteSummary = {
+  inviteCode: 'ZENITH88',
+  invitedCount: 2,
+  totalRewardPoints: 100,
+  recentInvitees: [
+    { id: 2, nickname: 'Alice', createdAt: now },
+    { id: 3, nickname: '老用户', createdAt: now },
   ],
 };
 

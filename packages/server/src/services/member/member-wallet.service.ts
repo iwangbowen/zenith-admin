@@ -160,13 +160,29 @@ export function consumeWallet(memberId: number, amount: number, opts?: { bizType
 /** 退款入账（amount 取正）；后台入口需保证会员存在且未删除 */
 export async function refundWallet(memberId: number, amount: number, opts?: { bizType?: string; bizId?: string; remark?: string; operatorId?: number }) {
   await ensureMemberExists(memberId);
-  return changeWallet({ memberId, type: 'refund', amount: Math.abs(amount), ...opts });
+  const w = await changeWallet({ memberId, type: 'refund', amount: Math.abs(amount), ...opts });
+  const { createMemberNotification } = await import('./member-notifications.service');
+  await createMemberNotification({
+    memberId,
+    type: 'wallet_adjust',
+    title: '钱包退款到账',
+    content: `退款 ${(Math.abs(amount) / 100).toFixed(2)} 元已入账${opts?.remark ? `（${opts.remark}）` : ''}，当前余额 ${(w.balance / 100).toFixed(2)} 元。`,
+  }).catch(() => undefined);
+  return w;
 }
 
-/** 后台手动调整（delta 可正可负）；校验会员存在且未删除 */
+/** 后台手动调整（delta 可正可负）；校验会员存在且未删除，并发站内通知 */
 export async function adjustWallet(memberId: number, delta: number, operatorId: number, remark?: string) {
   await ensureMemberExists(memberId);
-  return changeWallet({ memberId, type: 'adjust', amount: delta, bizType: 'admin_adjust', remark, operatorId });
+  const w = await changeWallet({ memberId, type: 'adjust', amount: delta, bizType: 'admin_adjust', remark, operatorId });
+  const { createMemberNotification } = await import('./member-notifications.service');
+  await createMemberNotification({
+    memberId,
+    type: 'wallet_adjust',
+    title: '余额变动通知',
+    content: `管理员${delta > 0 ? '增加' : '扣减'}了你的余额 ${(Math.abs(delta) / 100).toFixed(2)} 元${remark ? `（${remark}）` : ''}，当前余额 ${(w.balance / 100).toFixed(2)} 元。`,
+  }).catch(() => undefined);
+  return w;
 }
 
 // ─── 充值（接入支付中心）──────────────────────────────────────────────────────

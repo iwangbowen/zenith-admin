@@ -2223,6 +2223,8 @@ export const memberRegisterSchema = z
     password: z.string().min(6, '密码至少6个字符').max(64).optional(),
     smsCode: z.string().length(6, '验证码为6位').optional(),
     nickname: z.string().min(1).max(32).optional(),
+    /** 邀请码（选填，注册成功后绑定邀请关系并奖励邀请人）*/
+    inviteCode: z.string().min(4).max(16).optional(),
   })
   .refine((d) => !!(d.username || d.phone || d.email), { message: '请至少提供用户名、手机号或邮箱' });
 

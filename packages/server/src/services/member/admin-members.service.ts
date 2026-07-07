@@ -6,7 +6,7 @@ import bcrypt from 'bcryptjs';
 import { and, asc, desc, eq, gte, lte, inArray, ilike, isNull, or, count, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import { members, memberLevels, memberPointAccounts, memberWallets, memberPointTransactions, memberWalletTransactions, memberCoupons, memberLoginLogs, memberTagBindings } from '../../db/schema';
+import { members, memberLevels, memberPointAccounts, memberWallets, memberPointTransactions, memberWalletTransactions, memberCoupons, memberLoginLogs, memberTagBindings, memberCheckins, mpFans } from '../../db/schema';
 import type { MemberRow } from '../../db/schema';
 import { mapMember, ensureMemberExists } from './member-auth.service';
 import { forceLogoutAllByMember } from '../../lib/member-session-manager';
@@ -290,7 +290,7 @@ export async function getMemberOverview(id: number) {
   });
   if (!row) throw new HTTPException(404, { message: '会员不存在' });
 
-  const [pointAcc, wallet, recentPointRows, recentWalletRows, recentLoginRows, activeCouponCount, loginLogCount] =
+  const [pointAcc, wallet, recentPointRows, recentWalletRows, recentLoginRows, activeCouponCount, loginLogCount, checkinTotal, mpFanRows, inviterRow, invitedCount] =
     await Promise.all([
       ensurePointAccount(id),
       ensureWallet(id),
@@ -308,6 +308,13 @@ export async function getMemberOverview(id: number) {
         .limit(5),
       db.$count(memberCoupons, and(eq(memberCoupons.memberId, id), eq(memberCoupons.status, 'unused'))),
       db.$count(memberLoginLogs, eq(memberLoginLogs.memberId, id)),
+      db.$count(memberCheckins, eq(memberCheckins.memberId, id)),
+      db.select({ id: mpFans.id, nickname: mpFans.nickname, openid: mpFans.openid })
+        .from(mpFans).where(eq(mpFans.memberId, id)).limit(5),
+      row.invitedBy
+        ? db.select({ id: members.id, nickname: members.nickname }).from(members).where(eq(members.id, row.invitedBy)).limit(1)
+        : Promise.resolve([]),
+      db.$count(members, and(eq(members.invitedBy, id), isNull(members.deletedAt))),
     ]);
 
   return {
@@ -324,6 +331,11 @@ export async function getMemberOverview(id: number) {
     recentLoginLogs: recentLoginRows.map((r) => mapMemberLoginLog({ ...r, memberNickname: row.nickname })),
     activeCouponCount,
     loginLogCount,
+    checkinTotal,
+    inviteCode: row.inviteCode ?? null,
+    inviter: inviterRow[0] ? { id: inviterRow[0].id, nickname: inviterRow[0].nickname } : null,
+    invitedCount,
+    mpFans: mpFanRows.map((f) => ({ id: f.id, nickname: f.nickname ?? null, openid: f.openid })),
   };
 }
 

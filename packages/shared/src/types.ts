@@ -6117,6 +6117,43 @@ export interface MemberTagBrief {
   color: string | null;
 }
 
+/** 会员站内通知 */
+export interface MemberNotification {
+  id: number;
+  memberId: number;
+  type: string;
+  title: string;
+  content?: string | null;
+  readAt?: string | null;
+  createdAt: string;
+}
+
+/** 会员权益（等级折扣与升级进度）*/
+export interface MemberBenefits {
+  growthValue: number;
+  /** 折扣百分比（100 = 原价）*/
+  discount: number;
+  levelId: number | null;
+  levelName: string | null;
+  benefits: string[];
+  nextLevel: {
+    id: number;
+    name: string;
+    growthThreshold: number;
+    discount: number;
+    /** 距升级还差的成长值 */
+    growthGap: number;
+  } | null;
+}
+
+/** 会员邀请汇总 */
+export interface MemberInviteSummary {
+  inviteCode: string;
+  invitedCount: number;
+  totalRewardPoints: number;
+  recentInvitees: { id: number; nickname: string; createdAt: string }[];
+}
+
 /** 会员轻量下拉选项（积分/钱包调整、发券搜索选择）*/
 export interface MemberOption {
   id: number;

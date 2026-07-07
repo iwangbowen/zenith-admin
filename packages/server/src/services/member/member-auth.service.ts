@@ -216,6 +216,12 @@ export async function registerMember(input: MemberRegisterServiceInput): Promise
     return created;
   });
 
+  // 邀请关系绑定 + 邀请人奖励（best-effort，不阻断注册；动态导入避免模块环）
+  if (input.inviteCode) {
+    const { applyInviteOnRegister } = await import('./member-invite.service');
+    await applyInviteOnRegister(member.id, input.inviteCode, member.nickname);
+  }
+
   return finalizeAuth(member, input.ip, input.ua);
 }
 
@@ -411,4 +417,30 @@ export async function resetMemberPassword(input: MemberResetPasswordInput): Prom
   await db.update(members).set({ password: hashed }).where(eq(members.id, member.id));
   // 重置密码后踢下线所有会话
   await forceLogoutAllByMember(member.id);
+}
+
+// ─── 账户自助注销 ─────────────────────────────────────────────────────────────
+/**
+ * 会员自助注销：验证身份（已设密码验密码；否则手机号 + 短信验证码）后软删除并踢下线。
+ * 数据保留（积分/钱包流水、券码、签到），标识符因部分唯一索引立即可再次注册。
+ */
+export async function deactivateMyAccount(input: { password?: string; smsCode?: string }): Promise<void> {
+  const { memberId } = currentMember();
+  const [member] = await db.select().from(members)
+    .where(and(eq(members.id, memberId), isNull(members.deletedAt))).limit(1);
+  if (!member) throw new HTTPException(404, { message: '会员不存在' });
+
+  if (member.password) {
+    if (!input.password) throw new HTTPException(400, { message: '请输入登录密码确认注销' });
+    const valid = await bcrypt.compare(input.password, member.password);
+    if (!valid) throw new HTTPException(400, { message: '密码错误' });
+  } else {
+    if (!member.phone) throw new HTTPException(400, { message: '账户未绑定手机号，请联系客服注销' });
+    if (!input.smsCode) throw new HTTPException(400, { message: '请输入短信验证码确认注销' });
+    const ok = await verifyMemberSmsCode(member.phone, 'reset', input.smsCode);
+    if (!ok) throw new HTTPException(400, { message: '验证码错误或已过期' });
+  }
+
+  await forceLogoutAllByMember(memberId);
+  await db.update(members).set({ deletedAt: new Date() }).where(eq(members.id, memberId));
 }

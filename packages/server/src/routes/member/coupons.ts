@@ -10,6 +10,7 @@ import { CouponDTO, MemberCouponDTO } from '../../lib/openapi-dtos';
 import {
   listCoupons, getCoupon, createCoupon, updateCoupon, deleteCoupon, ensureCouponExists,
   issueCoupon, listMemberCoupons, revokeCoupon, getMemberCouponBeforeAudit,
+  getMemberCouponByCode, redeemCoupon,
 } from '../../services/member/coupons.service';
 
 const couponsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -130,6 +131,36 @@ const updateRoute_ = defineOpenAPIRoute({
   },
 });
 
+// ─── GET /code/{code} — 按券码查询（核销预览，在 /{id} 之前注册）──────────────
+const codeQueryRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/code/{code}', tags: ['优惠券'], summary: '按券码查询券详情',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'member:coupon:list' })] as const,
+    request: { params: z.object({ code: z.string().min(4).max(32) }) },
+    responses: { ...commonErrorResponses, ...ok(MemberCouponDTO, 'ok'), 404: { content: jsonContent(ErrorResponse), description: '券码不存在' } },
+  }),
+  handler: async (c) => c.json(okBody(await getMemberCouponByCode(c.req.valid('param').code)), 200),
+});
+
+// ─── POST /redeem — 核销券码 ─────────────────────────────────────────────────
+const redeemRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/redeem', tags: ['优惠券'], summary: '核销券码',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'member:coupon:update', audit: { description: '核销优惠券', module: '优惠券' } }), idempotencyGuard({ ttlSeconds: 10 })] as const,
+    request: { body: { content: jsonContent(z.object({ code: z.string().min(4).max(32), remark: z.string().max(128).optional() })), required: true } },
+    responses: { ...commonErrorResponses, ...ok(MemberCouponDTO, '核销成功') },
+  }),
+  handler: async (c) => {
+    const { code, remark } = c.req.valid('json');
+    setAuditBeforeData(c, await getMemberCouponByCode(code));
+    const redeemed = await redeemCoupon(code, { bizType: 'manual_redeem', bizId: remark });
+    setAuditAfterData(c, await getMemberCouponByCode(code));
+    return c.json(okBody(redeemed, '核销成功'), 200);
+  },
+});
+
 // ─── POST /{id}/issue — 发券给会员 ───────────────────────────────────────────
 const issueRoute = defineOpenAPIRoute({
   route: createRoute({
@@ -170,7 +201,7 @@ const deleteRoute_ = defineOpenAPIRoute({
 });
 
 couponsRouter.openapiRoutes([
-  listRoute, recordsRoute, revokeRoute, getOneRoute, createRoute_, updateRoute_, issueRoute, deleteRoute_,
+  listRoute, recordsRoute, revokeRoute, codeQueryRoute, redeemRoute, getOneRoute, createRoute_, updateRoute_, issueRoute, deleteRoute_,
 ] as const);
 
 export default couponsRouter;
