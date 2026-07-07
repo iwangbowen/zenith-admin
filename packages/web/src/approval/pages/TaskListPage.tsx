@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Badge, Button, Input, Modal, Spin, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
-import { Check, LogOut, Plus, RefreshCw, Search } from 'lucide-react';
+import { Button, Input, Modal, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Check, CircleCheckBig, ClipboardCheck, FilePlus2, LogOut, Plus, RefreshCw, Search, Send, type LucideIcon } from 'lucide-react';
 import { TOKEN_KEY, REFRESH_TOKEN_KEY } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -38,6 +38,14 @@ const EMPTY_TEXT: Record<ApprovalTab, string> = {
   mine: '还没有发起过申请',
   cc: '暂无抄送',
 };
+
+/** 底部标签栏（主流 App TabBar）：图标 + 文字 + 角标 */
+const TAB_ITEMS: { key: ApprovalTab; label: string; icon: LucideIcon }[] = [
+  { key: 'pending', label: '待办', icon: ClipboardCheck },
+  { key: 'handled', label: '已办', icon: CircleCheckBig },
+  { key: 'mine', label: '我的申请', icon: FilePlus2 },
+  { key: 'cc', label: '抄送我', icon: Send },
+];
 
 interface CardProps {
   item: ApprovalListItem;
@@ -125,8 +133,8 @@ export default function TaskListPage() {
   const { scrollRef, pull, refreshing } = usePullRefresh(refetch);
   const sentinelRef = useInfiniteSentinel(hasMore, listQuery.isFetching, () => setSize((s) => s + 10));
 
-  const switchTab = (k: string) => {
-    setTab(k as ApprovalTab);
+  const switchTab = (k: ApprovalTab) => {
+    setTab(k);
     setSize(10);
     setKeywordDraft('');
     setKeyword('');
@@ -175,11 +183,10 @@ export default function TaskListPage() {
     });
   };
 
-  const badge = (label: string, count: number | undefined) => (
-    count && count > 0
-      ? <span className="ap-tab-label">{label}<Badge count={count > 99 ? '99+' : count} type="danger" /></span>
-      : label
-  );
+  const tabCounts: Partial<Record<ApprovalTab, number | undefined>> = {
+    pending: countsQuery.data?.pending,
+    cc: countsQuery.data?.ccUnread,
+  };
 
   return (
     <div className="ap-page">
@@ -197,18 +204,6 @@ export default function TaskListPage() {
         </Button>
         <Button theme="borderless" icon={<LogOut size={16} />} onClick={logout} aria-label="退出" />
       </div>
-      <Tabs
-        type="line"
-        activeKey={tab}
-        onChange={switchTab}
-        tabPaneMotion={false}
-        className="ap-tabs"
-      >
-        <TabPane tab={badge('待办', countsQuery.data?.pending)} itemKey="pending" />
-        <TabPane tab="已办" itemKey="handled" />
-        <TabPane tab="我的申请" itemKey="mine" />
-        <TabPane tab={badge('抄送我', countsQuery.data?.ccUnread)} itemKey="cc" />
-      </Tabs>
       <div className="ap-search">
         <Input
           prefix={<Search size={14} />}
@@ -251,6 +246,28 @@ export default function TaskListPage() {
           </Typography.Text>
         )}
       </div>
+      <nav className="ap-tabbar" role="tablist" aria-label="审批分类">
+        {TAB_ITEMS.map(({ key, label, icon: Icon }) => {
+          const count = tabCounts[key] ?? 0;
+          const active = tab === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              className={`ap-tabbar__item${active ? ' ap-tabbar__item--active' : ''}`}
+              onClick={() => switchTab(key)}
+            >
+              <span className="ap-tabbar__icon">
+                <Icon size={22} strokeWidth={active ? 2.1 : 1.7} />
+                {count > 0 && <span className="ap-tabbar__badge">{count > 99 ? '99+' : count}</span>}
+              </span>
+              <span className="ap-tabbar__label">{label}</span>
+            </button>
+          );
+        })}
+      </nav>
     </div>
   );
 }

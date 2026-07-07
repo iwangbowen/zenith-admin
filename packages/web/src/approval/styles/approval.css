@@ -113,16 +113,67 @@
   font-size: 13px;
 }
 
-.ap-tabs {
+/* 底部标签栏：主流 App TabBar（图标+文字纵排、均分、角标、safe-area） */
+.ap-tabbar {
   flex-shrink: 0;
-  padding: 0 12px;
+  display: flex;
   background: var(--semi-color-bg-1);
+  border-top: 1px solid var(--semi-color-border);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
-.ap-tab-label {
-  display: inline-flex;
+.ap-tabbar__item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
+  padding: 7px 0 6px;
+  margin: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  color: var(--semi-color-text-2);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ap-tabbar__item:active {
+  background: var(--semi-color-fill-0);
+}
+
+.ap-tabbar__item--active {
+  color: var(--semi-color-primary);
+}
+
+.ap-tabbar__icon {
+  position: relative;
+  display: inline-flex;
+}
+
+.ap-tabbar__badge {
+  position: absolute;
+  top: -5px;
+  left: calc(100% - 6px);
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  background: var(--semi-color-danger);
+  color: var(--semi-color-white);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.ap-tabbar__label {
+  font-size: 11px;
+  line-height: 14px;
+  white-space: nowrap;
 }
 
 .ap-search {
