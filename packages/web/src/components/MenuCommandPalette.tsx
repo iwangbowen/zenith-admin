@@ -4,6 +4,7 @@ import { Modal } from '@douyinfe/semi-ui';
 import { pinyinMatch } from '@/utils/pinyin';
 import { Search, Clock, Hash } from 'lucide-react';
 import { renderLucideIcon } from '@/utils/icons';
+import { useOptionalPreferences } from '@/hooks/usePreferences';
 import type { FlatMenuItem } from './MenuSearchInput';
 
 const RECENT_KEY = 'zenith_menu_search_recent';
@@ -52,6 +53,8 @@ function getItemIcon(item: FlatMenuItem, isRecent: boolean) {
 
 export default function MenuCommandPalette({ menus, open, onClose }: Props) {
   const navigate = useNavigate();
+  // 全局快捷键偏好：关闭后 Ctrl+K 不再唤起（组件可能在 Provider 外使用，做可选兜底）
+  const shortcutsEnabled = useOptionalPreferences()?.preferences.enableShortcuts ?? true;
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [recentItems, setRecentItems] = useState<FlatMenuItem[]>([]);
@@ -143,6 +146,7 @@ export default function MenuCommandPalette({ menus, open, onClose }: Props) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        if (!shortcutsEnabled) return;
         e.preventDefault();
         if (open) {
         onClose();
@@ -157,7 +161,7 @@ export default function MenuCommandPalette({ menus, open, onClose }: Props) {
     };
     globalThis.addEventListener('keydown', handler);
     return () => globalThis.removeEventListener('keydown', handler);
-  }, [open, onClose]);
+  }, [open, onClose, shortcutsEnabled]);
 
   return (
     <Modal

@@ -127,6 +127,10 @@ export interface UserPreferences {
   borderRadius: BorderRadiusPreference;
   /** 显示回到顶部按钮（滚动超过 400px 后浮现） */
   showBackTop: boolean;
+  /** 页面切换时顶部显示加载进度条 */
+  showProgressBar: boolean;
+  /** 全局键盘快捷键（Alt+L 锁屏 / Alt+S 侧边栏 / Alt+C 内容全屏 / Ctrl+K 搜索菜单） */
+  enableShortcuts: boolean;
   /** 标签栏右侧显示标签切换器（chevron 下拉列表） */
   showTabSwitcher: boolean;
   /** Web 终端个性化配置（主题/字体/默认 shell/文件夹收藏） */
@@ -178,6 +182,8 @@ export const defaultPreferences: UserPreferences = {
   sidebarWidth: 216,
   borderRadius: 'medium',
   showBackTop: true,
+  showProgressBar: true,
+  enableShortcuts: true,
   showTabSwitcher: true,
   terminal: {
     defaultShell: '',

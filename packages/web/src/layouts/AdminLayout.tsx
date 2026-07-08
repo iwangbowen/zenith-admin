@@ -745,6 +745,12 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable) return;
+      // Esc 退出内容全屏不属于快捷键开关管辖（关闭行为始终可用）
+      if (e.key === 'Escape' && isContentFullscreen) {
+        setIsContentFullscreen(false);
+        return;
+      }
+      if (!(preferences.enableShortcuts ?? true)) return;
       if (e.altKey && e.key === 'l' && (preferences.enableLockScreen ?? false) && hasPassword()) {
         e.preventDefault();
         lock();
@@ -757,13 +763,10 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
         e.preventDefault();
         setIsContentFullscreen((v) => !v);
       }
-      if (e.key === 'Escape' && isContentFullscreen) {
-        setIsContentFullscreen(false);
-      }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [preferences.enableLockScreen, hasPassword, lock, collapsed, handleCollapseChange, isContentFullscreen]);
+  }, [preferences.enableShortcuts, preferences.enableLockScreen, hasPassword, lock, collapsed, handleCollapseChange, isContentFullscreen]);
 
   const iconsReady = useLucideIconsReady();
   const navItems = useMemo(
@@ -1882,7 +1885,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
 
         {/* Main area */}
         <div className="admin-main">
-          <NProgress />
+          {(preferences.showProgressBar ?? true) && <NProgress />}
           {/* Vertical mode has its own header bar */}
           {!isMobileNav && (navLayout === 'vertical' || navLayout === 'double') && (
             <header className="admin-header">
@@ -2504,6 +2507,32 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
               )}
 
               {prefSection('通用')}
+
+              {/* ── 页面加载进度条 ── */}
+              {matchesPref(['进度条', '加载进度', '页面加载', '顶部进度', 'NProgress']) && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  页面加载进度条
+                  <Tooltip content="页面切换时在内容区顶部显示加载进度条" position="right">
+                    <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
+                  </Tooltip>
+                </span>
+                <Switch checked={preferences.showProgressBar ?? true} onChange={(v) => setPreferences({ showProgressBar: v })} />
+              </div>
+              )}
+
+              {/* ── 全局快捷键 ── */}
+              {matchesPref(['快捷键', '键盘', '热键', 'Alt', 'Ctrl', '组合键']) && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  启用全局快捷键
+                  <Tooltip content="Alt+L 锁屏、Alt+S 收起/展开侧边栏、Alt+C 内容全屏、Ctrl+K 搜索菜单；关闭后这些组合键不再生效" position="right">
+                    <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
+                  </Tooltip>
+                </span>
+                <Switch checked={preferences.enableShortcuts ?? true} onChange={(v) => setPreferences({ enableShortcuts: v })} />
+              </div>
+              )}
 
               {/* ── 文件默认视图 ── */}
               {matchesPref(['文件视图', '文件列表', '文件管理', '列表', '网格', '文件']) && (
