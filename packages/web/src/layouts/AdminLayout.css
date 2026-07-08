@@ -1755,6 +1755,26 @@
   color: var(--color-text);
 }
 
+/* ===== 偏好设置分区标题 ===== */
+.prefs-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: -10px; /* 容器 gap 24px，压缩标题与首个设置项的间距 */
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--semi-color-text-2);
+  user-select: none;
+}
+
+.prefs-section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--semi-color-border);
+}
+
 /* ===== 偏好重置按钮 ===== */
 .prefs-reset-btn {
   margin-top: 4px;

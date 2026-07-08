@@ -619,3 +619,11 @@ body {
     opacity: 1;
   }
 }
+
+/* ===== 深浅色切换 View Transition ===== */
+/* 禁用浏览器默认的交叉淡入淡出，由 theme-transition.ts 的圆形扩散 clip-path 动画接管 */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { flushSync } from 'react-dom';
 import { PREFERENCES_KEY } from '@zenith/shared';
-import { useTheme, type ThemeMode } from '@/hooks/useTheme';
+import { useTheme, applyThemeToDom, type ThemeMode } from '@/hooks/useTheme';
 import { usePrefersDark } from '@/hooks/useMediaQuery';
 import { applyThemeColor } from '@/lib/theme-color';
+import { withThemeTransition } from '@/lib/theme-transition';
 import { defaultPreferences, useOptionalPreferences } from '@/hooks/usePreferences';
 import { ThemeControllerContext, type ThemeControllerValue } from './theme-controller';
 
@@ -62,13 +64,24 @@ export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
   }, [themeColor, isDark]);
 
   const setThemeMode = useCallback((nextMode: ThemeMode) => {
-    setThemeModeInternal(nextMode);
+    const nextIsDark = nextMode === 'dark' || (nextMode === 'system' && prefersDark);
+    if (nextIsDark === isDark) {
+      // 明暗不变（如 dark → system 且系统为深色）无需过渡动画
+      setThemeModeInternal(nextMode);
+    } else {
+      // View Transition 圆形扩散：DOM 变更与 React 状态更新须同步发生在快照回调内
+      withThemeTransition(() => {
+        applyThemeToDom(nextMode, prefersDark);
+        applyThemeColor(themeColor, nextIsDark);
+        flushSync(() => setThemeModeInternal(nextMode));
+      });
+    }
     if (syncPreferences) {
       syncPreferences({ colorMode: nextMode });
       return;
     }
     persistThemePrefs({ colorMode: nextMode });
-  }, [setThemeModeInternal, syncPreferences]);
+  }, [setThemeModeInternal, syncPreferences, prefersDark, isDark, themeColor]);
 
   const updateThemeColor = useCallback((nextColor: string) => {
     setLocalThemeColor(nextColor);

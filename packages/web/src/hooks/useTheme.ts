@@ -3,9 +3,9 @@ import { usePrefersDark } from '@/hooks/useMediaQuery';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
-function applyTheme(mode: ThemeMode, systemDark: boolean) {
+/** 将主题模式直接应用到 DOM（Semi Design 通过 body[theme-mode="dark"] 切换深色） */
+export function applyThemeToDom(mode: ThemeMode, systemDark: boolean) {
   const isDark = mode === 'dark' || (mode === 'system' && systemDark);
-  // Semi Design dark mode: body[theme-mode="dark"]
   if (isDark) {
     document.body.setAttribute('theme-mode', 'dark');
     document.body.style.colorScheme = 'dark';
@@ -27,7 +27,7 @@ export function useTheme(initialMode: ThemeMode = 'light') {
 
   // Apply on mount + mode change + 系统偏好变化（mode === 'system' 时生效）
   useEffect(() => {
-    applyTheme(mode, systemDark);
+    applyThemeToDom(mode, systemDark);
   }, [mode, systemDark]);
 
   const setThemeMode = useCallback((newMode: ThemeMode) => {

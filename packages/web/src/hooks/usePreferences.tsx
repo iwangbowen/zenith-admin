@@ -6,6 +6,7 @@ export type TabAnimation = 'none' | 'fade' | 'slide' | 'scale';
 export type TabStyle = 'line' | 'pill' | 'card';
 export type TableSizePreference = 'small' | 'default' | 'middle';
 export type RouteAnimation = 'none' | 'fade' | 'slide-up' | 'slide-left';
+export type BorderRadiusPreference = 'none' | 'small' | 'medium' | 'large';
 
 /** Web 终端文件夹收藏项 */
 export interface TerminalFavorite {
@@ -122,6 +123,8 @@ export interface UserPreferences {
   contentWidth: 'fluid' | 'fixed';
   /** 侧边栏展开宽度（px），默认 216 */
   sidebarWidth: number;
+  /** 全局圆角大小：none 直角 / small 小 / medium 默认（Semi 原生）/ large 大 */
+  borderRadius: BorderRadiusPreference;
   /** 显示回到顶部按钮（滚动超过 400px 后浮现） */
   showBackTop: boolean;
   /** 标签栏右侧显示标签切换器（chevron 下拉列表） */
@@ -173,6 +176,7 @@ export const defaultPreferences: UserPreferences = {
   colorBlind: false,
   contentWidth: 'fluid',
   sidebarWidth: 216,
+  borderRadius: 'medium',
   showBackTop: true,
   showTabSwitcher: true,
   terminal: {

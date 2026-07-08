@@ -10,8 +10,9 @@ import { pinyinMatch, ensurePinyin } from '@/utils/pinyin';
 import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput';
 import type { User, Menu, InAppMessage, Announcement, Tenant, WsMessage, SystemConfig } from '@zenith/shared';
 import type { ThemeMode } from '@/hooks/useTheme';
-import { usePreferences, type NavLayout, type TableSizePreference, type RouteAnimation } from '@/hooks/usePreferences';
+import { usePreferences, type NavLayout, type TableSizePreference, type RouteAnimation, type BorderRadiusPreference } from '@/hooks/usePreferences';
 import { THEME_COLOR_PRESETS, getThemeColorVars } from '@/lib/theme-color';
+import { applyBorderRadius } from '@/lib/border-radius';
 import { useThemeController } from '@/providers/theme-controller';
 import { useTabsStore } from '@/hooks/useTabsStore';
 import { TabsMetaContext } from '@/hooks/useTabMeta';
@@ -267,6 +268,12 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
     }
   }, [sidebarHoverTrigger, isBelowLg]);
 
+  // ─── 全局圆角 ──────────────────────────────────────────────────────────────
+  // 覆盖 body 上的 Semi 圆角 token，Portal 弹层同样生效
+  useEffect(() => {
+    applyBorderRadius(preferences.borderRadius ?? 'medium');
+  }, [preferences.borderRadius]);
+
   // ─── 水印配置 ──────────────────────────────────────────────────────────────
   const [watermarkConfig, setWatermarkConfig] = useState({ enabled: false, content: '', fontSize: 14, opacity: 0.15 });
 
@@ -338,6 +345,17 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
       pinyinMatch(kw, q, { precision: 'start' }) !== null,
     );
   }, [prefsSearch]);
+
+  // 偏好面板分区标题：搜索时隐藏（搜索结果为扁平列表）
+  const prefSection = useCallback((label: string) => (
+    prefsSearch.trim() ? null : <div className="prefs-section-title">{label}</div>
+  ), [prefsSearch]);
+
+  const handleCopyPreferences = useCallback(() => {
+    void navigator.clipboard.writeText(JSON.stringify(preferences, null, 2))
+      .then(() => Toast.success('偏好设置已复制到剪贴板'))
+      .catch(() => Toast.error('复制失败，请重试'));
+  }, [preferences]);
   const [shortcutsVisible, setShortcutsVisible] = useState(false);
   const { favorites, isFavorite, toggle: toggleFavorite } = useFavoriteMenus();
   const [isContentFullscreen, setIsContentFullscreen] = useState(false);
@@ -2118,6 +2136,8 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
                 showClear
               />
 
+              {prefSection('布局')}
+
               {/* ── 导航布局 ── */}
               {matchesPref(['导航布局', '布局', '左侧菜单', '顶部菜单', '混合菜单', '双列菜单']) && (
               <div>
@@ -2142,6 +2162,29 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
                 </div>
               </div>
               )}
+
+              {/* ── 内容宽度 ── */}
+              {matchesPref(['内容宽度', '固定宽度', '居中', '内容区']) && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  固定内容宽度
+                  <Tooltip content="开启后内容区最大宽度为 1400px 并居中，适合宽屏显示器" position="right">
+                    <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
+                  </Tooltip>
+                </span>
+                <Switch checked={(preferences.contentWidth ?? 'fluid') === 'fixed'} onChange={(v) => setPreferences({ contentWidth: v ? 'fixed' : 'fluid' })} />
+              </div>
+              )}
+
+              {/* ── Logo 图标 ── */}
+              {matchesPref(['Logo', 'Logo图标', '图标', '显示Logo']) && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>显示 Logo 图标</span>
+                <Switch checked={preferences.showLogo ?? true} onChange={(v) => setPreferences({ showLogo: v })} />
+              </div>
+              )}
+
+              {prefSection('外观')}
 
               {/* ── 颜色模式 ── */}
               {matchesPref(['颜色模式', '深色', '浅色', '系统', '主题模式']) && (
@@ -2171,21 +2214,6 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>侧边栏深色模式</span>
                 <Switch checked={preferences.sidebarDarkMode ?? false} onChange={(v) => setPreferences({ sidebarDarkMode: v })} />
-              </div>
-              )}
-              {matchesPref(['侧边栏宽度', '侧边栏', '菜单宽度', '展开宽度']) && navLayout !== 'horizontal' && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                <span style={{ flexShrink: 0 }}>侧边栏宽度</span>
-                <InputNumber
-                  style={{ width: 110 }}
-                  size="small"
-                  min={160}
-                  max={320}
-                  step={4}
-                  suffix="px"
-                  value={preferences.sidebarWidth ?? 216}
-                  onChange={(v) => setPreferences({ sidebarWidth: Number(v) || 216 })}
-                />
               </div>
               )}
 
@@ -2239,13 +2267,59 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
               </div>
               )}
 
-              {/* ── Logo 图标 ── */}
-              {matchesPref(['Logo', 'Logo图标', '图标', '显示Logo']) && (
+              {/* ── 圆角大小 ── */}
+              {matchesPref(['圆角', '圆角大小', '直角', '边框圆角', 'radius', '外观']) && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>显示 Logo 图标</span>
-                <Switch checked={preferences.showLogo ?? true} onChange={(v) => setPreferences({ showLogo: v })} />
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  圆角大小
+                  <Tooltip content="调整按钮、卡片、弹窗等组件的圆角风格：直角更硬朗，大圆角更柔和" position="right">
+                    <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
+                  </Tooltip>
+                </span>
+                <RadioGroup
+                  type="button"
+                  value={preferences.borderRadius ?? 'medium'}
+                  onChange={(e) => setPreferences({ borderRadius: e.target.value as BorderRadiusPreference })}
+                >
+                  <Radio value="none">直角</Radio>
+                  <Radio value="small">小</Radio>
+                  <Radio value="medium">默认</Radio>
+                  <Radio value="large">大</Radio>
+                </RadioGroup>
               </div>
               )}
+
+              {/* ── 无障碍 ── */}
+              {matchesPref(['灰色', '灰色模式', '无障碍', '公祭日', '去色']) && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  灰色模式
+                  <Tooltip content="适用于国家公祭日等场景，全局去除色彩" position="right">
+                    <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
+                  </Tooltip>
+                </span>
+                <Switch
+                  checked={preferences.grayscale ?? false}
+                  onChange={(v) => setPreferences({ grayscale: v, ...(v ? { colorBlind: false } : {}) })}
+                />
+              </div>
+              )}
+              {matchesPref(['色弱', '色弱模式', '无障碍', '对比度', '色觉']) && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  色弱模式
+                  <Tooltip content="提高界面对比度，辅助色觉障碍用户" position="right">
+                    <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
+                  </Tooltip>
+                </span>
+                <Switch
+                  checked={preferences.colorBlind ?? false}
+                  onChange={(v) => setPreferences({ colorBlind: v, ...(v ? { grayscale: false } : {}) })}
+                />
+              </div>
+              )}
+
+              {prefSection('导航与工具栏')}
 
               {/* ── 动态标题 ── */}
               {matchesPref(['动态标题', '浏览器标题', '页面标题', '标题']) && (
@@ -2362,18 +2436,22 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
                 </div>
               )}
 
-              {/* ── 文件默认视图 ── */}
-              {matchesPref(['文件视图', '文件列表', '文件管理', '列表', '网格', '文件']) && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>文件列表默认视图</span>
-                <RadioGroup
-                  type="button"
-                  value={preferences.filesViewMode ?? 'list'}
-                  onChange={(e) => setPreferences({ filesViewMode: e.target.value as 'list' | 'grid' })}
-                >
-                  <Radio value="list">列表</Radio>
-                  <Radio value="grid">网格</Radio>
-                </RadioGroup>
+              {prefSection('侧边栏')}
+
+              {/* ── 侧边栏宽度 ── */}
+              {matchesPref(['侧边栏宽度', '侧边栏', '菜单宽度', '展开宽度']) && navLayout !== 'horizontal' && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                <span style={{ flexShrink: 0 }}>侧边栏宽度</span>
+                <InputNumber
+                  style={{ width: 110 }}
+                  size="small"
+                  min={160}
+                  max={320}
+                  step={4}
+                  suffix="px"
+                  value={preferences.sidebarWidth ?? 216}
+                  onChange={(v) => setPreferences({ sidebarWidth: Number(v) || 216 })}
+                />
               </div>
               )}
 
@@ -2425,6 +2503,23 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
               </div>
               )}
 
+              {prefSection('通用')}
+
+              {/* ── 文件默认视图 ── */}
+              {matchesPref(['文件视图', '文件列表', '文件管理', '列表', '网格', '文件']) && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>文件列表默认视图</span>
+                <RadioGroup
+                  type="button"
+                  value={preferences.filesViewMode ?? 'list'}
+                  onChange={(e) => setPreferences({ filesViewMode: e.target.value as 'list' | 'grid' })}
+                >
+                  <Radio value="list">列表</Radio>
+                  <Radio value="grid">网格</Radio>
+                </RadioGroup>
+              </div>
+              )}
+
               {/* ── 锁屏 ── */}
               {matchesPref(['锁屏', '屏幕锁', '密码', '锁定']) && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2468,7 +2563,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
                 </div>
               )}
 
-              {!prefsSearch.trim() && <Divider style={{ margin: '0 -24px' }} />}
+              {prefSection('表格')}
 
               {/* ── 表格设置 ── */}
               {matchesPref(['表格', '边框', '斦马纹', '尺寸', '分页', '列设置', '显示表格', '启用斦马纹']) && (
@@ -2511,7 +2606,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
               </div>
               )}
 
-              {!prefsSearch.trim() && <Divider style={{ margin: '0 -24px' }} />}
+              {prefSection('标签页')}
 
               {/* ── 多标签页 ── */}
               {matchesPref(['多标签页', '标签页', '标签', '启用标签']) && (
@@ -2680,56 +2775,20 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
               </div>
               )}
 
-              {/* ── 外观增强 ── */}
-              {matchesPref(['内容宽度', '固定宽度', '居中', '内容区']) && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  固定内容宽度
-                  <Tooltip content="开启后内容区最大宽度为 1400px 并居中，适合宽屏显示器" position="right">
-                    <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
-                  </Tooltip>
-                </span>
-                <Switch checked={(preferences.contentWidth ?? 'fluid') === 'fixed'} onChange={(v) => setPreferences({ contentWidth: v ? 'fixed' : 'fluid' })} />
-              </div>
-              )}
-
-              {/* ── 无障碍 ── */}
-              {matchesPref(['灰色', '灰色模式', '无障碍', '公祭日', '去色']) && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  灰色模式
-                  <Tooltip content="适用于国家公祭日等场景，全局去除色彩" position="right">
-                    <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
-                  </Tooltip>
-                </span>
-                <Switch
-                  checked={preferences.grayscale ?? false}
-                  onChange={(v) => setPreferences({ grayscale: v, ...(v ? { colorBlind: false } : {}) })}
-                />
-              </div>
-              )}
-              {matchesPref(['色弱', '色弱模式', '无障碍', '对比度', '色觉']) && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  色弱模式
-                  <Tooltip content="提高界面对比度，辅助色觉障碍用户" position="right">
-                    <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
-                  </Tooltip>
-                </span>
-                <Switch
-                  checked={preferences.colorBlind ?? false}
-                  onChange={(v) => setPreferences({ colorBlind: v, ...(v ? { grayscale: false } : {}) })}
-                />
-              </div>
-              )}
-
-              {/* ── 重置 ── */}
-              <div>
+              {/* ── 复制 / 重置 ── */}
+              <div className="prefs-reset-btn" style={{ display: 'flex', gap: 12 }}>
+                <Button
+                  theme="light"
+                  block
+                  icon={<Copy size={14} />}
+                  onClick={handleCopyPreferences}
+                >
+                  复制偏好
+                </Button>
                 <Button
                   type="danger"
                   theme="light"
                   block
-                  className="prefs-reset-btn"
                   onClick={() => {
                     Modal.confirm({
                       title: '重置偏好设置',
