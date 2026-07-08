@@ -9,21 +9,12 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import WorkflowInstanceDetailSheet from '@/components/workflow/WorkflowInstanceDetailSheet';
+import { INSTANCE_STATUS_MAP } from '@/components/workflow/workflow-runtime';
 import { renderEllipsis } from '../../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { useHandledWorkflowInstances, workflowInstanceKeys } from '@/hooks/queries/workflow-instances';
 
 type TagColor = 'amber' | 'blue' | 'green' | 'grey' | 'orange' | 'purple' | 'red';
-
-const INSTANCE_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
-  draft: { text: '草稿', color: 'grey' },
-  running: { text: '审批中', color: 'blue' },
-  suspended: { text: '已挂起', color: 'amber' },
-  approved: { text: '已通过', color: 'green' },
-  rejected: { text: '已驳回', color: 'red' },
-  withdrawn: { text: '已撤回', color: 'orange' },
-  cancelled: { text: '已取消', color: 'purple' },
-};
 
 const MY_TASK_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
   approved: { text: '我已通过', color: 'green' },

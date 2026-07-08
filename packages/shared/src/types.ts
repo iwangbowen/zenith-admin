@@ -1420,7 +1420,8 @@ export type SystemSchedulerRunStatus = 'running' | 'success' | 'failed';
 export type SystemSchedulerTriggerType = 'schedule' | 'manual' | 'queue';
 export type SystemSchedulerAlertChannel = 'inapp' | 'email' | 'webhook';
 
-export interface SystemSchedulerTask {
+/** 系统调度任务注册信息基础字段（任务中心与工作流引擎诊断共用） */
+export interface SystemSchedulerTaskBase {
   name: string;
   title: string;
   module: string;
@@ -1443,12 +1444,15 @@ export interface SystemSchedulerTask {
   alertEmails: string[];
   alertWebhookUrl: string | null;
   manualSingleton: boolean;
-  nextRunAt: string | null;
-  running: boolean;
   lastRunAt: string | null;
   lastRunStatus: SystemSchedulerRunStatus | null;
   lastRunMessage: string | null;
   lastDurationMs: number | null;
+}
+
+export interface SystemSchedulerTask extends SystemSchedulerTaskBase {
+  nextRunAt: string | null;
+  running: boolean;
   totalRuns: number;
   successCount: number;
   failedCount: number;
@@ -4150,34 +4154,8 @@ export interface WorkflowEngineEventBusSnapshot {
   listeners: Array<{ eventType: WorkflowEventType | '__any__'; listenerCount: number }>;
 }
 
-export interface WorkflowEngineSystemSchedulerTask {
-  name: string;
-  title: string;
-  module: string;
-  description: string | null;
-  taskType: SystemSchedulerTaskType;
-  cronExpression: string | null;
-  registeredAt: string;
-  registeredNodeId: string;
-  registeredHostname: string;
-  registeredPid: number;
-  allowManualRun: boolean;
-  enabled: boolean;
-  logRetentionDays: number;
-  logRetentionRuns: number;
-  timeoutMs: number | null;
-  failureAlertThreshold: number;
-  alertEnabled: boolean;
-  alertChannels: SystemSchedulerAlertChannel[];
-  alertUserIds: number[];
-  alertEmails: string[];
-  alertWebhookUrl: string | null;
-  manualSingleton: boolean;
-  lastRunAt: string | null;
-  lastRunStatus: SystemSchedulerRunStatus | null;
-  lastRunMessage: string | null;
-  lastDurationMs: number | null;
-}
+/** 工作流引擎诊断视角的系统调度任务（与任务中心共用基础字段） */
+export type WorkflowEngineSystemSchedulerTask = SystemSchedulerTaskBase;
 
 export interface WorkflowEngineSchedulerSnapshot {
   initialized: boolean;

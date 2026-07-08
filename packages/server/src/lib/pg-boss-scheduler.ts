@@ -16,7 +16,14 @@ import { createPgDumpBackup, createDrizzleExportBackup } from './db-backup';
 import { formatFileTimestamp, formatDateTime } from './datetime';
 import { config } from '../config';
 import { notifyUsersWithCard } from '../services/chat/chat-notify.service';
-import type { ChatCard } from '@zenith/shared';
+import type {
+  ChatCard,
+  SystemSchedulerTaskBase,
+  SystemSchedulerTaskType,
+  SystemSchedulerRunStatus,
+  SystemSchedulerTriggerType,
+  SystemSchedulerAlertChannel,
+} from '@zenith/shared';
 import { sendMail } from './email';
 import { httpPost } from './http-client';
 
@@ -62,10 +69,7 @@ const schedulerNodeHostname = os.hostname();
 const schedulerNodePid = process.pid;
 const schedulerNodeId = `${schedulerNodeHostname}:${schedulerNodePid}`;
 
-export type SystemSchedulerTaskType = 'recurring' | 'queue';
-export type SystemSchedulerRunStatus = 'running' | 'success' | 'failed';
-export type SystemSchedulerTriggerType = 'schedule' | 'manual' | 'queue';
-export type SystemSchedulerAlertChannel = 'inapp' | 'email' | 'webhook';
+export type { SystemSchedulerTaskType, SystemSchedulerRunStatus, SystemSchedulerTriggerType, SystemSchedulerAlertChannel };
 
 export interface SystemSchedulerTaskPolicy {
   enabled: boolean;
@@ -91,34 +95,7 @@ export interface SystemSchedulerQueueMetrics {
   stateCounts: Record<string, number>;
 }
 
-export interface SystemSchedulerTaskInfo {
-  name: string;
-  title: string;
-  module: string;
-  description: string | null;
-  taskType: SystemSchedulerTaskType;
-  cronExpression: string | null;
-  registeredAt: string;
-  registeredNodeId: string;
-  registeredHostname: string;
-  registeredPid: number;
-  allowManualRun: boolean;
-  enabled: boolean;
-  logRetentionDays: number;
-  logRetentionRuns: number;
-  timeoutMs: number | null;
-  failureAlertThreshold: number;
-  alertEnabled: boolean;
-  alertChannels: SystemSchedulerAlertChannel[];
-  alertUserIds: number[];
-  alertEmails: string[];
-  alertWebhookUrl: string | null;
-  manualSingleton: boolean;
-  lastRunAt: string | null;
-  lastRunStatus: SystemSchedulerRunStatus | null;
-  lastRunMessage: string | null;
-  lastDurationMs: number | null;
-}
+export type SystemSchedulerTaskInfo = SystemSchedulerTaskBase;
 
 interface SystemRecurringJobInfo extends SystemSchedulerTaskInfo {
   taskType: 'recurring';

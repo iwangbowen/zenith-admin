@@ -2,10 +2,10 @@ import { useState, useRef } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import {
   Form, Button, Typography, Toast, Tag, Space, Spin,
-  Modal, Cropper, Input, Tabs, List as SemiList, Descriptions,
+  Modal, Input, Tabs, List as SemiList, Descriptions,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { UserRound, Shield, Monitor, List, Key, LogOut, Plus, Copy, CheckCircle, RotateCcw, RotateCw, Smartphone } from 'lucide-react';
+import { UserRound, Shield, Monitor, List, Key, LogOut, Plus, Copy, CheckCircle, Smartphone } from 'lucide-react';
 import { Icon } from '@iconify/react';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -15,6 +15,7 @@ import type {
 } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { AppModal } from '@/components/AppModal';
+import { AvatarCropperModal } from '@/components/AvatarCropperModal';
 import { UserAvatar } from '@/components/UserAvatar';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { type PasswordPolicy } from '@/utils/password-policy';
@@ -48,35 +49,6 @@ import './ProfilePage.css';
 import { createdAtColumn } from '../../utils/table-columns';
 
 const { Title, Text } = Typography;
-
-/** 将图片文件旋转指定角度后返回 data URL（用于规避 Semi Cropper rotate prop 的 bug） */
-function createRotatedImage(file: File, angleDeg: number): Promise<string> {
-  return new Promise((resolve) => {
-    if (angleDeg % 360 === 0) {
-      resolve(URL.createObjectURL(file));
-      return;
-    }
-    const img = new Image();
-    const objUrl = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(objUrl);
-      const rad = (angleDeg * Math.PI) / 180;
-      const sin = Math.abs(Math.sin(rad));
-      const cos = Math.abs(Math.cos(rad));
-      const w = img.naturalWidth * cos + img.naturalHeight * sin;
-      const h = img.naturalWidth * sin + img.naturalHeight * cos;
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.round(w);
-      canvas.height = Math.round(h);
-      const ctx = canvas.getContext('2d')!;
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-      ctx.rotate(rad);
-      ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
-      resolve(canvas.toDataURL('image/jpeg', 0.95));
-    };
-    img.src = objUrl;
-  });
-}
 
 type SectionKey = 'profile' | 'security' | 'devices' | 'login' | 'operation' | 'api-tokens';
 
@@ -159,12 +131,8 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
   const { items: genderItems } = useDictItems('user_gender');
 
   // ─── 头像裁剪 ────────────────────────────────────────────────────────────────
-  const cropperRef = useRef<Cropper>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
-  const originalFileRef = useRef<File | null>(null);
-  const [cropperVisible, setCropperVisible] = useState(false);
-  const [cropperSrc, setCropperSrc] = useState('');
-  const [cropRotate, setCropRotate] = useState(0);
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const [presetModalVisible, setPresetModalVisible] = useState(false);
   // ─── 账号安全 ────────────────────────────────────────────────────────────────
   const [changePwdVal, setChangePwdVal] = useState('');
@@ -282,50 +250,23 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
   function handleAvatarFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    originalFileRef.current = file;
-    setCropperSrc(URL.createObjectURL(file));
-    setCropRotate(0);
-    setCropperVisible(true);
+    setCropFile(file);
     e.target.value = '';
   }
 
-  function closeCropper() {
-    setCropperVisible(false);
-    setCropRotate(0);
-    originalFileRef.current = null;
-    if (cropperSrc) {
-      if (cropperSrc.startsWith('blob:')) URL.revokeObjectURL(cropperSrc);
-      setCropperSrc('');
+  async function handleCropConfirm(blob: Blob) {
+    const formData = new FormData();
+    formData.append('file', blob, 'avatar.jpg');
+    const uploadRes = await uploadAvatarMutation.mutateAsync(formData);
+    const uploadedUrl = uploadRes.data?.url;
+    if (uploadRes.code === 0 && uploadedUrl) {
+      const updated = await updateAvatarMutation.mutateAsync({ avatar: uploadedUrl });
+      applyUserUpdate(updated);
+      Toast.success('头像已更新');
+      setCropFile(null);
+    } else {
+      Toast.error(uploadRes.message ?? '上传失败');
     }
-  }
-
-  async function handleCropRotate(delta: number) {
-    if (!originalFileRef.current) return;
-    const newAngle = ((cropRotate + delta) % 360 + 360) % 360;
-    setCropRotate(newAngle);
-    const rotated = await createRotatedImage(originalFileRef.current, newAngle);
-    if (cropperSrc.startsWith('blob:')) URL.revokeObjectURL(cropperSrc);
-    setCropperSrc(rotated);
-  }
-
-  async function handleCropConfirm() {
-    const canvas = cropperRef.current?.getCropperCanvas();
-    if (!canvas) return;
-    canvas.toBlob(async (blob) => {
-      if (!blob) return;
-      const formData = new FormData();
-      formData.append('file', blob, 'avatar.jpg');
-      const uploadRes = await uploadAvatarMutation.mutateAsync(formData);
-      const uploadedUrl = uploadRes.data?.url;
-      if (uploadRes.code === 0 && uploadedUrl) {
-        const updated = await updateAvatarMutation.mutateAsync({ avatar: uploadedUrl });
-        applyUserUpdate(updated);
-        Toast.success('头像已更新');
-        closeCropper();
-      } else {
-        Toast.error(uploadRes.message ?? '上传失败');
-      }
-    }, 'image/jpeg', 0.85);
   }
 
   async function handleKickOthers() {
@@ -889,46 +830,12 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
       </AppModal>
 
       {/* ── 头像裁剪 Modal ────────────────────────────────────────────────────────────────── */}
-      <AppModal
-        title="裁剪头像"
-        visible={cropperVisible}
-        onCancel={closeCropper}
-        footer={
-          <Space>
-            <Button onClick={closeCropper}>取消</Button>
-            <Button type="primary" loading={avatarLoading} onClick={handleCropConfirm}>确认并上传</Button>
-          </Space>
-        }
-        width={520}
-        centered
-      >
-        <div style={{ width: '100%', height: 380 }}>
-          {cropperSrc && (
-            <Cropper
-              ref={cropperRef}
-              src={cropperSrc}
-              shape="round"
-              aspectRatio={1}
-              showResizeBox
-              style={{ width: '100%', height: '100%' }}
-            />
-          )}
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginTop: 12 }}>
-          <Button
-            icon={<RotateCcw size={14} />}
-            size="small"
-            theme="borderless"
-            onClick={() => void handleCropRotate(-90)}
-          >向左旋转</Button>
-          <Button
-            icon={<RotateCw size={14} />}
-            size="small"
-            theme="borderless"
-            onClick={() => void handleCropRotate(90)}
-          >向右旋转</Button>
-        </div>
-      </AppModal>
+      <AvatarCropperModal
+        file={cropFile}
+        confirmLoading={avatarLoading}
+        onCancel={() => setCropFile(null)}
+        onConfirm={(blob) => void handleCropConfirm(blob)}
+      />
 
       {/* ── 新建 Token Modal ──────────────────────────────────────────────────────────────── */}
       <AppModal

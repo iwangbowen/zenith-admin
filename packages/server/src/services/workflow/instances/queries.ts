@@ -1,6 +1,6 @@
 // ─── 实例/待办/已办/抄送列表查询与详情（拆分自 workflow-instances.service.ts）───
 import { formatDateTime } from '../../../lib/datetime';
-import { count, countDistinct, eq, and, desc, ilike, or, inArray, sql } from 'drizzle-orm';
+import { count, countDistinct, eq, and, desc, ilike, or, inArray, sql, type SQL } from 'drizzle-orm';
 import { escapeLike, withPagination } from '../../../lib/where-helpers';
 import { db } from '../../../db';
 import { pageOffset } from '../../../lib/pagination';
@@ -20,6 +20,42 @@ type InstanceStatus = 'draft' | 'running' | 'approved' | 'rejected' | 'withdrawn
 
 /** 优先级排序：urgent > high > normal > low（用于审批/申请列表置顶加急） */
 const priorityRankOrder = sql`CASE ${workflowInstances.priority} WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END`;
+
+/** 实例标题或流程名称模糊匹配条件（需联表 workflowDefinitions） */
+function titleOrDefinitionNameLike(keyword: string) {
+  const likeValue = `%${escapeLike(keyword)}%`;
+  return or(ilike(workflowInstances.title, likeValue), ilike(workflowDefinitions.name, likeValue))!;
+}
+
+/** 任务联实例/定义/发起人的行选择（待办/抄送/已办列表共用） */
+function selectTaskJoinedInstanceRows() {
+  return db
+    .select({ inst: workflowInstances, definitionName: workflowDefinitions.name, initiatorName: users.nickname, initiatorAvatar: users.avatar, task: workflowTasks })
+    .from(workflowTasks)
+    .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
+    .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
+    .leftJoin(users, eq(workflowInstances.initiatorId, users.id));
+}
+
+/** 抄送/已办列表共用的 count + 分页双查询（并行执行） */
+async function queryTaskJoinedInstancePage(opts: { where: SQL | undefined; orderBy: SQL; page: number; pageSize: number }) {
+  const [[{ total }], rows] = await Promise.all([
+    db
+      .select({ total: count() })
+      .from(workflowTasks)
+      .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
+      .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
+      .where(opts.where),
+    withPagination(
+      selectTaskJoinedInstanceRows()
+        .where(opts.where)
+        .orderBy(opts.orderBy)
+        .$dynamic(),
+      opts.page, opts.pageSize,
+    ),
+  ]);
+  return { total: Number(total), rows };
+}
 
 async function loadActiveNodeKeysByInstance(instanceIds: number[]): Promise<Map<number, string[]>> {  if (instanceIds.length === 0) return new Map();
   const rows = await db.select({
@@ -114,10 +150,7 @@ export async function listPendingMine(query: { page?: number; pageSize?: number;
     eq(workflowInstances.status, 'running'),
   ];
   if (tc) baseConditions.push(tc);
-  if (keyword) {
-    const likeValue = `%${escapeLike(keyword)}%`;
-    baseConditions.push(or(ilike(workflowInstances.title, likeValue), ilike(workflowDefinitions.name, likeValue))!);
-  }
+  if (keyword) baseConditions.push(titleOrDefinitionNameLike(keyword));
   if (definitionId !== undefined) baseConditions.push(eq(workflowInstances.definitionId, definitionId));
   const where = and(...baseConditions);
   const [[{ total }], rows] = await Promise.all([
@@ -127,12 +160,7 @@ export async function listPendingMine(query: { page?: number; pageSize?: number;
       .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
       .where(where),
     withPagination(
-      db
-        .select({ inst: workflowInstances, definitionName: workflowDefinitions.name, initiatorName: users.nickname, initiatorAvatar: users.avatar, task: workflowTasks })
-        .from(workflowTasks)
-        .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
-        .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
-        .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
+      selectTaskJoinedInstanceRows()
         .where(where)
         .orderBy(priorityRankOrder, desc(workflowTasks.createdAt))
         .$dynamic(),
@@ -167,31 +195,9 @@ export async function listMyCc(query: { page?: number; pageSize?: number; keywor
     eq(workflowTasks.nodeType, 'ccNode'),
   ];
   if (tc) conditions.push(tc);
-  if (keyword) {
-    const likeValue = `%${escapeLike(keyword)}%`;
-    conditions.push(or(ilike(workflowInstances.title, likeValue), ilike(workflowDefinitions.name, likeValue))!);
-  }
+  if (keyword) conditions.push(titleOrDefinitionNameLike(keyword));
   const where = and(...conditions);
-  const [[{ total }], rows] = await Promise.all([
-    db
-      .select({ total: count() })
-      .from(workflowTasks)
-      .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
-      .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
-      .where(where),
-    withPagination(
-      db
-        .select({ inst: workflowInstances, definitionName: workflowDefinitions.name, initiatorName: users.nickname, initiatorAvatar: users.avatar, task: workflowTasks })
-        .from(workflowTasks)
-        .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
-        .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
-        .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
-        .where(where)
-        .orderBy(desc(workflowTasks.id))
-        .$dynamic(),
-      page, pageSize,
-    ),
-  ]);
+  const { total, rows } = await queryTaskJoinedInstancePage({ where, orderBy: desc(workflowTasks.id), page, pageSize });
   const activeNodeKeys = await loadActiveNodeKeysByInstance(rows.map((row) => row.inst.id));
   return {
     list: rows.map((r) => mapInstance(r.inst, {
@@ -202,7 +208,7 @@ export async function listMyCc(query: { page?: number; pageSize?: number; keywor
       ccTaskId: r.task.id,
       ccReadAt: r.task.ccReadAt,
     })),
-    total: Number(total),
+    total,
     page,
     pageSize,
   };
@@ -287,31 +293,9 @@ export async function listMyHandled(query: { page?: number; pageSize?: number; k
     inArray(workflowTasks.status, ['approved', 'rejected']),
   ];
   if (tc) conditions.push(tc);
-  if (keyword) {
-    const likeValue = `%${escapeLike(keyword)}%`;
-    conditions.push(or(ilike(workflowInstances.title, likeValue), ilike(workflowDefinitions.name, likeValue))!);
-  }
+  if (keyword) conditions.push(titleOrDefinitionNameLike(keyword));
   const where = and(...conditions);
-  const [[{ total }], rows] = await Promise.all([
-    db
-      .select({ total: count() })
-      .from(workflowTasks)
-      .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
-      .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
-      .where(where),
-    withPagination(
-      db
-        .select({ inst: workflowInstances, definitionName: workflowDefinitions.name, initiatorName: users.nickname, initiatorAvatar: users.avatar, task: workflowTasks })
-        .from(workflowTasks)
-        .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
-        .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
-        .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
-        .where(where)
-        .orderBy(desc(workflowTasks.actionAt))
-        .$dynamic(),
-      page, pageSize,
-    ),
-  ]);
+  const { total, rows } = await queryTaskJoinedInstancePage({ where, orderBy: desc(workflowTasks.actionAt), page, pageSize });
   const activeNodeKeys = await loadActiveNodeKeysByInstance(rows.map((row) => row.inst.id));
   return {
     list: rows.map((r) => mapInstance(r.inst, {
@@ -322,7 +306,7 @@ export async function listMyHandled(query: { page?: number; pageSize?: number; k
       myTaskStatus: r.task.status,
       myActionAt: r.task.actionAt,
     })),
-    total: Number(total),
+    total,
     page,
     pageSize,
   };

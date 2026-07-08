@@ -40,7 +40,7 @@ import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceDetailPanel';
 import WorkflowGraphView from '@/components/workflow/WorkflowGraphView';
-import { NODE_RT_STATUS_COLOR, NODE_RT_STATUS_LABEL } from '@/components/workflow/workflow-runtime';
+import { NODE_RT_STATUS_COLOR, NODE_RT_STATUS_LABEL, INSTANCE_STATUS_MAP } from '@/components/workflow/workflow-runtime';
 import { resolveWorkflowFlowData } from '@/utils/workflow-snapshot';
 import WorkflowAnalyticsView from './WorkflowAnalyticsView';
 import WorkflowHandoverModal from './WorkflowHandoverModal';
@@ -65,16 +65,6 @@ import { useAllUsers } from '@/hooks/queries/users';
 const WorkflowDesignerPage = lazy(() => import('@/pages/workflow/designer/WorkflowDesignerPage'));
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
-
-const INSTANCE_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
-  draft:     { text: '草稿',  color: 'grey'   },
-  running:   { text: '审批中', color: 'blue'   },
-  suspended: { text: '已挂起', color: 'amber'  },
-  approved:  { text: '已通过', color: 'green'  },
-  rejected:  { text: '已驳回', color: 'red'    },
-  withdrawn: { text: '已撤回', color: 'orange' },
-  cancelled: { text: '已取消', color: 'purple' },
-};
 
 const RUNNING_STATUSES = new Set(['draft', 'running', 'suspended']);
 

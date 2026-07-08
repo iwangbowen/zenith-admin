@@ -14,6 +14,20 @@ export interface FlowNodeBrief {
 
 const APPROVAL_NODE_TYPES = new Set(['approver', 'handler', 'cc']);
 
+/** 流程实例状态标签颜色（Semi Tag color 子集） */
+export type InstanceStatusTagColor = 'amber' | 'blue' | 'green' | 'grey' | 'orange' | 'purple' | 'red';
+
+/** 流程实例状态 → 标签文案与颜色（我的申请 / 我处理的 / 抄送我的 / 流程监控共用） */
+export const INSTANCE_STATUS_MAP: Record<string, { text: string; color: InstanceStatusTagColor }> = {
+  draft: { text: '草稿', color: 'grey' },
+  running: { text: '审批中', color: 'blue' },
+  suspended: { text: '已挂起', color: 'amber' },
+  approved: { text: '已通过', color: 'green' },
+  rejected: { text: '已驳回', color: 'red' },
+  withdrawn: { text: '已撤回', color: 'orange' },
+  cancelled: { text: '已取消', color: 'purple' },
+};
+
 /**
  * 线性化流程中的审批相关节点（approve / handler / cc），按流转顺序返回（含尚未到达的后续节点）。
  * 用于审批时间线展示完整链路，而非只展示已创建任务对应的节点。

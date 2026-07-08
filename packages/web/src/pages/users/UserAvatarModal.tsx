@@ -1,10 +1,10 @@
 import { useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import {
-  Modal, Button, Space, Spin, Cropper, Toast,
+  Modal, Button, Spin, Toast,
 } from '@douyinfe/semi-ui';
 import { AppModal } from '@/components/AppModal';
-import { RotateCcw, RotateCw } from 'lucide-react';
+import { AvatarCropperModal } from '@/components/AvatarCropperModal';
 import type { User } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -16,45 +16,12 @@ interface UserAvatarModalProps {
   readonly onUpdated: (user: User) => void;
 }
 
-/** 将图片文件旋转指定角度后返回 data URL */
-function createRotatedImage(file: File, angleDeg: number): Promise<string> {
-  return new Promise((resolve) => {
-    if (angleDeg % 360 === 0) {
-      resolve(URL.createObjectURL(file));
-      return;
-    }
-    const img = new Image();
-    const objUrl = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(objUrl);
-      const rad = (angleDeg * Math.PI) / 180;
-      const sin = Math.abs(Math.sin(rad));
-      const cos = Math.abs(Math.cos(rad));
-      const w = img.naturalWidth * cos + img.naturalHeight * sin;
-      const h = img.naturalWidth * sin + img.naturalHeight * cos;
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.round(w);
-      canvas.height = Math.round(h);
-      const ctx = canvas.getContext('2d')!;
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-      ctx.rotate(rad);
-      ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
-      resolve(canvas.toDataURL('image/jpeg', 0.95));
-    };
-    img.src = objUrl;
-  });
-}
-
 const PRESET_AVATARS = Array.from({ length: 12 }, (_, i) => `/avatars/avatar-${String(i + 1).padStart(2, '0')}.svg`);
 
 export function UserAvatarModal({ visible, user, onClose, onUpdated }: UserAvatarModalProps) {
-  const cropperRef = useRef<Cropper>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
-  const originalFileRef = useRef<File | null>(null);
 
-  const [cropperVisible, setCropperVisible] = useState(false);
-  const [cropperSrc, setCropperSrc] = useState('');
-  const [cropRotate, setCropRotate] = useState(0);
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const [presetVisible, setPresetVisible] = useState(false);
   const uploadAvatarMutation = useMutation({
     mutationFn: (formData: FormData) => request.post<{ url: string }>('/api/files/upload-one', formData),
@@ -64,58 +31,31 @@ export function UserAvatarModal({ visible, user, onClose, onUpdated }: UserAvata
   });
   const avatarLoading = uploadAvatarMutation.isPending || updateAvatarMutation.isPending;
 
-  function closeCropper() {
-    setCropperVisible(false);
-    setCropRotate(0);
-    originalFileRef.current = null;
-    if (cropperSrc) {
-      if (cropperSrc.startsWith('blob:')) URL.revokeObjectURL(cropperSrc);
-      setCropperSrc('');
-    }
-  }
-
   function handleAvatarFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    originalFileRef.current = file;
-    setCropperSrc(URL.createObjectURL(file));
-    setCropRotate(0);
-    setCropperVisible(true);
+    setCropFile(file);
     e.target.value = '';
   }
 
-  async function handleCropRotate(delta: number) {
-    if (!originalFileRef.current) return;
-    const newAngle = ((cropRotate + delta) % 360 + 360) % 360;
-    setCropRotate(newAngle);
-    const rotated = await createRotatedImage(originalFileRef.current, newAngle);
-    if (cropperSrc.startsWith('blob:')) URL.revokeObjectURL(cropperSrc);
-    setCropperSrc(rotated);
-  }
-
-  async function handleCropConfirm() {
-    const canvas = cropperRef.current?.getCropperCanvas();
-    if (!canvas) return;
-    canvas.toBlob(async (blob) => {
-      if (!blob) return;
-      const formData = new FormData();
-      formData.append('file', blob, 'avatar.jpg');
-      const uploadRes = await uploadAvatarMutation.mutateAsync(formData);
-      const uploadedUrl = uploadRes.data?.url;
-      if (uploadRes.code === 0 && uploadedUrl) {
-        const updateRes = await updateAvatarMutation.mutateAsync(uploadedUrl);
-        if (updateRes.code === 0) {
-          onUpdated(updateRes.data);
-          Toast.success('头像已更新');
-          closeCropper();
-          onClose();
-        } else {
-          Toast.error(updateRes.message ?? '头像更新失败');
-        }
+  async function handleCropConfirm(blob: Blob) {
+    const formData = new FormData();
+    formData.append('file', blob, 'avatar.jpg');
+    const uploadRes = await uploadAvatarMutation.mutateAsync(formData);
+    const uploadedUrl = uploadRes.data?.url;
+    if (uploadRes.code === 0 && uploadedUrl) {
+      const updateRes = await updateAvatarMutation.mutateAsync(uploadedUrl);
+      if (updateRes.code === 0) {
+        onUpdated(updateRes.data);
+        Toast.success('头像已更新');
+        setCropFile(null);
+        onClose();
       } else {
-        Toast.error(uploadRes.message ?? '上传失败');
+        Toast.error(updateRes.message ?? '头像更新失败');
       }
-    }, 'image/jpeg', 0.85);
+    } else {
+      Toast.error(uploadRes.message ?? '上传失败');
+    }
   }
 
   async function handleApplyPreset(url: string) {
@@ -233,36 +173,12 @@ export function UserAvatarModal({ visible, user, onClose, onUpdated }: UserAvata
       </AppModal>
 
       {/* 裁剪 Modal */}
-      <AppModal
-        title="裁剪头像"
-        visible={cropperVisible}
-        onCancel={closeCropper}
-        footer={
-          <Space>
-            <Button onClick={closeCropper}>取消</Button>
-            <Button type="primary" loading={avatarLoading} onClick={handleCropConfirm}>确认并上传</Button>
-          </Space>
-        }
-        width={520}
-        centered
-      >
-        <div style={{ width: '100%', height: 380 }}>
-          {cropperSrc && (
-            <Cropper
-              ref={cropperRef}
-              src={cropperSrc}
-              shape="round"
-              aspectRatio={1}
-              showResizeBox
-              style={{ width: '100%', height: '100%' }}
-            />
-          )}
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginTop: 12 }}>
-          <Button icon={<RotateCcw size={14} />} size="small" theme="borderless" onClick={() => void handleCropRotate(-90)}>向左旋转</Button>
-          <Button icon={<RotateCw size={14} />} size="small" theme="borderless" onClick={() => void handleCropRotate(90)}>向右旋转</Button>
-        </div>
-      </AppModal>
+      <AvatarCropperModal
+        file={cropFile}
+        confirmLoading={avatarLoading}
+        onCancel={() => setCropFile(null)}
+        onConfirm={(blob) => void handleCropConfirm(blob)}
+      />
     </>
   );
 }

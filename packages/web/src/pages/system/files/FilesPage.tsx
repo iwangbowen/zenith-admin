@@ -6,7 +6,6 @@ import {
   Checkbox,
   DatePicker,
   Descriptions,
-  ImagePreview,
   Input,
   List,
   Modal,
@@ -28,7 +27,8 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { formatFileSize, getFileTypeIcon, fetchProtectedFile, getFileFullUrl, canPreviewFile } from '@/utils/file-utils';
 import { chunkedUpload, CHUNK_SIZE } from '@/utils/chunked-upload';
-import FilePreviewModal from '@/components/FilePreviewModal';
+import { FilePreviewLayer } from '@/components/FilePreviewLayer';
+import { useFilePreview } from '@/hooks/useFilePreview';
 import FileStatsPanel from './FileStatsPanel';
 import { FileGridCard } from './components/FileGridCard';
 import { config } from '@/config';
@@ -132,16 +132,6 @@ export default function FilesPage() {
   const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination(
     (preferences.filesViewMode ?? 'list') === 'grid' ? FILE_GRID_PAGE_SIZE : FILE_LIST_PAGE_SIZE,
   );
-  const [previewVisible, setPreviewVisible] = useState(false);
-  const [previewSrcList, setPreviewSrcList] = useState<string[]>([]);
-  const [previewCurrentIndex, setPreviewCurrentIndex] = useState(0);
-  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
-  const [filePreview, setFilePreview] = useState<{ id: string; url: string; name: string; mimeType: string } | null>(null);
-  const [downloadLoadingId, setDownloadLoadingId] = useState<string | null>(null);
-  // previewBlobUrlsRef: index-aligned with image list, tracks created blob URLs for cleanup
-  const previewBlobUrlsRef = useRef<string[]>([]);
-  // previewSessionRef: increments each time a new preview session starts, used to cancel stale bg loads
-  const previewSessionRef = useRef(0);
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [batchDownloadLoading, setBatchDownloadLoading] = useState(false);
   const [detailFile, setDetailFile] = useState<ManagedFile | null>(null);
@@ -160,6 +150,7 @@ export default function FilesPage() {
     endTime: submittedParams.timeRange ? formatDateTimeForApi(submittedParams.timeRange[1]) : undefined,
   });
   const data = listQuery.data ?? null;
+  const preview = useFilePreview(() => data?.list ?? []);
   const uploadFileMutation = useUploadFile();
   const deleteMutation = useDeleteFile();
   const batchDeleteMutation = useBatchDeleteFiles();
@@ -271,107 +262,6 @@ export default function FilesPage() {
         setUploadItems,
         (formData, onProgress) => uploadFileMutation.mutateAsync({ formData, onProgress }),
       );
-    }
-  };
-
-  const cleanupPreviewBlobs = () => {
-    previewBlobUrlsRef.current.forEach((url) => globalThis.URL.revokeObjectURL(url));
-    previewBlobUrlsRef.current = [];
-  };
-
-  const handlePreview = async (file: ManagedFile) => {
-    const isImage = file.mimeType?.startsWith('image/');
-    const isPreviewable = canPreviewFile(file.mimeType);
-
-    if (!isPreviewable && !isImage) {
-      try {
-        const blob = await fetchProtectedFile(file.url);
-        const objectUrl = globalThis.URL.createObjectURL(blob);
-        globalThis.open(objectUrl, '_blank', 'noopener,noreferrer');
-        globalThis.setTimeout(() => globalThis.URL.revokeObjectURL(objectUrl), 60_000);
-      } catch (error) {
-        Toast.error(error instanceof Error ? error.message : '预览文件失败');
-      }
-      return;
-    }
-
-    if (!isImage) {
-      setPreviewLoadingId(file.id);
-      try {
-        setFilePreview({
-          id: file.id,
-          url: file.url,
-          name: file.originalName,
-          mimeType: file.mimeType ?? 'application/octet-stream',
-        });
-      } catch (error) {
-        Toast.error(error instanceof Error ? error.message : '预览文件失败');
-      } finally {
-        setPreviewLoadingId(null);
-      }
-      return;
-    }
-
-    const imageFiles = (data?.list ?? []).filter((f) => f.mimeType?.startsWith('image/'));
-    const clickedIndex = imageFiles.findIndex((f) => f.id === file.id);
-
-    setPreviewLoadingId(file.id);
-    // Start new preview session
-    previewSessionRef.current += 1;
-    const mySession = previewSessionRef.current;
-    try {
-      cleanupPreviewBlobs();
-      // Initialize with blank placeholders so the array index stays stable
-      const initialUrls = imageFiles.map(() => '');
-      previewBlobUrlsRef.current = [...initialUrls];
-
-      // Load only the clicked image first → show preview immediately
-      const clickedBlob = await fetchProtectedFile(imageFiles[clickedIndex].url);
-      if (previewSessionRef.current !== mySession) return; // user closed preview before load finished
-      const clickedUrl = globalThis.URL.createObjectURL(clickedBlob);
-      initialUrls[clickedIndex] = clickedUrl;
-      previewBlobUrlsRef.current[clickedIndex] = clickedUrl;
-
-      setPreviewSrcList([...initialUrls]);
-      setPreviewCurrentIndex(Math.max(0, clickedIndex));
-      setPreviewVisible(true);
-
-      // Load remaining images in background (non-blocking)
-      imageFiles.forEach(async (imgFile, i) => {
-        if (i === clickedIndex) return;
-        try {
-          const blob = await fetchProtectedFile(imgFile.url);
-          if (previewSessionRef.current !== mySession) return;
-          const url = globalThis.URL.createObjectURL(blob);
-          previewBlobUrlsRef.current[i] = url;
-          setPreviewSrcList((prev) => {
-            const updated = [...prev];
-            updated[i] = url;
-            return updated;
-          });
-        } catch { /* ignore individual failures */ }
-      });
-    } catch (error) {
-      Toast.error(error instanceof Error ? error.message : '预览图片失败');
-    } finally {
-      setPreviewLoadingId(null);
-    }
-  };
-
-  const handleDownload = async (file: ManagedFile) => {
-    setDownloadLoadingId(file.id);
-    try {
-      const blob = await fetchProtectedFile(file.url);
-      const objectUrl = globalThis.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = objectUrl;
-      link.download = file.originalName;
-      link.click();
-      globalThis.setTimeout(() => globalThis.URL.revokeObjectURL(objectUrl), 60_000);
-    } catch (error) {
-      Toast.error(error instanceof Error ? error.message : '下载文件失败');
-    } finally {
-      setDownloadLoadingId(null);
     }
   };
 
@@ -495,14 +385,14 @@ export default function FilesPage() {
             key: 'preview',
             label: '预览',
             disabled: !isPreviewable,
-            loading: previewLoadingId === record.id,
-            onClick: () => handlePreview(record),
+            loading: preview.previewLoadingId === record.id,
+            onClick: () => preview.handlePreview(record),
           },
           {
             key: 'download',
             label: '下载',
-            loading: downloadLoadingId === record.id,
-            onClick: () => handleDownload(record),
+            loading: preview.downloadLoadingId === record.id,
+            onClick: () => preview.handleDownload(record),
           },
           {
             key: 'detail',
@@ -782,21 +672,7 @@ export default function FilesPage() {
         </div>
       </AppModal>
 
-      <ImagePreview
-        src={previewSrcList}
-        visible={previewVisible}
-        currentIndex={previewCurrentIndex}
-        onChange={setPreviewCurrentIndex}
-        onVisibleChange={(v) => {
-          if (!v) {
-            previewSessionRef.current += 1; // invalidate any in-flight background loads
-            setPreviewVisible(false);
-            cleanupPreviewBlobs();
-            setPreviewSrcList([]);
-          }
-        }}
-        infinite
-      />
+      <FilePreviewLayer preview={preview} />
 
       <AppModal
         title="文件详情"
@@ -830,15 +706,6 @@ export default function FilesPage() {
           )}
         </Spin>
       </AppModal>
-
-      <FilePreviewModal
-        fileUrl={filePreview?.url ?? ''}
-        fileId={filePreview?.id}
-        fileName={filePreview?.name}
-        mimeType={filePreview?.mimeType}
-        visible={!!filePreview}
-        onClose={() => setFilePreview(null)}
-      />
 
       {viewMode === 'list' ? (
         <ConfigurableTable
@@ -915,13 +782,13 @@ export default function FilesPage() {
                   selected={selectedRowKeys.includes(file.id)}
                   canSelect={hasPermission('system:file:delete')}
                   onSelect={handleGridSelect}
-                  onPreview={handlePreview}
-                  onDownload={handleDownload}
+                  onPreview={preview.handlePreview}
+                  onDownload={preview.handleDownload}
                   onDelete={handleDelete}
                   onDetail={handleOpenDetail}
                   onCopyUrl={handleCopyUrl}
                   canDelete={hasPermission('system:file:delete')}
-                  previewLoading={previewLoadingId === file.id}
+                  previewLoading={preview.previewLoadingId === file.id}
                 />
               </List.Item>
             )}

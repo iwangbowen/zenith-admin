@@ -269,6 +269,29 @@ export function mapChatMessage(
   };
 }
 
+/** 联表查询行中的发送人信息（senderId 为空时返回 null，供 mapChatMessage 使用） */
+function rowSender(r: { msg: { senderId: number | null }; nickname: string | null; avatar: string | null }) {
+  return r.msg.senderId
+    ? { id: r.msg.senderId, nickname: r.nickname ?? '', avatar: r.avatar ?? null }
+    : null;
+}
+
+/** 按 id 加载用户的展示信息（昵称/头像） */
+function fetchUserBrief(userId: number) {
+  return db.query.users.findFirst({
+    where: eq(users.id, userId),
+    columns: { id: true, nickname: true, avatar: true },
+  });
+}
+
+/** 会话全部成员的 userId 列表（用于 WS 推送） */
+function listConversationMemberIds(conversationId: number) {
+  return db
+    .select({ userId: chatConversationMembers.userId })
+    .from(chatConversationMembers)
+    .where(eq(chatConversationMembers.conversationId, conversationId));
+}
+
 async function fetchReplySnapshotMap(
   rows: Array<{ replyToId: number | null }>,
 ): Promise<Map<number, ChatMessage['replyToMessage']>> {
@@ -336,10 +359,7 @@ export async function appendSystemMessage(
     db.update(chatConversations)
       .set({ updatedAt: new Date() })
       .where(eq(chatConversations.id, conversationId)),
-    db
-      .select({ userId: chatConversationMembers.userId })
-      .from(chatConversationMembers)
-      .where(eq(chatConversationMembers.conversationId, conversationId)),
+    listConversationMemberIds(conversationId),
   ]);
 
   const msg = mapChatMessage(row, null);
@@ -440,7 +460,7 @@ export async function listConversations(): Promise<ChatConversation[]> {
   const latestMsgMap = new Map(
     latestMsgRows.map((r) => [
       r.msg.conversationId,
-      mapChatMessage(r.msg, r.msg.senderId ? { id: r.msg.senderId, nickname: r.nickname ?? '', avatar: r.avatar ?? null } : null),
+      mapChatMessage(r.msg, rowSender(r)),
     ]),
   );
 
@@ -720,7 +740,7 @@ export async function listMessages(conversationId: number, beforeId: number | nu
   const list = limited.map((r) =>
     mapChatMessage(
       r.msg,
-      r.msg.senderId ? { id: r.msg.senderId, nickname: r.nickname ?? '', avatar: r.avatar ?? null } : null,
+      rowSender(r),
       reactionMap.get(r.msg.id) ?? [],
       r.msg.replyToId ? (replySnapshotMap.get(r.msg.replyToId) ?? null) : null,
     ),
@@ -745,7 +765,7 @@ export async function listPinnedMessages(conversationId: number): Promise<ChatMe
 
   return rows.map((r) => mapChatMessage(
     r.msg,
-    r.msg.senderId ? { id: r.msg.senderId, nickname: r.nickname ?? '', avatar: r.avatar ?? null } : null,
+    rowSender(r),
   ));
 }
 
@@ -772,7 +792,7 @@ export async function listFavoriteMessages(conversationId: number, page: number,
   return {
     list: rows.map((r) => mapChatMessage(
       r.msg,
-      r.msg.senderId ? { id: r.msg.senderId, nickname: r.nickname ?? '', avatar: r.avatar ?? null } : null,
+      rowSender(r),
     )),
     total,
     page,
@@ -808,7 +828,7 @@ export async function listGlobalFavoriteMessages(page: number, pageSize: number)
   return {
     list: rows.map((r) => mapChatMessage(
       r.msg,
-      r.msg.senderId ? { id: r.msg.senderId, nickname: r.nickname ?? '', avatar: r.avatar ?? null } : null,
+      rowSender(r),
     )),
     total: Number(countRows[0]?.count ?? 0),
     page,
@@ -825,7 +845,7 @@ export async function toggleMessageFavorite(messageId: number, favorite: boolean
     .returning();
 
   const sender = updated.senderId
-    ? await db.query.users.findFirst({ where: eq(users.id, updated.senderId), columns: { id: true, nickname: true, avatar: true } })
+    ? await fetchUserBrief(updated.senderId)
     : null;
   return mapChatMessage(updated, sender ?? null);
 }
@@ -839,7 +859,7 @@ export async function toggleMessagePin(messageId: number, pin: boolean): Promise
     .returning();
 
   const sender = updated.senderId
-    ? await db.query.users.findFirst({ where: eq(users.id, updated.senderId), columns: { id: true, nickname: true, avatar: true } })
+    ? await fetchUserBrief(updated.senderId)
     : null;
   return mapChatMessage(updated, sender ?? null);
 }
@@ -859,7 +879,7 @@ export async function listAnnouncementHistory(conversationId: number): Promise<C
 
   return rows.map((r) => mapChatMessage(
     r.msg,
-    r.msg.senderId ? { id: r.msg.senderId, nickname: r.nickname ?? '', avatar: r.avatar ?? null } : null,
+    rowSender(r),
   ));
 }
 
@@ -953,7 +973,7 @@ export async function searchConversationMessages(
   const list = rows.map((r) => {
     const message = mapChatMessage(
       r.msg,
-      r.msg.senderId ? { id: r.msg.senderId, nickname: r.nickname ?? '', avatar: r.avatar ?? null } : null,
+      rowSender(r),
     );
     return {
       message,
@@ -1028,7 +1048,7 @@ export async function getMessageContext(
 
   const list = allRows.map((r) => mapChatMessage(
     r.msg,
-    r.msg.senderId ? { id: r.msg.senderId, nickname: r.nickname ?? '', avatar: r.avatar ?? null } : null,
+    rowSender(r),
     reactionMap.get(r.msg.id) ?? [],
     r.msg.replyToId ? (replySnapshotMap.get(r.msg.replyToId) ?? null) : null,
   ));
@@ -1059,10 +1079,7 @@ export async function sendMessage(conversationId: number, input: SendChatMessage
         eq(chatConversationMembers.userId, me.userId),
       ),
     }),
-    db.query.users.findFirst({
-      where: eq(users.id, me.userId),
-      columns: { id: true, nickname: true, avatar: true },
-    }),
+    fetchUserBrief(me.userId),
     db.query.chatConversations.findFirst({
       where: eq(chatConversations.id, conversationId),
       columns: { id: true, muteAll: true },
@@ -1100,10 +1117,7 @@ export async function sendMessage(conversationId: number, input: SendChatMessage
   const msg = mapChatMessage(row, sender ?? null, [], replySnapshot);
 
   // 推送给会话内所有成员（含发送者——方便多端同步）
-  const members = await db
-    .select({ userId: chatConversationMembers.userId })
-    .from(chatConversationMembers)
-    .where(eq(chatConversationMembers.conversationId, conversationId));
+  const members = await listConversationMemberIds(conversationId);
 
   scheduleSendToUsers(members, { type: 'chat:message', payload: msg });
 
@@ -1275,10 +1289,7 @@ export async function recallMessage(messageId: number): Promise<void> {
     .where(eq(chatMessages.id, messageId));
 
   // 推送撤回通知
-  const members = await db
-    .select({ userId: chatConversationMembers.userId })
-    .from(chatConversationMembers)
-    .where(eq(chatConversationMembers.conversationId, msg.conversationId));
+  const members = await listConversationMemberIds(msg.conversationId);
 
   scheduleSendToUsers(members, { type: 'chat:recall', payload: { conversationId: msg.conversationId, messageId } });
 }
@@ -1307,18 +1318,12 @@ export async function editMessage(messageId: number, content: string): Promise<C
     .where(eq(chatMessages.id, messageId))
     .returning();
 
-  const sender = await db.query.users.findFirst({
-    where: eq(users.id, me.userId),
-    columns: { id: true, nickname: true, avatar: true },
-  });
+  const sender = await fetchUserBrief(me.userId);
 
   const updatedMsg = mapChatMessage(updated, sender ?? null);
 
   // 推送编辑通知给会话所有成员
-  const members = await db
-    .select({ userId: chatConversationMembers.userId })
-    .from(chatConversationMembers)
-    .where(eq(chatConversationMembers.conversationId, msg.conversationId));
+  const members = await listConversationMemberIds(msg.conversationId);
 
   scheduleSendToUsers(members, { type: 'chat:edit', payload: updatedMsg });
 
@@ -1477,10 +1482,7 @@ export async function addGroupMember(conversationId: number, targetUserId: numbe
   if (memberCount >= 20) throw new HTTPException(400, { message: '群成员已达上限（20人）' });
 
   // 目标用户存在校验
-  const target = await db.query.users.findFirst({
-    where: eq(users.id, targetUserId),
-    columns: { id: true, nickname: true, avatar: true },
-  });
+  const target = await fetchUserBrief(targetUserId);
   if (!target) throw new HTTPException(404, { message: '用户不存在' });
 
   // 幂等插入
@@ -1498,10 +1500,7 @@ export async function addGroupMember(conversationId: number, targetUserId: numbe
   await appendSystemMessage(conversationId, `${target.nickname} 加入了群聊`);
 
   // 推送 WS 通知（群内所有成员）
-  const members = await db
-    .select({ userId: chatConversationMembers.userId })
-    .from(chatConversationMembers)
-    .where(eq(chatConversationMembers.conversationId, conversationId));
+  const members = await listConversationMemberIds(conversationId);
 
   scheduleSendToUsers(members, { type: 'chat:member-join', payload: { conversationId, user: target } });
 }
@@ -1684,10 +1683,7 @@ export async function removeGroupMember(conversationId: number, targetUserId: nu
   );
 
   // 推送成员离开通知
-  const remaining = await db
-    .select({ userId: chatConversationMembers.userId })
-    .from(chatConversationMembers)
-    .where(eq(chatConversationMembers.conversationId, conversationId));
+  const remaining = await listConversationMemberIds(conversationId);
 
   scheduleSendToUsers([...remaining, { userId: targetUserId }], { type: 'chat:member-leave', payload: { conversationId, userId: targetUserId } });
 }
@@ -1731,10 +1727,7 @@ export async function updateGroupInfo(
   await db.update(chatConversations).set(set).where(eq(chatConversations.id, conversationId));
 
   // 通知所有成员
-  const members = await db
-    .select({ userId: chatConversationMembers.userId })
-    .from(chatConversationMembers)
-    .where(eq(chatConversationMembers.conversationId, conversationId));
+  const members = await listConversationMemberIds(conversationId);
 
   scheduleSendToUsers(members, {
     type: 'chat:group-update',
@@ -1812,10 +1805,7 @@ export async function transferGroupOwnership(conversationId: number, newOwnerId:
   });
 
   // 通知所有成员
-  const members = await db
-    .select({ userId: chatConversationMembers.userId })
-    .from(chatConversationMembers)
-    .where(eq(chatConversationMembers.conversationId, conversationId));
+  const members = await listConversationMemberIds(conversationId);
 
   scheduleSendToUsers(members, { type: 'chat:group-update', payload: { conversationId } });
 
@@ -1849,10 +1839,7 @@ async function getConversationMember(conversationId: number, userId: number) {
 }
 
 async function broadcastMemberUpdate(conversationId: number): Promise<void> {
-  const members = await db
-    .select({ userId: chatConversationMembers.userId })
-    .from(chatConversationMembers)
-    .where(eq(chatConversationMembers.conversationId, conversationId));
+  const members = await listConversationMemberIds(conversationId);
   scheduleSendToUsers(members, { type: 'chat:member-update', payload: { conversationId } });
 }
 
@@ -1953,10 +1940,7 @@ export async function setMuteAll(conversationId: number, muteAll: boolean): Prom
     .set({ muteAll })
     .where(eq(chatConversations.id, conversationId));
 
-  const members = await db
-    .select({ userId: chatConversationMembers.userId })
-    .from(chatConversationMembers)
-    .where(eq(chatConversationMembers.conversationId, conversationId));
+  const members = await listConversationMemberIds(conversationId);
   scheduleSendToUsers(members, { type: 'chat:group-update', payload: { conversationId, muteAll } });
 
   const myNickname = await getUserNickname(me.userId);
@@ -2012,10 +1996,7 @@ export async function toggleReaction(messageId: number, emoji: string): Promise<
   const reactions = reactionMap.get(messageId) ?? [];
 
   // Broadcast to all members of the conversation
-  const members = await db
-    .select({ userId: chatConversationMembers.userId })
-    .from(chatConversationMembers)
-    .where(eq(chatConversationMembers.conversationId, msg.conversationId));
+  const members = await listConversationMemberIds(msg.conversationId);
 
   scheduleSendToUsers(members, {
     type: 'chat:reaction',
@@ -2070,16 +2051,13 @@ export async function submitVote(messageId: number, optionIds: string[]): Promis
     .returning();
 
   const sender = updated.senderId
-    ? await db.query.users.findFirst({ where: eq(users.id, updated.senderId), columns: { id: true, nickname: true, avatar: true } })
+    ? await fetchUserBrief(updated.senderId)
     : null;
 
   const updatedMsg = mapChatMessage(updated, sender ?? null);
 
   // 广播给会话内所有成员
-  const members = await db
-    .select({ userId: chatConversationMembers.userId })
-    .from(chatConversationMembers)
-    .where(eq(chatConversationMembers.conversationId, msg.conversationId));
+  const members = await listConversationMemberIds(msg.conversationId);
 
   scheduleSendToUsers(members, {
     type: 'chat:vote-update',
@@ -2168,7 +2146,7 @@ export async function searchGlobalMessages(
   const list = rows.map((r) => {
     const message = mapChatMessage(
       r.msg,
-      r.msg.senderId ? { id: r.msg.senderId, nickname: r.nickname ?? '', avatar: r.avatar ?? null } : null,
+      rowSender(r),
     );
     return {
       message,
@@ -2208,16 +2186,13 @@ export async function postBotMessage(
 
   let sender: { id: number; nickname: string; avatar: string | null } | null = null;
   if (senderId) {
-    const u = await db.query.users.findFirst({ where: eq(users.id, senderId), columns: { id: true, nickname: true, avatar: true } });
+    const u = await fetchUserBrief(senderId);
     if (u) sender = { id: u.id, nickname: u.nickname, avatar: u.avatar ?? null };
   }
 
   const [, members] = await Promise.all([
     db.update(chatConversations).set({ updatedAt: new Date() }).where(eq(chatConversations.id, conversationId)),
-    db
-      .select({ userId: chatConversationMembers.userId })
-      .from(chatConversationMembers)
-      .where(eq(chatConversationMembers.conversationId, conversationId)),
+    listConversationMemberIds(conversationId),
   ]);
 
   const msg = mapChatMessage(row, sender);
@@ -2237,14 +2212,11 @@ export async function markCardMessageDone(messageId: number, statusText: string)
 
   let sender: { id: number; nickname: string; avatar: string | null } | null = null;
   if (updated.senderId) {
-    const u = await db.query.users.findFirst({ where: eq(users.id, updated.senderId), columns: { id: true, nickname: true, avatar: true } });
+    const u = await fetchUserBrief(updated.senderId);
     if (u) sender = { id: u.id, nickname: u.nickname, avatar: u.avatar ?? null };
   }
 
-  const members = await db
-    .select({ userId: chatConversationMembers.userId })
-    .from(chatConversationMembers)
-    .where(eq(chatConversationMembers.conversationId, updated.conversationId));
+  const members = await listConversationMemberIds(updated.conversationId);
   scheduleSendToUsers(members, { type: 'chat:edit', payload: mapChatMessage(updated, sender) });
 }
 
@@ -2319,10 +2291,7 @@ export async function postCallRecord(conversationId: number, input: ChatCallReco
 
   const [, members] = await Promise.all([
     db.update(chatConversations).set({ updatedAt: new Date() }).where(eq(chatConversations.id, conversationId)),
-    db
-      .select({ userId: chatConversationMembers.userId })
-      .from(chatConversationMembers)
-      .where(eq(chatConversationMembers.conversationId, conversationId)),
+    listConversationMemberIds(conversationId),
   ]);
 
   scheduleSendToUsers(members, { type: 'chat:message', payload: mapChatMessage(row, null) });

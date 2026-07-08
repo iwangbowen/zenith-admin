@@ -27,6 +27,7 @@ import { AppModal } from '@/components/AppModal';
 import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceDetailPanel';
 import WorkflowLaunchForm, { type WorkflowLaunchFormHandle } from '@/components/workflow/WorkflowLaunchForm';
 import WorkflowPriorityTag, { WORKFLOW_PRIORITY_OPTIONS } from '@/components/workflow/WorkflowPriorityTag';
+import { INSTANCE_STATUS_MAP } from '@/components/workflow/workflow-runtime';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { renderEllipsis } from '../../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
@@ -49,18 +50,6 @@ import {
   workflowInstanceKeys,
 } from '@/hooks/queries/workflow-instances';
 import { usePublishedWorkflowDefinitions } from '@/hooks/queries/workflow-definitions';
-
-type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
-
-const INSTANCE_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
-  draft: { text: '草稿', color: 'grey' },
-  running: { text: '审批中', color: 'blue' },
-  suspended: { text: '已挂起', color: 'amber' },
-  approved: { text: '已通过', color: 'green' },
-  rejected: { text: '已驳回', color: 'red' },
-  withdrawn: { text: '已撤回', color: 'orange' },
-  cancelled: { text: '已取消', color: 'purple' },
-};
 
 const TASK_STATUS_TEXT: Record<string, string> = {
   pending: '待处理',

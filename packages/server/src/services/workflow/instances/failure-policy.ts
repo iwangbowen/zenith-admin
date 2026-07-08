@@ -53,6 +53,29 @@ async function enqueueSagaRollback(tx: DbExecutor, args: { instanceId: number; f
   return count;
 }
 
+/** 终局收尾：跳过存量待办（可带注释）→（可选）杀死 token → 实例置 rejected，返回更新后的实例行 */
+async function markInstanceRejected(tx: DbExecutor, args: { instanceId: number; comment?: string; killTokens?: boolean }) {
+  await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), ...(args.comment ? { comment: args.comment } : {}) })
+    .where(and(eq(workflowTasks.instanceId, args.instanceId), inArray(workflowTasks.status, ['pending', 'waiting'])));
+  if (args.killTokens) await killInstanceTokens(tx, args.instanceId);
+  const [row] = await tx.update(workflowInstances).set({ status: 'rejected', currentNodeKey: null })
+    .where(eq(workflowInstances.id, args.instanceId)).returning();
+  return row;
+}
+
+/** Token 一致性：消费失败节点 token，并在目标节点新建 frontier token（其余分支 token 保留） */
+async function swapFailedTokenTo(tx: DbExecutor, args: { instanceId: number; failedNodeKey: string; targetNodeKey: string; tenantId: number | null }) {
+  const liveToks = await loadLiveTokens(tx, args.instanceId);
+  const failedTok = liveToks.find((t) => t.nodeKey === args.failedNodeKey);
+  if (failedTok) {
+    await tx.update(workflowTokens).set({ status: 'consumed', consumedAt: new Date() }).where(eq(workflowTokens.id, failedTok.id));
+  }
+  await tx.insert(workflowTokens).values({
+    instanceId: args.instanceId, nodeKey: args.targetNodeKey, status: 'active', branchPath: [],
+    parentTokenId: failedTok?.id ?? null, scopeKey: null, tenantId: args.tenantId,
+  });
+}
+
 /**
  * 统一失败策略执行器（Saga / 补偿，Phase 1 结构 + Phase 2 反向动作）。
  *
@@ -113,10 +136,7 @@ async function applyNodeFailurePolicy(input: {
       materialized: Awaited<ReturnType<typeof advanceAndMaterialize>>,
     ) => {
       if (materialized.rejected || (!materialized.finished && materialized.currentNodeKeys.length === 0 && materialized.createdTasks.length === 0)) {
-        await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: errorComment })
-          .where(and(eq(workflowTasks.instanceId, lockedInst.id), inArray(workflowTasks.status, ['pending', 'waiting'])));
-        const [row] = await tx.update(workflowInstances).set({ status: 'rejected', currentNodeKey: null })
-          .where(eq(workflowInstances.id, lockedInst.id)).returning();
+        const row = await markInstanceRejected(tx, { instanceId: lockedInst.id, comment: errorComment });
         return { row, newTasks: materialized.createdTasks, finished: false, rejected: true };
       }
       if (materialized.finished) {
@@ -132,11 +152,7 @@ async function applyNodeFailurePolicy(input: {
     // 终止
     if (policy.action === 'terminate') {
       await recordCompensation(tx, { instanceId: lockedInst.id, nodeKey: input.nodeKey, nodeName: input.nodeName, errorMessage: input.errorMessage, action: 'terminate', status: 'terminated', tenantId: lockedInst.tenantId });
-      await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: errorComment })
-        .where(and(eq(workflowTasks.instanceId, lockedInst.id), inArray(workflowTasks.status, ['pending', 'waiting'])));
-      await killInstanceTokens(tx, lockedInst.id);
-      const [row] = await tx.update(workflowInstances).set({ status: 'rejected', currentNodeKey: null })
-        .where(eq(workflowInstances.id, lockedInst.id)).returning();
+      const row = await markInstanceRejected(tx, { instanceId: lockedInst.id, comment: errorComment, killTokens: true });
       return { row, affectedTasks, newTasks: [] as typeof workflowTasks.$inferSelect[], repairTask: null, finished: false, rejected: true };
     }
 
@@ -175,11 +191,7 @@ async function applyNodeFailurePolicy(input: {
     const adminId = await resolveAdminAssigneeId(tx);
     if (!adminId) {
       await recordCompensation(tx, { instanceId: lockedInst.id, nodeKey: input.nodeKey, nodeName: input.nodeName, errorMessage: `${input.errorMessage}；未找到管理员`, action: ticketAction, status: 'terminated', tenantId: lockedInst.tenantId });
-      await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: errorComment })
-        .where(and(eq(workflowTasks.instanceId, lockedInst.id), inArray(workflowTasks.status, ['pending', 'waiting'])));
-      await killInstanceTokens(tx, lockedInst.id);
-      const [row] = await tx.update(workflowInstances).set({ status: 'rejected', currentNodeKey: null })
-        .where(eq(workflowInstances.id, lockedInst.id)).returning();
+      const row = await markInstanceRejected(tx, { instanceId: lockedInst.id, comment: errorComment, killTokens: true });
       return { row, affectedTasks, newTasks: [] as typeof workflowTasks.$inferSelect[], repairTask: null, finished: false, rejected: true };
     }
     const compId = await recordCompensation(tx, {
@@ -203,15 +215,7 @@ async function applyNodeFailurePolicy(input: {
       comment: errorComment,
     }).returning();
     // Token 一致性：消费失败节点 token，在同一节点新建 frontier token（其余分支保留）
-    const liveToks = await loadLiveTokens(tx, lockedInst.id);
-    const failedTok = liveToks.find((t) => t.nodeKey === input.nodeKey);
-    if (failedTok) {
-      await tx.update(workflowTokens).set({ status: 'consumed', consumedAt: new Date() }).where(eq(workflowTokens.id, failedTok.id));
-    }
-    await tx.insert(workflowTokens).values({
-      instanceId: lockedInst.id, nodeKey: input.nodeKey, status: 'active', branchPath: [],
-      parentTokenId: failedTok?.id ?? null, scopeKey: null, tenantId: lockedInst.tenantId,
-    });
+    await swapFailedTokenTo(tx, { instanceId: lockedInst.id, failedNodeKey: input.nodeKey, targetNodeKey: input.nodeKey, tenantId: lockedInst.tenantId });
     const [row] = await tx.update(workflowInstances).set({ currentNodeKey: input.nodeKey })
       .where(eq(workflowInstances.id, lockedInst.id)).returning();
     return { row, affectedTasks, newTasks: [repairTask], repairTask, finished: false, rejected: false };
@@ -267,9 +271,7 @@ export async function resumeInstanceForCompensation(id: number): Promise<{ resum
 
     let row: typeof workflowInstances.$inferSelect;
     if (materialized.rejected || (!materialized.finished && materialized.currentNodeKeys.length === 0 && materialized.createdTasks.length === 0)) {
-      await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date() })
-        .where(and(eq(workflowTasks.instanceId, inst.id), inArray(workflowTasks.status, ['pending', 'waiting'])));
-      [row] = await tx.update(workflowInstances).set({ status: 'rejected', currentNodeKey: null }).where(eq(workflowInstances.id, inst.id)).returning();
+      row = await markInstanceRejected(tx, { instanceId: inst.id });
     } else if (materialized.finished) {
       [row] = await tx.update(workflowInstances).set({ status: 'approved', currentNodeKey: null }).where(eq(workflowInstances.id, inst.id)).returning();
     } else {
@@ -355,13 +357,7 @@ export async function handleNodeExecutionError(input: {
         comment: errorComment,
         actionAt: new Date(),
       }).returning();
-      await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: errorComment })
-        .where(and(eq(workflowTasks.instanceId, lockedInst.id), inArray(workflowTasks.status, ['pending', 'waiting'])));
-      await killInstanceTokens(tx, lockedInst.id);
-      const [row] = await tx.update(workflowInstances)
-        .set({ status: 'rejected', currentNodeKey: null })
-        .where(eq(workflowInstances.id, lockedInst.id))
-        .returning();
+      const row = await markInstanceRejected(tx, { instanceId: lockedInst.id, comment: errorComment, killTokens: true });
       return { row, affectedTasks, catchTask, newTasks: [] as typeof workflowTasks.$inferSelect[], finished: false, rejected: true };
     }
 
@@ -378,13 +374,7 @@ export async function handleNodeExecutionError(input: {
           comment: `${errorComment}；未找到管理员`,
           actionAt: new Date(),
         }).returning();
-        await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: errorComment })
-          .where(and(eq(workflowTasks.instanceId, lockedInst.id), inArray(workflowTasks.status, ['pending', 'waiting'])));
-        await killInstanceTokens(tx, lockedInst.id);
-        const [row] = await tx.update(workflowInstances)
-          .set({ status: 'rejected', currentNodeKey: null })
-          .where(eq(workflowInstances.id, lockedInst.id))
-          .returning();
+        const row = await markInstanceRejected(tx, { instanceId: lockedInst.id, comment: errorComment, killTokens: true });
         return { row, affectedTasks, catchTask, newTasks: [] as typeof workflowTasks.$inferSelect[], finished: false, rejected: true };
       }
       const [catchTask] = await tx.insert(workflowTasks).values({
@@ -397,20 +387,7 @@ export async function handleNodeExecutionError(input: {
         comment: errorComment,
       }).returning();
       // Token 一致性：消费失败节点 token，在 catch 节点新建 frontier token（其余分支 token 保留）
-      const liveToks = await loadLiveTokens(tx, lockedInst.id);
-      const failedTok = liveToks.find((t) => t.nodeKey === input.nodeKey);
-      if (failedTok) {
-        await tx.update(workflowTokens).set({ status: 'consumed', consumedAt: new Date() }).where(eq(workflowTokens.id, failedTok.id));
-      }
-      await tx.insert(workflowTokens).values({
-        instanceId: lockedInst.id,
-        nodeKey: catchCfg.key,
-        status: 'active',
-        branchPath: [],
-        parentTokenId: failedTok?.id ?? null,
-        scopeKey: null,
-        tenantId: lockedInst.tenantId,
-      });
+      await swapFailedTokenTo(tx, { instanceId: lockedInst.id, failedNodeKey: input.nodeKey, targetNodeKey: catchCfg.key, tenantId: lockedInst.tenantId });
       const [row] = await tx.update(workflowInstances)
         .set({ currentNodeKey: catchCfg.key })
         .where(eq(workflowInstances.id, lockedInst.id))
@@ -445,12 +422,7 @@ export async function handleNodeExecutionError(input: {
     );
 
     if (materialized.rejected || (!materialized.finished && materialized.currentNodeKeys.length === 0 && materialized.createdTasks.length === 0)) {
-      await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: errorComment })
-        .where(and(eq(workflowTasks.instanceId, lockedInst.id), inArray(workflowTasks.status, ['pending', 'waiting'])));
-      const [row] = await tx.update(workflowInstances)
-        .set({ status: 'rejected', currentNodeKey: null })
-        .where(eq(workflowInstances.id, lockedInst.id))
-        .returning();
+      const row = await markInstanceRejected(tx, { instanceId: lockedInst.id, comment: errorComment });
       return { row, affectedTasks, catchTask, newTasks: materialized.createdTasks, finished: false, rejected: true };
     }
     if (materialized.finished) {
