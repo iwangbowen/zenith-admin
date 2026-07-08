@@ -14,8 +14,6 @@ import {
   Row,
   Col,
   Spin,
-  Avatar,
-  AvatarGroup,
   Switch,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -27,6 +25,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { UserTransferSelect } from '@/components/UserTransferSelect';
 import type { UserTransferUser } from '@/components/UserTransferSelect';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { UserPreviewCell } from '@/components/UserPreviewCell';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -261,30 +260,7 @@ export default function UserGroupsPage() {
     },
     {
       title: '成员', dataIndex: 'memberPreview', width: 150,
-      render: (_: unknown, record: UserGroup) => {
-        const preview = record.memberPreview ?? [];
-        const count = record.memberCount ?? 0;
-        if (count === 0) return <Tag color="blue">0</Tag>;
-        return (
-          <Space spacing={6}>
-            <AvatarGroup maxCount={4} size="extra-extra-small" overlapFrom="end">
-              {preview.map((m) => (
-                <Avatar
-                  key={m.id}
-                  style={{ width: 22, height: 22, minWidth: 22, lineHeight: '22px', fontSize: 12, cursor: 'default' }}
-                  src={m.avatar ?? undefined}
-                  alt={m.nickname}
-                  color="light-blue"
-                  title={m.nickname}
-                >
-                  {m.nickname?.[0]}
-                </Avatar>
-              ))}
-            </AvatarGroup>
-            <Tag color="blue" style={{ flexShrink: 0 }}>{count}</Tag>
-          </Space>
-        );
-      },
+      render: (_: unknown, record: UserGroup) => <UserPreviewCell preview={record.memberPreview} count={record.memberCount} />,
     },
     {
       title: '角色', dataIndex: 'roleCount', width: 80,

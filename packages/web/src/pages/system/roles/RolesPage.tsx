@@ -11,9 +11,6 @@ import {
   Spin,
   Switch,
   DatePicker,
-  Avatar,
-  AvatarGroup,
-  Tag,
   SideSheet,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -22,6 +19,7 @@ import type { Role, Department } from '@zenith/shared';
 import { UserTransferSelect } from '@/components/UserTransferSelect';
 import type { UserTransferUser } from '@/components/UserTransferSelect';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { UserPreviewCell } from '@/components/UserPreviewCell';
 import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -259,30 +257,7 @@ export default function RolesPage() {
       title: '用户',
       dataIndex: 'userPreview',
       width: 180,
-      render: (_: unknown, record: Role) => {
-        const preview = record.userPreview ?? [];
-        const count = record.userCount ?? 0;
-        if (count === 0) return <Tag color="blue">0</Tag>;
-        return (
-          <Space spacing={6}>
-            <AvatarGroup maxCount={4} size="extra-extra-small" overlapFrom="end">
-              {preview.map((m) => (
-                <Avatar
-                  key={m.id}
-                  style={{ width: 22, height: 22, minWidth: 22, lineHeight: '22px', fontSize: 12, cursor: 'default' }}
-                  src={m.avatar ?? undefined}
-                  alt={m.nickname}
-                  color="light-blue"
-                  title={m.nickname}
-                >
-                  {m.nickname?.[0]}
-                </Avatar>
-              ))}
-            </AvatarGroup>
-            <Tag color="blue" style={{ flexShrink: 0 }}>{count}</Tag>
-          </Space>
-        );
-      },
+      render: (_: unknown, record: Role) => <UserPreviewCell preview={record.userPreview} count={record.userCount} />,
     },
     createdAtColumn,
     {

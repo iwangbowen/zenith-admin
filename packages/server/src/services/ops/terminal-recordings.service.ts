@@ -44,6 +44,29 @@ function mapRow(r: RecordingRow) {
 /** events JSON 文本字节长度（用于容量统计与清理，动态计算，不落库）。 */
 const sizeExpr = sql<number>`length(${terminalRecordings.events}::text)`;
 
+/** 输入事件中包含回车/换行的条数（近似命令数，动态计算）。 */
+const commandCountExpr = sql<number>`(
+        select count(*)::int
+        from jsonb_array_elements(${terminalRecordings.events}) as e
+        where (e->>1) = 'i'
+          and (position(chr(13) in (e->>2)) > 0 or position(chr(10) in (e->>2)) > 0)
+      )`;
+
+/** 列表 / 详情 / 审计快照共用的选择列（不含 events 与 commandCount）。 */
+const recordingBaseColumns = {
+  id: terminalRecordings.id,
+  title: terminalRecordings.title,
+  userId: terminalRecordings.userId,
+  nickname: users.nickname,
+  shell: terminalRecordings.shell,
+  cols: terminalRecordings.cols,
+  rows: terminalRecordings.rows,
+  duration: terminalRecordings.duration,
+  sizeBytes: sizeExpr,
+  createdAt: terminalRecordings.createdAt,
+  updatedAt: terminalRecordings.updatedAt,
+};
+
 /** 创建录屏记录。 */
 export async function createRecording(userId: number, tenantId: number | null, input: CreateRecordingInput) {
   const [row] = await db
@@ -84,25 +107,7 @@ export async function listRecordings(params: ListRecordingsParams) {
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
   const baseQuery = db
-    .select({
-      id: terminalRecordings.id,
-      title: terminalRecordings.title,
-      userId: terminalRecordings.userId,
-      nickname: users.nickname,
-      shell: terminalRecordings.shell,
-      cols: terminalRecordings.cols,
-      rows: terminalRecordings.rows,
-      duration: terminalRecordings.duration,
-      sizeBytes: sizeExpr,
-      commandCount: sql<number>`(
-        select count(*)::int
-        from jsonb_array_elements(${terminalRecordings.events}) as e
-        where (e->>1) = 'i'
-          and (position(chr(13) in (e->>2)) > 0 or position(chr(10) in (e->>2)) > 0)
-      )`,
-      createdAt: terminalRecordings.createdAt,
-      updatedAt: terminalRecordings.updatedAt,
-    })
+    .select({ ...recordingBaseColumns, commandCount: commandCountExpr })
     .from(terminalRecordings)
     .leftJoin(users, eq(terminalRecordings.userId, users.id))
     .where(where)
@@ -124,20 +129,7 @@ export async function listRecordings(params: ListRecordingsParams) {
 /** 获取单条录屏详情（含 events）。管理员审计，可访问任意录屏。 */
 export async function getRecording(id: number) {
   const [row] = await db
-    .select({
-      id: terminalRecordings.id,
-      title: terminalRecordings.title,
-      userId: terminalRecordings.userId,
-      nickname: users.nickname,
-      shell: terminalRecordings.shell,
-      cols: terminalRecordings.cols,
-      rows: terminalRecordings.rows,
-      duration: terminalRecordings.duration,
-      sizeBytes: sizeExpr,
-      events: terminalRecordings.events,
-      createdAt: terminalRecordings.createdAt,
-      updatedAt: terminalRecordings.updatedAt,
-    })
+    .select({ ...recordingBaseColumns, events: terminalRecordings.events })
     .from(terminalRecordings)
     .leftJoin(users, eq(terminalRecordings.userId, users.id))
     .where(eq(terminalRecordings.id, id));
@@ -147,25 +139,7 @@ export async function getRecording(id: number) {
 
 export async function getRecordingBeforeAudit(id: number) {
   const [row] = await db
-    .select({
-      id: terminalRecordings.id,
-      title: terminalRecordings.title,
-      userId: terminalRecordings.userId,
-      nickname: users.nickname,
-      shell: terminalRecordings.shell,
-      cols: terminalRecordings.cols,
-      rows: terminalRecordings.rows,
-      duration: terminalRecordings.duration,
-      sizeBytes: sizeExpr,
-      commandCount: sql<number>`(
-        select count(*)::int
-        from jsonb_array_elements(${terminalRecordings.events}) as e
-        where (e->>1) = 'i'
-          and (position(chr(13) in (e->>2)) > 0 or position(chr(10) in (e->>2)) > 0)
-      )`,
-      createdAt: terminalRecordings.createdAt,
-      updatedAt: terminalRecordings.updatedAt,
-    })
+    .select({ ...recordingBaseColumns, commandCount: commandCountExpr })
     .from(terminalRecordings)
     .leftJoin(users, eq(terminalRecordings.userId, users.id))
     .where(eq(terminalRecordings.id, id));

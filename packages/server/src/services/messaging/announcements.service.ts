@@ -8,6 +8,7 @@ import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
 import { buildManagedFileUrl } from '../../lib/file-storage';
+import { saveBusinessFiles } from '../files/business-files.service';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
@@ -81,38 +82,7 @@ async function saveAnnouncementAttachments(
   announcementId: number,
   fileIds: string[],
 ) {
-  const user = currentUser();
-  // 删除旧关联
-  await executor.delete(businessFiles).where(
-    and(
-      eq(businessFiles.businessType, 'announcement'),
-      eq(businessFiles.businessId, announcementId),
-      tenantCondition(businessFiles, user),
-    ),
-  );
-
-  if (fileIds.length === 0) return;
-
-  // 校验文件存在
-  const files = await executor.select().from(managedFiles).where(
-    and(
-      inArray(managedFiles.id, fileIds),
-      tenantCondition(managedFiles, user),
-    ),
-  );
-  if (files.length !== fileIds.length) {
-    throw new HTTPException(400, { message: '部分文件不存在或无权关联' });
-  }
-
-  await executor.insert(businessFiles).values(
-    fileIds.map((fileId, index) => ({
-      businessType: 'announcement' as const,
-      businessId: announcementId,
-      fileId,
-      sortOrder: index,
-      tenantId: getCreateTenantId(user),
-    })),
-  );
+  await saveBusinessFiles(executor, 'announcement', announcementId, fileIds);
 }
 
 export async function getAnnouncementAttachments(announcementId: number): Promise<AnnouncementAttachment[]> {

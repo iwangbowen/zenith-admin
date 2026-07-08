@@ -1,10 +1,10 @@
 import { useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Card, Empty, Input, List, Space, Spin, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Card, Empty, List, Space, Spin, Toast, Typography } from '@douyinfe/semi-ui';
 import { useNavigate } from 'react-router-dom';
-import { ExternalLink, RotateCcw, Search, Send } from 'lucide-react';
+import { ExternalLink, Send } from 'lucide-react';
 import type { WorkflowDefinition } from '@zenith/shared';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { KeywordSearchToolbar } from '@/components/KeywordSearchToolbar';
 import WorkflowLaunchForm, { type WorkflowLaunchFormHandle } from '@/components/workflow/WorkflowLaunchForm';
 import WorkflowSideSheet from '@/components/workflow/WorkflowSideSheet';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
@@ -166,43 +166,15 @@ export default function WorkflowLaunchpadPage() {
     );
   };
 
-  const renderKeywordSearch = () => (
-    <Input
-      prefix={<Search size={14} />}
-      placeholder="搜索流程名称 / 说明"
-      value={keyword}
-      onChange={setKeyword}
-      onEnterPress={handleSearch}
-      showClear
-      style={{ width: 240 }}
-    />
-  );
-
-  const renderSearchButton = () => (
-    <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-  );
-
-  const renderResetButton = () => (
-    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-  );
-
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderResetButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-          </>
-        )}
-        mobileActions={renderResetButton()}
+      <KeywordSearchToolbar
+        placeholder="搜索流程名称 / 说明"
+        value={keyword}
+        onChange={setKeyword}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        width={240}
       />
 
       {renderContent()}

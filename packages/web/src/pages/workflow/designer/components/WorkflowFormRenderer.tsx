@@ -22,6 +22,7 @@ import DepartmentSelect from '@/components/DepartmentSelect';
 import DictSelect from '@/components/DictSelect';
 import ColorPickerInput from '@/components/ColorPickerInput';
 import { useWorkflowDesignerRelationOptions, useWorkflowDesignerRemoteDataSourceOptions } from '@/hooks/queries/workflow-designer';
+import { useSignaturePad } from '@/hooks/useSignaturePad';
 
 const PHONE_REGEX = /^1[3-9]\d{9}$/;
 const EMAIL_REGEX = /^[\w.+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
@@ -185,70 +186,12 @@ function DataSourceSelect({ value, onChange, dataSourceId, placeholder, disabled
 }
 
 function SignaturePad({ value, onChange, disabled, width = 360, height = 150 }: Readonly<SignaturePadProps>) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const drawing = useRef(false);
-  const lastExported = useRef<string | undefined>(undefined);
-
-  const getCtx = () => canvasRef.current?.getContext('2d') ?? null;
-
-  // 外部 value 变化时（如回显）绘制到画布
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const ctx = getCtx();
-    if (!canvas || !ctx) return;
-    if (value === lastExported.current) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (value) {
-      const img = new Image();
-      img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      img.src = value;
-    }
-    lastExported.current = value;
-  }, [value]);
-
-  const pos = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const rect = canvasRef.current!.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  };
-
-  const handleDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (disabled) return;
-    drawing.current = true;
-    const ctx = getCtx();
-    if (!ctx) return;
-    const { x, y } = pos(e);
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    canvasRef.current?.setPointerCapture(e.pointerId);
-  };
-
-  const handleMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!drawing.current || disabled) return;
-    const ctx = getCtx();
-    if (!ctx) return;
-    const { x, y } = pos(e);
-    ctx.lineTo(x, y);
-    ctx.strokeStyle = '#1d1d1d';
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
-    ctx.stroke();
-  };
-
-  const handleUp = () => {
-    if (!drawing.current) return;
-    drawing.current = false;
-    const dataUrl = canvasRef.current?.toDataURL('image/png');
-    lastExported.current = dataUrl;
-    onChange?.(dataUrl ?? '');
-  };
-
-  const handleClear = () => {
-    const canvas = canvasRef.current;
-    const ctx = getCtx();
-    if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
-    lastExported.current = '';
-    onChange?.('');
-  };
+  const { canvasRef, handlePointerDown, handlePointerMove, handlePointerUp, clear } = useSignaturePad({
+    value,
+    onChange,
+    disabled,
+    echoValue: true,
+  });
 
   return (
     <div style={{ display: 'inline-flex', flexDirection: 'column', gap: 6 }}>
@@ -264,13 +207,13 @@ function SignaturePad({ value, onChange, disabled, width = 360, height = 150 }: 
           cursor: disabled ? 'not-allowed' : 'crosshair',
           maxWidth: '100%',
         }}
-        onPointerDown={handleDown}
-        onPointerMove={handleMove}
-        onPointerUp={handleUp}
-        onPointerLeave={handleUp}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerLeave={handlePointerUp}
       />
       {!disabled && (
-        <Button size="small" theme="borderless" icon={<Eraser size={12} />} onClick={handleClear} style={{ alignSelf: 'flex-start' }}>
+        <Button size="small" theme="borderless" icon={<Eraser size={12} />} onClick={clear} style={{ alignSelf: 'flex-start' }}>
           清除
         </Button>
       )}

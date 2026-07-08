@@ -78,6 +78,54 @@ function legendSpec(palette: ChartPalette) {
   };
 }
 
+interface CartesianTooltipOptions {
+  readonly palette: ChartPalette;
+  readonly multi: boolean;
+  readonly xField: string;
+  readonly singleName: string;
+  /** 单系列时的取值字段 */
+  readonly singleField: string;
+  readonly valueFmt: (value: number, seriesName: string, datum: ChartDatum) => string;
+  readonly titleFmt?: (x: string) => string;
+}
+
+/** 折线/面积/柱状图共用的 tooltip spec（多系列 dimension + 单系列 mark） */
+function cartesianTooltipSpec({ palette, multi, xField, singleName, singleField, valueFmt, titleFmt }: CartesianTooltipOptions) {
+  return {
+    ...makeCommonTooltip(palette),
+    ...(multi
+      ? {
+          dimension: {
+            title: {
+              value: (datum?: ChartDatum | ChartDatum[]) => {
+                const xValue = datumText(firstDatum(datum), '__x');
+                return titleFmt ? titleFmt(xValue) : xValue;
+              },
+            },
+          },
+          mark: {
+            content: [
+              {
+                key: (datum?: ChartDatum) => datumText(datum, '__type'),
+                value: (datum?: ChartDatum) => valueFmt(datumNumber(datum, '__value'), datumText(datum, '__type'), datum),
+              },
+            ],
+          },
+        }
+      : {
+          mark: {
+            title: { value: (datum?: ChartDatum) => (titleFmt ? titleFmt(datumText(datum, xField)) : datumText(datum, xField)) },
+            content: [
+              {
+                key: singleName,
+                value: (datum?: ChartDatum) => valueFmt(datumNumber(datum, singleField), singleName, datum),
+              },
+            ],
+          },
+        }),
+  };
+}
+
 // ────────────────────────── 折线图 / 面积图 ──────────────────────────
 
 export interface LineAreaOptions {
@@ -136,39 +184,7 @@ function buildCartesianSeries(o: LineAreaOptions, area: boolean) {
       linearAxis('left', palette, o.axis?.yLabel),
     ],
     ...(showLegend ? { legends: legendSpec(palette) } : {}),
-    tooltip: {
-      ...makeCommonTooltip(palette),
-      ...(multi
-        ? {
-            dimension: {
-              title: {
-                value: (datum?: ChartDatum | ChartDatum[]) => {
-                  const xValue = datumText(firstDatum(datum), '__x');
-                  return titleFmt ? titleFmt(xValue) : xValue;
-                },
-              },
-            },
-            mark: {
-              content: [
-                {
-                  key: (datum?: ChartDatum) => datumText(datum, '__type'),
-                  value: (datum?: ChartDatum) => valueFmt(datumNumber(datum, '__value'), datumText(datum, '__type'), datum),
-                },
-              ],
-            },
-          }
-        : {
-            mark: {
-              title: { value: (datum?: ChartDatum) => (titleFmt ? titleFmt(datumText(datum, xField)) : datumText(datum, xField)) },
-              content: [
-                {
-                  key: singleName,
-                  value: (datum?: ChartDatum) => valueFmt(datumNumber(datum, singleField), singleName, datum),
-                },
-              ],
-            },
-          }),
-    },
+    tooltip: cartesianTooltipSpec({ palette, multi, xField, singleName, singleField, valueFmt, titleFmt }),
   };
 
   if (area) {
@@ -272,39 +288,7 @@ export function makeBarSpec(o: BarOptions): Partial<IBarChartSpec> {
       : {}),
     axes: [categoryAxis, valueAxis],
     ...(showLegend ? { legends: legendSpec(palette) } : {}),
-    tooltip: {
-      ...makeCommonTooltip(palette),
-      ...(multi
-        ? {
-            dimension: {
-              title: {
-                value: (datum?: ChartDatum | ChartDatum[]) => {
-                  const xValue = datumText(firstDatum(datum), '__x');
-                  return titleFmt ? titleFmt(xValue) : xValue;
-                },
-              },
-            },
-            mark: {
-              content: [
-                {
-                  key: (datum?: ChartDatum) => datumText(datum, '__type'),
-                  value: (datum?: ChartDatum) => valueFmt(datumNumber(datum, '__value'), datumText(datum, '__type'), datum),
-                },
-              ],
-            },
-          }
-        : {
-            mark: {
-              title: { value: (datum?: ChartDatum) => (titleFmt ? titleFmt(datumText(datum, xField)) : datumText(datum, xField)) },
-              content: [
-                {
-                  key: singleName,
-                  value: (datum?: ChartDatum) => valueFmt(datumNumber(datum, valField), singleName, datum),
-                },
-              ],
-            },
-          }),
-    },
+    tooltip: cartesianTooltipSpec({ palette, multi, xField, singleName, singleField: valField, valueFmt, titleFmt }),
   };
 }
 

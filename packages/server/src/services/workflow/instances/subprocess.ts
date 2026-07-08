@@ -210,6 +210,39 @@ async function spawnSubProcessChild(
   }
 }
 
+/** 加载并校验已发布子流程定义；不可用时按失败策略处理（detached 模式仅告警），返回 null 表示不可继续 */
+async function loadValidatedSubProcessDef(
+  parentInst: typeof workflowInstances.$inferSelect,
+  parentTask: typeof workflowTasks.$inferSelect,
+  nodeCfg: TaskAction['nodeConfig'],
+  actor: WorkflowEventActor,
+  opts?: { detached?: boolean },
+): Promise<NonNullable<Awaited<ReturnType<typeof loadPublishedSubProcessDef>>> | null> {
+  const failWith = async (errorMessage: string) => {
+    const handled = await handleNodeExecutionError({
+      instance: parentInst,
+      task: parentTask,
+      nodeKey: parentTask.nodeKey,
+      nodeName: parentTask.nodeName,
+      errorMessage,
+      actor,
+    });
+    if (!handled) await rejectTaskCore(parentTask, parentInst, errorMessage, actor);
+  };
+  const def = await loadPublishedSubProcessDef(nodeCfg.subProcessId);
+  if (!def) {
+    if (!opts?.detached) await failWith('子流程定义不存在或未发布');
+    else logger.warn('[subProcess] async child def missing', { parentInstanceId: parentInst.id, subProcessId: nodeCfg.subProcessId });
+    return null;
+  }
+  const validation = validateFlowData(def.flowData as WorkflowFlowData);
+  if (!validation.valid) {
+    if (!opts?.detached) await failWith(`子流程定义无效：${validation.errors[0]}`);
+    return null;
+  }
+  return def;
+}
+
 /** 单实例子流程：发起一个子实例，结束后回写出参并唤醒父任务 */
 async function spawnSingleSubProcessChild(
   parentInst: typeof workflowInstances.$inferSelect,
@@ -218,38 +251,8 @@ async function spawnSingleSubProcessChild(
   actor: WorkflowEventActor,
   opts?: { detached?: boolean },
 ): Promise<void> {
-  const def = await loadPublishedSubProcessDef(nodeCfg.subProcessId);
-  if (!def) {
-    if (!opts?.detached) {
-      const handled = await handleNodeExecutionError({
-        instance: parentInst,
-        task: parentTask,
-        nodeKey: parentTask.nodeKey,
-        nodeName: parentTask.nodeName,
-        errorMessage: '子流程定义不存在或未发布',
-        actor,
-      });
-      if (!handled) await rejectTaskCore(parentTask, parentInst, '子流程定义不存在或未发布', actor);
-    }
-    else logger.warn('[subProcess] async child def missing', { parentInstanceId: parentInst.id, subProcessId: nodeCfg.subProcessId });
-    return;
-  }
-  const validation = validateFlowData(def.flowData as WorkflowFlowData);
-  if (!validation.valid) {
-    if (!opts?.detached) {
-      const message = `子流程定义无效：${validation.errors[0]}`;
-      const handled = await handleNodeExecutionError({
-        instance: parentInst,
-        task: parentTask,
-        nodeKey: parentTask.nodeKey,
-        nodeName: parentTask.nodeName,
-        errorMessage: message,
-        actor,
-      });
-      if (!handled) await rejectTaskCore(parentTask, parentInst, message, actor);
-    }
-    return;
-  }
+  const def = await loadValidatedSubProcessDef(parentInst, parentTask, nodeCfg, actor, opts);
+  if (!def) return;
   const parentFormData = (parentInst.formData ?? {}) as Record<string, unknown>;
   const childFormData = buildChildFormData(nodeCfg.subProcessFieldMapping, parentFormData);
   const childInitiatorId = await resolveChildInitiator(nodeCfg, parentInst);
@@ -345,37 +348,8 @@ async function spawnMultiSubProcess(
   actor: WorkflowEventActor,
   opts?: { detached?: boolean },
 ): Promise<void> {
-  const def = await loadPublishedSubProcessDef(nodeCfg.subProcessId);
-  if (!def) {
-    if (!opts?.detached) {
-      const handled = await handleNodeExecutionError({
-        instance: parentInst,
-        task: parentTask,
-        nodeKey: parentTask.nodeKey,
-        nodeName: parentTask.nodeName,
-        errorMessage: '子流程定义不存在或未发布',
-        actor,
-      });
-      if (!handled) await rejectTaskCore(parentTask, parentInst, '子流程定义不存在或未发布', actor);
-    }
-    return;
-  }
-  const validation = validateFlowData(def.flowData as WorkflowFlowData);
-  if (!validation.valid) {
-    if (!opts?.detached) {
-      const message = `子流程定义无效：${validation.errors[0]}`;
-      const handled = await handleNodeExecutionError({
-        instance: parentInst,
-        task: parentTask,
-        nodeKey: parentTask.nodeKey,
-        nodeName: parentTask.nodeName,
-        errorMessage: message,
-        actor,
-      });
-      if (!handled) await rejectTaskCore(parentTask, parentInst, message, actor);
-    }
-    return;
-  }
+  const def = await loadValidatedSubProcessDef(parentInst, parentTask, nodeCfg, actor, opts);
+  if (!def) return;
   const parentFormData = (parentInst.formData ?? {}) as Record<string, unknown>;
   const items = resolveMultiItems(nodeCfg, parentFormData);
   if (items.length === 0) {

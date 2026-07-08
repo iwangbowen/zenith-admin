@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Input, Select, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Input, Select, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { RotateCcw, Search } from 'lucide-react';
 import type { WorkflowInstance } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { KeywordSearchToolbar } from '@/components/KeywordSearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
@@ -120,43 +119,14 @@ export default function CcToMePage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <Input
-      prefix={<Search size={14} />}
-      placeholder="搜索标题 / 流程名称"
-      value={draftKeyword}
-      onChange={setDraftKeyword}
-      onEnterPress={handleSearch}
-      showClear
-      style={{ width: 220 }}
-    />
-  );
-
-  const renderSearchButton = () => (
-    <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-  );
-
-  const renderResetButton = () => (
-    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-  );
-
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderResetButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-          </>
-        )}
-        mobileActions={renderResetButton()}
+      <KeywordSearchToolbar
+        placeholder="搜索标题 / 流程名称"
+        value={draftKeyword}
+        onChange={setDraftKeyword}
+        onSearch={handleSearch}
+        onReset={handleReset}
       />
       <ConfigurableTable
         bordered

@@ -4,7 +4,6 @@ import {
   Button,
   Breadcrumb,
   Descriptions,
-  Modal,
   Pagination,
   SideSheet,
   Space,
@@ -17,7 +16,8 @@ import { Folder, ChevronLeft, ChevronRight, LayoutGrid, List as ListIcon } from 
 import type { FileStorageConfig, FolderEntry, ManagedFile } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { formatDateTime } from '@/utils/date';
-import { canPreviewFile, formatFileSize, getFileFullUrl, getFileTypeIcon } from '@/utils/file-utils';
+import { formatFileSize, getFileFullUrl, getFileTypeIcon } from '@/utils/file-utils';
+import { buildManagedFileActions } from '@/utils/managed-file-actions';
 import { renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
@@ -190,47 +190,13 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
             },
           ];
         }
-        const isPreviewable = canPreviewFile(record.mimeType);
-        return [
-          {
-            key: 'preview',
-            label: '预览',
-            disabled: !isPreviewable,
-            loading: preview.previewLoadingId === record.id,
-            onClick: () => preview.handlePreview(record),
-          },
-          {
-            key: 'download',
-            label: '下载',
-            loading: preview.downloadLoadingId === record.id,
-            onClick: () => preview.handleDownload(record),
-          },
-          {
-            key: 'detail',
-            label: '详情',
-            onClick: () => { void handleOpenDetail(record); },
-          },
-          {
-            key: 'copy-url',
-            label: '复制链接',
-            onClick: () => handleCopyUrl(record),
-          },
-          {
-            key: 'delete',
-            label: '删除',
-            danger: true,
-            dividerBefore: true,
-            hidden: !hasPermission('system:file:delete'),
-            onClick: () => {
-              Modal.confirm({
-                title: '确认删除此文件？',
-                content: '删除文件记录后，将同步尝试删除实际存储对象。',
-                okButtonProps: { type: 'danger', theme: 'solid' },
-                onOk: () => handleDelete(record),
-              });
-            },
-          },
-        ];
+        return buildManagedFileActions(record, {
+          preview,
+          onDetail: (file) => { void handleOpenDetail(file); },
+          onCopyUrl: handleCopyUrl,
+          onDelete: handleDelete,
+          canDelete: hasPermission('system:file:delete'),
+        });
       },
     }),
   ];

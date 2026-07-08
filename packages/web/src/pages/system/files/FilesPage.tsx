@@ -25,7 +25,8 @@ import type { ManagedFile } from '@zenith/shared';
 import { TOKEN_KEY } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
-import { formatFileSize, getFileTypeIcon, fetchProtectedFile, getFileFullUrl, canPreviewFile } from '@/utils/file-utils';
+import { formatFileSize, getFileTypeIcon, fetchProtectedFile, getFileFullUrl } from '@/utils/file-utils';
+import { buildManagedFileActions } from '@/utils/managed-file-actions';
 import { chunkedUpload, CHUNK_SIZE } from '@/utils/chunked-upload';
 import { FilePreviewLayer } from '@/components/FilePreviewLayer';
 import { useFilePreview } from '@/hooks/useFilePreview';
@@ -378,51 +379,69 @@ export default function FilesPage() {
     createOperationColumn<ManagedFile>({
       width: 180,
       desktopInlineKeys: ['preview', 'download'],
-      actions: (record) => {
-        const isPreviewable = canPreviewFile(record.mimeType);
-        return [
-          {
-            key: 'preview',
-            label: '预览',
-            disabled: !isPreviewable,
-            loading: preview.previewLoadingId === record.id,
-            onClick: () => preview.handlePreview(record),
-          },
-          {
-            key: 'download',
-            label: '下载',
-            loading: preview.downloadLoadingId === record.id,
-            onClick: () => preview.handleDownload(record),
-          },
-          {
-            key: 'detail',
-            label: '详情',
-            onClick: () => { void handleOpenDetail(record); },
-          },
-          {
-            key: 'copy-url',
-            label: '复制链接',
-            onClick: () => handleCopyUrl(record),
-          },
-          {
-            key: 'delete',
-            label: '删除',
-            danger: true,
-            dividerBefore: true,
-            hidden: !hasPermission('system:file:delete'),
-            onClick: () => {
-              Modal.confirm({
-                title: '确认删除此文件？',
-                content: '删除文件记录后，将同步尝试删除实际存储对象。',
-                okButtonProps: { type: 'danger', theme: 'solid' },
-                onOk: () => handleDelete(record),
-              });
-            },
-          },
-        ];
-      },
+      actions: (record) => buildManagedFileActions(record, {
+        preview,
+        onDetail: (file) => { void handleOpenDetail(file); },
+        onCopyUrl: handleCopyUrl,
+        onDelete: handleDelete,
+        canDelete: hasPermission('system:file:delete'),
+      }),
     }),
   ];
+
+  const renderKeywordSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="搜索文件名 / 对象键 / 文件服务"
+      value={draftParams.keyword}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))}
+      onEnterPress={handleSearch}
+      style={{ width: 'min(280px, 100%)' }}
+      showClear
+    />
+  );
+
+  const renderProviderFilter = () => (
+    <Select
+      placeholder="存储类型"
+      value={draftParams.provider || undefined}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, provider: (value as string) ?? '' }))}
+      style={{ width: 140 }}
+      optionList={[
+        { value: '', label: '全部类型' },
+        { value: 'local', label: '本地磁盘' },
+        { value: 'oss', label: '阿里云 OSS' },
+        { value: 's3', label: 'S3 存储' },
+        { value: 'cos', label: '腾讯云 COS' },
+      ]}
+    />
+  );
+
+  const renderFileTypeFilter = () => (
+    <Select
+      placeholder="文件类型"
+      value={draftParams.fileType || undefined}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, fileType: (value as string) ?? '' }))}
+      style={{ width: 120 }}
+      optionList={[
+        { value: '', label: '全部' },
+        { value: 'image', label: '图片' },
+        { value: 'video', label: '视频' },
+        { value: 'audio', label: '音频' },
+        { value: 'document', label: '文档' },
+      ]}
+    />
+  );
+
+  const renderTimeRangeFilter = () => (
+    <DatePicker
+      type="dateTimeRange"
+      placeholder={['开始时间', '结束时间']}
+      value={draftParams.timeRange ?? undefined}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
+      style={{ width: 'min(360px, 100%)' }}
+    />
+  );
 
   return (
     <div className="page-container page-tabs-page">
@@ -431,48 +450,10 @@ export default function FilesPage() {
       <SearchToolbar
         primary={(
           <>
-            <Input
-              prefix={<Search size={14} />}
-              placeholder="搜索文件名 / 对象键 / 文件服务"
-              value={draftParams.keyword}
-              onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))}
-              onEnterPress={handleSearch}
-              style={{ width: 'min(280px, 100%)' }}
-              showClear
-            />
-            <Select
-              placeholder="存储类型"
-              value={draftParams.provider || undefined}
-              onChange={(value) => setDraftParams((prev) => ({ ...prev, provider: (value as string) ?? '' }))}
-              style={{ width: 140 }}
-              optionList={[
-                { value: '', label: '全部类型' },
-                { value: 'local', label: '本地磁盘' },
-                { value: 'oss', label: '阿里云 OSS' },
-                { value: 's3', label: 'S3 存储' },
-                { value: 'cos', label: '腾讯云 COS' },
-              ]}
-            />
-            <Select
-              placeholder="文件类型"
-              value={draftParams.fileType || undefined}
-              onChange={(value) => setDraftParams((prev) => ({ ...prev, fileType: (value as string) ?? '' }))}
-              style={{ width: 120 }}
-              optionList={[
-                { value: '', label: '全部' },
-                { value: 'image', label: '图片' },
-                { value: 'video', label: '视频' },
-                { value: 'audio', label: '音频' },
-                { value: 'document', label: '文档' },
-              ]}
-            />
-            <DatePicker
-              type="dateTimeRange"
-              placeholder={['开始时间', '结束时间']}
-              value={draftParams.timeRange ?? undefined}
-              onChange={(value) => setDraftParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
-              style={{ width: 'min(360px, 100%)' }}
-            />
+            {renderKeywordSearch()}
+            {renderProviderFilter()}
+            {renderFileTypeFilter()}
+            {renderTimeRangeFilter()}
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           </>
@@ -510,15 +491,7 @@ export default function FilesPage() {
         )}
         mobilePrimary={(
           <>
-            <Input
-              prefix={<Search size={14} />}
-              placeholder="搜索文件名 / 对象键 / 文件服务"
-              value={draftParams.keyword}
-              onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))}
-              onEnterPress={handleSearch}
-              style={{ width: 'min(280px, 100%)' }}
-              showClear
-            />
+            {renderKeywordSearch()}
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             {hasPermission('system:file:upload') && (
               <Button
@@ -535,39 +508,9 @@ export default function FilesPage() {
         )}
         mobileFilters={(
           <>
-            <Select
-              placeholder="存储类型"
-              value={draftParams.provider || undefined}
-              onChange={(value) => setDraftParams((prev) => ({ ...prev, provider: (value as string) ?? '' }))}
-              style={{ width: 140 }}
-              optionList={[
-                { value: '', label: '全部类型' },
-                { value: 'local', label: '本地磁盘' },
-                { value: 'oss', label: '阿里云 OSS' },
-                { value: 's3', label: 'S3 存储' },
-                { value: 'cos', label: '腾讯云 COS' },
-              ]}
-            />
-            <Select
-              placeholder="文件类型"
-              value={draftParams.fileType || undefined}
-              onChange={(value) => setDraftParams((prev) => ({ ...prev, fileType: (value as string) ?? '' }))}
-              style={{ width: 120 }}
-              optionList={[
-                { value: '', label: '全部' },
-                { value: 'image', label: '图片' },
-                { value: 'video', label: '视频' },
-                { value: 'audio', label: '音频' },
-                { value: 'document', label: '文档' },
-              ]}
-            />
-            <DatePicker
-              type="dateTimeRange"
-              placeholder={['开始时间', '结束时间']}
-              value={draftParams.timeRange ?? undefined}
-              onChange={(value) => setDraftParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
-              style={{ width: 'min(360px, 100%)' }}
-            />
+            {renderProviderFilter()}
+            {renderFileTypeFilter()}
+            {renderTimeRangeFilter()}
           </>
         )}
         mobileActions={selectedRowKeys.length > 0 ? (

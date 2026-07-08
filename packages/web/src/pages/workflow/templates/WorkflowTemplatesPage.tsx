@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Input, Modal, Space, Tag, Toast } from '@douyinfe/semi-ui';
+import { Modal, Space, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { LayoutTemplate, RotateCcw, Search } from 'lucide-react';
+import { LayoutTemplate } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { WorkflowTemplate, WorkflowDefinition } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { KeywordSearchToolbar } from '@/components/KeywordSearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePermission } from '@/hooks/usePermission';
@@ -189,43 +189,15 @@ export default function WorkflowTemplatesPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <Input
-      prefix={<Search size={14} />}
-      placeholder="搜索名称 / 编码 / 描述"
-      value={keyword}
-      onChange={setKeyword}
-      onEnterPress={handleSearch}
-      showClear
-      style={{ width: 240 }}
-    />
-  );
-
-  const renderSearchButton = () => (
-    <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-  );
-
-  const renderResetButton = () => (
-    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-  );
-
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderResetButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-          </>
-        )}
-        mobileActions={renderResetButton()}
+      <KeywordSearchToolbar
+        placeholder="搜索名称 / 编码 / 描述"
+        value={keyword}
+        onChange={setKeyword}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        width={240}
       />
 
       <ConfigurableTable<WorkflowTemplate>

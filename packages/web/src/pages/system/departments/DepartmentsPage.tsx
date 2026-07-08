@@ -8,13 +8,9 @@ import {
   Modal,
   Row,
   Select,
-  Space,
   Spin,
   Switch,
   Toast,
-  Avatar,
-  AvatarGroup,
-  Tag,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
@@ -27,6 +23,7 @@ import { request } from '@/utils/request';
 import { toQueryString, unwrap } from '@/lib/query';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { UserPreviewCell } from '@/components/UserPreviewCell';
 import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -284,30 +281,7 @@ export default function DepartmentsPage() {
     { title: '排序', dataIndex: 'sort', width: 90 },
     {
       title: '成员', dataIndex: 'userPreview', width: 150,
-      render: (_: unknown, record: Department) => {
-        const preview = record.userPreview ?? [];
-        const count = record.userCount ?? 0;
-        if (count === 0) return <Tag color="blue">0</Tag>;
-        return (
-          <Space spacing={6}>
-            <AvatarGroup maxCount={4} size="extra-extra-small" overlapFrom="end">
-              {preview.map((m) => (
-                <Avatar
-                  key={m.id}
-                  style={{ width: 22, height: 22, minWidth: 22, lineHeight: '22px', fontSize: 12, cursor: 'default' }}
-                  src={m.avatar ?? undefined}
-                  alt={m.nickname}
-                  color="light-blue"
-                  title={m.nickname}
-                >
-                  {m.nickname?.[0]}
-                </Avatar>
-              ))}
-            </AvatarGroup>
-            <Tag color="blue" style={{ flexShrink: 0 }}>{count}</Tag>
-          </Space>
-        );
-      },
+      render: (_: unknown, record: Department) => <UserPreviewCell preview={record.userPreview} count={record.userCount} />,
     },
     createdAtColumn,
     {

@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Input, Button, DatePicker, Select, Tabs, TabPane, InputNumber, SplitButtonGroup, Dropdown, Toast } from '@douyinfe/semi-ui';
-import AppModal from '@/components/AppModal';
-import { Search, RotateCcw, ChevronDown, Trash2 } from 'lucide-react';
-import { request } from '@/utils/request';
+import { Input, Button, DatePicker, Select, Tabs, TabPane, InputNumber } from '@douyinfe/semi-ui';
+import { Search, RotateCcw } from 'lucide-react';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
 import { OperationLogsTable } from '@/components/logs/OperationLogsTable';
+import { ClearLogsButtons, ClearLogsMobileButtons, ClearLogsModal } from '@/components/logs/ClearLogsControl';
 import { usePagination } from '@/hooks/usePagination';
+import { useClearLogs } from '@/hooks/useClearLogs';
 import { formatDateTimeForApi } from '@/utils/date';
 import OperationLogStatsPanel from './OperationLogStatsPanel';
 import { operationLogKeys, useCleanOperationLogs, useOperationLogList } from '@/hooks/queries/operation-logs';
@@ -30,11 +30,6 @@ const defaultParams: SearchParams = { username: '', module: '', description: '',
 export default function OperationLogsPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'list' | 'stats'>('list');
-  const [clearModalVisible, setClearModalVisible] = useState(false);
-  const [clearMonths, setClearMonths] = useState(0);
-  const [clearPassword, setClearPassword] = useState('');
-  const [clearPasswordError, setClearPasswordError] = useState('');
-  const [clearVerifying, setClearVerifying] = useState(false);
   const { page, pageSize, setPage, buildPagination } = usePagination();
   const [draftParams, setDraftParams] = useState<SearchParams>(defaultParams);
   const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultParams);
@@ -57,6 +52,10 @@ export default function OperationLogsPage() {
   const total = listQuery.data?.total ?? 0;
   const cleanLogsMutation = useCleanOperationLogs();
   const clearLogsLoading = cleanLogsMutation.isPending;
+  const clearLogs = useClearLogs({
+    clean: (months) => cleanLogsMutation.mutateAsync(months),
+    onCleared: () => setPage(1),
+  });
 
   const buildExportQuery = () => {
     const p = draftParams;
@@ -85,32 +84,6 @@ export default function OperationLogsPage() {
     setDraftParams(defaultParams);
     setSubmittedParams(defaultParams);
     void queryClient.invalidateQueries({ queryKey: operationLogKeys.all });
-  };
-
-  const clearLogsLabels: Record<number, string> = { 0: '全部', 1: '一个月', 3: '三个月', 6: '六个月', 12: '一年' };
-
-  const handleClearLogs = (months: number) => {
-    setClearMonths(months);
-    setClearPassword('');
-    setClearPasswordError('');
-    setClearModalVisible(true);
-  };
-
-  const handleConfirmClear = async () => {
-    if (!clearPassword) { setClearPasswordError('请输入密码'); return; }
-    setClearVerifying(true);
-    try {
-      const verifyRes = await request.post('/api/auth/verify-password', { password: clearPassword }, { skipAuth: true });
-      if (verifyRes.code !== 0) { setClearPasswordError('密码错误，请重试'); return; }
-    } catch {
-      setClearPasswordError('密码错误，请重试'); return;
-    } finally {
-      setClearVerifying(false);
-    }
-    setClearModalVisible(false);
-    await cleanLogsMutation.mutateAsync(clearMonths);
-    Toast.success('清除成功');
-    setPage(1);
   };
 
   const renderUsernameSearch = () => (
@@ -237,40 +210,9 @@ export default function OperationLogsPage() {
 
   const renderMobileExportActions = () => <ExportButton entity="system.operation-logs" query={buildExportQuery()} variant="flat" />;
 
-  const renderClearButtons = () => (
-    <SplitButtonGroup>
-      <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={clearLogsLoading} onClick={() => handleClearLogs(12)}>清除日志</Button>
-      <Dropdown
-        trigger="click"
-        position="bottomRight"
-        clickToHide
-        render={
-          <Dropdown.Menu>
-            {([12, 6, 3, 1] as const).map((m) => (
-              <Dropdown.Item key={m} onClick={() => handleClearLogs(m)}>清除{clearLogsLabels[m]}前的日志</Dropdown.Item>
-            ))}
-            <Dropdown.Divider />
-            <Dropdown.Item type="danger" onClick={() => handleClearLogs(0)}>清除全部日志</Dropdown.Item>
-          </Dropdown.Menu>
-        }
-      >
-        <Button type="danger" theme="light" icon={<ChevronDown size={14} />} />
-      </Dropdown>
-    </SplitButtonGroup>
-  );
+  const renderClearButtons = () => <ClearLogsButtons loading={clearLogsLoading} onClear={clearLogs.openClearModal} />;
 
-  const renderMobileClearActions = () => (
-    <>
-      {([12, 6, 3, 1] as const).map((m) => (
-        <Button key={m} type="danger" theme="light" icon={<Trash2 size={14} />} loading={clearLogsLoading} onClick={() => handleClearLogs(m)}>
-          清除{clearLogsLabels[m]}前的日志
-        </Button>
-      ))}
-      <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={clearLogsLoading} onClick={() => handleClearLogs(0)}>
-        清除全部日志
-      </Button>
-    </>
-  );
+  const renderMobileClearActions = () => <ClearLogsMobileButtons loading={clearLogsLoading} onClear={clearLogs.openClearModal} />;
 
   return (
     <div className="page-container page-tabs-page">
@@ -346,29 +288,7 @@ export default function OperationLogsPage() {
           <OperationLogStatsPanel />
         </TabPane>
       </Tabs>
-      <AppModal
-        title={`清除${clearMonths === 0 ? '全部' : clearLogsLabels[clearMonths] + '前的'}操作日志`}
-        visible={clearModalVisible}
-        onCancel={() => setClearModalVisible(false)}
-        okText="确认清除"
-        okButtonProps={{ type: 'danger', loading: clearVerifying }}
-        onOk={handleConfirmClear}
-        maskClosable={false}
-      >
-        <p style={{ marginBottom: 12 }}>
-          此操作将永久删除{clearMonths === 0 ? '所有' : clearLogsLabels[clearMonths] + '前的'}操作日志，不可恢复。
-          <br />请输入您的管理员密码以确认：
-        </p>
-        <Input
-          type="password"
-          placeholder="请输入密码"
-          value={clearPassword}
-          onChange={(v) => { setClearPassword(v); setClearPasswordError(''); }}
-          onEnterPress={handleConfirmClear}
-          validateStatus={clearPasswordError ? 'error' : undefined}
-        />
-        {clearPasswordError && <p style={{ color: 'var(--semi-color-danger)', marginTop: 4, fontSize: 12 }}>{clearPasswordError}</p>}
-      </AppModal>
+      <ClearLogsModal logName="操作日志" control={clearLogs} />
     </div>
   );
 }

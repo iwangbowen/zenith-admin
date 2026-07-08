@@ -58,6 +58,57 @@ interface SearchParams {
 
 const defaultSearchParams: SearchParams = { keyword: '', status: '' };
 
+const runStatusColor: Record<string, import('@douyinfe/semi-ui/lib/es/tag/interface').TagColor> = {
+  success: 'green',
+  fail: 'red',
+  running: 'blue',
+};
+
+const runStatusLabel: Record<string, string> = { success: '成功', fail: '失败', running: '运行中' };
+
+/** 执行日志表格公共列（两个日志抽屉共用） */
+const buildRunLogColumns = (outputWidth: number) => [
+  {
+    title: '执行次数',
+    dataIndex: 'executionCount',
+    width: 90,
+  },
+  {
+    title: '开始时间',
+    dataIndex: 'startedAt',
+    width: 180,
+    render: (v: string) => formatDateTime(v),
+  },
+  {
+    title: '结束时间',
+    dataIndex: 'endedAt',
+    width: 180,
+    render: (v: string | null) => v ? formatDateTime(v) : '—',
+  },
+  {
+    title: '耗时 ms',
+    dataIndex: 'durationMs',
+    width: 90,
+    render: (v: number | null) => v ?? '—',
+  },
+  {
+    title: '状态',
+    dataIndex: 'status',
+    width: 80,
+    render: (v: string) => (
+      <Tag color={runStatusColor[v] ?? 'grey'} size="small">
+        {runStatusLabel[v] ?? v}
+      </Tag>
+    ),
+  },
+  {
+    title: '输出',
+    dataIndex: 'output',
+    width: outputWidth,
+    render: renderEllipsis,
+  },
+];
+
 export default function CronJobsPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
@@ -216,14 +267,6 @@ export default function CronJobsPage() {
       }
     : { status: 'enabled', retryCount: 0, retryInterval: 0, retryBackoff: false };
 
-  const runStatusColor: Record<string, import('@douyinfe/semi-ui/lib/es/tag/interface').TagColor> = {
-    success: 'green',
-    fail: 'red',
-    running: 'blue',
-  };
-
-  const lastRunStatusLabel: Record<string, string> = { success: '成功', fail: '失败', running: '运行中' };
-
   const columns: ColumnProps<CronJob>[] = [
     { title: '任务名称', dataIndex: 'name', width: 180, render: renderEllipsis },
     {
@@ -276,7 +319,7 @@ export default function CronJobsPage() {
         return (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap' }}>
             <Tag color={runStatusColor[record.lastRunStatus] ?? 'grey'} size="small">
-              {lastRunStatusLabel[record.lastRunStatus] ?? record.lastRunStatus}
+              {runStatusLabel[record.lastRunStatus] ?? record.lastRunStatus}
             </Tag>
             {record.lastRunAt && (
               <span style={{ fontSize: 12, color: 'var(--semi-color-text-2)', whiteSpace: 'nowrap' }}>
@@ -627,45 +670,7 @@ export default function CronJobsPage() {
               width: 160,
               render: renderEllipsis,
             },
-            {
-              title: '执行次数',
-              dataIndex: 'executionCount',
-              width: 90,
-            },
-            {
-              title: '开始时间',
-              dataIndex: 'startedAt',
-              width: 180,
-              render: (v: string) => formatDateTime(v),
-            },
-            {
-              title: '结束时间',
-              dataIndex: 'endedAt',
-              width: 180,
-              render: (v: string | null) => v ? formatDateTime(v) : '—',
-            },
-            {
-              title: '耗时 ms',
-              dataIndex: 'durationMs',
-              width: 90,
-              render: (v: number | null) => v ?? '—',
-            },
-            {
-              title: '状态',
-              dataIndex: 'status',
-              width: 80,
-              render: (v: string) => (
-                <Tag color={runStatusColor[v] ?? 'grey'} size="small">
-                  {({'success': '成功', 'fail': '失败', 'running': '运行中'} as Record<string, string>)[v] ?? v}
-                </Tag>
-              ),
-            },
-            {
-              title: '输出',
-              dataIndex: 'output',
-              width: 260,
-              render: renderEllipsis,
-            },
+            ...buildRunLogColumns(260),
           ]}
           pagination={{
             currentPage: allLogsPage,
@@ -717,47 +722,7 @@ export default function CronJobsPage() {
           loading={jobLogsQuery.isFetching}
           dataSource={jobLogsQuery.data?.list ?? []}
           scroll={{ x: 'max-content' }}
-          columns={[
-            {
-              title: '执行次数',
-              dataIndex: 'executionCount',
-              width: 90,
-            },
-            {
-              title: '开始时间',
-              dataIndex: 'startedAt',
-              width: 180,
-              render: (v: string) => formatDateTime(v),
-            },
-            {
-              title: '结束时间',
-              dataIndex: 'endedAt',
-              width: 180,
-              render: (v: string | null) => v ? formatDateTime(v) : '—',
-            },
-            {
-              title: '耗时 ms',
-              dataIndex: 'durationMs',
-              width: 90,
-              render: (v: number | null) => v ?? '—',
-            },
-            {
-              title: '状态',
-              dataIndex: 'status',
-              width: 80,
-              render: (v: string) => (
-                <Tag color={runStatusColor[v] ?? 'grey'} size="small">
-                  {({'success': '成功', 'fail': '失败', 'running': '运行中'} as Record<string, string>)[v] ?? v}
-                </Tag>
-              ),
-            },
-            {
-              title: '输出',
-              dataIndex: 'output',
-              width: 270,
-              render: renderEllipsis,
-            },
-          ]}
+          columns={buildRunLogColumns(270)}
           pagination={{
             currentPage: logsPage,
             pageSize: logsPageSize,
