@@ -267,7 +267,7 @@ export default function ProcessesPage() {
       title: '用户',
       dataIndex: 'user',
       width: 100,
-      render: (v: string) => v || <span style={{ color: '#bbb' }}>—</span>,
+      render: (v: string) => v || <span style={{ color: 'var(--semi-color-text-3)' }}>—</span>,
     },
     {
       title: '状态',
@@ -327,7 +327,7 @@ export default function ProcessesPage() {
       title: '启动时间',
       dataIndex: 'startTime',
       width: 155,
-      render: (v: string | null) => v ?? <span style={{ color: '#bbb' }}>—</span>,
+      render: (v: string | null) => v ?? <span style={{ color: 'var(--semi-color-text-3)' }}>—</span>,
     },
     {
       title: '端口',
@@ -335,7 +335,7 @@ export default function ProcessesPage() {
       width: 130,
       render: (v: string | null) => v
         ? <Typography.Text style={{ fontSize: 12 }}>{v}</Typography.Text>
-        : <span style={{ color: '#bbb' }}>—</span>,
+        : <span style={{ color: 'var(--semi-color-text-3)' }}>—</span>,
     },
     createOperationColumn<ProcessInfo>({
       width: hasPermission('system:process:priority') ? 230 : 160,
@@ -378,7 +378,7 @@ export default function ProcessesPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 6,
               border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)',
               padding: '0 8px', background: 'var(--semi-color-bg-1)', width: 240 }}>
-              <Search size={14} style={{ color: '#8c8c8c', flexShrink: 0 }} />
+              <Search size={14} style={{ color: 'var(--semi-color-text-2)', flexShrink: 0 }} />
               <input
                 style={{ border: 'none', outline: 'none', background: 'transparent', flex: 1,
                   fontSize: 14, color: 'inherit', padding: '5px 0' }}
@@ -389,7 +389,7 @@ export default function ProcessesPage() {
               {keyword && (
                 <button
                   style={{ border: 'none', background: 'transparent', cursor: 'pointer',
-                    color: '#8c8c8c', display: 'flex', alignItems: 'center', padding: 0 }}
+                    color: 'var(--semi-color-text-2)', display: 'flex', alignItems: 'center', padding: 0 }}
                   onClick={() => setKeyword('')}
                 >
                   <X size={12} />
@@ -419,7 +419,7 @@ export default function ProcessesPage() {
               <span style={{
                 width: 8, height: 8, borderRadius: '50%',
                 background: sseIndicator.color,
-                boxShadow: sseStatus === 'open' ? `0 0 0 2px ${sseIndicator.color}40` : undefined,
+                boxShadow: sseStatus === 'open' ? '0 0 0 2px color-mix(in srgb, var(--semi-color-success) 25%, transparent)' : undefined,
               }} />
               <Typography.Text type="tertiary" size="small">{sseIndicator.text}</Typography.Text>
               {lastUpdated && (
@@ -445,7 +445,7 @@ export default function ProcessesPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 6,
             border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)',
             padding: '0 8px', background: 'var(--semi-color-bg-1)', width: 240 }}>
-            <Search size={14} style={{ color: '#8c8c8c', flexShrink: 0 }} />
+            <Search size={14} style={{ color: 'var(--semi-color-text-2)', flexShrink: 0 }} />
             <input
               style={{ border: 'none', outline: 'none', background: 'transparent', flex: 1,
                 fontSize: 14, color: 'inherit', padding: '5px 0' }}
@@ -456,7 +456,7 @@ export default function ProcessesPage() {
             {keyword && (
               <button
                 style={{ border: 'none', background: 'transparent', cursor: 'pointer',
-                  color: '#8c8c8c', display: 'flex', alignItems: 'center', padding: 0 }}
+                  color: 'var(--semi-color-text-2)', display: 'flex', alignItems: 'center', padding: 0 }}
                 onClick={() => setKeyword('')}
               >
                 <X size={12} />

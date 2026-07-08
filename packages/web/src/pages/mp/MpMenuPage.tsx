@@ -265,7 +265,7 @@ export default function MpMenuPage() {
             borderRadius: 20,
             overflow: 'hidden',
             border: '1px solid var(--semi-color-border)',
-            boxShadow: '0 4px 24px rgba(0,0,0,0.1)',
+            boxShadow: 'var(--semi-shadow-elevated)',
           }}>
             {/* 屏幕内容 */}
             <div style={{

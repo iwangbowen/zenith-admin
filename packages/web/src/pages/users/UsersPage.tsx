@@ -459,9 +459,9 @@ export default function UsersPage() {
               width: 8,
               height: 8,
               borderRadius: '50%',
-              background: record.isOnline ? '#10b981' : 'var(--semi-color-fill-2)',
+              background: record.isOnline ? 'var(--semi-color-success)' : 'var(--semi-color-fill-2)',
               display: 'inline-block',
-              boxShadow: record.isOnline ? '0 0 0 2px #d1fae5' : undefined,
+              boxShadow: record.isOnline ? '0 0 0 2px color-mix(in srgb, var(--semi-color-success) 20%, transparent)' : undefined,
             }}
           />
           <UserAvatar name={record.nickname || record.username} avatar={record.avatar} semiSize="extra-small" size={24} />

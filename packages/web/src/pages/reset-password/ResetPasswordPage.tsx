@@ -133,7 +133,7 @@ export default function ResetPasswordPage() {
         width: 400, padding: '40px 36px',
         background: 'var(--semi-color-bg-2)',
         borderRadius: 'var(--semi-border-radius-large)',
-        boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
+        boxShadow: 'var(--semi-shadow-elevated)',
       }}>
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <div style={{

@@ -525,7 +525,7 @@ export default function WorkflowFormInlineEditor({
             background: 'var(--semi-color-bg-1)',
             border: '1px solid var(--semi-color-border)',
             borderRadius: 20,
-            boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+            boxShadow: 'var(--semi-shadow-elevated)',
           }}>
             {previewBody}
           </div>

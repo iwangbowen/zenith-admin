@@ -61,7 +61,7 @@ export function CardMessage({
         overflow: 'hidden',
         cursor: clickable ? 'pointer' : 'default',
         transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
-        boxShadow: clickable && hovered ? '0 2px 8px rgba(0,0,0,0.12)' : 'none',
+        boxShadow: clickable && hovered ? 'var(--semi-shadow-elevated)' : 'none',
       }}
     >
       {card.cover && (
