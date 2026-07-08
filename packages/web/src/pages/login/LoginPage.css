@@ -103,7 +103,7 @@
 .login-logo {
   width: 40px;
   height: 40px;
-  border-radius: 10px;
+  border-radius: var(--semi-border-radius-large);
   background: linear-gradient(135deg, var(--semi-color-primary-hover) 0%, var(--semi-color-primary) 100%);
   color: #ffffff;
   font-size: 17px;
@@ -195,7 +195,7 @@
   width: 32px;
   height: 2px;
   background: rgba(255, 255, 255, 0.18);
-  border-radius: 2px;
+  border-radius: var(--semi-border-radius-small);
   margin-bottom: 28px;
 }
 
@@ -364,7 +364,7 @@ body[theme-mode='dark'] .login-form-wrapper .semi-typography-tertiary {
 }
 
 .login-form-wrapper .semi-input-wrapper {
-  border-radius: 8px;
+  border-radius: var(--semi-border-radius-medium);
 }
 
 .login-form-wrapper .semi-tabs-bar-line .semi-tabs-tab {
@@ -376,7 +376,7 @@ body[theme-mode='dark'] .login-form-wrapper .semi-tabs-bar-line .semi-tabs-tab {
 }
 
 .login-form-wrapper .semi-button.semi-button-primary {
-  border-radius: 12px;
+  border-radius: var(--semi-border-radius-large);
   height: 46px;
   font-size: 15px;
   font-weight: 500;

@@ -43,7 +43,7 @@
 .md-preview-content pre {
   background: var(--semi-color-fill-0) !important;
   border: 1px solid var(--semi-color-border);
-  border-radius: 6px;
+  border-radius: var(--semi-border-radius-medium);
   padding: 16px;
   overflow-x: auto;
   margin: 1em 0;
@@ -60,7 +60,7 @@
 .md-preview-content code:not(pre code) {
   background: var(--semi-color-fill-0);
   color: var(--semi-color-danger);
-  border-radius: 4px;
+  border-radius: var(--semi-border-radius-small);
   padding: 1px 5px;
   font-size: 0.88em;
   font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
@@ -79,7 +79,7 @@
   padding: 0.5em 1em;
   color: var(--semi-color-text-2);
   background: var(--semi-color-fill-0);
-  border-radius: 0 4px 4px 0;
+  border-radius: 0 var(--semi-border-radius-small) var(--semi-border-radius-small) 0;
 }
 .md-preview-content blockquote p { margin: 0; }
 
@@ -127,5 +127,5 @@
 /* ── 图片 ── */
 .md-preview-content img {
   max-width: 100%;
-  border-radius: 4px;
+  border-radius: var(--semi-border-radius-small);
 }

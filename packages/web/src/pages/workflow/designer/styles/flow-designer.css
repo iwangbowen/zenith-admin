@@ -53,7 +53,7 @@ body[theme-mode='dark'] .fd-canvas {
   width: 220px;
   background: var(--semi-color-bg-2);
   border: 2px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--semi-border-radius-medium);
   box-shadow: var(--semi-shadow-elevated, 0 2px 6px rgba(0, 0, 0, 0.08));
   cursor: pointer;
   transition: border-color 0.2s, box-shadow 0.2s, opacity 0.2s, transform 0.2s;
@@ -76,7 +76,7 @@ body[theme-mode='dark'] .fd-node-card:hover {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  border-radius: 8px 8px 0 0;
+  border-radius: var(--semi-border-radius-medium) var(--semi-border-radius-medium) 0 0;
   color: #fff;
   font-size: 12px;
   font-weight: 600;
@@ -111,7 +111,7 @@ body[theme-mode='dark'] .fd-node-card:hover {
   color: rgba(255, 255, 255, 0.8);
   cursor: pointer;
   padding: 2px;
-  border-radius: 3px;
+  border-radius: var(--semi-border-radius-small);
   display: flex;
   align-items: center;
 }
@@ -238,7 +238,7 @@ body[theme-mode='dark'] .fd-node-card:hover {
   z-index: 10;
   background: var(--semi-color-bg-2);
   border: 1px solid var(--semi-color-border);
-  border-radius: 12px;
+  border-radius: var(--semi-border-radius-large);
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
   padding: 8px 4px;
   width: 340px;
@@ -279,7 +279,7 @@ body[theme-mode='dark'] .fd-node-picker-panel {
   gap: 6px;
   cursor: pointer;
   padding: 8px 4px;
-  border-radius: 8px;
+  border-radius: var(--semi-border-radius-medium);
   transition: background 0.15s;
   background: transparent;
   border: none;
@@ -335,7 +335,7 @@ body[theme-mode='dark'] .fd-node-picker-panel {
 
 .fd-branch-add-btn {
   padding: 2px 16px;
-  border-radius: 12px;
+  border-radius: var(--semi-border-radius-large);
   background: var(--semi-color-bg-2);
   border: 1px solid var(--semi-color-primary);
   color: var(--semi-color-primary);
@@ -355,7 +355,7 @@ body[theme-mode='dark'] .fd-node-picker-panel {
   align-items: center;
   gap: 4px;
   padding: 2px 12px;
-  border-radius: 12px;
+  border-radius: var(--semi-border-radius-large);
   background: var(--semi-color-bg-2);
   border: 1px solid var(--semi-color-danger);
   color: var(--semi-color-danger);
@@ -460,7 +460,7 @@ body[theme-mode='dark'] .fd-node-picker-panel {
   inset: -7px;
   pointer-events: none;
   border: 2px solid var(--semi-color-primary);
-  border-radius: 12px;
+  border-radius: var(--semi-border-radius-large);
   opacity: 0.28;
   animation: fd-simulation-pulse 1.4s ease-out infinite;
 }
@@ -481,7 +481,7 @@ body[theme-mode='dark'] .fd-node-picker-panel {
   flex-shrink: 0;
   margin-left: auto;
   padding: 1px 8px;
-  border-radius: 10px;
+  border-radius: var(--semi-border-radius-large);
   font-size: 11px;
   font-weight: 600;
   line-height: 16px;
@@ -552,7 +552,7 @@ body[theme-mode='dark'] .fd-node-picker-panel {
   flex-shrink: 0;
   font-size: 11px;
   padding: 0 6px;
-  border-radius: 4px;
+  border-radius: var(--semi-border-radius-small);
   line-height: 18px;
 }
 
@@ -665,7 +665,7 @@ body[theme-mode='dark'] .fd-node-picker-panel {
   overflow: auto;
   padding: 8px;
   border: 1px solid var(--semi-color-border);
-  border-radius: 8px;
+  border-radius: var(--semi-border-radius-medium);
   background: var(--semi-color-bg-1);
 }
 
@@ -682,7 +682,7 @@ body[theme-mode='dark'] .fd-node-picker-panel {
   align-items: flex-start;
   padding: 8px 10px;
   border: 1px solid var(--semi-color-border);
-  border-radius: 8px;
+  border-radius: var(--semi-border-radius-medium);
   background: var(--semi-color-fill-0);
 }
 
@@ -701,7 +701,7 @@ body[theme-mode='dark'] .fd-node-picker-panel {
   min-height: 0;
   overflow: hidden;
   border: 1px solid var(--semi-color-border);
-  border-radius: 8px;
+  border-radius: var(--semi-border-radius-medium);
   background: var(--semi-color-bg-0);
 }
 
@@ -795,7 +795,7 @@ body[theme-mode='dark'] .fd-node-picker-panel {
   align-items: center;
   gap: 6px;
   padding: 2px 8px;
-  border-radius: 6px;
+  border-radius: var(--semi-border-radius-medium);
   font-size: 12px;
   color: var(--semi-color-text-1);
   cursor: pointer;
@@ -1076,7 +1076,7 @@ body[theme-mode='dark'] .fd-node-picker-panel {
   gap: 6px 12px;
   padding: 6px 10px;
   border: 1px solid var(--semi-color-border);
-  border-radius: 8px;
+  border-radius: var(--semi-border-radius-medium);
   background: var(--semi-color-bg-2);
   box-shadow: 0 4px 12px rgba(28, 31, 35, 0.1);
   font-size: 11px;
@@ -1326,7 +1326,7 @@ body[theme-mode='dark'] .fd-simulation-graph__canvas {
   width: 220px;
   padding: 12px;
   background: var(--semi-color-bg-2);
-  border-radius: 6px;
+  border-radius: var(--semi-border-radius-medium);
   border: 1px solid var(--semi-color-border);
   margin-bottom: 0;
   cursor: pointer;
@@ -1390,7 +1390,7 @@ body[theme-mode='dark'] .fd-simulation-graph__canvas {
   background: var(--semi-color-bg-2);
   color: var(--semi-color-danger);
   border: 1px solid var(--semi-color-danger);
-  border-radius: 12px;
+  border-radius: var(--semi-border-radius-large);
   font: inherit;
   font-size: 12px;
   line-height: 1.5;
@@ -1434,7 +1434,7 @@ body[theme-mode='dark'] .fd-simulation-graph__canvas {
 .fd-branch-banner {
   margin: 0 0 16px;
   padding: 6px 14px;
-  border-radius: 6px;
+  border-radius: var(--semi-border-radius-medium);
   font-size: 12px;
   line-height: 1.5;
   display: inline-flex;
@@ -1514,7 +1514,7 @@ body[theme-mode='dark'] .fd-branch-banner--inclusive {
   justify-content: center;
   width: 18px;
   height: 18px;
-  border-radius: 4px;
+  border-radius: var(--semi-border-radius-small);
   color: var(--semi-color-text-2);
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
@@ -1594,7 +1594,7 @@ body[theme-mode='dark'] .fd-branch-banner--inclusive {
   width: fit-content;
   background: var(--semi-color-bg-2);
   border: 1px solid var(--semi-color-border);
-  border-radius: 8px;
+  border-radius: var(--semi-border-radius-medium);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
@@ -1734,7 +1734,7 @@ body[theme-mode='dark'] .fd-branch-banner--inclusive {
   max-width: 560px;
   background: var(--semi-color-bg-2);
   border: 1px solid var(--semi-color-border);
-  border-radius: 8px;
+  border-radius: var(--semi-border-radius-medium);
   padding: 32px 40px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
@@ -1771,7 +1771,7 @@ button.fd-node-card {
   padding: 0 6px;
   font-size: 11px;
   line-height: 18px;
-  border-radius: 3px;
+  border-radius: var(--semi-border-radius-small);
   background: var(--fd-tag-bg, #f0f5ff);
   color: var(--fd-tag-color, #1d6cc0);
   white-space: nowrap;
@@ -1858,7 +1858,7 @@ td.fd-action-button-table__action {
 
 .fd-drawer-btn {
   padding: 6px 20px;
-  border-radius: 6px;
+  border-radius: var(--semi-border-radius-medium);
   font-size: 14px;
   cursor: pointer;
   border: none;
@@ -1894,7 +1894,7 @@ td.fd-action-button-table__action {
 .fd-approve-method-card {
   padding: 10px 12px;
   border: 1px solid var(--semi-color-border);
-  border-radius: 6px;
+  border-radius: var(--semi-border-radius-medium);
   cursor: pointer;
   transition: all 0.15s;
   background: var(--semi-color-bg-1);
@@ -1929,7 +1929,7 @@ td.fd-action-button-table__action {
   padding: 2px 8px;
   font-size: 12px;
   border: 1px solid var(--semi-color-border);
-  border-radius: 4px;
+  border-radius: var(--semi-border-radius-small);
   background: var(--semi-color-bg-1);
   color: var(--semi-color-text-1);
   cursor: pointer;
@@ -1954,7 +1954,7 @@ td.fd-action-button-table__action {
   align-items: center;
   padding: 8px 12px;
   border: 1px solid var(--semi-color-border);
-  border-radius: 6px;
+  border-radius: var(--semi-border-radius-medium);
   background: var(--semi-color-bg-1);
 }
 
@@ -1969,7 +1969,7 @@ td.fd-action-button-table__action {
 
 .fd-condition-group {
   border: 1px solid var(--semi-color-border);
-  border-radius: 8px;
+  border-radius: var(--semi-border-radius-medium);
   padding: 12px;
   background: var(--semi-color-bg-2);
 }
@@ -1983,7 +1983,7 @@ td.fd-action-button-table__action {
 
 .fd-condition-logic-btn {
   padding: 2px 12px;
-  border-radius: 12px;
+  border-radius: var(--semi-border-radius-large);
   font-size: 12px;
   font-weight: 600;
   border: 1px solid var(--semi-color-primary);
@@ -2004,7 +2004,7 @@ td.fd-action-button-table__action {
   color: var(--semi-color-text-2);
   cursor: pointer;
   padding: 4px;
-  border-radius: 4px;
+  border-radius: var(--semi-border-radius-small);
   display: flex;
   align-items: center;
 }
@@ -2027,7 +2027,7 @@ td.fd-action-button-table__action {
   color: var(--semi-color-text-2);
   cursor: pointer;
   padding: 4px;
-  border-radius: 4px;
+  border-radius: var(--semi-border-radius-small);
   display: flex;
   align-items: center;
   flex-shrink: 0;
@@ -2053,7 +2053,7 @@ td.fd-action-button-table__action {
   gap: 4px;
   padding: 6px 8px;
   border: 1px solid var(--semi-color-border);
-  border-radius: 6px;
+  border-radius: var(--semi-border-radius-medium);
   cursor: pointer;
   font-size: 12px;
   color: var(--semi-color-text-0);
@@ -2107,7 +2107,7 @@ td.fd-action-button-table__action {
   padding: 8px 12px;
   background: var(--semi-color-fill-0);
   border: 1px solid var(--semi-color-border);
-  border-radius: 4px 4px 0 0;
+  border-radius: var(--semi-border-radius-small) var(--semi-border-radius-small) 0 0;
   font-size: 12px;
   font-weight: 600;
   color: var(--semi-color-text-1);
@@ -2137,7 +2137,7 @@ td.fd-action-button-table__action {
 }
 
 .fd-form-perm-row:last-child {
-  border-radius: 0 0 4px 4px;
+  border-radius: 0 0 var(--semi-border-radius-small) var(--semi-border-radius-small);
 }
 
 .fd-form-perm-row__field {
@@ -2262,7 +2262,7 @@ td.fd-action-button-table__action {
   display: inline-flex;
   align-items: center;
   border: 1px solid var(--semi-color-border);
-  border-radius: 6px;
+  border-radius: var(--semi-border-radius-medium);
   overflow: hidden;
   height: 32px;
 }
@@ -2339,7 +2339,7 @@ td.fd-action-button-table__action {
   margin: 0 auto;
   padding: 20px 24px;
   border: 1px solid var(--semi-color-border);
-  border-radius: 8px;
+  border-radius: var(--semi-border-radius-medium);
   background: var(--semi-color-bg-1);
 }
 

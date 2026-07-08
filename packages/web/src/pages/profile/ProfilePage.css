@@ -54,7 +54,7 @@
   gap: 20px;
   padding: 20px;
   border: 1px solid var(--semi-color-border);
-  border-radius: 12px;
+  border-radius: var(--semi-border-radius-large);
   background: var(--semi-color-fill-0);
 }
 
@@ -100,7 +100,7 @@
 /* OAuth 绑定列表 */
 .oauth-list {
   overflow: hidden;
-  border-radius: 10px;
+  border-radius: var(--semi-border-radius-large);
 }
 
 .oauth-list-icon {
@@ -109,7 +109,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
+  border-radius: var(--semi-border-radius-large);
   color: var(--semi-color-text-1);
   background: var(--semi-color-fill-0);
 }
@@ -125,7 +125,7 @@
 /* 会话设备列表 */
 .session-list {
   overflow: hidden;
-  border-radius: 10px;
+  border-radius: var(--semi-border-radius-large);
 }
 
 .session-list-item {
@@ -142,7 +142,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
+  border-radius: var(--semi-border-radius-large);
   color: var(--semi-color-text-2);
   background: var(--semi-color-fill-0);
 }
@@ -177,7 +177,7 @@
   gap: 12px;
   padding: 12px 16px;
   background: var(--semi-color-fill-0);
-  border-radius: 8px;
+  border-radius: var(--semi-border-radius-medium);
   border: 1px solid var(--semi-color-border);
 }
 

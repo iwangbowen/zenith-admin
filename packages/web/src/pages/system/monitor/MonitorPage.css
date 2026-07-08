@@ -49,7 +49,7 @@
 .monitor-overview-metric {
   background: var(--semi-color-fill-0);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: var(--semi-border-radius-medium);
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
@@ -160,7 +160,7 @@
 .monitor-chart-card {
   background: var(--semi-color-fill-0);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: var(--semi-border-radius-medium);
   padding: 14px 16px 8px;
   margin-top: 4px;
 }
@@ -226,7 +226,7 @@
 .monitor-percore-item {
   padding: 10px 12px;
   border: 1px solid var(--semi-color-border);
-  border-radius: 6px;
+  border-radius: var(--semi-border-radius-medium);
   background: var(--semi-color-bg-1);
 }
 
@@ -256,7 +256,7 @@
   display: inline-block;
   width: 8px;
   height: 8px;
-  border-radius: 2px;
+  border-radius: var(--semi-border-radius-small);
 }
 
 /* ===== 多挂载点磁盘表 ===== */
@@ -316,7 +316,7 @@
   gap: 2px;
   padding: 8px 16px;
   border: 1px solid var(--color-border, var(--semi-color-border));
-  border-radius: 6px;
+  border-radius: var(--semi-border-radius-medium);
   min-width: 140px;
 }
 @media (--xl-down) {

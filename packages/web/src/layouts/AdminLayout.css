@@ -92,7 +92,7 @@
   align-items: center;
   height: 36px;
   padding: 0 12px;
-  border-radius: 6px;
+  border-radius: var(--semi-border-radius-medium);
   font-size: 13px;
   color: var(--color-sidebar-text);
 }
@@ -160,7 +160,7 @@
 .admin-sidebar__logo {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--semi-border-radius-medium);
   background-color: var(--semi-color-primary-active);
   background-image: linear-gradient(135deg, var(--semi-color-primary-hover) 0%, var(--semi-color-primary) 100%);
   box-shadow: 0 2px 6px color-mix(in srgb, var(--semi-color-primary) 30%, transparent);
@@ -271,7 +271,7 @@
 
 .admin-sidebar__nav .semi-navigation-list-wrapper::-webkit-scrollbar-thumb {
   background-color: var(--color-border);
-  border-radius: 4px;
+  border-radius: var(--semi-border-radius-small);
 }
 
 .admin-sidebar__nav .semi-navigation-list-wrapper::-webkit-scrollbar-thumb:hover {
@@ -311,7 +311,7 @@
 
 .admin-sidebar__nav .semi-navigation-item,
 .admin-sidebar__nav .semi-navigation-sub {
-  border-radius: 6px;
+  border-radius: var(--semi-border-radius-medium);
 }
 
 /* 紧凑布局：去除 Semi 默认的子项 margin-top */
@@ -511,7 +511,7 @@
 
 .semi-navigation-popup::-webkit-scrollbar-thumb {
   background-color: var(--color-border);
-  border-radius: 4px;
+  border-radius: var(--semi-border-radius-small);
 }
 
 .semi-navigation-popup::-webkit-scrollbar-thumb:hover {
@@ -744,7 +744,7 @@
 .admin-mobile-nav .semi-navigation-item,
 .admin-mobile-nav .semi-navigation-sub-title {
   min-height: 42px;
-  border-radius: 6px;
+  border-radius: var(--semi-border-radius-medium);
   font-size: 14px;
 }
 
@@ -819,7 +819,7 @@
   align-items: center;
   gap: 4px;
   min-height: 40px;
-  border-radius: 6px;
+  border-radius: var(--semi-border-radius-medium);
   padding: 0 4px 0 0;
 }
 
@@ -916,7 +916,7 @@
   gap: 8px;
   padding: 10px 6px;
   border: 2px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: var(--semi-border-radius-medium);
   background: transparent;
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
@@ -935,7 +935,7 @@
 .layout-picker__preview {
   width: 72px;
   height: 48px;
-  border-radius: 4px;
+  border-radius: var(--semi-border-radius-small);
   border: 1.5px solid var(--semi-color-border);
   overflow: hidden;
   position: relative;
@@ -959,7 +959,7 @@
   top: 6px;
   width: 14px;
   height: 4px;
-  border-radius: 2px;
+  border-radius: var(--semi-border-radius-small);
   background: var(--semi-color-primary);
   box-shadow: 0 6px 0 var(--semi-color-fill-2), 0 12px 0 var(--semi-color-fill-2);
 }
@@ -981,7 +981,7 @@
   top: 4px;
   width: 10px;
   height: 4px;
-  border-radius: 2px;
+  border-radius: var(--semi-border-radius-small);
   background: var(--semi-color-primary);
   box-shadow: 18px 0 0 var(--semi-color-fill-2), 32px 0 0 var(--semi-color-fill-2);
 }
@@ -1025,7 +1025,7 @@
   top: 8px;
   width: 6px;
   height: 3px;
-  border-radius: 2px;
+  border-radius: var(--semi-border-radius-small);
   background: var(--semi-color-primary);
   box-shadow: 0 7px 0 var(--semi-color-fill-0), 0 14px 0 var(--semi-color-fill-0);
 }
@@ -1115,7 +1115,7 @@
   width: 100%;
   height: 2px;
   background-color: var(--color-primary);
-  border-radius: 2px 2px 0 0;
+  border-radius: var(--semi-border-radius-small) var(--semi-border-radius-small) 0 0;
 }
 
 /* ── 卡片风格 ── */
@@ -1132,7 +1132,7 @@
 [data-tab-style="card"] .admin-tab-item {
   padding: 8px 14px;
   margin-top: 4px;
-  border-radius: 6px 6px 0 0;
+  border-radius: var(--semi-border-radius-medium) var(--semi-border-radius-medium) 0 0;
   border: 1px solid transparent;
   border-bottom: none;
   background: var(--semi-color-fill-0);
@@ -1195,7 +1195,7 @@
 [data-tab-style="chrome"] .admin-tab-item {
   padding: 5px 14px;
   margin: 6px 3px 4px;
-  border-radius: 10px;
+  border-radius: 10px; /* Chrome 造型值：与激活标签 10px 顶角、径向渐变圆弧半径耦合，不随圆角偏好缩放 */
   transition: background 0.15s, color 0.15s;
 }
 
@@ -1280,7 +1280,7 @@
   height: 16px;
   border: none;
   background: transparent;
-  border-radius: 3px;
+  border-radius: var(--semi-border-radius-small);
   color: var(--color-text-secondary);
   cursor: pointer;
   padding: 0;
@@ -1404,7 +1404,7 @@
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  border-radius: 8px;
+  border-radius: var(--semi-border-radius-medium);
   border: 1.5px solid var(--color-border);
   cursor: pointer;
   background: transparent;
@@ -1651,7 +1651,7 @@
   justify-content: center;
   gap: 3px;
   padding: 8px 4px;
-  border-radius: 6px;
+  border-radius: var(--semi-border-radius-medium);
   background: transparent;
   border: none;
   cursor: pointer;
@@ -2027,7 +2027,7 @@
 .lock-screen__solar-term {
   background: rgba(0, 0, 0, 0.35);
   border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
+  border-radius: var(--semi-border-radius-small);
   padding: 0 6px;
   font-size: 11px;
   color: rgba(255, 255, 255, 0.92);
@@ -2128,7 +2128,7 @@
   padding: 6px 12px;
   background: var(--semi-color-bg-2);
   border: 1px solid var(--semi-color-border);
-  border-radius: 6px;
+  border-radius: var(--semi-border-radius-medium);
   font-size: 12px;
   color: var(--semi-color-text-1);
   cursor: pointer;

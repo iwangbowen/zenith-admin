@@ -6,6 +6,6 @@
   background: var(--color-primary);
   z-index: 9999;
   box-shadow: 0 0 6px var(--color-primary);
-  border-radius: 0 2px 2px 0;
+  border-radius: 0 var(--semi-border-radius-small) var(--semi-border-radius-small) 0;
   pointer-events: none;
 }

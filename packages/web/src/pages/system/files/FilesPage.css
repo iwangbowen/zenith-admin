@@ -25,7 +25,7 @@
   width: 100%;
   max-width: 104px;
   border: 1px solid transparent;
-  border-radius: 5px;
+  border-radius: var(--semi-border-radius-medium);
   overflow: visible;
   background: transparent;
   transition: background 0.15s ease, border-color 0.15s ease;
@@ -78,7 +78,7 @@
   outline: none;
   border: none;
   padding: 0;
-  border-radius: 6px;
+  border-radius: var(--semi-border-radius-medium);
 }
 
 .files-grid-card__media:focus-visible {
@@ -98,7 +98,7 @@
   line-height: 1.1;
   font-weight: 600;
   padding: 1px 4px;
-  border-radius: 3px;
+  border-radius: var(--semi-border-radius-small);
   letter-spacing: 0.4px;
   pointer-events: none;
   max-width: 48px;
@@ -165,7 +165,7 @@
   justify-content: center;
   width: 42px;
   height: 42px;
-  border-radius: 6px;
+  border-radius: var(--semi-border-radius-medium);
   background: transparent;
   margin-bottom: 12px;
 }

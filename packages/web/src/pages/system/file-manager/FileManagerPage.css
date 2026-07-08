@@ -141,7 +141,7 @@
   justify-content: flex-start;
   gap: 6px;
   padding: 10px 8px;
-  border-radius: 8px;
+  border-radius: var(--semi-border-radius-medium);
   cursor: pointer;
   user-select: none;
   transition: background 0.15s;
@@ -198,7 +198,7 @@
   max-width: 320px;
   background: var(--semi-color-bg-2);
   border: 1px solid var(--semi-color-border);
-  border-radius: 8px;
+  border-radius: var(--semi-border-radius-medium);
   padding: 10px 12px;
   box-shadow: var(--semi-shadow-elevated);
   z-index: 10;
@@ -207,7 +207,7 @@
 .fm-upload-bar {
   height: 4px;
   background: var(--semi-color-fill-1);
-  border-radius: 2px;
+  border-radius: var(--semi-border-radius-small);
   overflow: hidden;
   margin-top: 3px;
 }
@@ -215,6 +215,6 @@
 .fm-upload-bar__fill {
   height: 100%;
   background: var(--semi-color-primary);
-  border-radius: 2px;
+  border-radius: var(--semi-border-radius-small);
   transition: width 0.2s ease;
 }

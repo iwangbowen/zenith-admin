@@ -121,7 +121,7 @@
 .dashboard-stat-card.semi-card {
   background: var(--color-layout-bg);
   border: 1px solid var(--color-border);
-  border-radius: 10px !important;
+  border-radius: var(--semi-border-radius-large) !important;
   box-shadow: none;
 }
 
@@ -177,7 +177,7 @@
 .dashboard-stat-card__icon {
   width: 56px;
   height: 56px;
-  border-radius: 14px;
+  border-radius: var(--semi-border-radius-large);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -236,7 +236,7 @@
   justify-content: center;
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: var(--semi-border-radius-medium);
   color: var(--color-text-secondary);
   text-decoration: none;
   border: none;
@@ -344,7 +344,7 @@
 .notice-modal-content img {
   max-width: 100%;
   height: auto;
-  border-radius: 4px;
+  border-radius: var(--semi-border-radius-small);
 }
 
 .notice-summary {

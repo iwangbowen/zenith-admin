@@ -126,7 +126,7 @@
   width: 88px;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--semi-border-radius-medium);
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease;
 }

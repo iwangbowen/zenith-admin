@@ -6,7 +6,7 @@
 .report-grid .react-grid-item {
   background: var(--semi-color-bg-1);
   border: 1px solid var(--semi-color-border);
-  border-radius: 8px;
+  border-radius: var(--semi-border-radius-medium);
   overflow: hidden;
   transition: box-shadow 0.18s ease, border-color 0.18s ease;
 }
@@ -23,7 +23,7 @@
 .report-grid .react-grid-item.react-grid-placeholder {
   background: var(--semi-color-primary-light-default);
   border: 1px dashed var(--semi-color-primary);
-  border-radius: 8px;
+  border-radius: var(--semi-border-radius-medium);
   opacity: 0.7;
 }
 
@@ -175,7 +175,7 @@
   border: 1px solid var(--semi-color-border);
   background: var(--semi-color-fill-0);
   color: var(--semi-color-text-1);
-  border-radius: 14px;
+  border-radius: var(--semi-border-radius-large);
   padding: 3px 12px;
   font-size: 12px;
   cursor: pointer;
@@ -240,7 +240,7 @@
   padding: 9px 12px;
   margin-bottom: 8px;
   border: 1px solid var(--semi-color-border);
-  border-radius: 6px;
+  border-radius: var(--semi-border-radius-medium);
   cursor: pointer;
   font-size: 13px;
   color: var(--semi-color-text-0);

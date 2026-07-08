@@ -68,7 +68,7 @@
 .dict-list-item {
   padding: 8px 8px !important;
   margin-bottom: 4px;
-  border-radius: 6px;
+  border-radius: var(--semi-border-radius-medium);
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
   /* Prevent the extra button from wrapping to the next line */

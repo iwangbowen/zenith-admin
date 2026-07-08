@@ -40,7 +40,7 @@
 .channel-dashboard-stat-card.semi-card {
   background: var(--color-layout-bg);
   border: 1px solid var(--color-border);
-  border-radius: 10px !important;
+  border-radius: var(--semi-border-radius-large) !important;
   box-shadow: none;
 }
 
@@ -68,7 +68,7 @@
 .channel-dashboard-stat__icon {
   width: 44px;
   height: 44px;
-  border-radius: 10px;
+  border-radius: var(--semi-border-radius-large);
   display: flex;
   align-items: center;
   justify-content: center;

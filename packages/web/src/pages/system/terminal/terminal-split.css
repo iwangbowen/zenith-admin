@@ -7,7 +7,7 @@
 }
 .xterm .xterm-scrollable-element > .scrollbar.vertical .slider {
   width: 5px !important;
-  border-radius: 3px;
+  border-radius: var(--semi-border-radius-small);
   background: var(--semi-color-fill-2) !important;
 }
 .xterm .xterm-scrollable-element > .scrollbar.vertical .slider:hover {
@@ -95,7 +95,7 @@
   width: 2px;
   height: 100%;
   background: var(--color-primary);
-  border-radius: 2px 0 0 2px;
+  border-radius: var(--semi-border-radius-small) 0 0 var(--semi-border-radius-small);
 }
 
 /* 折叠态下居中图标 */
@@ -127,7 +127,7 @@
   height: 18px;
   border: none;
   background: transparent;
-  border-radius: 3px;
+  border-radius: var(--semi-border-radius-small);
   cursor: pointer;
   color: var(--semi-color-text-2);
   opacity: 0;
@@ -332,7 +332,7 @@
   height: 22px;
   padding: 0;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--semi-border-radius-small);
   cursor: pointer;
   color: var(--semi-color-text-2);
   background: var(--semi-color-bg-2);
@@ -378,5 +378,5 @@
 .terminal-sidebar--left .terminal-sidebar__item--active::before {
   left: 0;
   right: auto;
-  border-radius: 0 2px 2px 0;
+  border-radius: 0 var(--semi-border-radius-small) var(--semi-border-radius-small) 0;
 }
