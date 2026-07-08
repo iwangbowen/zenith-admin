@@ -68,6 +68,7 @@
 
 /* ── 暗色模式下代码块用 github-dark.css，已在 tsx 中导入 ── */
 .md-preview-body--dark .md-preview-content pre {
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list -- GitHub Dark 代码高亮主题官方配套底色 */
   background: #161b22 !important;
   border-color: #30363d;
 }

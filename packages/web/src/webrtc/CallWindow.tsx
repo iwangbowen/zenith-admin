@@ -35,6 +35,7 @@ export function CallWindow({ snapshot, self }: Readonly<{ snapshot: CallSnapshot
 
   if (snapshot.minimized) {
     return (
+      // eslint-disable-next-line no-restricted-syntax -- 通话最小化浮窗的强调投影（最顶层浮动元素）
       <div style={{ position: 'fixed', right: 24, bottom: 24, zIndex: 2000, width: 240, background: 'var(--semi-color-bg-2)', border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-large)', boxShadow: '0 8px 28px rgba(0,0,0,0.28)', padding: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--semi-color-success)', flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0 }}>

@@ -160,6 +160,7 @@
   font-weight: 600;
 }
 .report-screen--dark .report-drill-crumb__current {
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list -- 数据大屏深色主题专属文字色 */
   color: #eaf4ff;
 }
 

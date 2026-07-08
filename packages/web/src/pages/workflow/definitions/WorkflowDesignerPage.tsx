@@ -75,6 +75,7 @@ function WorkflowNodeComponent({ data }: NodeProps) {
         width: 48, height: 48,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         cursor: 'default',
+        // eslint-disable-next-line no-restricted-syntax -- React Flow 网关节点轻投影，elevated 对 48px 菱形过重
         boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
         ...typeStyle,
       }}>
@@ -93,6 +94,7 @@ function WorkflowNodeComponent({ data }: NodeProps) {
     minWidth: 120,
     textAlign: 'center',
     cursor: 'default',
+    // eslint-disable-next-line no-restricted-syntax -- React Flow 流程节点轻投影，与设计器画布风格统一
     boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
     ...typeStyle,
   };

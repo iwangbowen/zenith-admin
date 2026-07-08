@@ -16,6 +16,7 @@
   z-index: 1050;
   background: var(--semi-color-bg-2);
   border-top: 1px solid var(--semi-color-border);
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list -- 底部停靠栏的上缘方向投影，elevated 方向不适用 */
   box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.12);
   padding: 10px 24px;
   animation: zenith-audio-dock-in 0.22s ease;

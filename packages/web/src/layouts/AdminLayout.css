@@ -1195,7 +1195,8 @@
 [data-tab-style="chrome"] .admin-tab-item {
   padding: 5px 14px;
   margin: 6px 3px 4px;
-  border-radius: 10px; /* Chrome 造型值：与激活标签 10px 顶角、径向渐变圆弧半径耦合，不随圆角偏好缩放 */
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list -- Chrome 造型值：与激活标签顶角、径向渐变圆弧半径耦合，不随圆角偏好缩放 */
+  border-radius: 10px;
   transition: background 0.15s, color 0.15s;
 }
 
@@ -1229,6 +1230,7 @@
   z-index: 1;
   margin-bottom: 0;
   padding-bottom: 9px;
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list -- Chrome 造型值：与径向渐变圆弧半径 10px 耦合 */
   border-radius: 10px 10px 0 0;
   background: var(--semi-color-primary-light-default);
   color: var(--semi-color-primary);
@@ -1436,7 +1438,7 @@
 .tab-anim-picker {
   display: inline-flex;
   border: 1px solid var(--semi-color-border);
-  border-radius: var(--semi-border-radius-medium, 6px);
+  border-radius: var(--semi-border-radius-medium);
   overflow: hidden;
 }
 

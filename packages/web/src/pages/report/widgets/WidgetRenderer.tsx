@@ -567,6 +567,7 @@ function FlipperDigit({ digit }: { readonly digit: string }) {
         overflow: 'hidden',
         borderRadius: 'var(--semi-border-radius-medium)',
         background: 'linear-gradient(180deg, #142753 0%, #0e1b3a 100%)',
+        // eslint-disable-next-line no-restricted-syntax -- 数据大屏翻牌器：深色主题设计件，inset 高光 + 定制投影
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.18), 0 6px 18px rgba(0,0,0,0.18)',
         border: '1px solid rgba(90,216,255,0.22)',
         verticalAlign: 'middle',

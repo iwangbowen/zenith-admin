@@ -50,4 +50,23 @@ export default [
       ],
     },
   },
+  {
+    // ── Token 纪律（防复发）：与 .stylelintrc.json 的 CSS 规则对应 ──
+    // member/approval 为独立主题端，mocks 为静态数据，均不受偏好系统管辖
+    files: ['src/**/*.tsx'],
+    ignores: ['src/member/**', 'src/approval/**', 'src/mocks/**'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'Property[key.name="borderRadius"][value.type="Literal"][value.value>=2][value.value<=14]',
+          message: '内联圆角请使用 var(--semi-border-radius-small/medium/large)，以便跟随「圆角大小」偏好；刻意的造型值请加 eslint-disable 注释并注明理由。',
+        },
+        {
+          selector: String.raw`Property[key.name="boxShadow"] Literal[value=/rgba\(\s*0\s*,\s*0\s*,\s*0/]`,
+          message: '自写黑色阴影暗色模式下不可见，请使用 var(--semi-shadow-elevated)；刻意的强调投影请加 eslint-disable 注释并注明理由。',
+        },
+      ],
+    },
+  },
 ];

@@ -54,20 +54,18 @@ body[theme-mode='dark'] .fd-canvas {
   background: var(--semi-color-bg-2);
   border: 2px solid transparent;
   border-radius: var(--semi-border-radius-medium);
-  box-shadow: var(--semi-shadow-elevated, 0 2px 6px rgba(0, 0, 0, 0.08));
+  box-shadow: var(--semi-shadow-elevated);
   cursor: pointer;
   transition: border-color 0.2s, box-shadow 0.2s, opacity 0.2s, transform 0.2s;
 }
 
 .fd-node-card:hover {
-  box-shadow: var(--semi-shadow-elevated-hover, 0 4px 12px rgba(0, 0, 0, 0.15));
-}
-
-body[theme-mode='dark'] .fd-node-card {
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list -- hover 增强阴影，Semi 无 elevated-hover token */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 body[theme-mode='dark'] .fd-node-card:hover {
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list -- hover 增强阴影的暗色版本 */
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.55);
 }
 
@@ -403,6 +401,7 @@ body[theme-mode='dark'] .fd-node-card:hover {
   font-weight: 700;
   line-height: 22px;
   text-align: center;
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list -- 小徽标投影，elevated 对 22px 元素过散 */
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.16);
 }
 
@@ -1360,6 +1359,7 @@ body[theme-mode='dark'] .fd-simulation-graph__canvas {
   font-weight: 600;
 }
 
+/* stylelint-disable declaration-property-value-disallowed-list -- 分支类型语义色板（条件/默认/并行/包容/路由），固定分类色不随主题 */
 .fd-branch-title__name--condition {
   color: #ff943e;
 }
@@ -1379,6 +1379,7 @@ body[theme-mode='dark'] .fd-simulation-graph__canvas {
 .fd-branch-title__name--route {
   color: #f5222d;
 }
+/* stylelint-enable declaration-property-value-disallowed-list */
 
 .fd-branch-route-hint {
   margin: 0 0 16px;
@@ -1732,10 +1733,12 @@ body[theme-mode='dark'] .fd-branch-banner--inclusive {
   border: 1px solid var(--semi-color-border);
   border-radius: var(--semi-border-radius-medium);
   padding: 32px 40px;
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list -- 轻量卡片投影，elevated 会明显加重 */
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 
 body[theme-mode='dark'] .fd-basic-info__inner {
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list -- 轻量卡片投影的暗色版本 */
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
 }
 

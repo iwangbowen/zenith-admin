@@ -1,0 +1,30 @@
+{
+  "ignoreFiles": [
+    "src/member/**",
+    "src/approval/**"
+  ],
+  "rules": {
+    "declaration-property-value-disallowed-list": [
+      {
+        "border-radius": ["/(^|\\s)([2-9]|1[0-4])px/"],
+        "/^(color|background(-color)?)$/": ["/^#(?!f+\\b)/i"],
+        "box-shadow": ["/rgba\\(\\s*0\\s*,\\s*0\\s*,\\s*0/"]
+      },
+      {
+        "message": "Token 纪律：圆角用 var(--semi-border-radius-small/medium/large)；界面色用 var(--semi-color-*)；浮层阴影用 var(--semi-shadow-elevated)。刻意保留的设计值请加 stylelint-disable 注释并注明理由。"
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "src/pages/report/report-screen.css",
+        "src/pages/report/print-report.css",
+        "src/pages/login/LoginPage.css"
+      ],
+      "rules": {
+        "declaration-property-value-disallowed-list": null
+      }
+    }
+  ]
+}
