@@ -1182,56 +1182,81 @@
   background: var(--semi-color-fill-0);
 }
 
-/* ── Chrome 风格 ── */
+/* ── Chrome 风格（现行 Chrome：激活标签连体式圆弧 + 悬停浮动圆角矩形） ── */
 .admin-tabs-bar[data-tab-style="chrome"] {
   border-bottom: 1px solid var(--semi-color-border);
 }
 
 .admin-tabs-bar[data-tab-style="chrome"] .admin-tabs-bar__scroll {
   gap: 0;
-  padding: 0 14px;
-  align-items: flex-end;
+  padding: 0 16px;
 }
 
 [data-tab-style="chrome"] .admin-tab-item {
-  padding: 7px 16px;
-  margin-top: 5px;
-  border-radius: 9px 9px 0 0;
+  padding: 5px 14px;
+  margin: 6px 3px 4px;
+  border-radius: 10px;
   transition: background 0.15s, color 0.15s;
 }
 
+/* 相邻标签之间的细分隔线 */
+[data-tab-style="chrome"] .admin-tab-item + .admin-tab-item::before {
+  content: '';
+  position: absolute;
+  left: -3.5px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 14px;
+  background: var(--semi-color-border);
+}
+
+/* 激活 / 悬停标签两侧隐藏分隔线（与 Chrome 行为一致；激活标签的 ::before 为圆弧，不在此列） */
+[data-tab-style="chrome"] .admin-tab-item:hover:not(.admin-tab-item--active)::before,
+[data-tab-style="chrome"] .admin-tab-item--active + .admin-tab-item::before,
+[data-tab-style="chrome"] .admin-tab-item:hover + .admin-tab-item:not(.admin-tab-item--active)::before {
+  display: none;
+}
+
+/* 悬停：上下留空的浮动圆角矩形高亮 */
 [data-tab-style="chrome"] .admin-tab-item:hover:not(.admin-tab-item--active) {
   background: var(--semi-color-fill-0);
 }
 
+/* 激活：连体式——底部与内容区融合，顶部圆角，底部两侧外凹圆弧 */
+/* 注：选择器带 .admin-tabs-bar__scroll 提升特异性，确保 ::before 圆弧不被上方分隔线规则覆盖 */
 [data-tab-style="chrome"] .admin-tab-item--active {
   z-index: 1;
+  margin-bottom: 0;
+  padding-bottom: 9px;
+  border-radius: 10px 10px 0 0;
   background: var(--semi-color-primary-light-default);
   color: var(--semi-color-primary);
   font-weight: 500;
 }
 
-/* Chrome 标志性左右外凹圆弧：radial-gradient 在标签底部两侧补出反向圆角 */
-[data-tab-style="chrome"] .admin-tab-item--active::before,
-[data-tab-style="chrome"] .admin-tab-item--active::after {
+[data-tab-style="chrome"] .admin-tabs-bar__scroll .admin-tab-item--active::before,
+[data-tab-style="chrome"] .admin-tabs-bar__scroll .admin-tab-item--active::after {
   content: '';
   position: absolute;
   top: auto;
   bottom: 0;
-  width: 9px;
-  height: 9px;
+  width: 10px;
+  height: 10px;
   border-radius: 0;
+  transform: none;
 }
 
-[data-tab-style="chrome"] .admin-tab-item--active::before {
-  left: -9px;
-  background: radial-gradient(circle at 0 0, transparent 8.5px, var(--semi-color-primary-light-default) 9px);
+[data-tab-style="chrome"] .admin-tabs-bar__scroll .admin-tab-item--active::before {
+  display: block;
+  left: -10px;
+  background: radial-gradient(circle at 0 0, transparent 9.5px, var(--semi-color-primary-light-default) 10px);
 }
 
-[data-tab-style="chrome"] .admin-tab-item--active::after {
+[data-tab-style="chrome"] .admin-tabs-bar__scroll .admin-tab-item--active::after {
   left: auto;
-  right: -9px;
-  background: radial-gradient(circle at 100% 0, transparent 8.5px, var(--semi-color-primary-light-default) 9px);
+  right: -10px;
+  background: radial-gradient(circle at 100% 0, transparent 9.5px, var(--semi-color-primary-light-default) 10px);
 }
 
 .admin-tab-item__icon {
