@@ -57,12 +57,14 @@ export default function PaymentAppsPage() {
   const channelLookupQuery = useAllPaymentChannelConfigsLookup(modalVisible);
   const saveMutation = useSavePaymentApp();
   const deleteMutation = useDeletePaymentApp();
-  const configs = channelLookupQuery.data ?? [];
-  const channelSelectOptions = useMemo(() => ({
-    wechat: channelOptions(configs, 'wechat'),
-    alipay: channelOptions(configs, 'alipay'),
-    unionpay: channelOptions(configs, 'unionpay'),
-  }), [configs]);
+  const channelSelectOptions = useMemo(() => {
+    const configs = channelLookupQuery.data ?? [];
+    return {
+      wechat: channelOptions(configs, 'wechat'),
+      alipay: channelOptions(configs, 'alipay'),
+      unionpay: channelOptions(configs, 'unionpay'),
+    };
+  }, [channelLookupQuery.data]);
 
   function handleSearch() { setPage(1); setSubmittedParams(draftParams); void queryClient.invalidateQueries({ queryKey: paymentAppKeys.lists }); }
   function handleReset() { setDraftParams(defaultSearch); setSubmittedParams(defaultSearch); setPage(1); void queryClient.invalidateQueries({ queryKey: paymentAppKeys.lists }); }

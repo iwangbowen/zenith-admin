@@ -33,7 +33,16 @@ export default [
       // Classic react-hooks rules only (v7 compiler rules are too strict for this codebase)
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
-      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+      'react-refresh/only-export-components': [
+        'warn',
+        {
+          allowConstantExport: true,
+          // MasterDetailLayout 用 Object.assign 挂载 Header/Body 子组件，视为类 HOC 导出
+          extraHOCs: ['assign'],
+          // 与组件强相关的工厂函数/选项常量，允许与组件同文件导出
+          allowExportNames: ['createOperationColumn', 'DATA_SCOPE_OPTIONS'],
+        },
+      ],
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': [
         'error',

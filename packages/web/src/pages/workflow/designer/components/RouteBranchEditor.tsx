@@ -73,6 +73,7 @@ export default function RouteBranchEditor({
     setCaseValue(branch?.caseValue ?? '');
     setRouteFieldKey((parentNode?.props?.routeFieldKey as string | undefined) ?? '');
     setError('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在切换分支/父节点或显隐时重置表单，不随 branch.name/caseValue 内容变化重新同步（避免覆盖用户正在编辑的值）
   }, [branch?.id, visible, parentNode?.id, parentNode?.props?.routeFieldKey]);
 
   const originalRouteFieldKey = (parentNode?.props?.routeFieldKey as string | undefined) ?? '';
