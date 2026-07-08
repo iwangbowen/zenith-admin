@@ -58,7 +58,6 @@ export function ZipPreviewPanel({ blob, style }: ZipPreviewPanelProps) {
         setHasError(true);
       })
       .finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blob]);
 
   return (

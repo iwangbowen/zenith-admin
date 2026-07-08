@@ -148,7 +148,6 @@ function textFormat(entry: HttpLogEntry): string {
 }
 
 /** curl 格式中单引号的转义替换字符串 */
-// eslint-disable-next-line no-useless-escape
 const ESCAPE_SINGLE_QUOTE = String.raw`\'`;
 
 function curlFormat(entry: HttpLogEntry): string {

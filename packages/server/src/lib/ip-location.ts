@@ -6,7 +6,6 @@
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
 const Ip2Region = require('node-ip2region') as {
   create: () => { btreeSearchSync: (ip: string) => { city: number; region: string } | null };
 };

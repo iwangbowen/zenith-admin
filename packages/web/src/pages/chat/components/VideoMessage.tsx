@@ -8,7 +8,7 @@ import { getMessageExtra } from '../utils';
 const { Text } = Typography;
 
 /** 视频消息气泡：点击加载（受保护文件走 blob）后内联播放 */
-export function VideoMessage({ msg, isSelf }: Readonly<{ msg: ChatMessage; isSelf: boolean }>) {
+export function VideoMessage({ msg, isSelf: _isSelf }: Readonly<{ msg: ChatMessage; isSelf: boolean }>) {
   const asset = getMessageExtra(msg)?.asset ?? null;
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
