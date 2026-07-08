@@ -20,5 +20,5 @@
 /* 每个页面：缩短页间距，给予柔和阴影 */
 section.docx {
   margin-bottom: 16px !important;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2) !important;
+  box-shadow: var(--semi-shadow-elevated) !important;
 }

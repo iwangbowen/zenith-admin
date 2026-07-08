@@ -2132,7 +2132,7 @@
   font-size: 12px;
   color: var(--semi-color-text-1);
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--semi-shadow-elevated);
   transition: opacity 0.2s;
   opacity: 0.6;
 }

@@ -12,7 +12,7 @@
 }
 
 .report-grid .react-grid-item:hover {
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--semi-shadow-elevated);
 }
 
 .report-grid .react-grid-item.report-widget--selected {

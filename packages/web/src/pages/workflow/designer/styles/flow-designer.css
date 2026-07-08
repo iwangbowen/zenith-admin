@@ -239,13 +239,9 @@ body[theme-mode='dark'] .fd-node-card:hover {
   background: var(--semi-color-bg-2);
   border: 1px solid var(--semi-color-border);
   border-radius: var(--semi-border-radius-large);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--semi-shadow-elevated);
   padding: 8px 4px;
   width: 340px;
-}
-
-body[theme-mode='dark'] .fd-node-picker-panel {
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
 }
 
 .fd-node-picker-group {
@@ -1078,7 +1074,7 @@ body[theme-mode='dark'] .fd-node-picker-panel {
   border: 1px solid var(--semi-color-border);
   border-radius: var(--semi-border-radius-medium);
   background: var(--semi-color-bg-2);
-  box-shadow: 0 4px 12px rgba(28, 31, 35, 0.1);
+  box-shadow: var(--semi-shadow-elevated);
   font-size: 11px;
   color: var(--semi-color-text-1);
   pointer-events: none;
@@ -1595,7 +1591,7 @@ body[theme-mode='dark'] .fd-branch-banner--inclusive {
   background: var(--semi-color-bg-2);
   border: 1px solid var(--semi-color-border);
   border-radius: var(--semi-border-radius-medium);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--semi-shadow-elevated);
 }
 
 .fd-canvas__toolbar-divider {
