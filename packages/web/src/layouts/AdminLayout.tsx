@@ -2801,7 +2801,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
                   <Radio value="line">线条</Radio>
                   <Radio value="pill">胶囊</Radio>
                   <Radio value="card">卡片</Radio>
-                  <Radio value="chrome">Chrome</Radio>
+                  <Radio value="chrome">谷歌</Radio>
                 </RadioGroup>
               </div>
               )}
