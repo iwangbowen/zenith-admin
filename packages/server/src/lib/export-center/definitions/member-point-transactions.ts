@@ -6,8 +6,9 @@ import { batchIterable } from '../../excel-export';
 import { defineExport } from '../registry';
 import type { ExportColumn } from '../types';
 import type { PointTxType } from '@zenith/shared';
+import { POINT_TX_TYPE_LABELS } from '@zenith/shared';
 
-const TYPE_LABELS: Record<string, string> = { earn: '获得', redeem: '消耗', expire: '过期', adjust: '调整', refund: '退还' };
+const TYPE_LABELS: Record<string, string> = POINT_TX_TYPE_LABELS;
 
 type Query = { memberKeyword?: string; type?: PointTxType };
 

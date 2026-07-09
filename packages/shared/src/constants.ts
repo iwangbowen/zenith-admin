@@ -7,6 +7,8 @@ export const PREFERENCES_KEY = 'zenith_preferences';
 export const TABS_STORAGE_KEY = 'zenith_tabs';
 export const USER_ROLES = ['admin', 'user'] as const;
 export const USER_STATUSES = ['enabled', 'disabled'] as const;
+/** 通用启用/禁用状态标签（与 common_status 字典种子文案一致；server 导出等无法走字典的场景使用） */
+export const COMMON_STATUS_LABELS = { enabled: '启用', disabled: '禁用' } as const;
 export const SUPER_ADMIN_CODE = 'super_admin';
 export const TENANT_ADMIN_CODE = 'tenant_admin';
 export const FILE_STORAGE_PROVIDERS = ['local', 'oss', 's3', 'cos', 'obs', 'kodo', 'bos', 'azure', 'sftp'] as const;
@@ -506,6 +508,13 @@ export const OPEN_WEBHOOK_EVENT_LABELS: Record<string, string> = {
 export const OPEN_WEBHOOK_SIGNATURE_HEADER = 'X-Zenith-Signature';
 /** 阶梯重试间隔（分钟） */
 export const OPEN_WEBHOOK_RETRY_STAGES_MINUTES = [1, 5, 30, 180, 720] as const;
+
+/** 地区层级标签（regions 前端页面 / server 导出统一复用） */
+export const REGION_LEVEL_LABELS = {
+  province: '省级',
+  city: '地级',
+  county: '县级',
+} as const;
 
 // ─── 意见反馈 ────────────────────────────────────────────────────────
 export const USER_FEEDBACK_CATEGORY_LABELS: Record<UserFeedbackCategory, string> = {

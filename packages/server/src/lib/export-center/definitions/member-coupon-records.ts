@@ -5,8 +5,9 @@ import { buildMemberCouponWhere } from '../../../services/member/coupons.service
 import { batchIterable } from '../../excel-export';
 import { defineExport } from '../registry';
 import type { ExportColumn } from '../types';
+import { MEMBER_COUPON_STATUS_LABELS } from '@zenith/shared';
 
-const STATUS_LABELS: Record<string, string> = { unused: '未使用', used: '已使用', expired: '已过期', frozen: '已冻结' };
+const STATUS_LABELS: Record<string, string> = MEMBER_COUPON_STATUS_LABELS;
 
 type Query = { memberKeyword?: string; couponId?: number; status?: 'unused' | 'used' | 'expired' | 'frozen' };
 

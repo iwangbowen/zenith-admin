@@ -4,9 +4,10 @@ import { positions } from '../../../db/schema';
 import { currentUser } from '../../context';
 import { tenantCondition } from '../../tenant';
 import { defineExport } from '../registry';
+import { COMMON_STATUS_LABELS } from '@zenith/shared';
 import type { ExportColumn } from '../types';
 
-const STATUS_LABELS: Record<string, string> = { enabled: '启用', disabled: '禁用' };
+const STATUS_LABELS: Record<string, string> = COMMON_STATUS_LABELS;
 
 const columns: ExportColumn[] = [
   { key: 'id', header: 'ID', width: 8, type: 'number' },

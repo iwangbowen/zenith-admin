@@ -24,18 +24,11 @@ import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { regionKeys, useDeleteRegion, useFlatRegions, useRegionDetail, useRegionTree, useSaveRegion } from '@/hooks/queries/regions';
+import { REGION_LEVEL_LABELS } from '@zenith/shared';
 
-const LEVEL_LABELS: Record<string, string> = {
-  province: '省级',
-  city: '地级',
-  county: '县级',
-};
+const LEVEL_LABELS: Record<string, string> = REGION_LEVEL_LABELS;
 
-const LEVEL_OPTIONS = [
-  { value: 'province', label: '省级' },
-  { value: 'city', label: '地级' },
-  { value: 'county', label: '县级' },
-];
+const LEVEL_OPTIONS = (Object.keys(REGION_LEVEL_LABELS) as Array<keyof typeof REGION_LEVEL_LABELS>).map((value) => ({ value, label: REGION_LEVEL_LABELS[value] }));
 
 interface SearchParams {
   keyword: string;

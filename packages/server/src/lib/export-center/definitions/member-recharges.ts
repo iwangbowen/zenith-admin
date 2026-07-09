@@ -6,12 +6,10 @@ import { batchIterable } from '../../excel-export';
 import { defineExport } from '../registry';
 import type { ExportColumn } from '../types';
 import type { PaymentChannel, PaymentOrderStatus } from '@zenith/shared';
+import { PAYMENT_ORDER_STATUS_LABELS, PAYMENT_CHANNEL_LABELS } from '@zenith/shared';
 
-const STATUS_LABELS: Record<string, string> = {
-  pending: '待支付', paying: '支付中', success: '支付成功', closed: '已关闭',
-  refunding: '退款中', refunded: '已退款', failed: '支付失败',
-};
-const CHANNEL_LABELS: Record<string, string> = { wechat: '微信支付', alipay: '支付宝', mock: '模拟支付' };
+const STATUS_LABELS: Record<string, string> = PAYMENT_ORDER_STATUS_LABELS;
+const CHANNEL_LABELS: Record<string, string> = { ...PAYMENT_CHANNEL_LABELS, mock: '模拟支付' };
 
 type Query = { keyword?: string; status?: PaymentOrderStatus; channel?: PaymentChannel; dateStart?: string; dateEnd?: string };
 

@@ -2,10 +2,11 @@ import { asc } from 'drizzle-orm';
 import { db } from '../../../db';
 import { regions } from '../../../db/schema';
 import { defineExport } from '../registry';
+import { COMMON_STATUS_LABELS, REGION_LEVEL_LABELS } from '@zenith/shared';
 import type { ExportColumn } from '../types';
 
-const LEVEL_LABELS: Record<string, string> = { province: '省级', city: '地级', county: '县级' };
-const STATUS_LABELS: Record<string, string> = { enabled: '启用', disabled: '禁用' };
+const LEVEL_LABELS: Record<string, string> = REGION_LEVEL_LABELS;
+const STATUS_LABELS: Record<string, string> = COMMON_STATUS_LABELS;
 
 const columns: ExportColumn[] = [
   { key: 'id', header: 'ID', width: 8, type: 'number' },

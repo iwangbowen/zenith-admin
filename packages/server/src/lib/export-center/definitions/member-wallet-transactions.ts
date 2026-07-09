@@ -6,8 +6,9 @@ import { batchIterable } from '../../excel-export';
 import { defineExport } from '../registry';
 import type { ExportColumn } from '../types';
 import type { WalletTxType } from '@zenith/shared';
+import { WALLET_TX_TYPE_LABELS } from '@zenith/shared';
 
-const TYPE_LABELS: Record<string, string> = { recharge: '充值', consume: '消费', refund: '退款', adjust: '调整' };
+const TYPE_LABELS: Record<string, string> = WALLET_TX_TYPE_LABELS;
 
 type Query = { memberKeyword?: string; type?: WalletTxType };
 
