@@ -15,6 +15,7 @@ import type {
   DeduplicateStrategy,
 } from '../../types';
 import {
+  AUTO_DECISION_LABELS,
   REJECT_STRATEGY_OPTIONS,
   EMPTY_ASSIGNEE_OPTIONS,
   SAME_INITIATOR_OPTIONS,
@@ -191,8 +192,8 @@ export default function ApproverAdvancedSections({
               className="fd-segmented-full"
             >
               <Radio value="remind">自动提醒</Radio>
-              <Radio value="autoApprove">自动同意</Radio>
-              <Radio value="autoReject">自动拒绝</Radio>
+              <Radio value="autoApprove">{AUTO_DECISION_LABELS.autoApprove}</Radio>
+              <Radio value="autoReject">{AUTO_DECISION_LABELS.autoReject}</Radio>
             </RadioGroup>
           </div>
 
@@ -246,8 +247,8 @@ export default function ApproverAdvancedSections({
                 style={{ width: '100%' }}
                 optionList={[
                   { value: 'none', label: '不处理（保持挂起，等待人工）' },
-                  { value: 'autoApprove', label: '自动同意' },
-                  { value: 'autoReject', label: '自动拒绝' },
+                  { value: 'autoApprove', label: AUTO_DECISION_LABELS.autoApprove },
+                  { value: 'autoReject', label: AUTO_DECISION_LABELS.autoReject },
                   { value: 'transferToManager', label: '转交给上级处理' },
                 ]}
               />
@@ -276,8 +277,8 @@ export default function ApproverAdvancedSections({
                       style={{ width: '100%' }}
                       optionList={[
                         { value: 'none', label: '保持挂起（停止重复扫描）' },
-                        { value: 'autoApprove', label: '自动同意' },
-                        { value: 'autoReject', label: '自动拒绝' },
+                        { value: 'autoApprove', label: AUTO_DECISION_LABELS.autoApprove },
+                        { value: 'autoReject', label: AUTO_DECISION_LABELS.autoReject },
                       ]}
                     />
                   </div>

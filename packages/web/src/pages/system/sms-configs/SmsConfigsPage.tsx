@@ -4,6 +4,7 @@ import { Button, Col, Form, Input, Modal, Row, Select, Spin, Tag,
   Toast, Switch } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search } from 'lucide-react';
+import { SMS_PROVIDER_OPTIONS } from '@zenith/shared';
 import type { SmsConfig, SmsProvider } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
@@ -21,11 +22,6 @@ import {
   useSmsConfigDetail,
   useSmsConfigList,
 } from '@/hooks/queries/sms-configs';
-
-const PROVIDER_OPTIONS = [
-  { label: '阿里云', value: 'aliyun' },
-  { label: '腾讯云', value: 'tencent' },
-];
 
 export default function SmsConfigsPage() {
   const { hasPermission: can } = usePermission();
@@ -132,7 +128,7 @@ export default function SmsConfigsPage() {
     { title: '名称', dataIndex: 'name', width: 160 },
     {
       title: '服务商', dataIndex: 'provider', width: 100,
-      render: (v: string) => PROVIDER_OPTIONS.find((p) => p.value === v)?.label ?? v,
+      render: (v: string) => SMS_PROVIDER_OPTIONS.find((p) => p.value === v)?.label ?? v,
     },
     { title: 'AccessKeyId', dataIndex: 'accessKeyId', width: 180, render: renderEllipsis },
     { title: '签名', dataIndex: 'signName', width: 120 },
@@ -188,7 +184,7 @@ export default function SmsConfigsPage() {
             <Input prefix={<Search size={14} />} placeholder="搜索名称/签名"
               value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 200 }} />
             <Select placeholder="服务商" value={draftParams.filterProvider} onChange={(v) => setDraftParams({ ...draftParams, filterProvider: v as SmsProvider | undefined })}
-              optionList={PROVIDER_OPTIONS} showClear style={{ width: 120 }} />
+              optionList={SMS_PROVIDER_OPTIONS} showClear style={{ width: 120 }} />
             <Select placeholder="状态" value={draftParams.filterStatus} onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as string | undefined })}
               optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))} showClear style={{ width: 110 }} />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
@@ -211,7 +207,7 @@ export default function SmsConfigsPage() {
         mobileFilters={(
           <>
             <Select placeholder="服务商" value={draftParams.filterProvider} onChange={(v) => setDraftParams({ ...draftParams, filterProvider: v as SmsProvider | undefined })}
-              optionList={PROVIDER_OPTIONS} showClear style={{ width: 120 }} />
+              optionList={SMS_PROVIDER_OPTIONS} showClear style={{ width: 120 }} />
             <Select placeholder="状态" value={draftParams.filterStatus} onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as string | undefined })}
               optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))} showClear style={{ width: 110 }} />
           </>
@@ -244,7 +240,7 @@ export default function SmsConfigsPage() {
                 rules={[{ required: true, message: '请输入名称' }]} />
             </Col>
             <Col span={12}>
-              <Form.Select field="provider" label="服务商" style={{ width: '100%' }} optionList={PROVIDER_OPTIONS}
+              <Form.Select field="provider" label="服务商" style={{ width: '100%' }} optionList={SMS_PROVIDER_OPTIONS}
                 placeholder="请选择服务商" rules={[{ required: true, message: '请选择服务商' }]} />
             </Col>
           </Row>

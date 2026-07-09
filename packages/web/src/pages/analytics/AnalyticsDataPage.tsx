@@ -50,6 +50,7 @@ import type {
   AnalyticsSettings,
   EventListItem,
 } from '@zenith/shared';
+import { ANALYTICS_DEVICE_TYPE_OPTIONS } from '@zenith/shared';
 
 const PAGE_SIZE = 20;
 
@@ -82,13 +83,7 @@ const EVENT_TYPE_LABEL: Record<string, { label: string; color: TagColor }> = {
 };
 
 const EVENT_TYPE_OPTIONS = Object.entries(EVENT_TYPE_LABEL).map(([value, meta]) => ({ value, label: meta.label }));
-const DEVICE_OPTIONS = [
-  { value: 'desktop', label: '桌面端' },
-  { value: 'mobile', label: '移动端' },
-  { value: 'tablet', label: '平板' },
-  { value: 'bot', label: '爬虫/机器人' },
-  { value: 'unknown', label: '未知' },
-];
+const DEVICE_OPTIONS = ANALYTICS_DEVICE_TYPE_OPTIONS;
 const META_STATUS_LABEL: Record<AnalyticsEventMeta['status'], { label: string; color: TagColor }> = {
   active: { label: '启用', color: 'green' },
   deprecated: { label: '废弃', color: 'orange' },

@@ -1,15 +1,7 @@
 import { useState } from 'react';
 import { Select, Input, InputNumber, Switch, Typography, RadioGroup, Radio, TextArea } from '@douyinfe/semi-ui';
 import type { WorkflowNodeFailurePolicy, WorkflowCompensationAction, WorkflowCompensationActionType, WorkflowNodeFailureAction } from '@zenith/shared';
-
-const ACTION_OPTIONS: Array<{ value: WorkflowNodeFailureAction; label: string }> = [
-  { value: 'continue', label: '继续后续节点' },
-  { value: 'retry', label: '自动重试' },
-  { value: 'compensate', label: '执行反向补偿动作' },
-  { value: 'fallback', label: '跳备用路径 / 备选动作' },
-  { value: 'notify', label: '通知管理员并挂起' },
-  { value: 'terminate', label: '终止流程' },
-];
+import { WORKFLOW_NODE_FAILURE_ACTION_OPTIONS as ACTION_OPTIONS } from '../constants';
 const COMP_TYPE_OPTIONS: Array<{ value: WorkflowCompensationActionType; label: string }> = [
   { value: 'none', label: '无' },
   { value: 'http', label: 'HTTP 直连' },

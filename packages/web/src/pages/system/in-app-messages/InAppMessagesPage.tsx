@@ -22,13 +22,7 @@ import {
   useMarkInAppMessageRead,
   useSendInAppMessage,
 } from '@/hooks/queries/in-app-messages';
-
-const TYPE_OPTIONS: { label: string; value: InAppMessageType; color: 'blue' | 'green' | 'orange' | 'red' }[] = [
-  { label: '通知', value: 'info', color: 'blue' },
-  { label: '成功', value: 'success', color: 'green' },
-  { label: '警告', value: 'warning', color: 'orange' },
-  { label: '错误', value: 'error', color: 'red' },
-];
+import { IN_APP_MESSAGE_TYPE_OPTIONS_WITH_COLOR as TYPE_OPTIONS } from '../in-app-message-constants';
 
 const READ_OPTIONS = [
   { label: '未读', value: 'false' },

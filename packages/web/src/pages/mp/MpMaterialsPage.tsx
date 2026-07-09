@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Input, Modal, Select, Spin, Tag, Toast, Banner, Upload, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search, RefreshCw, UploadCloud } from 'lucide-react';
+import { MP_MATERIAL_TYPE_LABELS, MP_MATERIAL_TYPE_OPTIONS } from '@zenith/shared';
 import type { MpMaterial, MpMaterialType } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -21,13 +22,6 @@ import {
   useSyncMpMaterials,
   useUploadMpMaterial,
 } from '@/hooks/queries/mp-materials';
-
-const TYPE_OPTIONS = [
-  { label: '图片', value: 'image' },
-  { label: '语音', value: 'voice' },
-  { label: '视频', value: 'video' },
-  { label: '缩略图', value: 'thumb' },
-];
 
 function fmtSize(bytes: number | null): string {
   if (bytes == null) return '—';
@@ -117,11 +111,11 @@ export default function MpMaterialsPage() {
       render: (v: string | null, r: MpMaterial) => (
         (r.type === 'image' || r.type === 'thumb') && v
           ? <img src={v} alt={r.name} style={{ width: 56, height: 42, objectFit: 'cover', borderRadius: 'var(--semi-border-radius-small)', border: '1px solid var(--semi-color-border)' }} />
-          : <Tag type="light">{TYPE_OPTIONS.find((t) => t.value === r.type)?.label ?? r.type}</Tag>
+          : <Tag type="light">{MP_MATERIAL_TYPE_LABELS[r.type]}</Tag>
       ),
     },
     { title: '名称', dataIndex: 'name', width: 180, render: renderEllipsis },
-    { title: '类型', dataIndex: 'type', width: 90, render: (v: string) => TYPE_OPTIONS.find((t) => t.value === v)?.label ?? v },
+    { title: '类型', dataIndex: 'type', width: 90, render: (v: MpMaterialType) => MP_MATERIAL_TYPE_LABELS[v] },
     { title: '微信 MediaID', dataIndex: 'wechatMediaId', width: 200, render: (v: string | null) => v || '— 未同步' },
     { title: '大小', dataIndex: 'fileSize', width: 100, render: (v: number | null) => fmtSize(v) },
     createdAtColumn,
@@ -144,7 +138,7 @@ export default function MpMaterialsPage() {
       placeholder="类型"
       value={draftParams.filterType}
       onChange={(v) => setDraftParams({ ...draftParams, filterType: v as MpMaterialType | undefined })}
-      optionList={TYPE_OPTIONS}
+      optionList={MP_MATERIAL_TYPE_OPTIONS}
       showClear
       style={{ width: 120 }}
     />
@@ -227,7 +221,7 @@ export default function MpMaterialsPage() {
             initValues={editingRecord ? { name: editingRecord.name } : { type: 'image', name: '', url: '' }}
           >
             {!editingRecord && (
-              <Form.Select field="type" label="素材类型" style={{ width: '100%' }} optionList={TYPE_OPTIONS} />
+              <Form.Select field="type" label="素材类型" style={{ width: '100%' }} optionList={MP_MATERIAL_TYPE_OPTIONS} />
             )}
             <Form.Input field="name" label="素材名称" placeholder="请输入素材名称" rules={[{ required: true, message: '请输入素材名称' }]} />
             {!editingRecord && (
@@ -241,7 +235,7 @@ export default function MpMaterialsPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingTop: 4 }}>
           <div>
             <Typography.Text type="secondary" size="small">素材类型</Typography.Text>
-            <Select style={{ width: '100%', marginTop: 4 }} value={uploadType} onChange={(v) => setUploadType(v as MpMaterialType)} optionList={TYPE_OPTIONS} />
+            <Select style={{ width: '100%', marginTop: 4 }} value={uploadType} onChange={(v) => setUploadType(v as MpMaterialType)} optionList={MP_MATERIAL_TYPE_OPTIONS} />
           </div>
           <div>
             <Typography.Text type="secondary" size="small">素材名称（选填，默认取文件名）</Typography.Text>
@@ -276,7 +270,7 @@ export default function MpMaterialsPage() {
           >
             <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--semi-color-text-2)' }}>
               <UploadCloud size={28} style={{ marginBottom: 8 }} />
-              <div>点击或拖拽文件到此处上传（{TYPE_OPTIONS.find((t) => t.value === uploadType)?.label}）</div>
+              <div>点击或拖拽文件到此处上传（{MP_MATERIAL_TYPE_LABELS[uploadType]}）</div>
             </div>
           </Upload>
         </div>

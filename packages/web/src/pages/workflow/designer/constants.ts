@@ -26,6 +26,7 @@ import type {
   SameInitiatorStrategy,
   DeduplicateStrategy,
 } from './types';
+import type { WorkflowNodeFailureAction } from '@zenith/shared';
 
 // ─── 节点类型注册信息 ────────────────────────────────────────────────
 
@@ -187,6 +188,39 @@ export const REJECT_STRATEGY_OPTIONS: Array<{ value: RejectStrategy; label: stri
   { value: 'returnPrev',   label: '退回上一步' },
   { value: 'returnStart',  label: '退回发起人' },
   { value: 'returnToNode', label: '退回到指定节点' },
+];
+
+/** 自动审批动作统一文案（超时、兜底、无人审批等场景复用） */
+export const AUTO_DECISION_LABELS = {
+  autoApprove: '自动通过',
+  autoReject: '自动拒绝',
+} as const;
+
+/** 外部审批人解析失败时的兜底策略 */
+export const EXTERNAL_FALLBACK_STRATEGY_OPTIONS = [
+  { value: 'manual', label: '保留任务，由系统审批人处理' },
+  { value: 'autoApprove', label: AUTO_DECISION_LABELS.autoApprove },
+  { value: 'autoReject', label: AUTO_DECISION_LABELS.autoReject },
+] as const;
+
+/** 简版节点执行失败策略（连接器、数据源等节点使用） */
+export const SIMPLE_FAILURE_STRATEGY_OPTIONS = [
+  { value: 'continue', label: '继续后续节点' },
+  { value: 'retry', label: '自动重试' },
+  { value: 'block', label: '中止流程' },
+] as const;
+
+/** 完整节点失败策略（含补偿、备用路径、通知管理员） */
+export const WORKFLOW_NODE_FAILURE_ACTION_OPTIONS: Array<{
+  value: WorkflowNodeFailureAction;
+  label: string;
+}> = [
+  { value: 'continue', label: '继续后续节点' },
+  { value: 'retry', label: '自动重试' },
+  { value: 'compensate', label: '执行反向补偿动作' },
+  { value: 'fallback', label: '跳备用路径 / 备选动作' },
+  { value: 'notify', label: '通知管理员并挂起' },
+  { value: 'terminate', label: '终止流程' },
 ];
 
 export const OPERATION_PERMISSION_OPTIONS: Array<{ value: OperationPermission; label: string }> = [

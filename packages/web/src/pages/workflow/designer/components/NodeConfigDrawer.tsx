@@ -13,7 +13,14 @@ import { SideSheet, Tabs, TabPane, Input, TextArea, Typography, Form, Select, In
 import { Plus, Trash2, AlertTriangle } from 'lucide-react';
 import type { FlowNode, FlowNodeType, AssigneeType, ApproveMethod, ApprovalType, RejectStrategy, EmptyAssigneeStrategy, OperationPermission, FieldPermission, TimeoutConfig, SameInitiatorStrategy, DeduplicateStrategy, ActionButtonsConfig, NodeHealthInfo, NodeHealthIssue } from '../types';
 import type { NodeListenerConfig } from '@zenith/shared';
-import { ADDABLE_NODE_TYPES, DEFAULT_APPROVER_OPERATIONS, DELAY_UNIT_OPTIONS, TRIGGER_TYPE_OPTIONS } from '../constants';
+import {
+  ADDABLE_NODE_TYPES,
+  DEFAULT_APPROVER_OPERATIONS,
+  DELAY_UNIT_OPTIONS,
+  EXTERNAL_FALLBACK_STRATEGY_OPTIONS,
+  SIMPLE_FAILURE_STRATEGY_OPTIONS,
+  TRIGGER_TYPE_OPTIONS,
+} from '../constants';
 import ApproverSettingsTab from './tabs/ApproverSettingsTab';
 import FormPermissionTab from './tabs/FormPermissionTab';
 import ApprovalRequirementsTab from './tabs/ApprovalRequirementsTab';
@@ -471,11 +478,7 @@ export default function NodeConfigDrawer({
                               value={(ext.fallbackStrategy as string) ?? 'manual'}
                               onChange={(v) => updateExt({ fallbackStrategy: v })}
                               style={{ width: '100%' }}
-                              optionList={[
-                                { value: 'manual', label: '保留任务，由系统审批人处理' },
-                                { value: 'autoApprove', label: '自动通过' },
-                                { value: 'autoReject', label: '自动拒绝' },
-                              ]}
+                              optionList={[...EXTERNAL_FALLBACK_STRATEGY_OPTIONS]}
                             />
                           </Form.Slot>
                         </div>
@@ -690,11 +693,7 @@ export default function NodeConfigDrawer({
                 value={(props.onFailure as string) ?? 'continue'}
                 onChange={(v) => handlePropsChange({ onFailure: v })}
                 style={{ width: '100%' }}
-                optionList={[
-                  { value: 'continue', label: '继续后续节点' },
-                  { value: 'retry', label: '自动重试' },
-                  { value: 'block', label: '中止流程' },
-                ]}
+                optionList={[...SIMPLE_FAILURE_STRATEGY_OPTIONS]}
               />
             </Form.Slot>
             {(props.onFailure as string) === 'retry' && (

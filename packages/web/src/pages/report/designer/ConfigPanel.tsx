@@ -1,5 +1,6 @@
 import { Select, Input, InputNumber, Switch, Typography, Button, Space, TextArea } from '@douyinfe/semi-ui';
 import { Plus, Trash2 } from 'lucide-react';
+import { REPORT_AGGREGATE_OPTIONS } from '@zenith/shared';
 import type { ReportWidget, ReportWidgetOptions, ReportDataset, ReportFilter, ReportDatasetParam, ReportConditionalFormat } from '@zenith/shared';
 
 type FieldOption = { value: string; label: string };
@@ -17,10 +18,7 @@ interface ConfigPanelProps {
   onOptions: (patch: Partial<ReportWidgetOptions>) => void;
 }
 
-const AGG = [
-  { value: 'sum', label: '求和' }, { value: 'avg', label: '平均' }, { value: 'max', label: '最大' },
-  { value: 'min', label: '最小' }, { value: 'count', label: '计数' }, { value: 'first', label: '首行' },
-];
+const AGG = REPORT_AGGREGATE_OPTIONS;
 const OPS = [
   { value: 'gte', label: '≥' }, { value: 'lte', label: '≤' }, { value: 'gt', label: '>' },
   { value: 'lt', label: '<' }, { value: 'eq', label: '=' }, { value: 'neq', label: '≠' }, { value: 'between', label: '介于' },

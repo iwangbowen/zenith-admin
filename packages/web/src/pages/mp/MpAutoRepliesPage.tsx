@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button, Col, Form, Input, Modal, Row, Select, Space, Spin, Tag, Toast, Switch, Banner, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search, Trash2, Flame } from 'lucide-react';
+import { MP_REPLY_CONTENT_TYPE_LABELS, MP_REPLY_CONTENT_TYPE_OPTIONS } from '@zenith/shared';
 import type { MpAutoReply, MpAutoReplyType, MpReplyContentType, MpReplyArticle } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -33,14 +34,6 @@ const MATCH_OPTIONS = [
   { label: '包含匹配', value: 'contain' },
   { label: '正则匹配', value: 'regex' },
 ];
-const CONTENT_TYPE_OPTIONS = [
-  { label: '文本', value: 'text' },
-  { label: '图片', value: 'image' },
-  { label: '语音', value: 'voice' },
-  { label: '视频', value: 'video' },
-  { label: '图文', value: 'news' },
-];
-const CONTENT_TYPE_LABEL: Record<MpReplyContentType, string> = { text: '文本', image: '图片', voice: '语音', video: '视频', news: '图文' };
 const TYPE_TAG_COLOR: Record<MpAutoReplyType, 'green' | 'blue' | 'orange'> = {
   subscribe: 'green', keyword: 'blue', default: 'orange',
 };
@@ -176,7 +169,7 @@ export default function MpAutoRepliesPage() {
     },
     { title: '关键词', dataIndex: 'keyword', width: 130, render: (v: string | null) => v || '—' },
     { title: '匹配', dataIndex: 'matchType', width: 80, render: (v: string, r: MpAutoReply) => (r.replyType === 'keyword' ? (v === 'exact' ? '全匹配' : '包含') : '—') },
-    { title: '内容类型', dataIndex: 'contentType', width: 90, render: (v: MpReplyContentType) => <Tag type="light" color="violet">{CONTENT_TYPE_LABEL[v]}</Tag> },
+    { title: '内容类型', dataIndex: 'contentType', width: 90, render: (v: MpReplyContentType) => <Tag type="light" color="violet">{MP_REPLY_CONTENT_TYPE_LABELS[v]}</Tag> },
     { title: '回复内容', dataIndex: 'content', width: 260, render: (_: unknown, r: MpAutoReply) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 240 }}>{summarizeReply(r)}</Typography.Text> },
     createdAtColumn,
     {
@@ -323,7 +316,7 @@ export default function MpAutoRepliesPage() {
             )}
 
             <Form.Slot label="内容类型">
-              <Select style={{ width: '100%' }} optionList={CONTENT_TYPE_OPTIONS} value={contentType}
+              <Select style={{ width: '100%' }} optionList={MP_REPLY_CONTENT_TYPE_OPTIONS} value={contentType}
                 onChange={(v) => setContentType(v as MpReplyContentType)} />
             </Form.Slot>
 
@@ -335,7 +328,7 @@ export default function MpAutoRepliesPage() {
             {(contentType === 'image' || contentType === 'voice' || contentType === 'video') && (
               <>
                 <Form.Select field="mediaId" label="素材" style={{ width: '100%' }} filter showClear
-                  placeholder={`请选择${CONTENT_TYPE_LABEL[contentType]}素材（来自素材库的永久素材）`}
+                  placeholder={`请选择${MP_REPLY_CONTENT_TYPE_LABELS[contentType]}素材（来自素材库的永久素材）`}
                   optionList={materialOptions(contentType)}
                   rules={[{ required: true, message: '请选择素材' }]}
                   emptyContent="暂无对应类型的永久素材，请先在「素材管理」上传" />

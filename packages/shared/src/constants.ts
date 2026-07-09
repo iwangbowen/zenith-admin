@@ -1,4 +1,16 @@
-import type { WorkflowApproverDedupMode, UserFeedbackCategory, UserFeedbackStatus } from './types';
+import type {
+  AnalyticsDeviceType,
+  InAppMessageType,
+  MpBroadcastType,
+  MpMaterialType,
+  MpMessageType,
+  MpReplyContentType,
+  ReportAlertAggregate,
+  SmsProvider,
+  UserFeedbackCategory,
+  UserFeedbackStatus,
+  WorkflowApproverDedupMode,
+} from './types';
 
 export const API_PREFIX = '/api';
 export const TOKEN_KEY = 'zenith_token';
@@ -530,3 +542,98 @@ export const USER_FEEDBACK_STATUS_LABELS: Record<UserFeedbackStatus, string> = {
   resolved: '已解决',
   ignored: '已忽略',
 };
+
+// ─── 消息与短信 ────────────────────────────────────────────────────────
+export const SMS_PROVIDER_LABELS: Record<SmsProvider, string> = {
+  aliyun: '阿里云',
+  tencent: '腾讯云',
+};
+
+export const SMS_PROVIDER_OPTIONS: Array<{ value: SmsProvider; label: string }> =
+  (Object.keys(SMS_PROVIDER_LABELS) as SmsProvider[])
+    .map((value) => ({ value, label: SMS_PROVIDER_LABELS[value] }));
+
+export const IN_APP_MESSAGE_TYPE_LABELS: Record<InAppMessageType, string> = {
+  info: '通知',
+  success: '成功',
+  warning: '警告',
+  error: '错误',
+};
+
+export const IN_APP_MESSAGE_TYPE_OPTIONS: Array<{ value: InAppMessageType; label: string }> =
+  (Object.keys(IN_APP_MESSAGE_TYPE_LABELS) as InAppMessageType[])
+    .map((value) => ({ value, label: IN_APP_MESSAGE_TYPE_LABELS[value] }));
+
+// ─── 公众号媒体类型 ────────────────────────────────────────────────────
+export const MP_REPLY_CONTENT_TYPE_LABELS: Record<MpReplyContentType, string> = {
+  text: '文本',
+  image: '图片',
+  voice: '语音',
+  video: '视频',
+  news: '图文',
+};
+
+export const MP_REPLY_CONTENT_TYPE_OPTIONS: Array<{ value: MpReplyContentType; label: string }> =
+  (Object.keys(MP_REPLY_CONTENT_TYPE_LABELS) as MpReplyContentType[])
+    .map((value) => ({ value, label: MP_REPLY_CONTENT_TYPE_LABELS[value] }));
+
+export const MP_BROADCAST_TYPE_LABELS: Record<MpBroadcastType, string> = {
+  text: '文本',
+  image: '图片',
+  mpnews: '图文',
+};
+
+export const MP_BROADCAST_TYPE_OPTIONS: Array<{ value: MpBroadcastType; label: string }> =
+  (Object.keys(MP_BROADCAST_TYPE_LABELS) as MpBroadcastType[])
+    .map((value) => ({ value, label: MP_BROADCAST_TYPE_LABELS[value] }));
+
+export const MP_MATERIAL_TYPE_LABELS: Record<MpMaterialType, string> = {
+  image: '图片',
+  voice: '语音',
+  video: '视频',
+  thumb: '缩略图',
+};
+
+export const MP_MATERIAL_TYPE_OPTIONS: Array<{ value: MpMaterialType; label: string }> =
+  (Object.keys(MP_MATERIAL_TYPE_LABELS) as MpMaterialType[])
+    .map((value) => ({ value, label: MP_MATERIAL_TYPE_LABELS[value] }));
+
+export const MP_MESSAGE_TYPE_LABELS: Record<MpMessageType, string> = {
+  text: '文本',
+  image: '图片',
+  voice: '语音',
+  video: '视频',
+  shortvideo: '视频',
+  location: '位置',
+  link: '链接',
+  event: '事件',
+};
+
+// ─── 数据分析与报表 ────────────────────────────────────────────────────
+export const ANALYTICS_DEVICE_TYPE_LABELS: Record<AnalyticsDeviceType, string> = {
+  desktop: '桌面端',
+  mobile: '移动端',
+  tablet: '平板',
+  bot: '爬虫/机器人',
+  unknown: '未知',
+};
+
+export const ANALYTICS_DEVICE_TYPE_OPTIONS: Array<{ value: AnalyticsDeviceType; label: string }> =
+  (Object.keys(ANALYTICS_DEVICE_TYPE_LABELS) as AnalyticsDeviceType[])
+    .map((value) => ({ value, label: ANALYTICS_DEVICE_TYPE_LABELS[value] }));
+
+export const REPORT_AGGREGATE_LABELS: Record<ReportAlertAggregate, string> = {
+  sum: '求和',
+  avg: '平均',
+  max: '最大',
+  min: '最小',
+  count: '计数',
+  first: '首行',
+};
+
+export const REPORT_AGGREGATE_OPTIONS: Array<{ value: ReportAlertAggregate; label: string }> =
+  (Object.keys(REPORT_AGGREGATE_LABELS) as ReportAlertAggregate[])
+    .map((value) => ({ value, label: REPORT_AGGREGATE_LABELS[value] }));
+
+export const REPORT_VISUAL_AGGREGATE_OPTIONS = REPORT_AGGREGATE_OPTIONS
+  .filter((option) => option.value !== 'first');

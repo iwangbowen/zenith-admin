@@ -1,17 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Button, Input, InputNumber, Select, Space, Toast, Typography } from '@douyinfe/semi-ui';
 import { Wand2 } from 'lucide-react';
-import { buildVisualSql, visualMetricAlias } from '@zenith/shared';
+import { buildVisualSql, REPORT_VISUAL_AGGREGATE_OPTIONS, visualMetricAlias } from '@zenith/shared';
 import type { ReportVisualModel, ReportVisualMetric, ReportVisualFilter } from '@zenith/shared';
 import { useReportMetaTables, useReportMetaColumns } from '@/hooks/queries/report-datasets';
-
-const AGG_OPTIONS = [
-  { value: 'sum', label: '求和' },
-  { value: 'avg', label: '平均' },
-  { value: 'max', label: '最大' },
-  { value: 'min', label: '最小' },
-  { value: 'count', label: '计数' },
-];
 
 const OP_OPTIONS = [
   { value: 'eq', label: '=' },
@@ -86,7 +78,7 @@ export function VisualModelBuilder({ initial, onGenerate }: Readonly<Props>) {
         <Space key={i} wrap>
           <Select filter placeholder={m.aggregate === 'count' ? '计数可不选字段' : '字段'} value={m.field || undefined} style={{ width: 200 }}
             optionList={columnOptions} showClear onChange={(v) => patchMetric(i, { field: v ? String(v) : '' })} />
-          <Select value={m.aggregate} style={{ width: 90 }} optionList={AGG_OPTIONS}
+          <Select value={m.aggregate} style={{ width: 90 }}           optionList={REPORT_VISUAL_AGGREGATE_OPTIONS}
             onChange={(v) => patchMetric(i, { aggregate: v as ReportVisualMetric['aggregate'] })} />
           <Input placeholder="别名（可选）" value={m.alias ?? ''} style={{ width: 140 }} showClear
             onChange={(v) => patchMetric(i, { alias: v || undefined })} />

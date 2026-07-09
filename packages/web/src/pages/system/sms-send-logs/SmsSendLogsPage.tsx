@@ -5,6 +5,7 @@ import { Button, Form, Input, Modal, Select, Tag,
 import { AppModal } from '@/components/AppModal';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search } from 'lucide-react';
+import { SMS_PROVIDER_OPTIONS } from '@zenith/shared';
 import type { SendStatus, SmsSendLog } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -32,11 +33,6 @@ const SOURCE_OPTIONS = [
   { label: '测试', value: 'test' },
   { label: '系统', value: 'system' },
   { label: 'API', value: 'api' },
-];
-
-const PROVIDER_OPTIONS = [
-  { label: '阿里云', value: 'aliyun' },
-  { label: '腾讯云', value: 'tencent' },
 ];
 
 function StatusTag({ value }: Readonly<{ value: SendStatus }>) {
@@ -118,7 +114,7 @@ export default function SmsSendLogsPage() {
     { title: '模板', dataIndex: 'templateName', width: 140, render: (v: string | null) => v || '—' },
     {
       title: '服务商', dataIndex: 'provider', width: 100,
-      render: (v: string) => PROVIDER_OPTIONS.find((p) => p.value === v)?.label ?? v,
+      render: (v: string) => SMS_PROVIDER_OPTIONS.find((p) => p.value === v)?.label ?? v,
     },
     { title: '内容', dataIndex: 'content', render: renderEllipsis },
     { title: '来源', dataIndex: 'source', width: 90, render: (v: string) => SOURCE_OPTIONS.find((s) => s.value === v)?.label ?? v },

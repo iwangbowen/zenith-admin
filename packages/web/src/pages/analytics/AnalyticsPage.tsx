@@ -75,6 +75,7 @@ import type {
   SessionListItem,
   UserStats,
 } from '@zenith/shared';
+import { ANALYTICS_DEVICE_TYPE_OPTIONS } from '@zenith/shared';
 
 function msToReadable(ms: number | null): string {
   if (ms == null) return '–';
@@ -93,11 +94,7 @@ const RETENTION_DAYS_OPTIONS = [
 
 const DEVICE_OPTIONS = [
   { label: '全部设备', value: '' },
-  { label: '桌面端', value: 'desktop' },
-  { label: '移动端', value: 'mobile' },
-  { label: '平板', value: 'tablet' },
-  { label: '机器人', value: 'bot' },
-  { label: '未知', value: 'unknown' },
+  ...ANALYTICS_DEVICE_TYPE_OPTIONS,
 ];
 
 const EMPTY_HEATMAP_PAGES: HeatmapPageListItem[] = [];

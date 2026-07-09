@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Avatar, Button, Input, Toast, Banner, Spin, Empty, Select, Typography } from '@douyinfe/semi-ui';
 import { RefreshCw, Send, Paperclip } from 'lucide-react';
+import { MP_MESSAGE_TYPE_LABELS } from '@zenith/shared';
 import type { MpConversation, MpMessage, MpMessageType } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
@@ -18,13 +19,13 @@ import {
 function msgPreview(type: MpMessageType, content: string | null): string {
   switch (type) {
     case 'text': return content || '';
-    case 'image': return '[图片]';
-    case 'voice': return '[语音]';
+    case 'image': return `[${MP_MESSAGE_TYPE_LABELS.image}]`;
+    case 'voice': return `[${MP_MESSAGE_TYPE_LABELS.voice}]`;
     case 'video':
-    case 'shortvideo': return '[视频]';
-    case 'location': return '[位置]';
-    case 'link': return '[链接]';
-    case 'event': return `[事件] ${content ?? ''}`.trim();
+    case 'shortvideo': return `[${MP_MESSAGE_TYPE_LABELS[type]}]`;
+    case 'location': return `[${MP_MESSAGE_TYPE_LABELS.location}]`;
+    case 'link': return `[${MP_MESSAGE_TYPE_LABELS.link}]`;
+    case 'event': return `[${MP_MESSAGE_TYPE_LABELS.event}] ${content ?? ''}`.trim();
     default: return content || '';
   }
 }

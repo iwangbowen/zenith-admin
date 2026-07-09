@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Modal, Select, Spin, Tag, Toast, Banner, Typography, Tooltip, Input, Descriptions } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search } from 'lucide-react';
+import { MP_BROADCAST_TYPE_LABELS, MP_BROADCAST_TYPE_OPTIONS } from '@zenith/shared';
 import type { MpBroadcast, MpBroadcastType, MpBroadcastTarget, MpBroadcastStatus } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { formatDateTimeForApi } from '@/utils/date';
@@ -25,12 +26,6 @@ import {
   useSendMpBroadcast,
 } from '@/hooks/queries/mp-broadcasts';
 
-const TYPE_OPTIONS = [
-  { label: '文本', value: 'text' },
-  { label: '图片', value: 'image' },
-  { label: '图文', value: 'mpnews' },
-];
-const TYPE_LABEL: Record<MpBroadcastType, string> = { text: '文本', image: '图片', mpnews: '图文' };
 const STATUS_OPTIONS = [
   { label: '草稿', value: 'draft' },
   { label: '已发送', value: 'sent' },
@@ -146,7 +141,7 @@ export default function MpBroadcastsPage() {
   };
 
   const columns = [
-    { title: '内容类型', dataIndex: 'msgType', width: 90, render: (v: MpBroadcastType) => <Tag type="light" color="blue">{TYPE_LABEL[v]}</Tag> },
+    { title: '内容类型', dataIndex: 'msgType', width: 90, render: (v: MpBroadcastType) => <Tag type="light" color="blue">{MP_BROADCAST_TYPE_LABELS[v]}</Tag> },
     {
       title: '群发对象', dataIndex: 'target', width: 130,
       render: (v: MpBroadcastTarget, r: MpBroadcast) => (v === 'all' ? '全部粉丝' : `标签：${r.tagId ? (tagMap.get(r.tagId) ?? `#${r.tagId}`) : '—'}`),
@@ -259,7 +254,7 @@ export default function MpBroadcastsPage() {
               : { content: '', mediaId: '', tagId: undefined, scheduledAt: undefined }}
           >
             <Form.Slot label="内容类型">
-              <Select style={{ width: '100%' }} optionList={TYPE_OPTIONS} value={modalType} onChange={(v) => setModalType(v as MpBroadcastType)} />
+              <Select style={{ width: '100%' }} optionList={MP_BROADCAST_TYPE_OPTIONS} value={modalType} onChange={(v) => setModalType(v as MpBroadcastType)} />
             </Form.Slot>
 
             {modalType === 'text' ? (
