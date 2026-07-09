@@ -84,7 +84,7 @@
     "concurrently": "^10.0.3",
     "electron": "42.4.0",
     "electron-builder": "^26.15.2",
-    "typescript": "^6.0.3",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
     "wait-on": "^9.0.10"
   }
 }
