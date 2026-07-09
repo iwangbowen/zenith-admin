@@ -3,6 +3,12 @@ FROM node:24-alpine AS builder
 
 WORKDIR /app
 
+# node-pty (packages/server dependency, used by the web terminal feature) ships
+# no prebuilt binary for Linux and must be compiled via node-gyp, which needs
+# Python + a C/C++ toolchain. This stage is discarded after build, so no cleanup
+# is needed here.
+RUN apk add --no-cache python3 make g++
+
 # Copy workspace manifests first (leverages Docker layer cache)
 COPY package.json package-lock.json ./
 COPY packages/shared/package.json ./packages/shared/
@@ -45,9 +51,15 @@ COPY packages/shared/package.json ./packages/shared/
 COPY packages/server/package.json ./packages/server/
 COPY packages/web/package.json ./packages/web/
 
-# Install production dependencies only.
-# This creates node_modules/@zenith/shared symlink → packages/shared
-RUN npm ci --omit=dev
+# node-pty has no Linux prebuild and is compiled via node-gyp during install.
+# libstdc++ is kept permanently (the compiled native addon links against it at
+# runtime); python3/make/g++ are only needed to build it, so they're installed
+# as a removable virtual group and dropped again once `npm ci` finishes to keep
+# the production image lean.
+RUN apk add --no-cache libstdc++ \
+ && apk add --no-cache --virtual .build-deps python3 make g++ \
+ && npm ci --omit=dev \
+ && apk del .build-deps
 
 # Overwrite shared package.json with the patched version (exports → dist/)
 # and copy compiled shared JS (the symlink target needs the dist files)
