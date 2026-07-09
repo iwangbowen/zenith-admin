@@ -15,6 +15,17 @@ import { formatDateTime } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { encryptField, decryptField } from '../../lib/encryption';
 import { testExternalConnection } from '../../lib/report-external-db';
+import { assertSafeOutboundHost, assertSafeOutboundUrl } from '../../lib/outbound-url';
+import {
+  ensureInternalReportDatabaseAccess,
+  reportCreateTenantId,
+  reportScopedWhere,
+  reportTenantScope,
+} from './report-access';
+import {
+  isSensitiveReportHeader,
+  REPORT_SECRET_MASK,
+} from './report-secrets';
 import { isExternalDbType, REPORT_DATASOURCE_TYPES } from '@zenith/shared';
 import type { ReportDatasourceRow } from '../../db/schema';
 import type {
@@ -23,17 +34,11 @@ import type {
 } from '@zenith/shared';
 
 const DEFAULT_PORT: Record<string, number> = { mysql: 3306, postgresql: 5432, sqlserver: 1433 };
-/** 视为敏感、读取时需脱敏的 API 请求头（大小写不敏感匹配） */
-const SENSITIVE_HEADER_RE = /^(authorization|cookie|x-api-key|api-key|token|x-auth-token|proxy-authorization)$/i;
-const SECRET_MASK = '******';
-
-function isSensitiveHeader(key: string): boolean { return SENSITIVE_HEADER_RE.test(key); }
-
 /** 读取展示：敏感 header 值脱敏为掩码 */
 function maskApiHeaders(headers: Record<string, string> | null | undefined): Record<string, string> | null {
   if (!headers) return null;
   const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(headers)) out[k] = isSensitiveHeader(k) && v ? SECRET_MASK : v;
+  for (const [k, v] of Object.entries(headers)) out[k] = isSensitiveReportHeader(k) && v ? REPORT_SECRET_MASK : v;
   return out;
 }
 
@@ -45,8 +50,8 @@ function encryptApiHeaders(
   if (!headers) return null;
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(headers)) {
-    if (!isSensitiveHeader(k) || !v) { out[k] = v; continue; }
-    if (v === SECRET_MASK) {
+    if (!isSensitiveReportHeader(k) || !v) { out[k] = v; continue; }
+    if (v === REPORT_SECRET_MASK) {
       const prev = currentHeaders?.[k];
       if (prev) out[k] = prev; // 沿用旧密文
     } else {
@@ -60,7 +65,7 @@ function encryptApiHeaders(
 export function resolveApiHeaders(headers: Record<string, string> | null | undefined): Record<string, string> | undefined {
   if (!headers) return undefined;
   const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(headers)) out[k] = isSensitiveHeader(k) && v ? (decryptField(v) ?? v) : v;
+  for (const [k, v] of Object.entries(headers)) out[k] = isSensitiveReportHeader(k) && v ? (decryptField(v) ?? v) : v;
   return out;
 }
 
@@ -133,8 +138,18 @@ export function normalizeDatasourceConfig(
   return { connection: 'internal' };
 }
 
+async function assertDatasourceTargetSafe(type: ReportDatasourceType, config: ReportDatasourceConfig): Promise<void> {
+  if (type === 'api') {
+    await assertSafeOutboundUrl((config as ReportApiDatasourceConfig).url);
+  } else if (isExternalDbType(type)) {
+    await assertSafeOutboundHost((config as ReportExternalDbConfig).host);
+  }
+}
+
 export async function ensureDatasourceExists(id: number): Promise<ReportDatasourceRow> {
-  const [row] = await db.select().from(reportDatasources).where(eq(reportDatasources.id, id)).limit(1);
+  const [row] = await db.select().from(reportDatasources)
+    .where(reportScopedWhere(reportDatasources, eq(reportDatasources.id, id)))
+    .limit(1);
   if (!row) throw new HTTPException(404, { message: '数据源不存在' });
   return row;
 }
@@ -148,6 +163,8 @@ export async function listDatasources(query: {
 }) {
   const { page = 1, pageSize = 20, keyword, type, status } = query;
   const conds = [];
+  const tenantScope = reportTenantScope(reportDatasources);
+  if (tenantScope) conds.push(tenantScope);
   if (keyword) {
     const kw = `%${escapeLike(keyword)}%`;
     conds.push(or(ilike(reportDatasources.name, kw), ilike(reportDatasources.remark, kw)));
@@ -167,9 +184,12 @@ export async function listDatasources(query: {
 }
 
 export async function createDatasource(input: CreateReportDatasourceInput): Promise<ReportDatasource> {
+  if (input.type === 'sql') ensureInternalReportDatabaseAccess();
   const config = normalizeDatasourceConfig(input.type, input.config);
+  await assertDatasourceTargetSafe(input.type, config);
   try {
     const [row] = await db.insert(reportDatasources).values({
+      tenantId: reportCreateTenantId(),
       name: input.name,
       type: input.type,
       config,
@@ -186,11 +206,17 @@ export async function createDatasource(input: CreateReportDatasourceInput): Prom
 export async function updateDatasource(id: number, input: UpdateReportDatasourceInput): Promise<ReportDatasource> {
   const current = await ensureDatasourceExists(id);
   const nextType = (input.type ?? current.type) as ReportDatasourceType;
+  if (nextType === 'sql') ensureInternalReportDatabaseAccess();
+  if (input.type && input.type !== current.type) {
+    const used = await db.$count(reportDatasets, eq(reportDatasets.datasourceId, id));
+    if (used > 0) throw new HTTPException(400, { message: '数据源已被数据集引用，不能修改数据源类型' });
+  }
   const currentConfig = (current.config ?? null) as ReportDatasourceConfig | null;
   // 改了 type 或传了 config 时重新规整配置
   const config = (input.config !== undefined || input.type !== undefined)
     ? normalizeDatasourceConfig(nextType, (input.config ?? current.config) as Record<string, unknown>, currentConfig)
     : undefined;
+  await assertDatasourceTargetSafe(nextType, config ?? currentConfig ?? {});
   try {
     const [row] = await db.update(reportDatasources).set({
       name: input.name,
@@ -220,19 +246,26 @@ export async function deleteDatasource(id: number): Promise<void> {
  * - 新建表单试连：用入参 config（明文 password 临时加密后测试）。
  */
 export async function testDatasource(input: ReportDatasourceTestInput): Promise<{ ok: boolean; message: string; latencyMs?: number }> {
-  if (!input.type || !isExternalDbType(input.type)) {
-    return { ok: false, message: '仅外部数据库（MySQL / PostgreSQL / SQL Server）支持连接测试' };
-  }
+  let type = input.type;
   let cfg: ReportExternalDbConfig;
   if (input.id) {
     const row = await ensureDatasourceExists(input.id);
-    cfg = row.config as ReportExternalDbConfig;
-    // 若表单又带了新密码，覆盖测试
+    type ??= row.type;
+    if (!type || !isExternalDbType(type)) {
+      return { ok: false, message: '仅外部数据库（MySQL / PostgreSQL / SQL Server）支持连接测试' };
+    }
+    const stored = row.config as ReportExternalDbConfig;
+    const draft = { ...stored, ...(input.config ?? {}) } as Record<string, unknown>;
     const newPwd = input.config && typeof input.config.password === 'string' ? input.config.password : '';
-    if (newPwd) cfg = { ...cfg, password: encryptField(newPwd) };
+    if (!newPwd) delete draft.password;
+    cfg = normalizeDatasourceConfig(type, draft, stored) as ReportExternalDbConfig;
   } else {
-    const normalized = normalizeDatasourceConfig(input.type, input.config ?? {});
+    if (!type || !isExternalDbType(type)) {
+      return { ok: false, message: '仅外部数据库（MySQL / PostgreSQL / SQL Server）支持连接测试' };
+    }
+    const normalized = normalizeDatasourceConfig(type, input.config ?? {});
     cfg = normalized as ReportExternalDbConfig;
   }
-  return testExternalConnection(input.type, cfg);
+  await assertDatasourceTargetSafe(type, cfg);
+  return testExternalConnection(type, cfg);
 }

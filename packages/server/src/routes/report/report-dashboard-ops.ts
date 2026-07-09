@@ -92,7 +92,7 @@ const createShareRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/{id}/shares', tags: ['报表仪表盘'], summary: '创建分享链接',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'report:dashboard:update', audit: { description: '创建报表分享链接', module: '报表仪表盘' } })] as const,
+    middleware: [authMiddleware, guard({ permission: 'report:dashboard:update', audit: { description: '创建报表分享链接', module: '报表仪表盘', recordResponseBody: false } })] as const,
     request: { params: IdParam, body: { content: jsonContent(createReportShareSchema), required: false } },
     responses: { ...commonErrorResponses, ...ok(ReportDashboardShareDTO, '创建成功') },
   }),
@@ -103,7 +103,7 @@ const updateShareRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'put', path: '/shares/{shareId}', tags: ['报表仪表盘'], summary: '更新分享链接',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'report:dashboard:update', audit: { description: '更新报表分享链接', module: '报表仪表盘' } })] as const,
+    middleware: [authMiddleware, guard({ permission: 'report:dashboard:update', audit: { description: '更新报表分享链接', module: '报表仪表盘', recordResponseBody: false } })] as const,
     request: { params: ShareIdParam, body: { content: jsonContent(updateReportShareSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(ReportDashboardShareDTO, '更新成功'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
   }),

@@ -40,7 +40,7 @@ const previewRoute = defineOpenAPIRoute({
     method: 'post', path: '/preview',
     tags: ['报表数据集'], summary: '试跑预览（不落库）',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'report:dataset:list' })] as const,
+    middleware: [authMiddleware, guard({ permission: ['report:dataset:create', 'report:dataset:update'] })] as const,
     request: { body: { content: jsonContent(reportDatasetPreviewSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(ReportDataResultDTO, '取数结果') },
   }),

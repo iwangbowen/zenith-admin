@@ -178,6 +178,7 @@ import reportPrintRoutes from './routes/report/report-print';
 import reportAiRoutes from './routes/report/report-ai';
 import reportAlertsRoutes from './routes/report/report-alerts';
 import reportMetaRoutes from './routes/report/report-meta';
+import { backfillLegacyReportTenants, migrateLegacyReportSecrets } from './services/report/report-secret-migration.service';
 import { createWsRoute } from './routes/platform/ws';
 import { createWsTerminalRoute, createWsTerminalMonitorRoute } from './routes/ops/ws-terminal';
 import terminalFilesRoutes from './routes/ops/terminal-files';
@@ -543,6 +544,8 @@ app.onError((err, c) => {
   return c.json(errBody('服务器内部错误', 500), 500);
 });
 
+await backfillLegacyReportTenants();
+await migrateLegacyReportSecrets();
 logger.info(`Server starting on port ${config.port}...`);
 const server = serve({ fetch: app.fetch, port: config.port });
 injectWebSocket(server);

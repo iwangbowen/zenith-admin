@@ -28,6 +28,7 @@ export function mapComment(row: CommentRowExt): ReportDashboardComment {
 }
 
 export async function listComments(dashboardId: number): Promise<ReportDashboardComment[]> {
+  await ensureDashboardExists(dashboardId);
   const rows = await db.query.reportDashboardComments.findMany({
     where: eq(reportDashboardComments.dashboardId, dashboardId),
     with: { user: { columns: { nickname: true, username: true, avatar: true } } },
@@ -54,6 +55,7 @@ export async function createComment(dashboardId: number, input: CreateReportComm
 }
 
 export async function deleteComment(dashboardId: number, id: number): Promise<void> {
+  await ensureDashboardExists(dashboardId);
   const [row] = await db.select().from(reportDashboardComments).where(eq(reportDashboardComments.id, id)).limit(1);
   if (!row || row.dashboardId !== dashboardId) throw new HTTPException(404, { message: '评论不存在' });
   const user = currentUser();

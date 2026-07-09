@@ -23,6 +23,8 @@ export async function sendWebhookNotification(url: string, title: string, conten
     headers: { 'content-type': 'application/json' },
     body: buildPayload(hostname, title, content),
     timeout: 10_000,
+    ssrfProtection: true,
+    httpLog: { level: 'off' },
   });
   if (!res.ok) throw new Error(`Webhook 返回状态 ${res.status}`);
 }

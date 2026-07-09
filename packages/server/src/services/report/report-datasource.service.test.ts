@@ -67,6 +67,17 @@ describe('normalizeDatasourceConfig - 外部库 / 内置 / 静态', () => {
 });
 
 describe('mapDatasource - DTO 脱敏', () => {
+  it('扩展密钥类请求头同样加密并脱敏', () => {
+    const stored = normalizeDatasourceConfig('api', {
+      url: 'https://x',
+      headers: { 'x-client-secret': 'secret' },
+    }) as ReportApiDatasourceConfig;
+    expect(decryptField(stored.headers!['x-client-secret'])).toBe('secret');
+
+    const dto = mapDatasource(rowOf({ type: 'api', config: stored }));
+    expect((dto.config as ReportApiDatasourceConfig).headers!['x-client-secret']).toBe('******');
+  });
+
   it('API 敏感头掩码为 ******，非敏感保留', () => {
     const dto = mapDatasource(rowOf({ type: 'api', config: { url: 'https://x', method: 'GET', headers: { authorization: 'CIPHER', 'x-trace': 'abc' } } }));
     const cfg = dto.config as ReportApiDatasourceConfig;

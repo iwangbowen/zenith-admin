@@ -18,11 +18,17 @@ import { sendEmail } from '../messaging/email-send-logs.service';
 import { sendInApp } from '../messaging/in-app-messages.service';
 import { sendWebhookNotification } from '../../lib/webhook-notify';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
+import { reportCreateTenantId, reportScopedWhere, reportTenantScope } from './report-access';
 import type { ReportAlertRuleRow } from '../../db/schema';
 import type {
   ReportAlertRule, ReportAlertOp, ReportAlertAggregate, ReportAlertEvalHit, ReportAlertEvalResult, ReportNotifyChannel,
   CreateReportAlertInput, UpdateReportAlertInput,
 } from '@zenith/shared';
+import {
+  maskReportSecret,
+  prepareReportSecret,
+  resolveReportSecret,
+} from './report-secrets';
 
 type AlertRowExt = ReportAlertRuleRow & { dataset?: { name: string } | null };
 
@@ -42,7 +48,7 @@ export function mapAlert(row: AlertRowExt): ReportAlertRule {
     cron: row.cron ?? null,
     channels: (row.channels ?? []) as ReportNotifyChannel[],
     recipients: row.recipients ?? null,
-    webhookUrl: row.webhookUrl ?? null,
+    webhookUrl: maskReportSecret(row.webhookUrl),
     silenceMins: row.silenceMins ?? 60,
     notifyOnRecover: row.notifyOnRecover ?? false,
     enabled: row.enabled,
@@ -58,14 +64,16 @@ export function mapAlert(row: AlertRowExt): ReportAlertRule {
 }
 
 export async function ensureAlertExists(id: number): Promise<ReportAlertRuleRow> {
-  const [row] = await db.select().from(reportAlertRules).where(eq(reportAlertRules.id, id)).limit(1);
+  const [row] = await db.select().from(reportAlertRules)
+    .where(reportScopedWhere(reportAlertRules, eq(reportAlertRules.id, id)))
+    .limit(1);
   if (!row) throw new HTTPException(404, { message: '预警规则不存在' });
   return row;
 }
 
 export async function getAlert(id: number): Promise<ReportAlertRule> {
   const row = await db.query.reportAlertRules.findFirst({
-    where: eq(reportAlertRules.id, id),
+    where: reportScopedWhere(reportAlertRules, eq(reportAlertRules.id, id)),
     with: { dataset: { columns: { name: true } } },
   });
   if (!row) throw new HTTPException(404, { message: '预警规则不存在' });
@@ -75,6 +83,8 @@ export async function getAlert(id: number): Promise<ReportAlertRule> {
 export async function listAlerts(query: { page?: number; pageSize?: number; keyword?: string; datasetId?: number; enabled?: boolean }) {
   const { page = 1, pageSize = 20, keyword, datasetId, enabled } = query;
   const conds = [];
+  const tenantScope = reportTenantScope(reportAlertRules);
+  if (tenantScope) conds.push(tenantScope);
   if (keyword) conds.push(or(ilike(reportAlertRules.name, `%${escapeLike(keyword)}%`), ilike(reportAlertRules.remark, `%${escapeLike(keyword)}%`)));
   if (datasetId) conds.push(eq(reportAlertRules.datasetId, datasetId));
   if (enabled !== undefined) conds.push(eq(reportAlertRules.enabled, enabled));
@@ -105,8 +115,10 @@ export async function createAlert(input: CreateReportAlertInput): Promise<Report
   await assertDatasetEvaluableGlobally(input.datasetId);
   validateCron(input.cron);
   validateWebhook(input.channels as ReportNotifyChannel[] | undefined, input.webhookUrl);
+  const webhookUrl = prepareReportSecret(input.webhookUrl, null);
   try {
     const [row] = await db.insert(reportAlertRules).values({
+      tenantId: reportCreateTenantId(),
       name: input.name,
       datasetId: input.datasetId,
       field: input.field ?? null,
@@ -117,7 +129,7 @@ export async function createAlert(input: CreateReportAlertInput): Promise<Report
       cron: input.cron ?? null,
       channels: (input.channels ?? []) as ReportNotifyChannel[],
       recipients: input.recipients,
-      webhookUrl: input.webhookUrl ?? null,
+      webhookUrl: webhookUrl ?? null,
       silenceMins: input.silenceMins ?? 60,
       notifyOnRecover: input.notifyOnRecover ?? false,
       enabled: input.enabled ?? true,
@@ -138,6 +150,7 @@ export async function updateAlert(id: number, input: UpdateReportAlertInput): Pr
     (input.channels ?? current.channels) as ReportNotifyChannel[],
     input.webhookUrl === undefined ? current.webhookUrl : input.webhookUrl,
   );
+  const webhookUrl = prepareReportSecret(input.webhookUrl, current.webhookUrl);
   const [row] = await db.update(reportAlertRules).set({
     name: input.name,
     datasetId: input.datasetId,
@@ -149,7 +162,7 @@ export async function updateAlert(id: number, input: UpdateReportAlertInput): Pr
     cron: input.cron,
     channels: input.channels as ReportNotifyChannel[] | undefined,
     recipients: input.recipients,
-    webhookUrl: input.webhookUrl,
+    webhookUrl,
     silenceMins: input.silenceMins,
     notifyOnRecover: input.notifyOnRecover,
     enabled: input.enabled,
@@ -240,7 +253,11 @@ async function notifyAlert(row: ReportAlertRuleRow, title: string, content: stri
     }
   }
   if (channels.includes('webhook') && row.webhookUrl) {
-    try { await sendWebhookNotification(row.webhookUrl, title, content); }
+    try {
+      const webhookUrl = resolveReportSecret(row.webhookUrl);
+      if (!webhookUrl) throw new Error('Webhook 地址无法解密');
+      await sendWebhookNotification(webhookUrl, title, content);
+    }
     catch (e) { logger.warn('数据预警 Webhook 失败', { id: row.id, err: e instanceof Error ? e.message : String(e) }); }
   }
 }

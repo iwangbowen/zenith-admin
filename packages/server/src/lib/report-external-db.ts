@@ -3,6 +3,9 @@ import mysql from 'mysql2/promise';
 import mssql from 'mssql';
 import { HTTPException } from 'hono/http-exception';
 import { decryptField } from './encryption';
+import { createHash } from 'node:crypto';
+import { resolveSafeOutboundHost } from './outbound-url';
+import { normalizeReadonlyReportSql } from './report-sql-safety';
 import type { ReportDatasourceType, ReportExternalDbConfig, ReportDataResult } from '@zenith/shared';
 
 const QUERY_TIMEOUT_MS = 15_000;
@@ -16,8 +19,9 @@ type PoolEntry = PgPoolEntry | MyPoolEntry | MssqlPoolEntry;
 
 const pools = new Map<string, PoolEntry>();
 
-function poolKey(type: ReportDatasourceType, c: ReportExternalDbConfig): string {
-  return `${type}://${c.user}@${c.host}:${c.port}/${c.database}:${c.ssl ? 1 : 0}`;
+function poolKey(type: ReportDatasourceType, c: ReportExternalDbConfig, tlsServerName?: string): string {
+  const credential = createHash('sha256').update(c.password ?? '').digest('hex').slice(0, 16);
+  return `${type}://${c.user}@${c.host}:${c.port}/${c.database}:${c.ssl ? 1 : 0}:${tlsServerName ?? ''}:${credential}`;
 }
 
 /** 解密 config 中的 password（密文 → 明文），返回可连接的配置 */
@@ -29,20 +33,15 @@ function resolveConfig(config: ReportExternalDbConfig): Required<Pick<ReportExte
   return { host: config.host, port: config.port || (0), database: config.database, user: config.user, password, ssl: !!config.ssl };
 }
 
-function isReadonlySelect(text: string): boolean {
-  const t = text.trim().replace(/;\s*$/, '');
-  if (/;/.test(t)) return false;
-  return /^(select|with)\b/i.test(t);
-}
-
-function getPgPool(type: ReportDatasourceType, config: ReportExternalDbConfig): ReturnType<typeof postgres> {
-  const key = poolKey(type, config);
+function getPgPool(type: ReportDatasourceType, config: ReportExternalDbConfig, tlsServerName?: string): ReturnType<typeof postgres> {
+  const key = poolKey(type, config, tlsServerName);
   const existing = pools.get(key);
   if (existing && existing.kind === 'pg') { existing.expire = Date.now() + IDLE_TTL_MS; return existing.sql; }
   const c = resolveConfig(config);
   const sql = postgres({
     host: c.host, port: c.port || 5432, database: c.database, username: c.user, password: c.password,
-    ssl: c.ssl ? 'require' : undefined, max: 3, idle_timeout: 30, connect_timeout: 10,
+    ssl: c.ssl ? { rejectUnauthorized: true, servername: tlsServerName } : undefined,
+    max: 3, idle_timeout: 30, connect_timeout: 10,
     prepare: false, onnotice: () => {},
     // 连接级 statement_timeout + 只读：每条连接建立时即生效，避免 SET 落在另一池连接上
     connection: { statement_timeout: QUERY_TIMEOUT_MS, default_transaction_read_only: true },
@@ -51,21 +50,23 @@ function getPgPool(type: ReportDatasourceType, config: ReportExternalDbConfig): 
   return sql;
 }
 
-function getMyPool(config: ReportExternalDbConfig): mysql.Pool {
-  const key = poolKey('mysql', config);
+function getMyPool(config: ReportExternalDbConfig, tlsServerName?: string): mysql.Pool {
+  const key = poolKey('mysql', config, tlsServerName);
   const existing = pools.get(key);
   if (existing && existing.kind === 'mysql') { existing.expire = Date.now() + IDLE_TTL_MS; return existing.pool; }
   const c = resolveConfig(config);
+  const ssl = c.ssl ? { rejectUnauthorized: true, servername: tlsServerName } : undefined;
   const pool = mysql.createPool({
     host: c.host, port: c.port || 3306, database: c.database, user: c.user, password: c.password,
-    ssl: c.ssl ? {} : undefined, connectionLimit: 3, connectTimeout: 10_000, waitForConnections: true,
+    ssl,
+    connectionLimit: 3, connectTimeout: 10_000, waitForConnections: true,
   });
   pools.set(key, { kind: 'mysql', pool, expire: Date.now() + IDLE_TTL_MS });
   return pool;
 }
 
-async function getMssqlPool(config: ReportExternalDbConfig): Promise<mssql.ConnectionPool> {
-  const key = poolKey('sqlserver', config);
+async function getMssqlPool(config: ReportExternalDbConfig, tlsServerName?: string): Promise<mssql.ConnectionPool> {
+  const key = poolKey('sqlserver', config, tlsServerName);
   const existing = pools.get(key);
   if (existing && existing.kind === 'mssql' && existing.pool.connected) { existing.expire = Date.now() + IDLE_TTL_MS; return existing.pool; }
   // 旧池存在但已断开：先关闭再替换，避免连接/句柄泄露
@@ -76,7 +77,12 @@ async function getMssqlPool(config: ReportExternalDbConfig): Promise<mssql.Conne
   const c = resolveConfig(config);
   const pool = new mssql.ConnectionPool({
     server: c.host, port: c.port || 1433, database: c.database, user: c.user, password: c.password,
-    options: { encrypt: c.ssl, trustServerCertificate: true },
+    options: {
+      encrypt: c.ssl,
+      trustServerCertificate: !c.ssl,
+      readOnlyIntent: true,
+      serverName: tlsServerName,
+    },
     pool: { max: 3, idleTimeoutMillis: 30_000 },
     connectionTimeout: 10_000, requestTimeout: QUERY_TIMEOUT_MS,
   });
@@ -108,14 +114,15 @@ export async function runExternalQuery(
   values: unknown[] = [],
   limit = 100,
 ): Promise<ReportDataResult> {
-  const trimmed = sqlText.trim().replace(/;\s*$/, '');
-  if (!trimmed) throw new HTTPException(400, { message: '数据集 SQL 不能为空' });
-  if (!isReadonlySelect(trimmed)) throw new HTTPException(400, { message: '仅允许只读 SELECT/WITH 查询' });
+  const trimmed = normalizeReadonlyReportSql(sqlText);
   const capped = Math.max(1, Math.min(limit || 100, MAX_ROWS));
 
   try {
+    const [address] = await resolveSafeOutboundHost(String(config.host ?? ''));
+    const safeConfig = { ...config, host: address.address };
+    const tlsServerName = String(config.host ?? '');
     if (type === 'postgresql') {
-      const sql = getPgPool(type, config);
+      const sql = getPgPool(type, safeConfig, tlsServerName);
       // statement_timeout 已在连接级设置（见 getPgPool），此处直接执行
       const wrapped = `SELECT * FROM (${trimmed}) AS _sub LIMIT ${capped}`;
       const rows = (await sql.unsafe(wrapped, values as never[])) as unknown as Record<string, unknown>[];
@@ -124,22 +131,31 @@ export async function runExternalQuery(
       return { columns, rows: arr, total: arr.length };
     }
     if (type === 'sqlserver') {
-      const pool = await getMssqlPool(config);
+      const pool = await getMssqlPool(safeConfig, tlsServerName);
       const request = pool.request();
       values.forEach((v, i) => request.input(`p${i}`, v as never));
       // SET ROWCOUNT 限制返回行数：对 SELECT 与 WITH/CTE 均生效，且不破坏 DISTINCT（避免 TOP 注入）
-      const result = await request.query(`SET ROWCOUNT ${capped}; ${trimmed}; SET ROWCOUNT 0`);
+      const result = await request.query(`
+        SET ROWCOUNT ${capped};
+        BEGIN TRY
+          ${trimmed};
+          SET ROWCOUNT 0;
+        END TRY
+        BEGIN CATCH
+          SET ROWCOUNT 0;
+          THROW;
+        END CATCH
+      `);
       const arr = ((result.recordset ?? []) as Record<string, unknown>[]).slice(0, capped);
       const columns = arr.length ? Object.keys(arr[0]) : [];
       return { columns, rows: arr, total: arr.length };
     }
     // mysql
-    const pool = getMyPool(config);
+    const pool = getMyPool(safeConfig, tlsServerName);
     const conn = await pool.getConnection();
     try {
-      await conn.query(`SET SESSION MAX_EXECUTION_TIME=${QUERY_TIMEOUT_MS}`).catch(() => {});
       const wrapped = `SELECT * FROM (${trimmed}) AS _sub LIMIT ${capped}`;
-      const [rows] = await conn.query(wrapped, values);
+      const [rows] = await conn.query({ sql: wrapped, values, timeout: QUERY_TIMEOUT_MS });
       const arr = (Array.isArray(rows) ? rows : []) as Record<string, unknown>[];
       const columns = arr.length ? Object.keys(arr[0]) : [];
       return { columns, rows: arr, total: arr.length };
@@ -155,15 +171,18 @@ export async function runExternalQuery(
 export async function testExternalConnection(type: ReportDatasourceType, config: ReportExternalDbConfig): Promise<{ ok: boolean; message: string; latencyMs?: number }> {
   const start = Date.now();
   try {
+    const [address] = await resolveSafeOutboundHost(String(config.host ?? ''));
+    const safeConfig = { ...config, host: address.address };
+    const tlsServerName = String(config.host ?? '');
     if (type === 'postgresql') {
-      const sql = getPgPool(type, config);
+      const sql = getPgPool(type, safeConfig, tlsServerName);
       await sql.unsafe('SELECT 1 AS ok');
     } else if (type === 'mysql') {
-      const pool = getMyPool(config);
+      const pool = getMyPool(safeConfig, tlsServerName);
       const conn = await pool.getConnection();
       try { await conn.query('SELECT 1 AS ok'); } finally { conn.release(); }
     } else if (type === 'sqlserver') {
-      const pool = await getMssqlPool(config);
+      const pool = await getMssqlPool(safeConfig, tlsServerName);
       await pool.request().query('SELECT 1 AS ok');
     } else {
       return { ok: false, message: '该类型无需连接测试' };

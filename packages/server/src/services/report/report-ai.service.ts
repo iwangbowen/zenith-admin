@@ -9,10 +9,10 @@ import { getRawDefaultProviderConfig } from '../ai/ai-providers.service';
 import { ensureDatasetExists } from './report-dataset.service';
 import { streamChat } from '../../lib/ai/factory';
 import { loadSchemaMeta } from '../../lib/report-schema-meta';
+import { isReadonlyReportSql } from '../../lib/report-sql-safety';
 import type { ReportField, ReportSqlDatasetContent } from '@zenith/shared';
 
 const MAX_SCHEMA_CHARS = 6000;
-const WRITE_KEYWORDS = /\b(insert|update|delete|drop|alter|truncate|create|grant|revoke|merge|call|do)\b/i;
 
 /** 读取 public schema 表/字段（脱敏 + 缓存由 report-schema-meta 统一负责），供 NL2SQL 上下文 */
 async function loadSchemaText(): Promise<string> {
@@ -40,11 +40,7 @@ export function extractSql(text: string): string {
 
 /** 只读 SELECT 校验（单条、无写关键字） */
 export function isReadonlySelectSql(text: string): boolean {
-  const t = text.trim();
-  if (!/^(select|with)\b/i.test(t)) return false;
-  if (/;\s*\S/.test(t)) return false; // 多语句
-  if (WRITE_KEYWORDS.test(t)) return false;
-  return true;
+  return isReadonlyReportSql(text);
 }
 
 /** 构建库表/字段上下文（脱敏 + 缓存），可选叠加某数据集已有 SQL/字段 */

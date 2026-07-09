@@ -28,6 +28,7 @@ const envSchema = z.object({
   REQUEST_BODY_LIMIT: z.coerce.number().int().min(0).default(0),
   REQUEST_TIMEOUT_MS: z.coerce.number().int().min(0).default(0),
   ALLOWED_ORIGINS: z.string().default(''),
+  REPORT_OUTBOUND_PRIVATE_ALLOWLIST: z.string().default(''),
   REDIS_URL: z.string().optional(),
   REDIS_HOST: z.string().default('127.0.0.1'),
   REDIS_PORT: z.coerce.number().int().positive().default(6379),
@@ -146,6 +147,9 @@ export const config = {
   requestBodyLimit: env.REQUEST_BODY_LIMIT,
   requestTimeoutMs: env.REQUEST_TIMEOUT_MS,
   allowedOrigins: env.ALLOWED_ORIGINS.split(',').map(s => s.trim()).filter(Boolean),
+  report: {
+    outboundPrivateAllowlist: env.REPORT_OUTBOUND_PRIVATE_ALLOWLIST.split(',').map(s => s.trim()).filter(Boolean),
+  },
   redis: {
     url: env.REDIS_URL,
     host: env.REDIS_HOST,

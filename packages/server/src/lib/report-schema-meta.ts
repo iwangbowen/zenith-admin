@@ -5,6 +5,9 @@
 import { sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
+import { config } from '../config';
+import { currentUser } from './context';
+import { isPlatformAdmin } from './tenant';
 import type { ReportMetaColumn } from '@zenith/shared';
 
 /** 敏感表：含凭据/密钥/会话等，不对建模与 AI 上下文暴露 */
@@ -25,6 +28,9 @@ let metaCache: { byTable: Map<string, ReportMetaColumn[]>; expire: number } | nu
 
 /** 读取 public schema 全部表/列（脱敏 + 5 分钟缓存） */
 export async function loadSchemaMeta(): Promise<Map<string, ReportMetaColumn[]>> {
+  if (config.multiTenantMode && !isPlatformAdmin(currentUser())) {
+    throw new HTTPException(403, { message: '多租户模式下仅平台超级管理员可读取内置主库元数据' });
+  }
   if (metaCache && metaCache.expire > Date.now()) return metaCache.byTable;
   const rows = (await db.execute(sql.raw(
     `SELECT table_name, column_name, data_type FROM information_schema.columns

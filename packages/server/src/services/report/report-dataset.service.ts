@@ -21,7 +21,13 @@ import { httpRequest } from '../../lib/http-client';
 import { currentUserOrNull } from '../../lib/context';
 import { applyComputedFields } from '../../lib/report-formula';
 import { runExternalQuery } from '../../lib/report-external-db';
+import { normalizeReadonlyReportSql } from '../../lib/report-sql-safety';
 import { ensureDatasourceExists, resolveApiHeaders } from './report-datasource.service';
+import {
+  reportCreateTenantId,
+  reportScopedWhere,
+  reportTenantScope,
+} from './report-access';
 import { isSqlLikeType, isExternalDbType, REPORT_DATASOURCE_TYPES } from '@zenith/shared';
 import type { ReportDatasetRow } from '../../db/schema';
 import type {
@@ -73,7 +79,7 @@ function normalizeDatasetContent(
   const c = (content ?? {}) as Record<string, unknown>;
   if (isSqlLikeType(type)) {
     return {
-      sql: typeof c.sql === 'string' ? c.sql : '',
+      sql: normalizeReadonlyReportSql(typeof c.sql === 'string' ? c.sql : ''),
       // 可视化建模模型（回显编辑用；SQL 为最终执行内容）
       ...(c.visual && typeof c.visual === 'object' ? { visual: c.visual as ReportSqlDatasetContent['visual'] } : {}),
     };
@@ -191,17 +197,14 @@ export function buildExternalParamSql(
 
 /** 只读执行 SQL（READ ONLY 事务 + 超时 + 行上限 + 参数绑定）*/
 async function runReadonlySql(text: string, params: Record<string, unknown>, limit: number): Promise<ReportDataResult> {
-  const trimmed = text.trim().replace(/;\s*$/, '');
-  if (!trimmed) throw new HTTPException(400, { message: '数据集 SQL 不能为空' });
+  const trimmed = normalizeReadonlyReportSql(text);
   const capped = Math.max(1, Math.min(limit || PREVIEW_LIMIT, MAX_LIMIT));
-  const isSelect = !/;/.test(trimmed) && /^(select|with)\b/i.test(trimmed);
   const inner = buildParamSql(trimmed, params);
   try {
     const rows = await db.transaction(async (tx) => {
       await tx.execute(sql.raw('SET LOCAL TRANSACTION READ ONLY'));
       await tx.execute(sql.raw(`SET LOCAL statement_timeout = '${QUERY_TIMEOUT}'`));
-      if (isSelect) return await tx.execute(sql`SELECT * FROM (${inner}) AS _sub LIMIT ${capped}`);
-      return await tx.execute(inner);
+      return await tx.execute(sql`SELECT * FROM (${inner}) AS _sub LIMIT ${capped}`);
     });
     const arr = (rows as unknown as Record<string, unknown>[]) ?? [];
     const sliced = arr.slice(0, capped);
@@ -219,18 +222,21 @@ async function runReadonlySql(text: string, params: Record<string, unknown>, lim
 /**
  * 解析当前用户命中的行级规则：
  * - 规则未启用 / where 为空或含分号（防拼接多语句）→ 忽略；
- * - 无用户上下文（Cron 评估 / 订阅推送 / 公开分享）→ 跳过行级过滤（创建者已过权限门槛且属主动公开）；
+ * - 无用户上下文 → 拒绝执行；未命中任何规则 → 注入恒假条件（失败关闭）；
  * - 超级管理员不受限；规则未配置 roles = 对所有登录用户生效。
  */
-function resolveEffectiveRowRules(rules: ReportRowRule[] | null | undefined): ReportRowRule[] {
+export function resolveEffectiveRowRules(rules: ReportRowRule[] | null | undefined): ReportRowRule[] {
   const list = (rules ?? []).filter((r) =>
     (r.enabled ?? true) && typeof r.where === 'string' && r.where.trim() && !r.where.includes(';'));
   if (!list.length) return [];
   const user = currentUserOrNull();
-  if (!user) return [];
+  if (!user) {
+    throw new HTTPException(403, { message: '该数据集配置了行级权限，当前执行缺少用户身份' });
+  }
   const roles = user.roles ?? [];
   if (roles.includes('super_admin')) return [];
-  return list.filter((r) => !r.roles?.length || r.roles.some((code) => roles.includes(code)));
+  const matched = list.filter((r) => !r.roles?.length || r.roles.some((code) => roles.includes(code)));
+  return matched.length ? matched : [{ where: '1 = 0', enabled: true, remark: '未命中任何行级权限规则，默认拒绝' }];
 }
 
 /** 把命中的行级规则以 OR 拼接为 WHERE，包裹原查询（子查询别名 _rls；PG/MySQL/SQL Server 通用） */
@@ -241,7 +247,9 @@ export function applyRowRulesToSql(sqlText: string, rules: ReportRowRule[]): str
 }
 
 export async function ensureDatasetExists(id: number): Promise<ReportDatasetRow> {
-  const [row] = await db.select().from(reportDatasets).where(eq(reportDatasets.id, id)).limit(1);
+  const [row] = await db.select().from(reportDatasets)
+    .where(reportScopedWhere(reportDatasets, eq(reportDatasets.id, id)))
+    .limit(1);
   if (!row) throw new HTTPException(404, { message: '数据集不存在' });
   return row;
 }
@@ -261,11 +269,15 @@ export async function assertDatasetEvaluableGlobally(datasetId: number): Promise
   if (params.some((p) => p.required)) {
     throw new HTTPException(400, { message: '该数据集含必填参数，无法用于全局评估（预警/定时任务无运行时参数），请改用无必填参数的数据集' });
   }
+  const rowRules = (row.rowRules ?? []) as ReportRowRule[];
+  if (rowRules.some((rule) => rule.enabled ?? true)) {
+    throw new HTTPException(400, { message: '该数据集配置了行级权限，不能用于匿名分享或无身份定时任务' });
+  }
 }
 
 export async function getDataset(id: number): Promise<ReportDataset> {
   const row = await db.query.reportDatasets.findFirst({
-    where: eq(reportDatasets.id, id),
+    where: reportScopedWhere(reportDatasets, eq(reportDatasets.id, id)),
     with: { datasource: { columns: { name: true } } },
   });
   if (!row) throw new HTTPException(404, { message: '数据集不存在' });
@@ -277,6 +289,8 @@ export async function listDatasets(query: {
 }) {
   const { page = 1, pageSize = 20, keyword, datasourceId, type, status } = query;
   const conds = [];
+  const tenantScope = reportTenantScope(reportDatasets);
+  if (tenantScope) conds.push(tenantScope);
   if (keyword) {
     const kw = `%${escapeLike(keyword)}%`;
     conds.push(or(ilike(reportDatasets.name, kw), ilike(reportDatasets.remark, kw)));
@@ -331,6 +345,7 @@ export async function createDataset(input: CreateReportDatasetInput): Promise<Re
   assertMaterializable(input.materialize as ReportDatasetMaterialize | undefined, ds.type, content, input.params as ReportDatasetParam[] | undefined, input.rowRules as ReportRowRule[] | undefined);
   try {
     const [row] = await db.insert(reportDatasets).values({
+      tenantId: reportCreateTenantId(),
       name: input.name,
       datasourceId: input.datasourceId,
       type: ds.type,
@@ -395,9 +410,12 @@ export async function updateDataset(id: number, input: UpdateReportDatasetInput)
 /** 收集数据集的下游引用：仪表盘（组件绑定/筛选器动态选项）、打印模板、预警规则 */
 export async function collectDatasetRefs(id: number): Promise<ReportDatasetRefs> {
   const [dashRows, printRows, alertRows] = await Promise.all([
-    db.select({ id: reportDashboards.id, name: reportDashboards.name, widgets: reportDashboards.widgets, filters: reportDashboards.filters }).from(reportDashboards),
-    db.select({ id: reportPrintTemplates.id, name: reportPrintTemplates.name }).from(reportPrintTemplates).where(eq(reportPrintTemplates.datasetId, id)),
-    db.select({ id: reportAlertRules.id, name: reportAlertRules.name }).from(reportAlertRules).where(eq(reportAlertRules.datasetId, id)),
+    db.select({ id: reportDashboards.id, name: reportDashboards.name, widgets: reportDashboards.widgets, filters: reportDashboards.filters })
+      .from(reportDashboards).where(reportTenantScope(reportDashboards)),
+    db.select({ id: reportPrintTemplates.id, name: reportPrintTemplates.name }).from(reportPrintTemplates)
+      .where(reportScopedWhere(reportPrintTemplates, eq(reportPrintTemplates.datasetId, id))),
+    db.select({ id: reportAlertRules.id, name: reportAlertRules.name }).from(reportAlertRules)
+      .where(reportScopedWhere(reportAlertRules, eq(reportAlertRules.datasetId, id))),
   ]);
   const dashboards = dashRows
     .map((d) => {
@@ -487,7 +505,14 @@ export async function runReportData(
 
   let json: unknown;
   try {
-    const res = await httpRequest(url, { method, headers: resolveApiHeaders(apiCfg.headers), body, timeout: 10_000 });
+    const res = await httpRequest(url, {
+      method,
+      headers: resolveApiHeaders(apiCfg.headers),
+      body,
+      timeout: 10_000,
+      ssrfProtection: true,
+      httpLog: { level: 'off' },
+    });
     if (!res.ok) throw new HTTPException(502, { message: `数据源返回状态 ${res.status}` });
     json = await res.json();
   } catch (err) {
@@ -536,7 +561,7 @@ export async function clearDatasetCache(id: number): Promise<void> {
 /** 取已保存数据集的数据（供仪表盘组件运行时调用，支持参数 + 行级权限 + Redis 缓存）*/
 export async function getDatasetData(id: number, params?: Record<string, unknown>, limit?: number): Promise<ReportDataResult> {
   const row = await db.query.reportDatasets.findFirst({
-    where: eq(reportDatasets.id, id),
+    where: reportScopedWhere(reportDatasets, eq(reportDatasets.id, id)),
     with: { datasource: { columns: { config: true } } },
   });
   if (!row) throw new HTTPException(404, { message: '数据集不存在' });
@@ -560,7 +585,7 @@ export async function getDatasetData(id: number, params?: Record<string, unknown
     return live;
   }
 
-  // 行级权限：命中规则以 OR 包裹原查询（仅 SQL 型；无上下文/超管/未命中 = 不受限）
+  // 行级权限：命中规则以 OR 包裹原查询；无上下文拒绝，未命中注入恒假条件，超管不受限
   const effectiveRules = isSqlLike ? resolveEffectiveRowRules(row.rowRules as ReportRowRule[] | null) : [];
   const rawSqlText = isSqlLike ? ((rawContent as ReportSqlDatasetContent).sql ?? '') : '';
   const sqlText = effectiveRules.length ? applyRowRulesToSql(rawSqlText, effectiveRules) : rawSqlText;
@@ -597,7 +622,7 @@ export async function getDatasetData(id: number, params?: Record<string, unknown
 /** 强制刷新某数据集的物化快照（手动按钮 / 到期 Cron 调用）*/
 export async function refreshMaterialization(id: number): Promise<{ rows: number }> {
   const row = await db.query.reportDatasets.findFirst({
-    where: eq(reportDatasets.id, id),
+    where: reportScopedWhere(reportDatasets, eq(reportDatasets.id, id)),
     with: { datasource: { columns: { config: true } } },
   });
   if (!row) throw new HTTPException(404, { message: '数据集不存在' });

@@ -1,4 +1,8 @@
-const SENSITIVE_KEYS = ['password', 'secret', 'token', 'accessKey', 'access_key', 'privateKey', 'private_key', 'apiKey', 'api_key', 'apiv3', 'credential'];
+const SENSITIVE_KEYS = [
+  'password', 'secret', 'token', 'authorization', 'cookie', 'webhook',
+  'accessKey', 'access_key', 'privateKey', 'private_key', 'apiKey', 'api_key',
+  'clientSecret', 'refreshToken', 'x-api-key', 'apiv3', 'credential',
+];
 
 /**
  * 深度脱敏，返回原始对象的克隆副本（敏感字段被替换为 '***'）。

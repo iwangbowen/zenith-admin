@@ -11,7 +11,8 @@ import { pageOffset } from '../../lib/pagination';
 import { escapeLike } from '../../lib/where-helpers';
 import { formatDateTime } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { getDatasetData, resolveDatasetParams } from './report-dataset.service';
+import { ensureDatasetExists, getDatasetData, resolveDatasetParams } from './report-dataset.service';
+import { reportCreateTenantId, reportScopedWhere, reportTenantScope } from './report-access';
 import type { ReportPrintTemplateRow } from '../../db/schema';
 import type {
   ReportPrintTemplate, ReportPrintContent, ReportPrintPageConfig, ReportPrintGrid,
@@ -40,14 +41,16 @@ export function mapPrintTemplate(row: PrintRowExt): ReportPrintTemplate {
 }
 
 export async function ensurePrintTemplateExists(id: number): Promise<ReportPrintTemplateRow> {
-  const [row] = await db.select().from(reportPrintTemplates).where(eq(reportPrintTemplates.id, id)).limit(1);
+  const [row] = await db.select().from(reportPrintTemplates)
+    .where(reportScopedWhere(reportPrintTemplates, eq(reportPrintTemplates.id, id)))
+    .limit(1);
   if (!row) throw new HTTPException(404, { message: '打印报表不存在' });
   return row;
 }
 
 export async function getPrintTemplate(id: number): Promise<ReportPrintTemplate> {
   const row = await db.query.reportPrintTemplates.findFirst({
-    where: eq(reportPrintTemplates.id, id),
+    where: reportScopedWhere(reportPrintTemplates, eq(reportPrintTemplates.id, id)),
     with: { dataset: { columns: { name: true } } },
   });
   if (!row) throw new HTTPException(404, { message: '打印报表不存在' });
@@ -59,6 +62,8 @@ export async function listPrintTemplates(query: {
 }) {
   const { page = 1, pageSize = 20, keyword, status } = query;
   const conds = [];
+  const tenantScope = reportTenantScope(reportPrintTemplates);
+  if (tenantScope) conds.push(tenantScope);
   if (keyword) {
     const kw = `%${escapeLike(keyword)}%`;
     conds.push(or(ilike(reportPrintTemplates.name, kw), ilike(reportPrintTemplates.remark, kw)));
@@ -79,8 +84,10 @@ export async function listPrintTemplates(query: {
 }
 
 export async function createPrintTemplate(input: CreateReportPrintTemplateInput): Promise<ReportPrintTemplate> {
+  if (input.datasetId) await ensureDatasetExists(input.datasetId);
   try {
     const [row] = await db.insert(reportPrintTemplates).values({
+      tenantId: reportCreateTenantId(),
       name: input.name,
       datasetId: input.datasetId ?? null,
       content: (input.content ?? {}) as ReportPrintContent,
@@ -97,6 +104,8 @@ export async function createPrintTemplate(input: CreateReportPrintTemplateInput)
 }
 
 export async function updatePrintTemplate(id: number, input: UpdateReportPrintTemplateInput): Promise<ReportPrintTemplate> {
+  await ensurePrintTemplateExists(id);
+  if (input.datasetId) await ensureDatasetExists(input.datasetId);
   try {
     const [row] = await db.update(reportPrintTemplates).set({
       name: input.name,

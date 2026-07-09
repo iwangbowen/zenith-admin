@@ -5,14 +5,19 @@
 import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, ilike, inArray, or } from 'drizzle-orm';
 import { db } from '../../db';
-import { reportDashboards, reportDashboardFavorites } from '../../db/schema';
+import { reportDashboardCategories, reportDashboards, reportDashboardFavorites } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
 import { escapeLike } from '../../lib/where-helpers';
 import { formatDateTime } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { currentUserOrNull } from '../../lib/context';
 import { mapWithConcurrency } from '../../lib/concurrency';
-import { getDatasetData } from './report-dataset.service';
+import { assertDatasetEvaluableGlobally, ensureDatasetExists, getDatasetData } from './report-dataset.service';
+import {
+  reportCreateTenantId,
+  reportScopedWhere,
+  reportTenantScope,
+} from './report-access';
 import type { ReportDashboardRow } from '../../db/schema';
 import type {
   ReportDashboard, ReportGridItem, ReportWidget, ReportFilter, ReportDashboardConfig, ReportDataResult,
@@ -43,14 +48,16 @@ export function mapDashboard(row: DashboardRowExt, favorited?: boolean): ReportD
 }
 
 export async function ensureDashboardExists(id: number): Promise<ReportDashboardRow> {
-  const [row] = await db.select().from(reportDashboards).where(eq(reportDashboards.id, id)).limit(1);
+  const [row] = await db.select().from(reportDashboards)
+    .where(reportScopedWhere(reportDashboards, eq(reportDashboards.id, id)))
+    .limit(1);
   if (!row) throw new HTTPException(404, { message: '仪表盘不存在' });
   return row;
 }
 
 export async function getDashboard(id: number): Promise<ReportDashboard> {
   const row = await db.query.reportDashboards.findFirst({
-    where: eq(reportDashboards.id, id),
+    where: reportScopedWhere(reportDashboards, eq(reportDashboards.id, id)),
     with: { category: { columns: { name: true } } },
   });
   if (!row) throw new HTTPException(404, { message: '仪表盘不存在' });
@@ -68,6 +75,8 @@ export async function listDashboards(query: {
   const { page = 1, pageSize = 20, keyword, status, categoryId, favorited } = query;
   const uid = currentUserOrNull()?.userId;
   const conds = [];
+  const tenantScope = reportTenantScope(reportDashboards);
+  if (tenantScope) conds.push(tenantScope);
   if (keyword) {
     const kw = `%${escapeLike(keyword)}%`;
     conds.push(or(ilike(reportDashboards.name, kw), ilike(reportDashboards.remark, kw)));
@@ -101,8 +110,14 @@ export async function listDashboards(query: {
 }
 
 export async function createDashboard(input: CreateReportDashboardInput): Promise<ReportDashboard> {
+  await ensureDashboardReferences(
+    (input.widgets ?? []) as ReportWidget[],
+    (input.filters ?? []) as ReportFilter[],
+    input.categoryId ?? null,
+  );
   try {
     const [row] = await db.insert(reportDashboards).values({
+      tenantId: reportCreateTenantId(),
       name: input.name,
       layout: (input.layout ?? []) as ReportGridItem[],
       canvasLayout: (input.canvasLayout ?? []) as ReportCanvasItem[],
@@ -121,6 +136,13 @@ export async function createDashboard(input: CreateReportDashboardInput): Promis
 }
 
 export async function updateDashboard(id: number, input: UpdateReportDashboardInput): Promise<ReportDashboard> {
+  const current = await ensureDashboardExists(id);
+  await ensureDashboardReferences(
+    (input.widgets ?? current.widgets ?? []) as ReportWidget[],
+    (input.filters ?? current.filters ?? []) as ReportFilter[],
+    input.categoryId === undefined ? current.categoryId : input.categoryId,
+    id,
+  );
   try {
     const [row] = await db.update(reportDashboards).set({
       name: input.name,
@@ -144,6 +166,51 @@ export async function updateDashboard(id: number, input: UpdateReportDashboardIn
 export async function deleteDashboard(id: number): Promise<void> {
   await ensureDashboardExists(id);
   await db.delete(reportDashboards).where(eq(reportDashboards.id, id));
+}
+
+export async function ensureDashboardReferences(
+  widgets: ReportWidget[],
+  filters: ReportFilter[],
+  categoryId: number | null | undefined,
+  dashboardId?: number,
+): Promise<void> {
+  const datasetIds = new Set<number>();
+  const targetDashboardIds = new Set<number>();
+  for (const widget of widgets) {
+    if (widget.datasetId) datasetIds.add(widget.datasetId);
+    const targetId = widget.drilldown?.targetDashboardId;
+    if (targetId && targetId !== dashboardId) targetDashboardIds.add(targetId);
+  }
+  for (const filter of filters) {
+    if (filter.optionSource?.kind === 'dataset' && filter.optionSource.datasetId) {
+      datasetIds.add(filter.optionSource.datasetId);
+    }
+  }
+  await Promise.all([
+    ...[...datasetIds].map((id) => ensureDatasetExists(id)),
+    ...[...targetDashboardIds].map((id) => ensureDashboardExists(id)),
+  ]);
+  if (categoryId) {
+    const [category] = await db.select({ id: reportDashboardCategories.id })
+      .from(reportDashboardCategories)
+      .where(reportScopedWhere(reportDashboardCategories, eq(reportDashboardCategories.id, categoryId)))
+      .limit(1);
+    if (!category) throw new HTTPException(404, { message: '仪表盘分类不存在' });
+  }
+}
+
+export async function assertDashboardEvaluableGlobally(id: number): Promise<void> {
+  const dashboard = await ensureDashboardExists(id);
+  const datasetIds = new Set<number>();
+  for (const widget of (dashboard.widgets ?? []) as ReportWidget[]) {
+    if (widget.datasetId) datasetIds.add(widget.datasetId);
+  }
+  for (const filter of (dashboard.filters ?? []) as ReportFilter[]) {
+    if (filter.optionSource?.kind === 'dataset' && filter.optionSource.datasetId) {
+      datasetIds.add(filter.optionSource.datasetId);
+    }
+  }
+  await Promise.all([...datasetIds].map((datasetId) => assertDatasetEvaluableGlobally(datasetId)));
 }
 
 // ─── 批量取数（按全局筛选器值解析每个组件的参数）────────────────────────────────

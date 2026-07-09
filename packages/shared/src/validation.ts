@@ -3084,7 +3084,9 @@ export const createReportSubscriptionSchema = z.object({
   enabled: z.boolean().default(true),
   remark: z.string().max(256).optional(),
 });
-export const updateReportSubscriptionSchema = createReportSubscriptionSchema.partial();
+export const updateReportSubscriptionSchema = createReportSubscriptionSchema.partial().extend({
+  webhookUrl: z.union([z.url('Webhook 地址必须是合法 URL').max(512), z.literal('******')]).nullable().optional(),
+});
 export type CreateReportSubscriptionInput = z.input<typeof createReportSubscriptionSchema>;
 export type UpdateReportSubscriptionInput = z.input<typeof updateReportSubscriptionSchema>;
 
@@ -3177,7 +3179,9 @@ export const createReportAlertSchema = z.object({
   enabled: z.boolean().default(true),
   remark: z.string().max(256).optional(),
 });
-export const updateReportAlertSchema = createReportAlertSchema.partial();
+export const updateReportAlertSchema = createReportAlertSchema.partial().extend({
+  webhookUrl: z.union([z.url('Webhook 地址必须是合法 URL').max(512), z.literal('******')]).nullable().optional(),
+});
 export type CreateReportAlertInput = z.input<typeof createReportAlertSchema>;
 export type UpdateReportAlertInput = z.input<typeof updateReportAlertSchema>;
 

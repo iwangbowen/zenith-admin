@@ -1,7 +1,8 @@
-import { ProxyAgent, type Dispatcher } from 'undici';
+import { Agent, ProxyAgent, type Dispatcher } from 'undici';
 import { formatDateTime } from './datetime';
 import { config } from '../config';
 import logger from './logger';
+import { assertSafeOutboundUrl, createSafeOutboundLookup } from './outbound-url';
 import {
   resolveLevel,
   redactHeaders,
@@ -29,6 +30,8 @@ export interface HttpRequestOptions extends Omit<RequestInit, 'signal' | 'body'>
   signal?: AbortSignal;
   /** Log truncation length for body in pino logs. Default 2048; set 0 to disable body logging */
   logBodyLimit?: number;
+  /** Block localhost/private/reserved destinations and automatic redirects. */
+  ssrfProtection?: boolean;
   /**
    * 覆盖本次请求的出站 HTTP 日志配置，优先级高于全局 config.httpLog.outgoing。
    *
@@ -62,6 +65,10 @@ export interface HttpResponse {
   /** Raw underlying Response */
   raw: Response;
 }
+
+const ssrfSafeDispatcher = new Agent({
+  connect: { lookup: createSafeOutboundLookup() },
+});
 
 export class HttpClientError extends Error {
   readonly status: number;
@@ -231,6 +238,7 @@ export async function httpRequest(
     proxy,
     signal: callerSignal,
     logBodyLimit = 2048,
+    ssrfProtection = false,
     httpLog: callHttpLog,
     headers: headersInit,
     method = 'GET',
@@ -238,6 +246,7 @@ export async function httpRequest(
   } = opts;
 
   const finalUrl = resolveUrl(url, baseURL);
+  if (ssrfProtection) await assertSafeOutboundUrl(finalUrl);
   const safeUrl = redactUrl(finalUrl);
   const host = breakerKey(finalUrl);
   breakerCheck(host);
@@ -245,7 +254,14 @@ export async function httpRequest(
   const headers = new Headers(headersInit);
   const reqBody = normalizeBody(body, headers);
 
-  const dispatcher = proxy ? new ProxyAgent(proxy) : undefined;
+  if (ssrfProtection && proxy) {
+    throw new HttpClientError('SSRF-protected requests cannot use a proxy', { status: 0, url: safeUrl });
+  }
+  const dispatcher = proxy
+    ? new ProxyAgent(proxy)
+    : ssrfProtection
+      ? ssrfSafeDispatcher
+      : undefined;
 
   let lastErr: unknown;
   const maxAttempts = retries + 1;
@@ -303,6 +319,7 @@ export async function httpRequest(
         body: reqBody,
         signal: controller.signal,
         ...rest,
+        ...(ssrfProtection ? { redirect: 'error' as const } : {}),
       }, dispatcher);
       const elapsed = Date.now() - startedAt;
 
