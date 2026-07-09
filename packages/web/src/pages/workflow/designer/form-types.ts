@@ -45,6 +45,7 @@ import {
   Footprints,
   type LucideIcon,
 } from 'lucide-react';
+import { BASIC_COMPARISON_OPERATOR_LABELS } from '@zenith/shared';
 import type { WorkflowFormFieldType } from '@zenith/shared';
 
 // ─── 控件类型元信息 ──────────────────────────────────────────────────
@@ -198,14 +199,8 @@ export const DATE_LIMIT_OPTIONS = [
 ];
 
 // 跨字段比较操作符（number/amount/date）
-export const COMPARE_OPERATOR_OPTIONS = [
-  { value: 'gt',  label: '大于 >' },
-  { value: 'gte', label: '大于等于 ≥' },
-  { value: 'lt',  label: '小于 <' },
-  { value: 'lte', label: '小于等于 ≤' },
-  { value: 'eq',  label: '等于 =' },
-  { value: 'neq', label: '不等于 ≠' },
-];
+export const COMPARE_OPERATOR_OPTIONS = (['gt', 'gte', 'lt', 'lte', 'eq', 'neq'] as const)
+  .map((value) => ({ value, label: BASIC_COMPARISON_OPERATOR_LABELS[value] }));
 
 // 选项标签可选颜色（增强选项 optionItems）
 export const OPTION_COLOR_PRESETS = [

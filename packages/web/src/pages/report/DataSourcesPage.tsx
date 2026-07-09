@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Button, Form, Input, Select, Switch, Tag, Toast, Modal, Typography } from '@douyinfe/semi-ui';
+import { Button, Form, Input, Select, Switch, Toast, Modal, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, RotateCcw, Plus } from 'lucide-react';
@@ -22,28 +22,12 @@ import {
 import type {
   ReportDatasource, ReportDatasourceType, ReportApiDatasourceConfig, ReportExternalDbConfig,
 } from '@zenith/shared';
+import { REPORT_DATASOURCE_TYPE_OPTIONS } from '@zenith/shared';
 import { useDictItems } from '@/hooks/useDictItems';
+import { renderReportDatasourceTypeTag } from './report-datasource-ui';
 
 interface SearchParams { keyword: string; type: string; status: string }
 const defaultSearchParams: SearchParams = { keyword: '', type: '', status: '' };
-
-const TYPE_OPTIONS = [
-  { value: 'api', label: 'API（远程 HTTP）' },
-  { value: 'sql', label: 'SQL（内置只读主库）' },
-  { value: 'mysql', label: 'MySQL（外部库）' },
-  { value: 'postgresql', label: 'PostgreSQL（外部库）' },
-  { value: 'sqlserver', label: 'SQL Server（外部库）' },
-  { value: 'static', label: '静态数据（JSON/文件）' },
-];
-
-function typeTag(type: ReportDatasourceType) {
-  if (type === 'api') return <Tag color="blue" size="small">API</Tag>;
-  if (type === 'sql') return <Tag color="violet" size="small">SQL</Tag>;
-  if (type === 'mysql') return <Tag color="cyan" size="small">MySQL</Tag>;
-  if (type === 'postgresql') return <Tag color="indigo" size="small">PostgreSQL</Tag>;
-  if (type === 'sqlserver') return <Tag color="orange" size="small">SQL Server</Tag>;
-  return <Tag color="grey" size="small">静态</Tag>;
-}
 
 function isExternalDbType(type: unknown): type is 'mysql' | 'postgresql' | 'sqlserver' {
   return type === 'mysql' || type === 'postgresql' || type === 'sqlserver';
@@ -178,7 +162,7 @@ export default function DataSourcesPage() {
 
   const columns: ColumnProps<ReportDatasource>[] = [
     { title: '名称', dataIndex: 'name', width: 180 },
-    { title: '类型', dataIndex: 'type', width: 90, render: (t: ReportDatasourceType) => typeTag(t) },
+    { title: '类型', dataIndex: 'type', width: 90, render: (t: ReportDatasourceType) => renderReportDatasourceTypeTag(t) },
     {
       title: '连接', dataIndex: 'config', width: 320,
       render: (_: unknown, r: ReportDatasource) => {
@@ -225,7 +209,7 @@ export default function DataSourcesPage() {
   );
   const renderTypeFilter = () => (
     <Select placeholder="全部类型" value={draftParams.type || undefined} onChange={(v) => setDraftParams((p) => ({ ...p, type: (v as string) ?? '' }))}
-      showClear style={{ width: 140 }} optionList={TYPE_OPTIONS} />
+      showClear style={{ width: 140 }} optionList={REPORT_DATASOURCE_TYPE_OPTIONS} />
   );
   const renderStatusFilter = () => (
     <Select placeholder="全部状态" value={draftParams.status || undefined} onChange={(v) => setDraftParams((p) => ({ ...p, status: (v as string) ?? '' }))}
@@ -268,7 +252,7 @@ export default function DataSourcesPage() {
               <Form.Select
                 field="type"
                 label="类型"
-                optionList={TYPE_OPTIONS}
+                optionList={REPORT_DATASOURCE_TYPE_OPTIONS}
                 style={{ width: '100%' }}
                 rules={[{ required: true }]}
                 onChange={(v) => {

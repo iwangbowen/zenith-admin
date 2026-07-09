@@ -4,12 +4,14 @@ import AppModal from '@/components/AppModal';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Save, Send, Mail } from 'lucide-react';
 import { usePermission } from '@/hooks/usePermission';
+import { useDictItems } from '@/hooks/useDictItems';
 import { useEmailConfig, useSaveEmailConfig, useTestEmailConfig } from '@/hooks/queries/email-config';
 
 const { Title, Text } = Typography;
 
 export default function EmailConfigPage() {
   const { hasPermission } = usePermission();
+  const { items: statusItems } = useDictItems('common_status');
   const formApi = useRef<FormApi | null>(null);
   const [testModalVisible, setTestModalVisible] = useState(false);
   const [testEmail, setTestEmail] = useState('');
@@ -120,10 +122,7 @@ export default function EmailConfigPage() {
           label="状态"
           style={{ width: '100%' }}
           placeholder="请选择状态"
-          optionList={[
-            { label: '启用', value: 'enabled' },
-            { label: '禁用', value: 'disabled' },
-          ]}
+          optionList={statusItems.map((item) => ({ value: item.value, label: item.label }))}
         />
       </Form>
 

@@ -21,6 +21,7 @@ import {
   useReportPrintTemplateDetail,
   useSaveReportPrintTemplate,
 } from '@/hooks/queries/report-print';
+import { REPORT_FIELD_TYPE_OPTIONS } from '@zenith/shared';
 import type {
   ReportDataset,
   ReportDatasetParam,
@@ -35,12 +36,7 @@ import { useDictItems } from '@/hooks/useDictItems';
 type UniverBundle = ReturnType<typeof createUniver>;
 type PanelKey = 'fields' | 'params' | 'page';
 
-const PARAM_TYPE_OPTIONS = [
-  { value: 'string', label: '字符串' },
-  { value: 'number', label: '数字' },
-  { value: 'date', label: '日期' },
-  { value: 'boolean', label: '布尔' },
-];
+const PARAM_TYPE_OPTIONS = REPORT_FIELD_TYPE_OPTIONS;
 
 const PAPER_OPTIONS = [
   { value: 'A4', label: 'A4' },

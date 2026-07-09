@@ -12,6 +12,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn } from '../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
+import { useDictItems } from '@/hooks/useDictItems';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import {
@@ -52,6 +53,7 @@ const emptyArticle = (): MpReplyArticle => ({ title: '', description: '', picUrl
 
 export default function MpAutoRepliesPage() {
   const { hasPermission: can } = usePermission();
+  const { items: statusItems } = useDictItems('common_status');
   const queryClient = useQueryClient();
   const { accounts, currentId, setCurrentId, loading: accountsLoading } = useMpAccounts();
 
@@ -368,7 +370,7 @@ export default function MpAutoRepliesPage() {
             )}
 
             <Form.Select field="status" label="状态" style={{ width: '100%' }}
-              optionList={[{ label: '启用', value: 'enabled' }, { label: '禁用', value: 'disabled' }]} />
+              optionList={statusItems.map((item) => ({ value: item.value, label: item.label }))} />
             <Form.Switch field="transferToKf" label="命中转人工" extraText="命中该关键词后引导粉丝进入多客服会话队列" />
           </Form>
         </Spin>

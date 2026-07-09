@@ -14,7 +14,7 @@ import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import type { MonitorAlertRule, MonitorMetric } from '@zenith/shared';
-import { NOTIFY_CHANNEL_LABELS } from '@zenith/shared';
+import { BASIC_COMPARISON_OPERATOR_LABELS, NOTIFY_CHANNEL_LABELS } from '@zenith/shared';
 import {
   monitorAlertKeys,
   useDeleteMonitorAlert,
@@ -36,10 +36,8 @@ const PERCENT_METRICS = new Set<MonitorMetric>(['cpu', 'memory', 'disk', 'swap',
 const BYTES_METRICS = new Set<MonitorMetric>(['netRxBps', 'netTxBps', 'diskReadBps', 'diskWriteBps']);
 
 const OP_SYMBOL: Record<string, string> = { gt: '>', gte: '≥', lt: '<', lte: '≤' };
-const OP_OPTIONS = [
-  { value: 'gt', label: '大于 >' }, { value: 'gte', label: '大于等于 ≥' },
-  { value: 'lt', label: '小于 <' }, { value: 'lte', label: '小于等于 ≤' },
-];
+const OP_OPTIONS = (['gt', 'gte', 'lt', 'lte'] as const)
+  .map((value) => ({ value, label: BASIC_COMPARISON_OPERATOR_LABELS[value] }));
 const LEVEL_CONFIG: Record<string, { label: string; color: 'blue' | 'amber' | 'red' }> = {
   info: { label: '提示', color: 'blue' }, warning: { label: '警告', color: 'amber' }, critical: { label: '严重', color: 'red' },
 };

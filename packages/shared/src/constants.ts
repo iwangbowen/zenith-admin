@@ -6,6 +6,10 @@ import type {
   MpMessageType,
   MpReplyContentType,
   ReportAlertAggregate,
+  ReportDatasourceType,
+  ReportFieldType,
+  SendSource,
+  SendStatus,
   SmsProvider,
   UserFeedbackCategory,
   UserFeedbackStatus,
@@ -553,6 +557,27 @@ export const SMS_PROVIDER_OPTIONS: Array<{ value: SmsProvider; label: string }> 
   (Object.keys(SMS_PROVIDER_LABELS) as SmsProvider[])
     .map((value) => ({ value, label: SMS_PROVIDER_LABELS[value] }));
 
+export const SEND_STATUS_LABELS: Record<SendStatus, string> = {
+  pending: '待发送',
+  success: '已发送',
+  failed: '失败',
+};
+
+export const SEND_STATUS_OPTIONS: Array<{ value: SendStatus; label: string }> =
+  (Object.keys(SEND_STATUS_LABELS) as SendStatus[])
+    .map((value) => ({ value, label: SEND_STATUS_LABELS[value] }));
+
+export const SEND_SOURCE_LABELS: Record<SendSource, string> = {
+  manual: '手动',
+  test: '测试',
+  system: '系统',
+  api: 'API',
+};
+
+export const SEND_SOURCE_OPTIONS: Array<{ value: SendSource; label: string }> =
+  (Object.keys(SEND_SOURCE_LABELS) as SendSource[])
+    .map((value) => ({ value, label: SEND_SOURCE_LABELS[value] }));
+
 export const IN_APP_MESSAGE_TYPE_LABELS: Record<InAppMessageType, string> = {
   info: '通知',
   success: '成功',
@@ -637,3 +662,58 @@ export const REPORT_AGGREGATE_OPTIONS: Array<{ value: ReportAlertAggregate; labe
 
 export const REPORT_VISUAL_AGGREGATE_OPTIONS = REPORT_AGGREGATE_OPTIONS
   .filter((option) => option.value !== 'first');
+
+export const REPORT_FIELD_TYPE_LABELS: Record<ReportFieldType, string> = {
+  string: '字符串',
+  number: '数字',
+  date: '日期',
+  boolean: '布尔',
+};
+
+export const REPORT_FIELD_TYPE_OPTIONS: Array<{ value: ReportFieldType; label: string }> =
+  (Object.keys(REPORT_FIELD_TYPE_LABELS) as ReportFieldType[])
+    .map((value) => ({ value, label: REPORT_FIELD_TYPE_LABELS[value] }));
+
+export const REPORT_DATASOURCE_TYPE_LABELS: Record<ReportDatasourceType, string> = {
+  api: 'API',
+  sql: 'SQL',
+  mysql: 'MySQL',
+  postgresql: 'PostgreSQL',
+  sqlserver: 'SQL Server',
+  static: '静态数据',
+};
+
+export const REPORT_DATASOURCE_TYPE_DESCRIPTIONS: Record<ReportDatasourceType, string> = {
+  api: '远程 HTTP',
+  sql: '内置只读主库',
+  mysql: '外部库',
+  postgresql: '外部库',
+  sqlserver: '外部库',
+  static: 'JSON/文件',
+};
+
+export const REPORT_DATASOURCE_TYPE_OPTIONS: Array<{ value: ReportDatasourceType; label: string }> =
+  (Object.keys(REPORT_DATASOURCE_TYPE_LABELS) as ReportDatasourceType[])
+    .map((value) => ({
+      value,
+      label: `${REPORT_DATASOURCE_TYPE_LABELS[value]}（${REPORT_DATASOURCE_TYPE_DESCRIPTIONS[value]}）`,
+    }));
+
+// ─── 通用比较运算符 ────────────────────────────────────────────────────
+export const BASIC_COMPARISON_OPERATORS = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte'] as const;
+export type BasicComparisonOperator = (typeof BASIC_COMPARISON_OPERATORS)[number];
+
+export const BASIC_COMPARISON_OPERATOR_LABELS: Record<BasicComparisonOperator, string> = {
+  eq: '等于 =',
+  neq: '不等于 ≠',
+  gt: '大于 >',
+  gte: '大于等于 ≥',
+  lt: '小于 <',
+  lte: '小于等于 ≤',
+};
+
+export const BASIC_COMPARISON_OPERATOR_OPTIONS: Array<{ value: BasicComparisonOperator; label: string }> =
+  BASIC_COMPARISON_OPERATORS.map((value) => ({
+    value,
+    label: BASIC_COMPARISON_OPERATOR_LABELS[value],
+  }));

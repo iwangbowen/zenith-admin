@@ -13,6 +13,7 @@ import {
 } from '@zenith/shared';
 import { config } from '@/config';
 import { usePermission } from '@/hooks/usePermission';
+import { useDictItems } from '@/hooks/useDictItems';
 import { AppModal } from '@/components/AppModal';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import {
@@ -56,6 +57,7 @@ function extractUploadUrl(res: unknown): string | null {
 
 export function ChannelAutoReplyDrawer({ channelId, channelName, visible, onClose }: Readonly<Props>) {
   const { hasPermission } = usePermission();
+  const { items: statusItems } = useDictItems('common_status');
   const canSave = hasPermission('channel:reply:save');
   const canDelete = hasPermission('channel:reply:delete');
 
@@ -364,7 +366,7 @@ export function ChannelAutoReplyDrawer({ channelId, channelName, visible, onClos
                   field="status"
                   label="状态"
                   style={{ width: '100%' }}
-                  optionList={[{ label: '启用', value: 'enabled' }, { label: '停用', value: 'disabled' }]}
+                  optionList={statusItems.map((item) => ({ value: item.value, label: item.label }))}
                 />
               </>
             );

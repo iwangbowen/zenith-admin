@@ -29,6 +29,7 @@ import { usePermission } from '@/hooks/usePermission';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
+import { useDictItems } from '@/hooks/useDictItems';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { useAllTenantPackages } from '@/hooks/queries/tenant-packages';
 import {
@@ -49,6 +50,7 @@ const defaultSearchParams: SearchParams = { keyword: '', status: '' };
 
 export default function TenantsPage() {
   const { hasPermission } = usePermission();
+  const { items: statusItems } = useDictItems('common_status');
   const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
   const { page, pageSize, setPage, buildPagination } = usePagination();
@@ -281,8 +283,7 @@ export default function TenantsPage() {
       style={{ width: 140, maxWidth: '100%' }}
       optionList={[
         { value: '', label: '全部状态' },
-        { value: 'enabled', label: '正常' },
-        { value: 'disabled', label: '停用' },
+        ...statusItems.map((item) => ({ value: item.value, label: item.label })),
       ]}
     />
   );
@@ -386,10 +387,7 @@ export default function TenantsPage() {
                 field="status"
                 label="状态"
                 style={{ width: '100%' }}
-                optionList={[
-                  { value: 'enabled', label: '正常' },
-                  { value: 'disabled', label: '停用' },
-                ]}
+                optionList={statusItems.map((item) => ({ value: item.value, label: item.label }))}
                 placeholder="请选择状态"
               />
             </Col>

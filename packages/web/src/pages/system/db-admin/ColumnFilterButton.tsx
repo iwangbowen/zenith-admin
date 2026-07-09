@@ -1,15 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Button, Input, Popover, Select, Space } from '@douyinfe/semi-ui';
 import { Filter } from 'lucide-react';
+import { BASIC_COMPARISON_OPERATOR_OPTIONS } from '@zenith/shared';
 
 const OPS = [
   { label: '包含 (ILIKE)', value: 'ilike' },
-  { label: '等于 =', value: 'eq' },
-  { label: '不等于 ≠', value: 'neq' },
-  { label: '大于 >', value: 'gt' },
-  { label: '大于等于 ≥', value: 'gte' },
-  { label: '小于 <', value: 'lt' },
-  { label: '小于等于 ≤', value: 'lte' },
+  ...BASIC_COMPARISON_OPERATOR_OPTIONS,
   { label: '为空 IS NULL', value: 'isnull' },
   { label: '非空 IS NOT NULL', value: 'notnull' },
 ];

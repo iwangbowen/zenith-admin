@@ -20,19 +20,7 @@ import {
   useEmailSendLogList,
   useTestEmailSendLog,
 } from '@/hooks/queries/email-send-logs';
-
-const STATUS_OPTIONS: { label: string; value: SendStatus; color: 'orange' | 'green' | 'red' }[] = [
-  { label: '待发送', value: 'pending', color: 'orange' },
-  { label: '已发送', value: 'success', color: 'green' },
-  { label: '失败', value: 'failed', color: 'red' },
-];
-
-const SOURCE_OPTIONS = [
-  { label: '手动', value: 'manual' },
-  { label: '测试', value: 'test' },
-  { label: '系统', value: 'system' },
-  { label: 'API', value: 'api' },
-];
+import { SEND_LOG_STATUS_OPTIONS as STATUS_OPTIONS, SEND_SOURCE_OPTIONS as SOURCE_OPTIONS } from '../send-log-constants';
 
 function StatusTag({ value }: Readonly<{ value: SendStatus }>) {
   const it = STATUS_OPTIONS.find((s) => s.value === value);

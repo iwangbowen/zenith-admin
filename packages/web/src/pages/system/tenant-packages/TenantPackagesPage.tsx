@@ -19,6 +19,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { MenuPermissionPanel } from '@/components/permissions/MenuPermissionPanel';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
+import { useDictItems } from '@/hooks/useDictItems';
 import { useMenuTree } from '@/hooks/queries/menus';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -41,6 +42,7 @@ const defaultSearchParams: SearchParams = { keyword: '', status: '' };
 
 export default function TenantPackagesPage() {
   const { hasPermission } = usePermission();
+  const { items: statusItems } = useDictItems('common_status');
   const formApi = useRef<FormApi | null>(null);
   const queryClient = useQueryClient();
 
@@ -233,8 +235,7 @@ export default function TenantPackagesPage() {
       style={{ width: 140, maxWidth: '100%' }}
       optionList={[
         { value: '', label: '全部状态' },
-        { value: 'enabled', label: '正常' },
-        { value: 'disabled', label: '停用' },
+        ...statusItems.map((item) => ({ value: item.value, label: item.label })),
       ]}
     />
   );
@@ -314,10 +315,7 @@ export default function TenantPackagesPage() {
               field="status"
               label="状态"
               style={{ width: '100%' }}
-              optionList={[
-                { value: 'enabled', label: '正常' },
-                { value: 'disabled', label: '停用' },
-              ]}
+              optionList={statusItems.map((item) => ({ value: item.value, label: item.label }))}
               placeholder="请选择状态"
             />
             <Form.TextArea field="remark" label="备注" placeholder="请输入备注" rows={3} />

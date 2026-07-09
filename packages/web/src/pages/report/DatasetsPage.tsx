@@ -23,6 +23,7 @@ import {
   useReportDatasetList,
   useSaveReportDataset,
 } from '@/hooks/queries/report-datasets';
+import { REPORT_DATASOURCE_TYPE_LABELS, REPORT_FIELD_TYPE_OPTIONS } from '@zenith/shared';
 import type {
   ReportDataset, ReportDatasource, ReportDatasourceType, ReportField, ReportDataResult,
   ReportApiDatasetContent, ReportSqlDatasetContent, ReportComputedField,
@@ -32,6 +33,7 @@ import { useAllRoles } from '@/hooks/queries/roles';
 import VisualModelBuilder from './components/VisualModelBuilder';
 import DatasetRefsModal from './components/DatasetRefsModal';
 import { useDictItems } from '@/hooks/useDictItems';
+import { renderReportDatasourceTypeTag } from './report-datasource-ui';
 
 interface SearchParams { keyword: string; status: string }
 const defaultSearchParams: SearchParams = { keyword: '', status: '' };
@@ -40,30 +42,7 @@ function isSqlAuthoringType(type: ReportDatasourceType | null) {
   return type === 'sql' || type === 'mysql' || type === 'postgresql' || type === 'sqlserver';
 }
 
-function datasourceTypeLabel(type: ReportDatasourceType) {
-  if (type === 'api') return 'API';
-  if (type === 'sql') return 'SQL';
-  if (type === 'mysql') return 'MySQL';
-  if (type === 'postgresql') return 'PostgreSQL';
-  if (type === 'sqlserver') return 'SQL Server';
-  return '静态';
-}
-
-function datasourceTypeTag(type: ReportDatasourceType) {
-  if (type === 'api') return <Tag color="blue" size="small">API</Tag>;
-  if (type === 'sql') return <Tag color="violet" size="small">SQL</Tag>;
-  if (type === 'mysql') return <Tag color="cyan" size="small">MySQL</Tag>;
-  if (type === 'postgresql') return <Tag color="indigo" size="small">PostgreSQL</Tag>;
-  if (type === 'sqlserver') return <Tag color="orange" size="small">SQL Server</Tag>;
-  return <Tag color="grey" size="small">静态</Tag>;
-}
-
-const COMPUTED_FIELD_TYPE_OPTIONS = [
-  { value: 'string', label: '字符串' },
-  { value: 'number', label: '数字' },
-  { value: 'date', label: '日期' },
-  { value: 'boolean', label: '布尔' },
-];
+const COMPUTED_FIELD_TYPE_OPTIONS = REPORT_FIELD_TYPE_OPTIONS;
 
 const FIELD_FORMAT_KIND_OPTIONS = [
   { value: '', label: '无' },
@@ -468,7 +447,7 @@ export default function DatasetsPage() {
     { title: '数据源', dataIndex: 'datasourceName', width: 160, render: (v: string) => v || '-' },
     {
       title: '类型', dataIndex: 'type', width: 80,
-      render: (t: ReportDatasourceType) => datasourceTypeTag(t),
+      render: (t: ReportDatasourceType) => renderReportDatasourceTypeTag(t),
     },
     { title: '字段数', dataIndex: 'fields', width: 80, render: (f: ReportField[]) => (f?.length ?? 0) },
     { title: '创建时间', dataIndex: 'createdAt', width: 170, render: (t: string) => formatDateTime(t) },
@@ -553,7 +532,7 @@ export default function DatasetsPage() {
           <Form.Input field="name" label="名称" rules={[{ required: true, message: '请输入名称' }]} maxLength={64} showClear />
           <Form.Select field="datasourceId" label="数据源" style={{ width: '100%' }} rules={[{ required: true, message: '请选择数据源' }]}
             placeholder="选择数据源"
-            optionList={datasources.map((d) => ({ value: d.id, label: `${d.name}（${datasourceTypeLabel(d.type)}）` }))}
+            optionList={datasources.map((d) => ({ value: d.id, label: `${d.name}（${REPORT_DATASOURCE_TYPE_LABELS[d.type]}）` }))}
           />
 
           {isSqlAuthoringType(selectedType) && (
