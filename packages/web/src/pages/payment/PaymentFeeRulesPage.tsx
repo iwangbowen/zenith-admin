@@ -20,6 +20,7 @@ import {
 } from '@/hooks/queries/payment-fee';
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_METHOD_LABELS } from '@zenith/shared';
 import type { PaymentChannel, PaymentFeeRule, PaymentMethod } from '@zenith/shared';
+import { useDictItems } from '@/hooks/useDictItems';
 
 const yuan = formatYuan;
 const channelOptions = Object.entries(PAYMENT_CHANNEL_LABELS).map(([value, label]) => ({ value, label }));
@@ -42,6 +43,7 @@ interface FeeFormValues {
 }
 
 export default function PaymentFeeRulesPage() {
+  const { items: statusItems } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
@@ -174,7 +176,7 @@ export default function PaymentFeeRulesPage() {
       onChange={(v) => setDraftParams((p) => ({ ...p, status: (v as string) ?? '' }))}
       showClear
       style={{ width: 120 }}
-      optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]}
+      optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
     />
   );
 
@@ -236,7 +238,7 @@ export default function PaymentFeeRulesPage() {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: 16 }}>
               <Form.InputNumber field="priority" label="优先级" min={0} max={9999} step={1} precision={0} style={{ width: '100%' }} extraText="数值越大越优先匹配" />
-              <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} />
+              <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
             </div>
             <Form.TextArea field="remark" label="备注" autosize rows={1} placeholder="可选" />
           </Form>

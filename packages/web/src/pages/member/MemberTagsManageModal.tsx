@@ -6,6 +6,7 @@ import { Plus } from 'lucide-react';
 import type { MemberTag } from '@zenith/shared';
 import { AppModal } from '@/components/AppModal';
 import { useDeleteMemberTag, useMemberTags, useSaveMemberTag } from '@/hooks/queries/member-admin';
+import { useDictItems } from '@/hooks/useDictItems';
 
 const TAG_COLORS = ['red', 'orange', 'amber', 'green', 'teal', 'blue', 'purple', 'pink', 'grey'] as const;
 
@@ -16,6 +17,7 @@ interface Props {
 
 /** 会员标签轻量管理（列表 + 新增/编辑/删除，嵌在会员管理页）*/
 export function MemberTagsManageModal({ visible, onClose }: Readonly<Props>) {
+  const { items: statusItems } = useDictItems('common_status');
   const formApi = useRef<FormApi | null>(null);
   const [editing, setEditing] = useState<MemberTag | null>(null);
   const [formVisible, setFormVisible] = useState(false);
@@ -95,7 +97,7 @@ export function MemberTagsManageModal({ visible, onClose }: Readonly<Props>) {
           <Form.Input field="description" label="说明" placeholder="选填" maxLength={256} />
           <Form.InputNumber field="sort" label="排序" style={{ width: '100%' }} precision={0} />
           <Form.Select field="status" label="状态" style={{ width: '100%' }}
-            optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} />
+            optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
         </Form>
       </AppModal>
     </Modal>

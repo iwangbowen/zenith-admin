@@ -22,8 +22,10 @@ import {
 } from '@/hooks/queries/report-subscriptions';
 import type { ReportDashboardSubscription } from '@zenith/shared';
 import { NOTIFY_CHANNEL_LABELS, type NotifyChannel } from '@zenith/shared';
+import { useDictItems } from '@/hooks/useDictItems';
 
 export default function SubscriptionsPage() {
+  const { items: statusItems } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
   const queryClient = useQueryClient();
@@ -137,7 +139,7 @@ export default function SubscriptionsPage() {
             <Form.Input field="webhookUrl" label="Webhook 地址" placeholder="企微/钉钉机器人 Webhook URL 或通用 JSON 端点"
               rules={[{ required: true, message: '请填写 Webhook 地址' }]} showClear />
           )}
-          <Form.Select field="enabled" label="状态" style={{ width: '100%' }} optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} />
+          <Form.Select field="enabled" label="状态" style={{ width: '100%' }} optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
           <Form.TextArea field="remark" label="备注" maxLength={256} autosize={{ minRows: 1, maxRows: 3 }} />
         </Form>
       </AppModal>

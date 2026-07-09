@@ -29,6 +29,7 @@ import type {
   ReportDataset,
 } from '@zenith/shared';
 import { NOTIFY_CHANNEL_LABELS } from '@zenith/shared';
+import { useDictItems } from '@/hooks/useDictItems';
 
 interface SearchParams {
   keyword: string;
@@ -78,6 +79,7 @@ function formatRule(record: ReportAlertRule) {
 }
 
 export default function AlertsPage() {
+  const { items: statusItems } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
   const queryClient = useQueryClient();
@@ -310,7 +312,7 @@ export default function AlertsPage() {
   );
   const renderStatusFilter = () => (
     <Select placeholder="全部状态" value={draftParams.enabled || undefined} onChange={(value) => setDraftParams((prev) => ({ ...prev, enabled: (value as string) ?? '' }))}
-      showClear style={{ width: 120 }} optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} />
+      showClear style={{ width: 120 }} optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
   );
   const renderSearchBtn = () => <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>;
   const renderResetBtn = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>;
@@ -374,7 +376,7 @@ export default function AlertsPage() {
           <Form.InputNumber field="silenceMins" label="静默期(分)" min={0} max={10080} step={10} style={{ width: '100%' }}
             helpText="持续触发时，距上次通知不足该时长不重复通知；0=每次触发都通知" />
           <Form.Switch field="notifyOnRecover" label="恢复通知" extraText="从触发恢复正常时发送一条恢复通知" />
-          <Form.Select field="enabled" label="状态" style={{ width: '100%' }} optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} />
+          <Form.Select field="enabled" label="状态" style={{ width: '100%' }} optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
           <Form.TextArea field="remark" label="备注" maxLength={256} autosize={{ minRows: 1, maxRows: 3 }} />
         </Form>
       </AppModal>

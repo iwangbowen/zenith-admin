@@ -43,6 +43,12 @@ export const FILE_STORAGE_PROVIDER_OPTIONS: Array<{ value: (typeof FILE_STORAGE_
 export const CONFIG_TYPES = ['string', 'number', 'boolean', 'json'] as const;
 export const CRON_JOB_STATUSES = ['enabled', 'disabled'] as const;
 export const CRON_RUN_STATUSES = ['success', 'fail', 'running'] as const;
+/** 定时任务执行状态标签（列表页/仪表盘统一复用） */
+export const CRON_RUN_STATUS_LABELS: Record<(typeof CRON_RUN_STATUSES)[number], string> = {
+  success: '成功',
+  fail: '失败',
+  running: '运行中',
+};
 export const OAUTH_PROVIDERS = ['github', 'dingtalk', 'wechat_work'] as const;
 export const BACKUP_TYPES = ['pg_dump', 'drizzle_export'] as const;
 export const BACKUP_STATUSES = ['pending', 'running', 'success', 'failed'] as const;

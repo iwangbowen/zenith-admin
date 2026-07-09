@@ -30,6 +30,7 @@ import type {
   ReportPrintTemplate,
   UpdateReportPrintTemplateInput,
 } from '@zenith/shared';
+import { useDictItems } from '@/hooks/useDictItems';
 
 type UniverBundle = ReturnType<typeof createUniver>;
 type PanelKey = 'fields' | 'params' | 'page';
@@ -98,6 +99,7 @@ function Field({ label, children }: Readonly<{ label: string; children: React.Re
 }
 
 export default function PrintDesignerPage() {
+  const { items: statusItems } = useDictItems('common_status');
   const routeParams = useParams<{ id: string }>();
   const templateId = Number(routeParams.id);
   const navigate = useNavigate();
@@ -281,7 +283,7 @@ export default function PrintDesignerPage() {
         <Select
           value={status}
           onChange={(v) => setStatus((v as ReportPrintTemplate['status']) ?? 'enabled')}
-          optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]}
+          optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
           style={{ width: 110 }}
         />
         <div style={{ flex: 1 }} />

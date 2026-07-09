@@ -34,8 +34,6 @@ import {
   resolveWorkflowFormType,
 } from '@/utils/workflow-snapshot';
 
-type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'orange' | 'purple' | 'red';
-
 interface Props {
   instance: WorkflowInstance | null;
   definition?: WorkflowDefinition | null;

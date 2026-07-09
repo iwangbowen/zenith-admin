@@ -23,6 +23,7 @@ import {
   useSetDefaultPaymentChannel,
   useTestPaymentChannel,
 } from '@/hooks/queries/payment-channels';
+import { useDictItems } from '@/hooks/useDictItems';
 
 interface SearchParams {
   keyword: string;
@@ -32,6 +33,7 @@ interface SearchParams {
 const defaultSearch: SearchParams = { keyword: '', channel: '', status: '' };
 
 export default function PaymentChannelsPage() {
+  const { items: statusItems } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
@@ -237,7 +239,7 @@ export default function PaymentChannelsPage() {
       onChange={(v) => setDraftParams((p) => ({ ...p, status: (v as string) ?? '' }))}
       showClear
       style={{ width: 120 }}
-      optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]}
+      optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
     />
   );
 
@@ -300,7 +302,7 @@ export default function PaymentChannelsPage() {
               <Col span={12}><Form.Select field="channel" label="渠道" style={{ width: '100%' }} disabled={!!editing} optionList={PAYMENT_CHANNEL_OPTIONS} rules={[{ required: true }]} /></Col>
             </Row>
             <Row gutter={16}>
-              <Col span={12}><Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} /></Col>
+              <Col span={12}><Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} /></Col>
               <Col span={12}><Form.Switch field="isDefault" label="设为默认" /></Col>
             </Row>
             <Row gutter={16}>

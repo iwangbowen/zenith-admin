@@ -23,6 +23,7 @@ import {
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, ScrollText, Trash2, ChevronDown, HelpCircle } from 'lucide-react';
 import type { CronJob } from '@zenith/shared';
+import { CRON_RUN_STATUS_LABELS } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
@@ -50,6 +51,7 @@ import {
   useSaveCronJob,
   useUpdateCronJobStatus,
 } from '@/hooks/queries/cron-jobs';
+import { useDictItems } from '@/hooks/useDictItems';
 
 interface SearchParams {
   keyword: string;
@@ -64,7 +66,7 @@ const runStatusColor: Record<string, import('@douyinfe/semi-ui/lib/es/tag/interf
   running: 'blue',
 };
 
-const runStatusLabel: Record<string, string> = { success: '成功', fail: '失败', running: '运行中' };
+const runStatusLabel: Record<string, string> = CRON_RUN_STATUS_LABELS;
 
 /** 执行日志表格公共列（两个日志抽屉共用） */
 const buildRunLogColumns = (outputWidth: number) => [
@@ -110,6 +112,7 @@ const buildRunLogColumns = (outputWidth: number) => [
 ];
 
 export default function CronJobsPage() {
+  const { items: statusItems } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
   const queryClient = useQueryClient();
@@ -432,11 +435,7 @@ export default function CronJobsPage() {
                   value={draftParams.status || undefined}
                   onChange={(v) => setDraftParams((p) => ({ ...p, status: (v as string) ?? '' }))}
                   style={{ width: 140 }}
-                  optionList={[
-                    { value: '', label: '全部' },
-                    { value: 'enabled', label: '启用' },
-                    { value: 'disabled', label: '禁用' },
-                  ]}
+                  optionList={[{ value: '', label: '全部' }, ...statusItems.map((i) => ({ value: i.value, label: i.label }))]}
                 />
                 <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
                 <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
@@ -474,11 +473,7 @@ export default function CronJobsPage() {
                 value={draftParams.status || undefined}
                 onChange={(v) => setDraftParams((p) => ({ ...p, status: (v as string) ?? '' }))}
                 style={{ width: 140 }}
-                optionList={[
-                  { value: '', label: '全部' },
-                  { value: 'enabled', label: '启用' },
-                  { value: 'disabled', label: '禁用' },
-                ]}
+                optionList={[{ value: '', label: '全部' }, ...statusItems.map((i) => ({ value: i.value, label: i.label }))]}
               />
             )}
             mobileActions={(
@@ -538,10 +533,7 @@ export default function CronJobsPage() {
               <Form.Select
                 field="status"
                 label="状态"
-                optionList={[
-                  { value: 'enabled', label: '启用' },
-                  { value: 'disabled', label: '禁用' },
-                ]}
+                optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
                 style={{ width: '100%' }}
               />
             </Col>

@@ -22,11 +22,7 @@ import {
   useWorkflowDataSourceList,
   workflowDataSourceKeys,
 } from '@/hooks/queries/workflow-data-sources';
-
-const STATUS_OPTIONS = [
-  { value: 'enabled', label: '启用' },
-  { value: 'disabled', label: '停用' },
-];
+import { useDictItems } from '@/hooks/useDictItems';
 
 interface SearchParams { keyword: string; status: string }
 const defaultSearchParams: SearchParams = { keyword: '', status: '' };
@@ -45,6 +41,8 @@ interface DataSourceFormValues {
 }
 
 export default function WorkflowDataSourcesPage() {
+  const { items: statusItems } = useDictItems('common_status');
+  const STATUS_OPTIONS = statusItems.map((i) => ({ value: i.value, label: i.label }));
   const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);

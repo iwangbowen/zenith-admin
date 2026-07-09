@@ -8,6 +8,7 @@ import type { Member, MemberTag } from '@zenith/shared';
 import { MEMBER_STATUS_LABELS } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
+import { useDictItems } from '@/hooks/useDictItems';
 import { UserAvatar } from '@/components/UserAvatar';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
@@ -42,6 +43,7 @@ const defaultSearch: SearchParams = { keyword: '', status: '', levelId: undefine
 export default function MembersPage() {
   const { hasPermission } = usePermission();
   const queryClient = useQueryClient();
+  const { items: genderItems } = useDictItems('user_gender');
   const formApi = useRef<FormApi | null>(null);
   const pwdFormApi = useRef<FormApi | null>(null);
   const { page, pageSize, setPage, buildPagination } = usePagination();
@@ -392,7 +394,7 @@ export default function MembersPage() {
             </Col>
             <Col span={12}>
               <Form.Select field="gender" label="性别" placeholder="请选择" style={{ width: '100%' }} showClear
-                optionList={[{ value: 'male', label: '男' }, { value: 'female', label: '女' }]} />
+                optionList={genderItems.map((i) => ({ value: i.value, label: i.label }))} />
             </Col>
           </Row>
           <Form.TextArea field="remark" label="备注" placeholder="请输入备注" maxCount={256} />

@@ -20,13 +20,10 @@ import {
   useDeleteApiScope,
   useSaveApiScope,
 } from '@/hooks/queries/open-platform';
+import { useDictItems } from '@/hooks/useDictItems';
 
 const { Text } = Typography;
 
-const STATUS_OPTIONS = [
-  { value: 'enabled', label: '启用' },
-  { value: 'disabled', label: '禁用' },
-];
 const GROUP_OPTIONS = API_SCOPE_GROUPS.map((g) => ({ value: g, label: API_SCOPE_GROUP_LABELS[g] ?? g }));
 
 type FormValues = {
@@ -38,6 +35,8 @@ type FormValues = {
 };
 
 export default function ApiScopesPage() {
+  const { items: statusItems } = useDictItems('common_status');
+  const STATUS_OPTIONS = statusItems.map((i) => ({ value: i.value, label: i.label }));
   const { hasPermission } = usePermission();
   const queryClient = useQueryClient();
   const canManage = hasPermission('open:scope:manage');

@@ -23,6 +23,7 @@ import {
 } from '@/hooks/queries/payment-webhooks';
 import { PAYMENT_WEBHOOK_DELIVERY_STATUS_LABELS } from '@zenith/shared';
 import type { PaymentWebhookDelivery, PaymentWebhookEndpoint } from '@zenith/shared';
+import { useDictItems } from '@/hooks/useDictItems';
 
 const EVENT_OPTIONS = [
   { value: 'payment.succeeded', label: '支付成功' },
@@ -60,6 +61,7 @@ function formatRaw(raw: unknown): string {
 }
 
 export default function PaymentWebhooksPage() {
+  const { items: statusItems } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const queryClient = useQueryClient();
   const endpointFormApi = useRef<FormApi | null>(null);
@@ -259,7 +261,7 @@ export default function PaymentWebhooksPage() {
       onChange={(v) => setEndpointSearch((p) => ({ ...p, status: (v as string) ?? '' }))}
       showClear
       style={{ width: 120 }}
-      optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]}
+      optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
     />
   );
   const renderEndpointSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleEndpointSearch}>查询</Button>;
@@ -358,7 +360,7 @@ export default function PaymentWebhooksPage() {
             <Form.Input field="url" label="URL" placeholder="https://example.com/payment/webhook" rules={[{ required: true, message: 'URL 不能为空' }]} />
             <Form.Input field="bizType" label="业务类型" placeholder="留空=全部" />
             <Form.Select field="events" label="事件" multiple maxTagCount={3} style={{ width: '100%' }} optionList={EVENT_OPTIONS} placeholder="留空=全部事件" />
-            <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} />
+            <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
             <Form.Input field="secret" label="密钥" mode="password" placeholder={editing?.hasSecret ? '已配置，留空则不修改' : '请输入'} />
             <Form.TextArea field="remark" label="备注" autosize rows={1} placeholder="可选" />
           </Form>

@@ -45,6 +45,7 @@ import {
 } from '@/hooks/queries/user-groups';
 import { useAllUsers } from '@/hooks/queries/users';
 import { useAllRoles } from '@/hooks/queries/roles';
+import { useDictItems } from '@/hooks/useDictItems';
 
 interface SearchParams {
   keyword: string;
@@ -59,6 +60,7 @@ type SimpleUser = UserTransferUser & {
 const defaultSearchParams: SearchParams = { keyword: '', status: '' };
 
 export default function UserGroupsPage() {
+  const { items: statusItems } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
@@ -352,11 +354,7 @@ export default function UserGroupsPage() {
       value={draftParams.status || undefined}
       onChange={(value) => setDraftParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
       style={{ width: 140, maxWidth: '100%' }}
-      optionList={[
-        { value: '', label: '全部状态' },
-        { value: 'enabled', label: '启用' },
-        { value: 'disabled', label: '禁用' },
-      ]}
+      optionList={[{ value: '', label: '全部状态' }, ...statusItems.map((i) => ({ value: i.value, label: i.label }))]}
     />
   );
 
@@ -465,10 +463,7 @@ export default function UserGroupsPage() {
             <Col span={12}>
               <Form.Select
                 field="status" label="状态" style={{ width: '100%' }}
-                optionList={[
-                  { value: 'enabled', label: '启用' },
-                  { value: 'disabled', label: '禁用' },
-                ]}
+                optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
               />
             </Col>
           </Row>

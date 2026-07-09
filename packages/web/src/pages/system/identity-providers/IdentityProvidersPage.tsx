@@ -38,6 +38,7 @@ import {
   useSyncIdentityProviderDirectory,
   useTestIdentityProviderConnection,
 } from '@/hooks/queries/identity-providers';
+import { useDictItems } from '@/hooks/useDictItems';
 
 interface SearchParams {
   keyword: string;
@@ -66,11 +67,6 @@ const providerTypeLabels: Record<IdentityProviderType, string> = {
   ldap: 'LDAP',
   ad: 'AD',
 };
-
-const statusOptions = [
-  { value: 'enabled', label: '启用' },
-  { value: 'disabled', label: '停用' },
-];
 
 const defaultMapping = {
   subject: 'sub',
@@ -120,6 +116,8 @@ function mappingForType(type: IdentityProviderType) {
 }
 
 export default function IdentityProvidersPage() {
+  const { items: statusItems } = useDictItems('common_status');
+  const statusOptions = statusItems.map((i) => ({ value: i.value, label: i.label }));
   const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
   const [modalVisible, setModalVisible] = useState(false);

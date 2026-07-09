@@ -22,6 +22,7 @@ import {
 import type {
   ReportDatasource, ReportDatasourceType, ReportApiDatasourceConfig, ReportExternalDbConfig,
 } from '@zenith/shared';
+import { useDictItems } from '@/hooks/useDictItems';
 
 interface SearchParams { keyword: string; type: string; status: string }
 const defaultSearchParams: SearchParams = { keyword: '', type: '', status: '' };
@@ -49,6 +50,7 @@ function isExternalDbType(type: unknown): type is 'mysql' | 'postgresql' | 'sqls
 }
 
 export default function DataSourcesPage() {
+  const { items: statusItems } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
   const queryClient = useQueryClient();
@@ -227,7 +229,7 @@ export default function DataSourcesPage() {
   );
   const renderStatusFilter = () => (
     <Select placeholder="全部状态" value={draftParams.status || undefined} onChange={(v) => setDraftParams((p) => ({ ...p, status: (v as string) ?? '' }))}
-      showClear style={{ width: 120 }} optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} />
+      showClear style={{ width: 120 }} optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
   );
   const renderSearchBtn = () => <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>;
   const renderResetBtn = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>;
@@ -309,7 +311,7 @@ export default function DataSourcesPage() {
                 </Form.Slot>
               )}
               <Form.Select field="status" label="状态" style={{ width: '100%' }}
-                optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} />
+                optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
               <Form.TextArea field="remark" label="备注" maxLength={256} autosize={{ minRows: 1, maxRows: 3 }} />
             </>
           )}

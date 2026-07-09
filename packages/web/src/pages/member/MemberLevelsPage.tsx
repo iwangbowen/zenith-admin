@@ -12,10 +12,11 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { renderEllipsis } from '../../utils/table-columns';
 import { memberAdminKeys, useDeleteMemberLevel, useMemberLevels, useSaveMemberLevel } from '@/hooks/queries/member-admin';
-
-const statusOptions = [{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }];
+import { useDictItems } from '@/hooks/useDictItems';
 
 export default function MemberLevelsPage() {
+  const { items: statusItems } = useDictItems('common_status');
+  const statusOptions = statusItems.map((i) => ({ value: i.value, label: i.label }));
   const { hasPermission } = usePermission();
   const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);

@@ -23,11 +23,13 @@ import {
   useSaveReportDashboard,
   useToggleReportDashboardFavorite,
 } from '@/hooks/queries/report-dashboards';
+import { useDictItems } from '@/hooks/useDictItems';
 
 interface SearchParams { keyword: string; status: string; categoryId?: number; favorited: boolean }
 const defaultSearchParams: SearchParams = { keyword: '', status: '', favorited: false };
 
 export default function DashboardListPage() {
+  const { items: statusItems } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const navigate = useNavigate();
   const formApi = useRef<FormApi | null>(null);
@@ -130,7 +132,7 @@ export default function DashboardListPage() {
   );
   const renderStatusFilter = () => (
     <Select placeholder="全部状态" value={draftParams.status || undefined} onChange={(v) => setDraftParams((p) => ({ ...p, status: (v as string) ?? '' }))}
-      showClear style={{ width: 120 }} optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} />
+      showClear style={{ width: 120 }} optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
   );
   const renderSearchBtn = () => <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>;
   const renderResetBtn = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>;
@@ -179,7 +181,7 @@ export default function DashboardListPage() {
         <Form key={editing?.id ?? 'new'} getFormApi={(api) => { formApi.current = api; }} initValues={formInitValues} labelPosition="left" labelWidth={72}>
           <Form.Input field="name" label="名称" rules={[{ required: true, message: '请输入名称' }]} maxLength={64} showClear />
           <Form.Select field="status" label="状态" style={{ width: '100%' }}
-            optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} />
+            optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
           <Form.Select field="categoryId" label="分类" style={{ width: '100%' }} showClear placeholder="未分类"
             optionList={categories.map((c) => ({ value: c.id, label: c.name }))} />
           <Form.TextArea field="remark" label="备注" maxLength={256} autosize={{ minRows: 1, maxRows: 3 }} />

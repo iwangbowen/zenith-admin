@@ -1,3 +1,4 @@
+import { useDictItems } from '@/hooks/useDictItems';
 /**
  * 工作流流程级自动化规则管理页面
  *
@@ -251,6 +252,7 @@ function draftToAction(d: ActionDraft): WorkflowAutomationAction | { __error: st
 }
 
 export default function WorkflowAutomationsPage() {
+  const { items: statusItems } = useDictItems('common_status');
   const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi<FormValues> | null>(null);
@@ -471,7 +473,7 @@ export default function WorkflowAutomationsPage() {
       onChange={(v) => setDraftParams(prev => ({ ...prev, status: (v as 'enabled' | 'disabled') ?? '' }))}
       showClear
       style={{ width: 120 }}
-      optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '禁用' }]}
+      optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
     />
   );
 
@@ -559,10 +561,7 @@ export default function WorkflowAutomationsPage() {
               <Form.Select field="trigger" label="触发时机" style={{ width: '100%' }} rules={[{ required: true }]} optionList={TRIGGER_OPTIONS} />
             </Col>
             <Col span={12}>
-              <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={[
-                { value: 'enabled', label: '启用' },
-                { value: 'disabled', label: '禁用' },
-              ]} />
+              <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
             </Col>
           </Row>
           <Row gutter={16}>

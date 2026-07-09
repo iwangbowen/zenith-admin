@@ -13,6 +13,7 @@ import {
 } from '@/components/charts';
 import { CronExpressionParser } from 'cron-parser';
 import type { CronJob, CronJobStatsPerJob, CronJobRecentLog, CronRunStatus } from '@zenith/shared';
+import { CRON_RUN_STATUS_LABELS } from '@zenith/shared';
 import dayjs from 'dayjs';
 import { useCronJobStats } from '@/hooks/queries/cron-jobs';
 
@@ -50,17 +51,17 @@ function formatDuration(ms: number | null): string {
 
 function statusMeta(status: CronRunStatus | null): { label: string; color: 'green' | 'red' | 'blue' | 'grey' } {
   switch (status) {
-    case 'success': return { label: '成功', color: 'green' };
-    case 'fail': return { label: '失败', color: 'red' };
-    case 'running': return { label: '运行中', color: 'blue' };
+    case 'success': return { label: CRON_RUN_STATUS_LABELS.success, color: 'green' };
+    case 'fail': return { label: CRON_RUN_STATUS_LABELS.fail, color: 'red' };
+    case 'running': return { label: CRON_RUN_STATUS_LABELS.running, color: 'blue' };
     default: return { label: '从未执行', color: 'grey' };
   }
 }
 
 const RESULT_META: Record<CronRunStatus, { color: string; label: string }> = {
-  success: { color: SUCCESS_COLOR, label: '成功' },
-  fail: { color: FAIL_COLOR, label: '失败' },
-  running: { color: RUNNING_COLOR, label: '运行中' },
+  success: { color: SUCCESS_COLOR, label: CRON_RUN_STATUS_LABELS.success },
+  fail: { color: FAIL_COLOR, label: CRON_RUN_STATUS_LABELS.fail },
+  running: { color: RUNNING_COLOR, label: CRON_RUN_STATUS_LABELS.running },
 };
 
 /** GitHub Actions 风格近 N 次执行状态块（旧 → 新） */

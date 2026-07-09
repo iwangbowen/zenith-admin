@@ -14,10 +14,10 @@ import { useAllPaymentChannelConfigsLookup } from '@/hooks/queries/payment-chann
 import { paymentAppKeys, useDeletePaymentApp, usePaymentAppList, useSavePaymentApp } from '@/hooks/queries/payment-apps';
 import { createdAtColumn } from '@/utils/table-columns';
 import type { PaymentApp, PaymentChannel, PaymentChannelConfig } from '@zenith/shared';
+import { useDictItems } from '@/hooks/useDictItems';
 
 interface SearchParams { keyword: string; status: string; }
 const defaultSearch: SearchParams = { keyword: '', status: '' };
-const STATUS_OPTIONS = [{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }];
 const STATUS_COLOR = { enabled: 'green', disabled: 'grey' } as const satisfies Record<PaymentApp['status'], string>;
 const STATUS_LABEL = { enabled: '启用', disabled: '停用' } as const satisfies Record<PaymentApp['status'], string>;
 
@@ -38,6 +38,8 @@ function channelOptions(configs: PaymentChannelConfig[], channel: PaymentChannel
 }
 
 export default function PaymentAppsPage() {
+  const { items: statusItems } = useDictItems('common_status');
+  const STATUS_OPTIONS = statusItems.map((i) => ({ value: i.value, label: i.label }));
   const { hasPermission } = usePermission();
   const canManage = hasPermission('payment:app:manage');
   const queryClient = useQueryClient();

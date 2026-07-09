@@ -8,6 +8,7 @@ import type { WorkflowForm, WorkflowFormStatus } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
+import { useDictItems } from '@/hooks/useDictItems';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -30,12 +31,6 @@ interface SearchParams {
 
 const defaultSearchParams: SearchParams = { keyword: '', status: '', categoryId: null };
 
-const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
-  { value: '', label: '全部' },
-  { value: 'enabled', label: '启用' },
-  { value: 'disabled', label: '停用' },
-];
-
 const STATUS_MAP: Record<WorkflowFormStatus, { text: string; color: TagColor }> = {
   enabled: { text: '启用', color: 'green' },
   disabled: { text: '停用', color: 'grey' },
@@ -55,6 +50,7 @@ export default function WorkflowFormsPage() {
   const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
   const navigate = useNavigate();
+  const { items: statusItems } = useDictItems('common_status');
   const { page, setPage, pageSize, buildPagination } = usePagination();
   const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
   const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
@@ -210,7 +206,7 @@ export default function WorkflowFormsPage() {
       placeholder="状态"
       value={draftParams.status}
       onChange={(value) => setDraftParams((prev) => ({ ...prev, status: toStatus(value) }))}
-      optionList={STATUS_OPTIONS}
+      optionList={[{ value: '', label: '全部' }, ...statusItems.map((i) => ({ value: i.value as StatusFilter, label: i.label }))]}
       showClear
       style={{ width: 120 }}
     />

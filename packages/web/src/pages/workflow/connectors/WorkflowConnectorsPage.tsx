@@ -23,6 +23,7 @@ import {
   useWorkflowConnectorMonitor,
   workflowConnectorKeys,
 } from '@/hooks/queries/workflow-connectors';
+import { useDictItems } from '@/hooks/useDictItems';
 
 const TYPE_OPTIONS: Array<{ value: WorkflowConnectorType; label: string }> = [
   { value: 'http', label: 'HTTP' },
@@ -36,7 +37,6 @@ const TYPE_OPTIONS: Array<{ value: WorkflowConnectorType; label: string }> = [
   { value: 'database', label: '数据库' },
 ];
 const TYPE_LABEL = Object.fromEntries(TYPE_OPTIONS.map((t) => [t.value, t.label])) as Record<WorkflowConnectorType, string>;
-const STATUS_OPTIONS = [{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }];
 const SOURCE_LABEL: Record<WorkflowConnectorInvocation['source'], string> = {
   test: '测试', trigger: '触发器', external: '外部审批', webhook: '事件订阅', manual: '手动',
 };
@@ -67,6 +67,8 @@ function parseJsonObject(text: string | undefined, label: string): Record<string
 }
 
 export default function WorkflowConnectorsPage() {
+  const { items: statusItems } = useDictItems('common_status');
+  const STATUS_OPTIONS = statusItems.map((i) => ({ value: i.value, label: i.label }));
   const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);

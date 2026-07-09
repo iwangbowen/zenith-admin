@@ -38,6 +38,7 @@ import {
   useRegenerateOAuth2AppSecret,
   useSaveOAuth2App,
 } from '@/hooks/queries/oauth2-apps';
+import { useDictItems } from '@/hooks/useDictItems';
 
 const { Text, Paragraph } = Typography;
 
@@ -69,6 +70,7 @@ type FormValues = {
 };
 
 export default function OAuth2AppsPage() {
+  const { items: statusItems } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const queryClient = useQueryClient();
   const canManage = hasPermission('system:oauth2-apps:manage');
@@ -484,10 +486,7 @@ export default function OAuth2AppsPage() {
                     field="status"
                     label="状态"
                     style={{ width: '100%' }}
-                    optionList={[
-                      { value: 'enabled', label: '启用' },
-                      { value: 'disabled', label: '禁用' },
-                    ]}
+                    optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
                     rules={[{ required: true, message: '请选择状态' }]}
                   />
                 </Col>

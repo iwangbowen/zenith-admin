@@ -24,13 +24,10 @@ import {
   useWebhookEvents,
   useWebhookList,
 } from '@/hooks/queries/open-platform';
+import { useDictItems } from '@/hooks/useDictItems';
 
 const { Text, Paragraph } = Typography;
 
-const STATUS_OPTIONS = [
-  { value: 'enabled', label: '启用' },
-  { value: 'disabled', label: '禁用' },
-];
 const SIGN_MODE_OPTIONS = [
   { value: 'hmacSha256', label: 'HMAC-SHA256（推荐）' },
   { value: 'none', label: '不签名' },
@@ -49,6 +46,8 @@ type FormValues = {
 };
 
 export default function WebhooksPage() {
+  const { items: statusItems } = useDictItems('common_status');
+  const STATUS_OPTIONS = statusItems.map((i) => ({ value: i.value, label: i.label }));
   const { hasPermission } = usePermission();
   const queryClient = useQueryClient();
   const canManage = hasPermission('open:webhook:manage');

@@ -13,13 +13,9 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { openPlatformKeys, useDeleteRatePlan, useRatePlanList, useSaveRatePlan } from '@/hooks/queries/open-platform';
+import { useDictItems } from '@/hooks/useDictItems';
 
 const { Text } = Typography;
-
-const STATUS_OPTIONS = [
-  { value: 'enabled', label: '启用' },
-  { value: 'disabled', label: '禁用' },
-];
 
 const fmtQuota = (n: number) => (n > 0 ? n.toLocaleString() : '不限');
 
@@ -35,6 +31,8 @@ type FormValues = {
 };
 
 export default function RatePlansPage() {
+  const { items: statusItems } = useDictItems('common_status');
+  const STATUS_OPTIONS = statusItems.map((i) => ({ value: i.value, label: i.label }));
   const { hasPermission } = usePermission();
   const queryClient = useQueryClient();
   const canManage = hasPermission('open:rate-plan:manage');

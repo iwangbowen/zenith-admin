@@ -31,6 +31,7 @@ import {
   useWorkflowScheduleList,
   workflowScheduleKeys,
 } from '@/hooks/queries/workflow-schedules';
+import { useDictItems } from '@/hooks/useDictItems';
 
 type ScheduleStatus = WorkflowSchedule['status'];
 
@@ -49,11 +50,6 @@ interface FormValues extends Record<string, unknown> {
 }
 
 const defaultSearchParams: SearchParams = { definitionId: '', status: '' };
-
-const STATUS_OPTIONS: Array<{ value: ScheduleStatus; label: string }> = [
-  { value: 'enabled', label: '启用' },
-  { value: 'disabled', label: '停用' },
-];
 
 // CronBuilderPopover 内部使用 6 段（含秒）cron；定时发起存标准 5 段，故在边界转换
 const toSixField = (expr: string) => {
@@ -83,6 +79,8 @@ function renderLastRunStatus(status: string | null, message: string | null) {
 }
 
 export default function WorkflowSchedulesPage() {
+  const { items: statusItems } = useDictItems('common_status');
+  const STATUS_OPTIONS = statusItems.map((i) => ({ value: i.value, label: i.label }));
   const queryClient = useQueryClient();
   const formApi = useRef<FormApi<FormValues> | null>(null);
   const { hasPermission } = usePermission();
