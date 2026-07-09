@@ -1,4 +1,5 @@
 import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, unique, text, uniqueIndex, index, jsonb } from 'drizzle-orm/pg-core';
+import { OAUTH_PROVIDERS } from '@zenith/shared';
 import { auditColumns, tenants, users } from './core';
 
 export const mfaFactorTypeEnum = pgEnum('mfa_factor_type', ['totp', 'passkey', 'recovery_code']);
@@ -10,7 +11,7 @@ export const loginRiskLevelEnum = pgEnum('login_risk_level', ['low', 'medium', '
 export const loginRiskActionEnum = pgEnum('login_risk_action', ['allow', 'challenge', 'block']);
 
 // ─── OAuth 第三方账号绑定表 ────────────────────────────────────────────────────
-export const oauthProviderEnum = pgEnum('oauth_provider', ['github', 'dingtalk', 'wechat_work']);
+export const oauthProviderEnum = pgEnum('oauth_provider', OAUTH_PROVIDERS);
 
 export const userOauthAccounts = pgTable('user_oauth_accounts', {
   id: serial('id').primaryKey(),

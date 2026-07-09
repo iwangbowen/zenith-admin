@@ -1,7 +1,8 @@
 import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, text, jsonb } from 'drizzle-orm/pg-core';
+import { AI_PROVIDER_TYPES } from '@zenith/shared';
 import { auditColumns, tenants, users } from './core';
 
-export const aiProviderEnum = pgEnum('ai_provider', ['openai_compatible', 'anthropic', 'gemini', 'baidu']);
+export const aiProviderEnum = pgEnum('ai_provider', AI_PROVIDER_TYPES);
 
 export const aiMessageRoleEnum = pgEnum('ai_message_role', ['system', 'user', 'assistant']);
 

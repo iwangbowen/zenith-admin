@@ -69,6 +69,20 @@ export const CRON_RUN_STATUS_LABELS: Record<(typeof CRON_RUN_STATUSES)[number], 
   running: '运行中',
 };
 export const OAUTH_PROVIDERS = ['github', 'dingtalk', 'wechat_work'] as const;
+export type OAuthProviderType = (typeof OAUTH_PROVIDERS)[number];
+
+export const AI_PROVIDER_TYPES = ['openai_compatible', 'anthropic', 'gemini', 'baidu'] as const;
+export type AiProvider = (typeof AI_PROVIDER_TYPES)[number];
+
+export const AI_PROVIDER_LABELS: Record<AiProvider, string> = {
+  openai_compatible: 'OpenAI Compatible',
+  anthropic: 'Anthropic',
+  gemini: 'Google Gemini',
+  baidu: '百度千帆',
+};
+
+export const AI_PROVIDER_OPTIONS: Array<{ value: AiProvider; label: string }> =
+  AI_PROVIDER_TYPES.map((value) => ({ value, label: AI_PROVIDER_LABELS[value] }));
 export const BACKUP_TYPES = ['pg_dump', 'drizzle_export'] as const;
 export const BACKUP_STATUSES = ['pending', 'running', 'success', 'failed'] as const;
 export const BUSINESS_TYPES = ['announcement'] as const;

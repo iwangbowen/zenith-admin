@@ -1,4 +1,4 @@
-import type { PaymentChannel, PaymentMethod, PaymentOrderStatus, PaymentRefundStatus, PaymentRefundApprovalStatus, PaymentReconStatus, PaymentReconResult, PaymentReconHandleStatus, PaymentWebhookDeliveryStatus, PaymentLedgerDirection, PaymentLedgerType, PaymentSettlementStatus, PaymentSharingReceiverType, PaymentSharingOrderStatus, PaymentLinkStatus, PaymentRiskScope, PaymentTransferStatus, MemberStatus, PointTxType, WalletTxType, CouponType, CouponValidType, CouponTemplateStatus, MemberCouponStatus, WorkflowFormType } from './constants';
+import type { AiProvider, OAuthProviderType, PaymentChannel, PaymentMethod, PaymentOrderStatus, PaymentRefundStatus, PaymentRefundApprovalStatus, PaymentReconStatus, PaymentReconResult, PaymentReconHandleStatus, PaymentWebhookDeliveryStatus, PaymentLedgerDirection, PaymentLedgerType, PaymentSettlementStatus, PaymentSharingReceiverType, PaymentSharingOrderStatus, PaymentLinkStatus, PaymentRiskScope, PaymentTransferStatus, MemberStatus, PointTxType, WalletTxType, CouponType, CouponValidType, CouponTemplateStatus, MemberCouponStatus, WorkflowFormType } from './constants';
 
 export type EntityStatus = 'enabled' | 'disabled';
 
@@ -1748,8 +1748,6 @@ export interface EmailConfig {
 }
 
 // ─── OAuth 第三方账号 ───────────────────────────────────────────────────────
-export type OAuthProviderType = 'github' | 'dingtalk' | 'wechat_work';
-
 export interface OAuthAccount {
   id: number;
   userId: number;
@@ -5308,7 +5306,6 @@ export interface Tag {
 
 // ─── AI 对话模块 ──────────────────────────────────────────────────────────────
 
-export type AiProvider = 'openai_compatible' | 'anthropic' | 'gemini' | 'baidu';
 export type AiMessageRole = 'system' | 'user' | 'assistant';
 
 export interface AiProviderConfig {
@@ -7884,5 +7881,4 @@ export interface UserFeedback {
   createdAt: string;
   updatedAt: string;
 }
-
 
