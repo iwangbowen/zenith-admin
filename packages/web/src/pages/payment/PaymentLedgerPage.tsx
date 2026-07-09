@@ -15,7 +15,7 @@ import {
   usePaymentLedgerList,
   usePaymentLedgerSummary,
 } from '@/hooks/queries/payment-ledger';
-import { PAYMENT_CHANNEL_LABELS, PAYMENT_LEDGER_DIRECTION_LABELS, PAYMENT_LEDGER_TYPE_LABELS } from '@zenith/shared';
+import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS, PAYMENT_LEDGER_DIRECTION_LABELS, PAYMENT_LEDGER_TYPE_LABELS } from '@zenith/shared';
 import type { PaymentChannel, PaymentLedgerDirection, PaymentLedgerEntry, PaymentLedgerType } from '@zenith/shared';
 
 const yuan = formatYuan;
@@ -136,7 +136,7 @@ export default function PaymentLedgerPage() {
       onChange={(v) => setDraftParams((p) => ({ ...p, channel: (v as string) ?? '' }))}
       showClear
       style={{ width: 120 }}
-      optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }, { value: 'unionpay', label: '云闪付' }]}
+      optionList={PAYMENT_CHANNEL_OPTIONS}
     />
   );
 

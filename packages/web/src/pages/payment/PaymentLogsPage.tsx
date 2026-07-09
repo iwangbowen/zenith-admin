@@ -10,7 +10,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { usePagination } from '@/hooks/usePagination';
-import { PAYMENT_CHANNEL_LABELS } from '@zenith/shared';
+import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared';
 import type { PaymentChannel, PaymentNotifyLog } from '@zenith/shared';
 import { paymentLogKeys, usePaymentLogList } from '@/hooks/queries/payment-logs';
 
@@ -94,7 +94,7 @@ export default function PaymentLogsPage() {
       onChange={(v) => setDraftParams((p) => ({ ...p, channel: (v as string) ?? '' }))}
       showClear
       style={{ width: 120 }}
-      optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }, { value: 'unionpay', label: '云闪付' }]}
+      optionList={PAYMENT_CHANNEL_OPTIONS}
     />
   );
 

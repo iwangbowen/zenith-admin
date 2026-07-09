@@ -22,7 +22,7 @@ import {
   usePaymentReconItems,
   usePaymentReconSampleBill,
 } from '@/hooks/queries/payment-recon';
-import { PAYMENT_CHANNEL_LABELS, PAYMENT_RECON_HANDLE_STATUS_LABELS, PAYMENT_RECON_RESULT_LABELS, PAYMENT_RECON_STATUS_LABELS } from '@zenith/shared';
+import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS, PAYMENT_RECON_HANDLE_STATUS_LABELS, PAYMENT_RECON_RESULT_LABELS, PAYMENT_RECON_STATUS_LABELS } from '@zenith/shared';
 import type { PaymentChannel, PaymentReconBatch, PaymentReconHandleStatus, PaymentReconItem, PaymentReconResult, PaymentReconStatus } from '@zenith/shared';
 
 const STATUS_COLOR = { pending: 'grey', comparing: 'blue', done: 'green', failed: 'red' } as const satisfies Record<PaymentReconStatus, string>;
@@ -251,7 +251,7 @@ export default function PaymentReconPage() {
       onChange={(v) => setDraftParams((p) => ({ ...p, channel: (v as string) ?? '' }))}
       showClear
       style={{ width: 120 }}
-      optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }, { value: 'unionpay', label: '云闪付' }]}
+      optionList={PAYMENT_CHANNEL_OPTIONS}
     />
   );
 
@@ -313,7 +313,7 @@ export default function PaymentReconPage() {
 
       <AppModal title="新建对账" visible={modalVisible} onOk={handleOk} onCancel={closeModal} okButtonProps={{ loading: createMutation.isPending }} width={720} closeOnEsc>
         <Form key={modalVisible ? 'new' : 'closed'} getFormApi={(api) => { formApi.current = api; }} initValues={{ channel: 'wechat' }} labelPosition="left" labelWidth={100}>
-          <Form.Select field="channel" label="渠道" style={{ width: '100%' }} optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }, { value: 'unionpay', label: '云闪付' }]} rules={[{ required: true, message: '请选择渠道' }]} />
+          <Form.Select field="channel" label="渠道" style={{ width: '100%' }} optionList={PAYMENT_CHANNEL_OPTIONS} rules={[{ required: true, message: '请选择渠道' }]} />
           <Form.DatePicker field="billDate" label="账单日期" type="date" style={{ width: '100%' }} rules={[{ required: true, message: '请选择账单日期' }]} />
           <Button type="tertiary" loading={sampleBillMutation.isPending} onClick={handleSampleBill} style={{ marginLeft: 100, marginBottom: 12 }}>生成模拟账单</Button>
           <Form.TextArea field="billText" label="账单内容" rows={8} placeholder="订单号,渠道交易号,金额(分),状态" rules={[{ required: true, message: '请输入账单内容' }]} />
@@ -338,7 +338,7 @@ export default function PaymentReconPage() {
 
       <AppModal title="自动拉取渠道账单对账" visible={autoModalVisible} onOk={handleAutoOk} onCancel={() => { setAutoModalVisible(false); autoFormApi.current = null; }} okButtonProps={{ loading: autoMutation.isPending }} width={480} closeOnEsc>
         <Form key={autoModalVisible ? 'auto' : 'closed'} getFormApi={(api) => { autoFormApi.current = api; }} initValues={{ channel: 'wechat' }} labelPosition="left" labelWidth={100}>
-          <Form.Select field="channel" label="渠道" style={{ width: '100%' }} optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }, { value: 'unionpay', label: '云闪付' }]} rules={[{ required: true, message: '请选择渠道' }]} />
+          <Form.Select field="channel" label="渠道" style={{ width: '100%' }} optionList={PAYMENT_CHANNEL_OPTIONS} rules={[{ required: true, message: '请选择渠道' }]} />
           <Form.DatePicker field="billDate" label="账单日期" type="date" style={{ width: '100%' }} rules={[{ required: true, message: '请选择账单日期' }]} />
           <Typography.Text type="tertiary" size="small">沙箱渠道生成模拟账单演示闭环；生产微信渠道自动下载交易账单，支付宝暂需手动上传。</Typography.Text>
         </Form>

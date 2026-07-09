@@ -131,6 +131,28 @@ export const PAYMENT_CHANNEL_LABELS: Record<PaymentChannel, string> = {
   unionpay: '云闪付',
 };
 
+/** 支付渠道下拉选项（筛选/表单统一复用，与 PAYMENT_CHANNEL_LABELS 自动同步） */
+export const PAYMENT_CHANNEL_OPTIONS: Array<{ value: PaymentChannel; label: string }> =
+  PAYMENT_CHANNELS.map((value) => ({ value, label: PAYMENT_CHANNEL_LABELS[value] }));
+
+// ─── 通知/告警渠道 ────────────────────────────────────────────────────
+/**
+ * 通知渠道统一文案（站内信/邮件/Webhook）。
+ * 注意：report 域后端 value 为驼峰 `inApp`（历史枚举），label 仍统一复用此处，
+ * 渲染时可用 `value.toLowerCase()` 归一后查表。
+ */
+export const NOTIFY_CHANNEL_LABELS = {
+  inapp: '站内信',
+  email: '邮件',
+  webhook: 'Webhook',
+} as const;
+
+export type NotifyChannel = keyof typeof NOTIFY_CHANNEL_LABELS;
+
+/** 通知渠道下拉选项（与 NOTIFY_CHANNEL_LABELS 自动同步） */
+export const NOTIFY_CHANNEL_OPTIONS: Array<{ value: NotifyChannel; label: string }> =
+  (Object.keys(NOTIFY_CHANNEL_LABELS) as NotifyChannel[]).map((value) => ({ value, label: NOTIFY_CHANNEL_LABELS[value] }));
+
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   wechat_native: '微信扫码',
   wechat_jsapi: '微信 JSAPI',

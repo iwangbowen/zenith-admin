@@ -14,6 +14,7 @@ import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import type { MonitorAlertRule, MonitorMetric } from '@zenith/shared';
+import { NOTIFY_CHANNEL_LABELS } from '@zenith/shared';
 import {
   monitorAlertKeys,
   useDeleteMonitorAlert,
@@ -42,7 +43,7 @@ const OP_OPTIONS = [
 const LEVEL_CONFIG: Record<string, { label: string; color: 'blue' | 'amber' | 'red' }> = {
   info: { label: '提示', color: 'blue' }, warning: { label: '警告', color: 'amber' }, critical: { label: '严重', color: 'red' },
 };
-const CHANNEL_LABELS: Record<string, string> = { email: '邮件', webhook: 'Webhook', inapp: '站内' };
+const CHANNEL_LABELS: Record<string, string> = NOTIFY_CHANNEL_LABELS;
 
 function metricUnit(metric: MonitorMetric): string {
   if (PERCENT_METRICS.has(metric)) return '%';

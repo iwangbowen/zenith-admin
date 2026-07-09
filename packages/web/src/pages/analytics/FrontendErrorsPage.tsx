@@ -66,6 +66,7 @@ import type {
   FrontendErrorType,
   SourceMapItem,
 } from '@zenith/shared';
+import { NOTIFY_CHANNEL_OPTIONS } from '@zenith/shared';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -1476,11 +1477,7 @@ export default function FrontendErrorsPage() {
               multiple
               value={alertForm.channels}
               style={{ width: '100%' }}
-              optionList={[
-                { label: '邮件', value: 'email' },
-                { label: 'Webhook', value: 'webhook' },
-                { label: '站内', value: 'inapp' },
-              ]}
+              optionList={[...NOTIFY_CHANNEL_OPTIONS]}
               onChange={(value) => setAlertForm((prev) => ({ ...prev, channels: toStringArray(value) }))}
             />
           </Form.Slot>

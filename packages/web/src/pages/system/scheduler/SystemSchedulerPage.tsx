@@ -13,6 +13,7 @@ import type {
   SystemSchedulerTaskType,
   SystemSchedulerTriggerType,
 } from '@zenith/shared';
+import { NOTIFY_CHANNEL_LABELS, NOTIFY_CHANNEL_OPTIONS } from '@zenith/shared';
 import UserSelect from '@/components/UserSelect';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
@@ -90,11 +91,7 @@ const triggerTypeMap = {
   queue: { label: '队列触发', color: 'cyan' },
 } as const satisfies Record<SystemSchedulerTriggerType, { label: string; color: 'blue' | 'orange' | 'cyan' }>;
 
-const alertChannelMap = {
-  inapp: '系统号卡片',
-  email: '邮件',
-  webhook: 'Webhook',
-} as const satisfies Record<SystemSchedulerAlertChannel, string>;
+const alertChannelMap: Record<SystemSchedulerAlertChannel, string> = NOTIFY_CHANNEL_LABELS;
 
 function formatDuration(value: number | null) {
   if (value == null) return '-';
@@ -760,11 +757,7 @@ export default function SystemSchedulerPage() {
                   field="alertChannels"
                   label="告警渠道"
                   multiple
-                  optionList={[
-                    { value: 'inapp', label: '系统号卡片' },
-                    { value: 'email', label: '邮件' },
-                    { value: 'webhook', label: 'Webhook' },
-                  ]}
+                  optionList={NOTIFY_CHANNEL_OPTIONS}
                   style={{ width: '100%' }}
                 />
               </Col>

@@ -12,7 +12,7 @@ import { AppModal } from '@/components/AppModal';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
-import { PAYMENT_CHANNEL_LABELS } from '@zenith/shared';
+import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared';
 import type { PaymentChannel, PaymentChannelConfig } from '@zenith/shared';
 import {
   paymentChannelKeys,
@@ -226,7 +226,7 @@ export default function PaymentChannelsPage() {
       onChange={(v) => setDraftParams((p) => ({ ...p, channel: (v as string) ?? '' }))}
       showClear
       style={{ width: 130 }}
-      optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }, { value: 'unionpay', label: '云闪付' }]}
+      optionList={PAYMENT_CHANNEL_OPTIONS}
     />
   );
 
@@ -297,7 +297,7 @@ export default function PaymentChannelsPage() {
             onValueChange={(v) => { if (v.channel) setFormChannel(v.channel as PaymentChannel); }}>
             <Row gutter={16}>
               <Col span={12}><Form.Input field="name" label="名称" placeholder="如：微信主商户" rules={[{ required: true, message: '名称不能为空' }]} /></Col>
-              <Col span={12}><Form.Select field="channel" label="渠道" style={{ width: '100%' }} disabled={!!editing} optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }, { value: 'unionpay', label: '云闪付' }]} rules={[{ required: true }]} /></Col>
+              <Col span={12}><Form.Select field="channel" label="渠道" style={{ width: '100%' }} disabled={!!editing} optionList={PAYMENT_CHANNEL_OPTIONS} rules={[{ required: true }]} /></Col>
             </Row>
             <Row gutter={16}>
               <Col span={12}><Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} /></Col>

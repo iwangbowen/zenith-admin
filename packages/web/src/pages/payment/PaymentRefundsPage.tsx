@@ -12,7 +12,7 @@ import { AppModal } from '@/components/AppModal';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
-import { PAYMENT_CHANNEL_LABELS, PAYMENT_REFUND_STATUS_LABELS, PAYMENT_REFUND_APPROVAL_STATUS_LABELS } from '@zenith/shared';
+import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS, PAYMENT_REFUND_STATUS_LABELS, PAYMENT_REFUND_APPROVAL_STATUS_LABELS } from '@zenith/shared';
 import type { PaymentChannel, PaymentRefund, PaymentRefundStatus, PaymentRefundApprovalStatus } from '@zenith/shared';
 import {
   paymentRefundKeys,
@@ -147,7 +147,7 @@ export default function PaymentRefundsPage() {
       onChange={(v) => setDraftParams((p) => ({ ...p, channel: (v as string) ?? '' }))}
       showClear
       style={{ width: 120 }}
-      optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }, { value: 'unionpay', label: '云闪付' }]}
+      optionList={PAYMENT_CHANNEL_OPTIONS}
     />
   );
 

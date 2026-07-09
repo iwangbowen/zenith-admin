@@ -28,6 +28,7 @@ import type {
   ReportAlertRule,
   ReportDataset,
 } from '@zenith/shared';
+import { NOTIFY_CHANNEL_LABELS } from '@zenith/shared';
 
 interface SearchParams {
   keyword: string;
@@ -64,10 +65,11 @@ const opSymbolMap: Record<ReportAlertOp, string> = {
   neq: '≠',
 };
 
+// report 域后端 value 为驼峰 inApp（历史枚举），label 统一复用 NOTIFY_CHANNEL_LABELS
 const channelLabelMap: Record<'email' | 'inApp' | 'webhook', string> = {
-  email: '邮件',
-  inApp: '站内信',
-  webhook: 'Webhook',
+  email: NOTIFY_CHANNEL_LABELS.email,
+  inApp: NOTIFY_CHANNEL_LABELS.inapp,
+  webhook: NOTIFY_CHANNEL_LABELS.webhook,
 };
 
 function formatRule(record: ReportAlertRule) {
@@ -361,7 +363,7 @@ export default function AlertsPage() {
           <Form.InputNumber field="threshold" label="阈值" style={{ width: '100%' }} rules={[{ required: true, message: '请输入阈值' }]} />
           <Form.Input field="cron" label="评估Cron" placeholder="0 */5 * * * *" helpText="留空=仅手动" showClear />
           <Form.Select field="channels" label="通知通道" multiple style={{ width: '100%' }} rules={[{ required: true, message: '至少选择一个通道' }]}
-            optionList={[{ value: 'email', label: '邮件' }, { value: 'inApp', label: '站内信' }, { value: 'webhook', label: 'Webhook（企微/钉钉机器人）' }]} />
+            optionList={[{ value: 'email', label: channelLabelMap.email }, { value: 'inApp', label: channelLabelMap.inApp }, { value: 'webhook', label: `${channelLabelMap.webhook}（企微/钉钉机器人）` }]} />
           {selectedChannels.includes('email') && (
             <Form.Input field="recipients" label="收件人邮箱" placeholder="多个用逗号分隔" showClear />
           )}

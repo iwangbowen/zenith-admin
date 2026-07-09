@@ -21,7 +21,7 @@ import {
   useQueryPaymentTransfer,
   useRetryPaymentTransfer,
 } from '@/hooks/queries/payment-transfers';
-import { PAYMENT_CHANNEL_LABELS, PAYMENT_TRANSFER_STATUS_LABELS } from '@zenith/shared';
+import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS, PAYMENT_TRANSFER_STATUS_LABELS } from '@zenith/shared';
 import type { PaymentChannel, PaymentTransfer, PaymentTransferStatus } from '@zenith/shared';
 
 const yuan = formatYuan;
@@ -143,7 +143,7 @@ export default function PaymentTransfersPage() {
   );
   const renderChannelFilter = () => (
     <Select placeholder="全部渠道" value={draftParams.channel || undefined} onChange={(v) => setDraftParams((p) => ({ ...p, channel: (v as string) ?? '' }))}
-      showClear style={{ width: 120 }} optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }, { value: 'unionpay', label: '云闪付' }]} />
+      showClear style={{ width: 120 }} optionList={PAYMENT_CHANNEL_OPTIONS} />
   );
   const renderStatusFilter = () => (
     <Select placeholder="全部状态" value={draftParams.status || undefined} onChange={(v) => setDraftParams((p) => ({ ...p, status: (v as string) ?? '' }))}
