@@ -1202,14 +1202,7 @@ export default function WorkflowMonitorPage() {
       value={searchParams.status || undefined}
       onChange={v => setSearchParams(prev => ({ ...prev, status: (v as string) ?? '' }))}
       style={{ width: 140 }}
-      optionList={[
-        { label: '审批中', value: 'running' },
-        { label: '已挂起', value: 'suspended' },
-        { label: '已通过', value: 'approved' },
-        { label: '已驳回', value: 'rejected' },
-        { label: '已撤回', value: 'withdrawn' },
-        { label: '已取消', value: 'cancelled' },
-      ]}
+      optionList={['running', 'suspended', 'approved', 'rejected', 'withdrawn', 'cancelled'].map((s) => ({ value: s, label: INSTANCE_STATUS_MAP[s].text }))}
     />
   );
 

@@ -50,14 +50,9 @@ import {
   workflowInstanceKeys,
 } from '@/hooks/queries/workflow-instances';
 import { usePublishedWorkflowDefinitions } from '@/hooks/queries/workflow-definitions';
+import { WORKFLOW_TASK_STATUS_LABELS } from '@zenith/shared';
 
-const TASK_STATUS_TEXT: Record<string, string> = {
-  pending: '待处理',
-  approved: '已通过',
-  rejected: '已驳回',
-  skipped: '已跳过',
-  waiting: '等待中',
-};
+const TASK_STATUS_TEXT: Record<string, string> = WORKFLOW_TASK_STATUS_LABELS;
 
 const LAYOUT_ONLY_TYPES = new Set(['divider', 'description', 'group', 'row']);
 

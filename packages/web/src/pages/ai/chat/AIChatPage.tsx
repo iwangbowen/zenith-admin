@@ -23,6 +23,7 @@ import {
   useAiConversationMessages,
   useCreateAiConversation,
 } from '@/hooks/queries/ai-conversations';
+import { useDictItems } from '@/hooks/useDictItems';
 
 const { Configure } = AIChatInput;
 const { Title } = Typography;
@@ -83,13 +84,6 @@ const SUGGESTED_QUESTIONS = [
   '帮我写一封简短的请假邮件',
   '用一句话解释什么是 RBAC 权限模型',
   '把这段话翻译成英文：今天天气很好',
-];
-
-const DISLIKE_REASONS: { value: string; label: string }[] = [
-  { value: 'inaccurate', label: '不准确' },
-  { value: 'irrelevant', label: '不相关' },
-  { value: 'harmful', label: '有害信息' },
-  { value: 'other', label: '其他' },
 ];
 
 let msgIdCounter = 1000;
@@ -239,6 +233,7 @@ export default function AIChatPage() {
   const [showArchived, setShowArchived] = useState(false);
   const didInitConvRef = useRef(false);
   const [dislikeMsgId, setDislikeMsgId] = useState<number | null>(null);
+  const { items: dislikeReasons } = useDictItems('ai_dislike_reason');
   const allowUserCustomKeyQuery = useAiAllowUserCustomKey();
   const allowUserCustomKey = allowUserCustomKeyQuery.data ?? false;
   const providersQuery = useAiProviderList({});
@@ -1025,7 +1020,7 @@ export default function AIChatPage() {
       width={380}
     >
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        {DISLIKE_REASONS.map((r) => (
+        {dislikeReasons.map((r) => (
           <Button key={r.value} onClick={() => submitDislikeReason(r.value)}>{r.label}</Button>
         ))}
       </div>

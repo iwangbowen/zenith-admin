@@ -24,7 +24,7 @@ import BusinessFormHost from '@/components/workflow/BusinessFormHost';
 import WorkflowGraphView from './WorkflowGraphView';
 import WorkflowProcessLayout from './WorkflowProcessLayout';
 import WorkflowPriorityTag from '@/components/workflow/WorkflowPriorityTag';
-import { linearizeApprovalNodes } from './workflow-runtime';
+import { linearizeApprovalNodes, INSTANCE_STATUS_MAP } from './workflow-runtime';
 import {
   resolveWorkflowCustomForm,
   resolveWorkflowDetailDefinition,
@@ -35,16 +35,6 @@ import {
 } from '@/utils/workflow-snapshot';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'orange' | 'purple' | 'red';
-
-const INSTANCE_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
-  draft: { text: '草稿', color: 'grey' },
-  running: { text: '审批中', color: 'blue' },
-  suspended: { text: '已挂起', color: 'grey' },
-  approved: { text: '已通过', color: 'green' },
-  rejected: { text: '已驳回', color: 'red' },
-  withdrawn: { text: '已撤回', color: 'orange' },
-  cancelled: { text: '已取消', color: 'purple' },
-};
 
 interface Props {
   instance: WorkflowInstance | null;

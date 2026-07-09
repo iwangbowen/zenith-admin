@@ -4,13 +4,10 @@ import { Empty, Feedback, Radio, RadioGroup, Rating, TextArea, Typography } from
 import { IllustrationSuccess, IllustrationSuccessDark } from '@douyinfe/semi-illustrations';
 import { useSubmitFeedback } from '@/hooks/queries/user-feedbacks';
 import type { UserFeedbackCategory } from '@zenith/shared';
+import { USER_FEEDBACK_CATEGORY_LABELS } from '@zenith/shared';
 
-const CATEGORY_OPTIONS: Array<{ value: UserFeedbackCategory; label: string }> = [
-  { value: 'suggestion', label: '功能建议' },
-  { value: 'bug', label: '问题反馈' },
-  { value: 'ux', label: '体验问题' },
-  { value: 'other', label: '其他' },
-];
+const CATEGORY_OPTIONS: Array<{ value: UserFeedbackCategory; label: string }> =
+  (Object.keys(USER_FEEDBACK_CATEGORY_LABELS) as UserFeedbackCategory[]).map((value) => ({ value, label: USER_FEEDBACK_CATEGORY_LABELS[value] }));
 
 interface FeedbackWidgetProps {
   visible: boolean;

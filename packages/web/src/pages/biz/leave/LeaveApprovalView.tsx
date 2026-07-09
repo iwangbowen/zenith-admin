@@ -8,13 +8,11 @@ import { Descriptions, Spin, Empty, Typography, Tag } from '@douyinfe/semi-ui';
 import { CalendarClock } from 'lucide-react';
 import type { WorkflowBusinessFormProps } from '@/components/workflow/BusinessFormHost';
 import { useBizLeaveDetail } from '@/hooks/queries/biz-leave';
-
-const LEAVE_TYPE_TEXT: Record<string, string> = {
-  annual: '年假', sick: '病假', personal: '事假', marriage: '婚假', other: '其他',
-};
+import { useDictItems } from '@/hooks/useDictItems';
 
 export default function LeaveApprovalView({ bizId }: Readonly<WorkflowBusinessFormProps>) {
   const detailQuery = useBizLeaveDetail(bizId);
+  const { getLabel: getLeaveTypeLabel } = useDictItems('leave_type');
   const data = detailQuery.data ?? null;
 
   if (detailQuery.isFetching) return <div style={{ textAlign: 'center', padding: 24 }}><Spin /></div>;
@@ -30,7 +28,7 @@ export default function LeaveApprovalView({ bizId }: Readonly<WorkflowBusinessFo
         row
         data={[
           { key: '申请人', value: data.applicantName ?? '-' },
-          { key: '请假类型', value: LEAVE_TYPE_TEXT[data.leaveType] ?? data.leaveType },
+          { key: '请假类型', value: getLeaveTypeLabel(data.leaveType) },
           { key: '开始日期', value: data.startDate },
           { key: '结束日期', value: data.endDate },
           { key: '天数', value: `${data.days} 天` },

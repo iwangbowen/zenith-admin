@@ -24,7 +24,7 @@ import type {
   FileStorageProvider,
   UpdateFileStorageConfigInput,
 } from '@zenith/shared';
-import { FILE_OBJECT_ACL_SUPPORT } from '@zenith/shared';
+import { FILE_OBJECT_ACL_SUPPORT, FILE_STORAGE_PROVIDER_LABELS } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
@@ -377,19 +377,12 @@ export default function FileStorageConfigsPage() {
       dataIndex: 'provider',
       width: 120,
       render: (provider: FileStorageProvider) => {
-        const map: Record<FileStorageProvider, { color: 'blue' | 'orange' | 'purple' | 'teal' | 'red' | 'cyan' | 'indigo' | 'violet' | 'green'; label: string }> = {
-          local: { color: 'blue', label: '本地磁盘' },
-          oss: { color: 'orange', label: '阿里云 OSS' },
-          s3: { color: 'purple', label: 'Amazon S3' },
-          cos: { color: 'teal', label: '腾讯云 COS' },
-          obs: { color: 'red', label: '华为云 OBS' },
-          kodo: { color: 'cyan', label: '七牛云 Kodo' },
-          bos: { color: 'indigo', label: '百度云 BOS' },
-          azure: { color: 'violet', label: 'Azure Blob' },
-          sftp: { color: 'green', label: 'SFTP' },
+        // 文案统一来自 @zenith/shared；Tag 色为本页特化
+        const colorMap: Record<FileStorageProvider, 'blue' | 'orange' | 'purple' | 'teal' | 'red' | 'cyan' | 'indigo' | 'violet' | 'green'> = {
+          local: 'blue', oss: 'orange', s3: 'purple', cos: 'teal', obs: 'red',
+          kodo: 'cyan', bos: 'indigo', azure: 'violet', sftp: 'green',
         };
-        const { color, label } = map[provider];
-        return <Tag color={color} size="small">{label}</Tag>;
+        return <Tag color={colorMap[provider]} size="small">{FILE_STORAGE_PROVIDER_LABELS[provider]}</Tag>;
       },
     },
     {

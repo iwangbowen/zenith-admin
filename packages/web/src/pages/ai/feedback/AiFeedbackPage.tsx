@@ -10,6 +10,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { usePagination } from '@/hooks/usePagination';
+import { useDictItems } from '@/hooks/useDictItems';
 import { usePermission } from '@/hooks/usePermission';
 import AppModal from '@/components/AppModal';
 import { renderEllipsis } from '@/utils/table-columns';
@@ -36,12 +37,10 @@ const HANDLE_STATUS_OPTIONS = [
   { value: 'pending', label: '待处理' },
 ];
 
-const REASON_LABELS: Record<string, string> = {
-  inaccurate: '不准确',
-  irrelevant: '不相关',
-  harmful: '有害',
-  other: '其他',
-};
+function renderReason(reason: AiMessage['feedbackReason'], getLabel: (value: string) => string) {
+  if (!reason) return '—';
+  return <Tag color="grey" size="small">{getLabel(reason)}</Tag>;
+}
 
 const STATUS_TAGS = {
   pending: { label: '待处理', color: 'orange' },
@@ -52,11 +51,6 @@ const STATUS_TAGS = {
 interface FeedbackHandleFormValues {
   status: AiFeedbackStatus;
   remark?: string | null;
-}
-
-function renderReason(reason: AiMessage['feedbackReason']) {
-  if (!reason) return '—';
-  return <Tag color="grey" size="small">{REASON_LABELS[reason] ?? reason}</Tag>;
 }
 
 function renderStatus(status: AiMessage['feedbackStatus']) {
@@ -73,6 +67,7 @@ function normalizeRemark(value: unknown) {
 export default function AiFeedbackPage() {
   const { hasPermission } = usePermission();
   const queryClient = useQueryClient();
+  const { getLabel: getReasonLabel } = useDictItems('ai_dislike_reason');
   const formApi = useRef<FormApi | null>(null);
   const [draftParams, setDraftParams] = useState({ feedback: '', status: '' });
   const [submittedParams, setSubmittedParams] = useState({ feedback: '', status: '' });
@@ -162,7 +157,7 @@ export default function AiFeedbackPage() {
       title: '原因',
       dataIndex: 'feedbackReason',
       width: 90,
-      render: (v: AiMessage['feedbackReason']) => renderReason(v),
+      render: (v: AiMessage['feedbackReason']) => renderReason(v, getReasonLabel),
     },
     {
       title: '模型',

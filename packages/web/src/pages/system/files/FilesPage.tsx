@@ -22,7 +22,7 @@ import {
 } from '@douyinfe/semi-ui';
 import { Plus, Search, RotateCcw, Trash2, FolderDown, LayoutGrid, List as ListIcon, CheckCircle2, XCircle, X } from 'lucide-react';
 import type { ManagedFile } from '@zenith/shared';
-import { TOKEN_KEY } from '@zenith/shared';
+import { TOKEN_KEY, FILE_STORAGE_PROVIDER_OPTIONS } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { formatFileSize, getFileTypeIcon, fetchProtectedFile, getFileFullUrl } from '@/utils/file-utils';
@@ -409,10 +409,7 @@ export default function FilesPage() {
       style={{ width: 140 }}
       optionList={[
         { value: '', label: '全部类型' },
-        { value: 'local', label: '本地磁盘' },
-        { value: 'oss', label: '阿里云 OSS' },
-        { value: 's3', label: 'S3 存储' },
-        { value: 'cos', label: '腾讯云 COS' },
+        ...FILE_STORAGE_PROVIDER_OPTIONS,
       ]}
     />
   );

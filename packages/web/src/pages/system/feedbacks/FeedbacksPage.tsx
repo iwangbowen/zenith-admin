@@ -6,6 +6,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, RotateCcw, Trash2 } from 'lucide-react';
 import type { UserFeedback, UserFeedbackCategory, UserFeedbackStatus } from '@zenith/shared';
+import { USER_FEEDBACK_CATEGORY_LABELS, USER_FEEDBACK_STATUS_LABELS } from '@zenith/shared';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import ExportButton from '@/components/ExportButton';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -18,18 +19,19 @@ import { usePagination } from '@/hooks/usePagination';
 import { usePublicConfig } from '@/hooks/queries/system-configs';
 import { useDeleteFeedbacks, useHandleFeedback, useUserFeedbackList, userFeedbackKeys } from '@/hooks/queries/user-feedbacks';
 
+// 文案统一来自 @zenith/shared；Tag 色为本页特化
 const CATEGORY_OPTIONS: Array<{ value: UserFeedbackCategory; label: string; color: 'blue' | 'red' | 'orange' | 'grey' }> = [
-  { value: 'suggestion', label: '功能建议', color: 'blue' },
-  { value: 'bug', label: '问题反馈', color: 'red' },
-  { value: 'ux', label: '体验问题', color: 'orange' },
-  { value: 'other', label: '其他', color: 'grey' },
+  { value: 'suggestion', label: USER_FEEDBACK_CATEGORY_LABELS.suggestion, color: 'blue' },
+  { value: 'bug', label: USER_FEEDBACK_CATEGORY_LABELS.bug, color: 'red' },
+  { value: 'ux', label: USER_FEEDBACK_CATEGORY_LABELS.ux, color: 'orange' },
+  { value: 'other', label: USER_FEEDBACK_CATEGORY_LABELS.other, color: 'grey' },
 ];
 
 const STATUS_OPTIONS: Array<{ value: UserFeedbackStatus; label: string; color: 'amber' | 'blue' | 'green' | 'grey' }> = [
-  { value: 'pending', label: '待处理', color: 'amber' },
-  { value: 'processing', label: '处理中', color: 'blue' },
-  { value: 'resolved', label: '已解决', color: 'green' },
-  { value: 'ignored', label: '已忽略', color: 'grey' },
+  { value: 'pending', label: USER_FEEDBACK_STATUS_LABELS.pending, color: 'amber' },
+  { value: 'processing', label: USER_FEEDBACK_STATUS_LABELS.processing, color: 'blue' },
+  { value: 'resolved', label: USER_FEEDBACK_STATUS_LABELS.resolved, color: 'green' },
+  { value: 'ignored', label: USER_FEEDBACK_STATUS_LABELS.ignored, color: 'grey' },
 ];
 
 const categoryMap = new Map(CATEGORY_OPTIONS.map((o) => [o.value, o]));

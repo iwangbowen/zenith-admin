@@ -28,18 +28,7 @@ import {
   useAddApprovalComment, useApprovalDetail, useApprovalMe, useApprovalQuickPhrases, useApprovalUsers,
   useSelectableNextApprovers, useTaskAction, useUrgeInstance, useWithdrawInstance,
 } from '../lib/queries';
-
-type TagColor = 'amber' | 'blue' | 'green' | 'grey' | 'orange' | 'purple' | 'red';
-
-const STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
-  draft: { text: '草稿', color: 'grey' },
-  running: { text: '审批中', color: 'blue' },
-  suspended: { text: '已挂起', color: 'amber' },
-  approved: { text: '已通过', color: 'green' },
-  rejected: { text: '已驳回', color: 'red' },
-  withdrawn: { text: '已撤回', color: 'orange' },
-  cancelled: { text: '已取消', color: 'purple' },
-};
+import { INSTANCE_STATUS_MAP as STATUS_MAP } from '@/components/workflow/workflow-runtime';
 
 type ActionKind = 'approve' | 'reject' | 'transfer' | null;
 

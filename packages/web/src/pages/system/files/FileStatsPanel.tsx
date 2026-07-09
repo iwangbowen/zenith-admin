@@ -11,12 +11,9 @@ import {
 import { FileImage, Video, Music, FileText, File } from 'lucide-react';
 import { formatFileSize } from '@/utils/file-utils';
 import { useFileStats } from '@/hooks/queries/files';
+import { FILE_STORAGE_PROVIDER_LABELS } from '@zenith/shared';
 
-const PROVIDER_LABELS: Record<string, string> = {
-  local: '本地磁盘', oss: '阿里云 OSS', s3: 'S3 存储',
-  cos: '腾讯云 COS', obs: '华为云 OBS', kodo: '七牛云 Kodo',
-  bos: '百度云 BOS', azure: 'Azure Blob', sftp: 'SFTP',
-};
+const PROVIDER_LABELS: Record<string, string> = FILE_STORAGE_PROVIDER_LABELS;
 
 const PROVIDER_COLORS = [
   '#3b82f6', '#10b981', '#f59e0b', '#ef4444',

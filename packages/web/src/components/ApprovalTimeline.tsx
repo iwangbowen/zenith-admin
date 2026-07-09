@@ -3,6 +3,8 @@ import { UserAvatar } from '@/components/UserAvatar';
 import FileAttachment from '@/components/FileAttachment';
 import { uploadedFileToAttachment } from '@/components/FileAttachment/utils';
 import { timelineDot } from '@/components/workflow/timeline-dot';
+import { TASK_STATUS_MAP } from '@/components/workflow/workflow-runtime';
+import { WORKFLOW_INSTANCE_STATUS_LABELS } from '@zenith/shared';
 import { CheckCircle2, Clock, CornerUpLeft, Flag, Mail, RotateCcw, XCircle, ExternalLink, Copy, Forward, UserCog, Send, type LucideIcon } from 'lucide-react';
 import type { WorkflowTask, WorkflowInstanceStatus } from '@zenith/shared';
 import type { FlowNodeBrief } from '@/components/workflow/workflow-runtime';
@@ -18,18 +20,12 @@ const TRANSFER_ACTION_LABEL: Record<string, string> = {
   timeout: '超时转交',
 };
 
-const TASK_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {  pending:  { text: '待审批', color: 'blue'  },
-  approved: { text: '已通过', color: 'green' },
-  rejected: { text: '已驳回', color: 'red'   },
-  skipped:  { text: '已跳过', color: 'grey'  },
-};
-
-/** 流程结束态 → 完成节点展示 */
+/** 流程结束态 → 完成节点展示（文案统一来自 @zenith/shared，图标/图标色为时间线场景特化） */
 const FINISH_MAP: Partial<Record<WorkflowInstanceStatus, { text: string; color: TagColor; icon: LucideIcon; iconColor: string }>> = {
-  approved:  { text: '已通过', color: 'green',  icon: CheckCircle2, iconColor: 'var(--semi-color-success)' },
-  rejected:  { text: '已驳回', color: 'red',    icon: XCircle,      iconColor: 'var(--semi-color-danger)' },
-  withdrawn: { text: '已撤回', color: 'amber',  icon: RotateCcw,    iconColor: 'var(--semi-color-warning)' },
-  cancelled: { text: '已取消', color: 'grey',   icon: XCircle,      iconColor: 'var(--semi-color-tertiary)' },
+  approved:  { text: WORKFLOW_INSTANCE_STATUS_LABELS.approved,  color: 'green',  icon: CheckCircle2, iconColor: 'var(--semi-color-success)' },
+  rejected:  { text: WORKFLOW_INSTANCE_STATUS_LABELS.rejected,  color: 'red',    icon: XCircle,      iconColor: 'var(--semi-color-danger)' },
+  withdrawn: { text: WORKFLOW_INSTANCE_STATUS_LABELS.withdrawn, color: 'amber',  icon: RotateCcw,    iconColor: 'var(--semi-color-warning)' },
+  cancelled: { text: WORKFLOW_INSTANCE_STATUS_LABELS.cancelled, color: 'grey',   icon: XCircle,      iconColor: 'var(--semi-color-tertiary)' },
 };
 
 interface ApprovalTimelineProps {

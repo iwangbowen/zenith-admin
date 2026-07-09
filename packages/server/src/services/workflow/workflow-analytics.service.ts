@@ -13,6 +13,7 @@ import type {
   WorkflowAnalyticsTrendPoint,
   WorkflowOverdueTask,
 } from '@zenith/shared';
+import { WORKFLOW_INSTANCE_STATUS_LABELS } from '@zenith/shared';
 
 const FINISHED: WorkflowInstanceStatus[] = ['approved', 'rejected', 'withdrawn', 'cancelled'];
 
@@ -279,9 +280,7 @@ export async function listOverdueTasks(query: { page?: number; pageSize?: number
   return { list, total: countRows[0]?.c ?? 0, page, pageSize };
 }
 
-const INSTANCE_STATUS_TEXT: Record<string, string> = {
-  draft: '草稿', running: '审批中', approved: '已通过', rejected: '已驳回', withdrawn: '已撤回', cancelled: '已取消',
-};
+const INSTANCE_STATUS_TEXT: Record<string, string> = WORKFLOW_INSTANCE_STATUS_LABELS;
 
 /** 流程实例导出查询条件（与监控筛选一致） */
 export interface WorkflowInstanceExportQuery {

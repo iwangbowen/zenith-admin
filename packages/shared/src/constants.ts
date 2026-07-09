@@ -1,4 +1,4 @@
-import type { WorkflowApproverDedupMode } from './types';
+import type { WorkflowApproverDedupMode, UserFeedbackCategory, UserFeedbackStatus } from './types';
 
 export const API_PREFIX = '/api';
 export const TOKEN_KEY = 'zenith_token';
@@ -23,6 +23,23 @@ export const FILE_OBJECT_ACL_SUPPORT: Partial<Record<(typeof FILE_STORAGE_PROVID
   obs: ['default', 'private', 'public-read', 'public-read-write'],
   bos: ['default', 'private', 'public-read'],
 };
+
+/** 存储提供方展示名（配置页/文件管理/统计面板统一复用） */
+export const FILE_STORAGE_PROVIDER_LABELS: Record<(typeof FILE_STORAGE_PROVIDERS)[number], string> = {
+  local: '本地磁盘',
+  oss: '阿里云 OSS',
+  s3: 'S3 兼容存储',
+  cos: '腾讯云 COS',
+  obs: '华为云 OBS',
+  kodo: '七牛云 Kodo',
+  bos: '百度云 BOS',
+  azure: 'Azure Blob',
+  sftp: 'SFTP',
+};
+
+/** 存储提供方下拉选项（与 FILE_STORAGE_PROVIDER_LABELS 自动同步） */
+export const FILE_STORAGE_PROVIDER_OPTIONS: Array<{ value: (typeof FILE_STORAGE_PROVIDERS)[number]; label: string }> =
+  FILE_STORAGE_PROVIDERS.map((value) => ({ value, label: FILE_STORAGE_PROVIDER_LABELS[value] }));
 export const CONFIG_TYPES = ['string', 'number', 'boolean', 'json'] as const;
 export const CRON_JOB_STATUSES = ['enabled', 'disabled'] as const;
 export const CRON_RUN_STATUSES = ['success', 'fail', 'running'] as const;
@@ -73,6 +90,26 @@ export const WORKFLOW_FORM_TYPE_LABELS: Record<WorkflowFormType, string> = {
   custom: '自定义业务表单',
   external: '业务系统主导',
 };
+
+/** 流程实例状态标签（web 各视图 / server 分析导出统一复用；Tag 颜色见 web workflow-runtime.ts） */
+export const WORKFLOW_INSTANCE_STATUS_LABELS = {
+  draft: '草稿',
+  running: '审批中',
+  suspended: '已挂起',
+  approved: '已通过',
+  rejected: '已驳回',
+  withdrawn: '已撤回',
+  cancelled: '已取消',
+} as const;
+
+/** 审批任务状态标签 */
+export const WORKFLOW_TASK_STATUS_LABELS = {
+  pending: '待审批',
+  approved: '已通过',
+  rejected: '已驳回',
+  skipped: '已跳过',
+  waiting: '等待中',
+} as const;
 
 // OAuth2 服务端常量
 export const OAUTH2_GRANT_TYPES = ['authorization_code', 'client_credentials', 'implicit', 'refresh_token'] as const;
@@ -463,3 +500,18 @@ export const OPEN_WEBHOOK_EVENT_LABELS: Record<string, string> = {
 export const OPEN_WEBHOOK_SIGNATURE_HEADER = 'X-Zenith-Signature';
 /** 阶梯重试间隔（分钟） */
 export const OPEN_WEBHOOK_RETRY_STAGES_MINUTES = [1, 5, 30, 180, 720] as const;
+
+// ─── 意见反馈 ────────────────────────────────────────────────────────
+export const USER_FEEDBACK_CATEGORY_LABELS: Record<UserFeedbackCategory, string> = {
+  suggestion: '功能建议',
+  bug: '问题反馈',
+  ux: '体验问题',
+  other: '其他',
+};
+
+export const USER_FEEDBACK_STATUS_LABELS: Record<UserFeedbackStatus, string> = {
+  pending: '待处理',
+  processing: '处理中',
+  resolved: '已解决',
+  ignored: '已忽略',
+};

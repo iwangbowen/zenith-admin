@@ -10,6 +10,7 @@ import { NODE_COLOR_MAP, ADDABLE_NODE_TYPES, ASSIGNEE_TYPE_OPTIONS, APPROVE_METH
 import { UserAvatar } from '@/components/UserAvatar';
 import { formatDateTime } from '@/utils/date';
 import NodeHealthBadge from './NodeHealthBadge';
+import { NODE_RT_STATUS_LABEL } from '@/components/workflow/workflow-runtime';
 
 interface NodeCardProps {
   node: FlowNode;
@@ -32,13 +33,13 @@ interface NodeCardProps {
   health?: NodeHealthInfo;
 }
 
-/** 节点级运行态标签 */
+/** 节点级运行态标签（文案统一来自 workflow-runtime） */
 const RT_NODE_STATUS: Record<NodeRuntimeInfo['status'], { label: string }> = {
-  approved: { label: '已通过' },
-  rejected: { label: '已驳回' },
-  pending: { label: '审批中' },
-  waiting: { label: '待审批' },
-  skipped: { label: '已跳过' },
+  approved: { label: NODE_RT_STATUS_LABEL.approved },
+  rejected: { label: NODE_RT_STATUS_LABEL.rejected },
+  pending: { label: NODE_RT_STATUS_LABEL.pending },
+  waiting: { label: NODE_RT_STATUS_LABEL.waiting },
+  skipped: { label: NODE_RT_STATUS_LABEL.skipped },
 };
 
 /** 运行态节点表头配色（与画布图例一致：当前/通过/拒绝/等待/跳过） */

@@ -3,6 +3,7 @@
  * 供「流程图」「节点列表」共用。
  */
 import type { WorkflowTask } from '@zenith/shared';
+import { WORKFLOW_INSTANCE_STATUS_LABELS, WORKFLOW_TASK_STATUS_LABELS } from '@zenith/shared';
 import type { FlowNode, FlowProcess, NodeRuntimeInfo } from '@/pages/workflow/designer/types';
 
 /** 线性化后的审批节点简要信息（用于展示流程全部节点，含未到达节点） */
@@ -17,15 +18,24 @@ const APPROVAL_NODE_TYPES = new Set(['approver', 'handler', 'cc']);
 /** 流程实例状态标签颜色（Semi Tag color 子集） */
 export type InstanceStatusTagColor = 'amber' | 'blue' | 'green' | 'grey' | 'orange' | 'purple' | 'red';
 
-/** 流程实例状态 → 标签文案与颜色（我的申请 / 我处理的 / 抄送我的 / 流程监控共用） */
+/** 流程实例状态 → 标签文案与颜色（我的申请 / 我处理的 / 抄送我的 / 流程监控 / 移动审批共用；文案统一来自 @zenith/shared） */
 export const INSTANCE_STATUS_MAP: Record<string, { text: string; color: InstanceStatusTagColor }> = {
-  draft: { text: '草稿', color: 'grey' },
-  running: { text: '审批中', color: 'blue' },
-  suspended: { text: '已挂起', color: 'amber' },
-  approved: { text: '已通过', color: 'green' },
-  rejected: { text: '已驳回', color: 'red' },
-  withdrawn: { text: '已撤回', color: 'orange' },
-  cancelled: { text: '已取消', color: 'purple' },
+  draft: { text: WORKFLOW_INSTANCE_STATUS_LABELS.draft, color: 'grey' },
+  running: { text: WORKFLOW_INSTANCE_STATUS_LABELS.running, color: 'blue' },
+  suspended: { text: WORKFLOW_INSTANCE_STATUS_LABELS.suspended, color: 'amber' },
+  approved: { text: WORKFLOW_INSTANCE_STATUS_LABELS.approved, color: 'green' },
+  rejected: { text: WORKFLOW_INSTANCE_STATUS_LABELS.rejected, color: 'red' },
+  withdrawn: { text: WORKFLOW_INSTANCE_STATUS_LABELS.withdrawn, color: 'orange' },
+  cancelled: { text: WORKFLOW_INSTANCE_STATUS_LABELS.cancelled, color: 'purple' },
+};
+
+/** 审批任务状态 → 标签文案与颜色（审批时间线 / 我的申请等任务级展示共用） */
+export const TASK_STATUS_MAP: Record<string, { text: string; color: InstanceStatusTagColor }> = {
+  pending: { text: WORKFLOW_TASK_STATUS_LABELS.pending, color: 'blue' },
+  approved: { text: WORKFLOW_TASK_STATUS_LABELS.approved, color: 'green' },
+  rejected: { text: WORKFLOW_TASK_STATUS_LABELS.rejected, color: 'red' },
+  skipped: { text: WORKFLOW_TASK_STATUS_LABELS.skipped, color: 'grey' },
+  waiting: { text: WORKFLOW_TASK_STATUS_LABELS.waiting, color: 'grey' },
 };
 
 /**

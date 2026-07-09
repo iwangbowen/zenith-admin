@@ -19,6 +19,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
+import { useDictItems } from '@/hooks/useDictItems';
 import { formatDateForApi } from '@/utils/date';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import {
@@ -40,15 +41,6 @@ const STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
   cancelled: { text: '已取消', color: 'orange' },
 };
 
-const LEAVE_TYPE_OPTIONS = [
-  { value: 'annual', label: '年假' },
-  { value: 'sick', label: '病假' },
-  { value: 'personal', label: '事假' },
-  { value: 'marriage', label: '婚假' },
-  { value: 'other', label: '其他' },
-];
-const LEAVE_TYPE_TEXT = Object.fromEntries(LEAVE_TYPE_OPTIONS.map((o) => [o.value, o.label]));
-
 interface LeaveSearchParams {
   keyword: string;
   status: BizLeave['status'] | '';
@@ -62,6 +54,7 @@ const DEFAULT_LEAVE_SEARCH_PARAMS: LeaveSearchParams = {
 export default function LeavePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { items: leaveTypeItems, getLabel: getLeaveTypeLabel } = useDictItems('leave_type');
   const { page, pageSize, setPage, buildPagination } = usePagination();
   const [draftParams, setDraftParams] = useState<LeaveSearchParams>(DEFAULT_LEAVE_SEARCH_PARAMS);
   const [submittedParams, setSubmittedParams] = useState<LeaveSearchParams>(DEFAULT_LEAVE_SEARCH_PARAMS);
@@ -168,7 +161,7 @@ export default function LeavePage() {
   };
 
   const columns: ColumnProps<BizLeave>[] = [
-    { title: '请假类型', dataIndex: 'leaveType', width: 110, render: (v: string) => LEAVE_TYPE_TEXT[v] ?? v },
+    { title: '请假类型', dataIndex: 'leaveType', width: 110, render: (v: string) => getLeaveTypeLabel(v) },
     { title: '日期', width: 200, render: (_: unknown, r: BizLeave) => `${r.startDate} ~ ${r.endDate}` },
     { title: '天数', dataIndex: 'days', width: 90, render: (v: number) => `${v} 天` },
     { title: '事由', dataIndex: 'reason', render: renderEllipsis },
@@ -300,7 +293,7 @@ export default function LeavePage() {
         width={520}
       >
         <Form getFormApi={(api) => { formApi.current = api; }} labelPosition="left" labelWidth={90}>
-          <Form.Select field="leaveType" label="请假类型" optionList={LEAVE_TYPE_OPTIONS} rules={[{ required: true, message: '请选择请假类型' }]} style={{ width: '100%' }} />
+          <Form.Select field="leaveType" label="请假类型" optionList={leaveTypeItems.map((i) => ({ value: i.value, label: i.label }))} rules={[{ required: true, message: '请选择请假类型' }]} style={{ width: '100%' }} />
           <Form.DatePicker field="dateRange" label="请假日期" type="dateRange" style={{ width: '100%' }} rules={[{ required: true, message: '请选择请假日期' }]} />
           <Form.InputNumber field="days" label="天数" min={0.5} step={0.5} style={{ width: '100%' }} rules={[{ required: true, message: '请输入天数' }]} />
           <Form.TextArea field="reason" label="事由" autosize rows={2} maxCount={500} />

@@ -12,15 +12,17 @@ import {
 } from '@/components/charts';
 import type { WorkflowDefinition } from '@zenith/shared';
 import { useWorkflowAnalytics, useWorkflowOverdueTasks } from '@/hooks/queries/workflow-monitor';
+import { WORKFLOW_INSTANCE_STATUS_LABELS } from '@zenith/shared';
 
+// 文案统一来自 @zenith/shared；hex 色值为图表 canvas 专用（Semi Tag 色名不适用）
 const STATUS_META: Record<string, { text: string; color: string }> = {
-  draft: { text: '草稿', color: '#8c8c8c' },
-  running: { text: '审批中', color: '#3370ff' },
-  suspended: { text: '已挂起', color: '#d97706' },
-  approved: { text: '已通过', color: '#0dc87c' },
-  rejected: { text: '已驳回', color: '#ff4d4f' },
-  withdrawn: { text: '已撤回', color: '#faad14' },
-  cancelled: { text: '已取消', color: '#8b5cf6' },
+  draft: { text: WORKFLOW_INSTANCE_STATUS_LABELS.draft, color: '#8c8c8c' },
+  running: { text: WORKFLOW_INSTANCE_STATUS_LABELS.running, color: '#3370ff' },
+  suspended: { text: WORKFLOW_INSTANCE_STATUS_LABELS.suspended, color: '#d97706' },
+  approved: { text: WORKFLOW_INSTANCE_STATUS_LABELS.approved, color: '#0dc87c' },
+  rejected: { text: WORKFLOW_INSTANCE_STATUS_LABELS.rejected, color: '#ff4d4f' },
+  withdrawn: { text: WORKFLOW_INSTANCE_STATUS_LABELS.withdrawn, color: '#faad14' },
+  cancelled: { text: WORKFLOW_INSTANCE_STATUS_LABELS.cancelled, color: '#8b5cf6' },
 };
 
 function fmtDuration(sec: number | null): string {

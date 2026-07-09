@@ -1,22 +1,13 @@
 import { desc } from 'drizzle-orm';
+import { USER_FEEDBACK_CATEGORY_LABELS, USER_FEEDBACK_STATUS_LABELS } from '@zenith/shared';
 import { db } from '../../../db';
 import { userFeedbacks } from '../../../db/schema';
 import { defineExport } from '../registry';
 import type { ExportColumn } from '../types';
 
-const CATEGORY_LABELS: Record<string, string> = {
-  suggestion: '功能建议',
-  bug: '问题反馈',
-  ux: '体验问题',
-  other: '其他',
-};
+const CATEGORY_LABELS: Record<string, string> = USER_FEEDBACK_CATEGORY_LABELS;
 
-const STATUS_LABELS: Record<string, string> = {
-  pending: '待处理',
-  processing: '处理中',
-  resolved: '已解决',
-  ignored: '已忽略',
-};
+const STATUS_LABELS: Record<string, string> = USER_FEEDBACK_STATUS_LABELS;
 
 const columns: ExportColumn[] = [
   { key: 'id', header: 'ID', width: 8, type: 'number' },

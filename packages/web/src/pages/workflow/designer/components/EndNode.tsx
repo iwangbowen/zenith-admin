@@ -1,11 +1,14 @@
 /**
  * 结束节点
  */
+import { WORKFLOW_INSTANCE_STATUS_LABELS } from '@zenith/shared';
+
+// 文案统一来自 @zenith/shared；CSS 变量色为画布场景特化
 const END_LABEL: Record<string, { text: string; color: string }> = {
-  approved: { text: '已通过', color: 'var(--semi-color-success)' },
-  rejected: { text: '已驳回', color: 'var(--semi-color-danger)' },
-  withdrawn: { text: '已撤回', color: 'var(--semi-color-warning)' },
-  cancelled: { text: '已取消', color: 'var(--semi-color-text-2)' },
+  approved: { text: WORKFLOW_INSTANCE_STATUS_LABELS.approved, color: 'var(--semi-color-success)' },
+  rejected: { text: WORKFLOW_INSTANCE_STATUS_LABELS.rejected, color: 'var(--semi-color-danger)' },
+  withdrawn: { text: WORKFLOW_INSTANCE_STATUS_LABELS.withdrawn, color: 'var(--semi-color-warning)' },
+  cancelled: { text: WORKFLOW_INSTANCE_STATUS_LABELS.cancelled, color: 'var(--semi-color-text-2)' },
 };
 
 export default function EndNode({ status }: Readonly<{ status?: string | null }>) {

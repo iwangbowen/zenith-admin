@@ -584,6 +584,8 @@ export const SEED_DICTS: Dict[] = [
   { id: 8, name: '公告优先级',   code: 'announcement_priority',       description: '公告优先级',     status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 9, name: '系统配置类型', code: 'system_config_type',    description: '系统配置项值类型',   status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 10, name: '部门类别',   code: 'department_category',   description: '部门类别',           status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 11, name: '请假类型',   code: 'leave_type',            description: '请假申请的类型（业务示例）', status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 12, name: 'AI 点踩理由', code: 'ai_dislike_reason',    description: 'AI 对话点踩时的理由选项', status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 字典项 ───────────────────────────────────────────────────────────────────
@@ -626,6 +628,17 @@ export const SEED_DICT_ITEMS: DictItem[] = [
   { id: 25, dictId: 10, label: '集团',   value: 'group',       color: 'purple', sort: 1, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 26, dictId: 10, label: '公司',   value: 'company',     color: 'blue',   sort: 2, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 27, dictId: 10, label: '部门',   value: 'department',  color: 'green',  sort: 3, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  // 请假类型 (dictId: 11)
+  { id: 28, dictId: 11, label: '年假',   value: 'annual',      color: 'green',  sort: 1, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 29, dictId: 11, label: '病假',   value: 'sick',        color: 'orange', sort: 2, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 30, dictId: 11, label: '事假',   value: 'personal',    color: 'blue',   sort: 3, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 31, dictId: 11, label: '婚假',   value: 'marriage',    color: 'pink',   sort: 4, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 32, dictId: 11, label: '其他',   value: 'other',       color: 'grey',   sort: 5, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  // AI 点踩理由 (dictId: 12)
+  { id: 33, dictId: 12, label: '不准确', value: 'inaccurate',  color: 'red',    sort: 1, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 34, dictId: 12, label: '不相关', value: 'irrelevant',  color: 'orange', sort: 2, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 35, dictId: 12, label: '有害信息', value: 'harmful',   color: 'violet', sort: 3, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 36, dictId: 12, label: '其他',   value: 'other',       color: 'grey',   sort: 4, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 系统配置 ─────────────────────────────────────────────────────────────────
