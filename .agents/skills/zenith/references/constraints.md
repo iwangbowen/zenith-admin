@@ -62,6 +62,7 @@
 - **操作按钮样式**（Step 8）：在 `createOperationColumn` 的 `actions` 中配置 `key` / `label` / `onClick` / `danger` / `disabledReason`；桌面端默认内联全部动作，也可用 `desktopInlineKeys` 只保留高频动作内联、其余动作进入更多菜单；删除等危险操作加 `danger: true`
 - **无图标文字按钮**（Step 8）：操作列动作只用纯文字 `label`，不加图标；移动端由公共组件自动收窄操作列并收纳到更多菜单
 - **弹窗表单布局**（Step 8）：`Form` 必须加 `labelPosition="left"`；`labelWidth` 按标签字数选取（≤3字→ 72，4-5字→ 90，≥6字→ 110+）；有 3 对以上可并排的普通字段时用双列布局（`Row gutter={16}` + `Col span={12}`，`Modal width={660}`），否则单列（`width` 480-520 酌情）；TreeSelect / TextArea 等宽字段不包 `Col` 直接全宽占一行；所有 `Modal` 必须加 `closeOnEsc`
+- **枚举标签统一来源**（Step 8）：**禁止**在页面/组件/导出定义中内联定义枚举的 `{ value, label }` 数组或 `Record<value, label>` 中文映射。按优先级选择来源：① 运营可扩展的自由文本枚举（如 `leave_type`、`ai_dislike_reason`）→ 字典（`useDictItems('code')`，种子在 `shared/seed-data.ts`）；② 通用启用/禁用 → `useDictItems('common_status')`（前端）或 `COMMON_STATUS_LABELS`（server 导出）；③ 代码耦合枚举（pg enum / 状态机 / 协议值）→ `@zenith/shared` constants.ts 的 `XXX_LABELS` / `XXX_OPTIONS` 常量（server 导出中心与前端共用）；工作流实例/任务状态用 `web/components/workflow/workflow-runtime.ts` 的 `INSTANCE_STATUS_MAP` / `TASK_STATUS_MAP`（含 Tag 色）。Tag 颜色、图表 hex 色板、CSS 变量等展示样式留在使用方；外部协议值（如微信 `sex: '1'/'2'`）与视角特化文案（如"我已同意"）不做统一
 - **树形表格展开控制**（Step 8）：使用 `children` 字段渲染树形表格时，必须在搜索栏添加「全部展开/全部折叠」按钮，使用受控 `expandedRowKeys` + `onExpandedRowsChange`；图标：已展开用 `ChevronsDownUp`，未展开用 `ChevronsUpDown`
 - **批量按钮显示时机**（Step 8）：批量操作按钮仅在 `selectedRowKeys.length > 0` 时显示，放在查询/重置按钮之后
 - **ConfigurableTable 刷新按钮**（Step 8）：所有使用 `ConfigurableTable` 的列表页均必须传入 `onRefresh` 和 `refreshLoading`
