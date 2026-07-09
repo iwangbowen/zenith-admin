@@ -4,6 +4,24 @@
 
 ---
 
+## v0.87.0 - 2026-07-09
+
+### Added
+
+#### 意见反馈（全局用户反馈闭环）
+
+- **用户反馈入口**：用户头像下拉菜单新增「意见反馈」项，点击唤起 Semi Design `Feedback` 组件弹层（右下角浮出，不打断当前操作），支持五星满意度评分、分类单选（功能建议 / 问题反馈 / 体验问题 / 其他）、文本描述（评分与内容至少填一项），提交后展示「感谢您的反馈」完成态，并自动附带当前页面路由便于定位问题来源
+- **入口系统开关**：新增系统配置 `feedback_entry_enabled`（默认关闭），控制反馈入口显隐；关闭时用户侧完全不可见
+- **后台管理页**：系统设置下新增「意见反馈」菜单（`/system/feedbacks`），支持关键词 / 分类 / 状态 / 提交时间范围筛选、处理弹窗（状态流转 pending → processing → resolved / ignored + 处理备注，自动记录处理人与处理时间）、批量删除、导出中心 Excel / CSV 导出；当入口配置关闭时页面顶部 Banner 提示当前状态并提供「前往系统配置开启」快捷链接
+- **后端接口**：`POST /api/feedbacks` 提交（所有登录用户可用，幂等防重复提交）；列表 / 处理 / 删除接口带 `system:feedback:list|handle|delete` 权限码与操作审计（含处理前后快照 diff）；新表 `user_feedbacks`（提交人 / 评分 / 分类 / 内容 / 来源页面 / 处理状态四态枚举 / 处理人）
+- **Demo 演示模式**：MSW Mock 全覆盖（列表筛选 / 提交 / 处理 / 批量删除），种子数据含 4 条覆盖全部状态的示例反馈
+
+### Infrastructure
+
+- **TypeScript 6 兼容包别名（消除 tsc bin 冲突）**：按 TS 7.0 官方迁移指引，将 4 个 `package.json` 中的 `typescript@^6.0.3` 改为 `npm:@typescript/typescript6@^6.0.2` 别名。兼容包提供 `tsc6` 可执行文件（不再与 TS7 的 `tsc` 同名冲突），从根源上保证 `npx tsc` 确定性指向 7.0.2 原生编译器；同时继续 re-export TS 6.0 programmatic API，typescript-eslint 等依赖 peer dependency 的工具不受影响
+
+---
+
 ## v0.86.0 - 2026-07-09
 
 ### Infrastructure
