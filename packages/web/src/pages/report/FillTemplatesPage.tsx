@@ -9,7 +9,9 @@ import {
   Modal,
   Row,
   Select,
+  SideSheet,
   Space,
+  Steps,
   TabPane,
   Tabs,
   Tag,
@@ -79,6 +81,8 @@ export default function FillTemplatesPage() {
   const [editing, setEditing] = useState<ReportFillTemplate | null>(null);
   const [fields, setFields] = useState<WorkflowFormField[]>([]);
   const [settings, setSettings] = useState<WorkflowFormSettings>(DEFAULT_SCHEMA.settings);
+  const [editorStep, setEditorStep] = useState(0);
+  const [editorBasicValues, setEditorBasicValues] = useState<Record<string, unknown>>({ needReview: false });
   const [editorTab, setEditorTab] = useState('designer');
   const [conflictMessage, setConflictMessage] = useState<string | null>(null);
   const [cloneTarget, setCloneTarget] = useState<ReportFillTemplate | null>(null);
@@ -120,13 +124,33 @@ export default function FillTemplatesPage() {
     setEditing(template ?? null);
     setFields(template?.formSchema.fields ?? []);
     setSettings(template?.formSchema.settings ?? DEFAULT_SCHEMA.settings);
+    setEditorStep(0);
+    setEditorBasicValues(template ? {
+      code: template.code,
+      name: template.name,
+      description: template.description,
+      ownerId: template.ownerId,
+      folderId: template.folderId,
+      needReview: template.needReview,
+      workflowDefinitionId: template.workflowDefinitionId,
+    } : { needReview: false });
     setConflictMessage(null);
     setEditorTab('designer');
     setEditorVisible(true);
   }
 
+  async function goToDesignStep() {
+    try {
+      const values = await editorFormApi.current?.validate() as Record<string, unknown>;
+      setEditorBasicValues(values);
+      setEditorStep(1);
+    } catch {
+      // Semi Form 已在对应字段展示校验信息。
+    }
+  }
+
   async function saveTemplate() {
-    const values = await editorFormApi.current?.validate() as Record<string, unknown>;
+    const values = editorBasicValues;
     const formSchema = { fields, settings };
     const base = {
       folderId: values.folderId ? Number(values.folderId) : null,
@@ -326,6 +350,22 @@ export default function FillTemplatesPage() {
       />
     </>
   );
+  const editorSaving = createMutation.isPending || updateMutation.isPending;
+  const editorFooter = (
+    <Space>
+      <Button disabled={editorSaving} onClick={() => setEditorVisible(false)}>取消</Button>
+      {editorStep === 1 && (
+        <Button disabled={editorSaving} onClick={() => setEditorStep(0)}>上一步</Button>
+      )}
+      <Button
+        type="primary"
+        loading={editorStep === 1 && editorSaving}
+        onClick={() => editorStep === 0 ? void goToDesignStep() : void saveTemplate()}
+      >
+        {editorStep === 0 ? '下一步' : editing ? '保存修改' : '创建模板'}
+      </Button>
+    </Space>
+  );
 
   return (
     <div className="page-container">
@@ -367,112 +407,122 @@ export default function FillTemplatesPage() {
         columnSettingsKey="report-fill-templates"
       />
 
-      <AppModal
+      <SideSheet
         title={editing ? `设计填报模板 · ${editing.name}` : '新增填报模板'}
         visible={editorVisible}
-        width={1080}
-        bodyStyle={{ height: '70vh', overflow: 'hidden' }}
+        placement="right"
+        width={editorStep === 0 ? 760 : 'min(1280px, 95vw)'}
+        bodyStyle={{
+          padding: 16,
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: editorStep === 0 ? 'auto' : 'hidden',
+        }}
         onCancel={() => setEditorVisible(false)}
-        onOk={() => void saveTemplate()}
-        confirmLoading={createMutation.isPending || updateMutation.isPending}
+        footer={editorFooter}
+        closeOnEsc
       >
-        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <Steps type="basic" size="small" current={editorStep} style={{ flexShrink: 0 }}>
+            <Steps.Step title="基本信息" description="配置模板属性与审核方式" />
+            <Steps.Step title="字段设计" description="设计表单并预览效果" />
+          </Steps>
           {conflictMessage && <Banner type="danger" closeIcon={null} description={conflictMessage} />}
-          <Form
-            key={editing?.id ?? 'new'}
-            labelPosition="left"
-            labelWidth={90}
-            initValues={editing ? {
-              code: editing.code,
-              name: editing.name,
-              description: editing.description,
-              ownerId: editing.ownerId,
-              folderId: editing.folderId,
-              needReview: editing.needReview,
-              workflowDefinitionId: editing.workflowDefinitionId,
-            } : { needReview: false }}
-            getFormApi={(api) => { editorFormApi.current = api; }}
-          >
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Input
-                  field="code"
-                  label="模板编码"
-                  disabled={Boolean(editing)}
-                  rules={[{ required: true, message: '请输入模板编码' }]}
-                  placeholder="字母开头，可含数字和下划线"
-                />
-              </Col>
-              <Col span={12}>
-                <Form.Input field="name" label="模板名称" rules={[{ required: true, message: '请输入模板名称' }]} />
-              </Col>
-              <Col span={12}>
-                <Form.Select
-                  field="ownerId"
-                  label="负责人"
-                  filter
-                  showClear
-                  optionList={users.map((user) => ({ value: user.id, label: user.nickname || user.username }))}
-                />
-              </Col>
-              <Col span={12}>
-                <Form.Select
-                  field="folderId"
-                  label="资源目录"
-                  filter
-                  showClear
-                  optionList={folders.map((folder) => ({ value: folder.id, label: folder.name }))}
-                />
-              </Col>
-              <Col span={12}>
-                <Form.Switch field="needReview" label="需要审核" />
-              </Col>
-              <Col span={12}>
-                <Form.Select
-                  field="workflowDefinitionId"
-                  label="审核流程"
-                  placeholder="可选：外部业务工作流"
-                  optionList={definitions.map((definition) => ({ value: definition.id, label: definition.name }))}
-                  extraText="仅在开启“需要审核”时生效"
-                  showClear
-                />
-              </Col>
-            </Row>
-            <Form.TextArea field="description" label="模板说明" maxCount={1000} rows={2} />
-          </Form>
-          <Tabs
-            type="line"
-            activeKey={editorTab}
-            onChange={setEditorTab}
-            style={{ flex: 1, minHeight: 0 }}
-            contentStyle={{ height: 'calc(100% - 46px)', overflow: 'hidden' }}
-          >
-            <TabPane tab="字段设计" itemKey="designer" style={{ height: '100%' }}>
-              <div style={{ height: '100%', minHeight: 340 }}>
-                <FormDesigner
-                  fields={fields}
-                  onChange={setFields}
-                  settings={settings}
-                  onSettingsChange={setSettings}
-                />
-              </div>
-            </TabPane>
-            <TabPane tab={<Space><Eye size={14} />预览</Space>} itemKey="preview" style={{ height: '100%', overflow: 'auto' }}>
-              {fields.length ? (
-                <WorkflowFormRenderer
-                  fields={fields}
-                  labelPosition={settings.labelPosition}
-                  labelAlign={settings.labelAlign}
-                  labelWidth={settings.labelWidth}
-                  style={{ padding: 16 }}
-                />
-              ) : (
-                <Banner type="warning" closeIcon={null} description="请先添加至少一个表单字段。" />
-              )}
-            </TabPane>
-          </Tabs>
+          {editorStep === 0 ? (
+            <Form
+              key={editing?.id ?? 'new'}
+              labelPosition="left"
+              labelWidth={90}
+              initValues={editorBasicValues}
+              getFormApi={(api) => { editorFormApi.current = api; }}
+            >
+              <Row gutter={16}>
+                <Col xs={24} md={12}>
+                  <Form.Input
+                    field="code"
+                    label="模板编码"
+                    disabled={Boolean(editing)}
+                    rules={[{ required: true, message: '请输入模板编码' }]}
+                    placeholder="字母开头，可含数字和下划线"
+                  />
+                </Col>
+                <Col xs={24} md={12}>
+                  <Form.Input field="name" label="模板名称" rules={[{ required: true, message: '请输入模板名称' }]} />
+                </Col>
+                <Col xs={24} md={12}>
+                  <Form.Select
+                    field="ownerId"
+                    label="负责人"
+                    filter
+                    showClear
+                    style={{ width: '100%' }}
+                    optionList={users.map((user) => ({ value: user.id, label: user.nickname || user.username }))}
+                  />
+                </Col>
+                <Col xs={24} md={12}>
+                  <Form.Select
+                    field="folderId"
+                    label="资源目录"
+                    filter
+                    showClear
+                    style={{ width: '100%' }}
+                    optionList={folders.map((folder) => ({ value: folder.id, label: folder.name }))}
+                  />
+                </Col>
+                <Col xs={24} md={12}>
+                  <Form.Switch field="needReview" label="需要审核" />
+                </Col>
+                <Col xs={24} md={12}>
+                  <Form.Select
+                    field="workflowDefinitionId"
+                    label="审核流程"
+                    placeholder="可选：外部业务工作流"
+                    style={{ width: '100%' }}
+                    optionList={definitions.map((definition) => ({ value: definition.id, label: definition.name }))}
+                    extraText="仅在开启“需要审核”时生效"
+                    showClear
+                  />
+                </Col>
+              </Row>
+              <Form.TextArea field="description" label="模板说明" maxCount={1000} rows={3} />
+            </Form>
+          ) : (
+            <Tabs
+              type="line"
+              activeKey={editorTab}
+              onChange={setEditorTab}
+              className="tabs-fill-height"
+              style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
+              contentStyle={{ flex: 1, minHeight: 0, overflow: 'hidden' }}
+            >
+              <TabPane tab="字段设计" itemKey="designer" style={{ height: '100%' }}>
+                <div style={{ height: '100%', minHeight: 0 }}>
+                  <FormDesigner
+                    fields={fields}
+                    onChange={setFields}
+                    settings={settings}
+                    onSettingsChange={setSettings}
+                  />
+                </div>
+              </TabPane>
+              <TabPane tab={<Space><Eye size={14} />预览</Space>} itemKey="preview" style={{ height: '100%', overflow: 'auto' }}>
+                {fields.length ? (
+                  <WorkflowFormRenderer
+                    fields={fields}
+                    labelPosition={settings.labelPosition}
+                    labelAlign={settings.labelAlign}
+                    labelWidth={settings.labelWidth}
+                    style={{ padding: 16 }}
+                  />
+                ) : (
+                  <Banner type="warning" closeIcon={null} description="请先添加至少一个表单字段。" />
+                )}
+              </TabPane>
+            </Tabs>
+          )}
         </div>
-      </AppModal>
+      </SideSheet>
 
       <AppModal
         title={`克隆模板 · ${cloneTarget?.name ?? ''}`}
