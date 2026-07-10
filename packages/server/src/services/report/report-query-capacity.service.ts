@@ -24,6 +24,7 @@ import { pageOffset } from '../../lib/pagination';
 import redis from '../../lib/redis';
 import { escapeLike } from '../../lib/where-helpers';
 import { reportCreateTenantId, reportScopedWhere, reportTenantScope } from './report-access';
+import { reportTimeBucketExpression } from './report-time-bucket';
 
 const RESERVE_QUOTA_LUA = `
 for i, key in ipairs(KEYS) do
@@ -567,7 +568,7 @@ export async function getReportQueryCostTrend(query: {
   if (scope) conds.push(scope);
   if (query.datasetId) conds.push(eq(reportQueryCostLogs.datasetId, query.datasetId));
   if (query.datasourceId) conds.push(eq(reportQueryCostLogs.datasourceId, query.datasourceId));
-  const bucketSql = sql<Date>`date_trunc(${bucket}, ${reportQueryCostLogs.occurredAt})`;
+  const bucketSql = reportTimeBucketExpression(bucket, reportQueryCostLogs.occurredAt);
   const rows = await db.select({
     bucket: bucketSql,
     queries: sql<number>`count(*)::int`,

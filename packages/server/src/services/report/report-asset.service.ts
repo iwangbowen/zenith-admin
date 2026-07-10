@@ -59,6 +59,7 @@ import {
   ensureReportResourceAccess,
   listAccessibleReportResourceIds,
 } from './report-resource-acl.service';
+import { reportTimeBucketExpression } from './report-time-bucket';
 import {
   defaultReportOwnerId,
   validateReportResourcePlacement,
@@ -499,7 +500,7 @@ export async function getReportAssetUsageTrend(query: {
   if (query.resourceType) conds.push(eq(reportAssetUsageLogs.resourceType, query.resourceType));
   if (query.resourceId) conds.push(eq(reportAssetUsageLogs.resourceId, query.resourceId));
   if (query.resourceType && query.resourceId) await ensureReportResourceAccess(query.resourceType, query.resourceId, 'viewer');
-  const bucketSql = sql<Date>`date_trunc(${bucket}, ${reportAssetUsageLogs.occurredAt})`;
+  const bucketSql = reportTimeBucketExpression(bucket, reportAssetUsageLogs.occurredAt);
   const rows = await db.select({
     bucket: bucketSql,
     views: sql<number>`sum(case when ${reportAssetUsageLogs.action} = 'view' then 1 else 0 end)::int`,
