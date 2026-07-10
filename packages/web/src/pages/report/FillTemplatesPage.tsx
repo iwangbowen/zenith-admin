@@ -206,7 +206,7 @@ export default function FillTemplatesPage() {
 
   const columns: ColumnProps<ReportFillTemplate>[] = [
     { title: '模板名称', dataIndex: 'name', width: 190 },
-    { title: '编码', dataIndex: 'code', width: 140 },
+    { title: '编码', dataIndex: 'code', width: 220, render: renderEllipsis },
     { title: '负责人', dataIndex: 'ownerName', width: 110, render: (value: string | null) => value || '—' },
     { title: '目录', dataIndex: 'folderName', width: 130, render: (value: string | null) => value || '—' },
     {
@@ -219,7 +219,7 @@ export default function FillTemplatesPage() {
     },
     { title: '版本', dataIndex: 'revision', width: 72 },
     { title: '描述', dataIndex: 'description', width: 180, render: renderEllipsis },
-    { title: '更新时间', dataIndex: 'updatedAt', width: 170, render: (value: string) => formatDateTime(value) },
+    { title: '更新时间', dataIndex: 'updatedAt', width: 190, render: (value: string) => formatDateTime(value) },
     {
       title: '状态',
       dataIndex: 'status',

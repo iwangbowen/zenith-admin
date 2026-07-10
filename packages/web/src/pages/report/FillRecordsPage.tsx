@@ -611,6 +611,7 @@ export default function FillRecordsPage() {
           <Form.Select
             field="templateId"
             label="填报模板"
+            style={{ width: '100%' }}
             rules={[{ required: true, message: '请选择填报模板' }]}
             optionList={templates.map((template) => ({ value: template.id, label: `${template.name}（${template.code}）` }))}
             filter
