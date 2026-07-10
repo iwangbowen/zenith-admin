@@ -1,11 +1,28 @@
 import { describe, it, expect } from 'vitest';
-import { generateCaptcha, verifyCaptcha, cleanExpiredCaptchas, getCaptchaStoreSize } from './captcha';
+import { generateCaptcha, verifyCaptcha, cleanExpiredCaptchas, getCaptchaStoreSize, resolveCaptchaComplexity } from './captcha';
 
 describe('captcha', () => {
   it('should generate a captcha with id and image', () => {
     const { captchaId, captchaImage } = generateCaptcha();
     expect(captchaId).toBeTruthy();
     expect(captchaImage).toContain('<svg');
+  });
+
+  it('should generate captcha for each complexity level', () => {
+    for (const level of ['low', 'medium', 'high'] as const) {
+      const { captchaId, captchaImage } = generateCaptcha(level);
+      expect(captchaId).toBeTruthy();
+      expect(captchaImage).toContain('<svg');
+    }
+  });
+
+  it('should resolve complexity with fallback to medium', () => {
+    expect(resolveCaptchaComplexity('low')).toBe('low');
+    expect(resolveCaptchaComplexity('medium')).toBe('medium');
+    expect(resolveCaptchaComplexity('high')).toBe('high');
+    expect(resolveCaptchaComplexity('invalid')).toBe('medium');
+    expect(resolveCaptchaComplexity(undefined)).toBe('medium');
+    expect(resolveCaptchaComplexity('')).toBe('medium');
   });
 
   it('should verify a correct captcha', () => {

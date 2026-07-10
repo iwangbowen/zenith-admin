@@ -1,8 +1,8 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../../middleware/auth';
 import { authRateLimit, captchaRateLimit, sensitiveRateLimit } from '../../middleware/rate-limit';
-import { generateCaptcha } from '../../lib/captcha';
-import { getConfigBoolean } from '../../lib/system-config';
+import { generateCaptcha, resolveCaptchaComplexity } from '../../lib/captcha';
+import { getConfigBoolean, getConfigValue } from '../../lib/system-config';
 import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, okBody, IdParam } from '../../lib/openapi-schemas';
 import { LoginResultDTO, UserProfileDTO, CaptchaDTO, RefreshTokenResultDTO as RefreshDTO, SessionDTO, TenantItemDTO, SwitchTenantResultDTO as SwitchTenantDTO, LogRowDTO, UserPreferencesDTO } from '../../lib/openapi-dtos';
 import {
@@ -85,7 +85,8 @@ const captchaRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const enabled = await getConfigBoolean('captcha_enabled', false);
     if (!enabled) return c.json(okBody({ enabled: false, captchaId: '', svg: '' }), 200);
-    const result = generateCaptcha();
+    const complexity = await getConfigValue('captcha_complexity', 'medium');
+    const result = generateCaptcha(resolveCaptchaComplexity(complexity));
     return c.json(okBody({ enabled: true, captchaId: result.captchaId, svg: result.captchaImage }), 200);
   },
 });

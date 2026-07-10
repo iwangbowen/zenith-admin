@@ -99,11 +99,13 @@ Zenith Admin 内置了多层安全防护能力，涵盖 IP 访问控制、账号
 | 配置 Key | 类型 | 默认值 |
 |----------|------|--------|
 | `captcha_enabled` | `boolean` | `false` |
+| `captcha_complexity` | `string` | `medium` |
 
 启用后，登录页自动显示图形验证码输入框。验证码通过 `GET /api/auth/captcha` 获取（返回 SVG + captchaId），登录时需同时提交 `captchaId` 和用户输入的验证码文本，后端校验后自动失效。
 
 - 验证码为数学表达式 SVG，5 分钟有效
 - 验证码存储在服务端内存 Map 中，校验后一次性删除
+- `captcha_complexity` 控制验证码复杂度（干扰强度与识别难度）：`low`（干扰线少、运算简单）/ `medium`（默认）/ `high`（干扰线多、运算范围大），非法值按 `medium` 处理
 
 ---
 

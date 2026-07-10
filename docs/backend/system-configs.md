@@ -6,7 +6,7 @@
 
 ## 内置配置项参考
 
-以下是系统预置的 23 个配置项（由 `db:seed` 初始化，源文件：`packages/shared/src/seed-data.ts`）。
+以下是系统预置的 24 个配置项（由 `db:seed` 初始化，源文件：`packages/shared/src/seed-data.ts`）。
 
 ---
 
@@ -31,6 +31,14 @@
 | 类型 | `boolean` |
 | 默认值 | `false` |
 | 说明 | 是否开启登录验证码。设为 `true` 后，登录页会显示图形验证码输入框，后端会校验验证码正确性。 |
+
+#### `captcha_complexity`
+
+| 属性 | 值 |
+|------|----|
+| 类型 | `string` |
+| 默认值 | `medium` |
+| 说明 | 验证码复杂度，控制干扰强度与识别难度，仅在 `captcha_enabled` 开启后生效。可选值：`low`（干扰线少、运算简单，易于人眼识别）、`medium`（默认，均衡）、`high`（干扰线多、运算范围大，防机器识别能力更强）。填写其他值时按 `medium` 处理。 |
 
 #### `login_max_attempts`
 
