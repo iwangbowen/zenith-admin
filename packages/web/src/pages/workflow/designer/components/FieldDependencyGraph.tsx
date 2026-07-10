@@ -1,6 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ReactFlow,
   Background,
   Controls,
   MiniMap,
@@ -15,10 +14,10 @@ import {
   type Edge as RFEdge,
   type NodeProps,
 } from '@xyflow/react';
-import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
 import { Switch, Space, Typography, Empty, Spin } from '@douyinfe/semi-ui';
 import type { WorkflowFormField } from '@zenith/shared';
+import { ThemedReactFlow } from '@/components/ThemedReactFlow';
 import { FORM_FIELD_TYPES } from '../form-types';
 import { buildFieldDependencyGraph, DEP_KIND_COLOR, type DepKind } from '../form-graph';
 
@@ -213,7 +212,7 @@ function FieldDependencyGraphInner({ fields }: Readonly<{ fields: WorkflowFormFi
         <Typography.Text type="tertiary" size="small" style={{ marginLeft: 'auto' }}>箭头：驱动方 → 被影响方；点击节点高亮相关</Typography.Text>
       </div>
       {ready ? (
-        <ReactFlow
+        <ThemedReactFlow
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
@@ -230,7 +229,7 @@ function FieldDependencyGraphInner({ fields }: Readonly<{ fields: WorkflowFormFi
           <Background />
           <Controls />
           <MiniMap pannable zoomable />
-        </ReactFlow>
+        </ThemedReactFlow>
       ) : (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Spin size="large" />

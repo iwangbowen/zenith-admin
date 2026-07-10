@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ReactFlow,
   Background,
   Controls,
   addEdge,
@@ -19,7 +18,7 @@ import {
   getSmoothStepPath,
   EdgeLabelRenderer,
 } from '@xyflow/react';
-import '@xyflow/react/dist/style.css';
+import { ThemedReactFlow } from '@/components/ThemedReactFlow';
 import {
   Button,
   Dropdown,
@@ -503,7 +502,7 @@ export default function WorkflowDesignerPage() {
 
       {/* React Flow 画布 */}
       <div style={{ flex: 1, minHeight: 0 }}>
-        <ReactFlow
+        <ThemedReactFlow
           nodes={nodes}
           edges={edges}
           onNodesChange={isEditable ? onNodesChange : undefined}
@@ -521,7 +520,7 @@ export default function WorkflowDesignerPage() {
         >
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
           <Controls />
-        </ReactFlow>
+        </ThemedReactFlow>
       </div>
 
       {/* 流程元信息弹窗（新建时填写名称） */}

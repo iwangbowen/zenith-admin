@@ -609,6 +609,20 @@ body {
 .page-loading__dot:nth-child(2) { animation-delay: 0.2s; }
 .page-loading__dot:nth-child(3) { animation-delay: 0.4s; }
 
+/* XYFlow follows the active Semi theme instead of its standalone palette. */
+.zenith-react-flow {
+  --xy-attribution-background-color: var(--semi-color-bg-1);
+  --xy-background-pattern-dots-color: var(--semi-color-text-3);
+  --xy-controls-button-background-color: var(--semi-color-bg-1);
+  --xy-controls-button-background-color-hover: var(--semi-color-fill-0);
+  --xy-controls-button-border-color: var(--semi-color-border);
+  --xy-controls-button-color: var(--semi-color-text-1);
+  --xy-controls-button-color-hover: var(--semi-color-text-0);
+  --xy-minimap-background-color: var(--semi-color-bg-1);
+  --xy-minimap-mask-background-color: var(--semi-color-fill-0);
+  --xy-minimap-node-background-color: var(--semi-color-fill-2);
+}
+
 @keyframes dot-bounce {
   0%, 80%, 100% {
     transform: translateY(0) scale(1);

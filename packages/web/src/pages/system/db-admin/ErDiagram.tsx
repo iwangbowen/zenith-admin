@@ -1,6 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ReactFlow,
   Background,
   Controls,
   MiniMap,
@@ -15,10 +14,10 @@ import {
   type Edge as RFEdge,
   type NodeProps,
 } from '@xyflow/react';
-import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
 import { AutoComplete, Button, Switch, Space, Tooltip, Toast } from '@douyinfe/semi-ui';
 import { Download, Search } from 'lucide-react';
+import { ThemedReactFlow } from '@/components/ThemedReactFlow';
 
 export interface ErColumn {
   name: string;
@@ -497,7 +496,7 @@ function ErDiagramInner({ schema, onNodeDoubleClick }: Readonly<ErDiagramProps>)
           <Button size="small" onClick={handleExportSvg}>导出 SVG</Button>
         </Space>
       </div>
-      <ReactFlow
+      <ThemedReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
@@ -515,7 +514,7 @@ function ErDiagramInner({ schema, onNodeDoubleClick }: Readonly<ErDiagramProps>)
         <Background />
         <Controls />
         <MiniMap pannable zoomable />
-      </ReactFlow>
+      </ThemedReactFlow>
     </div>
   );
 }

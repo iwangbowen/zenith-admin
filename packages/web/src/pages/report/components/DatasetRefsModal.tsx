@@ -1,9 +1,9 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Empty, Spin, Tag, Typography, Space, Button } from '@douyinfe/semi-ui';
-import { Background, Controls, type Edge, type Node, ReactFlow } from '@xyflow/react';
-import '@xyflow/react/dist/style.css';
+import { Background, Controls, type Edge, type Node } from '@xyflow/react';
 import AppModal from '@/components/AppModal';
+import { ThemedReactFlow } from '@/components/ThemedReactFlow';
 import type { ReportDataset } from '@zenith/shared';
 import { useReportDatasetRefs } from '@/hooks/queries/report-datasets';
 
@@ -82,7 +82,7 @@ export function DatasetRefsModal({ dataset, onClose }: Readonly<Props>) {
       ) : (
         <Space vertical align="start" spacing={16} style={{ width: '100%' }}>
           <div style={{ width: '100%', height: 460, border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-large)', overflow: 'hidden' }}>
-            <ReactFlow
+            <ThemedReactFlow
               fitView
               nodes={graph.nodes}
               edges={graph.edges}
@@ -98,7 +98,7 @@ export function DatasetRefsModal({ dataset, onClose }: Readonly<Props>) {
             >
               <Background />
               <Controls showInteractive={false} />
-            </ReactFlow>
+            </ThemedReactFlow>
           </div>
           <div style={{ width: '100%' }}>
             <Typography.Title heading={6} style={{ margin: '0 0 8px' }}>可访问列表</Typography.Title>
