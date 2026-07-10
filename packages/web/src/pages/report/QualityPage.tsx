@@ -321,9 +321,9 @@ export default function QualityPage() {
         >
           <Row gutter={16}>
             <Col xs={24} md={12}><Form.Input field="name" label="规则名称" rules={[{ required: true, message: '请输入规则名称' }]} /></Col>
-            <Col xs={24} md={12}><Form.Select field="datasetId" label="数据集" filter optionList={datasetOptions} rules={[{ required: true, message: '请选择数据集' }]} /></Col>
-            <Col xs={24} md={12}><Form.Select field="type" label="规则类型" optionList={ruleTypeOptions} rules={[{ required: true }]} /></Col>
-            <Col xs={24} md={12}><Form.Select field="severity" label="严重度" optionList={severityOptions} rules={[{ required: true }]} /></Col>
+            <Col xs={24} md={12}><Form.Select field="datasetId" label="数据集" filter style={{ width: '100%' }} optionList={datasetOptions} rules={[{ required: true, message: '请选择数据集' }]} /></Col>
+            <Col xs={24} md={12}><Form.Select field="type" label="规则类型" style={{ width: '100%' }} optionList={ruleTypeOptions} rules={[{ required: true }]} /></Col>
+            <Col xs={24} md={12}><Form.Select field="severity" label="严重度" style={{ width: '100%' }} optionList={severityOptions} rules={[{ required: true }]} /></Col>
             {!['row_count', 'custom_sql'].includes(formRuleType) && <Col xs={24} md={12}><Form.Input field="field" label="校验字段" rules={[{ required: true, message: '请输入校验字段' }]} /></Col>}
             <Col xs={24} md={12}><Form.Switch field="enabled" label="启用规则" /></Col>
             <Col xs={24} md={12}><Form.Input field="cron" label="Cron" placeholder="留空仅手动执行" /></Col>
