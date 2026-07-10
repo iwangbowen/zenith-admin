@@ -24,7 +24,7 @@ const usersRouter = new OpenAPIHono({ defaultHook: validationHook });
 const createUserSchema = z.object({
   username: z.string().min(2).max(32),
   nickname: z.string().min(1).max(32),
-  email: z.email(),
+  email: z.preprocess((v) => (v === '' ? null : v), z.email('邮箱格式不正确').nullable().optional()),
   password: z.string().min(6).max(64),
   phone: z.preprocess((v) => (v === '' ? undefined : v), z.string().regex(/^1[3-9]\d{9}$/).optional()),
   gender: z.string().max(20).nullable().optional(),
@@ -36,7 +36,7 @@ const createUserSchema = z.object({
 const updateUserSchema = z.object({
   username: z.string().min(2).max(32).optional(),
   nickname: z.string().min(1).max(32).optional(),
-  email: z.email().optional(),
+  email: z.preprocess((v) => (v === '' ? null : v), z.email('邮箱格式不正确').nullable().optional()),
   phone: z.preprocess((v) => (v === '' ? undefined : v), z.string().regex(/^1[3-9]\d{9}$/).optional()),
   gender: z.string().max(20).nullable().optional(),
   departmentId: z.number().int().positive().nullable().optional(),

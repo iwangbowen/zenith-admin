@@ -246,7 +246,7 @@ export async function listUsers(q: ListUsersQuery) {
 }
 
 export interface CreateUserInput {
-  username: string; nickname: string; email: string; password: string;
+  username: string; nickname: string; email?: string | null; password: string;
   phone?: string; gender?: string | null; departmentId?: number | null;
   positionIds: number[]; roleIds: number[];
   status: 'enabled' | 'disabled';
@@ -270,7 +270,9 @@ export async function createUser(data: CreateUserInput) {
   const tenantFilter = newTenantId === null ? isNull(users.tenantId) : eq(users.tenantId, newTenantId);
   const [dupUsername, dupEmail] = await Promise.all([
     db.select({ id: users.id }).from(users).where(and(eq(users.username, data.username), tenantFilter)).limit(1),
-    db.select({ id: users.id }).from(users).where(and(eq(users.email, data.email), tenantFilter)).limit(1),
+    data.email
+      ? db.select({ id: users.id }).from(users).where(and(eq(users.email, data.email), tenantFilter)).limit(1)
+      : Promise.resolve([] as { id: number }[]),
   ]);
   if (dupUsername.length > 0) throw new HTTPException(400, { message: '用户名已存在' });
   if (dupEmail.length > 0) throw new HTTPException(400, { message: '邮箱已存在' });
@@ -370,7 +372,7 @@ export async function getUserRoleAssignmentAudit(id: number) {
 }
 
 export interface UpdateUserInput {
-  username?: string; nickname?: string; email?: string; phone?: string; gender?: string | null;
+  username?: string; nickname?: string; email?: string | null; phone?: string; gender?: string | null;
   departmentId?: number | null;
   positionIds?: number[]; roleIds?: number[];
   status?: 'enabled' | 'disabled';
@@ -537,7 +539,7 @@ export async function getUserImportTemplate(): Promise<ArrayBuffer> {
   sheet.columns = [
     { header: '用户名*', key: 'username', width: 16 },
     { header: '昵称*', key: 'nickname', width: 16 },
-    { header: '邮箱*', key: 'email', width: 24 },
+    { header: '邮箱', key: 'email', width: 24 },
     { header: '密码*', key: 'password', width: 16 },
     { header: '部门编码', key: 'departmentCode', width: 18 },
     { header: '岗位编码(逗号分隔)', key: 'positionCodes', width: 22 },
@@ -598,7 +600,7 @@ export async function importUsers(file: File): Promise<ImportUsersResult> {
   const roleCodeMap = new Map(allRoles.map((r) => [r.code, r.id]));
   const positionCodeMap = new Map(allPositions.map((p) => [p.code, p.id]));
   const existingUsernames = new Set(existingUsersList.map((u) => u.username));
-  const existingEmails = new Set(existingUsersList.map((u) => u.email));
+  const existingEmails = new Set(existingUsersList.map((u) => u.email).filter((e): e is string => !!e));
 
   // 多租户：租户用户数上限。existingUsersList.length 即当前租户用户数，success 为本批已插入数。
   const importTenantId = getCreateTenantId(user);
@@ -615,10 +617,10 @@ export async function importUsers(file: File): Promise<ImportUsersResult> {
     const roleCodesRaw = getCellText(row, 7);
     const statusRaw = getCellText(row, 8);
 
-    if (!username || !nickname || !email || !password) { errors.push({ row: rowNum, message: '用户名、昵称、邮箱、密码为必填项' }); continue; }
+    if (!username || !nickname || !password) { errors.push({ row: rowNum, message: '用户名、昵称、密码为必填项' }); continue; }
     const policyError = validatePassword(password, policy);
     if (policyError) { errors.push({ row: rowNum, message: policyError }); continue; }
-    if (existingUsernames.has(username) || existingEmails.has(email)) {
+    if (existingUsernames.has(username) || (email && existingEmails.has(email))) {
       errors.push({ row: rowNum, message: `用户名或邮箱已存在: ${username} / ${email}` }); continue;
     }
     let departmentId: number | null = null;
@@ -656,14 +658,14 @@ export async function importUsers(file: File): Promise<ImportUsersResult> {
     try {
       await db.transaction(async (tx) => {
         const [newUser] = await tx.insert(users).values({
-          username, nickname, email, password: hashedPassword,
+          username, nickname, email: email || null, password: hashedPassword,
           departmentId, status, tenantId: getCreateTenantId(user),
         }).returning();
         if (roleIds.length > 0) await setUserRoles(tx, newUser.id, roleIds);
         if (positionIds.length > 0) await setUserPositions(tx, newUser.id, positionIds);
       });
       existingUsernames.add(username);
-      existingEmails.add(email);
+      if (email) existingEmails.add(email);
       success++;
     } catch (e: unknown) {
       errors.push({ row: rowNum, message: `插入失败: ${e instanceof Error ? e.message : '未知错误'}` });

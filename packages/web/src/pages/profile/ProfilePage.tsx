@@ -450,7 +450,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
 
                     <div className="section-title">资料编辑</div>
                   <Form
-                    initValues={{ nickname: user.nickname, email: user.email, phone: user.phone ?? '', gender: user.gender ?? undefined }}
+                    initValues={{ nickname: user.nickname, email: user.email ?? '', phone: user.phone ?? '', gender: user.gender ?? undefined }}
                     onSubmit={handleUpdateProfile}
                     allowEmpty
                     labelPosition="left"

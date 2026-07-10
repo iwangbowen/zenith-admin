@@ -50,7 +50,7 @@ async function loadUserRows(query: Record<string, unknown>, user: JwtPayload): P
     id: item.id,
     username: item.username,
     nickname: item.nickname,
-    email: item.email,
+    email: item.email ?? '',
     phone: item.phone ?? '',
     departmentName: item.departmentName ?? '',
     rolesText: item.roles.map((role) => role.name).join(', '),

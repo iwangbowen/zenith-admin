@@ -389,6 +389,6 @@ export async function getUserInfoByToken(accessToken: string) {
   return {
     sub: user.id.toString(),
     ...(scopes.includes('profile') ? { name: user.nickname, nickname: user.username, picture: user.avatar ?? undefined } : {}),
-    ...(scopes.includes('email') ? { email: user.email, email_verified: true } : {}),
+    ...(scopes.includes('email') && user.email ? { email: user.email, email_verified: true } : {}),
   };
 }

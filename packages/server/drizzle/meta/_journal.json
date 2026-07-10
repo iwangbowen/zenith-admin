@@ -267,6 +267,13 @@
       "when": 1783688188491,
       "tag": "0037_pale_ink",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1783692598974,
+      "tag": "0038_lively_the_hunter",
+      "breakpoints": true
     }
   ]
 }

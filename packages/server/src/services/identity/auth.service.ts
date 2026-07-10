@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, gte, isNull, like, lte } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, isNull, like, lte, or } from 'drizzle-orm';
 import { db } from '../../db';
 import { users, loginLogs, tenants, operationLogs, passwordResetTokens, type UserRow } from '../../db/schema';
 import { signToken, verifyToken } from '../../lib/jwt';
@@ -223,10 +223,12 @@ export async function login(input: LoginInput) {
   ]);
   const lockDurationSeconds = loginLockDurationMinutes * 60;
 
+  // 支持用户名或手机号登录
+  const identifierWhere = or(eq(users.username, input.username), eq(users.phone, input.username))!;
   let userWhere;
-  if (config.multiTenantMode && tenantId !== null) userWhere = and(eq(users.username, input.username), eq(users.tenantId, tenantId));
-  else if (config.multiTenantMode) userWhere = and(eq(users.username, input.username), isNull(users.tenantId));
-  else userWhere = eq(users.username, input.username);
+  if (config.multiTenantMode && tenantId !== null) userWhere = and(identifierWhere, eq(users.tenantId, tenantId));
+  else if (config.multiTenantMode) userWhere = and(identifierWhere, isNull(users.tenantId));
+  else userWhere = identifierWhere;
 
   const [user] = await db.select().from(users).where(userWhere).limit(1);
   if (!user) {

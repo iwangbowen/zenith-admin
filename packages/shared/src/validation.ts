@@ -11,7 +11,7 @@ const DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
 const dateTimeStringSchema = z.string().regex(DATE_TIME_PATTERN, '日期时间格式必须为 YYYY-MM-DD HH:mm:ss');
 
 export const loginSchema = z.object({
-  username: z.string().min(2, '用户名至少2个字符').max(32),
+  username: z.string().min(2, '用户名/手机号至少2个字符').max(32),
   password: z.string().min(6, '密码至少6个字符').max(64),
   captchaId: z.string().optional(),
   captchaCode: z.string().optional(),
@@ -28,7 +28,10 @@ export const registerSchema = z.object({
 export const createUserSchema = z.object({
   username: z.string().min(2).max(32),
   nickname: z.string().min(1).max(32),
-  email: z.email(),
+  email: z.preprocess(
+    (value) => (value === '' ? null : value),
+    z.email('邮箱格式不正确').nullable().optional()
+  ),
   password: z.string().min(6).max(64),
   phone: z.preprocess(
     (value) => (value === '' ? undefined : value),

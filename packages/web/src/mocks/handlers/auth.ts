@@ -31,7 +31,7 @@ export const authHandlers = [
   // 登录
   http.post('/api/auth/login', async ({ request }) => {
     const body = await request.json() as { username: string; password: string };
-    const user = mockUsers.find((u) => u.username === body.username);
+    const user = mockUsers.find((u) => u.username === body.username || (u.phone && u.phone === body.username));
     if (!user || body.password !== user?.password) {
       return HttpResponse.json({ code: 401, message: '用户名或密码错误', data: null });
     }

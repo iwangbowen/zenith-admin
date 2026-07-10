@@ -11,7 +11,7 @@ export const UserDTO = z
     id: z.number().int().openapi({ example: 1 }),
     username: z.string().openapi({ example: 'admin' }),
     nickname: z.string().openapi({ example: '系统管理员' }),
-    email: z.string().openapi({ example: 'admin@example.com' }),
+    email: z.string().nullable().openapi({ example: 'admin@example.com' }),
     phone: z.string().nullable().optional(),
     gender: z.string().nullable().optional(),
     avatar: z.string().nullable().optional(),

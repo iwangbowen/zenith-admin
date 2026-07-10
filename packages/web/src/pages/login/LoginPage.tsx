@@ -147,9 +147,9 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
       <Form.Input
         field="username"
         noLabel
-        placeholder="请输入用户名"
+        placeholder="请输入用户名/手机号"
         prefix={<User />}
-        rules={[{ required: true, message: '请输入用户名' }]}
+        rules={[{ required: true, message: '请输入用户名/手机号' }]}
         size="large"
       />
       <Form.Input

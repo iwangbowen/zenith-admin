@@ -105,7 +105,7 @@ export const users = pgTable('users', {
   id: serial('id').primaryKey(),
   username: varchar('username', { length: 32 }).notNull(),
   nickname: varchar('nickname', { length: 32 }).notNull(),
-  email: varchar('email', { length: 128 }).notNull(),
+  email: varchar('email', { length: 128 }),
   password: varchar('password', { length: 128 }).notNull(),
   avatar: varchar('avatar', { length: 256 }),
   phone: varchar('phone', { length: 20 }),

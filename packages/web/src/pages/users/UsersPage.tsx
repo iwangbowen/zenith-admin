@@ -277,7 +277,7 @@ export default function UsersPage() {
     ? {
         username: editingUser.username,
         nickname: editingUser.nickname,
-        email: editingUser.email,
+        email: editingUser.email ?? undefined,
         phone: editingUser.phone ?? undefined,
         gender: editingUser.gender ?? undefined,
         departmentId: editingUser.departmentId ?? undefined,
@@ -475,15 +475,15 @@ export default function UsersPage() {
       ),
     },
     {
-      title: '邮箱',
-      dataIndex: 'email',
-      width: 220,
-      render: renderEllipsis,
-    },
-    {
       title: '手机号码',
       dataIndex: 'phone',
       width: 150,
+      render: renderEllipsis,
+    },
+    {
+      title: '邮箱',
+      dataIndex: 'email',
+      width: 220,
       render: renderEllipsis,
     },
     {
@@ -923,7 +923,12 @@ export default function UsersPage() {
               </Row>
               <Row gutter={16}>
                 <Col span={12}>
-                  <Form.Input field="email" label="邮箱" placeholder="请输入邮箱" rules={[{ required: true, message: '请输入邮箱' }]} />
+                  <Form.Input
+                    field="phone"
+                    label="手机号码"
+                    placeholder="请输入手机号码"
+                    rules={[{ pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号码' }]}
+                  />
                 </Col>
               </Row>
             </>
@@ -939,7 +944,12 @@ export default function UsersPage() {
               </Row>
               <Row gutter={16}>
                 <Col span={12}>
-                  <Form.Input field="email" label="邮箱" placeholder="请输入邮箱" rules={[{ required: true, message: '请输入邮箱' }]} />
+                  <Form.Input
+                    field="phone"
+                    label="手机号码"
+                    placeholder="请输入手机号码"
+                    rules={[{ pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号码' }]}
+                  />
                 </Col>
                 <Col span={12}>
                   <Form.Input
@@ -958,10 +968,10 @@ export default function UsersPage() {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Input
-                field="phone"
-                label="手机号码"
-                placeholder="请输入手机号码"
-                rules={[{ pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号码' }]}
+                field="email"
+                label="邮箱"
+                placeholder="请输入邮箱"
+                rules={[{ type: 'email', message: '邮箱格式不正确' }]}
               />
             </Col>
             <Col span={12}>
