@@ -187,8 +187,8 @@ export default function GovernanceCapacityTab() {
       <AppModal title={editingQuota ? '编辑查询配额' : '新增查询配额'} visible={quotaModal} width={700} confirmLoading={saveMutation.isPending} onOk={() => void saveQuota()} onCancel={() => setQuotaModal(false)} closeOnEsc>
         <Form key={editingQuota?.id ?? 'create'} getFormApi={(api) => { formApi.current = api; }} labelPosition="left" labelWidth={105} initValues={editingQuota ?? { scope: 'tenant', maxConcurrent: 5, dailyQueryLimit: 1000, dailyRowLimit: 1000000, dailyByteLimit: 1073741824, dailyCostLimit: 10000, resetTimezone: 'Asia/Shanghai', enabled: true }} onValueChange={(values) => values.scope && setQuotaScope(values.scope as ReportQuotaScope)}>
           <Row gutter={16}>
-            <Col xs={24} md={12}><Form.Select field="scope" label="配额范围" optionList={[{ value: 'tenant', label: '租户' }, { value: 'user', label: '用户' }]} rules={[{ required: true }]} /></Col>
-            {quotaScope === 'user' && <Col xs={24} md={12}><Form.Select field="userId" label="用户" filter optionList={(usersQuery.data ?? []).map((user) => ({ value: user.id, label: user.nickname || user.username }))} rules={[{ required: true }]} /></Col>}
+            <Col xs={24} md={12}><Form.Select field="scope" label="配额范围" style={{ width: '100%' }} optionList={[{ value: 'tenant', label: '租户' }, { value: 'user', label: '用户' }]} rules={[{ required: true }]} /></Col>
+            {quotaScope === 'user' && <Col xs={24} md={12}><Form.Select field="userId" label="用户" filter style={{ width: '100%' }} optionList={(usersQuery.data ?? []).map((user) => ({ value: user.id, label: user.nickname || user.username }))} rules={[{ required: true }]} /></Col>}
             <Col xs={24} md={12}><Form.InputNumber field="maxConcurrent" label="最大并发" min={0} style={{ width: '100%' }} rules={[{ required: true }]} /></Col>
             <Col xs={24} md={12}><Form.InputNumber field="dailyQueryLimit" label="日查询上限" min={0} style={{ width: '100%' }} rules={[{ required: true }]} /></Col>
             <Col xs={24} md={12}><Form.InputNumber field="dailyRowLimit" label="日行数上限" min={0} style={{ width: '100%' }} rules={[{ required: true }]} /></Col>

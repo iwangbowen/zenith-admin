@@ -188,12 +188,12 @@ export default function GovernanceResourceTab() {
       <AppModal title={editingFolder ? '编辑资源目录' : '新增资源目录'} visible={folderModal} width={560} confirmLoading={saveFolderMutation.isPending} onOk={() => void saveFolder()} onCancel={() => setFolderModal(false)} closeOnEsc>
         <Form key={editingFolder?.id ?? 'create'} getFormApi={(api) => { formApi.current = api; }} labelPosition="left" labelWidth={90} initValues={editingFolder ?? { sort: 0, status: 'enabled' }}>
           <Form.Input field="name" label="目录名称" rules={[{ required: true }]} />
-          <Form.Select field="parentId" label="上级目录" showClear filter optionList={folders.filter((item) => item.id !== editingFolder?.id).map((item) => ({ value: item.id, label: item.name }))} />
+          <Form.Select field="parentId" label="上级目录" showClear filter style={{ width: '100%' }} optionList={folders.filter((item) => item.id !== editingFolder?.id).map((item) => ({ value: item.id, label: item.name }))} />
           <Row gutter={16}>
-            <Col xs={24} md={12}><Form.Select field="ownerId" label="负责人" showClear filter optionList={(usersQuery.data ?? []).map((user) => ({ value: user.id, label: user.nickname || user.username }))} /></Col>
+            <Col xs={24} md={12}><Form.Select field="ownerId" label="负责人" showClear filter style={{ width: '100%' }} optionList={(usersQuery.data ?? []).map((user) => ({ value: user.id, label: user.nickname || user.username }))} /></Col>
             <Col xs={24} md={12}><Form.InputNumber field="sort" label="排序" style={{ width: '100%' }} /></Col>
           </Row>
-          <Form.Select field="status" label="状态" optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} />
+          <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} />
         </Form>
       </AppModal>
 
@@ -205,11 +205,11 @@ export default function GovernanceResourceTab() {
 
       <AppModal title="授予资源权限" visible={aclModal} width={560} confirmLoading={grantAclMutation.isPending} onOk={() => void grantAcl()} onCancel={() => setAclModal(false)} closeOnEsc>
         <Form getFormApi={(api) => { formApi.current = api; }} labelPosition="left" labelWidth={90} initValues={{ subjectType: 'user', role: 'viewer', inheritFromFolder: false }} onValueChange={(values) => values.subjectType && setSubjectType(values.subjectType as ReportAclSubjectType)}>
-          <Form.Select field="subjectType" label="主体类型" optionList={[{ value: 'user', label: '用户' }, { value: 'role', label: '角色' }, { value: 'department', label: '部门' }, { value: 'user_group', label: '用户组' }]} rules={[{ required: true }]} />
+          <Form.Select field="subjectType" label="主体类型" style={{ width: '100%' }} optionList={[{ value: 'user', label: '用户' }, { value: 'role', label: '角色' }, { value: 'department', label: '部门' }, { value: 'user_group', label: '用户组' }]} rules={[{ required: true }]} />
           {subjectType === 'user'
-            ? <Form.Select field="subjectId" label="主体" filter optionList={(usersQuery.data ?? []).map((user) => ({ value: user.id, label: user.nickname || user.username }))} rules={[{ required: true }]} />
+            ? <Form.Select field="subjectId" label="主体" filter style={{ width: '100%' }} optionList={(usersQuery.data ?? []).map((user) => ({ value: user.id, label: user.nickname || user.username }))} rules={[{ required: true }]} />
             : <Form.InputNumber field="subjectId" label="主体 ID" min={1} style={{ width: '100%' }} rules={[{ required: true }]} />}
-          <Form.Select field="role" label="访问角色" optionList={[{ value: 'viewer', label: '查看者' }, { value: 'editor', label: '编辑者' }, { value: 'owner', label: '所有者' }]} rules={[{ required: true }]} />
+          <Form.Select field="role" label="访问角色" style={{ width: '100%' }} optionList={[{ value: 'viewer', label: '查看者' }, { value: 'editor', label: '编辑者' }, { value: 'owner', label: '所有者' }]} rules={[{ required: true }]} />
           <Form.DatePicker field="expiresAt" label="到期时间" type="dateTime" style={{ width: '100%' }} />
           <Form.Switch field="inheritFromFolder" label="目录继承" />
         </Form>

@@ -174,9 +174,9 @@ export default function GovernanceSlaTab() {
         <Form key={editing?.id ?? 'create'} getFormApi={(api) => { formApi.current = api; }} labelPosition="left" labelWidth={100} initValues={editing ?? { type: 'freshness', targetValue: 60, windowMinutes: 60, timezone: 'Asia/Shanghai', severity: 'high', channels: [], silenceMins: 60, enabled: true }}>
           <Row gutter={16}>
             <Col xs={24} md={12}><Form.Input field="name" label="规则名称" rules={[{ required: true }]} /></Col>
-            <Col xs={24} md={12}><Form.Select field="datasetId" label="数据集" filter optionList={datasetOptions} rules={[{ required: true }]} /></Col>
-            <Col xs={24} md={12}><Form.Select field="type" label="SLA 类型" optionList={slaTypeOptions} rules={[{ required: true }]} /></Col>
-            <Col xs={24} md={12}><Form.Select field="severity" label="严重度" optionList={severityOptions} rules={[{ required: true }]} /></Col>
+            <Col xs={24} md={12}><Form.Select field="datasetId" label="数据集" filter style={{ width: '100%' }} optionList={datasetOptions} rules={[{ required: true }]} /></Col>
+            <Col xs={24} md={12}><Form.Select field="type" label="SLA 类型" style={{ width: '100%' }} optionList={slaTypeOptions} rules={[{ required: true }]} /></Col>
+            <Col xs={24} md={12}><Form.Select field="severity" label="严重度" style={{ width: '100%' }} optionList={severityOptions} rules={[{ required: true }]} /></Col>
             <Col xs={24} md={12}><Form.InputNumber field="targetValue" label="目标值" min={0} style={{ width: '100%' }} rules={[{ required: true }]} /></Col>
             <Col xs={24} md={12}><Form.InputNumber field="warningValue" label="预警值" min={0} style={{ width: '100%' }} /></Col>
             <Col xs={24} md={12}><Form.InputNumber field="windowMinutes" label="统计窗口" min={1} suffix="分钟" style={{ width: '100%' }} rules={[{ required: true }]} /></Col>
@@ -184,7 +184,7 @@ export default function GovernanceSlaTab() {
             <Col xs={24} md={12}><Form.Input field="timezone" label="时区" rules={[{ required: true }]} /></Col>
             <Col xs={24} md={12}><Form.InputNumber field="silenceMins" label="静默分钟" min={0} style={{ width: '100%' }} /></Col>
           </Row>
-          <Form.Select multiple field="channels" label="通知渠道" optionList={[{ value: 'email', label: '邮件' }, { value: 'inApp', label: '站内信' }, { value: 'webhook', label: 'Webhook' }]} />
+          <Form.Select multiple field="channels" label="通知渠道" style={{ width: '100%' }} optionList={[{ value: 'email', label: '邮件' }, { value: 'inApp', label: '站内信' }, { value: 'webhook', label: 'Webhook' }]} />
           <Form.Input field="recipients" label="邮件收件人" placeholder="多个邮箱以逗号分隔" />
           <Form.Input field="webhookUrl" label="Webhook" />
           <Form.Switch field="enabled" label="启用规则" />

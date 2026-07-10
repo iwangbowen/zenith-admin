@@ -182,8 +182,8 @@ export default function GovernanceEnvironmentTab() {
           <Row gutter={16}>
             <Col xs={24} md={12}><Form.Input field="name" label="环境名称" rules={[{ required: true }]} /></Col>
             <Col xs={24} md={12}><Form.Input field="code" label="环境编码" disabled={!!editingEnvironment} rules={[{ required: true }]} /></Col>
-            <Col xs={24} md={12}><Form.Select field="kind" label="环境类型" optionList={environmentKindOptions} rules={[{ required: true }]} /></Col>
-            <Col xs={24} md={12}><Form.Select field="status" label="状态" optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} /></Col>
+            <Col xs={24} md={12}><Form.Select field="kind" label="环境类型" style={{ width: '100%' }} optionList={environmentKindOptions} rules={[{ required: true }]} /></Col>
+            <Col xs={24} md={12}><Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} /></Col>
           </Row>
           <Form.Input field="baseUrl" label="环境地址" />
           <Form.TextArea field="description" label="说明" autosize rows={2} />
@@ -195,10 +195,10 @@ export default function GovernanceEnvironmentTab() {
       <AppModal title="创建环境发布" visible={promotionModal} width={680} confirmLoading={createPromotionMutation.isPending} onOk={() => void createPromotion()} onCancel={() => setPromotionModal(false)} closeOnEsc>
         <Form getFormApi={(api) => { formApi.current = api; }} labelPosition="left" labelWidth={100} initValues={{ resourceType: 'dashboard', sourceRevision: 1, sourceSnapshot: '{}' }}>
           <Row gutter={16}>
-            <Col xs={24} md={12}><Form.Select field="resourceType" label="资源类型" optionList={REPORT_RESOURCE_TYPE_OPTIONS} rules={[{ required: true }]} onChange={(v) => setPromotionType(v as ReportResourceType)} /></Col>
-            <Col xs={24} md={12}><Form.Select field="resourceId" label="资源" filter optionList={(assetsQuery.data?.list ?? []).map((item) => ({ value: item.resourceId, label: item.name }))} rules={[{ required: true }]} /></Col>
-            <Col xs={24} md={12}><Form.Select field="sourceEnvironmentId" label="来源环境" optionList={(environmentsQuery.data ?? []).map((item) => ({ value: item.id, label: item.name }))} rules={[{ required: true }]} /></Col>
-            <Col xs={24} md={12}><Form.Select field="targetEnvironmentId" label="目标环境" optionList={(environmentsQuery.data ?? []).map((item) => ({ value: item.id, label: item.name }))} rules={[{ required: true }]} /></Col>
+            <Col xs={24} md={12}><Form.Select field="resourceType" label="资源类型" style={{ width: '100%' }} optionList={REPORT_RESOURCE_TYPE_OPTIONS} rules={[{ required: true }]} onChange={(v) => setPromotionType(v as ReportResourceType)} /></Col>
+            <Col xs={24} md={12}><Form.Select field="resourceId" label="资源" filter style={{ width: '100%' }} optionList={(assetsQuery.data?.list ?? []).map((item) => ({ value: item.resourceId, label: item.name }))} rules={[{ required: true }]} /></Col>
+            <Col xs={24} md={12}><Form.Select field="sourceEnvironmentId" label="来源环境" style={{ width: '100%' }} optionList={(environmentsQuery.data ?? []).map((item) => ({ value: item.id, label: item.name }))} rules={[{ required: true }]} /></Col>
+            <Col xs={24} md={12}><Form.Select field="targetEnvironmentId" label="目标环境" style={{ width: '100%' }} optionList={(environmentsQuery.data ?? []).map((item) => ({ value: item.id, label: item.name }))} rules={[{ required: true }]} /></Col>
             <Col xs={24} md={12}><Form.InputNumber field="sourceRevision" label="来源修订" min={1} style={{ width: '100%' }} rules={[{ required: true }]} /></Col>
           </Row>
           <Form.TextArea field="sourceSnapshot" label="来源快照" autosize rows={7} rules={[{ required: true }]} />

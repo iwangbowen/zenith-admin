@@ -133,9 +133,9 @@ export function GovernanceApprovalTab() {
       <AppModal title="申请发布审批" visible={modalVisible} width={640} confirmLoading={createMutation.isPending} onOk={() => void createApproval()} onCancel={() => setModalVisible(false)} closeOnEsc>
         <Form getFormApi={(api) => { formApi.current = api; }} labelPosition="left" labelWidth={95} initValues={{ action: 'publish', requestedRevision: 1, snapshot: '{}' }}>
           <Row gutter={16}>
-            <Col xs={24} md={12}><Form.Select field="resourceType" label="资源类型" optionList={REPORT_RESOURCE_TYPE_OPTIONS} rules={[{ required: true }]} onChange={(v) => setResourceType(v as ReportResourceType)} /></Col>
-            <Col xs={24} md={12}><Form.Select field="resourceId" label="资源" filter optionList={(assetsQuery.data?.list ?? []).map((item) => ({ value: item.resourceId, label: item.name }))} rules={[{ required: true }]} /></Col>
-            <Col xs={24} md={12}><Form.Select field="action" label="发布动作" optionList={[{ value: 'publish', label: '发布' }, { value: 'promote', label: '环境晋级' }, { value: 'deprecate', label: '废弃' }]} rules={[{ required: true }]} /></Col>
+            <Col xs={24} md={12}><Form.Select field="resourceType" label="资源类型" style={{ width: '100%' }} optionList={REPORT_RESOURCE_TYPE_OPTIONS} rules={[{ required: true }]} onChange={(v) => setResourceType(v as ReportResourceType)} /></Col>
+            <Col xs={24} md={12}><Form.Select field="resourceId" label="资源" filter style={{ width: '100%' }} optionList={(assetsQuery.data?.list ?? []).map((item) => ({ value: item.resourceId, label: item.name }))} rules={[{ required: true }]} /></Col>
+            <Col xs={24} md={12}><Form.Select field="action" label="发布动作" style={{ width: '100%' }} optionList={[{ value: 'publish', label: '发布' }, { value: 'promote', label: '环境晋级' }, { value: 'deprecate', label: '废弃' }]} rules={[{ required: true }]} /></Col>
             <Col xs={24} md={12}><Form.InputNumber field="requestedRevision" label="申请修订" min={1} style={{ width: '100%' }} rules={[{ required: true }]} /></Col>
           </Row>
           <Form.TextArea field="snapshot" label="发布快照" autosize rows={6} rules={[{ required: true }]} />
@@ -222,10 +222,10 @@ export function GovernanceTransferTab() {
       <AppModal title="申请所有权转移" visible={modalVisible} width={600} confirmLoading={createMutation.isPending} onOk={() => void createTransfer()} onCancel={() => setModalVisible(false)} closeOnEsc>
         <Form getFormApi={(api) => { formApi.current = api; }} labelPosition="left" labelWidth={95}>
           <Row gutter={16}>
-            <Col xs={24} md={12}><Form.Select field="resourceType" label="资源类型" optionList={REPORT_RESOURCE_TYPE_OPTIONS} rules={[{ required: true }]} onChange={(v) => setResourceType(v as ReportResourceType)} /></Col>
-            <Col xs={24} md={12}><Form.Select field="resourceId" label="资源" filter optionList={(assetsQuery.data?.list ?? []).map((item) => ({ value: item.resourceId, label: item.name }))} rules={[{ required: true }]} /></Col>
+            <Col xs={24} md={12}><Form.Select field="resourceType" label="资源类型" style={{ width: '100%' }} optionList={REPORT_RESOURCE_TYPE_OPTIONS} rules={[{ required: true }]} onChange={(v) => setResourceType(v as ReportResourceType)} /></Col>
+            <Col xs={24} md={12}><Form.Select field="resourceId" label="资源" filter style={{ width: '100%' }} optionList={(assetsQuery.data?.list ?? []).map((item) => ({ value: item.resourceId, label: item.name }))} rules={[{ required: true }]} /></Col>
           </Row>
-          <Form.Select field="toOwnerId" label="新负责人" filter optionList={(usersQuery.data ?? []).map((user) => ({ value: user.id, label: user.nickname || user.username }))} rules={[{ required: true }]} />
+          <Form.Select field="toOwnerId" label="新负责人" filter style={{ width: '100%' }} optionList={(usersQuery.data ?? []).map((user) => ({ value: user.id, label: user.nickname || user.username }))} rules={[{ required: true }]} />
           <Form.TextArea field="reason" label="转移原因" autosize rows={3} />
         </Form>
       </AppModal>
