@@ -1,10 +1,7 @@
-import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
-import { Button, Dropdown, Space, SplitButtonGroup, Toast } from '@douyinfe/semi-ui';
+import { Button, Dropdown, Space, SplitButtonGroup } from '@douyinfe/semi-ui';
 import { ChevronDown, Download } from 'lucide-react';
-import type { ExportJobCreateResult, ExportJobFormat, ExportJobRequestMode } from '@zenith/shared';
-import { request } from '@/utils/request';
-import { unwrap } from '@/lib/query';
+import type { ExportJobFormat, ExportJobRequestMode } from '@zenith/shared';
+import { useExportJobRunner } from '@/hooks/useExportJobRunner';
 
 interface ExportButtonProps {
   entity: string;
@@ -29,37 +26,22 @@ export function ExportButton({
   executionMode = 'sync',
   variant = 'primary',
 }: Readonly<ExportButtonProps>) {
-  const [loadingFormat, setLoadingFormat] = useState<ExportJobFormat | null>(null);
+  const exportRunner = useExportJobRunner();
   const isFlat = variant === 'flat';
   const buttonTheme = isFlat ? 'borderless' : undefined;
   const rootClassName = `export-button${isFlat ? ' export-button--flat' : ''}`;
-  const exportMutation = useMutation({
-    mutationFn: ({ format, resolvedQuery }: { format: ExportJobFormat; resolvedQuery: Record<string, unknown> }) =>
-      request.post<ExportJobCreateResult>('/api/export-jobs', {
-        entity,
-        format,
-        query: resolvedQuery,
-        raw,
-        watermark,
-        executionMode,
-      }).then(unwrap),
-  });
 
   const runExport = async (format: ExportJobFormat) => {
-    setLoadingFormat(format);
-    try {
-      const resolvedQuery = resolveQuery ? await resolveQuery(format) : (query ?? {});
-      if (resolvedQuery == null) return;
-      const { job, mode } = await exportMutation.mutateAsync({ format, resolvedQuery });
-      if (job.status === 'success' && job.fileId) {
-        await request.download(`/api/export-jobs/${job.id}/download`, job.filename ?? `${entity}.${format}`);
-        Toast.success('导出完成');
-        return;
-      }
-      Toast.success(mode === 'async' ? '导出任务已提交，可在导出中心查看进度' : '导出任务已创建');
-    } finally {
-      setLoadingFormat(null);
-    }
+    const resolvedQuery = resolveQuery ? await resolveQuery(format) : (query ?? {});
+    if (resolvedQuery == null) return;
+    await exportRunner.runExport({
+      entity,
+      format,
+      query: resolvedQuery,
+      raw,
+      watermark,
+      executionMode,
+    });
   };
 
   if (formats.length <= 1) {
@@ -70,7 +52,7 @@ export function ExportButton({
         type="primary"
         theme={buttonTheme}
         icon={<Download size={14} />}
-        loading={loadingFormat === format}
+        loading={exportRunner.isPending && exportRunner.pendingFormat === format}
         onClick={() => void runExport(format)}
       >
         {label}
@@ -88,7 +70,7 @@ export function ExportButton({
             type="primary"
             theme="borderless"
             icon={<Download size={14} />}
-            loading={loadingFormat === format}
+            loading={exportRunner.isPending && exportRunner.pendingFormat === format}
             onClick={() => void runExport(format)}
           >
             {label} {format.toUpperCase()}
@@ -106,7 +88,7 @@ export function ExportButton({
           type="primary"
           theme={buttonTheme}
           icon={<Download size={14} />}
-          loading={loadingFormat === 'xlsx'}
+          loading={exportRunner.isPending && exportRunner.pendingFormat === 'xlsx'}
           onClick={() => void runExport('xlsx')}
         >
           {label}
@@ -130,7 +112,7 @@ export function ExportButton({
             type="primary"
             theme={buttonTheme}
             icon={<ChevronDown size={14} />}
-            loading={loadingFormat != null && loadingFormat !== 'xlsx'}
+            loading={exportRunner.isPending && exportRunner.pendingFormat !== 'xlsx'}
           />
         </Dropdown>
       </SplitButtonGroup>

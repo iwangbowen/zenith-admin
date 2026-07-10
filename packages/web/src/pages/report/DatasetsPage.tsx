@@ -7,7 +7,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
-import ExportButton from '@/components/ExportButton';
+import { useExportJobRunner } from '@/hooks/useExportJobRunner';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
@@ -134,6 +134,7 @@ export default function DatasetsPage() {
   const parseFileMutation = useParseReportDatasetFile();
   const generateSqlMutation = useGenerateReportDatasetSql();
   const refreshMaterializeMutation = useRefreshReportDatasetMaterialize();
+  const exportRunner = useExportJobRunner();
 
   function handleSearch() { setPage(1); setSubmittedParams(draftParams); void queryClient.invalidateQueries({ queryKey: reportDatasetKeys.lists }); }
   function handleReset() { setDraftParams(defaultSearchParams); setSubmittedParams(defaultSearchParams); setPage(1); void queryClient.invalidateQueries({ queryKey: reportDatasetKeys.lists }); }
@@ -485,15 +486,6 @@ export default function DatasetsPage() {
     },
     { title: '字段数', dataIndex: 'fields', width: 80, render: (f: ReportField[]) => (f?.length ?? 0) },
     { title: '创建时间', dataIndex: 'createdAt', width: 170, render: (t: string) => formatDateTime(t) },
-    ...(hasPermission('report:dataset:list') ? [{
-      title: '导出',
-      dataIndex: 'id',
-      width: 96,
-      fixed: 'right' as const,
-      render: (_: unknown, record: ReportDataset) => (
-        <ExportButton entity="report.dataset" query={{ datasetId: record.id }} formats={['xlsx', 'csv']} variant="flat" />
-      ),
-    }] : []),
     {
       title: '状态', dataIndex: 'status', width: 70, fixed: 'right',
       render: (s: string) => s === 'enabled' ? <Tag color="green" size="small">启用</Tag> : <Tag color="grey" size="small">停用</Tag>,
@@ -506,6 +498,21 @@ export default function DatasetsPage() {
         ...(hasPermission('report:dataset:update') ? [{ key: 'edit', label: '编辑', onClick: () => openEdit(record) }] : []),
         { key: 'refs', label: '血缘', onClick: () => setRefsTarget(record) },
         ...(hasPermission('report:dataset:create') ? [{ key: 'clone', label: '复制', onClick: () => void handleClone(record) }] : []),
+        ...(hasPermission('report:dataset:list') ? [
+          {
+            key: 'exportXlsx',
+            label: '导出 XLSX',
+            dividerBefore: true,
+            loading: exportRunner.isPending,
+            onClick: () => exportRunner.runExport({ entity: 'report.dataset', format: 'xlsx', query: { datasetId: record.id } }),
+          },
+          {
+            key: 'exportCsv',
+            label: '导出 CSV',
+            loading: exportRunner.isPending,
+            onClick: () => exportRunner.runExport({ entity: 'report.dataset', format: 'csv', query: { datasetId: record.id } }),
+          },
+        ] : []),
         ...(hasPermission('report:dataset:delete') ? [{
           key: 'delete', label: '删除', danger: true,
           onClick: () => { Modal.confirm({ title: '确定要删除吗？', content: '删除后不可恢复', onOk: () => handleDelete(record.id) }); },

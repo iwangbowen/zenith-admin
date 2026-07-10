@@ -9,7 +9,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
-import ExportButton from '@/components/ExportButton';
+import { useExportJobRunner } from '@/hooks/useExportJobRunner';
 import ReportParamDialog from '@/components/ReportParamDialog';
 import { buildReportParamInitialValues } from '@/components/report-param-utils';
 import { formatDateTime } from '@/utils/date';
@@ -75,6 +75,7 @@ export default function PrintTemplatesPage() {
   const cloneMutation = useCloneReportPrintTemplate();
   const deleteMutation = useDeleteReportPrintTemplate();
   const renderMutation = useRenderReportPrintTemplate();
+  const exportRunner = useExportJobRunner();
   const togglingId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
 
   function handleSearch() {
@@ -156,12 +157,23 @@ export default function PrintTemplatesPage() {
     setParamDialogVisible(true);
   }
 
-  async function resolveExportQuery(record: ReportPrintTemplate) {
+  async function resolveExportQuery(record: ReportPrintTemplate, format: ExportJobFormat) {
     return await new Promise<Record<string, unknown> | null>((resolve) => {
       setPreviewParams(buildReportParamInitialValues(record.params ?? []));
-      setParamDialogContext({ record, mode: 'export' });
+      setParamDialogContext({ record, mode: 'export', format });
       setParamDialogVisible(true);
       exportResolveRef.current = resolve;
+    });
+  }
+
+  async function handleExport(record: ReportPrintTemplate, format: ExportJobFormat) {
+    const query = await resolveExportQuery(record, format);
+    if (!query) return;
+    await exportRunner.runExport({
+      entity: 'report.print',
+      format,
+      query,
+      executionMode: 'auto',
     });
   }
 
@@ -211,21 +223,6 @@ export default function PrintTemplatesPage() {
         />
       ),
     },
-    ...(hasPermission('report:print:list') ? [{
-      title: '导出',
-      dataIndex: 'id',
-      width: 96,
-      fixed: 'right' as const,
-      render: (_: unknown, record: ReportPrintTemplate) => (
-        <ExportButton
-          entity="report.print"
-          resolveQuery={() => resolveExportQuery(record)}
-          formats={['xlsx', 'pdf']}
-          executionMode="auto"
-          variant="flat"
-        />
-      ),
-    }] : []),
     createOperationColumn<ReportPrintTemplate>({
       width: 220,
       desktopInlineKeys: ['design', 'preview', 'edit', 'delete'],
@@ -234,6 +231,10 @@ export default function PrintTemplatesPage() {
         ...(hasPermission('report:print:list') ? [{ key: 'preview', label: '预览', onClick: () => void openPreview(record) }] : []),
         ...(hasPermission('report:print:update') ? [{ key: 'edit', label: '编辑', onClick: () => openEdit(record) }] : []),
         ...(hasPermission('report:print:create') ? [{ key: 'clone', label: '复制', onClick: () => void handleClone(record) }] : []),
+        ...(hasPermission('report:print:list') ? [
+          { key: 'exportXlsx', label: '导出 XLSX', dividerBefore: true, loading: exportRunner.isPending, onClick: () => handleExport(record, 'xlsx') },
+          { key: 'exportPdf', label: '导出 PDF', loading: exportRunner.isPending, onClick: () => handleExport(record, 'pdf') },
+        ] : []),
         ...(hasPermission('report:print:delete') ? [{
           key: 'delete', label: '删除', danger: true,
           onClick: () => { Modal.confirm({ title: '确定要删除吗？', content: '删除后不可恢复', onOk: () => handleDelete(record.id) }); },
