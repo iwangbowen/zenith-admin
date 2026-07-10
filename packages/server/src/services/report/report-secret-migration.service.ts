@@ -1,6 +1,14 @@
 import { createHash } from 'node:crypto';
 import { eq } from 'drizzle-orm';
-import type { ReportApiDatasourceConfig } from '@zenith/shared';
+import type {
+  ReportApiDatasourceConfig,
+  ReportCanvasItem,
+  ReportDashboardConfig,
+  ReportDashboardSnapshot,
+  ReportFilter,
+  ReportGridItem,
+  ReportWidget,
+} from '@zenith/shared';
 import { db } from '../../db';
 import {
   reportAlertRules,
@@ -108,6 +116,7 @@ export async function backfillLegacyReportTenants(): Promise<void> {
       if (row.tenantId === null && tenantId != null) {
         await tx.update(reportDatasources).set({ tenantId }).where(eq(reportDatasources.id, row.id));
       }
+
     }
     for (const row of datasetRows) {
       const tenantId = datasetTenants.get(row.id);
@@ -148,6 +157,32 @@ export async function backfillLegacyReportTenants(): Promise<void> {
         await tx.update(reportDashboardSubscriptions).set({ tenantId })
           .where(eq(reportDashboardSubscriptions.id, row.id));
       }
+    }
+  });
+}
+
+export async function backfillLegacyDashboardLifecycle(): Promise<void> {
+  const rows = await db.select().from(reportDashboards)
+    .where(eq(reportDashboards.lifecycleInitialized, false));
+  if (!rows.length) return;
+  await db.transaction(async (tx) => {
+    for (const row of rows) {
+      const snapshot: ReportDashboardSnapshot = {
+        name: row.name,
+        layout: (row.layout ?? []) as ReportGridItem[],
+        canvasLayout: (row.canvasLayout ?? []) as ReportCanvasItem[],
+        widgets: (row.widgets ?? []) as ReportWidget[],
+        filters: (row.filters ?? []) as ReportFilter[],
+        config: (row.config ?? {}) as ReportDashboardConfig,
+        categoryId: row.categoryId ?? null,
+        remark: row.remark ?? null,
+      };
+      await tx.update(reportDashboards).set({
+        lifecycleStatus: 'published',
+        lifecycleInitialized: true,
+        publishedSnapshot: snapshot,
+        publishedAt: row.updatedAt,
+      }).where(eq(reportDashboards.id, row.id));
     }
   });
 }

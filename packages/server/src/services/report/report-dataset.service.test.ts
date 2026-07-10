@@ -30,11 +30,12 @@ describe('resolveDatasetParams', () => {
     const defs: ReportDatasetParam[] = [{ name: 'r', label: '必填', type: 'string', required: true }];
     expect(() => resolveDatasetParams(defs, {})).toThrow(HTTPException);
   });
-  it('额外入参透传保留', () => {
-    expect(resolveDatasetParams([], { extra: 1 })).toEqual({ extra: 1 });
+  it('拒绝未声明的运行参数', () => {
+    expect(() => resolveDatasetParams([], { extra: 1 })).toThrow(HTTPException);
   });
   it('剥离 __ 前缀的客户端伪造系统变量', () => {
-    expect(resolveDatasetParams([], { __userId: 999, ok: 1 })).toEqual({ ok: 1 });
+    const defs: ReportDatasetParam[] = [{ name: 'ok', label: 'ok', type: 'number' }];
+    expect(resolveDatasetParams(defs, { __userId: 999, ok: 1 })).toEqual({ ok: 1 });
   });
 });
 

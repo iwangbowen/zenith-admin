@@ -1,7 +1,8 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse, ReportDashboard, ReportDashboardSubscription } from '@zenith/shared';
+import type { AsyncTask, PaginatedResponse, ReportDashboardSubscription, ReportDeliveryRun } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { toQueryString, unwrap } from '@/lib/query';
+import { useReportLookup } from './report-lookups';
 
 export interface ReportSubscriptionListParams {
   page: number;
@@ -14,6 +15,7 @@ export const reportSubscriptionKeys = {
   lists: ['report', 'subscriptions', 'list'] as const,
   list: (params: ReportSubscriptionListParams) => ['report', 'subscriptions', 'list', params] as const,
   dashboardOptions: ['report', 'subscriptions', 'dashboard-options'] as const,
+  history: (id: number | undefined) => ['report', 'subscriptions', 'history', id] as const,
 };
 
 export function useReportSubscriptionList(params: ReportSubscriptionListParams) {
@@ -25,13 +27,7 @@ export function useReportSubscriptionList(params: ReportSubscriptionListParams) 
 }
 
 export function useReportSubscriptionDashboardOptions() {
-  return useQuery({
-    queryKey: reportSubscriptionKeys.dashboardOptions,
-    queryFn: async () => {
-      const data = await request.get<PaginatedResponse<ReportDashboard>>('/api/report/dashboards?page=1&pageSize=200').then(unwrap);
-      return data.list;
-    },
-  });
+  return useReportLookup('dashboards', { status: 'enabled', limit: 50 });
 }
 
 export function useSaveReportSubscription() {
@@ -54,7 +50,24 @@ export function useDeleteReportSubscription() {
 export function useRunReportSubscription() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) => request.post<null>(`/api/report/subscriptions/${id}/run`).then(unwrap),
+    mutationFn: (id: number) => request.post<AsyncTask>(`/api/report/subscriptions/${id}/run`).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: reportSubscriptionKeys.all }),
+  });
+}
+
+export function useBatchReportSubscriptionEnabled() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ids, enabled }: { ids: number[]; enabled: boolean }) =>
+      request.put<null>('/api/report/subscriptions/batch-status', { ids, enabled }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: reportSubscriptionKeys.all }),
+  });
+}
+
+export function useReportSubscriptionHistory(id: number | undefined, enabled = true) {
+  return useQuery({
+    queryKey: reportSubscriptionKeys.history(id),
+    enabled: enabled && !!id,
+    queryFn: () => request.get<PaginatedResponse<ReportDeliveryRun>>(`/api/report/delivery-runs${toQueryString({ targetType: 'subscription', subscriptionId: id, includeAttempts: true, page: 1, pageSize: 20 })}`).then(unwrap),
   });
 }

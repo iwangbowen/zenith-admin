@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Button, Input, Select, Spin, Toast, Typography, Empty, Tooltip, Form, Space } from '@douyinfe/semi-ui';
+import { Button, Input, Select, Spin, Toast, Typography, Empty, Tooltip, Form, Space, Modal } from '@douyinfe/semi-ui';
 import { Save, ArrowLeft, Eye, Trash2, Copy, Undo2, Redo2, SlidersHorizontal, LayoutGrid, Monitor, Settings2, Images } from 'lucide-react';
 import RGL, { WidthProvider, type Layout } from 'react-grid-layout/legacy';
 import { Rnd } from 'react-rnd';
@@ -16,6 +16,7 @@ import { FilterBar } from '../widgets/FilterBar';
 import { ConfigPanel } from './ConfigPanel';
 import { FilterConfigModal } from './FilterConfigModal';
 import AppModal from '@/components/AppModal';
+import { useReportDatasetDetail } from '@/hooks/queries/report-datasets';
 import { useReportDashboardDetail } from '@/hooks/queries/report-dashboards';
 import {
   useReportDesignerDashboardLookup,
@@ -23,7 +24,7 @@ import {
   useSaveReportDashboardDesign,
 } from '@/hooks/queries/report-designer';
 import type {
-  ReportDataset, ReportWidget, ReportWidgetType, ReportGridItem, ReportCanvasItem,
+  ReportWidget, ReportWidgetType, ReportGridItem, ReportCanvasItem,
   ReportWidgetOptions, ReportFilter, ReportDashboardConfig, ReportScreenConfig, ReportCarouselConfig,
 } from '@zenith/shared';
 
@@ -67,7 +68,11 @@ export default function DashboardDesignerPage() {
   const [carouselModal, setCarouselModal] = useState(false);
   const [designPage, setDesignPage] = useState(1);
   const [canvasScale, setCanvasScale] = useState(1);
+  const [dirty, setDirty] = useState(false);
+  const [revision, setRevision] = useState(1);
+  const [conflictInfo, setConflictInfo] = useState<{ currentRevision: number } | null>(null);
   const canvasViewportRef = useRef<HTMLDivElement | null>(null);
+  const autosaveTimerRef = useRef<number | null>(null);
 
   const docRef = useRef(doc); docRef.current = doc;
   const past = useRef<Doc[]>([]);
@@ -93,6 +98,7 @@ export default function DashboardDesignerPage() {
   const mutate = useCallback((updater: (d: Doc) => Doc, record = true) => {
     setDoc((cur) => {
       if (record) { past.current.push(cur); if (past.current.length > 60) past.current.shift(); future.current = []; }
+      setDirty(true);
       return updater(cur);
     });
   }, []);
@@ -101,11 +107,11 @@ export default function DashboardDesignerPage() {
   const redo = useCallback(() => { const next = future.current.pop(); if (!next) return; past.current.push(docRef.current); setDoc(next); }, []);
 
   const { get: getData } = useWidgetData(doc.widgets, filterValues);
-  const dashboardQuery = useReportDashboardDetail(dashboardId, !!dashboardId);
+  const dashboardQuery = useReportDashboardDetail(dashboardId, !!dashboardId, 'draft');
   const datasetsQuery = useReportDesignerDatasets();
   const dashboardsQuery = useReportDesignerDashboardLookup(dashboardId);
   const saveMutation = useSaveReportDashboardDesign();
-  const datasets: ReportDataset[] = datasetsQuery.data ?? [];
+  const datasets = datasetsQuery.data ?? [];
   const dashboards = dashboardsQuery.data ?? [];
 
   useEffect(() => {
@@ -117,11 +123,35 @@ export default function DashboardDesignerPage() {
     if (!dashboard || seededDashboardId.current === dashboard.id) return;
     seededDashboardId.current = dashboard.id;
     setName(dashboard.name); setStatus(dashboard.status); setRemark(dashboard.remark ?? null);
+    setRevision(dashboard.revision);
+    setDirty(false);
+    setConflictInfo(null);
     setDoc({ layout: (dashboard.layout ?? []) as Layout, canvasLayout: dashboard.canvasLayout ?? [], widgets: dashboard.widgets ?? [], filters: dashboard.filters ?? [], config: dashboard.config ?? {} });
     const fv: Record<string, unknown> = {};
     for (const f of dashboard.filters ?? []) fv[f.id] = defaultFilterValue(f);
     setFilterValues(fv);
   }, [dashboardQuery.data]);
+
+  useEffect(() => {
+    if (!dirty) return undefined;
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [dirty]);
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        if (canSave) void handleSave();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  });
 
   // 画布缩放：等比适配可视区（宽高都装得下），保证进入时整屏居中可见
   useEffect(() => {
@@ -200,10 +230,60 @@ export default function DashboardDesignerPage() {
     });
   }
 
-  async function handleSave() {
-    const payload = { name, status, remark: remark || undefined, layout: cleanLayout(doc.layout), canvasLayout: doc.canvasLayout, widgets: doc.widgets, filters: doc.filters, config: doc.config };
-    await saveMutation.mutateAsync({ id: dashboardId, values: payload });
-    Toast.success('已保存');
+  const buildPayload = useCallback((expectedRevision = revision) => ({
+      name,
+      status,
+      remark: remark || undefined,
+      layout: cleanLayout(doc.layout),
+      canvasLayout: doc.canvasLayout,
+      widgets: doc.widgets,
+      filters: doc.filters,
+      config: doc.config,
+      expectedRevision,
+    }), [doc.canvasLayout, doc.config, doc.filters, doc.layout, doc.widgets, name, remark, revision, status]);
+
+  const saveDraft = useCallback(async (expectedRevision = revision, silent = false) => {
+    const res = await saveMutation.mutateAsync({ id: dashboardId, values: buildPayload(expectedRevision) });
+    if (res.code === 0 && res.data) {
+      setRevision(res.data.revision);
+      setDirty(false);
+      setConflictInfo(null);
+      if (!silent) Toast.success('已保存');
+      return true;
+    }
+    if (res.code === 409 && res.data) {
+      const conflictData = res.data as unknown as { currentRevision: number };
+      setConflictInfo({ currentRevision: conflictData.currentRevision });
+      if (!silent) {
+        Modal.warning({
+          title: '草稿保存冲突',
+          content: '当前草稿已被其他人更新。你可以先刷新查看最新版本，或在确认后基于最新 revision 再次覆盖保存。',
+          okText: '知道了',
+        });
+      }
+      return false;
+    }
+    throw new Error(res.message || '保存失败');
+  }, [buildPayload, dashboardId, revision, saveMutation]);
+
+  const handleSave = useCallback(async (expectedRevision = revision, silent = false) => {
+    await saveDraft(expectedRevision, silent);
+  }, [revision, saveDraft]);
+
+  useEffect(() => {
+    if (!canSave || !dirty || saveMutation.isPending) return undefined;
+    if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = window.setTimeout(() => {
+      void handleSave(revision, true).catch(() => undefined);
+    }, 1500);
+    return () => {
+      if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
+    };
+  }, [canSave, dirty, handleSave, revision, saveMutation.isPending]);
+
+  function confirmNavigate(to: string) {
+    if (dirty && !window.confirm('当前草稿尚未保存，确定离开吗？')) return;
+    navigate(to);
   }
 
   function applyScreenConfig(patch: Partial<ReportScreenConfig>) {
@@ -215,7 +295,8 @@ export default function DashboardDesignerPage() {
   }
 
   const selectedWidget = doc.widgets.find((w) => w.i === selectedId) ?? null;
-  const selectedDataset = datasets.find((d) => d.id === selectedWidget?.datasetId) ?? null;
+  const selectedDatasetQuery = useReportDatasetDetail(selectedWidget?.datasetId ?? undefined, !!selectedWidget?.datasetId);
+  const selectedDataset = selectedDatasetQuery.data ?? null;
   const fieldOptions = useMemo(() => {
     if (!selectedWidget) return [];
     if (selectedDataset?.fields?.length) return selectedDataset.fields.map((f) => ({ value: f.name, label: f.label || f.name }));
@@ -232,8 +313,8 @@ export default function DashboardDesignerPage() {
         <div className={`report-widget-card__header${opts?.drag ? ' report-widget-card__drag' : ''}`}>
           <span className="report-widget-card__title">{w.title || '未命名组件'}</span>
           <div className="report-widget-card__actions">
-            <Button theme="borderless" size="small" icon={<Copy size={13} />} onClick={(e) => { e.stopPropagation(); copyWidget(w.i); }} aria-label="复制" />
-            <Button theme="borderless" size="small" type="danger" icon={<Trash2 size={13} />} onClick={(e) => { e.stopPropagation(); removeWidget(w.i); }} aria-label="删除" />
+            <Button theme="borderless" size="small" icon={<Copy size={13} />} disabled={!canSave} onClick={(e) => { e.stopPropagation(); if (canSave) copyWidget(w.i); }} aria-label="复制" />
+            <Button theme="borderless" size="small" type="danger" icon={<Trash2 size={13} />} disabled={!canSave} onClick={(e) => { e.stopPropagation(); if (canSave) removeWidget(w.i); }} aria-label="删除" />
           </div>
         </div>
         <div className="report-widget-card__body">
@@ -259,22 +340,23 @@ export default function DashboardDesignerPage() {
   return (
     <div className="report-designer">
       <div className="report-designer__topbar">
-        <Button icon={<ArrowLeft size={16} />} theme="borderless" onClick={() => navigate('/report/dashboards')}>返回</Button>
-        <Input value={name} onChange={setName} style={{ width: 200 }} placeholder="仪表盘名称" />
+        <Button icon={<ArrowLeft size={16} />} theme="borderless" onClick={() => confirmNavigate('/report/dashboards')}>返回</Button>
+        <Input value={name} onChange={(value) => { setName(value); setDirty(true); }} style={{ width: 200 }} placeholder="仪表盘名称" />
         <Select value={layoutMode} style={{ width: 132 }} onChange={(v) => switchMode(v as 'grid' | 'canvas')}
           optionList={[{ value: 'grid', label: '栅格布局' }, { value: 'canvas', label: '大屏画布' }]}
           prefix={layoutMode === 'canvas' ? <Monitor size={14} /> : <LayoutGrid size={14} />} />
         <Tooltip content="撤销"><Button icon={<Undo2 size={16} />} theme="borderless" onClick={undo} /></Tooltip>
         <Tooltip content="重做"><Button icon={<Redo2 size={16} />} theme="borderless" onClick={redo} /></Tooltip>
-        <Button icon={<SlidersHorizontal size={16} />} onClick={() => setFilterModal(true)}>筛选器 {doc.filters.length ? `(${doc.filters.length})` : ''}</Button>
-        <Button icon={<Images size={16} />} onClick={() => setCarouselModal(true)}>轮播 {carouselOn ? `(${pageCount})` : ''}</Button>
+        <Button icon={<SlidersHorizontal size={16} />} disabled={!canSave} onClick={() => setFilterModal(true)}>筛选器 {doc.filters.length ? `(${doc.filters.length})` : ''}</Button>
+        <Button icon={<Images size={16} />} disabled={!canSave} onClick={() => setCarouselModal(true)}>轮播 {carouselOn ? `(${pageCount})` : ''}</Button>
         {layoutMode === 'canvas'
-          ? <Button icon={<Settings2 size={16} />} onClick={() => setScreenModal(true)}>大屏设置</Button>
-          : <Select value={doc.config.theme ?? 'light'} style={{ width: 100 }} onChange={(v) => mutate((d) => ({ ...d, config: { ...d.config, theme: v as 'light' | 'dark' } }))}
+          ? <Button icon={<Settings2 size={16} />} disabled={!canSave} onClick={() => setScreenModal(true)}>大屏设置</Button>
+          : <Select value={doc.config.theme ?? 'light'} style={{ width: 100 }} disabled={!canSave} onChange={(v) => mutate((d) => ({ ...d, config: { ...d.config, theme: v as 'light' | 'dark' } }))}
               optionList={[{ value: 'light', label: '浅色' }, { value: 'dark', label: '深色' }]} />}
+        {dirty ? <Typography.Text type="warning">草稿未保存</Typography.Text> : <Typography.Text type="tertiary">r{revision}</Typography.Text>}
         <div style={{ flex: 1 }} />
-        <Button icon={<Eye size={16} />} onClick={() => navigate(`/report/dashboards/${dashboardId}/view`)}>预览</Button>
-        <Button type="primary" icon={<Save size={16} />} loading={saveMutation.isPending} disabled={!canSave} onClick={handleSave}>保存</Button>
+        <Button icon={<Eye size={16} />} onClick={() => confirmNavigate(`/report/dashboards/${dashboardId}/view?mode=draft`)}>预览</Button>
+        <Button type="primary" icon={<Save size={16} />} loading={saveMutation.isPending} disabled={!canSave} onClick={() => void handleSave()}>保存</Button>
       </div>
 
       <div className="report-designer__main">
@@ -285,7 +367,7 @@ export default function DashboardDesignerPage() {
               {WIDGET_TYPES.filter((m) => m.group === g).map((meta) => {
                 const Icon = meta.icon;
                 return (
-                  <div key={meta.type} className="report-palette-item" onClick={() => addWidget(meta)} role="button" tabIndex={0}>
+                  <div key={meta.type} className={`report-palette-item${canSave ? '' : ' is-disabled'}`} onClick={() => { if (canSave) addWidget(meta); }} role="button" tabIndex={0}>
                     <Icon size={15} />{meta.label}
                   </div>
                 );
@@ -405,6 +487,19 @@ export default function DashboardDesignerPage() {
           <Form.Input field="backgroundImage" label="背景图 URL" onChange={(v) => applyScreenConfig({ backgroundImage: v || undefined })} placeholder="选填，https://..." showClear />
           <Form.InputNumber field="refreshInterval" label="自动刷新" min={0} max={3600} step={5} onChange={(v) => mutate((d) => ({ ...d, config: { ...d.config, refreshInterval: Number(v) || 0 } }))} suffix="秒" style={{ width: '100%' }} extraText="0 = 不自动刷新" />
         </Form>
+      </AppModal>
+      <AppModal
+        title="保存冲突"
+        visible={!!conflictInfo}
+        onCancel={() => setConflictInfo(null)}
+        onOk={() => { if (conflictInfo) void handleSave(conflictInfo.currentRevision); }}
+        okText="基于最新版本覆盖保存"
+        cancelText="稍后处理"
+      >
+        <Typography.Paragraph>
+          草稿已被其他人更新。请先刷新查看最新版本；如果确认继续覆盖，请点击“基于最新版本覆盖保存”进行二次提交。
+        </Typography.Paragraph>
+        <Button theme="borderless" onClick={() => window.location.reload()}>刷新当前页面</Button>
       </AppModal>
     </div>
   );

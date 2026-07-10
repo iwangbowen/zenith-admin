@@ -1,7 +1,11 @@
 import { z } from 'zod';
 import { REPORT_DATASOURCE_TYPES, REPORT_WIDGET_TYPES } from './types';
 import type { WorkflowFormField, MpMenuButton, MpArticle } from './types';
-import { FILE_OBJECT_ACL_SUPPORT } from './constants';
+import {
+  FILE_OBJECT_ACL_SUPPORT,
+  REPORT_DASHBOARD_LIFECYCLE_STATUSES,
+  REPORT_DASHBOARD_VERSION_SOURCES,
+} from './constants';
 
 const DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
 const dateTimeStringSchema = z.string().regex(DATE_TIME_PATTERN, '日期时间格式必须为 YYYY-MM-DD HH:mm:ss');
@@ -61,7 +65,7 @@ export const resetUserPasswordSchema = z.object({
 
 export const createExportJobSchema = z.object({
   entity: z.string().min(1, '导出实体不能为空').max(128),
-  format: z.enum(['xlsx', 'csv']).default('xlsx'),
+  format: z.enum(['xlsx', 'csv', 'pdf']).default('xlsx'),
   query: z.record(z.string(), z.unknown()).optional().default({}),
   columns: z.array(z.string().min(1).max(128)).optional(),
   raw: z.boolean().optional().default(true),
@@ -2859,8 +2863,42 @@ export const reportFieldFormatSchema = z.object({
 });
 
 /** 数据集字段（列）定义 */
+const REPORT_IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/;
+const REPORT_SORT_FIELD_RE = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$/;
+const REPORT_FORMULA_RESERVED = new Set(['true', 'false', 'null']);
+const REPORT_FORMULA_FUNCTIONS = new Set([
+  'round', 'floor', 'ceil', 'abs', 'min', 'max', 'sqrt', 'pow',
+  'concat', 'upper', 'lower', 'trim', 'length', 'substr',
+  'number', 'string', 'coalesce', 'ifnull', 'if', 'now',
+]);
+
+function reportIdentifierSchema(label: string, max = 128) {
+  return z.string()
+    .min(1, `${label}不能为空`)
+    .max(max)
+    .regex(REPORT_IDENTIFIER_RE, `${label}仅支持字母、数字、下划线，且不能以数字开头`)
+    .refine((value) => !value.startsWith('__'), `${label}不能使用 __ 保留前缀`);
+}
+
+function uniqueReportNames(items: Array<{ name: string }>, label: string, ctx: z.RefinementCtx, path: string) {
+  const seen = new Set<string>();
+  for (const [index, item] of items.entries()) {
+    const key = item.name.trim().toLowerCase();
+    if (seen.has(key)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path, index, 'name'], message: `${label}名称重复：${item.name}` });
+    } else {
+      seen.add(key);
+    }
+  }
+}
+
+function collectFormulaIdentifiers(expression: string): string[] {
+  return (expression.match(/[A-Za-z_\u4e00-\u9fa5][A-Za-z0-9_\u4e00-\u9fa5.]*/g) ?? [])
+    .filter((token) => !REPORT_FORMULA_RESERVED.has(token.toLowerCase()) && !REPORT_FORMULA_FUNCTIONS.has(token.toLowerCase()) && !token.includes('.'));
+}
+
 export const reportFieldSchema = z.object({
-  name: z.string().min(1, '列名不能为空').max(128),
+  name: reportIdentifierSchema('列名'),
   label: z.string().min(1, '显示名不能为空').max(128),
   type: reportFieldTypeSchema.default('string'),
   format: reportFieldFormatSchema.optional(),
@@ -2868,7 +2906,7 @@ export const reportFieldSchema = z.object({
 
 /** 计算字段（衍生列）*/
 export const reportComputedFieldSchema = z.object({
-  name: z.string().min(1, '列名不能为空').max(128),
+  name: reportIdentifierSchema('计算字段名'),
   label: z.string().min(1).max(128),
   expression: z.string().min(1, '表达式不能为空').max(512),
   type: reportFieldTypeSchema.optional(),
@@ -2876,7 +2914,7 @@ export const reportComputedFieldSchema = z.object({
 
 /** 数据集参数定义 */
 export const reportDatasetParamSchema = z.object({
-  name: z.string().min(1).max(64),
+  name: reportIdentifierSchema('参数名', 64),
   label: z.string().min(1).max(64),
   type: reportFieldTypeSchema.default('string'),
   required: z.boolean().optional(),
@@ -2905,6 +2943,24 @@ export const reportDatasourceTestSchema = z.object({
 });
 export type ReportDatasourceTestInput = z.input<typeof reportDatasourceTestSchema>;
 
+export const reportLookupQuerySchema = z.object({
+  keyword: z.string().max(64).optional(),
+  status: z.enum(['enabled', 'disabled']).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+});
+export type ReportLookupQueryInput = z.input<typeof reportLookupQuerySchema>;
+
+export const reportBatchStatusSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1).max(50),
+  status: z.enum(['enabled', 'disabled']),
+});
+export type ReportBatchStatusSchemaInput = z.input<typeof reportBatchStatusSchema>;
+
+export const reportCloneSchema = z.object({
+  name: z.string().min(1).max(64).optional(),
+});
+export type ReportCloneSchemaInput = z.input<typeof reportCloneSchema>;
+
 // ─── 数据集 ──────────────────────────────────────────────────────────────────
 // type 由 datasource 继承，不接受用户传入；content 形态由 service 按 type 校验。
 export const reportDatasetMaterializeSchema = z.object({
@@ -2918,7 +2974,36 @@ export const reportRowRuleSchema = z.object({
   enabled: z.boolean().optional(),
   remark: z.string().max(128).optional(),
 });
-export const createReportDatasetSchema = z.object({
+function refineDatasetDefinition(
+  value: {
+    fields?: Array<{ name: string }>;
+    params?: Array<{ name: string }>;
+    computedFields?: Array<{ name: string; expression: string }>;
+  },
+  ctx: z.RefinementCtx,
+) {
+  const fields = value.fields ?? [];
+  const params = value.params ?? [];
+  const computedFields = value.computedFields ?? [];
+  uniqueReportNames(fields, '字段', ctx, 'fields');
+  uniqueReportNames(params, '参数', ctx, 'params');
+  uniqueReportNames(computedFields, '计算字段', ctx, 'computedFields');
+
+  const fieldNames = new Set(fields.map((item) => item.name));
+  const computedNames = new Set(computedFields.map((item) => item.name));
+  for (const [index, item] of computedFields.entries()) {
+    if (fieldNames.has(item.name)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['computedFields', index, 'name'], message: `计算字段名与已有字段重复：${item.name}` });
+    }
+    for (const ref of collectFormulaIdentifiers(item.expression)) {
+      if (!fieldNames.has(ref) && !computedNames.has(ref)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['computedFields', index, 'expression'], message: `表达式引用了未声明字段：${ref}` });
+      }
+    }
+  }
+}
+
+const reportDatasetSchemaBase = z.object({
   name: z.string().min(1, '名称不能为空').max(64),
   datasourceId: z.number().int().positive('请选择数据源'),
   content: z.record(z.string(), z.unknown()).default({}),
@@ -2931,7 +3016,8 @@ export const createReportDatasetSchema = z.object({
   status: z.enum(['enabled', 'disabled']).default('enabled'),
   remark: z.string().max(256).optional(),
 });
-export const updateReportDatasetSchema = createReportDatasetSchema.partial();
+export const createReportDatasetSchema = reportDatasetSchemaBase.superRefine(refineDatasetDefinition);
+export const updateReportDatasetSchema = reportDatasetSchemaBase.partial().superRefine(refineDatasetDefinition);
 export type CreateReportDatasetInput = z.input<typeof createReportDatasetSchema>;
 export type UpdateReportDatasetInput = z.input<typeof updateReportDatasetSchema>;
 
@@ -3001,7 +3087,7 @@ export const reportScreenConfigSchema = z.object({
   width: z.number().int().min(320).max(10000),
   height: z.number().int().min(240).max(10000),
   background: z.string().optional(),
-  backgroundImage: z.string().optional(),
+  backgroundImage: z.string().max(2_000_000, '套打背景图不能超过 2MB').optional(),
   scaleMode: z.enum(['fit', 'width', 'full']).optional(),
 });
 export const reportDashboardConfigSchema = z.object({
@@ -3017,6 +3103,7 @@ export const reportDashboardConfigSchema = z.object({
     showDots: z.boolean().optional(),
   }).optional(),
 });
+export const reportDashboardLifecycleStatusSchema = z.enum(REPORT_DASHBOARD_LIFECYCLE_STATUSES);
 export const createReportDashboardSchema = z.object({
   name: z.string().min(1, '名称不能为空').max(64),
   layout: z.array(reportGridItemSchema).default([]),
@@ -3028,16 +3115,43 @@ export const createReportDashboardSchema = z.object({
   status: z.enum(['enabled', 'disabled']).default('enabled'),
   remark: z.string().max(256).optional(),
 });
-export const updateReportDashboardSchema = createReportDashboardSchema.partial();
+export const updateReportDashboardSchema = createReportDashboardSchema.partial().extend({
+  expectedRevision: z.number().int().positive(),
+});
 export type CreateReportDashboardInput = z.input<typeof createReportDashboardSchema>;
 export type UpdateReportDashboardInput = z.input<typeof updateReportDashboardSchema>;
+export const reportDashboardViewModeSchema = z.enum(['auto', 'draft', 'published']).default('auto');
+export const reportDashboardLifecycleActionSchema = z.object({
+  expectedRevision: z.number().int().positive(),
+  remark: z.string().max(256).optional(),
+});
+export type ReportDashboardLifecycleActionInput = z.input<typeof reportDashboardLifecycleActionSchema>;
 
 // ─── 取数（带参数）──────────────────────────────────────────────────────────
-export const reportDatasetDataBodySchema = z.object({
-  params: z.record(z.string(), z.unknown()).optional(),
+export const reportDatasetQuerySchema = z.object({
   limit: z.number().int().min(1).max(5000).optional(),
+  page: z.number().int().min(1).optional(),
+  pageSize: z.number().int().min(1).max(500).optional(),
+  sortField: z.string().regex(REPORT_SORT_FIELD_RE, '排序字段格式不正确').optional(),
+  sortOrder: z.enum(['asc', 'desc']).optional(),
+}).superRefine((value, ctx) => {
+  const hasPaging = value.page !== undefined || value.pageSize !== undefined;
+  if (hasPaging && (value.page === undefined || value.pageSize === undefined)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'page 与 pageSize 需同时提供', path: [value.page === undefined ? 'page' : 'pageSize'] });
+  }
+});
+
+export const reportDatasetDataBodySchema = reportDatasetQuerySchema.extend({
+  params: z.record(z.string(), z.unknown()).optional(),
 });
 export type ReportDatasetDataInput = z.input<typeof reportDatasetDataBodySchema>;
+
+export const reportDashboardDataBodySchema = z.object({
+  filters: z.record(z.string(), z.unknown()).optional(),
+  limit: z.number().int().min(1).max(5000).optional(),
+  widgetQueries: z.record(z.string(), reportDatasetQuerySchema).optional(),
+});
+export type ReportDashboardDataInput = z.input<typeof reportDashboardDataBodySchema>;
 
 // ─── 仪表盘分类 ──────────────────────────────────────────────────────────────
 export const createReportCategorySchema = z.object({
@@ -3049,35 +3163,73 @@ export const updateReportCategorySchema = createReportCategorySchema.partial();
 export type CreateReportCategoryInput = z.input<typeof createReportCategorySchema>;
 export type UpdateReportCategoryInput = z.input<typeof updateReportCategorySchema>;
 
+export const reportExecutionStatsQuerySchema = z.object({
+  datasetId: z.coerce.number().int().positive().optional(),
+  datasourceId: z.coerce.number().int().positive().optional(),
+  dashboardId: z.coerce.number().int().positive().optional(),
+  scene: z.string().max(32).optional(),
+  success: z.coerce.boolean().optional(),
+  startAt: z.string().optional(),
+  endAt: z.string().optional(),
+});
+export type ReportExecutionStatsQueryInput = z.input<typeof reportExecutionStatsQuerySchema>;
+
 // ─── 版本 ──────────────────────────────────────────────────────────────────
 export const createReportVersionSchema = z.object({ remark: z.string().max(256).optional() });
 export type CreateReportVersionInput = z.input<typeof createReportVersionSchema>;
+export const reportVersionDiffQuerySchema = z.object({
+  left: z.number().int().min(0),
+  right: z.number().int().min(0),
+});
+export const restoreReportVersionSchema = z.object({
+  expectedRevision: z.number().int().positive(),
+});
+export const reportDashboardVersionSourceSchema = z.enum(REPORT_DASHBOARD_VERSION_SOURCES);
 
 // ─── 公开分享 ────────────────────────────────────────────────────────────────
 export const createReportShareSchema = z.object({
   /** 过期时间：不传=默认 30 天；null=永久有效 */
-  expireAt: z.string().nullable().optional(),
+  expireAt: dateTimeStringSchema.nullable().optional(),
   password: z.string().min(8, '访问密码至少 8 位').max(64).optional(),
   enabled: z.boolean().default(true),
+  maxAccessCount: z.number().int().positive().nullable().optional(),
+  allowedCidrs: z.array(z.string().min(1).max(64)).max(50).optional(),
+  allowedIps: z.array(z.string().min(1).max(64)).max(50).optional(),
 });
 export const updateReportShareSchema = z.object({
-  expireAt: z.string().nullable().optional(),
+  expireAt: dateTimeStringSchema.nullable().optional(),
   password: z.string().min(8, '访问密码至少 8 位').max(64).nullable().optional(),
   enabled: z.boolean().optional(),
+  maxAccessCount: z.number().int().positive().nullable().optional(),
+  allowedCidrs: z.array(z.string().min(1).max(64)).max(50).optional(),
+  allowedIps: z.array(z.string().min(1).max(64)).max(50).optional(),
 });
 export type CreateReportShareInput = z.input<typeof createReportShareSchema>;
 export type UpdateReportShareInput = z.input<typeof updateReportShareSchema>;
 export const reportPublicAccessSchema = z.object({
-  password: z.string().optional(),
-  params: z.record(z.string(), z.unknown()).optional(),
+  password: z.string().min(8).max(64).optional(),
 });
 export type ReportPublicAccessInput = z.input<typeof reportPublicAccessSchema>;
+export const reportPublicSessionHeaderSchema = z.object({
+  session: z.string().min(16),
+});
+export const createReportEmbedTokenSchema = z.object({
+  allowedFilterIds: z.array(z.string().min(1).max(64)).max(100).default([]),
+  fixedFilters: z.record(z.string(), z.unknown()).default({}),
+  expireAt: dateTimeStringSchema.nullable().optional(),
+  remark: z.string().max(256).optional(),
+});
+export const revokeReportEmbedTokenSchema = z.object({});
+export type CreateReportEmbedTokenInput = z.input<typeof createReportEmbedTokenSchema>;
 
 // ─── 订阅推送 ────────────────────────────────────────────────────────────────
 export const reportNotifyChannelSchema = z.enum(['email', 'inApp', 'webhook']);
+export const reportScheduleMisfirePolicySchema = z.enum(['skip', 'fire_once']);
 export const createReportSubscriptionSchema = z.object({
   dashboardId: z.number().int().positive(),
   cron: z.string().min(1, '请填写 Cron 表达式').max(64),
+  timezone: z.string().min(1, '请选择时区').max(64).default('Asia/Shanghai'),
+  misfirePolicy: reportScheduleMisfirePolicySchema.default('fire_once'),
   channels: z.array(reportNotifyChannelSchema).min(1, '至少选择一个推送通道'),
   recipients: z.string().max(512).optional(),
   webhookUrl: z.url('Webhook 地址必须是合法 URL').max(512).nullable().optional(),
@@ -3092,6 +3244,7 @@ export type UpdateReportSubscriptionInput = z.input<typeof updateReportSubscript
 
 // ─── 类 Excel 打印报表 ────────────────────────────────────────────────────────
 export const reportPrintCellStyleSchema = z.object({
+  fontFamily: z.string().max(128).optional(),
   bold: z.boolean().optional(),
   italic: z.boolean().optional(),
   fontSize: z.number().optional(),
@@ -3099,7 +3252,15 @@ export const reportPrintCellStyleSchema = z.object({
   background: z.string().optional(),
   align: z.enum(['left', 'center', 'right']).optional(),
   valign: z.enum(['top', 'middle', 'bottom']).optional(),
-  border: z.boolean().optional(),
+  border: z.union([
+    z.boolean(),
+    z.object({
+      top: z.object({ style: z.enum(['thin', 'medium', 'dashed', 'dotted', 'double']).optional(), color: z.string().optional() }).optional(),
+      right: z.object({ style: z.enum(['thin', 'medium', 'dashed', 'dotted', 'double']).optional(), color: z.string().optional() }).optional(),
+      bottom: z.object({ style: z.enum(['thin', 'medium', 'dashed', 'dotted', 'double']).optional(), color: z.string().optional() }).optional(),
+      left: z.object({ style: z.enum(['thin', 'medium', 'dashed', 'dotted', 'double']).optional(), color: z.string().optional() }).optional(),
+    }),
+  ]).optional(),
   wrap: z.boolean().optional(),
 });
 export const reportPrintCellSchema = z.object({
@@ -3107,6 +3268,16 @@ export const reportPrintCellSchema = z.object({
   col: z.number().int().min(0),
   v: z.union([z.string(), z.number(), z.boolean(), z.null()]).optional(),
   s: reportPrintCellStyleSchema.optional(),
+  kind: z.enum(['text', 'formula', 'image', 'qrcode', 'barcode']).optional(),
+  formula: z.string().max(2048).optional(),
+  numFmt: z.string().max(128).optional(),
+  image: z.object({
+    src: z.string().min(1).max(100000),
+    width: z.number().positive().optional(),
+    height: z.number().positive().optional(),
+    fit: z.enum(['contain', 'cover']).optional(),
+    alt: z.string().max(256).optional(),
+  }).optional(),
 });
 export const reportPrintMergeSchema = z.object({
   row: z.number().int().min(0), col: z.number().int().min(0),
@@ -3120,10 +3291,10 @@ export const reportPrintGridSchema = z.object({
   cells: z.array(reportPrintCellSchema).default([]),
   merges: z.array(reportPrintMergeSchema).optional(),
 });
-export const reportPrintContentSchema = z.object({
-  workbook: z.unknown().optional(),
-  grid: reportPrintGridSchema.optional(),
-});
+export const reportPrintRowRangeSchema = z.object({
+  start: z.number().int().min(0),
+  end: z.number().int().min(0),
+}).refine((value) => value.end >= value.start, { message: '结束行不能小于开始行' });
 export const reportPrintPageConfigSchema = z.object({
   paper: z.enum(['A4', 'A3', 'A5', 'Letter']).optional(),
   orientation: z.enum(['portrait', 'landscape']).optional(),
@@ -3131,6 +3302,27 @@ export const reportPrintPageConfigSchema = z.object({
   header: z.string().max(512).optional(),
   footer: z.string().max(512).optional(),
   backgroundImage: z.string().optional(),
+  pageBreaks: z.array(z.number().int().positive()).optional(),
+  repeatHeaderRows: reportPrintRowRangeSchema.nullable().optional(),
+  rowsPerPage: z.number().int().positive().max(10000).optional(),
+  calculateRowsPerPage: z.boolean().optional(),
+  detailDirection: z.enum(['vertical', 'horizontal']).optional(),
+  groupByFields: z.array(z.string().min(1).max(128)).optional(),
+  groupHeaderRows: reportPrintRowRangeSchema.nullable().optional(),
+  groupFooterRows: reportPrintRowRangeSchema.nullable().optional(),
+  pageSubtotalRows: reportPrintRowRangeSchema.nullable().optional(),
+  totalRows: reportPrintRowRangeSchema.nullable().optional(),
+});
+export const reportPrintSheetSchema = z.object({
+  id: z.string().min(1).max(128),
+  name: z.string().min(1).max(128),
+  grid: reportPrintGridSchema,
+  pageConfig: reportPrintPageConfigSchema.optional(),
+});
+export const reportPrintContentSchema = z.object({
+  workbook: z.unknown().optional(),
+  grid: reportPrintGridSchema.optional(),
+  sheets: z.array(reportPrintSheetSchema).optional(),
 });
 export const createReportPrintTemplateSchema = z.object({
   name: z.string().min(1, '名称不能为空').max(64),
@@ -3169,6 +3361,8 @@ export const createReportAlertSchema = z.object({
   op: z.enum(['gt', 'gte', 'lt', 'lte', 'eq', 'neq']).default('gt'),
   threshold: z.number(),
   cron: z.string().max(64).nullable().optional(),
+  timezone: z.string().min(1, '请选择时区').max(64).default('Asia/Shanghai'),
+  misfirePolicy: reportScheduleMisfirePolicySchema.default('fire_once'),
   channels: z.array(reportNotifyChannelSchema).min(1, '至少选择一个通知通道'),
   recipients: z.string().max(512).optional(),
   webhookUrl: z.url('Webhook 地址必须是合法 URL').max(512).nullable().optional(),
@@ -3184,13 +3378,29 @@ export const updateReportAlertSchema = createReportAlertSchema.partial().extend(
 });
 export type CreateReportAlertInput = z.input<typeof createReportAlertSchema>;
 export type UpdateReportAlertInput = z.input<typeof updateReportAlertSchema>;
+export const acknowledgeReportDeliveryRunSchema = z.object({
+  note: z.string().max(500).optional(),
+});
+export type AcknowledgeReportDeliveryRunInput = z.input<typeof acknowledgeReportDeliveryRunSchema>;
 
 // ─── 仪表盘评论 ──────────────────────────────────────────────────────────────
 export const createReportCommentSchema = z.object({
   widgetId: z.string().max(64).nullable().optional(),
+  parentId: z.number().int().positive().nullable().optional(),
   content: z.string().min(1, '评论内容不能为空').max(1000),
 });
 export type CreateReportCommentInput = z.input<typeof createReportCommentSchema>;
+export const updateReportCommentSchema = z.object({
+  content: z.string().min(1, '评论内容不能为空').max(1000),
+});
+export const resolveReportCommentSchema = z.object({
+  resolved: z.boolean(),
+});
+export const reportCommentListQuerySchema = z.object({
+  page: z.number().int().min(1).default(1),
+  pageSize: z.number().int().min(1).max(100).default(20),
+  widgetId: z.string().max(64).optional(),
+});
 
 // ─── 开放平台：API Scope ──────────────────────────────────────────────────────
 export const createApiScopeSchema = z.object({

@@ -44,10 +44,27 @@ describe('buildVisualSql', () => {
     expect(sql).toContain('ORDER BY "id" ASC');
     expect(sql).toContain('LIMIT 5000');
   });
+  it('支持多表 JOIN、别名与关联字段', () => {
+    const sql = buildVisualSql({
+      ...base,
+      alias: 'o',
+      joins: [{ type: 'left', table: 'users', alias: 'u', sourceAlias: 'o', sourceField: 'user_id', targetField: 'id' }],
+      dimensions: ['u.name'],
+      metrics: [{ field: 'o.amount', aggregate: 'sum', alias: 'total_amount' }],
+      filters: [{ field: 'o.status', op: 'eq', value: 'paid' }],
+      orderBy: { field: 'u.name', order: 'asc' },
+    });
+    expect(sql).toContain('FROM "orders" AS "o"');
+    expect(sql).toContain('LEFT JOIN "users" AS "u" ON "o"."user_id" = "u"."id"');
+    expect(sql).toContain('SELECT "u"."name", sum("o"."amount") AS "total_amount"');
+    expect(sql).toContain(`WHERE "o"."status"::text = 'paid'`);
+    expect(sql).toContain('GROUP BY "u"."name"');
+  });
   it('非法标识符（注入尝试）抛错', () => {
     expect(() => buildVisualSql({ ...base, table: 'orders; DROP TABLE users' })).toThrow('非法标识符');
     expect(() => buildVisualSql({ ...base, dimensions: ['a"b'] })).toThrow('非法标识符');
     expect(() => buildVisualSql({ ...base, metrics: [{ field: 'v', aggregate: 'sum', alias: 'x y' }] })).toThrow('非法别名');
+    expect(() => buildVisualSql({ ...base, joins: [{ type: 'left', table: 'users', alias: 'u-1', sourceField: 'id', targetField: 'id' }] })).toThrow('非法标识符');
   });
   it('生成结果不含分号（只读执行器单语句约束）', () => {
     const sql = buildVisualSql({

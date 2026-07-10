@@ -1,38 +1,104 @@
-/**
- * 报表数据预警 Service —— CRUD + 阈值评估 + Cron 到期分发。
- * 评估：对数据集取数结果按聚合方式算出实际值，与阈值按运算符比较；
- * 触发时经站内信/邮件通知。复用 getDatasetData 取数与既有通知通道。
- * 通知风暴防护：静默期内（silenceMins）持续触发不重复通知；从触发恢复正常可选发送恢复通知（notifyOnRecover）。
- */
 import { HTTPException } from 'hono/http-exception';
-import { and, desc, eq, ilike, or } from 'drizzle-orm';
-import { CronExpressionParser } from 'cron-parser';
+import { aggregateReportRows, compare as compareReportValue } from '@zenith/shared';
+import { and, desc, eq, ilike, inArray, isNotNull, lte, or } from 'drizzle-orm';
 import { db } from '../../db';
-import { reportAlertRules } from '../../db/schema';
+import { reportAlertRules, reportDeliveryRuns } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
 import { escapeLike } from '../../lib/where-helpers';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
-import logger from '../../lib/logger';
-import { getDatasetData, assertDatasetEvaluableGlobally } from './report-dataset.service';
-import { sendEmail } from '../messaging/email-send-logs.service';
-import { sendInApp } from '../messaging/in-app-messages.service';
-import { sendWebhookNotification } from '../../lib/webhook-notify';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { reportCreateTenantId, reportScopedWhere, reportTenantScope } from './report-access';
-import type { ReportAlertRuleRow } from '../../db/schema';
-import type {
-  ReportAlertRule, ReportAlertOp, ReportAlertAggregate, ReportAlertEvalHit, ReportAlertEvalResult, ReportNotifyChannel,
-  CreateReportAlertInput, UpdateReportAlertInput,
-} from '@zenith/shared';
+import { currentUserOrNull } from '../../lib/context';
+import { assertDatasetEvaluableGlobally, ensureDatasetExists, getDatasetData } from './report-dataset.service';
 import {
-  maskReportSecret,
-  prepareReportSecret,
-  resolveReportSecret,
-} from './report-secrets';
+  buildRunIdempotencyKey,
+  claimRetryDeliveryRun,
+  computeScheduleClaim,
+  dispatchNotificationChannels,
+  ensureDeliveryRun,
+  ensureValidReportSchedule,
+  finalizeDeliveryRun,
+  listDueRetryRunIds,
+  loadLatestAlertRuns,
+  markDeliveryRunRetryable,
+  parseRecipientEmails,
+  REPORT_DEFAULT_TIMEZONE,
+  requestedByUserId,
+  resolveNextRunAt,
+  startManualDeliveryRun,
+  validateNotifyChannels,
+} from './report-delivery.service';
+import { reportCreateTenantId, reportScopedWhere, reportTenantScope } from './report-access';
+import { maskReportSecret, prepareReportSecret } from './report-secrets';
+import type { ReportAlertRuleRow, ReportDeliveryRunRow } from '../../db/schema';
+import type {
+  CreateReportAlertInput,
+  ReportAlertAggregate,
+  ReportAlertEvalHit,
+  ReportAlertEvalResult,
+  ReportAlertOp,
+  ReportAlertRule,
+  ReportDeliveryStatus,
+  ReportNotifyChannel,
+  UpdateReportAlertInput,
+} from '@zenith/shared';
 
-type AlertRowExt = ReportAlertRuleRow & { dataset?: { name: string } | null };
+type AlertRowExt = ReportAlertRuleRow & {
+  dataset?: { name: string } | null;
+  latestDelivery?: Pick<ReportAlertRule, 'lastDeliveryAt' | 'lastDeliveryStatus' | 'lastDeliveryError'> | null;
+};
+
+type AlertEventType = 'trigger' | 'recover' | 'manual' | 'scheduled';
 
 const OP_LABEL: Record<ReportAlertOp, string> = { gt: '>', gte: '≥', lt: '<', lte: '≤', eq: '=', neq: '≠' };
+const SCHEDULE_MAX_ATTEMPTS = 3;
+
+function trimText(value: unknown, maxLength = 512): string | null {
+  if (value == null) return null;
+  const text = String(value).trim();
+  return text ? text.slice(0, maxLength) : null;
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function datasetFieldSet(
+  fields: Array<{ name: string; type?: string; format?: { kind?: string } }> | undefined,
+  computedFields: Array<{ name: string; type?: string; format?: { kind?: string } }> | undefined,
+): Map<string, { type?: string; format?: { kind?: string } }> {
+  const map = new Map<string, { type?: string; format?: { kind?: string } }>();
+  for (const field of fields ?? []) map.set(field.name, field);
+  for (const field of computedFields ?? []) map.set(field.name, field);
+  return map;
+}
+
+function isNumericField(field: { type?: string; format?: { kind?: string } } | undefined): boolean {
+  if (!field) return false;
+  return field.type === 'number' || ['number', 'percent', 'currency'].includes(String(field.format?.kind ?? ''));
+}
+
+async function validateAlertDefinition(
+  datasetId: number,
+  field: string | null | undefined,
+  groupByField: string | null | undefined,
+  aggregate: ReportAlertAggregate,
+): Promise<void> {
+  await assertDatasetEvaluableGlobally(datasetId);
+  const dataset = await ensureDatasetExists(datasetId);
+  const fieldMap = datasetFieldSet(
+    (dataset.fields ?? []) as Array<{ name: string; type?: string; format?: { kind?: string } }>,
+    (dataset.computedFields ?? []) as Array<{ name: string; type?: string; format?: { kind?: string } }>,
+  );
+  if (groupByField && !fieldMap.has(groupByField)) {
+    throw new HTTPException(400, { message: `分组字段不存在：${groupByField}` });
+  }
+  if (aggregate !== 'count') {
+    if (!field) throw new HTTPException(400, { message: '非 count 聚合必须指定字段' });
+    const meta = fieldMap.get(field);
+    if (!meta) throw new HTTPException(400, { message: `聚合字段不存在：${field}` });
+    if (!isNumericField(meta)) throw new HTTPException(400, { message: '非 count 聚合字段必须可数值化' });
+  }
+}
 
 export function mapAlert(row: AlertRowExt): ReportAlertRule {
   return {
@@ -46,6 +112,9 @@ export function mapAlert(row: AlertRowExt): ReportAlertRule {
     op: row.op as ReportAlertOp,
     threshold: row.threshold ?? 0,
     cron: row.cron ?? null,
+    timezone: row.timezone ?? REPORT_DEFAULT_TIMEZONE,
+    misfirePolicy: row.misfirePolicy,
+    nextRunAt: formatNullableDateTime(row.nextRunAt),
     channels: (row.channels ?? []) as ReportNotifyChannel[],
     recipients: row.recipients ?? null,
     webhookUrl: maskReportSecret(row.webhookUrl),
@@ -56,6 +125,9 @@ export function mapAlert(row: AlertRowExt): ReportAlertRule {
     lastTriggered: row.lastTriggered ?? null,
     lastValue: row.lastValue ?? null,
     lastNotifiedAt: formatNullableDateTime(row.lastNotifiedAt),
+    lastDeliveryAt: row.latestDelivery?.lastDeliveryAt ?? formatNullableDateTime(row.lastDeliveryAt),
+    lastDeliveryStatus: row.latestDelivery?.lastDeliveryStatus ?? row.lastDeliveryStatus ?? null,
+    lastDeliveryError: row.latestDelivery?.lastDeliveryError ?? row.lastDeliveryError ?? null,
     remark: row.remark ?? null,
     createdBy: row.createdBy ?? null,
     createdAt: formatDateTime(row.createdAt),
@@ -77,7 +149,8 @@ export async function getAlert(id: number): Promise<ReportAlertRule> {
     with: { dataset: { columns: { name: true } } },
   });
   if (!row) throw new HTTPException(404, { message: '预警规则不存在' });
-  return mapAlert(row);
+  const latestRunMap = await loadLatestAlertRuns([row.id]);
+  return mapAlert({ ...row, latestDelivery: latestRunMap.get(row.id) ?? null });
 }
 
 export async function listAlerts(query: { page?: number; pageSize?: number; keyword?: string; datasetId?: number; enabled?: boolean }) {
@@ -85,36 +158,31 @@ export async function listAlerts(query: { page?: number; pageSize?: number; keyw
   const conds = [];
   const tenantScope = reportTenantScope(reportAlertRules);
   if (tenantScope) conds.push(tenantScope);
-  if (keyword) conds.push(or(ilike(reportAlertRules.name, `%${escapeLike(keyword)}%`), ilike(reportAlertRules.remark, `%${escapeLike(keyword)}%`)));
+  if (keyword) {
+    const kw = `%${escapeLike(keyword)}%`;
+    conds.push(or(ilike(reportAlertRules.name, kw), ilike(reportAlertRules.remark, kw)));
+  }
   if (datasetId) conds.push(eq(reportAlertRules.datasetId, datasetId));
   if (enabled !== undefined) conds.push(eq(reportAlertRules.enabled, enabled));
   const where = conds.length ? and(...conds) : undefined;
   const [total, rows] = await Promise.all([
     db.$count(reportAlertRules, where),
     db.query.reportAlertRules.findMany({
-      where, with: { dataset: { columns: { name: true } } },
-      orderBy: desc(reportAlertRules.id), limit: pageSize, offset: pageOffset(page, pageSize),
+      where,
+      with: { dataset: { columns: { name: true } } },
+      orderBy: desc(reportAlertRules.id),
+      limit: pageSize,
+      offset: pageOffset(page, pageSize),
     }),
   ]);
-  return { list: rows.map(mapAlert), total, page, pageSize };
-}
-
-function validateCron(cron?: string | null): void {
-  if (!cron) return;
-  try { CronExpressionParser.parse(cron); } catch { throw new HTTPException(400, { message: 'Cron 表达式无效' }); }
-}
-
-/** channels 含 webhook 时必须提供 webhookUrl */
-function validateWebhook(channels: ReportNotifyChannel[] | undefined, webhookUrl: string | null | undefined): void {
-  if (channels?.includes('webhook') && !webhookUrl) {
-    throw new HTTPException(400, { message: '选择 Webhook 通道时必须填写 Webhook 地址' });
-  }
+  const latestRunMap = await loadLatestAlertRuns(rows.map((row) => row.id));
+  return { list: rows.map((row) => mapAlert({ ...row, latestDelivery: latestRunMap.get(row.id) ?? null })), total, page, pageSize };
 }
 
 export async function createAlert(input: CreateReportAlertInput): Promise<ReportAlertRule> {
-  await assertDatasetEvaluableGlobally(input.datasetId);
-  validateCron(input.cron);
-  validateWebhook(input.channels as ReportNotifyChannel[] | undefined, input.webhookUrl);
+  await validateAlertDefinition(input.datasetId, input.field, input.groupByField, input.aggregate ?? 'sum');
+  ensureValidReportSchedule(input.cron, input.timezone ?? REPORT_DEFAULT_TIMEZONE);
+  validateNotifyChannels(input.channels as ReportNotifyChannel[] | undefined ?? [], input.recipients, input.webhookUrl, currentUserOrNull()?.userId ?? null);
   const webhookUrl = prepareReportSecret(input.webhookUrl, null);
   try {
     const [row] = await db.insert(reportAlertRules).values({
@@ -127,6 +195,9 @@ export async function createAlert(input: CreateReportAlertInput): Promise<Report
       op: input.op ?? 'gt',
       threshold: input.threshold,
       cron: input.cron ?? null,
+      timezone: input.timezone ?? REPORT_DEFAULT_TIMEZONE,
+      misfirePolicy: input.misfirePolicy ?? 'fire_once',
+      nextRunAt: resolveNextRunAt(input.cron ?? null, input.enabled ?? true, input.timezone ?? REPORT_DEFAULT_TIMEZONE),
       channels: (input.channels ?? []) as ReportNotifyChannel[],
       recipients: input.recipients,
       webhookUrl: webhookUrl ?? null,
@@ -136,19 +207,28 @@ export async function createAlert(input: CreateReportAlertInput): Promise<Report
       remark: input.remark,
     }).returning();
     return mapAlert(row);
-  } catch (err) {
-    rethrowPgUniqueViolation(err, '预警规则名称已存在');
-    throw err;
+  } catch (error) {
+    rethrowPgUniqueViolation(error, '预警规则名称已存在');
+    throw error;
   }
 }
 
 export async function updateAlert(id: number, input: UpdateReportAlertInput): Promise<ReportAlertRule> {
   const current = await ensureAlertExists(id);
-  if (input.datasetId) await assertDatasetEvaluableGlobally(input.datasetId);
-  validateCron(input.cron);
-  validateWebhook(
-    (input.channels ?? current.channels) as ReportNotifyChannel[],
+  const datasetId = input.datasetId ?? current.datasetId;
+  const aggregate = (input.aggregate ?? current.aggregate) as ReportAlertAggregate;
+  const field = input.field === undefined ? current.field : input.field;
+  const groupByField = input.groupByField === undefined ? current.groupByField : input.groupByField;
+  const cron = input.cron === undefined ? current.cron : input.cron;
+  const timezone = input.timezone ?? current.timezone ?? REPORT_DEFAULT_TIMEZONE;
+  const enabled = input.enabled ?? current.enabled;
+  await validateAlertDefinition(datasetId, field, groupByField, aggregate);
+  ensureValidReportSchedule(cron, timezone);
+  validateNotifyChannels(
+    (input.channels ?? current.channels ?? []) as ReportNotifyChannel[],
+    input.recipients === undefined ? current.recipients : input.recipients,
     input.webhookUrl === undefined ? current.webhookUrl : input.webhookUrl,
+    current.createdBy ?? null,
   );
   const webhookUrl = prepareReportSecret(input.webhookUrl, current.webhookUrl);
   const [row] = await db.update(reportAlertRules).set({
@@ -160,6 +240,9 @@ export async function updateAlert(id: number, input: UpdateReportAlertInput): Pr
     op: input.op,
     threshold: input.threshold,
     cron: input.cron,
+    timezone: input.timezone,
+    misfirePolicy: input.misfirePolicy,
+    nextRunAt: resolveNextRunAt(cron, enabled, timezone),
     channels: input.channels as ReportNotifyChannel[] | undefined,
     recipients: input.recipients,
     webhookUrl,
@@ -177,41 +260,32 @@ export async function deleteAlert(id: number): Promise<void> {
   await db.delete(reportAlertRules).where(eq(reportAlertRules.id, id));
 }
 
-// ─── 评估 ────────────────────────────────────────────────────────────────────
-
-function toNum(v: unknown): number { const n = Number(v); return Number.isFinite(n) ? n : 0; }
-
-/** 按字段聚合行集（count/sum/avg/max/min/first），空集返回 0 */
-export function aggregate(rows: Record<string, unknown>[], field: string | null | undefined, agg: ReportAlertAggregate): number {
-  if (agg === 'count' || !field) return rows.length;
-  const nums = rows.map((r) => toNum(r[field]));
-  if (nums.length === 0) return 0;
-  switch (agg) {
-    case 'avg': return nums.reduce((a, b) => a + b, 0) / nums.length;
-    case 'max': return Math.max(...nums);
-    case 'min': return Math.min(...nums);
-    case 'first': return toNum(rows[0]?.[field]);
-    default: return nums.reduce((a, b) => a + b, 0);
+export async function batchSetAlertEnabled(ids: number[], enabled: boolean): Promise<number> {
+  if (ids.length === 0) return 0;
+  const rows = await db.query.reportAlertRules.findMany({
+    where: reportScopedWhere(reportAlertRules, inArray(reportAlertRules.id, ids)),
+  });
+  for (const row of rows) {
+    await db.update(reportAlertRules).set({
+      enabled,
+      nextRunAt: resolveNextRunAt(row.cron ?? null, enabled, row.timezone ?? REPORT_DEFAULT_TIMEZONE),
+    }).where(eq(reportAlertRules.id, row.id));
   }
+  return rows.length;
 }
 
-/** 比较实际值与阈值（gt/gte/lt/lte/eq/neq） */
-export function compare(value: number, op: ReportAlertOp, threshold: number): boolean {
-  switch (op) {
-    case 'gt': return value > threshold;
-    case 'gte': return value >= threshold;
-    case 'lt': return value < threshold;
-    case 'lte': return value <= threshold;
-    case 'eq': return value === threshold;
-    case 'neq': return value !== threshold;
-    default: return false;
-  }
+function runtimeHasNumericValue(rows: Record<string, unknown>[], field: string): boolean {
+  return rows.some((row) => {
+    const value = row[field];
+    if (typeof value === 'number') return Number.isFinite(value);
+    if (typeof value === 'string' && value.trim()) {
+      const parsed = Number(value.trim());
+      return Number.isFinite(parsed);
+    }
+    return false;
+  });
 }
 
-/**
- * 分组评估（纯函数）：按 groupByField 分组聚合，任一组命中阈值即触发。
- * value 返回「最极端」组值（gt/gte 取最大，lt/lte 取最小，其余取首个命中或首组），便于观察接近程度。
- */
 export function evaluateGroups(
   rows: Record<string, unknown>[],
   groupByField: string,
@@ -221,52 +295,26 @@ export function evaluateGroups(
   threshold: number,
 ): { value: number; triggered: boolean; hits: ReportAlertEvalHit[] } {
   const groups = new Map<string, Record<string, unknown>[]>();
-  for (const r of rows) {
-    const key = String(r[groupByField] ?? '（空）');
+  for (const row of rows) {
+    const key = String(row[groupByField] ?? '（空）');
     const bucket = groups.get(key);
-    if (bucket) bucket.push(r);
-    else groups.set(key, [r]);
+    if (bucket) bucket.push(row);
+    else groups.set(key, [row]);
   }
   const hits: ReportAlertEvalHit[] = [];
   const preferMax = op === 'gt' || op === 'gte';
   let extreme: number | null = null;
   for (const [group, groupRows] of groups) {
-    const v = aggregate(groupRows, field, agg);
-    if (compare(v, op, threshold)) hits.push({ group, value: v });
-    if (extreme === null || (preferMax ? v > extreme : v < extreme)) extreme = v;
+    const value = aggregateReportRows(groupRows, field, agg);
+    if (compareReportValue(value, op, threshold)) hits.push({ group, value });
+    if (extreme === null || (preferMax ? value > extreme : value < extreme)) extreme = value;
   }
-  const value = hits.length ? (preferMax ? Math.max(...hits.map((h) => h.value)) : Math.min(...hits.map((h) => h.value))) : (extreme ?? 0);
+  const value = hits.length
+    ? (preferMax ? Math.max(...hits.map((item) => item.value)) : Math.min(...hits.map((item) => item.value)))
+    : (extreme ?? 0);
   return { value, triggered: hits.length > 0, hits };
 }
 
-/** 按通道发送预警/恢复通知（邮件按 recipients，站内信推给创建者，Webhook 推机器人） */
-async function notifyAlert(row: ReportAlertRuleRow, title: string, content: string, type: 'warning' | 'info'): Promise<void> {
-  const channels = (row.channels ?? []) as ReportNotifyChannel[];
-  if (channels.includes('inApp') && row.createdBy) {
-    try { await sendInApp({ userIds: [row.createdBy], title, content, type }); }
-    catch (e) { logger.warn('数据预警站内信失败', { id: row.id, err: e instanceof Error ? e.message : String(e) }); }
-  }
-  if (channels.includes('email') && row.recipients) {
-    for (const email of row.recipients.split(',').map((s) => s.trim()).filter(Boolean)) {
-      try { await sendEmail({ toEmail: email, subject: title, content }); }
-      catch (e) { logger.warn('数据预警邮件失败', { email, err: e instanceof Error ? e.message : String(e) }); }
-    }
-  }
-  if (channels.includes('webhook') && row.webhookUrl) {
-    try {
-      const webhookUrl = resolveReportSecret(row.webhookUrl);
-      if (!webhookUrl) throw new Error('Webhook 地址无法解密');
-      await sendWebhookNotification(webhookUrl, title, content);
-    }
-    catch (e) { logger.warn('数据预警 Webhook 失败', { id: row.id, err: e instanceof Error ? e.message : String(e) }); }
-  }
-}
-
-/**
- * 静默窗口判定（纯函数）：
- * - 新触发（上次未触发）→ 立即通知；
- * - 持续触发时，silenceMins=0 或距上次通知已超静默期 → 再次通知，否则静默。
- */
 export function shouldNotifyTrigger(wasTriggered: boolean, silenceMins: number, lastNotifiedAt: Date | null, now: Date): boolean {
   if (!wasTriggered) return true;
   const silenceMs = Math.max(0, silenceMins) * 60_000;
@@ -274,81 +322,489 @@ export function shouldNotifyTrigger(wasTriggered: boolean, silenceMins: number, 
   return now.getTime() - lastNotifiedAt.getTime() >= silenceMs;
 }
 
-/**
- * 评估单条规则：取数→（分组）聚合→比较。返回 { value, triggered, hits? }
- * 通知策略：
- * - 新触发（上次未触发→本次触发）立即通知；
- * - 持续触发时，距上次通知不足 silenceMins 分钟不重复通知（0=每次触发都通知）；
- * - 触发→恢复且开启 notifyOnRecover 时发送恢复通知。
- */
-export async function evaluateAlert(row: ReportAlertRuleRow): Promise<ReportAlertEvalResult> {
-  const data = await getDatasetData(row.datasetId, undefined, 5000);
+function buildCondition(rule: ReportAlertRuleRow): string {
+  const scope = rule.groupByField ? `按「${rule.groupByField}」分组，` : '';
+  return `${scope}${rule.aggregate}(${rule.field ?? '行数'}) ${OP_LABEL[rule.op as ReportAlertOp] ?? rule.op} ${rule.threshold ?? 0}`;
+}
+
+function buildAlertMessage(summary: {
+  ruleName: string;
+  eventType: AlertEventType;
+  value: number;
+  condition: string;
+  hitCount: number;
+  checkedAt: string;
+}): { title: string; text: string; html: string; inAppType: 'warning' | 'info' } {
+  if (summary.eventType === 'recover') {
+    const text = `预警规则「${summary.ruleName}」已恢复正常。\n当前值：${summary.value}\n条件：${summary.condition}\n恢复时间：${summary.checkedAt}`;
+    return {
+      title: `预警恢复 · ${summary.ruleName}`,
+      text,
+      html: `<h3 style="margin:0 0 12px">${escapeHtml(summary.ruleName)}</h3><p>状态已恢复正常。</p><p>当前值：${summary.value}</p><p>条件：${escapeHtml(summary.condition)}</p><p>恢复时间：${escapeHtml(summary.checkedAt)}</p>`,
+      inAppType: 'info',
+    };
+  }
+  const hitText = summary.hitCount > 0 ? `\n命中分组数：${summary.hitCount}` : '';
+  const text = `预警规则「${summary.ruleName}」已触发。\n实际值：${summary.value}\n条件：${summary.condition}${hitText}\n触发时间：${summary.checkedAt}`;
+  return {
+    title: `数据预警 · ${summary.ruleName}`,
+    text,
+    html: `<h3 style="margin:0 0 12px">${escapeHtml(summary.ruleName)}</h3><p>预警已触发。</p><p>实际值：${summary.value}</p><p>条件：${escapeHtml(summary.condition)}</p>${summary.hitCount > 0 ? `<p>命中分组数：${summary.hitCount}</p>` : ''}<p>触发时间：${escapeHtml(summary.checkedAt)}</p>`,
+    inAppType: 'warning',
+  };
+}
+
+async function evaluateAlertState(row: ReportAlertRuleRow): Promise<{
+  value: number;
+  triggered: boolean;
+  hits: ReportAlertEvalHit[];
+  condition: string;
+}> {
+  await validateAlertDefinition(row.datasetId, row.field, row.groupByField, row.aggregate as ReportAlertAggregate);
+  const data = await getDatasetData(row.datasetId, undefined, 5000, { scene: 'alert', sourceRefId: row.id });
+  const fieldNames = new Set((data.fields ?? []).map((field) => field.name));
+  if (row.groupByField && !fieldNames.has(row.groupByField)) {
+    throw new HTTPException(400, { message: `分组字段不存在：${row.groupByField}` });
+  }
+  if (row.aggregate !== 'count' && row.field) {
+    if (!fieldNames.has(row.field)) throw new HTTPException(400, { message: `聚合字段不存在：${row.field}` });
+    if (data.rows.length > 0 && !runtimeHasNumericValue(data.rows, row.field)) {
+      throw new HTTPException(400, { message: '非 count 聚合字段必须可数值化' });
+    }
+  }
   const agg = row.aggregate as ReportAlertAggregate;
   const op = row.op as ReportAlertOp;
   const threshold = row.threshold ?? 0;
-  let value: number;
-  let triggered: boolean;
-  let hits: ReportAlertEvalHit[] = [];
   if (row.groupByField) {
-    ({ value, triggered, hits } = evaluateGroups(data.rows, row.groupByField, row.field, agg, op, threshold));
-  } else {
-    value = aggregate(data.rows, row.field, agg);
-    triggered = compare(value, op, threshold);
+    const grouped = evaluateGroups(data.rows, row.groupByField, row.field, agg, op, threshold);
+    return { ...grouped, condition: buildCondition(row) };
   }
+  const value = aggregateReportRows(data.rows, row.field, agg);
+  return {
+    value,
+    triggered: compareReportValue(value, op, threshold),
+    hits: [],
+    condition: buildCondition(row),
+  };
+}
+
+async function markAlertEvaluation(row: ReportAlertRuleRow, input: {
+  checkedAt: Date;
+  value: number;
+  triggered: boolean;
+  lastNotifiedAt?: Date | null;
+  lastDeliveryAt?: Date;
+  lastDeliveryStatus?: ReportDeliveryStatus;
+  lastDeliveryError?: string | null;
+}): Promise<void> {
+  await db.update(reportAlertRules).set({
+    lastCheckedAt: input.checkedAt,
+    lastTriggered: input.triggered,
+    lastValue: input.value,
+    ...(input.lastNotifiedAt !== undefined ? { lastNotifiedAt: input.lastNotifiedAt } : {}),
+    ...(input.lastDeliveryAt ? { lastDeliveryAt: input.lastDeliveryAt } : {}),
+    ...(input.lastDeliveryStatus ? { lastDeliveryStatus: input.lastDeliveryStatus } : {}),
+    ...(input.lastDeliveryError !== undefined ? { lastDeliveryError: input.lastDeliveryError } : {}),
+  }).where(eq(reportAlertRules.id, row.id));
+}
+
+async function performAlertNotification(
+  row: ReportAlertRuleRow,
+  run: ReportDeliveryRunRow,
+  summary: {
+    eventType: AlertEventType;
+    checkedAt: Date;
+    value: number;
+    triggered: boolean;
+    condition: string;
+    hitCount: number;
+  },
+  options?: { isCancelRequested?: () => Promise<boolean> },
+): Promise<{ status: ReportDeliveryStatus; errorMessage: string | null }> {
+  const message = buildAlertMessage({
+    ruleName: row.name,
+    eventType: summary.eventType,
+    value: summary.value,
+    condition: summary.condition,
+    hitCount: summary.hitCount,
+    checkedAt: formatDateTime(summary.checkedAt),
+  });
+  const payloadSummary = {
+    ruleName: row.name,
+    datasetId: row.datasetId,
+    eventType: summary.eventType,
+    checkedAt: formatDateTime(summary.checkedAt),
+    value: summary.value,
+    triggered: summary.triggered,
+    hitCount: summary.hitCount,
+    condition: summary.condition,
+    channelCount: (row.channels ?? []).length,
+    recipientCount: parseRecipientEmails(row.recipients, false).length,
+  };
+  const channelResult = await dispatchNotificationChannels({
+    tenantId: row.tenantId ?? null,
+    runId: run.id,
+    attempt: run.attempt,
+    channels: (row.channels ?? []) as ReportNotifyChannel[],
+    recipients: row.recipients ?? null,
+    webhookUrl: row.webhookUrl ?? null,
+    createdBy: row.createdBy ?? null,
+    title: message.title,
+    text: message.text,
+    html: message.html,
+    inAppType: message.inAppType,
+    payloadSummary,
+    isCancelRequested: options?.isCancelRequested,
+  });
+  await finalizeDeliveryRun({
+    runId: run.id,
+    status: channelResult.status,
+    errorMessage: channelResult.errorMessage,
+    payloadSummary,
+    lastValue: summary.value,
+    triggered: summary.triggered,
+  });
+  return channelResult;
+}
+
+async function finalizeNoopAlertRun(
+  row: ReportAlertRuleRow,
+  input: {
+    source: 'manual' | 'scheduled';
+    checkedAt: Date;
+    value: number;
+    triggered: boolean;
+    condition: string;
+    hitCount: number;
+    requestedBy: number | null;
+    idempotencyKey: string;
+  },
+): Promise<ReportDeliveryRunRow> {
+  const run = await ensureDeliveryRun({
+    tenantId: row.tenantId ?? null,
+    targetType: 'alert',
+    triggerType: input.source,
+    alertRuleId: row.id,
+    datasetId: row.datasetId,
+    targetName: row.name,
+    idempotencyKey: input.idempotencyKey,
+    requestedBy: input.requestedBy,
+    payloadSummary: {
+      source: input.source,
+      eventType: input.triggered ? 'triggered_without_delivery' : 'normal',
+      checkedAt: formatDateTime(input.checkedAt),
+      value: input.value,
+      hitCount: input.hitCount,
+      condition: input.condition,
+    },
+    maxAttempts: 1,
+  });
+  const running = await startManualDeliveryRun({
+    runId: run.id,
+    attempt: 1,
+    maxAttempts: 1,
+    triggerType: input.source,
+    payloadSummary: run.payloadSummary as Record<string, unknown>,
+  });
+  return finalizeDeliveryRun({
+    runId: running.id,
+    status: 'success',
+    payloadSummary: {
+      source: input.source,
+      checkedAt: formatDateTime(input.checkedAt),
+      value: input.value,
+      triggered: input.triggered,
+      hitCount: input.hitCount,
+      condition: input.condition,
+      suppressed: input.triggered,
+    },
+    lastValue: input.value,
+    triggered: input.triggered,
+  });
+}
+
+async function evaluateAndMaybeNotify(
+  row: ReportAlertRuleRow,
+  source: 'manual' | 'scheduled',
+  idempotencyKey: string,
+  requestedBy: number | null,
+  options?: { isCancelRequested?: () => Promise<boolean>; maxAttempts?: number; taskAttempt?: number },
+): Promise<ReportAlertEvalResult> {
+  validateNotifyChannels((row.channels ?? []) as ReportNotifyChannel[], row.recipients, row.webhookUrl, row.createdBy);
+  const evaluation = await evaluateAlertState(row);
   const now = new Date();
   const wasTriggered = row.lastTriggered === true;
-  const opLabel = OP_LABEL[op] ?? row.op;
-  const scope = row.groupByField ? `按「${row.groupByField}」分组，` : '';
-  const condition = `${scope}${row.aggregate}(${row.field ?? '行数'}) ${opLabel} ${threshold}`;
-  const topHits = hits.slice(0, 10);
-  let lastNotifiedAt = row.lastNotifiedAt ?? null;
+  const shouldNotify = evaluation.triggered
+    ? shouldNotifyTrigger(wasTriggered, row.silenceMins ?? 0, row.lastNotifiedAt ?? null, now)
+    : Boolean(wasTriggered && row.notifyOnRecover);
 
-  if (triggered) {
-    if (shouldNotifyTrigger(wasTriggered, row.silenceMins ?? 0, lastNotifiedAt, now)) {
-      const hitDetail = row.groupByField
-        ? `\n命中 ${hits.length} 组：\n${topHits.map((h) => `  - ${h.group}：${h.value}`).join('\n')}${hits.length > topHits.length ? '\n  …' : ''}`
-        : '';
-      const content = `预警规则「${row.name}」已触发。\n实际值：${value}\n条件：${condition}${hitDetail}\n触发时间：${formatDateTime(now)}`;
-      await notifyAlert(row, `数据预警 · ${row.name}`, content, 'warning');
-      lastNotifiedAt = now;
-    }
-  } else if (wasTriggered && row.notifyOnRecover) {
-    const content = `预警规则「${row.name}」已恢复正常。\n当前值：${value}\n条件：${condition}\n恢复时间：${formatDateTime(now)}`;
-    await notifyAlert(row, `预警恢复 · ${row.name}`, content, 'info');
-    lastNotifiedAt = now;
+  await markAlertEvaluation(row, {
+    checkedAt: now,
+    value: evaluation.value,
+    triggered: evaluation.triggered,
+  });
+
+  if (!shouldNotify) {
+    const run = await finalizeNoopAlertRun(row, {
+      source,
+      checkedAt: now,
+      value: evaluation.value,
+      triggered: evaluation.triggered,
+      condition: evaluation.condition,
+      hitCount: evaluation.hits.length,
+      requestedBy,
+      idempotencyKey,
+    });
+    await markAlertEvaluation(row, {
+      checkedAt: now,
+      value: evaluation.value,
+      triggered: evaluation.triggered,
+      lastDeliveryAt: now,
+      lastDeliveryStatus: 'success',
+      lastDeliveryError: null,
+    });
+    return {
+      value: evaluation.value,
+      triggered: evaluation.triggered,
+      ...(row.groupByField ? { hits: evaluation.hits.slice(0, 10) } : {}),
+      status: 'success',
+      deliveryRunId: run.id,
+    };
   }
 
-  await db.update(reportAlertRules)
-    .set({ lastCheckedAt: now, lastTriggered: triggered, lastValue: value, lastNotifiedAt })
-    .where(eq(reportAlertRules.id, row.id));
-  return { value, triggered, ...(row.groupByField ? { hits: topHits } : {}) };
+  const eventType: AlertEventType = evaluation.triggered ? 'trigger' : 'recover';
+  const run = await ensureDeliveryRun({
+    tenantId: row.tenantId ?? null,
+    targetType: 'alert',
+    triggerType: eventType,
+    alertRuleId: row.id,
+    datasetId: row.datasetId,
+    targetName: row.name,
+    idempotencyKey,
+    requestedBy,
+    payloadSummary: {
+      checkedAt: formatDateTime(now),
+      eventType,
+      value: evaluation.value,
+      hitCount: evaluation.hits.length,
+      condition: evaluation.condition,
+    },
+    maxAttempts: options?.maxAttempts ?? 1,
+  });
+  const running = await startManualDeliveryRun({
+    runId: run.id,
+    attempt: options?.taskAttempt ?? 1,
+    maxAttempts: options?.maxAttempts ?? 1,
+    triggerType: eventType,
+    payloadSummary: run.payloadSummary as Record<string, unknown>,
+  });
+  const channelResult = await performAlertNotification(row, running, {
+    eventType,
+    checkedAt: now,
+    value: evaluation.value,
+    triggered: evaluation.triggered,
+    condition: evaluation.condition,
+    hitCount: evaluation.hits.length,
+  }, { isCancelRequested: options?.isCancelRequested });
+  if (channelResult.status === 'success') {
+    await markAlertEvaluation(row, {
+      checkedAt: now,
+      value: evaluation.value,
+      triggered: evaluation.triggered,
+      lastNotifiedAt: now,
+      lastDeliveryAt: now,
+      lastDeliveryStatus: 'success',
+      lastDeliveryError: null,
+    });
+  } else {
+    await markAlertEvaluation(row, {
+      checkedAt: now,
+      value: evaluation.value,
+      triggered: evaluation.triggered,
+      lastDeliveryAt: now,
+      lastDeliveryStatus: channelResult.status,
+      lastDeliveryError: channelResult.errorMessage,
+    });
+  }
+  return {
+    value: evaluation.value,
+    triggered: evaluation.triggered,
+    ...(row.groupByField ? { hits: evaluation.hits.slice(0, 10) } : {}),
+    status: channelResult.status,
+    deliveryRunId: running.id,
+  };
 }
 
-/** 手动评估 */
-export async function evaluateAlertById(id: number): Promise<ReportAlertEvalResult> {
+export async function runAlertTask(
+  id: number,
+  context: { taskId: number; attempt: number; maxAttempts: number; isCancelRequested?: () => Promise<boolean> },
+): Promise<ReportAlertEvalResult> {
   const row = await ensureAlertExists(id);
-  return evaluateAlert(row);
+  try {
+    const result = await evaluateAndMaybeNotify(
+      row,
+      'manual',
+      buildRunIdempotencyKey(['report-alert-evaluate', context.taskId]),
+      requestedByUserId(),
+      { isCancelRequested: context.isCancelRequested, maxAttempts: context.maxAttempts, taskAttempt: context.attempt },
+    );
+    if (result.status !== 'success') {
+      const retryRow = await markDeliveryRunRetryable({
+        runId: result.deliveryRunId!,
+        attempt: context.attempt,
+        maxAttempts: context.maxAttempts,
+        errorMessage: '预警投递失败',
+      });
+      await db.update(reportAlertRules).set({
+        lastDeliveryStatus: retryRow.status,
+        lastDeliveryError: '预警投递失败',
+      }).where(eq(reportAlertRules.id, row.id));
+      throw new Error('预警投递失败');
+    }
+    return result;
+  } catch (error) {
+    const latest = await db.query.reportDeliveryRuns.findFirst({
+      where: and(eq(reportDeliveryRuns.targetType, 'alert'), eq(reportDeliveryRuns.alertRuleId, row.id)),
+      orderBy: desc(reportDeliveryRuns.id),
+    });
+    if (latest && latest.status === 'running') {
+      const retryRow = await markDeliveryRunRetryable({
+        runId: latest.id,
+        attempt: context.attempt,
+        maxAttempts: context.maxAttempts,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+      await db.update(reportAlertRules).set({
+        lastDeliveryAt: new Date(),
+        lastDeliveryStatus: retryRow.status,
+        lastDeliveryError: trimText(error) ?? '预警评估失败',
+      }).where(eq(reportAlertRules.id, row.id));
+    }
+    throw error;
+  }
 }
 
-/** Cron 分发：扫描启用且配置 cron 的规则，按各自 cron 判断到期后评估 */
+async function processScheduledAlert(row: ReportAlertRuleRow, scheduledFor: Date): Promise<boolean> {
+  const idempotencyKey = buildRunIdempotencyKey(['report-alert-evaluate', row.id, scheduledFor.getTime()]);
+  try {
+    const result = await evaluateAndMaybeNotify(
+      row,
+      'scheduled',
+      idempotencyKey,
+      null,
+      { maxAttempts: SCHEDULE_MAX_ATTEMPTS, taskAttempt: 1 },
+    );
+    if (result.status === 'success') return result.triggered;
+    const retryRow = await markDeliveryRunRetryable({
+      runId: result.deliveryRunId!,
+      attempt: 1,
+      maxAttempts: SCHEDULE_MAX_ATTEMPTS,
+      errorMessage: '预警投递失败',
+    });
+    await db.update(reportAlertRules).set({
+      lastDeliveryStatus: retryRow.status,
+      lastDeliveryError: '预警投递失败',
+    }).where(eq(reportAlertRules.id, row.id));
+    return result.triggered;
+  } catch (error) {
+    const [deliveryRun] = await db.select().from(reportDeliveryRuns)
+      .where(eq(reportDeliveryRuns.idempotencyKey, idempotencyKey))
+      .limit(1);
+    const retryRow = deliveryRun?.status === 'running'
+      ? await markDeliveryRunRetryable({
+          runId: deliveryRun.id,
+          attempt: Math.max(1, deliveryRun.attempt),
+          maxAttempts: SCHEDULE_MAX_ATTEMPTS,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        })
+      : deliveryRun;
+    await db.update(reportAlertRules).set({
+      lastDeliveryAt: new Date(),
+      lastDeliveryStatus: retryRow?.status ?? 'failed',
+      lastDeliveryError: trimText(error) ?? '预警评估失败',
+    }).where(eq(reportAlertRules.id, row.id));
+    return false;
+  }
+}
+
+async function retryAlertRun(runId: number): Promise<boolean> {
+  const [run] = await db.select().from(reportDeliveryRuns).where(eq(reportDeliveryRuns.id, runId)).limit(1);
+  if (!run?.alertRuleId) return false;
+  const row = await ensureAlertExists(run.alertRuleId);
+  const running = await claimRetryDeliveryRun(runId);
+  if (!running) return false;
+  const eventType = running.triggerType as AlertEventType;
+  const payload = (running.payloadSummary ?? {}) as Record<string, unknown>;
+  const checkedAt = new Date(String(payload.checkedAt ?? new Date().toISOString()));
+  const value = Number(payload.value ?? 0);
+  const hitCount = Number(payload.hitCount ?? 0);
+  const condition = String(payload.condition ?? buildCondition(row));
+  const channelResult = await performAlertNotification(row, running, {
+    eventType,
+    checkedAt,
+    value,
+    triggered: Boolean(running.triggered),
+    condition,
+    hitCount,
+  });
+  if (channelResult.status === 'success') {
+    await markAlertEvaluation(row, {
+      checkedAt,
+      value,
+      triggered: Boolean(running.triggered),
+      lastNotifiedAt: new Date(),
+      lastDeliveryAt: new Date(),
+      lastDeliveryStatus: 'success',
+      lastDeliveryError: null,
+    });
+    return Boolean(running.triggered);
+  }
+  const retryRow = await markDeliveryRunRetryable({
+    runId,
+    attempt: running.attempt,
+    maxAttempts: running.maxAttempts,
+    errorMessage: channelResult.errorMessage ?? '预警投递失败',
+  });
+  await db.update(reportAlertRules).set({
+    lastDeliveryAt: new Date(),
+    lastDeliveryStatus: retryRow.status,
+    lastDeliveryError: channelResult.errorMessage ?? '预警投递失败',
+  }).where(eq(reportAlertRules.id, row.id));
+  return Boolean(running.triggered);
+}
+
 export async function dispatchDueAlerts(): Promise<{ checked: number; triggered: number }> {
-  const rows = await db.select().from(reportAlertRules).where(eq(reportAlertRules.enabled, true));
   const now = new Date();
+  const baseWhere = and(
+    eq(reportAlertRules.enabled, true),
+    isNotNull(reportAlertRules.nextRunAt),
+    lte(reportAlertRules.nextRunAt, now),
+  )!;
+  const dueWhere = reportScopedWhere(reportAlertRules, baseWhere) ?? baseWhere;
+  const rows = await db.select().from(reportAlertRules)
+    .where(dueWhere);
+  const retryRunIds = await listDueRetryRunIds('alert');
   let triggered = 0;
   let checked = 0;
+  for (const retryRunId of retryRunIds) {
+    if (await retryAlertRun(retryRunId)) triggered++;
+  }
   for (const row of rows) {
-    if (!row.cron) continue;
     checked++;
-    try {
-      const prev = CronExpressionParser.parse(row.cron, { currentDate: now }).prev().toDate();
-      const last = row.lastCheckedAt ? new Date(row.lastCheckedAt).getTime() : 0;
-      if (prev.getTime() > last) {
-        const r = await evaluateAlert(row);
-        if (r.triggered) triggered++;
-      }
-    } catch (e) {
-      logger.warn('数据预警分发失败', { id: row.id, err: e instanceof Error ? e.message : String(e) });
-    }
+    const nextRunAt = row.nextRunAt;
+    if (!nextRunAt || !row.cron) continue;
+    const claim = computeScheduleClaim({
+      cron: row.cron,
+      timezone: row.timezone ?? REPORT_DEFAULT_TIMEZONE,
+      misfirePolicy: row.misfirePolicy ?? 'fire_once',
+      nextRunAt,
+      now,
+    });
+    const [claimed] = await db.update(reportAlertRules).set({ nextRunAt: claim.nextRunAt })
+      .where(and(eq(reportAlertRules.id, row.id), eq(reportAlertRules.enabled, true), eq(reportAlertRules.nextRunAt, nextRunAt)))
+      .returning();
+    if (!claimed || !claim.shouldExecute) continue;
+    if (await processScheduledAlert(row, nextRunAt)) triggered++;
   }
   return { checked, triggered };
 }

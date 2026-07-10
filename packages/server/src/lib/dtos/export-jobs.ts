@@ -1,6 +1,6 @@
 import { z } from '@hono/zod-openapi';
 
-const ExportJobFormatDTO = z.enum(['xlsx', 'csv']);
+const ExportJobFormatDTO = z.enum(['xlsx', 'csv', 'pdf']);
 const ExportJobStatusDTO = z.enum(['pending', 'running', 'success', 'failed', 'cancelled', 'expired']);
 const ExportJobExecutionModeDTO = z.enum(['sync', 'async']);
 const ExportJobRequestModeDTO = z.enum(['sync', 'async', 'auto']);

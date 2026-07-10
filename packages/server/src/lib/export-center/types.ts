@@ -1,7 +1,7 @@
 import type ExcelJS from 'exceljs';
 import type { JwtPayload } from '../../middleware/auth';
 
-export type ExportFormat = 'xlsx' | 'csv';
+export type ExportFormat = 'xlsx' | 'csv' | 'pdf';
 export type ExportRequestMode = 'sync' | 'async' | 'auto';
 export type ExportExecutionMode = 'sync' | 'async';
 export type ExportRenderMode = 'table' | 'layout' | 'custom';

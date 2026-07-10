@@ -23,7 +23,7 @@ registerExportDefinitions();
 const exportJobsRoute = new OpenAPIHono({ defaultHook: validationHook });
 
 const ExportJobStatusQuery = z.enum(['pending', 'running', 'success', 'failed', 'cancelled', 'expired']);
-const ExportJobFormatQuery = z.enum(['xlsx', 'csv']);
+const ExportJobFormatQuery = z.enum(['xlsx', 'csv', 'pdf']);
 
 const entitiesRoute = defineOpenAPIRoute({
   route: createRoute({

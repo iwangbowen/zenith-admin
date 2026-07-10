@@ -2,7 +2,7 @@
  * 报表字段显示格式化（语义层 lite，纯函数，前后端共用）。
  * 数字/百分比/货币/日期/字典翻译。日期值约定已是 'YYYY-MM-DD HH:mm:ss' 字符串。
  */
-import type { ReportFieldFormat } from './types';
+import type { ReportFieldFormat, ReportResultField } from './types';
 
 function fmtNumber(n: number, decimals: number | undefined, thousands: boolean | undefined): string {
   if (!Number.isFinite(n)) return '';
@@ -55,4 +55,12 @@ export function formatReportValue(
     default:
       return String(value);
   }
+}
+
+export function formatReportFieldValue(
+  field: Pick<ReportResultField, 'format'> | null | undefined,
+  value: unknown,
+  dictMap?: Record<string, string>,
+): string {
+  return formatReportValue(value, field?.format, dictMap);
 }

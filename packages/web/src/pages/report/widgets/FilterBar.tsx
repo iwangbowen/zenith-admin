@@ -9,15 +9,16 @@ interface FilterBarProps {
   onChange: (filterId: string, value: unknown) => void;
   /** 公开/匿名场景禁用「数据集动态选项」拉取（避免触发鉴权 401）*/
   disableDynamicOptions?: boolean;
+  dynamicOptions?: Record<string, Array<{ value: string; label: string }>>;
 }
 
 /** 全局筛选器运行时渲染（视图 / 设计器预览共用）*/
-export function FilterBar({ filters, values, onChange, disableDynamicOptions }: Readonly<FilterBarProps>) {
+export function FilterBar({ filters, values, onChange, disableDynamicOptions, dynamicOptions }: Readonly<FilterBarProps>) {
   const dynOptions = useReportFilterDynamicOptions(filters, disableDynamicOptions);
 
   function optionsOf(f: ReportFilter) {
     if (f.optionSource?.kind === 'static') return f.optionSource.options ?? [];
-    return dynOptions[f.id] ?? [];
+    return dynamicOptions?.[f.id] ?? dynOptions[f.id] ?? [];
   }
 
   if (!filters.length) return null;

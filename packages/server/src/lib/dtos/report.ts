@@ -1,5 +1,10 @@
 import { z } from '@hono/zod-openapi';
-import { REPORT_DATASOURCE_TYPES, REPORT_WIDGET_TYPES } from '@zenith/shared';
+import {
+  REPORT_DASHBOARD_LIFECYCLE_STATUSES,
+  REPORT_DASHBOARD_VERSION_SOURCES,
+  REPORT_DATASOURCE_TYPES,
+  REPORT_WIDGET_TYPES,
+} from '@zenith/shared';
 import { auditFields } from './_audit';
 
 const ReportFieldDTO = z.object({
@@ -15,6 +20,10 @@ const ReportFieldDTO = z.object({
     suffix: z.string().optional(),
     dictCode: z.string().optional(),
   }).optional(),
+});
+
+const ReportResultFieldDTO = ReportFieldDTO.extend({
+  source: z.enum(['declared', 'computed', 'inferred']).optional(),
 });
 
 const ReportGridItemDTO = z.object({
@@ -80,6 +89,11 @@ export const ReportDatasourceDTO = z
     type: z.enum(REPORT_DATASOURCE_TYPES),
     config: z.record(z.string(), z.unknown()),
     status: z.enum(['enabled', 'disabled']),
+    lastTestAt: z.string().nullable().optional(),
+    lastTestStatus: z.enum(['success', 'failed', 'unknown']).nullable().optional(),
+    lastTestLatencyMs: z.number().int().nullable().optional(),
+    lastTestError: z.string().nullable().optional(),
+    consecutiveFailures: z.number().int().optional(),
     remark: z.string().nullable().optional(),
     ...auditFields,
     createdAt: z.string(),
@@ -130,6 +144,23 @@ export const ReportDatasetRefsDTO = z
     })),
     printTemplates: z.array(z.object({ id: z.number().int(), name: z.string() })),
     alerts: z.array(z.object({ id: z.number().int(), name: z.string() })),
+    subscriptions: z.array(z.object({ id: z.number().int(), dashboardId: z.number().int(), name: z.string() })).optional(),
+    shares: z.array(z.object({ id: z.number().int(), dashboardId: z.number().int(), name: z.string() })).optional(),
+    embedTokens: z.array(z.object({ id: z.number().int(), dashboardId: z.number().int(), name: z.string() })).optional(),
+    nodes: z.array(z.object({
+      id: z.string(),
+      type: z.enum(['datasource', 'dataset', 'dashboard', 'widget', 'filter', 'print', 'alert', 'subscription', 'share', 'embed']),
+      refId: z.number().int().nullable().optional(),
+      parentId: z.string().nullable().optional(),
+      label: z.string(),
+      meta: z.record(z.string(), z.unknown()).optional(),
+    })).optional(),
+    edges: z.array(z.object({
+      id: z.string(),
+      source: z.string(),
+      target: z.string(),
+      label: z.string().nullable().optional(),
+    })).optional(),
   })
   .openapi('ReportDatasetRefs');
 
@@ -151,6 +182,12 @@ export const ReportDashboardDTO = z
     categoryName: z.string().nullable().optional(),
     favorited: z.boolean().optional(),
     status: z.enum(['enabled', 'disabled']),
+    lifecycleStatus: z.enum(REPORT_DASHBOARD_LIFECYCLE_STATUSES),
+    revision: z.number().int().positive(),
+    publishedSnapshot: z.record(z.string(), z.unknown()).nullable().optional(),
+    publishedAt: z.string().nullable().optional(),
+    publishedBy: z.number().int().nullable().optional(),
+    publishedByName: z.string().nullable().optional(),
     remark: z.string().nullable().optional(),
     ...auditFields,
     createdAt: z.string(),
@@ -162,19 +199,60 @@ export const ReportDashboardDTO = z
 export const ReportDataResultDTO = z
   .object({
     columns: z.array(z.string()),
+    fields: z.array(ReportResultFieldDTO),
     rows: z.array(z.record(z.string(), z.unknown())),
     total: z.number().nullable().optional(),
+    bytes: z.number().int().nullable().optional(),
+    truncated: z.boolean().optional(),
+    truncatedReason: z.string().nullable().optional(),
   })
   .openapi('ReportDataResult');
 
-/** 仪表盘批量取数结果：{ [widgetId]: ReportDataResult } */
-export const ReportDashboardDataDTO = z.record(z.string(), ReportDataResultDTO).openapi('ReportDashboardData');
+export const ReportWidgetDataErrorDTO = z.object({
+  code: z.number().int(),
+  message: z.string(),
+}).openapi('ReportWidgetDataError');
+
+export const ReportDashboardWidgetDataDTO = z.object({
+  data: ReportDataResultDTO.nullable(),
+  error: ReportWidgetDataErrorDTO.nullable(),
+  durationMs: z.number().int().nonnegative(),
+  cacheHit: z.boolean(),
+}).openapi('ReportDashboardWidgetData');
+
+/** 仪表盘批量取数结果：{ [widgetId]: { data, error, durationMs, cacheHit } } */
+export const ReportDashboardDataDTO = z.record(z.string(), ReportDashboardWidgetDataDTO).openapi('ReportDashboardData');
+
+export const ReportDatasetExecutionLogDTO = z.object({
+  id: z.number().int(),
+  datasetId: z.number().int().nullable(),
+  datasetName: z.string().nullable().optional(),
+  datasourceId: z.number().int().nullable(),
+  datasourceName: z.string().nullable().optional(),
+  userId: z.number().int().nullable(),
+  username: z.string().nullable().optional(),
+  tenantId: z.number().int().nullable(),
+  scene: z.string(),
+  sourceRefId: z.string().nullable().optional(),
+  durationMs: z.number().int(),
+  rowCount: z.number().int().nullable().optional(),
+  bytes: z.number().int().nullable().optional(),
+  truncated: z.boolean().optional(),
+  slow: z.boolean().optional(),
+  cacheHit: z.boolean(),
+  success: z.boolean(),
+  errorCode: z.number().int().nullable().optional(),
+  errorMessage: z.string().nullable().optional(),
+  paramKeys: z.array(z.string()).optional(),
+  executedAt: z.string(),
+}).openapi('ReportDatasetExecutionLog');
 
 export const ReportDashboardCategoryDTO = z
   .object({
     id: z.number().int(),
     name: z.string(),
     sort: z.number().int(),
+    dashboardCount: z.number().int().optional(),
     remark: z.string().nullable().optional(),
     ...auditFields,
     createdAt: z.string(),
@@ -182,17 +260,79 @@ export const ReportDashboardCategoryDTO = z
   })
   .openapi('ReportDashboardCategory');
 
+export const ReportLookupOptionDTO = z.object({
+  id: z.number().int(),
+  name: z.string(),
+  status: z.enum(['enabled', 'disabled']).nullable().optional(),
+  type: z.enum(REPORT_DATASOURCE_TYPES).nullable().optional(),
+  categoryId: z.number().int().nullable().optional(),
+  categoryName: z.string().nullable().optional(),
+  datasourceId: z.number().int().nullable().optional(),
+  datasourceName: z.string().nullable().optional(),
+  dashboardCount: z.number().int().optional(),
+}).openapi('ReportLookupOption');
+
+export const ReportRuntimeGovernanceDTO = z.object({
+  slowQueryMs: z.number().int(),
+  dashboardMaxConcurrent: z.number().int(),
+  datasetMaxRows: z.number().int(),
+  datasetMaxBytes: z.number().int(),
+}).openapi('ReportRuntimeGovernance');
+
+export const ReportExecutionStatsSlowItemDTO = z.object({
+  datasetId: z.number().int().nullable(),
+  datasetName: z.string().nullable().optional(),
+  datasourceId: z.number().int().nullable(),
+  datasourceName: z.string().nullable().optional(),
+  scene: z.string(),
+  count: z.number().int(),
+  avgDurationMs: z.number().int(),
+  maxDurationMs: z.number().int(),
+  lastExecutedAt: z.string().nullable(),
+}).openapi('ReportExecutionStatsSlowItem');
+
+export const ReportExecutionStatsDTO = z.object({
+  total: z.number().int(),
+  successCount: z.number().int(),
+  successRate: z.number(),
+  p95DurationMs: z.number().int(),
+  avgDurationMs: z.number().int(),
+  cacheHitRate: z.number(),
+  slowCount: z.number().int(),
+  truncatedCount: z.number().int(),
+  governance: ReportRuntimeGovernanceDTO,
+  topSlowQueries: z.array(ReportExecutionStatsSlowItemDTO),
+}).openapi('ReportExecutionStats');
+
 export const ReportDashboardVersionDTO = z
   .object({
     id: z.number().int(),
     dashboardId: z.number().int(),
     version: z.number().int(),
     snapshot: z.record(z.string(), z.unknown()),
+    source: z.enum(REPORT_DASHBOARD_VERSION_SOURCES),
     remark: z.string().nullable().optional(),
     createdBy: z.number().int().nullable().optional(),
     createdAt: z.string(),
   })
   .openapi('ReportDashboardVersion');
+
+export const ReportDashboardVersionDiffDTO = z
+  .object({
+    leftLabel: z.string(),
+    rightLabel: z.string(),
+    summary: z.array(z.string()),
+    widgets: z.object({
+      added: z.array(z.object({ id: z.string(), title: z.string(), type: z.string(), changedFields: z.array(z.string()).optional() })),
+      removed: z.array(z.object({ id: z.string(), title: z.string(), type: z.string(), changedFields: z.array(z.string()).optional() })),
+      modified: z.array(z.object({ id: z.string(), title: z.string(), type: z.string(), changedFields: z.array(z.string()).optional() })),
+    }),
+    layoutChanged: z.boolean(),
+    filtersChanged: z.boolean(),
+    configChanged: z.boolean(),
+    metadataChanged: z.boolean(),
+  })
+  .openapi('ReportDashboardVersionDiff');
 
 export const ReportDashboardShareDTO = z
   .object({
@@ -202,6 +342,9 @@ export const ReportDashboardShareDTO = z
     enabled: z.boolean(),
     hasPassword: z.boolean().optional(),
     expireAt: z.string().nullable().optional(),
+    maxAccessCount: z.number().int().nullable().optional(),
+    allowedCidrs: z.array(z.string()).optional(),
+    allowedIps: z.array(z.string()).optional(),
     accessCount: z.number().int().optional(),
     lastAccessAt: z.string().nullable().optional(),
     createdBy: z.number().int().nullable().optional(),
@@ -210,7 +353,26 @@ export const ReportDashboardShareDTO = z
   })
   .openapi('ReportDashboardShare');
 
+export const ReportDashboardEmbedTokenDTO = z
+  .object({
+    id: z.number().int(),
+    dashboardId: z.number().int(),
+    token: z.string(),
+    allowedFilterIds: z.array(z.string()),
+    fixedFilters: z.record(z.string(), z.unknown()),
+    expireAt: z.string().nullable().optional(),
+    revokedAt: z.string().nullable().optional(),
+    remark: z.string().nullable().optional(),
+    createdBy: z.number().int().nullable().optional(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('ReportDashboardEmbedToken');
+
 const ReportNotifyChannelDTO = z.enum(['email', 'inApp', 'webhook']);
+const ReportScheduleMisfirePolicyDTO = z.enum(['skip', 'fire_once']);
+const ReportDeliveryStatusDTO = z.enum(['pending', 'running', 'success', 'partial', 'failed', 'cancelled']);
+const ReportDeliveryTriggerTypeDTO = z.enum(['manual', 'scheduled', 'trigger', 'recover']);
 
 export const ReportDashboardSubscriptionDTO = z
   .object({
@@ -218,17 +380,72 @@ export const ReportDashboardSubscriptionDTO = z
     dashboardId: z.number().int(),
     dashboardName: z.string().nullable().optional(),
     cron: z.string(),
+    timezone: z.string(),
+    misfirePolicy: ReportScheduleMisfirePolicyDTO,
     channels: z.array(ReportNotifyChannelDTO),
     recipients: z.string().nullable().optional(),
     webhookUrl: z.string().nullable().optional(),
     enabled: z.boolean(),
     remark: z.string().nullable().optional(),
     lastRunAt: z.string().nullable().optional(),
+    nextRunAt: z.string().nullable().optional(),
+    lastDeliveryAt: z.string().nullable().optional(),
+    lastDeliveryStatus: ReportDeliveryStatusDTO.nullable().optional(),
+    lastDeliveryError: z.string().nullable().optional(),
     ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
   })
   .openapi('ReportDashboardSubscription');
+
+export const ReportDeliveryAttemptDTO = z
+  .object({
+    id: z.number().int(),
+    runId: z.number().int(),
+    channel: ReportNotifyChannelDTO,
+    attempt: z.number().int(),
+    status: ReportDeliveryStatusDTO,
+    durationMs: z.number().int().nullable().optional(),
+    errorMessage: z.string().nullable().optional(),
+    payloadSummary: z.record(z.string(), z.unknown()).nullable().optional(),
+    startedAt: z.string().nullable().optional(),
+    completedAt: z.string().nullable().optional(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('ReportDeliveryAttempt');
+
+export const ReportDeliveryRunDTO = z
+  .object({
+    id: z.number().int(),
+    targetType: z.enum(['subscription', 'alert']),
+    subscriptionId: z.number().int().nullable().optional(),
+    alertRuleId: z.number().int().nullable().optional(),
+    dashboardId: z.number().int().nullable().optional(),
+    datasetId: z.number().int().nullable().optional(),
+    targetName: z.string().nullable().optional(),
+    triggerType: ReportDeliveryTriggerTypeDTO,
+    status: ReportDeliveryStatusDTO,
+    idempotencyKey: z.string(),
+    attempt: z.number().int(),
+    maxAttempts: z.number().int(),
+    durationMs: z.number().int().nullable().optional(),
+    errorMessage: z.string().nullable().optional(),
+    payloadSummary: z.record(z.string(), z.unknown()).nullable().optional(),
+    lastValue: z.number().nullable().optional(),
+    triggered: z.boolean().nullable().optional(),
+    acknowledgedAt: z.string().nullable().optional(),
+    acknowledgedBy: z.number().int().nullable().optional(),
+    acknowledgedByName: z.string().nullable().optional(),
+    acknowledgeNote: z.string().nullable().optional(),
+    startedAt: z.string().nullable().optional(),
+    completedAt: z.string().nullable().optional(),
+    nextRetryAt: z.string().nullable().optional(),
+    attempts: z.array(ReportDeliveryAttemptDTO).optional(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('ReportDeliveryRun');
 
 export const ReportPublicDashboardDTO = z
   .object({
@@ -238,8 +455,17 @@ export const ReportPublicDashboardDTO = z
     widgets: z.array(ReportWidgetDTO),
     filters: z.array(ReportFilterDTO),
     config: z.record(z.string(), z.unknown()),
+    filterOptions: z.record(z.string(), z.array(z.object({ value: z.string(), label: z.string() }))).optional(),
   })
   .openapi('ReportPublicDashboard');
+
+export const ReportPublicAccessSessionDTO = z
+  .object({
+    accessSessionToken: z.string(),
+    expiresAt: z.string(),
+    dashboard: ReportPublicDashboardDTO,
+  })
+  .openapi('ReportPublicAccessSession');
 
 /** 数据源连接测试结果 */
 export const ReportDatasourceTestResultDTO = z
@@ -256,10 +482,25 @@ const ReportPrintGridDTO = z.object({
     row: z.number().int(),
     col: z.number().int(),
     v: z.union([z.string(), z.number(), z.boolean(), z.null()]).optional(),
+    kind: z.enum(['text', 'formula', 'image', 'qrcode', 'barcode']).optional(),
+    formula: z.string().optional(),
+    numFmt: z.string().optional(),
+    image: z.object({
+      src: z.string(),
+      width: z.number().optional(),
+      height: z.number().optional(),
+      fit: z.enum(['contain', 'cover']).optional(),
+      alt: z.string().optional(),
+    }).optional(),
     s: z.record(z.string(), z.unknown()).optional(),
   })),
   merges: z.array(z.object({ row: z.number().int(), col: z.number().int(), rowSpan: z.number().int(), colSpan: z.number().int() })).optional(),
 }).openapi('ReportPrintGrid');
+
+const ReportPrintRowRangeDTO = z.object({
+  start: z.number().int(),
+  end: z.number().int(),
+}).openapi('ReportPrintRowRange');
 
 const ReportPrintPageConfigDTO = z.object({
   paper: z.enum(['A4', 'A3', 'A5', 'Letter']).optional(),
@@ -268,7 +509,44 @@ const ReportPrintPageConfigDTO = z.object({
   header: z.string().optional(),
   footer: z.string().optional(),
   backgroundImage: z.string().optional(),
+  pageBreaks: z.array(z.number().int()).optional(),
+  repeatHeaderRows: ReportPrintRowRangeDTO.nullable().optional(),
+  rowsPerPage: z.number().int().optional(),
+  calculateRowsPerPage: z.boolean().optional(),
+  detailDirection: z.enum(['vertical', 'horizontal']).optional(),
+  groupByFields: z.array(z.string()).optional(),
+  groupHeaderRows: ReportPrintRowRangeDTO.nullable().optional(),
+  groupFooterRows: ReportPrintRowRangeDTO.nullable().optional(),
+  pageSubtotalRows: ReportPrintRowRangeDTO.nullable().optional(),
+  totalRows: ReportPrintRowRangeDTO.nullable().optional(),
 }).openapi('ReportPrintPageConfig');
+
+const ReportPrintSheetDTO: z.ZodTypeAny = z.object({
+  id: z.string(),
+  name: z.string(),
+  grid: ReportPrintGridDTO,
+  pageConfig: ReportPrintPageConfigDTO.optional(),
+}).openapi('ReportPrintSheet');
+
+const ReportPrintRenderPageDTO: z.ZodTypeAny = z.object({
+  sheetId: z.string(),
+  sheetName: z.string(),
+  pageNumber: z.number().int(),
+  totalPages: z.number().int(),
+  grid: ReportPrintGridDTO,
+  pageConfig: ReportPrintPageConfigDTO,
+  headerText: z.string().optional(),
+  footerText: z.string().optional(),
+}).openapi('ReportPrintRenderPage');
+
+const ReportPrintSheetRenderResultDTO: z.ZodTypeAny = z.object({
+  id: z.string(),
+  name: z.string(),
+  grid: ReportPrintGridDTO,
+  pageConfig: ReportPrintPageConfigDTO,
+  pages: z.array(ReportPrintRenderPageDTO),
+  rowCount: z.number().int(),
+}).openapi('ReportPrintSheetRenderResult');
 
 export const ReportPrintTemplateDTO = z
   .object({
@@ -276,7 +554,7 @@ export const ReportPrintTemplateDTO = z
     name: z.string(),
     datasetId: z.number().int().nullable().optional(),
     datasetName: z.string().nullable().optional(),
-    content: z.object({ workbook: z.unknown().optional(), grid: ReportPrintGridDTO.optional() }),
+    content: z.object({ workbook: z.unknown().optional(), grid: ReportPrintGridDTO.optional(), sheets: z.array(ReportPrintSheetDTO).optional() }),
     params: z.array(ReportDatasetParamDTO),
     pageConfig: ReportPrintPageConfigDTO,
     status: z.enum(['enabled', 'disabled']),
@@ -293,6 +571,8 @@ export const ReportPrintRenderResultDTO = z
     name: z.string(),
     grid: ReportPrintGridDTO,
     pageConfig: ReportPrintPageConfigDTO,
+    pages: z.array(ReportPrintRenderPageDTO),
+    sheets: z.array(ReportPrintSheetRenderResultDTO),
   })
   .openapi('ReportPrintRenderResult');
 
@@ -314,6 +594,8 @@ export const ReportAlertRuleDTO = z
     op: z.enum(['gt', 'gte', 'lt', 'lte', 'eq', 'neq']),
     threshold: z.number(),
     cron: z.string().nullable().optional(),
+    timezone: z.string(),
+    misfirePolicy: ReportScheduleMisfirePolicyDTO,
     channels: z.array(ReportNotifyChannelDTO),
     recipients: z.string().nullable().optional(),
     webhookUrl: z.string().nullable().optional(),
@@ -324,6 +606,10 @@ export const ReportAlertRuleDTO = z
     lastTriggered: z.boolean().nullable().optional(),
     lastValue: z.number().nullable().optional(),
     lastNotifiedAt: z.string().nullable().optional(),
+    nextRunAt: z.string().nullable().optional(),
+    lastDeliveryAt: z.string().nullable().optional(),
+    lastDeliveryStatus: ReportDeliveryStatusDTO.nullable().optional(),
+    lastDeliveryError: z.string().nullable().optional(),
     remark: z.string().nullable().optional(),
     ...auditFields,
     createdAt: z.string(),
@@ -336,20 +622,33 @@ export const ReportAlertEvalResultDTO = z
   .object({
     value: z.number(),
     triggered: z.boolean(),
+    status: ReportDeliveryStatusDTO.nullable().optional(),
+    deliveryRunId: z.number().int().nullable().optional(),
     hits: z.array(z.object({ group: z.string(), value: z.number() })).optional(),
   })
   .openapi('ReportAlertEvalResult');
 
 // ─── 仪表盘评论 ──────────────────────────────────────────────────────────────
-export const ReportDashboardCommentDTO = z
-  .object({
-    id: z.number().int(),
-    dashboardId: z.number().int(),
-    widgetId: z.string().nullable().optional(),
-    content: z.string(),
-    userId: z.number().int(),
-    userName: z.string().nullable().optional(),
-    userAvatar: z.string().nullable().optional(),
-    createdAt: z.string(),
-  })
-  .openapi('ReportDashboardComment');
+const ReportDashboardCommentBaseDTO = z.object({
+  id: z.number().int(),
+  dashboardId: z.number().int(),
+  widgetId: z.string().nullable().optional(),
+  parentId: z.number().int().nullable().optional(),
+  content: z.string(),
+  userId: z.number().int().nullable().optional(),
+  userName: z.string().nullable().optional(),
+  userAvatar: z.string().nullable().optional(),
+  resolvedAt: z.string().nullable().optional(),
+  resolvedBy: z.number().int().nullable().optional(),
+  resolvedByName: z.string().nullable().optional(),
+  deletedAt: z.string().nullable().optional(),
+  updatedAt: z.string(),
+  createdAt: z.string(),
+  canEdit: z.boolean().optional(),
+  canDelete: z.boolean().optional(),
+  canResolve: z.boolean().optional(),
+});
+
+export const ReportDashboardCommentDTO: z.ZodTypeAny = ReportDashboardCommentBaseDTO.extend({
+  replies: z.lazy((): z.ZodArray<typeof ReportDashboardCommentDTO> => z.array(ReportDashboardCommentDTO)).optional(),
+}).openapi('ReportDashboardComment');

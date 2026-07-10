@@ -6,6 +6,7 @@
 import { ensureDatasetExists, getDatasetData } from '../../../services/report/report-dataset.service';
 import { defineExport } from '../registry';
 import type { ExportColumn, ExportColumnType } from '../types';
+import { formatReportFieldValue } from '@zenith/shared';
 import type { ReportField, ReportComputedField } from '@zenith/shared';
 
 const EXPORT_MAX_ROWS = 5000;
@@ -60,8 +61,8 @@ export const reportDatasetExportDefinition = defineExport<ReportDatasetExportQue
     ];
     let defs = declared;
     if (defs.length === 0) {
-      const probe = await getDatasetData(datasetId, params, limit);
-      defs = probe.columns.map((name) => ({ name, label: name, type: undefined }));
+      const probe = await getDatasetData(datasetId, params, limit, { scene: 'export', sourceRefId: datasetId });
+      defs = probe.fields.map((field) => ({ name: field.name, label: field.label, type: field.type as string | undefined }));
     }
     return defs.map<ExportColumn>((f) => ({
       key: f.name,
@@ -72,12 +73,18 @@ export const reportDatasetExportDefinition = defineExport<ReportDatasetExportQue
   },
   countRows: async (query) => {
     const { datasetId, params, limit } = pickQuery(query);
-    const data = await getDatasetData(datasetId, params, limit);
+    const data = await getDatasetData(datasetId, params, limit, { scene: 'export', sourceRefId: datasetId });
     return data.total ?? data.rows.length;
   },
   streamRows: async (query) => {
     const { datasetId, params, limit } = pickQuery(query);
-    const data = await getDatasetData(datasetId, params, limit);
-    return data.rows;
+    const data = await getDatasetData(datasetId, params, limit, { scene: 'export', sourceRefId: datasetId });
+    const fieldMap = new Map(data.fields.map((field) => [field.name, field]));
+    return data.rows.map((row) => Object.fromEntries(
+      Object.entries(row).map(([key, value]) => {
+        const field = fieldMap.get(key);
+        return [key, field?.format ? formatReportFieldValue(field, value) : value];
+      }),
+    ));
   },
 });

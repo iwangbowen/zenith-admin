@@ -1,0 +1,2 @@
+ALTER TABLE "report_dashboard_shares" ADD COLUMN "session_version" integer DEFAULT 1 NOT NULL;--> statement-breakpoint
+ALTER TABLE "report_dashboards" ADD COLUMN "lifecycle_initialized" boolean DEFAULT false NOT NULL;

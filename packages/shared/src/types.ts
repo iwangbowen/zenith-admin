@@ -1,4 +1,5 @@
 import type { AiProvider, OAuthProviderType, PaymentChannel, PaymentMethod, PaymentOrderStatus, PaymentRefundStatus, PaymentRefundApprovalStatus, PaymentReconStatus, PaymentReconResult, PaymentReconHandleStatus, PaymentWebhookDeliveryStatus, PaymentLedgerDirection, PaymentLedgerType, PaymentSettlementStatus, PaymentSharingReceiverType, PaymentSharingOrderStatus, PaymentLinkStatus, PaymentRiskScope, PaymentTransferStatus, MemberStatus, PointTxType, WalletTxType, CouponType, CouponValidType, CouponTemplateStatus, MemberCouponStatus, WorkflowFormType } from './constants';
+import { REPORT_DASHBOARD_LIFECYCLE_STATUSES, REPORT_DASHBOARD_VERSION_SOURCES } from './constants';
 
 export type EntityStatus = 'enabled' | 'disabled';
 
@@ -337,7 +338,7 @@ export interface ManagedFile {
 
 // ─── Export Center ───────────────────────────────────────────────────────
 
-export type ExportJobFormat = 'xlsx' | 'csv';
+export type ExportJobFormat = 'xlsx' | 'csv' | 'pdf';
 export type ExportJobStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled' | 'expired';
 export type ExportJobExecutionMode = 'sync' | 'async';
 export type ExportJobRequestMode = 'sync' | 'async' | 'auto';
@@ -6991,6 +6992,11 @@ export interface ReportDatasource {
   type: ReportDatasourceType;
   config: ReportDatasourceConfig;
   status: 'enabled' | 'disabled';
+  lastTestAt?: string | null;
+  lastTestStatus?: 'success' | 'failed' | 'unknown' | null;
+  lastTestLatencyMs?: number | null;
+  lastTestError?: string | null;
+  consecutiveFailures?: number;
   remark?: string | null;
   createdBy?: number | null;
   updatedBy?: number | null;
@@ -7034,6 +7040,16 @@ export interface ReportComputedField {
   type?: ReportFieldType;
 }
 
+export type ReportSortOrder = 'asc' | 'desc';
+
+export interface ReportDatasetQueryOptions {
+  limit?: number;
+  page?: number;
+  pageSize?: number;
+  sortField?: string;
+  sortOrder?: ReportSortOrder;
+}
+
 /** 可视化建模：指标（聚合列） */
 export interface ReportVisualMetric {
   field: string;
@@ -7046,15 +7062,25 @@ export interface ReportVisualFilter {
   op: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'like';
   value: string;
 }
+export interface ReportVisualJoin {
+  type: 'inner' | 'left';
+  table: string;
+  alias?: string;
+  sourceAlias?: string;
+  sourceField: string;
+  targetField: string;
+}
 /** 可视化建模模型（选表拖字段生成 SQL，内置库专用） */
 export interface ReportVisualModel {
   table: string;
+  alias?: string;
+  joins?: ReportVisualJoin[];
   /** 维度列（GROUP BY） */
   dimensions: string[];
   /** 指标列（聚合） */
   metrics: ReportVisualMetric[];
   filters?: ReportVisualFilter[];
-  orderBy?: { field: string; order: 'asc' | 'desc' } | null;
+  orderBy?: { field: string; order: ReportSortOrder } | null;
   limit?: number | null;
 }
 
@@ -7145,10 +7171,113 @@ export interface ReportDatasetMaterialize {
 }
 
 /** 数据集取数结果 */
+export interface ReportResultField extends ReportField {
+  source?: 'declared' | 'computed' | 'inferred';
+}
+
 export interface ReportDataResult {
   columns: string[];
+  fields: ReportResultField[];
   rows: Record<string, unknown>[];
   total?: number | null;
+  bytes?: number | null;
+  truncated?: boolean;
+  truncatedReason?: string | null;
+}
+
+export interface ReportWidgetDataError {
+  code: number;
+  message: string;
+}
+
+export interface ReportWidgetDataResult {
+  data: ReportDataResult | null;
+  error: ReportWidgetDataError | null;
+  durationMs: number;
+  cacheHit: boolean;
+}
+
+export interface ReportDashboardDataRequest {
+  filters?: Record<string, unknown>;
+  limit?: number;
+  widgetQueries?: Record<string, ReportDatasetQueryOptions>;
+}
+
+export interface ReportDatasetExecutionLog {
+  id: number;
+  datasetId: number | null;
+  datasetName?: string | null;
+  datasourceId: number | null;
+  datasourceName?: string | null;
+  userId: number | null;
+  username?: string | null;
+  tenantId: number | null;
+  scene: string;
+  sourceRefId?: string | null;
+  durationMs: number;
+  rowCount: number | null;
+  bytes?: number | null;
+  truncated?: boolean;
+  slow?: boolean;
+  cacheHit: boolean;
+  success: boolean;
+  errorCode?: number | null;
+  errorMessage?: string | null;
+  paramKeys?: string[];
+  executedAt: string;
+}
+
+export interface ReportLookupOption {
+  id: number;
+  name: string;
+  status?: 'enabled' | 'disabled' | null;
+  type?: ReportDatasourceType | null;
+  categoryId?: number | null;
+  categoryName?: string | null;
+  datasourceId?: number | null;
+  datasourceName?: string | null;
+  dashboardCount?: number;
+}
+
+export interface ReportBatchStatusInput {
+  ids: number[];
+  status: 'enabled' | 'disabled';
+}
+
+export interface ReportCloneInput {
+  name?: string;
+}
+
+export interface ReportRuntimeGovernance {
+  slowQueryMs: number;
+  dashboardMaxConcurrent: number;
+  datasetMaxRows: number;
+  datasetMaxBytes: number;
+}
+
+export interface ReportExecutionStatsSlowItem {
+  datasetId: number | null;
+  datasetName?: string | null;
+  datasourceId: number | null;
+  datasourceName?: string | null;
+  scene: string;
+  count: number;
+  avgDurationMs: number;
+  maxDurationMs: number;
+  lastExecutedAt: string | null;
+}
+
+export interface ReportExecutionStats {
+  total: number;
+  successCount: number;
+  successRate: number;
+  p95DurationMs: number;
+  avgDurationMs: number;
+  cacheHitRate: number;
+  slowCount: number;
+  truncatedCount: number;
+  governance: ReportRuntimeGovernance;
+  topSlowQueries: ReportExecutionStatsSlowItem[];
 }
 
 /** 网格布局项（对齐 react-grid-layout 的 Layout item） */
@@ -7307,6 +7436,12 @@ export interface ReportDashboard {
   /** 当前用户是否已收藏（列表/详情按需附加） */
   favorited?: boolean;
   status: 'enabled' | 'disabled';
+  lifecycleStatus: ReportDashboardLifecycleStatus;
+  revision: number;
+  publishedSnapshot?: ReportDashboardSnapshot | null;
+  publishedAt?: string | null;
+  publishedBy?: number | null;
+  publishedByName?: string | null;
   remark?: string | null;
   createdBy?: number | null;
   updatedBy?: number | null;
@@ -7438,19 +7573,29 @@ export interface ReportDashboardCategory {
   id: number;
   name: string;
   sort: number;
+  dashboardCount?: number;
   remark?: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
-/** 仪表盘版本快照内容 */
-export interface ReportDashboardVersionSnapshot {
+export type ReportDashboardLifecycleStatus = typeof REPORT_DASHBOARD_LIFECYCLE_STATUSES[number];
+export type ReportDashboardVersionSource = typeof REPORT_DASHBOARD_VERSION_SOURCES[number];
+
+/** 仪表盘快照内容（发布态 / 版本历史统一复用） */
+export interface ReportDashboardSnapshot {
+  name: string;
   layout: ReportGridItem[];
   canvasLayout?: ReportCanvasItem[];
   widgets: ReportWidget[];
   filters: ReportFilter[];
   config: ReportDashboardConfig;
+  categoryId?: number | null;
+  remark?: string | null;
 }
+
+/** 仪表盘版本快照内容 */
+export interface ReportDashboardVersionSnapshot extends ReportDashboardSnapshot {}
 
 /** 仪表盘版本 */
 export interface ReportDashboardVersion {
@@ -7458,9 +7603,32 @@ export interface ReportDashboardVersion {
   dashboardId: number;
   version: number;
   snapshot: ReportDashboardVersionSnapshot;
+  source: ReportDashboardVersionSource;
   remark?: string | null;
   createdBy?: number | null;
   createdAt: string;
+}
+
+export interface ReportDashboardVersionWidgetChange {
+  id: string;
+  title: string;
+  type: ReportWidgetType;
+  changedFields?: string[];
+}
+
+export interface ReportDashboardVersionDiff {
+  leftLabel: string;
+  rightLabel: string;
+  summary: string[];
+  widgets: {
+    added: ReportDashboardVersionWidgetChange[];
+    removed: ReportDashboardVersionWidgetChange[];
+    modified: ReportDashboardVersionWidgetChange[];
+  };
+  layoutChanged: boolean;
+  filtersChanged: boolean;
+  configChanged: boolean;
+  metadataChanged: boolean;
 }
 
 /** 公开分享链接 */
@@ -7471,6 +7639,9 @@ export interface ReportDashboardShare {
   enabled: boolean;
   hasPassword?: boolean;
   expireAt?: string | null;
+  maxAccessCount?: number | null;
+  allowedCidrs?: string[];
+  allowedIps?: string[];
   /** 累计访问次数（只读聚合，含被拒绝的尝试） */
   accessCount?: number;
   /** 最近访问时间（只读聚合） */
@@ -7480,8 +7651,72 @@ export interface ReportDashboardShare {
   updatedAt: string;
 }
 
+export interface ReportDashboardEmbedToken {
+  id: number;
+  dashboardId: number;
+  token: string;
+  allowedFilterIds: string[];
+  fixedFilters: Record<string, unknown>;
+  expireAt?: string | null;
+  revokedAt?: string | null;
+  remark?: string | null;
+  createdBy?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** 通知渠道（预警/订阅共用）：邮件 / 站内信 / Webhook（企微/钉钉机器人或通用端点） */
 export type ReportNotifyChannel = 'email' | 'inApp' | 'webhook';
+
+export type ReportScheduleMisfirePolicy = 'skip' | 'fire_once';
+export type ReportDeliveryTargetType = 'subscription' | 'alert';
+export type ReportDeliveryTriggerType = 'manual' | 'scheduled' | 'trigger' | 'recover';
+export type ReportDeliveryStatus = 'pending' | 'running' | 'success' | 'partial' | 'failed' | 'cancelled';
+
+export interface ReportDeliveryAttempt {
+  id: number;
+  runId: number;
+  channel: ReportNotifyChannel;
+  attempt: number;
+  status: ReportDeliveryStatus;
+  durationMs?: number | null;
+  errorMessage?: string | null;
+  payloadSummary?: Record<string, unknown> | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReportDeliveryRun {
+  id: number;
+  targetType: ReportDeliveryTargetType;
+  subscriptionId?: number | null;
+  alertRuleId?: number | null;
+  dashboardId?: number | null;
+  datasetId?: number | null;
+  targetName?: string | null;
+  triggerType: ReportDeliveryTriggerType;
+  status: ReportDeliveryStatus;
+  idempotencyKey: string;
+  attempt: number;
+  maxAttempts: number;
+  durationMs?: number | null;
+  errorMessage?: string | null;
+  payloadSummary?: Record<string, unknown> | null;
+  lastValue?: number | null;
+  triggered?: boolean | null;
+  acknowledgedAt?: string | null;
+  acknowledgedBy?: number | null;
+  acknowledgedByName?: string | null;
+  acknowledgeNote?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  nextRetryAt?: string | null;
+  attempts?: ReportDeliveryAttempt[];
+  createdAt: string;
+  updatedAt: string;
+}
 
 /** 订阅推送（按 Cron 推送报表摘要） */
 export interface ReportDashboardSubscription {
@@ -7489,6 +7724,8 @@ export interface ReportDashboardSubscription {
   dashboardId: number;
   dashboardName?: string | null;
   cron: string;
+  timezone: string;
+  misfirePolicy: ReportScheduleMisfirePolicy;
   channels: ReportNotifyChannel[];
   /** 收件人邮箱（逗号分隔）；inApp 推给创建者 */
   recipients?: string | null;
@@ -7497,6 +7734,10 @@ export interface ReportDashboardSubscription {
   enabled: boolean;
   remark?: string | null;
   lastRunAt?: string | null;
+  nextRunAt?: string | null;
+  lastDeliveryAt?: string | null;
+  lastDeliveryStatus?: ReportDeliveryStatus | null;
+  lastDeliveryError?: string | null;
   createdBy?: number | null;
   createdAt: string;
   updatedAt: string;
@@ -7510,12 +7751,32 @@ export interface ReportPublicDashboard {
   widgets: ReportWidget[];
   filters: ReportFilter[];
   config: ReportDashboardConfig;
+  filterOptions?: Record<string, Array<{ value: string; label: string }>>;
+}
+
+export interface ReportPublicAccessSession {
+  accessSessionToken: string;
+  expiresAt: string;
+  dashboard: ReportPublicDashboard;
 }
 
 // ─── 报表中心 · 第六期：类 Excel 单据/中国式报表 ──────────────────────────────
 
 /** 打印报表单元格样式子集（不耦合 Univer，供归一化网格 + 导出复用） */
+export interface ReportPrintBorderSide {
+  style?: 'thin' | 'medium' | 'dashed' | 'dotted' | 'double';
+  color?: string;
+}
+
+export interface ReportPrintBorder {
+  top?: ReportPrintBorderSide;
+  right?: ReportPrintBorderSide;
+  bottom?: ReportPrintBorderSide;
+  left?: ReportPrintBorderSide;
+}
+
 export interface ReportPrintCellStyle {
+  fontFamily?: string;
   bold?: boolean;
   italic?: boolean;
   fontSize?: number;
@@ -7523,10 +7784,18 @@ export interface ReportPrintCellStyle {
   background?: string;
   align?: 'left' | 'center' | 'right';
   valign?: 'top' | 'middle' | 'bottom';
-  /** 是否描边（四边细边框） */
-  border?: boolean;
+  /** 是否描边（兼容旧 boolean；新结构支持四边独立边框） */
+  border?: boolean | ReportPrintBorder;
   /** 自动换行 */
   wrap?: boolean;
+}
+
+export interface ReportPrintCellImage {
+  src: string;
+  width?: number;
+  height?: number;
+  fit?: 'contain' | 'cover';
+  alt?: string;
 }
 
 /** 打印报表单元格（归一化网格项） */
@@ -7536,6 +7805,12 @@ export interface ReportPrintCell {
   /** 原始值/表达式文本：${field}=纵向扩展明细，#{field}=标量，${SUM(field)}=聚合，其余=字面量 */
   v?: string | number | boolean | null;
   s?: ReportPrintCellStyle;
+  kind?: 'text' | 'formula' | 'image' | 'qrcode' | 'barcode';
+  /** Excel/Univer 公式串（尽量保留，不在服务端求值） */
+  formula?: string;
+  /** 数字/日期格式（如 #,##0.00） */
+  numFmt?: string;
+  image?: ReportPrintCellImage;
 }
 
 /** 合并单元格区域 */
@@ -7558,12 +7833,16 @@ export interface ReportPrintGrid {
   merges?: ReportPrintMerge[];
 }
 
-/** 打印报表内容：Univer 工作簿快照(编辑用) + 归一化网格(渲染/导出用) */
-export interface ReportPrintContent {
-  /** Univer IWorkbookData 快照（设计器加载用，结构由前端维护） */
-  workbook?: unknown;
-  /** 归一化网格（保存时由前端从 workbook 提取，供后端渲染/导出复用） */
-  grid?: ReportPrintGrid;
+export interface ReportPrintRowRange {
+  start: number;
+  end: number;
+}
+
+export interface ReportPrintSheet {
+  id: string;
+  name: string;
+  grid: ReportPrintGrid;
+  pageConfig?: ReportPrintPageConfig;
 }
 
 /** 页面/打印配置 */
@@ -7578,6 +7857,36 @@ export interface ReportPrintPageConfig {
   footer?: string;
   /** 套打背景图 URL（叠加预印表单） */
   backgroundImage?: string;
+  /** 手动强制分页（逻辑行号，1-based，作用于渲染后的正文行） */
+  pageBreaks?: number[];
+  /** 每页重复表头的模板行范围 */
+  repeatHeaderRows?: ReportPrintRowRange | null;
+  /** 固定每页正文行数（不含重复表头） */
+  rowsPerPage?: number;
+  /** 按纸张可用高度自动计算分页 */
+  calculateRowsPerPage?: boolean;
+  /** 明细扩展方向：vertical=纵向明细带；horizontal=横向扩展列 */
+  detailDirection?: 'vertical' | 'horizontal';
+  /** 分组字段 */
+  groupByFields?: string[];
+  /** 组头模板行范围 */
+  groupHeaderRows?: ReportPrintRowRange | null;
+  /** 组尾/组小计模板行范围 */
+  groupFooterRows?: ReportPrintRowRange | null;
+  /** 页小计模板行范围 */
+  pageSubtotalRows?: ReportPrintRowRange | null;
+  /** 总计模板行范围 */
+  totalRows?: ReportPrintRowRange | null;
+}
+
+/** 打印报表内容：Univer 工作簿快照(编辑用) + 归一化网格/多 Sheet(渲染/导出用) */
+export interface ReportPrintContent {
+  /** Univer IWorkbookData 快照（设计器加载用，结构由前端维护） */
+  workbook?: unknown;
+  /** 归一化单 sheet（旧版兼容） */
+  grid?: ReportPrintGrid;
+  /** 归一化多 sheet（新版） */
+  sheets?: ReportPrintSheet[];
 }
 
 /** 打印报表模板 */
@@ -7597,11 +7906,36 @@ export interface ReportPrintTemplate {
   updatedAt: string;
 }
 
-/** 填充后的打印报表（渲染/导出结果） */
-export interface ReportPrintRenderResult {
+export interface ReportPrintRenderPage {
+  sheetId: string;
+  sheetName: string;
+  pageNumber: number;
+  totalPages: number;
+  grid: ReportPrintGrid;
+  pageConfig: ReportPrintPageConfig;
+  headerText?: string;
+  footerText?: string;
+}
+
+export interface ReportPrintSheetRenderResult {
+  id: string;
   name: string;
   grid: ReportPrintGrid;
   pageConfig: ReportPrintPageConfig;
+  pages: ReportPrintRenderPage[];
+  rowCount: number;
+}
+
+/** 填充后的打印报表（渲染/导出结果） */
+export interface ReportPrintRenderResult {
+  name: string;
+  /** 兼容旧单 sheet 返回结构：取首个 sheet 的完整网格 */
+  grid: ReportPrintGrid;
+  pageConfig: ReportPrintPageConfig;
+  /** 兼容旧预览：平铺后的页面列表 */
+  pages: ReportPrintRenderPage[];
+  /** 新版多 sheet 渲染结果 */
+  sheets: ReportPrintSheetRenderResult[];
 }
 
 // ─── 报表中心 · 第八期：数据预警 + 协作 ────────────────────────────────────────
@@ -7630,6 +7964,8 @@ export interface ReportAlertRule {
   threshold: number;
   /** 评估 Cron（留空=仅手动） */
   cron?: string | null;
+  timezone: string;
+  misfirePolicy: ReportScheduleMisfirePolicy;
   /** 通知渠道 */
   channels: ReportNotifyChannel[];
   /** 收件人邮箱（逗号分隔）；inApp 推给创建者 */
@@ -7649,6 +7985,10 @@ export interface ReportAlertRule {
   lastValue?: number | null;
   /** 最近一次发送通知时间（只读，静默窗口基准） */
   lastNotifiedAt?: string | null;
+  nextRunAt?: string | null;
+  lastDeliveryAt?: string | null;
+  lastDeliveryStatus?: ReportDeliveryStatus | null;
+  lastDeliveryError?: string | null;
   remark?: string | null;
   createdBy?: number | null;
   createdAt: string;
@@ -7664,6 +8004,8 @@ export interface ReportAlertEvalHit {
 export interface ReportAlertEvalResult {
   value: number;
   triggered: boolean;
+  status?: ReportDeliveryStatus | null;
+  deliveryRunId?: number | null;
   /** 分组评估时的命中组明细（最多 10 条） */
   hits?: ReportAlertEvalHit[];
 }
@@ -7674,6 +8016,23 @@ export interface ReportDatasetRefs {
   dashboards: Array<{ id: number; name: string; widgets: string[]; filterIds: string[] }>;
   printTemplates: Array<{ id: number; name: string }>;
   alerts: Array<{ id: number; name: string }>;
+  subscriptions?: Array<{ id: number; dashboardId: number; name: string }>;
+  shares?: Array<{ id: number; dashboardId: number; name: string }>;
+  embedTokens?: Array<{ id: number; dashboardId: number; name: string }>;
+  nodes?: Array<{
+    id: string;
+    type: 'datasource' | 'dataset' | 'dashboard' | 'widget' | 'filter' | 'print' | 'alert' | 'subscription' | 'share' | 'embed';
+    refId?: number | null;
+    parentId?: string | null;
+    label: string;
+    meta?: Record<string, unknown>;
+  }>;
+  edges?: Array<{
+    id: string;
+    source: string;
+    target: string;
+    label?: string | null;
+  }>;
 }
 
 /** 仪表盘评论（协作批注） */
@@ -7682,11 +8041,21 @@ export interface ReportDashboardComment {
   dashboardId: number;
   /** 关联组件 id（可空，整盘评论） */
   widgetId?: string | null;
+  parentId?: number | null;
   content: string;
-  userId: number;
+  userId?: number | null;
   userName?: string | null;
   userAvatar?: string | null;
+  resolvedAt?: string | null;
+  resolvedBy?: number | null;
+  resolvedByName?: string | null;
+  deletedAt?: string | null;
+  updatedAt: string;
   createdAt: string;
+  replies?: ReportDashboardComment[];
+  canEdit?: boolean;
+  canDelete?: boolean;
+  canResolve?: boolean;
 }
 
 // ─── 规则中心：决策表 ────────────────────────────────────────────────────────────
@@ -7881,4 +8250,3 @@ export interface UserFeedback {
   createdAt: string;
   updatedAt: string;
 }
-

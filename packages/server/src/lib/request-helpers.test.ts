@@ -5,9 +5,10 @@
  * UA 解析浏览器/系统、无法识别时返回 Unknown。
  * （无反代头时的 getConnInfo TCP 回退依赖真实 socket，不在单测范围。）
  */
-import { describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect } from 'vitest';
 import { Hono } from 'hono';
 import { getClientIp, parseUserAgent } from './request-helpers';
+import { config } from '../config';
 
 async function ipFor(headers: Record<string, string>): Promise<string> {
   let ip = '';
@@ -21,6 +22,16 @@ async function ipFor(headers: Record<string, string>): Promise<string> {
 }
 
 describe('getClientIp', () => {
+  const originalTrustedProxies = [...config.trustedProxyCidrs];
+
+  beforeEach(() => {
+    config.trustedProxyCidrs.splice(0, config.trustedProxyCidrs.length, '127.0.0.1/32', '10.0.0.0/8');
+  });
+
+  afterEach(() => {
+    config.trustedProxyCidrs.splice(0, config.trustedProxyCidrs.length, ...originalTrustedProxies);
+  });
+
   it('x-forwarded-for 取第一跳（客户端真实 IP）并去除空白', async () => {
     expect(await ipFor({ 'x-forwarded-for': ' 203.0.113.7 , 10.0.0.1, 10.0.0.2' })).toBe('203.0.113.7');
   });
@@ -31,6 +42,16 @@ describe('getClientIp', () => {
 
   it('x-forwarded-for 优先于 x-real-ip', async () => {
     expect(await ipFor({ 'x-forwarded-for': '203.0.113.7', 'x-real-ip': '198.51.100.3' })).toBe('203.0.113.7');
+  });
+
+  it('非受信代理不接受客户端伪造的转发头', async () => {
+    config.trustedProxyCidrs.splice(0, config.trustedProxyCidrs.length);
+    expect(await ipFor({ 'x-forwarded-for': '203.0.113.7' })).toBe('127.0.0.1');
+  });
+
+  it('从右向左跳过受信代理，拒绝最左侧伪造值', async () => {
+    config.trustedProxyCidrs.splice(0, config.trustedProxyCidrs.length, '127.0.0.1/32');
+    expect(await ipFor({ 'x-forwarded-for': '203.0.113.7, 198.51.100.9' })).toBe('198.51.100.9');
   });
 });
 

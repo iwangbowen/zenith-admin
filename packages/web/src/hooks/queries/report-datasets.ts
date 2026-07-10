@@ -1,7 +1,18 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse, ReportDataset, ReportDataResult, ReportDatasource, ReportDatasetPreviewInput, ReportDatasetRefs, ReportMetaColumn } from '@zenith/shared';
+import type {
+  PaginatedResponse,
+  ReportDataset,
+  ReportDataResult,
+  ReportDatasetExecutionLog,
+  ReportDatasetPreviewInput,
+  ReportDatasetRefs,
+  ReportExecutionStats,
+  ReportMetaColumn,
+  ReportRuntimeGovernance,
+} from '@zenith/shared';
 import { request } from '@/utils/request';
 import { LOOKUP_STALE_TIME, toQueryString, unwrap } from '@/lib/query';
+import { useReportLookup } from './report-lookups';
 
 export interface ReportDatasetListParams {
   page: number;
@@ -22,8 +33,10 @@ export const reportDatasetKeys = {
   list: (params: ReportDatasetListParams) => ['report', 'datasets', 'list', params] as const,
   detail: (id: number | undefined) => ['report', 'datasets', 'detail', id] as const,
   refs: (id: number | undefined) => ['report', 'datasets', 'refs', id] as const,
-  enabledDatasets: ['report', 'datasets', 'enabled'] as const,
-  enabledDatasources: ['report', 'datasets', 'enabled-datasources'] as const,
+  lookup: (params: { keyword?: string; status?: 'enabled' | 'disabled'; limit?: number }) => ['report', 'datasets', 'lookup', params] as const,
+  executionLogs: (params: Record<string, unknown>) => ['report', 'datasets', 'execution-logs', params] as const,
+  executionStats: (params: Record<string, unknown>) => ['report', 'datasets', 'execution-stats', params] as const,
+  governance: ['report', 'datasets', 'governance'] as const,
   metaTables: ['report', 'datasets', 'meta-tables'] as const,
   metaColumns: (table: string) => ['report', 'datasets', 'meta-columns', table] as const,
 };
@@ -73,23 +86,59 @@ export function useReportMetaColumns(table: string | undefined, enabled = true) 
   });
 }
 
-export function useEnabledReportDatasets() {
+export function useReportDatasetLookup(params: { keyword?: string; status?: 'enabled' | 'disabled'; limit?: number } = {}, enabled = true) {
+  return useReportLookup('datasets', params, enabled);
+}
+
+export function useEnabledReportDatasets(keyword?: string, enabled = true) {
+  return useReportDatasetLookup({ keyword, status: 'enabled', limit: 50 }, enabled);
+}
+
+export function useEnabledReportDatasources(keyword?: string, enabled = true) {
+  return useReportLookup('datasources', { keyword, status: 'enabled', limit: 50 }, enabled);
+}
+
+export function useReportDatasetExecutionLogs(params: {
+  datasetId?: number;
+  datasourceId?: number;
+  dashboardId?: number;
+  scene?: string;
+  success?: boolean;
+  slow?: boolean;
+  startAt?: string;
+  endAt?: string;
+  page?: number;
+  pageSize?: number;
+}, enabled = true) {
   return useQuery({
-    queryKey: reportDatasetKeys.enabledDatasets,
-    queryFn: async () => {
-      const data = await request.get<PaginatedResponse<ReportDataset>>('/api/report/datasets?page=1&pageSize=200').then(unwrap);
-      return data.list.filter((dataset) => dataset.status === 'enabled');
-    },
+    queryKey: reportDatasetKeys.executionLogs(params),
+    queryFn: () => request.get<PaginatedResponse<ReportDatasetExecutionLog>>(`/api/report/executions${toQueryString(params)}`).then(unwrap),
+    enabled,
+    placeholderData: keepPreviousData,
   });
 }
 
-export function useEnabledReportDatasources() {
+export function useReportDatasetExecutionStats(params: {
+  datasetId?: number;
+  datasourceId?: number;
+  dashboardId?: number;
+  scene?: string;
+  success?: boolean;
+  startAt?: string;
+  endAt?: string;
+}, enabled = true) {
   return useQuery({
-    queryKey: reportDatasetKeys.enabledDatasources,
-    queryFn: async () => {
-      const data = await request.get<PaginatedResponse<ReportDatasource>>('/api/report/datasources?page=1&pageSize=200').then(unwrap);
-      return data.list.filter((datasource) => datasource.status === 'enabled');
-    },
+    queryKey: reportDatasetKeys.executionStats(params),
+    queryFn: () => request.get<ReportExecutionStats>(`/api/report/executions/stats${toQueryString(params)}`).then(unwrap),
+    enabled,
+  });
+}
+
+export function useReportRuntimeGovernance(enabled = true) {
+  return useQuery({
+    queryKey: reportDatasetKeys.governance,
+    queryFn: () => request.get<ReportRuntimeGovernance>('/api/report/executions/governance').then(unwrap),
+    enabled,
   });
 }
 
@@ -136,6 +185,24 @@ export function useRefreshReportDatasetMaterialize() {
   return useMutation({
     mutationFn: (id: number) => request.post<null>(`/api/report/datasets/${id}/materialize`).then(unwrap),
     // 物化刷新改变数据集行数/更新时间，需失效列表与详情缓存
+    onSuccess: () => qc.invalidateQueries({ queryKey: reportDatasetKeys.all }),
+  });
+}
+
+export function useBatchReportDatasetStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ids, status }: { ids: number[]; status: 'enabled' | 'disabled' }) =>
+      request.put<null>('/api/report/datasets/batch-status', { ids, status }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: reportDatasetKeys.all }),
+  });
+}
+
+export function useCloneReportDataset() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, name }: { id: number; name?: string }) =>
+      request.post<ReportDataset>(`/api/report/datasets/${id}/clone`, name ? { name } : {}).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: reportDatasetKeys.all }),
   });
 }

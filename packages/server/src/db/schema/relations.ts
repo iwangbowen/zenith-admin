@@ -20,7 +20,7 @@ import { appWebhookDeliveries, appWebhookSubscriptions, oauth2AuthorizationCodes
 import { checkinMilestones, coupons, memberCheckinMilestoneAwards, memberCheckins, memberCoupons, memberLevels, memberNotifications, memberPointAccounts, memberPointTransactions, members, memberTagBindings, memberTags, memberWallets, memberWalletTransactions } from './member';
 import { monitorAlertEvents, monitorAlertRules } from './monitor';
 import { mpAccounts, mpAutoReplies, mpBroadcasts, mpConditionalMenus, mpDrafts, mpFans, mpKfAccounts, mpKfRoutingConfigs, mpKfSessionEvents, mpKfSessions, mpMaterials, mpMenus, mpMessages, mpMessageTemplates, mpQrcodes, mpTags, mpTemplateSendLogs, mpUnmatchedKeywords } from './mp';
-import { reportAlertRules, reportDashboardCategories, reportDashboardComments, reportDashboards, reportDashboardShares, reportDashboardSubscriptions, reportDashboardVersions, reportDatasets, reportDatasources, reportPrintTemplates, reportShareAccessLogs } from './report';
+import { reportAlertRules, reportDashboardCategories, reportDashboardComments, reportDashboardEmbedTokens, reportDashboards, reportDashboardShares, reportDashboardSubscriptions, reportDashboardVersions, reportDatasetExecutionLogs, reportDatasets, reportDatasources, reportDeliveryAttempts, reportDeliveryRuns, reportPrintTemplates, reportShareAccessLogs } from './report';
 
 // ─── 关联关系 ────────────────────────────────────────────────────────────────
 export const errorGroupsRelations = relations(errorGroups, ({ many, one }) => ({
@@ -828,28 +828,46 @@ export const reportPrintTemplatesRelations = relations(reportPrintTemplates, ({ 
   dataset: one(reportDatasets, { fields: [reportPrintTemplates.datasetId], references: [reportDatasets.id] }),
 }));
 
-export const reportAlertRulesRelations = relations(reportAlertRules, ({ one }) => ({
+export const reportAlertRulesRelations = relations(reportAlertRules, ({ one, many }) => ({
   dataset: one(reportDatasets, { fields: [reportAlertRules.datasetId], references: [reportDatasets.id] }),
+  deliveryRuns: many(reportDeliveryRuns),
 }));
 
-export const reportDashboardCommentsRelations = relations(reportDashboardComments, ({ one }) => ({
+export const reportDashboardCommentsRelations = relations(reportDashboardComments, ({ one, many }) => ({
   dashboard: one(reportDashboards, { fields: [reportDashboardComments.dashboardId], references: [reportDashboards.id] }),
   user: one(users, { fields: [reportDashboardComments.userId], references: [users.id] }),
+  parent: one(reportDashboardComments, { fields: [reportDashboardComments.parentId], references: [reportDashboardComments.id], relationName: 'reportDashboardCommentReplies' }),
+  replies: many(reportDashboardComments, { relationName: 'reportDashboardCommentReplies' }),
+  resolvedByUser: one(users, { fields: [reportDashboardComments.resolvedBy], references: [users.id], relationName: 'reportDashboardCommentResolvedBy' }),
+  deletedByUser: one(users, { fields: [reportDashboardComments.deletedBy], references: [users.id], relationName: 'reportDashboardCommentDeletedBy' }),
 }));
 
 export const reportDatasourcesRelations = relations(reportDatasources, ({ many }) => ({
   datasets: many(reportDatasets),
+  executionLogs: many(reportDatasetExecutionLogs),
 }));
 
-export const reportDatasetsRelations = relations(reportDatasets, ({ one }) => ({
+export const reportDatasetsRelations = relations(reportDatasets, ({ one, many }) => ({
   datasource: one(reportDatasources, { fields: [reportDatasets.datasourceId], references: [reportDatasources.id] }),
+  executionLogs: many(reportDatasetExecutionLogs),
+  deliveryRuns: many(reportDeliveryRuns),
+}));
+
+export const reportDatasetExecutionLogsRelations = relations(reportDatasetExecutionLogs, ({ one }) => ({
+  dataset: one(reportDatasets, { fields: [reportDatasetExecutionLogs.datasetId], references: [reportDatasets.id] }),
+  datasource: one(reportDatasources, { fields: [reportDatasetExecutionLogs.datasourceId], references: [reportDatasources.id] }),
+  user: one(users, { fields: [reportDatasetExecutionLogs.userId], references: [users.id] }),
+  tenant: one(tenants, { fields: [reportDatasetExecutionLogs.tenantId], references: [tenants.id] }),
 }));
 
 export const reportDashboardsRelations = relations(reportDashboards, ({ one, many }) => ({
   category: one(reportDashboardCategories, { fields: [reportDashboards.categoryId], references: [reportDashboardCategories.id] }),
+  publishedByUser: one(users, { fields: [reportDashboards.publishedBy], references: [users.id] }),
   versions: many(reportDashboardVersions),
   shares: many(reportDashboardShares),
+  embedTokens: many(reportDashboardEmbedTokens),
   subscriptions: many(reportDashboardSubscriptions),
+  deliveryRuns: many(reportDeliveryRuns),
 }));
 
 export const reportDashboardVersionsRelations = relations(reportDashboardVersions, ({ one }) => ({
@@ -861,10 +879,31 @@ export const reportDashboardSharesRelations = relations(reportDashboardShares, (
   accessLogs: many(reportShareAccessLogs),
 }));
 
+export const reportDashboardEmbedTokensRelations = relations(reportDashboardEmbedTokens, ({ one }) => ({
+  dashboard: one(reportDashboards, { fields: [reportDashboardEmbedTokens.dashboardId], references: [reportDashboards.id] }),
+}));
+
 export const reportShareAccessLogsRelations = relations(reportShareAccessLogs, ({ one }) => ({
   share: one(reportDashboardShares, { fields: [reportShareAccessLogs.shareId], references: [reportDashboardShares.id] }),
 }));
 
-export const reportDashboardSubscriptionsRelations = relations(reportDashboardSubscriptions, ({ one }) => ({
+export const reportDashboardSubscriptionsRelations = relations(reportDashboardSubscriptions, ({ one, many }) => ({
   dashboard: one(reportDashboards, { fields: [reportDashboardSubscriptions.dashboardId], references: [reportDashboards.id] }),
+  deliveryRuns: many(reportDeliveryRuns),
+}));
+
+export const reportDeliveryRunsRelations = relations(reportDeliveryRuns, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [reportDeliveryRuns.tenantId], references: [tenants.id] }),
+  subscription: one(reportDashboardSubscriptions, { fields: [reportDeliveryRuns.subscriptionId], references: [reportDashboardSubscriptions.id] }),
+  alertRule: one(reportAlertRules, { fields: [reportDeliveryRuns.alertRuleId], references: [reportAlertRules.id] }),
+  dashboard: one(reportDashboards, { fields: [reportDeliveryRuns.dashboardId], references: [reportDashboards.id] }),
+  dataset: one(reportDatasets, { fields: [reportDeliveryRuns.datasetId], references: [reportDatasets.id] }),
+  acknowledgedUser: one(users, { fields: [reportDeliveryRuns.acknowledgedBy], references: [users.id], relationName: 'reportDeliveryAcknowledgedBy' }),
+  requestedUser: one(users, { fields: [reportDeliveryRuns.requestedBy], references: [users.id], relationName: 'reportDeliveryRequestedBy' }),
+  attempts: many(reportDeliveryAttempts),
+}));
+
+export const reportDeliveryAttemptsRelations = relations(reportDeliveryAttempts, ({ one }) => ({
+  tenant: one(tenants, { fields: [reportDeliveryAttempts.tenantId], references: [tenants.id] }),
+  run: one(reportDeliveryRuns, { fields: [reportDeliveryAttempts.runId], references: [reportDeliveryRuns.id] }),
 }));

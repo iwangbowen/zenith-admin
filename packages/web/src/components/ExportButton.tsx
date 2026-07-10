@@ -9,6 +9,7 @@ import { unwrap } from '@/lib/query';
 interface ExportButtonProps {
   entity: string;
   query?: Record<string, unknown>;
+  resolveQuery?: (format: ExportJobFormat) => Promise<Record<string, unknown> | null> | Record<string, unknown> | null;
   label?: string;
   formats?: ExportJobFormat[];
   raw?: boolean;
@@ -20,6 +21,7 @@ interface ExportButtonProps {
 export function ExportButton({
   entity,
   query,
+  resolveQuery,
   label = '导出',
   formats = ['xlsx', 'csv'],
   raw = true,
@@ -32,11 +34,11 @@ export function ExportButton({
   const buttonTheme = isFlat ? 'borderless' : undefined;
   const rootClassName = `export-button${isFlat ? ' export-button--flat' : ''}`;
   const exportMutation = useMutation({
-    mutationFn: (format: ExportJobFormat) =>
+    mutationFn: ({ format, resolvedQuery }: { format: ExportJobFormat; resolvedQuery: Record<string, unknown> }) =>
       request.post<ExportJobCreateResult>('/api/export-jobs', {
         entity,
         format,
-        query: query ?? {},
+        query: resolvedQuery,
         raw,
         watermark,
         executionMode,
@@ -46,7 +48,9 @@ export function ExportButton({
   const runExport = async (format: ExportJobFormat) => {
     setLoadingFormat(format);
     try {
-      const { job, mode } = await exportMutation.mutateAsync(format);
+      const resolvedQuery = resolveQuery ? await resolveQuery(format) : (query ?? {});
+      if (resolvedQuery == null) return;
+      const { job, mode } = await exportMutation.mutateAsync({ format, resolvedQuery });
       if (job.status === 'success' && job.fileId) {
         await request.download(`/api/export-jobs/${job.id}/download`, job.filename ?? `${entity}.${format}`);
         Toast.success('导出完成');

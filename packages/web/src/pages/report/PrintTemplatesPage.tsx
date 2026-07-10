@@ -10,12 +10,16 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import ExportButton from '@/components/ExportButton';
+import ReportParamDialog from '@/components/ReportParamDialog';
+import { buildReportParamInitialValues } from '@/components/report-param-utils';
 import { formatDateTime } from '@/utils/date';
 import { renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import { useReportDesignerDatasets } from '@/hooks/queries/report-designer';
 import {
+  useBatchReportPrintTemplateStatus,
+  useCloneReportPrintTemplate,
   reportPrintKeys,
   useDeleteReportPrintTemplate,
   useRenderReportPrintTemplate,
@@ -25,6 +29,7 @@ import {
 import PrintReportView from './PrintReportView';
 import type {
   CreateReportPrintTemplateInput,
+  ExportJobFormat,
   ReportPrintRenderResult,
   ReportPrintTemplate,
   UpdateReportPrintTemplateInput,
@@ -34,20 +39,13 @@ import { useDictItems } from '@/hooks/useDictItems';
 interface SearchParams { keyword: string; status: string }
 const defaultSearchParams: SearchParams = { keyword: '', status: '' };
 
-function defaultParamValues(template: ReportPrintTemplate) {
-  const params: Record<string, unknown> = {};
-  for (const param of template.params ?? []) {
-    if (param.defaultValue !== undefined) params[param.name] = param.defaultValue;
-  }
-  return params;
-}
-
 export default function PrintTemplatesPage() {
   const { items: statusItems } = useDictItems('common_status');
   const navigate = useNavigate();
   const { hasPermission } = usePermission();
   const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
+  const exportResolveRef = useRef<((value: Record<string, unknown> | null) => void) | null>(null);
 
   const { page, pageSize, setPage, buildPagination } = usePagination();
   const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
@@ -55,9 +53,12 @@ export default function PrintTemplatesPage() {
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<ReportPrintTemplate | null>(null);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewResult, setPreviewResult] = useState<ReportPrintRenderResult | null>(null);
   const [previewParams, setPreviewParams] = useState<Record<string, unknown>>({});
+  const [paramDialogVisible, setParamDialogVisible] = useState(false);
+  const [paramDialogContext, setParamDialogContext] = useState<{ record: ReportPrintTemplate; mode: 'preview' | 'export'; format?: ExportJobFormat } | null>(null);
 
   const listQuery = useReportPrintTemplateList({
     page,
@@ -70,6 +71,8 @@ export default function PrintTemplatesPage() {
   const datasets = datasetsQuery.data ?? [];
   const saveMutation = useSaveReportPrintTemplate();
   const toggleStatusMutation = useSaveReportPrintTemplate();
+  const batchStatusMutation = useBatchReportPrintTemplateStatus();
+  const cloneMutation = useCloneReportPrintTemplate();
   const deleteMutation = useDeleteReportPrintTemplate();
   const renderMutation = useRenderReportPrintTemplate();
   const togglingId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
@@ -121,6 +124,23 @@ export default function PrintTemplatesPage() {
     Toast.success('删除成功');
   }
 
+  async function handleClone(record: ReportPrintTemplate) {
+    const cloned = await cloneMutation.mutateAsync({ id: record.id });
+    Toast.success(`已复制为「${cloned.name}」`);
+  }
+
+  function handleBatchStatus(status: 'enabled' | 'disabled') {
+    if (selectedRowKeys.length === 0) return;
+    Modal.confirm({
+      title: `确认批量${status === 'enabled' ? '启用' : '停用'}选中的 ${selectedRowKeys.length} 个打印模板？`,
+      onOk: async () => {
+        await batchStatusMutation.mutateAsync({ ids: selectedRowKeys, status });
+        setSelectedRowKeys([]);
+        Toast.success(status === 'enabled' ? '批量启用成功' : '批量停用成功');
+      },
+    });
+  }
+
   function handleToggleStatus(record: ReportPrintTemplate, checked: boolean) {
     const doToggle = async () => {
       await toggleStatusMutation.mutateAsync({ id: record.id, values: { status: checked ? 'enabled' : 'disabled' } });
@@ -131,12 +151,47 @@ export default function PrintTemplatesPage() {
   }
 
   async function openPreview(record: ReportPrintTemplate) {
-    setPreviewVisible(true);
-    setPreviewResult(null);
-    const params = defaultParamValues(record);
-    setPreviewParams(params);
-    const result = await renderMutation.mutateAsync({ id: record.id, params, limit: 100 });
-    setPreviewResult(result);
+    setPreviewParams(buildReportParamInitialValues(record.params ?? []));
+    setParamDialogContext({ record, mode: 'preview' });
+    setParamDialogVisible(true);
+  }
+
+  async function resolveExportQuery(record: ReportPrintTemplate) {
+    return await new Promise<Record<string, unknown> | null>((resolve) => {
+      setPreviewParams(buildReportParamInitialValues(record.params ?? []));
+      setParamDialogContext({ record, mode: 'export' });
+      setParamDialogVisible(true);
+      exportResolveRef.current = resolve;
+    });
+  }
+
+  async function handleParamSubmit(values: Record<string, unknown>) {
+    const context = paramDialogContext;
+    setParamDialogVisible(false);
+    setParamDialogContext(null);
+    if (!context) return;
+    if (context.mode === 'preview') {
+      setPreviewVisible(true);
+      setPreviewResult(null);
+      setPreviewParams(values);
+      const result = await renderMutation.mutateAsync({ id: context.record.id, params: values, limit: 300 });
+      setPreviewResult(result);
+      return;
+    }
+    exportResolveRef.current?.({
+      templateId: context.record.id,
+      params: values,
+    });
+    exportResolveRef.current = null;
+  }
+
+  function handleParamCancel() {
+    setParamDialogVisible(false);
+    if (paramDialogContext?.mode === 'export') {
+      exportResolveRef.current?.(null);
+      exportResolveRef.current = null;
+    }
+    setParamDialogContext(null);
   }
 
   const columns: ColumnProps<ReportPrintTemplate>[] = [
@@ -162,7 +217,13 @@ export default function PrintTemplatesPage() {
       width: 96,
       fixed: 'right' as const,
       render: (_: unknown, record: ReportPrintTemplate) => (
-        <ExportButton entity="report.print" query={{ templateId: record.id, params: defaultParamValues(record) }} formats={['xlsx']} variant="flat" />
+        <ExportButton
+          entity="report.print"
+          resolveQuery={() => resolveExportQuery(record)}
+          formats={['xlsx', 'pdf']}
+          executionMode="auto"
+          variant="flat"
+        />
       ),
     }] : []),
     createOperationColumn<ReportPrintTemplate>({
@@ -172,6 +233,7 @@ export default function PrintTemplatesPage() {
         ...(hasPermission('report:print:update') ? [{ key: 'design', label: '设计', onClick: () => navigate(`/report/print/${record.id}/design`) }] : []),
         ...(hasPermission('report:print:list') ? [{ key: 'preview', label: '预览', onClick: () => void openPreview(record) }] : []),
         ...(hasPermission('report:print:update') ? [{ key: 'edit', label: '编辑', onClick: () => openEdit(record) }] : []),
+        ...(hasPermission('report:print:create') ? [{ key: 'clone', label: '复制', onClick: () => void handleClone(record) }] : []),
         ...(hasPermission('report:print:delete') ? [{
           key: 'delete', label: '删除', danger: true,
           onClick: () => { Modal.confirm({ title: '确定要删除吗？', content: '删除后不可恢复', onOk: () => handleDelete(record.id) }); },
@@ -192,14 +254,19 @@ export default function PrintTemplatesPage() {
   const renderResetBtn = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>;
   const renderCreateBtn = () => hasPermission('report:print:create')
     ? <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button> : null;
+  const renderBatchEnableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:print:update')
+    ? <Button onClick={() => handleBatchStatus('enabled')}>批量启用</Button> : null;
+  const renderBatchDisableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:print:update')
+    ? <Button type="danger" onClick={() => handleBatchStatus('disabled')}>批量停用</Button> : null;
 
   return (
     <div className="page-container">
       <SearchToolbar
         primary={<>{renderKeyword()}{renderStatusFilter()}{renderSearchBtn()}{renderResetBtn()}</>}
-        actions={renderCreateBtn()}
+        actions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}{renderCreateBtn()}</>}
         mobilePrimary={<>{renderKeyword()}{renderSearchBtn()}{renderCreateBtn()}</>}
         mobileFilters={renderStatusFilter()}
+        mobileActions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
         filterTitle="打印模板筛选"
         onFilterApply={handleSearch}
         onFilterReset={handleReset}
@@ -207,6 +274,10 @@ export default function PrintTemplatesPage() {
 
       <ConfigurableTable
         bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
+        rowSelection={hasPermission('report:print:update') ? {
+          selectedRowKeys,
+          onChange: (keys) => setSelectedRowKeys(keys as number[]),
+        } : undefined}
         onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(data?.total ?? 0)}
       />
 
@@ -233,6 +304,17 @@ export default function PrintTemplatesPage() {
           <Form.TextArea field="remark" label="备注" maxLength={256} autosize={{ minRows: 1, maxRows: 3 }} />
         </Form>
       </AppModal>
+
+      <ReportParamDialog
+        visible={paramDialogVisible}
+        title={paramDialogContext?.mode === 'preview' ? '预览参数' : '导出参数'}
+        params={paramDialogContext?.record.params ?? []}
+        initialValues={previewParams}
+        loading={renderMutation.isPending}
+        confirmText={paramDialogContext?.mode === 'preview' ? '生成预览' : '继续导出'}
+        onCancel={handleParamCancel}
+        onSubmit={(values) => void handleParamSubmit(values)}
+      />
 
       <AppModal
         title="打印预览"

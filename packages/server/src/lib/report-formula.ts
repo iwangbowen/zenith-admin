@@ -229,7 +229,7 @@ export function compileFormula(expression: string): (row: Record<string, unknown
 
 export interface ComputedFieldDef { name: string; expression: string; type?: 'string' | 'number' | 'date' | 'boolean' }
 
-type DataResultLike = { columns: string[]; rows: Record<string, unknown>[]; total?: number | null };
+type DataResultLike = { columns: string[]; rows: Record<string, unknown>[]; total?: number | null; fields?: unknown };
 
 /**
  * 对结果集应用计算字段（逐行追加列）。
@@ -256,7 +256,7 @@ export function applyComputedFields(
     return next;
   });
   const extraCols = compiled.map((c) => c.name).filter((name) => !result.columns.includes(name));
-  return { columns: [...result.columns, ...extraCols], rows, total: result.total };
+  return { columns: [...result.columns, ...extraCols], rows, total: result.total, ...(result.fields !== undefined ? { fields: result.fields } : {}) };
 }
 
 /** 校验表达式语法（保存前调用），返回错误信息或 null */

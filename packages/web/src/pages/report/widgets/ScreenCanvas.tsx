@@ -7,7 +7,7 @@ import '../report-grid.css';
 import '../report-screen.css';
 import { WidgetRenderer } from './WidgetRenderer';
 import type {
-  ReportWidget, ReportGridItem, ReportCanvasItem, ReportDashboardConfig, ReportDataResult, ReportScreenConfig,
+  ReportWidget, ReportGridItem, ReportCanvasItem, ReportDashboardConfig, ReportDataResult, ReportDatasetQueryOptions, ReportScreenConfig,
 } from '@zenith/shared';
 
 const GridLayout = WidthProvider(RGL);
@@ -23,22 +23,28 @@ interface ScreenCanvasProps {
   config: ReportDashboardConfig;
   filterValues: Record<string, unknown>;
   getWidgetState: (w: ReportWidget) => WidgetState;
+  getWidgetQuery?: (w: ReportWidget) => ReportDatasetQueryOptions | undefined;
+  onWidgetQueryChange?: (widgetId: string, next: ReportDatasetQueryOptions) => void;
   onCategoryClick?: (w: ReportWidget, value: string) => void;
+  onWidgetClick?: (widget: ReportWidget) => void;
 }
 
 /** 组件卡片外壳 + 渲染器 */
 function WidgetFrame({
-  widget, state, filterValues, onCategoryClick,
+  widget, state, filterValues, getWidgetQuery, onWidgetQueryChange, onCategoryClick, onWidgetClick,
 }: {
   readonly widget: ReportWidget;
   readonly state: WidgetState;
   readonly filterValues: Record<string, unknown>;
+  readonly getWidgetQuery?: (w: ReportWidget) => ReportDatasetQueryOptions | undefined;
+  readonly onWidgetQueryChange?: (widgetId: string, next: ReportDatasetQueryOptions) => void;
   readonly onCategoryClick?: (w: ReportWidget, value: string) => void;
+  readonly onWidgetClick?: (widget: ReportWidget) => void;
 }) {
   const showHeader = widget.style?.showHeader !== false;
   const clickable = !!(widget.interaction?.enabled || widget.drilldown?.enabled);
   return (
-    <div className="report-widget-card" style={widget.style?.background ? { background: widget.style.background } : undefined}>
+    <div className="report-widget-card" style={widget.style?.background ? { background: widget.style.background } : undefined} onClick={() => onWidgetClick?.(widget)}>
       {showHeader && (
         <div className="report-widget-card__header">
           <span className="report-widget-card__title">{widget.title || '未命名组件'}</span>
@@ -47,6 +53,8 @@ function WidgetFrame({
       <div className="report-widget-card__body">
         <WidgetRenderer
           widget={widget} data={state.data} loading={state.loading} error={state.error} filterValues={filterValues}
+          widgetQuery={getWidgetQuery?.(widget)}
+          onWidgetQueryChange={onWidgetQueryChange}
           onCategoryClick={clickable && onCategoryClick ? (v) => onCategoryClick(widget, v) : undefined}
         />
       </div>
@@ -55,12 +63,12 @@ function WidgetFrame({
 }
 
 /** 栅格模式（响应式 12 列只读）*/
-function GridStage({ widgets, layout, filterValues, getWidgetState, onCategoryClick }: Readonly<Omit<ScreenCanvasProps, 'canvasLayout' | 'config'>>) {
+function GridStage({ widgets, layout, filterValues, getWidgetState, getWidgetQuery, onWidgetQueryChange, onCategoryClick, onWidgetClick }: Readonly<Omit<ScreenCanvasProps, 'canvasLayout' | 'config'>>) {
   return (
     <GridLayout className="report-grid" layout={layout as Layout} cols={12} rowHeight={40} margin={[12, 12]} isDraggable={false} isResizable={false} compactType="vertical">
       {widgets.map((w) => (
         <div key={w.i}>
-          <WidgetFrame widget={w} state={getWidgetState(w)} filterValues={filterValues} onCategoryClick={onCategoryClick} />
+          <WidgetFrame widget={w} state={getWidgetState(w)} filterValues={filterValues} getWidgetQuery={getWidgetQuery} onWidgetQueryChange={onWidgetQueryChange} onCategoryClick={onCategoryClick} onWidgetClick={onWidgetClick} />
         </div>
       ))}
     </GridLayout>
@@ -68,7 +76,7 @@ function GridStage({ widgets, layout, filterValues, getWidgetState, onCategoryCl
 }
 
 /** 自由画布大屏模式（固定设计尺寸 + 等比缩放居中）*/
-function CanvasStage({ widgets, canvasLayout, config, filterValues, getWidgetState, onCategoryClick }: Readonly<Omit<ScreenCanvasProps, 'layout'>>) {
+function CanvasStage({ widgets, canvasLayout, config, filterValues, getWidgetState, getWidgetQuery, onWidgetQueryChange, onCategoryClick, onWidgetClick }: Readonly<Omit<ScreenCanvasProps, 'layout'>>) {
   const sc = { ...DEFAULT_SCREEN, ...(config.screenConfig ?? {}) };
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const [transform, setTransform] = useState<{ sx: number; sy: number; ox: number; oy: number }>({ sx: 1, sy: 1, ox: 0, oy: 0 });
@@ -110,7 +118,7 @@ function CanvasStage({ widgets, canvasLayout, config, filterValues, getWidgetSta
           if (!it) return null;
           return (
             <div key={w.i} className="report-canvas-item" style={{ left: it.x, top: it.y, width: it.w, height: it.h, zIndex: it.z ?? 1 }}>
-              <WidgetFrame widget={w} state={getWidgetState(w)} filterValues={filterValues} onCategoryClick={onCategoryClick} />
+              <WidgetFrame widget={w} state={getWidgetState(w)} filterValues={filterValues} getWidgetQuery={getWidgetQuery} onWidgetQueryChange={onWidgetQueryChange} onCategoryClick={onCategoryClick} onWidgetClick={onWidgetClick} />
             </div>
           );
         })}
@@ -153,7 +161,17 @@ export function ScreenCanvas(props: Readonly<ScreenCanvasProps>) {
     <div className={`report-screen${isDark ? ' report-screen--dark' : ''}`} style={{ width: '100%', height: '100%', position: 'relative' }}>
       {isCanvas
         ? <CanvasStage {...props} widgets={widgets} />
-        : <GridStage widgets={widgets} layout={layout} filterValues={props.filterValues} getWidgetState={props.getWidgetState} onCategoryClick={props.onCategoryClick} />}
+        : (
+          <GridStage
+            widgets={widgets}
+            layout={layout}
+            filterValues={props.filterValues}
+            getWidgetState={props.getWidgetState}
+            getWidgetQuery={props.getWidgetQuery}
+            onWidgetQueryChange={props.onWidgetQueryChange}
+            onCategoryClick={props.onCategoryClick}
+          />
+        )}
       {carouselOn && (
         <CarouselControls
           page={page}

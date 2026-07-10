@@ -15,11 +15,12 @@
   box-sizing: border-box;
   width: var(--report-paper-width);
   min-height: var(--report-paper-height);
-  margin: 0 auto;
+  margin: 0 auto 24px;
   padding: var(--report-margin-top) var(--report-margin-right) var(--report-margin-bottom) var(--report-margin-left);
   color: #111827;
   background: #fff;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  break-after: page;
 }
 
 .print-report-page::before {
@@ -66,7 +67,6 @@
   min-width: 48px;
   height: 24px;
   padding: 4px 6px;
-  border: 1px solid transparent;
   font-size: 12px;
   line-height: 1.35;
   color: #111827;
@@ -74,13 +74,21 @@
   white-space: nowrap;
 }
 
-.print-report-table td.print-report-cell--border {
-  border-color: #111827;
-}
-
 .print-report-table td.print-report-cell--wrap {
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.print-report-graphic {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.print-report-graphic--image {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
 }
 
 @media print {

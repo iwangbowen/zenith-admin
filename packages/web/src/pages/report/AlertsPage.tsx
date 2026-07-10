@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef } from 'react';
-import { Button, Form, Input, Modal, Select, Switch, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { Button, Form, Input, Modal, Select, SideSheet, Switch, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, RotateCcw, Plus } from 'lucide-react';
@@ -12,23 +12,26 @@ import { renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import { useQueryClient } from '@tanstack/react-query';
-import { useEnabledReportDatasets } from '@/hooks/queries/report-datasets';
 import {
+  useAcknowledgeReportAlertRun,
+  useBatchReportAlertEnabled,
   reportAlertKeys,
   useDeleteReportAlert,
   useEvaluateReportAlert,
+  useReportAlertHistory,
   useReportAlertList,
   useSaveReportAlert,
   useToggleReportAlertEnabled,
 } from '@/hooks/queries/report-alerts';
+import { useReportDatasetDetail, useEnabledReportDatasets } from '@/hooks/queries/report-datasets';
 import type {
   CreateReportAlertInput,
   ReportAlertAggregate,
   ReportAlertOp,
   ReportAlertRule,
-  ReportDataset,
+  ReportDeliveryRun,
 } from '@zenith/shared';
-import { NOTIFY_CHANNEL_LABELS } from '@zenith/shared';
+import { NOTIFY_CHANNEL_LABELS, REPORT_DELIVERY_STATUS_LABELS, REPORT_MISFIRE_POLICY_OPTIONS } from '@zenith/shared';
 import { useDictItems } from '@/hooks/useDictItems';
 
 interface SearchParams {
@@ -88,20 +91,17 @@ export default function AlertsPage() {
   const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
 
   const datasetsQuery = useEnabledReportDatasets();
-  const datasets = useMemo<ReportDataset[]>(() => datasetsQuery.data ?? [], [datasetsQuery.data]);
-  const datasetFieldMap = useMemo(() => {
-    const map = new Map<number, ReportDataset['fields']>();
-    datasets.forEach((dataset) => map.set(dataset.id, dataset.fields ?? []));
-    return map;
-  }, [datasets]);
+  const datasets = useMemo(() => datasetsQuery.data ?? [], [datasetsQuery.data]);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<ReportAlertRule | null>(null);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const [historyTarget, setHistoryTarget] = useState<ReportAlertRule | null>(null);
   const [selectedDatasetId, setSelectedDatasetId] = useState<number | null>(null);
   const [selectedAggregate, setSelectedAggregate] = useState<ReportAlertAggregate>('sum');
   const [selectedChannels, setSelectedChannels] = useState<Array<'email' | 'inApp' | 'webhook'>>(['inApp']);
-
-  const selectedFields = selectedDatasetId ? datasetFieldMap.get(selectedDatasetId) ?? [] : [];
+  const selectedDatasetDetailQuery = useReportDatasetDetail(selectedDatasetId ?? undefined, modalVisible && !!selectedDatasetId);
+  const selectedFields = selectedDatasetDetailQuery.data?.fields ?? [];
 
   const listQuery = useReportAlertList({
     page,
@@ -113,8 +113,11 @@ export default function AlertsPage() {
   const data = listQuery.data ?? null;
   const saveMutation = useSaveReportAlert();
   const toggleMutation = useToggleReportAlertEnabled();
+  const batchEnabledMutation = useBatchReportAlertEnabled();
   const evaluateMutation = useEvaluateReportAlert();
   const deleteMutation = useDeleteReportAlert();
+  const acknowledgeMutation = useAcknowledgeReportAlertRun();
+  const historyQuery = useReportAlertHistory(historyTarget?.id, !!historyTarget);
   const togglingId = toggleMutation.isPending ? toggleMutation.variables?.id ?? null : null;
 
   function handleSearch() {
@@ -161,6 +164,8 @@ export default function AlertsPage() {
         op: editing.op,
         threshold: editing.threshold,
         cron: editing.cron ?? '',
+        timezone: editing.timezone,
+        misfirePolicy: editing.misfirePolicy,
         channels: editing.channels,
         recipients: editing.recipients ?? '',
         webhookUrl: editing.webhookUrl ?? '',
@@ -169,7 +174,7 @@ export default function AlertsPage() {
         enabled: editing.enabled ? 'enabled' : 'disabled',
         remark: editing.remark ?? '',
       }
-    : { aggregate: 'sum', op: 'gt', channels: ['inApp'], silenceMins: 60, notifyOnRecover: false, enabled: 'enabled' };
+    : { aggregate: 'sum', op: 'gt', cron: '', timezone: 'Asia/Shanghai', misfirePolicy: 'fire_once', channels: ['inApp'], silenceMins: 60, notifyOnRecover: false, enabled: 'enabled' };
 
   function buildPayload(values: Record<string, unknown>): CreateReportAlertInput {
     const aggregate = values.aggregate as ReportAlertAggregate;
@@ -183,6 +188,8 @@ export default function AlertsPage() {
       op: values.op as ReportAlertOp,
       threshold: Number(values.threshold),
       cron: values.cron ? String(values.cron) : null,
+      timezone: String(values.timezone ?? 'Asia/Shanghai'),
+      misfirePolicy: values.misfirePolicy as 'skip' | 'fire_once',
       channels,
       recipients: channels.includes('email') && values.recipients ? String(values.recipients) : undefined,
       webhookUrl: channels.includes('webhook') && values.webhookUrl ? String(values.webhookUrl) : null,
@@ -222,11 +229,20 @@ export default function AlertsPage() {
 
   async function handleEvaluate(id: number) {
     try {
-      const res = await evaluateMutation.mutateAsync(id);
-      const hitText = res.hits?.length ? `，命中组：${res.hits.slice(0, 5).map((h) => `${h.group}(${h.value})`).join('、')}${res.hits.length > 5 ? '…' : ''}` : '';
-      Toast.success(`实际值 ${res.value}，${res.triggered ? '已触发' : '未触发'}${hitText}`);
+      await evaluateMutation.mutateAsync(id);
+      Toast.success('任务已提交，可在任务中心查看进度');
     } catch (error) {
       Toast.error(error instanceof Error ? error.message : '评估失败');
+    }
+  }
+
+  async function handleAcknowledge(runId: number) {
+    try {
+      await acknowledgeMutation.mutateAsync({ runId });
+      await historyQuery.refetch();
+      Toast.success('已确认');
+    } catch (error) {
+      Toast.error(error instanceof Error ? error.message : '确认失败');
     }
   }
 
@@ -237,6 +253,18 @@ export default function AlertsPage() {
     } catch (error) {
       Toast.error(error instanceof Error ? error.message : '删除失败');
     }
+  }
+
+  function handleBatchEnabled(enabled: boolean) {
+    if (selectedRowKeys.length === 0) return;
+    Modal.confirm({
+      title: `确认批量${enabled ? '启用' : '停用'}选中的 ${selectedRowKeys.length} 条预警？`,
+      onOk: async () => {
+        await batchEnabledMutation.mutateAsync({ ids: selectedRowKeys, enabled });
+        setSelectedRowKeys([]);
+        Toast.success(enabled ? '批量启用成功' : '批量停用成功');
+      },
+    });
   }
 
   const columns: ColumnProps<ReportAlertRule>[] = [
@@ -270,6 +298,25 @@ export default function AlertsPage() {
         </Tooltip>
       ),
     },
+    { title: '下次执行', dataIndex: 'nextRunAt', width: 170, render: (value: string | null) => value || '—' },
+    { title: '时区', dataIndex: 'timezone', width: 120, render: (value: string) => value || '—' },
+    { title: '错过策略', dataIndex: 'misfirePolicy', width: 110, render: (value: string) => REPORT_MISFIRE_POLICY_OPTIONS.find((item) => item.value === value)?.label ?? value },
+    {
+      title: '最近投递',
+      dataIndex: 'lastDeliveryStatus',
+      width: 220,
+      render: (_: unknown, record: ReportAlertRule) => (
+        <div>
+          <Tag color={record.lastDeliveryStatus === 'success' ? 'green' : record.lastDeliveryStatus === 'failed' ? 'red' : record.lastDeliveryStatus === 'partial' ? 'orange' : record.lastDeliveryStatus === 'pending' ? 'blue' : 'grey'} size="small">
+            {record.lastDeliveryStatus ? REPORT_DELIVERY_STATUS_LABELS[record.lastDeliveryStatus] : '—'}
+          </Tag>
+          <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 4 }}>
+            {record.lastDeliveryAt || '未投递'}
+          </Typography.Text>
+          {record.lastDeliveryError ? <Typography.Text type="danger" size="small">{record.lastDeliveryError}</Typography.Text> : null}
+        </div>
+      ),
+    },
     { title: '备注', dataIndex: 'remark', width: 180, render: renderEllipsis },
     {
       title: '状态',
@@ -288,10 +335,11 @@ export default function AlertsPage() {
     },
     createOperationColumn<ReportAlertRule>({
       width: 170,
-      desktopInlineKeys: ['edit', 'evaluate', 'delete'],
+      desktopInlineKeys: ['edit', 'evaluate', 'history', 'delete'],
       actions: (record) => [
         ...(hasPermission('report:alert:update') ? [{ key: 'edit', label: '编辑', onClick: () => openEdit(record) }] : []),
         ...(hasPermission('report:alert:list') ? [{ key: 'evaluate', label: '评估', onClick: () => void handleEvaluate(record.id) }] : []),
+        ...(hasPermission('report:alert:list') ? [{ key: 'history', label: '历史', onClick: () => setHistoryTarget(record) }] : []),
         ...(hasPermission('report:alert:delete') ? [{
           key: 'delete',
           label: '删除',
@@ -318,14 +366,19 @@ export default function AlertsPage() {
   const renderResetBtn = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>;
   const renderCreateBtn = () => hasPermission('report:alert:create')
     ? <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button> : null;
+  const renderBatchEnableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:alert:update')
+    ? <Button onClick={() => handleBatchEnabled(true)}>批量启用</Button> : null;
+  const renderBatchDisableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:alert:update')
+    ? <Button type="danger" onClick={() => handleBatchEnabled(false)}>批量停用</Button> : null;
 
   return (
     <div className="page-container">
       <SearchToolbar
         primary={<>{renderKeyword()}{renderDatasetFilter()}{renderStatusFilter()}{renderSearchBtn()}{renderResetBtn()}</>}
-        actions={renderCreateBtn()}
+        actions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}{renderCreateBtn()}</>}
         mobilePrimary={<>{renderKeyword()}{renderSearchBtn()}{renderCreateBtn()}</>}
         mobileFilters={<>{renderDatasetFilter()}{renderStatusFilter()}</>}
+        mobileActions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
         filterTitle="预警筛选"
         onFilterApply={handleSearch}
         onFilterReset={handleReset}
@@ -333,6 +386,10 @@ export default function AlertsPage() {
 
       <ConfigurableTable
         bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无预警"
+        rowSelection={hasPermission('report:alert:update') ? {
+          selectedRowKeys,
+          onChange: (keys) => setSelectedRowKeys(keys as number[]),
+        } : undefined}
         onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(data?.total ?? 0)}
       />
 
@@ -364,6 +421,8 @@ export default function AlertsPage() {
           <Form.Select field="op" label="运算符" style={{ width: '100%' }} optionList={opOptions} />
           <Form.InputNumber field="threshold" label="阈值" style={{ width: '100%' }} rules={[{ required: true, message: '请输入阈值' }]} />
           <Form.Input field="cron" label="评估Cron" placeholder="0 */5 * * * *" helpText="留空=仅手动" showClear />
+          <Form.Input field="timezone" label="时区" placeholder="Asia/Shanghai" rules={[{ required: true, message: '请输入 IANA 时区' }]} showClear />
+          <Form.Select field="misfirePolicy" label="错过策略" style={{ width: '100%' }} optionList={REPORT_MISFIRE_POLICY_OPTIONS} />
           <Form.Select field="channels" label="通知通道" multiple style={{ width: '100%' }} rules={[{ required: true, message: '至少选择一个通道' }]}
             optionList={[{ value: 'email', label: channelLabelMap.email }, { value: 'inApp', label: channelLabelMap.inApp }, { value: 'webhook', label: `${channelLabelMap.webhook}（企微/钉钉机器人）` }]} />
           {selectedChannels.includes('email') && (
@@ -380,6 +439,45 @@ export default function AlertsPage() {
           <Form.TextArea field="remark" label="备注" maxLength={256} autosize={{ minRows: 1, maxRows: 3 }} />
         </Form>
       </AppModal>
+
+      <SideSheet
+        title={historyTarget ? `预警历史 · ${historyTarget.name}` : '预警历史'}
+        visible={!!historyTarget}
+        width={980}
+        closeOnEsc
+        placement="right"
+        onCancel={() => setHistoryTarget(null)}
+      >
+        <ConfigurableTable
+          bordered
+          rowKey="id"
+          size="small"
+          loading={historyQuery.isFetching}
+          dataSource={historyQuery.data?.list ?? []}
+          columns={[
+            { title: '类型', dataIndex: 'triggerType', width: 90 },
+            { title: '状态', dataIndex: 'status', width: 90, render: (value: string) => <Tag color={value === 'success' ? 'green' : value === 'failed' ? 'red' : value === 'partial' ? 'orange' : value === 'pending' ? 'blue' : 'grey'}>{REPORT_DELIVERY_STATUS_LABELS[value as keyof typeof REPORT_DELIVERY_STATUS_LABELS] ?? value}</Tag> },
+            { title: '值', dataIndex: 'lastValue', width: 80, render: (value: number | null) => value ?? '—' },
+            { title: '开始时间', dataIndex: 'startedAt', width: 170, render: (value: string | null) => value || '—' },
+            { title: '完成时间', dataIndex: 'completedAt', width: 170, render: (value: string | null) => value || '—' },
+            { title: '确认', dataIndex: 'acknowledgedAt', width: 200, render: (_: unknown, record: ReportDeliveryRun) => record.acknowledgedAt ? `${record.acknowledgedAt}${record.acknowledgedByName ? ` · ${record.acknowledgedByName}` : ''}` : '未确认' },
+            { title: '错误', dataIndex: 'errorMessage', width: 220, render: renderEllipsis },
+            {
+              title: '操作',
+              dataIndex: 'id',
+              width: 100,
+              fixed: 'right',
+              render: (_: unknown, record: ReportDeliveryRun) => (
+                record.acknowledgedAt || !hasPermission('report:alert:update')
+                  ? <span style={{ color: '#999' }}>—</span>
+                  : <Button theme="borderless" size="small" onClick={() => void handleAcknowledge(record.id)}>确认</Button>
+              ),
+            },
+          ] as ColumnProps<ReportDeliveryRun>[]}
+          pagination={false}
+          empty="暂无执行历史"
+        />
+      </SideSheet>
     </div>
   );
 }

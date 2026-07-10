@@ -1,17 +1,19 @@
 import { useCallback, useMemo } from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  ApiResponse,
   DictItem,
-  PaginatedResponse,
   ReportDashboard,
   ReportDataResult,
   ReportDataset,
   ReportFilter,
+  ReportLookupOption,
   ReportWidget,
 } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { LOOKUP_STALE_TIME, unwrap } from '@/lib/query';
-import { reportDashboardKeys, reportDataLimiter } from './report-dashboards';
+import { reportDashboardKeys } from './report-dashboards';
+import { mergeReportLookupOptions } from './report-lookups';
 
 export interface DatasetDataState {
   data: ReportDataResult | null;
@@ -30,26 +32,33 @@ export const reportDesignerKeys = {
   dictItems: (code: string) => ['report', 'designer', 'dict-items', code] as const,
 };
 
-export function useReportDesignerDatasets(currentDatasetId?: number | null) {
+export function useReportDesignerDatasets(
+  currentDataset?: Pick<ReportDataset, 'id' | 'name' | 'status'> | null,
+  keyword?: string,
+) {
   return useQuery({
-    queryKey: reportDesignerKeys.datasets,
+    queryKey: [...reportDesignerKeys.datasets, currentDataset?.id ?? null, keyword ?? ''],
     queryFn: async () => {
-      const data = await request.get<PaginatedResponse<ReportDataset>>('/api/report/datasets?page=1&pageSize=200').then(unwrap);
-      return data.list;
+      const data = await request.get<ReportLookupOption[]>(
+        `/api/report/datasets/lookup?status=enabled&limit=50${keyword ? `&keyword=${encodeURIComponent(keyword)}` : ''}`,
+        { silent: true },
+      ).then(unwrap);
+      return mergeReportLookupOptions(data, currentDataset ? [currentDataset] : []);
     },
-    select: (list) => list.filter((dataset) => dataset.status === 'enabled' || dataset.id === currentDatasetId),
     staleTime: LOOKUP_STALE_TIME,
   });
 }
 
-export function useReportDesignerDashboardLookup(excludeId: number | undefined) {
+export function useReportDesignerDashboardLookup(excludeId: number | undefined, keyword?: string) {
   return useQuery({
-    queryKey: reportDesignerKeys.dashboards(excludeId),
+    queryKey: [...reportDesignerKeys.dashboards(excludeId), keyword ?? ''],
     queryFn: async () => {
-      const data = await request.get<PaginatedResponse<Pick<ReportDashboard, 'id' | 'name'>>>('/api/report/dashboards?page=1&pageSize=200').then(unwrap);
-      return data.list;
+      const data = await request.get<ReportLookupOption[]>(
+        `/api/report/dashboards/lookup?status=enabled&limit=50${keyword ? `&keyword=${encodeURIComponent(keyword)}` : ''}`,
+        { silent: true },
+      ).then(unwrap);
+      return data.filter((dashboard) => dashboard.id !== excludeId);
     },
-    select: (list) => list.filter((dashboard) => dashboard.id !== excludeId),
     staleTime: LOOKUP_STALE_TIME,
   });
 }
@@ -57,11 +66,12 @@ export function useReportDesignerDashboardLookup(excludeId: number | undefined) 
 export function useSaveReportDashboardDesign() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, values }: { id: number; values: Partial<ReportDashboard> }) =>
-      request.put<ReportDashboard>(`/api/report/dashboards/${id}`, values).then(unwrap),
+    mutationFn: ({ id, values }: { id: number; values: Record<string, unknown> }) =>
+      request.put<ReportDashboard>(`/api/report/dashboards/${id}`, values, { silent: true }) as Promise<ApiResponse<ReportDashboard>>,
     onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: reportDashboardKeys.all });
-      void qc.invalidateQueries({ queryKey: reportDashboardKeys.detail(vars.id) });
+      void qc.invalidateQueries({ queryKey: reportDashboardKeys.detail(vars.id, 'draft') });
+      void qc.invalidateQueries({ queryKey: reportDashboardKeys.detail(vars.id, 'auto') });
       void qc.invalidateQueries({ queryKey: reportDesignerKeys.all });
     },
   });
@@ -86,8 +96,8 @@ export function useReportDatasetDataMap(datasetIds: number[], limit = 500) {
   const stateMap = useQueries({
     queries: ids.map((id) => ({
       queryKey: reportDesignerKeys.datasetData(id, {}, limit),
-      queryFn: () => reportDataLimiter(() =>
-        request.get<ReportDataResult>(`/api/report/datasets/${id}/data?limit=${limit}`, { silent: true }).then(unwrap)),
+      queryFn: ({ signal }) =>
+        request.post<ReportDataResult>(`/api/report/datasets/${id}/data`, { limit }, { silent: true, signal }).then(unwrap),
     })),
     combine: (results) => {
       const map = new Map<number, DatasetDataState>();
@@ -131,8 +141,8 @@ export function useReportWidgetData(widgets: ReportWidget[], filterValues: Recor
   const stateMap = useQueries({
     queries: entries.map((entry) => ({
       queryKey: reportDesignerKeys.datasetData(entry.datasetId, entry.params, limit),
-      queryFn: () => reportDataLimiter(() =>
-        request.post<ReportDataResult>(`/api/report/datasets/${entry.datasetId}/data`, { params: entry.params, limit }, { silent: true }).then(unwrap)),
+      queryFn: ({ signal }) =>
+        request.post<ReportDataResult>(`/api/report/datasets/${entry.datasetId}/data`, { params: entry.params, limit }, { silent: true, signal }).then(unwrap),
     })),
     combine: (results) => {
       const map = new Map<string, DatasetDataState>();
@@ -170,8 +180,8 @@ export function useReportFilterDynamicOptions(filters: ReportFilter[], disabled?
   const queries = useQueries({
     queries: sources.map((entry) => ({
       queryKey: reportDesignerKeys.datasetData(entry.datasetId, {}, 500),
-      queryFn: () => reportDataLimiter(() =>
-        request.post<ReportDataResult>(`/api/report/datasets/${entry.datasetId}/data`, { limit: 500 }, { silent: true }).then(unwrap)),
+      queryFn: ({ signal }) =>
+        request.post<ReportDataResult>(`/api/report/datasets/${entry.datasetId}/data`, { limit: 500 }, { silent: true, signal }).then(unwrap),
       enabled: !disabled,
       staleTime: LOOKUP_STALE_TIME,
     })),

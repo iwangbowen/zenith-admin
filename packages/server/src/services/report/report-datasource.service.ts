@@ -6,15 +6,15 @@
  * - mysql/postgresql：外部数据库，凭据 AES-GCM 加密存储，取数走 report-external-db。
  */
 import { HTTPException } from 'hono/http-exception';
-import { and, desc, eq, ilike, or } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { reportDatasources, reportDatasets } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
 import { escapeLike } from '../../lib/where-helpers';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { encryptField, decryptField } from '../../lib/encryption';
-import { testExternalConnection } from '../../lib/report-external-db';
+import { invalidateExternalDatasourcePools, testExternalConnection } from '../../lib/report-external-db';
 import { assertSafeOutboundHost, assertSafeOutboundUrl } from '../../lib/outbound-url';
 import {
   ensureInternalReportDatabaseAccess,
@@ -30,7 +30,7 @@ import { isExternalDbType, REPORT_DATASOURCE_TYPES } from '@zenith/shared';
 import type { ReportDatasourceRow } from '../../db/schema';
 import type {
   ReportDatasource, ReportDatasourceConfig, ReportDatasourceType, ReportExternalDbConfig, ReportApiDatasourceConfig,
-  CreateReportDatasourceInput, UpdateReportDatasourceInput, ReportDatasourceTestInput,
+  CreateReportDatasourceInput, UpdateReportDatasourceInput, ReportDatasourceTestInput, ReportLookupOption,
 } from '@zenith/shared';
 
 const DEFAULT_PORT: Record<string, number> = { mysql: 3306, postgresql: 5432, sqlserver: 1433 };
@@ -85,12 +85,54 @@ export function mapDatasource(row: ReportDatasourceRow): ReportDatasource {
     type: row.type,
     config,
     status: row.status,
+    lastTestAt: formatNullableDateTime(row.lastTestAt),
+    lastTestStatus: (row.lastTestStatus as ReportDatasource['lastTestStatus']) ?? null,
+    lastTestLatencyMs: row.lastTestLatencyMs ?? null,
+    lastTestError: row.lastTestError ?? null,
+    consecutiveFailures: row.consecutiveFailures ?? 0,
     remark: row.remark ?? null,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
     createdAt: formatDateTime(row.createdAt),
     updatedAt: formatDateTime(row.updatedAt),
   };
+}
+
+function buildCopyName(baseName: string, existingNames: Set<string>): string {
+  const normalized = new Set(Array.from(existingNames).map((name) => name.trim().toLowerCase()));
+  const base = baseName.trim() || '未命名副本';
+  const direct = `${base} 副本`;
+  if (!normalized.has(direct.toLowerCase())) return direct;
+  for (let index = 2; index <= 200; index += 1) {
+    const candidate = `${base} 副本 ${index}`;
+    if (!normalized.has(candidate.toLowerCase())) return candidate;
+  }
+  return `${base} 副本 ${Date.now()}`;
+}
+
+export async function updateDatasourceHealth(id: number, input: {
+  ok: boolean;
+  latencyMs?: number | null;
+  error?: string | null;
+}): Promise<void> {
+  await db.update(reportDatasources).set({
+    lastTestAt: new Date(),
+    lastTestStatus: input.ok ? 'success' : 'failed',
+    lastTestLatencyMs: input.latencyMs == null ? null : Math.max(0, Math.round(input.latencyMs)),
+    lastTestError: input.ok ? null : (input.error?.slice(0, 512) ?? '连接失败'),
+    consecutiveFailures: input.ok ? 0 : sql`${reportDatasources.consecutiveFailures} + 1`,
+  }).where(eq(reportDatasources.id, id));
+}
+
+export async function markDatasourceExecutionHealth(
+  id: number,
+  input: { success: boolean; latencyMs?: number | null; error?: string | null },
+): Promise<void> {
+  await updateDatasourceHealth(id, {
+    ok: input.success,
+    latencyMs: input.latencyMs ?? null,
+    error: input.error ?? null,
+  });
 }
 
 /**
@@ -154,6 +196,12 @@ export async function ensureDatasourceExists(id: number): Promise<ReportDatasour
   return row;
 }
 
+export function ensureDatasourceEnabled(row: Pick<ReportDatasourceRow, 'status'>): void {
+  if (row.status !== 'enabled') {
+    throw new HTTPException(400, { message: '数据源已停用' });
+  }
+}
+
 export async function getDatasource(id: number): Promise<ReportDatasource> {
   return mapDatasource(await ensureDatasourceExists(id));
 }
@@ -181,6 +229,30 @@ export async function listDatasources(query: {
       .orderBy(desc(reportDatasources.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
   ]);
   return { list: rows.map(mapDatasource), total, page, pageSize };
+}
+
+export async function listDatasourceLookup(query: {
+  keyword?: string;
+  status?: 'enabled' | 'disabled';
+  limit?: number;
+}): Promise<ReportLookupOption[]> {
+  const { keyword, status, limit = 20 } = query;
+  const conds = [];
+  const tenantScope = reportTenantScope(reportDatasources);
+  if (tenantScope) conds.push(tenantScope);
+  if (keyword) {
+    const kw = `%${escapeLike(keyword)}%`;
+    conds.push(or(ilike(reportDatasources.name, kw), ilike(reportDatasources.remark, kw)));
+  }
+  if (status) conds.push(eq(reportDatasources.status, status));
+  const where = conds.length ? and(...conds) : undefined;
+  const rows = await db.select({
+    id: reportDatasources.id,
+    name: reportDatasources.name,
+    status: reportDatasources.status,
+    type: reportDatasources.type,
+  }).from(reportDatasources).where(where).orderBy(desc(reportDatasources.id)).limit(Math.min(Math.max(limit, 1), 50));
+  return rows.map((row) => ({ id: row.id, name: row.name, status: row.status, type: row.type }));
 }
 
 export async function createDatasource(input: CreateReportDatasourceInput): Promise<ReportDatasource> {
@@ -218,6 +290,12 @@ export async function updateDatasource(id: number, input: UpdateReportDatasource
     : undefined;
   await assertDatasourceTargetSafe(nextType, config ?? currentConfig ?? {});
   try {
+    if (isExternalDbType(current.type)) {
+      await invalidateExternalDatasourcePools(current.type, current.config as ReportExternalDbConfig | null | undefined);
+    }
+    if (config && isExternalDbType(nextType)) {
+      await invalidateExternalDatasourcePools(nextType, config as ReportExternalDbConfig);
+    }
     const [row] = await db.update(reportDatasources).set({
       name: input.name,
       type: input.type,
@@ -240,6 +318,37 @@ export async function deleteDatasource(id: number): Promise<void> {
   await db.delete(reportDatasources).where(eq(reportDatasources.id, id));
 }
 
+export async function batchSetDatasourceStatus(ids: number[], status: 'enabled' | 'disabled'): Promise<number> {
+  if (ids.length === 0) return 0;
+  const result = await db.update(reportDatasources).set({ status }).where(reportScopedWhere(reportDatasources, inArray(reportDatasources.id, ids))).returning({ id: reportDatasources.id });
+  return result.length;
+}
+
+export async function cloneDatasource(id: number, input?: { name?: string | null }): Promise<ReportDatasource> {
+  const current = await ensureDatasourceExists(id);
+  const rows = await db.select({ name: reportDatasources.name }).from(reportDatasources).where(reportTenantScope(reportDatasources));
+  const name = input?.name?.trim() || buildCopyName(current.name, new Set(rows.map((row) => row.name)));
+  try {
+    const [row] = await db.insert(reportDatasources).values({
+      tenantId: current.tenantId ?? reportCreateTenantId(),
+      name,
+      type: current.type,
+      config: (current.config ?? {}) as ReportDatasourceConfig,
+      status: current.status,
+      remark: current.remark ?? null,
+      lastTestAt: null,
+      lastTestStatus: 'unknown',
+      lastTestLatencyMs: null,
+      lastTestError: null,
+      consecutiveFailures: 0,
+    }).returning();
+    return mapDatasource(row);
+  } catch (err) {
+    rethrowPgUniqueViolation(err, '复制后的数据源名称已存在，请修改后重试');
+    throw err;
+  }
+}
+
 /**
  * 测试外部数据库连接。
  * - 已存在数据源（id）：用库内密文凭据测试，前端无需重发密码。
@@ -248,8 +357,10 @@ export async function deleteDatasource(id: number): Promise<void> {
 export async function testDatasource(input: ReportDatasourceTestInput): Promise<{ ok: boolean; message: string; latencyMs?: number }> {
   let type = input.type;
   let cfg: ReportExternalDbConfig;
+  let datasourceId: number | null = null;
   if (input.id) {
     const row = await ensureDatasourceExists(input.id);
+    datasourceId = row.id;
     type ??= row.type;
     if (!type || !isExternalDbType(type)) {
       return { ok: false, message: '仅外部数据库（MySQL / PostgreSQL / SQL Server）支持连接测试' };
@@ -267,5 +378,14 @@ export async function testDatasource(input: ReportDatasourceTestInput): Promise<
     cfg = normalized as ReportExternalDbConfig;
   }
   await assertDatasourceTargetSafe(type, cfg);
-  return testExternalConnection(type, cfg);
+  await invalidateExternalDatasourcePools(type, cfg);
+  const result = await testExternalConnection(type, cfg);
+  if (datasourceId) {
+    await updateDatasourceHealth(datasourceId, {
+      ok: result.ok,
+      latencyMs: result.latencyMs ?? null,
+      error: result.ok ? null : result.message,
+    });
+  }
+  return result;
 }

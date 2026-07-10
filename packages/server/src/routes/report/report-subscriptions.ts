@@ -6,11 +6,12 @@ import {
   ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, IdParam, okBody,
 } from '../../lib/openapi-schemas';
-import { ReportDashboardSubscriptionDTO } from '../../lib/openapi-dtos';
+import { AsyncTaskDTO, ReportDashboardSubscriptionDTO } from '../../lib/openapi-dtos';
 import {
   listSubscriptions, createSubscription, updateSubscription, deleteSubscription,
-  ensureSubscriptionExists, runSubscriptionById, mapSubscription,
+  ensureSubscriptionExists, mapSubscription, batchSetSubscriptionEnabled,
 } from '../../services/report/report-subscription.service';
+import { submitSubscriptionDeliveryTask } from '../../services/report/report-delivery-tasks';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -23,6 +24,11 @@ const listRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okPaginated(ReportDashboardSubscriptionDTO, 'ok') },
   }),
   handler: async (c) => c.json(okBody(await listSubscriptions(c.req.valid('query'))), 200),
+});
+
+const batchStatusSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1).max(50),
+  enabled: z.boolean(),
 });
 
 const createRoute_ = defineOpenAPIRoute({
@@ -67,20 +73,34 @@ const deleteRoute_ = defineOpenAPIRoute({
   },
 });
 
+const batchStatusRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put', path: '/batch-status', tags: ['报表订阅'], summary: '批量启停订阅',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'report:subscription:update', audit: { description: '批量更新报表订阅状态', module: '报表订阅' } })] as const,
+    request: { body: { content: jsonContent(batchStatusSchema), required: true } },
+    responses: { ...commonErrorResponses, ...okMsg('已更新') },
+  }),
+  handler: async (c) => {
+    const { ids, enabled } = c.req.valid('json');
+    const count = await batchSetSubscriptionEnabled(ids, enabled);
+    return c.json(okBody(null, `已更新 ${count} 条订阅状态`), 200);
+  },
+});
+
 const runRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/{id}/run', tags: ['报表订阅'], summary: '立即推送',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'report:subscription:update', audit: { description: '手动推送报表订阅', module: '报表订阅' } })] as const,
     request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...okMsg('已推送'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
+    responses: { ...commonErrorResponses, ...ok(AsyncTaskDTO, '任务已提交'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
   }),
   handler: async (c) => {
-    await runSubscriptionById(c.req.valid('param').id);
-    return c.json(okBody(null, '已推送'), 200);
+    return c.json(okBody(await submitSubscriptionDeliveryTask(c.req.valid('param').id), '任务已提交，可在任务中心查看进度'), 200);
   },
 });
 
-router.openapiRoutes([listRoute, createRoute_, updateRoute_, deleteRoute_, runRoute] as const);
+router.openapiRoutes([listRoute, batchStatusRoute, createRoute_, updateRoute_, deleteRoute_, runRoute] as const);
 
 export default router;

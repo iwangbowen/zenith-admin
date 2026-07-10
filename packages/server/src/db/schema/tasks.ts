@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import { auditColumns, tenants, users } from './core';
 import { managedFiles } from './files';
 
-export const exportJobFormatEnum = pgEnum('export_job_format', ['xlsx', 'csv']);
+export const exportJobFormatEnum = pgEnum('export_job_format', ['xlsx', 'csv', 'pdf']);
 
 export const exportJobStatusEnum = pgEnum('export_job_status', ['pending', 'running', 'success', 'failed', 'cancelled', 'expired']);
 

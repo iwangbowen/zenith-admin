@@ -8,7 +8,7 @@ import {
 } from '@zenith/shared';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 import type {
-  ReportDatasource, ReportDataset, ReportDashboard, ReportDataResult,
+  ReportDatasource, ReportDataset, ReportDashboard, ReportDataResult, ReportWidgetDataResult,
   ReportDashboardCategory, ReportAlertRule, ReportPrintTemplate, ReportDashboardSubscription,
   ReportDashboardComment, ReportDashboardVersion, ReportDashboardShare,
 } from '@zenith/shared';
@@ -19,9 +19,18 @@ export const mockReportDatasources: ReportDatasource[] = clone(SEED_REPORT_DATAS
 export const mockReportDatasets: ReportDataset[] = clone(SEED_REPORT_DATASETS);
 export const mockReportDashboards: ReportDashboard[] = clone(SEED_REPORT_DASHBOARDS);
 
+function withFields(result: Omit<ReportDataResult, 'fields'> | ReportDataResult): ReportDataResult {
+  return {
+    columns: result.columns,
+    fields: (result as ReportDataResult).fields ?? result.columns.map((name) => ({ name, label: name, type: 'string' as const, source: 'inferred' as const })),
+    rows: result.rows,
+    total: result.total,
+  };
+}
+
 /** 按 datasetId 预置的静态取数结果（Demo 离线渲染用） */
 export const mockReportDataByDataset: Record<number, ReportDataResult> = {
-  1: {
+  1: withFields({
     columns: ['name', 'value'],
     rows: [
       { name: '菜单', value: 24 },
@@ -29,8 +38,8 @@ export const mockReportDataByDataset: Record<number, ReportDataResult> = {
       { name: '按钮', value: 53 },
     ],
     total: 3,
-  },
-  2: {
+  }),
+  2: withFields({
     columns: ['name', 'value'],
     rows: [
       { name: '研发部', value: 28 },
@@ -41,20 +50,22 @@ export const mockReportDataByDataset: Record<number, ReportDataResult> = {
       { name: '人事部', value: 5 },
     ],
     total: 6,
-  },
+  }),
 };
 
 /** 取某数据集的预置结果（缺省回落空集） */
 export function getMockDatasetData(datasetId: number | null | undefined): ReportDataResult {
   if (datasetId && mockReportDataByDataset[datasetId]) return clone(mockReportDataByDataset[datasetId]);
-  return { columns: [], rows: [], total: 0 };
+  return { columns: [], fields: [], rows: [], total: 0 };
 }
 
 /** 组装某仪表盘的「组件 id → 取数结果」映射 */
-export function buildDashboardData(dashboard: ReportDashboard): Record<string, ReportDataResult> {
-  const out: Record<string, ReportDataResult> = {};
+export function buildDashboardData(dashboard: ReportDashboard): Record<string, ReportWidgetDataResult> {
+  const out: Record<string, ReportWidgetDataResult> = {};
   for (const w of dashboard.widgets ?? []) {
-    if (w.datasetId) out[w.i] = getMockDatasetData(w.datasetId);
+    if (w.datasetId) {
+      out[w.i] = { data: getMockDatasetData(w.datasetId), error: null, durationMs: 12, cacheHit: true };
+    }
   }
   return out;
 }
@@ -67,9 +78,9 @@ export const mockReportCategories: ReportDashboardCategory[] = [
 export const mockReportAlerts: ReportAlertRule[] = [
   {
     id: 1, name: '菜单总数异常预警', datasetId: 1, datasetName: '菜单类型分布', field: 'value', groupByField: null, aggregate: 'sum',
-    op: 'gt', threshold: 200, cron: '0 9 * * *', channels: ['inApp'], recipients: null, webhookUrl: null,
+    op: 'gt', threshold: 200, cron: '0 9 * * *', timezone: 'Asia/Shanghai', misfirePolicy: 'fire_once', nextRunAt: mockDateTimeOffset(3600000), channels: ['inApp'], recipients: null, webhookUrl: null,
     silenceMins: 60, notifyOnRecover: false, enabled: true,
-    lastCheckedAt: mockDateTimeOffset(-3600000), lastTriggered: false, lastValue: 86, lastNotifiedAt: null, remark: '示例预警规则',
+    lastCheckedAt: mockDateTimeOffset(-3600000), lastTriggered: false, lastValue: 86, lastNotifiedAt: null, lastDeliveryAt: mockDateTimeOffset(-3600000), lastDeliveryStatus: 'success', lastDeliveryError: null, remark: '示例预警规则',
     createdBy: 1, createdAt: mockDateTime(), updatedAt: mockDateTime(),
   },
 ];
@@ -97,14 +108,14 @@ export const mockReportPrintTemplates: ReportPrintTemplate[] = [
 
 export const mockReportSubscriptions: ReportDashboardSubscription[] = [
   {
-    id: 1, dashboardId: 1, dashboardName: '示例仪表盘', cron: '0 8 * * 1', channels: ['email'],
-    recipients: 'ops@example.com', webhookUrl: null, enabled: true, remark: '每周一早 8 点推送', lastRunAt: mockDateTimeOffset(-86400000),
+    id: 1, dashboardId: 1, dashboardName: '示例仪表盘', cron: '0 8 * * 1', timezone: 'Asia/Shanghai', misfirePolicy: 'fire_once', nextRunAt: mockDateTimeOffset(86400000), channels: ['email'],
+    recipients: 'ops@example.com', webhookUrl: null, enabled: true, remark: '每周一早 8 点推送', lastRunAt: mockDateTimeOffset(-86400000), lastDeliveryAt: mockDateTimeOffset(-86400000), lastDeliveryStatus: 'success', lastDeliveryError: null,
     createdBy: 1, createdAt: mockDateTime(), updatedAt: mockDateTime(),
   },
 ];
 
 export const mockReportComments: ReportDashboardComment[] = [
-  { id: 1, dashboardId: 1, widgetId: null, content: '这个看板很直观，建议加个环比。', userId: 1, userName: '管理员', userAvatar: null, createdAt: mockDateTimeOffset(-7200000) },
+  { id: 1, dashboardId: 1, widgetId: null, parentId: null, content: '这个看板很直观，建议加个环比。', userId: 1, userName: '管理员', userAvatar: null, updatedAt: mockDateTimeOffset(-7200000), createdAt: mockDateTimeOffset(-7200000), replies: [], canEdit: true, canDelete: true, canResolve: true },
 ];
 
 export const mockReportVersions: ReportDashboardVersion[] = [];

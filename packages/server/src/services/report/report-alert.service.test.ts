@@ -2,11 +2,12 @@
  * 报表预警纯函数单测：行集聚合 + 阈值比较 + 静默窗口判定。
  */
 import { describe, it, expect } from 'vitest';
-import { aggregate, compare, shouldNotifyTrigger, evaluateGroups } from './report-alert.service';
+import { aggregateReportRows, compare } from '@zenith/shared';
+import { shouldNotifyTrigger, evaluateGroups } from './report-alert.service';
 import type { ReportAlertAggregate, ReportAlertOp } from '@zenith/shared';
 
 const rows = [{ v: 10 }, { v: 20 }, { v: 30 }];
-const agg = (a: ReportAlertAggregate, field: string | null = 'v') => aggregate(rows, field, a);
+const agg = (a: ReportAlertAggregate, field: string | null = 'v') => aggregateReportRows(rows, field, a);
 
 describe('aggregate', () => {
   it('sum / avg / max / min / first', () => {
@@ -18,13 +19,20 @@ describe('aggregate', () => {
   });
   it('count 返回行数（忽略字段）', () => {
     expect(agg('count')).toBe(3);
-    expect(aggregate(rows, null, 'count')).toBe(3);
+    expect(aggregateReportRows(rows, null, 'count')).toBe(3);
   });
   it('空集返回 0', () => {
-    expect(aggregate([], 'v', 'sum')).toBe(0);
+    expect(aggregateReportRows([], 'v', 'sum')).toBe(0);
   });
   it('无字段时回落为行数（按计数处理）', () => {
-    expect(aggregate(rows, null, 'sum')).toBe(3);
+    expect(aggregateReportRows(rows, null, 'sum')).toBe(3);
+  });
+  it('忽略不可数值行，保留负数与首个可数值', () => {
+    const mixed = [{ v: '-5' }, { v: 'abc' }, { v: 12 }, { v: null }];
+    expect(aggregateReportRows(mixed, 'v', 'sum')).toBe(7);
+    expect(aggregateReportRows(mixed, 'v', 'max')).toBe(12);
+    expect(aggregateReportRows(mixed, 'v', 'min')).toBe(-5);
+    expect(aggregateReportRows(mixed, 'v', 'first')).toBe(-5);
   });
 });
 

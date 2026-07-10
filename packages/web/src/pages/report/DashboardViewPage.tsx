@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Avatar, Button, Empty, SideSheet, Space, Spin, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
-import { ArrowLeft, RotateCcw, PencilRuler, Maximize, Image, MessageSquare, Send, Trash2 } from 'lucide-react';
+import { Avatar, Button, Empty, SideSheet, Space, Spin, TextArea, Toast, Typography, Tag } from '@douyinfe/semi-ui';
+import { ArrowLeft, RotateCcw, PencilRuler, Maximize, Image, MessageSquare, Send, Trash2, CheckCircle2, CornerDownRight } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import './report-grid.css';
 import './report-screen.css';
@@ -10,12 +10,13 @@ import { usePermission } from '@/hooks/usePermission';
 import { ScreenCanvas } from './widgets/ScreenCanvas';
 import { FilterBar } from './widgets/FilterBar';
 import { filterValuesFromSearch, withFilterParam } from './widgets/filter-url';
-import type { ReportWidget, ReportFilter, ReportGridItem, ReportCanvasItem } from '@zenith/shared';
+import type { ReportWidget, ReportFilter, ReportGridItem, ReportCanvasItem, ReportDatasetQueryOptions } from '@zenith/shared';
 import {
   useCreateReportDashboardComment,
   useDeleteReportDashboardComment,
   useReportDashboardComments,
   useReportDashboardDetail,
+  useResolveReportDashboardComment,
   useReportDashboardWidgetData,
 } from '@/hooks/queries/report-dashboards';
 
@@ -32,14 +33,20 @@ export default function DashboardViewPage() {
   const { hasPermission } = usePermission();
 
   const [filterValues, setFilterValues] = useState<Record<string, unknown>>({});
+  const [debouncedFilterValues, setDebouncedFilterValues] = useState<Record<string, unknown>>({});
+  const [widgetQueries, setWidgetQueries] = useState<Record<string, ReportDatasetQueryOptions>>({});
   const rootRef = useRef<HTMLDivElement | null>(null);
   const exportRef = useRef<HTMLDivElement | null>(null);
   const [exporting, setExporting] = useState(false);
   const [isFs, setIsFs] = useState(false);
   const [commentsVisible, setCommentsVisible] = useState(false);
   const [commentText, setCommentText] = useState('');
+  const [commentWidgetId, setCommentWidgetId] = useState<string | undefined>(undefined);
+  const [replyTo, setReplyTo] = useState<{ id: number; widgetId?: string | null } | null>(null);
+  const [commentPage, setCommentPage] = useState(1);
+  const viewMode = (searchParams.get('mode') as 'auto' | 'draft' | 'published' | null) ?? 'auto';
 
-  const dashboardQuery = useReportDashboardDetail(dashboardId, !!dashboardId);
+  const dashboardQuery = useReportDashboardDetail(dashboardId, !!dashboardId, viewMode);
   const dashboard = dashboardQuery.data ?? null;
   const widgets = useMemo(() => dashboard?.widgets ?? [], [dashboard]);
   const filters = dashboard?.filters ?? [];
@@ -49,25 +56,41 @@ export default function DashboardViewPage() {
   const aspect = isCanvas ? `${screen?.width || 1920} / ${screen?.height || 1080}` : undefined;
   const refreshInterval = dashboard?.config?.refreshInterval && dashboard.config.refreshInterval > 0 ? dashboard.config.refreshInterval * 1000 : false;
 
-  const { get: getData, refresh } = useReportDashboardWidgetData(dashboardId, widgets, filterValues, { refetchInterval: refreshInterval });
-  const commentsQuery = useReportDashboardComments(dashboardId, commentsVisible);
-  const comments = commentsQuery.data ?? [];
+  const { get: getData, refresh } = useReportDashboardWidgetData(dashboardId, widgets, debouncedFilterValues, {
+    refetchInterval: refreshInterval,
+    widgetQueries,
+    mode: viewMode,
+  });
+  const commentsQuery = useReportDashboardComments(dashboardId, { page: commentPage, pageSize: 20, widgetId: commentWidgetId }, commentsVisible);
+  const comments = commentsQuery.data?.list ?? [];
   const createCommentMutation = useCreateReportDashboardComment();
   const deleteCommentMutation = useDeleteReportDashboardComment();
+  const resolveCommentMutation = useResolveReportDashboardComment();
 
   // 初始化筛选值：URL 优先 > 筛选器默认值（仅在仪表盘加载/切换时执行，
   // 后续 URL 回写不重置状态，避免写 URL → 触发本 effect 的循环）
   useEffect(() => {
     if (!dashboard) return;
     setFilterValues(filterValuesFromSearch(dashboard.filters ?? [], searchParams, defaultFilterValue));
+    setWidgetQueries({});
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅随仪表盘变化初始化（searchParams 为闭包快照）
   }, [dashboard]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedFilterValues(filterValues), 250);
+    return () => window.clearTimeout(timer);
+  }, [filterValues]);
 
   /** 更新筛选值并回写 URL（replace，不产生历史记录），分享/刷新可保留筛选状态 */
   function updateFilter(filterId: string, value: unknown) {
     setFilterValues((p) => ({ ...p, [filterId]: value }));
+    setWidgetQueries({});
     setSearchParams((prev) => withFilterParam(prev, filterId, value), { replace: true });
   }
+
+  const handleWidgetQueryChange = useCallback((widgetId: string, next: ReportDatasetQueryOptions) => {
+    setWidgetQueries((prev) => ({ ...prev, [widgetId]: next }));
+  }, []);
 
   useEffect(() => {
     const onFs = () => setIsFs(!!document.fullscreenElement);
@@ -110,14 +133,30 @@ export default function DashboardViewPage() {
 
   function openComments() {
     setCommentsVisible(true);
+    setCommentWidgetId(undefined);
+    setReplyTo(null);
+    setCommentPage(1);
+  }
+
+  function openWidgetComments(widgetId: string) {
+    setCommentsVisible(true);
+    setCommentWidgetId(widgetId);
+    setReplyTo(null);
+    setCommentPage(1);
   }
 
   async function submitComment() {
     const content = commentText.trim();
     if (!content) { Toast.warning('请输入评论内容'); return; }
     try {
-      await createCommentMutation.mutateAsync({ dashboardId, content });
+      await createCommentMutation.mutateAsync({
+        dashboardId,
+        widgetId: replyTo?.widgetId ?? commentWidgetId ?? null,
+        parentId: replyTo?.id ?? null,
+        content,
+      });
       setCommentText('');
+      setReplyTo(null);
       Toast.success('发表成功');
     } catch (error) {
       Toast.error(error instanceof Error ? error.message : '发表失败');
@@ -130,6 +169,15 @@ export default function DashboardViewPage() {
       Toast.success('删除成功');
     } catch (error) {
       Toast.error(error instanceof Error ? error.message : '删除失败');
+    }
+  }
+
+  async function toggleResolve(commentId: number, resolved: boolean) {
+    try {
+      await resolveCommentMutation.mutateAsync({ dashboardId, commentId, resolved });
+      Toast.success(resolved ? '已解决评论' : '已重新打开评论');
+    } catch (error) {
+      Toast.error(error instanceof Error ? error.message : '操作失败');
     }
   }
 
@@ -174,7 +222,10 @@ export default function DashboardViewPage() {
               config={dashboard?.config ?? {}}
               filterValues={filterValues}
               getWidgetState={canvasState}
+              getWidgetQuery={(widget) => widgetQueries[widget.i]}
+              onWidgetQueryChange={handleWidgetQueryChange}
               onCategoryClick={handleCategoryClick}
+              onWidgetClick={(widget) => openWidgetComments(widget.i)}
             />
           </div>
         ) : (
@@ -185,15 +236,18 @@ export default function DashboardViewPage() {
             config={dashboard?.config ?? {}}
             filterValues={filterValues}
             getWidgetState={canvasState}
+            getWidgetQuery={(widget) => widgetQueries[widget.i]}
+            onWidgetQueryChange={handleWidgetQueryChange}
             onCategoryClick={handleCategoryClick}
+            onWidgetClick={(widget) => openWidgetComments(widget.i)}
           />
         )}
       </div>
 
       <SideSheet
-        title="仪表盘评论"
+        title={commentWidgetId ? `组件评论 · ${widgets.find((item) => item.i === commentWidgetId)?.title || commentWidgetId}` : '仪表盘评论'}
         visible={commentsVisible}
-        onCancel={() => setCommentsVisible(false)}
+        onCancel={() => { setCommentsVisible(false); setReplyTo(null); }}
         placement="right"
         width={420}
         bodyStyle={{ padding: 0 }}
@@ -213,28 +267,69 @@ export default function DashboardViewPage() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <Typography.Text strong>{comment.userName || `用户 ${comment.userId}`}</Typography.Text>
                         <Typography.Text type="tertiary" size="small">{formatDateTime(comment.createdAt)}</Typography.Text>
+                        {comment.resolvedAt ? <Tag color="green" size="small">已解决</Tag> : null}
                         <div style={{ flex: 1 }} />
-                        <Button
-                          theme="borderless"
-                          type="danger"
-                          size="small"
-                          icon={<Trash2 size={14} />}
-                          onClick={() => void deleteComment(comment.id)}
-                          aria-label="删除评论"
-                        />
+                        {comment.canResolve ? (
+                          <Button
+                            theme="borderless"
+                            size="small"
+                            icon={<CheckCircle2 size={14} />}
+                            onClick={() => void toggleResolve(comment.id, !comment.resolvedAt)}
+                          >
+                            {comment.resolvedAt ? '重开' : '解决'}
+                          </Button>
+                        ) : null}
+                        <Button theme="borderless" size="small" icon={<CornerDownRight size={14} />} onClick={() => setReplyTo({ id: comment.id, widgetId: comment.widgetId })}>回复</Button>
+                        {comment.canDelete ? (
+                          <Button
+                            theme="borderless"
+                            type="danger"
+                            size="small"
+                            icon={<Trash2 size={14} />}
+                            onClick={() => void deleteComment(comment.id)}
+                            aria-label="删除评论"
+                          />
+                        ) : null}
                       </div>
                       <Typography.Paragraph style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap' }}>{comment.content}</Typography.Paragraph>
+                      {(comment.replies ?? []).map((reply) => (
+                        <div key={reply.id} style={{ display: 'flex', gap: 8, marginTop: 10, paddingLeft: 12, borderLeft: '2px solid var(--semi-color-border)' }}>
+                          <Avatar size="extra-small" src={reply.userAvatar || undefined}>{reply.userName?.slice(0, 1) || '用'}</Avatar>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <Typography.Text strong>{reply.userName || `用户 ${reply.userId}`}</Typography.Text>
+                              <Typography.Text type="tertiary" size="small">{formatDateTime(reply.createdAt)}</Typography.Text>
+                              {reply.resolvedAt ? <Tag color="green" size="small">已解决</Tag> : null}
+                              <div style={{ flex: 1 }} />
+                              {reply.canResolve ? <Button theme="borderless" size="small" onClick={() => void toggleResolve(reply.id, !reply.resolvedAt)}>{reply.resolvedAt ? '重开' : '解决'}</Button> : null}
+                              {reply.canDelete ? <Button theme="borderless" type="danger" size="small" onClick={() => void deleteComment(reply.id)}>删除</Button> : null}
+                            </div>
+                            <Typography.Paragraph style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap' }}>{reply.content}</Typography.Paragraph>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ))}
               </Space>
             )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12 }}>
+              <Button disabled={commentPage <= 1} onClick={() => setCommentPage((page) => Math.max(1, page - 1))}>上一页</Button>
+              <Typography.Text type="tertiary">第 {commentPage} 页 / 共 {Math.max(1, Math.ceil((commentsQuery.data?.total ?? 0) / (commentsQuery.data?.pageSize ?? 20)))} 页</Typography.Text>
+              <Button disabled={commentPage >= Math.max(1, Math.ceil((commentsQuery.data?.total ?? 0) / (commentsQuery.data?.pageSize ?? 20)))} onClick={() => setCommentPage((page) => page + 1)}>下一页</Button>
+            </div>
           </div>
           <div style={{ borderTop: '1px solid var(--semi-color-border)', padding: 16 }}>
+            {replyTo ? (
+              <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Typography.Text type="tertiary">正在回复评论 #{replyTo.id}</Typography.Text>
+                <Button theme="borderless" size="small" onClick={() => setReplyTo(null)}>取消回复</Button>
+              </div>
+            ) : null}
             <TextArea
               value={commentText}
               onChange={setCommentText}
-              placeholder="写下评论..."
+              placeholder={commentWidgetId ? '写下该组件的评论...' : '写下评论...'}
               autosize={{ minRows: 3, maxRows: 5 }}
               maxCount={1000}
               showClear

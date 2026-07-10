@@ -49,4 +49,12 @@ describe('parseDataFile - Excel', () => {
     expect(res.rows[0]).toEqual({ name: 'A', qty: 2 });
     expect(res.rows[1]).toEqual({ name: 'B', qty: 5 });
   });
+
+  it('明确拒绝 .xls', async () => {
+    await expect(parseDataFile(Buffer.from('fake'), 'legacy.xls')).rejects.toThrow(/\.xlsx 或 \.csv/);
+  });
+
+  it('未知扩展名返回清晰 400', async () => {
+    await expect(parseDataFile(Buffer.from('x'), 'legacy.txt')).rejects.toThrow(/仅支持 \.xlsx 或 \.csv/);
+  });
 });

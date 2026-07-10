@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CreateReportAlertInput, PaginatedResponse, ReportAlertRule, ReportAlertEvalResult } from '@zenith/shared';
+import type { AsyncTask, CreateReportAlertInput, PaginatedResponse, ReportAlertRule, ReportDeliveryRun } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { toQueryString, unwrap } from '@/lib/query';
 
@@ -16,6 +16,7 @@ export const reportAlertKeys = {
   lists: ['report', 'alerts', 'list'] as const,
   list: (params: ReportAlertListParams) => ['report', 'alerts', 'list', params] as const,
   detail: (id: number | undefined) => ['report', 'alerts', 'detail', id] as const,
+  history: (id: number | undefined) => ['report', 'alerts', 'history', id] as const,
 };
 
 export function useReportAlertList(params: ReportAlertListParams) {
@@ -58,7 +59,33 @@ export function useToggleReportAlertEnabled() {
 export function useEvaluateReportAlert() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) => request.post<ReportAlertEvalResult>(`/api/report/alerts/${id}/evaluate`, undefined, { silent: true }).then(unwrap),
+    mutationFn: (id: number) => request.post<AsyncTask>(`/api/report/alerts/${id}/evaluate`, undefined, { silent: true }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: reportAlertKeys.all }),
+  });
+}
+
+export function useBatchReportAlertEnabled() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ids, enabled }: { ids: number[]; enabled: boolean }) =>
+      request.put<null>('/api/report/alerts/batch-status', { ids, enabled }, { silent: true }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: reportAlertKeys.all }),
+  });
+}
+
+export function useReportAlertHistory(id: number | undefined, enabled = true) {
+  return useQuery({
+    queryKey: reportAlertKeys.history(id),
+    enabled: enabled && !!id,
+    queryFn: () => request.get<PaginatedResponse<ReportDeliveryRun>>(`/api/report/delivery-runs${toQueryString({ targetType: 'alert', alertRuleId: id, includeAttempts: true, page: 1, pageSize: 20 })}`).then(unwrap),
+  });
+}
+
+export function useAcknowledgeReportAlertRun() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ runId, note }: { runId: number; note?: string }) =>
+      request.post<ReportDeliveryRun>(`/api/report/delivery-runs/${runId}/acknowledge`, { note }, { silent: true }).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: reportAlertKeys.all }),
   });
 }

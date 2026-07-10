@@ -225,6 +225,48 @@
       "when": 1783625986718,
       "tag": "0031_familiar_cable",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1783629348396,
+      "tag": "0032_slim_black_panther",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1783630841023,
+      "tag": "0033_eager_the_spike",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1783632498224,
+      "tag": "0034_rare_warbound",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1783684155974,
+      "tag": "0035_glossy_wendell_rand",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1783686362401,
+      "tag": "0036_true_lightspeed",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1783688188491,
+      "tag": "0037_pale_ink",
+      "breakpoints": true
     }
   ]
 }

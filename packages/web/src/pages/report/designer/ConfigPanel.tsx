@@ -1,13 +1,13 @@
 import { Select, Input, InputNumber, Switch, Typography, Button, Space, TextArea } from '@douyinfe/semi-ui';
 import { Plus, Trash2 } from 'lucide-react';
 import { BASIC_COMPARISON_OPERATOR_SYMBOLS, REPORT_AGGREGATE_OPTIONS } from '@zenith/shared';
-import type { ReportWidget, ReportWidgetOptions, ReportDataset, ReportFilter, ReportDatasetParam, ReportConditionalFormat } from '@zenith/shared';
+import type { ReportWidget, ReportWidgetOptions, ReportFilter, ReportDatasetParam, ReportConditionalFormat } from '@zenith/shared';
 
 type FieldOption = { value: string; label: string };
 
 interface ConfigPanelProps {
   widget: ReportWidget;
-  datasets: ReportDataset[];
+  datasets: Array<{ id: number; name: string }>;
   dashboards: { id: number; name: string }[];
   fieldOptions: FieldOption[];
   filters: ReportFilter[];

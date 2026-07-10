@@ -6,7 +6,7 @@ import { decryptField } from './encryption';
 import { createHash } from 'node:crypto';
 import { resolveSafeOutboundHost } from './outbound-url';
 import { normalizeReadonlyReportSql } from './report-sql-safety';
-import type { ReportDatasourceType, ReportExternalDbConfig, ReportDataResult } from '@zenith/shared';
+import type { ReportDatasourceType, ReportExternalDbConfig, ReportDataResult, ReportDatasetQueryOptions } from '@zenith/shared';
 
 const QUERY_TIMEOUT_MS = 15_000;
 const MAX_ROWS = 5000;
@@ -19,9 +19,34 @@ type PoolEntry = PgPoolEntry | MyPoolEntry | MssqlPoolEntry;
 
 const pools = new Map<string, PoolEntry>();
 
+function closePoolEntry(entry: PoolEntry) {
+  try {
+    if (entry.kind === 'pg') void entry.sql.end({ timeout: 5 });
+    else if (entry.kind === 'mysql') void entry.pool.end();
+    else void entry.pool.close();
+  } catch { /* ignore */ }
+}
+
 function poolKey(type: ReportDatasourceType, c: ReportExternalDbConfig, tlsServerName?: string): string {
   const credential = createHash('sha256').update(c.password ?? '').digest('hex').slice(0, 16);
   return `${type}://${c.user}@${c.host}:${c.port}/${c.database}:${c.ssl ? 1 : 0}:${tlsServerName ?? ''}:${credential}`;
+}
+
+export async function invalidateExternalDatasourcePools(
+  type: ReportDatasourceType,
+  ...configs: Array<ReportExternalDbConfig | null | undefined>
+): Promise<void> {
+  const keys = new Set<string>();
+  for (const cfg of configs) {
+    if (!cfg) continue;
+    keys.add(poolKey(type, cfg, String(cfg.host ?? '')));
+  }
+  for (const key of keys) {
+    const entry = pools.get(key);
+    if (!entry) continue;
+    closePoolEntry(entry);
+    pools.delete(key);
+  }
 }
 
 /** 解密 config 中的 password（密文 → 明文），返回可连接的配置 */
@@ -96,15 +121,87 @@ setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of pools) {
     if (entry.expire < now) {
-      try {
-        if (entry.kind === 'pg') void entry.sql.end({ timeout: 5 });
-        else if (entry.kind === 'mysql') void entry.pool.end();
-        else void entry.pool.close();
-      } catch { /* ignore */ }
+      closePoolEntry(entry);
       pools.delete(key);
     }
   }
 }, 60_000).unref?.();
+
+function quoteWrappedField(field: string, dialect: 'postgresql' | 'mysql' | 'sqlserver'): string {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(field)) {
+    throw new HTTPException(400, { message: '排序字段不合法' });
+  }
+  if (dialect === 'mysql') return `\`${field}\``;
+  if (dialect === 'sqlserver') return `[${field}]`;
+  return `"${field}"`;
+}
+
+export function stripSqlServerTopLevelOrderBy(sqlText: string): string {
+  let depth = 0;
+  let orderByIndex = -1;
+  let quote: "'" | '"' | '[' | null = null;
+  let lineComment = false;
+  let blockComment = false;
+  const isWord = (char: string | undefined) => !!char && /[A-Za-z0-9_]/.test(char);
+
+  for (let i = 0; i < sqlText.length; i++) {
+    const char = sqlText[i];
+    const next = sqlText[i + 1];
+    if (lineComment) {
+      if (char === '\n') lineComment = false;
+      continue;
+    }
+    if (blockComment) {
+      if (char === '*' && next === '/') { blockComment = false; i++; }
+      continue;
+    }
+    if (quote) {
+      const close = quote === '[' ? ']' : quote;
+      if (char === close) {
+        if (quote !== '[' && next === close) { i++; continue; }
+        quote = null;
+      }
+      continue;
+    }
+    if (char === '-' && next === '-') { lineComment = true; i++; continue; }
+    if (char === '/' && next === '*') { blockComment = true; i++; continue; }
+    if (char === '\'' || char === '"' || char === '[') { quote = char; continue; }
+    if (char === '(') { depth++; continue; }
+    if (char === ')') { depth = Math.max(0, depth - 1); continue; }
+    if (depth !== 0 || sqlText.slice(i, i + 5).toLowerCase() !== 'order') continue;
+    if (isWord(sqlText[i - 1]) || isWord(sqlText[i + 5])) continue;
+    let j = i + 5;
+    while (/\s/.test(sqlText[j] ?? '')) j++;
+    if (sqlText.slice(j, j + 2).toLowerCase() === 'by' && !isWord(sqlText[j + 2])) {
+      orderByIndex = i;
+    }
+  }
+  return orderByIndex >= 0 ? sqlText.slice(0, orderByIndex).trimEnd() : sqlText;
+}
+
+function buildWrappedSql(
+  sqlText: string,
+  options: ReportDatasetQueryOptions,
+  dialect: 'postgresql' | 'mysql' | 'sqlserver',
+): { dataSql: string; countSql: string; pageSize: number; offset: number } {
+  const page = options.page ?? 1;
+  const pageSize = Math.max(1, Math.min(options.pageSize ?? options.limit ?? 100, MAX_ROWS));
+  const offset = options.page && options.pageSize ? Math.max(0, (page - 1) * pageSize) : 0;
+  const limit = options.page && options.pageSize ? pageSize : Math.max(1, Math.min(options.limit ?? pageSize, MAX_ROWS));
+  const orderDir = options.sortOrder === 'asc' ? 'ASC' : 'DESC';
+  const orderBy = options.sortField
+    ? ` ORDER BY ${quoteWrappedField(options.sortField, dialect)} ${orderDir}`
+    : (dialect === 'sqlserver' ? ' ORDER BY (SELECT 1)' : '');
+  const limitSql = dialect === 'sqlserver'
+    ? ` OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY`
+    : ` LIMIT ${limit}${offset > 0 ? ` OFFSET ${offset}` : ''}`;
+  return {
+    dataSql: `SELECT * FROM (${sqlText}) AS _sub${orderBy}${limitSql}`,
+    countSql: `SELECT COUNT(*) AS total FROM (${sqlText}) AS _count`,
+    pageSize: limit,
+    offset,
+  };
+}
 
 /** 执行外部库只读查询（参数已转为占位符 + values，防注入；只读约束 + 行上限）*/
 export async function runExternalQuery(
@@ -112,10 +209,9 @@ export async function runExternalQuery(
   config: ReportExternalDbConfig,
   sqlText: string,
   values: unknown[] = [],
-  limit = 100,
+  options: ReportDatasetQueryOptions = {},
 ): Promise<ReportDataResult> {
   const trimmed = normalizeReadonlyReportSql(sqlText);
-  const capped = Math.max(1, Math.min(limit || 100, MAX_ROWS));
 
   try {
     const [address] = await resolveSafeOutboundHost(String(config.host ?? ''));
@@ -123,42 +219,48 @@ export async function runExternalQuery(
     const tlsServerName = String(config.host ?? '');
     if (type === 'postgresql') {
       const sql = getPgPool(type, safeConfig, tlsServerName);
-      // statement_timeout 已在连接级设置（见 getPgPool），此处直接执行
-      const wrapped = `SELECT * FROM (${trimmed}) AS _sub LIMIT ${capped}`;
-      const rows = (await sql.unsafe(wrapped, values as never[])) as unknown as Record<string, unknown>[];
+      const wrapped = buildWrappedSql(trimmed, options, 'postgresql');
+      const [countRows, rows] = await Promise.all([
+       sql.unsafe(wrapped.countSql, values as never[]),
+       sql.unsafe(wrapped.dataSql, values as never[]),
+      ]);
       const arr = Array.isArray(rows) ? rows : [];
       const columns = arr.length ? Object.keys(arr[0]) : [];
-      return { columns, rows: arr, total: arr.length };
+      const total = Number((Array.isArray(countRows) ? countRows[0] : countRows)?.total ?? arr.length);
+      return { columns, fields: [], rows: arr, total: Number.isFinite(total) ? total : arr.length };
     }
     if (type === 'sqlserver') {
       const pool = await getMssqlPool(safeConfig, tlsServerName);
-      const request = pool.request();
-      values.forEach((v, i) => request.input(`p${i}`, v as never));
-      // SET ROWCOUNT 限制返回行数：对 SELECT 与 WITH/CTE 均生效，且不破坏 DISTINCT（避免 TOP 注入）
-      const result = await request.query(`
-        SET ROWCOUNT ${capped};
-        BEGIN TRY
-          ${trimmed};
-          SET ROWCOUNT 0;
-        END TRY
-        BEGIN CATCH
-          SET ROWCOUNT 0;
-          THROW;
-        END CATCH
-      `);
-      const arr = ((result.recordset ?? []) as Record<string, unknown>[]).slice(0, capped);
+      const wrapped = buildWrappedSql(stripSqlServerTopLevelOrderBy(trimmed), options, 'sqlserver');
+      const dataRequest = pool.request();
+      values.forEach((v, i) => dataRequest.input(`p${i}`, v as never));
+      const countRequest = pool.request();
+      values.forEach((v, i) => countRequest.input(`p${i}`, v as never));
+      const [countResult, dataResult] = await Promise.all([
+       countRequest.query(wrapped.countSql),
+       dataRequest.query(wrapped.dataSql),
+      ]);
+      const arr = (dataResult.recordset ?? []) as Record<string, unknown>[];
       const columns = arr.length ? Object.keys(arr[0]) : [];
-      return { columns, rows: arr, total: arr.length };
+      const total = Number((countResult.recordset ?? [])[0]?.total ?? arr.length);
+      return { columns, fields: [], rows: arr, total: Number.isFinite(total) ? total : arr.length };
     }
     // mysql
     const pool = getMyPool(safeConfig, tlsServerName);
     const conn = await pool.getConnection();
     try {
-      const wrapped = `SELECT * FROM (${trimmed}) AS _sub LIMIT ${capped}`;
-      const [rows] = await conn.query({ sql: wrapped, values, timeout: QUERY_TIMEOUT_MS });
+      const wrapped = buildWrappedSql(trimmed, options, 'mysql');
+      const [countResult, dataResult] = await Promise.all([
+       conn.query({ sql: wrapped.countSql, values, timeout: QUERY_TIMEOUT_MS }),
+       conn.query({ sql: wrapped.dataSql, values, timeout: QUERY_TIMEOUT_MS }),
+      ]);
+      const countRows = countResult[0];
+      const rows = dataResult[0];
       const arr = (Array.isArray(rows) ? rows : []) as Record<string, unknown>[];
       const columns = arr.length ? Object.keys(arr[0]) : [];
-      return { columns, rows: arr, total: arr.length };
+      const totalRow = Array.isArray(countRows) ? (countRows[0] as { total?: number } | undefined) : undefined;
+      const total = Number(totalRow?.total ?? arr.length);
+      return { columns, fields: [], rows: arr, total: Number.isFinite(total) ? total : arr.length };
     } finally { conn.release(); }
   } catch (err) {
     if (err instanceof HTTPException) throw err;

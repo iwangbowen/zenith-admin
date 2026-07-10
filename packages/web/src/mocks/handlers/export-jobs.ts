@@ -44,6 +44,26 @@ const entities: ExportEntityMeta[] = [
       requireExportRawPermission: false,
     },
   },
+  {
+    entity: 'report.print',
+    moduleName: '打印报表',
+    filenamePrefix: '打印报表',
+    formats: ['xlsx', 'pdf'],
+    renderMode: 'custom',
+    sensitive: false,
+    columns: [],
+    execution: {
+      mode: 'auto',
+      syncMaxRows: 800,
+      forceAsyncWhenSensitive: false,
+      forceAsyncWhenRaw: false,
+      syncModeOverridesAsyncPolicies: false,
+    },
+    permissions: {
+      export: 'report:print:list',
+      requireExportRawPermission: false,
+    },
+  },
 ];
 
 let nextJobId = 4;
@@ -184,12 +204,16 @@ function filterJobs(url: URL) {
 function makeDownloadResponse(job: ExportJob) {
   const content = job.format === 'csv'
     ? '\uFEFFID,用户名,昵称\n1,admin,管理员\n'
+    : job.format === 'pdf'
+      ? '%PDF-1.4\n% Demo PDF\n'
     : 'Demo export file';
   return new Response(content, {
     headers: {
       'Content-Type': job.format === 'csv'
         ? 'text/csv; charset=utf-8'
-        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        : job.format === 'pdf'
+          ? 'application/pdf'
+          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(job.filename ?? `export-${job.id}.${job.format}`)}`,
     },
   });

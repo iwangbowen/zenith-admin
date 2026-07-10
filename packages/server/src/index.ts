@@ -178,7 +178,16 @@ import reportPrintRoutes from './routes/report/report-print';
 import reportAiRoutes from './routes/report/report-ai';
 import reportAlertsRoutes from './routes/report/report-alerts';
 import reportMetaRoutes from './routes/report/report-meta';
-import { backfillLegacyReportTenants, migrateLegacyReportSecrets } from './services/report/report-secret-migration.service';
+import reportExecutionsRoutes from './routes/report/report-executions';
+import reportDeliveryRunsRoutes from './routes/report/report-delivery-runs';
+import { registerReportDatasourceTaskHandlers } from './services/report/report-datasource-tasks';
+import { registerReportDatasetTaskHandlers } from './services/report/report-dataset-tasks';
+import { registerReportDeliveryTaskHandlers } from './services/report/report-delivery-tasks';
+import {
+  backfillLegacyDashboardLifecycle,
+  backfillLegacyReportTenants,
+  migrateLegacyReportSecrets,
+} from './services/report/report-secret-migration.service';
 import { createWsRoute } from './routes/platform/ws';
 import { createWsTerminalRoute, createWsTerminalMonitorRoute } from './routes/ops/ws-terminal';
 import terminalFilesRoutes from './routes/ops/terminal-files';
@@ -382,6 +391,8 @@ app.route('/api/report/print', reportPrintRoutes);
 app.route('/api/report/ai', reportAiRoutes);
 app.route('/api/report/alerts', reportAlertsRoutes);
 app.route('/api/report/meta', reportMetaRoutes);
+app.route('/api/report/executions', reportExecutionsRoutes);
+app.route('/api/report/delivery-runs', reportDeliveryRunsRoutes);
 app.route('/api/announcements', announcementsRoutes);
 app.route('/api/payment', paymentRoutes);
 app.route('/api/payment/recon', paymentReconRoutes);
@@ -545,6 +556,7 @@ app.onError((err, c) => {
 });
 
 await backfillLegacyReportTenants();
+await backfillLegacyDashboardLifecycle();
 await migrateLegacyReportSecrets();
 logger.info(`Server starting on port ${config.port}...`);
 const server = serve({ fetch: app.fetch, port: config.port });
@@ -584,6 +596,9 @@ try {
   const { registerExportJobWorker } = await import('./services/tasks/export-jobs.service');
   const { registerSystemTasks } = await import('./lib/system-tasks.registry');
   registerTaskDemoHandlers(); // 演示任务类型需在任务中心 Worker 启动前注册
+  registerReportDatasourceTaskHandlers();
+  registerReportDatasetTaskHandlers();
+  registerReportDeliveryTaskHandlers();
   await registerExportJobWorker();
   await registerSystemTasks();
 } catch (err) {

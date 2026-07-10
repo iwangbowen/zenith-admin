@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { Button, Form, Input, Select, Switch, Toast, Modal, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, RotateCcw, Plus } from 'lucide-react';
+import { Activity, Search, RotateCcw, Plus } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -14,7 +14,10 @@ import { usePagination } from '@/hooks/usePagination';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   reportDatasourceKeys,
+  useBatchReportDatasourceStatus,
+  useCloneReportDatasource,
   useDeleteReportDatasource,
+  useRunReportDatasourceHealthCheck,
   useReportDatasourceList,
   useSaveReportDatasource,
   useTestReportDatasourceConnection,
@@ -45,6 +48,7 @@ export default function DataSourcesPage() {
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<ReportDatasource | null>(null);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
 
   const listQuery = useReportDatasourceList({
     page,
@@ -56,6 +60,9 @@ export default function DataSourcesPage() {
   const data = listQuery.data ?? null;
   const saveMutation = useSaveReportDatasource();
   const toggleMutation = useSaveReportDatasource();
+  const batchStatusMutation = useBatchReportDatasourceStatus();
+  const cloneMutation = useCloneReportDatasource();
+  const healthTaskMutation = useRunReportDatasourceHealthCheck();
   const deleteMutation = useDeleteReportDatasource();
   const testConnectionMutation = useTestReportDatasourceConnection();
   const togglingId = toggleMutation.isPending ? toggleMutation.variables?.id ?? null : null;
@@ -151,6 +158,12 @@ export default function DataSourcesPage() {
     Toast.success('删除成功');
   }
 
+  function healthTag(status: ReportDatasource['lastTestStatus']) {
+    if (status === 'success') return <Typography.Text style={{ color: 'var(--semi-color-success)' }}>健康</Typography.Text>;
+    if (status === 'failed') return <Typography.Text type="danger">异常</Typography.Text>;
+    return <Typography.Text type="tertiary">未检测</Typography.Text>;
+  }
+
   function handleToggleStatus(record: ReportDatasource, checked: boolean) {
     const doToggle = async () => {
       await toggleMutation.mutateAsync({ id: record.id, values: { status: checked ? 'enabled' : 'disabled' } });
@@ -158,6 +171,30 @@ export default function DataSourcesPage() {
     };
     if (checked) void doToggle();
     else Modal.confirm({ title: '确认停用', content: `停用后「${record.name}」将不可用于取数，确认停用？`, onOk: () => void doToggle() });
+  }
+
+  function handleBatchStatus(status: 'enabled' | 'disabled') {
+    if (selectedRowKeys.length === 0) return;
+    const label = status === 'enabled' ? '启用' : '停用';
+    Modal.confirm({
+      title: `确认批量${label}选中的 ${selectedRowKeys.length} 个数据源？`,
+      content: status === 'disabled' ? '停用后相关数据集将无法继续取数。' : '启用后数据集可继续使用这些数据源。',
+      onOk: async () => {
+        await batchStatusMutation.mutateAsync({ ids: selectedRowKeys, status });
+        setSelectedRowKeys([]);
+        Toast.success(`批量${label}成功`);
+      },
+    });
+  }
+
+  async function handleClone(record: ReportDatasource) {
+    const cloned = await cloneMutation.mutateAsync({ id: record.id });
+    Toast.success(`已复制为「${cloned.name}」`);
+  }
+
+  async function handleHealthCheck(ids: number[], name?: string) {
+    const task = await healthTaskMutation.mutateAsync(ids);
+    Toast.success(name ? `已提交「${name}」健康检查任务` : `已提交 ${ids.length} 个数据源的健康检查任务（#${task.id}）`);
   }
 
   const columns: ColumnProps<ReportDatasource>[] = [
@@ -176,6 +213,22 @@ export default function DataSourcesPage() {
         return <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%', color: 'var(--semi-color-text-1)' }}>{text}</Typography.Text>;
       },
     },
+    {
+      title: '健康状态', dataIndex: 'lastTestStatus', width: 90,
+      render: (value: ReportDatasource['lastTestStatus']) => healthTag(value),
+    },
+    {
+      title: '最近测试', dataIndex: 'lastTestAt', width: 170,
+      render: (value: string | null, record) => value ? `${formatDateTime(value)}${record.lastTestLatencyMs != null ? ` · ${record.lastTestLatencyMs}ms` : ''}` : '—',
+    },
+    {
+      title: '连续失败', dataIndex: 'consecutiveFailures', width: 88,
+      render: (value: number) => value > 0 ? <Typography.Text type="danger">{value}</Typography.Text> : 0,
+    },
+    {
+      title: '最近错误', dataIndex: 'lastTestError', width: 200,
+      render: renderEllipsis,
+    },
     { title: '备注', dataIndex: 'remark', width: 180, render: renderEllipsis },
     { title: '创建时间', dataIndex: 'createdAt', width: 170, render: (t: string) => formatDateTime(t) },
     {
@@ -191,10 +244,12 @@ export default function DataSourcesPage() {
       ),
     },
     createOperationColumn<ReportDatasource>({
-      width: 140,
-      desktopInlineKeys: ['edit', 'delete'],
+      width: 200,
+      desktopInlineKeys: ['health', 'edit'],
       actions: (record) => [
+        ...(hasPermission('report:datasource:update') ? [{ key: 'health', label: '检测', onClick: () => void handleHealthCheck([record.id], record.name) }] : []),
         ...(hasPermission('report:datasource:update') ? [{ key: 'edit', label: '编辑', onClick: () => openEdit(record) }] : []),
+        ...(hasPermission('report:datasource:create') ? [{ key: 'clone', label: '复制', onClick: () => void handleClone(record) }] : []),
         ...(hasPermission('report:datasource:delete') ? [{
           key: 'delete', label: '删除', danger: true,
           onClick: () => { Modal.confirm({ title: '确定要删除吗？', content: '删除后不可恢复；若被数据集引用将无法删除。', onOk: () => handleDelete(record.id) }); },
@@ -219,14 +274,21 @@ export default function DataSourcesPage() {
   const renderResetBtn = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>;
   const renderCreateBtn = () => hasPermission('report:datasource:create')
     ? <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button> : null;
+  const renderBatchHealthBtn = () => selectedRowKeys.length > 0 && hasPermission('report:datasource:update')
+    ? <Button icon={<Activity size={14} />} onClick={() => void handleHealthCheck(selectedRowKeys)}>批量检测</Button> : null;
+  const renderBatchEnableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:datasource:update')
+    ? <Button onClick={() => handleBatchStatus('enabled')}>批量启用</Button> : null;
+  const renderBatchDisableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:datasource:update')
+    ? <Button type="danger" onClick={() => handleBatchStatus('disabled')}>批量停用</Button> : null;
 
   return (
     <div className="page-container">
       <SearchToolbar
         primary={<>{renderKeyword()}{renderTypeFilter()}{renderStatusFilter()}{renderSearchBtn()}{renderResetBtn()}</>}
-        actions={renderCreateBtn()}
+        actions={<>{renderBatchHealthBtn()}{renderBatchEnableBtn()}{renderBatchDisableBtn()}{renderCreateBtn()}</>}
         mobilePrimary={<>{renderKeyword()}{renderSearchBtn()}{renderCreateBtn()}</>}
         mobileFilters={<>{renderTypeFilter()}{renderStatusFilter()}</>}
+        mobileActions={<>{renderBatchHealthBtn()}{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
         filterTitle="数据源筛选"
         onFilterApply={handleSearch}
         onFilterReset={handleReset}
@@ -234,6 +296,10 @@ export default function DataSourcesPage() {
 
       <ConfigurableTable
         bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
+        rowSelection={hasPermission('report:datasource:update') ? {
+          selectedRowKeys,
+          onChange: (keys) => setSelectedRowKeys(keys as number[]),
+        } : undefined}
         onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(data?.total ?? 0)}
       />
 

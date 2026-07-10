@@ -2,7 +2,7 @@
  * 报表字段格式化 + 数据源类型谓词单测（@zenith/shared 纯函数）。
  */
 import { describe, it, expect } from 'vitest';
-import { formatReportValue, isExternalDbType, isSqlLikeType } from '@zenith/shared';
+import { formatReportFieldValue, formatReportValue, isExternalDbType, isSqlLikeType } from '@zenith/shared';
 
 describe('formatReportValue', () => {
   it('null/undefined → 空串', () => {
@@ -33,6 +33,9 @@ describe('formatReportValue', () => {
   it('dict：按映射翻译，缺失回落原值', () => {
     expect(formatReportValue('1', { kind: 'dict' }, { '1': '启用', '0': '禁用' })).toBe('启用');
     expect(formatReportValue('9', { kind: 'dict' }, { '1': '启用' })).toBe('9');
+  });
+  it('formatReportFieldValue 复用字段格式配置', () => {
+    expect(formatReportFieldValue({ format: { kind: 'currency', currencySymbol: '$' } }, 10)).toBe('$10.00');
   });
 });
 

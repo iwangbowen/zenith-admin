@@ -9,7 +9,7 @@ import {
   resolveReportSecret,
 } from './report-secrets';
 import type { JwtPayload } from '../../middleware/auth';
-import type { ReportWidget } from '@zenith/shared';
+import type { ReportWidget, ReportWidgetDataResult } from '@zenith/shared';
 
 const user = (userId: number, roles: string[] = ['viewer']): JwtPayload => ({
   userId,
@@ -34,10 +34,20 @@ describe('report row-level security', () => {
 });
 
 describe('public report projection', () => {
-  const result = {
-    columns: ['name', 'value', 'secret'],
-    rows: [{ name: 'A', value: 1, secret: 'hidden' }],
-    total: 1,
+  const result: ReportWidgetDataResult = {
+    data: {
+      columns: ['name', 'value', 'secret'],
+      fields: [
+        { name: 'name', label: 'Name', type: 'string' },
+        { name: 'value', label: 'Value', type: 'number' },
+        { name: 'secret', label: 'Secret', type: 'string' },
+      ],
+      rows: [{ name: 'A', value: 1, secret: 'hidden' }],
+      total: 1,
+    },
+    error: null,
+    durationMs: 5,
+    cacheHit: false,
   };
 
   it('keeps only explicitly referenced chart fields', () => {
@@ -49,9 +59,18 @@ describe('public report projection', () => {
       options: { categoryField: 'name', valueFields: ['value'] },
     }];
     expect(minimizePublicData(widgets, { w1: result }).w1).toEqual({
-      columns: ['name', 'value'],
-      rows: [{ name: 'A', value: 1 }],
-      total: 1,
+      data: {
+        columns: ['name', 'value'],
+        fields: [
+          { name: 'name', label: 'Name', type: 'string' },
+          { name: 'value', label: 'Value', type: 'number' },
+        ],
+        rows: [{ name: 'A', value: 1 }],
+        total: 1,
+      },
+      error: null,
+      durationMs: 5,
+      cacheHit: false,
     });
   });
 
@@ -64,9 +83,10 @@ describe('public report projection', () => {
       options: {},
     }];
     expect(minimizePublicData(widgets, { w1: result }).w1).toEqual({
-      columns: [],
-      rows: [{}],
-      total: 1,
+      data: { columns: [], fields: [], rows: [{}], total: 1 },
+      error: null,
+      durationMs: 5,
+      cacheHit: false,
     });
     expect(() => assertPublicDashboardProjection(widgets)).toThrow();
   });

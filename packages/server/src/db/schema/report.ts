@@ -1,7 +1,13 @@
 import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryKey, uniqueIndex, index, jsonb, real, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 // 报表中心 jsonb 列形态（前后端共享契约；type-only 导入，编译期即擦除）
-import type { ReportDatasourceConfig, ReportDatasetContent, ReportField, ReportGridItem, ReportWidget, ReportDatasetParam, ReportFilter, ReportDashboardConfig, ReportDashboardVersionSnapshot, ReportComputedField, ReportCanvasItem, ReportPrintContent, ReportPrintPageConfig, ReportDatasetMaterialize, ReportNotifyChannel, ReportRowRule } from '@zenith/shared';
+import type {
+  ReportDatasourceConfig, ReportDatasetContent, ReportField, ReportGridItem, ReportWidget, ReportDatasetParam,
+  ReportFilter, ReportDashboardConfig, ReportDashboardVersionSnapshot, ReportComputedField, ReportCanvasItem,
+  ReportPrintContent, ReportPrintPageConfig, ReportDatasetMaterialize, ReportNotifyChannel, ReportRowRule,
+  ReportScheduleMisfirePolicy, ReportDeliveryStatus, ReportDeliveryTargetType, ReportDeliveryTriggerType,
+  ReportDashboardLifecycleStatus, ReportDashboardVersionSource, ReportDashboardSnapshot,
+} from '@zenith/shared';
 import { statusEnum } from './common';
 import { auditColumns, tenants, users } from './core';
 
@@ -9,6 +15,12 @@ import { auditColumns, tenants, users } from './core';
 // 报表中心（Report Center）—— 通用报表设计器 / 数据大屏
 // ════════════════════════════════════════════════════════════════════════════
 export const reportDatasourceTypeEnum = pgEnum('report_datasource_type', ['api', 'sql', 'mysql', 'postgresql', 'sqlserver', 'static']);
+export const reportScheduleMisfirePolicyEnum = pgEnum('report_schedule_misfire_policy', ['skip', 'fire_once']);
+export const reportDeliveryStatusEnum = pgEnum('report_delivery_status', ['pending', 'running', 'success', 'partial', 'failed', 'cancelled']);
+export const reportDeliveryTargetTypeEnum = pgEnum('report_delivery_target_type', ['subscription', 'alert']);
+export const reportDeliveryTriggerTypeEnum = pgEnum('report_delivery_trigger_type', ['manual', 'scheduled', 'trigger', 'recover']);
+export const reportDashboardLifecycleStatusEnum = pgEnum('report_dashboard_lifecycle_status', ['draft', 'published', 'offline']);
+export const reportDashboardVersionSourceEnum = pgEnum('report_dashboard_version_source', ['manual', 'publish', 'restore_backup']);
 
 /** 报表数据源：api=远程 HTTP；sql=内置只读主库 */
 export const reportDatasources = pgTable('report_datasources', {
@@ -19,6 +31,11 @@ export const reportDatasources = pgTable('report_datasources', {
   /** 连接配置：api→{url,method,headers}；sql→{connection:'internal'} */
   config: jsonb('config').$type<ReportDatasourceConfig>().notNull().default(sql`'{}'::jsonb`),
   status: statusEnum('status').notNull().default('enabled'),
+  lastTestAt: timestamp('last_test_at', { withTimezone: true }),
+  lastTestStatus: varchar('last_test_status', { length: 16 }),
+  lastTestLatencyMs: integer('last_test_latency_ms'),
+  lastTestError: varchar('last_test_error', { length: 512 }),
+  consecutiveFailures: integer('consecutive_failures').notNull().default(0),
   remark: varchar('remark', { length: 256 }),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -65,6 +82,36 @@ export type ReportDatasetRow = typeof reportDatasets.$inferSelect;
 
 export type NewReportDataset = typeof reportDatasets.$inferInsert;
 
+/** 数据集执行日志：记录运行场景、耗时、命中缓存与错误摘要（不落敏感参数值） */
+export const reportDatasetExecutionLogs = pgTable('report_dataset_execution_logs', {
+  id: serial('id').primaryKey(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'set null' }),
+  datasetId: integer('dataset_id').references((): AnyPgColumn => reportDatasets.id, { onDelete: 'set null' }),
+  datasourceId: integer('datasource_id').references((): AnyPgColumn => reportDatasources.id, { onDelete: 'set null' }),
+  userId: integer('user_id').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
+  scene: varchar('scene', { length: 32 }).notNull(),
+  sourceRefId: varchar('source_ref_id', { length: 64 }),
+  durationMs: integer('duration_ms').notNull(),
+  rowCount: integer('row_count'),
+  bytes: integer('bytes'),
+  truncated: boolean('truncated').notNull().default(false),
+  slow: boolean('slow').notNull().default(false),
+  cacheHit: boolean('cache_hit').notNull().default(false),
+  success: boolean('success').notNull().default(true),
+  errorCode: integer('error_code'),
+  errorMessage: varchar('error_message', { length: 512 }),
+  paramKeys: jsonb('param_keys').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  executedAt: timestamp('executed_at').defaultNow().notNull(),
+}, (t) => [
+  index('report_dataset_execution_logs_dataset_idx').on(t.datasetId),
+  index('report_dataset_execution_logs_datasource_idx').on(t.datasourceId),
+  index('report_dataset_execution_logs_scene_idx').on(t.scene),
+  index('report_dataset_execution_logs_user_idx').on(t.userId),
+  index('report_dataset_execution_logs_executed_idx').on(t.executedAt),
+]);
+
+export type ReportDatasetExecutionLogRow = typeof reportDatasetExecutionLogs.$inferSelect;
+
 /** 类 Excel 单据/中国式打印报表模板 */
 export const reportPrintTemplates = pgTable('report_print_templates', {
   id: serial('id').primaryKey(),
@@ -107,6 +154,9 @@ export const reportAlertRules = pgTable('report_alert_rules', {
   threshold: real('threshold').notNull().default(0),
   /** 评估 Cron（留空=仅手动） */
   cron: varchar('cron', { length: 64 }),
+  timezone: varchar('timezone', { length: 64 }).notNull().default('Asia/Shanghai'),
+  misfirePolicy: reportScheduleMisfirePolicyEnum('misfire_policy').$type<ReportScheduleMisfirePolicy>().notNull().default('fire_once'),
+  nextRunAt: timestamp('next_run_at', { withTimezone: true }),
   /** 通知渠道：email / inApp / webhook */
   channels: jsonb('channels').$type<ReportNotifyChannel[]>().notNull().default(sql`'[]'::jsonb`),
   recipients: varchar('recipients', { length: 512 }),
@@ -122,6 +172,9 @@ export const reportAlertRules = pgTable('report_alert_rules', {
   lastValue: real('last_value'),
   /** 最近一次发送通知时间（静默窗口基准） */
   lastNotifiedAt: timestamp('last_notified_at'),
+  lastDeliveryAt: timestamp('last_delivery_at', { withTimezone: true }),
+  lastDeliveryStatus: reportDeliveryStatusEnum('last_delivery_status').$type<ReportDeliveryStatus>(),
+  lastDeliveryError: varchar('last_delivery_error', { length: 512 }),
   remark: varchar('remark', { length: 256 }),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -129,6 +182,7 @@ export const reportAlertRules = pgTable('report_alert_rules', {
 }, (t) => [
   index('report_alert_rules_tenant_idx').on(t.tenantId),
   index('report_alert_rules_dataset_idx').on(t.datasetId),
+  index('report_alert_rules_next_run_idx').on(t.nextRunAt),
 ]);
 
 export type ReportAlertRuleRow = typeof reportAlertRules.$inferSelect;
@@ -141,11 +195,18 @@ export const reportDashboardComments = pgTable('report_dashboard_comments', {
   dashboardId: integer('dashboard_id').notNull().references((): AnyPgColumn => reportDashboards.id, { onDelete: 'cascade' }),
   /** 关联组件 id（可空，整盘评论） */
   widgetId: varchar('widget_id', { length: 64 }),
+  parentId: integer('parent_id').references((): AnyPgColumn => reportDashboardComments.id, { onDelete: 'set null' }),
   content: varchar('content', { length: 1000 }).notNull(),
-  userId: integer('user_id').notNull().references((): AnyPgColumn => users.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
+  resolvedAt: timestamp('resolved_at'),
+  resolvedBy: integer('resolved_by').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
+  deletedAt: timestamp('deleted_at'),
+  deletedBy: integer('deleted_by').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (t) => [
   index('report_dashboard_comments_dashboard_idx').on(t.dashboardId),
+  index('report_dashboard_comments_parent_idx').on(t.parentId),
 ]);
 
 export type ReportDashboardCommentRow = typeof reportDashboardComments.$inferSelect;
@@ -170,6 +231,12 @@ export const reportDashboards = pgTable('report_dashboards', {
   /** 分类（可空）*/
   categoryId: integer('category_id').references((): AnyPgColumn => reportDashboardCategories.id, { onDelete: 'set null' }),
   status: statusEnum('status').notNull().default('enabled'),
+  lifecycleStatus: reportDashboardLifecycleStatusEnum('lifecycle_status').$type<ReportDashboardLifecycleStatus>().notNull().default('draft'),
+  lifecycleInitialized: boolean('lifecycle_initialized').notNull().default(false),
+  revision: integer('revision').notNull().default(1),
+  publishedSnapshot: jsonb('published_snapshot').$type<ReportDashboardSnapshot | null>(),
+  publishedAt: timestamp('published_at'),
+  publishedBy: integer('published_by').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
   remark: varchar('remark', { length: 256 }),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -177,6 +244,7 @@ export const reportDashboards = pgTable('report_dashboards', {
 }, (t) => [
   index('report_dashboards_tenant_idx').on(t.tenantId),
   index('report_dashboards_category_idx').on(t.categoryId),
+  index('report_dashboards_lifecycle_idx').on(t.lifecycleStatus),
 ]);
 
 export type ReportDashboardRow = typeof reportDashboards.$inferSelect;
@@ -205,6 +273,7 @@ export const reportDashboardVersions = pgTable('report_dashboard_versions', {
   dashboardId: integer('dashboard_id').notNull().references(() => reportDashboards.id, { onDelete: 'cascade' }),
   version: integer('version').notNull(),
   snapshot: jsonb('snapshot').$type<ReportDashboardVersionSnapshot>().notNull(),
+  source: reportDashboardVersionSourceEnum('source').$type<ReportDashboardVersionSource>().notNull().default('manual'),
   remark: varchar('remark', { length: 256 }),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -224,6 +293,11 @@ export const reportDashboardShares = pgTable('report_dashboard_shares', {
   passwordHash: varchar('password_hash', { length: 100 }),
   enabled: boolean('enabled').notNull().default(true),
   expireAt: timestamp('expire_at', { withTimezone: true }),
+  maxAccessCount: integer('max_access_count'),
+  accessCount: integer('access_count').notNull().default(0),
+  sessionVersion: integer('session_version').notNull().default(1),
+  allowedCidrs: jsonb('allowed_cidrs').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  allowedIps: jsonb('allowed_ips').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
@@ -232,6 +306,26 @@ export const reportDashboardShares = pgTable('report_dashboard_shares', {
 export type ReportDashboardShareRow = typeof reportDashboardShares.$inferSelect;
 
 export type NewReportDashboardShare = typeof reportDashboardShares.$inferInsert;
+
+/** 匿名嵌入 token */
+export const reportDashboardEmbedTokens = pgTable('report_dashboard_embed_tokens', {
+  id: serial('id').primaryKey(),
+  dashboardId: integer('dashboard_id').notNull().references(() => reportDashboards.id, { onDelete: 'cascade' }),
+  token: varchar('token', { length: 64 }).notNull().unique(),
+  tokenEncrypted: varchar('token_encrypted', { length: 256 }),
+  allowedFilterIds: jsonb('allowed_filter_ids').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  fixedFilters: jsonb('fixed_filters').$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+  expireAt: timestamp('expire_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  remark: varchar('remark', { length: 256 }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [index('report_dashboard_embed_tokens_dashboard_idx').on(t.dashboardId)]);
+
+export type ReportDashboardEmbedTokenRow = typeof reportDashboardEmbedTokens.$inferSelect;
+
+export type NewReportDashboardEmbedToken = typeof reportDashboardEmbedTokens.$inferInsert;
 
 /** 公开分享访问日志（无登录访问的审计线索；含被拒绝的尝试） */
 export const reportShareAccessLogs = pgTable('report_share_access_logs', {
@@ -267,6 +361,9 @@ export const reportDashboardSubscriptions = pgTable('report_dashboard_subscripti
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   dashboardId: integer('dashboard_id').notNull().references(() => reportDashboards.id, { onDelete: 'cascade' }),
   cron: varchar('cron', { length: 64 }).notNull(),
+  timezone: varchar('timezone', { length: 64 }).notNull().default('Asia/Shanghai'),
+  misfirePolicy: reportScheduleMisfirePolicyEnum('misfire_policy').$type<ReportScheduleMisfirePolicy>().notNull().default('fire_once'),
+  nextRunAt: timestamp('next_run_at', { withTimezone: true }),
   channels: jsonb('channels').$type<ReportNotifyChannel[]>().notNull().default(sql`'[]'::jsonb`),
   recipients: varchar('recipients', { length: 512 }),
   /** Webhook 通知地址（企微/钉钉机器人或通用 JSON 端点） */
@@ -274,6 +371,9 @@ export const reportDashboardSubscriptions = pgTable('report_dashboard_subscripti
   enabled: boolean('enabled').notNull().default(true),
   remark: varchar('remark', { length: 256 }),
   lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+  lastDeliveryAt: timestamp('last_delivery_at', { withTimezone: true }),
+  lastDeliveryStatus: reportDeliveryStatusEnum('last_delivery_status').$type<ReportDeliveryStatus>(),
+  lastDeliveryError: varchar('last_delivery_error', { length: 512 }),
   /** 上次推送的 KPI 快照（widgetId → 数值），用于下次推送计算环比趋势 */
   lastSummary: jsonb('last_summary').$type<Record<string, number>>().notNull().default(sql`'{}'::jsonb`),
   ...auditColumns(),
@@ -282,8 +382,70 @@ export const reportDashboardSubscriptions = pgTable('report_dashboard_subscripti
 }, (t) => [
   index('report_dashboard_subscriptions_tenant_idx').on(t.tenantId),
   index('report_dashboard_subscriptions_dashboard_idx').on(t.dashboardId),
+  index('report_dashboard_subscriptions_next_run_idx').on(t.nextRunAt),
 ]);
 
 export type ReportDashboardSubscriptionRow = typeof reportDashboardSubscriptions.$inferSelect;
 
 export type NewReportDashboardSubscription = typeof reportDashboardSubscriptions.$inferInsert;
+
+export const reportDeliveryRuns = pgTable('report_delivery_runs', {
+  id: serial('id').primaryKey(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'set null' }),
+  targetType: reportDeliveryTargetTypeEnum('target_type').$type<ReportDeliveryTargetType>().notNull(),
+  subscriptionId: integer('subscription_id').references((): AnyPgColumn => reportDashboardSubscriptions.id, { onDelete: 'set null' }),
+  alertRuleId: integer('alert_rule_id').references((): AnyPgColumn => reportAlertRules.id, { onDelete: 'set null' }),
+  dashboardId: integer('dashboard_id').references((): AnyPgColumn => reportDashboards.id, { onDelete: 'set null' }),
+  datasetId: integer('dataset_id').references((): AnyPgColumn => reportDatasets.id, { onDelete: 'set null' }),
+  targetName: varchar('target_name', { length: 128 }),
+  triggerType: reportDeliveryTriggerTypeEnum('trigger_type').$type<ReportDeliveryTriggerType>().notNull(),
+  status: reportDeliveryStatusEnum('status').$type<ReportDeliveryStatus>().notNull().default('pending'),
+  idempotencyKey: varchar('idempotency_key', { length: 128 }).notNull(),
+  attempt: integer('attempt').notNull().default(0),
+  maxAttempts: integer('max_attempts').notNull().default(3),
+  durationMs: integer('duration_ms'),
+  errorMessage: varchar('error_message', { length: 512 }),
+  payloadSummary: jsonb('payload_summary').$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+  lastValue: real('last_value'),
+  triggered: boolean('triggered'),
+  acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }),
+  acknowledgedBy: integer('acknowledged_by').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
+  acknowledgeNote: varchar('acknowledge_note', { length: 500 }),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  nextRetryAt: timestamp('next_retry_at', { withTimezone: true }),
+  requestedBy: integer('requested_by').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  uniqueIndex('report_delivery_runs_idempotency_uq').on(t.idempotencyKey),
+  index('report_delivery_runs_target_idx').on(t.targetType, t.subscriptionId, t.alertRuleId, t.id),
+  index('report_delivery_runs_subscription_idx').on(t.subscriptionId, t.id),
+  index('report_delivery_runs_alert_idx').on(t.alertRuleId, t.id),
+  index('report_delivery_runs_retry_idx').on(t.status, t.nextRetryAt),
+  index('report_delivery_runs_tenant_idx').on(t.tenantId),
+]);
+
+export type ReportDeliveryRunRow = typeof reportDeliveryRuns.$inferSelect;
+
+export const reportDeliveryAttempts = pgTable('report_delivery_attempts', {
+  id: serial('id').primaryKey(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'set null' }),
+  runId: integer('run_id').notNull().references((): AnyPgColumn => reportDeliveryRuns.id, { onDelete: 'cascade' }),
+  channel: varchar('channel', { length: 16 }).$type<ReportNotifyChannel>().notNull(),
+  attempt: integer('attempt').notNull().default(1),
+  status: reportDeliveryStatusEnum('status').$type<ReportDeliveryStatus>().notNull().default('pending'),
+  durationMs: integer('duration_ms'),
+  errorMessage: varchar('error_message', { length: 512 }),
+  payloadSummary: jsonb('payload_summary').$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  uniqueIndex('report_delivery_attempts_run_channel_attempt_uq').on(t.runId, t.channel, t.attempt),
+  index('report_delivery_attempts_run_idx').on(t.runId, t.id),
+  index('report_delivery_attempts_tenant_idx').on(t.tenantId),
+]);
+
+export type ReportDeliveryAttemptRow = typeof reportDeliveryAttempts.$inferSelect;

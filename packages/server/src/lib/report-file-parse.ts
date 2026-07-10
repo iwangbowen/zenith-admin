@@ -31,7 +31,7 @@ function parseCsvLine(line: string): string[] {
 function parseCsv(text: string): ReportDataResult {
   const clean = text.replace(/^\uFEFF/, '');
   const lines = clean.split(/\r\n|\n|\r/).filter((l) => l.length > 0);
-  if (lines.length === 0) return { columns: [], rows: [], total: 0 };
+  if (lines.length === 0) return { columns: [], fields: [], rows: [], total: 0 };
   const headers = parseCsvLine(lines[0]).map((h, i) => h.trim() || `col${i + 1}`);
   const rows: Record<string, unknown>[] = [];
   for (let i = 1; i < lines.length && rows.length < MAX_ROWS; i++) {
@@ -44,14 +44,14 @@ function parseCsv(text: string): ReportDataResult {
     });
     rows.push(row);
   }
-  return { columns: headers, rows, total: rows.length };
+  return { columns: headers, fields: headers.map((name) => ({ name, label: name, type: 'string', source: 'inferred' as const })), rows, total: rows.length };
 }
 
 async function parseExcel(buffer: Buffer): Promise<ReportDataResult> {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buffer as unknown as ArrayBuffer);
   const ws = wb.worksheets[0];
-  if (!ws) return { columns: [], rows: [], total: 0 };
+  if (!ws) return { columns: [], fields: [], rows: [], total: 0 };
   const headerRow = ws.getRow(1);
   const headers: string[] = [];
   headerRow.eachCell({ includeEmpty: true }, (cell, col) => {
@@ -72,15 +72,17 @@ async function parseExcel(buffer: Buffer): Promise<ReportDataResult> {
     }
     if (hasValue) rows.push(row);
   }
-  return { columns: headers, rows, total: rows.length };
+  return { columns: headers, fields: headers.map((name) => ({ name, label: name, type: 'string', source: 'inferred' as const })), rows, total: rows.length };
 }
 
 /** 按文件名后缀分派解析；返回归一化结果 */
 export async function parseDataFile(buffer: Buffer, filename: string): Promise<ReportDataResult> {
   if (!buffer?.length) throw new HTTPException(400, { message: '文件为空' });
   const lower = (filename || '').toLowerCase();
+  if (lower.endsWith('.xls')) {
+    throw new HTTPException(400, { message: '暂不支持 .xls，请另存为 .xlsx 或 .csv 后重试' });
+  }
   if (lower.endsWith('.csv')) return parseCsv(buffer.toString('utf-8'));
-  if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) return parseExcel(buffer);
-  // 兜底：尝试按 Excel 解析，失败则按 CSV
-  try { return await parseExcel(buffer); } catch { return parseCsv(buffer.toString('utf-8')); }
+  if (lower.endsWith('.xlsx')) return parseExcel(buffer);
+  throw new HTTPException(400, { message: '仅支持 .xlsx 或 .csv 文件' });
 }

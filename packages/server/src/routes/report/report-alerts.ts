@@ -6,10 +6,11 @@ import {
   ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, IdParam, okBody,
 } from '../../lib/openapi-schemas';
-import { ReportAlertRuleDTO, ReportAlertEvalResultDTO } from '../../lib/openapi-dtos';
+import { AsyncTaskDTO, ReportAlertRuleDTO } from '../../lib/openapi-dtos';
 import {
-  listAlerts, getAlert, createAlert, updateAlert, deleteAlert, ensureAlertExists, evaluateAlertById,
+  listAlerts, getAlert, createAlert, updateAlert, deleteAlert, ensureAlertExists, batchSetAlertEnabled,
 } from '../../services/report/report-alert.service';
+import { submitAlertEvaluateTask } from '../../services/report/report-delivery-tasks';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -29,6 +30,11 @@ const listRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okPaginated(ReportAlertRuleDTO, 'ok') },
   }),
   handler: async (c) => c.json(okBody(await listAlerts(c.req.valid('query'))), 200),
+});
+
+const batchStatusSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1).max(50),
+  enabled: z.boolean(),
 });
 
 const getOneRoute = defineOpenAPIRoute({
@@ -90,6 +96,21 @@ const deleteRoute_ = defineOpenAPIRoute({
   },
 });
 
+const batchStatusRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put', path: '/batch-status', tags: ['报表预警'], summary: '批量启停预警',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'report:alert:update', audit: { description: '批量更新报表预警状态', module: '报表预警' } })] as const,
+    request: { body: { content: jsonContent(batchStatusSchema), required: true } },
+    responses: { ...commonErrorResponses, ...okMsg('已更新') },
+  }),
+  handler: async (c) => {
+    const { ids, enabled } = c.req.valid('json');
+    const count = await batchSetAlertEnabled(ids, enabled);
+    return c.json(okBody(null, `已更新 ${count} 条预警状态`), 200);
+  },
+});
+
 const evalRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/{id}/evaluate',
@@ -97,11 +118,11 @@ const evalRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'report:alert:list' })] as const,
     request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...ok(ReportAlertEvalResultDTO, '评估结果'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
+    responses: { ...commonErrorResponses, ...ok(AsyncTaskDTO, '任务已提交'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
   }),
-  handler: async (c) => c.json(okBody(await evaluateAlertById(c.req.valid('param').id)), 200),
+  handler: async (c) => c.json(okBody(await submitAlertEvaluateTask(c.req.valid('param').id), '任务已提交，可在任务中心查看进度'), 200),
 });
 
-router.openapiRoutes([listRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_, evalRoute] as const);
+router.openapiRoutes([listRoute, batchStatusRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_, evalRoute] as const);
 
 export default router;

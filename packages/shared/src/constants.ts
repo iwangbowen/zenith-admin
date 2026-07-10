@@ -6,8 +6,11 @@ import type {
   MpMessageType,
   MpReplyContentType,
   ReportAlertAggregate,
+  ReportDeliveryStatus,
+  ReportDeliveryTriggerType,
   ReportDatasourceType,
   ReportFieldType,
+  ReportScheduleMisfirePolicy,
   SendSource,
   SendStatus,
   SmsProvider,
@@ -244,6 +247,20 @@ export type NotifyChannel = keyof typeof NOTIFY_CHANNEL_LABELS;
 /** 通知渠道下拉选项（与 NOTIFY_CHANNEL_LABELS 自动同步） */
 export const NOTIFY_CHANNEL_OPTIONS: Array<{ value: NotifyChannel; label: string }> =
   (Object.keys(NOTIFY_CHANNEL_LABELS) as NotifyChannel[]).map((value) => ({ value, label: NOTIFY_CHANNEL_LABELS[value] }));
+
+export const REPORT_DASHBOARD_LIFECYCLE_STATUSES = ['draft', 'published', 'offline'] as const;
+export const REPORT_DASHBOARD_LIFECYCLE_LABELS = {
+  draft: '草稿',
+  published: '已发布',
+  offline: '已下线',
+} as const;
+
+export const REPORT_DASHBOARD_VERSION_SOURCES = ['manual', 'publish', 'restore_backup'] as const;
+export const REPORT_DASHBOARD_VERSION_SOURCE_LABELS = {
+  manual: '手动快照',
+  publish: '发布快照',
+  restore_backup: '恢复前备份',
+} as const;
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   wechat_native: '微信扫码',
@@ -693,6 +710,35 @@ export const REPORT_AGGREGATE_OPTIONS: Array<{ value: ReportAlertAggregate; labe
 
 export const REPORT_VISUAL_AGGREGATE_OPTIONS = REPORT_AGGREGATE_OPTIONS
   .filter((option) => option.value !== 'first');
+
+export const REPORT_DELIVERY_STATUS_LABELS: Record<ReportDeliveryStatus, string> = {
+  pending: '待执行',
+  running: '执行中',
+  success: '成功',
+  partial: '部分成功',
+  failed: '失败',
+  cancelled: '已取消',
+};
+
+export const REPORT_DELIVERY_STATUS_OPTIONS: Array<{ value: ReportDeliveryStatus; label: string }> =
+  (Object.keys(REPORT_DELIVERY_STATUS_LABELS) as ReportDeliveryStatus[])
+    .map((value) => ({ value, label: REPORT_DELIVERY_STATUS_LABELS[value] }));
+
+export const REPORT_DELIVERY_TRIGGER_LABELS: Record<ReportDeliveryTriggerType, string> = {
+  manual: '手动',
+  scheduled: '定时',
+  trigger: '触发',
+  recover: '恢复',
+};
+
+export const REPORT_MISFIRE_POLICY_LABELS: Record<ReportScheduleMisfirePolicy, string> = {
+  skip: '跳过',
+  fire_once: '补执行一次',
+};
+
+export const REPORT_MISFIRE_POLICY_OPTIONS: Array<{ value: ReportScheduleMisfirePolicy; label: string }> =
+  (Object.keys(REPORT_MISFIRE_POLICY_LABELS) as ReportScheduleMisfirePolicy[])
+    .map((value) => ({ value, label: REPORT_MISFIRE_POLICY_LABELS[value] }));
 
 export const REPORT_FIELD_TYPE_LABELS: Record<ReportFieldType, string> = {
   string: '字符串',

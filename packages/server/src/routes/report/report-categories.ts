@@ -1,13 +1,13 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute } from '@hono/zod-openapi';
-import { createReportCategorySchema, updateReportCategorySchema } from '@zenith/shared';
+import { createReportCategorySchema, reportLookupQuerySchema, updateReportCategorySchema } from '@zenith/shared';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
 import {
   ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam, okBody,
 } from '../../lib/openapi-schemas';
-import { ReportDashboardCategoryDTO } from '../../lib/openapi-dtos';
+import { ReportDashboardCategoryDTO, ReportLookupOptionDTO } from '../../lib/openapi-dtos';
 import { z } from '@hono/zod-openapi';
-import { listCategories, createCategory, updateCategory, deleteCategory, ensureCategoryExists } from '../../services/report/report-ops.service';
+import { listCategories, createCategory, updateCategory, deleteCategory, ensureCategoryExists, listCategoryLookup } from '../../services/report/report-ops.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -20,6 +20,18 @@ const listRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...ok(z.array(ReportDashboardCategoryDTO), 'ok') },
   }),
   handler: async (c) => c.json(okBody(await listCategories()), 200),
+});
+
+const lookupRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/lookup',
+    tags: ['报表分类'], summary: '分类轻量下拉',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'report:dashboard:list' })] as const,
+    request: { query: reportLookupQuerySchema.omit({ status: true }) },
+    responses: { ...commonErrorResponses, ...ok(z.array(ReportLookupOptionDTO), 'ok') },
+  }),
+  handler: async (c) => c.json(okBody(await listCategoryLookup(c.req.valid('query'))), 200),
 });
 
 const createRoute_ = defineOpenAPIRoute({
@@ -67,6 +79,6 @@ const deleteRoute_ = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRoute, createRoute_, updateRoute_, deleteRoute_] as const);
+router.openapiRoutes([listRoute, lookupRoute, createRoute_, updateRoute_, deleteRoute_] as const);
 
 export default router;

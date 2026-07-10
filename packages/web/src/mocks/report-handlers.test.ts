@@ -41,6 +41,7 @@ describe('report handlers smoke', () => {
     const data = await call('POST', '/api/report/datasets/1/data', { params: {}, limit: 100 });
     expect(data.code).toBe(0);
     expect(data.data.columns).toEqual(['name', 'value']);
+    expect(data.data.fields.map((field: { name: string }) => field.name)).toEqual(['name', 'value']);
     expect(data.data.rows.length).toBe(3);
   });
 
@@ -49,13 +50,17 @@ describe('report handlers smoke', () => {
     expect(dash.data.name).toBe('示例仪表盘');
     const data = await call('POST', '/api/report/dashboards/1/data', { filters: {} });
     expect(Object.keys(data.data)).toContain('w1');
-    expect(data.data.w1.rows.length).toBe(3);
+    expect(data.data.w1.data.rows.length).toBe(3);
+    expect(data.data.w1.error).toBeNull();
+    expect(typeof data.data.w1.durationMs).toBe('number');
   });
 
   it('打印渲染填充网格', async () => {
     const r = await call('POST', '/api/report/print/1/render', {});
     expect(r.code).toBe(0);
     expect(r.data.grid.rows).toBeGreaterThan(1);
+    expect(r.data.pages.length).toBeGreaterThan(0);
+    expect(r.data.sheets.length).toBeGreaterThan(0);
     expect(r.data.name).toBe('部门人数清单');
   });
 
@@ -71,8 +76,9 @@ describe('report handlers smoke', () => {
     const cats = await call('GET', '/api/report/categories');
     expect(cats.data.length).toBe(2);
     const ev = await call('POST', '/api/report/alerts/1/evaluate');
-    expect(typeof ev.data.value).toBe('number');
-    expect(typeof ev.data.triggered).toBe('boolean');
+    expect(ev.data.taskType).toBe('report-alert-evaluate');
+    const history = await call('GET', '/api/report/delivery-runs?targetType=alert&alertRuleId=1&page=1&pageSize=10');
+    expect(history.data.list.length).toBeGreaterThan(0);
   });
 
   it('数据源 CRUD 往返', async () => {
@@ -83,5 +89,12 @@ describe('report handlers smoke', () => {
     expect(got.data.name).toBe('冒烟数据源');
     const del = await call('DELETE', `/api/report/datasources/${id}`);
     expect(del.code).toBe(0);
+  });
+
+  it('订阅立即推送返回任务并写入历史', async () => {
+    const task = await call('POST', '/api/report/subscriptions/1/run');
+    expect(task.data.taskType).toBe('report-subscription-deliver');
+    const history = await call('GET', '/api/report/delivery-runs?targetType=subscription&subscriptionId=1&page=1&pageSize=10');
+    expect(history.data.list.length).toBeGreaterThan(0);
   });
 });

@@ -13,6 +13,8 @@ import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import { useQueryClient } from '@tanstack/react-query';
 import {
+  useBatchReportDatasetStatus,
+  useCloneReportDataset,
   reportDatasetKeys,
   useDeleteReportDataset,
   useEnabledReportDatasources,
@@ -25,9 +27,9 @@ import {
 } from '@/hooks/queries/report-datasets';
 import { REPORT_DATASOURCE_TYPE_LABELS, REPORT_FIELD_TYPE_OPTIONS } from '@zenith/shared';
 import type {
-  ReportDataset, ReportDatasource, ReportDatasourceType, ReportField, ReportDataResult,
+  ReportDataset, ReportDatasourceType, ReportField, ReportDataResult,
   ReportApiDatasetContent, ReportSqlDatasetContent, ReportComputedField,
-  ReportStaticDatasetContent, ReportFieldFormat, ReportDatasetParam, ReportRowRule, ReportVisualModel,
+  ReportStaticDatasetContent, ReportFieldFormat, ReportDatasetParam, ReportLookupOption, ReportRowRule, ReportVisualModel,
 } from '@zenith/shared';
 import { useAllRoles } from '@/hooks/queries/roles';
 import VisualModelBuilder from './components/VisualModelBuilder';
@@ -84,15 +86,18 @@ export default function DatasetsPage() {
   const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
 
   const datasourcesQuery = useEnabledReportDatasources();
-  const datasources = useMemo<ReportDatasource[]>(() => datasourcesQuery.data ?? [], [datasourcesQuery.data]);
+  const datasources = useMemo<ReportLookupOption[]>(() => datasourcesQuery.data ?? [], [datasourcesQuery.data]);
   const dsTypeMap = useMemo(() => {
     const m = new Map<number, ReportDatasourceType>();
-    datasources.forEach((d) => m.set(d.id, d.type));
+    datasources.forEach((d) => {
+      if (d.type) m.set(d.id, d.type as ReportDatasourceType);
+    });
     return m;
   }, [datasources]);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<ReportDataset | null>(null);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const [selectedDsId, setSelectedDsId] = useState<number | null>(null);
   const [fields, setFields] = useState<ReportField[]>([]);
   const [computedFields, setComputedFields] = useState<ReportComputedField[]>([]);
@@ -109,7 +114,7 @@ export default function DatasetsPage() {
   const [aiAskVisible, setAiAskVisible] = useState(false);
   const [aiQuestion, setAiQuestion] = useState('');
 
-  const selectedType: ReportDatasourceType | null = selectedDsId ? dsTypeMap.get(selectedDsId) ?? editing?.type ?? null : null;
+  const selectedType: ReportDatasourceType | null = selectedDsId ? (dsTypeMap.get(selectedDsId) ?? editing?.type ?? null) : null;
 
   const rolesQuery = useAllRoles({ enabled: modalVisible });
   const roleOptions = (rolesQuery.data ?? []).map((role) => ({ value: role.code, label: role.name }));
@@ -122,6 +127,8 @@ export default function DatasetsPage() {
   });
   const data = listQuery.data ?? null;
   const saveMutation = useSaveReportDataset();
+  const batchStatusMutation = useBatchReportDatasetStatus();
+  const cloneMutation = useCloneReportDataset();
   const deleteMutation = useDeleteReportDataset();
   const previewMutation = usePreviewReportDataset();
   const parseFileMutation = useParseReportDatasetFile();
@@ -149,7 +156,12 @@ export default function DatasetsPage() {
       const columns = content.columns?.length ? content.columns : inferColumns(rows);
       setStaticJsonText(JSON.stringify(rows, null, 2));
       setStaticColumns(columns);
-      setPreview(columns.length || rows.length ? { columns, rows: rows.slice(0, 50), total: rows.length } : null);
+      setPreview(columns.length || rows.length ? {
+        columns,
+        fields: columns.map((name) => ({ name, label: name, type: 'string' as const, source: 'inferred' as const })),
+        rows: rows.slice(0, 50),
+        total: rows.length,
+      } : null);
       return;
     }
     setStaticJsonText('[]');
@@ -197,7 +209,12 @@ export default function DatasetsPage() {
   function applyStaticPreview(rows: Record<string, unknown>[], columns?: string[]) {
     const cols = columns?.length ? columns : inferColumns(rows);
     setStaticColumns(cols);
-    setPreview({ columns: cols, rows: rows.slice(0, 50), total: rows.length });
+    setPreview({
+      columns: cols,
+      fields: cols.map((name) => ({ name, label: name, type: 'string' as const, source: 'inferred' as const })),
+      rows: rows.slice(0, 50),
+      total: rows.length,
+    });
   }
 
   function handleStaticJsonBlur() {
@@ -399,6 +416,23 @@ export default function DatasetsPage() {
     Toast.success('删除成功');
   }
 
+  async function handleClone(record: ReportDataset) {
+    const cloned = await cloneMutation.mutateAsync({ id: record.id });
+    Toast.success(`已复制为「${cloned.name}」`);
+  }
+
+  function handleBatchStatus(status: 'enabled' | 'disabled') {
+    if (selectedRowKeys.length === 0) return;
+    Modal.confirm({
+      title: `确认批量${status === 'enabled' ? '启用' : '停用'}选中的 ${selectedRowKeys.length} 个数据集？`,
+      onOk: async () => {
+        await batchStatusMutation.mutateAsync({ ids: selectedRowKeys, status });
+        setSelectedRowKeys([]);
+        Toast.success(status === 'enabled' ? '批量启用成功' : '批量停用成功');
+      },
+    });
+  }
+
   async function handleRefreshMaterialize(record: ReportDataset) {
     await refreshMaterializeMutation.mutateAsync(record.id);
     Toast.success('物化刷新成功');
@@ -471,6 +505,7 @@ export default function DatasetsPage() {
         ...(record.materialize?.enabled && hasPermission('report:dataset:update') ? [{ key: 'refreshMaterialize', label: '刷新物化', onClick: () => void handleRefreshMaterialize(record) }] : []),
         ...(hasPermission('report:dataset:update') ? [{ key: 'edit', label: '编辑', onClick: () => openEdit(record) }] : []),
         { key: 'refs', label: '血缘', onClick: () => setRefsTarget(record) },
+        ...(hasPermission('report:dataset:create') ? [{ key: 'clone', label: '复制', onClick: () => void handleClone(record) }] : []),
         ...(hasPermission('report:dataset:delete') ? [{
           key: 'delete', label: '删除', danger: true,
           onClick: () => { Modal.confirm({ title: '确定要删除吗？', content: '删除后不可恢复', onOk: () => handleDelete(record.id) }); },
@@ -494,14 +529,19 @@ export default function DatasetsPage() {
   const renderResetBtn = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>;
   const renderCreateBtn = () => hasPermission('report:dataset:create')
     ? <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button> : null;
+  const renderBatchEnableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:dataset:update')
+    ? <Button onClick={() => handleBatchStatus('enabled')}>批量启用</Button> : null;
+  const renderBatchDisableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:dataset:update')
+    ? <Button type="danger" onClick={() => handleBatchStatus('disabled')}>批量停用</Button> : null;
 
   return (
     <div className="page-container">
       <SearchToolbar
         primary={<>{renderKeyword()}{renderStatusFilter()}{renderSearchBtn()}{renderResetBtn()}</>}
-        actions={renderCreateBtn()}
+        actions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}{renderCreateBtn()}</>}
         mobilePrimary={<>{renderKeyword()}{renderSearchBtn()}{renderCreateBtn()}</>}
         mobileFilters={renderStatusFilter()}
+        mobileActions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
         filterTitle="数据集筛选"
         onFilterApply={handleSearch}
         onFilterReset={handleReset}
@@ -509,6 +549,10 @@ export default function DatasetsPage() {
 
       <ConfigurableTable
         bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
+        rowSelection={hasPermission('report:dataset:update') ? {
+          selectedRowKeys,
+          onChange: (keys) => setSelectedRowKeys(keys as number[]),
+        } : undefined}
         onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(data?.total ?? 0)}
       />
 
@@ -532,7 +576,10 @@ export default function DatasetsPage() {
           <Form.Input field="name" label="名称" rules={[{ required: true, message: '请输入名称' }]} maxLength={64} showClear />
           <Form.Select field="datasourceId" label="数据源" style={{ width: '100%' }} rules={[{ required: true, message: '请选择数据源' }]}
             placeholder="选择数据源"
-            optionList={datasources.map((d) => ({ value: d.id, label: `${d.name}（${REPORT_DATASOURCE_TYPE_LABELS[d.type]}）` }))}
+            optionList={datasources.map((d) => {
+              const type = d.type as ReportDatasourceType | undefined;
+              return { value: d.id, label: `${d.name}（${type ? REPORT_DATASOURCE_TYPE_LABELS[type] : '未知类型'}）` };
+            })}
           />
 
           {isSqlAuthoringType(selectedType) && (
@@ -591,12 +638,12 @@ export default function DatasetsPage() {
               <Form.Slot label="文件">
                 <Space>
                   <Button icon={<UploadIcon size={14} />} loading={parseFileMutation.isPending} onClick={() => staticFileInputRef.current?.click()}>上传 Excel/CSV</Button>
-                  <Typography.Text type="tertiary" size="small">支持 .xlsx / .xls / .csv，解析后自动生成字段</Typography.Text>
+                  <Typography.Text type="tertiary" size="small">仅支持 .xlsx / .csv，解析后自动生成字段</Typography.Text>
                 </Space>
                 <input
                   ref={staticFileInputRef}
                   type="file"
-                  accept=".xlsx,.xls,.csv"
+                  accept=".xlsx,.csv"
                   style={{ display: 'none' }}
                   onChange={(e) => {
                     const file = e.currentTarget.files?.[0];
@@ -654,10 +701,17 @@ export default function DatasetsPage() {
             </Space>
           )}
           {preview ? (
-            <div style={{ maxHeight: 240, overflow: 'auto', border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)' }}>
-              <Table size="small" bordered={false} columns={previewColumns} dataSource={previewData} rowKey="__rk" pagination={false}
-                scroll={{ x: Math.max(600, previewColumns.length * 140) }} />
-            </div>
+            <>
+              <Space style={{ marginBottom: 8 }}>
+                <Typography.Text type="tertiary" size="small">返回 {preview.total} 行</Typography.Text>
+                {preview.bytes != null ? <Typography.Text type="tertiary" size="small">约 {preview.bytes} bytes</Typography.Text> : null}
+                {preview.truncated ? <Tag color="orange" size="small">已截断{preview.truncatedReason ? `：${preview.truncatedReason}` : ''}</Tag> : null}
+              </Space>
+              <div style={{ maxHeight: 240, overflow: 'auto', border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)' }}>
+                <Table size="small" bordered={false} columns={previewColumns} dataSource={previewData} rowKey="__rk" pagination={false}
+                  scroll={{ x: Math.max(600, previewColumns.length * 140) }} />
+              </div>
+            </>
           ) : (
             <Empty description="点击「试跑预览」查看取数结果" style={{ padding: '16px 0' }} />
           )}

@@ -1,7 +1,9 @@
-import type { CSSProperties } from 'react';
+import { type CSSProperties, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@douyinfe/semi-ui';
+import JsBarcode from 'jsbarcode';
 import { Printer } from 'lucide-react';
-import { resolvePrintBandText, type ReportPrintCell, type ReportPrintMerge, type ReportPrintRenderResult } from '@zenith/shared';
+import { QRCodeSVG } from 'qrcode.react';
+import { resolvePrintBandText, type ReportPrintCell, type ReportPrintMerge, type ReportPrintRenderPage, type ReportPrintRenderResult } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
 import './print-report.css';
 
@@ -22,40 +24,55 @@ function mm(value: number | undefined, fallback: number) {
   return `${value ?? fallback}mm`;
 }
 
+function cellKey(row: number, col: number) {
+  return `${row}:${col}`;
+}
+
 function stringifyCellValue(value: ReportPrintCell['v']) {
   if (value === null || value === undefined) return '';
   return String(value);
 }
 
-function cellKey(row: number, col: number) {
-  return `${row}:${col}`;
-}
-
-function getPaperSize(result: ReportPrintRenderResult) {
-  const paper = result.pageConfig.paper ?? 'A4';
-  const [w, h] = PAPER_SIZE_MM[paper] ?? PAPER_SIZE_MM.A4;
-  return result.pageConfig.orientation === 'landscape' ? [h, w] : [w, h];
+function getPaperSize(page: Pick<ReportPrintRenderPage, 'pageConfig'>) {
+  const paper = page.pageConfig.paper ?? 'A4';
+  const [width, height] = PAPER_SIZE_MM[paper] ?? PAPER_SIZE_MM.A4;
+  return page.pageConfig.orientation === 'landscape' ? [height, width] : [width, height];
 }
 
 function isCoveredByMerge(row: number, col: number, merges: ReportPrintMerge[]) {
-  return merges.some((m) => row >= m.row && row < m.row + m.rowSpan && col >= m.col && col < m.col + m.colSpan && !(row === m.row && col === m.col));
+  return merges.some((merge) => row >= merge.row && row < merge.row + merge.rowSpan && col >= merge.col && col < merge.col + merge.colSpan && !(row === merge.row && col === merge.col));
 }
 
 function findMerge(row: number, col: number, merges: ReportPrintMerge[]) {
-  return merges.find((m) => m.row === row && m.col === col);
+  return merges.find((merge) => merge.row === row && merge.col === col);
+}
+
+function borderStyle(cell: ReportPrintCell | undefined): CSSProperties {
+  const border = cell?.s?.border;
+  if (!border) return {};
+  if (border === true) return { border: '1px solid #111827' };
+  const side = (value: { color?: string } | undefined) => value ? `1px solid ${value.color ?? '#111827'}` : undefined;
+  return {
+    borderTop: side(border.top),
+    borderRight: side(border.right),
+    borderBottom: side(border.bottom),
+    borderLeft: side(border.left),
+  };
 }
 
 function buildCellStyle(cell: ReportPrintCell | undefined, height: number | undefined): CSSProperties {
-  const s = cell?.s;
+  const style = cell?.s;
   return {
     height: height ? `${height}px` : undefined,
-    fontWeight: s?.bold ? 700 : undefined,
-    fontStyle: s?.italic ? 'italic' : undefined,
-    fontSize: s?.fontSize ? `${s.fontSize}px` : undefined,
-    color: s?.color,
-    background: s?.background,
-    textAlign: s?.align,
-    verticalAlign: s?.valign,
+    fontFamily: style?.fontFamily,
+    fontWeight: style?.bold ? 700 : undefined,
+    fontStyle: style?.italic ? 'italic' : undefined,
+    fontSize: style?.fontSize ? `${style.fontSize}px` : undefined,
+    color: style?.color,
+    background: style?.background,
+    textAlign: style?.align,
+    verticalAlign: style?.valign,
+    ...borderStyle(cell),
   };
 }
 
@@ -67,22 +84,50 @@ function triggerPrint() {
   window.setTimeout(cleanup, 1200);
 }
 
+function BarcodeGraphic({ value }: Readonly<{ value: string }>) {
+  const ref = useRef<SVGSVGElement | null>(null);
+  useEffect(() => {
+    if (!ref.current) return;
+    JsBarcode(ref.current, value || ' ', {
+      format: 'CODE128',
+      displayValue: false,
+      margin: 0,
+      height: 32,
+      width: 1.4,
+    });
+  }, [value]);
+  return <svg ref={ref} className="print-report-graphic" aria-label="barcode" />;
+}
+
+function CellGraphic({ cell }: Readonly<{ cell: ReportPrintCell }>) {
+  if (cell.kind === 'qrcode') {
+    return <QRCodeSVG value={String(cell.v ?? '')} size={56} level="M" includeMargin={false} />;
+  }
+  if (cell.kind === 'barcode') {
+    return <BarcodeGraphic value={String(cell.v ?? '')} />;
+  }
+  if (cell.image?.src) {
+    return <img src={cell.image.src} alt={cell.image.alt ?? ''} className="print-report-graphic print-report-graphic--image" />;
+  }
+  return <>{stringifyCellValue(cell.v)}</>;
+}
+
+function normalizePages(result: ReportPrintRenderResult): ReportPrintRenderPage[] {
+  if (result.pages?.length) return result.pages;
+  return [{
+    sheetId: result.sheets?.[0]?.id ?? 'sheet-01',
+    sheetName: result.sheets?.[0]?.name ?? result.name,
+    pageNumber: 1,
+    totalPages: 1,
+    grid: result.grid,
+    pageConfig: result.pageConfig,
+    headerText: resolvePrintBandText(result.pageConfig.header, {}, { page: 1, pages: 1, date: formatDateTime(new Date()) }),
+    footerText: resolvePrintBandText(result.pageConfig.footer, {}, { page: 1, pages: 1, date: formatDateTime(new Date()) }),
+  }];
+}
+
 export function PrintReportView({ result, params = {}, showActions = true }: Readonly<PrintReportViewProps>) {
-  const grid = result.grid;
-  const merges = grid.merges ?? [];
-  const cellMap = new Map(grid.cells.map((cell) => [cellKey(cell.row, cell.col), cell]));
-  const [paperWidth, paperHeight] = getPaperSize(result);
-  const margin = result.pageConfig.margin ?? { top: 12, right: 12, bottom: 12, left: 12 };
-  const pageStyle = {
-    '--report-paper-width': `${paperWidth}mm`,
-    '--report-paper-height': `${paperHeight}mm`,
-    '--report-margin-top': mm(margin.top, 12),
-    '--report-margin-right': mm(margin.right, 12),
-    '--report-margin-bottom': mm(margin.bottom, 12),
-    '--report-margin-left': mm(margin.left, 12),
-    '--report-background-image': result.pageConfig.backgroundImage ? `url("${result.pageConfig.backgroundImage}")` : 'none',
-  } as CSSProperties;
-  const bandCtx = { date: formatDateTime(new Date()), page: 1, pages: 1 };
+  const pages = useMemo(() => normalizePages(result), [result]);
 
   return (
     <div className="print-report-area">
@@ -92,49 +137,69 @@ export function PrintReportView({ result, params = {}, showActions = true }: Rea
         </div>
       )}
       <div className="print-report-view">
-        <div className="print-report-page" style={pageStyle}>
-          <div className="print-report-page__inner">
-            {result.pageConfig.header && (
-              <div className="print-report-band print-report-band--header">
-                {resolvePrintBandText(result.pageConfig.header, params, bandCtx)}
+        {pages.map((page) => {
+          const merges = page.grid.merges ?? [];
+          const cellMap = new Map(page.grid.cells.map((cell) => [cellKey(cell.row, cell.col), cell]));
+          const [paperWidth, paperHeight] = getPaperSize(page);
+          const margin = page.pageConfig.margin ?? { top: 12, right: 12, bottom: 12, left: 12 };
+          const pageStyle = {
+            '--report-paper-width': `${paperWidth}mm`,
+            '--report-paper-height': `${paperHeight}mm`,
+            '--report-margin-top': mm(margin.top, 12),
+            '--report-margin-right': mm(margin.right, 12),
+            '--report-margin-bottom': mm(margin.bottom, 12),
+            '--report-margin-left': mm(margin.left, 12),
+            '--report-background-image': page.pageConfig.backgroundImage ? `url("${page.pageConfig.backgroundImage}")` : 'none',
+          } as CSSProperties;
+          const headerText = page.headerText || resolvePrintBandText(page.pageConfig.header, params, {
+            page: page.pageNumber,
+            pages: page.totalPages,
+            date: formatDateTime(new Date()),
+          });
+          const footerText = page.footerText || resolvePrintBandText(page.pageConfig.footer, params, {
+            page: page.pageNumber,
+            pages: page.totalPages,
+            date: formatDateTime(new Date()),
+          });
+
+          return (
+            <div key={`${page.sheetId}-${page.pageNumber}`} className="print-report-page" style={pageStyle}>
+              <div className="print-report-page__inner">
+                {headerText && <div className="print-report-band print-report-band--header">{headerText}</div>}
+                <table className="print-report-table" aria-label={`${result.name}-${page.sheetName}-${page.pageNumber}`}>
+                  <colgroup>
+                    {Array.from({ length: Math.max(page.grid.cols, 1) }).map((_, col) => (
+                      <col key={col} style={{ width: `${page.grid.colWidths?.[col] ?? 96}px` }} />
+                    ))}
+                  </colgroup>
+                  <tbody>
+                    {Array.from({ length: Math.max(page.grid.rows, 1) }).map((_, row) => (
+                      <tr key={row} style={{ height: page.grid.rowHeights?.[row] ? `${page.grid.rowHeights[row]}px` : undefined }}>
+                        {Array.from({ length: Math.max(page.grid.cols, 1) }).map((__, col) => {
+                          if (isCoveredByMerge(row, col, merges)) return null;
+                          const cell = cellMap.get(cellKey(row, col));
+                          const merge = findMerge(row, col, merges);
+                          return (
+                            <td
+                              key={col}
+                              rowSpan={merge?.rowSpan}
+                              colSpan={merge?.colSpan}
+                              className={cell?.s?.wrap ? 'print-report-cell--wrap' : undefined}
+                              style={buildCellStyle(cell, page.grid.rowHeights?.[row])}
+                            >
+                              {cell ? <CellGraphic cell={cell} /> : null}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {footerText && <div className="print-report-band print-report-band--footer">{footerText}</div>}
               </div>
-            )}
-            <table className="print-report-table" aria-label={result.name}>
-              <colgroup>
-                {Array.from({ length: Math.max(grid.cols, 1) }).map((_, col) => (
-                  <col key={col} style={{ width: `${grid.colWidths?.[col] ?? 96}px` }} />
-                ))}
-              </colgroup>
-              <tbody>
-                {Array.from({ length: Math.max(grid.rows, 1) }).map((_, row) => (
-                  <tr key={row} style={{ height: grid.rowHeights?.[row] ? `${grid.rowHeights[row]}px` : undefined }}>
-                    {Array.from({ length: Math.max(grid.cols, 1) }).map((__, col) => {
-                      if (isCoveredByMerge(row, col, merges)) return null;
-                      const cell = cellMap.get(cellKey(row, col));
-                      const merge = findMerge(row, col, merges);
-                      return (
-                        <td
-                          key={col}
-                          rowSpan={merge?.rowSpan}
-                          colSpan={merge?.colSpan}
-                          className={`${cell?.s?.border ? 'print-report-cell--border' : ''} ${cell?.s?.wrap ? 'print-report-cell--wrap' : ''}`}
-                          style={buildCellStyle(cell, grid.rowHeights?.[row])}
-                        >
-                          {stringifyCellValue(cell?.v)}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {result.pageConfig.footer && (
-              <div className="print-report-band print-report-band--footer">
-                {resolvePrintBandText(result.pageConfig.footer, params, bandCtx)}
-              </div>
-            )}
-          </div>
-        </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

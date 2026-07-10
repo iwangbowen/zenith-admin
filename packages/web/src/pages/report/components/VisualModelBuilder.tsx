@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useQueries } from '@tanstack/react-query';
 import { Button, Input, InputNumber, Select, Space, Toast, Typography } from '@douyinfe/semi-ui';
 import { Wand2 } from 'lucide-react';
 import {
@@ -7,8 +8,10 @@ import {
   REPORT_VISUAL_AGGREGATE_OPTIONS,
   visualMetricAlias,
 } from '@zenith/shared';
-import type { ReportVisualModel, ReportVisualMetric, ReportVisualFilter } from '@zenith/shared';
-import { useReportMetaTables, useReportMetaColumns } from '@/hooks/queries/report-datasets';
+import type { ReportVisualModel, ReportVisualMetric, ReportVisualFilter, ReportVisualJoin, ReportMetaColumn } from '@zenith/shared';
+import { reportDatasetKeys, useReportMetaTables } from '@/hooks/queries/report-datasets';
+import { request } from '@/utils/request';
+import { LOOKUP_STALE_TIME, unwrap } from '@/lib/query';
 
 const OP_OPTIONS = [
   ...(['eq', 'neq', 'gt', 'gte', 'lt', 'lte'] as const)
@@ -16,7 +19,7 @@ const OP_OPTIONS = [
   { value: 'like', label: '包含' },
 ];
 
-const EMPTY_MODEL: ReportVisualModel = { table: '', dimensions: [], metrics: [], filters: [], orderBy: null, limit: 100 };
+const EMPTY_MODEL: ReportVisualModel = { table: '', alias: '', joins: [], dimensions: [], metrics: [], filters: [], orderBy: null, limit: 100 };
 
 interface Props {
   initial?: ReportVisualModel | null;
@@ -28,9 +31,35 @@ export function VisualModelBuilder({ initial, onGenerate }: Readonly<Props>) {
   const [model, setModel] = useState<ReportVisualModel>(initial ?? EMPTY_MODEL);
   const tablesQuery = useReportMetaTables();
   const tables = tablesQuery.data ?? [];
-  const columnsQuery = useReportMetaColumns(model.table || undefined);
-  const columns = useMemo(() => columnsQuery.data ?? [], [columnsQuery.data]);
-  const columnOptions = columns.map((c) => ({ value: c.name, label: `${c.name}（${c.type}）` }));
+  const tableNames = useMemo(
+    () => Array.from(new Set([model.table, ...(model.joins ?? []).map((join) => join.table)].filter(Boolean))),
+    [model.joins, model.table],
+  );
+  const columnQueries = useQueries({
+    queries: tableNames.map((table) => ({
+      queryKey: reportDatasetKeys.metaColumns(table),
+      queryFn: () => request.get<ReportMetaColumn[]>(`/api/report/meta/tables/${encodeURIComponent(table)}/columns`).then(unwrap),
+      enabled: !!table,
+      staleTime: LOOKUP_STALE_TIME,
+    })),
+  });
+  const tableColumnsMap = new Map<string, ReportMetaColumn[]>();
+  tableNames.forEach((table, index) => { tableColumnsMap.set(table, columnQueries[index]?.data ?? []); });
+  const aliasEntries = useMemo(() => {
+    const baseAlias = (model.alias?.trim() || model.table || '').trim();
+    return [
+      ...(model.table ? [{ alias: baseAlias, table: model.table, label: `${baseAlias} ← ${model.table}` }] : []),
+      ...((model.joins ?? []).filter((join) => join.table).map((join) => {
+        const alias = join.alias?.trim() || join.table;
+        return { alias, table: join.table, label: `${alias} ← ${join.table}` };
+      })),
+    ];
+  }, [model.alias, model.joins, model.table]);
+  const aliasTableMap = useMemo(() => new Map(aliasEntries.map((entry) => [entry.alias, entry.table])), [aliasEntries]);
+  const columnOptions = aliasEntries.flatMap((entry) => (tableColumnsMap.get(entry.table) ?? []).map((c) => ({
+    value: `${entry.alias}.${c.name}`,
+    label: `${entry.alias}.${c.name}（${c.type}）`,
+  })));
   const orderFieldOptions = [
     ...model.dimensions.map((d) => ({ value: d, label: d })),
     ...model.metrics.filter((m) => m.field || m.aggregate === 'count').map((m) => {
@@ -47,6 +76,9 @@ export function VisualModelBuilder({ initial, onGenerate }: Readonly<Props>) {
   }
   function patchFilter(index: number, p: Partial<ReportVisualFilter>) {
     setModel((prev) => ({ ...prev, filters: (prev.filters ?? []).map((f, i) => (i === index ? { ...f, ...p } : f)) }));
+  }
+  function patchJoin(index: number, p: Partial<ReportVisualJoin>) {
+    setModel((prev) => ({ ...prev, joins: (prev.joins ?? []).map((join, i) => (i === index ? { ...join, ...p } : join)) }));
   }
 
   function generate() {
@@ -65,11 +97,56 @@ export function VisualModelBuilder({ initial, onGenerate }: Readonly<Props>) {
       <Space wrap>
         <Select filter placeholder="选择数据表" value={model.table || undefined} style={{ width: 240 }}
           optionList={tables.map((t) => ({ value: t, label: t }))} loading={tablesQuery.isFetching}
-          onChange={(v) => setModel({ ...EMPTY_MODEL, table: String(v ?? ''), limit: model.limit })} />
+          onChange={(v) => setModel({ ...EMPTY_MODEL, table: String(v ?? ''), alias: String(v ?? ''), limit: model.limit })} />
+        <Input placeholder="主表别名（可选）" value={model.alias ?? ''} style={{ width: 180 }} showClear
+          onChange={(v) => patch({ alias: v || model.table })} />
         <Select multiple filter placeholder="维度（分组列）" value={model.dimensions} style={{ minWidth: 260 }} maxTagCount={3}
-          optionList={columnOptions} disabled={!model.table} loading={columnsQuery.isFetching}
+          optionList={columnOptions} disabled={!model.table} loading={columnQueries.some((query) => query.isFetching)}
           onChange={(v) => patch({ dimensions: (v as string[]) ?? [] })} />
       </Space>
+
+      <Space wrap>
+        <Typography.Text type="tertiary" size="small" style={{ width: 40 }}>关联</Typography.Text>
+        <Button size="small" disabled={!model.table} onClick={() => patch({
+          joins: [...(model.joins ?? []), {
+            type: 'left',
+            table: '',
+            alias: '',
+            sourceAlias: aliasEntries[0]?.alias ?? model.table,
+            sourceField: '',
+            targetField: '',
+          }],
+        })}>添加 JOIN</Button>
+      </Space>
+      {(model.joins ?? []).map((join, index) => {
+        const joinAlias = join.alias?.trim() || join.table || '';
+        const sourceTable = aliasTableMap.get(join.sourceAlias?.trim() || aliasEntries[0]?.alias || '');
+        const sourceColumns = sourceTable ? (tableColumnsMap.get(sourceTable) ?? []) : [];
+        const targetColumns = join.table ? (tableColumnsMap.get(join.table) ?? []) : [];
+        return (
+          <Space key={`${join.table}-${index}`} wrap>
+            <Select value={join.type} style={{ width: 90 }}
+              optionList={[{ value: 'left', label: 'LEFT' }, { value: 'inner', label: 'INNER' }]}
+              onChange={(value) => patchJoin(index, { type: value as ReportVisualJoin['type'] })} />
+            <Select filter placeholder="关联表" value={join.table || undefined} style={{ width: 180 }}
+              optionList={tables.map((t) => ({ value: t, label: t }))} loading={tablesQuery.isFetching}
+              onChange={(value) => patchJoin(index, { table: String(value ?? ''), alias: String(value ?? ''), targetField: '' })} />
+            <Input placeholder="别名" value={join.alias ?? ''} style={{ width: 120 }} showClear
+              onChange={(value) => patchJoin(index, { alias: value || join.table })} />
+            <Select filter placeholder="来源别名" value={join.sourceAlias || undefined} style={{ width: 140 }}
+              optionList={aliasEntries.map((entry) => ({ value: entry.alias, label: entry.label }))}
+              onChange={(value) => patchJoin(index, { sourceAlias: String(value ?? '') })} />
+            <Select filter placeholder="来源字段" value={join.sourceField || undefined} style={{ width: 180 }}
+              optionList={sourceColumns.map((column) => ({ value: column.name, label: `${column.name}（${column.type}）` }))}
+              onChange={(value) => patchJoin(index, { sourceField: String(value ?? '') })} />
+            <Select filter placeholder="关联字段" value={join.targetField || undefined} style={{ width: 180 }}
+              optionList={targetColumns.map((column) => ({ value: column.name, label: `${column.name}（${column.type}）` }))}
+              onChange={(value) => patchJoin(index, { targetField: String(value ?? '') })} />
+            <Typography.Text type="tertiary" size="small">{joinAlias ? `引用前缀：${joinAlias}.字段名` : '设置别名后可用于字段映射'}</Typography.Text>
+            <Button theme="borderless" type="danger" size="small" onClick={() => patch({ joins: (model.joins ?? []).filter((_, i) => i !== index) })}>删除</Button>
+          </Space>
+        );
+      })}
 
       <Space wrap>
         <Typography.Text type="tertiary" size="small" style={{ width: 40 }}>指标</Typography.Text>

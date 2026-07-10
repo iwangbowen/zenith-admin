@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { Button, Input, Spin, Empty, Toast } from '@douyinfe/semi-ui';
 import { Lock } from 'lucide-react';
@@ -7,9 +7,8 @@ import './report-screen.css';
 import { ScreenCanvas } from './widgets/ScreenCanvas';
 import { FilterBar } from './widgets/FilterBar';
 import { filterValuesFromSearch, withFilterParam } from './widgets/filter-url';
-import type { ReportWidget, ReportFilter, ReportGridItem, ReportCanvasItem } from '@zenith/shared';
-import { reportDashboardKeys, usePublicReportDashboard, usePublicReportDashboardData } from '@/hooks/queries/report-dashboards';
-import { useQueryClient } from '@tanstack/react-query';
+import type { ReportWidget, ReportFilter, ReportGridItem, ReportCanvasItem, ReportDatasetQueryOptions, ReportPublicDashboard } from '@zenith/shared';
+import { usePublicReportDashboard, usePublicReportDashboardAccess, usePublicReportDashboardData } from '@/hooks/queries/report-dashboards';
 
 function defaultFilterValue(f: ReportFilter): unknown {
   if (f.defaultValue !== undefined) return f.defaultValue;
@@ -23,42 +22,71 @@ export default function PublicDashboardPage() {
   const [pwdInput, setPwdInput] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [filterValues, setFilterValues] = useState<Record<string, unknown>>({});
-  const [password, setPassword] = useState<string | undefined>(undefined);
-  const queryClient = useQueryClient();
+  const [debouncedFilterValues, setDebouncedFilterValues] = useState<Record<string, unknown>>({});
+  const [widgetQueries, setWidgetQueries] = useState<Record<string, ReportDatasetQueryOptions>>({});
+  const [sessionToken, setSessionToken] = useState<string | undefined>(undefined);
+  const [bootstrapDashboard, setBootstrapDashboard] = useState<ReportPublicDashboard | null>(null);
 
-  const dashboardQuery = usePublicReportDashboard(token, password);
-  const dashboard = dashboardQuery.data?.code === 0 ? dashboardQuery.data.data : null;
-  const dataQuery = usePublicReportDashboardData(token, password, filterValues, !!dashboard && !needPwd);
+  const accessMutation = usePublicReportDashboardAccess();
+  const dashboardQuery = usePublicReportDashboard(token, sessionToken, !!sessionToken);
+  const dashboard = dashboardQuery.data ?? bootstrapDashboard;
+  const dataQuery = usePublicReportDashboardData(token, sessionToken, debouncedFilterValues, widgetQueries, !!dashboard && !!sessionToken);
   const dataMap = dataQuery.data ?? {};
 
   useEffect(() => {
-    const res = dashboardQuery.data;
-    if (!res) return;
-    if (res.code === 0) {
-      setNeedPwd(false);
-      setError(null);
-      // URL 优先 > 默认值：分享带筛选状态的链接可直接还原
-      setFilterValues(filterValuesFromSearch(res.data.filters ?? [], searchParams, defaultFilterValue));
-    } else if (res.code === 401) {
-      setNeedPwd(true);
-      if (password) Toast.error('访问密码错误');
-    } else {
-      setError(res.message || '链接不存在或已失效');
-    }
+    if (!dashboard) return;
+    setNeedPwd(false);
+    setError(null);
+    setFilterValues(filterValuesFromSearch(dashboard.filters ?? [], searchParams, defaultFilterValue));
+    setWidgetQueries({});
     // eslint-disable-next-line react-hooks/exhaustive-deps -- searchParams 为初始化时的闭包快照，回写不重置
-  }, [dashboardQuery.data, password]);
+  }, [dashboard, sessionToken]);
 
-  function load(pwd?: string) {
-    setPassword(pwd);
-    void queryClient.invalidateQueries({ queryKey: reportDashboardKeys.publicDashboard(token, pwd) });
-  }
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedFilterValues(filterValues), 250);
+    return () => window.clearTimeout(timer);
+  }, [filterValues]);
+
+  const load = useCallback(async (pwd?: string) => {
+    if (!token) return;
+    try {
+      const res = await accessMutation.mutateAsync({ token, password: pwd });
+      if (res.code === 0 && res.data) {
+        setSessionToken(res.data.accessSessionToken);
+        setBootstrapDashboard(res.data.dashboard);
+        setNeedPwd(false);
+        setError(null);
+        return;
+      }
+      setSessionToken(undefined);
+      setBootstrapDashboard(null);
+      if (res.code === 401) {
+        setNeedPwd(true);
+        Toast.error('访问密码错误');
+        return;
+      }
+      setError(res.message || '链接不存在或已失效');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '链接不存在或已失效');
+    }
+  }, [accessMutation, token]);
+
+  useEffect(() => {
+    if (!token || sessionToken || accessMutation.isPending || dashboard || needPwd || error) return;
+    void load();
+  }, [accessMutation.isPending, dashboard, error, load, needPwd, sessionToken, token]);
 
   function onFilterChange(fid: string, val: unknown) {
     setFilterValues((p) => ({ ...p, [fid]: val }));
+    setWidgetQueries({});
     setSearchParams((prev) => withFilterParam(prev, fid, val), { replace: true });
   }
 
-  if (dashboardQuery.isFetching && !dashboard && !needPwd) return <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}><Spin size="large" /></div>;
+  const handleWidgetQueryChange = useCallback((widgetId: string, next: ReportDatasetQueryOptions) => {
+    setWidgetQueries((prev) => ({ ...prev, [widgetId]: next }));
+  }, []);
+
+  if ((dashboardQuery.isFetching || accessMutation.isPending) && !dashboard && !needPwd) return <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}><Spin size="large" /></div>;
   if (error) return <div style={{ padding: 80 }}><Empty description={error} /></div>;
 
   if (needPwd) {
@@ -81,7 +109,7 @@ export default function PublicDashboardPage() {
   return (
     <div className="report-view" style={{ minHeight: '100vh', ...(isDark ? { background: isCanvas ? '#060c1f' : '#0b1020' } : {}) }}>
       <div className="report-view__title" style={{ color: isDark ? '#eaf4ff' : undefined }}>{dashboard?.name ?? '报表'}</div>
-      <FilterBar filters={dashboard?.filters ?? []} values={filterValues} onChange={onFilterChange} disableDynamicOptions />
+      <FilterBar filters={dashboard?.filters ?? []} values={filterValues} onChange={onFilterChange} dynamicOptions={dashboard?.filterOptions ?? {}} />
       {widgets.length === 0 ? (
         <Empty description="该仪表盘还没有组件" style={{ paddingTop: 80 }} />
       ) : (
@@ -92,7 +120,13 @@ export default function PublicDashboardPage() {
             canvasLayout={(dashboard?.canvasLayout ?? []) as ReportCanvasItem[]}
             config={dashboard?.config ?? {}}
             filterValues={filterValues}
-            getWidgetState={(w: ReportWidget) => ({ data: dataMap[w.i] ?? null })}
+            getWidgetState={(w: ReportWidget) => ({
+              data: dataMap[w.i]?.data ?? null,
+              loading: dataQuery.isFetching,
+              error: dataMap[w.i]?.error?.message ?? null,
+            })}
+            getWidgetQuery={(widget) => widgetQueries[widget.i]}
+            onWidgetQueryChange={handleWidgetQueryChange}
           />
         </div>
       )}

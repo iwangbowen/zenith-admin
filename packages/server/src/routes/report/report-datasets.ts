@@ -1,16 +1,27 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { createReportDatasetSchema, updateReportDatasetSchema, reportDatasetPreviewSchema, reportDatasetDataBodySchema, reportDatasourceTypeSchema } from '@zenith/shared';
+import {
+  createReportDatasetSchema,
+  updateReportDatasetSchema,
+  reportBatchStatusSchema,
+  reportCloneSchema,
+  reportDatasetPreviewSchema,
+  reportDatasetDataBodySchema,
+  reportDatasourceTypeSchema,
+  reportLookupQuerySchema,
+} from '@zenith/shared';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
 import {
   ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, IdParam, okBody, errBody,
 } from '../../lib/openapi-schemas';
-import { ReportDatasetDTO, ReportDataResultDTO, ReportDatasetRefsDTO } from '../../lib/openapi-dtos';
+import { AsyncTaskDTO, ReportDatasetDTO, ReportDataResultDTO, ReportDatasetRefsDTO, ReportLookupOptionDTO } from '../../lib/openapi-dtos';
 import {
   listDatasets, getDataset, createDataset, updateDataset, deleteDataset,
-  ensureDatasetExists, previewDataset, getDatasetData, refreshMaterialization, collectDatasetRefs,
+  ensureDatasetExists, previewDataset, getDatasetData, collectDatasetRefs,
+  batchSetDatasetStatus, cloneDataset, listDatasetLookup,
 } from '../../services/report/report-dataset.service';
+import { submitDatasetMaterializeTask } from '../../services/report/report-dataset-tasks';
 import { parseDataFile } from '../../lib/report-file-parse';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -32,6 +43,18 @@ const listRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okPaginated(ReportDatasetDTO, 'ok') },
   }),
   handler: async (c) => c.json(okBody(await listDatasets(c.req.valid('query'))), 200),
+});
+
+const lookupRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/lookup',
+    tags: ['报表数据集'], summary: '数据集轻量下拉',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'report:dataset:list' })] as const,
+    request: { query: reportLookupQuerySchema },
+    responses: { ...commonErrorResponses, ...ok(z.array(ReportLookupOptionDTO), 'ok') },
+  }),
+  handler: async (c) => c.json(okBody(await listDatasetLookup(c.req.valid('query'))), 200),
 });
 
 // 试跑预览（不落库）—— 放在 /{id} 之前
@@ -59,7 +82,7 @@ const dataRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const body = c.req.valid('json');
-    return c.json(okBody(await getDatasetData(id, body?.params, body?.limit)), 200);
+    return c.json(okBody(await getDatasetData(id, body?.params, body ?? undefined, { scene: 'dataset', sourceRefId: id })), 200);
   },
 });
 
@@ -122,6 +145,22 @@ const deleteRoute_ = defineOpenAPIRoute({
   },
 });
 
+const batchStatusRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put', path: '/batch-status',
+    tags: ['报表数据集'], summary: '批量启停数据集',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'report:dataset:update', audit: { description: '批量更新报表数据集状态', module: '报表数据集' } })] as const,
+    request: { body: { content: jsonContent(reportBatchStatusSchema), required: true } },
+    responses: { ...commonErrorResponses, ...okMsg('已更新') },
+  }),
+  handler: async (c) => {
+    const { ids, status } = c.req.valid('json');
+    const count = await batchSetDatasetStatus(ids, status);
+    return c.json(okBody(null, `已更新 ${count} 个数据集状态`), 200);
+  },
+});
+
 const materializeRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/{id}/materialize',
@@ -129,12 +168,11 @@ const materializeRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'report:dataset:update' })] as const,
     request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...okMsg('刷新成功'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
+    responses: { ...commonErrorResponses, ...ok(AsyncTaskDTO, '任务已提交'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    const r = await refreshMaterialization(id);
-    return c.json(okBody(null, `已刷新物化快照（${r.rows} 行）`), 200);
+    return c.json(okBody(await submitDatasetMaterializeTask(id), '任务已提交，可在任务中心查看进度'), 200);
   },
 });
 
@@ -154,8 +192,20 @@ const refsRoute = defineOpenAPIRoute({
   },
 });
 
+const cloneRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/clone',
+    tags: ['报表数据集'], summary: '复制数据集',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'report:dataset:create', audit: { description: '复制报表数据集', module: '报表数据集' } })] as const,
+    request: { params: IdParam, body: { content: jsonContent(reportCloneSchema), required: false } },
+    responses: { ...commonErrorResponses, ...ok(ReportDatasetDTO, '复制成功') },
+  }),
+  handler: async (c) => c.json(okBody(await cloneDataset(c.req.valid('param').id, c.req.valid('json')), '复制成功'), 200),
+});
+
 router.openapiRoutes([
-  listRoute, previewRoute, dataRoute, materializeRoute, refsRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_,
+  listRoute, lookupRoute, previewRoute, dataRoute, batchStatusRoute, materializeRoute, refsRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_, cloneRoute,
 ] as const);
 
 // 文件数据集解析（Excel/CSV 上传 → {columns,rows}）—— multipart，使用原生路由

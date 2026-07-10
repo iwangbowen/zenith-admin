@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useRef, useState } from 'react';
+import { useCallback, useMemo, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Table } from '@douyinfe/semi-ui';
 import VChartCore from '@visactor/vchart';
@@ -9,8 +9,8 @@ import {
   makeBarSpec, makeLineSpec, makeAreaSpec, makePieSpec, makeScatterSpec, makeTreemapSpec, makeMixedBarLineSpec,
   useChartPalette, chartOptions, type ChartPalette,
 } from '@/components/charts';
-import { formatReportValue } from '@zenith/shared';
-import type { ReportWidget, ReportField, ReportDataResult, ReportConditionalFormat, ReportWidgetOptions } from '@zenith/shared';
+import { aggregateReportRows, formatReportFieldValue } from '@zenith/shared';
+import type { ReportWidget, ReportField, ReportDataResult, ReportConditionalFormat, ReportWidgetOptions, ReportDatasetQueryOptions, ReportResultField } from '@zenith/shared';
 import { useReportWidgetDictMaps } from '@/hooks/queries/report-designer';
 
 // ─── 工具 ────────────────────────────────────────────────────────────────────
@@ -25,19 +25,6 @@ function fmtNumber(v: number, decimals?: number, prefix?: string, unit?: string)
     maximumFractionDigits: decimals ?? 2,
   }).format(v);
   return `${prefix ?? ''}${s}${unit ?? ''}`;
-}
-
-function aggregate(rows: Record<string, unknown>[], field: string | undefined, agg: string | undefined): number {
-  if (!field) return rows.length;
-  if (agg === 'count') return rows.length;
-  const nums = rows.map((r) => toNumber(r[field]));
-  switch (agg) {
-    case 'avg': return nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0;
-    case 'max': return nums.length ? Math.max(...nums) : 0;
-    case 'min': return nums.length ? Math.min(...nums) : 0;
-    case 'first': return toNumber(rows[0]?.[field]);
-    default: return nums.reduce((a, b) => a + b, 0);
-  }
 }
 
 /** 排序 + TopN */
@@ -98,6 +85,32 @@ function EmptyHint({ text }: { readonly text: string }) {
   return <div className="report-widget-empty">{text}</div>;
 }
 
+function applyChartTooltipFormatter(
+  spec: Record<string, unknown>,
+  fields: Map<string, ReportResultField>,
+  formatValue: (field: Pick<ReportResultField, 'format'> | null | undefined, value: unknown) => string,
+  categoryField?: string,
+  valueFields?: string[],
+) {
+  const values = (valueFields ?? []).filter(Boolean);
+  return {
+    ...spec,
+    tooltip: {
+      visible: true,
+      formatter: (datum: Record<string, unknown>) => {
+        const titleField = categoryField ? fields.get(categoryField) : null;
+        return {
+          title: categoryField ? formatValue(titleField, datum?.[categoryField]) : undefined,
+          content: values.map((fieldName) => ({
+            key: fields.get(fieldName)?.label ?? fieldName,
+            value: formatValue(fields.get(fieldName), datum?.[fieldName]),
+          })),
+        };
+      },
+    },
+  };
+}
+
 function resolveTemplate(value: unknown, filterValues?: Record<string, unknown>): string {
   return String(value ?? '').replace(/\$\{(\w+)\}/g, (_, k) => String(filterValues?.[k] ?? ''));
 }
@@ -109,13 +122,17 @@ interface WidgetRendererProps {
   data: ReportDataResult | null;
   loading?: boolean;
   error?: string | null;
+  widgetQuery?: ReportDatasetQueryOptions;
+  onWidgetQueryChange?: (widgetId: string, next: ReportDatasetQueryOptions) => void;
   /** 全局筛选器当前值（文本组件占位替换用）*/
   filterValues?: Record<string, unknown>;
   /** 点击维度回调（联动/钻取用）*/
   onCategoryClick?: (value: string) => void;
 }
 
-export function WidgetRenderer({ widget, data, loading, error, filterValues, onCategoryClick }: Readonly<WidgetRendererProps>) {
+export function WidgetRenderer({
+  widget, data, loading, error, widgetQuery, onWidgetQueryChange, filterValues, onCategoryClick,
+}: Readonly<WidgetRendererProps>) {
   const palette = useChartPalette();
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   // 多级原地钻取：按 drilldown.fields 逐层下钻的当前路径（{字段,值}）
@@ -131,14 +148,22 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
   // 数据集变化时重置钻取路径，避免残留无效层级
   useEffect(() => { setDrillPath([]); }, [widget.datasetId]);
 
+  const dataFieldMap = useMemo(() => new Map((data?.fields ?? []).map((field) => [field.name, field])), [data?.fields]);
   const tableDictCodes = useMemo(() => {
-    if (widget.type !== 'table') return [];
-    const cols = widget.options?.columns ?? [];
+    const cols = widget.type === 'table' && widget.options?.columns?.length
+      ? widget.options.columns
+      : (data?.fields ?? []);
     return Array.from(new Set(cols
       .map((col) => col.format?.kind === 'dict' ? col.format.dictCode?.trim() : '')
       .filter((code): code is string => !!code)));
-  }, [widget]);
+  }, [data?.fields, widget]);
   const dictMaps = useReportWidgetDictMaps(tableDictCodes);
+
+  const formatValueByField = useCallback((field: Pick<ReportResultField, 'format'> | null | undefined, value: unknown) => {
+    const dictCode = field?.format?.kind === 'dict' ? field.format.dictCode?.trim() : '';
+    const dictMap = dictCode ? dictMaps[dictCode] : undefined;
+    return formatReportFieldValue(field, value, dictMap);
+  }, [dictMaps]);
 
   const content = useMemo(() => {
     const baseOptions = widget.options ?? {};
@@ -195,8 +220,8 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
 
     // 指标卡
     if (widget.type === 'kpi') {
-      const value = aggregate(rawRows, o.valueField, o.aggregate ?? 'sum');
-      const compare = o.compareField ? aggregate(rawRows, o.compareField, o.aggregate ?? 'sum') : undefined;
+      const value = aggregateReportRows(rawRows, o.valueField, o.aggregate ?? 'sum');
+      const compare = o.compareField ? aggregateReportRows(rawRows, o.compareField, o.aggregate ?? 'sum') : undefined;
       const delta = compare != null && compare !== 0 ? ((value - compare) / Math.abs(compare)) * 100 : undefined;
       const target = o.targetValue;
       const progress = target ? Math.min(100, (value / target) * 100) : undefined;
@@ -228,7 +253,7 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
     }
 
     if (widget.type === 'flipper') {
-      const value = aggregate(rawRows, o.valueField, o.aggregate ?? 'sum');
+      const value = aggregateReportRows(rawRows, o.valueField, o.aggregate ?? 'sum');
       return <Flipper value={value} digits={o.flipDigits} decimals={o.decimals} prefix={o.prefix} unit={o.unit} />;
     }
 
@@ -253,16 +278,19 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
     if (widget.type === 'table') {
       const cols: ReportField[] = o.columns?.length
         ? o.columns
-        : (data?.columns ?? []).map((c) => ({ name: c, label: c, type: 'string' as const }));
+        : (data?.fields?.length
+          ? data.fields.map((field) => ({ ...field }))
+          : (data?.columns ?? []).map((c) => ({ name: c, label: c, type: 'string' as const })));
       const tableColumns = cols.map((c) => ({
         title: c.label || c.name,
         dataIndex: c.name,
+        sorter: !!onWidgetQueryChange,
         render: (val: unknown, record: Record<string, unknown>) => {
           if (record.__rk === '__summary' && c.name === cols[0]?.name) {
             return <span style={cellStyle(c.name, val, o.conditionalFormats)}>{val == null ? '' : String(val)}</span>;
           }
-          const dictMap = c.format?.kind === 'dict' && c.format.dictCode ? dictMaps[c.format.dictCode] : undefined;
-          const text = c.format ? formatReportValue(val, c.format, dictMap) : val == null ? '' : String(val);
+          const fieldMeta = c.format ? c : dataFieldMap.get(c.name);
+          const text = fieldMeta ? formatValueByField(fieldMeta, val) : (val == null ? '' : String(val));
           return <span style={cellStyle(c.name, val, o.conditionalFormats)}>{text}</span>;
         },
       }));
@@ -272,7 +300,7 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
         for (let i = 1; i < cols.length; i++) {
           const c = cols[i];
           const isNum = c.type === 'number' || rows.some((r) => typeof r[c.name] === 'number');
-          if (isNum) totalRow[c.name] = rows.reduce((s, r) => s + toNumber(r[c.name]), 0);
+          if (isNum) totalRow[c.name] = aggregateReportRows(rows, c.name, 'sum');
         }
         dataSource.push(totalRow);
       }
@@ -285,7 +313,29 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
             size="small" bordered={false}
             columns={useVirtual ? tableColumns.map((c) => ({ width: 140, ...c })) : tableColumns}
             dataSource={dataSource} rowKey="__rk"
-            pagination={paginated ? { pageSize: o.pageSize } : false}
+            pagination={paginated ? {
+              pageSize: widgetQuery?.pageSize ?? o.pageSize,
+              currentPage: widgetQuery?.page ?? 1,
+              total: data?.total ?? dataSource.length,
+              onPageChange: onWidgetQueryChange ? (page) => onWidgetQueryChange(widget.i, {
+                ...widgetQuery,
+                page,
+                pageSize: widgetQuery?.pageSize ?? o.pageSize,
+              }) : undefined,
+            } : false}
+            onChange={onWidgetQueryChange ? (...args: unknown[]) => {
+              const sorter = (args[2] ?? args[1]) as { field?: unknown; sortOrder?: 'ascend' | 'descend' | false | null } | undefined;
+              if (!sorter || Array.isArray(sorter)) return;
+              const sortField = typeof sorter.field === 'string' ? sorter.field : undefined;
+              const sortOrder = sorter.sortOrder === 'ascend' ? 'asc' : sorter.sortOrder === 'descend' ? 'desc' : undefined;
+              onWidgetQueryChange(widget.i, {
+                ...widgetQuery,
+                page: 1,
+                pageSize: widgetQuery?.pageSize ?? o.pageSize,
+                sortField,
+                sortOrder,
+              });
+            } : undefined}
             {...(useVirtual ? { virtualized: { itemSize: 36 }, scroll: { y: Math.max(80, chartHeight - 36), x: cols.length * 140 } } : {})}
             onRow={interactive ? (record) => ({ onClick: () => handleCat(String((record as Record<string, unknown>)[cols[0]?.name] ?? '')), style: { cursor: 'pointer' } }) : undefined}
           />
@@ -300,7 +350,7 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
 
     // 仪表盘 gauge
     if (widget.type === 'gauge') {
-      const value = aggregate(rawRows, o.valueField, o.aggregate ?? 'sum');
+      const value = aggregateReportRows(rawRows, o.valueField, o.aggregate ?? 'sum');
       return <Gauge value={value} min={o.min ?? 0} max={o.max ?? 100} unit={o.unit} decimals={o.decimals} />;
     }
 
@@ -320,7 +370,7 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
 
     if (widget.type === 'liquid') {
       if (!o.valueField) return <EmptyHint text="请配置取值字段" />;
-      const value = aggregate(rawRows, o.valueField, o.aggregate ?? 'sum');
+      const value = aggregateReportRows(rawRows, o.valueField, o.aggregate ?? 'sum');
       const max = o.max && o.max > 0 ? o.max : 100;
       const percent = Math.max(0, Math.min(1, value / max));
       const spec = {
@@ -359,7 +409,13 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
       const valueField = o.valueFields?.[0];
       if (!o.categoryField || !valueField) return <EmptyHint text="请配置分类字段与指标字段" />;
       const pieData = rows.map((r) => ({ [o.categoryField as string]: String(r[o.categoryField as string] ?? ''), [valueField]: toNumber(r[valueField]) }));
-      const spec = makePieSpec({ data: pieData, categoryField: o.categoryField, valueField, palette });
+      const spec = applyChartTooltipFormatter(
+        makePieSpec({ data: pieData, categoryField: o.categoryField, valueField, palette }) as Record<string, unknown>,
+        dataFieldMap,
+        formatValueByField,
+        o.categoryField,
+        [valueField],
+      );
       return <PieChart {...spec} options={chartOptions} height={chartHeight} onClick={onChartClick} />;
     }
 
@@ -368,7 +424,13 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
       const xf = o.categoryField; const yf = o.valueFields?.[0];
       if (!xf || !yf) return <EmptyHint text="请配置 X / Y 字段" />;
       const sData = rows.map((r) => ({ [xf]: toNumber(r[xf]), [yf]: toNumber(r[yf]) }));
-      const spec = makeScatterSpec({ data: sData, xField: xf, yField: yf, palette });
+      const spec = applyChartTooltipFormatter(
+        makeScatterSpec({ data: sData, xField: xf, yField: yf, palette }) as Record<string, unknown>,
+        dataFieldMap,
+        formatValueByField,
+        xf,
+        [yf],
+      );
       return <ScatterChart {...spec} options={chartOptions} height={chartHeight} />;
     }
 
@@ -480,7 +542,13 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
       const barF = o.valueFields?.[0]; const lineF = o.secondaryFields?.[0];
       if (!o.categoryField || !barF || !lineF) return <EmptyHint text="请配置分类、左轴(柱)、右轴(线)字段" />;
       const cData = rows.map((r) => ({ [o.categoryField as string]: String(r[o.categoryField as string] ?? ''), [barF]: toNumber(r[barF]), [lineF]: toNumber(r[lineF]) }));
-      const spec = makeMixedBarLineSpec({ data: cData, xField: o.categoryField, palette, bar: { field: barF, name: barF }, line: { field: lineF, name: lineF } });
+      const spec = applyChartTooltipFormatter(
+        makeMixedBarLineSpec({ data: cData, xField: o.categoryField, palette, bar: { field: barF, name: barF }, line: { field: lineF, name: lineF } }) as Record<string, unknown>,
+        dataFieldMap,
+        formatValueByField,
+        o.categoryField,
+        [barF, lineF],
+      );
       return <CommonChart {...spec} options={chartOptions} height={chartHeight} />;
     }
 
@@ -502,16 +570,34 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
     }
     const series = valueFields.map((f) => ({ field: f, name: f }));
     if (widget.type === 'bar') {
-      const spec = makeBarSpec({ data: chartData, xField: o.categoryField, series, palette, stack: o.stack || o.percent, horizontal: o.horizontal, showLabel: o.showLabel });
+      const spec = applyChartTooltipFormatter(
+        makeBarSpec({ data: chartData, xField: o.categoryField, series, palette, stack: o.stack || o.percent, horizontal: o.horizontal, showLabel: o.showLabel }) as Record<string, unknown>,
+        dataFieldMap,
+        formatValueByField,
+        o.categoryField,
+        valueFields,
+      );
       return <BarChart {...spec} options={chartOptions} height={chartHeight} onClick={onChartClick} />;
     }
     if (widget.type === 'area') {
-      const spec = makeAreaSpec({ data: chartData, xField: o.categoryField, series, palette, stack: o.stack || o.percent, smooth: o.smooth });
+      const spec = applyChartTooltipFormatter(
+        makeAreaSpec({ data: chartData, xField: o.categoryField, series, palette, stack: o.stack || o.percent, smooth: o.smooth }) as Record<string, unknown>,
+        dataFieldMap,
+        formatValueByField,
+        o.categoryField,
+        valueFields,
+      );
       return <AreaChart {...spec} options={chartOptions} height={chartHeight} onClick={onChartClick} />;
     }
-    const spec = makeLineSpec({ data: chartData, xField: o.categoryField, series, palette, smooth: o.smooth, point: true });
+    const spec = applyChartTooltipFormatter(
+      makeLineSpec({ data: chartData, xField: o.categoryField, series, palette, smooth: o.smooth, point: true }) as Record<string, unknown>,
+      dataFieldMap,
+      formatValueByField,
+      o.categoryField,
+      valueFields,
+    );
     return <LineChart {...spec} options={chartOptions} height={chartHeight} onClick={onChartClick} />;
-  }, [widget, data, loading, error, palette, width, height, chartHeight, filterValues, onCategoryClick, dictMaps, drillPath, fieldDrill, drillFields]);
+  }, [widget, data, loading, error, palette, width, height, chartHeight, filterValues, onCategoryClick, drillPath, fieldDrill, drillFields, dataFieldMap, formatValueByField, onWidgetQueryChange, widgetQuery]);
 
   return (
     <div ref={ref} style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -902,7 +988,7 @@ function PivotView({ rows, o }: { readonly rows: Record<string, unknown>[]; read
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(r);
   }
-  const aggOf = (rs: Record<string, unknown>[]) => aggregate(rs, valField, agg);
+  const aggOf = (rs: Record<string, unknown>[]) => aggregateReportRows(rs, valField, agg);
   const dataSource = Array.from(groups.entries()).map(([key, rs], i) => {
     const rec: Record<string, unknown> = { __rk: i, __row: key };
     if (colDim) for (const cv of colValues) rec[cv] = aggOf(rs.filter((r) => String(r[colDim] ?? '') === cv));

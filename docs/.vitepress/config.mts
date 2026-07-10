@@ -212,6 +212,7 @@ export default defineConfig({
           { text: '类 Excel 打印报表', link: '/report/print-reports' },
           { text: 'AI 问数与数据预警', link: '/report/ai-and-alerts' },
           { text: '分享 / 订阅 / 嵌入 / 协作', link: '/report/sharing' },
+          { text: '运行治理与可观测性', link: '/report/runtime-governance' },
         ],
       },
       {

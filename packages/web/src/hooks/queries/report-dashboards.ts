@@ -1,48 +1,78 @@
-import { useCallback, useMemo } from 'react';
-import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback } from 'react';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   ApiResponse,
   PaginatedResponse,
   ReportDashboard,
   ReportDashboardCategory,
   ReportDashboardComment,
+  ReportDashboardEmbedToken,
+  ReportDashboardLifecycleStatus,
   ReportDashboardShare,
   ReportDashboardVersion,
-  ReportDataResult,
+  ReportDashboardVersionDiff,
+  ReportDatasetQueryOptions,
+  ReportPublicAccessSession,
   ReportPublicDashboard,
   ReportWidget,
+  ReportWidgetDataResult,
+  ReportExecutionStats,
 } from '@zenith/shared';
 import { request } from '@/utils/request';
-import { createLimiter, toQueryString, unwrap } from '@/lib/query';
-
-/** 报表组件取数共享并发闸门（查看页/设计器/嵌入共用，一屏大盘不至于瞬时打爆后端） */
-export const reportDataLimiter = createLimiter(6);
+import { toQueryString, unwrap } from '@/lib/query';
+import { useReportLookup } from './report-lookups';
 
 export interface ReportDashboardListParams {
   page: number;
   pageSize: number;
   keyword?: string;
   status?: string;
+  lifecycleStatus?: ReportDashboardLifecycleStatus;
   categoryId?: number;
   favorited?: boolean;
+}
+
+export interface ReportDashboardCommentListParams {
+  page: number;
+  pageSize: number;
+  widgetId?: string;
 }
 
 export const reportDashboardKeys = {
   all: ['report', 'dashboards'] as const,
   lists: ['report', 'dashboards', 'list'] as const,
   list: (params: ReportDashboardListParams) => ['report', 'dashboards', 'list', params] as const,
-  detail: (id: number | undefined) => ['report', 'dashboards', 'detail', id] as const,
+  detail: (id: number | undefined, mode: 'auto' | 'draft' | 'published' = 'auto') =>
+    ['report', 'dashboards', 'detail', id, mode] as const,
+  batch: (ids: number[], mode: 'auto' | 'draft' | 'published' = 'auto') =>
+    ['report', 'dashboards', 'batch', [...ids].sort((a, b) => a - b), mode] as const,
   categories: ['report', 'dashboards', 'categories'] as const,
-  comments: (id: number | undefined) => ['report', 'dashboards', 'comments', id] as const,
+  categoryLookup: (params: { keyword?: string; limit?: number }) => ['report', 'dashboards', 'category-lookup', params] as const,
+  lookup: (params: { keyword?: string; status?: 'enabled' | 'disabled'; limit?: number }) => ['report', 'dashboards', 'lookup', params] as const,
+  healthSummary: (dashboardId: number | undefined, params: Record<string, unknown>) => ['report', 'dashboards', 'health-summary', dashboardId, params] as const,
+  comments: (id: number | undefined, params: ReportDashboardCommentListParams) =>
+    ['report', 'dashboards', 'comments', id, params] as const,
   shares: (id: number | undefined) => ['report', 'dashboards', 'shares', id] as const,
+  embedTokens: (id: number | undefined) => ['report', 'dashboards', 'embedTokens', id] as const,
   versions: (id: number | undefined) => ['report', 'dashboards', 'versions', id] as const,
-  widgetDataAll: (dashboardId: number | undefined) => ['report', 'dashboards', 'widget-data', dashboardId] as const,
-  widgetData: (dashboardId: number | undefined, datasetId: number, params: Record<string, unknown>, limit: number) =>
-    ['report', 'dashboards', 'widget-data', dashboardId, datasetId, params, limit] as const,
-  publicDashboard: (token: string | undefined, password: string | undefined) =>
-    ['report', 'dashboards', 'public', token, password ?? ''] as const,
-  publicData: (token: string | undefined, password: string | undefined, filters: Record<string, unknown>) =>
-    ['report', 'dashboards', 'public-data', token, password ?? '', filters] as const,
+  versionDiff: (dashboardId: number | undefined, left: number, right: number) =>
+    ['report', 'dashboards', 'version-diff', dashboardId, left, right] as const,
+  dashboardData: (
+    dashboardId: number | undefined,
+    mode: 'auto' | 'draft' | 'published',
+    filters: Record<string, unknown>,
+    limit: number,
+    widgetQueries?: Record<string, ReportDatasetQueryOptions>,
+  ) => ['report', 'dashboards', 'data', dashboardId, mode, filters, limit, widgetQueries ?? null] as const,
+  publicAccess: (token: string | undefined) => ['report', 'dashboards', 'public-access', token] as const,
+  publicDashboard: (token: string | undefined, session: string | undefined) =>
+    ['report', 'dashboards', 'public', token, session ?? ''] as const,
+  publicData: (
+    token: string | undefined,
+    session: string | undefined,
+    filters: Record<string, unknown>,
+    widgetQueries?: Record<string, ReportDatasetQueryOptions>,
+  ) => ['report', 'dashboards', 'public-data', token, session ?? '', filters, widgetQueries ?? null] as const,
 };
 
 export function useReportDashboardList(params: ReportDashboardListParams) {
@@ -60,20 +90,72 @@ export function useReportDashboardCategories() {
   });
 }
 
-export function useReportDashboardDetail(id: number | undefined, enabled = true) {
+export function useReportDashboardCategoryLookup(params: { keyword?: string; limit?: number } = {}, enabled = true) {
+  return useReportLookup('categories', params, enabled);
+}
+
+export function useReportDashboardLookup(params: { keyword?: string; status?: 'enabled' | 'disabled'; limit?: number } = {}, enabled = true) {
+  return useReportLookup('dashboards', params, enabled);
+}
+
+export function useReportDashboardDetail(
+  id: number | undefined,
+  enabled = true,
+  mode: 'auto' | 'draft' | 'published' = 'auto',
+) {
   return useQuery({
-    queryKey: reportDashboardKeys.detail(id),
-    queryFn: () => request.get<ReportDashboard>(`/api/report/dashboards/${id}`).then(unwrap),
+    queryKey: reportDashboardKeys.detail(id, mode),
+    queryFn: () => request.get<ReportDashboard>(`/api/report/dashboards/${id}${toQueryString({ mode })}`).then(unwrap),
     enabled: enabled && !!id,
+  });
+}
+
+export function useReportDashboardBatch(ids: number[], enabled = true, mode: 'auto' | 'draft' | 'published' = 'auto') {
+  return useQuery({
+    queryKey: reportDashboardKeys.batch(ids, mode),
+    queryFn: () => request.post<ReportDashboard[]>('/api/report/dashboards/batch', { ids, mode }).then(unwrap),
+    enabled: enabled && ids.length > 0,
   });
 }
 
 export function useSaveReportDashboard() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: Partial<ReportDashboard> }) =>
+    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
       (id ? request.put<ReportDashboard>(`/api/report/dashboards/${id}`, values) : request.post<ReportDashboard>('/api/report/dashboards', values)).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportDashboardKeys.all }),
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: reportDashboardKeys.all });
+      if (vars.id) {
+        void qc.invalidateQueries({ queryKey: reportDashboardKeys.detail(vars.id, 'auto') });
+        void qc.invalidateQueries({ queryKey: reportDashboardKeys.detail(vars.id, 'draft') });
+      }
+    },
+  });
+}
+
+export function usePublishReportDashboard() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ dashboardId, expectedRevision, remark }: { dashboardId: number; expectedRevision: number; remark?: string }) =>
+      request.post<ReportDashboard>(`/api/report/dashboards/${dashboardId}/publish`, { expectedRevision, remark }).then(unwrap),
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: reportDashboardKeys.all });
+      void qc.invalidateQueries({ queryKey: reportDashboardKeys.detail(vars.dashboardId, 'auto') });
+      void qc.invalidateQueries({ queryKey: reportDashboardKeys.versions(vars.dashboardId) });
+      void qc.invalidateQueries({ queryKey: reportDashboardKeys.shares(vars.dashboardId) });
+    },
+  });
+}
+
+export function useOfflineReportDashboard() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ dashboardId, expectedRevision, remark }: { dashboardId: number; expectedRevision: number; remark?: string }) =>
+      request.post<ReportDashboard>(`/api/report/dashboards/${dashboardId}/offline`, { expectedRevision, remark }).then(unwrap),
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: reportDashboardKeys.all });
+      void qc.invalidateQueries({ queryKey: reportDashboardKeys.detail(vars.dashboardId, 'auto') });
+    },
   });
 }
 
@@ -85,28 +167,104 @@ export function useDeleteReportDashboard() {
   });
 }
 
-export function useToggleReportDashboardFavorite() {
+export function useBatchReportDashboardStatus() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) => request.post<null>(`/api/report/dashboards/${id}/favorite`).then(unwrap),
+    mutationFn: ({ ids, status }: { ids: number[]; status: 'enabled' | 'disabled' }) =>
+      request.put<null>('/api/report/dashboards/batch-status', { ids, status }).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: reportDashboardKeys.all }),
   });
 }
 
-export function useReportDashboardComments(id: number | undefined, enabled = true) {
+export function useCloneReportDashboard() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, name }: { id: number; name?: string }) =>
+      request.post<ReportDashboard>(`/api/report/dashboards/${id}/clone`, name ? { name } : {}).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: reportDashboardKeys.all }),
+  });
+}
+
+export function useSaveReportDashboardCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
+      (id
+        ? request.put<ReportDashboardCategory>(`/api/report/categories/${id}`, values)
+        : request.post<ReportDashboardCategory>('/api/report/categories', values)
+      ).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: reportDashboardKeys.categories }),
+  });
+}
+
+export function useDeleteReportDashboardCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.delete<null>(`/api/report/categories/${id}`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: reportDashboardKeys.categories }),
+  });
+}
+
+export function useReportDashboardHealthSummary(
+  dashboardId: number | undefined,
+  params: { startAt?: string; endAt?: string } = {},
+  enabled = true,
+) {
   return useQuery({
-    queryKey: reportDashboardKeys.comments(id),
-    queryFn: () => request.get<ReportDashboardComment[]>(`/api/report/dashboards/${id}/comments`, { silent: true }).then(unwrap),
+    queryKey: reportDashboardKeys.healthSummary(dashboardId, params),
+    queryFn: () => request.get<ReportExecutionStats>(`/api/report/executions/stats${toQueryString({ dashboardId, ...params })}`).then(unwrap),
+    enabled: enabled && !!dashboardId,
+  });
+}
+
+export function useToggleReportDashboardFavorite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.post<{ favorited: boolean }>(`/api/report/dashboards/${id}/favorite`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: reportDashboardKeys.all }),
+  });
+}
+
+export function useReportDashboardComments(
+  id: number | undefined,
+  params: ReportDashboardCommentListParams,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: reportDashboardKeys.comments(id, params),
+    queryFn: () => request.get<PaginatedResponse<ReportDashboardComment>>(
+      `/api/report/dashboards/${id}/comments${toQueryString(params)}`,
+      { silent: true },
+    ).then(unwrap),
     enabled: enabled && !!id,
+    placeholderData: keepPreviousData,
   });
 }
 
 export function useCreateReportDashboardComment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ dashboardId, content }: { dashboardId: number; content: string }) =>
-      request.post<ReportDashboardComment>(`/api/report/dashboards/${dashboardId}/comments`, { widgetId: null, content }, { silent: true }).then(unwrap),
-    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: reportDashboardKeys.comments(vars.dashboardId) }),
+    mutationFn: ({ dashboardId, widgetId, parentId, content }: { dashboardId: number; widgetId?: string | null; parentId?: number | null; content: string }) =>
+      request.post<ReportDashboardComment>(`/api/report/dashboards/${dashboardId}/comments`, { widgetId: widgetId ?? null, parentId: parentId ?? null, content }, { silent: true }).then(unwrap),
+    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: ['report', 'dashboards', 'comments', vars.dashboardId] }),
+  });
+}
+
+export function useUpdateReportDashboardComment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ dashboardId, commentId, content }: { dashboardId: number; commentId: number; content: string }) =>
+      request.put<ReportDashboardComment>(`/api/report/dashboards/${dashboardId}/comments/${commentId}`, { content }, { silent: true }).then(unwrap),
+    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: ['report', 'dashboards', 'comments', vars.dashboardId] }),
+  });
+}
+
+export function useResolveReportDashboardComment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ dashboardId, commentId, resolved }: { dashboardId: number; commentId: number; resolved: boolean }) =>
+      request.post<ReportDashboardComment>(`/api/report/dashboards/${dashboardId}/comments/${commentId}/resolve`, { resolved }, { silent: true }).then(unwrap),
+    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: ['report', 'dashboards', 'comments', vars.dashboardId] }),
   });
 }
 
@@ -115,7 +273,7 @@ export function useDeleteReportDashboardComment() {
   return useMutation({
     mutationFn: ({ dashboardId, commentId }: { dashboardId: number; commentId: number }) =>
       request.delete<null>(`/api/report/dashboards/${dashboardId}/comments/${commentId}`, undefined, { silent: true }).then(unwrap),
-    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: reportDashboardKeys.comments(vars.dashboardId) }),
+    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: ['report', 'dashboards', 'comments', vars.dashboardId] }),
   });
 }
 
@@ -130,18 +288,18 @@ export function useReportDashboardShares(id: number | undefined, enabled = true)
 export function useCreateReportDashboardShare() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ dashboardId, password, expireAt }: { dashboardId: number; password?: string; expireAt?: string | null }) =>
-      request.post<ReportDashboardShare>(`/api/report/dashboards/${dashboardId}/shares`, { enabled: true, password: password || undefined, expireAt }).then(unwrap),
+    mutationFn: ({ dashboardId, values }: { dashboardId: number; values: Record<string, unknown> }) =>
+      request.post<ReportDashboardShare>(`/api/report/dashboards/${dashboardId}/shares`, values).then(unwrap),
     onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: reportDashboardKeys.shares(vars.dashboardId) }),
   });
 }
 
-export function useToggleReportDashboardShare() {
+export function useUpdateReportDashboardShare() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (share: ReportDashboardShare) =>
-      request.put<null>(`/api/report/dashboards/shares/${share.id}`, { enabled: !share.enabled }).then(unwrap),
-    onSuccess: (_data, share) => qc.invalidateQueries({ queryKey: reportDashboardKeys.shares(share.dashboardId) }),
+    mutationFn: ({ shareId, dashboardId: _dashboardId, values }: { shareId: number; dashboardId: number; values: Record<string, unknown> }) =>
+      request.put<ReportDashboardShare>(`/api/report/dashboards/shares/${shareId}`, values).then(unwrap),
+    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: reportDashboardKeys.shares(vars.dashboardId) }),
   });
 }
 
@@ -153,6 +311,32 @@ export function useDeleteReportDashboardShare() {
   });
 }
 
+export function useReportDashboardEmbedTokens(id: number | undefined, enabled = true) {
+  return useQuery({
+    queryKey: reportDashboardKeys.embedTokens(id),
+    queryFn: () => request.get<ReportDashboardEmbedToken[]>(`/api/report/dashboards/${id}/embed-tokens`).then(unwrap),
+    enabled: enabled && !!id,
+  });
+}
+
+export function useCreateReportDashboardEmbedToken() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ dashboardId, values }: { dashboardId: number; values: Record<string, unknown> }) =>
+      request.post<ReportDashboardEmbedToken>(`/api/report/dashboards/${dashboardId}/embed-tokens`, values).then(unwrap),
+    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: reportDashboardKeys.embedTokens(vars.dashboardId) }),
+  });
+}
+
+export function useRevokeReportDashboardEmbedToken() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ embedTokenId, dashboardId: _dashboardId }: { embedTokenId: number; dashboardId: number }) =>
+      request.post<null>(`/api/report/dashboards/embed-tokens/${embedTokenId}/revoke`).then(unwrap),
+    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: reportDashboardKeys.embedTokens(vars.dashboardId) }),
+  });
+}
+
 export function useReportDashboardVersions(id: number | undefined, enabled = true) {
   return useQuery({
     queryKey: reportDashboardKeys.versions(id),
@@ -161,112 +345,126 @@ export function useReportDashboardVersions(id: number | undefined, enabled = tru
   });
 }
 
+export function useReportDashboardVersionDiff(dashboardId: number | undefined, left: number, right: number, enabled = true) {
+  return useQuery({
+    queryKey: reportDashboardKeys.versionDiff(dashboardId, left, right),
+    queryFn: () => request.get<ReportDashboardVersionDiff>(`/api/report/dashboards/${dashboardId}/versions/diff${toQueryString({ left, right })}`).then(unwrap),
+    enabled: enabled && !!dashboardId,
+  });
+}
+
 export function useSaveReportDashboardVersion() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (dashboardId: number) => request.post<null>(`/api/report/dashboards/${dashboardId}/versions`, {}).then(unwrap),
-    onSuccess: (_data, dashboardId) => qc.invalidateQueries({ queryKey: reportDashboardKeys.versions(dashboardId) }),
+    mutationFn: ({ dashboardId, remark }: { dashboardId: number; remark?: string }) =>
+      request.post<ReportDashboardVersion>(`/api/report/dashboards/${dashboardId}/versions`, { remark }).then(unwrap),
+    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: reportDashboardKeys.versions(vars.dashboardId) }),
   });
 }
 
 export function useRestoreReportDashboardVersion() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ dashboardId, versionId }: { dashboardId: number; versionId: number }) =>
-      request.post<ReportDashboard>(`/api/report/dashboards/${dashboardId}/versions/${versionId}/restore`).then(unwrap),
+    mutationFn: ({ dashboardId, versionId, expectedRevision }: { dashboardId: number; versionId: number; expectedRevision: number }) =>
+      request.post<null>(`/api/report/dashboards/${dashboardId}/versions/${versionId}/restore`, { expectedRevision }).then(unwrap),
     onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: reportDashboardKeys.all });
       void qc.invalidateQueries({ queryKey: reportDashboardKeys.versions(vars.dashboardId) });
+      void qc.invalidateQueries({ queryKey: reportDashboardKeys.detail(vars.dashboardId, 'draft') });
     },
   });
 }
 
-function computeWidgetParams(widget: ReportWidget, filterValues: Record<string, unknown>): Record<string, unknown> {
-  const params: Record<string, unknown> = {};
-  for (const binding of widget.paramBindings ?? []) {
-    if (binding.filterId && binding.param) params[binding.param] = filterValues[binding.filterId];
-  }
-  return params;
-}
-
 export interface DashboardWidgetDataState {
-  data: ReportDataResult | null;
+  data: ReportWidgetDataResult['data'] | null;
   loading: boolean;
   error: string | null;
 }
 
 const EMPTY_WIDGET_STATE: DashboardWidgetDataState = { data: null, loading: false, error: null };
 
+function buildStableJitter(base: number | false | undefined, key: string): number | false | undefined {
+  if (!base || base <= 0) return base;
+  const hash = Array.from(key).reduce((acc, char) => ((acc * 31) + char.charCodeAt(0)) % 9973, 17);
+  const delta = Math.max(250, Math.min(3000, Math.round(base * 0.08)));
+  return base + (hash % (delta * 2 + 1)) - delta;
+}
+
 export function useReportDashboardWidgetData(
   dashboardId: number | undefined,
   widgets: ReportWidget[],
   filterValues: Record<string, unknown>,
-  options?: { limit?: number; refetchInterval?: number | false },
+  options?: {
+    limit?: number;
+    refetchInterval?: number | false;
+    widgetQueries?: Record<string, ReportDatasetQueryOptions>;
+    mode?: 'auto' | 'draft' | 'published';
+  },
 ) {
   const queryClient = useQueryClient();
   const limit = options?.limit ?? 500;
-  const entries = useMemo(() => {
-    const map = new Map<string, { key: string; datasetId: number; params: Record<string, unknown> }>();
-    for (const widget of widgets ?? []) {
-      if (!widget.datasetId) continue;
-      const params = computeWidgetParams(widget, filterValues);
-      const key = `${widget.datasetId}:${JSON.stringify(params)}`;
-      if (!map.has(key)) map.set(key, { key, datasetId: widget.datasetId, params });
-    }
-    return Array.from(map.values());
-  }, [widgets, filterValues]);
-
-  const stateMap = useQueries({
-    queries: entries.map((entry) => ({
-      queryKey: reportDashboardKeys.widgetData(dashboardId, entry.datasetId, entry.params, limit),
-      queryFn: () => reportDataLimiter(() =>
-        request.post<ReportDataResult>(`/api/report/datasets/${entry.datasetId}/data`, { params: entry.params, limit }, { silent: true }).then(unwrap)),
-      enabled: !!dashboardId,
-      refetchInterval: options?.refetchInterval,
-    })),
-    // combine：返回值引用稳定（仅底层查询结果变化时重算），可安全用于下游依赖
-    combine: (results) => {
-      const map = new Map<string, DashboardWidgetDataState>();
-      entries.forEach((entry, index) => {
-        const query = results[index];
-        map.set(entry.key, {
-          data: query?.data ?? null,
-          loading: query?.isFetching ?? false,
-          error: query?.error instanceof Error ? query.error.message : null,
-        });
-      });
-      return map;
-    },
+  const mode = options?.mode ?? 'auto';
+  const dataQuery = useQuery({
+    queryKey: reportDashboardKeys.dashboardData(dashboardId, mode, filterValues, limit, options?.widgetQueries),
+    queryFn: ({ signal }) => request.post<Record<string, ReportWidgetDataResult>>(
+      `/api/report/dashboards/${dashboardId}/data${toQueryString({ mode })}`,
+      { filters: filterValues, limit, widgetQueries: options?.widgetQueries },
+      { silent: true, signal },
+    ).then(unwrap),
+    enabled: !!dashboardId,
+    refetchInterval: buildStableJitter(options?.refetchInterval, `dashboard:${dashboardId ?? 'none'}:${mode}`),
   });
 
   const get = useCallback((widget: ReportWidget): DashboardWidgetDataState => {
     if (!widget.datasetId) return EMPTY_WIDGET_STATE;
-    const key = `${widget.datasetId}:${JSON.stringify(computeWidgetParams(widget, filterValues))}`;
-    return stateMap.get(key) ?? EMPTY_WIDGET_STATE;
-  }, [filterValues, stateMap]);
+    const item = dataQuery.data?.[widget.i];
+    return {
+      data: item?.data ?? null,
+      loading: dataQuery.isFetching,
+      error: item?.error?.message ?? (dataQuery.error instanceof Error ? dataQuery.error.message : null),
+    };
+  }, [dataQuery.data, dataQuery.error, dataQuery.isFetching]);
 
   const refresh = useCallback(() => {
-    void queryClient.refetchQueries({ queryKey: reportDashboardKeys.widgetDataAll(dashboardId), type: 'active' });
-  }, [queryClient, dashboardId]);
+    void queryClient.refetchQueries({ queryKey: reportDashboardKeys.dashboardData(dashboardId, mode, filterValues, limit, options?.widgetQueries), type: 'active' });
+  }, [dashboardId, filterValues, limit, mode, options?.widgetQueries, queryClient]);
 
-  return { get, refresh };
+  return { get, refresh, query: dataQuery };
 }
 
-export function usePublicReportDashboard(token: string | undefined, password: string | undefined, enabled = true) {
-  return useQuery({
-    queryKey: reportDashboardKeys.publicDashboard(token, password),
-    queryFn: () => request.post<ReportPublicDashboard>(`/api/report/public/dashboards/${token}`, { password }, { skipAuth: true, silent: true }) as Promise<ApiResponse<ReportPublicDashboard>>,
-    enabled: enabled && !!token,
+export function usePublicReportDashboardAccess() {
+  return useMutation({
+    mutationFn: ({ token, password }: { token: string; password?: string }) =>
+      request.post<ReportPublicAccessSession>(`/api/report/public/dashboards/${token}/access`, { password }, { skipAuth: true, silent: true }) as Promise<ApiResponse<ReportPublicAccessSession>>,
   });
 }
 
-export function usePublicReportDashboardData(token: string | undefined, password: string | undefined, filters: Record<string, unknown>, enabled = true) {
+export function usePublicReportDashboard(token: string | undefined, session: string | undefined, enabled = true) {
   return useQuery({
-    queryKey: reportDashboardKeys.publicData(token, password, filters),
-    queryFn: async () => {
-      const res = await request.post<Record<string, ReportDataResult>>(`/api/report/public/dashboards/${token}/data`, { password, filters }, { skipAuth: true, silent: true });
-      return res.code === 0 ? res.data : {};
-    },
-    enabled: enabled && !!token,
+    queryKey: reportDashboardKeys.publicDashboard(token, session),
+    queryFn: () => request.get<ReportPublicDashboard>(`/api/report/public/dashboards/${token}`, {
+      skipAuth: true,
+      silent: true,
+      headers: session ? { session } : undefined,
+    }).then(unwrap),
+    enabled: enabled && !!token && !!session,
+  });
+}
+
+export function usePublicReportDashboardData(
+  token: string | undefined,
+  session: string | undefined,
+  filters: Record<string, unknown>,
+  widgetQueries?: Record<string, ReportDatasetQueryOptions>,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: reportDashboardKeys.publicData(token, session, filters, widgetQueries),
+    queryFn: ({ signal }) => request.post<Record<string, ReportWidgetDataResult>>(
+      `/api/report/public/dashboards/${token}/data`,
+      { filters, widgetQueries },
+      { skipAuth: true, silent: true, signal, headers: session ? { session } : undefined },
+    ).then(unwrap),
+    enabled: enabled && !!token && !!session,
   });
 }

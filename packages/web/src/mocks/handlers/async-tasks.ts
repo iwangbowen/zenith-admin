@@ -106,6 +106,58 @@ const tasks: AsyncTask[] = [
   },
 ];
 
+export function createImmediateMockTask(input: {
+  taskType: string;
+  title: string;
+  module?: string;
+  description?: string;
+  allowConcurrent?: boolean;
+  payload?: Record<string, unknown>;
+  maxAttempts?: number;
+}): AsyncTask {
+  if (!taskTypes.some((item) => item.taskType === input.taskType)) {
+    taskTypes.unshift({
+      taskType: input.taskType,
+      title: input.title,
+      module: input.module ?? '报表中心',
+      description: input.description ?? null,
+      allowConcurrent: input.allowConcurrent ?? true,
+      enabled: true,
+      maxAttempts: input.maxAttempts ?? 3,
+      retryDelayMs: 5000,
+      retentionDays: null,
+    });
+  }
+  const now = mockDateTime();
+  const task: AsyncTask = {
+    id: nextId++,
+    taskType: input.taskType,
+    title: input.title,
+    module: input.module ?? '报表中心',
+    status: 'success',
+    payload: input.payload ?? {},
+    totalCount: 1,
+    processedCount: 1,
+    failedCount: 0,
+    progressNote: '已完成',
+    result: { message: `${input.title}已完成` },
+    errorMessage: null,
+    cancelRequested: false,
+    attempts: 1,
+    maxAttempts: input.maxAttempts ?? 3,
+    nextRunAt: null,
+    createdBy: 1,
+    createdByName: '管理员',
+    tenantId: null,
+    startedAt: now,
+    completedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  };
+  tasks.unshift(task);
+  return task;
+}
+
 function upsertItem(taskId: number, itemKey: string, patch: Omit<AsyncTaskItem, 'id' | 'taskId' | 'itemKey' | 'createdAt' | 'updatedAt'>) {
   const list = itemsByTask.get(taskId) ?? [];
   const existing = list.find((item) => item.itemKey === itemKey);

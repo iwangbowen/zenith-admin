@@ -1,15 +1,23 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { createReportPrintTemplateSchema, updateReportPrintTemplateSchema, reportPrintRenderSchema } from '@zenith/shared';
+import {
+  createReportPrintTemplateSchema,
+  reportBatchStatusSchema,
+  reportCloneSchema,
+  reportLookupQuerySchema,
+  updateReportPrintTemplateSchema,
+  reportPrintRenderSchema,
+} from '@zenith/shared';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
 import {
   ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, IdParam, okBody,
 } from '../../lib/openapi-schemas';
-import { ReportPrintTemplateDTO, ReportPrintRenderResultDTO } from '../../lib/openapi-dtos';
+import { ReportPrintTemplateDTO, ReportPrintRenderResultDTO, ReportLookupOptionDTO } from '../../lib/openapi-dtos';
 import {
   listPrintTemplates, getPrintTemplate, createPrintTemplate, updatePrintTemplate,
   deletePrintTemplate, ensurePrintTemplateExists, renderPrintTemplate,
+  batchSetPrintTemplateStatus, clonePrintTemplate, listPrintTemplateLookup,
 } from '../../services/report/report-print.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -29,6 +37,18 @@ const listRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okPaginated(ReportPrintTemplateDTO, 'ok') },
   }),
   handler: async (c) => c.json(okBody(await listPrintTemplates(c.req.valid('query'))), 200),
+});
+
+const lookupRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/lookup',
+    tags: ['报表打印'], summary: '打印模板轻量下拉',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'report:print:list' })] as const,
+    request: { query: reportLookupQuerySchema },
+    responses: { ...commonErrorResponses, ...ok(z.array(ReportLookupOptionDTO), 'ok') },
+  }),
+  handler: async (c) => c.json(okBody(await listPrintTemplateLookup(c.req.valid('query'))), 200),
 });
 
 const getOneRoute = defineOpenAPIRoute({
@@ -90,6 +110,22 @@ const deleteRoute_ = defineOpenAPIRoute({
   },
 });
 
+const batchStatusRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put', path: '/batch-status',
+    tags: ['报表打印'], summary: '批量启停打印模板',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'report:print:update', audit: { description: '批量更新打印模板状态', module: '报表打印' } })] as const,
+    request: { body: { content: jsonContent(reportBatchStatusSchema), required: true } },
+    responses: { ...commonErrorResponses, ...okMsg('已更新') },
+  }),
+  handler: async (c) => {
+    const { ids, status } = c.req.valid('json');
+    const count = await batchSetPrintTemplateStatus(ids, status);
+    return c.json(okBody(null, `已更新 ${count} 个打印模板状态`), 200);
+  },
+});
+
 const renderRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/{id}/render',
@@ -102,6 +138,18 @@ const renderRoute = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await renderPrintTemplate(c.req.valid('param').id, c.req.valid('json'))), 200),
 });
 
-router.openapiRoutes([listRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_, renderRoute] as const);
+const cloneRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/clone',
+    tags: ['报表打印'], summary: '复制打印模板',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'report:print:create', audit: { description: '复制打印模板', module: '报表打印' } })] as const,
+    request: { params: IdParam, body: { content: jsonContent(reportCloneSchema), required: false } },
+    responses: { ...commonErrorResponses, ...ok(ReportPrintTemplateDTO, '复制成功') },
+  }),
+  handler: async (c) => c.json(okBody(await clonePrintTemplate(c.req.valid('param').id, c.req.valid('json')), '复制成功'), 200),
+});
+
+router.openapiRoutes([listRoute, lookupRoute, batchStatusRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_, renderRoute, cloneRoute] as const);
 
 export default router;
