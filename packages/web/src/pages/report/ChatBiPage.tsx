@@ -560,6 +560,7 @@ export default function ChatBiPage() {
           <Form.Select
             field="contextId"
             label={contextType === 'dataset' ? '数据集' : '数据源'}
+            style={{ width: '100%' }}
             rules={[{ required: true, message: '请选择数据上下文' }]}
             filter
             optionList={(contextType === 'dataset' ? datasetQuery.data : datasourceQuery.data)?.map((item) => ({
@@ -642,6 +643,7 @@ export default function ChatBiPage() {
                 <Form.Select
                   field="targetDashboardId"
                   label="目标仪表盘"
+                  style={{ width: '100%' }}
                   rules={[{ required: true, message: '请选择目标仪表盘' }]}
                   filter
                   optionList={(dashboardLookupQuery.data ?? []).map((item) => ({ value: item.id, label: item.name }))}

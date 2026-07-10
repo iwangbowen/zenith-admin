@@ -550,6 +550,7 @@ export default function FillTemplatesPage() {
             label="资源目录"
             showClear
             filter
+            style={{ width: '100%' }}
             optionList={folders.map((folder) => ({ value: folder.id, label: folder.name }))}
           />
         </Form>

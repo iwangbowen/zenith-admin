@@ -3979,6 +3979,7 @@ export default function ChatPage({
             <Select
               multiple
               showClear
+              style={{ width: '100%' }}
               placeholder="消息类别（可多选）"
               value={searchTypeFilters}
               onChange={(val) => setSearchTypeFilters(((val as ChatMessage['type'][]) ?? []))}
@@ -3989,6 +3990,7 @@ export default function ChatPage({
             <Select
               showClear
               filter
+              style={{ width: '100%' }}
               placeholder="发送人"
               value={searchSenderId}
               onChange={(val) => setSearchSenderId(val ? Number(val) : undefined)}

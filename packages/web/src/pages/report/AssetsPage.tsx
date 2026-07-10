@@ -405,10 +405,10 @@ export default function AssetsPage() {
           <Row gutter={16}>
             <Col xs={24} md={12}><Form.Input field="name" label="模板名称" rules={[{ required: true }]} /></Col>
             <Col xs={24} md={12}><Form.Input field="code" label="模板编码" disabled={!!editingTemplate} rules={[{ required: true }]} /></Col>
-            <Col xs={24} md={12}><Form.Select field="type" label="模板类型" optionList={templateTypeOptions} rules={[{ required: true }]} /></Col>
-            <Col xs={24} md={12}><Form.Select field="status" label="状态" optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} /></Col>
-            <Col xs={24} md={12}><Form.Select field="ownerId" label="负责人" filter showClear optionList={users.map((u) => ({ value: u.id, label: u.nickname || u.username }))} /></Col>
-            <Col xs={24} md={12}><Form.Select field="folderId" label="模板目录" filter showClear optionList={templateFolders.map((f) => ({ value: f.id, label: f.name }))} /></Col>
+            <Col xs={24} md={12}><Form.Select field="type" label="模板类型" style={{ width: '100%' }} optionList={templateTypeOptions} rules={[{ required: true }]} /></Col>
+            <Col xs={24} md={12}><Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} /></Col>
+            <Col xs={24} md={12}><Form.Select field="ownerId" label="负责人" filter showClear style={{ width: '100%' }} optionList={users.map((u) => ({ value: u.id, label: u.nickname || u.username }))} /></Col>
+            <Col xs={24} md={12}><Form.Select field="folderId" label="模板目录" filter showClear style={{ width: '100%' }} optionList={templateFolders.map((f) => ({ value: f.id, label: f.name }))} /></Col>
           </Row>
           <Form.TextArea field="description" label="说明" autosize rows={2} />
           <Form.TextArea field="content" label="模板 JSON" autosize rows={9} rules={[{ required: true }]} />
@@ -418,11 +418,11 @@ export default function AssetsPage() {
       <AppModal title={editingNotice ? '编辑弃用公告' : '新增弃用公告'} visible={deprecationModal} width={680} confirmLoading={saveNoticeMutation.isPending} onOk={() => void saveNotice()} onCancel={() => setDeprecationModal(false)} closeOnEsc>
         <Form key={editingNotice?.id ?? 'create'} getFormApi={(api) => { formApi.current = api; }} labelPosition="left" labelWidth={105} initValues={editingNotice ?? {}}>
           <Row gutter={16}>
-            <Col xs={24} md={12}><Form.Select field="resourceType" label="资源类型" disabled={!!editingNotice} optionList={resourceTypeOptions} rules={[{ required: true }]} /></Col>
+            <Col xs={24} md={12}><Form.Select field="resourceType" label="资源类型" disabled={!!editingNotice} style={{ width: '100%' }} optionList={resourceTypeOptions} rules={[{ required: true }]} /></Col>
             <Col xs={24} md={12}><Form.InputNumber field="resourceId" label="资源 ID" disabled={!!editingNotice} min={1} style={{ width: '100%' }} rules={[{ required: true }]} /></Col>
             <Col xs={24} md={12}><Form.DatePicker field="effectiveAt" label="生效时间" type="dateTime" style={{ width: '100%' }} rules={[{ required: true }]} /></Col>
             <Col xs={24} md={12}><Form.DatePicker field="expiresAt" label="到期时间" type="dateTime" style={{ width: '100%' }} /></Col>
-            <Col xs={24} md={12}><Form.Select field="replacementResourceType" label="替代资源类型" showClear optionList={resourceTypeOptions} /></Col>
+            <Col xs={24} md={12}><Form.Select field="replacementResourceType" label="替代资源类型" showClear style={{ width: '100%' }} optionList={resourceTypeOptions} /></Col>
             <Col xs={24} md={12}><Form.InputNumber field="replacementResourceId" label="替代资源 ID" min={1} style={{ width: '100%' }} /></Col>
           </Row>
           <Form.Input field="title" label="公告标题" rules={[{ required: true }]} />
