@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef } from 'react';
-import { Button, Form, Input, Modal, Select, SideSheet, Switch, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Input, Modal, Row, Select, SideSheet, Switch, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, RotateCcw, Plus } from 'lucide-react';
@@ -393,7 +393,7 @@ export default function AlertsPage() {
         onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(data?.total ?? 0)}
       />
 
-      <AppModal title={editing ? '编辑预警' : '新增预警'} visible={modalVisible} onOk={handleOk} onCancel={closeModal} okButtonProps={{ loading: saveMutation.isPending }} width={560}>
+      <AppModal title={editing ? '编辑预警' : '新增预警'} visible={modalVisible} onOk={handleOk} onCancel={closeModal} okButtonProps={{ loading: saveMutation.isPending }} width={900}>
         <Form key={editing?.id ?? 'new'} getFormApi={(api) => { formApi.current = api; }} initValues={initValues} labelPosition="left" labelWidth={90}
           onValueChange={(values) => {
             const nextDatasetId = values.datasetId ? Number(values.datasetId) : null;
@@ -407,36 +407,72 @@ export default function AlertsPage() {
             setSelectedChannels(((values.channels ?? []) as Array<'email' | 'inApp' | 'webhook'>));
           }}
         >
-          <Form.Input field="name" label="名称" rules={[{ required: true, message: '请输入名称' }]} maxLength={64} showClear />
-          <Form.Select field="datasetId" label="数据集" style={{ width: '100%' }} rules={[{ required: true, message: '请选择数据集' }]} filter
-            optionList={datasets.map((dataset) => ({ value: dataset.id, label: dataset.name }))} />
-          <Form.Select field="aggregate" label="聚合方式" style={{ width: '100%' }} optionList={aggregateOptions} />
-          <Form.Select field="field" label="监控字段" style={{ width: '100%' }} disabled={selectedAggregate === 'count'}
-            placeholder={selectedAggregate === 'count' ? 'count 不需要选择字段' : '请选择监控字段'}
-            rules={selectedAggregate === 'count' ? [] : [{ required: true, message: '请选择监控字段' }]}
-            optionList={selectedFields.map((field) => ({ value: field.name, label: field.label ? `${field.label}（${field.name}）` : field.name }))} />
-          <Form.Select field="groupByField" label="分组维度" style={{ width: '100%' }} showClear
-            placeholder="可选；按该字段分组聚合，任一组命中即触发"
-            optionList={selectedFields.map((field) => ({ value: field.name, label: field.label ? `${field.label}（${field.name}）` : field.name }))} />
-          <Form.Select field="op" label="运算符" style={{ width: '100%' }} optionList={opOptions} />
-          <Form.InputNumber field="threshold" label="阈值" style={{ width: '100%' }} rules={[{ required: true, message: '请输入阈值' }]} />
-          <Form.Input field="cron" label="评估Cron" placeholder="0 */5 * * * *" helpText="留空=仅手动" showClear />
-          <Form.Input field="timezone" label="时区" placeholder="Asia/Shanghai" rules={[{ required: true, message: '请输入 IANA 时区' }]} showClear />
-          <Form.Select field="misfirePolicy" label="错过策略" style={{ width: '100%' }} optionList={REPORT_MISFIRE_POLICY_OPTIONS} />
-          <Form.Select field="channels" label="通知通道" multiple style={{ width: '100%' }} rules={[{ required: true, message: '至少选择一个通道' }]}
-            optionList={[{ value: 'email', label: channelLabelMap.email }, { value: 'inApp', label: channelLabelMap.inApp }, { value: 'webhook', label: `${channelLabelMap.webhook}（企微/钉钉机器人）` }]} />
-          {selectedChannels.includes('email') && (
-            <Form.Input field="recipients" label="收件人邮箱" placeholder="多个用逗号分隔" showClear />
-          )}
-          {selectedChannels.includes('webhook') && (
-            <Form.Input field="webhookUrl" label="Webhook 地址" placeholder="企微/钉钉机器人 Webhook URL 或通用 JSON 端点"
-              rules={[{ required: true, message: '请填写 Webhook 地址' }]} showClear />
-          )}
-          <Form.InputNumber field="silenceMins" label="静默期(分)" min={0} max={10080} step={10} style={{ width: '100%' }}
-            helpText="持续触发时，距上次通知不足该时长不重复通知；0=每次触发都通知" />
-          <Form.Switch field="notifyOnRecover" label="恢复通知" extraText="从触发恢复正常时发送一条恢复通知" />
-          <Form.Select field="enabled" label="状态" style={{ width: '100%' }} optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
-          <Form.TextArea field="remark" label="备注" maxLength={256} autosize={{ minRows: 1, maxRows: 3 }} />
+          <Row gutter={24}>
+            <Col xs={24} md={12}>
+              <Form.Input field="name" label="名称" rules={[{ required: true, message: '请输入名称' }]} maxLength={64} showClear />
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Select field="datasetId" label="数据集" style={{ width: '100%' }} rules={[{ required: true, message: '请选择数据集' }]} filter
+                optionList={datasets.map((dataset) => ({ value: dataset.id, label: dataset.name }))} />
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Select field="aggregate" label="聚合方式" style={{ width: '100%' }} optionList={aggregateOptions} />
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Select field="field" label="监控字段" style={{ width: '100%' }} disabled={selectedAggregate === 'count'}
+                placeholder={selectedAggregate === 'count' ? 'count 不需要选择字段' : '请选择监控字段'}
+                rules={selectedAggregate === 'count' ? [] : [{ required: true, message: '请选择监控字段' }]}
+                optionList={selectedFields.map((field) => ({ value: field.name, label: field.label ? `${field.label}（${field.name}）` : field.name }))} />
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Select field="groupByField" label="分组维度" style={{ width: '100%' }} showClear
+                placeholder="可选；按该字段分组聚合，任一组命中即触发"
+                optionList={selectedFields.map((field) => ({ value: field.name, label: field.label ? `${field.label}（${field.name}）` : field.name }))} />
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Select field="op" label="运算符" style={{ width: '100%' }} optionList={opOptions} />
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.InputNumber field="threshold" label="阈值" style={{ width: '100%' }} rules={[{ required: true, message: '请输入阈值' }]} />
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Input field="cron" label="评估Cron" placeholder="0 */5 * * * *" helpText="留空=仅手动" showClear />
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Input field="timezone" label="时区" placeholder="Asia/Shanghai" rules={[{ required: true, message: '请输入 IANA 时区' }]} showClear />
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Select field="misfirePolicy" label="错过策略" style={{ width: '100%' }} optionList={REPORT_MISFIRE_POLICY_OPTIONS} />
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Select field="channels" label="通知通道" multiple style={{ width: '100%' }} rules={[{ required: true, message: '至少选择一个通道' }]}
+                optionList={[{ value: 'email', label: channelLabelMap.email }, { value: 'inApp', label: channelLabelMap.inApp }, { value: 'webhook', label: `${channelLabelMap.webhook}（企微/钉钉机器人）` }]} />
+            </Col>
+            {selectedChannels.includes('email') && (
+              <Col xs={24} md={12}>
+                <Form.Input field="recipients" label="收件人邮箱" placeholder="多个用逗号分隔" showClear />
+              </Col>
+            )}
+            {selectedChannels.includes('webhook') && (
+              <Col xs={24} md={12}>
+                <Form.Input field="webhookUrl" label="Webhook 地址" placeholder="企微/钉钉机器人 Webhook URL 或通用 JSON 端点"
+                  rules={[{ required: true, message: '请填写 Webhook 地址' }]} showClear />
+              </Col>
+            )}
+            <Col xs={24} md={12}>
+              <Form.InputNumber field="silenceMins" label="静默期(分)" min={0} max={10080} step={10} style={{ width: '100%' }}
+                helpText="持续触发时，距上次通知不足该时长不重复通知；0=每次触发都通知" />
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Switch field="notifyOnRecover" label="恢复通知" extraText="从触发恢复正常时发送一条恢复通知" />
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Select field="enabled" label="状态" style={{ width: '100%' }} optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
+            </Col>
+            <Col xs={24}>
+              <Form.TextArea field="remark" label="备注" maxLength={256} autosize={{ minRows: 1, maxRows: 3 }} />
+            </Col>
+          </Row>
         </Form>
       </AppModal>
 
