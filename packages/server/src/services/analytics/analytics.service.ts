@@ -14,8 +14,10 @@ import { pageOffset } from '../../lib/pagination';
 import { parseClientEnv, lookupIpGeo, clampDays, clampLimit, startOfDaysAgo, anonymizeIpAddr, resolveIngestPlatformFields } from '../../lib/analytics-helpers';
 import { touchEventMeta } from './analytics-event-meta.service';
 import { upsertUserProfilesBatch, type ProfileUpsertInput } from './analytics-profile.service';
-import { evaluateEvents, recordSchemaIssues, type PendingSchemaIssue } from './analytics-governance.service';
+import { evaluateEvents, recordQualityIssue, recordSchemaIssues, type PendingSchemaIssue } from './analytics-governance.service';
 import { getIngestPolicy } from './analytics-settings.service';
+import { isSiteOriginAllowed, resolveSiteByKey, type ResolvedAnalyticsSite } from './analytics-sites.service';
+import { checkAndConsumeSiteQuota, refundSiteQuota } from './analytics-quota.service';
 import { rollupTenantScope, ROLLUP_DIM_TYPES } from './analytics-rollup.service';
 import { broadcast } from '../../lib/ws-manager';
 import logger from '../../lib/logger';
@@ -24,9 +26,11 @@ import logger from '../../lib/logger';
 // 采集（ingest）
 // ════════════════════════════════════════════════════════════════════════════
 
-export interface IngestReqCtx { ip: string; ua: string }
+export interface IngestReqCtx { ip: string; ua: string; siteKey?: string | null; origin?: string | null }
 type NormalizedTrackEvent = TrackEventInput & { eventId: string };
 let legacyEventsWithoutId = 0;
+
+class SiteQuotaExceededError extends Error {}
 
 export function getLegacyEventsWithoutIdCount(): number {
   return legacyEventsWithoutId;
@@ -49,6 +53,19 @@ export function resolveDistinctId(e: TrackEventInput, userId: number | null, mem
   return e.sessionId;
 }
 
+function firstQualityEventName(events: TrackEventInput[]): string {
+  const named = events.find((event) => event.eventName)?.eventName;
+  return named ?? events[0]?.eventType ?? 'unknown';
+}
+
+async function recordSiteRejection(site: ResolvedAnalyticsSite, events: TrackEventInput[], issueType: 'origin_rejected' | 'quota_exceeded'): Promise<void> {
+  const tenantId = site.tenantId ?? 0;
+  const eventName = firstQualityEventName(events);
+  await recordQualityIssue(tenantId, eventName, issueType).catch((err) => {
+    logger.warn('[analytics] record site rejection quality issue failed', err);
+  });
+}
+
 interface IngestIdentityCtx {
   tenantId: number | null;
   userId: number | null;
@@ -60,11 +77,13 @@ interface IngestIdentityCtx {
   geo: ReturnType<typeof lookupIpGeo>;
   storedIp: string;
   ua: string;
+  site: ResolvedAnalyticsSite | null;
 }
 
 /** 组装单条事件的入库行：身份 / 平台字段解析在此统一收口，供 session/画像聚合复用同一份解析结果。 */
 function buildIngestRow(e: NormalizedTrackEvent, ctx: IngestIdentityCtx) {
   const platform = resolveIngestPlatformFields(e, { hasAdmin: ctx.hasAdmin, hasMember: ctx.hasMember });
+  if (!ctx.hasAdmin && !ctx.hasMember && ctx.site) platform.appId = ctx.site.appId;
   const eventTime = resolveEventTime(e.ts);
   return {
     eventId: e.eventId,
@@ -123,7 +142,12 @@ export async function batchInsertEvents(rawEvents: TrackEventInput[], reqCtx: In
   const user = currentUserOrNull();
   // 管理员 / 会员身份互斥：单次请求只会经过其中一种认证中间件
   const member = user ? undefined : currentMemberOrNull();
-  const tenantId = user ? getCreateTenantId(user) : member ? (member.tenantId ?? null) : null;
+  const site = (!user && !member) ? await resolveSiteByKey(reqCtx.siteKey).catch(() => null) : null;
+  if (site && !isSiteOriginAllowed(reqCtx.origin, site.allowedOrigins)) {
+    await recordSiteRejection(site, rawEvents, 'origin_rejected');
+    return;
+  }
+  const tenantId = user ? getCreateTenantId(user) : member ? (member.tenantId ?? null) : (site?.tenantId ?? null);
   const trustedEvents = user || member ? rawEvents : rawEvents.filter((event) => event.eventType !== 'identify');
 
   // Tracking Plan 治理：全局屏蔽 / 租户禁用 / propertySchema 校验。必须在生成兜底 eventId、
@@ -164,22 +188,39 @@ export async function batchInsertEvents(rawEvents: TrackEventInput[], reqCtx: In
     geo,
     storedIp,
     ua: reqCtx.ua,
+    site,
   };
   const rows: IngestEventRow[] = events.map((e) => buildIngestRow(e, identityCtx));
 
-  const insertedEvents = await db.transaction(async (tx) => {
-    const inserted = await tx
-      .insert(userEvents)
-      .values(rows)
-      .onConflictDoNothing({ target: userEvents.eventId })
-      .returning({ eventId: userEvents.eventId });
-    const insertedIds = new Set(inserted.flatMap((row) => row.eventId ? [row.eventId] : []));
-    const freshEvents = events.filter((event) => insertedIds.has(event.eventId));
-    const freshRows = rows.filter((row) => insertedIds.has(row.eventId));
-    await upsertSessions(tx, freshRows, { tenantId, userId: identityCtx.userId, memberId: identityCtx.memberId, username: displayName, env, geo });
-    await upsertUserProfiles(tx, freshRows, { identityType, userId: identityCtx.userId, memberId: identityCtx.memberId, displayName });
-    return freshEvents;
-  });
+  let insertedEvents: NormalizedTrackEvent[];
+  let consumedQuotaCount = 0;
+  try {
+    insertedEvents = await db.transaction(async (tx) => {
+      const inserted = await tx
+        .insert(userEvents)
+        .values(rows)
+        .onConflictDoNothing({ target: userEvents.eventId })
+        .returning({ eventId: userEvents.eventId });
+      const insertedIds = new Set(inserted.flatMap((row) => row.eventId ? [row.eventId] : []));
+      const freshEvents = events.filter((event) => insertedIds.has(event.eventId));
+      const freshRows = rows.filter((row) => insertedIds.has(row.eventId));
+      if (site?.dailyEventQuota != null && freshEvents.length > 0) {
+        const quota = await checkAndConsumeSiteQuota(site.id, site.dailyEventQuota, freshEvents.length);
+        if (!quota.allowed) throw new SiteQuotaExceededError();
+        consumedQuotaCount = freshEvents.length;
+      }
+      await upsertSessions(tx, freshRows, { tenantId, userId: identityCtx.userId, memberId: identityCtx.memberId, username: displayName, env, geo });
+      await upsertUserProfiles(tx, freshRows, { identityType, userId: identityCtx.userId, memberId: identityCtx.memberId, displayName });
+      return freshEvents;
+    });
+  } catch (err) {
+    if (err instanceof SiteQuotaExceededError && site) {
+      await recordSiteRejection(site, events, 'quota_exceeded');
+      return;
+    }
+    if (site && consumedQuotaCount > 0) await refundSiteQuota(site.id, consumedQuotaCount);
+    throw err;
+  }
   if (pendingSchemaIssues.length > 0) {
     // 只对真正新鲜落库（未被 onConflictDoNothing 去重）的事件计入质量问题，避免重放批次重复计数
     const freshEventIds = new Set(insertedEvents.map((e) => e.eventId));

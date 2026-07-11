@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { select, insert, update, onConflictDoNothing, returning, broadcast, currentMemberOrNull } = vi.hoisted(() => ({
+const { select, insert, update, onConflictDoNothing, returning, broadcast, currentMemberOrNull, resolveSiteByKey } = vi.hoisted(() => ({
   select: vi.fn(),
   insert: vi.fn(),
   update: vi.fn(),
@@ -8,6 +8,7 @@ const { select, insert, update, onConflictDoNothing, returning, broadcast, curre
   returning: vi.fn(),
   broadcast: vi.fn(),
   currentMemberOrNull: vi.fn(),
+  resolveSiteByKey: vi.fn(),
 }));
 
 vi.mock('../../db', () => ({
@@ -29,6 +30,10 @@ vi.mock('../../lib/member-context', () => ({
 
 vi.mock('../../lib/ws-manager', () => ({
   broadcast,
+}));
+
+vi.mock('./analytics-sites.service', () => ({
+  resolveSiteByKey,
 }));
 
 import { getPublicConfig, getSettings, updateSettings } from './analytics-settings.service';
@@ -60,6 +65,7 @@ describe('analytics settings creation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     currentMemberOrNull.mockReturnValue(undefined);
+    resolveSiteByKey.mockResolvedValue(null);
     const results = [[], [row]];
     select.mockImplementation(() => ({
       from: () => ({
@@ -85,6 +91,24 @@ describe('analytics settings creation', () => {
 describe('analytics member public config', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resolveSiteByKey.mockResolvedValue(null);
+  });
+
+
+
+  it('resolves anonymous public config by site key tenant and exposes site metadata', async () => {
+    currentMemberOrNull.mockReturnValue(undefined);
+    resolveSiteByKey.mockResolvedValue({ id: 6, tenantId: 11, appId: 'member', status: 'enabled', allowedOrigins: null, dailyEventQuota: null });
+    select.mockImplementation(() => ({
+      from: () => ({
+        where: () => ({
+          limit: async () => [{ ...row, sampleRate: 0.5 }],
+        }),
+      }),
+    }));
+
+    await expect(getPublicConfig('zk_test')).resolves.toMatchObject({ sampleRate: 0.5, siteId: 6, appId: 'member' });
+    expect(resolveSiteByKey).toHaveBeenCalledWith('zk_test');
   });
 
   it('resolves settings using the authenticated member tenant', async () => {

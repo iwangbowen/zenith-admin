@@ -7,6 +7,7 @@
  *  3. 删除分群：确认后调用 deleteMutation.mutateAsync
  *  4. 重算（物化）：点击后调用 materializeMutation.mutateAsync 并提示任务已提交
  *  5. 查看成员：点击「成员」打开 SideSheet 并渲染成员列表
+ *  6. 分群触达：点击「触达」打开触达 SideSheet 并渲染表单
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
@@ -15,18 +16,33 @@ import { PreferencesContext, defaultPreferences } from '@/hooks/usePreferences';
 
 const useAnalyticsSegmentsMock = vi.fn();
 const useAnalyticsSegmentMembersMock = vi.fn();
+const useCampaignsMock = vi.fn();
 const saveMutateAsync = vi.fn().mockResolvedValue({});
 const deleteMutateAsync = vi.fn().mockResolvedValue({});
 const materializeMutateAsync = vi.fn().mockResolvedValue({});
+const createCampaignMutateAsync = vi.fn().mockResolvedValue({});
+const executeCampaignMutateAsync = vi.fn().mockResolvedValue({});
+const deleteCampaignMutateAsync = vi.fn().mockResolvedValue({});
 const invalidateQueriesMock = vi.fn();
 
 vi.mock('@/hooks/queries/analytics', () => ({
   analyticsKeys: { data: { segmentsLists: ['analytics', 'data', 'segments', 'list'] } },
   useAnalyticsSegments: (...args: unknown[]) => useAnalyticsSegmentsMock(...args),
   useAnalyticsSegmentMembers: (...args: unknown[]) => useAnalyticsSegmentMembersMock(...args),
+  useCampaigns: (...args: unknown[]) => useCampaignsMock(...args),
   useSaveAnalyticsSegment: () => ({ mutateAsync: saveMutateAsync, isPending: false }),
   useDeleteAnalyticsSegment: () => ({ mutateAsync: deleteMutateAsync, isPending: false }),
   useMaterializeAnalyticsSegment: () => ({ mutateAsync: materializeMutateAsync, isPending: false }),
+  useCreateCampaign: () => ({ mutateAsync: createCampaignMutateAsync, isPending: false }),
+  useExecuteCampaign: () => ({ mutateAsync: executeCampaignMutateAsync, isPending: false }),
+  useDeleteCampaign: () => ({ mutateAsync: deleteCampaignMutateAsync, isPending: false }),
+}));
+
+vi.mock('@/hooks/queries/email-templates', () => ({
+  useEmailTemplateList: () => ({ data: { list: [{ id: 1, name: '邮件模板' }] }, isFetching: false }),
+}));
+vi.mock('@/hooks/queries/in-app-templates', () => ({
+  useInAppTemplateList: () => ({ data: { list: [{ id: 2, name: '站内信模板' }] }, isFetching: false }),
 }));
 
 vi.mock('@tanstack/react-query', async (importOriginal) => {
@@ -75,6 +91,9 @@ beforeEach(() => {
   saveMutateAsync.mockResolvedValue({});
   deleteMutateAsync.mockResolvedValue({});
   materializeMutateAsync.mockResolvedValue({});
+  createCampaignMutateAsync.mockResolvedValue({});
+  executeCampaignMutateAsync.mockResolvedValue({});
+  deleteCampaignMutateAsync.mockResolvedValue({});
   useAnalyticsSegmentsMock.mockReturnValue({
     data: { list: [makeSegment()], total: 1, page: 1, pageSize: 20 },
     isFetching: false,
@@ -83,6 +102,11 @@ beforeEach(() => {
   useAnalyticsSegmentMembersMock.mockReturnValue({
     data: { list: [makeMember()], total: 1, page: 1, pageSize: 20 },
     isFetching: false,
+  });
+  useCampaignsMock.mockReturnValue({
+    data: { list: [], total: 0, page: 1, pageSize: 50 },
+    isFetching: false,
+    refetch: vi.fn(),
   });
 });
 
@@ -130,5 +154,13 @@ describe('AnalyticsSegmentsTab', () => {
     renderWithPreferences(<AnalyticsSegmentsTab />);
     fireEvent.click(screen.getByText('成员'));
     await waitFor(() => expect(screen.getByText('dist-abc')).toBeInTheDocument());
+  });
+
+  it('opens campaign drawer and renders the campaign form', async () => {
+    renderWithPreferences(<AnalyticsSegmentsTab />);
+    fireEvent.click(screen.getByText('触达'));
+    expect(await screen.findByText('分群触达 · 近 7 天活跃用户')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('触达名称')).toBeInTheDocument();
+    expect(screen.getByText('暂无触达活动')).toBeInTheDocument();
   });
 });

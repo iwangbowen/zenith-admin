@@ -3,6 +3,9 @@ import type {
   AnalyticsEnvironment,
   AnalyticsEventOverrideStatus,
   AnalyticsEventSource,
+  AnalyticsCampaignChannel,
+  AnalyticsCampaignStatus,
+  AnalyticsExperimentStatus,
   AnalyticsIdentityType,
   InAppMessageType,
   MpBroadcastType,
@@ -724,6 +727,9 @@ export const MP_MESSAGE_TYPE_LABELS: Record<MpMessageType, string> = {
   event: '事件',
 };
 
+export const ANALYTICS_SITE_KEY_HEADER = 'X-Analytics-Site-Key';
+export const ANALYTICS_EXPERIMENT_EXPOSURE_EVENT = '$experiment_exposure';
+
 // ─── 数据分析与报表 ────────────────────────────────────────────────────
 export const ANALYTICS_DEVICE_TYPE_LABELS: Record<AnalyticsDeviceType, string> = {
   desktop: '桌面端',
@@ -770,12 +776,14 @@ export const ANALYTICS_EVENT_OVERRIDE_STATUS_LABELS: Record<AnalyticsEventOverri
 export const ANALYTICS_EVENT_OVERRIDE_STATUS_OPTIONS: Array<{ value: AnalyticsEventOverrideStatus; label: string }> =
   COMMON_STATUS_OPTIONS;
 
-export const ANALYTICS_QUALITY_ISSUE_TYPES = ['missing_required', 'type_mismatch', 'invalid_enum', 'event_disabled'] as const;
+export const ANALYTICS_QUALITY_ISSUE_TYPES = ['missing_required', 'type_mismatch', 'invalid_enum', 'event_disabled', 'origin_rejected', 'quota_exceeded'] as const;
 export const ANALYTICS_QUALITY_ISSUE_TYPE_LABELS: Record<(typeof ANALYTICS_QUALITY_ISSUE_TYPES)[number], string> = {
   missing_required: '缺失必填属性',
   type_mismatch: '属性类型不匹配',
   invalid_enum: '枚举取值非法',
   event_disabled: '事件已禁用',
+  origin_rejected: '来源被拒绝',
+  quota_exceeded: '站点配额超限',
 };
 export const ANALYTICS_QUALITY_ISSUE_TYPE_OPTIONS: Array<{ value: (typeof ANALYTICS_QUALITY_ISSUE_TYPES)[number]; label: string }> =
   ANALYTICS_QUALITY_ISSUE_TYPES.map((value) => ({ value, label: ANALYTICS_QUALITY_ISSUE_TYPE_LABELS[value] }));
@@ -804,6 +812,35 @@ export const ANALYTICS_SEGMENT_COMPARE_OP_LABELS: Record<(typeof ANALYTICS_SEGME
 };
 export const ANALYTICS_SEGMENT_COMPARE_OP_OPTIONS: Array<{ value: (typeof ANALYTICS_SEGMENT_COMPARE_OPS)[number]; label: string }> =
   ANALYTICS_SEGMENT_COMPARE_OPS.map((value) => ({ value, label: ANALYTICS_SEGMENT_COMPARE_OP_LABELS[value] }));
+
+export const ANALYTICS_EXPERIMENT_STATUSES: readonly AnalyticsExperimentStatus[] = ['draft', 'running', 'paused', 'completed'] as const;
+export const ANALYTICS_EXPERIMENT_STATUS_LABELS: Record<AnalyticsExperimentStatus, string> = {
+  draft: '草稿',
+  running: '运行中',
+  paused: '已暂停',
+  completed: '已完成',
+};
+export const ANALYTICS_EXPERIMENT_STATUS_OPTIONS: Array<{ value: AnalyticsExperimentStatus; label: string }> =
+  ANALYTICS_EXPERIMENT_STATUSES.map((value) => ({ value, label: ANALYTICS_EXPERIMENT_STATUS_LABELS[value] }));
+
+export const ANALYTICS_CAMPAIGN_CHANNELS: readonly AnalyticsCampaignChannel[] = ['email', 'in_app', 'webhook'] as const;
+export const ANALYTICS_CAMPAIGN_CHANNEL_LABELS: Record<AnalyticsCampaignChannel, string> = {
+  email: '邮件',
+  in_app: '站内信',
+  webhook: 'Webhook',
+};
+export const ANALYTICS_CAMPAIGN_CHANNEL_OPTIONS: Array<{ value: AnalyticsCampaignChannel; label: string }> =
+  ANALYTICS_CAMPAIGN_CHANNELS.map((value) => ({ value, label: ANALYTICS_CAMPAIGN_CHANNEL_LABELS[value] }));
+
+export const ANALYTICS_CAMPAIGN_STATUSES: readonly AnalyticsCampaignStatus[] = ['draft', 'running', 'completed', 'failed'] as const;
+export const ANALYTICS_CAMPAIGN_STATUS_LABELS: Record<AnalyticsCampaignStatus, string> = {
+  draft: '草稿',
+  running: '执行中',
+  completed: '已完成',
+  failed: '失败',
+};
+export const ANALYTICS_CAMPAIGN_STATUS_OPTIONS: Array<{ value: AnalyticsCampaignStatus; label: string }> =
+  ANALYTICS_CAMPAIGN_STATUSES.map((value) => ({ value, label: ANALYTICS_CAMPAIGN_STATUS_LABELS[value] }));
 
 // ─── 行为中心阶段 1：通用事件分析工作台 ────────────────────────────────────────
 export const ANALYTICS_EVENT_QUERY_GROUP_BY_FIELDS = [
@@ -862,7 +899,10 @@ export const ANALYTICS_SERVER_MEMBER_EVENT_NAMES = [
   'member.checkin.completed',
 ] as const;
 
+export const ANALYTICS_CLIENT_SYSTEM_EVENT_NAMES = [ANALYTICS_EXPERIMENT_EXPOSURE_EVENT] as const;
+
 export const ANALYTICS_SEMANTIC_EVENT_NAMES = [
+  ...ANALYTICS_CLIENT_SYSTEM_EVENT_NAMES,
   ...ANALYTICS_SERVER_PAYMENT_EVENT_NAMES,
   ...ANALYTICS_SERVER_WORKFLOW_EVENT_NAMES,
   ...ANALYTICS_SERVER_MEMBER_EVENT_NAMES,
@@ -902,6 +942,7 @@ export const ANALYTICS_MEMBER_POINTS_EVENT_BY_TX_TYPE: Record<'earn' | 'redeem' 
 };
 
 export const ANALYTICS_SEMANTIC_EVENT_LABELS: Record<AnalyticsSemanticEventName, string> = {
+  [ANALYTICS_EXPERIMENT_EXPOSURE_EVENT]: '实验曝光',
   'payment.succeeded': '支付成功',
   'payment.closed': '支付关闭',
   'payment.failed': '支付失败',

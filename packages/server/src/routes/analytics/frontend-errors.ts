@@ -1,4 +1,5 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { ANALYTICS_SITE_KEY_HEADER } from '@zenith/shared';
 import { authMiddleware } from '../../middleware/auth';
 import { optionalAuthMiddleware } from '../../middleware/optional-auth';
 import { guard } from '../../middleware/guard';
@@ -30,7 +31,12 @@ const reportRoute = defineOpenAPIRoute({
     responses: { ...okMsg('上报成功'), ...commonErrorResponses },
   }),
   handler: async (c) => {
-    await reportError(c.req.valid('json'), { ip: getClientIp(c), ua: c.req.header('user-agent') ?? '' });
+    await reportError(c.req.valid('json'), {
+      ip: getClientIp(c),
+      ua: c.req.header('user-agent') ?? '',
+      siteKey: c.req.header(ANALYTICS_SITE_KEY_HEADER) ?? null,
+      origin: c.req.header('origin') ?? null,
+    });
     return c.json(okBody(null, '上报成功'), 200);
   },
 });

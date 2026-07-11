@@ -72,3 +72,16 @@
 
 - 数据集 SQL 均通过系统参数 `${__tenantId}` 与 `(${__tenantId}::int IS NULL OR tenant_id = ${__tenantId})` 模式支持「平台超管全局视角（`__tenantId` 为 `NULL`）」与「租户视角（`__tenantId` 为具体租户 ID）」双重语义，与报表中心其余数据集写法保持一致。
 - `report-dataset.service.ts` 的 `buildSystemParams` 通过 `getEffectiveTenantId(user)` 计算 `__tenantId`：平台超级管理员在切换租户视角浏览时，注入的是「当前选中的租户视角」而非管理员自身租户，避免视角切换时误泄露/误过滤其他租户数据。
+
+
+## 站点管理与 site key
+
+行为中心阶段 2 引入 `analytics_sites` 站点模型。站点使用服务端生成的 `siteKey`（格式 `zk_` + 32 位随机 hex）标识匿名采集来源，并绑定 `tenantId` 与 `appId`。平台级站点的 `tenantId` 为 `null`。
+
+SDK 可在请求头 `X-Analytics-Site-Key`（或 `/api/analytics/config?siteKey=...`）携带 site key。匿名请求解析成功后，公开配置按站点租户读取并返回 `siteId/appId`；事件上报归属到站点租户，并强制使用站点 `appId`。登录态请求始终身份优先，会忽略 site key。
+
+种子数据包含两个平台默认站点：管理后台（`appId=admin`，`zk_admin_default_0000000000000000`）和会员端（`appId=member`，`zk_member_default_000000000000000`）。
+
+来源白名单 `allowedOrigins` 为空或 `null` 表示不限制；配置后仅匿名且命中 site key 的事件/错误上报会校验请求 `Origin`，按 trim、去尾斜杠、大小写不敏感后的 origin 精确匹配。缺失或不匹配会整批静默成功但拒收，并在埋点质量看板记录 `origin_rejected`。
+
+日配额 `dailyEventQuota` 为空表示不限；配置后按应用时区自然日使用 Redis key 计数（`analytics:quota:{siteId}:{YYYYMMDD}`），事件采集在 Tracking Plan 治理后按实际新落库事件数消费配额。超限批次整批静默成功但拒收，并在埋点质量看板记录 `quota_exceeded`。站点列表展示 Redis 中的今日用量；Redis 不可用时采集 fail-open，避免影响业务。

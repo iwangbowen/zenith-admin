@@ -1,5 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
+import { ANALYTICS_QUALITY_ISSUE_TYPES, ANALYTICS_SITE_KEY_HEADER } from '@zenith/shared';
 import { authMiddleware } from '../../middleware/auth';
 import { optionalAuthMiddleware } from '../../middleware/optional-auth';
 import { guard } from '../../middleware/guard';
@@ -65,7 +66,12 @@ const ingestRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { events } = c.req.valid('json');
-    await batchInsertEvents(events, { ip: getClientIp(c), ua: c.req.header('user-agent') ?? '' });
+    await batchInsertEvents(events, {
+      ip: getClientIp(c),
+      ua: c.req.header('user-agent') ?? '',
+      siteKey: c.req.header(ANALYTICS_SITE_KEY_HEADER) ?? c.req.query('siteKey') ?? null,
+      origin: c.req.header('origin') ?? null,
+    });
     return c.json(okBody(null, '上报成功'), 200);
   },
 });
@@ -76,7 +82,7 @@ const configRoute = defineOpenAPIRoute({
     middleware: [optionalAuthMiddleware] as const,
     responses: { ...ok(AnalyticsPublicConfigDTO, '采集配置'), ...commonErrorResponses },
   }),
-  handler: async (c) => c.json(okBody(await getPublicConfig()), 200),
+  handler: async (c) => c.json(okBody(await getPublicConfig(c.req.header(ANALYTICS_SITE_KEY_HEADER) ?? c.req.query('siteKey') ?? null)), 200),
 });
 
 // ─── 概览 / 趋势 / 实时 ───────────────────────────────────────────────────────
@@ -453,7 +459,7 @@ const qualityRoute = defineOpenAPIRoute({
       query: PaginationQuery.extend({
         days: z.coerce.number().int().min(1).max(90).optional(),
         eventName: z.string().optional(),
-        issueType: z.enum(['missing_required', 'type_mismatch', 'invalid_enum', 'event_disabled']).optional(),
+        issueType: z.enum(ANALYTICS_QUALITY_ISSUE_TYPES).optional(),
       }),
     },
     responses: { ...ok(AnalyticsQualityQueryResultDTO, '质量看板数据'), ...commonErrorResponses },

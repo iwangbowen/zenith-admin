@@ -31,6 +31,8 @@ const ISSUE_COLOR: Record<AnalyticsQualityIssueType, 'red' | 'orange' | 'amber' 
   type_mismatch: 'amber',
   invalid_enum: 'red',
   event_disabled: 'grey',
+  origin_rejected: 'red',
+  quota_exceeded: 'orange',
 };
 
 interface QualityFilter {

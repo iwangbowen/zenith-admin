@@ -56,6 +56,7 @@ import { usePermission } from '@/hooks/usePermission';
 import AnalyticsQualityTab from './AnalyticsQualityTab';
 import AnalyticsDebugTab from './AnalyticsDebugTab';
 import AnalyticsSegmentsTab from './AnalyticsSegmentsTab';
+import AnalyticsSitesTab from './AnalyticsSitesTab';
 
 const PAGE_SIZE = 20;
 
@@ -229,7 +230,7 @@ export default function AnalyticsDataPage() {
   const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
   const canClean = hasPermission('analytics:clean');
-  const [activeTab, setActiveTab] = useState<'events' | 'meta' | 'quality' | 'debug' | 'segments' | 'rollup' | 'settings'>('events');
+  const [activeTab, setActiveTab] = useState<'events' | 'meta' | 'quality' | 'debug' | 'segments' | 'sites' | 'rollup' | 'settings'>('events');
 
   const [eventsPage, setEventsPage] = useState(1);
   const [eventsPageSize, setEventsPageSize] = useState(PAGE_SIZE);
@@ -1076,6 +1077,9 @@ export default function AnalyticsDataPage() {
         </TabPane>
         <TabPane tab="用户分群" itemKey="segments">
           <AnalyticsSegmentsTab />
+        </TabPane>
+        <TabPane tab="站点管理" itemKey="sites">
+          <AnalyticsSitesTab />
         </TabPane>
         <TabPane tab="数据聚合" itemKey="rollup">
           <SearchToolbar

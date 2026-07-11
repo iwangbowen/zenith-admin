@@ -1,6 +1,6 @@
 import { pgTable, serial, varchar, timestamp, pgEnum, integer, bigint, boolean, text, uniqueIndex, index, jsonb, smallint, real, date, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import type { AnalyticsEnvironment, AnalyticsEventPropertyDef, AnalyticsSegmentRule } from '@zenith/shared';
+import type { AnalyticsEnvironment, AnalyticsEventPropertyDef, AnalyticsExperimentVariant, AnalyticsSegmentRule } from '@zenith/shared';
 import { auditColumns, tenants, users } from './core';
 import { members } from './member';
 
@@ -16,6 +16,12 @@ export const analyticsEventSourceEnum = pgEnum('analytics_event_source', ['web_a
 
 // 身份归属类型：后台管理员 / 前台会员 / 匿名访客
 export const analyticsIdentityTypeEnum = pgEnum('analytics_identity_type', ['admin', 'member', 'anonymous']);
+
+export const analyticsCampaignChannelEnum = pgEnum('analytics_campaign_channel', ['email', 'in_app', 'webhook']);
+
+export const analyticsCampaignStatusEnum = pgEnum('analytics_campaign_status', ['draft', 'running', 'completed', 'failed']);
+
+export const analyticsExperimentStatusEnum = pgEnum('analytics_experiment_status', ['draft', 'running', 'paused', 'completed']);
 
 // ─── 用户行为事件表（原始事件流）──────────────────────────────────────────────
 export const userEvents = pgTable('user_events', {
@@ -434,10 +440,34 @@ export type AnalyticsEventOverrideRow = typeof analyticsEventOverrides.$inferSel
 
 export type NewAnalyticsEventOverride = typeof analyticsEventOverrides.$inferInsert;
 
+
+// ─── 行为中心阶段 2：站点模型（匿名 site key 归属）──────────────────────────────
+export const analyticsSites = pgTable('analytics_sites', {
+  id: serial('id').primaryKey(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  siteKey: varchar('site_key', { length: 64 }).notNull(),
+  name: varchar('name', { length: 100 }).notNull(),
+  appId: varchar('app_id', { length: 50 }).notNull(),
+  allowedOrigins: jsonb('allowed_origins').$type<string[]>(),
+  dailyEventQuota: integer('daily_event_quota'),
+  status: analyticsEventOverrideStatusEnum('status').notNull().default('enabled'),
+  remark: varchar('remark', { length: 500 }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (t) => [
+  uniqueIndex('analytics_sites_site_key_uq').on(t.siteKey),
+  index('analytics_sites_tenant_idx').on(t.tenantId),
+]);
+
+export type AnalyticsSiteRow = typeof analyticsSites.$inferSelect;
+
+export type NewAnalyticsSite = typeof analyticsSites.$inferInsert;
+
 // ─── 行为中心阶段 1：埋点质量日聚合（轻量，供质量看板/告警使用）──────────────────
 // tenantId 非空（0 = 平台/无租户哨兵），避免 NULL 在唯一索引中视为相异导致 upsert 失效，与 analytics_daily_rollup 约定一致
 export const analyticsEventQualityIssueTypeEnum = pgEnum('analytics_event_quality_issue_type', [
-  'missing_required', 'type_mismatch', 'invalid_enum', 'event_disabled',
+  'missing_required', 'type_mismatch', 'invalid_enum', 'event_disabled', 'origin_rejected', 'quota_exceeded',
 ]);
 
 export const analyticsEventQualityDaily = pgTable('analytics_event_quality_daily', {
@@ -535,3 +565,57 @@ export const analyticsSegmentMembers = pgTable('analytics_segment_members', {
 export type AnalyticsSegmentMemberRow = typeof analyticsSegmentMembers.$inferSelect;
 
 export type NewAnalyticsSegmentMember = typeof analyticsSegmentMembers.$inferInsert;
+
+
+// ─── 行为中心阶段 2：A/B 实验（无状态确定性分流）───────────────────────────────
+export const analyticsExperiments = pgTable('analytics_experiments', {
+  id: serial('id').primaryKey(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  expKey: varchar('exp_key', { length: 64 }).notNull(),
+  name: varchar('name', { length: 100 }).notNull(),
+  description: varchar('description', { length: 500 }),
+  status: analyticsExperimentStatusEnum('status').notNull().default('draft'),
+  trafficAllocation: integer('traffic_allocation').notNull().default(100),
+  variants: jsonb('variants').$type<AnalyticsExperimentVariant[]>().notNull(),
+  metricEventName: varchar('metric_event_name', { length: 128 }).notNull(),
+  startAt: timestamp('start_at', { withTimezone: true }),
+  endAt: timestamp('end_at', { withTimezone: true }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (t) => [
+  uniqueIndex('analytics_experiments_tenant_key_uq').on(sql`coalesce(${t.tenantId}, 0)`, t.expKey),
+  index('analytics_experiments_tenant_idx').on(t.tenantId),
+  index('analytics_experiments_status_idx').on(t.status),
+]);
+
+export type AnalyticsExperimentRow = typeof analyticsExperiments.$inferSelect;
+
+export type NewAnalyticsExperiment = typeof analyticsExperiments.$inferInsert;
+
+// ─── 行为中心阶段 2：分群触达活动 ──────────────────────────────────────────────
+export const analyticsSegmentCampaigns = pgTable('analytics_segment_campaigns', {
+  id: serial('id').primaryKey(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  segmentId: integer('segment_id').notNull().references(() => analyticsUserSegments.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 100 }).notNull(),
+  channel: analyticsCampaignChannelEnum('channel').notNull(),
+  templateId: integer('template_id'),
+  webhookUrl: varchar('webhook_url', { length: 500 }),
+  status: analyticsCampaignStatusEnum('status').notNull().default('draft'),
+  totalCount: integer('total_count').notNull().default(0),
+  sentCount: integer('sent_count').notNull().default(0),
+  failedCount: integer('failed_count').notNull().default(0),
+  lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+  lastError: varchar('last_error', { length: 500 }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (t) => [
+  index('analytics_segment_campaigns_tenant_idx').on(t.tenantId),
+  index('analytics_segment_campaigns_segment_idx').on(t.segmentId),
+]);
+
+export type AnalyticsSegmentCampaignRow = typeof analyticsSegmentCampaigns.$inferSelect;
+
+export type NewAnalyticsSegmentCampaign = typeof analyticsSegmentCampaigns.$inferInsert;

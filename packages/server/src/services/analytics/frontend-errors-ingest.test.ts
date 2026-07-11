@@ -9,10 +9,12 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { transaction, txInsert, evaluateAlertsForError } = vi.hoisted(() => ({
+const { transaction, txInsert, evaluateAlertsForError, resolveSiteByKey, recordQualityIssue } = vi.hoisted(() => ({
   transaction: vi.fn(),
   txInsert: vi.fn(),
   evaluateAlertsForError: vi.fn(async () => undefined),
+  resolveSiteByKey: vi.fn(),
+  recordQualityIssue: vi.fn(async () => undefined),
 }));
 
 vi.mock('../../db', () => ({
@@ -52,6 +54,20 @@ vi.mock('./error-alert.service', () => ({
   evaluateAlertsForError,
 }));
 
+vi.mock('./analytics-sites.service', () => ({
+  resolveSiteByKey,
+  isSiteOriginAllowed: (origin: string | null | undefined, allowedOrigins: string[] | null | undefined) => {
+    const whitelist = allowedOrigins?.map((value) => value.trim().replace(/\/+$/, '').toLowerCase()).filter(Boolean) ?? [];
+    if (whitelist.length === 0) return true;
+    if (!origin) return false;
+    return whitelist.includes(origin.trim().replace(/\/+$/, '').toLowerCase());
+  },
+}));
+
+vi.mock('./analytics-governance.service', () => ({
+  recordQualityIssue,
+}));
+
 import { reportError } from './frontend-errors.service';
 
 describe('reportError — 身份归属与平台字段（行为中心阶段 1）', () => {
@@ -61,6 +77,14 @@ describe('reportError — 身份归属与平台字段（行为中心阶段 1）'
     vi.clearAllMocks();
     mockUser = undefined;
     mockMember = undefined;
+    resolveSiteByKey.mockImplementation(async (siteKey?: string | null) => siteKey ? ({
+      id: 7,
+      tenantId: 11,
+      appId: 'shop',
+      status: 'enabled',
+      allowedOrigins: ['https://allowed.example'],
+      dailyEventQuota: 1000,
+    }) : null);
     capturedEventRow = undefined;
     transaction.mockImplementation(async (callback: (tx: { insert: typeof txInsert }) => Promise<unknown>) => callback({ insert: txInsert }));
     txInsert
@@ -120,5 +144,12 @@ describe('reportError — 身份归属与平台字段（行为中心阶段 1）'
     await reportError({ errorType: 'js_error', message: 'boom', source: 'web_member' as never }, { ip: '127.0.0.1', ua: 'test' });
 
     expect(capturedEventRow).toMatchObject({ source: 'web_member', memberId: null });
+  });
+
+  it('匿名 site 命中且 Origin 不在白名单时静默拒收并记录 origin_rejected', async () => {
+    await reportError({ errorType: 'js_error', message: 'boom' }, { ip: '127.0.0.1', ua: 'test', siteKey: 'zk_site', origin: 'https://evil.example/' });
+
+    expect(transaction).not.toHaveBeenCalled();
+    expect(recordQualityIssue).toHaveBeenCalledWith(11, '$frontend_error', 'origin_rejected');
   });
 });

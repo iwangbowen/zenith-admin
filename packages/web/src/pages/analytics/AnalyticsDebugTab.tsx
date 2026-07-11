@@ -21,6 +21,8 @@ const ISSUE_COLOR: Record<AnalyticsQualityIssueType, TagColor> = {
   type_mismatch: 'amber',
   invalid_enum: 'red',
   event_disabled: 'grey',
+  origin_rejected: 'red',
+  quota_exceeded: 'orange',
 };
 
 function nullableText(value: string | number | null | undefined) {

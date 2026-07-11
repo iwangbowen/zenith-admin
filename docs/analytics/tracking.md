@@ -1,6 +1,12 @@
 # 埋点采集 SDK
 
-埋点 SDK 位于 `packages/web/src/utils/tracker.ts`，在应用启动时由 `App` 调用 `initTracker()` 自动初始化，对标 PostHog autocapture / 神策全埋点。
+埋点 SDK 位于独立 workspace 包 `packages/analytics-sdk`（`@zenith/analytics-sdk`），在应用启动时由 `App` 调用 `initTracker()` 自动初始化，对标 PostHog autocapture / 神策全埋点。
+
+## SDK 独立包
+
+`@zenith/analytics-sdk` 承载框架无关的 tracker、error-reporter 与 breadcrumbs 核心逻辑；`packages/web/src/utils/tracker.ts`、`error-reporter.ts`、`breadcrumbs.ts` 仅保留薄适配层并继续 re-export SDK API，因此业务侧仍从 `@/utils/tracker` 等旧路径导入。
+
+SDK 不直接读取 Vite 环境变量。Web 适配层在初始化时注入 `apiBase`（默认 `VITE_API_BASE_URL || '/api'`）、`sdkVersion`（`VITE_APP_VERSION || '0.0.0'`）与 `environment`；会员端继续通过 `configureTracker()` 覆盖 `tokenKey/source/appId/rootSelector/consentProvider` 等运行时参数。
 
 ## 自动采集（零代码）
 

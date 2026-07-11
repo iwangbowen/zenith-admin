@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TOKEN_KEY } from '@zenith/shared';
+import { ANALYTICS_EXPERIMENT_EXPOSURE_EVENT, TOKEN_KEY } from '@zenith/shared';
 
-const { configureErrorReporting, reportError } = vi.hoisted(() => ({
+const { configureErrorReporting, configureErrorReporterRuntime, reportError } = vi.hoisted(() => ({
   configureErrorReporting: vi.fn(),
+  configureErrorReporterRuntime: vi.fn(),
   reportError: vi.fn(),
 }));
 
@@ -16,6 +17,13 @@ vi.mock('web-vitals', () => ({
 
 vi.mock('./error-reporter', () => ({
   configureErrorReporting,
+  configureErrorReporterRuntime,
+  reportError,
+}));
+
+vi.mock('@zenith/analytics-sdk/error-reporter', () => ({
+  configureErrorReporting,
+  configureErrorReporterRuntime,
   reportError,
 }));
 
@@ -58,7 +66,7 @@ describe('analytics tracker P0 reliability', () => {
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
-    expect(configureErrorReporting).toHaveBeenCalled();
+    await vi.waitFor(() => expect(configureErrorReporting).toHaveBeenCalled());
   });
 
   beforeEach(() => {
@@ -101,5 +109,29 @@ describe('analytics tracker P0 reliability', () => {
     expect(fetchMock.mock.calls.some(([url, init]) =>
       String(url).includes('/analytics/events') && (init as RequestInit).keepalive === true,
     )).toBe(true);
+  });
+
+  it('caches experiment assignments and deduplicates exposure per session', async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/analytics/config')) {
+        return { ok: true, json: async () => ({ code: 0, data: { enabled: true, sampleRate: 1, trackPageviews: true, trackClicks: true, trackPerformance: true, trackErrors: true, trackApi: true, maskInputs: true, respectDnt: false, blacklistPaths: [], sessionTimeoutMinutes: 30 } }) } as Response;
+      }
+      if (url.includes('/analytics/experiments/assignments')) {
+        return { ok: true, json: async () => ({ code: 0, data: [{ expKey: 'homepage_banner', variantKey: 'control' }] }) } as Response;
+      }
+      return { ok: true, json: async () => ({ code: 0, data: null }) } as Response;
+    });
+
+    await expect(tracker.getVariant('homepage_banner')).resolves.toBe('control');
+    await expect(tracker.getVariant('homepage_banner')).resolves.toBe('control');
+    tracker.prepareTrackerLogout();
+
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/analytics/experiments/assignments'))).toHaveLength(1);
+    const ingestCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/analytics/events'));
+    const body = JSON.parse(String((ingestCall?.[1] as RequestInit).body)) as { events: Array<{ eventName?: string; properties?: Record<string, unknown> }> };
+    const exposures = body.events.filter((event) => event.eventName === ANALYTICS_EXPERIMENT_EXPOSURE_EVENT);
+    expect(exposures).toHaveLength(1);
+    expect(exposures[0].properties).toMatchObject({ expKey: 'homepage_banner', variantKey: 'control' });
   });
 });

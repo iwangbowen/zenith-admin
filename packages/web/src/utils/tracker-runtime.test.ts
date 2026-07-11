@@ -23,7 +23,7 @@ vi.mock('web-vitals', () => ({
   onTTFB: vi.fn(),
 }));
 
-vi.mock('./error-reporter', () => ({
+vi.mock('@zenith/analytics-sdk/error-reporter', () => ({
   configureErrorReporting,
   configureErrorReporterRuntime,
   reportError,

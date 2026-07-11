@@ -13,6 +13,9 @@ import {
   ANALYTICS_EVENT_QUERY_GROUP_BY_FIELDS,
   ANALYTICS_EVENT_QUERY_METRICS,
   ANALYTICS_RETENTION_MODES,
+  ANALYTICS_CAMPAIGN_CHANNELS,
+  ANALYTICS_CAMPAIGN_STATUSES,
+  ANALYTICS_EXPERIMENT_STATUSES,
 } from '@zenith/shared';
 
 const eventTypeEnum = z.enum([
@@ -29,6 +32,9 @@ const segmentCompareOpEnum = z.enum(ANALYTICS_SEGMENT_COMPARE_OPS);
 const eventQueryGroupByEnum = z.enum(ANALYTICS_EVENT_QUERY_GROUP_BY_FIELDS);
 const eventQueryMetricEnum = z.enum(ANALYTICS_EVENT_QUERY_METRICS);
 const retentionModeEnum = z.enum(ANALYTICS_RETENTION_MODES);
+const campaignChannelEnum = z.enum(ANALYTICS_CAMPAIGN_CHANNELS);
+const campaignStatusEnum = z.enum(ANALYTICS_CAMPAIGN_STATUSES);
+const experimentStatusEnum = z.enum(ANALYTICS_EXPERIMENT_STATUSES);
 
 // 分群 / 漏斗 / 事件查询共用的属性过滤条件（key + 比较运算符 + 值）
 const analyticsSegmentPropertyFilterDTO = z.object({
@@ -129,6 +135,8 @@ export const AnalyticsPublicConfigDTO = z
     respectDnt: z.boolean(),
     blacklistPaths: z.array(z.string()),
     sessionTimeoutMinutes: z.number().int(),
+    siteId: z.number().int().optional(),
+    appId: z.string().optional(),
   })
   .openapi('AnalyticsPublicConfig');
 
@@ -689,6 +697,47 @@ export const UpdateAnalyticsEventOverrideDTO = z
   })
   .openapi('UpdateAnalyticsEventOverride');
 
+
+// ─── 站点模型（site key）──────────────────────────────────────────────────────
+export const AnalyticsSiteDTO = z
+  .object({
+    id: z.number().int(),
+    tenantId: z.number().int().nullable(),
+    tenantName: z.string().nullable().optional(),
+    siteKey: z.string(),
+    name: z.string(),
+    appId: z.string(),
+    allowedOrigins: z.array(z.string()).nullable(),
+    dailyEventQuota: z.number().int().nullable(),
+    todayUsage: z.number().int().nullable(),
+    status: overrideStatusEnum,
+    remark: z.string().nullable(),
+    createdBy: z.number().int().nullable(),
+    updatedBy: z.number().int().nullable(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('AnalyticsSite');
+
+const analyticsOriginDTO = z.string().min(1).max(255).refine((value) => {
+  try {
+    const url = new URL(value);
+    return (url.protocol === 'http:' || url.protocol === 'https:') && url.origin === value && url.pathname === '/' && url.search === '' && url.hash === '';
+  } catch { return false; }
+}, '来源必须是合法 origin');
+
+export const CreateAnalyticsSiteDTO = z
+  .object({
+    name: z.string().min(1).max(100),
+    appId: z.string().min(1).max(50).regex(/^[a-z][a-z0-9_-]*$/),
+    allowedOrigins: z.array(analyticsOriginDTO).max(100).nullable().optional(),
+    dailyEventQuota: z.number().int().positive().nullable().optional(),
+    status: overrideStatusEnum.default('enabled'),
+    remark: z.string().max(500).nullable().optional(),
+  })
+  .openapi('CreateAnalyticsSite');
+export const UpdateAnalyticsSiteDTO = CreateAnalyticsSiteDTO.partial().openapi('UpdateAnalyticsSite');
+
 // ─── 质量日聚合 ───────────────────────────────────────────────────────────────
 export const AnalyticsQualityDailyDTO = z
   .object({
@@ -791,6 +840,144 @@ export const AnalyticsSegmentMemberDTO = z
   })
   .openapi('AnalyticsSegmentMember');
 
+export const AnalyticsCampaignDTO = z
+  .object({
+    id: z.number().int(),
+    tenantId: z.number().int().nullable(),
+    segmentId: z.number().int(),
+    segmentName: z.string().nullable(),
+    name: z.string(),
+    channel: campaignChannelEnum,
+    templateId: z.number().int().nullable(),
+    webhookUrl: z.string().nullable(),
+    status: campaignStatusEnum,
+    totalCount: z.number().int(),
+    sentCount: z.number().int(),
+    failedCount: z.number().int(),
+    lastRunAt: z.string().nullable(),
+    lastError: z.string().nullable(),
+    createdBy: z.number().int().nullable(),
+    updatedBy: z.number().int().nullable(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('AnalyticsCampaign');
+
+const campaignWebhookUrlDTO = z.string().max(500).url().refine((value) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}, 'Webhook URL 必须以 http:// 或 https:// 开头');
+
+function refineCampaignDTO(
+  value: { channel?: z.infer<typeof campaignChannelEnum>; templateId?: number | null; webhookUrl?: string | null },
+  ctx: z.RefinementCtx,
+) {
+  if (value.channel === 'webhook') {
+    if (!value.webhookUrl) ctx.addIssue({ code: 'custom', path: ['webhookUrl'], message: 'Webhook 渠道必须填写 Webhook URL' });
+  } else if ((value.channel === 'email' || value.channel === 'in_app') && !value.templateId) {
+    ctx.addIssue({ code: 'custom', path: ['templateId'], message: '邮件/站内信渠道必须选择模板' });
+  }
+}
+
+const createAnalyticsCampaignBaseDTO = z
+  .object({
+    segmentId: z.number().int().positive(),
+    name: z.string().min(1).max(100),
+    channel: campaignChannelEnum,
+    templateId: z.number().int().positive().nullable().optional(),
+    webhookUrl: z.preprocess((value) => value === '' ? null : value, campaignWebhookUrlDTO.nullable().optional()),
+  });
+
+export const CreateAnalyticsCampaignDTO = createAnalyticsCampaignBaseDTO
+  .superRefine(refineCampaignDTO)
+  .openapi('CreateAnalyticsCampaign');
+
+export const UpdateAnalyticsCampaignDTO = createAnalyticsCampaignBaseDTO.omit({ segmentId: true }).partial().superRefine(refineCampaignDTO).openapi('UpdateAnalyticsCampaign');
+
+
+// ─── A/B 实验 ─────────────────────────────────────────────────────────────────
+const experimentKeyDTO = z.string().min(1).max(64).regex(/^[a-z][a-z0-9_-]*$/);
+
+export const AnalyticsExperimentVariantDTO = z
+  .object({ key: experimentKeyDTO, name: z.string().min(1).max(100), weight: z.number().int().min(0).max(100) })
+  .openapi('AnalyticsExperimentVariant');
+
+function refineExperimentVariantsDTO(variants: z.infer<typeof AnalyticsExperimentVariantDTO>[], ctx: z.RefinementCtx) {
+  const seen = new Set<string>();
+  const total = variants.reduce((sum, variant, index) => {
+    if (seen.has(variant.key)) ctx.addIssue({ code: 'custom', path: [index, 'key'], message: '变体 key 不能重复' });
+    seen.add(variant.key);
+    return sum + variant.weight;
+  }, 0);
+  if (total !== 100) ctx.addIssue({ code: 'custom', path: ['weight'], message: '变体权重总和必须等于 100' });
+}
+
+const ExperimentVariantsDTO = z.array(AnalyticsExperimentVariantDTO).min(2).max(6).superRefine(refineExperimentVariantsDTO);
+
+function refineExperimentWindowDTO(value: { startAt?: string | null; endAt?: string | null }, ctx: z.RefinementCtx) {
+  if (value.startAt && value.endAt && value.endAt <= value.startAt) {
+    ctx.addIssue({ code: 'custom', path: ['endAt'], message: '结束时间必须晚于开始时间' });
+  }
+}
+
+export const AnalyticsExperimentDTO = z
+  .object({
+    id: z.number().int(),
+    tenantId: z.number().int().nullable(),
+    tenantName: z.string().nullable().optional(),
+    expKey: z.string(),
+    name: z.string(),
+    description: z.string().nullable(),
+    status: experimentStatusEnum,
+    trafficAllocation: z.number().int(),
+    variants: z.array(AnalyticsExperimentVariantDTO),
+    metricEventName: z.string(),
+    startAt: z.string().nullable(),
+    endAt: z.string().nullable(),
+    createdBy: z.number().int().nullable(),
+    updatedBy: z.number().int().nullable(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('AnalyticsExperiment');
+
+const AnalyticsExperimentBaseDTO = z.object({
+  expKey: experimentKeyDTO,
+  name: z.string().min(1).max(100),
+  description: z.string().max(500).nullable().optional(),
+  status: experimentStatusEnum.default('draft'),
+  trafficAllocation: z.number().int().min(0).max(100).default(100),
+  variants: ExperimentVariantsDTO,
+  metricEventName: z.string().min(1).max(128),
+  startAt: z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/).nullable().optional(),
+  endAt: z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/).nullable().optional(),
+});
+
+export const CreateAnalyticsExperimentDTO = AnalyticsExperimentBaseDTO.superRefine(refineExperimentWindowDTO).openapi('CreateAnalyticsExperiment');
+export const UpdateAnalyticsExperimentDTO = AnalyticsExperimentBaseDTO.partial().superRefine(refineExperimentWindowDTO).openapi('UpdateAnalyticsExperiment');
+
+export const AnalyticsExperimentAssignmentDTO = z
+  .object({ expKey: z.string(), variantKey: z.string() })
+  .openapi('AnalyticsExperimentAssignment');
+
+export const AnalyticsExperimentReportDTO = z
+  .object({
+    experimentId: z.number().int(),
+    expKey: z.string(),
+    metricEventName: z.string(),
+    variants: z.array(z.object({
+      variantKey: z.string(),
+      exposures: z.number().int(),
+      conversions: z.number().int(),
+      conversionRate: z.number(),
+    })),
+  })
+  .openapi('AnalyticsExperimentReport');
+
 // ─── 埋点质量看板查询 ─────────────────────────────────────────────────────────
 export const AnalyticsQualityQueryResultDTO = z
   .object({
@@ -821,4 +1008,3 @@ export const AnalyticsDebugEventDTO = z
     issueTypes: z.array(qualityIssueTypeEnum),
   })
   .openapi('AnalyticsDebugEvent');
-

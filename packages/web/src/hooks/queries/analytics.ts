@@ -1,6 +1,8 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   AnalyticsDebugEvent,
+  AnalyticsExperiment,
+  AnalyticsExperimentReport,
   AnalyticsEventMeta,
   AnalyticsEventOverride,
   AnalyticsEventOverrideStatus,
@@ -11,8 +13,10 @@ import type {
   AnalyticsQualityQueryResult,
   AnalyticsRetentionMode,
   AnalyticsSegmentMember,
+  AnalyticsSegmentCampaign,
   AnalyticsSettings,
   AnalyticsUserSegment,
+  AnalyticsSite,
   AsyncTask,
   ErrorAlertRule,
   ErrorAlertLog,
@@ -136,6 +140,33 @@ export interface AnalyticsSegmentMembersParams {
   pageSize: number;
 }
 
+export interface AnalyticsCampaignListParams {
+  page: number;
+  pageSize: number;
+  segmentId?: number;
+  status?: 'draft' | 'running' | 'completed' | 'failed';
+}
+
+export interface AnalyticsSiteListParams {
+  page: number;
+  pageSize: number;
+  name?: string;
+  appId?: string;
+  status?: 'enabled' | 'disabled' | '';
+}
+
+export interface AnalyticsExperimentListParams {
+  page: number;
+  pageSize: number;
+  name?: string;
+  status?: AnalyticsExperiment['status'] | '';
+}
+
+export interface AnalyticsExperimentReportParams {
+  startDate?: string;
+  endDate?: string;
+}
+
 export const analyticsKeys = {
   all: ['analytics'] as const,
   overview: (range: AnalyticsRangeParams) => ['analytics', 'overview', range] as const,
@@ -171,6 +202,15 @@ export const analyticsKeys = {
     segments: (params: AnalyticsSegmentListParams) => ['analytics', 'data', 'segments', params] as const,
     segmentDetail: (id: number | undefined) => ['analytics', 'data', 'segment-detail', id] as const,
     segmentMembers: (id: number | undefined, params: AnalyticsSegmentMembersParams) => ['analytics', 'data', 'segment-members', id, params] as const,
+    campaignsLists: ['analytics', 'data', 'campaigns'] as const,
+    campaigns: (params: AnalyticsCampaignListParams) => ['analytics', 'data', 'campaigns', params] as const,
+    sitesLists: ['analytics', 'data', 'sites'] as const,
+    sites: (params: AnalyticsSiteListParams) => ['analytics', 'data', 'sites', params] as const,
+    siteDetail: (id: number | undefined) => ['analytics', 'data', 'site-detail', id] as const,
+    experimentsLists: ['analytics', 'data', 'experiments'] as const,
+    experiments: (params: AnalyticsExperimentListParams) => ['analytics', 'data', 'experiments', params] as const,
+    experimentDetail: (id: number | undefined) => ['analytics', 'data', 'experiment-detail', id] as const,
+    experimentReport: (id: number | undefined, params: AnalyticsExperimentReportParams) => ['analytics', 'data', 'experiment-report', id, params] as const,
   },
   frontendErrors: {
     all: ['analytics', 'frontend-errors'] as const,
@@ -483,6 +523,112 @@ export function useAnalyticsDebugEvents(params: AnalyticsDebugEventsParams, enab
   });
 }
 
+
+// ─── 站点管理 ─────────────────────────────────────────────────────────────────
+export function useAnalyticsSites(params: AnalyticsSiteListParams) {
+  return useQuery({
+    queryKey: analyticsKeys.data.sites(params),
+    queryFn: () => request.get<PaginatedResponse<AnalyticsSite>>(`/api/analytics/sites${toQueryString(params)}`).then(unwrap),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useCreateSite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (values: Record<string, unknown>) => request.post<AnalyticsSite>('/api/analytics/sites', values).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: analyticsKeys.data.sitesLists }),
+  });
+}
+
+export function useUpdateSite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }: { id: number; values: Record<string, unknown> }) => request.put<AnalyticsSite>(`/api/analytics/sites/${id}`, values).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: analyticsKeys.data.sitesLists }),
+  });
+}
+
+export function useDeleteSite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.delete<null>(`/api/analytics/sites/${id}`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: analyticsKeys.data.sitesLists }),
+  });
+}
+
+export function useRegenerateSiteKey() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.post<AnalyticsSite>(`/api/analytics/sites/${id}/regenerate-key`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: analyticsKeys.data.sitesLists }),
+  });
+}
+
+
+// ─── A/B 实验 ─────────────────────────────────────────────────────────────────
+export function useExperiments(params: AnalyticsExperimentListParams) {
+  return useQuery({
+    queryKey: analyticsKeys.data.experiments(params),
+    queryFn: () => request.get<PaginatedResponse<AnalyticsExperiment>>(`/api/analytics/experiments${toQueryString(params)}`).then(unwrap),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useExperiment(id: number | undefined, enabled = true) {
+  return useQuery({
+    queryKey: analyticsKeys.data.experimentDetail(id),
+    queryFn: () => request.get<AnalyticsExperiment>(`/api/analytics/experiments/${id}`).then(unwrap),
+    enabled: enabled && id !== undefined,
+  });
+}
+
+export function useCreateExperiment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (values: Record<string, unknown>) => request.post<AnalyticsExperiment>('/api/analytics/experiments', values).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: analyticsKeys.data.experimentsLists }),
+  });
+}
+
+export function useUpdateExperiment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }: { id: number; values: Record<string, unknown> }) => request.put<AnalyticsExperiment>(`/api/analytics/experiments/${id}`, values).then(unwrap),
+    onSuccess: (_, variables) => {
+      void qc.invalidateQueries({ queryKey: analyticsKeys.data.experimentsLists });
+      void qc.invalidateQueries({ queryKey: analyticsKeys.data.experimentDetail(variables.id) });
+    },
+  });
+}
+
+export function useDeleteExperiment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.delete<null>(`/api/analytics/experiments/${id}`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: analyticsKeys.data.experimentsLists }),
+  });
+}
+
+export function useExperimentAction(action: 'start' | 'pause' | 'complete') {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.post<AnalyticsExperiment>(`/api/analytics/experiments/${id}/${action}`).then(unwrap),
+    onSuccess: (_, id) => {
+      void qc.invalidateQueries({ queryKey: analyticsKeys.data.experimentsLists });
+      void qc.invalidateQueries({ queryKey: analyticsKeys.data.experimentDetail(id) });
+    },
+  });
+}
+
+export function useExperimentReport(id: number | undefined, params: AnalyticsExperimentReportParams, enabled = true) {
+  return useQuery({
+    queryKey: analyticsKeys.data.experimentReport(id, params),
+    queryFn: () => request.get<AnalyticsExperimentReport>(`/api/analytics/experiments/${id}/report${toQueryString(params)}`).then(unwrap),
+    enabled: enabled && id !== undefined,
+  });
+}
+
 // ─── 用户分群 ─────────────────────────────────────────────────────────────────
 export function useAnalyticsSegments(params: AnalyticsSegmentListParams) {
   return useQuery({
@@ -534,6 +680,48 @@ export function useMaterializeAnalyticsSegment() {
   return useMutation({
     mutationFn: (id: number) => request.post<AsyncTask>(`/api/analytics/segments/${id}/materialize`).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: analyticsKeys.data.segmentsLists }),
+  });
+}
+
+export function useCampaigns(params: AnalyticsCampaignListParams, enabled = true, refetchInterval?: number | false) {
+  return useQuery({
+    queryKey: analyticsKeys.data.campaigns(params),
+    queryFn: () => request.get<PaginatedResponse<AnalyticsSegmentCampaign>>(`/api/analytics/campaigns${toQueryString(params)}`).then(unwrap),
+    placeholderData: keepPreviousData,
+    enabled,
+    refetchInterval,
+  });
+}
+
+export function useCreateCampaign() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (values: Record<string, unknown>) => request.post<AnalyticsSegmentCampaign>('/api/analytics/campaigns', values).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: analyticsKeys.data.campaignsLists }),
+  });
+}
+
+export function useUpdateCampaign() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }: { id: number; values: Record<string, unknown> }) => request.put<AnalyticsSegmentCampaign>(`/api/analytics/campaigns/${id}`, values).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: analyticsKeys.data.campaignsLists }),
+  });
+}
+
+export function useDeleteCampaign() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.delete<null>(`/api/analytics/campaigns/${id}`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: analyticsKeys.data.campaignsLists }),
+  });
+}
+
+export function useExecuteCampaign() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.post<AsyncTask>(`/api/analytics/campaigns/${id}/execute`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: analyticsKeys.data.campaignsLists }),
   });
 }
 

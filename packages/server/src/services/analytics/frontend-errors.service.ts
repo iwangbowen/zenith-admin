@@ -13,8 +13,11 @@ import { pageOffset } from '../../lib/pagination';
 import { parseClientEnv, computeErrorFingerprint, startOfDaysAgo, clampDays, clampLimit, resolveIngestPlatformFields } from '../../lib/analytics-helpers';
 import { symbolicateStack } from '../../lib/source-map-symbolicate';
 import { evaluateAlertsForError } from './error-alert.service';
+import { isSiteOriginAllowed, resolveSiteByKey } from './analytics-sites.service';
+import { recordQualityIssue } from './analytics-governance.service';
+import logger from '../../lib/logger';
 
-export interface ErrorReqCtx { ip: string; ua: string }
+export interface ErrorReqCtx { ip: string; ua: string; siteKey?: string | null; origin?: string | null }
 
 function defaultLevel(type: FrontendErrorType): ErrorLevel {
   if (type === 'resource_error' || type === 'console_error') return 'warning';
@@ -117,13 +120,22 @@ export async function reportError(input: {
   const user = currentUserOrNull();
   // 管理员 / 会员身份互斥：单次请求只会经过其中一种认证中间件
   const member = user ? undefined : currentMemberOrNull();
-  const tenantId = user ? getCreateTenantId(user) : member ? (member.tenantId ?? null) : null;
+  // 匿名错误上报凭 site key 归属租户（与事件采集 batchInsertEvents 同一规则；登录态忽略 siteKey）
+  const site = (!user && !member) ? await resolveSiteByKey(reqCtx.siteKey).catch(() => null) : null;
+  if (site && !isSiteOriginAllowed(reqCtx.origin, site.allowedOrigins)) {
+    await recordQualityIssue(site.tenantId ?? 0, '$frontend_error', 'origin_rejected').catch((err) => {
+      logger.warn('[frontend-errors] record origin rejection quality issue failed', err);
+    });
+    return;
+  }
+  const tenantId = user ? getCreateTenantId(user) : member ? (member.tenantId ?? null) : (site?.tenantId ?? null);
   const env = parseClientEnv(reqCtx.ua);
   const level = input.level ?? defaultLevel(input.errorType);
   const message = input.message.slice(0, 2000);
   const fingerprint = computeErrorFingerprint({ tenantId, errorType: input.errorType, message: input.message, sourceUrl: input.sourceUrl, stack: input.stack });
   const now = new Date();
   const platform = resolveIngestPlatformFields(input, { hasAdmin: !!user, hasMember: !!member });
+  if (!user && !member && site) platform.appId = site.appId;
   const displayName = user?.username ?? member?.identifier ?? null;
 
   const group = await db.transaction(async (tx) => {

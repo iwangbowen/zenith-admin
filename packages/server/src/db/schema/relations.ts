@@ -6,7 +6,7 @@ import { cronJobLogs, cronJobs, systemConfigs, userFeedbacks } from './system';
 import { loginRiskEvents, passwordResetTokens, userApiTokens, userMfaFactors, userOauthAccounts, userTrustedDevices } from './auth';
 import { identityProviderSyncLogs, tenantIdentityProviders, userIdentityAccounts } from './identity-providers';
 import { dictItems, dicts } from './dicts';
-import { analyticsEventMeta, analyticsEventOverrides, analyticsSegmentMembers, analyticsUserProfiles, analyticsUserSegments, errorEvents, errorGroups } from './analytics';
+import { analyticsEventMeta, analyticsEventOverrides, analyticsExperiments, analyticsSegmentCampaigns, analyticsSites, analyticsSegmentMembers, analyticsUserProfiles, analyticsUserSegments, errorEvents, errorGroups } from './analytics';
 import { announcementReads, announcementRecipients, announcements } from './announcements';
 import { workflowAutomations, workflowCategories, workflowComments, workflowDefinitions, workflowDefinitionVersions, workflowDelegations, workflowForms, workflowInstances, workflowJobExecutions, workflowJobs, workflowQuickPhrases, workflowTaskConsults, workflowTasks, workflowTaskUrges, workflowTokens } from './workflow';
 import { emailSendLogs, emailTemplates, inAppMessages, inAppTemplates, smsConfigs, smsSendLogs, smsTemplates } from './messaging';
@@ -56,6 +56,16 @@ export const errorEventsRelations = relations(errorEvents, ({ one }) => ({
   group: one(errorGroups, { fields: [errorEvents.groupId], references: [errorGroups.id] }),
 }));
 
+
+// 行为中心阶段 2：站点 → 租户
+export const analyticsSitesRelations = relations(analyticsSites, ({ one }) => ({
+  tenant: one(tenants, { fields: [analyticsSites.tenantId], references: [tenants.id] }),
+}));
+
+export const analyticsExperimentsRelations = relations(analyticsExperiments, ({ one }) => ({
+  tenant: one(tenants, { fields: [analyticsExperiments.tenantId], references: [tenants.id] }),
+}));
+
 // 行为中心阶段 1：Tracking Plan 负责人
 export const analyticsEventMetaRelations = relations(analyticsEventMeta, ({ one }) => ({
   owner: one(users, { fields: [analyticsEventMeta.ownerId], references: [users.id] }),
@@ -77,12 +87,18 @@ export const analyticsUserProfilesRelations = relations(analyticsUserProfiles, (
 export const analyticsUserSegmentsRelations = relations(analyticsUserSegments, ({ one, many }) => ({
   tenant: one(tenants, { fields: [analyticsUserSegments.tenantId], references: [tenants.id] }),
   members: many(analyticsSegmentMembers),
+  campaigns: many(analyticsSegmentCampaigns),
 }));
 
 export const analyticsSegmentMembersRelations = relations(analyticsSegmentMembers, ({ one }) => ({
   segment: one(analyticsUserSegments, { fields: [analyticsSegmentMembers.segmentId], references: [analyticsUserSegments.id] }),
   tenant: one(tenants, { fields: [analyticsSegmentMembers.tenantId], references: [tenants.id] }),
   member: one(members, { fields: [analyticsSegmentMembers.memberId], references: [members.id] }),
+}));
+
+export const analyticsSegmentCampaignsRelations = relations(analyticsSegmentCampaigns, ({ one }) => ({
+  segment: one(analyticsUserSegments, { fields: [analyticsSegmentCampaigns.segmentId], references: [analyticsUserSegments.id] }),
+  tenant: one(tenants, { fields: [analyticsSegmentCampaigns.tenantId], references: [tenants.id] }),
 }));
 
 export const channelsRelations = relations(channels, ({ many }) => ({
@@ -199,6 +215,7 @@ export const tenantsRelations = relations(tenants, ({ one, many }) => ({
   identityProviders: many(tenantIdentityProviders),
   workflowDefinitions: many(workflowDefinitions),
   workflowInstances: many(workflowInstances),
+  analyticsExperiments: many(analyticsExperiments),
 }));
 
 export const tenantPackagesRelations = relations(tenantPackages, ({ many }) => ({

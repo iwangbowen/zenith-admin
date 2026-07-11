@@ -43,6 +43,8 @@ import {
   ANALYTICS_EVENT_QUERY_GROUP_BY_FIELDS,
   ANALYTICS_EVENT_QUERY_METRICS,
   ANALYTICS_RETENTION_MODES,
+  ANALYTICS_CAMPAIGN_CHANNELS,
+  ANALYTICS_EXPERIMENT_STATUSES,
   REPORT_DASHBOARD_LIFECYCLE_STATUSES,
   REPORT_DASHBOARD_VERSION_SOURCES,
   SOURCE_MAP_MAX_BYTES,
@@ -2635,6 +2637,26 @@ export const updateAnalyticsEventOverrideSchema = z.object({
   reason: z.string().max(500).nullable().optional(),
 });
 
+
+// ─── 行为中心阶段 2：站点模型 ──────────────────────────────────────────────────
+const analyticsOriginSchema = z.string().min(1).max(255).refine((value) => {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+    return url.origin === value && url.pathname === '/' && url.search === '' && url.hash === '';
+  } catch { return false; }
+}, '来源必须是合法 origin，如 https://example.com 或 http://localhost:3000，不能包含路径或查询参数');
+
+export const createAnalyticsSiteSchema = z.object({
+  name: z.string().min(1).max(100),
+  appId: z.string().min(1).max(50).regex(/^[a-z][a-z0-9_-]*$/, 'appId 必须以小写字母开头，仅允许小写字母、数字、下划线和中划线'),
+  allowedOrigins: z.array(analyticsOriginSchema).max(100).nullable().optional(),
+  dailyEventQuota: z.number().int().positive().nullable().optional(),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  remark: z.string().max(500).nullable().optional(),
+});
+export const updateAnalyticsSiteSchema = createAnalyticsSiteSchema.partial();
+
 // ─── 行为中心阶段 1：用户分群 ──────────────────────────────────────────────────
 export const analyticsSegmentPropertyFilterSchema = z.object({
   key: z.string().min(1).max(64),
@@ -2671,6 +2693,88 @@ export const createAnalyticsUserSegmentSchema = z.object({
   status: z.enum(['enabled', 'disabled']).default('enabled'),
 });
 export const updateAnalyticsUserSegmentSchema = createAnalyticsUserSegmentSchema.partial();
+
+const analyticsWebhookUrlSchema = z.string().max(500).url('Webhook URL 格式不正确').refine((value) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}, 'Webhook URL 必须以 http:// 或 https:// 开头');
+
+function refineAnalyticsCampaign(
+  value: { channel?: (typeof ANALYTICS_CAMPAIGN_CHANNELS)[number]; templateId?: number | null; webhookUrl?: string | null },
+  ctx: z.RefinementCtx,
+) {
+  if (value.channel === 'webhook') {
+    if (!value.webhookUrl) {
+      ctx.addIssue({ code: 'custom', path: ['webhookUrl'], message: 'Webhook 渠道必须填写 Webhook URL' });
+    }
+    return;
+  }
+  if (value.channel === 'email' || value.channel === 'in_app') {
+    if (!value.templateId) {
+      ctx.addIssue({ code: 'custom', path: ['templateId'], message: '邮件/站内信渠道必须选择模板' });
+    }
+  }
+}
+
+const analyticsCampaignBaseSchema = z.object({
+  segmentId: z.number().int().positive(),
+  name: z.string().min(1).max(100),
+  channel: z.enum(ANALYTICS_CAMPAIGN_CHANNELS),
+  templateId: z.number().int().positive().nullable().optional(),
+  webhookUrl: z.preprocess((value) => value === '' ? null : value, analyticsWebhookUrlSchema.nullable().optional()),
+});
+
+export const createAnalyticsCampaignSchema = analyticsCampaignBaseSchema.superRefine(refineAnalyticsCampaign);
+
+export const updateAnalyticsCampaignSchema = analyticsCampaignBaseSchema.omit({ segmentId: true }).partial().superRefine(refineAnalyticsCampaign);
+
+
+// ─── 行为中心阶段 2：A/B 实验 ──────────────────────────────────────────────────
+const analyticsExperimentKeySchema = z.string().min(1).max(64).regex(/^[a-z][a-z0-9_-]*$/, '标识必须以小写字母开头，仅允许小写字母、数字、下划线和中划线');
+
+export const analyticsExperimentVariantSchema = z.object({
+  key: analyticsExperimentKeySchema,
+  name: z.string().min(1).max(100),
+  weight: z.number().int().min(0).max(100),
+});
+
+export const analyticsExperimentVariantsSchema = z.array(analyticsExperimentVariantSchema).min(2, '至少配置 2 个变体').max(6, '最多配置 6 个变体').superRefine((variants, ctx) => {
+  const seen = new Set<string>();
+  let total = 0;
+  variants.forEach((variant, index) => {
+    total += variant.weight;
+    if (seen.has(variant.key)) {
+      ctx.addIssue({ code: 'custom', path: [index, 'key'], message: `变体 key「${variant.key}」重复` });
+    }
+    seen.add(variant.key);
+  });
+  if (total !== 100) ctx.addIssue({ code: 'custom', path: ['weight'], message: '变体权重总和必须等于 100' });
+});
+
+function refineExperimentWindow(value: { startAt?: string | null; endAt?: string | null }, ctx: z.RefinementCtx) {
+  if (value.startAt && value.endAt && value.endAt <= value.startAt) {
+    ctx.addIssue({ code: 'custom', path: ['endAt'], message: '结束时间必须晚于开始时间' });
+  }
+}
+
+const analyticsExperimentBaseSchema = z.object({
+  expKey: analyticsExperimentKeySchema,
+  name: z.string().min(1).max(100),
+  description: z.string().max(500).nullable().optional(),
+  status: z.enum(ANALYTICS_EXPERIMENT_STATUSES).default('draft'),
+  trafficAllocation: z.number().int().min(0).max(100).default(100),
+  variants: analyticsExperimentVariantsSchema,
+  metricEventName: z.string().min(1).max(128),
+  startAt: dateTimeStringSchema.nullable().optional(),
+  endAt: dateTimeStringSchema.nullable().optional(),
+});
+
+export const createAnalyticsExperimentSchema = analyticsExperimentBaseSchema.superRefine(refineExperimentWindow);
+export const updateAnalyticsExperimentSchema = analyticsExperimentBaseSchema.partial().superRefine(refineExperimentWindow);
 
 // ─── 采集设置 ─────────────────────────────────────────────────────────────────
 export const updateAnalyticsSettingsSchema = z.object({
@@ -2753,10 +2857,16 @@ export type CreateAnalyticsEventMetaInput = z.infer<typeof createAnalyticsEventM
 export type UpdateAnalyticsEventMetaInput = z.infer<typeof updateAnalyticsEventMetaSchema>;
 export type CreateAnalyticsEventOverrideInput = z.infer<typeof createAnalyticsEventOverrideSchema>;
 export type UpdateAnalyticsEventOverrideInput = z.infer<typeof updateAnalyticsEventOverrideSchema>;
+export type CreateAnalyticsSiteInput = z.infer<typeof createAnalyticsSiteSchema>;
+export type UpdateAnalyticsSiteInput = z.infer<typeof updateAnalyticsSiteSchema>;
+export type CreateAnalyticsExperimentInput = z.infer<typeof createAnalyticsExperimentSchema>;
+export type UpdateAnalyticsExperimentInput = z.infer<typeof updateAnalyticsExperimentSchema>;
 export type AnalyticsSegmentConditionInput = z.infer<typeof analyticsSegmentConditionSchema>;
 export type AnalyticsSegmentRuleInput = z.infer<typeof analyticsSegmentRuleSchema>;
 export type CreateAnalyticsUserSegmentInput = z.infer<typeof createAnalyticsUserSegmentSchema>;
 export type UpdateAnalyticsUserSegmentInput = z.infer<typeof updateAnalyticsUserSegmentSchema>;
+export type CreateAnalyticsCampaignInput = z.infer<typeof createAnalyticsCampaignSchema>;
+export type UpdateAnalyticsCampaignInput = z.infer<typeof updateAnalyticsCampaignSchema>;
 export type UpdateAnalyticsSettingsInput = z.infer<typeof updateAnalyticsSettingsSchema>;
 export type FunnelQueryInput = z.infer<typeof funnelQuerySchema>;
 export type RetentionQueryInput = z.infer<typeof retentionQuerySchema>;

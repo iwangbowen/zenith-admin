@@ -80,6 +80,7 @@ import type {
 } from '@zenith/shared';
 import { ANALYTICS_DEVICE_TYPE_OPTIONS, ANALYTICS_RETENTION_MODE_OPTIONS, ANALYTICS_SEGMENT_COMPARE_OP_OPTIONS } from '@zenith/shared';
 import AnalyticsEventQueryTab from './AnalyticsEventQueryTab';
+import AnalyticsExperimentsTab from './AnalyticsExperimentsTab';
 
 function msToReadable(ms: number | null): string {
   if (ms == null) return '–';
@@ -1519,6 +1520,7 @@ export default function AnalyticsPage() {
         <TabPane tab="概览" itemKey="overview"><OverviewTab /></TabPane>
         <TabPane tab="实时" itemKey="realtime"><RealtimeTab /></TabPane>
         <TabPane tab="事件分析" itemKey="event-query"><AnalyticsEventQueryTab /></TabPane>
+        <TabPane tab="A/B 实验" itemKey="experiments"><AnalyticsExperimentsTab /></TabPane>
         <TabPane tab="页面停留" itemKey="dwell"><DwellTab /></TabPane>
         <TabPane tab="功能使用" itemKey="feature"><FeatureTab /></TabPane>
         <TabPane tab="会话" itemKey="sessions"><SessionsTab /></TabPane>

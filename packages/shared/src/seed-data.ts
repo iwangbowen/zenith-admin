@@ -17,9 +17,9 @@ import type {
   MpKfSessionEventType, MpKfRoutingStrategy, MpMenuButton, MpMenuMatchRule, MpMenuStatus,
   ReportDatasource, ReportDataset, ReportDashboard, ApiScope, RatePlan, ReportPrintTemplate,
   UserFeedback, ReportFolder, ReportMetric, ReportEnvironment, ReportDqRule, ReportQueryQuota,
-  ReportSlaRule, ReportAssetTemplate, ReportFillTemplate, AnalyticsEventPropertyDef,
+  ReportSlaRule, ReportAssetTemplate, ReportFillTemplate, AnalyticsEventPropertyDef, AnalyticsSite,
 } from './types';
-import { ANALYTICS_SEMANTIC_EVENT_LABELS, type AnalyticsSemanticEventName } from './constants';
+import { ANALYTICS_EXPERIMENT_EXPOSURE_EVENT, ANALYTICS_SEMANTIC_EVENT_LABELS, type AnalyticsSemanticEventName } from './constants';
 
 const SEED_DATE = '2024-01-01 00:00:00';
 
@@ -2524,7 +2524,7 @@ export interface SeedAnalyticsEventMeta {
   id: number;
   eventName: AnalyticsSemanticEventName;
   displayName: string;
-  category: 'payment' | 'workflow' | 'member';
+  category: 'payment' | 'workflow' | 'member' | 'system';
   description: string;
   propertySchema: AnalyticsEventPropertyDef[];
   strictMode: boolean;
@@ -2582,7 +2582,18 @@ const MEMBER_COUPON_SCHEMA: AnalyticsEventPropertyDef[] = [
   { key: 'bizId', type: 'string', description: '核销业务记录主键' },
 ];
 
+
+export const SEED_ANALYTICS_SITES: AnalyticsSite[] = [
+  { id: 1, tenantId: null, tenantName: null, name: '管理后台', appId: 'admin', siteKey: 'zk_admin_default_0000000000000000', allowedOrigins: null, dailyEventQuota: null, todayUsage: 0, status: 'enabled', remark: '平台默认管理后台站点', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, tenantId: null, tenantName: null, name: '会员端', appId: 'member', siteKey: 'zk_member_default_000000000000000', allowedOrigins: null, dailyEventQuota: null, todayUsage: 0, status: 'enabled', remark: '平台默认会员端站点', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
 export const SEED_ANALYTICS_EVENT_META: SeedAnalyticsEventMeta[] = [
+  // ── A/B 实验（source=web_*，SDK getVariant 自动上报）──
+  { id: 1050, eventName: ANALYTICS_EXPERIMENT_EXPOSURE_EVENT, displayName: ANALYTICS_SEMANTIC_EVENT_LABELS[ANALYTICS_EXPERIMENT_EXPOSURE_EVENT], category: 'system', description: 'A/B 实验变体曝光（SDK getVariant 自动上报）', propertySchema: [
+    { key: 'expKey', type: 'string', required: true, description: '实验标识' },
+    { key: 'variantKey', type: 'string', required: true, description: '变体标识' },
+  ], strictMode: true },
   // ── 支付中心（source=server，来自 paymentEventBus）──
   { id: 1001, eventName: 'payment.succeeded', displayName: ANALYTICS_SEMANTIC_EVENT_LABELS['payment.succeeded'], category: 'payment', description: '支付订单支付成功（服务端权威事件，来自 paymentEventBus）', propertySchema: PAYMENT_BASE_SCHEMA, strictMode: false },
   { id: 1002, eventName: 'payment.closed', displayName: ANALYTICS_SEMANTIC_EVENT_LABELS['payment.closed'], category: 'payment', description: '支付订单超时关闭（服务端权威事件，来自 paymentEventBus）', propertySchema: PAYMENT_BASE_SCHEMA, strictMode: false },
@@ -2631,3 +2642,4 @@ export const SEED_ANALYTICS_EVENT_META: SeedAnalyticsEventMeta[] = [
     { key: 'checkinDate', type: 'string', description: '签到日期（YYYY-MM-DD）' },
   ], strictMode: false },
 ];
+

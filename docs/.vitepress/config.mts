@@ -198,6 +198,7 @@ export default defineConfig({
           { text: '数据管理', link: '/analytics/data-management' },
           { text: '错误监控', link: '/analytics/error-monitoring' },
           { text: '架构与数据模型', link: '/analytics/architecture' },
+          { text: '容量演进与架构触发条件', link: '/analytics/capacity' },
         ],
       },
       {

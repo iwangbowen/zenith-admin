@@ -97,6 +97,17 @@ const taskTypes: AsyncTaskTypeMeta[] = [
     retryDelayMs: 15000,
     retentionDays: 30,
   },
+  {
+    taskType: 'analytics-campaign-execute',
+    title: '分群触达执行',
+    module: '行为分析',
+    description: '按分群成员快照分批执行邮件、站内信或 Webhook 触达。',
+    allowConcurrent: false,
+    enabled: true,
+    maxAttempts: 1,
+    retryDelayMs: 15000,
+    retentionDays: 30,
+  },
 ];
 
 const SERIAL_STAGES = ['准备数据', '汇总统计', '生成报告', '归档结果'];
@@ -225,7 +236,7 @@ export function createImmediateMockTask(input: {
 }
 
 export function createProgressingMockTask(input: {
-  taskType: 'report-dq-rule-run' | 'report-dataset-materialize' | 'report-sla-rule-evaluate' | 'report-fill-sync' | 'analytics-rollup-rebuild' | 'analytics-segment-materialize';
+  taskType: 'report-dq-rule-run' | 'report-dataset-materialize' | 'report-sla-rule-evaluate' | 'report-fill-sync' | 'analytics-rollup-rebuild' | 'analytics-segment-materialize' | 'analytics-campaign-execute';
   title: string;
   payload?: Record<string, unknown>;
   totalItems?: number;

@@ -8,6 +8,7 @@ import { formatDateTime } from '../../lib/datetime';
 import { currentUserOrNull } from '../../lib/context';
 import { currentMemberOrNull } from '../../lib/member-context';
 import { broadcast } from '../../lib/ws-manager';
+import { resolveSiteByKey } from './analytics-sites.service';
 
 export function mapSettings(row: AnalyticsSettingsRow) {
   return {
@@ -101,12 +102,13 @@ export async function getIngestPolicy(tenantId: number | null): Promise<{ anonym
 }
 
 /** SDK 公开配置（无需鉴权，匿名亦可获取）。 */
-export async function getPublicConfig(): Promise<AnalyticsPublicConfig> {
+export async function getPublicConfig(siteKey?: string | null): Promise<AnalyticsPublicConfig> {
   const user = currentUserOrNull();
   const member = user ? undefined : currentMemberOrNull();
-  const tenantId = user ? getCreateTenantId(user) : member?.tenantId ?? null;
+  const site = (!user && !member) ? await resolveSiteByKey(siteKey).catch(() => null) : null;
+  const tenantId = user ? getCreateTenantId(user) : member ? (member.tenantId ?? null) : (site?.tenantId ?? null);
   const r = await findSettingsWithGlobalFallback(tenantId);
-  if (!r) return DEFAULT_PUBLIC_CONFIG;
+  if (!r) return site ? { ...DEFAULT_PUBLIC_CONFIG, siteId: site.id, appId: site.appId } : DEFAULT_PUBLIC_CONFIG;
   return {
     enabled: r.enabled,
     sampleRate: r.sampleRate,
@@ -119,5 +121,6 @@ export async function getPublicConfig(): Promise<AnalyticsPublicConfig> {
     respectDnt: r.respectDnt,
     blacklistPaths: r.blacklistPaths ?? [],
     sessionTimeoutMinutes: r.sessionTimeoutMinutes,
+    ...(site ? { siteId: site.id, appId: site.appId } : {}),
   };
 }

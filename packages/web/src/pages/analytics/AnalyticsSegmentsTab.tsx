@@ -15,21 +15,30 @@ import {
   analyticsKeys,
   useAnalyticsSegmentMembers,
   useAnalyticsSegments,
+  useCampaigns,
+  useCreateCampaign,
+  useDeleteCampaign,
+  useExecuteCampaign,
   useDeleteAnalyticsSegment,
   useMaterializeAnalyticsSegment,
   useSaveAnalyticsSegment,
 } from '@/hooks/queries/analytics';
+import { useEmailTemplateList } from '@/hooks/queries/email-templates';
+import { useInAppTemplateList } from '@/hooks/queries/in-app-templates';
 import type {
   AnalyticsSegmentAttributeCondition,
   AnalyticsSegmentCompareOp,
   AnalyticsSegmentCondition,
   AnalyticsSegmentEventCondition,
   AnalyticsSegmentMember,
+  AnalyticsSegmentCampaign,
   AnalyticsSegmentPropertyFilter,
   AnalyticsUserSegment,
 } from '@zenith/shared';
 import {
   ANALYTICS_EVENT_OVERRIDE_STATUS_OPTIONS,
+  ANALYTICS_CAMPAIGN_CHANNEL_OPTIONS,
+  ANALYTICS_CAMPAIGN_STATUS_LABELS,
   ANALYTICS_IDENTITY_TYPE_OPTIONS,
   ANALYTICS_SEGMENT_COMPARE_OP_OPTIONS,
 } from '@zenith/shared';
@@ -138,6 +147,76 @@ const ATTRIBUTE_FIELD_OPTIONS = [
   { label: '会员 ID（memberId）', value: 'memberId' },
 ];
 
+function CampaignDrawer({ segment, onClose }: { segment: AnalyticsUserSegment; onClose: () => void }) {
+  const [name, setName] = useState('');
+  const [channel, setChannel] = useState<AnalyticsSegmentCampaign['channel']>('email');
+  const [templateId, setTemplateId] = useState<number | undefined>();
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const campaignsQuery = useCampaigns({ page: 1, pageSize: 50, segmentId: segment.id }, true, 3000);
+  const emailTemplatesQuery = useEmailTemplateList({ page: 1, pageSize: 100, status: 'enabled' }, { enabled: channel === 'email' });
+  const inAppTemplatesQuery = useInAppTemplateList({ page: 1, pageSize: 100, status: 'enabled' });
+  const createCampaign = useCreateCampaign();
+  const deleteCampaign = useDeleteCampaign();
+  const executeCampaign = useExecuteCampaign();
+  const campaigns = campaignsQuery.data?.list ?? [];
+  const templateOptions = (channel === 'email' ? emailTemplatesQuery.data?.list : inAppTemplatesQuery.data?.list)?.map((tpl) => ({ label: tpl.name, value: tpl.id })) ?? [];
+
+  const handleCreate = async () => {
+    if (!name.trim()) { Toast.warning('请输入触达名称'); return; }
+    if (channel !== 'webhook' && !templateId) { Toast.warning('请选择模板'); return; }
+    if (channel === 'webhook' && !/^https?:\/\/.+/i.test(webhookUrl)) { Toast.warning('请输入 http/https Webhook URL'); return; }
+    await createCampaign.mutateAsync({ segmentId: segment.id, name: name.trim(), channel, templateId: channel === 'webhook' ? null : templateId, webhookUrl: channel === 'webhook' ? webhookUrl.trim() : null });
+    Toast.success('触达活动已创建');
+    setName('');
+    setTemplateId(undefined);
+    setWebhookUrl('');
+  };
+
+  const columns: ColumnProps<AnalyticsSegmentCampaign>[] = [
+    { title: '名称', dataIndex: 'name', width: 160 },
+    { title: '渠道', dataIndex: 'channel', width: 90, render: (v: AnalyticsSegmentCampaign['channel']) => ANALYTICS_CAMPAIGN_CHANNEL_OPTIONS.find((o) => o.value === v)?.label ?? v },
+    { title: '状态', dataIndex: 'status', width: 90, fixed: 'right', render: (v: AnalyticsSegmentCampaign['status']) => <Tag color={v === 'completed' ? 'green' : v === 'failed' ? 'red' : v === 'running' ? 'orange' : 'grey'} size="small">{ANALYTICS_CAMPAIGN_STATUS_LABELS[v]}</Tag> },
+    { title: '计数', width: 140, render: (_: unknown, r: AnalyticsSegmentCampaign) => `${r.sentCount}/${r.totalCount}（失败 ${r.failedCount}）` },
+    { title: '最近执行', dataIndex: 'lastRunAt', width: 160, render: (v: string | null) => (v ? formatDateTime(v) : '–') },
+    createOperationColumn<AnalyticsSegmentCampaign>({
+      width: 150,
+      desktopInlineKeys: ['execute'],
+      actions: (record) => [
+        { key: 'execute', label: '执行', loading: executeCampaign.isPending, disabledReason: record.status === 'running' ? '执行中' : undefined, onClick: async () => { await executeCampaign.mutateAsync(record.id); Toast.success('触达任务已提交'); } },
+        { key: 'delete', label: '删除', danger: true, disabledReason: record.status === 'running' ? '执行中不可删' : undefined, onClick: () => { Modal.confirm({ title: `确定删除触达「${record.name}」吗？`, okButtonProps: { type: 'danger' }, onOk: () => deleteCampaign.mutateAsync(record.id) }); } },
+      ],
+    }),
+  ];
+
+  return (
+    <SideSheet title={`分群触达 · ${segment.name}`} visible onCancel={onClose} width={900}>
+      <div style={{ display: 'grid', gap: 12 }}>
+        <SearchToolbar>
+          <Input placeholder="触达名称" value={name} onChange={setName} style={{ width: 180 }} />
+          <Select value={channel} optionList={ANALYTICS_CAMPAIGN_CHANNEL_OPTIONS} onChange={(v) => { setChannel(v as AnalyticsSegmentCampaign['channel']); setTemplateId(undefined); }} style={{ width: 130 }} />
+          {channel === 'webhook' ? (
+            <Input placeholder="https://example.com/webhook" value={webhookUrl} onChange={setWebhookUrl} style={{ width: 300 }} />
+          ) : (
+            <Select placeholder="选择模板" value={templateId} optionList={templateOptions} onChange={(v) => setTemplateId(v as number)} loading={channel === 'email' ? emailTemplatesQuery.isFetching : inAppTemplatesQuery.isFetching} style={{ width: 220 }} />
+          )}
+          <Button type="primary" icon={<Plus size={14} />} loading={createCampaign.isPending} onClick={() => void handleCreate()}>新增</Button>
+        </SearchToolbar>
+        <ConfigurableTable
+          bordered
+          rowKey="id"
+          loading={campaignsQuery.isFetching}
+          columns={columns}
+          dataSource={campaigns}
+          onRefresh={() => void campaignsQuery.refetch()}
+          refreshLoading={campaignsQuery.isFetching}
+          scroll={{ x: 900 }}
+          empty="暂无触达活动"
+        />
+      </div>
+    </SideSheet>
+  );
+}
+
 export default function AnalyticsSegmentsTab() {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<SegmentFilter>(defaultFilter);
@@ -154,6 +233,7 @@ export default function AnalyticsSegmentsTab() {
   const [conditions, setConditions] = useState<ConditionDraft[]>([newCondition()]);
 
   const [membersSegment, setMembersSegment] = useState<AnalyticsUserSegment | null>(null);
+  const [campaignSegment, setCampaignSegment] = useState<AnalyticsUserSegment | null>(null);
   const [membersPage, setMembersPage] = useState(1);
   const [membersPageSize, setMembersPageSize] = useState(PAGE_SIZE);
 
@@ -279,9 +359,10 @@ export default function AnalyticsSegmentsTab() {
     { title: '更新时间', dataIndex: 'updatedAt', width: 180, render: (v: string) => formatDateTime(v) },
     createOperationColumn<AnalyticsUserSegment>({
       width: 220,
-      desktopInlineKeys: ['members', 'materialize', 'edit'],
+      desktopInlineKeys: ['members', 'campaign', 'materialize', 'edit'],
       actions: (record) => [
         { key: 'members', label: '成员', onClick: () => { setMembersSegment(record); setMembersPage(1); } },
+        { key: 'campaign', label: '触达', onClick: () => setCampaignSegment(record) },
         { key: 'materialize', label: '重算', loading: materializeMutation.isPending, onClick: () => handleMaterialize(record) },
         { key: 'edit', label: '编辑', onClick: () => openEdit(record) },
         {
@@ -460,6 +541,7 @@ export default function AnalyticsSegmentsTab() {
           empty="尚未物化或暂无成员，请先点击「重算」"
         />
       </SideSheet>
+      {campaignSegment && <CampaignDrawer segment={campaignSegment} onClose={() => setCampaignSegment(null)} />}
     </div>
   );
 }

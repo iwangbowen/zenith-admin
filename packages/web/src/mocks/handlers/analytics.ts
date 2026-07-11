@@ -6,10 +6,10 @@ import type {
   AnalyticsSettings, AnalyticsPublicConfig, PaginatedResponse, AnalyticsRollupItem, UserBehaviorEventType,
   SessionTimeline, AnalyticsSavedReport,
   AnalyticsEventOverride, AnalyticsQualityDaily, AnalyticsQualityIssueType, AnalyticsQualityQueryResult, AnalyticsDebugEvent,
-  AnalyticsUserSegment, AnalyticsSegmentMember, AsyncTask,
+  AnalyticsUserSegment, AnalyticsSegmentMember, AnalyticsSegmentCampaign, AnalyticsSite, AnalyticsExperiment, AnalyticsExperimentAssignment, AnalyticsExperimentReport, AsyncTask,
   AnalyticsEventQueryInput, AnalyticsEventQueryResult, AnalyticsEventQueryRow, AnalyticsEventQueryGroupByField, AnalyticsEventQueryMetric,
 } from '@zenith/shared';
-import { SEED_ANALYTICS_EVENT_META } from '@zenith/shared';
+import { SEED_ANALYTICS_EVENT_META, SEED_ANALYTICS_SITES, ANALYTICS_SITE_KEY_HEADER, ANALYTICS_QUALITY_ISSUE_TYPES } from '@zenith/shared';
 import { mockDateTime, mockDateTimeOffset, mockDateOffset } from '../utils/date';
 import { createProgressingMockTask } from './async-tasks';
 
@@ -158,6 +158,74 @@ function buildEvents(count: number): EventListItem[] {
 }
 const MOCK_EVENTS = buildEvents(120);
 
+
+// ─── 行为中心阶段2：站点管理（内存）────────────────────────────────────────────
+let mockSites: AnalyticsSite[] = SEED_ANALYTICS_SITES.map((site, index) => ({
+  ...site,
+  tenantName: null,
+  todayUsage: site.dailyEventQuota ? Math.floor(site.dailyEventQuota * (index === 0 ? 0.92 : 0.35)) : rand(100, 1200),
+  createdAt: mockDateTimeOffset(-60 * 86400000),
+  updatedAt: mockDateTime(),
+}));
+let nextSiteId = Math.max(...mockSites.map((s) => s.id), 0) + 1;
+function mockSiteKey(): string { return `zk_${Math.random().toString(16).slice(2).padEnd(32, '0').slice(0, 32)}`; }
+
+
+// ─── 行为中心阶段2：A/B 实验（内存）────────────────────────────────────────────
+let mockExperiments: AnalyticsExperiment[] = [
+  {
+    id: 1,
+    tenantId: null,
+    tenantName: null,
+    expKey: 'homepage_banner',
+    name: '首页 Banner 文案实验',
+    description: '对比不同 Banner 文案对提交订单的影响',
+    status: 'running',
+    trafficAllocation: 100,
+    variants: [{ key: 'control', name: '对照组', weight: 50 }, { key: 'new_copy', name: '新文案', weight: 50 }],
+    metricEventName: 'order_submit',
+    startAt: mockDateTimeOffset(-7 * 86400000),
+    endAt: null,
+    createdBy: 1,
+    updatedBy: 1,
+    createdAt: mockDateTimeOffset(-8 * 86400000),
+    updatedAt: mockDateTime(),
+  },
+  {
+    id: 2,
+    tenantId: null,
+    tenantName: null,
+    expKey: 'member_checkout_flow',
+    name: '会员结算流程实验',
+    description: '对比结算流程入口调整',
+    status: 'draft',
+    trafficAllocation: 60,
+    variants: [{ key: 'control', name: '原流程', weight: 50 }, { key: 'short', name: '精简流程', weight: 50 }],
+    metricEventName: 'payment.succeeded',
+    startAt: null,
+    endAt: null,
+    createdBy: 1,
+    updatedBy: 1,
+    createdAt: mockDateTimeOffset(-3 * 86400000),
+    updatedAt: mockDateTimeOffset(-1 * 86400000),
+  },
+];
+let nextExperimentId = 3;
+
+function mockPickExperimentVariant(exp: AnalyticsExperiment, distinctId: string): string | null {
+  let hash = 0;
+  for (const ch of `${exp.expKey}:${distinctId}`) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  const bucket = hash % 100;
+  if (bucket >= exp.trafficAllocation) return null;
+  const variantBucket = Math.floor((bucket / Math.max(exp.trafficAllocation, 1)) * 100);
+  let cursor = 0;
+  for (const variant of exp.variants) {
+    cursor += variant.weight;
+    if (variantBucket < cursor) return variant.key;
+  }
+  return exp.variants.at(-1)?.key ?? null;
+}
+
 // ─── 行为中心阶段1：用户分群（内存）────────────────────────────────────────────
 let mockSegments: AnalyticsUserSegment[] = [
   {
@@ -209,6 +277,29 @@ const mockSegmentMembers: Record<number, AnalyticsSegmentMember[]> = {
   1: buildSegmentMembers(1, 24),
   2: buildSegmentMembers(2, 12),
 };
+let mockCampaigns: AnalyticsSegmentCampaign[] = [
+  {
+    id: 1,
+    tenantId: null,
+    segmentId: 1,
+    segmentName: '活跃下单用户',
+    name: '下单用户优惠券触达',
+    channel: 'in_app',
+    templateId: 1,
+    webhookUrl: null,
+    status: 'completed',
+    totalCount: 24,
+    sentCount: 16,
+    failedCount: 8,
+    lastRunAt: mockDateTimeOffset(-3600000),
+    lastError: '会员/匿名用户无站内信体系，已跳过 8 条',
+    createdBy: 1,
+    updatedBy: 1,
+    createdAt: mockDateTimeOffset(-2 * 86400000),
+    updatedAt: mockDateTimeOffset(-3600000),
+  },
+];
+let nextCampaignId = 2;
 
 // ─── 阶段1治理闭环：租户覆盖 / 质量看板 / 事件调试（内存）──────────────────────
 const MOCK_OVERRIDE_TENANT_ID = 1;
@@ -219,10 +310,10 @@ let mockEventOverrides: AnalyticsEventOverride[] = [
 let nextOverrideId = 2;
 
 const QUALITY_EVENT_NAMES = ['order_submit', '$autocapture', '$pageview'];
-const QUALITY_ISSUE_TYPES: AnalyticsQualityIssueType[] = ['missing_required', 'type_mismatch', 'invalid_enum', 'event_disabled'];
+const QUALITY_ISSUE_TYPES: AnalyticsQualityIssueType[] = [...ANALYTICS_QUALITY_ISSUE_TYPES];
 
 function buildQualitySample(issueType: AnalyticsQualityIssueType): Record<string, unknown> | null {
-  if (issueType === 'event_disabled') return null;
+  if (issueType === 'event_disabled' || issueType === 'origin_rejected' || issueType === 'quota_exceeded') return null;
   if (issueType === 'missing_required') return { issues: [{ key: 'amount', expected: 'required' }] };
   if (issueType === 'type_mismatch') return { issues: [{ key: 'amount', expected: 'number', actualType: 'string' }] };
   return { issues: [{ key: 'channel', expected: 'wechat|alipay|cash', actualType: 'string' }] };
@@ -255,7 +346,94 @@ const mockQualityDaily: AnalyticsQualityDaily[] = (() => {
 })();
 
 export const analyticsHandlers = [
-  http.get('/api/analytics/config', () => ok<AnalyticsPublicConfig>(PUBLIC_CONFIG)),
+
+  http.get('/api/analytics/experiments/assignments', ({ request }) => {
+    const u = new URL(request.url);
+    const distinctId = u.searchParams.get('distinctId') || 'u:1';
+    const keys = new Set((u.searchParams.get('keys') || '').split(',').map((v) => v.trim()).filter(Boolean));
+    const data: AnalyticsExperimentAssignment[] = mockExperiments
+      .filter((exp) => exp.status === 'running' && (keys.size === 0 || keys.has(exp.expKey)))
+      .flatMap((exp) => {
+        const variantKey = mockPickExperimentVariant(exp, distinctId);
+        return variantKey ? [{ expKey: exp.expKey, variantKey }] : [];
+      });
+    return ok(data);
+  }),
+
+  http.get('/api/analytics/experiments', ({ request }) => {
+    const u = new URL(request.url);
+    const page = Number(u.searchParams.get('page')) || 1;
+    const pageSize = Number(u.searchParams.get('pageSize')) || 20;
+    const name = u.searchParams.get('name') || '';
+    const status = u.searchParams.get('status') || '';
+    const list = mockExperiments.filter((exp) => (!name || exp.name.includes(name)) && (!status || exp.status === status));
+    return ok<PaginatedResponse<AnalyticsExperiment>>({ list: list.slice((page - 1) * pageSize, page * pageSize), total: list.length, page, pageSize });
+  }),
+
+  http.get('/api/analytics/experiments/:id', ({ params }) => {
+    const exp = mockExperiments.find((item) => item.id === Number(params.id));
+    return exp ? ok(exp) : HttpResponse.json({ code: 404, message: '实验不存在', data: null }, { status: 404 });
+  }),
+
+  http.post('/api/analytics/experiments', async ({ request }) => {
+    const body = await request.json() as Partial<AnalyticsExperiment>;
+    const exp: AnalyticsExperiment = {
+      id: nextExperimentId++, tenantId: null, tenantName: null, expKey: body.expKey || `exp_${Date.now()}`,
+      name: body.name || '未命名实验', description: body.description ?? null, status: body.status || 'draft',
+      trafficAllocation: body.trafficAllocation ?? 100, variants: body.variants || [{ key: 'control', name: '对照组', weight: 50 }, { key: 'treatment', name: '实验组', weight: 50 }],
+      metricEventName: body.metricEventName || 'order_submit', startAt: body.startAt ?? null, endAt: body.endAt ?? null,
+      createdBy: 1, updatedBy: 1, createdAt: mockDateTime(), updatedAt: mockDateTime(),
+    };
+    mockExperiments.unshift(exp);
+    return ok(exp, '创建成功');
+  }),
+
+  http.put('/api/analytics/experiments/:id', async ({ params, request }) => {
+    const id = Number(params.id);
+    const index = mockExperiments.findIndex((item) => item.id === id);
+    if (index < 0) return HttpResponse.json({ code: 404, message: '实验不存在', data: null }, { status: 404 });
+    const body = await request.json() as Partial<AnalyticsExperiment>;
+    mockExperiments[index] = { ...mockExperiments[index], ...body, updatedAt: mockDateTime() };
+    return ok(mockExperiments[index], '更新成功');
+  }),
+
+  http.delete('/api/analytics/experiments/:id', ({ params }) => {
+    mockExperiments = mockExperiments.filter((item) => item.id !== Number(params.id));
+    return ok(null, '删除成功');
+  }),
+
+  http.post('/api/analytics/experiments/:id/:action', ({ params }) => {
+    const exp = mockExperiments.find((item) => item.id === Number(params.id));
+    if (!exp) return HttpResponse.json({ code: 404, message: '实验不存在', data: null }, { status: 404 });
+    if (params.action === 'start') exp.status = 'running';
+    if (params.action === 'pause') exp.status = 'paused';
+    if (params.action === 'complete') exp.status = 'completed';
+    exp.updatedAt = mockDateTime();
+    return ok(exp, '操作成功');
+  }),
+
+  http.get('/api/analytics/experiments/:id/report', ({ params }) => {
+    const exp = mockExperiments.find((item) => item.id === Number(params.id));
+    if (!exp) return HttpResponse.json({ code: 404, message: '实验不存在', data: null }, { status: 404 });
+    const report: AnalyticsExperimentReport = {
+      experimentId: exp.id,
+      expKey: exp.expKey,
+      metricEventName: exp.metricEventName,
+      variants: exp.variants.map((variant, index) => {
+        const exposures = 420 + index * 83;
+        const conversions = Math.floor(exposures * (0.08 + index * 0.025));
+        return { variantKey: variant.key, exposures, conversions, conversionRate: Math.round((conversions / exposures) * 1000) / 10 };
+      }),
+    };
+    return ok(report);
+  }),
+
+  http.get('/api/analytics/config', ({ request }) => {
+    const u = new URL(request.url);
+    const key = request.headers.get(ANALYTICS_SITE_KEY_HEADER) || u.searchParams.get('siteKey');
+    const site = key ? mockSites.find((s) => s.siteKey === key && s.status === 'enabled') : undefined;
+    return ok<AnalyticsPublicConfig>(site ? { ...PUBLIC_CONFIG, siteId: site.id, appId: site.appId } : PUBLIC_CONFIG);
+  }),
   http.post('/api/analytics/events', () => ok(null, '上报成功')),
 
   http.get('/api/analytics/overview', () => ok<AnalyticsOverview>({
@@ -461,6 +639,54 @@ export const analyticsHandlers = [
     return ok<PaginatedResponse<EventListItem>>({ list: MOCK_EVENTS.slice((page - 1) * pageSize, page * pageSize), total: MOCK_EVENTS.length, page, pageSize });
   }),
   http.delete('/api/analytics/clean', () => ok(null, '共删除 1024 条事件数据')),
+
+
+  // 站点管理
+  http.get('/api/analytics/sites', ({ request }) => {
+    const u = new URL(request.url);
+    const page = Number(u.searchParams.get('page')) || 1;
+    const pageSize = Number(u.searchParams.get('pageSize')) || 20;
+    const name = u.searchParams.get('name') ?? '';
+    const appId = u.searchParams.get('appId') ?? '';
+    const status = u.searchParams.get('status') ?? '';
+    const list = mockSites.filter((site) =>
+      (!name || site.name.includes(name))
+      && (!appId || site.appId === appId)
+      && (!status || site.status === status));
+    return ok<PaginatedResponse<AnalyticsSite>>({ list: list.slice((page - 1) * pageSize, page * pageSize), total: list.length, page, pageSize });
+  }),
+  http.post('/api/analytics/sites', async ({ request }) => {
+    const body = (await request.json()) as Partial<AnalyticsSite>;
+    const siteKey = mockSiteKey();
+    if (mockSites.some((site) => site.siteKey === siteKey)) return HttpResponse.json({ code: 400, message: '站点 Key 已存在', data: null }, { status: 400 });
+    const item: AnalyticsSite = {
+      id: nextSiteId++, tenantId: null, tenantName: null, siteKey,
+      name: body.name ?? '未命名站点', appId: body.appId ?? 'admin', allowedOrigins: body.allowedOrigins?.length ? body.allowedOrigins : null,
+      dailyEventQuota: body.dailyEventQuota ?? null, todayUsage: 0, status: body.status ?? 'enabled', remark: body.remark ?? null,
+      createdAt: mockDateTime(), updatedAt: mockDateTime(),
+    };
+    mockSites.unshift(item);
+    return ok(item, '创建成功');
+  }),
+  http.put('/api/analytics/sites/:id', async ({ params, request }) => {
+    const id = Number(params.id);
+    const body = (await request.json()) as Partial<AnalyticsSite>;
+    const idx = mockSites.findIndex((site) => site.id === id);
+    if (idx === -1) return HttpResponse.json({ code: 404, message: '站点不存在', data: null }, { status: 404 });
+    mockSites[idx] = { ...mockSites[idx], ...body, allowedOrigins: body.allowedOrigins?.length ? body.allowedOrigins : null, updatedAt: mockDateTime() };
+    return ok(mockSites[idx], '更新成功');
+  }),
+  http.delete('/api/analytics/sites/:id', ({ params }) => {
+    mockSites = mockSites.filter((site) => site.id !== Number(params.id));
+    return ok(null, '删除成功');
+  }),
+  http.post('/api/analytics/sites/:id/regenerate-key', ({ params }) => {
+    const id = Number(params.id);
+    const idx = mockSites.findIndex((site) => site.id === id);
+    if (idx === -1) return HttpResponse.json({ code: 404, message: '站点不存在', data: null }, { status: 404 });
+    mockSites[idx] = { ...mockSites[idx], siteKey: mockSiteKey(), updatedAt: mockDateTime() };
+    return ok(mockSites[idx], '重新生成成功');
+  }),
 
   // 事件字典 CRUD
   http.get('/api/analytics/event-meta', ({ request }) => {
@@ -734,6 +960,79 @@ export const analyticsHandlers = [
       payload: { segmentId: id },
       totalItems: Math.max(1, Math.ceil(size / 10)),
     });
+    return ok<AsyncTask>(task, '任务已提交，可在任务中心查看进度');
+  }),
+
+  // ─── 行为中心阶段2：分群触达（消息中心 + Webhook）──────────────────────────────
+  http.get('/api/analytics/campaigns', ({ request }) => {
+    const u = new URL(request.url);
+    const page = Number(u.searchParams.get('page')) || 1;
+    const pageSize = Number(u.searchParams.get('pageSize')) || 20;
+    const segmentId = Number(u.searchParams.get('segmentId')) || undefined;
+    const status = u.searchParams.get('status') ?? '';
+    const list = mockCampaigns.filter((c) => (!segmentId || c.segmentId === segmentId) && (!status || c.status === status));
+    return ok<PaginatedResponse<AnalyticsSegmentCampaign>>({ list: list.slice((page - 1) * pageSize, page * pageSize), total: list.length, page, pageSize });
+  }),
+  http.post('/api/analytics/campaigns', async ({ request }) => {
+    const body = (await request.json()) as Partial<AnalyticsSegmentCampaign>;
+    const segment = mockSegments.find((s) => s.id === Number(body.segmentId));
+    if (!segment) return HttpResponse.json({ code: 404, message: '分群不存在', data: null }, { status: 404 });
+    if (!body.name || !body.channel) return HttpResponse.json({ code: 400, message: '触达名称与渠道不能为空', data: null }, { status: 400 });
+    if (body.channel === 'webhook' && !/^https?:\/\/.+/i.test(body.webhookUrl ?? '')) return HttpResponse.json({ code: 400, message: 'Webhook URL 不合法', data: null }, { status: 400 });
+    if (body.channel !== 'webhook' && !body.templateId) return HttpResponse.json({ code: 400, message: '请选择消息模板', data: null }, { status: 400 });
+    const item: AnalyticsSegmentCampaign = {
+      id: nextCampaignId++,
+      tenantId: null,
+      segmentId: segment.id,
+      segmentName: segment.name,
+      name: body.name,
+      channel: body.channel,
+      templateId: body.channel === 'webhook' ? null : body.templateId ?? null,
+      webhookUrl: body.channel === 'webhook' ? body.webhookUrl ?? null : null,
+      status: 'draft',
+      totalCount: 0,
+      sentCount: 0,
+      failedCount: 0,
+      lastRunAt: null,
+      lastError: null,
+      createdBy: 1,
+      updatedBy: 1,
+      createdAt: mockDateTime(),
+      updatedAt: mockDateTime(),
+    };
+    mockCampaigns.unshift(item);
+    return ok(item, '创建成功');
+  }),
+  http.put('/api/analytics/campaigns/:id', async ({ params, request }) => {
+    const id = Number(params.id);
+    const body = (await request.json()) as Partial<AnalyticsSegmentCampaign>;
+    const idx = mockCampaigns.findIndex((c) => c.id === id);
+    if (idx === -1) return HttpResponse.json({ code: 404, message: '触达活动不存在', data: null }, { status: 404 });
+    if (mockCampaigns[idx].status !== 'draft') return HttpResponse.json({ code: 400, message: '仅草稿状态可修改', data: null }, { status: 400 });
+    mockCampaigns[idx] = { ...mockCampaigns[idx], ...body, updatedAt: mockDateTime() };
+    return ok(mockCampaigns[idx], '更新成功');
+  }),
+  http.delete('/api/analytics/campaigns/:id', ({ params }) => {
+    const id = Number(params.id);
+    const item = mockCampaigns.find((c) => c.id === id);
+    if (item?.status === 'running') return HttpResponse.json({ code: 400, message: '执行中的触达活动不可删除', data: null }, { status: 400 });
+    mockCampaigns = mockCampaigns.filter((c) => c.id !== id);
+    return ok(null, '删除成功');
+  }),
+  http.post('/api/analytics/campaigns/:id/execute', ({ params }) => {
+    const id = Number(params.id);
+    const idx = mockCampaigns.findIndex((c) => c.id === id);
+    if (idx === -1) return HttpResponse.json({ code: 404, message: '触达活动不存在', data: null }, { status: 404 });
+    const total = mockSegmentMembers[mockCampaigns[idx].segmentId]?.length ?? rand(20, 120);
+    mockCampaigns[idx] = { ...mockCampaigns[idx], status: 'running', totalCount: total, sentCount: 0, failedCount: 0, lastError: null, updatedAt: mockDateTime() };
+    setTimeout(() => {
+      const current = mockCampaigns.findIndex((c) => c.id === id);
+      if (current >= 0) {
+        const failed = rand(0, Math.max(1, Math.floor(total * 0.2)));
+        mockCampaigns[current] = { ...mockCampaigns[current], status: 'completed', sentCount: total - failed, failedCount: failed, lastRunAt: mockDateTime(), lastError: failed ? `模拟失败 ${failed} 条` : null, updatedAt: mockDateTime() };
+      }
+    }, 2000);
+    const task = createProgressingMockTask({ taskType: 'analytics-campaign-execute', title: `执行分群触达 #${id}`, payload: { campaignId: id }, totalItems: Math.max(1, Math.ceil(total / 50)) });
     return ok<AsyncTask>(task, '任务已提交，可在任务中心查看进度');
   }),
 ];

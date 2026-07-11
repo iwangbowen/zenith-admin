@@ -989,6 +989,8 @@ export interface AnalyticsPublicConfig {
   respectDnt: boolean;
   blacklistPaths: string[];
   sessionTimeoutMinutes: number;
+  siteId?: number;
+  appId?: string;
 }
 
 export type AnalyticsEventMetaStatus = 'active' | 'deprecated' | 'blocked';
@@ -1293,8 +1295,28 @@ export interface AnalyticsEventOverride {
   updatedAt: string;
 }
 
+// ─── 行为中心阶段 2：站点模型 ──────────────────────────────────────────────────
+
+export interface AnalyticsSite {
+  id: number;
+  tenantId: number | null;
+  tenantName?: string | null;
+  siteKey: string;
+  name: string;
+  appId: string;
+  allowedOrigins: string[] | null;
+  dailyEventQuota: number | null;
+  todayUsage: number | null;
+  status: AnalyticsEventOverrideStatus;
+  remark: string | null;
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ─── 行为中心阶段 1：埋点质量日聚合 ────────────────────────────────────────────
-export type AnalyticsQualityIssueType = 'missing_required' | 'type_mismatch' | 'invalid_enum' | 'event_disabled';
+export type AnalyticsQualityIssueType = 'missing_required' | 'type_mismatch' | 'invalid_enum' | 'event_disabled' | 'origin_rejected' | 'quota_exceeded';
 
 export interface AnalyticsQualityDaily {
   id: number;
@@ -1413,6 +1435,79 @@ export interface AnalyticsSegmentMember {
   userId: number | null;
   memberId: number | null;
   snapshotAt: string;
+}
+
+
+// ─── 行为中心阶段 2：A/B 实验 ─────────────────────────────────────────────────
+export type AnalyticsExperimentStatus = 'draft' | 'running' | 'paused' | 'completed';
+
+export interface AnalyticsExperimentVariant {
+  key: string;
+  name: string;
+  weight: number;
+}
+
+export interface AnalyticsExperiment {
+  id: number;
+  tenantId: number | null;
+  tenantName?: string | null;
+  expKey: string;
+  name: string;
+  description: string | null;
+  status: AnalyticsExperimentStatus;
+  trafficAllocation: number;
+  variants: AnalyticsExperimentVariant[];
+  metricEventName: string;
+  startAt: string | null;
+  endAt: string | null;
+  createdBy: number | null;
+  updatedBy: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AnalyticsExperimentAssignment {
+  expKey: string;
+  variantKey: string;
+}
+
+export interface AnalyticsExperimentReportVariant {
+  variantKey: string;
+  exposures: number;
+  conversions: number;
+  conversionRate: number;
+}
+
+export interface AnalyticsExperimentReport {
+  experimentId: number;
+  expKey: string;
+  metricEventName: string;
+  variants: AnalyticsExperimentReportVariant[];
+}
+
+// ─── 行为中心阶段 2：分群触达 ──────────────────────────────────────────────────
+export type AnalyticsCampaignChannel = 'email' | 'in_app' | 'webhook';
+export type AnalyticsCampaignStatus = 'draft' | 'running' | 'completed' | 'failed';
+
+export interface AnalyticsSegmentCampaign {
+  id: number;
+  tenantId: number | null;
+  segmentId: number;
+  segmentName?: string | null;
+  name: string;
+  channel: AnalyticsCampaignChannel;
+  templateId: number | null;
+  webhookUrl: string | null;
+  status: AnalyticsCampaignStatus;
+  totalCount: number;
+  sentCount: number;
+  failedCount: number;
+  lastRunAt: string | null;
+  lastError: string | null;
+  createdBy: number | null;
+  updatedBy: number | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ─── 行为中心阶段 1：通用事件分析工作台 ────────────────────────────────────────
