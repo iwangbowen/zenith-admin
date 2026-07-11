@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { HTTPException } from 'hono/http-exception';
-import type { WorkflowFlowData, WorkflowNodeConfig } from '@zenith/shared';
+import type { WorkflowNodeConfig } from '@zenith/shared';
 import type { workflowInstances } from '../../../db/schema';
 
 /** HMAC-SHA256 签名（webhook / external 共用）：sign(secret, `${ts}.${body}`） */

@@ -15,7 +15,7 @@ import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { workflowInstances, workflowTasks } from '../../db/schema';
-import type { WorkflowFlowData, WorkflowTriggerNodeConfig } from '@zenith/shared';
+import type { WorkflowTriggerNodeConfig } from '@zenith/shared';
 import { validationHook, commonErrorResponses, ok, okBody } from '../../lib/openapi-schemas';
 import { resumeTriggerTask } from '../../services/workflow/workflow-resume.service';
 import { assertWorkflowCallbackSignature, captureWorkflowCallbackRawBody, getWorkflowCallbackRawBody } from '../../lib/workflow-callback-security';
