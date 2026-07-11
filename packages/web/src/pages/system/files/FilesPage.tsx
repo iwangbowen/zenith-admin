@@ -88,20 +88,20 @@ function uploadSingleFile(
     .catch((err: unknown) => updateItem(item => ({ ...item, status: 'error', errorMsg: err instanceof Error ? err.message : '上传失败' })));
 }
 
-/** 加载图片并返回其分辨率，失败时返回 null */
-async function loadImageResolution(file: { url: string }): Promise<{ width: number; height: number } | null> {
+/** 加载图片并返回其分辨率，失败时返回 null；优先用 directUrl 直挂（免 blob fetch/CORS） */
+async function loadImageResolution(file: { url: string; directUrl?: string | null }): Promise<{ width: number; height: number } | null> {
   try {
     let src: string;
-    const isExternal = /^https?:\/\//.test(file.url);
-    if (isExternal) {
-      src = getFileFullUrl(file.url);
+    const external = file.directUrl ?? (/^https?:\/\//.test(file.url) ? file.url : null);
+    if (external) {
+      src = external;
     } else {
       const blob = await fetchManagedFileBlob(file.url);
       src = URL.createObjectURL(blob);
     }
     return await new Promise((resolve) => {
       const img = new Image();
-      const cleanup = () => { if (!isExternal) URL.revokeObjectURL(src); };
+      const cleanup = () => { if (!external) URL.revokeObjectURL(src); };
       img.onload = () => { cleanup(); resolve({ width: img.naturalWidth, height: img.naturalHeight }); };
       img.onerror = () => { cleanup(); resolve(null); };
       img.src = src;
@@ -318,7 +318,7 @@ export default function FilesPage() {
 
   const handleCopyUrl = async (file: ManagedFile) => {
     try {
-      await navigator.clipboard.writeText(getFileFullUrl(file.url));
+      await navigator.clipboard.writeText(file.directUrl ?? getFileFullUrl(file.url));
       Toast.success('链接已复制');
     } catch {
       Toast.error('复制失败，请手动复制');
@@ -639,7 +639,7 @@ export default function FilesPage() {
                 ...(imageResolution ? [{ key: '分辨率', value: `${imageResolution.width} × ${imageResolution.height} px` }] : []),
                 { key: '上传人', value: displayedDetailFile.uploaderName || '—' },
                 { key: '对象键', value: <Text copyable style={{ fontSize: 12, wordBreak: 'break-all' }}>{displayedDetailFile.objectKey}</Text> },
-                { key: '访问链接', value: <Text copyable style={{ fontSize: 12, wordBreak: 'break-all' }}>{getFileFullUrl(displayedDetailFile.url)}</Text> },
+                { key: '访问链接', value: <Text copyable style={{ fontSize: 12, wordBreak: 'break-all' }}>{displayedDetailFile.directUrl ?? getFileFullUrl(displayedDetailFile.url)}</Text> },
                 { key: '上传时间', value: formatDateTime(displayedDetailFile.createdAt) },
               ]}
             />

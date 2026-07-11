@@ -7,7 +7,7 @@ import { broadcast, sendToUser } from '../../lib/ws-manager';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
-import { buildStableFileUrl } from '../../lib/file-storage';
+import { buildManagedFileProxyUrl, buildPublicFileUrl } from '../../lib/file-storage';
 import { getStorageConfigMap } from '../files/files.service';
 import { saveBusinessFiles } from '../files/business-files.service';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
@@ -114,7 +114,8 @@ export async function getAnnouncementAttachments(announcementId: number): Promis
           size: file.size,
           mimeType: file.mimeType ?? null,
           extension: file.extension ?? null,
-          url: buildStableFileUrl(file, configMap.get(file.storageConfigId)),
+          url: buildManagedFileProxyUrl(file.id),
+          directUrl: buildPublicFileUrl(file, configMap.get(file.storageConfigId)),
         },
         sortOrder: r.business_files.sortOrder ?? 0,
         createdAt: formatDateTime(r.business_files.createdAt),
@@ -395,7 +396,8 @@ export async function getAnnouncementDetail(id: number) {
         size: file.size,
         mimeType: file.mimeType ?? null,
         extension: file.extension ?? null,
-        url: buildStableFileUrl(file, attachmentConfigMap.get(file.storageConfigId)),
+        url: buildManagedFileProxyUrl(file.id),
+        directUrl: buildPublicFileUrl(file, attachmentConfigMap.get(file.storageConfigId)),
       },
       sortOrder: r.business_files.sortOrder ?? 0,
       createdAt: formatDateTime(r.business_files.createdAt),

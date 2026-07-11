@@ -15,6 +15,7 @@ import type { FileStorageConfigRow, ManagedFileRow } from '../db/schema';
 import { FILE_OBJECT_ACL_SUPPORT } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { formatDate } from './datetime';
+import logger from './logger';
 
 // esdk-obs-nodejs 是 CJS 模块，无官方类型声明，运行时通过 require 加载
 type ObsClientConstructor = new (opts: Record<string, string>) => ObsClientType;
@@ -96,6 +97,9 @@ function createOssClient(config: FileStorageConfigRow) {
     bucket: config.ossBucket,
     accessKeyId: config.ossAccessKeyId,
     accessKeySecret: config.ossAccessKeySecret,
+    // ali-oss 默认 secure:false，无协议 endpoint 会拼出 http:// 签名 URL（浏览器混合内容拦截）；
+    // 与 splitEndpoint 语义一致：仅显式 http:// 时才走 http
+    secure: !config.ossEndpoint.startsWith('http://'),
   });
 }
 
@@ -155,10 +159,14 @@ function createBosClient(config: FileStorageConfigRow) {
   if (!config.bosEndpoint || !config.bosBucket || !config.bosAccessKeyId || !config.bosSecretAccessKey) {
     throw new Error('百度云 BOS 配置不完整');
   }
-  return new BosClient({
+  // @baiducloud/sdk 默认 protocol:'http'，无协议 endpoint 会签出 http:// URL；仅显式 http:// 时才走 http。
+  // 类型声明缺少 protocol 配置项（运行时支持，见 sdk src/config.js），故做断言
+  const options = {
     endpoint: config.bosEndpoint,
     credentials: { ak: config.bosAccessKeyId, sk: config.bosSecretAccessKey },
-  });
+    protocol: config.bosEndpoint.startsWith('http://') ? 'http' : 'https',
+  };
+  return new BosClient(options as unknown as ConstructorParameters<typeof BosClient>[0]);
 }
 
 function createAzureBlobClient(config: FileStorageConfigRow) {
@@ -360,20 +368,17 @@ async function presignObjectUrl(
 }
 
 /**
- * 稳定 URL（永不过期，可安全进入列表缓存）：
- * public 策略且文件公开性满足时返回永久直链，其余一律返回服务端代理路径。
+ * public 策略下的永久公开直链；策略不符 / ACL 不允许 / 无法拼接时返回 null。
+ * 结果永久有效，可进入列表 DTO 的 directUrl 字段（仅渲染用，禁止持久化）。
  */
-export function buildStableFileUrl(file: FileUrlSource, config?: FileStorageConfigRow): string {
-  if (config?.urlStrategy === 'public' && publicAclAllowed(file)) {
-    const url = buildPublicObjectUrl(withFileBucket(file, config), file.objectKey);
-    if (url) return url;
-  }
-  return buildManagedFileProxyUrl(file.id);
+export function buildPublicFileUrl(file: FileUrlSource, config?: FileStorageConfigRow): string | null {
+  if (config?.urlStrategy !== 'public' || !publicAclAllowed(file)) return null;
+  return buildPublicObjectUrl(withFileBucket(file, config), file.objectKey);
 }
 
 /**
  * 按存储配置的 urlStrategy 解析文件访问地址，降级链：public → presigned → proxy。
- * presigned 结果含过期时间，禁止长期缓存。
+ * presigned 结果含过期时间，禁止长期缓存；签名失败（配置不完整/SDK 异常）自动降级 proxy。
  */
 export async function resolveFileAccessUrl(
   file: FileUrlSource,
@@ -388,8 +393,12 @@ export async function resolveFileAccessUrl(
   }
   if (strategy === 'public' || strategy === 'presigned') {
     const expirySeconds = config.presignedExpirySeconds || 1800;
-    const url = await presignObjectUrl(effective, file.objectKey, expirySeconds, options?.contentDisposition);
-    if (url) return { url, strategy: 'presigned', expiresAt: new Date(Date.now() + expirySeconds * 1000) };
+    try {
+      const url = await presignObjectUrl(effective, file.objectKey, expirySeconds, options?.contentDisposition);
+      if (url) return { url, strategy: 'presigned', expiresAt: new Date(Date.now() + expirySeconds * 1000) };
+    } catch (err) {
+      logger.warn(`文件直链签名失败，降级为服务端代理（file=${file.id} provider=${file.provider}）: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
   return { url: buildManagedFileProxyUrl(file.id), strategy: 'proxy', expiresAt: null };
 }

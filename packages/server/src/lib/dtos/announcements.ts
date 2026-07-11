@@ -20,6 +20,7 @@ const AnnouncementAttachmentDTO = z.object({
     mimeType: z.string().nullable(),
     extension: z.string().nullable(),
     url: z.string(),
+    directUrl: z.string().nullable().optional(),
   }),
   sortOrder: z.number().int(),
   createdAt: z.string(),

@@ -47,9 +47,10 @@ export function useFileStats() {
 /**
  * 解析文件访问直链（presigned 每次签发新鲜 URL，故为普通函数而非 useQuery，禁止进缓存）。
  * purpose=download 时云直链会附带 attachment disposition。
+ * silent：失败由调用方降级处理（fetchManagedFileBlob 回退代理），不弹全局错误 toast。
  */
 export function getFileAccessUrl(id: string, purpose?: 'preview' | 'download'): Promise<FileAccessUrl> {
-  return request.get<FileAccessUrl>(`/api/files/${id}/access-url${purpose ? `?purpose=${purpose}` : ''}`).then(unwrap);
+  return request.get<FileAccessUrl>(`/api/files/${id}/access-url${purpose ? `?purpose=${purpose}` : ''}`, { silent: true }).then(unwrap);
 }
 
 export function useUploadFile() {

@@ -20,7 +20,8 @@ export const mockManagedFiles: ManagedFile[] = [
     size: 102400,
     mimeType: 'image/png',
     extension: 'png',
-    url: 'https://avatars.githubusercontent.com/u/583231',
+    url: '/api/files/018f6f8a-0001-7000-8000-000000000001/content',
+    directUrl: 'https://avatars.githubusercontent.com/u/583231',
     uploaderName: 'Admin',
     createdAt: '2026-01-10 10:00:00',
     updatedAt: '2026-01-10 10:00:00',
@@ -65,7 +66,8 @@ export const mockManagedFiles: ManagedFile[] = [
     size: 204800,
     mimeType: 'image/jpeg',
     extension: 'jpg',
-    url: 'https://picsum.photos/800/300',
+    url: '/api/files/018f6f8a-0004-7000-8000-000000000004/content',
+    directUrl: 'https://picsum.photos/800/300',
     uploaderName: 'Admin',
     createdAt: '2026-02-10 11:00:00',
     updatedAt: '2026-02-10 11:00:00',
@@ -95,7 +97,8 @@ export const mockManagedFiles: ManagedFile[] = [
     size: 30720,
     mimeType: 'image/png',
     extension: 'png',
-    url: 'https://avatars.githubusercontent.com/u/9919',
+    url: '/api/files/018f6f8a-0006-7000-8000-000000000006/content',
+    directUrl: 'https://avatars.githubusercontent.com/u/9919',
     uploaderName: 'Admin',
     createdAt: '2026-01-01 00:00:00',
     updatedAt: '2026-01-01 00:00:00',
@@ -375,11 +378,10 @@ export const filesHandlers = [
   http.get('/api/files/:id/access-url', ({ params }) => {
     const file = mockManagedFiles.find((f) => f.id === String(params.id));
     if (!file) return HttpResponse.json({ code: 404, message: '文件不存在', data: null });
-    const isExternal = /^https?:\/\//.test(file.url);
     return HttpResponse.json({
       code: 0,
       message: 'ok',
-      data: { url: file.url, strategy: isExternal ? 'public' : 'proxy', expiresAt: null },
+      data: { url: file.directUrl ?? file.url, strategy: file.directUrl ? 'public' : 'proxy', expiresAt: null },
     });
   }),
 

@@ -347,7 +347,10 @@ export interface ManagedFile {
   size: number;
   mimeType?: string;
   extension?: string;
+  /** 稳定代理路径 /api/files/{id}/content：可持久化、永不失效 */
   url: string;
+  /** public 策略的永久公开直链；仅渲染用，禁止持久化 */
+  directUrl?: string | null;
   uploaderName?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -1269,6 +1272,7 @@ export interface AnnouncementAttachment {
     mimeType: string | null;
     extension: string | null;
     url: string;
+    directUrl?: string | null;
   };
   sortOrder: number;
   createdAt: string;

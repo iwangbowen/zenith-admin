@@ -288,20 +288,17 @@ const baseFileStorageConfigSchema = z.object({
   remark: z.string().max(256).optional(),
 });
 
-export const createFileStorageConfigSchema = baseFileStorageConfigSchema.superRefine((data, ctx) => {
+type FileStorageConfigBase = z.infer<typeof baseFileStorageConfigSchema>;
+
+/** URL 策略与 provider/ACL 的矛盾校验；create 全量、update partial 双方共用（partial 时缺失字段跳过对应检查） */
+function addUrlStrategyIssues(data: Partial<FileStorageConfigBase>, ctx: z.RefinementCtx) {
+  if (!data.urlStrategy || !data.provider) return;
   const supportedAcls = FILE_OBJECT_ACL_SUPPORT[data.provider];
-  if (data.objectAcl !== 'default' && !(supportedAcls ?? []).includes(data.objectAcl)) {
-    const message = supportedAcls
-      ? `该存储类型的对象读写权限仅支持：${supportedAcls.join(' / ')}`
-      : '该存储类型不支持设置对象读写权限';
-    ctx.addIssue({ code: 'custom', message, path: ['objectAcl'] });
-  }
-  // URL 策略与 provider/ACL 的矛盾校验
   if (data.urlStrategy === 'presigned' && (data.provider === 'local' || data.provider === 'sftp')) {
     ctx.addIssue({ code: 'custom', message: '本地磁盘 / SFTP 不支持临时签名直链，请选择服务端代理或公开直链', path: ['urlStrategy'] });
   }
   if (data.urlStrategy === 'public') {
-    if (supportedAcls && !['public-read', 'public-read-write'].includes(data.objectAcl)) {
+    if (supportedAcls && !['public-read', 'public-read-write'].includes(data.objectAcl ?? 'default')) {
       ctx.addIssue({ code: 'custom', message: '公开直链要求对象读写权限为 public-read 或 public-read-write', path: ['objectAcl'] });
     }
     if (data.provider === 'local' && !data.publicBaseUrl) {
@@ -314,6 +311,17 @@ export const createFileStorageConfigSchema = baseFileStorageConfigSchema.superRe
       ctx.addIssue({ code: 'custom', message: '七牛云 Kodo 使用公开直链需要配置访问域名或下载域名', path: ['publicBaseUrl'] });
     }
   }
+}
+
+export const createFileStorageConfigSchema = baseFileStorageConfigSchema.superRefine((data, ctx) => {
+  const supportedAcls = FILE_OBJECT_ACL_SUPPORT[data.provider];
+  if (data.objectAcl !== 'default' && !(supportedAcls ?? []).includes(data.objectAcl)) {
+    const message = supportedAcls
+      ? `该存储类型的对象读写权限仅支持：${supportedAcls.join(' / ')}`
+      : '该存储类型不支持设置对象读写权限';
+    ctx.addIssue({ code: 'custom', message, path: ['objectAcl'] });
+  }
+  addUrlStrategyIssues(data, ctx);
   if (data.provider === 'local' && !data.localRootPath) {
     ctx.addIssue({ code: 'custom', message: '本地磁盘配置需要填写存储目录', path: ['localRootPath'] });
   }
@@ -373,7 +381,7 @@ export const createFileStorageConfigSchema = baseFileStorageConfigSchema.superRe
   }
 });
 
-export const updateFileStorageConfigSchema = baseFileStorageConfigSchema.partial();
+export const updateFileStorageConfigSchema = baseFileStorageConfigSchema.partial().superRefine(addUrlStrategyIssues);
 
 // ─── 分片上传 ─────────────────────────────────────────────────────────────────
 export const initChunkUploadSchema = z.object({

@@ -20,6 +20,7 @@ export const BusinessFileDTO = z
       mimeType: z.string().nullable(),
       extension: z.string().nullable(),
       url: z.string(),
+      directUrl: z.string().nullable().optional(),
     }),
     createdAt: z.string(),
   })
