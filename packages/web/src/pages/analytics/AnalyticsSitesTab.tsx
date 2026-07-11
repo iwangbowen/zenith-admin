@@ -115,16 +115,16 @@ export default function AnalyticsSitesTab() {
 
   const columns: ColumnProps<AnalyticsSite>[] = [
     { title: '名称', dataIndex: 'name', width: 160, fixed: 'left' },
-    { title: 'Site Key', dataIndex: 'siteKey', width: 280, render: (text: string) => <Typography.Text copyable={{ content: text }} code>{text}</Typography.Text> },
+    { title: 'Site Key', dataIndex: 'siteKey', width: 340, render: (text: string) => <Typography.Text copyable={{ content: text }} code>{text}</Typography.Text> },
     { title: 'AppId', dataIndex: 'appId', width: 120, render: (value: string) => <Tag size="small">{value}</Tag> },
     { title: '归属租户', dataIndex: 'tenantName', width: 140, render: (_: unknown, record) => record.tenantName || '平台' },
     { title: '来源白名单', dataIndex: 'allowedOrigins', width: 220, render: (origins: string[] | null) => origins?.length ? <Space wrap>{origins.slice(0, 3).map((o) => <Tag key={o} size="small">{o}</Tag>)}{origins.length > 3 ? <Tag size="small">+{origins.length - 3}</Tag> : null}</Space> : '不限制' },
     { title: '日配额', dataIndex: 'dailyEventQuota', width: 110, render: (value: number | null) => value ?? '不限' },
     { title: '今日用量', dataIndex: 'todayUsage', width: 140, render: (_: number | null, record) => renderUsage(record) },
+    { title: '更新时间', dataIndex: 'updatedAt', width: 180, render: (value: string) => formatDateTime(value) },
     { title: '状态', dataIndex: 'status', width: 100, fixed: 'right', render: (value: AnalyticsSite['status']) => <Tag color={STATUS_META[value].color} size="small">{STATUS_META[value].label}</Tag> },
-    { title: '更新时间', dataIndex: 'updatedAt', width: 170, render: (value: string) => formatDateTime(value) },
     {
-      title: '操作', dataIndex: 'operation', width: 220, fixed: 'right', render: (_: unknown, record) => (
+      title: '操作', dataIndex: 'operation', width: 260, fixed: 'right', render: (_: unknown, record) => (
         <Space>
           <Button theme="borderless" size="small" onClick={() => openEdit(record)}>编辑</Button>
           <Popconfirm title="确定重新生成 Key？旧 Key 将立即失效。" onConfirm={() => regenerateMutation.mutate(record.id)}>
@@ -156,7 +156,7 @@ export default function AnalyticsSitesTab() {
         dataSource={list}
         onRefresh={() => void listQuery.refetch()}
         refreshLoading={listQuery.isFetching}
-        scroll={{ x: 1500 }}
+        scroll={{ x: 1770 }}
         pagination={{
           currentPage: page,
           pageSize,
