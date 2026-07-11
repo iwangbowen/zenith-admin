@@ -354,7 +354,7 @@ export default function AnalyticsSegmentsTab() {
         </Tag>
       ),
     },
-    { title: '成员数（快照）', dataIndex: 'estimatedSize', width: 120 },
+    { title: '成员数（快照）', dataIndex: 'estimatedSize', width: 150 },
     { title: '快照时间', dataIndex: 'snapshotAt', width: 180, render: (v: string | null) => (v ? formatDateTime(v) : '未物化') },
     { title: '更新时间', dataIndex: 'updatedAt', width: 180, render: (v: string) => formatDateTime(v) },
     createOperationColumn<AnalyticsUserSegment>({
@@ -422,7 +422,7 @@ export default function AnalyticsSegmentsTab() {
         dataSource={segments}
         onRefresh={() => void segmentsQuery.refetch()}
         refreshLoading={segmentsQuery.isFetching}
-        scroll={{ x: 1100 }}
+        scroll={{ x: 1130 }}
         pagination={{
           currentPage: page,
           pageSize,

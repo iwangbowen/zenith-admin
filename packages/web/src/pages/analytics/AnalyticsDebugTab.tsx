@@ -44,12 +44,12 @@ export default function AnalyticsDebugTab({ active }: Readonly<{ active: boolean
   const openDetail = (record: AnalyticsDebugEvent) => { setDetailRecord(record); setDetailVisible(true); };
 
   const columns: ColumnProps<AnalyticsDebugEvent>[] = [
-    { title: '时间', dataIndex: 'createdAt', width: 170, render: (value: string) => formatDateTime(value) },
+    { title: '时间', dataIndex: 'createdAt', width: 180, render: (value: string) => formatDateTime(value) },
     { title: '事件名', dataIndex: 'eventName', width: 160, render: (value: string | null) => nullableText(value) },
-    { title: '类型', dataIndex: 'eventType', width: 100 },
+    { title: '类型', dataIndex: 'eventType', width: 110 },
     { title: '来源', dataIndex: 'source', width: 110 },
     { title: '应用', dataIndex: 'appId', width: 90 },
-    { title: '环境', dataIndex: 'environment', width: 90 },
+    { title: '环境', dataIndex: 'environment', width: 130 },
     { title: 'Distinct ID', dataIndex: 'distinctId', width: 150, render: (value: string | null) => nullableText(value) },
     { title: '会员 ID', dataIndex: 'memberId', width: 90, render: (value: number | null) => nullableText(value) },
     {
@@ -99,7 +99,7 @@ export default function AnalyticsDebugTab({ active }: Readonly<{ active: boolean
         dataSource={events}
         onRefresh={() => void debugQuery.refetch()}
         refreshLoading={debugQuery.isFetching}
-        scroll={{ x: 1200 }}
+        scroll={{ x: 1520 }}
         pagination={false}
         empty="暂无最近事件"
       />
