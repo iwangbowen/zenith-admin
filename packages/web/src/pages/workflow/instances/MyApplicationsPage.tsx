@@ -21,6 +21,7 @@ import type { WorkflowDefinition, WorkflowInstance } from '@zenith/shared';
 import { buildWorkflowSummaryItems } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import SavedViewsBar from '@/components/workflow/SavedViewsBar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
@@ -759,6 +760,17 @@ export default function MyApplicationsPage() {
 
   return (
     <div className="page-container">
+      <SavedViewsBar
+        pageKey="workflow-my-applications"
+        currentFilters={submittedParams as unknown as Record<string, unknown>}
+        onApply={(filters) => {
+          const next = { status: '', priority: '', ...(filters as Partial<{ status: string; priority: string }>) };
+          setDraftParams(next);
+          setSubmittedParams(next);
+          setPage(1);
+          void queryClient.invalidateQueries({ queryKey: workflowInstanceKeys.lists });
+        }}
+      />
       <SearchToolbar
         primary={(
           <>

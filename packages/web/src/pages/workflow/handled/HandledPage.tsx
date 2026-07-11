@@ -5,6 +5,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { WorkflowInstance } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
 import { KeywordSearchToolbar } from '@/components/KeywordSearchToolbar';
+import SavedViewsBar from '@/components/workflow/SavedViewsBar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import WorkflowInstanceDetailSheet from '@/components/workflow/WorkflowInstanceDetailSheet';
@@ -89,6 +90,17 @@ export default function HandledPage() {
 
   return (
     <div className="page-container">
+      <SavedViewsBar
+        pageKey="workflow-handled"
+        currentFilters={{ keyword: submittedKeyword }}
+        onApply={(filters) => {
+          const keyword = typeof filters.keyword === 'string' ? filters.keyword : '';
+          setDraftKeyword(keyword);
+          setSubmittedKeyword(keyword);
+          setPage(1);
+          void queryClient.invalidateQueries({ queryKey: workflowInstanceKeys.lists });
+        }}
+      />
       <KeywordSearchToolbar
         placeholder="搜索标题 / 流程名称"
         value={draftKeyword}

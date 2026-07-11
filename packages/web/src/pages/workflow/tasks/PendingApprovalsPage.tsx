@@ -23,6 +23,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import WorkflowPriorityTag from '@/components/workflow/WorkflowPriorityTag';
 import WorkflowSLATag from '@/components/workflow/WorkflowSLATag';
 import WorkflowApprovalDetailSheet from '@/components/workflow/WorkflowApprovalDetailSheet';
+import SavedViewsBar from '@/components/workflow/SavedViewsBar';
 import { usePagination } from '@/hooks/usePagination';
 import { useQuickPhrases } from '@/hooks/useQuickPhrases';
 import { renderEllipsis } from '../../../utils/table-columns';
@@ -303,6 +304,17 @@ export default function PendingApprovalsPage() {
 
   return (
     <div className="page-container">
+      <SavedViewsBar
+        pageKey="workflow-pending"
+        currentFilters={submittedParams as unknown as Record<string, unknown>}
+        onApply={(filters) => {
+          const next = { ...defaultSearchParams, ...(filters as Partial<SearchParams>) };
+          setDraftParams(next);
+          setSubmittedParams(next);
+          setPage(1);
+          void queryClient.invalidateQueries({ queryKey: workflowTaskKeys.pendingLists });
+        }}
+      />
       <SearchToolbar
         primary={(
           <>

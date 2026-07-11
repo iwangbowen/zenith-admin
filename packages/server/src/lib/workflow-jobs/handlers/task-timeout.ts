@@ -3,9 +3,10 @@ import type { WorkflowTimeoutConfig } from '@zenith/shared';
 import { db } from '../../../db';
 import { workflowTasks, workflowInstances } from '../../../db/schema';
 import type { workflowTasks as workflowTasksTable } from '../../../db/schema';
-import { approveTaskCore, rejectTaskCore, systemTransferTaskToManager } from '../../../services/workflow/workflow-instances.service';
+import { approveTaskCore, rejectTaskCore, systemTransferTaskToManager, mapTask } from '../../../services/workflow/workflow-instances.service';
 import { resolveAdminUserId, resolveUserManagerId, resolveUserDeptHeadId } from '../../../services/workflow/workflow-assignee-resolver.service';
 import { computeTimeoutAt } from '../../workflow-timeout';
+import { workflowEventBus } from '../../workflow-event-bus';
 import logger from '../../logger';
 import { enqueueJob } from '../engine';
 import { registerJobHandler } from '../registry';
@@ -81,6 +82,16 @@ async function handle({ payload }: WorkflowJobContext): Promise<void> {
   const maxRemind = cfg.remindCount ?? 3;
   if (nextCount < maxRemind) {
     logger.info('workflow task timeout remind', { taskId, instanceId: inst.id, nextCount, maxRemind });
+    // 复用催办事件链路：处理人收到站内信 + WS 提醒（此前仅记日志，处理人无感知）
+    workflowEventBus.emit({
+      type: 'task.urged',
+      instanceId: inst.id,
+      definitionId: inst.definitionId,
+      tenantId: inst.tenantId,
+      actor: ACTOR,
+      task: mapTask(task),
+      comment: `第 ${nextCount}/${maxRemind} 次超时提醒，任务已超过处理时限，请尽快处理`,
+    } as Parameters<typeof workflowEventBus.emit>[0]);
     await scheduleNextTimeout(taskId, cfg, nextCount, `r${nextCount}`);
     return;
   }

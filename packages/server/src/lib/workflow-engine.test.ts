@@ -3,7 +3,6 @@ import {
   evaluateCondition,
   evaluateConditionGroups,
   validateFlowData,
-  getNodeOrder,
   getAncestorNodeKeys,
   findReturnPrevTarget,
   resolveRuntimeApproveMethod,
@@ -14,7 +13,7 @@ import { WORKFLOW_SCHEMA_VERSION } from '@zenith/shared';
 
 // 说明：DAG 推进（advanceFlow/getInitialTasks）已被显式执行 Token 引擎取代，
 // fork/join/网关/自动节点/回边等推进语义的回归测试见 workflow-token-engine.test.ts。
-// 本文件仅覆盖仍由 workflow-engine.ts 导出的纯工具：条件求值 / 拓扑序 / 结构校验 / 祖先与退回目标。
+// 本文件仅覆盖仍由 workflow-engine.ts 导出的纯工具：条件求值 / 结构校验 / 祖先与退回目标。
 
 // ─── Helper: 线性流程 ──────────────────────────────────────────────────────────
 function makeLinearFlow(): WorkflowFlowData {
@@ -175,20 +174,6 @@ describe('evaluateConditionGroups', () => {
     expect(evaluateConditionGroups(groups, { amount: 1200, dept: '财务', urgent: false, level: 1 })).toBe(true);
     expect(evaluateConditionGroups(groups, { amount: 200, dept: '行政', urgent: false, level: 4 })).toBe(true);
     expect(evaluateConditionGroups(groups, { amount: 200, dept: '行政', urgent: false, level: 1 })).toBe(false);
-  });
-});
-
-// ─── 测试 getNodeOrder（线性兼容） ───────────────────────────────────────────
-describe('getNodeOrder', () => {
-  it('returns nodes in topological order for linear flow', () => {
-    const flow = makeLinearFlow();
-    const order = getNodeOrder(flow);
-    expect(order.map(n => n.key)).toEqual(['start', 'a1', 'a2', 'end']);
-  });
-
-  it('returns empty for flow without start node', () => {
-    const flow: WorkflowFlowData = { nodes: [], edges: [] };
-    expect(getNodeOrder(flow)).toEqual([]);
   });
 });
 

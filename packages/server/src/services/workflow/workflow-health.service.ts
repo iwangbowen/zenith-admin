@@ -155,6 +155,17 @@ export async function getWorkflowHealthSummary(thresholdMinutes = 30): Promise<W
       }));
       continue;
     }
+    if (task.nodeType === 'delay' && task.status === 'waiting' && !delayJob) {
+      issues.push(taskIssue({
+        type: 'delay_missing_wake_job',
+        severity: 'critical',
+        title: '延迟节点缺少唤醒作业',
+        description: '延迟任务在等待，但找不到对应的 delay_wake 作业，任务将无法被自动唤醒；可在流程监控执行「恢复延迟」修复。',
+        row,
+        now,
+      }));
+      continue;
+    }
     if (task.nodeType === 'delay' && task.status === 'waiting' && delayJob?.status === 'pending' && delayJob.runAt <= now) {
       issues.push(taskIssue({
         type: 'delay_overdue',
@@ -206,6 +217,51 @@ export async function getWorkflowHealthSummary(thresholdMinutes = 30): Promise<W
       ageMinutes: ageMinutes(row.createdAt, now),
       createdAt: formatDateTime(row.createdAt),
     });
+  }
+
+  // 卡死实例：running 且超阈值未更新，既无待办/等待任务也无在途作业
+  // （典型场景：并行汇聚残留孤儿 parked token、推进链路中断），需人工用监控页恢复动作处理。
+  const stalledTenant = tenantCondition(workflowInstances, user);
+  const stalledConditions: SQL[] = [
+    eq(workflowInstances.status, 'running' as const),
+    lte(workflowInstances.updatedAt, cutoff),
+  ];
+  if (stalledTenant) stalledConditions.push(stalledTenant);
+  const runningRows = await db.select({ id: workflowInstances.id, title: workflowInstances.title, updatedAt: workflowInstances.updatedAt })
+    .from(workflowInstances)
+    .where(and(...stalledConditions))
+    .orderBy(desc(workflowInstances.id))
+    .limit(200);
+  if (runningRows.length > 0) {
+    const runningIds = runningRows.map((r) => r.id);
+    const [aliveTaskRows, aliveJobRows] = await Promise.all([
+      db.select({ instanceId: workflowTasks.instanceId }).from(workflowTasks)
+        .where(and(inArray(workflowTasks.instanceId, runningIds), inArray(workflowTasks.status, ['pending', 'waiting']))),
+      db.select({ instanceId: workflowJobs.instanceId }).from(workflowJobs)
+        .where(and(inArray(workflowJobs.instanceId, runningIds), inArray(workflowJobs.status, ['pending', 'running']))),
+    ]);
+    const aliveIds = new Set<number>([
+      ...aliveTaskRows.map((r) => r.instanceId),
+      ...aliveJobRows.map((r) => r.instanceId).filter((id): id is number => id != null),
+    ]);
+    for (const inst of runningRows) {
+      if (aliveIds.has(inst.id)) continue;
+      issues.push({
+        id: `instance:${inst.id}:stalled`,
+        type: 'instance_stalled',
+        severity: 'critical',
+        title: '实例无可推进项（疑似卡死）',
+        description: '实例处于进行中，但没有任何待办/等待任务与在途作业；可能是并行汇聚残留孤儿 Token 或推进中断，请在流程监控查看执行 Token 并使用恢复动作。',
+        instanceId: inst.id,
+        instanceTitle: inst.title,
+        taskId: null,
+        nodeKey: null,
+        nodeName: null,
+        status: 'running',
+        ageMinutes: ageMinutes(inst.updatedAt, now),
+        createdAt: formatDateTime(inst.updatedAt),
+      });
+    }
   }
 
   issues.sort((a, b) => {

@@ -1,15 +1,27 @@
 /**
- * 工作流 DAG 执行引擎
+ * 流程图（flowData）无状态工具库
  *
- * 支持的节点类型：
+ * ⚠️ 本文件**不是**运行时推进引擎：实例推进的唯一权威是显式执行 Token 引擎
+ * （lib/workflow-token-engine.ts 的 advanceTokens，由 services/workflow/instances/materialize.ts
+ * 的 advanceAndMaterialize 调用并落库）。旧 DAG 逐节点推进已被其取代。
+ *
+ * 本文件职责（纯函数，无副作用、不触库）：
+ * - schema 兼容迁移：normalizeFlowData
+ * - 图结构：buildAdjacency / getAncestorNodeKeys / findReturnPrevTarget
+ * - 条件求值：evaluateCondition / evaluateConditionGroup(s) / edge 匹配（供 token 引擎与仿真器复用）
+ * - 结构校验：validateFlowData（发布门禁 / 发起前校验）
+ * - 会签模式解析：resolveRuntimeApproveMethod
+ * - 共享类型：TaskAction / AdvanceResult（token 引擎产出与仿真器 dry-run 共用的任务描述结构）
+ *
+ * 节点类型语义速查（运行语义实现在 token 引擎与 instances/ 服务层）：
  * - start / end
  * - approve / handler   —— 人工节点，创建任务等待操作
  * - exclusiveGateway / routeGateway   —— 排他网关，根据条件走一条路径
  * - parallelGateway     —— 并行网关：fork 时创建多个任务，join 时等待全部完成
  * - inclusiveGateway    —— 包容网关：fork 时激活所有匹配条件的分支，join 等同 parallel join
- * - ccNode              —— 抄送节点，非阻塞，自动创建抄送任务后继续推进
- * - delay / trigger —— 当前作为非阻塞自动节点（占位实现），P2 由调度器接管
- * - subProcess —— 创建 subProcess 任务；实际子实例的发起 / 多实例展开 / 汇聚由 workflow-instances.service 接管
+ * - ccNode              —— 抄送节点，非阻塞
+ * - delay / trigger     —— 自动节点，由统一作业账本（workflow-jobs）调度
+ * - subProcess          —— 子实例发起 / 多实例展开 / 汇聚由 instances/subprocess.ts 接管
  */
 import type {
   WorkflowFlowData,
@@ -295,7 +307,7 @@ export function isDefaultEdge(edge: WorkflowEdge, targetNode?: FlowNode): boolea
   return !!edge.isDefault || !!targetNode?.data.isDefault || !edgeHasCondition(edge);
 }
 
-// ─── 引擎核心 ─────────────────────────────────────────────────────────────────
+// ─── 任务/推进结果共享类型（token 引擎产出、仿真器 dry-run 共用）──────────────
 
 /** 描述引擎推进后需要创建的任务 */
 export interface TaskAction {
@@ -614,32 +626,4 @@ export function validateFlowData(flowData: WorkflowFlowData): { valid: boolean; 
   }
 
   return { valid: errors.length === 0, errors };
-}
-
-// ─── 兼容旧版线性流程的工具函数 ──────────────────────────────────────────────
-
-/** 按拓扑顺序遍历节点（线性流程后向兼容） */
-export function getNodeOrder(flowData: WorkflowFlowData): WorkflowNodeConfig[] {
-  const nodeMap = new Map(flowData.nodes.map(n => [n.id, n]));
-  const adjacency = new Map<string, string>();
-  for (const edge of flowData.edges) {
-    adjacency.set(edge.source, edge.target);
-  }
-
-  const startNode = flowData.nodes.find(n => n.data.type === 'start');
-  if (!startNode) return [];
-
-  const result: WorkflowNodeConfig[] = [];
-  let currentId: string | undefined = startNode.id;
-  const visited = new Set<string>();
-
-  while (currentId && !visited.has(currentId)) {
-    visited.add(currentId);
-    const node = nodeMap.get(currentId);
-    if (!node) break;
-    result.push(node.data);
-    currentId = adjacency.get(currentId);
-  }
-
-  return result;
 }

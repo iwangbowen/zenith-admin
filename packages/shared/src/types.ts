@@ -4856,10 +4856,12 @@ export type WorkflowHealthIssueType =
   | 'trigger_execution_failed'
   | 'subprocess_waiting'
   | 'delay_overdue'
+  | 'delay_missing_wake_job'
   | 'task_timeout_overdue'
   | 'workflow_event_outbox_failed'
   | 'workflow_event_outbox_pending'
-  | 'waiting_task_stuck';
+  | 'waiting_task_stuck'
+  | 'instance_stalled';
 
 export interface WorkflowHealthIssue {
   id: string;

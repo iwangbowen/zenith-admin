@@ -1,4 +1,4 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { PaginatedResponse, WorkflowDefinition, WorkflowInstance, WorkflowInstanceSummaryItem, WorkflowTaskConsult, WorkflowSlaLevel } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { toQueryString, unwrap } from '@/lib/query';
@@ -61,13 +61,16 @@ export function useBatchApproveWorkflowTasks() {
   return useMutation({
     mutationFn: ({ taskIds, comment }: { taskIds: number[]; comment?: string }) =>
       request
-        .post<{ succeeded: number; failed: number; results?: Array<{ taskId: number; success: boolean; message?: string }> }>(
+        .post<WorkflowBatchTaskResult>(
           '/api/workflows/tasks/batch-approve',
           { taskIds, comment },
           { headers: { 'X-Idempotency-Key': `workflow-batch-approve-${taskIds.join('-')}` } },
         )
         .then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['workflow'] }),
+    onSuccess: (res) => {
+      removeSucceededFromPendingCaches(qc, res);
+      return qc.invalidateQueries({ queryKey: ['workflow'] });
+    },
   });
 }
 
@@ -76,13 +79,30 @@ export function useBatchRejectWorkflowTasks() {
   return useMutation({
     mutationFn: ({ taskIds, comment }: { taskIds: number[]; comment: string }) =>
       request
-        .post<{ succeeded: number; failed: number; results?: Array<{ taskId: number; success: boolean; message?: string }> }>(
+        .post<WorkflowBatchTaskResult>(
           '/api/workflows/tasks/batch-reject',
           { taskIds, comment },
           { headers: { 'X-Idempotency-Key': `workflow-batch-reject-${taskIds.join('-')}` } },
         )
         .then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['workflow'] }),
+    onSuccess: (res) => {
+      removeSucceededFromPendingCaches(qc, res);
+      return qc.invalidateQueries({ queryKey: ['workflow'] });
+    },
+  });
+}
+
+type WorkflowBatchTaskResult = { succeeded: number; failed: number; results?: Array<{ taskId: number; success: boolean; message?: string }> };
+
+/** 批量操作成功后：先把成功任务从各待办列表缓存即时移除（行立即消失），再由 invalidate 后台校准 */
+function removeSucceededFromPendingCaches(qc: QueryClient, res: WorkflowBatchTaskResult): void {
+  const okIds = new Set((res.results ?? []).filter((r) => r.success).map((r) => r.taskId));
+  if (okIds.size === 0) return;
+  qc.setQueriesData<PaginatedResponse<PendingWorkflowItem>>({ queryKey: workflowTaskKeys.pendingLists }, (old) => {
+    if (!old) return old;
+    const list = old.list.filter((it) => !okIds.has(it.pendingTaskId));
+    if (list.length === old.list.length) return old;
+    return { ...old, list, total: Math.max(0, old.total - (old.list.length - list.length)) };
   });
 }
 

@@ -15,10 +15,12 @@ const ISSUE_LABELS: Record<WorkflowHealthIssue['type'], string> = {
   trigger_execution_failed: '触发器执行失败',
   subprocess_waiting: '子流程等待',
   delay_overdue: '延迟未唤醒',
+  delay_missing_wake_job: '延迟缺唤醒作业',
   task_timeout_overdue: '任务超时',
   workflow_event_outbox_failed: '事件派发失败',
   workflow_event_outbox_pending: '事件派发待处理',
   waiting_task_stuck: '任务等待过久',
+  instance_stalled: '实例疑似卡死',
 };
 
 const THRESHOLD_OPTIONS = [

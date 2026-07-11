@@ -6,6 +6,7 @@ import { currentUser } from '../../lib/context';
 import { isSuperAdmin } from '../../lib/permissions';
 import { tenantCondition } from '../../lib/tenant';
 import { formatDateTime } from '../../lib/datetime';
+import { scheduleSendToUsers } from '../../lib/ws-manager';
 import logger from '../../lib/logger';
 import type { WorkflowComment, CreateWorkflowCommentInput } from '@zenith/shared';
 
@@ -124,19 +125,43 @@ export async function addInstanceComment(instanceId: number, input: CreateWorkfl
     tenantId: inst.tenantId,
   }).returning();
 
-  // @ 提及：向被提及用户发送站内信（带实例详情深链）
+  // @ 提及：向被提及用户发送站内信（带实例详情深链）+ WS 实时推送（角标刷新与弹窗提醒）
   if (mentions.length > 0) {
     const label = inst.serialNo ? `${inst.title}（${inst.serialNo}）` : inst.title;
+    const title = '有人在流程中@你';
+    const content = `${user.username} 在流程「${label}」的评论中提到了你：${input.content.slice(0, 80)}`;
     try {
       await db.insert(inAppMessages).values(mentions.map((uid) => ({
         userId: uid,
-        title: '有人在流程中@你',
-        content: `${user.username} 在流程「${label}」的评论中提到了你：${input.content.slice(0, 80)}`,
+        title,
+        content,
         type: 'info' as const,
         source: 'system' as const,
         tenantId: inst.tenantId,
         link: `/workflow/applications?instanceId=${instanceId}`,
       })));
+      scheduleSendToUsers(
+        mentions.map((uid) => ({ userId: uid })),
+        {
+          type: 'in-app-message:new',
+          payload: {
+            id: 0,
+            templateId: null,
+            userId: 0,
+            userName: null,
+            title,
+            content,
+            type: 'info',
+            isRead: false,
+            readAt: null,
+            source: 'system',
+            senderId: null,
+            senderName: null,
+            tenantId: inst.tenantId,
+            createdAt: formatDateTime(new Date()),
+          },
+        },
+      );
     } catch (err) {
       logger.error('[workflow comment] mention notify failed', { err, instanceId });
     }
