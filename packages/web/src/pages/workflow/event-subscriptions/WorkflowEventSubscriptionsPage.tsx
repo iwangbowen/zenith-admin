@@ -309,13 +309,13 @@ export default function WorkflowEventSubscriptionsPage() {
     { title: '签名', dataIndex: 'signMode', width: 100,
       render: (v: string) => v === 'hmacSha256' ? <Tag color="green" size="small">HMAC</Tag> : <Tag size="small">无</Tag>,
     },
+    { title: '更新时间', dataIndex: 'updatedAt', width: 180, render: (v: string) => formatDateTime(v) },
     {
       title: '状态', dataIndex: 'enabled', width: 90, fixed: 'right',
       render: (v: boolean, r) => canManageEventSubscription
         ? <Switch checked={v} loading={toggleMutation.isPending && toggleMutation.variables?.id === r.id} onChange={() => handleToggle(r)} />
         : (v ? <Tag color="green">启用</Tag> : <Tag color="grey">禁用</Tag>),
     },
-    { title: '更新时间', dataIndex: 'updatedAt', width: 160, render: (v: string) => formatDateTime(v) },
     createOperationColumn<WorkflowEventSubscription>({
       width: 280,
       desktopInlineKeys: ['edit', 'deliveries', 'secret', 'delete'],
@@ -356,6 +356,11 @@ export default function WorkflowEventSubscriptionsPage() {
       title: '事件', dataIndex: 'eventType', width: 140,
       render: (v: string) => EVENT_LABEL_MAP[v] ?? v,
     },
+    { title: '次数', dataIndex: 'attempt', width: 70 },
+    { title: 'HTTP', dataIndex: 'responseStatus', width: 80, render: (v: number | null) => v ?? '-' },
+    { title: '耗时', dataIndex: 'durationMs', width: 90, render: (v: number | null) => v == null ? '-' : `${v}ms` },
+    { title: '错误', dataIndex: 'errorMessage', width: 220, ellipsis: { showTitle: true } },
+    { title: '时间', dataIndex: 'createdAt', width: 180, render: (v: string) => formatDateTime(v) },
     {
       title: '状态', dataIndex: 'status', width: 90, fixed: 'right',
       render: (v: string) => {
@@ -363,11 +368,6 @@ export default function WorkflowEventSubscriptionsPage() {
         return <Tag color={m.color}>{m.text}</Tag>;
       },
     },
-    { title: '次数', dataIndex: 'attempt', width: 70 },
-    { title: 'HTTP', dataIndex: 'responseStatus', width: 80, render: (v: number | null) => v ?? '-' },
-    { title: '耗时', dataIndex: 'durationMs', width: 90, render: (v: number | null) => v == null ? '-' : `${v}ms` },
-    { title: '错误', dataIndex: 'errorMessage', width: 220, ellipsis: { showTitle: true } },
-    { title: '时间', dataIndex: 'createdAt', width: 160, render: (v: string) => formatDateTime(v) },
     createOperationColumn<WorkflowEventDelivery>({
       width: 100,
       desktopInlineKeys: ['retry'],

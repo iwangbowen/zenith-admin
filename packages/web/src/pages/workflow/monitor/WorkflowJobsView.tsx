@@ -398,7 +398,7 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
     },
     { title: '创建时间', dataIndex: 'createdAt', width: 160, render: (v: string) => <Typography.Text size="small" type="tertiary">{formatDateTime(v)}</Typography.Text> },
     createOperationColumn<WorkflowJob>({
-      width: 170,
+      width: 200,
       desktopInlineKeys: ['detail', 'retry', 'skip'],
       actions: (record) => {
         const retryable = record.status === 'failed' || record.status === 'dead' || record.status === 'canceled';
@@ -454,7 +454,7 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
   ];
 
   const chainColumns: ColumnProps<WorkflowJob & { executions: WorkflowJobExecution[] }>[] = [
-    { title: '时间', dataIndex: 'createdAt', width: 150, render: (v: string) => <Typography.Text size="small">{formatDateTime(v)}</Typography.Text> },
+    { title: '时间', dataIndex: 'createdAt', width: 180, render: (v: string) => <Typography.Text size="small">{formatDateTime(v)}</Typography.Text> },
     { title: '类型', dataIndex: 'jobType', width: 104, render: (v: WorkflowJobType) => <Tag color={JOB_TYPE_META[v].color} size="small">{JOB_TYPE_META[v].text}</Tag> },
     { title: '状态', dataIndex: 'status', width: 76, render: (v: WorkflowJobStatus) => renderStatusTag(v) },
     { title: '节点 / 实例', render: (_: unknown, r: WorkflowJob) => <Typography.Text size="small">{r.nodeKey ?? '—'}{r.instanceId ? ` · #${r.instanceId}` : ''}</Typography.Text> },
