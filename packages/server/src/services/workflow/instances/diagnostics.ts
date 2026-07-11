@@ -5,7 +5,7 @@ import { db } from '../../../db';
 import { workflowJobs, workflowJobExecutions, workflowInstances, workflowTasks, workflowTokens, users } from '../../../db/schema';
 import { tenantCondition } from '../../../lib/tenant';
 import { getDataScopeCondition } from '../../../lib/data-scope';
-import type { WorkflowFlowData, WorkflowInstance, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTriggerType, WorkflowInstanceTrace, WorkflowEngineExplanation, WorkflowEngineExplanationBlocker, WorkflowEngineTraceEntry, WorkflowJobType, WorkflowExecutionToken, WorkflowExecutionTokenView } from '@zenith/shared';
+import type { WorkflowDefinitionSnapshot, WorkflowInstance, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTriggerType, WorkflowInstanceTrace, WorkflowEngineExplanation, WorkflowEngineExplanationBlocker, WorkflowEngineTraceEntry, WorkflowJobType, WorkflowExecutionToken, WorkflowExecutionTokenView } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../../lib/context';
 import { mapInstance, mapTask } from './mapping';
@@ -160,9 +160,9 @@ function buildRuntimeIssues(input: {
 }
 
 /** 流程定义快照 → 节点元信息（名称/类型）映射 */
-function buildNodeMetaFromSnapshot(snapshot: unknown): Map<string, { name: string | null; type: string | undefined }> {
+function buildNodeMetaFromSnapshot(snapshot: WorkflowDefinitionSnapshot | null | undefined): Map<string, { name: string | null; type: string | undefined }> {
   const map = new Map<string, { name: string | null; type: string | undefined }>();
-  const flowData = (snapshot as { flowData?: WorkflowFlowData } | null)?.flowData;
+  const flowData = snapshot?.flowData;
   if (flowData?.nodes) {
     for (const n of flowData.nodes) map.set(n.data.key, { name: n.data.label ?? null, type: n.data.type });
   }
@@ -248,7 +248,7 @@ export async function getInstanceRuntimeDiagnostics(id: number): Promise<Workflo
   });
   if (!row) throw new HTTPException(404, { message: '流程实例不存在或无权查看' });
 
-  const snapshot = row.definitionSnapshot as { flowData?: WorkflowFlowData } | null;
+  const snapshot = row.definitionSnapshot;
   const tasks = row.tasks.map((task) => {
     const cfg = snapshot?.flowData?.nodes.find((n) => n.data.key === task.nodeKey)?.data;
     return mapTask(

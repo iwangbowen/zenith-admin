@@ -4,7 +4,7 @@
  * - 告警指标源（getLatestEngineHealthMetrics）被 monitor-alert 评估器读取（workflowHealth / workflowBacklog）。
  * - 运维动作复用现有恢复函数，全部为幂等恢复扫描。
  */
-import { desc, gte, lt } from 'drizzle-orm';
+import { desc, gte, lt, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowEngineHealthSnapshots } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
@@ -67,6 +67,38 @@ export async function runWorkflowEngineHealthCapture(): Promise<string> {
   // 每次采集顺带做一次轻量清理（删除超期行，量很小）。
   await cleanupWorkflowEngineHealthSnapshots();
   return `引擎健康采集完成：健康分 ${healthScore} / ${severity} / 积压 ${backlog}`;
+}
+
+/**
+ * 清理终态实例的执行 Token（默认保留 90 天）。
+ * Token 随分支执行持续增长，终态实例的 token 仅供保留期内的 Trace / 诊断回放使用；
+ * 超期后分批删除（每批 batchLimit），避免长事务锁表。返回删除总数。
+ */
+export async function cleanupTerminalInstanceTokens(retentionDays = 90, batchLimit = 5000, maxBatches = 20): Promise<number> {
+  const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60_000);
+  let total = 0;
+  for (let i = 0; i < maxBatches; i++) {
+    const res = await db.execute(sql`
+      DELETE FROM workflow_tokens
+      WHERE id IN (
+        SELECT wt.id FROM workflow_tokens wt
+        JOIN workflow_instances wi ON wi.id = wt.instance_id
+        WHERE wi.status IN ('approved', 'rejected', 'withdrawn', 'cancelled')
+          AND wi.updated_at < ${cutoff}
+        LIMIT ${batchLimit}
+      )
+    `);
+    const deleted = (res as unknown as { rowCount?: number }).rowCount ?? 0;
+    total += deleted;
+    if (deleted < batchLimit) break;
+  }
+  return total;
+}
+
+/** 定时任务入口：终态实例 token 保留期清理。 */
+export async function runWorkflowTokenCleanup(): Promise<string> {
+  const deleted = await cleanupTerminalInstanceTokens();
+  return `工作流 Token 清理完成：删除 ${deleted} 条终态实例超期 token`;
 }
 
 /** 读取近 N 小时健康趋势点（时间升序）。 */

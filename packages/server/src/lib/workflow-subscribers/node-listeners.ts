@@ -9,7 +9,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowInstances } from '../../db/schema';
-import type { NodeListenerConfig, NodeListenerEvent, WorkflowFlowData, WorkflowTaskEventPayload } from '@zenith/shared';
+import type { NodeListenerConfig, NodeListenerEvent, WorkflowTaskEventPayload } from '@zenith/shared';
 import { workflowEventBus } from '../workflow-event-bus';
 import { httpGet, httpPost } from '../http-client';
 import logger from '../logger';
@@ -54,7 +54,7 @@ async function handleTaskEvent(event: WorkflowTaskEventPayload): Promise<void> {
   if (!listenerEvent) return;
   const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, event.instanceId)).limit(1);
   if (!inst) return;
-  const flowData = (inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData;
+  const flowData = inst.definitionSnapshot?.flowData;
   const node = flowData?.nodes.find((n) => n.data.key === event.task.nodeKey);
   const listeners = node?.data.nodeListeners ?? [];
   for (const l of listeners) {

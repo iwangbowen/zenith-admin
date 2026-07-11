@@ -1,7 +1,7 @@
 // ─── 实例/任务数据映射与定义快照辅助（拆分自 workflow-instances.service.ts）───
 import { formatDateTime, formatNullableDateTime } from '../../../lib/datetime';
 import { workflowInstances, workflowTasks, workflowDefinitions } from '../../../db/schema';
-import type { WorkflowFlowData, WorkflowActionButtonKey, WorkflowActionButtonConfig, WorkflowFormField, WorkflowFormSettings, WorkflowCustomFormConfig, WorkflowFormType, WorkflowInstanceFormSnapshot } from '@zenith/shared';
+import type { WorkflowDefinitionSnapshot, WorkflowFlowData, WorkflowActionButtonKey, WorkflowActionButtonConfig, WorkflowFormField, WorkflowFormSettings, WorkflowCustomFormConfig, WorkflowFormType, WorkflowInstanceFormSnapshot } from '@zenith/shared';
 import { type TaskAction } from '../../../lib/workflow-engine';
 import { HTTPException } from 'hono/http-exception';
 
@@ -72,7 +72,7 @@ export function mapInstance(
     includeDefinitionSnapshot?: boolean;
   } = {},
 ) {
-  const snapshotSettings = (row.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData?.settings;
+  const snapshotSettings = row.definitionSnapshot?.flowData?.settings;
   const activeNodeKeys = extras.currentNodeKeys
     ?? [...new Set((extras.tasks ?? [])
       .filter((task) => task.status === 'pending' || task.status === 'waiting')
@@ -132,9 +132,9 @@ export function mapInstance(
 }
 
 /** 从流程定义快照中解析节点 key 对应的节点名称 */
-function resolveNodeNameFromSnapshot(snapshot: unknown, nodeKey: string | null): string | null {
+function resolveNodeNameFromSnapshot(snapshot: WorkflowDefinitionSnapshot | null | undefined, nodeKey: string | null): string | null {
   if (!nodeKey) return null;
-  const flowData = (snapshot as { flowData?: WorkflowFlowData } | null)?.flowData;
+  const flowData = snapshot?.flowData;
   return flowData?.nodes?.find((n) => n.data.key === nodeKey)?.data.label ?? null;
 }
 

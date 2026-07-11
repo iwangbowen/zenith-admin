@@ -618,6 +618,7 @@ export const WorkflowScheduleDTO = z
     definitionName: z.string().nullable().optional(),
     name: z.string(),
     cronExpression: z.string(),
+    timezone: z.string().nullable(),
     initiatorId: z.number().int(),
     initiatorName: z.string().nullable().optional(),
     titleTemplate: z.string().nullable(),

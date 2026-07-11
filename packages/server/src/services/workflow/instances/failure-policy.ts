@@ -270,7 +270,7 @@ export async function resumeInstanceForCompensation(id: number): Promise<{ resum
   const updated = await db.transaction(async (tx) => {
     const [inst] = await tx.select().from(workflowInstances).where(eq(workflowInstances.id, ticket.instanceId)).for('update').limit(1);
     if (!inst || inst.status !== 'running') throw new HTTPException(400, { message: '实例不在运行中，无法恢复' });
-    const flowData = (inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData;
+    const flowData = inst.definitionSnapshot?.flowData;
     if (!flowData) throw new HTTPException(400, { message: '实例定义快照缺失，无法恢复' });
 
     await tx.update(workflowTasks).set({ status: 'approved', actionAt: new Date(), comment: '补偿完成，恢复推进' })
@@ -323,7 +323,7 @@ export async function handleNodeExecutionError(input: {
   errorMessage: string;
   actor: WorkflowEventActor;
 }): Promise<boolean> {
-  const snapshot = input.instance.definitionSnapshot as { flowData?: WorkflowFlowData } | null;
+  const snapshot = input.instance.definitionSnapshot;
   const flowData = snapshot?.flowData;
   if (!flowData) return false;
 

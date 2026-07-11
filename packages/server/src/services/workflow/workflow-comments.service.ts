@@ -98,7 +98,7 @@ export async function listInstanceComments(instanceId: number): Promise<Workflow
 
 export async function addInstanceComment(instanceId: number, input: CreateWorkflowCommentInput): Promise<WorkflowComment> {
   const inst = await assertParticipant(instanceId);
-  const allowComment = (inst.definitionSnapshot as { flowData?: { settings?: { allowComment?: boolean } } } | null)?.flowData?.settings?.allowComment;
+  const allowComment = inst.definitionSnapshot?.flowData?.settings?.allowComment;
   if (allowComment === false) {
     throw new HTTPException(403, { message: '该流程已关闭评论' });
   }

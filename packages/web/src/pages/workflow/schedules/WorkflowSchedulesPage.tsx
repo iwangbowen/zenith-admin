@@ -44,12 +44,21 @@ interface FormValues extends Record<string, unknown> {
   definitionId?: number | null;
   name?: string;
   cronExpression?: string;
+  timezone?: string | null;
   initiatorId?: number | null;
   titleTemplate?: string | null;
   status?: ScheduleStatus;
 }
 
 const defaultSearchParams: SearchParams = { definitionId: '', status: '' };
+
+/** 常用 IANA 时区选项（默认 Asia/Shanghai，可输入过滤） */
+const TIMEZONE_OPTIONS = [
+  'Asia/Shanghai', 'Asia/Hong_Kong', 'Asia/Taipei', 'Asia/Singapore', 'Asia/Tokyo', 'Asia/Seoul',
+  'Asia/Kolkata', 'Asia/Dubai', 'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Europe/Moscow',
+  'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Sao_Paulo',
+  'Australia/Sydney', 'Pacific/Auckland', 'UTC',
+].map((tz) => ({ value: tz, label: tz }));
 
 // CronBuilderPopover 内部使用 6 段（含秒）cron；定时发起存标准 5 段，故在边界转换
 const toSixField = (expr: string) => {
@@ -141,6 +150,7 @@ export default function WorkflowSchedulesPage() {
         definitionId: null,
         name: '',
         cronExpression: '',
+        timezone: null,
         initiatorId: null,
         titleTemplate: '',
         status: 'enabled',
@@ -157,6 +167,7 @@ export default function WorkflowSchedulesPage() {
         definitionId: row.definitionId,
         name: row.name,
         cronExpression: row.cronExpression,
+        timezone: row.timezone ?? null,
         initiatorId: row.initiatorId,
         titleTemplate: row.titleTemplate ?? '',
         status: row.status,
@@ -169,6 +180,7 @@ export default function WorkflowSchedulesPage() {
       definitionId: Number(values.definitionId),
       name: String(values.name ?? '').trim(),
       cronExpression: String(values.cronExpression ?? '').trim(),
+      timezone: typeof values.timezone === 'string' && values.timezone.trim() ? values.timezone.trim() : null,
       initiatorId: Number(values.initiatorId),
       titleTemplate:
         typeof values.titleTemplate === 'string' && values.titleTemplate.trim()
@@ -225,8 +237,11 @@ export default function WorkflowSchedulesPage() {
       title: 'Cron 表达式',
       dataIndex: 'cronExpression',
       width: 180,
-      render: (value: string) => (
-        <code style={{ fontFamily: 'var(--semi-font-family-monospace), monospace' }}>{value}</code>
+      render: (value: string, record) => (
+        <Space spacing={6}>
+          <code style={{ fontFamily: 'var(--semi-font-family-monospace), monospace' }}>{value}</code>
+          {record.timezone && record.timezone !== 'Asia/Shanghai' ? <Tag size="small" color="blue">{record.timezone}</Tag> : null}
+        </Space>
       ),
     },
     {
@@ -410,7 +425,7 @@ export default function WorkflowSchedulesPage() {
             label="Cron 表达式"
             maxLength={64}
             rules={[{ required: true, message: '请输入 Cron 表达式' }]}
-            extraText="标准 5 段 cron，时区 Asia/Shanghai，例：0 9 * * 1 表示每周一 9:00"
+            extraText="标准 5 段 cron，按下方时区解释，例：0 9 * * 1 表示每周一 9:00"
             addonAfter={
               <CronBuilderPopover
                 value={toSixField(cronExprValue)}
@@ -421,6 +436,16 @@ export default function WorkflowSchedulesPage() {
                 }}
               />
             }
+          />
+          <Form.Select
+            field="timezone"
+            label="时区"
+            style={{ width: '100%' }}
+            optionList={TIMEZONE_OPTIONS}
+            filter
+            showClear
+            placeholder="默认 Asia/Shanghai"
+            extraText="Cron 按该 IANA 时区计算触发时间，留空使用 Asia/Shanghai"
           />
           <Form.Select
             field="initiatorId"

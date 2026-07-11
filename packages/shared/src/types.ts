@@ -3424,6 +3424,8 @@ export interface WorkflowSchedule {
   definitionName?: string | null;
   name: string;
   cronExpression: string;
+  /** IANA 时区（如 Asia/Shanghai）；null = 默认 Asia/Shanghai */
+  timezone: string | null;
   initiatorId: number;
   initiatorName?: string | null;
   titleTemplate: string | null;

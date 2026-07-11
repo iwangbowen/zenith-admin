@@ -1,5 +1,6 @@
 import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, unique, text, uniqueIndex, index, jsonb, smallint, real, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import type { WorkflowDefinitionSnapshot } from '@zenith/shared';
 import { statusEnum } from './common';
 import { auditColumns, tenants, users } from './core';
 
@@ -213,8 +214,10 @@ export const workflowSchedules = pgTable('workflow_schedules', {
   id: serial('id').primaryKey(),
   definitionId: integer('definition_id').notNull().references(() => workflowDefinitions.id, { onDelete: 'cascade' }),
   name: varchar('name', { length: 128 }).notNull(),
-  /** 标准 cron 表达式（5 段，tz=Asia/Shanghai） */
+  /** 标准 cron 表达式（5 段） */
   cronExpression: varchar('cron_expression', { length: 64 }).notNull(),
+  /** IANA 时区（如 Asia/Shanghai、America/New_York）；null = 默认 Asia/Shanghai */
+  timezone: varchar('timezone', { length: 64 }),
   /** 自动发起时使用的发起人（必须在该流程发起范围内，系统以其身份创建实例） */
   initiatorId: integer('initiator_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   /** 标题模板，支持 {{date}} {{datetime}} 占位 */
@@ -425,7 +428,7 @@ export type NewWorkflowCompensation = typeof workflowCompensations.$inferInsert;
 export const workflowInstances = pgTable('workflow_instances', {
   id: serial('id').primaryKey(),
   definitionId: integer('definition_id').notNull().references(() => workflowDefinitions.id, { onDelete: 'restrict' }),
-  definitionSnapshot: jsonb('definition_snapshot').notNull(), // 发起时的定义快照
+  definitionSnapshot: jsonb('definition_snapshot').$type<WorkflowDefinitionSnapshot>().notNull(), // 发起时的定义快照
   formSnapshot: jsonb('form_snapshot'), // 发起时的表单快照（兼容旧 WorkflowFormField[]；新数据含 fields/settings/customForm）
   title: varchar('title', { length: 128 }).notNull(),
   /** 业务编号/流水号（按流程定义的编号规则在发起时生成，如 BX-20260620-0001） */

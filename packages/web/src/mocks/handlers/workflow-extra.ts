@@ -96,7 +96,7 @@ const ccReadState = new Set<number>();
 interface MockSavedView { id: number; userId: number; pageKey: string; name: string; filters: Record<string, unknown>; isDefault: boolean; sort: number; createdAt: string; updatedAt: string }
 const mockSavedViews: MockSavedView[] = [];
 let nextSavedViewId = 1;
-interface MockSchedule { id: number; definitionId: number; definitionName: string | null; name: string; cronExpression: string; initiatorId: number; initiatorName: string | null; titleTemplate: string | null; formData: Record<string, unknown> | null; status: 'enabled' | 'disabled'; lastRunAt: string | null; lastRunStatus: string | null; lastRunMessage: string | null; nextRunAt: string | null; tenantId: number | null; createdAt: string; updatedAt: string }
+interface MockSchedule { id: number; definitionId: number; definitionName: string | null; name: string; cronExpression: string; timezone: string | null; initiatorId: number; initiatorName: string | null; titleTemplate: string | null; formData: Record<string, unknown> | null; status: 'enabled' | 'disabled'; lastRunAt: string | null; lastRunStatus: string | null; lastRunMessage: string | null; nextRunAt: string | null; tenantId: number | null; createdAt: string; updatedAt: string }
 const mockSchedules: MockSchedule[] = [];
 let nextScheduleId = 1;
 
@@ -407,12 +407,12 @@ export const workflowExtraHandlers = [
     return ok({ list: mockSchedules.slice((page - 1) * pageSize, page * pageSize), total: mockSchedules.length, page, pageSize });
   }),
   http.post('/api/workflows/schedules', async ({ request }) => {
-    const body = await request.json() as { definitionId: number; name: string; cronExpression: string; initiatorId: number; titleTemplate?: string | null; formData?: Record<string, unknown> | null; status?: 'enabled' | 'disabled' };
+    const body = await request.json() as { definitionId: number; name: string; cronExpression: string; timezone?: string | null; initiatorId: number; titleTemplate?: string | null; formData?: Record<string, unknown> | null; status?: 'enabled' | 'disabled' };
     const def = mockWorkflowDefinitions.find((d) => d.id === body.definitionId);
     const now = mockDateTime();
     const s: MockSchedule = {
       id: nextScheduleId++, definitionId: body.definitionId, definitionName: def?.name ?? null,
-      name: body.name, cronExpression: body.cronExpression, initiatorId: body.initiatorId, initiatorName: `用户#${body.initiatorId}`,
+      name: body.name, cronExpression: body.cronExpression, timezone: body.timezone ?? null, initiatorId: body.initiatorId, initiatorName: `用户#${body.initiatorId}`,
       titleTemplate: body.titleTemplate ?? null, formData: body.formData ?? null, status: body.status ?? 'enabled',
       lastRunAt: null, lastRunStatus: null, lastRunMessage: null, nextRunAt: mockDateTime(), tenantId: null, createdAt: now, updatedAt: now,
     };

@@ -19,7 +19,7 @@ import type { WorkflowSchedule, CreateWorkflowScheduleInput, UpdateWorkflowSched
 
 type Row = typeof workflowSchedules.$inferSelect;
 
-const TZ = 'Asia/Shanghai';
+const DEFAULT_TZ = 'Asia/Shanghai';
 
 function mapSchedule(row: Row, extras: { definitionName?: string | null; initiatorName?: string | null } = {}): WorkflowSchedule {
   return {
@@ -28,6 +28,7 @@ function mapSchedule(row: Row, extras: { definitionName?: string | null; initiat
     definitionName: extras.definitionName ?? null,
     name: row.name,
     cronExpression: row.cronExpression,
+    timezone: row.timezone ?? null,
     initiatorId: row.initiatorId,
     initiatorName: extras.initiatorName ?? null,
     titleTemplate: row.titleTemplate ?? null,
@@ -43,9 +44,9 @@ function mapSchedule(row: Row, extras: { definitionName?: string | null; initiat
   };
 }
 
-function computeNextRun(cron: string, from: Date = new Date()): Date | null {
+function computeNextRun(cron: string, timezone?: string | null, from: Date = new Date()): Date | null {
   try {
-    return CronExpressionParser.parse(cron.trim(), { currentDate: from, tz: TZ }).next().toDate();
+    return CronExpressionParser.parse(cron.trim(), { currentDate: from, tz: timezone?.trim() || DEFAULT_TZ }).next().toDate();
   } catch {
     return null;
   }
@@ -118,18 +119,19 @@ export async function getWorkflowScheduleBeforeAudit(id: number): Promise<Workfl
 export async function createSchedule(input: CreateWorkflowScheduleInput): Promise<WorkflowSchedule> {
   const user = currentUser();
   await ensureScheduleDefinitionLaunchable(input.definitionId);
-  if (computeNextRun(input.cronExpression) === null) {
-    throw new HTTPException(400, { message: 'cron 表达式无效' });
+  if (computeNextRun(input.cronExpression, input.timezone) === null) {
+    throw new HTTPException(400, { message: 'cron 表达式或时区无效' });
   }
   const [row] = await db.insert(workflowSchedules).values({
     definitionId: input.definitionId,
     name: input.name,
     cronExpression: input.cronExpression,
+    timezone: input.timezone?.trim() || null,
     initiatorId: input.initiatorId,
     titleTemplate: input.titleTemplate ?? null,
     formData: input.formData ?? null,
     status: input.status ?? 'enabled',
-    nextRunAt: (input.status ?? 'enabled') === 'enabled' ? computeNextRun(input.cronExpression) : null,
+    nextRunAt: (input.status ?? 'enabled') === 'enabled' ? computeNextRun(input.cronExpression, input.timezone) : null,
     tenantId: getCreateTenantId(user),
   }).returning();
   return loadScheduleWithNames(row.id);
@@ -151,14 +153,17 @@ export async function updateSchedule(id: number, input: UpdateWorkflowScheduleIn
   if (input.titleTemplate !== undefined) patch.titleTemplate = input.titleTemplate ?? null;
   if (input.formData !== undefined) patch.formData = input.formData ?? null;
   const nextCron = input.cronExpression ?? existing.cronExpression;
-  if (input.cronExpression !== undefined) {
-    if (computeNextRun(input.cronExpression) === null) throw new HTTPException(400, { message: 'cron 表达式无效' });
-    patch.cronExpression = input.cronExpression;
+  const nextTz = input.timezone !== undefined ? (input.timezone?.trim() || null) : existing.timezone;
+  if (input.timezone !== undefined) patch.timezone = nextTz;
+  if (input.cronExpression !== undefined) patch.cronExpression = input.cronExpression;
+  if ((input.cronExpression !== undefined || input.timezone !== undefined)
+    && computeNextRun(nextCron, nextTz) === null) {
+    throw new HTTPException(400, { message: 'cron 表达式或时区无效' });
   }
   const nextStatus = input.status ?? existing.status;
   if (input.status !== undefined) patch.status = input.status;
-  // 重新计算 nextRunAt：启用时按（可能更新的）cron 计算，停用时清空
-  patch.nextRunAt = nextStatus === 'enabled' ? computeNextRun(nextCron) : null;
+  // 重新计算 nextRunAt：启用时按（可能更新的）cron/时区计算，停用时清空
+  patch.nextRunAt = nextStatus === 'enabled' ? computeNextRun(nextCron, nextTz) : null;
   const [row] = await db.update(workflowSchedules).set(patch).where(eq(workflowSchedules.id, id)).returning();
   return loadScheduleWithNames(row.id);
 }
@@ -220,7 +225,7 @@ export async function runDueWorkflowSchedules(): Promise<void> {
   ));
   for (const s of due) {
     await fireSchedule(s);
-    const next = computeNextRun(s.cronExpression, new Date());
+    const next = computeNextRun(s.cronExpression, s.timezone, new Date());
     await db.update(workflowSchedules).set({ nextRunAt: next }).where(eq(workflowSchedules.id, s.id));
   }
 }

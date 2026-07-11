@@ -54,7 +54,7 @@ const callback = defineOpenAPIRoute({
     const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
     if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
 
-    const snapshot = inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null;
+    const snapshot = inst.definitionSnapshot;
     const nodeCfg = snapshot?.flowData?.nodes.find((n) => n.data.key === task.nodeKey)?.data;
     const ext: WorkflowExternalApprovalConfig | undefined = nodeCfg?.externalApproval;
     if (!ext?.enabled) throw new HTTPException(400, { message: '当前任务未启用外部审批' });

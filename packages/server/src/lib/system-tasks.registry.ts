@@ -148,6 +148,17 @@ export async function registerSystemTasks(): Promise<void> {
     run: runWorkflowEngineHealthCapture,
   });
 
+  const { runWorkflowTokenCleanup } = await import('../services/workflow/workflow-engine-ops.service');
+  await registerSystemRecurringJob({
+    name: 'workflow-token-cleanup',
+    title: '工作流 Token 保留期清理',
+    module: '工作流',
+    cronExpression: '40 3 * * *',
+    description: '每天分批清理终态（通过/驳回/撤回/取消）超过 90 天实例的执行 Token，控制 token 表增长；保留期内 Trace 与诊断不受影响。',
+    allowManualRun: true,
+    run: runWorkflowTokenCleanup,
+  });
+
   const { registerAsyncTaskWorker, drainAsyncTasks, cleanupAsyncTasks } = await import('./task-center');  await registerAsyncTaskWorker();
   await registerSystemRecurringJob({
     name: 'async-tasks-drain',

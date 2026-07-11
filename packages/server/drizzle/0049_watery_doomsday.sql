@@ -1,0 +1,1 @@
+ALTER TABLE "workflow_schedules" ADD COLUMN "timezone" varchar(64);

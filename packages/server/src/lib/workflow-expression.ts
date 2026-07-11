@@ -160,9 +160,31 @@ function evalNode(node: Node, scope: Record<string, unknown>): unknown {
   }
 }
 
-/** 安全求值：解析 + 校验 + 解释执行 */
+/** 安全求值：解析 + 校验 + 解释执行（解析结果走 LRU 缓存，条件求值高频复用同一表达式） */
 export function evaluateExpression(expr: string, scope: Record<string, unknown>): unknown {
-  return evalNode(parseExpression(expr), scope);
+  return evalNode(parseExpressionCached(expr), scope);
+}
+
+// ─── AST LRU 缓存：网关条件/公式在每次推进时重复求值，避免重复 parse ───
+const AST_CACHE_MAX = 500;
+const astCache = new Map<string, Node>();
+
+function parseExpressionCached(expr: string): Node {
+  const key = (expr ?? '').trim();
+  const hit = astCache.get(key);
+  if (hit) {
+    // Map 按插入序迭代：删除后重插实现 LRU 触达提升
+    astCache.delete(key);
+    astCache.set(key, hit);
+    return hit;
+  }
+  const ast = parseExpression(expr);
+  if (astCache.size >= AST_CACHE_MAX) {
+    const oldest = astCache.keys().next().value;
+    if (oldest !== undefined) astCache.delete(oldest);
+  }
+  astCache.set(key, ast);
+  return ast;
 }
 
 /** 收集表达式引用到的成员路径（如 `form.amount`、`starter.id`）与根标识符 */

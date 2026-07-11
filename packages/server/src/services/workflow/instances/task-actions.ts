@@ -3,7 +3,7 @@ import { eq, and, desc, or, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
 import { workflowInstances, workflowTasks } from '../../../db/schema';
 import { findReturnPrevTarget } from '../../../lib/workflow-engine';
-import type { WorkflowFlowData, WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonConfig } from '@zenith/shared';
+import type { WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonConfig, WorkflowNodeConfig } from '@zenith/shared';
 import { findNextApproverSelectNodes, resolveNodeFieldPermissions, sanitizeFormUpdatesByNodePerms } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../../lib/context';
@@ -19,6 +19,7 @@ import { emitInstanceEvent, emitNodeEvent, emitTaskEvent } from './shared';
 import { hasUserHandledTask } from './transfers';
 import { bridgeReportFillWorkflowOutcome } from '../../report/report-fill-workflow-bridge.service';
 import { submitReportFillSyncForWorkflowInstance } from '../../report/report-fill-task.service';
+import type { DbExecutor } from '../../../db/types';
 
 export type WorkflowTaskAttachment = { name: string; url: string; size?: number };
 
@@ -28,7 +29,7 @@ function resolveNodeActionButton(
   nodeKey: string,
   key: WorkflowActionButtonKey,
 ): WorkflowActionButtonConfig | undefined {
-  const flowData = (inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData;
+  const flowData = inst.definitionSnapshot?.flowData;
   const nodeCfg = flowData?.nodes.find((n) => n.data.key === nodeKey)?.data;
   const buttons = nodeCfg?.actionButtons as Partial<Record<WorkflowActionButtonKey, WorkflowActionButtonConfig>> | undefined;
   return buttons?.[key];
@@ -75,7 +76,7 @@ export async function listTaskSelectableNextApprovers(taskId: number): Promise<W
   if (task.status !== 'pending') return [];
   const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
   if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
-  const flowData = (inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData;
+  const flowData = inst.definitionSnapshot?.flowData;
   if (!flowData) return [];
   const nodes = findNextApproverSelectNodes(flowData, task.nodeKey);
   return Promise.all(nodes.map(async (node) => ({
@@ -94,7 +95,7 @@ export async function approveTask(taskId: number, comment?: string, attachments?
   if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
   if (inst.status !== 'running') throw new HTTPException(400, { message: inst.status === 'suspended' ? '流程已挂起，暂不可处理' : '流程实例不在进行中' });
   // 校验"操作按钮设置"中通过按钮的附件必填（uploadMode === 'required'）
-  const flowData = (inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData;
+  const flowData = inst.definitionSnapshot?.flowData;
   const nodeCfg = flowData?.nodes.find((n) => n.data.key === task.nodeKey)?.data;
   assertActionUploadRequirement(inst, task.nodeKey, 'approve', attachments);
   if (flowData) {
@@ -138,6 +139,78 @@ export async function approveTaskByCallback(callbackId: string, comment: string 
   }
 }
 
+// ─── 审批 / 驳回共享阶段函数（拆分自 approveTaskCore / rejectTaskCore，行为不变）───
+
+type InstanceRow = typeof workflowInstances.$inferSelect;
+type TaskRow = typeof workflowTasks.$inferSelect;
+type FillBridgeResult = Awaited<ReturnType<typeof bridgeReportFillWorkflowOutcome>>;
+
+/** 事务内落定实例终态：可选清理余下待办 / 终止 token，更新实例状态并触发报表填报桥接 */
+async function settleInstanceInTx(
+  tx: DbExecutor,
+  instanceId: number,
+  opts: {
+    outcome: 'approved' | 'rejected';
+    actorId: number;
+    comment?: string | null;
+    /** 清理实例余下 pending/waiting 任务（如并行其它分支待办），保证终态实例无残留待办 */
+    skipRemaining?: boolean;
+    /** 终止所有 active token（驳回终止场景） */
+    killTokens?: boolean;
+  },
+): Promise<{ row: InstanceRow; fillBridge: FillBridgeResult }> {
+  if (opts.skipRemaining) {
+    await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date() })
+      .where(and(eq(workflowTasks.instanceId, instanceId), inArray(workflowTasks.status, ['pending', 'waiting'])));
+  }
+  if (opts.killTokens) await killInstanceTokens(tx, instanceId);
+  const [row] = await tx.update(workflowInstances)
+    .set({ status: opts.outcome, currentNodeKey: null })
+    .where(eq(workflowInstances.id, instanceId))
+    .returning();
+  const fillBridge = await bridgeReportFillWorkflowOutcome(tx, {
+    workflowInstanceId: instanceId,
+    outcome: opts.outcome,
+    actorId: opts.actorId,
+    comment: opts.comment ?? null,
+  });
+  return { row, fillBridge };
+}
+
+/** 推进产生的新任务统一补发 node.entered / task.created / assigned / approved / rejected 事件 */
+function emitTasksMaterializedEvents(
+  instanceId: number,
+  newTasks: TaskRow[],
+  meta: { definitionId: number; tenantId: number | null; actor?: WorkflowEventActor },
+): void {
+  for (const t of newTasks) {
+    emitNodeEvent('node.entered', { instanceId, ...meta, nodeKey: t.nodeKey, nodeName: t.nodeName, nodeType: t.nodeType });
+    emitTaskEvent('task.created', mapTask(t), meta);
+    if (t.assigneeId && t.status === 'pending') emitTaskEvent('task.assigned', mapTask(t), meta);
+    if (t.status === 'approved') emitTaskEvent('task.approved', mapTask(t), meta);
+    if (t.status === 'rejected') emitTaskEvent('task.rejected', mapTask(t), meta);
+  }
+}
+
+/** 子实例进入终态时唤醒父流程 join 作业 */
+function notifySubprocessParent(row: InstanceRow): void {
+  if (!row.parentTaskId) return;
+  void enqueueSubprocessJoin(row).catch((err) => {
+    logger.error('[subProcess] resume parent failed', { childId: row.id, err });
+  });
+}
+
+/** 报表填报桥接确认通过后，异步补发同步任务 */
+function scheduleReportFillSync(fillBridge: FillBridgeResult | null, instanceId: number): void {
+  if (!fillBridge?.approved) return;
+  void submitReportFillSyncForWorkflowInstance(instanceId).catch((error) => {
+    logger.error('[report-fill] enqueue sync task failed', {
+      workflowInstanceId: instanceId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+}
+
 export async function approveTaskCore(
   task: typeof workflowTasks.$inferSelect,
   inst: typeof workflowInstances.$inferSelect,
@@ -146,7 +219,7 @@ export async function approveTaskCore(
   options?: { selectedNextApprovers?: Record<string, number[]>; signature?: string; attachments?: Array<{ name: string; url: string; size?: number }>; formUpdates?: Record<string, unknown> },
 ): Promise<ApproveResult> {
   const taskId = task.id;
-  const snapshot = inst.definitionSnapshot as { flowData?: WorkflowFlowData };
+  const snapshot = inst.definitionSnapshot;
   const flowData = snapshot?.flowData;
   if (!flowData) throw new HTTPException(500, { message: '流程快照数据异常' });
 
@@ -212,28 +285,18 @@ export async function approveTaskCore(
     });
 
     if (materialized.rejected) {
-      // 下游自动拒绝终止流程：清理实例其余未结束任务（如并行其它分支待办），保证 rejected 实例无残留待办
-      await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date() })
-        .where(and(eq(workflowTasks.instanceId, inst.id), inArray(workflowTasks.status, ['pending', 'waiting'])));
-      const [row] = await tx.update(workflowInstances).set({ status: 'rejected', currentNodeKey: null }).where(eq(workflowInstances.id, inst.id)).returning();
-      const fillBridge = await bridgeReportFillWorkflowOutcome(tx, {
-        workflowInstanceId: inst.id,
-        outcome: 'rejected',
-        actorId: actor.userId,
-        comment: '工作流自动拒绝',
+      // 下游自动拒绝终止流程
+      const settled = await settleInstanceInTx(tx, inst.id, {
+        outcome: 'rejected', actorId: actor.userId, comment: '工作流自动拒绝', skipRemaining: true,
       });
-      return { row, finished: false, rejected: true, advanced: true, approvedTask, newTasks: materialized.createdTasks, fillBridge };
+      return { row: settled.row, finished: false, rejected: true, advanced: true, approvedTask, newTasks: materialized.createdTasks, fillBridge: settled.fillBridge };
     }
 
     if (materialized.finished) {
-      const [row] = await tx.update(workflowInstances).set({ status: 'approved', currentNodeKey: null }).where(eq(workflowInstances.id, inst.id)).returning();
-      const fillBridge = await bridgeReportFillWorkflowOutcome(tx, {
-        workflowInstanceId: inst.id,
-        outcome: 'approved',
-        actorId: actor.userId,
-        comment: comment ?? null,
+      const settled = await settleInstanceInTx(tx, inst.id, {
+        outcome: 'approved', actorId: actor.userId, comment: comment ?? null,
       });
-      return { row, finished: true, rejected: false, advanced: true, approvedTask, newTasks: materialized.createdTasks, fillBridge };
+      return { row: settled.row, finished: true, rejected: false, advanced: true, approvedTask, newTasks: materialized.createdTasks, fillBridge: settled.fillBridge };
     }
 
     const [row] = await tx.update(workflowInstances)
@@ -243,48 +306,21 @@ export async function approveTaskCore(
     return { row, finished: false, rejected: false, advanced: true, approvedTask, newTasks: materialized.createdTasks, fillBridge: null };
   });
 
-  if (updated.fillBridge?.approved) {
-    void submitReportFillSyncForWorkflowInstance(updated.row.id).catch((error) => {
-      logger.error('[report-fill] enqueue sync task failed', {
-        workflowInstanceId: updated.row.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    });
-  }
+  scheduleReportFillSync(updated.fillBridge, updated.row.id);
 
   const meta = { definitionId: updated.row.definitionId, tenantId: updated.row.tenantId, actor };
   emitTaskEvent('task.approved', mapTask(updated.approvedTask), { ...meta, comment });
   if (updated.advanced) {
     emitNodeEvent('node.left', { instanceId: updated.row.id, ...meta, nodeKey: task.nodeKey, nodeName: task.nodeName, nodeType: task.nodeType });
   }
-  for (const t of updated.newTasks) {
-    emitNodeEvent('node.entered', { instanceId: updated.row.id, ...meta, nodeKey: t.nodeKey, nodeName: t.nodeName, nodeType: t.nodeType });
-    emitTaskEvent('task.created', mapTask(t), meta);
-    if (t.assigneeId && t.status === 'pending') {
-      emitTaskEvent('task.assigned', mapTask(t), meta);
-    }
-    if (t.status === 'approved') {
-      emitTaskEvent('task.approved', mapTask(t), meta);
-    }
-    if (t.status === 'rejected') {
-      emitTaskEvent('task.rejected', mapTask(t), meta);
-    }
-  }
+  emitTasksMaterializedEvents(updated.row.id, updated.newTasks, meta);
   if (updated.finished) {
     emitInstanceEvent('instance.approved', mapInstance(updated.row), actor);
-    if (updated.row.parentTaskId) {
-      void enqueueSubprocessJoin(updated.row).catch((err) => {
-        logger.error('[subProcess] resume parent failed', { childId: updated.row.id, err });
-      });
-    }
+    notifySubprocessParent(updated.row);
   }
   if (updated.rejected) {
     emitInstanceEvent('instance.rejected', mapInstance(updated.row), actor);
-    if (updated.row.parentTaskId) {
-      void enqueueSubprocessJoin(updated.row).catch((err) => {
-        logger.error('[subProcess] resume parent failed', { childId: updated.row.id, err });
-      });
-    }
+    notifySubprocessParent(updated.row);
   }
 
   let message: string;
@@ -344,28 +380,26 @@ export async function rejectTaskByCallback(callbackId: string, comment: string, 
   }
 }
 
-export async function rejectTaskCore(
-  task: typeof workflowTasks.$inferSelect,
-  inst: typeof workflowInstances.$inferSelect,
-  comment: string,
-  actor: WorkflowEventActor,
-  attachments?: WorkflowTaskAttachment[],
-): Promise<ApproveResult> {
-  const taskId = task.id;
-  // 读取节点驳回策略
-  const snapshot = inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null;
-  const flowData = snapshot?.flowData;
+type RejectRouteStrategy = 'terminate' | 'returnPrev' | 'returnStart' | 'returnToNode';
+
+/**
+ * 解析驳回路由：优先「操作按钮设置」中拒绝按钮的跳转配置，其次节点驳回策略；
+ * returnPrev 按审批时间倒序在已通过的 approve/handler 节点中找最近上游祖先。
+ */
+async function resolveRejectRoute(
+  task: TaskRow,
+  inst: InstanceRow,
+): Promise<{ strategy: RejectRouteStrategy; targetNodeKey: string | null; currentNodeCfg: WorkflowNodeConfig | undefined }> {
+  const flowData = inst.definitionSnapshot?.flowData;
   const currentNodeCfg = flowData?.nodes.find((n) => n.data.key === task.nodeKey)?.data;
-  // 优先采用“操作按钮设置”中拒绝按钮的跳转配置
   const actionRejectJump = (currentNodeCfg?.actionButtons as { reject?: { jumpToNodeKey?: string } } | undefined)?.reject?.jumpToNodeKey;
-  let strategy: 'terminate' | 'returnPrev' | 'returnStart' | 'returnToNode' = currentNodeCfg?.rejectStrategy ?? 'terminate';
+  let strategy: RejectRouteStrategy = currentNodeCfg?.rejectStrategy ?? 'terminate';
   let rejectToNodeKey: string | undefined = currentNodeCfg?.rejectToNodeKey;
   if (actionRejectJump) {
     strategy = 'returnToNode';
     rejectToNodeKey = actionRejectJump;
   }
 
-  // 解析目标节点（returnPrev / returnStart / returnToNode）
   let targetNodeKey: string | null = null;
   if (strategy !== 'terminate' && flowData) {
     if (strategy === 'returnToNode') {
@@ -393,6 +427,38 @@ export async function rejectTaskCore(
       targetNodeKey = '__start__';
     }
   }
+  return { strategy, targetNodeKey, currentNodeCfg };
+}
+
+/**
+ * 比例会签部分驳回判定：本任务驳回后若通过阈值仍可达成，节点保持活动。
+ * 必须在实例行级锁内基于最新状态判定，避免并发驳回都不触发整节点驳回而使节点卡死。
+ */
+async function keepRatioNodeAliveAfterReject(
+  tx: DbExecutor,
+  instanceId: number,
+  nodeKey: string,
+): Promise<boolean> {
+  const ratioSiblings = await tx.select().from(workflowTasks)
+    .where(and(eq(workflowTasks.instanceId, instanceId), eq(workflowTasks.nodeKey, nodeKey)));
+  const ratioPct = ratioSiblings.find((t) => t.approveRatio)?.approveRatio ?? 51;
+  const required = Math.ceil(ratioSiblings.length * ratioPct / 100);
+  const maxPossibleApproved = ratioSiblings
+    .filter((t) => t.status === 'approved' || t.status === 'pending' || t.status === 'waiting')
+    .length;
+  return maxPossibleApproved >= required;
+}
+
+export async function rejectTaskCore(
+  task: typeof workflowTasks.$inferSelect,
+  inst: typeof workflowInstances.$inferSelect,
+  comment: string,
+  actor: WorkflowEventActor,
+  attachments?: WorkflowTaskAttachment[],
+): Promise<ApproveResult> {
+  const taskId = task.id;
+  const flowData = inst.definitionSnapshot?.flowData;
+  const { strategy, targetNodeKey, currentNodeCfg } = await resolveRejectRoute(task, inst);
 
   const updated = await db.transaction(async (tx) => {
     // 实例行级锁：序列化同一实例上的并发审批/驳回，避免与并发审批互相覆盖推进
@@ -409,27 +475,17 @@ export async function rejectTaskCore(
     if (!rejectedTask) throw new HTTPException(409, { message: '任务已被处理，请刷新后重试' });
 
     // 比例会签：本任务驳回后若阈值仍可达成，仅记录该任务驳回、节点保持活动。
-    // 必须在实例行级锁内基于最新状态判定，避免并发驳回各自读到旧状态、都不触发整节点驳回而使节点卡死。
-    if (rejectedTask.approveMethod === 'ratio') {
-      const ratioSiblings = await tx.select().from(workflowTasks)
-        .where(and(eq(workflowTasks.instanceId, inst.id), eq(workflowTasks.nodeKey, task.nodeKey)));
-      const ratioPct = ratioSiblings.find((t) => t.approveRatio)?.approveRatio ?? 51;
-      const required = Math.ceil(ratioSiblings.length * ratioPct / 100);
-      const maxPossibleApproved = ratioSiblings
-        .filter((t) => t.status === 'approved' || t.status === 'pending' || t.status === 'waiting')
-        .length;
-      if (maxPossibleApproved >= required) {
-        return {
-          row: inst,
-          terminated: false as const,
-          finished: false as const,
-          partial: true as const,
-          rejectedTask,
-          skippedTasks: [] as typeof workflowTasks.$inferSelect[],
-          newTasks: [] as typeof workflowTasks.$inferSelect[],
-          fillBridge: null,
-        };
-      }
+    if (rejectedTask.approveMethod === 'ratio' && await keepRatioNodeAliveAfterReject(tx, inst.id, task.nodeKey)) {
+      return {
+        row: inst,
+        terminated: false as const,
+        finished: false as const,
+        partial: true as const,
+        rejectedTask,
+        skippedTasks: [] as typeof workflowTasks.$inferSelect[],
+        newTasks: [] as typeof workflowTasks.$inferSelect[],
+        fillBridge: null,
+      };
     }
 
     // 同节点其他 pending / waiting 任务跳过
@@ -444,18 +500,10 @@ export async function rejectTaskCore(
 
     // 终止：实例置为 rejected
     if (strategy === 'terminate' || !targetNodeKey || !flowData) {
-      await killInstanceTokens(tx, inst.id);
-      const [row] = await tx.update(workflowInstances)
-        .set({ status: 'rejected', currentNodeKey: null })
-        .where(eq(workflowInstances.id, inst.id))
-        .returning();
-      const fillBridge = await bridgeReportFillWorkflowOutcome(tx, {
-        workflowInstanceId: inst.id,
-        outcome: 'rejected',
-        actorId: actor.userId,
-        comment,
+      const settled = await settleInstanceInTx(tx, inst.id, {
+        outcome: 'rejected', actorId: actor.userId, comment, killTokens: true,
       });
-      return { row, terminated: true, rejectedTask, skippedTasks: skipped, newTasks: [] as typeof workflowTasks.$inferSelect[], fillBridge };
+      return { row: settled.row, terminated: true, rejectedTask, skippedTasks: skipped, newTasks: [] as typeof workflowTasks.$inferSelect[], fillBridge: settled.fillBridge };
     }
 
     // 回退：实例保持 running，在目标节点重新生成任务
@@ -473,18 +521,10 @@ export async function rejectTaskCore(
     }
 
     if (!returnTrigger) {
-      await killInstanceTokens(tx, inst.id);
-      const [row] = await tx.update(workflowInstances)
-        .set({ status: 'rejected', currentNodeKey: null })
-        .where(eq(workflowInstances.id, inst.id))
-        .returning();
-      const fillBridge = await bridgeReportFillWorkflowOutcome(tx, {
-        workflowInstanceId: inst.id,
-        outcome: 'rejected',
-        actorId: actor.userId,
-        comment,
+      const settled = await settleInstanceInTx(tx, inst.id, {
+        outcome: 'rejected', actorId: actor.userId, comment, killTokens: true,
       });
-      return { row, terminated: true, rejectedTask, skippedTasks: skipped, newTasks: [] as typeof workflowTasks.$inferSelect[], fillBridge };
+      return { row: settled.row, terminated: true, rejectedTask, skippedTasks: skipped, newTasks: [] as typeof workflowTasks.$inferSelect[], fillBridge: settled.fillBridge };
     }
 
     // 回退前清场：终止所有 active token，避免旧并行分支残留 token 影响重建路径的汇聚判定
@@ -510,34 +550,18 @@ export async function rejectTaskCore(
     }
 
     if (materialized.rejected) {
-      // 下游自动拒绝终止流程：清理实例其余未结束任务，保证 rejected 实例无残留待办
-      await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date() })
-        .where(and(eq(workflowTasks.instanceId, inst.id), inArray(workflowTasks.status, ['pending', 'waiting'])));
-      const [row] = await tx.update(workflowInstances)
-        .set({ status: 'rejected', currentNodeKey: null })
-        .where(eq(workflowInstances.id, inst.id))
-        .returning();
-      const fillBridge = await bridgeReportFillWorkflowOutcome(tx, {
-        workflowInstanceId: inst.id,
-        outcome: 'rejected',
-        actorId: actor.userId,
-        comment,
+      // 下游自动拒绝终止流程
+      const settled = await settleInstanceInTx(tx, inst.id, {
+        outcome: 'rejected', actorId: actor.userId, comment, skipRemaining: true,
       });
-      return { row, terminated: true, rejectedTask, skippedTasks: skipped, newTasks: materialized.createdTasks, fillBridge };
+      return { row: settled.row, terminated: true, rejectedTask, skippedTasks: skipped, newTasks: materialized.createdTasks, fillBridge: settled.fillBridge };
     }
 
     if (materialized.finished) {
-      const [row] = await tx.update(workflowInstances)
-        .set({ status: 'approved', currentNodeKey: null })
-        .where(eq(workflowInstances.id, inst.id))
-        .returning();
-      const fillBridge = await bridgeReportFillWorkflowOutcome(tx, {
-        workflowInstanceId: inst.id,
-        outcome: 'approved',
-        actorId: actor.userId,
-        comment,
+      const settled = await settleInstanceInTx(tx, inst.id, {
+        outcome: 'approved', actorId: actor.userId, comment,
       });
-      return { row, terminated: false, finished: true, rejectedTask, skippedTasks: skipped, newTasks: materialized.createdTasks, fillBridge };
+      return { row: settled.row, terminated: false, finished: true, rejectedTask, skippedTasks: skipped, newTasks: materialized.createdTasks, fillBridge: settled.fillBridge };
     }
 
     const [row] = await tx.update(workflowInstances)
@@ -547,14 +571,7 @@ export async function rejectTaskCore(
     return { row, terminated: false, finished: false, rejectedTask, skippedTasks: skipped, newTasks: materialized.createdTasks, fillBridge: null };
   });
 
-  if (updated.fillBridge?.approved) {
-    void submitReportFillSyncForWorkflowInstance(updated.row.id).catch((error) => {
-      logger.error('[report-fill] enqueue sync task failed', {
-        workflowInstanceId: updated.row.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    });
-  }
+  scheduleReportFillSync(updated.fillBridge, updated.row.id);
 
   const meta = { definitionId: updated.row.definitionId, tenantId: updated.row.tenantId, actor };
   emitTaskEvent('task.rejected', mapTask(updated.rejectedTask), { ...meta, comment });
@@ -568,26 +585,12 @@ export async function rejectTaskCore(
   emitNodeEvent('node.left', { instanceId: updated.row.id, ...meta, nodeKey: task.nodeKey, nodeName: task.nodeName, nodeType: task.nodeType });
   if (updated.terminated) {
     emitInstanceEvent('instance.rejected', mapInstance(updated.row), actor);
-    if (updated.row.parentTaskId) {
-      void enqueueSubprocessJoin(updated.row).catch((err) => {
-        logger.error('[subProcess] resume parent failed', { childId: updated.row.id, err });
-      });
-    }
+    notifySubprocessParent(updated.row);
   } else {
-    for (const t of updated.newTasks) {
-      emitNodeEvent('node.entered', { instanceId: updated.row.id, ...meta, nodeKey: t.nodeKey, nodeName: t.nodeName, nodeType: t.nodeType });
-      emitTaskEvent('task.created', mapTask(t), meta);
-      if (t.assigneeId && t.status === 'pending') emitTaskEvent('task.assigned', mapTask(t), meta);
-      if (t.status === 'approved') emitTaskEvent('task.approved', mapTask(t), meta);
-      if (t.status === 'rejected') emitTaskEvent('task.rejected', mapTask(t), meta);
-    }
+    emitTasksMaterializedEvents(updated.row.id, updated.newTasks, meta);
     if (updated.finished) {
       emitInstanceEvent('instance.approved', mapInstance(updated.row), actor);
-      if (updated.row.parentTaskId) {
-        void enqueueSubprocessJoin(updated.row).catch((err) => {
-          logger.error('[subProcess] resume parent failed', { childId: updated.row.id, err });
-        });
-      }
+      notifySubprocessParent(updated.row);
     }
   }
 
@@ -634,7 +637,7 @@ async function processDelegatedReceipt(
     }).where(and(eq(workflowTasks.id, task.id), eq(workflowTasks.status, task.status))).returning();
     if (!closedTask) throw new HTTPException(409, { message: '任务已被处理，请刷新后重试' });
     // 委派人同样是节点合法处理人：其「可编辑」字段修改按同一白名单合并进实例表单
-    const receiptFlow = (inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData;
+    const receiptFlow = inst.definitionSnapshot?.flowData;
     const sanitizedUpdates = sanitizeFormUpdatesByNodePerms(
       resolveNodeFieldPermissions(receiptFlow, task.nodeKey),
       formUpdates,

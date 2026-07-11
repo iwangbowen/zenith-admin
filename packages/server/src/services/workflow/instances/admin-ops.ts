@@ -24,7 +24,7 @@ export async function jumpInstance(id: number, targetNodeKey: string, comment?: 
   const [inst] = await db.select().from(workflowInstances).where(and(...conds)).limit(1);
   if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
   if (inst.status !== 'running') throw new HTTPException(400, { message: '仅审批中的流程可强制跳转' });
-  const snapshot = inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null;
+  const snapshot = inst.definitionSnapshot;
   const flowData = snapshot?.flowData;
   if (!flowData?.nodes?.length) throw new HTTPException(400, { message: '流程数据异常' });
   const targetNode = flowData.nodes.find((n) => n.data.key === targetNodeKey);
@@ -276,7 +276,7 @@ export async function skipStuckToken(tokenId: number, reason?: string) {
   const { user, tok, inst } = await loadTokenForOps(tokenId);
   if (tok.status !== 'active') throw new HTTPException(400, { message: '仅活动 Token 可跳过' });
   if (inst.status !== 'running') throw new HTTPException(400, { message: '仅运行中实例可操作' });
-  const flowData = (inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData;
+  const flowData = inst.definitionSnapshot?.flowData;
   if (!flowData) throw new HTTPException(500, { message: '流程快照数据异常' });
   const nodeCfg = flowData.nodes.find((n) => n.data.key === tok.nodeKey)?.data;
   const nodeName = nodeCfg?.label ?? tok.nodeKey;

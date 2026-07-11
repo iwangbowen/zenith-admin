@@ -170,7 +170,7 @@ export async function listPendingMine(query: { page?: number; pageSize?: number;
   const activeNodeKeys = await loadActiveNodeKeysByInstance(rows.map((row) => row.inst.id));
   return {
     list: rows.map((r) => {
-      const flow = (r.inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData;
+      const flow = r.inst.definitionSnapshot?.flowData ?? undefined;
       const node = flow?.nodes.find((n) => n.data.key === r.task.nodeKey)?.data;
       const pendingSignatureRequired = node?.operations?.includes('signature') ?? false;
       // 紧邻下一节点为「审批人自选」的任务无法批量审批（需逐个指定下一节点审批人），列表提前标注
@@ -414,24 +414,28 @@ export async function getInstanceDetail(id: number) {
     }
   }
   if (!allowed) throw new HTTPException(403, { message: '无权查看' });
-  const snapshot = row.definitionSnapshot as { flowData?: WorkflowFlowData } | null;
-  const transfersByTask = await loadInstanceTransfersByTask(id);
+  const snapshot = row.definitionSnapshot;
+  // 转办明细 / 子实例 / 评论 / 征询相互独立，权限判定通过后并行加载
+  const [transfersByTask, childRows, comments, consults] = await Promise.all([
+    loadInstanceTransfersByTask(id),
+    db.select({
+      id: workflowInstances.id,
+      title: workflowInstances.title,
+      status: workflowInstances.status,
+      parentTaskId: workflowInstances.parentTaskId,
+      createdAt: workflowInstances.createdAt,
+    }).from(workflowInstances)
+      .where(eq(workflowInstances.parentInstanceId, id))
+      .orderBy(workflowInstances.id),
+    loadInstanceCommentsForDetail(id),
+    loadInstanceConsultsForDetail(id),
+  ]);
   const tasks = row.tasks.map((t) => {
     const cfg = snapshot?.flowData?.nodes.find((n) => n.data.key === t.nodeKey)?.data;
     const actionButtons = cfg?.actionButtons;
     const signatureRequired = cfg?.operations?.includes('signature') ?? false;
     return mapTask(t, t.assignee?.nickname, t.assignee?.avatar, actionButtons ?? null, signatureRequired, transfersByTask.get(t.id) ?? null);
   });
-  // 子流程：查询本实例发起的子实例（按父任务关联到节点 key）
-  const childRows = await db.select({
-    id: workflowInstances.id,
-    title: workflowInstances.title,
-    status: workflowInstances.status,
-    parentTaskId: workflowInstances.parentTaskId,
-    createdAt: workflowInstances.createdAt,
-  }).from(workflowInstances)
-    .where(eq(workflowInstances.parentInstanceId, id))
-    .orderBy(workflowInstances.id);
   const taskNodeKeyById = new Map(row.tasks.map((t) => [t.id, t.nodeKey]));
   const childInstances = childRows.map((c) => ({
     id: c.id,
@@ -440,8 +444,6 @@ export async function getInstanceDetail(id: number) {
     parentTaskNodeKey: c.parentTaskId != null ? (taskNodeKeyById.get(c.parentTaskId) ?? null) : null,
     createdAt: formatDateTime(c.createdAt),
   }));
-  const comments = await loadInstanceCommentsForDetail(id);
-  const consults = await loadInstanceConsultsForDetail(id);
   return mapInstance(row, {
     definitionName: row.definition?.name ?? null,
     initiatorName: row.initiator?.nickname ?? null,

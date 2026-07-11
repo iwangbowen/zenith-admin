@@ -4,7 +4,6 @@ import { eq, and, desc } from 'drizzle-orm';
 import { db } from '../../../db';
 import { workflowInstances, workflowTasks, workflowTaskUrges } from '../../../db/schema';
 import { tenantCondition } from '../../../lib/tenant';
-import type { WorkflowFlowData } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../../lib/context';
 import { mapTask } from './mapping';
@@ -217,7 +216,7 @@ export async function addInstanceCc(instanceId: number, nodeKey: string, userIds
   const isAdmin = (user.roles ?? []).some((r) => r === 'super_admin' || r === 'tenant_admin');
   if (!isInitiator && !isAdmin) throw new HTTPException(403, { message: '仅发起人或管理员可补加抄送' });
 
-  const flowData = (inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData;
+  const flowData = inst.definitionSnapshot?.flowData;
   if (!flowData) throw new HTTPException(500, { message: '流程快照数据异常' });
   const node = flowData.nodes.find((n) => n.data.key === nodeKey);
   if (!node) throw new HTTPException(400, { message: '抄送节点不存在' });

@@ -4,6 +4,7 @@ import type { WorkflowFlowData } from '@zenith/shared';
 import { db } from '../../db';
 import { workflowInstances, workflowDefinitions, workflowTokens, workflowTasks, workflowInstanceMigrations } from '../../db/schema';
 import { currentUser } from '../../lib/context';
+import { toDefinitionSnapshot } from './instances/shared';
 import { getCreateTenantId } from '../../lib/tenant';
 import { formatDateTime } from '../../lib/datetime';
 import { buildMigrationNodes } from '../../lib/workflow-migration';
@@ -24,7 +25,7 @@ async function loadForMigration(instanceId: number) {
   if (!inst) throw new HTTPException(404, { message: '实例不存在' });
   const [def] = await db.select().from(workflowDefinitions).where(eq(workflowDefinitions.id, inst.definitionId)).limit(1);
   if (!def) throw new HTTPException(400, { message: '流程定义不存在' });
-  const fromVersion = (inst.definitionSnapshot as { version?: number } | null)?.version ?? 0;
+  const fromVersion = inst.definitionSnapshot?.version ?? 0;
   return { inst, def, fromVersion, toVersion: def.version };
 }
 
@@ -43,7 +44,7 @@ export async function migrateInstance(instanceId: number) {
   const { nodes, blocked } = buildMigrationNodes(newFlow, await activeNodeState(instanceId));
   if (blocked.length) throw new HTTPException(400, { message: `存在新版本缺失的活动节点，无法迁移：${blocked.join(', ')}` });
   return db.transaction(async (tx) => {
-    await tx.update(workflowInstances).set({ definitionSnapshot: def }).where(eq(workflowInstances.id, instanceId));
+    await tx.update(workflowInstances).set({ definitionSnapshot: toDefinitionSnapshot(def) }).where(eq(workflowInstances.id, instanceId));
     await tx.insert(workflowInstanceMigrations).values({
       instanceId, definitionId: def.id, fromVersion, toVersion,
       nodeMap: Object.fromEntries(nodes.map((n) => [n.nodeKey, n.nodeKey])), status: 'done',

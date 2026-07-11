@@ -3,7 +3,6 @@ import { eq, and, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
 import { workflowInstances, workflowTasks, users } from '../../../db/schema';
 import { getAncestorNodeKeys } from '../../../lib/workflow-engine';
-import type { WorkflowFlowData } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { buildStarterContext } from '../workflow-assignee-resolver.service';
 import { mapInstance, mapTask } from './mapping';
@@ -246,8 +245,8 @@ export async function reduceSignTask(taskId: number, targetTaskIds: number[], co
     }
   }
 
-  const snapshot = inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null;
-  const flowData = snapshot?.flowData;
+  const snapshot = inst.definitionSnapshot;
+  const flowData = snapshot?.flowData ?? undefined;
   const suffix = comment ? `：${comment}` : '';
   const reduceComment = `[减签] 由 ${actor.name ?? '系统'} 发起${suffix}`;
 
@@ -352,7 +351,7 @@ export async function reduceSignTask(taskId: number, targetTaskIds: number[], co
 export async function returnTask(taskId: number, targetNodeKeys: string[], comment: string, attachments?: WorkflowTaskAttachment[]) {
   const { task, inst, actor } = await getOwnPendingTask(taskId);
   assertActionUploadRequirement(inst, task.nodeKey, 'return', attachments);
-  const flowData = (inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData;
+  const flowData = inst.definitionSnapshot?.flowData;
   if (!flowData) throw new HTTPException(500, { message: '流程快照数据异常' });
   if (!Array.isArray(targetNodeKeys) || targetNodeKeys.length === 0) {
     throw new HTTPException(400, { message: '请选择退回节点' });
@@ -383,7 +382,7 @@ export async function returnTask(taskId: number, targetNodeKeys: string[], comme
     return curIdx < accIdx ? cur : acc;
   }, targets[0]);
 
-  const overriddenSnapshot = structuredClone(inst.definitionSnapshot) as { flowData?: WorkflowFlowData };
+  const overriddenSnapshot = structuredClone(inst.definitionSnapshot);
   const currentNode = overriddenSnapshot.flowData?.nodes.find((n) => n.data.key === task.nodeKey);
   if (currentNode) {
     currentNode.data.rejectStrategy = 'returnToNode';

@@ -12,7 +12,7 @@ import logger from '../../../lib/logger';
 import { handleNodeExecutionError } from './failure-policy';
 import { assertLaunchMatchesFormType, buildInstanceFormSnapshot, mapInstance, mapTask } from './mapping';
 import { advanceAndMaterialize } from './materialize';
-import { emitInstanceEvent, emitNodeEvent, emitTaskEvent } from './shared';
+import { emitInstanceEvent, emitNodeEvent, emitTaskEvent, toDefinitionSnapshot } from './shared';
 import { approveTaskCore, rejectTaskCore } from './task-actions';
 
 /**
@@ -80,7 +80,7 @@ function snapshotNodeCfg(
   inst: typeof workflowInstances.$inferSelect,
   nodeKey: string,
 ): TaskAction['nodeConfig'] | null {
-  return (inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData?.nodes
+  return inst.definitionSnapshot?.flowData?.nodes
     .find((n) => n.data.key === nodeKey)?.data ?? null;
 }
 
@@ -145,7 +145,7 @@ async function createChildInstanceAndMaterialize(
   const { instance: childInst, createdTasks } = await db.transaction(async (tx) => {
     const [created] = await tx.insert(workflowInstances).values({
       definitionId: def.id,
-      definitionSnapshot: def,
+      definitionSnapshot: toDefinitionSnapshot(def),
       title: childTitle.slice(0, 128),
       formData: childFormData,
       formSnapshot: childFormSnapshot,
@@ -574,7 +574,7 @@ export async function applySubProcessOutputAndResume(
   if (!latestTask || latestTask.status !== 'waiting') return;
 
   if (outcome === 'approved') {
-    const snapshot = latestParent.definitionSnapshot as { flowData?: WorkflowFlowData } | null;
+    const snapshot = latestParent.definitionSnapshot;
     const nodeCfg = snapshot?.flowData?.nodes.find((n) => n.data.key === latestTask.nodeKey)?.data;
     const outputMapping = nodeCfg?.subProcessOutputMapping;
     if (outputMapping && Object.keys(outputMapping).length > 0) {

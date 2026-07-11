@@ -75,7 +75,7 @@ export function registerChatWorkflowSubscriber(): void {
     const inst = event.instance;
     const [snapRow] = await db.select({ snapshot: workflowInstances.definitionSnapshot })
       .from(workflowInstances).where(eq(workflowInstances.id, event.instanceId)).limit(1);
-    const notify = (snapRow?.snapshot as { flowData?: { settings?: { notifyInitiator?: boolean } } } | null)?.flowData?.settings?.notifyInitiator;
+    const notify = snapRow?.snapshot?.flowData?.settings?.notifyInitiator;
     if (notify === false) return;
     const label = inst.serialNo ? `${inst.title}（${inst.serialNo}）` : inst.title;
     const map = {

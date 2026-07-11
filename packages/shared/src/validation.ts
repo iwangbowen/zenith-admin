@@ -1250,6 +1250,8 @@ export const createWorkflowScheduleSchema = z.object({
   definitionId: z.number().int().positive('请选择流程'),
   name: z.string().min(1, '规则名称不能为空').max(128),
   cronExpression: z.string().min(1, '请输入 cron 表达式').max(64),
+  /** IANA 时区（如 Asia/Shanghai、America/New_York）；空 = 默认 Asia/Shanghai */
+  timezone: z.string().max(64).nullable().optional(),
   initiatorId: z.number().int().positive('请选择发起人'),
   titleTemplate: z.string().max(256).nullable().optional(),
   formData: z.record(z.string(), z.unknown()).nullable().optional(),

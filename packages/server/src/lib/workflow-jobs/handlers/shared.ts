@@ -13,7 +13,7 @@ export function snapshotNodeConfig(
   inst: typeof workflowInstances.$inferSelect,
   nodeKey: string,
 ): WorkflowNodeConfig | undefined {
-  const snapshot = inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null;
+  const snapshot = inst.definitionSnapshot;
   return snapshot?.flowData?.nodes.find((n) => n.data.key === nodeKey)?.data;
 }
 

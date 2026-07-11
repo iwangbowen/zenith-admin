@@ -17,7 +17,7 @@ import { applyInitiatorSelectedApprovers, hasExecutableEntry, sanitizeFormByStar
 import type { SelectedApproverMap } from './initiator-select';
 import { assertLaunchMatchesFormType, buildInstanceFormSnapshot, mapInstance, mapTask } from './mapping';
 import { advanceAndMaterialize, killInstanceTokens } from './materialize';
-import { buildSerialNoContext, emitInstanceEvent, emitNodeEvent, emitTaskEvent } from './shared';
+import { buildSerialNoContext, emitInstanceEvent, emitNodeEvent, emitTaskEvent, toDefinitionSnapshot } from './shared';
 import { bridgeReportFillWorkflowOutcome } from '../../report/report-fill-workflow-bridge.service';
 
 export async function createInstance(data: { definitionId: number; title: string; formData?: Record<string, unknown> | null; asDraft?: boolean; priority?: import('@zenith/shared').WorkflowInstancePriority; ccUserIds?: number[]; selectedInitiatorApprovers?: SelectedApproverMap; bizType?: string | null; bizId?: string | null }, callerOverride?: { userId: number; username: string; tenantId: number | null; roles?: string[] }) {
@@ -55,7 +55,7 @@ export async function createInstance(data: { definitionId: number; title: string
   const flowData = data.asDraft
     ? baseFlowData
     : await applyInitiatorSelectedApprovers(baseFlowData, data.selectedInitiatorApprovers);
-  const definitionSnapshot = data.asDraft ? def : { ...def, flowData };
+  const definitionSnapshot = toDefinitionSnapshot(def, data.asDraft ? undefined : flowData);
   const validation = validateFlowData(flowData);
   if (!validation.valid) throw new HTTPException(400, { message: validation.errors[0] });
   const formData: Record<string, unknown> = sanitizeFormByStartPerms(flowData, data.formData ?? {});
@@ -69,7 +69,7 @@ export async function createInstance(data: { definitionId: number; title: string
   if (data.asDraft) {
       const [draft] = await db.insert(workflowInstances).values({
         definitionId: def.id,
-        definitionSnapshot: def,
+        definitionSnapshot,
       title: data.title,
       formData,
       formSnapshot,
@@ -211,7 +211,7 @@ export async function withdrawInstance(id: number) {
   if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
   if (inst.initiatorId !== user.userId) throw new HTTPException(403, { message: '只有发起人可以撤回' });
   if (inst.status !== 'running') throw new HTTPException(400, { message: '只能撤回进行中的申请' });
-  const snapshot = inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null;
+  const snapshot = inst.definitionSnapshot;
   if (snapshot?.flowData?.settings?.allowWithdraw === false) {
     throw new HTTPException(400, { message: '该流程不允许发起人撤回' });
   }
@@ -322,7 +322,7 @@ export async function submitDraftInstance(id: number, input: { selectedInitiator
   const baseFlowData = def.flowData as WorkflowFlowData;
   if (!baseFlowData?.nodes?.length) throw new HTTPException(400, { message: '流程定义无效' });
   const flowData = await applyInitiatorSelectedApprovers(baseFlowData, input.selectedInitiatorApprovers);
-  const definitionSnapshot = { ...def, flowData };
+  const definitionSnapshot = toDefinitionSnapshot(def, flowData);
   const validation = validateFlowData(flowData);
   if (!validation.valid) throw new HTTPException(400, { message: validation.errors[0] });
   const formData = sanitizeFormByStartPerms(flowData, (inst.formData ?? {}) as Record<string, unknown>);
@@ -376,7 +376,7 @@ export async function resubmitInstance(id: number) {
   if (inst.status !== 'rejected' && inst.status !== 'withdrawn') {
     throw new HTTPException(400, { message: '只有已驳回或已撤回的申请可重新提交' });
   }
-  const resubmitSettings = (inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData?.settings;
+  const resubmitSettings = inst.definitionSnapshot?.flowData?.settings;
   if (resubmitSettings?.allowResubmit === false) {
     throw new HTTPException(400, { message: '该流程不允许重新提交' });
   }

@@ -50,7 +50,7 @@ async function planBatchTasks(taskIds: number[], opts: { checkApproverSelect: bo
       .where(inArray(workflowInstances.id, instanceIds));
     snapshotByInstance = new Map(instRows.map((r) => [
       r.id,
-      (r.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData,
+      r.definitionSnapshot?.flowData ?? undefined,
     ]));
   }
 

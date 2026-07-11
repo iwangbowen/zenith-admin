@@ -27,6 +27,7 @@ import { usePagination } from '@/hooks/usePagination';
 import { useQuickPhrases } from '@/hooks/useQuickPhrases';
 import { renderEllipsis } from '../../../utils/table-columns';
 import { useAllUsers } from '@/hooks/queries/users';
+import { ApiError } from '@/lib/query';
 import {
   fetchPendingWorkflowTasks,
   useBatchApproveWorkflowTasks,
@@ -48,6 +49,10 @@ const defaultSearchParams: SearchParams = { keyword: '', definitionId: null };
 
 type PendingItem = WorkflowInstance & { pendingTaskId: number; pendingSignatureRequired?: boolean; requiresIndividual?: boolean; slaLevel?: WorkflowSlaLevel; slaOverdueSec?: number | null; slaDeadline?: string | null; summary?: WorkflowInstanceSummaryItem[] };
 type SheetState = { instanceId: number; taskId: number; action: 'approve' | 'reject' | null };
+/** 批量审批交互状态（模式与意见总是一起出现/重置） */
+type BatchState = { mode: 'approve' | 'reject'; comment: string } | null;
+/** 发起协办弹窗状态（打开时一次性初始化，关闭即整体丢弃） */
+type ConsultState = { taskId: number; userIds: number[]; question: string } | null;
 
 export default function PendingApprovalsPage() {
   const queryClient = useQueryClient();
@@ -68,12 +73,8 @@ export default function PendingApprovalsPage() {
   }, []);
   const { renderPhraseBar, phraseManageModal } = useQuickPhrases();
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
-  const [batchMode, setBatchMode] = useState<'approve' | 'reject' | null>(null);
-  const [batchComment, setBatchComment] = useState('');
-  const [consultVisible, setConsultVisible] = useState(false);
-  const [consultTaskId, setConsultTaskId] = useState<number | null>(null);
-  const [consultUserIds, setConsultUserIds] = useState<number[]>([]);
-  const [consultQuestion, setConsultQuestion] = useState('');
+  const [batch, setBatch] = useState<BatchState>(null);
+  const [consult, setConsult] = useState<ConsultState>(null);
   const [myConsultsVisible, setMyConsultsVisible] = useState(false);
   const [replyDraft, setReplyDraft] = useState<Record<number, string>>({});
   const listParams = {
@@ -84,7 +85,7 @@ export default function PendingApprovalsPage() {
   };
   const listQuery = usePendingWorkflowTasks(listParams);
   const definitionsQuery = useWorkflowTaskDefinitions();
-  const usersQuery = useAllUsers({ enabled: consultVisible });
+  const usersQuery = useAllUsers({ enabled: consult !== null });
   const myConsultsQuery = useMyWorkflowConsults(myConsultsVisible);
   const batchApproveMutation = useBatchApproveWorkflowTasks();
   const batchRejectMutation = useBatchRejectWorkflowTasks();
@@ -114,13 +115,13 @@ export default function PendingApprovalsPage() {
   };
 
   const handleBatch = async () => {
-    if (batchSubmitting) return;
+    if (batchSubmitting || !batch) return;
     const taskIds = (data?.list ?? [])
       .filter((it) => selectedRowKeys.includes(it.id))
       .map((it) => it.pendingTaskId)
       .filter((v): v is number => typeof v === 'number');
     if (taskIds.length === 0) { Toast.warning('请先选择待审批项'); return; }
-    if (batchMode === 'reject' && !batchComment.trim()) { Toast.error('请填写驳回原因'); return; }
+    if (batch.mode === 'reject' && !batch.comment.trim()) { Toast.error('请填写驳回原因'); return; }
     try {
       const latest = await fetchPendingWorkflowTasks(listParams);
       const latestMap = new Map((latest?.list ?? []).map((item) => [item.id, item.pendingTaskId]));
@@ -133,9 +134,9 @@ export default function PendingApprovalsPage() {
         setSelectedRowKeys((keys) => keys.filter((key) => !staleKeys.includes(key)));
         return;
       }
-      const res = batchMode === 'reject'
-        ? await batchRejectMutation.mutateAsync({ taskIds, comment: batchComment.trim() })
-        : await batchApproveMutation.mutateAsync({ taskIds, comment: batchComment.trim() || undefined });
+      const res = batch.mode === 'reject'
+        ? await batchRejectMutation.mutateAsync({ taskIds, comment: batch.comment.trim() })
+        : await batchApproveMutation.mutateAsync({ taskIds, comment: batch.comment.trim() || undefined });
       const failed = res.failed ?? 0;
       if (failed > 0) {
         const reasons = [...new Set((res.results ?? [])
@@ -145,27 +146,28 @@ export default function PendingApprovalsPage() {
       } else {
         Toast.success('批量处理完成');
       }
-      setBatchMode(null);
-      setBatchComment('');
+      setBatch(null);
       setSelectedRowKeys([]);
-    } catch {
-      // request 层已提示
+    } catch (err) {
+      // 409 并发冲突：任务已被他人处理/流程状态变化，刷新列表引导重试（request 层已 toast 兜底其它错误）
+      if (err instanceof ApiError && err.code === 409) {
+        Toast.warning('任务状态已变化，已刷新列表，请重新选择');
+        setSelectedRowKeys([]);
+        void queryClient.invalidateQueries({ queryKey: workflowTaskKeys.pendingLists });
+      }
     }
   };
 
   const openConsult = (record: PendingItem) => {
-    setConsultTaskId(record.pendingTaskId);
-    setConsultUserIds([]);
-    setConsultQuestion('');
-    setConsultVisible(true);
+    setConsult({ taskId: record.pendingTaskId, userIds: [], question: '' });
   };
 
   const submitConsult = async () => {
-    if (!consultTaskId) return;
-    if (consultUserIds.length === 0) { Toast.warning('请选择协办人'); return; }
-    await consultMutation.mutateAsync({ taskId: consultTaskId, consulteeIds: consultUserIds, question: consultQuestion || undefined });
+    if (!consult) return;
+    if (consult.userIds.length === 0) { Toast.warning('请选择协办人'); return; }
+    await consultMutation.mutateAsync({ taskId: consult.taskId, consulteeIds: consult.userIds, question: consult.question || undefined });
     Toast.success('已发起协办');
-    setConsultVisible(false);
+    setConsult(null);
   };
 
   const openMyConsults = () => { setMyConsultsVisible(true); };
@@ -290,10 +292,10 @@ export default function PendingApprovalsPage() {
 
   const renderBatchButtons = () => selectedRowKeys.length > 0 ? (
     <>
-      <Button type="primary" theme="solid" icon={<Plus size={14} />} onClick={() => { setBatchComment(''); setBatchMode('approve'); }}>
+      <Button type="primary" theme="solid" icon={<Plus size={14} />} onClick={() => setBatch({ mode: 'approve', comment: '' })}>
         批量通过（{selectedRowKeys.length}）
       </Button>
-      <Button type="danger" theme="solid" onClick={() => { setBatchComment(''); setBatchMode('reject'); }}>
+      <Button type="danger" theme="solid" onClick={() => setBatch({ mode: 'reject', comment: '' })}>
         批量驳回（{selectedRowKeys.length}）
       </Button>
     </>
@@ -356,32 +358,32 @@ export default function PendingApprovalsPage() {
       />
 
       <AppModal
-        title={batchMode === 'approve' ? `批量通过（${selectedRowKeys.length}）` : `批量驳回（${selectedRowKeys.length}）`}
-        visible={!!batchMode}
-        onCancel={() => setBatchMode(null)}
+        title={batch?.mode === 'approve' ? `批量通过（${selectedRowKeys.length}）` : `批量驳回（${selectedRowKeys.length}）`}
+        visible={!!batch}
+        onCancel={() => setBatch(null)}
         onOk={() => void handleBatch()}
-        okButtonProps={{ loading: batchSubmitting, type: batchMode === 'approve' ? 'primary' : 'danger' }}
+        okButtonProps={{ loading: batchSubmitting, type: batch?.mode === 'approve' ? 'primary' : 'danger' }}
         okText="确认"
         style={{ width: 480 }}
       >
         <Typography.Text type="tertiary" style={{ display: 'block', marginBottom: 8 }}>
-          将对选中的 {selectedRowKeys.length} 条待办执行{batchMode === 'approve' ? '通过' : '驳回'}操作（逐条处理，失败项会单独提示）。
+          将对选中的 {selectedRowKeys.length} 条待办执行{batch?.mode === 'approve' ? '通过' : '驳回'}操作（逐条处理，失败项会单独提示）。
         </Typography.Text>
         <TextArea
-          value={batchComment}
-          onChange={setBatchComment}
-          placeholder={batchMode === 'approve' ? '批量审批意见（可选）' : '批量驳回原因（必填）'}
+          value={batch?.comment ?? ''}
+          onChange={(v) => setBatch((b) => (b ? { ...b, comment: v } : b))}
+          placeholder={batch?.mode === 'approve' ? '批量审批意见（可选）' : '批量驳回原因（必填）'}
           autosize={{ minRows: 2, maxRows: 4 }}
           maxCount={500}
         />
-        <div style={{ marginTop: 8 }}>{renderPhraseBar((t) => setBatchComment((c) => (c ? `${c} ${t}` : t)))}</div>
+        <div style={{ marginTop: 8 }}>{renderPhraseBar((t) => setBatch((b) => (b ? { ...b, comment: b.comment ? `${b.comment} ${t}` : t } : b)))}</div>
       </AppModal>
       {phraseManageModal}
 
       <AppModal
         title="邀请协办"
-        visible={consultVisible}
-        onCancel={() => setConsultVisible(false)}
+        visible={!!consult}
+        onCancel={() => setConsult(null)}
         onOk={() => void submitConsult()}
         okButtonProps={{ loading: submitting, type: 'primary' }}
         okText="发起协办"
@@ -396,12 +398,12 @@ export default function PendingApprovalsPage() {
           style={{ width: '100%', marginBottom: 8 }}
           placeholder="选择协办人"
           optionList={userOptions}
-          value={consultUserIds}
-          onChange={(v) => setConsultUserIds((v as number[]) ?? [])}
+          value={consult?.userIds ?? []}
+          onChange={(v) => setConsult((s) => (s ? { ...s, userIds: (v as number[]) ?? [] } : s))}
         />
         <TextArea
-          value={consultQuestion}
-          onChange={setConsultQuestion}
+          value={consult?.question ?? ''}
+          onChange={(v) => setConsult((s) => (s ? { ...s, question: v } : s))}
           placeholder="协办说明（可选）"
           autosize={{ minRows: 2, maxRows: 4 }}
           maxCount={500}

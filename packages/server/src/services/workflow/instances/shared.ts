@@ -1,11 +1,35 @@
 // ─── 工作流事件发射与流水号上下文（拆分自 workflow-instances.service.ts）───
-import type { WorkflowTask as WorkflowTaskDto } from '@zenith/shared';
+import type { WorkflowTask as WorkflowTaskDto, WorkflowCustomFormConfig, WorkflowDefinitionSnapshot, WorkflowFlowData, WorkflowFormType } from '@zenith/shared';
 import { currentUserOrNull, currentUserDetail } from '../../../lib/context';
 import type { DbExecutor } from '../../../db/types';
 import type { WorkflowSerialNoConfig } from '@zenith/shared';
+import type { WorkflowDefinitionRow } from '../../../db/schema';
 import { workflowEventBus } from '../../../lib/workflow-event-bus';
 import { type SerialNoGenContext } from '../workflow-serial.service';
 import { mapInstance } from './mapping';
+
+/**
+ * 定义行 → 实例定义快照（发起 / 提交草稿 / 子流程 / 版本迁移共用）。
+ * 单点承担 jsonb 列的类型窄化，并只保留快照 DTO 关心的字段。
+ */
+export function toDefinitionSnapshot(
+  def: WorkflowDefinitionRow,
+  flowDataOverride?: WorkflowFlowData,
+): WorkflowDefinitionSnapshot {
+  return {
+    id: def.id,
+    name: def.name,
+    description: def.description,
+    categoryId: def.categoryId,
+    flowData: flowDataOverride ?? (def.flowData as WorkflowFlowData | null),
+    formId: def.formId,
+    formType: def.formType as WorkflowFormType,
+    customForm: (def.customForm as WorkflowCustomFormConfig | null) ?? null,
+    status: def.status,
+    version: def.version,
+    tenantId: def.tenantId,
+  };
+}
 
 /**
  * 构建业务编号生成上下文。

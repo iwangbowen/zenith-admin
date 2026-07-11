@@ -13,7 +13,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../../db';
 import { inAppMessages, workflowInstances, users, smsTemplates } from '../../db/schema';
-import type { InAppMessageType, WorkflowNotifyChannels, WorkflowFlowData } from '@zenith/shared';
+import type { InAppMessageType, WorkflowNotifyChannels } from '@zenith/shared';
 import { workflowEventBus } from '../workflow-event-bus';
 import { sendMail } from '../email';
 import { sendSmsByProvider, renderTemplate } from '../sms-sender';
@@ -34,7 +34,7 @@ async function loadNotifyContext(instanceId: number): Promise<NotifyContext> {
     .limit(1);
   if (!row) return { label: `#${instanceId}`, channels: undefined, notifyInitiator: true };
   const label = row.serialNo ? `${row.title}（${row.serialNo}）` : row.title;
-  const settings = (row.snapshot as { flowData?: WorkflowFlowData } | null)?.flowData?.settings;
+  const settings = row.snapshot?.flowData?.settings;
   return { label, channels: settings?.notifyChannels, notifyInitiator: settings?.notifyInitiator !== false };
 }
 
