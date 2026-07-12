@@ -117,7 +117,7 @@ export function guard(opts: GuardOptions) {
     // ── 权限校验 ──
     if (opts.permission) {
       const user = c.get('user');
-      if (!isSuperAdmin(user.roles)) {
+      if (!isSuperAdmin(user)) {
         const perms = Array.isArray(opts.permission)
           ? opts.permission
           : [opts.permission];

@@ -25,6 +25,18 @@ export function invalidateMaskCache(): void {
   cachedRules = null;
 }
 
+/**
+ * 供导出中心使用：全部启用规则的 `entity.field` → 脱敏规则映射。
+ * 不应用 exemptRoleCodes 豁免——脱敏导出所见即所得（文件可能外发，统一打码）。
+ */
+export async function getExportMaskRuleMap(): Promise<Map<string, { maskType: MaskType; customRule: CustomMaskRule | null }>> {
+  const rules = await getActiveRules();
+  return new Map(rules.map((r) => [
+    `${r.entity}.${r.field}`,
+    { maskType: r.maskType as MaskType, customRule: (r.customRule as CustomMaskRule) ?? null },
+  ]));
+}
+
 // ─── 映射 ─────────────────────────────────────────────────────────────────────
 
 export function mapDataMaskConfig(row: DataMaskConfigRow): DataMaskConfig {

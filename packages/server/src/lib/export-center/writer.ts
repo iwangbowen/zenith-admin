@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 import { csvEscapeCell } from '../excel-export';
 import { formatDateTime } from '../datetime';
-import { formatExportValue } from './formatter';
+import { formatExportCell } from './formatter';
 import type { AnyExportDefinition, ExportColumn, ExportRuntimeContext, ExportStyleSet } from './types';
 
 interface HeaderCell<TRow extends Record<string, unknown>> {
@@ -186,7 +186,7 @@ async function writeTableSheet(
   const filterHeaderRow = headerStartRow + headerDepth - 1;
   let rowIndex = filterHeaderRow;
   for await (const sourceRow of rows) {
-    const values = leaves.map((column) => formatExportValue(column, sourceRow));
+    const values = leaves.map((column) => formatExportCell(column, sourceRow, ctx));
     const excelRow = sheet.insertRow(++rowIndex, values);
     leaves.forEach((column, index) => {
       const cell = excelRow.getCell(index + 1);
@@ -230,7 +230,7 @@ export async function renderExportCsv(
   const columns = leafColumns(selectedColumns(await resolveDefinitionColumns(definition, ctx), ctx.selectedColumns));
   const lines = [columns.map((column) => csvEscapeCell(column.header)).join(',')];
   for await (const row of rows) {
-    lines.push(columns.map((column) => csvEscapeCell(formatExportValue(column, row))).join(','));
+    lines.push(columns.map((column) => csvEscapeCell(formatExportCell(column, row, ctx))).join(','));
   }
   return Buffer.from('\uFEFF' + lines.join('\n') + '\n', 'utf-8');
 }

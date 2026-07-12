@@ -1,6 +1,7 @@
 import type ExcelJS from 'exceljs';
 import type { ExportJobFormat } from '@zenith/shared';
 import type { JwtPayload } from '../../middleware/auth';
+import type { MaskType, CustomMaskRule } from '../masking';
 
 export type ExportFormat = ExportJobFormat;
 export type ExportRequestMode = 'sync' | 'async' | 'auto';
@@ -73,6 +74,11 @@ export interface ExportLayout<TRow extends Record<string, unknown> = Record<stri
   sheets: ExportLayoutSheet<TRow>[];
 }
 
+export interface ExportMaskRule {
+  maskType: MaskType;
+  customRule: CustomMaskRule | null;
+}
+
 export interface ExportRuntimeContext<TQuery extends Record<string, unknown> = Record<string, unknown>> {
   jobId: number;
   entity: string;
@@ -87,6 +93,12 @@ export interface ExportRuntimeContext<TQuery extends Record<string, unknown> = R
   currentUser: JwtPayload;
   createdByName: string | null;
   exportedAt: Date;
+  /**
+   * 脱敏导出时预加载的规则映射（key: `entity.field`）。
+   * `masked=true` 时由导出任务执行器注入；敏感列渲染时按 maskEntity/maskField 匹配规则打码，
+   * 未命中规则的敏感列按字段名回退到内置脱敏类型。
+   */
+  maskRules?: Map<string, ExportMaskRule> | null;
 }
 
 export interface ExportRenderedFile {

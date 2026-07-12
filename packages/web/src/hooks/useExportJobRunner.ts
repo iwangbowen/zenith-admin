@@ -19,7 +19,7 @@ export function useExportJobRunner() {
       entity,
       format,
       query,
-      raw = true,
+      raw = false,
       watermark = true,
       executionMode = 'sync',
     }: ExportJobRunOptions) =>

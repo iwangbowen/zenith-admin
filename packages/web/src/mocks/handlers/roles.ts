@@ -38,6 +38,9 @@ export const rolesHandlers = [
   // 新增角色
   http.post('/api/roles', async ({ request }) => {
     const body = await request.json() as Partial<Role> & { menuIds?: number[] };
+    if (body.code === 'super_admin') {
+      return HttpResponse.json({ code: 400, message: '角色编码 super_admin 为系统保留编码，不允许使用', data: null }, { status: 400 });
+    }
     const newRole: Role = {
       id: getNextRoleId(),
       name: body.name ?? '',
@@ -59,6 +62,14 @@ export const rolesHandlers = [
     const role = mockRoles.find((r) => r.id === Number(params.id));
     if (!role) return HttpResponse.json({ code: 404, message: '角色不存在', data: null });
     const body = await request.json() as Partial<Role>;
+    if (body.code !== undefined && body.code !== role.code) {
+      if (body.code === 'super_admin') {
+        return HttpResponse.json({ code: 400, message: '角色编码 super_admin 为系统保留编码，不允许使用', data: null }, { status: 400 });
+      }
+      if (role.code === 'super_admin') {
+        return HttpResponse.json({ code: 400, message: '超级管理员角色编码不允许修改', data: null }, { status: 400 });
+      }
+    }
     Object.assign(role, body, { updatedAt: mockDateTime() });
     return HttpResponse.json({ code: 0, message: '更新成功', data: role });
   }),

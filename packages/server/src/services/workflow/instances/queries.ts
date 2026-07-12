@@ -449,7 +449,7 @@ export async function getInstanceDetail(id: number) {
   const isAssignee = row.tasks.some((t) => t.assigneeId === user.userId);
   // 流程监控管理员（workflow:instance:monitor）可查看租户可见范围内的任意实例详情，
   // 与「全局流程实例列表」权限口径一致（列表能看到却打不开详情属契约断裂）
-  const isMonitor = isSuperAdmin(user.roles)
+  const isMonitor = isSuperAdmin(user)
     || (await getUserPermissions(user.userId)).includes('workflow:instance:monitor');
   let allowed = isInitiator || isAssignee || isMonitor;
   if (!allowed && row.parentInstanceId) {

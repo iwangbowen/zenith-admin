@@ -51,16 +51,24 @@ afterEach(() => {
 
 // ─── isSuperAdmin ─────────────────────────────────────────────────────────────
 describe('isSuperAdmin', () => {
-  it('包含 super_admin 时返回 true', () => {
-    expect(isSuperAdmin(['user', 'super_admin'])).toBe(true);
+  it('平台用户（tenantId 为 null）包含 super_admin 时返回 true', () => {
+    expect(isSuperAdmin({ roles: ['user', 'super_admin'], tenantId: null })).toBe(true);
+  });
+
+  it('未携带 tenantId 字段时视为平台用户', () => {
+    expect(isSuperAdmin({ roles: ['super_admin'] })).toBe(true);
+  });
+
+  it('租户用户即使角色 code 含 super_admin 也返回 false（防伪造提权）', () => {
+    expect(isSuperAdmin({ roles: ['super_admin'], tenantId: 2 })).toBe(false);
   });
 
   it('不含 super_admin 时返回 false', () => {
-    expect(isSuperAdmin(['user', 'admin'])).toBe(false);
+    expect(isSuperAdmin({ roles: ['user', 'admin'], tenantId: null })).toBe(false);
   });
 
   it('空角色数组返回 false', () => {
-    expect(isSuperAdmin([])).toBe(false);
+    expect(isSuperAdmin({ roles: [], tenantId: null })).toBe(false);
   });
 });
 

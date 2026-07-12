@@ -1,9 +1,9 @@
 import { eq } from 'drizzle-orm';
+import { SUPER_ADMIN_CODE } from '@zenith/shared';
 import { db } from '../db';
 import { users } from '../db/schema';
 import { getTenantPackageMenuIdSet } from './tenant-package';
 
-const SUPER_ADMIN_CODE = 'super_admin';
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 interface CacheEntry {
@@ -14,8 +14,12 @@ interface CacheEntry {
 
 const cache = new Map<number, CacheEntry>();
 
-export function isSuperAdmin(roles: string[]): boolean {
-  return roles.includes(SUPER_ADMIN_CODE);
+/**
+ * 平台超管判定：角色 code 含 super_admin **且** 归属平台（tenantId 为 null）。
+ * 仅凭 code 判定会被租户自建同名角色伪造（横向/纵向提权），必须双条件校验。
+ */
+export function isSuperAdmin(user: { roles: string[]; tenantId?: number | null }): boolean {
+  return user.roles.includes(SUPER_ADMIN_CODE) && (user.tenantId ?? null) === null;
 }
 
 export async function getUserPermissions(userId: number): Promise<string[]> {

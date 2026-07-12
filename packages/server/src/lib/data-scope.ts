@@ -47,7 +47,7 @@ export async function getDataScopeCondition(options: DataScopeOptions): Promise<
         columns: {},
         with: {
           role: {
-            columns: { dataScope: true, code: true },
+            columns: { dataScope: true, code: true, tenantId: true },
             with: { deptScopes: { columns: { deptId: true } } },
           },
         },
@@ -63,7 +63,7 @@ export async function getDataScopeCondition(options: DataScopeOptions): Promise<
                 columns: {},
                 with: {
                   role: {
-                    columns: { dataScope: true, code: true },
+                    columns: { dataScope: true, code: true, tenantId: true },
                     with: { deptScopes: { columns: { deptId: true } } },
                   },
                 },
@@ -83,7 +83,8 @@ export async function getDataScopeCondition(options: DataScopeOptions): Promise<
   const userDirectScope = userData?.userDataScope ?? null;
 
   // ── 2. 计算有效权限（多角色 + 用户直接权限取最宽松原则）─────────────────────────────────────
-  const isSuperAdmin = userRoleList.some((r) => r.code === 'super_admin');
+  // 平台超管须双条件判定（code + 平台角色），防止租户自建 super_admin 伪造全量数据权限
+  const isSuperAdmin = userRoleList.some((r) => r.code === 'super_admin' && r.tenantId === null);
   const scopeSet = new Set(userRoleList.map((r) => r.dataScope));
   if (userDirectScope !== null) scopeSet.add(userDirectScope);
 

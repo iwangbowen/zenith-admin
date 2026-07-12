@@ -25,11 +25,13 @@ import { getDataScopeCondition } from './data-scope';
 interface MockRole {
   dataScope: 'all' | 'dept' | 'self';
   code: string;
+  /** 角色归属租户；超管判定要求 code=super_admin 且 tenantId=null（平台角色） */
+  tenantId?: number | null;
 }
 function mockUser(departmentId: number | null, roles: MockRole[]) {
   return {
     departmentId,
-    userRoles: roles.map((role) => ({ role })),
+    userRoles: roles.map((role) => ({ role: { tenantId: null, ...role } })),
   };
 }
 
@@ -89,6 +91,21 @@ describe('全量访问（返回 undefined）', () => {
 
     expect(result).toBeUndefined();
     expect(dbMock.query.users.findFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it('租户自建 super_admin 角色（tenantId 非 null）→ 不授予全量访问', async () => {
+    dbMock.query.users.findFirst.mockResolvedValueOnce(
+      mockUser(null, [{ dataScope: 'self', code: 'super_admin', tenantId: 2 }]),
+    );
+
+    const result = await getDataScopeCondition({
+      currentUserId: 1,
+      deptColumn: mockOrderTable.departmentId,
+      ownerColumn: mockOrderTable.createdBy,
+    });
+
+    // 伪造超管不短路：按 self 数据范围追加 owner 过滤条件
+    expect(result).toBeDefined();
   });
 
   it('dataScope = all → 返回 undefined', async () => {

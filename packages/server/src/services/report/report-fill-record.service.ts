@@ -46,7 +46,7 @@ export function mapReportFillRecord(row: RecordRow): ReportFillRecord {
 
 async function canReviewFillRecords(): Promise<boolean> {
   const user = currentUser();
-  if (isSuperAdmin(user.roles)) return true;
+  if (isSuperAdmin(user)) return true;
   return (await getUserPermissions(user.userId)).includes('report:fill:record:review');
 }
 

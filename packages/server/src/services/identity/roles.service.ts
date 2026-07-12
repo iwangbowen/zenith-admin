@@ -1,4 +1,5 @@
 import { eq, and, like, or, gte, lte, asc, inArray } from 'drizzle-orm';
+import { SUPER_ADMIN_CODE } from '@zenith/shared';
 import { mergeWhere, escapeLike, withPagination } from '../../lib/where-helpers';
 import { db } from '../../db';
 import type { DbTransaction } from '../../db/types';
@@ -122,8 +123,19 @@ async function syncRoleDeptScopes(tx: DbTransaction, roleId: number, deptScopeId
   }
 }
 
+// 平台保留角色编码：超管判定按 code + 平台归属执行，禁止任何人通过 API 创建
+// 或改名为保留编码，防止租户自建 super_admin 角色完成提权
+const RESERVED_ROLE_CODES = new Set<string>([SUPER_ADMIN_CODE]);
+
+function ensureRoleCodeNotReserved(code: string | undefined) {
+  if (code && RESERVED_ROLE_CODES.has(code)) {
+    throw new HTTPException(400, { message: `角色编码 ${code} 为系统保留编码，不允许使用` });
+  }
+}
+
 export async function createRole(data: CreateRoleInput) {
   const user = currentUser();
+  ensureRoleCodeNotReserved(data.code);
   const { deptScopeIds, ...rest } = data;
   try {
     return await db.transaction(async (tx) => {
@@ -142,10 +154,19 @@ export async function updateRole(id: number, data: Partial<CreateRoleInput>) {
   const user = currentUser();
   const { deptScopeIds, ...rest } = data;
   return await db.transaction(async (tx) => {
-    const [existing] = await tx.select({ code: roles.code }).from(roles).where(and(eq(roles.id, id), tenantCondition(roles, user))).limit(1);
+    const [existing] = await tx.select({ code: roles.code, tenantId: roles.tenantId }).from(roles).where(and(eq(roles.id, id), tenantCondition(roles, user))).limit(1);
     if (!existing) throw new HTTPException(404, { message: '角色不存在' });
-    if (existing.code === 'super_admin' && rest.status === 'disabled') {
+    // 保护仅针对平台超管角色（tenantId=null）；租户遗留的同名伪造角色允许禁用/清理
+    const isPlatformSuperRole = existing.code === SUPER_ADMIN_CODE && existing.tenantId === null;
+    if (isPlatformSuperRole && rest.status === 'disabled') {
       throw new HTTPException(400, { message: '超级管理员角色不允许禁用' });
+    }
+    if (rest.code !== undefined && rest.code !== existing.code) {
+      // 禁止把普通角色改名为保留编码（伪造超管），也禁止修改超管角色的编码（丢失系统标识）
+      ensureRoleCodeNotReserved(rest.code);
+      if (isPlatformSuperRole) {
+        throw new HTTPException(400, { message: '超级管理员角色编码不允许修改' });
+      }
     }
     const [role] = await tx.update(roles).set({ ...rest }).where(and(eq(roles.id, id), tenantCondition(roles, user))).returning();
     if (!role) throw new HTTPException(404, { message: '角色不存在' });
@@ -158,9 +179,12 @@ export async function updateRole(id: number, data: Partial<CreateRoleInput>) {
 
 export async function deleteRole(id: number) {
   const user = currentUser();
-  const [existing] = await db.select({ code: roles.code }).from(roles).where(and(eq(roles.id, id), tenantCondition(roles, user))).limit(1);
+  const [existing] = await db.select({ code: roles.code, tenantId: roles.tenantId }).from(roles).where(and(eq(roles.id, id), tenantCondition(roles, user))).limit(1);
   if (!existing) throw new HTTPException(404, { message: '角色不存在' });
-  if (existing.code === 'super_admin') throw new HTTPException(400, { message: '超级管理员角色不允许删除' });
+  // 保护仅针对平台超管角色（tenantId=null）；租户遗留的同名伪造角色允许清理
+  if (existing.code === SUPER_ADMIN_CODE && existing.tenantId === null) {
+    throw new HTTPException(400, { message: '超级管理员角色不允许删除' });
+  }
   // 在用保护：已分配给用户的角色不允许删除，避免级联删除导致用户静默失权
   const boundUsers = await db.$count(userRoles, eq(userRoles.roleId, id));
   if (boundUsers > 0) {
@@ -209,11 +233,20 @@ export async function getRoleUsers(id: number) {
 }
 
 export async function assignRoleUsers(id: number, userIds: number[]) {
+  const user = currentUser();
   await ensureRoleBelongsToTenant(id);
+  const uniqueUserIds = Array.from(new Set(userIds));
+  // 多租户：被分配用户必须全部落在当前操作者可见租户内，防止跨租户 IDOR
+  if (uniqueUserIds.length > 0) {
+    const tc = tenantCondition(users, user);
+    const rows = await db.select({ id: users.id }).from(users)
+      .where(tc ? and(inArray(users.id, uniqueUserIds), tc) : inArray(users.id, uniqueUserIds));
+    if (rows.length !== uniqueUserIds.length) throw new HTTPException(400, { message: '存在无效用户' });
+  }
   await db.transaction(async (tx) => {
     await tx.delete(userRoles).where(eq(userRoles.roleId, id));
-    if (userIds.length > 0) {
-      await tx.insert(userRoles).values(userIds.map((userId) => ({ userId, roleId: id })));
+    if (uniqueUserIds.length > 0) {
+      await tx.insert(userRoles).values(uniqueUserIds.map((userId) => ({ userId, roleId: id })));
     }
   });
   clearUserPermissionCache();

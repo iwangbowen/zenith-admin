@@ -82,7 +82,7 @@ async function ensureDelegationAccess(id: number): Promise<DelegationRow> {
   if (tc) conds.push(tc);
   const [row] = await db.select().from(workflowDelegations).where(and(...conds)).limit(1);
   if (!row) throw new HTTPException(404, { message: '委托规则不存在' });
-  if (!isSuperAdmin(user.roles) && row.principalId !== user.userId) {
+  if (!isSuperAdmin(user) && row.principalId !== user.userId) {
     throw new HTTPException(403, { message: '无权操作他人的委托规则' });
   }
   return row;
@@ -108,7 +108,7 @@ export async function listWorkflowDelegations(q: ListWorkflowDelegationsQuery) {
   const page = q.page ?? 1;
   const pageSize = q.pageSize ?? 20;
   const user = currentUser();
-  const admin = isSuperAdmin(user.roles);
+  const admin = isSuperAdmin(user);
   const tc = tenantCondition(workflowDelegations, user);
   const conds = [];
   if (tc) conds.push(tc);
@@ -144,7 +144,7 @@ export async function listWorkflowDelegations(q: ListWorkflowDelegationsQuery) {
 export async function createWorkflowDelegation(input: CreateWorkflowDelegationInput) {
   const user = currentUser();
   const principalId = input.principalId ?? user.userId;
-  if (principalId !== user.userId && !isSuperAdmin(user.roles)) {
+  if (principalId !== user.userId && !isSuperAdmin(user)) {
     throw new HTTPException(403, { message: '只能为自己设置审批代理' });
   }
   if (input.delegateId === principalId) {

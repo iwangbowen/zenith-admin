@@ -254,7 +254,7 @@ export function createWsTerminalRoute(upgradeWebSocket: UpgradeWebSocket) {  con
           }
 
           // 权限校验：超管 或 拥有 system:terminal:execute
-          const isSA = isSuperAdmin(payload.roles);
+          const isSA = isSuperAdmin(payload);
           if (!isSA) {
             try {
               const perms = await getUserPermissions(payload.userId);
@@ -489,7 +489,7 @@ export function createWsTerminalMonitorRoute(upgradeWebSocket: UpgradeWebSocket)
           }
 
           // 权限校验：超管 或 system:terminal:monitor
-          if (!isSuperAdmin(payload.roles)) {
+          if (!isSuperAdmin(payload)) {
             try {
               const perms = await getUserPermissions(payload.userId);
               if (!perms.includes(MONITOR_PERMISSION)) {

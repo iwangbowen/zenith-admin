@@ -112,13 +112,13 @@ export function mapChatbiMessage(row: typeof reportChatbiMessages.$inferSelect):
 
 async function canManageChatbi(): Promise<boolean> {
   const user = currentUser();
-  if (isSuperAdmin(user.roles)) return true;
+  if (isSuperAdmin(user)) return true;
   return (await getUserPermissions(user.userId)).includes('report:chatbi:manage');
 }
 
 async function requirePermission(permission: string): Promise<void> {
   const user = currentUser();
-  if (isSuperAdmin(user.roles)) return;
+  if (isSuperAdmin(user)) return;
   if (!(await getUserPermissions(user.userId)).includes(permission)) {
     throw new HTTPException(403, { message: '权限不足' });
   }

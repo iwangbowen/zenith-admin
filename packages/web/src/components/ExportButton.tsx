@@ -21,7 +21,8 @@ export function ExportButton({
   resolveQuery,
   label = '导出',
   formats = ['xlsx', 'csv'],
-  raw = true,
+  // 安全默认：脱敏导出。明文导出需显式传 raw，且服务端校验 export-raw 权限
+  raw = false,
   watermark = true,
   executionMode = 'sync',
   variant = 'primary',

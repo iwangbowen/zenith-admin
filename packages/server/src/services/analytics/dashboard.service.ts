@@ -10,7 +10,7 @@ import { currentUser } from '../../lib/context';
 import { formatDate } from '../../lib/datetime';
 
 function ensureSuperAdmin(user: JwtPayload) {
-  if (!isSuperAdmin(user.roles)) throw new HTTPException(403, { message: '无权限' });
+  if (!isSuperAdmin(user)) throw new HTTPException(403, { message: '无权限' });
 }
 
 export async function getDashboardStats() {

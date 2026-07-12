@@ -175,7 +175,7 @@ const tableRowsRoute = defineOpenAPIRoute({
     // 原生 WHERE 片段可含跨表子查询，要求与 SQL 控制台一致的 query 权限
     if (where?.trim()) {
       const user = c.get('user');
-      if (!isSuperAdmin(user.roles)) {
+      if (!isSuperAdmin(user)) {
         const perms = await getUserPermissions(user.userId);
         if (!perms.includes('system:db-admin:query')) {
           throw new HTTPException(403, { message: '使用 WHERE 条件需要 SQL 查询权限（system:db-admin:query）' });

@@ -127,11 +127,12 @@ export function hasRole(...codes: string[]): boolean {
 }
 
 /**
- * 判断当前登录用户是否为超级管理员（拥有 `super_admin` 角色）。
- * 基于 JWT Payload，无需查询数据库。
+ * 判断当前登录用户是否为平台超级管理员（拥有 `super_admin` 角色且归属平台，tenantId 为 null）。
+ * 基于 JWT Payload，无需查询数据库。仅凭角色 code 判定会被租户自建同名角色伪造。
  */
 export function isSuperAdmin(): boolean {
-  return hasRole('super_admin');
+  const user = currentUser();
+  return user.roles.includes('super_admin') && (user.tenantId ?? null) === null;
 }
 
 // ─── DB 懒查询：获取部门/岗位等 JWT 中未携带的信息 ────────────────────────────

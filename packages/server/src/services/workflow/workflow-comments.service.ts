@@ -41,7 +41,7 @@ async function assertParticipant(instanceId: number): Promise<typeof workflowIns
   if (tc) conds.push(tc);
   const [inst] = await db.select().from(workflowInstances).where(and(...conds)).limit(1);
   if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
-  if (isSuperAdmin(user.roles) || inst.initiatorId === user.userId) return inst;
+  if (isSuperAdmin(user) || inst.initiatorId === user.userId) return inst;
   const involved = await db.$count(
     workflowTasks,
     and(eq(workflowTasks.instanceId, instanceId), eq(workflowTasks.assigneeId, user.userId)),

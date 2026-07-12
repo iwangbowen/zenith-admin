@@ -16,6 +16,7 @@ import type { AnyExportDefinition, ExportExecutionMode, ExportFormat, ExportRequ
 import { DEFAULT_EXPORT_EXECUTION, DEFAULT_EXPORT_RETENTION } from '../../lib/export-center/types';
 import { registerSystemQueueWorker, sendSystemJob } from '../../lib/pg-boss-scheduler';
 import { runAsUser } from '../../lib/audit-context';
+import { getExportMaskRuleMap } from '../platform/data-mask.service';
 import logger from '../../lib/logger';
 import type { JwtPayload } from '../../middleware/auth';
 
@@ -52,7 +53,7 @@ function normalizeRetention(definition: AnyExportDefinition) {
 
 async function hasPermission(user: JwtPayload, permission?: string): Promise<boolean> {
   if (!permission) return false;
-  if (isSuperAdmin(user.roles)) return true;
+  if (isSuperAdmin(user)) return true;
   const permissions = await getUserPermissions(user.userId);
   return permissions.includes(permission);
 }
@@ -67,7 +68,7 @@ async function assertExportPermission(definition: AnyExportDefinition, raw: bool
 }
 
 async function canManageAllJobs(user: JwtPayload): Promise<boolean> {
-  return isSuperAdmin(user.roles) || await hasPermission(user, 'system:export-job:manage');
+  return isSuperAdmin(user) || await hasPermission(user, 'system:export-job:manage');
 }
 
 async function canManageTenantJobs(user: JwtPayload): Promise<boolean> {
@@ -187,6 +188,8 @@ async function getCreatorPayload(row: typeof exportJobs.$inferSelect): Promise<J
 async function renderJobFile(row: typeof exportJobs.$inferSelect, definition: AnyExportDefinition): Promise<{ buffer: Buffer; mimeType: string; filename: string; rowCount?: number | null }> {
   const creator = await getCreatorPayload(row);
   const filename = row.filename ?? buildFilename(definition, row.id, row.format);
+  // 脱敏导出：预加载数据脱敏中心规则，敏感列渲染时统一打码
+  const maskRules = row.masked ? await getExportMaskRuleMap() : null;
   const ctx: ExportRuntimeContext = {
     jobId: row.id,
     entity: row.entity,
@@ -201,6 +204,7 @@ async function renderJobFile(row: typeof exportJobs.$inferSelect, definition: An
     currentUser: creator,
     createdByName: null,
     exportedAt: new Date(),
+    maskRules,
   };
   return runWithCurrentUser(creator, async () => {
     if (definition.renderFile) {
@@ -311,7 +315,8 @@ export async function createExportJob(input: CreateExportJobInput) {
   if (format === 'csv' && (definition.renderMode ?? 'table') !== 'table') {
     throw new HTTPException(400, { message: '该导出包含复杂布局或自定义样式，仅支持 Excel' });
   }
-  const raw = input.raw ?? true;
+  // 安全默认：未显式声明时按脱敏导出；明文导出需显式 raw=true 且通过 exportRaw 权限校验
+  const raw = input.raw ?? false;
   await assertExportPermission(definition, raw, user);
   const selectedColumns = input.columns?.length ? [...new Set(input.columns)] : null;
   const sensitive = definitionHasSensitiveColumns(definition, selectedColumns);

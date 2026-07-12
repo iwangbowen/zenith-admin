@@ -72,6 +72,7 @@ export const usersExportDefinition = defineExport<Record<string, unknown>, UserE
   permissions: {
     export: 'system:user:export',
     exportRaw: 'system:user:export-raw',
+    requireExportRawPermission: true,
   },
   execution: {
     mode: 'sync',

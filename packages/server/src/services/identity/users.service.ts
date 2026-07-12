@@ -7,6 +7,7 @@ import { users, userRoles, roles, departments, positions, userPositions, userMen
 import { HTTPException } from 'hono/http-exception';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { ensureTenantUserQuota, getTenantUserLimit } from '../../lib/tenant-quota';
+import { getTenantPackageMenuIdSet } from '../../lib/tenant-package';
 import { pageOffset } from '../../lib/pagination';
 import { getDataScopeCondition } from '../../lib/data-scope';
 import { escapeLike } from '../../lib/where-helpers';
@@ -687,7 +688,18 @@ export async function importUsers(file: File): Promise<ImportUsersResult> {
 
 // ─── 用户级菜单权限 ────────────────────────────────────────────────────────────
 
+/** 校验目标用户存在且落在当前操作者可见租户内（防跨租户 IDOR），返回其租户归属 */
+async function ensureUserInTenant(userId: number): Promise<{ id: number; tenantId: number | null }> {
+  const user = currentUser();
+  const tc = tenantCondition(users, user);
+  const [row] = await db.select({ id: users.id, tenantId: users.tenantId }).from(users)
+    .where(tc ? and(eq(users.id, userId), tc) : eq(users.id, userId)).limit(1);
+  if (!row) throw new HTTPException(404, { message: '用户不存在' });
+  return row;
+}
+
 export async function getUserMenuPermissions(userId: number) {
+  await ensureUserInTenant(userId);
   const user = await db.query.users.findFirst({
     where: eq(users.id, userId),
     columns: {},
@@ -722,22 +734,29 @@ export async function getUserMenuPermissionsBeforeAudit(userId: number) {
 }
 
 export async function assignUserMenus(userId: number, menuIds: number[]) {
-  const exists = await db.query.users.findFirst({ where: eq(users.id, userId), columns: { id: true } });
-  if (!exists) throw new HTTPException(404, { message: '用户不存在' });
+  const target = await ensureUserInTenant(userId);
+  const uniqueMenuIds = Array.from(new Set(menuIds));
+  // 多租户：直授菜单必须落在目标用户所属租户的套餐白名单内（与角色分配菜单同一口径）
+  const packageMenuIds = await getTenantPackageMenuIdSet(target.tenantId);
+  if (packageMenuIds && uniqueMenuIds.some((mid) => !packageMenuIds.has(mid))) {
+    throw new HTTPException(400, { message: '所选菜单超出该用户所属租户套餐范围，无法分配' });
+  }
   await db.transaction(async (tx) => {
     await tx.delete(userMenus).where(eq(userMenus.userId, userId));
-    if (menuIds.length > 0) {
-      await tx.insert(userMenus).values(menuIds.map((menuId) => ({ userId, menuId })));
+    if (uniqueMenuIds.length > 0) {
+      await tx.insert(userMenus).values(uniqueMenuIds.map((menuId) => ({ userId, menuId })));
     }
   });
   clearUserPermissionCache(userId);
 }
 
 export async function assignRolesToUser(userId: number, roleIds: number[]) {
-  const exists = await db.query.users.findFirst({ where: eq(users.id, userId), columns: { id: true } });
-  if (!exists) throw new HTTPException(404, { message: '用户不存在' });
+  await ensureUserInTenant(userId);
+  const uniqueRoleIds = Array.from(new Set(roleIds));
+  // 角色必须存在且落在当前操作者可见租户内，防止绑定跨租户/平台角色
+  await ensureRoleIdsExist(uniqueRoleIds, currentUser());
   await db.transaction(async (tx) => {
-    await setUserRoles(tx, userId, roleIds);
+    await setUserRoles(tx, userId, uniqueRoleIds);
   });
   clearUserPermissionCache(userId);
 }

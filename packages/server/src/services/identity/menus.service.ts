@@ -114,7 +114,7 @@ export async function listUserMenuTree(): Promise<Menu[]> {
   const user = currentUser();
   const allMenus = await db.select().from(menus).orderBy(asc(menus.sort), asc(menus.id));
 
-  if (isSuperAdmin(user.roles)) {
+  if (isSuperAdmin(user)) {
     return buildMenuTree(allMenus.map(mapMenu));
   }
 

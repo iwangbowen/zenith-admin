@@ -428,7 +428,7 @@ export async function getMyProfile() {
       ? db.select({ name: tenants.name }).from(tenants).where(eq(tenants.id, user.tenantId)).limit(1)
       : Promise.resolve([] as { name: string }[]),
   ]);
-  const permissions = isSuperAdmin(userRoleList.map((r) => r.code)) ? ['*'] : await getUserPermissions(user.id);
+  const permissions = isSuperAdmin({ roles: userRoleList.map((r) => r.code), tenantId: user.tenantId }) ? ['*'] : await getUserPermissions(user.id);
   const tenantName = tenantRows[0]?.name ?? null;
   const { password: _pw, preferences: _prefs, department, userPositions: _up, userRoles: _ur, ...userInfo } = user;
 
