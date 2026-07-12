@@ -1115,7 +1115,8 @@ export type CreateWorkflowDataSourceInput = z.input<typeof createWorkflowDataSou
 export type UpdateWorkflowDataSourceInput = z.input<typeof updateWorkflowDataSourceSchema>;
 
 // ── 流程连接器 ──
-export const workflowConnectorTypeSchema = z.enum(['http', 'webhook', 'email', 'sms', 'wecom', 'dingtalk', 'feishu', 'mq', 'database']);
+/** 连接器类型（仅含运行时已实现调用的类型；mq/database 尚无 adapter，暂不开放创建） */
+export const workflowConnectorTypeSchema = z.enum(['http', 'webhook', 'email', 'sms', 'wecom', 'dingtalk', 'feishu']);
 
 /** 凭据明文（按 authType 解释；落库前整体 AES 加密，绝不回传） */
 export const workflowConnectorCredentialsSchema = z.object({

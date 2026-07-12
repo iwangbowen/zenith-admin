@@ -25,6 +25,7 @@ import {
 } from '@/hooks/queries/workflow-connectors';
 import { useDictItems } from '@/hooks/useDictItems';
 
+/** 可创建的连接器类型（与后端 workflowConnectorTypeSchema 对齐；mq/database 暂无运行时实现不开放） */
 const TYPE_OPTIONS: Array<{ value: WorkflowConnectorType; label: string }> = [
   { value: 'http', label: 'HTTP' },
   { value: 'webhook', label: 'Webhook' },
@@ -33,10 +34,12 @@ const TYPE_OPTIONS: Array<{ value: WorkflowConnectorType; label: string }> = [
   { value: 'wecom', label: '企业微信' },
   { value: 'dingtalk', label: '钉钉' },
   { value: 'feishu', label: '飞书' },
-  { value: 'mq', label: '消息队列' },
-  { value: 'database', label: '数据库' },
 ];
-const TYPE_LABEL = Object.fromEntries(TYPE_OPTIONS.map((t) => [t.value, t.label])) as Record<WorkflowConnectorType, string>;
+/** 展示标签额外覆盖存量 mq/database 数据（仅显示，不可新建） */
+const TYPE_LABEL = {
+  ...Object.fromEntries(TYPE_OPTIONS.map((t) => [t.value, t.label])),
+  mq: '消息队列', database: '数据库',
+} as Record<WorkflowConnectorType, string>;
 const SOURCE_LABEL: Record<WorkflowConnectorInvocation['source'], string> = {
   test: '测试', trigger: '触发器', external: '外部审批', webhook: '事件订阅', manual: '手动',
 };

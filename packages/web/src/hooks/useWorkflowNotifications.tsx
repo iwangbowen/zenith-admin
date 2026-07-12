@@ -49,8 +49,12 @@ export function useWorkflowRealtime() {
       // 自己的任务被超时自动处理/或签抢占/管理员改派等场景，同步刷新待办
       void queryClient.invalidateQueries({ queryKey: ['workflow', 'tasks'] });
     } else if (msg.type === 'workflow:instanceFinished') {
-      // 发起人视角：申请结束（通过/驳回/撤回），刷新我的申请/抄送/详情等全量工作流缓存
-      void queryClient.invalidateQueries({ queryKey: ['workflow'] });
+      // 发起人视角：申请结束（通过/驳回/撤回），刷新实例域缓存（我的申请/抄送/已办/待办/监控）。
+      // 刻意不做全域 ['workflow'] 失效：definitions/designer/forms 等编辑态查询被动 refetch
+      // 会覆盖设计器未保存的画布。
+      void queryClient.invalidateQueries({ queryKey: ['workflow', 'instances'] });
+      void queryClient.invalidateQueries({ queryKey: ['workflow', 'tasks'] });
+      void queryClient.invalidateQueries({ queryKey: ['workflow', 'monitor'] });
     }
   }, [queryClient, navigate]);
   useWebSocket(handler);

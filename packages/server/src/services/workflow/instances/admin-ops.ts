@@ -234,17 +234,36 @@ export async function recallTask(taskId: number, comment?: string) {
     if (laterInTx.some((t) => t.status === 'approved' || t.status === 'rejected')) {
       throw new HTTPException(400, { message: '后续节点已被处理，无法撤回' });
     }
-    if (laterInTx.length > 0) {
-      await tx.delete(workflowTasks).where(and(eq(workflowTasks.instanceId, task.instanceId), gt(workflowTasks.id, task.id)));
+    // 审计链保留：后续未处理任务作废为 skipped（不物理删除），撤回轨迹可追溯
+    const laterOpenIds = laterInTx.filter((t) => t.status === 'pending' || t.status === 'waiting').map((t) => t.id);
+    if (laterOpenIds.length > 0) {
+      await tx.update(workflowTasks)
+        .set({ status: 'skipped', actionAt: new Date(), comment: '[撤回作废] 上游审批撤回重审' })
+        .where(inArray(workflowTasks.id, laterOpenIds));
     }
-    const [row] = await tx.update(workflowTasks).set({
+    // 原任务保留终态与原始意见/签名（仅标记已撤回），新建同轮重审行承接后续审批：
+    // 继承 activationId 保证与同节点其他任务共同参与会签/或签/比例完成判定；
+    // 原行转 skipped 使 or 签不再因旧 approved 误判节点完成
+    await tx.update(workflowTasks).set({
+      status: 'skipped',
+      comment: `[已撤回]${freshTask.comment ? ' ' + freshTask.comment : ''}`,
+    }).where(eq(workflowTasks.id, task.id));
+    const [row] = await tx.insert(workflowTasks).values({
+      instanceId: task.instanceId,
+      nodeKey: task.nodeKey,
+      nodeName: task.nodeName,
+      nodeType: task.nodeType,
+      assigneeId: task.assigneeId,
       status: 'pending',
-      comment: comment ? `[撤回重审] ${comment}` : null,
-      signature: null,
-      actionAt: null,
-    }).where(eq(workflowTasks.id, task.id)).returning();
+      comment: comment ? `[撤回重审] ${comment}` : '[撤回重审]',
+      taskOrder: task.taskOrder,
+      approveMethod: task.approveMethod,
+      approveRatio: task.approveRatio,
+      activationId: task.activationId,
+      originalAssigneeId: task.originalAssigneeId ?? task.assigneeId,
+    }).returning();
     await tx.update(workflowInstances).set({ status: 'running', currentNodeKey: task.nodeKey }).where(eq(workflowInstances.id, task.instanceId));
-    // Token 一致性：撤回重审清场后，在被重开节点重建单一 active token（后续路径 token 已随删除/清场失效）
+    // Token 一致性：撤回重审清场后，在被重开节点重建单一 active token（后续路径 token 已随作废/清场失效）
     await killInstanceTokens(tx, task.instanceId);
     await tx.insert(workflowTokens).values({
       instanceId: task.instanceId,

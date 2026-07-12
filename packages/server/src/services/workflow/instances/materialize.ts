@@ -350,10 +350,27 @@ async function expandTasksToRows(
   return { rows, autoApprovedNodeKeys, autoRejectedNodeKey };
 }
 
+/**
+ * 供 ccNode onlyOnApprove 判定的「已完成审批节点」集合：
+ * 仅统计各节点**当前激活轮**中存在 approved 的节点（skipped 不算通过——
+ * 驳回连带跳过、撤回作废、取消清场的行都不应让抄送误判"上游已通过"）。
+ * 历史轮（重入前）的 approved 同样不参与，与 checkNodeCompletion 口径一致。
+ */
 async function getCompletedNodeKeys(exec: DbExecutor, instanceId: number): Promise<Set<string>> {
-  const rows = await exec.select({ nodeKey: workflowTasks.nodeKey }).from(workflowTasks)
-    .where(and(eq(workflowTasks.instanceId, instanceId), inArray(workflowTasks.status, ['approved', 'skipped'])));
-  const keys = new Set(rows.map((row) => row.nodeKey));
+  const rows = await exec.select({ id: workflowTasks.id, nodeKey: workflowTasks.nodeKey, status: workflowTasks.status, activationId: workflowTasks.activationId })
+    .from(workflowTasks)
+    .where(eq(workflowTasks.instanceId, instanceId));
+  const byNode = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const group = byNode.get(row.nodeKey);
+    if (group) group.push(row);
+    else byNode.set(row.nodeKey, [row]);
+  }
+  const keys = new Set<string>();
+  for (const [nodeKey, group] of byNode) {
+    const current = filterCurrentActivation(group);
+    if (current.some((t) => t.status === 'approved')) keys.add(nodeKey);
+  }
   keys.add('start');
   return keys;
 }

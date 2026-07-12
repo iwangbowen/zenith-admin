@@ -1,7 +1,7 @@
 /**
  * 工作流设计器页面 — 钉钉/飞书风格垂直流程设计器
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, Modal, RadioGroup, Radio, Spin, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import { ArrowLeft, Download, Eye, History, Minus, Play, Plus, Redo2, RotateCcw, Save, Send, Stethoscope, Undo2, Upload } from 'lucide-react';
@@ -195,9 +195,15 @@ export default function WorkflowDesignerPage({
 
   // ─── 加载数据 ─────────────────────────────────────────────────────
 
+  // 初始化守卫：同一定义只用查询结果初始化一次画布。
+  // 后续缓存失效/窗口聚焦触发的 refetch 不再 history.reset，避免覆盖未保存的设计
+  const loadedDefinitionIdRef = useRef<number | null>(null);
+
   useEffect(() => {
     const data = definitionQuery.data;
     if (!presetDefinition && !isNew && data) {
+      if (loadedDefinitionIdRef.current === data.id) return;
+      loadedDefinitionIdRef.current = data.id;
       setDefinition(data);
       setMetaName(data.name);
       setMetaDesc(data.description ?? '');
