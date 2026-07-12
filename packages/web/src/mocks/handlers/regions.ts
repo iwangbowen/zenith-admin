@@ -3,6 +3,14 @@ import { mockRegions, getNextRegionId, buildRegionTree } from '@/mocks/data/regi
 import { mockDateTime } from '@/mocks/utils/date';
 import type { Region } from '@zenith/shared';
 
+// 与服务端一致的行政层级约束：province 仅根级、city 父须 province、county 父须 city
+function validateLevelHierarchy(level: Region['level'], parentCode: string | null | undefined): string | null {
+  const parentLevel = parentCode ? (mockRegions.find((r) => r.code === parentCode)?.level ?? null) : null;
+  if (level === 'province') return parentLevel === null ? null : '省级地区不能挂载父级地区';
+  if (level === 'city') return parentLevel === 'province' ? null : '市级地区的父级必须为省级地区';
+  return parentLevel === 'city' ? null : '区县级地区的父级必须为市级地区';
+}
+
 function filterTree(nodes: Region[], keyword: string, status: string, level: string): Region[] {
   return nodes.reduce<Region[]>((acc, node) => {
     const children = node.children ? filterTree(node.children, keyword, status, level) : [];
@@ -44,6 +52,8 @@ export const regionsHandlers = [
   // POST / — 创建
   http.post('/api/regions', async ({ request }) => {
     const body = (await request.json()) as Partial<Region>;
+    const levelError = validateLevelHierarchy(body.level ?? 'province', body.parentCode);
+    if (levelError) return HttpResponse.json({ code: 400, message: levelError, data: null }, { status: 400 });
     const now = mockDateTime();
     const newRegion: Region = {
       id: getNextRegionId(),
@@ -68,6 +78,10 @@ export const regionsHandlers = [
       return HttpResponse.json({ code: 404, message: '地区不存在', data: null }, { status: 404 });
     }
     const body = (await request.json()) as Partial<Region>;
+    const nextLevel = body.level ?? region.level;
+    const nextParentCode = body.parentCode === undefined ? region.parentCode : body.parentCode;
+    const levelError = validateLevelHierarchy(nextLevel, nextParentCode);
+    if (levelError) return HttpResponse.json({ code: 400, message: levelError, data: null }, { status: 400 });
     Object.assign(region, body, { updatedAt: mockDateTime() });
     return HttpResponse.json({ code: 0, message: '更新成功', data: region });
   }),

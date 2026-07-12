@@ -328,6 +328,7 @@ export default function TenantPackagesPage() {
         visible={menuModalVisible}
         onCancel={() => setMenuModalVisible(false)}
         onOk={handleAssignMenus}
+        okButtonProps={{ disabled: !menuDetailQuery.isSuccess, loading: assignMenusMutation.isPending }}
         width={480}
       >
         <MenuPermissionPanel

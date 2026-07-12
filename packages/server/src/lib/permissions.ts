@@ -3,8 +3,13 @@ import { SUPER_ADMIN_CODE } from '@zenith/shared';
 import { db } from '../db';
 import { users } from '../db/schema';
 import { getTenantPackageMenuIdSet } from './tenant-package';
+import { config } from '../config';
+import redis from './redis';
 
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL_SECONDS = 300;
+/** Redis key：{prefix}perm:{userId}，与 session/blacklist 同一命名空间 */
+const PERM_CACHE_PREFIX = `${config.redis.keyPrefix}perm:`;
 
 interface CacheEntry {
   permissions: string[];
@@ -12,7 +17,42 @@ interface CacheEntry {
   timestamp: number;
 }
 
-const cache = new Map<number, CacheEntry>();
+// 进程内缓存：仅作为 Redis 不可用时的降级数据源（单实例语义）。
+// 主存储为 Redis，保证多实例部署下 clearUserPermissionCache 撤权即时生效。
+const localCache = new Map<number, CacheEntry>();
+
+async function readCacheEntry(userId: number): Promise<CacheEntry | null> {
+  try {
+    const raw = await redis.get(`${PERM_CACHE_PREFIX}${userId}`);
+    return raw ? (JSON.parse(raw) as CacheEntry) : null;
+  } catch {
+    const entry = localCache.get(userId);
+    return entry && Date.now() - entry.timestamp < CACHE_TTL ? entry : null;
+  }
+}
+
+async function writeCacheEntry(userId: number, entry: CacheEntry): Promise<void> {
+  localCache.set(userId, entry);
+  try {
+    await redis.set(`${PERM_CACHE_PREFIX}${userId}`, JSON.stringify(entry), 'EX', CACHE_TTL_SECONDS);
+  } catch {
+    // Redis 不可用时退化为进程内缓存
+  }
+}
+
+async function clearRedisPermCache(userId?: number): Promise<void> {
+  if (userId !== undefined) {
+    await redis.del(`${PERM_CACHE_PREFIX}${userId}`);
+    return;
+  }
+  // 全量清除：SCAN 按前缀逐批删除，避免 KEYS 阻塞
+  let cursor = '0';
+  do {
+    const [next, keys] = await redis.scan(cursor, 'MATCH', `${PERM_CACHE_PREFIX}*`, 'COUNT', 200);
+    cursor = next;
+    if (keys.length > 0) await redis.del(...keys);
+  } while (cursor !== '0');
+}
 
 /**
  * 平台超管判定：角色 code 含 super_admin **且** 归属平台（tenantId 为 null）。
@@ -23,24 +63,20 @@ export function isSuperAdmin(user: { roles: string[]; tenantId?: number | null }
 }
 
 export async function getUserPermissions(userId: number): Promise<string[]> {
-  const entry = cache.get(userId);
-  if (entry && Date.now() - entry.timestamp < CACHE_TTL) {
-    return entry.permissions;
-  }
+  const entry = await readCacheEntry(userId);
+  if (entry) return entry.permissions;
 
   const { permissions, menuIds } = await fetchUserPermissionData(userId);
-  cache.set(userId, { permissions, menuIds, timestamp: Date.now() });
+  await writeCacheEntry(userId, { permissions, menuIds, timestamp: Date.now() });
   return permissions;
 }
 
 export async function getUserMenuIds(userId: number): Promise<number[]> {
-  const entry = cache.get(userId);
-  if (entry && Date.now() - entry.timestamp < CACHE_TTL) {
-    return entry.menuIds;
-  }
+  const entry = await readCacheEntry(userId);
+  if (entry) return entry.menuIds;
 
   const { permissions, menuIds } = await fetchUserPermissionData(userId);
-  cache.set(userId, { permissions, menuIds, timestamp: Date.now() });
+  await writeCacheEntry(userId, { permissions, menuIds, timestamp: Date.now() });
   return menuIds;
 }
 
@@ -134,10 +170,16 @@ async function fetchUserPermissionData(userId: number): Promise<{ permissions: s
   return { permissions, menuIds };
 }
 
+/**
+ * 清除用户权限缓存（Redis 主存储 + 本地降级缓存）。
+ * 保持同步签名以兼容既有调用点；Redis 删除为 fire-and-forget（mock/实现均在同步段
+ * 先行发出 DEL，实际竞态窗口仅为网络往返，撤权关键路径另有会话撤销兜底）。
+ */
 export function clearUserPermissionCache(userId?: number): void {
   if (userId === undefined) {
-    cache.clear();
+    localCache.clear();
   } else {
-    cache.delete(userId);
+    localCache.delete(userId);
   }
+  void clearRedisPermCache(userId).catch(() => {});
 }

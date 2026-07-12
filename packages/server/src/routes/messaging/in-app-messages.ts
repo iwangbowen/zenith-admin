@@ -161,7 +161,7 @@ const adminMarkAllReadRoute = defineOpenAPIRoute({
     method: 'post', path: '/admin/read-all', tags: ['InAppMessages'], summary: '管理员：全部标记为已读',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({
-      permission: 'system:in-app-message:update',
+      permission: 'system:in-app-message:read',
       audit: { description: '管理员全部标记站内信已读', module: '收件记录' },
     })] as const,
     responses: { ...commonErrorResponses, ...okMsg('已全部标记') },
@@ -178,7 +178,7 @@ const adminMarkReadRoute = defineOpenAPIRoute({
     method: 'post', path: '/admin/{id}/read', tags: ['InAppMessages'], summary: '管理员：标记任意站内信为已读',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({
-      permission: 'system:in-app-message:update',
+      permission: 'system:in-app-message:read',
       audit: { description: '管理员标记站内信已读', module: '收件记录' },
     })] as const,
     request: { params: IdParam },

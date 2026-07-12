@@ -75,6 +75,7 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
       onCancel={onClose}
       onOk={activeTab === 'direct' ? handleSave : undefined}
       okText={activeTab === 'direct' ? '保存' : undefined}
+      okButtonProps={{ disabled: !permissionsQuery.isSuccess }}
       footer={activeTab === 'effective' ? null : undefined}
       confirmLoading={saveMenusMutation.isPending}
       width={520}

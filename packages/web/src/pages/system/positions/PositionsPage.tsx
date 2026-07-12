@@ -433,7 +433,7 @@ export default function PositionsPage() {
         footer={
           <Space>
             <Button onClick={() => setMemberSheetVisible(false)}>取消</Button>
-            <Button type="primary" loading={assignMembersMutation.isPending} onClick={handleSaveMembers}>保存</Button>
+            <Button type="primary" disabled={!membersQuery.isSuccess} loading={assignMembersMutation.isPending} onClick={handleSaveMembers}>保存</Button>
           </Space>
         }
       >

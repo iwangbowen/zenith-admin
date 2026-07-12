@@ -485,7 +485,7 @@ export default function UserGroupsPage() {
         footer={
           <Space>
             <Button onClick={() => setMemberSheetVisible(false)}>取消</Button>
-            <Button type="primary" loading={assignMembersMutation.isPending} onClick={handleSaveMembers}>保存</Button>
+            <Button type="primary" disabled={!membersQuery.isSuccess} loading={assignMembersMutation.isPending} onClick={handleSaveMembers}>保存</Button>
           </Space>
         }
       >
@@ -506,6 +506,7 @@ export default function UserGroupsPage() {
         visible={roleModalVisible}
         onCancel={() => { setRoleModalVisible(false); setRoleGroup(null); }}
         onOk={handleSaveRoles}
+        okButtonProps={{ disabled: !groupRolesQuery.isSuccess }}
         confirmLoading={assignRolesMutation.isPending}
         width={480}
       >

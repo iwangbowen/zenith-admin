@@ -2,16 +2,17 @@
  * permissions 单元测试
  *
  * 覆盖要点：
- *  1. isSuperAdmin          — 正确识别 super_admin 角色
- *  2. getUserPermissions    — 无角色 / 有角色 / 去重 / 过滤空值 / 缓存命中
+ *  1. isSuperAdmin          — 正确识别 super_admin 角色（code + 平台归属双条件）
+ *  2. getUserPermissions    — 无角色 / 有角色 / 去重 / 过滤空值 / 状态过滤 / 缓存命中
  *  3. getUserMenuIds        — 返回去重菜单 ID
  *  4. clearUserPermissionCache — 清除单用户 / 全部用户缓存
  *
- * 测试策略：mock `../db`，避免真实数据库连接；
+ * 测试策略：mock `../db` 与 `./redis`（内存 Map 模拟 GET/SET EX/DEL/SCAN），避免真实连接；
  * 通过 `db.query.users.findFirst()` 返回带嵌套 relations 的结果，验证 Drizzle RQB 聚合逻辑。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { db } from '../db';
+import redis from './redis';
 import {
   isSuperAdmin,
   getUserPermissions,
@@ -37,12 +38,50 @@ vi.mock('../db', () => ({
   db: { query: { users: { findFirst: vi.fn() } } },
 }));
 
+// 内存 Redis mock：GET 按 expireAt（受 fake timers 影响的 Date.now）判断过期
+vi.mock('./redis', () => {
+  const store = new Map<string, { value: string; expireAt: number }>();
+  return {
+    default: {
+      __store: store,
+      get: vi.fn(async (key: string) => {
+        const entry = store.get(key);
+        if (!entry) return null;
+        if (Date.now() >= entry.expireAt) {
+          store.delete(key);
+          return null;
+        }
+        return entry.value;
+      }),
+      set: vi.fn(async (key: string, value: string, _ex: string, seconds: number) => {
+        store.set(key, { value, expireAt: Date.now() + seconds * 1000 });
+        return 'OK';
+      }),
+      del: vi.fn(async (...keys: string[]) => {
+        keys.forEach((k) => store.delete(k));
+        return keys.length;
+      }),
+      scan: vi.fn(async (_cursor: string, _match: string, pattern: string) => {
+        const prefix = pattern.replace(/\*$/, '');
+        return ['0', [...store.keys()].filter((k) => k.startsWith(prefix))] as [string, string[]];
+      }),
+    },
+  };
+});
+
 const findUserMock = vi.mocked(db.query.users.findFirst);
+const redisStore = (redis as unknown as { __store: Map<string, unknown> }).__store;
+
+/** 等待 fire-and-forget 的 Redis 清理 microtask 完成 */
+async function flushAsync() {
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+}
 
 // ─── Setup ───────────────────────────────────────────────────────────────────
 beforeEach(() => {
   vi.clearAllMocks();
-  clearUserPermissionCache(); // 每轮测试前清空缓存，防止相互干扰
+  redisStore.clear(); // 直接清空 mock 存储，避免依赖异步的 clearUserPermissionCache
+  clearUserPermissionCache(); // 同时清空进程内降级缓存
 });
 
 // 确保 fake timers 在每次测试后恢复，防止影响后续测试
@@ -261,6 +300,7 @@ describe('clearUserPermissionCache', () => {
     const callsAfterWarmup = findUserMock.mock.calls.length;
 
     clearUserPermissionCache(); // 清除全部
+    await flushAsync(); // 全量清除走 SCAN+DEL 异步链，等待其完成
 
     // 两个用户都应重查
     findUserMock.mockResolvedValueOnce({ userRoles: [], userMenus: [] } as never);

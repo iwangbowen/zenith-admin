@@ -81,6 +81,7 @@ export function UserDataScopeModal({ userId, userName, visible, deptTree, onClos
       visible={visible}
       onCancel={onClose}
       onOk={handleSave}
+      okButtonProps={{ disabled: !permissionQuery.isSuccess }}
       confirmLoading={saveMutation.isPending}
       width={440}
     >

@@ -472,6 +472,7 @@ export default function RolesPage() {
         visible={menuModalVisible}
         onCancel={() => setMenuModalVisible(false)}
         onOk={handleAssignMenus}
+        okButtonProps={{ disabled: !menuRoleDetailQuery.isSuccess, loading: assignMenusMutation.isPending }}
         width={480}
       >
         <MenuPermissionPanel
@@ -488,6 +489,7 @@ export default function RolesPage() {
         visible={dataScopeModalVisible}
         onCancel={() => setDataScopeModalVisible(false)}
         onOk={handleSaveDataScope}
+        okButtonProps={{ disabled: !dataScopeRoleDetailQuery.isSuccess, loading: updateDataScopeMutation.isPending }}
         width={400}
       >
         <DataScopePanel
@@ -509,7 +511,7 @@ export default function RolesPage() {
         footer={
           <Space>
             <Button onClick={() => setUserModalVisible(false)}>取消</Button>
-            <Button type="primary" loading={assignUsersMutation.isPending} onClick={handleAssignUsers}>保存</Button>
+            <Button type="primary" disabled={!roleUsersQuery.isSuccess || !allUsersQuery.isSuccess} loading={assignUsersMutation.isPending} onClick={handleAssignUsers}>保存</Button>
           </Space>
         }
       >

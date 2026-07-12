@@ -90,6 +90,8 @@ type NavItem = {
   items?: NavItem[];
   badge?: { count: number; overflowCount?: number };
   isExternal?: boolean;
+  /** 菜单配置的默认路由参数（querystring，不含 `?`），跳转时拼接到 path */
+  query?: string | null;
 };
 
 function menuToNavItem(menu: Menu): NavItem | null {
@@ -105,7 +107,7 @@ function menuToNavItem(menu: Menu): NavItem | null {
   if (menu.isExternal && menu.embed) {
     return { itemKey: `/embed/${menu.id}`, text: menu.title, icon, isExternal: false };
   }
-  return { itemKey: menu.path ?? `menu-${menu.id}`, text: menu.title, icon, isExternal: menu.isExternal ?? false };
+  return { itemKey: menu.path ?? `menu-${menu.id}`, text: menu.title, icon, isExternal: menu.isExternal ?? false, query: menu.query ?? null };
 }
 
 function findNavItemAncestorKeys(items: NavItem[], targetKey: string): string[] | null {
@@ -1081,6 +1083,24 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
     return map;
   }, [navItems]);
 
+  // itemKey → 菜单默认路由参数（menus.query 字段），跳转时拼接 querystring
+  const navQueryByKey = useMemo(() => {
+    const map = new Map<string, string>();
+    function walk(items: NavItem[]) {
+      for (const item of items) {
+        if (item.query) map.set(item.itemKey, item.query.replace(/^\?/, ''));
+        if (item.items) walk(item.items);
+      }
+    }
+    walk(navItems);
+    return map;
+  }, [navItems]);
+
+  const withMenuQuery = useCallback((key: string) => {
+    const query = navQueryByKey.get(key);
+    return query ? `${key}?${query}` : key;
+  }, [navQueryByKey]);
+
   const renderWrapper = useCallback(
     (args: { itemElement: React.ReactNode; props: { itemKey?: string | number } }) => {
       const { itemElement, props: itemProps } = args;
@@ -1094,12 +1114,12 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
         );
       }
       return (
-        <NavLink to={itemKey} className="admin-nav-link-wrapper">
+        <NavLink to={withMenuQuery(itemKey)} className="admin-nav-link-wrapper">
           {itemElement}
         </NavLink>
       );
     },
-    [externalNavKeys],
+    [externalNavKeys, withMenuQuery],
   );
 
   const renderMobileWrapper = useCallback(
@@ -1121,12 +1141,12 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
         );
       }
       return (
-        <NavLink to={itemKey} className="admin-nav-link-wrapper" onClick={() => setMobileNavVisible(false)}>
+        <NavLink to={withMenuQuery(itemKey)} className="admin-nav-link-wrapper" onClick={() => setMobileNavVisible(false)}>
           {itemElement}
         </NavLink>
       );
     },
-    [externalNavKeys],
+    [externalNavKeys, withMenuQuery],
   );
 
   const handleDoubleRailClick = useCallback((item: NavItem) => {
@@ -1144,11 +1164,11 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
         return null;
       }
       const leaf = findFirstLeaf(item.items);
-      if (leaf) navigate(leaf);
+      if (leaf) navigate(withMenuQuery(leaf));
     } else if (item.itemKey.startsWith('/')) {
-      navigate(item.itemKey);
+      navigate(withMenuQuery(item.itemKey));
     }
-  }, [navigate]);
+  }, [navigate, withMenuQuery]);
 
   const handleMixedTopSelect = useCallback(
     ({ itemKey: key }: { itemKey: string | number }) => {
@@ -1168,10 +1188,10 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
           return null;
         }
         const leaf = findFirstLeaf(topItem.items);
-        if (leaf) navigate(leaf);
+        if (leaf) navigate(withMenuQuery(leaf));
       }
     },
-    [navItems, navigate],
+    [navItems, navigate, withMenuQuery],
   );
 
   const currentSelectedKeys = useMemo(
