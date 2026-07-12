@@ -1,6 +1,7 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
+import { platformAdminOnly } from '../../middleware/platform-admin';
 import { jsonContent, validationHook, commonErrorResponses, ok, okMsg, okPaginated, IdParam, okBody, PaginationQuery } from '../../lib/openapi-schemas';
 import { DataMaskConfigDTO, SensitiveFieldDTO } from '../../lib/openapi-dtos';
 import { maskTypeValues } from '@zenith/shared';
@@ -64,7 +65,7 @@ const createRoute_ = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/', tags: ['DataMaskConfigs'], summary: '创建脱敏规则',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:data-mask:create', audit: { description: '创建脱敏规则', module: '数据脱敏配置' } })] as const,
+    middleware: [authMiddleware, platformAdminOnly({ message: '多租户模式下仅平台管理员可管理数据脱敏规则', onlyInMultiTenant: true }), guard({ permission: 'system:data-mask:create', audit: { description: '创建脱敏规则', module: '数据脱敏配置' } })] as const,
     request: { body: { content: jsonContent(createDataMaskConfigSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(DataMaskConfigDTO, '创建成功') },
   }),
@@ -75,7 +76,7 @@ const updateRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'put', path: '/{id}', tags: ['DataMaskConfigs'], summary: '更新脱敏规则',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:data-mask:update', audit: { description: '更新脱敏规则', module: '数据脱敏配置' } })] as const,
+    middleware: [authMiddleware, platformAdminOnly({ message: '多租户模式下仅平台管理员可管理数据脱敏规则', onlyInMultiTenant: true }), guard({ permission: 'system:data-mask:update', audit: { description: '更新脱敏规则', module: '数据脱敏配置' } })] as const,
     request: {
       params: IdParam,
       body: { content: jsonContent(updateDataMaskConfigSchema), required: true },
@@ -94,7 +95,7 @@ const deleteRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'delete', path: '/{id}', tags: ['DataMaskConfigs'], summary: '删除脱敏规则',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:data-mask:delete', audit: { description: '删除脱敏规则', module: '数据脱敏配置' } })] as const,
+    middleware: [authMiddleware, platformAdminOnly({ message: '多租户模式下仅平台管理员可管理数据脱敏规则', onlyInMultiTenant: true }), guard({ permission: 'system:data-mask:delete', audit: { description: '删除脱敏规则', module: '数据脱敏配置' } })] as const,
     request: { params: IdParam },
     responses: { ...commonErrorResponses, ...okMsg('删除成功') },
   }),
@@ -120,7 +121,7 @@ const batchCreateRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/batch-create', tags: ['DataMaskConfigs'], summary: '批量创建脱敏规则',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:data-mask:create', audit: { description: '批量创建脱敏规则', module: '数据脱敏配置' } })] as const,
+    middleware: [authMiddleware, platformAdminOnly({ message: '多租户模式下仅平台管理员可管理数据脱敏规则', onlyInMultiTenant: true }), guard({ permission: 'system:data-mask:create', audit: { description: '批量创建脱敏规则', module: '数据脱敏配置' } })] as const,
     request: {
       body: {
         content: jsonContent(z.object({

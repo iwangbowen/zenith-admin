@@ -47,7 +47,7 @@ export async function getDataScopeCondition(options: DataScopeOptions): Promise<
         columns: {},
         with: {
           role: {
-            columns: { dataScope: true, code: true, tenantId: true },
+            columns: { dataScope: true, code: true, tenantId: true, status: true },
             with: { deptScopes: { columns: { deptId: true } } },
           },
         },
@@ -63,7 +63,7 @@ export async function getDataScopeCondition(options: DataScopeOptions): Promise<
                 columns: {},
                 with: {
                   role: {
-                    columns: { dataScope: true, code: true, tenantId: true },
+                    columns: { dataScope: true, code: true, tenantId: true, status: true },
                     with: { deptScopes: { columns: { deptId: true } } },
                   },
                 },
@@ -75,10 +75,12 @@ export async function getDataScopeCondition(options: DataScopeOptions): Promise<
       userDeptScopes: { columns: { deptId: true } },
     },
   });
-  const directRoleList = userData?.userRoles.map((ur) => ur.role) ?? [];
+  // 禁用角色的数据权限不再生效（与功能权限解析同一口径）
+  const directRoleList = (userData?.userRoles.map((ur) => ur.role) ?? []).filter((r) => r.status === 'enabled');
   const groupRoleList = (userData?.userGroupMembers ?? [])
     .filter(({ group }) => group.status === 'enabled')
-    .flatMap(({ group }) => group.groupRoles.map((gr) => gr.role));
+    .flatMap(({ group }) => group.groupRoles.map((gr) => gr.role))
+    .filter((r) => r.status === 'enabled');
   const userRoleList = [...directRoleList, ...groupRoleList];
   const userDirectScope = userData?.userDataScope ?? null;
 

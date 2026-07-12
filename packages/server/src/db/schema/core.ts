@@ -27,8 +27,8 @@ export const tenants = pgTable('tenants', {
   status: statusEnum('status').notNull().default('enabled'),
   expireAt: timestamp('expire_at', { withTimezone: true }),
   maxUsers: integer('max_users'),
-  /** 租户套餐（菜单白名单）；为空表示不限制 */
-  packageId: integer('package_id').references((): AnyPgColumn => tenantPackages.id, { onDelete: 'set null' }),
+  /** 租户套餐（菜单白名单）；为空表示不限制。应用层禁止删除在用套餐，restrict 兜底防 fail-open */
+  packageId: integer('package_id').references((): AnyPgColumn => tenantPackages.id, { onDelete: 'restrict' }),
   remark: text('remark'),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),

@@ -7,7 +7,8 @@ import type { Menu } from '@zenith/shared';
 export const menusHandlers = [
   // 当前用户的菜单树（用于渲染侧边栏）
   http.get('/api/menus/user', () => {
-    return HttpResponse.json({ code: 0, message: 'ok', data: buildMenuTree(mockMenus) });
+    // 与真实后端对齐：禁用菜单对所有人不可见（不注册路由）
+    return HttpResponse.json({ code: 0, message: 'ok', data: buildMenuTree(mockMenus.filter((m) => m.status === 'enabled')) });
   }),
 
   // 菜单树（含所有层级）

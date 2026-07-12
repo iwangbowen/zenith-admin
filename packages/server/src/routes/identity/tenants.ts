@@ -1,10 +1,8 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { createMiddleware } from 'hono/factory';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData, setAuditAfterData } from '../../middleware/guard';
-import { isPlatformAdmin } from '../../lib/tenant';
-import type { AppEnv } from '../../lib/context';
-import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody } from '../../lib/openapi-schemas';
+import { platformAdminOnly } from '../../middleware/platform-admin';
+import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody } from '../../lib/openapi-schemas';
 import { TenantDTO, TenantStatsDTO } from '../../lib/openapi-dtos';
 import {
   listTenants,
@@ -24,13 +22,7 @@ const dateTimeStringSchema = z
   .regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/, '日期时间格式必须为 YYYY-MM-DD HH:mm:ss')
   .openapi({ example: '2026-03-22 20:09:37' });
 
-const platformAdminMiddleware = createMiddleware<AppEnv>(async (c, next) => {
-  const user = c.get('user');
-  if (!isPlatformAdmin(user)) {
-    return c.json(errBody('仅平台管理员可管理租户', 403), 403);
-  }
-  await next();
-});
+const platformAdminMiddleware = platformAdminOnly({ message: '仅平台管理员可管理租户' });
 
 const createTenantSchema = z.object({
   name: z.string().min(1).max(100),

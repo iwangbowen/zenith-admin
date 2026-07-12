@@ -17,6 +17,7 @@ import { streamToExcel, streamToCsv, formatDateTimeForExcel } from '../../lib/ex
 import { clearUserPermissionCache } from '../../lib/permissions';
 import type { JwtPayload } from '../../middleware/auth';
 import type { User } from '@zenith/shared';
+import { SUPER_ADMIN_CODE } from '@zenith/shared';
 import { currentUser } from '../../lib/context';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
@@ -63,6 +64,50 @@ async function ensureNoProtectedAdminInIds(ids: number[], action: '删除' | '�
   if (adminUser) {
     throw new HTTPException(400, { message: `admin 账号不允许${action}` });
   }
+}
+
+// ─── 可管理范围校验（租户隔离 + 数据范围，对齐列表查询口径） ─────────────────────
+
+/** 构造「当前操作者可管理的用户」过滤条件；返回 undefined 表示不限制（全量权限） */
+async function manageableUsersCondition(): Promise<SQL | undefined> {
+  const user = currentUser();
+  const conditions: SQL[] = [];
+  const tc = tenantCondition(users, user);
+  if (tc) conditions.push(tc);
+  const scope = await getDataScopeCondition({
+    currentUserId: user.userId, deptColumn: users.departmentId, ownerColumn: users.id,
+  });
+  if (scope) conditions.push(scope);
+  return conditions.length > 0 ? and(...conditions) : undefined;
+}
+
+/** 校验目标用户存在且落在当前操作者可管理范围内（防越权/跨租户 IDOR），返回其租户归属 */
+async function ensureUserManageable(userId: number): Promise<{ id: number; tenantId: number | null }> {
+  const cond = await manageableUsersCondition();
+  const [row] = await db.select({ id: users.id, tenantId: users.tenantId }).from(users)
+    .where(cond ? and(eq(users.id, userId), cond) : eq(users.id, userId)).limit(1);
+  if (!row) throw new HTTPException(404, { message: '用户不存在或超出数据权限范围' });
+  return row;
+}
+
+/** 批量版：全部命中才放行（任一目标越权则整体拒绝，避免部分成功掩盖越权尝试） */
+async function ensureUsersManageable(userIds: number[]): Promise<void> {
+  const uniq = Array.from(new Set(userIds));
+  if (uniq.length === 0) return;
+  const cond = await manageableUsersCondition();
+  const count = await db.$count(users, cond ? and(inArray(users.id, uniq), cond) : inArray(users.id, uniq));
+  if (Number(count) !== uniq.length) {
+    throw new HTTPException(404, { message: '部分用户不存在或超出数据权限范围' });
+  }
+}
+
+/** 用户是否绑定平台超管角色（code=super_admin 且角色归属平台） */
+async function userHasPlatformSuperRole(userId: number): Promise<boolean> {
+  const [row] = await db.select({ userId: userRoles.userId }).from(userRoles)
+    .innerJoin(roles, eq(userRoles.roleId, roles.id))
+    .where(and(eq(userRoles.userId, userId), eq(roles.code, SUPER_ADMIN_CODE), isNull(roles.tenantId)))
+    .limit(1);
+  return !!row;
 }
 
 export async function findUsersWithRelations(config: Omit<FindManyUsersArgs, 'with'> = {}) {
@@ -198,9 +243,9 @@ function viewerRoleCodes(): string[] {
 }
 
 export async function listAllUsers() {
-  const user = currentUser();
-  const tc = tenantCondition(users, user);
-  const rawList = await findUsersWithRelations({ where: tc, orderBy: users.id });
+  // 与分页列表同一口径：租户隔离 + 数据范围（防止 self/dept 范围用户经 /all 绕过拿全租户名单）
+  const cond = await manageableUsersCondition();
+  const rawList = await findUsersWithRelations({ where: cond, orderBy: users.id });
   return mapUsersWithMask(rawList, viewerRoleCodes());
 }
 
@@ -310,6 +355,7 @@ export async function batchDeleteUsers(ids: number[]) {
   const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
   if (validIds.length === 0) throw new HTTPException(400, { message: '用户ID格式无效' });
   if (validIds.includes(user.userId)) throw new HTTPException(400, { message: '不允许删除当前登录账号' });
+  await ensureUsersManageable(validIds);
   const tc = tenantCondition(users, user);
   await ensureNoProtectedAdminInIds(validIds, '删除');
   const deleted = await db.delete(users)
@@ -323,6 +369,7 @@ export async function batchUpdateUserStatus(ids: number[], status: 'enabled' | '
   const user = currentUser();
   if (ids.length === 0) throw new HTTPException(400, { message: '请选择要操作的用户' });
   const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
+  await ensureUsersManageable(validIds);
   const tc = tenantCondition(users, user);
   if (status === 'disabled') {
     if (validIds.includes(user.userId)) throw new HTTPException(400, { message: '不允许禁用当前登录账号' });
@@ -349,9 +396,8 @@ export async function getUsersBeforeAudit(ids: number[]) {
 }
 
 export async function getUser(id: number) {
-  const user = currentUser();
-  const tc = tenantCondition(users, user);
-  const full = await findUserWithRelations({ where: tc ? and(eq(users.id, id), tc) : eq(users.id, id) });
+  const cond = await manageableUsersCondition();
+  const full = await findUserWithRelations({ where: cond ? and(eq(users.id, id), cond) : eq(users.id, id) });
   if (!full) throw new HTTPException(404, { message: '用户不存在' });
   return mapUserWithMask(full, viewerRoleCodes());
 }
@@ -386,6 +432,7 @@ export interface UpdateUserInput {
 
 export async function updateUser(id: number, data: UpdateUserInput) {
   const user = currentUser();
+  await ensureUserManageable(id);
   const { roleIds, positionIds, departmentId, ...rest } = data;
   const nextRoleIds = roleIds ? Array.from(new Set(roleIds)) : undefined;
   const nextPositionIds = positionIds ? Array.from(new Set(positionIds)) : undefined;
@@ -432,6 +479,8 @@ export async function updateUser(id: number, data: UpdateUserInput) {
     ...rest,
     ...(departmentId === undefined ? {} : { departmentId: departmentId ?? null }),
   };
+  // 变更前是否绑定平台超管角色：失去绑定时须撤销会话（JWT roles 2h 内不随 DB 变化）
+  const hadPlatformSuper = nextRoleIds !== undefined ? await userHasPlatformSuperRole(id) : false;
   const updated = await db.transaction(async (tx) => {
     const [u] = await tx.update(users).set(nextValues)
       .where(tc ? and(eq(users.id, id), tc) : eq(users.id, id)).returning();
@@ -441,7 +490,12 @@ export async function updateUser(id: number, data: UpdateUserInput) {
     return u;
   });
   if (!updated) throw new HTTPException(404, { message: '用户不存在' });
-  if (nextRoleIds !== undefined) clearUserPermissionCache(id);
+  if (nextRoleIds !== undefined) {
+    clearUserPermissionCache(id);
+    if (hadPlatformSuper && !(await userHasPlatformSuperRole(id))) {
+      await revokeUserSessions([id]);
+    }
+  }
   if (data.status === 'disabled') await revokeUserSessions([id]);
   const full = await findUserWithRelations({ where: eq(users.id, updated.id) });
   if (!full) throw new HTTPException(404, { message: '用户不存在' });
@@ -451,6 +505,7 @@ export async function updateUser(id: number, data: UpdateUserInput) {
 export async function deleteUser(id: number) {
   const user = currentUser();
   if (id === user.userId) throw new HTTPException(400, { message: '不允许删除当前登录账号' });
+  await ensureUserManageable(id);
   const tc = tenantCondition(users, user);
   await ensureNoProtectedAdminInIds([id], '删除');
   const [deleted] = await db.delete(users).where(tc ? and(eq(users.id, id), tc) : eq(users.id, id)).returning();
@@ -463,6 +518,7 @@ export async function batchResetUsersPassword(ids: number[], password: string) {
   if (ids.length === 0) throw new HTTPException(400, { message: '请选择要操作的用户' });
   const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
   if (validIds.length === 0) throw new HTTPException(400, { message: '用户ID格式无效' });
+  await ensureUsersManageable(validIds);
   const policy = await getPasswordPolicy();
   const policyError = validatePassword(password, policy);
   if (policyError) throw new HTTPException(400, { message: policyError });
@@ -473,21 +529,18 @@ export async function batchResetUsersPassword(ids: number[], password: string) {
 }
 
 export async function updateUserPassword(id: number, password: string) {
-  const user = currentUser();
+  await ensureUserManageable(id);
   const policy = await getPasswordPolicy();
   const policyError = validatePassword(password, policy);
   if (policyError) throw new HTTPException(400, { message: policyError });
-  const tc = tenantCondition(users, user);
-  const [u] = await db.select({ id: users.id }).from(users).where(tc ? and(eq(users.id, id), tc) : eq(users.id, id)).limit(1);
-  if (!u) throw new HTTPException(404, { message: '用户不存在' });
   const hashed = await bcrypt.hash(password, 10);
   await db.update(users).set({ password: hashed }).where(eq(users.id, id));
 }
 
 export async function unlockUserById(id: number) {
-  const user = currentUser();
-  const tc = tenantCondition(users, user);
-  const [u] = await db.select({ username: users.username }).from(users).where(tc ? and(eq(users.id, id), tc) : eq(users.id, id)).limit(1);
+  const cond = await manageableUsersCondition();
+  const [u] = await db.select({ username: users.username }).from(users)
+    .where(cond ? and(eq(users.id, id), cond) : eq(users.id, id)).limit(1);
   if (!u) throw new HTTPException(404, { message: '用户不存在' });
   await unlockUserSession(u.username);
 }
@@ -688,18 +741,8 @@ export async function importUsers(file: File): Promise<ImportUsersResult> {
 
 // ─── 用户级菜单权限 ────────────────────────────────────────────────────────────
 
-/** 校验目标用户存在且落在当前操作者可见租户内（防跨租户 IDOR），返回其租户归属 */
-async function ensureUserInTenant(userId: number): Promise<{ id: number; tenantId: number | null }> {
-  const user = currentUser();
-  const tc = tenantCondition(users, user);
-  const [row] = await db.select({ id: users.id, tenantId: users.tenantId }).from(users)
-    .where(tc ? and(eq(users.id, userId), tc) : eq(users.id, userId)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '用户不存在' });
-  return row;
-}
-
 export async function getUserMenuPermissions(userId: number) {
-  await ensureUserInTenant(userId);
+  await ensureUserManageable(userId);
   const user = await db.query.users.findFirst({
     where: eq(users.id, userId),
     columns: {},
@@ -734,7 +777,7 @@ export async function getUserMenuPermissionsBeforeAudit(userId: number) {
 }
 
 export async function assignUserMenus(userId: number, menuIds: number[]) {
-  const target = await ensureUserInTenant(userId);
+  const target = await ensureUserManageable(userId);
   const uniqueMenuIds = Array.from(new Set(menuIds));
   // 多租户：直授菜单必须落在目标用户所属租户的套餐白名单内（与角色分配菜单同一口径）
   const packageMenuIds = await getTenantPackageMenuIdSet(target.tenantId);
@@ -751,14 +794,19 @@ export async function assignUserMenus(userId: number, menuIds: number[]) {
 }
 
 export async function assignRolesToUser(userId: number, roleIds: number[]) {
-  await ensureUserInTenant(userId);
+  await ensureUserManageable(userId);
   const uniqueRoleIds = Array.from(new Set(roleIds));
   // 角色必须存在且落在当前操作者可见租户内，防止绑定跨租户/平台角色
   await ensureRoleIdsExist(uniqueRoleIds, currentUser());
+  // 变更前是否绑定平台超管角色：失去绑定时须撤销会话（JWT roles 2h 内不随 DB 变化）
+  const hadPlatformSuper = await userHasPlatformSuperRole(userId);
   await db.transaction(async (tx) => {
     await setUserRoles(tx, userId, uniqueRoleIds);
   });
   clearUserPermissionCache(userId);
+  if (hadPlatformSuper && !(await userHasPlatformSuperRole(userId))) {
+    await revokeUserSessions([userId]);
+  }
 }
 
 // ─── 用户级数据权限 ────────────────────────────────────────────────────────────
@@ -812,6 +860,7 @@ function extractGroupInheritance(
 }
 
 export async function getUserDataPermission(userId: number) {
+  await ensureUserManageable(userId);
   const user = await db.query.users.findFirst({
     where: eq(users.id, userId),
     columns: { userDataScope: true },
@@ -860,8 +909,7 @@ export async function getUserDataPermissionBeforeAudit(userId: number) {
 }
 
 export async function updateUserDataPermission(userId: number, data: { dataScope: string | null; deptScopeIds: number[] }) {
-  const exists = await db.query.users.findFirst({ where: eq(users.id, userId), columns: { id: true } });
-  if (!exists) throw new HTTPException(404, { message: '用户不存在' });
+  await ensureUserManageable(userId);
   await db.transaction(async (tx) => {
     await tx.update(users)
       .set({ userDataScope: data.dataScope as typeof users.$inferInsert['userDataScope'] })
@@ -875,6 +923,7 @@ export async function updateUserDataPermission(userId: number, data: { dataScope
 }
 
 export async function getUserEffectivePermissions(userId: number) {
+  await ensureUserManageable(userId);
   const user = await db.query.users.findFirst({
     where: eq(users.id, userId),
     columns: { userDataScope: true },

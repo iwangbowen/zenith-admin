@@ -1,6 +1,7 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
+import { platformAdminOnly } from '../../middleware/platform-admin';
 import { jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam, okBody } from '../../lib/openapi-schemas';
 import { RegionDTO } from '../../lib/openapi-dtos';
 import {
@@ -67,7 +68,7 @@ const createRegionRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/', tags: ['Regions'], summary: '新增地区',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:region:create', audit: { description: '创建地区', module: '地区管理' } })] as const,
+    middleware: [authMiddleware, platformAdminOnly({ message: '多租户模式下仅平台管理员可管理全局地区数据', onlyInMultiTenant: true }), guard({ permission: 'system:region:create', audit: { description: '创建地区', module: '地区管理' } })] as const,
     request: { body: { content: jsonContent(createRegionSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(RegionDTO, '创建成功') },
   }),
@@ -78,7 +79,7 @@ const updateRegionRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'put', path: '/{id}', tags: ['Regions'], summary: '更新地区',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:region:update', audit: { description: '更新地区', module: '地区管理' } })] as const,
+    middleware: [authMiddleware, platformAdminOnly({ message: '多租户模式下仅平台管理员可管理全局地区数据', onlyInMultiTenant: true }), guard({ permission: 'system:region:update', audit: { description: '更新地区', module: '地区管理' } })] as const,
     request: { params: IdParam, body: { content: jsonContent(updateRegionSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(RegionDTO, '更新成功') },
   }),
@@ -94,7 +95,7 @@ const deleteRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'delete', path: '/{id}', tags: ['Regions'], summary: '删除地区',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:region:delete', audit: { description: '删除地区', module: '地区管理' } })] as const,
+    middleware: [authMiddleware, platformAdminOnly({ message: '多租户模式下仅平台管理员可管理全局地区数据', onlyInMultiTenant: true }), guard({ permission: 'system:region:delete', audit: { description: '删除地区', module: '地区管理' } })] as const,
     request: { params: IdParam },
     responses: { ...commonErrorResponses, ...okMsg('删除成功') },
   }),

@@ -150,12 +150,34 @@ export const usersHandlers = [
     return HttpResponse.json({ code: 0, message: '删除成功', data: null });
   }),
 
-  // 重置密码
-  http.put('/api/users/:id/reset-password', ({ params }) => {
+  // 重置密码（与真实接口 PUT /api/users/:id/password 对齐）
+  http.put('/api/users/:id/password', ({ params }) => {
     const user = mockUsers.find((u) => u.id === Number(params.id));
     if (!user) return HttpResponse.json({ code: 404, message: '用户不存在', data: null });
     user.password = DEMO_INITIAL_CREDENTIAL;
-    return HttpResponse.json({ code: 0, message: `密码已重置为 ${DEMO_INITIAL_CREDENTIAL}`, data: null });
+    return HttpResponse.json({ code: 0, message: '密码修改成功', data: null });
+  }),
+
+  // 批量重置密码
+  http.put('/api/users/batch-password', async ({ request }) => {
+    const body = await request.json() as { ids: number[]; password: string };
+    const ids = new Set(body?.ids ?? []);
+    mockUsers.forEach((u) => {
+      if (ids.has(u.id)) u.password = body.password || DEMO_INITIAL_CREDENTIAL;
+    });
+    return HttpResponse.json({ code: 0, message: '密码重置成功', data: null });
+  }),
+
+  // 分配用户角色
+  http.put('/api/users/:id/roles', async ({ params, request }) => {
+    const user = mockUsers.find((u) => u.id === Number(params.id));
+    if (!user) return HttpResponse.json({ code: 404, message: '用户不存在', data: null });
+    const body = await request.json() as { roleIds: number[] };
+    user.roles = (body.roleIds ?? [])
+      .map((rid) => mockRoles.find((r) => r.id === rid))
+      .filter((r): r is NonNullable<typeof r> => Boolean(r));
+    user.updatedAt = mockDateTime();
+    return HttpResponse.json({ code: 0, message: '保存成功', data: null });
   }),
 
   // 修改用户状态

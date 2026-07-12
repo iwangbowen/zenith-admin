@@ -1,7 +1,21 @@
 import { http, HttpResponse } from 'msw';
 import { mockPositions, getNextPositionId } from '@/mocks/data/positions';
+import { mockUsers } from '@/mocks/data/users';
+import { mockDepartments } from '@/mocks/data/departments';
 import { mockDateTime } from '@/mocks/utils/date';
 import type { Position } from '@zenith/shared';
+
+function findDepartmentName(departmentId: number | null | undefined): string | null {
+  if (!departmentId) return null;
+  const stack = [...mockDepartments];
+  while (stack.length > 0) {
+    const dept = stack.pop();
+    if (!dept) continue;
+    if (dept.id === departmentId) return dept.name;
+    if (dept.children) stack.push(...dept.children);
+  }
+  return null;
+}
 
 export const positionsHandlers = [
   // 岗位列表（分页，与真实后端一致）
@@ -77,5 +91,41 @@ export const positionsHandlers = [
     if (index === -1) return HttpResponse.json({ code: 404, message: '岗位不存在', data: null });
     mockPositions.splice(index, 1);
     return HttpResponse.json({ code: 0, message: '删除成功', data: null });
+  }),
+
+  // 获取岗位成员（与真实接口 GET /api/positions/:id/members 对齐）
+  http.get('/api/positions/:id/members', ({ params }) => {
+    const positionId = Number(params.id);
+    const pos = mockPositions.find((p) => p.id === positionId);
+    if (!pos) return HttpResponse.json({ code: 404, message: '岗位不存在', data: null });
+    const list = mockUsers
+      .filter((u) => (u.positionIds ?? []).includes(positionId))
+      .map((u) => ({
+        id: u.id, username: u.username, nickname: u.nickname, email: u.email,
+        avatar: u.avatar ?? null,
+        departmentName: findDepartmentName(u.departmentId),
+        createdAt: u.createdAt,
+      }));
+    return HttpResponse.json({ code: 0, message: 'ok', data: list });
+  }),
+
+  // 分配岗位成员（先清后设，与真实接口 PUT /api/positions/:id/members 对齐）
+  http.put('/api/positions/:id/members', async ({ params, request }) => {
+    const positionId = Number(params.id);
+    const pos = mockPositions.find((p) => p.id === positionId);
+    if (!pos) return HttpResponse.json({ code: 404, message: '岗位不存在', data: null });
+    const body = await request.json() as { userIds: number[] };
+    const nextIds = new Set(body.userIds ?? []);
+    mockUsers.forEach((u) => {
+      const ids = new Set(u.positionIds ?? []);
+      if (nextIds.has(u.id)) ids.add(positionId);
+      else ids.delete(positionId);
+      u.positionIds = [...ids];
+      u.positions = u.positionIds
+        .map((pid) => mockPositions.find((p) => p.id === pid))
+        .filter((p): p is NonNullable<typeof p> => Boolean(p));
+    });
+    pos.updatedAt = mockDateTime();
+    return HttpResponse.json({ code: 0, message: '成员分配成功', data: null });
   }),
 ];

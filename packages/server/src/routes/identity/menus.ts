@@ -1,6 +1,7 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
+import { platformAdminOnly } from '../../middleware/platform-admin';
 import { jsonContent, validationHook, commonErrorResponses, conflictResponse, ok, okMsg, IdParam, okBody } from '../../lib/openapi-schemas';
 import { MenuDTO } from '../../lib/openapi-dtos';
 import {
@@ -116,7 +117,7 @@ const createMenuRoute = defineOpenAPIRoute({
     tags: ['Menus'],
     summary: '新增菜单',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:menu:create', audit: { description: '创建菜单', module: '菜单管理' } })] as const,
+    middleware: [authMiddleware, platformAdminOnly({ message: '多租户模式下仅平台管理员可管理全局菜单', onlyInMultiTenant: true }), guard({ permission: 'system:menu:create', audit: { description: '创建菜单', module: '菜单管理' } })] as const,
     request: { body: { content: jsonContent(createMenuSchema), required: true } },
     responses: {
       ...commonErrorResponses,
@@ -137,7 +138,7 @@ const updateMenuRoute = defineOpenAPIRoute({
     tags: ['Menus'],
     summary: '更新菜单',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:menu:update', audit: { description: '更新菜单', module: '菜单管理' } })] as const,
+    middleware: [authMiddleware, platformAdminOnly({ message: '多租户模式下仅平台管理员可管理全局菜单', onlyInMultiTenant: true }), guard({ permission: 'system:menu:update', audit: { description: '更新菜单', module: '菜单管理' } })] as const,
     request: {
       params: IdParam,
       body: { content: jsonContent(updateMenuSchema), required: true },
@@ -164,7 +165,7 @@ const deleteMenuRoute = defineOpenAPIRoute({
     tags: ['Menus'],
     summary: '删除菜单及子菜单',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:menu:delete', audit: { description: '删除菜单', module: '菜单管理' } })] as const,
+    middleware: [authMiddleware, platformAdminOnly({ message: '多租户模式下仅平台管理员可管理全局菜单', onlyInMultiTenant: true }), guard({ permission: 'system:menu:delete', audit: { description: '删除菜单', module: '菜单管理' } })] as const,
     request: { params: IdParam },
     responses: {
       ...commonErrorResponses,

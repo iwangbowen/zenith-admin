@@ -23,7 +23,8 @@ function createUserResult(menuGroups: Array<Array<{ id: number; permission: stri
   return {
     userRoles: menuGroups.map((menus) => ({
       role: {
-        roleMenus: menus.map((menu) => ({ menu })),
+        status: 'enabled',
+        roleMenus: menus.map((menu) => ({ menu: { visible: true, status: 'enabled', ...menu } })),
       },
     })),
     // 实现侧 getUserPermissions 还会读取 user.userMenus（直接菜单授权），需提供以免 undefined.map
@@ -111,7 +112,7 @@ describe('getUserPermissions', () => {
           group: {
             status: 'enabled',
             groupRoles: [
-              { role: { roleMenus: [{ menu: { id: 20, permission: 'group:perm', visible: true } }] } },
+              { role: { status: 'enabled', roleMenus: [{ menu: { id: 20, permission: 'group:perm', visible: true, status: 'enabled' } }] } },
             ],
           },
         },
@@ -119,7 +120,7 @@ describe('getUserPermissions', () => {
           group: {
             status: 'disabled',
             groupRoles: [
-              { role: { roleMenus: [{ menu: { id: 21, permission: 'disabled:perm', visible: true } }] } },
+              { role: { status: 'enabled', roleMenus: [{ menu: { id: 21, permission: 'disabled:perm', visible: true, status: 'enabled' } }] } },
             ],
           },
         },
@@ -131,6 +132,36 @@ describe('getUserPermissions', () => {
     expect(perms).toContain('group:perm');
     expect(perms).not.toContain('disabled:perm');
     clearUserPermissionCache(30);
+  });
+
+  it('禁用角色不再授权（即时失权）', async () => {
+    findUserMock.mockResolvedValueOnce({
+      userRoles: [
+        { role: { status: 'enabled', roleMenus: [{ menu: { id: 30, permission: 'enabled:perm', visible: true, status: 'enabled' } }] } },
+        { role: { status: 'disabled', roleMenus: [{ menu: { id: 31, permission: 'disabled-role:perm', visible: true, status: 'enabled' } }] } },
+      ],
+      userMenus: [],
+    } as never);
+
+    const perms = await getUserPermissions(31);
+
+    expect(perms).toContain('enabled:perm');
+    expect(perms).not.toContain('disabled-role:perm');
+    clearUserPermissionCache(31);
+  });
+
+  it('禁用菜单的权限码被剔除（含直授菜单）', async () => {
+    findUserMock.mockResolvedValueOnce({
+      userRoles: [
+        { role: { status: 'enabled', roleMenus: [{ menu: { id: 40, permission: 'menu:enabled', visible: true, status: 'enabled' } }, { menu: { id: 41, permission: 'menu:disabled', visible: true, status: 'disabled' } }] } },
+      ],
+      userMenus: [{ menu: { id: 42, permission: 'direct:disabled', visible: true, status: 'disabled' } }],
+    } as never);
+
+    const perms = await getUserPermissions(32);
+
+    expect(perms).toEqual(['menu:enabled']);
+    clearUserPermissionCache(32);
   });
 
   it('对权限码进行去重', async () => {

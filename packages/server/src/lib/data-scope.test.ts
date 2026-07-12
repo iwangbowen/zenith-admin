@@ -31,7 +31,7 @@ interface MockRole {
 function mockUser(departmentId: number | null, roles: MockRole[]) {
   return {
     departmentId,
-    userRoles: roles.map((role) => ({ role: { tenantId: null, ...role } })),
+    userRoles: roles.map((role) => ({ role: { tenantId: null, status: 'enabled', ...role } })),
   };
 }
 

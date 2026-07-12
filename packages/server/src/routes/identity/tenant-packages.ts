@@ -1,10 +1,8 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { createMiddleware } from 'hono/factory';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditAfterData, setAuditBeforeData } from '../../middleware/guard';
-import { isPlatformAdmin } from '../../lib/tenant';
-import type { AppEnv } from '../../lib/context';
-import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, BatchIdsBody, okBody, errBody } from '../../lib/openapi-schemas';
+import { platformAdminOnly } from '../../middleware/platform-admin';
+import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, BatchIdsBody, okBody } from '../../lib/openapi-schemas';
 import { TenantPackageDTO } from '../../lib/openapi-dtos';
 import {
   listTenantPackages,
@@ -21,13 +19,7 @@ import {
 
 const tenantPackagesRoute = new OpenAPIHono({ defaultHook: validationHook });
 
-const platformAdminMiddleware = createMiddleware<AppEnv>(async (c, next) => {
-  const user = c.get('user');
-  if (!isPlatformAdmin(user)) {
-    return c.json(errBody('仅平台管理员可管理租户套餐', 403), 403);
-  }
-  await next();
-});
+const platformAdminMiddleware = platformAdminOnly({ message: '仅平台管理员可管理租户套餐' });
 
 const createTenantPackageSchema = z.object({
   name: z.string().min(1).max(100),

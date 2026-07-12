@@ -337,6 +337,13 @@ export async function refreshAccessToken(token: string, clientInfo?: { ip: strin
   const [u] = await db.select({ status: users.status, nickname: users.nickname }).from(users).where(eq(users.id, payload.userId)).limit(1);
   if (!u) throw new HTTPException(401, { message: '用户不存在' });
   if (u.status === 'disabled') throw new HTTPException(403, { message: '账号已被禁用' });
+  // 租户被禁用/过期后，refresh 必须同步失效（登录时已校验，此处补齐 30 天续命漏洞）
+  if (config.multiTenantMode && payload.tenantId != null) {
+    const [tenant] = await db.select({ status: tenants.status, expireAt: tenants.expireAt }).from(tenants).where(eq(tenants.id, payload.tenantId)).limit(1);
+    if (!tenant) throw new HTTPException(403, { message: '租户不存在' });
+    if (tenant.status === 'disabled') throw new HTTPException(403, { message: '租户已被禁用' });
+    if (tenant.expireAt && tenant.expireAt < new Date()) throw new HTTPException(403, { message: '租户已过期' });
+  }
   const tokenId = payload.jti ?? generateTokenId();
   const userRoleList = await getUserRoles(payload.userId);
   const accessToken = await signToken<JwtPayload>(

@@ -3,7 +3,7 @@ import { escapeLike } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
-import { tenantPackages, tenantPackageMenus, type TenantPackageRow } from '../../db/schema';
+import { tenantPackages, tenantPackageMenus, tenants, type TenantPackageRow } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { clearUserPermissionCache } from '../../lib/permissions';
@@ -132,6 +132,8 @@ export async function updateTenantPackage(id: number, data: Partial<TenantPackag
   try {
     const [row] = await db.update(tenantPackages).set(data).where(eq(tenantPackages.id, id)).returning();
     if (!row) throw new HTTPException(404, { message: '套餐不存在' });
+    // 套餐状态（启用/禁用）影响绑定租户的白名单解析（禁用=fail-closed），清空权限缓存即时生效
+    clearUserPermissionCache();
     return getTenantPackage(id);
   } catch (err: unknown) {
     rethrowPgUniqueViolation(err, '套餐名称已存在');
@@ -148,12 +150,21 @@ export async function assignTenantPackageMenus(id: number, menuIds: number[]) {
 }
 
 export async function deleteTenantPackage(id: number) {
+  // 在用保护：已绑定租户的套餐不允许删除，防止解绑后套餐白名单静默变为「不限制」（fail-open）
+  const bound = await db.$count(tenants, eq(tenants.packageId, id));
+  if (bound > 0) {
+    throw new HTTPException(409, { message: `该套餐已绑定 ${bound} 个租户，请先解绑或迁移后再删除` });
+  }
   const [row] = await db.delete(tenantPackages).where(eq(tenantPackages.id, id)).returning();
   if (!row) throw new HTTPException(404, { message: '套餐不存在' });
 }
 
 export async function batchDeleteTenantPackages(ids: number[]) {
   if (ids.length === 0) throw new HTTPException(400, { message: '请选择要删除的记录' });
+  const bound = await db.$count(tenants, inArray(tenants.packageId, ids));
+  if (bound > 0) {
+    throw new HTTPException(409, { message: '所选套餐中存在已绑定租户的套餐，请先解绑或迁移后再删除' });
+  }
   const deleted = await db.delete(tenantPackages).where(inArray(tenantPackages.id, ids)).returning({ id: tenantPackages.id });
   return deleted.length;
 }

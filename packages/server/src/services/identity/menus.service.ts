@@ -112,7 +112,9 @@ async function ensureMenuParentValid(parentId: number, currentId?: number) {
 /** 当前登录用户可见的菜单树 */
 export async function listUserMenuTree(): Promise<Menu[]> {
   const user = currentUser();
-  const allMenus = await db.select().from(menus).orderBy(asc(menus.sort), asc(menus.id));
+  // 禁用菜单对所有人（含超管）不可见，前端不再注册禁用路由；菜单管理页走 listMenuTree 不受影响
+  const allMenus = (await db.select().from(menus).orderBy(asc(menus.sort), asc(menus.id)))
+    .filter((m) => m.status === 'enabled');
 
   if (isSuperAdmin(user)) {
     return buildMenuTree(allMenus.map(mapMenu));

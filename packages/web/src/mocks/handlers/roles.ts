@@ -1,6 +1,7 @@
 import { http, HttpResponse } from 'msw';
 import { mockRoles, getNextRoleId } from '@/mocks/data/roles';
 import { mockMenus } from '@/mocks/data/menus';
+import { mockUsers } from '@/mocks/data/users';
 import { mockDateTime } from '@/mocks/utils/date';
 import type { Role } from '@zenith/shared';
 
@@ -110,5 +111,37 @@ export const rolesHandlers = [
     const menuIds = role.menuIds ?? [];
     const menus = mockMenus.filter((m) => menuIds.includes(m.id));
     return HttpResponse.json({ code: 0, message: 'ok', data: menus });
+  }),
+
+  // 获取角色下的用户列表（与真实接口 GET /api/roles/:id/users 对齐）
+  http.get('/api/roles/:id/users', ({ params }) => {
+    const roleId = Number(params.id);
+    const role = mockRoles.find((r) => r.id === roleId);
+    if (!role) return HttpResponse.json({ code: 404, message: '角色不存在', data: null });
+    const list = mockUsers
+      .filter((u) => u.roles.some((r) => r.id === roleId))
+      .map((u) => ({
+        id: u.id, username: u.username, nickname: u.nickname, email: u.email,
+        avatar: u.avatar ?? null, status: u.status,
+        createdAt: u.createdAt, updatedAt: u.updatedAt,
+      }));
+    return HttpResponse.json({ code: 0, message: 'ok', data: list });
+  }),
+
+  // 分配角色用户（先清后设，与真实接口 PUT /api/roles/:id/users 对齐）
+  http.put('/api/roles/:id/users', async ({ params, request }) => {
+    const roleId = Number(params.id);
+    const role = mockRoles.find((r) => r.id === roleId);
+    if (!role) return HttpResponse.json({ code: 404, message: '角色不存在', data: null });
+    const body = await request.json() as { userIds: number[] };
+    const nextIds = new Set(body.userIds ?? []);
+    mockUsers.forEach((u) => {
+      const has = u.roles.some((r) => r.id === roleId);
+      if (nextIds.has(u.id) && !has) u.roles = [...u.roles, role];
+      if (!nextIds.has(u.id) && has) u.roles = u.roles.filter((r) => r.id !== roleId);
+    });
+    role.userCount = nextIds.size;
+    role.updatedAt = mockDateTime();
+    return HttpResponse.json({ code: 0, message: '用户分配成功', data: null });
   }),
 ];

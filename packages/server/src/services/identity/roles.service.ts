@@ -8,6 +8,7 @@ import { clearUserPermissionCache } from '../../lib/permissions';
 import { getTenantPackageMenuIdSet } from '../../lib/tenant-package';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { currentUser } from '../../lib/context';
+import { forceLogoutAllByUsers } from '../../lib/session-manager';
 import { HTTPException } from 'hono/http-exception';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { formatDateTime, parseDateTimeInput } from '../../lib/datetime';
@@ -173,6 +174,8 @@ export async function updateRole(id: number, data: Partial<CreateRoleInput>) {
     if (deptScopeIds !== undefined && deptScopeIds !== null) {
       await syncRoleDeptScopes(tx, id, deptScopeIds);
     }
+    // 角色状态/属性变更影响权限解析结果（禁用角色即时失权），清空权限缓存
+    clearUserPermissionCache();
     return mapRole(role, undefined, deptScopeIds ?? undefined);
   });
 }
@@ -194,15 +197,15 @@ export async function deleteRole(id: number) {
   if (!deleted) throw new HTTPException(404, { message: '角色不存在' });
 }
 
-async function ensureRoleBelongsToTenant(id: number): Promise<number | null> {
+async function ensureRoleBelongsToTenant(id: number): Promise<{ tenantId: number | null; code: string }> {
   const user = currentUser();
-  const [role] = await db.select({ id: roles.id, tenantId: roles.tenantId }).from(roles).where(and(eq(roles.id, id), tenantCondition(roles, user))).limit(1);
+  const [role] = await db.select({ id: roles.id, tenantId: roles.tenantId, code: roles.code }).from(roles).where(and(eq(roles.id, id), tenantCondition(roles, user))).limit(1);
   if (!role) throw new HTTPException(404, { message: '角色不存在' });
-  return role.tenantId;
+  return { tenantId: role.tenantId, code: role.code };
 }
 
 export async function assignRoleMenus(id: number, menuIds: number[]) {
-  const roleTenantId = await ensureRoleBelongsToTenant(id);
+  const { tenantId: roleTenantId } = await ensureRoleBelongsToTenant(id);
   // 多租户：角色所属租户绑定套餐时，分配的菜单必须落在套餐白名单内。
   const packageMenuIds = await getTenantPackageMenuIdSet(roleTenantId);
   if (packageMenuIds && menuIds.some((mid) => !packageMenuIds.has(mid))) {
@@ -234,7 +237,7 @@ export async function getRoleUsers(id: number) {
 
 export async function assignRoleUsers(id: number, userIds: number[]) {
   const user = currentUser();
-  await ensureRoleBelongsToTenant(id);
+  const roleInfo = await ensureRoleBelongsToTenant(id);
   const uniqueUserIds = Array.from(new Set(userIds));
   // 多租户：被分配用户必须全部落在当前操作者可见租户内，防止跨租户 IDOR
   if (uniqueUserIds.length > 0) {
@@ -243,6 +246,14 @@ export async function assignRoleUsers(id: number, userIds: number[]) {
       .where(tc ? and(inArray(users.id, uniqueUserIds), tc) : inArray(users.id, uniqueUserIds));
     if (rows.length !== uniqueUserIds.length) throw new HTTPException(400, { message: '存在无效用户' });
   }
+  // 平台超管角色：JWT 中的 roles 在 2h 内不随 DB 变化，被移出者须立即撤销会话防权限残留
+  const isPlatformSuperRole = roleInfo.code === SUPER_ADMIN_CODE && roleInfo.tenantId === null;
+  const removedUserIds: number[] = [];
+  if (isPlatformSuperRole) {
+    const beforeRows = await db.select({ userId: userRoles.userId }).from(userRoles).where(eq(userRoles.roleId, id));
+    const nextSet = new Set(uniqueUserIds);
+    removedUserIds.push(...beforeRows.map((r) => r.userId).filter((uid) => !nextSet.has(uid)));
+  }
   await db.transaction(async (tx) => {
     await tx.delete(userRoles).where(eq(userRoles.roleId, id));
     if (uniqueUserIds.length > 0) {
@@ -250,6 +261,13 @@ export async function assignRoleUsers(id: number, userIds: number[]) {
     }
   });
   clearUserPermissionCache();
+  if (removedUserIds.length > 0) {
+    try {
+      await forceLogoutAllByUsers(removedUserIds);
+    } catch {
+      // 会话撤销 best-effort，失败不影响主流程
+    }
+  }
 }
 
 export async function getRoleBeforeAudit(id: number) {

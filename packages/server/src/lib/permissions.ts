@@ -45,7 +45,7 @@ export async function getUserMenuIds(userId: number): Promise<number[]> {
 }
 
 async function fetchUserPermissionData(userId: number): Promise<{ permissions: string[]; menuIds: number[] }> {
-  const menuColumns = { id: true, permission: true, visible: true } as const;
+  const menuColumns = { id: true, permission: true, visible: true, status: true } as const;
   const user = await db.query.users.findFirst({
     where: eq(users.id, userId),
     columns: { tenantId: true },
@@ -54,7 +54,7 @@ async function fetchUserPermissionData(userId: number): Promise<{ permissions: s
         columns: {},
         with: {
           role: {
-            columns: {},
+            columns: { status: true },
             with: {
               roleMenus: {
                 columns: {},
@@ -79,7 +79,7 @@ async function fetchUserPermissionData(userId: number): Promise<{ permissions: s
                 columns: {},
                 with: {
                   role: {
-                    columns: {},
+                    columns: { status: true },
                     with: {
                       roleMenus: {
                         columns: {},
@@ -100,12 +100,20 @@ async function fetchUserPermissionData(userId: number): Promise<{ permissions: s
     return { permissions: [], menuIds: [] };
   }
 
-  const roleMenuRows = user.userRoles.flatMap(({ role }) => role.roleMenus.map(({ menu }) => menu));
+  // 禁用角色不再授权（与用户组 status 过滤同一口径）；禁用菜单在下方统一剔除
+  const roleMenuRows = user.userRoles
+    .filter(({ role }) => role.status === 'enabled')
+    .flatMap(({ role }) => role.roleMenus.map(({ menu }) => menu));
   const directMenuRows = user.userMenus.map(({ menu }) => menu);
   const groupMenuRows = (user.userGroupMembers ?? [])
     .filter(({ group }) => group.status === 'enabled')
-    .flatMap(({ group }) => group.groupRoles.flatMap(({ role }) => role.roleMenus.map(({ menu }) => menu)));
-  let allMenuRows = [...roleMenuRows, ...directMenuRows, ...groupMenuRows];
+    .flatMap(({ group }) =>
+      group.groupRoles
+        .filter(({ role }) => role.status === 'enabled')
+        .flatMap(({ role }) => role.roleMenus.map(({ menu }) => menu)),
+    );
+  let allMenuRows = [...roleMenuRows, ...directMenuRows, ...groupMenuRows]
+    .filter((menu) => menu.status === 'enabled');
 
   // 多租户：将有效菜单/权限交集到租户套餐白名单内；保留不可见的内置工具菜单（个人中心/消息等），避免锁死。
   const packageMenuIds = await getTenantPackageMenuIdSet(user.tenantId);
