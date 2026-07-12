@@ -86,7 +86,7 @@ export default function WorkflowVersionsSheet({
     { title: '发布人', dataIndex: 'publishedByName', width: 120, render: (v?: string) => v ?? '-' },
     { title: '发布时间', dataIndex: 'publishedAt', width: 170 },
     createOperationColumn<WorkflowDefinitionVersion>({
-      width: 140,
+      width: 180,
       desktopInlineKeys: ['diff', 'restore'],
       actions: (record) => [
         {
