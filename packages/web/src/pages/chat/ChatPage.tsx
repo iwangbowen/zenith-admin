@@ -1714,7 +1714,8 @@ export default function ChatPage({
       });
       if (mentionedMe) {
         const isConvMuted = conversations.find((c) => c.id === msg.conversationId)?.isMuted ?? false;
-        if (!isConvMuted) Toast.info(`${msg.senderName ?? '有人'} @了你`);
+        // WebSocket 驱动可能短时间连发多条提醒，stack 堆叠展示防止并列刷屏
+        if (!isConvMuted) Toast.info({ content: `${msg.senderName ?? '有人'} @了你`, stack: true });
       }
     } else if (wsMsg.type === 'chat:recall') {
       const { messageId } = wsMsg.payload;
