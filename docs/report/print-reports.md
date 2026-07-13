@@ -93,3 +93,5 @@
 | 新增 | `report:print:create` |
 | 设计 / 编辑 | `report:print:update` |
 | 删除 | `report:print:delete` |
+
+列表「权限与转移」可直达[资源治理](./governance)管理该模板的 ACL 与所有权。

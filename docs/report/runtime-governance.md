@@ -56,6 +56,18 @@
 
 订阅推送与预警通知统一接入**可靠投递**机制，保证「发了没有、发到哪了」可追溯。
 
+```mermaid
+flowchart LR
+  cron["调度器<br/>按 nextRunAt 巡检"] --> claim["幂等 claim<br/>多实例不重复执行"]
+  claim --> fetch[取数 / 聚合]
+  fetch --> send{逐通道投递}
+  send -->|全部成功| s([success])
+  send -->|部分成功| p([partial])
+  send -->|全部失败| f([failed])
+  f --> retry["指数退避重试<br/>复用同一 delivery run"]
+  retry --> send
+```
+
 ### 调度
 
 - 定时扫描按 `nextRunAt` + **幂等 claim** 认领到期任务，多实例部署不会重复执行；

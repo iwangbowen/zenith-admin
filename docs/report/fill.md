@@ -29,16 +29,26 @@
 
 ### 记录状态机
 
-```text
-draft/rejected ── submit ──> submitted ── approve ──> approved
-                                   └── reject ──> rejected
-绑定 Workflow：submitted → in_review → approved | rejected
-draft/rejected/submitted/in_review ── cancel/withdraw ──> cancelled
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> draft: 保存草稿
+    draft --> submitted: 提交
+    rejected --> submitted: 修改重提
+    submitted --> approved: 通过（人工/免审）
+    submitted --> rejected: 驳回
+    submitted --> in_review: 绑定 Workflow
+    in_review --> approved: 流程通过
+    in_review --> rejected: 流程驳回
+    draft --> cancelled: 取消草稿
+    submitted --> cancelled: 撤回
+    in_review --> cancelled: 撤回
+    approved --> [*]: 同步生成数据集
 ```
 
-- 填报人在「我的填报」维护草稿、提交、撤回、取消；被驳回的记录可修改后重新提交；
-- 提交携带 `expectedRevision`，防止重复提交与并发覆盖；
-- 记录详情可查看**冻结表单快照**（当时的表单结构 + 填写值）。
+- 填报人在「我的填报」点「**发起填报**」选择已发布模板进入填报入口；草稿与被驳回的记录点「**编辑 / 修改重提**」会带着记录 ID 回到填报入口继续填写；
+- 「取消草稿 / 撤回」把记录置为已取消；提交携带 `expectedRevision`，防止重复提交与并发覆盖，状态冲突时会提示刷新；
+- 记录「详情」可查看**冻结表单快照**（当时的表单结构 + 填写值）与审核轨迹。
 
 ### 两种审核方式
 
