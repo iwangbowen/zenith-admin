@@ -56,8 +56,9 @@ stateDiagram-v2
 | `subprocess_join` | 子流程汇聚 |
 | `event_dispatch` | 工作流事件可靠分发 |
 | `webhook_delivery` | 事件订阅 Webhook 投递 |
+| `compensation_action` | 失败策略的反向 / 兜底补偿动作（见[补偿 / Saga](./compensation.md)） |
 
-每个作业都有状态、尝试次数、幂等键、`traceId`、下次执行时间和执行结果；每次尝试写入 `workflow_job_executions`。
+每个作业都有状态、尝试次数、幂等键、`traceId`、下次执行时间和执行结果；每次尝试写入 `workflow_job_executions`。审批、驳回、撤回、取消等动作产生的事件在业务事务内以 outbox 方式原子入队，保证状态变更与事件分发不脱节。
 
 ## 执行 Token
 
@@ -101,5 +102,7 @@ stateDiagram-v2
 | 沟通 | 评论与提及 |
 | 协办 | 协办请求和回复 |
 | 子流程 | 父子实例关系与跳转 |
+
+管理端返回的实例快照会剥离外部审批 / 触发器回调密钥与出站凭证请求头等敏感配置；表单数据按查看者身份脱敏（见[表单、远程数据源与连接器](./form-design.md#表单运行时与服务端校验)）。
 
 运行时技术诊断见 [监控、诊断与运维](./monitoring-operations.md)。

@@ -160,19 +160,41 @@ export default defineConfig({
         collapsed: true,
         items: [
           { text: '总览', link: '/workflow/' },
-          { text: '流程定义与设计器', link: '/workflow/designer' },
-          { text: '流程模板', link: '/workflow/templates' },
-          { text: '表单、数据源与连接器', link: '/workflow/form-design' },
-          { text: '节点配置', link: '/workflow/node-config' },
-          { text: '节点类型', link: '/workflow/node-types' },
-          { text: '审批、任务与协作', link: '/workflow/approval' },
-          { text: '实例生命周期', link: '/workflow/instance-lifecycle' },
-          { text: '触发器与外部审批', link: '/workflow/trigger-nodes' },
-          { text: '事件总线与事件订阅', link: '/workflow/event-bus' },
-          { text: '流程自动化与定时发起', link: '/workflow/automations' },
-          { text: '监控、诊断与运维', link: '/workflow/monitoring-operations' },
-          { text: '业务模块接入', link: '/workflow/business-integration' },
-          { text: '权限与范围控制', link: '/workflow/permissions' },
+          {
+            text: '流程设计',
+            items: [
+              { text: '流程定义与设计器', link: '/workflow/designer' },
+              { text: '节点配置', link: '/workflow/node-config' },
+              { text: '节点类型速查', link: '/workflow/node-types' },
+              { text: '表单、数据源与连接器', link: '/workflow/form-design' },
+              { text: '流程模板', link: '/workflow/templates' },
+            ],
+          },
+          {
+            text: '发起与审批',
+            items: [
+              { text: '实例生命周期', link: '/workflow/instance-lifecycle' },
+              { text: '审批、任务与协作', link: '/workflow/approval' },
+              { text: '移动审批轻页', link: '/workflow/mobile-approval' },
+            ],
+          },
+          {
+            text: '集成与自动化',
+            items: [
+              { text: '触发器与外部审批', link: '/workflow/trigger-nodes' },
+              { text: '事件总线与事件订阅', link: '/workflow/event-bus' },
+              { text: '流程自动化与定时发起', link: '/workflow/automations' },
+              { text: '业务模块接入', link: '/workflow/business-integration' },
+            ],
+          },
+          {
+            text: '运维与治理',
+            items: [
+              { text: '监控、诊断与运维', link: '/workflow/monitoring-operations' },
+              { text: '补偿 / Saga 能力', link: '/workflow/compensation' },
+              { text: '权限与范围控制', link: '/workflow/permissions' },
+            ],
+          },
         ],
       },
       {

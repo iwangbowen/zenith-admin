@@ -70,7 +70,16 @@ X-Zenith-Signature: t={timestamp},v1={hex_hmac}
 
 ## 投递记录与重放
 
-事件订阅页面提供投递记录抽屉。记录来自 `workflow_job_executions` 中的 `webhook_delivery` 作业尝试，包含请求 URL、响应码、响应体、错误、耗时和下次重试时间。
+事件订阅页面提供投递记录抽屉。记录来自 `workflow_job_executions` 中的 `webhook_delivery` 作业尝试，包含请求 URL、响应码、响应体、错误、耗时和下次重试时间；订阅列表同时展示投递次数、最近 HTTP 状态、耗时与错误信息。
+
+投递状态含义：
+
+| 状态 | 说明 |
+| --- | --- |
+| `pending` | 等待投递或正在投递 |
+| `success` | 投递成功 |
+| `retrying` | 投递失败但仍有重试预算 |
+| `failed` | 重试耗尽或进入死信 |
 
 | 操作 | 说明 |
 | --- | --- |
@@ -85,9 +94,13 @@ X-Zenith-Signature: t={timestamp},v1={hex_hmac}
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `GET` | `/api/workflows/event-subscriptions` | 订阅列表 |
+| `GET` | `/api/workflows/event-subscriptions/{id}` | 订阅详情 |
+| `GET` | `/api/workflows/event-subscriptions/{id}/secret` | 查看 Secret 明文（敏感操作） |
 | `POST` | `/api/workflows/event-subscriptions` | 创建订阅 |
 | `PUT` | `/api/workflows/event-subscriptions/{id}` | 更新订阅 |
+| `DELETE` | `/api/workflows/event-subscriptions/{id}` | 删除订阅 |
 | `PATCH` | `/api/workflows/event-subscriptions/{id}/toggle` | 启用 / 禁用 |
 | `GET` | `/api/workflows/event-subscriptions/deliveries/list` | 投递记录 |
 | `POST` | `/api/workflows/event-subscriptions/deliveries/{id}/retry` | 重试投递 |
+| `POST` | `/api/workflows/event-subscriptions/deliveries/batch-retry` | 批量重试投递 |
 | `POST` | `/api/workflows/event-subscriptions/deliveries/replay` | 按筛选重放 |
