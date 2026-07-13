@@ -216,7 +216,10 @@ export default function PaymentRiskRulesPage() {
   const columns: ColumnProps<PaymentRiskRule>[] = [
     { title: '名称', dataIndex: 'name', width: 150 },
     { title: '作用域', dataIndex: 'scope', width: 100, render: (v: PaymentRiskScope) => PAYMENT_RISK_SCOPE_LABELS[v] },
-    { title: '范围', dataIndex: 'channel', width: 110, render: (_: unknown, r: PaymentRiskRule) => (r.scope === 'channel' ? (r.channel ? PAYMENT_CHANNEL_LABELS[r.channel] : '-') : r.scope === 'bizType' ? (r.bizType || '-') : '全局') },
+    { title: '范围', dataIndex: 'channel', width: 150, render: (_: unknown, r: PaymentRiskRule) => {
+      const text = r.scope === 'channel' ? (r.channel ? PAYMENT_CHANNEL_LABELS[r.channel] : '-') : r.scope === 'bizType' ? (r.bizType || '-') : '全局';
+      return <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 130 }}>{text}</Typography.Text>;
+    } },
     { title: '命中动作', dataIndex: 'action', width: 100, render: (v: PaymentRiskAction) => (v === 'review' ? <Tag color="orange">人工审核</Tag> : <Tag color="red">直接拦截</Tag>) },
     { title: '单笔上限', dataIndex: 'singleLimit', width: 110, render: (v: number | null) => yuan(v) },
     { title: '当日限额', dataIndex: 'dailyLimit', width: 110, render: (v: number | null) => yuan(v) },

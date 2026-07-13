@@ -181,14 +181,17 @@ export default function PaymentContractsPage() {
   const contractColumns: ColumnProps<PaymentContract>[] = [
     { title: '协议号', dataIndex: 'contractNo', width: 190, render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }} copyable={{ content: v }} style={{ maxWidth: 170 }}>{v}</Typography.Text> },
     { title: '渠道', dataIndex: 'channel', width: 90, render: (v: PaymentChannel) => PAYMENT_CHANNEL_LABELS[v] },
-    { title: '扣款计划', dataIndex: 'planName', width: 150, render: (v: string | null, r) => (v ? `${v}（${r.planPeriod ? describePlanPeriod({ period: r.planPeriod, customDays: null }) : '-'}）` : '-') },
+    { title: '扣款计划', dataIndex: 'planName', width: 200, render: (v: string | null, r) => {
+      const text = v ? `${v}（${r.planPeriod ? describePlanPeriod({ period: r.planPeriod, customDays: null }) : '-'}）` : '-';
+      return <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 180 }}>{text}</Typography.Text>;
+    } },
     { title: '每期金额', dataIndex: 'planAmount', width: 100, render: (v: number | null) => (v == null ? '-' : yuan(v)) },
     { title: '签约账号', dataIndex: 'signerAccount', width: 160, render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 140 }}>{v}</Typography.Text> },
     { title: '业务', dataIndex: 'bizType', width: 140, render: (v: string, r) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 120 }}>{`${v}:${r.bizId}`}</Typography.Text> },
     { title: '已扣期数', dataIndex: 'totalDeductCount', width: 90 },
     { title: '连续失败', dataIndex: 'failCount', width: 90, render: (v: number) => (v > 0 ? <Tag color="red">{v} 次</Tag> : '0') },
     { title: '下次扣款', dataIndex: 'nextDeductAt', width: 170, render: (v: string | null) => (v ? formatDateTime(v) : '-') },
-    { title: '上次扣款', dataIndex: 'lastDeductAt', width: 170, render: (v: string | null) => (v ? formatDateTime(v) : '-') },
+    { title: '上次扣款', dataIndex: 'lastDeductAt', width: 190, render: (v: string | null) => (v ? formatDateTime(v) : '-') },
     createdAtColumn as ColumnProps<PaymentContract>,
     { title: '状态', dataIndex: 'status', width: 90, fixed: 'right', render: (v: PaymentContractStatus) => <Tag color={CONTRACT_STATUS_COLOR[v]}>{PAYMENT_CONTRACT_STATUS_LABELS[v]}</Tag> },
     createOperationColumn<PaymentContract>({
