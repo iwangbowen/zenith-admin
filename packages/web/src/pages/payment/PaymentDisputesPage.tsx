@@ -250,14 +250,14 @@ export default function PaymentDisputesPage() {
             {detail.overdue && <Banner type="danger" closeIcon={null} description={`该工单已超过处理时效（${detail.deadline}），请尽快处理`} />}
 
             <div style={{ fontSize: 13, lineHeight: 2 }}>
-              <div>状态：<Tag color={STATUS_COLOR[detail.status]}>{PAYMENT_DISPUTE_STATUS_LABELS[detail.status]}</Tag>　类型：{PAYMENT_DISPUTE_TYPE_LABELS[detail.type]}　渠道：{PAYMENT_CHANNEL_LABELS[detail.channel]}</div>
-              <div>投诉人：{detail.complainant ?? '-'}（{detail.complainantPhone ?? '-'}）　涉诉金额：{yuan(detail.amount)}</div>
+              <div>状态：<Tag color={STATUS_COLOR[detail.status]}>{PAYMENT_DISPUTE_STATUS_LABELS[detail.status]}</Tag>{'　'}类型：{PAYMENT_DISPUTE_TYPE_LABELS[detail.type]}{'　'}渠道：{PAYMENT_CHANNEL_LABELS[detail.channel]}</div>
+              <div>投诉人：{detail.complainant ?? '-'}（{detail.complainantPhone ?? '-'}）{'　'}涉诉金额：{yuan(detail.amount)}</div>
               <div>渠道投诉号：{detail.channelDisputeNo ?? '-'}</div>
               {detail.refundNo && <div>关联退款单：{detail.refundNo}</div>}
               {detail.order && (
-                <div style={{ background: 'var(--semi-color-fill-0)', borderRadius: 6, padding: '8px 12px', marginTop: 4 }}>
-                  关联订单：{detail.order.orderNo}　{detail.order.subject}　{yuan(detail.order.amount)}　
-                  {PAYMENT_ORDER_STATUS_LABELS[detail.order.status]}　{detail.order.paidAt ? `支付于 ${detail.order.paidAt}` : ''}
+                <div style={{ background: 'var(--semi-color-fill-0)', borderRadius: 'var(--semi-border-radius-medium)', padding: '8px 12px', marginTop: 4 }}>
+                  关联订单：{detail.order.orderNo}{'　'}{detail.order.subject}{'　'}{yuan(detail.order.amount)}{'　'}
+                  {PAYMENT_ORDER_STATUS_LABELS[detail.order.status]}{'　'}{detail.order.paidAt ? `支付于 ${detail.order.paidAt}` : ''}
                 </div>
               )}
             </div>

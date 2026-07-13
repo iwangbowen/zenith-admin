@@ -10,7 +10,7 @@
 import { and, eq, gt, isNull, or } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import { coupons, memberCoupons, paymentOrders } from '../../db/schema';
+import { memberCoupons, paymentOrders } from '../../db/schema';
 import { paymentEventBus } from '../../lib/payment-event-bus';
 import logger from '../../lib/logger';
 
