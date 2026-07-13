@@ -2286,6 +2286,53 @@ export const updatePaymentMethodConfigSchema = z.object({
   sort: z.number().int().min(0).max(9999).optional(),
 });
 
+// ─── 签约代扣（周期扣款/订阅）─────────────────────────────────────────────────
+/** 扣款计划 */
+export const createPaymentDeductPlanSchema = z.object({
+  name: z.string().min(1, '计划名称不能为空').max(64),
+  period: z.enum(['daily', 'weekly', 'monthly', 'custom']).default('monthly'),
+  customDays: z.number().int().min(1).max(3650).nullable().optional(),
+  amount: z.number().int().positive('每期扣款金额必须大于 0'), // 分
+  maxRetries: z.number().int().min(0).max(10).default(3),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  remark: z.string().max(256).optional(),
+}).refine((v) => v.period !== 'custom' || (v.customDays != null && v.customDays >= 1), {
+  message: '自定义周期必须填写天数',
+  path: ['customDays'],
+});
+export const updatePaymentDeductPlanSchema = z.object({
+  name: z.string().min(1).max(64).optional(),
+  period: z.enum(['daily', 'weekly', 'monthly', 'custom']).optional(),
+  customDays: z.number().int().min(1).max(3650).nullable().optional(),
+  amount: z.number().int().positive().optional(),
+  maxRetries: z.number().int().min(0).max(10).optional(),
+  status: z.enum(['enabled', 'disabled']).optional(),
+  remark: z.string().max(256).optional(),
+});
+
+/** 管理端创建签约协议（演示/测试用，sandbox 渠道即时签约生效） */
+export const createPaymentContractSchema = z.object({
+  planId: z.number().int().positive(),
+  payMethod: z.enum(['wechat_papay', 'alipay_cycle']),
+  channelConfigId: z.number().int().positive().optional(),
+  signerAccount: z.string().min(1, '签约账号不能为空').max(128),
+  signerName: z.string().max(64).optional(),
+  remark: z.string().max(256).optional(),
+  /** 签约成功后是否立即执行首期扣款 */
+  firstDeductNow: z.boolean().default(true),
+});
+
+/** 会员端签约自动续费 */
+export const memberSignRenewalSchema = z.object({
+  planId: z.number().int().positive(),
+  payMethod: z.enum(['wechat_papay', 'alipay_cycle']).default('wechat_papay'),
+});
+
+export type CreatePaymentDeductPlanInput = z.infer<typeof createPaymentDeductPlanSchema>;
+export type UpdatePaymentDeductPlanInput = z.infer<typeof updatePaymentDeductPlanSchema>;
+export type CreatePaymentContractInput = z.infer<typeof createPaymentContractSchema>;
+export type MemberSignRenewalInput = z.infer<typeof memberSignRenewalSchema>;
+
 export type CreatePaymentFeeRuleInput = z.infer<typeof createPaymentFeeRuleSchema>;
 export type UpdatePaymentFeeRuleInput = z.infer<typeof updatePaymentFeeRuleSchema>;
 export type CreatePaymentSharingReceiverInput = z.infer<typeof createPaymentSharingReceiverSchema>;

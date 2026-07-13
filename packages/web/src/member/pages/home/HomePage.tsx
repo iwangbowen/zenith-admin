@@ -1,10 +1,10 @@
 import { useNavigate } from 'react-router-dom';
 import { Avatar } from '@douyinfe/semi-ui';
-import { Coins, Wallet, Ticket, Crown } from 'lucide-react';
+import { Coins, Wallet, Ticket, Crown, Repeat } from 'lucide-react';
 import { useMemberAuth } from '../../hooks/useMemberAuth';
 import { MemberPage } from '../../components/MemberPage';
 import { formatYuan } from '../../utils/format';
-import { useMemberCouponList, useMemberPointAccount, useMemberWallet } from '../../hooks/queries';
+import { useMemberCouponList, useMemberPointAccount, useMemberWallet, useMyRenewal } from '../../hooks/queries';
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -12,9 +12,11 @@ export default function HomePage() {
   const pointsQuery = useMemberPointAccount();
   const walletQuery = useMemberWallet();
   const couponQuery = useMemberCouponList({ status: 'unused', page: 1, pageSize: 1 });
+  const renewalQuery = useMyRenewal();
   const points = pointsQuery.data?.balance ?? null;
   const wallet = walletQuery.data?.balance ?? null;
   const couponCount = couponQuery.data?.total ?? null;
+  const vipExpireAt = renewalQuery.data?.vipExpireAt ?? null;
 
   return (
     <MemberPage title="会员概览">
@@ -59,6 +61,15 @@ export default function HomePage() {
             可用卡券
           </div>
           <div className="mc-stat-value">{couponCount ?? '—'}</div>
+        </button>
+        <button type="button" className="mc-stat-card" onClick={() => navigate('/renewal')}>
+          <div className="mc-stat-label">
+            <Repeat size={14} color="var(--m-primary)" />
+            自动续费
+          </div>
+          <div className="mc-stat-value" style={{ fontSize: vipExpireAt ? 13 : undefined }}>
+            {vipExpireAt ? `VIP 至 ${vipExpireAt.slice(0, 10)}` : '未开通'}
+          </div>
         </button>
       </div>
     </MemberPage>

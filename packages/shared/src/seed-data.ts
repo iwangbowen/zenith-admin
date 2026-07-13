@@ -395,6 +395,10 @@ export const SEED_MENUS: Menu[] = [
   { id: 797, parentId: 796, title: '发起转账', name: undefined,          path: undefined,              component: undefined,                        icon: undefined,      type: 'button', sort: 1,  status: 'enabled', visible: true,  permission: 'payment:transfer:create',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 798, parentId: 700, title: '应用管理', name: 'PaymentApps',      path: '/payment/apps',        component: 'payment/PaymentAppsPage',        icon: 'LayoutGrid',   type: 'menu',   sort: 17, status: 'enabled', visible: true,  permission: 'payment:app:list',          createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 799, parentId: 798, title: '管理应用', name: undefined,          path: undefined,              component: undefined,                        icon: undefined,      type: 'button', sort: 1,  status: 'enabled', visible: true,  permission: 'payment:app:manage',        createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  // 支付中心 · 签约代扣（700 段已满，扩展使用 1600 段）
+  { id: 1600, parentId: 700,  title: '签约代扣', name: 'PaymentContracts', path: '/payment/contracts',  component: 'payment/PaymentContractsPage',   icon: 'Repeat',       type: 'menu',   sort: 18, status: 'enabled', visible: true,  permission: 'payment:contract:list',     createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1601, parentId: 1600, title: '协议操作', name: undefined,          path: undefined,              component: undefined,                        icon: undefined,      type: 'button', sort: 1,  status: 'enabled', visible: true,  permission: 'payment:contract:manage',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1602, parentId: 1600, title: '计划管理', name: undefined,          path: undefined,              component: undefined,                        icon: undefined,      type: 'button', sort: 2,  status: 'enabled', visible: true,  permission: 'payment:contract:plan',     createdAt: SEED_DATE, updatedAt: SEED_DATE },
 
   // ── 会员中心 ─────────────────────────────────────────────────────────────────
   { id: 800, parentId: 0,   title: '会员中心', name: 'MemberCenter',   path: undefined,                 component: undefined,                    icon: 'Crown',       type: 'directory', sort: 10, status: 'enabled', visible: true,  createdAt: SEED_DATE, updatedAt: SEED_DATE },
@@ -1248,6 +1252,24 @@ export const SEED_CRON_JOBS: CronJob[] = [
     createdAt: SEED_DATE,
     updatedAt: SEED_DATE,
   },
+  {
+    id: 27,
+    name: '执行到期签约代扣',
+    cronExpression: '0 * * * * *',
+    handler: 'executeDueDeductions',
+    params: null,
+    status: 'enabled',
+    description: '每分钟扫描已签约且到期的代扣协议执行周期扣款（失败次日重试，达上限自动暂停）',
+    retryCount: 0,
+    retryInterval: 0,
+    retryBackoff: false,
+    monitorTimeout: null,
+    lastRunAt: null,
+    lastRunStatus: null,
+    lastRunMessage: null,
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+  },
 ];
 
 // ─── 工作流表单库 ───────────────────────────────────────────────────────────────
@@ -1978,6 +2000,27 @@ export const SEED_PAYMENT_METHOD_CONFIGS: SeedPaymentMethodConfig[] = [
   { id: 5, method: 'alipay_wap', channel: 'alipay', label: '支付宝手机网站', icon: 'Smartphone', enabled: true, sort: 5 },
   { id: 6, method: 'alipay_app', channel: 'alipay', label: '支付宝 APP', icon: 'AppWindow', enabled: true, sort: 6 },
   { id: 7, method: 'unionpay_qr', channel: 'unionpay', label: '云闪付扫码', icon: 'QrCode', enabled: true, sort: 7 },
+  // 签约代扣方式（服务端发起，非收银台可选项，默认停用展示）
+  { id: 8, method: 'wechat_papay', channel: 'wechat', label: '微信委托代扣', icon: 'Repeat', enabled: false, sort: 8 },
+  { id: 9, method: 'alipay_cycle', channel: 'alipay', label: '支付宝周期扣款', icon: 'Repeat', enabled: false, sort: 9 },
+];
+
+// ─── 扣款计划（支付中心 · 签约代扣）────────────────────────────────────────────
+export interface SeedPaymentDeductPlan {
+  id: number;
+  name: string;
+  period: 'daily' | 'weekly' | 'monthly' | 'custom';
+  customDays: number | null;
+  amount: number;
+  maxRetries: number;
+  status: 'enabled' | 'disabled';
+  remark: string | null;
+}
+
+export const SEED_PAYMENT_DEDUCT_PLANS: SeedPaymentDeductPlan[] = [
+  { id: 1, name: '连续包月 VIP', period: 'monthly', customDays: null, amount: 1500, maxRetries: 3, status: 'enabled', remark: '每月自动续费 15 元' },
+  { id: 2, name: '连续包周 VIP', period: 'weekly', customDays: null, amount: 500, maxRetries: 3, status: 'enabled', remark: '每周自动续费 5 元' },
+  { id: 3, name: '90 天畅享卡', period: 'custom', customDays: 90, amount: 3900, maxRetries: 3, status: 'enabled', remark: '每 90 天自动续费 39 元' },
 ];
 
 // ─── Channel（站内公众号 / 系统号）────────────────────────────────────────────

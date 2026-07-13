@@ -14,10 +14,10 @@ import { dbBackups } from './db-admin';
 import { ruleDecisionTables, ruleDecisionTableVersions, ruleTestCases } from './rules';
 import { chatConversationMembers, chatConversations, chatMessageReactions, chatMessages, chatWebhooks, chatQuickReplies, chatScheduledMessages, chatCustomEmojis, chatGroupInvites, chatGroupJoinRequests } from './chat';
 import { channelAutoReplies, channelConversations, channelMenus, channelMessages, channelMessageTargets, channelQuickReplies, channels, channelSubscriptions } from './channels';
-import { paymentApps, paymentChannelConfigs, paymentOrders, paymentReconBatches, paymentReconItems, paymentRefunds, paymentSharingOrders, paymentSharingReceivers, paymentTransfers, paymentWebhookDeliveries, paymentWebhookEndpoints } from './payment';
+import { paymentApps, paymentChannelConfigs, paymentContracts, paymentDeductPlans, paymentOrders, paymentReconBatches, paymentReconItems, paymentRefunds, paymentSharingOrders, paymentSharingReceivers, paymentTransfers, paymentWebhookDeliveries, paymentWebhookEndpoints } from './payment';
 import { aiConversations, aiMessages, aiPromptTemplates, aiProviderConfigs, userAiConfigs } from './ai';
 import { appWebhookDeliveries, appWebhookSubscriptions, oauth2AuthorizationCodes, oauth2Clients, oauth2Tokens, oauth2UserGrants, ratePlans } from './open-platform';
-import { checkinMilestones, coupons, memberCheckinMilestoneAwards, memberCheckins, memberCoupons, memberLevels, memberNotifications, memberPointAccounts, memberPointTransactions, members, memberTagBindings, memberTags, memberWallets, memberWalletTransactions } from './member';
+import { checkinMilestones, coupons, memberCheckinMilestoneAwards, memberCheckins, memberCoupons, memberLevels, memberNotifications, memberPointAccounts, memberPointTransactions, members, memberTagBindings, memberTags, memberVipRenewals, memberWallets, memberWalletTransactions } from './member';
 import { monitorAlertEvents, monitorAlertRules } from './monitor';
 import { mpAccounts, mpAutoReplies, mpBroadcasts, mpConditionalMenus, mpDrafts, mpFans, mpKfAccounts, mpKfRoutingConfigs, mpKfSessionEvents, mpKfSessions, mpMaterials, mpMenus, mpMessages, mpMessageTemplates, mpQrcodes, mpTags, mpTemplateSendLogs, mpUnmatchedKeywords } from './mp';
 import { reportAlertRules, reportDashboardCategories, reportDashboardComments, reportDashboardEmbedTokens, reportDashboards, reportDashboardShares, reportDashboardSubscriptions, reportDashboardVersions, reportDatasetExecutionLogs, reportDatasets, reportDatasources, reportDeliveryAttempts, reportDeliveryRuns, reportFolders, reportPrintTemplates, reportShareAccessLogs } from './report';
@@ -196,6 +196,19 @@ export const paymentAppsRelations = relations(paymentApps, ({ one }) => ({
   wechatConfig: one(paymentChannelConfigs, { fields: [paymentApps.wechatConfigId], references: [paymentChannelConfigs.id], relationName: 'appWechatConfig' }),
   alipayConfig: one(paymentChannelConfigs, { fields: [paymentApps.alipayConfigId], references: [paymentChannelConfigs.id], relationName: 'appAlipayConfig' }),
   unionpayConfig: one(paymentChannelConfigs, { fields: [paymentApps.unionpayConfigId], references: [paymentChannelConfigs.id], relationName: 'appUnionpayConfig' }),
+}));
+
+export const paymentDeductPlansRelations = relations(paymentDeductPlans, ({ many }) => ({
+  contracts: many(paymentContracts),
+}));
+
+export const paymentContractsRelations = relations(paymentContracts, ({ one }) => ({
+  plan: one(paymentDeductPlans, { fields: [paymentContracts.planId], references: [paymentDeductPlans.id] }),
+  channelConfig: one(paymentChannelConfigs, { fields: [paymentContracts.channelConfigId], references: [paymentChannelConfigs.id] }),
+}));
+
+export const memberVipRenewalsRelations = relations(memberVipRenewals, ({ one }) => ({
+  member: one(members, { fields: [memberVipRenewals.memberId], references: [members.id] }),
 }));
 
 export const tenantsRelations = relations(tenants, ({ one, many }) => ({

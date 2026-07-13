@@ -42,6 +42,7 @@ export const MemberDTO = z
     status: z.enum(['active', 'inactive', 'banned']),
     levelId: z.number().int().nullable().optional(),
     levelName: z.string().nullable().optional(),
+    vipExpireAt: z.string().nullable().optional(),
     growthValue: z.number().int(),
     experience: z.number().int(),
     registerSource: z.string(),

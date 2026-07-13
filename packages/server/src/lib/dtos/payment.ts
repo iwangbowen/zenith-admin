@@ -4,7 +4,7 @@
 import { z } from '@hono/zod-openapi';
 
 const channelEnum = z.enum(['wechat', 'alipay', 'unionpay']);
-const payMethodEnum = z.enum(['wechat_native', 'wechat_jsapi', 'wechat_h5', 'alipay_page', 'alipay_wap', 'alipay_app', 'unionpay_qr']);
+const payMethodEnum = z.enum(['wechat_native', 'wechat_jsapi', 'wechat_h5', 'alipay_page', 'alipay_wap', 'alipay_app', 'unionpay_qr', 'wechat_papay', 'alipay_cycle']);
 const orderStatusEnum = z.enum(['pending', 'paying', 'success', 'closed', 'refunding', 'refunded', 'failed']);
 const refundStatusEnum = z.enum(['pending', 'processing', 'success', 'failed']);
 const refundApprovalEnum = z.enum(['none', 'pending', 'approved', 'rejected']);
@@ -528,3 +528,94 @@ export const PaymentAppDTO = z
     updatedAt: z.string(),
   })
   .openapi('PaymentApp');
+
+// ─── 签约代扣（周期扣款/订阅）────────────────────────────────────────────────
+const deductPeriodEnum = z.enum(['daily', 'weekly', 'monthly', 'custom']);
+const contractStatusEnum = z.enum(['pending', 'signed', 'paused', 'terminated']);
+
+export const PaymentDeductPlanDTO = z
+  .object({
+    id: z.number().int(),
+    name: z.string(),
+    period: deductPeriodEnum,
+    customDays: z.number().int().nullable().optional(),
+    amount: z.number().int(),
+    maxRetries: z.number().int(),
+    status: z.enum(['enabled', 'disabled']),
+    remark: z.string().nullable().optional(),
+    contractCount: z.number().int().optional(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('PaymentDeductPlan');
+
+export const PaymentContractDTO = z
+  .object({
+    id: z.number().int(),
+    contractNo: z.string(),
+    channel: channelEnum,
+    channelConfigId: z.number().int().nullable().optional(),
+    planId: z.number().int(),
+    planName: z.string().nullable().optional(),
+    planPeriod: deductPeriodEnum.nullable().optional(),
+    planAmount: z.number().int().nullable().optional(),
+    signerAccount: z.string(),
+    signerName: z.string().nullable().optional(),
+    status: contractStatusEnum,
+    channelContractNo: z.string().nullable().optional(),
+    bizType: z.string(),
+    bizId: z.string(),
+    nextDeductAt: z.string().nullable().optional(),
+    lastDeductAt: z.string().nullable().optional(),
+    failCount: z.number().int(),
+    totalDeductCount: z.number().int(),
+    lastOrderNo: z.string().nullable().optional(),
+    signedAt: z.string().nullable().optional(),
+    terminatedAt: z.string().nullable().optional(),
+    remark: z.string().nullable().optional(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('PaymentContract');
+
+/** 执行一期扣款的结果（协议最新状态 + 本期订单号 + 扣款结果） */
+export const PaymentDeductResultDTO = z
+  .object({
+    contract: PaymentContractDTO,
+    orderNo: z.string().nullable().optional(),
+    deductStatus: z.enum(['success', 'processing', 'failed']),
+    failReason: z.string().nullable().optional(),
+  })
+  .openapi('PaymentDeductResult');
+
+export const MemberVipRenewalDTO = z
+  .object({
+    id: z.number().int(),
+    orderNo: z.string(),
+    contractNo: z.string().nullable().optional(),
+    amount: z.number().int(),
+    vipExpireAfter: z.string(),
+    createdAt: z.string(),
+  })
+  .openapi('MemberVipRenewal');
+
+/** 会员端自动续费视图 */
+export const MemberRenewalInfoDTO = z
+  .object({
+    vipExpireAt: z.string().nullable().optional(),
+    contract: PaymentContractDTO.nullable().optional(),
+    renewals: z.array(MemberVipRenewalDTO),
+  })
+  .openapi('MemberRenewalInfo');
+
+/** 会员端可选续费计划（公开视图） */
+export const MemberRenewalPlanDTO = z
+  .object({
+    id: z.number().int(),
+    name: z.string(),
+    period: deductPeriodEnum,
+    customDays: z.number().int().nullable().optional(),
+    amount: z.number().int(),
+    remark: z.string().nullable().optional(),
+  })
+  .openapi('MemberRenewalPlan');

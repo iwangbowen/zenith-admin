@@ -96,6 +96,7 @@ import { frontendErrorsHandlers } from './frontend-errors';
 import { paymentHandlers } from './payment';
 import { paymentExtHandlers } from './payment-ext';
 import { paymentBExtHandlers } from './payment-bext';
+import { paymentContractHandlers } from './payment-contracts';
 import { memberFrontHandlers } from './member-front';
 import { memberAdminHandlers } from './member-admin';
 import { checkinHandlers } from './checkin';
@@ -208,6 +209,7 @@ export const handlers = [
   ...paymentHandlers,
   ...paymentExtHandlers,
   ...paymentBExtHandlers,
+  ...paymentContractHandlers,
   ...memberFrontHandlers,
   ...memberAdminHandlers,
   ...checkinHandlers,

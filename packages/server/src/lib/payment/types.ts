@@ -102,6 +102,46 @@ export interface TransferQueryResult {
   raw?: unknown;
 }
 
+/** 签约代扣：签约入参（渠道无关标准化字段） */
+export interface ContractSignInput {
+  /** 本地协议号（渠道幂等键） */
+  outContractNo: string;
+  /** 签约账号（微信 openid / 支付宝账号） */
+  signerAccount: string;
+  /** 计划名称（渠道侧展示） */
+  planName: string;
+  /** 每期扣款金额（分） */
+  amount: number;
+  /** 周期描述（如 monthly） */
+  period: string;
+}
+
+export interface ContractSignResult {
+  /** 渠道协议号（签约成功后返回） */
+  channelContractNo?: string;
+  /** sandbox 即时 signed；真实渠道异步签约时为 pending */
+  status: 'pending' | 'signed';
+  raw?: unknown;
+}
+
+/** 签约代扣：单期扣款入参 */
+export interface ContractDeductInput {
+  /** 渠道协议号 */
+  channelContractNo: string;
+  /** 本期扣款商户订单号（幂等键） */
+  outTradeNo: string;
+  /** 扣款金额（分） */
+  amount: number;
+  subject: string;
+}
+
+export interface ContractDeductResult {
+  channelTradeNo?: string;
+  status: 'success' | 'processing' | 'failed';
+  failReason?: string;
+  raw?: unknown;
+}
+
 /** 回调验签 + 解析后的标准化结果 */
 export interface NotifyResult {
   /** 验签是否通过 */
@@ -156,6 +196,15 @@ export interface PaymentChannelAdapter {
   transfer?(ctx: AdapterContext, input: TransferInput): Promise<TransferResult>;
   /** 查询转账结果（可选，用于同步 processing 转账单） */
   queryTransfer?(ctx: AdapterContext, input: Pick<TransferInput, 'outTransferNo'>): Promise<TransferQueryResult>;
+  /**
+   * 签约代扣：签约（可选）。微信委托代扣 / 支付宝周期扣款。
+   * `sandbox=true` 时为模拟实现（即时签约成功）；真实渠道需商户开通对应产品权限。
+   */
+  signContract?(ctx: AdapterContext, input: ContractSignInput): Promise<ContractSignResult>;
+  /** 签约代扣：解约（可选）。`sandbox=true` 时为模拟实现（即时解约）。 */
+  terminateContract?(ctx: AdapterContext, input: Pick<ContractSignInput, 'outContractNo'> & { channelContractNo?: string }): Promise<void>;
+  /** 签约代扣：按协议发起单期扣款（可选，服务端发起，无用户交互）。`sandbox=true` 时即时成功。 */
+  deductContract?(ctx: AdapterContext, input: ContractDeductInput): Promise<ContractDeductResult>;
   /**
    * 下载渠道对账单（可选）：返回内部标准 CSV（`订单号,渠道交易号,金额(分),状态`）。
    * `sandbox=true` 时由调用方（recon service）用本地订单生成模拟账单，不会调用此方法。

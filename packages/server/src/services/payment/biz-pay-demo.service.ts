@@ -14,7 +14,7 @@
  */
 import { and, desc, eq, inArray, like } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import type { BizPayDemo, BizPayDemoStatus, PaymentMethod, CreatePaymentResult } from '@zenith/shared';
+import type { BizPayDemo, BizPayDemoStatus, PaymentMethod, PaymentCashierMethod, CreatePaymentResult } from '@zenith/shared';
 import { db } from '../../db';
 import { bizPayDemos, type BizPayDemoRow } from '../../db/schema';
 import { currentUser } from '../../lib/context';
@@ -109,7 +109,7 @@ export async function deleteBizPayDemo(id: number): Promise<void> {
  */
 export async function payBizPayDemo(
   id: number,
-  input: { payMethod: PaymentMethod; openId?: string },
+  input: { payMethod: PaymentCashierMethod; openId?: string },
   clientIp?: string,
 ): Promise<{ demo: BizPayDemo; payParams: CreatePaymentResult }> {
   const row = await getOwnRow(id);

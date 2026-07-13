@@ -238,6 +238,7 @@ export const PAYMENT_METHODS = [
   'wechat_native', 'wechat_jsapi', 'wechat_h5',
   'alipay_page', 'alipay_wap', 'alipay_app',
   'unionpay_qr',
+  'wechat_papay', 'alipay_cycle',
 ] as const;
 export type PaymentMethod = typeof PAYMENT_METHODS[number];
 
@@ -256,6 +257,8 @@ export const PAYMENT_METHOD_CHANNEL: Record<PaymentMethod, PaymentChannel> = {
   alipay_wap: 'alipay',
   alipay_app: 'alipay',
   unionpay_qr: 'unionpay',
+  wechat_papay: 'wechat',
+  alipay_cycle: 'alipay',
 };
 
 export const PAYMENT_CHANNEL_LABELS: Record<PaymentChannel, string> = {
@@ -308,6 +311,8 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   alipay_wap: '支付宝手机网站',
   alipay_app: '支付宝 APP',
   unionpay_qr: '云闪付扫码',
+  wechat_papay: '微信委托代扣',
+  alipay_cycle: '支付宝周期扣款',
 };
 
 export const PAYMENT_ORDER_STATUS_LABELS: Record<PaymentOrderStatus, string> = {
@@ -412,6 +417,36 @@ export type PaymentReportGroupBy = typeof PAYMENT_REPORT_GROUP_BYS[number];
 export const PAYMENT_REPORT_GROUP_BY_LABELS: Record<PaymentReportGroupBy, string> = {
   bizType: '业务类型', channel: '支付渠道', day: '按日',
 };
+
+// ─── 支付中心扩展 · 签约代扣（周期扣款/订阅）───────────────────────────
+export const PAYMENT_DEDUCT_PERIODS = ['daily', 'weekly', 'monthly', 'custom'] as const;
+export type PaymentDeductPeriod = typeof PAYMENT_DEDUCT_PERIODS[number];
+export const PAYMENT_DEDUCT_PERIOD_LABELS: Record<PaymentDeductPeriod, string> = {
+  daily: '每日', weekly: '每周', monthly: '每月', custom: '自定义天数',
+};
+export const PAYMENT_DEDUCT_PERIOD_OPTIONS: Array<{ value: PaymentDeductPeriod; label: string }> =
+  PAYMENT_DEDUCT_PERIODS.map((value) => ({ value, label: PAYMENT_DEDUCT_PERIOD_LABELS[value] }));
+
+export const PAYMENT_CONTRACT_STATUSES = ['pending', 'signed', 'paused', 'terminated'] as const;
+export type PaymentContractStatus = typeof PAYMENT_CONTRACT_STATUSES[number];
+export const PAYMENT_CONTRACT_STATUS_LABELS: Record<PaymentContractStatus, string> = {
+  pending: '签约中', signed: '已签约', paused: '已暂停', terminated: '已解约',
+};
+
+/** 支持签约代扣的支付方式（服务端发起扣款，无用户交互） */
+export const PAYMENT_DEDUCT_METHODS = ['wechat_papay', 'alipay_cycle'] as const satisfies readonly PaymentMethod[];
+export type PaymentDeductMethod = typeof PAYMENT_DEDUCT_METHODS[number];
+
+/** 收银台可选支付方式（用户主动支付，不含服务端发起的签约代扣方式） */
+export const PAYMENT_CASHIER_METHODS = [
+  'wechat_native', 'wechat_jsapi', 'wechat_h5',
+  'alipay_page', 'alipay_wap', 'alipay_app',
+  'unionpay_qr',
+] as const satisfies readonly PaymentMethod[];
+export type PaymentCashierMethod = typeof PAYMENT_CASHIER_METHODS[number];
+
+/** 会员自动续费业务类型（签约协议与扣款单共用） */
+export const MEMBER_RENEWAL_BIZ_TYPE = 'member_renewal';
 
 // ─── 会员中心（Member Center）────────────────────────────────────────
 /** 会员前台 token 的 localStorage key（与管理员 zenith_token 隔离）*/

@@ -14,6 +14,10 @@ import { rsaSign, rsaVerify, aesGcmDecrypt, ensurePem } from './signing';
 import { getPlatformCert } from './wechat-certs';
 import type {
   AdapterContext,
+  ContractDeductInput,
+  ContractDeductResult,
+  ContractSignInput,
+  ContractSignResult,
   NotifyResult,
   PaymentChannelAdapter,
   PaymentQueryResult,
@@ -443,6 +447,34 @@ export const wechatPayAdapter: PaymentChannelAdapter = {
     const text = await resp.text();
     if (!resp.ok) throw new HTTPException(502, { message: `微信账单下载失败(${resp.status})` });
     return convertWechatBillToInternalCsv(text);
+  },
+
+  // ── 签约代扣（委托代扣）：真实模式需商户开通委托代扣产品权限，本期仅支持沙箱模拟 ──
+  async signContract(ctx: AdapterContext, input: ContractSignInput): Promise<ContractSignResult> {
+    if (ctx.config.sandbox) {
+      logger.info('[wechat-pay] simulate contract sign (sandbox)', { outContractNo: input.outContractNo, plan: input.planName });
+      await Promise.resolve();
+      return { channelContractNo: `WXCT${Date.now()}${randomBytes(3).toString('hex')}`, status: 'signed' };
+    }
+    throw new HTTPException(400, { message: '微信委托代扣需商户开通产品权限，当前仅支持沙箱渠道签约' });
+  },
+
+  async terminateContract(ctx: AdapterContext, input): Promise<void> {
+    if (ctx.config.sandbox) {
+      logger.info('[wechat-pay] simulate contract terminate (sandbox)', { outContractNo: input.outContractNo });
+      await Promise.resolve();
+      return;
+    }
+    throw new HTTPException(400, { message: '微信委托代扣需商户开通产品权限，当前仅支持沙箱渠道解约' });
+  },
+
+  async deductContract(ctx: AdapterContext, input: ContractDeductInput): Promise<ContractDeductResult> {
+    if (ctx.config.sandbox) {
+      logger.info('[wechat-pay] simulate contract deduct (sandbox)', { outTradeNo: input.outTradeNo, amount: input.amount });
+      await Promise.resolve();
+      return { channelTradeNo: `WXDED${Date.now()}${randomBytes(3).toString('hex')}`, status: 'success' };
+    }
+    throw new HTTPException(400, { message: '微信委托代扣需商户开通产品权限，当前仅支持沙箱渠道扣款' });
   },
 };
 

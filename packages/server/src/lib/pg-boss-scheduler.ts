@@ -620,6 +620,12 @@ handlerRegistry.set('closeExpiredPaymentOrders', async () => {
   return `关闭过期支付订单 ${count} 笔`;
 });
 
+handlerRegistry.set('executeDueDeductions', async () => {
+  const { executeDueDeductions } = await import('../services/payment/payment-contract.service');
+  const count = await executeDueDeductions();
+  return `执行到期代扣 ${count} 笔`;
+});
+
 handlerRegistry.set('paymentReconciliation', async () => {
   const { runReconciliation } = await import('../services/payment/payment-reconciliation.service');
   const r = await runReconciliation();

@@ -12,6 +12,8 @@ export const paymentMethodEnum = pgEnum('payment_method', [
   'wechat_native', 'wechat_jsapi', 'wechat_h5',
   'alipay_page', 'alipay_wap', 'alipay_app',
   'unionpay_qr',
+  // 签约代扣（服务端发起，无用户交互）：微信委托代扣 / 支付宝周期扣款
+  'wechat_papay', 'alipay_cycle',
 ]);
 
 export const paymentOrderStatusEnum = pgEnum('payment_order_status', [
@@ -562,6 +564,76 @@ export const paymentMethodConfigs = pgTable('payment_method_configs', {  id: ser
 export type PaymentMethodConfigRow = typeof paymentMethodConfigs.$inferSelect;
 
 export type NewPaymentMethodConfig = typeof paymentMethodConfigs.$inferInsert;
+
+// ─── 扣款计划（签约代扣的周期/金额模板）──────────────────────────────────────
+export const paymentDeductPeriodEnum = pgEnum('payment_deduct_period', ['daily', 'weekly', 'monthly', 'custom']);
+
+export const paymentDeductPlans = pgTable('payment_deduct_plans', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 64 }).notNull(),
+  period: paymentDeductPeriodEnum('period').notNull().default('monthly'),
+  /** period=custom 时的自定义周期天数 */
+  customDays: integer('custom_days'),
+  /** 每期扣款金额（分） */
+  amount: integer('amount').notNull(),
+  /** 单期扣款连续失败重试上限，超过后协议自动暂停 */
+  maxRetries: integer('max_retries').notNull().default(3),
+  status: statusEnum('status').notNull().default('enabled'),
+  remark: varchar('remark', { length: 256 }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type PaymentDeductPlanRow = typeof paymentDeductPlans.$inferSelect;
+
+export type NewPaymentDeductPlan = typeof paymentDeductPlans.$inferInsert;
+
+// ─── 签约代扣协议（微信委托代扣 / 支付宝周期扣款）────────────────────────────
+export const paymentContractStatusEnum = pgEnum('payment_contract_status', ['pending', 'signed', 'paused', 'terminated']);
+
+export const paymentContracts = pgTable('payment_contracts', {
+  id: serial('id').primaryKey(),
+  contractNo: varchar('contract_no', { length: 64 }).notNull().unique(),
+  channel: paymentChannelEnum('channel').notNull(),
+  channelConfigId: integer('channel_config_id').references(() => paymentChannelConfigs.id, { onDelete: 'set null' }),
+  planId: integer('plan_id').notNull().references(() => paymentDeductPlans.id, { onDelete: 'restrict' }),
+  /** 签约账号（微信 openid / 支付宝账号 / 会员标识） */
+  signerAccount: varchar('signer_account', { length: 128 }).notNull(),
+  signerName: varchar('signer_name', { length: 64 }),
+  status: paymentContractStatusEnum('status').notNull().default('pending'),
+  /** 渠道协议号（签约成功后回填） */
+  channelContractNo: varchar('channel_contract_no', { length: 128 }),
+  bizType: varchar('biz_type', { length: 64 }).notNull(),
+  bizId: varchar('biz_id', { length: 128 }).notNull(),
+  /** 下次扣款时间（signed 状态下由 cron 扫描执行） */
+  nextDeductAt: timestamp('next_deduct_at', { withTimezone: true }),
+  lastDeductAt: timestamp('last_deduct_at', { withTimezone: true }),
+  /** 当前期连续扣款失败次数（成功后清零，达到计划 maxRetries 自动暂停） */
+  failCount: integer('fail_count').notNull().default(0),
+  /** 累计成功扣款期数 */
+  totalDeductCount: integer('total_deduct_count').notNull().default(0),
+  /** 最近一期扣款订单号 */
+  lastOrderNo: varchar('last_order_no', { length: 64 }),
+  signedAt: timestamp('signed_at', { withTimezone: true }),
+  terminatedAt: timestamp('terminated_at', { withTimezone: true }),
+  remark: varchar('remark', { length: 256 }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  // 同一业务单（bizType+bizId）最多一份未终止协议，防止重复签约
+  uniqueIndex('payment_contracts_active_biz_uq').on(t.bizType, t.bizId).where(sql`${t.status} in ('pending', 'signed', 'paused')`),
+  index('payment_contracts_status_idx').on(t.status),
+  index('payment_contracts_next_deduct_idx').on(t.nextDeductAt),
+  index('payment_contracts_biz_idx').on(t.bizType, t.bizId),
+]);
+
+export type PaymentContractRow = typeof paymentContracts.$inferSelect;
+
+export type NewPaymentContract = typeof paymentContracts.$inferInsert;
 
 // ─── 关系声明（Drizzle Relational Query API）──────────────────────────────────
 // 声明后可使用 db.query.xxx.findMany({ with: { ... } }) 进行关联查询

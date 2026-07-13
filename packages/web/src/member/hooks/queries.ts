@@ -12,8 +12,10 @@ import type {
   MemberMilestoneStatus,
   MemberNotification,
   MemberPointAccount,
+  MemberRenewalInfo,
   MemberWallet,
   PaginatedResponse,
+  PaymentDeductPlan,
 } from '@zenith/shared';
 import { toQueryString, unwrap } from '@/lib/query';
 import { memberRequest } from '../utils/member-request';
@@ -104,6 +106,11 @@ export const memberKeys = {
     unreadCount: ['member', 'notifications', 'unread-count'] as const,
   },
   invite: ['member', 'invite', 'summary'] as const,
+  renewal: {
+    all: ['member', 'renewal'] as const,
+    info: ['member', 'renewal', 'info'] as const,
+    plans: ['member', 'renewal', 'plans'] as const,
+  },
 };
 
 export function useMemberMe() {
@@ -326,6 +333,59 @@ export function useMakeupCheckin() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: memberKeys.checkin.all });
       void qc.invalidateQueries({ queryKey: memberKeys.points.all });
+    },
+  });
+}
+
+// ─── 自动续费 ─────────────────────────────────────────────────────────────────
+
+export interface RenewalDeductResult {
+  orderNo?: string | null;
+  deductStatus: 'success' | 'processing' | 'failed';
+  failReason?: string | null;
+}
+
+export function useMyRenewal() {
+  return useQuery({
+    queryKey: memberKeys.renewal.info,
+    queryFn: () => memberRequest.get<MemberRenewalInfo>('/api/member/renewal', { silent: true }).then(unwrap),
+  });
+}
+
+export function useRenewalPlans() {
+  return useQuery({
+    queryKey: memberKeys.renewal.plans,
+    queryFn: () => memberRequest.get<PaymentDeductPlan[]>('/api/member/renewal/plans', { silent: true }).then(unwrap),
+  });
+}
+
+export function useSignRenewal() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (values: { planId: number; payMethod: string }) =>
+      memberRequest.post<{ firstDeduct?: RenewalDeductResult | null }>('/api/member/renewal/sign', values).then(unwrap),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: memberKeys.renewal.all });
+      void qc.invalidateQueries({ queryKey: memberKeys.me });
+    },
+  });
+}
+
+export function useTerminateRenewal() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => memberRequest.post<null>('/api/member/renewal/terminate', {}).then(unwrap),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: memberKeys.renewal.all }),
+  });
+}
+
+export function useRenewNow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => memberRequest.post<RenewalDeductResult>('/api/member/renewal/deduct', {}).then(unwrap),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: memberKeys.renewal.all });
+      void qc.invalidateQueries({ queryKey: memberKeys.me });
     },
   });
 }

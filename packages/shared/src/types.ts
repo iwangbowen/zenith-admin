@@ -1,4 +1,4 @@
-import type { AiProvider, OAuthProviderType, PaymentChannel, PaymentMethod, PaymentOrderStatus, PaymentRefundStatus, PaymentRefundApprovalStatus, PaymentReconStatus, PaymentReconResult, PaymentReconHandleStatus, PaymentWebhookDeliveryStatus, PaymentLedgerDirection, PaymentLedgerType, PaymentSettlementStatus, PaymentSharingReceiverType, PaymentSharingOrderStatus, PaymentLinkStatus, PaymentRiskScope, PaymentTransferStatus, MemberStatus, PointTxType, WalletTxType, CouponType, CouponValidType, CouponTemplateStatus, MemberCouponStatus, WorkflowFormType } from './constants';
+import type { AiProvider, OAuthProviderType, PaymentChannel, PaymentMethod, PaymentOrderStatus, PaymentRefundStatus, PaymentRefundApprovalStatus, PaymentReconStatus, PaymentReconResult, PaymentReconHandleStatus, PaymentWebhookDeliveryStatus, PaymentLedgerDirection, PaymentLedgerType, PaymentSettlementStatus, PaymentSharingReceiverType, PaymentSharingOrderStatus, PaymentLinkStatus, PaymentRiskScope, PaymentTransferStatus, PaymentDeductPeriod, PaymentContractStatus, MemberStatus, PointTxType, WalletTxType, CouponType, CouponValidType, CouponTemplateStatus, MemberCouponStatus, WorkflowFormType } from './constants';
 import { REPORT_DASHBOARD_LIFECYCLE_STATUSES, REPORT_DASHBOARD_VERSION_SOURCES } from './constants';
 
 export type EntityStatus = 'enabled' | 'disabled';
@@ -6372,6 +6372,64 @@ export interface PaymentApp {
   updatedAt: string;
 }
 
+export interface PaymentDeductPlan {
+  id: number;
+  name: string;
+  period: PaymentDeductPeriod;
+  customDays?: number | null;
+  amount: number; // 分
+  maxRetries: number;
+  status: 'enabled' | 'disabled';
+  remark?: string | null;
+  /** 引用本计划的协议数（列表页展示/删除预检） */
+  contractCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaymentContract {
+  id: number;
+  contractNo: string;
+  channel: PaymentChannel;
+  channelConfigId?: number | null;
+  planId: number;
+  planName?: string | null;
+  planPeriod?: PaymentDeductPeriod | null;
+  planAmount?: number | null; // 分
+  signerAccount: string;
+  signerName?: string | null;
+  status: PaymentContractStatus;
+  channelContractNo?: string | null;
+  bizType: string;
+  bizId: string;
+  nextDeductAt?: string | null;
+  lastDeductAt?: string | null;
+  failCount: number;
+  totalDeductCount: number;
+  lastOrderNo?: string | null;
+  signedAt?: string | null;
+  terminatedAt?: string | null;
+  remark?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 会员端自动续费视图（当前协议 + VIP 状态） */
+export interface MemberRenewalInfo {
+  vipExpireAt?: string | null;
+  contract?: PaymentContract | null;
+  renewals: MemberVipRenewal[];
+}
+
+export interface MemberVipRenewal {
+  id: number;
+  orderNo: string;
+  contractNo?: string | null;
+  amount: number; // 分
+  vipExpireAfter: string;
+  createdAt: string;
+}
+
 export interface PaymentLink {
   id: number;
   linkNo: string;
@@ -6540,6 +6598,8 @@ export interface Member {
   status: MemberStatus;
   levelId?: number | null;
   levelName?: string | null;
+  /** 付费会员（VIP）到期时间，null = 未开通 */
+  vipExpireAt?: string | null;
   growthValue: number;
   experience: number;
   registerSource: string;

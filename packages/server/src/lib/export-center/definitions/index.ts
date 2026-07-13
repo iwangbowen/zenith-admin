@@ -23,6 +23,7 @@ import { channelSubscribersExportDefinition } from './channel-subscribers';
 import { analyticsEventsExportDefinition } from './analytics-events';
 import { paymentOrdersExportDefinition } from './payment-orders';
 import { paymentRefundsExportDefinition } from './payment-refunds';
+import { paymentContractsExportDefinition } from './payment-contracts';
 import { workflowInstancesExportDefinition } from './workflow-instances';
 import { memberPointTxExportDefinition } from './member-point-transactions';
 import { memberWalletTxExportDefinition } from './member-wallet-transactions';
@@ -64,6 +65,7 @@ const definitions = [
   analyticsEventsExportDefinition,
   paymentOrdersExportDefinition,
   paymentRefundsExportDefinition,
+  paymentContractsExportDefinition,
   workflowInstancesExportDefinition,
   memberPointTxExportDefinition,
   memberWalletTxExportDefinition,

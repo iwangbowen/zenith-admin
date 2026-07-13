@@ -12,6 +12,10 @@ import type { CreatePaymentResult } from '@zenith/shared';
 import { rsaSign, rsaVerify, ensurePem, type RsaAlgorithm } from './signing';
 import type {
   AdapterContext,
+  ContractDeductInput,
+  ContractDeductResult,
+  ContractSignInput,
+  ContractSignResult,
   NotifyResult,
   PaymentChannelAdapter,
   PaymentQueryResult,
@@ -348,5 +352,33 @@ export const alipayAdapter: PaymentChannelAdapter = {
       failReason: res.fail_reason ?? res.error_code,
       raw: res,
     };
+  },
+
+  // ── 签约代扣（周期扣款）：真实模式需商户开通周期扣款产品权限，本期仅支持沙箱模拟 ──
+  async signContract(ctx: AdapterContext, input: ContractSignInput): Promise<ContractSignResult> {
+    if (ctx.config.sandbox) {
+      logger.info('[alipay] simulate contract sign (sandbox)', { outContractNo: input.outContractNo, plan: input.planName });
+      await Promise.resolve();
+      return { channelContractNo: `ALICT${Date.now()}${Math.floor(Math.random() * 1e6)}`, status: 'signed' };
+    }
+    throw new HTTPException(400, { message: '支付宝周期扣款需商户开通产品权限，当前仅支持沙箱渠道签约' });
+  },
+
+  async terminateContract(ctx: AdapterContext, input): Promise<void> {
+    if (ctx.config.sandbox) {
+      logger.info('[alipay] simulate contract terminate (sandbox)', { outContractNo: input.outContractNo });
+      await Promise.resolve();
+      return;
+    }
+    throw new HTTPException(400, { message: '支付宝周期扣款需商户开通产品权限，当前仅支持沙箱渠道解约' });
+  },
+
+  async deductContract(ctx: AdapterContext, input: ContractDeductInput): Promise<ContractDeductResult> {
+    if (ctx.config.sandbox) {
+      logger.info('[alipay] simulate contract deduct (sandbox)', { outTradeNo: input.outTradeNo, amount: input.amount });
+      await Promise.resolve();
+      return { channelTradeNo: `ALIDED${Date.now()}${Math.floor(Math.random() * 1e6)}`, status: 'success' };
+    }
+    throw new HTTPException(400, { message: '支付宝周期扣款需商户开通产品权限，当前仅支持沙箱渠道扣款' });
   },
 };

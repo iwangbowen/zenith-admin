@@ -6,6 +6,8 @@ import { paymentEventBus } from '../../lib/payment-event-bus';
 import { sendToUser } from '../../lib/ws-manager';
 import logger from '../../lib/logger';
 import { creditWalletOnRecharge, WALLET_RECHARGE_BIZ_TYPE } from '../member/member-wallet.service';
+import { extendVipOnRenewal } from '../member/member-renewal.service';
+import { MEMBER_RENEWAL_BIZ_TYPE } from '@zenith/shared';
 
 let registered = false;
 
@@ -67,6 +69,15 @@ export function registerPaymentSubscribers(): void {
     if (e.bizType !== WALLET_RECHARGE_BIZ_TYPE) return;
     return creditWalletOnRecharge({ bizId: e.bizId, orderNo: e.orderNo, amount: e.amount }).catch((err) => {
       logger.error('[member] 钱包充值入账失败', { orderNo: e.orderNo, err });
+      throw err;
+    });
+  });
+
+  // 会员自动续费扣款到账（bizType=member_renewal，按订单号幂等延长 VIP 有效期）
+  paymentEventBus.on('payment.succeeded', (e) => {
+    if (e.bizType !== MEMBER_RENEWAL_BIZ_TYPE) return;
+    return extendVipOnRenewal({ bizId: e.bizId, orderNo: e.orderNo, amount: e.amount }).catch((err) => {
+      logger.error('[member] VIP 续费延期失败', { orderNo: e.orderNo, err });
       throw err;
     });
   });

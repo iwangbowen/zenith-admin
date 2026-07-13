@@ -28,6 +28,7 @@ const ChangePasswordPage = React.lazy(() => import('./pages/profile/ChangePasswo
 const LoginHistoryPage = React.lazy(() => import('./pages/login-history/LoginHistoryPage'));
 const NotificationsPage = React.lazy(() => import('./pages/notifications/NotificationsPage'));
 const InvitePage = React.lazy(() => import('./pages/invite/InvitePage'));
+const RenewalPage = React.lazy(() => import('./pages/renewal/RenewalPage'));
 
 const routeFallback = (
   <div className="m-loading-wrap">
@@ -87,6 +88,7 @@ function AppRoutes() {
         <Route path="/coupons" element={<CouponsPage />} />
         <Route path="/checkin" element={<CheckinPage />} />
         <Route path="/level" element={<LevelPage />} />
+        <Route path="/renewal" element={<RenewalPage />} />
         <Route path="/messages" element={<NotificationsPage />} />
         <Route path="/invite" element={<InvitePage />} />
         <Route path="/profile" element={<ProfilePage />} />

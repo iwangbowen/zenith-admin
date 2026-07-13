@@ -14,9 +14,13 @@ import { mergeWhere, escapeLike, withPagination } from '../../lib/where-helpers'
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
 import { createPayment } from './payment.service';
 import type { CreatePaymentLinkInput, UpdatePaymentLinkInput } from '@zenith/shared';
-import type { CreatePaymentResult, PaymentLink, PaymentLinkPublic, PaymentLinkStatus, PaymentMethod } from '@zenith/shared';
+import type { CreatePaymentResult, PaymentLink, PaymentLinkPublic, PaymentLinkStatus, PaymentMethod, PaymentCashierMethod } from '@zenith/shared';
 
-const PUBLIC_LINK_PAY_METHODS = new Set<PaymentMethod>(['wechat_native', 'wechat_h5', 'alipay_page', 'alipay_wap', 'unionpay_qr']);
+const PUBLIC_LINK_PAY_METHODS = new Set<PaymentCashierMethod>(['wechat_native', 'wechat_h5', 'alipay_page', 'alipay_wap', 'unionpay_qr']);
+
+function isPublicLinkPayMethod(method: PaymentMethod): method is PaymentCashierMethod {
+  return PUBLIC_LINK_PAY_METHODS.has(method as PaymentCashierMethod);
+}
 
 function genLinkNo(): string {
   return `LINK${Date.now()}${randomInt(1000, 9999)}`;
@@ -185,7 +189,7 @@ export async function payByLink(token: string, input: PayByLinkInput): Promise<{
   }
   const payMethod = row.payMethod ?? input.payMethod;
   if (!payMethod) throw new HTTPException(400, { message: '请选择支付方式' });
-  if (!PUBLIC_LINK_PAY_METHODS.has(payMethod)) {
+  if (!isPublicLinkPayMethod(payMethod)) {
     throw new HTTPException(400, { message: '该支付方式暂不支持在公开收款页发起' });
   }
 

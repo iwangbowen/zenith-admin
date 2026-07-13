@@ -19,7 +19,7 @@ import { escapeLike } from '../../lib/where-helpers';
 import logger from '../../lib/logger';
 import { createPayment } from '../payment/payment.service';
 import { ensureMemberExists } from './member-auth.service';
-import type { WalletTxType, PaymentMethod } from '@zenith/shared';
+import type { WalletTxType, PaymentCashierMethod } from '@zenith/shared';
 
 /** 钱包充值的支付业务类型标识 */
 export const WALLET_RECHARGE_BIZ_TYPE = 'member_recharge';
@@ -186,7 +186,7 @@ export async function adjustWallet(memberId: number, delta: number, operatorId: 
 }
 
 // ─── 充值（接入支付中心）──────────────────────────────────────────────────────
-export async function rechargeWallet(memberId: number, amount: number, payMethod: PaymentMethod, clientIp?: string) {
+export async function rechargeWallet(memberId: number, amount: number, payMethod: PaymentCashierMethod, clientIp?: string) {
   if (amount <= 0) throw new HTTPException(400, { message: '充值金额必须大于 0' });
   await ensureWallet(memberId);
   const { payParams } = await createPayment({

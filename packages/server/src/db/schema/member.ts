@@ -62,6 +62,8 @@ export const members = pgTable('members', {
   birthday: varchar('birthday', { length: 20 }),
   status: memberStatusEnum('status').notNull().default('active'),
   levelId: integer('level_id').references((): AnyPgColumn => memberLevels.id, { onDelete: 'set null' }),
+  /** 付费会员（VIP）有效期，null = 未开通；由自动续费扣款成功延长 */
+  vipExpireAt: timestamp('vip_expire_at', { withTimezone: true }),
   /** 成长值（决定会员等级）*/
   growthValue: integer('growth_value').notNull().default(0),
   experience: integer('experience').notNull().default(0),
@@ -94,6 +96,24 @@ export const members = pgTable('members', {
 export type MemberRow = typeof members.$inferSelect;
 
 export type NewMember = typeof members.$inferInsert;
+
+// ─── VIP 续费记录（自动续费扣款成功的幂等键 + 前台续费历史）────────────────────
+export const memberVipRenewals = pgTable('member_vip_renewals', {
+  id: serial('id').primaryKey(),
+  memberId: integer('member_id').notNull().references(() => members.id, { onDelete: 'cascade' }),
+  /** 支付订单号（唯一，防事件重投重复延期） */
+  orderNo: varchar('order_no', { length: 64 }).notNull().unique(),
+  contractNo: varchar('contract_no', { length: 64 }),
+  /** 实扣金额（分） */
+  amount: integer('amount').notNull(),
+  /** 本次续费后的 VIP 到期时间 */
+  vipExpireAfter: timestamp('vip_expire_after', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [index('member_vip_renewals_member_idx').on(t.memberId)]);
+
+export type MemberVipRenewalRow = typeof memberVipRenewals.$inferSelect;
+
+export type NewMemberVipRenewal = typeof memberVipRenewals.$inferInsert;
 
 // ─── 会员标签（运营分群基础）──────────────────────────────────────────────────
 export const memberTags = pgTable('member_tags', {
