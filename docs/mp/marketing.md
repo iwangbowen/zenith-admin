@@ -45,7 +45,7 @@
 
 ### 送达回执
 
-模板消息为异步送达，微信通过 `TEMPLATESENDJOBFINISH` 事件回传送达结果。回调中 `handleTemplateSendReceipt` 按 `account_id + msg_id` 匹配发送日志，依据 `Status` 回写最终状态（`success` / `failed`）。
+模板消息为异步送达，微信通过 `TEMPLATESENDJOBFINISH` 事件回传送达结果。[回调](./callback.md)中 `handleTemplateSendReceipt` 按 `account_id + msg_id` 匹配发送日志，依据 `Status` 回写最终状态（`success` / `failed`）。
 
 ---
 
@@ -65,7 +65,7 @@
 
 ### 扫码计数与送积分
 
-回调收到 `SCAN`（已关注扫码）或 `subscribe`（扫码关注）事件时：
+[回调](./callback.md)收到 `SCAN`（已关注扫码）或 `subscribe`（扫码关注）事件时：
 
 1. `incrementQrcodeScan` 按 `account_id + scene_str` 累加 `scan_count`；
 2. `rewardScanPoints`：若该二维码配置了 `reward_points` 且扫码粉丝已绑定会员，则为会员入账积分（走[会员积分记账](../member/index.md)，`biz_type = mp_scan_reward`）。
@@ -89,8 +89,9 @@
 | `POST` | `/api/mp/templates/sync` | `mp:template:sync` | 从微信同步模板 |
 | `POST` | `/api/mp/templates/send` | `mp:template:send` | 发送模板消息 |
 | `POST` | `/api/mp/templates/batch-send` | `mp:template:send` | 批量发送模板消息 |
+| `DELETE` | `/api/mp/templates/{id}` | `mp:template:delete` | 删除本地模板记录 |
 | `GET` | `/api/mp/qrcodes` | `mp:qrcode:list` | 二维码列表 |
-| `POST` | `/api/mp/qrcodes` | `mp:qrcode:create` | 生成二维码（可设奖励积分） |
+| `POST` | `/api/mp/qrcodes` | `mp:qrcode:create` | 生成二维码（可设奖励积分，接口带幂等防重） |
 | `DELETE` | `/api/mp/qrcodes/{id}` | `mp:qrcode:delete` | 删除二维码 |
 
 ---

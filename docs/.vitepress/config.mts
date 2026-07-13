@@ -146,6 +146,7 @@ export default withMermaid(defineConfig({
         items: [
           { text: '总览', link: '/mp/' },
           { text: '公众号账号', link: '/mp/accounts' },
+          { text: '消息回调接入', link: '/mp/callback' },
           { text: '粉丝、标签与会员', link: '/mp/fans' },
           { text: '消息与自动回复', link: '/mp/messages' },
           { text: '多客服会话治理', link: '/mp/customer-service' },

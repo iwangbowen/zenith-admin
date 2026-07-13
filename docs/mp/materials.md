@@ -21,7 +21,11 @@
 
 > `hono/csrf` 对 form 类型请求校验 `Origin`：真实浏览器上传会携带 `Origin` 头，开发模式（`ALLOWED_ORIGINS` 为空）放行。
 
-`POST /api/mp/materials/sync` 从微信 `batchget_material` 分页拉取永久素材并 upsert 本地。
+### 登记、同步与删除
+
+- `POST /api/mp/materials` 手动登记一条素材记录（如已有外部 URL 的素材），不调用微信接口。
+- `POST /api/mp/materials/sync` 从微信 `batchget_material` 分页拉取永久素材并 upsert 本地。
+- 删除素材时会**尽力删除微信端永久素材**（`del_material`），微信端删除失败不阻塞本地删除。
 
 ---
 
@@ -46,10 +50,12 @@
 | --- | --- | --- | --- |
 | `GET` | `/api/mp/materials` | `mp:material:list` | 素材列表 |
 | `POST` | `/api/mp/materials/upload` | `mp:material:create` | 上传素材（multipart） |
+| `POST` | `/api/mp/materials` | `mp:material:create` | 手动登记素材 |
 | `PUT` | `/api/mp/materials/{id}` | `mp:material:update` | 重命名素材 |
-| `DELETE` | `/api/mp/materials/{id}` | `mp:material:delete` | 删除素材 |
+| `DELETE` | `/api/mp/materials/{id}` | `mp:material:delete` | 删除素材（同时尽力删除微信端） |
 | `POST` | `/api/mp/materials/sync` | `mp:material:sync` | 从微信同步素材 |
 | `GET` | `/api/mp/drafts` | `mp:draft:list` | 图文草稿列表 |
+| `GET` | `/api/mp/drafts/{id}` | `mp:draft:list` | 图文草稿详情 |
 | `POST` | `/api/mp/drafts` | `mp:draft:create` | 新增图文草稿 |
 | `PUT` | `/api/mp/drafts/{id}` | `mp:draft:update` | 编辑图文草稿 |
 | `POST` | `/api/mp/drafts/{id}/push` | `mp:draft:push` | 推送到微信草稿箱 |

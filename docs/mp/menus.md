@@ -70,10 +70,10 @@
 | 方法 | 路由 | 权限 | 说明 |
 | --- | --- | --- | --- |
 | `GET` | `/api/mp/menu` | `mp:menu:list` | 获取默认菜单 |
-| `POST` | `/api/mp/menu` | `mp:menu:save` | 保存菜单草稿 |
+| `POST` | `/api/mp/menu/save` | `mp:menu:save` | 保存菜单草稿 |
 | `POST` | `/api/mp/menu/publish` | `mp:menu:publish` | 发布菜单 |
 | `POST` | `/api/mp/menu/pull` | `mp:menu:pull` | 拉取微信当前菜单 |
-| `DELETE` | `/api/mp/menu` | `mp:menu:delete` | 删除菜单 |
+| `POST` | `/api/mp/menu/delete` | `mp:menu:delete` | 删除菜单 |
 | `GET` | `/api/mp/conditional-menus` | `mp:condmenu:list` | 个性化菜单列表 |
 | `POST` | `/api/mp/conditional-menus` | `mp:condmenu:create` | 新增个性化菜单 |
 | `PUT` | `/api/mp/conditional-menus/{id}` | `mp:condmenu:update` | 编辑个性化菜单 |

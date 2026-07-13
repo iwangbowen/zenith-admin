@@ -32,18 +32,15 @@
 
 ## 加密模式与回调配置
 
-账号的 `token` / `encoding_aes_key` / `encrypt_mode` 决定回调验签与消息加解密方式：
+账号的 `token` / `encoding_aes_key` / `encrypt_mode` 决定回调的验签与消息加解密方式：明文模式仅校验 `signature`；兼容 / 安全模式校验 `msg_signature` 并对 `Encrypt` 字段做 AES 解密。
 
-- **明文模式**：仅校验 `signature`，消息为明文 XML。
-- **兼容 / 安全模式**：校验 `msg_signature`，使用 `encoding_aes_key` 对 `Encrypt` 字段做 AES 解密（`lib/wechat/crypto.ts`）。
-
-将以下回调地址填入微信公众平台「服务器配置」即可：`{API_BASE}/api/public/mp/callback/{accountId}`。详见[总览 · 回调接入](./index.md#回调接入)。
+将回调地址 `{API_BASE}/api/public/mp/callback/{accountId}` 填入微信公众平台「服务器配置」即可，Token / EncodingAESKey / 加密模式须与账号配置一致。验签细节、处理管线与重试语义详见 [消息回调接入](./callback.md)。
 
 ---
 
 ## 连接测试
 
-`POST /api/mp/accounts/{id}/test-token` 使用账号 `app_id` / `app_secret` 向微信换取 `access_token`，验证凭证是否有效：成功返回 `{ success: true }`，凭证错误时返回微信错误信息。前端在账号列表「测试连接」按钮触发。
+`POST /api/mp/accounts/{id}/test` 使用账号 `app_id` / `app_secret` 向微信换取 `access_token`，验证凭证是否有效：成功返回 `{ success: true }` 并缓存 token，凭证错误时返回微信错误信息。前端在账号列表「测试连接」按钮触发。
 
 ---
 
@@ -56,7 +53,7 @@
 | `POST` | `/api/mp/accounts` | `mp:account:create` | 新增公众号 |
 | `PUT` | `/api/mp/accounts/{id}` | `mp:account:update` | 编辑公众号 |
 | `POST` | `/api/mp/accounts/{id}/default` | `mp:account:default` | 设为默认 |
-| `POST` | `/api/mp/accounts/{id}/test-token` | `mp:account:token` | 连接测试 |
+| `POST` | `/api/mp/accounts/{id}/test` | `mp:account:token` | 连接测试 |
 | `DELETE` | `/api/mp/accounts/{id}` | `mp:account:delete` | 删除公众号 |
 
 ---
