@@ -2309,6 +2309,25 @@ export const adjustPaymentAccountSchema = z.object({
 });
 export type AdjustPaymentAccountInput = z.infer<typeof adjustPaymentAccountSchema>;
 
+// ─── 预授权（资金冻结/解冻/转支付）───────────────────────────────────────────
+export const createPaymentPreauthSchema = z.object({
+  payMethod: z.enum(['wechat_preauth', 'alipay_preauth']),
+  channelConfigId: z.number().int().positive().optional(),
+  payerAccount: z.string().min(1, '付款人账号不能为空').max(128),
+  subject: z.string().min(1, '冻结事由不能为空').max(256),
+  frozenAmount: z.number().int().positive('冻结金额必须大于 0'), // 分
+  bizType: z.string().max(64).optional(),
+  remark: z.string().max(256).optional(),
+});
+export type CreatePaymentPreauthInput = z.infer<typeof createPaymentPreauthSchema>;
+
+export const capturePaymentPreauthSchema = z.object({
+  /** 转支付金额（分），留空 = 全额；不足冻结额的剩余部分自动解冻 */
+  captureAmount: z.number().int().positive().optional(),
+  remark: z.string().max(256).optional(),
+});
+export type CapturePaymentPreauthInput = z.infer<typeof capturePaymentPreauthSchema>;
+
 /** 支付方式配置（仅更新展示/启停/排序） */
 export const updatePaymentMethodConfigSchema = z.object({
   label: z.string().min(1).max(64).optional(),

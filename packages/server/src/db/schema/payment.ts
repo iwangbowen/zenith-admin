@@ -14,6 +14,8 @@ export const paymentMethodEnum = pgEnum('payment_method', [
   'unionpay_qr',
   // 签约代扣（服务端发起，无用户交互）：微信委托代扣 / 支付宝周期扣款
   'wechat_papay', 'alipay_cycle',
+  // 预授权转支付（冻结资金转正式交易）
+  'wechat_preauth', 'alipay_preauth',
 ]);
 
 export const paymentOrderStatusEnum = pgEnum('payment_order_status', [
@@ -574,6 +576,49 @@ export const paymentAccounts = pgTable('payment_accounts', {
 export type PaymentAccountRow = typeof paymentAccounts.$inferSelect;
 
 export type NewPaymentAccount = typeof paymentAccounts.$inferInsert;
+
+// ─── 预授权（资金冻结/解冻/转支付：押金类场景）───────────────────────────────
+export const paymentPreauthStatusEnum = pgEnum('payment_preauth_status', ['pending', 'frozen', 'captured', 'released', 'failed']);
+
+export const paymentPreauths = pgTable('payment_preauths', {
+  id: serial('id').primaryKey(),
+  preauthNo: varchar('preauth_no', { length: 64 }).notNull().unique(),
+  channel: paymentChannelEnum('channel').notNull(),
+  channelConfigId: integer('channel_config_id').references(() => paymentChannelConfigs.id, { onDelete: 'set null' }),
+  /** 渠道资金授权订单号（冻结成功后回填） */
+  channelPreauthNo: varchar('channel_preauth_no', { length: 128 }),
+  bizType: varchar('biz_type', { length: 64 }).notNull(),
+  bizId: varchar('biz_id', { length: 128 }).notNull(),
+  subject: varchar('subject', { length: 256 }).notNull(),
+  /** 付款人账号（微信 openid / 支付宝账号） */
+  payerAccount: varchar('payer_account', { length: 128 }).notNull(),
+  /** 冻结金额（分） */
+  frozenAmount: integer('frozen_amount').notNull(),
+  /** 已转支付金额（分，剩余部分在转支付时自动解冻） */
+  capturedAmount: integer('captured_amount'),
+  /** 转支付生成的支付订单号 */
+  captureOrderNo: varchar('capture_order_no', { length: 64 }),
+  status: paymentPreauthStatusEnum('status').notNull().default('pending'),
+  errorMessage: varchar('error_message', { length: 512 }),
+  frozenAt: timestamp('frozen_at', { withTimezone: true }),
+  /** 终态时间（captured / released / failed） */
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+  remark: varchar('remark', { length: 256 }),
+  operatorId: integer('operator_id').references(() => users.id, { onDelete: 'set null' }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  // 同一业务单最多一笔进行中预授权（发起中/冻结中）
+  uniqueIndex('payment_preauths_active_biz_uq').on(t.bizType, t.bizId).where(sql`${t.status} in ('pending', 'frozen')`),
+  index('payment_preauths_status_idx').on(t.status),
+  index('payment_preauths_biz_idx').on(t.bizType, t.bizId),
+]);
+
+export type PaymentPreauthRow = typeof paymentPreauths.$inferSelect;
+
+export type NewPaymentPreauth = typeof paymentPreauths.$inferInsert;
 
 // ─── 转账/代付单 ─────────────────────────────────────────────────────────────
 export const paymentTransferStatusEnum = pgEnum('payment_transfer_status', ['pending', 'processing', 'success', 'failed']);

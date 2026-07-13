@@ -1,4 +1,4 @@
-import type { AiProvider, OAuthProviderType, PaymentChannel, PaymentMethod, PaymentOrderStatus, PaymentRefundStatus, PaymentRefundApprovalStatus, PaymentReconStatus, PaymentReconResult, PaymentReconHandleStatus, PaymentWebhookDeliveryStatus, PaymentLedgerDirection, PaymentLedgerType, PaymentSettlementStatus, PaymentSharingReceiverType, PaymentSharingOrderStatus, PaymentLinkStatus, PaymentRiskScope, PaymentRiskAction, PaymentRiskDimension, PaymentRiskReviewStatus, PaymentTransferStatus, PaymentDeductPeriod, PaymentContractStatus, PaymentDisputeType, PaymentDisputeStatus, MemberStatus, PointTxType, WalletTxType, CouponType, CouponValidType, CouponTemplateStatus, MemberCouponStatus, WorkflowFormType } from './constants';
+import type { AiProvider, OAuthProviderType, PaymentChannel, PaymentMethod, PaymentOrderStatus, PaymentRefundStatus, PaymentRefundApprovalStatus, PaymentReconStatus, PaymentReconResult, PaymentReconHandleStatus, PaymentWebhookDeliveryStatus, PaymentLedgerDirection, PaymentLedgerType, PaymentSettlementStatus, PaymentSharingReceiverType, PaymentSharingOrderStatus, PaymentLinkStatus, PaymentRiskScope, PaymentRiskAction, PaymentRiskDimension, PaymentRiskReviewStatus, PaymentTransferStatus, PaymentDeductPeriod, PaymentContractStatus, PaymentDisputeType, PaymentDisputeStatus, PaymentPreauthStatus, MemberStatus, PointTxType, WalletTxType, CouponType, CouponValidType, CouponTemplateStatus, MemberCouponStatus, WorkflowFormType } from './constants';
 import { REPORT_DASHBOARD_LIFECYCLE_STATUSES, REPORT_DASHBOARD_VERSION_SOURCES } from './constants';
 
 export type EntityStatus = 'enabled' | 'disabled';
@@ -6591,7 +6591,34 @@ export interface PaymentAccountCheckRow {
   pendingSettleComputed: number;
   availableSnapshot: number;
   availableComputed: number;
+  /** 冻结余额快照（口径：进行中预授权冻结金额之和） */
+  frozenSnapshot: number;
+  frozenComputed: number;
   match: boolean;
+}
+
+/** 预授权单（资金冻结/解冻/转支付） */
+export interface PaymentPreauth {
+  id: number;
+  preauthNo: string;
+  channel: PaymentChannel;
+  channelConfigId?: number | null;
+  channelPreauthNo?: string | null;
+  bizType: string;
+  bizId: string;
+  subject: string;
+  payerAccount: string;
+  frozenAmount: number; // 分
+  capturedAmount?: number | null; // 分
+  captureOrderNo?: string | null;
+  status: PaymentPreauthStatus;
+  errorMessage?: string | null;
+  frozenAt?: string | null;
+  finishedAt?: string | null;
+  remark?: string | null;
+  operatorName?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface PaymentMethodConfig {

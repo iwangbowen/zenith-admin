@@ -403,6 +403,8 @@ export const SEED_MENUS: Menu[] = [
   { id: 1604, parentId: 1603, title: '处理投诉', name: undefined,          path: undefined,              component: undefined,                        icon: undefined,      type: 'button', sort: 1,  status: 'enabled', visible: true,  permission: 'payment:dispute:handle',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1605, parentId: 785,  title: '风控审核', name: undefined,          path: undefined,              component: undefined,                        icon: undefined,      type: 'button', sort: 4,  status: 'enabled', visible: true,  permission: 'payment:risk:review',       createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1606, parentId: 745,  title: '账户调账', name: undefined,          path: undefined,              component: undefined,                        icon: undefined,      type: 'button', sort: 1,  status: 'enabled', visible: true,  permission: 'payment:account:adjust',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1607, parentId: 700,  title: '预授权',   name: 'PaymentPreauths',  path: '/payment/preauths',    component: 'payment/PaymentPreauthsPage',    icon: 'Snowflake',    type: 'menu',   sort: 20, status: 'enabled', visible: true,  permission: 'payment:preauth:list',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1608, parentId: 1607, title: '预授权操作', name: undefined,        path: undefined,              component: undefined,                        icon: undefined,      type: 'button', sort: 1,  status: 'enabled', visible: true,  permission: 'payment:preauth:manage',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
 
   // ── 会员中心 ─────────────────────────────────────────────────────────────────
   { id: 800, parentId: 0,   title: '会员中心', name: 'MemberCenter',   path: undefined,                 component: undefined,                    icon: 'Crown',       type: 'directory', sort: 10, status: 'enabled', visible: true,  createdAt: SEED_DATE, updatedAt: SEED_DATE },
@@ -2025,6 +2027,9 @@ export const SEED_PAYMENT_METHOD_CONFIGS: SeedPaymentMethodConfig[] = [
   // 签约代扣方式（服务端发起，非收银台可选项，默认停用展示）
   { id: 8, method: 'wechat_papay', channel: 'wechat', label: '微信委托代扣', icon: 'Repeat', enabled: false, sort: 8 },
   { id: 9, method: 'alipay_cycle', channel: 'alipay', label: '支付宝周期扣款', icon: 'Repeat', enabled: false, sort: 9 },
+  // 预授权转支付（服务端发起，非收银台可选项，默认停用展示）
+  { id: 10, method: 'wechat_preauth', channel: 'wechat', label: '微信预授权转支付', icon: 'Snowflake', enabled: false, sort: 10 },
+  { id: 11, method: 'alipay_preauth', channel: 'alipay', label: '支付宝预授权转支付', icon: 'Snowflake', enabled: false, sort: 11 },
 ];
 
 // ─── 扣款计划（支付中心 · 签约代扣）────────────────────────────────────────────

@@ -18,6 +18,10 @@ import type {
   ContractDeductResult,
   ContractSignInput,
   ContractSignResult,
+  PreauthCaptureInput,
+  PreauthCaptureResult,
+  PreauthFreezeInput,
+  PreauthFreezeResult,
   NotifyResult,
   PaymentChannelAdapter,
   PaymentQueryResult,
@@ -509,6 +513,34 @@ export const wechatPayAdapter: PaymentChannelAdapter = {
       return { channelTradeNo: `WXDED${Date.now()}${randomBytes(3).toString('hex')}`, status: 'success' };
     }
     throw new HTTPException(400, { message: '微信委托代扣需商户开通产品权限，当前仅支持沙箱渠道扣款' });
+  },
+
+  // ── 预授权（押金冻结/转支付/解冻）：真实模式需开通资金授权产品权限，本期仅支持沙箱 ──
+  async preauthFreeze(ctx: AdapterContext, input: PreauthFreezeInput): Promise<PreauthFreezeResult> {
+    if (ctx.config.sandbox) {
+      logger.info('[wechat-pay] simulate preauth freeze (sandbox)', { outPreauthNo: input.outPreauthNo, amount: input.amount });
+      await Promise.resolve();
+      return { channelPreauthNo: `WXPA${Date.now()}${randomBytes(3).toString('hex')}`, status: 'frozen' };
+    }
+    throw new HTTPException(400, { message: '微信预授权需商户开通资金授权产品权限，当前仅支持沙箱渠道冻结' });
+  },
+
+  async preauthCapture(ctx: AdapterContext, input: PreauthCaptureInput): Promise<PreauthCaptureResult> {
+    if (ctx.config.sandbox) {
+      logger.info('[wechat-pay] simulate preauth capture (sandbox)', { outPreauthNo: input.outPreauthNo, captureAmount: input.captureAmount });
+      await Promise.resolve();
+      return { channelTradeNo: `WXPAC${Date.now()}${randomBytes(3).toString('hex')}`, status: 'success' };
+    }
+    throw new HTTPException(400, { message: '微信预授权需商户开通资金授权产品权限，当前仅支持沙箱渠道转支付' });
+  },
+
+  async preauthRelease(ctx: AdapterContext, input): Promise<void> {
+    if (ctx.config.sandbox) {
+      logger.info('[wechat-pay] simulate preauth release (sandbox)', { outPreauthNo: input.outPreauthNo });
+      await Promise.resolve();
+      return;
+    }
+    throw new HTTPException(400, { message: '微信预授权需商户开通资金授权产品权限，当前仅支持沙箱渠道解冻' });
   },
 };
 

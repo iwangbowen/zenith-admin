@@ -4,7 +4,7 @@
 import { z } from '@hono/zod-openapi';
 
 const channelEnum = z.enum(['wechat', 'alipay', 'unionpay']);
-const payMethodEnum = z.enum(['wechat_native', 'wechat_jsapi', 'wechat_h5', 'alipay_page', 'alipay_wap', 'alipay_app', 'unionpay_qr', 'wechat_papay', 'alipay_cycle']);
+const payMethodEnum = z.enum(['wechat_native', 'wechat_jsapi', 'wechat_h5', 'alipay_page', 'alipay_wap', 'alipay_app', 'unionpay_qr', 'wechat_papay', 'alipay_cycle', 'wechat_preauth', 'alipay_preauth']);
 const orderStatusEnum = z.enum(['pending', 'paying', 'success', 'closed', 'refunding', 'refunded', 'failed']);
 const refundStatusEnum = z.enum(['pending', 'processing', 'success', 'failed']);
 const refundApprovalEnum = z.enum(['none', 'pending', 'approved', 'rejected']);
@@ -518,9 +518,36 @@ export const PaymentAccountCheckDTO = z
     pendingSettleComputed: z.number().int(),
     availableSnapshot: z.number().int(),
     availableComputed: z.number().int(),
+    frozenSnapshot: z.number().int(),
+    frozenComputed: z.number().int(),
     match: z.boolean(),
   })
   .openapi('PaymentAccountCheck');
+
+export const PaymentPreauthDTO = z
+  .object({
+    id: z.number().int(),
+    preauthNo: z.string(),
+    channel: channelEnum,
+    channelConfigId: z.number().int().nullable().optional(),
+    channelPreauthNo: z.string().nullable().optional(),
+    bizType: z.string(),
+    bizId: z.string(),
+    subject: z.string(),
+    payerAccount: z.string(),
+    frozenAmount: z.number().int(),
+    capturedAmount: z.number().int().nullable().optional(),
+    captureOrderNo: z.string().nullable().optional(),
+    status: z.enum(['pending', 'frozen', 'captured', 'released', 'failed']),
+    errorMessage: z.string().nullable().optional(),
+    frozenAt: z.string().nullable().optional(),
+    finishedAt: z.string().nullable().optional(),
+    remark: z.string().nullable().optional(),
+    operatorName: z.string().nullable().optional(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('PaymentPreauth');
 
 export const PaymentMethodConfigDTO = z
   .object({

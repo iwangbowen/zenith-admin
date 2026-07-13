@@ -16,6 +16,10 @@ import type {
   ContractDeductResult,
   ContractSignInput,
   ContractSignResult,
+  PreauthCaptureInput,
+  PreauthCaptureResult,
+  PreauthFreezeInput,
+  PreauthFreezeResult,
   NotifyResult,
   PaymentChannelAdapter,
   PaymentQueryResult,
@@ -412,5 +416,33 @@ export const alipayAdapter: PaymentChannelAdapter = {
       return { channelTradeNo: `ALIDED${Date.now()}${Math.floor(Math.random() * 1e6)}`, status: 'success' };
     }
     throw new HTTPException(400, { message: '支付宝周期扣款需商户开通产品权限，当前仅支持沙箱渠道扣款' });
+  },
+
+  // ── 预授权（资金授权冻结/转交易/解冻）：真实模式需开通资金预授权产品权限，本期仅支持沙箱 ──
+  async preauthFreeze(ctx: AdapterContext, input: PreauthFreezeInput): Promise<PreauthFreezeResult> {
+    if (ctx.config.sandbox) {
+      logger.info('[alipay] simulate preauth freeze (sandbox)', { outPreauthNo: input.outPreauthNo, amount: input.amount });
+      await Promise.resolve();
+      return { channelPreauthNo: `ALIPA${Date.now()}${Math.floor(Math.random() * 1e6)}`, status: 'frozen' };
+    }
+    throw new HTTPException(400, { message: '支付宝资金预授权需商户开通产品权限，当前仅支持沙箱渠道冻结' });
+  },
+
+  async preauthCapture(ctx: AdapterContext, input: PreauthCaptureInput): Promise<PreauthCaptureResult> {
+    if (ctx.config.sandbox) {
+      logger.info('[alipay] simulate preauth capture (sandbox)', { outPreauthNo: input.outPreauthNo, captureAmount: input.captureAmount });
+      await Promise.resolve();
+      return { channelTradeNo: `ALIPAC${Date.now()}${Math.floor(Math.random() * 1e6)}`, status: 'success' };
+    }
+    throw new HTTPException(400, { message: '支付宝资金预授权需商户开通产品权限，当前仅支持沙箱渠道转支付' });
+  },
+
+  async preauthRelease(ctx: AdapterContext, input): Promise<void> {
+    if (ctx.config.sandbox) {
+      logger.info('[alipay] simulate preauth release (sandbox)', { outPreauthNo: input.outPreauthNo });
+      await Promise.resolve();
+      return;
+    }
+    throw new HTTPException(400, { message: '支付宝资金预授权需商户开通产品权限，当前仅支持沙箱渠道解冻' });
   },
 };

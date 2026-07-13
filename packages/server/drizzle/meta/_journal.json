@@ -400,6 +400,13 @@
       "when": 1783922579484,
       "tag": "0056_freezing_princess_powerful",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1783925710365,
+      "tag": "0057_thick_lockjaw",
+      "breakpoints": true
     }
   ]
 }

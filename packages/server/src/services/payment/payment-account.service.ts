@@ -9,7 +9,7 @@
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import { paymentAccounts, paymentLedgerEntries, type PaymentAccountRow } from '../../db/schema';
+import { paymentAccounts, paymentLedgerEntries, paymentPreauths, type PaymentAccountRow } from '../../db/schema';
 import { currentUser, currentUserOrNull } from '../../lib/context';
 import { tenantCondition } from '../../lib/tenant';
 import { mergeWhere } from '../../lib/where-helpers';
@@ -160,6 +160,18 @@ async function collectDimensions(): Promise<Array<{ channel: PaymentChannel; ten
   return dims;
 }
 
+/** 进行中预授权冻结金额聚合（账户 frozen 快照核对口径） */
+async function computeFrozenFromPreauths(channel: PaymentChannel, tenantId: number | null): Promise<number> {
+  const cond = tenantId == null
+    ? and(eq(paymentPreauths.channel, channel), isNull(paymentPreauths.tenantId))
+    : and(eq(paymentPreauths.channel, channel), eq(paymentPreauths.tenantId, tenantId));
+  const [agg] = await db
+    .select({ total: sql<number>`coalesce(sum(${paymentPreauths.frozenAmount}),0)` })
+    .from(paymentPreauths)
+    .where(and(cond, eq(paymentPreauths.status, 'frozen')));
+  return Number(agg?.total ?? 0);
+}
+
 /** 余额核对：逐账户比对快照与流水聚合，返回差异明细（match=false 为异常账户） */
 export async function checkAccounts(): Promise<PaymentAccountCheckRow[]> {
   const dims = await collectDimensions();
@@ -167,15 +179,19 @@ export async function checkAccounts(): Promise<PaymentAccountCheckRow[]> {
   for (const dim of dims) {
     const [snapshot] = await db.select().from(paymentAccounts).where(accountWhere(dim.channel, dim.tenantId)).limit(1);
     const computed = await computeFromLedger(dim.channel, dim.tenantId);
+    const frozenComputed = await computeFrozenFromPreauths(dim.channel, dim.tenantId);
     const snapPending = snapshot?.pendingSettle ?? 0;
     const snapAvailable = snapshot?.available ?? 0;
+    const snapFrozen = snapshot?.frozen ?? 0;
     result.push({
       channel: dim.channel,
       pendingSettleSnapshot: snapPending,
       pendingSettleComputed: computed.pendingSettle,
       availableSnapshot: snapAvailable,
       availableComputed: computed.available,
-      match: snapPending === computed.pendingSettle && snapAvailable === computed.available,
+      frozenSnapshot: snapFrozen,
+      frozenComputed,
+      match: snapPending === computed.pendingSettle && snapAvailable === computed.available && snapFrozen === frozenComputed,
     });
   }
   return result;
@@ -186,12 +202,14 @@ export async function rebuildAccountsFromLedger(): Promise<number> {
   const dims = await collectDimensions();
   for (const dim of dims) {
     const computed = await computeFromLedger(dim.channel, dim.tenantId);
+    const frozenComputed = await computeFrozenFromPreauths(dim.channel, dim.tenantId);
     const account = await ensureAccount(dim.channel, dim.tenantId);
     await db
       .update(paymentAccounts)
       .set({
         pendingSettle: computed.pendingSettle,
         available: computed.available,
+        frozen: frozenComputed,
         version: sql`${paymentAccounts.version} + 1`,
       })
       .where(eq(paymentAccounts.id, account.id));

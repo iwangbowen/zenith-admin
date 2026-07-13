@@ -239,6 +239,7 @@ export const PAYMENT_METHODS = [
   'alipay_page', 'alipay_wap', 'alipay_app',
   'unionpay_qr',
   'wechat_papay', 'alipay_cycle',
+  'wechat_preauth', 'alipay_preauth',
 ] as const;
 export type PaymentMethod = typeof PAYMENT_METHODS[number];
 
@@ -259,6 +260,8 @@ export const PAYMENT_METHOD_CHANNEL: Record<PaymentMethod, PaymentChannel> = {
   unionpay_qr: 'unionpay',
   wechat_papay: 'wechat',
   alipay_cycle: 'alipay',
+  wechat_preauth: 'wechat',
+  alipay_preauth: 'alipay',
 };
 
 export const PAYMENT_CHANNEL_LABELS: Record<PaymentChannel, string> = {
@@ -313,6 +316,8 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   unionpay_qr: '云闪付扫码',
   wechat_papay: '微信委托代扣',
   alipay_cycle: '支付宝周期扣款',
+  wechat_preauth: '微信预授权转支付',
+  alipay_preauth: '支付宝预授权转支付',
 };
 
 export const PAYMENT_ORDER_STATUS_LABELS: Record<PaymentOrderStatus, string> = {
@@ -482,6 +487,19 @@ export const PAYMENT_DISPUTE_STATUS_LABELS: Record<PaymentDisputeStatus, string>
 };
 export const PAYMENT_DISPUTE_STATUS_OPTIONS: Array<{ value: PaymentDisputeStatus; label: string }> =
   PAYMENT_DISPUTE_STATUSES.map((value) => ({ value, label: PAYMENT_DISPUTE_STATUS_LABELS[value] }));
+
+// ─── 支付中心扩展 · 预授权（资金冻结/解冻/转支付）────────────────────
+export const PAYMENT_PREAUTH_STATUSES = ['pending', 'frozen', 'captured', 'released', 'failed'] as const;
+export type PaymentPreauthStatus = typeof PAYMENT_PREAUTH_STATUSES[number];
+export const PAYMENT_PREAUTH_STATUS_LABELS: Record<PaymentPreauthStatus, string> = {
+  pending: '冻结中', frozen: '已冻结', captured: '已转支付', released: '已解冻', failed: '冻结失败',
+};
+export const PAYMENT_PREAUTH_STATUS_OPTIONS: Array<{ value: PaymentPreauthStatus; label: string }> =
+  PAYMENT_PREAUTH_STATUSES.map((value) => ({ value, label: PAYMENT_PREAUTH_STATUS_LABELS[value] }));
+
+/** 预授权支持的支付方式（渠道映射用） */
+export const PAYMENT_PREAUTH_METHODS = ['wechat_preauth', 'alipay_preauth'] as const satisfies readonly PaymentMethod[];
+export type PaymentPreauthMethod = typeof PAYMENT_PREAUTH_METHODS[number];
 
 // ─── 会员中心（Member Center）────────────────────────────────────────
 /** 会员前台 token 的 localStorage key（与管理员 zenith_token 隔离）*/

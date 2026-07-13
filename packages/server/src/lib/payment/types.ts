@@ -142,6 +142,43 @@ export interface ContractDeductResult {
   raw?: unknown;
 }
 
+/** 预授权：冻结入参 */
+export interface PreauthFreezeInput {
+  /** 本地预授权单号（渠道幂等键） */
+  outPreauthNo: string;
+  /** 付款人账号（微信 openid / 支付宝账号） */
+  payerAccount: string;
+  /** 冻结金额（分） */
+  amount: number;
+  subject: string;
+}
+
+export interface PreauthFreezeResult {
+  /** 渠道资金授权订单号 */
+  channelPreauthNo?: string;
+  /** sandbox 即时 frozen；真实渠道异步授权时为 pending */
+  status: 'pending' | 'frozen';
+  raw?: unknown;
+}
+
+/** 预授权：转支付入参（冻结资金转正式交易，剩余部分渠道侧自动解冻） */
+export interface PreauthCaptureInput {
+  channelPreauthNo: string;
+  outPreauthNo: string;
+  /** 本次转支付生成的商户订单号 */
+  outTradeNo: string;
+  /** 转支付金额（分，≤冻结金额） */
+  captureAmount: number;
+  subject: string;
+}
+
+export interface PreauthCaptureResult {
+  channelTradeNo?: string;
+  status: 'success' | 'failed';
+  failReason?: string;
+  raw?: unknown;
+}
+
 /** 回调验签 + 解析后的标准化结果 */
 export interface NotifyResult {
   /** 验签是否通过 */
@@ -205,6 +242,12 @@ export interface PaymentChannelAdapter {
   terminateContract?(ctx: AdapterContext, input: Pick<ContractSignInput, 'outContractNo'> & { channelContractNo?: string }): Promise<void>;
   /** 签约代扣：按协议发起单期扣款（可选，服务端发起，无用户交互）。`sandbox=true` 时即时成功。 */
   deductContract?(ctx: AdapterContext, input: ContractDeductInput): Promise<ContractDeductResult>;
+  /** 预授权：冻结资金（可选）。`sandbox=true` 时即时冻结成功；真实渠道需开通资金授权产品权限。 */
+  preauthFreeze?(ctx: AdapterContext, input: PreauthFreezeInput): Promise<PreauthFreezeResult>;
+  /** 预授权：转支付（可选）。冻结资金转正式交易，剩余部分渠道侧自动解冻。 */
+  preauthCapture?(ctx: AdapterContext, input: PreauthCaptureInput): Promise<PreauthCaptureResult>;
+  /** 预授权：解冻（可选）。 */
+  preauthRelease?(ctx: AdapterContext, input: Pick<PreauthFreezeInput, 'outPreauthNo'> & { channelPreauthNo?: string }): Promise<void>;
   /**
    * 下载渠道对账单（可选）：返回内部标准 CSV（`订单号,渠道交易号,金额(分),状态`）。
    * `sandbox=true` 时由调用方（recon service）用本地订单生成模拟账单，不会调用此方法。

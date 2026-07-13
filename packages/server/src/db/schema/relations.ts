@@ -14,7 +14,7 @@ import { dbBackups } from './db-admin';
 import { ruleDecisionTables, ruleDecisionTableVersions, ruleTestCases } from './rules';
 import { chatConversationMembers, chatConversations, chatMessageReactions, chatMessages, chatWebhooks, chatQuickReplies, chatScheduledMessages, chatCustomEmojis, chatGroupInvites, chatGroupJoinRequests } from './chat';
 import { channelAutoReplies, channelConversations, channelMenus, channelMessages, channelMessageTargets, channelQuickReplies, channels, channelSubscriptions } from './channels';
-import { paymentApps, paymentChannelConfigs, paymentContracts, paymentDeductPlans, paymentDisputeReplies, paymentDisputes, paymentOrders, paymentReconBatches, paymentReconItems, paymentRefunds, paymentRiskHits, paymentRiskReviews, paymentRiskRules, paymentSharingOrders, paymentSharingReceivers, paymentTransfers, paymentWebhookDeliveries, paymentWebhookEndpoints } from './payment';
+import { paymentApps, paymentChannelConfigs, paymentContracts, paymentDeductPlans, paymentDisputeReplies, paymentDisputes, paymentOrders, paymentPreauths, paymentReconBatches, paymentReconItems, paymentRefunds, paymentRiskHits, paymentRiskReviews, paymentRiskRules, paymentSharingOrders, paymentSharingReceivers, paymentTransfers, paymentWebhookDeliveries, paymentWebhookEndpoints } from './payment';
 import { aiConversations, aiMessages, aiPromptTemplates, aiProviderConfigs, userAiConfigs } from './ai';
 import { appWebhookDeliveries, appWebhookSubscriptions, oauth2AuthorizationCodes, oauth2Clients, oauth2Tokens, oauth2UserGrants, ratePlans } from './open-platform';
 import { checkinMilestones, coupons, memberCheckinMilestoneAwards, memberCheckins, memberCoupons, memberLevels, memberNotifications, memberPointAccounts, memberPointTransactions, members, memberTagBindings, memberTags, memberVipRenewals, memberWallets, memberWalletTransactions } from './member';
@@ -209,6 +209,11 @@ export const paymentContractsRelations = relations(paymentContracts, ({ one }) =
 
 export const memberVipRenewalsRelations = relations(memberVipRenewals, ({ one }) => ({
   member: one(members, { fields: [memberVipRenewals.memberId], references: [members.id] }),
+}));
+
+export const paymentPreauthsRelations = relations(paymentPreauths, ({ one }) => ({
+  channelConfig: one(paymentChannelConfigs, { fields: [paymentPreauths.channelConfigId], references: [paymentChannelConfigs.id] }),
+  operator: one(users, { fields: [paymentPreauths.operatorId], references: [users.id] }),
 }));
 
 export const paymentDisputesRelations = relations(paymentDisputes, ({ many }) => ({
