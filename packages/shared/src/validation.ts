@@ -2159,7 +2159,14 @@ export const createPaymentChannelConfigSchema = z.object({
   remark: z.string().max(256).optional(),
 });
 
-export const updatePaymentChannelConfigSchema = createPaymentChannelConfigSchema.partial();
+// partial() 不会剥离 default：显式声明带默认值的字段为纯 optional，
+// 否则部分更新（如仅改 notifyUrl）会把 sandbox/isDefault/status 静默重置为默认值
+export const updatePaymentChannelConfigSchema = createPaymentChannelConfigSchema.partial().extend({
+  status: z.enum(['enabled', 'disabled']).optional(),
+  isDefault: z.boolean().optional(),
+  sandbox: z.boolean().optional(),
+  alipaySignType: z.enum(['RSA2', 'RSA']).optional(),
+});
 
 /** 业务/后台发起支付下单 */
 export const createPaymentSchema = z.object({
@@ -2332,6 +2339,27 @@ export type CreatePaymentDeductPlanInput = z.infer<typeof createPaymentDeductPla
 export type UpdatePaymentDeductPlanInput = z.infer<typeof updatePaymentDeductPlanSchema>;
 export type CreatePaymentContractInput = z.infer<typeof createPaymentContractSchema>;
 export type MemberSignRenewalInput = z.infer<typeof memberSignRenewalSchema>;
+
+// ─── 交易投诉/争议 ────────────────────────────────────────────────────────────
+/** 商户回复投诉 */
+export const replyPaymentDisputeSchema = z.object({
+  content: z.string().min(1, '回复内容不能为空').max(1000),
+});
+
+/** 完结投诉 */
+export const resolvePaymentDisputeSchema = z.object({
+  remark: z.string().max(500).optional(),
+});
+
+/** 投诉发起退款（复用支付中心退款链路） */
+export const refundPaymentDisputeSchema = z.object({
+  refundAmount: z.number().int().positive().optional(), // 分，留空 = 全额（涉诉金额）
+  reason: z.string().max(256).optional(),
+});
+
+export type ReplyPaymentDisputeInput = z.infer<typeof replyPaymentDisputeSchema>;
+export type ResolvePaymentDisputeInput = z.infer<typeof resolvePaymentDisputeSchema>;
+export type RefundPaymentDisputeInput = z.infer<typeof refundPaymentDisputeSchema>;
 
 export type CreatePaymentFeeRuleInput = z.infer<typeof createPaymentFeeRuleSchema>;
 export type UpdatePaymentFeeRuleInput = z.infer<typeof updatePaymentFeeRuleSchema>;

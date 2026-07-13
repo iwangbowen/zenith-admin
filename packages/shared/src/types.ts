@@ -1,4 +1,4 @@
-import type { AiProvider, OAuthProviderType, PaymentChannel, PaymentMethod, PaymentOrderStatus, PaymentRefundStatus, PaymentRefundApprovalStatus, PaymentReconStatus, PaymentReconResult, PaymentReconHandleStatus, PaymentWebhookDeliveryStatus, PaymentLedgerDirection, PaymentLedgerType, PaymentSettlementStatus, PaymentSharingReceiverType, PaymentSharingOrderStatus, PaymentLinkStatus, PaymentRiskScope, PaymentTransferStatus, PaymentDeductPeriod, PaymentContractStatus, MemberStatus, PointTxType, WalletTxType, CouponType, CouponValidType, CouponTemplateStatus, MemberCouponStatus, WorkflowFormType } from './constants';
+import type { AiProvider, OAuthProviderType, PaymentChannel, PaymentMethod, PaymentOrderStatus, PaymentRefundStatus, PaymentRefundApprovalStatus, PaymentReconStatus, PaymentReconResult, PaymentReconHandleStatus, PaymentWebhookDeliveryStatus, PaymentLedgerDirection, PaymentLedgerType, PaymentSettlementStatus, PaymentSharingReceiverType, PaymentSharingOrderStatus, PaymentLinkStatus, PaymentRiskScope, PaymentTransferStatus, PaymentDeductPeriod, PaymentContractStatus, PaymentDisputeType, PaymentDisputeStatus, MemberStatus, PointTxType, WalletTxType, CouponType, CouponValidType, CouponTemplateStatus, MemberCouponStatus, WorkflowFormType } from './constants';
 import { REPORT_DASHBOARD_LIFECYCLE_STATUSES, REPORT_DASHBOARD_VERSION_SOURCES } from './constants';
 
 export type EntityStatus = 'enabled' | 'disabled';
@@ -6428,6 +6428,55 @@ export interface MemberVipRenewal {
   amount: number; // 分
   vipExpireAfter: string;
   createdAt: string;
+}
+
+/** 交易投诉/争议工单 */
+export interface PaymentDispute {
+  id: number;
+  disputeNo: string;
+  channelDisputeNo?: string | null;
+  channel: PaymentChannel;
+  orderNo: string;
+  complainant?: string | null;
+  complainantPhone?: string | null;
+  type: PaymentDisputeType;
+  content: string;
+  amount: number; // 分
+  status: PaymentDisputeStatus;
+  deadline?: string | null;
+  /** 是否已超时（未完结且已过处理时效） */
+  overdue: boolean;
+  refundNo?: string | null;
+  resolvedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaymentDisputeReply {
+  id: number;
+  author: 'merchant' | 'user' | 'system';
+  content: string;
+  operatorName?: string | null;
+  createdAt: string;
+}
+
+export interface PaymentDisputeDetail extends PaymentDispute {
+  replies: PaymentDisputeReply[];
+  /** 关联订单摘要 */
+  order?: { orderNo: string; subject: string; amount: number; status: PaymentOrderStatus; paidAt?: string | null } | null;
+}
+
+export interface PaymentDisputeStats {
+  /** 未完结工单数 */
+  open: number;
+  /** 超时未完结工单数 */
+  overdue: number;
+  /** 近 30 天投诉单量 */
+  last30dCount: number;
+  /** 近 30 天投诉率（投诉数 / 成功订单数，百分比数值，如 1.25 表示 1.25%） */
+  last30dRate: number;
+  /** 平均处理时长（小时，仅统计已完结） */
+  avgResolveHours: number;
 }
 
 export interface PaymentLink {

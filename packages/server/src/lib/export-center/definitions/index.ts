@@ -24,6 +24,7 @@ import { analyticsEventsExportDefinition } from './analytics-events';
 import { paymentOrdersExportDefinition } from './payment-orders';
 import { paymentRefundsExportDefinition } from './payment-refunds';
 import { paymentContractsExportDefinition } from './payment-contracts';
+import { paymentDisputesExportDefinition } from './payment-disputes';
 import { workflowInstancesExportDefinition } from './workflow-instances';
 import { memberPointTxExportDefinition } from './member-point-transactions';
 import { memberWalletTxExportDefinition } from './member-wallet-transactions';
@@ -66,6 +67,7 @@ const definitions = [
   paymentOrdersExportDefinition,
   paymentRefundsExportDefinition,
   paymentContractsExportDefinition,
+  paymentDisputesExportDefinition,
   workflowInstancesExportDefinition,
   memberPointTxExportDefinition,
   memberWalletTxExportDefinition,

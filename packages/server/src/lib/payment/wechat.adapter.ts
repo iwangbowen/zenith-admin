@@ -230,6 +230,11 @@ export const wechatPayAdapter: PaymentChannelAdapter = {
   },
 
   async refund(ctx, order, refund): Promise<RefundResult> {
+    if (ctx.config.sandbox) {
+      logger.info('[wechat-pay] simulate refund (sandbox)', { outRefundNo: refund.outRefundNo, amount: refund.refundAmount });
+      await Promise.resolve();
+      return { channelRefundNo: `WXRF${Date.now()}${randomBytes(3).toString('hex')}`, status: 'success' };
+    }
     const body: Record<string, unknown> = {
       out_trade_no: order.outTradeNo,
       out_refund_no: refund.outRefundNo,
@@ -242,6 +247,10 @@ export const wechatPayAdapter: PaymentChannelAdapter = {
   },
 
   async queryRefund(ctx, refund): Promise<RefundQueryResult> {
+    if (ctx.config.sandbox) {
+      await Promise.resolve();
+      return { status: 'success' };
+    }
     const res = await wechatRequest<WechatRefund>(ctx, 'GET', `/v3/refund/domestic/refunds/${refund.outRefundNo}`);
     return {
       channelRefundNo: res.refund_id,

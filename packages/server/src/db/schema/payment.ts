@@ -635,5 +635,64 @@ export type PaymentContractRow = typeof paymentContracts.$inferSelect;
 
 export type NewPaymentContract = typeof paymentContracts.$inferInsert;
 
+// ─── 交易投诉/争议（微信支付投诉、支付宝交易投诉的本地聚合工单）──────────────
+export const paymentDisputeTypeEnum = pgEnum('payment_dispute_type', ['refund_request', 'service_issue', 'fraud_report', 'other']);
+
+export const paymentDisputeStatusEnum = pgEnum('payment_dispute_status', ['pending', 'processing', 'resolved', 'refunded']);
+
+export const paymentDisputeReplyAuthorEnum = pgEnum('payment_dispute_reply_author', ['merchant', 'user', 'system']);
+
+export const paymentDisputes = pgTable('payment_disputes', {
+  id: serial('id').primaryKey(),
+  disputeNo: varchar('dispute_no', { length: 64 }).notNull().unique(),
+  /** 渠道投诉单号（微信 complaint_id / 支付宝反馈单号） */
+  channelDisputeNo: varchar('channel_dispute_no', { length: 128 }),
+  channel: paymentChannelEnum('channel').notNull(),
+  /** 关联支付订单号（松耦合，与 payment_events 一致） */
+  orderNo: varchar('order_no', { length: 64 }).notNull(),
+  /** 投诉人标识（openid / 手机号掩码） */
+  complainant: varchar('complainant', { length: 128 }),
+  complainantPhone: varchar('complainant_phone', { length: 32 }),
+  /** 投诉类型 */
+  type: paymentDisputeTypeEnum('type').notNull().default('other'),
+  /** 投诉描述 */
+  content: text('content').notNull(),
+  /** 涉诉金额（分） */
+  amount: integer('amount').notNull().default(0),
+  status: paymentDisputeStatusEnum('status').notNull().default('pending'),
+  /** 处理时效（超过未完结视为超时，触发预警） */
+  deadline: timestamp('deadline', { withTimezone: true }),
+  /** 关联退款单号（投诉退款后回填） */
+  refundNo: varchar('refund_no', { length: 64 }),
+  /** 完结时间（resolved / refunded） */
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  index('payment_disputes_status_idx').on(t.status),
+  index('payment_disputes_order_no_idx').on(t.orderNo),
+  index('payment_disputes_deadline_idx').on(t.deadline),
+]);
+
+export type PaymentDisputeRow = typeof paymentDisputes.$inferSelect;
+
+export type NewPaymentDispute = typeof paymentDisputes.$inferInsert;
+
+/** 投诉处理时间线（追加型日志：商户回复 / 用户补充 / 系统动作） */
+export const paymentDisputeReplies = pgTable('payment_dispute_replies', {
+  id: serial('id').primaryKey(),
+  disputeId: integer('dispute_id').notNull().references(() => paymentDisputes.id, { onDelete: 'cascade' }),
+  author: paymentDisputeReplyAuthorEnum('author').notNull().default('merchant'),
+  content: text('content').notNull(),
+  operatorId: integer('operator_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [index('payment_dispute_replies_dispute_idx').on(t.disputeId)]);
+
+export type PaymentDisputeReplyRow = typeof paymentDisputeReplies.$inferSelect;
+
+export type NewPaymentDisputeReply = typeof paymentDisputeReplies.$inferInsert;
+
 // ─── 关系声明（Drizzle Relational Query API）──────────────────────────────────
 // 声明后可使用 db.query.xxx.findMany({ with: { ... } }) 进行关联查询

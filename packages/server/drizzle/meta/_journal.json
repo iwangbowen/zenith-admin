@@ -372,6 +372,13 @@
       "when": 1783910490200,
       "tag": "0052_illegal_molten_man",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1783914702467,
+      "tag": "0053_slim_sway",
+      "breakpoints": true
     }
   ]
 }

@@ -227,6 +227,11 @@ export const alipayAdapter: PaymentChannelAdapter = {
   },
 
   async refund(ctx, order, refund): Promise<RefundResult> {
+    if (ctx.config.sandbox) {
+      logger.info('[alipay] simulate refund (sandbox)', { outRefundNo: refund.outRefundNo, amount: refund.refundAmount });
+      await Promise.resolve();
+      return { channelRefundNo: `ALIRF${Date.now()}${Math.floor(Math.random() * 1e6)}`, status: 'success' };
+    }
     const res = await alipayApiCall(
       ctx,
       'alipay.trade.refund',
@@ -243,6 +248,10 @@ export const alipayAdapter: PaymentChannelAdapter = {
   },
 
   async queryRefund(ctx, refund, order): Promise<RefundQueryResult> {
+    if (ctx.config.sandbox) {
+      await Promise.resolve();
+      return { status: 'success' };
+    }
     const res = await alipayApiCall(
       ctx,
       'alipay.trade.fastpay.refund.query',

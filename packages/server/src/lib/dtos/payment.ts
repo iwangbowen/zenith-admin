@@ -619,3 +619,63 @@ export const MemberRenewalPlanDTO = z
     remark: z.string().nullable().optional(),
   })
   .openapi('MemberRenewalPlan');
+
+// ─── 交易投诉/争议 ────────────────────────────────────────────────────────────
+const disputeTypeEnum = z.enum(['refund_request', 'service_issue', 'fraud_report', 'other']);
+const disputeStatusEnum = z.enum(['pending', 'processing', 'resolved', 'refunded']);
+
+export const PaymentDisputeDTO = z
+  .object({
+    id: z.number().int(),
+    disputeNo: z.string(),
+    channelDisputeNo: z.string().nullable().optional(),
+    channel: channelEnum,
+    orderNo: z.string(),
+    complainant: z.string().nullable().optional(),
+    complainantPhone: z.string().nullable().optional(),
+    type: disputeTypeEnum,
+    content: z.string(),
+    amount: z.number().int(),
+    status: disputeStatusEnum,
+    deadline: z.string().nullable().optional(),
+    overdue: z.boolean(),
+    refundNo: z.string().nullable().optional(),
+    resolvedAt: z.string().nullable().optional(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('PaymentDispute');
+
+export const PaymentDisputeReplyDTO = z
+  .object({
+    id: z.number().int(),
+    author: z.enum(['merchant', 'user', 'system']),
+    content: z.string(),
+    operatorName: z.string().nullable().optional(),
+    createdAt: z.string(),
+  })
+  .openapi('PaymentDisputeReply');
+
+export const PaymentDisputeDetailDTO = PaymentDisputeDTO.extend({
+  replies: z.array(PaymentDisputeReplyDTO),
+  order: z
+    .object({
+      orderNo: z.string(),
+      subject: z.string(),
+      amount: z.number().int(),
+      status: orderStatusEnum,
+      paidAt: z.string().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
+}).openapi('PaymentDisputeDetail');
+
+export const PaymentDisputeStatsDTO = z
+  .object({
+    open: z.number().int(),
+    overdue: z.number().int(),
+    last30dCount: z.number().int(),
+    last30dRate: z.number(),
+    avgResolveHours: z.number(),
+  })
+  .openapi('PaymentDisputeStats');

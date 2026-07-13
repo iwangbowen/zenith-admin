@@ -626,6 +626,12 @@ handlerRegistry.set('executeDueDeductions', async () => {
   return `执行到期代扣 ${count} 笔`;
 });
 
+handlerRegistry.set('syncPaymentDisputes', async () => {
+  const { syncPaymentDisputes } = await import('../services/payment/payment-dispute.service');
+  const count = await syncPaymentDisputes();
+  return `同步渠道投诉 ${count} 条`;
+});
+
 handlerRegistry.set('paymentReconciliation', async () => {
   const { runReconciliation } = await import('../services/payment/payment-reconciliation.service');
   const r = await runReconciliation();

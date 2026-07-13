@@ -78,7 +78,14 @@ const channelCreateSchema = z.object({
   alipayGateway: z.string().max(256).optional(),
   remark: z.string().max(256).optional(),
 });
-const channelUpdateSchema = channelCreateSchema.partial();
+// partial() 不会剥离 default：显式覆盖带默认值字段为纯 optional，
+// 否则部分更新（如仅改 notifyUrl/remark）会把 sandbox/isDefault/status 静默重置
+const channelUpdateSchema = channelCreateSchema.partial().extend({
+  status: z.enum(['enabled', 'disabled']).optional(),
+  isDefault: z.boolean().optional(),
+  sandbox: z.boolean().optional(),
+  alipaySignType: z.enum(['RSA2', 'RSA']).optional(),
+});
 
 const paymentCreateSchema = z.object({
   bizType: z.string().min(1).max(64),

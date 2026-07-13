@@ -448,6 +448,23 @@ export type PaymentCashierMethod = typeof PAYMENT_CASHIER_METHODS[number];
 /** 会员自动续费业务类型（签约协议与扣款单共用） */
 export const MEMBER_RENEWAL_BIZ_TYPE = 'member_renewal';
 
+// ─── 支付中心扩展 · 交易投诉/争议 ─────────────────────────────────────
+export const PAYMENT_DISPUTE_TYPES = ['refund_request', 'service_issue', 'fraud_report', 'other'] as const;
+export type PaymentDisputeType = typeof PAYMENT_DISPUTE_TYPES[number];
+export const PAYMENT_DISPUTE_TYPE_LABELS: Record<PaymentDisputeType, string> = {
+  refund_request: '退款诉求', service_issue: '服务问题', fraud_report: '欺诈举报', other: '其他',
+};
+export const PAYMENT_DISPUTE_TYPE_OPTIONS: Array<{ value: PaymentDisputeType; label: string }> =
+  PAYMENT_DISPUTE_TYPES.map((value) => ({ value, label: PAYMENT_DISPUTE_TYPE_LABELS[value] }));
+
+export const PAYMENT_DISPUTE_STATUSES = ['pending', 'processing', 'resolved', 'refunded'] as const;
+export type PaymentDisputeStatus = typeof PAYMENT_DISPUTE_STATUSES[number];
+export const PAYMENT_DISPUTE_STATUS_LABELS: Record<PaymentDisputeStatus, string> = {
+  pending: '待处理', processing: '处理中', resolved: '已完结', refunded: '已退款',
+};
+export const PAYMENT_DISPUTE_STATUS_OPTIONS: Array<{ value: PaymentDisputeStatus; label: string }> =
+  PAYMENT_DISPUTE_STATUSES.map((value) => ({ value, label: PAYMENT_DISPUTE_STATUS_LABELS[value] }));
+
 // ─── 会员中心（Member Center）────────────────────────────────────────
 /** 会员前台 token 的 localStorage key（与管理员 zenith_token 隔离）*/
 export const MEMBER_TOKEN_KEY = 'zenith_member_token';
