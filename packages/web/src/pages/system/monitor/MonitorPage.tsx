@@ -5,6 +5,7 @@ import { RefreshCw, Cpu, HardDrive, Database, Server, MemoryStick, Layers, Activ
 import { formatDateTime } from '@/utils/date';
 import { config } from '@/config';
 import { TOKEN_KEY } from '@zenith/shared';
+import { TABLE_PAGE_SIZE_OPTIONS, usePagination } from '@/hooks/usePagination';
 import { useMonitorHistory, useMonitorSnapshot } from '@/hooks/queries/monitor';
 import './MonitorPage.css';
 
@@ -231,6 +232,8 @@ export default function MonitorPage() {
   const [refreshInterval, setRefreshInterval] = useState<number>(30000);
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [historyRange, setHistoryRange] = useState<string>('1h');
+  const { buildPagination: buildConnectionsPagination } = usePagination(10);
+  const { buildPagination: buildDisconnectsPagination } = usePagination(10);
   /** SSE 连接状态，仅在 SSE 模式下展示 */
   const [sseStatus, setSseStatus] = useState<'idle' | 'connecting' | 'open' | 'error'>('idle');
   const sseAbortRef = useRef<AbortController | null>(null);
@@ -240,6 +243,8 @@ export default function MonitorPage() {
     refreshInterval !== -1,
   );
   const historyQuery = useMonitorHistory<HistoryPoint>(historyRange, activeTab === 'history');
+  const connectionsPagination = buildConnectionsPagination(wsMetrics?.connections.length ?? 0);
+  const disconnectsPagination = buildDisconnectsPagination(wsMetrics?.recentDisconnects.length ?? 0);
   const history = historyQuery.data?.points ?? EMPTY_HISTORY;
   const historyLoading = historyQuery.isFetching;
   const loading = refreshInterval === -1 ? sseLoading : snapshotQuery.isFetching;
@@ -1116,7 +1121,11 @@ export default function MonitorPage() {
                 bordered
                 dataSource={wsMetrics.connections}
                 rowKey="tokenId"
-                pagination={wsMetrics.connections.length > 10 ? { pageSize: 10 } : false}
+                pagination={wsMetrics.connections.length > 10 ? {
+                  ...connectionsPagination,
+                  showSizeChanger: true,
+                  pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS,
+                } : false}
                 empty={<Text type="tertiary">暂无在线连接</Text>}
                 columns={[
                   {
@@ -1140,7 +1149,11 @@ export default function MonitorPage() {
                 bordered
                 dataSource={wsMetrics.recentDisconnects}
                 rowKey={(r) => (r ? `${r.tokenId}-${r.at}` : '')}
-                pagination={wsMetrics.recentDisconnects.length > 10 ? { pageSize: 10 } : false}
+                pagination={wsMetrics.recentDisconnects.length > 10 ? {
+                  ...disconnectsPagination,
+                  showSizeChanger: true,
+                  pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS,
+                } : false}
                 empty={<Text type="tertiary">暂无断开记录</Text>}
                 columns={[
                   {

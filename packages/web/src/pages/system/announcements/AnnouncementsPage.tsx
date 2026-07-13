@@ -34,7 +34,7 @@ import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { useDictItems } from '@/hooks/useDictItems';
 import DictTag from '@/components/DictTag';
 import { usePermission } from '@/hooks/usePermission';
-import { usePagination } from '@/hooks/usePagination';
+import { TABLE_PAGE_SIZE_OPTIONS, usePagination } from '@/hooks/usePagination';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import {
   announcementKeys,
@@ -123,6 +123,7 @@ export default function AnnouncementsPage() {
   const [statsNotice, setStatsNotice] = useState<Announcement | null>(null);
   const [statsTab, setStatsTab] = useState<'read' | 'unread'>('read');
   const [statsPage, setStatsPage] = useState(1);
+  const [statsPageSize, setStatsPageSize] = useState(10);
 
   const listQuery = useAnnouncementList({
     page,
@@ -142,7 +143,7 @@ export default function AnnouncementsPage() {
   const deptOptions = recipientOptionsQuery.data?.departments ?? [];
   const userSearchQuery = useAnnouncementUserSearch(userSearchKeyword, modalVisible);
   const statsQuery = useAnnouncementReadStats(
-    { id: statsNotice?.id, tab: statsTab, page: statsPage, pageSize: 10 },
+    { id: statsNotice?.id, tab: statsTab, page: statsPage, pageSize: statsPageSize },
     statsDrawerVisible,
   );
   const statsData = statsQuery.data ?? null;
@@ -401,10 +402,16 @@ export default function AnnouncementsPage() {
               rowKey="id"
               pagination={{
                 total: statsTab === 'read' ? statsData.total : statsData.readCount,
-                currentPage: statsData.page,
-                pageSize: statsData.pageSize,
+                currentPage: statsPage,
+                pageSize: statsPageSize,
+                showSizeChanger: true,
+                pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS,
                 onPageChange: (p: number) => {
                   setStatsPage(p);
+                },
+                onPageSizeChange: (size: number) => {
+                  setStatsPageSize(size);
+                  setStatsPage(1);
                 },
               }}
               columns={[
@@ -427,10 +434,16 @@ export default function AnnouncementsPage() {
               rowKey="id"
               pagination={{
                 total: statsTab === 'unread' ? statsData.total : statsData.totalCount - statsData.readCount,
-                currentPage: statsData.page,
-                pageSize: statsData.pageSize,
+                currentPage: statsPage,
+                pageSize: statsPageSize,
+                showSizeChanger: true,
+                pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS,
                 onPageChange: (p: number) => {
                   setStatsPage(p);
+                },
+                onPageSizeChange: (size: number) => {
+                  setStatsPageSize(size);
+                  setStatsPage(1);
                 },
               }}
               columns={userColumns}

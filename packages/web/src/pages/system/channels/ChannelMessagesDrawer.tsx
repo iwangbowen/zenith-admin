@@ -10,6 +10,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { ChannelAdmin, ChannelMessage, ChannelMessageStatus } from '@zenith/shared';
 import { CHANNEL_MESSAGE_STATUS_LABELS, CHANNEL_MESSAGE_TYPE_LABELS } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
+import { TABLE_PAGE_SIZE_OPTIONS, usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { ChannelPublishModal } from './ChannelPublishModal';
@@ -39,21 +40,19 @@ const AUDIENCE_TEXT: Record<string, string> = {
   targeted: '定向',
 };
 
-const PAGE_SIZE = 10;
-
 export function ChannelMessagesDrawer({ channel, visible, onClose }: Readonly<Props>) {
   const { hasPermission } = usePermission();
   const canManage = hasPermission('channel:message:publish');
 
   const [tab, setTab] = useState<TabKey>('all');
-  const [page, setPage] = useState(1);
+  const { page, pageSize, setPage, buildPagination } = usePagination();
 
   const [editing, setEditing] = useState<ChannelMessage | null>(null);
   const [editVisible, setEditVisible] = useState(false);
 
   const listQuery = useChannelMessages(channel?.id, {
     page,
-    pageSize: PAGE_SIZE,
+    pageSize,
     status: tab === 'all' ? undefined : tab,
   }, visible && !!channel);
   const list = listQuery.data?.list ?? [];
@@ -67,7 +66,7 @@ export function ChannelMessagesDrawer({ channel, visible, onClose }: Readonly<Pr
       setTab('all');
       setPage(1);
     }
-  }, [visible]);
+  }, [visible, setPage]);
 
   const handleTabChange = (key: string) => {
     const next = key as TabKey;
@@ -201,10 +200,9 @@ export function ChannelMessagesDrawer({ channel, visible, onClose }: Readonly<Pr
         size="small"
         scroll={{ x: 'max-content' }}
         pagination={{
-          currentPage: page,
-          pageSize: PAGE_SIZE,
-          total,
-          onPageChange: (p: number) => { setPage(p); },
+          ...buildPagination(total),
+          showSizeChanger: true,
+          pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS,
         }}
       />
 

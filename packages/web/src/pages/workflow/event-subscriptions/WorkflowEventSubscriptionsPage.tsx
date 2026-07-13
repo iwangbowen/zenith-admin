@@ -580,7 +580,7 @@ export default function WorkflowEventSubscriptionsPage() {
           rowKey="id"
           dataSource={deliveries}
           columns={deliveryColumns}
-          pagination={{...buildDeliveryPagination(deliveriesTotal), showSizeChanger: false}}
+          pagination={buildDeliveryPagination(deliveriesTotal)}
           onRefresh={() => void deliveriesQuery.refetch()}
           refreshLoading={deliveriesQuery.isFetching}
         />

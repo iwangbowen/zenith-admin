@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePreferences } from '@/hooks/usePreferences';
 
+export const TABLE_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+
 export interface PaginationConfig {
   currentPage: number;
   pageSize: number;

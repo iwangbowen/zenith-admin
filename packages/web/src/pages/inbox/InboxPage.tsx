@@ -38,7 +38,7 @@ const TYPE_LABEL: Record<string, string> = {
 
 export default function InboxPage() {
   const queryClient = useQueryClient();
-  const { page, setPage } = usePagination();
+  const { page, pageSize, setPage, buildPagination } = usePagination();
   const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'read'>('all');
 
   const [selected, setSelected] = useState<InAppMessage | null>(null);
@@ -48,10 +48,11 @@ export default function InboxPage() {
   if (activeTab === 'unread') isRead = 'false';
   else if (activeTab === 'read') isRead = 'true';
 
-  const listParams = { page, pageSize: 10, isRead };
+  const listParams = { page, pageSize, isRead };
   const listQuery = useInboxList(listParams);
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
+  const tablePagination = buildPagination(total);
   const detailQuery = useInboxMessageDetail(selected?.id, selected !== null);
   const selectedMessage = selected ? (detailQuery.data ? { ...detailQuery.data, isRead: true } : selected) : null;
   const markReadMutation = useMarkInboxMessageRead();
@@ -243,12 +244,13 @@ export default function InboxPage() {
             onChange: (keys) => setSelectedIds((keys ?? []) as number[]),
           }}
           pagination={{
-            total,
-            currentPage: page,
-            pageSize: 10,
-            showSizeChanger: false,
+            ...tablePagination,
             onPageChange: (p) => {
-              setPage(p);
+              tablePagination.onPageChange(p);
+              setSelectedIds([]);
+            },
+            onPageSizeChange: (size) => {
+              tablePagination.onPageSizeChange(size);
               setSelectedIds([]);
             },
           }}

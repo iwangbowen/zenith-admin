@@ -11,7 +11,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowVersionDiff } from '@zenith/shared';
 import WorkflowVersionDiffView from './WorkflowVersionDiffView';
 import { useRestoreWorkflowDefinitionVersion, useWorkflowDefinitionDiff, useWorkflowDefinitionVersions } from '@/hooks/queries/workflow-definitions';
-import { usePagination } from '@/hooks/usePagination';
+import { TABLE_PAGE_SIZE_OPTIONS, usePagination } from '@/hooks/usePagination';
 
 interface Props {
   visible: boolean;
@@ -126,7 +126,11 @@ export default function WorkflowVersionsSheet({
             dataSource={versions}
             loading={versionsQuery.isFetching}
             rowKey="id"
-            pagination={buildPagination(versionsQuery.data?.total ?? 0)}
+            pagination={{
+              ...buildPagination(versionsQuery.data?.total ?? 0),
+              showSizeChanger: true,
+              pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS,
+            }}
             columns={columns}
             rowSelection={{
               selectedRowKeys: selectedIds,

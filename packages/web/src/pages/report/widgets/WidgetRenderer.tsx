@@ -12,6 +12,7 @@ import {
 import { aggregateReportRows, formatReportFieldValue } from '@zenith/shared';
 import type { ReportWidget, ReportField, ReportDataResult, ReportConditionalFormat, ReportWidgetOptions, ReportDatasetQueryOptions, ReportResultField } from '@zenith/shared';
 import { useReportWidgetDictMaps } from '@/hooks/queries/report-designer';
+import { TABLE_PAGE_SIZE_OPTIONS } from '@/hooks/usePagination';
 
 // ─── 工具 ────────────────────────────────────────────────────────────────────
 function toNumber(v: unknown): number {
@@ -137,6 +138,9 @@ export function WidgetRenderer({
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   // 多级原地钻取：按 drilldown.fields 逐层下钻的当前路径（{字段,值}）
   const [drillPath, setDrillPath] = useState<{ field: string; value: string }[]>([]);
+  const configuredTablePageSize = widget.type === 'table' ? (widget.options?.pageSize || 10) : 10;
+  const [localTablePage, setLocalTablePage] = useState(1);
+  const [localTablePageSize, setLocalTablePageSize] = useState(configuredTablePageSize);
 
   const dd = widget.drilldown;
   const drillFields = useMemo(() => (dd?.enabled && dd.type === 'fields' ? (dd.fields ?? []) : []), [dd]);
@@ -147,6 +151,10 @@ export function WidgetRenderer({
 
   // 数据集变化时重置钻取路径，避免残留无效层级
   useEffect(() => { setDrillPath([]); }, [widget.datasetId]);
+  useEffect(() => {
+    setLocalTablePage(1);
+    setLocalTablePageSize(configuredTablePageSize);
+  }, [configuredTablePageSize, widget.i]);
 
   const dataFieldMap = useMemo(() => new Map((data?.fields ?? []).map((field) => [field.name, field])), [data?.fields]);
   const tableDictCodes = useMemo(() => {
@@ -307,6 +315,9 @@ export function WidgetRenderer({
       // 大数据量（未分页 >100 行）启用虚拟滚动，防整表渲染卡顿；虚拟化要求固定列宽 + scroll.y
       const paginated = !!o.pageSize && o.pageSize > 0;
       const useVirtual = !paginated && dataSource.length > 100;
+      const activePage = widgetQuery?.page ?? localTablePage;
+      const activePageSize = widgetQuery?.pageSize ?? localTablePageSize;
+      const total = onWidgetQueryChange ? (data?.total ?? dataSource.length) : dataSource.length;
       return (
         <div style={{ height: '100%', overflow: useVirtual ? 'hidden' : 'auto' }}>
           <Table
@@ -314,14 +325,26 @@ export function WidgetRenderer({
             columns={useVirtual ? tableColumns.map((c) => ({ width: 140, ...c })) : tableColumns}
             dataSource={dataSource} rowKey="__rk"
             pagination={paginated ? {
-              pageSize: widgetQuery?.pageSize ?? o.pageSize,
-              currentPage: widgetQuery?.page ?? 1,
-              total: data?.total ?? dataSource.length,
-              onPageChange: onWidgetQueryChange ? (page) => onWidgetQueryChange(widget.i, {
-                ...widgetQuery,
-                page,
-                pageSize: widgetQuery?.pageSize ?? o.pageSize,
-              }) : undefined,
+              pageSize: activePageSize,
+              currentPage: activePage,
+              total,
+              showSizeChanger: true,
+              pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS,
+              onPageChange: (page) => {
+                if (onWidgetQueryChange) {
+                  onWidgetQueryChange(widget.i, { ...widgetQuery, page, pageSize: activePageSize });
+                } else {
+                  setLocalTablePage(page);
+                }
+              },
+              onPageSizeChange: (pageSize) => {
+                if (onWidgetQueryChange) {
+                  onWidgetQueryChange(widget.i, { ...widgetQuery, page: 1, pageSize });
+                } else {
+                  setLocalTablePage(1);
+                  setLocalTablePageSize(pageSize);
+                }
+              },
             } : false}
             onChange={onWidgetQueryChange ? (...args: unknown[]) => {
               const sorter = (args[2] ?? args[1]) as { field?: unknown; sortOrder?: 'ascend' | 'descend' | false | null } | undefined;
@@ -597,7 +620,7 @@ export function WidgetRenderer({
       valueFields,
     );
     return <LineChart {...spec} options={chartOptions} height={chartHeight} onClick={onChartClick} />;
-  }, [widget, data, loading, error, palette, width, height, chartHeight, filterValues, onCategoryClick, drillPath, fieldDrill, drillFields, dataFieldMap, formatValueByField, onWidgetQueryChange, widgetQuery]);
+  }, [widget, data, loading, error, palette, width, height, chartHeight, filterValues, onCategoryClick, drillPath, fieldDrill, drillFields, dataFieldMap, formatValueByField, onWidgetQueryChange, widgetQuery, localTablePage, localTablePageSize]);
 
   return (
     <div ref={ref} style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>

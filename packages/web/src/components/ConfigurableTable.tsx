@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePreferences } from '@/hooks/usePreferences';
 import { useIsMobile } from '@/hooks/useMediaQuery';
+import { TABLE_PAGE_SIZE_OPTIONS } from '@/hooks/usePagination';
 import { Button, Checkbox, Dropdown, Radio, RadioGroup, Space, Switch, Table } from '@douyinfe/semi-ui';
 import { RotateCcw, Rows3, Settings, Settings2, Maximize2, Minimize2, RefreshCw } from 'lucide-react';
 import type { ColumnProps, Data, TableProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -222,8 +223,8 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
     if (!pagination || typeof pagination === 'boolean') return pagination;
     // 移动端紧凑分页：隐藏每页条数选择器与总数文案、使用小尺寸；页面显式传入的分页配置仍可覆盖
     const defaults = isMobile
-      ? { showTotal: false, showSizeChanger: false, size: 'small' as const, pageSizeOpts: [10, 20, 50, 100] }
-      : { showTotal: true, showSizeChanger: true, pageSizeOpts: [10, 20, 50, 100] };
+      ? { showTotal: false, showSizeChanger: false, size: 'small' as const, pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS }
+      : { showTotal: true, showSizeChanger: true, pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS };
     return { ...defaults, ...pagination };
   }, [pagination, isMobile]);
   const effectiveColumnSettings = (preferences.showTableColumnSettings ?? true) && columnSettings;

@@ -35,7 +35,7 @@ import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { usePagination } from '@/hooks/usePagination';
+import { TABLE_PAGE_SIZE_OPTIONS, usePagination } from '@/hooks/usePagination';
 import { renderEllipsis } from '../../../utils/table-columns';
 import CronJobDashboard from './CronJobDashboard';
 import {
@@ -125,10 +125,19 @@ export default function CronJobsPage() {
   const [logsDrawerVisible, setLogsDrawerVisible] = useState(false);
   const [logsJobName, setLogsJobName] = useState('');
   const [logsJobId, setLogsJobId] = useState<number | null>(null);
-  const [logsPage, setLogsPage] = useState(1);
-  const logsPageSize = 20;
+  const {
+    page: logsPage,
+    pageSize: logsPageSize,
+    setPage: setLogsPage,
+    buildPagination: buildLogsPagination,
+  } = usePagination(20);
   const [allLogsDrawerVisible, setAllLogsDrawerVisible] = useState(false);
-  const [allLogsPage, setAllLogsPage] = useState(1);
+  const {
+    page: allLogsPage,
+    pageSize: allLogsPageSize,
+    setPage: setAllLogsPage,
+    buildPagination: buildAllLogsPagination,
+  } = usePagination(20);
   const [allLogsJobFilter, setAllLogsJobFilter] = useState<number | null>(null);
   const listQuery = useCronJobList({
     page,
@@ -145,7 +154,7 @@ export default function CronJobsPage() {
   const jobLogsQuery = useCronJobLogs({ jobId: logsJobId ?? 0, page: logsPage, pageSize: logsPageSize }, logsDrawerVisible && logsJobId != null);
   const allLogsQuery = useCronJobAllLogs({
     page: allLogsPage,
-    pageSize: logsPageSize,
+    pageSize: allLogsPageSize,
     jobId: allLogsJobFilter ?? undefined,
   }, allLogsDrawerVisible);
 
@@ -665,10 +674,9 @@ export default function CronJobsPage() {
             ...buildRunLogColumns(260),
           ]}
           pagination={{
-            currentPage: allLogsPage,
-            pageSize: logsPageSize,
-            total: allLogsQuery.data?.total ?? 0,
-            onPageChange: (p) => { setAllLogsPage(p); },
+            ...buildAllLogsPagination(allLogsQuery.data?.total ?? 0),
+            showSizeChanger: true,
+            pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS,
             showTotal: true,
           }}
         />
@@ -716,12 +724,9 @@ export default function CronJobsPage() {
           scroll={{ x: 'max-content' }}
           columns={buildRunLogColumns(270)}
           pagination={{
-            currentPage: logsPage,
-            pageSize: logsPageSize,
-            total: jobLogsQuery.data?.total ?? 0,
-            onPageChange: (p) => {
-              setLogsPage(p);
-            },
+            ...buildLogsPagination(jobLogsQuery.data?.total ?? 0),
+            showSizeChanger: true,
+            pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS,
             showTotal: true,
           }}
         />

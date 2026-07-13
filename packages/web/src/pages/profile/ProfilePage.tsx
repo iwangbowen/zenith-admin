@@ -22,6 +22,7 @@ import { type PasswordPolicy } from '@/utils/password-policy';
 import { PasswordStrengthMeter } from '@/components/PasswordStrengthMeter';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { useDictItems } from '@/hooks/useDictItems';
+import { usePagination } from '@/hooks/usePagination';
 import DictTag from '@/components/DictTag';
 import { LoginLogsTable } from '@/components/logs/LoginLogsTable';
 import { OperationLogsTable } from '@/components/logs/OperationLogsTable';
@@ -143,8 +144,16 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
 
   // ─── 操作日志 ────────────────────────────────────────────────────────────────
 
-  const [loginLogsPage, setLoginLogsPage] = useState(1);
-  const [operationLogsPage, setOperationLogsPage] = useState(1);
+  const {
+    page: loginLogsPage,
+    pageSize: loginLogsPageSize,
+    buildPagination: buildLoginLogsPagination,
+  } = usePagination();
+  const {
+    page: operationLogsPage,
+    pageSize: operationLogsPageSize,
+    buildPagination: buildOperationLogsPagination,
+  } = usePagination();
 
   // ─── API Token ───────────────────────────────────────────────────────────────
   const [newTokenVisible, setNewTokenVisible] = useState(false);
@@ -156,8 +165,14 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
   const oauthAccountsQuery = useProfileOauthAccounts(activeSection === 'security');
   const mfaFactorsQuery = useProfileMfaFactors(activeSection === 'security');
   const sessionsQuery = useProfileSessions(activeSection === 'devices');
-  const loginLogsQuery = useProfileLoginLogs({ page: loginLogsPage, pageSize: 10 }, activeSection === 'login');
-  const operationLogsQuery = useProfileOperationLogs({ page: operationLogsPage, pageSize: 10 }, activeSection === 'operation');
+  const loginLogsQuery = useProfileLoginLogs(
+    { page: loginLogsPage, pageSize: loginLogsPageSize },
+    activeSection === 'login',
+  );
+  const operationLogsQuery = useProfileOperationLogs(
+    { page: operationLogsPage, pageSize: operationLogsPageSize },
+    activeSection === 'operation',
+  );
   const apiTokensQuery = useProfileApiTokens(activeSection === 'api-tokens');
 
   const passwordPolicy: PasswordPolicy | null = passwordPolicyQuery.data ?? null;
@@ -677,13 +692,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                   dataSource={loginLogs}
                   onRefresh={() => void loginLogsQuery.refetch()}
                   columnSettingsKey="profile-login-logs"
-                  pagination={{
-                    total: loginLogsTotal,
-                    currentPage: loginLogsPage,
-                    pageSize: 10,
-                    showSizeChanger: false,
-                    onPageChange: (page) => setLoginLogsPage(page),
-                  }}
+                  pagination={buildLoginLogsPagination(loginLogsTotal)}
                 />
               </div>
             </Tabs.TabPane>
@@ -699,13 +708,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                   dataSource={operationLogs}
                   onRefresh={() => void operationLogsQuery.refetch()}
                   columnSettingsKey="profile-operation-logs"
-                  pagination={{
-                    total: operationLogsTotal,
-                    currentPage: operationLogsPage,
-                    pageSize: 10,
-                    showSizeChanger: false,
-                    onPageChange: (page) => setOperationLogsPage(page),
-                  }}
+                  pagination={buildOperationLogsPagination(operationLogsTotal)}
                 />
               </div>
             </Tabs.TabPane>

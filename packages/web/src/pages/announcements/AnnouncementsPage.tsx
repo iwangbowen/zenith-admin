@@ -43,7 +43,7 @@ const PRIORITY_LABEL: Record<string, string> = {
 
 export default function AnnouncementsPage() {
   const queryClient = useQueryClient();
-  const { page, setPage } = usePagination();
+  const { page, pageSize, setPage, buildPagination } = usePagination();
   const [activeTab, setActiveTab] = useState<AnnouncementTab>('all');
 
   const [modalVisible, setModalVisible] = useState(false);
@@ -54,7 +54,7 @@ export default function AnnouncementsPage() {
   if (activeTab === 'unread') isRead = 'false';
   else if (activeTab === 'read') isRead = 'true';
 
-  const listQuery = useMyAnnouncementList({ page, pageSize: 10, isRead });
+  const listQuery = useMyAnnouncementList({ page, pageSize, isRead });
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
   const detailQuery = useMyAnnouncementDetail(selected?.id, modalVisible);
@@ -216,13 +216,7 @@ export default function AnnouncementsPage() {
             dataSource={list}
             rowKey="id"
             columns={columns}
-            pagination={{
-              total,
-              currentPage: page,
-              pageSize: 10,
-              showSizeChanger: false,
-              onPageChange: (p) => setPage(p),
-            }}
+            pagination={buildPagination(total)}
             onRow={(record) => ({
               style: { opacity: (record as AnnouncementWithRead).isRead ? 0.7 : 1 },
             })}
