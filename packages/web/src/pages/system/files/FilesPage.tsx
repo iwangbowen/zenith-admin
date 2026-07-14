@@ -25,6 +25,7 @@ import type { ManagedFile } from '@zenith/shared';
 import { TOKEN_KEY, FILE_STORAGE_PROVIDER_OPTIONS } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
+import { downloadBlob } from '@/utils/download';
 import { formatFileSize, getFileTypeIcon, fetchManagedFileBlob, getFileFullUrl } from '@/utils/file-utils';
 import { buildManagedFileActions } from '@/utils/managed-file-actions';
 import { chunkedUpload, CHUNK_SIZE } from '@/utils/chunked-upload';
@@ -303,11 +304,7 @@ export default function FilesPage() {
         return;
       }
       const blob = await res.blob();
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `files_${Date.now()}.zip`;
-      a.click();
-      URL.revokeObjectURL(a.href);
+      downloadBlob(blob, `files_${Date.now()}.zip`);
       Toast.success(`已打包 ${selectedRowKeys.length} 个文件`);
     } catch {
       Toast.error('批量下载失败');

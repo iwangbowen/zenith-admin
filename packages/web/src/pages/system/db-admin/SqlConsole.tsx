@@ -16,6 +16,7 @@ import { format as formatSql } from 'sql-formatter';
 import { TOKEN_KEY } from '@zenith/shared';
 import type { DbQueryFavorite } from '@zenith/shared';
 import { config } from '@/config';
+import { downloadBlob } from '@/utils/download';
 import { AppModal } from '@/components/AppModal';
 import { DataGrid, CellDetailDrawer, type CellPos, type DataGridColumn, type DataGridHandle } from '@/components/data-grid';
 import { formatDateTime } from '@/utils/date';
@@ -251,11 +252,7 @@ export const SqlConsole = forwardRef<SqlConsoleHandle, SqlConsoleProps>(function
         return;
       }
       const blob = await res.blob();
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(a.href);
+      downloadBlob(blob, filename);
     } catch (err) {
       Toast.error('导出失败：' + (err instanceof Error ? err.message : String(err)));
     } finally {

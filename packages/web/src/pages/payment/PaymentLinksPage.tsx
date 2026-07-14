@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { formatYuan } from '@/utils/payment';
+import { downloadBlob } from '@/utils/download';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Input, Modal, Select, Space, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -143,14 +144,7 @@ export default function PaymentLinksPage() {
       return;
     }
     const blob = new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${qrLink.linkNo}.svg`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `${qrLink.linkNo}.svg`);
   }
 
   const columns: ColumnProps<PaymentLink>[] = [

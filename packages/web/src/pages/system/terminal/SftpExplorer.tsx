@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
+import { downloadBlob } from '@/utils/download';
 import { getFileIcon } from './fileIcons';
 import type { SshProfile } from './SshProfilesManager';
 import AppModal from '@/components/AppModal';
@@ -181,12 +182,7 @@ export default function SftpExplorer({ profile, onOpenFile }: SftpExplorerProps)
       const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
-      const a = document.createElement('a');
-      const objUrl = URL.createObjectURL(blob);
-      a.href = objUrl;
-      a.download = node.label as string;
-      a.click();
-      URL.revokeObjectURL(objUrl);
+      downloadBlob(blob, node.label as string);
     } catch {
       Toast.error('下载失败');
     }

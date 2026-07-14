@@ -4,6 +4,7 @@ import {
   CornerDownLeft, RotateCcw, Copy, Bookmark, Pin, Trash2, Forward, CheckSquare, Square, Download, Pencil, Check, X as XIcon, BadgeCheck, SmilePlus,
 } from 'lucide-react';
 import { formatDateTime } from '@/utils/date';
+import { downloadBlob } from '@/utils/download';
 import type { ChatMessage, ChatMessageExtra, ChatCardAction } from '@zenith/shared';
 import { getAssetMeta } from '../utils';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -169,12 +170,7 @@ export function MessageBubble({
         } catch { /* fall through to download */ }
       }
 
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = getAssetMeta(msg)?.name ?? '文件';
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, getAssetMeta(msg)?.name ?? '文件');
       Toast.info('浏览器不支持复制此类文件，已改为下载');
     } catch {
       Toast.error('复制失败');

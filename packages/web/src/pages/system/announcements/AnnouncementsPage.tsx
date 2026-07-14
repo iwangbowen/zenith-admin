@@ -461,40 +461,46 @@ export default function AnnouncementsPage() {
     scheduled: 'blue',
   };
 
+  const editAction = (record: Announcement): ResponsiveTableAction => ({
+    key: 'edit',
+    label: '编辑',
+    hidden: !hasPermission('system:announcement:update'),
+    onClick: () => openEditModal(record),
+  });
+
+  const publishAction = (record: Announcement, key: string, label: string, title: string): ResponsiveTableAction => ({
+    key,
+    label,
+    type: 'primary',
+    hidden: !hasPermission('system:announcement:update'),
+    onClick: () => {
+      Modal.confirm({
+        title,
+        onOk: () => handlePublish(record.id),
+      });
+    },
+  });
+
+  const deleteAction = (record: Announcement): ResponsiveTableAction => ({
+    key: 'delete',
+    label: '删除',
+    danger: true,
+    hidden: !hasPermission('system:announcement:delete'),
+    onClick: () => {
+      Modal.confirm({
+        title: '确定要删除该公告吗？',
+        okButtonProps: { type: 'danger', theme: 'solid' },
+        onOk: () => handleDelete(record.id),
+      });
+    },
+  });
+
   const getAnnouncementActions = (record: Announcement): ResponsiveTableAction[] => {
     if (record.publishStatus === 'draft') {
       return [
-        {
-          key: 'edit',
-          label: '编辑',
-          hidden: !hasPermission('system:announcement:update'),
-          onClick: () => openEditModal(record),
-        },
-        {
-          key: 'publish',
-          label: '发布',
-          type: 'primary',
-          hidden: !hasPermission('system:announcement:update'),
-          onClick: () => {
-            Modal.confirm({
-              title: '确定要发布该公告吗？',
-              onOk: () => handlePublish(record.id),
-            });
-          },
-        },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          hidden: !hasPermission('system:announcement:delete'),
-          onClick: () => {
-            Modal.confirm({
-              title: '确定要删除该公告吗？',
-              okButtonProps: { type: 'danger', theme: 'solid' },
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        },
+        editAction(record),
+        publishAction(record, 'publish', '发布', '确定要发布该公告吗？'),
+        deleteAction(record),
       ];
     }
 
@@ -525,60 +531,16 @@ export default function AnnouncementsPage() {
 
     if (record.publishStatus === 'recalled') {
       return [
-        {
-          key: 'edit',
-          label: '编辑',
-          hidden: !hasPermission('system:announcement:update'),
-          onClick: () => openEditModal(record),
-        },
-        {
-          key: 'republish',
-          label: '重新发布',
-          type: 'primary',
-          hidden: !hasPermission('system:announcement:update'),
-          onClick: () => {
-            Modal.confirm({
-              title: '确定要重新发布该公告吗？',
-              onOk: () => handlePublish(record.id),
-            });
-          },
-        },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          hidden: !hasPermission('system:announcement:delete'),
-          onClick: () => {
-            Modal.confirm({
-              title: '确定要删除该公告吗？',
-              okButtonProps: { type: 'danger', theme: 'solid' },
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        },
+        editAction(record),
+        publishAction(record, 'republish', '重新发布', '确定要重新发布该公告吗？'),
+        deleteAction(record),
       ];
     }
 
     if (record.publishStatus === 'scheduled') {
       return [
-        {
-          key: 'edit',
-          label: '编辑',
-          hidden: !hasPermission('system:announcement:update'),
-          onClick: () => openEditModal(record),
-        },
-        {
-          key: 'publish-now',
-          label: '立即发布',
-          type: 'primary',
-          hidden: !hasPermission('system:announcement:update'),
-          onClick: () => {
-            Modal.confirm({
-              title: '确定要立即发布该公告吗？',
-              onOk: () => handlePublish(record.id),
-            });
-          },
-        },
+        editAction(record),
+        publishAction(record, 'publish-now', '立即发布', '确定要立即发布该公告吗？'),
         {
           key: 'cancel-schedule',
           label: '取消定时',
@@ -591,19 +553,7 @@ export default function AnnouncementsPage() {
             });
           },
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          hidden: !hasPermission('system:announcement:delete'),
-          onClick: () => {
-            Modal.confirm({
-              title: '确定要删除该公告吗？',
-              okButtonProps: { type: 'danger', theme: 'solid' },
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        },
+        deleteAction(record),
       ];
     }
 

@@ -86,11 +86,4 @@ export async function buildXlsx(sheetName: string, headers: string[], rows: Cell
   });
 }
 
-/** 触发浏览器下载 */
-export function downloadBlob(blob: Blob, filename: string): void {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
+export { downloadBlob } from '@/utils/download';

@@ -27,6 +27,7 @@ import dayjs from 'dayjs';
 import type { WorkflowApproveMethod, WorkflowAssigneeType, WorkflowCategory, WorkflowDefinition, WorkflowExecutionToken, WorkflowFlowData, WorkflowInstance, WorkflowNodeConfig, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTask, WorkflowTriggerExecution } from '@zenith/shared';
 import { WORKFLOW_ISSUE_SEVERITY_META as ISSUE_SEVERITY_MAP } from './constants';
 import { request } from '@/utils/request';
+import { downloadBlob } from '@/utils/download';
 import { unwrap } from '@/lib/query';
 import { UserAvatar } from '@/components/UserAvatar';
 import AppModal from '@/components/AppModal';
@@ -538,12 +539,7 @@ export default function WorkflowMonitorPage() {
     const res = await request.get<unknown>(`/api/workflows/instances/${instanceId}/diagnostic-bundle`);
     if (res.code !== 0) return;
     const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `workflow-diagnostic-${instanceId}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `workflow-diagnostic-${instanceId}.json`);
   };
 
   const handleCancel = (record: WorkflowInstance) => {

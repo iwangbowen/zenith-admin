@@ -3,6 +3,7 @@ import { Button, Descriptions, Progress, Skeleton, Tabs, TabPane, Toast, Typogra
 import { LineChart, chartOptions, makeLineSpec, useChartPalette } from '@/components/charts';
 import { RefreshCw, Cpu, HardDrive, Database, Server, MemoryStick, Layers, Activity, Network, Wifi, History, Thermometer, ListTree } from 'lucide-react';
 import { formatDateTime } from '@/utils/date';
+import { formatBytesGb as formatBytes } from '@/utils/format';
 import { config } from '@/config';
 import { TOKEN_KEY } from '@zenith/shared';
 import { TABLE_PAGE_SIZE_OPTIONS, usePagination } from '@/hooks/usePagination';
@@ -153,16 +154,7 @@ interface WsMetrics {
   recentDisconnects: WsDisconnect[];
 }
 
-function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes < 0) return '0 B';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
-}
-
-const numberFormatter = new Intl.NumberFormat('zh-CN');
-function formatNumber(value: number): string { return numberFormatter.format(value); }
+const numberFormatter = new Intl.NumberFormat('zh-CN');function formatNumber(value: number): string { return numberFormatter.format(value); }
 
 function formatUptime(seconds: number): string {
   const d = Math.floor(seconds / 86400);

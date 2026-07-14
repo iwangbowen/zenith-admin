@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import type { WorkflowDefinition, WorkflowFormType, WorkflowVersionDiff as WorkflowVersionDiffData } from '@zenith/shared';
 import { WORKFLOW_FORM_TYPE_LABELS } from '@zenith/shared';
 import { request } from '@/utils/request';
+import { downloadBlob } from '@/utils/download';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -227,14 +228,7 @@ export default function WorkflowDefinitionsPage() {
     if (res.code !== 0) return;
 
     const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${record.name}.workflow.json`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `${record.name}.workflow.json`);
     Toast.success('已导出');
   };
 

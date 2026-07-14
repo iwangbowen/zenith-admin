@@ -54,6 +54,7 @@ import {
   useChartPalette,
 } from '@/components/charts';
 import AppModal from '@/components/AppModal';
+import { formatBytesMb as formatBytes } from '@/utils/format';
 import type {
   ErrorAlertCondition,
   ErrorAlertLog,
@@ -200,12 +201,6 @@ function safeJson(value: unknown) {
   } catch {
     return String(value);
   }
-}
-
-function formatBytes(size: number) {
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function toNumberOrNull(value: unknown): number | null {

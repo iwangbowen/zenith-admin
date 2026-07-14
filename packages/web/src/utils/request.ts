@@ -2,6 +2,7 @@ import { TOKEN_KEY, REFRESH_TOKEN_KEY } from '@zenith/shared';
 import type { ApiResponse } from '@zenith/shared';
 import { config } from '@/config';
 import { HttpClient, type ApiResponseWithMeta, type HttpRequestOptions } from './http-client';
+import { downloadBlob } from './download';
 import { showRequestErrorToast } from './request-toast';
 
 export type { ApiResponseWithMeta } from './http-client';
@@ -93,11 +94,7 @@ class Request extends HttpClient {
     }
 
     const blob = await res.blob();
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    downloadBlob(blob, filename);
   }
 }
 

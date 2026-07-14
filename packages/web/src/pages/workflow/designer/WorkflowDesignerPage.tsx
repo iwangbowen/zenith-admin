@@ -7,6 +7,7 @@ import { Button, Modal, RadioGroup, Radio, Spin, Toast, Tooltip, Typography } fr
 import { ArrowLeft, Download, Eye, History, Minus, Play, Plus, Redo2, RotateCcw, Save, Send, Stethoscope, Undo2, Upload } from 'lucide-react';
 import type { WorkflowDefinition, WorkflowDefinitionSnapshot, WorkflowFlowData, WorkflowFormField, WorkflowFormType, WorkflowCustomFormConfig, WorkflowDefinitionHealthIssue } from '@zenith/shared';
 import { WORKFLOW_FORM_TYPES, WORKFLOW_FORM_TYPE_LABELS, resolveApproverDedupMode } from '@zenith/shared';
+import { downloadBlob } from '@/utils/download';
 
 import WorkflowVersionsSheet from '../components/WorkflowVersionsSheet';
 
@@ -424,13 +425,7 @@ export default function WorkflowDesignerPage({
 
   const handleExport = useCallback(() => {
     const jsonStr = JSON.stringify(process, null, 2);
-    const blob = new Blob([jsonStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `flow-${definition?.name ?? 'untitled'}-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(new Blob([jsonStr], { type: 'application/json' }), `flow-${definition?.name ?? 'untitled'}-${Date.now()}.json`);
   }, [process, definition]);
 
   const handleImport = useCallback(() => {

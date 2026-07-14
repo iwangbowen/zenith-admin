@@ -11,6 +11,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { formatDateTime } from '@/utils/date';
+import { formatBytesMb } from '@/utils/format';
 import { renderEllipsis } from '@/utils/table-columns';
 import {
   exportJobKeys,
@@ -67,9 +68,7 @@ const statusTagMap = {
 
 function formatFileSize(size: number | null) {
   if (size == null) return '-';
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+  return formatBytesMb(size);
 }
 
 function renderProgress(record: ExportJob) {

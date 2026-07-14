@@ -15,6 +15,7 @@ import ExportButton from '@/components/ExportButton';
 import AppModal from '@/components/AppModal';
 import { config } from '@/config';
 import { formatDateTime } from '@/utils/date';
+import { formatBytesGb as formatBytes } from '@/utils/format';
 import { TOKEN_KEY } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import type { ProcessInfo, ProcessListResponse } from '@zenith/shared';
@@ -24,13 +25,6 @@ import { useKillProcess, useProcessDetail, useSetProcessPriority } from '@/hooks
 const processesTableStyle = '';
 
 // ─── 工具函数 ─────────────────────────────────────────────────────────────
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
-}
-
 const STATUS_META: Record<string, { color: string; label: string }> = {
   running:    { color: 'green',  label: '运行中' },
   sleeping:   { color: 'blue',   label: '休眠' },

@@ -30,6 +30,7 @@ import { Download, RotateCcw, Search } from 'lucide-react';
 import type { WorkflowJob, WorkflowJobExecution, WorkflowJobStatus, WorkflowJobSummaryItem, WorkflowJobType } from '@zenith/shared';
 import { WORKFLOW_JOB_STATUS_META as JOB_STATUS_META } from './constants';
 import { request } from '@/utils/request';
+import { downloadBlob } from '@/utils/download';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -321,12 +322,7 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
       );
       if (res.code !== 0) { Toast.warning(res.message || '导出失败'); return; }
       const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `workflow-trace-${traceId}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, `workflow-trace-${traceId}.json`);
     } catch {
       Toast.error('导出失败');
     } finally {

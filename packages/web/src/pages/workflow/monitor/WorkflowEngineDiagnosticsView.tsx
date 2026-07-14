@@ -25,6 +25,7 @@ import {
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { AreaChart, LineChart, chartOptions, makeAreaSpec, makeLineSpec, useChartPalette, type ChartPalette } from '@/components/charts';
 import { formatDateTime } from '@/utils/date';
+import { downloadBlob } from '@/utils/download';
 import WorkflowBatchRecoveryModal from './WorkflowBatchRecoveryModal';
 import {
   useWorkflowEngineAction,
@@ -510,14 +511,8 @@ function IssuesPanel({ issues, components, onOpenInstanceDiagnostics }: Readonly
   );
 }
 
-function downloadBlob(filename: string, content: string, type: string) {
-  const blob = new Blob([content], { type });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+function exportDiagnostics(filename: string, content: string, type: string) {
+  downloadBlob(new Blob([content], { type }), filename);
 }
 
 export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostics }: Props) {
@@ -594,7 +589,7 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
   const exportReport = useCallback(() => {
     if (!data) return;
     const stamp = (data.generatedAt || formatDateTime(new Date())).replace(/[: ]/g, '-');
-    downloadBlob(`engine-diagnostics-${stamp}.json`, JSON.stringify({ introspection: data, history }, null, 2), 'application/json');
+    exportDiagnostics(`engine-diagnostics-${stamp}.json`, JSON.stringify({ introspection: data, history }, null, 2), 'application/json');
   }, [data, history]);
 
   const criticalCount = useMemo(() => data?.issues.filter((item) => item.severity === 'critical').length ?? 0, [data]);

@@ -42,6 +42,7 @@ import {
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
+import { downloadBlob } from '@/utils/download';
 import { useThemeController } from '@/providers/theme-controller';
 import { usePermission } from '@/hooks/usePermission';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -321,11 +322,7 @@ export default function DbAdminPage() {
         return;
       }
       const blob = await res.blob();
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `${t.schema}_${t.name}_${Date.now()}.csv`;
-      a.click();
-      URL.revokeObjectURL(a.href);
+      downloadBlob(blob, `${t.schema}_${t.name}_${Date.now()}.csv`);
       Toast.success(`${fullName(t)} 导出成功`);
     } catch (err) {
       Toast.error('导出失败：' + (err instanceof Error ? err.message : String(err)));
@@ -346,13 +343,9 @@ export default function DbAdminPage() {
         return;
       }
       const blob = await res.blob();
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
       const suffixMap: Record<string, string> = { ddl: 'ddl', data: 'data', full: 'full' };
       const suffix = suffixMap[mode] ?? 'full';
-      a.download = `${t.schema}_${t.name}_${suffix}_${Date.now()}.sql`;
-      a.click();
-      URL.revokeObjectURL(a.href);
+      downloadBlob(blob, `${t.schema}_${t.name}_${suffix}_${Date.now()}.sql`);
       Toast.success(`${fullName(t)} SQL 导出成功`);
     } catch (err) {
       Toast.error('导出失败：' + (err instanceof Error ? err.message : String(err)));
