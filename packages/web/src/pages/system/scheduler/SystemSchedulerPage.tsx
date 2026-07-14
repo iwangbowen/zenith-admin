@@ -21,6 +21,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
+import { formatDurationMs as formatDuration } from '@/utils/format';
 import { renderEllipsis } from '@/utils/table-columns';
 import {
   systemSchedulerKeys,
@@ -92,13 +93,6 @@ const triggerTypeMap = {
 } as const satisfies Record<SystemSchedulerTriggerType, { label: string; color: 'blue' | 'orange' | 'cyan' }>;
 
 const alertChannelMap: Record<SystemSchedulerAlertChannel, string> = NOTIFY_CHANNEL_LABELS;
-
-function formatDuration(value: number | null) {
-  if (value == null) return '-';
-  if (value < 1000) return `${value} ms`;
-  if (value < 60_000) return `${(value / 1000).toFixed(1)} s`;
-  return `${(value / 60_000).toFixed(1)} min`;
-}
 
 function statusTag(status: SystemSchedulerRunStatus | null) {
   if (!status) return <Typography.Text type="tertiary">未运行</Typography.Text>;

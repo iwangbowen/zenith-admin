@@ -5,6 +5,7 @@ import {
 } from '@douyinfe/semi-ui';
 import { AppModal } from '@/components/AppModal';
 import { AvatarCropperModal } from '@/components/AvatarCropperModal';
+import { PresetAvatarPickerModal } from '@/components/PresetAvatarPickerModal';
 import type { User } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -15,8 +16,6 @@ interface UserAvatarModalProps {
   readonly onClose: () => void;
   readonly onUpdated: (user: User) => void;
 }
-
-const PRESET_AVATARS = Array.from({ length: 12 }, (_, i) => `/avatars/avatar-${String(i + 1).padStart(2, '0')}.svg`);
 
 export function UserAvatarModal({ visible, user, onClose, onUpdated }: UserAvatarModalProps) {
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -143,34 +142,12 @@ export function UserAvatarModal({ visible, user, onClose, onUpdated }: UserAvata
       </AppModal>
 
       {/* 预设头像 Modal */}
-      <AppModal
-        title="选择预设头像"
+      <PresetAvatarPickerModal
         visible={presetVisible}
+        currentAvatar={user.avatar}
         onCancel={() => setPresetVisible(false)}
-        footer={null}
-        width={460}
-        centered
-      >
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, padding: '8px 0 16px' }}>
-          {PRESET_AVATARS.map((url) => (
-            <button
-              key={url}
-              type="button"
-              onClick={() => void handleApplyPreset(url)}
-              style={{
-                border: user.avatar === url ? '2px solid var(--semi-color-primary)' : '2px solid transparent',
-                borderRadius: 'var(--semi-border-radius-medium)', padding: 4, cursor: 'pointer', background: 'var(--semi-color-fill-0)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                transition: 'border-color 0.2s',
-              }}
-              onMouseEnter={(e) => { if (user.avatar !== url) e.currentTarget.style.borderColor = 'var(--semi-color-primary-light-hover)'; }}
-              onMouseLeave={(e) => { if (user.avatar !== url) e.currentTarget.style.borderColor = 'transparent'; }}
-            >
-              <img src={url} alt="预设头像" width={72} height={72} style={{ borderRadius: 'var(--semi-border-radius-small)', display: 'block' }} loading="lazy" />
-            </button>
-          ))}
-        </div>
-      </AppModal>
+        onSelect={(url) => void handleApplyPreset(url)}
+      />
 
       {/* 裁剪 Modal */}
       <AvatarCropperModal

@@ -66,17 +66,24 @@ function normalizeOptional(value?: string): string {
   return value?.trim() ?? '';
 }
 
+/** 各 provider 公共的基础字段（objectAcl 与专属凭据字段由各分支自行补充） */
+function baseStorageFields(values: FileStorageConfigFormValues, isDefault: boolean) {
+  return {
+    name: values.name?.trim() ?? '',
+    status: values.status ?? 'enabled',
+    isDefault,
+    basePath: normalizeOptional(values.basePath),
+    urlStrategy: values.urlStrategy ?? 'proxy',
+    publicBaseUrl: normalizeOptional(values.publicBaseUrl),
+    presignedExpirySeconds: values.presignedExpirySeconds ?? PRESIGNED_EXPIRY_DEFAULT_SECONDS,
+  };
+}
+
 function buildPayload(provider: FileStorageProvider, isDefault: boolean, values: FileStorageConfigFormValues): CreateFileStorageConfigInput {
   if (provider === 'local') {
     return {
-      name: values.name?.trim() ?? '',
+      ...baseStorageFields(values, isDefault),
       provider,
-      status: values.status ?? 'enabled',
-      isDefault,
-      basePath: normalizeOptional(values.basePath),
-      urlStrategy: values.urlStrategy ?? 'proxy',
-      publicBaseUrl: normalizeOptional(values.publicBaseUrl),
-      presignedExpirySeconds: values.presignedExpirySeconds ?? PRESIGNED_EXPIRY_DEFAULT_SECONDS,
       objectAcl: 'default',
       localRootPath: normalizeOptional(values.localRootPath),
       remark: normalizeOptional(values.remark),
@@ -85,14 +92,8 @@ function buildPayload(provider: FileStorageProvider, isDefault: boolean, values:
 
   if (provider === 'oss') {
     return {
-      name: values.name?.trim() ?? '',
+      ...baseStorageFields(values, isDefault),
       provider,
-      status: values.status ?? 'enabled',
-      isDefault,
-      basePath: normalizeOptional(values.basePath),
-      urlStrategy: values.urlStrategy ?? 'proxy',
-      publicBaseUrl: normalizeOptional(values.publicBaseUrl),
-      presignedExpirySeconds: values.presignedExpirySeconds ?? PRESIGNED_EXPIRY_DEFAULT_SECONDS,
       objectAcl: values.objectAcl ?? 'default',
       ossRegion: normalizeOptional(values.ossRegion),
       ossEndpoint: normalizeOptional(values.ossEndpoint),
@@ -105,14 +106,8 @@ function buildPayload(provider: FileStorageProvider, isDefault: boolean, values:
 
   if (provider === 's3') {
     return {
-      name: values.name?.trim() ?? '',
+      ...baseStorageFields(values, isDefault),
       provider,
-      status: values.status ?? 'enabled',
-      isDefault,
-      basePath: normalizeOptional(values.basePath),
-      urlStrategy: values.urlStrategy ?? 'proxy',
-      publicBaseUrl: normalizeOptional(values.publicBaseUrl),
-      presignedExpirySeconds: values.presignedExpirySeconds ?? PRESIGNED_EXPIRY_DEFAULT_SECONDS,
       objectAcl: values.objectAcl ?? 'default',
       s3Region: normalizeOptional(values.s3Region),
       s3Endpoint: normalizeOptional(values.s3Endpoint),
@@ -127,14 +122,8 @@ function buildPayload(provider: FileStorageProvider, isDefault: boolean, values:
   // cos
   if (provider === 'cos') {
     return {
-      name: values.name?.trim() ?? '',
+      ...baseStorageFields(values, isDefault),
       provider,
-      status: values.status ?? 'enabled',
-      isDefault,
-      basePath: normalizeOptional(values.basePath),
-      urlStrategy: values.urlStrategy ?? 'proxy',
-      publicBaseUrl: normalizeOptional(values.publicBaseUrl),
-      presignedExpirySeconds: values.presignedExpirySeconds ?? PRESIGNED_EXPIRY_DEFAULT_SECONDS,
       objectAcl: values.objectAcl ?? 'default',
       cosRegion: normalizeOptional(values.cosRegion),
       cosBucket: normalizeOptional(values.cosBucket),
@@ -146,14 +135,8 @@ function buildPayload(provider: FileStorageProvider, isDefault: boolean, values:
 
   if (provider === 'obs') {
     return {
-      name: values.name?.trim() ?? '',
+      ...baseStorageFields(values, isDefault),
       provider,
-      status: values.status ?? 'enabled',
-      isDefault,
-      basePath: normalizeOptional(values.basePath),
-      urlStrategy: values.urlStrategy ?? 'proxy',
-      publicBaseUrl: normalizeOptional(values.publicBaseUrl),
-      presignedExpirySeconds: values.presignedExpirySeconds ?? PRESIGNED_EXPIRY_DEFAULT_SECONDS,
       objectAcl: values.objectAcl ?? 'default',
       obsEndpoint: normalizeOptional(values.obsEndpoint),
       obsBucket: normalizeOptional(values.obsBucket),
@@ -165,14 +148,8 @@ function buildPayload(provider: FileStorageProvider, isDefault: boolean, values:
 
   if (provider === 'kodo') {
     return {
-      name: values.name?.trim() ?? '',
+      ...baseStorageFields(values, isDefault),
       provider,
-      status: values.status ?? 'enabled',
-      isDefault,
-      basePath: normalizeOptional(values.basePath),
-      urlStrategy: values.urlStrategy ?? 'proxy',
-      publicBaseUrl: normalizeOptional(values.publicBaseUrl),
-      presignedExpirySeconds: values.presignedExpirySeconds ?? PRESIGNED_EXPIRY_DEFAULT_SECONDS,
       objectAcl: 'default',
       kodoAccessKey: normalizeOptional(values.kodoAccessKey),
       kodoSecretKey: normalizeOptional(values.kodoSecretKey),
@@ -185,14 +162,8 @@ function buildPayload(provider: FileStorageProvider, isDefault: boolean, values:
 
   if (provider === 'bos') {
     return {
-      name: values.name?.trim() ?? '',
+      ...baseStorageFields(values, isDefault),
       provider,
-      status: values.status ?? 'enabled',
-      isDefault,
-      basePath: normalizeOptional(values.basePath),
-      urlStrategy: values.urlStrategy ?? 'proxy',
-      publicBaseUrl: normalizeOptional(values.publicBaseUrl),
-      presignedExpirySeconds: values.presignedExpirySeconds ?? PRESIGNED_EXPIRY_DEFAULT_SECONDS,
       objectAcl: values.objectAcl ?? 'default',
       bosEndpoint: normalizeOptional(values.bosEndpoint),
       bosBucket: normalizeOptional(values.bosBucket),
@@ -204,14 +175,8 @@ function buildPayload(provider: FileStorageProvider, isDefault: boolean, values:
 
   if (provider === 'azure') {
     return {
-      name: values.name?.trim() ?? '',
+      ...baseStorageFields(values, isDefault),
       provider,
-      status: values.status ?? 'enabled',
-      isDefault,
-      basePath: normalizeOptional(values.basePath),
-      urlStrategy: values.urlStrategy ?? 'proxy',
-      publicBaseUrl: normalizeOptional(values.publicBaseUrl),
-      presignedExpirySeconds: values.presignedExpirySeconds ?? PRESIGNED_EXPIRY_DEFAULT_SECONDS,
       objectAcl: 'default',
       azureAccountName: normalizeOptional(values.azureAccountName),
       azureAccountKey: normalizeOptional(values.azureAccountKey),
@@ -223,14 +188,8 @@ function buildPayload(provider: FileStorageProvider, isDefault: boolean, values:
 
   // sftp
   return {
-    name: values.name?.trim() ?? '',
+    ...baseStorageFields(values, isDefault),
     provider,
-    status: values.status ?? 'enabled',
-    isDefault,
-    basePath: normalizeOptional(values.basePath),
-    urlStrategy: values.urlStrategy ?? 'proxy',
-    publicBaseUrl: normalizeOptional(values.publicBaseUrl),
-    presignedExpirySeconds: values.presignedExpirySeconds ?? PRESIGNED_EXPIRY_DEFAULT_SECONDS,
     objectAcl: 'default',
     sftpHost: normalizeOptional(values.sftpHost),
     sftpPort: values.sftpPort,

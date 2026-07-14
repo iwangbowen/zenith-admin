@@ -16,6 +16,7 @@ import type {
 import { request } from '@/utils/request';
 import { AppModal } from '@/components/AppModal';
 import { AvatarCropperModal } from '@/components/AvatarCropperModal';
+import { PresetAvatarPickerModal } from '@/components/PresetAvatarPickerModal';
 import { UserAvatar } from '@/components/UserAvatar';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { type PasswordPolicy } from '@/utils/password-policy';
@@ -354,9 +355,6 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
     applyUserUpdate(updated);
     Toast.success('头像已更新');
   }
-
-  // ─── 预设头像 ──────────────────────────────────────────────────────────────
-  const PRESET_AVATARS = Array.from({ length: 12 }, (_, i) => `/avatars/avatar-${String(i + 1).padStart(2, '0')}.svg`);
 
   // ─── 静态配置 ────────────────────────────────────────────────────────────────
 
@@ -767,41 +765,12 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
       </div>
 
       {/* ── 预设头像选择 Modal ─────────────────────────────────────────────── */}
-      <AppModal
-        title="选择预设头像"
+      <PresetAvatarPickerModal
         visible={presetModalVisible}
+        currentAvatar={user.avatar}
         onCancel={() => setPresetModalVisible(false)}
-        footer={null}
-        width={460}
-        centered
-      >
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, padding: '8px 0 16px' }}>
-          {PRESET_AVATARS.map((url) => (
-            <button
-              key={url}
-              type="button"
-              onClick={() => void handleApplyPreset(url)}
-              style={{
-                border: user.avatar === url ? '2px solid var(--semi-color-primary)' : '2px solid transparent',
-                borderRadius: 'var(--semi-border-radius-medium)', padding: 4, cursor: 'pointer', background: 'var(--semi-color-fill-0)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                transition: 'border-color 0.2s, box-shadow 0.2s',
-              }}
-              onMouseEnter={(e) => { if (user.avatar !== url) e.currentTarget.style.borderColor = 'var(--semi-color-primary-light-hover)'; }}
-              onMouseLeave={(e) => { if (user.avatar !== url) e.currentTarget.style.borderColor = 'transparent'; }}
-            >
-              <img
-                src={url}
-                alt="预设头像"
-                width={72}
-                height={72}
-                style={{ borderRadius: 'var(--semi-border-radius-small)', display: 'block' }}
-                loading="lazy"
-              />
-            </button>
-          ))}
-        </div>
-      </AppModal>
+        onSelect={(url) => void handleApplyPreset(url)}
+      />
 
       <AppModal
         title="绑定身份验证器"

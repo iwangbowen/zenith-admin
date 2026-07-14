@@ -16,26 +16,12 @@ import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { useMyAsyncTasks } from '@/hooks/useAsyncTasks';
 import { usePagination } from '@/hooks/usePagination';
+import { ASYNC_TASK_STATUS_TAG_MAP as statusTagMap, ASYNC_TASK_ITEM_STATUS_TAG_MAP as itemStatusTagMap } from '@/utils/async-task';
 import { formatDateTime } from '@/utils/date';
 import { renderEllipsis } from '@/utils/table-columns';
 import { useBizTaskDemoAction, useBizTaskDemoItems, useBizTaskDemoTypes, useSubmitTaskDemo } from '@/hooks/queries/biz-pay-demo';
 
 const DEMO_TASK_TYPES = ['demo-batch', 'demo-serial'];
-
-const statusTagMap = {
-  pending: { color: 'blue', label: '排队中' },
-  running: { color: 'cyan', label: '执行中' },
-  success: { color: 'green', label: '已完成' },
-  failed: { color: 'red', label: '失败' },
-  cancelled: { color: 'grey', label: '已取消' },
-} as const satisfies Record<AsyncTaskStatus, { color: 'blue' | 'cyan' | 'green' | 'red' | 'grey'; label: string }>;
-
-const itemStatusTagMap = {
-  pending: { color: 'blue', label: '待处理' },
-  success: { color: 'green', label: '成功' },
-  failed: { color: 'red', label: '失败' },
-  skipped: { color: 'grey', label: '跳过' },
-} as const satisfies Record<AsyncTaskItemStatus, { color: 'blue' | 'green' | 'red' | 'grey'; label: string }>;
 
 const codeStyle: CSSProperties = {
   background: 'var(--semi-color-fill-0)', borderRadius: 'var(--semi-border-radius-medium)', padding: 12, margin: 0,

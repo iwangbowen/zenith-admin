@@ -22,3 +22,11 @@ export function formatBytesMb(size: number): string {
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
+
+/** 毫秒时长格式化（ms → s → min），null 返回 '-'：适合任务/调度耗时展示 */
+export function formatDurationMs(ms: number | null): string {
+  if (ms == null) return '-';
+  if (ms < 1000) return `${ms} ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)} s`;
+  return `${(ms / 60_000).toFixed(1)} min`;
+}
