@@ -93,6 +93,7 @@ export default function FieldConfigPanel({
             flags={flags}
             otherKeys={otherKeys}
             duplicateKey={duplicateKey}
+            flatFields={flatFields}
             onChange={onChange}
             onRenameKey={onRenameKey}
           />
@@ -114,6 +115,7 @@ export default function FieldConfigPanel({
         <ValidationSection
           field={field}
           conditionFields={conditionFields}
+          flatFields={flatFields}
           flags={flags}
           onChange={onChange}
         />

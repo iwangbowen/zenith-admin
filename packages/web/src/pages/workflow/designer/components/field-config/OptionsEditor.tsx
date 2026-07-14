@@ -1,7 +1,7 @@
 // ─── 静态选项列表编辑器（拆分自 FieldConfigPanel.tsx）───
 import { useState } from 'react';
-import { Button, Input, Switch, Typography, Dropdown } from '@douyinfe/semi-ui';
-import { Plus, Trash2, Ban } from 'lucide-react';
+import { Button, Input, Switch, Typography, Dropdown, TextArea } from '@douyinfe/semi-ui';
+import { Plus, Trash2, Ban, List } from 'lucide-react';
 import type { WorkflowFormField, WorkflowFormFieldOptionItem } from '@zenith/shared';
 import { OPTION_COLOR_PRESETS } from '../../form-types';
 import { deriveOptionItems } from './helpers';
@@ -13,6 +13,9 @@ export function OptionsEditor({
   const items = deriveOptionItems(field);
   // 是否「值与显示分离」：存在 label 且与 value 不同时默认开启
   const [separate, setSeparate] = useState(items.some((it) => it.label && it.label !== it.value));
+  // 批量文本编辑模式（每行一个选项，值|显示名）
+  const [batchMode, setBatchMode] = useState(false);
+  const [batchDraft, setBatchDraft] = useState('');
 
   // 写回：同步 optionItems（完整）与 options（值列表镜像，供级联/校验复用）
   const commit = (next: WorkflowFormFieldOptionItem[]) => {
@@ -32,9 +35,60 @@ export function OptionsEditor({
   const remove = (i: number) => commit(items.filter((_, idx) => idx !== i));
   const add = () => commit([...items, { value: `选项${items.length + 1}` }]);
 
+  // ─── 批量文本编辑：每行「值」或「值|显示名」，应用时按值保留原颜色/禁用 ───
+  const openBatch = () => {
+    setBatchDraft(items.map((it) => (it.label && it.label !== it.value ? `${it.value}|${it.label}` : it.value)).join('\n'));
+    setBatchMode(true);
+  };
+
+  const applyBatch = () => {
+    const byValue = new Map(items.map((it) => [it.value, it]));
+    const next: WorkflowFormFieldOptionItem[] = [];
+    const seen = new Set<string>();
+    for (const line of batchDraft.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const sep = trimmed.indexOf('|');
+      const value = (sep >= 0 ? trimmed.slice(0, sep) : trimmed).trim();
+      const label = sep >= 0 ? trimmed.slice(sep + 1).trim() : '';
+      if (!value || seen.has(value)) continue;
+      seen.add(value);
+      const prev = byValue.get(value);
+      next.push({
+        value,
+        ...(label && label !== value ? { label } : {}),
+        ...(prev?.color ? { color: prev.color } : {}),
+        ...(prev?.disabled ? { disabled: true } : {}),
+      });
+    }
+    if (next.some((it) => it.label)) setSeparate(true);
+    commit(next);
+    setBatchMode(false);
+  };
+
   const values = items.map((it) => it.value.trim());
   const hasDuplicate = new Set(values.filter(Boolean)).size !== values.filter(Boolean).length;
   const hasEmpty = items.some((it) => !it.value.trim());
+
+  if (batchMode) {
+    return (
+      <div className="fd-options-editor">
+        <TextArea
+          value={batchDraft}
+          onChange={setBatchDraft}
+          rows={Math.min(12, Math.max(5, batchDraft.split('\n').length + 1))}
+          placeholder={'每行一个选项，可从 Excel/文本粘贴\n值与显示分离用竖线：值|显示名'}
+        />
+        <Typography.Text type="tertiary" size="small" style={{ display: 'block', margin: '4px 0 8px' }}>
+          空行忽略、重复值去重；已有选项的颜色/禁用状态按值保留
+        </Typography.Text>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button size="small" type="primary" onClick={applyBatch}>应用</Button>
+          <Button size="small" type="tertiary" onClick={() => setBatchMode(false)}>取消</Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fd-options-editor">
@@ -106,9 +160,14 @@ export function OptionsEditor({
           </button>
         </div>
       ))}
-      <Button size="small" type="tertiary" icon={<Plus size={12} />} onClick={add}>
-        添加选项
-      </Button>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <Button size="small" type="tertiary" icon={<Plus size={12} />} onClick={add}>
+          添加选项
+        </Button>
+        <Button size="small" type="tertiary" icon={<List size={12} />} onClick={openBatch}>
+          批量编辑
+        </Button>
+      </div>
       {(hasEmpty || hasDuplicate) && (
         <Typography.Text type="warning" size="small" style={{ display: 'block', marginTop: 4 }}>
           {hasEmpty ? '存在空选项，运行时不会有明确显示；' : ''}

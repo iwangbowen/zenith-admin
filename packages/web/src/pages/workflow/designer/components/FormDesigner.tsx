@@ -3,13 +3,15 @@
  * 三栏布局：左侧控件面板 | 中间画布预览 | 右侧属性配置
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Tooltip, Modal, Toast, Typography } from '@douyinfe/semi-ui';
-import { Undo2, Redo2 } from 'lucide-react';
+import { Button, Tooltip, Modal, Toast, Typography, Tabs, TabPane, Input } from '@douyinfe/semi-ui';
+import { Undo2, Redo2, ArrowUp, ArrowDown, ClipboardPaste, CopyPlus, Asterisk, Trash2, Copy as CopyIcon, BookmarkPlus } from 'lucide-react';
 import type { WorkflowFormField, WorkflowFormFieldType, WorkflowFormSettings } from '@zenith/shared';
 import { FORM_FIELD_TYPES } from '../form-types';
-import { findField, updateField, removeField, insertField, insertAfterKey, isDescendant, isContainerType, findFieldDependents, pruneFieldReferences, pruneCascadeMappings, renameFieldKey, type DropTarget } from '../form-tree';
+import { findField, updateField, removeField, insertField, insertAfterKey, isDescendant, isContainerType, findFieldDependents, pruneFieldReferences, pruneCascadeMappings, renameFieldKey, moveFieldSibling, cloneFieldWithNewKeys, generateFieldKey, type DropTarget } from '../form-tree';
+import { saveFieldTemplate } from '../form-field-templates';
 import FieldPalette from './FieldPalette';
 import FormCanvas from './FormCanvas';
+import FormOutline from './FormOutline';
 import FieldConfigPanel from './FieldConfigPanel';
 import './FormDesigner.css';
 
@@ -41,31 +43,11 @@ export interface FormHistoryControls {
   selectField: (key: string) => void;
 }
 
-let fieldCounter = 0;
-
-function generateKey(type: WorkflowFormFieldType): string {
-  fieldCounter++;
-  const random = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2, 10);
-  return `${type}_${Date.now()}_${fieldCounter}_${random.replace(/-/g, '').slice(0, 8)}`;
-}
+const generateKey = generateFieldKey;
 
 function getDefaultLabel(type: WorkflowFormFieldType): string {
   const info = FORM_FIELD_TYPES.find(t => t.type === type);
   return info?.label ?? '字段';
-}
-
-// 深拷贝字段并为自身及所有嵌套子字段重新生成 key（用于复制字段）
-function cloneFieldWithNewKeys(field: WorkflowFormField): WorkflowFormField {
-  const copy: WorkflowFormField = structuredClone(field);
-  const reassign = (f: WorkflowFormField) => {
-    f.key = generateKey(f.type);
-    f.children?.forEach(reassign);
-    f.columns?.forEach(col => col.fields.forEach(reassign));
-    f.panes?.forEach(pane => pane.fields.forEach(reassign));
-  };
-  reassign(copy);
-  copy.label = field.label ? `${field.label} 副本` : copy.label;
-  return copy;
 }
 
 function collectFields(fields: WorkflowFormField[]): WorkflowFormField[] {
@@ -213,6 +195,16 @@ function createField(type: WorkflowFormFieldType): WorkflowFormField {
     case 'colorPicker':
       field.defaultValue = '#1677ff';
       break;
+    case 'cascader':
+      field.cascaderOptions = [
+        { value: '分类1', children: [{ value: '子项1-1' }, { value: '子项1-2' }] },
+        { value: '分类2', children: [{ value: '子项2-1' }] },
+      ];
+      break;
+    case 'nps':
+      field.npsMinLabel = '完全不推荐';
+      field.npsMaxLabel = '强烈推荐';
+      break;
     case 'formula':
       field.formula = '';
       field.precision = 2;
@@ -241,8 +233,18 @@ interface HistoryState {
 
 const MAX_HISTORY = 100;
 
+/** 不适用「必填」的类型（布局/展示/系统生成） */
+const REQUIRED_EXCLUDE = new Set<WorkflowFormFieldType>(['row', 'group', 'tabs', 'steps', 'divider', 'description', 'formula', 'serialNumber']);
+const canToggleRequired = (t: WorkflowFormFieldType): boolean => !REQUIRED_EXCLUDE.has(t);
+
 export default function FormDesigner({ fields, onChange, settings, onSettingsChange, showToolbar = true, onHistoryChange, onRenameKey }: Readonly<FormDesignerProps>) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  // 内部剪贴板：跨容器复制/粘贴字段配置（含子字段，粘贴时重新生成 key）
+  const clipboardRef = useRef<WorkflowFormField | null>(null);
+  const [hasClipboard, setHasClipboard] = useState(false);
+  // 画布右键菜单
+  const [menu, setMenu] = useState<{ x: number; y: number; key: string } | null>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
   // 表单级设置以 ref 跟踪最新值，供字段 commit 写入同一历史快照
   const settingsRef = useRef<WorkflowFormSettings>(settings ?? {});
   settingsRef.current = settings ?? {};
@@ -444,6 +446,145 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
     setSelectedKey(newKey);
   }, [fields, commit, selectedKey, onRenameKey]);
 
+  // ─── 画布定位 / 剪贴板 / 右键菜单 ──────────────────────────────────
+
+  // 平滑滚动到画布中的字段卡片（大纲点击 / 键盘切换选中时定位）
+  const scrollToField = useCallback((key: string) => {
+    requestAnimationFrame(() => {
+      canvasRef.current
+        ?.querySelector(`[data-field-key="${CSS.escape(key)}"]`)
+        ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+  }, []);
+
+  const copyToClipboard = useCallback((key: string) => {
+    const target = findField(fields, key);
+    if (!target) return;
+    clipboardRef.current = structuredClone(target);
+    setHasClipboard(true);
+    Toast.success(`已复制「${target.label || target.key}」，Ctrl+V 粘贴`);
+  }, [fields]);
+
+  // 粘贴：普通字段插到目标字段之后；容器类字段仅允许顶层（目标在顶层则插其后，否则追加末尾）
+  const pasteFromClipboard = useCallback((afterKey?: string | null) => {
+    const clip = clipboardRef.current;
+    if (!clip) return;
+    const cloned = cloneFieldWithNewKeys(clip, false);
+    let next: WorkflowFormField[];
+    if (afterKey && findField(fields, afterKey)) {
+      const targetAtRoot = fields.some((f) => f.key === afterKey);
+      next = isContainerType(cloned.type) && !targetAtRoot
+        ? [...fields, cloned]
+        : insertAfterKey(fields, afterKey, cloned);
+    } else {
+      next = [...fields, cloned];
+    }
+    commit(next);
+    setSelectedKey(cloned.key);
+    scrollToField(cloned.key);
+  }, [fields, commit, scrollToField]);
+
+  // 同级上移 / 下移
+  const handleMoveSibling = useCallback((key: string, dir: -1 | 1) => {
+    const next = moveFieldSibling(fields, key, dir);
+    if (next !== fields) commit(next);
+  }, [fields, commit]);
+
+  const toggleRequired = useCallback((key: string) => {
+    const f = findField(fields, key);
+    if (!f || !canToggleRequired(f.type)) return;
+    commit(updateField(fields, key, { required: !f.required || undefined }));
+  }, [fields, commit]);
+
+  const openMenu = useCallback((key: string, x: number, y: number) => {
+    setSelectedKey(key);
+    // 贴边裁剪，避免菜单溢出视口
+    setMenu({ key, x: Math.min(x, window.innerWidth - 190), y: Math.min(y, window.innerHeight - 320) });
+  }, []);
+
+  // 「存为我的模板」弹窗（保存字段配置到 localStorage，供控件面板复用）
+  const [tplDraft, setTplDraft] = useState<{ key: string; name: string } | null>(null);
+
+  const saveAsTemplate = useCallback(() => {
+    if (!tplDraft) return;
+    const target = findField(fields, tplDraft.key);
+    const name = tplDraft.name.trim();
+    if (!target || !name) {
+      Toast.warning('请填写模板名称');
+      return;
+    }
+    saveFieldTemplate(name, target);
+    Toast.success(`已保存模板「${name}」，可在控件面板「我的模板」中使用`);
+    setTplDraft(null);
+  }, [tplDraft, fields]);
+
+  // 从「我的模板」插入字段（克隆并重置 key，追加到末尾）
+  const handleAddTemplateField = useCallback((field: WorkflowFormField) => {
+    const cloned = cloneFieldWithNewKeys(field, false);
+    commit([...fields, cloned]);
+    setSelectedKey(cloned.key);
+    scrollToField(cloned.key);
+  }, [fields, commit, scrollToField]);
+
+  // 点击任意处 / 失焦关闭右键菜单
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    window.addEventListener('mousedown', close);
+    window.addEventListener('blur', close);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('blur', close);
+    };
+  }, [menu]);
+
+  // 键盘操作：Delete 删除、Ctrl/Cmd+C/V 复制粘贴、↑/↓ 切换选中、Esc 取消选中（输入框聚焦时不拦截）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const ae = document.activeElement as HTMLElement | null;
+      const tag = ae?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || ae?.isContentEditable) return;
+      if (e.ctrlKey || e.metaKey) {
+        const k = e.key.toLowerCase();
+        if (k === 'c' && selectedKey) {
+          if (window.getSelection()?.toString()) return; // 正在复制文本选区，不拦截
+          e.preventDefault();
+          copyToClipboard(selectedKey);
+        } else if (k === 'v' && clipboardRef.current) {
+          e.preventDefault();
+          pasteFromClipboard(selectedKey);
+        }
+        return;
+      }
+      if (e.key === 'Escape') {
+        setMenu(null);
+        setSelectedKey(null);
+        return;
+      }
+      if (!selectedKey) return;
+      if (e.key === 'Delete') {
+        e.preventDefault();
+        handleRemove(selectedKey);
+        return;
+      }
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        const keys = flatFields.map((f) => f.key);
+        const idx = keys.indexOf(selectedKey);
+        if (idx < 0) return;
+        const nextKey = keys[e.key === 'ArrowUp' ? Math.max(0, idx - 1) : Math.min(keys.length - 1, idx + 1)];
+        if (nextKey !== selectedKey) {
+          setSelectedKey(nextKey);
+          scrollToField(nextKey);
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedKey, flatFields, copyToClipboard, pasteFromClipboard, handleRemove, scrollToField]);
+
+  const menuField = menu ? findField(fields, menu.key) : null;
+
   return (
     <div className="fd-form-designer-shell">
       {/* 顶部工具栏：撤销 / 重做（由外部工具栏接管时隐藏） */}
@@ -476,13 +617,24 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
       )}
 
       <div className="fd-form-designer">
-        {/* 左侧：控件面板 */}
+        {/* 左侧：控件面板 / 大纲树 */}
         <div className="fd-form-designer__palette">
-          <FieldPalette onAddField={handleAddField} />
+          <Tabs type="line" size="small" className="fd-form-designer__palette-tabs" lazyRender>
+            <TabPane tab="控件" itemKey="palette">
+              <FieldPalette onAddField={handleAddField} onAddTemplateField={handleAddTemplateField} />
+            </TabPane>
+            <TabPane tab="大纲" itemKey="outline">
+              <FormOutline
+                fields={fields}
+                selectedKey={selectedKey}
+                onSelect={(key) => { setSelectedKey(key); scrollToField(key); }}
+              />
+            </TabPane>
+          </Tabs>
         </div>
 
         {/* 中间：画布 */}
-        <div className="fd-form-designer__canvas">
+        <div className="fd-form-designer__canvas" ref={canvasRef}>
           <FormCanvas
             fields={fields}
             selectedKey={selectedKey}
@@ -491,6 +643,7 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
             onRemove={handleRemove}
             onCopy={handleCopy}
             onDropNew={handleDropNew}
+            onContextMenu={openMenu}
           />
         </div>
 
@@ -517,6 +670,84 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
           )}
         </div>
       </div>
+
+      {/* 画布右键菜单 */}
+      {menu && menuField && (
+        <div
+          className="fd-form-menu"
+          style={{ left: menu.x, top: menu.y }}
+          role="menu"
+          onMouseDown={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <button type="button" className="fd-form-menu__item" onClick={() => { handleMoveSibling(menu.key, -1); setMenu(null); }}>
+            <ArrowUp size={13} /> 上移
+          </button>
+          <button type="button" className="fd-form-menu__item" onClick={() => { handleMoveSibling(menu.key, 1); setMenu(null); }}>
+            <ArrowDown size={13} /> 下移
+          </button>
+          <div className="fd-form-menu__divider" />
+          <button type="button" className="fd-form-menu__item" onClick={() => { copyToClipboard(menu.key); setMenu(null); }}>
+            <CopyIcon size={13} /> 复制 <span className="fd-form-menu__hint">Ctrl+C</span>
+          </button>
+          <button
+            type="button"
+            className="fd-form-menu__item"
+            disabled={!hasClipboard}
+            onClick={() => { pasteFromClipboard(menu.key); setMenu(null); }}
+          >
+            <ClipboardPaste size={13} /> 粘贴到其后 <span className="fd-form-menu__hint">Ctrl+V</span>
+          </button>
+          <button type="button" className="fd-form-menu__item" onClick={() => { handleCopy(menu.key); setMenu(null); }}>
+            <CopyPlus size={13} /> 创建副本
+          </button>
+          <button
+            type="button"
+            className="fd-form-menu__item"
+            onClick={() => { setTplDraft({ key: menu.key, name: menuField.label || '' }); setMenu(null); }}
+          >
+            <BookmarkPlus size={13} /> 存为我的模板
+          </button>
+          {canToggleRequired(menuField.type) && (
+            <>
+              <div className="fd-form-menu__divider" />
+              <button type="button" className="fd-form-menu__item" onClick={() => { toggleRequired(menu.key); setMenu(null); }}>
+                <Asterisk size={13} /> {menuField.required ? '取消必填' : '设为必填'}
+              </button>
+            </>
+          )}
+          <div className="fd-form-menu__divider" />
+          <button
+            type="button"
+            className="fd-form-menu__item fd-form-menu__item--danger"
+            onClick={() => { handleRemove(menu.key); setMenu(null); }}
+          >
+            <Trash2 size={13} /> 删除 <span className="fd-form-menu__hint">Del</span>
+          </button>
+        </div>
+      )}
+
+      {/* 存为我的模板 */}
+      <Modal
+        title="存为我的模板"
+        visible={tplDraft != null}
+        onCancel={() => setTplDraft(null)}
+        onOk={saveAsTemplate}
+        okText="保存"
+        cancelText="取消"
+        width={400}
+        closeOnEsc
+      >
+        <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 8 }}>
+          将当前字段（含校验、联动等全部配置）保存到本地模板库，插入时自动重新生成字段标识。
+        </Typography.Text>
+        <Input
+          value={tplDraft?.name ?? ''}
+          onChange={(v) => setTplDraft((prev) => (prev ? { ...prev, name: v } : prev))}
+          placeholder="模板名称"
+          onEnterPress={saveAsTemplate}
+        />
+      </Modal>
     </div>
   );
 }

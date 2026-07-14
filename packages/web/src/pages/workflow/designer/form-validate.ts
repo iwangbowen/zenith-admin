@@ -51,6 +51,11 @@ export function validateFormSchema(fields: WorkflowFormField[]): FormIssue[] {
       }
     }
 
+    // 级联选择：树形选项不能为空
+    if (f.type === 'cascader' && (f.cascaderOptions?.length ?? 0) === 0) {
+      issues.push({ level: 'error', fieldKey: f.key, fieldLabel: label, message: '级联选项为空' });
+    }
+
     if (f.min !== undefined && f.max !== undefined && f.min > f.max) {
       issues.push({ level: 'error', fieldKey: f.key, fieldLabel: label, message: '最小值大于最大值' });
     }
@@ -108,6 +113,25 @@ export function validateFormSchema(fields: WorkflowFormField[]): FormIssue[] {
     // 标记公式引用自身（无意义）
     if (f.type === 'formula' && f.formula && formulaReferencesKey(f.formula, f.key)) {
       issues.push({ level: 'warning', fieldKey: f.key, fieldLabel: label, message: '公式引用了自身' });
+    }
+
+    // 默认值公式 / 校验公式：引用存在性 + 表达式有效性
+    const extraFormulas: Array<[string | undefined, string]> = [
+      [f.defaultFormula, '默认值公式'],
+      [f.validationFormula, '校验公式'],
+    ];
+    for (const [expr, name] of extraFormulas) {
+      if (!expr?.trim()) continue;
+      const refs = Array.from(expr.matchAll(/\{([^}]+)\}/g), (m) => m[1].trim());
+      const unknown = refs.filter((rk) => {
+        const base = rk.split('.')[0];
+        return base !== f.key && !keys.has(base);
+      });
+      if (unknown.length > 0) {
+        issues.push({ level: 'error', fieldKey: f.key, fieldLabel: label, message: `${name}引用不存在的字段：${unknown.join('、')}` });
+      } else if (evalFormula(expr, Object.fromEntries(refs.map((rk) => [rk, 1])), 2) === null) {
+        issues.push({ level: 'error', fieldKey: f.key, fieldLabel: label, message: `${name}表达式无效` });
+      }
     }
 
     // 跨字段比较校验：目标字段必须存在且不能是自身

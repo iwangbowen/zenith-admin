@@ -1,9 +1,9 @@
 // ─── 基础信息设置（名称/字段标识/提示/必填/帮助/默认值，拆分自 FieldConfigPanel.tsx）───
 import { useState, useEffect } from 'react';
-import { Button, Input, InputNumber, Switch, Typography, Tooltip, Dropdown } from '@douyinfe/semi-ui';
+import { Button, Input, InputNumber, Switch, Typography, Tooltip, Dropdown, TextArea } from '@douyinfe/semi-ui';
 import { Wand2 } from 'lucide-react';
 import type { WorkflowFormField } from '@zenith/shared';
-import { FIELD_KEY_PATTERN, DYNAMIC_DEFAULT_TOKENS, slugifyToKey, uniqueKey } from './helpers';
+import { FIELD_KEY_PATTERN, DYNAMIC_DEFAULT_TOKENS, slugifyToKey, uniqueKey, formulaError } from './helpers';
 import type { FieldTypeFlags } from './field-type-flags';
 
 interface BasicInfoSectionProps {
@@ -11,11 +11,13 @@ interface BasicInfoSectionProps {
   flags: FieldTypeFlags;
   otherKeys: Set<string>;
   duplicateKey: boolean;
+  /** 全量展平字段（默认值公式引用校验用） */
+  flatFields: WorkflowFormField[];
   onChange: (updates: Partial<WorkflowFormField>) => void;
   onRenameKey?: (newKey: string) => void;
 }
 
-export function BasicInfoSection({ field, flags, otherKeys, duplicateKey, onChange, onRenameKey }: Readonly<BasicInfoSectionProps>) {
+export function BasicInfoSection({ field, flags, otherKeys, duplicateKey, flatFields, onChange, onRenameKey }: Readonly<BasicInfoSectionProps>) {
   const { supportsKeyEdit, isDescription, isSerialNumber, isLayout, isSwitch, isSlider, isFormula, isFormatted, isAmountOrNumber } = flags;
 
   // 字段标识(key) 本地草稿：失焦/回车时校验并提交重命名
@@ -165,6 +167,29 @@ export function BasicInfoSection({ field, flags, otherKeys, duplicateKey, onChan
                 placeholder="留空表示无默认值"
                 style={{ width: '100%' }}
               />
+            </div>
+          )}
+
+          {/* 默认值公式：打开表单时按其它字段默认值求值一次（与静态默认值二选一，公式优先） */}
+          {(field.type === 'text' || isAmountOrNumber) && (
+            <div className="fd-form-config__field">
+              <Typography.Text strong size="small">默认值公式</Typography.Text>
+              <TextArea
+                value={field.defaultFormula ?? ''}
+                onChange={(v) => onChange({ defaultFormula: v || undefined })}
+                placeholder={'如 {price}*{qty}、CONCAT({dept},"-",{name})'}
+                rows={2}
+              />
+              {(() => {
+                const err = field.defaultFormula ? formulaError(field.defaultFormula, flatFields, field.key) : null;
+                return err
+                  ? <Typography.Text type="danger" size="small">{err}</Typography.Text>
+                  : (
+                    <Typography.Text type="tertiary" size="small">
+                      打开表单时按各字段默认值计算一次；已有值（草稿恢复）不覆盖
+                    </Typography.Text>
+                  );
+              })()}
             </div>
           )}
     </>

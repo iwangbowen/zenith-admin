@@ -108,8 +108,8 @@ export function createLocalFieldKey(type: WorkflowFormFieldType): string {
 
 // 可作为显隐条件依赖的字段类型
 export const CONDITION_FIELD_TYPES = new Set<WorkflowFormFieldType>([
-  'text', 'textarea', 'number', 'amount', 'slider',
-  'select', 'multiSelect', 'radio', 'checkbox', 'switch', 'dictSelect',
+  'text', 'textarea', 'number', 'amount', 'slider', 'nps',
+  'select', 'multiSelect', 'radio', 'checkbox', 'switch', 'dictSelect', 'cascader',
   'date', 'dateRange',
 ]);
 
@@ -131,9 +131,9 @@ export const NO_VALUE_OPERATORS = new Set<string>(['isEmpty', 'notEmpty']);
 // 按依赖字段类型给出合适的操作符
 export function operatorsForField(f: WorkflowFormField | undefined) {
   switch (f?.type) {
-    case 'number': case 'amount': case 'slider':
+    case 'number': case 'amount': case 'slider': case 'nps':
       return [VISIBILITY_OP.eq, VISIBILITY_OP.neq, VISIBILITY_OP.gt, VISIBILITY_OP.lt, VISIBILITY_OP.gte, VISIBILITY_OP.lte, VISIBILITY_OP.isEmpty, VISIBILITY_OP.notEmpty];
-    case 'multiSelect': case 'checkbox':
+    case 'multiSelect': case 'checkbox': case 'cascader':
       return [VISIBILITY_OP.contains, VISIBILITY_OP.isEmpty, VISIBILITY_OP.notEmpty];
     case 'select': case 'radio': case 'dictSelect':
       return [VISIBILITY_OP.eq, VISIBILITY_OP.neq, VISIBILITY_OP.in, VISIBILITY_OP.isEmpty, VISIBILITY_OP.notEmpty];

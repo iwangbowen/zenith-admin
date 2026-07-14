@@ -11,6 +11,8 @@ import {
   formulaReferencesKey,
   findFieldDependents,
   pruneFieldReferences,
+  moveFieldSibling,
+  cloneFieldWithNewKeys,
 } from './form-tree';
 
 /** 构造嵌套树：顶层 text + 分栏(row) 内含 amount，明细(detail) 内含 price */
@@ -143,5 +145,39 @@ describe('form-tree 引用维护', () => {
     expect(b?.daysFromKey).toBeUndefined();
     // 公式保留，交由 validateFormSchema 提示
     expect(findField(next, 'total')?.formula).toBe('SUM({a})');
+  });
+});
+
+describe('form-tree 同级移动与克隆', () => {
+  it('moveFieldSibling 顶层上移/下移，边界与未命中原样返回', () => {
+    const tree = makeTree();
+    const down = moveFieldSibling(tree, 'name', 1);
+    expect(down.map((f) => f.key)).toEqual(['layout', 'name', 'items']);
+    const up = moveFieldSibling(down, 'name', -1);
+    expect(up.map((f) => f.key)).toEqual(['name', 'layout', 'items']);
+    expect(moveFieldSibling(tree, 'name', -1)).toBe(tree);   // 顶部上移无操作
+    expect(moveFieldSibling(tree, 'missing', 1)).toBe(tree); // 未命中无操作
+  });
+
+  it('moveFieldSibling 在容器内部同级移动', () => {
+    const tree = makeTree();
+    // 给分栏第一列补第二个字段再互换
+    const withTwo = insertField(tree, { container: 'col', rowKey: 'layout', colIndex: 0 }, { key: 'memo', label: '备注', type: 'text' });
+    const moved = moveFieldSibling(withTwo, 'memo', -1);
+    const row = findField(moved, 'layout');
+    expect(row?.columns?.[0].fields.map((f) => f.key)).toEqual(['memo', 'amount']);
+  });
+
+  it('cloneFieldWithNewKeys 深拷贝并重置嵌套 key', () => {
+    const tree = makeTree();
+    const detail = findField(tree, 'items');
+    const clone = cloneFieldWithNewKeys(detail as WorkflowFormField);
+    expect(clone.key).not.toBe('items');
+    expect(clone.label).toBe('明细 副本');
+    expect(clone.children?.[0].key).not.toBe('price');
+    expect(clone.children?.[0].label).toBe('单价');
+    // withSuffix=false 保留原名称
+    const verbatim = cloneFieldWithNewKeys(detail as WorkflowFormField, false);
+    expect(verbatim.label).toBe('明细');
   });
 });

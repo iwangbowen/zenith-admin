@@ -17,6 +17,8 @@ interface FormCanvasProps {
   onRemove: (key: string) => void;
   onCopy: (key: string) => void;
   onDropNew: (type: WorkflowFormFieldType, target: DropTarget) => void;
+  /** 字段右键菜单（客户端坐标），由设计器渲染菜单 */
+  onContextMenu?: (key: string, x: number, y: number) => void;
 }
 
 const getFieldInfo = (type: WorkflowFormFieldType) => FORM_FIELD_TYPES.find(t => t.type === type);
@@ -48,9 +50,17 @@ export default function FormCanvas({
   onRemove,
   onCopy,
   onDropNew,
+  onContextMenu,
 }: Readonly<FormCanvasProps>) {
   // 当前高亮的拖放区标识（如 'root:before:<key>' / 'col:<rowKey>:<i>' / 'group:<key>'）
   const [hint, setHint] = useState<string | null>(null);
+
+  const contextMenu = useCallback((e: React.MouseEvent, key: string) => {
+    if (!onContextMenu) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onContextMenu(key, e.clientX, e.clientY);
+  }, [onContextMenu]);
 
   const dispatchDrop = useCallback((e: React.DragEvent, target: DropTarget) => {
     e.preventDefault();
@@ -96,6 +106,7 @@ export default function FormCanvas({
         draggable
         onClick={(e) => { e.stopPropagation(); onSelect(field.key); }}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onSelect(field.key); } }}
+        onContextMenu={(e) => contextMenu(e, field.key)}
         onDragStart={(e) => startDrag(e, field.key)}
         onDragEnd={endDrag}
         onDragOver={(e) => overZone(e, id)}
@@ -191,11 +202,20 @@ export default function FormCanvas({
     );
   };
 
-  // ─── 明细子字段预览（只读 chip） ────────────────────────────────────
+  // ─── 明细子字段预览（可点选配置） ────────────────────────────────────
   const renderDetail = (field: WorkflowFormField) => (
     <div className="fd-form-canvas__item-meta" style={{ flexWrap: 'wrap' }}>
       {(field.children ?? []).map(child => (
-        <Tag key={child.key} color="blue" size="small">{child.label}</Tag>
+        <span key={child.key} data-field-key={child.key}>
+          <Tag
+            color={selectedKey === child.key ? 'light-blue' : 'blue'}
+            size="small"
+            style={{ cursor: 'pointer' }}
+            onClick={(e) => { e.stopPropagation(); onSelect(child.key); }}
+          >
+            {child.label}
+          </Tag>
+        </span>
       ))}
     </div>
   );
@@ -227,6 +247,7 @@ export default function FormCanvas({
         draggable
         onClick={(e) => { e.stopPropagation(); onSelect(field.key); }}
         onKeyDown={(e) => { if (e.key === 'Enter') onSelect(field.key); }}
+        onContextMenu={(e) => contextMenu(e, field.key)}
         onDragStart={(e) => startDrag(e, field.key)}
         onDragEnd={endDrag}
         onDragOver={(e) => overZone(e, beforeId)}

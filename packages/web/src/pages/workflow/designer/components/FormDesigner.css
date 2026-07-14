@@ -64,6 +64,214 @@
   background: var(--semi-color-bg-1);
 }
 
+/* 左侧面板 Tabs（控件 / 大纲） */
+.fd-form-designer__palette-tabs .semi-tabs-bar {
+  padding: 0 12px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--semi-color-bg-1);
+}
+
+.fd-form-designer__palette-tabs .semi-tabs-content {
+  padding: 0;
+}
+
+/* 大纲树 */
+.fd-form-outline {
+  padding: 8px 4px;
+}
+
+.fd-form-outline--empty {
+  padding: 24px 12px;
+  text-align: center;
+}
+
+.fd-form-outline__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+}
+
+.fd-form-outline__icon {
+  flex-shrink: 0;
+  color: var(--semi-color-text-2);
+}
+
+.fd-form-outline__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fd-form-outline__required {
+  color: var(--semi-color-danger);
+  font-weight: 600;
+}
+
+/* 画布右键菜单 */
+.fd-form-menu {
+  position: fixed;
+  z-index: 1080;
+  min-width: 176px;
+  padding: 4px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: var(--semi-border-radius-medium);
+  background: var(--semi-color-bg-3);
+  box-shadow: var(--semi-shadow-elevated);
+}
+
+.fd-form-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: var(--semi-border-radius-small);
+  background: transparent;
+  color: var(--semi-color-text-0);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fd-form-menu__item:hover:not(:disabled) {
+  background: var(--semi-color-fill-0);
+}
+
+.fd-form-menu__item:disabled {
+  color: var(--semi-color-disabled-text);
+  cursor: not-allowed;
+}
+
+.fd-form-menu__item--danger {
+  color: var(--semi-color-danger);
+}
+
+.fd-form-menu__item--danger:hover:not(:disabled) {
+  background: var(--semi-color-danger-light-default);
+}
+
+.fd-form-menu__hint {
+  margin-left: auto;
+  color: var(--semi-color-text-3);
+  font-size: 11px;
+}
+
+.fd-form-menu__divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--semi-color-border);
+}
+
+/* 控件面板「我的模板」行（模板按钮 + 删除角标） */
+.fd-form-palette__tpl {
+  position: relative;
+}
+
+.fd-form-palette__tpl .fd-form-palette__item {
+  width: 100%;
+}
+
+.fd-form-palette__tpl-del {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--semi-color-fill-1);
+  color: var(--semi-color-text-2);
+  cursor: pointer;
+}
+
+.fd-form-palette__tpl:hover .fd-form-palette__tpl-del {
+  display: inline-flex;
+}
+
+.fd-form-palette__tpl-del:hover {
+  background: var(--semi-color-danger-light-default);
+  color: var(--semi-color-danger);
+}
+
+/* 表单模板库画廊 */
+.fd-tpl-gallery {
+  display: flex;
+  height: 560px;
+}
+
+.fd-tpl-gallery__list {
+  width: 264px;
+  flex-shrink: 0;
+  padding: 12px;
+  border-right: 1px solid var(--semi-color-border);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fd-tpl-gallery__card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: var(--semi-border-radius-medium);
+  background: var(--semi-color-bg-1);
+  text-align: left;
+  cursor: pointer;
+}
+
+.fd-tpl-gallery__card:hover {
+  border-color: var(--semi-color-primary);
+}
+
+.fd-tpl-gallery__card--active {
+  border-color: var(--semi-color-primary);
+  background: var(--semi-color-primary-light-default);
+}
+
+.fd-tpl-gallery__card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fd-tpl-gallery__card-desc {
+  display: block;
+}
+
+.fd-tpl-gallery__preview {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.fd-tpl-gallery__preview-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.fd-tpl-gallery__preview-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  background: var(--semi-color-fill-0);
+}
+
 .fd-form-designer__canvas {
   flex: 1;
   overflow-y: auto;
@@ -214,6 +422,7 @@
 
 .fd-form-canvas__item--drop-target {
   border-top: 2px solid var(--semi-color-primary);
+  box-shadow: 0 -2px 0 0 var(--semi-color-primary-light-active);
 }
 
 .fd-form-canvas__item-grip {

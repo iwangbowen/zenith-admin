@@ -43,6 +43,8 @@ import {
   Link2,
   LayoutPanelTop,
   Footprints,
+  ListTree,
+  Gauge,
   type LucideIcon,
 } from 'lucide-react';
 import { BASIC_COMPARISON_OPERATOR_LABELS } from '@zenith/shared';
@@ -76,6 +78,7 @@ export const FORM_FIELD_TYPES: FormFieldTypeInfo[] = [
   { type: 'checkbox',     label: '复选框组', icon: SquareCheck,   group: '选择控件', description: '复选框（横向排列）' },
   { type: 'switch',       label: '开关',     icon: ToggleRight,   group: '选择控件', description: '是 / 否 开关' },
   { type: 'slider',       label: '滑块',     icon: SlidersHorizontal, group: '选择控件', description: '滑块数值选择' },
+  { type: 'cascader',     label: '级联选择', icon: ListTree,      group: '选择控件', description: '自定义多级树形选项' },
   { type: 'tags',         label: '标签',     icon: Tags,          group: '选择控件', description: '多标签录入' },
   { type: 'colorPicker',  label: '颜色',     icon: Palette,       group: '选择控件', description: '颜色选择器' },
 
@@ -87,6 +90,7 @@ export const FORM_FIELD_TYPES: FormFieldTypeInfo[] = [
   { type: 'password',     label: '密码',     icon: KeyRound,      group: '格式化控件', description: '密码输入（掩码）' },
   { type: 'pinCode',      label: '验证码',   icon: SquareAsterisk, group: '格式化控件', description: '定长验证码 / PIN 码' },
   { type: 'rate',         label: '评分',     icon: Star,          group: '格式化控件', description: '星级评分' },
+  { type: 'nps',          label: 'NPS 量表', icon: Gauge,         group: '格式化控件', description: '0-10 净推荐值打分' },
   { type: 'formula',      label: '公式',     icon: Sigma,         group: '格式化控件', description: '从其他字段自动计算' },
 
   // 系统组件（与当前系统集成）

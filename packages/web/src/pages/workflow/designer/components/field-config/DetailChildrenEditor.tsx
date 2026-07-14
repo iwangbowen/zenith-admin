@@ -1,5 +1,5 @@
 // ─── 明细子字段编辑器（拆分自 FieldConfigPanel.tsx）───
-import { Button, Input, Select, TagInput } from '@douyinfe/semi-ui';
+import { Button, Input, InputNumber, Select, TagInput, Tooltip } from '@douyinfe/semi-ui';
 import { Plus, Trash2 } from 'lucide-react';
 import type { WorkflowFormField, WorkflowFormFieldType } from '@zenith/shared';
 import { createLocalFieldKey } from './helpers';
@@ -74,6 +74,18 @@ export function DetailChildrenEditor({
               Σ
             </button>
           )}
+          <Tooltip content="列宽（px），留空自动均分">
+            <InputNumber
+              size="small"
+              value={child.detailColumnWidth}
+              onChange={(v) => updateChild(i, { detailColumnWidth: v === undefined || v === '' ? undefined : Number(v) })}
+              min={40}
+              max={800}
+              placeholder="宽"
+              hideButtons
+              style={{ width: 56 }}
+            />
+          </Tooltip>
           <button
             type="button"
             className={`fd-detail-children__sum ${child.unique ? 'fd-detail-children__sum--active' : ''}`}

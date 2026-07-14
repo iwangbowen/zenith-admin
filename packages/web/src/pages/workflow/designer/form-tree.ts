@@ -175,6 +175,77 @@ export function insertAfterKey(
   return out;
 }
 
+/** 在字段所处的同级数组内上移（dir=-1）/ 下移（dir=1）一位；到边界或未找到时原样返回 */
+export function moveFieldSibling(
+  fields: WorkflowFormField[],
+  key: string,
+  dir: -1 | 1,
+): WorkflowFormField[] {
+  const swapIn = (arr: WorkflowFormField[]): WorkflowFormField[] | null => {
+    const idx = arr.findIndex((f) => f.key === key);
+    if (idx >= 0) {
+      const to = idx + dir;
+      if (to < 0 || to >= arr.length) return null;
+      const copy = [...arr];
+      [copy[idx], copy[to]] = [copy[to], copy[idx]];
+      return copy;
+    }
+    let changed = false;
+    const out = arr.map((f) => {
+      if (changed) return f;
+      let nf = f;
+      if (f.columns) {
+        const cols = f.columns.map((col) => {
+          if (changed) return col;
+          const r = swapIn(col.fields);
+          if (r) { changed = true; return { ...col, fields: r }; }
+          return col;
+        });
+        if (changed) nf = { ...nf, columns: cols };
+      }
+      if (!changed && f.panes) {
+        const panes = f.panes.map((pane) => {
+          if (changed) return pane;
+          const r = swapIn(pane.fields);
+          if (r) { changed = true; return { ...pane, fields: r }; }
+          return pane;
+        });
+        if (changed) nf = { ...nf, panes: panes };
+      }
+      if (!changed && f.children) {
+        const r = swapIn(f.children);
+        if (r) { changed = true; nf = { ...nf, children: r }; }
+      }
+      return nf;
+    });
+    return changed ? out : null;
+  };
+  return swapIn(fields) ?? fields;
+}
+
+let cloneCounter = 0;
+
+/** 生成字段 key（类型前缀 + 时间戳 + 计数 + 随机段） */
+export function generateFieldKey(type: WorkflowFormFieldType): string {
+  cloneCounter++;
+  const random = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2, 10);
+  return `${type}_${Date.now()}_${cloneCounter}_${random.replace(/-/g, '').slice(0, 8)}`;
+}
+
+/** 深拷贝字段并为自身及所有嵌套子字段重新生成 key（复制/粘贴共用）；withSuffix 时名称追加「副本」 */
+export function cloneFieldWithNewKeys(field: WorkflowFormField, withSuffix = true): WorkflowFormField {
+  const copy: WorkflowFormField = structuredClone(field);
+  const reassign = (f: WorkflowFormField) => {
+    f.key = generateFieldKey(f.type);
+    f.children?.forEach(reassign);
+    f.columns?.forEach((col) => col.fields.forEach(reassign));
+    f.panes?.forEach((pane) => pane.fields.forEach(reassign));
+  };
+  reassign(copy);
+  if (withSuffix && field.label) copy.label = `${field.label} 副本`;
+  return copy;
+}
+
 /** 判断 key 是否在 ancestorKey 的子树内（防止把容器拖进自身） */
 export function isDescendant(fields: WorkflowFormField[], ancestorKey: string, key: string): boolean {
   const anc = findField(fields, ancestorKey);
@@ -236,6 +307,8 @@ export function renameFieldKey(fields: WorkflowFormField[], oldKey: string, newK
     }
     if (nf.daysFromKey === oldKey) nf.daysFromKey = newKey;
     if (nf.formula) nf.formula = replaceFormulaKey(nf.formula, oldKey, newKey);
+    if (nf.defaultFormula) nf.defaultFormula = replaceFormulaKey(nf.defaultFormula, oldKey, newKey);
+    if (nf.validationFormula) nf.validationFormula = replaceFormulaKey(nf.validationFormula, oldKey, newKey);
     if (nf.compareRules) nf.compareRules = nf.compareRules.map((r) => (r.field === oldKey ? { ...r, field: newKey } : r));
     if (nf.columns) nf.columns = nf.columns.map((c) => ({ ...c, fields: renameFieldKey(c.fields, oldKey, newKey) }));
     if (nf.panes) nf.panes = nf.panes.map((p) => ({ ...p, fields: renameFieldKey(p.fields, oldKey, newKey) }));
@@ -269,6 +342,8 @@ export function findFieldDependents(fields: WorkflowFormField[], key: string): F
     if (f.autoFill?.targets?.includes(key)) reasons.push('联动赋值目标');
     if (f.daysFromKey === key) reasons.push('日期天数联动');
     if (formulaReferencesKey(f.formula, key)) reasons.push('公式引用');
+    if (formulaReferencesKey(f.defaultFormula, key)) reasons.push('默认值公式引用');
+    if (formulaReferencesKey(f.validationFormula, key)) reasons.push('校验公式引用');
     if (f.compareRules?.some((r) => r.field === key)) reasons.push('比较校验');
     if (reasons.length > 0) out.push({ field: f, reasons });
   }

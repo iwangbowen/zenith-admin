@@ -19,6 +19,7 @@ import { flattenAllFields } from '../designer/form-tree';
 import AppModal from '@/components/AppModal';
 import FieldDependencyGraph from '../designer/components/FieldDependencyGraph';
 import FormDesigner, { type FormHistoryControls } from '../designer/components/FormDesigner';
+import FormTemplateGallery from '../designer/components/FormTemplateGallery';
 import WorkflowFormRenderer from '../designer/components/WorkflowFormRenderer';
 import { useSaveWorkflowForm, useWorkflowFormDetail, workflowFormKeys } from '@/hooks/queries/workflow-forms';
 
@@ -128,6 +129,7 @@ export default function WorkflowFormInlineEditor({
   const [jsonDraft, setJsonDraft] = useState('');
   const [healthVisible, setHealthVisible] = useState(false);
   const [graphVisible, setGraphVisible] = useState(false);
+  const [galleryVisible, setGalleryVisible] = useState(false);
   const [batchVisible, setBatchVisible] = useState(false);
   const [batchPatch, setBatchPatch] = useState<Partial<WorkflowFormField>>({});
   const [history, setHistory] = useState<FormHistoryControls | null>(null);
@@ -299,6 +301,18 @@ export default function WorkflowFormInlineEditor({
     Toast.success(`已插入「${tpl.label}」模板`);
   };
 
+  // 应用完整表单模板（字段 + 表单设置，均进撤销栈）
+  const applyFormTemplate = (tplFields: WorkflowFormField[], tplSettings: WorkflowFormSettings) => {
+    if (history) {
+      history.commitSettings(tplSettings);
+      history.commitFields(tplFields);
+    } else {
+      setSettings(tplSettings);
+      setFields(tplFields);
+    }
+    Toast.success('已应用表单模板，可撤销恢复');
+  };
+
   const applyBatch = () => {
     if (Object.keys(batchPatch).length === 0) { setBatchVisible(false); return; }
     commitFields(applyBatchToFields(fields, batchPatch));
@@ -408,6 +422,9 @@ export default function WorkflowFormInlineEditor({
           position="bottomLeft"
           render={(
             <Dropdown.Menu>
+              <Dropdown.Item onClick={() => setGalleryVisible(true)}>浏览模板库…</Dropdown.Item>
+              <Dropdown.Divider />
+              <Dropdown.Title>插入字段组</Dropdown.Title>
               {FIELD_TEMPLATES.map((t) => (
                 <Dropdown.Item key={t.key} onClick={() => insertTemplate(t.key)}>{t.label}</Dropdown.Item>
               ))}
@@ -645,6 +662,14 @@ export default function WorkflowFormInlineEditor({
       >
         {graphVisible && <FieldDependencyGraph fields={fields} />}
       </AppModal>
+
+      {/* 表单模板库 */}
+      <FormTemplateGallery
+        visible={galleryVisible}
+        onCancel={() => setGalleryVisible(false)}
+        hasExistingFields={fields.length > 0}
+        onApply={applyFormTemplate}
+      />
 
       {/* 体检面板 */}
       <SideSheet

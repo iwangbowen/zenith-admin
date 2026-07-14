@@ -2957,6 +2957,8 @@ export type WorkflowFormFieldType =
   | 'userSelect'    // 用户选择器（系统集成）
   | 'deptSelect'    // 部门选择器（系统集成）
   | 'dictSelect'    // 数据字典选择器（系统集成）
+  | 'cascader'      // 级联选择（树形选项，自定义层级）
+  | 'nps'           // NPS 净推荐值量表（0-10 打分）
   | 'detail'        // 明细/表格
   | 'description'   // 说明文字
   | 'serialNumber'  // 流水号
@@ -3006,6 +3008,13 @@ export interface WorkflowFormFieldPane {
   fields: WorkflowFormField[];
 }
 
+/** 级联选择（cascader）树形选项节点 */
+export interface WorkflowFormCascaderNode {
+  value: string;
+  label?: string;        // 显示文案，缺省取 value
+  children?: WorkflowFormCascaderNode[];
+}
+
 // 表单字段配置
 export interface WorkflowFormField {
   key: string;
@@ -3034,7 +3043,11 @@ export interface WorkflowFormField {
   serialPrefix?: string;           // 流水号前缀
   rateMax?: number;                // 评分上限（默认 5）
   formula?: string;                // 公式表达式，如 "{amount} * {days}"
+  defaultFormula?: string;         // 默认值公式：表单初始渲染时按各字段默认值求值一次（如 "{price}*{qty}"、CONCAT）
+  validationFormula?: string;      // 自定义校验公式：求值结果为真通过（如 "{end} > {start}"）
+  validationMessage?: string;      // 校验公式失败时的提示文案
   detailSummary?: boolean;         // 明细子列：是否在底部显示合计
+  detailColumnWidth?: number;      // 明细子列：列宽（px，缺省自动均分）
   // 校验规则
   minLength?: number;              // 文本最小长度
   maxLength?: number;              // 文本最大长度
@@ -3082,6 +3095,12 @@ export interface WorkflowFormField {
   relationDisplayField?: string;        // 关联记录展示用的表单字段 key（默认显示标题）
   // slider 滑块
   sliderMarks?: boolean;                // 是否显示刻度标记
+  // cascader 级联选择
+  cascaderOptions?: WorkflowFormCascaderNode[];  // 树形选项
+  cascaderChangeOnSelect?: boolean;              // 允许选中任意层级（默认仅叶子可选）
+  // nps 量表
+  npsMinLabel?: string;                 // 左端说明（如「完全不推荐」）
+  npsMaxLabel?: string;                 // 右端说明（如「强烈推荐」）
   // colorPicker 颜色选择器
   alpha?: boolean;                      // 是否支持透明度（rgba）
   // 字段级标签设置（覆盖表单级 settings）

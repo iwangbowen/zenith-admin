@@ -7,9 +7,9 @@ import type { CSSProperties, ReactNode } from 'react';
 import DOMPurify from 'dompurify';
 import { Form, Select, Button, Typography, Row, Col, Divider, Rating, Toast, withField, Input, InputNumber, DatePicker, Collapse, Tabs, Steps, RadioGroup } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
-import { Plus, Eraser, Trash2 } from 'lucide-react';
+import { Plus, Eraser, Trash2, Copy, ClipboardPaste } from 'lucide-react';
 import dayjs from 'dayjs';
-import type { WorkflowFormField, WorkflowFormFieldColumn, WorkflowFormFieldOptionItem, WorkflowFormFieldCompareRule, WorkflowRelationOption } from '@zenith/shared';
+import type { WorkflowFormField, WorkflowFormFieldColumn, WorkflowFormFieldOptionItem, WorkflowFormFieldCompareRule, WorkflowRelationOption, WorkflowFormCascaderNode } from '@zenith/shared';
 import { evalWorkflowFieldRuleGroup as evalRuleGroup, isWorkflowFieldVisible as isFieldVisible } from '@zenith/shared';
 import { CURRENCY_OPTIONS, toDateFnsToken, dateFormatHasTime } from '../form-types';
 import { evalFormula } from '../form-formula';
@@ -339,8 +339,59 @@ function DetailTableInput({ value, onChange, columns, disabled }: Readonly<Detai
   const setRows = (next: DetailRow[]) => onChange?.(next);
   const addRow = () => setRows([...rows, {}]);
   const removeRow = (idx: number) => setRows(rows.filter((_, i) => i !== idx));
+  const copyRow = (idx: number) => {
+    const next = [...rows];
+    next.splice(idx + 1, 0, structuredClone(rows[idx]));
+    setRows(next);
+  };
   const setCell = (idx: number, key: string, cellVal: unknown) =>
     setRows(rows.map((r, i) => (i === idx ? { ...r, [key]: cellVal } : r)));
+
+  // 剪贴板单元格 → 按列类型强转（数字/金额转 Number；select 按显示名或值匹配选项）
+  const coerceCell = (col: WorkflowFormField, raw: string): unknown => {
+    const text = raw.trim();
+    if (!text) return undefined;
+    if (col.type === 'number' || col.type === 'amount') {
+      const n = Number(text.replace(/[,¥￥\s]/g, ''));
+      return Number.isFinite(n) ? n : undefined;
+    }
+    if (col.type === 'select') {
+      const item = col.optionItems?.find((it) => it.label === text || it.value === text);
+      return item ? item.value : text;
+    }
+    return text;
+  };
+
+  // 从剪贴板粘贴（Excel/表格文本）：行按换行、单元格按制表符拆分，按列顺序追加
+  const pasteRows = async () => {
+    let text: string;
+    try {
+      text = await navigator.clipboard.readText();
+    } catch {
+      Toast.error('无法读取剪贴板，请检查浏览器权限');
+      return;
+    }
+    const lines = text.replace(/\r/g, '').split('\n').filter((l) => l.trim() !== '');
+    if (lines.length === 0) {
+      Toast.info('剪贴板没有可粘贴的内容');
+      return;
+    }
+    const parsed: DetailRow[] = lines.map((line) => {
+      const cells = line.split('\t');
+      const row: DetailRow = {};
+      columns.forEach((col, i) => {
+        const v = coerceCell(col, cells[i] ?? '');
+        if (v !== undefined) row[col.key] = v;
+      });
+      return row;
+    }).filter((row) => Object.keys(row).length > 0);
+    if (parsed.length === 0) {
+      Toast.info('未解析到有效数据（按列顺序、制表符分隔）');
+      return;
+    }
+    setRows([...rows, ...parsed]);
+    Toast.success(`已粘贴 ${parsed.length} 行明细`);
+  };
 
   const sumOf = (key: string) => rows.reduce((acc, r) => acc + (Number(r[key]) || 0), 0);
 
@@ -351,15 +402,22 @@ function DetailTableInput({ value, onChange, columns, disabled }: Readonly<Detai
   return (
     <div className="wf-detail-table" style={{ border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', overflow: 'hidden' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+        <colgroup>
+          <col style={{ width: 44 }} />
+          {columns.map((col) => (
+            <col key={col.key} style={col.detailColumnWidth ? { width: col.detailColumnWidth } : undefined} />
+          ))}
+          {!disabled && <col style={{ width: 84 }} />}
+        </colgroup>
         <thead>
           <tr style={{ background: 'var(--semi-color-fill-0)' }}>
-            <th style={{ width: 44, padding: '8px 10px', fontSize: 12, color: 'var(--semi-color-text-2)' }}>#</th>
+            <th style={{ padding: '8px 10px', fontSize: 12, color: 'var(--semi-color-text-2)' }}>#</th>
             {columns.map((col) => (
               <th key={col.key} style={{ padding: '8px 10px', textAlign: 'left', fontSize: 12, color: 'var(--semi-color-text-1)', fontWeight: 600 }}>
                 {col.label}
               </th>
             ))}
-            {!disabled && <th style={{ width: 56, padding: '8px 10px' }} />}
+            {!disabled && <th style={{ padding: '8px 10px' }} />}
           </tr>
         </thead>
         <tbody>
@@ -379,7 +437,8 @@ function DetailTableInput({ value, onChange, columns, disabled }: Readonly<Detai
                   </td>
                 ))}
                 {!disabled && (
-                  <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                  <td style={{ padding: '6px 4px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                    <Button theme="borderless" size="small" icon={<Copy size={13} />} onClick={() => copyRow(idx)} aria-label="复制明细行" title="复制该行" />
                     <Button type="danger" theme="borderless" size="small" icon={<Trash2 size={13} />} onClick={() => removeRow(idx)} aria-label="删除明细行" />
                   </td>
                 )}
@@ -400,8 +459,11 @@ function DetailTableInput({ value, onChange, columns, disabled }: Readonly<Detai
         </tbody>
       </table>
       {!disabled && (
-        <div style={{ padding: 8 }}>
+        <div style={{ padding: 8, display: 'flex', gap: 8 }}>
           <Button size="small" theme="light" icon={<Plus size={13} />} onClick={addRow}>添加明细行</Button>
+          <Button size="small" theme="light" icon={<ClipboardPaste size={13} />} onClick={() => void pasteRows()} title="从 Excel 复制后粘贴，按列顺序、制表符分隔">
+            从剪贴板粘贴
+          </Button>
         </div>
       )}
     </div>
@@ -414,6 +476,15 @@ const FormDetailTable = withField(DetailTableInput);
 function fieldLabelNode(field: WorkflowFormField, required: boolean | undefined = field.required): ReactNode {
   if (!required) return field.label;
   return <span>{field.label}<span style={{ color: 'var(--semi-color-danger)' }}> *</span></span>;
+}
+
+// 级联选项 → Semi Cascader treeData
+function toCascaderTreeData(nodes: WorkflowFormCascaderNode[]): Array<{ label: string; value: string; children?: ReturnType<typeof toCascaderTreeData> }> {
+  return nodes.map((n) => ({
+    label: n.label || n.value,
+    value: n.value,
+    ...(n.children?.length ? { children: toCascaderTreeData(n.children) } : {}),
+  }));
 }
 
 function flattenFields(fields: WorkflowFormField[]): WorkflowFormField[] {
@@ -626,10 +697,29 @@ export default function WorkflowFormRenderer({
   fields, initValues, getFormApi, onValueChange, readOnly, style, labelPosition = 'top', labelAlign, labelWidth,
 }: Readonly<RendererProps>) {
   const formApiRef = useRef<FormApi | null>(null);
-  const valuesRef = useRef<Record<string, unknown>>(initValues ?? {});
-  const [valuesState, setValuesState] = useState<Record<string, unknown>>(initValues ?? {});
 
   const all = useMemo(() => flattenFields(fields), [fields]);
+
+  // 默认值公式：挂载时按「静态默认值 + 外部初始值」求值一次注入（外部已给值/只读展示不覆盖）
+  const [enrichedInitValues] = useState<Record<string, unknown> | undefined>(() => {
+    if (readOnly) return initValues;
+    const withFormula = all.filter((f) => f.defaultFormula?.trim());
+    if (withFormula.length === 0) return initValues;
+    const base: Record<string, unknown> = {};
+    for (const f of all) if (f.defaultValue !== undefined) base[f.key] = f.defaultValue;
+    Object.assign(base, initValues);
+    const out: Record<string, unknown> = { ...(initValues ?? {}) };
+    for (const f of withFormula) {
+      if (out[f.key] !== undefined && out[f.key] !== null && out[f.key] !== '') continue;
+      const v = evalFormula(f.defaultFormula ?? '', base, f.precision ?? 2);
+      if (v !== null) out[f.key] = v;
+    }
+    return out;
+  });
+
+  const valuesRef = useRef<Record<string, unknown>>(enrichedInitValues ?? {});
+  const [valuesState, setValuesState] = useState<Record<string, unknown>>(enrichedInitValues ?? {});
+
   const formulaFields = useMemo(() => all.filter(f => f.type === 'formula' && f.formula), [all]);
   const dayFields = useMemo(() => all.filter(f => f.daysFromKey && (f.type === 'number' || f.type === 'amount')), [all]);
   const cascadeFields = useMemo(() => all.filter(f => f.optionsFrom), [all]);
@@ -717,7 +807,7 @@ export default function WorkflowFormRenderer({
         labelWidth={labelPosition === 'left' || labelPosition === 'inset' ? (labelWidth ?? 96) : undefined}
         allowEmpty
         style={style}
-        initValues={initValues}
+        initValues={enrichedInitValues}
         getFormApi={(api) => { formApiRef.current = api; getFormApi?.(api); }}
         onValueChange={handleValueChange}
       >
@@ -765,6 +855,19 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
       baseRules.push({ validator, message });
       numberRules.push({ validator, message });
     }
+  }
+  // 自定义校验公式：结果为真通过（公式不可计算时不阻塞提交）
+  if (field.validationFormula?.trim()) {
+    const vf = field.validationFormula;
+    const message = field.validationMessage || `${field.label}不满足校验条件`;
+    const validator = (_r: unknown, value: unknown, _cb: unknown, source?: Record<string, unknown>) => {
+      const ctx = { ...values, ...(source && typeof source === 'object' ? source : {}), [field.key]: value };
+      const res = evalFormula(vf, ctx, 6);
+      if (res === null) return true;
+      return typeof res === 'number' ? res !== 0 : Boolean(res);
+    };
+    baseRules.push({ validator, message });
+    numberRules.push({ validator, message });
   }
   const rules = baseRules.length > 0 ? baseRules : undefined;
   const helpText = field.helpText;
@@ -1161,6 +1264,42 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
           initValue={field.defaultValue}
           disabled={disabled}
           {...extraProps}
+        />
+      );
+    }
+
+    case 'cascader':
+      return (
+        <Form.Cascader
+          field={field.key} label={field.label}
+          placeholder={field.placeholder ?? `请选择${field.label}`}
+          treeData={toCascaderTreeData(field.cascaderOptions ?? [])}
+          changeOnSelect={field.cascaderChangeOnSelect}
+          initValue={field.defaultValue as string[] | undefined}
+          showClear
+          style={{ width: '100%' }} rules={rules} disabled={disabled}
+          {...extraProps}
+        />
+      );
+
+    case 'nps': {
+      const npsExtra = (field.npsMinLabel || field.npsMaxLabel)
+        ? (
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--semi-color-text-2)' }}>
+            <span>0 · {field.npsMinLabel ?? '完全不推荐'}</span>
+            <span>10 · {field.npsMaxLabel ?? '强烈推荐'}</span>
+          </div>
+        )
+        : undefined;
+      return (
+        <Form.RadioGroup
+          field={field.key} label={field.label}
+          type="button" buttonSize="middle"
+          initValue={typeof field.defaultValue === 'number' ? field.defaultValue : undefined}
+          rules={rules} disabled={disabled}
+          options={Array.from({ length: 11 }, (_, i) => ({ label: String(i), value: i }))}
+          {...extraProps}
+          extraText={npsExtra ?? (extraProps as { extraText?: ReactNode }).extraText}
         />
       );
     }

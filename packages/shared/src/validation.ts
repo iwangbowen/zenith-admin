@@ -27,7 +27,7 @@ import {
   REPORT_TRANSFER_STATUSES,
   REPORT_WIDGET_TYPES,
 } from './types';
-import type { WorkflowFormField, MpMenuButton, MpArticle } from './types';
+import type { WorkflowFormField, MpMenuButton, MpArticle, WorkflowFormCascaderNode } from './types';
 import {
   FILE_OBJECT_ACL_SUPPORT,
   PRESIGNED_EXPIRY_DEFAULT_SECONDS,
@@ -959,6 +959,14 @@ export const workflowFieldVisibilityConditionSchema = z.object({
   value: z.unknown(),
 });
 
+export const workflowFormCascaderNodeSchema: z.ZodType<WorkflowFormCascaderNode> = z.lazy(() =>
+  z.object({
+    value: z.string().min(1),
+    label: z.string().optional(),
+    children: z.array(workflowFormCascaderNodeSchema).optional(),
+  })
+);
+
 export const workflowFormFieldSchema: z.ZodType<WorkflowFormField> = z.lazy(() =>
   z.object({
     key: z.string().min(1, '字段 key 不能为空'),
@@ -970,7 +978,8 @@ export const workflowFormFieldSchema: z.ZodType<WorkflowFormField> = z.lazy(() =
       'phone', 'email', 'idCard', 'url', 'password', 'pinCode', 'rate', 'formula',
       'attachment', 'image',
       'region', 'signature', 'richtext',
-      'userSelect', 'deptSelect', 'dictSelect',
+      'userSelect', 'deptSelect', 'dictSelect', 'relation',
+      'cascader', 'nps',
       'detail', 'description', 'serialNumber',
       'row', 'divider', 'group', 'tabs', 'steps',
     ]),
@@ -1010,7 +1019,13 @@ export const workflowFormFieldSchema: z.ZodType<WorkflowFormField> = z.lazy(() =
     regionLevel: z.enum(['province', 'city', 'district']).optional(),
     dictCode: z.string().optional(),
     multiple: z.boolean().optional(),
+    relationDefinitionId: z.number().int().positive().optional(),
+    relationDisplayField: z.string().optional(),
     sliderMarks: z.boolean().optional(),
+    cascaderOptions: z.array(workflowFormCascaderNodeSchema).optional(),
+    cascaderChangeOnSelect: z.boolean().optional(),
+    npsMinLabel: z.string().optional(),
+    npsMaxLabel: z.string().optional(),
     alpha: z.boolean().optional(),
     labelPosition: z.enum(['top', 'left', 'inset']).optional(),
     labelAlign: z.enum(['left', 'right']).optional(),
@@ -1023,7 +1038,11 @@ export const workflowFormFieldSchema: z.ZodType<WorkflowFormField> = z.lazy(() =
     serialPrefix: z.string().optional(),
     rateMax: z.number().int().min(1).max(10).optional(),
     formula: z.string().optional(),
+    defaultFormula: z.string().optional(),
+    validationFormula: z.string().optional(),
+    validationMessage: z.string().optional(),
     detailSummary: z.boolean().optional(),
+    detailColumnWidth: z.number().int().min(40).max(800).optional(),
     minLength: z.number().int().min(0).optional(),
     maxLength: z.number().int().min(1).optional(),
     min: z.number().optional(),

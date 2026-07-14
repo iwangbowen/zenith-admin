@@ -1,20 +1,25 @@
-// ─── 校验规则设置（长度/范围/正则/唯一/跨字段比较，拆分自 FieldConfigPanel.tsx）───
-import { Input, InputNumber, Switch, Typography } from '@douyinfe/semi-ui';
+// ─── 校验规则设置（长度/范围/正则/唯一/跨字段比较/校验公式，拆分自 FieldConfigPanel.tsx）───
+import { Input, InputNumber, Switch, Typography, TextArea } from '@douyinfe/semi-ui';
 import type { WorkflowFormField } from '@zenith/shared';
-import { regexError } from './helpers';
+import { regexError, formulaError } from './helpers';
 import type { FieldTypeFlags } from './field-type-flags';
 import { CompareRulesEditor } from './CompareRulesEditor';
 
 interface ValidationSectionProps {
   field: WorkflowFormField;
   conditionFields: WorkflowFormField[];
+  /** 全量展平字段（校验公式引用校验用） */
+  flatFields: WorkflowFormField[];
   flags: FieldTypeFlags;
   onChange: (updates: Partial<WorkflowFormField>) => void;
 }
 
-export function ValidationSection({ field, conditionFields, flags, onChange }: Readonly<ValidationSectionProps>) {
+export function ValidationSection({ field, conditionFields, flatFields, flags, onChange }: Readonly<ValidationSectionProps>) {
   const { isText, isFormatted, isAmountOrNumber, supportsUnique, supportsCompare } = flags;
   const patternError = regexError(field.pattern);
+  const validationFormulaError = field.validationFormula
+    ? formulaError(field.validationFormula, flatFields, field.key)
+    : null;
   const textRangeError = field.minLength !== undefined && field.maxLength !== undefined && field.minLength > field.maxLength
     ? '最小长度不能大于最大长度'
     : null;
@@ -137,6 +142,34 @@ export function ValidationSection({ field, conditionFields, flags, onChange }: R
                 field={field}
                 candidates={conditionFields}
                 onChange={onChange}
+              />
+            </div>
+          )}
+
+          {/* 自定义校验公式：结果为真通过 */}
+          <div className="fd-form-config__field" style={{ marginTop: 12 }}>
+            <Typography.Text strong size="small">校验公式</Typography.Text>
+            <TextArea
+              value={field.validationFormula ?? ''}
+              onChange={(v) => onChange({ validationFormula: v || undefined })}
+              placeholder={'结果为真通过，如 {end} > {start}、LEN({code}) = 8'}
+              rows={2}
+            />
+            {validationFormulaError ? (
+              <Typography.Text type="danger" size="small">{validationFormulaError}</Typography.Text>
+            ) : (
+              <Typography.Text type="tertiary" size="small">
+                可引用其它字段与函数；留空不启用
+              </Typography.Text>
+            )}
+          </div>
+          {field.validationFormula && (
+            <div className="fd-form-config__field">
+              <Typography.Text strong size="small">校验失败提示</Typography.Text>
+              <Input
+                value={field.validationMessage ?? ''}
+                onChange={(v) => onChange({ validationMessage: v || undefined })}
+                placeholder={`如：${field.label}不满足条件`}
               />
             </div>
           )}

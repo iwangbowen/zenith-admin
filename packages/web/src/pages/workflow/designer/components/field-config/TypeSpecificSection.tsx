@@ -7,6 +7,7 @@ import { RelationDefinitionPicker, DictCodePicker } from './pickers';
 import { OptionsEditor } from './OptionsEditor';
 import { DetailChildrenEditor } from './DetailChildrenEditor';
 import { FormulaEditor } from './FormulaEditor';
+import { CascaderOptionsEditor } from './CascaderOptionsEditor';
 import { DateRangeLinkageEditor, DataSourceSourceEditor, AutoFillEditor, CascadeEditor } from './linkage-editors';
 
 interface TypeSpecificSectionProps {
@@ -23,11 +24,37 @@ export function TypeSpecificSection({ field, allFields, flatFields, flags, isRem
   const {
     hasOptions, supportsCascade, hasChildren, isDescription, isSerialNumber, isAmountOrNumber, isAmount,
     isDate, isFileType, isRate, isFormula, isTime, isRegion, isSwitch, isSlider, isTags, isColorPicker,
-    isPinCode, isAutoComplete, isDictSelect, isRelationSelect, isSystemSelect, allowOtherTypes,
+    isPinCode, isAutoComplete, isDictSelect, isRelationSelect, isSystemSelect, isCascader, isNps, allowOtherTypes,
   } = flags;
 
   return (
     <>
+          {/* 级联选择：树形选项 + 任意层级开关 */}
+          {isCascader && (
+            <CascaderOptionsEditor field={field} onChange={onChange} />
+          )}
+
+          {/* NPS 量表：两端说明文案 */}
+          {isNps && (
+            <>
+              <div className="fd-form-config__field">
+                <Typography.Text strong size="small">低分端说明（0）</Typography.Text>
+                <Input
+                  value={field.npsMinLabel ?? ''}
+                  onChange={(v) => onChange({ npsMinLabel: v || undefined })}
+                  placeholder="如：完全不推荐"
+                />
+              </div>
+              <div className="fd-form-config__field">
+                <Typography.Text strong size="small">高分端说明（10）</Typography.Text>
+                <Input
+                  value={field.npsMaxLabel ?? ''}
+                  onChange={(v) => onChange({ npsMaxLabel: v || undefined })}
+                  placeholder="如：强烈推荐"
+                />
+              </div>
+            </>
+          )}
           {/* 选项来源（select）：静态选项 / 远程数据源 */}
           {field.type === 'select' && (
             <DataSourceSourceEditor field={field} remote={isRemoteSource} onRemoteChange={setIsRemoteSource} onChange={onChange} />
