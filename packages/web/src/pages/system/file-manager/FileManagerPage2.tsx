@@ -18,6 +18,7 @@ import {
   Eye, EyeOff, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { request } from '@/utils/request';
+import { formatBytes as formatSize } from '@/utils/format';
 import { toQueryString, unwrap } from '@/lib/query';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config as appConfig } from '@/config';
@@ -52,14 +53,6 @@ interface FsEntry {
 
 type ViewMode = 'list' | 'grid';
 type ClipOp = 'copy' | 'cut';
-
-function formatSize(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log2(Math.max(bytes, 1)) / 10);
-  const idx = Math.min(i, units.length - 1);
-  return `${(bytes / 1024 ** idx).toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`;
-}
 
 function buildBreadcrumbs(p: string): { label: string; path: string }[] {
   if (!p || p === '/') return [{ label: '/', path: '/' }];

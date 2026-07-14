@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { config } from '../config';
 import redis from './redis';
+import { createRedisSessionStore } from './redis-session-store';
 
 export interface SessionInfo {
   tokenId: string;
@@ -16,18 +17,18 @@ export interface SessionInfo {
   lastActiveAt: Date;
 }
 
-/** Session TTL: 8 hours (seconds) */
-const SESSION_TTL = 8 * 60 * 60;
-
-/** lastActiveAt 回写节流间隔（毫秒）：TTL 每请求都续，活跃时间戳按此粒度更新 */
-const ACTIVE_AT_REFRESH_MS = 60_000;
-
-/** Blacklist TTL: 2 hours (matches accessToken lifetime, seconds) */
-const BLACKLIST_TTL = 2 * 60 * 60;
-
 const { keyPrefix } = config.redis;
 const SESSION_PREFIX = `${keyPrefix}session:`;
 const BLACKLIST_PREFIX = `${keyPrefix}blacklist:`;
+
+/**
+ * 管理员会话存储：TTL 8h（每次请求续期），黑名单 TTL 2h（与 accessToken 一致）。
+ * 底层通用实现见 redis-session-store.ts。
+ */
+const store = createRedisSessionStore<SessionInfo>({
+  sessionPrefix: SESSION_PREFIX,
+  blacklistPrefix: BLACKLIST_PREFIX,
+});
 
 /** Generate a unique token ID */
 export function generateTokenId(): string {
@@ -36,48 +37,22 @@ export function generateTokenId(): string {
 
 /** Register a new session on login */
 export async function registerSession(info: Omit<SessionInfo, 'lastActiveAt'>): Promise<void> {
-  const session: SessionInfo = { ...info, lastActiveAt: new Date() };
-  await redis.set(
-    `${SESSION_PREFIX}${info.tokenId}`,
-    JSON.stringify(session),
-    'EX',
-    SESSION_TTL,
-  );
+  await store.register(info);
 }
 
 /** Refresh session activity timestamp and reset TTL. Returns true if session existed, false if not found. */
 export async function touchSession(tokenId: string): Promise<boolean> {
-  const key = `${SESSION_PREFIX}${tokenId}`;
-  // GETEX 单次往返完成读取 + TTL 续期（替代 GET+SET 两次往返）
-  const raw = await redis.getex(key, 'EX', SESSION_TTL);
-  if (!raw) return false;
-  const session: SessionInfo = JSON.parse(raw);
-  // lastActiveAt 仅按分钟级精度回写，避免每个请求都 JSON.stringify + SET
-  const lastActive = new Date(session.lastActiveAt).getTime();
-  if (!Number.isFinite(lastActive) || Date.now() - lastActive >= ACTIVE_AT_REFRESH_MS) {
-    session.lastActiveAt = new Date();
-    // XX：仅当 key 仍存在时写入，避免与 forceLogout 的 del 竞争后复活会话
-    await redis.set(key, JSON.stringify(session), 'EX', SESSION_TTL, 'XX');
-  }
-  return true;
+  return store.touch(tokenId);
 }
 
 /** Check if a token is blacklisted */
 export async function isTokenBlacklisted(tokenId: string): Promise<boolean> {
-  const result = await redis.exists(`${BLACKLIST_PREFIX}${tokenId}`);
-  return result === 1;
+  return store.isBlacklisted(tokenId);
 }
 
 /** Force logout a session by tokenId */
 export async function forceLogout(tokenId: string): Promise<boolean> {
-  const key = `${SESSION_PREFIX}${tokenId}`;
-  const raw = await redis.get(key);
-  if (!raw) return false;
-  await Promise.all([
-    redis.set(`${BLACKLIST_PREFIX}${tokenId}`, '1', 'EX', BLACKLIST_TTL),
-    redis.del(key),
-  ]);
-  return true;
+  return store.forceLogout(tokenId);
 }
 
 /** Force logout all sessions belonging to a specific user */
@@ -89,54 +64,27 @@ export async function forceLogoutAllByUser(userId: number): Promise<string[]> {
 export async function forceLogoutAllByUsers(userIds: number[]): Promise<string[]> {
   if (userIds.length === 0) return [];
   const idSet = new Set(userIds);
-  const sessions = await getOnlineSessions();
-  const targets = sessions.filter((s) => idSet.has(s.userId));
-  if (targets.length === 0) return [];
-  const pipeline = redis.pipeline();
-  for (const s of targets) {
-    pipeline.set(`${BLACKLIST_PREFIX}${s.tokenId}`, '1', 'EX', BLACKLIST_TTL);
-    pipeline.del(`${SESSION_PREFIX}${s.tokenId}`);
-  }
-  await pipeline.exec();
-  return targets.map((s) => s.tokenId);
+  return store.forceLogoutMatching((s) => idSet.has(s.userId));
 }
 
 /** Remove session (normal logout or token expired) */
 export async function removeSession(tokenId: string): Promise<void> {
-  await redis.del(`${SESSION_PREFIX}${tokenId}`);
+  await store.remove(tokenId);
 }
 
 /** Get a single session by tokenId */
 export async function getSession(tokenId: string): Promise<SessionInfo | null> {
-  const raw = await redis.get(`${SESSION_PREFIX}${tokenId}`);
-  if (!raw) return null;
-  const s = JSON.parse(raw) as SessionInfo;
-  s.loginAt = new Date(s.loginAt);
-  s.lastActiveAt = new Date(s.lastActiveAt);
-  return s;
+  return store.get(tokenId);
 }
 
 /** Get all online sessions */
 export async function getOnlineSessions(): Promise<SessionInfo[]> {
-  const keys = await scanKeys(`${SESSION_PREFIX}*`);
-  if (keys.length === 0) return [];
-  const values = await redis.mget(...keys);
-  return values
-    .filter((v): v is string => v !== null)
-    .map((v) => {
-      const s = JSON.parse(v) as SessionInfo;
-      // Parse date strings back to Date objects
-      s.loginAt = new Date(s.loginAt);
-      s.lastActiveAt = new Date(s.lastActiveAt);
-      return s;
-    })
-    .sort((a, b) => b.loginAt.getTime() - a.loginAt.getTime());
+  return store.getAll();
 }
 
 /** Get online session count */
 export async function getOnlineCount(): Promise<number> {
-  const keys = await scanKeys(`${SESSION_PREFIX}*`);
-  return keys.length;
+  return store.count();
 }
 
 /**
@@ -146,18 +94,6 @@ export async function getOnlineCount(): Promise<number> {
 export async function cleanExpiredSessions(): Promise<number> {
   // Redis automatically removes keys past their TTL — nothing to do here
   return 0;
-}
-
-/** Scan all keys matching a pattern using SCAN (safe for production) */
-async function scanKeys(pattern: string): Promise<string[]> {
-  const keys: string[] = [];
-  let cursor = '0';
-  do {
-    const [nextCursor, batch] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
-    cursor = nextCursor;
-    keys.push(...batch);
-  } while (cursor !== '0');
-  return keys;
 }
 
 // ─── 登录失败锁定 ────────────────────────────────────────────────────────────

@@ -2,6 +2,9 @@ import redis from '../../lib/redis';
 import { config } from '../../config';
 import { HTTPException } from 'hono/http-exception';
 import { getRedisInfo } from './monitor.service';
+import { scanKeys } from '../../lib/redis-scan';
+
+export { scanKeys };
 
 const { keyPrefix } = config.redis;
 
@@ -21,17 +24,6 @@ export function getSegment(key: string): string {
 
 export function getCategory(key: string): string {
   return CATEGORY_MAP[getSegment(key)] ?? '其他';
-}
-
-export async function scanKeys(pattern: string): Promise<string[]> {
-  const keys: string[] = [];
-  let cursor = '0';
-  do {
-    const [nextCursor, batch] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
-    cursor = nextCursor;
-    keys.push(...batch);
-  } while (cursor !== '0');
-  return keys;
 }
 
 export async function getKeyMeta(key: string) {
