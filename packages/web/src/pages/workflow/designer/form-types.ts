@@ -156,6 +156,15 @@ export function toDateFnsToken(fmt?: string): string {
   return fmt.replace(/Y/g, 'y').replace(/D/g, 'd');
 }
 
+/**
+ * dateFormat 是否含时间部分（HH）。
+ * 含时间时 DatePicker 需切换为 dateTime/dateTimeRange 类型并启用内嵌输入框，
+ * 否则面板只有日历、时间只能在触发器里手动输入。
+ */
+export function dateFormatHasTime(fmt?: string): boolean {
+  return !!fmt && fmt.includes('H');
+}
+
 // 时间格式选项（time 字段）
 export const TIME_FORMAT_OPTIONS = [
   { value: 'HH:mm',    label: '时:分' },
