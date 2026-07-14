@@ -13,6 +13,8 @@ import {
   pruneFieldReferences,
   moveFieldSibling,
   cloneFieldWithNewKeys,
+  canNestContainer,
+  containerHeightOf,
 } from './form-tree';
 
 /** 构造嵌套树：顶层 text + 分栏(row) 内含 amount，明细(detail) 内含 price */
@@ -179,5 +181,39 @@ describe('form-tree 同级移动与克隆', () => {
     // withSuffix=false 保留原名称
     const verbatim = cloneFieldWithNewKeys(detail as WorkflowFormField, false);
     expect(verbatim.label).toBe('明细');
+  });
+});
+
+describe('form-tree 容器嵌套规则（F03）', () => {
+  it('普通字段任意容器可放，容器按白名单放行', () => {
+    const tree = makeTree();
+    expect(canNestContainer(tree, { container: 'col', rowKey: 'layout', colIndex: 0 }, { type: 'text', height: 0 })).toBe(true);
+    expect(canNestContainer(tree, { container: 'col', rowKey: 'layout', colIndex: 0 }, { type: 'group', height: 1 })).toBe(true);
+    expect(canNestContainer(tree, { container: 'col', rowKey: 'layout', colIndex: 0 }, { type: 'row', height: 1 })).toBe(false);
+    expect(canNestContainer(tree, { container: 'pane', paneKey: 'x', paneIndex: 0 }, { type: 'group', height: 1 })).toBe(false);
+  });
+
+  it('深度限制：row(1)+group(1)+row(1)=3 允许，再套超限拒绝', () => {
+    const tree = [
+      {
+        key: 'r1', label: '外层分栏', type: 'row',
+        columns: [{ span: 24, fields: [{ key: 'g1', label: '内层分组', type: 'group', children: [] }] }],
+      },
+    ] as unknown as WorkflowFormField[];
+    // g1 链深 2，放 height=1 的 row → 3 ≤ 3 允许
+    expect(canNestContainer(tree, { container: 'group', groupKey: 'g1' }, { type: 'row', height: 1 })).toBe(true);
+    // 放 height=2 的子树（row 内含 group）→ 4 > 3 拒绝
+    expect(canNestContainer(tree, { container: 'group', groupKey: 'g1' }, { type: 'row', height: 2 })).toBe(false);
+  });
+
+  it('containerHeightOf 统计子树容器高度', () => {
+    const tree = makeTree();
+    expect(containerHeightOf(findField(tree, 'name') as WorkflowFormField)).toBe(0);
+    expect(containerHeightOf(findField(tree, 'layout') as WorkflowFormField)).toBe(1);
+    const nested = {
+      key: 'g', label: 'g', type: 'group',
+      children: [{ key: 'r', label: 'r', type: 'row', columns: [{ span: 24, fields: [] }] }],
+    } as unknown as WorkflowFormField;
+    expect(containerHeightOf(nested)).toBe(2);
   });
 });

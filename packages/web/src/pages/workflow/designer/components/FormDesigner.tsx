@@ -4,10 +4,10 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Tooltip, Modal, Toast, Typography, Tabs, TabPane, Input } from '@douyinfe/semi-ui';
-import { Undo2, Redo2, ArrowUp, ArrowDown, ClipboardPaste, CopyPlus, Asterisk, Trash2, Copy as CopyIcon, BookmarkPlus } from 'lucide-react';
+import { Undo2, Redo2, ArrowUp, ArrowDown, ClipboardPaste, CopyPlus, Asterisk, Trash2, Copy as CopyIcon, BookmarkPlus, Columns } from 'lucide-react';
 import type { WorkflowFormField, WorkflowFormFieldType, WorkflowFormSettings } from '@zenith/shared';
-import { FORM_FIELD_TYPES } from '../form-types';
-import { findField, updateField, removeField, insertField, insertAfterKey, isDescendant, isContainerType, findFieldDependents, pruneFieldReferences, pruneCascadeMappings, renameFieldKey, moveFieldSibling, cloneFieldWithNewKeys, generateFieldKey, type DropTarget } from '../form-tree';
+import { FORM_FIELD_TYPES, COLUMN_SPAN_OPTIONS } from '../form-types';
+import { findField, updateField, removeField, insertField, insertAfterKey, isDescendant, isContainerType, findFieldDependents, pruneFieldReferences, pruneCascadeMappings, renameFieldKey, moveFieldSibling, cloneFieldWithNewKeys, generateFieldKey, canNestContainer, containerHeightOf, type DropTarget } from '../form-tree';
 import { saveFieldTemplate } from '../form-field-templates';
 import FieldPalette from './FieldPalette';
 import FormCanvas from './FormCanvas';
@@ -238,7 +238,10 @@ const REQUIRED_EXCLUDE = new Set<WorkflowFormFieldType>(['row', 'group', 'tabs',
 const canToggleRequired = (t: WorkflowFormFieldType): boolean => !REQUIRED_EXCLUDE.has(t);
 
 export default function FormDesigner({ fields, onChange, settings, onSettingsChange, showToolbar = true, onHistoryChange, onRenameKey }: Readonly<FormDesignerProps>) {
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
+  // 主选中（配置面板/键盘导航目标）：最后一次选中的字段
+  const selectedKey = selectedKeys.length > 0 ? selectedKeys[selectedKeys.length - 1] : null;
+  const selectOnly = useCallback((key: string | null) => setSelectedKeys(key ? [key] : []), []);
   // 内部剪贴板：跨容器复制/粘贴字段配置（含子字段，粘贴时重新生成 key）
   const clipboardRef = useRef<WorkflowFormField | null>(null);
   const [hasClipboard, setHasClipboard] = useState(false);
@@ -333,7 +336,7 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
   const canUndo = hist.pointer > 0;
   const canRedo = hist.pointer < hist.stack.length - 1;
 
-  const selectField = useCallback((key: string) => setSelectedKey(key), []);
+  const selectField = useCallback((key: string) => selectOnly(key), [selectOnly]);
   const commitFields = useCallback((next: WorkflowFormField[]) => commit(next), [commit]);
 
   // 向外部上报撤销/重做状态与设置提交/字段定位能力（供外部工具栏与体检面板）
@@ -345,31 +348,37 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
   const handleAddField = useCallback((type: WorkflowFormFieldType) => {
     const newField = createField(type);
     commit([...fields, newField]);
-    setSelectedKey(newField.key);
-  }, [fields, commit]);
+    selectOnly(newField.key);
+  }, [fields, commit, selectOnly]);
 
-  // 从面板拖放到画布指定位置（支持顶层 / 分栏列 / 分组）
+  // 从面板拖放到画布指定位置（支持顶层 / 分栏列 / 分组 / 面板；容器按嵌套规则放行）
   const handleDropNew = useCallback((type: WorkflowFormFieldType, target: DropTarget) => {
-    // 容器类控件（分栏/分组/明细）只能放在顶层，避免无限嵌套
-    if (isContainerType(type) && target.container !== 'root') return;
+    if (!canNestContainer(fields, target, { type, height: 1 })) {
+      Toast.warning('该位置不支持放入此容器（嵌套规则/深度限制）');
+      return;
+    }
     const newField = createField(type);
     commit(insertField(fields, target, newField));
-    setSelectedKey(newField.key);
-  }, [fields, commit]);
+    selectOnly(newField.key);
+  }, [fields, commit, selectOnly]);
 
   // 移动已有字段到目标位置（跨容器拖拽 / 排序）
   const handleMoveField = useCallback((moveKey: string, target: DropTarget) => {
     if (target.beforeKey === moveKey) return; // 拖到自身之前 = 无操作
     const moved = findField(fields, moveKey);
     if (!moved) return;
-    if (isContainerType(moved.type) && target.container !== 'root') return; // 容器只能在顶层
     if (target.container === 'col' && (target.rowKey === moveKey || isDescendant(fields, moveKey, target.rowKey))) return;
     if (target.container === 'group' && (target.groupKey === moveKey || isDescendant(fields, moveKey, target.groupKey))) return;
+    if (target.container === 'pane' && (target.paneKey === moveKey || isDescendant(fields, moveKey, target.paneKey))) return;
+    if (!canNestContainer(fields, target, { type: moved.type, height: containerHeightOf(moved) })) {
+      Toast.warning('该位置不支持放入此容器（嵌套规则/深度限制）');
+      return;
+    }
     const [next, rm] = removeField(fields, moveKey);
     if (!rm) return;
     commit(insertField(next, target, rm));
-    setSelectedKey(moveKey);
-  }, [fields, commit]);
+    selectOnly(moveKey);
+  }, [fields, commit, selectOnly]);
 
   // 删除字段（任意层级）。删除前扫描依赖，提示并清理孤儿引用
   const handleRemove = useCallback((key: string) => {
@@ -377,7 +386,7 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
     const doRemove = () => {
       const [next] = removeField(fields, key);
       commit(pruneFieldReferences(next, key));
-      if (selectedKey === key) setSelectedKey(null);
+      setSelectedKeys((prev) => prev.filter((k) => k !== key));
     };
     const deps = findFieldDependents(fields, key);
     if (deps.length === 0) { doRemove(); return; }
@@ -403,7 +412,7 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
       cancelText: '取消',
       onOk: doRemove,
     });
-  }, [fields, commit, selectedKey]);
+  }, [fields, commit]);
 
   // 复制字段（插入到原字段之后，任意层级）
   const handleCopy = useCallback((key: string) => {
@@ -411,8 +420,8 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
     if (!target) return;
     const cloned = cloneFieldWithNewKeys(target);
     commit(insertAfterKey(fields, key, cloned));
-    setSelectedKey(cloned.key);
-  }, [fields, commit]);
+    selectOnly(cloned.key);
+  }, [fields, commit, selectOnly]);
 
   // 修改字段属性（任意层级；连续编辑同一字段合并为一步撤销）
   const handleFieldChange = useCallback((updates: Partial<WorkflowFormField>) => {
@@ -443,8 +452,8 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
     if (!selectedKey || newKey === selectedKey) return;
     commit(renameFieldKey(fields, selectedKey, newKey));
     onRenameKey?.(selectedKey, newKey);
-    setSelectedKey(newKey);
-  }, [fields, commit, selectedKey, onRenameKey]);
+    selectOnly(newKey);
+  }, [fields, commit, selectedKey, onRenameKey, selectOnly]);
 
   // ─── 画布定位 / 剪贴板 / 右键菜单 ──────────────────────────────────
 
@@ -480,9 +489,9 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
       next = [...fields, cloned];
     }
     commit(next);
-    setSelectedKey(cloned.key);
+    selectOnly(cloned.key);
     scrollToField(cloned.key);
-  }, [fields, commit, scrollToField]);
+  }, [fields, commit, scrollToField, selectOnly]);
 
   // 同级上移 / 下移
   const handleMoveSibling = useCallback((key: string, dir: -1 | 1) => {
@@ -497,7 +506,7 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
   }, [fields, commit]);
 
   const openMenu = useCallback((key: string, x: number, y: number) => {
-    setSelectedKey(key);
+    setSelectedKeys((prev) => (prev.includes(key) ? prev : [key]));
     // 贴边裁剪，避免菜单溢出视口
     setMenu({ key, x: Math.min(x, window.innerWidth - 190), y: Math.min(y, window.innerHeight - 320) });
   }, []);
@@ -522,9 +531,9 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
   const handleAddTemplateField = useCallback((field: WorkflowFormField) => {
     const cloned = cloneFieldWithNewKeys(field, false);
     commit([...fields, cloned]);
-    setSelectedKey(cloned.key);
+    selectOnly(cloned.key);
     scrollToField(cloned.key);
-  }, [fields, commit, scrollToField]);
+  }, [fields, commit, scrollToField, selectOnly]);
 
   // 点击任意处 / 失焦关闭右键菜单
   useEffect(() => {
@@ -538,7 +547,100 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
     };
   }, [menu]);
 
-  // 键盘操作：Delete 删除、Ctrl/Cmd+C/V 复制粘贴、↑/↓ 切换选中、Esc 取消选中（输入框聚焦时不拦截）
+  const menuField = menu ? findField(fields, menu.key) : null;
+
+  // ─── 多选（F04）：Ctrl 点选切换 / Shift 范围选 / 批量操作 ───────────────
+
+  const handleCanvasSelect = useCallback((key: string | null, opts?: { ctrl?: boolean; shift?: boolean }) => {
+    if (!key) {
+      setSelectedKeys([]);
+      return;
+    }
+    if (opts?.shift && selectedKeys.length > 0) {
+      const order = flatFields.map((f) => f.key);
+      const a = order.indexOf(selectedKeys[0]);
+      const b = order.indexOf(key);
+      if (a >= 0 && b >= 0) {
+        const [s, e] = a <= b ? [a, b] : [b, a];
+        setSelectedKeys(order.slice(s, e + 1));
+        return;
+      }
+    }
+    if (opts?.ctrl) {
+      setSelectedKeys((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+      return;
+    }
+    setSelectedKeys([key]);
+  }, [selectedKeys, flatFields]);
+
+  // 批量应用属性（跳过布局/展示类）
+  const batchApply = useCallback((patch: Partial<WorkflowFormField>) => {
+    let next = fields;
+    for (const k of selectedKeys) {
+      const f = findField(next, k);
+      if (f && canToggleRequired(f.type)) next = updateField(next, k, patch);
+    }
+    commit(next);
+  }, [fields, selectedKeys, commit]);
+
+  // 批量删除：聚合扫描选区外的依赖字段，一次确认
+  const batchRemove = useCallback(() => {
+    const delSet = new Set(selectedKeys);
+    const outsideDeps = new Map<string, string>();
+    for (const k of selectedKeys) {
+      for (const d of findFieldDependents(fields, k)) {
+        if (!delSet.has(d.field.key)) outsideDeps.set(d.field.key, d.field.label || d.field.key);
+      }
+    }
+    const doRemove = () => {
+      let next = fields;
+      for (const k of selectedKeys) {
+        const [after, rm] = removeField(next, k);
+        if (rm) next = pruneFieldReferences(after, k);
+      }
+      commit(next);
+      setSelectedKeys([]);
+    };
+    Modal.confirm({
+      title: `删除选中的 ${selectedKeys.length} 个字段？`,
+      content: outsideDeps.size > 0
+        ? `以下字段依赖被删字段，相关引用将被自动清理：${Array.from(outsideDeps.values()).join('、')}`
+        : '删除后可通过撤销恢复。',
+      okText: '删除',
+      okButtonProps: { type: 'danger' },
+      cancelText: '取消',
+      onOk: doRemove,
+    });
+  }, [fields, selectedKeys, commit]);
+
+  // 合并为分栏：顶层 2-4 个非容器字段 → 生成均分分栏并替换原位置
+  const mergeToRow = useCallback(() => {
+    const allTop = selectedKeys.every((k) => fields.some((f) => f.key === k));
+    const nonContainer = selectedKeys.every((k) => {
+      const f = findField(fields, k);
+      return f != null && !isContainerType(f.type);
+    });
+    if (!allTop || !nonContainer || selectedKeys.length < 2 || selectedKeys.length > 4) {
+      Toast.warning('仅支持选中顶层的 2-4 个非容器字段合并为分栏');
+      return;
+    }
+    const picked = new Set(selectedKeys);
+    const ordered = fields.filter((f) => picked.has(f.key));
+    const span = ordered.length === 2 ? 12 : ordered.length === 3 ? 8 : 6;
+    const rowField: WorkflowFormField = {
+      key: generateFieldKey('row'),
+      label: '分栏',
+      type: 'row',
+      columns: ordered.map((f) => ({ span, fields: [f] })),
+    };
+    const firstIdx = fields.findIndex((f) => f.key === ordered[0].key);
+    const rest = fields.filter((f) => !picked.has(f.key));
+    const insertAt = fields.slice(0, firstIdx).filter((f) => !picked.has(f.key)).length;
+    commit([...rest.slice(0, insertAt), rowField, ...rest.slice(insertAt)]);
+    selectOnly(rowField.key);
+  }, [fields, selectedKeys, commit, selectOnly]);
+
+  // 键盘操作：Delete 删除（多选批量）、Ctrl/Cmd+C/V 复制粘贴、↑/↓ 切换选中、Esc 取消选中（输入框聚焦时不拦截）
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const ae = document.activeElement as HTMLElement | null;
@@ -558,13 +660,14 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
       }
       if (e.key === 'Escape') {
         setMenu(null);
-        setSelectedKey(null);
+        selectOnly(null);
         return;
       }
       if (!selectedKey) return;
       if (e.key === 'Delete') {
         e.preventDefault();
-        handleRemove(selectedKey);
+        if (selectedKeys.length > 1) batchRemove();
+        else handleRemove(selectedKey);
         return;
       }
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
@@ -574,16 +677,14 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
         if (idx < 0) return;
         const nextKey = keys[e.key === 'ArrowUp' ? Math.max(0, idx - 1) : Math.min(keys.length - 1, idx + 1)];
         if (nextKey !== selectedKey) {
-          setSelectedKey(nextKey);
+          selectOnly(nextKey);
           scrollToField(nextKey);
         }
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedKey, flatFields, copyToClipboard, pasteFromClipboard, handleRemove, scrollToField]);
-
-  const menuField = menu ? findField(fields, menu.key) : null;
+  }, [selectedKey, selectedKeys, flatFields, copyToClipboard, pasteFromClipboard, handleRemove, batchRemove, scrollToField, selectOnly]);
 
   return (
     <div className="fd-form-designer-shell">
@@ -627,7 +728,7 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
               <FormOutline
                 fields={fields}
                 selectedKey={selectedKey}
-                onSelect={(key) => { setSelectedKey(key); scrollToField(key); }}
+                onSelect={(key) => { selectOnly(key); scrollToField(key); }}
               />
             </TabPane>
           </Tabs>
@@ -637,8 +738,8 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
         <div className="fd-form-designer__canvas" ref={canvasRef}>
           <FormCanvas
             fields={fields}
-            selectedKey={selectedKey}
-            onSelect={setSelectedKey}
+            selectedKeys={selectedKeys}
+            onSelect={handleCanvasSelect}
             onMoveField={handleMoveField}
             onRemove={handleRemove}
             onCopy={handleCopy}
@@ -647,9 +748,43 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
           />
         </div>
 
-        {/* 右侧：属性配置 */}
+        {/* 右侧：属性配置 / 多选批量操作 */}
         <div className="fd-form-designer__config">
-          {selectedField ? (
+          {selectedKeys.length > 1 ? (
+            <div className="fd-form-batch">
+              <Typography.Text strong>已选中 {selectedKeys.length} 个字段</Typography.Text>
+              <Typography.Text type="tertiary" size="small" style={{ display: 'block', margin: '4px 0 12px' }}>
+                Ctrl+点击 增减选择，Shift+点击 范围选择
+              </Typography.Text>
+              <div className="fd-form-batch__section">
+                <Typography.Text strong size="small">字段宽度</Typography.Text>
+                <div className="fd-form-batch__row">
+                  {COLUMN_SPAN_OPTIONS.map((opt) => (
+                    <Button key={opt.value} size="small" type="tertiary" onClick={() => batchApply({ columnSpan: opt.value === 24 ? undefined : opt.value })}>
+                      {opt.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              <div className="fd-form-batch__section">
+                <Typography.Text strong size="small">批量设置</Typography.Text>
+                <div className="fd-form-batch__row">
+                  <Button size="small" type="tertiary" onClick={() => batchApply({ required: true })}>设为必填</Button>
+                  <Button size="small" type="tertiary" onClick={() => batchApply({ required: undefined })}>取消必填</Button>
+                  <Button size="small" type="tertiary" onClick={() => batchApply({ readOnly: true })}>设为只读</Button>
+                  <Button size="small" type="tertiary" onClick={() => batchApply({ readOnly: undefined })}>取消只读</Button>
+                </div>
+              </div>
+              <div className="fd-form-batch__section">
+                <Typography.Text strong size="small">结构操作</Typography.Text>
+                <div className="fd-form-batch__row">
+                  <Button size="small" type="primary" theme="light" icon={<Columns size={13} />} onClick={mergeToRow}>合并为分栏</Button>
+                  <Button size="small" type="danger" theme="light" icon={<Trash2 size={13} />} onClick={batchRemove}>批量删除</Button>
+                </div>
+              </div>
+              <Button size="small" type="tertiary" theme="borderless" onClick={() => setSelectedKeys([])}>取消多选（Esc）</Button>
+            </div>
+          ) : selectedField ? (
             <>
               {duplicateLabelCount > 0 && (
                 <div className="fd-form-designer__field-warning">

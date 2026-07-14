@@ -5,12 +5,66 @@
  */
 import type { WorkflowFormField, WorkflowFormFieldType } from '@zenith/shared';
 
-/** 容器类型：内部可容纳子字段，禁止被拖入其它容器（避免无限嵌套） */
+/** 容器类型：内部可容纳子字段 */
 export const CONTAINER_TYPES: WorkflowFormFieldType[] = ['row', 'group', 'detail', 'tabs', 'steps'];
 export const isContainerType = (t: WorkflowFormFieldType): boolean => CONTAINER_TYPES.includes(t);
 
 /** 是否为 tabs/steps 面板容器 */
 export const isPaneContainerType = (t: WorkflowFormFieldType): boolean => t === 'tabs' || t === 'steps';
+
+// ─── 容器嵌套规则（F03）────────────────────────────────────────────
+// 分栏列内可放：分组/明细；分组内可放：分栏/明细；
+// 明细与标签页/分步面板内仍不允许放容器；整体容器链深度 ≤ 3。
+
+const NESTABLE_IN_COL = new Set<WorkflowFormFieldType>(['group', 'detail']);
+const NESTABLE_IN_GROUP = new Set<WorkflowFormFieldType>(['row', 'detail']);
+export const MAX_CONTAINER_DEPTH = 3;
+
+/** 字段子树的容器高度：自身是容器计 1，叠加子孙容器最大高度（普通字段为 0） */
+export function containerHeightOf(field: WorkflowFormField): number {
+  const childFields: WorkflowFormField[] = [
+    ...(field.columns?.flatMap((c) => c.fields) ?? []),
+    ...(field.panes?.flatMap((p) => p.fields) ?? []),
+    ...(field.children ?? []),
+  ];
+  const maxChild = childFields.length ? Math.max(...childFields.map(containerHeightOf)) : 0;
+  return (isContainerType(field.type) ? 1 : 0) + maxChild;
+}
+
+/** 从顶层到指定容器（含自身）的容器链深度；未找到返回 0 */
+export function containerDepthAt(fields: WorkflowFormField[], key: string): number {
+  let found = 0;
+  const walk = (list: WorkflowFormField[], depth: number): boolean => {
+    for (const f of list) {
+      const d = isContainerType(f.type) ? depth + 1 : depth;
+      if (f.key === key) {
+        found = d;
+        return true;
+      }
+      if (f.columns) for (const c of f.columns) if (walk(c.fields, d)) return true;
+      if (f.panes) for (const p of f.panes) if (walk(p.fields, d)) return true;
+      if (f.children && walk(f.children, d)) return true;
+    }
+    return false;
+  };
+  walk(fields, 0);
+  return found;
+}
+
+/** 容器类字段能否放入目标位置（白名单 + 深度限制）；普通字段恒可 */
+export function canNestContainer(
+  fields: WorkflowFormField[],
+  target: DropTarget,
+  moved: { type: WorkflowFormFieldType; height: number },
+): boolean {
+  if (!isContainerType(moved.type)) return true;
+  if (target.container === 'root') return moved.height <= MAX_CONTAINER_DEPTH;
+  if (target.container === 'pane') return false;
+  const allowed = target.container === 'col' ? NESTABLE_IN_COL : NESTABLE_IN_GROUP;
+  if (!allowed.has(moved.type)) return false;
+  const anchorKey = target.container === 'col' ? target.rowKey : target.groupKey;
+  return containerDepthAt(fields, anchorKey) + moved.height <= MAX_CONTAINER_DEPTH;
+}
 
 /** 拖放目标位置；beforeKey 为空表示追加到容器末尾 */
 export type DropTarget =

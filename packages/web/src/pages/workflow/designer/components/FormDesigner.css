@@ -166,6 +166,48 @@
   background: var(--semi-color-border);
 }
 
+/* 嵌套容器（分栏列内的分组/明细、分组内的分栏/明细） */
+.fd-form-canvas__nested {
+  margin: 4px 0;
+  padding: 6px 8px;
+  border: 1px dashed var(--semi-color-border);
+  border-radius: var(--semi-border-radius-small);
+  background: var(--semi-color-bg-0);
+  cursor: pointer;
+}
+
+.fd-form-canvas__nested--selected {
+  border-style: solid;
+  border-color: var(--semi-color-primary);
+  background: var(--semi-color-primary-light-default);
+}
+
+.fd-form-canvas__nested-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  color: var(--semi-color-text-1);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* 多选批量操作面板 */
+.fd-form-batch {
+  padding: 16px;
+}
+
+.fd-form-batch__section {
+  margin-bottom: 14px;
+}
+
+.fd-form-batch__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
 /* 控件面板「我的模板」行（模板按钮 + 删除角标） */
 .fd-form-palette__tpl {
   position: relative;

@@ -16,6 +16,8 @@ import { ApiError } from '@/lib/query';
 import { LABEL_POSITION_OPTIONS, LABEL_ALIGN_OPTIONS, COLUMN_SPAN_OPTIONS } from '../designer/form-types';
 import { validateFormSchema, countErrors, type FormIssue } from '../designer/form-validate';
 import { flattenAllFields } from '../designer/form-tree';
+import { loadFormDraft, clearFormDraft, useFormDraftAutosave, type FormDraftPayload } from '../designer/use-draft-autosave';
+import { formatDateTime } from '@/utils/date';
 import AppModal from '@/components/AppModal';
 import FieldDependencyGraph from '../designer/components/FieldDependencyGraph';
 import FormDesigner, { type FormHistoryControls } from '../designer/components/FormDesigner';
@@ -120,6 +122,14 @@ export default function WorkflowFormInlineEditor({
   // key 重命名跟踪：服务端已知的原始 key → 当前 key（保存时按 baseline 过滤后级联流程侧引用）
   const baselineFieldsRef = useRef<WorkflowFormField[]>([]);
   const renameMapRef = useRef<Map<string, string>>(new Map());
+  // 本地自动暂存（F02）：加载完成后启用；检测到更新的草稿时提示恢复
+  const draftReady = formId == null || currentId != null;
+  const { clearDraftNow } = useFormDraftAutosave({
+    formId: currentId ?? formId ?? null,
+    name, fields, settings, revision,
+    enabled: draftReady,
+  });
+  const [pendingDraft, setPendingDraft] = useState<FormDraftPayload | null>(null);
 
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [previewVisible, setPreviewVisible] = useState(false);
@@ -162,7 +172,41 @@ export default function WorkflowFormInlineEditor({
     setRevision(form.revision ?? null);
     baselineFieldsRef.current = form.schema?.fields ?? [];
     renameMapRef.current.clear();
+    // 草稿检测：本地暂存晚于服务端最后更新时提示恢复
+    const draft = loadFormDraft(form.id);
+    if (draft && new Date(draft.savedAt).getTime() > new Date(form.updatedAt).getTime()) {
+      setPendingDraft(draft);
+    }
   }, [currentId, detailQuery.data, formId]);
+
+  // 新建表单：挂载时检测「新表单」草稿
+  useEffect(() => {
+    if (formId != null) return;
+    const draft = loadFormDraft(null);
+    if (draft) setPendingDraft(draft);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 恢复草稿（进撤销栈，可回退）
+  const restoreDraft = () => {
+    if (!pendingDraft) return;
+    setName(pendingDraft.name || name);
+    if (history) {
+      history.commitSettings(pendingDraft.settings ?? DEFAULT_SETTINGS);
+      history.commitFields(pendingDraft.fields);
+    } else {
+      setSettings(pendingDraft.settings ?? DEFAULT_SETTINGS);
+      setFields(pendingDraft.fields);
+    }
+    const stale = pendingDraft.revision != null && revision != null && pendingDraft.revision < revision;
+    setPendingDraft(null);
+    Toast.success(stale ? '已恢复草稿；注意服务端已有更新版本，保存时请留意冲突提示' : '已恢复本地草稿，可撤销');
+  };
+
+  const discardDraft = () => {
+    clearDraftNow();
+    setPendingDraft(null);
+  };
 
   // key 重命名上报：链式合并（a→b 后 b→c 记为 a→c），撤销产生的回改由保存时 baseline 过滤兜底
   const trackRenameKey = useCallback((oldKey: string, newKey: string) => {
@@ -229,6 +273,8 @@ export default function WorkflowFormInlineEditor({
     try {
       const saved = await saveMutation.mutateAsync({ id: currentId, values: payload });
       Toast.success('保存成功');
+      clearDraftNow();
+      if (currentId == null) clearFormDraft(null); // 新建首存后清掉「新表单」草稿
       setCurrentId(saved.id);
       setRevision(saved.revision ?? null);
       baselineFieldsRef.current = saved.schema?.fields ?? fields;
@@ -452,6 +498,22 @@ export default function WorkflowFormInlineEditor({
         <Button icon={<Eye size={14} />} type="tertiary" theme="borderless" size="small" onClick={() => setPreviewVisible(true)}>预览</Button>
         <Button icon={<Save size={14} />} type="primary" size="small" loading={saveMutation.isPending} onClick={() => void handleSave()}>保存</Button>
       </div>
+
+      {/* 本地草稿恢复提示 */}
+      {pendingDraft && (
+        <Banner
+          type="warning"
+          icon={<AlertTriangle size={16} />}
+          closeIcon={null}
+          description={(
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <span>检测到 {formatDateTime(pendingDraft.savedAt)} 的未保存本地草稿（{flattenAllFields(pendingDraft.fields).length} 个字段）。</span>
+              <Button size="small" type="primary" onClick={restoreDraft}>恢复草稿</Button>
+              <Button size="small" type="tertiary" onClick={discardDraft}>丢弃</Button>
+            </div>
+          )}
+        />
+      )}
 
       {/* 字段设计器 */}
       <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>

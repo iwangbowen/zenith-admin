@@ -7,12 +7,13 @@ import { Popconfirm, Tag, Typography } from '@douyinfe/semi-ui';
 import { GripVertical, Trash2, Asterisk, Copy } from 'lucide-react';
 import type { WorkflowFormField, WorkflowFormFieldType } from '@zenith/shared';
 import { FORM_FIELD_TYPES } from '../form-types';
-import type { DropTarget } from '../form-tree';
+import { isContainerType, type DropTarget } from '../form-tree';
 
 interface FormCanvasProps {
   fields: WorkflowFormField[];
-  selectedKey: string | null;
-  onSelect: (key: string | null) => void;
+  /** 选中字段集合（多选），最后一项为主选中 */
+  selectedKeys: string[];
+  onSelect: (key: string | null, opts?: { ctrl?: boolean; shift?: boolean }) => void;
   onMoveField: (moveKey: string, target: DropTarget) => void;
   onRemove: (key: string) => void;
   onCopy: (key: string) => void;
@@ -44,7 +45,7 @@ const hasDragData = (e: React.DragEvent) =>
 
 export default function FormCanvas({
   fields,
-  selectedKey,
+  selectedKeys,
   onSelect,
   onMoveField,
   onRemove,
@@ -54,6 +55,14 @@ export default function FormCanvas({
 }: Readonly<FormCanvasProps>) {
   // 当前高亮的拖放区标识（如 'root:before:<key>' / 'col:<rowKey>:<i>' / 'group:<key>'）
   const [hint, setHint] = useState<string | null>(null);
+
+  const isSelectedKey = useCallback((key: string) => selectedKeys.includes(key), [selectedKeys]);
+
+  // 点击选中（携带 Ctrl/Shift 修饰，供多选）
+  const clickSelect = useCallback((e: React.MouseEvent, key: string) => {
+    e.stopPropagation();
+    onSelect(key, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey });
+  }, [onSelect]);
 
   const contextMenu = useCallback((e: React.MouseEvent, key: string) => {
     if (!onContextMenu) return;
@@ -100,11 +109,11 @@ export default function FormCanvas({
         data-field-key={field.key}
         className={[
           'fd-form-canvas__chip',
-          selectedKey === field.key && 'fd-form-canvas__chip--selected',
+          isSelectedKey(field.key) && 'fd-form-canvas__chip--selected',
           hint === id && 'fd-form-canvas__chip--drop',
         ].filter(Boolean).join(' ')}
         draggable
-        onClick={(e) => { e.stopPropagation(); onSelect(field.key); }}
+        onClick={(e) => clickSelect(e, field.key)}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onSelect(field.key); } }}
         onContextMenu={(e) => contextMenu(e, field.key)}
         onDragStart={(e) => startDrag(e, field.key)}
@@ -131,6 +140,48 @@ export default function FormCanvas({
     );
   };
 
+  // ─── 嵌套容器（分栏列内的分组/明细、分组内的分栏/明细）───────────────
+  const renderNestedContainer = (field: WorkflowFormField, target: (beforeKey: string) => DropTarget) => {
+    const info = getFieldInfo(field.type);
+    const Icon = info?.icon;
+    const id = `chip:${field.key}`;
+    return (
+      <div
+        key={field.key}
+        role="button"
+        tabIndex={0}
+        data-field-key={field.key}
+        className={[
+          'fd-form-canvas__nested',
+          isSelectedKey(field.key) && 'fd-form-canvas__nested--selected',
+          hint === id && 'fd-form-canvas__chip--drop',
+        ].filter(Boolean).join(' ')}
+        draggable
+        onClick={(e) => clickSelect(e, field.key)}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onSelect(field.key); } }}
+        onContextMenu={(e) => contextMenu(e, field.key)}
+        onDragStart={(e) => startDrag(e, field.key)}
+        onDragEnd={endDrag}
+        onDragOver={(e) => overZone(e, id)}
+        onDrop={(e) => dispatchDrop(e, target(field.key))}
+      >
+        <div className="fd-form-canvas__nested-head">
+          {Icon && <Icon size={12} />}
+          <span>{field.label}</span>
+        </div>
+        {field.type === 'row' && renderRowColumns(field)}
+        {field.type === 'group' && renderGroupBody(field)}
+        {field.type === 'detail' && renderDetail(field)}
+      </div>
+    );
+  };
+
+  // 容器子项分发：可嵌套容器走容器渲染，其余走 chip
+  const renderInner = (f: WorkflowFormField, target: (beforeKey: string) => DropTarget) =>
+    isContainerType(f.type) && f.type !== 'tabs' && f.type !== 'steps'
+      ? renderNestedContainer(f, target)
+      : renderChip(f, target);
+
   // ─── 分栏列容器（可拖入） ───────────────────────────────────────────
   const renderRowColumns = (field: WorkflowFormField) => (
     <div className="fd-form-canvas__row-preview">
@@ -146,7 +197,7 @@ export default function FormCanvas({
           >
             <span className="fd-form-canvas__row-col-label">{col.span}/24</span>
             {col.fields.length > 0
-              ? col.fields.map(f => renderChip(f, (beforeKey) => ({ container: 'col', rowKey: field.key, colIndex, beforeKey })))
+              ? col.fields.map(f => renderInner(f, (beforeKey) => ({ container: 'col', rowKey: field.key, colIndex, beforeKey })))
               : <div className="fd-form-canvas__row-col-empty">拖入字段</div>}
           </div>
         );
@@ -166,7 +217,7 @@ export default function FormCanvas({
           onDrop={(e) => dispatchDrop(e, { container: 'group', groupKey: field.key })}
         >
           {(field.children && field.children.length > 0)
-            ? field.children.map(f => renderChip(f, (beforeKey) => ({ container: 'group', groupKey: field.key, beforeKey })))
+            ? field.children.map(f => renderInner(f, (beforeKey) => ({ container: 'group', groupKey: field.key, beforeKey })))
             : <div className="fd-form-canvas__group-empty">拖入字段</div>}
         </div>
       </div>
@@ -208,10 +259,10 @@ export default function FormCanvas({
       {(field.children ?? []).map(child => (
         <span key={child.key} data-field-key={child.key}>
           <Tag
-            color={selectedKey === child.key ? 'light-blue' : 'blue'}
+            color={isSelectedKey(child.key) ? 'light-blue' : 'blue'}
             size="small"
             style={{ cursor: 'pointer' }}
-            onClick={(e) => { e.stopPropagation(); onSelect(child.key); }}
+            onClick={(e) => clickSelect(e, child.key)}
           >
             {child.label}
           </Tag>
@@ -224,7 +275,7 @@ export default function FormCanvas({
   const renderTopItem = (field: WorkflowFormField) => {
     const info = getFieldInfo(field.type);
     const Icon = info?.icon;
-    const isSelected = selectedKey === field.key;
+    const isSelected = isSelectedKey(field.key);
     const beforeId = `root:before:${field.key}`;
     const isLayoutRow = field.type === 'row';
     const isLayoutGroup = field.type === 'group';
@@ -245,7 +296,7 @@ export default function FormCanvas({
           hint === beforeId && 'fd-form-canvas__item--drop-target',
         ].filter(Boolean).join(' ')}
         draggable
-        onClick={(e) => { e.stopPropagation(); onSelect(field.key); }}
+        onClick={(e) => clickSelect(e, field.key)}
         onKeyDown={(e) => { if (e.key === 'Enter') onSelect(field.key); }}
         onContextMenu={(e) => contextMenu(e, field.key)}
         onDragStart={(e) => startDrag(e, field.key)}
