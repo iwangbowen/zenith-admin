@@ -3237,6 +3237,8 @@ export interface WorkflowForm {
   categoryName?: string | null;
   schema: WorkflowFormSchema | null;
   status: WorkflowFormStatus;
+  /** 乐观锁版本号（每次更新 +1，更新时回传 expectedRevision 做并发冲突检测） */
+  revision: number;
   /** 被多少个流程定义引用（列表场景返回） */
   usageCount?: number;
   tenantId: number | null;

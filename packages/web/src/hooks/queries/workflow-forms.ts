@@ -37,8 +37,12 @@ export function useWorkflowFormDetail(id: number | null | undefined, enabled = t
 export function useSaveWorkflowForm() {
   const qc = useQueryClient();
   return useMutation({
+    // silent：错误交由调用方处理（409 乐观锁冲突需弹窗引导，而非通用 toast）
     mutationFn: ({ id, values }: { id?: number | null; values: Record<string, unknown> }) =>
-      (id ? request.put<WorkflowForm>(`/api/workflows/forms/${id}`, values) : request.post<WorkflowForm>('/api/workflows/forms', values)).then(unwrap),
+      (id
+        ? request.put<WorkflowForm>(`/api/workflows/forms/${id}`, values, { silent: true })
+        : request.post<WorkflowForm>('/api/workflows/forms', values, { silent: true })
+      ).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: workflowFormKeys.all }),
   });
 }

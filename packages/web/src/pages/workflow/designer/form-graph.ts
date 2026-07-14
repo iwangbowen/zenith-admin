@@ -84,3 +84,61 @@ export function buildFieldDependencyGraph(fields: WorkflowFormField[]): { nodes:
 
   return { nodes, edges };
 }
+
+// ─── 值联动循环依赖检测 ──────────────────────────────────────────────
+//
+// 只对「会改写字段值」的边（公式 / 天数 / 赋值）检测环：
+// 这类环在运行时会互相触发重算，可能导致值震荡甚至死循环。
+// 显隐/必填/只读与级联选项不改值（级联环已由 createsCascadeCycle 单独防护），不参与。
+// 自引用（A→A）由体检的「公式引用了自身」警告单独覆盖，这里只报长度 ≥ 2 的环。
+
+const VALUE_DEP_KINDS = new Set<DepKind>(['公式', '天数', '赋值']);
+
+/**
+ * 检测值联动依赖环，返回环路径列表（每条为字段 key 数组，如 ['a','b','a']）。
+ * 同一个环只报告一次（按最小 key 起点归一化去重），最多返回 10 条。
+ */
+export function findValueDependencyCycles(fields: WorkflowFormField[]): string[][] {
+  const { edges } = buildFieldDependencyGraph(fields);
+  const adj = new Map<string, string[]>();
+  for (const e of edges) {
+    if (!VALUE_DEP_KINDS.has(e.kind) || e.source === e.target) continue;
+    if (!adj.has(e.source)) adj.set(e.source, []);
+    adj.get(e.source)?.push(e.target);
+  }
+
+  const cycles: string[][] = [];
+  const seen = new Set<string>();
+  const color = new Map<string, 'visiting' | 'done'>();
+  const stack: string[] = [];
+
+  const dfs = (key: string): void => {
+    color.set(key, 'visiting');
+    stack.push(key);
+    for (const next of adj.get(key) ?? []) {
+      if (cycles.length >= 10) break;
+      const state = color.get(next);
+      if (state === 'visiting') {
+        // 回边：截取栈中环路径并归一化去重
+        const start = stack.indexOf(next);
+        const path = stack.slice(start);
+        const minIdx = path.reduce((mi, k, i) => (k < path[mi] ? i : mi), 0);
+        const normalized = [...path.slice(minIdx), ...path.slice(0, minIdx)];
+        const id = normalized.join('->');
+        if (!seen.has(id)) {
+          seen.add(id);
+          cycles.push([...normalized, normalized[0]]);
+        }
+      } else if (state === undefined) {
+        dfs(next);
+      }
+    }
+    stack.pop();
+    color.set(key, 'done');
+  };
+
+  for (const key of adj.keys()) {
+    if (!color.has(key)) dfs(key);
+  }
+  return cycles;
+}

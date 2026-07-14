@@ -97,6 +97,7 @@ export const workflowForms = pgTable('workflow_forms', {
   categoryId: integer('category_id').references(() => workflowCategories.id, { onDelete: 'set null' }),
   schema: jsonb('schema'), // { fields: WorkflowFormField[], settings: WorkflowFormSettings }
   status: statusEnum('status').notNull().default('enabled'),
+  revision: integer('revision').notNull().default(1), // 乐观锁版本号，每次更新 +1
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),

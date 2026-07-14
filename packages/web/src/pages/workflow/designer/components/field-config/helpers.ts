@@ -2,6 +2,8 @@
 import { pinyin } from 'pinyin-pro';
 import type { WorkflowFormField, WorkflowFormFieldType, WorkflowFormFieldOptionItem } from '@zenith/shared';
 import { evalFormula } from '../../form-formula';
+import { flattenAllFields } from '../../form-tree';
+import { findValueDependencyCycles } from '../../form-graph';
 
 export const FIELD_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
 
@@ -77,6 +79,14 @@ export function formulaError(formula: string | undefined, fields: WorkflowFormFi
   return evalFormula(expr, sampleValues, 2) === null ? '公式表达式无效，请检查函数与括号是否匹配' : null;
 }
 
+/** 当前字段是否处于值联动循环依赖中（公式/天数/赋值边成环），返回可读的环路径提示 */
+export function formulaCycleError(fields: WorkflowFormField[], currentKey: string): string | null {
+  const cycle = findValueDependencyCycles(fields).find((c) => c.includes(currentKey));
+  if (!cycle) return null;
+  const labelOf = (key: string) => flattenAllFields(fields).find((f) => f.key === key)?.label || key;
+  return `存在循环依赖：${cycle.map(labelOf).join(' → ')}，请调整引用关系`;
+}
+
 export function createsCascadeCycle(fieldKey: string, sourceKey: string, fields: WorkflowFormField[]): boolean {
   const byKey = new Map(fields.map((field) => [field.key, field]));
   const visited = new Set<string>([fieldKey]);
@@ -143,15 +153,8 @@ export function deriveOptionItems(field: WorkflowFormField): WorkflowFormFieldOp
 
 // ─── dateRange → 天数 联动配置 ────────────────────────────────────
 
-export function collectFlat(list: WorkflowFormField[]): WorkflowFormField[] {
-  const out: WorkflowFormField[] = [];
-  for (const f of list) {
-    out.push(f);
-    if (f.type === 'row' && f.columns) for (const c of f.columns) out.push(...collectFlat(c.fields));
-    else if ((f.type === 'group' || f.type === 'detail') && f.children) out.push(...collectFlat(f.children));
-  }
-  return out;
-}
+/** 展平所有层级字段（分栏列/分组/明细子字段/标签页与分步面板），供条件与联动选择器使用 */
+export const collectFlat = flattenAllFields;
 
 // ─── select 联动赋值：选中某选项时自动填充其它字段 ──────────────────
 

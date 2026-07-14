@@ -407,6 +407,13 @@
       "when": 1783925710365,
       "tag": "0057_thick_lockjaw",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1784036998534,
+      "tag": "0058_stormy_sunspot",
+      "breakpoints": true
     }
   ]
 }

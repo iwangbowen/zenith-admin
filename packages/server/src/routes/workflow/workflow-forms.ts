@@ -3,7 +3,7 @@ import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
 import {
   ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses,
-  ok, okPaginated, okMsg, IdParam, okBody,
+  ok, okPaginated, okMsg, IdParam, okBody, conflictResponse,
 } from '../../lib/openapi-schemas';
 import { WorkflowFormDTO } from '../../lib/openapi-dtos';
 import { createWorkflowFormSchema, updateWorkflowFormSchema } from '@zenith/shared';
@@ -79,7 +79,7 @@ const updateRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'workflow:form:edit', audit: { description: '更新表单', module: '工作流管理' } })] as const,
     request: { params: IdParam, body: { content: jsonContent(updateWorkflowFormSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(WorkflowFormDTO, '更新成功'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
+    responses: { ...commonErrorResponses, ...conflictResponse, ...ok(WorkflowFormDTO, '更新成功'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');

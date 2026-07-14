@@ -473,6 +473,44 @@
   color: var(--semi-color-primary);
 }
 
+/* 字段引用 chip（与函数 chip 区分的主色底） */
+.fd-formula-fns__chip--field {
+  background: var(--semi-color-primary-light-default);
+  border-color: transparent;
+  color: var(--semi-color-primary);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── 公式实时试算 ───────────────────────────────────────────────── */
+
+.fd-formula-test__inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.fd-formula-test__row {
+  display: grid;
+  grid-template-columns: minmax(0, 110px) 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.fd-formula-test__ref {
+  font-family: var(--semi-font-family-code, monospace);
+}
+
+.fd-formula-test__result {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-radius: var(--semi-border-radius-small);
+  background: var(--semi-color-fill-0);
+}
+
 /* ─── 跨字段比较校验 ─────────────────────────────────────────────── */
 
 .fd-compare-rules {

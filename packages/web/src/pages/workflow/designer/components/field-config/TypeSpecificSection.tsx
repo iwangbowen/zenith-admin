@@ -1,13 +1,12 @@
 // ─── 字段类型专属设置（选项来源/数字/公式/日期/文件等，拆分自 FieldConfigPanel.tsx）───
-import { Input, InputNumber, Select, Switch, Typography, TextArea, Tooltip } from '@douyinfe/semi-ui';
+import { Input, InputNumber, Select, Switch, Typography, TextArea } from '@douyinfe/semi-ui';
 import type { WorkflowFormField } from '@zenith/shared';
 import { CURRENCY_OPTIONS, DATE_FORMAT_OPTIONS, TIME_FORMAT_OPTIONS, REGION_LEVEL_OPTIONS, DATE_LIMIT_OPTIONS, toDateFnsToken } from '../../form-types';
-import { FORMULA_FN_GROUPS } from '../../form-formula';
-import { formulaError } from './helpers';
 import type { FieldTypeFlags } from './field-type-flags';
 import { RelationDefinitionPicker, DictCodePicker } from './pickers';
 import { OptionsEditor } from './OptionsEditor';
 import { DetailChildrenEditor } from './DetailChildrenEditor';
+import { FormulaEditor } from './FormulaEditor';
 import { DateRangeLinkageEditor, DataSourceSourceEditor, AutoFillEditor, CascadeEditor } from './linkage-editors';
 
 interface TypeSpecificSectionProps {
@@ -26,7 +25,6 @@ export function TypeSpecificSection({ field, allFields, flatFields, flags, isRem
     isDate, isFileType, isRate, isFormula, isTime, isRegion, isSwitch, isSlider, isTags, isColorPicker,
     isPinCode, isAutoComplete, isDictSelect, isRelationSelect, isSystemSelect, allowOtherTypes,
   } = flags;
-  const formulaValidationError = isFormula ? formulaError(field.formula, flatFields, field.key) : null;
 
   return (
     <>
@@ -126,43 +124,12 @@ export function TypeSpecificSection({ field, allFields, flatFields, flags, isRem
           {/* 公式表达式 */}
           {isFormula && (
             <>
-              <div className="fd-form-config__field">
-                <Typography.Text strong size="small">公式表达式</Typography.Text>
-                <TextArea
-                  value={field.formula ?? ''}
-                  onChange={(v) => onChange({ formula: v })}
-                  placeholder="如：{amount}*{days}、IF({days}>3,{amount}*0.9,{amount})、SUM({items.amount})"
-                  rows={3}
-                />
-                <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 4 }}>
-                  支持 + - * / 与比较/三元；数学/逻辑/文本/日期函数见下方；明细汇总用 {'{明细key.列key}'}
-                </Typography.Text>
-                <div className="fd-formula-fns">
-                  {FORMULA_FN_GROUPS.map((g) => (
-                    <div key={g.group} className="fd-formula-fns__group">
-                      <Typography.Text type="tertiary" size="small" className="fd-formula-fns__label">{g.group}</Typography.Text>
-                      <div className="fd-formula-fns__list">
-                        {g.fns.map((f) => (
-                          <Tooltip key={f.name} content={f.desc}>
-                            <button
-                              type="button"
-                              className="fd-formula-fns__chip"
-                              onClick={() => onChange({ formula: `${field.formula ?? ''}${f.insert}` })}
-                            >
-                              {f.name}
-                            </button>
-                          </Tooltip>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {formulaValidationError && (
-                  <Typography.Text type="danger" size="small" style={{ display: 'block', marginTop: 4 }}>
-                    {formulaValidationError}
-                  </Typography.Text>
-                )}
-              </div>
+              <FormulaEditor
+                field={field}
+                allFields={allFields}
+                flatFields={flatFields}
+                onChange={onChange}
+              />
               <div className="fd-form-config__field">
                 <Typography.Text strong size="small">结果小数位</Typography.Text>
                 <InputNumber

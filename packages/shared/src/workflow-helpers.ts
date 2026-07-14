@@ -259,3 +259,188 @@ export function buildWorkflowSummaryItems(
   }
   return out;
 }
+
+// ─── 表单字段 key 重命名 → 流程定义 flowData 级联更新 ──────────────────────────
+//
+// 表单库中修改字段 key 后，引用该表单的流程定义 flowData 中仍残留旧 key
+// （分支条件、字段权限、审批人字段、触发器模板、子流程映射、摘要字段、业务编号模板等）。
+// 本纯函数对 flowData 做**定点**重写（不做全文替换，避免误伤 URL/名称等无关字符串），
+// 供服务端在表单更新事务内级联修复所有引用定义；前后端/MSW 共享同一语义。
+
+const escapeReg = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** 替换模板串中的 {{form.oldKey}} 占位（触发器 bodyTemplate / fieldValues / 子流程映射值） */
+function renameFormTemplateRefs(template: string, renames: Record<string, string>): string {
+  let out = template;
+  for (const [oldKey, newKey] of Object.entries(renames)) {
+    out = out.replace(new RegExp(`\\{\\{\\s*form\\.${escapeReg(oldKey)}\\s*\\}\\}`, 'g'), `{{form.${newKey}}}`);
+  }
+  return out;
+}
+
+/** 替换业务编号模板中的 {FORM.oldKey} 占位（renderWorkflowSerialNo 的 token 前缀大小写不敏感） */
+function renameSerialTemplateRefs(template: string, renames: Record<string, string>): string {
+  let out = template;
+  for (const [oldKey, newKey] of Object.entries(renames)) {
+    out = out.replace(new RegExp(`\\{(FORM)\\.${escapeReg(oldKey)}\\}`, 'gi'), (_m, prefix: string) => `{${prefix}.${newKey}}`);
+  }
+  return out;
+}
+
+const renameKey = (key: unknown, renames: Record<string, string>): unknown =>
+  typeof key === 'string' && key in renames ? renames[key] : key;
+
+/** 重命名 Record 的键（fieldPermissions / subProcessOutputMapping / 触发器 fieldValues） */
+function renameRecordKeys<T>(record: Record<string, T>, renames: Record<string, string>): Record<string, T> {
+  return Object.fromEntries(Object.entries(record).map(([k, v]) => [k in renames ? renames[k] : k, v]));
+}
+
+/** 重命名条件规则中的表单字段引用（source='starter' 的规则 field 为发起人维度，不动） */
+function renameConditionRule<T extends { field?: unknown; source?: unknown; aggregateField?: unknown }>(
+  rule: T,
+  renames: Record<string, string>,
+): T {
+  if (!rule || typeof rule !== 'object' || rule.source === 'starter') return rule;
+  return {
+    ...rule,
+    ...(typeof rule.field === 'string' ? { field: renameKey(rule.field, renames) } : {}),
+    ...(typeof rule.aggregateField === 'string' ? { aggregateField: renameKey(rule.aggregateField, renames) } : {}),
+  };
+}
+
+function renameConditionGroups(groups: unknown, renames: Record<string, string>): unknown {
+  if (!Array.isArray(groups)) return groups;
+  return groups.map((g) => {
+    if (!g || typeof g !== 'object' || !Array.isArray((g as { rules?: unknown }).rules)) return g;
+    const group = g as { rules: Array<Record<string, unknown>> };
+    return { ...group, rules: group.rules.map((r) => renameConditionRule(r, renames)) };
+  });
+}
+
+/** 重写节点配置（扁平 nodes[].data 与流程树 props 共用同一批字段名） */
+function renameNodeProps(props: Record<string, unknown>, renames: Record<string, string>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...props };
+  // 字段权限表：键为表单字段 key
+  if (out.fieldPermissions && typeof out.fieldPermissions === 'object') {
+    out.fieldPermissions = renameRecordKeys(out.fieldPermissions as Record<string, unknown>, renames);
+  }
+  // 直接存字段 key 的标量属性
+  for (const prop of ['formUserField', 'formDeptField', 'targetDate', 'subProcessMultiSource', 'subProcessInitiatorField', 'routeFieldKey'] as const) {
+    if (typeof out[prop] === 'string') out[prop] = renameKey(out[prop], renames);
+  }
+  // 子流程出参映射：键为父表单字段 key（值为子表单字段，不动）
+  if (out.subProcessOutputMapping && typeof out.subProcessOutputMapping === 'object') {
+    out.subProcessOutputMapping = renameRecordKeys(out.subProcessOutputMapping as Record<string, unknown>, renames);
+  }
+  // 子流程入参映射：值为 {{form.父字段}} 模板（键为子表单字段，不动）
+  if (out.subProcessFieldMapping && typeof out.subProcessFieldMapping === 'object') {
+    out.subProcessFieldMapping = Object.fromEntries(
+      Object.entries(out.subProcessFieldMapping as Record<string, unknown>)
+        .map(([k, v]) => [k, typeof v === 'string' ? renameFormTemplateRefs(v, renames) : v]),
+    );
+  }
+  // 触发器配置：模板占位 + 操作字段列表 + 字段更新映射
+  const trigger = out.triggerConfig;
+  if (trigger && typeof trigger === 'object') {
+    const tc = { ...(trigger as Record<string, unknown>) };
+    if (typeof tc.bodyTemplate === 'string') tc.bodyTemplate = renameFormTemplateRefs(tc.bodyTemplate, renames);
+    if (Array.isArray(tc.fieldKeys)) tc.fieldKeys = tc.fieldKeys.map((k) => renameKey(k, renames));
+    if (tc.fieldValues && typeof tc.fieldValues === 'object') {
+      const renamedValues = Object.fromEntries(
+        Object.entries(tc.fieldValues as Record<string, unknown>)
+          .map(([k, v]) => [k, typeof v === 'string' ? renameFormTemplateRefs(v, renames) : v]),
+      );
+      tc.fieldValues = renameRecordKeys(renamedValues, renames);
+    }
+    out.triggerConfig = tc;
+  }
+  // 设计器树 props 中触发器配置尚未收敛进 triggerConfig（保存时才转换），同名顶层属性同样处理
+  if (typeof out.bodyTemplate === 'string') out.bodyTemplate = renameFormTemplateRefs(out.bodyTemplate, renames);
+  if (Array.isArray(out.fieldKeys)) out.fieldKeys = out.fieldKeys.map((k) => renameKey(k, renames));
+  if (out.fieldValues && typeof out.fieldValues === 'object' && !Array.isArray(out.fieldValues)) {
+    const renamedValues = Object.fromEntries(
+      Object.entries(out.fieldValues as Record<string, unknown>)
+        .map(([k, v]) => [k, typeof v === 'string' ? renameFormTemplateRefs(v, renames) : v]),
+    );
+    out.fieldValues = renameRecordKeys(renamedValues, renames);
+  }
+  return out;
+}
+
+/** 递归重写钉钉风格流程树节点（props + 分支条件 + 子节点） */
+function renameProcessNode(node: Record<string, unknown>, renames: Record<string, string>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...node };
+  if (out.props && typeof out.props === 'object') {
+    out.props = renameNodeProps(out.props as Record<string, unknown>, renames);
+  }
+  if (Array.isArray(out.branches)) {
+    out.branches = out.branches.map((b) => {
+      if (!b || typeof b !== 'object') return b;
+      const branch = { ...(b as Record<string, unknown>) };
+      if (branch.conditions) branch.conditions = renameConditionGroups(branch.conditions, renames);
+      if (branch.children && typeof branch.children === 'object') {
+        branch.children = renameProcessNode(branch.children as Record<string, unknown>, renames);
+      }
+      return branch;
+    });
+  }
+  if (out.children && typeof out.children === 'object') {
+    out.children = renameProcessNode(out.children as Record<string, unknown>, renames);
+  }
+  return out;
+}
+
+/**
+ * 表单字段 key 批量重命名后，级联重写流程定义 flowData 中的所有表单字段引用。
+ *
+ * 覆盖位置：
+ * - 扁平 nodes[].data：fieldPermissions 键、formUserField/formDeptField、延迟节点 targetDate、
+ *   子流程 multiSource/initiatorField/出参映射键/入参映射 {{form.x}}、触发器 bodyTemplate/fieldKeys/fieldValues、routeFieldKey
+ * - edges[].condition / conditions[]：source≠'starter' 的 rules[].field 与 aggregateField
+ * - process 流程树（设计器结构）：同构 props + branches[].conditions 递归
+ * - settings.summaryFields 摘要字段、settings.serialNo.template 中 {FORM.key} 占位
+ *
+ * 返回新对象，不修改入参；renames 为空时原样返回。
+ */
+export function renameWorkflowFormFieldKeys(
+  flowData: WorkflowFlowData,
+  renames: Record<string, string>,
+): WorkflowFlowData {
+  const entries = Object.entries(renames).filter(([o, n]) => o && n && o !== n);
+  if (entries.length === 0) return flowData;
+  const map = Object.fromEntries(entries);
+
+  const nodes = (flowData.nodes ?? []).map((n) => ({
+    ...n,
+    data: renameNodeProps(n.data as unknown as Record<string, unknown>, map) as unknown as WorkflowNodeConfig,
+  }));
+
+  const edges = (flowData.edges ?? []).map((e) => ({
+    ...e,
+    ...(e.condition ? { condition: renameConditionRule(e.condition, map) } : {}),
+    ...(e.conditions ? { conditions: renameConditionGroups(e.conditions, map) as typeof e.conditions } : {}),
+  }));
+
+  const out: WorkflowFlowData = { ...flowData, nodes, edges };
+
+  if (flowData.process && typeof flowData.process === 'object') {
+    const process = { ...flowData.process };
+    if (process.initiator && typeof process.initiator === 'object') {
+      process.initiator = renameProcessNode(process.initiator as Record<string, unknown>, map);
+    }
+    out.process = process;
+  }
+
+  if (flowData.settings) {
+    const settings = { ...flowData.settings };
+    if (Array.isArray(settings.summaryFields)) {
+      settings.summaryFields = settings.summaryFields.map((k) => (k in map ? map[k] : k));
+    }
+    if (settings.serialNo?.template) {
+      settings.serialNo = { ...settings.serialNo, template: renameSerialTemplateRefs(settings.serialNo.template, map) };
+    }
+    out.settings = settings;
+  }
+
+  return out;
+}

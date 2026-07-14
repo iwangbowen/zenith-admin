@@ -1,0 +1,1 @@
+ALTER TABLE "workflow_forms" ADD COLUMN "revision" integer DEFAULT 1 NOT NULL;

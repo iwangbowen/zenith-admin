@@ -1089,7 +1089,12 @@ export const createWorkflowFormSchema = z.object({
   status: z.enum(['enabled', 'disabled']).default('enabled'),
 });
 
-export const updateWorkflowFormSchema = createWorkflowFormSchema.partial();
+export const updateWorkflowFormSchema = createWorkflowFormSchema.partial().extend({
+  /** 乐观锁：客户端持有的 revision，与当前不一致时返回 409 */
+  expectedRevision: z.number().int().min(1).optional(),
+  /** 字段 key 重命名映射（旧 key → 新 key），服务端级联更新引用该表单的流程定义 flowData */
+  renamedKeys: z.record(z.string(), z.string()).optional(),
+});
 
 export type CreateWorkflowFormInput = z.input<typeof createWorkflowFormSchema>;
 export type UpdateWorkflowFormInput = z.input<typeof updateWorkflowFormSchema>;

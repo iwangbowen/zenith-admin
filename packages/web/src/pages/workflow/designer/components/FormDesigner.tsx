@@ -24,6 +24,8 @@ interface FormDesignerProps {
   showToolbar?: boolean;
   /** 撤销/重做状态变化回调，供外部工具栏渲染按钮 */
   onHistoryChange?: (controls: FormHistoryControls) => void;
+  /** 字段 key 重命名上报（oldKey → newKey），供外部跟踪并级联到流程侧引用 */
+  onRenameKey?: (oldKey: string, newKey: string) => void;
 }
 
 export interface FormHistoryControls {
@@ -239,7 +241,7 @@ interface HistoryState {
 
 const MAX_HISTORY = 100;
 
-export default function FormDesigner({ fields, onChange, settings, onSettingsChange, showToolbar = true, onHistoryChange }: Readonly<FormDesignerProps>) {
+export default function FormDesigner({ fields, onChange, settings, onSettingsChange, showToolbar = true, onHistoryChange, onRenameKey }: Readonly<FormDesignerProps>) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   // 表单级设置以 ref 跟踪最新值，供字段 commit 写入同一历史快照
   const settingsRef = useRef<WorkflowFormSettings>(settings ?? {});
@@ -438,8 +440,9 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
   const handleRenameKey = useCallback((newKey: string) => {
     if (!selectedKey || newKey === selectedKey) return;
     commit(renameFieldKey(fields, selectedKey, newKey));
+    onRenameKey?.(selectedKey, newKey);
     setSelectedKey(newKey);
-  }, [fields, commit, selectedKey]);
+  }, [fields, commit, selectedKey, onRenameKey]);
 
   return (
     <div className="fd-form-designer-shell">

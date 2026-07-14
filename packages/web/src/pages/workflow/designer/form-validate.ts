@@ -5,6 +5,7 @@
 import type { WorkflowFormField, WorkflowFormFieldType } from '@zenith/shared';
 import { flattenAllFields, formulaReferencesKey } from './form-tree';
 import { evalFormula } from './form-formula';
+import { findValueDependencyCycles } from './form-graph';
 
 export interface FormIssue {
   level: 'error' | 'warning';
@@ -131,6 +132,17 @@ export function validateFormSchema(fields: WorkflowFormField[]): FormIssue[] {
     if ((f.type === 'tabs' || f.type === 'steps') && (f.panes?.length ?? 0) === 0) {
       issues.push({ level: 'warning', fieldKey: f.key, fieldLabel: label, message: '容器没有任何面板' });
     }
+  }
+
+  // 值联动循环依赖（公式/天数/赋值互相触发重算，运行时会震荡）
+  const labelOf = (key: string) => all.find((f) => f.key === key)?.label || key;
+  for (const cycle of findValueDependencyCycles(fields)) {
+    issues.push({
+      level: 'error',
+      fieldKey: cycle[0],
+      fieldLabel: labelOf(cycle[0]),
+      message: `字段联动存在循环依赖：${cycle.map(labelOf).join(' → ')}`,
+    });
   }
 
   return issues;

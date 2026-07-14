@@ -3,21 +3,24 @@
  * 同时用于：表单库独立设计页 与 流程设计器第二步「内联新建/编辑表单」。
  * 顶部为紧凑工具栏（含撤销/重做），主体内嵌 FormDesigner，支持 PC/移动双预览。
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button, Spin, Toast, Typography, Input, Select, TextArea,
-  RadioGroup, Radio, InputNumber, SideSheet, Divider, Tooltip, Dropdown, Banner, Switch,
+  RadioGroup, Radio, InputNumber, SideSheet, Divider, Tooltip, Dropdown, Banner, Switch, Modal,
 } from '@douyinfe/semi-ui';
+import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, X, Eye, Save, Settings, Monitor, Smartphone, Undo2, Redo2, Braces, Copy, Stethoscope, LayoutTemplate, SlidersHorizontal, AlertTriangle, CircleAlert, Share2 } from 'lucide-react';
 import type { WorkflowForm, WorkflowFormField, WorkflowFormFieldType, WorkflowFormSettings, WorkflowFormStatus } from '@zenith/shared';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
+import { ApiError } from '@/lib/query';
 import { LABEL_POSITION_OPTIONS, LABEL_ALIGN_OPTIONS, COLUMN_SPAN_OPTIONS } from '../designer/form-types';
 import { validateFormSchema, countErrors, type FormIssue } from '../designer/form-validate';
+import { flattenAllFields } from '../designer/form-tree';
 import AppModal from '@/components/AppModal';
 import FieldDependencyGraph from '../designer/components/FieldDependencyGraph';
 import FormDesigner, { type FormHistoryControls } from '../designer/components/FormDesigner';
 import WorkflowFormRenderer from '../designer/components/WorkflowFormRenderer';
-import { useSaveWorkflowForm, useWorkflowFormDetail } from '@/hooks/queries/workflow-forms';
+import { useSaveWorkflowForm, useWorkflowFormDetail, workflowFormKeys } from '@/hooks/queries/workflow-forms';
 
 type PreviewState = 'fill' | 'readonly' | 'approval';
 
@@ -98,6 +101,7 @@ export default function WorkflowFormInlineEditor({
   embedded = false,
 }: Readonly<WorkflowFormInlineEditorProps>) {
   const { categories } = useWorkflowCategories();
+  const queryClient = useQueryClient();
 
   const [currentId, setCurrentId] = useState<number | null>(null);
   const detailQuery = useWorkflowFormDetail(formId, formId != null && formId !== currentId);
@@ -110,6 +114,11 @@ export default function WorkflowFormInlineEditor({
   const [status, setStatus] = useState<WorkflowFormStatus>('enabled');
   const [fields, setFields] = useState<WorkflowFormField[]>([]);
   const [settings, setSettings] = useState<WorkflowFormSettings>(DEFAULT_SETTINGS);
+  // 乐观锁：服务端当前版本号，保存时回传做并发冲突检测
+  const [revision, setRevision] = useState<number | null>(null);
+  // key 重命名跟踪：服务端已知的原始 key → 当前 key（保存时按 baseline 过滤后级联流程侧引用）
+  const baselineFieldsRef = useRef<WorkflowFormField[]>([]);
+  const renameMapRef = useRef<Map<string, string>>(new Map());
 
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [previewVisible, setPreviewVisible] = useState(false);
@@ -148,7 +157,49 @@ export default function WorkflowFormInlineEditor({
     setStatus(form.status);
     setFields(form.schema?.fields ?? []);
     setSettings(form.schema?.settings ?? DEFAULT_SETTINGS);
+    setRevision(form.revision ?? null);
+    baselineFieldsRef.current = form.schema?.fields ?? [];
+    renameMapRef.current.clear();
   }, [currentId, detailQuery.data, formId]);
+
+  // key 重命名上报：链式合并（a→b 后 b→c 记为 a→c），撤销产生的回改由保存时 baseline 过滤兜底
+  const trackRenameKey = useCallback((oldKey: string, newKey: string) => {
+    for (const [orig, cur] of renameMapRef.current) {
+      if (cur === oldKey) {
+        renameMapRef.current.set(orig, newKey);
+        return;
+      }
+    }
+    renameMapRef.current.set(oldKey, newKey);
+  }, []);
+
+  /** 生成保存时的 renamedKeys：只保留「baseline 存在旧 key、当前已不存在旧 key、且新 key 存在」的有效重命名 */
+  const buildRenamedKeys = (): Record<string, string> | undefined => {
+    if (currentId == null || renameMapRef.current.size === 0) return undefined;
+    const baselineKeys = new Set(flattenAllFields(baselineFieldsRef.current).map((f) => f.key));
+    const currentKeys = new Set(flattenAllFields(fields).map((f) => f.key));
+    const out: Record<string, string> = {};
+    for (const [orig, cur] of renameMapRef.current) {
+      if (orig !== cur && baselineKeys.has(orig) && !currentKeys.has(orig) && currentKeys.has(cur)) {
+        out[orig] = cur;
+      }
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
+  };
+
+  // 乐观锁冲突：提示加载最新内容（放弃本地修改）或留在当前编辑
+  const handleRevisionConflict = () => {
+    Modal.confirm({
+      title: '表单已被其他人更新',
+      content: '当前表单在你编辑期间已被其他人保存。加载最新内容将丢弃你未保存的修改；也可以留在当前页面复制内容后再处理。',
+      okText: '加载最新内容',
+      cancelText: '留在当前页面',
+      onOk: () => {
+        setCurrentId(null);
+        void queryClient.invalidateQueries({ queryKey: workflowFormKeys.detail(formId) });
+      },
+    });
+  };
 
   // ─── 保存 ────────────────────────────────────────────────────────
   const handleSave = async () => {
@@ -162,6 +213,7 @@ export default function WorkflowFormInlineEditor({
       setHealthVisible(true);
       return;
     }
+    const renamedKeys = buildRenamedKeys();
     const payload = {
       name: name.trim(),
       code: code.trim() || null,
@@ -169,11 +221,24 @@ export default function WorkflowFormInlineEditor({
       categoryId,
       status,
       schema: { fields, settings },
+      ...(currentId != null && revision != null ? { expectedRevision: revision } : {}),
+      ...(renamedKeys ? { renamedKeys } : {}),
     };
-    const saved = await saveMutation.mutateAsync({ id: currentId, values: payload });
-    Toast.success('保存成功');
-    setCurrentId(saved.id);
-    onSaved(saved);
+    try {
+      const saved = await saveMutation.mutateAsync({ id: currentId, values: payload });
+      Toast.success('保存成功');
+      setCurrentId(saved.id);
+      setRevision(saved.revision ?? null);
+      baselineFieldsRef.current = saved.schema?.fields ?? fields;
+      renameMapRef.current.clear();
+      onSaved(saved);
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 409) {
+        handleRevisionConflict();
+        return;
+      }
+      Toast.error(err instanceof Error ? err.message : '保存失败');
+    }
   };
 
   // 表单级设置变更（纳入设计器撤销/重做历史）
@@ -380,6 +445,7 @@ export default function WorkflowFormInlineEditor({
           onSettingsChange={setSettings}
           showToolbar={false}
           onHistoryChange={handleHistoryChange}
+          onRenameKey={trackRenameKey}
         />
       </div>
 

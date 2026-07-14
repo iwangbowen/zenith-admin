@@ -8,8 +8,9 @@ import { escapeLike } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { pageOffset } from '../../lib/pagination';
 import { formatDateTime } from '../../lib/datetime';
-import type { CreateWorkflowFormInput, UpdateWorkflowFormInput, WorkflowFormField, WorkflowFormSchema, WorkflowFormSettings, WorkflowFormStatus } from '@zenith/shared';
-import type { DbExecutor } from '../../db/types';
+import { renameWorkflowFormFieldKeys } from '@zenith/shared';
+import type { CreateWorkflowFormInput, UpdateWorkflowFormInput, WorkflowFlowData, WorkflowFormField, WorkflowFormSchema, WorkflowFormSettings, WorkflowFormStatus } from '@zenith/shared';
+import type { DbExecutor, DbTransaction } from '../../db/types';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 
@@ -28,6 +29,7 @@ export function mapForm(row: FormRow, usageCount?: number) {
     categoryName: row.category?.name ?? null,
     schema: (row.schema ?? null) as WorkflowFormSchema | null,
     status: row.status as WorkflowFormStatus,
+    revision: row.revision,
     usageCount,
     tenantId: row.tenantId,
     createdBy: row.createdBy ?? null,
@@ -170,11 +172,32 @@ export async function duplicateWorkflowForm(id: number) {
   return getWorkflowForm(row.id);
 }
 
+/** 表单字段 key 重命名的级联：重写引用该表单的所有流程定义 flowData（分支条件/字段权限/触发器模板等） */
+async function cascadeRenamedKeys(tx: DbTransaction, formId: number, renames: Record<string, string>): Promise<void> {
+  const defs = await tx
+    .select({ id: workflowDefinitions.id, flowData: workflowDefinitions.flowData })
+    .from(workflowDefinitions)
+    .where(eq(workflowDefinitions.formId, formId));
+  for (const def of defs) {
+    const flowData = def.flowData as WorkflowFlowData | null;
+    if (!flowData) continue;
+    const next = renameWorkflowFormFieldKeys(flowData, renames);
+    if (next !== flowData) {
+      await tx.update(workflowDefinitions).set({ flowData: next }).where(eq(workflowDefinitions.id, def.id));
+    }
+  }
+}
+
 export async function updateWorkflowForm(id: number, input: UpdateWorkflowFormInput) {
-  await ensureFormExists(id);
+  const existing = await ensureFormExists(id);
+  if (input.expectedRevision != null && existing.revision !== input.expectedRevision) {
+    throw new HTTPException(409, { message: '表单已被其他人更新，请刷新后重试' });
+  }
   const tc = tenantCondition(workflowForms, currentUser());
   const conds = [eq(workflowForms.id, id)];
   if (tc) conds.push(tc);
+  // 乐观锁：携带 expectedRevision 时按版本条件更新，冲突返回 409
+  if (input.expectedRevision != null) conds.push(eq(workflowForms.revision, input.expectedRevision));
   try {
     const patch: Partial<typeof workflowForms.$inferInsert> = {};
     if (input.name !== undefined) patch.name = input.name;
@@ -183,8 +206,20 @@ export async function updateWorkflowForm(id: number, input: UpdateWorkflowFormIn
     if (input.categoryId !== undefined) patch.categoryId = input.categoryId;
     if (input.schema !== undefined) patch.schema = input.schema;
     if (input.status !== undefined) patch.status = input.status;
-    const [row] = await db.update(workflowForms).set(patch).where(and(...conds)).returning();
-    if (!row) throw new HTTPException(404, { message: '表单不存在' });
+    const renames = Object.fromEntries(
+      Object.entries(input.renamedKeys ?? {}).filter(([o, n]) => o && n && o !== n),
+    );
+    const row = await db.transaction(async (tx) => {
+      const [updated] = await tx.update(workflowForms)
+        .set({ ...patch, revision: sql`${workflowForms.revision} + 1` })
+        .where(and(...conds))
+        .returning();
+      if (!updated) {
+        throw new HTTPException(409, { message: '表单已被其他人更新，请刷新后重试' });
+      }
+      if (Object.keys(renames).length > 0) await cascadeRenamedKeys(tx, id, renames);
+      return updated;
+    });
     return mapForm(row);
   } catch (err) {
     if (err instanceof HTTPException) throw err;

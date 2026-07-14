@@ -83,4 +83,56 @@ describe('validateFormSchema', () => {
     expect(issues.some((i) => i.message === '比较校验不能引用字段自身')).toBe(true);
     expect(issues.some((i) => i.message.includes('ghost'))).toBe(true);
   });
+
+  it('公式互相引用成环报 error', () => {
+    const issues = validateFormSchema([
+      f({ key: 'a', type: 'formula', label: '甲', formula: '{b} + 1' }),
+      f({ key: 'b', type: 'formula', label: '乙', formula: '{a} * 2' }),
+    ]);
+    const cycle = issues.find((i) => i.message.includes('循环依赖'));
+    expect(cycle?.level).toBe('error');
+    expect(cycle?.message).toContain('甲');
+    expect(cycle?.message).toContain('乙');
+  });
+
+  it('值联动环去重：仅公式环报一次，赋值链无环不报', () => {
+    const issues = validateFormSchema([
+      // mirror →(赋值) price →(公式) total、mirror →(公式) total：多路径但无环
+      f({ key: 'price', type: 'number', label: '单价' }),
+      f({ key: 'total', type: 'formula', label: '合计', formula: '{price} * {mirror}' }),
+      f({
+        key: 'mirror', type: 'select', label: '镜像', options: ['A'],
+        autoFill: { targets: ['price'], byOption: { A: { price: '1' } } },
+      }),
+      // loop1 ↔ loop2 构成唯一的环
+      f({ key: 'loop1', type: 'formula', label: '环一', formula: '{loop2}' }),
+      f({ key: 'loop2', type: 'formula', label: '环二', formula: '{loop1}' }),
+    ]);
+    const cycles = issues.filter((i) => i.message.includes('循环依赖'));
+    expect(cycles).toHaveLength(1);
+    expect(cycles[0].message).toContain('环一');
+  });
+
+  it('多上游但无环时不误报（天数/赋值/公式混合）', () => {
+    const issues = validateFormSchema([
+      f({ key: 'range', type: 'dateRange', label: '日期区间' }),
+      f({ key: 'days', type: 'number', label: '天数', daysFromKey: 'range' }),
+      f({
+        key: 'sel', type: 'select', label: '选择', options: ['X'],
+        autoFill: { targets: ['days'], byOption: { X: { days: '3' } } },
+      }),
+      f({ key: 'back', type: 'formula', label: '回写', formula: '{days}' }),
+    ]);
+    // days 有两个上游（range 天数、sel 赋值）且被公式引用，但整体无环
+    expect(issues.some((i) => i.message.includes('循环依赖'))).toBe(false);
+  });
+
+  it('无环的正常公式链不误报', () => {
+    const issues = validateFormSchema([
+      f({ key: 'a', type: 'number', label: 'A' }),
+      f({ key: 'b', type: 'formula', label: 'B', formula: '{a} + 1' }),
+      f({ key: 'c', type: 'formula', label: 'C', formula: '{b} * 2' }),
+    ]);
+    expect(issues.some((i) => i.message.includes('循环依赖'))).toBe(false);
+  });
 });

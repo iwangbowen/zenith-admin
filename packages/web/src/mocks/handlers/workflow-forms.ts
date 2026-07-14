@@ -76,6 +76,7 @@ export const workflowFormsHandlers = [
       categoryName: null,
       schema: body.schema ?? { fields: [] },
       status: body.status ?? 'enabled',
+      revision: 1,
       usageCount: 0,
       tenantId,
       createdBy: 1,
@@ -98,6 +99,7 @@ export const workflowFormsHandlers = [
       name: `${src.name} 副本`,
       code: null,
       schema: src.schema ? structuredClone(src.schema) : src.schema,
+      revision: 1,
       usageCount: 0,
       createdBy: 1,
       updatedBy: 1,
@@ -115,9 +117,14 @@ export const workflowFormsHandlers = [
     const parsed = updateWorkflowFormSchema.safeParse(await request.json());
     if (!parsed.success) return fail(validationErrorMessage(parsed.error), 400);
     const body = parsed.data;
+    // 乐观锁：客户端持有的版本与当前不一致时返回 409（与服务端语义一致）
+    if (body.expectedRevision != null && body.expectedRevision !== form.revision) {
+      return fail('表单已被其他人更新，请刷新后重试', 409);
+    }
     if (body.code && body.code !== form.code && mockWorkflowForms.some((item) => item.tenantId === form.tenantId && item.code === body.code)) {
       return fail('表单编码已存在', 400);
     }
+    // renamedKeys 级联（重写引用定义 flowData）仅服务端实现，Demo 模式下忽略
     Object.assign(form, {
       name: body.name ?? form.name,
       code: body.code !== undefined ? body.code : form.code,
@@ -125,6 +132,7 @@ export const workflowFormsHandlers = [
       categoryId: body.categoryId !== undefined ? body.categoryId : form.categoryId,
       schema: body.schema !== undefined ? body.schema : form.schema,
       status: body.status ?? form.status,
+      revision: form.revision + 1,
       updatedBy: 1,
       updatedAt: mockDateTime(),
     });

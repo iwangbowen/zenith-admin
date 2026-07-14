@@ -40,6 +40,7 @@ export const WorkflowFormDTO = z
     categoryName: z.string().nullable().optional(),
     schema: z.unknown().nullable(),
     status: z.enum(['enabled', 'disabled']),
+    revision: z.number().int(),
     usageCount: z.number().int().optional(),
     tenantId: z.number().int().nullable(),
     ...auditFields,
