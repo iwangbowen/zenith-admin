@@ -20,6 +20,7 @@ import type {
 
 const OPTIONS_CACHE_TTL = 30_000;
 const optionsCache = new Map<string, { data: WorkflowDataSourceOption[]; expire: number }>();
+const rawItemsCache = new Map<string, { data: Array<Record<string, unknown>>; expire: number }>();
 
 /** 脱敏占位：GET 返回请求头的值统一替换为该占位；更新时值为占位则保留旧值 */
 const HEADER_MASK = '******';
@@ -144,6 +145,7 @@ export async function updateDataSource(id: number, input: UpdateWorkflowDataSour
     }).where(eq(workflowDataSources.id, id)).returning();
     if (!row) throw new HTTPException(404, { message: '数据源不存在' });
     optionsCache.clear();
+    rawItemsCache.clear();
     return mapDataSource(row);
   } catch (err) {
     rethrowPgUniqueViolation(err, '数据源名称已存在');
@@ -154,6 +156,7 @@ export async function updateDataSource(id: number, input: UpdateWorkflowDataSour
 export async function deleteDataSource(id: number): Promise<void> {
   await db.delete(workflowDataSources).where(eq(workflowDataSources.id, id));
   optionsCache.clear();
+  rawItemsCache.clear();
 }
 
 function navigatePath(json: unknown, path?: string | null): unknown {
@@ -164,10 +167,10 @@ function navigatePath(json: unknown, path?: string | null): unknown {
   );
 }
 
-/** 代理拉取数据源选项（带 30s 缓存）。仅启用的登记数据源可被调用。 */
-export async function fetchDataSourceOptions(id: number, keyword?: string): Promise<WorkflowDataSourceOption[]> {
-  const cacheKey = `${id}:${keyword ?? ''}`;
-  const cached = optionsCache.get(cacheKey);
+/** 代理拉取数据源原始记录列表（带 30s 缓存），选项与记录回填共用 */
+async function fetchDataSourceRawItems(id: number, keyword?: string): Promise<Array<Record<string, unknown>>> {
+  const cacheKey = `raw:${id}:${keyword ?? ''}`;
+  const cached = rawItemsCache.get(cacheKey);
   if (cached && cached.expire > Date.now()) return cached.data;
 
   const src = await ensureDataSourceExists(id);
@@ -198,10 +201,21 @@ export async function fetchDataSourceOptions(id: number, keyword?: string): Prom
 
   const arr = navigatePath(json, src.itemsPath);
   if (!Array.isArray(arr)) throw new HTTPException(502, { message: '数据源返回结构不是数组，请检查「数组路径」配置' });
+  const items = arr.map((item) => (item ?? {}) as Record<string, unknown>);
+  rawItemsCache.set(cacheKey, { data: items, expire: Date.now() + OPTIONS_CACHE_TTL });
+  return items;
+}
 
-  const options = arr
-    .map((item) => {
-      const rec = (item ?? {}) as Record<string, unknown>;
+/** 代理拉取数据源选项（带 30s 缓存）。仅启用的登记数据源可被调用。 */
+export async function fetchDataSourceOptions(id: number, keyword?: string): Promise<WorkflowDataSourceOption[]> {
+  const cacheKey = `${id}:${keyword ?? ''}`;
+  const cached = optionsCache.get(cacheKey);
+  if (cached && cached.expire > Date.now()) return cached.data;
+
+  const src = await ensureDataSourceExists(id);
+  const items = await fetchDataSourceRawItems(id, keyword);
+  const options = items
+    .map((rec) => {
       const value = rec[src.valueField];
       const labelRaw = rec[src.labelField] ?? value;
       return { value: value == null ? '' : String(value), label: labelRaw == null ? '' : String(labelRaw) };
@@ -210,4 +224,11 @@ export async function fetchDataSourceOptions(id: number, keyword?: string): Prom
 
   optionsCache.set(cacheKey, { data: options, expire: Date.now() + OPTIONS_CACHE_TTL });
   return options;
+}
+
+/** 按选项值取数据源完整记录（联动赋值回填其它字段用）；未命中返回 null */
+export async function fetchDataSourceRecord(id: number, value: string): Promise<Record<string, unknown> | null> {
+  const src = await ensureDataSourceExists(id);
+  const items = await fetchDataSourceRawItems(id);
+  return items.find((rec) => String(rec[src.valueField] ?? '') === value) ?? null;
 }

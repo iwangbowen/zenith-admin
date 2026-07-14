@@ -3073,7 +3073,8 @@ export interface WorkflowFormField {
   };
   autoFill?: {                     // select：选中某选项时自动填充其它字段
     targets: string[];             // 受控目标字段 key 列表
-    byOption: Record<string, Record<string, string>>; // 选项值 -> { 目标key: 填充值 }
+    byOption: Record<string, Record<string, string>>; // 选项值 -> { 目标key: 填充值 }（静态映射模式）
+    dataSourceFieldMap?: Record<string, string>;      // 目标key -> 数据源记录字段名（远程数据源模式，选中后按记录回填）
   };
   dataSourceId?: number;           // select：选项来自登记的远程数据源（设置后忽略静态 options）
   // Layout fields

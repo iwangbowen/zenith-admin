@@ -26,6 +26,15 @@ export const workflowDataSourcesHandlers = [
     return HttpResponse.json({ code: 0, message: 'ok', data: list });
   }),
 
+  // 按选项值取完整记录（demo 按选项合成示例记录）
+  http.get('/api/workflows/data-sources/:id/record', ({ request }) => {
+    const url = new URL(request.url);
+    const value = url.searchParams.get('value') ?? '';
+    const hit = MOCK_DATA_SOURCE_OPTIONS.find((o) => o.value === value);
+    const record = hit ? { value: hit.value, label: hit.label, code: hit.value, name: hit.label } : null;
+    return HttpResponse.json({ code: 0, message: 'ok', data: record });
+  }),
+
   // 分页列表
   http.get('/api/workflows/data-sources', ({ request }) => {
     const url = new URL(request.url);

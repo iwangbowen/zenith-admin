@@ -97,11 +97,20 @@ export function AutoFillEditor({
   const candidates = flat.filter((f) => f.key !== field.key && !AUTOFILL_EXCLUDE.has(f.type));
   const current = field.autoFill;
   const targets = current?.targets ?? [];
+  // 远程数据源模式：按选中记录字段回填，而非静态选项映射
+  const remoteMode = field.dataSourceId != null;
 
-  if (options.length === 0 || candidates.length === 0) return null;
+  if ((!remoteMode && options.length === 0) || candidates.length === 0) return null;
 
   const setTargets = (next: string[]) => {
     if (next.length === 0) { onChange({ autoFill: undefined }); return; }
+    if (remoteMode) {
+      const map = Object.fromEntries(
+        next.map((t) => [t, current?.dataSourceFieldMap?.[t] ?? '']).filter(([, v]) => v !== undefined),
+      ) as Record<string, string>;
+      onChange({ autoFill: { targets: next, byOption: {}, dataSourceFieldMap: map } });
+      return;
+    }
     const byOption: Record<string, Record<string, string>> = {};
     for (const opt of options) {
       const m = current?.byOption[opt] ?? {};
@@ -114,7 +123,14 @@ export function AutoFillEditor({
     if (!current) return;
     const optMap = { ...(current.byOption[opt] ?? {}) };
     if (value === '') delete optMap[targetKey]; else optMap[targetKey] = value;
-    onChange({ autoFill: { targets: current.targets, byOption: { ...current.byOption, [opt]: optMap } } });
+    onChange({ autoFill: { ...current, byOption: { ...current.byOption, [opt]: optMap } } });
+  };
+
+  const setSourceField = (targetKey: string, sourceField: string) => {
+    if (!current) return;
+    const map = { ...(current.dataSourceFieldMap ?? {}) };
+    if (sourceField === '') delete map[targetKey]; else map[targetKey] = sourceField;
+    onChange({ autoFill: { ...current, dataSourceFieldMap: map } });
   };
 
   return (
@@ -129,7 +145,31 @@ export function AutoFillEditor({
         showClear
         optionList={candidates.map((f) => ({ value: f.key, label: f.label }))}
       />
-      {targets.length > 0 && (
+      {targets.length > 0 && remoteMode && (
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {targets.map((tk) => {
+            const tf = candidates.find((c) => c.key === tk);
+            return (
+              <div key={tk} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Typography.Text size="small" style={{ width: 96, flexShrink: 0 }} ellipsis={{ showTooltip: true }}>
+                  {tf?.label ?? tk}
+                </Typography.Text>
+                <Input
+                  size="small"
+                  value={current?.dataSourceFieldMap?.[tk] ?? ''}
+                  onChange={(v) => setSourceField(tk, v)}
+                  placeholder="数据源记录字段名，如 phone"
+                  style={{ flex: 1 }}
+                />
+              </div>
+            );
+          })}
+          <Typography.Text type="tertiary" size="small">
+            选中某选项时，按其在数据源中的完整记录，把对应字段值回填到目标字段。
+          </Typography.Text>
+        </div>
+      )}
+      {targets.length > 0 && !remoteMode && (
         <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 10 }}>
           {targets.map((tk) => {
             const tf = candidates.find((c) => c.key === tk);

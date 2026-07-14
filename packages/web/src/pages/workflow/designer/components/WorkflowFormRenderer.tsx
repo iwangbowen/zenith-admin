@@ -4,6 +4,8 @@
  */
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import DOMPurify from 'dompurify';
 import { Form, Select, Button, Typography, Row, Col, Divider, Rating, Toast, withField, Input, InputNumber, DatePicker, Collapse, Tabs, Steps, RadioGroup } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
@@ -22,7 +24,7 @@ import UserSelect from '@/components/UserSelect';
 import DepartmentSelect from '@/components/DepartmentSelect';
 import DictSelect from '@/components/DictSelect';
 import ColorPickerInput from '@/components/ColorPickerInput';
-import { useWorkflowDesignerRelationOptions, useWorkflowDesignerRemoteDataSourceOptions } from '@/hooks/queries/workflow-designer';
+import { useWorkflowDesignerRelationOptions, useWorkflowDesignerRemoteDataSourceOptions, fetchWorkflowDataSourceRecord } from '@/hooks/queries/workflow-designer';
 import { useSignaturePad } from '@/hooks/useSignaturePad';
 
 const PHONE_REGEX = /^1[3-9]\d{9}$/;
@@ -807,6 +809,11 @@ export default function WorkflowFormRenderer({
         if (next[f.key] === prev[f.key]) continue;
         const optKey = next[f.key];
         if (optKey === undefined || optKey === null) continue;
+        // 远程数据源模式：按选中记录回填映射字段（异步，含竞态防护）
+        if (f.dataSourceId && f.autoFill.dataSourceFieldMap && Object.keys(f.autoFill.dataSourceFieldMap).length > 0) {
+          void fillFromDataSourceRecord(f, String(optKey));
+          continue;
+        }
         const fillMap = f.autoFill.byOption[String(optKey)];
         if (!fillMap) continue;
         for (const targetKey of f.autoFill.targets) {
@@ -821,6 +828,36 @@ export default function WorkflowFormRenderer({
       }
     }
     onValueChange?.(next);
+  };
+
+  // 数据源记录回填：选中值期间变化则丢弃结果，失败静默
+  const fillFromDataSourceRecord = async (f: WorkflowFormField, value: string) => {
+    const map = f.autoFill?.dataSourceFieldMap;
+    if (!f.dataSourceId || !map) return;
+    try {
+      const record = await fetchWorkflowDataSourceRecord(f.dataSourceId, value);
+      const api = formApiRef.current;
+      if (!api || !record) return;
+      if (String(valuesRef.current[f.key] ?? '') !== value) return;
+      for (const targetKey of f.autoFill?.targets ?? []) {
+        const sourceField = map[targetKey];
+        if (!sourceField) continue;
+        const raw = record[sourceField];
+        if (raw === undefined) continue;
+        const tf = all.find(x => x.key === targetKey);
+        let val: unknown = raw;
+        if (tf && (tf.type === 'number' || tf.type === 'amount')) {
+          val = raw === '' || raw === null ? undefined : Number(raw);
+        } else if (raw !== null && typeof raw === 'object') {
+          val = JSON.stringify(raw);
+        } else if (raw === null) {
+          val = undefined;
+        }
+        api.setValue(targetKey, val);
+      }
+    } catch {
+      /* 数据源不可用时静默，不阻塞填写 */
+    }
   };
 
   return (
@@ -1426,10 +1463,12 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
 
     case 'description':
       return (
-        <div style={{ marginBottom: 16, padding: '12px', background: 'var(--semi-color-fill-0)', borderRadius: 'var(--semi-border-radius-medium)' }}>
-          <Typography.Text type="secondary">
-            {field.description || '说明文字'}
-          </Typography.Text>
+        <div className="wf-form-description" style={{ marginBottom: 16, padding: '12px', background: 'var(--semi-color-fill-0)', borderRadius: 'var(--semi-border-radius-medium)' }}>
+          {field.description ? (
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{field.description}</ReactMarkdown>
+          ) : (
+            <Typography.Text type="secondary">说明文字</Typography.Text>
+          )}
         </div>
       );
 
@@ -1525,7 +1564,9 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
     }
 
     case 'divider':
-      return <Divider style={{ margin: '16px 0' }} />;
+      return field.title
+        ? <Divider style={{ margin: '16px 0' }} align="center">{field.title}</Divider>
+        : <Divider style={{ margin: '16px 0' }} />;
 
     case 'group': {
       // 所有子字段都被隐藏时不渲染分组标题与空白容器

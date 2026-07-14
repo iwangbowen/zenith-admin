@@ -9,7 +9,7 @@ import {
 import { WorkflowDataSourceDTO, WorkflowDataSourceOptionDTO } from '../../lib/openapi-dtos';
 import {
   listDataSources, getDataSource, createDataSource, updateDataSource,
-  deleteDataSource, ensureDataSourceExists, fetchDataSourceOptions,
+  deleteDataSource, ensureDataSourceExists, fetchDataSourceOptions, fetchDataSourceRecord,
 } from '../../services/workflow/workflow-data-source.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -46,6 +46,23 @@ const optionsRoute = defineOpenAPIRoute({
     const { id } = c.req.valid('param');
     const { keyword } = c.req.valid('query');
     return c.json(okBody(await fetchDataSourceOptions(id, keyword)), 200);
+  },
+});
+
+// ─── GET /{id}/record — 按选项值取完整记录（联动赋值回填用，仅需登录态） ────
+const recordRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}/record',
+    tags: ['远程数据源'], summary: '按选项值取数据源完整记录',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { params: IdParam, query: z.object({ value: z.string().min(1) }) },
+    responses: { ...commonErrorResponses, ...ok(z.record(z.string(), z.unknown()).nullable(), '记录（未命中为 null）') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const { value } = c.req.valid('query');
+    return c.json(okBody(await fetchDataSourceRecord(id, value)), 200);
   },
 });
 
@@ -115,6 +132,6 @@ const deleteRoute_ = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRoute, optionsRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_] as const);
+router.openapiRoutes([listRoute, optionsRoute, recordRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_] as const);
 
 export default router;

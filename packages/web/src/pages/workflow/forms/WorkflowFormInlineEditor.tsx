@@ -6,16 +6,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button, Spin, Toast, Typography, Input, Select, TextArea,
-  RadioGroup, Radio, InputNumber, SideSheet, Divider, Tooltip, Dropdown, Banner, Switch, Modal,
+  RadioGroup, Radio, InputNumber, SideSheet, Divider, Tooltip, Dropdown, Banner, Switch, Modal, Tag,
 } from '@douyinfe/semi-ui';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, X, Eye, Save, Settings, Monitor, Smartphone, Undo2, Redo2, Braces, Copy, Stethoscope, LayoutTemplate, SlidersHorizontal, AlertTriangle, CircleAlert, Share2, History as HistoryIcon } from 'lucide-react';
+import { ArrowLeft, X, Eye, Save, Settings, Monitor, Smartphone, Undo2, Redo2, Braces, Copy, Stethoscope, LayoutTemplate, SlidersHorizontal, AlertTriangle, CircleAlert, Share2, History as HistoryIcon, GitCompareArrows } from 'lucide-react';
 import type { WorkflowForm, WorkflowFormField, WorkflowFormFieldType, WorkflowFormSettings, WorkflowFormStatus } from '@zenith/shared';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { ApiError } from '@/lib/query';
 import { LABEL_POSITION_OPTIONS, LABEL_ALIGN_OPTIONS, COLUMN_SPAN_OPTIONS } from '../designer/form-types';
 import { validateFormSchema, countErrors, type FormIssue } from '../designer/form-validate';
 import { flattenAllFields } from '../designer/form-tree';
+import { diffFormFields } from '../designer/form-diff';
 import { loadFormDraft, clearFormDraft, useFormDraftAutosave, type FormDraftPayload } from '../designer/use-draft-autosave';
 import { formatDateTime } from '@/utils/date';
 import AppModal from '@/components/AppModal';
@@ -140,6 +141,7 @@ export default function WorkflowFormInlineEditor({
   const [healthVisible, setHealthVisible] = useState(false);
   const [graphVisible, setGraphVisible] = useState(false);
   const [galleryVisible, setGalleryVisible] = useState(false);
+  const [diffVisible, setDiffVisible] = useState(false);
   const [batchVisible, setBatchVisible] = useState(false);
   const [batchPatch, setBatchPatch] = useState<Partial<WorkflowFormField>>({});
   const [history, setHistory] = useState<FormHistoryControls | null>(null);
@@ -149,6 +151,12 @@ export default function WorkflowFormInlineEditor({
   // 体检：保存前/设计中聚合校验
   const healthIssues = useMemo(() => validateFormSchema(fields), [fields]);
   const healthErrorCount = countErrors(healthIssues);
+
+  // 保存前变更摘要（F14）：与服务端基线对比（新建表单基线为空 → 全部为新增）
+  const fieldDiff = useMemo(
+    () => diffFormFields(baselineFieldsRef.current, fields, Object.fromEntries(renameMapRef.current)),
+    [fields],
+  );
 
   // 写入字段：优先走设计器历史栈（可撤销），未就绪时回退本地状态
   const commitFields = useCallback((next: WorkflowFormField[]) => {
@@ -517,6 +525,11 @@ export default function WorkflowFormInlineEditor({
 
         <Button icon={<Settings size={14} />} type="tertiary" theme="borderless" size="small" onClick={() => setSettingsVisible(true)}>表单设置</Button>
         <Button icon={<Braces size={14} />} type="tertiary" theme="borderless" size="small" onClick={openJson}>JSON</Button>
+        {currentId != null && fieldDiff.length > 0 && (
+          <Button icon={<GitCompareArrows size={14} />} type="tertiary" theme="borderless" size="small" onClick={() => setDiffVisible(true)}>
+            变更({fieldDiff.length})
+          </Button>
+        )}
         <Button icon={<Eye size={14} />} type="tertiary" theme="borderless" size="small" onClick={() => setPreviewVisible(true)}>预览</Button>
         <Button icon={<Save size={14} />} type="primary" size="small" loading={saveMutation.isPending} onClick={() => void handleSave()}>保存</Button>
       </div>
@@ -754,6 +767,44 @@ export default function WorkflowFormInlineEditor({
         hasExistingFields={fields.length > 0}
         onApply={applyFormTemplate}
       />
+
+      {/* 保存前变更摘要（F14） */}
+      <SideSheet
+        title={`本次变更（${fieldDiff.length} 项）`}
+        visible={diffVisible}
+        onCancel={() => setDiffVisible(false)}
+        width={420}
+        closeOnEsc
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {fieldDiff.map((entry) => (
+            <div
+              key={`${entry.kind}-${entry.key}`}
+              style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-small)' }}
+            >
+              <Tag
+                size="small"
+                color={entry.kind === 'added' ? 'green' : entry.kind === 'removed' ? 'red' : entry.kind === 'renamed' ? 'purple' : 'blue'}
+              >
+                {entry.kind === 'added' ? '新增' : entry.kind === 'removed' ? '删除' : entry.kind === 'renamed' ? '重命名' : '修改'}
+              </Tag>
+              <div style={{ minWidth: 0 }}>
+                <Typography.Text strong size="small">{entry.label}</Typography.Text>
+                {entry.detail && (
+                  <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>{entry.detail}</Typography.Text>
+                )}
+              </div>
+            </div>
+          ))}
+          {fieldDiff.some((d) => d.kind === 'removed') && (
+            <Banner
+              type="warning"
+              closeIcon={null}
+              description="删除的字段若被流程条件/触发器引用，保存后请到流程设计器确认相关配置。"
+            />
+          )}
+        </div>
+      </SideSheet>
 
       {/* 体检面板 */}
       <SideSheet

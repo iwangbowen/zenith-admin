@@ -89,8 +89,8 @@ export function TypeSpecificSection({ field, allFields, flatFields, flags, isRem
             />
           )}
 
-          {/* 联动赋值：选择某选项时自动填充其它字段（远程数据源时不可用） */}
-          {field.type === 'select' && !isRemoteSource && (
+          {/* 联动赋值：选择某选项时自动填充其它字段（静态映射 / 数据源记录回填） */}
+          {field.type === 'select' && (
             <AutoFillEditor
               field={field}
               allFields={allFields}
@@ -438,15 +438,30 @@ export function TypeSpecificSection({ field, allFields, flatFields, flags, isRem
             </>
           )}
 
-          {/* 说明文字内容 */}
+          {/* 说明文字内容（支持 Markdown） */}
           {isDescription && (
             <div className="fd-form-config__field">
               <Typography.Text strong size="small">说明内容</Typography.Text>
               <TextArea
                 value={field.description ?? ''}
                 onChange={(v) => onChange({ description: v })}
-                placeholder="请输入说明内容"
+                placeholder={'支持 Markdown：**加粗**、[链接](url)、- 列表 等'}
                 rows={4}
+              />
+              <Typography.Text type="tertiary" size="small">
+                支持 Markdown 语法（加粗/链接/列表/表格）
+              </Typography.Text>
+            </div>
+          )}
+
+          {/* 分割线标题 */}
+          {field.type === 'divider' && (
+            <div className="fd-form-config__field">
+              <Typography.Text strong size="small">分割线文字</Typography.Text>
+              <Input
+                value={field.title ?? ''}
+                onChange={(v) => onChange({ title: v || undefined })}
+                placeholder="留空显示纯分割线"
               />
             </div>
           )}

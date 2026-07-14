@@ -169,6 +169,16 @@ export function useWorkflowDesignerRemoteDataSourceOptions(params: WorkflowRemot
   });
 }
 
+/** 按选项值取数据源完整记录（联动赋值回填用；命令式调用，失败抛错由调用方静默） */
+export function fetchWorkflowDataSourceRecord(dataSourceId: number, value: string): Promise<Record<string, unknown> | null> {
+  return request
+    .get<Record<string, unknown> | null>(
+      `/api/workflows/data-sources/${dataSourceId}/record${toQueryString({ value })}`,
+      { silent: true },
+    )
+    .then(unwrap);
+}
+
 export function useWorkflowDesignerFormOptions(formId: number | null | undefined) {
   return useQuery({
     queryKey: workflowDesignerKeys.formOptions(formId),

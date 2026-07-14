@@ -1067,6 +1067,7 @@ export const workflowFormFieldSchema: z.ZodType<WorkflowFormField> = z.lazy(() =
     autoFill: z.object({
       targets: z.array(z.string()),
       byOption: z.record(z.string(), z.record(z.string(), z.string())),
+      dataSourceFieldMap: z.record(z.string(), z.string()).optional(),
     }).optional(),
     dataSourceId: z.number().int().positive().optional(),
     columns: z.array(z.object({

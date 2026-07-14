@@ -75,6 +75,16 @@ export const FORMULA_FN_GROUPS: FormulaFnGroup[] = [
       { name: 'DAY', insert: 'DAY()', desc: '取日' },
       { name: 'DATE', insert: 'DATE(, , )', desc: '构造日期：DATE(年, 月, 日)' },
       { name: 'DATEDIF', insert: 'DATEDIF(, , "d")', desc: '日期差：DATEDIF(起, 止, "d"|"m"|"y")' },
+      { name: 'DATEADD', insert: 'DATEADD(, 1, "d")', desc: '日期加减：DATEADD(日期, n, "d"|"m"|"y")' },
+      { name: 'NETWORKDAYS', insert: 'NETWORKDAYS(, )', desc: '两日期间的工作日天数（剔除周六日，含首尾）' },
+    ],
+  },
+  {
+    group: '查表/格式',
+    fns: [
+      { name: 'LOOKUP', insert: 'LOOKUP(, , )', desc: '查表：LOOKUP(值, 键列表, 值列表)，配合明细列使用' },
+      { name: 'FORMAT', insert: 'FORMAT(, 2)', desc: '数字格式化为千分位文本：FORMAT(数值, 小数位)' },
+      { name: 'ISEMPTY', insert: 'ISEMPTY()', desc: '是否为空（空值/空串/空数组返回真）' },
     ],
   },
 ];
@@ -171,6 +181,37 @@ const FORMULA_IMPL: Record<string, AnyFn> = {
     const u = String(unit).toLowerCase();
     return end.diff(start, u === 'y' ? 'year' : u === 'm' ? 'month' : 'day');
   }),
+  DATEADD: fn((a, n = 1, unit = 'd') => {
+    const d = toDay(a);
+    if (!d.isValid()) return '';
+    const u = String(unit).toLowerCase();
+    const next = d.add(Number(n) || 0, u === 'y' ? 'year' : u === 'm' ? 'month' : 'day');
+    return next.format('YYYY-MM-DD');
+  }),
+  NETWORKDAYS: fn((a, b) => {
+    let start = toDay(a); let end = toDay(b);
+    if (!start.isValid() || !end.isValid()) return NaN;
+    if (end.isBefore(start)) [start, end] = [end, start];
+    let count = 0;
+    for (let d = start.startOf('day'); !d.isAfter(end.startOf('day')); d = d.add(1, 'day')) {
+      const w = d.day();
+      if (w !== 0 && w !== 6) count += 1;
+    }
+    return count;
+  }),
+  // 查表/格式
+  LOOKUP: fn((value, keys, vals) => {
+    const ks = Array.isArray(keys) ? keys : [keys];
+    const vs = Array.isArray(vals) ? vals : [vals];
+    const idx = ks.findIndex((k) => k === value || String(k) === String(value));
+    return idx >= 0 ? vs[idx] : NaN;
+  }),
+  FORMAT: fn((x, digits = 2) => {
+    const n = Number(x);
+    if (!Number.isFinite(n)) return '';
+    return n.toLocaleString('en-US', { minimumFractionDigits: Number(digits), maximumFractionDigits: Number(digits) });
+  }),
+  ISEMPTY: fn((x) => x === undefined || x === null || x === '' || (Array.isArray(x) && x.length === 0) || (typeof x === 'number' && Number.isNaN(x))),
 };
 
 const STRING_LITERAL_RE = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g;

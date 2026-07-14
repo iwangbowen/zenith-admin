@@ -80,3 +80,29 @@ describe('evalFormula 边界与安全', () => {
     expect(evalFormula('(((', {})).toBeNull();
   });
 });
+
+describe('evalFormula 扩展函数（F11）', () => {
+  it('NETWORKDAYS 剔除周末（含首尾）', () => {
+    // 2026-07-13(周一) ~ 2026-07-19(周日) → 5 个工作日
+    expect(evalFormula('NETWORKDAYS({a},{b})', { a: '2026-07-13', b: '2026-07-19' }, 0)).toBe(5);
+    // 反序自动交换
+    expect(evalFormula('NETWORKDAYS({a},{b})', { a: '2026-07-19', b: '2026-07-13' }, 0)).toBe(5);
+  });
+
+  it('DATEADD 按单位加减并输出日期文本', () => {
+    expect(evalFormula('DATEADD({d}, 3, "d")', { d: '2026-07-14' }, 2)).toBe('2026-07-17');
+    expect(evalFormula('DATEADD({d}, 1, "m")', { d: '2026-07-14' }, 2)).toBe('2026-08-14');
+  });
+
+  it('LOOKUP 按明细列查表', () => {
+    const values = { items: [{ name: '甲', price: 10 }, { name: '乙', price: 20 }], pick: '乙' };
+    expect(evalFormula('LOOKUP({pick}, {items.name}, {items.price})', values, 0)).toBe(20);
+    expect(evalFormula('LOOKUP("丙", {items.name}, {items.price})', values, 0)).toBeNull();
+  });
+
+  it('FORMAT 输出千分位文本、ISEMPTY 判空', () => {
+    expect(evalFormula('FORMAT({n}, 2)', { n: 1234567.8 }, 2)).toBe('1,234,567.80');
+    expect(evalFormula('IF(ISEMPTY({x}), 1, 0)', {}, 0)).toBe(1);
+    expect(evalFormula('IF(ISEMPTY({x}), 1, 0)', { x: 'a' }, 0)).toBe(0);
+  });
+});
