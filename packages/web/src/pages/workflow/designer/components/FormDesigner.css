@@ -208,6 +208,156 @@
   margin-top: 6px;
 }
 
+/* ─── 画布所见即所得（F01）与拖拽增强（F05/F06） ─────────────────── */
+
+/* 真实控件预览：关闭交互，视觉与填写页一致 */
+.fd-form-canvas__control {
+  width: 100%;
+  margin-top: 2px;
+  pointer-events: none;
+}
+
+.fd-canvas-preview__block {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px;
+  border: 1px dashed var(--semi-color-border);
+  border-radius: var(--semi-border-radius-medium);
+  color: var(--semi-color-text-2);
+  font-size: 12px;
+  background: var(--semi-color-fill-0);
+}
+
+.fd-canvas-preview__nps {
+  display: flex;
+  gap: 4px;
+}
+
+.fd-canvas-preview__nps span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 24px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: var(--semi-border-radius-small);
+  color: var(--semi-color-text-2);
+  font-size: 12px;
+  background: var(--semi-color-bg-0);
+}
+
+.fd-canvas-preview__color {
+  width: 28px;
+  height: 20px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: var(--semi-border-radius-small);
+}
+
+/* 明细列头预览 */
+.fd-form-canvas__detail-preview {
+  width: 100%;
+  border: 1px solid var(--semi-color-border);
+  border-radius: var(--semi-border-radius-small);
+  overflow: hidden;
+}
+
+.fd-form-canvas__detail-head {
+  display: flex;
+  background: var(--semi-color-fill-0);
+}
+
+.fd-form-canvas__detail-col {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: none;
+  border-right: 1px solid var(--semi-color-border);
+  background: transparent;
+  color: var(--semi-color-text-1);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fd-form-canvas__detail-col:last-child {
+  border-right: none;
+}
+
+.fd-form-canvas__detail-col:hover {
+  color: var(--semi-color-primary);
+}
+
+.fd-form-canvas__detail-col--selected {
+  color: var(--semi-color-primary);
+  background: var(--semi-color-primary-light-default);
+}
+
+.fd-form-canvas__detail-flag {
+  margin-left: 4px;
+  color: var(--semi-color-warning);
+  font-weight: 400;
+}
+
+.fd-form-canvas__detail-row {
+  padding: 8px;
+  color: var(--semi-color-text-3);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* 分栏列宽拖拽手柄（F06） */
+.fd-form-canvas__row-col {
+  position: relative;
+}
+
+.fd-form-canvas__col-resizer {
+  position: absolute;
+  top: 0;
+  right: -5px;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 2;
+}
+
+.fd-form-canvas__col-resizer:hover::before,
+.fd-form-canvas__col-resizer:active::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 3px;
+  width: 2px;
+  border-radius: var(--semi-border-radius-small);
+  background: var(--semi-color-primary);
+}
+
+/* 拖拽浮签（F05） */
+.fd-drag-ghost {
+  position: fixed;
+  top: -100px;
+  left: -100px;
+  z-index: 2000;
+  padding: 5px 12px;
+  border: 1px solid var(--semi-color-primary);
+  border-radius: var(--semi-border-radius-medium);
+  background: var(--semi-color-bg-3);
+  color: var(--semi-color-text-0);
+  font-size: 12px;
+  box-shadow: var(--semi-shadow-elevated);
+  pointer-events: none;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* 控件面板「我的模板」行（模板按钮 + 删除角标） */
 .fd-form-palette__tpl {
   position: relative;
@@ -427,6 +577,11 @@
 }
 
 .fd-form-canvas__list {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  align-items: flex-start;
+  gap: 6px;
   padding: 8px;
 }
 
@@ -463,8 +618,20 @@
 }
 
 .fd-form-canvas__item--drop-target {
-  border-top: 2px solid var(--semi-color-primary);
-  box-shadow: 0 -2px 0 0 var(--semi-color-primary-light-active);
+  position: relative;
+}
+
+/* 插入位置指示插槽（F05） */
+.fd-form-canvas__item--drop-target::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  right: 8px;
+  left: 8px;
+  height: 4px;
+  border-radius: var(--semi-border-radius-small);
+  background: var(--semi-color-primary);
+  box-shadow: 0 0 0 2px var(--semi-color-primary-light-active);
 }
 
 .fd-form-canvas__item-grip {

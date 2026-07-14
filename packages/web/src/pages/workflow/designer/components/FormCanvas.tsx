@@ -2,12 +2,16 @@
  * 表单画布 — 字段列表 + 嵌套拖拽
  * 支持：从控件面板拖入 / 字段排序 / 跨容器移动（顶层 ↔ 分栏列 ↔ 分组）/ 选中 / 复制 / 删除。
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Popconfirm, Tag, Typography } from '@douyinfe/semi-ui';
 import { GripVertical, Trash2, Asterisk, Copy } from 'lucide-react';
 import type { WorkflowFormField, WorkflowFormFieldType } from '@zenith/shared';
 import { FORM_FIELD_TYPES } from '../form-types';
-import { isContainerType, type DropTarget } from '../form-tree';
+import { isContainerType, flattenAllFields, type DropTarget } from '../form-tree';
+import CanvasFieldPreview from './CanvasFieldPreview';
+
+/** 顶层字段超过该数量时降级为简洁卡片模式（关闭真实控件预览，保证大表单流畅） */
+const WYSIWYG_FIELD_LIMIT = 80;
 
 interface FormCanvasProps {
   fields: WorkflowFormField[];
@@ -20,6 +24,8 @@ interface FormCanvasProps {
   onDropNew: (type: WorkflowFormFieldType, target: DropTarget) => void;
   /** 字段右键菜单（客户端坐标），由设计器渲染菜单 */
   onContextMenu?: (key: string, x: number, y: number) => void;
+  /** 字段属性更新（列宽拖拽等画布内联编辑），tagged commit 由设计器负责 */
+  onUpdateField?: (key: string, updates: Partial<WorkflowFormField>, tag?: string) => void;
 }
 
 const getFieldInfo = (type: WorkflowFormFieldType) => FORM_FIELD_TYPES.find(t => t.type === type);
@@ -52,9 +58,16 @@ export default function FormCanvas({
   onCopy,
   onDropNew,
   onContextMenu,
+  onUpdateField,
 }: Readonly<FormCanvasProps>) {
   // 当前高亮的拖放区标识（如 'root:before:<key>' / 'col:<rowKey>:<i>' / 'group:<key>'）
   const [hint, setHint] = useState<string | null>(null);
+  const rootRef = useRef<HTMLElement>(null);
+  const ghostRef = useRef<HTMLDivElement | null>(null);
+  const lastAutoScrollRef = useRef(0);
+
+  // 大表单降级：字段总数超限时关闭真实控件预览
+  const wysiwyg = useMemo(() => flattenAllFields(fields).length <= WYSIWYG_FIELD_LIMIT, [fields]);
 
   const isSelectedKey = useCallback((key: string) => selectedKeys.includes(key), [selectedKeys]);
 
@@ -86,15 +99,74 @@ export default function FormCanvas({
     e.stopPropagation();
     e.dataTransfer.dropEffect = e.dataTransfer.types.includes('fieldtype') ? 'copy' : 'move';
     setHint(prev => (prev === id ? prev : id));
+    // 边缘自动滚动（F05）：靠近画布容器上下边时滚动，16ms 节流
+    const now = Date.now();
+    if (now - lastAutoScrollRef.current > 16) {
+      lastAutoScrollRef.current = now;
+      const scroller = rootRef.current?.parentElement;
+      if (scroller) {
+        const rect = scroller.getBoundingClientRect();
+        if (e.clientY < rect.top + 48) scroller.scrollBy({ top: -14 });
+        else if (e.clientY > rect.bottom - 48) scroller.scrollBy({ top: 14 });
+      }
+    }
   }, []);
 
-  const startDrag = useCallback((e: React.DragEvent, key: string) => {
+  // 拖拽浮签（F05）：图标+字段名的自定义 drag image
+  const startDrag = useCallback((e: React.DragEvent, key: string, label?: string) => {
     e.stopPropagation();
     e.dataTransfer.setData('moveKey', key);
     e.dataTransfer.effectAllowed = 'move';
+    const ghost = document.createElement('div');
+    ghost.className = 'fd-drag-ghost';
+    ghost.textContent = label || key;
+    document.body.appendChild(ghost);
+    ghostRef.current = ghost;
+    e.dataTransfer.setDragImage(ghost, 14, 16);
   }, []);
 
-  const endDrag = useCallback(() => setHint(null), []);
+  const endDrag = useCallback(() => {
+    setHint(null);
+    ghostRef.current?.remove();
+    ghostRef.current = null;
+  }, []);
+
+  // 分栏列宽拖拽（F06）：拖动分隔线按 24 栅格换算相邻两列 span；双击均分
+  const startColResize = useCallback((e: React.MouseEvent, field: WorkflowFormField, colIndex: number) => {
+    if (!onUpdateField) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const rowEl = (e.currentTarget as HTMLElement).parentElement;
+    const cols = field.columns ?? [];
+    if (!rowEl || colIndex >= cols.length - 1) return;
+    const totalPx = rowEl.getBoundingClientRect().width;
+    const totalSpan = cols.reduce((s, c) => s + c.span, 0) || 24;
+    const startX = e.clientX;
+    const left0 = cols[colIndex].span;
+    const pairSpan = left0 + cols[colIndex + 1].span;
+    const onMove = (me: MouseEvent) => {
+      const deltaSpan = Math.round(((me.clientX - startX) / totalPx) * totalSpan);
+      const left = Math.min(Math.max(4, left0 + deltaSpan), pairSpan - 4);
+      const next = cols.map((c, i) =>
+        i === colIndex ? { ...c, span: left } : i === colIndex + 1 ? { ...c, span: pairSpan - left } : c);
+      onUpdateField(field.key, { columns: next }, `col-resize:${field.key}`);
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [onUpdateField]);
+
+  const equalizeCols = useCallback((field: WorkflowFormField) => {
+    if (!onUpdateField) return;
+    const cols = field.columns ?? [];
+    if (cols.length === 0) return;
+    const base = Math.floor(24 / cols.length);
+    const next = cols.map((c, i) => ({ ...c, span: i === 0 ? 24 - base * (cols.length - 1) : base }));
+    onUpdateField(field.key, { columns: next });
+  }, [onUpdateField]);
 
   // ─── 叶子字段 chip（用于分栏列 / 分组内） ───────────────────────────
   const renderChip = (field: WorkflowFormField, target: (beforeKey: string) => DropTarget) => {
@@ -116,7 +188,7 @@ export default function FormCanvas({
         onClick={(e) => clickSelect(e, field.key)}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onSelect(field.key); } }}
         onContextMenu={(e) => contextMenu(e, field.key)}
-        onDragStart={(e) => startDrag(e, field.key)}
+        onDragStart={(e) => startDrag(e, field.key, field.label)}
         onDragEnd={endDrag}
         onDragOver={(e) => overZone(e, id)}
         onDrop={(e) => dispatchDrop(e, target(field.key))}
@@ -160,7 +232,7 @@ export default function FormCanvas({
         onClick={(e) => clickSelect(e, field.key)}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onSelect(field.key); } }}
         onContextMenu={(e) => contextMenu(e, field.key)}
-        onDragStart={(e) => startDrag(e, field.key)}
+        onDragStart={(e) => startDrag(e, field.key, field.label)}
         onDragEnd={endDrag}
         onDragOver={(e) => overZone(e, id)}
         onDrop={(e) => dispatchDrop(e, target(field.key))}
@@ -182,11 +254,12 @@ export default function FormCanvas({
       ? renderNestedContainer(f, target)
       : renderChip(f, target);
 
-  // ─── 分栏列容器（可拖入） ───────────────────────────────────────────
+  // ─── 分栏列容器（可拖入 + 分隔线拖拽调宽） ──────────────────────────
   const renderRowColumns = (field: WorkflowFormField) => (
     <div className="fd-form-canvas__row-preview">
       {(field.columns ?? []).map((col, colIndex) => {
         const zoneId = `col:${field.key}:${colIndex}`;
+        const isLast = colIndex === (field.columns?.length ?? 0) - 1;
         return (
           <div
             key={`${field.key}-col-${colIndex}`}
@@ -199,6 +272,16 @@ export default function FormCanvas({
             {col.fields.length > 0
               ? col.fields.map(f => renderInner(f, (beforeKey) => ({ container: 'col', rowKey: field.key, colIndex, beforeKey })))
               : <div className="fd-form-canvas__row-col-empty">拖入字段</div>}
+            {!isLast && onUpdateField && (
+              <div
+                className="fd-form-canvas__col-resizer"
+                role="separator"
+                aria-label="拖拽调整列宽，双击均分"
+                title="拖拽调整列宽，双击均分"
+                onMouseDown={(e) => startColResize(e, field, colIndex)}
+                onDoubleClick={(e) => { e.stopPropagation(); equalizeCols(field); }}
+              />
+            )}
           </div>
         );
       })}
@@ -253,21 +336,29 @@ export default function FormCanvas({
     );
   };
 
-  // ─── 明细子字段预览（可点选配置） ────────────────────────────────────
+  // ─── 明细子字段预览（列头表格样式，可点选配置） ──────────────────────
   const renderDetail = (field: WorkflowFormField) => (
-    <div className="fd-form-canvas__item-meta" style={{ flexWrap: 'wrap' }}>
-      {(field.children ?? []).map(child => (
-        <span key={child.key} data-field-key={child.key}>
-          <Tag
-            color={isSelectedKey(child.key) ? 'light-blue' : 'blue'}
-            size="small"
-            style={{ cursor: 'pointer' }}
+    <div className="fd-form-canvas__detail-preview">
+      <div className="fd-form-canvas__detail-head">
+        {(field.children ?? []).map(child => (
+          <button
+            key={child.key}
+            type="button"
+            data-field-key={child.key}
+            className={[
+              'fd-form-canvas__detail-col',
+              isSelectedKey(child.key) && 'fd-form-canvas__detail-col--selected',
+            ].filter(Boolean).join(' ')}
+            style={child.detailColumnWidth ? { flex: `0 0 ${child.detailColumnWidth}px` } : undefined}
             onClick={(e) => clickSelect(e, child.key)}
           >
             {child.label}
-          </Tag>
-        </span>
-      ))}
+            {child.detailSummary && <span className="fd-form-canvas__detail-flag">Σ</span>}
+            {child.unique && <span className="fd-form-canvas__detail-flag">唯</span>}
+          </button>
+        ))}
+      </div>
+      <div className="fd-form-canvas__detail-row">点击列头配置子字段 · 填写时可增删行 / 粘贴 Excel</div>
     </div>
   );
 
@@ -282,6 +373,11 @@ export default function FormCanvas({
     const isPanes = field.type === 'tabs' || field.type === 'steps';
     const isDivider = field.type === 'divider';
     const isDetail = field.type === 'detail';
+    // 响应式列宽（F01）：预览模式下按 columnSpan 真实并排
+    const span = wysiwyg && !isContainerType(field.type) && field.columnSpan ? field.columnSpan : 24;
+    const itemStyle = span < 24
+      ? { flex: `0 0 calc(${(span / 24) * 100}% - 6px)`, maxWidth: `calc(${(span / 24) * 100}% - 6px)` }
+      : { flex: '1 1 100%', maxWidth: '100%' };
 
     return (
       <div
@@ -290,6 +386,7 @@ export default function FormCanvas({
         tabIndex={0}
         data-type={field.type}
         data-field-key={field.key}
+        style={itemStyle}
         className={[
           'fd-form-canvas__item',
           isSelected && 'fd-form-canvas__item--selected',
@@ -299,7 +396,7 @@ export default function FormCanvas({
         onClick={(e) => clickSelect(e, field.key)}
         onKeyDown={(e) => { if (e.key === 'Enter') onSelect(field.key); }}
         onContextMenu={(e) => contextMenu(e, field.key)}
-        onDragStart={(e) => startDrag(e, field.key)}
+        onDragStart={(e) => startDrag(e, field.key, field.label)}
         onDragEnd={endDrag}
         onDragOver={(e) => overZone(e, beforeId)}
         onDrop={(e) => dispatchDrop(e, { container: 'root', beforeKey: field.key })}
@@ -320,14 +417,21 @@ export default function FormCanvas({
           {isDetail && renderDetail(field)}
 
           {!isLayoutRow && !isLayoutGroup && !isPanes && !isDivider && !isDetail && (
-            <div className="fd-form-canvas__item-meta">
-              <Tag size="small" color="blue">{info?.label ?? field.type}</Tag>
-              {field.placeholder && (
-                <Typography.Text type="quaternary" size="small" ellipsis style={{ maxWidth: 160 }}>
-                  {field.placeholder}
-                </Typography.Text>
-              )}
-            </div>
+            wysiwyg ? (
+              // 所见即所得：渲染真实控件外观（交互关闭，选中/拖拽由卡片壳接管）
+              <div className="fd-form-canvas__control">
+                <CanvasFieldPreview field={field} />
+              </div>
+            ) : (
+              <div className="fd-form-canvas__item-meta">
+                <Tag size="small" color="blue">{info?.label ?? field.type}</Tag>
+                {field.placeholder && (
+                  <Typography.Text type="quaternary" size="small" ellipsis style={{ maxWidth: 160 }}>
+                    {field.placeholder}
+                  </Typography.Text>
+                )}
+              </div>
+            )
           )}
         </div>
 
@@ -351,6 +455,7 @@ export default function FormCanvas({
   if (fields.length === 0) {
     return (
       <section
+        ref={rootRef}
         aria-label="表单画布"
         className={['fd-form-canvas', 'fd-form-canvas--empty', hint === 'root:append' && 'fd-form-canvas--drop'].filter(Boolean).join(' ')}
         onDragOver={(e) => overZone(e, 'root:append')}
@@ -364,7 +469,7 @@ export default function FormCanvas({
   }
 
   return (
-    <section aria-label="表单画布" className="fd-form-canvas">
+    <section ref={rootRef} aria-label="表单画布" className="fd-form-canvas">
       <div className="fd-form-canvas__title">
         <Typography.Title heading={5} style={{ margin: 0 }}>表单预览</Typography.Title>
         <Typography.Text type="tertiary" size="small">{fields.length} 个顶层字段</Typography.Text>
