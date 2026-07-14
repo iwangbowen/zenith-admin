@@ -9,7 +9,7 @@ import {
   RadioGroup, Radio, InputNumber, SideSheet, Divider, Tooltip, Dropdown, Banner, Switch, Modal,
 } from '@douyinfe/semi-ui';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, X, Eye, Save, Settings, Monitor, Smartphone, Undo2, Redo2, Braces, Copy, Stethoscope, LayoutTemplate, SlidersHorizontal, AlertTriangle, CircleAlert, Share2 } from 'lucide-react';
+import { ArrowLeft, X, Eye, Save, Settings, Monitor, Smartphone, Undo2, Redo2, Braces, Copy, Stethoscope, LayoutTemplate, SlidersHorizontal, AlertTriangle, CircleAlert, Share2, History as HistoryIcon } from 'lucide-react';
 import type { WorkflowForm, WorkflowFormField, WorkflowFormFieldType, WorkflowFormSettings, WorkflowFormStatus } from '@zenith/shared';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { ApiError } from '@/lib/query';
@@ -461,6 +461,28 @@ export default function WorkflowFormInlineEditor({
             disabled={!history?.canRedo} onClick={() => history?.redo()} aria-label="重做"
           />
         </Tooltip>
+        {history && (
+          <Dropdown
+            trigger="click"
+            position="bottomLeft"
+            render={(
+              <Dropdown.Menu className="fd-history-menu">
+                {history.getHistoryEntries().entries.slice().reverse().map((en) => (
+                  <Dropdown.Item
+                    key={en.index}
+                    active={en.index === history.getHistoryEntries().pointer}
+                    onClick={() => history.jumpTo(en.index)}
+                  >
+                    <span className="fd-history-menu__idx">{en.index}</span>
+                    {en.label}
+                  </Dropdown.Item>
+                ))}
+              </Dropdown.Menu>
+            )}
+          >
+            <Button icon={<HistoryIcon size={14} />} type="tertiary" theme="borderless" size="small" aria-label="历史记录" />
+          </Dropdown>
+        )}
         <Divider layout="vertical" margin="6px" />
 
         <Dropdown

@@ -3,8 +3,8 @@
  * 三栏布局：左侧控件面板 | 中间画布预览 | 右侧属性配置
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Tooltip, Modal, Toast, Typography, Tabs, TabPane, Input } from '@douyinfe/semi-ui';
-import { Undo2, Redo2, ArrowUp, ArrowDown, ClipboardPaste, CopyPlus, Asterisk, Trash2, Copy as CopyIcon, BookmarkPlus, Columns } from 'lucide-react';
+import { Button, Tooltip, Modal, Toast, Typography, Tabs, TabPane, Input, Dropdown } from '@douyinfe/semi-ui';
+import { Undo2, Redo2, ArrowUp, ArrowDown, ClipboardPaste, CopyPlus, Asterisk, Trash2, Copy as CopyIcon, BookmarkPlus, Columns, History } from 'lucide-react';
 import type { WorkflowFormField, WorkflowFormFieldType, WorkflowFormSettings } from '@zenith/shared';
 import { FORM_FIELD_TYPES, COLUMN_SPAN_OPTIONS } from '../form-types';
 import { findField, updateField, removeField, insertField, insertAfterKey, isDescendant, isContainerType, findFieldDependents, pruneFieldReferences, pruneCascadeMappings, renameFieldKey, moveFieldSibling, cloneFieldWithNewKeys, generateFieldKey, canNestContainer, containerHeightOf, type DropTarget } from '../form-tree';
@@ -30,17 +30,26 @@ interface FormDesignerProps {
   onRenameKey?: (oldKey: string, newKey: string) => void;
 }
 
+export interface FormHistoryEntry {
+  index: number;
+  label: string;
+}
+
 export interface FormHistoryControls {
   undo: () => void;
   redo: () => void;
   canUndo: boolean;
   canRedo: boolean;
   /** 提交字段整体变更（JSON 导入/模板/批量设置，纳入历史栈） */
-  commitFields: (fields: WorkflowFormField[]) => void;
+  commitFields: (fields: WorkflowFormField[], label?: string) => void;
   /** 提交表单级设置变更（纳入历史栈） */
   commitSettings: (settings: WorkflowFormSettings) => void;
   /** 选中指定字段（用于体检面板定位） */
   selectField: (key: string) => void;
+  /** 历史步骤列表（含当前指针），供历史面板渲染 */
+  getHistoryEntries: () => { entries: FormHistoryEntry[]; pointer: number };
+  /** 跳转到指定历史步骤 */
+  jumpTo: (index: number) => void;
 }
 
 const generateKey = generateFieldKey;
@@ -223,6 +232,8 @@ function createField(type: WorkflowFormFieldType): WorkflowFormField {
 interface DesignerSnapshot {
   fields: WorkflowFormField[];
   settings: WorkflowFormSettings;
+  /** 产生该快照的操作描述（历史面板展示） */
+  label: string;
 }
 
 interface HistoryState {
@@ -252,8 +263,8 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
   const settingsRef = useRef<WorkflowFormSettings>(settings ?? {});
   settingsRef.current = settings ?? {};
   // 撤销/重做历史栈（快照含字段与表单级设置，所有变更走 commit 统一入栈）
-  const historyRef = useRef<HistoryState>({ stack: [{ fields, settings: settings ?? {} }], pointer: 0, lastTag: null });
-  const [, bumpHistory] = useState(0);
+  const historyRef = useRef<HistoryState>({ stack: [{ fields, settings: settings ?? {}, label: '初始状态' }], pointer: 0, lastTag: null });
+  const [histVersion, bumpHistory] = useState(0);
 
   const selectedField = findField(fields, selectedKey ?? '');
   const flatFields = useMemo(() => collectFields(fields), [fields]);
@@ -268,9 +279,9 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
   }, [onChange, onSettingsChange]);
 
   // 统一提交字段变更：写入历史栈（连带当前设置）并通知父级。tag 相同的连续变更合并为一步
-  const commit = useCallback((next: WorkflowFormField[], tag?: string) => {
+  const commit = useCallback((next: WorkflowFormField[], tag?: string, label?: string) => {
     const h = historyRef.current;
-    const snap: DesignerSnapshot = { fields: next, settings: settingsRef.current };
+    const snap: DesignerSnapshot = { fields: next, settings: settingsRef.current, label: label ?? '编辑字段' };
     const coalesce = tag != null && tag === h.lastTag && h.pointer === h.stack.length - 1;
     if (coalesce) {
       h.stack[h.pointer] = snap;
@@ -290,7 +301,7 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
     const h = historyRef.current;
     settingsRef.current = nextSettings;
     h.stack = h.stack.slice(0, h.pointer + 1);
-    h.stack.push({ fields, settings: nextSettings });
+    h.stack.push({ fields, settings: nextSettings, label: '表单设置变更' });
     if (h.stack.length > MAX_HISTORY) h.stack.shift();
     h.pointer = h.stack.length - 1;
     h.lastTag = null;
@@ -337,17 +348,36 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
   const canRedo = hist.pointer < hist.stack.length - 1;
 
   const selectField = useCallback((key: string) => selectOnly(key), [selectOnly]);
-  const commitFields = useCallback((next: WorkflowFormField[]) => commit(next), [commit]);
+  const commitFields = useCallback((next: WorkflowFormField[], label?: string) => commit(next, undefined, label ?? '外部更新（导入/模板/批量）'), [commit]);
+
+  // 历史步骤列表与跳转（F09）
+  const getHistoryEntries = useCallback(() => {
+    const h = historyRef.current;
+    return {
+      entries: h.stack.map((snap, index) => ({ index, label: snap.label })),
+      pointer: h.pointer,
+    };
+  }, []);
+
+  const jumpTo = useCallback((index: number) => {
+    const h = historyRef.current;
+    if (index < 0 || index >= h.stack.length || index === h.pointer) return;
+    h.pointer = index;
+    h.lastTag = null;
+    bumpHistory(v => v + 1);
+    restore(h.stack[index]);
+  }, [restore]);
 
   // 向外部上报撤销/重做状态与设置提交/字段定位能力（供外部工具栏与体检面板）
   useEffect(() => {
-    onHistoryChange?.({ undo, redo, canUndo, canRedo, commitFields, commitSettings, selectField });
-  }, [onHistoryChange, undo, redo, canUndo, canRedo, commitFields, commitSettings, selectField]);
+    onHistoryChange?.({ undo, redo, canUndo, canRedo, commitFields, commitSettings, selectField, getHistoryEntries, jumpTo });
+    // histVersion 使历史栈追加（canUndo/canRedo 不变时）也能触发外部刷新
+  }, [onHistoryChange, undo, redo, canUndo, canRedo, commitFields, commitSettings, selectField, getHistoryEntries, jumpTo, histVersion]);
 
   // 点击左侧面板添加字段（追加到顶层末尾）
   const handleAddField = useCallback((type: WorkflowFormFieldType) => {
     const newField = createField(type);
-    commit([...fields, newField]);
+    commit([...fields, newField], undefined, `添加「${newField.label}」`);
     selectOnly(newField.key);
   }, [fields, commit, selectOnly]);
 
@@ -358,7 +388,7 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
       return;
     }
     const newField = createField(type);
-    commit(insertField(fields, target, newField));
+    commit(insertField(fields, target, newField), undefined, `添加「${newField.label}」`);
     selectOnly(newField.key);
   }, [fields, commit, selectOnly]);
 
@@ -376,7 +406,7 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
     }
     const [next, rm] = removeField(fields, moveKey);
     if (!rm) return;
-    commit(insertField(next, target, rm));
+    commit(insertField(next, target, rm), undefined, `移动「${rm.label}」`);
     selectOnly(moveKey);
   }, [fields, commit, selectOnly]);
 
@@ -385,7 +415,7 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
     const target = findField(fields, key);
     const doRemove = () => {
       const [next] = removeField(fields, key);
-      commit(pruneFieldReferences(next, key));
+      commit(pruneFieldReferences(next, key), undefined, `删除「${target?.label ?? key}」`);
       setSelectedKeys((prev) => prev.filter((k) => k !== key));
     };
     const deps = findFieldDependents(fields, key);
@@ -419,7 +449,7 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
     const target = findField(fields, key);
     if (!target) return;
     const cloned = cloneFieldWithNewKeys(target);
-    commit(insertAfterKey(fields, key, cloned));
+    commit(insertAfterKey(fields, key, cloned), undefined, `复制「${target.label}」`);
     selectOnly(cloned.key);
   }, [fields, commit, selectOnly]);
 
@@ -444,13 +474,14 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
         next = updateField(next, selectedKey, { autoFill: { ...edited.autoFill, byOption } });
       }
     }
-    commit(next, `edit:${selectedKey}`);
+    const editedLabel = findField(next, selectedKey)?.label ?? selectedKey;
+    commit(next, `edit:${selectedKey}`, `编辑「${editedLabel}」`);
   }, [fields, commit, selectedKey]);
 
   // 重命名字段 key：级联更新所有引用并保持选中
   const handleRenameKey = useCallback((newKey: string) => {
     if (!selectedKey || newKey === selectedKey) return;
-    commit(renameFieldKey(fields, selectedKey, newKey));
+    commit(renameFieldKey(fields, selectedKey, newKey), undefined, `重命名标识 ${selectedKey} → ${newKey}`);
     onRenameKey?.(selectedKey, newKey);
     selectOnly(newKey);
   }, [fields, commit, selectedKey, onRenameKey, selectOnly]);
@@ -488,7 +519,7 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
     } else {
       next = [...fields, cloned];
     }
-    commit(next);
+    commit(next, undefined, `粘贴「${cloned.label}」`);
     selectOnly(cloned.key);
     scrollToField(cloned.key);
   }, [fields, commit, scrollToField, selectOnly]);
@@ -496,13 +527,13 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
   // 同级上移 / 下移
   const handleMoveSibling = useCallback((key: string, dir: -1 | 1) => {
     const next = moveFieldSibling(fields, key, dir);
-    if (next !== fields) commit(next);
+    if (next !== fields) commit(next, undefined, dir === -1 ? '上移字段' : '下移字段');
   }, [fields, commit]);
 
   const toggleRequired = useCallback((key: string) => {
     const f = findField(fields, key);
     if (!f || !canToggleRequired(f.type)) return;
-    commit(updateField(fields, key, { required: !f.required || undefined }));
+    commit(updateField(fields, key, { required: !f.required || undefined }), undefined, `${f.required ? '取消必填' : '设为必填'}「${f.label}」`);
   }, [fields, commit]);
 
   const openMenu = useCallback((key: string, x: number, y: number) => {
@@ -530,7 +561,7 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
   // 从「我的模板」插入字段（克隆并重置 key，追加到末尾）
   const handleAddTemplateField = useCallback((field: WorkflowFormField) => {
     const cloned = cloneFieldWithNewKeys(field, false);
-    commit([...fields, cloned]);
+    commit([...fields, cloned], undefined, `插入模板字段「${cloned.label}」`);
     selectOnly(cloned.key);
     scrollToField(cloned.key);
   }, [fields, commit, scrollToField, selectOnly]);
@@ -580,7 +611,7 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
       const f = findField(next, k);
       if (f && canToggleRequired(f.type)) next = updateField(next, k, patch);
     }
-    commit(next);
+    commit(next, undefined, `批量设置 ${selectedKeys.length} 个字段`);
   }, [fields, selectedKeys, commit]);
 
   // 批量删除：聚合扫描选区外的依赖字段，一次确认
@@ -598,7 +629,7 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
         const [after, rm] = removeField(next, k);
         if (rm) next = pruneFieldReferences(after, k);
       }
-      commit(next);
+      commit(next, undefined, `批量删除 ${selectedKeys.length} 个字段`);
       setSelectedKeys([]);
     };
     Modal.confirm({
@@ -636,13 +667,13 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
     const firstIdx = fields.findIndex((f) => f.key === ordered[0].key);
     const rest = fields.filter((f) => !picked.has(f.key));
     const insertAt = fields.slice(0, firstIdx).filter((f) => !picked.has(f.key)).length;
-    commit([...rest.slice(0, insertAt), rowField, ...rest.slice(insertAt)]);
+    commit([...rest.slice(0, insertAt), rowField, ...rest.slice(insertAt)], undefined, `合并 ${ordered.length} 个字段为分栏`);
     selectOnly(rowField.key);
   }, [fields, selectedKeys, commit, selectOnly]);
 
   // 画布内联属性更新（列宽拖拽等），tag 合并连续变更为一步撤销
   const handleCanvasUpdateField = useCallback((key: string, updates: Partial<WorkflowFormField>, tag?: string) => {
-    commit(updateField(fields, key, updates), tag);
+    commit(updateField(fields, key, updates), tag, '调整布局');
   }, [fields, commit]);
 
   // 键盘操作：Delete 删除（多选批量）、Ctrl/Cmd+C/V 复制粘贴、↑/↓ 切换选中、Esc 取消选中（输入框聚焦时不拦截）
@@ -718,6 +749,26 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
               aria-label="重做"
             />
           </Tooltip>
+          <Dropdown
+            trigger="click"
+            position="bottomLeft"
+            render={(
+              <Dropdown.Menu className="fd-history-menu">
+                {getHistoryEntries().entries.slice().reverse().map((en) => (
+                  <Dropdown.Item
+                    key={en.index}
+                    active={en.index === hist.pointer}
+                    onClick={() => jumpTo(en.index)}
+                  >
+                    <span className="fd-history-menu__idx">{en.index}</span>
+                    {en.label}
+                  </Dropdown.Item>
+                ))}
+              </Dropdown.Menu>
+            )}
+          >
+            <Button size="small" theme="borderless" type="tertiary" icon={<History size={15} />} aria-label="历史记录" />
+          </Dropdown>
           <span className="fd-form-designer__toolbar-hint">点击或拖拽左侧控件添加字段 · Ctrl+Z 撤销 / Ctrl+Shift+Z 重做</span>
         </div>
       )}

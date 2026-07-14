@@ -358,6 +358,63 @@
   white-space: nowrap;
 }
 
+/* 历史面板下拉（F09） */
+.fd-history-menu {
+  max-height: 320px;
+  overflow-y: auto;
+  min-width: 220px;
+}
+
+.fd-history-menu__idx {
+  display: inline-block;
+  min-width: 22px;
+  margin-right: 6px;
+  color: var(--semi-color-text-3);
+  font-size: 11px;
+}
+
+/* 配置面板徽标与搜索（F08） */
+.fd-form-config__tab-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 4px;
+  border-radius: 50%;
+  background: var(--semi-color-primary);
+  vertical-align: middle;
+}
+
+.fd-form-config__search {
+  padding: 0 16px 8px;
+}
+
+.fd-form-config__search-hits {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+  padding: 4px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: var(--semi-border-radius-small);
+  background: var(--semi-color-bg-2);
+}
+
+.fd-form-config__search-hit {
+  padding: 5px 8px;
+  border: none;
+  border-radius: var(--semi-border-radius-small);
+  background: transparent;
+  color: var(--semi-color-text-1);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fd-form-config__search-hit:hover {
+  background: var(--semi-color-fill-0);
+  color: var(--semi-color-primary);
+}
+
 /* 控件面板「我的模板」行（模板按钮 + 删除角标） */
 .fd-form-palette__tpl {
   position: relative;
