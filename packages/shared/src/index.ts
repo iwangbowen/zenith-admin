@@ -10,3 +10,4 @@ export * from './report-embed';
 export * from './workflow-helpers';
 export * from './workflow-form-runtime';
 export * from './workflow-serial';
+export * from './workflow-formula';

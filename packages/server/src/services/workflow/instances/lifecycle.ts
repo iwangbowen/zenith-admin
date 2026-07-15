@@ -5,7 +5,7 @@ import { workflowInstances, workflowTasks, workflowDefinitions, users, userRoles
 import { tenantCondition, getCreateTenantId } from '../../../lib/tenant';
 import { validateFlowData } from '../../../lib/workflow-engine';
 import type { WorkflowFlowData, WorkflowInstanceFormSnapshot } from '@zenith/shared';
-import { collectMissingRequiredFields } from '@zenith/shared';
+import { collectWorkflowFormValidationErrors } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../../lib/context';
 import { buildStarterContext } from '../workflow-assignee-resolver.service';
@@ -22,9 +22,11 @@ import { buildSerialNoContext, emitInstanceEvent, emitNodeEvent, emitTaskEvent, 
 import { bridgeReportFillWorkflowOutcome } from '../../report/report-fill-workflow-bridge.service';
 
 /**
- * 发起必填校验（服务端强制）：设计器表单按快照 schema 检查「可见且必填」字段，
- * 绕过前端直接调 API 无法以空必填字段发起。显隐联动/条件必填与前端渲染同源求值
- * （shared workflow-form-runtime），start 节点 hidden/read 字段不参与。
+ * 发起表单校验（服务端强制）：设计器表单按快照 schema 做全量规则校验——
+ * 必填（含条件必填）、长度、正则、数值范围、日期限制、跨字段比较、校验公式、
+ * 明细行级（行必填/列唯一/行内校验公式）。绕过前端直接调 API 同样无法提交非法数据。
+ * 显隐联动与规则求值和前端渲染同源（shared workflow-form-runtime / workflow-formula），
+ * start 节点 hidden/read 字段不参与。
  */
 function assertRequiredFormFields(
   formSnapshot: WorkflowInstanceFormSnapshot | null,
@@ -33,12 +35,17 @@ function assertRequiredFormFields(
 ): void {
   if (formSnapshot?.formType !== 'designer' || !formSnapshot.fields?.length) return;
   const startPerms = flowData.nodes?.find((n) => n.data.type === 'start')?.data.fieldPermissions;
-  const missing = collectMissingRequiredFields(formSnapshot.fields, formData, startPerms);
+  const errors = collectWorkflowFormValidationErrors(formSnapshot.fields, formData, startPerms);
+  if (errors.length === 0) return;
+  // 必填错误保持原有「请填写必填字段：…」聚合文案；其余规则直接透出首条详细信息
+  const missing = errors.filter((e) => e.kind === 'required');
   if (missing.length > 0) {
-    const head = missing.slice(0, 5).join('、');
+    const head = missing.slice(0, 5).map((e) => e.label).join('、');
     const suffix = missing.length > 5 ? ` 等 ${missing.length} 项` : '';
     throw new HTTPException(400, { message: `请填写必填字段：${head}${suffix}` });
   }
+  const rest = errors.length > 1 ? `（等 ${errors.length} 项校验未通过）` : '';
+  throw new HTTPException(400, { message: `${errors[0].message}${rest}` });
 }
 
 export async function createInstance(data: { definitionId: number; title: string; formData?: Record<string, unknown> | null; asDraft?: boolean; priority?: import('@zenith/shared').WorkflowInstancePriority; ccUserIds?: number[]; selectedInitiatorApprovers?: SelectedApproverMap; bizType?: string | null; bizId?: string | null }, callerOverride?: { userId: number; username: string; tenantId: number | null; roles?: string[] }) {
