@@ -33,8 +33,10 @@ import {
   getOAuth2TokenBeforeAudit,
   listAppOptions,
   listClientGrants,
+  reviewOAuth2Client,
 } from '../../services/open-platform/oauth2-clients.service';
 import { createOAuth2ClientSchema, updateOAuth2ClientSchema } from '@zenith/shared';
+import { notifyAppReviewResult } from '../../services/open-platform/developer-apps.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -42,6 +44,8 @@ const router = new OpenAPIHono({ defaultHook: validationHook });
 
 const ClientKeywordQuery = PaginationQuery.extend({
   keyword: z.string().optional(),
+  environment: z.enum(['production', 'sandbox']).optional(),
+  reviewStatus: z.enum(['draft', 'pending', 'approved', 'rejected']).optional(),
 });
 
 const TokenListQuery = PaginationQuery.extend({
@@ -64,8 +68,8 @@ const list = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okPaginated(OAuth2ClientListItemDTO, 'OAuth2 应用列表') },
   }),
   handler: async (c) => {
-    const { page, pageSize, keyword } = c.req.valid('query');
-    return c.json(okBody(await listOAuth2Clients({ page, pageSize, keyword })), 200);
+    const { page, pageSize, keyword, environment, reviewStatus } = c.req.valid('query');
+    return c.json(okBody(await listOAuth2Clients({ page, pageSize, keyword, environment, reviewStatus })), 200);
   },
 });
 
@@ -120,6 +124,39 @@ const grants = defineOpenAPIRoute({
     const { page, pageSize } = c.req.valid('query');
     const client = await getOAuth2Client(id);
     return c.json(okBody(await listClientGrants(client.clientId, { page, pageSize })), 200);
+  },
+});
+
+const review = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post',
+    path: '/{id}/review',
+    tags: ['OAuth2Apps'],
+    summary: '审核开发者应用',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({
+      permission: 'system:oauth2-apps:manage',
+      audit: { description: '审核 OAuth2 应用', module: 'OAuth2 应用' },
+    })] as const,
+    request: {
+      params: IdParam,
+      body: {
+        content: jsonContent(z.object({
+          action: z.enum(['approve', 'reject']),
+          comment: z.string().max(500).optional(),
+        })),
+        required: true,
+      },
+    },
+    responses: { ...commonErrorResponses, ...ok(OAuth2ClientListItemDTO, '审核完成') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await getOAuth2ClientBeforeAudit(id));
+    const result = await reviewOAuth2Client(id, c.req.valid('json'));
+    await notifyAppReviewResult(id);
+    setAuditAfterData(c, result);
+    return c.json(okBody(result, '审核完成'), 200);
   },
 });
 
@@ -241,6 +278,9 @@ const options = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await listAppOptions()), 200),
 });
 
-router.openapiRoutes([list, options, create, grants, detail, update, remove, regenerateSecret, tokens, revokeTokenRoute] as const);
+router.openapiRoutes([
+  list, options, tokens, revokeTokenRoute,
+  create, grants, review, detail, update, remove, regenerateSecret,
+] as const);
 
 export default router;

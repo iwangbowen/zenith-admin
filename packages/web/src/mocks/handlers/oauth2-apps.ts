@@ -21,6 +21,13 @@ const mockClients: ClientEntry[] = [
     ratePlanId: 2,
     signEnabled: true,
     ipAllowlist: [],
+    environment: 'production',
+    reviewStatus: 'approved',
+    reviewComment: null,
+    submittedAt: '2024-05-30 10:00:00',
+    reviewedAt: '2024-05-31 10:00:00',
+    reviewedBy: 1,
+    previousSecretExpiresAt: null,
     status: 'enabled',
     ownerId: 1,
     createdAt: '2024-06-01 10:00:00',
@@ -40,6 +47,13 @@ const mockClients: ClientEntry[] = [
     ratePlanId: 3,
     signEnabled: true,
     ipAllowlist: ['10.0.0.0/8'],
+    environment: 'production',
+    reviewStatus: 'approved',
+    reviewComment: null,
+    submittedAt: '2024-06-01 10:00:00',
+    reviewedAt: '2024-06-01 12:00:00',
+    reviewedBy: 1,
+    previousSecretExpiresAt: null,
     status: 'enabled',
     ownerId: 1,
     createdAt: '2024-06-02 09:00:00',
@@ -59,6 +73,13 @@ const mockClients: ClientEntry[] = [
     ratePlanId: 1,
     signEnabled: false,
     ipAllowlist: [],
+    environment: 'sandbox',
+    reviewStatus: 'pending',
+    reviewComment: null,
+    submittedAt: '2024-06-03 09:00:00',
+    reviewedAt: null,
+    reviewedBy: null,
+    previousSecretExpiresAt: null,
     status: 'enabled',
     ownerId: 1,
     createdAt: '2024-06-03 08:00:00',
@@ -73,11 +94,15 @@ export const oauth2AppsHandlers = [
   http.get(BASE, ({ request: req }) => {
     const url = new URL(req.url);
     const keyword = url.searchParams.get('keyword') ?? '';
+    const environment = url.searchParams.get('environment');
+    const reviewStatus = url.searchParams.get('reviewStatus');
     const page = Number(url.searchParams.get('page') ?? 1);
     const pageSize = Number(url.searchParams.get('pageSize') ?? 20);
-    const filtered = keyword
-      ? mockClients.filter((c) => c.name.includes(keyword))
-      : mockClients;
+    const filtered = mockClients.filter((client) =>
+      (!keyword || client.name.includes(keyword))
+      && (!environment || client.environment === environment)
+      && (!reviewStatus || client.reviewStatus === reviewStatus),
+    );
     const start = (page - 1) * pageSize;
     return HttpResponse.json({
       code: 0,
@@ -144,6 +169,13 @@ export const oauth2AppsHandlers = [
       ratePlanId: body.ratePlanId ?? null,
       signEnabled: body.signEnabled ?? false,
       ipAllowlist: body.ipAllowlist ?? [],
+      environment: body.environment ?? 'production',
+      reviewStatus: 'approved',
+      reviewComment: null,
+      submittedAt: null,
+      reviewedAt: mockDateTime(),
+      reviewedBy: 1,
+      previousSecretExpiresAt: null,
       status: 'enabled',
       ownerId: 1,
       createdAt: mockDateTime(),
@@ -184,7 +216,19 @@ export const oauth2AppsHandlers = [
     if (!found) return HttpResponse.json({ code: 404, message: '不存在', data: null }, { status: 404 });
     const clientSecret = `oas_mock${randomHex(32)}`;
     found.clientSecretPrefix = `${clientSecret.slice(0, 10)}...`;
-    return HttpResponse.json({ code: 0, message: 'secret 已重置', data: { clientId: found.clientId, clientSecret } });
+    found.previousSecretExpiresAt = '2026-07-16 10:00:00';
+    return HttpResponse.json({ code: 0, message: 'secret 已重置', data: { clientId: found.clientId, clientSecret, previousValidUntil: found.previousSecretExpiresAt } });
+  }),
+
+  http.post(`${BASE}/:id/review`, async ({ params, request }) => {
+    const found = mockClients.find((client) => client.id === Number(params.id));
+    if (!found) return HttpResponse.json({ code: 404, message: '不存在', data: null }, { status: 404 });
+    const body = await request.json() as { action: 'approve' | 'reject'; comment?: string };
+    found.reviewStatus = body.action === 'approve' ? 'approved' : 'rejected';
+    found.reviewComment = body.comment ?? null;
+    found.reviewedAt = mockDateTime();
+    found.reviewedBy = 1;
+    return HttpResponse.json({ code: 0, message: '审核完成', data: found });
   }),
 
 ];

@@ -9,7 +9,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Spin, Card, Avatar, Tag, Button, Space, Typography, Divider, Toast } from '@douyinfe/semi-ui';
 import { ShieldCheck, X } from 'lucide-react';
-import { OAUTH2_SCOPE_DESCRIPTIONS, TOKEN_KEY } from '@zenith/shared';
+import { isSafeOAuthRedirectUri, OAUTH2_SCOPE_DESCRIPTIONS, TOKEN_KEY } from '@zenith/shared';
 import type { OAuth2AuthorizeInfo } from '@zenith/shared';
 import { request } from '@/utils/request';
 
@@ -43,6 +43,11 @@ export default function OAuth2AuthorizePage() {
 
     if (!clientId || !redirectUri) {
       setError('缺少必要的授权参数（client_id / redirect_uri）');
+      setLoading(false);
+      return;
+    }
+    if (!isSafeOAuthRedirectUri(redirectUri)) {
+      setError('redirect_uri 使用了不安全的协议');
       setLoading(false);
       return;
     }
@@ -88,6 +93,10 @@ export default function OAuth2AuthorizePage() {
         code_challenge_method: codeChallengeMethod === 'S256' ? 'S256' : undefined,
       }, { silent: true });
       if (res.code === 0 && res.data?.redirectUrl) {
+        if (!isSafeOAuthRedirectUri(res.data.redirectUrl)) {
+          Toast.error('服务端返回了不安全的跳转地址');
+          return;
+        }
         globalThis.location.href = res.data.redirectUrl;
       } else {
         Toast.error(res.message || '授权失败');
@@ -100,6 +109,10 @@ export default function OAuth2AuthorizePage() {
   };
 
   const handleDeny = () => {
+    if (!isSafeOAuthRedirectUri(redirectUri)) {
+      Toast.error('拒绝跳转地址不安全');
+      return;
+    }
     const stateParam = state ? `&state=${encodeURIComponent(state)}` : '';
     globalThis.location.href = `${redirectUri}?error=access_denied&error_description=User%20denied%20access${stateParam}`;
   };

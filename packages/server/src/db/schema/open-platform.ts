@@ -2,6 +2,9 @@ import { bigint, boolean, date, index, integer, jsonb, pgEnum, pgTable, serial, 
 import { statusEnum } from './common';
 import { auditColumns, users } from './core';
 
+export const openAppEnvironmentEnum = pgEnum('open_app_environment', ['production', 'sandbox']);
+export const openAppReviewStatusEnum = pgEnum('open_app_review_status', ['draft', 'pending', 'approved', 'rejected']);
+
 /**
  * OAuth2 应用（客户端）注册表
  * 管理接入本系统的第三方应用（ClientID / Secret / 回调URL / 权限范围）
@@ -14,6 +17,9 @@ export const oauth2Clients = pgTable('oauth2_clients', {
   clientSecretHash: varchar('client_secret_hash', { length: 128 }),
   /** client_secret 的 AES-256-GCM 密文，供开放 API HMAC 签名验签复用（clientSecret 兼作签名密钥） */
   clientSecretEncrypted: text('client_secret_encrypted'),
+  previousClientSecretHash: varchar('previous_client_secret_hash', { length: 128 }),
+  previousClientSecretEncrypted: text('previous_client_secret_encrypted'),
+  previousSecretExpiresAt: timestamp('previous_secret_expires_at', { withTimezone: true }),
   /** secret 前缀，用于列表页展示（前 8 位 + ...）*/
   clientSecretPrefix: varchar('client_secret_prefix', { length: 20 }),
   name: varchar('name', { length: 100 }).notNull(),
@@ -33,6 +39,12 @@ export const oauth2Clients = pgTable('oauth2_clients', {
   signEnabled: boolean('sign_enabled').notNull().default(false),
   /** 来源 IP/CIDR 白名单；空数组表示不限制 */
   ipAllowlist: text('ip_allowlist').array().notNull().default([]),
+  environment: openAppEnvironmentEnum('environment').notNull().default('production'),
+  reviewStatus: openAppReviewStatusEnum('review_status').notNull().default('approved'),
+  reviewComment: text('review_comment'),
+  submittedAt: timestamp('submitted_at', { withTimezone: true }),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  reviewedBy: integer('reviewed_by').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
   status: statusEnum('status').notNull().default('enabled'),
   /** 应用归属用户 */
   ownerId: integer('owner_id').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
@@ -187,6 +199,7 @@ export const openApiCallLogs = pgTable('open_api_call_logs', {
   scope: varchar('scope', { length: 128 }),
   errorMessage: varchar('error_message', { length: 512 }),
   requestId: varchar('request_id', { length: 64 }),
+  environment: openAppEnvironmentEnum('environment').notNull().default('production'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => [
   index('open_api_call_logs_client_idx').on(t.clientId),
@@ -205,6 +218,7 @@ export const openApiCallStatsDaily = pgTable('open_api_call_stats_daily', {
   clientId: varchar('client_id', { length: 64 }).notNull(),
   appName: varchar('app_name', { length: 100 }),
   path: varchar('path', { length: 256 }).notNull(),
+  environment: openAppEnvironmentEnum('environment').notNull().default('production'),
   totalCalls: bigint('total_calls', { mode: 'number' }).notNull().default(0),
   successCalls: bigint('success_calls', { mode: 'number' }).notNull().default(0),
   failedCalls: bigint('failed_calls', { mode: 'number' }).notNull().default(0),
@@ -213,7 +227,7 @@ export const openApiCallStatsDaily = pgTable('open_api_call_stats_daily', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (t) => [
-  unique('open_api_call_stats_daily_unique').on(t.statDate, t.clientId, t.path),
+  unique('open_api_call_stats_daily_unique').on(t.statDate, t.clientId, t.path, t.environment),
   index('open_api_call_stats_daily_date_idx').on(t.statDate),
   index('open_api_call_stats_daily_client_idx').on(t.clientId),
 ]);

@@ -1,7 +1,7 @@
 import dayjs from 'dayjs';
 import { lt, sql } from 'drizzle-orm';
 import { db } from '../../db';
-import { openApiCallLogs, openApiCallStatsDaily } from '../../db/schema';
+import { oauth2Clients, openApiCallLogs, openApiCallStatsDaily } from '../../db/schema';
 import { config } from '../../config';
 
 export async function rollupAndCleanupOpenApiCallLogs(): Promise<{
@@ -18,6 +18,7 @@ export async function rollupAndCleanupOpenApiCallLogs(): Promise<{
       client_id,
       app_name,
       path,
+      environment,
       total_calls,
       success_calls,
       failed_calls,
@@ -29,6 +30,7 @@ export async function rollupAndCleanupOpenApiCallLogs(): Promise<{
       ${openApiCallLogs.clientId},
       max(${openApiCallLogs.appName}),
       ${openApiCallLogs.path},
+      ${openApiCallLogs.environment},
       count(*)::bigint,
       count(*) filter (where ${openApiCallLogs.success} = true)::bigint,
       count(*) filter (where ${openApiCallLogs.success} = false)::bigint,
@@ -37,8 +39,8 @@ export async function rollupAndCleanupOpenApiCallLogs(): Promise<{
     from ${openApiCallLogs}
     where ${openApiCallLogs.createdAt} >= ${start}
       and ${openApiCallLogs.createdAt} < ${end}
-    group by ${openApiCallLogs.clientId}, ${openApiCallLogs.path}
-    on conflict (stat_date, client_id, path) do update set
+    group by ${openApiCallLogs.clientId}, ${openApiCallLogs.path}, ${openApiCallLogs.environment}
+    on conflict (stat_date, client_id, path, environment) do update set
       app_name = excluded.app_name,
       total_calls = excluded.total_calls,
       success_calls = excluded.success_calls,
@@ -51,6 +53,11 @@ export async function rollupAndCleanupOpenApiCallLogs(): Promise<{
   const retentionDays = config.openPlatform.apiLogRetentionDays;
   const cutoff = dayjs().subtract(retentionDays, 'day').startOf('day').toDate();
   await db.delete(openApiCallLogs).where(lt(openApiCallLogs.createdAt, cutoff));
+  await db.update(oauth2Clients).set({
+    previousClientSecretHash: null,
+    previousClientSecretEncrypted: null,
+    previousSecretExpiresAt: null,
+  }).where(lt(oauth2Clients.previousSecretExpiresAt, new Date()));
 
   return { statDate, retentionDays };
 }

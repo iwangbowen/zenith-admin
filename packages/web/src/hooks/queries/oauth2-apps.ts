@@ -7,6 +7,8 @@ export interface OAuth2AppListParams {
   page: number;
   pageSize: number;
   keyword?: string;
+  environment?: 'production' | 'sandbox';
+  reviewStatus?: 'draft' | 'pending' | 'approved' | 'rejected';
 }
 
 export const oauth2AppKeys = {
@@ -75,7 +77,19 @@ export function useDeleteOAuth2App() {
 export function useRegenerateOAuth2AppSecret() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) => request.post<{ clientId: string; clientSecret: string }>(`/api/oauth2/clients/${id}/regenerate-secret`).then(unwrap),
+    mutationFn: (id: number) => request.post<{ clientId: string; clientSecret: string; previousValidUntil: string }>(`/api/oauth2/clients/${id}/regenerate-secret`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: oauth2AppKeys.all }),
+  });
+}
+
+export function useReviewOAuth2App() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, action, comment }: {
+      id: number;
+      action: 'approve' | 'reject';
+      comment?: string;
+    }) => request.post<OAuth2Client>(`/api/oauth2/clients/${id}/review`, { action, comment }).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: oauth2AppKeys.all }),
   });
 }

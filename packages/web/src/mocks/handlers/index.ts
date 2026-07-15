@@ -83,6 +83,7 @@ import { apiScopesHandlers } from './api-scopes';
 import { ratePlansHandlers } from './rate-plans';
 import { openPlatformHandlers } from './open-platform';
 import { appWebhooksHandlers } from './app-webhooks';
+import { developerAppsHandlers } from './developer-apps';
 import { oauth2AuthHandlers } from './oauth2-auth';
 import { inAppTemplatesHandlers } from './in-app-templates';
 import { inAppMessagesHandlers } from './in-app-messages';
@@ -204,6 +205,7 @@ export const handlers = [
   ...ratePlansHandlers,
   ...openPlatformHandlers,
   ...appWebhooksHandlers,
+  ...developerAppsHandlers,
   ...oauth2AuthHandlers,
   ...userPermissionsHandlers,
   ...maintenanceHandlers,

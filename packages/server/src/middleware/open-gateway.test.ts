@@ -16,7 +16,7 @@ import { Hono } from 'hono';
 vi.mock('../config', () => ({
   config: {
     redis: { keyPrefix: 'test:' },
-    openPlatform: { rateLimitFailClosed: true },
+    openPlatform: { rateLimitFailClosed: true, gatewayRequireApproval: false },
     trustedProxyCidrs: [],
   },
 }));
@@ -43,11 +43,16 @@ vi.mock('../services/open-platform/rate-plans.service', () => ({
   getDefaultRatePlanRow: vi.fn(),
 }));
 
+vi.mock('../services/open-platform/open-quota-alerts.service', () => ({
+  maybeSendQuotaWarning: vi.fn().mockResolvedValue(undefined),
+}));
+
 import redis from '../lib/redis';
 import { config } from '../config';
 import { openEventBus } from '../lib/open-event-bus';
 import { getOpenApiApp } from '../services/open-platform/open-gateway.service';
 import { getRatePlanRowById, getDefaultRatePlanRow } from '../services/open-platform/rate-plans.service';
+import { maybeSendQuotaWarning } from '../services/open-platform/open-quota-alerts.service';
 import { signRequest } from '../lib/open-signature';
 import { openSignatureAuth, openRateLimit } from './open-gateway';
 
@@ -55,6 +60,7 @@ const redisMock = vi.mocked(redis);
 const getAppMock = vi.mocked(getOpenApiApp);
 const planByIdMock = vi.mocked(getRatePlanRowById);
 const defaultPlanMock = vi.mocked(getDefaultRatePlanRow);
+const quotaWarningMock = vi.mocked(maybeSendQuotaWarning);
 
 const SECRET = 'app-signing-secret';
 
@@ -65,10 +71,12 @@ function makeApp(overrides: Record<string, unknown> = {}): any {
     name: '测试应用',
     status: 'enabled',
     signEnabled: false,
-    signingSecret: SECRET,
+    signingSecrets: [SECRET],
     ratePlanId: null,
     allowedScopes: [],
     ipAllowlist: [],
+    environment: 'production',
+    reviewStatus: 'approved',
     ...overrides,
   };
 }
@@ -105,7 +113,9 @@ beforeEach(() => {
   redisMock.set.mockResolvedValue('OK');
   redisMock.incr.mockResolvedValue(1);
   redisMock.expire.mockResolvedValue(1);
+  quotaWarningMock.mockResolvedValue(undefined);
   config.openPlatform.rateLimitFailClosed = true;
+  config.openPlatform.gatewayRequireApproval = false;
 });
 
 describe('openSignatureAuth - AppKey 鉴权', () => {
@@ -163,6 +173,26 @@ describe('openSignatureAuth - AppKey 鉴权', () => {
     });
     expect(res.status).toBe(200);
   });
+
+  it('开启审核门禁后未通过应用 → 403', async () => {
+    config.openPlatform.gatewayRequireApproval = true;
+    getAppMock.mockResolvedValue(makeApp({ reviewStatus: 'pending' }));
+    const res = await buildAuthApp().request('/open/api/v1/echo', {
+      method: 'POST',
+      headers: { 'X-App-Key': 'ak_test_1' },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('审核门禁开启时沙箱应用仍可用于接入调试', async () => {
+    config.openPlatform.gatewayRequireApproval = true;
+    getAppMock.mockResolvedValue(makeApp({ environment: 'sandbox', reviewStatus: 'draft' }));
+    const res = await buildAuthApp().request('/open/api/v1/echo', {
+      method: 'POST',
+      headers: { 'X-App-Key': 'ak_test_1' },
+    });
+    expect(res.status).toBe(200);
+  });
 });
 
 describe('openSignatureAuth - HMAC 验签（signEnabled）', () => {
@@ -189,7 +219,7 @@ describe('openSignatureAuth - HMAC 验签（signEnabled）', () => {
   });
 
   it('应用未配置签名密钥 → 401', async () => {
-    getAppMock.mockResolvedValue(makeApp({ signEnabled: true, signingSecret: null }));
+    getAppMock.mockResolvedValue(makeApp({ signEnabled: true, signingSecrets: [] }));
     const res = await buildAuthApp().request('/open/api/v1/echo', {
       method: 'POST',
       headers: signedHeaders(''),
@@ -229,6 +259,17 @@ describe('openSignatureAuth - HMAC 验签（signEnabled）', () => {
     // nonce 已按窗口 2 倍 TTL 落防重放标记
     expect(redisMock.set).toHaveBeenCalledWith('test:opennonce:ak_test_1:nonce-abc', '1', 'EX', 600, 'NX');
   });
+
+  it('密钥轮换宽限期内可使用上一版本密钥验签', async () => {
+    getAppMock.mockResolvedValue(makeApp({ signEnabled: true, signingSecrets: ['new-secret', SECRET] }));
+    const body = '{"hello":"rotation"}';
+    const res = await buildAuthApp().request('/open/api/v1/echo', {
+      method: 'POST',
+      headers: signedHeaders(body),
+      body,
+    });
+    expect(res.status).toBe(200);
+  });
 });
 
 describe('openRateLimit - 套餐配额', () => {
@@ -258,6 +299,13 @@ describe('openRateLimit - 套餐配额', () => {
     planByIdMock.mockResolvedValue(null);
     const res = await buildLimitApp().request('/open/api/v1/echo');
     expect(res.status).toBe(200);
+  });
+
+  it('沙箱应用不消耗生产配额', async () => {
+    const res = await buildLimitApp(makeApp({ ratePlanId: 9, environment: 'sandbox' })).request('/open/api/v1/echo');
+    expect(res.status).toBe(200);
+    expect(planByIdMock).not.toHaveBeenCalled();
+    expect(redisMock.incr).not.toHaveBeenCalled();
   });
 
   it('未绑定套餐时使用默认套餐', async () => {

@@ -2,9 +2,9 @@ import type { OpenApiCallLog } from '@zenith/shared';
 import dayjs from 'dayjs';
 
 const APPS = [
-  { clientId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', appName: '示例应用（授权码模式）' },
-  { clientId: 'f0e1d2c3-b4a5-6789-0abc-de1234567891', appName: '内部服务（客户端凭证）' },
-  { clientId: 'c0ffee00-1234-5678-9abc-def012345678', appName: '移动端公开客户端' },
+  { clientId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', appName: '示例应用（授权码模式）', environment: 'production' as const },
+  { clientId: 'f0e1d2c3-b4a5-6789-0abc-de1234567891', appName: '内部服务（客户端凭证）', environment: 'production' as const },
+  { clientId: 'c0ffee00-1234-5678-9abc-def012345678', appName: '移动端公开客户端', environment: 'sandbox' as const },
 ];
 const ENDPOINTS = [
   { method: 'GET', path: '/api/open/v1/ping', scope: null as string | null },
@@ -45,6 +45,7 @@ function gen(): OpenApiCallLog[] {
         scope: ep.scope,
         errorMessage: success ? null : '调用失败',
         requestId: null,
+        environment: app.environment,
         createdAt: t.format('YYYY-MM-DD HH:mm:ss'),
       });
     }

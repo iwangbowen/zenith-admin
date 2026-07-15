@@ -5848,6 +5848,13 @@ export interface OAuth2Client {
   signEnabled?: boolean;
   /** 开放 API 来源 IP/CIDR 白名单；空数组表示不限制 */
   ipAllowlist: string[];
+  environment: 'production' | 'sandbox';
+  reviewStatus: 'draft' | 'pending' | 'approved' | 'rejected';
+  reviewComment?: string | null;
+  submittedAt?: string | null;
+  reviewedAt?: string | null;
+  reviewedBy?: number | null;
+  previousSecretExpiresAt?: string | null;
   status: 'enabled' | 'disabled';
   ownerId?: number | null;
   createdAt: string;
@@ -5942,7 +5949,35 @@ export interface OpenApiCallLog {
   scope?: string | null;
   errorMessage?: string | null;
   requestId?: string | null;
+  environment: 'production' | 'sandbox';
   createdAt: string;
+}
+
+export interface OpenAppQuotaUsageItem {
+  used: number;
+  limit: number;
+  percentage: number;
+}
+
+export interface OpenAppQuotaUsage {
+  clientId: string;
+  environment: 'production' | 'sandbox';
+  planCode: string | null;
+  planName: string | null;
+  qps: OpenAppQuotaUsageItem;
+  daily: OpenAppQuotaUsageItem;
+  monthly: OpenAppQuotaUsageItem;
+}
+
+export interface OpenApiDebugResult {
+  requestUrl: string;
+  method: string;
+  requestHeaders: Record<string, string>;
+  stringToSign?: string;
+  statusCode: number;
+  responseHeaders: Record<string, string>;
+  responseBody: string;
+  durationMs: number;
 }
 
 /** 调用统计总览 */

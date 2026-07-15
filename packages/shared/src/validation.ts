@@ -49,6 +49,7 @@ import {
   REPORT_DASHBOARD_VERSION_SOURCES,
   SOURCE_MAP_MAX_BYTES,
   OAUTH2_GRANT_TYPES,
+  OPEN_APP_ENVIRONMENTS,
 } from './constants';
 
 const DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
@@ -60,20 +61,46 @@ const ipOrCidrSchema = z.string().min(2).max(64).regex(
   '请输入有效的 IP 地址或 CIDR',
 );
 
-const oauth2ClientBaseSchema = z.object({
+export function isSafeOAuthRedirectUri(value: string): boolean {
+  try {
+    const url = new URL(value);
+    if (url.username || url.password) return false;
+    if (url.protocol === 'https:') return true;
+    if (url.protocol === 'http:') {
+      return ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    }
+    const unsafeProtocols = new Set(['javascript:', 'data:', 'file:', 'vbscript:', 'blob:']);
+    return !unsafeProtocols.has(url.protocol) && /^[a-z][a-z0-9+.-]*:$/i.test(url.protocol);
+  } catch {
+    return false;
+  }
+}
+
+const redirectUriSchema = z.string().min(1).max(500)
+  .refine(isSafeOAuthRedirectUri, '回调 URL 仅允许 HTTPS、localhost HTTP 或安全的自定义协议');
+
+const oauth2ClientFields = {
   name: z.string().trim().min(1).max(64),
   description: z.string().max(256).optional(),
   logoUrl: z.url().optional().or(z.literal('')),
-  redirectUris: z.array(z.string().min(1).max(500)).max(20),
+  redirectUris: z.array(redirectUriSchema).max(20),
   allowedScopes: z.array(z.string().min(1).max(64)).min(1),
   grantTypes: z.array(z.enum(OAUTH2_GRANT_TYPES)).min(1),
   isPublic: z.boolean(),
   ratePlanId: z.number().int().positive().nullable().optional(),
   signEnabled: z.boolean().optional(),
-  ipAllowlist: z.array(ipOrCidrSchema).max(100).default([]),
+  ipAllowlist: z.array(ipOrCidrSchema).max(100),
+  environment: z.enum(OPEN_APP_ENVIRONMENTS),
+};
+
+const oauth2ClientBaseSchema = z.object(oauth2ClientFields);
+const oauth2ClientCreateSchema = z.object({
+  ...oauth2ClientFields,
+  ipAllowlist: oauth2ClientFields.ipAllowlist.default([]),
+  environment: oauth2ClientFields.environment.default('production'),
 });
 
-export const createOAuth2ClientSchema = oauth2ClientBaseSchema.superRefine((value, ctx) => {
+function validateOAuth2Client(value: z.infer<typeof oauth2ClientCreateSchema>, ctx: z.RefinementCtx) {
   if (value.grantTypes.includes('authorization_code') && value.redirectUris.length === 0) {
     ctx.addIssue({ code: 'custom', path: ['redirectUris'], message: '授权码模式至少需要一个回调 URL' });
   }
@@ -86,14 +113,23 @@ export const createOAuth2ClientSchema = oauth2ClientBaseSchema.superRefine((valu
   if (value.isPublic && value.signEnabled) {
     ctx.addIssue({ code: 'custom', path: ['signEnabled'], message: '公开客户端没有密钥，无法启用 HMAC 签名' });
   }
-});
+}
+
+export const createOAuth2ClientSchema = oauth2ClientCreateSchema.superRefine(validateOAuth2Client);
 
 export const updateOAuth2ClientSchema = oauth2ClientBaseSchema.partial().extend({
   status: z.enum(['enabled', 'disabled']).optional(),
 });
 
+const developerOAuth2ClientCreateSchema = oauth2ClientCreateSchema.omit({ ratePlanId: true });
+const developerOAuth2ClientUpdateSchema = oauth2ClientBaseSchema.omit({ ratePlanId: true }).partial();
+export const createDeveloperOAuth2ClientSchema = developerOAuth2ClientCreateSchema.superRefine(validateOAuth2Client);
+export const updateDeveloperOAuth2ClientSchema = developerOAuth2ClientUpdateSchema;
+
 export type CreateOAuth2ClientInput = z.infer<typeof createOAuth2ClientSchema>;
 export type UpdateOAuth2ClientInput = z.infer<typeof updateOAuth2ClientSchema>;
+export type CreateDeveloperOAuth2ClientInput = z.infer<typeof createDeveloperOAuth2ClientSchema>;
+export type UpdateDeveloperOAuth2ClientInput = z.infer<typeof updateDeveloperOAuth2ClientSchema>;
 
 export const loginSchema = z.object({
   username: z.string().min(2, '用户名/手机号至少2个字符').max(32),

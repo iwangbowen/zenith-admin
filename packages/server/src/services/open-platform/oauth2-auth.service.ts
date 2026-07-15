@@ -15,8 +15,9 @@ import {
 import { currentUser } from '../../lib/context';
 import { HTTPException } from 'hono/http-exception';
 
-import { OAUTH2_TOKEN_EXPIRY } from '@zenith/shared';
+import { isSafeOAuthRedirectUri, OAUTH2_TOKEN_EXPIRY } from '@zenith/shared';
 import type { DbExecutor } from '../../db/types';
+import { config } from '../../config';
 
 // ─── 内部工具 ─────────────────────────────────────────────────────────────────
 
@@ -29,6 +30,22 @@ function secretMatches(raw: string, expectedHash: string | null): boolean {
   const actual = Buffer.from(sha256(raw), 'hex');
   const expected = Buffer.from(expectedHash, 'hex');
   return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
+function clientSecretMatches(
+  raw: string,
+  client: {
+    clientSecretHash: string | null;
+    previousClientSecretHash: string | null;
+    previousSecretExpiresAt: Date | null;
+  },
+): boolean {
+  if (secretMatches(raw, client.clientSecretHash)) return true;
+  return Boolean(
+    client.previousSecretExpiresAt
+    && client.previousSecretExpiresAt > new Date()
+    && secretMatches(raw, client.previousClientSecretHash),
+  );
 }
 
 function generateOpaqueToken(prefix: string): { raw: string; hash: string; tokenPrefix: string } {
@@ -49,14 +66,27 @@ function verifyPkceS256(codeVerifier: string, codeChallenge: string): boolean {
 async function ensureClient(clientId: string) {
   const [row] = await db.select().from(oauth2Clients).where(eq(oauth2Clients.clientId, clientId));
   if (!row) throw new HTTPException(400, { message: 'invalid_client' });
-  if (row.status !== 'enabled') throw new HTTPException(400, { message: '应用已禁用' });
+  if (!isClientUsable(row)) {
+    throw new HTTPException(403, { message: row.status !== 'enabled' ? '应用已禁用' : '应用尚未审核通过' });
+  }
   return row;
+}
+
+function isClientUsable(client: typeof oauth2Clients.$inferSelect): boolean {
+  if (client.status !== 'enabled') return false;
+  if (
+    config.openPlatform.gatewayRequireApproval
+    && client.reviewStatus !== 'approved'
+  ) {
+    return false;
+  }
+  return true;
 }
 
 async function ensureClientWithSecret(clientId: string, clientSecret: string) {
   const row = await ensureClient(clientId);
   if (row.isPublic) throw new HTTPException(400, { message: '公开客户端不使用 client_secret' });
-  if (!secretMatches(clientSecret, row.clientSecretHash)) {
+  if (!clientSecretMatches(clientSecret, row)) {
     throw new HTTPException(400, { message: 'invalid_client' });
   }
   return row;
@@ -72,6 +102,9 @@ export async function getAuthorizeInfo(params: {
 }) {
   const { clientId, redirectUri, scope, responseType } = params;
   const client = await ensureClient(clientId);
+  if (!isSafeOAuthRedirectUri(redirectUri)) {
+    throw new HTTPException(400, { message: 'redirect_uri 协议不安全' });
+  }
 
   // 校验 redirect_uri
   const allowedRedirects: string[] = client.redirectUris ?? [];
@@ -133,6 +166,9 @@ export async function createAuthorizationCode(params: {
   const user = currentUser();
   const { clientId, redirectUri, scope, state, codeChallenge, codeChallengeMethod, responseType } = params;
   const client = await ensureClient(clientId);
+  if (!isSafeOAuthRedirectUri(redirectUri)) {
+    throw new HTTPException(400, { message: 'redirect_uri 协议不安全' });
+  }
   if (responseType !== 'code') {
     throw new HTTPException(400, { message: 'unsupported_response_type：仅支持 code' });
   }
@@ -247,11 +283,14 @@ export async function exchangeCodeForToken(params: {
 }) {
   const { code, redirectUri, clientId, clientSecret, codeVerifier } = params;
   const client = await ensureClient(clientId);
+  if (!isSafeOAuthRedirectUri(redirectUri)) {
+    throw new HTTPException(400, { message: 'redirect_uri 协议不安全' });
+  }
 
   // 验证 client_secret（confidential client）
   if (!client.isPublic) {
     if (!clientSecret) throw new HTTPException(400, { message: 'client_secret 必填' });
-    if (!secretMatches(clientSecret, client.clientSecretHash)) {
+    if (!clientSecretMatches(clientSecret, client)) {
       throw new HTTPException(400, { message: 'invalid_client' });
     }
   }
@@ -322,7 +361,7 @@ export async function refreshAccessToken(params: {
   }
   if (!client.isPublic) {
     if (!clientSecret) throw new HTTPException(400, { message: 'client_secret 必填' });
-    if (!secretMatches(clientSecret, client.clientSecretHash)) {
+    if (!clientSecretMatches(clientSecret, client)) {
       throw new HTTPException(400, { message: 'invalid_client' });
     }
   }
@@ -365,6 +404,8 @@ export async function introspectToken(token: string) {
   if (!row || row.revoked || (row.expiresAt && row.expiresAt < new Date())) {
     return { active: false };
   }
+  const [client] = await db.select().from(oauth2Clients).where(eq(oauth2Clients.clientId, row.clientId)).limit(1);
+  if (!client || !isClientUsable(client)) return { active: false };
 
   let username: string | undefined;
   if (row.userId) {
@@ -394,6 +435,7 @@ export async function getUserInfoByToken(accessToken: string) {
   if (!row || row.revoked || (row.expiresAt && row.expiresAt < new Date())) {
     throw new HTTPException(401, { message: 'invalid_token' });
   }
+  await ensureClient(row.clientId);
   if (!row.userId) {
     throw new HTTPException(400, { message: 'client_credentials token 无用户信息' });
   }

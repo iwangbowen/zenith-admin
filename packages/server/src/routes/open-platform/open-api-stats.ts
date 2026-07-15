@@ -29,6 +29,7 @@ const RangeQuery = z.object({
   startTime: z.string().optional(),
   endTime: z.string().optional(),
   clientId: z.string().optional(),
+  environment: z.enum(['production', 'sandbox']).optional(),
 });
 
 const viewGuard = guard({ permission: 'open:stats:view' });
@@ -59,8 +60,8 @@ const trend = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...ok(z.array(OpenApiStatsTrendPointDTO), '调用趋势') },
   }),
   handler: async (c) => {
-    const { startTime, endTime, clientId, granularity } = c.req.valid('query');
-    return c.json(okBody(await getOpenApiStatsTrend({ startTime, endTime, clientId, granularity })), 200);
+    const { startTime, endTime, clientId, environment, granularity } = c.req.valid('query');
+    return c.json(okBody(await getOpenApiStatsTrend({ startTime, endTime, clientId, environment, granularity })), 200);
   },
 });
 
@@ -76,8 +77,8 @@ const byApp = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...ok(z.array(OpenApiStatsGroupItemDTO), '按应用统计') },
   }),
   handler: async (c) => {
-    const { startTime, endTime, clientId, limit } = c.req.valid('query');
-    return c.json(okBody(await getOpenApiStatsByApp({ startTime, endTime, clientId, limit })), 200);
+    const { startTime, endTime, clientId, environment, limit } = c.req.valid('query');
+    return c.json(okBody(await getOpenApiStatsByApp({ startTime, endTime, clientId, environment, limit })), 200);
   },
 });
 
@@ -93,8 +94,8 @@ const byEndpoint = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...ok(z.array(OpenApiStatsGroupItemDTO), '按端点统计') },
   }),
   handler: async (c) => {
-    const { startTime, endTime, clientId, limit } = c.req.valid('query');
-    return c.json(okBody(await getOpenApiStatsByEndpoint({ startTime, endTime, clientId, limit })), 200);
+    const { startTime, endTime, clientId, environment, limit } = c.req.valid('query');
+    return c.json(okBody(await getOpenApiStatsByEndpoint({ startTime, endTime, clientId, environment, limit })), 200);
   },
 });
 
@@ -112,6 +113,7 @@ const logs = defineOpenAPIRoute({
         success: z.enum(['true', 'false']).optional(),
         method: z.string().max(10).optional(),
         statusCode: z.coerce.number().int().min(100).max(599).optional(),
+        environment: z.enum(['production', 'sandbox']).optional(),
         keyword: z.string().optional(),
         startTime: z.string().optional(),
         endTime: z.string().optional(),
@@ -120,7 +122,7 @@ const logs = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okPaginated(OpenApiCallLogDTO, '调用日志列表') },
   }),
   handler: async (c) => {
-    const { page, pageSize, clientId, success, method, statusCode, keyword, startTime, endTime } = c.req.valid('query');
+    const { page, pageSize, clientId, success, method, statusCode, environment, keyword, startTime, endTime } = c.req.valid('query');
     return c.json(
       okBody(
         await listOpenApiCallLogs({
@@ -130,6 +132,7 @@ const logs = defineOpenAPIRoute({
           success: success === undefined ? undefined : success === 'true',
           method,
           statusCode,
+          environment,
           keyword,
           startTime,
           endTime,

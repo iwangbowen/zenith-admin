@@ -21,6 +21,13 @@ export const OAuth2ClientListItemDTO = z
     ratePlanId: z.number().int().nullable(),
     signEnabled: z.boolean(),
     ipAllowlist: z.array(z.string()),
+    environment: z.enum(['production', 'sandbox']),
+    reviewStatus: z.enum(['draft', 'pending', 'approved', 'rejected']),
+    reviewComment: z.string().nullable(),
+    submittedAt: z.string().nullable(),
+    reviewedAt: z.string().nullable(),
+    reviewedBy: z.number().int().nullable(),
+    previousSecretExpiresAt: z.string().nullable(),
     status: z.enum(['enabled', 'disabled']),
     ownerId: z.number().int().nullable(),
     ...auditFields,
@@ -30,19 +37,8 @@ export const OAuth2ClientListItemDTO = z
   .openapi('OAuth2ClientListItem');
 
 /** 创建应用时一次性返回，包含明文 clientSecret */
-export const OAuth2ClientCreatedDTO = z
-  .object({
-    id: z.number().int(),
-    clientId: z.string(),
-    clientSecret: z.string(),
-    name: z.string(),
-    redirectUris: z.array(z.string()),
-    allowedScopes: z.array(z.string()),
-    grantTypes: z.array(z.string()),
-    isPublic: z.boolean(),
-    status: z.enum(['enabled', 'disabled']),
-    createdAt: z.string(),
-  })
+export const OAuth2ClientCreatedDTO = OAuth2ClientListItemDTO
+  .extend({ clientSecret: z.string() })
   .openapi('OAuth2ClientCreated');
 
 /** 重置 secret 时一次性返回新的明文 secret */
@@ -50,6 +46,7 @@ export const OAuth2ClientSecretDTO = z
   .object({
     clientId: z.string(),
     clientSecret: z.string(),
+    previousValidUntil: z.string(),
   })
   .openapi('OAuth2ClientSecret');
 

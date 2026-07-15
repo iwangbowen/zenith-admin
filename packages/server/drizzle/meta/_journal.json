@@ -435,6 +435,20 @@
       "when": 1784125714795,
       "tag": "0061_open-platform-p1b-operations",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1784127043320,
+      "tag": "0062_open-platform-p2-developer-platform",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1784127246594,
+      "tag": "0063_open-platform-environment-enum",
+      "breakpoints": true
     }
   ]
 }

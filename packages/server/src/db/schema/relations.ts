@@ -304,6 +304,8 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   ownedUserGroups: many(userGroups, { relationName: 'userGroupOwner' }),
   oauthAccounts: many(userOauthAccounts),
   apiTokens: many(userApiTokens),
+  ownedOauth2Clients: many(oauth2Clients, { relationName: 'oauth2ClientOwner' }),
+  reviewedOauth2Clients: many(oauth2Clients, { relationName: 'oauth2ClientReviewer' }),
   passwordResetTokens: many(passwordResetTokens),
   leadingDepartments: many(departments, { relationName: 'departmentLeader' }),
   userMenus: many(userMenus),
@@ -727,7 +729,8 @@ export const aiPromptTemplatesRelations = relations(aiPromptTemplates, ({ one })
 // ─── 数据脱敏配置 ─────────────────────────────────────────────────────────────
 
 export const oauth2ClientsRelations = relations(oauth2Clients, ({ one }) => ({
-  owner: one(users, { fields: [oauth2Clients.ownerId], references: [users.id] }),
+  owner: one(users, { fields: [oauth2Clients.ownerId], references: [users.id], relationName: 'oauth2ClientOwner' }),
+  reviewer: one(users, { fields: [oauth2Clients.reviewedBy], references: [users.id], relationName: 'oauth2ClientReviewer' }),
   ratePlan: one(ratePlans, { fields: [oauth2Clients.ratePlanId], references: [ratePlans.id] }),
 }));
 

@@ -25,7 +25,12 @@ function hasScope(c: Context, scope: string): boolean {
 // GET /v1/ping —— 连通性测试（无需 scope）
 router.get('/v1/ping', (c) => {
   const app = c.get('openApp');
-  return c.json(okBody({ pong: true, app: app?.name ?? null, time: formatDateTime(new Date()) }), 200);
+  return c.json(okBody({
+    pong: true,
+    app: app?.name ?? null,
+    environment: app?.environment ?? 'production',
+    time: formatDateTime(new Date()),
+  }), 200);
 });
 
 // GET /v1/echo —— 回显查询参数（scope: data:read）
@@ -54,6 +59,7 @@ router.get('/v1/userinfo', (c) => {
   return c.json(okBody({
     appKey: app?.clientId ?? null,
     appName: app?.name ?? null,
+    environment: app?.environment ?? 'production',
     scopes: app?.allowedScopes ?? [],
   }), 200);
 });

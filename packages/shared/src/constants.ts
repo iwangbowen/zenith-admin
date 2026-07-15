@@ -230,6 +230,22 @@ export const OAUTH2_SCOPE_DESCRIPTIONS: Record<string, string> = {
 export const OAUTH2_CODE_CHALLENGE_METHODS = ['S256'] as const;
 export type OAuth2CodeChallengeMethod = typeof OAUTH2_CODE_CHALLENGE_METHODS[number];
 
+export const OPEN_APP_ENVIRONMENTS = ['production', 'sandbox'] as const;
+export type OpenAppEnvironment = typeof OPEN_APP_ENVIRONMENTS[number];
+export const OPEN_APP_ENVIRONMENT_LABELS: Record<OpenAppEnvironment, string> = {
+  production: '生产环境',
+  sandbox: '沙箱环境',
+};
+
+export const OPEN_APP_REVIEW_STATUSES = ['draft', 'pending', 'approved', 'rejected'] as const;
+export type OpenAppReviewStatus = typeof OPEN_APP_REVIEW_STATUSES[number];
+export const OPEN_APP_REVIEW_STATUS_LABELS: Record<OpenAppReviewStatus, string> = {
+  draft: '草稿',
+  pending: '待审核',
+  approved: '已通过',
+  rejected: '已驳回',
+};
+
 export const OAUTH2_TOKEN_EXPIRY = {
   accessToken: 2 * 60 * 60, // 2 小时（秒）
   refreshToken: 30 * 24 * 60 * 60, // 30 天（秒）
@@ -697,13 +713,14 @@ export const OPEN_WEBHOOK_DELIVERY_STATUS_LABELS: Record<OpenWebhookDeliveryStat
 };
 
 /** 可订阅的开放平台事件类型 */
-export const OPEN_WEBHOOK_EVENTS = ['app.test', 'app.call.failed', 'app.quota.exceeded', 'app.scope.denied'] as const;
+export const OPEN_WEBHOOK_EVENTS = ['app.test', 'app.call.failed', 'app.quota.warning', 'app.quota.exceeded', 'app.scope.denied'] as const;
 export type OpenWebhookEvent = (typeof OPEN_WEBHOOK_EVENTS)[number];
 
 export const OPEN_WEBHOOK_EVENT_LABELS: Record<string, string> = {
   'app.test': '测试事件',
   'app.call.failed': '调用失败',
   'app.quota.exceeded': '配额超限',
+  'app.quota.warning': '配额预警',
   'app.scope.denied': 'Scope 未授权',
 };
 

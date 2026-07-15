@@ -22,6 +22,10 @@ import type {
   OAuth2Token,
   OAuth2UserGrant,
 } from '@zenith/shared';
+import {
+  OPEN_APP_ENVIRONMENT_LABELS,
+  OPEN_APP_REVIEW_STATUS_LABELS,
+} from '@zenith/shared';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AreaChart, EmptyChart, chartOptions, makeAreaSpec, useChartPalette } from '@/components/charts';
@@ -265,11 +269,15 @@ export default function OAuth2AppDetailPage() {
               { key: '应用名称', value: app.name },
               { key: '客户端类型', value: app.isPublic ? '公开客户端（PKCE）' : '机密客户端' },
               { key: '限流套餐', value: ratePlan?.name ?? '默认套餐' },
+              { key: '运行环境', value: OPEN_APP_ENVIRONMENT_LABELS[app.environment] },
+              { key: '审核状态', value: OPEN_APP_REVIEW_STATUS_LABELS[app.reviewStatus] },
+              { key: '审核意见', value: app.reviewComment || '—' },
               { key: 'HMAC 签名', value: app.signEnabled ? '已启用' : '未启用' },
               { key: '授权类型', value: app.grantTypes.join('、') },
               { key: '允许 Scope', value: app.allowedScopes.join('、') },
               { key: '回调 URL', value: app.redirectUris.length ? app.redirectUris.join('\n') : '—' },
               { key: 'IP 白名单', value: app.ipAllowlist.length ? app.ipAllowlist.join('\n') : '不限制' },
+              { key: '旧密钥有效期', value: app.previousSecretExpiresAt || '—' },
               { key: '描述', value: app.description || '—' },
               { key: '创建时间', value: app.createdAt },
               { key: '更新时间', value: app.updatedAt },

@@ -1,0 +1,4 @@
+ALTER TABLE "open_api_call_logs" ALTER COLUMN "environment" SET DEFAULT 'production'::"public"."open_app_environment";--> statement-breakpoint
+ALTER TABLE "open_api_call_logs" ALTER COLUMN "environment" SET DATA TYPE "public"."open_app_environment" USING "environment"::"public"."open_app_environment";--> statement-breakpoint
+ALTER TABLE "open_api_call_stats_daily" ALTER COLUMN "environment" SET DEFAULT 'production'::"public"."open_app_environment";--> statement-breakpoint
+ALTER TABLE "open_api_call_stats_daily" ALTER COLUMN "environment" SET DATA TYPE "public"."open_app_environment" USING "environment"::"public"."open_app_environment";

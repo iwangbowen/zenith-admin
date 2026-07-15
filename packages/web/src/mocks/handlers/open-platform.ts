@@ -24,13 +24,15 @@ function filtered(url: URL): OpenApiCallLog[] {
   const method = url.searchParams.get('method');
   const success = url.searchParams.get('success');
   const statusCode = url.searchParams.get('statusCode');
+  const environment = url.searchParams.get('environment');
   return mockOpenApiLogs.filter((log) =>
     inRange(log, start, end)
     && (!clientId || log.clientId === clientId)
     && (!keyword || log.path.toLowerCase().includes(keyword) || (log.appName ?? '').toLowerCase().includes(keyword))
     && (!method || log.method === method)
     && (success === null || log.success === (success === 'true'))
-    && (!statusCode || log.statusCode === Number(statusCode)),
+    && (!statusCode || log.statusCode === Number(statusCode))
+    && (!environment || log.environment === environment),
   );
 }
 

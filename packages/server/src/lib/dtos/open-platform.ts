@@ -60,6 +60,7 @@ export const OpenApiCallLogDTO = z
     scope: z.string().nullable(),
     errorMessage: z.string().nullable(),
     requestId: z.string().nullable(),
+    environment: z.enum(['production', 'sandbox']),
     createdAt: z.string(),
   })
   .openapi('OpenApiCallLog');
@@ -184,3 +185,34 @@ export const OpenWebhookEventMetaDTO = z
     label: z.string(),
   })
   .openapi('OpenWebhookEventMeta');
+
+const OpenAppQuotaUsageItemDTO = z.object({
+  used: z.number().int(),
+  limit: z.number().int(),
+  percentage: z.number(),
+});
+
+export const OpenAppQuotaUsageDTO = z
+  .object({
+    clientId: z.string(),
+    environment: z.enum(['production', 'sandbox']),
+    planCode: z.string().nullable(),
+    planName: z.string().nullable(),
+    qps: OpenAppQuotaUsageItemDTO,
+    daily: OpenAppQuotaUsageItemDTO,
+    monthly: OpenAppQuotaUsageItemDTO,
+  })
+  .openapi('OpenAppQuotaUsage');
+
+export const OpenApiDebugResultDTO = z
+  .object({
+    requestUrl: z.string(),
+    method: z.string(),
+    requestHeaders: z.record(z.string(), z.string()),
+    stringToSign: z.string().optional(),
+    statusCode: z.number().int(),
+    responseHeaders: z.record(z.string(), z.string()),
+    responseBody: z.string(),
+    durationMs: z.number().int(),
+  })
+  .openapi('OpenApiDebugResult');

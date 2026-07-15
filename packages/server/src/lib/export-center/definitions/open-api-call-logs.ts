@@ -13,6 +13,7 @@ const columns: ExportColumn[] = [
   { key: 'id', header: 'ID', width: 10, type: 'number' },
   { key: 'appName', header: '应用名称', width: 20 },
   { key: 'clientId', header: 'Client ID', width: 38 },
+  { key: 'environment', header: '环境', width: 10, enumMap: { production: '生产', sandbox: '沙箱' } },
   { key: 'method', header: '方法', width: 10 },
   { key: 'path', header: '请求路径', width: 36 },
   { key: 'scope', header: 'Scope', width: 18 },

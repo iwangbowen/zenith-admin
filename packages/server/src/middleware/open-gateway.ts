@@ -22,6 +22,7 @@ import { signRequest, timingSafeEqualHex } from '../lib/open-signature';
 import { getOpenApiApp, recordOpenApiCall, type OpenApiAppContext } from '../services/open-platform/open-gateway.service';
 import { getRatePlanRowById, getDefaultRatePlanRow } from '../services/open-platform/rate-plans.service';
 import { openEventBus } from '../lib/open-event-bus';
+import { maybeSendQuotaWarning } from '../services/open-platform/open-quota-alerts.service';
 
 declare module 'hono' {
   interface ContextVariableMap {
@@ -45,6 +46,13 @@ export const openSignatureAuth: MiddlewareHandler = async (c, next) => {
   const app = await getOpenApiApp(appKey);
   if (!app) return c.json(errBody('AppKey 无效', 401), 401);
   if (app.status !== 'enabled') return c.json(errBody('应用已禁用', 403), 403);
+  if (
+    config.openPlatform.gatewayRequireApproval
+    && app.environment === 'production'
+    && app.reviewStatus !== 'approved'
+  ) {
+    return c.json(errBody('应用尚未审核通过', 403), 403);
+  }
   if (app.ipAllowlist.length > 0) {
     const clientIp = getClientIp(c);
     const allowed = app.ipAllowlist.some((range) => {
@@ -70,7 +78,7 @@ export const openSignatureAuth: MiddlewareHandler = async (c, next) => {
     if (!Number.isFinite(tsNum) || Math.abs(nowSec - tsNum) > OPEN_SIGNATURE_TIMESTAMP_WINDOW) {
       return c.json(errBody('签名时间戳已过期', 401), 401);
     }
-    if (!app.signingSecret) {
+    if (app.signingSecrets.length === 0) {
       return c.json(errBody('该应用未配置签名密钥（请重置应用密钥）', 401), 401);
     }
     // nonce 防重放
@@ -89,20 +97,24 @@ export const openSignatureAuth: MiddlewareHandler = async (c, next) => {
       }
     }
     const url = new URL(c.req.url);
-    const { signature: expected } = signRequest(app.signingSecret, {
-      method: c.req.method,
-      path: url.pathname,
-      query: url.search,
-      timestamp,
-      nonce,
-      body: rawBody,
+    const signatureMatches = app.signingSecrets.some((secret) => {
+      const { signature: expected } = signRequest(secret, {
+        method: c.req.method,
+        path: url.pathname,
+        query: url.search,
+        timestamp,
+        nonce,
+        body: rawBody,
+      });
+      return timingSafeEqualHex(signature, expected);
     });
-    if (!timingSafeEqualHex(signature, expected)) {
+    if (!signatureMatches) {
       return c.json(errBody('签名校验失败', 401), 401);
     }
   }
 
   c.set('openApp', app);
+  c.header('X-Zenith-Environment', app.environment);
   await next();
 };
 
@@ -117,6 +129,7 @@ async function incrWithExpire(key: string, ttlSeconds: number): Promise<number> 
 export const openRateLimit: MiddlewareHandler = async (c, next) => {
   const app = c.get('openApp');
   if (!app) return next();
+  if (app.environment === 'sandbox') return next();
 
   const plan = app.ratePlanId ? await getRatePlanRowById(app.ratePlanId) : await getDefaultRatePlanRow();
   if (!plan || plan.status !== 'enabled') return next();
@@ -132,6 +145,17 @@ export const openRateLimit: MiddlewareHandler = async (c, next) => {
     if (plan.dailyQuota > 0) {
       const day = dayjs().format('YYYY-MM-DD');
       const n = await incrWithExpire(`${PREFIX}daily:${app.clientId}:${day}`, 2 * 24 * 60 * 60);
+      if (n >= plan.dailyQuota * 0.8) {
+        await maybeSendQuotaWarning({
+          clientId: app.clientId,
+          dimension: 'daily',
+          period: day,
+          used: n,
+          limit: plan.dailyQuota,
+          planCode: plan.code,
+          ttlSeconds: 2 * 24 * 60 * 60,
+        }).catch((err) => logger.error('[open-gateway] daily quota warning failed', err));
+      }
       if (n > plan.dailyQuota) {
         openEventBus.emit({ type: 'app.quota.exceeded', clientId: app.clientId, data: { limit: 'daily', value: plan.dailyQuota, plan: plan.code } });
         return c.json(errBody(`超出套餐每日调用配额（${plan.dailyQuota}/天）`, 429), 429);
@@ -140,6 +164,17 @@ export const openRateLimit: MiddlewareHandler = async (c, next) => {
     if (plan.monthlyQuota > 0) {
       const month = dayjs().format('YYYY-MM');
       const n = await incrWithExpire(`${PREFIX}monthly:${app.clientId}:${month}`, 32 * 24 * 60 * 60);
+      if (n >= plan.monthlyQuota * 0.8) {
+        await maybeSendQuotaWarning({
+          clientId: app.clientId,
+          dimension: 'monthly',
+          period: month,
+          used: n,
+          limit: plan.monthlyQuota,
+          planCode: plan.code,
+          ttlSeconds: 32 * 24 * 60 * 60,
+        }).catch((err) => logger.error('[open-gateway] monthly quota warning failed', err));
+      }
       if (n > plan.monthlyQuota) {
         openEventBus.emit({ type: 'app.quota.exceeded', clientId: app.clientId, data: { limit: 'monthly', value: plan.monthlyQuota, plan: plan.code } });
         return c.json(errBody(`超出套餐每月调用配额（${plan.monthlyQuota}/月）`, 429), 429);
@@ -175,6 +210,7 @@ export const openApiMetering: MiddlewareHandler = async (c, next) => {
     userAgent: (c.req.header('user-agent') ?? '').slice(0, 256) || null,
     scope: c.get('openScope') ?? null,
     requestId: c.res.headers.get('x-request-id'),
+    environment: app?.environment ?? 'production',
   }).catch(() => undefined);
 
   // 触发开放平台事件，供 Webhook 订阅投递

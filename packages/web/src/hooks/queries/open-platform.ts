@@ -52,6 +52,7 @@ export interface OpenApiStatsRangeParams {
   startTime: string;
   endTime: string;
   clientId?: string;
+  environment?: 'production' | 'sandbox';
 }
 
 export interface OpenApiStatsTrendParams extends OpenApiStatsRangeParams {

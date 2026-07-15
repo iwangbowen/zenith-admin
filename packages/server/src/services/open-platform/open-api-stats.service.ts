@@ -10,6 +10,7 @@ export interface OpenApiStatsRangeInput {
   startTime?: string;
   endTime?: string;
   clientId?: string;
+  environment?: 'production' | 'sandbox';
 }
 
 function rangeConditions(opts: OpenApiStatsRangeInput): SQL[] {
@@ -19,6 +20,7 @@ function rangeConditions(opts: OpenApiStatsRangeInput): SQL[] {
   if (start) conds.push(gte(openApiCallLogs.createdAt, start));
   if (end) conds.push(lte(openApiCallLogs.createdAt, end));
   if (opts.clientId) conds.push(eq(openApiCallLogs.clientId, opts.clientId));
+  if (opts.environment) conds.push(eq(openApiCallLogs.environment, opts.environment));
   return conds;
 }
 
@@ -33,9 +35,10 @@ export async function getOpenApiStatsOverview(opts: OpenApiStatsRangeInput) {
 
   const todayStart = dayjs().startOf('day').toDate();
 
-  const todayWhere = opts.clientId
-    ? and(gte(openApiCallLogs.createdAt, todayStart), eq(openApiCallLogs.clientId, opts.clientId))
-    : gte(openApiCallLogs.createdAt, todayStart);
+  const todayConditions: SQL[] = [gte(openApiCallLogs.createdAt, todayStart)];
+  if (opts.clientId) todayConditions.push(eq(openApiCallLogs.clientId, opts.clientId));
+  if (opts.environment) todayConditions.push(eq(openApiCallLogs.environment, opts.environment));
+  const todayWhere = and(...todayConditions);
   const [agg, todayCalls] = await Promise.all([
     db
       .select({
@@ -178,6 +181,7 @@ export async function listOpenApiCallLogs(opts: OpenApiCallLogQuery) {
       scope: r.scope ?? null,
       errorMessage: r.errorMessage ?? null,
       requestId: r.requestId ?? null,
+      environment: r.environment as 'production' | 'sandbox',
       createdAt: formatDateTime(r.createdAt),
     })),
     total,

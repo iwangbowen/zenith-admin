@@ -1,6 +1,6 @@
 import { randomBytes, createHash, randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
-import { eq, desc, ilike } from 'drizzle-orm';
+import { and, eq, desc, ilike } from 'drizzle-orm';
 import { db } from '../../db';
 import {
   appWebhookSubscriptions,
@@ -17,6 +17,9 @@ import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { pageOffset } from '../../lib/pagination';
 import { encryptField, decryptField } from '../../lib/encryption';
 import type { CreateOAuth2ClientInput, UpdateOAuth2ClientInput } from '@zenith/shared';
+import { config } from '../../config';
+import { escapeLike } from '../../lib/where-helpers';
+import type { DbExecutor } from '../../db/types';
 
 // ─── 辅助：生成 & 哈希 client_secret ────────────────────────────────────────
 
@@ -42,6 +45,13 @@ function mapClientRow(row: typeof oauth2Clients.$inferSelect) {
     ratePlanId: row.ratePlanId ?? null,
     signEnabled: row.signEnabled,
     ipAllowlist: row.ipAllowlist ?? [],
+    environment: row.environment,
+    reviewStatus: row.reviewStatus,
+    reviewComment: row.reviewComment,
+    submittedAt: formatNullableDateTime(row.submittedAt),
+    reviewedAt: formatNullableDateTime(row.reviewedAt),
+    reviewedBy: row.reviewedBy,
+    previousSecretExpiresAt: formatNullableDateTime(row.previousSecretExpiresAt),
     status: row.status,
     ownerId: row.ownerId,
     createdBy: row.createdBy,
@@ -67,9 +77,21 @@ function mapTokenAuditRow(row: typeof oauth2Tokens.$inferSelect) {
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
-export async function listOAuth2Clients(opts: { page: number; pageSize: number; keyword?: string }) {
-  const { page, pageSize, keyword } = opts;
-  const where = keyword ? ilike(oauth2Clients.name, `%${keyword}%`) : undefined;
+export async function listOAuth2Clients(opts: {
+  page: number;
+  pageSize: number;
+  keyword?: string;
+  ownerId?: number;
+  environment?: 'production' | 'sandbox';
+  reviewStatus?: 'draft' | 'pending' | 'approved' | 'rejected';
+}) {
+  const { page, pageSize, keyword, ownerId, environment, reviewStatus } = opts;
+  const conditions = [];
+  if (keyword) conditions.push(ilike(oauth2Clients.name, `%${escapeLike(keyword)}%`));
+  if (ownerId !== undefined) conditions.push(eq(oauth2Clients.ownerId, ownerId));
+  if (environment) conditions.push(eq(oauth2Clients.environment, environment));
+  if (reviewStatus) conditions.push(eq(oauth2Clients.reviewStatus, reviewStatus));
+  const where = conditions.length ? and(...conditions) : undefined;
   const [list, total] = await Promise.all([
     db.select().from(oauth2Clients)
       .where(where)
@@ -121,7 +143,10 @@ function validateClientConfiguration(input: {
   validateIpAllowlist(input.ipAllowlist);
 }
 
-export async function createOAuth2Client(input: CreateOAuth2ClientInput) {
+export async function createOAuth2Client(
+  input: CreateOAuth2ClientInput,
+  options: { reviewStatus?: 'draft' | 'approved' } = {},
+) {
   const user = currentUser();
   if (!input.name?.trim()) throw new HTTPException(400, { message: '应用名称不能为空' });
   validateClientConfiguration({
@@ -162,21 +187,14 @@ export async function createOAuth2Client(input: CreateOAuth2ClientInput) {
       ratePlanId: input.ratePlanId ?? null,
       signEnabled: input.signEnabled ?? false,
       ipAllowlist: input.ipAllowlist,
+      environment: input.environment,
+      reviewStatus: options.reviewStatus ?? 'approved',
+      reviewedAt: options.reviewStatus === 'draft' ? null : new Date(),
+      reviewedBy: options.reviewStatus === 'draft' ? null : user.userId,
       ownerId: user.userId,
     }).returning();
 
-    return {
-      id: row.id,
-      clientId: row.clientId,
-      clientSecret: secretRaw ?? '',
-      name: row.name,
-      redirectUris: row.redirectUris ?? [],
-      allowedScopes: row.allowedScopes ?? [],
-      grantTypes: row.grantTypes ?? [],
-      isPublic: row.isPublic,
-      status: row.status,
-      createdAt: formatDateTime(row.createdAt),
-    };
+    return { ...mapClientRow(row), clientSecret: secretRaw ?? '' };
   } catch (err) {
     rethrowPgUniqueViolation(err, '应用名称已存在');
     throw err;
@@ -208,7 +226,11 @@ export async function listAppOptions() {
   return rows.map((r) => ({ clientId: r.clientId, name: r.name }));
 }
 
-export async function updateOAuth2Client(id: number, input: UpdateOAuth2ClientInput) {
+export async function updateOAuth2Client(
+  id: number,
+  input: UpdateOAuth2ClientInput,
+  options: { resetReview?: boolean; revokeTokens?: boolean } = {},
+) {
   const existing = await getOAuth2Client(id);
   if (!existing) throw new HTTPException(404, { message: 'OAuth2 应用不存在' });
   validateClientConfiguration({
@@ -220,23 +242,39 @@ export async function updateOAuth2Client(id: number, input: UpdateOAuth2ClientIn
   });
 
   try {
-    const [row] = await db.update(oauth2Clients)
-      .set({
-        name: input.name?.trim() ?? undefined,
-        description: input.description,
-        logoUrl: input.logoUrl,
-        redirectUris: input.redirectUris,
-        allowedScopes: input.allowedScopes,
-        grantTypes: input.grantTypes,
-        isPublic: input.isPublic,
-        ratePlanId: input.ratePlanId,
-        signEnabled: input.signEnabled,
-        ipAllowlist: input.ipAllowlist,
-        status: input.status,
-      })
-      .where(eq(oauth2Clients.id, id))
-      .returning();
-    return mapClientRow(row);
+    const applyUpdate = async (executor: DbExecutor) => {
+      const [row] = await executor.update(oauth2Clients)
+        .set({
+          name: input.name?.trim() ?? undefined,
+          description: input.description,
+          logoUrl: input.logoUrl,
+          redirectUris: input.redirectUris,
+          allowedScopes: input.allowedScopes,
+          grantTypes: input.grantTypes,
+          isPublic: input.isPublic,
+          ratePlanId: input.ratePlanId,
+          signEnabled: input.signEnabled,
+          ipAllowlist: input.ipAllowlist,
+          environment: input.environment,
+          reviewStatus: options.resetReview ? 'draft' : undefined,
+          reviewComment: options.resetReview ? null : undefined,
+          submittedAt: options.resetReview ? null : undefined,
+          reviewedAt: options.resetReview ? null : undefined,
+          reviewedBy: options.resetReview ? null : undefined,
+          status: input.status,
+        })
+        .where(eq(oauth2Clients.id, id))
+        .returning();
+      if (options.revokeTokens || input.status === 'disabled') {
+        await executor.update(oauth2Tokens)
+          .set({ revoked: true })
+          .where(eq(oauth2Tokens.clientId, existing.clientId));
+      }
+      return mapClientRow(row);
+    };
+    return options.revokeTokens || input.status === 'disabled'
+      ? db.transaction(applyUpdate)
+      : applyUpdate(db);
   } catch (err) {
     rethrowPgUniqueViolation(err, '应用名称已存在');
     throw err;
@@ -262,23 +300,34 @@ export async function deleteOAuth2Client(id: number) {
 }
 
 export async function regenerateOAuth2ClientSecret(id: number) {
-  const existing = await getOAuth2Client(id);
-  if (!existing) throw new HTTPException(404, { message: 'OAuth2 应用不存在' });
-  if (existing.isPublic) throw new HTTPException(400, { message: '公开客户端不使用 secret' });
+  return db.transaction(async (tx) => {
+    const [row] = await tx.select().from(oauth2Clients)
+      .where(eq(oauth2Clients.id, id))
+      .for('update')
+      .limit(1);
+    if (!row) throw new HTTPException(404, { message: 'OAuth2 应用不存在' });
+    if (row.isPublic) throw new HTTPException(400, { message: '公开客户端不使用 secret' });
 
-  const sec = generateClientSecret();
-  await db.transaction(async (tx) => {
+    const sec = generateClientSecret();
+    const previousValidUntil = new Date(Date.now() + config.openPlatform.secretRotationGraceHours * 60 * 60 * 1000);
     await tx.update(oauth2Clients).set({
+      previousClientSecretHash: row.clientSecretHash,
+      previousClientSecretEncrypted: row.clientSecretEncrypted,
+      previousSecretExpiresAt: previousValidUntil,
       clientSecretHash: sec.hash,
       clientSecretEncrypted: encryptField(sec.raw),
       clientSecretPrefix: sec.prefix,
     }).where(eq(oauth2Clients.id, id));
     await tx.update(oauth2Tokens)
       .set({ revoked: true })
-      .where(eq(oauth2Tokens.clientId, existing.clientId));
-  });
+      .where(eq(oauth2Tokens.clientId, row.clientId));
 
-  return { clientId: existing.clientId, clientSecret: sec.raw };
+    return {
+      clientId: row.clientId,
+      clientSecret: sec.raw,
+      previousValidUntil: formatDateTime(previousValidUntil),
+    };
+  });
 }
 
 /** 读取应用的明文签名密钥（= clientSecret），供开放 API 网关 HMAC 验签。公开客户端返回 null */
@@ -290,6 +339,31 @@ export async function getAppSigningSecret(clientId: string): Promise<string | nu
     .limit(1);
   if (!row?.enc) return null;
   return decryptField(row.enc);
+}
+
+export async function reviewOAuth2Client(
+  id: number,
+  input: { action: 'approve' | 'reject'; comment?: string },
+) {
+  const user = currentUser();
+  return db.transaction(async (tx) => {
+    const [row] = await tx.update(oauth2Clients).set({
+      reviewStatus: input.action === 'approve' ? 'approved' : 'rejected',
+      reviewComment: input.comment?.trim() || null,
+      reviewedAt: new Date(),
+      reviewedBy: user.userId,
+    }).where(and(
+      eq(oauth2Clients.id, id),
+      eq(oauth2Clients.reviewStatus, 'pending'),
+    )).returning();
+    if (!row) throw new HTTPException(400, { message: '仅待审核应用可执行审核操作' });
+    if (input.action === 'reject') {
+      await tx.update(oauth2Tokens)
+        .set({ revoked: true })
+        .where(eq(oauth2Tokens.clientId, row.clientId));
+    }
+    return mapClientRow(row);
+  });
 }
 
 // ─── 令牌管理 ─────────────────────────────────────────────────────────────────

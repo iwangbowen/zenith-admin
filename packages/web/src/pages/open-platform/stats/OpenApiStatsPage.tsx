@@ -7,6 +7,7 @@ import dayjs from 'dayjs';
 import type {
   OpenApiCallLog,
 } from '@zenith/shared';
+import { OPEN_APP_ENVIRONMENT_LABELS, OPEN_APP_ENVIRONMENTS } from '@zenith/shared';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { ExportButton } from '@/components/ExportButton';
@@ -45,6 +46,7 @@ export default function OpenApiStatsPage() {
     method?: string;
     success?: boolean;
     statusCode?: number;
+    environment?: OpenApiCallLog['environment'];
   }
   const createDefaultParams = (): SearchParams => ({
     range: [dayjs().subtract(6, 'day').toDate(), new Date()],
@@ -60,6 +62,7 @@ export default function OpenApiStatsPage() {
     startTime: dayjs(submittedParams.range[0]).startOf('day').format('YYYY-MM-DD HH:mm:ss'),
     endTime: dayjs(submittedParams.range[1]).endOf('day').format('YYYY-MM-DD HH:mm:ss'),
     clientId: submittedParams.clientId,
+    environment: submittedParams.environment,
   }), [submittedParams]);
   const overviewQuery = useOpenApiStatsOverview(rangeParams);
   const trendQuery = useOpenApiStatsTrend({ ...rangeParams, granularity: submittedParams.granularity });
@@ -153,6 +156,14 @@ export default function OpenApiStatsPage() {
     { title: '耗时', dataIndex: 'durationMs', width: 90, render: (v: number) => `${v} ms` },
     { title: 'IP', dataIndex: 'ip', width: 130, render: (v: string | null) => v || '—' },
     {
+      title: '环境',
+      dataIndex: 'environment',
+      width: 90,
+      render: (value: OpenApiCallLog['environment']) => (
+        <Tag size="small" color={value === 'sandbox' ? 'orange' : 'blue'}>{OPEN_APP_ENVIRONMENT_LABELS[value]}</Tag>
+      ),
+    },
+    {
       title: '状态',
       dataIndex: 'statusCode',
       width: 90,
@@ -206,6 +217,14 @@ export default function OpenApiStatsPage() {
               showClear
               filter
               style={{ width: 170 }}
+            />
+            <Select
+              placeholder="环境"
+              value={draftParams.environment}
+              onChange={(environment) => setDraftParams({ ...draftParams, environment: environment as OpenApiCallLog['environment'] })}
+              optionList={OPEN_APP_ENVIRONMENTS.map((value) => ({ value, label: OPEN_APP_ENVIRONMENT_LABELS[value] }))}
+              showClear
+              style={{ width: 110 }}
             />
             <Select
               placeholder="请求方法"
@@ -270,6 +289,14 @@ export default function OpenApiStatsPage() {
               optionList={appOptions.map((app) => ({ value: app.clientId, label: app.name }))}
               showClear
               filter
+              style={{ width: '100%' }}
+            />
+            <Select
+              placeholder="环境"
+              value={draftParams.environment}
+              onChange={(environment) => setDraftParams({ ...draftParams, environment: environment as OpenApiCallLog['environment'] })}
+              optionList={OPEN_APP_ENVIRONMENTS.map((value) => ({ value, label: OPEN_APP_ENVIRONMENT_LABELS[value] }))}
+              showClear
               style={{ width: '100%' }}
             />
           </>

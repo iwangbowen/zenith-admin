@@ -13,8 +13,10 @@ export interface OpenApiAppContext {
   signEnabled: boolean;
   ipAllowlist: string[];
   status: 'enabled' | 'disabled';
-  /** 解密后的签名密钥（= clientSecret 明文）；公开客户端为 null */
-  signingSecret: string | null;
+  environment: 'production' | 'sandbox';
+  reviewStatus: 'draft' | 'pending' | 'approved' | 'rejected';
+  /** 当前密钥与宽限期内的上一版本密钥 */
+  signingSecrets: string[];
 }
 
 /** 按 AppKey（clientId）解析开放 API 应用上下文 */
@@ -30,6 +32,10 @@ export async function getOpenApiApp(clientId: string): Promise<OpenApiAppContext
       ipAllowlist: oauth2Clients.ipAllowlist,
       status: oauth2Clients.status,
       enc: oauth2Clients.clientSecretEncrypted,
+      previousEnc: oauth2Clients.previousClientSecretEncrypted,
+      previousExpiresAt: oauth2Clients.previousSecretExpiresAt,
+      environment: oauth2Clients.environment,
+      reviewStatus: oauth2Clients.reviewStatus,
     })
     .from(oauth2Clients)
     .where(eq(oauth2Clients.clientId, clientId))
@@ -44,7 +50,14 @@ export async function getOpenApiApp(clientId: string): Promise<OpenApiAppContext
     signEnabled: row.signEnabled,
     ipAllowlist: row.ipAllowlist ?? [],
     status: row.status,
-    signingSecret: row.enc ? decryptField(row.enc) : null,
+    environment: row.environment,
+    reviewStatus: row.reviewStatus,
+    signingSecrets: [
+      row.enc ? decryptField(row.enc) : null,
+      row.previousEnc && row.previousExpiresAt && row.previousExpiresAt > new Date()
+        ? decryptField(row.previousEnc)
+        : null,
+    ].filter((secret): secret is string => Boolean(secret)),
   };
 }
 

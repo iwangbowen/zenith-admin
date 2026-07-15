@@ -628,6 +628,7 @@ export const SEED_MENUS: Menu[] = [
   { id: 1526, parentId: 1520, title: '导出填报记录', name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 6, status: 'enabled', visible: true, permission: 'report:fill:record:export', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   // ─── 开放平台 / 开发者门户 ────────────────────────────────────────────────────
   { id: 1300, parentId: 0,    title: '开放平台',   name: 'OpenPlatform',  path: undefined,                       component: undefined,                                   icon: 'Boxes',         type: 'directory', sort: 14, status: 'enabled', visible: true,  createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1305, parentId: 1300, title: '我的应用',   name: 'OpenMyApps',    path: '/open-platform/my-apps',        component: 'open-platform/my-apps/MyAppsPage',          icon: 'AppWindow',     type: 'menu',      sort: 1,  status: 'enabled', visible: true,  createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1310, parentId: 1300, title: 'API Scope',  name: 'OpenApiScopes', path: '/open-platform/api-scopes',     component: 'open-platform/api-scopes/ApiScopesPage',    icon: 'KeySquare',     type: 'menu',      sort: 2,  status: 'enabled', visible: true,  permission: 'open:scope:view',       createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1311, parentId: 1310, title: '管理 Scope', name: undefined,       path: undefined,                       component: undefined,                                   icon: undefined,       type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'open:scope:manage',     createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1320, parentId: 1300, title: '限流套餐',   name: 'OpenRatePlans', path: '/open-platform/rate-plans',     component: 'open-platform/rate-plans/RatePlansPage',    icon: 'Gauge',         type: 'menu',      sort: 3,  status: 'enabled', visible: true,  permission: 'open:rate-plan:view',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
@@ -637,6 +638,7 @@ export const SEED_MENUS: Menu[] = [
   { id: 1350, parentId: 1300, title: 'Webhook 订阅', name: 'OpenWebhooks',  path: '/open-platform/webhooks',       component: 'open-platform/webhooks/WebhooksPage',       icon: 'Webhook',       type: 'menu',      sort: 6,  status: 'enabled', visible: true,  permission: 'open:webhook:view',     createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1351, parentId: 1350, title: '管理 Webhook', name: undefined,      path: undefined,                       component: undefined,                                   icon: undefined,       type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'open:webhook:manage',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1360, parentId: 1300, title: 'SDK 示例',   name: 'OpenSdk',       path: '/open-platform/sdk',            component: 'open-platform/sdk/SdkExamplesPage',         icon: 'Code2',         type: 'menu',      sort: 7,  status: 'enabled', visible: true,  permission: 'open:sdk:view',         createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1380, parentId: 1300, title: 'API 调试台', name: 'OpenApiDebug',  path: '/open-platform/debug',          component: 'open-platform/debug/ApiDebugConsolePage',   icon: 'Terminal',      type: 'menu',      sort: 8,  status: 'enabled', visible: true,  createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 角色 ─────────────────────────────────────────────────────────────────────
@@ -2722,4 +2724,3 @@ export const SEED_ANALYTICS_EVENT_META: SeedAnalyticsEventMeta[] = [
     { key: 'checkinDate', type: 'string', description: '签到日期（YYYY-MM-DD）' },
   ], strictMode: false },
 ];
-

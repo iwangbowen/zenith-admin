@@ -16,10 +16,19 @@ import {
   Row,
   Col,
   Switch,
+  Select,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Plus, RotateCcw, Search } from 'lucide-react';
-import { OAUTH2_GRANT_TYPE_LABELS, OAUTH2_GRANT_TYPES, OAUTH2_SCOPES } from '@zenith/shared';
+import {
+  OAUTH2_GRANT_TYPE_LABELS,
+  OAUTH2_GRANT_TYPES,
+  OAUTH2_SCOPES,
+  OPEN_APP_ENVIRONMENT_LABELS,
+  OPEN_APP_ENVIRONMENTS,
+  OPEN_APP_REVIEW_STATUS_LABELS,
+  OPEN_APP_REVIEW_STATUSES,
+} from '@zenith/shared';
 import type { OAuth2Client } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { createdAtColumn } from '@/utils/table-columns';
@@ -37,6 +46,7 @@ import {
   useOAuth2AppList,
   useOAuth2RatePlans,
   useRegenerateOAuth2AppSecret,
+  useReviewOAuth2App,
   useSaveOAuth2App,
 } from '@/hooks/queries/oauth2-apps';
 import { useDictItems } from '@/hooks/useDictItems';
@@ -61,6 +71,7 @@ type FormValues = {
   ratePlanId?: number | null;
   signEnabled?: boolean;
   ipAllowlist: string[];
+  environment: 'production' | 'sandbox';
   status?: 'enabled' | 'disabled';
 };
 
@@ -91,7 +102,11 @@ export default function OAuth2AppsPage() {
   const formApi = useRef<FormApi | null>(null);
 
   // ─── 状态 ──────────────────────────────────────────────────────────────
-  interface SearchParams { keyword: string; }
+  interface SearchParams {
+    keyword: string;
+    environment?: 'production' | 'sandbox';
+    reviewStatus?: 'draft' | 'pending' | 'approved' | 'rejected';
+  }
   const defaultSearchParams: SearchParams = { keyword: '' };
   const { page, pageSize, setPage, buildPagination } = usePagination();
   const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
@@ -105,12 +120,15 @@ export default function OAuth2AppsPage() {
   const [secretModal, setSecretModal] = useState(false);
   const [oneTimeSecret, setOneTimeSecret] = useState('');
   const [oneTimeClientId, setOneTimeClientId] = useState('');
+  const [previousValidUntil, setPreviousValidUntil] = useState('');
 
   // ─── 数据加载 ──────────────────────────────────────────────────────────
   const listQuery = useOAuth2AppList({
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
+    environment: submittedParams.environment,
+    reviewStatus: submittedParams.reviewStatus,
   });
   const data = listQuery.data ?? null;
   const ratePlans = useOAuth2RatePlans().data ?? [];
@@ -121,6 +139,7 @@ export default function OAuth2AppsPage() {
   const saveMutation = useSaveOAuth2App();
   const deleteMutation = useDeleteOAuth2App();
   const regenerateMutation = useRegenerateOAuth2AppSecret();
+  const reviewMutation = useReviewOAuth2App();
   const togglingId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
 
   useEffect(() => {
@@ -136,6 +155,7 @@ export default function OAuth2AppsPage() {
       ratePlanId: detailQuery.data.ratePlanId ?? undefined,
       signEnabled: detailQuery.data.signEnabled ?? false,
       ipAllowlist: detailQuery.data.ipAllowlist,
+      environment: detailQuery.data.environment,
       status: detailQuery.data.status,
     });
   }, [detailQuery.data]);
@@ -183,12 +203,14 @@ export default function OAuth2AppsPage() {
         ratePlanId: editingDetail.ratePlanId ?? undefined,
         signEnabled: editingDetail.signEnabled ?? false,
         ipAllowlist: editingDetail.ipAllowlist,
+        environment: editingDetail.environment,
         status: editingDetail.status,
       }
     : {
         isPublic: false,
         signEnabled: false,
         ipAllowlist: [],
+        environment: 'production',
         allowedScopes: ['openid', 'profile'],
         grantTypes: ['authorization_code', 'refresh_token'],
       };
@@ -212,6 +234,7 @@ export default function OAuth2AppsPage() {
       if ('clientSecret' in result && typeof result.clientSecret === 'string' && result.clientSecret) {
         setOneTimeClientId(String(result.clientId));
         setOneTimeSecret(result.clientSecret);
+        setPreviousValidUntil('');
         setSecretModal(true);
       }
     }
@@ -229,8 +252,18 @@ export default function OAuth2AppsPage() {
     if (result.clientSecret) {
       setOneTimeClientId(result.clientId);
       setOneTimeSecret(result.clientSecret);
+      setPreviousValidUntil(result.previousValidUntil);
       setSecretModal(true);
     }
+  }
+
+  async function handleReview(record: OAuth2Client, action: 'approve' | 'reject') {
+    await reviewMutation.mutateAsync({
+      id: record.id,
+      action,
+      comment: action === 'reject' ? '请完善应用配置后重新提交' : undefined,
+    });
+    Toast.success(action === 'approve' ? '审核已通过' : '应用已驳回');
   }
 
   const columns: ColumnProps<OAuth2Client>[] = [
@@ -270,6 +303,24 @@ export default function OAuth2AppsPage() {
         <Space wrap>
           {v?.map((s) => <Tag key={s} color="blue" size="small">{s}</Tag>)}
         </Space>
+      ),
+    },
+    {
+      title: '环境',
+      dataIndex: 'environment',
+      width: 100,
+      render: (value: OAuth2Client['environment']) => (
+        <Tag size="small" color={value === 'sandbox' ? 'orange' : 'blue'}>{OPEN_APP_ENVIRONMENT_LABELS[value]}</Tag>
+      ),
+    },
+    {
+      title: '审核',
+      dataIndex: 'reviewStatus',
+      width: 100,
+      render: (value: OAuth2Client['reviewStatus']) => (
+        <Tag size="small" color={value === 'approved' ? 'green' : value === 'rejected' ? 'red' : value === 'pending' ? 'orange' : 'grey'}>
+          {OPEN_APP_REVIEW_STATUS_LABELS[value]}
+        </Tag>
       ),
     },
     {
@@ -318,6 +369,19 @@ export default function OAuth2AppsPage() {
           onClick: () => openEdit(record),
         },
         {
+          key: 'approve',
+          label: '通过',
+          hidden: !canManage || record.reviewStatus !== 'pending',
+          onClick: () => void handleReview(record, 'approve'),
+        },
+        {
+          key: 'reject',
+          label: '驳回',
+          danger: true,
+          hidden: !canManage || record.reviewStatus !== 'pending',
+          onClick: () => void handleReview(record, 'reject'),
+        },
+        {
           key: 'regenerate',
           label: '重置 Secret',
           hidden: !canManage || record.isPublic,
@@ -355,7 +419,7 @@ export default function OAuth2AppsPage() {
               prefix={<Search size={14} />}
               placeholder="搜索应用名称"
               value={draftParams.keyword}
-              onChange={(v) => setDraftParams({ keyword: v })}
+              onChange={(v) => setDraftParams({ ...draftParams, keyword: v })}
               onEnterPress={handleSearch}
               showClear
               style={{ width: 220 }}
@@ -367,13 +431,33 @@ export default function OAuth2AppsPage() {
             )}
           </>
         )}
+        filters={(
+          <>
+            <Select
+              placeholder="环境"
+              value={draftParams.environment}
+              onChange={(environment) => setDraftParams({ ...draftParams, environment: environment as SearchParams['environment'] })}
+              optionList={OPEN_APP_ENVIRONMENTS.map((value) => ({ value, label: OPEN_APP_ENVIRONMENT_LABELS[value] }))}
+              showClear
+              style={{ width: 120 }}
+            />
+            <Select
+              placeholder="审核状态"
+              value={draftParams.reviewStatus}
+              onChange={(reviewStatus) => setDraftParams({ ...draftParams, reviewStatus: reviewStatus as SearchParams['reviewStatus'] })}
+              optionList={OPEN_APP_REVIEW_STATUSES.map((value) => ({ value, label: OPEN_APP_REVIEW_STATUS_LABELS[value] }))}
+              showClear
+              style={{ width: 130 }}
+            />
+          </>
+        )}
         mobilePrimary={(
           <>
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索应用名称"
               value={draftParams.keyword}
-              onChange={(v) => setDraftParams({ keyword: v })}
+              onChange={(v) => setDraftParams({ ...draftParams, keyword: v })}
               onEnterPress={handleSearch}
               showClear
               style={{ width: 220 }}
@@ -381,6 +465,26 @@ export default function OAuth2AppsPage() {
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             {canManage && (
               <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+            )}
+            mobileFilters={(
+              <>
+                <Select
+                  placeholder="环境"
+                  value={draftParams.environment}
+                  onChange={(environment) => setDraftParams({ ...draftParams, environment: environment as SearchParams['environment'] })}
+                  optionList={OPEN_APP_ENVIRONMENTS.map((value) => ({ value, label: OPEN_APP_ENVIRONMENT_LABELS[value] }))}
+                  showClear
+                  style={{ width: '100%' }}
+                />
+                <Select
+                  placeholder="审核状态"
+                  value={draftParams.reviewStatus}
+                  onChange={(reviewStatus) => setDraftParams({ ...draftParams, reviewStatus: reviewStatus as SearchParams['reviewStatus'] })}
+                  optionList={OPEN_APP_REVIEW_STATUSES.map((value) => ({ value, label: OPEN_APP_REVIEW_STATUS_LABELS[value] }))}
+                  showClear
+                  style={{ width: '100%' }}
+                />
+              </>
             )}
           </>
         )}
@@ -485,6 +589,17 @@ export default function OAuth2AppsPage() {
                 />
               </Col>
             </Row>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Select
+                  field="environment"
+                  label="运行环境"
+                  optionList={OPEN_APP_ENVIRONMENTS.map((value) => ({ value, label: OPEN_APP_ENVIRONMENT_LABELS[value] }))}
+                  style={{ width: '100%' }}
+                  rules={[{ required: true, message: '请选择运行环境' }]}
+                />
+              </Col>
+            </Row>
             {/* 可选：公开客户端 + 状态（编辑时） */}
             <Row gutter={16}>
               <Col span={editing ? 12 : 24}>
@@ -568,6 +683,13 @@ export default function OAuth2AppsPage() {
           description="此 client_secret 仅显示一次，关闭后将无法再次查看。请立即复制并妥善保存。"
           style={{ marginBottom: 16 }}
         />
+        {previousValidUntil && (
+          <Banner
+            type="info"
+            description={`旧密钥在 ${previousValidUntil} 前仍可用于验签和换取令牌，请在此之前完成切换。`}
+            style={{ marginBottom: 16 }}
+          />
+        )}
         <div style={{ marginBottom: 8 }}>
           <Text strong>Client ID：</Text>
         </div>
