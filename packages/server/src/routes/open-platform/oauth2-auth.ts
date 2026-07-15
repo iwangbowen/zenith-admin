@@ -69,11 +69,11 @@ const authorizeInfo = defineOpenAPIRoute({
 const AuthorizeBody = z.object({
   client_id: z.string(),
   redirect_uri: z.string(),
-  response_type: z.enum(['code', 'token']),
+  response_type: z.literal('code'),
   scope: z.string(),
   state: z.string().optional(),
-  code_challenge: z.string().optional(),
-  code_challenge_method: z.enum(['S256', 'plain']).optional(),
+  code_challenge: z.string().regex(/^[A-Za-z0-9_-]{43}$/).optional(),
+  code_challenge_method: z.literal('S256').optional(),
 });
 
 const AuthorizeResponseDTO = z.object({ redirectUrl: z.string() }).openapi('OAuth2AuthorizeResponse');
@@ -83,7 +83,7 @@ const authorize = defineOpenAPIRoute({
     method: 'post',
     path: '/authorize',
     tags: ['OAuth2'],
-    summary: '用户确认授权（授权码模式 / implicit）',
+    summary: '用户确认授权（OAuth 2.1 授权码模式）',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware] as const,
     request: { body: { content: jsonContent(AuthorizeBody), required: true } },

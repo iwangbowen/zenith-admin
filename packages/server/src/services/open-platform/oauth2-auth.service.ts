@@ -1,8 +1,8 @@
 /**
- * OAuth2 授权服务（authorization_code / PKCE / client_credentials / implicit / refresh_token）
+ * OAuth2 授权服务（authorization_code + PKCE / client_credentials / refresh_token）
  * 令牌使用 opaque token（SHA256 哈希存储于 DB），支持精确撤销
  */
-import { randomBytes, createHash } from 'node:crypto';
+import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { eq, and } from 'drizzle-orm';
 import { db } from '../../db';
 import {
@@ -16,11 +16,19 @@ import { currentUser } from '../../lib/context';
 import { HTTPException } from 'hono/http-exception';
 
 import { OAUTH2_TOKEN_EXPIRY } from '@zenith/shared';
+import type { DbExecutor } from '../../db/types';
 
 // ─── 内部工具 ─────────────────────────────────────────────────────────────────
 
 function sha256(data: string): string {
   return createHash('sha256').update(data).digest('hex');
+}
+
+function secretMatches(raw: string, expectedHash: string | null): boolean {
+  if (!expectedHash || !/^[0-9a-f]{64}$/i.test(expectedHash)) return false;
+  const actual = Buffer.from(sha256(raw), 'hex');
+  const expected = Buffer.from(expectedHash, 'hex');
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
 function generateOpaqueToken(prefix: string): { raw: string; hash: string; tokenPrefix: string } {
@@ -48,7 +56,7 @@ async function ensureClient(clientId: string) {
 async function ensureClientWithSecret(clientId: string, clientSecret: string) {
   const row = await ensureClient(clientId);
   if (row.isPublic) throw new HTTPException(400, { message: '公开客户端不使用 client_secret' });
-  if (!row.clientSecretHash || sha256(clientSecret) !== row.clientSecretHash) {
+  if (!secretMatches(clientSecret, row.clientSecretHash)) {
     throw new HTTPException(400, { message: 'invalid_client' });
   }
   return row;
@@ -72,11 +80,11 @@ export async function getAuthorizeInfo(params: {
   }
 
   // 校验 response_type
-  if (responseType === 'code' && !client.grantTypes?.includes('authorization_code')) {
-    throw new HTTPException(400, { message: '该应用不支持 authorization_code 授权' });
+  if (responseType !== 'code') {
+    throw new HTTPException(400, { message: 'unsupported_response_type：仅支持 code' });
   }
-  if (responseType === 'token' && !client.grantTypes?.includes('implicit')) {
-    throw new HTTPException(400, { message: '该应用不支持 implicit 授权' });
+  if (!client.grantTypes?.includes('authorization_code')) {
+    throw new HTTPException(400, { message: '该应用不支持 authorization_code 授权' });
   }
 
   const requestedScopes = scope.split(' ').filter(Boolean);
@@ -120,19 +128,41 @@ export async function createAuthorizationCode(params: {
   state?: string;
   codeChallenge?: string;
   codeChallengeMethod?: string;
-  responseType: 'code' | 'token';
+  responseType: 'code';
 }) {
   const user = currentUser();
   const { clientId, redirectUri, scope, state, codeChallenge, codeChallengeMethod, responseType } = params;
   const client = await ensureClient(clientId);
+  if (responseType !== 'code') {
+    throw new HTTPException(400, { message: 'unsupported_response_type：仅支持 code' });
+  }
 
   // 校验 redirect_uri
   const allowedRedirects: string[] = client.redirectUris ?? [];
   if (!allowedRedirects.includes(redirectUri)) {
     throw new HTTPException(400, { message: 'redirect_uri 不在允许列表中' });
   }
+  if (!client.grantTypes?.includes('authorization_code')) {
+    throw new HTTPException(400, { message: '该应用不支持 authorization_code 授权' });
+  }
 
   const requestedScopes = scope.split(' ').filter(Boolean);
+  const invalidScopes = requestedScopes.filter((item) => !(client.allowedScopes ?? []).includes(item));
+  if (invalidScopes.length > 0) {
+    throw new HTTPException(400, { message: `不支持的 scope：${invalidScopes.join(', ')}` });
+  }
+  if (codeChallengeMethod && codeChallengeMethod !== 'S256') {
+    throw new HTTPException(400, { message: '仅支持 PKCE S256' });
+  }
+  if (codeChallenge && !/^[A-Za-z0-9_-]{43}$/.test(codeChallenge)) {
+    throw new HTTPException(400, { message: 'code_challenge 格式无效' });
+  }
+  if (codeChallengeMethod && !codeChallenge) {
+    throw new HTTPException(400, { message: 'code_challenge 必填' });
+  }
+  if (client.isPublic && !codeChallenge) {
+    throw new HTTPException(400, { message: '公开客户端必须使用 PKCE S256' });
+  }
 
   // 保存用户授权记录
   await db
@@ -143,36 +173,17 @@ export async function createAuthorizationCode(params: {
       set: { scopes: requestedScopes, updatedAt: new Date() },
     });
 
-  // implicit flow：直接发 access_token（deprecated）
-  if (responseType === 'token') {
-    const { raw, hash, tokenPrefix } = generateOpaqueToken('oat');
-    const expiresAt = new Date(Date.now() + OAUTH2_TOKEN_EXPIRY.accessToken * 1000);
-    await db.insert(oauth2Tokens).values({
-      tokenType: 'access',
-      tokenHash: hash,
-      tokenPrefix,
-      clientId,
-      userId: user.userId,
-      scopes: requestedScopes,
-      expiresAt,
-    });
-    const stateParam = state ? `&state=${encodeURIComponent(state)}` : '';
-    return {
-      redirectUrl: `${redirectUri}#access_token=${raw}&token_type=Bearer&expires_in=${OAUTH2_TOKEN_EXPIRY.accessToken}&scope=${encodeURIComponent(scope)}${stateParam}`,
-    };
-  }
-
   // authorization_code flow
   const code = randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + OAUTH2_TOKEN_EXPIRY.authorizationCode * 1000);
   await db.insert(oauth2AuthorizationCodes).values({
-    code,
+    codeHash: sha256(code),
     clientId,
     userId: user.userId,
     redirectUri,
     scopes: requestedScopes,
     codeChallenge: codeChallenge ?? null,
-    codeChallengeMethod: codeChallengeMethod ?? null,
+    codeChallengeMethod: codeChallenge ? 'S256' : null,
     expiresAt,
   });
 
@@ -182,7 +193,7 @@ export async function createAuthorizationCode(params: {
 
 // ─── Token 端点（POST /api/oauth2/token）─────────────────────────────────────
 
-async function issueTokenPair(opts: {
+async function issueTokenPair(executor: DbExecutor, opts: {
   clientId: string;
   userId: number | null;
   scopes: string[];
@@ -192,7 +203,7 @@ async function issueTokenPair(opts: {
 
   const accessTokenData = generateOpaqueToken('oat');
   const accessExpiresAt = new Date(Date.now() + OAUTH2_TOKEN_EXPIRY.accessToken * 1000);
-  await db.insert(oauth2Tokens).values({
+  await executor.insert(oauth2Tokens).values({
     tokenType: 'access',
     tokenHash: accessTokenData.hash,
     tokenPrefix: accessTokenData.tokenPrefix,
@@ -206,7 +217,7 @@ async function issueTokenPair(opts: {
   if (includeRefresh) {
     const refreshTokenData = generateOpaqueToken('ort');
     const refreshExpiresAt = new Date(Date.now() + OAUTH2_TOKEN_EXPIRY.refreshToken * 1000);
-    await db.insert(oauth2Tokens).values({
+    await executor.insert(oauth2Tokens).values({
       tokenType: 'refresh',
       tokenHash: refreshTokenData.hash,
       tokenPrefix: refreshTokenData.tokenPrefix,
@@ -240,14 +251,14 @@ export async function exchangeCodeForToken(params: {
   // 验证 client_secret（confidential client）
   if (!client.isPublic) {
     if (!clientSecret) throw new HTTPException(400, { message: 'client_secret 必填' });
-    if (sha256(clientSecret) !== (client.clientSecretHash ?? '')) {
+    if (!secretMatches(clientSecret, client.clientSecretHash)) {
       throw new HTTPException(400, { message: 'invalid_client' });
     }
   }
 
   // 查询授权码
   const [row] = await db.select().from(oauth2AuthorizationCodes).where(
-    and(eq(oauth2AuthorizationCodes.code, code), eq(oauth2AuthorizationCodes.clientId, clientId)),
+    and(eq(oauth2AuthorizationCodes.codeHash, sha256(code)), eq(oauth2AuthorizationCodes.clientId, clientId)),
   );
   if (!row) throw new HTTPException(400, { message: 'invalid_grant：授权码不存在' });
   if (row.used) throw new HTTPException(400, { message: 'invalid_grant：授权码已使用' });
@@ -257,23 +268,25 @@ export async function exchangeCodeForToken(params: {
   // PKCE 验证
   if (row.codeChallenge) {
     if (!codeVerifier) throw new HTTPException(400, { message: 'code_verifier 必填（PKCE）' });
-    const method = row.codeChallengeMethod ?? 'S256';
-    if (method === 'S256') {
-      if (!verifyPkceS256(codeVerifier, row.codeChallenge)) {
-        throw new HTTPException(400, { message: 'code_verifier 验证失败' });
-      }
-    } else if (codeVerifier !== row.codeChallenge) {
-      // plain
+    if (row.codeChallengeMethod !== 'S256' || !verifyPkceS256(codeVerifier, row.codeChallenge)) {
       throw new HTTPException(400, { message: 'code_verifier 验证失败' });
     }
+  } else if (client.isPublic) {
+    throw new HTTPException(400, { message: '公开客户端必须使用 PKCE S256' });
   }
-
-  // 标记授权码已使用
-  await db.update(oauth2AuthorizationCodes).set({ used: true }).where(eq(oauth2AuthorizationCodes.id, row.id));
 
   const scopes: string[] = row.scopes ?? [];
   const includeRefresh = scopes.includes('offline_access') && client.grantTypes?.includes('refresh_token') === true;
-  return issueTokenPair({ clientId, userId: row.userId, scopes, includeRefresh });
+  return db.transaction(async (tx) => {
+    const consumed = await tx.update(oauth2AuthorizationCodes)
+      .set({ used: true })
+      .where(and(eq(oauth2AuthorizationCodes.id, row.id), eq(oauth2AuthorizationCodes.used, false)))
+      .returning({ id: oauth2AuthorizationCodes.id });
+    if (consumed.length === 0) {
+      throw new HTTPException(400, { message: 'invalid_grant：授权码已使用' });
+    }
+    return issueTokenPair(tx, { clientId, userId: row.userId, scopes, includeRefresh });
+  });
 }
 
 export async function clientCredentialsToken(params: {
@@ -294,7 +307,7 @@ export async function clientCredentialsToken(params: {
     throw new HTTPException(400, { message: `不支持的 scope：${invalidScopes.join(', ')}` });
   }
 
-  return issueTokenPair({ clientId, userId: null, scopes: requestedScopes, includeRefresh: false });
+  return issueTokenPair(db, { clientId, userId: null, scopes: requestedScopes, includeRefresh: false });
 }
 
 export async function refreshAccessToken(params: {
@@ -304,8 +317,12 @@ export async function refreshAccessToken(params: {
 }) {
   const { refreshToken, clientId, clientSecret } = params;
   const client = await ensureClient(clientId);
-  if (!client.isPublic && clientSecret) {
-    if (sha256(clientSecret) !== (client.clientSecretHash ?? '')) {
+  if (!client.grantTypes?.includes('refresh_token')) {
+    throw new HTTPException(400, { message: '该应用不支持 refresh_token 授权' });
+  }
+  if (!client.isPublic) {
+    if (!clientSecret) throw new HTTPException(400, { message: 'client_secret 必填' });
+    if (!secretMatches(clientSecret, client.clientSecretHash)) {
       throw new HTTPException(400, { message: 'invalid_client' });
     }
   }
@@ -318,11 +335,17 @@ export async function refreshAccessToken(params: {
   if (row.revoked) throw new HTTPException(400, { message: 'invalid_grant：refresh_token 已撤销' });
   if (row.expiresAt && row.expiresAt < new Date()) throw new HTTPException(400, { message: 'invalid_grant：refresh_token 已过期' });
 
-  // 撤销旧 refresh_token（rotating refresh tokens）
-  await db.update(oauth2Tokens).set({ revoked: true }).where(eq(oauth2Tokens.id, row.id));
-
   const scopes: string[] = row.scopes ?? [];
-  return issueTokenPair({ clientId, userId: row.userId, scopes, includeRefresh: true });
+  return db.transaction(async (tx) => {
+    const revoked = await tx.update(oauth2Tokens)
+      .set({ revoked: true })
+      .where(and(eq(oauth2Tokens.id, row.id), eq(oauth2Tokens.revoked, false)))
+      .returning({ id: oauth2Tokens.id });
+    if (revoked.length === 0) {
+      throw new HTTPException(400, { message: 'invalid_grant：refresh_token 已撤销' });
+    }
+    return issueTokenPair(tx, { clientId, userId: row.userId, scopes, includeRefresh: true });
+  });
 }
 
 // ─── Token 撤销（POST /api/oauth2/token/revoke）───────────────────────────────

@@ -46,6 +46,16 @@ export default function OAuth2AuthorizePage() {
       setLoading(false);
       return;
     }
+    if (responseType !== 'code') {
+      setError('仅支持 OAuth 2.1 授权码模式（response_type=code）');
+      setLoading(false);
+      return;
+    }
+    if (codeChallengeMethod && codeChallengeMethod !== 'S256') {
+      setError('仅支持 PKCE S256');
+      setLoading(false);
+      return;
+    }
 
     const qs = new URLSearchParams({
       client_id: clientId,
@@ -63,7 +73,7 @@ export default function OAuth2AuthorizePage() {
     }).catch((err: Error) => {
       setError(err.message || '应用信息加载失败');
     }).finally(() => setLoading(false));
-  }, [clientId, redirectUri, responseType, scope, navigate]);
+  }, [clientId, redirectUri, responseType, scope, codeChallengeMethod, navigate]);
 
   const handleApprove = async () => {
     setSubmitting(true);
@@ -71,11 +81,11 @@ export default function OAuth2AuthorizePage() {
       const res = await request.post<{ redirectUrl: string }>('/api/oauth2/authorize', {
         client_id: clientId,
         redirect_uri: redirectUri,
-        response_type: responseType as 'code' | 'token',
+        response_type: 'code',
         scope,
         state: state || undefined,
         code_challenge: codeChallenge || undefined,
-        code_challenge_method: codeChallengeMethod || undefined,
+        code_challenge_method: codeChallengeMethod === 'S256' ? 'S256' : undefined,
       }, { silent: true });
       if (res.code === 0 && res.data?.redirectUrl) {
         globalThis.location.href = res.data.redirectUrl;

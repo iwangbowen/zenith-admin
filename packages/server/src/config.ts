@@ -43,6 +43,8 @@ const envSchema = z.object({
   REDIS_PASSWORD: z.string().optional(),
   REDIS_DB: z.coerce.number().int().min(0).default(0),
   REDIS_KEY_PREFIX: z.string().default('zenith:'),
+  OPEN_RATE_LIMIT_FAIL_CLOSED: boolStr('true'),
+  OPEN_API_LOG_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
   LOG_LEVEL: z.string().default('info'),
   LOG_DIR: z.string().default('logs'),
   LOG_MAX_FILES: z.string().default('30d'),
@@ -173,6 +175,10 @@ export const config = {
     password: env.REDIS_PASSWORD ?? undefined,
     db: env.REDIS_DB,
     keyPrefix: env.REDIS_KEY_PREFIX,
+  },
+  openPlatform: {
+    rateLimitFailClosed: env.OPEN_RATE_LIMIT_FAIL_CLOSED,
+    apiLogRetentionDays: env.OPEN_API_LOG_RETENTION_DAYS,
   },
   log: {
     level: env.LOG_LEVEL,

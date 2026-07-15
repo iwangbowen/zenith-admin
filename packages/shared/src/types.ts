@@ -5846,6 +5846,8 @@ export interface OAuth2Client {
   ratePlanId?: number | null;
   /** 开放平台：调用开放 API 时是否强制 HMAC 签名验签 */
   signEnabled?: boolean;
+  /** 开放 API 来源 IP/CIDR 白名单；空数组表示不限制 */
+  ipAllowlist: string[];
   status: 'enabled' | 'disabled';
   ownerId?: number | null;
   createdAt: string;

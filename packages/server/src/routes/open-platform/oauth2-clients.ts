@@ -32,26 +32,11 @@ import {
   getOAuth2TokenBeforeAudit,
   listAppOptions,
 } from '../../services/open-platform/oauth2-clients.service';
+import { createOAuth2ClientSchema, updateOAuth2ClientSchema } from '@zenith/shared';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
 // ─── 公共 schema ──────────────────────────────────────────────────────────────
-
-const ClientBody = z.object({
-  name: z.string().min(1).max(64),
-  description: z.string().max(256).optional(),
-  logoUrl: z.string().regex(/^https?:\/\/.+/).optional(),
-  redirectUris: z.array(z.string().min(1)).min(1),
-  allowedScopes: z.array(z.string()).min(1),
-  grantTypes: z.array(z.string()).min(1),
-  isPublic: z.boolean(),
-  ratePlanId: z.number().int().positive().nullable().optional(),
-  signEnabled: z.boolean().optional(),
-});
-
-const UpdateClientBody = ClientBody.partial().extend({
-  status: z.enum(['enabled', 'disabled']).optional(),
-});
 
 const ClientKeywordQuery = PaginationQuery.extend({
   keyword: z.string().optional(),
@@ -91,7 +76,7 @@ const create = defineOpenAPIRoute({
       permission: 'system:oauth2-apps:manage',
       audit: { description: '创建 OAuth2 应用', module: 'OAuth2 应用', recordResponseBody: false },
     })] as const,
-    request: { body: { content: jsonContent(ClientBody), required: true } },
+    request: { body: { content: jsonContent(createOAuth2ClientSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(OAuth2ClientCreatedDTO, '创建成功') },
   }),
   handler: async (c) => {
@@ -126,7 +111,7 @@ const update = defineOpenAPIRoute({
       permission: 'system:oauth2-apps:manage',
       audit: { description: '更新 OAuth2 应用', module: 'OAuth2 应用' },
     })] as const,
-    request: { params: IdParam, body: { content: jsonContent(UpdateClientBody), required: true } },
+    request: { params: IdParam, body: { content: jsonContent(updateOAuth2ClientSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(OAuth2ClientListItemDTO, '更新成功') },
   }),
   handler: async (c) => {

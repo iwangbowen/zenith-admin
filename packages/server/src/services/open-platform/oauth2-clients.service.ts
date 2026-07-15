@@ -1,4 +1,5 @@
 import { randomBytes, createHash, randomUUID } from 'node:crypto';
+import { isIP } from 'node:net';
 import { eq, desc, ilike } from 'drizzle-orm';
 import { db } from '../../db';
 import {
@@ -14,6 +15,7 @@ import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { pageOffset } from '../../lib/pagination';
 import { encryptField, decryptField } from '../../lib/encryption';
+import type { CreateOAuth2ClientInput, UpdateOAuth2ClientInput } from '@zenith/shared';
 
 // ─── 辅助：生成 & 哈希 client_secret ────────────────────────────────────────
 
@@ -38,6 +40,7 @@ function mapClientRow(row: typeof oauth2Clients.$inferSelect) {
     isPublic: row.isPublic,
     ratePlanId: row.ratePlanId ?? null,
     signEnabled: row.signEnabled,
+    ipAllowlist: row.ipAllowlist ?? [],
     status: row.status,
     ownerId: row.ownerId,
     createdBy: row.createdBy,
@@ -77,19 +80,56 @@ export async function listOAuth2Clients(opts: { page: number; pageSize: number; 
   return { list: list.map(mapClientRow), total, page, pageSize };
 }
 
-export async function createOAuth2Client(input: {
-  name: string;
-  description?: string;
-  logoUrl?: string;
+function validateIpAllowlist(values: string[]): void {
+  for (const value of values) {
+    const [address, prefix, ...extra] = value.split('/');
+    const version = isIP(address);
+    const maxPrefix = version === 4 ? 32 : 128;
+    if (
+      !version
+      || extra.length > 0
+      || (prefix !== undefined && (!/^\d+$/.test(prefix) || Number(prefix) > maxPrefix))
+    ) {
+      throw new HTTPException(400, { message: `无效的 IP/CIDR：${value}` });
+    }
+  }
+}
+
+function validateClientConfiguration(input: {
   redirectUris: string[];
-  allowedScopes: string[];
   grantTypes: string[];
   isPublic: boolean;
-  ratePlanId?: number | null;
-  signEnabled?: boolean;
-}) {
+  signEnabled: boolean;
+  ipAllowlist: string[];
+}): void {
+  if (input.grantTypes.includes('implicit')) {
+    throw new HTTPException(400, { message: 'implicit 授权模式已停用，请使用 authorization_code + PKCE' });
+  }
+  if (input.grantTypes.includes('authorization_code') && input.redirectUris.length === 0) {
+    throw new HTTPException(400, { message: '授权码模式至少需要一个回调 URL' });
+  }
+  if (input.isPublic && input.grantTypes.includes('client_credentials')) {
+    throw new HTTPException(400, { message: '公开客户端不支持 client_credentials' });
+  }
+  if (input.grantTypes.includes('refresh_token') && !input.grantTypes.includes('authorization_code')) {
+    throw new HTTPException(400, { message: 'refresh_token 必须与 authorization_code 同时启用' });
+  }
+  if (input.isPublic && input.signEnabled) {
+    throw new HTTPException(400, { message: '公开客户端没有密钥，无法启用 HMAC 签名' });
+  }
+  validateIpAllowlist(input.ipAllowlist);
+}
+
+export async function createOAuth2Client(input: CreateOAuth2ClientInput) {
   const user = currentUser();
   if (!input.name?.trim()) throw new HTTPException(400, { message: '应用名称不能为空' });
+  validateClientConfiguration({
+    redirectUris: input.redirectUris,
+    grantTypes: input.grantTypes,
+    isPublic: input.isPublic,
+    signEnabled: input.signEnabled ?? false,
+    ipAllowlist: input.ipAllowlist,
+  });
 
   const clientId = randomUUID();
   let secretHash: string | null = null;
@@ -120,6 +160,7 @@ export async function createOAuth2Client(input: {
       isPublic: input.isPublic,
       ratePlanId: input.ratePlanId ?? null,
       signEnabled: input.signEnabled ?? false,
+      ipAllowlist: input.ipAllowlist,
       ownerId: user.userId,
     }).returning();
 
@@ -166,20 +207,16 @@ export async function listAppOptions() {
   return rows.map((r) => ({ clientId: r.clientId, name: r.name }));
 }
 
-export async function updateOAuth2Client(id: number, input: {
-  name?: string;
-  description?: string;
-  logoUrl?: string;
-  redirectUris?: string[];
-  allowedScopes?: string[];
-  grantTypes?: string[];
-  isPublic?: boolean;
-  ratePlanId?: number | null;
-  signEnabled?: boolean;
-  status?: 'enabled' | 'disabled';
-}) {
+export async function updateOAuth2Client(id: number, input: UpdateOAuth2ClientInput) {
   const existing = await getOAuth2Client(id);
   if (!existing) throw new HTTPException(404, { message: 'OAuth2 应用不存在' });
+  validateClientConfiguration({
+    redirectUris: input.redirectUris ?? existing.redirectUris,
+    grantTypes: input.grantTypes ?? existing.grantTypes,
+    isPublic: input.isPublic ?? existing.isPublic,
+    signEnabled: input.signEnabled ?? existing.signEnabled,
+    ipAllowlist: input.ipAllowlist ?? existing.ipAllowlist,
+  });
 
   try {
     const [row] = await db.update(oauth2Clients)
@@ -193,6 +230,7 @@ export async function updateOAuth2Client(id: number, input: {
         isPublic: input.isPublic,
         ratePlanId: input.ratePlanId,
         signEnabled: input.signEnabled,
+        ipAllowlist: input.ipAllowlist,
         status: input.status,
       })
       .where(eq(oauth2Clients.id, id))

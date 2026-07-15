@@ -208,8 +208,14 @@ export const WORKFLOW_TASK_STATUS_LABELS = {
 } as const;
 
 // OAuth2 服务端常量
-export const OAUTH2_GRANT_TYPES = ['authorization_code', 'client_credentials', 'implicit', 'refresh_token'] as const;
+export const OAUTH2_GRANT_TYPES = ['authorization_code', 'client_credentials', 'refresh_token'] as const;
 export type OAuth2GrantType = typeof OAUTH2_GRANT_TYPES[number];
+
+export const OAUTH2_GRANT_TYPE_LABELS: Record<OAuth2GrantType, string> = {
+  authorization_code: '授权码',
+  client_credentials: '客户端凭证',
+  refresh_token: '刷新令牌',
+};
 
 export const OAUTH2_SCOPES = ['openid', 'profile', 'email', 'offline_access'] as const;
 export type OAuth2Scope = typeof OAUTH2_SCOPES[number];
@@ -221,7 +227,7 @@ export const OAUTH2_SCOPE_DESCRIPTIONS: Record<string, string> = {
   offline_access: '允许在您离线时保持访问（续签令牌）',
 };
 
-export const OAUTH2_CODE_CHALLENGE_METHODS = ['S256', 'plain'] as const;
+export const OAUTH2_CODE_CHALLENGE_METHODS = ['S256'] as const;
 export type OAuth2CodeChallengeMethod = typeof OAUTH2_CODE_CHALLENGE_METHODS[number];
 
 export const OAUTH2_TOKEN_EXPIRY = {

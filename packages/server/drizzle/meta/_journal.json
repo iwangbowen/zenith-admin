@@ -421,6 +421,13 @@
       "when": 1784123949807,
       "tag": "0059_open-platform-p0-security",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1784124671168,
+      "tag": "0060_open-platform-p1a-security",
+      "breakpoints": true
     }
   ]
 }

@@ -18,7 +18,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Plus, RotateCcw, Search } from 'lucide-react';
-import { OAUTH2_GRANT_TYPES, OAUTH2_SCOPES } from '@zenith/shared';
+import { OAUTH2_GRANT_TYPE_LABELS, OAUTH2_GRANT_TYPES, OAUTH2_SCOPES } from '@zenith/shared';
 import type { OAuth2Client } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { createdAtColumn } from '@/utils/table-columns';
@@ -42,13 +42,6 @@ import { useDictItems } from '@/hooks/useDictItems';
 
 const { Text, Paragraph } = Typography;
 
-const GRANT_TYPE_LABELS: Record<string, string> = {
-  authorization_code: '授权码',
-  client_credentials: '客户端凭证',
-  implicit: '隐式（已废弃）',
-  refresh_token: '刷新令牌',
-};
-
 const SCOPE_LABELS: Record<string, string> = {
   openid: 'OpenID（确认身份）',
   profile: 'Profile（基本信息）',
@@ -66,6 +59,7 @@ type FormValues = {
   isPublic: boolean;
   ratePlanId?: number | null;
   signEnabled?: boolean;
+  ipAllowlist: string[];
   status?: 'enabled' | 'disabled';
 };
 
@@ -139,6 +133,7 @@ export default function OAuth2AppsPage() {
       isPublic: detailQuery.data.isPublic,
       ratePlanId: detailQuery.data.ratePlanId ?? undefined,
       signEnabled: detailQuery.data.signEnabled ?? false,
+      ipAllowlist: detailQuery.data.ipAllowlist,
       status: detailQuery.data.status,
     });
   }, [detailQuery.data]);
@@ -185,9 +180,16 @@ export default function OAuth2AppsPage() {
         isPublic: editingDetail.isPublic,
         ratePlanId: editingDetail.ratePlanId ?? undefined,
         signEnabled: editingDetail.signEnabled ?? false,
+        ipAllowlist: editingDetail.ipAllowlist,
         status: editingDetail.status,
       }
-    : { isPublic: false, signEnabled: false, allowedScopes: ['openid', 'profile'], grantTypes: ['authorization_code', 'refresh_token'] };
+    : {
+        isPublic: false,
+        signEnabled: false,
+        ipAllowlist: [],
+        allowedScopes: ['openid', 'profile'],
+        grantTypes: ['authorization_code', 'refresh_token'],
+      };
 
   async function handleModalOk() {
     let values: FormValues;
@@ -250,7 +252,11 @@ export default function OAuth2AppsPage() {
       width: 240,
       render: (v: string[]) => (
         <Space wrap>
-          {v?.map((t) => <Tag key={t} size="small">{GRANT_TYPE_LABELS[t] ?? t}</Tag>)}
+          {v?.map((t) => (
+            <Tag key={t} size="small">
+              {OAUTH2_GRANT_TYPE_LABELS[t as keyof typeof OAUTH2_GRANT_TYPE_LABELS] ?? t}
+            </Tag>
+          ))}
         </Space>
       ),
     },
@@ -456,7 +462,7 @@ export default function OAuth2AppsPage() {
                   rules={[{ required: true, message: '至少选择一种' }]}
                 >
                   {OAUTH2_GRANT_TYPES.map((t) => (
-                    <Checkbox key={t} value={t}>{GRANT_TYPE_LABELS[t] ?? t}</Checkbox>
+                    <Checkbox key={t} value={t}>{OAUTH2_GRANT_TYPE_LABELS[t]}</Checkbox>
                   ))}
                 </Form.CheckboxGroup>
               </Col>
@@ -512,6 +518,16 @@ export default function OAuth2AppsPage() {
                   field="signEnabled"
                   label="签名验签"
                   extraText="开放 API 调用强制 HMAC 签名"
+                />
+              </Col>
+            </Row>
+            <Row gutter={16}>
+              <Col span={24}>
+                <Form.TagInput
+                  field="ipAllowlist"
+                  label="IP 白名单"
+                  placeholder="输入 IP 或 CIDR 后回车；留空表示不限制"
+                  extraText="示例：203.0.113.10、10.0.0.0/8、2001:db8::/32"
                 />
               </Col>
             </Row>

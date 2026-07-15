@@ -87,6 +87,20 @@ export async function registerSystemTasks(): Promise<void> {
     run: retryAppWebhookDeliveries,
   });
 
+  const { rollupAndCleanupOpenApiCallLogs } = await import('../services/open-platform/open-api-maintenance.service');
+  await registerSystemRecurringJob({
+    name: 'open-api-call-log-maintenance',
+    title: '开放 API 调用日志聚合与清理',
+    module: '开放平台',
+    cronExpression: '20 1 * * *',
+    description: '聚合昨日开放 API 调用统计，并按保留策略清理原始调用日志。',
+    allowManualRun: true,
+    run: async () => {
+      const result = await rollupAndCleanupOpenApiCallLogs();
+      return `已聚合 ${result.statDate}，原始日志保留 ${result.retentionDays} 天`;
+    },
+  });
+
   const { publishDueScheduledMessages } = await import('../services/messaging/channel.service');
   await registerSystemRecurringJob({
     name: 'channel-scheduled-publish',

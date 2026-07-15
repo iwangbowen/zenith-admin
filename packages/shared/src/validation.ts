@@ -48,12 +48,52 @@ import {
   REPORT_DASHBOARD_LIFECYCLE_STATUSES,
   REPORT_DASHBOARD_VERSION_SOURCES,
   SOURCE_MAP_MAX_BYTES,
+  OAUTH2_GRANT_TYPES,
 } from './constants';
 
 const DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
 const dateTimeStringSchema = z.string().regex(DATE_TIME_PATTERN, '日期时间格式必须为 YYYY-MM-DD HH:mm:ss');
 const timezoneSchema = z.string().min(1).max(64)
   .refine((timezone) => timezone === 'UTC' || Intl.supportedValuesOf('timeZone').includes(timezone), '时区标识无效');
+const ipOrCidrSchema = z.string().min(2).max(64).regex(
+  /^((\d{1,3}\.){3}\d{1,3}|[0-9a-fA-F:]+)(\/\d{1,3})?$/,
+  '请输入有效的 IP 地址或 CIDR',
+);
+
+const oauth2ClientBaseSchema = z.object({
+  name: z.string().trim().min(1).max(64),
+  description: z.string().max(256).optional(),
+  logoUrl: z.url().optional().or(z.literal('')),
+  redirectUris: z.array(z.string().min(1).max(500)).max(20),
+  allowedScopes: z.array(z.string().min(1).max(64)).min(1),
+  grantTypes: z.array(z.enum(OAUTH2_GRANT_TYPES)).min(1),
+  isPublic: z.boolean(),
+  ratePlanId: z.number().int().positive().nullable().optional(),
+  signEnabled: z.boolean().optional(),
+  ipAllowlist: z.array(ipOrCidrSchema).max(100).default([]),
+});
+
+export const createOAuth2ClientSchema = oauth2ClientBaseSchema.superRefine((value, ctx) => {
+  if (value.grantTypes.includes('authorization_code') && value.redirectUris.length === 0) {
+    ctx.addIssue({ code: 'custom', path: ['redirectUris'], message: '授权码模式至少需要一个回调 URL' });
+  }
+  if (value.isPublic && value.grantTypes.includes('client_credentials')) {
+    ctx.addIssue({ code: 'custom', path: ['grantTypes'], message: '公开客户端不支持客户端凭证模式' });
+  }
+  if (value.grantTypes.includes('refresh_token') && !value.grantTypes.includes('authorization_code')) {
+    ctx.addIssue({ code: 'custom', path: ['grantTypes'], message: '刷新令牌模式必须与授权码模式同时启用' });
+  }
+  if (value.isPublic && value.signEnabled) {
+    ctx.addIssue({ code: 'custom', path: ['signEnabled'], message: '公开客户端没有密钥，无法启用 HMAC 签名' });
+  }
+});
+
+export const updateOAuth2ClientSchema = oauth2ClientBaseSchema.partial().extend({
+  status: z.enum(['enabled', 'disabled']).optional(),
+});
+
+export type CreateOAuth2ClientInput = z.infer<typeof createOAuth2ClientSchema>;
+export type UpdateOAuth2ClientInput = z.infer<typeof updateOAuth2ClientSchema>;
 
 export const loginSchema = z.object({
   username: z.string().min(2, '用户名/手机号至少2个字符').max(32),

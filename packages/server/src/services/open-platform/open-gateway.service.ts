@@ -11,6 +11,7 @@ export interface OpenApiAppContext {
   allowedScopes: string[];
   ratePlanId: number | null;
   signEnabled: boolean;
+  ipAllowlist: string[];
   status: 'enabled' | 'disabled';
   /** 解密后的签名密钥（= clientSecret 明文）；公开客户端为 null */
   signingSecret: string | null;
@@ -26,6 +27,7 @@ export async function getOpenApiApp(clientId: string): Promise<OpenApiAppContext
       allowedScopes: oauth2Clients.allowedScopes,
       ratePlanId: oauth2Clients.ratePlanId,
       signEnabled: oauth2Clients.signEnabled,
+      ipAllowlist: oauth2Clients.ipAllowlist,
       status: oauth2Clients.status,
       enc: oauth2Clients.clientSecretEncrypted,
     })
@@ -40,6 +42,7 @@ export async function getOpenApiApp(clientId: string): Promise<OpenApiAppContext
     allowedScopes: row.allowedScopes ?? [],
     ratePlanId: row.ratePlanId ?? null,
     signEnabled: row.signEnabled,
+    ipAllowlist: row.ipAllowlist ?? [],
     status: row.status,
     signingSecret: row.enc ? decryptField(row.enc) : null,
   };

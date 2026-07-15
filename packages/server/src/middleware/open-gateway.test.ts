@@ -5,7 +5,7 @@
  *  1. openSignatureAuth：缺 AppKey / AppKey 无效 401、应用禁用 403、
  *     免签应用直接放行、签名头缺失 401、时间戳过期 401（±300s 防重放）、
  *     nonce 重放 401、签名不匹配 401、合法签名放行并注入 openApp
- *  2. openRateLimit：QPS / 日 / 月配额超限 429（附事件），未超限放行，Redis 故障放行
+ *  2. openRateLimit：QPS / 日 / 月配额超限 429（附事件），未超限放行，Redis 故障策略可配置
  *
  * Mock 策略：open-gateway.service / rate-plans.service / redis / config / logger /
  * open-event-bus mock；签名用真实 lib/open-signature 生成（与网关同源算法）。
@@ -14,7 +14,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Hono } from 'hono';
 
 vi.mock('../config', () => ({
-  config: { redis: { keyPrefix: 'test:' } },
+  config: {
+    redis: { keyPrefix: 'test:' },
+    openPlatform: { rateLimitFailClosed: true },
+    trustedProxyCidrs: [],
+  },
 }));
 
 vi.mock('../lib/redis', () => ({
@@ -40,6 +44,7 @@ vi.mock('../services/open-platform/rate-plans.service', () => ({
 }));
 
 import redis from '../lib/redis';
+import { config } from '../config';
 import { openEventBus } from '../lib/open-event-bus';
 import { getOpenApiApp } from '../services/open-platform/open-gateway.service';
 import { getRatePlanRowById, getDefaultRatePlanRow } from '../services/open-platform/rate-plans.service';
@@ -62,7 +67,8 @@ function makeApp(overrides: Record<string, unknown> = {}): any {
     signEnabled: false,
     signingSecret: SECRET,
     ratePlanId: null,
-    scopes: [],
+    allowedScopes: [],
+    ipAllowlist: [],
     ...overrides,
   };
 }
@@ -99,6 +105,7 @@ beforeEach(() => {
   redisMock.set.mockResolvedValue('OK');
   redisMock.incr.mockResolvedValue(1);
   redisMock.expire.mockResolvedValue(1);
+  config.openPlatform.rateLimitFailClosed = true;
 });
 
 describe('openSignatureAuth - AppKey 鉴权', () => {
@@ -136,6 +143,25 @@ describe('openSignatureAuth - AppKey 鉴权', () => {
     });
     expect(res.status).toBe(200);
     expect((await res.json()).data).toBe('ak_test_1');
+  });
+
+  it('来源 IP 不在应用白名单 → 403', async () => {
+    getAppMock.mockResolvedValue(makeApp({ ipAllowlist: ['10.0.0.0/8'] }));
+    const res = await buildAuthApp().request('/open/api/v1/echo', {
+      method: 'POST',
+      headers: { 'X-App-Key': 'ak_test_1' },
+    });
+    expect(res.status).toBe(403);
+    expect((await res.json()).message).toContain('IP');
+  });
+
+  it('来源 IP 命中应用白名单 → 放行', async () => {
+    getAppMock.mockResolvedValue(makeApp({ ipAllowlist: ['127.0.0.1/32'] }));
+    const res = await buildAuthApp().request('/open/api/v1/echo', {
+      method: 'POST',
+      headers: { 'X-App-Key': 'ak_test_1' },
+    });
+    expect(res.status).toBe(200);
   });
 });
 
@@ -276,7 +302,15 @@ describe('openRateLimit - 套餐配额', () => {
     expect(res.status).toBe(200);
   });
 
-  it('Redis 故障 → 放行（限流降级不阻断业务）', async () => {
+  it('Redis 故障且 fail-close 开启 → 503', async () => {
+    planByIdMock.mockResolvedValue(makePlan({ qpsLimit: 10 }));
+    redisMock.incr.mockRejectedValue(new Error('ECONNREFUSED'));
+    const res = await buildLimitApp().request('/open/api/v1/echo');
+    expect(res.status).toBe(503);
+  });
+
+  it('Redis 故障且 fail-close 关闭 → 放行', async () => {
+    config.openPlatform.rateLimitFailClosed = false;
     planByIdMock.mockResolvedValue(makePlan({ qpsLimit: 10 }));
     redisMock.incr.mockRejectedValue(new Error('ECONNREFUSED'));
     const res = await buildLimitApp().request('/open/api/v1/echo');

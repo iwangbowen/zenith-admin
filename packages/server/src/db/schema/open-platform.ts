@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, unique, text, index, jsonb, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { bigint, boolean, date, index, integer, jsonb, pgEnum, pgTable, serial, text, timestamp, unique, varchar, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { statusEnum } from './common';
 import { auditColumns, users } from './core';
 
@@ -31,6 +31,8 @@ export const oauth2Clients = pgTable('oauth2_clients', {
   ratePlanId: integer('rate_plan_id').references((): AnyPgColumn => ratePlans.id, { onDelete: 'set null' }),
   /** 开放平台：调用开放 API 网关时是否强制 HMAC 签名验签 */
   signEnabled: boolean('sign_enabled').notNull().default(false),
+  /** 来源 IP/CIDR 白名单；空数组表示不限制 */
+  ipAllowlist: text('ip_allowlist').array().notNull().default([]),
   status: statusEnum('status').notNull().default('enabled'),
   /** 应用归属用户 */
   ownerId: integer('owner_id').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
@@ -49,15 +51,15 @@ export type NewOAuth2Client = typeof oauth2Clients.$inferInsert;
  */
 export const oauth2AuthorizationCodes = pgTable('oauth2_authorization_codes', {
   id: serial('id').primaryKey(),
-  /** 授权码原始值（带前缀 oc_ 的随机串，存明文，单次使用后标记 used）*/
-  code: varchar('code', { length: 128 }).notNull().unique(),
+  /** 授权码 SHA-256 摘要；旧版明文授权码在迁移时全部失效 */
+  codeHash: varchar('code_hash', { length: 64 }).unique(),
   clientId: varchar('client_id', { length: 64 }).notNull(),
   userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   redirectUri: text('redirect_uri').notNull(),
   scopes: text('scopes').array().notNull().default([]),
   /** PKCE code_challenge */
   codeChallenge: varchar('code_challenge', { length: 256 }),
-  /** S256 | plain */
+  /** OAuth 2.1 仅允许 S256 */
   codeChallengeMethod: varchar('code_challenge_method', { length: 10 }),
   expiresAt: timestamp('expires_at').notNull(),
   used: boolean('used').notNull().default(false),
@@ -189,6 +191,28 @@ export const openApiCallLogs = pgTable('open_api_call_logs', {
 export type OpenApiCallLogRow = typeof openApiCallLogs.$inferSelect;
 
 export type NewOpenApiCallLog = typeof openApiCallLogs.$inferInsert;
+
+/** 开放 API 每日聚合统计；原始日志到期清理后仍保留长期趋势 */
+export const openApiCallStatsDaily = pgTable('open_api_call_stats_daily', {
+  id: serial('id').primaryKey(),
+  statDate: date('stat_date').notNull(),
+  clientId: varchar('client_id', { length: 64 }).notNull(),
+  appName: varchar('app_name', { length: 100 }),
+  path: varchar('path', { length: 256 }).notNull(),
+  totalCalls: bigint('total_calls', { mode: 'number' }).notNull().default(0),
+  successCalls: bigint('success_calls', { mode: 'number' }).notNull().default(0),
+  failedCalls: bigint('failed_calls', { mode: 'number' }).notNull().default(0),
+  durationSumMs: bigint('duration_sum_ms', { mode: 'number' }).notNull().default(0),
+  maxDurationMs: integer('max_duration_ms').notNull().default(0),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  unique('open_api_call_stats_daily_unique').on(t.statDate, t.clientId, t.path),
+  index('open_api_call_stats_daily_date_idx').on(t.statDate),
+  index('open_api_call_stats_daily_client_idx').on(t.clientId),
+]);
+
+export type OpenApiCallStatsDailyRow = typeof openApiCallStatsDaily.$inferSelect;
 
 export const appWebhookSignModeEnum = pgEnum('app_webhook_sign_mode', ['hmacSha256', 'none']);
 

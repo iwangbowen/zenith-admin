@@ -8,6 +8,7 @@
  */
 import type { MiddlewareHandler } from 'hono';
 import dayjs from 'dayjs';
+import ipRangeCheck from 'ip-range-check';
 import redis from '../lib/redis';
 import { config } from '../config';
 import { errBody } from '../lib/openapi-schemas';
@@ -44,6 +45,17 @@ export const openSignatureAuth: MiddlewareHandler = async (c, next) => {
   const app = await getOpenApiApp(appKey);
   if (!app) return c.json(errBody('AppKey 无效', 401), 401);
   if (app.status !== 'enabled') return c.json(errBody('应用已禁用', 403), 403);
+  if (app.ipAllowlist.length > 0) {
+    const clientIp = getClientIp(c);
+    const allowed = app.ipAllowlist.some((range) => {
+      try {
+        return ipRangeCheck(clientIp, range);
+      } catch {
+        return false;
+      }
+    });
+    if (!allowed) return c.json(errBody('当前 IP 不在应用白名单中', 403), 403);
+  }
 
   if (app.signEnabled) {
     const timestamp = c.req.header(H.timestamp);
@@ -134,7 +146,10 @@ export const openRateLimit: MiddlewareHandler = async (c, next) => {
       }
     }
   } catch (err) {
-    logger.warn('[open-gateway] rate-limit check failed', err);
+    logger.error('[open-gateway] rate-limit check failed', err);
+    if (config.openPlatform.rateLimitFailClosed) {
+      return c.json(errBody('限流服务暂时不可用，请稍后重试', 503), 503);
+    }
   }
   await next();
 };
