@@ -9,6 +9,7 @@ export interface WorkflowInstanceListParams {
   status?: string;
   priority?: string;
   keyword?: string;
+  definitionId?: number;
 }
 
 export type WorkflowInstanceBatchActionResponse = {

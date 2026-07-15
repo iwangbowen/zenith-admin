@@ -34,6 +34,7 @@ export interface WorkflowMonitorListParams {
   keyword?: string;
   status?: string;
   categoryId?: number;
+  definitionId?: number;
   initiatorKeyword?: string;
   priority?: string;
 }

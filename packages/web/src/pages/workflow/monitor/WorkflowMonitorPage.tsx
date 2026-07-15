@@ -428,8 +428,8 @@ function StatCard({
 export default function WorkflowMonitorPage() {
   const queryClient = useQueryClient();
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  interface SearchParams { keyword: string; initiator: string; status: string; categoryId: number | ''; priority: string }
-  const defaultSearchParams: SearchParams = { keyword: '', initiator: '', status: '', categoryId: '', priority: '' };
+  interface SearchParams { keyword: string; initiator: string; status: string; categoryId: number | ''; definitionId: number | ''; priority: string }
+  const defaultSearchParams: SearchParams = { keyword: '', initiator: '', status: '', categoryId: '', definitionId: '', priority: '' };
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
   const listQuery = useWorkflowMonitorList({
@@ -438,6 +438,7 @@ export default function WorkflowMonitorPage() {
     keyword: submittedParams.keyword || undefined,
     status: submittedParams.status || undefined,
     categoryId: submittedParams.categoryId === '' ? undefined : submittedParams.categoryId,
+    definitionId: submittedParams.definitionId === '' ? undefined : submittedParams.definitionId,
     initiatorKeyword: submittedParams.initiator || undefined,
     priority: submittedParams.priority || undefined,
   });
@@ -1172,6 +1173,18 @@ export default function WorkflowMonitorPage() {
     />
   );
 
+  const renderDefinitionFilter = () => (
+    <Select
+      placeholder="所有流程"
+      showClear
+      filter
+      value={searchParams.definitionId === '' ? undefined : searchParams.definitionId}
+      onChange={v => setSearchParams(prev => ({ ...prev, definitionId: (v as number) ?? '' }))}
+      style={{ width: 160 }}
+      optionList={definitions.map((d) => ({ label: d.name, value: d.id }))}
+    />
+  );
+
   const renderInitiatorFilter = () => (
     <Input
       placeholder="申请人"
@@ -1214,11 +1227,12 @@ export default function WorkflowMonitorPage() {
   );
 
   const buildExportQuery = () => {
-    const { keyword, status, categoryId, initiator, priority } = searchParams;
+    const { keyword, status, categoryId, definitionId, initiator, priority } = searchParams;
     return {
       ...(keyword ? { keyword } : {}),
       ...(status ? { status } : {}),
       ...(categoryId !== '' ? { categoryId: String(categoryId) } : {}),
+      ...(definitionId !== '' ? { definitionId: String(definitionId) } : {}),
       ...(initiator ? { initiatorKeyword: initiator } : {}),
       ...(priority ? { priority } : {}),
     };
@@ -1265,6 +1279,7 @@ export default function WorkflowMonitorPage() {
           <>
             {renderKeywordSearch()}
             {renderCategoryFilter()}
+            {renderDefinitionFilter()}
             {renderInitiatorFilter()}
             {renderStatusFilter()}
             {renderPriorityFilter()}
@@ -1283,6 +1298,7 @@ export default function WorkflowMonitorPage() {
         mobileFilters={(
           <>
             {renderCategoryFilter()}
+            {renderDefinitionFilter()}
             {renderInitiatorFilter()}
             {renderStatusFilter()}
             {renderPriorityFilter()}

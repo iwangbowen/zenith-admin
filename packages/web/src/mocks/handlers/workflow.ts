@@ -1474,9 +1474,11 @@ export const workflowHandlers = [
     const page = Number(url.searchParams.get('page')) || 1;
     const pageSize = Number(url.searchParams.get('pageSize')) || 10;
     const status = url.searchParams.get('status') ?? '';
+    const definitionIdStr = url.searchParams.get('definitionId') ?? '';
 
     let list = mockWorkflowInstances.filter(i => i.initiatorId === 1);
     if (status) list = list.filter(i => i.status === status);
+    if (definitionIdStr) list = list.filter(i => i.definitionId === Number(definitionIdStr));
     list = [...list].sort((a, b) => b.id - a.id);
 
     const total = list.length;
@@ -1551,6 +1553,7 @@ export const workflowHandlers = [
     const keyword = url.searchParams.get('keyword') ?? '';
     const status = url.searchParams.get('status') ?? '';
     const categoryIdStr = url.searchParams.get('categoryId') ?? '';
+    const definitionIdStr = url.searchParams.get('definitionId') ?? '';
     const initiatorKeyword = url.searchParams.get('initiatorKeyword') ?? '';
 
     const stats = {
@@ -1566,6 +1569,7 @@ export const workflowHandlers = [
     if (keyword) list = list.filter(i => i.title.includes(keyword) || (i.definitionName ?? '').includes(keyword));
     if (status) list = list.filter(i => i.status === status);
     if (categoryIdStr) list = list.filter(i => i.categoryId === Number(categoryIdStr));
+    if (definitionIdStr) list = list.filter(i => i.definitionId === Number(definitionIdStr));
     if (initiatorKeyword) list = list.filter(i => (i.initiatorName ?? '').includes(initiatorKeyword));
 
     const total = list.length;

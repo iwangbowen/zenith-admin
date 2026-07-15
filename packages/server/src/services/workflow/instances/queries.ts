@@ -77,14 +77,15 @@ async function loadActiveNodeKeysByInstance(instanceIds: number[]): Promise<Map<
   return map;
 }
 
-export async function listMyInstances(query: { page?: number; pageSize?: number; status?: string; priority?: string }) {
+export async function listMyInstances(query: { page?: number; pageSize?: number; status?: string; priority?: string; definitionId?: number }) {
   const user = currentUser();
-  const { page = 1, pageSize = 20, status, priority } = query;
+  const { page = 1, pageSize = 20, status, priority, definitionId } = query;
   const tc = tenantCondition(workflowInstances, user);
   const conditions = [eq(workflowInstances.initiatorId, user.userId)];
   if (tc) conditions.push(tc);
   if (status) conditions.push(eq(workflowInstances.status, status as InstanceStatus));
   if (priority) conditions.push(eq(workflowInstances.priority, priority));
+  if (definitionId !== undefined) conditions.push(eq(workflowInstances.definitionId, definitionId));
   const where = and(...conditions);
   const [total, rows] = await Promise.all([
     db.$count(workflowInstances, where),
@@ -313,9 +314,9 @@ export async function listMyHandled(query: { page?: number; pageSize?: number; k
   };
 }
 
-export async function listAllInstances(query: { page?: number; pageSize?: number; status?: string; keyword?: string; categoryId?: number; initiatorKeyword?: string; priority?: string }) {
+export async function listAllInstances(query: { page?: number; pageSize?: number; status?: string; keyword?: string; categoryId?: number; definitionId?: number; initiatorKeyword?: string; priority?: string }) {
   const user = currentUser();
-  const { page = 1, pageSize = 20, status, keyword, categoryId, initiatorKeyword, priority } = query;
+  const { page = 1, pageSize = 20, status, keyword, categoryId, definitionId, initiatorKeyword, priority } = query;
   const conditions = [];
   const tc = tenantCondition(workflowInstances, user);
   if (tc) conditions.push(tc);
@@ -332,6 +333,7 @@ export async function listAllInstances(query: { page?: number; pageSize?: number
     conditions.push(or(ilike(workflowInstances.title, likeValue), ilike(workflowDefinitions.name, likeValue)));
   }
   if (categoryId !== undefined) conditions.push(eq(workflowDefinitions.categoryId, categoryId));
+  if (definitionId !== undefined) conditions.push(eq(workflowInstances.definitionId, definitionId));
   if (initiatorKeyword) conditions.push(ilike(users.nickname, `%${escapeLike(initiatorKeyword)}%`));
   if (priority) conditions.push(eq(workflowInstances.priority, priority));
   const where = and(...conditions);

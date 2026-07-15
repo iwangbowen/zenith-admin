@@ -287,6 +287,7 @@ export interface WorkflowInstanceExportQuery {
   status?: string;
   keyword?: string;
   categoryId?: number;
+  definitionId?: number;
   initiatorKeyword?: string;
 }
 
@@ -301,6 +302,7 @@ function buildInstancesExportWhere(query: WorkflowInstanceExportQuery) {
     conds.push(or(ilike(workflowInstances.title, lk), ilike(workflowDefinitions.name, lk))!);
   }
   if (query.categoryId) conds.push(eq(workflowDefinitions.categoryId, query.categoryId));
+  if (query.definitionId) conds.push(eq(workflowInstances.definitionId, query.definitionId));
   if (query.initiatorKeyword) conds.push(ilike(users.nickname, `%${escapeLike(query.initiatorKeyword)}%`));
   return conds.length ? and(...conds) : undefined;
 }
