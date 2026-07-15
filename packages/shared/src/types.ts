@@ -5874,6 +5874,17 @@ export interface OAuth2Token {
 export interface OAuth2UserGrant {
   id: number;
   userId: number;
+  username: string | null;
+  nickname: string | null;
+  clientId: string;
+  scopes: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OAuth2UserGrant {
+  id: number;
+  userId: number;
   clientId: string;
   scopes: string[];
   createdAt: string;
@@ -5941,6 +5952,8 @@ export interface OpenApiStatsOverview {
   failedCalls: number;
   successRate: number;
   avgDurationMs: number;
+  p95DurationMs: number;
+  p99DurationMs: number;
   activeApps: number;
   todayCalls: number;
 }
@@ -5985,6 +5998,8 @@ export interface AppWebhookSubscription {
   /** 密钥掩码（仅展示前后各 4 位） */
   secretMasked?: string | null;
   lastDeliveryAt?: string | null;
+  consecutiveFailures: number;
+  autoDisabledAt?: string | null;
   createdBy?: number | null;
   updatedBy?: number | null;
   createdAt: string;

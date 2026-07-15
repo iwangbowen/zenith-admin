@@ -73,6 +73,8 @@ export const OpenApiStatsOverviewDTO = z
     failedCalls: z.number().int(),
     successRate: z.number(),
     avgDurationMs: z.number(),
+    p95DurationMs: z.number(),
+    p99DurationMs: z.number(),
     activeApps: z.number().int(),
     todayCalls: z.number().int(),
   })
@@ -139,6 +141,8 @@ export const AppWebhookSubscriptionDTO = z
     hasSecret: z.boolean(),
     secretMasked: z.string().nullable(),
     lastDeliveryAt: z.string().nullable(),
+    consecutiveFailures: z.number().int(),
+    autoDisabledAt: z.string().nullable(),
     ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
@@ -169,6 +173,10 @@ export const AppWebhookDeliveryDTO = z
     createdAt: z.string(),
   })
   .openapi('AppWebhookDelivery');
+
+export const AppWebhookBatchRetryResultDTO = z
+  .object({ scheduled: z.number().int() })
+  .openapi('AppWebhookBatchRetryResult');
 
 export const OpenWebhookEventMetaDTO = z
   .object({

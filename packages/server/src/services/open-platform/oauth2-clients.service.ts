@@ -8,6 +8,7 @@ import {
   oauth2Clients,
   oauth2Tokens,
   oauth2UserGrants,
+  users,
 } from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { HTTPException } from 'hono/http-exception';
@@ -315,6 +316,41 @@ export async function listClientTokens(clientId: string, opts: { page: number; p
       expiresAt: formatNullableDateTime(r.expiresAt),
       revoked: r.revoked,
       createdAt: formatDateTime(r.createdAt),
+    })),
+    total,
+    page,
+    pageSize,
+  };
+}
+
+export async function listClientGrants(clientId: string, opts: { page: number; pageSize: number }) {
+  const { page, pageSize } = opts;
+  const where = eq(oauth2UserGrants.clientId, clientId);
+  const [rows, total] = await Promise.all([
+    db.select({
+      id: oauth2UserGrants.id,
+      userId: oauth2UserGrants.userId,
+      username: users.username,
+      nickname: users.nickname,
+      clientId: oauth2UserGrants.clientId,
+      scopes: oauth2UserGrants.scopes,
+      createdAt: oauth2UserGrants.createdAt,
+      updatedAt: oauth2UserGrants.updatedAt,
+    })
+      .from(oauth2UserGrants)
+      .leftJoin(users, eq(oauth2UserGrants.userId, users.id))
+      .where(where)
+      .orderBy(desc(oauth2UserGrants.updatedAt))
+      .limit(pageSize)
+      .offset(pageOffset(page, pageSize)),
+    db.$count(oauth2UserGrants, where),
+  ]);
+  return {
+    list: rows.map((row) => ({
+      ...row,
+      scopes: row.scopes ?? [],
+      createdAt: formatDateTime(row.createdAt),
+      updatedAt: formatDateTime(row.updatedAt),
     })),
     total,
     page,

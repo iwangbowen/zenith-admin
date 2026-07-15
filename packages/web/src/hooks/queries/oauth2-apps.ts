@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ApiScope, OAuth2Client, OAuth2ClientCreated, PaginatedResponse, RatePlan } from '@zenith/shared';
+import type { ApiScope, OAuth2Client, OAuth2ClientCreated, OAuth2Token, OAuth2UserGrant, PaginatedResponse, RatePlan } from '@zenith/shared';
 import { LOOKUP_STALE_TIME, toQueryString, unwrap } from '@/lib/query';
 import { request } from '@/utils/request';
 
@@ -16,6 +16,8 @@ export const oauth2AppKeys = {
   detail: (id: number | undefined) => ['oauth2-apps', 'detail', id] as const,
   ratePlans: ['oauth2-apps', 'rate-plans'] as const,
   scopes: ['oauth2-apps', 'scopes'] as const,
+  grants: (id: number, page: number, pageSize: number) => ['oauth2-apps', 'grants', id, page, pageSize] as const,
+  tokens: (clientId: string, page: number, pageSize: number) => ['oauth2-apps', 'tokens', clientId, page, pageSize] as const,
 };
 
 export function useOAuth2AppList(params: OAuth2AppListParams) {
@@ -74,6 +76,35 @@ export function useRegenerateOAuth2AppSecret() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => request.post<{ clientId: string; clientSecret: string }>(`/api/oauth2/clients/${id}/regenerate-secret`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: oauth2AppKeys.all }),
+  });
+}
+
+export function useOAuth2AppGrants(id: number, page: number, pageSize: number) {
+  return useQuery({
+    queryKey: oauth2AppKeys.grants(id, page, pageSize),
+    queryFn: () => request.get<PaginatedResponse<OAuth2UserGrant>>(
+      `/api/oauth2/clients/${id}/grants${toQueryString({ page, pageSize })}`,
+    ).then(unwrap),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useOAuth2AppTokens(clientId: string | undefined, page: number, pageSize: number) {
+  return useQuery({
+    queryKey: oauth2AppKeys.tokens(clientId ?? '', page, pageSize),
+    queryFn: () => request.get<PaginatedResponse<OAuth2Token>>(
+      `/api/oauth2/clients/tokens${toQueryString({ clientId, page, pageSize })}`,
+    ).then(unwrap),
+    placeholderData: keepPreviousData,
+    enabled: Boolean(clientId),
+  });
+}
+
+export function useRevokeOAuth2Token() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.delete<null>(`/api/oauth2/clients/tokens/${id}`).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: oauth2AppKeys.all }),
   });
 }

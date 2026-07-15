@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Button,
@@ -64,6 +65,7 @@ type FormValues = {
 };
 
 export default function OAuth2AppsPage() {
+  const navigate = useNavigate();
   const { items: statusItems } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const queryClient = useQueryClient();
@@ -302,8 +304,14 @@ export default function OAuth2AppsPage() {
       ),
     },
     createOperationColumn<OAuth2Client>({
-      width: 200,
+      width: 220,
+      desktopInlineKeys: ['detail', 'edit'],
       actions: (record) => [
+        {
+          key: 'detail',
+          label: '详情',
+          onClick: () => navigate(`/system/oauth2-apps/${record.id}`),
+        },
         {
           key: 'edit',
           label: '编辑',

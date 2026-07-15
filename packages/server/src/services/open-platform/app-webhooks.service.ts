@@ -1,7 +1,7 @@
 import { randomBytes, createHmac, randomUUID } from 'node:crypto';
-import { eq, and, or, desc, ilike, isNull, lte, type SQL } from 'drizzle-orm';
+import { eq, and, or, desc, ilike, inArray, isNull, lte, ne, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
-import { appWebhookSubscriptions, appWebhookDeliveries, oauth2Clients } from '../../db/schema';
+import { appWebhookSubscriptions, appWebhookDeliveries, oauth2Clients, users } from '../../db/schema';
 import type { AppWebhookSubscriptionRow, AppWebhookDeliveryRow } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
@@ -14,6 +14,8 @@ import { openEventBus } from '../../lib/open-event-bus';
 import { mapWithConcurrency } from '../../lib/concurrency';
 import { OPEN_WEBHOOK_SIGNATURE_HEADER, OPEN_WEBHOOK_RETRY_STAGES_MINUTES, OPEN_WEBHOOK_EVENTS, OPEN_WEBHOOK_EVENT_LABELS } from '@zenith/shared';
 import type { CreateAppWebhookInput, UpdateAppWebhookInput } from '@zenith/shared';
+import { config } from '../../config';
+import { sendSystemInApp } from '../messaging/in-app-messages.service';
 
 const TIMEOUT_MS = 10_000;
 const PENDING_RECOVERY_AFTER_MS = 2 * 60_000;
@@ -47,6 +49,8 @@ export function mapSubscription(row: AppWebhookSubscriptionRow) {
     hasSecret: Boolean(row.secretEncrypted),
     secretMasked: row.secretEncrypted ? '••••••••' : null,
     lastDeliveryAt: formatNullableDateTime(row.lastDeliveryAt),
+    consecutiveFailures: row.consecutiveFailures,
+    autoDisabledAt: formatNullableDateTime(row.autoDisabledAt),
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
     createdAt: formatDateTime(row.createdAt),
@@ -149,6 +153,7 @@ export async function updateSubscription(id: number, input: UpdateAppWebhookInpu
     events: input.events,
     headers: input.headers,
     status: input.status,
+    ...(input.status === 'enabled' ? { autoDisabledAt: null } : {}),
   }).where(eq(appWebhookSubscriptions.id, id)).returning();
   return mapSubscription(row);
 }
@@ -177,12 +182,14 @@ export async function listDeliveries(opts: {
   subscriptionId?: number;
   clientId?: string;
   status?: 'pending' | 'success' | 'failed' | 'retrying';
+  eventType?: string;
 }) {
-  const { page, pageSize, subscriptionId, clientId, status } = opts;
+  const { page, pageSize, subscriptionId, clientId, status, eventType } = opts;
   const conds: SQL[] = [];
   if (subscriptionId) conds.push(eq(appWebhookDeliveries.subscriptionId, subscriptionId));
   if (clientId) conds.push(eq(appWebhookDeliveries.clientId, clientId));
   if (status) conds.push(eq(appWebhookDeliveries.status, status));
+  if (eventType) conds.push(eq(appWebhookDeliveries.eventType, eventType));
   const where = conds.length ? and(...conds) : undefined;
   const [list, total] = await Promise.all([
     db.select().from(appWebhookDeliveries)
@@ -227,6 +234,25 @@ export async function retryDelivery(id: number) {
   return { deliveryId: id };
 }
 
+export async function scheduleBatchRetryDeliveries(ids: number[]) {
+  const uniqueIds = [...new Set(ids)];
+  if (uniqueIds.length === 0) throw new HTTPException(400, { message: '请选择投递记录' });
+  if (uniqueIds.length > 100) throw new HTTPException(400, { message: '单次最多重试 100 条投递记录' });
+  const rows = await db.update(appWebhookDeliveries)
+    .set({
+      status: 'retrying',
+      nextRetryAt: new Date(),
+      finishedAt: null,
+      errorMessage: null,
+    })
+    .where(and(
+      inArray(appWebhookDeliveries.id, uniqueIds),
+      ne(appWebhookDeliveries.status, 'success'),
+    ))
+    .returning({ id: appWebhookDeliveries.id });
+  return { scheduled: rows.length };
+}
+
 // ─── 内部：投递执行 ───────────────────────────────────────────────────────────
 
 interface InsertDeliveryInput {
@@ -251,6 +277,57 @@ async function insertDelivery(input: InsertDeliveryInput): Promise<AppWebhookDel
 
 async function updateDeliveryAfterAttempt(id: number, patch: Partial<AppWebhookDeliveryRow>) {
   await db.update(appWebhookDeliveries).set(patch).where(eq(appWebhookDeliveries.id, id));
+}
+
+async function handleTerminalFailure(
+  sub: AppWebhookSubscriptionRow,
+  delivery: AppWebhookDeliveryRow,
+  errorMessage: string,
+): Promise<void> {
+  if (delivery.eventType === 'app.test') return;
+
+  const [updated] = await db.update(appWebhookSubscriptions)
+    .set({ consecutiveFailures: sql`${appWebhookSubscriptions.consecutiveFailures} + 1` })
+    .where(eq(appWebhookSubscriptions.id, sub.id))
+    .returning({
+      consecutiveFailures: appWebhookSubscriptions.consecutiveFailures,
+      status: appWebhookSubscriptions.status,
+    });
+  if (!updated) return;
+
+  const threshold = config.openPlatform.webhookAutoDisableFailures;
+  const autoDisabled = updated.status === 'enabled' && updated.consecutiveFailures >= threshold;
+  if (autoDisabled) {
+    await db.update(appWebhookSubscriptions)
+      .set({ status: 'disabled', autoDisabledAt: new Date() })
+      .where(eq(appWebhookSubscriptions.id, sub.id));
+  }
+
+  const [owner] = await db.select({
+    userId: oauth2Clients.ownerId,
+    tenantId: users.tenantId,
+  })
+    .from(oauth2Clients)
+    .leftJoin(users, eq(oauth2Clients.ownerId, users.id))
+    .where(eq(oauth2Clients.clientId, sub.clientId))
+    .limit(1);
+  if (!owner?.userId) return;
+
+  const title = autoDisabled ? 'Webhook 已因连续失败自动停用' : 'Webhook 投递失败';
+  const content = autoDisabled
+    ? `订阅「${sub.name}」连续 ${updated.consecutiveFailures} 次投递失败，已自动停用。最近错误：${errorMessage}`
+    : `订阅「${sub.name}」的事件 ${delivery.eventType} 投递最终失败。错误：${errorMessage}`;
+  await sendSystemInApp({
+    userIds: [owner.userId],
+    title,
+    content,
+    type: autoDisabled ? 'error' : 'warning',
+    tenantId: owner.tenantId,
+  }).catch((err) => logger.error('[app-webhook] failure alert failed', {
+    subscriptionId: sub.id,
+    deliveryId: delivery.id,
+    err,
+  }));
 }
 
 /** attempt 为已完成的尝试次数（1-indexed）；超出重试阶梯返回 null */
@@ -293,6 +370,9 @@ export async function dispatchDelivery(deliveryId: number): Promise<void> {
     const respText = await resp.text().catch(() => '');
     await db.update(appWebhookSubscriptions).set({ lastDeliveryAt: new Date() }).where(eq(appWebhookSubscriptions.id, sub.id));
     if (resp.ok) {
+      await db.update(appWebhookSubscriptions)
+        .set({ consecutiveFailures: 0 })
+        .where(eq(appWebhookSubscriptions.id, sub.id));
       await updateDeliveryAfterAttempt(deliveryId, {
         status: 'success',
         responseStatus: resp.status,
@@ -314,6 +394,7 @@ export async function dispatchDelivery(deliveryId: number): Promise<void> {
       nextRetryAt,
       finishedAt: nextRetryAt ? null : new Date(),
     });
+    if (!nextRetryAt) await handleTerminalFailure(sub, delivery, `HTTP ${resp.status}`);
   } catch (err) {
     const durationMs = Date.now() - t0;
     const msg = err instanceof Error ? err.message : String(err);
@@ -325,6 +406,7 @@ export async function dispatchDelivery(deliveryId: number): Promise<void> {
       nextRetryAt,
       finishedAt: nextRetryAt ? null : new Date(),
     });
+    if (!nextRetryAt) await handleTerminalFailure(sub, delivery, msg.slice(0, 1024));
   }
 }
 

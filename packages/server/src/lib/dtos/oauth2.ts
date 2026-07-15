@@ -76,6 +76,19 @@ export const OAuth2TokenListItemDTO = z
   })
   .openapi('OAuth2TokenListItem');
 
+export const OAuth2UserGrantDTO = z
+  .object({
+    id: z.number().int(),
+    userId: z.number().int(),
+    username: z.string().nullable(),
+    nickname: z.string().nullable(),
+    clientId: z.string(),
+    scopes: z.array(z.string()),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('OAuth2UserGrant');
+
 // ─── OAuth2 授权端点 DTOs ────────────────────────────────────────────────────
 
 /** /api/oauth2/authorize/info 响应 */

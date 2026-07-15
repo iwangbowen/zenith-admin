@@ -6,6 +6,7 @@ import {
 } from '@zenith/shared';
 import type { OpenApiCallLog } from '@zenith/shared';
 import { mockOpenApiLogs } from '@/mocks/data/open-api-logs';
+import dayjs from 'dayjs';
 
 const ok = (data: unknown, message = 'success') => HttpResponse.json({ code: 0, message, data });
 
@@ -18,7 +19,25 @@ function inRange(log: OpenApiCallLog, start: string | null, end: string | null):
 function filtered(url: URL): OpenApiCallLog[] {
   const start = url.searchParams.get('startTime');
   const end = url.searchParams.get('endTime');
-  return mockOpenApiLogs.filter((l) => inRange(l, start, end));
+  const clientId = url.searchParams.get('clientId');
+  const keyword = url.searchParams.get('keyword')?.toLowerCase();
+  const method = url.searchParams.get('method');
+  const success = url.searchParams.get('success');
+  const statusCode = url.searchParams.get('statusCode');
+  return mockOpenApiLogs.filter((log) =>
+    inRange(log, start, end)
+    && (!clientId || log.clientId === clientId)
+    && (!keyword || log.path.toLowerCase().includes(keyword) || (log.appName ?? '').toLowerCase().includes(keyword))
+    && (!method || log.method === method)
+    && (success === null || log.success === (success === 'true'))
+    && (!statusCode || log.statusCode === Number(statusCode)),
+  );
+}
+
+function percentile(values: number[], ratio: number): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * ratio) - 1)];
 }
 
 /** 简单确定性伪签名（仅用于 Demo，无后端时计算签名） */
@@ -42,7 +61,7 @@ export const openPlatformHandlers = [
     const logs = filtered(new URL(request.url));
     const total = logs.length;
     const success = logs.filter((l) => l.success).length;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = dayjs().format('YYYY-MM-DD');
     const avg = total ? Math.round(logs.reduce((s, l) => s + l.durationMs, 0) / total) : 0;
     return ok({
       totalCalls: total,
@@ -50,6 +69,8 @@ export const openPlatformHandlers = [
       failedCalls: total - success,
       successRate: total ? Math.round((success / total) * 10000) / 100 : 0,
       avgDurationMs: avg,
+      p95DurationMs: percentile(logs.map((log) => log.durationMs), 0.95),
+      p99DurationMs: percentile(logs.map((log) => log.durationMs), 0.99),
       activeApps: new Set(logs.map((l) => l.clientId)).size,
       todayCalls: logs.filter((l) => l.createdAt.startsWith(today)).length,
     });

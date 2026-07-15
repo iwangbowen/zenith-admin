@@ -95,6 +95,36 @@ export const oauth2AppsHandlers = [
     });
   }),
 
+  http.get(`${BASE}/tokens`, ({ request }) => {
+    const url = new URL(request.url);
+    const page = Number(url.searchParams.get('page') ?? 1);
+    const pageSize = Number(url.searchParams.get('pageSize') ?? 20);
+    return HttpResponse.json({ code: 0, message: 'success', data: { list: [], total: 0, page, pageSize } });
+  }),
+
+  http.delete(`${BASE}/tokens/:id`, () => {
+    return HttpResponse.json({ code: 0, message: '令牌已撤销', data: null });
+  }),
+
+  http.get(`${BASE}/:id/grants`, ({ params, request }) => {
+    const client = mockClients.find((item) => item.id === Number(params.id));
+    if (!client) return HttpResponse.json({ code: 404, message: '不存在', data: null }, { status: 404 });
+    const url = new URL(request.url);
+    const page = Number(url.searchParams.get('page') ?? 1);
+    const pageSize = Number(url.searchParams.get('pageSize') ?? 10);
+    const list = [{
+      id: 1,
+      userId: 1,
+      username: 'admin',
+      nickname: '系统管理员',
+      clientId: client.clientId,
+      scopes: client.allowedScopes.slice(0, 2),
+      createdAt: '2026-06-01 10:00:00',
+      updatedAt: '2026-06-01 10:00:00',
+    }];
+    return HttpResponse.json({ code: 0, message: 'success', data: { list, total: list.length, page, pageSize } });
+  }),
+
   // 创建
   http.post(BASE, async ({ request: req }) => {
     const body = await req.json() as Omit<OAuth2Client, 'id' | 'createdAt' | 'updatedAt' | 'clientId' | 'clientSecretPrefix' | 'ownerId'>;
@@ -157,15 +187,6 @@ export const oauth2AppsHandlers = [
     return HttpResponse.json({ code: 0, message: 'secret 已重置', data: { clientId: found.clientId, clientSecret } });
   }),
 
-  // 令牌列表（mock 空列表）
-  http.get(`${BASE}/tokens`, () => {
-    return HttpResponse.json({ code: 0, message: 'success', data: { list: [], total: 0, page: 1, pageSize: 20 } });
-  }),
-
-  // 撤销令牌
-  http.delete(`${BASE}/tokens/:id`, () => {
-    return HttpResponse.json({ code: 0, message: '令牌已撤销', data: null });
-  }),
 ];
 
 function randomHex(len: number) {

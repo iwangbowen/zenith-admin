@@ -14,6 +14,7 @@ import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import {
   openPlatformKeys,
+  useBatchRetryWebhookDeliveries,
   useDeleteWebhook,
   useOpenAppOptions,
   useRegenerateWebhookSecret,
@@ -74,6 +75,9 @@ export default function WebhooksPage() {
   const [drawerSub, setDrawerSub] = useState<AppWebhookSubscription | null>(null);
   const [deliveryPage, setDeliveryPage] = useState(1);
   const [detailDelivery, setDetailDelivery] = useState<AppWebhookDelivery | null>(null);
+  const [deliveryStatus, setDeliveryStatus] = useState<AppWebhookDelivery['status'] | undefined>();
+  const [deliveryEventType, setDeliveryEventType] = useState<string | undefined>();
+  const [selectedDeliveryIds, setSelectedDeliveryIds] = useState<number[]>([]);
 
   const listQuery = useWebhookList({
     page,
@@ -83,13 +87,20 @@ export default function WebhooksPage() {
     status: submittedParams.status,
   });
   const data = listQuery.data ?? null;
-  const deliveryQuery = useWebhookDeliveries({ subscriptionId: drawerSub?.id, page: deliveryPage, pageSize: 10 }, !!drawerSub);
+  const deliveryQuery = useWebhookDeliveries({
+    subscriptionId: drawerSub?.id,
+    page: deliveryPage,
+    pageSize: 10,
+    status: deliveryStatus,
+    eventType: deliveryEventType,
+  }, !!drawerSub);
   const deliveries = deliveryQuery.data ?? null;
   const saveMutation = useSaveWebhook();
   const deleteMutation = useDeleteWebhook();
   const regenerateMutation = useRegenerateWebhookSecret();
   const testMutation = useTestWebhook();
   const retryMutation = useRetryWebhookDelivery();
+  const batchRetryMutation = useBatchRetryWebhookDeliveries();
 
   function handleSearch() {
     setPage(1);
@@ -187,10 +198,18 @@ export default function WebhooksPage() {
   function openDeliveries(sub: AppWebhookSubscription) {
     setDrawerSub(sub);
     setDeliveryPage(1);
+    setDeliveryStatus(undefined);
+    setDeliveryEventType(undefined);
+    setSelectedDeliveryIds([]);
   }
   async function retryDelivery(id: number) {
     await retryMutation.mutateAsync(id);
     Toast.success('已触发重试');
+  }
+  async function batchRetryDeliveries() {
+    const result = await batchRetryMutation.mutateAsync(selectedDeliveryIds);
+    setSelectedDeliveryIds([]);
+    Toast.success(`已将 ${result.scheduled} 条投递加入重试队列`);
   }
 
   const columns: ColumnProps<AppWebhookSubscription>[] = [
@@ -323,6 +342,42 @@ export default function WebhooksPage() {
 
       {/* 投递日志抽屉 */}
       <SideSheet title={`投递日志 - ${drawerSub?.name ?? ''}`} visible={!!drawerSub} onCancel={() => setDrawerSub(null)} width={720}>
+        <SearchToolbar>
+          <Select
+            placeholder="投递状态"
+            value={deliveryStatus}
+            onChange={(value) => {
+              setDeliveryStatus(value as AppWebhookDelivery['status']);
+              setDeliveryPage(1);
+              setSelectedDeliveryIds([]);
+            }}
+            optionList={Object.entries(OPEN_WEBHOOK_DELIVERY_STATUS_LABELS).map(([value, label]) => ({ value, label }))}
+            showClear
+            style={{ width: 130 }}
+          />
+          <Select
+            placeholder="事件类型"
+            value={deliveryEventType}
+            onChange={(value) => {
+              setDeliveryEventType(value as string);
+              setDeliveryPage(1);
+              setSelectedDeliveryIds([]);
+            }}
+            optionList={eventOptions.map((event) => ({ value: event.code, label: event.label }))}
+            showClear
+            filter
+            style={{ width: 180 }}
+          />
+          {selectedDeliveryIds.length > 0 && canManage && (
+            <Button
+              type="primary"
+              loading={batchRetryMutation.isPending}
+              onClick={() => void batchRetryDeliveries()}
+            >
+              批量重试（{selectedDeliveryIds.length}）
+            </Button>
+          )}
+        </SearchToolbar>
         <ConfigurableTable
           bordered
           columns={deliveryColumns}
@@ -333,6 +388,11 @@ export default function WebhooksPage() {
           rowKey="id"
           size="small"
           empty="暂无投递记录"
+          rowSelection={{
+            selectedRowKeys: selectedDeliveryIds,
+            getCheckboxProps: (record: AppWebhookDelivery) => ({ disabled: record.status === 'success' }),
+            onChange: (keys) => setSelectedDeliveryIds((keys as number[]) ?? []),
+          }}
           pagination={{
             currentPage: deliveryPage,
             pageSize: 10,

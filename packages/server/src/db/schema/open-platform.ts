@@ -88,7 +88,10 @@ export const oauth2Tokens = pgTable('oauth2_tokens', {
   expiresAt: timestamp('expires_at'),
   revoked: boolean('revoked').notNull().default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => [
+  index('oauth2_tokens_client_idx').on(t.clientId),
+  index('oauth2_tokens_active_expiry_idx').on(t.revoked, t.expiresAt),
+]);
 
 export type OAuth2TokenRow = typeof oauth2Tokens.$inferSelect;
 
@@ -105,7 +108,10 @@ export const oauth2UserGrants = pgTable('oauth2_user_grants', {
   scopes: text('scopes').array().notNull().default([]),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
-}, (t) => [unique('oauth2_user_grants_user_client_unique').on(t.userId, t.clientId)]);
+}, (t) => [
+  unique('oauth2_user_grants_user_client_unique').on(t.userId, t.clientId),
+  index('oauth2_user_grants_client_idx').on(t.clientId),
+]);
 
 export type OAuth2UserGrantRow = typeof oauth2UserGrants.$inferSelect;
 
@@ -234,6 +240,8 @@ export const appWebhookSubscriptions = pgTable('app_webhook_subscriptions', {
   headers: jsonb('headers').$type<Record<string, string>>(),
   status: statusEnum('status').notNull().default('enabled'),
   lastDeliveryAt: timestamp('last_delivery_at', { withTimezone: true }),
+  consecutiveFailures: integer('consecutive_failures').notNull().default(0),
+  autoDisabledAt: timestamp('auto_disabled_at', { withTimezone: true }),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),

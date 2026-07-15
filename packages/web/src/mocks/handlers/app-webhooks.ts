@@ -22,11 +22,13 @@ export const appWebhooksHandlers = [
     const url = new URL(request.url);
     const subscriptionId = url.searchParams.get('subscriptionId');
     const status = url.searchParams.get('status');
+    const eventType = url.searchParams.get('eventType');
     const page = Number(url.searchParams.get('page') ?? 1);
     const pageSize = Number(url.searchParams.get('pageSize') ?? 10);
     let filtered = [...deliveries].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
     if (subscriptionId) filtered = filtered.filter((d) => d.subscriptionId === Number(subscriptionId));
     if (status) filtered = filtered.filter((d) => d.status === status);
+    if (eventType) filtered = filtered.filter((d) => d.eventType === eventType);
     const start = (page - 1) * pageSize;
     return ok({ list: filtered.slice(start, start + pageSize), total: filtered.length, page, pageSize });
   }),
@@ -45,6 +47,19 @@ export const appWebhooksHandlers = [
     d.nextRetryAt = null;
     d.finishedAt = mockDateTime();
     return ok({ deliveryId: d.id }, '已触发重试');
+  }),
+  http.post(`${BASE}/deliveries/batch-retry`, async ({ request }) => {
+    const body = await request.json() as { ids?: number[] };
+    const ids = new Set(body.ids ?? []);
+    let scheduled = 0;
+    for (const delivery of deliveries) {
+      if (ids.has(delivery.id) && delivery.status !== 'success') {
+        delivery.status = 'retrying';
+        delivery.nextRetryAt = mockDateTime();
+        scheduled += 1;
+      }
+    }
+    return ok({ scheduled }, '已加入重试队列');
   }),
 
   // 订阅 CRUD
@@ -80,6 +95,8 @@ export const appWebhooksHandlers = [
       hasSecret: signMode === 'hmacSha256',
       secretMasked: signMode === 'hmacSha256' ? '••••••••' : null,
       lastDeliveryAt: null,
+      consecutiveFailures: 0,
+      autoDisabledAt: null,
       createdAt: now,
       updatedAt: now,
     };

@@ -18,6 +18,7 @@ import {
   OAuth2ClientSecretDTO,
   OAuth2TokenListItemDTO,
   OAuth2AppOptionDTO,
+  OAuth2UserGrantDTO,
 } from '../../lib/openapi-dtos';
 import {
   listOAuth2Clients,
@@ -31,6 +32,7 @@ import {
   getOAuth2ClientBeforeAudit,
   getOAuth2TokenBeforeAudit,
   listAppOptions,
+  listClientGrants,
 } from '../../services/open-platform/oauth2-clients.service';
 import { createOAuth2ClientSchema, updateOAuth2ClientSchema } from '@zenith/shared';
 
@@ -45,6 +47,8 @@ const ClientKeywordQuery = PaginationQuery.extend({
 const TokenListQuery = PaginationQuery.extend({
   clientId: z.string(),
 });
+
+const GrantListQuery = PaginationQuery;
 
 // ─── 路由定义 ─────────────────────────────────────────────────────────────────
 
@@ -98,6 +102,25 @@ const detail = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...ok(OAuth2ClientListItemDTO, '应用详情') },
   }),
   handler: async (c) => c.json(okBody(await getOAuth2Client(c.req.valid('param').id)), 200),
+});
+
+const grants = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get',
+    path: '/{id}/grants',
+    tags: ['OAuth2Apps'],
+    summary: '获取应用的用户授权记录',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:oauth2-apps:view' })] as const,
+    request: { params: IdParam, query: GrantListQuery },
+    responses: { ...commonErrorResponses, ...okPaginated(OAuth2UserGrantDTO, '用户授权记录') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const { page, pageSize } = c.req.valid('query');
+    const client = await getOAuth2Client(id);
+    return c.json(okBody(await listClientGrants(client.clientId, { page, pageSize })), 200);
+  },
 });
 
 const update = defineOpenAPIRoute({
@@ -218,6 +241,6 @@ const options = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await listAppOptions()), 200),
 });
 
-router.openapiRoutes([list, options, create, detail, update, remove, regenerateSecret, tokens, revokeTokenRoute] as const);
+router.openapiRoutes([list, options, create, grants, detail, update, remove, regenerateSecret, tokens, revokeTokenRoute] as const);
 
 export default router;

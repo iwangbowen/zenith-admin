@@ -43,11 +43,15 @@ export interface WebhookDeliveryListParams {
   page: number;
   pageSize: number;
   subscriptionId?: number;
+  clientId?: string;
+  status?: AppWebhookDelivery['status'];
+  eventType?: string;
 }
 
 export interface OpenApiStatsRangeParams {
   startTime: string;
   endTime: string;
+  clientId?: string;
 }
 
 export interface OpenApiStatsTrendParams extends OpenApiStatsRangeParams {
@@ -57,6 +61,10 @@ export interface OpenApiStatsTrendParams extends OpenApiStatsRangeParams {
 export interface OpenApiLogListParams extends OpenApiStatsRangeParams {
   page: number;
   pageSize: number;
+  success?: boolean;
+  method?: string;
+  statusCode?: number;
+  keyword?: string;
 }
 
 export interface SignatureVerifyValues {
@@ -239,7 +247,15 @@ export function useWebhookDeliveries(params: WebhookDeliveryListParams, enabled 
     queryKey: openPlatformKeys.webhooks.deliveries(params),
     queryFn: () => request.get<PaginatedResponse<AppWebhookDelivery>>(`/api/app-webhooks/deliveries${toQueryString(params)}`).then(unwrap),
     placeholderData: keepPreviousData,
-    enabled: enabled && params.subscriptionId !== undefined,
+    enabled,
+  });
+}
+
+export function useBatchRetryWebhookDeliveries() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: number[]) => request.post<{ scheduled: number }>('/api/app-webhooks/deliveries/batch-retry', { ids }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: openPlatformKeys.webhooks.deliveriesLists }),
   });
 }
 

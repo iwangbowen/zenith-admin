@@ -6,40 +6,49 @@ import { formatDateTime, parseDateRangeStart, parseDateRangeEnd } from '../../li
 import { pageOffset } from '../../lib/pagination';
 import { escapeLike } from '../../lib/where-helpers';
 
-interface RangeInput {
+export interface OpenApiStatsRangeInput {
   startTime?: string;
   endTime?: string;
+  clientId?: string;
 }
 
-function rangeConditions(opts: RangeInput): SQL[] {
+function rangeConditions(opts: OpenApiStatsRangeInput): SQL[] {
   const conds: SQL[] = [];
   const start = parseDateRangeStart(opts.startTime);
   const end = parseDateRangeEnd(opts.endTime);
   if (start) conds.push(gte(openApiCallLogs.createdAt, start));
   if (end) conds.push(lte(openApiCallLogs.createdAt, end));
+  if (opts.clientId) conds.push(eq(openApiCallLogs.clientId, opts.clientId));
   return conds;
 }
 
 const successFilter = sql<number>`count(*) filter (where ${openApiCallLogs.success} = true)`;
 const avgDuration = sql<number>`coalesce(avg(${openApiCallLogs.durationMs}), 0)`;
+const p95Duration = sql<number>`coalesce(percentile_cont(0.95) within group (order by ${openApiCallLogs.durationMs}), 0)`;
+const p99Duration = sql<number>`coalesce(percentile_cont(0.99) within group (order by ${openApiCallLogs.durationMs}), 0)`;
 
-export async function getOpenApiStatsOverview(opts: RangeInput) {
+export async function getOpenApiStatsOverview(opts: OpenApiStatsRangeInput) {
   const conds = rangeConditions(opts);
   const where = conds.length ? and(...conds) : undefined;
 
   const todayStart = dayjs().startOf('day').toDate();
 
+  const todayWhere = opts.clientId
+    ? and(gte(openApiCallLogs.createdAt, todayStart), eq(openApiCallLogs.clientId, opts.clientId))
+    : gte(openApiCallLogs.createdAt, todayStart);
   const [agg, todayCalls] = await Promise.all([
     db
       .select({
         total: count(),
         success: successFilter,
         avg: avgDuration,
+        p95: p95Duration,
+        p99: p99Duration,
         apps: sql<number>`count(distinct ${openApiCallLogs.clientId})`,
       })
       .from(openApiCallLogs)
       .where(where),
-    db.$count(openApiCallLogs, gte(openApiCallLogs.createdAt, todayStart)),
+    db.$count(openApiCallLogs, todayWhere),
   ]);
 
   const total = Number(agg[0]?.total ?? 0);
@@ -51,12 +60,14 @@ export async function getOpenApiStatsOverview(opts: RangeInput) {
     failedCalls: failed,
     successRate: total > 0 ? Math.round((success / total) * 10000) / 100 : 0,
     avgDurationMs: Math.round(Number(agg[0]?.avg ?? 0)),
+    p95DurationMs: Math.round(Number(agg[0]?.p95 ?? 0)),
+    p99DurationMs: Math.round(Number(agg[0]?.p99 ?? 0)),
     activeApps: Number(agg[0]?.apps ?? 0),
     todayCalls: Number(todayCalls),
   };
 }
 
-export async function getOpenApiStatsTrend(opts: RangeInput & { granularity?: 'hour' | 'day' }) {
+export async function getOpenApiStatsTrend(opts: OpenApiStatsRangeInput & { granularity?: 'hour' | 'day' }) {
   const conds = rangeConditions(opts);
   const where = conds.length ? and(...conds) : undefined;
   const bucket =
@@ -78,7 +89,7 @@ export async function getOpenApiStatsTrend(opts: RangeInput & { granularity?: 'h
   });
 }
 
-async function groupBy(opts: RangeInput & { limit?: number }, column: typeof openApiCallLogs.clientId | typeof openApiCallLogs.path, withName: boolean) {
+async function groupBy(opts: OpenApiStatsRangeInput & { limit?: number }, column: typeof openApiCallLogs.clientId | typeof openApiCallLogs.path, withName: boolean) {
   const conds = rangeConditions(opts);
   const where = conds.length ? and(...conds) : undefined;
   const limit = opts.limit ?? 10;
@@ -108,32 +119,38 @@ async function groupBy(opts: RangeInput & { limit?: number }, column: typeof ope
   });
 }
 
-export function getOpenApiStatsByApp(opts: RangeInput & { limit?: number }) {
+export function getOpenApiStatsByApp(opts: OpenApiStatsRangeInput & { limit?: number }) {
   return groupBy(opts, openApiCallLogs.clientId, true);
 }
 
-export function getOpenApiStatsByEndpoint(opts: RangeInput & { limit?: number }) {
+export function getOpenApiStatsByEndpoint(opts: OpenApiStatsRangeInput & { limit?: number }) {
   return groupBy(opts, openApiCallLogs.path, false);
 }
 
-export async function listOpenApiCallLogs(opts: {
+export interface OpenApiCallLogQuery extends OpenApiStatsRangeInput {
   page: number;
   pageSize: number;
-  clientId?: string;
   success?: boolean;
+  method?: string;
+  statusCode?: number;
   keyword?: string;
-  startTime?: string;
-  endTime?: string;
-}) {
-  const { page, pageSize, clientId, success, keyword } = opts;
+}
+
+export function buildOpenApiCallLogWhere(opts: Omit<OpenApiCallLogQuery, 'page' | 'pageSize'>): SQL | undefined {
   const conds = rangeConditions(opts);
-  if (clientId) conds.push(eq(openApiCallLogs.clientId, clientId));
-  if (typeof success === 'boolean') conds.push(eq(openApiCallLogs.success, success));
-  if (keyword) {
-    const kw = `%${escapeLike(keyword)}%`;
+  if (typeof opts.success === 'boolean') conds.push(eq(openApiCallLogs.success, opts.success));
+  if (opts.method) conds.push(eq(openApiCallLogs.method, opts.method.toUpperCase()));
+  if (opts.statusCode !== undefined) conds.push(eq(openApiCallLogs.statusCode, opts.statusCode));
+  if (opts.keyword) {
+    const kw = `%${escapeLike(opts.keyword)}%`;
     conds.push(or(ilike(openApiCallLogs.path, kw), ilike(openApiCallLogs.appName, kw)) as SQL);
   }
-  const where = conds.length ? and(...conds) : undefined;
+  return conds.length ? and(...conds) : undefined;
+}
+
+export async function listOpenApiCallLogs(opts: OpenApiCallLogQuery) {
+  const { page, pageSize } = opts;
+  const where = buildOpenApiCallLogWhere(opts);
 
   const [list, total] = await Promise.all([
     db

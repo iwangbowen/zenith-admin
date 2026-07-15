@@ -46,6 +46,7 @@ const DashboardDesignerPage = React.lazy(() => import('@/pages/report/designer/D
 const PrintDesignerPage = React.lazy(() => import('@/pages/report/designer/PrintDesignerPage'));
 const DashboardViewPage = React.lazy(() => import('@/pages/report/DashboardViewPage'));
 const FillEntryPage = React.lazy(() => import('@/pages/report/FillEntryPage'));
+const OAuth2AppDetailPage = React.lazy(() => import('@/pages/open-platform/apps/OAuth2AppDetailPage'));
 
 const routeFallback = <div style={{ padding: 24 }}><span className="page-loading__dot" style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: 'var(--semi-color-primary)' }} /></div>;
 
@@ -249,6 +250,7 @@ function AdminRouteLoader({ user, permissions, logout, updateUser }: Readonly<Ad
         <Route path="system/ssl-certificates" element={<Suspense fallback={routeFallback}><SslCertificatesPage /></Suspense>} />
         <Route path="system/firewall" element={permissions.includes('*') || permissions.includes('system:firewall:view') ? <Suspense fallback={routeFallback}><FirewallPage /></Suspense> : <Suspense fallback={routeFallback}><ForbiddenPage /></Suspense>} />
         <Route path="system/nginx-sites" element={permissions.includes('*') || permissions.includes('system:nginx:view') ? <Suspense fallback={routeFallback}><NginxSitesPage /></Suspense> : <Suspense fallback={routeFallback}><ForbiddenPage /></Suspense>} />
+        <Route path="system/oauth2-apps/:id" element={permissions.includes('*') || permissions.includes('system:oauth2-apps:view') ? <Suspense fallback={routeFallback}><OAuth2AppDetailPage /></Suspense> : <Suspense fallback={routeFallback}><ForbiddenPage /></Suspense>} />
         <Route path="users" element={<Navigate to="/system/users" replace />} />
         <Route path="forbidden" element={<Suspense fallback={routeFallback}><ForbiddenPage /></Suspense>} />
 

@@ -38,6 +38,7 @@ import { reportDqRunsExportDefinition } from './report-dq-runs';
 import { reportQueryCostsExportDefinition } from './report-query-costs';
 import { reportAssetsExportDefinition } from './report-assets';
 import { reportFillRecordsExportDefinition } from './report-fill-records';
+import { openApiCallLogsExportDefinition } from './open-api-call-logs';
 
 let registered = false;
 
@@ -81,6 +82,7 @@ const definitions = [
   reportQueryCostsExportDefinition,
   reportAssetsExportDefinition,
   reportFillRecordsExportDefinition,
+  openApiCallLogsExportDefinition,
 ] as unknown as AnyExportDefinition[];
 
 export function registerExportDefinitions(): void {

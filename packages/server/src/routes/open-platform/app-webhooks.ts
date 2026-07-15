@@ -10,6 +10,7 @@ import {
   okPaginated,
   IdParam,
   PaginationQuery,
+  BatchIdsBody,
   okBody,
 } from '../../lib/openapi-schemas';
 import {
@@ -17,6 +18,7 @@ import {
   AppWebhookSubscriptionCreatedDTO,
   AppWebhookDeliveryDTO,
   OpenWebhookEventMetaDTO,
+  AppWebhookBatchRetryResultDTO,
 } from '../../lib/openapi-dtos';
 import { createAppWebhookSchema, updateAppWebhookSchema } from '@zenith/shared';
 import {
@@ -32,6 +34,7 @@ import {
   retryDelivery,
   testSubscription,
   listWebhookEvents,
+  scheduleBatchRetryDeliveries,
 } from '../../services/open-platform/app-webhooks.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -42,10 +45,22 @@ const ListQuery = PaginationQuery.extend({
   keyword: z.string().optional(),
 });
 
+const deliveryBatchRetry = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/deliveries/batch-retry', tags: ['AppWebhooks'], summary: '批量重试失败投递',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'open:webhook:manage', audit: { description: '批量重试 Webhook 投递', module: '开放平台-Webhook' } })] as const,
+    request: { body: { content: jsonContent(BatchIdsBody), required: true } },
+    responses: { ...commonErrorResponses, ...ok(AppWebhookBatchRetryResultDTO, '已加入重试队列') },
+  }),
+  handler: async (c) => c.json(okBody(await scheduleBatchRetryDeliveries(c.req.valid('json').ids), '已加入重试队列'), 200),
+});
+
 const DeliveryListQuery = PaginationQuery.extend({
   subscriptionId: z.coerce.number().int().optional(),
   clientId: z.string().optional(),
   status: z.enum(['pending', 'success', 'failed', 'retrying']).optional(),
+  eventType: z.string().optional(),
 });
 
 const SecretResultDTO = z.object({ id: z.number().int(), secret: z.string() }).openapi('AppWebhookSecretResult');
@@ -193,7 +208,7 @@ const remove = defineOpenAPIRoute({
 });
 
 router.openapiRoutes([
-  list, events, deliveryList, deliveryDetail, deliveryRetry,
+  list, events, deliveryList, deliveryBatchRetry, deliveryDetail, deliveryRetry,
   create, detail, update, regenerate, test, remove,
 ] as const);
 
