@@ -56,7 +56,12 @@ export const userApiTokens = pgTable('user_api_tokens', {
   id: serial('id').primaryKey(),
   userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   name: varchar('name', { length: 64 }).notNull(),
-  token: varchar('token', { length: 128 }).notNull().unique(),
+  /**
+   * SHA-256 digest of the bearer token. Nullable only so the migration can
+   * invalidate legacy plaintext rows without retaining their secret value.
+   */
+  tokenHash: varchar('token_hash', { length: 64 }).unique(),
+  tokenPrefix: varchar('token_prefix', { length: 20 }),
   lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   ...auditColumns(),

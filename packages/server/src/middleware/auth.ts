@@ -1,10 +1,11 @@
+import { createHash } from 'node:crypto';
 import { createMiddleware } from 'hono/factory';
 import { jwt, type JwtVariables } from 'hono/jwt';
 import { isTokenBlacklisted, touchSession, registerSession } from '../lib/session-manager';
 import { getClientIp, parseUserAgent } from '../lib/request-helpers';
 import { db } from '../db';
-import { users } from '../db/schema';
-import { eq } from 'drizzle-orm';
+import { userApiTokens, users } from '../db/schema';
+import { and, eq, gt, isNull, lt, or } from 'drizzle-orm';
 import { config } from '../config';
 import { errBody } from '../lib/openapi-schemas';
 import logger from '../lib/logger';
@@ -17,6 +18,8 @@ export interface JwtPayload {
   /** 超管切换租户视角时，存放目标租户 ID */
   viewingTenantId?: number | null;
   jti?: string;
+  authType?: 'jwt' | 'apiToken';
+  apiTokenId?: number;
 }
 
 /** Hono Env 类型——声明 Variables 中的 user 字段类型，供中间件消费方推断 */
@@ -33,6 +36,70 @@ const jwtMiddleware = jwt({
   alg: 'HS256',
 });
 
+const API_TOKEN_PREFIX = 'zat_';
+const API_TOKEN_LAST_USED_THROTTLE_MS = 5 * 60_000;
+
+async function authenticateApiToken(rawToken: string): Promise<JwtPayload | null> {
+  const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+  const row = await db.query.userApiTokens.findFirst({
+    where: and(
+      eq(userApiTokens.tokenHash, tokenHash),
+      or(isNull(userApiTokens.expiresAt), gt(userApiTokens.expiresAt, new Date())),
+    ),
+    columns: {
+      id: true,
+      lastUsedAt: true,
+    },
+    with: {
+      user: {
+        columns: {
+          id: true,
+          username: true,
+          tenantId: true,
+          status: true,
+        },
+        with: {
+          userRoles: {
+            columns: {},
+            with: {
+              role: {
+                columns: {
+                  code: true,
+                  status: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!row || row.user.status !== 'enabled') return null;
+
+  const cutoff = new Date(Date.now() - API_TOKEN_LAST_USED_THROTTLE_MS);
+  if (!row.lastUsedAt || row.lastUsedAt < cutoff) {
+    db.update(userApiTokens)
+      .set({ lastUsedAt: new Date() })
+      .where(and(
+        eq(userApiTokens.id, row.id),
+        or(isNull(userApiTokens.lastUsedAt), lt(userApiTokens.lastUsedAt, cutoff)),
+      ))
+      .catch((err) => logger.warn('[Auth] API token last-used update failed:', err));
+  }
+
+  return {
+    userId: row.user.id,
+    username: row.user.username,
+    roles: row.user.userRoles
+      .filter(({ role }) => role.status === 'enabled')
+      .map(({ role }) => role.code),
+    tenantId: row.user.tenantId ?? null,
+    authType: 'apiToken',
+    apiTokenId: row.id,
+  };
+}
+
 export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
   const authorization = c.req.header('Authorization');
   if (!authorization?.startsWith('Bearer ')) {
@@ -40,6 +107,15 @@ export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
   }
 
   try {
+    const rawToken = authorization.slice('Bearer '.length);
+    if (rawToken.startsWith(API_TOKEN_PREFIX)) {
+      const payload = await authenticateApiToken(rawToken);
+      if (!payload) return c.json(errBody('API Token 无效或已过期', 401), 401);
+      c.set('user', payload);
+      await next();
+      return;
+    }
+
     // Delegate signature and claims verification to Hono's official JWT middleware.
     await jwtMiddleware(c, async () => {});
     const payload = c.get('jwtPayload') as JwtPayload;

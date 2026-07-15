@@ -1,5 +1,5 @@
 import { randomBytes, createHmac, randomUUID } from 'node:crypto';
-import { eq, and, or, desc, ilike, lte, type SQL } from 'drizzle-orm';
+import { eq, and, or, desc, ilike, isNull, lte, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { appWebhookSubscriptions, appWebhookDeliveries, oauth2Clients } from '../../db/schema';
 import type { AppWebhookSubscriptionRow, AppWebhookDeliveryRow } from '../../db/schema';
@@ -11,10 +11,13 @@ import { encryptField, decryptField } from '../../lib/encryption';
 import { httpPost } from '../../lib/http-client';
 import logger from '../../lib/logger';
 import { openEventBus } from '../../lib/open-event-bus';
+import { mapWithConcurrency } from '../../lib/concurrency';
 import { OPEN_WEBHOOK_SIGNATURE_HEADER, OPEN_WEBHOOK_RETRY_STAGES_MINUTES, OPEN_WEBHOOK_EVENTS, OPEN_WEBHOOK_EVENT_LABELS } from '@zenith/shared';
 import type { CreateAppWebhookInput, UpdateAppWebhookInput } from '@zenith/shared';
 
 const TIMEOUT_MS = 10_000;
+const PENDING_RECOVERY_AFTER_MS = 2 * 60_000;
+const RETRY_CONCURRENCY = 10;
 
 /** 可订阅的事件类型元数据（供订阅界面选择） */
 export function listWebhookEvents() {
@@ -357,13 +360,24 @@ export function registerOpenWebhookSubscriber(): void {
 
 /** 由定时任务调用：扫描到期重试的投递并触发派发 */
 export async function retryAppWebhookDeliveries(): Promise<{ retried: number }> {
+  const now = new Date();
+  const pendingCutoff = new Date(now.getTime() - PENDING_RECOVERY_AFTER_MS);
   const rows = await db.select().from(appWebhookDeliveries)
-    .where(and(eq(appWebhookDeliveries.status, 'retrying'), lte(appWebhookDeliveries.nextRetryAt, new Date())))
+    .where(or(
+      and(
+        eq(appWebhookDeliveries.status, 'retrying'),
+        lte(appWebhookDeliveries.nextRetryAt, now),
+      ),
+      and(
+        eq(appWebhookDeliveries.status, 'pending'),
+        lte(appWebhookDeliveries.createdAt, pendingCutoff),
+        or(
+          isNull(appWebhookDeliveries.startedAt),
+          lte(appWebhookDeliveries.startedAt, pendingCutoff),
+        ),
+      ),
+    ))
     .limit(100);
-  for (const row of rows) {
-    queueMicrotask(() => {
-      dispatchDelivery(row.id).catch((err) => logger.error('[app-webhook] retry dispatch failed', { deliveryId: row.id, err }));
-    });
-  }
+  await mapWithConcurrency(rows, RETRY_CONCURRENCY, async (row) => dispatchDelivery(row.id));
   return { retried: rows.length };
 }

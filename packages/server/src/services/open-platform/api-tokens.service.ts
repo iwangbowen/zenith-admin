@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { eq, and, desc } from 'drizzle-orm';
 import { db } from '../../db';
 import { userApiTokens } from '../../db/schema';
@@ -12,7 +12,7 @@ export async function listApiTokens() {
   return rows.map((r) => ({
     id: r.id,
     name: r.name,
-    tokenPrefix: `${r.token.slice(0, 12)}...`,
+    tokenPrefix: r.tokenPrefix ?? '已失效（旧版）',
     lastUsedAt: formatNullableDateTime(r.lastUsedAt),
     expiresAt: formatNullableDateTime(r.expiresAt),
     createdAt: formatDateTime(r.createdAt),
@@ -25,10 +25,12 @@ export async function createApiToken(input: { name: string; expiresAt?: string }
   const existingCount = await db.$count(userApiTokens, eq(userApiTokens.userId, user.userId));
   if (existingCount >= 20) throw new HTTPException(400, { message: '最多只能创建 20 个 API Token' });
   const token = `zat_${randomBytes(24).toString('hex')}`;
+  const tokenHash = createHash('sha256').update(token).digest('hex');
   const [row] = await db.insert(userApiTokens).values({
     userId: user.userId,
     name: input.name.trim(),
-    token,
+    tokenHash,
+    tokenPrefix: `${token.slice(0, 12)}...`,
     expiresAt: parseDateTimeInput(input.expiresAt),
   }).returning();
   return { id: row.id, name: row.name, token, createdAt: formatDateTime(row.createdAt) };

@@ -1,7 +1,13 @@
 import { randomBytes, createHash, randomUUID } from 'node:crypto';
 import { eq, desc, ilike } from 'drizzle-orm';
 import { db } from '../../db';
-import { oauth2Clients, oauth2Tokens } from '../../db/schema';
+import {
+  appWebhookSubscriptions,
+  oauth2AuthorizationCodes,
+  oauth2Clients,
+  oauth2Tokens,
+  oauth2UserGrants,
+} from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { HTTPException } from 'hono/http-exception';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
@@ -199,8 +205,21 @@ export async function updateOAuth2Client(id: number, input: {
 }
 
 export async function deleteOAuth2Client(id: number) {
-  const result = await db.delete(oauth2Clients).where(eq(oauth2Clients.id, id)).returning();
-  if (result.length === 0) throw new HTTPException(404, { message: 'OAuth2 应用不存在' });
+  const existing = await getOAuth2Client(id);
+  await db.transaction(async (tx) => {
+    await tx.update(oauth2Tokens)
+      .set({ revoked: true })
+      .where(eq(oauth2Tokens.clientId, existing.clientId));
+    await tx.delete(oauth2AuthorizationCodes)
+      .where(eq(oauth2AuthorizationCodes.clientId, existing.clientId));
+    await tx.delete(oauth2UserGrants)
+      .where(eq(oauth2UserGrants.clientId, existing.clientId));
+    await tx.update(appWebhookSubscriptions)
+      .set({ status: 'disabled' })
+      .where(eq(appWebhookSubscriptions.clientId, existing.clientId));
+    const result = await tx.delete(oauth2Clients).where(eq(oauth2Clients.id, id)).returning();
+    if (result.length === 0) throw new HTTPException(404, { message: 'OAuth2 应用不存在' });
+  });
 }
 
 export async function regenerateOAuth2ClientSecret(id: number) {
@@ -209,11 +228,16 @@ export async function regenerateOAuth2ClientSecret(id: number) {
   if (existing.isPublic) throw new HTTPException(400, { message: '公开客户端不使用 secret' });
 
   const sec = generateClientSecret();
-  await db.update(oauth2Clients).set({
-    clientSecretHash: sec.hash,
-    clientSecretEncrypted: encryptField(sec.raw),
-    clientSecretPrefix: sec.prefix,
-  }).where(eq(oauth2Clients.id, id));
+  await db.transaction(async (tx) => {
+    await tx.update(oauth2Clients).set({
+      clientSecretHash: sec.hash,
+      clientSecretEncrypted: encryptField(sec.raw),
+      clientSecretPrefix: sec.prefix,
+    }).where(eq(oauth2Clients.id, id));
+    await tx.update(oauth2Tokens)
+      .set({ revoked: true })
+      .where(eq(oauth2Tokens.clientId, existing.clientId));
+  });
 
   return { clientId: existing.clientId, clientSecret: sec.raw };
 }

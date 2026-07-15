@@ -414,6 +414,13 @@
       "when": 1784036998534,
       "tag": "0058_stormy_sunspot",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1784123949807,
+      "tag": "0059_open-platform-p0-security",
+      "breakpoints": true
     }
   ]
 }
