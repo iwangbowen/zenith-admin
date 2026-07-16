@@ -384,7 +384,7 @@ export async function submitDraftInstance(id: number, input: { selectedInitiator
   const validation = validateFlowData(flowData);
   if (!validation.valid) throw new HTTPException(400, { message: validation.errors[0] });
   const formData = sanitizeFormByStartPerms(flowData, (inst.formData ?? {}) as Record<string, unknown>);
-  assertLaunchMatchesFormType(def, { bizType: inst.bizType, bizId: inst.bizId });
+  assertLaunchMatchesFormType(def, { bizType: inst.bizType, bizId: inst.bizId, formData: (inst.formData ?? {}) as Record<string, unknown> });
   const resolvedFormSnapshot = await resolveFormSnapshot(def.formId);
   const formSnapshot = buildInstanceFormSnapshot(def, resolvedFormSnapshot);
   const starter = await buildStarterContext(user.userId);

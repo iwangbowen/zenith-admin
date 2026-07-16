@@ -232,9 +232,40 @@ function mapDefinitionSnapshot(snapshot: unknown, formSnapshot: unknown) {
   };
 }
 
+/**
+ * external 发起软校验：节点按 formUser/formDepartment 解析审批人、且未显式配置
+ * 空审批人兜底策略（emptyStrategy 缺省时静默 autoApprove）时，对应路由变量缺失
+ * 会导致节点被无声跳过——阻断发起并给集成方明确报错，避免上线后才暴露。
+ */
+function ensureExternalRoutingVariables(
+  def: typeof workflowDefinitions.$inferSelect,
+  formData: Record<string, unknown>,
+): void {
+  const flowData = def.flowData as WorkflowFlowData | null;
+  const missing: string[] = [];
+  for (const node of flowData?.nodes ?? []) {
+    const d = node.data;
+    if (!d || d.emptyStrategy) continue;
+    let key: string | null = null;
+    if (d.assigneeType === 'formUser') key = d.formUserField?.trim() || null;
+    else if (d.assigneeType === 'formDepartment') key = d.formDeptField?.trim() || null;
+    if (!key) continue;
+    const v = formData[key];
+    const empty = v == null || v === '' || (Array.isArray(v) && v.length === 0);
+    if (empty) missing.push(`节点「${d.label || d.key}」需要变量 ${key}`);
+  }
+  if (missing.length > 0) {
+    const head = missing.slice(0, 3).join('；');
+    const suffix = missing.length > 3 ? ` 等 ${missing.length} 处` : '';
+    throw new HTTPException(400, {
+      message: `业务系统主导流程缺少审批人路由变量：${head}${suffix}。请在 startWorkflowForBiz 的 variables 中传入，或为节点配置空审批人兜底策略`,
+    });
+  }
+}
+
 export function assertLaunchMatchesFormType(
   def: typeof workflowDefinitions.$inferSelect,
-  data: { bizType?: string | null; bizId?: string | null; asDraft?: boolean },
+  data: { bizType?: string | null; bizId?: string | null; asDraft?: boolean; formData?: Record<string, unknown> | null },
 ): void {
   const formType = (def.formType ?? 'designer') as WorkflowFormType;
   const hasBizKey = !!data.bizType?.trim() || !!data.bizId?.trim();
@@ -249,6 +280,7 @@ export function assertLaunchMatchesFormType(
     if (!cf?.viewComponent?.trim()) {
       throw new HTTPException(400, { message: '业务系统主导流程缺少审批查看页组件配置' });
     }
+    ensureExternalRoutingVariables(def, data.formData ?? {});
     return;
   }
   if (hasBizKey) {

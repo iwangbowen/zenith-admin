@@ -8,6 +8,7 @@ import { ArrowLeft, Download, Eye, History, Minus, Play, Plus, Redo2, RotateCcw,
 import type { WorkflowDefinition, WorkflowDefinitionSnapshot, WorkflowFlowData, WorkflowFormField, WorkflowFormType, WorkflowCustomFormConfig, WorkflowDefinitionHealthIssue } from '@zenith/shared';
 import { WORKFLOW_FORM_TYPES, WORKFLOW_FORM_TYPE_LABELS, resolveApproverDedupMode } from '@zenith/shared';
 import { downloadBlob } from '@/utils/download';
+import { hasPageComponent } from '@/utils/page-registry';
 
 import WorkflowVersionsSheet from '../components/WorkflowVersionsSheet';
 
@@ -40,7 +41,7 @@ import NodeConfigDrawer from './components/NodeConfigDrawer';
 import ConditionEditor from './components/ConditionEditor';
 import RouteBranchEditor, { type RouteBranchEditorUpdates } from './components/RouteBranchEditor';
 import FormSelectorPanel from './components/FormSelectorPanel';
-import CustomFormConfigPanel from './components/CustomFormConfigPanel';
+import CustomFormConfigPanel, { validateCustomFormVariables } from './components/CustomFormConfigPanel';
 import FormPreview from './components/FormPreview';
 import WorkflowFormRenderer from './components/WorkflowFormRenderer';
 import BasicInfoPanel from './components/BasicInfoPanel';
@@ -505,6 +506,31 @@ export default function WorkflowDesignerPage({
     await doSave(buildCurrentMeta());
   };
 
+  /**
+   * 发布前业务表单配置 gate（客户端专属：组件路径存在性只有前端 page-registry 可判定）：
+   * custom 必须有可解析的创建组件；external 必须有可解析的查看组件；变量声明 key 完整合法。
+   */
+  const validateBusinessFormBeforePublish = (): boolean => {
+    if (formType !== 'custom' && formType !== 'external') return true;
+    const fail = (msg: string) => {
+      Toast.warning(msg);
+      setCurrentStep(2);
+      return false;
+    };
+    const varError = validateCustomFormVariables(customForm?.variables, { requireKey: true });
+    if (varError) return fail(`变量声明不完整：${varError}`);
+    const createPath = customForm?.createComponent?.trim() ?? '';
+    const viewPath = customForm?.viewComponent?.trim() ?? '';
+    if (formType === 'custom') {
+      if (!createPath) return fail('请先在「表单」步骤配置创建/填写页组件路径');
+      if (!hasPageComponent(createPath)) return fail(`未找到创建页组件「${createPath}」，请确认已在 src/pages 下创建`);
+    } else {
+      if (!viewPath) return fail('请先在「表单」步骤配置审批查看页组件路径');
+    }
+    if (viewPath && !hasPageComponent(viewPath)) return fail(`未找到查看页组件「${viewPath}」，请确认已在 src/pages 下创建`);
+    return true;
+  };
+
   const doSave = async (meta: {
     name: string;
     description?: string | null;
@@ -543,7 +569,7 @@ export default function WorkflowDesignerPage({
   };
 
   const handlePublish = async () => {
-    if (isNew || !id || !validateBeforeSave()) return;
+    if (isNew || !id || !validateBeforeSave() || !validateBusinessFormBeforePublish()) return;
     try {
       // 发布前 gate：存在严重问题则阻断，引导去修复 / 打开流程体检
       const criticals = await fetchCriticalIssues();
@@ -623,6 +649,30 @@ export default function WorkflowDesignerPage({
     if (field === 'name') setMetaName(value);
     if (field === 'description') setMetaDesc(value);
   }, []);
+
+  /**
+   * 切换表单类型：已有实质配置时弹确认——保存后另一族配置会被清空
+   * （designer↔业务表单互斥存储），且流程中引用原字段/变量的分支条件、
+   * 审批人与字段权限可能失效。custom↔external 共用 customForm，不提示。
+   */
+  const handleFormTypeChange = (next: WorkflowFormType) => {
+    if (next === formType) return;
+    const isBusiness = (t: WorkflowFormType) => t === 'custom' || t === 'external';
+    const sameFamily = isBusiness(formType) && isBusiness(next);
+    const leavingDesignerWithForm = formType === 'designer' && (formId != null || localFormFields.length > 0);
+    const leavingBusinessWithConfig = isBusiness(formType) && !sameFamily
+      && !!(customForm?.createComponent?.trim() || customForm?.viewComponent?.trim() || (customForm?.variables?.length ?? 0) > 0);
+    if (leavingDesignerWithForm || leavingBusinessWithConfig) {
+      Modal.confirm({
+        title: `切换为「${WORKFLOW_FORM_TYPE_LABELS[next]}」？`,
+        content: '切换并保存后，原表单绑定/业务表单配置将被清空；流程中基于原字段（变量）的分支条件、审批人和字段权限可能失效，请在「流程设计」步骤重新检查。',
+        okText: '切换',
+        onOk: () => setFormType(next),
+      });
+      return;
+    }
+    setFormType(next);
+  };
 
   // ─── 渲染 ─────────────────────────────────────────────────────────
 
@@ -752,7 +802,7 @@ export default function WorkflowDesignerPage({
               type="button"
               value={formType}
               disabled={readOnly}
-              onChange={(e) => setFormType((e.target as HTMLInputElement).value as WorkflowFormType)}
+              onChange={(e) => handleFormTypeChange((e.target as HTMLInputElement).value as WorkflowFormType)}
             >
               {WORKFLOW_FORM_TYPES.map((t) => (
                 <Radio key={t} value={t}>{WORKFLOW_FORM_TYPE_LABELS[t]}</Radio>
