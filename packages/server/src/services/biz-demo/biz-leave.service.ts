@@ -14,6 +14,7 @@ import { bizLeaves, users, workflowDefinitions, workflowInstances, workflowTasks
 import { currentUser } from '../../lib/context';
 import { formatDate, formatDateTime, parseDateRangeStart } from '../../lib/datetime';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
+import { isSuperAdmin, getUserPermissions } from '../../lib/permissions';
 import { escapeLike } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
 import { startWorkflowForBiz } from '../../lib/workflow-biz-bridge';
@@ -131,7 +132,9 @@ export async function getBizLeave(id: number) {
 }
 
 /**
- * 供工作流参与者（审批人等）读取请假详情：申请人本人，或在关联流程实例上有任务的人可见。
+ * 供工作流参与者（审批人等）读取请假详情：申请人本人、关联流程实例上有任务的人
+ * （审批/办理/抄送任务均计入）、流程监控管理员（workflow:instance:monitor）与超管可见。
+ * 与 business-integration.md 的业务详情读取契约、实例详情权限口径保持一致。
  * 用于自定义业务表单 view 组件在审批场景按 bizId 拉取业务数据。
  */
 export async function getBizLeaveDetail(id: number) {
@@ -146,6 +149,9 @@ export async function getBizLeaveDetail(id: number) {
       .where(and(eq(workflowTasks.instanceId, row.workflowInstanceId), eq(workflowTasks.assigneeId, user.userId)))
       .limit(1);
     allowed = !!task;
+  }
+  if (!allowed) {
+    allowed = isSuperAdmin(user) || (await getUserPermissions(user.userId)).includes('workflow:instance:monitor');
   }
   if (!allowed) throw new HTTPException(403, { message: '无权查看该请假单' });
   const nameMap = await buildApplicantNameMap([row.createdBy]);
