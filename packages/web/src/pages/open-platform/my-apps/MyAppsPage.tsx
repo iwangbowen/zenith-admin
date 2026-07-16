@@ -205,7 +205,7 @@ export default function MyAppsPage() {
         </Tag>
       ),
     },
-    { title: 'Scope', dataIndex: 'allowedScopes', render: (values: string[]) => <Space wrap>{values.map((value) => <Tag key={value} size="small">{value}</Tag>)}</Space> },
+    { title: 'Scope', dataIndex: 'allowedScopes', width: 280, render: (values: string[]) => <Space wrap>{values.map((value) => <Tag key={value} size="small">{value}</Tag>)}</Space> },
     { title: '创建时间', dataIndex: 'createdAt', width: 170 },
     {
       title: '状态',
