@@ -32,7 +32,7 @@ import { INSTANCE_STATUS_MAP } from '@/components/workflow/workflow-runtime';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { renderEllipsis } from '../../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
-import { normalizeWorkflowFormSnapshot } from '@/utils/workflow-snapshot';
+import { normalizeWorkflowFormSnapshot, resolveWorkflowFormType } from '@/utils/workflow-snapshot';
 import WorkflowSummaryLine from '@/components/workflow/WorkflowSummaryLine';
 import { useAllUsers } from '@/hooks/queries/users';
 import { useWorkflowInstanceWithDefinition } from '@/hooks/queries/workflow-shared';
@@ -530,6 +530,22 @@ export default function MyApplicationsPage() {
     Toast.success('申请已提交');
   };
 
+  /**
+   * 草稿「提交」入口分流：designer 草稿由服务端按表单快照全量校验兜底，可直接提交；
+   * custom 业务表单的校验只存在于业务组件 validate()，直接提交会绕过 —— 引导到编辑抽屉走校验后提交。
+   */
+  const handleSubmitDraftAction = (record: WorkflowInstance) => {
+    if (resolveWorkflowFormType(record) === 'custom') {
+      Toast.info('自定义业务表单草稿需在编辑页中校验后提交');
+      void openEditDraft(record);
+      return;
+    }
+    Modal.confirm({
+      title: '确定要提交此草稿吗？',
+      onOk: () => handleDirectSubmitDraft(record.id),
+    });
+  };
+
   const handleDeleteDraft = async (id: number) => {
     await deleteMutation.mutateAsync(id);
     Toast.success('已删除');
@@ -654,12 +670,7 @@ export default function MyApplicationsPage() {
           key: 'submit-draft',
           label: '提交',
           hidden: record.status !== 'draft',
-          onClick: () => {
-            Modal.confirm({
-              title: '确定要提交此草稿吗？',
-              onOk: () => handleDirectSubmitDraft(record.id),
-            });
-          },
+          onClick: () => handleSubmitDraftAction(record),
         },
         {
           key: 'delete-draft',
