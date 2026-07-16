@@ -14,9 +14,11 @@ import { uploadedFileToAttachment } from '@/components/FileAttachment/utils';
 import SignaturePad from '@/components/SignaturePad';
 import { UserAvatar } from '@/components/UserAvatar';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
+import BusinessFormHost from '@/components/workflow/BusinessFormHost';
 import WorkflowPriorityTag from '@/components/workflow/WorkflowPriorityTag';
 import { linearizeApprovalNodes } from '@/components/workflow/workflow-runtime';
 import {
+  resolveWorkflowCustomForm,
   resolveWorkflowDetailDefinition,
   resolveWorkflowFlowData,
   resolveWorkflowFormFields,
@@ -137,7 +139,8 @@ export default function TaskDetailPage() {
     () => applyFieldPermissionsToFields(formFields, currentTask ? viewerPerms : null),
     [formFields, viewerPerms, currentTask],
   );
-  const formEditable = actionable && hasEditableFieldPermission(viewerPerms);
+  // 移动端仅 designer 表单支持审批时编辑；业务表单（custom/external）恒只读查看
+  const formEditable = actionable && formType === 'designer' && hasEditableFieldPermission(viewerPerms);
 
   const btnApprove = resolveBtn(currentTask?.actionButtons ?? null, 'approve');
   const btnReject = resolveBtn(currentTask?.actionButtons ?? null, 'reject');
@@ -258,8 +261,22 @@ export default function TaskDetailPage() {
   };
 
   const renderForm = () => {
+    // 业务表单（custom/external）：移动端以只读模式渲染业务查看组件
+    // （数据编辑/发起仍在桌面端或业务模块），组件缺失时宿主内置 Empty 兜底
     if (formType !== 'designer') {
-      return <Banner type="info" closeIcon={null} description="该流程使用业务自定义表单，请到桌面端查看表单内容。" />;
+      return (
+        <BusinessFormHost
+          customForm={resolveWorkflowCustomForm(detail, def)}
+          mode="view"
+          container="sheet"
+          definitionId={detail?.definitionId ?? 0}
+          instanceId={detail?.id ?? null}
+          value={(detail?.formData as Record<string, unknown>) ?? {}}
+          bizType={detail?.bizType ?? null}
+          bizId={detail?.bizId ?? null}
+          readOnly
+        />
+      );
     }
     if (visibleFields.length === 0) {
       return <Typography.Text type="tertiary" size="small">当前节点无可见表单字段</Typography.Text>;
