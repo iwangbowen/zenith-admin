@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Input, Tag, Modal, Form, Toast, Typography, Select, Row, Col } from '@douyinfe/semi-ui';
+import { Button, Input, Tag, Modal, Form, Toast, Typography, Select, Row, Col, Space } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Search } from 'lucide-react';
@@ -125,16 +125,21 @@ export default function RatePlansPage() {
   const columns: ColumnProps<RatePlan>[] = [
     { title: 'ID', dataIndex: 'id', width: 60 },
     {
-      title: '套餐',
+      title: '名称',
       dataIndex: 'name',
-      width: 200,
+      width: 160,
       render: (v: string, r: RatePlan) => (
-        <span>
-          {v}{' '}
+        <Space spacing={6}>
+          {v}
           {r.isDefault && <Tag color="blue" size="small">默认</Tag>}
-          <div><Text type="tertiary" size="small" copyable={{ content: r.code }}>{r.code}</Text></div>
-        </span>
+        </Space>
       ),
+    },
+    {
+      title: '编码',
+      dataIndex: 'code',
+      width: 160,
+      render: (v: string) => <Text copyable={{ content: v }}>{v}</Text>,
     },
     { title: 'QPS', dataIndex: 'qpsLimit', width: 100, render: (v: number) => (v > 0 ? `${v}/s` : '不限') },
     { title: '每日配额', dataIndex: 'dailyQuota', width: 120, render: fmtQuota },
