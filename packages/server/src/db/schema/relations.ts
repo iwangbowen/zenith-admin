@@ -16,7 +16,7 @@ import { chatConversationMembers, chatConversations, chatMessageReactions, chatM
 import { channelAutoReplies, channelConversations, channelMenus, channelMessages, channelMessageTargets, channelQuickReplies, channels, channelSubscriptions } from './channels';
 import { paymentApps, paymentChannelConfigs, paymentContracts, paymentDeductPlans, paymentDisputeReplies, paymentDisputes, paymentOrders, paymentPreauths, paymentReconBatches, paymentReconItems, paymentRefunds, paymentRiskHits, paymentRiskReviews, paymentRiskRules, paymentSharingOrders, paymentSharingReceivers, paymentTransfers, paymentWebhookDeliveries, paymentWebhookEndpoints } from './payment';
 import { aiConversations, aiMessages, aiPromptTemplates, aiProviderConfigs, userAiConfigs } from './ai';
-import { appWebhookDeliveries, appWebhookSubscriptions, oauth2AuthorizationCodes, oauth2Clients, oauth2Tokens, oauth2UserGrants, ratePlans } from './open-platform';
+import { appWebhookDeliveries, appWebhookSubscriptions, oauth2AuthorizationCodes, oauth2Clients, oauth2TokenFamilies, oauth2Tokens, oauth2UserGrants, ratePlans } from './open-platform';
 import { checkinMilestones, coupons, memberCheckinMilestoneAwards, memberCheckins, memberCoupons, memberLevels, memberNotifications, memberPointAccounts, memberPointTransactions, members, memberTagBindings, memberTags, memberVipRenewals, memberWallets, memberWalletTransactions } from './member';
 import { monitorAlertEvents, monitorAlertRules } from './monitor';
 import { mpAccounts, mpAutoReplies, mpBroadcasts, mpConditionalMenus, mpDrafts, mpFans, mpKfAccounts, mpKfRoutingConfigs, mpKfSessionEvents, mpKfSessions, mpMaterials, mpMenus, mpMessages, mpMessageTemplates, mpQrcodes, mpTags, mpTemplateSendLogs, mpUnmatchedKeywords } from './mp';
@@ -306,6 +306,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   apiTokens: many(userApiTokens),
   ownedOauth2Clients: many(oauth2Clients, { relationName: 'oauth2ClientOwner' }),
   reviewedOauth2Clients: many(oauth2Clients, { relationName: 'oauth2ClientReviewer' }),
+  oauth2TokenFamilies: many(oauth2TokenFamilies),
   passwordResetTokens: many(passwordResetTokens),
   leadingDepartments: many(departments, { relationName: 'departmentLeader' }),
   userMenus: many(userMenus),
@@ -740,6 +741,12 @@ export const oauth2AuthorizationCodesRelations = relations(oauth2AuthorizationCo
 
 export const oauth2TokensRelations = relations(oauth2Tokens, ({ one }) => ({
   user: one(users, { fields: [oauth2Tokens.userId], references: [users.id] }),
+  family: one(oauth2TokenFamilies, { fields: [oauth2Tokens.familyId], references: [oauth2TokenFamilies.id] }),
+}));
+
+export const oauth2TokenFamiliesRelations = relations(oauth2TokenFamilies, ({ one, many }) => ({
+  user: one(users, { fields: [oauth2TokenFamilies.userId], references: [users.id] }),
+  tokens: many(oauth2Tokens),
 }));
 
 export const oauth2UserGrantsRelations = relations(oauth2UserGrants, ({ one }) => ({

@@ -33,14 +33,18 @@ class OpenEventBus {
     this.emitter.on(ANY, handler);
   }
 
-  emit(input: { type: string; clientId: string; data?: Record<string, unknown>; eventId?: string }): void {
-    const full: OpenPlatformEvent = {
+  private buildEvent(input: { type: string; clientId: string; data?: Record<string, unknown>; eventId?: string }): OpenPlatformEvent {
+    return {
       type: input.type,
       clientId: input.clientId,
       eventId: input.eventId ?? randomUUID(),
       occurredAt: formatDateTime(new Date()),
       data: input.data ?? {},
     };
+  }
+
+  emit(input: { type: string; clientId: string; data?: Record<string, unknown>; eventId?: string }): void {
+    const full = this.buildEvent(input);
     for (const handler of this.emitter.listeners(ANY)) {
       queueMicrotask(() => {
         void Promise.resolve((handler as Handler)(full)).catch((err) => {
@@ -48,6 +52,16 @@ class OpenEventBus {
         });
       });
     }
+  }
+
+  /** 可靠事件调用：等待所有订阅者完成持久化后再返回。 */
+  async emitAndWait(input: { type: string; clientId: string; data?: Record<string, unknown>; eventId?: string }): Promise<void> {
+    const full = this.buildEvent(input);
+    const handlers = this.emitter.listeners(ANY);
+    if (handlers.length === 0) throw new Error('Open event bus has no registered subscribers');
+    await Promise.all(handlers.map((handler) =>
+      Promise.resolve((handler as Handler)(full)),
+    ));
   }
 }
 

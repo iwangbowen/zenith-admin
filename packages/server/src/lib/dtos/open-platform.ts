@@ -76,6 +76,8 @@ export const OpenApiStatsOverviewDTO = z
     avgDurationMs: z.number(),
     p95DurationMs: z.number(),
     p99DurationMs: z.number(),
+    percentilesPartial: z.boolean(),
+    percentileRetentionDays: z.number().int(),
     activeApps: z.number().int(),
     todayCalls: z.number().int(),
   })

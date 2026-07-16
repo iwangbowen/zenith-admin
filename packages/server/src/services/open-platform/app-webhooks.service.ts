@@ -1,5 +1,5 @@
 import { randomBytes, createHmac, randomUUID } from 'node:crypto';
-import { eq, and, or, desc, ilike, inArray, isNull, lte, ne, sql, type SQL } from 'drizzle-orm';
+import { eq, and, or, desc, ilike, inArray, isNull, lte, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { appWebhookSubscriptions, appWebhookDeliveries, oauth2Clients, users } from '../../db/schema';
 import type { AppWebhookSubscriptionRow, AppWebhookDeliveryRow } from '../../db/schema';
@@ -8,7 +8,7 @@ import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { escapeLike } from '../../lib/where-helpers';
 import { encryptField, decryptField } from '../../lib/encryption';
-import { httpPost } from '../../lib/http-client';
+import { httpPost, type HttpResponse } from '../../lib/http-client';
 import logger from '../../lib/logger';
 import { openEventBus } from '../../lib/open-event-bus';
 import { mapWithConcurrency } from '../../lib/concurrency';
@@ -18,6 +18,7 @@ import { config } from '../../config';
 import { sendSystemInApp } from '../messaging/in-app-messages.service';
 
 const TIMEOUT_MS = 10_000;
+const MAX_RESPONSE_BODY_BYTES = 4096;
 const PENDING_RECOVERY_AFTER_MS = 2 * 60_000;
 const RETRY_CONCURRENCY = 10;
 
@@ -220,6 +221,7 @@ export async function testSubscription(id: number) {
     eventId,
     payload: { type: 'app.test', eventId, clientId: sub.clientId, occurredAt: formatDateTime(new Date()), data: { message: '这是一条 Webhook 测试投递' } },
   });
+  if (!delivery) throw new HTTPException(409, { message: '测试事件已存在，请重试' });
   queueMicrotask(() => {
     dispatchDelivery(delivery.id).catch((err) => logger.error('[app-webhook] test dispatch failed', { deliveryId: delivery.id, err }));
   });
@@ -230,7 +232,9 @@ export async function testSubscription(id: number) {
 export async function retryDelivery(id: number) {
   const [row] = await db.select().from(appWebhookDeliveries).where(eq(appWebhookDeliveries.id, id)).limit(1);
   if (!row) throw new HTTPException(404, { message: '投递记录不存在' });
-  await dispatchDelivery(id);
+  if (row.status !== 'failed') throw new HTTPException(400, { message: '仅最终失败的投递可手动重试' });
+  const claimed = await dispatchDelivery(id);
+  if (!claimed) throw new HTTPException(409, { message: '投递已被其他任务处理，请刷新后重试' });
   return { deliveryId: id };
 }
 
@@ -247,7 +251,7 @@ export async function scheduleBatchRetryDeliveries(ids: number[]) {
     })
     .where(and(
       inArray(appWebhookDeliveries.id, uniqueIds),
-      ne(appWebhookDeliveries.status, 'success'),
+      eq(appWebhookDeliveries.status, 'failed'),
     ))
     .returning({ id: appWebhookDeliveries.id });
   return { scheduled: rows.length };
@@ -263,7 +267,7 @@ interface InsertDeliveryInput {
   payload: unknown;
 }
 
-async function insertDelivery(input: InsertDeliveryInput): Promise<AppWebhookDeliveryRow> {
+async function insertDelivery(input: InsertDeliveryInput): Promise<AppWebhookDeliveryRow | null> {
   const [row] = await db.insert(appWebhookDeliveries).values({
     subscriptionId: input.subscriptionId,
     clientId: input.clientId,
@@ -271,12 +275,64 @@ async function insertDelivery(input: InsertDeliveryInput): Promise<AppWebhookDel
     eventId: input.eventId,
     payload: input.payload,
     status: 'pending',
+  }).onConflictDoNothing({
+    target: [appWebhookDeliveries.subscriptionId, appWebhookDeliveries.eventId],
   }).returning();
-  return row;
+  return row ?? null;
 }
 
-async function updateDeliveryAfterAttempt(id: number, patch: Partial<AppWebhookDeliveryRow>) {
-  await db.update(appWebhookDeliveries).set(patch).where(eq(appWebhookDeliveries.id, id));
+async function updateDeliveryAfterAttempt(
+  id: number,
+  patch: Partial<AppWebhookDeliveryRow>,
+  expectedAttempt?: number,
+): Promise<boolean> {
+  const where = expectedAttempt === undefined
+    ? eq(appWebhookDeliveries.id, id)
+    : and(eq(appWebhookDeliveries.id, id), eq(appWebhookDeliveries.attempt, expectedAttempt));
+  const rows = await db.update(appWebhookDeliveries).set(patch).where(where).returning({ id: appWebhookDeliveries.id });
+  return rows.length > 0;
+}
+
+async function readResponseTextWithTimeout(response: HttpResponse): Promise<string> {
+  if (!response.raw.body) return '';
+  const reader = response.raw.body.getReader();
+  const decoder = new TextDecoder();
+  const read = async () => {
+    let text = '';
+    let bytes = 0;
+    while (bytes < MAX_RESPONSE_BODY_BYTES) {
+      const { done, value } = await reader.read();
+      if (done) {
+        text += decoder.decode();
+        return text;
+      }
+      const remaining = MAX_RESPONSE_BODY_BYTES - bytes;
+      const chunk = value.byteLength > remaining ? value.subarray(0, remaining) : value;
+      text += decoder.decode(chunk, { stream: true });
+      bytes += chunk.byteLength;
+      if (value.byteLength > remaining || bytes >= MAX_RESPONSE_BODY_BYTES) {
+        await reader.cancel();
+        text += decoder.decode();
+        return text;
+      }
+    }
+    return text;
+  };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      timedOut = true;
+      void reader.cancel().catch((err) => logger.warn('[app-webhook] response body cancel failed', err));
+      reject(new Error(`Webhook 响应体读取超时（${TIMEOUT_MS}ms）`));
+    }, TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([read(), timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (!timedOut) reader.releaseLock();
+  }
 }
 
 async function handleTerminalFailure(
@@ -332,20 +388,53 @@ async function handleTerminalFailure(
 
 /** attempt 为已完成的尝试次数（1-indexed）；超出重试阶梯返回 null */
 export function computeNextRetryAt(attempt: number): Date | null {
-  if (attempt >= OPEN_WEBHOOK_RETRY_STAGES_MINUTES.length) return null;
-  return new Date(Date.now() + OPEN_WEBHOOK_RETRY_STAGES_MINUTES[attempt] * 60_000);
+  if (attempt > OPEN_WEBHOOK_RETRY_STAGES_MINUTES.length) return null;
+  return new Date(Date.now() + OPEN_WEBHOOK_RETRY_STAGES_MINUTES[attempt - 1] * 60_000);
 }
 
-export async function dispatchDelivery(deliveryId: number): Promise<void> {
-  const [delivery] = await db.select().from(appWebhookDeliveries).where(eq(appWebhookDeliveries.id, deliveryId)).limit(1);
-  if (!delivery) return;
+async function claimDelivery(deliveryId: number): Promise<AppWebhookDeliveryRow | null> {
+  const now = new Date();
+  const staleCutoff = new Date(now.getTime() - PENDING_RECOVERY_AFTER_MS);
+  const [delivery] = await db.update(appWebhookDeliveries).set({
+    attempt: sql`${appWebhookDeliveries.attempt} + 1`,
+    status: 'pending',
+    startedAt: now,
+    nextRetryAt: null,
+    finishedAt: null,
+  }).where(and(
+    eq(appWebhookDeliveries.id, deliveryId),
+    or(
+      eq(appWebhookDeliveries.status, 'failed'),
+      and(
+        eq(appWebhookDeliveries.status, 'retrying'),
+        lte(appWebhookDeliveries.nextRetryAt, now),
+      ),
+      and(
+        eq(appWebhookDeliveries.status, 'pending'),
+        or(
+          isNull(appWebhookDeliveries.startedAt),
+          lte(appWebhookDeliveries.startedAt, staleCutoff),
+        ),
+      ),
+    ),
+  )).returning();
+  return delivery ?? null;
+}
+
+export async function dispatchDelivery(deliveryId: number): Promise<boolean> {
+  const delivery = await claimDelivery(deliveryId);
+  if (!delivery) return false;
   const [sub] = await db.select().from(appWebhookSubscriptions).where(eq(appWebhookSubscriptions.id, delivery.subscriptionId)).limit(1);
   if (!sub || sub.status !== 'enabled') {
-    await updateDeliveryAfterAttempt(deliveryId, { status: 'failed', errorMessage: '订阅已被删除或禁用', finishedAt: new Date() });
-    return;
+    await updateDeliveryAfterAttempt(
+      deliveryId,
+      { status: 'failed', errorMessage: '订阅已被删除或禁用', finishedAt: new Date() },
+      delivery.attempt,
+    );
+    return true;
   }
 
-  const attempt = delivery.attempt + 1;
+  const attempt = delivery.attempt;
   const bodyStr = JSON.stringify(delivery.payload);
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const headers: Record<string, string> = {
@@ -361,19 +450,20 @@ export async function dispatchDelivery(deliveryId: number): Promise<void> {
     if (secret) headers[OPEN_WEBHOOK_SIGNATURE_HEADER] = `t=${timestamp},v1=${sign(secret, timestamp, bodyStr)}`;
   }
 
-  await updateDeliveryAfterAttempt(deliveryId, { attempt, status: 'pending', requestUrl: sub.url, startedAt: new Date() });
+  if (!await updateDeliveryAfterAttempt(deliveryId, { requestUrl: sub.url }, attempt)) return false;
 
   const t0 = Date.now();
   try {
-    const resp = await httpPost(sub.url, bodyStr, { headers, timeout: TIMEOUT_MS });
+    const resp = await httpPost(sub.url, bodyStr, {
+      headers,
+      timeout: TIMEOUT_MS,
+      ssrfProtection: true,
+      httpLog: { level: 'off' },
+    });
     const durationMs = Date.now() - t0;
-    const respText = await resp.text().catch(() => '');
-    await db.update(appWebhookSubscriptions).set({ lastDeliveryAt: new Date() }).where(eq(appWebhookSubscriptions.id, sub.id));
+    const respText = await readResponseTextWithTimeout(resp);
     if (resp.ok) {
-      await db.update(appWebhookSubscriptions)
-        .set({ consecutiveFailures: 0 })
-        .where(eq(appWebhookSubscriptions.id, sub.id));
-      await updateDeliveryAfterAttempt(deliveryId, {
+      const updated = await updateDeliveryAfterAttempt(deliveryId, {
         status: 'success',
         responseStatus: resp.status,
         responseBody: respText.slice(0, 4096),
@@ -381,11 +471,15 @@ export async function dispatchDelivery(deliveryId: number): Promise<void> {
         finishedAt: new Date(),
         errorMessage: null,
         nextRetryAt: null,
-      });
-      return;
+      }, attempt);
+      if (!updated) return false;
+      await db.update(appWebhookSubscriptions)
+        .set({ consecutiveFailures: 0, lastDeliveryAt: new Date() })
+        .where(eq(appWebhookSubscriptions.id, sub.id));
+      return true;
     }
     const nextRetryAt = computeNextRetryAt(attempt);
-    await updateDeliveryAfterAttempt(deliveryId, {
+    const updated = await updateDeliveryAfterAttempt(deliveryId, {
       status: nextRetryAt ? 'retrying' : 'failed',
       responseStatus: resp.status,
       responseBody: respText.slice(0, 4096),
@@ -393,21 +487,25 @@ export async function dispatchDelivery(deliveryId: number): Promise<void> {
       errorMessage: `HTTP ${resp.status}`,
       nextRetryAt,
       finishedAt: nextRetryAt ? null : new Date(),
-    });
+    }, attempt);
+    if (!updated) return false;
+    await db.update(appWebhookSubscriptions).set({ lastDeliveryAt: new Date() }).where(eq(appWebhookSubscriptions.id, sub.id));
     if (!nextRetryAt) await handleTerminalFailure(sub, delivery, `HTTP ${resp.status}`);
   } catch (err) {
     const durationMs = Date.now() - t0;
     const msg = err instanceof Error ? err.message : String(err);
     const nextRetryAt = computeNextRetryAt(attempt);
-    await updateDeliveryAfterAttempt(deliveryId, {
+    const updated = await updateDeliveryAfterAttempt(deliveryId, {
       status: nextRetryAt ? 'retrying' : 'failed',
       errorMessage: msg.slice(0, 1024),
       durationMs,
       nextRetryAt,
       finishedAt: nextRetryAt ? null : new Date(),
-    });
+    }, attempt);
+    if (!updated) return false;
     if (!nextRetryAt) await handleTerminalFailure(sub, delivery, msg.slice(0, 1024));
   }
+  return true;
 }
 
 async function findMatchingSubscriptions(clientId: string, eventType: string): Promise<AppWebhookSubscriptionRow[]> {
@@ -429,12 +527,14 @@ export function registerOpenWebhookSubscriber(): void {
           eventId: event.eventId,
           payload: event,
         });
+        if (!delivery) continue;
         queueMicrotask(() => {
           dispatchDelivery(delivery.id).catch((err) => logger.error('[app-webhook] dispatch failed', { deliveryId: delivery.id, err }));
         });
       }
     } catch (err) {
       logger.error('[app-webhook] subscriber error', { eventId: event.eventId, err });
+      throw err;
     }
   });
   logger.info('[app-webhook] subscriber registered');
@@ -460,6 +560,6 @@ export async function retryAppWebhookDeliveries(): Promise<{ retried: number }> 
       ),
     ))
     .limit(100);
-  await mapWithConcurrency(rows, RETRY_CONCURRENCY, async (row) => dispatchDelivery(row.id));
-  return { retried: rows.length };
+  const results = await mapWithConcurrency(rows, RETRY_CONCURRENCY, async (row) => dispatchDelivery(row.id));
+  return { retried: results.filter(Boolean).length };
 }

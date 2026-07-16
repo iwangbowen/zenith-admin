@@ -21,6 +21,17 @@ export async function registerSystemTasks(): Promise<void> {
     },
   });
 
+  const { retryPendingQuotaAlerts } = await import('../services/open-platform/open-quota-alerts.service');
+  await registerSystemRecurringJob({
+    name: 'open-quota-alert-retry',
+    title: '开放平台配额告警补偿',
+    module: '开放平台',
+    cronExpression: '* * * * *',
+    description: '补偿因进程退出或临时故障而未完成的配额告警与 Webhook 事件。',
+    allowManualRun: true,
+    run: retryPendingQuotaAlerts,
+  });
+
   await registerSystemRecurringJob({
     name: 'system-scheduler-log-cleanup',
     title: '系统调度日志清理',
@@ -93,11 +104,11 @@ export async function registerSystemTasks(): Promise<void> {
     title: '开放 API 调用日志聚合与清理',
     module: '开放平台',
     cronExpression: '20 1 * * *',
-    description: '聚合昨日开放 API 调用统计，并按保留策略清理原始调用日志。',
+    description: '补齐全部未清理完整日期的开放 API 聚合统计，并按保留策略清理已聚合原始日志。',
     allowManualRun: true,
     run: async () => {
       const result = await rollupAndCleanupOpenApiCallLogs();
-      return `已聚合 ${result.statDate}，原始日志保留 ${result.retentionDays} 天`;
+      return `已补齐至 ${result.statDate}，原始日志保留 ${result.retentionDays} 天`;
     },
   });
 

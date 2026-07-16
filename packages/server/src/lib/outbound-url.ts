@@ -3,7 +3,6 @@ import type { LookupAddress } from 'node:dns';
 import { isIP, type LookupFunction } from 'node:net';
 import ipRangeCheck from 'ip-range-check';
 import { HTTPException } from 'hono/http-exception';
-import { config } from '../config';
 
 const BLOCKED_RANGES = [
   '0.0.0.0/8',
@@ -59,14 +58,14 @@ function isAllowlisted(host: string, ip: string | undefined, allowlist: string[]
 
 export async function assertSafeOutboundHost(
   host: string,
-  allowlist = config.report.outboundPrivateAllowlist,
+  allowlist: string[] = [],
 ): Promise<void> {
   await resolveSafeOutboundHost(host, allowlist);
 }
 
 export async function resolveSafeOutboundHost(
   host: string,
-  allowlist = config.report.outboundPrivateAllowlist,
+  allowlist: string[] = [],
 ): Promise<LookupAddress[]> {
   const normalized = normalizedHost(host);
   if (!normalized) throw new HTTPException(400, { message: '出站地址缺少主机名' });
@@ -94,7 +93,7 @@ export async function resolveSafeOutboundHost(
 
 export async function assertSafeOutboundUrl(
   rawUrl: string,
-  allowlist = config.report.outboundPrivateAllowlist,
+  allowlist: string[] = [],
 ): Promise<URL> {
   let url: URL;
   try {
@@ -113,7 +112,7 @@ export async function assertSafeOutboundUrl(
 }
 
 export function createSafeOutboundLookup(
-  allowlist = config.report.outboundPrivateAllowlist,
+  allowlist: string[] = [],
 ): LookupFunction {
   return (hostname, options, callback) => {
     void resolveSafeOutboundHost(hostname, allowlist).then((addresses) => {

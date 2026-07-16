@@ -39,6 +39,9 @@ export const appWebhooksHandlers = [
   http.post(`${BASE}/deliveries/:id/retry`, ({ params }) => {
     const d = deliveries.find((x) => x.id === Number(params.id));
     if (!d) return notFound('投递记录不存在');
+    if (d.status !== 'failed') {
+      return HttpResponse.json({ code: 400, message: '仅最终失败的投递可手动重试', data: null }, { status: 400 });
+    }
     d.status = 'success';
     d.attempt += 1;
     d.responseStatus = 200;
@@ -53,7 +56,7 @@ export const appWebhooksHandlers = [
     const ids = new Set(body.ids ?? []);
     let scheduled = 0;
     for (const delivery of deliveries) {
-      if (ids.has(delivery.id) && delivery.status !== 'success') {
+      if (ids.has(delivery.id) && delivery.status === 'failed') {
         delivery.status = 'retrying';
         delivery.nextRetryAt = mockDateTime();
         scheduled += 1;

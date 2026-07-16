@@ -82,6 +82,22 @@ export type OAuth2AuthorizationCodeRow = typeof oauth2AuthorizationCodes.$inferS
 
 export type NewOAuth2AuthorizationCode = typeof oauth2AuthorizationCodes.$inferInsert;
 
+/** OAuth2 令牌族：串行化 refresh rotation，并持久化重放/撤销状态 */
+export const oauth2TokenFamilies = pgTable('oauth2_token_families', {
+  id: varchar('id', { length: 64 }).primaryKey(),
+  clientId: varchar('client_id', { length: 64 }).notNull(),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  compromised: boolean('compromised').notNull().default(false),
+  revoked: boolean('revoked').notNull().default(false),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  index('oauth2_token_families_client_idx').on(t.clientId),
+  index('oauth2_token_families_user_idx').on(t.userId),
+]);
+
+export type OAuth2TokenFamilyRow = typeof oauth2TokenFamilies.$inferSelect;
+
 /**
  * OAuth2 令牌表（access_token + refresh_token 共用）
  */
@@ -93,6 +109,8 @@ export const oauth2Tokens = pgTable('oauth2_tokens', {
   tokenHash: varchar('token_hash', { length: 128 }).notNull().unique(),
   /** token 前缀（oa_ / or_），用于列表页展示 */
   tokenPrefix: varchar('token_prefix', { length: 20 }),
+  /** 同一授权会话的 access/refresh token 族，用于检测 refresh token 重放 */
+  familyId: varchar('family_id', { length: 64 }).references(() => oauth2TokenFamilies.id, { onDelete: 'cascade' }),
   clientId: varchar('client_id', { length: 64 }).notNull(),
   /** client_credentials 流程时为 null */
   userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }),
@@ -102,6 +120,7 @@ export const oauth2Tokens = pgTable('oauth2_tokens', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => [
   index('oauth2_tokens_client_idx').on(t.clientId),
+  index('oauth2_tokens_family_idx').on(t.familyId),
   index('oauth2_tokens_active_expiry_idx').on(t.revoked, t.expiresAt),
 ]);
 
@@ -285,6 +304,7 @@ export const appWebhookDeliveries = pgTable('app_webhook_deliveries', {
   finishedAt: timestamp('finished_at', { withTimezone: true }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => [
+  unique('app_webhook_deliveries_subscription_event_unique').on(t.subscriptionId, t.eventId),
   index('app_webhook_deliveries_sub_idx').on(t.subscriptionId),
   index('app_webhook_deliveries_client_idx').on(t.clientId),
   index('app_webhook_deliveries_status_idx').on(t.status),
@@ -295,3 +315,27 @@ export const appWebhookDeliveries = pgTable('app_webhook_deliveries', {
 export type AppWebhookDeliveryRow = typeof appWebhookDeliveries.$inferSelect;
 
 export type NewAppWebhookDelivery = typeof appWebhookDeliveries.$inferInsert;
+
+/** 配额告警持久化 outbox，确保进程崩溃后可恢复投递 */
+export const openQuotaAlerts = pgTable('open_quota_alerts', {
+  id: serial('id').primaryKey(),
+  clientId: varchar('client_id', { length: 64 }).notNull(),
+  dimension: varchar('dimension', { length: 20 }).notNull(),
+  period: varchar('period', { length: 16 }).notNull(),
+  threshold: integer('threshold').notNull(),
+  used: bigint('used', { mode: 'number' }).notNull(),
+  quotaLimit: bigint('quota_limit', { mode: 'number' }).notNull(),
+  planCode: varchar('plan_code', { length: 64 }).notNull(),
+  eventId: varchar('event_id', { length: 64 }).notNull(),
+  status: varchar('status', { length: 20 }).notNull().default('pending'),
+  attempt: integer('attempt').notNull().default(0),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  unique('open_quota_alerts_dedupe_unique').on(t.clientId, t.dimension, t.period, t.threshold),
+  index('open_quota_alerts_status_idx').on(t.status, t.startedAt),
+]);
+
+export type OpenQuotaAlertRow = typeof openQuotaAlerts.$inferSelect;

@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, text } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, text, unique } from 'drizzle-orm/pg-core';
 import { statusEnum } from './common';
 import { auditColumns, tenants, users } from './core';
 
@@ -179,9 +179,13 @@ export const inAppMessages = pgTable('in_app_messages', {
   senderId: integer('sender_id').references(() => users.id, { onDelete: 'set null' }),
   /** 深链地址（站内路由，如 /workflow/pending?instanceId=1，点击消息跳转） */
   link: varchar('link', { length: 512 }),
+  /** 系统消息幂等键；按收件人拼接后唯一 */
+  dedupeKey: varchar('dedupe_key', { length: 192 }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => [
+  unique('in_app_messages_dedupe_key_unique').on(t.dedupeKey),
+]);
 
 export type InAppMessageRow = typeof inAppMessages.$inferSelect;
 

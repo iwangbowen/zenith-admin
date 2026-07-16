@@ -360,6 +360,7 @@ export async function sendSystemInApp(input: {
   content: string;
   type?: InAppMessageType;
   tenantId?: number | null;
+  dedupeKey?: string;
 }) {
   if (input.userIds.length === 0) return { sentCount: 0 };
   const recipients = await db.select({ id: users.id }).from(users).where(inArray(users.id, input.userIds));
@@ -375,10 +376,13 @@ export async function sendSystemInApp(input: {
     type,
     isRead: false,
     tenantId,
+    dedupeKey: input.dedupeKey ? `${input.dedupeKey}:${r.id}` : null,
   }));
-  await db.insert(inAppMessages).values(rows);
+  const inserted = await db.insert(inAppMessages).values(rows)
+    .onConflictDoNothing({ target: inAppMessages.dedupeKey })
+    .returning({ userId: inAppMessages.userId });
   scheduleSendToUsers(
-    recipients.map((r) => ({ userId: r.id })),
+    inserted.map((row) => ({ userId: row.userId })),
     {
       type: 'in-app-message:new',
       payload: {
@@ -399,5 +403,5 @@ export async function sendSystemInApp(input: {
       },
     },
   );
-  return { sentCount: rows.length };
+  return { sentCount: inserted.length };
 }

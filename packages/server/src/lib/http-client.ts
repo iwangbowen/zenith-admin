@@ -32,6 +32,10 @@ export interface HttpRequestOptions extends Omit<RequestInit, 'signal' | 'body'>
   logBodyLimit?: number;
   /** Block localhost/private/reserved destinations and automatic redirects. */
   ssrfProtection?: boolean;
+  /** Explicit private-network allowlist used only when ssrfProtection is enabled. */
+  ssrfAllowlist?: string[];
+  /** Whether this request participates in the shared per-host circuit breaker. Default true. */
+  circuitBreaker?: boolean;
   /**
    * 覆盖本次请求的出站 HTTP 日志配置，优先级高于全局 config.httpLog.outgoing。
    *
@@ -66,9 +70,16 @@ export interface HttpResponse {
   raw: Response;
 }
 
-const ssrfSafeDispatcher = new Agent({
-  connect: { lookup: createSafeOutboundLookup() },
-});
+const ssrfDispatchers = new Map<string, Agent>();
+
+function getSsrfDispatcher(allowlist: string[]): Agent {
+  const key = [...allowlist].sort().join('\n');
+  const existing = ssrfDispatchers.get(key);
+  if (existing) return existing;
+  const dispatcher = new Agent({ connect: { lookup: createSafeOutboundLookup(allowlist) } });
+  ssrfDispatchers.set(key, dispatcher);
+  return dispatcher;
+}
 
 export class HttpClientError extends Error {
   readonly status: number;
@@ -239,6 +250,8 @@ export async function httpRequest(
     signal: callerSignal,
     logBodyLimit = 2048,
     ssrfProtection = false,
+    ssrfAllowlist = [],
+    circuitBreaker = true,
     httpLog: callHttpLog,
     headers: headersInit,
     method = 'GET',
@@ -246,10 +259,10 @@ export async function httpRequest(
   } = opts;
 
   const finalUrl = resolveUrl(url, baseURL);
-  if (ssrfProtection) await assertSafeOutboundUrl(finalUrl);
+  if (ssrfProtection) await assertSafeOutboundUrl(finalUrl, ssrfAllowlist);
   const safeUrl = redactUrl(finalUrl);
   const host = breakerKey(finalUrl);
-  breakerCheck(host);
+  if (circuitBreaker) breakerCheck(host);
 
   const headers = new Headers(headersInit);
   const reqBody = normalizeBody(body, headers);
@@ -260,7 +273,7 @@ export async function httpRequest(
   const dispatcher = proxy
     ? new ProxyAgent(proxy)
     : ssrfProtection
-      ? ssrfSafeDispatcher
+      ? getSsrfDispatcher(ssrfAllowlist)
       : undefined;
 
   let lastErr: unknown;
@@ -326,14 +339,16 @@ export async function httpRequest(
       if (resp.status >= 500 && attempt < maxAttempts) {
         const snippet = truncate(await resp.clone().text().catch(() => ''), logBodyLimit);
         logger.warn('[http] retry on 5xx', { ...logCtx, status: resp.status, ms: elapsed, body: snippet });
-        breakerOnFailure(host);
+        if (circuitBreaker) breakerOnFailure(host);
         await sleep(retryDelay * 2 ** (attempt - 1));
         continue;
       }
 
       logger.info('[http] response', { ...logCtx, status: resp.status, ms: elapsed });
-      if (resp.ok) breakerOnSuccess(host);
-      else breakerOnFailure(host);
+      if (circuitBreaker) {
+        if (resp.ok) breakerOnSuccess(host);
+        else breakerOnFailure(host);
+      }
 
       // ── 出站日志：响应阶段 ──────────────────────────────────────────────
       if (shouldLogOut) {
@@ -387,7 +402,7 @@ export async function httpRequest(
         };
         writeHttpLogEntry(errEntry, outFormat, outSeparateFile);
       }
-      breakerOnFailure(host);
+      if (circuitBreaker) breakerOnFailure(host);
       const aborted = (err as Error).name === 'AbortError' || callerSignal?.aborted;
       if (aborted || attempt >= maxAttempts) break;
       await sleep(retryDelay * 2 ** (attempt - 1));

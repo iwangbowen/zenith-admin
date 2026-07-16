@@ -607,6 +607,12 @@ app.onError((err, c) => {
 await backfillLegacyReportTenants();
 await backfillLegacyDashboardLifecycle();
 await migrateLegacyReportSecrets();
+const { invalidateLegacyOAuthTokens } = await import('./services/open-platform/open-api-maintenance.service');
+const invalidatedLegacyOAuthTokens = await invalidateLegacyOAuthTokens();
+if (invalidatedLegacyOAuthTokens > 0) {
+  logger.warn(`Invalidated ${invalidatedLegacyOAuthTokens} legacy OAuth tokens without a token family`);
+}
+registerOpenWebhookSubscriber();
 logger.info(`Server starting on port ${config.port}...`);
 const server = serve({ fetch: app.fetch, port: config.port });
 injectWebSocket(server);
@@ -660,7 +666,6 @@ try {
 
 // 注册工作流事件总线的内置订阅者（delay/trigger/external/webhook 已统一为 workflow_jobs 作业）
 registerWsWorkflowSubscriber();
-registerOpenWebhookSubscriber();
 registerNodeListenersSubscriber();
 registerNotificationWorkflowSubscriber();
 registerChatWorkflowSubscriber();

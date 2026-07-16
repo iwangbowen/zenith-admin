@@ -23,6 +23,7 @@ import { getOpenApiApp, recordOpenApiCall, type OpenApiAppContext } from '../ser
 import { getRatePlanRowById, getDefaultRatePlanRow } from '../services/open-platform/rate-plans.service';
 import { openEventBus } from '../lib/open-event-bus';
 import { maybeSendQuotaWarning } from '../services/open-platform/open-quota-alerts.service';
+import { APP_TIME_ZONE } from '../lib/datetime';
 
 declare module 'hono' {
   interface ContextVariableMap {
@@ -143,7 +144,7 @@ export const openRateLimit: MiddlewareHandler = async (c, next) => {
       }
     }
     if (plan.dailyQuota > 0) {
-      const day = dayjs().format('YYYY-MM-DD');
+      const day = dayjs().tz(APP_TIME_ZONE).format('YYYY-MM-DD');
       const n = await incrWithExpire(`${PREFIX}daily:${app.clientId}:${day}`, 2 * 24 * 60 * 60);
       if (n >= plan.dailyQuota * 0.8) {
         await maybeSendQuotaWarning({
@@ -153,7 +154,7 @@ export const openRateLimit: MiddlewareHandler = async (c, next) => {
           used: n,
           limit: plan.dailyQuota,
           planCode: plan.code,
-          ttlSeconds: 2 * 24 * 60 * 60,
+          gateTtlSeconds: 2 * 24 * 60 * 60,
         }).catch((err) => logger.error('[open-gateway] daily quota warning failed', err));
       }
       if (n > plan.dailyQuota) {
@@ -162,7 +163,7 @@ export const openRateLimit: MiddlewareHandler = async (c, next) => {
       }
     }
     if (plan.monthlyQuota > 0) {
-      const month = dayjs().format('YYYY-MM');
+      const month = dayjs().tz(APP_TIME_ZONE).format('YYYY-MM');
       const n = await incrWithExpire(`${PREFIX}monthly:${app.clientId}:${month}`, 32 * 24 * 60 * 60);
       if (n >= plan.monthlyQuota * 0.8) {
         await maybeSendQuotaWarning({
@@ -172,7 +173,7 @@ export const openRateLimit: MiddlewareHandler = async (c, next) => {
           used: n,
           limit: plan.monthlyQuota,
           planCode: plan.code,
-          ttlSeconds: 32 * 24 * 60 * 60,
+          gateTtlSeconds: 32 * 24 * 60 * 60,
         }).catch((err) => logger.error('[open-gateway] monthly quota warning failed', err));
       }
       if (n > plan.monthlyQuota) {

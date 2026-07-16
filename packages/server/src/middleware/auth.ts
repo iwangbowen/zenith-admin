@@ -59,6 +59,12 @@ async function authenticateApiToken(rawToken: string): Promise<JwtPayload | null
           status: true,
         },
         with: {
+          tenant: {
+            columns: {
+              status: true,
+              expireAt: true,
+            },
+          },
           userRoles: {
             columns: {},
             with: {
@@ -76,6 +82,15 @@ async function authenticateApiToken(rawToken: string): Promise<JwtPayload | null
   });
 
   if (!row || row.user.status !== 'enabled') return null;
+  if (row.user.tenantId !== null) {
+    if (
+      !row.user.tenant
+      || row.user.tenant.status !== 'enabled'
+      || (row.user.tenant.expireAt && row.user.tenant.expireAt < new Date())
+    ) {
+      return null;
+    }
+  }
 
   const cutoff = new Date(Date.now() - API_TOKEN_LAST_USED_THROTTLE_MS);
   if (!row.lastUsedAt || row.lastUsedAt < cutoff) {

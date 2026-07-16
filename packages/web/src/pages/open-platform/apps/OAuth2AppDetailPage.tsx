@@ -42,6 +42,7 @@ import {
   useOpenApiStatsTrend,
   useWebhookList,
 } from '@/hooks/queries/open-platform';
+import { usePermission } from '@/hooks/usePermission';
 
 const { Text, Title } = Typography;
 
@@ -139,7 +140,7 @@ function GrantsTab({ appId }: Readonly<{ appId: number }>) {
   );
 }
 
-function TokensTab({ clientId }: Readonly<{ clientId: string }>) {
+function TokensTab({ clientId, canManage }: Readonly<{ clientId: string; canManage: boolean }>) {
   const [page, setPage] = useState(1);
   const query = useOAuth2AppTokens(clientId, page, 10);
   const revokeMutation = useRevokeOAuth2Token();
@@ -163,7 +164,7 @@ function TokensTab({ clientId }: Readonly<{ clientId: string }>) {
         key: 'revoke',
         label: '撤销',
         danger: true,
-        hidden: record.revoked,
+        hidden: record.revoked || !canManage,
         onClick: () => {
           Modal.confirm({
             title: '确认撤销该令牌？',
@@ -241,6 +242,10 @@ function WebhooksTab({ clientId }: Readonly<{ clientId: string }>) {
 
 export default function OAuth2AppDetailPage() {
   const navigate = useNavigate();
+  const { hasPermission } = usePermission();
+  const canManage = hasPermission('system:oauth2-apps:manage');
+  const canViewStats = hasPermission('open:stats:view');
+  const canViewWebhooks = hasPermission('open:webhook:view');
   const id = Number(useParams<{ id: string }>().id);
   const detailQuery = useOAuth2AppDetail(Number.isFinite(id) ? id : undefined);
   const ratePlans = useOAuth2RatePlans().data ?? [];
@@ -284,10 +289,10 @@ export default function OAuth2AppDetailPage() {
             ]}
           />
         </TabPane>
-        <TabPane tab="调用统计" itemKey="stats"><AppStatsTab clientId={app.clientId} /></TabPane>
+        {canViewStats && <TabPane tab="调用统计" itemKey="stats"><AppStatsTab clientId={app.clientId} /></TabPane>}
         <TabPane tab="授权用户" itemKey="grants"><GrantsTab appId={app.id} /></TabPane>
-        <TabPane tab="令牌" itemKey="tokens"><TokensTab clientId={app.clientId} /></TabPane>
-        <TabPane tab="Webhook" itemKey="webhooks"><WebhooksTab clientId={app.clientId} /></TabPane>
+        <TabPane tab="令牌" itemKey="tokens"><TokensTab clientId={app.clientId} canManage={canManage} /></TabPane>
+        {canViewWebhooks && <TabPane tab="Webhook" itemKey="webhooks"><WebhooksTab clientId={app.clientId} /></TabPane>}
       </Tabs>
     </div>
   );

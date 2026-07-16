@@ -271,7 +271,7 @@ export default function WebhooksPage() {
       width: 120,
       actions: (record) => [
         { key: 'detail', label: '详情', onClick: () => setDetailDelivery(record) },
-        { key: 'retry', label: '重试', hidden: !canManage, onClick: () => void retryDelivery(record.id) },
+        { key: 'retry', label: '重试', hidden: !canManage || record.status !== 'failed', onClick: () => void retryDelivery(record.id) },
       ],
     }),
   ];
@@ -390,7 +390,7 @@ export default function WebhooksPage() {
           empty="暂无投递记录"
           rowSelection={{
             selectedRowKeys: selectedDeliveryIds,
-            getCheckboxProps: (record: AppWebhookDelivery) => ({ disabled: record.status === 'success' }),
+            getCheckboxProps: (record: AppWebhookDelivery) => ({ disabled: record.status !== 'failed' }),
             onChange: (keys) => setSelectedDeliveryIds((keys as number[]) ?? []),
           }}
           pagination={{

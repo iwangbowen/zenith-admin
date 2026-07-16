@@ -72,8 +72,8 @@ const AuthorizeBody = z.object({
   response_type: z.literal('code'),
   scope: z.string(),
   state: z.string().optional(),
-  code_challenge: z.string().regex(/^[A-Za-z0-9_-]{43}$/).optional(),
-  code_challenge_method: z.literal('S256').optional(),
+  code_challenge: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+  code_challenge_method: z.literal('S256'),
 });
 
 const AuthorizeResponseDTO = z.object({ redirectUrl: z.string() }).openapi('OAuth2AuthorizeResponse');
@@ -170,7 +170,11 @@ const revoke = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const body = await c.req.parseBody();
-    await revokeTokenByValue(body['token'] as string);
+    await revokeTokenByValue(
+      body['token'] as string,
+      body['client_id'] as string,
+      body['client_secret'] as string | undefined,
+    );
     return c.json(okBody(null), 200);
   },
 });
@@ -187,7 +191,11 @@ const introspect = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const body = await c.req.parseBody();
-    return c.json(okBody(await introspectToken(body['token'] as string)), 200);
+    return c.json(okBody(await introspectToken(
+      body['token'] as string,
+      body['client_id'] as string,
+      body['client_secret'] as string,
+    )), 200);
   },
 });
 

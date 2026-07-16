@@ -25,7 +25,7 @@ import {
   userRoles,
   users,
 } from '../../db/schema';
-import { config } from '../../config';
+import { config as appConfig } from '../../config';
 import redis from '../../lib/redis';
 import logger from '../../lib/logger';
 import { pageOffset } from '../../lib/pagination';
@@ -95,8 +95,8 @@ import type {
 const PREVIEW_LIMIT = 100;
 const MAX_LIMIT = 5000;
 const QUERY_TIMEOUT = '15s';
-const CACHE_PREFIX = `${config.redis.keyPrefix}report:dataset:`;
-const MATVIEW_PREFIX = `${config.redis.keyPrefix}report:matview:`;
+const CACHE_PREFIX = `${appConfig.redis.keyPrefix}report:dataset:`;
+const MATVIEW_PREFIX = `${appConfig.redis.keyPrefix}report:matview:`;
 /** 物化快照安全 TTL（秒）：即便无 cron 刷新，也不会永久冻结（默认 24h） */
 const MATVIEW_TTL_SECONDS = 24 * 60 * 60;
 
@@ -131,10 +131,10 @@ interface NormalizedQueryOptions {
 
 export function getReportRuntimeGovernance(): ReportRuntimeGovernance {
   return {
-    slowQueryMs: config.report.slowQueryMs,
-    dashboardMaxConcurrent: config.report.dashboardMaxConcurrent,
-    datasetMaxRows: config.report.datasetMaxRows,
-    datasetMaxBytes: config.report.datasetMaxBytes,
+    slowQueryMs: appConfig.report.slowQueryMs,
+    dashboardMaxConcurrent: appConfig.report.dashboardMaxConcurrent,
+    datasetMaxRows: appConfig.report.datasetMaxRows,
+    datasetMaxBytes: appConfig.report.datasetMaxBytes,
   };
 }
 
@@ -1292,6 +1292,7 @@ export async function runReportData(
       body,
       timeout: 10_000,
       ssrfProtection: true,
+      ssrfAllowlist: appConfig.report.outboundPrivateAllowlist,
       httpLog: { level: 'off' },
     });
     if (!res.ok) throw new HTTPException(502, { message: `数据源返回状态 ${res.status}` });

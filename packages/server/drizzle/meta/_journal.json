@@ -449,6 +449,27 @@
       "when": 1784127246594,
       "tag": "0063_open-platform-environment-enum",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1784202169592,
+      "tag": "0064_open-platform-review-hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1784205095192,
+      "tag": "0065_oauth-token-family-locks",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1784208699936,
+      "tag": "0066_in-app-message-dedupe",
+      "breakpoints": true
     }
   ]
 }

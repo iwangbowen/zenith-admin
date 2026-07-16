@@ -70,6 +70,7 @@ export async function executeOpenApiDebugRequest(
     timeout: 15_000,
     retries: 0,
     ssrfProtection: false,
+    circuitBreaker: false,
     httpLog: { level: 'off' },
   });
   const responseBody = (await response.text()).slice(0, 64 * 1024);

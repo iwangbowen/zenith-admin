@@ -1,11 +1,11 @@
 import dayjs from 'dayjs';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import type { CreateDeveloperOAuth2ClientInput, UpdateDeveloperOAuth2ClientInput } from '@zenith/shared';
 import { db } from '../../db';
 import { oauth2Clients, roles, userRoles, users } from '../../db/schema';
 import { config } from '../../config';
 import { currentUser } from '../../lib/context';
-import { formatDateTime } from '../../lib/datetime';
+import { APP_TIME_ZONE, formatDateTime } from '../../lib/datetime';
 import redis from '../../lib/redis';
 import logger from '../../lib/logger';
 import { HTTPException } from 'hono/http-exception';
@@ -50,6 +50,7 @@ export function createMyOAuth2Client(input: CreateDeveloperOAuth2ClientInput) {
 }
 
 export async function updateMyOAuth2Client(id: number, input: UpdateDeveloperOAuth2ClientInput) {
+  const user = currentUser();
   const app = await ensureOwnedApp(id);
   if (app.reviewStatus === 'pending') {
     throw new HTTPException(400, { message: '应用正在审核中，暂不可修改' });
@@ -58,15 +59,24 @@ export async function updateMyOAuth2Client(id: number, input: UpdateDeveloperOAu
     ...input,
     ratePlanId: undefined,
     status: undefined,
-  }, { resetReview: true, revokeTokens: true });
+  }, {
+    resetReview: true,
+    revokeTokens: true,
+    ownerId: user.userId,
+    allowedReviewStatuses: ['draft', 'approved', 'rejected'],
+  });
 }
 
 export async function deleteMyOAuth2Client(id: number) {
+  const user = currentUser();
   const app = await ensureOwnedApp(id);
   if (app.reviewStatus === 'pending') {
     throw new HTTPException(400, { message: '应用正在审核中，暂不可删除' });
   }
-  return deleteOAuth2Client(id);
+  return deleteOAuth2Client(id, {
+    ownerId: user.userId,
+    allowedReviewStatuses: ['draft', 'approved', 'rejected'],
+  });
 }
 
 export async function regenerateMyOAuth2ClientSecret(id: number) {
@@ -75,17 +85,19 @@ export async function regenerateMyOAuth2ClientSecret(id: number) {
 }
 
 export async function submitMyOAuth2ClientForReview(id: number) {
-  const app = await ensureOwnedApp(id);
-  if (!['draft', 'rejected'].includes(app.reviewStatus)) {
-    throw new HTTPException(400, { message: '当前状态不可提交审核' });
-  }
+  const user = currentUser();
   const [updated] = await db.update(oauth2Clients).set({
     reviewStatus: 'pending',
     submittedAt: new Date(),
     reviewComment: null,
     reviewedAt: null,
     reviewedBy: null,
-  }).where(eq(oauth2Clients.id, id)).returning();
+  }).where(and(
+    eq(oauth2Clients.id, id),
+    eq(oauth2Clients.ownerId, user.userId),
+    inArray(oauth2Clients.reviewStatus, ['draft', 'rejected']),
+  )).returning();
+  if (!updated) throw new HTTPException(409, { message: '应用状态已变化，请刷新后重试' });
 
   const reviewers = await db.selectDistinct({ userId: users.id })
     .from(users)
@@ -130,8 +142,8 @@ export async function getMyOAuth2ClientQuotaUsage(id: number) {
   }
 
   const prefix = `${config.redis.keyPrefix}openrl:`;
-  const day = dayjs().format('YYYY-MM-DD');
-  const month = dayjs().format('YYYY-MM');
+  const day = dayjs().tz(APP_TIME_ZONE).format('YYYY-MM-DD');
+  const month = dayjs().tz(APP_TIME_ZONE).format('YYYY-MM');
   const [qpsRaw, dailyRaw, monthlyRaw] = await redis.mget(
     `${prefix}qps:${app.clientId}`,
     `${prefix}daily:${app.clientId}:${day}`,

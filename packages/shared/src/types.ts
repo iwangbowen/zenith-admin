@@ -5989,6 +5989,8 @@ export interface OpenApiStatsOverview {
   avgDurationMs: number;
   p95DurationMs: number;
   p99DurationMs: number;
+  percentilesPartial: boolean;
+  percentileRetentionDays: number;
   activeApps: number;
   todayCalls: number;
 }

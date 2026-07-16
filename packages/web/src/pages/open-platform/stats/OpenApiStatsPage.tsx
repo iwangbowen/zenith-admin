@@ -255,7 +255,7 @@ export default function OpenApiStatsPage() {
             />
           </>
         )}
-        actions={<ExportButton entity="open-platform.call-logs" query={logParams} />}
+        actions={<ExportButton entity="open-platform.call-logs" query={logParams} executionMode="auto" />}
         mobilePrimary={(
           <>
             <Input
@@ -301,7 +301,7 @@ export default function OpenApiStatsPage() {
             />
           </>
         )}
-        mobileActions={<ExportButton entity="open-platform.call-logs" query={logParams} variant="flat" />}
+        mobileActions={<ExportButton entity="open-platform.call-logs" query={logParams} executionMode="auto" variant="flat" />}
         actionTitle="统计操作"
       />
 
@@ -310,8 +310,16 @@ export default function OpenApiStatsPage() {
         <StatCard label="成功率" value={`${overview?.successRate ?? 0}%`} color="#16a34a" hint={`成功 ${overview?.successCalls ?? 0}`} />
         <StatCard label="失败数" value={(overview?.failedCalls ?? 0).toLocaleString()} color="#dc2626" />
         <StatCard label="平均耗时" value={`${overview?.avgDurationMs ?? 0} ms`} />
-        <StatCard label="P95 耗时" value={`${overview?.p95DurationMs ?? 0} ms`} hint="95% 请求低于该值" />
-        <StatCard label="P99 耗时" value={`${overview?.p99DurationMs ?? 0} ms`} hint="99% 请求低于该值" />
+        <StatCard
+          label="P95 耗时"
+          value={`${overview?.p95DurationMs ?? 0} ms`}
+          hint={overview?.percentilesPartial ? `仅基于近 ${overview.percentileRetentionDays} 天原始日志` : '95% 请求低于该值'}
+        />
+        <StatCard
+          label="P99 耗时"
+          value={`${overview?.p99DurationMs ?? 0} ms`}
+          hint={overview?.percentilesPartial ? `仅基于近 ${overview.percentileRetentionDays} 天原始日志` : '99% 请求低于该值'}
+        />
         <StatCard label="活跃应用" value={overview?.activeApps ?? 0} />
       </div>
 

@@ -73,6 +73,8 @@ export const openPlatformHandlers = [
       avgDurationMs: avg,
       p95DurationMs: percentile(logs.map((log) => log.durationMs), 0.95),
       p99DurationMs: percentile(logs.map((log) => log.durationMs), 0.99),
+      percentilesPartial: false,
+      percentileRetentionDays: 90,
       activeApps: new Set(logs.map((l) => l.clientId)).size,
       todayCalls: logs.filter((l) => l.createdAt.startsWith(today)).length,
     });

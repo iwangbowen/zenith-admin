@@ -1,11 +1,12 @@
 import { randomBytes, createHash, randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
-import { and, eq, desc, ilike } from 'drizzle-orm';
+import { and, eq, desc, ilike, inArray } from 'drizzle-orm';
 import { db } from '../../db';
 import {
   appWebhookSubscriptions,
   oauth2AuthorizationCodes,
   oauth2Clients,
+  oauth2TokenFamilies,
   oauth2Tokens,
   oauth2UserGrants,
   users,
@@ -19,7 +20,6 @@ import { encryptField, decryptField } from '../../lib/encryption';
 import type { CreateOAuth2ClientInput, UpdateOAuth2ClientInput } from '@zenith/shared';
 import { config } from '../../config';
 import { escapeLike } from '../../lib/where-helpers';
-import type { DbExecutor } from '../../db/types';
 
 // ─── 辅助：生成 & 哈希 client_secret ────────────────────────────────────────
 
@@ -229,20 +229,41 @@ export async function listAppOptions() {
 export async function updateOAuth2Client(
   id: number,
   input: UpdateOAuth2ClientInput,
-  options: { resetReview?: boolean; revokeTokens?: boolean } = {},
+  options: {
+    resetReview?: boolean;
+    revokeTokens?: boolean;
+    ownerId?: number;
+    allowedReviewStatuses?: Array<'draft' | 'pending' | 'approved' | 'rejected'>;
+  } = {},
 ) {
-  const existing = await getOAuth2Client(id);
-  if (!existing) throw new HTTPException(404, { message: 'OAuth2 应用不存在' });
-  validateClientConfiguration({
-    redirectUris: input.redirectUris ?? existing.redirectUris,
-    grantTypes: input.grantTypes ?? existing.grantTypes,
-    isPublic: input.isPublic ?? existing.isPublic,
-    signEnabled: input.signEnabled ?? existing.signEnabled,
-    ipAllowlist: input.ipAllowlist ?? existing.ipAllowlist,
-  });
+  const shouldRevokeTokens = Boolean(
+    options.revokeTokens
+    || input.status === 'disabled'
+    || input.allowedScopes !== undefined
+    || input.grantTypes !== undefined
+    || input.isPublic !== undefined
+    || input.environment !== undefined,
+  );
 
   try {
-    const applyUpdate = async (executor: DbExecutor) => {
+    return await db.transaction(async (executor) => {
+      const [locked] = await executor.select().from(oauth2Clients)
+        .where(eq(oauth2Clients.id, id))
+        .for('update')
+        .limit(1);
+      if (!locked) throw new HTTPException(404, { message: 'OAuth2 应用不存在' });
+      validateClientConfiguration({
+        redirectUris: input.redirectUris ?? locked.redirectUris,
+        grantTypes: input.grantTypes ?? locked.grantTypes,
+        isPublic: input.isPublic ?? locked.isPublic,
+        signEnabled: input.signEnabled ?? locked.signEnabled,
+        ipAllowlist: input.ipAllowlist ?? locked.ipAllowlist,
+      });
+      const updateConditions = [eq(oauth2Clients.id, id)];
+      if (options.ownerId !== undefined) updateConditions.push(eq(oauth2Clients.ownerId, options.ownerId));
+      if (options.allowedReviewStatuses?.length) {
+        updateConditions.push(inArray(oauth2Clients.reviewStatus, options.allowedReviewStatuses));
+      }
       const [row] = await executor.update(oauth2Clients)
         .set({
           name: input.name?.trim() ?? undefined,
@@ -263,30 +284,46 @@ export async function updateOAuth2Client(
           reviewedBy: options.resetReview ? null : undefined,
           status: input.status,
         })
-        .where(eq(oauth2Clients.id, id))
+        .where(and(...updateConditions))
         .returning();
-      if (options.revokeTokens || input.status === 'disabled') {
+      if (!row) throw new HTTPException(409, { message: '应用状态已变化，请刷新后重试' });
+      if (shouldRevokeTokens) {
+        await executor.delete(oauth2AuthorizationCodes)
+          .where(eq(oauth2AuthorizationCodes.clientId, locked.clientId));
+        await executor.update(oauth2TokenFamilies)
+          .set({ revoked: true })
+          .where(eq(oauth2TokenFamilies.clientId, locked.clientId));
         await executor.update(oauth2Tokens)
           .set({ revoked: true })
-          .where(eq(oauth2Tokens.clientId, existing.clientId));
+          .where(eq(oauth2Tokens.clientId, locked.clientId));
       }
       return mapClientRow(row);
-    };
-    return options.revokeTokens || input.status === 'disabled'
-      ? db.transaction(applyUpdate)
-      : applyUpdate(db);
+    });
   } catch (err) {
     rethrowPgUniqueViolation(err, '应用名称已存在');
     throw err;
   }
 }
 
-export async function deleteOAuth2Client(id: number) {
+export async function deleteOAuth2Client(
+  id: number,
+  options: {
+    ownerId?: number;
+    allowedReviewStatuses?: Array<'draft' | 'pending' | 'approved' | 'rejected'>;
+  } = {},
+) {
   const existing = await getOAuth2Client(id);
   await db.transaction(async (tx) => {
+    await tx.select({ id: oauth2Clients.id }).from(oauth2Clients)
+      .where(eq(oauth2Clients.id, id))
+      .for('update')
+      .limit(1);
     await tx.update(oauth2Tokens)
       .set({ revoked: true })
       .where(eq(oauth2Tokens.clientId, existing.clientId));
+    await tx.update(oauth2TokenFamilies)
+      .set({ revoked: true })
+      .where(eq(oauth2TokenFamilies.clientId, existing.clientId));
     await tx.delete(oauth2AuthorizationCodes)
       .where(eq(oauth2AuthorizationCodes.clientId, existing.clientId));
     await tx.delete(oauth2UserGrants)
@@ -294,7 +331,12 @@ export async function deleteOAuth2Client(id: number) {
     await tx.update(appWebhookSubscriptions)
       .set({ status: 'disabled' })
       .where(eq(appWebhookSubscriptions.clientId, existing.clientId));
-    const result = await tx.delete(oauth2Clients).where(eq(oauth2Clients.id, id)).returning();
+    const deleteConditions = [eq(oauth2Clients.id, id)];
+    if (options.ownerId !== undefined) deleteConditions.push(eq(oauth2Clients.ownerId, options.ownerId));
+    if (options.allowedReviewStatuses?.length) {
+      deleteConditions.push(inArray(oauth2Clients.reviewStatus, options.allowedReviewStatuses));
+    }
+    const result = await tx.delete(oauth2Clients).where(and(...deleteConditions)).returning();
     if (result.length === 0) throw new HTTPException(404, { message: 'OAuth2 应用不存在' });
   });
 }
@@ -321,6 +363,11 @@ export async function regenerateOAuth2ClientSecret(id: number) {
     await tx.update(oauth2Tokens)
       .set({ revoked: true })
       .where(eq(oauth2Tokens.clientId, row.clientId));
+    await tx.update(oauth2TokenFamilies)
+      .set({ revoked: true })
+      .where(eq(oauth2TokenFamilies.clientId, row.clientId));
+    await tx.delete(oauth2AuthorizationCodes)
+      .where(eq(oauth2AuthorizationCodes.clientId, row.clientId));
 
     return {
       clientId: row.clientId,
@@ -358,6 +405,11 @@ export async function reviewOAuth2Client(
     )).returning();
     if (!row) throw new HTTPException(400, { message: '仅待审核应用可执行审核操作' });
     if (input.action === 'reject') {
+      await tx.delete(oauth2AuthorizationCodes)
+        .where(eq(oauth2AuthorizationCodes.clientId, row.clientId));
+      await tx.update(oauth2TokenFamilies)
+        .set({ revoked: true })
+        .where(eq(oauth2TokenFamilies.clientId, row.clientId));
       await tx.update(oauth2Tokens)
         .set({ revoked: true })
         .where(eq(oauth2Tokens.clientId, row.clientId));

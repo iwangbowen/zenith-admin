@@ -27,6 +27,7 @@ import {
   REPORT_SECRET_MASK,
 } from './report-secrets';
 import { currentUserOrNull } from '../../lib/context';
+import { config as appConfig } from '../../config';
 import {
   ensureReportResourceAccess,
   listAccessibleReportResourceIds,
@@ -200,9 +201,9 @@ export function normalizeDatasourceConfig(
 
 async function assertDatasourceTargetSafe(type: ReportDatasourceType, config: ReportDatasourceConfig): Promise<void> {
   if (type === 'api') {
-    await assertSafeOutboundUrl((config as ReportApiDatasourceConfig).url);
+    await assertSafeOutboundUrl((config as ReportApiDatasourceConfig).url, appConfig.report.outboundPrivateAllowlist);
   } else if (isExternalDbType(type)) {
-    await assertSafeOutboundHost((config as ReportExternalDbConfig).host);
+    await assertSafeOutboundHost((config as ReportExternalDbConfig).host, appConfig.report.outboundPrivateAllowlist);
   }
 }
 

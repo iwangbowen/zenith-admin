@@ -1,7 +1,6 @@
-import { desc } from 'drizzle-orm';
+import { and, desc, lt, lte, type SQL } from 'drizzle-orm';
 import { db } from '../../../db';
 import { openApiCallLogs } from '../../../db/schema';
-import { batchIterable } from '../../excel-export';
 import {
   buildOpenApiCallLogWhere,
   type OpenApiCallLogQuery,
@@ -28,6 +27,30 @@ const columns: ExportColumn[] = [
 
 type ExportQuery = Omit<OpenApiCallLogQuery, 'page' | 'pageSize'> & Record<string, unknown>;
 
+async function* streamOpenApiCallLogs(query: ExportQuery) {
+  const baseWhere = buildOpenApiCallLogWhere(query);
+  const [maxRow] = await db.select({ id: openApiCallLogs.id })
+    .from(openApiCallLogs)
+    .where(baseWhere)
+    .orderBy(desc(openApiCallLogs.id))
+    .limit(1);
+  if (!maxRow) return;
+
+  let cursor: number | null = null;
+  while (true) {
+    const conditions: SQL[] = [lte(openApiCallLogs.id, maxRow.id)];
+    if (baseWhere) conditions.push(baseWhere);
+    if (cursor !== null) conditions.push(lt(openApiCallLogs.id, cursor));
+    const rows = await db.select().from(openApiCallLogs)
+      .where(and(...conditions))
+      .orderBy(desc(openApiCallLogs.id))
+      .limit(1000);
+    if (rows.length === 0) return;
+    yield* rows;
+    cursor = rows[rows.length - 1].id;
+  }
+}
+
 export const openApiCallLogsExportDefinition = defineExport<ExportQuery, Record<string, unknown>>({
   entity: 'open-platform.call-logs',
   moduleName: '开放 API 调用日志',
@@ -35,14 +58,9 @@ export const openApiCallLogsExportDefinition = defineExport<ExportQuery, Record<
   sourcePath: '/open-platform/stats',
   sheetName: '调用日志',
   permissions: { export: 'open:stats:view' },
-  execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
+  execution: { mode: 'auto', syncMaxRows: 5000, syncModeOverridesAsyncPolicies: false },
   retention: { normalDays: 7, sensitiveDays: 3, rawDays: 3 },
   columns,
   countRows: async (query) => db.$count(openApiCallLogs, buildOpenApiCallLogWhere(query)),
-  streamRows: async (query) => {
-    const where = buildOpenApiCallLogWhere(query);
-    return batchIterable((limit, offset) =>
-      db.select().from(openApiCallLogs).where(where).orderBy(desc(openApiCallLogs.id)).limit(limit).offset(offset),
-    );
-  },
+  streamRows: (query) => streamOpenApiCallLogs(query),
 });
