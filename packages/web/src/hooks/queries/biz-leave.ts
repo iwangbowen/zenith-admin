@@ -61,6 +61,14 @@ export function useSubmitBizLeave() {
   });
 }
 
+export function useReopenBizLeave() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.post<BizLeave>(`/api/biz/leaves/${id}/reopen`, {}).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: bizLeaveKeys.all }),
+  });
+}
+
 export function useDeleteBizLeave() {
   const qc = useQueryClient();
   return useMutation({

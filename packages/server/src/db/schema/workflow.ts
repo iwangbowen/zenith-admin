@@ -463,8 +463,12 @@ export const workflowInstances = pgTable('workflow_instances', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (t) => [
-  // 业务键租户内唯一：tenant_id 可空（平台级/单租户数据），用 coalesce 归一为 0 保证空租户下依旧防重
-  uniqueIndex('workflow_instances_biz_key_uniq').on(sql`coalesce(${t.tenantId}, 0)`, t.bizType, t.bizId),
+  // 业务键租户内唯一（仅活跃实例）：终态（approved/rejected/withdrawn/cancelled）实例不占用业务键，
+  // 允许业务记录被驳回/撤回后重新发起；状态列表与 shared WORKFLOW_ACTIVE_INSTANCE_STATUSES 保持一致。
+  // tenant_id 可空（平台级/单租户数据），用 coalesce 归一为 0 保证空租户下依旧防重
+  uniqueIndex('workflow_instances_biz_key_uniq')
+    .on(sql`coalesce(${t.tenantId}, 0)`, t.bizType, t.bizId)
+    .where(sql`${t.status} in ('draft', 'running', 'suspended')`),
   uniqueIndex('workflow_instances_parent_task_item_key_idx').on(t.parentTaskId, t.parentTaskItemKey),
   // 全局监控 / 租户视角列表的高频组合条件
   index('workflow_instances_tenant_status_idx').on(t.tenantId, t.status),

@@ -8,7 +8,7 @@ import {
 } from '../../lib/openapi-schemas';
 import { BizLeaveDTO } from '../../lib/openapi-dtos';
 import {
-  listBizLeaves, getBizLeave, getBizLeaveDetail, createBizLeave, updateBizLeave, deleteBizLeave, submitBizLeave,
+  listBizLeaves, getBizLeave, getBizLeaveDetail, createBizLeave, updateBizLeave, deleteBizLeave, submitBizLeave, reopenBizLeave,
 } from '../../services/biz-demo/biz-leave.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -82,6 +82,17 @@ const submitRoute = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await submitBizLeave(c.req.valid('param').id), '已提交审批'), 200),
 });
 
+const reopenRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/reopen', tags: ['BizLeave'], summary: '重新编辑（驳回/取消后转回草稿，可修改后再次提交）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(BizLeaveDTO, '已转为草稿') },
+  }),
+  handler: async (c) => c.json(okBody(await reopenBizLeave(c.req.valid('param').id), '已转为草稿'), 200),
+});
+
 const detailRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'get', path: '/{id}/detail', tags: ['BizLeave'], summary: '请假详情（供工作流参与者/审批人查看）',
@@ -93,6 +104,6 @@ const detailRoute = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await getBizLeaveDetail(c.req.valid('param').id)), 200),
 });
 
-router.openapiRoutes([listRoute, getRoute, detailRoute, createRoute_, updateRoute, deleteRoute, submitRoute] as const);
+router.openapiRoutes([listRoute, getRoute, detailRoute, createRoute_, updateRoute, deleteRoute, submitRoute, reopenRoute] as const);
 
 export default router;

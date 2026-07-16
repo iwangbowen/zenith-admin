@@ -5,7 +5,7 @@ import { workflowInstances, workflowTasks, workflowDefinitions, users, userRoles
 import { tenantCondition, getCreateTenantId } from '../../../lib/tenant';
 import { validateFlowData } from '../../../lib/workflow-engine';
 import type { WorkflowFlowData, WorkflowInstanceFormSnapshot } from '@zenith/shared';
-import { collectWorkflowFormValidationErrors } from '@zenith/shared';
+import { collectWorkflowFormValidationErrors, WORKFLOW_ACTIVE_INSTANCE_STATUSES } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../../lib/context';
 import { buildStarterContext } from '../workflow-assignee-resolver.service';
@@ -240,13 +240,21 @@ export async function emitMaterializedAdvanceEvents(
   if (instance.status === 'rejected') await emitInstanceEvent('instance.rejected', instanceDto, actor, executor);
 }
 
+/**
+ * 查找同业务键的**活跃**实例（draft/running/suspended）作为幂等去重口径：
+ * 已终态（通过/驳回/撤回/取消）的实例不再拦截，业务记录可修改后重新发起新流程。
+ */
 async function findInstanceByBusinessKey(
   bizType: string | null,
   bizId: string | null,
 ): Promise<typeof workflowInstances.$inferSelect | null> {
   if (!bizType || !bizId) return null;
   const [existing] = await db.select().from(workflowInstances)
-    .where(and(eq(workflowInstances.bizType, bizType), eq(workflowInstances.bizId, bizId)))
+    .where(and(
+      eq(workflowInstances.bizType, bizType),
+      eq(workflowInstances.bizId, bizId),
+      inArray(workflowInstances.status, [...WORKFLOW_ACTIVE_INSTANCE_STATUSES]),
+    ))
     .orderBy(desc(workflowInstances.id))
     .limit(1);
   return existing ?? null;

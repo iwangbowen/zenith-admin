@@ -470,6 +470,13 @@
       "when": 1784208699936,
       "tag": "0066_in-app-message-dedupe",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1784210723570,
+      "tag": "0067_supreme_hellfire_club",
+      "breakpoints": true
     }
   ]
 }

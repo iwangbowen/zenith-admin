@@ -185,6 +185,7 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
             mode="create"
             container={container}
             definitionId={def.id}
+            value={initialFormData}
             getFormApi={(api) => { businessFormApi.current = api; }}
           />
         );

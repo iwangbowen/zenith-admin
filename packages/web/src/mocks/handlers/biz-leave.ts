@@ -101,6 +101,20 @@ export const bizLeaveHandlers = [
     return HttpResponse.json({ code: 0, message: '已提交审批', data: leave });
   }),
 
+  // 重新编辑：驳回/取消 → 草稿（旧实例已终态，重新提交将发起新流程）
+  http.post('/api/biz/leaves/:id/reopen', ({ params }) => {
+    const leave = mockBizLeaves.find((l) => l.id === Number(params.id));
+    if (!leave) return HttpResponse.json({ code: 404, message: '请假单不存在', data: null });
+    if (leave.status !== 'rejected' && leave.status !== 'cancelled') {
+      return HttpResponse.json({ code: 400, message: '仅已驳回或已取消的请假单可重新编辑', data: null });
+    }
+    leave.status = 'draft';
+    leave.workflowInstanceId = null;
+    leave.workflowStatus = null;
+    leave.updatedAt = mockDateTime();
+    return HttpResponse.json({ code: 0, message: '已转为草稿', data: leave });
+  }),
+
   // 详情
   http.get('/api/biz/leaves/:id', ({ params }) => {
     const leave = mockBizLeaves.find((l) => l.id === Number(params.id));

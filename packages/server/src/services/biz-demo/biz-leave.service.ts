@@ -8,6 +8,7 @@
 import { and, desc, eq, isNull, like, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { BizLeave, BizLeaveStatus, WorkflowInstanceStatus } from '@zenith/shared';
+import { WORKFLOW_ACTIVE_INSTANCE_STATUSES } from '@zenith/shared';
 import { db } from '../../db';
 import { bizLeaves, users, workflowDefinitions, workflowInstances, workflowTasks, type BizLeaveRow } from '../../db/schema';
 import { currentUser } from '../../lib/context';
@@ -81,9 +82,14 @@ async function ensureLeaveDefinitionId(): Promise<number> {
   return def.id;
 }
 
+/** 查找该请假单当前**活跃**的流程实例（与 bridge 幂等去重口径一致）；终态实例不算占用，允许重新发起 */
 async function findExistingLeaveWorkflow(leaveId: number) {
   const [instance] = await db.select().from(workflowInstances)
-    .where(and(eq(workflowInstances.bizType, BIZ_LEAVE_TYPE), eq(workflowInstances.bizId, String(leaveId))))
+    .where(and(
+      eq(workflowInstances.bizType, BIZ_LEAVE_TYPE),
+      eq(workflowInstances.bizId, String(leaveId)),
+      inArray(workflowInstances.status, [...WORKFLOW_ACTIVE_INSTANCE_STATUSES]),
+    ))
     .orderBy(desc(workflowInstances.id))
     .limit(1);
   return instance ?? null;
@@ -242,5 +248,24 @@ export async function submitBizLeave(id: number) {
     }).where(and(eq(bizLeaves.id, id), isNull(bizLeaves.workflowInstanceId)));
     throw err;
   }
+  return getBizLeave(id);
+}
+
+/**
+ * 重新编辑：已驳回/已取消的请假单转回草稿，可修改后再次「提交审批」。
+ * 旧流程实例已终态、不再占用业务键（bizType+bizId 唯一约束仅作用于活跃实例），
+ * 再次提交时将发起一个全新的流程实例。
+ */
+export async function reopenBizLeave(id: number) {
+  const [leave] = await db.select().from(bizLeaves).where(findOwnLeave(id)).limit(1);
+  if (!leave) throw new HTTPException(404, { message: '请假单不存在' });
+  if (leave.status !== 'rejected' && leave.status !== 'cancelled') {
+    throw new HTTPException(400, { message: '仅已驳回或已取消的请假单可重新编辑' });
+  }
+  await db.update(bizLeaves).set({
+    status: 'draft',
+    workflowInstanceId: null,
+    workflowStatus: null,
+  }).where(and(eq(bizLeaves.id, id), inArray(bizLeaves.status, ['rejected', 'cancelled'])));
   return getBizLeave(id);
 }

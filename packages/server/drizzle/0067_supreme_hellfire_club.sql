@@ -1,0 +1,2 @@
+DROP INDEX "workflow_instances_biz_key_uniq";--> statement-breakpoint
+CREATE UNIQUE INDEX "workflow_instances_biz_key_uniq" ON "workflow_instances" USING btree (coalesce("tenant_id", 0),"biz_type","biz_id") WHERE "workflow_instances"."status" in ('draft', 'running', 'suspended');

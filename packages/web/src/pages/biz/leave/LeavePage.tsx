@@ -27,6 +27,7 @@ import {
   type SaveBizLeavePayload,
   useBizLeaveList,
   useDeleteBizLeave,
+  useReopenBizLeave,
   useSaveBizLeave,
   useSubmitBizLeave,
 } from '@/hooks/queries/biz-leave';
@@ -76,6 +77,7 @@ export default function LeavePage() {
   const submitApprovalMutation = useSubmitBizLeave();
   const submitFromListMutation = useSubmitBizLeave();
   const deleteMutation = useDeleteBizLeave();
+  const reopenMutation = useReopenBizLeave();
   const saving = saveMutation.isPending;
   const submittingApproval = saveForApprovalMutation.isPending || submitApprovalMutation.isPending;
 
@@ -155,6 +157,13 @@ export default function LeavePage() {
     Toast.success('已提交审批');
   };
 
+  /** 驳回/取消后重新编辑：转回草稿并打开编辑弹窗，修改后再次提交将发起新流程 */
+  const handleReopen = async (record: BizLeave) => {
+    const fresh = await reopenMutation.mutateAsync(record.id);
+    Toast.success('已转为草稿，编辑后可重新提交审批');
+    openEdit(fresh);
+  };
+
   const openWorkflow = (record: BizLeave) => {
     if (!record.workflowInstanceId) return;
     navigate(`/workflow/instance/${record.workflowInstanceId}`, { state: { tabTitle: `请假审批 - ${record.applicantName ?? ''}` } });
@@ -196,6 +205,18 @@ export default function LeavePage() {
           label: '流程详情',
           hidden: !record.workflowInstanceId,
           onClick: () => openWorkflow(record),
+        },
+        {
+          key: 'reopen',
+          label: '重新编辑',
+          hidden: record.status !== 'rejected' && record.status !== 'cancelled',
+          onClick: () => {
+            Modal.confirm({
+              title: '重新编辑该请假单？',
+              content: '将转回草稿状态，修改后可再次提交审批（届时发起新的审批流程）。',
+              onOk: () => handleReopen(record),
+            });
+          },
         },
         {
           key: 'delete',
