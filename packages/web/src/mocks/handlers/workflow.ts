@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowEngineIntrospection, WorkflowEngineOutboxEvent, WorkflowEngineRuntimeTask, WorkflowFlowData, WorkflowFormField, WorkflowInstance, WorkflowInstanceFormSnapshot, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowSerialNoConfig, WorkflowSimulationCase, WorkflowSimulationDecision, WorkflowSimulationResult, WorkflowTask, WorkflowTaskUrge } from '@zenith/shared';
-import { buildWorkflowSummaryItems, findNextApproverSelectNodes, renderWorkflowSerialNo, resolveNodeFieldPermissions, resolveSerialPeriodKey, sanitizeFormUpdatesByNodePerms, WORKFLOW_SERIAL_SAMPLE_VARS } from '@zenith/shared';
+import { buildWorkflowSummaryItems, collectReferencedFormFieldKeys, findNextApproverSelectNodes, renderWorkflowSerialNo, resolveNodeFieldPermissions, resolveSerialPeriodKey, sanitizeFormUpdatesByNodePerms, WORKFLOW_SERIAL_SAMPLE_VARS } from '@zenith/shared';
 import {
   mockWorkflowDefinitions,
   mockWorkflowInstances,
@@ -1326,6 +1326,21 @@ export const workflowHandlers = [
     }
     if (cur.formType === 'external' && !cur.customForm?.viewComponent?.trim()) {
       return err('请先在「表单」步骤配置业务系统主导流程的审批查看页组件路径');
+    }
+    // designer 发布门禁（与真实 API assertPublishable 一致）：引用字段未绑定表单 / 绑定表单停用
+    if ((cur.formType ?? 'designer') === 'designer') {
+      if (cur.formId == null) {
+        const referenced = [...collectReferencedFormFieldKeys(cur.flowData as WorkflowFlowData | null)];
+        if (referenced.length > 0) {
+          const head = referenced.slice(0, 5).join('、');
+          const suffix = referenced.length > 5 ? ` 等 ${referenced.length} 个字段` : '';
+          return err(`流程的分支条件/审批人配置引用了表单字段（${head}${suffix}），但未绑定表单，请先在「表单」步骤选择表单`);
+        }
+      } else {
+        const boundForm = mockWorkflowForms.find((f) => f.id === cur.formId);
+        if (!boundForm) return err('绑定的表单不存在，请在「表单」步骤重新选择');
+        if (boundForm.status === 'disabled') return err(`绑定的表单「${boundForm.name}」已停用，请启用该表单或更换后再发布`);
+      }
     }
     const newVersion = cur.version + 1;
     const now = mockDateTime();
