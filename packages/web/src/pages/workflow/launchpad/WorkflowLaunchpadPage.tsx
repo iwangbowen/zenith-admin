@@ -71,7 +71,7 @@ export default function WorkflowLaunchpadPage() {
 
   const handleSubmit = async (asDraft: boolean) => {
     if (!selectedDef) return;
-    const result = await launchFormRef.current?.collectFormData({ requireInitiatorApprovers: !asDraft });
+    const result = await launchFormRef.current?.collectFormData({ requireInitiatorApprovers: !asDraft, validateForm: !asDraft });
     if (!result) return;
     const { values, formData } = result;
     const mutation = asDraft ? draftMutation : launchMutation;

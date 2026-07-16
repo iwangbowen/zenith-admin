@@ -36,7 +36,7 @@ export default function WorkflowLaunchPage() {
 
   const handleSubmit = async (asDraft: boolean) => {
     if (!def) return;
-    const result = await launchFormRef.current?.collectFormData({ requireInitiatorApprovers: !asDraft });
+    const result = await launchFormRef.current?.collectFormData({ requireInitiatorApprovers: !asDraft, validateForm: !asDraft });
     if (!result) return;
     const { values, formData } = result;
     if (!asDraft && !submitNonceRef.current) submitNonceRef.current = crypto.randomUUID();

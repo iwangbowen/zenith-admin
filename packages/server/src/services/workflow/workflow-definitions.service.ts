@@ -78,7 +78,7 @@ import { normalizeFlowData } from '../../lib/workflow-engine';
 import { analyzeWorkflowHealth } from '../../lib/workflow-health';
 import { buildVersionDiff } from '../../lib/workflow-version-diff';
 import type { WorkflowFlowData } from '@zenith/shared';
-import { WORKFLOW_SCHEMA_VERSION } from '@zenith/shared';
+import { WORKFLOW_SCHEMA_VERSION, collectReferencedFormFieldKeys } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
 import type { DbExecutor } from '../../db/types';
@@ -270,10 +270,30 @@ export async function updateDefinition(id: number, data: Partial<{
   return getDefinition(updated.id);
 }
 
-/** 发布前校验：结构体检硬门禁 + 业务表单配置完整性（publish / enable 共用） */
+/** 发布前校验：结构体检硬门禁 + 表单绑定/业务表单配置完整性（publish / enable 共用） */
 async function assertPublishable(def: typeof workflowDefinitions.$inferSelect): Promise<void> {
   const flowData = def.flowData as WorkflowFlowData | null;
   if (!flowData?.nodes) throw new HTTPException(400, { message: '请先在设计器中设计流程' });
+  // designer 表单门禁：流程引用了表单字段却未绑定表单（分支条件/审批人字段等运行时必然解析失败）→ 阻断；
+  // 绑定的表单已被停用/删除 → 阻断，避免发布后发起页无表单可渲染
+  const formType = (def.formType ?? 'designer') as WorkflowFormType;
+  if (formType === 'designer') {
+    if (def.formId == null) {
+      const referenced = [...collectReferencedFormFieldKeys(flowData)];
+      if (referenced.length > 0) {
+        const head = referenced.slice(0, 5).join('、');
+        const suffix = referenced.length > 5 ? ` 等 ${referenced.length} 个字段` : '';
+        throw new HTTPException(400, { message: `流程的分支条件/审批人配置引用了表单字段（${head}${suffix}），但未绑定表单，请先在「表单」步骤选择表单` });
+      }
+    } else {
+      const [form] = await db.select({ name: workflowForms.name, status: workflowForms.status })
+        .from(workflowForms).where(eq(workflowForms.id, def.formId)).limit(1);
+      if (!form) throw new HTTPException(400, { message: '绑定的表单不存在，请在「表单」步骤重新选择' });
+      if (form.status === 'disabled') {
+        throw new HTTPException(400, { message: `绑定的表单「${form.name}」已停用，请启用该表单或更换后再发布` });
+      }
+    }
+  }
   // 发布前健康硬门禁：结构非法或存在 critical 体检问题（审批人无法解析 / 表达式非法 / 网关无出口等）一律拦截
   const knownFields = def.formId ? new Set((await resolveFormSnapshot(def.formId))?.fields.map((f) => f.key).filter((k): k is string => !!k) ?? []) : null;
   const report = analyzeWorkflowHealth(flowData, knownFields && knownFields.size > 0 ? knownFields : null);
@@ -283,7 +303,7 @@ async function assertPublishable(def: typeof workflowDefinitions.$inferSelect): 
     const suffix = criticals.length > 3 ? ` 等 ${criticals.length} 项问题` : '';
     throw new HTTPException(400, { message: `发布前体检未通过：${head}${suffix}` });
   }
-  validateBusinessFormConfigForPublish((def.formType ?? 'designer') as WorkflowFormType, def.customForm);
+  validateBusinessFormConfigForPublish(formType, def.customForm);
 }
 
 /** 读取表单库行，构造发布版本的表单 schema 冻结快照（无绑定表单返回 null） */

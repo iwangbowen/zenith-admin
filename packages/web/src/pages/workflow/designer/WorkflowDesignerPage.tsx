@@ -924,6 +924,7 @@ export default function WorkflowDesignerPage({
         onSave={handleSaveNode}
         onCancel={() => { setDrawerVisible(false); setEditingNode(null); }}
         readOnly={readOnly}
+        formEditPermissionDisabled={formType === 'external'}
         zIndex={drawerZIndex}
       />
 

@@ -470,7 +470,7 @@ export default function MyApplicationsPage() {
 
   const handleSaveDraft = async () => {
     if (!selectedDef) { Toast.error('请先选择流程'); return; }
-    const result = await launchFormRef.current?.collectFormData({ requireInitiatorApprovers: false });
+    const result = await launchFormRef.current?.collectFormData({ requireInitiatorApprovers: false, validateForm: false });
     if (!result) return;
     const { values, formData } = result;
     await saveDraftMutation.mutateAsync({
@@ -489,7 +489,7 @@ export default function MyApplicationsPage() {
 
   const handleUpdateDraft = async () => {
     if (!editingDraft) return;
-    const result = await launchFormRef.current?.collectFormData({ requireInitiatorApprovers: false });
+    const result = await launchFormRef.current?.collectFormData({ requireInitiatorApprovers: false, validateForm: false });
     if (!result) return;
     const { values, formData } = result;
     await updateDraftMutation.mutateAsync({

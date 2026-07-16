@@ -165,6 +165,8 @@ interface NodeConfigDrawerProps {
   onCancel: () => void;
   /** 只读模式：禁用全部编辑（点击节点查看配置），仅保留关闭 */
   readOnly?: boolean;
+  /** 禁用表单权限的「编辑」列（external 业务系统主导流程：数据归属业务系统） */
+  formEditPermissionDisabled?: boolean;
   /** 抽屉层级；嵌入到其它 SideSheet 内（如只读设计器）时需高于外层，避免被遮挡 */
   zIndex?: number;
 }
@@ -205,6 +207,7 @@ export default function NodeConfigDrawer({
   onSave,
   onCancel,
   readOnly = false,
+  formEditPermissionDisabled = false,
   zIndex,
 }: Readonly<NodeConfigDrawerProps>) {
 
@@ -513,6 +516,7 @@ export default function NodeConfigDrawer({
                 formFields={formFields}
                 fieldPermissions={(props.fieldPermissions as Record<string, FieldPermission>) ?? {}}
                 onChange={(permissions) => handlePropsChange({ fieldPermissions: permissions })}
+                editDisabled={formEditPermissionDisabled}
               />
             </TabPane>
           )}

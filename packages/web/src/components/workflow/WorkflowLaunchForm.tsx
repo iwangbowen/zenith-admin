@@ -33,7 +33,11 @@ export interface WorkflowLaunchFormData {
 }
 
 export interface WorkflowLaunchFormHandle {
-  collectFormData: (options?: { requireInitiatorApprovers?: boolean }) => Promise<WorkflowLaunchFormData | null>;
+  collectFormData: (options?: {
+    requireInitiatorApprovers?: boolean;
+    /** false 时跳过表单校验（存草稿场景，与服务端草稿宽松语义一致），直接取当前值 */
+    validateForm?: boolean;
+  }) => Promise<WorkflowLaunchFormData | null>;
 }
 
 interface WorkflowLaunchFormProps {
@@ -112,15 +116,21 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
         }
         try {
           const values = await formApi.current.validate() as Record<string, unknown>;
+          const skipFormValidation = options?.validateForm === false;
           let formData: Record<string, unknown> = {};
           if (def.formType === 'custom') {
             if (!businessFormApi.current) {
               Toast.error('业务表单尚未就绪，请稍候重试');
               return null;
             }
-            formData = await businessFormApi.current.validate();
+            // 存草稿优先取当前值（不校验）；业务组件未实现 getValues 时回退 validate
+            formData = skipFormValidation
+              ? businessFormApi.current.getValues?.() ?? await businessFormApi.current.validate()
+              : await businessFormApi.current.validate();
           } else if (dynamicFormApi.current && def.formFields && def.formFields.length > 0) {
-            formData = await dynamicFormApi.current.validate() as Record<string, unknown>;
+            formData = skipFormValidation
+              ? (dynamicFormApi.current.getValues() as Record<string, unknown>) ?? {}
+              : await dynamicFormApi.current.validate() as Record<string, unknown>;
           }
           const effectiveSelectedInitiatorApprovers = latestSelectedInitiatorApproversRef.current;
           if (options?.requireInitiatorApprovers !== false) {

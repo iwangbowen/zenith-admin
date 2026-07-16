@@ -24,6 +24,7 @@ import SignaturePad from '@/components/SignaturePad';
 import FileAttachment from '@/components/FileAttachment';
 import { uploadedFileToAttachment } from '@/components/FileAttachment/utils';
 import WorkflowInstanceDetailPanel, { WorkflowDetailSkeleton } from '@/components/workflow/WorkflowInstanceDetailPanel';
+import type { WorkflowBusinessFormApi } from '@/components/workflow/BusinessFormHost';
 import WorkflowSideSheet from '@/components/workflow/WorkflowSideSheet';
 import { useUserOptions } from '@/hooks/useUserOptions';
 import {
@@ -285,7 +286,8 @@ export default function WorkflowApprovalDetailSheet({
   const formEditable = currentTask?.status === 'pending'
     && detail?.id === instanceId
     && hasEditableFieldPermission(viewerFieldPermissions);
-  const detailFormApi = useRef<FormApi | null>(null);
+  // designer 表单为 Semi FormApi；custom 业务表单为组件注册的 WorkflowBusinessFormApi，二者均暴露 validate()
+  const detailFormApi = useRef<FormApi | WorkflowBusinessFormApi | null>(null);
 
   /** 校验并收集「可编辑」字段的修改值；无可编辑字段返回 undefined，校验失败抛错 */
   const collectFormUpdates = async (): Promise<Record<string, unknown> | undefined> => {
@@ -293,7 +295,7 @@ export default function WorkflowApprovalDetailSheet({
     const api = detailFormApi.current;
     if (!api) return undefined;
     try {
-      const values = await api.validate() as Record<string, unknown>;
+      const values = await (api.validate as () => Promise<Record<string, unknown>>)();
       const updates: Record<string, unknown> = {};
       for (const [key, perm] of Object.entries(viewerFieldPermissions)) {
         if (perm === 'edit' && key in values) updates[key] = values[key];

@@ -20,7 +20,7 @@ import ApprovalTimeline from '@/components/ApprovalTimeline';
 import FileAttachment from '@/components/FileAttachment';
 import { uploadedFileToAttachment } from '@/components/FileAttachment/utils';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
-import BusinessFormHost from '@/components/workflow/BusinessFormHost';
+import BusinessFormHost, { type WorkflowBusinessFormApi } from '@/components/workflow/BusinessFormHost';
 import WorkflowGraphView from './WorkflowGraphView';
 import WorkflowProcessLayout from './WorkflowProcessLayout';
 import WorkflowPriorityTag from '@/components/workflow/WorkflowPriorityTag';
@@ -47,8 +47,11 @@ interface Props {
   viewerFieldPermissions?: Record<string, WorkflowFieldPermission> | null;
   /** 是否允许编辑权限为 edit 的字段（当前待办处理人查看时为 true） */
   formEditable?: boolean;
-  /** formEditable 时暴露表单 FormApi，供审批提交前 validate/getValues 收集修改 */
-  onFormApiReady?: (api: FormApi) => void;
+  /**
+   * formEditable 时暴露表单取值/校验 API，供审批提交前 validate 收集修改：
+   * designer 表单为 Semi FormApi；custom 业务表单为组件注册的 WorkflowBusinessFormApi。
+   */
+  onFormApiReady?: (api: FormApi | WorkflowBusinessFormApi) => void;
 }
 
 /** 流程沟通时间线（自由评论 + @提及 + 附件 + 回复引用），自管理状态与请求 */
@@ -258,19 +261,24 @@ export default function WorkflowInstanceDetailPanel({
     : (instance.currentNodeName ? [instance.currentNodeName] : []);
 
   const renderFormData = () => {
-    // 自定义业务表单（custom）/ 业务系统主导（external）：渲染业务页面（view 只读）
+    // 自定义业务表单（custom）/ 业务系统主导（external）：渲染业务页面
+    // custom 且当前处理人具有可编辑字段权限时以 approve 模式渲染（组件注册 API 供提交时取值）；
+    // external 业务数据归属业务系统，审批时恒为只读查看
     if (formType === 'custom' || formType === 'external') {
+      const businessEditable = formEditable && formType === 'custom';
       return (
         <BusinessFormHost
+          key={businessEditable ? `biz-approve-${instance.id}` : `biz-view-${instance.id}`}
           customForm={customForm}
-          mode="view"
+          mode={businessEditable ? 'approve' : 'view'}
           container="sheet"
           definitionId={instance.definitionId}
           instanceId={instance.id}
           value={(instance.formData as Record<string, unknown>) ?? {}}
           bizType={instance.bizType ?? null}
           bizId={instance.bizId ?? null}
-          readOnly
+          readOnly={!businessEditable}
+          getFormApi={businessEditable ? onFormApiReady : undefined}
         />
       );
     }

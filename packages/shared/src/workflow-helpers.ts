@@ -181,6 +181,47 @@ export function sanitizeFormUpdatesByNodePerms(
   return out;
 }
 
+/**
+ * 收集流程 flowData 中**执行路径依赖**的表单字段 key：
+ * 分支条件（source='form'）、formUser / formDepartment 审批人字段、
+ * 审批人表达式中的 `form.*` 引用、延迟节点目标日期字段、子流程循环/发起人字段。
+ *
+ * 用于发布前门禁：designer 类型未绑定表单（或字段缺失）时，这些引用在运行时
+ * 必然解析失败（分支全走默认、审批人为空），应阻断发布而非上线后才暴露。
+ */
+export function collectReferencedFormFieldKeys(
+  flowData: Pick<WorkflowFlowData, 'nodes' | 'edges'> | null | undefined,
+): Set<string> {
+  const keys = new Set<string>();
+  const addKey = (v: unknown) => {
+    if (typeof v === 'string' && v.trim()) keys.add(v.trim());
+  };
+  for (const edge of flowData?.edges ?? []) {
+    const rules = [
+      ...(edge.condition ? [edge.condition] : []),
+      ...(edge.conditions ?? []).flatMap((g) => g.rules ?? []),
+    ];
+    for (const rule of rules) {
+      if ((rule.source ?? 'form') === 'form') addKey(rule.field);
+    }
+  }
+  for (const node of flowData?.nodes ?? []) {
+    const data = node.data;
+    if (!data) continue;
+    if (data.assigneeType === 'formUser') addKey(data.formUserField);
+    if (data.assigneeType === 'formDepartment') addKey(data.formDeptField);
+    if (data.assigneeType === 'expression' && typeof data.assigneeExpression === 'string') {
+      for (const m of data.assigneeExpression.matchAll(/\bform\.([A-Za-z_$][\w$]*)/g)) addKey(m[1]);
+    }
+    if (data.type === 'delay' && data.delayType === 'toDate') addKey(data.targetDate);
+    if (data.type === 'subProcess') {
+      addKey(data.subProcessMultiSource);
+      if (data.subProcessInitiator === 'formField') addKey(data.subProcessInitiatorField);
+    }
+  }
+  return keys;
+}
+
 // ─── 待办/列表摘要字段（钉钉式卡片摘要）────────────────────────────────────────
 //
 // 流程「更多设置」可配置 `summaryFields`（≤3 个字段 key），待办/申请列表在标题下
