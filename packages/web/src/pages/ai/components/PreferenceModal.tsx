@@ -1,6 +1,5 @@
-import { useState } from 'react';
-import { Button, Form, Toast, Typography } from '@douyinfe/semi-ui';
-import { useRef, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Form, Toast, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import AppModal from '@/components/AppModal';
 import { useAiPreference, useSaveAiPreference } from '@/hooks/queries/ai-extras';
@@ -71,7 +70,6 @@ export default function PreferenceModal({ visible, onClose }: PreferenceModalPro
         />
         <Form.Switch field="isEnabled" label="启用个人指令" />
       </Form>
-      {query.isFetching && <Button loading theme="borderless" style={{ display: 'none' }} />}
     </AppModal>
   );
 }

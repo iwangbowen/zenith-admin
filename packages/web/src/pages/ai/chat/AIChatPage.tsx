@@ -205,7 +205,12 @@ export default function AIChatPage() {
   const [align, setAlign] = useState<'leftRight' | 'leftAlign'>('leftRight');
   const [mode, setMode] = useState<'bubble' | 'noBubble' | 'userBubble'>('bubble');
   const configureValuesRef = React.useRef<Record<string, unknown>>({ model: '' });
-  const setConfigureValues = useCallback((v: Record<string, unknown>) => { configureValuesRef.current = v; }, []);
+  /** 选中模型（state 镜像，驱动 vision 按钮等 UI 随切换刷新） */
+  const [selectedModelValue, setSelectedModelValue] = useState('');
+  const setConfigureValues = useCallback((v: Record<string, unknown>) => {
+    configureValuesRef.current = v;
+    setSelectedModelValue(String(v.model ?? ''));
+  }, []);
   const dialogueRef = useRef<AIChatDialogueInstance | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const [searchKeyword, setSearchKeyword] = useState('');
@@ -256,13 +261,12 @@ export default function AIChatPage() {
   }, [allowUserCustomKey, loadModelOptions, chatModels, userConfigsQuery.data]);
 
   /** 当前选中模型的能力（vision / tools），用户自定义配置无能力标注 */
-  const getSelectedCapabilities = useCallback(() => {
-    const selected = String(configureValuesRef.current.model ?? '');
-    if (!selected || selected.startsWith('user-')) return null;
-    const [idStr, ...modelParts] = selected.split(':');
+  const selectedCapabilities = useMemo(() => {
+    if (!selectedModelValue || selectedModelValue.startsWith('user-')) return null;
+    const [idStr, ...modelParts] = selectedModelValue.split(':');
     const model = modelParts.join(':');
     return chatModels.find((m) => m.id === Number(idStr) && m.model === model)?.capabilities ?? null;
-  }, [chatModels]);
+  }, [chatModels, selectedModelValue]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearchKeyword(searchKeyword), 300);
@@ -365,12 +369,14 @@ export default function AIChatPage() {
         status: 'in_progress',
       };
 
+      // user 气泡本地 ID：saved 事件到达后映射为数据库 ID（编辑/删除依赖真实 ID）
+      const localUserMsgId = regenerate ? null : nextMsgId();
       if (regenerate) {
         // 重新生成：不追加 user 气泡，仅追加新的 assistant 占位
         setMessages((prev) => [...prev, assistantMsg]);
       } else {
         const userMsg: Message = {
-          id: nextMsgId(),
+          id: localUserMsgId!,
           role: 'user',
           content: text!,
           createdAt: Date.now(),
@@ -437,6 +443,9 @@ export default function AIChatPage() {
           );
         };
 
+        // eventType 必须在读循环外持有：SSE 帧可能被拆到两次 read 之间
+        // （event: 行与 data: 行分属不同 chunk），循环内声明会导致事件被静默丢弃
+        let eventType = '';
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -445,7 +454,6 @@ export default function AIChatPage() {
           const lines = buffer.split('\n');
           buffer = lines.pop() ?? '';
 
-          let eventType = '';
           for (const line of lines) {
             if (line.startsWith('event: ')) {
               eventType = line.slice(7).trim();
@@ -473,13 +481,16 @@ export default function AIChatPage() {
                   accReferences = (parsed.references as KbRefDisplay[]) ?? [];
                   refreshAssistant();
                 } else if (eventType === 'saved') {
-                  // 服务端保存完成，返回了真实的数据库消息 ID，更新本地消息 ID
+                  // 服务端保存完成，把本地 user / assistant 气泡映射到数据库 ID（编辑/删除/反馈依赖真实 ID）
                   const dbId = (parsed.assistantMsgId as number | undefined);
-                  if (dbId) {
-                    setMessages((prev) =>
-                      prev.map((m) => (m.id === assistantMsgId ? { ...m, id: `api-${dbId}` } : m))
-                    );
-                  }
+                  const userDbId = (parsed.userMsgId as number | null | undefined);
+                  setMessages((prev) =>
+                    prev.map((m) => {
+                      if (dbId && m.id === assistantMsgId) return { ...m, id: `api-${dbId}` };
+                      if (userDbId && localUserMsgId && m.id === localUserMsgId) return { ...m, id: `api-${userDbId}` };
+                      return m;
+                    })
+                  );
                 } else if (eventType === 'title') {
                   // 服务端 LLM 自动命名完成，同步会话标题
                   const title = parsed.title as string | undefined;
@@ -1093,7 +1104,7 @@ export default function AIChatPage() {
                     </div>
                   )}
                   <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-                    {getSelectedCapabilities()?.vision && (
+                    {selectedCapabilities?.vision && (
                       <>
                         <input
                           ref={imageInputRef}

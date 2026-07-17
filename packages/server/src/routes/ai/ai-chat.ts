@@ -209,8 +209,8 @@ router.post('/:id/chat', authMiddleware, namedRateLimit('ai_chat_send'), async (
         ttftMs: firstTokenAt === null ? null : firstTokenAt - startedAt,
         durationMs: Date.now() - startedAt,
       };
-      const { assistantMsgId } = regenerate
-        ? await saveAssistantMessage(id, assistantContent, tokensInput, tokensOutput, snapshot, meta)
+      const { userMsgId, assistantMsgId } = regenerate
+        ? { userMsgId: null, ...(await saveAssistantMessage(id, assistantContent, tokensInput, tokensOutput, snapshot, meta)) }
         : await saveMessages(id, (images?.length ? `[图片 ×${images.length}] ` : '') + message!, assistantContent, tokensInput, tokensOutput, snapshot, meta);
 
       // 累计每日配额用量
@@ -218,11 +218,11 @@ router.post('/:id/chat', authMiddleware, namedRateLimit('ai_chat_send'), async (
         addDailyTokensUsed(user.userId, tokensInput + tokensOutput);
       }
 
-      // 发送包含数据库消息 ID 的 saved 事件，前端用它更新 message.id 以便点赞/点踩调 API
+      // 发送包含数据库消息 ID 的 saved 事件，前端用它更新本地消息 ID（点赞/编辑/删除依赖真实 ID）
       if (assistantMsgId) {
         await stream.writeSSE({
           event: 'saved',
-          data: JSON.stringify({ assistantMsgId }),
+          data: JSON.stringify({ assistantMsgId, userMsgId }),
         }).catch(() => {});
       }
 

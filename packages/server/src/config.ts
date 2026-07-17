@@ -30,6 +30,8 @@ const envSchema = z.object({
   ALLOWED_ORIGINS: z.string().default(''),
   TRUSTED_PROXY_CIDRS: z.string().default(''),
   REPORT_OUTBOUND_PRIVATE_ALLOWLIST: z.string().default(''),
+  /** AI 出站请求（LLM/embeddings 网关）SSRF 内网允许清单；默认放行本机以兼容 Ollama 等本地网关 */
+  AI_OUTBOUND_PRIVATE_ALLOWLIST: z.string().default('127.0.0.1,localhost'),
   REPORT_PDF_FONT_PATH: z.string().default(''),
   REPORT_SLOW_QUERY_MS: z.coerce.number().int().min(1).default(3000),
   REPORT_DASHBOARD_MAX_CONCURRENT: z.coerce.number().int().min(1).max(20).default(5),
@@ -162,6 +164,10 @@ export const config = {
   requestTimeoutMs: env.REQUEST_TIMEOUT_MS,
   allowedOrigins: env.ALLOWED_ORIGINS.split(',').map(s => s.trim()).filter(Boolean),
   trustedProxyCidrs: env.TRUSTED_PROXY_CIDRS.split(',').map(s => s.trim()).filter(Boolean),
+  ai: {
+    /** AI 出站请求 SSRF 内网允许清单（LLM / embeddings 网关地址） */
+    outboundPrivateAllowlist: env.AI_OUTBOUND_PRIVATE_ALLOWLIST.split(',').map(s => s.trim()).filter(Boolean),
+  },
   report: {
     outboundPrivateAllowlist: env.REPORT_OUTBOUND_PRIVATE_ALLOWLIST.split(',').map(s => s.trim()).filter(Boolean),
     pdfFontPath: env.REPORT_PDF_FONT_PATH || undefined,

@@ -5,6 +5,7 @@ import { currentUser } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { encryptField, decryptField } from '../../lib/encryption';
+import { AI_SSRF_OPTIONS } from '../../lib/ai/outbound';
 import { HTTPException } from 'hono/http-exception';
 import type { CreateAiProviderConfigInput, UpdateAiProviderConfigInput, TestAiConnectionInput, FetchAiModelsInput } from '@zenith/shared';
 import { httpRequest } from '../../lib/http-client';
@@ -231,6 +232,7 @@ export async function testAiProviderConnection(input: TestAiConnectionInput): Pr
         stream: false,
       }),
       timeout: 15000,
+      ...AI_SSRF_OPTIONS,
     });
 
     if (res.ok) {
@@ -278,7 +280,7 @@ export async function fetchProviderModels(input: FetchAiModelsInput): Promise<st
     headers = { Authorization: `Bearer ${apiKey}` };
   }
 
-  const res = await httpRequest(url, { method: 'GET', headers, timeout: 15000 });
+  const res = await httpRequest(url, { method: 'GET', headers, timeout: 15000, ...AI_SSRF_OPTIONS });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     let msg = `HTTP ${res.status}`;

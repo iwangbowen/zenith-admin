@@ -103,6 +103,8 @@
 
 每个配置支持「附加模型」列表（同一服务商多模型，聊天下拉展开为多个条目，发送时通过 `model` 字段指定），可通过 `POST /api/ai/providers/fetch-models` 从供应商 `/models` API 自动发现。能力标签（`capabilities`）声明 vision / tools / 上下文窗口，作为聊天页图片入口与函数调用的开关依据。API Key 以 AES-256-GCM 加密入库（`enc:v1:` 前缀，历史明文兼容读取，重新保存时自动加密；密钥来自 `FIELD_ENCRYPTION_KEY`，未配置时从 `JWT_SECRET` 派生）。
 
+所有指向供应商 `baseUrl` 的出站请求（聊天流、连接测试、模型发现、embedding）均启用 SSRF 防护，默认拒绝解析到内网地址的目标。本地部署模型（如 Ollama）等合法内网地址可通过环境变量 `AI_OUTBOUND_PRIVATE_ALLOWLIST` 放行（逗号分隔的主机名/IP 列表，默认 `127.0.0.1,localhost`）。
+
 ### 配置字段
 
 | 字段 | 说明 |

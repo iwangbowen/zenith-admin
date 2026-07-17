@@ -1,5 +1,6 @@
 import { httpRequest } from '../../http-client';
 import { estimateTokens } from '../tokens';
+import { AI_SSRF_OPTIONS } from '../outbound';
 import type { StreamChatConfig, ChatMessage, StreamChunk } from './openai-compatible';
 
 const STREAM_IDLE_TIMEOUT_MS = Number(process.env.AI_STREAM_IDLE_TIMEOUT_MS) || 90000;
@@ -14,22 +15,24 @@ function extractError(body: string, status: number): string {
   return `Anthropic API 调用失败（HTTP ${status}）`;
 }
 
-/** 把统一 ChatMessage（含 vision 数组内容）转为 Anthropic messages 格式 */
+/** 把统一 ChatMessage（含 vision 数组内容）转为 Anthropic messages 格式；过滤 system/tool 角色（分别走 system 参数 / 仅 openai_compatible 支持） */
 function toAnthropicMessages(messages: ChatMessage[]) {
-  return messages.map((m) => {
-    if (typeof m.content === 'string') return { role: m.role, content: m.content };
-    // vision 数组：text + image_url(data url) → Anthropic source.base64
-    const parts = m.content.map((p) => {
-      if (p.type === 'text') return { type: 'text' as const, text: p.text ?? '' };
-      const url = p.image_url?.url ?? '';
-      const match = /^data:(image\/[a-zA-Z+.-]+);base64,(.+)$/.exec(url);
-      if (match) {
-        return { type: 'image' as const, source: { type: 'base64' as const, media_type: match[1], data: match[2] } };
-      }
-      return { type: 'image' as const, source: { type: 'url' as const, url } };
+  return messages
+    .filter((m) => m.role === 'user' || m.role === 'assistant')
+    .map((m) => {
+      if (typeof m.content === 'string') return { role: m.role, content: m.content };
+      // vision 数组：text + image_url(data url) → Anthropic source.base64
+      const parts = m.content.map((p) => {
+        if (p.type === 'text') return { type: 'text' as const, text: p.text ?? '' };
+        const url = p.image_url?.url ?? '';
+        const match = /^data:(image\/[a-zA-Z+.-]+);base64,(.+)$/.exec(url);
+        if (match) {
+          return { type: 'image' as const, source: { type: 'base64' as const, media_type: match[1], data: match[2] } };
+        }
+        return { type: 'image' as const, source: { type: 'url' as const, url } };
+      });
+      return { role: m.role, content: parts };
     });
-    return { role: m.role, content: parts };
-  });
 }
 
 /**
@@ -84,6 +87,7 @@ export async function* streamChatAnthropic(
       timeout: 0,
       retries: 1,
       signal: ac.signal,
+      ...AI_SSRF_OPTIONS,
     });
     if (!res.ok) {
       const errText = await res.text().catch(() => '');

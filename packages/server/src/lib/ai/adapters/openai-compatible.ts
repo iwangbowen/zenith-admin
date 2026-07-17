@@ -1,5 +1,6 @@
 import { httpRequest } from '../../http-client';
 import { estimateTokens } from '../tokens';
+import { AI_SSRF_OPTIONS } from '../outbound';
 
 export interface StreamChatConfig {
   baseUrl: string;
@@ -117,6 +118,7 @@ export async function* streamChatOpenAICompatible(
       timeout: 0,
       retries: STREAM_CONNECT_RETRIES,
       signal: ac.signal,
+      ...AI_SSRF_OPTIONS,
     });
   try {
     armIdle();
@@ -290,6 +292,7 @@ export async function chatOnceOpenAICompatible(
     }),
     timeout: opts.timeoutMs ?? 10000,
     retries: 0,
+    ...AI_SSRF_OPTIONS,
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');

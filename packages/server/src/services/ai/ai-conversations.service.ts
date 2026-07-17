@@ -218,7 +218,7 @@ export async function saveMessages(
   snapshot: { provider: string; model: string; configId?: number } | null,
   meta: AssistantMessageMeta = {},
 ) {
-  const [, assistantRow] = await db.insert(aiMessages).values([
+  const [userRow, assistantRow] = await db.insert(aiMessages).values([
     { conversationId, role: 'user', content: userContent, tokensInput: 0, tokensOutput: 0 },
     {
       conversationId,
@@ -235,7 +235,7 @@ export async function saveMessages(
   if (snapshot) {
     await db.update(aiConversations).set({ providerSnapshot: snapshot }).where(eq(aiConversations.id, conversationId));
   }
-  return { assistantMsgId: assistantRow?.id ?? null };
+  return { userMsgId: userRow?.id ?? null, assistantMsgId: assistantRow?.id ?? null };
 }
 
 /**

@@ -178,6 +178,7 @@ export const aiConversationsHandlers = [
 
     const now = mockDateTime();
     let userText = body.message ?? '';
+    let userMsgId: number | null = null;
 
     if (regenerate) {
       // 重新生成：取历史末条 user 消息作为提问
@@ -188,8 +189,9 @@ export const aiConversationsHandlers = [
       userText = lastUser.content;
     } else {
       // Save user message
+      userMsgId = getNextMsgId();
       const userMsg: AiMessage = {
-        id: getNextMsgId(),
+        id: userMsgId,
         conversationId: id,
         role: 'user',
         content: userText,
@@ -239,7 +241,7 @@ export const aiConversationsHandlers = [
       sseBody += `event: delta\ndata: ${JSON.stringify({ content: chunk })}\n\n`;
     }
     sseBody += `event: done\ndata: ${JSON.stringify({ tokensInput: Math.floor(userText.length / 4), tokensOutput: Math.floor(replyText.length / 4) })}\n\n`;
-    sseBody += `event: saved\ndata: ${JSON.stringify({ assistantMsgId })}\n\n`;
+    sseBody += `event: saved\ndata: ${JSON.stringify({ assistantMsgId, userMsgId })}\n\n`;
     if (needTitle) {
       sseBody += `event: title\ndata: ${JSON.stringify({ title: newTitle })}\n\n`;
     }

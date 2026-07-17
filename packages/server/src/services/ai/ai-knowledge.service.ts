@@ -7,6 +7,7 @@ import { estimateTokens } from '../../lib/ai/tokens';
 import { getConfigValue } from '../../lib/system-config';
 import { getRawDefaultProviderConfig } from './ai-providers.service';
 import { httpRequest } from '../../lib/http-client';
+import { AI_SSRF_OPTIONS } from '../../lib/ai/outbound';
 import { HTTPException } from 'hono/http-exception';
 import logger from '../../lib/logger';
 import type { CreateAiKnowledgeBaseInput, UpdateAiKnowledgeBaseInput, AddAiKbDocumentInput } from '@zenith/shared';
@@ -136,6 +137,7 @@ async function embedTexts(texts: string[]): Promise<number[][] | null> {
       headers: { Authorization: `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model, input: texts }),
       timeout: 60000,
+      ...AI_SSRF_OPTIONS,
     });
     if (!res.ok) {
       logger.warn('[ai-kb] embeddings API failed', { status: res.status });
@@ -247,20 +249,26 @@ export async function retrieveKbContext(kbId: number, ownerId: number, query: st
   const docs = await db.select({ id: aiKbDocuments.id, name: aiKbDocuments.name }).from(aiKbDocuments).where(inArray(aiKbDocuments.id, docIds));
   const docNameMap = new Map(docs.map((d) => [d.id, d.name]));
 
-  // 向量检索
+  // 向量检索：仅当入库所用 embedding 模型与当前配置一致时启用，
+  // 否则（管理员更换了 ai_embedding_model）向量空间不可比，直接走关键词兜底
   const withEmbedding = chunks.filter((c) => Array.isArray(c.embedding) && c.embedding.length > 0);
-  if (withEmbedding.length > 0) {
+  const currentModel = (await getConfigValue('ai_embedding_model', '')).trim();
+  if (withEmbedding.length > 0 && currentModel && kb.embeddingModel === currentModel) {
     const queryEmbedding = await embedTexts([query]);
     if (queryEmbedding?.[0]) {
-      return withEmbedding
+      const queryVec = queryEmbedding[0];
+      const scored = withEmbedding
+        // 维度不一致的分块（历史脏数据）跳过，避免 min-length 余弦产生伪相似度
+        .filter((c) => c.embedding!.length === queryVec.length)
         .map((c) => ({
           docName: docNameMap.get(c.docId) ?? '未知文档',
           content: c.content,
-          score: Math.round(cosineSimilarity(queryEmbedding[0], c.embedding!) * 1000) / 1000,
+          score: Math.round(cosineSimilarity(queryVec, c.embedding!) * 1000) / 1000,
         }))
         .sort((a, b) => b.score - a.score)
         .slice(0, topN)
         .filter((c) => c.score > 0.3);
+      if (scored.length > 0) return scored;
     }
   }
 

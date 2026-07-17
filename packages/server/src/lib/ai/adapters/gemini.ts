@@ -1,5 +1,6 @@
 import { httpRequest } from '../../http-client';
 import { estimateTokens } from '../tokens';
+import { AI_SSRF_OPTIONS } from '../outbound';
 import type { StreamChatConfig, ChatMessage, StreamChunk } from './openai-compatible';
 
 const STREAM_IDLE_TIMEOUT_MS = Number(process.env.AI_STREAM_IDLE_TIMEOUT_MS) || 90000;
@@ -81,6 +82,7 @@ export async function* streamChatGemini(
       timeout: 0,
       retries: 1,
       signal: ac.signal,
+      ...AI_SSRF_OPTIONS,
     });
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
