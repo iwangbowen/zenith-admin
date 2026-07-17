@@ -18,6 +18,10 @@ export const aiProviderConfigs = pgTable('ai_provider_configs', {
   systemPrompt: text('system_prompt'),
   maxTokens: integer('max_tokens').notNull().default(4096),
   temperature: varchar('temperature', { length: 10 }).notNull().default('0.7'),
+  /** 输入单价（分 / 百万 token），null = 未配置不计成本 */
+  priceInputPerM: integer('price_input_per_m'),
+  /** 输出单价（分 / 百万 token），null = 未配置不计成本 */
+  priceOutputPerM: integer('price_output_per_m'),
   isDefault: boolean('is_default').notNull().default(false),
   isEnabled: boolean('is_enabled').notNull().default(true),
   ...auditColumns(),
@@ -51,10 +55,16 @@ export const aiMessages = pgTable('ai_messages', {
   conversationId: integer('conversation_id').notNull().references(() => aiConversations.id, { onDelete: 'cascade' }),
   role: aiMessageRoleEnum('role').notNull(),
   content: text('content').notNull(),
+  /** 推理模型的思维链内容（reasoning_content，user 消息为 null） */
+  reasoning: text('reasoning'),
   /** 该条 assistant 消息生成时所用的模型（user 消息为 null） */
   model: varchar('model', { length: 100 }),
   tokensInput: integer('tokens_input').notNull().default(0),
   tokensOutput: integer('tokens_output').notNull().default(0),
+  /** 首字延迟（毫秒，assistant 消息） */
+  ttftMs: integer('ttft_ms'),
+  /** 本次生成总耗时（毫秒，assistant 消息） */
+  durationMs: integer('duration_ms'),
   /** 用户反馈：1 = 👍 点赞，-1 = 👎 点踩，null = 未反馈 */
   feedback: integer('feedback'),
   /** 点踩原因（如 不准确/不相关/有害/其他） */
@@ -104,6 +114,8 @@ export const aiPromptTemplates = pgTable('ai_prompt_templates', {
   userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }),
   isBuiltin: boolean('is_builtin').notNull().default(false),
   sort: integer('sort').notNull().default(0),
+  /** 被应用为对话角色的累计次数 */
+  usageCount: integer('usage_count').notNull().default(0),
   isEnabled: boolean('is_enabled').notNull().default(true),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),

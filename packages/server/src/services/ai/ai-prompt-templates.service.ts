@@ -1,4 +1,4 @@
-import { eq, and, or, ilike, asc, desc } from 'drizzle-orm';
+import { eq, and, or, ilike, asc, desc, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { aiPromptTemplates } from '../../db/schema';
 import { currentUser } from '../../lib/context';
@@ -18,6 +18,7 @@ function mapTemplate(row: typeof aiPromptTemplates.$inferSelect) {
     userId: row.userId,
     isBuiltin: row.isBuiltin,
     sort: row.sort,
+    usageCount: row.usageCount,
     isEnabled: row.isEnabled,
     createdAt: formatDateTime(row.createdAt),
     updatedAt: formatDateTime(row.updatedAt),
@@ -139,4 +140,19 @@ export async function deletePromptTemplate(id: number) {
   const existing = await ensureManageable(id);
   if (existing.isBuiltin) throw new HTTPException(400, { message: '内置预设模板不可删除' });
   await db.delete(aiPromptTemplates).where(eq(aiPromptTemplates.id, id));
+}
+
+/**
+ * 记录模板被应用为对话角色一次（当前用户可见的启用模板）。
+ */
+export async function incrementPromptUsage(id: number) {
+  const [row] = await db
+    .select()
+    .from(aiPromptTemplates)
+    .where(and(eq(aiPromptTemplates.id, id), eq(aiPromptTemplates.isEnabled, true), visibilityCond()));
+  if (!row) throw new HTTPException(404, { message: '提示词模板不存在' });
+  await db
+    .update(aiPromptTemplates)
+    .set({ usageCount: sql`${aiPromptTemplates.usageCount} + 1` })
+    .where(eq(aiPromptTemplates.id, id));
 }

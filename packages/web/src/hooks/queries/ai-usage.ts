@@ -14,14 +14,22 @@ export interface AiUsageOverview {
   tokensOutput: number;
   totalTokens: number;
   activeUsers: number;
+  /** 预估成本（分），未配置单价的模型不计入 */
+  totalCostFen: number;
+  avgTtftMs: number | null;
+  /** 请求成功率（0-100），无数据为 null */
+  successRate: number | null;
 }
 
 export interface AiUsageByModel {
   model: string;
+  provider: string | null;
   messages: number;
   tokensInput: number;
   tokensOutput: number;
   totalTokens: number;
+  avgTtftMs: number | null;
+  costFen: number | null;
 }
 
 export interface AiUsageByUser {

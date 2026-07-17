@@ -1,4 +1,4 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AiConversation, AiMessage } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { toQueryString, unwrap } from '@/lib/query';
@@ -8,6 +8,9 @@ export interface AiConversationListParams {
   archived?: string;
 }
 
+/** 会话列表分页大小（侧栏无限加载） */
+export const AI_CONV_PAGE_SIZE = 30;
+
 export const aiConversationKeys = {
   all: ['ai-conversations'] as const,
   lists: ['ai-conversations', 'list'] as const,
@@ -15,10 +18,19 @@ export const aiConversationKeys = {
   messages: (id: number | null | undefined) => ['ai-conversations', 'messages', id] as const,
 };
 
-export function useAiConversationList(params: AiConversationListParams) {
-  return useQuery({
+/** 会话列表无限加载（offset 分页，末页不足 pageSize 即为最后一页） */
+export function useInfiniteAiConversationList(params: AiConversationListParams) {
+  return useInfiniteQuery({
     queryKey: aiConversationKeys.list(params),
-    queryFn: () => request.get<AiConversation[]>(`/api/ai/conversations${toQueryString(params)}`).then(unwrap),
+    queryFn: ({ pageParam }) =>
+      request
+        .get<AiConversation[]>(
+          `/api/ai/conversations${toQueryString({ ...params, limit: AI_CONV_PAGE_SIZE, offset: pageParam })}`,
+        )
+        .then(unwrap),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.length < AI_CONV_PAGE_SIZE ? undefined : allPages.reduce((acc, p) => acc + p.length, 0),
     placeholderData: keepPreviousData,
   });
 }

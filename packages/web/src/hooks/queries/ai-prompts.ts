@@ -63,3 +63,8 @@ export function useDeleteAiPrompt() {
     onSuccess: () => qc.invalidateQueries({ queryKey: aiPromptKeys.all }),
   });
 }
+
+/** 记录模板被应用为对话角色一次（使用统计，fire-and-forget 场景静默失败） */
+export function recordAiPromptUse(id: number) {
+  return request.post<null>(`/api/ai/prompt-templates/${id}/use`, {}, { silent: true }).catch(() => {});
+}

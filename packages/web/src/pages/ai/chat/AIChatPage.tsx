@@ -1,9 +1,11 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
-import { AIChatDialogue, AIChatInput, Typography, Button, RadioGroup, Radio, Select, Tag, Toast, Tooltip, Spin, TextArea, Dropdown, Input, Modal } from '@douyinfe/semi-ui';
+import { AIChatDialogue, AIChatInput, Typography, Button, Form, RadioGroup, Radio, Select, Tag, Toast, Tooltip, Spin, TextArea, Dropdown, Input, Modal } from '@douyinfe/semi-ui';
 import type { Message as AIChatMessage } from '@douyinfe/semi-ui/lib/es/aiChatDialogue';
 import type { RenderActionProps } from '@douyinfe/semi-ui/lib/es/aiChatDialogue/interface';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { MessageSquarePlus, Trash2, AlignLeft, AlignJustify, Settings, MoreHorizontal, Pencil, Pin, PinOff, Archive, ArchiveRestore, Sparkles, Inbox, Download } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
+import dayjs from 'dayjs';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { NavListPanel, NavListItem } from '@/components/NavListPanel';
 import AppModal from '@/components/AppModal';
@@ -12,13 +14,13 @@ import UserAiConfigModal from '../components/UserAiConfigModal';
 import { request } from '@/utils/request';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
-import type { AiChatModel, AiConversation, AiMessage, UserAiConfig } from '@zenith/shared';
+import type { AiChatModel, AiConversation, AiMessage, AiPromptTemplate, UserAiConfig } from '@zenith/shared';
 import { useAiChatModels } from '@/hooks/queries/ai-providers';
 import { useAiAllowUserCustomKey, useAiUserConfigs, aiUserConfigKeys } from '@/hooks/queries/ai-user-config';
-import { useAvailableAiPrompts } from '@/hooks/queries/ai-prompts';
+import { useAvailableAiPrompts, recordAiPromptUse } from '@/hooks/queries/ai-prompts';
 import {
   aiConversationKeys,
-  useAiConversationList,
+  useInfiniteAiConversationList,
   useAiConversationMessages,
   useCreateAiConversation,
 } from '@/hooks/queries/ai-conversations';
@@ -90,17 +92,70 @@ function nextMsgId() {
   return `msg-${++msgIdCounter}`;
 }
 
+/** 组装含思维链的 assistant 消息内容（Semi 内置 Reasoning 折叠面板 + output_text 正文） */
+function buildAssistantContent(text: string, reasoning: string | null | undefined, reasoningDone: boolean): NonNullable<AIChatMessage['content']> {
+  if (!reasoning) return text;
+  return [
+    {
+      type: 'reasoning',
+      status: reasoningDone ? 'completed' : 'in_progress',
+      content: [{ type: 'reasoning_text', text: reasoning }],
+    },
+    { type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text }] },
+  ] as NonNullable<AIChatMessage['content']>;
+}
+
 function convertApiMessage(m: AiMessage): Message {
   return {
     id: `api-${m.id}`,
     role: m.role,
-    content: m.content,
+    content: m.role === 'assistant' ? buildAssistantContent(m.content, m.reasoning, true) : m.content,
+    // Semi 对数组型 content 的复制操作取 output_text
+    ...(m.reasoning && { output_text: m.content }),
     createdAt: new Date(m.createdAt).getTime(),
     status: 'completed',
     // 映射 DB feedback 字段到 Semi AIChatDialogue 的 like/dislike 显示状态
     ...(m.feedback === 1  && { like: true }),
     ...(m.feedback === -1 && { dislike: true }),
   };
+}
+
+/** 提取提示词模板中的 {{变量}} 占位符（去重、保序） */
+function extractPromptVariables(content: string): string[] {
+  const matches = content.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g);
+  const vars: string[] = [];
+  for (const m of matches) {
+    if (!vars.includes(m[1])) vars.push(m[1]);
+  }
+  return vars;
+}
+
+/** 会话侧栏行：分组标题 或 会话条目 */
+type ConvRow = { kind: 'header'; label: string } | { kind: 'conv'; conv: AiConversation };
+
+/** 按 置顶 / 今天 / 昨天 / 近 7 天 / 更早 分组 */
+function groupConversations(list: AiConversation[]): ConvRow[] {
+  const rows: ConvRow[] = [];
+  const today = dayjs().startOf('day');
+  let lastLabel: string | null = null;
+  for (const conv of list) {
+    let label: string;
+    if (conv.isPinned) {
+      label = '置顶';
+    } else {
+      const d = dayjs(conv.updatedAt);
+      if (!d.isBefore(today)) label = '今天';
+      else if (!d.isBefore(today.subtract(1, 'day'))) label = '昨天';
+      else if (!d.isBefore(today.subtract(7, 'day'))) label = '近 7 天';
+      else label = '更早';
+    }
+    if (label !== lastLabel) {
+      rows.push({ kind: 'header', label });
+      lastLabel = label;
+    }
+    rows.push({ kind: 'conv', conv });
+  }
+  return rows;
 }
 
 export default function AIChatPage() {
@@ -125,6 +180,8 @@ export default function AIChatPage() {
   const [showArchived, setShowArchived] = useState(false);
   const didInitConvRef = useRef(false);
   const [dislikeMsgId, setDislikeMsgId] = useState<number | null>(null);
+  const [varFillTemplate, setVarFillTemplate] = useState<AiPromptTemplate | null>(null);
+  const varFormApi = useRef<FormApi | null>(null);
   const { items: dislikeReasons } = useDictItems('ai_dislike_reason');
   const allowUserCustomKeyQuery = useAiAllowUserCustomKey();
   const allowUserCustomKey = allowUserCustomKeyQuery.data ?? false;
@@ -132,7 +189,7 @@ export default function AIChatPage() {
   const userConfigsQuery = useAiUserConfigs(allowUserCustomKey);
   const promptTemplatesQuery = useAvailableAiPrompts();
   const promptTemplates = promptTemplatesQuery.data ?? [];
-  const conversationsQuery = useAiConversationList({
+  const conversationsQuery = useInfiniteAiConversationList({
     keyword: debouncedSearchKeyword.trim() || undefined,
     archived: showArchived ? 'true' : undefined,
   });
@@ -162,12 +219,16 @@ export default function AIChatPage() {
   }, [searchKeyword]);
 
   useEffect(() => {
-    const list = conversationsQuery.data;
-    if (!list) return;
+    const pages = conversationsQuery.data?.pages;
+    if (!pages) return;
+    const list = pages.flat();
     setConversations(list);
     if (!didInitConvRef.current && list.length > 0) setActiveConvId(list[0].id);
     didInitConvRef.current = true;
   }, [conversationsQuery.data]);
+
+  // 侧栏渲染行：置顶 / 今天 / 昨天 / 近 7 天 / 更早 分组
+  const convRows = useMemo(() => groupConversations(conversations), [conversations]);
 
   useEffect(() => {
     if (!activeConvId) {
@@ -279,7 +340,9 @@ export default function AIChatPage() {
         );
 
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
+          // 非流式错误（配额超限 / 校验失败等）：透出服务端 message
+          const errBody = await response.json().catch(() => null) as { message?: string } | null;
+          throw new Error(errBody?.message || `HTTP ${response.status}`);
         }
 
         const reader = response.body?.getReader();
@@ -288,6 +351,7 @@ export default function AIChatPage() {
         const decoder = new TextDecoder();
         let buffer = '';
         let accContent = '';
+        let accReasoning = '';
 
         while (true) {
           const { done, value } = await reader.read();
@@ -308,8 +372,16 @@ export default function AIChatPage() {
                 const parsed = JSON.parse(dataStr) as Record<string, unknown>;
                 if (eventType === 'delta' && parsed.content) {
                   accContent += (parsed.content as string | undefined) ?? '';
+                  const nextContent = buildAssistantContent(accContent, accReasoning, true);
                   setMessages((prev) =>
-                    prev.map((m) => (m.id === assistantMsgId ? { ...m, content: accContent } : m))
+                    prev.map((m) => (m.id === assistantMsgId ? { ...m, content: nextContent, output_text: accContent } : m))
+                  );
+                } else if (eventType === 'reasoning' && parsed.content) {
+                  accReasoning += (parsed.content as string | undefined) ?? '';
+                  // 正文尚未开始时思维链保持"思考中"展开态
+                  const nextContent = buildAssistantContent(accContent, accReasoning, accContent.length > 0);
+                  setMessages((prev) =>
+                    prev.map((m) => (m.id === assistantMsgId ? { ...m, content: nextContent, output_text: accContent } : m))
                   );
                 } else if (eventType === 'saved') {
                   // 服务端保存完成，返回了真实的数据库消息 ID，更新本地消息 ID
@@ -319,13 +391,19 @@ export default function AIChatPage() {
                       prev.map((m) => (m.id === assistantMsgId ? { ...m, id: `api-${dbId}` } : m))
                     );
                   }
+                } else if (eventType === 'title') {
+                  // 服务端 LLM 自动命名完成，同步会话标题
+                  const title = parsed.title as string | undefined;
+                  if (title && convId) {
+                    setConversations((prev) => prev.map((c) => (c.id === convId ? { ...c, title } : c)));
+                  }
                 } else if (eventType === 'done') {
                   setMessages((prev) =>
                     prev.map((m) => (m.id === assistantMsgId ? { ...m, status: 'completed' } : m))
                   );
                   void queryClient.invalidateQueries({ queryKey: aiConversationKeys.lists });
                 } else if (eventType === 'error') {
-                  Toast.error((parsed.error as string | undefined) ?? 'AI 服务出错');
+                  Toast.error((parsed.message as string | undefined) ?? 'AI 服务出错');
                   setMessages((prev) =>
                     prev.map((m) => (m.id === assistantMsgId ? { ...m, status: 'failed' } : m))
                   );
@@ -338,7 +416,7 @@ export default function AIChatPage() {
         }
       } catch (err) {
         if ((err as Error)?.name !== 'AbortError') {
-          Toast.error('消息发送失败');
+          Toast.error((err as Error)?.message || '消息发送失败');
           setMessages((prev) =>
             prev.map((m) => (m.id === assistantMsgId ? { ...m, status: 'failed' } : m))
           );
@@ -495,15 +573,42 @@ export default function AIChatPage() {
     }
   };
 
-  const handleApplyTemplate = async (content: string | null) => {
+  const handleApplyTemplate = async (content: string | null, templateId?: number) => {
     if (!activeConvId) { Toast.warning('请先选择或创建对话'); return; }
     try {
       await request.put(`/api/ai/conversations/${activeConvId}/system-prompt`, { systemPrompt: content });
       setConversations((prev) => prev.map((c) => c.id === activeConvId ? { ...c, systemPromptOverride: content } : c));
       Toast.success(content ? '已应用角色' : '已清除角色');
+      // 使用统计（fire-and-forget）
+      if (content && templateId) void recordAiPromptUse(templateId);
     } catch {
       Toast.error('操作失败');
     }
+  };
+
+  /** 选择模板：含 {{变量}} 时先弹出填充表单，否则直接应用 */
+  const handleSelectTemplate = (t: AiPromptTemplate) => {
+    if (!activeConvId) { Toast.warning('请先选择或创建对话'); return; }
+    const vars = extractPromptVariables(t.content);
+    if (vars.length === 0) {
+      void handleApplyTemplate(t.content, t.id);
+      return;
+    }
+    setVarFillTemplate(t);
+  };
+
+  const handleVarFillOk = async () => {
+    const t = varFillTemplate;
+    if (!t) return;
+    let values: Record<string, string>;
+    try {
+      values = (await varFormApi.current?.validate()) as Record<string, string>;
+    } catch {
+      throw new Error('validation');
+    }
+    const filled = t.content.replaceAll(/\{\{\s*([^{}]+?)\s*\}\}/g, (_, name: string) => values[name]?.trim() ?? '');
+    await handleApplyTemplate(filled, t.id);
+    setVarFillTemplate(null);
   };
 
   const handleExportConversation = (id: number, title: string, format: 'md' | 'json') => {
@@ -520,6 +625,50 @@ export default function AIChatPage() {
   }, [dislikeMsgId, activeConvId]);
 
   const activeConv = conversations.find((c) => c.id === activeConvId);
+
+  const renderConvActions = (conv: AiConversation) => (
+    <Dropdown
+      trigger="click"
+      position="bottomRight"
+      clickToHide
+      render={
+        <Dropdown.Menu>
+          <Dropdown.Item onClick={(e) => { (e as React.MouseEvent).stopPropagation(); setRenameText(conv.title); setRenameConvId(conv.id); }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Pencil size={13} />重命名</span>
+          </Dropdown.Item>
+          <Dropdown.Item onClick={(e) => { (e as React.MouseEvent).stopPropagation(); void handleTogglePin(conv.id); }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {conv.isPinned ? <PinOff size={13} /> : <Pin size={13} />}
+              {conv.isPinned ? '取消置顶' : '置顶'}
+            </span>
+          </Dropdown.Item>
+          <Dropdown.Item onClick={(e) => { (e as React.MouseEvent).stopPropagation(); void handleToggleArchive(conv.id); }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {conv.isArchived ? <ArchiveRestore size={13} /> : <Archive size={13} />}
+              {conv.isArchived ? '取消归档' : '归档'}
+            </span>
+          </Dropdown.Item>
+          <Dropdown.Item onClick={(e) => { (e as React.MouseEvent).stopPropagation(); handleExportConversation(conv.id, conv.title, 'md'); }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Download size={13} />导出 Markdown</span>
+          </Dropdown.Item>
+          <Dropdown.Item onClick={(e) => { (e as React.MouseEvent).stopPropagation(); handleExportConversation(conv.id, conv.title, 'json'); }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Download size={13} />导出 JSON</span>
+          </Dropdown.Item>
+          <Dropdown.Divider />
+          <Dropdown.Item type="danger" onClick={(e) => { (e as React.MouseEvent).stopPropagation(); Modal.confirm({ title: '确定要删除这个会话吗？', okButtonProps: { type: 'danger', theme: 'solid' }, onOk: () => handleDeleteConversation(conv.id) }); }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Trash2 size={13} />删除</span>
+          </Dropdown.Item>
+        </Dropdown.Menu>
+      }
+    >
+      <Button
+        theme="borderless"
+        size="small"
+        icon={<MoreHorizontal size={13} />}
+        onClick={(e) => e.stopPropagation()}
+      />
+    </Dropdown>
+  );
 
   return (
     <>
@@ -557,59 +706,42 @@ export default function AIChatPage() {
             </div>
           }
           search={{ value: searchKeyword, onChange: setSearchKeyword, placeholder: '搜索对话 / 消息内容' }}
-          loading={conversationsQuery.isFetching}
+          loading={conversationsQuery.isFetching && !conversationsQuery.isFetchingNextPage}
           emptyText={showArchived ? '暂无已归档对话' : (searchKeyword ? '未找到匹配的对话' : '暂无对话')}
-          dataSource={conversations}
-          renderItem={(conv) => (
+          dataSource={convRows}
+          footer={conversationsQuery.hasNextPage ? (
+            <Button
+              theme="borderless"
+              type="tertiary"
+              size="small"
+              block
+              loading={conversationsQuery.isFetchingNextPage}
+              onClick={() => void conversationsQuery.fetchNextPage()}
+            >
+              加载更多
+            </Button>
+          ) : undefined}
+          renderItem={(row) => row.kind === 'header' ? (
+            <div
+              key={`header-${row.label}`}
+              style={{
+                padding: '8px 8px 4px',
+                fontSize: 12,
+                fontWeight: 600,
+                color: 'var(--semi-color-text-2)',
+                userSelect: 'none',
+              }}
+            >
+              {row.label}
+            </div>
+          ) : (
             <NavListItem
-              key={conv.id}
-              active={activeConvId === conv.id}
-              onClick={() => setActiveConvId(conv.id)}
-              primary={conv.isPinned ? <><Pin size={11} style={{ verticalAlign: -1, marginRight: 3, color: 'var(--semi-color-primary)' }} />{conv.title}</> : conv.title}
+              key={row.conv.id}
+              active={activeConvId === row.conv.id}
+              onClick={() => setActiveConvId(row.conv.id)}
+              primary={row.conv.isPinned ? <><Pin size={11} style={{ verticalAlign: -1, marginRight: 3, color: 'var(--semi-color-primary)' }} />{row.conv.title}</> : row.conv.title}
               extraAlwaysVisible={false}
-              extra={
-                <Dropdown
-                  trigger="click"
-                  position="bottomRight"
-                  clickToHide
-                  render={
-                    <Dropdown.Menu>
-                      <Dropdown.Item onClick={(e) => { (e as React.MouseEvent).stopPropagation(); setRenameText(conv.title); setRenameConvId(conv.id); }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Pencil size={13} />重命名</span>
-                      </Dropdown.Item>
-                      <Dropdown.Item onClick={(e) => { (e as React.MouseEvent).stopPropagation(); void handleTogglePin(conv.id); }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          {conv.isPinned ? <PinOff size={13} /> : <Pin size={13} />}
-                          {conv.isPinned ? '取消置顶' : '置顶'}
-                        </span>
-                      </Dropdown.Item>
-                      <Dropdown.Item onClick={(e) => { (e as React.MouseEvent).stopPropagation(); void handleToggleArchive(conv.id); }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          {conv.isArchived ? <ArchiveRestore size={13} /> : <Archive size={13} />}
-                          {conv.isArchived ? '取消归档' : '归档'}
-                        </span>
-                      </Dropdown.Item>
-                      <Dropdown.Item onClick={(e) => { (e as React.MouseEvent).stopPropagation(); handleExportConversation(conv.id, conv.title, 'md'); }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Download size={13} />导出 Markdown</span>
-                      </Dropdown.Item>
-                      <Dropdown.Item onClick={(e) => { (e as React.MouseEvent).stopPropagation(); handleExportConversation(conv.id, conv.title, 'json'); }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Download size={13} />导出 JSON</span>
-                      </Dropdown.Item>
-                      <Dropdown.Divider />
-                      <Dropdown.Item type="danger" onClick={(e) => { (e as React.MouseEvent).stopPropagation(); Modal.confirm({ title: '确定要删除这个会话吗？', okButtonProps: { type: 'danger', theme: 'solid' }, onOk: () => handleDeleteConversation(conv.id) }); }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Trash2 size={13} />删除</span>
-                      </Dropdown.Item>
-                    </Dropdown.Menu>
-                  }
-                >
-                  <Button
-                    theme="borderless"
-                    size="small"
-                    icon={<MoreHorizontal size={13} />}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                </Dropdown>
-              }
+              extra={renderConvActions(row.conv)}
             />
           )}
         />
@@ -630,7 +762,7 @@ export default function AIChatPage() {
                         <Dropdown.Item
                           key={t.id}
                           active={activeConv?.systemPromptOverride === t.content}
-                          onClick={() => void handleApplyTemplate(t.content)}
+                          onClick={() => handleSelectTemplate(t)}
                         >
                           {t.name}
                         </Dropdown.Item>
@@ -860,6 +992,35 @@ export default function AIChatPage() {
         <Button theme="borderless" type="tertiary" onClick={() => setDislikeMsgId(null)}>跳过</Button>
       </div>
     </Modal>
+    <AppModal
+      title={`填写角色变量 — ${varFillTemplate?.name ?? ''}`}
+      visible={varFillTemplate !== null}
+      onOk={handleVarFillOk}
+      onCancel={() => setVarFillTemplate(null)}
+      closeOnEsc
+      width={480}
+    >
+      {varFillTemplate && (
+        <Form
+          key={varFillTemplate.id}
+          getFormApi={(api) => { varFormApi.current = api; }}
+          labelPosition="top"
+        >
+          <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 8 }}>
+            该角色模板包含变量占位符，填写后将替换到提示词中
+          </Typography.Text>
+          {extractPromptVariables(varFillTemplate.content).map((name) => (
+            <Form.Input
+              key={name}
+              field={name}
+              label={name}
+              placeholder={`请输入${name}`}
+              rules={[{ required: true, message: `请输入${name}` }]}
+            />
+          ))}
+        </Form>
+      )}
+    </AppModal>
     </>
   );
 }

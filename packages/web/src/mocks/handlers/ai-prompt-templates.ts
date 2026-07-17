@@ -46,6 +46,14 @@ export const aiPromptTemplatesHandlers = [
     return HttpResponse.json({ code: 0, message: 'success', data: sortTemplates(store.filter((item) => item.isEnabled)) });
   }),
 
+  // 记录模板被应用一次（使用统计）
+  http.post('/api/ai/prompt-templates/:id/use', ({ params }) => {
+    const item = store.find((template) => template.id === Number(params.id));
+    if (!item) return notFound();
+    item.usageCount += 1;
+    return HttpResponse.json({ code: 0, message: '已记录', data: null });
+  }),
+
   http.get('/api/ai/prompt-templates/:id', ({ params }) => {
     const item = store.find((template) => template.id === Number(params.id));
     if (!item) return notFound();
@@ -66,6 +74,7 @@ export const aiPromptTemplatesHandlers = [
       userId: scope === 'user' ? 1 : null,
       isBuiltin: false,
       sort: body.sort ?? 0,
+      usageCount: 0,
       isEnabled: body.isEnabled ?? true,
       createdAt: now,
       updatedAt: now,

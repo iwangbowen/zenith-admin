@@ -11,6 +11,8 @@ export const AiProviderConfigDTO = z
     systemPrompt: z.string().nullable().openapi({ description: '系统提示词' }),
     maxTokens: z.number().openapi({ description: '最大输出 token' }),
     temperature: z.string().openapi({ description: '温度参数' }),
+    priceInputPerM: z.number().nullable().openapi({ description: '输入单价（分/百万token）' }),
+    priceOutputPerM: z.number().nullable().openapi({ description: '输出单价（分/百万token）' }),
     isDefault: z.boolean().openapi({ description: '是否默认' }),
     isEnabled: z.boolean().openapi({ description: '是否启用' }),
     createdAt: z.string().openapi({ description: '创建时间' }),
@@ -56,9 +58,12 @@ export const AiMessageDTO = z
     conversationId: z.number().openapi({ description: '对话 ID' }),
     role: z.enum(['system', 'user', 'assistant']).openapi({ description: '消息角色' }),
     content: z.string().openapi({ description: '消息内容' }),
+    reasoning: z.string().nullable().openapi({ description: '推理模型思维链内容' }),
     model: z.string().nullable().openapi({ description: '生成所用模型' }),
     tokensInput: z.number().openapi({ description: '输入 token 数' }),
     tokensOutput: z.number().openapi({ description: '输出 token 数' }),
+    ttftMs: z.number().nullable().openapi({ description: '首字延迟（毫秒）' }),
+    durationMs: z.number().nullable().openapi({ description: '生成总耗时（毫秒）' }),
     feedback: z.number().nullable().openapi({ description: '用户反馈：1=点赞, -1=点踩, null=未反馈' }),
     feedbackReason: z.string().nullable().openapi({ description: '点踩原因' }),
     feedbackStatus: z.enum(['pending', 'resolved', 'ignored']).nullable().openapi({ description: '反馈处理状态' }),
@@ -67,6 +72,23 @@ export const AiMessageDTO = z
     createdAt: z.string().openapi({ description: '创建时间' }),
   })
   .openapi('AiMessage');
+
+export const AiFeedbackItemDTO = AiMessageDTO.extend({
+  userId: z.number().nullable().openapi({ description: '反馈用户 ID' }),
+  username: z.string().nullable().openapi({ description: '反馈用户名' }),
+  nickname: z.string().nullable().openapi({ description: '反馈用户昵称' }),
+  conversationTitle: z.string().nullable().openapi({ description: '所属对话标题' }),
+  question: z.string().nullable().openapi({ description: '该回复之前最近一条用户提问' }),
+}).openapi('AiFeedbackItem');
+
+export const AiFeedbackContextDTO = z
+  .object({
+    conversationId: z.number().openapi({ description: '对话 ID' }),
+    conversationTitle: z.string().nullable().openapi({ description: '对话标题' }),
+    targetMsgId: z.number().openapi({ description: '目标消息 ID' }),
+    messages: z.array(AiMessageDTO).openapi({ description: '目标消息前后的上下文消息' }),
+  })
+  .openapi('AiFeedbackContext');
 
 export const UserAiConfigDTO = z
   .object({
@@ -97,6 +119,7 @@ export const AiPromptTemplateDTO = z
     userId: z.number().nullable().openapi({ description: '归属用户 ID（用户私有模板）' }),
     isBuiltin: z.boolean().openapi({ description: '是否内置预设（不可删除）' }),
     sort: z.number().openapi({ description: '排序' }),
+    usageCount: z.number().openapi({ description: '被应用为对话角色的累计次数' }),
     isEnabled: z.boolean().openapi({ description: '是否启用' }),
     createdAt: z.string().openapi({ description: '创建时间' }),
     updatedAt: z.string().openapi({ description: '更新时间' }),
@@ -107,19 +130,25 @@ export const AiUsageStatsDTO = z
   .object({
     overview: z.object({
       totalConversations: z.number().openapi({ description: '对话总数' }),
-      totalMessages: z.number().openapi({ description: '消息总数' }),
+      totalMessages: z.number().openapi({ description: 'AI 回复消息数' }),
       tokensInput: z.number().openapi({ description: '输入 token 总数' }),
       tokensOutput: z.number().openapi({ description: '输出 token 总数' }),
       totalTokens: z.number().openapi({ description: 'token 总数' }),
       activeUsers: z.number().openapi({ description: '活跃用户数' }),
+      totalCostFen: z.number().openapi({ description: '预估成本（分），未配置单价的模型不计入' }),
+      avgTtftMs: z.number().nullable().openapi({ description: '平均首字延迟（毫秒）' }),
+      successRate: z.number().nullable().openapi({ description: '请求成功率（0-100，无数据为 null）' }),
     }),
     byModel: z.array(
       z.object({
         model: z.string(),
+        provider: z.string().nullable(),
         messages: z.number(),
         tokensInput: z.number(),
         tokensOutput: z.number(),
         totalTokens: z.number(),
+        avgTtftMs: z.number().nullable(),
+        costFen: z.number().nullable(),
       }),
     ).openapi({ description: '按模型聚合' }),
     byUser: z.array(

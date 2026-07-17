@@ -1,7 +1,8 @@
 import { sql, eq, and, gte, lte, desc } from 'drizzle-orm';
 import { db } from '../../db';
-import { aiMessages, aiConversations, users } from '../../db/schema';
+import { aiMessages, aiConversations, aiProviderConfigs, users } from '../../db/schema';
 import { parseDateRangeStart, parseDateRangeEnd } from '../../lib/datetime';
+import { getAiReliability } from '../../lib/ai/reliability';
 
 export interface UsageRange {
   startDate?: string;
@@ -20,6 +21,40 @@ function messageRangeConds(range: UsageRange) {
 
 const MODEL_EXPR = sql<string>`coalesce(${aiMessages.model}, ${aiConversations.providerSnapshot}->>'model', '未知')`;
 const TOTAL_TOKENS_EXPR = sql<number>`coalesce(sum(${aiMessages.tokensInput} + ${aiMessages.tokensOutput}),0)::int`;
+/** 回复消息数（仅 assistant 角色，统一统计口径） */
+const ASSISTANT_COUNT_EXPR = sql<number>`count(*) filter (where ${aiMessages.role} = 'assistant')::int`;
+const AVG_TTFT_EXPR = sql<number | null>`round(avg(${aiMessages.ttftMs}))::int`;
+
+/** 模型 → 单价 / 供应商映射（同名模型取第一个配置） */
+async function getModelPricingMap() {
+  const configs = await db
+    .select({
+      model: aiProviderConfigs.model,
+      provider: aiProviderConfigs.provider,
+      priceInputPerM: aiProviderConfigs.priceInputPerM,
+      priceOutputPerM: aiProviderConfigs.priceOutputPerM,
+    })
+    .from(aiProviderConfigs);
+  const map = new Map<string, { provider: string; priceInputPerM: number | null; priceOutputPerM: number | null }>();
+  for (const c of configs) {
+    if (!map.has(c.model)) {
+      map.set(c.model, { provider: c.provider, priceInputPerM: c.priceInputPerM, priceOutputPerM: c.priceOutputPerM });
+    }
+  }
+  return map;
+}
+
+/** 按单价估算成本（分）：tokens / 1,000,000 × 单价；未配置单价返回 null */
+function estimateCostFen(
+  tokensInput: number,
+  tokensOutput: number,
+  pricing?: { priceInputPerM: number | null; priceOutputPerM: number | null },
+): number | null {
+  if (!pricing || (pricing.priceInputPerM == null && pricing.priceOutputPerM == null)) return null;
+  const inputCost = pricing.priceInputPerM != null ? (tokensInput / 1_000_000) * pricing.priceInputPerM : 0;
+  const outputCost = pricing.priceOutputPerM != null ? (tokensOutput / 1_000_000) * pricing.priceOutputPerM : 0;
+  return Math.round((inputCost + outputCost) * 100) / 100;
+}
 
 export async function getUsageOverview(range: UsageRange) {
   const msgConds = messageRangeConds(range);
@@ -28,9 +63,10 @@ export async function getUsageOverview(range: UsageRange) {
   // 对话数 / 活跃用户：以「在范围内有消息」的对话为准
   const [aggMsg] = await db
     .select({
-      totalMessages: sql<number>`count(*)::int`,
+      totalMessages: ASSISTANT_COUNT_EXPR,
       tokensInput: sql<number>`coalesce(sum(${aiMessages.tokensInput}),0)::int`,
       tokensOutput: sql<number>`coalesce(sum(${aiMessages.tokensOutput}),0)::int`,
+      avgTtftMs: AVG_TTFT_EXPR,
     })
     .from(aiMessages)
     .where(msgWhere);
@@ -51,6 +87,7 @@ export async function getUsageOverview(range: UsageRange) {
     tokensOutput: aggMsg?.tokensOutput ?? 0,
     totalTokens: (aggMsg?.tokensInput ?? 0) + (aggMsg?.tokensOutput ?? 0),
     activeUsers: aggConv?.activeUsers ?? 0,
+    avgTtftMs: aggMsg?.avgTtftMs ?? null,
   };
 }
 
@@ -59,17 +96,27 @@ export async function getUsageByModel(range: UsageRange) {
   const rows = await db
     .select({
       model: MODEL_EXPR,
-      messages: sql<number>`count(${aiMessages.id})::int`,
+      messages: ASSISTANT_COUNT_EXPR,
       tokensInput: sql<number>`coalesce(sum(${aiMessages.tokensInput}),0)::int`,
       tokensOutput: sql<number>`coalesce(sum(${aiMessages.tokensOutput}),0)::int`,
       totalTokens: TOTAL_TOKENS_EXPR,
+      avgTtftMs: AVG_TTFT_EXPR,
     })
     .from(aiMessages)
     .innerJoin(aiConversations, eq(aiMessages.conversationId, aiConversations.id))
     .where(msgConds.length ? and(...msgConds) : undefined)
     .groupBy(MODEL_EXPR)
     .orderBy(desc(TOTAL_TOKENS_EXPR));
-  return rows;
+
+  const pricingMap = await getModelPricingMap();
+  return rows.map((r) => {
+    const pricing = pricingMap.get(r.model);
+    return {
+      ...r,
+      provider: pricing?.provider ?? null,
+      costFen: estimateCostFen(r.tokensInput, r.tokensOutput, pricing),
+    };
+  });
 }
 
 export async function getUsageByUser(range: UsageRange, limit = 10) {
@@ -80,7 +127,7 @@ export async function getUsageByUser(range: UsageRange, limit = 10) {
       username: users.username,
       nickname: users.nickname,
       conversations: sql<number>`count(distinct ${aiConversations.id})::int`,
-      messages: sql<number>`count(${aiMessages.id})::int`,
+      messages: ASSISTANT_COUNT_EXPR,
       totalTokens: TOTAL_TOKENS_EXPR,
     })
     .from(aiMessages)
@@ -99,7 +146,7 @@ export async function getUsageTrend(range: UsageRange) {
   const rows = await db
     .select({
       date: dateExpr,
-      messages: sql<number>`count(*)::int`,
+      messages: ASSISTANT_COUNT_EXPR,
       totalTokens: TOTAL_TOKENS_EXPR,
     })
     .from(aiMessages)
@@ -109,13 +156,20 @@ export async function getUsageTrend(range: UsageRange) {
   return rows;
 }
 
-/** 仪表盘一次性聚合（概览 + 按模型 + 按用户 Top10 + 按日趋势） */
+/** 仪表盘一次性聚合（概览 + 按模型 + 按用户 Top10 + 按日趋势 + 成功率/成本） */
 export async function getUsageStats(range: UsageRange) {
-  const [overview, byModel, byUser, trend] = await Promise.all([
+  const [overview, byModel, byUser, trend, reliability] = await Promise.all([
     getUsageOverview(range),
     getUsageByModel(range),
     getUsageByUser(range, 10),
     getUsageTrend(range),
+    getAiReliability(range.startDate, range.endDate),
   ]);
-  return { overview, byModel, byUser, trend };
+  const totalCostFen = Math.round(byModel.reduce((acc, m) => acc + (m.costFen ?? 0), 0) * 100) / 100;
+  return {
+    overview: { ...overview, totalCostFen, successRate: reliability.successRate },
+    byModel,
+    byUser,
+    trend,
+  };
 }

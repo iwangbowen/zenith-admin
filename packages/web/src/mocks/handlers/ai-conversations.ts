@@ -5,12 +5,30 @@ import type { AiConversation, AiMessage } from '@zenith/shared';
 const convStore: AiConversation[] = [...mockAiConversations];
 const msgStore: Record<number, AiMessage[]> = { ...mockAiMessages };
 
+/** 反馈列表条目：补充反馈人 / 会话标题 / 前置提问 */
+function enrichFeedbackItem(m: AiMessage) {
+  const conv = convStore.find((c) => c.id === m.conversationId);
+  const msgs = msgStore[m.conversationId] ?? [];
+  const idx = msgs.findIndex((x) => x.id === m.id);
+  const question = idx > 0 ? [...msgs.slice(0, idx)].reverse().find((x) => x.role === 'user')?.content ?? null : null;
+  return {
+    ...m,
+    userId: conv?.userId ?? 1,
+    username: 'admin',
+    nickname: '管理员',
+    conversationTitle: conv?.title ?? null,
+    question,
+  };
+}
+
 export const aiConversationsHandlers = [
-  // 列表（支持 archived / keyword 筛选）
+  // 列表（支持 archived / keyword 筛选 + limit/offset 分页）
   http.get('/api/ai/conversations', ({ request }) => {
     const url = new URL(request.url);
     const archived = url.searchParams.get('archived') === 'true';
     const keyword = (url.searchParams.get('keyword') ?? '').trim().toLowerCase();
+    const limit = Number(url.searchParams.get('limit')) || 0;
+    const offset = Number(url.searchParams.get('offset')) || 0;
     let list = convStore.filter((c) => c.isArchived === archived);
     if (keyword) {
       list = list.filter((c) =>
@@ -18,9 +36,10 @@ export const aiConversationsHandlers = [
         (msgStore[c.id] ?? []).some((m) => m.content.toLowerCase().includes(keyword)),
       );
     }
-    const sorted = [...list].sort((a, b) =>
+    let sorted = [...list].sort((a, b) =>
       (Number(b.isPinned) - Number(a.isPinned)) || b.updatedAt.localeCompare(a.updatedAt),
     );
+    if (limit > 0) sorted = sorted.slice(offset, offset + limit);
     return HttpResponse.json({ code: 0, message: 'ok', data: sorted });
   }),
 
@@ -173,9 +192,12 @@ export const aiConversationsHandlers = [
         conversationId: id,
         role: 'user',
         content: userText,
+        reasoning: null,
         model: null,
         tokensInput: Math.floor(userText.length / 4),
         tokensOutput: 0,
+        ttftMs: null,
+        durationMs: null,
         feedback: null,
         feedbackReason: null,
         feedbackStatus: null,
@@ -185,6 +207,8 @@ export const aiConversationsHandlers = [
       };
       msgStore[id].push(userMsg);
     }
+
+    const reasoningText = `用户的提问是「${userText.slice(0, 40)}」。首先理解意图，然后组织一个简洁友好的演示回复，说明当前处于 Demo 模式即可。`;
 
     const replyText = `这是一个 Demo 演示模式的模拟回复。${regenerate ? '（重新生成）' : ''}
 
@@ -196,21 +220,28 @@ export const aiConversationsHandlers = [
 
     const assistantMsgId = getNextMsgId();
 
-    // Update conversation title if still default
+    // Update conversation title if still default（模拟 LLM 自动命名）
     const conv = convStore.find((c) => c.id === id);
-    if (!regenerate && conv?.title === '新对话') {
-      conv.title = userText.slice(0, 20) + (userText.length > 20 ? '…' : '');
+    const needTitle = !regenerate && conv?.title === '新对话';
+    const newTitle = userText.slice(0, 15) + (userText.length > 15 ? '…' : '');
+    if (needTitle && conv) {
+      conv.title = newTitle;
       conv.updatedAt = now;
     }
 
-    // Build SSE response
-    const chunks = replyText.match(/.{1,8}/g) ?? [];
+    // Build SSE response（含思维链演示）
     let sseBody = '';
-    for (const chunk of chunks) {
+    for (const chunk of reasoningText.match(/.{1,10}/g) ?? []) {
+      sseBody += `event: reasoning\ndata: ${JSON.stringify({ content: chunk })}\n\n`;
+    }
+    for (const chunk of replyText.match(/.{1,8}/g) ?? []) {
       sseBody += `event: delta\ndata: ${JSON.stringify({ content: chunk })}\n\n`;
     }
     sseBody += `event: done\ndata: ${JSON.stringify({ tokensInput: Math.floor(userText.length / 4), tokensOutput: Math.floor(replyText.length / 4) })}\n\n`;
     sseBody += `event: saved\ndata: ${JSON.stringify({ assistantMsgId })}\n\n`;
+    if (needTitle) {
+      sseBody += `event: title\ndata: ${JSON.stringify({ title: newTitle })}\n\n`;
+    }
 
     // Save assistant message
     const assistantMsg: AiMessage = {
@@ -218,9 +249,12 @@ export const aiConversationsHandlers = [
       conversationId: id,
       role: 'assistant',
       content: replyText,
+      reasoning: reasoningText,
       model: 'qwen (demo)',
       tokensInput: 0,
       tokensOutput: Math.floor(replyText.length / 4),
+      ttftMs: 600 + Math.floor(Math.random() * 800),
+      durationMs: 3000 + Math.floor(Math.random() * 4000),
       feedback: null,
       feedbackReason: null,
       feedbackStatus: null,
@@ -269,6 +303,9 @@ export const aiConversationsHandlers = [
     const pageSize = Number(url.searchParams.get('pageSize')) || 10;
     const feedbackParam = url.searchParams.get('feedback');
     const statusParam = url.searchParams.get('status');
+    const modelParam = url.searchParams.get('model');
+    const startDate = url.searchParams.get('startDate');
+    const endDate = url.searchParams.get('endDate');
 
     // 收集所有带反馈的消息
     let allMsgs: AiMessage[] = Object.values(msgStore).flat().filter((m) => m.feedback !== null);
@@ -279,11 +316,49 @@ export const aiConversationsHandlers = [
     if (statusParam) {
       allMsgs = allMsgs.filter((m) => m.feedbackStatus === statusParam);
     }
+    if (modelParam) {
+      allMsgs = allMsgs.filter((m) => m.model === modelParam);
+    }
+    if (startDate) allMsgs = allMsgs.filter((m) => m.createdAt >= `${startDate} 00:00:00`);
+    if (endDate) allMsgs = allMsgs.filter((m) => m.createdAt <= `${endDate} 23:59:59`);
     allMsgs = allMsgs.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
     const total = allMsgs.length;
-    const list = allMsgs.slice((page - 1) * pageSize, page * pageSize);
+    const list = allMsgs.slice((page - 1) * pageSize, page * pageSize).map(enrichFeedbackItem);
     return HttpResponse.json({ code: 0, message: 'ok', data: { list, total, page, pageSize } });
+  }),
+
+  // 管理员查看反馈上下文
+  http.get('/api/ai/conversations/admin/feedback/:msgId/context', ({ params }) => {
+    const msgId = Number(params.msgId);
+    const entry = Object.entries(msgStore).find(([, msgs]) => msgs.some((m) => m.id === msgId));
+    if (!entry) return HttpResponse.json({ code: 404, message: '消息不存在', data: null }, { status: 404 });
+    const convId = Number(entry[0]);
+    const msgs = entry[1];
+    const idx = msgs.findIndex((m) => m.id === msgId);
+    const messages = msgs.slice(Math.max(0, idx - 8), idx + 3);
+    const conv = convStore.find((c) => c.id === convId);
+    return HttpResponse.json({
+      code: 0,
+      message: 'ok',
+      data: { conversationId: convId, conversationTitle: conv?.title ?? null, targetMsgId: msgId, messages },
+    });
+  }),
+
+  // 管理员导出反馈 CSV
+  http.get('/api/ai/conversations/admin/feedback/export', () => {
+    const rows = Object.values(msgStore).flat().filter((m) => m.feedback !== null).map(enrichFeedbackItem);
+    const header = '消息 ID,反馈,处理状态,模型,反馈用户,对话标题,用户提问,AI 回复,反馈时间';
+    const lines = rows.map((r) => [
+      r.id, r.feedback === 1 ? '点赞' : '点踩', r.feedbackStatus ?? '', r.model ?? '',
+      r.username ?? '', r.conversationTitle ?? '', JSON.stringify(r.question ?? ''), JSON.stringify(r.content.slice(0, 100)), r.createdAt,
+    ].join(','));
+    return new HttpResponse(`\uFEFF${header}\n${lines.join('\n')}`, {
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="ai-feedback.csv"',
+      },
+    });
   }),
 
   // 管理员处理反馈（更新状态/备注）

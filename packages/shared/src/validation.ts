@@ -2096,6 +2096,8 @@ export const createAiProviderConfigSchema = z.object({
   systemPrompt: z.string().max(4096).nullable().optional(),
   maxTokens: z.number().int().min(1).max(128000).default(4096),
   temperature: z.string().regex(/^\d+(\.\d+)?$/, '温度须为数字字符串').default('0.7'),
+  priceInputPerM: z.number().int().min(0).max(100000000).nullable().optional(),
+  priceOutputPerM: z.number().int().min(0).max(100000000).nullable().optional(),
   isDefault: z.boolean().default(false),
   isEnabled: z.boolean().default(true),
 });

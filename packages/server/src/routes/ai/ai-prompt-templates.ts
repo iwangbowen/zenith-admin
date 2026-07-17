@@ -20,6 +20,7 @@ import {
   createPromptTemplate,
   updatePromptTemplate,
   deletePromptTemplate,
+  incrementPromptUsage,
 } from '../../services/ai/ai-prompt-templates.service';
 import { createAiPromptTemplateSchema, updateAiPromptTemplateSchema } from '@zenith/shared';
 
@@ -58,6 +59,24 @@ const available = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...ok(z.array(AiPromptTemplateDTO), '可用模板列表') },
   }),
   handler: async (c) => c.json(okBody(await listChatPromptTemplates()), 200),
+});
+
+const use = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post',
+    path: '/{id}/use',
+    tags: ['AI'],
+    summary: '记录模板被应用为对话角色一次（使用统计）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...okMsg('已记录') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    await incrementPromptUsage(id);
+    return c.json(okBody(null, '已记录'), 200);
+  },
 });
 
 const getOne = defineOpenAPIRoute({
@@ -126,6 +145,6 @@ const remove = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([list, available, getOne, create, update, remove] as const);
+router.openapiRoutes([list, available, use, getOne, create, update, remove] as const);
 
 export default router;

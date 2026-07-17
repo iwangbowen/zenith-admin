@@ -45,6 +45,8 @@ export const aiProvidersHandlers = [
       systemPrompt: body.systemPrompt ?? null,
       maxTokens: body.maxTokens ?? 4096,
       temperature: body.temperature ?? '0.7',
+      priceInputPerM: body.priceInputPerM ?? null,
+      priceOutputPerM: body.priceOutputPerM ?? null,
       isDefault: body.isDefault ?? false,
       isEnabled: body.isEnabled ?? true,
       createdAt: now,

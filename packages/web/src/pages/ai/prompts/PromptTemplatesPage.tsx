@@ -164,6 +164,7 @@ export default function PromptTemplatesPage() {
     { title: '分类', dataIndex: 'category', width: 120, render: renderEllipsis },
     { title: '范围', dataIndex: 'scope', width: 100, render: (scope: AiPromptScope) => scopeTag(scope) },
     { title: '内容', dataIndex: 'content', width: 360, render: renderEllipsis },
+    { title: '使用次数', dataIndex: 'usageCount', width: 90 },
     { title: '排序', dataIndex: 'sort', width: 80 },
     createdAtColumn as ColumnProps<AiPromptTemplate>,
     {
@@ -331,7 +332,7 @@ export default function PromptTemplatesPage() {
               label="内容"
               rows={6}
               style={{ width: '100%' }}
-              placeholder="请输入提示词内容"
+              placeholder="请输入提示词内容，支持 {{变量}} 占位符（应用时弹出表单填充，如：请把以下内容翻译成{{目标语言}}）"
               rules={[{ required: true, message: '请输入提示词内容' }]}
             />
           </Form>

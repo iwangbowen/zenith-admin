@@ -4,6 +4,9 @@ import { getConfigBoolean } from '../../lib/system-config';
 import { getRawDefaultProviderConfig, getRawProviderConfig } from './ai-providers.service';
 import { getRawUserAiConfigById } from './user-ai-config.service';
 import { streamChat } from '../../lib/ai/factory';
+import { chatOnceOpenAICompatible } from '../../lib/ai/adapters/openai-compatible';
+import { updateConversationTitle } from './ai-conversations.service';
+import logger from '../../lib/logger';
 import type { StreamChatConfig, ChatMessage, StreamChunk } from '../../lib/ai/factory';
 import type { AiProvider } from '@zenith/shared';
 
@@ -113,4 +116,58 @@ export async function* streamAiChat(
       yield chunk;
     }
   }
+}
+
+const TITLE_MAX_LEN = 30;
+
+/** 去掉 LLM 生成标题中的引号 / 句号 / 思维链残留，并截断长度 */
+function sanitizeTitle(raw: string): string {
+  return raw
+    .replace(/<think>[\s\S]*?<\/think>/g, '')
+    .replaceAll('\n', ' ')
+    .replaceAll(/["'“”‘’《》<>#*`]/g, '')
+    .replace(/[。.．\s]+$/, '')
+    .trim()
+    .slice(0, TITLE_MAX_LEN);
+}
+
+/**
+ * 首轮对话后用 LLM 生成对话标题（使用系统默认配置的非流式调用）。
+ * 任一环节失败回退为用户消息前 30 字。返回最终生效的标题。
+ */
+export async function generateConversationTitle(
+  conversationId: number,
+  userMessage: string,
+  assistantReply: string,
+): Promise<string> {
+  const fallback = userMessage.slice(0, TITLE_MAX_LEN);
+  let title = fallback;
+  try {
+    const sysCfg = await getRawDefaultProviderConfig();
+    if (sysCfg && sysCfg.provider === 'openai_compatible') {
+      const raw = await chatOnceOpenAICompatible(
+        {
+          baseUrl: sysCfg.baseUrl,
+          apiKey: sysCfg.apiKey,
+          model: sysCfg.model,
+          maxTokens: 60,
+          temperature: '0.3',
+          systemPrompt: null,
+        },
+        [
+          {
+            role: 'user',
+            content: `请用不超过 15 个字概括下面这段对话的主题，直接输出标题本身，不要引号、句号或任何解释。\n\n用户：${userMessage.slice(0, 500)}\n助手：${assistantReply.slice(0, 500)}`,
+          },
+        ],
+        { timeoutMs: 8000 },
+      );
+      const sanitized = sanitizeTitle(raw);
+      if (sanitized) title = sanitized;
+    }
+  } catch (err) {
+    logger.warn('[ai-chat] auto title generation failed, fallback to prefix', err);
+  }
+  await updateConversationTitle(conversationId, title);
+  return title;
 }

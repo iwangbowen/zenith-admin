@@ -22,6 +22,8 @@ interface FormValues {
   systemPrompt?: string | null;
   maxTokens: number;
   temperature: string;
+  priceInputPerM?: number | null;
+  priceOutputPerM?: number | null;
   isDefault: boolean;
   isEnabled: boolean;
 }
@@ -35,6 +37,8 @@ const SYSTEM_DEFAULTS: FormValues = {
   systemPrompt: null,
   maxTokens: 4096,
   temperature: '0.7',
+  priceInputPerM: null,
+  priceOutputPerM: null,
   isDefault: false,
   isEnabled: true,
 };
@@ -104,6 +108,8 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
           systemPrompt: et.systemPrompt,
           maxTokens: et.maxTokens,
           temperature: et.temperature,
+          priceInputPerM: et.priceInputPerM,
+          priceOutputPerM: et.priceOutputPerM,
           isDefault: et.isDefault,
           isEnabled: et.isEnabled,
         });
@@ -144,7 +150,14 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
         props.onSaved(saved);
         onClose();
       } else {
-        await saveProviderMutation.mutateAsync({ id: editTarget?.id, values });
+        await saveProviderMutation.mutateAsync({
+          id: editTarget?.id,
+          values: {
+            ...values,
+            priceInputPerM: values.priceInputPerM ?? null,
+            priceOutputPerM: values.priceOutputPerM ?? null,
+          },
+        });
         Toast.success(editTarget ? '修改成功' : '创建成功');
         props.onSaved();
         onClose();
@@ -304,6 +317,29 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
               )}
             </Col>
           </Row>
+          {/* 行5：模型单价（仅系统配置，用于用量统计的成本估算） */}
+          {!isUser && (
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.InputNumber
+                  field="priceInputPerM"
+                  label="输入单价（分/百万Token）"
+                  min={0}
+                  placeholder="留空不计成本"
+                  style={{ width: '100%' }}
+                />
+              </Col>
+              <Col span={12}>
+                <Form.InputNumber
+                  field="priceOutputPerM"
+                  label="输出单价（分/百万Token）"
+                  min={0}
+                  placeholder="留空不计成本"
+                  style={{ width: '100%' }}
+                />
+              </Col>
+            </Row>
+          )}
           <Form.TextArea
             field="systemPrompt"
             label="系统提示词"

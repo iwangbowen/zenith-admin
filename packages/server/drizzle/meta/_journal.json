@@ -477,6 +477,13 @@
       "when": 1784210723570,
       "tag": "0067_supreme_hellfire_club",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1784294396066,
+      "tag": "0068_mute_metal_master",
+      "breakpoints": true
     }
   ]
 }

@@ -2,10 +2,10 @@ import { http, HttpResponse } from 'msw';
 import { mockDate } from '../utils/date';
 
 const byModel = [
-  { model: 'qwen-max', messages: 320, tokensInput: 450000, tokensOutput: 210000, totalTokens: 660000 },
-  { model: 'gpt-4o', messages: 220, tokensInput: 380000, tokensOutput: 175000, totalTokens: 555000 },
-  { model: 'deepseek-chat', messages: 180, tokensInput: 260000, tokensOutput: 110000, totalTokens: 370000 },
-  { model: 'claude-3.5-sonnet', messages: 90, tokensInput: 160000, tokensOutput: 82000, totalTokens: 242000 },
+  { model: 'qwen-max', provider: 'openai_compatible', messages: 320, tokensInput: 450000, tokensOutput: 210000, totalTokens: 660000, avgTtftMs: 780, costFen: 620 },
+  { model: 'gpt-4o', provider: 'openai_compatible', messages: 220, tokensInput: 380000, tokensOutput: 175000, totalTokens: 555000, avgTtftMs: 920, costFen: 1944 },
+  { model: 'deepseek-chat', provider: 'openai_compatible', messages: 180, tokensInput: 260000, tokensOutput: 110000, totalTokens: 370000, avgTtftMs: 650, costFen: 140 },
+  { model: 'claude-3.5-sonnet', provider: null, messages: 90, tokensInput: 160000, tokensOutput: 82000, totalTokens: 242000, avgTtftMs: 1100, costFen: null },
 ];
 
 const byUser = [
@@ -37,6 +37,9 @@ const overview = {
   tokensOutput: byModel.reduce((sum, item) => sum + item.tokensOutput, 0),
   totalTokens: byModel.reduce((sum, item) => sum + item.totalTokens, 0),
   activeUsers: byUser.length,
+  totalCostFen: byModel.reduce((sum, item) => sum + (item.costFen ?? 0), 0),
+  avgTtftMs: 860,
+  successRate: 99.42,
 };
 
 export const aiUsageHandlers = [

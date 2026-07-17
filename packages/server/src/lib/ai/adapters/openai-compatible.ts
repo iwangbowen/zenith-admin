@@ -17,6 +17,7 @@ export interface ChatMessage {
 
 export type StreamChunk =
   | { type: 'delta'; content: string }
+  | { type: 'reasoning'; content: string }
   | { type: 'done'; tokensInput: number; tokensOutput: number }
   | { type: 'error'; error: string };
 
@@ -133,12 +134,15 @@ export async function* streamChatOpenAICompatible(
   let tokensInput = 0;
   let tokensOutput = 0;
   let accumulated = '';
+  let reasoningAccumulated = '';
 
   // 上游未返回 usage 时（部分兼容网关不支持 stream_options），用本地估算兜底，
   // 保证用量统计有量级正确的数据
   const finalizeTokens = () => {
     if (!tokensInput) tokensInput = allMessages.reduce((sum, m) => sum + estimateTokens(m.content), 0);
-    if (!tokensOutput && accumulated) tokensOutput = estimateTokens(accumulated);
+    if (!tokensOutput && (accumulated || reasoningAccumulated)) {
+      tokensOutput = estimateTokens(accumulated) + estimateTokens(reasoningAccumulated);
+    }
   };
 
   try {
@@ -164,10 +168,17 @@ export async function* streamChatOpenAICompatible(
 
         try {
           const parsed = JSON.parse(data);
-          const content = parsed.choices?.[0]?.delta?.content;
+          const delta = parsed.choices?.[0]?.delta;
+          const content = delta?.content;
           if (typeof content === 'string' && content) {
             accumulated += content;
             yield { type: 'delta', content };
+          }
+          // 推理模型思维链（DeepSeek-R1 等：reasoning_content；部分网关：reasoning）
+          const reasoning = delta?.reasoning_content ?? delta?.reasoning;
+          if (typeof reasoning === 'string' && reasoning) {
+            reasoningAccumulated += reasoning;
+            yield { type: 'reasoning', content: reasoning };
           }
           // 有些 API 会在最后一个 chunk 附带 usage 信息
           if (parsed.usage) {
@@ -193,4 +204,42 @@ export async function* streamChatOpenAICompatible(
 
   finalizeTokens();
   yield { type: 'done', tokensInput, tokensOutput };
+}
+
+/**
+ * 非流式单次补全（用于对话自动命名等轻量后台任务）。
+ * 失败 / 超时抛错，由调用方决定回退策略。
+ */
+export async function chatOnceOpenAICompatible(
+  config: StreamChatConfig,
+  messages: ChatMessage[],
+  opts: { timeoutMs?: number } = {},
+): Promise<string> {
+  const allMessages: ChatMessage[] = config.systemPrompt
+    ? [{ role: 'system', content: config.systemPrompt }, ...messages]
+    : messages;
+  const res = await httpRequest(`${config.baseUrl.replace(/\/$/, '')}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: config.model,
+      messages: allMessages,
+      stream: false,
+      max_tokens: config.maxTokens,
+      temperature: Number.parseFloat(config.temperature) || 0.7,
+    }),
+    timeout: opts.timeoutMs ?? 10000,
+    retries: 0,
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(extractApiError(body, res.status));
+  }
+  const data = await res.json<{ choices?: { message?: { content?: string } }[] }>();
+  const content = data.choices?.[0]?.message?.content;
+  if (typeof content !== 'string' || !content.trim()) throw new Error('LLM 返回内容为空');
+  return content.trim();
 }

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Button, Card, DatePicker, Row, Col, Spin, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { CommonChart, chartOptions, makeMixedBarLineSpec, useChartPalette } from '@/components/charts';
-import { Bot, Coins, MessageCircle, Search, RotateCcw, Users } from 'lucide-react';
+import { Bot, CircleCheck, Coins, Gauge, MessageCircle, Search, RotateCcw, Users, Wallet } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -24,13 +24,24 @@ function formatNumber(value: number | null | undefined) {
   return text.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
+/** 分 → 元显示 */
+function formatCostYuan(fen: number | null | undefined) {
+  if (fen == null) return '—';
+  return `¥${(fen / 100).toFixed(2)}`;
+}
+
+function formatMs(ms: number | null | undefined) {
+  if (ms == null) return '—';
+  return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
+}
+
 function shortDate(date: string) {
   return date.slice(5);
 }
 
 interface StatCardProps {
   title: string;
-  value: number;
+  value: string;
   icon: React.ReactNode;
   color: string;
   secondary?: string;
@@ -55,7 +66,7 @@ function StatCard({ title, value, icon, color, secondary }: StatCardProps) {
         </div>
         <div>
           <div style={{ fontSize: 22, fontWeight: 600, lineHeight: 1.2, color: 'var(--semi-color-text-0)' }}>
-            {formatNumber(value)}
+            {value}
           </div>
           <Text type="tertiary" size="small">{title}</Text>
           {secondary && <Text type="tertiary" size="small" style={{ display: 'block', marginTop: 2 }}>{secondary}</Text>}
@@ -99,11 +110,14 @@ export default function AiUsagePage() {
   );
 
   const modelColumns: ColumnProps<AiUsageByModel>[] = [
-    { title: '模型', dataIndex: 'model', width: 220 },
-    { title: '消息数', dataIndex: 'messages', width: 120, render: (value: number) => formatNumber(value) },
-    { title: '输入Token', dataIndex: 'tokensInput', width: 140, render: (value: number) => formatNumber(value) },
-    { title: '输出Token', dataIndex: 'tokensOutput', width: 140, render: (value: number) => formatNumber(value) },
-    { title: '总Token', dataIndex: 'totalTokens', width: 140, render: (value: number) => formatNumber(value) },
+    { title: '模型', dataIndex: 'model', width: 180 },
+    { title: '供应商', dataIndex: 'provider', width: 140, render: (v: string | null) => v ?? '—' },
+    { title: '回复数', dataIndex: 'messages', width: 90, render: (value: number) => formatNumber(value) },
+    { title: '输入Token', dataIndex: 'tokensInput', width: 120, render: (value: number) => formatNumber(value) },
+    { title: '输出Token', dataIndex: 'tokensOutput', width: 120, render: (value: number) => formatNumber(value) },
+    { title: '总Token', dataIndex: 'totalTokens', width: 120, render: (value: number) => formatNumber(value) },
+    { title: '首字延迟', dataIndex: 'avgTtftMs', width: 100, render: (value: number | null) => formatMs(value) },
+    { title: '预估成本', dataIndex: 'costFen', width: 110, render: (value: number | null) => formatCostYuan(value) },
   ];
 
   const userColumns: ColumnProps<AiUsageByUser>[] = [
@@ -119,7 +133,7 @@ export default function AiUsagePage() {
       ),
     },
     { title: '对话数', dataIndex: 'conversations', width: 120, render: (value: number) => formatNumber(value) },
-    { title: '消息数', dataIndex: 'messages', width: 120, render: (value: number) => formatNumber(value) },
+    { title: '回复数', dataIndex: 'messages', width: 120, render: (value: number) => formatNumber(value) },
     { title: '总Token', dataIndex: 'totalTokens', width: 140, render: (value: number) => formatNumber(value) },
   ];
 
@@ -191,22 +205,47 @@ export default function AiUsagePage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <Row gutter={[16, 16]} type="flex">
             <Col xs={24} sm={12} xl={6}>
-              <StatCard title="对话总数" value={stats?.overview.totalConversations ?? 0} icon={<MessageCircle size={20} />} color="#4A90E2" />
+              <StatCard title="对话总数" value={formatNumber(stats?.overview.totalConversations ?? 0)} icon={<MessageCircle size={20} />} color="#4A90E2" />
             </Col>
             <Col xs={24} sm={12} xl={6}>
-              <StatCard title="消息总数" value={stats?.overview.totalMessages ?? 0} icon={<Bot size={20} />} color="#52C41A" />
+              <StatCard title="回复消息数" value={formatNumber(stats?.overview.totalMessages ?? 0)} icon={<Bot size={20} />} color="#52C41A" />
             </Col>
             <Col xs={24} sm={12} xl={6}>
               <StatCard
                 title="Token 总数"
-                value={stats?.overview.totalTokens ?? 0}
+                value={formatNumber(stats?.overview.totalTokens ?? 0)}
                 icon={<Coins size={20} />}
                 color="#FA8C16"
                 secondary={`输入 ${formatNumber(stats?.overview.tokensInput)} / 输出 ${formatNumber(stats?.overview.tokensOutput)}`}
               />
             </Col>
             <Col xs={24} sm={12} xl={6}>
-              <StatCard title="活跃用户数" value={stats?.overview.activeUsers ?? 0} icon={<Users size={20} />} color="#722ED1" />
+              <StatCard title="活跃用户数" value={formatNumber(stats?.overview.activeUsers ?? 0)} icon={<Users size={20} />} color="#722ED1" />
+            </Col>
+            <Col xs={24} sm={12} xl={8}>
+              <StatCard
+                title="预估成本"
+                value={formatCostYuan(stats?.overview.totalCostFen ?? 0)}
+                icon={<Wallet size={20} />}
+                color="#EB2F96"
+                secondary="按服务商单价估算，未配置单价的模型不计入"
+              />
+            </Col>
+            <Col xs={24} sm={12} xl={8}>
+              <StatCard
+                title="平均首字延迟"
+                value={formatMs(stats?.overview.avgTtftMs)}
+                icon={<Gauge size={20} />}
+                color="#13C2C2"
+              />
+            </Col>
+            <Col xs={24} sm={12} xl={8}>
+              <StatCard
+                title="请求成功率"
+                value={stats?.overview.successRate == null ? '—' : `${stats.overview.successRate}%`}
+                icon={<CircleCheck size={20} />}
+                color="#2FBF71"
+              />
             </Col>
           </Row>
 

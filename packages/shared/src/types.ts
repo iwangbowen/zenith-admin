@@ -5725,6 +5725,10 @@ export interface AiProviderConfig {
   systemPrompt: string | null;
   maxTokens: number;
   temperature: string;
+  /** 输入单价（分 / 百万 token），null = 未配置不计成本 */
+  priceInputPerM: number | null;
+  /** 输出单价（分 / 百万 token），null = 未配置不计成本 */
+  priceOutputPerM: number | null;
   isDefault: boolean;
   isEnabled: boolean;
   createdAt: string;
@@ -5758,9 +5762,15 @@ export interface AiMessage {
   conversationId: number;
   role: AiMessageRole;
   content: string;
+  /** 推理模型的思维链内容（reasoning_content） */
+  reasoning: string | null;
   model: string | null;
   tokensInput: number;
   tokensOutput: number;
+  /** 首字延迟（毫秒） */
+  ttftMs: number | null;
+  /** 本次生成总耗时（毫秒） */
+  durationMs: number | null;
   /** 1 = 点赞, -1 = 点踩, null = 未反馈 */
   feedback: number | null;
   feedbackReason: string | null;
@@ -5771,6 +5781,16 @@ export interface AiMessage {
 }
 
 export type AiFeedbackStatus = 'pending' | 'resolved' | 'ignored';
+
+/** 管理端反馈列表条目：消息 + 反馈人 / 会话 / 前置提问上下文 */
+export interface AiFeedbackItem extends AiMessage {
+  userId: number | null;
+  username: string | null;
+  nickname: string | null;
+  conversationTitle: string | null;
+  /** 该条 AI 回复之前最近一条用户提问 */
+  question: string | null;
+}
 
 export interface UserAiConfig {
   id: number;
@@ -5800,6 +5820,8 @@ export interface AiPromptTemplate {
   userId: number | null;
   isBuiltin: boolean;
   sort: number;
+  /** 被应用为对话角色的累计次数 */
+  usageCount: number;
   isEnabled: boolean;
   createdAt: string;
   updatedAt: string;

@@ -6,6 +6,8 @@ import {
   commonErrorResponses,
   ok,
   okMsg,
+  okCsv,
+  csvStreamBody,
   IdParam,
   okBody,
   okPaginated,
@@ -13,7 +15,7 @@ import {
   fileBody,
   PaginationQuery,
 } from '../../lib/openapi-schemas';
-import { AiConversationDTO, AiMessageDTO } from '../../lib/openapi-dtos';
+import { AiConversationDTO, AiMessageDTO, AiFeedbackItemDTO, AiFeedbackContextDTO } from '../../lib/openapi-dtos';
 import {
   listConversations,
   createConversation,
@@ -22,6 +24,8 @@ import {
   listMessages,
   submitMessageFeedback,
   listFeedbackMessages,
+  getFeedbackContext,
+  exportFeedbackMessages,
   deleteMessage,
   deleteMessageCascade,
   renameConversation,
@@ -39,6 +43,8 @@ const router = new OpenAPIHono({ defaultHook: validationHook });
 const ListQuery = z.object({
   archived: z.enum(['true', 'false']).optional().openapi({ description: '是否查看已归档对话' }),
   keyword: z.string().max(100).optional().openapi({ description: '搜索关键词（匹配标题或消息内容）' }),
+  limit: z.coerce.number().int().min(1).max(100).optional().openapi({ description: '返回条数上限（分页加载）' }),
+  offset: z.coerce.number().int().min(0).optional().openapi({ description: '偏移量（分页加载）' }),
 });
 
 const list = defineOpenAPIRoute({
@@ -53,8 +59,8 @@ const list = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...ok(z.array(AiConversationDTO), '对话列表') },
   }),
   handler: async (c) => {
-    const { archived, keyword } = c.req.valid('query');
-    return c.json(okBody(await listConversations({ archived: archived === 'true', keyword })), 200);
+    const { archived, keyword, limit, offset } = c.req.valid('query');
+    return c.json(okBody(await listConversations({ archived: archived === 'true', keyword, limit, offset })), 200);
   },
 });
 
@@ -149,10 +155,31 @@ const submitFeedback = defineOpenAPIRoute({
   },
 });
 
-const FeedbackListQuery = PaginationQuery.extend({
+const FeedbackFilterFields = {
   feedback: z.enum(['1', '-1']).optional().openapi({ description: '反馈类型：1=点赞, -1=点踩' }),
   status: z.enum(['pending', 'resolved', 'ignored']).optional().openapi({ description: '处理状态筛选' }),
-});
+  model: z.string().max(100).optional().openapi({ description: '按模型筛选' }),
+  startDate: z.string().max(20).optional().openapi({ description: '反馈时间起（YYYY-MM-DD）' }),
+  endDate: z.string().max(20).optional().openapi({ description: '反馈时间止（YYYY-MM-DD）' }),
+};
+
+const FeedbackListQuery = PaginationQuery.extend(FeedbackFilterFields);
+
+function parseFeedbackFilters(q: {
+  feedback?: '1' | '-1';
+  status?: 'pending' | 'resolved' | 'ignored';
+  model?: string;
+  startDate?: string;
+  endDate?: string;
+}) {
+  return {
+    feedback: q.feedback ? (Number(q.feedback) as 1 | -1) : undefined,
+    status: q.status,
+    model: q.model,
+    startDate: q.startDate,
+    endDate: q.endDate,
+  };
+}
 
 const adminFeedbackList = defineOpenAPIRoute({
   route: createRoute({
@@ -163,14 +190,46 @@ const adminFeedbackList = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'ai:feedback:view' })] as const,
     request: { query: FeedbackListQuery },
-    responses: { ...commonErrorResponses, ...okPaginated(AiMessageDTO, '反馈列表') },
+    responses: { ...commonErrorResponses, ...okPaginated(AiFeedbackItemDTO, '反馈列表') },
   }),
   handler: async (c) => {
-    const { page, pageSize, feedback, status } = c.req.valid('query');
-    return c.json(
-      okBody(await listFeedbackMessages({ page, pageSize, feedback: feedback ? (Number(feedback) as 1 | -1) : undefined, status })),
-      200,
-    );
+    const { page, pageSize, ...filters } = c.req.valid('query');
+    return c.json(okBody(await listFeedbackMessages({ page, pageSize, ...parseFeedbackFilters(filters) })), 200);
+  },
+});
+
+const adminFeedbackContext = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get',
+    path: '/admin/feedback/{msgId}/context',
+    tags: ['AI'],
+    summary: '管理员查看反馈消息的会话上下文',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'ai:feedback:view' })] as const,
+    request: { params: z.object({ msgId: z.coerce.number() }) },
+    responses: { ...commonErrorResponses, ...ok(AiFeedbackContextDTO, '上下文消息') },
+  }),
+  handler: async (c) => {
+    const { msgId } = c.req.valid('param');
+    return c.json(okBody(await getFeedbackContext(msgId)), 200);
+  },
+});
+
+const adminFeedbackExport = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get',
+    path: '/admin/feedback/export',
+    tags: ['AI'],
+    summary: '管理员导出反馈列表 CSV',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'ai:feedback:view', audit: { description: '导出 AI 反馈列表', module: '智能助手' } })] as const,
+    request: { query: z.object(FeedbackFilterFields) },
+    responses: { ...commonErrorResponses, ...okCsv('反馈列表 CSV') },
+  }),
+  handler: async (c) => {
+    const filters = c.req.valid('query');
+    const { stream, filename } = await exportFeedbackMessages(parseFeedbackFilters(filters));
+    return csvStreamBody(c, stream, filename);
   },
 });
 
@@ -331,6 +390,6 @@ const setSystemPrompt = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([list, create, getOne, remove, getMessages, rename, togglePin, toggleArchive, setSystemPrompt, exportConv, submitFeedback, deleteMsg, deleteMsgCascade, adminFeedbackList, updateFeedback] as const);
+router.openapiRoutes([list, create, getOne, remove, getMessages, rename, togglePin, toggleArchive, setSystemPrompt, exportConv, submitFeedback, deleteMsg, deleteMsgCascade, adminFeedbackList, adminFeedbackExport, adminFeedbackContext, updateFeedback] as const);
 
 export default router;

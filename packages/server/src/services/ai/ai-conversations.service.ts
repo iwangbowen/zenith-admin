@@ -1,10 +1,11 @@
-import { eq, desc, and, or, ilike, inArray, isNotNull, gt, gte } from 'drizzle-orm';
+import { eq, desc, and, or, ilike, inArray, isNotNull, gt, gte, lte, sql } from 'drizzle-orm';
 import { db } from '../../db';
-import { aiConversations, aiMessages } from '../../db/schema';
+import { aiConversations, aiMessages, users } from '../../db/schema';
 import { currentUser } from '../../lib/context';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatFileTimestamp, parseDateRangeStart, parseDateRangeEnd } from '../../lib/datetime';
 import { truncateHistoryByBudget } from '../../lib/ai/tokens';
 import { escapeLike, withPagination } from '../../lib/where-helpers';
+import { streamToCsv } from '../../lib/excel-export';
 import { HTTPException } from 'hono/http-exception';
 import type { AiFeedbackStatus } from '@zenith/shared';
 
@@ -29,9 +30,12 @@ function mapMessage(row: typeof aiMessages.$inferSelect) {
     conversationId: row.conversationId,
     role: row.role,
     content: row.content,
+    reasoning: row.reasoning,
     model: row.model,
     tokensInput: row.tokensInput,
     tokensOutput: row.tokensOutput,
+    ttftMs: row.ttftMs,
+    durationMs: row.durationMs,
     feedback: row.feedback,
     feedbackReason: row.feedbackReason,
     feedbackStatus: row.feedbackStatus,
@@ -41,7 +45,7 @@ function mapMessage(row: typeof aiMessages.$inferSelect) {
   };
 }
 
-export async function listConversations(opts: { archived?: boolean; keyword?: string } = {}) {
+export async function listConversations(opts: { archived?: boolean; keyword?: string; limit?: number; offset?: number } = {}) {
   const user = currentUser();
   const archived = opts.archived ?? false;
   const keyword = opts.keyword?.trim();
@@ -61,11 +65,15 @@ export async function listConversations(opts: { archived?: boolean; keyword?: st
     conds.push(or(ilike(aiConversations.title, kw), inArray(aiConversations.id, matchedConvIds))!);
   }
 
-  const rows = await db
+  let query = db
     .select()
     .from(aiConversations)
     .where(and(...conds))
-    .orderBy(desc(aiConversations.isPinned), desc(aiConversations.updatedAt));
+    .orderBy(desc(aiConversations.isPinned), desc(aiConversations.updatedAt))
+    .$dynamic();
+  if (opts.limit !== undefined) query = query.limit(opts.limit);
+  if (opts.offset) query = query.offset(opts.offset);
+  const rows = await query;
   return rows.map(mapConversation);
 }
 
@@ -194,6 +202,12 @@ export async function exportConversation(id: number, format: 'md' | 'json') {
   return { content: lines.join('\n'), filename: `${safeTitle}.md`, contentType: 'text/markdown; charset=utf-8' };
 }
 
+export interface AssistantMessageMeta {
+  reasoning?: string | null;
+  ttftMs?: number | null;
+  durationMs?: number | null;
+}
+
 export async function saveMessages(
   conversationId: number,
   userContent: string,
@@ -201,10 +215,21 @@ export async function saveMessages(
   tokensInput: number,
   tokensOutput: number,
   snapshot: { provider: string; model: string; configId?: number } | null,
+  meta: AssistantMessageMeta = {},
 ) {
   const [, assistantRow] = await db.insert(aiMessages).values([
     { conversationId, role: 'user', content: userContent, tokensInput: 0, tokensOutput: 0 },
-    { conversationId, role: 'assistant', content: assistantContent, model: snapshot?.model ?? null, tokensInput, tokensOutput },
+    {
+      conversationId,
+      role: 'assistant',
+      content: assistantContent,
+      reasoning: meta.reasoning ?? null,
+      model: snapshot?.model ?? null,
+      tokensInput,
+      tokensOutput,
+      ttftMs: meta.ttftMs ?? null,
+      durationMs: meta.durationMs ?? null,
+    },
   ]).returning({ id: aiMessages.id });
   if (snapshot) {
     await db.update(aiConversations).set({ providerSnapshot: snapshot }).where(eq(aiConversations.id, conversationId));
@@ -221,14 +246,18 @@ export async function saveAssistantMessage(
   tokensInput: number,
   tokensOutput: number,
   snapshot: { provider: string; model: string; configId?: number } | null,
+  meta: AssistantMessageMeta = {},
 ) {
   const [assistantRow] = await db.insert(aiMessages).values({
     conversationId,
     role: 'assistant',
     content: assistantContent,
+    reasoning: meta.reasoning ?? null,
     model: snapshot?.model ?? null,
     tokensInput,
     tokensOutput,
+    ttftMs: meta.ttftMs ?? null,
+    durationMs: meta.durationMs ?? null,
   }).returning({ id: aiMessages.id });
   if (snapshot) {
     await db.update(aiConversations).set({ providerSnapshot: snapshot }).where(eq(aiConversations.id, conversationId));
@@ -340,23 +369,151 @@ export async function updateFeedbackStatus(messageId: number, status: AiFeedback
 }
 
 /**
- * 管理员：列出所有有反馈的 assistant 消息（分页，支持按反馈类型/处理状态筛选）。
+ * 管理员：列出所有有反馈的 assistant 消息（分页，支持按反馈类型/处理状态/模型/时间范围筛选），
+ * 附带反馈人、所属会话标题与该回复之前最近一条用户提问。
  */
 export async function listFeedbackMessages(params: {
   page: number;
   pageSize: number;
   feedback?: 1 | -1;
   status?: AiFeedbackStatus;
+  model?: string;
+  startDate?: string;
+  endDate?: string;
 }) {
-  const { page, pageSize, feedback, status } = params;
-  const conds = [isNotNull(aiMessages.feedback), eq(aiMessages.role, 'assistant')];
-  if (feedback === 1 || feedback === -1) conds.push(eq(aiMessages.feedback, feedback));
-  if (status) conds.push(eq(aiMessages.feedbackStatus, status));
-  const where = and(...conds);
-  const listQuery = db.select().from(aiMessages).where(where).orderBy(desc(aiMessages.createdAt));
+  const { page, pageSize } = params;
+  const where = feedbackConds(params);
+  const listQuery = feedbackSelect().where(where).orderBy(desc(aiMessages.createdAt), desc(aiMessages.id));
   const [total, list] = await Promise.all([
     db.$count(aiMessages, where),
     withPagination(listQuery.$dynamic(), page, pageSize),
   ]);
-  return { total, list: list.map(mapMessage), page, pageSize };
+  return { total, list: list.map(mapFeedbackRow), page, pageSize };
+}
+
+/** 该 assistant 消息之前最近一条 user 提问（相关子查询） */
+const QUESTION_EXPR = sql<string | null>`(
+  select um.content from ai_messages um
+  where um.conversation_id = ${aiMessages.conversationId}
+    and um.role = 'user'
+    and um.id < ${aiMessages.id}
+  order by um.id desc
+  limit 1
+)`;
+
+function feedbackConds(params: {
+  feedback?: 1 | -1;
+  status?: AiFeedbackStatus;
+  model?: string;
+  startDate?: string;
+  endDate?: string;
+}) {
+  const conds = [isNotNull(aiMessages.feedback), eq(aiMessages.role, 'assistant')];
+  if (params.feedback === 1 || params.feedback === -1) conds.push(eq(aiMessages.feedback, params.feedback));
+  if (params.status) conds.push(eq(aiMessages.feedbackStatus, params.status));
+  if (params.model?.trim()) conds.push(eq(aiMessages.model, params.model.trim()));
+  const start = params.startDate ? parseDateRangeStart(params.startDate) : null;
+  const end = params.endDate ? parseDateRangeEnd(params.endDate) : null;
+  if (start) conds.push(gte(aiMessages.createdAt, start));
+  if (end) conds.push(lte(aiMessages.createdAt, end));
+  return and(...conds);
+}
+
+function feedbackSelect() {
+  return db
+    .select({
+      message: aiMessages,
+      conversationTitle: aiConversations.title,
+      userId: aiConversations.userId,
+      username: users.username,
+      nickname: users.nickname,
+      question: QUESTION_EXPR,
+    })
+    .from(aiMessages)
+    .leftJoin(aiConversations, eq(aiMessages.conversationId, aiConversations.id))
+    .leftJoin(users, eq(aiConversations.userId, users.id));
+}
+
+type FeedbackRow = {
+  message: typeof aiMessages.$inferSelect;
+  conversationTitle: string | null;
+  userId: number | null;
+  username: string | null;
+  nickname: string | null;
+  question: string | null;
+};
+
+function mapFeedbackRow(row: FeedbackRow) {
+  return {
+    ...mapMessage(row.message),
+    conversationTitle: row.conversationTitle ?? null,
+    userId: row.userId ?? null,
+    username: row.username ?? null,
+    nickname: row.nickname ?? null,
+    question: row.question ?? null,
+  };
+}
+
+/**
+ * 管理员：查看反馈消息的会话上下文（目标消息前 N 条 + 后 M 条）。
+ */
+export async function getFeedbackContext(msgId: number, before = 8, after = 2) {
+  const [msg] = await db.select().from(aiMessages).where(eq(aiMessages.id, msgId));
+  if (!msg) throw new HTTPException(404, { message: '消息不存在' });
+  const [conv] = await db.select().from(aiConversations).where(eq(aiConversations.id, msg.conversationId));
+
+  const [prevRows, nextRows] = await Promise.all([
+    db.select().from(aiMessages)
+      .where(and(eq(aiMessages.conversationId, msg.conversationId), lte(aiMessages.id, msg.id)))
+      .orderBy(desc(aiMessages.createdAt), desc(aiMessages.id))
+      .limit(before + 1),
+    db.select().from(aiMessages)
+      .where(and(eq(aiMessages.conversationId, msg.conversationId), gt(aiMessages.id, msg.id)))
+      .orderBy(aiMessages.createdAt, aiMessages.id)
+      .limit(after),
+  ]);
+  const messages = [...prevRows.reverse(), ...nextRows].map(mapMessage);
+  return {
+    conversationId: msg.conversationId,
+    conversationTitle: conv?.title ?? null,
+    targetMsgId: msg.id,
+    messages,
+  };
+}
+
+/**
+ * 管理员：导出反馈列表 CSV（与列表筛选一致，上限 10000 条）。
+ */
+export async function exportFeedbackMessages(params: {
+  feedback?: 1 | -1;
+  status?: AiFeedbackStatus;
+  model?: string;
+  startDate?: string;
+  endDate?: string;
+}) {
+  const rows = await feedbackSelect()
+    .where(feedbackConds(params))
+    .orderBy(desc(aiMessages.createdAt), desc(aiMessages.id))
+    .limit(10000);
+  const list = rows.map(mapFeedbackRow);
+  const statusLabel: Record<string, string> = { pending: '待处理', resolved: '已处理', ignored: '已忽略' };
+  const stream = streamToCsv(
+    [
+      { header: '消息 ID', key: 'id' },
+      { header: '反馈', key: 'feedback', transform: (v) => (v === 1 ? '点赞' : '点踩') },
+      { header: '处理状态', key: 'feedbackStatus', transform: (v) => statusLabel[v as string] ?? '' },
+      { header: '点踩原因', key: 'feedbackReason' },
+      { header: '模型', key: 'model' },
+      { header: '反馈用户', key: 'username' },
+      { header: '用户昵称', key: 'nickname' },
+      { header: '对话标题', key: 'conversationTitle' },
+      { header: '用户提问', key: 'question' },
+      { header: 'AI 回复', key: 'content' },
+      { header: '处理备注', key: 'feedbackRemark' },
+      { header: '反馈时间', key: 'createdAt' },
+      { header: '处理时间', key: 'feedbackHandledAt' },
+    ],
+    list,
+  );
+  return { stream, filename: `ai-feedback-${formatFileTimestamp(new Date())}.csv` };
 }

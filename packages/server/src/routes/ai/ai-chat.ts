@@ -9,9 +9,12 @@ import {
   hasTrailingUserMessage,
   saveAssistantMessage,
   saveMessages,
-  updateConversationTitle,
 } from '../../services/ai/ai-conversations.service';
-import { streamAiChat } from '../../services/ai/ai-chat.service';
+import { generateConversationTitle, streamAiChat } from '../../services/ai/ai-chat.service';
+import { recordAiRequest, recordAiError } from '../../lib/ai/reliability';
+import { getDailyTokensUsed, addDailyTokensUsed } from '../../lib/ai/quota';
+import { getConfigNumber } from '../../lib/system-config';
+import { currentUser } from '../../lib/context';
 import { z } from 'zod';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -63,12 +66,27 @@ router.post('/:id/chat', authMiddleware, namedRateLimit('ai_chat_send'), async (
     return c.json({ code: 400, message: '没有可重新生成的用户消息，请先删除旧回复', data: null }, 400);
   }
 
+  // 每用户每日 token 配额（0 = 不限制）
+  const user = currentUser();
+  const dailyQuota = await getConfigNumber('ai_daily_token_quota', 0);
+  if (dailyQuota > 0) {
+    const used = await getDailyTokensUsed(user.userId);
+    if (used >= dailyQuota) {
+      return c.json({ code: 429, message: `今日 AI 用量已达上限（${dailyQuota.toLocaleString()} tokens），请明天再试`, data: null }, 429);
+    }
+  }
+
   return streamSSE(c, async (stream) => {
     let assistantContent = '';
+    let reasoningContent = '';
     let tokensInput = 0;
     let tokensOutput = 0;
     let snapshot: { provider: string; model: string; configId?: number } | null = null;
     let aborted = false;
+    let errored = false;
+    const startedAt = Date.now();
+    let firstTokenAt: number | null = null;
+    recordAiRequest();
 
     // 客户端断开 / 主动停止生成时，中断上游 LLM 请求（节省 token）
     const ac = new AbortController();
@@ -86,12 +104,20 @@ router.post('/:id/chat', authMiddleware, namedRateLimit('ai_chat_send'), async (
 
       for await (const chunk of streamAiChat(messages, configSource, configId, { signal: ac.signal, systemPromptOverride: conversation.systemPromptOverride })) {
         if (chunk.type === 'delta') {
+          if (firstTokenAt === null) firstTokenAt = Date.now();
           assistantContent += chunk.content;
           if ('snapshot' in chunk && chunk.snapshot) {
             snapshot = chunk.snapshot;
           }
           await stream.writeSSE({
             event: 'delta',
+            data: JSON.stringify({ content: chunk.content }),
+          });
+        } else if (chunk.type === 'reasoning') {
+          if (firstTokenAt === null) firstTokenAt = Date.now();
+          reasoningContent += chunk.content;
+          await stream.writeSSE({
+            event: 'reasoning',
             data: JSON.stringify({ content: chunk.content }),
           });
         } else if (chunk.type === 'done') {
@@ -105,6 +131,8 @@ router.post('/:id/chat', authMiddleware, namedRateLimit('ai_chat_send'), async (
             data: JSON.stringify({ tokensInput, tokensOutput }),
           });
         } else if (chunk.type === 'error') {
+          errored = true;
+          recordAiError();
           await stream.writeSSE({
             event: 'error',
             data: JSON.stringify({ message: chunk.error }),
@@ -116,6 +144,8 @@ router.post('/:id/chat', authMiddleware, namedRateLimit('ai_chat_send'), async (
     } catch (err: unknown) {
       // 主动中断：静默结束，下方仍会保存已生成的部分内容
       if (!aborted && !ac.signal.aborted) {
+        errored = true;
+        recordAiError();
         const msg = err instanceof Error ? err.message : '对话失败';
         await stream.writeSSE({ event: 'error', data: JSON.stringify({ message: msg }) }).catch(() => {});
         if (!assistantContent) return;
@@ -124,9 +154,19 @@ router.post('/:id/chat', authMiddleware, namedRateLimit('ai_chat_send'), async (
 
     // 保存消息 & 更新标题（即使被中断/出错，也保存已生成的部分回复）
     if (assistantContent) {
+      const meta = {
+        reasoning: reasoningContent || null,
+        ttftMs: firstTokenAt === null ? null : firstTokenAt - startedAt,
+        durationMs: Date.now() - startedAt,
+      };
       const { assistantMsgId } = regenerate
-        ? await saveAssistantMessage(id, assistantContent, tokensInput, tokensOutput, snapshot)
-        : await saveMessages(id, message!, assistantContent, tokensInput, tokensOutput, snapshot);
+        ? await saveAssistantMessage(id, assistantContent, tokensInput, tokensOutput, snapshot, meta)
+        : await saveMessages(id, message!, assistantContent, tokensInput, tokensOutput, snapshot, meta);
+
+      // 累计每日配额用量
+      if (tokensInput + tokensOutput > 0) {
+        addDailyTokensUsed(user.userId, tokensInput + tokensOutput);
+      }
 
       // 发送包含数据库消息 ID 的 saved 事件，前端用它更新 message.id 以便点赞/点踩调 API
       if (assistantMsgId) {
@@ -136,9 +176,15 @@ router.post('/:id/chat', authMiddleware, namedRateLimit('ai_chat_send'), async (
         }).catch(() => {});
       }
 
-      // 如果对话还没有自定义标题，用第一条消息的前 30 个字作为标题
-      if (!regenerate && conversation.title === '新对话') {
-        await updateConversationTitle(id, message!.slice(0, 30));
+      // 首轮完成后自动生成对话标题（LLM 总结，失败回退前 30 字），并通知前端
+      if (!regenerate && !errored && conversation.title === '新对话') {
+        const title = await generateConversationTitle(id, message!, assistantContent).catch(() => null);
+        if (title) {
+          await stream.writeSSE({
+            event: 'title',
+            data: JSON.stringify({ title }),
+          }).catch(() => {});
+        }
       }
     }
   });
