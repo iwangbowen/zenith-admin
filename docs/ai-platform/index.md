@@ -8,7 +8,7 @@
 
 | 能力 | 当前实现 |
 | --- | --- |
-| 智能对话 | 独立「智能对话」页面，支持多轮对话、SSE 流式输出、停止生成、重新生成、编辑后重发、消息删除、会话导出、PDF 上传卡片与右侧预览 |
+| 智能对话 | 独立「智能对话」页面，支持多轮对话、SSE 流式输出、停止生成、重新生成、编辑后重发、消息删除、会话导出 |
 | 服务商管理 | 管理系统级 AI 服务商配置，字段包括供应商类型、API 地址、API Key、模型、系统提示词、最大 Token、温度、默认与启用状态；支持连接测试 |
 | 个人 AI 偏好 | 通过 `ai_allow_user_custom_key` 系统配置控制是否展示「我的 AI 配置」入口；用户可维护自己的模型端点与 API Key |
 | 使用统计 | 按日期范围统计对话数、消息数、输入 / 输出 Token、活跃用户、模型分布、用户 Top 10 与按日趋势 |
@@ -29,7 +29,7 @@
 - 左侧为会话列表，支持按标题或消息内容搜索、查看已归档会话、新建会话、重命名、置顶、归档、删除、导出 Markdown / JSON。
 - 右侧为对话区，支持双侧气泡、无气泡、用户气泡三种展示模式，以及左右对齐 / 左对齐切换。
 - 空会话显示引导问题，包括「介绍一下你能做什么」「帮我写一封简短的请假邮件」等快捷入口。
-- 输入区使用 Semi Design `AIChatInput`，支持选择模型、停止生成和上传 PDF。
+- 输入区使用 Semi Design `AIChatInput`，支持选择模型和停止生成。模型选择器数据来自 `GET /api/ai/models`（所有登录用户可访问的轻量列表，仅包含启用配置的 `id`、`name`、`model`、`provider`、`isDefault` 字段，不暴露密钥与 API 地址）。
 
 ### 流式输出
 
@@ -46,15 +46,16 @@
 
 | 字段 | 说明 |
 | --- | --- |
-| `message` | 用户消息，长度 1–8192 |
+| `message` | 用户消息，长度 1–8192；`regenerate = true` 时可省略 |
+| `regenerate` | 可选，重新生成模式：不追加、不保存新的 user 消息，基于已有历史重新回答（要求历史末条为 user 消息，即旧的 assistant 回复已删除），完成后仅保存 assistant 消息 |
 | `configSource` | 可选，`system` / `user`，表示使用系统配置或个人配置 |
-| `configId` | 可选，指定系统服务商配置 ID 或个人配置 ID |
+| `configId` | 可选，指定系统服务商配置 ID 或个人配置 ID；指定已禁用的系统配置会返回 400 |
 
-服务端会校验会话归属，读取历史消息并按 Token 预算保留最近上下文。历史消息默认最多读取 50 条，裁剪预算默认 6000 Token。用户主动断开或停止生成时，上游请求会被中断；如果已经生成了部分 AI 回复，服务端仍会保存已生成内容。
+服务端会校验会话归属，读取历史消息并按 Token 预算保留最近上下文。历史消息默认最多读取 50 条，裁剪预算默认 6000 Token。用户主动断开或停止生成时，上游请求会被中断；生成中途出错或中断时，已生成的部分 AI 回复仍会保存。接口按用户限流（内置规则 `ai_chat_send`，默认 15 次 / 分钟，可在「限流规则」页调整）。
 
 ### 消息与会话管理
 
-对话保存在 `ai_conversations`，消息保存在 `ai_messages`。每次成功生成会写入一条 `user` 消息和一条 `assistant` 消息；助手消息会记录生成所用模型、输入 Token、输出 Token。会话标题默认为「新对话」，当首轮提问完成后，服务端用用户消息前 30 个字符更新标题。
+对话保存在 `ai_conversations`，消息保存在 `ai_messages`。每次成功生成会写入一条 `user` 消息和一条 `assistant` 消息（重新生成模式只写入 `assistant` 消息）；助手消息会记录生成所用模型、输入 Token、输出 Token。上游未返回 usage 时（部分兼容网关不支持 `stream_options.include_usage`），服务端按字符数估算 Token 兜底。会话标题默认为「新对话」，当首轮提问完成后，服务端用用户消息前 30 个字符更新标题。
 
 支持的会话与消息操作包括：
 
@@ -66,17 +67,6 @@
 - 删除单条 assistant 消息用于重新生成
 - 删除指定消息及其之后所有消息
 
-### PDF 文档预览
-
-聊天输入区允许选择 PDF 文件。前端会：
-
-1. 在消息区插入 PDF 卡片；
-2. 调用 `/api/files/upload-one` 上传文件；
-3. 在右侧打开 `PDFPreviewPanel` 预览本地 `File`；
-4. 使用 `@embedpdf/react-pdf-viewer` 与本地 `@embedpdf/pdfium/pdfium.wasm` 渲染 PDF。
-
-PDF 能力用于上传展示与预览，不会在聊天接口中自动解析 PDF 内容。
-
 ---
 
 ## AI 服务商管理
@@ -87,14 +77,14 @@ PDF 能力用于上传展示与预览，不会在聊天接口中自动解析 PDF
 
 供应商类型由 `ai_provider` 枚举定义：
 
-| 枚举值 | 前端显示 |
-| --- | --- |
-| `openai_compatible` | OpenAI Compatible |
-| `anthropic` | Anthropic |
-| `gemini` | Google Gemini |
-| `baidu` | 百度千帆 |
+| 枚举值 | 前端显示 | 状态 |
+| --- | --- | --- |
+| `openai_compatible` | OpenAI Compatible | 原生支持 |
+| `anthropic` | Anthropic | 暂未适配（表单中禁用，请通过 OpenAI 兼容网关接入） |
+| `gemini` | Google Gemini | 暂未适配（表单中禁用，请通过 OpenAI 兼容网关接入） |
+| `baidu` | 百度千帆 | 暂未适配（表单中禁用，请通过 OpenAI 兼容网关接入） |
 
-当前流式适配器位于 `packages/server/src/lib/ai/adapters/`。调用层统一按 OpenAI Compatible 的 `/chat/completions` 协议发送请求，支持 `stream: true` 的 SSE 增量响应。
+当前流式适配器位于 `packages/server/src/lib/ai/adapters/`。`openai_compatible` 按 `/chat/completions` 协议发送 `stream: true` 的 SSE 请求，并携带 `stream_options: { include_usage: true }` 获取 Token 用量（对不支持该字段的老网关自动降级重试）；`anthropic` / `gemini` / `baidu` 因协议不兼容会直接返回明确错误，待后续按需扩展适配器。
 
 ### 配置字段
 
@@ -115,7 +105,7 @@ PDF 能力用于上传展示与预览，不会在聊天接口中自动解析 PDF
 
 ### 连接测试
 
-`POST /api/ai/providers/test-connection` 使用给定配置向 `{baseUrl}/chat/completions` 发送非流式测试请求，请求内容为一条 `Hi` 消息，`max_tokens` 为 10，超时时间为 15 秒。编辑已有配置时，如果 API Key 为空或为脱敏值，后端会按配置 ID 读取真实密钥进行测试。
+`POST /api/ai/providers/test-connection`（需要 `ai:provider:edit` 权限）使用给定配置向 `{baseUrl}/chat/completions` 发送非流式测试请求，请求内容为一条 `Hi` 消息，`max_tokens` 为 10，超时时间为 15 秒。编辑已有配置时，如果 API Key 为空或为脱敏值，后端会按配置 ID 读取真实密钥进行测试。
 
 ---
 
@@ -125,10 +115,10 @@ PDF 能力用于上传展示与预览，不会在聊天接口中自动解析 PDF
 
 聊天页启动时会读取系统配置 `ai_allow_user_custom_key`：
 
-- `false`：页面只加载系统服务商配置，不展示「我的 AI 配置」按钮。
+- `false`：页面只加载系统模型列表，不展示「我的 AI 配置」按钮；服务端同样拒绝 `configSource = user` 的聊天请求（403）。
 - `true`：页面展示「我的 AI 配置」入口，并把启用且填写模型的个人配置加入模型选择器。
 
-个人配置字段包括 `name`、`provider`、`baseUrl`、`apiKey`、`model`、`temperature`、`maxTokens`、`systemPrompt`、`isEnabled`。聊天时选择个人配置会传入 `configSource = user` 与对应 `configId`，服务端只允许读取当前登录用户自己的配置，并要求配置启用且包含 API 地址、API Key 和模型名称。
+个人配置字段包括 `name`、`provider`、`baseUrl`、`apiKey`、`model`、`temperature`、`maxTokens`、`systemPrompt`、`isEnabled`。聊天时选择个人配置会传入 `configSource = user` 与对应 `configId`，服务端只允许读取当前登录用户自己的配置，并要求配置启用且包含 API 地址、API Key 和模型名称；个人配置中的 `temperature`、`maxTokens`、`systemPrompt` 会在聊天时生效（对话级角色模板优先于个人 `systemPrompt`）。
 
 > 个人配置的接口响应会对 API Key 做脱敏展示；保存时若提交的是脱敏值，服务端保留原始密钥。
 
@@ -286,7 +276,7 @@ AI 模块表定义在 `packages/server/src/db/schema/ai.ts`。
 
 | 页面 | 路由 | 说明 |
 | --- | --- | --- |
-| 智能对话 | `/ai/chat` | 多轮对话、模型选择、提示词角色、PDF 预览、反馈、会话管理 |
+| 智能对话 | `/ai/chat` | 多轮对话、模型选择、提示词角色、反馈、会话管理 |
 | AI 服务商 | `/ai/providers` | 系统级服务商配置管理、启停、默认切换、连接测试 |
 | AI 反馈 | `/ai/feedback` | 反馈筛选与处理 |
 | 提示词模板 | `/ai/prompts` | 模板 CRUD、范围筛选、启停展示 |

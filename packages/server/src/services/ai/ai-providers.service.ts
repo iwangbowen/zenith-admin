@@ -39,6 +39,21 @@ export async function listAiProviderConfigs() {
   return rows.map(mapRow);
 }
 
+/** 聊天模型选择器用：启用配置的轻量列表（不含密钥/地址等敏感字段，所有登录用户可见） */
+export async function listChatModels() {
+  return db
+    .select({
+      id: aiProviderConfigs.id,
+      name: aiProviderConfigs.name,
+      model: aiProviderConfigs.model,
+      provider: aiProviderConfigs.provider,
+      isDefault: aiProviderConfigs.isDefault,
+    })
+    .from(aiProviderConfigs)
+    .where(eq(aiProviderConfigs.isEnabled, true))
+    .orderBy(desc(aiProviderConfigs.isDefault), desc(aiProviderConfigs.createdAt));
+}
+
 export async function getAiProviderConfig(id: number) {
   const [row] = await db.select().from(aiProviderConfigs).where(eq(aiProviderConfigs.id, id));
   if (!row) throw new HTTPException(404, { message: 'AI 服务商配置不存在' });

@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Button, Collapse, List, Popconfirm, SideSheet, Space, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { Plus } from 'lucide-react';
-import type { AiProvider, AiProviderConfig, UserAiConfig } from '@zenith/shared';
+import type { AiChatModel, AiProvider, UserAiConfig } from '@zenith/shared';
 import AiProviderFormModal from './AiProviderFormModal';
-import { useAiProviderList } from '@/hooks/queries/ai-providers';
+import { useAiChatModels } from '@/hooks/queries/ai-providers';
 import { useAiUserConfigs, useDeleteAiUserConfig } from '@/hooks/queries/ai-user-config';
 
 const { Text } = Typography;
@@ -25,13 +25,13 @@ interface UserAiConfigModalProps {
 
 interface GroupedItem {
   type: 'system' | 'user';
-  config: AiProviderConfig | UserAiConfig;
+  config: AiChatModel | UserAiConfig;
 }
 
 export default function UserAiConfigModal({ visible, onClose, onSaved }: UserAiConfigModalProps) {
   const [formVisible, setFormVisible] = useState(false);
   const [formTarget, setFormTarget] = useState<UserAiConfig | undefined>(undefined);
-  const systemConfigsQuery = useAiProviderList({}, { enabled: visible });
+  const systemConfigsQuery = useAiChatModels();
   const userConfigsQuery = useAiUserConfigs(visible);
   const deleteMutation = useDeleteAiUserConfig();
   const systemConfigs = visible ? (systemConfigsQuery.data ?? []) : [];
@@ -125,19 +125,20 @@ export default function UserAiConfigModal({ visible, onClose, onSaved }: UserAiC
                         const isUser = type === 'user';
                         const name = isUser
                           ? ((config as UserAiConfig).name ?? '我的配置')
-                          : (config as AiProviderConfig).name;
+                          : (config as AiChatModel).name;
                         const model = config.model;
-                        const isEnabled = config.isEnabled;
+                        // 系统配置走 /api/ai/models，仅返回启用项
+                        const isEnabled = isUser ? (config as UserAiConfig).isEnabled : true;
                         return (
                           <List.Item
-                            key={isUser ? `user-${config.id}` : `sys-${(config as AiProviderConfig).id}`}
+                            key={isUser ? `user-${config.id}` : `sys-${(config as AiChatModel).id}`}
                             main={
                               <Space align="center" style={{ gap: 6 }}>
                                 <Tag color={isUser ? 'violet' : 'blue'} size="small">
                                   {isUser ? '我的' : '系统'}
                                 </Tag>
                                 <Text style={{ fontSize: 13, fontWeight: 600 }}>{name}</Text>
-                                {!isUser && (config as AiProviderConfig).isDefault && (
+                                {!isUser && (config as AiChatModel).isDefault && (
                                   <Tag color="cyan" size="small">默认</Tag>
                                 )}
                                 <Tag color={isEnabled ? 'green' : 'grey'} size="small">

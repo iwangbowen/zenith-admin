@@ -1,24 +1,34 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { streamSSE } from 'hono/streaming';
 import { authMiddleware } from '../../middleware/auth';
+import { namedRateLimit } from '../../middleware/rate-limit';
 import { validationHook } from '../../lib/openapi-schemas';
-import { ensureConversationOwner, getHistoryMessages, saveMessages, updateConversationTitle } from '../../services/ai/ai-conversations.service';
+import {
+  ensureConversationOwner,
+  getHistoryMessages,
+  hasTrailingUserMessage,
+  saveAssistantMessage,
+  saveMessages,
+  updateConversationTitle,
+} from '../../services/ai/ai-conversations.service';
 import { streamAiChat } from '../../services/ai/ai-chat.service';
 import { z } from 'zod';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
 const SendMessageBody = z.object({
-  message: z.string().min(1).max(8192),
+  message: z.string().min(1).max(8192).optional(),
+  /** 重新生成模式：不追加/保存新的 user 消息，基于现有历史重新回答（历史末条必须是 user 消息） */
+  regenerate: z.boolean().optional(),
   configSource: z.enum(['system', 'user']).optional(),
   configId: z.number().int().positive().optional(),
-});
+}).refine((d) => d.regenerate || !!d.message?.trim(), { message: '消息不能为空' });
 
 /**
  * POST /api/ai/conversations/:id/chat
  * SSE 流式对话接口 —— 不走 openapiRoutes，使用原生 Hono streamSSE
  */
-router.post('/:id/chat', authMiddleware, async (c) => {
+router.post('/:id/chat', authMiddleware, namedRateLimit('ai_chat_send'), async (c) => {
   const id = Number(c.req.param('id'));
   if (!Number.isFinite(id)) {
     return c.json({ code: 400, message: '无效的对话 ID', data: null }, 400);
@@ -36,7 +46,7 @@ router.post('/:id/chat', authMiddleware, async (c) => {
     return c.json({ code: 400, message: '消息不能为空', data: null }, 400);
   }
 
-  const { message, configSource, configId } = parsed.data;
+  const { message, regenerate, configSource, configId } = parsed.data;
 
   // 验证对话归属
   let conversation: Awaited<ReturnType<typeof ensureConversationOwner>>;
@@ -46,6 +56,11 @@ router.post('/:id/chat', authMiddleware, async (c) => {
     const status = (err as { status?: number }).status ?? 403;
     const msg = (err as { message?: string }).message ?? '无权访问此对话';
     return c.json({ code: status, message: msg, data: null }, status as 401 | 403 | 404);
+  }
+
+  // 重新生成：要求历史末条是 user 消息（旧 assistant 回复应已由前端删除）
+  if (regenerate && !(await hasTrailingUserMessage(id))) {
+    return c.json({ code: 400, message: '没有可重新生成的用户消息，请先删除旧回复', data: null }, 400);
   }
 
   return streamSSE(c, async (stream) => {
@@ -65,9 +80,9 @@ router.post('/:id/chat', authMiddleware, async (c) => {
     }
 
     try {
-      // 加载历史消息（按 token 预算裁剪）
+      // 加载历史消息（按 token 预算裁剪）；重新生成时历史已含末条 user 消息，不再追加
       const history = await getHistoryMessages(id);
-      const messages = [...history, { role: 'user' as const, content: message }];
+      const messages = regenerate ? history : [...history, { role: 'user' as const, content: message! }];
 
       for await (const chunk of streamAiChat(messages, configSource, configId, { signal: ac.signal, systemPromptOverride: conversation.systemPromptOverride })) {
         if (chunk.type === 'delta') {
@@ -94,7 +109,8 @@ router.post('/:id/chat', authMiddleware, async (c) => {
             event: 'error',
             data: JSON.stringify({ message: chunk.error }),
           });
-          return;
+          // 中途出错时跳出循环，已生成的部分内容仍走下方保存逻辑
+          break;
         }
       }
     } catch (err: unknown) {
@@ -102,13 +118,15 @@ router.post('/:id/chat', authMiddleware, async (c) => {
       if (!aborted && !ac.signal.aborted) {
         const msg = err instanceof Error ? err.message : '对话失败';
         await stream.writeSSE({ event: 'error', data: JSON.stringify({ message: msg }) }).catch(() => {});
-        return;
+        if (!assistantContent) return;
       }
     }
 
-    // 保存消息 & 更新标题（即使被中断，也保存已生成的部分回复）
+    // 保存消息 & 更新标题（即使被中断/出错，也保存已生成的部分回复）
     if (assistantContent) {
-      const { assistantMsgId } = await saveMessages(id, message, assistantContent, tokensInput, tokensOutput, snapshot);
+      const { assistantMsgId } = regenerate
+        ? await saveAssistantMessage(id, assistantContent, tokensInput, tokensOutput, snapshot)
+        : await saveMessages(id, message!, assistantContent, tokensInput, tokensOutput, snapshot);
 
       // 发送包含数据库消息 ID 的 saved 事件，前端用它更新 message.id 以便点赞/点踩调 API
       if (assistantMsgId) {
@@ -119,9 +137,8 @@ router.post('/:id/chat', authMiddleware, async (c) => {
       }
 
       // 如果对话还没有自定义标题，用第一条消息的前 30 个字作为标题
-      const conversation = await ensureConversationOwner(id).catch(() => null);
-      if (conversation?.title === '新对话') {
-        await updateConversationTitle(id, message.slice(0, 30));
+      if (!regenerate && conversation.title === '新对话') {
+        await updateConversationTitle(id, message!.slice(0, 30));
       }
     }
   });

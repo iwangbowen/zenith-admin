@@ -1,4 +1,4 @@
-import { eq, desc, and, or, ilike, inArray, isNotNull, gte } from 'drizzle-orm';
+import { eq, desc, and, or, ilike, inArray, isNotNull, gt, gte } from 'drizzle-orm';
 import { db } from '../../db';
 import { aiConversations, aiMessages } from '../../db/schema';
 import { currentUser } from '../../lib/context';
@@ -106,7 +106,7 @@ export async function listMessages(conversationId: number) {
     .select()
     .from(aiMessages)
     .where(eq(aiMessages.conversationId, conversationId))
-    .orderBy(aiMessages.createdAt);
+    .orderBy(aiMessages.createdAt, aiMessages.id);
   return rows.map(mapMessage);
 }
 
@@ -212,6 +212,44 @@ export async function saveMessages(
   return { assistantMsgId: assistantRow?.id ?? null };
 }
 
+/**
+ * 仅保存 assistant 消息（重新生成场景：user 消息已存在，避免重复入库）。
+ */
+export async function saveAssistantMessage(
+  conversationId: number,
+  assistantContent: string,
+  tokensInput: number,
+  tokensOutput: number,
+  snapshot: { provider: string; model: string; configId?: number } | null,
+) {
+  const [assistantRow] = await db.insert(aiMessages).values({
+    conversationId,
+    role: 'assistant',
+    content: assistantContent,
+    model: snapshot?.model ?? null,
+    tokensInput,
+    tokensOutput,
+  }).returning({ id: aiMessages.id });
+  if (snapshot) {
+    await db.update(aiConversations).set({ providerSnapshot: snapshot }).where(eq(aiConversations.id, conversationId));
+  }
+  return { assistantMsgId: assistantRow?.id ?? null };
+}
+
+/**
+ * 重新生成前校验：对话最后一条消息必须是 user（旧的 assistant 回复应已删除）。
+ * 返回 false 表示没有可供重新生成的用户消息。
+ */
+export async function hasTrailingUserMessage(conversationId: number) {
+  const [last] = await db
+    .select({ role: aiMessages.role })
+    .from(aiMessages)
+    .where(eq(aiMessages.conversationId, conversationId))
+    .orderBy(desc(aiMessages.createdAt), desc(aiMessages.id))
+    .limit(1);
+  return last?.role === 'user';
+}
+
 export async function getHistoryMessages(
   conversationId: number,
   options: { maxTokens?: number; maxCount?: number } = {},
@@ -221,7 +259,7 @@ export async function getHistoryMessages(
     .select({ role: aiMessages.role, content: aiMessages.content })
     .from(aiMessages)
     .where(eq(aiMessages.conversationId, conversationId))
-    .orderBy(desc(aiMessages.createdAt))
+    .orderBy(desc(aiMessages.createdAt), desc(aiMessages.id))
     .limit(maxCount);
   // rows 为时间倒序；按 token 预算裁剪后返回时间升序
   return truncateHistoryByBudget(rows, { maxTokens: options.maxTokens });
@@ -253,9 +291,15 @@ export async function deleteMessageCascade(conversationId: number, messageId: nu
     .from(aiMessages)
     .where(and(eq(aiMessages.id, messageId), eq(aiMessages.conversationId, conversationId)));
   if (!msg) throw new HTTPException(404, { message: '消息不存在' });
-  // 删除该消息及之后所有消息（按 createdAt）
+  // 删除该消息及之后所有消息（createdAt 相同时以 id 区分先后，避免误删同批写入的更早消息）
   await db.delete(aiMessages).where(
-    and(eq(aiMessages.conversationId, conversationId), gte(aiMessages.createdAt, msg.createdAt))
+    and(
+      eq(aiMessages.conversationId, conversationId),
+      or(
+        gt(aiMessages.createdAt, msg.createdAt),
+        and(eq(aiMessages.createdAt, msg.createdAt), gte(aiMessages.id, msg.id)),
+      ),
+    )
   );
 }
 

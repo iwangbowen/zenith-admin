@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { AiProviderConfig } from '@zenith/shared';
+import type { AiChatModel, AiProviderConfig } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { LOOKUP_STALE_TIME, unwrap } from '@/lib/query';
 
@@ -20,6 +20,7 @@ export const aiProviderKeys = {
   lists: ['ai-providers', 'list'] as const,
   list: (params: AiProviderListParams = {}) => ['ai-providers', 'list', params] as const,
   detail: (id: number | undefined) => ['ai-providers', 'detail', id] as const,
+  chatModels: ['ai-providers', 'chat-models'] as const,
 };
 
 export function useAiProviderList(params: AiProviderListParams = {}, options?: { enabled?: boolean }) {
@@ -29,6 +30,16 @@ export function useAiProviderList(params: AiProviderListParams = {}, options?: {
     placeholderData: keepPreviousData,
     staleTime: LOOKUP_STALE_TIME,
     enabled: options?.enabled ?? true,
+  });
+}
+
+/** 聊天可用模型（轻量列表，无需 ai:provider:list 权限，仅含启用配置） */
+export function useAiChatModels() {
+  return useQuery({
+    queryKey: aiProviderKeys.chatModels,
+    queryFn: () => request.get<AiChatModel[]>('/api/ai/models').then(unwrap),
+    placeholderData: keepPreviousData,
+    staleTime: LOOKUP_STALE_TIME,
   });
 }
 

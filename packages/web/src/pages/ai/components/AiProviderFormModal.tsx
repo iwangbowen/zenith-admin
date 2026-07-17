@@ -5,11 +5,12 @@ import { AppModal } from '@/components/AppModal';
 import { useAiProviderDetail, useSaveAiProvider, useTestAiProviderConnection } from '@/hooks/queries/ai-providers';
 import { useSaveAiUserConfig } from '@/hooks/queries/ai-user-config';
 
-const PROVIDER_OPTIONS: { value: AiProvider; label: string }[] = [
+const PROVIDER_OPTIONS: { value: AiProvider; label: string; disabled?: boolean }[] = [
   { value: 'openai_compatible', label: 'OpenAI Compatible' },
-  { value: 'anthropic', label: 'Anthropic' },
-  { value: 'gemini', label: 'Google Gemini' },
-  { value: 'baidu', label: '百度千帆' },
+  // 以下供应商协议不兼容 /chat/completions，暂未原生适配；请通过 OpenAI 兼容网关接入
+  { value: 'anthropic', label: 'Anthropic（暂未支持，请用兼容网关接入）', disabled: true },
+  { value: 'gemini', label: 'Google Gemini（暂未支持，请用兼容网关接入）', disabled: true },
+  { value: 'baidu', label: '百度千帆（暂未支持，请用兼容网关接入）', disabled: true },
 ];
 
 interface FormValues {

@@ -18,6 +18,16 @@ export const AiProviderConfigDTO = z
   })
   .openapi('AiProviderConfig');
 
+export const AiChatModelDTO = z
+  .object({
+    id: z.number().openapi({ description: '配置 ID' }),
+    name: z.string().openapi({ description: '配置名称' }),
+    model: z.string().openapi({ description: '模型名称' }),
+    provider: z.string().openapi({ description: 'AI 供应商类型' }),
+    isDefault: z.boolean().openapi({ description: '是否默认' }),
+  })
+  .openapi('AiChatModel');
+
 export const AiConversationDTO = z
   .object({
     id: z.number().openapi({ description: 'ID' }),

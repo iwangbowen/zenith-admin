@@ -149,33 +149,44 @@ export const aiConversationsHandlers = [
     });
   }),
 
-  // SSE 聊天 (模拟流式响应)
+  // SSE 聊天 (模拟流式响应；regenerate 模式不保存新的 user 消息)
   http.post('/api/ai/conversations/:id/chat', async ({ params, request }) => {
     const id = Number(params.id);
-    const body = await request.json() as { message?: string };
-    const userText = body.message ?? '';
-
-    // Save user message
-    const now = mockDateTime();
-    const userMsg: AiMessage = {
-      id: getNextMsgId(),
-      conversationId: id,
-      role: 'user',
-      content: userText,
-      model: null,
-      tokensInput: Math.floor(userText.length / 4),
-      tokensOutput: 0,
-      feedback: null,
-      feedbackReason: null,
-      feedbackStatus: null,
-      feedbackRemark: null,
-      feedbackHandledAt: null,
-      createdAt: now,
-    };
+    const body = await request.json() as { message?: string; regenerate?: boolean };
+    const regenerate = body.regenerate ?? false;
     if (!msgStore[id]) msgStore[id] = [];
-    msgStore[id].push(userMsg);
 
-    const replyText = `这是一个 Demo 演示模式的模拟回复。
+    const now = mockDateTime();
+    let userText = body.message ?? '';
+
+    if (regenerate) {
+      // 重新生成：取历史末条 user 消息作为提问
+      const lastUser = [...msgStore[id]].reverse().find((m) => m.role === 'user');
+      if (!lastUser) {
+        return HttpResponse.json({ code: 400, message: '没有可重新生成的用户消息，请先删除旧回复', data: null }, { status: 400 });
+      }
+      userText = lastUser.content;
+    } else {
+      // Save user message
+      const userMsg: AiMessage = {
+        id: getNextMsgId(),
+        conversationId: id,
+        role: 'user',
+        content: userText,
+        model: null,
+        tokensInput: Math.floor(userText.length / 4),
+        tokensOutput: 0,
+        feedback: null,
+        feedbackReason: null,
+        feedbackStatus: null,
+        feedbackRemark: null,
+        feedbackHandledAt: null,
+        createdAt: now,
+      };
+      msgStore[id].push(userMsg);
+    }
+
+    const replyText = `这是一个 Demo 演示模式的模拟回复。${regenerate ? '（重新生成）' : ''}
 
 您发送的消息是：**"${userText}"**
 
@@ -187,7 +198,7 @@ export const aiConversationsHandlers = [
 
     // Update conversation title if still default
     const conv = convStore.find((c) => c.id === id);
-    if (conv?.title === '新对话') {
+    if (!regenerate && conv?.title === '新对话') {
       conv.title = userText.slice(0, 20) + (userText.length > 20 ? '…' : '');
       conv.updatedAt = now;
     }

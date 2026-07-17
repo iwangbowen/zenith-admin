@@ -2,19 +2,18 @@ import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import { AIChatDialogue, AIChatInput, Typography, Button, RadioGroup, Radio, Select, Tag, Toast, Tooltip, Spin, TextArea, Dropdown, Input, Modal } from '@douyinfe/semi-ui';
 import type { Message as AIChatMessage } from '@douyinfe/semi-ui/lib/es/aiChatDialogue';
 import type { RenderActionProps } from '@douyinfe/semi-ui/lib/es/aiChatDialogue/interface';
-import { MessageSquarePlus, Trash2, AlignLeft, AlignJustify, FileText, Settings, MoreHorizontal, Pencil, Pin, PinOff, Archive, ArchiveRestore, Sparkles, Inbox, Download } from 'lucide-react';
+import { MessageSquarePlus, Trash2, AlignLeft, AlignJustify, Settings, MoreHorizontal, Pencil, Pin, PinOff, Archive, ArchiveRestore, Sparkles, Inbox, Download } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { NavListPanel, NavListItem } from '@/components/NavListPanel';
 import AppModal from '@/components/AppModal';
 import { useAuth } from '@/hooks/useAuth';
-import { PDFPreviewPanel } from './PDFPreviewPanel';
 import UserAiConfigModal from '../components/UserAiConfigModal';
 import { request } from '@/utils/request';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
-import type { AiConversation, AiMessage, AiProviderConfig, UserAiConfig } from '@zenith/shared';
-import { useAiProviderList } from '@/hooks/queries/ai-providers';
+import type { AiChatModel, AiConversation, AiMessage, UserAiConfig } from '@zenith/shared';
+import { useAiChatModels } from '@/hooks/queries/ai-providers';
 import { useAiAllowUserCustomKey, useAiUserConfigs, aiUserConfigKeys } from '@/hooks/queries/ai-user-config';
 import { useAvailableAiPrompts } from '@/hooks/queries/ai-prompts';
 import {
@@ -91,16 +90,6 @@ function nextMsgId() {
   return `msg-${++msgIdCounter}`;
 }
 
-function truncateName(name: string, max = 12) {
-  return name.length > max ? `${name.slice(0, max)}…` : name;
-}
-
-function formatFileSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-
 function convertApiMessage(m: AiMessage): Message {
   return {
     id: `api-${m.id}`,
@@ -112,101 +101,6 @@ function convertApiMessage(m: AiMessage): Message {
     ...(m.feedback === 1  && { like: true }),
     ...(m.feedback === -1 && { dislike: true }),
   };
-}
-
-function makePdfUploadUpdater(msgId: string, updatedContent: NonNullable<AIChatMessage['content']>) {
-  return (prev: Message[]) => prev.map((m) => (m.id === msgId ? { ...m, content: updatedContent } : m));
-}
-
-function renderPdfCardItem(item: Record<string, unknown>, onOpen: (file: File) => void) {
-  return (
-    <PdfFileCard
-      filename={item.filename as string}
-      size={item.size as string}
-      url={item.url as string | null | undefined}
-      uploading={item.uploading as boolean | undefined}
-      onClick={() => {
-        const fi = item.fileInstance;
-        if (fi instanceof File) onOpen(fi);
-      }}
-    />
-  );
-}
-
-interface PdfFileCardProps {
-  readonly filename: string;
-  readonly size: string;
-  readonly onClick?: () => void;
-  readonly url?: string | null;
-  readonly uploading?: boolean;
-}
-
-function PdfFileCard({ filename, size, onClick, url, uploading }: PdfFileCardProps) {
-  let sizeLabel = `PDF · ${size}`;
-  let sizeColor = 'var(--semi-color-text-2)';
-  if (uploading) {
-    sizeLabel = '上传中…';
-  } else if (url) {
-    sizeLabel = `PDF · ${size} · 已上传`;
-    sizeColor = 'var(--semi-color-success)';
-  }
-  const inner = (
-    <>
-      <div
-        style={{
-          width: 36,
-          height: 36,
-          borderRadius: 'var(--semi-border-radius-medium)',
-          background: 'var(--semi-color-danger-light-default)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-        }}
-      >
-        <FileText size={20} color="#ff4d4f" />
-      </div>
-      <div style={{ minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: 13,
-            fontWeight: 500,
-            color: 'var(--semi-color-text-0)',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            maxWidth: 160,
-          }}
-          title={filename}
-        >
-          {filename}
-        </div>
-        <div style={{ fontSize: 12, color: sizeColor, marginTop: 2 }}>
-          {sizeLabel}
-        </div>
-      </div>
-    </>
-  );
-  const cardStyle: React.CSSProperties = {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 10,
-    padding: '10px 14px',
-    borderRadius: 'var(--semi-border-radius-large)',
-    background: 'var(--semi-color-bg-2)',
-    border: '1px solid var(--semi-color-border)',
-    maxWidth: 260,
-    userSelect: 'none',
-    textAlign: 'left',
-  };
-  if (onClick) {
-    return (
-      <button type="button" onClick={onClick} style={{ ...cardStyle, cursor: 'pointer' }}>
-        {inner}
-      </button>
-    );
-  }
-  return <div style={cardStyle}>{inner}</div>;
 }
 
 export default function AIChatPage() {
@@ -225,8 +119,6 @@ export default function AIChatPage() {
   const configureValuesRef = React.useRef<Record<string, unknown>>({ model: '' });
   const setConfigureValues = useCallback((v: Record<string, unknown>) => { configureValuesRef.current = v; }, []);
   const dialogueRef = useRef<AIChatDialogueInstance | null>(null);
-  const [pdfFile, setPdfFile] = useState<File | null>(null);
-  const [pdfFileUrl, setPdfFileUrl] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [debouncedSearchKeyword, setDebouncedSearchKeyword] = useState('');
@@ -236,7 +128,7 @@ export default function AIChatPage() {
   const { items: dislikeReasons } = useDictItems('ai_dislike_reason');
   const allowUserCustomKeyQuery = useAiAllowUserCustomKey();
   const allowUserCustomKey = allowUserCustomKeyQuery.data ?? false;
-  const providersQuery = useAiProviderList({});
+  const chatModelsQuery = useAiChatModels();
   const userConfigsQuery = useAiUserConfigs(allowUserCustomKey);
   const promptTemplatesQuery = useAvailableAiPrompts();
   const promptTemplates = promptTemplatesQuery.data ?? [];
@@ -247,9 +139,9 @@ export default function AIChatPage() {
   const messagesQuery = useAiConversationMessages(activeConvId);
   const createConversationMutation = useCreateAiConversation();
 
-  // Load AI provider configs + user configs as model options
-  const loadModelOptions = useCallback((providers: AiProviderConfig[], userConfigs: UserAiConfig[]) => {
-    const sysOptions = providers.map((p) => ({ value: String(p.id), label: `${p.name} (${p.model})`, source: 'system' as const }));
+  // Load AI chat models + user configs as model options
+  const loadModelOptions = useCallback((models: AiChatModel[], userConfigs: UserAiConfig[]) => {
+    const sysOptions = models.map((m) => ({ value: String(m.id), label: `${m.name} (${m.model})`, source: 'system' as const }));
     const userOptions = userConfigs
       .filter((uc) => uc.isEnabled && uc.model)
       .map((uc) => ({ value: `user-${uc.id}`, label: `${uc.name ?? '我的配置'} (${uc.model})`, source: 'user' as const }));
@@ -261,8 +153,8 @@ export default function AIChatPage() {
   }, [setConfigureValues]);
 
   useEffect(() => {
-    loadModelOptions(providersQuery.data ?? [], allowUserCustomKey ? (userConfigsQuery.data ?? []) : []);
-  }, [allowUserCustomKey, loadModelOptions, providersQuery.data, userConfigsQuery.data]);
+    loadModelOptions(chatModelsQuery.data ?? [], allowUserCustomKey ? (userConfigsQuery.data ?? []) : []);
+  }, [allowUserCustomKey, loadModelOptions, chatModelsQuery.data, userConfigsQuery.data]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearchKeyword(searchKeyword), 300);
@@ -289,46 +181,6 @@ export default function AIChatPage() {
     return () => clearTimeout(scrollTimer);
   }, [activeConvId, messagesQuery.data]);
 
-  // AIChatInput 内置上传按钮的拦截处理：选择 PDF 后上传到系统文件服务
-  const handleBeforeUpload = useCallback(
-    (fileInfo: { file: { fileInstance?: File; name: string; size?: string } }) => {
-      const rawFile = fileInfo.file?.fileInstance;
-      if (rawFile) {
-        setPdfFileUrl(null);
-        const msgId = nextMsgId();
-        const fileMsg: Message = {
-          id: msgId,
-          role: 'user',
-          content: [
-            {
-              type: 'pdf_card',
-              filename: rawFile.name,
-              size: formatFileSize(rawFile.size),
-              fileInstance: rawFile,
-              uploading: true,
-            },
-          ] as NonNullable<AIChatMessage['content']>,
-          createdAt: Date.now(),
-          status: 'completed',
-        };
-        setMessages((prev) => [...prev, fileMsg]);
-        const formData = new FormData();
-        formData.append('file', rawFile);
-        void (async () => {
-          const res = await request.post<{ url: string }>('/api/files/upload-one', formData);
-          const url = res.data?.url ?? null;
-          setPdfFileUrl(url);
-          const updatedContent = [
-            { type: 'pdf_card', filename: rawFile.name, size: formatFileSize(rawFile.size), fileInstance: rawFile, uploading: false, url },
-          ] as NonNullable<AIChatMessage['content']>;
-          setMessages(makePdfUploadUpdater(msgId, updatedContent));
-        })();
-      }
-      return false as const;
-    },
-    []
-  );
-
   const dialogueRenderConfig = useMemo(() => ({
     // 隐藏分享按钮：从默认操作栏中排除 shareNode
     renderDialogueAction: (props: RenderActionProps) => {
@@ -340,10 +192,6 @@ export default function AIChatPage() {
     },
   }) satisfies { renderDialogueAction: (props: RenderActionProps) => React.ReactNode }, []);
 
-  const renderDialogueContentItem = useMemo(() => ({
-    pdf_card: (item: Record<string, unknown>) => renderPdfCardItem(item, setPdfFile),
-  }), [setPdfFile]);
-
   const roleConfig = {
     user: {
       name: user?.nickname || user?.username || '我',
@@ -354,13 +202,18 @@ export default function AIChatPage() {
   };
 
   const handleMessageSend = useCallback(
-    async (content: { inputContents?: { type: string; text?: string }[]; text?: string }) => {
+    async (
+      content: { inputContents?: { type: string; text?: string }[]; text?: string },
+      opts?: { regenerate?: boolean },
+    ) => {
+      const regenerate = opts?.regenerate ?? false;
       const text = content.text ?? content.inputContents?.find((c) => c.type === 'text')?.text;
-      if (!text?.trim()) return;
+      if (!regenerate && !text?.trim()) return;
 
-      // 若当前没有会话，先自动创建一个
+      // 若当前没有会话，先自动创建一个（重新生成必然已有会话）
       let convId = activeConvId;
       if (!convId) {
+        if (regenerate) return;
         try {
           const newConv = await createConversationMutation.mutateAsync({ title: '新对话' });
           convId = newConv.id;
@@ -373,14 +226,6 @@ export default function AIChatPage() {
         }
       }
 
-      const userMsg: Message = {
-        id: nextMsgId(),
-        role: 'user',
-        content: text,
-        createdAt: Date.now(),
-        status: 'completed',
-      };
-
       const assistantMsgId = nextMsgId();
       const assistantMsg: Message = {
         id: assistantMsgId,
@@ -390,7 +235,19 @@ export default function AIChatPage() {
         status: 'in_progress',
       };
 
-      setMessages((prev) => [...prev, userMsg, assistantMsg]);
+      if (regenerate) {
+        // 重新生成：不追加 user 气泡，仅追加新的 assistant 占位
+        setMessages((prev) => [...prev, assistantMsg]);
+      } else {
+        const userMsg: Message = {
+          id: nextMsgId(),
+          role: 'user',
+          content: text!,
+          createdAt: Date.now(),
+          status: 'completed',
+        };
+        setMessages((prev) => [...prev, userMsg, assistantMsg]);
+      }
       setGenerating(true);
 
       const abortController = new AbortController();
@@ -409,11 +266,12 @@ export default function AIChatPage() {
             body: JSON.stringify(
               (() => {
                 const selectedModel = configureValuesRef.current.model as string | undefined ?? '';
+                const base = regenerate ? { regenerate: true } : { message: text };
                 if (selectedModel.startsWith('user-')) {
                   const userConfigId = Number.parseInt(selectedModel.replace('user-', ''), 10);
-                  return { message: text, configSource: 'user', configId: userConfigId };
+                  return { ...base, configSource: 'user', configId: userConfigId };
                 }
-                return { message: text, configSource: 'system', configId: Number(selectedModel) || undefined };
+                return { ...base, configSource: 'system', configId: Number(selectedModel) || undefined };
               })()
             ),
             signal: abortController.signal,
@@ -502,40 +360,44 @@ export default function AIChatPage() {
     );
   }, []);
 
-  /** 重新生成：删除最后一条 assistant 消息，找到前一条 user 消息重发 */
+  /** 重新生成：删除最后一条 assistant 消息，服务端基于已有历史重答（不重复保存 user 消息） */
   const handleRegenerate = useCallback(async (msg: Message) => {
     if (generating || !activeConvId) return;
+    if (msg.role !== 'assistant') return;
     const dbId = String(msg.id).startsWith('api-') ? Number(String(msg.id).replace('api-', '')) : null;
 
-    // 从当前 messages 里找到这条 assistant 的前一条 user 消息
+    // 确认这条 assistant 前面有 user 消息，否则无从重新生成
     const curMessages = messages;
     const idx = curMessages.findIndex((m) => m.id === msg.id);
     const prevUserMsg = idx > 0 ? curMessages.slice(0, idx).reverse().find((m) => m.role === 'user') : null;
-    const userText = typeof prevUserMsg?.content === 'string' ? prevUserMsg.content : null;
-    if (!userText) { Toast.warning('找不到对应的用户消息，无法重新生成'); return; }
+    if (!prevUserMsg) { Toast.warning('找不到对应的用户消息，无法重新生成'); return; }
 
-    // 乐观删除 UI 里的 assistant 消息（Semi 的 resetMessage 已处理，但这里确保 DB 同步）
+    // 先删除 DB 中旧的 assistant 回复，保证服务端历史末条为 user 消息
     if (dbId) {
       await request.delete(`/api/ai/conversations/${activeConvId}/messages/${dbId}`).catch(() => {});
     }
-    // 去掉最后这条 assistant 消息后重发
+    // 去掉 UI 中这条 assistant 消息后以 regenerate 模式重发
     setMessages((prev) => prev.filter((m) => m.id !== msg.id));
-    void handleMessageSend({ text: userText });
+    void handleMessageSend({ text: '' }, { regenerate: true });
   }, [generating, activeConvId, messages, handleMessageSend]);
 
-  /** 编辑并重发：修改用户消息内容，删除其后的所有消息，重新生成 */
+  /** 编辑并重发：级联删除该 user 消息及其后所有消息，再以新内容重新发送 */
   const handleEditAndResend = useCallback(async (msgId: string, newText: string) => {
     if (!newText.trim() || !activeConvId) return;
     const curMessages = messages;
     const idx = curMessages.findIndex((m) => m.id === msgId);
     if (idx === -1) return;
 
-    // 删除 DB 里该 user 消息之后的所有 assistant 消息
-    const afterMsgs = curMessages.slice(idx + 1);
-    for (const m of afterMsgs) {
-      const dbId = String(m.id).startsWith('api-') ? Number(String(m.id).replace('api-', '')) : null;
-      if (dbId && m.role === 'assistant') {
-        await request.delete(`/api/ai/conversations/${activeConvId}/messages/${dbId}`).catch(() => {});
+    // 删除 DB 里该 user 消息及之后的所有消息（旧 user 消息也一并清除，避免重复）
+    const dbId = String(msgId).startsWith('api-') ? Number(String(msgId).replace('api-', '')) : null;
+    if (dbId) {
+      await request.delete(`/api/ai/conversations/${activeConvId}/messages/${dbId}/cascade`).catch(() => {});
+    } else {
+      // 本地临时消息（尚未落库）：仅需清理其后已落库的 assistant 消息
+      const afterFirstDbMsg = curMessages.slice(idx + 1).find((m) => String(m.id).startsWith('api-'));
+      if (afterFirstDbMsg) {
+        const afterDbId = Number(String(afterFirstDbMsg.id).replace('api-', ''));
+        await request.delete(`/api/ai/conversations/${activeConvId}/messages/${afterDbId}/cascade`).catch(() => {});
       }
     }
     // 截断 UI 中该消息及其后所有
@@ -797,19 +659,6 @@ export default function AIChatPage() {
                     </Tooltip>
                   </span>
                 </Dropdown>
-                {pdfFile && (
-                  <Tooltip content={pdfFileUrl ? '点击关闭预览（已上传）' : '点击关闭预览（上传中…）'}>
-                    <Button
-                      theme="solid"
-                      type="primary"
-                      size="small"
-                      icon={<FileText size={13} />}
-                      onClick={() => { setPdfFile(null); setPdfFileUrl(null); }}
-                    >
-                      {truncateName(pdfFile.name)}
-                    </Button>
-                  </Tooltip>
-                )}
                 <Select
                   value={mode}
                   onChange={(v) => setMode(v as 'bubble' | 'noBubble' | 'userBubble')}
@@ -902,12 +751,7 @@ export default function AIChatPage() {
                         }
                       }}
                       onMessageReset={(msg) => msg && !generating && void handleRegenerate(msg as Message)}
-                      onFileClick={(fileItem) => {
-                        const fi = fileItem?.fileInstance;
-                        if (fi instanceof File) setPdfFile(fi);
-                      }}
                       dialogueRenderConfig={dialogueRenderConfig}
-                      renderDialogueContentItem={renderDialogueContentItem}
                       onChatsChange={(chats) => {
                         setMessages(chats as Message[]);
                       }}
@@ -919,16 +763,12 @@ export default function AIChatPage() {
                 {/* 输入框 */}
                 <div style={{ padding: '12px 20px', borderTop: '1px solid var(--semi-color-border)', background: 'var(--semi-color-bg-1)', flexShrink: 0 }}>
                   <AIChatInput
-                    placeholder="向 AI 提问，或点击下方回形针上传 PDF..."
+                    placeholder="向 AI 提问，Enter 发送..."
                     generating={generating}
+                    showUploadButton={false}
                     onMessageSend={(c) => void handleMessageSend(c)}
                     onStopGenerate={handleStopGenerate}
                     onConfigureChange={(value) => setConfigureValues(value)}
-                    uploadProps={{
-                      action: '',
-                      accept: '.pdf,application/pdf',
-                      beforeUpload: handleBeforeUpload,
-                    }}
                     renderConfigureArea={() => (
                       <Configure>
                         <Configure.Select
@@ -946,7 +786,7 @@ export default function AIChatPage() {
                             onMouseEnter?: React.MouseEventHandler;
                             onClick?: React.MouseEventHandler;
                           }) => {
-                            const isUser = renderProps.value === 'user';
+                            const isUser = String(renderProps.value).startsWith('user-');
                             return (
                               <div
                                 role="menuitem"
@@ -971,14 +811,6 @@ export default function AIChatPage() {
                   />
                 </div>
               </div>
-
-              {/* PDF 预览面板（右侧） */}
-              {pdfFile && (
-                <PDFPreviewPanel
-                  file={pdfFile}
-                  onClose={() => setPdfFile(null)}
-                />
-              )}
             </div>
           </MasterDetailLayout.Body>
         </>

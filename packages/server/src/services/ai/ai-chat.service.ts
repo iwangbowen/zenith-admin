@@ -1,5 +1,6 @@
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
+import { getConfigBoolean } from '../../lib/system-config';
 import { getRawDefaultProviderConfig, getRawProviderConfig } from './ai-providers.service';
 import { getRawUserAiConfigById } from './user-ai-config.service';
 import { streamChat } from '../../lib/ai/factory';
@@ -41,6 +42,7 @@ async function resolveStreamConfig(): Promise<ResolvedStreamConfig> {
  */
 async function resolveStreamConfigById(configId: number): Promise<ResolvedStreamConfig> {
   const sysCfg = await getRawProviderConfig(configId);
+  if (!sysCfg.isEnabled) throw new HTTPException(400, { message: '该 AI 配置已禁用，请选择其他模型' });
   return {
     provider: sysCfg.provider,
     config: {
@@ -56,6 +58,8 @@ async function resolveStreamConfigById(configId: number): Promise<ResolvedStream
 }
 
 async function resolveStreamConfigForUser(userConfigId: number): Promise<ResolvedStreamConfig> {
+  const allowed = await getConfigBoolean('ai_allow_user_custom_key', false);
+  if (!allowed) throw new HTTPException(403, { message: '管理员未开放自定义 AI 配置' });
   const user = currentUser();
   const userCfg = await getRawUserAiConfigById(userConfigId, user.userId);
   if (!userCfg?.isEnabled || !userCfg.apiKey || !userCfg.baseUrl || !userCfg.model) {
@@ -67,9 +71,9 @@ async function resolveStreamConfigForUser(userConfigId: number): Promise<Resolve
       baseUrl: userCfg.baseUrl,
       apiKey: userCfg.apiKey,
       model: userCfg.model,
-      maxTokens: 4096,
-      temperature: '0.7',
-      systemPrompt: null,
+      maxTokens: userCfg.maxTokens ?? 4096,
+      temperature: userCfg.temperature ?? '0.7',
+      systemPrompt: userCfg.systemPrompt ?? null,
     },
     snapshot: { provider: userCfg.provider, model: userCfg.model },
   };

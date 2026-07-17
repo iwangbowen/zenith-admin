@@ -10,6 +10,14 @@ export const aiProvidersHandlers = [
     return HttpResponse.json({ code: 0, message: 'ok', data: { success: true, message: '连接成功（Demo 模拟）' } });
   }),
 
+  // 聊天可用模型（轻量列表：仅启用配置的非敏感字段）
+  http.get('/api/ai/models', () => {
+    const models = store
+      .filter((p) => p.isEnabled)
+      .map((p) => ({ id: p.id, name: p.name, model: p.model, provider: p.provider, isDefault: p.isDefault }));
+    return HttpResponse.json({ code: 0, message: 'ok', data: models });
+  }),
+
   // 列表
   http.get('/api/ai/providers', () => {
     return HttpResponse.json({ code: 0, message: 'ok', data: store });

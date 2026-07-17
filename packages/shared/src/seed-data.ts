@@ -859,6 +859,18 @@ export const SEED_RATE_LIMIT_RULES = [
     createdAt: SEED_DATE,
     updatedAt: SEED_DATE,
   },
+  {
+    name: 'ai_chat_send',
+    description: 'AI 对话发送限流（按用户）',
+    windowMs: 60 * 1000,
+    limit: 15,
+    keyType: 'user' as const,
+    enabled: true,
+    blockedMessage: 'AI 对话过于频繁，请稍后再试',
+    pathPatterns: [],
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+  },
 ];
 
 // ─── 定时任务 ─────────────────────────────────────────────────────────────────

@@ -16,7 +16,7 @@ import './filePreview.css';
 const ExcelPreviewPanel = lazy(() => import('@/components/ExcelPreviewPanel'));
 // @embedpdf 引擎 ~1MB，懒加载，避免经 FileAttachment 链进入首屏
 const PDFPreviewPanel = lazy(() =>
-  import('@/pages/ai/chat/PDFPreviewPanel').then((m) => ({ default: m.PDFPreviewPanel })),
+  import('@/components/PDFPreviewPanel').then((m) => ({ default: m.PDFPreviewPanel })),
 );
 // docx-preview 懒加载，避免影响首屏
 const DocxPreviewPanel = lazy(() => import('@/components/DocxPreviewPanel'));

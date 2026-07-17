@@ -129,7 +129,7 @@ const testConnection = defineOpenAPIRoute({
     tags: ['AI'],
     summary: '测试 AI 服务商连接',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware] as const,
+    middleware: [authMiddleware, guard({ permission: 'ai:provider:edit' })] as const,
     request: { body: { content: jsonContent(testAiConnectionSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(TestConnectionResultDTO, '测试结果') },
   }),

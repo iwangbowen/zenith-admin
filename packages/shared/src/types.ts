@@ -5731,6 +5731,15 @@ export interface AiProviderConfig {
   updatedAt: string;
 }
 
+/** 聊天模型选择器条目（/api/ai/models 轻量列表，不含敏感字段） */
+export interface AiChatModel {
+  id: number;
+  name: string;
+  model: string;
+  provider: AiProvider;
+  isDefault: boolean;
+}
+
 export interface AiConversation {
   id: number;
   userId: number;
