@@ -49,8 +49,8 @@ interface StatCardProps {
 
 function StatCard({ title, value, icon, color, secondary }: StatCardProps) {
   return (
-    <Card bodyStyle={{ padding: '16px 20px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+    <Card style={{ height: '100%' }} bodyStyle={{ padding: '16px 20px', height: '100%', display: 'flex', alignItems: 'center', boxSizing: 'border-box' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
         <div style={{
           width: 44,
           height: 44,
@@ -64,12 +64,20 @@ function StatCard({ title, value, icon, color, secondary }: StatCardProps) {
         }}>
           {icon}
         </div>
-        <div>
+        <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 22, fontWeight: 600, lineHeight: 1.2, color: 'var(--semi-color-text-0)' }}>
             {value}
           </div>
           <Text type="tertiary" size="small">{title}</Text>
-          {secondary && <Text type="tertiary" size="small" style={{ display: 'block', marginTop: 2 }}>{secondary}</Text>}
+          {/* secondary 恒定占位一行，保证所有卡片等高 */}
+          <Text
+            type="tertiary"
+            size="small"
+            ellipsis={{ showTooltip: true }}
+            style={{ display: 'block', marginTop: 2, visibility: secondary ? 'visible' : 'hidden' }}
+          >
+            {secondary || '\u00A0'}
+          </Text>
         </div>
       </div>
     </Card>
@@ -228,7 +236,7 @@ export default function AiUsagePage() {
                 value={formatCostYuan(stats?.overview.totalCostFen ?? 0)}
                 icon={<Wallet size={20} />}
                 color="#EB2F96"
-                secondary="按服务商单价估算，未配置单价的模型不计入"
+                secondary="未配置单价的模型不计入"
               />
             </Col>
             <Col xs={24} sm={12} xl={8}>
