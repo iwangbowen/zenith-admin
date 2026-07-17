@@ -5715,6 +5715,16 @@ export interface Tag {
 
 export type AiMessageRole = 'system' | 'user' | 'assistant';
 
+/** 模型能力标签 */
+export interface AiModelCapabilities {
+  /** 支持图片理解（vision） */
+  vision?: boolean;
+  /** 支持函数调用（function calling） */
+  tools?: boolean;
+  /** 上下文窗口长度（token） */
+  contextWindow?: number;
+}
+
 export interface AiProviderConfig {
   id: number;
   name: string;
@@ -5722,6 +5732,10 @@ export interface AiProviderConfig {
   baseUrl: string;
   apiKey: string;
   model: string;
+  /** 附加可选模型列表（同一服务商多模型） */
+  models: string[] | null;
+  /** 模型能力标签 */
+  capabilities: AiModelCapabilities | null;
   systemPrompt: string | null;
   maxTokens: number;
   temperature: string;
@@ -5735,13 +5749,61 @@ export interface AiProviderConfig {
   updatedAt: string;
 }
 
-/** 聊天模型选择器条目（/api/ai/models 轻量列表，不含敏感字段） */
+/** 聊天模型选择器条目（/api/ai/models 轻量列表，不含敏感字段）；一个配置可展开多个模型条目 */
 export interface AiChatModel {
   id: number;
   name: string;
   model: string;
   provider: AiProvider;
   isDefault: boolean;
+  capabilities: AiModelCapabilities | null;
+}
+
+/** 用户级 AI 个性化指令（Custom Instructions） */
+export interface AiUserPreference {
+  aboutMe: string | null;
+  replyStyle: string | null;
+  isEnabled: boolean;
+}
+
+/** 对话分享信息 */
+export interface AiConversationShare {
+  token: string;
+  url: string;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
+/** 知识库 */
+export interface AiKnowledgeBase {
+  id: number;
+  name: string;
+  description: string | null;
+  userId: number;
+  embeddingModel: string | null;
+  documentCount: number;
+  chunkCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 知识库文档 */
+export interface AiKbDocument {
+  id: number;
+  kbId: number;
+  name: string;
+  status: 'ready' | 'processing' | 'failed';
+  chunkCount: number;
+  charCount: number;
+  error: string | null;
+  createdAt: string;
+}
+
+/** 知识库检索引用（SSE references 事件） */
+export interface AiKbReference {
+  docName: string;
+  content: string;
+  score: number;
 }
 
 export interface AiConversation {
@@ -5753,6 +5815,8 @@ export interface AiConversation {
   isArchived: boolean;
   isPinned: boolean;
   systemPromptOverride: string | null;
+  /** 挂载的知识库 ID */
+  knowledgeBaseId: number | null;
   createdAt: string;
   updatedAt: string;
 }

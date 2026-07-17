@@ -36,6 +36,7 @@ const OAuth2AuthorizePage = React.lazy(() => import('@/pages/oauth2/OAuth2Author
 const EmbedPage = React.lazy(() => import('@/pages/embed/EmbedPage'));
 const PaymentLinkPublicPage = React.lazy(() => import('@/pages/payment/PaymentLinkPublicPage'));
 const PublicDashboardPage = React.lazy(() => import('@/pages/report/PublicDashboardPage'));
+const PublicAiChatPage = React.lazy(() => import('@/pages/public-ai-chat/PublicAiChatPage'));
 const WorkflowDesignerPage = React.lazy(() => import('@/pages/workflow/designer/WorkflowDesignerPage'));
 const WorkflowLaunchPage = React.lazy(() => import('@/pages/workflow/launchpad/WorkflowLaunchPage'));
 const WorkflowInstancePage = React.lazy(() => import('@/pages/workflow/instances/WorkflowInstancePage'));
@@ -223,6 +224,7 @@ function AdminRouteLoader({ user, permissions, logout, updateUser }: Readonly<Ad
       <Routes>
         <Route path="/public/payment/link/:token" element={<Suspense fallback={routeFallback}><PaymentLinkPublicPage /></Suspense>} />
         <Route path="/public/report/:token" element={<Suspense fallback={routeFallback}><PublicDashboardPage /></Suspense>} />
+        <Route path="/public/ai-chat/:token" element={<Suspense fallback={routeFallback}><PublicAiChatPage /></Suspense>} />
         {/* OAuth2 同意授权页（独立页面，不在 AdminLayout 内）*/}
         <Route path="/oauth2/authorize" element={<Suspense fallback={routeFallback}><OAuth2AuthorizePage /></Suspense>} />
         <Route path="/enterprise/callback" element={<Suspense fallback={routeFallback}><EnterpriseCallbackPage /></Suspense>} />

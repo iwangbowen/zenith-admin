@@ -2087,12 +2087,20 @@ export type ChatCallRecordInput = z.infer<typeof chatCallRecordSchema>;
 
 export const aiProviderEnum = z.enum(['openai_compatible', 'anthropic', 'gemini', 'baidu']);
 
+export const aiModelCapabilitiesSchema = z.object({
+  vision: z.boolean().optional(),
+  tools: z.boolean().optional(),
+  contextWindow: z.number().int().min(0).max(100000000).optional(),
+});
+
 export const createAiProviderConfigSchema = z.object({
   name: z.string().min(1, '名称不能为空').max(100),
   provider: aiProviderEnum.default('openai_compatible'),
   baseUrl: z.url('请输入有效的 URL').max(500),
   apiKey: z.string().min(1, 'API Key 不能为空').max(1000),
   model: z.string().min(1, '模型名称不能为空').max(100),
+  models: z.array(z.string().min(1).max(100)).max(50).nullable().optional(),
+  capabilities: aiModelCapabilitiesSchema.nullable().optional(),
   systemPrompt: z.string().max(4096).nullable().optional(),
   maxTokens: z.number().int().min(1).max(128000).default(4096),
   temperature: z.string().regex(/^\d+(\.\d+)?$/, '温度须为数字字符串').default('0.7'),
@@ -2117,6 +2125,16 @@ export const testAiConnectionSchema = z.object({
 });
 
 export type TestAiConnectionInput = z.infer<typeof testAiConnectionSchema>;
+
+export const fetchAiModelsSchema = z.object({
+  /** 已有配置的 id；提供时若 apiKey 为空则从 DB 取真实密钥 */
+  id: z.number().int().positive().optional(),
+  provider: aiProviderEnum.default('openai_compatible'),
+  baseUrl: z.url('请输入有效的 URL').max(500),
+  apiKey: z.string().max(1000).optional(),
+});
+
+export type FetchAiModelsInput = z.infer<typeof fetchAiModelsSchema>;
 
 export const createAiConversationSchema = z.object({
   title: z.string().max(200).optional(),
@@ -2179,6 +2197,50 @@ export const updateAiFeedbackStatusSchema = z.object({
 
 export type SubmitAiFeedbackInput = z.infer<typeof submitAiFeedbackSchema>;
 export type UpdateAiFeedbackStatusInput = z.infer<typeof updateAiFeedbackStatusSchema>;
+
+// ─── AI 个性化指令 / 分享 / 知识库 Schema ─────────────────────────────────────
+
+export const saveAiPreferenceSchema = z.object({
+  aboutMe: z.string().max(2000).nullable().optional(),
+  replyStyle: z.string().max(2000).nullable().optional(),
+  isEnabled: z.boolean().optional(),
+});
+
+export type SaveAiPreferenceInput = z.infer<typeof saveAiPreferenceSchema>;
+
+export const shareAiConversationSchema = z.object({
+  /** 有效天数：0 = 永久 */
+  expiresDays: z.number().int().min(0).max(365).default(0),
+});
+
+export type ShareAiConversationInput = z.infer<typeof shareAiConversationSchema>;
+
+export const createAiKnowledgeBaseSchema = z.object({
+  name: z.string().min(1, '名称不能为空').max(100),
+  description: z.string().max(300).nullable().optional(),
+});
+
+export const updateAiKnowledgeBaseSchema = createAiKnowledgeBaseSchema.partial();
+
+export type CreateAiKnowledgeBaseInput = z.infer<typeof createAiKnowledgeBaseSchema>;
+export type UpdateAiKnowledgeBaseInput = z.infer<typeof updateAiKnowledgeBaseSchema>;
+
+export const addAiKbDocumentSchema = z.object({
+  name: z.string().min(1, '文档名称不能为空').max(200),
+  /** 文档纯文本内容（txt/md 粘贴或前端读取上传文件） */
+  content: z.string().min(1, '内容不能为空').max(500000),
+});
+
+export type AddAiKbDocumentInput = z.infer<typeof addAiKbDocumentSchema>;
+
+export const arenaVoteSchema = z.object({
+  question: z.string().min(1).max(8192),
+  modelA: z.string().min(1).max(100),
+  modelB: z.string().min(1).max(100),
+  winner: z.enum(['a', 'b', 'tie']),
+});
+
+export type ArenaVoteInput = z.infer<typeof arenaVoteSchema>;
 
 // ─── 数据脱敏配置 Schema ──────────────────────────────────────────────────────
 

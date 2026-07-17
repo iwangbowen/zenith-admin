@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, text, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, text, jsonb, real, uniqueIndex } from 'drizzle-orm/pg-core';
 import { AI_PROVIDER_TYPES } from '@zenith/shared';
 import { auditColumns, tenants, users } from './core';
 
@@ -8,6 +8,13 @@ export const aiMessageRoleEnum = pgEnum('ai_message_role', ['system', 'user', 'a
 
 export const aiFeedbackStatusEnum = pgEnum('ai_feedback_status', ['pending', 'resolved', 'ignored']);
 
+/** 模型能力标签（vision=图片理解 / tools=函数调用 / contextWindow=上下文长度） */
+export interface AiModelCapabilities {
+  vision?: boolean;
+  tools?: boolean;
+  contextWindow?: number;
+}
+
 export const aiProviderConfigs = pgTable('ai_provider_configs', {
   id: serial('id').primaryKey(),
   name: varchar('name', { length: 100 }).notNull(),
@@ -15,6 +22,10 @@ export const aiProviderConfigs = pgTable('ai_provider_configs', {
   baseUrl: varchar('base_url', { length: 500 }).notNull(),
   apiKey: varchar('api_key', { length: 1000 }).notNull(),
   model: varchar('model', { length: 100 }).notNull(),
+  /** 附加可选模型列表（同一服务商多模型，聊天时可切换） */
+  models: text('models').array(),
+  /** 模型能力标签 */
+  capabilities: jsonb('capabilities').$type<AiModelCapabilities>(),
   systemPrompt: text('system_prompt'),
   maxTokens: integer('max_tokens').notNull().default(4096),
   temperature: varchar('temperature', { length: 10 }).notNull().default('0.7'),
@@ -42,6 +53,8 @@ export const aiConversations = pgTable('ai_conversations', {
   isArchived: boolean('is_archived').notNull().default(false),
   isPinned: boolean('is_pinned').notNull().default(false),
   systemPromptOverride: text('system_prompt_override'),
+  /** 挂载的知识库 ID（软引用，删除知识库时置空） */
+  knowledgeBaseId: integer('knowledge_base_id'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
@@ -125,3 +138,84 @@ export const aiPromptTemplates = pgTable('ai_prompt_templates', {
 export type AiPromptTemplateRow = typeof aiPromptTemplates.$inferSelect;
 
 export type NewAiPromptTemplate = typeof aiPromptTemplates.$inferInsert;
+
+/** 用户级 AI 个性化指令（Custom Instructions） */
+export const aiUserPreferences = pgTable('ai_user_preferences', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** 关于我：背景、身份、偏好等 */
+  aboutMe: text('about_me'),
+  /** 回答风格要求 */
+  replyStyle: text('reply_style'),
+  isEnabled: boolean('is_enabled').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [uniqueIndex('ai_user_preferences_user_id_uq').on(t.userId)]);
+
+export type AiUserPreferenceRow = typeof aiUserPreferences.$inferSelect;
+
+/** 对话分享链接 */
+export const aiSharedConversations = pgTable('ai_shared_conversations', {
+  id: serial('id').primaryKey(),
+  token: varchar('token', { length: 64 }).notNull(),
+  conversationId: integer('conversation_id').notNull().references(() => aiConversations.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** 过期时间，null = 永久有效 */
+  expiresAt: timestamp('expires_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [uniqueIndex('ai_shared_conversations_token_uq').on(t.token)]);
+
+export type AiSharedConversationRow = typeof aiSharedConversations.$inferSelect;
+
+/** 多模型对比（Arena）投票记录 */
+export const aiArenaVotes = pgTable('ai_arena_votes', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  question: text('question').notNull(),
+  modelA: varchar('model_a', { length: 100 }).notNull(),
+  modelB: varchar('model_b', { length: 100 }).notNull(),
+  /** a / b / tie */
+  winner: varchar('winner', { length: 10 }).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+/** 知识库 */
+export const aiKnowledgeBases = pgTable('ai_knowledge_bases', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 100 }).notNull(),
+  description: varchar('description', { length: 300 }),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** 向量化所用 embedding 模型快照（空 = 未向量化，走关键词检索） */
+  embeddingModel: varchar('embedding_model', { length: 100 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type AiKnowledgeBaseRow = typeof aiKnowledgeBases.$inferSelect;
+
+/** 知识库文档 */
+export const aiKbDocuments = pgTable('ai_kb_documents', {
+  id: serial('id').primaryKey(),
+  kbId: integer('kb_id').notNull().references(() => aiKnowledgeBases.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 200 }).notNull(),
+  /** ready / processing / failed */
+  status: varchar('status', { length: 20 }).notNull().default('ready'),
+  chunkCount: integer('chunk_count').notNull().default(0),
+  charCount: integer('char_count').notNull().default(0),
+  error: varchar('error', { length: 500 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export type AiKbDocumentRow = typeof aiKbDocuments.$inferSelect;
+
+/** 知识库分块（embedding 为空时该分块走关键词检索） */
+export const aiKbChunks = pgTable('ai_kb_chunks', {
+  id: serial('id').primaryKey(),
+  kbId: integer('kb_id').notNull().references(() => aiKnowledgeBases.id, { onDelete: 'cascade' }),
+  docId: integer('doc_id').notNull().references(() => aiKbDocuments.id, { onDelete: 'cascade' }),
+  content: text('content').notNull(),
+  embedding: real('embedding').array(),
+  tokenCount: integer('token_count').notNull().default(0),
+});
+
+export type AiKbChunkRow = typeof aiKbChunks.$inferSelect;

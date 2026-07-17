@@ -19,6 +19,7 @@ function mapConversation(row: typeof aiConversations.$inferSelect) {
     isArchived: row.isArchived,
     isPinned: row.isPinned,
     systemPromptOverride: row.systemPromptOverride,
+    knowledgeBaseId: row.knowledgeBaseId,
     createdAt: formatDateTime(row.createdAt),
     updatedAt: formatDateTime(row.updatedAt),
   };
@@ -330,6 +331,70 @@ export async function deleteMessageCascade(conversationId: number, messageId: nu
       ),
     )
   );
+}
+
+/**
+ * 管理员：对话内容合规审计检索（跨用户全量消息，支持关键词 / 用户 / 角色 / 时间过滤）。
+ */
+export async function listAuditMessages(params: {
+  page: number;
+  pageSize: number;
+  keyword?: string;
+  userId?: number;
+  role?: 'user' | 'assistant';
+  startDate?: string;
+  endDate?: string;
+}) {
+  const { page, pageSize } = params;
+  const conds = [];
+  if (params.keyword?.trim()) {
+    conds.push(ilike(aiMessages.content, `%${escapeLike(params.keyword.trim())}%`));
+  }
+  if (params.role) conds.push(eq(aiMessages.role, params.role));
+  if (params.userId) conds.push(eq(aiConversations.userId, params.userId));
+  const start = params.startDate ? parseDateRangeStart(params.startDate) : null;
+  const end = params.endDate ? parseDateRangeEnd(params.endDate) : null;
+  if (start) conds.push(gte(aiMessages.createdAt, start));
+  if (end) conds.push(lte(aiMessages.createdAt, end));
+  const where = conds.length ? and(...conds) : undefined;
+
+  const baseQuery = db
+    .select({
+      message: aiMessages,
+      conversationTitle: aiConversations.title,
+      userId: aiConversations.userId,
+      username: users.username,
+      nickname: users.nickname,
+    })
+    .from(aiMessages)
+    .innerJoin(aiConversations, eq(aiMessages.conversationId, aiConversations.id))
+    .leftJoin(users, eq(aiConversations.userId, users.id))
+    .where(where)
+    .orderBy(desc(aiMessages.createdAt), desc(aiMessages.id));
+
+  const countQuery = db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(aiMessages)
+    .innerJoin(aiConversations, eq(aiMessages.conversationId, aiConversations.id))
+    .where(where);
+
+  const [countRows, list] = await Promise.all([
+    countQuery,
+    withPagination(baseQuery.$dynamic(), page, pageSize),
+  ]);
+  return {
+    total: countRows[0]?.count ?? 0,
+    list: list.map((row) => ({
+      ...mapMessage(row.message),
+      conversationTitle: row.conversationTitle ?? null,
+      userId: row.userId ?? null,
+      username: row.username ?? null,
+      nickname: row.nickname ?? null,
+      question: null,
+    })),
+    page,
+    pageSize,
+  };
 }
 
 /**

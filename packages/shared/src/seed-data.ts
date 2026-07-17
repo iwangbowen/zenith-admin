@@ -269,6 +269,11 @@ export const SEED_MENUS: Menu[] = [
   { id: 873, parentId: 870, title: '删除',        name: undefined,                 path: undefined,                    component: undefined,                                        icon: undefined,           type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'ai:prompt:delete',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 875, parentId: 300, title: '用量统计',    name: 'AiUsage',                 path: '/ai/usage',                  component: 'ai/usage/AiUsagePage',                           icon: 'BarChart3',         type: 'menu',      sort: 5,  status: 'enabled', visible: true,  permission: 'ai:usage:view',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 876, parentId: 492, title: '处理反馈',    name: undefined,                 path: undefined,                    component: undefined,                                        icon: undefined,           type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'ai:feedback:handle', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1620, parentId: 300, title: '对话审计',   name: 'AiAudit',                 path: '/ai/audit',                  component: 'ai/audit/AiAuditPage',                           icon: 'ShieldCheck',       type: 'menu',      sort: 6,  status: 'enabled', visible: true,  permission: 'ai:audit:view',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1621, parentId: 300, title: '知识库',     name: 'AiKnowledge',             path: '/ai/knowledge',              component: 'ai/knowledge/AiKnowledgePage',                   icon: 'Library',           type: 'menu',      sort: 7,  status: 'enabled', visible: true,  permission: 'ai:kb:list',         createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1622, parentId: 1621, title: '新增',      name: undefined,                 path: undefined,                    component: undefined,                                        icon: undefined,           type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'ai:kb:create',       createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1623, parentId: 1621, title: '编辑',      name: undefined,                 path: undefined,                    component: undefined,                                        icon: undefined,           type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'ai:kb:edit',         createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1624, parentId: 1621, title: '删除',      name: undefined,                 path: undefined,                    component: undefined,                                        icon: undefined,           type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'ai:kb:delete',       createdAt: SEED_DATE, updatedAt: SEED_DATE },
 
   { id: 230, parentId: 0,   title: '工作流引擎', name: 'Workflow',                path: undefined,                    component: undefined,                                        icon: 'GitFork',           type: 'directory', sort: 6,  status: 'enabled', visible: true,  createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 231, parentId: 230, title: '流程定义',   name: 'WorkflowDefinitions',    path: '/workflow/definitions',       component: 'workflow/definitions/WorkflowDefinitionsPage',   icon: 'Workflow',          type: 'menu',      sort: 1,  status: 'enabled', visible: true,  permission: 'workflow:definition:list',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
@@ -696,6 +701,7 @@ export const SEED_DICTS: Dict[] = [
   { id: 10, name: '部门类别',   code: 'department_category',   description: '部门类别',           status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 11, name: '请假类型',   code: 'leave_type',            description: '请假申请的类型（业务示例）', status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 12, name: 'AI 点踩理由', code: 'ai_dislike_reason',    description: 'AI 对话点踩时的理由选项', status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 13, name: 'AI 敏感词', code: 'ai_sensitive_word',     description: 'AI 对话输入侧敏感词过滤词库（配合 ai_content_filter_enabled 开关）', status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 字典项 ───────────────────────────────────────────────────────────────────
@@ -749,6 +755,8 @@ export const SEED_DICT_ITEMS: DictItem[] = [
   { id: 34, dictId: 12, label: '不相关', value: 'irrelevant',  color: 'orange', sort: 2, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 35, dictId: 12, label: '有害信息', value: 'harmful',   color: 'violet', sort: 3, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 36, dictId: 12, label: '其他',   value: 'other',       color: 'grey',   sort: 4, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  // AI 敏感词 (dictId: 13) —— 示例词条，value 即敏感词本身
+  { id: 37, dictId: 13, label: '示例敏感词', value: '示例敏感词', color: 'red', sort: 1, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 系统配置 ─────────────────────────────────────────────────────────────────
@@ -792,6 +800,8 @@ export const SEED_SYSTEM_CONFIGS: SystemConfig[] = [
   { id: 36, configKey: 'feedback_entry_enabled',         configValue: 'false', configType: 'boolean', description: '是否显示意见反馈入口（用户头像下拉菜单），关闭后用户无法提交反馈', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 37, configKey: 'captcha_complexity',             configValue: 'medium', configType: 'string', description: '验证码复杂度：low（干扰少、易识别）/ medium（默认）/ high（干扰强、识别难度高），仅在开启登录验证码后生效', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 38, configKey: 'ai_daily_token_quota',           configValue: '0',     configType: 'number',  description: '每用户每日 AI 对话 token 配额（输入+输出合计），0 表示不限制；超限后当日无法继续对话', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 39, configKey: 'ai_content_filter_enabled',      configValue: 'false', configType: 'boolean', description: '是否启用 AI 对话输入侧敏感词过滤（词库维护在字典「AI 敏感词」中，命中直接拒绝发送）', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 40, configKey: 'ai_embedding_model',             configValue: '',      configType: 'string',  description: '知识库向量化 embedding 模型名称（使用系统默认 AI 服务商的 /embeddings 接口）；留空则知识库退化为关键词检索', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 限流规则 ─────────────────────────────────────────────────────────────────
@@ -868,6 +878,18 @@ export const SEED_RATE_LIMIT_RULES = [
     keyType: 'user' as const,
     enabled: true,
     blockedMessage: 'AI 对话过于频繁，请稍后再试',
+    pathPatterns: [],
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+  },
+  {
+    name: 'ai_share_view',
+    description: 'AI 对话分享页访问限流（无需登录，防滥用）',
+    windowMs: 60 * 1000,
+    limit: 60,
+    keyType: 'ip' as const,
+    enabled: true,
+    blockedMessage: '访问过于频繁，请稍后再试',
     pathPatterns: [],
     createdAt: SEED_DATE,
     updatedAt: SEED_DATE,

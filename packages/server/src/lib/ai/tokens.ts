@@ -20,6 +20,12 @@ export function estimateTokens(text: string): number {
   return Math.ceil(tokens);
 }
 
+/** 消息内容 token 估算（vision 数组内容：文本累计 + 每图约 200 token） */
+function estimateContentTokens(content: ChatMessage['content']): number {
+  if (typeof content === 'string') return estimateTokens(content);
+  return content.reduce((sum, p) => sum + (p.type === 'text' ? estimateTokens(p.text ?? '') : 200), 0);
+}
+
 export interface TruncateOptions {
   /** 历史消息 token 预算上限（不含 systemPrompt 与本次提问） */
   maxTokens?: number;
@@ -32,7 +38,7 @@ export interface TruncateOptions {
  * 入参为「时间倒序」的消息（最近的在前），返回「时间升序」的裁剪结果。
  * 至少保留最近 1 条，避免预算过小导致空上下文。
  */
-export function truncateHistoryByBudget<T extends ChatMessage>(
+export function truncateHistoryByBudget<T extends Pick<ChatMessage, 'content'>>(
   recentFirst: T[],
   options: TruncateOptions = {},
 ): T[] {
@@ -42,7 +48,7 @@ export function truncateHistoryByBudget<T extends ChatMessage>(
   let budget = maxTokens;
   for (const msg of recentFirst) {
     if (kept.length >= maxCount) break;
-    const cost = estimateTokens(msg.content);
+    const cost = estimateContentTokens(msg.content);
     if (kept.length > 0 && budget - cost < 0) break;
     budget -= cost;
     kept.push(msg);

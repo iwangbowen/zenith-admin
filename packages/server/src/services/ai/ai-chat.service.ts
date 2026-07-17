@@ -3,60 +3,76 @@ import { currentUser } from '../../lib/context';
 import { getConfigBoolean } from '../../lib/system-config';
 import { getRawDefaultProviderConfig, getRawProviderConfig } from './ai-providers.service';
 import { getRawUserAiConfigById } from './user-ai-config.service';
+import { buildPreferencePrompt } from './ai-preferences.service';
 import { streamChat } from '../../lib/ai/factory';
 import { chatOnceOpenAICompatible } from '../../lib/ai/adapters/openai-compatible';
+import { getOpenAiToolDefs, executeToolCall } from '../../lib/ai/tools';
 import { updateConversationTitle } from './ai-conversations.service';
 import logger from '../../lib/logger';
-import type { StreamChatConfig, ChatMessage, StreamChunk } from '../../lib/ai/factory';
-import type { AiProvider } from '@zenith/shared';
+import type { StreamChatConfig, ChatMessage, ChatToolCall, StreamChunk } from '../../lib/ai/factory';
+import type { AiProvider, AiModelCapabilities } from '@zenith/shared';
 
 export type { StreamChunk };
 
 type ResolvedStreamConfig = {
   config: StreamChatConfig;
   provider: AiProvider;
+  capabilities: AiModelCapabilities | null;
   snapshot: { provider: string; model: string; configId?: number };
 };
+
+/** 校验 modelOverride 属于该配置声明的模型集合，返回最终生效模型 */
+function applyModelOverride(cfg: { model: string; models?: string[] | null }, modelOverride?: string): string {
+  if (!modelOverride || modelOverride === cfg.model) return cfg.model;
+  const allowed = cfg.models ?? [];
+  if (!allowed.includes(modelOverride)) {
+    throw new HTTPException(400, { message: '所选模型不在该服务商配置的模型列表中' });
+  }
+  return modelOverride;
+}
 
 /**
  * 解析当前请求应使用的 AI 配置（未指定时使用系统默认配置）
  */
-async function resolveStreamConfig(): Promise<ResolvedStreamConfig> {
+async function resolveStreamConfig(modelOverride?: string): Promise<ResolvedStreamConfig> {
   // 使用系统默认配置
   const sysCfg = await getRawDefaultProviderConfig();
   if (!sysCfg) throw new HTTPException(503, { message: '系统未配置 AI 服务商，请联系管理员' });
-
+  const model = applyModelOverride(sysCfg, modelOverride);
   return {
     provider: sysCfg.provider,
+    capabilities: sysCfg.capabilities ?? null,
     config: {
       baseUrl: sysCfg.baseUrl,
       apiKey: sysCfg.apiKey,
-      model: sysCfg.model,
+      model,
       maxTokens: sysCfg.maxTokens,
       temperature: sysCfg.temperature,
       systemPrompt: sysCfg.systemPrompt,
     },
-    snapshot: { provider: sysCfg.provider, model: sysCfg.model, configId: sysCfg.id },
+    snapshot: { provider: sysCfg.provider, model, configId: sysCfg.id },
   };
 }
 
 /**
- * 指定 configId 使用系统中的某个 AI 配置（管理员用）
+ * 指定 configId 使用系统中的某个 AI 配置
  */
-async function resolveStreamConfigById(configId: number): Promise<ResolvedStreamConfig> {
+async function resolveStreamConfigById(configId: number, modelOverride?: string): Promise<ResolvedStreamConfig> {
   const sysCfg = await getRawProviderConfig(configId);
   if (!sysCfg.isEnabled) throw new HTTPException(400, { message: '该 AI 配置已禁用，请选择其他模型' });
+  const model = applyModelOverride(sysCfg, modelOverride);
   return {
     provider: sysCfg.provider,
+    capabilities: sysCfg.capabilities ?? null,
     config: {
       baseUrl: sysCfg.baseUrl,
       apiKey: sysCfg.apiKey,
-      model: sysCfg.model,
+      model,
       maxTokens: sysCfg.maxTokens,
       temperature: sysCfg.temperature,
       systemPrompt: sysCfg.systemPrompt,
     },
-    snapshot: { provider: sysCfg.provider, model: sysCfg.model, configId: sysCfg.id },
+    snapshot: { provider: sysCfg.provider, model, configId: sysCfg.id },
   };
 }
 
@@ -70,6 +86,7 @@ async function resolveStreamConfigForUser(userConfigId: number): Promise<Resolve
   }
   return {
     provider: userCfg.provider,
+    capabilities: null,
     config: {
       baseUrl: userCfg.baseUrl,
       apiKey: userCfg.apiKey,
@@ -82,21 +99,38 @@ async function resolveStreamConfigForUser(userConfigId: number): Promise<Resolve
   };
 }
 
+/** 工具调用最多迭代轮数（防死循环） */
+const MAX_TOOL_ROUNDS = 5;
+
+export interface StreamAiChatOptions {
+  signal?: AbortSignal;
+  systemPromptOverride?: string | null;
+  /** 多模型配置下选择的具体模型 */
+  model?: string;
+  /** 是否启用内置工具（还需配置 capabilities.tools 且 provider 为 openai_compatible） */
+  enableTools?: boolean;
+}
+
+export type StreamAiChatChunk = StreamChunk
+  | { type: 'tool_result'; name: string; arguments: string; result: string };
+
+/**
+ * 统一聊天流：解析配置 → 注入对话角色 / 个人指令 → 流式生成。
+ * 支持 function calling 执行循环：模型请求工具时执行并携带结果续跑（最多 MAX_TOOL_ROUNDS 轮）。
+ */
 export async function* streamAiChat(
   messages: ChatMessage[],
   configSource?: 'system' | 'user',
   configId?: number,
-  options?: { signal?: AbortSignal; systemPromptOverride?: string | null },
-): AsyncGenerator<StreamChunk & { snapshot?: { provider: string; model: string; configId?: number } }> {
+  options?: StreamAiChatOptions,
+): AsyncGenerator<StreamAiChatChunk & { snapshot?: { provider: string; model: string; configId?: number } }> {
   let resolved: ResolvedStreamConfig;
   if (configSource === 'user' && configId) {
     resolved = await resolveStreamConfigForUser(configId);
-  } else if (configSource === 'system' && configId) {
-    resolved = await resolveStreamConfigById(configId);
   } else if (configId) {
-    resolved = await resolveStreamConfigById(configId);
+    resolved = await resolveStreamConfigById(configId, options?.model);
   } else {
-    resolved = await resolveStreamConfig();
+    resolved = await resolveStreamConfig(options?.model);
   }
 
   // 对话级提示词模板：覆盖服务商配置中的 systemPrompt
@@ -105,15 +139,72 @@ export async function* streamAiChat(
     resolved.config.systemPrompt = override;
   }
 
+  // 个人指令（Custom Instructions）：追加到 system prompt 末尾
+  try {
+    const user = currentUser();
+    const preference = await buildPreferencePrompt(user.userId);
+    if (preference) {
+      resolved.config.systemPrompt = resolved.config.systemPrompt
+        ? `${resolved.config.systemPrompt}\n\n${preference}`
+        : preference;
+    }
+  } catch { /* 无登录上下文（如内部调用）时跳过 */ }
+
+  // function calling：仅 openai_compatible 且配置声明 tools 能力时启用
+  const toolsEnabled = options?.enableTools !== false
+    && resolved.provider === 'openai_compatible'
+    && resolved.capabilities?.tools === true;
+  if (toolsEnabled) {
+    resolved.config.tools = getOpenAiToolDefs();
+  }
+
+  const workingMessages: ChatMessage[] = [...messages];
+  let totalTokensInput = 0;
+  let totalTokensOutput = 0;
   let isFirst = true;
-  for await (const chunk of streamChat(resolved.provider, resolved.config, messages, options?.signal)) {
-    if (isFirst && chunk.type === 'delta') {
-      yield { ...chunk, snapshot: resolved.snapshot };
-      isFirst = false;
-    } else if (chunk.type === 'done') {
-      yield { ...chunk, snapshot: resolved.snapshot };
-    } else {
-      yield chunk;
+
+  for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+    let pendingCalls: ChatToolCall[] | null = null;
+    let roundDone = false;
+
+    for await (const chunk of streamChat(resolved.provider, resolved.config, workingMessages, options?.signal)) {
+      if (chunk.type === 'tool_calls') {
+        pendingCalls = chunk.calls;
+      } else if (chunk.type === 'done') {
+        totalTokensInput += chunk.tokensInput;
+        totalTokensOutput += chunk.tokensOutput;
+        roundDone = true;
+        // 还有待执行的工具：先不对外发 done，执行工具后续跑
+        if (!pendingCalls) {
+          yield { type: 'done', tokensInput: totalTokensInput, tokensOutput: totalTokensOutput, snapshot: resolved.snapshot };
+          return;
+        }
+      } else if (chunk.type === 'delta' && isFirst) {
+        isFirst = false;
+        yield { ...chunk, snapshot: resolved.snapshot };
+      } else {
+        yield chunk;
+      }
+    }
+
+    if (!pendingCalls || pendingCalls.length === 0) {
+      // 流异常结束（无 done 无工具）：直接返回
+      if (!roundDone) return;
+      yield { type: 'done', tokensInput: totalTokensInput, tokensOutput: totalTokensOutput, snapshot: resolved.snapshot };
+      return;
+    }
+
+    if (round === MAX_TOOL_ROUNDS) {
+      yield { type: 'error', error: '工具调用轮数超出上限，请简化问题后重试' };
+      return;
+    }
+
+    // 执行工具并把过程结果推送给前端
+    workingMessages.push({ role: 'assistant', content: '', tool_calls: pendingCalls });
+    for (const call of pendingCalls) {
+      const result = await executeToolCall(call);
+      yield { type: 'tool_result', name: call.function.name, arguments: call.function.arguments, result };
+      workingMessages.push({ role: 'tool', content: result, tool_call_id: call.id });
     }
   }
 }

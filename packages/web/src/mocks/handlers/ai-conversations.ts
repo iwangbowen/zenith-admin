@@ -56,6 +56,7 @@ export const aiConversationsHandlers = [
       isArchived: false,
       isPinned: false,
       systemPromptOverride: null,
+      knowledgeBaseId: null,
       createdAt: now,
       updatedAt: now,
     };

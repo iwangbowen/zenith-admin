@@ -8,18 +8,45 @@ export interface StreamChatConfig {
   maxTokens: number;
   temperature: string;
   systemPrompt?: string | null;
+  /** OpenAI 格式的工具定义（function calling），仅 openai_compatible 生效 */
+  tools?: unknown[];
+}
+
+/** vision 多模态内容片段（OpenAI 格式） */
+export interface ChatMessagePart {
+  type: 'text' | 'image_url';
+  text?: string;
+  image_url?: { url: string };
+}
+
+/** 工具调用（OpenAI 格式） */
+export interface ChatToolCall {
+  id: string;
+  type: 'function';
+  function: { name: string; arguments: string };
 }
 
 export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string | ChatMessagePart[];
+  /** assistant 消息携带的工具调用 */
+  tool_calls?: ChatToolCall[];
+  /** tool 结果消息对应的调用 ID */
+  tool_call_id?: string;
 }
 
 export type StreamChunk =
   | { type: 'delta'; content: string }
   | { type: 'reasoning'; content: string }
+  | { type: 'tool_calls'; calls: ChatToolCall[] }
   | { type: 'done'; tokensInput: number; tokensOutput: number }
   | { type: 'error'; error: string };
+
+/** 估算消息内容 token（兼容 vision 数组内容） */
+export function estimateMessageTokens(content: string | ChatMessagePart[]): number {
+  if (typeof content === 'string') return estimateTokens(content);
+  return content.reduce((sum, p) => sum + (p.type === 'text' ? estimateTokens(p.text ?? '') : 200), 0);
+}
 
 /**
  * OpenAI 兼容格式的流式聊天适配器（覆盖 OpenAI、DeepSeek、Qwen、Kimi、GLM、Ollama 等）
@@ -83,6 +110,7 @@ export async function* streamChatOpenAICompatible(
         stream: true,
         // 显式要求流式响应返回 usage（OpenAI 等默认不带），用于 token 用量统计
         ...(includeUsage && { stream_options: { include_usage: true } }),
+        ...(config.tools?.length && { tools: config.tools, tool_choice: 'auto' }),
         max_tokens: config.maxTokens,
         temperature: Number.parseFloat(config.temperature) || 0.7,
       }),
@@ -135,15 +163,21 @@ export async function* streamChatOpenAICompatible(
   let tokensOutput = 0;
   let accumulated = '';
   let reasoningAccumulated = '';
+  // tool_calls 流式聚合（按 index 累积 name / arguments 增量）
+  const pendingToolCalls = new Map<number, ChatToolCall>();
+  let toolCallsEmitted = false;
 
   // 上游未返回 usage 时（部分兼容网关不支持 stream_options），用本地估算兜底，
   // 保证用量统计有量级正确的数据
   const finalizeTokens = () => {
-    if (!tokensInput) tokensInput = allMessages.reduce((sum, m) => sum + estimateTokens(m.content), 0);
+    if (!tokensInput) tokensInput = allMessages.reduce((sum, m) => sum + estimateMessageTokens(m.content), 0);
     if (!tokensOutput && (accumulated || reasoningAccumulated)) {
       tokensOutput = estimateTokens(accumulated) + estimateTokens(reasoningAccumulated);
     }
   };
+
+  const collectToolCalls = (): ChatToolCall[] =>
+    [...pendingToolCalls.entries()].sort((a, b) => a[0] - b[0]).map(([, c]) => c);
 
   try {
     while (true) {
@@ -161,6 +195,10 @@ export async function* streamChatOpenAICompatible(
 
         const data = trimmed.slice(6);
         if (data === '[DONE]') {
+          if (!toolCallsEmitted && pendingToolCalls.size > 0) {
+            toolCallsEmitted = true;
+            yield { type: 'tool_calls', calls: collectToolCalls() };
+          }
           finalizeTokens();
           yield { type: 'done', tokensInput, tokensOutput };
           return;
@@ -168,7 +206,8 @@ export async function* streamChatOpenAICompatible(
 
         try {
           const parsed = JSON.parse(data);
-          const delta = parsed.choices?.[0]?.delta;
+          const choice = parsed.choices?.[0];
+          const delta = choice?.delta;
           const content = delta?.content;
           if (typeof content === 'string' && content) {
             accumulated += content;
@@ -179,6 +218,21 @@ export async function* streamChatOpenAICompatible(
           if (typeof reasoning === 'string' && reasoning) {
             reasoningAccumulated += reasoning;
             yield { type: 'reasoning', content: reasoning };
+          }
+          // function calling：按 index 聚合流式 tool_calls 增量
+          if (Array.isArray(delta?.tool_calls)) {
+            for (const tc of delta.tool_calls as { index?: number; id?: string; function?: { name?: string; arguments?: string } }[]) {
+              const idx = tc.index ?? 0;
+              const existing = pendingToolCalls.get(idx) ?? { id: '', type: 'function' as const, function: { name: '', arguments: '' } };
+              if (tc.id) existing.id = tc.id;
+              if (tc.function?.name) existing.function.name += tc.function.name;
+              if (tc.function?.arguments) existing.function.arguments += tc.function.arguments;
+              pendingToolCalls.set(idx, existing);
+            }
+          }
+          if (choice?.finish_reason === 'tool_calls' && !toolCallsEmitted && pendingToolCalls.size > 0) {
+            toolCallsEmitted = true;
+            yield { type: 'tool_calls', calls: collectToolCalls() };
           }
           // 有些 API 会在最后一个 chunk 附带 usage 信息
           if (parsed.usage) {
@@ -202,6 +256,9 @@ export async function* streamChatOpenAICompatible(
     reader.releaseLock();
   }
 
+  if (!toolCallsEmitted && pendingToolCalls.size > 0) {
+    yield { type: 'tool_calls', calls: collectToolCalls() };
+  }
   finalizeTokens();
   yield { type: 'done', tokensInput, tokensOutput };
 }

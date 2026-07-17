@@ -2,14 +2,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Button, Col, Form, Row, Spin, Toast } from '@douyinfe/semi-ui';
 import type { AiProvider, AiProviderConfig, UserAiConfig } from '@zenith/shared';
 import { AppModal } from '@/components/AppModal';
-import { useAiProviderDetail, useSaveAiProvider, useTestAiProviderConnection } from '@/hooks/queries/ai-providers';
+import { useAiProviderDetail, useSaveAiProvider, useTestAiProviderConnection, useFetchAiProviderModels } from '@/hooks/queries/ai-providers';
 import { useSaveAiUserConfig } from '@/hooks/queries/ai-user-config';
 
 const PROVIDER_OPTIONS: { value: AiProvider; label: string; disabled?: boolean }[] = [
   { value: 'openai_compatible', label: 'OpenAI Compatible' },
-  // 以下供应商协议不兼容 /chat/completions，暂未原生适配；请通过 OpenAI 兼容网关接入
-  { value: 'anthropic', label: 'Anthropic（暂未支持，请用兼容网关接入）', disabled: true },
-  { value: 'gemini', label: 'Google Gemini（暂未支持，请用兼容网关接入）', disabled: true },
+  { value: 'anthropic', label: 'Anthropic（原生 /v1/messages）' },
+  { value: 'gemini', label: 'Google Gemini（原生 streamGenerateContent）' },
   { value: 'baidu', label: '百度千帆（暂未支持，请用兼容网关接入）', disabled: true },
 ];
 
@@ -19,6 +18,10 @@ interface FormValues {
   baseUrl: string;
   apiKey: string;
   model: string;
+  models?: string[] | null;
+  capVision?: boolean;
+  capTools?: boolean;
+  contextWindow?: number | null;
   systemPrompt?: string | null;
   maxTokens: number;
   temperature: string;
@@ -34,6 +37,10 @@ const SYSTEM_DEFAULTS: FormValues = {
   baseUrl: '',
   apiKey: '',
   model: '',
+  models: [],
+  capVision: false,
+  capTools: false,
+  contextWindow: null,
   systemPrompt: null,
   maxTokens: 4096,
   temperature: '0.7',
@@ -71,6 +78,7 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
   const saveProviderMutation = useSaveAiProvider();
   const saveUserConfigMutation = useSaveAiUserConfig();
   const testConnectionMutation = useTestAiProviderConnection();
+  const fetchModelsMutation = useFetchAiProviderModels();
   const [formKey, setFormKey] = useState(0);
   const [initValues, setInitValues] = useState<FormValues>(SYSTEM_DEFAULTS);
   const formApiRef = useRef<{ getValues: () => FormValues; validate: () => Promise<FormValues> } | null>(null);
@@ -105,6 +113,10 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
           baseUrl: et.baseUrl,
           apiKey: et.apiKey,
           model: et.model,
+          models: et.models ?? [],
+          capVision: et.capabilities?.vision ?? false,
+          capTools: et.capabilities?.tools ?? false,
+          contextWindow: et.capabilities?.contextWindow ?? null,
           systemPrompt: et.systemPrompt,
           maxTokens: et.maxTokens,
           temperature: et.temperature,
@@ -150,10 +162,17 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
         props.onSaved(saved);
         onClose();
       } else {
+        const { capVision, capTools, contextWindow, models, ...rest } = values;
         await saveProviderMutation.mutateAsync({
           id: editTarget?.id,
           values: {
-            ...values,
+            ...rest,
+            models: models?.filter((m) => m.trim()) ?? null,
+            capabilities: {
+              vision: capVision ?? false,
+              tools: capTools ?? false,
+              ...(contextWindow ? { contextWindow } : {}),
+            },
             priceInputPerM: values.priceInputPerM ?? null,
             priceOutputPerM: values.priceOutputPerM ?? null,
           },
@@ -174,6 +193,37 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
   let title = '新增服务商';
   if (isUser) title = '我的 AI 配置';
   else if (editTarget) title = '编辑服务商';
+
+  /** 从供应商 API 自动发现模型列表，填充附加模型字段 */
+  const handleFetchModels = async () => {
+    if (!formApiRef.current) return;
+    const values = formApiRef.current.getValues();
+    if (!values.baseUrl) {
+      Toast.warning('请先填写 API 地址');
+      return;
+    }
+    try {
+      const body: { id?: number; provider?: string; baseUrl: string; apiKey?: string } = {
+        provider: values.provider ?? 'openai_compatible',
+        baseUrl: values.baseUrl,
+      };
+      const apiKey = values.apiKey ?? '';
+      if (editTarget?.id && (!apiKey || apiKey.includes('...') || apiKey === '******')) {
+        body.id = editTarget.id;
+      } else if (apiKey) {
+        body.apiKey = apiKey;
+      }
+      const models = await fetchModelsMutation.mutateAsync(body);
+      if (models.length === 0) {
+        Toast.info('未发现可用模型');
+        return;
+      }
+      (formApiRef.current as unknown as { setValue: (f: string, v: unknown) => void }).setValue('models', models);
+      Toast.success(`已获取 ${models.length} 个模型`);
+    } catch {
+      // handled by request interceptor
+    }
+  };
 
   const handleTestConnection = async () => {
     if (!formApiRef.current) return;
@@ -297,6 +347,42 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
               <Form.Input field="temperature" label="温度" placeholder="0.7" />
             </Col>
           </Row>
+          {/* 附加模型 + 能力标签（仅系统配置） */}
+          {!isUser && (
+            <>
+              <Form.TagInput
+                field="models"
+                label={
+                  <span>
+                    附加模型（同一服务商多模型，聊天时可切换）
+                    <Button
+                      theme="borderless"
+                      type="primary"
+                      size="small"
+                      loading={fetchModelsMutation.isPending}
+                      style={{ marginLeft: 8 }}
+                      onClick={() => void handleFetchModels()}
+                    >
+                      从 API 获取
+                    </Button>
+                  </span>
+                }
+                placeholder="输入模型名后回车添加，或点击「从 API 获取」自动发现"
+                allowDuplicates={false}
+              />
+              <Row gutter={16}>
+                <Col span={8}>
+                  <Form.Switch field="capVision" label="支持图片理解" />
+                </Col>
+                <Col span={8}>
+                  <Form.Switch field="capTools" label="支持函数调用" />
+                </Col>
+                <Col span={8}>
+                  <Form.InputNumber field="contextWindow" label="上下文窗口（Token）" min={0} placeholder="可选" style={{ width: '100%' }} />
+                </Col>
+              </Row>
+            </>
+          )}
           {/* 行4：最大 Token + 启用开关 */}
           <Row gutter={16}>
             <Col span={12}>

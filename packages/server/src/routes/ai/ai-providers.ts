@@ -19,8 +19,9 @@ import {
   deleteAiProviderConfig,
   setDefaultAiProviderConfig,
   testAiProviderConnection,
+  fetchProviderModels,
 } from '../../services/ai/ai-providers.service';
-import { createAiProviderConfigSchema, updateAiProviderConfigSchema, testAiConnectionSchema } from '@zenith/shared';
+import { createAiProviderConfigSchema, updateAiProviderConfigSchema, testAiConnectionSchema, fetchAiModelsSchema } from '@zenith/shared';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -139,6 +140,22 @@ const testConnection = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([list, getOne, create, update, remove, setDefault, testConnection] as const);
+const fetchModels = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post',
+    path: '/fetch-models',
+    tags: ['AI'],
+    summary: '从供应商 API 自动发现可用模型列表',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'ai:provider:edit' })] as const,
+    request: { body: { content: jsonContent(fetchAiModelsSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(z.array(z.string()), '模型 ID 列表') },
+  }),
+  handler: async (c) => {
+    return c.json(okBody(await fetchProviderModels(c.req.valid('json'))), 200);
+  },
+});
+
+router.openapiRoutes([list, getOne, create, update, remove, setDefault, testConnection, fetchModels] as const);
 
 export default router;

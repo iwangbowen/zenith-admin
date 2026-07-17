@@ -85,3 +85,11 @@ export function useTestAiProviderConnection() {
       request.post<{ success: boolean; message: string }>('/api/ai/providers/test-connection', body).then(unwrap),
   });
 }
+
+/** 从供应商 API 自动发现模型列表 */
+export function useFetchAiProviderModels() {
+  return useMutation({
+    mutationFn: (body: { id?: number; provider?: string; baseUrl: string; apiKey?: string }) =>
+      request.post<string[]>('/api/ai/providers/fetch-models', body).then(unwrap),
+  });
+}

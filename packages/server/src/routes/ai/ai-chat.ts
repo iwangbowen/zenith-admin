@@ -11,10 +11,13 @@ import {
   saveMessages,
 } from '../../services/ai/ai-conversations.service';
 import { generateConversationTitle, streamAiChat } from '../../services/ai/ai-chat.service';
+import { retrieveKbContext } from '../../services/ai/ai-knowledge.service';
 import { recordAiRequest, recordAiError } from '../../lib/ai/reliability';
 import { getDailyTokensUsed, addDailyTokensUsed } from '../../lib/ai/quota';
+import { checkSensitiveContent } from '../../lib/ai/content-filter';
 import { getConfigNumber } from '../../lib/system-config';
 import { currentUser } from '../../lib/context';
+import type { ChatMessage, ChatMessagePart } from '../../lib/ai/factory';
 import { z } from 'zod';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -25,6 +28,10 @@ const SendMessageBody = z.object({
   regenerate: z.boolean().optional(),
   configSource: z.enum(['system', 'user']).optional(),
   configId: z.number().int().positive().optional(),
+  /** 多模型配置下选择的具体模型 */
+  model: z.string().max(100).optional(),
+  /** vision 图片（data URL，base64），仅当轮上下文生效 */
+  images: z.array(z.string().max(4_000_000).regex(/^data:image\//, '仅支持 data:image 格式')).max(3).optional(),
 }).refine((d) => d.regenerate || !!d.message?.trim(), { message: '消息不能为空' });
 
 /**
@@ -49,7 +56,7 @@ router.post('/:id/chat', authMiddleware, namedRateLimit('ai_chat_send'), async (
     return c.json({ code: 400, message: '消息不能为空', data: null }, 400);
   }
 
-  const { message, regenerate, configSource, configId } = parsed.data;
+  const { message, regenerate, configSource, configId, model, images } = parsed.data;
 
   // 验证对话归属
   let conversation: Awaited<ReturnType<typeof ensureConversationOwner>>;
@@ -64,6 +71,14 @@ router.post('/:id/chat', authMiddleware, namedRateLimit('ai_chat_send'), async (
   // 重新生成：要求历史末条是 user 消息（旧 assistant 回复应已由前端删除）
   if (regenerate && !(await hasTrailingUserMessage(id))) {
     return c.json({ code: 400, message: '没有可重新生成的用户消息，请先删除旧回复', data: null }, 400);
+  }
+
+  // 输入侧敏感词过滤（开关 + 字典词库）
+  if (message) {
+    const hit = await checkSensitiveContent(message);
+    if (hit) {
+      return c.json({ code: 400, message: '消息包含敏感内容，已被拦截', data: null }, 400);
+    }
   }
 
   // 每用户每日 token 配额（0 = 不限制）
@@ -100,9 +115,38 @@ router.post('/:id/chat', authMiddleware, namedRateLimit('ai_chat_send'), async (
     try {
       // 加载历史消息（按 token 预算裁剪）；重新生成时历史已含末条 user 消息，不再追加
       const history = await getHistoryMessages(id);
-      const messages = regenerate ? history : [...history, { role: 'user' as const, content: message! }];
 
-      for await (const chunk of streamAiChat(messages, configSource, configId, { signal: ac.signal, systemPromptOverride: conversation.systemPromptOverride })) {
+      // 知识库检索：挂载知识库时按提问检索 top 分块注入上下文，并把引用推给前端
+      let kbPrefix = '';
+      const queryText = message ?? '';
+      if (conversation.knowledgeBaseId && queryText) {
+        const refs = await retrieveKbContext(conversation.knowledgeBaseId, user.userId, queryText).catch(() => []);
+        if (refs.length > 0) {
+          kbPrefix = `请优先基于以下知识库内容回答（如无相关内容请如实说明）：\n\n${refs
+            .map((r, i) => `【${i + 1}】来自《${r.docName}》：\n${r.content}`)
+            .join('\n\n')}\n\n---\n\n`;
+          await stream.writeSSE({
+            event: 'references',
+            data: JSON.stringify({
+              references: refs.map((r) => ({ docName: r.docName, content: r.content.slice(0, 200), score: r.score })),
+            }),
+          });
+        }
+      }
+
+      // vision：图片 + 文本组成 OpenAI 多模态 content 数组（仅当轮生效，不落库）
+      let userContent: ChatMessage['content'] = kbPrefix + queryText;
+      if (images && images.length > 0) {
+        const parts: ChatMessagePart[] = [
+          { type: 'text', text: kbPrefix + queryText },
+          ...images.map((url) => ({ type: 'image_url' as const, image_url: { url } })),
+        ];
+        userContent = parts;
+      }
+
+      const messages: ChatMessage[] = regenerate ? history : [...history, { role: 'user', content: userContent }];
+
+      for await (const chunk of streamAiChat(messages, configSource, configId, { signal: ac.signal, systemPromptOverride: conversation.systemPromptOverride, model })) {
         if (chunk.type === 'delta') {
           if (firstTokenAt === null) firstTokenAt = Date.now();
           assistantContent += chunk.content;
@@ -119,6 +163,12 @@ router.post('/:id/chat', authMiddleware, namedRateLimit('ai_chat_send'), async (
           await stream.writeSSE({
             event: 'reasoning',
             data: JSON.stringify({ content: chunk.content }),
+          });
+        } else if (chunk.type === 'tool_result') {
+          // function calling：把工具执行过程推给前端展示
+          await stream.writeSSE({
+            event: 'tool_call',
+            data: JSON.stringify({ name: chunk.name, arguments: chunk.arguments, result: chunk.result.slice(0, 2000) }),
           });
         } else if (chunk.type === 'done') {
           tokensInput = chunk.tokensInput;
@@ -161,7 +211,7 @@ router.post('/:id/chat', authMiddleware, namedRateLimit('ai_chat_send'), async (
       };
       const { assistantMsgId } = regenerate
         ? await saveAssistantMessage(id, assistantContent, tokensInput, tokensOutput, snapshot, meta)
-        : await saveMessages(id, message!, assistantContent, tokensInput, tokensOutput, snapshot, meta);
+        : await saveMessages(id, (images?.length ? `[图片 ×${images.length}] ` : '') + message!, assistantContent, tokensInput, tokensOutput, snapshot, meta);
 
       // 累计每日配额用量
       if (tokensInput + tokensOutput > 0) {

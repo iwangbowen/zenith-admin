@@ -42,6 +42,8 @@ export const aiProvidersHandlers = [
       baseUrl: body.baseUrl ?? '',
       apiKey: body.apiKey ? `${(body.apiKey as string).slice(0, 4)}...${(body.apiKey as string).slice(-4)}` : '****',
       model: body.model ?? '',
+      models: body.models ?? null,
+      capabilities: body.capabilities ?? null,
       systemPrompt: body.systemPrompt ?? null,
       maxTokens: body.maxTokens ?? 4096,
       temperature: body.temperature ?? '0.7',

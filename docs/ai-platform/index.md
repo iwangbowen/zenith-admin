@@ -15,6 +15,14 @@
 | 提示词模板 | 支持系统级与用户私有模板，包含名称、内容（支持 `{{变量}}` 占位符）、描述、分类、排序、启停、内置标记与使用次数统计；聊天页可将模板应用为当前对话角色 |
 | 反馈管理 | 用户可对 AI 回复点赞 / 点踩；点踩可选择原因；管理员可按反馈类型 / 处理状态 / 模型 / 时间筛选，查看反馈人、所属对话与提问上下文，回放对话片段，导出 CSV，并维护处理备注 |
 | 用量配额 | 通过 `ai_daily_token_quota` 系统配置设置每用户每日 token 上限（0 = 不限制），超限当日返回 429 |
+| 多供应商 | OpenAI Compatible / Anthropic（`/v1/messages`）/ Gemini（`streamGenerateContent`）原生流式适配；一个服务商配置多模型（附加模型 + `/models` API 自动发现）；模型能力标签（vision / tools / 上下文窗口） |
+| Function Calling | `capabilities.tools` 开启后模型可调用内置工具（当前时间、我的用量、系统概览），执行过程以折叠卡片展示，最多 5 轮循环；仅 openai_compatible |
+| 图片理解 | `capabilities.vision` 开启后聊天输入区出现图片按钮（≤3 张 / 单张 ≤2MB，base64 当轮上下文，不落库） |
+| 个人指令 | 用户级 Custom Instructions（关于我 / 回答风格），自动追加到所有对话的 system prompt 末尾 |
+| 对话分享 | 生成只读分享链接（永久 / 7 天 / 30 天），免登录访问 `/public/ai-chat/{token}`，按 IP 限流 |
+| 模型对比 | Arena 双栏：同一提问并行发给两个模型流式对比，投票结果落库（`ai_arena_votes`） |
+| 知识库 RAG | 个人知识库 + 纯文本 / txt / md 文档，自动分块；配置 `ai_embedding_model` 后向量化（余弦检索），否则关键词检索；对话挂载后回答注入引用并展示溯源 |
+| 安全合规 | API Key AES-256-GCM 加密存储（`enc:v1:` 前缀，兼容存量明文）；输入侧敏感词过滤（字典「AI 敏感词」+ `ai_content_filter_enabled` 开关）；「对话审计」页跨用户检索消息内容 |
 | 聊天机器人 | Webhook 机器人属于即时通讯模块，用于向聊天会话投递卡片消息，详见 [即时通讯](../chat/index.md) |
 
 > AI 对话需要可用的系统服务商配置；未指定具体配置时使用启用的系统默认配置。允许用户自带 Key 时，也可以选择有效的个人配置。
@@ -39,7 +47,9 @@
 | SSE 事件 | 说明 |
 | --- | --- |
 | `delta` | 返回增量文本片段，前端实时追加到当前 AI 回复 |
-| `reasoning` | 返回推理模型思维链增量（`reasoning_content`），前端在折叠面板中实时展示 |
+| `reasoning` | 返回推理模型思维链增量（`reasoning_content` / Anthropic thinking），前端在折叠面板中实时展示 |
+| `tool_call` | function calling 执行过程（工具名 / 参数 / 结果），前端以折叠卡片展示 |
+| `references` | 知识库检索命中的引用（文档名 / 片段 / 相关度），前端展示在回答下方 |
 | `done` | 返回 `tokensInput`、`tokensOutput`，表示本次生成结束 |
 | `saved` | 返回 `assistantMsgId`，前端据此把临时消息 ID 替换为数据库消息 ID |
 | `title` | 首轮对话完成后返回 LLM 自动生成的会话标题 |
@@ -53,6 +63,8 @@
 | `regenerate` | 可选，重新生成模式：不追加、不保存新的 user 消息，基于已有历史重新回答（要求历史末条为 user 消息，即旧的 assistant 回复已删除），完成后仅保存 assistant 消息 |
 | `configSource` | 可选，`system` / `user`，表示使用系统配置或个人配置 |
 | `configId` | 可选，指定系统服务商配置 ID 或个人配置 ID；指定已禁用的系统配置会返回 400 |
+| `model` | 可选，多模型配置下选择的具体模型（须在该配置的模型列表中） |
+| `images` | 可选，vision 图片（data URL base64，≤3 张），仅当轮上下文生效不落库；需模型声明 `capabilities.vision` |
 
 服务端会校验会话归属，读取历史消息并按 Token 预算保留最近上下文。历史消息默认最多读取 50 条，裁剪预算默认 6000 Token。用户主动断开或停止生成时，上游请求会被中断；生成中途出错或中断时，已生成的部分 AI 回复仍会保存。接口按用户限流（内置规则 `ai_chat_send`，默认 15 次 / 分钟，可在「限流规则」页调整）；另受 `ai_daily_token_quota` 每用户每日 token 配额约束（Redis 按自然日计数，0 = 不限制，超限返回 429）。
 
@@ -82,12 +94,14 @@
 
 | 枚举值 | 前端显示 | 状态 |
 | --- | --- | --- |
-| `openai_compatible` | OpenAI Compatible | 原生支持 |
-| `anthropic` | Anthropic | 暂未适配（表单中禁用，请通过 OpenAI 兼容网关接入） |
-| `gemini` | Google Gemini | 暂未适配（表单中禁用，请通过 OpenAI 兼容网关接入） |
+| `openai_compatible` | OpenAI Compatible | 原生支持（tools / vision / reasoning 全能力） |
+| `anthropic` | Anthropic | 原生支持（`/v1/messages` + `x-api-key`，支持 vision / thinking） |
+| `gemini` | Google Gemini | 原生支持（`models/{model}:streamGenerateContent?alt=sse`，支持 vision） |
 | `baidu` | 百度千帆 | 暂未适配（表单中禁用，请通过 OpenAI 兼容网关接入） |
 
-当前流式适配器位于 `packages/server/src/lib/ai/adapters/`。`openai_compatible` 按 `/chat/completions` 协议发送 `stream: true` 的 SSE 请求，并携带 `stream_options: { include_usage: true }` 获取 Token 用量（对不支持该字段的老网关自动降级重试）；`anthropic` / `gemini` / `baidu` 因协议不兼容会直接返回明确错误，待后续按需扩展适配器。
+当前流式适配器位于 `packages/server/src/lib/ai/adapters/`。`openai_compatible` 按 `/chat/completions` 协议发送 `stream: true` 的 SSE 请求，并携带 `stream_options: { include_usage: true }` 获取 Token 用量（对不支持该字段的老网关自动降级重试）。
+
+每个配置支持「附加模型」列表（同一服务商多模型，聊天下拉展开为多个条目，发送时通过 `model` 字段指定），可通过 `POST /api/ai/providers/fetch-models` 从供应商 `/models` API 自动发现。能力标签（`capabilities`）声明 vision / tools / 上下文窗口，作为聊天页图片入口与函数调用的开关依据。API Key 以 AES-256-GCM 加密入库（`enc:v1:` 前缀，历史明文兼容读取，重新保存时自动加密；密钥来自 `FIELD_ENCRYPTION_KEY`，未配置时从 `JWT_SECRET` 派生）。
 
 ### 配置字段
 
@@ -287,11 +301,14 @@ AI 模块表定义在 `packages/server/src/db/schema/ai.ts`。
 
 | 页面 | 路由 | 说明 |
 | --- | --- | --- |
-| 智能对话 | `/ai/chat` | 多轮对话、模型选择、提示词角色、反馈、会话管理 |
+| 智能对话 | `/ai/chat` | 多轮对话、模型选择、提示词角色、知识库挂载、图片输入、模型对比、个人指令、分享、反馈、会话管理 |
 | AI 服务商 | `/ai/providers` | 系统级服务商配置管理、启停、默认切换、连接测试 |
 | AI 反馈 | `/ai/feedback` | 反馈筛选与处理 |
+| 对话审计 | `/ai/audit` | 跨用户消息内容合规检索、上下文回放（权限 `ai:audit:view`） |
+| 知识库 | `/ai/knowledge` | 个人知识库 CRUD、文档管理（粘贴 / txt / md）、分块与检索方式展示（权限 `ai:kb:*`） |
 | 提示词模板 | `/ai/prompts` | 模板 CRUD、范围筛选、启停展示 |
 | 用量统计 | `/ai/usage` | 概览卡片、趋势图、模型统计、用户 Top 10 |
+| 分享只读页 | `/public/ai-chat/{token}` | 免登录只读对话回放（限流 `ai_share_view`） |
 | 我的 AI 配置 | 智能对话页侧边弹窗 | 个人配置查看、创建、编辑、删除 |
 
 ---

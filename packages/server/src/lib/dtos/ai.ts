@@ -1,5 +1,14 @@
 import { z } from '@hono/zod-openapi';
 
+const CapabilitiesDTO = z
+  .object({
+    vision: z.boolean().optional(),
+    tools: z.boolean().optional(),
+    contextWindow: z.number().optional(),
+  })
+  .nullable()
+  .openapi({ description: '模型能力标签' });
+
 export const AiProviderConfigDTO = z
   .object({
     id: z.number().openapi({ description: 'ID' }),
@@ -8,6 +17,8 @@ export const AiProviderConfigDTO = z
     baseUrl: z.string().openapi({ description: 'API 地址' }),
     apiKey: z.string().openapi({ description: 'API Key（脱敏）' }),
     model: z.string().openapi({ description: '默认模型' }),
+    models: z.array(z.string()).nullable().openapi({ description: '附加可选模型列表' }),
+    capabilities: CapabilitiesDTO,
     systemPrompt: z.string().nullable().openapi({ description: '系统提示词' }),
     maxTokens: z.number().openapi({ description: '最大输出 token' }),
     temperature: z.string().openapi({ description: '温度参数' }),
@@ -27,8 +38,70 @@ export const AiChatModelDTO = z
     model: z.string().openapi({ description: '模型名称' }),
     provider: z.string().openapi({ description: 'AI 供应商类型' }),
     isDefault: z.boolean().openapi({ description: '是否默认' }),
+    capabilities: CapabilitiesDTO,
   })
   .openapi('AiChatModel');
+
+export const AiUserPreferenceDTO = z
+  .object({
+    aboutMe: z.string().nullable().openapi({ description: '关于我（背景信息）' }),
+    replyStyle: z.string().nullable().openapi({ description: '回答风格要求' }),
+    isEnabled: z.boolean().openapi({ description: '是否启用个人指令' }),
+  })
+  .openapi('AiUserPreference');
+
+export const AiConversationShareDTO = z
+  .object({
+    token: z.string().openapi({ description: '分享 token' }),
+    url: z.string().openapi({ description: '分享页相对路径' }),
+    expiresAt: z.string().nullable().openapi({ description: '过期时间，null=永久' }),
+    createdAt: z.string().openapi({ description: '创建时间' }),
+  })
+  .openapi('AiConversationShare');
+
+export const AiSharedConversationDTO = z
+  .object({
+    title: z.string().openapi({ description: '对话标题' }),
+    sharedAt: z.string().openapi({ description: '分享时间' }),
+    messages: z.array(
+      z.object({
+        id: z.number(),
+        role: z.enum(['system', 'user', 'assistant']),
+        content: z.string(),
+        reasoning: z.string().nullable(),
+        model: z.string().nullable(),
+        createdAt: z.string(),
+      }),
+    ).openapi({ description: '只读消息列表' }),
+  })
+  .openapi('AiSharedConversation');
+
+export const AiKnowledgeBaseDTO = z
+  .object({
+    id: z.number().openapi({ description: 'ID' }),
+    name: z.string().openapi({ description: '名称' }),
+    description: z.string().nullable().openapi({ description: '描述' }),
+    userId: z.number().openapi({ description: '归属用户' }),
+    embeddingModel: z.string().nullable().openapi({ description: '向量化模型（空=关键词检索）' }),
+    documentCount: z.number().openapi({ description: '文档数' }),
+    chunkCount: z.number().openapi({ description: '分块数' }),
+    createdAt: z.string().openapi({ description: '创建时间' }),
+    updatedAt: z.string().openapi({ description: '更新时间' }),
+  })
+  .openapi('AiKnowledgeBase');
+
+export const AiKbDocumentDTO = z
+  .object({
+    id: z.number().openapi({ description: 'ID' }),
+    kbId: z.number().openapi({ description: '知识库 ID' }),
+    name: z.string().openapi({ description: '文档名称' }),
+    status: z.enum(['ready', 'processing', 'failed']).openapi({ description: '处理状态' }),
+    chunkCount: z.number().openapi({ description: '分块数' }),
+    charCount: z.number().openapi({ description: '字符数' }),
+    error: z.string().nullable().openapi({ description: '失败原因' }),
+    createdAt: z.string().openapi({ description: '创建时间' }),
+  })
+  .openapi('AiKbDocument');
 
 export const AiConversationDTO = z
   .object({
@@ -47,6 +120,7 @@ export const AiConversationDTO = z
     isArchived: z.boolean().openapi({ description: '是否归档' }),
     isPinned: z.boolean().openapi({ description: '是否置顶' }),
     systemPromptOverride: z.string().nullable().openapi({ description: '对话级提示词（角色模板）' }),
+    knowledgeBaseId: z.number().nullable().openapi({ description: '挂载的知识库 ID' }),
     createdAt: z.string().openapi({ description: '创建时间' }),
     updatedAt: z.string().openapi({ description: '更新时间' }),
   })

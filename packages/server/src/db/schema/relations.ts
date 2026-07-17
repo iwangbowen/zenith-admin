@@ -15,7 +15,7 @@ import { ruleDecisionTables, ruleDecisionTableVersions, ruleTestCases } from './
 import { chatConversationMembers, chatConversations, chatMessageReactions, chatMessages, chatWebhooks, chatQuickReplies, chatScheduledMessages, chatCustomEmojis, chatGroupInvites, chatGroupJoinRequests } from './chat';
 import { channelAutoReplies, channelConversations, channelMenus, channelMessages, channelMessageTargets, channelQuickReplies, channels, channelSubscriptions } from './channels';
 import { paymentApps, paymentChannelConfigs, paymentContracts, paymentDeductPlans, paymentDisputeReplies, paymentDisputes, paymentOrders, paymentPreauths, paymentReconBatches, paymentReconItems, paymentRefunds, paymentRiskHits, paymentRiskReviews, paymentRiskRules, paymentSharingOrders, paymentSharingReceivers, paymentTransfers, paymentWebhookDeliveries, paymentWebhookEndpoints } from './payment';
-import { aiConversations, aiMessages, aiPromptTemplates, aiProviderConfigs, userAiConfigs } from './ai';
+import { aiConversations, aiMessages, aiPromptTemplates, aiProviderConfigs, userAiConfigs, aiKnowledgeBases, aiKbDocuments, aiKbChunks } from './ai';
 import { appWebhookDeliveries, appWebhookSubscriptions, oauth2AuthorizationCodes, oauth2Clients, oauth2TokenFamilies, oauth2Tokens, oauth2UserGrants, ratePlans } from './open-platform';
 import { checkinMilestones, coupons, memberCheckinMilestoneAwards, memberCheckins, memberCoupons, memberLevels, memberNotifications, memberPointAccounts, memberPointTransactions, members, memberTagBindings, memberTags, memberVipRenewals, memberWallets, memberWalletTransactions } from './member';
 import { monitorAlertEvents, monitorAlertRules } from './monitor';
@@ -725,6 +725,21 @@ export const userAiConfigsRelations = relations(userAiConfigs, ({ one }) => ({
 export const aiPromptTemplatesRelations = relations(aiPromptTemplates, ({ one }) => ({
   user: one(users, { fields: [aiPromptTemplates.userId], references: [users.id] }),
   createdByUser: one(users, { fields: [aiPromptTemplates.createdBy], references: [users.id] }),
+}));
+
+export const aiKnowledgeBasesRelations = relations(aiKnowledgeBases, ({ one, many }) => ({
+  user: one(users, { fields: [aiKnowledgeBases.userId], references: [users.id] }),
+  documents: many(aiKbDocuments),
+}));
+
+export const aiKbDocumentsRelations = relations(aiKbDocuments, ({ one, many }) => ({
+  knowledgeBase: one(aiKnowledgeBases, { fields: [aiKbDocuments.kbId], references: [aiKnowledgeBases.id] }),
+  chunks: many(aiKbChunks),
+}));
+
+export const aiKbChunksRelations = relations(aiKbChunks, ({ one }) => ({
+  knowledgeBase: one(aiKnowledgeBases, { fields: [aiKbChunks.kbId], references: [aiKnowledgeBases.id] }),
+  document: one(aiKbDocuments, { fields: [aiKbChunks.docId], references: [aiKbDocuments.id] }),
 }));
 
 // ─── 数据脱敏配置 ─────────────────────────────────────────────────────────────

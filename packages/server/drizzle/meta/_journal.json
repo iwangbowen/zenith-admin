@@ -484,6 +484,13 @@
       "when": 1784294396066,
       "tag": "0068_mute_metal_master",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1784296775703,
+      "tag": "0069_far_chameleon",
+      "breakpoints": true
     }
   ]
 }

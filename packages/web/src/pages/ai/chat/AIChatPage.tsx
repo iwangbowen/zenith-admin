@@ -3,7 +3,7 @@ import { AIChatDialogue, AIChatInput, Typography, Button, Form, RadioGroup, Radi
 import type { Message as AIChatMessage } from '@douyinfe/semi-ui/lib/es/aiChatDialogue';
 import type { RenderActionProps } from '@douyinfe/semi-ui/lib/es/aiChatDialogue/interface';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { MessageSquarePlus, Trash2, AlignLeft, AlignJustify, Settings, MoreHorizontal, Pencil, Pin, PinOff, Archive, ArchiveRestore, Sparkles, Inbox, Download } from 'lucide-react';
+import { MessageSquarePlus, Trash2, AlignLeft, AlignJustify, Settings, MoreHorizontal, Pencil, Pin, PinOff, Archive, ArchiveRestore, Sparkles, Inbox, Download, Share2, UserRoundPen, Swords, Library, ImagePlus, X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
@@ -11,6 +11,9 @@ import { NavListPanel, NavListItem } from '@/components/NavListPanel';
 import AppModal from '@/components/AppModal';
 import { useAuth } from '@/hooks/useAuth';
 import UserAiConfigModal from '../components/UserAiConfigModal';
+import PreferenceModal from '../components/PreferenceModal';
+import ShareModal from '../components/ShareModal';
+import ArenaModal from '../components/ArenaModal';
 import { request } from '@/utils/request';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
@@ -18,6 +21,7 @@ import type { AiChatModel, AiConversation, AiMessage, AiPromptTemplate, UserAiCo
 import { useAiChatModels } from '@/hooks/queries/ai-providers';
 import { useAiAllowUserCustomKey, useAiUserConfigs, aiUserConfigKeys } from '@/hooks/queries/ai-user-config';
 import { useAvailableAiPrompts, recordAiPromptUse } from '@/hooks/queries/ai-prompts';
+import { useAvailableKnowledgeBases, setConversationKb } from '@/hooks/queries/ai-extras';
 import {
   aiConversationKeys,
   useInfiniteAiConversationList,
@@ -92,17 +96,46 @@ function nextMsgId() {
   return `msg-${++msgIdCounter}`;
 }
 
-/** 组装含思维链的 assistant 消息内容（Semi 内置 Reasoning 折叠面板 + output_text 正文） */
-function buildAssistantContent(text: string, reasoning: string | null | undefined, reasoningDone: boolean): NonNullable<AIChatMessage['content']> {
-  if (!reasoning) return text;
-  return [
-    {
+/** 工具调用过程（SSE tool_call 事件） */
+interface ToolCallDisplay {
+  name: string;
+  arguments: string;
+  result: string;
+}
+
+/** 知识库引用（SSE references 事件） */
+interface KbRefDisplay {
+  docName: string;
+  content: string;
+  score: number;
+}
+
+/** 组装 assistant 消息内容：思维链折叠面板 + 工具调用过程 + 正文 + 知识库引用 */
+function buildAssistantContent(
+  text: string,
+  reasoning: string | null | undefined,
+  reasoningDone: boolean,
+  toolCalls?: ToolCallDisplay[],
+  references?: KbRefDisplay[],
+): NonNullable<AIChatMessage['content']> {
+  const hasExtras = !!reasoning || (toolCalls?.length ?? 0) > 0 || (references?.length ?? 0) > 0;
+  if (!hasExtras) return text;
+  const items: Record<string, unknown>[] = [];
+  if (reasoning) {
+    items.push({
       type: 'reasoning',
       status: reasoningDone ? 'completed' : 'in_progress',
       content: [{ type: 'reasoning_text', text: reasoning }],
-    },
-    { type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text }] },
-  ] as NonNullable<AIChatMessage['content']>;
+    });
+  }
+  for (const tc of toolCalls ?? []) {
+    items.push({ type: 'function_call', status: 'completed', name: tc.name, arguments: tc.arguments, output: tc.result });
+  }
+  items.push({ type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text }] });
+  if (references?.length) {
+    items.push({ type: 'kb_references', refs: references });
+  }
+  return items as NonNullable<AIChatMessage['content']>;
 }
 
 function convertApiMessage(m: AiMessage): Message {
@@ -182,13 +215,22 @@ export default function AIChatPage() {
   const [dislikeMsgId, setDislikeMsgId] = useState<number | null>(null);
   const [varFillTemplate, setVarFillTemplate] = useState<AiPromptTemplate | null>(null);
   const varFormApi = useRef<FormApi | null>(null);
+  const [preferenceVisible, setPreferenceVisible] = useState(false);
+  const [shareConvId, setShareConvId] = useState<number | null>(null);
+  const [arenaVisible, setArenaVisible] = useState(false);
+  /** 待发送图片（vision，data URL） */
+  const [pendingImages, setPendingImages] = useState<string[]>([]);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const { items: dislikeReasons } = useDictItems('ai_dislike_reason');
   const allowUserCustomKeyQuery = useAiAllowUserCustomKey();
   const allowUserCustomKey = allowUserCustomKeyQuery.data ?? false;
   const chatModelsQuery = useAiChatModels();
+  const chatModels = useMemo(() => chatModelsQuery.data ?? [], [chatModelsQuery.data]);
   const userConfigsQuery = useAiUserConfigs(allowUserCustomKey);
   const promptTemplatesQuery = useAvailableAiPrompts();
   const promptTemplates = promptTemplatesQuery.data ?? [];
+  const kbQuery = useAvailableKnowledgeBases();
+  const knowledgeBases = kbQuery.data ?? [];
   const conversationsQuery = useInfiniteAiConversationList({
     keyword: debouncedSearchKeyword.trim() || undefined,
     archived: showArchived ? 'true' : undefined,
@@ -196,9 +238,9 @@ export default function AIChatPage() {
   const messagesQuery = useAiConversationMessages(activeConvId);
   const createConversationMutation = useCreateAiConversation();
 
-  // Load AI chat models + user configs as model options
+  // Load AI chat models + user configs as model options（value: `${configId}:${model}` / `user-${id}`）
   const loadModelOptions = useCallback((models: AiChatModel[], userConfigs: UserAiConfig[]) => {
-    const sysOptions = models.map((m) => ({ value: String(m.id), label: `${m.name} (${m.model})`, source: 'system' as const }));
+    const sysOptions = models.map((m) => ({ value: `${m.id}:${m.model}`, label: `${m.name} (${m.model})`, source: 'system' as const }));
     const userOptions = userConfigs
       .filter((uc) => uc.isEnabled && uc.model)
       .map((uc) => ({ value: `user-${uc.id}`, label: `${uc.name ?? '我的配置'} (${uc.model})`, source: 'user' as const }));
@@ -210,8 +252,17 @@ export default function AIChatPage() {
   }, [setConfigureValues]);
 
   useEffect(() => {
-    loadModelOptions(chatModelsQuery.data ?? [], allowUserCustomKey ? (userConfigsQuery.data ?? []) : []);
-  }, [allowUserCustomKey, loadModelOptions, chatModelsQuery.data, userConfigsQuery.data]);
+    loadModelOptions(chatModels, allowUserCustomKey ? (userConfigsQuery.data ?? []) : []);
+  }, [allowUserCustomKey, loadModelOptions, chatModels, userConfigsQuery.data]);
+
+  /** 当前选中模型的能力（vision / tools），用户自定义配置无能力标注 */
+  const getSelectedCapabilities = useCallback(() => {
+    const selected = String(configureValuesRef.current.model ?? '');
+    if (!selected || selected.startsWith('user-')) return null;
+    const [idStr, ...modelParts] = selected.split(':');
+    const model = modelParts.join(':');
+    return chatModels.find((m) => m.id === Number(idStr) && m.model === model)?.capabilities ?? null;
+  }, [chatModels]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearchKeyword(searchKeyword), 300);
@@ -252,6 +303,24 @@ export default function AIChatPage() {
       return <div className={props.className}>{copyNode}{resetNode}{likeNode}{dislikeNode}{moreNode}</div>;
     },
   }) satisfies { renderDialogueAction: (props: RenderActionProps) => React.ReactNode }, []);
+
+  /** 自定义内容项：知识库引用列表 */
+  const renderDialogueContentItem = useMemo(() => ({
+    kb_references: (item: Record<string, unknown>) => {
+      const refs = (item.refs as KbRefDisplay[] | undefined) ?? [];
+      if (refs.length === 0) return null;
+      return (
+        <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 'var(--semi-border-radius-medium)', background: 'var(--semi-color-fill-0)', fontSize: 12 }}>
+          <div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--semi-color-text-1)' }}>📚 知识库引用</div>
+          {refs.map((r, i) => (
+            <div key={`${r.docName}-${i}`} style={{ color: 'var(--semi-color-text-2)', marginTop: 2 }}>
+              【{i + 1}】《{r.docName}》（相关度 {r.score}）：{r.content}…
+            </div>
+          ))}
+        </div>
+      );
+    },
+  }), []);
 
   const roleConfig = {
     user: {
@@ -327,12 +396,16 @@ export default function AIChatPage() {
             body: JSON.stringify(
               (() => {
                 const selectedModel = configureValuesRef.current.model as string | undefined ?? '';
-                const base = regenerate ? { regenerate: true } : { message: text };
+                const base: Record<string, unknown> = regenerate ? { regenerate: true } : { message: text };
+                if (!regenerate && pendingImages.length > 0) base.images = pendingImages;
                 if (selectedModel.startsWith('user-')) {
                   const userConfigId = Number.parseInt(selectedModel.replace('user-', ''), 10);
                   return { ...base, configSource: 'user', configId: userConfigId };
                 }
-                return { ...base, configSource: 'system', configId: Number(selectedModel) || undefined };
+                // `${configId}:${model}` 组合（多模型配置）
+                const [idStr, ...modelParts] = selectedModel.split(':');
+                const model = modelParts.join(':');
+                return { ...base, configSource: 'system', configId: Number(idStr) || undefined, ...(model && { model }) };
               })()
             ),
             signal: abortController.signal,
@@ -352,6 +425,17 @@ export default function AIChatPage() {
         let buffer = '';
         let accContent = '';
         let accReasoning = '';
+        const accToolCalls: ToolCallDisplay[] = [];
+        let accReferences: KbRefDisplay[] = [];
+        // 发送成功后清空待发图片
+        if (!regenerate && pendingImages.length > 0) setPendingImages([]);
+
+        const refreshAssistant = () => {
+          const nextContent = buildAssistantContent(accContent, accReasoning, accContent.length > 0, accToolCalls, accReferences);
+          setMessages((prev) =>
+            prev.map((m) => (m.id === assistantMsgId ? { ...m, content: nextContent, output_text: accContent } : m))
+          );
+        };
 
         while (true) {
           const { done, value } = await reader.read();
@@ -372,17 +456,22 @@ export default function AIChatPage() {
                 const parsed = JSON.parse(dataStr) as Record<string, unknown>;
                 if (eventType === 'delta' && parsed.content) {
                   accContent += (parsed.content as string | undefined) ?? '';
-                  const nextContent = buildAssistantContent(accContent, accReasoning, true);
-                  setMessages((prev) =>
-                    prev.map((m) => (m.id === assistantMsgId ? { ...m, content: nextContent, output_text: accContent } : m))
-                  );
+                  refreshAssistant();
                 } else if (eventType === 'reasoning' && parsed.content) {
                   accReasoning += (parsed.content as string | undefined) ?? '';
-                  // 正文尚未开始时思维链保持"思考中"展开态
-                  const nextContent = buildAssistantContent(accContent, accReasoning, accContent.length > 0);
-                  setMessages((prev) =>
-                    prev.map((m) => (m.id === assistantMsgId ? { ...m, content: nextContent, output_text: accContent } : m))
-                  );
+                  refreshAssistant();
+                } else if (eventType === 'tool_call') {
+                  // function calling 执行过程
+                  accToolCalls.push({
+                    name: (parsed.name as string) ?? '',
+                    arguments: (parsed.arguments as string) ?? '',
+                    result: (parsed.result as string) ?? '',
+                  });
+                  refreshAssistant();
+                } else if (eventType === 'references') {
+                  // 知识库检索引用
+                  accReferences = (parsed.references as KbRefDisplay[]) ?? [];
+                  refreshAssistant();
                 } else if (eventType === 'saved') {
                   // 服务端保存完成，返回了真实的数据库消息 ID，更新本地消息 ID
                   const dbId = (parsed.assistantMsgId as number | undefined);
@@ -427,7 +516,7 @@ export default function AIChatPage() {
         setTimeout(() => dialogueRef.current?.scrollToBottom(true), 100);
       }
     },
-    [activeConvId, createConversationMutation, queryClient]
+    [activeConvId, createConversationMutation, queryClient, pendingImages]
   );
 
   const handleStopGenerate = useCallback(() => {
@@ -611,6 +700,37 @@ export default function AIChatPage() {
     setVarFillTemplate(null);
   };
 
+  /** 挂载 / 取消挂载知识库 */
+  const handleSetKb = async (kbId: number | null) => {
+    if (!activeConvId) { Toast.warning('请先选择或创建对话'); return; }
+    try {
+      await setConversationKb(activeConvId, kbId);
+      setConversations((prev) => prev.map((c) => c.id === activeConvId ? { ...c, knowledgeBaseId: kbId } : c));
+      Toast.success(kbId ? '已挂载知识库' : '已取消挂载');
+    } catch {
+      Toast.error('操作失败');
+    }
+  };
+
+  /** 选择 vision 图片（转 data URL，单张 ≤2MB，最多 3 张） */
+  const handlePickImages = (files: FileList | null) => {
+    if (!files) return;
+    const list = [...files].slice(0, 3 - pendingImages.length);
+    for (const file of list) {
+      if (!file.type.startsWith('image/')) continue;
+      if (file.size > 2 * 1024 * 1024) {
+        Toast.warning(`图片 ${file.name} 超过 2MB，已跳过`);
+        continue;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const url = reader.result as string;
+        setPendingImages((prev) => (prev.length >= 3 ? prev : [...prev, url]));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleExportConversation = (id: number, title: string, format: 'md' | 'json') => {
     void request.download(`/api/ai/conversations/${id}/export?format=${format}`, `${title || '对话'}.${format}`);
   };
@@ -647,6 +767,9 @@ export default function AIChatPage() {
               {conv.isArchived ? <ArchiveRestore size={13} /> : <Archive size={13} />}
               {conv.isArchived ? '取消归档' : '归档'}
             </span>
+          </Dropdown.Item>
+          <Dropdown.Item onClick={(e) => { (e as React.MouseEvent).stopPropagation(); setShareConvId(conv.id); }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Share2 size={13} />分享</span>
           </Dropdown.Item>
           <Dropdown.Item onClick={(e) => { (e as React.MouseEvent).stopPropagation(); handleExportConversation(conv.id, conv.title, 'md'); }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Download size={13} />导出 Markdown</span>
@@ -791,6 +914,62 @@ export default function AIChatPage() {
                     </Tooltip>
                   </span>
                 </Dropdown>
+                <Dropdown
+                  trigger="click"
+                  position="bottomLeft"
+                  clickToHide
+                  render={
+                    <Dropdown.Menu>
+                      {knowledgeBases.length === 0 && <Dropdown.Item disabled>暂无知识库，请先到「知识库」页创建</Dropdown.Item>}
+                      {knowledgeBases.map((kb) => (
+                        <Dropdown.Item
+                          key={kb.id}
+                          active={activeConv?.knowledgeBaseId === kb.id}
+                          onClick={() => void handleSetKb(kb.id)}
+                        >
+                          {kb.name}（{kb.documentCount} 篇）
+                        </Dropdown.Item>
+                      ))}
+                      {activeConv?.knowledgeBaseId && (
+                        <>
+                          <Dropdown.Divider />
+                          <Dropdown.Item type="danger" onClick={() => void handleSetKb(null)}>取消挂载</Dropdown.Item>
+                        </>
+                      )}
+                    </Dropdown.Menu>
+                  }
+                >
+                  <span style={{ display: 'inline-flex' }}>
+                    <Tooltip content="挂载知识库（回答优先引用知识库内容）">
+                      <Button
+                        theme={activeConv?.knowledgeBaseId ? 'light' : 'borderless'}
+                        type="primary"
+                        size="small"
+                        icon={<Library size={14} />}
+                      >
+                        {activeConv?.knowledgeBaseId
+                          ? (knowledgeBases.find((kb) => kb.id === activeConv.knowledgeBaseId)?.name ?? '知识库')
+                          : '知识库'}
+                      </Button>
+                    </Tooltip>
+                  </span>
+                </Dropdown>
+                <Tooltip content="模型对比（Arena）">
+                  <Button
+                    theme="borderless"
+                    size="small"
+                    icon={<Swords size={14} />}
+                    onClick={() => setArenaVisible(true)}
+                  />
+                </Tooltip>
+                <Tooltip content="个人指令（AI 全局记住你的偏好）">
+                  <Button
+                    theme="borderless"
+                    size="small"
+                    icon={<UserRoundPen size={14} />}
+                    onClick={() => setPreferenceVisible(true)}
+                  />
+                </Tooltip>
                 <Select
                   value={mode}
                   onChange={(v) => setMode(v as 'bubble' | 'noBubble' | 'userBubble')}
@@ -884,6 +1063,7 @@ export default function AIChatPage() {
                       }}
                       onMessageReset={(msg) => msg && !generating && void handleRegenerate(msg as Message)}
                       dialogueRenderConfig={dialogueRenderConfig}
+                      renderDialogueContentItem={renderDialogueContentItem}
                       onChatsChange={(chats) => {
                         setMessages(chats as Message[]);
                       }}
@@ -894,6 +1074,46 @@ export default function AIChatPage() {
 
                 {/* 输入框 */}
                 <div style={{ padding: '12px 20px', borderTop: '1px solid var(--semi-color-border)', background: 'var(--semi-color-bg-1)', flexShrink: 0 }}>
+                  {/* vision 待发送图片缩略图条 */}
+                  {pendingImages.length > 0 && (
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                      {pendingImages.map((url, i) => (
+                        <div key={`img-${i}`} style={{ position: 'relative', width: 56, height: 56 }}>
+                          <img src={url} alt={`待发送图片 ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'var(--semi-border-radius-medium)', border: '1px solid var(--semi-color-border)' }} />
+                          <Button
+                            theme="solid"
+                            type="tertiary"
+                            size="small"
+                            icon={<X size={10} />}
+                            style={{ position: 'absolute', top: -6, right: -6, width: 18, height: 18, minWidth: 18, borderRadius: '50%', padding: 0 }}
+                            onClick={() => setPendingImages((prev) => prev.filter((_, idx) => idx !== i))}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                    {getSelectedCapabilities()?.vision && (
+                      <>
+                        <input
+                          ref={imageInputRef}
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          style={{ display: 'none' }}
+                          onChange={(e) => { handlePickImages(e.target.files); e.target.value = ''; }}
+                        />
+                        <Tooltip content="添加图片（当前模型支持图片理解，≤3 张 / 单张 ≤2MB）">
+                          <Button
+                            theme="borderless"
+                            icon={<ImagePlus size={16} />}
+                            style={{ marginBottom: 8 }}
+                            onClick={() => imageInputRef.current?.click()}
+                          />
+                        </Tooltip>
+                      </>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
                   <AIChatInput
                     placeholder="向 AI 提问，Enter 发送..."
                     generating={generating}
@@ -941,6 +1161,8 @@ export default function AIChatPage() {
                     )}
                     style={{ borderRadius: 'var(--semi-border-radius-large)' }}
                   />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -957,6 +1179,9 @@ export default function AIChatPage() {
         }}
       />
     )}
+    <PreferenceModal visible={preferenceVisible} onClose={() => setPreferenceVisible(false)} />
+    <ShareModal convId={shareConvId} onClose={() => setShareConvId(null)} />
+    <ArenaModal visible={arenaVisible} onClose={() => setArenaVisible(false)} models={chatModels} />
     <AppModal
       title="重命名会话"
       visible={renameConvId !== null}
