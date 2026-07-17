@@ -4,6 +4,56 @@
 
 ---
 
+## v0.98.0 - 2026-07-18
+
+### Added
+
+#### 智能助手平台化（P1 / P2）
+
+- **多供应商原生适配**：新增 Anthropic（`/v1/messages` + thinking）与 Google Gemini（`streamGenerateContent` SSE）原生流式适配器，与 OpenAI Compatible 并列；百度千帆表单明确禁用引导走兼容网关
+- **多模型与能力标签**：单个服务商配置支持「附加模型」列表（聊天下拉自动展开），`POST /api/ai/providers/fetch-models` 从供应商 `/models` API 自动发现；能力标签声明 vision / tools / 上下文窗口
+- **思维链展示**：透传 `reasoning_content` 为 SSE `reasoning` 事件，聊天页以 Semi 原生 Reasoning 折叠面板渲染，reasoning 落库可回放
+- **Function Calling**：内置工具注册表 + 服务端执行循环（最多 5 轮），聊天页展示工具调用卡片
+- **视觉输入**：具备 vision 能力的模型支持图片上传提问（多模态 parts 消息）
+- **知识库 RAG**：个人知识库管理（文本/Markdown 文档分块入库、可选 embeddings 向量化），对话可挂载知识库，检索优先余弦相似度、关键词兜底，回答附引用来源
+- **对话分享**：一键生成免登录公开链接（192-bit token），支持过期时间与撤销，新增公开回放页
+- **模型竞技场（Arena）**：双模型同题对比回答与投票，投票记录落库
+- **个人偏好指令**：用户级自定义指令（关于我 / 回复风格），自动注入系统提示词
+- **LLM 自动命名**：新会话首轮后调用轻量模型生成标题（SSE `title` 事件实时更新侧栏）
+- **会话侧栏增强**：按日期分组（今天/昨天/近 7 天/更早）+ 无限滚动加载
+- **提示词模板变量**：支持 `{{变量}}` 占位符填充弹窗，模板使用次数统计
+- **用量统计增强**：assistant 消息口径统计、按供应商单价（分/百万 token）成本估算、TTFT 与耗时指标、Redis 成功率计数
+- **反馈闭环增强**：反馈列表关联用户/对话/前置提问，支持上下文回放与 CSV 导出
+- **每日 Token 配额**：`ai_daily_token_quota` 系统配置 + Redis 计数，超限拦截发送
+- **AI 审计页**：管理员按用户/时间检索全量对话消息（含敏感词命中标记）
+
+#### 安全合规
+
+- **API Key 加密存储**：服务商 API Key 以 AES-256-GCM 加密入库（`enc:v1:` 前缀，历史明文兼容读取；密钥 `FIELD_ENCRYPTION_KEY` 或 `JWT_SECRET` 派生）
+- **出站 SSRF 防护**：聊天流/连接测试/模型发现/embedding 全部出站请求默认拒绝内网地址，新增 `AI_OUTBOUND_PRIVATE_ALLOWLIST` 环境变量（默认放行 localhost 兼容 Ollama）
+- **敏感词过滤**：发送前内容检查（字典 13），命中拦截并记录审计
+- **发送限流**：`ai_chat_send` / `ai_share_view` 接口级限流规则
+
+### Changed
+
+- **Token 用量统计**：流式请求携带 `stream_options: { include_usage: true }` 获取精确用量（老网关自动降级重试），无 usage 时按字符估算兜底
+- **模型参数**：聊天调用尊重服务商配置的 `maxTokens` / `temperature`，禁用配置从聊天下拉过滤
+- **自定义 Key**：后端强制校验 `ai_allow_user_custom_key` 开关；连接测试接口补权限校验
+- **轻量模型接口**：新增 `GET /api/ai/models`（仅返回聊天页所需字段，不含密钥信息）
+- **移除 PDF 上传**：聊天附件去除 PDF 解析（避免额外依赖与扫描件解析问题），预览组件迁至公共目录
+
+### Fixed
+
+- **重复消息**：重新生成（regenerate）模式不再重复保存用户消息
+- **SSE 跨 chunk 丢事件**：前端解析 `eventType` 提升至读循环外，修复 `event:` 与 `data:` 行被拆分到不同 TCP chunk 时静默丢弃事件
+- **消息 ID 映射**：发送成功后 user 气泡同步映射为持久化 ID（saved 事件补发 `userMsgId`），避免后续操作引用临时 ID 错乱
+- **RAG 一致性**：知识库检索校验 embedding 模型与向量维度一致性，更换 embedding 模型后自动降级关键词匹配，杜绝伪相似度
+- **vision 按钮状态**：切换模型后图片上传入口未跟随能力标签更新（stale ref）
+- **错误路径保留内容**：流式中断时已生成的部分回答仍保存落库
+- **用量统计卡片**：修复统计卡片高度不一致
+
+---
+
 ## v0.97.0 - 2026-07-17
 
 ### Added
