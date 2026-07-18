@@ -194,6 +194,7 @@ export default function AiFeedbackPage() {
     {
       title: 'AI 回复内容',
       dataIndex: 'content',
+      width: 260,
       render: (v: string) => (
         <Text ellipsis={{ showTooltip: { opts: { style: { maxWidth: 600 } } } }} style={{ fontSize: 13 }}>
           {v}

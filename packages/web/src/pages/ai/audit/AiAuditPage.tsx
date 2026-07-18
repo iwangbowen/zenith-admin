@@ -115,6 +115,7 @@ export default function AiAuditPage() {
     {
       title: '消息内容',
       dataIndex: 'content',
+      width: 320,
       render: (v: string) => (
         <Text ellipsis={{ showTooltip: { opts: { style: { maxWidth: 600 } } } }} style={{ fontSize: 13 }}>{v}</Text>
       ),
