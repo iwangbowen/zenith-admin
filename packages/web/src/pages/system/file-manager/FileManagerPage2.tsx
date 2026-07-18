@@ -1268,7 +1268,7 @@ export default function FileManagerPage() {
     ] satisfies ColumnProps<FsEntry>[]),
     createOperationColumn<FsEntry>({
       width: 170,
-      desktopInlineKeys: ['open', 'preview', 'edit', 'download'],
+      desktopInlineKeys: ['open', 'preview', 'edit'],
       actions: (record) => [
         ...(record.type === 'dir'
           ? [{
