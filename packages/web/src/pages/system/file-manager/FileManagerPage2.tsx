@@ -2,7 +2,7 @@
  * 服务器文件管理器 — 干净版（所有 lint 问题已修复）
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import {
   Button, Input, Space, Tooltip, Modal, Toast,
@@ -14,7 +14,7 @@ import {
   Search, RotateCcw, LayoutGrid, List as ListIcon,
   FolderPlus, FilePlus, Upload as UploadIcon,
   Trash2, Copy, Scissors, Archive, Home,
-  FolderOpen,
+  FolderOpen, UploadCloud, Pencil,
   Eye, EyeOff, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { request } from '@/utils/request';
@@ -28,6 +28,7 @@ import FilePreviewModal from '@/components/FilePreviewModal';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import AppModal from '@/components/AppModal';
 import { getFileIcon, getFolderIcon } from '@/utils/fileIcons';
+import EditorTab from '../terminal/EditorTab';
 import {
   useDeleteTerminalEntries,
   useTerminalFileList,
@@ -53,6 +54,30 @@ interface FsEntry {
 
 type ViewMode = 'list' | 'grid';
 type ClipOp = 'copy' | 'cut';
+
+/** 列表排序状态（null = 默认：文件夹优先 + 名称升序） */
+type SortField = 'name' | 'size' | 'mtime';
+interface SortState { field: SortField; order: 'ascend' | 'descend' }
+
+/** 可在线编辑的文本类扩展名（无扩展名文件如 Dockerfile/.env 亦允许） */
+const EDITABLE_EXTS = new Set([
+  'txt', 'md', 'markdown', 'json', 'jsonc', 'json5', 'yaml', 'yml', 'xml', 'html', 'htm', 'css', 'scss', 'less',
+  'js', 'mjs', 'cjs', 'jsx', 'ts', 'tsx', 'vue', 'svelte', 'py', 'rb', 'php', 'go', 'rs', 'java', 'kt', 'c', 'h',
+  'cpp', 'hpp', 'cs', 'sh', 'bash', 'zsh', 'ps1', 'psm1', 'bat', 'cmd', 'sql', 'ini', 'cfg', 'conf', 'config',
+  'env', 'toml', 'properties', 'log', 'csv', 'tsv', 'svg', 'graphql', 'prisma', 'dockerfile', 'gitignore',
+  'editorconfig', 'lock', 'txt~',
+]);
+
+/** 判断文件是否可在线编辑（文本类扩展名或无扩展名的常见配置文件） */
+function isEditableFile(name: string): boolean {
+  const lower = name.toLowerCase();
+  const dot = lower.lastIndexOf('.');
+  if (dot < 0) return true; // Dockerfile / Makefile / LICENSE 等无扩展名文件
+  const ext = lower.slice(dot + 1);
+  if (EDITABLE_EXTS.has(ext)) return true;
+  // .env / .gitignore 等点开头文件
+  return dot === 0;
+}
 
 function buildBreadcrumbs(p: string): { label: string; path: string }[] {
   if (!p || p === '/') return [{ label: '/', path: '/' }];
@@ -482,11 +507,17 @@ export default function FileManagerPage() {
   // ── 隐藏文件 & 属性面板 ────────────────────────────────────────────────────
   const [showHidden, setShowHidden] = useState(false);
   const [propsEntry, setPropsEntry] = useState<FsEntry | null>(null);
+  // ── 排序 / 在线编辑 / 拖拽上传 ─────────────────────────────────────────────
+  const [sortState, setSortState] = useState<SortState | null>(null);
+  const [editorEntry, setEditorEntry] = useState<FsEntry | null>(null);
+  const editorDirtyRef = useRef(false);
+  const [dragOver, setDragOver] = useState(false);
+  const dragDepthRef = useRef(0);
   const [propsChecksum, setPropsChecksum] = useState<{ algo: 'md5' | 'sha1' | 'sha256'; hash: string; loading: boolean } | null>(null);
   const rootInfoQuery = useTerminalRootInfo();
   const rootInfo = rootInfoQuery.data ?? null;
   const listQuery = useTerminalFileList(currentPath, currentPath !== '');
-  const entries = listQuery.data?.entries ?? [];
+  const entries = useMemo(() => listQuery.data?.entries ?? [], [listQuery.data]);
   const loading = rootInfoQuery.isFetching || listQuery.isFetching;
   const fileOperationMutation = useTerminalFileOperation();
   const deleteEntriesMutation = useDeleteTerminalEntries();
@@ -569,6 +600,13 @@ export default function FileManagerPage() {
     await navigateTo(h.paths[newIndex], false);
   }, [navigateTo]);
 
+  /** 返回上级目录（Backspace 快捷键 / 面包屑倒数第二段） */
+  const goUp = useCallback(() => {
+    const crumbs = currentPath ? buildBreadcrumbs(currentPath) : [];
+    if (crumbs.length < 2) return;
+    void navigateTo(crumbs[crumbs.length - 2].path);
+  }, [currentPath, navigateTo]);
+
   const fetchPropsChecksum = useCallback(async (entry: FsEntry, algo: 'md5' | 'sha1' | 'sha256') => {
     setPropsChecksum({ algo, hash: '', loading: true });
     try {
@@ -579,11 +617,26 @@ export default function FileManagerPage() {
     }
   }, [checksumMutateAsync]);
 
-  // ── 过滤 + 侧栏 ───────────────────────────────────────────────────────────
+  // ── 过滤 + 排序 + 侧栏 ────────────────────────────────────────────────────
 
-  const filteredEntries = entries
-    .filter((e) => showHidden || !e.name.startsWith('.'))
-    .filter((e) => !keyword || e.name.toLowerCase().includes(keyword.toLowerCase()));
+  const filteredEntries = useMemo(() => {
+    const base = entries
+      .filter((e) => showHidden || !e.name.startsWith('.'))
+      .filter((e) => !keyword || e.name.toLowerCase().includes(keyword.toLowerCase()));
+    // 始终文件夹优先；组内按排序状态（默认名称升序）
+    const dirWeight = (e: FsEntry) => (e.type === 'dir' ? 0 : 1);
+    const collator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' });
+    const cmp = (a: FsEntry, b: FsEntry): number => {
+      const dw = dirWeight(a) - dirWeight(b);
+      if (dw !== 0) return dw;
+      const field = sortState?.field ?? 'name';
+      const dir = sortState?.order === 'descend' ? -1 : 1;
+      if (field === 'size') return (a.size - b.size) * dir || collator.compare(a.name, b.name);
+      if (field === 'mtime') return a.mtime.localeCompare(b.mtime) * dir || collator.compare(a.name, b.name);
+      return collator.compare(a.name, b.name) * dir;
+    };
+    return [...base].sort(cmp);
+  }, [entries, showHidden, keyword, sortState]);
 
   const sidebarDirs = entries.filter((e) => e.type === 'dir');
 
@@ -759,14 +812,12 @@ export default function FileManagerPage() {
 
   // ── 上传 ─────────────────────────────────────────────────────────────────
 
-  const handleUploadChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
-    if (!files.length) return;
-    const dir = ctxUploadDirRef.current || currentPath;
+  /** 上传一组文件到指定目录（工具栏选择 / 右键菜单 / 拖拽共用） */
+  const uploadFiles = useCallback((files: File[], dir: string) => {
+    if (!files.length || !dir) return;
     setUploading(files.map((f) => ({ name: f.name, progress: 0 })));
-
     const makeProgressHandler = (i: number) => (pct: number) => setUploading((prev) => updateUploadPct(prev, i, pct));
-    Promise.allSettled(
+    void Promise.allSettled(
       files.map((f, i) => {
         const formData = new FormData();
         formData.append('path', dir);
@@ -775,11 +826,46 @@ export default function FileManagerPage() {
       }),
     ).then((results) => {
       const success = results.filter((r) => r.status === 'fulfilled').length;
-      Toast.success(`已上传 ${success}/${files.length} 个文件`);
+      if (success === files.length) Toast.success(`已上传 ${success} 个文件`);
+      else Toast.warning(`已上传 ${success}/${files.length} 个文件，${files.length - success} 个失败`);
       setUploading([]);
     });
+  }, [uploadTerminalFileMutation]);
+
+  const handleUploadChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    uploadFiles(files, ctxUploadDirRef.current || currentPath);
     e.target.value = '';
   };
+
+  // ── 拖拽上传（从桌面拖入内容区） ──────────────────────────────────────────
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    dragDepthRef.current += 1;
+    setDragOver(true);
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    dragDepthRef.current = 0;
+    setDragOver(false);
+    const files = Array.from(e.dataTransfer.files ?? []);
+    uploadFiles(files, currentPath);
+  }, [uploadFiles, currentPath]);
 
   // ── 上下文菜单 ────────────────────────────────────────────────────────────
 
@@ -830,6 +916,7 @@ export default function FileManagerPage() {
         },
       },
       ...(isFile ? [{ label: '预览', fn: () => { void handlePreview(entry); closeCtxMenu(); } }] : []),
+      ...(isFile && isEditableFile(entry.name) ? [{ label: '编辑', fn: () => { setEditorEntry(entry); closeCtxMenu(); } }] : []),
       { label: '重命名', fn: () => { setDialog({ mode: 'rename', entry, value: entry.name }); closeCtxMenu(); } },
       { label: '复制到…', fn: () => { setFolderPicker({ mode: 'copy', entries: [entry] }); closeCtxMenu(); } },
       { label: '移动到…', fn: () => { setFolderPicker({ mode: 'move', entries: [entry] }); closeCtxMenu(); } },
@@ -844,12 +931,83 @@ export default function FileManagerPage() {
     return items;
   };
 
+  // ── 键盘快捷键 ────────────────────────────────────────────────────────────
+  // Ctrl+A 全选 / Ctrl+C 复制 / Ctrl+X 剪切 / Ctrl+V 粘贴 / Delete 删除 /
+  // F2 重命名 / Enter 打开 / Backspace 上级目录 / Esc 清除选择
+
+  const anyOverlayOpen = !!(dialog || folderPicker || propsEntry || preview || previewVisible || checksum || ctxEntry || searchResults || editorEntry);
+
+  const shortcutCtxRef = useRef({
+    selectedPaths, filteredEntries, clipboard, anyOverlayOpen, currentPath,
+  });
+  shortcutCtxRef.current = { selectedPaths, filteredEntries, clipboard, anyOverlayOpen, currentPath };
+
+  // 处理函数经 ref 转发，keydown 监听只绑定一次
+  const shortcutHandlersRef = useRef({ handlePaste, handleDelete, handlePreview, navigateTo, goUp });
+  shortcutHandlersRef.current = { handlePaste, handleDelete, handlePreview, navigateTo, goUp };
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const ctx = shortcutCtxRef.current;
+      const fns = shortcutHandlersRef.current;
+      if (ctx.anyOverlayOpen) return;
+      // 焦点在输入框 / 富文本时不拦截
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || target?.isContentEditable) return;
+
+      const selEntries = ctx.filteredEntries.filter((en) => ctx.selectedPaths.has(en.path));
+      const mod = e.ctrlKey || e.metaKey;
+
+      if (mod && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        setSelectedPaths(new Set(ctx.filteredEntries.map((en) => en.path)));
+      } else if (mod && e.key.toLowerCase() === 'c' && selEntries.length > 0) {
+        e.preventDefault();
+        setClipboard({ paths: selEntries.map((en) => en.path), op: 'copy' });
+        Toast.info({ content: `已复制 ${selEntries.length} 项`, duration: 1 });
+      } else if (mod && e.key.toLowerCase() === 'x' && selEntries.length > 0) {
+        e.preventDefault();
+        setClipboard({ paths: selEntries.map((en) => en.path), op: 'cut' });
+        Toast.info({ content: `已剪切 ${selEntries.length} 项`, duration: 1 });
+      } else if (mod && e.key.toLowerCase() === 'v' && ctx.clipboard) {
+        e.preventDefault();
+        void fns.handlePaste();
+      } else if (e.key === 'Delete' && selEntries.length > 0) {
+        e.preventDefault();
+        Modal.confirm({
+          title: `确定删除选中的 ${selEntries.length} 项吗？`,
+          content: selEntries.slice(0, 5).map((en) => en.name).join('、') + (selEntries.length > 5 ? ` 等 ${selEntries.length} 项` : ''),
+          okButtonProps: { type: 'danger', theme: 'solid' },
+          onOk: () => fns.handleDelete(selEntries.map((en) => en.path)),
+        });
+      } else if (e.key === 'F2' && selEntries.length === 1) {
+        e.preventDefault();
+        setDialog({ mode: 'rename', entry: selEntries[0], value: selEntries[0].name });
+      } else if (e.key === 'Enter' && selEntries.length === 1) {
+        e.preventDefault();
+        const en = selEntries[0];
+        if (en.type === 'dir') void fns.navigateTo(en.path);
+        else void fns.handlePreview(en);
+      } else if (e.key === 'Backspace') {
+        e.preventDefault();
+        fns.goUp();
+      } else if (e.key === 'Escape') {
+        setSelectedPaths(new Set());
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   // ── 表格列 ────────────────────────────────────────────────────────────────
 
   const columns: ColumnProps<FsEntry>[] = [
     {
       title: '名称',
       dataIndex: 'name',
+      sorter: true,
+      sortOrder: sortState?.field === 'name' ? sortState.order : false,
       render: (v: string, r: FsEntry) => {
         const iconId = r.type === 'dir' ? getFolderIcon(v, false) : getFileIcon(v);
         const inner = (
@@ -876,14 +1034,14 @@ export default function FileManagerPage() {
         );
       },
     },
-    { title: '大小', dataIndex: 'size', width: 100, render: (v: number, r: FsEntry) => r.type === 'dir' ? '—' : formatSize(v) },
-    { title: '修改时间', dataIndex: 'mtime', width: 180 },
+    { title: '大小', dataIndex: 'size', width: 100, sorter: true, sortOrder: sortState?.field === 'size' ? sortState.order : false, render: (v: number, r: FsEntry) => r.type === 'dir' ? '—' : formatSize(v) },
+    { title: '修改时间', dataIndex: 'mtime', width: 180, sorter: true, sortOrder: sortState?.field === 'mtime' ? sortState.order : false },
     { title: '权限', dataIndex: 'permissions', width: 110, render: (v?: string) => v ? <Tag size="small" color="grey">{v}</Tag> : '—' },
     { title: 'UID', dataIndex: 'uid', width: 70, render: (v?: number) => v ?? '—' },
     { title: 'GID', dataIndex: 'gid', width: 70, render: (v?: number) => v ?? '—' },
     createOperationColumn<FsEntry>({
       width: 170,
-      desktopInlineKeys: ['open', 'preview', 'download'],
+      desktopInlineKeys: ['open', 'preview', 'edit', 'download'],
       actions: (record) => [
         ...(record.type === 'dir'
           ? [{
@@ -897,6 +1055,13 @@ export default function FileManagerPage() {
                 label: '预览',
                 onClick: () => { void handlePreview(record); },
               },
+              ...(isEditableFile(record.name)
+                ? [{
+                    key: 'edit',
+                    label: '编辑',
+                    onClick: () => setEditorEntry(record),
+                  }]
+                : []),
               {
                 key: 'download',
                 label: '下载',
@@ -970,7 +1135,8 @@ export default function FileManagerPage() {
     ? contentHeight - TABLE_OVERHEAD
     : undefined;
   const renderContent = () => {
-    if (loading) return <div className="fm-content__loading"><Spin size="large" /></div>;
+    // 仅首载（无任何数据）时整区 Spin；目录切换保留旧列表 + 顶部细进度条，避免闪白
+    if (loading && !listQuery.data) return <div className="fm-content__loading"><Spin size="large" /></div>;
     if (filteredEntries.length === 0) {
       return (
         <div className="fm-content__empty">
@@ -1006,6 +1172,14 @@ export default function FileManagerPage() {
         rowSelection={{
           selectedRowKeys: [...selectedPaths],
           onChange: (keys) => setSelectedPaths(new Set(keys as string[])),
+        }}
+        onChange={({ sorter }) => {
+          const s = sorter as { dataIndex?: string; sortOrder?: 'ascend' | 'descend' | false } | undefined;
+          if (s?.dataIndex && s.sortOrder) {
+            setSortState({ field: s.dataIndex as SortField, order: s.sortOrder });
+          } else {
+            setSortState(null);
+          }
         }}
         onRow={(r) => ({
           onContextMenu: r ? (e: React.MouseEvent) => openCtxMenu(e, r) : undefined,
@@ -1187,8 +1361,24 @@ export default function FileManagerPage() {
           </MasterDetailLayout.Header>
 
           <MasterDetailLayout.Body scroll="hidden" style={{ display: 'flex', flexDirection: 'column' }}>
-            <div className="fm-content" ref={contentRef}>
+            <div
+              className="fm-content"
+              ref={contentRef}
+              onDragEnter={handleDragEnter}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
+              {/* 目录切换中：顶部细进度条（保留旧列表，不闪白） */}
+              {loading && !!listQuery.data && <div className="fm-progress-line" />}
               {renderContent()}
+              {dragOver && (
+                <div className="fm-dropzone">
+                  <UploadCloud size={40} strokeWidth={1.5} />
+                  <Typography.Text strong>释放以上传到当前目录</Typography.Text>
+                  <Typography.Text type="tertiary" size="small">{currentPath}</Typography.Text>
+                </div>
+              )}
               {uploading.length > 0 && (
                 <div className="fm-upload-progress">
                   <Typography.Text size="small" strong>
@@ -1198,7 +1388,7 @@ export default function FileManagerPage() {
                     <div key={u.name} style={{ marginTop: 4 }}>
                       <Typography.Text size="small" ellipsis style={{ display: 'block' }}>{u.name}</Typography.Text>
                       <div className="fm-upload-bar">
-                        <div className="fm-upload-bar__fill" style={{ width: `${u.progress}%` }} />
+                        <div className="fm-upload-bar__fill" style={{ transform: `scaleX(${Math.min(100, u.progress) / 100})` }} />
                       </div>
                     </div>
                   ))}
@@ -1490,6 +1680,47 @@ export default function FileManagerPage() {
                 </div>
               );
             })()}
+          </SideSheet>
+          {/* ── 在线编辑抽屉（Monaco，Ctrl+S 保存） ── */}
+          <SideSheet
+            title={
+              editorEntry ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Pencil size={15} />
+                  <Typography.Text strong ellipsis={{ showTooltip: true }} style={{ maxWidth: 480 }}>
+                    编辑 — {editorEntry.name}
+                  </Typography.Text>
+                </div>
+              ) : '编辑'
+            }
+            visible={!!editorEntry}
+            onCancel={() => {
+              if (editorDirtyRef.current) {
+                Modal.confirm({
+                  title: '有未保存的修改',
+                  content: '关闭将丢弃未保存的内容（编辑器内 Ctrl+S 可保存），确定关闭吗？',
+                  okButtonProps: { type: 'danger', theme: 'solid' },
+                  okText: '丢弃并关闭',
+                  onOk: () => { editorDirtyRef.current = false; setEditorEntry(null); },
+                });
+                return;
+              }
+              setEditorEntry(null);
+            }}
+            width="72%"
+            style={{ maxWidth: 1100 }}
+            bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column' }}
+            closeOnEsc={false}
+          >
+            {editorEntry && (
+              <div style={{ flex: 1, minHeight: 0 }}>
+                <EditorTab
+                  filePath={editorEntry.path}
+                  active
+                  onDirtyChange={(d) => { editorDirtyRef.current = d; }}
+                />
+              </div>
+            )}
           </SideSheet>
         </>
       }

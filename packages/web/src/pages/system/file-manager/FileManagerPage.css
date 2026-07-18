@@ -126,6 +126,51 @@
   color: var(--semi-color-text-2);
 }
 
+/* ── 目录切换进度条（保留旧列表时的加载指示） ── */
+.fm-progress-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 10;
+  overflow: hidden;
+  background: var(--semi-color-fill-1);
+}
+
+.fm-progress-line::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 40%;
+  background: var(--semi-color-primary);
+  animation: fm-progress-slide 1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes fm-progress-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
+/* ── 拖拽上传遮罩 ── */
+.fm-dropzone {
+  position: absolute;
+  inset: 8px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 2px dashed var(--semi-color-primary);
+  border-radius: var(--semi-border-radius-large);
+  background: color-mix(in srgb, var(--semi-color-primary) 8%, var(--semi-color-bg-1) 92%);
+  color: var(--semi-color-primary);
+  pointer-events: none;
+}
+
 /* ── 网格视图 ── */
 .fm-grid {
   display: grid;
@@ -214,7 +259,9 @@
 
 .fm-upload-bar__fill {
   height: 100%;
+  width: 100%;
   background: var(--semi-color-primary);
   border-radius: var(--semi-border-radius-small);
-  transition: width 0.2s ease;
+  transform-origin: left;
+  transition: transform 0.2s ease;
 }
