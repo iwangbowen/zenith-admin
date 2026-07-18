@@ -46,7 +46,7 @@ export function useAiConversationMessages(id: number | null | undefined) {
 export function useCreateAiConversation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (values: { title: string }) => request.post<AiConversation>('/api/ai/conversations', values).then(unwrap),
+    mutationFn: (values: { title: string; agentId?: number }) => request.post<AiConversation>('/api/ai/conversations', values).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: aiConversationKeys.all }),
   });
 }

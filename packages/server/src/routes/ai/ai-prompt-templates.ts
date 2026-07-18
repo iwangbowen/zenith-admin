@@ -12,7 +12,7 @@ import {
   okBody,
   PaginationQuery,
 } from '../../lib/openapi-schemas';
-import { AiPromptTemplateDTO } from '../../lib/openapi-dtos';
+import { AiPromptTemplateDTO, AiPromptTemplateVersionDTO } from '../../lib/openapi-dtos';
 import {
   listPromptTemplates,
   listChatPromptTemplates,
@@ -21,6 +21,8 @@ import {
   updatePromptTemplate,
   deletePromptTemplate,
   incrementPromptUsage,
+  listPromptTemplateVersions,
+  restorePromptTemplateVersion,
 } from '../../services/ai/ai-prompt-templates.service';
 import { createAiPromptTemplateSchema, updateAiPromptTemplateSchema } from '@zenith/shared';
 
@@ -145,6 +147,40 @@ const remove = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([list, available, use, getOne, create, update, remove] as const);
+const versions = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get',
+    path: '/{id}/versions',
+    tags: ['AI'],
+    summary: '获取提示词模板历史版本列表',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'ai:prompt:list' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(z.array(AiPromptTemplateVersionDTO), '历史版本列表') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    return c.json(okBody(await listPromptTemplateVersions(id)), 200);
+  },
+});
+
+const restoreVersion = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post',
+    path: '/{id}/versions/{versionId}/restore',
+    tags: ['AI'],
+    summary: '恢复到指定历史版本（当前内容自动留档）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'ai:prompt:edit', audit: { description: '恢复提示词模板版本', module: '智能助手' } })] as const,
+    request: { params: z.object({ id: z.coerce.number(), versionId: z.coerce.number() }) },
+    responses: { ...commonErrorResponses, ...ok(AiPromptTemplateDTO, '恢复成功') },
+  }),
+  handler: async (c) => {
+    const { id, versionId } = c.req.valid('param');
+    return c.json(okBody(await restorePromptTemplateVersion(id, versionId), '已恢复到历史版本'), 200);
+  },
+});
+
+router.openapiRoutes([list, available, use, getOne, versions, restoreVersion, create, update, remove] as const);
 
 export default router;

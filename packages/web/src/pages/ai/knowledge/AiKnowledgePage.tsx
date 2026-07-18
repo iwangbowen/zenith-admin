@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Button, Form, Input, Modal, SideSheet, Tag, Toast, Typography, Upload } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Plus, RotateCcw, Search, FileUp } from 'lucide-react';
+import { Plus, RotateCcw, Search, FileUp, Globe } from 'lucide-react';
 import type { AiKnowledgeBase, AiKbDocument } from '@zenith/shared';
 import { AppModal } from '@/components/AppModal';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
@@ -18,6 +18,7 @@ import {
   useAiKbDocuments,
   useAddAiKbDocument,
   useDeleteAiKbDocument,
+  useImportAiKbUrl,
 } from '@/hooks/queries/ai-extras';
 
 const { Text } = Typography;
@@ -36,8 +37,10 @@ export default function AiKnowledgePage() {
   const [editing, setEditing] = useState<AiKnowledgeBase | null>(null);
   const [docsKb, setDocsKb] = useState<AiKnowledgeBase | null>(null);
   const [docModalVisible, setDocModalVisible] = useState(false);
+  const [urlModalVisible, setUrlModalVisible] = useState(false);
   const kbFormApi = useRef<FormApi | null>(null);
   const docFormApi = useRef<FormApi | null>(null);
+  const urlFormApi = useRef<FormApi | null>(null);
 
   const listQuery = useAiKnowledgeBases();
   const list = (listQuery.data ?? []).filter(
@@ -47,6 +50,7 @@ export default function AiKnowledgePage() {
   const deleteMutation = useDeleteAiKnowledgeBase();
   const docsQuery = useAiKbDocuments(docsKb?.id ?? null);
   const addDocMutation = useAddAiKbDocument();
+  const importUrlMutation = useImportAiKbUrl();
   const deleteDocMutation = useDeleteAiKbDocument();
 
   async function handleKbOk() {
@@ -76,6 +80,19 @@ export default function AiKnowledgePage() {
     await addDocMutation.mutateAsync({ kbId: docsKb.id, values: { name: values.name.trim(), content: values.content } });
     Toast.success('文档已入库');
     setDocModalVisible(false);
+  }
+
+  async function handleImportUrl() {
+    if (!docsKb) return;
+    let values: { url: string; name?: string };
+    try {
+      values = (await urlFormApi.current?.validate()) as { url: string; name?: string };
+    } catch {
+      throw new Error('validation');
+    }
+    await importUrlMutation.mutateAsync({ kbId: docsKb.id, values: { url: values.url.trim(), name: values.name?.trim() || undefined } });
+    Toast.success('网页已入库');
+    setUrlModalVisible(false);
   }
 
   /** 读取上传的 txt/md 文件填充表单 */
@@ -249,14 +266,19 @@ export default function AiKnowledgePage() {
         </Form>
       </AppModal>
 
-      <SideSheet
+        <SideSheet
         title={
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingRight: 8 }}>
             <span>文档管理 — {docsKb?.name}</span>
             {hasPermission('ai:kb:edit') && (
-              <Button type="primary" size="small" icon={<Plus size={13} />} onClick={() => setDocModalVisible(true)}>
-                添加文档
-              </Button>
+              <span style={{ display: 'inline-flex', gap: 8 }}>
+                <Button size="small" icon={<Globe size={13} />} onClick={() => setUrlModalVisible(true)}>
+                  导入网页
+                </Button>
+                <Button type="primary" size="small" icon={<Plus size={13} />} onClick={() => setDocModalVisible(true)}>
+                  添加文档
+                </Button>
+              </span>
             )}
           </div>
         }
@@ -316,6 +338,36 @@ export default function AiKnowledgePage() {
             placeholder="粘贴文档纯文本内容（最长 50 万字符），入库时自动按段落分块"
             rules={[{ required: true, message: '请输入内容' }]}
           />
+        </Form>
+      </AppModal>
+
+      <AppModal
+        title="从 URL 导入网页"
+        visible={urlModalVisible}
+        onOk={handleImportUrl}
+        onCancel={() => setUrlModalVisible(false)}
+        okButtonProps={{ loading: importUrlMutation.isPending }}
+        width={520}
+        closeOnEsc
+      >
+        <Form
+          key={`url-${docsKb?.id ?? 0}`}
+          getFormApi={(api) => { urlFormApi.current = api; }}
+          labelPosition="top"
+        >
+          <Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 8 }}>
+            抓取网页正文（自动去除脚本/导航等噪音）入库分块；仅支持公网可访问的网页/文本链接
+          </Text>
+          <Form.Input
+            field="url"
+            label="网页 URL"
+            placeholder="https://example.com/docs/guide"
+            rules={[
+              { required: true, message: '请输入 URL' },
+              { pattern: /^https?:\/\/.+/i, message: '请输入合法的 http(s) 链接' },
+            ]}
+          />
+          <Form.Input field="name" label="文档名称" placeholder="留空取网页标题" maxLength={200} />
         </Form>
       </AppModal>
     </div>

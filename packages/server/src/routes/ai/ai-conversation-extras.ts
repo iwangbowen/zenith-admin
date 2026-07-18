@@ -4,7 +4,9 @@ import { jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam, 
 import { AiConversationShareDTO } from '../../lib/openapi-dtos';
 import { shareConversation, getConversationShare, revokeConversationShare } from '../../services/ai/ai-share.service';
 import { setConversationKnowledgeBase } from '../../services/ai/ai-knowledge.service';
-import { shareAiConversationSchema } from '@zenith/shared';
+import { updateConversationTags, switchConversationBranch, ensureConversationOwner } from '../../services/ai/ai-conversations.service';
+import { getActiveGeneration } from '../../lib/ai/generation-buffer';
+import { shareAiConversationSchema, updateAiConversationTagsSchema, setAiActiveLeafSchema } from '@zenith/shared';
 
 /** 挂载在 /api/ai/conversations 下的扩展能力：分享管理 + 知识库挂载 */
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -86,6 +88,68 @@ const setKb = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([createShare, getShare, revokeShare, setKb] as const);
+const setTags = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put',
+    path: '/{id}/tags',
+    tags: ['AI'],
+    summary: '更新对话标签',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: {
+      params: IdParam,
+      body: { content: jsonContent(updateAiConversationTagsSchema), required: true },
+    },
+    responses: { ...commonErrorResponses, ...ok(z.object({ tags: z.array(z.string()) }), '更新成功') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const { tags } = c.req.valid('json');
+    return c.json(okBody({ tags: await updateConversationTags(id, tags) }, '标签已更新'), 200);
+  },
+});
+
+const switchBranch = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put',
+    path: '/{id}/active-branch',
+    tags: ['AI'],
+    summary: '切换消息分支（以指定消息为起点沿最新子分支下探到叶子并激活）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: {
+      params: IdParam,
+      body: { content: jsonContent(setAiActiveLeafSchema), required: true },
+    },
+    responses: { ...commonErrorResponses, ...ok(z.object({ activeLeafMsgId: z.number() }), '切换成功') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const { leafMsgId } = c.req.valid('json');
+    const activeLeafMsgId = await switchConversationBranch(id, leafMsgId);
+    return c.json(okBody({ activeLeafMsgId }), 200);
+  },
+});
+
+const activeGeneration = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get',
+    path: '/{id}/active-generation',
+    tags: ['AI'],
+    summary: '查询对话进行中的生成任务（刷新后续传入口）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(z.object({ genId: z.string().nullable() }), '进行中的生成任务') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    await ensureConversationOwner(id);
+    const genId = await getActiveGeneration(id);
+    return c.json(okBody({ genId }), 200);
+  },
+});
+
+router.openapiRoutes([createShare, getShare, revokeShare, setKb, setTags, switchBranch, activeGeneration] as const);
 
 export default router;

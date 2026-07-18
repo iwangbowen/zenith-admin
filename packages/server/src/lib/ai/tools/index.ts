@@ -1,9 +1,14 @@
 import { db } from '../../../db';
-import { users, aiConversations } from '../../../db/schema';
+import { users, aiConversations, aiHttpTools } from '../../../db/schema';
+import { eq } from 'drizzle-orm';
 import dayjs from 'dayjs';
 import { currentUser } from '../../context';
 import { getDailyTokensUsed } from '../quota';
-import { getConfigNumber } from '../../system-config';
+import { getConfigNumber, getConfigValue } from '../../system-config';
+import { httpRequest } from '../../http-client';
+import { AI_SSRF_OPTIONS } from '../outbound';
+import logger from '../../logger';
+import type { AiHttpToolRow } from '../../../db/schema';
 import type { ChatToolCall } from '../adapters/openai-compatible';
 
 /** 工具执行上下文 */
@@ -60,18 +65,111 @@ const getSystemOverview: AiTool = {
 /** 内置工具注册表（后续企业工具在此扩展） */
 const REGISTRY: AiTool[] = [getCurrentTime, getMyAiUsage, getSystemOverview];
 
-/** OpenAI tools 参数格式 */
-export function getOpenAiToolDefs(): unknown[] {
-  return REGISTRY.map((t) => ({
-    type: 'function',
-    function: { name: t.name, description: t.description, parameters: t.parameters },
-  }));
+// ─── HTTP API 工具（管理员配置，动态注入） ────────────────────────────────────
+
+/** 工具执行返回结果截断上限（喂回模型，防 token 爆炸） */
+const HTTP_TOOL_RESULT_MAX = 4000;
+const HTTP_TOOL_TIMEOUT_MS = 10_000;
+
+function httpToolToJsonSchema(tool: AiHttpToolRow): Record<string, unknown> {
+  const properties: Record<string, unknown> = {};
+  const required: string[] = [];
+  for (const p of tool.params ?? []) {
+    properties[p.name] = { type: p.type, description: p.description };
+    if (p.required) required.push(p.name);
+  }
+  return { type: 'object', properties, required };
+}
+
+/** 执行 HTTP 工具：参数按 location 组装到 path/query/body，走 SSRF 防护出站 */
+async function executeHttpTool(tool: AiHttpToolRow, args: Record<string, unknown>): Promise<string> {
+  let url = tool.urlTemplate;
+  const query = new URLSearchParams();
+  const body: Record<string, unknown> = {};
+  for (const p of tool.params ?? []) {
+    const value = args[p.name];
+    if (value === undefined || value === null) {
+      if (p.required) return JSON.stringify({ error: `缺少必填参数：${p.name}` });
+      continue;
+    }
+    if (p.location === 'path') {
+      url = url.replaceAll(`{${p.name}}`, encodeURIComponent(String(value)));
+    } else if (p.location === 'query') {
+      query.set(p.name, String(value));
+    } else {
+      body[p.name] = value;
+    }
+  }
+  if ([...query.keys()].length > 0) {
+    url += (url.includes('?') ? '&' : '?') + query.toString();
+  }
+  const method = tool.method.toUpperCase();
+  const res = await httpRequest(url, {
+    method,
+    headers: { ...(tool.headers ?? {}), ...(method !== 'GET' ? { 'Content-Type': 'application/json' } : {}) },
+    body: method !== 'GET' && Object.keys(body).length > 0 ? JSON.stringify(body) : undefined,
+    timeout: HTTP_TOOL_TIMEOUT_MS,
+    ...AI_SSRF_OPTIONS,
+  });
+  const text = (await res.text()).slice(0, HTTP_TOOL_RESULT_MAX);
+  if (!res.ok) return JSON.stringify({ error: `HTTP ${res.status}`, body: text });
+  return text || JSON.stringify({ status: res.status });
+}
+
+async function loadEnabledHttpTools(): Promise<AiHttpToolRow[]> {
+  try {
+    return await db.select().from(aiHttpTools).where(eq(aiHttpTools.isEnabled, true));
+  } catch (err) {
+    logger.warn('[ai-tools] load http tools failed', err);
+    return [];
+  }
+}
+
+// ─── 图片生成工具（可选内置，依赖 ai_image_model 系统配置） ──────────────────
+
+const generateImage: AiTool = {
+  name: 'generate_image',
+  description: '根据文字描述生成一张图片，返回可直接展示的图片 URL。用户要求画图/生成图片/配图时调用',
+  parameters: {
+    type: 'object',
+    properties: { prompt: { type: 'string', description: '图片内容的英文描述（详细、具体）' } },
+    required: ['prompt'],
+  },
+  execute: async (args) => {
+    const { generateImageViaProvider } = await import('../image-gen');
+    const url = await generateImageViaProvider(String(args.prompt ?? ''));
+    return JSON.stringify({ imageUrl: url, note: '请用 Markdown 图片语法 ![描述](URL) 在回答中展示该图片' });
+  },
+};
+
+/** 工具选择器视图（内置 + HTTP 工具），智能体编辑器勾选用 */
+export async function listAvailableTools(): Promise<Array<{ name: string; description: string; source: 'builtin' | 'http' }>> {
+  const imageModel = (await getConfigValue('ai_image_model', '')).trim();
+  const builtins = [...REGISTRY, ...(imageModel ? [generateImage] : [])]
+    .map((t) => ({ name: t.name, description: t.description, source: 'builtin' as const }));
+  const httpTools = (await loadEnabledHttpTools()).map((t) => ({ name: t.name, description: t.description, source: 'http' as const }));
+  return [...builtins, ...httpTools];
+}
+
+/**
+ * OpenAI tools 参数格式（内置 + 启用的 HTTP 工具）。
+ * filter 提供时（智能体工具白名单）仅保留名单内工具；undefined = 全部。
+ */
+export async function getOpenAiToolDefs(filter?: string[] | null): Promise<unknown[]> {
+  const imageModel = (await getConfigValue('ai_image_model', '')).trim();
+  const builtin = [...REGISTRY, ...(imageModel ? [generateImage] : [])];
+  const httpTools = await loadEnabledHttpTools();
+  const all = [
+    ...builtin.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } })),
+    ...httpTools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: httpToolToJsonSchema(t) } })),
+  ];
+  if (!filter) return all;
+  const allowed = new Set(filter);
+  return all.filter((d) => allowed.has((d as { function: { name: string } }).function.name));
 }
 
 /** 执行一个工具调用，返回字符串结果（异常转为错误 JSON，喂回给模型） */
 export async function executeToolCall(call: ChatToolCall): Promise<string> {
-  const tool = REGISTRY.find((t) => t.name === call.function.name);
-  if (!tool) return JSON.stringify({ error: `未知工具：${call.function.name}` });
   let args: Record<string, unknown> = {};
   try {
     if (call.function.arguments?.trim()) args = JSON.parse(call.function.arguments) as Record<string, unknown>;
@@ -79,8 +177,17 @@ export async function executeToolCall(call: ChatToolCall): Promise<string> {
     return JSON.stringify({ error: '工具参数不是合法 JSON' });
   }
   try {
-    const user = currentUser();
-    return await tool.execute(args, { userId: user.userId });
+    const name = call.function.name;
+    const builtin = name === 'generate_image' ? generateImage : REGISTRY.find((t) => t.name === name);
+    if (builtin) {
+      const user = currentUser();
+      return await builtin.execute(args, { userId: user.userId });
+    }
+    const [httpTool] = await db.select().from(aiHttpTools).where(eq(aiHttpTools.name, name));
+    if (httpTool && httpTool.isEnabled) {
+      return await executeHttpTool(httpTool, args);
+    }
+    return JSON.stringify({ error: `未知工具：${name}` });
   } catch (err) {
     return JSON.stringify({ error: err instanceof Error ? err.message : '工具执行失败' });
   }

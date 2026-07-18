@@ -62,6 +62,7 @@ export default function AiAuditPage() {
   const [submitted, setSubmitted] = useState({ keyword: '', role: '', startDate: '', endDate: '' });
   const { page, pageSize, setPage, buildPagination } = usePagination();
   const [contextMsgId, setContextMsgId] = useState<number | null>(null);
+  const [traceMsg, setTraceMsg] = useState<AiFeedbackItem | null>(null);
   const listQuery = useAuditList({
     page,
     pageSize,
@@ -135,10 +136,16 @@ export default function AiAuditPage() {
       render: (v: string) => <span style={{ whiteSpace: 'nowrap' }}>{formatDateTime(v)}</span>,
     },
     createOperationColumn<AiFeedbackItem>({
-      width: 90,
-      desktopInlineKeys: ['context'],
+      width: 130,
+      desktopInlineKeys: ['context', 'trace'],
       actions: (record) => [
         { key: 'context', label: '上下文', onClick: () => setContextMsgId(record.id) },
+        {
+          key: 'trace',
+          label: 'Trace',
+          hidden: record.role !== 'assistant' || !record.trace?.length,
+          onClick: () => setTraceMsg(record),
+        },
       ],
     }),
   ];
@@ -255,6 +262,46 @@ export default function AiAuditPage() {
             })}
           </div>
         )}
+      </AppModal>
+      <AppModal
+        title="生成调用链 Trace"
+        visible={traceMsg !== null}
+        onCancel={() => setTraceMsg(null)}
+        footer={null}
+        width={560}
+        closeOnEsc
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {(traceMsg?.trace ?? []).map((step, i) => {
+            const colors: Record<string, string> = {
+              retrieval: 'var(--semi-color-info)',
+              tool_call: 'var(--semi-color-warning)',
+              llm_round: 'var(--semi-color-primary)',
+              failover: 'var(--semi-color-danger)',
+            };
+            return (
+              <div key={`${step.type}-${i}`} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', marginTop: 6, flexShrink: 0, background: colors[step.type] ?? 'var(--semi-color-text-3)' }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                    <Text strong style={{ fontSize: 13 }}>{step.label}</Text>
+                    <Text type="tertiary" style={{ fontSize: 12, flexShrink: 0 }}>{step.durationMs} ms</Text>
+                  </div>
+                  {step.meta && (
+                    <Text type="tertiary" style={{ fontSize: 12, wordBreak: 'break-all' }}>
+                      {Object.entries(step.meta).map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`).join(' · ')}
+                    </Text>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {traceMsg && (
+            <Text type="tertiary" style={{ fontSize: 12, marginTop: 4 }}>
+              总耗时 {traceMsg.durationMs ?? '—'} ms · 首字延迟 {traceMsg.ttftMs ?? '—'} ms · Token {traceMsg.tokensInput}+{traceMsg.tokensOutput}
+            </Text>
+          )}
+        </div>
       </AppModal>
     </div>
   );

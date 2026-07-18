@@ -7,6 +7,7 @@ import { buildPreferencePrompt } from './ai-preferences.service';
 import { streamChat } from '../../lib/ai/factory';
 import { chatOnceOpenAICompatible } from '../../lib/ai/adapters/openai-compatible';
 import { getOpenAiToolDefs, executeToolCall } from '../../lib/ai/tools';
+import { acquireProviderSlot } from '../../lib/ai/reliability';
 import { updateConversationTitle } from './ai-conversations.service';
 import logger from '../../lib/logger';
 import type { StreamChatConfig, ChatMessage, ChatToolCall, StreamChunk } from '../../lib/ai/factory';
@@ -19,6 +20,10 @@ type ResolvedStreamConfig = {
   provider: AiProvider;
   capabilities: AiModelCapabilities | null;
   snapshot: { provider: string; model: string; configId?: number };
+  /** 主备切换降级配置 ID */
+  fallbackConfigId?: number | null;
+  /** 并发流上限 */
+  maxConcurrent?: number | null;
 };
 
 /** 校验 modelOverride 属于该配置声明的模型集合，返回最终生效模型 */
@@ -42,6 +47,8 @@ async function resolveStreamConfig(modelOverride?: string): Promise<ResolvedStre
   return {
     provider: sysCfg.provider,
     capabilities: sysCfg.capabilities ?? null,
+    fallbackConfigId: sysCfg.fallbackConfigId,
+    maxConcurrent: sysCfg.maxConcurrent,
     config: {
       baseUrl: sysCfg.baseUrl,
       apiKey: sysCfg.apiKey,
@@ -64,6 +71,8 @@ async function resolveStreamConfigById(configId: number, modelOverride?: string)
   return {
     provider: sysCfg.provider,
     capabilities: sysCfg.capabilities ?? null,
+    fallbackConfigId: sysCfg.fallbackConfigId,
+    maxConcurrent: sysCfg.maxConcurrent,
     config: {
       baseUrl: sysCfg.baseUrl,
       apiKey: sysCfg.apiKey,
@@ -109,14 +118,21 @@ export interface StreamAiChatOptions {
   model?: string;
   /** 是否启用内置工具（还需配置 capabilities.tools 且 provider 为 openai_compatible） */
   enableTools?: boolean;
+  /** 温度覆盖（智能体） */
+  temperatureOverride?: string | null;
+  /** 工具白名单（智能体勾选的工具集；undefined = 全部，[] = 无） */
+  toolFilter?: string[] | null;
 }
 
 export type StreamAiChatChunk = StreamChunk
-  | { type: 'tool_result'; name: string; arguments: string; result: string };
+  | { type: 'tool_result'; name: string; arguments: string; result: string; durationMs: number }
+  | { type: 'failover'; from: string; to: string };
 
 /**
  * 统一聊天流：解析配置 → 注入对话角色 / 个人指令 → 流式生成。
- * 支持 function calling 执行循环：模型请求工具时执行并携带结果续跑（最多 MAX_TOOL_ROUNDS 轮）。
+ * 支持 function calling 执行循环（最多 MAX_TOOL_ROUNDS 轮）；
+ * 首 token 前失败且配置了降级服务商时自动主备切换（一次）；
+ * 服务商配置了并发上限时先获取信号量（超时报错）。
  */
 export async function* streamAiChat(
   messages: ChatMessage[],
@@ -133,79 +149,141 @@ export async function* streamAiChat(
     resolved = await resolveStreamConfig(options?.model);
   }
 
-  // 对话级提示词模板：覆盖服务商配置中的 systemPrompt
-  const override = options?.systemPromptOverride;
-  if (typeof override === 'string' && override.trim()) {
-    resolved.config.systemPrompt = override;
-  }
-
-  // 个人指令（Custom Instructions）：追加到 system prompt 末尾
-  try {
-    const user = currentUser();
-    const preference = await buildPreferencePrompt(user.userId);
-    if (preference) {
-      resolved.config.systemPrompt = resolved.config.systemPrompt
-        ? `${resolved.config.systemPrompt}\n\n${preference}`
-        : preference;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    // 对话级提示词模板：覆盖服务商配置中的 systemPrompt
+    const override = options?.systemPromptOverride;
+    if (typeof override === 'string' && override.trim()) {
+      resolved.config.systemPrompt = override;
     }
-  } catch { /* 无登录上下文（如内部调用）时跳过 */ }
 
-  // function calling：仅 openai_compatible 且配置声明 tools 能力时启用
-  const toolsEnabled = options?.enableTools !== false
-    && resolved.provider === 'openai_compatible'
-    && resolved.capabilities?.tools === true;
-  if (toolsEnabled) {
-    resolved.config.tools = getOpenAiToolDefs();
-  }
+    if (options?.temperatureOverride?.trim()) {
+      resolved.config.temperature = options.temperatureOverride;
+    }
 
-  const workingMessages: ChatMessage[] = [...messages];
-  let totalTokensInput = 0;
-  let totalTokensOutput = 0;
-  let isFirst = true;
+    // 个人指令（Custom Instructions）：追加到 system prompt 末尾
+    try {
+      const user = currentUser();
+      const preference = await buildPreferencePrompt(user.userId);
+      if (preference) {
+        resolved.config.systemPrompt = resolved.config.systemPrompt
+          ? `${resolved.config.systemPrompt}\n\n${preference}`
+          : preference;
+      }
+    } catch { /* 无登录上下文（如内部调用）时跳过 */ }
 
-  for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
-    let pendingCalls: ChatToolCall[] | null = null;
-    let roundDone = false;
+    // function calling：仅 openai_compatible 且配置声明 tools 能力时启用
+    const toolsEnabled = options?.enableTools !== false
+      && resolved.provider === 'openai_compatible'
+      && resolved.capabilities?.tools === true
+      && !(options?.toolFilter && options.toolFilter.length === 0);
+    if (toolsEnabled) {
+      const defs = await getOpenAiToolDefs(options?.toolFilter ?? undefined);
+      resolved.config.tools = defs.length > 0 ? defs : undefined;
+    } else {
+      resolved.config.tools = undefined;
+    }
 
-    for await (const chunk of streamChat(resolved.provider, resolved.config, workingMessages, options?.signal)) {
-      if (chunk.type === 'tool_calls') {
-        pendingCalls = chunk.calls;
-      } else if (chunk.type === 'done') {
-        totalTokensInput += chunk.tokensInput;
-        totalTokensOutput += chunk.tokensOutput;
-        roundDone = true;
-        // 还有待执行的工具：先不对外发 done，执行工具后续跑
-        if (!pendingCalls) {
+    // 并发信号量（配置了 maxConcurrent 的服务商）
+    let release: () => void;
+    try {
+      release = await acquireProviderSlot(resolved.snapshot.configId, resolved.maxConcurrent);
+    } catch (err) {
+      yield { type: 'error', error: err instanceof Error ? err.message : '当前模型并发繁忙' };
+      return;
+    }
+
+    let contentStarted = false;
+    let failoverError: string | null = null;
+
+    try {
+      const workingMessages: ChatMessage[] = [...messages];
+      let totalTokensInput = 0;
+      let totalTokensOutput = 0;
+      let isFirst = true;
+
+      for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+        let pendingCalls: ChatToolCall[] | null = null;
+        let roundDone = false;
+
+        for await (const chunk of streamChat(resolved.provider, resolved.config, workingMessages, options?.signal)) {
+          if (chunk.type === 'tool_calls') {
+            contentStarted = true;
+            pendingCalls = chunk.calls;
+          } else if (chunk.type === 'done') {
+            totalTokensInput += chunk.tokensInput;
+            totalTokensOutput += chunk.tokensOutput;
+            roundDone = true;
+            // 还有待执行的工具：先不对外发 done，执行工具后续跑
+            if (!pendingCalls) {
+              yield { type: 'done', tokensInput: totalTokensInput, tokensOutput: totalTokensOutput, snapshot: resolved.snapshot };
+              return;
+            }
+          } else if (chunk.type === 'error') {
+            // 首 token 前失败且有降级配置：触发主备切换重试
+            if (!contentStarted && attempt === 0 && resolved.fallbackConfigId) {
+              failoverError = chunk.error;
+              break;
+            }
+            yield chunk;
+            return;
+          } else if (chunk.type === 'delta' || chunk.type === 'reasoning') {
+            contentStarted = true;
+            if (chunk.type === 'delta' && isFirst) {
+              isFirst = false;
+              yield { ...chunk, snapshot: resolved.snapshot };
+            } else {
+              yield chunk;
+            }
+          } else {
+            yield chunk;
+          }
+        }
+
+        if (failoverError) break;
+
+        if (!pendingCalls || pendingCalls.length === 0) {
+          // 流异常结束（无 done 无工具）：直接返回
+          if (!roundDone) return;
           yield { type: 'done', tokensInput: totalTokensInput, tokensOutput: totalTokensOutput, snapshot: resolved.snapshot };
           return;
         }
-      } else if (chunk.type === 'delta' && isFirst) {
-        isFirst = false;
-        yield { ...chunk, snapshot: resolved.snapshot };
-      } else {
-        yield chunk;
+
+        if (round === MAX_TOOL_ROUNDS) {
+          yield { type: 'error', error: '工具调用轮数超出上限，请简化问题后重试' };
+          return;
+        }
+
+        // 执行工具并把过程结果推送给前端
+        workingMessages.push({ role: 'assistant', content: '', tool_calls: pendingCalls });
+        for (const call of pendingCalls) {
+          const toolStart = Date.now();
+          const result = await executeToolCall(call);
+          yield { type: 'tool_result', name: call.function.name, arguments: call.function.arguments, result, durationMs: Date.now() - toolStart };
+          workingMessages.push({ role: 'tool', content: result, tool_call_id: call.id });
+        }
       }
+    } finally {
+      release();
     }
 
-    if (!pendingCalls || pendingCalls.length === 0) {
-      // 流异常结束（无 done 无工具）：直接返回
-      if (!roundDone) return;
-      yield { type: 'done', tokensInput: totalTokensInput, tokensOutput: totalTokensOutput, snapshot: resolved.snapshot };
-      return;
+    // 主备切换：解析降级配置并重试一轮
+    if (failoverError && resolved.fallbackConfigId) {
+      const from = `${resolved.snapshot.provider}/${resolved.snapshot.model}`;
+      let fallback: ResolvedStreamConfig;
+      try {
+        fallback = await resolveStreamConfigById(resolved.fallbackConfigId);
+      } catch {
+        yield { type: 'error', error: failoverError };
+        return;
+      }
+      // 防链式降级：降级配置自身的 fallback 不再生效
+      fallback.fallbackConfigId = null;
+      logger.warn(`[ai-chat] provider failover: ${from} -> ${fallback.snapshot.provider}/${fallback.snapshot.model} (${failoverError})`);
+      yield { type: 'failover', from, to: `${fallback.snapshot.provider}/${fallback.snapshot.model}` };
+      resolved = fallback;
+      continue;
     }
-
-    if (round === MAX_TOOL_ROUNDS) {
-      yield { type: 'error', error: '工具调用轮数超出上限，请简化问题后重试' };
-      return;
-    }
-
-    // 执行工具并把过程结果推送给前端
-    workingMessages.push({ role: 'assistant', content: '', tool_calls: pendingCalls });
-    for (const call of pendingCalls) {
-      const result = await executeToolCall(call);
-      yield { type: 'tool_result', name: call.function.name, arguments: call.function.arguments, result };
-      workingMessages.push({ role: 'tool', content: result, tool_call_id: call.id });
-    }
+    return;
   }
 }
 

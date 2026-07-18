@@ -1,6 +1,6 @@
 import { eq, and, or, ilike, asc, desc, sql } from 'drizzle-orm';
 import { db } from '../../db';
-import { aiPromptTemplates } from '../../db/schema';
+import { aiPromptTemplates, aiPromptTemplateVersions, users } from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
 import { escapeLike, withPagination } from '../../lib/where-helpers';
@@ -119,6 +119,11 @@ export async function updatePromptTemplate(id: number, input: UpdateAiPromptTemp
     nextUserId = input.scope === 'user' ? user.userId : null;
   }
 
+  // 内容变更时自动留档历史版本（快照旧内容）
+  if (input.content !== undefined && input.content !== existing.content) {
+    await snapshotTemplateVersion(existing, user.userId);
+  }
+
   const [row] = await db
     .update(aiPromptTemplates)
     .set({
@@ -132,6 +137,67 @@ export async function updatePromptTemplate(id: number, input: UpdateAiPromptTemp
       userId: nextUserId,
     })
     .where(eq(aiPromptTemplates.id, id))
+    .returning();
+  return mapTemplate(row);
+}
+
+// ─── 版本管理 ─────────────────────────────────────────────────────────────────
+
+/** 快照当前内容为新的历史版本（版本号自增） */
+async function snapshotTemplateVersion(row: typeof aiPromptTemplates.$inferSelect, operatorId: number) {
+  const [latest] = await db
+    .select({ version: aiPromptTemplateVersions.version })
+    .from(aiPromptTemplateVersions)
+    .where(eq(aiPromptTemplateVersions.templateId, row.id))
+    .orderBy(desc(aiPromptTemplateVersions.version))
+    .limit(1);
+  await db.insert(aiPromptTemplateVersions).values({
+    templateId: row.id,
+    version: (latest?.version ?? 0) + 1,
+    name: row.name,
+    content: row.content,
+    createdBy: operatorId,
+  });
+}
+
+/** 历史版本列表（倒序） */
+export async function listPromptTemplateVersions(templateId: number) {
+  await ensureManageable(templateId);
+  const rows = await db
+    .select({
+      version: aiPromptTemplateVersions,
+      creatorName: sql<string | null>`COALESCE(${users.nickname}, ${users.username})`,
+    })
+    .from(aiPromptTemplateVersions)
+    .leftJoin(users, eq(aiPromptTemplateVersions.createdBy, users.id))
+    .where(eq(aiPromptTemplateVersions.templateId, templateId))
+    .orderBy(desc(aiPromptTemplateVersions.version));
+  return rows.map((r) => ({
+    id: r.version.id,
+    templateId: r.version.templateId,
+    version: r.version.version,
+    name: r.version.name,
+    content: r.version.content,
+    createdBy: r.version.createdBy,
+    creatorName: r.creatorName,
+    createdAt: formatDateTime(r.version.createdAt),
+  }));
+}
+
+/** 恢复到指定历史版本（当前内容先快照留档，再回写历史内容） */
+export async function restorePromptTemplateVersion(templateId: number, versionId: number) {
+  const user = currentUser();
+  const existing = await ensureManageable(templateId);
+  const [ver] = await db
+    .select()
+    .from(aiPromptTemplateVersions)
+    .where(and(eq(aiPromptTemplateVersions.id, versionId), eq(aiPromptTemplateVersions.templateId, templateId)));
+  if (!ver) throw new HTTPException(404, { message: '历史版本不存在' });
+  await snapshotTemplateVersion(existing, user.userId);
+  const [row] = await db
+    .update(aiPromptTemplates)
+    .set({ content: ver.content })
+    .where(eq(aiPromptTemplates.id, templateId))
     .returning();
   return mapTemplate(row);
 }

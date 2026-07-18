@@ -51,6 +51,8 @@ export const aiProvidersHandlers = [
       priceOutputPerM: body.priceOutputPerM ?? null,
       isDefault: body.isDefault ?? false,
       isEnabled: body.isEnabled ?? true,
+      fallbackConfigId: body.fallbackConfigId ?? null,
+      maxConcurrent: body.maxConcurrent ?? null,
       createdAt: now,
       updatedAt: now,
     };

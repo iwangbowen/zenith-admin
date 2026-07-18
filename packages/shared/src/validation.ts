@@ -2106,6 +2106,10 @@ export const createAiProviderConfigSchema = z.object({
   temperature: z.string().regex(/^\d+(\.\d+)?$/, '温度须为数字字符串').default('0.7'),
   priceInputPerM: z.number().int().min(0).max(100000000).nullable().optional(),
   priceOutputPerM: z.number().int().min(0).max(100000000).nullable().optional(),
+  /** 主备切换降级配置 ID */
+  fallbackConfigId: z.number().int().positive().nullable().optional(),
+  /** 并发流上限（null/0 = 不限） */
+  maxConcurrent: z.number().int().min(0).max(1000).nullable().optional(),
   isDefault: z.boolean().default(false),
   isEnabled: z.boolean().default(true),
 });
@@ -2138,6 +2142,8 @@ export type FetchAiModelsInput = z.infer<typeof fetchAiModelsSchema>;
 
 export const createAiConversationSchema = z.object({
   title: z.string().max(200).optional(),
+  /** 以智能体开启对话 */
+  agentId: z.number().int().positive().optional(),
 });
 
 export const sendAiMessageSchema = z.object({
@@ -2232,6 +2238,102 @@ export const addAiKbDocumentSchema = z.object({
 });
 
 export type AddAiKbDocumentInput = z.infer<typeof addAiKbDocumentSchema>;
+
+/** 从 URL 抓取网页正文入库 */
+export const importAiKbUrlSchema = z.object({
+  url: z.string().url('请输入合法的 URL').max(500),
+  /** 文档名称（留空取页面 title / URL） */
+  name: z.string().max(200).optional(),
+});
+
+export type ImportAiKbUrlInput = z.infer<typeof importAiKbUrlSchema>;
+
+// ─── P3：自定义智能体 ─────────────────────────────────────────────────────────
+
+export const createAiAgentSchema = z.object({
+  name: z.string().min(1, '名称不能为空').max(100),
+  description: z.string().max(300).nullable().optional(),
+  avatar: z.string().max(20).optional(),
+  systemPrompt: z.string().min(1, '提示词不能为空').max(8192),
+  configId: z.number().int().positive().nullable().optional(),
+  model: z.string().max(100).nullable().optional(),
+  temperature: z.string().max(10).nullable().optional(),
+  knowledgeBaseId: z.number().int().positive().nullable().optional(),
+  tools: z.array(z.string().max(60)).max(20).optional(),
+  openingMessage: z.string().max(2000).nullable().optional(),
+  suggestedQuestions: z.array(z.string().min(1).max(200)).max(6).optional(),
+  isEnabled: z.boolean().optional(),
+});
+
+export const updateAiAgentSchema = createAiAgentSchema.partial();
+
+export const reviewAiAgentSchema = z.object({
+  approve: z.boolean(),
+});
+
+export type CreateAiAgentInput = z.infer<typeof createAiAgentSchema>;
+export type UpdateAiAgentInput = z.infer<typeof updateAiAgentSchema>;
+
+// ─── P3：HTTP API 工具 ────────────────────────────────────────────────────────
+
+export const aiHttpToolParamSchema = z.object({
+  name: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,39}$/, '参数名仅限字母/数字/下划线，字母开头'),
+  type: z.enum(['string', 'number', 'boolean']),
+  description: z.string().min(1, '参数说明不能为空').max(200),
+  required: z.boolean(),
+  location: z.enum(['query', 'body', 'path']),
+});
+
+export const createAiHttpToolSchema = z.object({
+  name: z.string().regex(/^[a-z][a-z0-9_]{1,59}$/, '工具名仅限小写字母/数字/下划线，字母开头'),
+  description: z.string().min(1, '工具描述不能为空').max(500),
+  method: z.enum(['GET', 'POST', 'PUT', 'DELETE']),
+  urlTemplate: z.string().url('请输入合法的 URL').max(500),
+  headers: z.record(z.string(), z.string().max(500)).nullable().optional(),
+  params: z.array(aiHttpToolParamSchema).max(20).optional(),
+  isEnabled: z.boolean().optional(),
+});
+
+export const updateAiHttpToolSchema = createAiHttpToolSchema.partial();
+
+export type CreateAiHttpToolInput = z.infer<typeof createAiHttpToolSchema>;
+export type UpdateAiHttpToolInput = z.infer<typeof updateAiHttpToolSchema>;
+
+// ─── P3：评测集 ───────────────────────────────────────────────────────────────
+
+export const aiEvalItemSchema = z.object({
+  question: z.string().min(1, '问题不能为空').max(4000),
+  expected: z.string().max(4000).optional(),
+});
+
+export const createAiEvalSetSchema = z.object({
+  name: z.string().min(1, '名称不能为空').max(100),
+  description: z.string().max(300).nullable().optional(),
+  items: z.array(aiEvalItemSchema).min(1, '至少一条评测问题').max(50),
+});
+
+export const updateAiEvalSetSchema = createAiEvalSetSchema.partial();
+
+export const runAiEvalSchema = z.object({
+  /** 服务商配置 ID（缺省 = 系统默认配置） */
+  configId: z.number().int().positive().optional(),
+  /** 多模型配置下指定模型 */
+  model: z.string().max(100).optional(),
+});
+
+export type CreateAiEvalSetInput = z.infer<typeof createAiEvalSetSchema>;
+export type UpdateAiEvalSetInput = z.infer<typeof updateAiEvalSetSchema>;
+export type RunAiEvalInput = z.infer<typeof runAiEvalSchema>;
+
+// ─── P3：对话体验 ─────────────────────────────────────────────────────────────
+
+export const updateAiConversationTagsSchema = z.object({
+  tags: z.array(z.string().min(1).max(20)).max(10),
+});
+
+export const setAiActiveLeafSchema = z.object({
+  leafMsgId: z.number().int().positive(),
+});
 
 export const arenaVoteSchema = z.object({
   question: z.string().min(1).max(8192),

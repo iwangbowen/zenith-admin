@@ -68,3 +68,56 @@ export async function getAiReliability(startDate?: string, endDate?: string): Pr
     return { requests: 0, errors: 0, successRate: null };
   }
 }
+
+// ─── 并发信号量（per 服务商配置） ────────────────────────────────────────────
+
+interface Semaphore {
+  active: number;
+  queue: Array<{ resolve: (release: () => void) => void; timer: NodeJS.Timeout }>;
+}
+
+const semaphores = new Map<number, Semaphore>();
+
+/** 排队等待上限（毫秒），超时报错而非无限挂起 */
+const ACQUIRE_TIMEOUT_MS = 15_000;
+
+function releaseSlot(configId: number) {
+  const sem = semaphores.get(configId);
+  if (!sem) return;
+  const next = sem.queue.shift();
+  if (next) {
+    clearTimeout(next.timer);
+    next.resolve(() => releaseSlot(configId));
+  } else {
+    sem.active = Math.max(0, sem.active - 1);
+    if (sem.active === 0 && sem.queue.length === 0) semaphores.delete(configId);
+  }
+}
+
+/**
+ * 获取指定服务商配置的并发槽位。返回释放函数；maxConcurrent 为 null/0 表示不限（直接放行）。
+ * 排队超过 15s 抛错，防止请求无限堆积。
+ */
+export async function acquireProviderSlot(configId: number | undefined, maxConcurrent: number | null | undefined): Promise<() => void> {
+  if (!configId || !maxConcurrent || maxConcurrent <= 0) return () => {};
+  let sem = semaphores.get(configId);
+  if (!sem) {
+    sem = { active: 0, queue: [] };
+    semaphores.set(configId, sem);
+  }
+  if (sem.active < maxConcurrent) {
+    sem.active += 1;
+    return () => releaseSlot(configId);
+  }
+  return new Promise<() => void>((resolve, reject) => {
+    const entry = {
+      resolve,
+      timer: setTimeout(() => {
+        const idx = sem!.queue.indexOf(entry);
+        if (idx >= 0) sem!.queue.splice(idx, 1);
+        reject(new Error('当前模型并发繁忙，请稍后重试'));
+      }, ACQUIRE_TIMEOUT_MS),
+    };
+    sem!.queue.push(entry);
+  });
+}

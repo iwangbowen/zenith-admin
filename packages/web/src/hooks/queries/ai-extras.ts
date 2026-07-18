@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { AiUserPreference, AiConversationShare, AiKnowledgeBase, AiKbDocument, SaveAiPreferenceInput, CreateAiKnowledgeBaseInput, AddAiKbDocumentInput } from '@zenith/shared';
+import type { AiUserPreference, AiConversationShare, AiKnowledgeBase, AiKbDocument, SaveAiPreferenceInput, CreateAiKnowledgeBaseInput, AddAiKbDocumentInput, ImportAiKbUrlInput, AiPromptTemplateVersion } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { LOOKUP_STALE_TIME, unwrap } from '@/lib/query';
 
@@ -125,6 +125,20 @@ export function useAddAiKbDocument() {
   });
 }
 
+/** 从 URL 抓取网页正文入库 */
+export function useImportAiKbUrl() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ kbId, values }: { kbId: number; values: ImportAiKbUrlInput }) =>
+      request.post<AiKbDocument>(`/api/ai/knowledge-bases/${kbId}/documents/import-url`, values).then(unwrap),
+    onSuccess: (_d, v) => {
+      void qc.invalidateQueries({ queryKey: aiKbKeys.docs(v.kbId) });
+      void qc.invalidateQueries({ queryKey: aiKbKeys.lists });
+      void qc.invalidateQueries({ queryKey: aiKbKeys.available });
+    },
+  });
+}
+
 export function useDeleteAiKbDocument() {
   const qc = useQueryClient();
   return useMutation({
@@ -147,4 +161,51 @@ export function setConversationKb(convId: number, kbId: number | null) {
 
 export function submitArenaVote(values: { question: string; modelA: string; modelB: string; winner: 'a' | 'b' | 'tie' }) {
   return request.post<null>('/api/ai/arena/vote', values).then(unwrap);
+}
+
+/* ─── 对话标签 / 分支 / 生成续传 ─────────────────────────────────────────── */
+
+export function setConversationTags(convId: number, tags: string[]) {
+  return request.put<{ tags: string[] }>(`/api/ai/conversations/${convId}/tags`, { tags }).then(unwrap);
+}
+
+/** 切换消息分支（返回新的激活叶子） */
+export function switchConversationBranch(convId: number, leafMsgId: number) {
+  return request.put<{ activeLeafMsgId: number }>(`/api/ai/conversations/${convId}/active-branch`, { leafMsgId }).then(unwrap);
+}
+
+/** 查询对话进行中的生成任务（刷新后续传） */
+export function getActiveGeneration(convId: number) {
+  return request.get<{ genId: string | null }>(`/api/ai/conversations/${convId}/active-generation`, { silent: true }).then(unwrap);
+}
+
+/** 停止生成 */
+export function cancelGeneration(genId: string) {
+  return request.post<null>(`/api/ai/generations/${genId}/cancel`, undefined, { silent: true }).then(unwrap);
+}
+
+/* ─── 提示词模板版本 ─────────────────────────────────────────────────────── */
+
+export const aiPromptVersionKeys = {
+  list: (templateId: number | null) => ['ai-prompt-versions', templateId] as const,
+};
+
+export function useAiPromptVersions(templateId: number | null) {
+  return useQuery({
+    queryKey: aiPromptVersionKeys.list(templateId),
+    queryFn: () => request.get<AiPromptTemplateVersion[]>(`/api/ai/prompt-templates/${templateId}/versions`).then(unwrap),
+    enabled: templateId !== null,
+  });
+}
+
+export function useRestoreAiPromptVersion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ templateId, versionId }: { templateId: number; versionId: number }) =>
+      request.post(`/api/ai/prompt-templates/${templateId}/versions/${versionId}/restore`).then(unwrap),
+    onSuccess: (_d, v) => {
+      void qc.invalidateQueries({ queryKey: aiPromptVersionKeys.list(v.templateId) });
+      void qc.invalidateQueries({ queryKey: ['ai-prompts'] });
+    },
+  });
 }

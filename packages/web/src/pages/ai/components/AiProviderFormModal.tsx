@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Button, Col, Form, Row, Spin, Toast } from '@douyinfe/semi-ui';
 import type { AiProvider, AiProviderConfig, UserAiConfig } from '@zenith/shared';
 import { AppModal } from '@/components/AppModal';
-import { useAiProviderDetail, useSaveAiProvider, useTestAiProviderConnection, useFetchAiProviderModels } from '@/hooks/queries/ai-providers';
+import { useAiProviderDetail, useSaveAiProvider, useTestAiProviderConnection, useFetchAiProviderModels, useAiProviderList } from '@/hooks/queries/ai-providers';
 import { useSaveAiUserConfig } from '@/hooks/queries/ai-user-config';
 
 const PROVIDER_OPTIONS: { value: AiProvider; label: string; disabled?: boolean }[] = [
@@ -27,6 +27,8 @@ interface FormValues {
   temperature: string;
   priceInputPerM?: number | null;
   priceOutputPerM?: number | null;
+  fallbackConfigId?: number | null;
+  maxConcurrent?: number | null;
   isDefault: boolean;
   isEnabled: boolean;
 }
@@ -46,6 +48,8 @@ const SYSTEM_DEFAULTS: FormValues = {
   temperature: '0.7',
   priceInputPerM: null,
   priceOutputPerM: null,
+  fallbackConfigId: null,
+  maxConcurrent: null,
   isDefault: false,
   isEnabled: true,
 };
@@ -75,6 +79,7 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
   const editTarget = isUser ? undefined : props.editTarget;
   const existingUserConfig = isUser ? (props as { mode: 'user'; userConfig?: UserAiConfig | null }).userConfig ?? null : null;
   const detailQuery = useAiProviderDetail(editTarget?.id, visible && !isUser && !!editTarget);
+  const allProvidersQuery = useAiProviderList({}, { enabled: visible && !isUser });
   const saveProviderMutation = useSaveAiProvider();
   const saveUserConfigMutation = useSaveAiUserConfig();
   const testConnectionMutation = useTestAiProviderConnection();
@@ -122,6 +127,8 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
           temperature: et.temperature,
           priceInputPerM: et.priceInputPerM,
           priceOutputPerM: et.priceOutputPerM,
+          fallbackConfigId: et.fallbackConfigId,
+          maxConcurrent: et.maxConcurrent,
           isDefault: et.isDefault,
           isEnabled: et.isEnabled,
         });
@@ -175,6 +182,8 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
             },
             priceInputPerM: values.priceInputPerM ?? null,
             priceOutputPerM: values.priceOutputPerM ?? null,
+            fallbackConfigId: values.fallbackConfigId || null,
+            maxConcurrent: values.maxConcurrent || null,
           },
         });
         Toast.success(editTarget ? '修改成功' : '创建成功');
@@ -421,6 +430,33 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
                   label="输出单价（分/百万Token）"
                   min={0}
                   placeholder="留空不计成本"
+                  style={{ width: '100%' }}
+                />
+              </Col>
+            </Row>
+          )}
+          {/* 行6：可靠性（主备切换 + 并发上限） */}
+          {!isUser && (
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Select
+                  field="fallbackConfigId"
+                  label="降级配置（首字前失败自动切换）"
+                  placeholder="不启用主备切换"
+                  showClear
+                  style={{ width: '100%' }}
+                  optionList={(allProvidersQuery.data ?? [])
+                    .filter((p) => p.id !== editTarget?.id && p.isEnabled)
+                    .map((p) => ({ value: p.id, label: `${p.name}（${p.model}）` }))}
+                />
+              </Col>
+              <Col span={12}>
+                <Form.InputNumber
+                  field="maxConcurrent"
+                  label="并发流上限"
+                  min={0}
+                  max={1000}
+                  placeholder="留空不限制"
                   style={{ width: '100%' }}
                 />
               </Col>

@@ -124,6 +124,16 @@ export const AI_PROVIDER_LABELS: Record<AiProvider, string> = {
 
 export const AI_PROVIDER_OPTIONS: Array<{ value: AiProvider; label: string }> =
   AI_PROVIDER_TYPES.map((value) => ({ value, label: AI_PROVIDER_LABELS[value] }));
+
+export const AI_AGENT_STATUSES = ['private', 'pending', 'published', 'rejected'] as const;
+export type AiAgentStatus = (typeof AI_AGENT_STATUSES)[number];
+
+export const AI_AGENT_STATUS_LABELS: Record<AiAgentStatus, string> = {
+  private: '私有',
+  pending: '待审核',
+  published: '已上架',
+  rejected: '已驳回',
+};
 export const BACKUP_TYPES = ['pg_dump', 'drizzle_export'] as const;
 export const BACKUP_STATUSES = ['pending', 'running', 'success', 'failed'] as const;
 export const BUSINESS_TYPES = ['announcement'] as const;

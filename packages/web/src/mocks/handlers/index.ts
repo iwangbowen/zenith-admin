@@ -78,6 +78,7 @@ import { aiConversationsHandlers } from './ai-conversations';
 import { aiPromptTemplatesHandlers } from './ai-prompt-templates';
 import { aiUsageHandlers } from './ai-usage';
 import { aiExtrasHandlers } from './ai-extras';
+import { aiP3Handlers } from './ai-p3';
 import { userAiConfigHandlers } from './user-ai-config';
 import { oauth2AppsHandlers } from './oauth2-apps';
 import { apiScopesHandlers } from './api-scopes';
@@ -201,6 +202,7 @@ export const handlers = [
   ...aiPromptTemplatesHandlers,
   ...aiUsageHandlers,
   ...aiExtrasHandlers,
+  ...aiP3Handlers,
   ...userAiConfigHandlers,
   ...oauth2AppsHandlers,
   ...apiScopesHandlers,

@@ -43,6 +43,7 @@ const router = new OpenAPIHono({ defaultHook: validationHook });
 const ListQuery = z.object({
   archived: z.enum(['true', 'false']).optional().openapi({ description: '是否查看已归档对话' }),
   keyword: z.string().max(100).optional().openapi({ description: '搜索关键词（匹配标题或消息内容）' }),
+  tag: z.string().max(20).optional().openapi({ description: '按标签过滤' }),
   limit: z.coerce.number().int().min(1).max(100).optional().openapi({ description: '返回条数上限（分页加载）' }),
   offset: z.coerce.number().int().min(0).optional().openapi({ description: '偏移量（分页加载）' }),
 });
@@ -59,8 +60,8 @@ const list = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...ok(z.array(AiConversationDTO), '对话列表') },
   }),
   handler: async (c) => {
-    const { archived, keyword, limit, offset } = c.req.valid('query');
-    return c.json(okBody(await listConversations({ archived: archived === 'true', keyword, limit, offset })), 200);
+    const { archived, keyword, tag, limit, offset } = c.req.valid('query');
+    return c.json(okBody(await listConversations({ archived: archived === 'true', keyword, tag, limit, offset })), 200);
   },
 });
 

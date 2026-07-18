@@ -33,6 +33,7 @@ const docStore: Record<number, AiKbDocument[]> = {
       id: 1,
       kbId: 1,
       name: '快速上手指南',
+      sourceUrl: null,
       status: 'ready',
       chunkCount: 3,
       charCount: 1200,
@@ -146,6 +147,7 @@ export const aiExtrasHandlers = [
       id: nextDocId++,
       kbId,
       name: body.name ?? '未命名文档',
+      sourceUrl: null,
       status: 'ready',
       chunkCount,
       charCount: content.length,
@@ -156,6 +158,29 @@ export const aiExtrasHandlers = [
     kb.documentCount += 1;
     kb.chunkCount += chunkCount;
     return HttpResponse.json({ code: 0, message: '文档已入库', data: doc });
+  }),
+  // 从 URL 抓取网页入库（Demo：生成模拟正文）
+  http.post('/api/ai/knowledge-bases/:id/documents/import-url', async ({ params, request }) => {
+    const kbId = Number(params.id);
+    const kb = kbStore.find((k) => k.id === kbId);
+    if (!kb) return HttpResponse.json({ code: 404, message: '知识库不存在', data: null }, { status: 404 });
+    const body = await request.json() as { url?: string; name?: string };
+    const url = body.url ?? 'https://example.com';
+    const doc: AiKbDocument = {
+      id: nextDocId++,
+      kbId,
+      name: body.name?.trim() || new URL(url).hostname,
+      sourceUrl: url,
+      status: 'ready',
+      chunkCount: 2,
+      charCount: 1600,
+      error: null,
+      createdAt: mockDateTime(),
+    };
+    (docStore[kbId] ??= []).push(doc);
+    kb.documentCount += 1;
+    kb.chunkCount += 2;
+    return HttpResponse.json({ code: 0, message: '网页已入库', data: doc });
   }),
   http.delete('/api/ai/knowledge-bases/:id/documents/:docId', ({ params }) => {
     const kbId = Number(params.id);
@@ -196,4 +221,22 @@ export const aiExtrasHandlers = [
   http.post('/api/ai/providers/fetch-models', () => {
     return HttpResponse.json({ code: 0, message: 'ok', data: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'o4-mini'] });
   }),
+
+  // ── 生成任务（Demo：同步返回，无实际后台生成） ──
+  http.post('/api/ai/generations/:genId/cancel', () => HttpResponse.json({ code: 0, message: '已停止', data: null })),
+
+  // ── 提示词模板版本 ──
+  http.get('/api/ai/prompt-templates/:id/versions', ({ params }) => {
+    const templateId = Number(params.id);
+    return HttpResponse.json({
+      code: 0,
+      message: 'ok',
+      data: [
+        { id: 2, templateId, version: 2, name: '示例模板', content: '你是一位资深的{{领域}}专家（v2 演示版本），请回答用户问题。', createdBy: 1, creatorName: '管理员', createdAt: mockDateTime() },
+        { id: 1, templateId, version: 1, name: '示例模板', content: '你是{{领域}}助手（v1 演示版本）。', createdBy: 1, creatorName: '管理员', createdAt: '2025-01-01 00:00:00' },
+      ],
+    });
+  }),
+  http.post('/api/ai/prompt-templates/:id/versions/:versionId/restore', () =>
+    HttpResponse.json({ code: 0, message: '已恢复到历史版本', data: null })),
 ];

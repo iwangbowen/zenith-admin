@@ -1,10 +1,11 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
-import { AIChatDialogue, AIChatInput, Typography, Button, Form, RadioGroup, Radio, Select, Tag, Toast, Tooltip, Spin, TextArea, Dropdown, Input, Modal } from '@douyinfe/semi-ui';
+import { AIChatDialogue, AIChatInput, Typography, Button, Form, RadioGroup, Radio, Select, Tag, Toast, Tooltip, Spin, TextArea, Dropdown, Input, Modal, TagInput, Space } from '@douyinfe/semi-ui';
 import type { Message as AIChatMessage } from '@douyinfe/semi-ui/lib/es/aiChatDialogue';
-import type { RenderActionProps } from '@douyinfe/semi-ui/lib/es/aiChatDialogue/interface';
+import type { RenderActionProps, RenderTitleProps } from '@douyinfe/semi-ui/lib/es/aiChatDialogue/interface';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { MessageSquarePlus, Trash2, AlignLeft, AlignJustify, Settings, MoreHorizontal, Pencil, Pin, PinOff, Archive, ArchiveRestore, Sparkles, Inbox, Download, Share2, UserRoundPen, Swords, Library, ImagePlus, X } from 'lucide-react';
+import { MessageSquarePlus, Trash2, AlignLeft, AlignJustify, Settings, MoreHorizontal, Pencil, Pin, PinOff, Archive, ArchiveRestore, Sparkles, Inbox, Download, Share2, UserRoundPen, Swords, Library, ImagePlus, X, ChevronLeft, ChevronRight, Volume2, Square, Mic, MicOff, Tags, Bot } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { NavListPanel, NavListItem } from '@/components/NavListPanel';
@@ -21,7 +22,8 @@ import type { AiChatModel, AiConversation, AiMessage, AiPromptTemplate, UserAiCo
 import { useAiChatModels } from '@/hooks/queries/ai-providers';
 import { useAiAllowUserCustomKey, useAiUserConfigs, aiUserConfigKeys } from '@/hooks/queries/ai-user-config';
 import { useAvailableAiPrompts, recordAiPromptUse } from '@/hooks/queries/ai-prompts';
-import { useAvailableKnowledgeBases, setConversationKb } from '@/hooks/queries/ai-extras';
+import { useAvailableKnowledgeBases, setConversationKb, setConversationTags, switchConversationBranch, getActiveGeneration, cancelGeneration } from '@/hooks/queries/ai-extras';
+import { useAiAgentDetail } from '@/hooks/queries/ai-agents';
 import {
   aiConversationKeys,
   useInfiniteAiConversationList,
@@ -163,6 +165,91 @@ function extractPromptVariables(content: string): string[] {
   return vars;
 }
 
+// ─── 消息分支树（与服务端算法对齐）────────────────────────────────────────────
+
+interface BranchInfo {
+  /** 同父同角色的兄弟消息 ID（时间序） */
+  siblings: number[];
+  index: number;
+}
+
+/** 激活路径：activeLeaf 祖先链；未设置 / 失效时取最新消息为叶子 */
+function resolveActivePath(rows: AiMessage[], activeLeafMsgId: number | null): AiMessage[] {
+  if (rows.length === 0) return [];
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const leafId = activeLeafMsgId !== null && byId.has(activeLeafMsgId) ? activeLeafMsgId : rows[rows.length - 1].id;
+  const path: AiMessage[] = [];
+  let cur: number | null = leafId;
+  const guard = new Set<number>();
+  while (cur !== null && !guard.has(cur)) {
+    guard.add(cur);
+    const node = byId.get(cur);
+    if (!node) break;
+    path.unshift(node);
+    cur = node.parentId;
+  }
+  return path;
+}
+
+/** 每条消息的兄弟分支信息（同父 + 同角色，数量 > 1 时展示切换器） */
+function computeBranchInfo(rows: AiMessage[]): Map<number, BranchInfo> {
+  const groups = new Map<string, number[]>();
+  for (const r of rows) {
+    const key = `${r.parentId ?? 'root'}|${r.role}`;
+    const list = groups.get(key) ?? [];
+    list.push(r.id);
+    groups.set(key, list);
+  }
+  const info = new Map<number, BranchInfo>();
+  for (const ids of groups.values()) {
+    if (ids.length < 2) continue;
+    ids.forEach((id, idx) => info.set(id, { siblings: ids, index: idx }));
+  }
+  return info;
+}
+
+/** 浏览器 TTS 朗读（不支持时静默） */
+function speakText(text: string, onEnd: () => void): boolean {
+  if (!('speechSynthesis' in window) || !text.trim()) return false;
+  window.speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(text.slice(0, 4000));
+  utter.lang = 'zh-CN';
+  utter.onend = onEnd;
+  utter.onerror = onEnd;
+  window.speechSynthesis.speak(utter);
+  return true;
+}
+
+/** 提取消息纯文本（数组 content 取 output_text） */
+function extractPlainText(msg: Message): string {
+  if (typeof msg.content === 'string') return msg.content;
+  const outputText = (msg as Record<string, unknown>).output_text;
+  if (typeof outputText === 'string') return outputText;
+  return '';
+}
+
+type SpeechRecognitionLike = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+function createSpeechRecognition(): SpeechRecognitionLike | null {
+  const w = window as unknown as { SpeechRecognition?: new () => SpeechRecognitionLike; webkitSpeechRecognition?: new () => SpeechRecognitionLike };
+  const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+  if (!Ctor) return null;
+  const rec = new Ctor();
+  rec.lang = 'zh-CN';
+  rec.continuous = true;
+  rec.interimResults = true;
+  return rec;
+}
+
 /** 会话侧栏行：分组标题 或 会话条目 */
 type ConvRow = { kind: 'header'; label: string } | { kind: 'conv'; conv: AiConversation };
 
@@ -226,6 +313,21 @@ export default function AIChatPage() {
   /** 待发送图片（vision，data URL） */
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  /** 当前生成任务 ID（停止 / 断线续传用） */
+  const currentGenIdRef = useRef<string | null>(null);
+  /** 分支树：全量 API 消息与激活叶子（本地镜像，切换分支即时生效） */
+  const [allApiMessages, setAllApiMessages] = useState<AiMessage[]>([]);
+  const [activeLeafId, setActiveLeafId] = useState<number | null>(null);
+  /** 标签编辑 */
+  const [tagsConvId, setTagsConvId] = useState<number | null>(null);
+  const [tagsDraft, setTagsDraft] = useState<string[]>([]);
+  /** TTS 朗读中的消息 ID */
+  const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
+  /** STT 语音输入 */
+  const [recording, setRecording] = useState(false);
+  const [sttDraft, setSttDraft] = useState('');
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
   const { items: dislikeReasons } = useDictItems('ai_dislike_reason');
   const allowUserCustomKeyQuery = useAiAllowUserCustomKey();
   const allowUserCustomKey = allowUserCustomKeyQuery.data ?? false;
@@ -288,25 +390,31 @@ export default function AIChatPage() {
   useEffect(() => {
     if (!activeConvId) {
       setMessages([]);
+      setAllApiMessages([]);
+      setActiveLeafId(null);
       return;
     }
     const apiMessages = messagesQuery.data;
     if (!apiMessages) return;
-    setMessages(apiMessages.map(convertApiMessage));
+    setAllApiMessages(apiMessages);
+    // 激活叶子以会话记录为准（本地分支切换后由 switch 流程更新）
+    const conv = conversations.find((c) => c.id === activeConvId);
+    setActiveLeafId(conv?.activeLeafMsgId ?? null);
     const scrollTimer = setTimeout(() => dialogueRef.current?.scrollToBottom(false), 120);
     return () => clearTimeout(scrollTimer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- conversations 仅作初始叶子来源，避免列表刷新反复重置
   }, [activeConvId, messagesQuery.data]);
 
-  const dialogueRenderConfig = useMemo(() => ({
-    // 隐藏分享按钮：从默认操作栏中排除 shareNode
-    renderDialogueAction: (props: RenderActionProps) => {
-      // DefaultActionNodeObj 没有 shareNode，分享按鈕在 defaultActions 列表里
-      // 直接使用 defaultActionsObj，它不包含 share
-      if (!props.defaultActionsObj) return null;
-      const { copyNode, resetNode, likeNode, dislikeNode, moreNode } = props.defaultActionsObj;
-      return <div className={props.className}>{copyNode}{resetNode}{likeNode}{dislikeNode}{moreNode}</div>;
-    },
-  }) satisfies { renderDialogueAction: (props: RenderActionProps) => React.ReactNode }, []);
+  /** 分支信息（同父同角色兄弟 > 1 时展示切换器） */
+  const branchInfo = useMemo(() => computeBranchInfo(allApiMessages), [allApiMessages]);
+
+  // 激活路径变化 → 重算展示消息（生成中不重置，避免打断流式气泡）
+  useEffect(() => {
+    if (generating) return;
+    const path = resolveActivePath(allApiMessages, activeLeafId);
+    setMessages(path.map(convertApiMessage));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- generating 变为 false 时由 done 流程主动 invalidate
+  }, [allApiMessages, activeLeafId]);
 
   /** 自定义内容项：知识库引用列表 */
   const renderDialogueContentItem = useMemo(() => ({
@@ -335,10 +443,123 @@ export default function AIChatPage() {
     system: { name: '系统', avatar: AI_AVATAR },
   };
 
+  /** SSE 事件消费（发送与断线续传共用）。skipUserEvent：发起端已本地渲染 user 气泡时跳过缓冲中的 user 事件 */
+  const consumeSSEStream = useCallback(async (
+    response: Response,
+    ctx: { convId: number; assistantMsgId: string; localUserMsgId: string | null; skipUserEvent: boolean },
+  ) => {
+    const { convId, assistantMsgId, localUserMsgId, skipUserEvent } = ctx;
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('No response body');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let accContent = '';
+    let accReasoning = '';
+    const accToolCalls: ToolCallDisplay[] = [];
+    let accReferences: KbRefDisplay[] = [];
+
+    const refreshAssistant = () => {
+      const nextContent = buildAssistantContent(accContent, accReasoning, accContent.length > 0, accToolCalls, accReferences);
+      setMessages((prev) =>
+        prev.map((m) => (m.id === assistantMsgId ? { ...m, content: nextContent, output_text: accContent } : m))
+      );
+    };
+
+    // eventType 必须在读循环外持有：SSE 帧可能被拆到两次 read 之间
+    // （event: 行与 data: 行分属不同 chunk），循环内声明会导致事件被静默丢弃
+    let eventType = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          eventType = line.slice(7).trim();
+        } else if (line.startsWith('data: ')) {
+          const dataStr = line.slice(6).trim();
+          if (!dataStr) continue;
+          try {
+            const parsed = JSON.parse(dataStr) as Record<string, unknown>;
+            if (eventType === 'gen') {
+              // 生成任务 ID：停止 / 断线续传凭据
+              currentGenIdRef.current = (parsed.genId as string) ?? null;
+            } else if (eventType === 'user') {
+              // 续传场景：缓冲中回放的用户消息（发起端已本地渲染，跳过）
+              if (!skipUserEvent && parsed.content) {
+                const userMsg: Message = { id: nextMsgId(), role: 'user', content: parsed.content as string, createdAt: Date.now() - 1, status: 'completed' };
+                setMessages((prev) => {
+                  const idx = prev.findIndex((m) => m.id === assistantMsgId);
+                  if (idx === -1) return [...prev, userMsg];
+                  return [...prev.slice(0, idx), userMsg, ...prev.slice(idx)];
+                });
+              }
+            } else if (eventType === 'delta' && parsed.content) {
+              accContent += (parsed.content as string | undefined) ?? '';
+              refreshAssistant();
+            } else if (eventType === 'reasoning' && parsed.content) {
+              accReasoning += (parsed.content as string | undefined) ?? '';
+              refreshAssistant();
+            } else if (eventType === 'tool_call') {
+              // function calling 执行过程
+              accToolCalls.push({
+                name: (parsed.name as string) ?? '',
+                arguments: (parsed.arguments as string) ?? '',
+                result: (parsed.result as string) ?? '',
+              });
+              refreshAssistant();
+            } else if (eventType === 'references') {
+              // 知识库检索引用
+              accReferences = (parsed.references as KbRefDisplay[]) ?? [];
+              refreshAssistant();
+            } else if (eventType === 'failover') {
+              Toast.info(`当前模型响应异常，已自动切换到备用模型（${(parsed.to as string) ?? ''}）`);
+            } else if (eventType === 'saved') {
+              // 服务端保存完成：本地气泡映射数据库 ID，并同步分支叶子与消息树
+              const dbId = (parsed.assistantMsgId as number | undefined);
+              const userDbId = (parsed.userMsgId as number | null | undefined);
+              setMessages((prev) =>
+                prev.map((m) => {
+                  if (dbId && m.id === assistantMsgId) return { ...m, id: `api-${dbId}` };
+                  if (userDbId && localUserMsgId && m.id === localUserMsgId) return { ...m, id: `api-${userDbId}` };
+                  return m;
+                })
+              );
+              if (dbId) setActiveLeafId(dbId);
+              void queryClient.invalidateQueries({ queryKey: aiConversationKeys.messages(convId) });
+            } else if (eventType === 'title') {
+              // 服务端 LLM 自动命名完成，同步会话标题
+              const title = parsed.title as string | undefined;
+              if (title) {
+                setConversations((prev) => prev.map((c) => (c.id === convId ? { ...c, title } : c)));
+              }
+            } else if (eventType === 'done') {
+              setMessages((prev) =>
+                prev.map((m) => (m.id === assistantMsgId ? { ...m, status: 'completed' } : m))
+              );
+              void queryClient.invalidateQueries({ queryKey: aiConversationKeys.lists });
+            } else if (eventType === 'error') {
+              Toast.error((parsed.message as string | undefined) ?? 'AI 服务出错');
+              setMessages((prev) =>
+                prev.map((m) => (m.id === assistantMsgId ? { ...m, status: 'failed' } : m))
+              );
+            }
+          } catch {
+            // ignore JSON parse errors
+          }
+        }
+      }
+    }
+  }, [queryClient]);
+
   const handleMessageSend = useCallback(
     async (
       content: { inputContents?: { type: string; text?: string }[]; text?: string },
-      opts?: { regenerate?: boolean },
+      opts?: { regenerate?: boolean; parentMsgId?: number | null },
     ) => {
       const regenerate = opts?.regenerate ?? false;
       const text = content.text ?? content.inputContents?.find((c) => c.type === 'text')?.text;
@@ -354,6 +575,8 @@ export default function AIChatPage() {
           setConversations((prev) => [newConv, ...prev]);
           setActiveConvId(convId);
           setMessages([]);
+          setAllApiMessages([]);
+          setActiveLeafId(null);
         } catch {
           Toast.error('创建对话失败');
           return;
@@ -372,7 +595,7 @@ export default function AIChatPage() {
       // user 气泡本地 ID：saved 事件到达后映射为数据库 ID（编辑/删除依赖真实 ID）
       const localUserMsgId = regenerate ? null : nextMsgId();
       if (regenerate) {
-        // 重新生成：不追加 user 气泡，仅追加新的 assistant 占位
+        // 重新生成：不追加 user 气泡，仅追加新的 assistant 占位（旧回复保留为兄弟分支）
         setMessages((prev) => [...prev, assistantMsg]);
       } else {
         const userMsg: Message = {
@@ -388,6 +611,7 @@ export default function AIChatPage() {
 
       const abortController = new AbortController();
       abortRef.current = abortController;
+      currentGenIdRef.current = null;
       const token = localStorage.getItem(TOKEN_KEY);
 
       try {
@@ -403,6 +627,7 @@ export default function AIChatPage() {
               (() => {
                 const selectedModel = configureValuesRef.current.model as string | undefined ?? '';
                 const base: Record<string, unknown> = regenerate ? { regenerate: true } : { message: text };
+                if (opts?.parentMsgId !== undefined) base.parentMsgId = opts.parentMsgId;
                 if (!regenerate && pendingImages.length > 0) base.images = pendingImages;
                 if (selectedModel.startsWith('user-')) {
                   const userConfigId = Number.parseInt(selectedModel.replace('user-', ''), 10);
@@ -424,96 +649,10 @@ export default function AIChatPage() {
           throw new Error(errBody?.message || `HTTP ${response.status}`);
         }
 
-        const reader = response.body?.getReader();
-        if (!reader) throw new Error('No response body');
-
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let accContent = '';
-        let accReasoning = '';
-        const accToolCalls: ToolCallDisplay[] = [];
-        let accReferences: KbRefDisplay[] = [];
         // 发送成功后清空待发图片
         if (!regenerate && pendingImages.length > 0) setPendingImages([]);
 
-        const refreshAssistant = () => {
-          const nextContent = buildAssistantContent(accContent, accReasoning, accContent.length > 0, accToolCalls, accReferences);
-          setMessages((prev) =>
-            prev.map((m) => (m.id === assistantMsgId ? { ...m, content: nextContent, output_text: accContent } : m))
-          );
-        };
-
-        // eventType 必须在读循环外持有：SSE 帧可能被拆到两次 read 之间
-        // （event: 行与 data: 行分属不同 chunk），循环内声明会导致事件被静默丢弃
-        let eventType = '';
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() ?? '';
-
-          for (const line of lines) {
-            if (line.startsWith('event: ')) {
-              eventType = line.slice(7).trim();
-            } else if (line.startsWith('data: ')) {
-              const dataStr = line.slice(6).trim();
-              if (!dataStr) continue;
-              try {
-                const parsed = JSON.parse(dataStr) as Record<string, unknown>;
-                if (eventType === 'delta' && parsed.content) {
-                  accContent += (parsed.content as string | undefined) ?? '';
-                  refreshAssistant();
-                } else if (eventType === 'reasoning' && parsed.content) {
-                  accReasoning += (parsed.content as string | undefined) ?? '';
-                  refreshAssistant();
-                } else if (eventType === 'tool_call') {
-                  // function calling 执行过程
-                  accToolCalls.push({
-                    name: (parsed.name as string) ?? '',
-                    arguments: (parsed.arguments as string) ?? '',
-                    result: (parsed.result as string) ?? '',
-                  });
-                  refreshAssistant();
-                } else if (eventType === 'references') {
-                  // 知识库检索引用
-                  accReferences = (parsed.references as KbRefDisplay[]) ?? [];
-                  refreshAssistant();
-                } else if (eventType === 'saved') {
-                  // 服务端保存完成，把本地 user / assistant 气泡映射到数据库 ID（编辑/删除/反馈依赖真实 ID）
-                  const dbId = (parsed.assistantMsgId as number | undefined);
-                  const userDbId = (parsed.userMsgId as number | null | undefined);
-                  setMessages((prev) =>
-                    prev.map((m) => {
-                      if (dbId && m.id === assistantMsgId) return { ...m, id: `api-${dbId}` };
-                      if (userDbId && localUserMsgId && m.id === localUserMsgId) return { ...m, id: `api-${userDbId}` };
-                      return m;
-                    })
-                  );
-                } else if (eventType === 'title') {
-                  // 服务端 LLM 自动命名完成，同步会话标题
-                  const title = parsed.title as string | undefined;
-                  if (title && convId) {
-                    setConversations((prev) => prev.map((c) => (c.id === convId ? { ...c, title } : c)));
-                  }
-                } else if (eventType === 'done') {
-                  setMessages((prev) =>
-                    prev.map((m) => (m.id === assistantMsgId ? { ...m, status: 'completed' } : m))
-                  );
-                  void queryClient.invalidateQueries({ queryKey: aiConversationKeys.lists });
-                } else if (eventType === 'error') {
-                  Toast.error((parsed.message as string | undefined) ?? 'AI 服务出错');
-                  setMessages((prev) =>
-                    prev.map((m) => (m.id === assistantMsgId ? { ...m, status: 'failed' } : m))
-                  );
-                }
-              } catch {
-                // ignore JSON parse errors
-              }
-            }
-          }
-        }
+        await consumeSSEStream(response, { convId, assistantMsgId, localUserMsgId, skipUserEvent: true });
       } catch (err) {
         if ((err as Error)?.name !== 'AbortError') {
           Toast.error((err as Error)?.message || '消息发送失败');
@@ -527,22 +666,82 @@ export default function AIChatPage() {
         setTimeout(() => dialogueRef.current?.scrollToBottom(true), 100);
       }
     },
-    [activeConvId, createConversationMutation, queryClient, pendingImages]
+    [activeConvId, createConversationMutation, pendingImages, consumeSSEStream]
   );
 
+  /** 断线续传：进入会话时发现有进行中的生成任务 → 挂载恢复流 */
+  const attachToGeneration = useCallback(async (convId: number, genId: string) => {
+    if (generating) return;
+    currentGenIdRef.current = genId;
+    const assistantMsgId = nextMsgId();
+    setMessages((prev) => [...prev, {
+      id: assistantMsgId,
+      role: 'assistant' as const,
+      content: '',
+      createdAt: Date.now(),
+      status: 'in_progress' as const,
+    }]);
+    setGenerating(true);
+    const abortController = new AbortController();
+    abortRef.current = abortController;
+    const token = localStorage.getItem(TOKEN_KEY);
+    try {
+      const response = await fetch(`${config.apiBaseUrl}/api/ai/generations/${genId}/stream?offset=0`, {
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        signal: abortController.signal,
+      });
+      if (!response.ok) throw new Error('恢复生成流失败');
+      Toast.info('检测到进行中的回复，已恢复实时输出');
+      await consumeSSEStream(response, { convId, assistantMsgId, localUserMsgId: null, skipUserEvent: false });
+    } catch (err) {
+      if ((err as Error)?.name !== 'AbortError') {
+        // 恢复失败：移除占位气泡，改为静默刷新消息
+        setMessages((prev) => prev.filter((m) => m.id !== assistantMsgId));
+        void queryClient.invalidateQueries({ queryKey: aiConversationKeys.messages(convId) });
+      }
+    } finally {
+      setGenerating(false);
+      abortRef.current = null;
+    }
+  }, [generating, consumeSSEStream, queryClient]);
+
+  // 会话切换时探测未完成的生成任务（刷新 / 断网恢复场景）
+  useEffect(() => {
+    if (!activeConvId) return;
+    let cancelled = false;
+    void getActiveGeneration(activeConvId)
+      .then((res) => {
+        if (!cancelled && res.genId) void attachToGeneration(activeConvId, res.genId);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在切换会话时探测一次
+  }, [activeConvId]);
+
   const handleStopGenerate = useCallback(() => {
+    // 生成与连接解耦：优先通知服务端停止（保存已生成部分），再断开本地流
+    const genId = currentGenIdRef.current;
+    if (genId) {
+      void cancelGeneration(genId).catch(() => {});
+    }
     abortRef.current?.abort();
     setGenerating(false);
     setMessages((prev) =>
       prev.map((m) => (m.status === 'in_progress' ? { ...m, status: 'completed' } : m))
     );
-  }, []);
+    // 服务端保存部分内容后同步一次消息树
+    const convId = activeConvId;
+    if (convId) {
+      setTimeout(() => {
+        void queryClient.invalidateQueries({ queryKey: aiConversationKeys.messages(convId) });
+      }, 1200);
+    }
+  }, [activeConvId, queryClient]);
 
-  /** 重新生成：删除最后一条 assistant 消息，服务端基于已有历史重答（不重复保存 user 消息） */
+  /** 重新生成：保留旧回复为兄弟分支，基于同一条 user 消息重答（可用分支切换器来回对比） */
   const handleRegenerate = useCallback(async (msg: Message) => {
     if (generating || !activeConvId) return;
     if (msg.role !== 'assistant') return;
-    const dbId = String(msg.id).startsWith('api-') ? Number(String(msg.id).replace('api-', '')) : null;
 
     // 确认这条 assistant 前面有 user 消息，否则无从重新生成
     const curMessages = messages;
@@ -550,44 +749,33 @@ export default function AIChatPage() {
     const prevUserMsg = idx > 0 ? curMessages.slice(0, idx).reverse().find((m) => m.role === 'user') : null;
     if (!prevUserMsg) { Toast.warning('找不到对应的用户消息，无法重新生成'); return; }
 
-    // 先删除 DB 中旧的 assistant 回复，保证服务端历史末条为 user 消息
-    if (dbId) {
-      await request.delete(`/api/ai/conversations/${activeConvId}/messages/${dbId}`).catch(() => {});
-    }
-    // 去掉 UI 中这条 assistant 消息后以 regenerate 模式重发
+    // 仅从展示中移除旧回复（数据保留为兄弟分支），以 regenerate 模式重发
     setMessages((prev) => prev.filter((m) => m.id !== msg.id));
     void handleMessageSend({ text: '' }, { regenerate: true });
   }, [generating, activeConvId, messages, handleMessageSend]);
 
-  /** 编辑并重发：级联删除该 user 消息及其后所有消息，再以新内容重新发送 */
+  /** 编辑并重发：以被编辑消息的父节点为分支点创建新的兄弟分支（旧分支保留，可切换回看） */
   const handleEditAndResend = useCallback(async (msgId: string, newText: string) => {
     if (!newText.trim() || !activeConvId) return;
     const curMessages = messages;
     const idx = curMessages.findIndex((m) => m.id === msgId);
     if (idx === -1) return;
 
-    // 删除 DB 里该 user 消息及之后的所有消息（旧 user 消息也一并清除，避免重复）
     const dbId = String(msgId).startsWith('api-') ? Number(String(msgId).replace('api-', '')) : null;
+    // 分支点 = 被编辑消息的父节点（null = 根）；未落库的本地消息按普通发送兜底
+    let parentMsgId: number | null | undefined;
     if (dbId) {
-      await request.delete(`/api/ai/conversations/${activeConvId}/messages/${dbId}/cascade`).catch(() => {});
-    } else {
-      // 本地临时消息（尚未落库）：仅需清理其后已落库的 assistant 消息
-      const afterFirstDbMsg = curMessages.slice(idx + 1).find((m) => String(m.id).startsWith('api-'));
-      if (afterFirstDbMsg) {
-        const afterDbId = Number(String(afterFirstDbMsg.id).replace('api-', ''));
-        await request.delete(`/api/ai/conversations/${activeConvId}/messages/${afterDbId}/cascade`).catch(() => {});
-      }
+      const apiMsg = allApiMessages.find((m) => m.id === dbId);
+      parentMsgId = apiMsg ? apiMsg.parentId : undefined;
     }
-    // 截断 UI 中该消息及其后所有
+    // 截断 UI 中该消息及其后所有（旧分支数据保留）
     setMessages((prev) => prev.slice(0, idx));
-    void handleMessageSend({ text: newText });
-  }, [activeConvId, messages, handleMessageSend]);
+    void handleMessageSend({ text: newText }, parentMsgId !== undefined ? { parentMsgId } : undefined);
+  }, [activeConvId, messages, allApiMessages, handleMessageSend]);
 
   const handleEditCancel = useCallback((msgId: string) => {
     setMessages((prev) => prev.map((m) => m.id === msgId ? { ...m, editing: false } : m));
   }, []);
-
-  /** messageEditRender：编辑模式下渲染受控文本框 */
   const renderMessageEdit = useCallback(<T extends { inputContents?: Array<{ type: string; text?: string }> }>(props: T) => {
     const defaultText = props.inputContents?.find((c) => c.type === 'text')?.text ?? '';
     const editingMsg = messages.find((m) => (m as Record<string, unknown>).editing && m.role === 'user');
@@ -609,6 +797,8 @@ export default function AIChatPage() {
       setConversations((prev) => [newConv, ...prev]);
       setActiveConvId(newConv.id);
       setMessages([]);
+      setAllApiMessages([]);
+      setActiveLeafId(null);
     } catch {
       Toast.error('创建对话失败');
     }
@@ -757,6 +947,155 @@ export default function AIChatPage() {
 
   const activeConv = conversations.find((c) => c.id === activeConvId);
 
+  /** 当前会话关联的智能体（展示开场白 / 建议问题 / 头部徽标） */
+  const agentQuery = useAiAgentDetail(activeConv?.agentId ?? null);
+  const activeAgent = activeConv?.agentId ? agentQuery.data : undefined;
+
+  // ?agentId= 入口：从智能体页跳转，自动以该智能体开启新对话
+  const agentParamHandled = useRef(false);
+  useEffect(() => {
+    const agentIdStr = searchParams.get('agentId');
+    if (!agentIdStr || agentParamHandled.current) return;
+    agentParamHandled.current = true;
+    const agentId = Number(agentIdStr);
+    setSearchParams({}, { replace: true });
+    if (!Number.isFinite(agentId)) return;
+    void (async () => {
+      try {
+        setShowArchived(false);
+        const newConv = await createConversationMutation.mutateAsync({ title: '新对话', agentId });
+        setConversations((prev) => [newConv, ...prev]);
+        setActiveConvId(newConv.id);
+        setMessages([]);
+        setAllApiMessages([]);
+        setActiveLeafId(null);
+      } catch { /* 请求层已提示 */ }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅处理一次入口参数
+  }, [searchParams]);
+
+  /** 分支切换：以目标兄弟消息为起点下探最新叶子并激活 */
+  const handleSwitchBranch = useCallback(async (siblingDbId: number) => {
+    if (!activeConvId || generating) return;
+    try {
+      const res = await switchConversationBranch(activeConvId, siblingDbId);
+      setActiveLeafId(res.activeLeafMsgId);
+      setConversations((prev) => prev.map((c) => (c.id === activeConvId ? { ...c, activeLeafMsgId: res.activeLeafMsgId } : c)));
+    } catch { /* 请求层已提示 */ }
+  }, [activeConvId, generating]);
+
+  /** 消息标题行：默认标题 + 分支切换器（‹ i/n ›） */
+  const renderDialogueTitle = useCallback((props: RenderTitleProps) => {
+    const msg = props.message;
+    const dbId = msg && String(msg.id).startsWith('api-') ? Number(String(msg.id).replace('api-', '')) : null;
+    const info = dbId ? branchInfo.get(dbId) : undefined;
+    if (!info) return props.defaultTitle;
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        {props.defaultTitle}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 12, color: 'var(--semi-color-text-2)' }}>
+          <Button
+            theme="borderless"
+            size="small"
+            disabled={info.index === 0 || generating}
+            icon={<ChevronLeft size={12} />}
+            style={{ height: 18, width: 18, minWidth: 18, padding: 0 }}
+            onClick={() => void handleSwitchBranch(info.siblings[info.index - 1])}
+          />
+          {info.index + 1}/{info.siblings.length}
+          <Button
+            theme="borderless"
+            size="small"
+            disabled={info.index === info.siblings.length - 1 || generating}
+            icon={<ChevronRight size={12} />}
+            style={{ height: 18, width: 18, minWidth: 18, padding: 0 }}
+            onClick={() => void handleSwitchBranch(info.siblings[info.index + 1])}
+          />
+        </span>
+      </span>
+    );
+  }, [branchInfo, generating, handleSwitchBranch]);
+
+  /** 标签编辑保存 */
+  const handleSaveTags = async () => {
+    if (!tagsConvId) return;
+    try {
+      const cleaned = await setConversationTags(tagsConvId, tagsDraft);
+      setConversations((prev) => prev.map((c) => (c.id === tagsConvId ? { ...c, tags: cleaned.tags } : c)));
+      Toast.success('标签已更新');
+      setTagsConvId(null);
+    } catch { /* 请求层已提示 */ }
+  };
+
+  /** TTS：朗读 / 停止朗读 assistant 消息 */
+  const handleToggleSpeak = useCallback((msg: Message) => {
+    if (speakingMsgId === msg.id) {
+      window.speechSynthesis?.cancel();
+      setSpeakingMsgId(null);
+      return;
+    }
+    const text = extractPlainText(msg);
+    if (!text) return;
+    const ok = speakText(text, () => setSpeakingMsgId(null));
+    if (ok) setSpeakingMsgId(msg.id);
+    else Toast.warning('当前浏览器不支持语音朗读');
+  }, [speakingMsgId]);
+
+  // 卸载时停止朗读 / 录音
+  useEffect(() => () => {
+    window.speechSynthesis?.cancel();
+    recognitionRef.current?.stop();
+  }, []);
+
+  /** STT：开始 / 停止语音输入（识别文本进入待发草稿条） */
+  const handleToggleRecording = useCallback(() => {
+    if (recording) {
+      recognitionRef.current?.stop();
+      setRecording(false);
+      return;
+    }
+    const rec = createSpeechRecognition();
+    if (!rec) {
+      Toast.warning('当前浏览器不支持语音识别（建议使用 Chrome / Edge）');
+      return;
+    }
+    recognitionRef.current = rec;
+    rec.onresult = (e) => {
+      let final = '';
+      for (let i = 0; i < e.results.length; i++) {
+        final += e.results[i][0]?.transcript ?? '';
+      }
+      setSttDraft(final);
+    };
+    rec.onend = () => setRecording(false);
+    rec.onerror = () => setRecording(false);
+    rec.start();
+    setRecording(true);
+  }, [recording]);
+
+  const dialogueRenderConfig = useMemo(() => ({
+    // 操作栏：默认操作（去掉分享）+ 追加 TTS 朗读按钮（assistant 消息）
+    renderDialogueAction: (props: RenderActionProps) => {
+      if (!props.defaultActionsObj) return null;
+      const { copyNode, resetNode, likeNode, dislikeNode, moreNode } = props.defaultActionsObj;
+      const msg = props.message as Message | undefined;
+      const speakNode = msg && msg.role === 'assistant' && msg.status !== 'in_progress' ? (
+        <Tooltip content={speakingMsgId === msg.id ? '停止朗读' : '朗读回复'}>
+          <Button
+            theme="borderless"
+            size="small"
+            type="tertiary"
+            icon={speakingMsgId === msg.id ? <Square size={13} /> : <Volume2 size={13} />}
+            onClick={() => handleToggleSpeak(msg)}
+          />
+        </Tooltip>
+      ) : null;
+      return <div className={props.className}>{copyNode}{resetNode}{likeNode}{dislikeNode}{speakNode}{moreNode}</div>;
+    },
+    // 标题行：追加分支切换器（‹ i/n ›）
+    renderDialogueTitle,
+  }), [renderDialogueTitle, speakingMsgId, handleToggleSpeak]);
+
   const renderConvActions = (conv: AiConversation) => (
     <Dropdown
       trigger="click"
@@ -778,6 +1117,9 @@ export default function AIChatPage() {
               {conv.isArchived ? <ArchiveRestore size={13} /> : <Archive size={13} />}
               {conv.isArchived ? '取消归档' : '归档'}
             </span>
+          </Dropdown.Item>
+          <Dropdown.Item onClick={(e) => { (e as React.MouseEvent).stopPropagation(); setTagsDraft(conv.tags ?? []); setTagsConvId(conv.id); }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Tags size={13} />标签</span>
           </Dropdown.Item>
           <Dropdown.Item onClick={(e) => { (e as React.MouseEvent).stopPropagation(); setShareConvId(conv.id); }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Share2 size={13} />分享</span>
@@ -1015,8 +1357,11 @@ export default function AIChatPage() {
               </div>
             }
           >
-            <Title heading={6} style={{ margin: 0 }}>
-              {activeConv?.title ?? '智能对话'}
+            <Title heading={6} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              {activeAgent && <span title={activeAgent.description ?? undefined}>{activeAgent.avatar}</span>}
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeConv?.title ?? '智能对话'}</span>
+              {activeAgent && <Tag size="small" color="violet" style={{ flexShrink: 0 }}><Bot size={11} style={{ verticalAlign: -1, marginRight: 2 }} />{activeAgent.name}</Tag>}
+              {(activeConv?.tags ?? []).map((t) => <Tag key={t} size="small" color="white" style={{ flexShrink: 0 }}>{t}</Tag>)}
             </Title>
           </MasterDetailLayout.Header>
           <MasterDetailLayout.Body scroll="hidden">
@@ -1031,14 +1376,33 @@ export default function AIChatPage() {
                     </div>
                   ) : messages.length === 0 ? (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 14, padding: 24, textAlign: 'center' }}>
-                      <Sparkles size={40} color="var(--semi-color-primary)" />
-                      <Title heading={4} style={{ margin: 0 }}>有什么可以帮您？</Title>
-                      <Typography.Text type="tertiary">选择下面的问题快速开始，或在下方输入框直接提问</Typography.Text>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', maxWidth: 560, marginTop: 4 }}>
-                        {SUGGESTED_QUESTIONS.map((q) => (
-                          <Button key={q} theme="light" type="primary" onClick={() => void handleMessageSend({ text: q })}>{q}</Button>
-                        ))}
-                      </div>
+                      {activeAgent ? (
+                        <>
+                          <span style={{ fontSize: 44, lineHeight: 1 }}>{activeAgent.avatar}</span>
+                          <Title heading={4} style={{ margin: 0 }}>{activeAgent.name}</Title>
+                          <Typography.Text type="tertiary" style={{ maxWidth: 520, whiteSpace: 'pre-wrap' }}>
+                            {activeAgent.openingMessage || activeAgent.description || '有什么可以帮您？'}
+                          </Typography.Text>
+                          {activeAgent.suggestedQuestions.length > 0 && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', maxWidth: 560, marginTop: 4 }}>
+                              {activeAgent.suggestedQuestions.map((q) => (
+                                <Button key={q} theme="light" type="primary" onClick={() => void handleMessageSend({ text: q })}>{q}</Button>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles size={40} color="var(--semi-color-primary)" />
+                          <Title heading={4} style={{ margin: 0 }}>有什么可以帮您？</Title>
+                          <Typography.Text type="tertiary">选择下面的问题快速开始，或在下方输入框直接提问</Typography.Text>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', maxWidth: 560, marginTop: 4 }}>
+                            {SUGGESTED_QUESTIONS.map((q) => (
+                              <Button key={q} theme="light" type="primary" onClick={() => void handleMessageSend({ text: q })}>{q}</Button>
+                            ))}
+                          </div>
+                        </>
+                      )}
                     </div>
                   ) : (
                     <AIChatDialogue
@@ -1085,6 +1449,31 @@ export default function AIChatPage() {
 
                 {/* 输入框 */}
                 <div style={{ padding: '12px 20px', borderTop: '1px solid var(--semi-color-border)', background: 'var(--semi-color-bg-1)', flexShrink: 0 }}>
+                  {/* STT 语音识别草稿条 */}
+                  {(recording || sttDraft) && (
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center', padding: '6px 10px', borderRadius: 'var(--semi-border-radius-medium)', background: 'var(--semi-color-fill-0)' }}>
+                      {recording && <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--semi-color-danger)', flexShrink: 0, animation: 'pulse 1.2s infinite' }} />}
+                      <Input
+                        value={sttDraft}
+                        onChange={setSttDraft}
+                        placeholder={recording ? '正在聆听…' : '语音识别结果'}
+                        style={{ flex: 1 }}
+                        size="small"
+                      />
+                      <Button
+                        size="small"
+                        type="primary"
+                        disabled={!sttDraft.trim() || generating}
+                        onClick={() => {
+                          const text = sttDraft.trim();
+                          setSttDraft('');
+                          if (recording) handleToggleRecording();
+                          void handleMessageSend({ text });
+                        }}
+                      >发送</Button>
+                      <Button size="small" type="tertiary" onClick={() => { setSttDraft(''); if (recording) handleToggleRecording(); }}>清除</Button>
+                    </div>
+                  )}
                   {/* vision 待发送图片缩略图条 */}
                   {pendingImages.length > 0 && (
                     <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
@@ -1104,6 +1493,15 @@ export default function AIChatPage() {
                     </div>
                   )}
                   <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                    <Tooltip content={recording ? '停止语音输入' : '语音输入（识别结果可编辑后发送）'}>
+                      <Button
+                        theme="borderless"
+                        type={recording ? 'danger' : 'tertiary'}
+                        icon={recording ? <MicOff size={16} /> : <Mic size={16} />}
+                        style={{ marginBottom: 8 }}
+                        onClick={handleToggleRecording}
+                      />
+                    </Tooltip>
                     {selectedCapabilities?.vision && (
                       <>
                         <input
@@ -1256,6 +1654,27 @@ export default function AIChatPage() {
           ))}
         </Form>
       )}
+    </AppModal>
+    <AppModal
+      title="编辑对话标签"
+      visible={tagsConvId !== null}
+      onOk={() => void handleSaveTags()}
+      onCancel={() => setTagsConvId(null)}
+      closeOnEsc
+      width={420}
+    >
+      <Space vertical align="start" style={{ width: '100%' }}>
+        <Typography.Text type="tertiary" size="small">最多 10 个标签，每个不超过 20 字，回车添加</Typography.Text>
+        <TagInput
+          value={tagsDraft}
+          onChange={(v) => setTagsDraft((v as string[]).slice(0, 10))}
+          placeholder="输入标签后回车"
+          max={10}
+          maxLength={20}
+          style={{ width: '100%' }}
+          autoFocus
+        />
+      </Space>
     </AppModal>
     </>
   );

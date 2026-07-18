@@ -172,6 +172,11 @@ import aiPreferencesRoutes from './routes/ai/ai-preferences';
 import aiConversationExtrasRoutes from './routes/ai/ai-conversation-extras';
 import aiPublicRoutes from './routes/ai/ai-public';
 import aiKnowledgeRoutes from './routes/ai/ai-knowledge';
+import aiAgentsRoutes from './routes/ai/ai-agents';
+import aiGenerationsRoutes from './routes/ai/ai-generations';
+import aiHttpToolsRoutes from './routes/ai/ai-http-tools';
+import aiEvalRoutes from './routes/ai/ai-eval';
+import { registerAiEvalTaskHandlers } from './services/ai/ai-eval.service';
 import aiArenaRoutes from './routes/ai/ai-arena';
 import aiAuditRoutes from './routes/ai/ai-audit';
 import aiConversationsRoutes from './routes/ai/ai-conversations';
@@ -294,7 +299,7 @@ app.use('*', secureHeaders({
   xFrameOptions: false,                       // API 无 UI，不需要
 }));
 // 流式/二进制路由排除压缩：SSE 实时推送 + 文件下载不能被缓冲压缩
-const COMPRESS_EXCLUDE_PREFIXES = ['/api/ws', '/api/files', '/api/db-backups', '/api/db-admin', '/api/log-files', '/api/monitor/stream', '/api/ai/conversations', '/api/ai/arena'];
+const COMPRESS_EXCLUDE_PREFIXES = ['/api/ws', '/api/files', '/api/db-backups', '/api/db-admin', '/api/log-files', '/api/monitor/stream', '/api/ai/conversations', '/api/ai/arena', '/api/ai/generations'];
 app.use('*', except(
   (c) => COMPRESS_EXCLUDE_PREFIXES.some((p) => c.req.path.startsWith(p)),
   compress(),
@@ -340,7 +345,7 @@ if (config.requestBodyLimit > 0) {
 if (config.requestTimeoutMs > 0) {
   const timeoutMs = config.requestTimeoutMs;
   // 天生长耗时的路径前缀：WebSocket、文件上传/下载、数据库备份
-  const TIMEOUT_EXCLUDE_PREFIXES = ['/api/ws', '/api/files', '/api/db-backups', '/api/db-admin', '/api/log-files', '/api/monitor/stream', '/api/ai/conversations', '/api/ai/arena'];
+  const TIMEOUT_EXCLUDE_PREFIXES = ['/api/ws', '/api/files', '/api/db-backups', '/api/db-admin', '/api/log-files', '/api/monitor/stream', '/api/ai/conversations', '/api/ai/arena', '/api/ai/generations'];
 
   const timeoutMiddleware = timeout(
     timeoutMs,
@@ -545,6 +550,10 @@ app.route('/api/ai/preferences', aiPreferencesRoutes);
 app.route('/api/ai/conversations', aiConversationExtrasRoutes);
 app.route('/api/ai/public', aiPublicRoutes);
 app.route('/api/ai/knowledge-bases', aiKnowledgeRoutes);
+app.route('/api/ai/agents', aiAgentsRoutes);
+app.route('/api/ai/generations', aiGenerationsRoutes);
+app.route('/api/ai/http-tools', aiHttpToolsRoutes);
+app.route('/api/ai/eval', aiEvalRoutes);
 app.route('/api/ai/arena', aiArenaRoutes);
 app.route('/api/ai/audit', aiAuditRoutes);
 app.route('/api/ai/conversations', aiConversationsRoutes);
@@ -665,6 +674,7 @@ try {
   const { registerExportJobWorker } = await import('./services/tasks/export-jobs.service');
   const { registerSystemTasks } = await import('./lib/system-tasks.registry');
   registerTaskDemoHandlers(); // 演示任务类型需在任务中心 Worker 启动前注册
+  registerAiEvalTaskHandlers(); // AI 评测任务
   registerReportDatasourceTaskHandlers();
   registerReportDatasetTaskHandlers();
   registerReportDeliveryTaskHandlers();

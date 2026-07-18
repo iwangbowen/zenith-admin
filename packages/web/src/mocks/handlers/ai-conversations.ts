@@ -45,7 +45,7 @@ export const aiConversationsHandlers = [
 
   // 创建对话
   http.post('/api/ai/conversations', async ({ request }) => {
-    const body = await request.json() as { title?: string };
+    const body = await request.json() as { title?: string; agentId?: number };
     const now = mockDateTime();
     const newConv: AiConversation = {
       id: getNextConvId(),
@@ -57,6 +57,9 @@ export const aiConversationsHandlers = [
       isPinned: false,
       systemPromptOverride: null,
       knowledgeBaseId: null,
+      agentId: body.agentId ?? null,
+      tags: [],
+      activeLeafMsgId: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -64,6 +67,42 @@ export const aiConversationsHandlers = [
     msgStore[newConv.id] = [];
     return HttpResponse.json({ code: 0, message: '创建成功', data: newConv });
   }),
+
+  // 更新对话标签
+  http.put('/api/ai/conversations/:id/tags', async ({ params, request }) => {
+    const id = Number(params.id);
+    const body = await request.json() as { tags?: string[] };
+    const conv = convStore.find((c) => c.id === id);
+    if (!conv) return HttpResponse.json({ code: 404, message: '对话不存在', data: null }, { status: 404 });
+    conv.tags = (body.tags ?? []).slice(0, 10);
+    return HttpResponse.json({ code: 0, message: '标签已更新', data: { tags: conv.tags } });
+  }),
+
+  // 切换消息分支
+  http.put('/api/ai/conversations/:id/active-branch', async ({ params, request }) => {
+    const id = Number(params.id);
+    const body = await request.json() as { leafMsgId?: number };
+    const conv = convStore.find((c) => c.id === id);
+    if (!conv) return HttpResponse.json({ code: 404, message: '对话不存在', data: null }, { status: 404 });
+    // 简化：沿最新子分支下探
+    const msgs = msgStore[id] ?? [];
+    let leaf = body.leafMsgId ?? 0;
+    let advanced = true;
+    while (advanced) {
+      advanced = false;
+      const kids = msgs.filter((m) => m.parentId === leaf);
+      if (kids.length > 0) {
+        leaf = kids[kids.length - 1].id;
+        advanced = true;
+      }
+    }
+    conv.activeLeafMsgId = leaf;
+    return HttpResponse.json({ code: 0, message: 'ok', data: { activeLeafMsgId: leaf } });
+  }),
+
+  // 进行中的生成任务（Demo：无后台生成，恒为 null）
+  http.get('/api/ai/conversations/:id/active-generation', () =>
+    HttpResponse.json({ code: 0, message: 'ok', data: { genId: null } })),
 
   // 重命名对话
   http.put('/api/ai/conversations/:id/rename', async ({ params, request }) => {
@@ -169,16 +208,18 @@ export const aiConversationsHandlers = [
     });
   }),
 
-  // SSE 聊天 (模拟流式响应；regenerate 模式不保存新的 user 消息)
+  // SSE 聊天 (模拟流式响应；regenerate 模式不保存新的 user 消息，回复成为兄弟分支)
   http.post('/api/ai/conversations/:id/chat', async ({ params, request }) => {
     const id = Number(params.id);
-    const body = await request.json() as { message?: string; regenerate?: boolean };
+    const body = await request.json() as { message?: string; regenerate?: boolean; parentMsgId?: number | null };
     const regenerate = body.regenerate ?? false;
     if (!msgStore[id]) msgStore[id] = [];
 
     const now = mockDateTime();
     let userText = body.message ?? '';
     let userMsgId: number | null = null;
+    /** 分支树：assistant 消息父节点（重新生成 = 末条 user；普通发送 = 新 user 消息） */
+    let assistantParentId: number | null;
 
     if (regenerate) {
       // 重新生成：取历史末条 user 消息作为提问
@@ -187,12 +228,16 @@ export const aiConversationsHandlers = [
         return HttpResponse.json({ code: 400, message: '没有可重新生成的用户消息，请先删除旧回复', data: null }, { status: 400 });
       }
       userText = lastUser.content;
+      assistantParentId = lastUser.id;
     } else {
-      // Save user message
+      // Save user message（parentMsgId 提供时为编辑重发分支，否则挂在末条消息后）
       userMsgId = getNextMsgId();
+      const lastMsg = msgStore[id][msgStore[id].length - 1];
+      const userParentId = body.parentMsgId !== undefined ? body.parentMsgId : (lastMsg?.id ?? null);
       const userMsg: AiMessage = {
         id: userMsgId,
         conversationId: id,
+        parentId: userParentId,
         role: 'user',
         content: userText,
         reasoning: null,
@@ -206,9 +251,11 @@ export const aiConversationsHandlers = [
         feedbackStatus: null,
         feedbackRemark: null,
         feedbackHandledAt: null,
+        trace: null,
         createdAt: now,
       };
       msgStore[id].push(userMsg);
+      assistantParentId = userMsgId;
     }
 
     const reasoningText = `用户的提问是「${userText.slice(0, 40)}」。首先理解意图，然后组织一个简洁友好的演示回复，说明当前处于 Demo 模式即可。`;
@@ -233,7 +280,7 @@ export const aiConversationsHandlers = [
     }
 
     // Build SSE response（含思维链演示）
-    let sseBody = '';
+    let sseBody = `event: gen\ndata: ${JSON.stringify({ genId: `demo-gen-${assistantMsgId}` })}\n\n`;
     for (const chunk of reasoningText.match(/.{1,10}/g) ?? []) {
       sseBody += `event: reasoning\ndata: ${JSON.stringify({ content: chunk })}\n\n`;
     }
@@ -250,6 +297,7 @@ export const aiConversationsHandlers = [
     const assistantMsg: AiMessage = {
       id: assistantMsgId,
       conversationId: id,
+      parentId: assistantParentId,
       role: 'assistant',
       content: replyText,
       reasoning: reasoningText,
@@ -263,9 +311,13 @@ export const aiConversationsHandlers = [
       feedbackStatus: null,
       feedbackRemark: null,
       feedbackHandledAt: null,
+      trace: [
+        { type: 'llm_round', label: 'LLM 生成', durationMs: 3200, meta: { model: 'qwen (demo)', toolCalls: 0 } },
+      ],
       createdAt: now,
     };
     msgStore[id].push(assistantMsg);
+    if (conv) conv.activeLeafMsgId = assistantMsgId;
 
     return new HttpResponse(sseBody, {
       headers: {

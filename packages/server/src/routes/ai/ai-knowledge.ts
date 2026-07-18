@@ -18,9 +18,10 @@ import {
   deleteKnowledgeBase,
   listKbDocuments,
   addKbDocument,
+  importKbUrl,
   deleteKbDocument,
 } from '../../services/ai/ai-knowledge.service';
-import { createAiKnowledgeBaseSchema, updateAiKnowledgeBaseSchema, addAiKbDocumentSchema } from '@zenith/shared';
+import { createAiKnowledgeBaseSchema, updateAiKnowledgeBaseSchema, addAiKbDocumentSchema, importAiKbUrlSchema } from '@zenith/shared';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -134,6 +135,23 @@ const addDoc = defineOpenAPIRoute({
   },
 });
 
+const importUrl = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post',
+    path: '/{id}/documents/import-url',
+    tags: ['AI'],
+    summary: '从 URL 抓取网页正文入库',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'ai:kb:edit' })] as const,
+    request: { params: IdParam, body: { content: jsonContent(importAiKbUrlSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(AiKbDocumentDTO, '网页已入库') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    return c.json(okBody(await importKbUrl(id, c.req.valid('json')), '网页已入库'), 200);
+  },
+});
+
 const removeDoc = defineOpenAPIRoute({
   route: createRoute({
     method: 'delete',
@@ -153,6 +171,6 @@ const removeDoc = defineOpenAPIRoute({
 });
 
 // 路由注册
-router.openapiRoutes([list, available, create, update, remove, listDocs, addDoc, removeDoc] as const);
+router.openapiRoutes([list, available, create, update, remove, listDocs, addDoc, importUrl, removeDoc] as const);
 
 export default router;

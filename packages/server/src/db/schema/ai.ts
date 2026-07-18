@@ -35,6 +35,10 @@ export const aiProviderConfigs = pgTable('ai_provider_configs', {
   priceOutputPerM: integer('price_output_per_m'),
   isDefault: boolean('is_default').notNull().default(false),
   isEnabled: boolean('is_enabled').notNull().default(true),
+  /** 主备切换：首 token 前失败时自动降级到该配置（软引用，一层不链式） */
+  fallbackConfigId: integer('fallback_config_id'),
+  /** 并发流上限（null / 0 = 不限制），超限排队等待 */
+  maxConcurrent: integer('max_concurrent'),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
@@ -55,6 +59,12 @@ export const aiConversations = pgTable('ai_conversations', {
   systemPromptOverride: text('system_prompt_override'),
   /** 挂载的知识库 ID（软引用，删除知识库时置空） */
   knowledgeBaseId: integer('knowledge_base_id'),
+  /** 关联的智能体 ID（软引用，删除智能体后对话保留） */
+  agentId: integer('agent_id'),
+  /** 用户自定义标签 */
+  tags: text('tags').array(),
+  /** 分支树当前激活叶子消息 ID（null = 线性对话取最新） */
+  activeLeafMsgId: integer('active_leaf_msg_id'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
@@ -63,9 +73,19 @@ export type AiConversationRow = typeof aiConversations.$inferSelect;
 
 export type NewAiConversation = typeof aiConversations.$inferInsert;
 
+/** 调用链 trace 步骤（检索 / 工具执行 / LLM 轮次） */
+export interface AiTraceStep {
+  type: 'retrieval' | 'tool_call' | 'llm_round' | 'failover';
+  label: string;
+  durationMs: number;
+  meta?: Record<string, unknown>;
+}
+
 export const aiMessages = pgTable('ai_messages', {
   id: serial('id').primaryKey(),
   conversationId: integer('conversation_id').notNull().references(() => aiConversations.id, { onDelete: 'cascade' }),
+  /** 分支树父消息 ID（null = 根消息；同 parent 的多条同角色消息互为兄弟分支） */
+  parentId: integer('parent_id'),
   role: aiMessageRoleEnum('role').notNull(),
   content: text('content').notNull(),
   /** 推理模型的思维链内容（reasoning_content，user 消息为 null） */
@@ -88,6 +108,8 @@ export const aiMessages = pgTable('ai_messages', {
   feedbackRemark: varchar('feedback_remark', { length: 500 }),
   /** 反馈处理时间 */
   feedbackHandledAt: timestamp('feedback_handled_at'),
+  /** 生成调用链 trace（assistant 消息：检索/工具/LLM 轮次耗时明细） */
+  trace: jsonb('trace').$type<AiTraceStep[]>(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -198,6 +220,8 @@ export const aiKbDocuments = pgTable('ai_kb_documents', {
   id: serial('id').primaryKey(),
   kbId: integer('kb_id').notNull().references(() => aiKnowledgeBases.id, { onDelete: 'cascade' }),
   name: varchar('name', { length: 200 }).notNull(),
+  /** 网页抓取来源 URL（手工文本 / 文件导入为 null） */
+  sourceUrl: varchar('source_url', { length: 500 }),
   /** ready / processing / failed */
   status: varchar('status', { length: 20 }).notNull().default('ready'),
   chunkCount: integer('chunk_count').notNull().default(0),
@@ -219,3 +243,138 @@ export const aiKbChunks = pgTable('ai_kb_chunks', {
 });
 
 export type AiKbChunkRow = typeof aiKbChunks.$inferSelect;
+
+// ─── P3：自定义智能体 ─────────────────────────────────────────────────────────
+
+export const aiAgentStatusEnum = pgEnum('ai_agent_status', ['private', 'pending', 'published', 'rejected']);
+
+/** 自定义智能体（预设提示词 + 模型 + 知识库 + 工具集的组合） */
+export const aiAgents = pgTable('ai_agents', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 100 }).notNull(),
+  description: varchar('description', { length: 300 }),
+  /** 头像 emoji */
+  avatar: varchar('avatar', { length: 20 }).notNull().default('🤖'),
+  systemPrompt: text('system_prompt').notNull(),
+  /** 指定服务商配置（null = 系统默认配置），软引用 */
+  configId: integer('config_id'),
+  /** 指定模型（null = 配置默认模型） */
+  model: varchar('model', { length: 100 }),
+  temperature: varchar('temperature', { length: 10 }),
+  /** 绑定知识库（软引用，删除知识库时置空） */
+  knowledgeBaseId: integer('knowledge_base_id'),
+  /** 启用的工具名集合（内置 + HTTP 工具） */
+  tools: text('tools').array(),
+  /** 开场白 */
+  openingMessage: text('opening_message'),
+  /** 建议问题 */
+  suggestedQuestions: text('suggested_questions').array(),
+  /** private 私有 / pending 待审核 / published 已上架 / rejected 已驳回 */
+  status: aiAgentStatusEnum('status').notNull().default('private'),
+  /** 市场克隆来源（软引用） */
+  clonedFromId: integer('cloned_from_id'),
+  usageCount: integer('usage_count').notNull().default(0),
+  isEnabled: boolean('is_enabled').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type AiAgentRow = typeof aiAgents.$inferSelect;
+
+export type NewAiAgent = typeof aiAgents.$inferInsert;
+
+// ─── P3：HTTP API 工具 ────────────────────────────────────────────────────────
+
+/** HTTP 工具参数定义 */
+export interface AiHttpToolParam {
+  name: string;
+  type: 'string' | 'number' | 'boolean';
+  description: string;
+  required: boolean;
+  /** query = URL 查询参数 / body = JSON body 字段 / path = URL 路径占位符 {name} */
+  location: 'query' | 'body' | 'path';
+}
+
+/** 管理员配置的 HTTP API 工具（动态注入 function calling 工具集） */
+export const aiHttpTools = pgTable('ai_http_tools', {
+  id: serial('id').primaryKey(),
+  /** 工具函数名（a-z0-9_，全局唯一，与内置工具共用命名空间） */
+  name: varchar('name', { length: 60 }).notNull(),
+  description: varchar('description', { length: 500 }).notNull(),
+  method: varchar('method', { length: 10 }).notNull().default('GET'),
+  /** 支持 {param} 路径占位符 */
+  urlTemplate: varchar('url_template', { length: 500 }).notNull(),
+  headers: jsonb('headers').$type<Record<string, string>>(),
+  params: jsonb('params').$type<AiHttpToolParam[]>(),
+  isEnabled: boolean('is_enabled').notNull().default(true),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [uniqueIndex('ai_http_tools_name_uq').on(t.name)]);
+
+export type AiHttpToolRow = typeof aiHttpTools.$inferSelect;
+
+// ─── P3：提示词模板版本 ───────────────────────────────────────────────────────
+
+/** 提示词模板历史版本快照（内容变更时自动留档） */
+export const aiPromptTemplateVersions = pgTable('ai_prompt_template_versions', {
+  id: serial('id').primaryKey(),
+  templateId: integer('template_id').notNull().references(() => aiPromptTemplates.id, { onDelete: 'cascade' }),
+  version: integer('version').notNull(),
+  name: varchar('name', { length: 100 }).notNull(),
+  content: text('content').notNull(),
+  createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export type AiPromptTemplateVersionRow = typeof aiPromptTemplateVersions.$inferSelect;
+
+// ─── P3：评测集与评测运行 ─────────────────────────────────────────────────────
+
+/** 评测集条目 */
+export interface AiEvalItem {
+  question: string;
+  /** 期望要点（可选，用于人工对照） */
+  expected?: string;
+}
+
+export const aiEvalSets = pgTable('ai_eval_sets', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 100 }).notNull(),
+  description: varchar('description', { length: 300 }),
+  items: jsonb('items').$type<AiEvalItem[]>().notNull().default([]),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type AiEvalSetRow = typeof aiEvalSets.$inferSelect;
+
+/** 单条评测结果 */
+export interface AiEvalResult {
+  question: string;
+  expected?: string;
+  answer: string;
+  durationMs: number;
+  tokensInput: number;
+  tokensOutput: number;
+  error?: string;
+}
+
+export const aiEvalRuns = pgTable('ai_eval_runs', {
+  id: serial('id').primaryKey(),
+  setId: integer('set_id').notNull().references(() => aiEvalSets.id, { onDelete: 'cascade' }),
+  /** 使用的服务商配置（软引用） */
+  configId: integer('config_id'),
+  model: varchar('model', { length: 100 }).notNull(),
+  /** running / done / failed */
+  status: varchar('status', { length: 20 }).notNull().default('running'),
+  results: jsonb('results').$type<AiEvalResult[]>(),
+  avgDurationMs: integer('avg_duration_ms'),
+  totalTokens: integer('total_tokens'),
+  createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export type AiEvalRunRow = typeof aiEvalRuns.$inferSelect;

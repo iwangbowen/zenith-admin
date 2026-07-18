@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Button, Col, Form, Input, Modal, Row, Select, Spin, Tag, Toast } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Input, Modal, Row, Select, SideSheet, Space, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Plus, RotateCcw, Search } from 'lucide-react';
@@ -19,6 +19,7 @@ import {
   useDeleteAiPrompt,
   useSaveAiPrompt,
 } from '@/hooks/queries/ai-prompts';
+import { useAiPromptVersions, useRestoreAiPromptVersion } from '@/hooks/queries/ai-extras';
 
 interface SearchParams {
   keyword: string;
@@ -67,6 +68,9 @@ export default function PromptTemplatesPage() {
   const formApi = useRef<FormApi | null>(null);
   const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
   const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
+  const [versionTemplate, setVersionTemplate] = useState<AiPromptTemplate | null>(null);
+  const versionsQuery = useAiPromptVersions(versionTemplate?.id ?? null);
+  const restoreVersionMutation = useRestoreAiPromptVersion();
   const { page, pageSize, setPage, buildPagination } = usePagination();
   const [modalVisible, setModalVisible] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<AiPromptTemplate | null>(null);
@@ -175,14 +179,19 @@ export default function PromptTemplatesPage() {
       render: (enabled: boolean) => statusTag(enabled),
     },
     createOperationColumn<AiPromptTemplate>({
-      width: 150,
-      desktopInlineKeys: ['edit', 'delete'],
+      width: 180,
+      desktopInlineKeys: ['edit', 'versions', 'delete'],
       actions: (record) => [
         {
           key: 'edit',
           label: '编辑',
           hidden: !hasPermission('ai:prompt:edit'),
           onClick: () => openEdit(record),
+        },
+        {
+          key: 'versions',
+          label: '版本',
+          onClick: () => setVersionTemplate(record),
         },
         {
           key: 'delete',
@@ -338,6 +347,55 @@ export default function PromptTemplatesPage() {
           </Form>
         </Spin>
       </AppModal>
+      <SideSheet
+        title={`版本历史 — ${versionTemplate?.name ?? ''}`}
+        visible={versionTemplate !== null}
+        onCancel={() => setVersionTemplate(null)}
+        width={560}
+      >
+        {versionsQuery.isLoading ? (
+          <Spin style={{ margin: '48px auto', display: 'block' }} />
+        ) : (versionsQuery.data ?? []).length === 0 ? (
+          <Typography.Text type="tertiary">暂无历史版本（编辑内容保存后自动留档）</Typography.Text>
+        ) : (
+          <Space vertical align="start" style={{ width: '100%' }} spacing={12}>
+            {(versionsQuery.data ?? []).map((v) => (
+              <div key={v.id} style={{ width: '100%', padding: 12, borderRadius: 'var(--semi-border-radius-medium)', border: '1px solid var(--semi-color-border)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <Space>
+                    <Tag color="blue" size="small">v{v.version}</Tag>
+                    <Typography.Text type="tertiary" size="small">{v.creatorName ?? '—'} · {v.createdAt}</Typography.Text>
+                  </Space>
+                  {hasPermission('ai:prompt:edit') && (
+                    <Button
+                      theme="borderless"
+                      size="small"
+                      loading={restoreVersionMutation.isPending}
+                      onClick={() => {
+                        Modal.confirm({
+                          title: `恢复到 v${v.version}？`,
+                          content: '当前内容会自动留档为新版本',
+                          onOk: async () => {
+                            await restoreVersionMutation.mutateAsync({ templateId: versionTemplate!.id, versionId: v.id });
+                            Toast.success('已恢复');
+                            void queryClient.invalidateQueries({ queryKey: aiPromptKeys.all });
+                          },
+                        });
+                      }}
+                    >恢复此版本</Button>
+                  )}
+                </div>
+                <Typography.Paragraph
+                  style={{ fontSize: 13, whiteSpace: 'pre-wrap', margin: 0 }}
+                  ellipsis={{ rows: 6, expandable: true, collapsible: true, collapseText: '收起', expandText: '展开' }}
+                >
+                  {v.content}
+                </Typography.Paragraph>
+              </div>
+            ))}
+          </Space>
+        )}
+      </SideSheet>
     </div>
   );
 }

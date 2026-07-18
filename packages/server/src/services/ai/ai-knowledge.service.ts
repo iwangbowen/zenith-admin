@@ -10,12 +10,32 @@ import { httpRequest } from '../../lib/http-client';
 import { AI_SSRF_OPTIONS } from '../../lib/ai/outbound';
 import { HTTPException } from 'hono/http-exception';
 import logger from '../../lib/logger';
-import type { CreateAiKnowledgeBaseInput, UpdateAiKnowledgeBaseInput, AddAiKbDocumentInput } from '@zenith/shared';
+import type { CreateAiKnowledgeBaseInput, UpdateAiKnowledgeBaseInput, AddAiKbDocumentInput, ImportAiKbUrlInput } from '@zenith/shared';
 
 /** 分块目标大小（估算 token） */
 const CHUNK_TOKENS = 500;
 /** 单知识库分块上限（JS 余弦检索的规模保护） */
 const MAX_CHUNKS_PER_KB = 5000;
+/** 混合检索权重：向量相似度 0.7 + 关键词命中 0.3 */
+const HYBRID_VECTOR_WEIGHT = 0.7;
+const HYBRID_KEYWORD_WEIGHT = 0.3;
+
+// ─── pgvector 运行时探测（不可用时回退 JS 余弦） ─────────────────────────────
+
+let pgVectorAvailable: boolean | null = null;
+
+async function hasPgVector(): Promise<boolean> {
+  if (pgVectorAvailable !== null) return pgVectorAvailable;
+  try {
+    const rows = await db.execute(sql`SELECT 1 FROM pg_extension WHERE extname = 'vector'`);
+    const list = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows ?? [];
+    pgVectorAvailable = list.length > 0;
+  } catch {
+    pgVectorAvailable = false;
+  }
+  if (pgVectorAvailable) logger.info('[ai-kb] pgvector enabled, using SQL vector search');
+  return pgVectorAvailable;
+}
 
 function mapKb(row: typeof aiKnowledgeBases.$inferSelect, documentCount = 0, chunkCount = 0) {
   return {
@@ -36,6 +56,7 @@ function mapDoc(row: typeof aiKbDocuments.$inferSelect) {
     id: row.id,
     kbId: row.kbId,
     name: row.name,
+    sourceUrl: row.sourceUrl,
     status: row.status as 'ready' | 'processing' | 'failed',
     chunkCount: row.chunkCount,
     charCount: row.charCount,
@@ -153,8 +174,8 @@ async function embedTexts(texts: string[]): Promise<number[][] | null> {
   }
 }
 
-/** 添加文档：分块 → （可选）向量化 → 入库 */
-export async function addKbDocument(kbId: number, input: AddAiKbDocumentInput) {
+/** 添加文档：分块 → （可选）向量化 → 入库（pgvector 可用时同步物化 embedding_vec 列） */
+export async function addKbDocument(kbId: number, input: AddAiKbDocumentInput, sourceUrl: string | null = null) {
   const kb = await ensureKbOwner(kbId);
   const chunks = chunkText(input.content);
   if (chunks.length === 0) throw new HTTPException(400, { message: '内容为空，无法入库' });
@@ -169,7 +190,7 @@ export async function addKbDocument(kbId: number, input: AddAiKbDocumentInput) {
 
   const [doc] = await db
     .insert(aiKbDocuments)
-    .values({ kbId, name: input.name, status: 'processing', charCount: input.content.length })
+    .values({ kbId, name: input.name, status: 'processing', charCount: input.content.length, sourceUrl })
     .returning();
 
   try {
@@ -184,6 +205,10 @@ export async function addKbDocument(kbId: number, input: AddAiKbDocumentInput) {
         tokenCount: estimateTokens(content),
       })),
     );
+    // pgvector：real[] 直接 cast 物化到 vector 列，检索走 SQL 余弦距离
+    if (embeddings && (await hasPgVector())) {
+      await db.execute(sql`UPDATE ai_kb_chunks SET embedding_vec = embedding::vector WHERE doc_id = ${doc.id} AND embedding IS NOT NULL`);
+    }
     await db.update(aiKbDocuments)
       .set({ status: 'ready', chunkCount: chunks.length })
       .where(eq(aiKbDocuments.id, doc.id));
@@ -197,6 +222,57 @@ export async function addKbDocument(kbId: number, input: AddAiKbDocumentInput) {
       .where(eq(aiKbDocuments.id, doc.id));
     throw err;
   }
+}
+
+// ─── URL 网页抓取入库 ─────────────────────────────────────────────────────────
+
+/** 抓取内容大小上限（字节） */
+const URL_FETCH_MAX_BYTES = 2 * 1024 * 1024;
+
+/** 极简 HTML → 纯文本（去 script/style、块级标签转换行、实体解码） */
+function htmlToText(html: string): { title: string; text: string } {
+  const titleMatch = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html);
+  const title = titleMatch ? titleMatch[1].trim().slice(0, 200) : '';
+  const text = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<(nav|header|footer|aside)[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<(br|\/p|\/div|\/li|\/h[1-6]|\/tr|\/section|\/article)[^>]*>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .join('\n');
+  return { title, text };
+}
+
+/** 从 URL 抓取网页正文入库（SSRF 防护出站；仅 text/html 与 text/*） */
+export async function importKbUrl(kbId: number, input: ImportAiKbUrlInput) {
+  await ensureKbOwner(kbId);
+  let res;
+  try {
+    res = await httpRequest(input.url, { method: 'GET', timeout: 20_000, ...AI_SSRF_OPTIONS });
+  } catch (err) {
+    throw new HTTPException(400, { message: `网页抓取失败：${err instanceof Error ? err.message : '连接错误'}` });
+  }
+  if (!res.ok) throw new HTTPException(400, { message: `网页抓取失败：HTTP ${res.status}` });
+  const contentType = res.headers.get('content-type') ?? '';
+  if (contentType && !contentType.includes('text/') && !contentType.includes('html')) {
+    throw new HTTPException(400, { message: `不支持的内容类型：${contentType.split(';')[0]}（仅支持网页/文本）` });
+  }
+  const raw = (await res.text()).slice(0, URL_FETCH_MAX_BYTES);
+  const isHtml = contentType.includes('html') || /<html[\s>]/i.test(raw.slice(0, 2000));
+  const { title, text } = isHtml ? htmlToText(raw) : { title: '', text: raw };
+  if (!text.trim()) throw new HTTPException(400, { message: '未能从该网页提取到正文内容' });
+  const name = (input.name?.trim() || title || new URL(input.url).hostname).slice(0, 200);
+  return addKbDocument(kbId, { name, content: text.slice(0, 500_000) }, input.url);
 }
 
 export async function deleteKbDocument(kbId: number, docId: number) {
@@ -226,65 +302,110 @@ export interface KbRetrievedChunk {
   score: number;
 }
 
+/** 关键词命中率评分（0-1） */
+function keywordScore(content: string, terms: string[]): number {
+  if (terms.length === 0) return 0;
+  const lower = content.toLowerCase();
+  const hits = terms.reduce((acc, t) => acc + (lower.includes(t) ? 1 : 0), 0);
+  return hits / terms.length;
+}
+
+function splitTerms(query: string): string[] {
+  return query.toLowerCase().split(/[\s,，。？?!！、]+/).filter((t) => t.length >= 2).slice(0, 10);
+}
+
 /**
- * 知识库检索：优先向量余弦（query embedding 可用且分块有向量），否则关键词匹配兜底。
- * 返回 top N 分块（附相似度分数）。
+ * 知识库混合检索：向量相似度（pgvector SQL 优先，JS 余弦兜底）0.7 + 关键词命中 0.3 加权；
+ * 向量不可用（未配置 embedding / 模型不一致）时退化为纯关键词。返回 top N 分块（附综合分数）。
  */
 export async function retrieveKbContext(kbId: number, ownerId: number, query: string, topN = 4): Promise<KbRetrievedChunk[]> {
   const [kb] = await db.select().from(aiKnowledgeBases).where(eq(aiKnowledgeBases.id, kbId));
   if (!kb || kb.userId !== ownerId) return [];
 
+  const terms = splitTerms(query);
+  const docNameOf = async (docIds: number[]) => {
+    const docs = docIds.length > 0
+      ? await db.select({ id: aiKbDocuments.id, name: aiKbDocuments.name }).from(aiKbDocuments).where(inArray(aiKbDocuments.id, docIds))
+      : [];
+    return new Map(docs.map((d) => [d.id, d.name]));
+  };
+
+  // 向量检索：仅当入库所用 embedding 模型与当前配置一致时启用，
+  // 否则（管理员更换了 ai_embedding_model）向量空间不可比，直接走关键词兜底
+  const currentModel = (await getConfigValue('ai_embedding_model', '')).trim();
+  if (currentModel && kb.embeddingModel === currentModel) {
+    const queryEmbedding = await embedTexts([query]);
+    const queryVec = queryEmbedding?.[0];
+    if (queryVec) {
+      // 路径一：pgvector SQL 余弦（大规模高效，取候选池后做混合加权）
+      if (await hasPgVector()) {
+        try {
+          const vecLiteral = `[${queryVec.join(',')}]`;
+          const raw = await db.execute(sql`
+            SELECT content, doc_id AS "docId", 1 - (embedding_vec <=> ${vecLiteral}::vector) AS score
+            FROM ai_kb_chunks
+            WHERE kb_id = ${kbId} AND embedding_vec IS NOT NULL
+            ORDER BY embedding_vec <=> ${vecLiteral}::vector
+            LIMIT ${Math.max(topN * 5, 20)}
+          `);
+          const rows = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as Array<{ content: string; docId: number; score: number }>;
+          if (rows.length > 0) {
+            const nameMap = await docNameOf([...new Set(rows.map((r) => r.docId))]);
+            const scored = rows
+              .map((r) => ({
+                docName: nameMap.get(r.docId) ?? '未知文档',
+                content: r.content,
+                score: Math.round((HYBRID_VECTOR_WEIGHT * Number(r.score) + HYBRID_KEYWORD_WEIGHT * keywordScore(r.content, terms)) * 1000) / 1000,
+              }))
+              .sort((a, b) => b.score - a.score)
+              .slice(0, topN)
+              .filter((c) => c.score > 0.3);
+            if (scored.length > 0) return scored;
+          }
+        } catch (err) {
+          // 维度不一致等 pgvector 错误：回退 JS 路径
+          logger.warn('[ai-kb] pgvector search failed, fallback to JS cosine', err);
+        }
+      }
+
+      // 路径二：JS 余弦（全量加载，规模受 MAX_CHUNKS_PER_KB 保护）
+      const chunks = await db
+        .select({ content: aiKbChunks.content, embedding: aiKbChunks.embedding, docId: aiKbChunks.docId })
+        .from(aiKbChunks)
+        .where(eq(aiKbChunks.kbId, kbId))
+        .limit(MAX_CHUNKS_PER_KB);
+      const withEmbedding = chunks.filter((c) => Array.isArray(c.embedding) && c.embedding.length === queryVec.length);
+      if (withEmbedding.length > 0) {
+        const nameMap = await docNameOf([...new Set(withEmbedding.map((c) => c.docId))]);
+        const scored = withEmbedding
+          .map((c) => ({
+            docName: nameMap.get(c.docId) ?? '未知文档',
+            content: c.content,
+            score: Math.round((HYBRID_VECTOR_WEIGHT * cosineSimilarity(queryVec, c.embedding!) + HYBRID_KEYWORD_WEIGHT * keywordScore(c.content, terms)) * 1000) / 1000,
+          }))
+          .sort((a, b) => b.score - a.score)
+          .slice(0, topN)
+          .filter((c) => c.score > 0.3);
+        if (scored.length > 0) return scored;
+      }
+    }
+  }
+
+  // 关键词兜底：按查询词命中率排序
+  if (terms.length === 0) return [];
   const chunks = await db
-    .select({
-      content: aiKbChunks.content,
-      embedding: aiKbChunks.embedding,
-      docId: aiKbChunks.docId,
-    })
+    .select({ content: aiKbChunks.content, docId: aiKbChunks.docId })
     .from(aiKbChunks)
     .where(eq(aiKbChunks.kbId, kbId))
     .limit(MAX_CHUNKS_PER_KB);
   if (chunks.length === 0) return [];
-
-  const docIds = [...new Set(chunks.map((c) => c.docId))];
-  const docs = await db.select({ id: aiKbDocuments.id, name: aiKbDocuments.name }).from(aiKbDocuments).where(inArray(aiKbDocuments.id, docIds));
-  const docNameMap = new Map(docs.map((d) => [d.id, d.name]));
-
-  // 向量检索：仅当入库所用 embedding 模型与当前配置一致时启用，
-  // 否则（管理员更换了 ai_embedding_model）向量空间不可比，直接走关键词兜底
-  const withEmbedding = chunks.filter((c) => Array.isArray(c.embedding) && c.embedding.length > 0);
-  const currentModel = (await getConfigValue('ai_embedding_model', '')).trim();
-  if (withEmbedding.length > 0 && currentModel && kb.embeddingModel === currentModel) {
-    const queryEmbedding = await embedTexts([query]);
-    if (queryEmbedding?.[0]) {
-      const queryVec = queryEmbedding[0];
-      const scored = withEmbedding
-        // 维度不一致的分块（历史脏数据）跳过，避免 min-length 余弦产生伪相似度
-        .filter((c) => c.embedding!.length === queryVec.length)
-        .map((c) => ({
-          docName: docNameMap.get(c.docId) ?? '未知文档',
-          content: c.content,
-          score: Math.round(cosineSimilarity(queryVec, c.embedding!) * 1000) / 1000,
-        }))
-        .sort((a, b) => b.score - a.score)
-        .slice(0, topN)
-        .filter((c) => c.score > 0.3);
-      if (scored.length > 0) return scored;
-    }
-  }
-
-  // 关键词兜底：按查询词命中数排序
-  const terms = query.toLowerCase().split(/[\s,，。？?!！、]+/).filter((t) => t.length >= 2).slice(0, 10);
-  if (terms.length === 0) return [];
+  const nameMap = await docNameOf([...new Set(chunks.map((c) => c.docId))]);
   return chunks
-    .map((c) => {
-      const lower = c.content.toLowerCase();
-      const hits = terms.reduce((acc, t) => acc + (lower.includes(t) ? 1 : 0), 0);
-      return {
-        docName: docNameMap.get(c.docId) ?? '未知文档',
-        content: c.content,
-        score: Math.round((hits / terms.length) * 1000) / 1000,
-      };
-    })
+    .map((c) => ({
+      docName: nameMap.get(c.docId) ?? '未知文档',
+      content: c.content,
+      score: Math.round(keywordScore(c.content, terms) * 1000) / 1000,
+    }))
     .filter((c) => c.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, topN);

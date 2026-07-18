@@ -1,4 +1,4 @@
-import type { AiProvider, OAuthProviderType, PaymentChannel, PaymentMethod, PaymentOrderStatus, PaymentRefundStatus, PaymentRefundApprovalStatus, PaymentReconStatus, PaymentReconResult, PaymentReconHandleStatus, PaymentWebhookDeliveryStatus, PaymentLedgerDirection, PaymentLedgerType, PaymentSettlementStatus, PaymentSharingReceiverType, PaymentSharingOrderStatus, PaymentLinkStatus, PaymentRiskScope, PaymentRiskAction, PaymentRiskDimension, PaymentRiskReviewStatus, PaymentTransferStatus, PaymentDeductPeriod, PaymentContractStatus, PaymentDisputeType, PaymentDisputeStatus, PaymentPreauthStatus, MemberStatus, PointTxType, WalletTxType, CouponType, CouponValidType, CouponTemplateStatus, MemberCouponStatus, WorkflowFormType } from './constants';
+import type { AiProvider, AiAgentStatus, OAuthProviderType, PaymentChannel, PaymentMethod, PaymentOrderStatus, PaymentRefundStatus, PaymentRefundApprovalStatus, PaymentReconStatus, PaymentReconResult, PaymentReconHandleStatus, PaymentWebhookDeliveryStatus, PaymentLedgerDirection, PaymentLedgerType, PaymentSettlementStatus, PaymentSharingReceiverType, PaymentSharingOrderStatus, PaymentLinkStatus, PaymentRiskScope, PaymentRiskAction, PaymentRiskDimension, PaymentRiskReviewStatus, PaymentTransferStatus, PaymentDeductPeriod, PaymentContractStatus, PaymentDisputeType, PaymentDisputeStatus, PaymentPreauthStatus, MemberStatus, PointTxType, WalletTxType, CouponType, CouponValidType, CouponTemplateStatus, MemberCouponStatus, WorkflowFormType } from './constants';
 import { REPORT_DASHBOARD_LIFECYCLE_STATUSES, REPORT_DASHBOARD_VERSION_SOURCES } from './constants';
 
 export type EntityStatus = 'enabled' | 'disabled';
@@ -5745,6 +5745,10 @@ export interface AiProviderConfig {
   priceOutputPerM: number | null;
   isDefault: boolean;
   isEnabled: boolean;
+  /** 主备切换降级配置 ID */
+  fallbackConfigId: number | null;
+  /** 并发流上限（null/0 = 不限） */
+  maxConcurrent: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -5792,6 +5796,8 @@ export interface AiKbDocument {
   id: number;
   kbId: number;
   name: string;
+  /** 网页抓取来源 URL */
+  sourceUrl: string | null;
   status: 'ready' | 'processing' | 'failed';
   chunkCount: number;
   charCount: number;
@@ -5817,13 +5823,29 @@ export interface AiConversation {
   systemPromptOverride: string | null;
   /** 挂载的知识库 ID */
   knowledgeBaseId: number | null;
+  /** 关联的智能体 ID */
+  agentId: number | null;
+  /** 用户自定义标签 */
+  tags: string[];
+  /** 分支树当前激活叶子消息 ID（null = 线性对话） */
+  activeLeafMsgId: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** 生成调用链 trace 步骤 */
+export interface AiTraceStep {
+  type: 'retrieval' | 'tool_call' | 'llm_round' | 'failover';
+  label: string;
+  durationMs: number;
+  meta?: Record<string, unknown>;
 }
 
 export interface AiMessage {
   id: number;
   conversationId: number;
+  /** 分支树父消息 ID（null = 根消息） */
+  parentId: number | null;
   role: AiMessageRole;
   content: string;
   /** 推理模型的思维链内容（reasoning_content） */
@@ -5841,10 +5863,123 @@ export interface AiMessage {
   feedbackStatus: AiFeedbackStatus | null;
   feedbackRemark: string | null;
   feedbackHandledAt: string | null;
+  /** 生成调用链 trace（assistant 消息） */
+  trace: AiTraceStep[] | null;
   createdAt: string;
 }
 
 export type AiFeedbackStatus = 'pending' | 'resolved' | 'ignored';
+
+// ─── P3：自定义智能体 ─────────────────────────────────────────────────────────
+
+export interface AiAgent {
+  id: number;
+  userId: number;
+  name: string;
+  description: string | null;
+  avatar: string;
+  systemPrompt: string;
+  /** 指定服务商配置（null = 系统默认） */
+  configId: number | null;
+  /** 指定模型（null = 配置默认） */
+  model: string | null;
+  temperature: string | null;
+  knowledgeBaseId: number | null;
+  /** 启用的工具名集合 */
+  tools: string[];
+  openingMessage: string | null;
+  suggestedQuestions: string[];
+  status: AiAgentStatus;
+  clonedFromId: number | null;
+  usageCount: number;
+  isEnabled: boolean;
+  /** 市场展示：创建者名称 */
+  ownerName?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── P3：HTTP API 工具 ────────────────────────────────────────────────────────
+
+export interface AiHttpToolParam {
+  name: string;
+  type: 'string' | 'number' | 'boolean';
+  description: string;
+  required: boolean;
+  location: 'query' | 'body' | 'path';
+}
+
+export interface AiHttpTool {
+  id: number;
+  name: string;
+  description: string;
+  method: string;
+  urlTemplate: string;
+  headers: Record<string, string> | null;
+  params: AiHttpToolParam[];
+  isEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 工具选择器条目（内置 + HTTP 工具统一视图） */
+export interface AiToolInfo {
+  name: string;
+  description: string;
+  source: 'builtin' | 'http';
+}
+
+// ─── P3：提示词模板版本 ───────────────────────────────────────────────────────
+
+export interface AiPromptTemplateVersion {
+  id: number;
+  templateId: number;
+  version: number;
+  name: string;
+  content: string;
+  createdBy: number | null;
+  creatorName: string | null;
+  createdAt: string;
+}
+
+// ─── P3：评测集 ───────────────────────────────────────────────────────────────
+
+export interface AiEvalItem {
+  question: string;
+  expected?: string;
+}
+
+export interface AiEvalSet {
+  id: number;
+  name: string;
+  description: string | null;
+  items: AiEvalItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AiEvalResult {
+  question: string;
+  expected?: string;
+  answer: string;
+  durationMs: number;
+  tokensInput: number;
+  tokensOutput: number;
+  error?: string;
+}
+
+export interface AiEvalRun {
+  id: number;
+  setId: number;
+  setName?: string | null;
+  configId: number | null;
+  model: string;
+  status: 'running' | 'done' | 'failed';
+  results: AiEvalResult[] | null;
+  avgDurationMs: number | null;
+  totalTokens: number | null;
+  createdAt: string;
+}
 
 /** 管理端反馈列表条目：消息 + 反馈人 / 会话 / 前置提问上下文 */
 export interface AiFeedbackItem extends AiMessage {
