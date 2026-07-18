@@ -76,7 +76,7 @@ export async function persistMetricSample(): Promise<boolean> {
 }
 
 /** 删除保留期之前的采样数据，返回删除行数。 */
-export async function cleanupMetricSamples(retentionDays = 7): Promise<number> {
+export async function cleanupMetricSamples(retentionDays = 30): Promise<number> {
   const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
   const deleted = await db.delete(systemMetricSamples).where(lt(systemMetricSamples.sampledAt, cutoff)).returning({ id: systemMetricSamples.id });
   return deleted.length;
@@ -90,12 +90,13 @@ const RANGE_CONFIG: Record<string, { windowSec: number; bucketSec: number }> = {
   '30d': { windowSec: 30 * 24 * 3600, bucketSec: 7200 },
 };
 
-/** 按时间范围分桶聚合查询历史趋势（每桶取平均值）。 */
+/** 按时间范围分桶聚合查询历史趋势（每桶取平均值 + 峰值）。 */
 export async function getMonitorHistory(range: string) {
   const cfg = RANGE_CONFIG[range] ?? RANGE_CONFIG['1h'];
   const since = new Date(Date.now() - cfg.windowSec * 1000);
   const bucketExpr = sql<number>`floor(extract(epoch from ${systemMetricSamples.sampledAt}) / ${cfg.bucketSec})`;
   const avg = (col: AnyColumn) => sql<number>`avg(${col})::float`;
+  const max = (col: AnyColumn) => sql<number>`max(${col})::float`;
   const rows = await db
     .select({
       bucket: bucketExpr,
@@ -113,6 +114,20 @@ export async function getMonitorHistory(range: string) {
       netTxBps: avg(systemMetricSamples.netTxBps),
       diskReadBps: avg(systemMetricSamples.diskReadBps),
       diskWriteBps: avg(systemMetricSamples.diskWriteBps),
+      cpuMax: max(systemMetricSamples.cpu),
+      memoryMax: max(systemMetricSamples.memory),
+      diskMax: max(systemMetricSamples.disk),
+      swapMax: max(systemMetricSamples.swap),
+      load1Max: max(systemMetricSamples.load1),
+      procCpuMax: max(systemMetricSamples.procCpu),
+      heapMax: max(systemMetricSamples.heap),
+      loopLagMax: max(systemMetricSamples.loopLag),
+      qpsMax: max(systemMetricSamples.qps),
+      errorRateMax: max(systemMetricSamples.errorRate),
+      netRxBpsMax: max(systemMetricSamples.netRxBps),
+      netTxBpsMax: max(systemMetricSamples.netTxBps),
+      diskReadBpsMax: max(systemMetricSamples.diskReadBps),
+      diskWriteBpsMax: max(systemMetricSamples.diskWriteBps),
     })
     .from(systemMetricSamples)
     .where(gte(systemMetricSamples.sampledAt, since))
@@ -122,22 +137,37 @@ export async function getMonitorHistory(range: string) {
     .orderBy(sql`1`);
 
   const round1 = (n: number) => Math.round(Number(n) * 10) / 10;
+  const round2 = (n: number) => Math.round(Number(n) * 100) / 100;
   const points = rows.map((r) => ({
     t: formatDateTime(new Date(Number(r.bucket) * cfg.bucketSec * 1000)),
     cpu: round1(r.cpu),
     memory: round1(r.memory),
     disk: round1(r.disk),
     swap: round1(r.swap),
-    load1: Math.round(Number(r.load1) * 100) / 100,
+    load1: round2(r.load1),
     procCpu: round1(r.procCpu),
     heap: round1(r.heap),
-    loopLag: Math.round(Number(r.loopLag) * 100) / 100,
-    qps: Math.round(Number(r.qps) * 100) / 100,
+    loopLag: round2(r.loopLag),
+    qps: round2(r.qps),
     errorRate: round1(r.errorRate),
     netRxBps: Math.round(Number(r.netRxBps)),
     netTxBps: Math.round(Number(r.netTxBps)),
     diskReadBps: Math.round(Number(r.diskReadBps)),
     diskWriteBps: Math.round(Number(r.diskWriteBps)),
+    cpuMax: round1(r.cpuMax),
+    memoryMax: round1(r.memoryMax),
+    diskMax: round1(r.diskMax),
+    swapMax: round1(r.swapMax),
+    load1Max: round2(r.load1Max),
+    procCpuMax: round1(r.procCpuMax),
+    heapMax: round1(r.heapMax),
+    loopLagMax: round2(r.loopLagMax),
+    qpsMax: round2(r.qpsMax),
+    errorRateMax: round1(r.errorRateMax),
+    netRxBpsMax: Math.round(Number(r.netRxBpsMax)),
+    netTxBpsMax: Math.round(Number(r.netTxBpsMax)),
+    diskReadBpsMax: Math.round(Number(r.diskReadBpsMax)),
+    diskWriteBpsMax: Math.round(Number(r.diskWriteBpsMax)),
   }));
 
   if (points.length === 0) logger.debug?.('[monitor] history empty for range', { range });

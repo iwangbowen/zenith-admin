@@ -715,7 +715,7 @@ handlerRegistry.set('evaluateMonitorAlerts', async () => {
 
 handlerRegistry.set('cleanupSystemMetrics', async (params) => {
   const { cleanupMetricSamples } = await import('../services/platform/monitor-history.service');
-  const days = Number(params) || 7;
+  const days = Number(params) || 30;
   const n = await cleanupMetricSamples(days);
   return `清理系统指标采样：删除 ${n} 条（保留 ${days} 天）`;
 });

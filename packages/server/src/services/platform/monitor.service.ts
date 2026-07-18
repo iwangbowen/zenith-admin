@@ -620,3 +620,46 @@ export async function getWsMetrics() {
     })),
   };
 }
+
+// ─── 外部慢指标采集器（DB / Redis 时序） ─────────────────────────────
+/**
+ * 注册轻量 DB / Redis 指标采集器到 metricsSampler：
+ * 每个采样 tick 异步执行一次（pg_stat_activity 计数 + redis INFO 两个 section），
+ * 结果并入下一帧时序点。Redis 命中率使用两次采样间的 delta（窗口命中率）。
+ */
+export function registerMonitorExtCollector(): void {
+  let lastHits = 0;
+  let lastMisses = 0;
+  let primed = false;
+  metricsSampler.registerExtCollector(async () => {
+    const [connRows, redisInfoRaw] = await Promise.all([
+      db.execute(sql`SELECT count(*)::int AS c FROM pg_stat_activity WHERE datname = current_database()`)
+        .catch(() => null),
+      redis.info().catch(() => null),
+    ]);
+    const dbConnections = connRows
+      ? Number((connRows as unknown as Array<{ c: number | string }>)[0]?.c ?? 0)
+      : 0;
+    let redisMemBytes = 0;
+    let redisHitRate = 0;
+    if (redisInfoRaw) {
+      const info: Record<string, string> = {};
+      for (const line of redisInfoRaw.split('\n')) {
+        const idx = line.indexOf(':');
+        if (idx > 0) info[line.slice(0, idx)] = line.slice(idx + 1).trim();
+      }
+      redisMemBytes = Number(info.used_memory ?? 0);
+      const hits = Number(info.keyspace_hits ?? 0);
+      const misses = Number(info.keyspace_misses ?? 0);
+      if (primed) {
+        const dh = Math.max(0, hits - lastHits);
+        const dm = Math.max(0, misses - lastMisses);
+        redisHitRate = dh + dm > 0 ? Math.round((dh / (dh + dm)) * 1000) / 10 : 100;
+      }
+      lastHits = hits;
+      lastMisses = misses;
+      primed = true;
+    }
+    return { dbConnections, redisMemBytes, redisHitRate };
+  });
+}

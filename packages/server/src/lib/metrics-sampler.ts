@@ -44,6 +44,12 @@ export interface MetricsSample {
   diskReadBps: number;
   /** 磁盘写字节/秒（汇总物理设备）*/
   diskWriteBps: number;
+  /** 数据库总连接数（外部采集器提供，滞后一个采样周期） */
+  dbConnections?: number;
+  /** Redis 已用内存字节（外部采集器提供） */
+  redisMemBytes?: number;
+  /** Redis 窗口命中率 0-100（外部采集器提供，基于两次采样间 delta） */
+  redisHitRate?: number;
 }
 
 export interface PerCoreCpu {
@@ -86,6 +92,13 @@ export interface EventLoopStats {
 
 // ─── 配置 ───────────────────────────────────────────────────────────────
 const SAMPLE_INTERVAL_MS = 10_000;
+
+/** 外部采集的慢指标（DB / Redis），由 registerExtCollector 注入 */
+export interface ExtMetrics {
+  dbConnections: number;
+  redisMemBytes: number;
+  redisHitRate: number;
+}
 const TIMESERIES_CAPACITY = 360; // 360 * 10s = 1h
 
 // ─── 内部工具：环形缓冲 ────────────────────────────────────────────────
@@ -221,6 +234,10 @@ class MetricsSampler {
   private readonly series = new RingBuffer<MetricsSample>(TIMESERIES_CAPACITY);
   /** SSE 订阅者：每个连接一个回调 */
   private readonly subscribers = new Set<(s: MetricsSample) => void>();
+  /** 外部慢指标采集器（DB/Redis 等）：每 tick fire-and-forget 刷新，结果并入下一帧 */
+  private extCollector: (() => Promise<ExtMetrics | null>) | null = null;
+  private extPending = false;
+  private latestExt: ExtMetrics | null = null;
 
   private readonly elDelay: IntervalHistogram = monitorEventLoopDelay({ resolution: 20 });
   private gcObserver: PerformanceObserver | null = null;
@@ -378,12 +395,27 @@ class MetricsSampler {
       netTxBps: totalTxBps,
       diskReadBps,
       diskWriteBps,
+      ...(this.latestExt ?? {}),
     };
     this.latest = sample;
     this.series.push(sample);
     for (const fn of this.subscribers) {
       try { fn(sample); } catch (err) { logger.warn('[metrics] subscriber error', { err: String(err) }); }
     }
+
+    // 触发外部慢指标采集（异步，结果并入下一帧；上次未完成则跳过）
+    if (this.extCollector && !this.extPending) {
+      this.extPending = true;
+      this.extCollector()
+        .then((v) => { if (v) this.latestExt = v; })
+        .catch(() => { /* best-effort */ })
+        .finally(() => { this.extPending = false; });
+    }
+  }
+
+  /** 注册外部慢指标采集器（DB / Redis 连接数等），由服务启动时调用一次 */
+  registerExtCollector(fn: () => Promise<ExtMetrics | null>): void {
+    this.extCollector = fn;
   }
 
   /** 订阅采样事件（SSE 推送），返回取消函数 */

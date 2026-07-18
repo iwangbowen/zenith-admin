@@ -77,6 +77,13 @@
   gap: 4px;
 }
 
+/* 无进度条的服务健康卡：数值区撑开保持与资源卡等高对齐 */
+.monitor-overview-metric--plain .monitor-overview-metric__value {
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
 /* ===== 信息行 ===== */
 .monitor-info-row {
   display: flex;
@@ -203,7 +210,6 @@
 
 .monitor-slow-table td.monitor-slow-query {
   font-family: var(--semi-font-family-code, ui-monospace, monospace);
-  word-break: break-all;
   max-width: 480px;
 }
 
@@ -213,6 +219,29 @@
   font-size: 13px;
   font-weight: 600;
   color: var(--semi-color-text-0);
+}
+
+.monitor-section-title--row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* 慢查询 / 慢日志长文本单元格：单行截断 + 复制按钮 */
+.monitor-copyable-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.monitor-copyable-cell__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ===== 每核 CPU 网格 ===== */

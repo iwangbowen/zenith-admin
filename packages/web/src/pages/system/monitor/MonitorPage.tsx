@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Descriptions, Progress, Skeleton, Tabs, TabPane, Toast, Typography, Select, Tag, Table } from '@douyinfe/semi-ui';
+import { useNavigate } from 'react-router-dom';
+import dayjs from 'dayjs';
+import { Button, Descriptions, Progress, Skeleton, Tabs, TabPane, Toast, Typography, Select, Tag, Table, RadioGroup, Tooltip } from '@douyinfe/semi-ui';
 import { LineChart, chartOptions, makeLineSpec, useChartPalette } from '@/components/charts';
-import { RefreshCw, Cpu, HardDrive, Database, Server, MemoryStick, Layers, Activity, Network, Wifi, History, Thermometer, ListTree } from 'lucide-react';
+import { RefreshCw, Cpu, HardDrive, Database, Server, MemoryStick, Layers, Activity, Network, Wifi, History, Thermometer, ListTree, Download, Copy as CopyIcon, ExternalLink } from 'lucide-react';
 import { formatDateTime } from '@/utils/date';
 import { formatBytesGb as formatBytes } from '@/utils/format';
 import { config } from '@/config';
@@ -107,11 +109,15 @@ interface TimeseriesPoint {
   t: number; cpu: number; mem: number; procCpu: number; heap: number;
   loopLagMean: number; loopLagP99: number; qps: number; errorRate: number;
   netRxBps?: number; netTxBps?: number; diskReadBps?: number; diskWriteBps?: number;
+  dbConnections?: number; redisMemBytes?: number; redisHitRate?: number;
 }
 interface HistoryPoint {
   t: string; cpu: number; memory: number; disk: number; swap: number; load1: number;
   procCpu: number; heap: number; loopLag: number; qps: number; errorRate: number;
   netRxBps: number; netTxBps: number; diskReadBps: number; diskWriteBps: number;
+  cpuMax?: number; memoryMax?: number; diskMax?: number; swapMax?: number; load1Max?: number;
+  procCpuMax?: number; heapMax?: number; loopLagMax?: number; qpsMax?: number; errorRateMax?: number;
+  netRxBpsMax?: number; netTxBpsMax?: number; diskReadBpsMax?: number; diskWriteBpsMax?: number;
 }
 
 const HISTORY_RANGES: { label: string; value: string }[] = [
@@ -180,11 +186,24 @@ function getProgressClass(percent: number): string {
 }
 
 function formatTimestamp(ms: number): string {
-  const d = new Date(ms);
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  const ss = String(d.getSeconds()).padStart(2, '0');
-  return `${hh}:${mm}:${ss}`;
+  return dayjs(ms).format('HH:mm:ss');
+}
+
+/** 监控页偏好（Tab / 刷新间隔 / 历史范围 / 统计口径）localStorage 持久化 */
+const MONITOR_PREFS_KEY = 'zenith_monitor_prefs';
+interface MonitorPrefs {
+  activeTab?: string;
+  refreshInterval?: number;
+  historyRange?: string;
+  historyStat?: 'avg' | 'max';
+}
+function loadPrefs(): MonitorPrefs {
+  try {
+    const raw = localStorage.getItem(MONITOR_PREFS_KEY);
+    return raw ? (JSON.parse(raw) as MonitorPrefs) : {};
+  } catch {
+    return {};
+  }
 }
 
 const SKELETON_ROW_KEYS = ['r0','r1','r2','r3','r4','r5','r6','r7','r8','r9','r10','r11'] as const;
@@ -211,19 +230,28 @@ const SSE_STATUS_META: Record<'idle' | 'connecting' | 'open' | 'error', { color:
   idle: { color: 'grey', text: '未连接' },
   connecting: { color: 'blue', text: '连接中…' },
   open: { color: 'green', text: '实时推送中' },
-  error: { color: 'red', text: '连接异常' },
+  error: { color: 'red', text: '已断开，自动重连中' },
 };
 
 export default function MonitorPage() {
   const palette = useChartPalette();
+  const navigate = useNavigate();
+  const prefsRef = useRef(loadPrefs());
   const [data, setData] = useState<MonitorData | null>(null);
   const [series, setSeries] = useState<TimeseriesPoint[]>([]);
   const [wsMetrics, setWsMetrics] = useState<WsMetrics | null>(null);
   const [sseLoading, setSseLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [refreshInterval, setRefreshInterval] = useState<number>(30000);
-  const [activeTab, setActiveTab] = useState<string>('overview');
-  const [historyRange, setHistoryRange] = useState<string>('1h');
+  const [refreshInterval, setRefreshInterval] = useState<number>(prefsRef.current.refreshInterval ?? 30000);
+  const [activeTab, setActiveTab] = useState<string>(prefsRef.current.activeTab ?? 'overview');
+  const [historyRange, setHistoryRange] = useState<string>(prefsRef.current.historyRange ?? '1h');
+  /** 历史趋势统计口径：avg=桶内均值，max=桶内峰值（毛刺可见，用于容量规划） */
+  const [historyStat, setHistoryStat] = useState<'avg' | 'max'>(prefsRef.current.historyStat ?? 'avg');
+  /** WS Tab 时长列 30s 自刷新 tick */
+  const [, setDurationTick] = useState(0);
+  /** GC 速率（基于两次快照 delta 估算） */
+  const gcPrevRef = useRef<{ at: number; totalCount: number; totalDurationMs: number } | null>(null);
+  const [gcRate, setGcRate] = useState<{ countPerMin: number; durationMsPerMin: number } | null>(null);
   const { buildPagination: buildConnectionsPagination } = usePagination(10);
   const { buildPagination: buildDisconnectsPagination } = usePagination(10);
   /** SSE 连接状态，仅在 SSE 模式下展示 */
@@ -249,12 +277,56 @@ export default function MonitorPage() {
     setLastUpdated(new Date(snapshotQuery.dataUpdatedAt));
   }, [snapshotQuery.data, snapshotQuery.dataUpdatedAt]);
 
+  // 偏好持久化（Tab / 刷新间隔 / 历史范围 / 统计口径）
+  useEffect(() => {
+    const prefs: MonitorPrefs = { activeTab, refreshInterval, historyRange, historyStat };
+    try { localStorage.setItem(MONITOR_PREFS_KEY, JSON.stringify(prefs)); } catch { /* 忽略配额错误 */ }
+  }, [activeTab, refreshInterval, historyRange, historyStat]);
+
+  // Windows 等平台无网络指标时，恢复的 activeTab 可能指向被隐藏的网络 Tab，回退总览
+  useEffect(() => {
+    if (activeTab === 'net' && data && (!data.network || data.network.length === 0)) {
+      setActiveTab('overview');
+    }
+  }, [activeTab, data]);
+
+  // WS Tab 打开时每 30s tick 一次，让「已持续 / 最近活动」列自动更新
+  useEffect(() => {
+    if (activeTab !== 'ws') return;
+    const t = setInterval(() => setDurationTick((n) => n + 1), 30_000);
+    return () => clearInterval(t);
+  }, [activeTab]);
+
+  // GC 速率估算：快照间 delta 换算为每分钟次数/耗时
+  useEffect(() => {
+    const gc = data?.node.gc;
+    if (!gc) return;
+    const prev = gcPrevRef.current;
+    const now = Date.now();
+    if (prev && now > prev.at) {
+      const elapsedMin = (now - prev.at) / 60_000;
+      const dCount = gc.totalCount - prev.totalCount;
+      const dDur = gc.totalDurationMs - prev.totalDurationMs;
+      // 进程重启（累计值回退）时丢弃本次 delta
+      if (dCount >= 0 && elapsedMin > 0.05) {
+        setGcRate({
+          countPerMin: Math.round((dCount / elapsedMin) * 10) / 10,
+          durationMsPerMin: Math.round((dDur / elapsedMin) * 100) / 100,
+        });
+      }
+    }
+    gcPrevRef.current = { at: now, totalCount: gc.totalCount, totalDurationMs: gc.totalDurationMs };
+  }, [data]);
+
   const fetchData = () => snapshotQuery.refetch();
 
   /**
-   * SSE 订阅模式：refreshInterval === -1 时生效
-   * 首帧 `metrics` 为完整 snapshot；后续 `metrics:diff` 为差量 patch（约定：null 表示删除该键）。
-   * 数组使用整段替换；对象使用递归合并。
+   * SSE 订阅模式：refreshInterval === -1 时生效。
+   * 事件协议：
+   * - `metrics`（全量 snapshot）/ `metrics:diff`（差量 patch，null 表示删除键）
+   * - `series`（全量时序数组）/ `series:point`（追加单点，客户端按 capacity 截断）
+   * - `ws`（WS 指标全量）
+   * 断线自动重连：指数退避 1s → 2s → 4s → … → 30s 封顶，重连成功后重置。
    */
   useEffect(() => {
     if (refreshInterval !== -1) {
@@ -263,10 +335,8 @@ export default function MonitorPage() {
       return;
     }
     setSseLoading(true);
-    setSseStatus('connecting');
     const ctrl = new AbortController();
     sseAbortRef.current = ctrl;
-    let buffer = '';
 
     /** 将 patch 深合并到 base，返回合并结果（不修改入参 base） */
     const mergePatch = (base: unknown, patch: unknown): unknown => {
@@ -287,19 +357,41 @@ export default function MonitorPage() {
       return out;
     };
 
-    (async () => {
+    const handleFrame = (currentEvent: string, dataLine: string) => {
       try {
+        const payload: unknown = JSON.parse(dataLine);
+        if (currentEvent === 'metrics') {
+          setData(payload as MonitorData);
+          setLastUpdated(new Date());
+          setSseLoading(false);
+        } else if (currentEvent === 'metrics:diff') {
+          setData((prev) => (prev ? (mergePatch(prev, payload) as MonitorData) : prev));
+          setLastUpdated(new Date());
+        } else if (currentEvent === 'series') {
+          const s = payload as { points?: TimeseriesPoint[] };
+          setSeries(Array.isArray(s.points) ? s.points : []);
+        } else if (currentEvent === 'series:point') {
+          setSeries((prev) => {
+            const next = [...prev, payload as TimeseriesPoint];
+            return next.length > 360 ? next.slice(next.length - 360) : next;
+          });
+        } else if (currentEvent === 'ws') {
+          setWsMetrics(payload as WsMetrics);
+        }
+      } catch { /* ignore parse error */ }
+    };
+
+    /** 单次连接；返回是否应该重连（aborted 时返回 false） */
+    const connectOnce = async (): Promise<boolean> => {
+      let buffer = '';
+      try {
+        setSseStatus('connecting');
         const token = localStorage.getItem(TOKEN_KEY);
         const res = await fetch(`${config.apiBaseUrl}/api/monitor/stream`, {
           headers: { Authorization: `Bearer ${token ?? ''}` },
           signal: ctrl.signal,
         });
-        if (!res.ok || !res.body) {
-          Toast.error('实时推送连接失败');
-          setSseStatus('error');
-          setSseLoading(false);
-          return;
-        }
+        if (!res.ok || !res.body) return !ctrl.signal.aborted;
         setSseStatus('open');
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
@@ -316,27 +408,43 @@ export default function MonitorPage() {
               if (line.startsWith('event:')) currentEvent = line.slice(6).trim();
               else if (line.startsWith('data:')) dataLine += line.slice(5).trimStart();
             }
-            if (!dataLine) continue;
-            try {
-              const payload: unknown = JSON.parse(dataLine);
-              if (currentEvent === 'metrics') {
-                setData(payload as MonitorData);
-                setLastUpdated(new Date());
-                setSseLoading(false);
-              } else if (currentEvent === 'metrics:diff') {
-                setData((prev) => (prev ? (mergePatch(prev, payload) as MonitorData) : prev));
-                setLastUpdated(new Date());
-              }
-            } catch { /* ignore parse error */ }
+            if (dataLine) handleFrame(currentEvent, dataLine);
           }
         }
+        // 服务端正常关闭流也视为需要重连
+        return !ctrl.signal.aborted;
       } catch (e: unknown) {
-        if (e instanceof Error && e.name === 'AbortError') return;
-        Toast.error('实时推送连接中断');
+        if (e instanceof Error && e.name === 'AbortError') return false;
+        return !ctrl.signal.aborted;
+      }
+    };
+
+    /** 可被 abort 打断的 sleep */
+    const sleep = (ms: number) => new Promise<void>((resolve) => {
+      const t = setTimeout(resolve, ms);
+      ctrl.signal.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
+    });
+
+    (async () => {
+      let attempt = 0;
+      let notified = false;
+      while (!ctrl.signal.aborted) {
+        const started = Date.now();
+        const shouldRetry = await connectOnce();
+        if (!shouldRetry || ctrl.signal.aborted) break;
+        // 连接存活超过 30s 视为曾成功，重置退避
+        if (Date.now() - started > 30_000) { attempt = 0; notified = false; }
         setSseStatus('error');
         setSseLoading(false);
+        if (!notified) {
+          Toast.warning('实时推送连接中断，正在自动重连…');
+          notified = true;
+        }
+        attempt += 1;
+        await sleep(Math.min(30_000, 1000 * 2 ** Math.min(attempt - 1, 5)));
       }
     })();
+
     return () => { ctrl.abort(); };
   }, [refreshInterval]);
 
@@ -346,7 +454,25 @@ export default function MonitorPage() {
   );
 
   const historyChartData = useMemo(
-    () => history.map((p) => ({ ...p, time: p.t.length > 10 ? p.t.slice(5, 16) : p.t })),
+    () => history.map((p) => ({
+      ...p,
+      time: p.t.length > 10 ? p.t.slice(5, 16) : p.t,
+      // 旧数据无 Max 字段时回退均值，保证峰值视图不断线
+      cpuMax: p.cpuMax ?? p.cpu,
+      memoryMax: p.memoryMax ?? p.memory,
+      diskMax: p.diskMax ?? p.disk,
+      swapMax: p.swapMax ?? p.swap,
+      load1Max: p.load1Max ?? p.load1,
+      procCpuMax: p.procCpuMax ?? p.procCpu,
+      heapMax: p.heapMax ?? p.heap,
+      loopLagMax: p.loopLagMax ?? p.loopLag,
+      qpsMax: p.qpsMax ?? p.qps,
+      errorRateMax: p.errorRateMax ?? p.errorRate,
+      netRxBpsMax: p.netRxBpsMax ?? p.netRxBps,
+      netTxBpsMax: p.netTxBpsMax ?? p.netTxBps,
+      diskReadBpsMax: p.diskReadBpsMax ?? p.diskReadBps,
+      diskWriteBpsMax: p.diskWriteBpsMax ?? p.diskWriteBps,
+    })),
     [history],
   );
 
@@ -372,13 +498,20 @@ export default function MonitorPage() {
     );
   }
 
-  function renderTrendChart(title: string, lines: { dataKey: keyof TimeseriesPoint; label: string; color: string }[], unit?: string) {
+  function renderTrendChart(title: string, lines: { dataKey: keyof TimeseriesPoint; label: string; color: string }[], opts?: { unit?: string; bytes?: boolean }) {
+    const axis = opts?.bytes
+      ? { yLabel: (value: number) => formatBytes(value) }
+      : opts?.unit
+        ? { yLabel: (value: number) => `${value}${opts.unit}` }
+        : undefined;
+    const tooltip = opts?.bytes ? { value: (value: number) => formatBytes(Number(value)) } : undefined;
     const trendSpec = makeLineSpec({
       data: chartData,
       xField: 'time',
       series: lines.map((line) => ({ field: String(line.dataKey), name: line.label, color: line.color })),
       palette,
-      axis: { yLabel: (value) => (unit ? `${value}${unit}` : String(value)) },
+      ...(axis ? { axis } : {}),
+      ...(tooltip ? { tooltip } : {}),
     });
 
     return (
@@ -401,10 +534,12 @@ export default function MonitorPage() {
         ? { yLabel: (value: number) => `${value}${opts.unit}` }
         : undefined;
     const tooltip = opts?.bytes ? { value: (value: number) => `${formatBytes(Number(value))}/s` } : undefined;
+    // 峰值口径：dataKey 切换为对应的 xxxMax 字段（historyChartData 已做旧数据回退）
+    const resolveField = (key: keyof HistoryPoint) => (historyStat === 'max' ? `${String(key)}Max` : String(key));
     const historySpec = makeLineSpec({
       data: historyChartData,
       xField: 'time',
-      series: lines.map((line) => ({ field: String(line.dataKey), name: line.label, color: line.color })),
+      series: lines.map((line) => ({ field: resolveField(line.dataKey), name: line.label, color: line.color })),
       palette,
       ...(axis ? { axis } : {}),
       ...(tooltip ? { tooltip } : {}),
@@ -422,6 +557,32 @@ export default function MonitorPage() {
     );
   }
 
+  function exportHistoryCsv() {
+    if (history.length === 0) { Toast.warning('暂无可导出的数据'); return; }
+    const cols: (keyof HistoryPoint)[] = [
+      't', 'cpu', 'cpuMax', 'memory', 'memoryMax', 'disk', 'diskMax', 'swap', 'swapMax',
+      'load1', 'load1Max', 'procCpu', 'procCpuMax', 'heap', 'heapMax', 'loopLag', 'loopLagMax',
+      'qps', 'qpsMax', 'errorRate', 'errorRateMax',
+      'netRxBps', 'netRxBpsMax', 'netTxBps', 'netTxBpsMax',
+      'diskReadBps', 'diskReadBpsMax', 'diskWriteBps', 'diskWriteBpsMax',
+    ];
+    const lines = [
+      cols.join(','),
+      ...history.map((p) => cols.map((c) => {
+        const v = p[c];
+        return v === undefined || v === null ? '' : String(v);
+      }).join(',')),
+    ];
+    // \uFEFF BOM 使 Excel 正确识别 UTF-8
+    const blob = new Blob([`\uFEFF${lines.join('\n')}`], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `monitor-history-${historyRange}-${dayjs().format('YYYYMMDD-HHmmss')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function renderHistoryTab() {
     return (
       <div>
@@ -430,6 +591,16 @@ export default function MonitorPage() {
             持久化历史趋势（每分钟采样落库），可用于容量规划与回溯分析
           </Text>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <RadioGroup
+              type="button"
+              buttonSize="small"
+              value={historyStat}
+              onChange={(e) => setHistoryStat(e.target.value as 'avg' | 'max')}
+              options={[
+                { label: '均值', value: 'avg' },
+                { label: '峰值', value: 'max' },
+              ]}
+            />
             <Select
               value={historyRange}
               onChange={(v) => setHistoryRange(v as string)}
@@ -438,6 +609,7 @@ export default function MonitorPage() {
               size="small"
             />
             <Button size="small" icon={<RefreshCw size={14} />} onClick={() => void historyQuery.refetch()} loading={historyLoading}>刷新</Button>
+            <Button size="small" icon={<Download size={14} />} onClick={exportHistoryCsv} disabled={history.length === 0}>导出 CSV</Button>
           </div>
         </div>
         {history.length === 0 ? (
@@ -531,6 +703,28 @@ export default function MonitorPage() {
     );
   }
 
+  /** 长文本单元格：截断 + Tooltip 全文 + 复制按钮 */
+  function renderCopyableCell(text: string) {
+    return (
+      <div className="monitor-copyable-cell">
+        <Tooltip content={<span style={{ wordBreak: 'break-all' }}>{text}</span>} position="top">
+          <span className="monitor-copyable-cell__text">{text}</span>
+        </Tooltip>
+        <Button
+          size="small"
+          theme="borderless"
+          type="tertiary"
+          icon={<CopyIcon size={12} />}
+          aria-label="复制"
+          onClick={() => {
+            void navigator.clipboard?.writeText(text);
+            Toast.success('已复制');
+          }}
+        />
+      </div>
+    );
+  }
+
   function renderSlowQueries(qs?: DbSlowQuery[] | null, available?: boolean) {
     if (!available || !qs) {
       return <Text type="tertiary" size="small">慢查询统计需启用 PostgreSQL <code>pg_stat_statements</code> 扩展</Text>;
@@ -544,7 +738,7 @@ export default function MonitorPage() {
         <tbody>
           {qs.map((q, i) => (
             <tr key={`${q.query.slice(0, 32)}-${i}`}>
-              <td className="monitor-slow-query">{q.query}</td>
+              <td className="monitor-slow-query">{renderCopyableCell(q.query)}</td>
               <td>{formatNumber(q.calls)}</td>
               <td>{q.meanMs.toFixed(2)} ms</td>
               <td>{q.totalMs.toFixed(2)} ms</td>
@@ -567,7 +761,7 @@ export default function MonitorPage() {
             <tr key={e.id}>
               <td>{formatDateTime(new Date(e.timestamp * 1000))}</td>
               <td>{e.durationMs.toFixed(2)} ms</td>
-              <td className="monitor-slow-query">{e.command}</td>
+              <td className="monitor-slow-query">{renderCopyableCell(e.command)}</td>
             </tr>
           ))}
         </tbody>
@@ -582,6 +776,10 @@ export default function MonitorPage() {
         <div className="monitor-diskio-item"><Text type="tertiary" size="small">磁盘写入</Text><Text strong>{formatBytes(d.diskIo.writeBps)}/s</Text></div>
       </div>
     ) : null;
+    const ioTrend = chartData.length > 1 && d.diskIo ? renderTrendChart('磁盘 IO 趋势', [
+      { dataKey: 'diskReadBps', label: '读取', color: '#22c55e' },
+      { dataKey: 'diskWriteBps', label: '写入', color: '#ef4444' },
+    ], { bytes: true }) : null;
     if (d.disks && d.disks.length > 0) {
       return (
         <>
@@ -609,6 +807,7 @@ export default function MonitorPage() {
             ))}
           </tbody>
         </table>
+        {ioTrend}
         </>
       );
     }
@@ -628,6 +827,7 @@ export default function MonitorPage() {
           layout="horizontal"
           align="left"
         />
+        {ioTrend}
         </>
       );
     }
@@ -686,6 +886,42 @@ export default function MonitorPage() {
                   <Text type="tertiary" size="small">共 {formatBytes(data.node.memoryUsage.heapTotal)}</Text>
                 </div>
               </div>
+              {data.http && (<>
+                <div className="monitor-overview-metric monitor-overview-metric--plain">
+                  <div className="monitor-overview-metric__header"><Network size={15} /><Text strong>QPS</Text></div>
+                  <div className="monitor-overview-metric__value">{formatNumber(data.http.currentQps)}</div>
+                  <div className="monitor-overview-metric__info">
+                    <Text type="tertiary" size="small">60s 均值 {data.http.qps.toFixed(2)}</Text>
+                    <Text type="tertiary" size="small">60s 请求 {formatNumber(data.http.total)}</Text>
+                  </div>
+                </div>
+                <div className="monitor-overview-metric monitor-overview-metric--plain">
+                  <div className="monitor-overview-metric__header"><Activity size={15} /><Text strong>错误率</Text></div>
+                  <div className={`monitor-overview-metric__value ${getProgressClass(data.http.errorRate)}`}>{data.http.errorRate}%</div>
+                  <div className="monitor-overview-metric__info">
+                    <Text type="tertiary" size="small">累计 4xx {formatNumber(data.http.total4xx)}</Text>
+                    <Text type="tertiary" size="small">累计 5xx {formatNumber(data.http.total5xx)}</Text>
+                  </div>
+                </div>
+                <div className="monitor-overview-metric monitor-overview-metric--plain">
+                  <div className="monitor-overview-metric__header"><History size={15} /><Text strong>P95 延迟</Text></div>
+                  <div className="monitor-overview-metric__value">{data.http.p95} ms</div>
+                  <div className="monitor-overview-metric__info">
+                    <Text type="tertiary" size="small">P50 {data.http.p50} ms</Text>
+                    <Text type="tertiary" size="small">P99 {data.http.p99} ms</Text>
+                  </div>
+                </div>
+              </>)}
+              {wsMetrics && (
+                <div className="monitor-overview-metric monitor-overview-metric--plain">
+                  <div className="monitor-overview-metric__header"><Wifi size={15} /><Text strong>WS 连接</Text></div>
+                  <div className="monitor-overview-metric__value">{formatNumber(wsMetrics.currentConnections)}</div>
+                  <div className="monitor-overview-metric__info">
+                    <Text type="tertiary" size="small">在线用户 {formatNumber(wsMetrics.currentUsers)}</Text>
+                    <Text type="tertiary" size="small">累计连接 {formatNumber(wsMetrics.totalConnects)}</Text>
+                  </div>
+                </div>
+              )}
             </div>
 
             {chartData.length > 1 && renderTrendChart('CPU / 内存 / 堆内存', [
@@ -693,12 +929,12 @@ export default function MonitorPage() {
               { dataKey: 'mem', label: '内存(%)', color: '#52c41a' },
               { dataKey: 'heap', label: 'Node堆(%)', color: '#722ed1' },
               { dataKey: 'procCpu', label: '进程CPU(%)', color: '#fa8c16' },
-            ], '%')}
+            ], { unit: '%' })}
 
             {chartData.length > 1 && renderTrendChart('Event Loop 延迟', [
               { dataKey: 'loopLagMean', label: '均值(ms)', color: '#13c2c2' },
               { dataKey: 'loopLagP99', label: 'P99(ms)', color: '#eb2f96' },
-            ], 'ms')}
+            ], { unit: 'ms' })}
 
             <div className="monitor-overview-sys">
               <Descriptions
@@ -717,7 +953,17 @@ export default function MonitorPage() {
             </div>
 
             {data.topProcesses && (<>
-              <div className="monitor-section-title"><ListTree size={14} style={{ marginRight: 4, verticalAlign: '-2px' }} />资源占用 Top 进程</div>
+              <div className="monitor-section-title monitor-section-title--row">
+                <span><ListTree size={14} style={{ marginRight: 4, verticalAlign: '-2px' }} />资源占用 Top 进程</span>
+                <Button
+                  size="small"
+                  theme="borderless"
+                  icon={<ExternalLink size={12} />}
+                  onClick={() => void navigate('/system/processes')}
+                >
+                  查看全部进程
+                </Button>
+              </div>
               {renderTopProcesses(data.topProcesses)}
             </>)}
           </TabPane>
@@ -781,7 +1027,7 @@ export default function MonitorPage() {
             {chartData.length > 1 && renderTrendChart('CPU 使用率趋势', [
               { dataKey: 'cpu', label: '系统 CPU(%)', color: '#1677ff' },
               { dataKey: 'procCpu', label: '进程 CPU(%)', color: '#fa8c16' },
-            ], '%')}
+            ], { unit: '%' })}
           </TabPane>
 
           {/* ===== 内存 ===== */}
@@ -833,7 +1079,7 @@ export default function MonitorPage() {
             {chartData.length > 1 && renderTrendChart('内存使用率趋势', [
               { dataKey: 'mem', label: '系统内存(%)', color: '#52c41a' },
               { dataKey: 'heap', label: 'Node 堆(%)', color: '#722ed1' },
-            ], '%')}
+            ], { unit: '%' })}
           </TabPane>
 
           {/* ===== 磁盘 ===== */}
@@ -841,9 +1087,10 @@ export default function MonitorPage() {
             {renderDiskTab(data)}
           </TabPane>
 
-          {/* ===== 网络 ===== */}
+          {/* ===== 网络（无指标平台隐藏，如 Windows） ===== */}
+          {data.network && data.network.length > 0 && (
           <TabPane tab={<span className="monitor-tab-label"><Wifi size={14} />网络</span>} itemKey="net">
-            {data.network && data.network.length > 0 ? (<>
+            <>
               <table className="monitor-slow-table">
                 <thead>
                   <tr>
@@ -870,8 +1117,9 @@ export default function MonitorPage() {
                 { dataKey: 'netRxBps', label: '下行 (B/s)', color: '#1677ff' },
                 { dataKey: 'netTxBps', label: '上行 (B/s)', color: '#fa8c16' },
               ])}
-            </>) : <Text type="tertiary">仅 Linux 平台提供详细网络指标</Text>}
+            </>
           </TabPane>
+          )}
 
           {/* ===== Node.js ===== */}
           <TabPane tab={<span className="monitor-tab-label"><Server size={14} />Node.js</span>} itemKey="node">
@@ -915,6 +1163,10 @@ export default function MonitorPage() {
                 data={[
                   { key: '累计次数', value: formatNumber(data.node.gc.totalCount) },
                   { key: '累计耗时', value: `${data.node.gc.totalDurationMs.toFixed(2)} ms` },
+                  ...(gcRate ? [
+                    { key: '近 1 分钟次数（估算）', value: `${gcRate.countPerMin} 次/分` },
+                    { key: '近 1 分钟耗时（估算）', value: `${gcRate.durationMsPerMin} ms/分` },
+                  ] : []),
                   ...Object.entries(data.node.gc.byKind).map(([kind, v]) => ({
                     key: kind,
                     value: `${formatNumber(v.count)} 次 / ${v.durationMs.toFixed(2)} ms`,
@@ -997,6 +1249,9 @@ export default function MonitorPage() {
               />
               <div className="monitor-section-title">慢查询 Top 5</div>
               {renderSlowQueries(data.database.slowQueries, data.database.slowQueriesAvailable)}
+              {chartData.length > 1 && renderTrendChart('数据库连接数趋势', [
+                { dataKey: 'dbConnections', label: '连接数', color: '#3b82f6' },
+              ])}
             </>) : <Text type="tertiary">数据库信息不可用</Text>}
           </TabPane>
 
@@ -1087,6 +1342,13 @@ export default function MonitorPage() {
 
                   <div className="monitor-section-title">慢日志（最近 10 条）</div>
                   {renderRedisSlowLog(r.slowLog)}
+
+                  {chartData.length > 1 && renderTrendChart('Redis 内存趋势', [
+                    { dataKey: 'redisMemBytes', label: '已用内存', color: '#a855f7' },
+                  ], { bytes: true })}
+                  {chartData.length > 1 && renderTrendChart('Redis 命中率趋势（采样窗口）', [
+                    { dataKey: 'redisHitRate', label: '命中率(%)', color: '#22c55e' },
+                  ], { unit: '%' })}
                 </>
               );
             })() : <Text type="tertiary">Redis 信息不可用</Text>}

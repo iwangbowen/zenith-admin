@@ -263,13 +263,18 @@ import workflowExternalCallbackRoutes from './routes/workflow/workflow-external-
 import workflowTriggerCallbackRoutes from './routes/workflow/workflow-trigger-callback';
 import { initTelemetry } from './lib/telemetry';
 import { metricsSampler } from './lib/metrics-sampler';
+import { registerZenithMetrics } from './lib/prometheus-metrics';
+import { Registry } from 'prom-client';
 import { httpMetricsMiddleware } from './middleware/http-metrics';
 import { maintenanceMiddleware } from './middleware/maintenance';
 
 await initTelemetry();
 
 const app = new OpenAPIHono();
-const { printMetrics, registerMetrics } = prometheus({ collectDefaultMetrics: true });
+const promRegistry = new Registry();
+const { printMetrics, registerMetrics } = prometheus({ collectDefaultMetrics: true, registry: promRegistry });
+// 业务/系统指标（CPU/内存/HTTP/WS/DB/Redis 等）注册到同一 Registry，由 GET /metrics 统一输出
+registerZenithMetrics(promRegistry);
 
 const { upgradeWebSocket, injectWebSocket } = createNodeWebSocket({ app });
 
@@ -277,6 +282,8 @@ app.use('*', registerMetrics);
 // 监控页指标采集（自带的轻量收集器，独立于 Prometheus）
 app.use('*', httpMetricsMiddleware);
 metricsSampler.start();
+// DB / Redis 轻量时序指标（连接数 / 内存 / 命中率）随采样器一起采集
+import('./services/platform/monitor.service').then((m) => m.registerMonitorExtCollector()).catch(() => {});
 if (config.otel.enabled) {
   app.use(
     '*',

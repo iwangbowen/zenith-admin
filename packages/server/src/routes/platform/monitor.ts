@@ -4,8 +4,7 @@ import { authMiddleware } from '../../middleware/auth';
 import { guard } from '../../middleware/guard';
 import { validationHook, commonErrorResponses, ok, okBody } from '../../lib/openapi-schemas';
 import { MonitorDTO, MonitorTimeseriesDTO, MonitorWsDTO, MonitorHistoryDTO } from '../../lib/openapi-dtos';
-import { getMonitorStatus, getMonitorTimeseries, getWsMetrics } from '../../services/platform/monitor.service';
-import { getMonitorHistory } from '../../services/platform/monitor-history.service';
+import { getMonitorStatus, getMonitorTimeseries, getWsMetrics } from '../../services/platform/monitor.service';import { getMonitorHistory } from '../../services/platform/monitor-history.service';
 import { monitorHistoryQuerySchema } from '@zenith/shared';
 import { metricsSampler } from '../../lib/metrics-sampler';
 
@@ -111,9 +110,9 @@ function diff(prev: unknown, cur: unknown): unknown {
 
 /**
  * 非 OpenAPI 路由：SSE 实时推送监控指标。
- * 首帧推送完整快照（event: metrics），后续仅推送差量 patch（event: metrics:diff），
- * 客户端深合并到本地 snapshot。差量推送显著降低带宽（CPU/QPS 等高频抖动字段
- * 仅几十字节，远小于 ~10KB 全量 snapshot）。
+ * 首帧推送完整快照（metrics）+ 全量时序（series）+ WS 指标（ws）；
+ * 后续每个采样 tick 推送差量 patch（metrics:diff）、最新时序点（series:point）
+ * 与 WS 指标全量（ws，体量小无需 diff），客户端深合并/追加到本地状态。
  */
 monitorRouter.get(
   '/stream',
@@ -122,21 +121,23 @@ monitorRouter.get(
   (c) => streamSSE(c, async (stream) => {
     let lastSnapshot: Awaited<ReturnType<typeof getMonitorStatus>> | null = null;
 
-    // 首帧：完整 snapshot
+    // 首帧：完整 snapshot + 全量时序 + WS 指标
     try {
-      const initial = await getMonitorStatus();
+      const [initial, ws] = await Promise.all([getMonitorStatus(), getWsMetrics()]);
       lastSnapshot = initial;
       await stream.writeSSE({ data: JSON.stringify(initial), event: 'metrics' });
+      await stream.writeSSE({ data: JSON.stringify(getMonitorTimeseries()), event: 'series' });
+      await stream.writeSSE({ data: JSON.stringify(ws), event: 'ws' });
     } catch {
       // ignore
     }
 
     let pending = false;
-    const unsubscribe = metricsSampler.subscribe(async () => {
+    const unsubscribe = metricsSampler.subscribe(async (sample) => {
       if (pending) return;
       pending = true;
       try {
-        const cur = await getMonitorStatus();
+        const [cur, ws] = await Promise.all([getMonitorStatus(), getWsMetrics()]);
         if (lastSnapshot) {
           const patch = diff(lastSnapshot, cur);
           if (patch !== undefined) {
@@ -146,6 +147,8 @@ monitorRouter.get(
           await stream.writeSSE({ data: JSON.stringify(cur), event: 'metrics' });
         }
         lastSnapshot = cur;
+        await stream.writeSSE({ data: JSON.stringify(sample), event: 'series:point' });
+        await stream.writeSSE({ data: JSON.stringify(ws), event: 'ws' });
       } catch {
         // ignore
       } finally {
