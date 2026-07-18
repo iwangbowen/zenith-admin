@@ -345,7 +345,7 @@ const uploadChunkRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/upload/chunk', tags: ['Files'], summary: '上传单个分片',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware] as const,
+    middleware: [authMiddleware, guard({ permission: 'system:file:upload' })] as const,
     request: {
       body: {
         content: {
