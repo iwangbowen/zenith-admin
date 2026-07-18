@@ -158,34 +158,16 @@ export async function getLinkPreview(rawUrl: string): Promise<ChatLinkPreview> {
 
   try {
     const resp = await httpGet(parsed.toString(), {
-      redirect: 'manual', // 禁止自动跟随重定向，防止 SSRF 绕过
+      // 解析 DNS 并逐个校验解析出的 IP（私网/保留/链路本地/云元数据地址），防 SSRF 与 DNS rebinding。
+      // 开启后 http-client 会强制 redirect:'error'，任何跳转都会抛错并被下方 catch 兜底为 fallback，
+      // 从而堵死"重定向跳内网"这类绕过。
+      ssrfProtection: true,
       signal: controller.signal,
       headers: {
         accept: 'text/html,application/xhtml+xml',
         'user-agent': 'ZenithAdminLinkPreviewBot/1.0',
       },
     });
-
-    // 处理重定向：手动跟随一级，并对目标 URL 二次校验防止 SSRF
-    if (resp.status >= 300 && resp.status < 400) {
-      const location = resp.headers.get('location');
-      if (!location) return fallback;
-      try {
-        const redirectTarget = validatePreviewUrl(location);
-        const redirectResp = await httpGet(redirectTarget.toString(), {
-          redirect: 'error', // 不再跟随二次重定向
-          signal: controller.signal,
-          headers: {
-            accept: 'text/html,application/xhtml+xml',
-            'user-agent': 'ZenithAdminLinkPreviewBot/1.0',
-          },
-        });
-        if (!redirectResp.ok) return fallback;
-        return fallback;
-      } catch {
-        return fallback;
-      }
-    }
 
     if (!resp.ok) return fallback;
     const contentType = resp.headers.get('content-type')?.toLowerCase() ?? '';
