@@ -14,9 +14,10 @@ import {
   Search, RotateCcw, LayoutGrid, List as ListIcon,
   FolderPlus, FilePlus, Upload as UploadIcon,
   Trash2, Copy, Scissors, Archive, Home,
-  FolderOpen, UploadCloud, Pencil,
+  FolderOpen, UploadCloud, Pencil, PencilLine, Download,
   Eye, EyeOff, ChevronLeft, ChevronRight,
 } from 'lucide-react';
+import dayjs from 'dayjs';
 import { request } from '@/utils/request';
 import { formatBytes as formatSize } from '@/utils/format';
 import { toQueryString, unwrap } from '@/lib/query';
@@ -78,6 +79,27 @@ function isEditableFile(name: string): boolean {
   // .env / .gitignore 等点开头文件
   return dot === 0;
 }
+
+/** 路径拼接（自动识别分隔符） */
+function joinPath(dir: string, name: string): string {
+  const sep = dir.includes('\\') ? '\\' : '/';
+  return `${dir.replace(/[/\\]+$/, '')}${sep}${name}`;
+}
+
+/** 生成不冲突的「副本」名：name - 副本 / name - 副本 2 / …（保留扩展名） */
+function makeCopyName(name: string, taken: Set<string>): string {
+  const dot = name.startsWith('.') ? -1 : name.lastIndexOf('.');
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  const ext = dot > 0 ? name.slice(dot) : '';
+  for (let i = 1; i < 100; i++) {
+    const candidate = i === 1 ? `${stem} - 副本${ext}` : `${stem} - 副本 ${i}${ext}`;
+    if (!taken.has(candidate.toLowerCase())) return candidate;
+  }
+  return `${stem} - 副本 ${Date.now()}${ext}`;
+}
+
+/** 同名冲突处理方式 */
+type ConflictResolution = 'overwrite' | 'skip' | 'keep-both';
 
 function buildBreadcrumbs(p: string): { label: string; path: string }[] {
   if (!p || p === '/') return [{ label: '/', path: '/' }];
@@ -513,6 +535,10 @@ export default function FileManagerPage() {
   const editorDirtyRef = useRef(false);
   const [dragOver, setDragOver] = useState(false);
   const dragDepthRef = useRef(0);
+  // ── 路径直达输入 / 同名冲突 ────────────────────────────────────────────────
+  const [pathEditing, setPathEditing] = useState(false);
+  const [pathDraft, setPathDraft] = useState('');
+  const [conflictAsk, setConflictAsk] = useState<{ names: string[]; resolve: (r: ConflictResolution | null) => void } | null>(null);
   const [propsChecksum, setPropsChecksum] = useState<{ algo: 'md5' | 'sha1' | 'sha256'; hash: string; loading: boolean } | null>(null);
   const rootInfoQuery = useTerminalRootInfo();
   const rootInfo = rootInfoQuery.data ?? null;
@@ -661,40 +687,134 @@ export default function FileManagerPage() {
     clearSelect();
   };
 
-  const handleDownload = (entry: FsEntry) => {
+  /** 按服务器路径下载文件（受保护端点走 fetch + blob） */
+  const downloadByPath = useCallback(async (path: string, fileName: string): Promise<void> => {
     const token = localStorage.getItem(TOKEN_KEY) ?? '';
     const base = appConfig.apiBaseUrl || '';
-    const a = document.createElement('a');
-    a.href = `${base}/api/terminal-files/download?path=${encodeURIComponent(entry.path)}`;
-    a.setAttribute('download', entry.name);
-    // Use Authorization header via fetch instead of direct anchor for protected endpoints
-    fetch(a.href, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.blob())
-      .then((blob) => {
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = entry.name;
-        link.click();
-        setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      })
-      .catch(() => Toast.error('下载失败'));
+    const resp = await fetch(`${base}/api/terminal-files/download?path=${encodeURIComponent(path)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!resp.ok) throw new Error('下载失败');
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }, []);
+
+  const handleDownload = (entry: FsEntry) => {
+    void downloadByPath(entry.path, entry.name).catch(() => Toast.error('下载失败'));
   };
+
+  /** 批量下载：单个文件直下；多项 / 含目录先压缩为临时 ZIP，下载后清理服务器临时包 */
+  const handleBatchDownload = async () => {
+    const sel = filteredEntries.filter((e) => selectedPaths.has(e.path));
+    if (sel.length === 0) return;
+    if (sel.length === 1 && sel[0].type === 'file') {
+      handleDownload(sel[0]);
+      return;
+    }
+    const zipName = `打包下载_${dayjs().format('YYYYMMDDHHmmss')}.zip`;
+    const dest = joinPath(currentPath, zipName);
+    Toast.info({ content: `正在打包 ${sel.length} 项…`, duration: 2 });
+    try {
+      await fileOperationMutation.mutateAsync({ endpoint: '/api/terminal-files/compress', values: { paths: sel.map((e) => e.path), destPath: dest } });
+      await downloadByPath(dest, zipName);
+      Toast.success('打包下载完成');
+    } catch {
+      Toast.error('打包下载失败');
+    } finally {
+      // 清理服务器上的临时压缩包
+      await deleteEntriesMutation.mutateAsync([dest]).catch(() => {});
+    }
+  };
+
+  // ── 同名冲突处理 ──────────────────────────────────────────────────────────
+
+  /** 读取目录内已有条目名（小写集合），检测粘贴/复制冲突用 */
+  const fetchDirNames = useCallback(async (dir: string): Promise<Set<string>> => {
+    const res = await request.get<{ entries: FsEntry[] }>(`/api/terminal-files/list${toQueryString({ path: dir })}`).then(unwrap);
+    return new Set((res?.entries ?? []).map((e) => e.name.toLowerCase()));
+  }, []);
+
+  /** 弹出冲突处理选择框（覆盖 / 跳过 / 保留两者），取消返回 null */
+  const askConflictResolution = useCallback((names: string[]) => {
+    return new Promise<ConflictResolution | null>((resolve) => {
+      setConflictAsk({ names, resolve });
+    });
+  }, []);
+
+  const settleConflictAsk = (r: ConflictResolution | null) => {
+    conflictAsk?.resolve(r);
+    setConflictAsk(null);
+  };
+
+  /**
+   * 批量复制/移动到目标目录（同名冲突交互 + 同目录自动副本）。
+   * 返回实际执行的条数；用户取消返回 -1。
+   */
+  const transferEntries = useCallback(async (
+    items: { path: string; name: string }[],
+    destDir: string,
+    op: 'copy' | 'move',
+  ): Promise<number> => {
+    const taken = await fetchDirNames(destDir);
+    const endpoint = op === 'move' ? '/api/terminal-files/move' : '/api/terminal-files/copy';
+
+    // 同目录复制：全部自动「副本」命名，无需询问；同目录移动无意义，直接跳过
+    const plans: { from: string; to: string; overwrite: boolean }[] = [];
+    const conflicts: { path: string; name: string }[] = [];
+    for (const item of items) {
+      const srcDir = item.path.replace(/[/\\][^/\\]+$/, '') || item.path;
+      const sameDir = joinPath(srcDir, '') === joinPath(destDir, '');
+      if (sameDir) {
+        if (op === 'move') continue;
+        const copyName = makeCopyName(item.name, taken);
+        taken.add(copyName.toLowerCase());
+        plans.push({ from: item.path, to: joinPath(destDir, copyName), overwrite: false });
+      } else if (taken.has(item.name.toLowerCase())) {
+        conflicts.push(item);
+      } else {
+        taken.add(item.name.toLowerCase());
+        plans.push({ from: item.path, to: joinPath(destDir, item.name), overwrite: false });
+      }
+    }
+
+    if (conflicts.length > 0) {
+      const resolution = await askConflictResolution(conflicts.map((c) => c.name));
+      if (resolution === null) return -1;
+      for (const c of conflicts) {
+        if (resolution === 'skip') continue;
+        if (resolution === 'overwrite') {
+          plans.push({ from: c.path, to: joinPath(destDir, c.name), overwrite: true });
+        } else {
+          const copyName = makeCopyName(c.name, taken);
+          taken.add(copyName.toLowerCase());
+          plans.push({ from: c.path, to: joinPath(destDir, copyName), overwrite: false });
+        }
+      }
+    }
+
+    for (const plan of plans) {
+      // 后端拒绝覆盖已存在目标：覆盖语义 = 先删除目标再执行
+      if (plan.overwrite) {
+        await deleteEntriesMutation.mutateAsync([plan.to]).catch(() => {});
+      }
+      await fileOperationMutation.mutateAsync({ endpoint, values: { from: plan.from, to: plan.to } });
+    }
+    return plans.length;
+  }, [fetchDirNames, askConflictResolution, deleteEntriesMutation, fileOperationMutation]);
 
   const handleFolderPickerConfirm = async (destDir: string) => {
     if (!folderPicker) return;
     const { mode, entries: pickedEntries } = folderPicker;
-    const sep = destDir.includes('\\') ? '\\' : '/';
-    const endpoint = mode === 'move' ? '/api/terminal-files/move' : '/api/terminal-files/copy';
-    let success = 0;
-    for (const e of pickedEntries) {
-      const destName = e.path.split(/[\\/]/).pop() ?? e.name;
-      const dest = `${destDir.replace(/[/\\]+$/, '')}${sep}${destName}`;
-      await fileOperationMutation.mutateAsync({ endpoint, values: { from: e.path, to: dest } });
-      success++;
-    }
+    const items = pickedEntries.map((e) => ({ path: e.path, name: e.path.split(/[\\/]/).pop() ?? e.name }));
+    const done = await transferEntries(items, destDir, mode);
+    if (done === -1) return;
     const verb = mode === 'move' ? '移动' : '复制';
-    Toast.success(`已${verb} ${success}/${pickedEntries.length} 项`);
+    Toast.success(done > 0 ? `已${verb} ${done} 项` : '没有需要处理的项');
     setFolderPicker(null);
   };
 
@@ -765,14 +885,10 @@ export default function FileManagerPage() {
   const handlePaste = async () => {
     if (!clipboard || !currentPath) return;
     const { paths, op } = clipboard;
-    const sep = currentPath.includes('\\') ? '\\' : '/';
-    for (const p of paths) {
-      const destName = p.split(/[\\/]/).pop() ?? p;
-      const dest = `${currentPath.replace(/[/\\]+$/, '')}${sep}${destName}`;
-      const endpoint = op === 'copy' ? '/api/terminal-files/copy' : '/api/terminal-files/move';
-      await fileOperationMutation.mutateAsync({ endpoint, values: { from: p, to: dest } });
-    }
-    Toast.success(`已${op === 'copy' ? '复制' : '移动'} ${paths.length} 项`);
+    const items = paths.map((p) => ({ path: p, name: p.split(/[\\/]/).pop() ?? p }));
+    const done = await transferEntries(items, currentPath, op === 'copy' ? 'copy' : 'move');
+    if (done === -1) return;
+    Toast.success(done > 0 ? `已${op === 'copy' ? '复制' : '移动'} ${done} 项` : '没有需要处理的项');
     if (clipboard.op === 'cut') setClipboard(null);
   };
 
@@ -923,7 +1039,7 @@ export default function FileManagerPage() {
       { label: '压缩为 ZIP', fn: () => { setDialog({ mode: 'compress', selEntries: [entry], value: `${entry.name}.zip` }); closeCtxMenu(); } },
       ...(isFile && isArchive(entry.name) ? [{ label: '解压到此处', fn: () => { void handleExtract(entry); closeCtxMenu(); } }] : []),
       ...(isFile ? [{ label: '校验和', fn: () => { void fetchChecksum(entry, 'sha256'); closeCtxMenu(); } }] : []),
-      { label: '修改权限', fn: () => { setDialog({ mode: 'chmod', entry, value: permStringToOctal(entry.permissions) }); closeCtxMenu(); } },
+      ...(rootInfo?.isWindows ? [] : [{ label: '修改权限', fn: () => { setDialog({ mode: 'chmod', entry, value: permStringToOctal(entry.permissions) }); closeCtxMenu(); } }]),
       ...(isDir ? [{ label: '上传到此目录', fn: () => { ctxUploadDirRef.current = entry.path; ctxUploadInputRef.current?.click(); closeCtxMenu(); } }] : []),
       { label: '属性', fn: () => { setPropsEntry(entry); closeCtxMenu(); } },
       { label: '删除', fn: () => { Modal.confirm({ title: '确定删除此项吗？', okType: 'danger', onOk: () => handleDelete([entry.path]) }); closeCtxMenu(); }, danger: true },
@@ -935,7 +1051,7 @@ export default function FileManagerPage() {
   // Ctrl+A 全选 / Ctrl+C 复制 / Ctrl+X 剪切 / Ctrl+V 粘贴 / Delete 删除 /
   // F2 重命名 / Enter 打开 / Backspace 上级目录 / Esc 清除选择
 
-  const anyOverlayOpen = !!(dialog || folderPicker || propsEntry || preview || previewVisible || checksum || ctxEntry || searchResults || editorEntry);
+  const anyOverlayOpen = !!(dialog || folderPicker || propsEntry || preview || previewVisible || checksum || ctxEntry || searchResults || editorEntry || conflictAsk || pathEditing);
 
   const shortcutCtxRef = useRef({
     selectedPaths, filteredEntries, clipboard, anyOverlayOpen, currentPath,
@@ -992,6 +1108,11 @@ export default function FileManagerPage() {
       } else if (e.key === 'Backspace') {
         e.preventDefault();
         fns.goUp();
+      } else if (mod && e.key.toLowerCase() === 'l') {
+        // Ctrl+L：路径直达输入（拦截浏览器地址栏聚焦）
+        e.preventDefault();
+        setPathDraft(ctx.currentPath);
+        setPathEditing(true);
       } else if (e.key === 'Escape') {
         setSelectedPaths(new Set());
       }
@@ -1036,9 +1157,12 @@ export default function FileManagerPage() {
     },
     { title: '大小', dataIndex: 'size', width: 100, sorter: true, sortOrder: sortState?.field === 'size' ? sortState.order : false, render: (v: number, r: FsEntry) => r.type === 'dir' ? '—' : formatSize(v) },
     { title: '修改时间', dataIndex: 'mtime', width: 180, sorter: true, sortOrder: sortState?.field === 'mtime' ? sortState.order : false },
-    { title: '权限', dataIndex: 'permissions', width: 110, render: (v?: string) => v ? <Tag size="small" color="grey">{v}</Tag> : '—' },
-    { title: 'UID', dataIndex: 'uid', width: 70, render: (v?: number) => v ?? '—' },
-    { title: 'GID', dataIndex: 'gid', width: 70, render: (v?: number) => v ?? '—' },
+    // Windows 下权限/属主概念不适用，隐藏对应列
+    ...(rootInfo?.isWindows ? [] : [
+      { title: '权限', dataIndex: 'permissions', width: 110, render: (v?: string) => v ? <Tag size="small" color="grey">{v}</Tag> : '—' },
+      { title: 'UID', dataIndex: 'uid', width: 70, render: (v?: number) => v ?? '—' },
+      { title: 'GID', dataIndex: 'gid', width: 70, render: (v?: number) => v ?? '—' },
+    ] satisfies ColumnProps<FsEntry>[]),
     createOperationColumn<FsEntry>({
       width: 170,
       desktopInlineKeys: ['open', 'preview', 'edit', 'download'],
@@ -1183,6 +1307,16 @@ export default function FileManagerPage() {
         }}
         onRow={(r) => ({
           onContextMenu: r ? (e: React.MouseEvent) => openCtxMenu(e, r) : undefined,
+          // 与网格视图统一：行空白处单击选中、双击打开（按钮/复选框/链接自身的点击不参与）
+          onClick: r ? (e: React.MouseEvent) => {
+            if ((e.target as HTMLElement).closest('button, a, input, .semi-checkbox, .semi-switch')) return;
+            toggleSelect(r.path);
+          } : undefined,
+          onDoubleClick: r ? (e: React.MouseEvent) => {
+            if ((e.target as HTMLElement).closest('button, a, input, .semi-checkbox, .semi-switch')) return;
+            if (r.type === 'dir') void navigateTo(r.path);
+            else void handlePreview(r);
+          } : undefined,
         })}
       />
     );
@@ -1300,6 +1434,7 @@ export default function FileManagerPage() {
                 )}
                 {selectedPaths.size > 0 && (
                   <>
+                    <Button size="small" theme="borderless" type="tertiary" icon={<Download size={13} />} onClick={() => void handleBatchDownload()}>下载</Button>
                     <Button size="small" theme="borderless" type="tertiary" icon={<Copy size={13} />} onClick={() => setClipboard({ paths: [...selectedPaths], op: 'copy' })}>复制</Button>
                     <Button size="small" theme="borderless" type="tertiary" icon={<Scissors size={13} />} onClick={() => setClipboard({ paths: [...selectedPaths], op: 'cut' })}>剪切</Button>
                     <Button size="small" theme="borderless" type="tertiary" icon={<Archive size={13} />} onClick={() => {
@@ -1346,17 +1481,46 @@ export default function FileManagerPage() {
               <Tooltip content="前进">
                 <Button size="small" theme="borderless" type="tertiary" icon={<ChevronRight size={14} />} disabled={!canForward} onClick={() => void goForward()} />
               </Tooltip>
-              <Breadcrumb className="fm-toolbar__breadcrumb">
-                {breadcrumbs.map((seg, i) => (
-                  <Breadcrumb.Item
-                    key={seg.path}
-                    onClick={i < breadcrumbs.length - 1 ? () => void navigateTo(seg.path) : undefined}
-                    style={{ cursor: i < breadcrumbs.length - 1 ? 'pointer' : 'default', color: i < breadcrumbs.length - 1 ? 'var(--semi-color-primary)' : undefined }}
-                  >
-                    {seg.label}
-                  </Breadcrumb.Item>
-                ))}
-              </Breadcrumb>
+              {pathEditing ? (
+                <Input
+                  size="small"
+                  value={pathDraft}
+                  onChange={setPathDraft}
+                  autoFocus
+                  placeholder="输入路径后回车直达"
+                  style={{ flex: 1, minWidth: 0, fontFamily: 'monospace' }}
+                  onEnterPress={() => {
+                    const p = pathDraft.trim();
+                    setPathEditing(false);
+                    if (p && p !== currentPath) void navigateTo(p);
+                  }}
+                  onBlur={() => setPathEditing(false)}
+                  onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setPathEditing(false); } }}
+                />
+              ) : (
+                <>
+                  <Breadcrumb className="fm-toolbar__breadcrumb">
+                    {breadcrumbs.map((seg, i) => (
+                      <Breadcrumb.Item
+                        key={seg.path}
+                        onClick={i < breadcrumbs.length - 1 ? () => void navigateTo(seg.path) : undefined}
+                        style={{ cursor: i < breadcrumbs.length - 1 ? 'pointer' : 'default', color: i < breadcrumbs.length - 1 ? 'var(--semi-color-primary)' : undefined }}
+                      >
+                        {seg.label}
+                      </Breadcrumb.Item>
+                    ))}
+                  </Breadcrumb>
+                  <Tooltip content="编辑路径（Ctrl+L）">
+                    <Button
+                      size="small"
+                      theme="borderless"
+                      type="tertiary"
+                      icon={<PencilLine size={12} />}
+                      onClick={() => { setPathDraft(currentPath); setPathEditing(true); }}
+                    />
+                  </Tooltip>
+                </>
+              )}
             </div>
           </MasterDetailLayout.Header>
 
@@ -1681,6 +1845,33 @@ export default function FileManagerPage() {
               );
             })()}
           </SideSheet>
+          {/* ── 同名冲突处理选择 ── */}
+          <Modal
+            title={`目标目录已存在 ${conflictAsk?.names.length ?? 0} 个同名项`}
+            visible={!!conflictAsk}
+            onCancel={() => settleConflictAsk(null)}
+            closeOnEsc
+            width={440}
+            footer={
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <Button type="tertiary" onClick={() => settleConflictAsk('skip')}>跳过</Button>
+                <Button onClick={() => settleConflictAsk('keep-both')}>保留两者</Button>
+                <Button type="danger" theme="solid" onClick={() => settleConflictAsk('overwrite')}>覆盖</Button>
+              </div>
+            }
+          >
+            <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 8 }}>
+              「跳过」不处理这些项；「保留两者」以「xxx - 副本」命名；「覆盖」将替换目标位置的同名文件（不可恢复）。
+            </Typography.Text>
+            <div style={{ maxHeight: 200, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {(conflictAsk?.names ?? []).map((n) => (
+                <div key={n} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                  <Icon icon={getFileIcon(n)} width={14} height={14} style={{ flexShrink: 0 }} />
+                  <Typography.Text ellipsis={{ showTooltip: true }} style={{ fontSize: 13 }}>{n}</Typography.Text>
+                </div>
+              ))}
+            </div>
+          </Modal>
           {/* ── 在线编辑抽屉（Monaco，Ctrl+S 保存） ── */}
           <SideSheet
             title={
