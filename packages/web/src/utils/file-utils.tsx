@@ -51,10 +51,10 @@ function getIconIdForMime(mimeType: string): string | null {
   if (mime.startsWith('image/')) return 'vscode-icons:file-type-image';
   if (mime.startsWith('video/')) return 'vscode-icons:file-type-video';
   if (mime.startsWith('audio/')) return 'vscode-icons:file-type-audio';
-  if (mime === 'application/pdf') return 'vscode-icons:file-type-pdf';
+  if (mime === 'application/pdf') return 'vscode-icons:file-type-pdf2';
   if (mime.includes('msword') || mime.includes('wordprocessingml')) return 'vscode-icons:file-type-word';
   if (mime.includes('presentationml') || mime.includes('powerpoint')) return 'vscode-icons:file-type-powerpoint';
-  if (mime === 'text/csv' || mime === 'application/csv') return 'vscode-icons:file-type-csv';
+  if (mime === 'text/csv' || mime === 'application/csv') return 'vscode-icons:file-type-excel2';
   if (mime.includes('spreadsheetml') || mime.includes('excel')) return 'vscode-icons:file-type-excel';
   if (
     mime.includes('zip') || mime.includes('archive') ||
@@ -64,7 +64,7 @@ function getIconIdForMime(mimeType: string): string | null {
   ) return 'vscode-icons:file-type-zip';
   if (mime.startsWith('font/') || mime.includes('ttf') || mime.includes('woff') || mime.includes('opentype')) return 'vscode-icons:file-type-font';
   if (mime.includes('json')) return 'vscode-icons:file-type-json';
-  if (mime.includes('javascript')) return 'vscode-icons:file-type-javascript';
+  if (mime.includes('javascript')) return 'vscode-icons:file-type-js-official';
   if (mime.includes('typescript')) return 'vscode-icons:file-type-typescript';
   if (mime.includes('html')) return 'vscode-icons:file-type-html';
   if (mime.includes('css')) return 'vscode-icons:file-type-css';
