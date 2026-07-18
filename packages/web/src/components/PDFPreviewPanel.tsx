@@ -171,7 +171,7 @@ export function PDFPreviewPanel({ file, onClose, fullscreen, onToggleFullscreen,
           flexShrink: 0,
         }}
       >
-        <Icon icon="vscode-icons:file-type-pdf" width={15} height={15} style={{ flexShrink: 0 }} />
+        <Icon icon="vscode-icons:file-type-pdf2" width={15} height={15} style={{ flexShrink: 0 }} />
         <Text
           ellipsis={{ showTooltip: true }}
           style={{ flex: 1, fontSize: 13, fontWeight: 500, minWidth: 0 }}

@@ -27,7 +27,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import FilePreviewModal from '@/components/FilePreviewModal';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import AppModal from '@/components/AppModal';
-import { getFileIcon, getFolderIcon } from '../terminal/fileIcons';
+import { getFileIcon, getFolderIcon } from '@/utils/fileIcons';
 import {
   useDeleteTerminalEntries,
   useTerminalFileList,
@@ -1344,7 +1344,10 @@ export default function FileManagerPage() {
               {(searchResults ?? []).map((r) => (
                 <div key={r.path} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 4px', borderBottom: '1px solid var(--semi-color-fill-1)' }}>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13 }}>{r.type === 'dir' ? '📁' : '📄'} {r.name}</div>
+                    <div style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <Icon icon={r.type === 'dir' ? getFolderIcon(r.name, false) : getFileIcon(r.name)} width={14} height={14} style={{ flexShrink: 0 }} />
+                      {r.name}
+                    </div>
                     <Typography.Text type="tertiary" size="small" ellipsis={{ showTooltip: true }} style={{ maxWidth: 420, display: 'block' }}>{r.path}</Typography.Text>
                   </div>
                   <Button size="small" theme="borderless" onClick={() => {

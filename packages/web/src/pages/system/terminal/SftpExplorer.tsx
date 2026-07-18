@@ -18,7 +18,7 @@ import {
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
 import { downloadBlob } from '@/utils/download';
-import { getFileIcon } from './fileIcons';
+import { getFileIcon } from '@/utils/fileIcons';
 import type { SshProfile } from './SshProfilesManager';
 import AppModal from '@/components/AppModal';
 import {

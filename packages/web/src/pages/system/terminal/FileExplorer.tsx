@@ -21,7 +21,7 @@ import { request } from '@/utils/request';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
 import { useTerminalPreferences } from './useTerminalPreferences';
-import { getFileIcon, getFolderIcon } from './fileIcons';
+import { getFileIcon, getFolderIcon } from '@/utils/fileIcons';
 import AppModal from '@/components/AppModal';
 import {
   fetchLocalDir,

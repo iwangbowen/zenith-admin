@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import { Icon } from '@iconify/react';
 import { request } from '@/utils/request';
-import { getFileIcon } from './fileIcons';
+import { getFileIcon } from '@/utils/fileIcons';
 import { fetchDockerDir, useDockerExplorerAction } from '@/hooks/queries/terminal-files';
 import { useDockerContainers, useDockerFetchStats } from '@/hooks/queries/docker';
 
