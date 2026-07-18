@@ -3,7 +3,9 @@ import {
   Banner, Select, Space, Spin, Table, Tabs, TabPane, Toast, Typography, Upload,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Upload as UploadIcon, FileText } from 'lucide-react';
+import { Upload as UploadIcon } from 'lucide-react';
+import { Icon } from '@iconify/react';
+import { getFileIcon } from '@/utils/fileIcons';
 import { AppModal } from '@/components/AppModal';
 import { useDbAdminImportRows } from '@/hooks/queries/db-admin';
 import { parseCsv, parseJsonRows } from './csv-parse';
@@ -206,7 +208,7 @@ export function ImportModal(props: Readonly<Props>) {
         {fileName && rawRows.length > 0 && (
           <>
             <Space>
-              <FileText size={14} />
+              <Icon icon={getFileIcon(fileName)} width={14} height={14} style={{ flexShrink: 0 }} />
               <Text strong>{fileName}</Text>
               <Text type="tertiary" size="small">{rawRows.length} 行 · 已映射 {mappedCount} / {headers.length} 列</Text>
             </Space>

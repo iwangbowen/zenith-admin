@@ -1,6 +1,7 @@
-import { File, FileAudio, FileArchive, FileCode, FileImage, FilePen, FileSpreadsheet, FileText, FileType, FileVideo, AppWindow } from 'lucide-react';
+import { Icon } from '@iconify/react';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
+import { getFileIcon } from '@/utils/fileIcons';
 
 /** 将字节数格式化为可读字符串（B / KB / MB / GB）*/
 export function formatFileSize(size: number): string {
@@ -43,51 +44,66 @@ export function guessMimeTypeFromName(name: string | null | undefined): string |
   return EXT_MIME_MAP[name.slice(dot + 1).toLowerCase()] ?? null;
 }
 
-/** 根据 MIME 类型返回对应的 lucide-react 文件图标 */
-export function getFileTypeIcon(mimeType?: string | null, iconSize = 15) {
-  const color = 'var(--semi-color-text-2)';
-  const size = iconSize;
-  if (!mimeType) return <File size={size} color={color} />;
-  // 图片（含 SVG）
-  if (mimeType.startsWith('image/')) return <FileImage size={size} color="var(--semi-color-primary)" />;
-  // 视频
-  if (mimeType.startsWith('video/')) return <FileVideo size={size} color="var(--semi-color-warning)" />;
-  // 音频
-  if (mimeType.startsWith('audio/')) return <FileAudio size={size} color="var(--semi-color-success)" />;
-  // PDF
-  if (mimeType === 'application/pdf') return <FileText size={size} color="#e54d2e" />;
-  // Word 文档
-  if (mimeType.includes('msword') || mimeType.includes('wordprocessingml')) return <FileText size={size} color="#2b579a" />;
-  // PowerPoint 演示文稿
-  if (mimeType.includes('presentationml') || mimeType.includes('powerpoint')) return <FilePen size={size} color="#c43e1c" />;
-  // Excel / 表格（含 CSV）
-  if (mimeType.includes('spreadsheetml') || mimeType.includes('excel') || mimeType === 'text/csv') return <FileSpreadsheet size={size} color="#1a7f37" />;
-  // 压缩包（zip、rar、7z、tar、gz、bz2）
+/** MIME 类型 → vscode-icons 图标 ID（无法识别时返回 null，由调用方兜底） */
+function getIconIdForMime(mimeType: string): string | null {
+  const mime = mimeType.toLowerCase();
+  if (mime === 'image/svg+xml') return 'vscode-icons:file-type-svg';
+  if (mime.startsWith('image/')) return 'vscode-icons:file-type-image';
+  if (mime.startsWith('video/')) return 'vscode-icons:file-type-video';
+  if (mime.startsWith('audio/')) return 'vscode-icons:file-type-audio';
+  if (mime === 'application/pdf') return 'vscode-icons:file-type-pdf';
+  if (mime.includes('msword') || mime.includes('wordprocessingml')) return 'vscode-icons:file-type-word';
+  if (mime.includes('presentationml') || mime.includes('powerpoint')) return 'vscode-icons:file-type-powerpoint';
+  if (mime === 'text/csv' || mime === 'application/csv') return 'vscode-icons:file-type-csv';
+  if (mime.includes('spreadsheetml') || mime.includes('excel')) return 'vscode-icons:file-type-excel';
   if (
-    mimeType.includes('zip') || mimeType.includes('archive') ||
-    mimeType.includes('gzip') || mimeType.includes('tar') ||
-    mimeType.includes('x-rar') || mimeType.includes('x-7z') ||
-    mimeType.includes('x-bzip')
-  ) return <FileArchive size={size} color={color} />;
-  // 字体文件
-  if (mimeType.startsWith('font/') || mimeType.includes('ttf') || mimeType.includes('woff') || mimeType.includes('opentype')) return <FileType size={size} color={color} />;
-  // 代码 / 配置文件（JSON、JS、HTML、CSS、XML、YAML、Shell 等）
+    mime.includes('zip') || mime.includes('archive') ||
+    mime.includes('gzip') || mime.includes('tar') ||
+    mime.includes('x-rar') || mime.includes('x-7z') ||
+    mime.includes('x-bzip')
+  ) return 'vscode-icons:file-type-zip';
+  if (mime.startsWith('font/') || mime.includes('ttf') || mime.includes('woff') || mime.includes('opentype')) return 'vscode-icons:file-type-font';
+  if (mime.includes('json')) return 'vscode-icons:file-type-json';
+  if (mime.includes('javascript')) return 'vscode-icons:file-type-javascript';
+  if (mime.includes('typescript')) return 'vscode-icons:file-type-typescript';
+  if (mime.includes('html')) return 'vscode-icons:file-type-html';
+  if (mime.includes('css')) return 'vscode-icons:file-type-css';
+  if (mime.includes('xml')) return 'vscode-icons:file-type-xml';
+  if (mime.includes('yaml')) return 'vscode-icons:file-type-yaml';
+  if (mime === 'application/x-sh' || mime === 'text/x-shellscript') return 'vscode-icons:file-type-shell';
+  if (mime.includes('sql')) return 'vscode-icons:file-type-sql';
+  if (mime === 'text/markdown' || mime === 'text/x-markdown') return 'vscode-icons:file-type-markdown';
+  if (mime === 'text/x-python' || mime === 'application/x-python-code') return 'vscode-icons:file-type-python';
   if (
-    mimeType.includes('json') || mimeType.includes('javascript') ||
-    mimeType.includes('html') || mimeType.includes('css') ||
-    mimeType.includes('xml') || mimeType.includes('yaml') ||
-    mimeType === 'application/x-sh' || mimeType === 'text/x-shellscript'
-  ) return <FileCode size={size} color="var(--semi-color-tertiary)" />;
-  // 可执行文件（exe、dll、msi 等）
-  if (
-    mimeType === 'application/x-msdownload' ||
-    mimeType === 'application/vnd.microsoft.portable-executable' ||
-    mimeType === 'application/x-executable' ||
-    mimeType === 'application/x-msdos-program'
-  ) return <AppWindow size={size} color="var(--semi-color-warning)" />;
-  // 纯文本 / Markdown / 文档
-  if (mimeType.startsWith('text/') || mimeType.includes('document')) return <FileText size={size} color={color} />;
-  return <File size={size} color={color} />;
+    mime === 'application/x-msdownload' ||
+    mime === 'application/vnd.microsoft.portable-executable' ||
+    mime === 'application/x-executable' ||
+    mime === 'application/x-msdos-program'
+  ) return 'vscode-icons:file-type-binary';
+  if (mime.startsWith('text/') || mime.includes('document')) return 'vscode-icons:file-type-text';
+  return null;
+}
+
+/**
+ * 根据 MIME 类型（及可选文件名）返回文件类型图标（vscode-icons 彩色图标，全站统一）。
+ * 提供 fileName 时优先按扩展名精确匹配（覆盖数百种类型），MIME 作兜底。
+ */
+export function getFileTypeIcon(mimeType?: string | null, iconSize = 15, fileName?: string | null) {
+  let iconId: string | null = null;
+  if (fileName) {
+    const byName = getFileIcon(fileName);
+    if (byName !== 'vscode-icons:default-file') iconId = byName;
+  }
+  if (!iconId && mimeType) iconId = getIconIdForMime(mimeType);
+  return (
+    <Icon
+      icon={iconId ?? 'vscode-icons:default-file'}
+      width={iconSize}
+      height={iconSize}
+      style={{ flexShrink: 0 }}
+      aria-hidden
+    />
+  );
 }
 
 /** 判断文件是否支持预览 */

@@ -3234,7 +3234,7 @@ export default function ChatPage({
                               style={{ padding: '8px 10px', background: 'var(--semi-color-bg-2)', border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', marginBottom: 8, overflow: 'hidden' }}
                             >
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', minWidth: 0 }}>
-                                <span style={{ fontSize: 22, flexShrink: 0 }}>{getFileTypeIcon(asset?.name ?? '')}</span>
+                                <span style={{ display: 'flex', flexShrink: 0 }}>{getFileTypeIcon(asset?.mimeType, 22, asset?.name)}</span>
                                 <div style={{ flex: '1 1 0', minWidth: 0, overflow: 'hidden' }}>
                                   <Text strong style={{ fontSize: 12, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {asset?.name ?? '未知文件'}
@@ -3515,7 +3515,7 @@ export default function ChatPage({
                       position: 'relative',
                     }}
                   >
-                    <span style={{ fontSize: 18, flexShrink: 0 }}>{getFileTypeIcon(item.file.name)}</span>
+                    <span style={{ display: 'flex', flexShrink: 0 }}>{getFileTypeIcon(item.file.type, 18, item.file.name)}</span>
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <div style={{ fontSize: 12, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.file.name}</div>
                       <div style={{ fontSize: 11, color: 'var(--semi-color-text-3)' }}>{formatFileSize(item.file.size)}</div>

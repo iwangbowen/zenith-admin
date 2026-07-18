@@ -140,7 +140,7 @@ export function MessageContent({
             flexShrink: 0,
           }}
         >
-          {getFileTypeIcon(asset?.mimeType, 16)}
+          {getFileTypeIcon(asset?.mimeType, 16, asset?.name)}
         </span>
         <div style={{ minWidth: 0, flex: 1 }}>
           <a

@@ -331,7 +331,7 @@ export default function FilesPage() {
       render: (name: string, record: ManagedFile) => {
         return (
           <Space spacing={6} style={{ flexWrap: 'nowrap', overflow: 'hidden' }}>
-            <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>{getFileTypeIcon(record.mimeType)}</span>
+            <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>{getFileTypeIcon(record.mimeType, 16, name)}</span>
             <Tooltip content={name}>
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
             </Tooltip>
@@ -575,7 +575,7 @@ export default function FilesPage() {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
                 <Space spacing={6} style={{ overflow: 'hidden', flex: 1, minWidth: 0 }}>
                   <span style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                    {getFileTypeIcon(undefined, 14)}
+                    {getFileTypeIcon(undefined, 14, item.name)}
                   </span>
                   <Typography.Text ellipsis={{ showTooltip: true }} style={{ fontSize: 13, flex: 1, minWidth: 0 }}>
                     {item.name}

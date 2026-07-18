@@ -150,7 +150,7 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
         }
         return (
           <Space spacing={6} style={{ flexWrap: 'nowrap', overflow: 'hidden' }}>
-            <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>{getFileTypeIcon(record.mimeType)}</span>
+            <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>{getFileTypeIcon(record.mimeType, 16, record.originalName)}</span>
             <Tooltip content={record.originalName}>
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{record.originalName}</span>
             </Tooltip>

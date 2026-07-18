@@ -59,7 +59,7 @@ export function FileGridCard({
         <div className="files-grid-card__media-wrap">
           <div className="files-grid-card__media">
             <span className="files-grid-card__icon">
-              {getFileTypeIcon(file.mimeType, 28)}
+              {getFileTypeIcon(file.mimeType, 34, file.originalName)}
             </span>
             {ext && <span className="files-grid-card__type-badge">{ext}</span>}
             {previewLoading && (

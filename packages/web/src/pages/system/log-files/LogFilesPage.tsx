@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Tag, Space, Modal, Toast, Spin, Typography, Dropdown } from '@douyinfe/semi-ui';
 import { buildSearchMatchMap, findMatchRanges } from './logFilesSearch';
 import { RefreshCw, FileText, Activity, StopCircle, Download, Trash2, Search, ListOrdered, MoreHorizontal } from 'lucide-react';
+import { Icon } from '@iconify/react';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { NavListPanel, NavListItem } from '@/components/NavListPanel';
 import { request } from '@/utils/request';
@@ -245,7 +246,7 @@ export default function LogFilesPage() {
                   key={file.name}
                   active={active}
                   onClick={() => selectFile(file)}
-                  icon={<FileText size={13} />}
+                  icon={<Icon icon="vscode-icons:file-type-log" width={13} height={13} />}
                   primary={file.name}
                   meta={
                     <>
@@ -317,7 +318,7 @@ export default function LogFilesPage() {
               gap: 8,
               flexWrap: 'wrap',
             }}>
-              <FileText size={14} style={{ color: 'var(--semi-color-primary)', flexShrink: 0 }} />
+              <Icon icon="vscode-icons:file-type-log" width={14} height={14} style={{ flexShrink: 0 }} />
               <Typography.Text style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600 }}>
                 {selected.name}
               </Typography.Text>

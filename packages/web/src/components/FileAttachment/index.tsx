@@ -290,7 +290,7 @@ export default function FileAttachment({
               width: '100%',
             }}
           >
-            {getFileTypeIcon(props.fileInstance?.type || null, 18)}
+            {getFileTypeIcon(props.fileInstance?.type || null, 18, props.name)}
             <div style={{ flex: 1, minWidth: 0 }}>
               <Text
                 size="small"
@@ -364,7 +364,7 @@ export default function FileAttachment({
           }}
         >
           {/* 文件图标 */}
-          {getFileTypeIcon(item.file.mimeType, 18)}
+          {getFileTypeIcon(item.file.mimeType, 18, item.file.originalName)}
           {/* 文件名 + 大小 */}
           <div style={{ flex: 1, minWidth: 0 }}>
             <Text

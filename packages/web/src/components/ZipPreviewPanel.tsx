@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react';
 import type { CSSProperties } from 'react';
 import { Tree, Spin, Toast, Tag } from '@douyinfe/semi-ui';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
-import { FileText, FolderOpen } from 'lucide-react';
+import { FolderOpen } from 'lucide-react';
+import { Icon } from '@iconify/react';
 import JSZip from 'jszip';
 import { formatFileSize } from '@/utils/file-utils';
+import { getFileIcon } from '@/utils/fileIcons';
 
 interface ZipPreviewPanelProps {
   readonly blob: Blob;
@@ -131,7 +133,7 @@ export function ZipPreviewPanel({ blob, style }: ZipPreviewPanelProps) {
                   {entry._isDir ? (
                     <FolderOpen size={13} style={{ color: 'var(--semi-color-warning)', flexShrink: 0 }} />
                   ) : (
-                    <FileText size={13} style={{ color: 'var(--semi-color-text-2)', flexShrink: 0 }} />
+                    <Icon icon={getFileIcon(typeof label === 'string' ? label : '')} width={13} height={13} style={{ flexShrink: 0 }} />
                   )}
                   <span>{typeof label === 'string' ? label : ''}</span>
                   {!entry._isDir && entry._size ? (

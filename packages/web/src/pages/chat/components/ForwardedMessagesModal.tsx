@@ -63,7 +63,7 @@ export function ForwardedMessagesModal({
                     download={item.asset?.name ?? '文件'}
                     style={{ color: 'var(--semi-color-primary)', fontSize: 13, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6 }}
                   >
-                    {getFileTypeIcon(item.asset?.mimeType, 16)}
+                    {getFileTypeIcon(item.asset?.mimeType, 16, item.asset?.name)}
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 380 }}>
                       {item.asset?.name ?? '文件'}
                     </span>

@@ -6,7 +6,8 @@ import type { PDFViewerRef, PluginRegistry } from '@embedpdf/react-pdf-viewer';
 // 避免运行时从 jsDelivr CDN 拉取 pdfium.wasm。
 import pdfiumWasmUrl from '@embedpdf/pdfium/pdfium.wasm?url';
 import { Button, Select, Typography } from '@douyinfe/semi-ui';
-import { FileText, Maximize2, Minimize2, X } from 'lucide-react';
+import { Maximize2, Minimize2, X } from 'lucide-react';
+import { Icon } from '@iconify/react';
 import { useThemeController } from '@/providers/theme-controller';
 
 const { Text } = Typography;
@@ -170,7 +171,7 @@ export function PDFPreviewPanel({ file, onClose, fullscreen, onToggleFullscreen,
           flexShrink: 0,
         }}
       >
-        <FileText size={15} style={{ color: '#E54D4D', flexShrink: 0 }} />
+        <Icon icon="vscode-icons:file-type-pdf" width={15} height={15} style={{ flexShrink: 0 }} />
         <Text
           ellipsis={{ showTooltip: true }}
           style={{ flex: 1, fontSize: 13, fontWeight: 500, minWidth: 0 }}

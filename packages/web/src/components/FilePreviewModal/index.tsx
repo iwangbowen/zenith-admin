@@ -214,7 +214,7 @@ export default function FilePreviewModal({
    */
   const previewTitle: ReactNode = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-      {getFileTypeIcon(mimeType, 15)}
+      {getFileTypeIcon(mimeType, 15, fileName)}
       <Typography.Text
         ellipsis={{ showTooltip: true }}
         style={{ fontSize: 13, fontWeight: 500, minWidth: 0 }}
