@@ -15,7 +15,7 @@ import {
   FolderPlus, FilePlus, Upload as UploadIcon,
   Trash2, Copy, Scissors, Archive, Home,
   FolderOpen, UploadCloud, Pencil, PencilLine, Download,
-  Eye, EyeOff, ChevronLeft, ChevronRight,
+  Eye, EyeOff, ChevronLeft, ChevronRight, Star, X, FolderUp,
 } from 'lucide-react';
 import dayjs from 'dayjs';
 import { request } from '@/utils/request';
@@ -101,6 +101,32 @@ function makeCopyName(name: string, taken: Set<string>): string {
 /** 同名冲突处理方式 */
 type ConflictResolution = 'overwrite' | 'skip' | 'keep-both';
 
+/** 名称非法字符校验（跨平台禁止路径分隔符；Windows 额外限制保留字符与结尾点/空格） */
+function validateEntryName(name: string, isWindows: boolean): string | null {
+  if (!name.trim()) return '请输入名称';
+  if (/[/\\]/.test(name)) return '名称不能包含 / 或 \\';
+  if (isWindows) {
+    if (/[<>:"|?*]/.test(name)) return 'Windows 名称不能包含 < > : " | ? *';
+    if (/[. ]$/.test(name)) return 'Windows 名称不能以点或空格结尾';
+    if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(name)) return '该名称是 Windows 保留名';
+  }
+  if (name === '.' || name === '..') return '名称不合法';
+  return null;
+}
+
+/** 收藏夹 localStorage key */
+const FM_BOOKMARKS_KEY = 'fm-bookmarks';
+
+function loadBookmarks(): { name: string; path: string }[] {
+  try {
+    const raw = localStorage.getItem(FM_BOOKMARKS_KEY);
+    const parsed = raw ? JSON.parse(raw) as { name: string; path: string }[] : [];
+    return Array.isArray(parsed) ? parsed.slice(0, 30) : [];
+  } catch {
+    return [];
+  }
+}
+
 function buildBreadcrumbs(p: string): { label: string; path: string }[] {
   if (!p || p === '/') return [{ label: '/', path: '/' }];
   const isWin = /^[A-Za-z]:/.test(p);
@@ -163,18 +189,19 @@ function getFileMimeType(name: string): string | null {
 interface GridCardProps {
   entry: FsEntry;
   selected: boolean;
+  cut?: boolean;
   onSelect: () => void;
   onOpen: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
 }
 
-function FsGridCard({ entry, selected, onSelect, onOpen, onContextMenu }: Readonly<GridCardProps>) {
+function FsGridCard({ entry, selected, cut, onSelect, onOpen, onContextMenu }: Readonly<GridCardProps>) {
   const isDir = entry.type === 'dir';
   const iconId = isDir ? getFolderIcon(entry.name, false) : getFileIcon(entry.name);
   return (
     <button
       type="button"
-      className={`fm-grid-card${selected ? ' fm-grid-card--selected' : ''}`}
+      className={`fm-grid-card${selected ? ' fm-grid-card--selected' : ''}${cut ? ' fm-row--cut' : ''}`}
       onClick={onSelect}
       onDoubleClick={onOpen}
       onContextMenu={onContextMenu}
@@ -409,12 +436,13 @@ const VG_OVERSCAN = 2;     // 上下额外渲染行数
 interface VirtualGridProps {
   readonly entries: FsEntry[];
   readonly selectedPaths: Set<string>;
+  readonly cutPaths?: Set<string>;
   readonly onSelect: (path: string) => void;
   readonly onOpen: (entry: FsEntry) => void;
   readonly onContextMenu: (e: React.MouseEvent, entry: FsEntry) => void;
 }
 
-function VirtualGrid({ entries, selectedPaths, onSelect, onOpen, onContextMenu }: Readonly<VirtualGridProps>) {
+function VirtualGrid({ entries, selectedPaths, cutPaths, onSelect, onOpen, onContextMenu }: Readonly<VirtualGridProps>) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [scrollTop, setScrollTop] = useState(0);
@@ -473,6 +501,7 @@ function VirtualGrid({ entries, selectedPaths, onSelect, onOpen, onContextMenu }
                     key={e.path}
                     entry={e}
                     selected={selectedPaths.has(e.path)}
+                    cut={cutPaths?.has(e.path)}
                     onSelect={() => onSelect(e.path)}
                     onOpen={() => onOpen(e)}
                     onContextMenu={(ev) => onContextMenu(ev, e)}
@@ -506,8 +535,8 @@ export default function FileManagerPage() {
   >(null);
   const ctxUploadDirRef = useRef('');
   const ctxUploadInputRef = useRef<HTMLInputElement>(null);
+  const dirUploadInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState<{ name: string; progress: number }[]>([]);
-  const [checksum, setChecksum] = useState<{ entry: FsEntry; algo: 'md5' | 'sha1' | 'sha256'; hash: string; size: number; loading: boolean } | null>(null);
   const [searchKw, setSearchKw] = useState('');
   const [searchResults, setSearchResults] = useState<FsEntry[] | null>(null);
   const [preview, setPreview] = useState<{ url: string; name: string; mimeType: string } | null>(null);
@@ -516,6 +545,7 @@ export default function FileManagerPage() {
   const [previewSrcList, setPreviewSrcList] = useState<string[]>([]);
   const [previewCurrentIndex, setPreviewCurrentIndex] = useState(0);
   const previewBlobUrlsRef = useRef<string[]>([]);
+  const previewEntriesRef = useRef<FsEntry[]>([]);
   const previewSessionRef = useRef(0);
   // 文件夹选择器（移动/复制）
   const [folderPicker, setFolderPicker] = useState<{ mode: 'move' | 'copy'; entries: FsEntry[] } | null>(null);
@@ -539,6 +569,28 @@ export default function FileManagerPage() {
   const [pathEditing, setPathEditing] = useState(false);
   const [pathDraft, setPathDraft] = useState('');
   const [conflictAsk, setConflictAsk] = useState<{ names: string[]; resolve: (r: ConflictResolution | null) => void } | null>(null);
+  // ── 收藏夹 / 目录大小 ─────────────────────────────────────────────────────
+  const [bookmarks, setBookmarks] = useState<{ name: string; path: string }[]>(loadBookmarks);
+  const [dirSize, setDirSize] = useState<{ size: number; files: number; dirs: number; truncated: boolean; loading: boolean } | null>(null);
+
+  const persistBookmarks = (next: { name: string; path: string }[]) => {
+    setBookmarks(next);
+    try { localStorage.setItem(FM_BOOKMARKS_KEY, JSON.stringify(next)); } catch { /* 忽略配额错误 */ }
+  };
+
+  const isBookmarked = bookmarks.some((b) => b.path === currentPath);
+
+  const toggleBookmark = () => {
+    if (!currentPath) return;
+    if (isBookmarked) {
+      persistBookmarks(bookmarks.filter((b) => b.path !== currentPath));
+      Toast.info({ content: '已取消收藏', duration: 1 });
+    } else {
+      const name = currentPath.replace(/[/\\]+$/, '').split(/[\\/]/).pop() || currentPath;
+      persistBookmarks([{ name, path: currentPath }, ...bookmarks].slice(0, 30));
+      Toast.success('已收藏当前目录');
+    }
+  };
   const [propsChecksum, setPropsChecksum] = useState<{ algo: 'md5' | 'sha1' | 'sha256'; hash: string; loading: boolean } | null>(null);
   const rootInfoQuery = useTerminalRootInfo();
   const rootInfo = rootInfoQuery.data ?? null;
@@ -570,8 +622,8 @@ export default function FileManagerPage() {
     return () => ob.disconnect();
   }, []);
 
-  // 切换属性面板时清空校验和
-  useEffect(() => { setPropsChecksum(null); }, [propsEntry]);
+  // 切换属性面板时清空校验和与目录大小
+  useEffect(() => { setPropsChecksum(null); setDirSize(null); }, [propsEntry]);
 
   useEffect(() => {
     if (!rootInfo || currentPath) return;
@@ -642,6 +694,21 @@ export default function FileManagerPage() {
       setPropsChecksum({ algo, hash: '计算失败', loading: false });
     }
   }, [checksumMutateAsync]);
+
+  const fetchDirSize = useCallback(async (entry: FsEntry) => {
+    setDirSize({ size: 0, files: 0, dirs: 0, truncated: false, loading: true });
+    try {
+      const res = await request
+        .get<{ size: number; files: number; dirs: number; truncated: boolean }>(
+          `/api/terminal-files/dir-size${toQueryString({ path: entry.path })}`,
+        )
+        .then(unwrap);
+      setDirSize({ ...res, loading: false });
+    } catch {
+      setDirSize(null);
+      Toast.error('目录大小计算失败');
+    }
+  }, []);
 
   // ── 过滤 + 排序 + 侧栏 ────────────────────────────────────────────────────
 
@@ -823,6 +890,36 @@ export default function FileManagerPage() {
     previewBlobUrlsRef.current = [];
   };
 
+  /** 按需加载第 idx 张预览图（懒加载，已加载则跳过） */
+  const loadPreviewImage = useCallback(async (idx: number, session: number) => {
+    const entries = previewEntriesRef.current;
+    if (idx < 0 || idx >= entries.length) return;
+    if (previewBlobUrlsRef.current[idx]) return;
+    previewBlobUrlsRef.current[idx] = 'loading';
+    const token = localStorage.getItem(TOKEN_KEY) ?? '';
+    const base = appConfig.apiBaseUrl || '';
+    try {
+      const resp = await fetch(
+        `${base}/api/terminal-files/download?path=${encodeURIComponent(entries[idx].path)}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (previewSessionRef.current !== session) return;
+      const blob = await resp.blob();
+      if (previewSessionRef.current !== session) return;
+      const url = URL.createObjectURL(blob);
+      previewBlobUrlsRef.current[idx] = url;
+      setPreviewSrcList((prev) => { const u = [...prev]; u[idx] = url; return u; });
+    } catch {
+      if (previewSessionRef.current === session) previewBlobUrlsRef.current[idx] = '';
+    }
+  }, []);
+
+  /** 加载当前及相邻 ±2 张（翻页时按需补载） */
+  const loadAroundPreview = useCallback((idx: number) => {
+    const session = previewSessionRef.current;
+    for (const i of [idx, idx + 1, idx - 1, idx + 2, idx - 2]) void loadPreviewImage(i, session);
+  }, [loadPreviewImage]);
+
   const handlePreview = useCallback(async (entry: FsEntry) => {
     if (entry.type === 'dir') return;
     const ext = (entry.name.split('.').pop() ?? '').toLowerCase();
@@ -833,45 +930,17 @@ export default function FileManagerPage() {
       const clickedIndex = Math.max(0, imageEntries.findIndex((e) => e.path === entry.path));
       previewSessionRef.current += 1;
       const mySession = previewSessionRef.current;
-      const token = localStorage.getItem(TOKEN_KEY) ?? '';
-      const base = appConfig.apiBaseUrl || '';
-      try {
-        cleanupPreviewBlobs();
-        const initialUrls = imageEntries.map(() => '');
-        previewBlobUrlsRef.current = [...initialUrls];
-        // 优先加载点击项
-        const clickedResp = await fetch(
-          `${base}/api/terminal-files/download?path=${encodeURIComponent(imageEntries[clickedIndex].path)}`,
-          { headers: { Authorization: `Bearer ${token}` } },
-        );
-        if (previewSessionRef.current !== mySession) return;
-        const clickedBlob = await clickedResp.blob();
-        if (previewSessionRef.current !== mySession) return;
-        const clickedUrl = URL.createObjectURL(clickedBlob);
-        initialUrls[clickedIndex] = clickedUrl;
-        previewBlobUrlsRef.current[clickedIndex] = clickedUrl;
-        setPreviewSrcList([...initialUrls]);
-        setPreviewCurrentIndex(clickedIndex);
-        setPreviewVisible(true);
-        // 后台加载其余图片
-        imageEntries.forEach(async (imgEntry, i) => {
-          if (i === clickedIndex) return;
-          try {
-            const resp = await fetch(
-              `${base}/api/terminal-files/download?path=${encodeURIComponent(imgEntry.path)}`,
-              { headers: { Authorization: `Bearer ${token}` } },
-            );
-            if (previewSessionRef.current !== mySession) return;
-            const blob = await resp.blob();
-            if (previewSessionRef.current !== mySession) return;
-            const url = URL.createObjectURL(blob);
-            previewBlobUrlsRef.current[i] = url;
-            setPreviewSrcList((prev) => { const u = [...prev]; u[i] = url; return u; });
-          } catch { /* ignore */ }
-        });
-      } catch (err) {
-        Toast.error(err instanceof Error ? err.message : '图片加载失败');
-      }
+      cleanupPreviewBlobs();
+      previewEntriesRef.current = imageEntries;
+      previewBlobUrlsRef.current = imageEntries.map(() => '');
+      setPreviewSrcList(imageEntries.map(() => ''));
+      // 优先等点击项加载完成再打开，避免空白闪烁
+      await loadPreviewImage(clickedIndex, mySession);
+      if (previewSessionRef.current !== mySession) return;
+      if (!previewBlobUrlsRef.current[clickedIndex]) { Toast.error('图片加载失败'); return; }
+      setPreviewCurrentIndex(clickedIndex);
+      setPreviewVisible(true);
+      loadAroundPreview(clickedIndex);
     } else {
       const mimeType = getFileMimeType(entry.name);
       if (mimeType) {
@@ -880,7 +949,7 @@ export default function FileManagerPage() {
         Toast.warning('该文件不支持预览，请下载后查看');
       }
     }
-  }, [filteredEntries]);
+  }, [filteredEntries, loadPreviewImage, loadAroundPreview]);
 
   const handlePaste = async () => {
     if (!clipboard || !currentPath) return;
@@ -897,6 +966,12 @@ export default function FileManagerPage() {
     const val = dialog.value.trim();
     if (!val) { Toast.warning('请输入名称'); return; }
     const sep = currentPath.includes('\\') ? '\\' : '/';
+
+    // 名称合法性校验（重命名 / 新建 / 压缩包名）
+    if (dialog.mode === 'rename' || dialog.mode === 'newFile' || dialog.mode === 'newDir' || dialog.mode === 'compress') {
+      const err = validateEntryName(val, rootInfo?.isWindows ?? false);
+      if (err) { Toast.error(err); return; }
+    }
 
     if (dialog.mode === 'rename') {
       const dest = `${dialog.entry.path.replace(/[/\\]+[^/\\]+$/, '')}${sep}${val}`;
@@ -954,6 +1029,44 @@ export default function FileManagerPage() {
     e.target.value = '';
   };
 
+  /** 上传整个文件夹：按 webkitRelativePath 先建目录树，再逐文件上传到对应子目录 */
+  const handleDirUploadChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = '';
+    if (!files.length || !currentPath) return;
+    const rel = (f: File) => (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name;
+    // 收集所有需要创建的相对目录（含中间层级），按深度升序创建
+    const dirSet = new Set<string>();
+    for (const f of files) {
+      const parts = rel(f).split('/');
+      for (let i = 1; i < parts.length; i++) dirSet.add(parts.slice(0, i).join('/'));
+    }
+    const dirs = [...dirSet].sort((a, b) => a.split('/').length - b.split('/').length);
+    for (const d of dirs) {
+      const abs = d.split('/').reduce((acc, seg) => joinPath(acc, seg), currentPath);
+      // 目录已存在时后端返回 400，静默忽略
+      await fileOperationMutation
+        .mutateAsync({ endpoint: '/api/terminal-files/create', values: { path: abs, type: 'dir' } })
+        .catch(() => {});
+    }
+    setUploading(files.map((f) => ({ name: rel(f), progress: 0 })));
+    const makeProgressHandler = (i: number) => (pct: number) => setUploading((prev) => updateUploadPct(prev, i, pct));
+    const results = await Promise.allSettled(
+      files.map((f, i) => {
+        const relDir = rel(f).split('/').slice(0, -1);
+        const destDir = relDir.reduce((acc, seg) => joinPath(acc, seg), currentPath);
+        const formData = new FormData();
+        formData.append('path', destDir);
+        formData.append('file', f);
+        return uploadTerminalFileMutation.mutateAsync({ formData, onProgress: makeProgressHandler(i) });
+      }),
+    );
+    const success = results.filter((r) => r.status === 'fulfilled').length;
+    if (success === files.length) Toast.success(`已上传文件夹（${success} 个文件）`);
+    else Toast.warning(`已上传 ${success}/${files.length} 个文件，${files.length - success} 个失败`);
+    setUploading([]);
+  };
+
   // ── 拖拽上传（从桌面拖入内容区） ──────────────────────────────────────────
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
@@ -993,16 +1106,6 @@ export default function FileManagerPage() {
     Toast.success('解压成功');
   };
 
-  const fetchChecksum = async (entry: FsEntry, algo: 'md5' | 'sha1' | 'sha256') => {
-    setChecksum({ entry, algo, hash: '', size: entry.size, loading: true });
-    try {
-      const res = await checksumMutation.mutateAsync({ path: entry.path, algo });
-      setChecksum({ entry, algo, hash: res.hash, size: res.size, loading: false });
-    } catch {
-      setChecksum({ entry, algo, hash: '计算失败', size: entry.size, loading: false });
-    }
-  };
-
   const runSearch = async () => {
     const kw = searchKw.trim();
     if (!kw) { setSearchResults(null); return; }
@@ -1038,7 +1141,7 @@ export default function FileManagerPage() {
       { label: '移动到…', fn: () => { setFolderPicker({ mode: 'move', entries: [entry] }); closeCtxMenu(); } },
       { label: '压缩为 ZIP', fn: () => { setDialog({ mode: 'compress', selEntries: [entry], value: `${entry.name}.zip` }); closeCtxMenu(); } },
       ...(isFile && isArchive(entry.name) ? [{ label: '解压到此处', fn: () => { void handleExtract(entry); closeCtxMenu(); } }] : []),
-      ...(isFile ? [{ label: '校验和', fn: () => { void fetchChecksum(entry, 'sha256'); closeCtxMenu(); } }] : []),
+      ...(isFile ? [{ label: '校验和', fn: () => { setPropsEntry(entry); void fetchPropsChecksum(entry, 'sha256'); closeCtxMenu(); } }] : []),
       ...(rootInfo?.isWindows ? [] : [{ label: '修改权限', fn: () => { setDialog({ mode: 'chmod', entry, value: permStringToOctal(entry.permissions) }); closeCtxMenu(); } }]),
       ...(isDir ? [{ label: '上传到此目录', fn: () => { ctxUploadDirRef.current = entry.path; ctxUploadInputRef.current?.click(); closeCtxMenu(); } }] : []),
       { label: '属性', fn: () => { setPropsEntry(entry); closeCtxMenu(); } },
@@ -1051,7 +1154,7 @@ export default function FileManagerPage() {
   // Ctrl+A 全选 / Ctrl+C 复制 / Ctrl+X 剪切 / Ctrl+V 粘贴 / Delete 删除 /
   // F2 重命名 / Enter 打开 / Backspace 上级目录 / Esc 清除选择
 
-  const anyOverlayOpen = !!(dialog || folderPicker || propsEntry || preview || previewVisible || checksum || ctxEntry || searchResults || editorEntry || conflictAsk || pathEditing);
+  const anyOverlayOpen = !!(dialog || folderPicker || propsEntry || preview || previewVisible || ctxEntry || searchResults || editorEntry || conflictAsk || pathEditing);
 
   const shortcutCtxRef = useRef({
     selectedPaths, filteredEntries, clipboard, anyOverlayOpen, currentPath,
@@ -1222,7 +1325,7 @@ export default function FileManagerPage() {
           key: 'checksum',
           label: '校验和',
           hidden: record.type === 'dir',
-          onClick: () => { void fetchChecksum(record, 'sha256'); },
+          onClick: () => { setPropsEntry(record); void fetchPropsChecksum(record, 'sha256'); },
         },
         {
           key: 'chmod',
@@ -1274,6 +1377,7 @@ export default function FileManagerPage() {
         <VirtualGrid
           entries={filteredEntries}
           selectedPaths={selectedPaths}
+          cutPaths={clipboard?.op === 'cut' ? new Set(clipboard.paths) : undefined}
           onSelect={(path) => toggleSelect(path)}
           onOpen={(e) => { if (e.type === 'dir') void navigateTo(e.path); else void handlePreview(e); }}
           onContextMenu={(ev, e) => openCtxMenu(ev, e)}
@@ -1307,6 +1411,8 @@ export default function FileManagerPage() {
         }}
         onRow={(r) => ({
           onContextMenu: r ? (e: React.MouseEvent) => openCtxMenu(e, r) : undefined,
+          // 剪切中的条目半透明提示
+          className: r && clipboard?.op === 'cut' && clipboard.paths.includes(r.path) ? 'fm-row--cut' : undefined,
           // 与网格视图统一：行空白处单击选中、双击打开（按钮/复选框/链接自身的点击不参与）
           onClick: r ? (e: React.MouseEvent) => {
             if ((e.target as HTMLElement).closest('button, a, input, .semi-checkbox, .semi-switch')) return;
@@ -1374,6 +1480,32 @@ export default function FileManagerPage() {
               })}
             </div>
           )}
+          {bookmarks.length > 0 && (
+            <div className="fm-sidebar__bookmarks">
+              <div className="fm-sidebar__section-title">收藏</div>
+              {bookmarks.map((b) => (
+                <div key={b.path} className={`fm-sidebar__bookmark-row${b.path === currentPath ? ' fm-sidebar__bookmark-row--active' : ''}`}>
+                  <button
+                    type="button"
+                    className="fm-sidebar__bookmark-link"
+                    title={b.path}
+                    onClick={() => void navigateTo(b.path)}
+                  >
+                    <Star size={12} style={{ flexShrink: 0, color: 'var(--semi-color-warning)' }} fill="currentColor" />
+                    <span>{b.name}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="fm-sidebar__bookmark-remove"
+                    aria-label={`移除收藏 ${b.name}`}
+                    onClick={() => persistBookmarks(bookmarks.filter((x) => x.path !== b.path))}
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="fm-sidebar__dirs">
             {sidebarDirs.map((d) => (
               <button
@@ -1425,9 +1557,27 @@ export default function FileManagerPage() {
                 <Tooltip content="上传文件">
                   <Button size="small" theme="borderless" type="tertiary" icon={<UploadIcon size={13} />} onClick={() => { ctxUploadDirRef.current = currentPath; ctxUploadInputRef.current?.click(); }} />
                 </Tooltip>
+                <Tooltip content="上传文件夹">
+                  <Button size="small" theme="borderless" type="tertiary" icon={<FolderUp size={13} />} onClick={() => dirUploadInputRef.current?.click()} />
+                </Tooltip>
+                <Tooltip content={isBookmarked ? '取消收藏当前目录' : '收藏当前目录'}>
+                  <Button
+                    size="small"
+                    theme="borderless"
+                    type={isBookmarked ? 'warning' : 'tertiary'}
+                    icon={<Star size={13} fill={isBookmarked ? 'currentColor' : 'none'} />}
+                    onClick={toggleBookmark}
+                  />
+                </Tooltip>
                 {clipboard && (
                   <Tooltip content={`粘贴（${clipboard.op === 'copy' ? '复制' : '移动'} ${clipboard.paths.length} 项）`}>
-                    <Button size="small" type="primary" icon={clipboard.op === 'copy' ? <Copy size={13} /> : <Scissors size={13} />} onClick={() => void handlePaste()}>
+                    <Button
+                      size="small"
+                      type="primary"
+                      icon={clipboard.op === 'copy' ? <Copy size={13} /> : <Scissors size={13} />}
+                      loading={fileOperationMutation.isPending || deleteEntriesMutation.isPending}
+                      onClick={() => void handlePaste()}
+                    >
                       粘贴
                     </Button>
                   </Tooltip>
@@ -1442,7 +1592,7 @@ export default function FileManagerPage() {
                       setDialog({ mode: 'compress', selEntries: sel, value: 'archive.zip' });
                     }}>压缩</Button>
                     <Popconfirm title={`确定删除选中的 ${selectedPaths.size} 项吗？`} okType="danger" onConfirm={() => void handleDelete([...selectedPaths])}>
-                      <Button size="small" theme="borderless" type="danger" icon={<Trash2 size={13} />}>删除</Button>
+                      <Button size="small" theme="borderless" type="danger" icon={<Trash2 size={13} />} loading={deleteEntriesMutation.isPending}>删除</Button>
                     </Popconfirm>
                   </>
                 )}
@@ -1562,6 +1712,14 @@ export default function FileManagerPage() {
           </MasterDetailLayout.Body>
 
           <input ref={ctxUploadInputRef} type="file" multiple style={{ display: 'none' }} onChange={handleUploadChange} />
+          <input
+            ref={dirUploadInputRef}
+            type="file"
+            multiple
+            style={{ display: 'none' }}
+            onChange={(e) => void handleDirUploadChange(e)}
+            {...({ webkitdirectory: '', directory: '' } as Record<string, string>)}
+          />
 
           {ctxEntry && (
             <>
@@ -1592,6 +1750,7 @@ export default function FileManagerPage() {
             visible={!!dialog}
             onCancel={() => setDialog(null)}
             onOk={() => void confirmDialog()}
+            okButtonProps={{ loading: fileOperationMutation.isPending }}
             closeOnEsc
             width={480}
           >
@@ -1621,7 +1780,7 @@ export default function FileManagerPage() {
             src={previewSrcList}
             visible={previewVisible}
             currentIndex={previewCurrentIndex}
-            onChange={setPreviewCurrentIndex}
+            onChange={(i) => { setPreviewCurrentIndex(i); loadAroundPreview(i); }}
             onVisibleChange={(v) => {
               if (!v) {
                 previewSessionRef.current += 1;
@@ -1653,34 +1812,6 @@ export default function FileManagerPage() {
             onCancel={() => setFolderPicker(null)}
           />
 
-          {/* ── 文件校验和 ── */}
-          <Modal
-            title="文件校验和"
-            visible={!!checksum}
-            onCancel={() => setChecksum(null)}
-            footer={null}
-            closeOnEsc
-            width={560}
-          >
-            {checksum && (
-              <div>
-                <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 8 }}>
-                  {checksum.entry.name} · {formatSize(checksum.size)}
-                </Typography.Text>
-                <Space spacing={4} style={{ marginBottom: 12 }}>
-                  {(['md5', 'sha1', 'sha256'] as const).map((a) => (
-                    <Button key={a} size="small" theme={checksum.algo === a ? 'solid' : 'light'} type={checksum.algo === a ? 'primary' : 'tertiary'}
-                      onClick={() => void fetchChecksum(checksum.entry, a)}>{a.toUpperCase()}</Button>
-                  ))}
-                </Space>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Input readOnly value={checksum.loading ? '计算中…' : checksum.hash} style={{ fontFamily: 'monospace', fontSize: 12 }} />
-                  <Button size="small" disabled={checksum.loading || !checksum.hash} onClick={() => { void navigator.clipboard?.writeText(checksum.hash); Toast.success('已复制'); }}>复制</Button>
-                </div>
-              </div>
-            )}
-          </Modal>
-
           {/* ── 深度搜索结果 ── */}
           <Modal
             title={searchResultTitle(searchResults)}
@@ -1707,9 +1838,14 @@ export default function FileManagerPage() {
                     <Typography.Text type="tertiary" size="small" ellipsis={{ showTooltip: true }} style={{ maxWidth: 420, display: 'block' }}>{r.path}</Typography.Text>
                   </div>
                   <Button size="small" theme="borderless" onClick={() => {
-                    const parent = r.path.replace(/[/\\][^/\\]*$/, '') || r.path;
-                    void navigateTo(r.type === 'dir' ? r.path : parent);
                     setSearchResults(null);
+                    if (r.type === 'dir') {
+                      void navigateTo(r.path);
+                    } else {
+                      // 前往父目录并选中高亮目标文件（navigateTo 会清空选择，需在其后设置）
+                      const parent = r.path.replace(/[/\\][^/\\]*$/, '') || r.path;
+                      void navigateTo(parent).then(() => setSelectedPaths(new Set([r.path])));
+                    }
                   }}>前往</Button>
                 </div>
               ))}
@@ -1761,6 +1897,24 @@ export default function FileManagerPage() {
                   ),
                 },
                 ...(!isDir ? [{ label: '大小', value: `${formatSize(propsEntry.size)}  (${propsEntry.size.toLocaleString()} 字节)` }] : []),
+                ...(isDir ? [{
+                  label: '大小',
+                  value: (() => {
+                    if (!dirSize) {
+                      return (
+                        <Button size="small" theme="light" onClick={() => void fetchDirSize(propsEntry)}>
+                          计算大小
+                        </Button>
+                      );
+                    }
+                    if (dirSize.loading) return <Typography.Text size="small" type="tertiary">计算中…</Typography.Text>;
+                    return (
+                      <Typography.Text size="small">
+                        {formatSize(dirSize.size)}（{dirSize.files.toLocaleString()} 个文件，{dirSize.dirs.toLocaleString()} 个目录{dirSize.truncated ? '，已达统计上限' : ''}）
+                      </Typography.Text>
+                    );
+                  })(),
+                }] : []),
                 { label: '修改时间', value: propsEntry.mtime },
                 ...(propsEntry.permissions
                   ? [{

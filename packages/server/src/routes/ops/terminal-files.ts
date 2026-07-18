@@ -22,6 +22,7 @@ import {
   chmodEntry,
   extractArchive,
   computeChecksum,
+  computeDirSize,
   searchFiles,
 } from '../../services/ops/terminal-files.service';
 
@@ -301,6 +302,28 @@ const searchRoute = defineOpenAPIRoute({
   },
 });
 
+const dirSizeRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/dir-size', tags: ['TerminalFiles'], summary: '递归统计目录大小',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM })] as const,
+    request: { query: z.object({ path: z.string().min(1) }) },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(z.object({
+        size: z.number().openapi({ description: '总字节数' }),
+        files: z.number().openapi({ description: '文件数' }),
+        dirs: z.number().openapi({ description: '子目录数' }),
+        truncated: z.boolean().openapi({ description: '是否因目录过大而截断统计' }),
+      }), '目录大小统计'),
+    },
+  }),
+  handler: async (c) => {
+    const { path: dirPath } = c.req.valid('query');
+    return c.json(okBody(await computeDirSize(dirPath)), 200);
+  },
+});
+
 terminalFilesRouter.openapiRoutes([
   rootInfoRoute,
   listRoute,
@@ -319,6 +342,7 @@ terminalFilesRouter.openapiRoutes([
   extractRoute,
   checksumRoute,
   searchRoute,
+  dirSizeRoute,
 ] as const);
 
 export default terminalFilesRouter;

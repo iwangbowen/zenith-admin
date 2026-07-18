@@ -536,6 +536,41 @@ export async function searchFiles(dir: string, keyword: string, maxResults = 200
   return results;
 }
 
+/** 递归统计目录大小（限制访问节点数防止超大目录拖垮） */
+export async function computeDirSize(dir: string): Promise<{ size: number; files: number; dirs: number; truncated: boolean }> {
+  const root = path.resolve(dir);
+  const stat = await fs.stat(root).catch(() => null);
+  if (!stat) throw new HTTPException(404, { message: '目录不存在' });
+  if (!stat.isDirectory()) return { size: stat.size, files: 1, dirs: 0, truncated: false };
+  let size = 0;
+  let files = 0;
+  let dirs = 0;
+  let visited = 0;
+  const MAX_VISITED = 200_000;
+  const queue: string[] = [root];
+  while (queue.length > 0 && visited < MAX_VISITED) {
+    const cur = queue.shift() as string;
+    let dirents;
+    try { dirents = await fs.readdir(cur, { withFileTypes: true }); } catch { continue; }
+    for (const d of dirents) {
+      visited += 1;
+      if (visited >= MAX_VISITED) break;
+      const full = path.join(cur, d.name);
+      if (d.isDirectory()) {
+        dirs += 1;
+        queue.push(full);
+      } else {
+        try {
+          const s = await fs.stat(full);
+          size += s.size;
+          files += 1;
+        } catch { /* skip */ }
+      }
+    }
+  }
+  return { size, files, dirs, truncated: visited >= MAX_VISITED };
+}
+
 /** 构建单个条目的 TerminalFileEntry（含权限信息） */
 async function buildEntry(filePath: string): Promise<TerminalFileEntry> {
   const s = await fs.stat(filePath);

@@ -38,6 +38,81 @@
   padding: 4px 0;
 }
 
+/* ── 侧栏收藏区 ── */
+.fm-sidebar__bookmarks {
+  flex-shrink: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.fm-sidebar__section-title {
+  padding: 4px 10px 2px;
+  font-size: 11px;
+  color: var(--semi-color-text-2);
+}
+
+.fm-sidebar__bookmark-row {
+  display: flex;
+  align-items: center;
+}
+
+.fm-sidebar__bookmark-row--active {
+  background: var(--semi-color-primary-light-default);
+}
+
+.fm-sidebar__bookmark-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  padding: 5px 4px 5px 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  color: var(--semi-color-text-0);
+}
+
+.fm-sidebar__bookmark-link span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fm-sidebar__bookmark-row:hover {
+  background: var(--semi-color-fill-0);
+}
+
+.fm-sidebar__bookmark-remove {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin-right: 6px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: var(--semi-border-radius-small);
+  cursor: pointer;
+  color: var(--semi-color-text-2);
+}
+
+.fm-sidebar__bookmark-row:hover .fm-sidebar__bookmark-remove {
+  display: flex;
+}
+
+.fm-sidebar__bookmark-remove:hover {
+  background: var(--semi-color-fill-1);
+  color: var(--semi-color-danger);
+}
+
 .fm-sidebar__dir-item {
   display: flex;
   align-items: center;
@@ -152,6 +227,12 @@
 @keyframes fm-progress-slide {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(350%); }
+}
+
+/* ── 剪切中的条目（半透明提示） ── */
+.fm-row--cut,
+.fm-grid-card.fm-row--cut {
+  opacity: 0.45;
 }
 
 /* ── 拖拽上传遮罩 ── */
