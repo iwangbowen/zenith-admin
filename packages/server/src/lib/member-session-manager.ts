@@ -9,6 +9,8 @@
  */
 import crypto from 'node:crypto';
 import { config } from '../config';
+import redis from './redis';
+import { getConfigNumber } from './system-config';
 import { createRedisSessionStore } from './redis-session-store';
 
 export interface MemberSessionInfo {
@@ -81,4 +83,41 @@ export async function getOnlineMemberSessions(): Promise<MemberSessionInfo[]> {
 /** 在线会员会话数 */
 export async function getOnlineMemberCount(): Promise<number> {
   return store.count();
+}
+
+// ─── 会员登录失败锁定（与管理员 login_lock 隔离，key 前缀 member:login_*）─────────
+const MEMBER_LOGIN_ATTEMPT_PREFIX = `${keyPrefix}member:login_attempt:`;
+const MEMBER_LOGIN_LOCK_PREFIX = `${keyPrefix}member:login_lock:`;
+
+/** 检查会员账号是否被锁定，返回剩余秒数（0 表示未锁定）*/
+export async function checkMemberLoginLock(account: string): Promise<number> {
+  const ttl = await redis.ttl(`${MEMBER_LOGIN_LOCK_PREFIX}${account}`);
+  return Math.max(ttl, 0);
+}
+
+/**
+ * 记录一次会员登录失败，达到阈值后自动锁定，返回剩余允许次数。
+ * 沿用系统配置 login_max_attempts / login_lock_duration_minutes（与管理员一致）。
+ */
+export async function recordMemberLoginFailure(account: string): Promise<number> {
+  const [maxAttempts, lockMinutes] = await Promise.all([
+    getConfigNumber('login_max_attempts', 10),
+    getConfigNumber('login_lock_duration_minutes', 30),
+  ]);
+  const lockSeconds = lockMinutes * 60;
+  const attemptKey = `${MEMBER_LOGIN_ATTEMPT_PREFIX}${account}`;
+  const count = await redis.incr(attemptKey);
+  // 首次失败时设置过期，避免计数永久累积
+  if (count === 1) await redis.expire(attemptKey, lockSeconds);
+  const remaining = maxAttempts - count;
+  if (remaining <= 0) {
+    await redis.set(`${MEMBER_LOGIN_LOCK_PREFIX}${account}`, '1', 'EX', lockSeconds);
+    await redis.del(attemptKey);
+  }
+  return Math.max(remaining, 0);
+}
+
+/** 会员登录成功后清除失败计数 */
+export async function clearMemberLoginAttempts(account: string): Promise<void> {
+  await redis.del(`${MEMBER_LOGIN_ATTEMPT_PREFIX}${account}`);
 }

@@ -17,6 +17,9 @@ import {
   registerMemberSession,
   removeMemberSession,
   forceLogoutAllByMember,
+  checkMemberLoginLock,
+  recordMemberLoginFailure,
+  clearMemberLoginAttempts,
 } from '../../lib/member-session-manager';
 import type { MemberJwtPayload } from '../../middleware/member-auth';
 import { currentMember } from '../../lib/member-context';
@@ -265,16 +268,29 @@ export async function loginMember(input: MemberLoginServiceInput): Promise<Membe
     }
   } else {
     if (!input.account || !input.password) throw new HTTPException(400, { message: '请输入账号和密码' });
+
+    // 账号级登录失败锁定（与后台隔离，见 member-session-manager；沿用系统配置的次数/时长）
+    const account = input.account.trim().toLowerCase();
+    const remainingLockSeconds = await checkMemberLoginLock(account);
+    if (remainingLockSeconds > 0) {
+      const remainingMinutes = Math.ceil(remainingLockSeconds / 60);
+      recordMemberLoginLog({ ip: input.ip, ua: input.ua, status: 'fail', message: '账号已被锁定' });
+      throw new HTTPException(423, { message: `账号已被锁定，请 ${remainingMinutes} 分钟后重试` });
+    }
+
     member = await findMemberByAccount(input.account);
     if (!member?.password) {
       recordMemberLoginLog({ ip: input.ip, ua: input.ua, status: 'fail', message: '账号或密码错误' });
+      await recordMemberLoginFailure(account);
       throw new HTTPException(400, { message: '账号或密码错误' });
     }
     const valid = await bcrypt.compare(input.password, member.password);
     if (!valid) {
       recordMemberLoginLog({ memberId: member.id, ip: input.ip, ua: input.ua, status: 'fail', message: '账号或密码错误' });
+      await recordMemberLoginFailure(account);
       throw new HTTPException(400, { message: '账号或密码错误' });
     }
+    await clearMemberLoginAttempts(account);
   }
 
   if (member.status === 'banned') {

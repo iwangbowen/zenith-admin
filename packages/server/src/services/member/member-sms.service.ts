@@ -25,14 +25,21 @@ export type SmsScene = 'register' | 'login' | 'reset';
 const { keyPrefix } = config.redis;
 const CODE_PREFIX = `${keyPrefix}member:smscode:`;
 const INTERVAL_PREFIX = `${keyPrefix}member:smscode-interval:`;
+const ATTEMPT_PREFIX = `${keyPrefix}member:smscode-attempts:`;
 
 /** 验证码有效期（秒）*/
 const CODE_TTL = 5 * 60;
 /** 同号码发送间隔（秒）*/
 const SEND_INTERVAL = 60;
+/** 单个验证码允许的最大校验尝试次数（超过即作废，防爆破）*/
+const MAX_VERIFY_ATTEMPTS = 5;
 
 function codeKey(phone: string, scene: SmsScene): string {
   return `${CODE_PREFIX}${scene}:${phone}`;
+}
+
+function attemptsKey(phone: string, scene: SmsScene): string {
+  return `${ATTEMPT_PREFIX}${scene}:${phone}`;
 }
 
 /** 生成 6 位数字验证码 */
@@ -51,6 +58,7 @@ export async function sendMemberSmsCode(phone: string, scene: SmsScene): Promise
   const code = genCode();
   await redis.set(codeKey(phone, scene), code, 'EX', CODE_TTL);
   await redis.set(intervalKey, '1', 'EX', SEND_INTERVAL);
+  await redis.del(attemptsKey(phone, scene)); // 新码下发，重置校验尝试计数
 
   let delivered = false;
   try {
@@ -88,11 +96,25 @@ async function trySendRealSms(phone: string, code: string): Promise<boolean> {
   return result.success;
 }
 
-/** 校验会员短信验证码（成功后立即删除，防重放）*/
+/** 校验会员短信验证码（成功后立即删除，防重放；错误累计到上限即作废，防爆破）*/
 export async function verifyMemberSmsCode(phone: string, scene: SmsScene, code: string): Promise<boolean> {
   const key = codeKey(phone, scene);
   const stored = await redis.get(key);
-  if (!stored || stored !== code) return false;
+  if (!stored) return false;
+
+  const aKey = attemptsKey(phone, scene);
+  const attempts = await redis.incr(aKey);
+  if (attempts === 1) await redis.expire(aKey, CODE_TTL);
+  if (attempts > MAX_VERIFY_ATTEMPTS) {
+    // 超过尝试上限：作废验证码与计数，攻击者需重新获取（受发送频率限制）
+    await redis.del(key);
+    await redis.del(aKey);
+    return false;
+  }
+
+  if (stored !== code) return false;
+
   await redis.del(key);
+  await redis.del(aKey);
   return true;
 }

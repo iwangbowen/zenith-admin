@@ -47,6 +47,9 @@ vi.mock('../../lib/member-session-manager', () => ({
   registerMemberSession: vi.fn().mockResolvedValue(undefined),
   removeMemberSession: vi.fn().mockResolvedValue(undefined),
   forceLogoutAllByMember: vi.fn().mockResolvedValue(undefined),
+  checkMemberLoginLock: vi.fn().mockResolvedValue(0),
+  recordMemberLoginFailure: vi.fn().mockResolvedValue(0),
+  clearMemberLoginAttempts: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('./member-sms.service', () => ({
@@ -74,6 +77,8 @@ import {
   registerMemberSession,
   removeMemberSession,
   forceLogoutAllByMember,
+  checkMemberLoginLock,
+  recordMemberLoginFailure,
 } from '../../lib/member-session-manager';
 import { verifyMemberSmsCode } from './member-sms.service';
 import { currentMember } from '../../lib/member-context';
@@ -198,6 +203,18 @@ describe('loginMember - 账号密码', () => {
       status: 400,
       message: '账号或密码错误',
     });
+  });
+
+  it('密码错误时累计账号失败次数（防爆破）', async () => {
+    dbMock.select.mockReturnValueOnce(createChain([makeMember()]));
+    await expect(loginMember({ ...input, password: 'wrong-password' })).rejects.toMatchObject({ status: 400 });
+    expect(recordMemberLoginFailure).toHaveBeenCalledWith('alice');
+  });
+
+  it('账号已被锁定 → 423，短路不再查询会员', async () => {
+    vi.mocked(checkMemberLoginLock).mockResolvedValueOnce(120);
+    await expect(loginMember(input)).rejects.toMatchObject({ status: 423 });
+    expect(dbMock.select).not.toHaveBeenCalled();
   });
 
   it('封禁账号 → 403 账号已被封禁', async () => {
