@@ -421,8 +421,8 @@ export async function batchDownloadFilesAsZip(ids: string[]): Promise<{ stream: 
   const configMap = new Map(configs.map((c) => [c.id, c]));
 
   const { Readable, PassThrough } = await import('node:stream');
-  const archiver = (await import('archiver')).default;
-  const archive = archiver('zip', { zlib: { level: 5 } });
+  const { ZipArchive } = await import('archiver');
+  const archive = new ZipArchive({ zlib: { level: 5 } });
   const passThrough = new PassThrough();
   archive.on('error', (err: Error) => passThrough.destroy(err));
   archive.pipe(passThrough);

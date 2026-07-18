@@ -412,14 +412,14 @@ export async function copyEntry(from: string, to: string): Promise<TerminalFileE
  * @param destPath 输出 ZIP 文件的绝对路径（含 .zip 扩展名）
  */
 export async function compressToZip(paths: string[], destPath: string): Promise<TerminalFileEntry> {
-  const archiver = (await import('archiver')).default;
+  const { ZipArchive } = await import('archiver');
 
   const dst = path.resolve(destPath);
   await fs.mkdir(path.dirname(dst), { recursive: true });
 
   await new Promise<void>((resolve, reject) => {
     const outStream = createWriteStream(dst);
-    const archive = archiver('zip', { zlib: { level: 6 } });
+    const archive = new ZipArchive({ zlib: { level: 6 } });
     outStream.on('close', resolve);
     archive.on('error', reject);
     archive.pipe(outStream);
