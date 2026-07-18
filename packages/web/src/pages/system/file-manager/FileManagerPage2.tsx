@@ -525,10 +525,12 @@ export default function FileManagerPage() {
   }, [rootInfo, currentPath]);
 
   useEffect(() => {
-    if (listQuery.data?.path && listQuery.data.path !== currentPath) {
+    // 后端规范化路径回写；须忽略 keepPreviousData 的占位数据（其 path 为旧目录），
+    // 否则单击进入新目录会被立即回退（表现为闪一下、第二次点击才生效）
+    if (!listQuery.isPlaceholderData && listQuery.data?.path && listQuery.data.path !== currentPath) {
       setCurrentPath(listQuery.data.path);
     }
-  }, [listQuery.data, currentPath]);
+  }, [listQuery.data, listQuery.isPlaceholderData, currentPath]);
 
   // ── 导航 ─────────────────────────────────────────────────────────────────
 
