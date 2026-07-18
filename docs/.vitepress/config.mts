@@ -137,7 +137,22 @@ export default withMermaid(defineConfig({
           { text: '会员中心', link: '/member/' },
           { text: '通知中心', link: '/notification/' },
           { text: '文件与存储', link: '/storage/' },
-          { text: 'AI 能力', link: '/ai-platform/' },
+        ],
+      },
+      {
+        text: 'AI 能力',
+        collapsed: true,
+        items: [
+          { text: '总览', link: '/ai-platform/' },
+          { text: '智能对话', link: '/ai-platform/chat' },
+          { text: '自定义智能体', link: '/ai-platform/agents' },
+          { text: '服务商与个人配置', link: '/ai-platform/providers' },
+          { text: '知识库 RAG', link: '/ai-platform/knowledge' },
+          { text: '工具与函数调用', link: '/ai-platform/tools' },
+          { text: '提示词模板', link: '/ai-platform/prompts' },
+          { text: '运营与治理', link: '/ai-platform/operations' },
+          { text: '安全与合规', link: '/ai-platform/security' },
+          { text: '数据模型与接口', link: '/ai-platform/reference' },
         ],
       },
       {
