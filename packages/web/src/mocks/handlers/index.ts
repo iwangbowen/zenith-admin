@@ -39,6 +39,7 @@ import { workflowCategoriesHandlers } from './workflow-categories';
 import { decisionTablesHandlers } from './decision-tables';
 import { rulesP2Handlers } from './rules-p2';
 import { userFeedbacksHandlers } from './user-feedbacks';
+import { cmsHandlers } from './cms';
 import { workflowAutomationsHandlers } from './workflow-automations';
 import { workflowEventSubscriptionsHandlers } from './workflow-event-subscriptions';
 import { workflowTriggerExecutionsHandlers } from './workflow-trigger-executions';
@@ -239,6 +240,7 @@ export const handlers = [
   ...decisionTablesHandlers,
   ...rulesP2Handlers,
   ...userFeedbacksHandlers,
+  ...cmsHandlers,
   // 兜底 handler 必须放在最后：拦截所有未实现的 /api/* 请求，避免 dev:demo 下被代理到后端返回 401 跳转登录页
   ...fallbackHandlers,
 ];

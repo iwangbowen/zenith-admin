@@ -10,6 +10,28 @@ import { mockDateOffset, mockDateTime, mockDateTimeOffset } from '@/mocks/utils/
 
 const taskTypes: AsyncTaskTypeMeta[] = [
   {
+    taskType: 'cms-static-build',
+    title: 'CMS 全站静态化',
+    module: 'CMS内容管理',
+    description: '渲染首页、栏目分页、内容详情为静态 HTML 并生成 sitemap/robots。',
+    allowConcurrent: false,
+    enabled: true,
+    maxAttempts: 1,
+    retryDelayMs: 5000,
+    retentionDays: 30,
+  },
+  {
+    taskType: 'cms-search-reindex',
+    title: 'CMS 检索索引重建',
+    module: 'CMS内容管理',
+    description: '按站点重新分词并重建全文检索索引（tsvector）。',
+    allowConcurrent: false,
+    enabled: true,
+    maxAttempts: 1,
+    retryDelayMs: 5000,
+    retentionDays: 30,
+  },
+  {
     taskType: 'report-dq-rule-run',
     title: '报表质量规则执行',
     module: '报表中心',
@@ -236,7 +258,7 @@ export function createImmediateMockTask(input: {
 }
 
 export function createProgressingMockTask(input: {
-  taskType: 'report-dq-rule-run' | 'report-dataset-materialize' | 'report-sla-rule-evaluate' | 'report-fill-sync' | 'analytics-rollup-rebuild' | 'analytics-segment-materialize' | 'analytics-campaign-execute';
+  taskType: 'report-dq-rule-run' | 'report-dataset-materialize' | 'report-sla-rule-evaluate' | 'report-fill-sync' | 'analytics-rollup-rebuild' | 'analytics-segment-materialize' | 'analytics-campaign-execute' | 'cms-static-build' | 'cms-search-reindex';
   title: string;
   payload?: Record<string, unknown>;
   totalItems?: number;

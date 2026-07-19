@@ -45,6 +45,7 @@ import {
   reportSlaRules,
   reportSlaViolations,
 } from './report-platform';
+import { cmsChannels, cmsContents, cmsContentTags, cmsFragments, cmsFriendLinks, cmsModelFields, cmsModels, cmsSites, cmsTags } from './cms';
 
 // ─── 关联关系 ────────────────────────────────────────────────────────────────
 export const errorGroupsRelations = relations(errorGroups, ({ many, one }) => ({
@@ -1241,4 +1242,56 @@ export const reportFillRecordsRelations = relations(reportFillRecords, ({ one })
   reviewedByUser: one(users, { fields: [reportFillRecords.reviewedBy], references: [users.id], relationName: 'reportFillRecordReviewedBy' }),
   workflowInstance: one(workflowInstances, { fields: [reportFillRecords.workflowInstanceId], references: [workflowInstances.id] }),
   generatedDataset: one(reportDatasets, { fields: [reportFillRecords.generatedDatasetId], references: [reportDatasets.id] }),
+}));
+
+// ─── CMS 内容管理 ─────────────────────────────────────────────────────────────
+export const cmsSitesRelations = relations(cmsSites, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [cmsSites.tenantId], references: [tenants.id] }),
+  channels: many(cmsChannels),
+  contents: many(cmsContents),
+  tags: many(cmsTags),
+  fragments: many(cmsFragments),
+  friendLinks: many(cmsFriendLinks),
+}));
+
+export const cmsModelsRelations = relations(cmsModels, ({ many }) => ({
+  fields: many(cmsModelFields),
+  channels: many(cmsChannels),
+  contents: many(cmsContents),
+}));
+
+export const cmsModelFieldsRelations = relations(cmsModelFields, ({ one }) => ({
+  model: one(cmsModels, { fields: [cmsModelFields.modelId], references: [cmsModels.id] }),
+}));
+
+export const cmsChannelsRelations = relations(cmsChannels, ({ one, many }) => ({
+  site: one(cmsSites, { fields: [cmsChannels.siteId], references: [cmsSites.id] }),
+  model: one(cmsModels, { fields: [cmsChannels.modelId], references: [cmsModels.id] }),
+  contents: many(cmsContents),
+}));
+
+export const cmsContentsRelations = relations(cmsContents, ({ one, many }) => ({
+  site: one(cmsSites, { fields: [cmsContents.siteId], references: [cmsSites.id] }),
+  channel: one(cmsChannels, { fields: [cmsContents.channelId], references: [cmsChannels.id] }),
+  model: one(cmsModels, { fields: [cmsContents.modelId], references: [cmsModels.id] }),
+  contentTags: many(cmsContentTags),
+  createdByUser: one(users, { fields: [cmsContents.createdBy], references: [users.id], relationName: 'cmsContentCreatedBy' }),
+}));
+
+export const cmsContentTagsRelations = relations(cmsContentTags, ({ one }) => ({
+  content: one(cmsContents, { fields: [cmsContentTags.contentId], references: [cmsContents.id] }),
+  tag: one(cmsTags, { fields: [cmsContentTags.tagId], references: [cmsTags.id] }),
+}));
+
+export const cmsTagsRelations = relations(cmsTags, ({ one, many }) => ({
+  site: one(cmsSites, { fields: [cmsTags.siteId], references: [cmsSites.id] }),
+  contentTags: many(cmsContentTags),
+}));
+
+export const cmsFragmentsRelations = relations(cmsFragments, ({ one }) => ({
+  site: one(cmsSites, { fields: [cmsFragments.siteId], references: [cmsSites.id] }),
+}));
+
+export const cmsFriendLinksRelations = relations(cmsFriendLinks, ({ one }) => ({
+  site: one(cmsSites, { fields: [cmsFriendLinks.siteId], references: [cmsSites.id] }),
 }));

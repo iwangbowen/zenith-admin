@@ -5,6 +5,7 @@
     "tsBuildInfoFile": "./dist/.tsbuildinfo",
     "rootDir": "./src",
     "composite": true,
+    "jsx": "react-jsx",
     "types": ["node"]
   },
   "include": ["src"],

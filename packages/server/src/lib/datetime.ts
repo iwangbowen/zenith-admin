@@ -50,6 +50,15 @@ export function formatFileTimestamp(date: DateInput = new Date()): string {
   return toDayjsInAppTimezone(date).format(FILE_TIMESTAMP_FORMAT);
 }
 
+/**
+ * ISO 8601（含时区偏移）格式化，仅用于对外协议标准强制要求 ISO 格式的场景
+ * （如 SEO 结构化数据 JSON-LD、sitemap lastmod），常规 API 响应仍用 formatDateTime。
+ */
+export function formatIso8601(date: NullableDateInput): string | null {
+  if (!date) return null;
+  return toDayjsInAppTimezone(date).format('YYYY-MM-DDTHH:mm:ssZ');
+}
+
 export function parseDateTimeInput(value: ParseDateInput): Date | null {
   if (!value) return null;
   if (value instanceof Date) return value;

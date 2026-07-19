@@ -27,6 +27,17 @@ import { requestTraceMiddleware } from './middleware/request-trace';
 import { authRateLimit, captchaRateLimit, sensitiveRateLimit, bootstrapRateLimitRules, pathBoundRateLimit } from './middleware/rate-limit';
 import rateLimitRoutes from './routes/platform/rate-limit';
 import authRoutes from './routes/identity/auth';
+import cmsSitesRoutes from './routes/cms/sites';
+import cmsModelsRoutes from './routes/cms/models';
+import cmsChannelsRoutes from './routes/cms/channels';
+import cmsContentsRoutes from './routes/cms/contents';
+import cmsTagsRoutes from './routes/cms/tags';
+import cmsFragmentsRoutes from './routes/cms/fragments';
+import cmsFriendLinksRoutes from './routes/cms/friend-links';
+import cmsStaticRoutes from './routes/cms/static';
+import cmsSearchRoutes from './routes/cms/search';
+import { createCmsFrontendRoutes } from './routes/cms/frontend';
+import { registerCmsTaskHandlers } from './services/cms/cms-tasks';
 import memberAuthRoutes from './routes/member/member-auth';
 import memberSelfRoutes from './routes/member/member-self';
 import memberRenewalRoutes from './routes/member/member-renewal';
@@ -601,6 +612,15 @@ app.route('/api/log-viewer', logViewerRoutes);
 app.route('/api/nginx-sites', nginxSitesRoutes);
 app.route('/api/health', healthRoutes);
 app.route('/api/log-files', logFilesRoutes);
+app.route('/api/cms/sites', cmsSitesRoutes);
+app.route('/api/cms/models', cmsModelsRoutes);
+app.route('/api/cms/channels', cmsChannelsRoutes);
+app.route('/api/cms/contents', cmsContentsRoutes);
+app.route('/api/cms/tags', cmsTagsRoutes);
+app.route('/api/cms/fragments', cmsFragmentsRoutes);
+app.route('/api/cms/friend-links', cmsFriendLinksRoutes);
+app.route('/api/cms/static', cmsStaticRoutes);
+app.route('/api/cms/search', cmsSearchRoutes);
 app.get('/metrics', printMetrics);
 
 // API 文档（无需认证）
@@ -626,6 +646,9 @@ app.doc31('/api/openapi.json', (c) => ({
   security: [{ BearerAuth: [] }],
 }));
 app.get('/api/docs', swaggerUI({ url: '/api/openapi.json' }));
+
+// CMS 前台渲染（多站点 Host 匹配 + /__cms/{code} 预览），挂载在所有 API 路由之后兜底
+app.route('/', createCmsFrontendRoutes());
 
 app.notFound((c) => c.json(errBody('接口不存在', 404), 404));
 
@@ -685,6 +708,7 @@ try {
   const { registerExportJobWorker } = await import('./services/tasks/export-jobs.service');
   const { registerSystemTasks } = await import('./lib/system-tasks.registry');
   registerTaskDemoHandlers(); // 演示任务类型需在任务中心 Worker 启动前注册
+  registerCmsTaskHandlers(); // CMS 全站静态化 / 检索索引重建
   registerAiEvalTaskHandlers(); // AI 评测任务
   registerReportDatasourceTaskHandlers();
   registerReportDatasetTaskHandlers();

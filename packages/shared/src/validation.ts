@@ -5049,3 +5049,145 @@ export const handleUserFeedbackSchema = z.object({
 
 export type CreateUserFeedbackInput = z.input<typeof createUserFeedbackSchema>;
 export type HandleUserFeedbackInput = z.input<typeof handleUserFeedbackSchema>;
+
+// ─── CMS 内容管理 Schema ──────────────────────────────────────────────────────
+export const cmsSlugRegex = /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/;
+
+export const createCmsSiteSchema = z.object({
+  name: z.string().min(1, '站点名称不能为空').max(100),
+  code: z.string().min(1, '站点标识不能为空').max(50).regex(cmsSlugRegex, '标识仅支持小写字母、数字、中划线'),
+  domain: z.string().max(255).nullable().optional(),
+  aliasDomains: z.array(z.string().max(255)).default([]),
+  isDefault: z.boolean().default(false),
+  title: z.string().max(200).nullable().optional(),
+  keywords: z.string().max(500).nullable().optional(),
+  description: z.string().max(1000).nullable().optional(),
+  logo: z.string().max(500).nullable().optional(),
+  favicon: z.string().max(500).nullable().optional(),
+  icp: z.string().max(100).nullable().optional(),
+  copyright: z.string().max(255).nullable().optional(),
+  theme: z.string().max(50).default('default'),
+  staticMode: z.enum(['dynamic', 'hybrid', 'static']).default('hybrid'),
+  robots: z.string().max(4000).nullable().optional(),
+  settings: z.record(z.string(), z.unknown()).default({}),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  sort: z.number().int().default(0),
+  remark: z.string().max(500).nullable().optional(),
+});
+export const updateCmsSiteSchema = createCmsSiteSchema.partial();
+
+export const cmsModelFieldSchema = z.object({
+  id: z.number().int().positive().optional(),
+  name: z.string().min(1, '字段标识不能为空').max(50).regex(/^[a-z][a-z0-9_]*$/, '字段标识须以小写字母开头，仅含小写字母/数字/下划线'),
+  label: z.string().min(1, '字段名称不能为空').max(100),
+  fieldType: z.enum(['text', 'textarea', 'richtext', 'number', 'date', 'datetime', 'image', 'file', 'select', 'radio', 'checkbox', 'switch']).default('text'),
+  required: z.boolean().default(false),
+  searchable: z.boolean().default(false),
+  showInList: z.boolean().default(false),
+  placeholder: z.string().max(200).nullable().optional(),
+  defaultValue: z.string().max(1000).nullable().optional(),
+  options: z.array(z.object({ label: z.string().max(100), value: z.string().max(100) })).nullable().optional(),
+  sort: z.number().int().default(0),
+});
+
+export const createCmsModelSchema = z.object({
+  name: z.string().min(1, '模型名称不能为空').max(100),
+  code: z.string().min(1, '模型标识不能为空').max(50).regex(cmsSlugRegex, '标识仅支持小写字母、数字、中划线'),
+  description: z.string().max(500).nullable().optional(),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  sort: z.number().int().default(0),
+  fields: z.array(cmsModelFieldSchema).default([]),
+});
+export const updateCmsModelSchema = createCmsModelSchema.partial();
+
+export const createCmsChannelSchema = z.object({
+  siteId: z.number().int().positive(),
+  parentId: z.number().int().min(0).default(0),
+  modelId: z.number().int().positive().nullable().optional(),
+  name: z.string().min(1, '栏目名称不能为空').max(100),
+  slug: z.string().min(1, 'URL 标识不能为空').max(100).regex(cmsSlugRegex, '标识仅支持小写字母、数字、中划线'),
+  type: z.enum(['list', 'page', 'link']).default('list'),
+  linkUrl: z.string().max(500).nullable().optional(),
+  listTemplate: z.string().max(50).nullable().optional(),
+  detailTemplate: z.string().max(50).nullable().optional(),
+  pageSize: z.number().int().min(1).max(100).default(20),
+  pageContent: z.string().nullable().optional(),
+  seoTitle: z.string().max(255).nullable().optional(),
+  seoKeywords: z.string().max(500).nullable().optional(),
+  seoDescription: z.string().max(500).nullable().optional(),
+  image: z.string().max(500).nullable().optional(),
+  visible: z.boolean().default(true),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  sort: z.number().int().default(0),
+  settings: z.record(z.string(), z.unknown()).default({}),
+});
+export const updateCmsChannelSchema = createCmsChannelSchema.partial().omit({ siteId: true });
+
+export const createCmsContentSchema = z.object({
+  siteId: z.number().int().positive(),
+  channelId: z.number().int().positive(),
+  title: z.string().min(1, '标题不能为空').max(255),
+  slug: z.string().max(255).regex(cmsSlugRegex, '标识仅支持小写字母、数字、中划线').nullable().optional(),
+  summary: z.string().max(2000).nullable().optional(),
+  coverImage: z.string().max(500).nullable().optional(),
+  author: z.string().max(50).nullable().optional(),
+  source: z.string().max(100).nullable().optional(),
+  body: z.string().nullable().optional(),
+  extend: z.record(z.string(), z.unknown()).default({}),
+  externalLink: z.string().max(500).nullable().optional(),
+  isTop: z.boolean().default(false),
+  isRecommend: z.boolean().default(false),
+  isHot: z.boolean().default(false),
+  scheduledAt: z.string().nullable().optional(),
+  sort: z.number().int().default(0),
+  seoTitle: z.string().max(255).nullable().optional(),
+  seoKeywords: z.string().max(500).nullable().optional(),
+  seoDescription: z.string().max(500).nullable().optional(),
+  tagIds: z.array(z.number().int().positive()).default([]),
+});
+export const updateCmsContentSchema = createCmsContentSchema.partial().omit({ siteId: true });
+
+export const createCmsTagSchema = z.object({
+  siteId: z.number().int().positive(),
+  name: z.string().min(1, '标签名称不能为空').max(50),
+  slug: z.string().min(1, 'URL 标识不能为空').max(100).regex(cmsSlugRegex, '标识仅支持小写字母、数字、中划线'),
+});
+export const updateCmsTagSchema = createCmsTagSchema.partial().omit({ siteId: true });
+
+export const createCmsFragmentSchema = z.object({
+  siteId: z.number().int().positive(),
+  code: z.string().min(1, '碎片标识不能为空').max(50).regex(cmsSlugRegex, '标识仅支持小写字母、数字、中划线'),
+  name: z.string().min(1, '碎片名称不能为空').max(100),
+  type: z.enum(['html', 'text', 'image', 'json']).default('html'),
+  content: z.string().nullable().optional(),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  remark: z.string().max(500).nullable().optional(),
+});
+export const updateCmsFragmentSchema = createCmsFragmentSchema.partial().omit({ siteId: true });
+
+export const createCmsFriendLinkSchema = z.object({
+  siteId: z.number().int().positive(),
+  name: z.string().min(1, '链接名称不能为空').max(100),
+  url: z.string().min(1, '链接地址不能为空').max(500),
+  logo: z.string().max(500).nullable().optional(),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  sort: z.number().int().default(0),
+  remark: z.string().max(500).nullable().optional(),
+});
+export const updateCmsFriendLinkSchema = createCmsFriendLinkSchema.partial().omit({ siteId: true });
+
+export type CreateCmsSiteInput = z.input<typeof createCmsSiteSchema>;
+export type UpdateCmsSiteInput = z.input<typeof updateCmsSiteSchema>;
+export type CmsModelFieldInput = z.input<typeof cmsModelFieldSchema>;
+export type CreateCmsModelInput = z.input<typeof createCmsModelSchema>;
+export type UpdateCmsModelInput = z.input<typeof updateCmsModelSchema>;
+export type CreateCmsChannelInput = z.input<typeof createCmsChannelSchema>;
+export type UpdateCmsChannelInput = z.input<typeof updateCmsChannelSchema>;
+export type CreateCmsContentInput = z.input<typeof createCmsContentSchema>;
+export type UpdateCmsContentInput = z.input<typeof updateCmsContentSchema>;
+export type CreateCmsTagInput = z.input<typeof createCmsTagSchema>;
+export type UpdateCmsTagInput = z.input<typeof updateCmsTagSchema>;
+export type CreateCmsFragmentInput = z.input<typeof createCmsFragmentSchema>;
+export type UpdateCmsFragmentInput = z.input<typeof updateCmsFragmentSchema>;
+export type CreateCmsFriendLinkInput = z.input<typeof createCmsFriendLinkSchema>;
+export type UpdateCmsFriendLinkInput = z.input<typeof updateCmsFriendLinkSchema>;

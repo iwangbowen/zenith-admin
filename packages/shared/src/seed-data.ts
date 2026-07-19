@@ -18,6 +18,7 @@ import type {
   ReportDatasource, ReportDataset, ReportDashboard, ApiScope, RatePlan, ReportPrintTemplate,
   UserFeedback, ReportFolder, ReportMetric, ReportEnvironment, ReportDqRule, ReportQueryQuota,
   ReportSlaRule, ReportAssetTemplate, ReportFillTemplate, AnalyticsEventPropertyDef, AnalyticsSite,
+  CmsSite, CmsModel, CmsChannel, CmsContent, CmsTag, CmsFragment, CmsFriendLink,
 } from './types';
 import { ANALYTICS_EXPERIMENT_EXPOSURE_EVENT, ANALYTICS_SEMANTIC_EVENT_LABELS, type AnalyticsSemanticEventName } from './constants';
 
@@ -663,6 +664,42 @@ export const SEED_MENUS: Menu[] = [
   { id: 1351, parentId: 1350, title: '管理 Webhook', name: undefined,      path: undefined,                       component: undefined,                                   icon: undefined,       type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'open:webhook:manage',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1360, parentId: 1300, title: 'SDK 示例',   name: 'OpenSdk',       path: '/open-platform/sdk',            component: 'open-platform/sdk/SdkExamplesPage',         icon: 'Code2',         type: 'menu',      sort: 7,  status: 'enabled', visible: true,  permission: 'open:sdk:view',         createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1380, parentId: 1300, title: 'API 调试台', name: 'OpenApiDebug',  path: '/open-platform/debug',          component: 'open-platform/debug/ApiDebugConsolePage',   icon: 'Terminal',      type: 'menu',      sort: 8,  status: 'enabled', visible: true,  createdAt: SEED_DATE, updatedAt: SEED_DATE },
+
+  // ─── CMS 内容管理（1700 段）────────────────────────────────────────────────────
+  { id: 1700, parentId: 0,    title: 'CMS 内容管理', name: 'CmsCenter',        path: undefined,          component: undefined,                    icon: 'Newspaper',    type: 'directory', sort: 15, status: 'enabled', visible: true,  createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1705, parentId: 1700, title: '站点管理',     name: 'CmsSites',         path: '/cms/sites',       component: 'cms/SitesPage',              icon: 'Globe',        type: 'menu',      sort: 1,  status: 'enabled', visible: true,  permission: 'cms:site:list',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1706, parentId: 1705, title: '新增站点',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:site:create',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1707, parentId: 1705, title: '编辑站点',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'cms:site:update',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1708, parentId: 1705, title: '删除站点',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'cms:site:delete',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1710, parentId: 1700, title: '栏目管理',     name: 'CmsChannels',      path: '/cms/channels',    component: 'cms/ChannelsPage',           icon: 'FolderTree',   type: 'menu',      sort: 2,  status: 'enabled', visible: true,  permission: 'cms:channel:list',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1711, parentId: 1710, title: '新增栏目',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:channel:create', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1712, parentId: 1710, title: '编辑栏目',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'cms:channel:update', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1713, parentId: 1710, title: '删除栏目',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'cms:channel:delete', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1715, parentId: 1700, title: '内容管理',     name: 'CmsContents',      path: '/cms/contents',    component: 'cms/ContentsPage',           icon: 'FileText',     type: 'menu',      sort: 3,  status: 'enabled', visible: true,  permission: 'cms:content:list',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1716, parentId: 1715, title: '新增内容',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:content:create', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1717, parentId: 1715, title: '编辑内容',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'cms:content:update', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1718, parentId: 1715, title: '删除内容',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'cms:content:delete', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1719, parentId: 1715, title: '发布内容',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 4,  status: 'enabled', visible: true,  permission: 'cms:content:publish', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1720, parentId: 1715, title: '审核内容',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 5,  status: 'enabled', visible: true,  permission: 'cms:content:audit',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1721, parentId: 1715, title: '内容编辑页',   name: 'CmsContentEdit',   path: '/cms/contents/edit', component: 'cms/ContentEditPage',      icon: undefined,      type: 'menu',      sort: 6,  status: 'enabled', visible: false, permission: 'cms:content:list',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1725, parentId: 1700, title: '内容模型',     name: 'CmsModels',        path: '/cms/models',      component: 'cms/ModelsPage',             icon: 'Blocks',       type: 'menu',      sort: 4,  status: 'enabled', visible: true,  permission: 'cms:model:list',     createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1726, parentId: 1725, title: '新增模型',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:model:create',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1727, parentId: 1725, title: '编辑模型',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'cms:model:update',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1728, parentId: 1725, title: '删除模型',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'cms:model:delete',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1730, parentId: 1700, title: '标签管理',     name: 'CmsTags',          path: '/cms/tags',        component: 'cms/TagsPage',               icon: 'Tags',         type: 'menu',      sort: 5,  status: 'enabled', visible: true,  permission: 'cms:tag:list',       createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1731, parentId: 1730, title: '新增标签',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:tag:create',     createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1732, parentId: 1730, title: '编辑标签',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'cms:tag:update',     createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1733, parentId: 1730, title: '删除标签',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'cms:tag:delete',     createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1735, parentId: 1700, title: '碎片管理',     name: 'CmsFragments',     path: '/cms/fragments',   component: 'cms/FragmentsPage',          icon: 'Puzzle',       type: 'menu',      sort: 6,  status: 'enabled', visible: true,  permission: 'cms:fragment:list',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1736, parentId: 1735, title: '新增碎片',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:fragment:create', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1737, parentId: 1735, title: '编辑碎片',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'cms:fragment:update', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1738, parentId: 1735, title: '删除碎片',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'cms:fragment:delete', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1740, parentId: 1700, title: '友情链接',     name: 'CmsFriendLinks',   path: '/cms/friend-links', component: 'cms/FriendLinksPage',       icon: 'Link2',        type: 'menu',      sort: 7,  status: 'enabled', visible: true,  permission: 'cms:link:list',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1741, parentId: 1740, title: '新增友链',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:link:create',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1742, parentId: 1740, title: '编辑友链',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'cms:link:update',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1743, parentId: 1740, title: '删除友链',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'cms:link:delete',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1745, parentId: 1700, title: '静态化管理',   name: 'CmsStatic',        path: '/cms/static',      component: 'cms/StaticBuildPage',        icon: 'Zap',          type: 'menu',      sort: 8,  status: 'enabled', visible: true,  permission: 'cms:static:build',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1750, parentId: 1700, title: '检索管理',     name: 'CmsSearch',        path: '/cms/search',      component: 'cms/SearchAdminPage',        icon: 'SearchCheck',  type: 'menu',      sort: 9,  status: 'enabled', visible: true,  permission: 'cms:search:manage',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 角色 ─────────────────────────────────────────────────────────────────────
@@ -2822,4 +2859,87 @@ export const SEED_ANALYTICS_EVENT_META: SeedAnalyticsEventMeta[] = [
     { key: 'experienceAwarded', type: 'number', description: '本次奖励经验值' },
     { key: 'checkinDate', type: 'string', description: '签到日期（YYYY-MM-DD）' },
   ], strictMode: false },
+];
+
+// ─── CMS：站点 / 模型 / 栏目 / 内容 / 标签 / 碎片 / 友链 ─────────────────────────
+export const SEED_CMS_SITES: CmsSite[] = [
+  {
+    id: 1, name: 'Zenith 官方网站', code: 'main', domain: null, aliasDomains: [], isDefault: true,
+    title: 'Zenith Admin — 企业级全栈管理系统', keywords: 'Zenith,CMS,后台管理,内容管理',
+    description: 'Zenith Admin 是基于 Hono + React + PostgreSQL 的企业级全栈管理系统，内置 CMS 内容管理、多站点与全文检索。',
+    logo: null, favicon: null, icp: null, copyright: '© 2024 Zenith Admin', theme: 'default',
+    staticMode: 'hybrid', robots: null, settings: {}, status: 'enabled', sort: 0, remark: '默认演示站点',
+    createdAt: SEED_DATE, updatedAt: SEED_DATE,
+  },
+];
+
+export const SEED_CMS_MODELS: (CmsModel & { fields: NonNullable<CmsModel['fields']> })[] = [
+  {
+    id: 1, name: '文章', code: 'article', description: '通用图文文章模型', isSystem: true,
+    status: 'enabled', sort: 1, createdAt: SEED_DATE, updatedAt: SEED_DATE,
+    fields: [],
+  },
+  {
+    id: 2, name: '产品', code: 'product', description: '产品展示模型（含价格/规格自定义字段）', isSystem: true,
+    status: 'enabled', sort: 2, createdAt: SEED_DATE, updatedAt: SEED_DATE,
+    fields: [
+      { id: 1, modelId: 2, name: 'price', label: '价格', fieldType: 'text', required: false, searchable: false, showInList: true, placeholder: '如：￥9999', defaultValue: null, options: null, sort: 1, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+      { id: 2, modelId: 2, name: 'spec', label: '规格参数', fieldType: 'textarea', required: false, searchable: true, showInList: false, placeholder: null, defaultValue: null, options: null, sort: 2, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+    ],
+  },
+];
+
+export const SEED_CMS_CHANNELS: CmsChannel[] = [
+  { id: 1, siteId: 1, parentId: 0, modelId: 1, name: '新闻中心', slug: 'news',     path: 'news',     type: 'list', linkUrl: null, listTemplate: null, detailTemplate: null, pageSize: 20, pageContent: null, seoTitle: null, seoKeywords: null, seoDescription: '最新公司动态与行业资讯', image: null, visible: true, status: 'enabled', sort: 1, settings: {}, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, siteId: 1, parentId: 0, modelId: 2, name: '产品中心', slug: 'products', path: 'products', type: 'list', linkUrl: null, listTemplate: null, detailTemplate: null, pageSize: 20, pageContent: null, seoTitle: null, seoKeywords: null, seoDescription: '产品与解决方案', image: null, visible: true, status: 'enabled', sort: 2, settings: {}, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 3, siteId: 1, parentId: 0, modelId: null, name: '关于我们', slug: 'about', path: 'about',    type: 'page', linkUrl: null, listTemplate: null, detailTemplate: null, pageSize: 20, pageContent: '<h2>关于 Zenith</h2><p>Zenith Admin 是一套企业级全栈管理系统，本页面由 CMS 单页栏目渲染。</p>', seoTitle: null, seoKeywords: null, seoDescription: '关于 Zenith Admin', image: null, visible: true, status: 'enabled', sort: 3, settings: {}, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+export const SEED_CMS_TAGS: CmsTag[] = [
+  { id: 1, siteId: 1, name: '产品发布', slug: 'release',  contentCount: 1, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, siteId: 1, name: '行业动态', slug: 'industry', contentCount: 1, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+export const SEED_CMS_CONTENTS: (CmsContent & { tagIds: number[] })[] = [
+  {
+    id: 1, siteId: 1, channelId: 1, channelName: '新闻中心', modelId: 1,
+    title: 'Zenith Admin 发布 CMS 内容管理模块', slug: null,
+    summary: '全新 CMS 模块支持多站点、SEO 优化、SSR 静态化发布与基于 PostgreSQL 的中文全文检索。',
+    coverImage: null, author: '管理员', source: '官方', body: '<p>Zenith Admin 全新 CMS 模块正式发布：支持站群管理、内容模型自定义字段、React SSR 静态化与 PostgreSQL 全文检索，功能全面对标国内主流 CMS。</p>',
+    extend: {}, externalLink: null, isTop: true, isRecommend: true, isHot: false,
+    status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null,
+    viewCount: 128, sort: 0, seoTitle: null, seoKeywords: 'CMS,发布', seoDescription: null,
+    tagIds: [1], createdAt: SEED_DATE, updatedAt: SEED_DATE,
+  },
+  {
+    id: 2, siteId: 1, channelId: 1, channelName: '新闻中心', modelId: 1,
+    title: '内容管理系统选型指南：静态化与全文检索实践', slug: null,
+    summary: '解析传统 CMS 的静态化方案与现代 SSR 渲染的结合方式，以及不依赖 Elasticsearch 的 PostgreSQL 全文检索实现。',
+    coverImage: null, author: '管理员', source: '原创', body: '<p>本文介绍混合静态化模式（发布时增量生成 + 访问时回写）与应用层中文分词方案在 PostgreSQL tsvector 上的落地实践。</p>',
+    extend: {}, externalLink: null, isTop: false, isRecommend: true, isHot: true,
+    status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null,
+    viewCount: 86, sort: 0, seoTitle: null, seoKeywords: '静态化,全文检索', seoDescription: null,
+    tagIds: [2], createdAt: SEED_DATE, updatedAt: SEED_DATE,
+  },
+  {
+    id: 3, siteId: 1, channelId: 2, channelName: '产品中心', modelId: 2,
+    title: 'Zenith 企业版', slug: 'enterprise',
+    summary: '面向中大型企业的一体化数字化底座。',
+    coverImage: null, author: null, source: null, body: '<p>Zenith 企业版提供完整的权限体系、工作流引擎、支付中心与 CMS 内容管理能力。</p>',
+    extend: { price: '联系销售', spec: '支持私有化部署，PostgreSQL 16 + Redis 7' }, externalLink: null,
+    isTop: false, isRecommend: false, isHot: false,
+    status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null,
+    viewCount: 45, sort: 0, seoTitle: null, seoKeywords: null, seoDescription: null,
+    tagIds: [], createdAt: SEED_DATE, updatedAt: SEED_DATE,
+  },
+];
+
+export const SEED_CMS_FRAGMENTS: CmsFragment[] = [
+  { id: 1, siteId: 1, code: 'home-banner', name: '首页横幅', type: 'html', content: '<div style="padding:28px 24px;background:linear-gradient(120deg,#1f6feb,#0969da);border-radius:10px;color:#fff"><h2 style="margin:0 0 6px;font-size:22px">Zenith CMS</h2><p style="margin:0;opacity:.85">多站点 · SEO · SSR 静态化 · PostgreSQL 全文检索</p></div>', status: 'enabled', remark: '首页顶部横幅区块', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, siteId: 1, code: 'home-side',   name: '首页侧栏', type: 'html', content: '<p style="font-size:13px;color:#59636e">碎片内容可在后台「碎片管理」中随时修改，无需改代码。</p>', status: 'enabled', remark: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+export const SEED_CMS_FRIEND_LINKS: CmsFriendLink[] = [
+  { id: 1, siteId: 1, name: 'Hono',       url: 'https://hono.dev',           logo: null, status: 'enabled', sort: 1, remark: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, siteId: 1, name: 'PostgreSQL', url: 'https://www.postgresql.org', logo: null, status: 'enabled', sort: 2, remark: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];

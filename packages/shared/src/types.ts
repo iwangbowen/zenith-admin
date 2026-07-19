@@ -10263,3 +10263,184 @@ export interface UserFeedback {
   createdAt: string;
   updatedAt: string;
 }
+
+// ─── CMS 内容管理 ─────────────────────────────────────────────────────────────
+export type CmsStaticMode = 'dynamic' | 'hybrid' | 'static';
+
+export type CmsChannelType = 'list' | 'page' | 'link';
+
+export type CmsContentStatus = 'draft' | 'pending' | 'published' | 'offline' | 'rejected';
+
+export type CmsFieldType = 'text' | 'textarea' | 'richtext' | 'number' | 'date' | 'datetime' | 'image' | 'file' | 'select' | 'radio' | 'checkbox' | 'switch';
+
+export type CmsFragmentType = 'html' | 'text' | 'image' | 'json';
+
+export interface CmsSite {
+  id: number;
+  name: string;
+  code: string;
+  domain: string | null;
+  aliasDomains: string[];
+  isDefault: boolean;
+  title: string | null;
+  keywords: string | null;
+  description: string | null;
+  logo: string | null;
+  favicon: string | null;
+  icp: string | null;
+  copyright: string | null;
+  theme: string;
+  staticMode: CmsStaticMode;
+  robots: string | null;
+  settings: Record<string, unknown>;
+  status: 'enabled' | 'disabled';
+  sort: number;
+  remark: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CmsModelField {
+  id: number;
+  modelId: number;
+  name: string;
+  label: string;
+  fieldType: CmsFieldType;
+  required: boolean;
+  searchable: boolean;
+  showInList: boolean;
+  placeholder: string | null;
+  defaultValue: string | null;
+  options: { label: string; value: string }[] | null;
+  sort: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CmsModel {
+  id: number;
+  name: string;
+  code: string;
+  description: string | null;
+  isSystem: boolean;
+  status: 'enabled' | 'disabled';
+  sort: number;
+  fields?: CmsModelField[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CmsChannel {
+  id: number;
+  siteId: number;
+  parentId: number;
+  modelId: number | null;
+  /** 模型名称（JOIN 后附加） */
+  modelName?: string | null;
+  name: string;
+  slug: string;
+  path: string;
+  type: CmsChannelType;
+  linkUrl: string | null;
+  listTemplate: string | null;
+  detailTemplate: string | null;
+  pageSize: number;
+  pageContent: string | null;
+  seoTitle: string | null;
+  seoKeywords: string | null;
+  seoDescription: string | null;
+  image: string | null;
+  visible: boolean;
+  status: 'enabled' | 'disabled';
+  sort: number;
+  settings: Record<string, unknown>;
+  children?: CmsChannel[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CmsContent {
+  id: number;
+  siteId: number;
+  channelId: number;
+  /** 栏目名称（JOIN 后附加） */
+  channelName?: string | null;
+  modelId: number | null;
+  title: string;
+  slug: string | null;
+  summary: string | null;
+  coverImage: string | null;
+  author: string | null;
+  source: string | null;
+  body: string | null;
+  extend: Record<string, unknown>;
+  externalLink: string | null;
+  isTop: boolean;
+  isRecommend: boolean;
+  isHot: boolean;
+  status: CmsContentStatus;
+  rejectReason: string | null;
+  publishedAt: string | null;
+  scheduledAt: string | null;
+  viewCount: number;
+  sort: number;
+  seoTitle: string | null;
+  seoKeywords: string | null;
+  seoDescription: string | null;
+  tagIds?: number[];
+  tags?: CmsTag[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CmsTag {
+  id: number;
+  siteId: number;
+  name: string;
+  slug: string;
+  contentCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CmsFragment {
+  id: number;
+  siteId: number;
+  code: string;
+  name: string;
+  type: CmsFragmentType;
+  content: string | null;
+  status: 'enabled' | 'disabled';
+  remark: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CmsFriendLink {
+  id: number;
+  siteId: number;
+  name: string;
+  url: string;
+  logo: string | null;
+  status: 'enabled' | 'disabled';
+  sort: number;
+  remark: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 全文检索结果条目（含高亮片段） */
+export interface CmsSearchResult {
+  id: number;
+  siteId: number;
+  channelId: number;
+  channelName: string | null;
+  title: string;
+  /** 高亮标题（<mark> 包裹命中词） */
+  titleHighlight: string;
+  /** 高亮摘要片段 */
+  snippet: string;
+  url: string;
+  publishedAt: string | null;
+  rank: number;
+}

@@ -1,0 +1,156 @@
+import type { ComponentType } from 'react';
+import type { CmsSearchResult } from '@zenith/shared';
+
+/** 渲染上下文：站点信息 */
+export interface CmsRenderSite {
+  id: number;
+  code: string;
+  name: string;
+  title: string | null;
+  keywords: string | null;
+  description: string | null;
+  logo: string | null;
+  favicon: string | null;
+  icp: string | null;
+  copyright: string | null;
+  theme: string;
+  settings: Record<string, unknown>;
+}
+
+/** 前台导航节点 */
+export interface CmsNavItem {
+  id: number;
+  name: string;
+  url: string;
+  target: '_self' | '_blank';
+  children?: CmsNavItem[];
+}
+
+export interface CmsBreadcrumb {
+  name: string;
+  url: string;
+}
+
+/** 页面 SEO 元信息（三级 TDK 覆盖后的最终值） */
+export interface CmsSeo {
+  title: string;
+  keywords: string;
+  description: string;
+  canonical: string | null;
+  ogTitle: string;
+  ogDescription: string;
+  ogImage: string | null;
+  /** JSON-LD 结构化数据（detail 页为 Article） */
+  jsonLd: Record<string, unknown> | null;
+}
+
+/** 列表条目 */
+export interface CmsContentItem {
+  id: number;
+  title: string;
+  url: string;
+  summary: string | null;
+  coverImage: string | null;
+  author: string | null;
+  source: string | null;
+  publishedAt: string | null;
+  viewCount: number;
+  isTop: boolean;
+  isRecommend: boolean;
+  isHot: boolean;
+}
+
+/** 详情数据 */
+export interface CmsContentDetail extends CmsContentItem {
+  body: string;
+  extend: Record<string, unknown>;
+  tags: { name: string; slug: string }[];
+  prev: { title: string; url: string } | null;
+  next: { title: string; url: string } | null;
+}
+
+/** 分页数据（URL 已预生成，模板直接渲染） */
+export interface CmsPagination {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  prevUrl: string | null;
+  nextUrl: string | null;
+  pages: { page: number; url: string; current: boolean }[];
+}
+
+/** 所有模板共享的基础上下文 */
+export interface CmsBaseContext {
+  site: CmsRenderSite;
+  /** URL 前缀：正式域名下为 ''，预览模式为 /__cms/{code} */
+  baseUrl: string;
+  nav: CmsNavItem[];
+  /** 碎片 code → { type, content } */
+  fragments: Record<string, { type: string; content: string }>;
+  friendLinks: { name: string; url: string; logo: string | null }[];
+  seo: CmsSeo;
+  searchUrl: string;
+}
+
+export interface CmsHomeContext extends CmsBaseContext {
+  latest: CmsContentItem[];
+  recommended: CmsContentItem[];
+  hot: CmsContentItem[];
+}
+
+export interface CmsChannelInfo {
+  id: number;
+  name: string;
+  url: string;
+  description: string | null;
+  image: string | null;
+}
+
+export interface CmsListContext extends CmsBaseContext {
+  channel: CmsChannelInfo;
+  breadcrumbs: CmsBreadcrumb[];
+  items: CmsContentItem[];
+  pagination: CmsPagination;
+}
+
+export interface CmsDetailContext extends CmsBaseContext {
+  channel: CmsChannelInfo;
+  breadcrumbs: CmsBreadcrumb[];
+  content: CmsContentDetail;
+}
+
+export interface CmsPageContext extends CmsBaseContext {
+  channel: CmsChannelInfo;
+  breadcrumbs: CmsBreadcrumb[];
+  contentHtml: string;
+}
+
+export interface CmsSearchContext extends CmsBaseContext {
+  keyword: string;
+  results: CmsSearchResult[];
+  pagination: CmsPagination;
+}
+
+export interface CmsNotFoundContext extends CmsBaseContext {
+  path: string;
+}
+
+/** 主题必须实现的模板集合 */
+export interface CmsThemeTemplates {
+  index: ComponentType<CmsHomeContext>;
+  list: ComponentType<CmsListContext>;
+  detail: ComponentType<CmsDetailContext>;
+  page: ComponentType<CmsPageContext>;
+  search: ComponentType<CmsSearchContext>;
+  notFound: ComponentType<CmsNotFoundContext>;
+}
+
+export interface CmsTheme {
+  code: string;
+  label: string;
+  templates: CmsThemeTemplates;
+  /** 扩展模板：栏目 listTemplate/detailTemplate 可按名称引用（如 list-image / detail-video） */
+  extraListTemplates?: Record<string, ComponentType<CmsListContext>>;
+  extraDetailTemplates?: Record<string, ComponentType<CmsDetailContext>>;
+}

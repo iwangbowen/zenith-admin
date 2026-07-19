@@ -1253,3 +1253,59 @@ export const BASIC_COMPARISON_SYMBOL_OPTIONS: Array<{
   value,
   label: BASIC_COMPARISON_OPERATOR_SYMBOLS[value],
 }));
+
+// ─── CMS 内容管理 ─────────────────────────────────────────────────────────────
+export const CMS_STATIC_MODES = ['dynamic', 'hybrid', 'static'] as const;
+
+export const CMS_STATIC_MODE_LABELS: Record<(typeof CMS_STATIC_MODES)[number], string> = {
+  dynamic: '动态渲染',
+  hybrid: '混合（推荐）',
+  static: '全静态',
+};
+
+export const CMS_CHANNEL_TYPES = ['list', 'page', 'link'] as const;
+
+export const CMS_CHANNEL_TYPE_LABELS: Record<(typeof CMS_CHANNEL_TYPES)[number], string> = {
+  list: '列表栏目',
+  page: '单页栏目',
+  link: '外链栏目',
+};
+
+export const CMS_CONTENT_STATUSES = ['draft', 'pending', 'published', 'offline', 'rejected'] as const;
+
+export const CMS_CONTENT_STATUS_LABELS: Record<(typeof CMS_CONTENT_STATUSES)[number], string> = {
+  draft: '草稿',
+  pending: '待审核',
+  published: '已发布',
+  offline: '已下线',
+  rejected: '已驳回',
+};
+
+export const CMS_FIELD_TYPES = ['text', 'textarea', 'richtext', 'number', 'date', 'datetime', 'image', 'file', 'select', 'radio', 'checkbox', 'switch'] as const;
+
+export const CMS_FIELD_TYPE_LABELS: Record<(typeof CMS_FIELD_TYPES)[number], string> = {
+  text: '单行文本',
+  textarea: '多行文本',
+  richtext: '富文本',
+  number: '数字',
+  date: '日期',
+  datetime: '日期时间',
+  image: '图片',
+  file: '附件',
+  select: '下拉选择',
+  radio: '单选',
+  checkbox: '多选',
+  switch: '开关',
+};
+
+export const CMS_FRAGMENT_TYPES = ['html', 'text', 'image', 'json'] as const;
+
+export const CMS_FRAGMENT_TYPE_LABELS: Record<(typeof CMS_FRAGMENT_TYPES)[number], string> = {
+  html: 'HTML',
+  text: '纯文本',
+  image: '图片',
+  json: 'JSON',
+};
+
+/** CMS 前台预览路径前缀（无域名绑定时通过 /__cms/{siteCode}/... 访问站点） */
+export const CMS_PREVIEW_PREFIX = '/__cms';
