@@ -2,12 +2,12 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { AppModal } from '@/components/AppModal';
 import {
-  Button, Tag, Space, Tabs, TabPane, Toast, Empty, Badge, Popconfirm, Spin,
+  Button, Tag, Space, Tabs, TabPane, Toast, Empty, Badge, Popconfirm, Spin, Typography,
 } from '@douyinfe/semi-ui';
 import { usePagination } from '@/hooks/usePagination';
 import { IllustrationIdle, IllustrationIdleDark } from '@douyinfe/semi-illustrations';
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag';
-import { CheckCheck, Trash2 } from 'lucide-react';
+import { CheckCheck, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import type { InAppMessage } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -36,12 +36,15 @@ const TYPE_LABEL: Record<string, string> = {
   error: '错误',
 };
 
+const { Text } = Typography;
+
 export default function InboxPage() {
   const queryClient = useQueryClient();
   const { page, pageSize, setPage, buildPagination } = usePagination();
   const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'read'>('all');
 
   const [selected, setSelected] = useState<InAppMessage | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
   let isRead: string | undefined;
@@ -64,14 +67,23 @@ export default function InboxPage() {
   const detailLoading = detailQuery.isFetching;
   const markAllLoading = markAllReadMutation.isPending;
 
-  const openMessage = async (item: InAppMessage) => {
+  const openMessage = async (item: InAppMessage, index?: number) => {
     if (!item.isRead) {
       await markReadMutation.mutateAsync(item.id);
       queryClient.setQueryData(inboxKeys.list(listParams), (old: typeof listQuery.data) =>
         old ? { ...old, list: old.list.map((n) => (n.id === item.id ? { ...n, isRead: true } : n)) } : old,
       );
     }
+    setSelectedIndex(index ?? list.findIndex((n) => n.id === item.id));
     setSelected({ ...item, isRead: true });
+  };
+
+  const handlePrev = () => {
+    if (selectedIndex > 0) void openMessage(list[selectedIndex - 1], selectedIndex - 1);
+  };
+
+  const handleNext = () => {
+    if (selectedIndex < list.length - 1) void openMessage(list[selectedIndex + 1], selectedIndex + 1);
   };
 
   const handleMarkAllRead = async () => {
@@ -264,7 +276,27 @@ export default function InboxPage() {
         title={selectedMessage?.title ?? ''}
         visible={selectedMessage !== null}
         onCancel={() => setSelected(null)}
-        footer={null}
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Space>
+              <Button
+                icon={<ChevronLeft size={14} />}
+                disabled={selectedIndex <= 0}
+                onClick={handlePrev}
+              >上一条</Button>
+              <Button
+                icon={<ChevronRight size={14} />}
+                iconPosition="right"
+                disabled={selectedIndex < 0 || selectedIndex >= list.length - 1}
+                onClick={handleNext}
+              >下一条</Button>
+            </Space>
+            <Space>
+              {selectedIndex >= 0 && <Text type="tertiary" size="small">{`${selectedIndex + 1} / ${list.length}`}</Text>}
+              <Button onClick={() => setSelected(null)}>关闭</Button>
+            </Space>
+          </div>
+        }
         width={640}
         closeOnEsc
       >
