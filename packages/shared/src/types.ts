@@ -10618,3 +10618,40 @@ export interface CmsContribSite {
   name: string;
   channels: { id: number; name: string }[];
 }
+
+// ─── CMS 采集中心（P3 Batch5）─────────────────────────────────────────────────
+export interface CmsCollectRule {
+  id: number;
+  siteId: number;
+  channelId: number;
+  channelName: string | null;
+  name: string;
+  listUrl: string;
+  pageStart: number;
+  pageEnd: number;
+  listSelector: string;
+  titleSelector: string;
+  bodySelector: string;
+  summarySelector: string | null;
+  coverSelector: string | null;
+  removeSelectors: string[];
+  autoPublish: boolean;
+  localizeImages: boolean;
+  maxItems: number;
+  status: 'enabled' | 'disabled';
+  lastRunAt: string | null;
+  remark: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CmsCollectItem {
+  id: number;
+  ruleId: number;
+  url: string;
+  title: string | null;
+  status: 'success' | 'skipped' | 'failed';
+  contentId: number | null;
+  error: string | null;
+  createdAt: string;
+}

@@ -4,7 +4,7 @@ import type {
   CmsFriendLink, CmsSearchResult, CmsContentStatus, CmsFragmentType, AsyncTask,
   CmsContentVersion, CmsRedirect, CmsLinkWord, CmsComment, CmsCommentStatus,
   CmsAdSlot, CmsAd, CmsForm, CmsFormSubmission, CmsSensitiveWord, CmsPushLog,
-  CmsSearchWord, CmsHotKeyword,
+  CmsSearchWord, CmsHotKeyword, CmsCollectRule, CmsCollectItem,
 } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { toQueryString, unwrap, LOOKUP_STALE_TIME } from '@/lib/query';
@@ -843,5 +843,59 @@ export function useEnableSiteAnalytics() {
 export function useCmsDeadlinkCheck() {
   return useMutation({
     mutationFn: (siteId: number) => request.post<AsyncTask>('/api/cms/seo/deadlink-check', { siteId }).then(unwrap),
+  });
+}
+
+// ─── P3 Batch5：采集中心 ──────────────────────────────────────────────────────
+export const cmsCollectKeys = {
+  all: ['cms', 'collect'] as const,
+  lists: ['cms', 'collect', 'list'] as const,
+  list: (params: object) => ['cms', 'collect', 'list', params] as const,
+  items: (ruleId: number, params: object) => ['cms', 'collect', 'items', ruleId, params] as const,
+};
+
+export function useCmsCollectRules(params: { page: number; pageSize: number; siteId: number | undefined; keyword?: string }) {
+  return useQuery({
+    queryKey: cmsCollectKeys.list(params),
+    queryFn: () => request.get<PaginatedResponse<CmsCollectRule>>(`/api/cms/collect/rules${toQueryString(params)}`).then(unwrap),
+    enabled: !!params.siteId,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useSaveCmsCollectRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
+      (id
+        ? request.put<CmsCollectRule>(`/api/cms/collect/rules/${id}`, values)
+        : request.post<CmsCollectRule>('/api/cms/collect/rules', values)
+      ).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsCollectKeys.all }),
+  });
+}
+
+export function useDeleteCmsCollectRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.delete<null>(`/api/cms/collect/rules/${id}`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsCollectKeys.all }),
+  });
+}
+
+export function useRunCmsCollectRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.post<AsyncTask>(`/api/cms/collect/rules/${id}/run`, {}).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsCollectKeys.all }),
+  });
+}
+
+export function useCmsCollectItems(ruleId: number | undefined, params: { page: number; pageSize: number; status?: string }) {
+  return useQuery({
+    queryKey: cmsCollectKeys.items(ruleId ?? 0, params),
+    queryFn: () => request.get<PaginatedResponse<CmsCollectItem>>(`/api/cms/collect/rules/${ruleId}/items${toQueryString(params)}`).then(unwrap),
+    enabled: !!ruleId,
+    placeholderData: keepPreviousData,
   });
 }

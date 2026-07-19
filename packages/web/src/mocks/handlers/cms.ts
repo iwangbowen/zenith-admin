@@ -1019,4 +1019,84 @@ export const cmsP3Handlers = [
       totalItems: 30,
     }), '任务已提交');
   }),
+
+  // ─── 采集中心 ───────────────────────────────────────────────────────────────
+  http.get('/api/cms/collect/rules/:id/items', ({ params, request }) => {
+    const { page, pageSize } = pageParams(request);
+    const list = mockCmsCollectItems.filter((x) => x.ruleId === Number(params.id));
+    return okJson(paginate(list, page, pageSize));
+  }),
+  http.post('/api/cms/collect/rules/:id/run', () => okJson(createProgressingMockTask({
+    taskType: 'cms-collect-run',
+    title: 'CMS 采集执行',
+    totalItems: 20,
+  }), '任务已提交')),
+  http.get('/api/cms/collect/rules', ({ request }) => {
+    const { url, page, pageSize, keyword } = pageParams(request);
+    const siteId = Number(url.searchParams.get('siteId'));
+    let list = mockCmsCollectRules.filter((r) => r.siteId === siteId);
+    if (keyword) list = list.filter((r) => r.name.includes(keyword));
+    return okJson(paginate(list, page, pageSize));
+  }),
+  http.post('/api/cms/collect/rules', async ({ request }) => {
+    const body = (await request.json()) as Body;
+    const now = mockDateTime();
+    const row = {
+      id: getNextCmsCollectRuleId(),
+      siteId: Number(body.siteId),
+      channelId: Number(body.channelId),
+      channelName: mockCmsChannels.find((c) => c.id === Number(body.channelId))?.name ?? null,
+      name: String(body.name ?? ''),
+      listUrl: String(body.listUrl ?? ''),
+      pageStart: Number(body.pageStart ?? 1),
+      pageEnd: Number(body.pageEnd ?? 1),
+      listSelector: String(body.listSelector ?? ''),
+      titleSelector: String(body.titleSelector ?? ''),
+      bodySelector: String(body.bodySelector ?? ''),
+      summarySelector: (body.summarySelector as string) || null,
+      coverSelector: (body.coverSelector as string) || null,
+      removeSelectors: (body.removeSelectors as string[]) ?? [],
+      autoPublish: body.autoPublish === true,
+      localizeImages: body.localizeImages === true,
+      maxItems: Number(body.maxItems ?? 50),
+      status: (body.status as 'enabled' | 'disabled') ?? 'enabled',
+      lastRunAt: null,
+      remark: (body.remark as string) || null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    mockCmsCollectRules.push(row);
+    return okJson(row, '创建成功');
+  }),
+  http.put('/api/cms/collect/rules/:id', async ({ params, request }) => {
+    const idx = mockCmsCollectRules.findIndex((r) => r.id === Number(params.id));
+    if (idx === -1) return notFound('采集规则不存在');
+    Object.assign(mockCmsCollectRules[idx], await request.json(), { updatedAt: mockDateTime() });
+    return okJson(mockCmsCollectRules[idx], '更新成功');
+  }),
+  http.delete('/api/cms/collect/rules/:id', ({ params }) => {
+    const idx = mockCmsCollectRules.findIndex((r) => r.id === Number(params.id));
+    if (idx === -1) return notFound('采集规则不存在');
+    mockCmsCollectRules.splice(idx, 1);
+    return okJson(null, '删除成功');
+  }),
 ];
+
+// P3 Batch5：采集中心 mock 数据
+const mockCmsCollectRules: import('@zenith/shared').CmsCollectRule[] = [
+  {
+    id: 1, siteId: 1, channelId: 2, channelName: '新闻中心', name: '示例：行业资讯采集',
+    listUrl: 'https://example.com/news?page={page}', pageStart: 1, pageEnd: 3,
+    listSelector: '.news-list li a', titleSelector: 'h1.title', bodySelector: '.article-content',
+    summarySelector: null, coverSelector: null, removeSelectors: ['.ad', '.recommend'],
+    autoPublish: false, localizeImages: true, maxItems: 50, status: 'enabled',
+    lastRunAt: '2024-06-01 03:00:00', remark: '演示规则', createdAt: '2024-05-01 00:00:00', updatedAt: '2024-06-01 03:00:00',
+  },
+];
+const mockCmsCollectItems: import('@zenith/shared').CmsCollectItem[] = [
+  { id: 1, ruleId: 1, url: 'https://example.com/news/1001', title: '行业动态：示例采集成功文章', status: 'success', contentId: 1, error: null, createdAt: '2024-06-01 03:00:05' },
+  { id: 2, ruleId: 1, url: 'https://example.com/news/1002', title: null, status: 'failed', contentId: null, error: '未匹配到正文', createdAt: '2024-06-01 03:00:08' },
+  { id: 3, ruleId: 1, url: 'https://example.com/news/1001', title: null, status: 'skipped', contentId: null, error: null, createdAt: '2024-06-02 03:00:02' },
+];
+let nextCollectRuleId = 2;
+function getNextCmsCollectRuleId() { return nextCollectRuleId++; }

@@ -547,6 +547,13 @@
       "when": 1784471423789,
       "tag": "0077_amazing_gauntlet",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1784472219247,
+      "tag": "0078_brainy_skin",
+      "breakpoints": true
     }
   ]
 }

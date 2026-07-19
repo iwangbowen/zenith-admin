@@ -426,3 +426,44 @@ export const CmsContribChannelsDTO = z
     channels: z.array(z.object({ id: z.number().int(), name: z.string() })),
   }))
   .openapi('CmsContribChannels');
+
+// ─── P3 Batch5：采集中心 ──────────────────────────────────────────────────────
+export const CmsCollectRuleDTO = z
+  .object({
+    id: z.number().int(),
+    siteId: z.number().int(),
+    channelId: z.number().int(),
+    channelName: z.string().nullable(),
+    name: z.string(),
+    listUrl: z.string(),
+    pageStart: z.number().int(),
+    pageEnd: z.number().int(),
+    listSelector: z.string(),
+    titleSelector: z.string(),
+    bodySelector: z.string(),
+    summarySelector: z.string().nullable(),
+    coverSelector: z.string().nullable(),
+    removeSelectors: z.array(z.string()),
+    autoPublish: z.boolean(),
+    localizeImages: z.boolean(),
+    maxItems: z.number().int(),
+    status: z.enum(['enabled', 'disabled']),
+    lastRunAt: z.string().nullable(),
+    remark: z.string().nullable(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('CmsCollectRule');
+
+export const CmsCollectItemDTO = z
+  .object({
+    id: z.number().int(),
+    ruleId: z.number().int(),
+    url: z.string(),
+    title: z.string().nullable(),
+    status: z.enum(['success', 'skipped', 'failed']),
+    contentId: z.number().int().nullable(),
+    error: z.string().nullable(),
+    createdAt: z.string(),
+  })
+  .openapi('CmsCollectItem');

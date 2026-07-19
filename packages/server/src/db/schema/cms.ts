@@ -471,3 +471,62 @@ export const cmsSearchWords = pgTable('cms_search_words', {
 });
 
 export type CmsSearchWordRow = typeof cmsSearchWords.$inferSelect;
+
+// ═══ P3 Batch5：采集中心 ════════════════════════════════════════════════════════
+
+export const cmsCollectItemStatusEnum = pgEnum('cms_collect_item_status', ['success', 'skipped', 'failed']);
+
+// ─── 采集规则（列表页翻页 + CSS 选择器抽取，任务中心执行）───────────────────────
+export const cmsCollectRules = pgTable('cms_collect_rules', {
+  id: serial('id').primaryKey(),
+  siteId: integer('site_id').notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
+  /** 采集入库的目标栏目 */
+  channelId: integer('channel_id').notNull().references(() => cmsChannels.id, { onDelete: 'restrict' }),
+  name: varchar('name', { length: 100 }).notNull(),
+  /** 列表页 URL 模板，{page} 占位翻页（无占位则只抓单页） */
+  listUrl: varchar('list_url', { length: 500 }).notNull(),
+  pageStart: integer('page_start').notNull().default(1),
+  pageEnd: integer('page_end').notNull().default(1),
+  /** 列表页条目链接选择器（a 元素或含 a 的容器） */
+  listSelector: varchar('list_selector', { length: 200 }).notNull(),
+  titleSelector: varchar('title_selector', { length: 200 }).notNull(),
+  bodySelector: varchar('body_selector', { length: 200 }).notNull(),
+  summarySelector: varchar('summary_selector', { length: 200 }),
+  coverSelector: varchar('cover_selector', { length: 200 }),
+  /** 正文清洗：待移除节点的选择器数组（广告/推荐位等） */
+  removeSelectors: jsonb('remove_selectors').$type<string[]>().notNull().default([]),
+  /** 采集后直接发布（否则入草稿箱待人工处理） */
+  autoPublish: boolean('auto_publish').notNull().default(false),
+  /** 正文远程图片本地化（下载转存文件中心并替换 src） */
+  localizeImages: boolean('localize_images').notNull().default(false),
+  /** 单次执行最大采集条数 */
+  maxItems: integer('max_items').notNull().default(50),
+  status: statusEnum('status').notNull().default('enabled'),
+  lastRunAt: timestamp('last_run_at'),
+  remark: varchar('remark', { length: 200 }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  index('cms_collect_rules_site_idx').on(t.siteId),
+]);
+
+export type CmsCollectRuleRow = typeof cmsCollectRules.$inferSelect;
+
+// ─── 采集明细（URL 去重 + 结果留痕）────────────────────────────────────────────
+export const cmsCollectItems = pgTable('cms_collect_items', {
+  id: serial('id').primaryKey(),
+  ruleId: integer('rule_id').notNull().references(() => cmsCollectRules.id, { onDelete: 'cascade' }),
+  url: varchar('url', { length: 500 }).notNull(),
+  title: varchar('title', { length: 255 }),
+  status: cmsCollectItemStatusEnum('status').notNull(),
+  /** 成功入库的内容 id */
+  contentId: integer('content_id').references(() => cmsContents.id, { onDelete: 'set null' }),
+  error: varchar('error', { length: 500 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  uniqueIndex('cms_collect_items_rule_url_uq').on(t.ruleId, t.url),
+  index('cms_collect_items_rule_idx').on(t.ruleId, t.createdAt),
+]);
+
+export type CmsCollectItemRow = typeof cmsCollectItems.$inferSelect;

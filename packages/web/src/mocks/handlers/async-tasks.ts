@@ -43,6 +43,17 @@ const taskTypes: AsyncTaskTypeMeta[] = [
     retentionDays: 30,
   },
   {
+    taskType: 'cms-collect-run',
+    title: 'CMS 采集执行',
+    module: 'CMS内容管理',
+    description: '按采集规则抓取列表页与详情页，清洗后入库（支持图片本地化与自动发布）。',
+    allowConcurrent: false,
+    enabled: true,
+    maxAttempts: 1,
+    retryDelayMs: 5000,
+    retentionDays: 30,
+  },
+  {
     taskType: 'report-dq-rule-run',
     title: '报表质量规则执行',
     module: '报表中心',
@@ -269,7 +280,7 @@ export function createImmediateMockTask(input: {
 }
 
 export function createProgressingMockTask(input: {
-  taskType: 'report-dq-rule-run' | 'report-dataset-materialize' | 'report-sla-rule-evaluate' | 'report-fill-sync' | 'analytics-rollup-rebuild' | 'analytics-segment-materialize' | 'analytics-campaign-execute' | 'cms-static-build' | 'cms-search-reindex' | 'cms-deadlink-check';
+  taskType: 'report-dq-rule-run' | 'report-dataset-materialize' | 'report-sla-rule-evaluate' | 'report-fill-sync' | 'analytics-rollup-rebuild' | 'analytics-segment-materialize' | 'analytics-campaign-execute' | 'cms-static-build' | 'cms-search-reindex' | 'cms-deadlink-check' | 'cms-collect-run';
   title: string;
   payload?: Record<string, unknown>;
   totalItems?: number;
