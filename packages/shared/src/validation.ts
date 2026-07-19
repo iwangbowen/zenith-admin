@@ -4980,6 +4980,57 @@ export const createRuleTestCaseSchema = z.object({
 export const updateRuleTestCaseSchema = createRuleTestCaseSchema.partial();
 export type CreateRuleTestCaseInput = z.input<typeof createRuleTestCaseSchema>;
 
+// ─── 规则中心：决策流 Schema ─────────────────────────────────────────────────────
+export const ruleFlowStepSchema = z.object({
+  id: z.string().min(1).max(64),
+  tableKey: z.string().min(1).max(64),
+  label: z.string().max(64).optional(),
+  condition: z.string().max(500).optional(),
+  outputNamespace: z.string().max(32).regex(/^[a-zA-Z_$][\w$]*$/, '命名空间需为合法标识符').optional().or(z.literal('')),
+});
+export const createDecisionFlowSchema = z.object({
+  key: z.string().min(1).max(64).regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/, 'key 仅限字母开头的字母数字下划线'),
+  name: z.string().min(1).max(64),
+  description: z.string().max(500).nullable().optional(),
+  steps: z.array(ruleFlowStepSchema).default([]),
+});
+export const updateDecisionFlowSchema = createDecisionFlowSchema.partial().omit({ key: true }).extend({
+  expectedUpdatedAt: z.string().optional(),
+});
+export type CreateDecisionFlowInput = z.input<typeof createDecisionFlowSchema>;
+export type UpdateDecisionFlowInput = z.input<typeof updateDecisionFlowSchema>;
+
+// ─── 规则中心：名单库 Schema ─────────────────────────────────────────────────────
+export const createRuleListSchema = z.object({
+  key: z.string().min(1).max(64).regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/, 'key 仅限字母开头的字母数字下划线'),
+  name: z.string().min(1).max(64),
+  type: z.enum(['black', 'white', 'grey']).default('black'),
+  description: z.string().max(500).nullable().optional(),
+});
+export const updateRuleListSchema = createRuleListSchema.partial().omit({ key: true }).extend({
+  status: z.enum(['enabled', 'disabled']).optional(),
+});
+export const createRuleListItemSchema = z.object({
+  value: z.string().min(1).max(128),
+  label: z.string().max(64).nullable().optional(),
+  expiresAt: z.string().nullable().optional(),
+  remark: z.string().max(255).nullable().optional(),
+});
+export const batchRuleListItemsSchema = z.object({
+  values: z.array(z.string().min(1).max(128)).min(1).max(500),
+  expiresAt: z.string().nullable().optional(),
+});
+export const checkRuleListSchema = z.object({
+  key: z.string().min(1).max(64),
+  value: z.string().min(1).max(128),
+});
+
+// ─── 规则中心：发布审批 Schema ───────────────────────────────────────────────────
+export const reviewDecisionTableSchema = z.object({
+  approve: z.boolean(),
+  comment: z.string().max(255).optional(),
+});
+
 // ─── 意见反馈 Schema ─────────────────────────────────────────────────────────
 export const createUserFeedbackSchema = z.object({
   score: z.number().int().min(1, '评分最低 1 分').max(5, '评分最高 5 分').nullable().optional(),

@@ -1,11 +1,11 @@
 import { db } from './index';
-import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs, rateLimitRules, regions, tenants, tenantPackages, tenantPackageMenus, emailTemplates, smsConfigs, smsTemplates, inAppTemplates, tags, dataMaskConfigs, memberLevels, memberTags, members, memberPointAccounts, memberPointTransactions, memberWallets, coupons, memberCoupons, checkinRules, checkinSettings, checkinMilestones, workflowForms, workflowDataSources, workflowConnectors, workflowTemplates, workflowDefinitions, aiPromptTemplates, paymentMethodConfigs, paymentDeductPlans, mpAccounts, mpTags, mpFans, mpMessages, mpAutoReplies, mpMenus, mpMaterials, mpDrafts, mpMessageTemplates, mpBroadcasts, mpQrcodes, mpKfAccounts, mpKfSessions, mpKfSessionEvents, mpKfRoutingConfigs, mpConditionalMenus, channels, channelQuickReplies, reportDatasources, reportDatasets, reportDashboards, apiScopes, ratePlans, reportPrintTemplates, ruleDecisionTables, reportFolders, reportEnvironments, reportMetrics, reportDqRules, reportQueryQuotas, reportSlaRules, reportAssetTemplates, reportFillTemplates, analyticsEventMeta, analyticsSites } from './schema';
+import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs, rateLimitRules, regions, tenants, tenantPackages, tenantPackageMenus, emailTemplates, smsConfigs, smsTemplates, inAppTemplates, tags, dataMaskConfigs, memberLevels, memberTags, members, memberPointAccounts, memberPointTransactions, memberWallets, coupons, memberCoupons, checkinRules, checkinSettings, checkinMilestones, workflowForms, workflowDataSources, workflowConnectors, workflowTemplates, workflowDefinitions, aiPromptTemplates, paymentMethodConfigs, paymentDeductPlans, mpAccounts, mpTags, mpFans, mpMessages, mpAutoReplies, mpMenus, mpMaterials, mpDrafts, mpMessageTemplates, mpBroadcasts, mpQrcodes, mpKfAccounts, mpKfSessions, mpKfSessionEvents, mpKfRoutingConfigs, mpConditionalMenus, channels, channelQuickReplies, reportDatasources, reportDatasets, reportDashboards, apiScopes, ratePlans, reportPrintTemplates, ruleDecisionTables, ruleDecisionFlows, ruleLists, ruleListItems, reportFolders, reportEnvironments, reportMetrics, reportDqRules, reportQueryQuotas, reportSlaRules, reportAssetTemplates, reportFillTemplates, analyticsEventMeta, analyticsSites } from './schema';
 import bcrypt from 'bcryptjs';
 import { and, eq, isNull, inArray, sql } from 'drizzle-orm';
 import { createRequire } from 'node:module';
 import logger from '../lib/logger';
 import { runAsUser } from '../lib/audit-context';
-import { SEED_MENUS, SEED_ROLES, SEED_DEPARTMENTS, SEED_POSITIONS, SEED_DICTS, SEED_DICT_ITEMS, SEED_SYSTEM_CONFIGS, SEED_CRON_JOBS, SEED_RATE_LIMIT_RULES, SEED_TAGS, SEED_DATA_MASK_CONFIGS, SEED_MEMBER_LEVELS, SEED_MEMBER_TAGS, SEED_COUPONS, SEED_EMAIL_TEMPLATES, SEED_SMS_TEMPLATES, SEED_INAPP_TEMPLATES, SEED_TENANTS, SEED_TENANT_PACKAGES, SEED_WORKFLOW_FORMS, SEED_WORKFLOW_DATA_SOURCES, SEED_WORKFLOW_CONNECTORS, SEED_WORKFLOW_TEMPLATES, SEED_WORKFLOW_DEFINITIONS, SEED_AI_PROMPT_TEMPLATES, SEED_PAYMENT_METHOD_CONFIGS, SEED_CHECKIN_MILESTONES, SEED_MP_ACCOUNTS, SEED_MP_TAGS, SEED_MP_FANS, SEED_MP_MESSAGES, SEED_MP_AUTO_REPLIES, SEED_MP_MENUS, SEED_MP_MATERIALS, SEED_MP_DRAFTS, SEED_MP_MESSAGE_TEMPLATES, SEED_MP_BROADCASTS, SEED_MP_QRCODES, SEED_MP_KF_ACCOUNTS, SEED_MP_KF_ROUTING_CONFIGS, SEED_MP_KF_SESSIONS, SEED_MP_KF_SESSION_EVENTS, SEED_MP_CONDITIONAL_MENUS, SEED_CHANNELS, SEED_CHANNEL_QUICK_REPLIES, SEED_REPORT_DATASOURCES, SEED_REPORT_DATASETS, SEED_REPORT_DASHBOARDS, SEED_API_SCOPES, SEED_RATE_PLANS, SEED_REPORT_PRINT_TEMPLATES, SEED_DECISION_TABLES, SEED_REPORT_FOLDERS, SEED_REPORT_ENVIRONMENTS, SEED_REPORT_METRICS, SEED_REPORT_DQ_RULES, SEED_REPORT_QUERY_QUOTAS, SEED_REPORT_SLA_RULES, SEED_REPORT_ASSET_TEMPLATES, SEED_REPORT_FILL_TEMPLATES, SEED_ANALYTICS_EVENT_META, SEED_ANALYTICS_SITES } from '@zenith/shared';
+import { SEED_MENUS, SEED_ROLES, SEED_DEPARTMENTS, SEED_POSITIONS, SEED_DICTS, SEED_DICT_ITEMS, SEED_SYSTEM_CONFIGS, SEED_CRON_JOBS, SEED_RATE_LIMIT_RULES, SEED_TAGS, SEED_DATA_MASK_CONFIGS, SEED_MEMBER_LEVELS, SEED_MEMBER_TAGS, SEED_COUPONS, SEED_EMAIL_TEMPLATES, SEED_SMS_TEMPLATES, SEED_INAPP_TEMPLATES, SEED_TENANTS, SEED_TENANT_PACKAGES, SEED_WORKFLOW_FORMS, SEED_WORKFLOW_DATA_SOURCES, SEED_WORKFLOW_CONNECTORS, SEED_WORKFLOW_TEMPLATES, SEED_WORKFLOW_DEFINITIONS, SEED_AI_PROMPT_TEMPLATES, SEED_PAYMENT_METHOD_CONFIGS, SEED_CHECKIN_MILESTONES, SEED_MP_ACCOUNTS, SEED_MP_TAGS, SEED_MP_FANS, SEED_MP_MESSAGES, SEED_MP_AUTO_REPLIES, SEED_MP_MENUS, SEED_MP_MATERIALS, SEED_MP_DRAFTS, SEED_MP_MESSAGE_TEMPLATES, SEED_MP_BROADCASTS, SEED_MP_QRCODES, SEED_MP_KF_ACCOUNTS, SEED_MP_KF_ROUTING_CONFIGS, SEED_MP_KF_SESSIONS, SEED_MP_KF_SESSION_EVENTS, SEED_MP_CONDITIONAL_MENUS, SEED_CHANNELS, SEED_CHANNEL_QUICK_REPLIES, SEED_REPORT_DATASOURCES, SEED_REPORT_DATASETS, SEED_REPORT_DASHBOARDS, SEED_API_SCOPES, SEED_RATE_PLANS, SEED_REPORT_PRINT_TEMPLATES, SEED_DECISION_TABLES, SEED_DECISION_FLOWS, SEED_RULE_LISTS, SEED_RULE_LIST_ITEMS, SEED_REPORT_FOLDERS, SEED_REPORT_ENVIRONMENTS, SEED_REPORT_METRICS, SEED_REPORT_DQ_RULES, SEED_REPORT_QUERY_QUOTAS, SEED_REPORT_SLA_RULES, SEED_REPORT_ASSET_TEMPLATES, SEED_REPORT_FILL_TEMPLATES, SEED_ANALYTICS_EVENT_META, SEED_ANALYTICS_SITES } from '@zenith/shared';
 import type { PaymentChannel, PaymentMethod } from '@zenith/shared';
 import { SEED_PAYMENT_DEDUCT_PLANS } from '@zenith/shared';
 
@@ -628,6 +628,27 @@ async function seedRest() {
   ).onConflictDoNothing({ target: ruleDecisionTables.id });
   await db.execute(sql`SELECT setval('rule_decision_tables_id_seq', GREATEST((SELECT MAX(id) FROM rule_decision_tables), 1))`);
   logger.info('  ✔ Decision tables seeded (onConflictDoNothing)');
+
+  // ── 规则中心决策流（数据来源：@zenith/shared SEED_DECISION_FLOWS）──────────────
+  await db.insert(ruleDecisionFlows).values(
+    SEED_DECISION_FLOWS.map(({ id, key, name, description, steps }) =>
+      ({ id, key, name, description, steps, tenantId: null })),
+  ).onConflictDoNothing({ target: ruleDecisionFlows.id });
+  await db.execute(sql`SELECT setval('rule_decision_flows_id_seq', GREATEST((SELECT MAX(id) FROM rule_decision_flows), 1))`);
+  logger.info('  ✔ Decision flows seeded (onConflictDoNothing)');
+
+  // ── 规则中心名单库（数据来源：@zenith/shared SEED_RULE_LISTS / SEED_RULE_LIST_ITEMS）─
+  await db.insert(ruleLists).values(
+    SEED_RULE_LISTS.map(({ id, key, name, type, description, status }) =>
+      ({ id, key, name, type, description, status, tenantId: null })),
+  ).onConflictDoNothing({ target: ruleLists.id });
+  await db.execute(sql`SELECT setval('rule_lists_id_seq', GREATEST((SELECT MAX(id) FROM rule_lists), 1))`);
+  await db.insert(ruleListItems).values(
+    SEED_RULE_LIST_ITEMS.map(({ id, listId, value, label, expiresAt, remark }) =>
+      ({ id, listId, value, label, expiresAt: expiresAt ? new Date(expiresAt) : null, remark })),
+  ).onConflictDoNothing({ target: ruleListItems.id });
+  await db.execute(sql`SELECT setval('rule_list_items_id_seq', GREATEST((SELECT MAX(id) FROM rule_list_items), 1))`);
+  logger.info('  ✔ Rule lists seeded (onConflictDoNothing)');
 
 
   // ── 流程内置模板（数据来源：@zenith/shared SEED_WORKFLOW_TEMPLATES）──────────

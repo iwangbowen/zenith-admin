@@ -341,7 +341,19 @@ export const SEED_MENUS: Menu[] = [
   { id: 944, parentId: 941, title: '删除决策表', name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 3, status: 'enabled', visible: true, permission: 'rule:table:delete',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 945, parentId: 941, title: '发布决策表', name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 4, status: 'enabled', visible: true, permission: 'rule:table:publish',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 946, parentId: 941, title: '求值测试',   name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 5, status: 'enabled', visible: true, permission: 'rule:table:evaluate', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 965, parentId: 941, title: '审批发布',   name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 6, status: 'enabled', visible: true, permission: 'rule:table:approve',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 947, parentId: 940, title: '决策执行记录', name: 'RuleExecutions', path: '/rules/executions', component: 'rules/executions/RuleExecutionsPage', icon: 'History', type: 'menu', sort: 2, status: 'enabled', visible: true, permission: 'rule:table:list', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 948, parentId: 940, title: '决策流',     name: 'RuleFlows',      path: '/rules/flows',      component: 'rules/flows/RuleFlowsPage',           icon: 'GitBranch', type: 'menu', sort: 3, status: 'enabled', visible: true, permission: 'rule:flow:list', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 956, parentId: 948, title: '新增决策流', name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 1, status: 'enabled', visible: true, permission: 'rule:flow:create',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 957, parentId: 948, title: '编辑决策流', name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 2, status: 'enabled', visible: true, permission: 'rule:flow:update',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 958, parentId: 948, title: '删除决策流', name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 3, status: 'enabled', visible: true, permission: 'rule:flow:delete',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 959, parentId: 948, title: '发布决策流', name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 4, status: 'enabled', visible: true, permission: 'rule:flow:publish',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 960, parentId: 948, title: '决策流求值', name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 5, status: 'enabled', visible: true, permission: 'rule:flow:evaluate', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 949, parentId: 940, title: '名单库',     name: 'RuleLists',      path: '/rules/lists',      component: 'rules/lists/RuleListsPage',           icon: 'ShieldBan', type: 'menu', sort: 4, status: 'enabled', visible: true, permission: 'rule:list:list', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 961, parentId: 949, title: '新增名单',   name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 1, status: 'enabled', visible: true, permission: 'rule:list:create', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 962, parentId: 949, title: '编辑名单',   name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 2, status: 'enabled', visible: true, permission: 'rule:list:update', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 963, parentId: 949, title: '删除名单',   name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 3, status: 'enabled', visible: true, permission: 'rule:list:delete', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 964, parentId: 949, title: '条目管理',   name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 4, status: 'enabled', visible: true, permission: 'rule:list:item',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
 
   // ── 消息中心 ─────────────────────────────────────────────────────────────────
   { id: 310, parentId: 0,   title: '消息中心',   name: 'ChatCenter',              path: '/chat',                      component: 'chat/ChatPage',                                  icon: 'MessagesSquare',    type: 'menu',      sort: 7,  status: 'enabled', visible: true,  createdAt: SEED_DATE, updatedAt: SEED_DATE },
@@ -810,6 +822,7 @@ export const SEED_SYSTEM_CONFIGS: SystemConfig[] = [
   { id: 39, configKey: 'ai_content_filter_enabled',      configValue: 'false', configType: 'boolean', description: '是否启用 AI 对话输入侧敏感词过滤（词库维护在字典「AI 敏感词」中，命中直接拒绝发送）', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 40, configKey: 'ai_embedding_model',             configValue: '',      configType: 'string',  description: '知识库向量化 embedding 模型名称（使用系统默认 AI 服务商的 /embeddings 接口）；留空则知识库退化为关键词检索', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 41, configKey: 'ai_image_model',                 configValue: '',      configType: 'string',  description: '图片生成模型名称（使用系统默认 AI 服务商的 /images/generations 接口）；留空则关闭 generate_image 工具', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 42, configKey: 'rule_publish_approval',          configValue: 'false', configType: 'boolean', description: '决策表发布审批（四眼原则）：开启后发布需先提交申请，由具有「审批发布」权限的其他用户批准后生效', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 限流规则 ─────────────────────────────────────────────────────────────────
@@ -2648,6 +2661,31 @@ export const SEED_DECISION_TABLES = [
       { id: 'r3', when: ['-'], then: { level: 'normal', discount: 1 } },
     ],
   },
+];
+
+// ─── 规则中心：决策流种子 ────────────────────────────────────────────────────────
+export const SEED_DECISION_FLOWS = [
+  {
+    id: 1,
+    key: 'member_benefit_flow',
+    name: '会员权益决策流',
+    description: '示例：先判定会员等级，再基于等级输出叠加计算（步骤输出并入 scope 供后续引用）',
+    steps: [
+      { id: 's1', tableKey: 'member_level', label: '等级判定' },
+    ],
+  },
+];
+
+// ─── 规则中心：名单库种子 ────────────────────────────────────────────────────────
+export const SEED_RULE_LISTS = [
+  { id: 1, key: 'risk_blacklist', name: '风控黑名单', type: 'black' as const, description: '命中即拒绝的高风险主体（手机号/用户ID/IP 等）', status: 'enabled' as const },
+  { id: 2, key: 'vip_whitelist',  name: 'VIP 白名单', type: 'white' as const, description: '免风控校验的可信主体', status: 'enabled' as const },
+];
+
+export const SEED_RULE_LIST_ITEMS = [
+  { id: 1, listId: 1, value: '13800000000', label: '演示黑名单手机号', expiresAt: null, remark: '示例数据' },
+  { id: 2, listId: 1, value: '198.51.100.23', label: '恶意 IP', expiresAt: null, remark: '示例数据' },
+  { id: 3, listId: 2, value: 'member_1001', label: '演示 VIP 会员', expiresAt: null, remark: '示例数据' },
 ];
 
 // ─── 意见反馈初始数据 ─────────────────────────────────────────────────────────

@@ -2,10 +2,10 @@ import { and, desc, eq, like, inArray, lt, gte, lte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type {
   RuleDecisionInput, RuleDecisionOutput, RuleDecisionRow, RuleHitPolicy, RuleEvaluateResult, RuleTestRunResult, RuleCaseResult,
-  RuleDecisionTableSettings, RuleUsageItem,
+  RuleDecisionTableSettings, RuleUsageItem, RuleTableStats, RuleShadowRunResult, RuleShadowDiffSample,
 } from '@zenith/shared';
 import { db } from '../../db';
-import { ruleDecisionTables, ruleDecisionTableVersions, ruleTestCases, ruleDecisionExecutions, workflowDefinitions } from '../../db/schema';
+import { ruleDecisionTables, ruleDecisionTableVersions, ruleTestCases, ruleDecisionExecutions, workflowDefinitions, systemConfigs } from '../../db/schema';
 import { currentUser, currentUserOrNull } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { escapeLike } from '../../lib/where-helpers';
@@ -47,6 +47,10 @@ export function mapDecisionTable(row: TableRow, latestVersion?: VersionRow | nul
     version: row.version,
     publishedAt: formatNullableDateTime(row.publishedAt),
     dirty: latestVersion === undefined ? undefined : (latestVersion ? snapshotComparable(row) !== snapshotComparable(latestVersion) : false),
+    reviewStatus: (row.reviewStatus ?? null) as 'pending' | null,
+    reviewRequestedBy: row.reviewRequestedBy ?? null,
+    reviewRequestedAt: formatNullableDateTime(row.reviewRequestedAt),
+    reviewComment: row.reviewComment ?? null,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
     createdAt: formatDateTime(row.createdAt),
@@ -267,17 +271,32 @@ function ensurePublishable(row: TableRow): void {
   }
 }
 
-/** 发布：写版本快照、版本号 +1、状态置 published、记录发布时间 */
-export async function publishDecisionTable(id: number) {
-  const row = await ensureDecisionTable(id);
+/** 发布审批开关（system_configs: rule_publish_approval） */
+export async function isPublishApprovalRequired(): Promise<boolean> {
+  const [row] = await db.select({ v: systemConfigs.configValue }).from(systemConfigs)
+    .where(eq(systemConfigs.configKey, 'rule_publish_approval')).limit(1);
+  return row?.v === 'true';
+}
+
+/** 发布门禁（结构 + 静态校验 + 用例门禁），提交审批与直接发布共用 */
+async function ensurePublishGates(row: TableRow): Promise<void> {
   if (!row.inputs || (row.inputs as RuleDecisionInput[]).length === 0) throw new HTTPException(400, { message: '决策表至少需要一个输入列' });
   if (!row.outputs || (row.outputs as RuleDecisionOutput[]).length === 0) throw new HTTPException(400, { message: '决策表至少需要一个输出列' });
   if (!row.rules || (row.rules as RuleDecisionRow[]).length === 0) throw new HTTPException(400, { message: '决策表至少需要一条规则' });
   ensurePublishable(row);
   // 发布门禁：用例必须全部通过；存在用例时规则行需 100% 覆盖
-  const run = await runTestCases(id);
+  const run = await runTestCases(row.id);
   if (run.failed > 0) throw new HTTPException(400, { message: `发布受阻：${run.failed}/${run.total} 个测试用例未通过` });
   if (run.total > 0 && run.coverage < 100) throw new HTTPException(400, { message: `发布受阻：规则覆盖率 ${run.coverage}%，未覆盖行 ${run.uncoveredRowIds.join(', ')}` });
+}
+
+/** 发布：写版本快照、版本号 +1、状态置 published、记录发布时间 */
+export async function publishDecisionTable(id: number, opts?: { skipApprovalCheck?: boolean }) {
+  const row = await ensureDecisionTable(id);
+  if (!opts?.skipApprovalCheck && await isPublishApprovalRequired()) {
+    throw new HTTPException(400, { message: '已开启发布审批，请通过「申请发布」提交，由审批人批准后生效' });
+  }
+  await ensurePublishGates(row);
   const mapped = await db.transaction(async (tx) => {
     await tx.insert(ruleDecisionTableVersions).values({
       tableId: row.id,
@@ -293,7 +312,7 @@ export async function publishDecisionTable(id: number) {
       tenantId: row.tenantId,
     });
     const [updated] = await tx.update(ruleDecisionTables)
-      .set({ status: 'published', publishedAt: new Date(), version: row.version + 1 })
+      .set({ status: 'published', publishedAt: new Date(), version: row.version + 1, reviewStatus: null, reviewRequestedBy: null, reviewRequestedAt: null, reviewComment: null })
       .where(eq(ruleDecisionTables.id, id)).returning();
     // 刚发布：编辑态与最新快照必然一致
     return { ...mapDecisionTable(updated), dirty: false };
@@ -301,6 +320,34 @@ export async function publishDecisionTable(id: number) {
   // 事务提交后再失效，避免提交前被旧数据回填
   invalidateRuleRuntimeCache();
   return mapped;
+}
+
+/** 申请发布（审批模式）：先过全部发布门禁，再置为待审批 */
+export async function submitDecisionTableReview(id: number) {
+  const row = await ensureDecisionTable(id);
+  if (!(await isPublishApprovalRequired())) throw new HTTPException(400, { message: '未开启发布审批，请直接发布' });
+  if (row.reviewStatus === 'pending') throw new HTTPException(400, { message: '已有待审批的发布申请' });
+  await ensurePublishGates(row);
+  const [updated] = await db.update(ruleDecisionTables)
+    .set({ reviewStatus: 'pending', reviewRequestedBy: currentUser().userId, reviewRequestedAt: new Date(), reviewComment: null })
+    .where(eq(ruleDecisionTables.id, id)).returning();
+  return mapDecisionTable(updated, await latestVersionOf(id));
+}
+
+/** 审批发布：批准（四眼校验，非申请人）执行真实发布；驳回记录意见并回到编辑态 */
+export async function reviewDecisionTable(id: number, approve: boolean, comment?: string) {
+  const row = await ensureDecisionTable(id);
+  if (row.reviewStatus !== 'pending') throw new HTTPException(400, { message: '该决策表没有待审批的发布申请' });
+  if (approve && row.reviewRequestedBy === currentUser().userId) {
+    throw new HTTPException(400, { message: '不能审批自己提交的发布申请（四眼原则）' });
+  }
+  if (approve) {
+    return publishDecisionTable(id, { skipApprovalCheck: true });
+  }
+  const [updated] = await db.update(ruleDecisionTables)
+    .set({ reviewStatus: null, reviewRequestedBy: null, reviewRequestedAt: null, reviewComment: comment?.trim() || '发布申请已驳回' })
+    .where(eq(ruleDecisionTables.id, id)).returning();
+  return mapDecisionTable(updated, await latestVersionOf(id));
 }
 
 export async function listDecisionTableVersions(id: number) {
@@ -489,6 +536,114 @@ export async function getDecisionOutputs(
     });
     return res.matched || res.usedFallback ? res.outputs : {};
   } catch { return {}; }
+}
+
+/** 供决策流运行时使用：按 key 解析发布快照（含缓存/租户语义），不可用返回 null */
+export async function resolveRuntimeDecisionTable(key: string, opts?: { tenantId?: number | null; version?: number }): Promise<(RuntimeSnapshot & { settings: RuleDecisionTableSettings }) | null> {
+  return loadRuntimeSnapshot(key, opts);
+}
+
+/** 供决策流测试使用：优先发布快照，未发布的草稿回退编辑态（禁用仍不可用） */
+export async function resolveDecisionTableForTest(key: string): Promise<RuntimeSnapshot | null> {
+  const snapshot = await loadRuntimeSnapshot(key);
+  if (snapshot) return snapshot;
+  const row = await resolveTableRowByKey(key, runtimeTenantId(undefined));
+  if (!row || row.status === 'disabled') return null;
+  return {
+    tableId: row.id,
+    tenantId: row.tenantId ?? null,
+    hitPolicy: row.hitPolicy,
+    inputs: (row.inputs ?? []) as RuleDecisionInput[],
+    outputs: (row.outputs ?? []) as RuleDecisionOutput[],
+    rules: (row.rules ?? []) as RuleDecisionRow[],
+    settings: (row.settings ?? {}) as RuleDecisionTableSettings,
+  };
+}
+
+/** 供其它规则服务（决策流等）写执行流水（异步批写） */
+export function recordRuleExecution(row: NewExecRow): void {
+  queueExecutionRecord(row);
+}
+
+/** 命中分析：总量/命中率/按日趋势/规则行命中分布/来源分布（近 N 天执行流水聚合） */
+export async function getDecisionTableStats(id: number, days = 30): Promise<RuleTableStats> {
+  const row = await ensureDecisionTable(id);
+  await flushExecutionQueue();
+  const span = Number.isFinite(days) && days > 0 ? Math.min(days, 365) : 30;
+  const cutoff = new Date(Date.now() - span * 24 * 60 * 60 * 1000);
+  const where = and(eq(ruleDecisionExecutions.tableId, row.id), gte(ruleDecisionExecutions.createdAt, cutoff));
+  const [totals, byDay, rowHits, bySource] = await Promise.all([
+    db.select({
+      total: sql<number>`count(*)::int`,
+      matched: sql<number>`count(*) filter (where ${ruleDecisionExecutions.matched})::int`,
+    }).from(ruleDecisionExecutions).where(where),
+    db.select({
+      date: sql<string>`to_char(${ruleDecisionExecutions.createdAt}, 'YYYY-MM-DD')`,
+      total: sql<number>`count(*)::int`,
+      matched: sql<number>`count(*) filter (where ${ruleDecisionExecutions.matched})::int`,
+    }).from(ruleDecisionExecutions).where(where)
+      .groupBy(sql`to_char(${ruleDecisionExecutions.createdAt}, 'YYYY-MM-DD')`)
+      .orderBy(sql`to_char(${ruleDecisionExecutions.createdAt}, 'YYYY-MM-DD')`),
+    db.execute(sql`
+      SELECT elem AS row_id, count(*)::int AS cnt
+      FROM ${ruleDecisionExecutions}, jsonb_array_elements_text(${ruleDecisionExecutions.matchedRowIds}) AS elem
+      WHERE ${ruleDecisionExecutions.tableId} = ${row.id} AND ${ruleDecisionExecutions.createdAt} >= ${cutoff}
+      GROUP BY elem ORDER BY cnt DESC LIMIT 50
+    `),
+    db.select({
+      source: ruleDecisionExecutions.source,
+      count: sql<number>`count(*)::int`,
+    }).from(ruleDecisionExecutions).where(where).groupBy(ruleDecisionExecutions.source),
+  ]);
+  const total = totals[0]?.total ?? 0;
+  const matched = totals[0]?.matched ?? 0;
+  const hitRows = ([...rowHits] as unknown as Array<{ row_id: string; cnt: number }>).map((r) => ({ rowId: r.row_id, count: Number(r.cnt) }));
+  return {
+    days: span,
+    total,
+    matched,
+    unmatched: total - matched,
+    byDay: byDay.map((d) => ({ date: d.date, total: d.total, matched: d.matched })),
+    rowHits: hitRows,
+    bySource: bySource.map((s) => ({ source: s.source, count: s.count })),
+  };
+}
+
+/** 影子对比：以最近执行记录的输入重放当前编辑态，评估「若现在发布」的行为差异（不影响线上） */
+export async function shadowRunDecisionTable(id: number, limit = 100): Promise<RuleShadowRunResult> {
+  const row = await ensureDecisionTable(id);
+  await flushExecutionQueue();
+  const draft = {
+    hitPolicy: row.hitPolicy,
+    inputs: (row.inputs ?? []) as RuleDecisionInput[],
+    outputs: (row.outputs ?? []) as RuleDecisionOutput[],
+    rules: (row.rules ?? []) as RuleDecisionRow[],
+    settings: (row.settings ?? {}) as RuleDecisionTableSettings,
+  };
+  const cap = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 500) : 100;
+  const execs = await db.select().from(ruleDecisionExecutions)
+    .where(eq(ruleDecisionExecutions.tableId, row.id))
+    .orderBy(desc(ruleDecisionExecutions.id)).limit(cap);
+  const samples: RuleShadowDiffSample[] = [];
+  let same = 0;
+  for (const exec of execs) {
+    const input = (exec.input ?? {}) as Record<string, unknown>;
+    let after: Record<string, unknown>;
+    let afterMatched = false;
+    try {
+      const res = evaluateDecisionTable(draft, input);
+      afterMatched = res.matched;
+      after = res.matched || res.usedFallback ? res.outputs : {};
+    } catch { after = {}; }
+    const before = (exec.outputs ?? {}) as Record<string, unknown>;
+    const beforeEffective = exec.matched ? before : {};
+    if (JSON.stringify(beforeEffective) === JSON.stringify(after) && exec.matched === afterMatched) {
+      same += 1;
+    } else if (samples.length < 20) {
+      samples.push({ executionId: exec.id, input, before, after, beforeMatched: exec.matched, afterMatched });
+    }
+  }
+  return { total: execs.length, same, changed: execs.length - same, samples };
 }
 
 export interface ListDecisionExecutionsQuery {

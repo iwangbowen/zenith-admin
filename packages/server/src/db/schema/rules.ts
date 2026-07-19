@@ -1,6 +1,7 @@
 import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, unique, text, index, jsonb } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { auditColumns, tenants, users } from './core';
+import { statusEnum } from './common';
 import { workflowCategories, workflowDefinitionStatusEnum } from './workflow';
 
 // ─── 规则中心：决策表 ────────────────────────────────────────────────────────────
@@ -23,6 +24,11 @@ export const ruleDecisionTables = pgTable('rule_decision_tables', {
   settings: jsonb('settings').notNull().default(sql`'{}'::jsonb`), // RuleDecisionTableSettings
   version: integer('version').default(1).notNull(),
   publishedAt: timestamp('published_at', { withTimezone: true }),
+  // 发布审批（四眼）：pending=待审批；批准/驳回后清空
+  reviewStatus: varchar('review_status', { length: 16 }),
+  reviewRequestedBy: integer('review_requested_by').references(() => users.id, { onDelete: 'set null' }),
+  reviewRequestedAt: timestamp('review_requested_at', { withTimezone: true }),
+  reviewComment: varchar('review_comment', { length: 255 }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -92,3 +98,57 @@ export const ruleDecisionExecutions = pgTable('rule_decision_executions', {
 export type RuleDecisionExecutionRow = typeof ruleDecisionExecutions.$inferSelect;
 
 export type NewRuleDecisionExecution = typeof ruleDecisionExecutions.$inferInsert;
+
+// ─── 决策流：多决策表顺序编排（DRD 简化版），步骤输出并入 scope 供后续步骤引用 ────
+export const ruleDecisionFlows = pgTable('rule_decision_flows', {
+  id: serial('id').primaryKey(),
+  key: varchar('key', { length: 64 }).notNull(),
+  name: varchar('name', { length: 64 }).notNull(),
+  description: text('description'),
+  status: workflowDefinitionStatusEnum('status').default('draft').notNull(),
+  steps: jsonb('steps').notNull().default(sql`'[]'::jsonb`),          // RuleFlowStep[]（编辑态）
+  publishedSteps: jsonb('published_steps'),                            // RuleFlowStep[]（发布快照，运行时执行）
+  version: integer('version').default(1).notNull(),
+  publishedAt: timestamp('published_at', { withTimezone: true }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [unique('rule_decision_flows_key_uniq').on(t.tenantId, t.key)]);
+
+export type RuleDecisionFlowRow = typeof ruleDecisionFlows.$inferSelect;
+
+export type NewRuleDecisionFlow = typeof ruleDecisionFlows.$inferInsert;
+
+// ─── 名单库：黑/白/灰名单 + 条目（支持过期时间），供风控/资格判定使用 ─────────────
+export const ruleLists = pgTable('rule_lists', {
+  id: serial('id').primaryKey(),
+  key: varchar('key', { length: 64 }).notNull(),
+  name: varchar('name', { length: 64 }).notNull(),
+  type: varchar('type', { length: 8 }).notNull().default('black'), // black | white | grey
+  description: text('description'),
+  status: statusEnum('status').notNull().default('enabled'),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [unique('rule_lists_key_uniq').on(t.tenantId, t.key)]);
+
+export type RuleListRow = typeof ruleLists.$inferSelect;
+
+export type NewRuleList = typeof ruleLists.$inferInsert;
+
+export const ruleListItems = pgTable('rule_list_items', {
+  id: serial('id').primaryKey(),
+  listId: integer('list_id').notNull().references(() => ruleLists.id, { onDelete: 'cascade' }),
+  value: varchar('value', { length: 128 }).notNull(),
+  label: varchar('label', { length: 64 }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  remark: varchar('remark', { length: 255 }),
+  createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [unique('rule_list_items_value_uniq').on(t.listId, t.value), index('rule_list_items_list_idx').on(t.listId)]);
+
+export type RuleListItemRow = typeof ruleListItems.$inferSelect;
+
+export type NewRuleListItem = typeof ruleListItems.$inferInsert;

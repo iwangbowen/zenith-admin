@@ -4,7 +4,7 @@ import { matchRuleCell } from '@zenith/shared';
 import { mockDecisionTables, getNextTableId, mockDecisionVersions, mockTestCases, getNextCaseId, mockExecutions, getNextExecId } from '@/mocks/data/decision-tables';
 import { mockDateTime } from '@/mocks/utils/date';
 
-function ok<T>(data: T) { return HttpResponse.json({ code: 0, message: 'ok', data }); }
+function ok<T>(data: T, message = 'ok') { return HttpResponse.json({ code: 0, message, data }); }
 function fail(message: string, code = 400) { return HttpResponse.json({ code, message, data: null }, { status: code }); }
 
 const get = (obj: Record<string, unknown>, path: string) => path.split('.').reduce<unknown>((o, k) => (o == null ? o : (o as Record<string, unknown>)[k]), obj);
@@ -75,6 +75,11 @@ function evaluate(table: RuleDecisionTable, input: Record<string, unknown>): Rul
   }
 }
 
+/** 供决策流 mock 复用的决策表求值（与后端引擎语义对齐） */
+export function evaluateMockDecisionTable(table: RuleDecisionTable, input: Record<string, unknown>): RuleEvaluateResult {
+  return evaluate(table, input);
+}
+
 /** 与后端 dirty 语义对齐：编辑态 vs 最新发布快照（name/hitPolicy/inputs/outputs/rules/settings） */
 function computeDirty(row: RuleDecisionTable): boolean {
   const latest = (mockDecisionVersions[row.id] ?? [])[0];
@@ -133,6 +138,69 @@ export const decisionTablesHandlers = [
       ? [{ type: 'coupon', id: null, name: '优惠券领取资格判定（内置消费方）', status: null }]
       : [];
     return ok(usages);
+  }),
+  http.get('/api/rules/decision-tables/:id/stats', ({ params, request }) => {
+    const r = mockDecisionTables.find((t) => t.id === Number(params.id));
+    if (!r) return fail('决策表不存在', 404);
+    const days = Number(new URL(request.url).searchParams.get('days')) || 30;
+    const execs = mockExecutions.filter((e) => e.tableId === r.id);
+    const total = execs.length;
+    const matched = execs.filter((e) => e.matched).length;
+    const byDayMap = new Map<string, { total: number; matched: number }>();
+    const rowHitMap = new Map<string, number>();
+    const sourceMap = new Map<string, number>();
+    for (const e of execs) {
+      const date = e.createdAt.slice(0, 10);
+      const day = byDayMap.get(date) ?? { total: 0, matched: 0 };
+      day.total += 1;
+      if (e.matched) day.matched += 1;
+      byDayMap.set(date, day);
+      for (const id of e.matchedRowIds) rowHitMap.set(id, (rowHitMap.get(id) ?? 0) + 1);
+      sourceMap.set(e.source, (sourceMap.get(e.source) ?? 0) + 1);
+    }
+    return ok({
+      days, total, matched, unmatched: total - matched,
+      byDay: [...byDayMap.entries()].map(([date, v]) => ({ date, ...v })).sort((a, b) => a.date.localeCompare(b.date)),
+      rowHits: [...rowHitMap.entries()].map(([rowId, count]) => ({ rowId, count })).sort((a, b) => b.count - a.count),
+      bySource: [...sourceMap.entries()].map(([source, count]) => ({ source, count })),
+    });
+  }),
+  http.post('/api/rules/decision-tables/:id/shadow-run', async ({ params, request }) => {
+    const r = mockDecisionTables.find((t) => t.id === Number(params.id));
+    if (!r) return fail('决策表不存在', 404);
+    const { limit } = (await request.json()) as { limit?: number };
+    const execs = mockExecutions.filter((e) => e.tableId === r.id).slice(0, limit ?? 100);
+    const samples: Array<{ executionId: number; input: Record<string, unknown>; before: Record<string, unknown>; after: Record<string, unknown>; beforeMatched: boolean; afterMatched: boolean }> = [];
+    let same = 0;
+    for (const e of execs) {
+      const res = evaluate(r, e.input);
+      const after = res.matched || res.usedFallback ? res.outputs : {};
+      const before = e.matched ? e.outputs : {};
+      if (JSON.stringify(before) === JSON.stringify(after) && e.matched === res.matched) same += 1;
+      else if (samples.length < 20) samples.push({ executionId: e.id, input: e.input, before: e.outputs, after, beforeMatched: e.matched, afterMatched: res.matched });
+    }
+    return ok({ total: execs.length, same, changed: execs.length - same, samples });
+  }),
+  http.post('/api/rules/decision-tables/:id/submit-review', ({ params }) => {
+    const r = mockDecisionTables.find((t) => t.id === Number(params.id));
+    if (!r) return fail('决策表不存在', 404);
+    if (r.reviewStatus === 'pending') return fail('已有待审批的发布申请');
+    r.reviewStatus = 'pending'; r.reviewRequestedBy = 1; r.reviewRequestedAt = mockDateTime(); r.reviewComment = null;
+    return ok(r, '已提交审批');
+  }),
+  http.post('/api/rules/decision-tables/:id/review', async ({ params, request }) => {
+    const r = mockDecisionTables.find((t) => t.id === Number(params.id));
+    if (!r) return fail('决策表不存在', 404);
+    if (r.reviewStatus !== 'pending') return fail('该决策表没有待审批的发布申请');
+    const { approve, comment } = (await request.json()) as { approve: boolean; comment?: string };
+    r.reviewStatus = null; r.reviewRequestedBy = null; r.reviewRequestedAt = null;
+    if (approve) {
+      (mockDecisionVersions[r.id] ??= []).unshift({ version: r.version, name: r.name, hitPolicy: r.hitPolicy, inputs: r.inputs, outputs: r.outputs, rules: r.rules, settings: r.settings ?? {}, publishedAt: mockDateTime() });
+      r.status = 'published'; r.publishedAt = mockDateTime(); r.version += 1; r.dirty = false; r.reviewComment = null;
+      return ok(r, '已批准并发布');
+    }
+    r.reviewComment = comment?.trim() || '发布申请已驳回';
+    return ok(r, '已驳回');
   }),
   http.get('/api/rules/decision-tables/:id/versions', ({ params }) => ok(mockDecisionVersions[Number(params.id)] ?? [])),
   http.get('/api/rules/decision-tables/:id/diff', ({ params, request }) => {

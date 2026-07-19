@@ -1,18 +1,20 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
+import { sensitiveRateLimit } from '../../middleware/rate-limit';
 import {
   PaginationQuery, jsonContent, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, IdParam, okBody, BatchIdsBody,
 } from '../../lib/openapi-schemas';
-import { DecisionTableDTO, DecisionTableVersionDTO, RuleEvaluateResultDTO, RuleVersionDiffDTO, RuleTestCaseDTO, RuleTestRunResultDTO, RuleExecutionDTO, RuleUsageDTO } from '../../lib/openapi-dtos';
-import { createDecisionTableSchema, updateDecisionTableSchema, createRuleTestCaseSchema, updateRuleTestCaseSchema, toggleDecisionTableSchema } from '@zenith/shared';
+import { DecisionTableDTO, DecisionTableVersionDTO, RuleEvaluateResultDTO, RuleVersionDiffDTO, RuleTestCaseDTO, RuleTestRunResultDTO, RuleExecutionDTO, RuleUsageDTO, RuleTableStatsDTO, RuleShadowRunResultDTO } from '../../lib/openapi-dtos';
+import { createDecisionTableSchema, updateDecisionTableSchema, createRuleTestCaseSchema, updateRuleTestCaseSchema, toggleDecisionTableSchema, reviewDecisionTableSchema } from '@zenith/shared';
 import {
   listDecisionTables, getDecisionTable, getDecisionTableBeforeAudit,
   createDecisionTable, updateDecisionTable, deleteDecisionTable, deleteDecisionTables,
   publishDecisionTable, listDecisionTableVersions, evaluateDecisionTableByKey, testEvaluateDecisionTable,
   diffDecisionTableVersions, rollbackDecisionTable, toggleDecisionTable, listDecisionTableUsages,
   listTestCases, createTestCase, updateTestCase, deleteTestCase, runTestCases, listDecisionExecutions,
+  getDecisionTableStats, shadowRunDecisionTable, submitDecisionTableReview, reviewDecisionTable,
 } from '../../services/platform/rules.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -193,6 +195,54 @@ const toggleRoute = defineOpenAPIRoute({
   },
 });
 
+const statsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}/stats', tags: ['DecisionTables'], summary: '命中分析（近 N 天执行流水聚合）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'rule:table:list' })] as const,
+    request: { params: IdParam, query: z.object({ days: z.coerce.number().int().min(1).max(365).default(30) }) },
+    responses: { ...commonErrorResponses, ...ok(RuleTableStatsDTO, 'ok') },
+  }),
+  handler: async (c) => { const { id } = c.req.valid('param'); return c.json(okBody(await getDecisionTableStats(id, c.req.valid('query').days)), 200); },
+});
+
+const shadowRunRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/shadow-run', tags: ['DecisionTables'], summary: '影子对比（重放最近执行输入到编辑态）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'rule:table:evaluate' })] as const,
+    request: { params: IdParam, body: { content: jsonContent(z.object({ limit: z.number().int().min(1).max(500).default(100) })), required: true } },
+    responses: { ...commonErrorResponses, ...ok(RuleShadowRunResultDTO, 'ok') },
+  }),
+  handler: async (c) => { const { id } = c.req.valid('param'); return c.json(okBody(await shadowRunDecisionTable(id, c.req.valid('json').limit)), 200); },
+});
+
+const submitReviewRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/submit-review', tags: ['DecisionTables'], summary: '申请发布（审批模式，先过发布门禁）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'rule:table:publish', audit: { description: '申请发布决策表', module: '规则中心' } })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(DecisionTableDTO, '已提交审批') },
+  }),
+  handler: async (c) => c.json(okBody(await submitDecisionTableReview(c.req.valid('param').id), '已提交审批'), 200),
+});
+
+const reviewRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/review', tags: ['DecisionTables'], summary: '审批发布（四眼：批准执行发布 / 驳回记录意见）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'rule:table:approve', audit: { description: '审批决策表发布', module: '规则中心' } })] as const,
+    request: { params: IdParam, body: { content: jsonContent(reviewDecisionTableSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(DecisionTableDTO, '审批完成') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const { approve, comment } = c.req.valid('json');
+    return c.json(okBody(await reviewDecisionTable(id, approve, comment), approve ? '已批准并发布' : '已驳回'), 200);
+  },
+});
+
 const testRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/{id}/test', tags: ['DecisionTables'], summary: '测试求值（编辑态）',
@@ -206,9 +256,9 @@ const testRoute = defineOpenAPIRoute({
 
 const evaluateRoute = defineOpenAPIRoute({
   route: createRoute({
-    method: 'post', path: '/evaluate', tags: ['DecisionTables'], summary: '按 key 求值（对外通用）',
+    method: 'post', path: '/evaluate', tags: ['DecisionTables'], summary: '按 key 求值（对外通用，支持 zat_ API Token 调用）',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'rule:table:evaluate' })] as const,
+    middleware: [authMiddleware, sensitiveRateLimit, guard({ permission: 'rule:table:evaluate' })] as const,
     request: { body: { content: jsonContent(z.object({ key: z.string().min(1), input: z.record(z.string(), z.unknown()).default({}) })), required: true } },
     responses: { ...commonErrorResponses, ...ok(RuleEvaluateResultDTO, 'ok') },
   }),
@@ -264,6 +314,6 @@ const executionsRoute = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await listDecisionExecutions(c.req.valid('query'))), 200),
 });
 
-router.openapiRoutes([listRoute, executionsRoute, getRoute, versionsRoute, diffRoute, rollbackRoute, usagesRoute, casesRoute, caseCreateRoute, caseRunRoute, caseUpdateRoute, caseDeleteRoute, createRouteDef, updateRoute, publishRoute, toggleRoute, testRoute, evaluateRoute, batchDeleteRoute, deleteRoute] as const);
+router.openapiRoutes([listRoute, executionsRoute, getRoute, versionsRoute, diffRoute, rollbackRoute, usagesRoute, statsRoute, shadowRunRoute, submitReviewRoute, reviewRoute, casesRoute, caseCreateRoute, caseRunRoute, caseUpdateRoute, caseDeleteRoute, createRouteDef, updateRoute, publishRoute, toggleRoute, testRoute, evaluateRoute, batchDeleteRoute, deleteRoute] as const);
 
 export default router;

@@ -4,7 +4,7 @@ import { Button, DatePicker, Input, InputNumber, Select, Space, Tag, Modal, Form
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Save, Search, Upload } from 'lucide-react';
-import type { RuleDecisionTable, RuleEvaluateResult, RuleTestRunResult, RuleHitPolicy, RuleTestCase, RuleUsageItem, RuleDecisionTableSettings } from '@zenith/shared';
+import type { RuleDecisionTable, RuleEvaluateResult, RuleTestRunResult, RuleHitPolicy, RuleTestCase, RuleUsageItem, RuleDecisionTableSettings, RuleShadowRunResult } from '@zenith/shared';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
@@ -22,15 +22,20 @@ import {
   useDeleteRuleDecisionTable,
   useDeleteRuleTestCase,
   usePublishRuleDecisionTable,
+  useReviewRuleTable,
   useRollbackRuleDecisionTable,
   useRuleDecisionTableList,
   useRuleExecutions,
+  useRulePublishApprovalEnabled,
+  useRuleTableStats,
   useRuleTestCases,
   useRuleVersionDiff,
   useRuleVersions,
   useRunRuleTestCases,
   useSaveRuleDecisionTable,
   useSaveRuleTestCase,
+  useShadowRunRuleTable,
+  useSubmitRuleTableReview,
   useTestRuleDecisionTable,
   useToggleRuleDecisionTable,
 } from '@/hooks/queries/rules';
@@ -139,6 +144,11 @@ export default function RuleTablesPage() {
   const [testExplanations, setTestExplanations] = useState<ReturnType<typeof explainDecisionRows>>([]);
   const [verRow, setVerRow] = useState<RuleDecisionTable | null>(null);
   const [diffVersion, setDiffVersion] = useState<number | null>(null);
+  const [diffTarget, setDiffTarget] = useState<number>(0);
+  const [statsRow, setStatsRow] = useState<RuleDecisionTable | null>(null);
+  const [statsDays, setStatsDays] = useState(30);
+  const [shadowRow, setShadowRow] = useState<RuleDecisionTable | null>(null);
+  const [shadowResult, setShadowResult] = useState<RuleShadowRunResult | null>(null);
   const [caseRow, setCaseRow] = useState<RuleDecisionTable | null>(null);
   const [editingCase, setEditingCase] = useState<RuleTestCase | null>(null);
   const [caseForm, setCaseForm] = useState<{ name: string; inputValues: Record<string, unknown>; expectedValues: Record<string, unknown> }>({ name: '', inputValues: {}, expectedValues: {} });
@@ -151,8 +161,10 @@ export default function RuleTablesPage() {
   const data = listQuery.data ?? null;
   const versionsQuery = useRuleVersions(verRow?.id, !!verRow);
   const versions = versionsQuery.data ?? [];
-  const diffQuery = useRuleVersionDiff(verRow?.id, diffVersion, !!verRow && diffVersion !== null);
+  const diffQuery = useRuleVersionDiff(verRow?.id, diffVersion, diffTarget, !!verRow && diffVersion !== null);
   const diff = diffQuery.data ?? null;
+  const statsQuery = useRuleTableStats(statsRow?.id, statsDays, !!statsRow);
+  const stats = statsQuery.data ?? null;
   const casesQuery = useRuleTestCases(caseRow?.id, !!caseRow);
   const cases = casesQuery.data ?? [];
   const execsQuery = useRuleExecutions({ tableId: execRow?.id, page: 1, pageSize: 50 }, !!execRow);
@@ -168,6 +180,12 @@ export default function RuleTablesPage() {
   const runTestMutation = useTestRuleDecisionTable();
   const runSingleCaseMutation = useTestRuleDecisionTable();
   const saveCurrentTestAsCaseMutation = useSaveRuleTestCase();
+  const shadowMutation = useShadowRunRuleTable();
+  const submitReviewMutation = useSubmitRuleTableReview();
+  const reviewMutation = useReviewRuleTable();
+  const approvalEnabledQuery = useRulePublishApprovalEnabled();
+  const approvalEnabled = approvalEnabledQuery.data ?? false;
+  const canApprove = hasPermission('rule:table:approve');
 
   const draftIssues = useMemo(() => inspectDecisionDraft(draft, editorHitPolicy), [draft, editorHitPolicy]);
   const draftErrors = draftIssues.filter((issue) => issue.severity === 'error');
@@ -307,10 +325,43 @@ export default function RuleTablesPage() {
       return;
     }
     const warnings = issues.filter((issue) => issue.severity === 'warning');
+    if (approvalEnabled) {
+      Modal.confirm({
+        title: `申请发布「${r.name}」？`,
+        content: <div><Text>已开启发布审批（四眼原则）：提交前将执行全部发布门禁，通过后由审批人批准生效。</Text>{warnings.length > 0 && <div style={{ marginTop: 8 }}>{renderIssueList(warnings, 6)}</div>}</div>,
+        onOk: async () => { await submitReviewMutation.mutateAsync(r.id); Toast.success('已提交审批'); },
+      });
+      return;
+    }
     Modal.confirm({
     title: `发布「${r.name}」？`, content: warnings.length ? <div><Text type="warning">规则体检有 {warnings.length} 项提醒，发布接口仍会执行用例门禁。</Text><div style={{ marginTop: 8 }}>{renderIssueList(warnings, 6)}</div></div> : '将生成版本快照并置为已发布',
     onOk: async () => { await publishMutation.mutateAsync(r.id); Toast.success('发布成功'); },
   }); };
+
+  const handleReview = (r: RuleDecisionTable, approve: boolean) => {
+    const commentRef = { current: '' };
+    Modal.confirm({
+      title: approve ? `批准并发布「${r.name}」？` : `驳回「${r.name}」的发布申请？`,
+      okButtonProps: approve ? undefined : { type: 'danger' },
+      content: (
+        <div style={{ display: 'grid', gap: 8 }}>
+          <Text type="tertiary" size="small">申请人：用户 #{r.reviewRequestedBy ?? '-'} · {r.reviewRequestedAt ?? '-'}</Text>
+          <Input placeholder={approve ? '审批意见（可选）' : '驳回原因'} onChange={(v) => { commentRef.current = v; }} />
+        </div>
+      ),
+      onOk: async () => {
+        await reviewMutation.mutateAsync({ id: r.id, approve, comment: commentRef.current });
+        Toast.success(approve ? '已批准并发布' : '已驳回');
+      },
+    });
+  };
+
+  const runShadow = async (r: RuleDecisionTable) => {
+    setShadowRow(r);
+    setShadowResult(null);
+    const res = await shadowMutation.mutateAsync({ id: r.id, limit: 100 });
+    if (res) setShadowResult(res);
+  };
   const renderUsageList = (usages: RuleUsageItem[]) => (
     <div style={{ display: 'grid', gap: 4, marginTop: 8 }}>
       {usages.map((u, i) => (
@@ -359,7 +410,7 @@ export default function RuleTablesPage() {
   };
   const openTest = (r: RuleDecisionTable) => { setTestRow(r); setTestForm({}); setTestScope({}); setTestResult(null); setTestExplanations([]); };
   const openVersions = (r: RuleDecisionTable) => {
-    setVerRow(r); setDiffVersion(null);
+    setVerRow(r); setDiffVersion(null); setDiffTarget(0);
   };
   const showDiff = (v: number) => {
     setDiffVersion(v);
@@ -630,7 +681,8 @@ export default function RuleTablesPage() {
     { title: '状态', dataIndex: 'status', width: 132, fixed: 'right', render: (s: string, r: RuleDecisionTable) => (
       <Space spacing={4} wrap>
         <Tag color={STATUS[s]?.color as never}>{STATUS[s]?.text ?? s}</Tag>
-        {r.dirty && s === 'published' && <Tag size="small" color="orange">改动未发布</Tag>}
+        {r.reviewStatus === 'pending' && <Tag size="small" color="blue">待审批</Tag>}
+        {r.dirty && s === 'published' && r.reviewStatus !== 'pending' && <Tag size="small" color="orange">改动未发布</Tag>}
       </Space>
     ) },
     createdAtColumn,
@@ -640,9 +692,13 @@ export default function RuleTablesPage() {
         { key: 'test', label: '测试', onClick: () => openTest(r) },
         { key: 'versions', label: '版本', onClick: () => openVersions(r) },
         { key: 'cases', label: '用例', onClick: () => openCases(r) },
+        { key: 'stats', label: '分析', onClick: () => { setStatsDays(30); setStatsRow(r); } },
+        { key: 'shadow', label: '影子对比', onClick: () => void runShadow(r) },
         { key: 'audit', label: '审计', onClick: () => openExec(r) },
         { key: 'edit', label: '编辑', hidden: !canEdit, onClick: () => openEdit(r) },
-        { key: 'publish', label: '发布', hidden: !canPublish || r.status === 'disabled', onClick: () => handlePublish(r) },
+        { key: 'publish', label: approvalEnabled ? '申请发布' : '发布', hidden: !canPublish || r.status === 'disabled' || r.reviewStatus === 'pending', onClick: () => handlePublish(r) },
+        { key: 'approve', label: '批准发布', hidden: !canApprove || r.reviewStatus !== 'pending', onClick: () => handleReview(r, true) },
+        { key: 'reject', label: '驳回申请', danger: true, hidden: !canApprove || r.reviewStatus !== 'pending', onClick: () => handleReview(r, false) },
         { key: 'duplicate', label: '复制', hidden: !canCreate, onClick: () => duplicateTable(r) },
         { key: 'export-json', label: '导出 JSON', onClick: () => exportTable(r) },
         { key: 'export-csv', label: '导出 CSV', onClick: () => exportTableCsv(r) },
@@ -756,19 +812,38 @@ export default function RuleTablesPage() {
       </AppModal>
 
       <SideSheet title={`版本历史 · ${verRow?.name ?? ''}`} visible={!!verRow} onCancel={() => setVerRow(null)} width={480}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+          <Text type="tertiary" size="small">对比</Text>
+          <Select
+            size="small"
+            placeholder="基准版本"
+            value={diffVersion ?? undefined}
+            onChange={(v) => setDiffVersion(v as number)}
+            optionList={versions.map((v) => ({ value: v.version, label: `v${v.version}` }))}
+            style={{ width: 110 }}
+          />
+          <Text type="tertiary" size="small">→</Text>
+          <Select
+            size="small"
+            value={diffTarget}
+            onChange={(v) => setDiffTarget(v as number)}
+            optionList={[{ value: 0, label: '当前编辑态' }, ...versions.map((v) => ({ value: v.version, label: `v${v.version}` }))]}
+            style={{ width: 130 }}
+          />
+        </div>
         <List
           dataSource={versions}
           emptyContent={<Text type="tertiary">暂无已发布版本</Text>}
           renderItem={(v) => (
             <List.Item
               main={<><Text strong>v{v.version}</Text> <Text type="tertiary" size="small">{v.publishedAt}</Text></>}
-              extra={<><Button size="small" theme="borderless" onClick={() => showDiff(v.version)}>对比当前</Button><Button size="small" theme="borderless" onClick={() => rollback(v.version)}>回滚</Button></>}
+              extra={<><Button size="small" theme="borderless" onClick={() => { setDiffTarget(0); showDiff(v.version); }}>对比当前</Button><Button size="small" theme="borderless" onClick={() => rollback(v.version)}>回滚</Button></>}
             />
           )}
         />
         {diff && (
           <pre style={{ marginTop: 12, background: 'var(--semi-color-fill-0)', padding: 12, borderRadius: 'var(--semi-border-radius-medium)', whiteSpace: 'pre-wrap' }}>
-            {`v${diff.from} → 当前\n` + (diff.changes.length ? diff.changes.map((c) => `[${c.op}] ${c.kind} ${c.ref}: ${c.detail}`).join('\n') : '无差异')}
+            {`v${diff.from} → ${diff.to === 0 ? '当前' : `v${diff.to}`}\n` + (diff.changes.length ? diff.changes.map((c) => `[${c.op}] ${c.kind} ${c.ref}: ${c.detail}`).join('\n') : '无差异')}
           </pre>
         )}
       </SideSheet>
@@ -842,6 +917,118 @@ export default function RuleTablesPage() {
             />
           )}
         />
+      </SideSheet>
+
+      <SideSheet title={`命中分析 · ${statsRow?.name ?? ''}`} visible={!!statsRow} onCancel={() => setStatsRow(null)} width={620}>
+        <Space spacing={8} align="center" style={{ marginBottom: 12 }}>
+          <Text type="tertiary" size="small">统计周期</Text>
+          <Select size="small" value={statsDays} onChange={(v) => setStatsDays(Number(v))} optionList={[{ value: 7, label: '近 7 天' }, { value: 30, label: '近 30 天' }, { value: 90, label: '近 90 天' }]} style={{ width: 110 }} />
+        </Space>
+        {stats && (
+          <div style={{ display: 'grid', gap: 16 }}>
+            <Space spacing={12} wrap>
+              <Tag size="large">求值 {stats.total}</Tag>
+              <Tag size="large" color="green">命中 {stats.matched}</Tag>
+              <Tag size="large" color="red">未命中 {stats.unmatched}</Tag>
+              <Tag size="large" color={stats.total > 0 && stats.unmatched / stats.total > 0.2 ? 'orange' : 'blue'}>
+                命中率 {stats.total > 0 ? Math.round((stats.matched / stats.total) * 100) : 0}%
+              </Tag>
+            </Space>
+            <div>
+              <Text strong size="small">规则行命中分布</Text>
+              {stats.rowHits.length === 0 ? <Text type="tertiary" size="small" style={{ display: 'block', marginTop: 6 }}>暂无命中数据</Text> : (
+                <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
+                  {stats.rowHits.map((h) => {
+                    const max = stats.rowHits[0]?.count || 1;
+                    const rowLabel = statsRow?.rules.find((x) => x.id === h.rowId)?.label;
+                    return (
+                      <div key={h.rowId} style={{ display: 'grid', gridTemplateColumns: '150px 1fr 56px', gap: 8, alignItems: 'center' }}>
+                        <Text size="small" ellipsis={{ showTooltip: true }}>{rowLabel || h.rowId}</Text>
+                        <div style={{ height: 10, background: 'var(--semi-color-fill-0)', borderRadius: 'var(--semi-border-radius-small)', overflow: 'hidden' }}>
+                          <div style={{ width: `${Math.max(4, Math.round((h.count / max) * 100))}%`, height: '100%', background: 'var(--semi-color-primary)' }} />
+                        </div>
+                        <Text type="tertiary" size="small">{h.count}</Text>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {statsRow && stats.rowHits.length > 0 && (() => {
+                const hitIds = new Set(stats.rowHits.map((h) => h.rowId));
+                const deadRows = statsRow.rules.filter((x) => !hitIds.has(x.id));
+                return deadRows.length > 0
+                  ? <Text type="warning" size="small" style={{ display: 'block', marginTop: 8 }}>周期内零命中行：{deadRows.map((x, i) => x.label || `行${i + 1}(${x.id})`).join('、')}（可评估精简）</Text>
+                  : null;
+              })()}
+            </div>
+            <div>
+              <Text strong size="small">按日趋势</Text>
+              {stats.byDay.length === 0 ? <Text type="tertiary" size="small" style={{ display: 'block', marginTop: 6 }}>暂无数据</Text> : (
+                <div style={{ display: 'grid', gap: 4, marginTop: 8 }}>
+                  {stats.byDay.map((d) => {
+                    const max = Math.max(...stats.byDay.map((x) => x.total), 1);
+                    return (
+                      <div key={d.date} style={{ display: 'grid', gridTemplateColumns: '90px 1fr 90px', gap: 8, alignItems: 'center' }}>
+                        <Text type="tertiary" size="small">{d.date}</Text>
+                        <div style={{ height: 8, background: 'var(--semi-color-fill-0)', borderRadius: 'var(--semi-border-radius-small)', overflow: 'hidden' }}>
+                          <div style={{ width: `${Math.round((d.total / max) * 100)}%`, height: '100%', background: 'var(--semi-color-success)' }} />
+                        </div>
+                        <Text type="tertiary" size="small">{d.matched}/{d.total} 命中</Text>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div>
+              <Text strong size="small">来源分布</Text>
+              <Space spacing={8} style={{ marginTop: 6 }} wrap>
+                {stats.bySource.length === 0 ? <Text type="tertiary" size="small">暂无数据</Text> : stats.bySource.map((s) => (
+                  <Tag key={s.source} size="small">{s.source}: {s.count}</Tag>
+                ))}
+              </Space>
+            </div>
+          </div>
+        )}
+      </SideSheet>
+
+      <SideSheet title={`影子对比 · ${shadowRow?.name ?? ''}`} visible={!!shadowRow} onCancel={() => setShadowRow(null)} width={640}>
+        <Text type="tertiary" size="small">以最近执行记录的输入重放当前编辑态，评估「若现在发布」的行为差异（不影响线上）。</Text>
+        {shadowMutation.isPending && <Text type="tertiary" size="small" style={{ display: 'block', marginTop: 12 }}>正在重放…</Text>}
+        {shadowResult && (
+          <div style={{ marginTop: 12, display: 'grid', gap: 12 }}>
+            <Space spacing={8}>
+              <Tag size="large">重放 {shadowResult.total}</Tag>
+              <Tag size="large" color="green">一致 {shadowResult.same}</Tag>
+              <Tag size="large" color={shadowResult.changed > 0 ? 'red' : 'green'}>差异 {shadowResult.changed}</Tag>
+            </Space>
+            {shadowResult.total === 0 && <Text type="tertiary" size="small">暂无历史执行记录可重放，可先在线上运行一段时间或手动测试后再对比。</Text>}
+            {shadowResult.changed > 0 && (
+              <>
+                <Text strong size="small">差异样本（最多 20 条）</Text>
+                <List
+                  dataSource={shadowResult.samples}
+                  renderItem={(s) => (
+                    <List.Item
+                      main={(
+                        <div style={{ display: 'grid', gap: 4 }}>
+                          <Space spacing={8}>
+                            <Text type="tertiary" size="small">执行 #{s.executionId}</Text>
+                            <Tag size="small" color={s.beforeMatched ? 'green' : 'grey'}>线上{s.beforeMatched ? '命中' : '未命中'}</Tag>
+                            <Tag size="small" color={s.afterMatched ? 'green' : 'grey'}>编辑态{s.afterMatched ? '命中' : '未命中'}</Tag>
+                          </Space>
+                          <Text size="small" type="tertiary">in: {sample(s.input)}</Text>
+                          <Text size="small">线上: {sample(s.before)}</Text>
+                          <Text size="small" type="danger">编辑态: {sample(s.after)}</Text>
+                        </div>
+                      )}
+                    />
+                  )}
+                />
+              </>
+            )}
+          </div>
+        )}
       </SideSheet>
     </div>
   );

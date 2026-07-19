@@ -512,6 +512,13 @@
       "when": 1784427986292,
       "tag": "0072_daffy_talos",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1784449789486,
+      "tag": "0073_robust_ultragirl",
+      "breakpoints": true
     }
   ]
 }
