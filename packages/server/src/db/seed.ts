@@ -667,6 +667,16 @@ async function seedRest() {
       ({ id, name, description, initiatorScopeType, flowData, formType, customForm, status, version, tenantId })),
   ).onConflictDoNothing({ target: workflowDefinitions.id });
   await db.execute(sql`SELECT setval('workflow_definitions_id_seq', GREATEST((SELECT MAX(id) FROM workflow_definitions), 1))`);
+  // 升级库场景：种子 id 被既有定义占用时按名称查缺补插（自增 id）
+  for (const def of SEED_WORKFLOW_DEFINITIONS) {
+    const [existing] = await db.select({ id: workflowDefinitions.id }).from(workflowDefinitions)
+      .where(and(eq(workflowDefinitions.name, def.name), eq(workflowDefinitions.formType, def.formType)))
+      .limit(1);
+    if (!existing) {
+      const { id: _seedId, ...rest } = def;
+      await db.insert(workflowDefinitions).values(rest);
+    }
+  }
   logger.info('  ✔ Workflow definitions seeded (onConflictDoNothing)');
 
   // ── 演示会员（手机号 13800138000 / 密码 123456）────────────────────────

@@ -1837,6 +1837,30 @@ export const SEED_WORKFLOW_DEFINITIONS = [
     version: 1,
     tenantId: null,
   },
+  {
+    id: 2,
+    name: 'CMS 内容审核',
+    description: 'CMS 站点开启工作流审核模式后，内容提交审核时自动发起本流程；审批通过自动发布并刷新静态页，驳回回写驳回状态',
+    initiatorScopeType: 'all' as const,
+    flowData: buildLinearFlow(
+      [{ key: 'approve_editor', name: '主编审核', props: { assigneeType: 'user', assigneeIds: [1] } }],
+      TEMPLATE_SETTINGS,
+    ),
+    formType: 'external' as const,
+    customForm: {
+      createComponent: '',
+      viewComponent: 'cms/ContentApprovalView',
+      icon: 'FileCheck',
+      variables: [
+        { key: 'siteName', label: '所属站点', type: 'text' as const },
+        { key: 'channelName', label: '所属栏目', type: 'text' as const },
+        { key: 'contentTitle', label: '内容标题', type: 'text' as const },
+      ],
+    },
+    status: 'published' as const,
+    version: 1,
+    tenantId: null,
+  },
 ];
 
 // ─── 标签 ─────────────────────────────────────────────────────────────────────

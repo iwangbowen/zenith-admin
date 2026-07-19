@@ -16,6 +16,7 @@ import {
   useCmsSiteList, useCmsThemes, useSaveCmsSite, useDeleteCmsSite, cmsSiteKeys,
   useCmsSiteUsers, useSetCmsSiteUsers, useEnableSiteAnalytics,
 } from '@/hooks/queries/cms';
+import { useWorkflowDefinitionList } from '@/hooks/queries/workflow-definitions';
 import { CMS_STATIC_MODE_LABELS, CMS_STATIC_MODES } from '@zenith/shared';
 import type { CmsSite } from '@zenith/shared';
 import { cmsPreviewUrl } from './CmsSiteSelect';
@@ -57,6 +58,8 @@ export default function SitesPage() {
   const siteUsersQuery = useCmsSiteUsers(usersModalSite?.id, !!usersModalSite);
   const setSiteUsersMutation = useSetCmsSiteUsers();
   const enableAnalyticsMutation = useEnableSiteAnalytics();
+  const { data: defsPage } = useWorkflowDefinitionList({ page: 1, pageSize: 100, status: 'published' });
+  const publishedDefs = defsPage?.list;
   const { data: allUsers } = useAllUsers({ enabled: !!usersModalSite });
   const siteUserIds = siteUsersQuery.data?.userIds;
   const usersInitialized = useRef(false);
@@ -127,6 +130,8 @@ export default function SitesPage() {
         indexNowKey: String((editingRecord.settings as Record<string, unknown>)?.indexNowKey ?? ''),
         themePrimary: String((editingRecord.settings as Record<string, unknown>)?.themePrimary ?? ''),
         themeDark: String((editingRecord.settings as Record<string, unknown>)?.themeDark ?? 'light'),
+        auditMode: String((editingRecord.settings as Record<string, unknown>)?.auditMode ?? 'simple'),
+        auditWorkflowDefinitionId: (editingRecord.settings as Record<string, unknown>)?.auditWorkflowDefinitionId as number | undefined,
         imageMaxWidth: Number((editingRecord.settings as Record<string, unknown>)?.imageMaxWidth ?? 1600),
         watermarkEnabled: (editingRecord.settings as Record<string, unknown>)?.watermarkEnabled === true,
         watermarkText: String((editingRecord.settings as Record<string, unknown>)?.watermarkText ?? ''),
@@ -138,7 +143,7 @@ export default function SitesPage() {
     : {
         theme: 'default', staticMode: 'hybrid', status: 'enabled', isDefault: false, aliasDomains: [],
         themeDark: 'light', imageMaxWidth: 1600, watermarkEnabled: false, watermarkPosition: 'southeast',
-        watermarkOpacity: 45, thumbEnabled: false, thumbWidth: 400,
+        watermarkOpacity: 45, thumbEnabled: false, thumbWidth: 400, auditMode: 'simple',
       };
 
   async function handleModalOk() {
@@ -153,6 +158,7 @@ export default function SitesPage() {
     const {
       baiduPushToken, indexNowKey, themePrimary, themeDark,
       imageMaxWidth, watermarkEnabled, watermarkText, watermarkPosition, watermarkOpacity, thumbEnabled, thumbWidth,
+      auditMode, auditWorkflowDefinitionId,
       ...rest
     } = values;
     rest.settings = {
@@ -168,6 +174,8 @@ export default function SitesPage() {
       watermarkOpacity: Number(watermarkOpacity ?? 45),
       thumbEnabled: thumbEnabled === true,
       thumbWidth: Number(thumbWidth ?? 400),
+      auditMode: auditMode ?? 'simple',
+      auditWorkflowDefinitionId: auditWorkflowDefinitionId ?? null,
     };
     await saveMutation.mutateAsync({ id: editingRecord?.id, values: rest });
     Toast.success(editingRecord ? '更新成功' : '创建成功');
@@ -397,6 +405,22 @@ export default function SitesPage() {
               </Col>
               <Col span={12}>
                 <Form.Input field="indexNowKey" label="IndexNow Key" placeholder="Bing 等引擎；key 文件自动托管" />
+              </Col>
+            </Row>
+          </Form.Section>
+          <Form.Section text="内容审核">
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Select field="auditMode" label="审核方式" style={{ width: '100%' }}
+                  optionList={[
+                    { value: 'simple', label: '简单审核（审核 Tab 通过/驳回）' },
+                    { value: 'workflow', label: '工作流审核（提交后走审批流程）' },
+                  ]} />
+              </Col>
+              <Col span={12}>
+                <Form.Select field="auditWorkflowDefinitionId" label="审核流程" style={{ width: '100%' }} showClear
+                  placeholder="留空使用「CMS 内容审核」流程"
+                  optionList={(publishedDefs ?? []).map((d) => ({ value: d.id, label: d.name }))} />
               </Col>
             </Row>
           </Form.Section>

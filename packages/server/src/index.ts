@@ -272,6 +272,7 @@ import { registerContractSubscribers } from './services/payment/payment-contract
 import { registerCouponPaymentSubscribers } from './services/payment/payment-coupon.service';
 import { registerWebhookSubscribers } from './services/payment/payment-webhook.service';
 import { registerBizLeaveSubscribers } from './services/biz-demo/biz-leave-subscribers';
+import { registerCmsWorkflowSubscribers } from './services/cms/cms-workflow.service';
 import { registerBizPayDemoSubscribers } from './services/payment/biz-pay-demo-subscribers';
 import { registerLedgerSubscribers } from './services/payment/payment-ledger.service';
 import { registerFeeSubscribers } from './services/payment/payment-fee.service';
@@ -752,6 +753,7 @@ registerCouponPaymentSubscribers();
 registerWebhookSubscribers();
 registerBizLeaveSubscribers();
 registerBizPayDemoSubscribers();
+registerCmsWorkflowSubscribers(); // CMS 内容工作流审核（通过→发布+静态化，驳回/撤回→回写状态）
 registerLedgerSubscribers();
 registerFeeSubscribers();
 registerSharingSubscribers();

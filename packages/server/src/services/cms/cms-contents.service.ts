@@ -1,7 +1,7 @@
 import { eq, asc, desc, and, or, like, inArray, isNull, isNotNull, ne, lt, gt, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import { cmsContents, cmsContentTags, cmsTags } from '../../db/schema';
+import { cmsContents, cmsContentTags, cmsTags, cmsChannels } from '../../db/schema';
 import type { CmsContentRow, CmsTagRow } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
@@ -11,7 +11,8 @@ import { buildSearchVector } from './cms-search.service';
 import { listCmsModelFields } from './cms-models.service';
 import { ensureCmsChannelExists } from './cms-channels.service';
 import { snapshotContentVersion, restoreContentVersion } from './cms-versions.service';
-import { assertSiteAccess } from './cms-sites.service';
+import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
+import { isWorkflowAuditEnabled, startCmsContentWorkflow, assertNoActiveContentWorkflow } from './cms-workflow.service';
 import type { CreateCmsContentInput, UpdateCmsContentInput, CmsContentStatus } from '@zenith/shared';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
@@ -261,18 +262,44 @@ async function transitionStatus(id: number, action: keyof typeof STATUS_TRANSITI
   return getCmsContent(id);
 }
 
-/** 提交审核 */
+/** 提交审核：站点开启工作流审核模式时自动发起审核流程 */
 export async function submitCmsContent(id: number) {
-  return transitionStatus(id, 'submit', { status: 'pending', rejectReason: null });
+  const current = await ensureCmsContentExists(id);
+  await assertSiteAccess(current.siteId);
+  const site = await ensureCmsSiteExists(current.siteId);
+  const settings = (site.settings ?? {}) as Record<string, unknown>;
+  const result = await transitionStatus(id, 'submit', { status: 'pending', rejectReason: null });
+  if (isWorkflowAuditEnabled(settings)) {
+    try {
+      const channel = await db.query.cmsChannels.findFirst({
+        where: eq(cmsChannels.id, current.channelId),
+        columns: { name: true },
+      });
+      await startCmsContentWorkflow({
+        contentId: id,
+        title: current.title,
+        siteName: site.name,
+        channelName: channel?.name ?? '',
+        settings,
+      });
+    } catch (err) {
+      // 流程发起失败回退待审状态，避免内容卡在 pending 无人处理
+      await db.update(cmsContents).set({ status: current.status }).where(eq(cmsContents.id, id));
+      throw err;
+    }
+  }
+  return result;
 }
 
-/** 发布（直接发布或审核通过） */
-export async function publishCmsContent(id: number) {
+/** 发布（直接发布或审核通过）；工作流审核期间禁止手动发布 */
+export async function publishCmsContent(id: number, opts?: { fromWorkflow?: boolean }) {
+  if (!opts?.fromWorkflow) await assertNoActiveContentWorkflow(id);
   return transitionStatus(id, 'publish', { status: 'published', publishedAt: new Date(), rejectReason: null });
 }
 
-/** 驳回 */
-export async function rejectCmsContent(id: number, reason: string) {
+/** 驳回；工作流审核期间禁止手动驳回 */
+export async function rejectCmsContent(id: number, reason: string, opts?: { fromWorkflow?: boolean }) {
+  if (!opts?.fromWorkflow) await assertNoActiveContentWorkflow(id);
   return transitionStatus(id, 'reject', { status: 'rejected', rejectReason: reason });
 }
 
