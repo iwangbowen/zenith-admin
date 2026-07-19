@@ -100,7 +100,7 @@ export function createCmsFrontPublicRoutes(): Hono {
 
   // ─── 浏览计数 beacon（静态页 sendBeacon 上报；同 IP+内容 60s 去重防刷）────────
   app.post('/view', async (c) => {
-    let contentId = 0;
+    let contentId: number;
     try {
       const body = await c.req.json<{ contentId?: number }>();
       contentId = Number(body?.contentId) || 0;
