@@ -148,8 +148,8 @@ function AdsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
     { title: '广告名称', dataIndex: 'name', width: 180 },
     { title: '广告位', dataIndex: 'slotName', width: 140 },
     { title: '跳转地址', dataIndex: 'linkUrl', width: 220, render: (v: string | null) => v ?? '-' },
-    { title: '开始时间', dataIndex: 'startAt', width: 170, render: (v: string | null) => v ?? '不限' },
-    { title: '结束时间', dataIndex: 'endAt', width: 170, render: (v: string | null) => v ?? '不限' },
+    { title: '开始时间', dataIndex: 'startAt', width: 180, render: (v: string | null) => v ?? '不限' },
+    { title: '结束时间', dataIndex: 'endAt', width: 180, render: (v: string | null) => v ?? '不限' },
     { title: '排序', dataIndex: 'sort', width: 70 },
     {
       title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
@@ -197,7 +197,7 @@ function AdsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
         rowKey="id"
         size="small"
         empty="暂无广告"
-        scroll={{ x: 1190 }}
+        scroll={{ x: 1210 }}
         onRefresh={() => void listQuery.refetch()}
         refreshLoading={listQuery.isFetching}
         pagination={buildPagination(listQuery.data?.total ?? 0)}

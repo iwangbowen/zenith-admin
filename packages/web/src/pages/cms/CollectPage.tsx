@@ -144,7 +144,7 @@ export default function CollectPage() {
         </span>
       ),
     },
-    { title: '最近执行', dataIndex: 'lastRunAt', width: 150, render: (v: string | null) => v ?? '-' },
+    { title: '最近执行', dataIndex: 'lastRunAt', width: 180, render: (v: string | null) => v ?? '-' },
     {
       title: '状态',
       dataIndex: 'status',
@@ -205,7 +205,7 @@ export default function CollectPage() {
       render: (v: CmsCollectItem['status']) => <Tag size="small" color={ITEM_STATUS_META[v].color}>{ITEM_STATUS_META[v].label}</Tag>,
     },
     { title: '错误', dataIndex: 'error', width: 200, render: (v: string | null) => v ?? '-' },
-    { title: '采集时间', dataIndex: 'createdAt', width: 170 },
+    { title: '采集时间', dataIndex: 'createdAt', width: 180 },
   ];
 
   return (
@@ -232,7 +232,7 @@ export default function CollectPage() {
         dataSource={listQuery.data?.list ?? []}
         rowKey="id"
         loading={listQuery.isFetching}
-        scroll={{ x: 1310 }}
+        scroll={{ x: 1340 }}
         pagination={buildPagination(listQuery.data?.total ?? 0)}
         onRefresh={() => void listQuery.refetch()}
         refreshLoading={listQuery.isFetching}

@@ -34,8 +34,8 @@ export default function StaticBuildPage() {
       width: 280,
       render: (_: unknown, record) => <AsyncTaskProgress task={record} />,
     },
-    { title: '提交时间', dataIndex: 'createdAt', width: 170 },
-    { title: '完成时间', dataIndex: 'finishedAt', width: 170, render: (v: string | null) => v ?? '-' },
+    { title: '提交时间', dataIndex: 'createdAt', width: 180 },
+    { title: '完成时间', dataIndex: 'finishedAt', width: 180, render: (v: string | null) => v ?? '-' },
   ];
 
   return (
