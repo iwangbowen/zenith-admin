@@ -599,6 +599,8 @@ export async function getDecisionTableStats(id: number, days = 30): Promise<Rule
   await flushExecutionQueue();
   const span = Number.isFinite(days) && days > 0 ? Math.min(days, 365) : 30;
   const cutoff = new Date(Date.now() - span * 24 * 60 * 60 * 1000);
+  // 原生 SQL 无列类型编码器，Date 参数无法被驱动序列化（ERR_INVALID_ARG_TYPE），改绑格式化时间串再显式 cast
+  const cutoffText = formatDateTime(cutoff);
   const where = and(eq(ruleDecisionExecutions.tableId, row.id), gte(ruleDecisionExecutions.createdAt, cutoff));
   const [totals, byDay, rowHits, bySource] = await Promise.all([
     db.select({
@@ -615,7 +617,7 @@ export async function getDecisionTableStats(id: number, days = 30): Promise<Rule
     db.execute(sql`
       SELECT elem AS row_id, count(*)::int AS cnt
       FROM ${ruleDecisionExecutions}, jsonb_array_elements_text(${ruleDecisionExecutions.matchedRowIds}) AS elem
-      WHERE ${ruleDecisionExecutions.tableId} = ${row.id} AND ${ruleDecisionExecutions.createdAt} >= ${cutoff}
+      WHERE ${ruleDecisionExecutions.tableId} = ${row.id} AND ${ruleDecisionExecutions.createdAt} >= ${cutoffText}::timestamp
       GROUP BY elem ORDER BY cnt DESC LIMIT 50
     `),
     db.select({
