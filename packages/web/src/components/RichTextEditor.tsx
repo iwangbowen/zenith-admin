@@ -13,6 +13,8 @@ interface RichTextEditorProps {
   height?: number;
   disableFullscreen?: boolean;
   readOnly?: boolean;
+  /** 图片上传接口（默认通用文件上传；CMS 等场景可指向带处理管道的专用接口） */
+  uploadServer?: string;
 }
 
 export default function RichTextEditor({
@@ -22,6 +24,7 @@ export default function RichTextEditor({
   height = 320,
   disableFullscreen = false,
   readOnly = false,
+  uploadServer,
 }: Readonly<RichTextEditorProps>) {
   const [editor, setEditor] = useState<IDomEditor | null>(null);
 
@@ -58,7 +61,7 @@ export default function RichTextEditor({
     },
     MENU_CONF: {
       uploadImage: {
-        server: `${appConfig.apiBaseUrl}/api/files/upload`,
+        server: uploadServer ?? `${appConfig.apiBaseUrl}/api/files/upload`,
         fieldName: 'file',
         headers: {
           Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}`,

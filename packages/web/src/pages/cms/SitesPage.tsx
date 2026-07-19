@@ -125,8 +125,21 @@ export default function SitesPage() {
         remark: editingRecord.remark ?? '',
         baiduPushToken: String((editingRecord.settings as Record<string, unknown>)?.baiduPushToken ?? ''),
         indexNowKey: String((editingRecord.settings as Record<string, unknown>)?.indexNowKey ?? ''),
+        themePrimary: String((editingRecord.settings as Record<string, unknown>)?.themePrimary ?? ''),
+        themeDark: String((editingRecord.settings as Record<string, unknown>)?.themeDark ?? 'light'),
+        imageMaxWidth: Number((editingRecord.settings as Record<string, unknown>)?.imageMaxWidth ?? 1600),
+        watermarkEnabled: (editingRecord.settings as Record<string, unknown>)?.watermarkEnabled === true,
+        watermarkText: String((editingRecord.settings as Record<string, unknown>)?.watermarkText ?? ''),
+        watermarkPosition: String((editingRecord.settings as Record<string, unknown>)?.watermarkPosition ?? 'southeast'),
+        watermarkOpacity: Number((editingRecord.settings as Record<string, unknown>)?.watermarkOpacity ?? 45),
+        thumbEnabled: (editingRecord.settings as Record<string, unknown>)?.thumbEnabled === true,
+        thumbWidth: Number((editingRecord.settings as Record<string, unknown>)?.thumbWidth ?? 400),
       }
-    : { theme: 'default', staticMode: 'hybrid', status: 'enabled', isDefault: false, aliasDomains: [] };
+    : {
+        theme: 'default', staticMode: 'hybrid', status: 'enabled', isDefault: false, aliasDomains: [],
+        themeDark: 'light', imageMaxWidth: 1600, watermarkEnabled: false, watermarkPosition: 'southeast',
+        watermarkOpacity: 45, thumbEnabled: false, thumbWidth: 400,
+      };
 
   async function handleModalOk() {
     let values: Record<string, unknown>;
@@ -136,12 +149,25 @@ export default function SitesPage() {
       throw new Error('validation');
     }
     if (!values.domain) values.domain = null;
-    // 推送凭证并入 settings JSONB（保留既有 settings 键）
-    const { baiduPushToken, indexNowKey, ...rest } = values;
+    // 推送凭证/主题参数/图片处理并入 settings JSONB（保留既有 settings 键）
+    const {
+      baiduPushToken, indexNowKey, themePrimary, themeDark,
+      imageMaxWidth, watermarkEnabled, watermarkText, watermarkPosition, watermarkOpacity, thumbEnabled, thumbWidth,
+      ...rest
+    } = values;
     rest.settings = {
       ...(editingRecord?.settings ?? {}),
       baiduPushToken: String(baiduPushToken ?? '').trim(),
       indexNowKey: String(indexNowKey ?? '').trim(),
+      themePrimary: String(themePrimary ?? '').trim(),
+      themeDark: themeDark ?? 'light',
+      imageMaxWidth: Number(imageMaxWidth ?? 1600),
+      watermarkEnabled: watermarkEnabled === true,
+      watermarkText: String(watermarkText ?? '').trim(),
+      watermarkPosition: watermarkPosition ?? 'southeast',
+      watermarkOpacity: Number(watermarkOpacity ?? 45),
+      thumbEnabled: thumbEnabled === true,
+      thumbWidth: Number(thumbWidth ?? 400),
     };
     await saveMutation.mutateAsync({ id: editingRecord?.id, values: rest });
     Toast.success(editingRecord ? '更新成功' : '创建成功');
@@ -371,6 +397,52 @@ export default function SitesPage() {
               </Col>
               <Col span={12}>
                 <Form.Input field="indexNowKey" label="IndexNow Key" placeholder="Bing 等引擎；key 文件自动托管" />
+              </Col>
+            </Row>
+          </Form.Section>
+          <Form.Section text="主题参数">
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Input field="themePrimary" label="主题色" placeholder="如 #1f6feb，留空用主题默认" />
+              </Col>
+              <Col span={12}>
+                <Form.Select field="themeDark" label="暗色模式" style={{ width: '100%' }}
+                  optionList={[
+                    { value: 'light', label: '仅浅色' },
+                    { value: 'auto', label: '跟随系统（带切换按钮）' },
+                    { value: 'dark', label: '支持切换（带切换按钮）' },
+                  ]} />
+              </Col>
+            </Row>
+          </Form.Section>
+          <Form.Section text="图片处理（编辑器/封面上传时生效）">
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.InputNumber field="imageMaxWidth" label="最大宽度(px)" min={0} style={{ width: '100%' }} extraText="超宽等比压缩，0 = 不限制" />
+              </Col>
+              <Col span={12}>
+                <Form.Switch field="thumbEnabled" label="生成缩略图" />
+              </Col>
+            </Row>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Switch field="watermarkEnabled" label="文字水印" />
+              </Col>
+              <Col span={12}>
+                <Form.Input field="watermarkText" label="水印文字" placeholder="如站点名称" />
+              </Col>
+            </Row>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Select field="watermarkPosition" label="水印位置" style={{ width: '100%' }}
+                  optionList={[
+                    { value: 'northwest', label: '左上' }, { value: 'north', label: '上中' }, { value: 'northeast', label: '右上' },
+                    { value: 'west', label: '左中' }, { value: 'center', label: '居中' }, { value: 'east', label: '右中' },
+                    { value: 'southwest', label: '左下' }, { value: 'south', label: '下中' }, { value: 'southeast', label: '右下' },
+                  ]} />
+              </Col>
+              <Col span={12}>
+                <Form.InputNumber field="watermarkOpacity" label="水印不透明度(%)" min={0} max={100} style={{ width: '100%' }} />
               </Col>
             </Row>
           </Form.Section>

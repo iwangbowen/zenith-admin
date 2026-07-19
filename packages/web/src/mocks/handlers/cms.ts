@@ -1001,6 +1001,16 @@ export const cmsP3Handlers = [
     return okJson({ siteKey: settings.analyticsSiteKey, created: true }, '开通成功');
   }),
 
+  // 图片上传（水印/缩略图管道）
+  http.post('/api/cms/upload-image', () => okJson({
+    url: 'https://picsum.photos/seed/cms-upload/800/450',
+    thumbUrl: null,
+    fileId: 'mock-file-id',
+    width: 800,
+    height: 450,
+    watermarked: false,
+  }, '上传成功')),
+
   // 死链检测（复用任务中心 mock 进度模拟）
   http.post('/api/cms/seo/deadlink-check', () => {
     return okJson(createProgressingMockTask({

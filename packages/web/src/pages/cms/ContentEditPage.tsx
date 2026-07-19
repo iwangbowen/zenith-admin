@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Button, Form, Spin, Toast, Row, Col, Banner, SideSheet, Timeline, Modal } from '@douyinfe/semi-ui';
+import { Button, Form, Spin, Toast, Row, Col, Banner, SideSheet, Timeline, Modal, Upload } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
-import { ArrowLeft, Save, Send, History } from 'lucide-react';
+import { ArrowLeft, Save, Send, History, ImageUp } from 'lucide-react';
 import RichTextEditor from '@/components/RichTextEditor';
 import { formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
+import { config as appConfig } from '@/config';
+import { request } from '@/utils/request';
+import { unwrap } from '@/lib/query';
 import {
   useCmsContentDetail, useCmsChannelTree, useAllCmsModels, useAllCmsTags,
   useSaveCmsContent, useCmsContentAction, useCmsContentVersions, useRestoreCmsContentVersion,
@@ -207,7 +210,12 @@ export default function ContentEditPage() {
               <Form.Input field="title" label="标题" size="large" rules={[{ required: true, message: '请输入标题' }]} />
               <Form.TextArea field="summary" label="摘要" rows={2} placeholder="留空时前台自动截取正文" />
               <Form.Slot label="正文">
-                <RichTextEditor value={body} onChange={setBody} height={420} />
+                <RichTextEditor
+                  value={body}
+                  onChange={setBody}
+                  height={420}
+                  uploadServer={siteId ? `${appConfig.apiBaseUrl}/api/cms/upload-image?siteId=${siteId}` : undefined}
+                />
               </Form.Slot>
               {modelFields.length > 0 ? (
                 <Form.Section text={`模型字段（${currentModel?.name}）`}>
@@ -241,7 +249,36 @@ export default function ContentEditPage() {
                 <Col span={12}><Form.Input field="author" label="作者" /></Col>
                 <Col span={12}><Form.Input field="source" label="来源" /></Col>
               </Row>
-              <Form.Input field="coverImage" label="封面图 URL" placeholder="https://..." />
+              <Form.Input
+                field="coverImage"
+                label="封面图 URL"
+                placeholder="https://... 或点击右侧上传"
+                suffix={(
+                  <Upload
+                    action=""
+                    accept="image/*"
+                    limit={1}
+                    showUploadList={false}
+                    customRequest={async ({ fileInstance, onSuccess, onError }) => {
+                      if (!siteId) { onError?.({ status: 0 }); return; }
+                      try {
+                        const formData = new FormData();
+                        formData.append('file', fileInstance);
+                        const res = await request.postForm<{ url: string; watermarked: boolean }>(
+                          `/api/cms/upload-image?siteId=${siteId}`, formData,
+                        ).then(unwrap);
+                        formApi.current?.setValue('coverImage', res.url);
+                        Toast.success(res.watermarked ? '上传成功（已加水印）' : '上传成功');
+                        onSuccess?.({});
+                      } catch {
+                        onError?.({ status: 0 });
+                      }
+                    }}
+                  >
+                    <Button size="small" theme="borderless" icon={<ImageUp size={14} />}>上传</Button>
+                  </Upload>
+                )}
+              />
               <Form.Input field="slug" label="自定义 URL 标识" placeholder="留空使用 ID" />
               <Form.Input field="externalLink" label="外链地址" placeholder="填写后点击标题直接跳转" />
               <Row gutter={12}>

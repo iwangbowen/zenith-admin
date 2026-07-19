@@ -41,6 +41,7 @@ import cmsCommentsRoutes from './routes/cms/comments';
 import cmsAdsRoutes from './routes/cms/ads';
 import cmsFormsRoutes from './routes/cms/forms';
 import cmsSensitiveWordsRoutes from './routes/cms/sensitive-words';
+import cmsUploadRoutes from './routes/cms/upload';
 import { createCmsFrontendRoutes } from './routes/cms/frontend';
 import { createCmsFrontPublicRoutes } from './routes/cms/front-public';
 import { registerCmsTaskHandlers } from './services/cms/cms-tasks';
@@ -632,6 +633,7 @@ app.route('/api/cms/comments', cmsCommentsRoutes);
 app.route('/api/cms/ads', cmsAdsRoutes);
 app.route('/api/cms/forms', cmsFormsRoutes);
 app.route('/api/cms/sensitive-words', cmsSensitiveWordsRoutes);
+app.route('/api/cms', cmsUploadRoutes);
 app.route('/api/public/cms', createCmsFrontPublicRoutes());
 app.get('/metrics', printMetrics);
 

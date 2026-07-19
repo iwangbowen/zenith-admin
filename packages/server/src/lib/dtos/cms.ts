@@ -386,3 +386,15 @@ export const CmsHotKeywordDTO = z
     count: z.number().int(),
   })
   .openapi('CmsHotKeyword');
+
+// ─── P3 Batch2 ────────────────────────────────────────────────────────────────
+export const CmsImageUploadDTO = z
+  .object({
+    url: z.string().openapi({ example: '/api/files/xxx/content' }),
+    thumbUrl: z.string().nullable(),
+    fileId: z.string(),
+    width: z.number().int().nullable(),
+    height: z.number().int().nullable(),
+    watermarked: z.boolean(),
+  })
+  .openapi('CmsImageUpload');

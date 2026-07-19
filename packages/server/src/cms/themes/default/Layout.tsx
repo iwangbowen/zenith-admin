@@ -72,6 +72,8 @@ main { min-height: 60vh; padding: 24px 0 48px; }
 .site-footer { border-top: 1px solid var(--border); background: var(--bg-2); padding: 24px 0; font-size: 13px; color: var(--text-2); }
 .site-footer .links { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
 .empty { text-align: center; color: var(--text-2); padding: 48px 0; }
+.theme-toggle { background: none; border: 1px solid var(--border); border-radius: 6px; width: 32px; height: 32px; cursor: pointer; font-size: 15px; line-height: 1; color: var(--text-2); flex-shrink: 0; }
+.theme-toggle:hover { color: var(--primary); border-color: var(--primary); }
 @media (max-width: 768px) {
   .site-header .container { height: auto; flex-wrap: wrap; padding: 8px 16px; gap: 8px; }
   .site-search { display: none; }
@@ -98,6 +100,36 @@ export interface LayoutProps {
   children: ReactNode;
 }
 
+/** 暗色变量组（[data-theme=dark] 或 auto 模式下系统偏好） */
+const DARK_VARS = '--text:#e6edf3; --text-2:#9198a1; --border:#3d444d; --bg:#0d1117; --bg-2:#151b23;';
+
+/** 主题参数（站点 settings）：主色 / 暗色模式 */
+function buildThemeOverrides(settings: Record<string, unknown>): { css: string; darkMode: 'auto' | 'light' | 'dark' } {
+  const primary = typeof settings.themePrimary === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(settings.themePrimary)
+    ? settings.themePrimary
+    : null;
+  const darkMode = settings.themeDark === 'dark' || settings.themeDark === 'auto' ? settings.themeDark : 'light';
+  let css = '';
+  if (primary) css += `:root { --primary: ${primary}; }\n`;
+  if (darkMode !== 'light') {
+    css += `html[data-theme="dark"] { ${DARK_VARS} }\n`;
+    if (darkMode === 'auto') {
+      css += `@media (prefers-color-scheme: dark) { html:not([data-theme="light"]) { ${DARK_VARS} } }\n`;
+    }
+  }
+  return { css, darkMode };
+}
+
+/** 暗色初始化脚本（head 内先行执行防闪烁）+ 切换按钮事件委托 */
+const THEME_TOGGLE_SCRIPT = `(function(){try{
+var t=localStorage.getItem('cms_theme');if(t==='dark'||t==='light'){document.documentElement.setAttribute('data-theme',t);}
+document.addEventListener('click',function(e){
+var b=e.target&&e.target.closest?e.target.closest('.theme-toggle'):null;if(!b)return;
+var h=document.documentElement;var cur=h.getAttribute('data-theme');
+var next=cur==='dark'?'light':(cur==='light'?'dark':(window.matchMedia('(prefers-color-scheme: dark)').matches?'light':'dark'));
+h.setAttribute('data-theme',next);localStorage.setItem('cms_theme',next);});
+}catch(e){}})();`;
+
 /** 行为采集 beacon 脚本（page_view + 详情页浏览计数），仅站点开启统计时注入 */
 function buildAnalyticsBeacon(analytics: NonNullable<CmsBaseContext['analytics']>): string {
   return `(function(){try{
@@ -114,6 +146,7 @@ if(C){navigator.sendBeacon('/api/public/cms/view',new Blob([JSON.stringify({cont
 /** 默认主题布局：完整 HTML 文档（内联样式，静态页零外部依赖） */
 export function Layout({ ctx, currentUrl, children }: LayoutProps) {
   const { site, seo, nav, friendLinks, baseUrl } = ctx;
+  const theme = buildThemeOverrides(site.settings);
   return (
     <html lang="zh-CN">
       <head>
@@ -132,7 +165,10 @@ export function Layout({ ctx, currentUrl, children }: LayoutProps) {
         {seo.jsonLd ? (
           <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(seo.jsonLd) }} />
         ) : null}
-        <style dangerouslySetInnerHTML={{ __html: styles }} />
+        <style dangerouslySetInnerHTML={{ __html: styles + theme.css }} />
+        {theme.darkMode !== 'light' ? (
+          <script dangerouslySetInnerHTML={{ __html: THEME_TOGGLE_SCRIPT }} />
+        ) : null}
       </head>
       <body>
         {ctx.analytics ? (
@@ -149,6 +185,9 @@ export function Layout({ ctx, currentUrl, children }: LayoutProps) {
             <form className="site-search" action={ctx.searchUrl} method="get">
               <input type="search" name="q" placeholder="站内搜索…" />
             </form>
+            {theme.darkMode !== 'light' ? (
+              <button type="button" className="theme-toggle" title="切换明暗主题" aria-label="切换明暗主题">◑</button>
+            ) : null}
           </div>
         </header>
         <main>
