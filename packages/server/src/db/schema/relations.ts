@@ -1312,7 +1312,8 @@ export const cmsLinkWordsRelations = relations(cmsLinkWords, ({ one }) => ({
 
 export const cmsCommentsRelations = relations(cmsComments, ({ one }) => ({
   site: one(cmsSites, { fields: [cmsComments.siteId], references: [cmsSites.id] }),
-  content: one(cmsContents, { fields: [cmsComments.contentId], references: [cmsContents.id] }),
+  // 关系名不能叫 content：会与评论正文列 content 同名，RQB with 时覆盖正文字段
+  targetContent: one(cmsContents, { fields: [cmsComments.contentId], references: [cmsContents.id] }),
 }));
 
 export const cmsAdSlotsRelations = relations(cmsAdSlots, ({ one, many }) => ({

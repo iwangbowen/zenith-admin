@@ -175,7 +175,7 @@ export default function PagesPage() {
         </span>
       ),
     },
-    { title: '更新时间', dataIndex: 'updatedAt', width: 150 },
+    { title: '更新时间', dataIndex: 'updatedAt', width: 170 },
     {
       title: '状态',
       dataIndex: 'status',
@@ -238,6 +238,7 @@ export default function PagesPage() {
         dataSource={listQuery.data?.list ?? []}
         rowKey="id"
         loading={listQuery.isFetching}
+        scroll={{ x: 1090 }}
         pagination={buildPagination(listQuery.data?.total ?? 0)}
         onRefresh={() => void listQuery.refetch()}
         refreshLoading={listQuery.isFetching}

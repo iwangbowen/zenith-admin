@@ -205,7 +205,7 @@ export default function CollectPage() {
       render: (v: CmsCollectItem['status']) => <Tag size="small" color={ITEM_STATUS_META[v].color}>{ITEM_STATUS_META[v].label}</Tag>,
     },
     { title: '错误', dataIndex: 'error', width: 200, render: (v: string | null) => v ?? '-' },
-    { title: '采集时间', dataIndex: 'createdAt', width: 150 },
+    { title: '采集时间', dataIndex: 'createdAt', width: 170 },
   ];
 
   return (
@@ -232,6 +232,7 @@ export default function CollectPage() {
         dataSource={listQuery.data?.list ?? []}
         rowKey="id"
         loading={listQuery.isFetching}
+        scroll={{ x: 1310 }}
         pagination={buildPagination(listQuery.data?.total ?? 0)}
         onRefresh={() => void listQuery.refetch()}
         refreshLoading={listQuery.isFetching}

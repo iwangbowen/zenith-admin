@@ -179,6 +179,7 @@ export default function ModelsPage() {
         rowKey="id"
         size="small"
         empty="暂无内容模型"
+        scroll={{ x: 1220 }}
         onRefresh={() => void listQuery.refetch()}
         refreshLoading={listQuery.isFetching}
         pagination={buildPagination(total)}

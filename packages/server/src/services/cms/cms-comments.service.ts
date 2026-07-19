@@ -4,7 +4,7 @@ import { db } from '../../db';
 import { cmsComments, cmsContents } from '../../db/schema';
 import type { CmsCommentRow } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
-import { mergeWhere } from '../../lib/where-helpers';
+import { mergeWhere, withPagination } from '../../lib/where-helpers';
 import { config } from '../../config';
 import redis from '../../lib/redis';
 import { sanitizeUserText } from './cms-sensitive-words.service';
@@ -95,17 +95,20 @@ export async function listCmsComments(q: ListCmsCommentsQuery) {
   const conditions: SQL[] = [eq(cmsComments.siteId, q.siteId)];
   if (q.status) conditions.push(eq(cmsComments.status, q.status));
   const where = mergeWhere(and(...conditions));
+  // 注意：不能用 RQB `with: { content: ... }`——关系名与评论正文列 content 同名，会覆盖正文字段
   const [total, rows] = await Promise.all([
     db.$count(cmsComments, where),
-    db.query.cmsComments.findMany({
-      where,
-      with: { content: { columns: { title: true } } },
-      orderBy: desc(cmsComments.id),
-      limit: q.pageSize,
-      offset: (q.page - 1) * q.pageSize,
-    }),
+    withPagination(
+      db.select({ comment: cmsComments, contentTitle: cmsContents.title })
+        .from(cmsComments)
+        .leftJoin(cmsContents, eq(cmsComments.contentId, cmsContents.id))
+        .where(where)
+        .orderBy(desc(cmsComments.id))
+        .$dynamic(),
+      q.page, q.pageSize,
+    ),
   ]);
-  return { list: rows.map((r) => mapCmsComment(r, r.content?.title)), total, page: q.page, pageSize: q.pageSize };
+  return { list: rows.map((r) => mapCmsComment(r.comment, r.contentTitle)), total, page: q.page, pageSize: q.pageSize };
 }
 
 /** 批量审核（通过/拒绝），返回受影响内容 id（供路由触发静态刷新） */

@@ -297,7 +297,7 @@ function PushTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
       render: (v: boolean, record) => (v ? <Tag color="green" size="small">成功</Tag> : <Tag color="red" size="small">失败{record.statusCode ? `（${record.statusCode}）` : ''}</Tag>),
     },
     { title: '响应', dataIndex: 'response', width: 320, render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 300 }}>{v ?? '-'}</Typography.Text> },
-    { title: '推送时间', dataIndex: 'createdAt', width: 160 },
+    { title: '推送时间', dataIndex: 'createdAt', width: 170 },
   ];
 
   return (
@@ -355,8 +355,8 @@ function DeadlinkTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
   const columns: ColumnProps[] = [
     { title: '任务', dataIndex: 'title', width: 260 },
     { title: '进度', width: 280, render: (_: unknown, record) => <AsyncTaskProgress task={record} /> },
-    { title: '提交时间', dataIndex: 'createdAt', width: 160 },
-    { title: '完成时间', dataIndex: 'completedAt', width: 160, render: (v: string | null) => v ?? '-' },
+    { title: '提交时间', dataIndex: 'createdAt', width: 170 },
+    { title: '完成时间', dataIndex: 'completedAt', width: 170, render: (v: string | null) => v ?? '-' },
   ];
 
   return (

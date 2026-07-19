@@ -193,6 +193,7 @@ export default function ChannelsPage() {
         rowKey="id"
         size="small"
         empty="暂无栏目，点击右上角「新增栏目」创建"
+        scroll={{ x: 1090 }}
         onRefresh={() => void treeQuery.refetch()}
         refreshLoading={treeQuery.isFetching}
         pagination={false}

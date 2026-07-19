@@ -210,7 +210,7 @@ export default function SitesPage() {
     {
       title: '静态化模式',
       dataIndex: 'staticMode',
-      width: 110,
+      width: 130,
       render: (v: CmsSite['staticMode']) => CMS_STATIC_MODE_LABELS[v],
     },
     { title: 'SEO 标题', dataIndex: 'title', width: 220, render: renderEllipsis },
@@ -339,6 +339,7 @@ export default function SitesPage() {
         rowKey="id"
         size="small"
         empty="暂无站点"
+        scroll={{ x: 1400 }}
         onRefresh={() => void listQuery.refetch()}
         refreshLoading={listQuery.isFetching}
         pagination={buildPagination(total)}

@@ -59,13 +59,13 @@ function SearchTestTab({ siteId, onSiteChange }: Readonly<{ siteId: number | und
     },
     { title: '栏目', dataIndex: 'channelName', width: 110 },
     { title: '相关度', dataIndex: 'rank', width: 90, render: (v: number) => v.toFixed(4) },
-    { title: '发布时间', dataIndex: 'publishedAt', width: 150, render: (v: string | null) => v ?? '-' },
+    { title: '发布时间', dataIndex: 'publishedAt', width: 170, render: (v: string | null) => v ?? '-' },
   ];
 
   const taskColumns: ColumnProps[] = [
     { title: '任务', dataIndex: 'title', width: 260 },
     { title: '进度', width: 280, render: (_: unknown, record) => <AsyncTaskProgress task={record} /> },
-    { title: '提交时间', dataIndex: 'createdAt', width: 160 },
+    { title: '提交时间', dataIndex: 'createdAt', width: 170 },
   ];
 
   return (
@@ -106,6 +106,7 @@ function SearchTestTab({ siteId, onSiteChange }: Readonly<{ siteId: number | und
         rowKey="id"
         size="small"
         empty={keyword ? '未检索到内容' : '输入关键词开始检索测试'}
+        scroll={{ x: 1070 }}
         pagination={{ currentPage: page, pageSize: 10, total, onPageChange: setPage }}
       />
 

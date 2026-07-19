@@ -215,8 +215,8 @@ export default function ContentsPage() {
     { title: '栏目', dataIndex: 'channelName', width: 110 },
     { title: '作者', dataIndex: 'author', width: 90, render: (v: string | null) => v ?? '-' },
     { title: '浏览', dataIndex: 'viewCount', width: 80 },
-    { title: '发布时间', dataIndex: 'publishedAt', width: 150, render: (v: string | null) => v ?? '-' },
-    { title: '更新时间', dataIndex: 'updatedAt', width: 150 },
+    { title: '发布时间', dataIndex: 'publishedAt', width: 170, render: (v: string | null) => v ?? '-' },
+    { title: '更新时间', dataIndex: 'updatedAt', width: 170 },
     {
       title: '状态',
       dataIndex: 'status',
@@ -393,6 +393,7 @@ export default function ContentsPage() {
         rowKey="id"
         size="small"
         empty="暂无内容"
+        scroll={{ x: 1300 }}
         onRefresh={() => void listQuery.refetch()}
         refreshLoading={listQuery.isFetching}
         pagination={buildPagination(total)}

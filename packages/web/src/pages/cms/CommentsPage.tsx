@@ -63,7 +63,7 @@ export default function CommentsPage() {
       render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 200 }}>{v ?? '-'}</Typography.Text>,
     },
     { title: 'IP', dataIndex: 'ip', width: 130, render: (v: string | null) => v ?? '-' },
-    { title: '提交时间', dataIndex: 'createdAt', width: 160 },
+    { title: '提交时间', dataIndex: 'createdAt', width: 170 },
     {
       title: '状态', dataIndex: 'status', width: 90, fixed: 'right',
       render: (v: CmsCommentStatus) => <Tag size="small" color={STATUS_COLORS[v]}>{CMS_COMMENT_STATUS_LABELS[v]}</Tag>,
@@ -116,6 +116,7 @@ export default function CommentsPage() {
         rowKey="id"
         size="small"
         empty="暂无评论"
+        scroll={{ x: 1310 }}
         onRefresh={() => void listQuery.refetch()}
         refreshLoading={listQuery.isFetching}
         pagination={buildPagination(listQuery.data?.total ?? 0)}

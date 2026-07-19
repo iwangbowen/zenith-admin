@@ -144,6 +144,7 @@ export default function FragmentsPage() {
         rowKey="id"
         size="small"
         empty="暂无碎片"
+        scroll={{ x: 1120 }}
         onRefresh={() => void listQuery.refetch()}
         refreshLoading={listQuery.isFetching}
         pagination={buildPagination(total)}

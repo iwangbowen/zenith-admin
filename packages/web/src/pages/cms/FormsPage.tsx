@@ -40,7 +40,7 @@ function SubmissionsSheet({ form, onClose }: Readonly<{ form: CmsForm | null; on
   const columns: ColumnProps<CmsFormSubmission>[] = [
     ...fieldColumns,
     { title: 'IP', dataIndex: 'ip', width: 120, render: (v: string | null) => v ?? '-' },
-    { title: '提交时间', dataIndex: 'createdAt', width: 160 },
+    { title: '提交时间', dataIndex: 'createdAt', width: 170 },
     createOperationColumn<CmsFormSubmission>({
       width: 90,
       desktopInlineKeys: ['delete'],
@@ -74,6 +74,7 @@ function SubmissionsSheet({ form, onClose }: Readonly<{ form: CmsForm | null; on
         rowKey="id"
         size="small"
         empty="暂无提交数据"
+        scroll={{ x: Math.max(640, (form?.fields.length ?? 0) * 150 + 380) }}
         onRefresh={() => void listQuery.refetch()}
         refreshLoading={listQuery.isFetching}
         pagination={{
