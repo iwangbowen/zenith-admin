@@ -352,6 +352,7 @@ export const cmsHandlers = [
       rejectReason: null,
       publishedAt: null,
       scheduledAt: null,
+      expireAt: (body.expireAt as string) ?? null,
       viewCount: 0,
       version: 1,
       sort: Number(body.sort ?? 0),
@@ -526,6 +527,19 @@ export const cmsHandlers = [
       itemDelayMs: 300,
     });
     return okJson(task, '任务已提交，可在任务中心查看进度');
+  }),
+  http.post('/api/cms/contents/import', async ({ request }) => {
+    const { siteId, channelId } = (await request.json()) as { fileId: string; siteId: number; channelId: number };
+    const site = mockCmsSites.find((s) => s.id === siteId);
+    if (!site || !mockCmsChannels.some((c) => c.id === channelId)) return notFound('站点或栏目不存在');
+    const task = createProgressingMockTask({
+      taskType: 'cms-content-import',
+      title: 'CMS 内容批量导入',
+      payload: { siteId, channelId },
+      totalItems: 8,
+      itemDelayMs: 300,
+    });
+    return okJson(task, '导入任务已提交，可在任务中心查看进度');
   }),
 
   // ═══ 检索 ═══════════════════════════════════════════════════════════════
@@ -775,6 +789,7 @@ export const cmsP2Handlers = [
       linkUrl: (body.linkUrl as string) ?? null,
       startAt: (body.startAt as string) ?? null,
       endAt: (body.endAt as string) ?? null,
+      clickCount: 0,
       sort: Number(body.sort ?? 0),
       status: (body.status as 'enabled' | 'disabled') ?? 'enabled',
       createdAt: now,
@@ -833,6 +848,7 @@ export const cmsP2Handlers = [
         options: (f.options as { label: string; value: string }[]) ?? null,
       })),
       successMessage: (body.successMessage as string) ?? null,
+      notifyEmail: (body.notifyEmail as string) ?? null,
       status: (body.status as 'enabled' | 'disabled') ?? 'enabled',
       submissionCount: 0,
       createdAt: now,

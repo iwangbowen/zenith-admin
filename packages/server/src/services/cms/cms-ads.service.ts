@@ -32,6 +32,7 @@ export function mapCmsAd(row: CmsAdRow, slotName?: string | null) {
     linkUrl: row.linkUrl ?? null,
     startAt: formatNullableDateTime(row.startAt),
     endAt: formatNullableDateTime(row.endAt),
+    clickCount: row.clickCount,
     sort: row.sort,
     status: row.status,
     createdAt: formatDateTime(row.createdAt),
@@ -52,7 +53,7 @@ export async function ensureCmsAdExists(id: number): Promise<CmsAdRow> {
 }
 
 // ─── 前台渲染：站点投放中广告（按 slot code 分组）──────────────────────────────
-export async function getActiveAds(siteId: number): Promise<Record<string, { name: string; image: string | null; linkUrl: string | null }[]>> {
+export async function getActiveAds(siteId: number): Promise<Record<string, { id: number; name: string; image: string | null; linkUrl: string | null }[]>> {
   const now = new Date();
   const rows = await db.select({ ad: cmsAds, slotCode: cmsAdSlots.code })
     .from(cmsAds)
@@ -64,11 +65,29 @@ export async function getActiveAds(siteId: number): Promise<Record<string, { nam
       or(isNull(cmsAds.endAt), gte(cmsAds.endAt, now)),
     ))
     .orderBy(asc(cmsAds.sort), asc(cmsAds.id));
-  const map: Record<string, { name: string; image: string | null; linkUrl: string | null }[]> = {};
+  const map: Record<string, { id: number; name: string; image: string | null; linkUrl: string | null }[]> = {};
   for (const { ad, slotCode } of rows) {
-    (map[slotCode] ??= []).push({ name: ad.name, image: ad.image ?? null, linkUrl: ad.linkUrl ?? null });
+    (map[slotCode] ??= []).push({ id: ad.id, name: ad.name, image: ad.image ?? null, linkUrl: ad.linkUrl ?? null });
   }
   return map;
+}
+
+/**
+ * 前台广告点击中转：计数 +1 后返回跳转地址（302）。
+ * 仅统计投放中的广告；无 linkUrl 或不在投放窗口返回 null（调用方回 404）。
+ */
+export async function recordAdClick(id: number): Promise<string | null> {
+  const now = new Date();
+  const [row] = await db.update(cmsAds)
+    .set({ clickCount: sql`${cmsAds.clickCount} + 1` })
+    .where(and(
+      eq(cmsAds.id, id),
+      eq(cmsAds.status, 'enabled'),
+      or(isNull(cmsAds.startAt), lte(cmsAds.startAt, now)),
+      or(isNull(cmsAds.endAt), gte(cmsAds.endAt, now)),
+    ))
+    .returning({ linkUrl: cmsAds.linkUrl });
+  return row?.linkUrl ?? null;
 }
 
 // ─── 广告位 CRUD ──────────────────────────────────────────────────────────────

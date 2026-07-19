@@ -19,7 +19,8 @@ import { acquireContentEditLock, releaseContentEditLock } from '../../services/c
 import { createContentPreviewLink } from '../../services/cms/cms-preview.service';
 import { triggerContentStaticRefresh } from '../../services/cms/cms-static.service';
 import { triggerAutoPushForContent } from '../../services/cms/cms-push.service';
-import { CmsContentVersionDTO, CmsContentVersionDiffDTO, CmsEditLockDTO, CmsPreviewLinkDTO } from '../../lib/openapi-dtos';
+import { CmsContentVersionDTO, CmsContentVersionDiffDTO, CmsEditLockDTO, CmsPreviewLinkDTO, AsyncTaskDTO } from '../../lib/openapi-dtos';
+import { mapAsyncTask, submitAsyncTask } from '../../lib/task-center';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -409,6 +410,35 @@ const distributeRoute = defineOpenAPIRoute({
   },
 });
 
+const importRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/import',
+    tags: ['CMS-内容管理'], summary: '内容 Excel 批量导入（任务中心异步执行）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:content:create', audit: { description: 'CMS 内容批量导入', module: 'CMS内容管理' } })] as const,
+    request: {
+      body: {
+        content: jsonContent(z.object({
+          fileId: z.string().min(1, '请先上传 Excel 文件'),
+          siteId: z.number().int().positive(),
+          channelId: z.number().int().positive(),
+        })),
+        required: true,
+      },
+    },
+    responses: { ...commonErrorResponses, ...ok(AsyncTaskDTO, '任务已提交') },
+  }),
+  handler: async (c) => {
+    const { fileId, siteId, channelId } = c.req.valid('json');
+    const row = await submitAsyncTask({
+      taskType: 'cms-content-import',
+      payload: { fileId, siteId, channelId },
+      idempotencyKey: `cms-content-import-${fileId}`,
+    });
+    return c.json(okBody(mapAsyncTask(row), '导入任务已提交，可在任务中心查看进度'), 200);
+  },
+});
+
 router.openapiRoutes([
   listRoute, getOneRoute, createRoute_, updateRoute_,
   submitRoute, publishRoute, rejectRoute, offlineRoute,
@@ -416,6 +446,7 @@ router.openapiRoutes([
   versionsRoute, restoreVersionRoute, versionDiffRoute,
   editLockAcquireRoute, editLockReleaseRoute, previewLinkRoute,
   batchMoveRoute, batchFlagsRoute, batchTagRoute, duplicateRoute, distributeRoute,
+  importRoute,
 ] as const);
 
 export default router;

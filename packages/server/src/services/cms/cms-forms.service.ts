@@ -10,6 +10,8 @@ import { like } from 'drizzle-orm';
 import { sanitizeUserText } from './cms-sensitive-words.service';
 import { assertSiteAccess } from './cms-sites.service';
 import { throttleFrontSubmit } from './cms-comments.service';
+import { sendMail } from '../../lib/email';
+import logger from '../../lib/logger';
 import type { CreateCmsFormInput, UpdateCmsFormInput } from '@zenith/shared';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
@@ -21,6 +23,7 @@ export function mapCmsForm(row: CmsFormRow, submissionCount?: number) {
     name: row.name,
     fields: row.fields ?? [],
     successMessage: row.successMessage ?? null,
+    notifyEmail: row.notifyEmail ?? null,
     status: row.status,
     ...(submissionCount !== undefined ? { submissionCount } : {}),
     createdAt: formatDateTime(row.createdAt),
@@ -86,7 +89,28 @@ export async function submitCmsForm(input: SubmitFormInput) {
     ip: input.ip,
     userAgent: input.userAgent,
   }).returning();
+  notifyFormSubmission(input.form, data);
   return mapCmsFormSubmission(row);
+}
+
+/** 新提交邮件通知（异步 fire-and-forget，不阻塞前台响应） */
+function notifyFormSubmission(form: CmsFormRow, data: Record<string, unknown>): void {
+  const recipients = (form.notifyEmail ?? '')
+    .split(/[,;，；]/)
+    .map((s) => s.trim())
+    .filter((s) => s.includes('@'));
+  if (recipients.length === 0) return;
+  const escapeHtml = (s: string) =>
+    s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+  const rows = (form.fields ?? [])
+    .map((f) => `<tr><td style="padding:4px 16px 4px 0;color:#595959">${escapeHtml(f.label)}</td><td style="padding:4px 0">${escapeHtml(String(data[f.name] ?? ''))}</td></tr>`)
+    .join('');
+  const html = `<h3 style="margin:0 0 12px">表单「${escapeHtml(form.name)}」收到新提交</h3><table>${rows}</table>`;
+  void Promise.allSettled(recipients.map((to) => sendMail(to, `【表单通知】${form.name} 收到新提交`, html)))
+    .then((results) => {
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      if (failed > 0) logger.warn(`[CMS] 表单 ${form.code} 提交通知邮件 ${failed}/${recipients.length} 发送失败`);
+    });
 }
 
 // ─── 表单 CRUD ────────────────────────────────────────────────────────────────

@@ -236,6 +236,16 @@ export function useCmsContentBatch() {
   });
 }
 
+/** 内容 Excel 批量导入（任务中心异步执行） */
+export function useImportCmsContents() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { fileId: string; siteId: number; channelId: number }) =>
+      request.post<AsyncTask>('/api/cms/contents/import', payload).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsContentKeys.lists }),
+  });
+}
+
 // ═══ 标签 ═══════════════════════════════════════════════════════════════════
 export interface CmsTagListParams {
   page: number;

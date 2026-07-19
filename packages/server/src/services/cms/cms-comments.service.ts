@@ -1,4 +1,4 @@
-import { eq, asc, desc, and, inArray, type SQL } from 'drizzle-orm';
+import { eq, asc, desc, and, inArray, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { cmsComments, cmsContents } from '../../db/schema';
@@ -10,6 +10,7 @@ import redis from '../../lib/redis';
 import { sanitizeUserText } from './cms-sensitive-words.service';
 import { assertSiteAccess } from './cms-sites.service';
 import type { CmsCommentStatus } from '@zenith/shared';
+import { alias } from 'drizzle-orm/pg-core';
 
 const SUBMIT_RL_PREFIX = `${config.redis.keyPrefix}cms:submit:`;
 const SUBMIT_RL_WINDOW_SECONDS = 60;
@@ -26,14 +27,17 @@ export async function throttleFrontSubmit(ip: string): Promise<void> {
 }
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
-export function mapCmsComment(row: CmsCommentRow, contentTitle?: string | null) {
+export function mapCmsComment(row: CmsCommentRow, extra?: { contentTitle?: string | null; parentNickname?: string | null }) {
   return {
     id: row.id,
     siteId: row.siteId,
     contentId: row.contentId,
-    contentTitle: contentTitle ?? null,
+    contentTitle: extra?.contentTitle ?? null,
+    parentId: row.parentId,
+    parentNickname: extra?.parentNickname ?? null,
     nickname: row.nickname,
     content: row.content,
+    likeCount: row.likeCount,
     status: row.status,
     ip: row.ip ?? null,
     userAgent: row.userAgent ?? null,
@@ -47,11 +51,13 @@ export interface SubmitCommentInput {
   contentId: number;
   nickname: string;
   content: string;
+  /** 回复的父评论 id（0/缺省 = 顶级评论） */
+  parentId?: number;
   ip: string;
   userAgent: string | null;
 }
 
-/** 前台评论提交：限流 + 敏感词过滤 → 待审核 */
+/** 前台评论提交：限流 + 敏感词过滤 → 待审核；回复统一挂到顶级评论下（两级树） */
 export async function submitCmsComment(input: SubmitCommentInput) {
   await throttleFrontSubmit(input.ip);
   const [content] = await db.select({ id: cmsContents.id, siteId: cmsContents.siteId, status: cmsContents.status, deletedAt: cmsContents.deletedAt })
@@ -59,11 +65,22 @@ export async function submitCmsComment(input: SubmitCommentInput) {
   if (!content || content.status !== 'published' || content.deletedAt) {
     throw new HTTPException(404, { message: '内容不存在或未发布' });
   }
+  let parentId = 0;
+  if (input.parentId && input.parentId > 0) {
+    const [parent] = await db.select({ id: cmsComments.id, contentId: cmsComments.contentId, parentId: cmsComments.parentId, status: cmsComments.status })
+      .from(cmsComments).where(eq(cmsComments.id, input.parentId)).limit(1);
+    if (!parent || parent.contentId !== input.contentId || parent.status !== 'approved') {
+      throw new HTTPException(400, { message: '回复的评论不存在' });
+    }
+    // 两级树：回复"回复"时挂到其顶级评论下
+    parentId = parent.parentId > 0 ? parent.parentId : parent.id;
+  }
   const nickname = await sanitizeUserText(input.nickname.trim());
   const text = await sanitizeUserText(input.content.trim());
   const [row] = await db.insert(cmsComments).values({
     siteId: content.siteId,
     contentId: input.contentId,
+    parentId,
     nickname,
     content: text,
     status: 'pending',
@@ -71,6 +88,18 @@ export async function submitCmsComment(input: SubmitCommentInput) {
     userAgent: input.userAgent,
   }).returning();
   return mapCmsComment(row);
+}
+
+/** 前台匿名点赞：同 IP 对同评论 24h 去重；返回最新点赞数（null = 评论不存在/重复点赞） */
+export async function likeCmsComment(commentId: number, ip: string): Promise<number | null> {
+  const dedupeKey = `${config.redis.keyPrefix}cms:comment-like:${commentId}:${ip}`;
+  const first = await redis.set(dedupeKey, '1', 'EX', 86_400, 'NX').catch(() => 'OK');
+  if (!first) return null;
+  const [row] = await db.update(cmsComments)
+    .set({ likeCount: sql`${cmsComments.likeCount} + 1` })
+    .where(and(eq(cmsComments.id, commentId), eq(cmsComments.status, 'approved')))
+    .returning({ likeCount: cmsComments.likeCount });
+  return row?.likeCount ?? null;
 }
 
 /** 前台渲染：内容的已审核评论（旧→新） */
@@ -96,19 +125,26 @@ export async function listCmsComments(q: ListCmsCommentsQuery) {
   if (q.status) conditions.push(eq(cmsComments.status, q.status));
   const where = mergeWhere(and(...conditions));
   // 注意：不能用 RQB `with: { content: ... }`——关系名与评论正文列 content 同名，会覆盖正文字段
+  const parentComments = alias(cmsComments, 'parent_comments');
   const [total, rows] = await Promise.all([
     db.$count(cmsComments, where),
     withPagination(
-      db.select({ comment: cmsComments, contentTitle: cmsContents.title })
+      db.select({ comment: cmsComments, contentTitle: cmsContents.title, parentNickname: parentComments.nickname })
         .from(cmsComments)
         .leftJoin(cmsContents, eq(cmsComments.contentId, cmsContents.id))
+        .leftJoin(parentComments, eq(cmsComments.parentId, parentComments.id))
         .where(where)
         .orderBy(desc(cmsComments.id))
         .$dynamic(),
       q.page, q.pageSize,
     ),
   ]);
-  return { list: rows.map((r) => mapCmsComment(r.comment, r.contentTitle)), total, page: q.page, pageSize: q.pageSize };
+  return {
+    list: rows.map((r) => mapCmsComment(r.comment, { contentTitle: r.contentTitle, parentNickname: r.parentNickname })),
+    total,
+    page: q.page,
+    pageSize: q.pageSize,
+  };
 }
 
 /** 批量审核（通过/拒绝），返回受影响内容 id（供路由触发静态刷新） */

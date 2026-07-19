@@ -2,9 +2,10 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { submitCmsCommentSchema } from '@zenith/shared';
 import { resolveSiteByCode } from '../../services/cms/cms-sites.service';
-import { submitCmsComment } from '../../services/cms/cms-comments.service';
+import { submitCmsComment, likeCmsComment, throttleFrontSubmit } from '../../services/cms/cms-comments.service';
 import { getCmsFormByCode, submitCmsForm } from '../../services/cms/cms-forms.service';
 import { increaseViewCount } from '../../services/cms/cms-contents.service';
+import { recordAdClick } from '../../services/cms/cms-ads.service';
 import { config } from '../../config';
 import redis from '../../lib/redis';
 
@@ -47,6 +48,7 @@ export function createCmsFrontPublicRoutes(): Hono {
       contentId: body.contentId,
       nickname: body.nickname,
       content: body.content,
+      parentId: body.parentId || undefined,
       website: body.website || undefined,
     });
     if (!parsed.success) {
@@ -58,6 +60,7 @@ export function createCmsFrontPublicRoutes(): Hono {
         contentId: parsed.data.contentId,
         nickname: parsed.data.nickname,
         content: parsed.data.content,
+        parentId: parsed.data.parentId,
         ip: clientIp(c.req.raw.headers),
         userAgent: c.req.header('user-agent')?.slice(0, 255) ?? null,
       });
@@ -96,6 +99,27 @@ export function createCmsFrontPublicRoutes(): Hono {
       return respond('提交失败', msg, status);
     }
     return respond('提交成功', form.successMessage?.trim() || '我们已收到您的信息。');
+  });
+
+  // ─── 评论点赞（同 IP 对同评论 24h 去重；原生 form POST，处理后跳回来源页）─────
+  app.post('/comments/:id/like', async (c) => {
+    const body = await c.req.parseBody();
+    const backUrl = safeReturnUrl(body.returnUrl);
+    const commentId = Number(c.req.param('id')) || 0;
+    if (commentId > 0) {
+      const ip = clientIp(c.req.raw.headers);
+      await throttleFrontSubmit(ip).catch(() => undefined);
+      await likeCmsComment(commentId, ip).catch(() => undefined);
+    }
+    return c.redirect(backUrl, 302);
+  });
+
+  // ─── 广告点击中转（计数 +1 后 302 跳目标地址；静态页零 JS 可用）───────────────
+  app.get('/ads/:id/click', async (c) => {
+    const adId = Number(c.req.param('id')) || 0;
+    const linkUrl = adId > 0 ? await recordAdClick(adId).catch(() => null) : null;
+    if (!linkUrl) return c.text('广告不存在或未投放', 404);
+    return c.redirect(linkUrl, 302);
   });
 
   // ─── 浏览计数 beacon（静态页 sendBeacon 上报；同 IP+内容 60s 去重防刷）────────

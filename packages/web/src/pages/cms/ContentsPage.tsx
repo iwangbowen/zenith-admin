@@ -1,21 +1,23 @@
 import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Input, Tag, Toast, Modal, Tabs, TabPane, Tree, Typography, Dropdown, Form } from '@douyinfe/semi-ui';
+import { Button, Input, Tag, Toast, Modal, Tabs, TabPane, Tree, Typography, Dropdown, Form, Upload } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
-import { Search, RotateCcw, Plus, ChevronDown } from 'lucide-react';
+import { Search, RotateCcw, Plus, ChevronDown, FileUp } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
+import { ExportButton } from '@/components/ExportButton';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import { useIsMobile } from '@/hooks/useMediaQuery';
+import { useUploadFile } from '@/hooks/queries/files';
 import {
   useCmsChannelTree, useCmsContentList, useCmsContentAction, useCmsContentBatch,
-  useAllCmsSites, useAllCmsTags, useCmsContentBatchOps, useDuplicateCmsContent, cmsContentKeys,
+  useAllCmsSites, useAllCmsTags, useCmsContentBatchOps, useDuplicateCmsContent, useImportCmsContents, cmsContentKeys,
 } from '@/hooks/queries/cms';
 import { CMS_CONTENT_STATUS_LABELS } from '@zenith/shared';
 import type { CmsChannel, CmsContent, CmsContentStatus } from '@zenith/shared';
@@ -86,6 +88,8 @@ export default function ContentsPage() {
   const batchMutation = useCmsContentBatch();
   const batchOpsMutation = useCmsContentBatchOps();
   const duplicateMutation = useDuplicateCmsContent();
+  const uploadMutation = useUploadFile();
+  const importMutation = useImportCmsContents();
   const { data: allTags } = useAllCmsTags(siteId);
   const moveFormApi = useRef<FormApi | null>(null);
   const tagFormApi = useRef<FormApi | null>(null);
@@ -316,6 +320,46 @@ export default function ContentsPage() {
       新增
     </Button>
   ) : null;
+  const renderImportButton = () => hasPermission('cms:content:create') && siteId ? (
+    <Upload
+      action=""
+      accept=".xlsx"
+      limit={1}
+      showUploadList={false}
+      customRequest={async ({ fileInstance, onSuccess, onError }) => {
+        if (!channelId) {
+          Toast.warning('请先在左侧栏目树选择导入的目标栏目');
+          onError?.({ status: 0 });
+          return;
+        }
+        try {
+          const formData = new FormData();
+          formData.append('file', fileInstance);
+          const uploaded = await uploadMutation.mutateAsync({ formData });
+          await importMutation.mutateAsync({ fileId: uploaded.id, siteId, channelId });
+          Toast.success('导入任务已提交，可在顶栏任务托盘查看进度');
+          onSuccess?.({});
+        } catch {
+          onError?.({ status: 0 });
+        }
+      }}
+    >
+      <Button icon={<FileUp size={14} />} loading={uploadMutation.isPending || importMutation.isPending}>
+        导入
+      </Button>
+    </Upload>
+  ) : null;
+  const renderExportButton = () => siteId ? (
+    <ExportButton
+      entity="cms.contents"
+      query={{
+        siteId,
+        channelId,
+        status: statusFilter,
+        keyword: submittedKeyword || undefined,
+      }}
+    />
+  ) : null;
 
   const batchBar = selectedIds.length > 0 ? (
     activeTab === 'recycle' ? (hasPermission('cms:content:delete') ? (
@@ -372,7 +416,13 @@ export default function ContentsPage() {
             {batchBar}
           </>
         )}
-        actions={renderCreateButton()}
+        actions={(
+          <>
+            {renderExportButton()}
+            {renderImportButton()}
+            {renderCreateButton()}
+          </>
+        )}
         mobilePrimary={(
           <>
             {renderKeywordSearch()}

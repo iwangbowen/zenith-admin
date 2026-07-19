@@ -14,7 +14,7 @@ import { unwrap } from '@/lib/query';
 import {
   useCmsContentDetail, useCmsChannelTree, useAllCmsModels, useAllCmsTags,
   useSaveCmsContent, useCmsContentAction, useCmsContentVersions, useRestoreCmsContentVersion,
-  useCmsVersionDiff, useCmsPreviewLink, acquireCmsEditLock, releaseCmsEditLock,
+  useCmsVersionDiff, useCmsPreviewLink, acquireCmsEditLock, releaseCmsEditLock, useCmsContentList,
 } from '@/hooks/queries/cms';
 import { CMS_CONTENT_STATUS_LABELS } from '@zenith/shared';
 import type { CmsChannel, CmsModelField, CmsEditLock } from '@zenith/shared';
@@ -132,6 +132,11 @@ export default function ContentEditPage() {
   const treeQuery = useCmsChannelTree(siteId);
   const { data: models } = useAllCmsModels();
   const { data: tags } = useAllCmsTags(siteId);
+  // 相关文章候选：本站最近 100 条已发布内容
+  const relatedCandidatesQuery = useCmsContentList(
+    { page: 1, pageSize: 100, siteId: siteId ?? 0, status: 'published' },
+    siteId !== undefined,
+  );
   const saveMutation = useSaveCmsContent();
   const actionMutation = useCmsContentAction();
   const previewMutation = useCmsPreviewLink();
@@ -213,13 +218,16 @@ export default function ContentEditPage() {
         isHot: detail.isHot,
         sort: detail.sort,
         tagIds: detail.tagIds ?? [],
+        extraChannelIds: detail.extraChannelIds ?? [],
+        relatedIds: detail.relatedIds ?? [],
         seoTitle: detail.seoTitle ?? '',
         seoKeywords: detail.seoKeywords ?? '',
         seoDescription: detail.seoDescription ?? '',
         scheduledAt: detail.scheduledAt ?? undefined,
+        expireAt: detail.expireAt ?? undefined,
         extend: detail.extend ?? {},
       }
-    : { channelId: channelIdParam, isTop: false, isRecommend: false, isHot: false, sort: 0, tagIds: [], extend: {} };
+    : { channelId: channelIdParam, isTop: false, isRecommend: false, isHot: false, sort: 0, tagIds: [], extraChannelIds: [], relatedIds: [], extend: {} };
 
   async function save(opts?: { silent?: boolean }): Promise<number | null> {
     if (!siteId) return null;
@@ -234,6 +242,8 @@ export default function ContentEditPage() {
     if (!values.slug) payload.slug = null;
     if (values.scheduledAt instanceof Date) payload.scheduledAt = formatDateTimeForApi(values.scheduledAt);
     if (!values.scheduledAt) payload.scheduledAt = null;
+    if (values.expireAt instanceof Date) payload.expireAt = formatDateTimeForApi(values.expireAt);
+    if (!values.expireAt) payload.expireAt = null;
     if (!id) payload.siteId = siteId;
     // 乐观锁：携带读取时的版本号，被他人修改时后端返回 409
     if (id && versionRef.current !== undefined) payload.expectedVersion = versionRef.current;
@@ -382,12 +392,31 @@ export default function ContentEditPage() {
                 treeData={channelsToTree(treeQuery.data ?? [])}
                 rules={[{ required: true, message: '请选择栏目' }]}
               />
+              <Form.TreeSelect
+                field="extraChannelIds"
+                label="副栏目（一文多栏目）"
+                multiple
+                style={{ width: '100%' }}
+                treeData={channelsToTree(treeQuery.data ?? [])}
+                placeholder="同时展示在其他栏目（可选）"
+              />
               <Form.Select
                 field="tagIds"
                 label="标签"
                 multiple
                 style={{ width: '100%' }}
                 optionList={(tags ?? []).map((t) => ({ value: t.id, label: t.name }))}
+              />
+              <Form.Select
+                field="relatedIds"
+                label="相关文章"
+                multiple
+                filter
+                style={{ width: '100%' }}
+                placeholder="手动指定相关阅读（不足自动按标签补齐）"
+                optionList={(relatedCandidatesQuery.data?.list ?? [])
+                  .filter((c) => c.id !== id)
+                  .map((c) => ({ value: c.id, label: c.title }))}
               />
               <Row gutter={12}>
                 <Col span={12}><Form.Input field="author" label="作者" /></Col>
@@ -442,6 +471,14 @@ export default function ContentEditPage() {
                 density="compact"
                 style={{ width: '100%' }}
                 placeholder="到期自动发布（每分钟检查）"
+              />
+              <Form.DatePicker
+                field="expireAt"
+                label="过期下线"
+                type="dateTime"
+                density="compact"
+                style={{ width: '100%' }}
+                placeholder="到期自动下线（留空永不过期）"
               />
               <Form.Section text="SEO（留空继承栏目/站点）">
                 <Form.Input field="seoTitle" label="SEO 标题" />

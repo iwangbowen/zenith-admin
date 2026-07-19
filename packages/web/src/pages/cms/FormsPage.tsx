@@ -7,6 +7,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
+import { ExportButton } from '@/components/ExportButton';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import {
@@ -66,6 +67,11 @@ function SubmissionsSheet({ form, onClose }: Readonly<{ form: CmsForm | null; on
       onCancel={onClose}
       width={720}
     >
+      {form && hasPermission('cms:form:manage') ? (
+        <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'flex-end' }}>
+          <ExportButton entity="cms.form-submissions" query={{ formId: form.id }} />
+        </div>
+      ) : null}
       <ConfigurableTable
         bordered
         columns={columns}
@@ -192,6 +198,7 @@ export default function FormsPage() {
           initValues={editingRecord
             ? {
                 name: editingRecord.name, code: editingRecord.code, successMessage: editingRecord.successMessage ?? '',
+                notifyEmail: editingRecord.notifyEmail ?? '',
                 status: editingRecord.status,
                 fields: editingRecord.fields.map((f) => ({ ...f })),
               }
@@ -202,6 +209,7 @@ export default function FormsPage() {
           <Form.Input field="name" label="表单名称" rules={[{ required: true, message: '请输入表单名称' }]} />
           <Form.Input field="code" label="表单标识" disabled={!!editingRecord} placeholder="如 contact（前台提交与栏目绑定用）" rules={[{ required: true, message: '请输入表单标识' }]} />
           <Form.Input field="successMessage" label="成功提示" placeholder="提交成功后展示的文案" />
+          <Form.Input field="notifyEmail" label="通知邮箱" placeholder="收到新提交时通知，多个邮箱用逗号分隔（留空不通知）" />
           <Form.RadioGroup field="status" label="状态">
             <Form.Radio value="enabled">启用</Form.Radio>
             <Form.Radio value="disabled">停用</Form.Radio>

@@ -176,6 +176,8 @@ export const cmsContents = pgTable('cms_contents', {
   publishedAt: timestamp('published_at'),
   /** 定时发布时间（P2 调度使用，先建列） */
   scheduledAt: timestamp('scheduled_at'),
+  /** 过期自动下线时间（到期由周期任务下线，空 = 永不过期） */
+  expireAt: timestamp('expire_at'),
   viewCount: integer('view_count').notNull().default(0),
   /** 乐观锁版本号（每次更新 +1；更新携带 expectedVersion 不一致时拒绝，防并发编辑覆盖） */
   version: integer('version').notNull().default(1),
@@ -205,6 +207,23 @@ export const cmsContents = pgTable('cms_contents', {
 
 export type CmsContentRow = typeof cmsContents.$inferSelect;
 export type NewCmsContent = typeof cmsContents.$inferInsert;
+
+// ─── CMS 内容-副栏目关联（一文多栏目：主栏目在 cms_contents.channel_id，副栏目在此表）──
+export const cmsContentChannels = pgTable('cms_content_channels', {
+  contentId: integer('content_id').notNull().references(() => cmsContents.id, { onDelete: 'cascade' }),
+  channelId: integer('channel_id').notNull().references(() => cmsChannels.id, { onDelete: 'cascade' }),
+}, (t) => [primaryKey({ columns: [t.contentId, t.channelId] })]);
+
+export type CmsContentChannelRow = typeof cmsContentChannels.$inferSelect;
+
+// ─── CMS 相关文章（手动关联；前台展示时不足可按标签自动补齐）───────────────────
+export const cmsContentRelations = pgTable('cms_content_relations', {
+  contentId: integer('content_id').notNull().references(() => cmsContents.id, { onDelete: 'cascade' }),
+  relatedId: integer('related_id').notNull().references(() => cmsContents.id, { onDelete: 'cascade' }),
+  sort: integer('sort').notNull().default(0),
+}, (t) => [primaryKey({ columns: [t.contentId, t.relatedId] })]);
+
+export type CmsContentRelationRow = typeof cmsContentRelations.$inferSelect;
 
 // ─── CMS 标签（按站点隔离，带 slug 供生成 tag 聚合页）───────────────────────────
 export const cmsTags = pgTable('cms_tags', {
@@ -337,8 +356,12 @@ export const cmsComments = pgTable('cms_comments', {
   id: serial('id').primaryKey(),
   siteId: integer('site_id').notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
   contentId: integer('content_id').notNull().references(() => cmsContents.id, { onDelete: 'cascade' }),
+  /** 父评论 id，0 = 顶级（树形回复，前台展示两级） */
+  parentId: integer('parent_id').notNull().default(0),
   nickname: varchar('nickname', { length: 50 }).notNull(),
   content: text('content').notNull(),
+  /** 点赞数（前台匿名点赞，IP 去重） */
+  likeCount: integer('like_count').notNull().default(0),
   status: cmsCommentStatusEnum('status').notNull().default('pending'),
   ip: varchar('ip', { length: 64 }),
   userAgent: varchar('user_agent', { length: 255 }),
@@ -376,6 +399,8 @@ export const cmsAds = pgTable('cms_ads', {
   /** 投放时间窗（空 = 不限） */
   startAt: timestamp('start_at'),
   endAt: timestamp('end_at'),
+  /** 点击计数（前台经由 /api/public/cms/ads/{id}/click 中转累加） */
+  clickCount: integer('click_count').notNull().default(0),
   sort: integer('sort').notNull().default(0),
   status: statusEnum('status').notNull().default('enabled'),
   ...auditColumns(),
@@ -395,6 +420,8 @@ export const cmsForms = pgTable('cms_forms', {
   /** 字段定义：name/label/fieldType(text|textarea|select|radio)/required/options */
   fields: jsonb('fields').$type<{ name: string; label: string; fieldType: string; required: boolean; options?: { label: string; value: string }[] | null }[]>().notNull().default([]),
   successMessage: varchar('success_message', { length: 255 }),
+  /** 新提交通知邮箱（逗号分隔多个，空 = 不通知） */
+  notifyEmail: varchar('notify_email', { length: 255 }),
   status: statusEnum('status').notNull().default('enabled'),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),

@@ -45,7 +45,7 @@ import {
   reportSlaRules,
   reportSlaViolations,
 } from './report-platform';
-import { cmsChannels, cmsContents, cmsContentTags, cmsFragments, cmsFriendLinks, cmsModelFields, cmsModels, cmsSites, cmsTags, cmsContentVersions, cmsRedirects, cmsLinkWords, cmsComments, cmsAdSlots, cmsAds, cmsForms, cmsFormSubmissions, cmsPushLogs, cmsSiteUsers } from './cms';
+import { cmsChannels, cmsContents, cmsContentTags, cmsFragments, cmsFriendLinks, cmsModelFields, cmsModels, cmsSites, cmsTags, cmsContentVersions, cmsRedirects, cmsLinkWords, cmsComments, cmsAdSlots, cmsAds, cmsForms, cmsFormSubmissions, cmsPushLogs, cmsSiteUsers, cmsContentChannels, cmsContentRelations } from './cms';
 
 // ─── 关联关系 ────────────────────────────────────────────────────────────────
 export const errorGroupsRelations = relations(errorGroups, ({ many, one }) => ({
@@ -1275,7 +1275,19 @@ export const cmsContentsRelations = relations(cmsContents, ({ one, many }) => ({
   channel: one(cmsChannels, { fields: [cmsContents.channelId], references: [cmsChannels.id] }),
   model: one(cmsModels, { fields: [cmsContents.modelId], references: [cmsModels.id] }),
   contentTags: many(cmsContentTags),
+  extraChannels: many(cmsContentChannels),
+  relatedContents: many(cmsContentRelations, { relationName: 'cmsContentRelationsSource' }),
   createdByUser: one(users, { fields: [cmsContents.createdBy], references: [users.id], relationName: 'cmsContentCreatedBy' }),
+}));
+
+export const cmsContentChannelsRelations = relations(cmsContentChannels, ({ one }) => ({
+  content: one(cmsContents, { fields: [cmsContentChannels.contentId], references: [cmsContents.id] }),
+  channel: one(cmsChannels, { fields: [cmsContentChannels.channelId], references: [cmsChannels.id] }),
+}));
+
+export const cmsContentRelationsRelations = relations(cmsContentRelations, ({ one }) => ({
+  content: one(cmsContents, { fields: [cmsContentRelations.contentId], references: [cmsContents.id], relationName: 'cmsContentRelationsSource' }),
+  related: one(cmsContents, { fields: [cmsContentRelations.relatedId], references: [cmsContents.id], relationName: 'cmsContentRelationsTarget' }),
 }));
 
 export const cmsContentTagsRelations = relations(cmsContentTags, ({ one }) => ({

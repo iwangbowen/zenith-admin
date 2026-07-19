@@ -1,6 +1,6 @@
 import { createElement, type ComponentType } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { eq, and, desc, isNull } from 'drizzle-orm';
+import { eq, and, desc, isNull, inArray } from 'drizzle-orm';
 import { db } from '../../db';
 import { cmsChannels, cmsTags, cmsContents } from '../../db/schema';
 import type { CmsSiteRow, CmsChannelRow, CmsContentRow, CmsTagRow } from '../../db/schema';
@@ -13,7 +13,7 @@ import type {
 import { listCmsChannelTree } from './cms-channels.service';
 import {
   listPublishedContents, listHomeContents, getPublishedContent, getAdjacentContents, listContentTags,
-  listPublishedContentsByTag,
+  listPublishedContentsByTag, listRelatedContents,
 } from './cms-contents.service';
 import { getFragmentMap } from './cms-fragments.service';
 import { listEnabledFriendLinks } from './cms-friend-links.service';
@@ -347,14 +347,16 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
       mainEntityOfPage: origin ? `${origin}${canonicalPath}` : undefined,
     },
   });
-  const [base, breadcrumbs, adjacent, tags, linkWords, comments] = await Promise.all([
+  const [base, breadcrumbs, adjacent, tags, linkWords, comments, relatedRows] = await Promise.all([
     buildBaseContext(site, baseUrl, seo, row.id),
     buildBreadcrumbs(site, baseUrl, channel),
     getAdjacentContents(row),
     listContentTags(row.id),
     getEnabledLinkWords(site.id),
     listApprovedComments(row.id),
+    listRelatedContents(row),
   ]);
+  const related = await buildRelatedLinks(baseUrl, relatedRows);
   const html = renderDoc(resolveDetailTemplate(theme, channel.detailTemplate), {
     ...base,
     channel: toChannelInfo(channel, baseUrl),
@@ -367,7 +369,8 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
       prev: adjacent.prev ? { title: adjacent.prev.title, url: contentUrl(baseUrl, channel.path, adjacent.prev) } : null,
       next: adjacent.next ? { title: adjacent.next.title, url: contentUrl(baseUrl, channel.path, adjacent.next) } : null,
     },
-    comments: comments.map((cm) => ({ nickname: cm.nickname, content: cm.content, createdAt: cm.createdAt })),
+    related,
+    comments: comments.map((cm) => ({ id: cm.id, parentId: cm.parentId, nickname: cm.nickname, content: cm.content, likeCount: cm.likeCount, createdAt: cm.createdAt })),
     commentForm: {
       action: '/api/public/cms/comments',
       contentId: row.id,
@@ -375,6 +378,18 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
     },
   });
   return { status: 200, html, kind: 'detail', contentId: row.id };
+}
+
+/** 相关文章行 → 前台链接（跨栏目取各自栏目路径） */
+async function buildRelatedLinks(baseUrl: string, rows: CmsContentRow[]): Promise<{ title: string; url: string }[]> {
+  if (rows.length === 0) return [];
+  const channelIds = [...new Set(rows.map((r) => r.channelId))];
+  const channels = await db.select({ id: cmsChannels.id, path: cmsChannels.path })
+    .from(cmsChannels).where(inArray(cmsChannels.id, channelIds));
+  const pathById = new Map(channels.map((ch) => [ch.id, ch.path]));
+  return rows
+    .filter((r) => pathById.has(r.channelId))
+    .map((r) => ({ title: r.title, url: contentUrl(baseUrl, pathById.get(r.channelId)!, r) }));
 }
 
 /**
@@ -413,6 +428,7 @@ export async function renderContentPreviewPage(site: CmsSiteRow, baseUrl: string
       prev: null,
       next: null,
     },
+    related: [],
     comments: [],
     commentForm: {
       action: '/api/public/cms/comments',

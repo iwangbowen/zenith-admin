@@ -67,14 +67,20 @@ function HtmlFragment({ ctx, code, className }: { ctx: CmsBaseContext; code: str
   return <div className={className} dangerouslySetInnerHTML={{ __html: fragment.content }} />;
 }
 
-/** 广告位：图片广告渲染图片，无图广告渲染文字条 */
+/** 广告位：图片广告渲染图片，无图广告渲染文字条；点击经由计数中转 302 跳转 */
 function AdSlot({ ctx, code }: { ctx: CmsBaseContext; code: string }) {
   const ads = ctx.ads[code];
   if (!ads || ads.length === 0) return null;
   return (
     <div className="ad-slot">
       {ads.map((ad) => (
-        <a key={ad.name} href={ad.linkUrl ?? '#'} target={ad.linkUrl?.startsWith('http') ? '_blank' : '_self'} rel="noopener nofollow" aria-label={ad.name}>
+        <a
+          key={ad.id}
+          href={ad.linkUrl ? `/api/public/cms/ads/${ad.id}/click` : '#'}
+          target={ad.linkUrl ? '_blank' : '_self'}
+          rel="noopener nofollow"
+          aria-label={ad.name}
+        >
           {ad.image ? <img src={ad.image} alt={ad.name} loading="lazy" /> : <div className="ad-text">{ad.name}</div>}
         </a>
       ))}
@@ -82,25 +88,51 @@ function AdSlot({ ctx, code }: { ctx: CmsBaseContext; code: string }) {
   );
 }
 
-/** 评论区：已审核评论列表 + 原生 form POST 提交（含蜜罐字段，静态页零 JS 可用） */
+/** 评论区：树形两级（顶级+回复）+ 点赞/回复 + 原生 form POST 提交（含蜜罐字段） */
 function CommentsBlock({ comments, form }: { comments: CmsCommentItem[]; form: CmsCommentFormConfig }) {
+  const topLevel = comments.filter((cm) => cm.parentId === 0);
+  const repliesOf = (id: number) => comments.filter((cm) => cm.parentId === id);
+  const likeAction = (id: number) => `/api/public/cms/comments/${id}/like`;
+  const renderItem = (cm: CmsCommentItem, isReply: boolean) => (
+    <div className={isReply ? 'comment-item comment-reply' : 'comment-item'} key={cm.id} style={isReply ? { marginLeft: 24 } : undefined}>
+      <div className="meta">
+        <b>{cm.nickname}</b>
+        <time>{cm.createdAt}</time>
+      </div>
+      <p>{cm.content}</p>
+      <div className="comment-actions">
+        <form method="post" action={likeAction(cm.id)} style={{ display: 'inline' }}>
+          <input type="hidden" name="returnUrl" value={form.returnUrl} />
+          <button type="submit" className="comment-like">赞 {cm.likeCount > 0 ? `(${cm.likeCount})` : ''}</button>
+        </form>
+        {!isReply ? (
+          <button type="button" className="comment-reply-btn" data-comment-id={cm.id} data-nickname={cm.nickname}>回复</button>
+        ) : null}
+      </div>
+      {!isReply ? repliesOf(cm.id).map((r) => renderItem(r, true)) : null}
+    </div>
+  );
   return (
     <section className="comments">
       <h2>评论（{comments.length}）</h2>
-      {comments.map((cm, i) => (
-        <div className="comment-item" key={`${cm.nickname}-${i}`}>
-          <div className="meta"><b>{cm.nickname}</b><time>{cm.createdAt}</time></div>
-          <p>{cm.content}</p>
-        </div>
-      ))}
-      <form className="front-form" method="post" action={form.action}>
+      {topLevel.map((cm) => renderItem(cm, false))}
+      <form className="front-form" id="comment-form" method="post" action={form.action}>
         <input type="hidden" name="contentId" value={form.contentId} />
         <input type="hidden" name="returnUrl" value={form.returnUrl} />
+        <input type="hidden" name="parentId" id="comment-parent-id" value="0" />
         <input className="hp" type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" />
+        <div id="reply-hint" style={{ display: 'none', fontSize: 13, color: '#59636e' }}>
+          回复给：<span id="reply-target" /> <button type="button" id="cancel-reply">取消回复</button>
+        </div>
         <label>昵称 <span className="req">*</span><input type="text" name="nickname" required maxLength={50} /></label>
         <label>评论内容 <span className="req">*</span><textarea name="content" required maxLength={1000} /></label>
         <button type="submit">提交评论（审核后显示）</button>
       </form>
+      <script
+        dangerouslySetInnerHTML={{
+          __html: 'document.querySelectorAll(".comment-reply-btn").forEach(function(b){b.addEventListener("click",function(){document.getElementById("comment-parent-id").value=b.dataset.commentId;document.getElementById("reply-target").textContent=b.dataset.nickname;document.getElementById("reply-hint").style.display="block";document.getElementById("comment-form").scrollIntoView({behavior:"smooth"});});});var c=document.getElementById("cancel-reply");if(c){c.addEventListener("click",function(){document.getElementById("comment-parent-id").value="0";document.getElementById("reply-hint").style.display="none";});}',
+        }}
+      />
     </section>
   );
 }
@@ -221,6 +253,14 @@ export function DetailTemplate(ctx: CmsDetailContext) {
           {content.prev ? <span>上一篇：<a href={content.prev.url}>{content.prev.title}</a></span> : null}
           {content.next ? <span>下一篇：<a href={content.next.url}>{content.next.title}</a></span> : null}
         </nav>
+      ) : null}
+      {ctx.related.length > 0 ? (
+        <section className="related-articles">
+          <h2>相关阅读</h2>
+          <ul>
+            {ctx.related.map((r) => <li key={r.url}><a href={r.url}>{r.title}</a></li>)}
+          </ul>
+        </section>
       ) : null}
       <CommentsBlock comments={ctx.comments} form={ctx.commentForm} />
     </Layout>

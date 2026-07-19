@@ -6,14 +6,16 @@ import redis from '../../lib/redis';
 import logger from '../../lib/logger';
 import { refreshContentStatic } from './cms-static.service';
 import { triggerAutoPushForContent } from './cms-push.service';
+import { offlineExpiredCmsContents } from './cms-contents.service';
 
 const LOCK_KEY = `${config.redis.keyPrefix}cms:scheduled-publish-lock`;
 const LOCK_TTL_SECONDS = 300;
 
 /**
- * CMS 定时发布（系统周期任务，每分钟执行）：
- * 扫描 scheduledAt 到期且未发布的内容 → 自动发布 + 增量静态化 + 搜索引擎推送。
- * Redis 排他锁防止多实例部署或上一轮未结束时重复发布。
+ * CMS 定时发布 + 过期下线（系统周期任务，每分钟执行）：
+ * 1. 扫描 scheduledAt 到期且未发布的内容 → 自动发布 + 增量静态化 + 搜索引擎推送；
+ * 2. 扫描 expireAt 到期的已发布内容 → 自动下线 + 刷新静态页。
+ * Redis 排他锁防止多实例部署或上一轮未结束时重复执行。
  */
 export async function publishScheduledCmsContents(): Promise<string> {
   const acquired = await redis.set(LOCK_KEY, String(Date.now()), 'EX', LOCK_TTL_SECONDS, 'NX');
@@ -29,7 +31,6 @@ export async function publishScheduledCmsContents(): Promise<string> {
         isNull(cmsContents.deletedAt),
       ))
       .limit(200);
-    if (due.length === 0) return '无到期的定时发布内容';
 
     let published = 0;
     for (const row of due) {
@@ -53,7 +54,17 @@ export async function publishScheduledCmsContents(): Promise<string> {
         logger.error(`[CMS] 定时发布内容 ${row.id} 失败`, err);
       }
     }
-    return `定时发布 ${published}/${due.length} 条内容`;
+
+    // 过期下线
+    const expiredIds = await offlineExpiredCmsContents(now);
+    for (const id of expiredIds) {
+      await refreshContentStatic(id).catch((err) => {
+        logger.error(`[CMS] 过期下线内容 ${id} 静态刷新失败`, err);
+      });
+    }
+
+    if (due.length === 0 && expiredIds.length === 0) return '无到期的定时发布/过期内容';
+    return `定时发布 ${published}/${due.length} 条，过期下线 ${expiredIds.length} 条`;
   } finally {
     await redis.del(LOCK_KEY).catch(() => undefined);
   }

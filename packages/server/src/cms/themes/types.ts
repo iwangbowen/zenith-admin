@@ -82,6 +82,7 @@ export interface CmsPagination {
 
 /** 广告条目 */
 export interface CmsAdItem {
+  id: number;
   name: string;
   image: string | null;
   linkUrl: string | null;
@@ -125,10 +126,13 @@ export interface CmsListContext extends CmsBaseContext {
   pagination: CmsPagination;
 }
 
-/** 前台评论（已审核） */
+/** 前台评论（已审核；树形两级：parentId=0 为顶级） */
 export interface CmsCommentItem {
+  id: number;
+  parentId: number;
   nickname: string;
   content: string;
+  likeCount: number;
   createdAt: string;
 }
 
@@ -143,6 +147,8 @@ export interface CmsDetailContext extends CmsBaseContext {
   channel: CmsChannelInfo;
   breadcrumbs: CmsBreadcrumb[];
   content: CmsContentDetail;
+  /** 相关文章（手动关联优先，不足按标签补齐） */
+  related: { title: string; url: string }[];
   comments: CmsCommentItem[];
   commentForm: CmsCommentFormConfig;
 }

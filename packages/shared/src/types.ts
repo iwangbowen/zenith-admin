@@ -10382,6 +10382,8 @@ export interface CmsContent {
   rejectReason: string | null;
   publishedAt: string | null;
   scheduledAt: string | null;
+  /** 过期自动下线时间（空 = 永不过期） */
+  expireAt: string | null;
   viewCount: number;
   /** 乐观锁版本号（更新时回传 expectedVersion） */
   version: number;
@@ -10391,6 +10393,10 @@ export interface CmsContent {
   seoDescription: string | null;
   tagIds?: number[];
   tags?: CmsTag[];
+  /** 副栏目 id 列表（一文多栏目） */
+  extraChannelIds?: number[];
+  /** 相关文章 id 列表（手动关联） */
+  relatedIds?: number[];
   /** 会员投稿：非空表示由前台会员提交 */
   memberId?: number | null;
   createdAt: string;
@@ -10513,8 +10519,13 @@ export interface CmsComment {
   contentId: number;
   /** 内容标题（JOIN 后附加） */
   contentTitle?: string | null;
+  /** 父评论 id，0 = 顶级 */
+  parentId: number;
+  /** 父评论昵称（JOIN 后附加） */
+  parentNickname?: string | null;
   nickname: string;
   content: string;
+  likeCount: number;
   status: CmsCommentStatus;
   ip: string | null;
   userAgent: string | null;
@@ -10544,6 +10555,8 @@ export interface CmsAd {
   linkUrl: string | null;
   startAt: string | null;
   endAt: string | null;
+  /** 点击计数（前台点击中转累加） */
+  clickCount: number;
   sort: number;
   status: 'enabled' | 'disabled';
   createdAt: string;
@@ -10565,6 +10578,8 @@ export interface CmsForm {
   name: string;
   fields: CmsFormField[];
   successMessage: string | null;
+  /** 新提交通知邮箱（逗号分隔多个，空 = 不通知） */
+  notifyEmail: string | null;
   status: 'enabled' | 'disabled';
   /** 提交数（JOIN 后附加） */
   submissionCount?: number;

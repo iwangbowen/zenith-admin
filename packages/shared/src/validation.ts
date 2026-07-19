@@ -5139,11 +5139,17 @@ export const createCmsContentSchema = z.object({
   isRecommend: z.boolean().default(false),
   isHot: z.boolean().default(false),
   scheduledAt: z.string().nullable().optional(),
+  /** 过期自动下线时间（空 = 永不过期） */
+  expireAt: z.string().nullable().optional(),
   sort: z.number().int().default(0),
   seoTitle: z.string().max(255).nullable().optional(),
   seoKeywords: z.string().max(500).nullable().optional(),
   seoDescription: z.string().max(500).nullable().optional(),
   tagIds: z.array(z.number().int().positive()).default([]),
+  /** 副栏目 id 列表（一文多栏目；不含主栏目） */
+  extraChannelIds: z.array(z.number().int().positive()).default([]),
+  /** 相关文章 id 列表（手动关联） */
+  relatedIds: z.array(z.number().int().positive()).default([]),
 });
 export const updateCmsContentSchema = createCmsContentSchema.partial().omit({ siteId: true }).extend({
   /** 乐观锁：携带读取时的版本号，服务端版本不一致返回 409（不传则跳过检查） */
@@ -5249,6 +5255,7 @@ export const createCmsFormSchema = z.object({
   name: z.string().min(1, '表单名称不能为空').max(100),
   fields: z.array(cmsFormFieldSchema).min(1, '至少配置一个字段').default([]),
   successMessage: z.string().max(255).nullable().optional(),
+  notifyEmail: z.string().max(255).nullable().optional(),
   status: z.enum(['enabled', 'disabled']).default('enabled'),
 });
 export const updateCmsFormSchema = createCmsFormSchema.partial().omit({ siteId: true });
@@ -5264,6 +5271,8 @@ export const submitCmsCommentSchema = z.object({
   contentId: z.coerce.number().int().positive(),
   nickname: z.string().min(1, '昵称不能为空').max(50),
   content: z.string().min(1, '评论内容不能为空').max(1000),
+  /** 回复的父评论 id（0/缺省 = 顶级评论） */
+  parentId: z.coerce.number().int().min(0).optional(),
   /** 蜜罐字段：正常用户不可见不填写，机器人填写即拒绝 */
   website: z.string().max(0, '提交被拒绝').optional(),
 });

@@ -53,15 +53,20 @@ export default function CommentsPage() {
     {
       title: '评论内容',
       dataIndex: 'content',
-      width: 340,
-      render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 320 }}>{v}</Typography.Text>,
+      width: 300,
+      render: (v: string, record: CmsComment) => (
+        <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 280 }}>
+          {record.parentId > 0 && record.parentNickname ? `回复 @${record.parentNickname}：${v}` : v}
+        </Typography.Text>
+      ),
     },
     {
       title: '所属内容',
       dataIndex: 'contentTitle',
-      width: 220,
-      render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 200 }}>{v ?? '-'}</Typography.Text>,
+      width: 200,
+      render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 180 }}>{v ?? '-'}</Typography.Text>,
     },
+    { title: '点赞', dataIndex: 'likeCount', width: 80, align: 'right' },
     { title: 'IP', dataIndex: 'ip', width: 130, render: (v: string | null) => v ?? '-' },
     { title: '提交时间', dataIndex: 'createdAt', width: 180 },
     {

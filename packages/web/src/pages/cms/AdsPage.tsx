@@ -147,7 +147,8 @@ function AdsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
   const columns: ColumnProps<CmsAd>[] = [
     { title: '广告名称', dataIndex: 'name', width: 180 },
     { title: '广告位', dataIndex: 'slotName', width: 140 },
-    { title: '跳转地址', dataIndex: 'linkUrl', width: 220, render: (v: string | null) => v ?? '-' },
+    { title: '跳转地址', dataIndex: 'linkUrl', width: 200, render: (v: string | null) => v ?? '-' },
+    { title: '点击量', dataIndex: 'clickCount', width: 90, align: 'right' },
     { title: '开始时间', dataIndex: 'startAt', width: 180, render: (v: string | null) => v ?? '不限' },
     { title: '结束时间', dataIndex: 'endAt', width: 180, render: (v: string | null) => v ?? '不限' },
     { title: '排序', dataIndex: 'sort', width: 70 },

@@ -2952,7 +2952,7 @@ export const SEED_CMS_CONTENTS: (CmsContent & { tagIds: number[] })[] = [
     summary: '全新 CMS 模块支持多站点、SEO 优化、SSR 静态化发布与基于 PostgreSQL 的中文全文检索。',
     coverImage: null, author: '管理员', source: '官方', body: '<p>Zenith Admin 全新 CMS 模块正式发布：支持站群管理、内容模型自定义字段、React SSR 静态化与 PostgreSQL 全文检索，功能全面对标国内主流 CMS。</p>',
     extend: {}, externalLink: null, isTop: true, isRecommend: true, isHot: false,
-    status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null,
+    status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null, expireAt: null,
     viewCount: 128, version: 1, sort: 0, seoTitle: null, seoKeywords: 'CMS,发布', seoDescription: null,
     tagIds: [1], createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
@@ -2962,7 +2962,7 @@ export const SEED_CMS_CONTENTS: (CmsContent & { tagIds: number[] })[] = [
     summary: '解析传统 CMS 的静态化方案与现代 SSR 渲染的结合方式，以及不依赖 Elasticsearch 的 PostgreSQL 全文检索实现。',
     coverImage: null, author: '管理员', source: '原创', body: '<p>本文介绍混合静态化模式（发布时增量生成 + 访问时回写）与应用层中文分词方案在 PostgreSQL tsvector 上的落地实践。</p>',
     extend: {}, externalLink: null, isTop: false, isRecommend: true, isHot: true,
-    status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null,
+    status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null, expireAt: null,
     viewCount: 86, version: 1, sort: 0, seoTitle: null, seoKeywords: '静态化,全文检索', seoDescription: null,
     tagIds: [2], createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
@@ -2973,7 +2973,7 @@ export const SEED_CMS_CONTENTS: (CmsContent & { tagIds: number[] })[] = [
     coverImage: null, author: null, source: null, body: '<p>Zenith 企业版提供完整的权限体系、工作流引擎、支付中心与 CMS 内容管理能力。</p>',
     extend: { price: '联系销售', spec: '支持私有化部署，PostgreSQL 16 + Redis 7' }, externalLink: null,
     isTop: false, isRecommend: false, isHot: false,
-    status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null,
+    status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null, expireAt: null,
     viewCount: 45, version: 1, sort: 0, seoTitle: null, seoKeywords: null, seoDescription: null,
     tagIds: [], createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
@@ -2995,7 +2995,7 @@ export const SEED_CMS_AD_SLOTS: CmsAdSlot[] = [
 ];
 
 export const SEED_CMS_ADS: CmsAd[] = [
-  { id: 1, slotId: 1, name: 'Zenith 企业版上线', image: null, linkUrl: '/products/enterprise.html', startAt: null, endAt: null, sort: 1, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1, slotId: 1, name: 'Zenith 企业版上线', image: null, linkUrl: '/products/enterprise.html', startAt: null, endAt: null, clickCount: 0, sort: 1, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 export const SEED_CMS_FORMS: CmsForm[] = [
@@ -3007,6 +3007,7 @@ export const SEED_CMS_FORMS: CmsForm[] = [
       { name: 'message', label: '留言内容', fieldType: 'textarea', required: true },
     ],
     successMessage: '提交成功，我们会尽快与您联系！',
+    notifyEmail: null,
     status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
 ];
@@ -3021,6 +3022,6 @@ export const SEED_CMS_LINK_WORDS: CmsLinkWord[] = [
 ];
 
 export const SEED_CMS_COMMENTS: CmsComment[] = [
-  { id: 1, siteId: 1, contentId: 1, nickname: '热心网友', content: '期待 CMS 模块的采集功能！', status: 'approved', ip: null, userAgent: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 2, siteId: 1, contentId: 1, nickname: '路人甲', content: '静态化方案讲得很清楚', status: 'pending', ip: null, userAgent: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1, siteId: 1, contentId: 1, parentId: 0, nickname: '热心网友', content: '期待 CMS 模块的采集功能！', likeCount: 3, status: 'approved', ip: null, userAgent: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, siteId: 1, contentId: 1, parentId: 0, nickname: '路人甲', content: '静态化方案讲得很清楚', likeCount: 0, status: 'pending', ip: null, userAgent: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
