@@ -6,12 +6,14 @@ import { auditFields } from './_audit';
 
 const RuleInputDTO = z.object({
   key: z.string(), label: z.string(), expr: z.string(),
-  type: z.enum(['string', 'number', 'boolean']),
+  type: z.enum(['string', 'number', 'boolean', 'date']),
+  dictCode: z.string().nullable().optional(),
 });
 const RuleOutputDTO = z.object({
   key: z.string(), label: z.string(),
-  type: z.enum(['string', 'number', 'boolean']),
+  type: z.enum(['string', 'number', 'boolean', 'date']),
   default: z.union([z.string(), z.number(), z.boolean(), z.null()]).optional(),
+  isExpr: z.boolean().optional(),
 });
 const RuleRowDTO = z.object({
   id: z.string(),
@@ -21,6 +23,10 @@ const RuleRowDTO = z.object({
   label: z.string().optional(),
 });
 const hitPolicy = z.enum(['first', 'unique', 'priority', 'collect', 'any']);
+const RuleSettingsDTO = z.object({
+  collectAggregate: z.enum(['list', 'sum', 'min', 'max', 'count', 'distinct']).optional(),
+  fallbackToDefaults: z.boolean().optional(),
+});
 
 export const DecisionTableDTO = z
   .object({
@@ -34,6 +40,7 @@ export const DecisionTableDTO = z
     inputs: z.array(RuleInputDTO),
     outputs: z.array(RuleOutputDTO),
     rules: z.array(RuleRowDTO),
+    settings: RuleSettingsDTO.optional(),
     version: z.number().int(),
     publishedAt: z.string().nullable(),
     dirty: z.boolean().optional(),
@@ -53,6 +60,7 @@ export const DecisionTableVersionDTO = z
     inputs: z.array(RuleInputDTO),
     outputs: z.array(RuleOutputDTO),
     rules: z.array(RuleRowDTO),
+    settings: RuleSettingsDTO.optional(),
     publishedAt: z.string(),
     publishedBy: z.number().int().nullable(),
   })
@@ -66,8 +74,18 @@ export const RuleEvaluateResultDTO = z
     hitPolicy,
     collected: z.array(z.record(z.string(), z.unknown())).optional(),
     reason: z.enum(['no_match', 'unique_conflict', 'any_conflict']).optional(),
+    usedFallback: z.boolean().optional(),
   })
   .openapi('RuleEvaluateResult');
+
+export const RuleUsageDTO = z
+  .object({
+    type: z.enum(['workflow', 'coupon']),
+    id: z.number().int().nullable(),
+    name: z.string(),
+    status: z.string().nullable().optional(),
+  })
+  .openapi('RuleUsage');
 
 export const RuleVersionDiffDTO = z
   .object({

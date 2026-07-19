@@ -720,6 +720,13 @@ handlerRegistry.set('cleanupSystemMetrics', async (params) => {
   return `清理系统指标采样：删除 ${n} 条（保留 ${days} 天）`;
 });
 
+handlerRegistry.set('cleanupRuleExecutions', async (params) => {
+  const { cleanupRuleExecutions } = await import('../services/platform/rules.service');
+  const days = Number(params) || 90;
+  const n = await cleanupRuleExecutions(days);
+  return `清理决策执行记录：删除 ${n} 条（保留 ${days} 天）`;
+});
+
 handlerRegistry.set('cleanupUploadSessions', async () => {
   const { cleanupStaleUploadSessions } = await import('../services/files/upload-sessions.service');
   const r = await cleanupStaleUploadSessions();

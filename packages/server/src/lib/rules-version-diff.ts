@@ -12,6 +12,8 @@ interface Snapshot {
   inputs: RuleDecisionInput[];
   outputs: RuleDecisionOutput[];
   rules: RuleDecisionRow[];
+  /** 行为设置（collect 聚合/未命中回退），可选以兼容旧快照 */
+  settings?: unknown;
 }
 
 const byKey = <T extends { key: string }>(arr: T[]) => new Map(arr.map((x) => [x.key, x]));
@@ -28,6 +30,9 @@ export function diffDecisionSnapshots(from: number, to: number, a: Snapshot, b: 
   const changes: RuleVersionChange[] = [];
   if (a.name !== b.name) changes.push({ kind: 'meta', op: 'changed', ref: 'name', detail: `名称 ${a.name} → ${b.name}` });
   if (a.hitPolicy !== b.hitPolicy) changes.push({ kind: 'meta', op: 'changed', ref: 'hitPolicy', detail: `命中策略 ${a.hitPolicy} → ${b.hitPolicy}` });
+  if (JSON.stringify(a.settings ?? {}) !== JSON.stringify(b.settings ?? {})) {
+    changes.push({ kind: 'meta', op: 'changed', ref: 'settings', detail: `行为设置 ${JSON.stringify(a.settings ?? {})} → ${JSON.stringify(b.settings ?? {})}` });
+  }
   diffColumns('input', a.inputs, b.inputs, changes);
   diffColumns('output', a.outputs, b.outputs, changes);
   const ra = byId(a.rules), rb = byId(b.rules);

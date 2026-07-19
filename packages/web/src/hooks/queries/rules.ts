@@ -6,6 +6,7 @@ import type {
   RuleEvaluateResult,
   RuleTestCase,
   RuleTestRunResult,
+  RuleUsageItem,
   RuleVersionDiff,
 } from '@zenith/shared';
 import { toQueryString, unwrap } from '@/lib/query';
@@ -15,11 +16,19 @@ export interface RuleDecisionTableListParams {
   page: number;
   pageSize: number;
   keyword?: string;
+  status?: 'draft' | 'published' | 'disabled';
 }
 
 export interface RuleExecutionsParams {
+  page: number;
+  pageSize: number;
   tableId?: number;
-  limit: number;
+  instanceId?: number;
+  ruleKey?: string;
+  source?: 'runtime' | 'manual' | 'test';
+  matched?: boolean;
+  dateStart?: string;
+  dateEnd?: string;
 }
 
 export const ruleKeys = {
@@ -149,7 +158,13 @@ export function useTestRuleDecisionTable() {
 export function useRuleExecutions(params: RuleExecutionsParams, enabled = true) {
   return useQuery({
     queryKey: ruleKeys.decisionTables.executions(params),
-    queryFn: () => request.get<RuleDecisionExecution[]>(`/api/rules/decision-tables/executions${toQueryString(params)}`).then(unwrap),
-    enabled: enabled && params.tableId !== undefined,
+    queryFn: () => request.get<PaginatedResponse<RuleDecisionExecution>>(`/api/rules/decision-tables/executions${toQueryString(params)}`).then(unwrap),
+    placeholderData: keepPreviousData,
+    enabled,
   });
+}
+
+/** 引用分析（删除/停用确认时按需拉取） */
+export function fetchRuleUsages(id: number): Promise<RuleUsageItem[]> {
+  return request.get<RuleUsageItem[]>(`/api/rules/decision-tables/${id}/usages`).then(unwrap);
 }

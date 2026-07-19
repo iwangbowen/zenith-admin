@@ -4917,21 +4917,28 @@ export type CreateAppWebhookInput = z.input<typeof createAppWebhookSchema>;
 export type UpdateAppWebhookInput = z.input<typeof updateAppWebhookSchema>;
 
 // ─── 规则中心：决策表 ────────────────────────────────────────────────────────────
-const ruleFieldTypeSchema = z.enum(['string', 'number', 'boolean']);
+const ruleFieldTypeSchema = z.enum(['string', 'number', 'boolean', 'date']);
 const ruleHitPolicySchema = z.enum(['first', 'unique', 'priority', 'collect', 'any']);
 const ruleLiteralSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+
+export const ruleDecisionTableSettingsSchema = z.object({
+  collectAggregate: z.enum(['list', 'sum', 'min', 'max', 'count', 'distinct']).optional(),
+  fallbackToDefaults: z.boolean().optional(),
+});
 
 export const ruleDecisionInputSchema = z.object({
   key: z.string().min(1).max(64),
   label: z.string().min(1).max(64),
   expr: z.string().min(1).max(500),
   type: ruleFieldTypeSchema,
+  dictCode: z.string().max(64).nullable().optional(),
 });
 export const ruleDecisionOutputSchema = z.object({
   key: z.string().min(1).max(64),
   label: z.string().min(1).max(64),
   type: ruleFieldTypeSchema,
   default: ruleLiteralSchema.optional(),
+  isExpr: z.boolean().optional(),
 });
 export const ruleDecisionRowSchema = z.object({
   id: z.string().min(1).max(64),
@@ -4950,6 +4957,7 @@ export const createDecisionTableSchema = z.object({
   inputs: z.array(ruleDecisionInputSchema).default([]),
   outputs: z.array(ruleDecisionOutputSchema).default([]),
   rules: z.array(ruleDecisionRowSchema).default([]),
+  settings: ruleDecisionTableSettingsSchema.optional(),
 });
 export const updateDecisionTableSchema = createDecisionTableSchema.partial().omit({ key: true }).extend({
   /** 编辑乐观锁：携带打开编辑时的 updatedAt，服务端不一致时返回 409 */

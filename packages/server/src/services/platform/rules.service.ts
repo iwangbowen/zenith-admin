@@ -1,25 +1,28 @@
-import { and, desc, eq, like, inArray } from 'drizzle-orm';
+import { and, desc, eq, like, inArray, lt, gte, lte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type {
   RuleDecisionInput, RuleDecisionOutput, RuleDecisionRow, RuleHitPolicy, RuleEvaluateResult, RuleTestRunResult, RuleCaseResult,
+  RuleDecisionTableSettings, RuleUsageItem,
 } from '@zenith/shared';
 import { db } from '../../db';
-import { ruleDecisionTables, ruleDecisionTableVersions, ruleTestCases, ruleDecisionExecutions } from '../../db/schema';
+import { ruleDecisionTables, ruleDecisionTableVersions, ruleTestCases, ruleDecisionExecutions, workflowDefinitions } from '../../db/schema';
 import { currentUser, currentUserOrNull } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { escapeLike } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { pageOffset } from '../../lib/pagination';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
-import { evaluateDecisionTable } from '../../lib/rules-engine';
+import { formatDateTime, formatNullableDateTime, parseDateRangeStart, parseDateRangeEnd } from '../../lib/datetime';
+import { evaluateDecisionTable, isOutputExpression } from '../../lib/rules-engine';
+import { validateExpression } from '../../lib/workflow-expression';
+import { validateRuleCell } from '@zenith/shared';
 import { diffDecisionSnapshots } from '../../lib/rules-version-diff';
 
 type TableRow = typeof ruleDecisionTables.$inferSelect;
 type VersionRow = typeof ruleDecisionTableVersions.$inferSelect;
 
 /** 发布快照会固化的字段序列化（用于 dirty 判定：编辑态 vs 最新快照） */
-const snapshotComparable = (r: { name: string; description: string | null; hitPolicy: string; inputs: unknown; outputs: unknown; rules: unknown }) =>
-  JSON.stringify([r.name, r.description ?? null, r.hitPolicy, r.inputs ?? [], r.outputs ?? [], r.rules ?? []]);
+const snapshotComparable = (r: { name: string; description: string | null; hitPolicy: string; inputs: unknown; outputs: unknown; rules: unknown; settings?: unknown }) =>
+  JSON.stringify([r.name, r.description ?? null, r.hitPolicy, r.inputs ?? [], r.outputs ?? [], r.rules ?? [], r.settings ?? {}]);
 
 async function latestVersionOf(tableId: number): Promise<VersionRow | null> {
   const [v] = await db.select().from(ruleDecisionTableVersions)
@@ -40,6 +43,7 @@ export function mapDecisionTable(row: TableRow, latestVersion?: VersionRow | nul
     inputs: (row.inputs ?? []) as RuleDecisionInput[],
     outputs: (row.outputs ?? []) as RuleDecisionOutput[],
     rules: (row.rules ?? []) as RuleDecisionRow[],
+    settings: (row.settings ?? {}) as RuleDecisionTableSettings,
     version: row.version,
     publishedAt: formatNullableDateTime(row.publishedAt),
     dirty: latestVersion === undefined ? undefined : (latestVersion ? snapshotComparable(row) !== snapshotComparable(latestVersion) : false),
@@ -60,6 +64,7 @@ export function mapDecisionTableVersion(row: VersionRow) {
     inputs: (row.inputs ?? []) as RuleDecisionInput[],
     outputs: (row.outputs ?? []) as RuleDecisionOutput[],
     rules: (row.rules ?? []) as RuleDecisionRow[],
+    settings: (row.settings ?? {}) as RuleDecisionTableSettings,
     publishedAt: formatDateTime(row.publishedAt),
     publishedBy: row.publishedBy ?? null,
   };
@@ -125,6 +130,7 @@ export interface CreateDecisionTableInput {
   inputs?: RuleDecisionInput[];
   outputs?: RuleDecisionOutput[];
   rules?: RuleDecisionRow[];
+  settings?: RuleDecisionTableSettings;
 }
 
 export async function createDecisionTable(input: CreateDecisionTableInput) {
@@ -138,6 +144,7 @@ export async function createDecisionTable(input: CreateDecisionTableInput) {
       inputs: input.inputs ?? [],
       outputs: input.outputs ?? [],
       rules: input.rules ?? [],
+      settings: input.settings ?? {},
       tenantId: getCreateTenantId(currentUser()),
     }).returning();
     return mapDecisionTable(row, null);
@@ -165,6 +172,7 @@ export async function updateDecisionTable(id: number, input: UpdateDecisionTable
   if (input.inputs !== undefined) patch.inputs = input.inputs;
   if (input.outputs !== undefined) patch.outputs = input.outputs;
   if (input.rules !== undefined) patch.rules = input.rules;
+  if (input.settings !== undefined) patch.settings = input.settings;
   const [row] = await db.update(ruleDecisionTables).set(patch).where(and(...conds)).returning();
   if (!row) throw new HTTPException(404, { message: '决策表不存在' });
   invalidateRuleRuntimeCache();
@@ -172,7 +180,8 @@ export async function updateDecisionTable(id: number, input: UpdateDecisionTable
 }
 
 export async function deleteDecisionTable(id: number): Promise<void> {
-  await ensureDecisionTable(id);
+  const row = await ensureDecisionTable(id);
+  await ensureNotReferenced(row);
   const tc = tenantCondition(ruleDecisionTables, currentUser());
   const conds = [eq(ruleDecisionTables.id, id)];
   if (tc) conds.push(tc);
@@ -185,8 +194,38 @@ export async function deleteDecisionTables(ids: number[]): Promise<void> {
   const tc = tenantCondition(ruleDecisionTables, currentUser());
   const conds = [inArray(ruleDecisionTables.id, ids)];
   if (tc) conds.push(tc);
+  const rows = await db.select().from(ruleDecisionTables).where(and(...conds));
+  for (const row of rows) await ensureNotReferenced(row);
   await db.delete(ruleDecisionTables).where(and(...conds));
   invalidateRuleRuntimeCache();
+}
+
+// ─── 引用分析（where-used）─────────────────────────────────────────────────────
+
+/** 决策表引用方：扫描工作流定义 flowData 中的 decisionRuleKey + 内置消费方固定 key */
+export async function listDecisionTableUsages(id: number): Promise<RuleUsageItem[]> {
+  const row = await ensureDecisionTable(id);
+  return findUsagesByKey(row.key);
+}
+
+async function findUsagesByKey(key: string): Promise<RuleUsageItem[]> {
+  const pattern = `%"decisionRuleKey":"${escapeLike(key)}"%`;
+  const defs = await db.select({ id: workflowDefinitions.id, name: workflowDefinitions.name, status: workflowDefinitions.status })
+    .from(workflowDefinitions)
+    .where(sql`${workflowDefinitions.flowData}::text LIKE ${pattern}`);
+  const usages: RuleUsageItem[] = defs.map((d) => ({ type: 'workflow' as const, id: d.id, name: d.name, status: d.status }));
+  if (key === 'coupon_eligibility') {
+    usages.push({ type: 'coupon', id: null, name: '优惠券领取资格判定（内置消费方）', status: null });
+  }
+  return usages;
+}
+
+/** 删除前校验：仍被引用时拒绝删除（停用不受限，作为运维开关保留） */
+async function ensureNotReferenced(row: TableRow): Promise<void> {
+  const usages = await findUsagesByKey(row.key);
+  if (usages.length === 0) return;
+  const names = usages.slice(0, 3).map((u) => u.name).join('、');
+  throw new HTTPException(400, { message: `决策表「${row.name}」被 ${usages.length} 处引用（${names}${usages.length > 3 ? ' 等' : ''}），请先解除引用后再删除` });
 }
 
 /** 启用/停用：停用后运行时求值不可用；启用恢复为已发布（曾发布过）或草稿 */
@@ -200,12 +239,41 @@ export async function toggleDecisionTable(id: number, enabled: boolean) {
   return mapDecisionTable(updated, await latestVersionOf(id));
 }
 
+/** 发布前静态校验：输入取值表达式、条件单元格语法、'=' 输出表达式 */
+function ensurePublishable(row: TableRow): void {
+  const inputs = (row.inputs ?? []) as RuleDecisionInput[];
+  const outputs = (row.outputs ?? []) as RuleDecisionOutput[];
+  const rules = (row.rules ?? []) as RuleDecisionRow[];
+  const errors: string[] = [];
+  inputs.forEach((col, i) => {
+    const err = validateExpression(col.expr ?? '');
+    if (err) errors.push(`输入列 ${i + 1}「${col.label}」取值表达式无效：${err}`);
+  });
+  rules.forEach((r, ri) => {
+    inputs.forEach((col, ci) => {
+      const msg = validateRuleCell(r.when?.[ci] ?? '', col.type);
+      if (msg) errors.push(`规则行 ${ri + 1} 的「${col.label}」条件无效：${msg}`);
+    });
+    outputs.forEach((o) => {
+      const raw = r.then?.[o.key];
+      if (isOutputExpression(raw)) {
+        const err = validateExpression(String(raw).trim().slice(1));
+        if (err) errors.push(`规则行 ${ri + 1} 的输出「${o.label}」表达式无效：${err}`);
+      }
+    });
+  });
+  if (errors.length > 0) {
+    throw new HTTPException(400, { message: `发布受阻：${errors.slice(0, 5).join('；')}${errors.length > 5 ? `（等 ${errors.length} 项）` : ''}` });
+  }
+}
+
 /** 发布：写版本快照、版本号 +1、状态置 published、记录发布时间 */
 export async function publishDecisionTable(id: number) {
   const row = await ensureDecisionTable(id);
   if (!row.inputs || (row.inputs as RuleDecisionInput[]).length === 0) throw new HTTPException(400, { message: '决策表至少需要一个输入列' });
   if (!row.outputs || (row.outputs as RuleDecisionOutput[]).length === 0) throw new HTTPException(400, { message: '决策表至少需要一个输出列' });
   if (!row.rules || (row.rules as RuleDecisionRow[]).length === 0) throw new HTTPException(400, { message: '决策表至少需要一条规则' });
+  ensurePublishable(row);
   // 发布门禁：用例必须全部通过；存在用例时规则行需 100% 覆盖
   const run = await runTestCases(id);
   if (run.failed > 0) throw new HTTPException(400, { message: `发布受阻：${run.failed}/${run.total} 个测试用例未通过` });
@@ -220,6 +288,7 @@ export async function publishDecisionTable(id: number) {
       inputs: row.inputs,
       outputs: row.outputs,
       rules: row.rules,
+      settings: row.settings ?? {},
       publishedBy: currentUser()?.userId ?? null,
       tenantId: row.tenantId,
     });
@@ -251,6 +320,7 @@ interface RuntimeSnapshot {
   inputs: RuleDecisionInput[];
   outputs: RuleDecisionOutput[];
   rules: RuleDecisionRow[];
+  settings: RuleDecisionTableSettings;
 }
 const RUNTIME_CACHE_TTL_MS = 60_000;
 const runtimeCache = new Map<string, { at: number; value: RuntimeSnapshot | null }>();
@@ -307,6 +377,7 @@ async function loadRuntimeSnapshot(key: string, opts?: { tenantId?: number | nul
         inputs: (snapshot.inputs ?? []) as RuleDecisionInput[],
         outputs: (snapshot.outputs ?? []) as RuleDecisionOutput[],
         rules: (snapshot.rules ?? []) as RuleDecisionRow[],
+        settings: (snapshot.settings ?? {}) as RuleDecisionTableSettings,
       };
     }
     if (opts?.version !== undefined) return null; // pin 的版本不存在
@@ -318,6 +389,7 @@ async function loadRuntimeSnapshot(key: string, opts?: { tenantId?: number | nul
       inputs: (row.inputs ?? []) as RuleDecisionInput[],
       outputs: (row.outputs ?? []) as RuleDecisionOutput[],
       rules: (row.rules ?? []) as RuleDecisionRow[],
+      settings: (row.settings ?? {}) as RuleDecisionTableSettings,
     };
   };
 
@@ -344,6 +416,7 @@ export async function evaluateDecisionTableByKey(key: string, input: Record<stri
         inputs: (snapshot.inputs ?? []) as RuleDecisionInput[],
         outputs: (snapshot.outputs ?? []) as RuleDecisionOutput[],
         rules: (snapshot.rules ?? []) as RuleDecisionRow[],
+        settings: (snapshot.settings ?? {}) as RuleDecisionTableSettings,
       }, input);
     }
   }
@@ -352,6 +425,7 @@ export async function evaluateDecisionTableByKey(key: string, input: Record<stri
     inputs: (row.inputs ?? []) as RuleDecisionInput[],
     outputs: (row.outputs ?? []) as RuleDecisionOutput[],
     rules: (row.rules ?? []) as RuleDecisionRow[],
+    settings: (row.settings ?? {}) as RuleDecisionTableSettings,
   }, input);
 }
 
@@ -363,13 +437,41 @@ export async function testEvaluateDecisionTable(id: number, input: Record<string
     inputs: (row.inputs ?? []) as RuleDecisionInput[],
     outputs: (row.outputs ?? []) as RuleDecisionOutput[],
     rules: (row.rules ?? []) as RuleDecisionRow[],
+    settings: (row.settings ?? {}) as RuleDecisionTableSettings,
   }, input);
+}
+
+// ─── 执行记录：异步批写（削峰，不阻塞求值热路径）────────────────────────────────
+type NewExecRow = typeof ruleDecisionExecutions.$inferInsert;
+const EXEC_FLUSH_INTERVAL_MS = 2_000;
+const EXEC_FLUSH_BATCH = 50;
+const execWriteQueue: NewExecRow[] = [];
+let execFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function flushExecutionQueue(): Promise<void> {
+  if (execFlushTimer) { clearTimeout(execFlushTimer); execFlushTimer = null; }
+  if (execWriteQueue.length === 0) return;
+  const batch = execWriteQueue.splice(0, execWriteQueue.length);
+  try { await db.insert(ruleDecisionExecutions).values(batch); } catch { /* 执行流水尽力而为，不阻断业务 */ }
+}
+
+function queueExecutionRecord(row: NewExecRow): void {
+  execWriteQueue.push(row);
+  if (execWriteQueue.length >= EXEC_FLUSH_BATCH) {
+    void flushExecutionQueue();
+    return;
+  }
+  if (!execFlushTimer) {
+    execFlushTimer = setTimeout(() => { void flushExecutionQueue(); }, EXEC_FLUSH_INTERVAL_MS);
+    execFlushTimer.unref?.();
+  }
 }
 
 /**
  * 运行时按 key 求值，返回输出键值；表不存在/禁用/未发布/异常一律返回空对象（不阻断流程）。
  * 始终基于**发布版本快照**求值（默认最新，meta.version 可 pin 指定版本），编辑态修改不影响线上。
- * collect 策略下各输出键聚合为数组；可选写执行记录供 trace/审计。
+ * collect 策略输出已按 settings.collectAggregate 聚合（默认各键为数组，供包容网关 contains/in 命中多分支）；
+ * settings.fallbackToDefaults 开启时未命中返回默认值。执行记录异步批写供 trace/审计。
  */
 export async function getDecisionOutputs(
   key: string,
@@ -380,26 +482,57 @@ export async function getDecisionOutputs(
     const snapshot = await loadRuntimeSnapshot(key, { tenantId: meta?.tenantId, version: meta?.version });
     if (!snapshot) return {};
     const res = evaluateDecisionTable(snapshot, scope);
-    // collect：把每个输出键聚合为数组，供包容网关 contains/in 命中多分支
-    const merged = res.hitPolicy === 'collect' && res.collected?.length
-      ? Object.fromEntries(snapshot.outputs.map((o) => [o.key, res.collected!.map((c) => c[o.key])]))
-      : res.outputs;
-    await db.insert(ruleDecisionExecutions).values({
+    queueExecutionRecord({
       ruleKey: key, tableId: snapshot.tableId, instanceId: meta?.instanceId ?? null, nodeKey: meta?.nodeKey ?? null,
       source: meta?.source ?? 'runtime', matched: res.matched, hitPolicy: res.hitPolicy,
-      input: scope, outputs: merged, matchedRowIds: res.matchedRowIds, tenantId: snapshot.tenantId,
-    }).catch(() => undefined);
-    return res.matched ? merged : {};
+      input: scope, outputs: res.outputs, matchedRowIds: res.matchedRowIds, tenantId: snapshot.tenantId,
+    });
+    return res.matched || res.usedFallback ? res.outputs : {};
   } catch { return {}; }
 }
 
-export async function listDecisionExecutions(q: { instanceId?: number; tableId?: number; limit?: number }) {
+export interface ListDecisionExecutionsQuery {
+  page?: number;
+  pageSize?: number;
+  instanceId?: number;
+  tableId?: number;
+  ruleKey?: string;
+  source?: 'runtime' | 'manual' | 'test';
+  matched?: boolean;
+  dateStart?: string;
+  dateEnd?: string;
+}
+
+export async function listDecisionExecutions(q: ListDecisionExecutionsQuery) {
+  // 分页前先落盘缓冲区，保证刚发生的求值可见
+  await flushExecutionQueue();
+  const page = q.page ?? 1;
+  const pageSize = q.pageSize ?? 20;
   const conds = [];
   if (q.instanceId) conds.push(eq(ruleDecisionExecutions.instanceId, q.instanceId));
   if (q.tableId) conds.push(eq(ruleDecisionExecutions.tableId, q.tableId));
+  if (q.ruleKey) conds.push(like(ruleDecisionExecutions.ruleKey, `%${escapeLike(q.ruleKey)}%`));
+  if (q.source) conds.push(eq(ruleDecisionExecutions.source, q.source));
+  if (q.matched !== undefined) conds.push(eq(ruleDecisionExecutions.matched, q.matched));
+  const start = parseDateRangeStart(q.dateStart);
+  if (start) conds.push(gte(ruleDecisionExecutions.createdAt, start));
+  const end = parseDateRangeEnd(q.dateEnd);
+  if (end) conds.push(lte(ruleDecisionExecutions.createdAt, end));
   const where = conds.length ? and(...conds) : undefined;
-  const rows = await db.select().from(ruleDecisionExecutions).where(where).orderBy(desc(ruleDecisionExecutions.id)).limit(q.limit ?? 50);
-  return rows.map((r) => ({ id: r.id, ruleKey: r.ruleKey, tableId: r.tableId, instanceId: r.instanceId, nodeKey: r.nodeKey, source: r.source as 'runtime' | 'manual' | 'test', matched: r.matched, hitPolicy: r.hitPolicy, input: (r.input ?? {}) as Record<string, unknown>, outputs: (r.outputs ?? {}) as Record<string, unknown>, matchedRowIds: (r.matchedRowIds ?? []) as string[], createdAt: formatDateTime(r.createdAt) }));
+  const [total, rows] = await Promise.all([
+    db.$count(ruleDecisionExecutions, where),
+    db.select().from(ruleDecisionExecutions).where(where).orderBy(desc(ruleDecisionExecutions.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
+  ]);
+  const list = rows.map((r) => ({ id: r.id, ruleKey: r.ruleKey, tableId: r.tableId, instanceId: r.instanceId, nodeKey: r.nodeKey, source: r.source as 'runtime' | 'manual' | 'test', matched: r.matched, hitPolicy: r.hitPolicy, input: (r.input ?? {}) as Record<string, unknown>, outputs: (r.outputs ?? {}) as Record<string, unknown>, matchedRowIds: (r.matchedRowIds ?? []) as string[], createdAt: formatDateTime(r.createdAt) }));
+  return { list, total, page, pageSize };
+}
+
+/** 清理过期执行记录（供 cron 调用），返回删除条数 */
+export async function cleanupRuleExecutions(retentionDays: number): Promise<number> {
+  const days = Number.isFinite(retentionDays) && retentionDays > 0 ? retentionDays : 90;
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const deleted = await db.delete(ruleDecisionExecutions).where(lt(ruleDecisionExecutions.createdAt, cutoff)).returning({ id: ruleDecisionExecutions.id });
+  return deleted.length;
 }
 
 /** 测试用例 CRUD + 批跑 + 覆盖率 */
@@ -439,7 +572,7 @@ const deepEqual = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringi
 /** 批跑用例：逐例求值对比 expected，并统计规则行覆盖率 */
 export async function runTestCases(tableId: number): Promise<RuleTestRunResult> {
   const row = await ensureDecisionTable(tableId);
-  const table = { hitPolicy: row.hitPolicy, inputs: (row.inputs ?? []) as RuleDecisionInput[], outputs: (row.outputs ?? []) as RuleDecisionOutput[], rules: (row.rules ?? []) as RuleDecisionRow[] };
+  const table = { hitPolicy: row.hitPolicy, inputs: (row.inputs ?? []) as RuleDecisionInput[], outputs: (row.outputs ?? []) as RuleDecisionOutput[], rules: (row.rules ?? []) as RuleDecisionRow[], settings: (row.settings ?? {}) as RuleDecisionTableSettings };
   const cases = await db.select().from(ruleTestCases).where(eq(ruleTestCases.tableId, tableId));
   const covered = new Set<string>();
   const results: RuleCaseResult[] = cases.map((c) => {
@@ -454,12 +587,13 @@ export async function runTestCases(tableId: number): Promise<RuleTestRunResult> 
   return { total, passed, failed: total - passed, coverage, uncoveredRowIds, cases: results };
 }
 
-const toSnapshot = (r: { name: string; hitPolicy: string; inputs: unknown; outputs: unknown; rules: unknown }) => ({
+const toSnapshot = (r: { name: string; hitPolicy: string; inputs: unknown; outputs: unknown; rules: unknown; settings?: unknown }) => ({
   name: r.name, hitPolicy: r.hitPolicy,
   inputs: (r.inputs ?? []) as RuleDecisionInput[], outputs: (r.outputs ?? []) as RuleDecisionOutput[], rules: (r.rules ?? []) as RuleDecisionRow[],
+  settings: (r.settings ?? {}) as RuleDecisionTableSettings,
 });
 
-async function loadSnapshot(id: number, version: number, current: TableRow): Promise<{ name: string; hitPolicy: string; inputs: RuleDecisionInput[]; outputs: RuleDecisionOutput[]; rules: RuleDecisionRow[] }> {
+async function loadSnapshot(id: number, version: number, current: TableRow): Promise<{ name: string; hitPolicy: string; inputs: RuleDecisionInput[]; outputs: RuleDecisionOutput[]; rules: RuleDecisionRow[]; settings: RuleDecisionTableSettings }> {
   if (version === 0) return toSnapshot(current);
   const [v] = await db.select().from(ruleDecisionTableVersions).where(and(eq(ruleDecisionTableVersions.tableId, id), eq(ruleDecisionTableVersions.version, version))).limit(1);
   if (!v) throw new HTTPException(404, { message: `版本 v${version} 不存在` });
@@ -479,7 +613,7 @@ export async function rollbackDecisionTable(id: number, version: number) {
   const [v] = await db.select().from(ruleDecisionTableVersions).where(and(eq(ruleDecisionTableVersions.tableId, id), eq(ruleDecisionTableVersions.version, version))).limit(1);
   if (!v) throw new HTTPException(404, { message: `版本 v${version} 不存在` });
   const [row] = await db.update(ruleDecisionTables)
-    .set({ name: v.name, description: v.description, hitPolicy: v.hitPolicy, inputs: v.inputs, outputs: v.outputs, rules: v.rules, status: 'draft' })
+    .set({ name: v.name, description: v.description, hitPolicy: v.hitPolicy, inputs: v.inputs, outputs: v.outputs, rules: v.rules, settings: v.settings ?? {}, status: 'draft' })
     .where(eq(ruleDecisionTables.id, id)).returning();
   invalidateRuleRuntimeCache();
   return mapDecisionTable(row, await latestVersionOf(id));

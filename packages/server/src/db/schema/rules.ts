@@ -20,6 +20,7 @@ export const ruleDecisionTables = pgTable('rule_decision_tables', {
   inputs: jsonb('inputs').notNull().default(sql`'[]'::jsonb`),   // RuleDecisionInput[]
   outputs: jsonb('outputs').notNull().default(sql`'[]'::jsonb`), // RuleDecisionOutput[]
   rules: jsonb('rules').notNull().default(sql`'[]'::jsonb`),     // RuleDecisionRow[]
+  settings: jsonb('settings').notNull().default(sql`'{}'::jsonb`), // RuleDecisionTableSettings
   version: integer('version').default(1).notNull(),
   publishedAt: timestamp('published_at', { withTimezone: true }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
@@ -43,6 +44,7 @@ export const ruleDecisionTableVersions = pgTable('rule_decision_table_versions',
   inputs: jsonb('inputs').notNull().default(sql`'[]'::jsonb`),
   outputs: jsonb('outputs').notNull().default(sql`'[]'::jsonb`),
   rules: jsonb('rules').notNull().default(sql`'[]'::jsonb`),
+  settings: jsonb('settings').notNull().default(sql`'{}'::jsonb`),
   publishedAt: timestamp('published_at', { withTimezone: true }).defaultNow().notNull(),
   publishedBy: integer('published_by').references(() => users.id, { onDelete: 'set null' }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),

@@ -5,13 +5,13 @@ import {
   PaginationQuery, jsonContent, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, IdParam, okBody, BatchIdsBody,
 } from '../../lib/openapi-schemas';
-import { DecisionTableDTO, DecisionTableVersionDTO, RuleEvaluateResultDTO, RuleVersionDiffDTO, RuleTestCaseDTO, RuleTestRunResultDTO, RuleExecutionDTO } from '../../lib/openapi-dtos';
+import { DecisionTableDTO, DecisionTableVersionDTO, RuleEvaluateResultDTO, RuleVersionDiffDTO, RuleTestCaseDTO, RuleTestRunResultDTO, RuleExecutionDTO, RuleUsageDTO } from '../../lib/openapi-dtos';
 import { createDecisionTableSchema, updateDecisionTableSchema, createRuleTestCaseSchema, updateRuleTestCaseSchema, toggleDecisionTableSchema } from '@zenith/shared';
 import {
   listDecisionTables, getDecisionTable, getDecisionTableBeforeAudit,
   createDecisionTable, updateDecisionTable, deleteDecisionTable, deleteDecisionTables,
   publishDecisionTable, listDecisionTableVersions, evaluateDecisionTableByKey, testEvaluateDecisionTable,
-  diffDecisionTableVersions, rollbackDecisionTable, toggleDecisionTable,
+  diffDecisionTableVersions, rollbackDecisionTable, toggleDecisionTable, listDecisionTableUsages,
   listTestCases, createTestCase, updateTestCase, deleteTestCase, runTestCases, listDecisionExecutions,
 } from '../../services/platform/rules.service';
 
@@ -70,6 +70,17 @@ const rollbackRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...ok(DecisionTableDTO, '回滚成功') },
   }),
   handler: async (c) => { const { id, version } = c.req.valid('param'); return c.json(okBody(await rollbackDecisionTable(id, version), '回滚成功'), 200); },
+});
+
+const usagesRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}/usages', tags: ['DecisionTables'], summary: '决策表引用分析（where-used）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'rule:table:list' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(z.array(RuleUsageDTO), 'ok') },
+  }),
+  handler: async (c) => c.json(okBody(await listDecisionTableUsages(c.req.valid('param').id)), 200),
 });
 
 const casesRoute = defineOpenAPIRoute({
@@ -234,15 +245,25 @@ const deleteRoute = defineOpenAPIRoute({
 
 const executionsRoute = defineOpenAPIRoute({
   route: createRoute({
-    method: 'get', path: '/executions', tags: ['DecisionTables'], summary: '决策执行记录（trace/审计）',
+    method: 'get', path: '/executions', tags: ['DecisionTables'], summary: '决策执行记录（trace/审计，分页）',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'rule:table:list' })] as const,
-    request: { query: z.object({ instanceId: z.coerce.number().int().optional(), tableId: z.coerce.number().int().optional(), limit: z.coerce.number().int().max(200).optional() }) },
-    responses: { ...commonErrorResponses, ...ok(z.array(RuleExecutionDTO), 'ok') },
+    request: {
+      query: PaginationQuery.extend({
+        instanceId: z.coerce.number().int().optional(),
+        tableId: z.coerce.number().int().optional(),
+        ruleKey: z.string().optional(),
+        source: z.enum(['runtime', 'manual', 'test']).optional(),
+        matched: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
+        dateStart: z.string().optional(),
+        dateEnd: z.string().optional(),
+      }),
+    },
+    responses: { ...commonErrorResponses, ...okPaginated(RuleExecutionDTO, 'ok') },
   }),
   handler: async (c) => c.json(okBody(await listDecisionExecutions(c.req.valid('query'))), 200),
 });
 
-router.openapiRoutes([listRoute, executionsRoute, getRoute, versionsRoute, diffRoute, rollbackRoute, casesRoute, caseCreateRoute, caseRunRoute, caseUpdateRoute, caseDeleteRoute, createRouteDef, updateRoute, publishRoute, toggleRoute, testRoute, evaluateRoute, batchDeleteRoute, deleteRoute] as const);
+router.openapiRoutes([listRoute, executionsRoute, getRoute, versionsRoute, diffRoute, rollbackRoute, usagesRoute, casesRoute, caseCreateRoute, caseRunRoute, caseUpdateRoute, caseDeleteRoute, createRouteDef, updateRoute, publishRoute, toggleRoute, testRoute, evaluateRoute, batchDeleteRoute, deleteRoute] as const);
 
 export default router;

@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
-import type { RuleDecisionTable, RuleDecisionInput, RuleDecisionOutput, RuleDecisionRow, RuleEvaluateResult } from '@zenith/shared';
+import type { RuleDecisionTable, RuleDecisionInput, RuleDecisionOutput, RuleDecisionRow, RuleEvaluateResult, RuleCollectAggregate, RuleUsageItem } from '@zenith/shared';
+import { matchRuleCell } from '@zenith/shared';
 import { mockDecisionTables, getNextTableId, mockDecisionVersions, mockTestCases, getNextCaseId, mockExecutions, getNextExecId } from '@/mocks/data/decision-tables';
 import { mockDateTime } from '@/mocks/utils/date';
 
@@ -7,25 +8,50 @@ function ok<T>(data: T) { return HttpResponse.json({ code: 0, message: 'ok', dat
 function fail(message: string, code = 400) { return HttpResponse.json({ code, message, data: null }, { status: code }); }
 
 const get = (obj: Record<string, unknown>, path: string) => path.split('.').reduce<unknown>((o, k) => (o == null ? o : (o as Record<string, unknown>)[k]), obj);
-const coerce = (v: unknown, t: string) => v == null ? v : t === 'number' ? Number(v) : t === 'boolean' ? (v === true || v === 'true' || v === '1') : String(v);
-function cell(c: string, val: unknown, t: string): boolean {
-  const s = (c ?? '').trim();
-  if (s === '' || s === '-' || s === '*') return true;
-  const m = s.match(/^(>=|<=|==|!=|>|<)\s*(.+)$/);
-  if (m) { const n = Number(val), r = Number(m[2]); switch (m[1]) { case '>=': return n >= r; case '<=': return n <= r; case '>': return n > r; case '<': return n < r; case '==': return n === r; case '!=': return n !== r; } }
-  const range = s.match(/^(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)$/);
-  if (range) { const n = Number(val); return n >= Number(range[1]) && n <= Number(range[2]); }
-  return coerce(val, t) === coerce(s, t);
+const SIMPLE_PATH = /^[a-zA-Z_$][\w$]*(\.[a-zA-Z_$][\w$]*)*$/;
+
+/** mock 侧输出单元格：字面量或 '=' 简单路径表达式（demo 不引入表达式引擎） */
+function resolveThen(raw: unknown, o: RuleDecisionOutput, scope: Record<string, unknown>): unknown {
+  if (raw == null) return o.default ?? null;
+  if (typeof raw === 'string' && raw.trim().startsWith('=')) {
+    const expr = raw.trim().slice(1).trim();
+    return SIMPLE_PATH.test(expr) ? (get(scope, expr) ?? o.default ?? null) : (o.default ?? null);
+  }
+  return raw;
 }
+
+function aggregate(collected: Array<Record<string, unknown>>, outputs: RuleDecisionOutput[], mode: RuleCollectAggregate): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const o of outputs) {
+    const values = collected.map((c) => c[o.key]);
+    if (mode === 'sum') out[o.key] = values.reduce<number>((acc, v) => acc + (Number.isFinite(Number(v)) ? Number(v) : 0), 0);
+    else if (mode === 'min' || mode === 'max') {
+      const nums = values.map(Number).filter((n) => Number.isFinite(n));
+      out[o.key] = nums.length === 0 ? null : (mode === 'min' ? Math.min(...nums) : Math.max(...nums));
+    } else if (mode === 'count') out[o.key] = collected.length;
+    else if (mode === 'distinct') {
+      const seen = new Set<string>();
+      out[o.key] = values.filter((v) => { const k = JSON.stringify(v ?? null); if (seen.has(k)) return false; seen.add(k); return true; });
+    } else out[o.key] = values;
+  }
+  return out;
+}
+
 function evaluate(table: RuleDecisionTable, input: Record<string, unknown>): RuleEvaluateResult {
   const cols = (table.inputs as RuleDecisionInput[]).map((i) => get(input, i.expr));
-  const matched = (table.rules as RuleDecisionRow[]).filter((r) => table.inputs.every((c, i) => cell(r.when[i] ?? '', cols[i], (c as RuleDecisionInput).type)));
+  const matched = (table.rules as RuleDecisionRow[]).filter((r) => table.inputs.every((c, i) => matchRuleCell(r.when[i] ?? '', cols[i], (c as RuleDecisionInput).type)));
   const build = (row: RuleDecisionRow) => {
     const outputs: Record<string, unknown> = {};
-    for (const o of table.outputs as RuleDecisionOutput[]) outputs[o.key] = row.then[o.key] ?? o.default ?? null;
+    for (const o of table.outputs as RuleDecisionOutput[]) outputs[o.key] = resolveThen(row.then[o.key], o, input);
     return outputs;
   };
-  if (!matched.length) return { matched: false, outputs: {}, matchedRowIds: [], hitPolicy: table.hitPolicy, reason: 'no_match' };
+  if (!matched.length) {
+    if (table.settings?.fallbackToDefaults) {
+      const outputs = Object.fromEntries((table.outputs as RuleDecisionOutput[]).map((o) => [o.key, o.default ?? null]));
+      return { matched: false, outputs, matchedRowIds: [], hitPolicy: table.hitPolicy, reason: 'no_match', usedFallback: true };
+    }
+    return { matched: false, outputs: {}, matchedRowIds: [], hitPolicy: table.hitPolicy, reason: 'no_match' };
+  }
   switch (table.hitPolicy) {
     case 'unique':
       if (matched.length > 1) return { matched: false, outputs: {}, matchedRowIds: matched.map((r) => r.id), hitPolicy: 'unique', reason: 'unique_conflict' };
@@ -34,8 +60,10 @@ function evaluate(table: RuleDecisionTable, input: Record<string, unknown>): Rul
       const top = [...matched].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))[0];
       return { matched: true, outputs: build(top), matchedRowIds: [top.id], hitPolicy: 'priority' };
     }
-    case 'collect':
-      return { matched: true, outputs: build(matched[0]), matchedRowIds: matched.map((r) => r.id), hitPolicy: 'collect', collected: matched.map(build) };
+    case 'collect': {
+      const collected = matched.map(build);
+      return { matched: true, outputs: aggregate(collected, table.outputs as RuleDecisionOutput[], table.settings?.collectAggregate ?? 'list'), matchedRowIds: matched.map((r) => r.id), hitPolicy: 'collect', collected };
+    }
     case 'any': {
       const all = matched.map(build);
       const head = JSON.stringify(all[0]);
@@ -47,12 +75,12 @@ function evaluate(table: RuleDecisionTable, input: Record<string, unknown>): Rul
   }
 }
 
-/** 与后端 dirty 语义对齐：编辑态 vs 最新发布快照（name/hitPolicy/inputs/outputs/rules） */
+/** 与后端 dirty 语义对齐：编辑态 vs 最新发布快照（name/hitPolicy/inputs/outputs/rules/settings） */
 function computeDirty(row: RuleDecisionTable): boolean {
   const latest = (mockDecisionVersions[row.id] ?? [])[0];
   if (!latest) return false;
-  const comparable = (x: { name: string; hitPolicy: string; inputs: unknown; outputs: unknown; rules: unknown }) =>
-    JSON.stringify([x.name, x.hitPolicy, x.inputs, x.outputs, x.rules]);
+  const comparable = (x: { name: string; hitPolicy: string; inputs: unknown; outputs: unknown; rules: unknown; settings?: unknown }) =>
+    JSON.stringify([x.name, x.hitPolicy, x.inputs, x.outputs, x.rules, x.settings ?? {}]);
   return comparable(row) !== comparable(latest);
 }
 
@@ -72,13 +100,39 @@ export const decisionTablesHandlers = [
     const url = new URL(request.url);
     const page = Number(url.searchParams.get('page')) || 1, pageSize = Number(url.searchParams.get('pageSize')) || 20;
     const kw = url.searchParams.get('keyword') ?? '';
+    const status = url.searchParams.get('status');
     let list = [...mockDecisionTables];
     if (kw) list = list.filter((t) => t.name.includes(kw) || t.key.includes(kw));
+    if (status) list = list.filter((t) => t.status === status);
     return ok({ list: list.slice((page - 1) * pageSize, page * pageSize), total: list.length, page, pageSize });
   }),
   http.get('/api/rules/decision-tables/executions', ({ request }) => {
-    const url = new URL(request.url); const tableId = Number(url.searchParams.get('tableId')) || null; const instanceId = Number(url.searchParams.get('instanceId')) || null;
-    return ok(mockExecutions.filter((e) => (!tableId || e.tableId === tableId) && (!instanceId || e.instanceId === instanceId)).slice(0, 50));
+    const url = new URL(request.url);
+    const page = Number(url.searchParams.get('page')) || 1, pageSize = Number(url.searchParams.get('pageSize')) || 20;
+    const tableId = Number(url.searchParams.get('tableId')) || null;
+    const instanceId = Number(url.searchParams.get('instanceId')) || null;
+    const ruleKey = url.searchParams.get('ruleKey');
+    const source = url.searchParams.get('source');
+    const matched = url.searchParams.get('matched');
+    const dateStart = url.searchParams.get('dateStart');
+    const dateEnd = url.searchParams.get('dateEnd');
+    const list = mockExecutions.filter((e) =>
+      (!tableId || e.tableId === tableId)
+      && (!instanceId || e.instanceId === instanceId)
+      && (!ruleKey || e.ruleKey.includes(ruleKey))
+      && (!source || e.source === source)
+      && (matched == null || String(e.matched) === matched)
+      && (!dateStart || e.createdAt >= dateStart)
+      && (!dateEnd || e.createdAt <= dateEnd));
+    return ok({ list: list.slice((page - 1) * pageSize, page * pageSize), total: list.length, page, pageSize });
+  }),
+  http.get('/api/rules/decision-tables/:id/usages', ({ params }) => {
+    const r = mockDecisionTables.find((t) => t.id === Number(params.id));
+    if (!r) return fail('决策表不存在', 404);
+    const usages: RuleUsageItem[] = r.key === 'coupon_eligibility'
+      ? [{ type: 'coupon', id: null, name: '优惠券领取资格判定（内置消费方）', status: null }]
+      : [];
+    return ok(usages);
   }),
   http.get('/api/rules/decision-tables/:id/versions', ({ params }) => ok(mockDecisionVersions[Number(params.id)] ?? [])),
   http.get('/api/rules/decision-tables/:id/diff', ({ params, request }) => {
@@ -96,7 +150,7 @@ export const decisionTablesHandlers = [
     const r = mockDecisionTables.find((t) => t.id === Number(params.id));
     const v = (mockDecisionVersions[Number(params.id)] ?? []).find((x) => x.version === Number(params.version));
     if (!r || !v) return fail('版本不存在', 404);
-    Object.assign(r, { name: v.name, hitPolicy: v.hitPolicy, inputs: v.inputs, outputs: v.outputs, rules: v.rules, status: 'draft' });
+    Object.assign(r, { name: v.name, hitPolicy: v.hitPolicy, inputs: v.inputs, outputs: v.outputs, rules: v.rules, settings: v.settings ?? {}, status: 'draft' });
     r.dirty = computeDirty(r);
     return ok(r);
   }),
@@ -107,7 +161,7 @@ export const decisionTablesHandlers = [
   http.post('/api/rules/decision-tables', async ({ request }) => {
     const b = (await request.json()) as Partial<RuleDecisionTable>;
     const now = mockDateTime();
-    const row: RuleDecisionTable = { id: getNextTableId(), key: b.key!, name: b.name!, description: b.description ?? null, categoryId: null, status: 'draft', hitPolicy: b.hitPolicy ?? 'first', inputs: b.inputs ?? [], outputs: b.outputs ?? [], rules: b.rules ?? [], version: 1, publishedAt: null, dirty: false, createdAt: now, updatedAt: now };
+    const row: RuleDecisionTable = { id: getNextTableId(), key: b.key!, name: b.name!, description: b.description ?? null, categoryId: null, status: 'draft', hitPolicy: b.hitPolicy ?? 'first', inputs: b.inputs ?? [], outputs: b.outputs ?? [], rules: b.rules ?? [], settings: b.settings ?? {}, version: 1, publishedAt: null, dirty: false, createdAt: now, updatedAt: now };
     mockDecisionTables.unshift(row);
     return ok(row);
   }),
@@ -133,7 +187,7 @@ export const decisionTablesHandlers = [
     const run = runCases(r.id);
     if (run.failed > 0) return fail(`发布受阻：${run.failed}/${run.total} 个用例未通过`);
     if (run.total > 0 && run.coverage < 100) return fail(`发布受阻：覆盖率 ${run.coverage}%`);
-    (mockDecisionVersions[r.id] ??= []).unshift({ version: r.version, name: r.name, hitPolicy: r.hitPolicy, inputs: r.inputs, outputs: r.outputs, rules: r.rules, publishedAt: mockDateTime() });
+    (mockDecisionVersions[r.id] ??= []).unshift({ version: r.version, name: r.name, hitPolicy: r.hitPolicy, inputs: r.inputs, outputs: r.outputs, rules: r.rules, settings: r.settings ?? {}, publishedAt: mockDateTime() });
     r.status = 'published'; r.publishedAt = mockDateTime(); r.version += 1; r.dirty = false;
     return ok(r);
   }),

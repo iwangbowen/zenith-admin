@@ -1,10 +1,10 @@
 import { useState, useMemo, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Input, InputNumber, Select, Space, Tag, Modal, Form, Toast, Typography, SideSheet, List, Empty } from '@douyinfe/semi-ui';
+import { Button, DatePicker, Input, InputNumber, Select, Space, Tag, Modal, Form, Toast, Typography, SideSheet, List, Empty } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Plus, RotateCcw, Save, Search } from 'lucide-react';
-import type { RuleDecisionTable, RuleEvaluateResult, RuleTestRunResult, RuleHitPolicy, RuleTestCase } from '@zenith/shared';
+import { Plus, RotateCcw, Save, Search, Upload } from 'lucide-react';
+import type { RuleDecisionTable, RuleEvaluateResult, RuleTestRunResult, RuleHitPolicy, RuleTestCase, RuleUsageItem, RuleDecisionTableSettings } from '@zenith/shared';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
@@ -14,7 +14,10 @@ import { buildExpectedValues, buildTestScope, coerceRuleValue, diffCaseOutputs, 
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
+import { useDictItems } from '@/hooks/useDictItems';
+import { formatDateTimeForApi } from '@/utils/date';
 import {
+  fetchRuleUsages,
   ruleKeys,
   useDeleteRuleDecisionTable,
   useDeleteRuleTestCase,
@@ -42,7 +45,74 @@ const HIT_POLICIES = [
   { value: 'collect', label: '收集全部' },
   { value: 'any', label: '任意命中' },
 ];
+const COLLECT_AGGREGATES = [
+  { value: 'list', label: '列表（默认）' },
+  { value: 'sum', label: '求和' },
+  { value: 'min', label: '最小值' },
+  { value: 'max', label: '最大值' },
+  { value: 'count', label: '计数' },
+  { value: 'distinct', label: '去重列表' },
+];
 const sample = JSON.stringify;
+
+/** 导出的决策表定义文件结构（含可选用例） */
+interface DecisionTableExport {
+  key: string;
+  name: string;
+  description?: string | null;
+  hitPolicy: RuleHitPolicy;
+  settings?: RuleDecisionTableSettings;
+  inputs: RuleDecisionTable['inputs'];
+  outputs: RuleDecisionTable['outputs'];
+  rules: RuleDecisionTable['rules'];
+  cases?: Array<{ name: string; input: Record<string, unknown>; expected: Record<string, unknown> }>;
+}
+
+function downloadFile(filename: string, content: string, mime: string): void {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function pickJsonFile(onLoad: (text: string) => void): void {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.onchange = () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => onLoad(String(reader.result ?? ''));
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+const csvEscape = (v: unknown): string => {
+  const s = v == null ? '' : String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+/** 字典绑定输入的测试/用例控件（组件封装保证 hooks 数量稳定） */
+function DictValueSelect({ dictCode, value, onChange, placeholder, size }: Readonly<{ dictCode: string; value: unknown; onChange: (v: string | undefined) => void; placeholder?: string; size?: 'small' | 'default' }>) {
+  const { items } = useDictItems(dictCode);
+  return (
+    <Select
+      size={size}
+      value={value == null || value === '' ? undefined : String(value)}
+      onChange={(v) => onChange(v == null ? undefined : String(v))}
+      optionList={items.map((i) => ({ value: i.value, label: i.label }))}
+      showClear
+      filter
+      placeholder={placeholder}
+      style={{ width: '100%' }}
+    />
+  );
+}
 
 export default function RuleTablesPage() {
   const { hasPermission } = usePermission();
@@ -55,10 +125,13 @@ export default function RuleTablesPage() {
 
   const [draftKeyword, setDraftKeyword] = useState('');
   const [submittedKeyword, setSubmittedKeyword] = useState('');
+  const [draftStatus, setDraftStatus] = useState<string | undefined>(undefined);
+  const [submittedStatus, setSubmittedStatus] = useState<string | undefined>(undefined);
   const [modalVisible, setModalVisible] = useState(false);
   const [editorFullscreen, setEditorFullscreen] = useState(false);
   const [editorHitPolicy, setEditorHitPolicy] = useState<RuleHitPolicy>('first');
   const [editing, setEditing] = useState<RuleDecisionTable | null>(null);
+  const [importSeed, setImportSeed] = useState<Partial<DecisionTableExport> | null>(null);
   const [testRow, setTestRow] = useState<RuleDecisionTable | null>(null);
   const [testForm, setTestForm] = useState<Record<string, unknown>>({});
   const [testResult, setTestResult] = useState<RuleEvaluateResult | null>(null);
@@ -74,7 +147,7 @@ export default function RuleTablesPage() {
   const [draft, setDraft] = useState<{ inputs: RuleDecisionTable['inputs']; outputs: RuleDecisionTable['outputs']; rules: RuleDecisionTable['rules'] }>({ inputs: [], outputs: [], rules: [] });
   const formApi = useRef<FormApi | null>(null);
 
-  const listQuery = useRuleDecisionTableList({ page, pageSize, keyword: submittedKeyword || undefined });
+  const listQuery = useRuleDecisionTableList({ page, pageSize, keyword: submittedKeyword || undefined, status: submittedStatus as 'draft' | 'published' | 'disabled' | undefined });
   const data = listQuery.data ?? null;
   const versionsQuery = useRuleVersions(verRow?.id, !!verRow);
   const versions = versionsQuery.data ?? [];
@@ -82,8 +155,8 @@ export default function RuleTablesPage() {
   const diff = diffQuery.data ?? null;
   const casesQuery = useRuleTestCases(caseRow?.id, !!caseRow);
   const cases = casesQuery.data ?? [];
-  const execsQuery = useRuleExecutions({ tableId: execRow?.id, limit: 50 }, !!execRow);
-  const execs = execsQuery.data ?? [];
+  const execsQuery = useRuleExecutions({ tableId: execRow?.id, page: 1, pageSize: 50 }, !!execRow);
+  const execs = execsQuery.data?.list ?? [];
   const saveMutation = useSaveRuleDecisionTable();
   const publishMutation = usePublishRuleDecisionTable();
   const deleteMutation = useDeleteRuleDecisionTable();
@@ -113,17 +186,92 @@ export default function RuleTablesPage() {
 
   const openCreate = () => {
     setEditing(null);
+    setImportSeed(null);
     setEditorHitPolicy('first');
     setDraft({ inputs: [], outputs: [], rules: [] });
     setEditorFullscreen(true);
     setModalVisible(true);
   };
+  /** 从导入文件或整表复制预填新建弹窗 */
+  const openCreateFrom = (seed: Partial<DecisionTableExport>) => {
+    setEditing(null);
+    setImportSeed(seed);
+    setEditorHitPolicy(seed.hitPolicy ?? 'first');
+    setDraft({ inputs: seed.inputs ?? [], outputs: seed.outputs ?? [], rules: seed.rules ?? [] });
+    setEditorFullscreen(true);
+    setModalVisible(true);
+  };
   const openEdit = (r: RuleDecisionTable) => {
     setEditing(r);
+    setImportSeed(null);
     setEditorHitPolicy(r.hitPolicy);
     setDraft({ inputs: r.inputs, outputs: r.outputs, rules: r.rules });
     setEditorFullscreen(true);
     setModalVisible(true);
+  };
+
+  const duplicateTable = (r: RuleDecisionTable) => {
+    openCreateFrom({ key: `${r.key}_copy`, name: `${r.name} 副本`, description: r.description, hitPolicy: r.hitPolicy, settings: r.settings, inputs: r.inputs, outputs: r.outputs, rules: r.rules });
+  };
+
+  const exportTable = (r: RuleDecisionTable) => {
+    const payload: DecisionTableExport = { key: r.key, name: r.name, description: r.description ?? null, hitPolicy: r.hitPolicy, settings: r.settings, inputs: r.inputs, outputs: r.outputs, rules: r.rules };
+    downloadFile(`decision-table-${r.key}.json`, JSON.stringify(payload, null, 2), 'application/json');
+  };
+
+  const exportTableCsv = (r: RuleDecisionTable) => {
+    const header = ['规则名', ...(r.hitPolicy === 'priority' ? ['优先级'] : []), ...r.inputs.map((i) => `条件:${i.label}`), ...r.outputs.map((o) => `输出:${o.label}`)];
+    const rows = r.rules.map((row) => [
+      row.label ?? row.id,
+      ...(r.hitPolicy === 'priority' ? [row.priority ?? 0] : []),
+      ...r.inputs.map((_, ci) => row.when[ci] ?? '-'),
+      ...r.outputs.map((o) => row.then[o.key] ?? o.default ?? ''),
+    ]);
+    const csv = '\uFEFF' + [header, ...rows].map((cols) => cols.map(csvEscape).join(',')).join('\n');
+    downloadFile(`decision-table-${r.key}.csv`, csv, 'text/csv;charset=utf-8');
+  };
+
+  const importTable = () => {
+    pickJsonFile((text) => {
+      try {
+        const parsed = JSON.parse(text) as DecisionTableExport;
+        if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.inputs) || !Array.isArray(parsed.outputs) || !Array.isArray(parsed.rules)) {
+          Toast.error('文件格式不正确：缺少 inputs/outputs/rules');
+          return;
+        }
+        openCreateFrom(parsed);
+        Toast.info('已载入导入内容，请确认后保存为新决策表');
+      } catch {
+        Toast.error('JSON 解析失败');
+      }
+    });
+  };
+
+  const exportCases = () => {
+    if (!caseRow) return;
+    const payload = cases.map((c) => ({ name: c.name, input: c.input, expected: c.expected }));
+    downloadFile(`decision-cases-${caseRow.key}.json`, JSON.stringify(payload, null, 2), 'application/json');
+  };
+
+  const importCases = () => {
+    if (!caseRow) return;
+    pickJsonFile(async (text) => {
+      try {
+        const parsed = JSON.parse(text) as Array<{ name: string; input?: Record<string, unknown>; expected?: Record<string, unknown> }>;
+        if (!Array.isArray(parsed)) { Toast.error('文件格式不正确：应为用例数组'); return; }
+        let ok = 0, fail = 0;
+        for (const item of parsed) {
+          if (!item?.name) { fail += 1; continue; }
+          try {
+            await saveCaseMutation.mutateAsync({ tableId: caseRow.id, values: { name: item.name, input: item.input ?? {}, expected: item.expected ?? {} } });
+            ok += 1;
+          } catch { fail += 1; }
+        }
+        Toast.info(`用例导入完成：成功 ${ok} 个${fail ? `，失败 ${fail} 个（可能重名）` : ''}`);
+      } catch {
+        Toast.error('JSON 解析失败');
+      }
+    });
   };
 
   const handleSubmit = async () => {
@@ -136,7 +284,11 @@ export default function RuleTablesPage() {
       Toast.error(`规则体检存在 ${errors.length} 个错误，请修正后再保存`);
       return;
     }
-    const payload = { name: v.name, description: v.description ?? null, hitPolicy, ...draft };
+    const settings: RuleDecisionTableSettings = {
+      ...(hitPolicy === 'collect' && v.collectAggregate && v.collectAggregate !== 'list' ? { collectAggregate: v.collectAggregate as RuleDecisionTableSettings['collectAggregate'] } : {}),
+      ...(v.fallbackToDefaults ? { fallbackToDefaults: true } : {}),
+    };
+    const payload = { name: v.name, description: v.description ?? null, hitPolicy, settings, ...draft };
     await saveMutation.mutateAsync({
       id: editing?.id,
       values: editing
@@ -159,11 +311,31 @@ export default function RuleTablesPage() {
     title: `发布「${r.name}」？`, content: warnings.length ? <div><Text type="warning">规则体检有 {warnings.length} 项提醒，发布接口仍会执行用例门禁。</Text><div style={{ marginTop: 8 }}>{renderIssueList(warnings, 6)}</div></div> : '将生成版本快照并置为已发布',
     onOk: async () => { await publishMutation.mutateAsync(r.id); Toast.success('发布成功'); },
   }); };
-  const handleDelete = (r: RuleDecisionTable) => { Modal.confirm({
-    title: '确定删除？', content: '删除后不可恢复', okButtonProps: { type: 'danger' },
-    onOk: async () => { await deleteMutation.mutateAsync(r.id); Toast.success('删除成功'); },
-  }); };
-  const handleToggle = (r: RuleDecisionTable) => {
+  const renderUsageList = (usages: RuleUsageItem[]) => (
+    <div style={{ display: 'grid', gap: 4, marginTop: 8 }}>
+      {usages.map((u, i) => (
+        <Text key={`${u.type}-${u.id}-${i}`} size="small" type="warning">
+          {u.type === 'workflow' ? `工作流定义 #${u.id}「${u.name}」（${u.status ?? '-'}）` : u.name}
+        </Text>
+      ))}
+    </div>
+  );
+
+  const handleDelete = async (r: RuleDecisionTable) => {
+    const usages = await fetchRuleUsages(r.id).catch(() => [] as RuleUsageItem[]);
+    if (usages.length > 0) {
+      Modal.warning({
+        title: `「${r.name}」正在被 ${usages.length} 处引用`,
+        content: <div><Text>请先解除以下引用后再删除（服务端会拒绝删除被引用的决策表）：</Text>{renderUsageList(usages)}</div>,
+      });
+      return;
+    }
+    Modal.confirm({
+      title: '确定删除？', content: '删除后不可恢复', okButtonProps: { type: 'danger' },
+      onOk: async () => { await deleteMutation.mutateAsync(r.id); Toast.success('删除成功'); },
+    });
+  };
+  const handleToggle = async (r: RuleDecisionTable) => {
     if (r.status === 'disabled') {
       Modal.confirm({
         title: `启用「${r.name}」？`,
@@ -172,9 +344,15 @@ export default function RuleTablesPage() {
       });
       return;
     }
+    const usages = await fetchRuleUsages(r.id).catch(() => [] as RuleUsageItem[]);
     Modal.confirm({
       title: `停用「${r.name}」？`,
-      content: '停用后运行时求值将返回空结果（工作流网关/审批矩阵等引用方按未命中处理）',
+      content: (
+        <div>
+          <Text>停用后运行时求值将返回空结果（引用方按未命中处理）。</Text>
+          {usages.length > 0 && <><Text type="warning" style={{ display: 'block', marginTop: 8 }}>该表正被 {usages.length} 处引用，停用将立即影响：</Text>{renderUsageList(usages)}</>}
+        </div>
+      ),
       okButtonProps: { type: 'danger' },
       onOk: async () => { await toggleMutation.mutateAsync({ id: r.id, enabled: false }); Toast.success('已停用'); },
     });
@@ -277,13 +455,20 @@ export default function RuleTablesPage() {
     }
   };
 
-  const saveCurrentTestAsCase = async () => {
+  const saveCurrentTestAsCase = () => {
     if (!testRow || !testResult) return;
-    const name = prompt('用例名称', `${testRow.name} 手动测试 ${cases.length + 1}`);
-    if (!name) return;
-    const input = Object.keys(testScope).length ? testScope : buildTestScope(testRow.inputs, testForm);
-    await saveCurrentTestAsCaseMutation.mutateAsync({ tableId: testRow.id, values: { name, input, expected: testResult.outputs } });
-    Toast.success('已保存为测试用例');
+    const nameRef = { current: `${testRow.name} 手动测试 ${cases.length + 1}` };
+    Modal.confirm({
+      title: '保存为测试用例',
+      content: <Input defaultValue={nameRef.current} onChange={(v) => { nameRef.current = v; }} placeholder="用例名称" />,
+      onOk: async () => {
+        const name = nameRef.current.trim();
+        if (!name) { Toast.warning('请输入用例名称'); return Promise.reject(new Error('empty')); }
+        const input = Object.keys(testScope).length ? testScope : buildTestScope(testRow.inputs, testForm);
+        await saveCurrentTestAsCaseMutation.mutateAsync({ tableId: testRow.id, values: { name, input, expected: testResult.outputs } });
+        Toast.success('已保存为测试用例');
+      },
+    });
   };
 
   const renderTestInput = (i: RuleDecisionTable['inputs'][number]) => {
@@ -295,6 +480,20 @@ export default function RuleTablesPage() {
     if (i.type === 'boolean') {
       const v = value === true || value === 'true' ? 'true' : value === false || value === 'false' ? 'false' : undefined;
       return <Select value={v} onChange={(next) => setTestForm({ ...testForm, [i.key]: coerceRuleValue(next, 'boolean') })} optionList={[{ value: 'true', label: 'true' }, { value: 'false', label: 'false' }]} placeholder={i.expr} style={{ flex: 1 }} />;
+    }
+    if (i.type === 'date') {
+      return (
+        <div style={{ flex: 1 }}>
+          <DatePicker type="dateTime" value={value == null || value === '' ? undefined : String(value)} onChange={(d) => setTestForm({ ...testForm, [i.key]: d == null ? undefined : formatDateTimeForApi(d as Date) })} placeholder={i.expr} style={{ width: '100%' }} />
+        </div>
+      );
+    }
+    if (i.dictCode) {
+      return (
+        <div style={{ flex: 1 }}>
+          <DictValueSelect dictCode={i.dictCode} value={value} onChange={(v) => setTestForm({ ...testForm, [i.key]: v })} placeholder={i.expr} />
+        </div>
+      );
     }
     return <Input value={value == null ? '' : String(value)} onChange={(v) => setTestForm({ ...testForm, [i.key]: v })} placeholder={i.expr} style={{ flex: 1 }} />;
   };
@@ -339,7 +538,7 @@ export default function RuleTablesPage() {
     );
   };
 
-  const renderCaseValueInput = (key: string, type: RuleDecisionTable['inputs'][number]['type'], values: Record<string, unknown>, onChange: (next: Record<string, unknown>) => void, placeholder?: string) => {
+  const renderCaseValueInput = (key: string, type: RuleDecisionTable['inputs'][number]['type'], values: Record<string, unknown>, onChange: (next: Record<string, unknown>) => void, placeholder?: string, dictCode?: string | null) => {
     const value = values[key];
     if (type === 'number') {
       const n = value == null || value === '' ? undefined : Number(value);
@@ -348,6 +547,12 @@ export default function RuleTablesPage() {
     if (type === 'boolean') {
       const v = value === true || value === 'true' ? 'true' : value === false || value === 'false' ? 'false' : undefined;
       return <Select size="small" value={v} onChange={(next) => onChange({ ...values, [key]: coerceRuleValue(next, 'boolean') })} optionList={[{ value: 'true', label: 'true' }, { value: 'false', label: 'false' }]} showClear placeholder={placeholder} style={{ width: '100%' }} />;
+    }
+    if (type === 'date') {
+      return <DatePicker size="small" type="dateTime" value={value == null || value === '' ? undefined : String(value)} onChange={(d) => onChange({ ...values, [key]: d == null ? undefined : formatDateTimeForApi(d as Date) })} placeholder={placeholder} style={{ width: '100%' }} />;
+    }
+    if (dictCode) {
+      return <DictValueSelect size="small" dictCode={dictCode} value={value} onChange={(v) => onChange({ ...values, [key]: v })} placeholder={placeholder} />;
     }
     return <Input size="small" value={value == null ? '' : String(value)} onChange={(v) => onChange({ ...values, [key]: v })} placeholder={placeholder} style={{ width: '100%' }} />;
   };
@@ -369,7 +574,7 @@ export default function RuleTablesPage() {
                 {caseRow.inputs.map((input) => (
                   <div key={input.key} style={{ display: 'grid', gridTemplateColumns: '110px minmax(0, 1fr)', gap: 8, alignItems: 'center' }}>
                     <Text size="small" type="tertiary">{input.label}</Text>
-                    {renderCaseValueInput(input.key, input.type, caseForm.inputValues, (next) => setCaseForm((prev) => ({ ...prev, inputValues: next })), input.expr)}
+                    {renderCaseValueInput(input.key, input.type, caseForm.inputValues, (next) => setCaseForm((prev) => ({ ...prev, inputValues: next })), input.expr, input.dictCode)}
                   </div>
                 ))}
               </div>
@@ -438,8 +643,11 @@ export default function RuleTablesPage() {
         { key: 'audit', label: '审计', onClick: () => openExec(r) },
         { key: 'edit', label: '编辑', hidden: !canEdit, onClick: () => openEdit(r) },
         { key: 'publish', label: '发布', hidden: !canPublish || r.status === 'disabled', onClick: () => handlePublish(r) },
-        { key: 'toggle', label: r.status === 'disabled' ? '启用' : '停用', danger: r.status !== 'disabled', hidden: !canPublish, onClick: () => handleToggle(r) },
-        { key: 'delete', label: '删除', danger: true, hidden: !canDelete, onClick: () => handleDelete(r) },
+        { key: 'duplicate', label: '复制', hidden: !canCreate, onClick: () => duplicateTable(r) },
+        { key: 'export-json', label: '导出 JSON', onClick: () => exportTable(r) },
+        { key: 'export-csv', label: '导出 CSV', onClick: () => exportTableCsv(r) },
+        { key: 'toggle', label: r.status === 'disabled' ? '启用' : '停用', danger: r.status !== 'disabled', hidden: !canPublish, onClick: () => void handleToggle(r) },
+        { key: 'delete', label: '删除', danger: true, hidden: !canDelete, onClick: () => void handleDelete(r) },
       ],
     }),
   ];
@@ -449,9 +657,11 @@ export default function RuleTablesPage() {
       <SearchToolbar
         primary={(
           <>
-            <Input prefix={<Search size={14} />} placeholder="搜索名称" value={draftKeyword} onChange={setDraftKeyword} onEnterPress={() => { setPage(1); setSubmittedKeyword(draftKeyword); void queryClient.invalidateQueries({ queryKey: ruleKeys.decisionTables.lists }); }} showClear style={{ width: 220 }} />
-            <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); setSubmittedKeyword(draftKeyword); void queryClient.invalidateQueries({ queryKey: ruleKeys.decisionTables.lists }); }}>查询</Button>
-            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setDraftKeyword(''); setSubmittedKeyword(''); setPage(1); void queryClient.invalidateQueries({ queryKey: ruleKeys.decisionTables.lists }); }}>重置</Button>
+            <Input prefix={<Search size={14} />} placeholder="搜索名称" value={draftKeyword} onChange={setDraftKeyword} onEnterPress={() => { setPage(1); setSubmittedKeyword(draftKeyword); setSubmittedStatus(draftStatus); void queryClient.invalidateQueries({ queryKey: ruleKeys.decisionTables.lists }); }} showClear style={{ width: 220 }} />
+            <Select placeholder="状态" value={draftStatus} onChange={(v) => setDraftStatus(v as string | undefined)} optionList={[{ value: 'draft', label: '草稿' }, { value: 'published', label: '已发布' }, { value: 'disabled', label: '已禁用' }]} showClear style={{ width: 130 }} />
+            <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); setSubmittedKeyword(draftKeyword); setSubmittedStatus(draftStatus); void queryClient.invalidateQueries({ queryKey: ruleKeys.decisionTables.lists }); }}>查询</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setDraftKeyword(''); setSubmittedKeyword(''); setDraftStatus(undefined); setSubmittedStatus(undefined); setPage(1); void queryClient.invalidateQueries({ queryKey: ruleKeys.decisionTables.lists }); }}>重置</Button>
+            {canCreate && <Button icon={<Upload size={14} />} onClick={importTable}>导入</Button>}
             {canCreate && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>}
           </>
         )}
@@ -470,11 +680,17 @@ export default function RuleTablesPage() {
         bodyStyle={{ maxHeight: editorFullscreen ? 'calc(100vh - 132px)' : '78vh', overflowY: 'auto' }}
         closeOnEsc
       >
-        <Form key={editing?.id ?? 'new'} getFormApi={(a) => { formApi.current = a; }} labelPosition="left" labelWidth={90}
-          initValues={editing ? { key: editing.key, name: editing.name, description: editing.description, hitPolicy: editing.hitPolicy } : { hitPolicy: 'first' }}>
+        <Form key={editing?.id ?? (importSeed ? `import-${importSeed.key ?? 'new'}` : 'new')} getFormApi={(a) => { formApi.current = a; }} labelPosition="left" labelWidth={90}
+          initValues={editing
+            ? { key: editing.key, name: editing.name, description: editing.description, hitPolicy: editing.hitPolicy, collectAggregate: editing.settings?.collectAggregate ?? 'list', fallbackToDefaults: !!editing.settings?.fallbackToDefaults }
+            : { key: importSeed?.key, name: importSeed?.name, description: importSeed?.description, hitPolicy: importSeed?.hitPolicy ?? 'first', collectAggregate: importSeed?.settings?.collectAggregate ?? 'list', fallbackToDefaults: !!importSeed?.settings?.fallbackToDefaults }}>
           <Form.Input field="key" label="Key" disabled={!!editing} rules={[{ required: true, message: 'key 必填' }]} placeholder="如 member_level" />
           <Form.Input field="name" label="名称" rules={[{ required: true, message: '名称必填' }]} />
           <Form.Select field="hitPolicy" label="命中策略" optionList={HIT_POLICIES} onChange={(v) => setEditorHitPolicy(v as RuleHitPolicy)} style={{ width: '100%' }} />
+          {editorHitPolicy === 'collect' && (
+            <Form.Select field="collectAggregate" label="聚合方式" optionList={COLLECT_AGGREGATES} style={{ width: '100%' }} extraText="collect 策略下多行命中的输出聚合方式；数值聚合仅对数值输出列有意义" />
+          )}
+          <Form.Switch field="fallbackToDefaults" label="未命中回退" extraText="开启后未命中任何规则时返回各输出列默认值（matched 仍为 false）" />
           <Form.TextArea field="description" label="描述" autosize={{ minRows: 2, maxRows: 3 }} maxCount={500} />
         </Form>
         <div style={{ marginTop: 12, padding: 12, borderRadius: 'var(--semi-border-radius-medium)', background: draftErrors.length > 0 ? 'var(--semi-color-danger-light-default)' : draftWarnings.length > 0 ? 'var(--semi-color-warning-light-default)' : 'var(--semi-color-success-light-default)' }}>
@@ -507,6 +723,8 @@ export default function RuleTablesPage() {
               <Tag color={testResult.matched ? 'green' : 'red'}>
                 {testResult.matched ? '命中' : testResult.reason === 'unique_conflict' ? '唯一命中冲突' : testResult.reason === 'any_conflict' ? '输出不一致' : '未命中'}
               </Tag>
+              {testResult.matched && testResult.hitPolicy === 'collect' && <Tag color="blue" size="small">聚合 {testRow?.settings?.collectAggregate ?? 'list'}</Tag>}
+              {testResult.usedFallback && <Tag color="orange" size="small">已回退默认值</Tag>}
               {testResult.matched && <Text type="tertiary" size="small">命中行 {testResult.matchedRowIds.join(', ')}</Text>}
               {!testResult.matched && testResult.reason === 'unique_conflict' && <Text type="danger" size="small">unique 策略要求唯一命中，实际命中多行：{testResult.matchedRowIds.join(', ')}</Text>}
               {!testResult.matched && testResult.reason === 'any_conflict' && <Text type="danger" size="small">any 策略要求多命中行输出一致，冲突行：{testResult.matchedRowIds.join(', ')}</Text>}
@@ -565,6 +783,8 @@ export default function RuleTablesPage() {
             optionList={(caseRow?.rules ?? []).map((row, index) => ({ value: String(index), label: `行 ${index + 1} ${row.label ?? row.id}` }))}
             onChange={(v) => generateCaseByRule(Number(v))}
           />
+          <Button size="small" onClick={importCases}>导入用例</Button>
+          <Button size="small" onClick={exportCases} disabled={cases.length === 0}>导出用例</Button>
           <Button size="small" type="primary" onClick={runCases}>运行全部</Button>
         </div>
         {renderCaseEditor()}

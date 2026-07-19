@@ -9925,7 +9925,17 @@ export interface ReportFillRecordDetail extends ReportFillRecord {
 // ─── 规则中心：决策表 ────────────────────────────────────────────────────────────
 export type RuleHitPolicy = 'first' | 'unique' | 'priority' | 'collect' | 'any';
 export type RuleDecisionStatus = 'draft' | 'published' | 'disabled';
-export type RuleFieldType = 'string' | 'number' | 'boolean';
+export type RuleFieldType = 'string' | 'number' | 'boolean' | 'date';
+/** collect 策略聚合方式：list=输出数组（默认）；sum/min/max 数值聚合；count=命中行数；distinct=去重数组 */
+export type RuleCollectAggregate = 'list' | 'sum' | 'min' | 'max' | 'count' | 'distinct';
+
+/** 决策表行为设置（发布时随快照固化） */
+export interface RuleDecisionTableSettings {
+  /** collect 策略下的聚合方式，缺省 list */
+  collectAggregate?: RuleCollectAggregate;
+  /** 未命中时回退输出列默认值（matched 仍为 false，供调用方兜底） */
+  fallbackToDefaults?: boolean;
+}
 
 /** 输入列：expr 为取值表达式（复用安全表达式引擎，从 scope 取值，如 form.amount） */
 export interface RuleDecisionInput {
@@ -9933,13 +9943,16 @@ export interface RuleDecisionInput {
   label: string;
   expr: string;
   type: RuleFieldType;
+  /** string 类型可绑定字典编码，编辑器条件/测试表单渲染为字典下拉 */
+  dictCode?: string | null;
 }
-/** 输出列：default 为无命中时回填默认值 */
+/** 输出列：default 为无命中时回填默认值；isExpr 标记该列输出为表达式（'= form.x * 0.8'，编辑器渲染文本框） */
 export interface RuleDecisionOutput {
   key: string;
   label: string;
   type: RuleFieldType;
   default?: string | number | boolean | null;
+  isExpr?: boolean;
 }
 /** 规则行：when 与 inputs 一一对应，'-' 或空为通配；then 为各 output 字面量 */
 export interface RuleDecisionRow {
@@ -9964,6 +9977,7 @@ export interface RuleDecisionTable {
   publishedAt?: string | null;
   /** 当前编辑态与最新发布快照不一致（有未发布修改） */
   dirty?: boolean;
+  settings?: RuleDecisionTableSettings;
   createdAt: string;
   updatedAt: string;
   createdBy?: number | null;
@@ -9978,6 +9992,7 @@ export interface RuleDecisionTableVersion {
   inputs: RuleDecisionInput[];
   outputs: RuleDecisionOutput[];
   rules: RuleDecisionRow[];
+  settings?: RuleDecisionTableSettings;
   publishedAt: string;
   publishedBy?: number | null;
   publishedByName?: string | null;
@@ -9993,6 +10008,16 @@ export interface RuleEvaluateResult {
   collected?: Array<Record<string, unknown>>;
   /** matched 为 false 时的原因 */
   reason?: RuleEvaluateReason;
+  /** 未命中但启用了回退默认值：outputs 为各输出列默认值 */
+  usedFallback?: boolean;
+}
+
+/** 决策表引用方（where-used 分析） */
+export interface RuleUsageItem {
+  type: 'workflow' | 'coupon';
+  id: number | null;
+  name: string;
+  status?: string | null;
 }
 
 // ─── 规则中心：版本 diff ─────────────────────────────────────────────────────────

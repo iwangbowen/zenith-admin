@@ -11,3 +11,4 @@ export * from './workflow-helpers';
 export * from './workflow-form-runtime';
 export * from './workflow-serial';
 export * from './workflow-formula';
+export * from './rule-cell';

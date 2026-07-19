@@ -6,6 +6,15 @@ import type {
   RuleDecisionTable,
   RuleFieldType,
   RuleHitPolicy,
+  ParsedRuleCell,
+} from '@zenith/shared';
+import {
+  parseRuleCell,
+  matchParsedRuleCell,
+  validateRuleCell,
+  describeParsedRuleCell,
+  isWildcardRuleCell,
+  normalizeRuleValue,
 } from '@zenith/shared';
 
 export interface RuleInspectionIssue {
@@ -49,8 +58,12 @@ const KEY_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
 const SIMPLE_PATH_PATTERN = /^[a-zA-Z_$][\w$]*(\.[a-zA-Z_$][\w$]*)*$/;
 
 export function isWildcardCell(cell: string | undefined): boolean {
-  const text = (cell ?? '').trim();
-  return text === '' || text === '-' || text === '*';
+  return isWildcardRuleCell(cell);
+}
+
+/** 输出单元格是否为表达式（'=' 前缀） */
+export function isExpressionCell(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().startsWith('=');
 }
 
 export function coerceRuleValue(value: unknown, type: RuleFieldType): unknown {
@@ -64,6 +77,7 @@ export function coerceRuleValue(value: unknown, type: RuleFieldType): unknown {
     if (typeof value === 'boolean') return value;
     return value === 'true' || value === '1';
   }
+  // date 以 'YYYY-MM-DD HH:mm:ss' 字符串流转
   return String(value);
 }
 
@@ -120,35 +134,56 @@ export function buildExpectedValues(outputs: RuleDecisionOutput[], values: Recor
   return expected;
 }
 
+// ─── 用例样例生成（基于结构化解析） ─────────────────────────────────────────────
+
+const formatTs = (ts: number): string => {
+  const d = new Date(ts);
+  const p = (n: number, l = 2) => String(n).padStart(l, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+};
+
+const MINUTE_MS = 60_000;
+
 function sampleFromCondition(cell: string | undefined, type: RuleFieldType): unknown {
-  const text = (cell ?? '').trim();
-  if (isWildcardCell(text)) {
-    if (type === 'number') return 1;
-    if (type === 'boolean') return true;
-    return 'sample';
-  }
-  if (type === 'number') {
-    const comparison = text.match(/^(>=|<=|===|!==|==|!=|>|<)\s*(-?\d+(?:\.\d+)?)$/);
-    if (comparison) {
-      const target = Number(comparison[2]);
-      if (comparison[1] === '>') return target + 1;
-      if (comparison[1] === '>=') return target;
-      if (comparison[1] === '<') return target - 1;
-      if (comparison[1] === '<=') return target;
-      if (comparison[1] === '!=' || comparison[1] === '!==') return target + 1;
-      return target;
+  const parsed = parseRuleCell(cell, type);
+  const fmt = (n: number) => (type === 'date' ? formatTs(n) : n);
+  switch (parsed.kind) {
+    case 'any':
+      if (type === 'number') return 1;
+      if (type === 'boolean') return true;
+      if (type === 'date') return formatTs(Date.now());
+      return 'sample';
+    case 'cmp': {
+      const step = type === 'date' ? MINUTE_MS : 1;
+      if (parsed.op === '>') return fmt(parsed.operand + step);
+      if (parsed.op === '<') return fmt(parsed.operand - step);
+      if (parsed.op === '!=') return fmt(parsed.operand + step);
+      return fmt(parsed.operand);
     }
-    const range = text.match(/^(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)$/);
-    if (range) return (Number(range[1]) + Number(range[2])) / 2;
-    const n = Number(text);
-    return Number.isFinite(n) ? n : 1;
+    case 'interval': {
+      const step = type === 'date' ? MINUTE_MS : 1;
+      if (parsed.minInc) return fmt(parsed.min);
+      if (parsed.maxInc) return fmt(parsed.max);
+      return fmt(type === 'number' ? (parsed.min + parsed.max) / 2 : parsed.min + step);
+    }
+    case 'in': {
+      if (!parsed.negate) {
+        const v = parsed.values[0];
+        return type === 'date' && typeof v === 'number' ? formatTs(v) : v;
+      }
+      if (type === 'number') return Math.max(...parsed.values.map(Number).filter(Number.isFinite), 0) + 1;
+      if (type === 'boolean') return !parsed.values.includes(true);
+      return 'other';
+    }
+    case 'ne':
+      if (type === 'number' && typeof parsed.value === 'number') return parsed.value + 1;
+      if (type === 'boolean') return parsed.value !== true;
+      return 'other';
+    case 'eq':
+      return type === 'date' && typeof parsed.value === 'number' ? formatTs(parsed.value) : parsed.value;
+    default:
+      return type === 'number' ? 1 : type === 'boolean' ? true : 'sample';
   }
-  if (type === 'boolean') {
-    if (/!=\s*true|!==\s*true/i.test(text)) return false;
-    if (/!=\s*false|!==\s*false/i.test(text)) return true;
-    return text === 'true' || text === '1' || /==\s*true|===\s*true/i.test(text);
-  }
-  return text;
 }
 
 export function generateCaseFromRule(table: Pick<RuleDecisionTable, 'inputs' | 'outputs'>, row: RuleDecisionRow): { input: Record<string, unknown>; expected: Record<string, unknown> } {
@@ -171,25 +206,198 @@ export function diffCaseOutputs(result: RuleCaseResult): ValueDiff[] {
 
 function literalValid(value: unknown, type: RuleFieldType): boolean {
   if (value === undefined || value === null || value === '') return true;
+  if (isExpressionCell(value)) return true; // '=' 表达式发布时由服务端校验
   if (type === 'number') return Number.isFinite(Number(value));
   if (type === 'boolean') return typeof value === 'boolean' || value === 'true' || value === 'false' || value === '1' || value === '0';
+  if (type === 'date') return normalizeRuleValue(value, 'date') !== null;
   return true;
 }
 
-function conditionValid(cell: string | undefined, type: RuleFieldType): boolean {
-  const text = (cell ?? '').trim();
-  if (isWildcardCell(text)) return true;
-  if (type === 'number') {
-    const comparison = text.match(/^(>=|<=|===|!==|==|!=|>|<)\s*(-?\d+(?:\.\d+)?)$/);
-    if (comparison) return true;
-    const range = text.match(/^(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)$/);
-    if (range) return Number(range[1]) <= Number(range[2]);
-    return Number.isFinite(Number(text));
+// ─── 静态分析：值域模型（overlap / 不可达 / gap） ─────────────────────────────────
+
+interface Interval { min: number; max: number; minInc: boolean; maxInc: boolean }
+
+const FULL: Interval = { min: -Infinity, max: Infinity, minInc: false, maxInc: false };
+
+type CellModel =
+  | { t: 'all' }
+  | { t: 'invalid' }
+  | { t: 'intervals'; list: Interval[] }          // number/date 正域
+  | { t: 'excluded'; points: number[] }           // number/date 补域（!= / not in）
+  | { t: 'set'; values: Array<string | boolean> } // string/boolean 正域
+  | { t: 'notset'; values: Array<string | boolean> }; // string/boolean 补域
+
+function toModel(parsed: ParsedRuleCell, type: RuleFieldType): CellModel {
+  if (parsed.kind === 'any') return { t: 'all' };
+  if (parsed.kind === 'invalid') return { t: 'invalid' };
+  if (type === 'number' || type === 'date') {
+    switch (parsed.kind) {
+      case 'cmp': {
+        const v = parsed.operand;
+        if (parsed.op === '>') return { t: 'intervals', list: [{ ...FULL, min: v, minInc: false }] };
+        if (parsed.op === '>=') return { t: 'intervals', list: [{ ...FULL, min: v, minInc: true }] };
+        if (parsed.op === '<') return { t: 'intervals', list: [{ ...FULL, max: v, maxInc: false }] };
+        if (parsed.op === '<=') return { t: 'intervals', list: [{ ...FULL, max: v, maxInc: true }] };
+        if (parsed.op === '!=') return { t: 'excluded', points: [v] };
+        return { t: 'intervals', list: [{ min: v, max: v, minInc: true, maxInc: true }] };
+      }
+      case 'interval':
+        return { t: 'intervals', list: [{ min: parsed.min, max: parsed.max, minInc: parsed.minInc, maxInc: parsed.maxInc }] };
+      case 'in': {
+        const nums = parsed.values.map(Number).filter(Number.isFinite);
+        return parsed.negate
+          ? { t: 'excluded', points: nums }
+          : { t: 'intervals', list: nums.map((n) => ({ min: n, max: n, minInc: true, maxInc: true })) };
+      }
+      case 'eq':
+        return { t: 'intervals', list: [{ min: Number(parsed.value), max: Number(parsed.value), minInc: true, maxInc: true }] };
+      case 'ne':
+        return { t: 'excluded', points: [Number(parsed.value)] };
+      default:
+        return { t: 'all' };
+    }
   }
-  if (type === 'boolean') {
-    return /^(true|false|1|0)$/i.test(text) || /^(===|!==|==|!=)\s*(true|false|1|0)$/i.test(text);
+  // string / boolean
+  switch (parsed.kind) {
+    case 'in':
+      return parsed.negate
+        ? { t: 'notset', values: parsed.values as Array<string | boolean> }
+        : { t: 'set', values: parsed.values as Array<string | boolean> };
+    case 'eq':
+      return { t: 'set', values: [parsed.value as string | boolean] };
+    case 'ne':
+      return { t: 'notset', values: [parsed.value as string | boolean] };
+    default:
+      return { t: 'all' };
   }
-  return !/^(>=|<=|===|!==|==|!=|>|<)/.test(text);
+}
+
+const intervalOverlaps = (a: Interval, b: Interval): boolean => {
+  const lo = a.min > b.min ? a : b;
+  const hi = a.max < b.max ? a : b;
+  if (lo.min > hi.max) return false;
+  if (lo.min === hi.max) return lo.minInc && hi.maxInc;
+  return true;
+};
+
+const intervalContains = (outer: Interval, inner: Interval): boolean => {
+  const minOk = outer.min < inner.min || (outer.min === inner.min && (outer.minInc || !inner.minInc));
+  const maxOk = outer.max > inner.max || (outer.max === inner.max && (outer.maxInc || !inner.maxInc));
+  return minOk && maxOk;
+};
+
+const pointInInterval = (p: number, iv: Interval): boolean =>
+  (p > iv.min || (p === iv.min && iv.minInc)) && (p < iv.max || (p === iv.max && iv.maxInc));
+
+/** 布尔域实体化为正域集合，统一比较 */
+function materializeBoolean(model: CellModel): CellModel {
+  if (model.t === 'notset' && model.values.every((v) => typeof v === 'boolean')) {
+    return { t: 'set', values: [true, false].filter((v) => !model.values.includes(v)) };
+  }
+  return model;
+}
+
+function modelsIntersect(aRaw: CellModel, bRaw: CellModel, type: RuleFieldType): boolean {
+  let a = aRaw, b = bRaw;
+  if (type === 'boolean') { a = materializeBoolean(a); b = materializeBoolean(b); }
+  if (a.t === 'invalid' || b.t === 'invalid') return false;
+  if (a.t === 'all' || b.t === 'all') return true;
+  if (a.t === 'intervals' && b.t === 'intervals') return a.list.some((x) => b.list.some((y) => intervalOverlaps(x, y)));
+  if (a.t === 'excluded' && b.t === 'excluded') return true;
+  if (a.t === 'excluded' && b.t === 'intervals') return b.list.some((iv) => !(iv.min === iv.max && a.points.includes(iv.min)));
+  if (a.t === 'intervals' && b.t === 'excluded') return modelsIntersect(b, a, type);
+  if (a.t === 'set' && b.t === 'set') return a.values.some((v) => b.values.includes(v));
+  if (a.t === 'set' && b.t === 'notset') return a.values.some((v) => !b.values.includes(v));
+  if (a.t === 'notset' && b.t === 'set') return modelsIntersect(b, a, type);
+  if (a.t === 'notset' && b.t === 'notset') return true;
+  return true;
+}
+
+/** a ⊆ b（用于不可达行检测：后行被前行完全覆盖） */
+function modelSubset(aRaw: CellModel, bRaw: CellModel, type: RuleFieldType): boolean {
+  let a = aRaw, b = bRaw;
+  if (type === 'boolean') { a = materializeBoolean(a); b = materializeBoolean(b); }
+  if (a.t === 'invalid' || b.t === 'invalid') return false;
+  if (b.t === 'all') return true;
+  if (a.t === 'all') return false;
+  if (a.t === 'intervals' && b.t === 'intervals') return a.list.every((x) => b.list.some((y) => intervalContains(y, x)));
+  if (a.t === 'intervals' && b.t === 'excluded') return b.points.every((p) => !a.list.some((iv) => pointInInterval(p, iv)));
+  if (a.t === 'excluded' && b.t === 'excluded') return b.points.every((p) => a.points.includes(p));
+  if (a.t === 'excluded' && b.t === 'intervals') return false;
+  if (a.t === 'set' && b.t === 'set') return a.values.every((v) => b.values.includes(v));
+  if (a.t === 'set' && b.t === 'notset') return a.values.every((v) => !b.values.includes(v));
+  if (a.t === 'notset' && b.t === 'notset') return b.values.every((v) => a.values.includes(v));
+  if (a.t === 'notset' && b.t === 'set') return false;
+  return false;
+}
+
+/** 单数值/日期输入列的未覆盖区间检测（仅报告有限内部缺口） */
+function findCoverageGap(models: CellModel[], type: RuleFieldType): string | null {
+  if (models.some((m) => m.t === 'all' || m.t === 'excluded' || m.t === 'notset' || m.t === 'invalid')) return null;
+  const intervals = models.flatMap((m) => (m.t === 'intervals' ? m.list : []));
+  if (intervals.length < 2) return null;
+  const sorted = [...intervals].sort((x, y) => x.min - y.min || Number(y.minInc) - Number(x.minInc));
+  let current = sorted[0];
+  const fmt = (n: number) => (type === 'date' ? formatTs(n) : String(n));
+  for (let i = 1; i < sorted.length; i += 1) {
+    const next = sorted[i];
+    const connected = next.min < current.max
+      || (next.min === current.max && (next.minInc || current.maxInc));
+    if (!connected && Number.isFinite(current.max) && Number.isFinite(next.min)) {
+      return `${current.maxInc ? '(' : '['}${fmt(current.max)} .. ${fmt(next.min)}${next.minInc ? ')' : ']'}`;
+    }
+    if (next.max > current.max || (next.max === current.max && next.maxInc)) {
+      current = { ...current, max: next.max, maxInc: next.maxInc };
+    }
+  }
+  return null;
+}
+
+/** 行间重叠/不可达/gap 分析（按命中策略裁剪：first/priority 重叠属正常语义不报） */
+function analyzeRules(draft: DraftLike, hitPolicy: RuleHitPolicy, issues: RuleInspectionIssue[]): void {
+  const { inputs, rules } = draft;
+  if (inputs.length === 0 || rules.length < 1) return;
+  const parsedRows = rules.map((row) => inputs.map((input, ci) => toModel(parseRuleCell(row.when?.[ci] ?? '', input.type), input.type)));
+  const rowRef = (i: number) => rules[i].label || `规则行 ${i + 1}`;
+
+  // 重叠：unique 必然冲突风险；any 仅当输出不一致时才有风险
+  if (hitPolicy === 'unique' || hitPolicy === 'any') {
+    const limit = 6;
+    let reported = 0;
+    for (let i = 0; i < rules.length && reported < limit; i += 1) {
+      for (let j = i + 1; j < rules.length && reported < limit; j += 1) {
+        const overlaps = inputs.every((input, ci) => modelsIntersect(parsedRows[i][ci], parsedRows[j][ci], input.type));
+        if (!overlaps) continue;
+        if (hitPolicy === 'any' && JSON.stringify(rules[i].then) === JSON.stringify(rules[j].then)) continue;
+        issues.push({
+          severity: 'warning',
+          message: hitPolicy === 'unique'
+            ? `「${rowRef(i)}」与「${rowRef(j)}」条件存在重叠，唯一命中策略下会产生冲突`
+            : `「${rowRef(i)}」与「${rowRef(j)}」条件重叠且输出不一致，any 策略下将判定冲突`,
+        });
+        reported += 1;
+      }
+    }
+  }
+
+  // 不可达：first 策略下后行被任一前行完全覆盖
+  if (hitPolicy === 'first') {
+    for (let i = 1; i < rules.length; i += 1) {
+      for (let j = 0; j < i; j += 1) {
+        const covered = inputs.every((input, ci) => modelSubset(parsedRows[i][ci], parsedRows[j][ci], input.type));
+        if (covered) {
+          issues.push({ severity: 'warning', message: `「${rowRef(i)}」被前面的「${rowRef(j)}」完全覆盖，永远不会命中` });
+          break;
+        }
+      }
+    }
+  }
+
+  // gap：单数值/日期输入列的有限内部缺口
+  if (inputs.length === 1 && (inputs[0].type === 'number' || inputs[0].type === 'date')) {
+    const gap = findCoverageGap(parsedRows.map((r) => r[0]), inputs[0].type);
+    if (gap) issues.push({ severity: 'warning', message: `输入「${inputs[0].label}」存在未覆盖区间 ${gap}，落入该区间的输入不会命中任何规则` });
+  }
 }
 
 export function inspectDecisionDraft(draft: DraftLike, hitPolicy: RuleHitPolicy): RuleInspectionIssue[] {
@@ -235,12 +443,16 @@ export function inspectDecisionDraft(draft: DraftLike, hitPolicy: RuleHitPolicy)
     }
     draft.inputs.forEach((input, inputIndex) => {
       const cell = row.when?.[inputIndex] ?? '';
-      if (!conditionValid(cell, input.type)) issues.push({ severity: 'error', message: `${ref} 的「${input.label}」条件格式与类型不匹配`, ref });
+      const err = validateRuleCell(cell, input.type);
+      if (err) issues.push({ severity: 'error', message: `${ref} 的「${input.label}」条件无效：${err}`, ref });
     });
     draft.outputs.forEach((output) => {
-      if (!Object.prototype.hasOwnProperty.call(row.then ?? {}, output.key) || row.then?.[output.key] === '' || row.then?.[output.key] === undefined) {
+      const value = row.then?.[output.key];
+      if (!Object.prototype.hasOwnProperty.call(row.then ?? {}, output.key) || value === '' || value === undefined) {
         issues.push({ severity: 'warning', message: `${ref} 未填写输出「${output.label}」，命中时会使用默认值或 null`, ref });
-      } else if (!literalValid(row.then?.[output.key], output.type)) {
+      } else if (output.isExpr && !isExpressionCell(value) && value !== null) {
+        issues.push({ severity: 'warning', message: `${ref} 的输出「${output.label}」为表达式列，但值不是 '=' 开头的表达式`, ref });
+      } else if (!literalValid(value, output.type)) {
         issues.push({ severity: 'error', message: `${ref} 的输出「${output.label}」与类型不匹配`, ref });
       }
     });
@@ -262,63 +474,26 @@ export function inspectDecisionDraft(draft: DraftLike, hitPolicy: RuleHitPolicy)
     }
   });
 
+  analyzeRules(draft, hitPolicy, issues);
+
   return issues;
-}
-
-function matchCondition(cellRaw: string | undefined, value: unknown, type: RuleFieldType): { matched: boolean; detail: string } {
-  const cell = (cellRaw ?? '').trim();
-  if (isWildcardCell(cell)) return { matched: true, detail: '通配' };
-
-  if (type === 'number') {
-    const n = Number(value);
-    if (!Number.isFinite(n)) return { matched: false, detail: `输入 ${formatRuleValue(value)}，不是有效数字` };
-    const comparison = cell.match(/^(>=|<=|===|!==|==|!=|>|<)\s*(-?\d+(?:\.\d+)?)$/);
-    if (comparison) {
-      const target = Number(comparison[2]);
-      const matched = comparison[1] === '>=' ? n >= target
-        : comparison[1] === '<=' ? n <= target
-          : comparison[1] === '>' ? n > target
-            : comparison[1] === '<' ? n < target
-              : comparison[1] === '!=' || comparison[1] === '!==' ? n !== target
-                : n === target;
-      return { matched, detail: `${n} ${comparison[1]} ${target}` };
-    }
-    const range = cell.match(/^(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)$/);
-    if (range) {
-      const min = Number(range[1]);
-      const max = Number(range[2]);
-      return { matched: n >= min && n <= max, detail: `${n} 在 ${min}-${max}` };
-    }
-    const target = Number(cell);
-    return { matched: n === target, detail: `${n} = ${target}` };
-  }
-
-  if (type === 'boolean') {
-    const actual = coerceRuleValue(value, 'boolean');
-    const comparison = cell.match(/^(===|!==|==|!=)\s*(true|false|1|0)$/i);
-    const rawTarget = comparison ? comparison[2] : cell;
-    const target = coerceRuleValue(rawTarget.toLowerCase(), 'boolean');
-    const matched = comparison && (comparison[1] === '!=' || comparison[1] === '!==') ? actual !== target : actual === target;
-    return { matched, detail: `${String(actual)} ${comparison?.[1] ?? '='} ${String(target)}` };
-  }
-
-  const actual = coerceRuleValue(value, 'string');
-  return { matched: actual === cell, detail: `${formatRuleValue(actual)} = ${cell}` };
 }
 
 export function explainDecisionRows(table: Pick<RuleDecisionTable, 'inputs' | 'rules'>, scope: Record<string, unknown>): RuleRowExplanation[] {
   return table.rules.map((row, index) => {
     const cells = table.inputs.map((input, inputIndex) => {
       const value = getScopeValue(scope, input.expr);
-      const result = matchCondition(row.when?.[inputIndex], value, input.type);
+      const parsed = parseRuleCell(row.when?.[inputIndex] ?? '', input.type);
+      const matched = matchParsedRuleCell(parsed, value, input.type);
+      const described = describeParsedRuleCell(parsed, input.type);
       return {
         inputKey: input.key,
         label: input.label,
         expr: input.expr,
         value,
         condition: row.when?.[inputIndex] ?? '',
-        matched: result.matched,
-        detail: result.detail,
+        matched,
+        detail: `${described} · ${matched ? '满足' : '不满足'}`,
       };
     });
     return { index, rowId: row.id, label: row.label, matched: cells.every((cell) => cell.matched), cells };

@@ -1,19 +1,32 @@
-import { Button, Input, InputNumber, Select, Space, Tag, Typography } from '@douyinfe/semi-ui';
+import { Button, Checkbox, DatePicker, Input, InputNumber, Select, Space, Tag, Typography } from '@douyinfe/semi-ui';
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
-import type { RuleDecisionInput, RuleDecisionOutput, RuleDecisionRow, RuleFieldType, RuleHitPolicy } from '@zenith/shared';
+import type { RuleDecisionInput, RuleDecisionOutput, RuleDecisionRow, RuleFieldType, RuleHitPolicy, ParsedRuleCell } from '@zenith/shared';
+import { parseRuleCell } from '@zenith/shared';
+import { useDictList } from '@/hooks/queries/dicts';
+import { useDictItems } from '@/hooks/useDictItems';
+import { formatDateTimeForApi } from '@/utils/date';
 import { coerceRuleValue, isWildcardCell } from './ruleTableUtils';
 
 const { Text } = Typography;
-const TYPES = [{ value: 'string', label: '文本' }, { value: 'number', label: '数值' }, { value: 'boolean', label: '布尔' }];
+const TYPES = [
+  { value: 'string', label: '文本' },
+  { value: 'number', label: '数值' },
+  { value: 'boolean', label: '布尔' },
+  { value: 'date', label: '日期' },
+];
 const NUMBER_OPERATORS = [
   { value: '*', label: '任意' },
   { value: '=', label: '=' },
+  { value: '!=', label: '≠' },
   { value: '>', label: '>' },
   { value: '>=', label: '>=' },
   { value: '<', label: '<' },
   { value: '<=', label: '<=' },
   { value: 'range', label: '区间' },
+  { value: 'in', label: 'in' },
+  { value: 'notin', label: 'not in' },
 ];
+const DATE_OPERATORS = NUMBER_OPERATORS.filter((o) => o.value !== 'in' && o.value !== 'notin');
 const BOOLEAN_OPERATORS = [
   { value: '*', label: '任意' },
   { value: 'true', label: '为真' },
@@ -21,6 +34,8 @@ const BOOLEAN_OPERATORS = [
   { value: '!= true', label: '不为真' },
   { value: '!= false', label: '不为假' },
 ];
+const BOUND_MIN_OPTIONS = [{ value: 'inc', label: '≥' }, { value: 'exc', label: '>' }];
+const BOUND_MAX_OPTIONS = [{ value: 'inc', label: '≤' }, { value: 'exc', label: '<' }];
 
 interface Props {
   inputs: RuleDecisionInput[];
@@ -34,22 +49,54 @@ let rid = 0;
 const newRowId = () => `r${Date.now()}_${rid++}`;
 const boolOptions = [{ value: 'true', label: 'true' }, { value: 'false', label: 'false' }];
 
-function parseNumberCondition(cell: string | undefined): { op: string; left?: number; right?: number } {
-  const text = (cell ?? '').trim();
-  if (isWildcardCell(text)) return { op: '*' };
-  const range = text.match(/^(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)$/);
-  if (range) return { op: 'range', left: Number(range[1]), right: Number(range[2]) };
-  const comparison = text.match(/^(>=|<=|>|<|==|===|=)\s*(-?\d+(?:\.\d+)?)$/);
-  if (comparison) return { op: comparison[1] === '==' || comparison[1] === '===' ? '=' : comparison[1], left: Number(comparison[2]) };
-  const n = Number(text);
-  return Number.isFinite(n) ? { op: '=', left: n } : { op: '=' };
+interface RangeCondition {
+  op: string;
+  left?: number;
+  right?: number;
+  minInc: boolean;
+  maxInc: boolean;
+  list: string;
 }
 
-function buildNumberCondition(op: string, left?: number | null, right?: number | null): string {
-  if (op === '*') return '-';
-  if (op === 'range') return left == null || right == null ? '' : `${left}-${right}`;
-  if (left == null) return '';
-  return op === '=' ? String(left) : `${op} ${left}`;
+/** 结构化条件 → UI 状态（number/date 共用；date 的数值为时间戳） */
+function toRangeCondition(parsed: ParsedRuleCell): RangeCondition {
+  const base: RangeCondition = { op: '*', minInc: true, maxInc: true, list: '' };
+  switch (parsed.kind) {
+    case 'cmp':
+      return { ...base, op: parsed.op === '==' ? '=' : parsed.op, left: parsed.operand };
+    case 'interval':
+      return { ...base, op: 'range', left: parsed.min, right: parsed.max, minInc: parsed.minInc, maxInc: parsed.maxInc };
+    case 'in':
+      return { ...base, op: parsed.negate ? 'notin' : 'in', list: parsed.values.join(',') };
+    case 'eq':
+      return { ...base, op: '=', left: Number(parsed.value) };
+    case 'ne':
+      return { ...base, op: '!=', left: Number(parsed.value) };
+    default:
+      return base;
+  }
+}
+
+function buildNumberCondition(c: RangeCondition): string {
+  if (c.op === '*') return '-';
+  if (c.op === 'in' || c.op === 'notin') {
+    const list = c.list.split(',').map((s) => s.trim()).filter(Boolean).join(',');
+    return list ? `${c.op === 'notin' ? 'not in' : 'in'} ${list}` : '';
+  }
+  if (c.op === 'range') {
+    if (c.left == null || c.right == null) return '';
+    if (c.minInc && c.maxInc) return `${c.left}-${c.right}`;
+    return `${c.minInc ? '[' : '('}${c.left}..${c.right}${c.maxInc ? ']' : ')'}`;
+  }
+  if (c.left == null) return '';
+  return c.op === '=' ? String(c.left) : `${c.op} ${c.left}`;
+}
+
+function buildDateCondition(c: { op: string; left?: string; right?: string }): string {
+  if (c.op === '*') return '-';
+  if (c.op === 'range') return c.left && c.right ? `[${c.left}..${c.right}]` : '';
+  if (!c.left) return '';
+  return c.op === '=' ? c.left : `${c.op} ${c.left}`;
 }
 
 function parseBooleanCondition(cell: string | undefined): string {
@@ -62,6 +109,35 @@ function parseBooleanCondition(cell: string | undefined): string {
   return '*';
 }
 
+const tsToText = (ts: number | undefined): string | undefined => (ts == null ? undefined : formatDateTimeForApi(ts));
+
+/** 字典条件选择：单选=等值，多选=in 集合；不可表达的语法回退原始文本框 */
+function DictConditionCell({ dictCode, cell, onChange }: Readonly<{ dictCode: string; cell: string | undefined; onChange: (v: string) => void }>) {
+  const { items } = useDictItems(dictCode);
+  const parsed = parseRuleCell(cell, 'string');
+  const representable = parsed.kind === 'any' || parsed.kind === 'eq' || (parsed.kind === 'in' && !parsed.negate);
+  if (!representable) {
+    return <Input size="small" value={cell ?? ''} onChange={onChange} placeholder="值 / in a,b / != x" style={{ width: 168 }} />;
+  }
+  const selected = parsed.kind === 'eq' ? [String(parsed.value)] : parsed.kind === 'in' ? parsed.values.map(String) : [];
+  return (
+    <Select
+      size="small"
+      multiple
+      showClear
+      maxTagCount={2}
+      value={selected}
+      placeholder="任意"
+      optionList={items.map((i) => ({ value: i.value, label: i.label }))}
+      onChange={(next) => {
+        const values = (next as string[] | undefined) ?? [];
+        onChange(values.length === 0 ? '-' : values.length === 1 ? values[0] : `in ${values.join(',')}`);
+      }}
+      style={{ minWidth: 168, maxWidth: 240 }}
+    />
+  );
+}
+
 function literalInput(value: unknown, type: RuleFieldType, onChange: (value: string | number | boolean | null | undefined) => void, placeholder?: string) {
   if (type === 'number') {
     const n = value === '' || value == null ? undefined : Number(value);
@@ -71,15 +147,35 @@ function literalInput(value: unknown, type: RuleFieldType, onChange: (value: str
     const v = value === true || value === 'true' ? 'true' : value === false || value === 'false' ? 'false' : undefined;
     return <Select size="small" value={v} onChange={(next) => onChange(next === 'true')} optionList={boolOptions} showClear placeholder={placeholder} style={{ width: 112 }} />;
   }
+  if (type === 'date') {
+    return (
+      <DatePicker
+        size="small"
+        type="dateTime"
+        value={value == null || value === '' ? undefined : String(value)}
+        onChange={(d) => onChange(d == null ? undefined : formatDateTimeForApi(d as Date))}
+        placeholder={placeholder ?? '选择时间'}
+        style={{ width: 200 }}
+      />
+    );
+  }
   return <Input size="small" value={value == null ? '' : String(value)} onChange={(v) => onChange(v || undefined)} placeholder={placeholder} style={{ width: 128 }} />;
 }
 
 /** 决策表可视化编辑器：输入列/输出列卡片 + 规则矩阵（行=规则，列=各输入条件 + 各输出值）。 */
 export default function DecisionTableEditor({ inputs, outputs, rules, hitPolicy, onChange }: Readonly<Props>) {
+  const dictListQuery = useDictList({ page: 1, pageSize: 100 });
+  const dictOptions = (dictListQuery.data?.list ?? []).map((d) => ({ value: d.code, label: `${d.name}（${d.code}）` }));
+
   const emit = (p: Partial<{ inputs: RuleDecisionInput[]; outputs: RuleDecisionOutput[]; rules: RuleDecisionRow[] }>) =>
     onChange({ inputs, outputs, rules, ...p });
 
-  const setInput = (i: number, patch: Partial<RuleDecisionInput>) => emit({ inputs: inputs.map((x, k) => k === i ? { ...x, ...patch } : x) });
+  const setInput = (i: number, patch: Partial<RuleDecisionInput>) => {
+    // 切换类型时清空不再适用的字典绑定
+    const merged = { ...inputs[i], ...patch };
+    if (merged.type !== 'string' && merged.dictCode) merged.dictCode = null;
+    emit({ inputs: inputs.map((x, k) => (k === i ? merged : x)) });
+  };
   // 输出列 key 重命名时同步迁移各规则行 then 中的旧键，避免已填输出值丢失
   const setOutput = (i: number, patch: Partial<RuleDecisionOutput>) => {
     const prevKey = outputs[i].key;
@@ -114,7 +210,7 @@ export default function DecisionTableEditor({ inputs, outputs, rules, hitPolicy,
   const setRow = (ri: number, patch: Partial<RuleDecisionRow>) => emit({ rules: rules.map((r, k) => k === ri ? { ...r, ...patch } : r) });
   const setWhen = (ri: number, ci: number, v: string) => emit({ rules: rules.map((r, k) => k === ri ? { ...r, when: r.when.map((w, j) => j === ci ? v : w) } : r) });
   const setThen = (ri: number, output: RuleDecisionOutput, v: string | number | boolean | null | undefined) => {
-    const value = v === undefined || v === '' ? undefined : coerceRuleValue(v, output.type);
+    const value = v === undefined || v === '' ? undefined : output.isExpr ? String(v) : coerceRuleValue(v, output.type);
     emit({ rules: rules.map((r, k) => k === ri ? { ...r, then: { ...r.then, [output.key]: value as string | number | boolean | null } } : r) });
   };
   const delRow = (ri: number) => emit({ rules: rules.filter((_, k) => k !== ri) });
@@ -124,30 +220,70 @@ export default function DecisionTableEditor({ inputs, outputs, rules, hitPolicy,
     setOutput(i, { default: next as string | number | boolean | null | undefined });
   };
 
+  const renderNumberCondition = (ri: number, ci: number, cell: string | undefined) => {
+    const c = toRangeCondition(parseRuleCell(cell, 'number'));
+    const set = (patch: Partial<RangeCondition>) => setWhen(ri, ci, buildNumberCondition({ ...c, ...patch }));
+    return (
+      <Space spacing={4} align="center" style={{ flexWrap: 'nowrap' }}>
+        <Select size="small" value={c.op} onChange={(op) => set({ op: String(op) })} optionList={NUMBER_OPERATORS} style={{ width: 84 }} />
+        {c.op === 'range' && (
+          <>
+            <Select size="small" value={c.minInc ? 'inc' : 'exc'} onChange={(v) => set({ minInc: v === 'inc' })} optionList={BOUND_MIN_OPTIONS} style={{ width: 58 }} />
+            <InputNumber size="small" value={c.left} onChange={(v) => set({ left: v == null || v === '' ? undefined : Number(v) })} style={{ width: 82 }} />
+            <Text type="tertiary" size="small">至</Text>
+            <InputNumber size="small" value={c.right} onChange={(v) => set({ right: v == null || v === '' ? undefined : Number(v) })} style={{ width: 82 }} />
+            <Select size="small" value={c.maxInc ? 'inc' : 'exc'} onChange={(v) => set({ maxInc: v === 'inc' })} optionList={BOUND_MAX_OPTIONS} style={{ width: 58 }} />
+          </>
+        )}
+        {(c.op === 'in' || c.op === 'notin') && (
+          <Input size="small" value={c.list} onChange={(v) => set({ list: v })} placeholder="1,2,3" style={{ width: 150 }} />
+        )}
+        {c.op !== '*' && c.op !== 'range' && c.op !== 'in' && c.op !== 'notin' && (
+          <InputNumber size="small" value={c.left} onChange={(v) => set({ left: v == null || v === '' ? undefined : Number(v) })} style={{ width: 96 }} />
+        )}
+      </Space>
+    );
+  };
+
+  const renderDateCondition = (ri: number, ci: number, cell: string | undefined) => {
+    const parsed = toRangeCondition(parseRuleCell(cell, 'date'));
+    const state = { op: parsed.op, left: tsToText(parsed.left), right: tsToText(parsed.right) };
+    const set = (patch: Partial<typeof state>) => setWhen(ri, ci, buildDateCondition({ ...state, ...patch }));
+    const picker = (value: string | undefined, onPick: (v?: string) => void) => (
+      <DatePicker size="small" type="dateTime" value={value} onChange={(d) => onPick(d == null ? undefined : formatDateTimeForApi(d as Date))} style={{ width: 196 }} />
+    );
+    return (
+      <Space spacing={4} align="center" style={{ flexWrap: 'nowrap' }}>
+        <Select size="small" value={state.op} onChange={(op) => set({ op: String(op) })} optionList={DATE_OPERATORS} style={{ width: 84 }} />
+        {state.op === 'range' ? (
+          <>
+            {picker(state.left, (v) => set({ left: v }))}
+            <Text type="tertiary" size="small">至</Text>
+            {picker(state.right, (v) => set({ right: v }))}
+          </>
+        ) : state.op === '*' ? null : picker(state.left, (v) => set({ left: v }))}
+      </Space>
+    );
+  };
+
   const renderCondition = (ri: number, input: RuleDecisionInput, ci: number, cell: string | undefined) => {
-    if (input.type === 'number') {
-      const parsed = parseNumberCondition(cell);
-      const setNumber = (op = parsed.op, left = parsed.left, right = parsed.right) => setWhen(ri, ci, buildNumberCondition(op, left, right));
-      return (
-        <Space spacing={4} align="center" style={{ flexWrap: 'nowrap' }}>
-          <Select size="small" value={parsed.op} onChange={(op) => setNumber(String(op), parsed.left, parsed.right)} optionList={NUMBER_OPERATORS} style={{ width: 76 }} />
-          {parsed.op === 'range' ? (
-            <>
-              <InputNumber size="small" value={parsed.left} onChange={(v) => setNumber('range', v == null || v === '' ? undefined : Number(v), parsed.right)} style={{ width: 86 }} />
-              <Text type="tertiary" size="small">至</Text>
-              <InputNumber size="small" value={parsed.right} onChange={(v) => setNumber('range', parsed.left, v == null || v === '' ? undefined : Number(v))} style={{ width: 86 }} />
-            </>
-          ) : parsed.op === '*' ? null : (
-            <InputNumber size="small" value={parsed.left} onChange={(v) => setNumber(parsed.op, v == null || v === '' ? undefined : Number(v), parsed.right)} style={{ width: 96 }} />
-          )}
-        </Space>
-      );
-    }
+    if (input.type === 'number') return renderNumberCondition(ri, ci, cell);
+    if (input.type === 'date') return renderDateCondition(ri, ci, cell);
     if (input.type === 'boolean') {
       const parsed = parseBooleanCondition(cell);
       return <Select size="small" value={parsed} onChange={(v) => setWhen(ri, ci, String(v) === '*' ? '-' : String(v))} optionList={BOOLEAN_OPERATORS} style={{ width: 126 }} />;
     }
-    return <Input size="small" value={cell ?? ''} onChange={(v) => setWhen(ri, ci, v)} placeholder="精确匹配，- 为任意" style={{ width: 150 }} />;
+    if (input.dictCode) {
+      return <DictConditionCell dictCode={input.dictCode} cell={cell} onChange={(v) => setWhen(ri, ci, v)} />;
+    }
+    return <Input size="small" value={cell ?? ''} onChange={(v) => setWhen(ri, ci, v)} placeholder="值 / in a,b / != x；- 任意" style={{ width: 168 }} />;
+  };
+
+  const renderThenInput = (ri: number, o: RuleDecisionOutput, raw: unknown) => {
+    if (o.isExpr) {
+      return <Input size="small" value={raw == null ? '' : String(raw)} onChange={(v) => setThen(ri, o, v)} placeholder="= form.amount * 0.8" style={{ width: 176 }} />;
+    }
+    return literalInput(raw, o.type, (v) => setThen(ri, o, v), o.default == null ? '输出值' : `默认 ${String(o.default)}`);
   };
 
   const th = { position: 'sticky', top: 0, zIndex: 2, padding: '8px 10px', border: '1px solid var(--semi-color-border)', background: 'var(--semi-color-bg-1)', whiteSpace: 'nowrap' } as const;
@@ -161,10 +297,22 @@ export default function DecisionTableEditor({ inputs, outputs, rules, hitPolicy,
         <Text strong style={{ display: 'block', marginBottom: 4 }}>输入列</Text>
         {inputs.map((c, i) => (
           <div key={i} style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' }}>
-            <Input size="small" value={c.key} onChange={(v) => setInput(i, { key: v })} placeholder="key" style={{ width: 150 }} />
-            <Input size="small" value={c.label} onChange={(v) => setInput(i, { label: v })} placeholder="名称" style={{ width: 150 }} />
-            <Input size="small" value={c.expr} onChange={(v) => setInput(i, { expr: v })} placeholder="取值表达式 form.amount" style={{ flex: 1, minWidth: 160 }} />
-            <Select size="small" value={c.type} onChange={(v) => setInput(i, { type: v as RuleFieldType })} optionList={TYPES} style={{ width: 100, flexShrink: 0 }} />
+            <Input size="small" value={c.key} onChange={(v) => setInput(i, { key: v })} placeholder="key" style={{ width: 140 }} />
+            <Input size="small" value={c.label} onChange={(v) => setInput(i, { label: v })} placeholder="名称" style={{ width: 140 }} />
+            <Input size="small" value={c.expr} onChange={(v) => setInput(i, { expr: v })} placeholder="取值表达式 form.amount" style={{ flex: 1, minWidth: 150 }} />
+            <Select size="small" value={c.type} onChange={(v) => setInput(i, { type: v as RuleFieldType })} optionList={TYPES} style={{ width: 92, flexShrink: 0 }} />
+            {c.type === 'string' && (
+              <Select
+                size="small"
+                value={c.dictCode ?? undefined}
+                onChange={(v) => setInput(i, { dictCode: (v as string) || null })}
+                optionList={dictOptions}
+                showClear
+                filter
+                placeholder="字典(可选)"
+                style={{ width: 168, flexShrink: 0 }}
+              />
+            )}
             <Button size="small" theme="borderless" type="danger" icon={<Trash2 size={14} />} onClick={() => delInput(i)} />
           </div>
         ))}
@@ -174,10 +322,11 @@ export default function DecisionTableEditor({ inputs, outputs, rules, hitPolicy,
         <Text strong style={{ display: 'block', marginBottom: 4 }}>输出列</Text>
         {outputs.map((c, i) => (
           <div key={i} style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' }}>
-            <Input size="small" value={c.key} onChange={(v) => setOutput(i, { key: v })} placeholder="key" style={{ width: 150 }} />
-            <Input size="small" value={c.label} onChange={(v) => setOutput(i, { label: v })} placeholder="名称" style={{ width: 150 }} />
-            <Select size="small" value={c.type} onChange={(v) => setOutput(i, { type: v as RuleFieldType })} optionList={TYPES} style={{ width: 100, flexShrink: 0 }} />
+            <Input size="small" value={c.key} onChange={(v) => setOutput(i, { key: v })} placeholder="key" style={{ width: 140 }} />
+            <Input size="small" value={c.label} onChange={(v) => setOutput(i, { label: v })} placeholder="名称" style={{ width: 140 }} />
+            <Select size="small" value={c.type} onChange={(v) => setOutput(i, { type: v as RuleFieldType })} optionList={TYPES} style={{ width: 92, flexShrink: 0 }} />
             {literalInput(c.default, c.type, (v) => setOutputDefault(i, c, v), '默认值')}
+            <Checkbox checked={!!c.isExpr} onChange={(e) => setOutput(i, { isExpr: !!e.target.checked })}>表达式</Checkbox>
             <Button size="small" theme="borderless" type="danger" icon={<Trash2 size={14} />} onClick={() => delOutput(i)} />
           </div>
         ))}
@@ -188,7 +337,7 @@ export default function DecisionTableEditor({ inputs, outputs, rules, hitPolicy,
           <Text strong>规则矩阵</Text>
           <Tag size="small">{hitPolicy === 'priority' ? '优先级生效' : '按当前命中策略求值'}</Tag>
         </Space>
-        <Text type="tertiary" size="small" style={{ display: 'block' }}>数值条件可选比较符或区间，布尔条件用下拉，文本条件精确匹配；留空或 - 为任意。</Text>
+        <Text type="tertiary" size="small" style={{ display: 'block' }}>数值/日期条件支持比较、开闭区间与 in 集合；文本支持精确值、in 集合、!=；勾选「表达式」的输出列以 = 开头引用输入（如 = form.amount * 0.8）。</Text>
         {inputs.length === 0 && outputs.length === 0 ? (
           <Text type="tertiary" size="small" style={{ display: 'block', marginTop: 8 }}>请先添加输入列 / 输出列，再添加规则行</Text>
         ) : (
@@ -201,8 +350,8 @@ export default function DecisionTableEditor({ inputs, outputs, rules, hitPolicy,
                       <th style={{ ...th, left: 0, zIndex: 4, minWidth: 52 }}>#</th>
                       <th style={{ ...th, minWidth: 140 }}>规则名</th>
                       {hitPolicy === 'priority' && <th style={{ ...th, minWidth: 96 }}>优先级</th>}
-                      {inputs.map((c) => <th key={c.key} style={{ ...th, minWidth: c.type === 'number' ? 280 : 170 }}>条件 · {c.label || c.key}</th>)}
-                      {outputs.map((c) => <th key={c.key} style={{ ...th, minWidth: 150, background: 'var(--semi-color-fill-0)' }}>输出 · {c.label || c.key}</th>)}
+                      {inputs.map((c) => <th key={c.key} style={{ ...th, minWidth: c.type === 'number' ? 300 : c.type === 'date' ? 320 : 180 }}>条件 · {c.label || c.key}</th>)}
+                      {outputs.map((c) => <th key={c.key} style={{ ...th, minWidth: 150, background: 'var(--semi-color-fill-0)' }}>输出 · {c.label || c.key}{c.isExpr ? '（表达式）' : ''}</th>)}
                       <th style={{ ...th, right: 0, zIndex: 4, minWidth: 168 }}>操作</th>
                     </tr>
                   </thead>
@@ -215,7 +364,7 @@ export default function DecisionTableEditor({ inputs, outputs, rules, hitPolicy,
                           <td style={td}><InputNumber size="small" value={r.priority ?? 0} onChange={(v) => setRow(ri, { priority: v == null || v === '' ? undefined : Number(v) })} style={{ width: 82 }} /></td>
                         )}
                         {inputs.map((input, ci) => <td key={input.key || ci} style={td}>{renderCondition(ri, input, ci, r.when[ci])}</td>)}
-                        {outputs.map((o) => <td key={o.key} style={td}>{literalInput(r.then[o.key], o.type, (v) => setThen(ri, o, v), o.default == null ? '输出值' : `默认 ${String(o.default)}`)}</td>)}
+                        {outputs.map((o) => <td key={o.key} style={td}>{renderThenInput(ri, o, r.then[o.key])}</td>)}
                         <td style={{ ...td, position: 'sticky', right: 0, zIndex: 1 }}>
                           <Space spacing={2} style={{ flexWrap: 'nowrap' }}>
                             <Button size="small" theme="borderless" icon={<ChevronUp size={14} />} disabled={ri === 0} onClick={() => moveRow(ri, -1)} />
