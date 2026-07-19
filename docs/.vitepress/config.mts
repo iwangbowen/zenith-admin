@@ -55,6 +55,7 @@ export default withMermaid(defineConfig({
           { text: '会员中心', link: '/member/' },
           { text: '通知中心', link: '/notification/' },
           { text: '文件与存储', link: '/storage/' },
+          { text: 'CMS 内容管理', link: '/cms/' },
           { text: 'AI 能力', link: '/ai-platform/' },
           { text: '工作流', link: '/workflow/' },
           { text: '支付中心', link: '/payment/' },
@@ -137,6 +138,19 @@ export default withMermaid(defineConfig({
           { text: '会员中心', link: '/member/' },
           { text: '通知中心', link: '/notification/' },
           { text: '文件与存储', link: '/storage/' },
+        ],
+      },
+      {
+        text: 'CMS 内容管理',
+        collapsed: true,
+        items: [
+          { text: '总览', link: '/cms/' },
+          { text: '内容管线', link: '/cms/content-pipeline' },
+          { text: '渲染与静态化', link: '/cms/static-and-render' },
+          { text: 'SEO 与流量', link: '/cms/seo' },
+          { text: '全文检索', link: '/cms/search' },
+          { text: '互动与运营', link: '/cms/interaction' },
+          { text: '开放能力', link: '/cms/open-api' },
         ],
       },
       {

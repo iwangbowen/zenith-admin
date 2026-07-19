@@ -1,0 +1,22 @@
+# 全文检索
+
+基于 **PostgreSQL tsvector + 应用层 jieba 分词**，无需引入 Elasticsearch 即可获得中文全文检索能力。
+
+## 索引流程
+
+1. 内容创建/更新时，对标题（权重 A）、SEO 关键词 + 摘要（权重 B）、正文 + searchable 扩展字段（权重 C）做 jieba 细粒度分词（`cutForSearch`），写入 `cms_contents.search_vector`（GIN 索引）
+2. 查询时对关键词粗粒度分词 → `plainto_tsquery` 匹配 → `ts_rank_cd` 相关度排序 + 发布时间倒序
+3. 无命中且关键词 ≤ 4 字时回退 ILIKE 标题模糊匹配（gin_trgm）
+
+## 检索管理页
+
+「检索管理」（权限 `cms:search:manage`）四个 Tab：
+
+- **检索测试**：输入关键词查看分词结果与高亮命中，一键**重建索引**（任务中心异步，分批 200 条 + 断点续跑 + 进度）
+- **自定义词典**：jieba 用户词典（词 + 权重），新增/修改后运行时热加载；删除词条需重启进程才彻底失效
+- **热词统计**：前台每次搜索计入 Redis ZSET（`cms:hotwords:{siteId}`），支持排行查看与清空
+- **死链检测**：见 [SEO 与流量](./seo)
+
+## 前台搜索页
+
+`/search?q=keyword`：永远动态渲染（不静态化、不缓存），关键词截断 64 字符。
