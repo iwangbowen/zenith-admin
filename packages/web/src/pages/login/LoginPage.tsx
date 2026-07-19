@@ -521,14 +521,6 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
               </div>
             </div>
           )}
-          {!mfaChallenge && (
-            <p className="login-agreement">
-              登录即表示您已阅读并同意本平台
-              <span className="login-agreement-em">《服务协议》</span>
-              与
-              <span className="login-agreement-em">《隐私政策》</span>
-            </p>
-          )}
         </div>
       </main>
       <footer className="login-footer">

@@ -207,8 +207,28 @@
 }
 
 /* ===== 表单细节 ===== */
+
+/* 校验错误提示绝对定位，不参与布局流：
+   预留固定下边距，避免出错时卡片高度变化引发页面抖动 */
 .login-card .semi-form-field {
-  margin-bottom: 16px;
+  position: relative;
+  margin-bottom: 24px;
+  overflow: visible;
+}
+
+.login-card .semi-form-field-main {
+  position: relative;
+}
+
+.login-card .semi-form-field-error-message {
+  position: absolute;
+  top: 100%;
+  left: 2px;
+  margin: 0;
+  padding-top: 2px;
+  font-size: 12px;
+  line-height: 1.5;
+  min-height: 0;
 }
 
 .login-card .semi-input-wrapper {
@@ -246,6 +266,16 @@
   background: var(--semi-color-bg-2);
   border-color: var(--semi-color-primary);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--semi-color-primary) 10%, transparent);
+}
+
+/* 校验失败时保留红色描边（覆盖上方 border 重写） */
+.login-card .semi-input-wrapper.semi-input-wrapper-error {
+  border-color: var(--semi-color-danger);
+  background: var(--semi-color-bg-2);
+}
+
+.login-card .semi-input-wrapper.semi-input-wrapper-error.semi-input-wrapper-focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--semi-color-danger) 10%, transparent);
 }
 
 .login-card .semi-tabs-bar-line .semi-tabs-tab {
@@ -351,19 +381,6 @@
 .login-demo-tip strong,
 .login-demo-tip code {
   color: var(--semi-color-primary);
-}
-
-/* ===== 协议声明 ===== */
-.login-agreement {
-  margin: 14px 0 0;
-  text-align: center;
-  font-size: 12px;
-  color: var(--semi-color-text-3);
-  line-height: 1.7;
-}
-
-.login-agreement-em {
-  color: var(--semi-color-text-1);
 }
 
 /* ===== 暗色模式 ===== */
