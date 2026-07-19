@@ -102,10 +102,25 @@ export async function getCacheList(keyword?: string) {
   return { list: items, total: items.length };
 }
 
+// string 直接返回原值；hash/list/set/zset 序列化为 JSON 字符串（编辑仍仅支持 string）
 export async function getCacheFullValue(key: string): Promise<string | null> {
   const type = await redis.type(key);
-  if (type !== 'string') return null;
-  return redis.get(key);
+  if (type === 'string') return redis.get(key);
+  if (type === 'hash') return JSON.stringify(await redis.hgetall(key));
+  if (type === 'list') return JSON.stringify(await redis.lrange(key, 0, -1));
+  if (type === 'set') {
+    const members = await redis.smembers(key);
+    return JSON.stringify(members.sort((a, b) => a.localeCompare(b)));
+  }
+  if (type === 'zset') {
+    const flat = await redis.zrange(key, 0, -1, 'WITHSCORES');
+    const entries: { member: string; score: number }[] = [];
+    for (let i = 0; i < flat.length; i += 2) {
+      entries.push({ member: flat[i], score: Number(flat[i + 1]) });
+    }
+    return JSON.stringify(entries);
+  }
+  return null;
 }
 
 function toAuditItem(meta: Awaited<ReturnType<typeof getKeyMeta>>) {

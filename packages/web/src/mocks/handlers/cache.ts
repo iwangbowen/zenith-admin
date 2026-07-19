@@ -10,6 +10,8 @@ interface MockCacheItem {
   ttl: number;
   size: number;
   value: string | null;
+  /** 非 string 类型的完整值（序列化 JSON），对应 /api/cache/value */
+  fullValue?: string;
 }
 
 const mockCacheItems: MockCacheItem[] = [
@@ -122,6 +124,7 @@ const mockCacheItems: MockCacheItem[] = [
     ttl: 3600 * 16,
     size: 5,
     value: null,
+    fullValue: '{"scan_rows":"152400","result_rows":"3200","query_count":"18","exceeded":"0","updated_at":"1752885000"}',
   },
   {
     key: 'zenith:member-session:9f1c2b3a-4d5e-6f70-8192-a3b4c5d6e7f8',
@@ -183,12 +186,14 @@ export const cacheHandlers = [
     return HttpResponse.json({ code: 0, message: 'ok', data: { list, total: list.length } });
   }),
 
-  // 获取指定 key 的完整值
+  // 获取指定 key 的完整值（string 返回原值，其他类型返回序列化 JSON）
   http.get('/api/cache/value', ({ request }) => {
     const url = new URL(request.url);
     const key = url.searchParams.get('key') ?? '';
     const item = mockCacheItems.find((i) => i.key === key);
-    return HttpResponse.json({ code: 0, message: 'ok', data: item?.type === 'string' ? (item.value ?? null) : null });
+    if (!item) return HttpResponse.json({ code: 0, message: 'ok', data: null });
+    const data = item.type === 'string' ? (item.value ?? null) : (item.fullValue ?? null);
+    return HttpResponse.json({ code: 0, message: 'ok', data });
   }),
 
   // 修改指定 key 的 TTL
