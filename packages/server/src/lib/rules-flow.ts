@@ -24,8 +24,8 @@ export interface FlowTableLike {
 
 export type FlowTableResolver = (tableKey: string) => Promise<FlowTableLike | null>;
 
-/** 步骤执行回调（供运行时写执行记录），引擎不关心其实现 */
-export type FlowStepObserver = (trace: RuleFlowStepTrace, stepIndex: number) => void;
+/** 步骤执行回调（供运行时写执行记录）；scopeAtEval 为该步骤求值时的 scope 快照（不含本步输出） */
+export type FlowStepObserver = (trace: RuleFlowStepTrace, stepIndex: number, scopeAtEval: Record<string, unknown>) => void;
 
 export async function evaluateDecisionFlowSteps(
   steps: RuleFlowStep[],
@@ -37,14 +37,16 @@ export async function evaluateDecisionFlowSteps(
   const combined: Record<string, unknown> = {};
   const traces: RuleFlowStepTrace[] = [];
 
-  const emit = (trace: RuleFlowStepTrace, index: number) => {
+  const emit = (trace: RuleFlowStepTrace, index: number, scopeAtEval: Record<string, unknown>) => {
     traces.push(trace);
-    observe?.(trace, index);
+    observe?.(trace, index, scopeAtEval);
   };
 
   for (let i = 0; i < steps.length; i += 1) {
     const step = steps[i];
     const base = { stepId: step.id, tableKey: step.tableKey, label: step.label, matched: false, outputs: {}, matchedRowIds: [] as string[] };
+    // 本步求值输入快照（浅拷贝顶层键：后续步骤对 workingScope 顶层的合并不会污染它）
+    const scopeAtEval: Record<string, unknown> = { ...workingScope };
 
     if (step.condition?.trim()) {
       let pass = false;
@@ -55,18 +57,18 @@ export async function evaluateDecisionFlowSteps(
         condError = err instanceof Error ? err.message : String(err);
       }
       if (condError) {
-        emit({ ...base, skipped: true, skipReason: 'error', error: `条件求值失败：${condError}` }, i);
+        emit({ ...base, skipped: true, skipReason: 'error', error: `条件求值失败：${condError}` }, i, scopeAtEval);
         continue;
       }
       if (!pass) {
-        emit({ ...base, skipped: true, skipReason: 'condition' }, i);
+        emit({ ...base, skipped: true, skipReason: 'condition' }, i, scopeAtEval);
         continue;
       }
     }
 
     const table = await resolve(step.tableKey);
     if (!table) {
-      emit({ ...base, skipped: true, skipReason: 'unavailable', error: `决策表 ${step.tableKey} 不可用（未发布/已禁用/不存在）` }, i);
+      emit({ ...base, skipped: true, skipReason: 'unavailable', error: `决策表 ${step.tableKey} 不可用（未发布/已禁用/不存在）` }, i, scopeAtEval);
       continue;
     }
 
@@ -84,11 +86,11 @@ export async function evaluateDecisionFlowSteps(
         Object.assign(workingScope, outs);
         Object.assign(combined, outs);
       }
-      trace = { ...base, skipped: false, matched: res.matched, outputs: outs, matchedRowIds: res.matchedRowIds, reason: res.reason };
+      trace = { ...base, skipped: false, matched: res.matched, outputs: outs, matchedRowIds: res.matchedRowIds, hitPolicy: res.hitPolicy, reason: res.reason };
     } catch (err) {
       trace = { ...base, skipped: true, skipReason: 'error', error: err instanceof Error ? err.message : String(err) };
     }
-    emit(trace, i);
+    emit(trace, i, scopeAtEval);
   }
 
   return { outputs: combined, steps: traces };

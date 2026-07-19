@@ -9,7 +9,7 @@ import { ruleDecisionTables, ruleDecisionTableVersions, ruleTestCases, ruleDecis
 import { currentUser, currentUserOrNull } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { escapeLike } from '../../lib/where-helpers';
-import { rethrowPgUniqueViolation } from '../../lib/db-errors';
+import { rethrowPgUniqueViolation, isPgUniqueViolation } from '../../lib/db-errors';
 import { pageOffset } from '../../lib/pagination';
 import { formatDateTime, formatNullableDateTime, parseDateRangeStart, parseDateRangeEnd } from '../../lib/datetime';
 import { evaluateDecisionTable, isOutputExpression } from '../../lib/rules-engine';
@@ -177,6 +177,15 @@ export async function updateDecisionTable(id: number, input: UpdateDecisionTable
   if (input.outputs !== undefined) patch.outputs = input.outputs;
   if (input.rules !== undefined) patch.rules = input.rules;
   if (input.settings !== undefined) patch.settings = input.settings;
+  // 四眼原则：待审批期间修改快照内容会使已提交的申请失效，需重新申请（防"提交后偷改再获批"）
+  const touchesSnapshotContent = ['name', 'description', 'hitPolicy', 'inputs', 'outputs', 'rules', 'settings']
+    .some((k) => (input as Record<string, unknown>)[k] !== undefined);
+  if (current.reviewStatus === 'pending' && touchesSnapshotContent) {
+    patch.reviewStatus = null;
+    patch.reviewRequestedBy = null;
+    patch.reviewRequestedAt = null;
+    patch.reviewComment = '内容在审批期间被修改，发布申请已自动作废，请重新提交';
+  }
   const [row] = await db.update(ruleDecisionTables).set(patch).where(and(...conds)).returning();
   if (!row) throw new HTTPException(404, { message: '决策表不存在' });
   invalidateRuleRuntimeCache();
@@ -209,14 +218,17 @@ export async function deleteDecisionTables(ids: number[]): Promise<void> {
 /** 决策表引用方：扫描工作流定义 flowData 中的 decisionRuleKey + 内置消费方固定 key */
 export async function listDecisionTableUsages(id: number): Promise<RuleUsageItem[]> {
   const row = await ensureDecisionTable(id);
-  return findUsagesByKey(row.key);
+  return findUsagesByKey(row.key, row.tenantId ?? null);
 }
 
-async function findUsagesByKey(key: string): Promise<RuleUsageItem[]> {
+async function findUsagesByKey(key: string, tableTenantId: number | null): Promise<RuleUsageItem[]> {
   const pattern = `%"decisionRuleKey":"${escapeLike(key)}"%`;
+  const conds = [sql`${workflowDefinitions.flowData}::text LIKE ${pattern}`];
+  // 租户表只可能被本租户的工作流解析引用；平台级（null）表可被任意租户引用，保持全量扫描
+  if (tableTenantId != null) conds.push(eq(workflowDefinitions.tenantId, tableTenantId));
   const defs = await db.select({ id: workflowDefinitions.id, name: workflowDefinitions.name, status: workflowDefinitions.status })
     .from(workflowDefinitions)
-    .where(sql`${workflowDefinitions.flowData}::text LIKE ${pattern}`);
+    .where(and(...conds));
   const usages: RuleUsageItem[] = defs.map((d) => ({ type: 'workflow' as const, id: d.id, name: d.name, status: d.status }));
   if (key === 'coupon_eligibility') {
     usages.push({ type: 'coupon', id: null, name: '优惠券领取资格判定（内置消费方）', status: null });
@@ -226,7 +238,7 @@ async function findUsagesByKey(key: string): Promise<RuleUsageItem[]> {
 
 /** 删除前校验：仍被引用时拒绝删除（停用不受限，作为运维开关保留） */
 async function ensureNotReferenced(row: TableRow): Promise<void> {
-  const usages = await findUsagesByKey(row.key);
+  const usages = await findUsagesByKey(row.key, row.tenantId ?? null);
   if (usages.length === 0) return;
   const names = usages.slice(0, 3).map((u) => u.name).join('、');
   throw new HTTPException(400, { message: `决策表「${row.name}」被 ${usages.length} 处引用（${names}${usages.length > 3 ? ' 等' : ''}），请先解除引用后再删除` });
@@ -297,26 +309,33 @@ export async function publishDecisionTable(id: number, opts?: { skipApprovalChec
     throw new HTTPException(400, { message: '已开启发布审批，请通过「申请发布」提交，由审批人批准后生效' });
   }
   await ensurePublishGates(row);
-  const mapped = await db.transaction(async (tx) => {
-    await tx.insert(ruleDecisionTableVersions).values({
-      tableId: row.id,
-      version: row.version,
-      name: row.name,
-      description: row.description,
-      hitPolicy: row.hitPolicy,
-      inputs: row.inputs,
-      outputs: row.outputs,
-      rules: row.rules,
-      settings: row.settings ?? {},
-      publishedBy: currentUser()?.userId ?? null,
-      tenantId: row.tenantId,
+  let mapped;
+  try {
+    mapped = await db.transaction(async (tx) => {
+      await tx.insert(ruleDecisionTableVersions).values({
+        tableId: row.id,
+        version: row.version,
+        name: row.name,
+        description: row.description,
+        hitPolicy: row.hitPolicy,
+        inputs: row.inputs,
+        outputs: row.outputs,
+        rules: row.rules,
+        settings: row.settings ?? {},
+        publishedBy: currentUser()?.userId ?? null,
+        tenantId: row.tenantId,
+      });
+      const [updated] = await tx.update(ruleDecisionTables)
+        .set({ status: 'published', publishedAt: new Date(), version: row.version + 1, reviewStatus: null, reviewRequestedBy: null, reviewRequestedAt: null, reviewComment: null })
+        .where(eq(ruleDecisionTables.id, id)).returning();
+      // 刚发布：编辑态与最新快照必然一致
+      return { ...mapDecisionTable(updated), dirty: false };
     });
-    const [updated] = await tx.update(ruleDecisionTables)
-      .set({ status: 'published', publishedAt: new Date(), version: row.version + 1, reviewStatus: null, reviewRequestedBy: null, reviewRequestedAt: null, reviewComment: null })
-      .where(eq(ruleDecisionTables.id, id)).returning();
-    // 刚发布：编辑态与最新快照必然一致
-    return { ...mapDecisionTable(updated), dirty: false };
-  });
+  } catch (err) {
+    // 并发发布/并发审批：版本快照 (tableId, version) 唯一约束兜底
+    if (isPgUniqueViolation(err)) throw new HTTPException(409, { message: '决策表已被并发发布，请刷新后重试' });
+    throw err;
+  }
   // 事务提交后再失效，避免提交前被旧数据回填
   invalidateRuleRuntimeCache();
   return mapped;
@@ -514,6 +533,15 @@ function queueExecutionRecord(row: NewExecRow): void {
   }
 }
 
+/** 执行流水入队前的 scope 深拷贝：异步批写期间调用方可能继续改写原对象（如工作流合并输出回 formData） */
+export function snapshotRuleScope(scope: Record<string, unknown>): Record<string, unknown> {
+  try {
+    return structuredClone(scope);
+  } catch {
+    try { return JSON.parse(JSON.stringify(scope)) as Record<string, unknown>; } catch { return { ...scope }; }
+  }
+}
+
 /**
  * 运行时按 key 求值，返回输出键值；表不存在/禁用/未发布/异常一律返回空对象（不阻断流程）。
  * 始终基于**发布版本快照**求值（默认最新，meta.version 可 pin 指定版本），编辑态修改不影响线上。
@@ -532,7 +560,7 @@ export async function getDecisionOutputs(
     queueExecutionRecord({
       ruleKey: key, tableId: snapshot.tableId, instanceId: meta?.instanceId ?? null, nodeKey: meta?.nodeKey ?? null,
       source: meta?.source ?? 'runtime', matched: res.matched, hitPolicy: res.hitPolicy,
-      input: scope, outputs: res.outputs, matchedRowIds: res.matchedRowIds, tenantId: snapshot.tenantId,
+      input: snapshotRuleScope(scope), outputs: res.outputs, matchedRowIds: res.matchedRowIds, tenantId: snapshot.tenantId,
     });
     return res.matched || res.usedFallback ? res.outputs : {};
   } catch { return {}; }
@@ -635,9 +663,9 @@ export async function shadowRunDecisionTable(id: number, limit = 100): Promise<R
       afterMatched = res.matched;
       after = res.matched || res.usedFallback ? res.outputs : {};
     } catch { after = {}; }
+    // 存量记录的 outputs 已是"生效输出"（纯未命中={}，回退=默认值，命中=输出），直接对称比较
     const before = (exec.outputs ?? {}) as Record<string, unknown>;
-    const beforeEffective = exec.matched ? before : {};
-    if (JSON.stringify(beforeEffective) === JSON.stringify(after) && exec.matched === afterMatched) {
+    if (JSON.stringify(before) === JSON.stringify(after) && exec.matched === afterMatched) {
       same += 1;
     } else if (samples.length < 20) {
       samples.push({ executionId: exec.id, input, before, after, beforeMatched: exec.matched, afterMatched });
@@ -664,6 +692,8 @@ export async function listDecisionExecutions(q: ListDecisionExecutionsQuery) {
   const page = q.page ?? 1;
   const pageSize = q.pageSize ?? 20;
   const conds = [];
+  const tc = tenantCondition(ruleDecisionExecutions, currentUser());
+  if (tc) conds.push(tc);
   if (q.instanceId) conds.push(eq(ruleDecisionExecutions.instanceId, q.instanceId));
   if (q.tableId) conds.push(eq(ruleDecisionExecutions.tableId, q.tableId));
   if (q.ruleKey) conds.push(like(ruleDecisionExecutions.ruleKey, `%${escapeLike(q.ruleKey)}%`));

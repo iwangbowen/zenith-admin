@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react';
 import { Button, Checkbox, DatePicker, Input, InputNumber, Select, Space, Tag, Typography } from '@douyinfe/semi-ui';
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
 import type { RuleDecisionInput, RuleDecisionOutput, RuleDecisionRow, RuleFieldType, RuleHitPolicy, ParsedRuleCell } from '@zenith/shared';
@@ -166,6 +167,10 @@ function literalInput(value: unknown, type: RuleFieldType, onChange: (value: str
 export default function DecisionTableEditor({ inputs, outputs, rules, hitPolicy, onChange }: Readonly<Props>) {
   const dictListQuery = useDictList({ page: 1, pageSize: 100 });
   const dictOptions = (dictListQuery.data?.list ?? []).map((d) => ({ value: d.code, label: `${d.name}（${d.code}）` }));
+  // 条件尚不完整（缺操作数）时暂存已选操作符，避免受控 Select 因单元格文本回退为通配而跳回「任意」
+  const [pendingOps, setPendingOps] = useState<Record<string, string>>({});
+  // 输出列 key 处于与其它列重复的中间态时，记录数据真正归属的原 key，待 key 唯一后再迁移
+  const renameSourceRef = useRef<Record<number, string>>({});
 
   const emit = (p: Partial<{ inputs: RuleDecisionInput[]; outputs: RuleDecisionOutput[]; rules: RuleDecisionRow[] }>) =>
     onChange({ inputs, outputs, rules, ...p });
@@ -176,7 +181,7 @@ export default function DecisionTableEditor({ inputs, outputs, rules, hitPolicy,
     if (merged.type !== 'string' && merged.dictCode) merged.dictCode = null;
     emit({ inputs: inputs.map((x, k) => (k === i ? merged : x)) });
   };
-  // 输出列 key 重命名时同步迁移各规则行 then 中的旧键，避免已填输出值丢失
+  // 输出列 key 重命名时同步迁移各规则行 then 中的旧键；key 与其它列重复的中间态不迁移，防止覆盖他列数据
   const setOutput = (i: number, patch: Partial<RuleDecisionOutput>) => {
     const prevKey = outputs[i].key;
     const nextOutputs = outputs.map((x, k) => k === i ? { ...x, ...patch } : x);
@@ -185,18 +190,34 @@ export default function DecisionTableEditor({ inputs, outputs, rules, hitPolicy,
       return;
     }
     const nextKey = patch.key;
+    const sourceKey = renameSourceRef.current[i] ?? prevKey;
+    const duplicated = outputs.some((o, k) => k !== i && o.key === nextKey);
+    if (duplicated || !nextKey.trim()) {
+      renameSourceRef.current[i] = sourceKey;
+      emit({ outputs: nextOutputs });
+      return;
+    }
+    delete renameSourceRef.current[i];
+    if (sourceKey === nextKey) {
+      emit({ outputs: nextOutputs });
+      return;
+    }
     const nextRules = rules.map((r) => {
-      if (!Object.prototype.hasOwnProperty.call(r.then, prevKey)) return r;
-      const then = { ...r.then, [nextKey]: r.then[prevKey] };
-      delete then[prevKey];
+      if (!Object.prototype.hasOwnProperty.call(r.then, sourceKey)) return r;
+      const then = { ...r.then, [nextKey]: r.then[sourceKey] };
+      delete then[sourceKey];
       return { ...r, then };
     });
     emit({ outputs: nextOutputs, rules: nextRules });
   };
-  const addInput = () => emit({ inputs: [...inputs, { key: `in${inputs.length + 1}`, label: '输入', expr: '', type: 'number' }] });
-  const addOutput = () => emit({ outputs: [...outputs, { key: `out${outputs.length + 1}`, label: '输出', type: 'string' }] });
+  // 新增输入列时为既有规则行补齐通配条件，保持 when 与 inputs 位置对齐
+  const addInput = () => emit({
+    inputs: [...inputs, { key: `in${inputs.length + 1}`, label: '输入', expr: '', type: 'number' }],
+    rules: rules.map((r) => ({ ...r, when: [...r.when, '-'] })),
+  });
+  const addOutput = () => { renameSourceRef.current = {}; emit({ outputs: [...outputs, { key: `out${outputs.length + 1}`, label: '输出', type: 'string' }] }); };
   const delInput = (i: number) => emit({ inputs: inputs.filter((_, k) => k !== i), rules: rules.map((r) => ({ ...r, when: r.when.filter((_, k) => k !== i) })) });
-  const delOutput = (i: number) => { const key = outputs[i].key; emit({ outputs: outputs.filter((_, k) => k !== i), rules: rules.map((r) => { const t = { ...r.then }; delete t[key]; return { ...r, then: t }; }) }); };
+  const delOutput = (i: number) => { renameSourceRef.current = {}; const key = outputs[i].key; emit({ outputs: outputs.filter((_, k) => k !== i), rules: rules.map((r) => { const t = { ...r.then }; delete t[key]; return { ...r, then: t }; }) }); };
   const addRow = () => emit({ rules: [...rules, { id: newRowId(), when: inputs.map(() => '-'), then: {} }] });
   const dupRow = (ri: number) => emit({ rules: [...rules.slice(0, ri + 1), { ...rules[ri], id: newRowId() }, ...rules.slice(ri + 1)] });
   // first/priority 等策略下行序即语义，支持上移/下移调整
@@ -221,8 +242,20 @@ export default function DecisionTableEditor({ inputs, outputs, rules, hitPolicy,
   };
 
   const renderNumberCondition = (ri: number, ci: number, cell: string | undefined) => {
-    const c = toRangeCondition(parseRuleCell(cell, 'number'));
-    const set = (patch: Partial<RangeCondition>) => setWhen(ri, ci, buildNumberCondition({ ...c, ...patch }));
+    const pendingKey = `${rules[ri].id}:${ci}`;
+    const parsed = toRangeCondition(parseRuleCell(cell, 'number'));
+    // 已选但操作数未填完整时以暂存操作符为准（此时单元格文本仍保留旧条件或通配）
+    const c: RangeCondition = { ...parsed, op: pendingOps[pendingKey] ?? parsed.op };
+    const set = (patch: Partial<RangeCondition>) => {
+      const merged = { ...c, ...patch };
+      const built = buildNumberCondition(merged);
+      if (built !== '') {
+        setWhen(ri, ci, built);
+        if (pendingOps[pendingKey] !== undefined) setPendingOps((prev) => { const next = { ...prev }; delete next[pendingKey]; return next; });
+      } else {
+        setPendingOps((prev) => ({ ...prev, [pendingKey]: merged.op }));
+      }
+    };
     return (
       <Space spacing={4} align="center" style={{ flexWrap: 'nowrap' }}>
         <Select size="small" value={c.op} onChange={(op) => set({ op: String(op) })} optionList={NUMBER_OPERATORS} style={{ width: 84 }} />
@@ -246,9 +279,19 @@ export default function DecisionTableEditor({ inputs, outputs, rules, hitPolicy,
   };
 
   const renderDateCondition = (ri: number, ci: number, cell: string | undefined) => {
+    const pendingKey = `${rules[ri].id}:${ci}`;
     const parsed = toRangeCondition(parseRuleCell(cell, 'date'));
-    const state = { op: parsed.op, left: tsToText(parsed.left), right: tsToText(parsed.right) };
-    const set = (patch: Partial<typeof state>) => setWhen(ri, ci, buildDateCondition({ ...state, ...patch }));
+    const state = { op: pendingOps[pendingKey] ?? parsed.op, left: tsToText(parsed.left), right: tsToText(parsed.right) };
+    const set = (patch: Partial<typeof state>) => {
+      const merged = { ...state, ...patch };
+      const built = buildDateCondition(merged);
+      if (built !== '') {
+        setWhen(ri, ci, built);
+        if (pendingOps[pendingKey] !== undefined) setPendingOps((prev) => { const next = { ...prev }; delete next[pendingKey]; return next; });
+      } else {
+        setPendingOps((prev) => ({ ...prev, [pendingKey]: merged.op }));
+      }
+    };
     const picker = (value: string | undefined, onPick: (v?: string) => void) => (
       <DatePicker size="small" type="dateTime" value={value} onChange={(d) => onPick(d == null ? undefined : formatDateTimeForApi(d as Date))} style={{ width: 196 }} />
     );

@@ -18,7 +18,7 @@ import { pageOffset } from '../../lib/pagination';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { validateExpression } from '../../lib/workflow-expression';
 import { evaluateDecisionFlowSteps } from '../../lib/rules-flow';
-import { resolveRuntimeDecisionTable, resolveDecisionTableForTest, recordRuleExecution } from './rules.service';
+import { resolveRuntimeDecisionTable, resolveDecisionTableForTest, recordRuleExecution, snapshotRuleScope } from './rules.service';
 
 type FlowRow = typeof ruleDecisionFlows.$inferSelect;
 
@@ -168,11 +168,17 @@ async function ensureFlowPublishable(row: FlowRow): Promise<void> {
   });
   if (errors.length > 0) throw new HTTPException(400, { message: `发布受阻：${errors.slice(0, 5).join('；')}` });
 
+  // 与运行时解析同语义：本租户表优先，回退平台级（null）表；避免误采他租户同 key 表的状态
   const keys = [...new Set(steps.map((s) => s.tableKey))];
-  const tables = await db.select({ key: ruleDecisionTables.key, status: ruleDecisionTables.status })
+  const candidates = await db.select({ key: ruleDecisionTables.key, status: ruleDecisionTables.status, tenantId: ruleDecisionTables.tenantId })
     .from(ruleDecisionTables).where(inArray(ruleDecisionTables.key, keys));
-  const statusByKey = new Map(tables.map((t) => [t.key, t.status]));
-  const bad = keys.filter((k) => statusByKey.get(k) !== 'published');
+  const flowTenantId = row.tenantId ?? null;
+  const resolveStatus = (key: string): string | undefined => {
+    const rows = candidates.filter((c) => c.key === key);
+    const exact = flowTenantId != null ? rows.find((c) => c.tenantId === flowTenantId) : undefined;
+    return (exact ?? rows.find((c) => c.tenantId == null))?.status;
+  };
+  const bad = keys.filter((k) => resolveStatus(k) !== 'published');
   if (bad.length > 0) throw new HTTPException(400, { message: `发布受阻：引用的决策表未发布或不存在：${bad.join('、')}` });
 }
 
@@ -224,13 +230,13 @@ export async function getDecisionFlowOutputs(key: string, scope: Record<string, 
       (row.publishedSteps ?? []) as RuleFlowStep[],
       scope,
       (k) => resolveRuntimeDecisionTable(k, { tenantId }),
-      (trace, index) => {
+      (trace, index, scopeAtEval) => {
         if (trace.skipped) return;
         recordRuleExecution({
           ruleKey: trace.tableKey, tableId: null, instanceId: null,
           nodeKey: `flow:${key}#${index + 1}`, source: 'runtime',
-          matched: trace.matched, hitPolicy: 'first',
-          input: scope, outputs: trace.outputs, matchedRowIds: trace.matchedRowIds, tenantId: row.tenantId ?? null,
+          matched: trace.matched, hitPolicy: trace.hitPolicy ?? 'first',
+          input: snapshotRuleScope(scopeAtEval), outputs: trace.outputs, matchedRowIds: trace.matchedRowIds, tenantId: row.tenantId ?? null,
         });
       },
     );

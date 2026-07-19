@@ -175,8 +175,8 @@ export const decisionTablesHandlers = [
     for (const e of execs) {
       const res = evaluate(r, e.input);
       const after = res.matched || res.usedFallback ? res.outputs : {};
-      const before = e.matched ? e.outputs : {};
-      if (JSON.stringify(before) === JSON.stringify(after) && e.matched === res.matched) same += 1;
+      // 存量记录 outputs 已是"生效输出"，与后端一致做对称比较
+      if (JSON.stringify(e.outputs) === JSON.stringify(after) && e.matched === res.matched) same += 1;
       else if (samples.length < 20) samples.push({ executionId: e.id, input: e.input, before: e.outputs, after, beforeMatched: e.matched, afterMatched: res.matched });
     }
     return ok({ total: execs.length, same, changed: execs.length - same, samples });

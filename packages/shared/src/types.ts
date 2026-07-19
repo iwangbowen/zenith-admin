@@ -10066,6 +10066,8 @@ export interface RuleFlowStepTrace {
   matched: boolean;
   outputs: Record<string, unknown>;
   matchedRowIds: string[];
+  /** 该步骤引用决策表的实际命中策略（skipped 时缺省） */
+  hitPolicy?: RuleHitPolicy;
   reason?: RuleEvaluateReason;
   error?: string;
 }
