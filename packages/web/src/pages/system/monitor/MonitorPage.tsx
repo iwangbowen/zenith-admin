@@ -1459,6 +1459,7 @@ export default function MonitorPage() {
             onClick={fetchData}
             loading={loading}
             theme="light"
+            size="small"
           >
             刷新
           </Button>
