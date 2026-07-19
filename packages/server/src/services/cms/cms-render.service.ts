@@ -5,7 +5,8 @@ import { db } from '../../db';
 import { cmsChannels, cmsTags, cmsContents } from '../../db/schema';
 import type { CmsSiteRow, CmsChannelRow, CmsContentRow, CmsTagRow } from '../../db/schema';
 import { formatNullableDateTime, formatIso8601 } from '../../lib/datetime';
-import { getTheme, resolveListTemplate, resolveDetailTemplate } from '../../cms/themes/registry';
+import { getTheme, resolveListTemplate, resolveDetailTemplate, resolveCustomPageTemplate } from '../../cms/themes/registry';
+import { renderBlocksHtml } from '../../cms/themes/blocks';
 import type {
   CmsBaseContext, CmsNavItem, CmsSeo, CmsContentItem, CmsPagination, CmsBreadcrumb, CmsChannelInfo,
 } from '../../cms/themes/types';
@@ -191,7 +192,63 @@ export async function findChannelByPath(siteId: number, path: string): Promise<C
 }
 
 // ─── 各页面渲染 ───────────────────────────────────────────────────────────────
+/** 可视化搭建页面 URL：/p/{slug}/ */
+export function customPageUrl(baseUrl: string, slug: string): string {
+  return `${baseUrl}/p/${slug}/`;
+}
+
+/** 渲染可视化搭建页面（含 content-list 区块数据预取） */
+export async function renderCustomPage(
+  site: CmsSiteRow,
+  baseUrl: string,
+  pageRow: import('../../db/schema').CmsPageRow,
+  opts?: { asHome?: boolean },
+): Promise<RenderResult> {
+  const theme = getTheme(site.theme);
+  const seo = mergeSeo(site, {
+    title: pageRow.seoTitle ?? (opts?.asHome ? undefined : `${pageRow.name} - ${site.title?.trim() || site.name}`),
+    keywords: pageRow.seoKeywords ?? undefined,
+    description: pageRow.seoDescription ?? undefined,
+    pathForCanonical: opts?.asHome ? '/' : customPageUrl('', pageRow.slug),
+  });
+  const base = await buildBaseContext(site, baseUrl, seo);
+  const blocks = (pageRow.blocks ?? []) as import('@zenith/shared').CmsPageBlock[];
+  // content-list 区块数据预取
+  const channelPathMap = await loadChannelPathMap(site.id);
+  const contentListData = new Map<string, CmsContentItem[]>();
+  for (const block of blocks) {
+    if (block.type !== 'content-list') continue;
+    const channelId = Number(block.props.channelId) || undefined;
+    const count = Math.min(20, Math.max(1, Number(block.props.count) || 5));
+    const mode = block.props.mode === 'recommend' || block.props.mode === 'hot' ? block.props.mode : 'latest';
+    const rows = await listBlockContents(site.id, { channelId, count, mode });
+    contentListData.set(block.id, rows.map((row) => toContentItem(row, baseUrl, channelPathMap.get(row.channelId) ?? '')));
+  }
+  const blocksHtml = renderBlocksHtml({ blocks, ctx: base, contentListData });
+  const html = renderDoc(resolveCustomPageTemplate(theme), {
+    ...base,
+    page: { name: pageRow.name, slug: pageRow.slug },
+    blocksHtml,
+  });
+  return { status: 200, html, kind: opts?.asHome ? 'home' : 'page' };
+}
+
+async function listBlockContents(siteId: number, opts: { channelId?: number; count: number; mode: 'latest' | 'recommend' | 'hot' }): Promise<CmsContentRow[]> {
+  const conds = [eq(cmsContents.siteId, siteId), eq(cmsContents.status, 'published'), isNull(cmsContents.deletedAt)];
+  if (opts.channelId) conds.push(eq(cmsContents.channelId, opts.channelId));
+  if (opts.mode === 'recommend') conds.push(eq(cmsContents.isRecommend, true));
+  if (opts.mode === 'hot') conds.push(eq(cmsContents.isHot, true));
+  return db.select().from(cmsContents)
+    .where(and(...conds))
+    .orderBy(desc(cmsContents.isTop), desc(cmsContents.publishedAt))
+    .limit(opts.count);
+}
+
 export async function renderHomePage(site: CmsSiteRow, baseUrl: string): Promise<RenderResult> {
+  // 可视化页面接管首页（isHome=true 的启用页面优先）
+  const { getHomeTakeoverPage } = await import('./cms-pages.service');
+  const takeover = await getHomeTakeoverPage(site.id);
+  if (takeover) return renderCustomPage(site, baseUrl, takeover, { asHome: true });
   const theme = getTheme(site.theme);
   const seo = mergeSeo(site, { pathForCanonical: '/' });
   const [base, home] = await Promise.all([
@@ -470,6 +527,15 @@ export async function renderSitePath(site: CmsSiteRow, baseUrl: string, rawPath:
   const tagMatch = /^tag\/([^/]+)(?:\/(?:index_(\d+)\.html)?)?$/.exec(cleaned);
   if (tagMatch) {
     return renderTagPage(site, baseUrl, decodeURIComponent(tagMatch[1]), Number(tagMatch[2] ?? 1));
+  }
+
+  // 可视化搭建页面 /p/{slug}/
+  const pageMatch2 = /^p\/([a-z0-9-]+)(?:\/(?:index\.html)?)?$/.exec(cleaned);
+  if (pageMatch2) {
+    const { getPublishedPageBySlug } = await import('./cms-pages.service');
+    const pageRow = await getPublishedPageBySlug(site.id, pageMatch2[1]);
+    if (!pageRow) return renderNotFound(site, baseUrl, `/${cleaned}`);
+    return renderCustomPage(site, baseUrl, pageRow);
   }
 
   if (cleaned.endsWith('.html')) {

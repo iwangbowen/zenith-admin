@@ -10655,3 +10655,37 @@ export interface CmsCollectItem {
   error: string | null;
   createdAt: string;
 }
+
+// ─── CMS 可视化页面搭建（P3 Batch6）───────────────────────────────────────────
+export type CmsPageBlockType = 'hero' | 'richtext' | 'image' | 'content-list' | 'columns' | 'fragment';
+
+export interface CmsPageBlock {
+  id: string;
+  type: CmsPageBlockType;
+  props: Record<string, unknown>;
+}
+
+export interface CmsPage {
+  id: number;
+  siteId: number;
+  name: string;
+  slug: string;
+  isHome: boolean;
+  blocks: CmsPageBlock[];
+  seoTitle: string | null;
+  seoKeywords: string | null;
+  seoDescription: string | null;
+  status: 'enabled' | 'disabled';
+  remark: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const CMS_PAGE_BLOCK_TYPES: { value: CmsPageBlockType; label: string }[] = [
+  { value: 'hero', label: 'Hero 横幅' },
+  { value: 'richtext', label: '富文本' },
+  { value: 'image', label: '图片' },
+  { value: 'content-list', label: '内容列表' },
+  { value: 'columns', label: '多列卡片' },
+  { value: 'fragment', label: '碎片引用' },
+];

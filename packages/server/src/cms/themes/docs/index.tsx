@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type {
   CmsBaseContext, CmsBreadcrumb, CmsContentItem, CmsHomeContext, CmsListContext,
   CmsDetailContext, CmsPageContext, CmsSearchContext, CmsNotFoundContext, CmsPagination,
-  CmsTagPageContext, CmsNavItem, CmsTheme,
+  CmsTagPageContext, CmsNavItem, CmsTheme, CmsCustomPageContext,
 } from '../types';
 
 const styles = `
@@ -434,6 +434,14 @@ function NotFoundTemplate(ctx: CmsNotFoundContext) {
   );
 }
 
+function CustomPageTemplate(ctx: CmsCustomPageContext) {
+  return (
+    <Layout ctx={ctx} sidebar={false}>
+      <div dangerouslySetInnerHTML={{ __html: ctx.blocksHtml }} />
+    </Layout>
+  );
+}
+
 /** 文档站主题：左侧栏目树 + 窄正文 + 上下篇导航，适合产品文档/知识库/帮助中心 */
 export const docsTheme: CmsTheme = {
   code: 'docs',
@@ -447,4 +455,5 @@ export const docsTheme: CmsTheme = {
     tag: TagTemplate,
     notFound: NotFoundTemplate,
   },
+  customPage: CustomPageTemplate,
 };

@@ -467,3 +467,30 @@ export const CmsCollectItemDTO = z
     createdAt: z.string(),
   })
   .openapi('CmsCollectItem');
+
+// ─── P3 Batch6：可视化页面搭建 ────────────────────────────────────────────────
+export const CmsPageBlockDTO = z
+  .object({
+    id: z.string(),
+    type: z.enum(['hero', 'richtext', 'image', 'content-list', 'columns', 'fragment']),
+    props: z.record(z.string(), z.unknown()),
+  })
+  .openapi('CmsPageBlock');
+
+export const CmsPageDTO = z
+  .object({
+    id: z.number().int(),
+    siteId: z.number().int(),
+    name: z.string(),
+    slug: z.string(),
+    isHome: z.boolean(),
+    blocks: z.array(CmsPageBlockDTO),
+    seoTitle: z.string().nullable(),
+    seoKeywords: z.string().nullable(),
+    seoDescription: z.string().nullable(),
+    status: z.enum(['enabled', 'disabled']),
+    remark: z.string().nullable(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('CmsPage');

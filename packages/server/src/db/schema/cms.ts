@@ -530,3 +530,31 @@ export const cmsCollectItems = pgTable('cms_collect_items', {
 ]);
 
 export type CmsCollectItemRow = typeof cmsCollectItems.$inferSelect;
+
+// ═══ P3 Batch6：可视化页面搭建 ══════════════════════════════════════════════════
+
+// ─── 自定义页面（区块 JSON 装配，前台 /p/{slug}/；isHome 可接管站点首页）────────
+export const cmsPages = pgTable('cms_pages', {
+  id: serial('id').primaryKey(),
+  siteId: integer('site_id').notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 100 }).notNull(),
+  /** 前台路径：/p/{slug}/ */
+  slug: varchar('slug', { length: 100 }).notNull(),
+  /** 接管站点首页（每站点最多一个生效） */
+  isHome: boolean('is_home').notNull().default(false),
+  /** 区块数组：{ id, type, props }[]，类型见 shared CmsPageBlock */
+  blocks: jsonb('blocks').$type<{ id: string; type: string; props: Record<string, unknown> }[]>().notNull().default([]),
+  seoTitle: varchar('seo_title', { length: 255 }),
+  seoKeywords: varchar('seo_keywords', { length: 500 }),
+  seoDescription: varchar('seo_description', { length: 500 }),
+  status: statusEnum('status').notNull().default('enabled'),
+  remark: varchar('remark', { length: 200 }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  uniqueIndex('cms_pages_site_slug_uq').on(t.siteId, t.slug),
+  index('cms_pages_site_idx').on(t.siteId),
+]);
+
+export type CmsPageRow = typeof cmsPages.$inferSelect;

@@ -4,7 +4,7 @@ import type {
   CmsFriendLink, CmsSearchResult, CmsContentStatus, CmsFragmentType, AsyncTask,
   CmsContentVersion, CmsRedirect, CmsLinkWord, CmsComment, CmsCommentStatus,
   CmsAdSlot, CmsAd, CmsForm, CmsFormSubmission, CmsSensitiveWord, CmsPushLog,
-  CmsSearchWord, CmsHotKeyword, CmsCollectRule, CmsCollectItem,
+  CmsSearchWord, CmsHotKeyword, CmsCollectRule, CmsCollectItem, CmsPage,
 } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { toQueryString, unwrap, LOOKUP_STALE_TIME } from '@/lib/query';
@@ -897,5 +897,50 @@ export function useCmsCollectItems(ruleId: number | undefined, params: { page: n
     queryFn: () => request.get<PaginatedResponse<CmsCollectItem>>(`/api/cms/collect/rules/${ruleId}/items${toQueryString(params)}`).then(unwrap),
     enabled: !!ruleId,
     placeholderData: keepPreviousData,
+  });
+}
+
+// ─── P3 Batch6：可视化页面搭建 ────────────────────────────────────────────────
+export const cmsPageKeys = {
+  all: ['cms', 'pages'] as const,
+  lists: ['cms', 'pages', 'list'] as const,
+  list: (params: object) => ['cms', 'pages', 'list', params] as const,
+  detail: (id: number | undefined) => ['cms', 'pages', 'detail', id ?? null] as const,
+};
+
+export function useCmsPageList(params: { page: number; pageSize: number; siteId: number | undefined; keyword?: string }) {
+  return useQuery({
+    queryKey: cmsPageKeys.list(params),
+    queryFn: () => request.get<PaginatedResponse<CmsPage>>(`/api/cms/pages${toQueryString(params)}`).then(unwrap),
+    enabled: !!params.siteId,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useCmsPageDetail(id: number | undefined) {
+  return useQuery({
+    queryKey: cmsPageKeys.detail(id),
+    queryFn: () => request.get<CmsPage>(`/api/cms/pages/${id}`).then(unwrap),
+    enabled: !!id,
+  });
+}
+
+export function useSaveCmsPage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
+      (id
+        ? request.put<CmsPage>(`/api/cms/pages/${id}`, values)
+        : request.post<CmsPage>('/api/cms/pages', values)
+      ).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsPageKeys.all }),
+  });
+}
+
+export function useDeleteCmsPage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.delete<null>(`/api/cms/pages/${id}`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsPageKeys.all }),
   });
 }

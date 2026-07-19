@@ -7,8 +7,8 @@ import type { CmsSiteRow, CmsChannelRow } from '../../db/schema';
 import logger from '../../lib/logger';
 import { formatIso8601 } from '../../lib/datetime';
 import {
-  renderSitePath, renderHomePage, renderChannelPage, renderDetailPage, renderTagPage,
-  channelUrl, contentUrl, tagUrl, siteOrigin, listSiteTags, generateRssXml,
+  renderSitePath, renderHomePage, renderChannelPage, renderDetailPage, renderTagPage, renderCustomPage,
+  channelUrl, contentUrl, tagUrl, customPageUrl, siteOrigin, listSiteTags, generateRssXml,
 } from './cms-render.service';
 
 // ─── 静态目录 ─────────────────────────────────────────────────────────────────
@@ -109,6 +109,13 @@ export async function generateSitemapXml(site: CmsSiteRow): Promise<string> {
   for (const tag of tags) {
     if (tag.contentCount <= 0) continue;
     entries.push({ loc: `${origin}${tagUrl('', tag.slug)}`, lastmod: null, priority: '0.4' });
+  }
+
+  // 可视化搭建页面
+  const { listPublishedPages } = await import('./cms-pages.service');
+  for (const page of await listPublishedPages(site.id)) {
+    if (page.isHome) continue; // 首页接管已由 '/' 收录
+    entries.push({ loc: `${origin}${customPageUrl('', page.slug)}`, lastmod: formatIso8601(page.updatedAt), priority: '0.7' });
   }
 
   const body = entries.map((e) => [
@@ -213,6 +220,35 @@ export function triggerContentStaticRefresh(contentId: number): void {
   });
 }
 
+/** 可视化搭建页面增量静态刷新：重写 /p/{slug}/（isHome 同时重写首页）；停用/删除时移除文件 */
+export async function refreshCustomPageStatic(input: { siteId: number; slug: string; isHome: boolean; removed?: boolean }): Promise<void> {
+  const [site] = await db.select().from(cmsSites).where(eq(cmsSites.id, input.siteId)).limit(1);
+  if (!site || site.staticMode === 'dynamic') return;
+  if (input.removed) {
+    await deleteStaticFile(site.code, `p/${input.slug}/`);
+  } else {
+    const { getPublishedPageBySlug } = await import('./cms-pages.service');
+    const pageRow = await getPublishedPageBySlug(site.id, input.slug);
+    if (pageRow) {
+      const result = await renderCustomPage(site, '', pageRow);
+      if (result.status === 200) await writeStaticFile(site.code, `p/${input.slug}/`, result.html);
+    } else {
+      await deleteStaticFile(site.code, `p/${input.slug}/`);
+    }
+  }
+  if (input.isHome) {
+    const home = await renderHomePage(site, '');
+    if (home.status === 200) await writeStaticFile(site.code, '', home.html);
+  }
+  await writeStaticFile(site.code, 'sitemap.xml', await generateSitemapXml(site));
+}
+
+export function triggerCustomPageStaticRefresh(input: { siteId: number; slug: string; isHome: boolean; removed?: boolean }): void {
+  void refreshCustomPageStatic(input).catch((err) => {
+    logger.error(`[CMS] 搭建页 ${input.slug} 增量静态化失败`, err);
+  });
+}
+
 /** 碎片/友链/栏目等全局要素变化后触发整站重建提示（P1 由管理员在静态化管理页手动全量生成） */
 
 // ─── 全量静态化（task-center handler 调用）───────────────────────────────────────
@@ -238,7 +274,9 @@ export async function buildSiteStatic(
   const channelMap = new Map(channels.map((c) => [c.id, c]));
   const siteTags = await listSiteTags(siteId);
   const activeTags = siteTags.filter((t) => t.contentCount > 0);
-  const total = 1 + channels.length + contents.length + activeTags.length + 3; // 首页 + 栏目 + 内容 + 标签 + sitemap/rss/robots
+  const { listPublishedPages } = await import('./cms-pages.service');
+  const customPages = (await listPublishedPages(siteId)).filter((p) => !p.isHome);
+  const total = 1 + channels.length + contents.length + activeTags.length + customPages.length + 3; // 首页 + 栏目 + 内容 + 标签 + 搭建页 + sitemap/rss/robots
   let processed = 0;
   let pages = 0;
 
@@ -277,6 +315,16 @@ export async function buildSiteStatic(
       pages += 1;
     }
     if (await report(`标签「${tag.name}」已生成`)) return { pages };
+  }
+
+  // 可视化搭建页面 /p/{slug}/
+  for (const page of customPages) {
+    const result = await renderCustomPage(site, '', page);
+    if (result.status === 200) {
+      await writeStaticFile(site.code, `p/${page.slug}/`, result.html);
+      pages += 1;
+    }
+    if (await report(`搭建页「${page.name}」已生成`)) return { pages };
   }
 
   await writeStaticFile(site.code, 'sitemap.xml', await generateSitemapXml(site));

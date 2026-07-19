@@ -178,6 +178,13 @@ export interface CmsTagPageContext extends CmsBaseContext {
   pagination: CmsPagination;
 }
 
+/** 可视化搭建页面上下文（区块 JSON 装配渲染） */
+export interface CmsCustomPageContext extends CmsBaseContext {
+  page: { name: string; slug: string };
+  /** 已渲染的区块 HTML（由 blocks.tsx 统一渲染，主题只负责 Layout 包裹） */
+  blocksHtml: string;
+}
+
 export interface CmsNotFoundContext extends CmsBaseContext {
   path: string;
 }
@@ -197,6 +204,8 @@ export interface CmsTheme {
   code: string;
   label: string;
   templates: CmsThemeTemplates;
+  /** 可视化搭建页面模板（缺省回退 default 主题实现） */
+  customPage?: ComponentType<CmsCustomPageContext>;
   /** 扩展模板：栏目 listTemplate/detailTemplate 可按名称引用（如 list-image / detail-video） */
   extraListTemplates?: Record<string, ComponentType<CmsListContext>>;
   extraDetailTemplates?: Record<string, ComponentType<CmsDetailContext>>;

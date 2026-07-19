@@ -29,3 +29,7 @@ export function resolveDetailTemplate(theme: CmsTheme, name: string | null | und
   if (name && theme.extraDetailTemplates?.[name]) return theme.extraDetailTemplates[name];
   return theme.templates.detail;
 }
+
+export function resolveCustomPageTemplate(theme: CmsTheme) {
+  return theme.customPage ?? defaultTheme.customPage!;
+}

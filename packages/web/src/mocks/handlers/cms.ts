@@ -1100,3 +1100,65 @@ const mockCmsCollectItems: import('@zenith/shared').CmsCollectItem[] = [
 ];
 let nextCollectRuleId = 2;
 function getNextCmsCollectRuleId() { return nextCollectRuleId++; }
+
+// ─── P3 Batch6：可视化页面搭建 mock ───────────────────────────────────────────
+const mockCmsPages: import('@zenith/shared').CmsPage[] = [
+  {
+    id: 1, siteId: 1, name: '产品落地页', slug: 'landing', isHome: false,
+    blocks: [
+      { id: 'b1', type: 'hero', props: { title: 'Zenith CMS', subtitle: '多站点内容管理与静态化发布', buttonText: '了解更多', buttonUrl: '/products/' } },
+      { id: 'b2', type: 'columns', props: { items: [{ title: '多站点', description: '站群统一管理' }, { title: 'SEO', description: '三级 TDK 与推送' }, { title: '静态化', description: 'SSR 渲染秒开' }] } },
+      { id: 'b3', type: 'content-list', props: { title: '最新动态', mode: 'latest', count: 5 } },
+    ],
+    seoTitle: null, seoKeywords: null, seoDescription: null,
+    status: 'enabled', remark: null, createdAt: '2024-06-01 00:00:00', updatedAt: '2024-06-01 00:00:00',
+  },
+];
+let nextCmsPageId = 2;
+
+export const cmsP6Handlers = [
+  http.get('/api/cms/pages/:id', ({ params }) => {
+    const row = mockCmsPages.find((p) => p.id === Number(params.id));
+    return row ? okJson(row) : notFound('页面不存在');
+  }),
+  http.get('/api/cms/pages', ({ request }) => {
+    const { url, page, pageSize, keyword } = pageParams(request);
+    const siteId = Number(url.searchParams.get('siteId'));
+    let list = mockCmsPages.filter((p) => p.siteId === siteId);
+    if (keyword) list = list.filter((p) => p.name.includes(keyword) || p.slug.includes(keyword));
+    return okJson(paginate(list, page, pageSize));
+  }),
+  http.post('/api/cms/pages', async ({ request }) => {
+    const body = (await request.json()) as Body;
+    const now = mockDateTime();
+    const row = {
+      id: nextCmsPageId++,
+      siteId: Number(body.siteId),
+      name: String(body.name ?? ''),
+      slug: String(body.slug ?? ''),
+      isHome: body.isHome === true,
+      blocks: (body.blocks as import('@zenith/shared').CmsPageBlock[]) ?? [],
+      seoTitle: (body.seoTitle as string) || null,
+      seoKeywords: (body.seoKeywords as string) || null,
+      seoDescription: (body.seoDescription as string) || null,
+      status: (body.status as 'enabled' | 'disabled') ?? 'enabled',
+      remark: (body.remark as string) || null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    mockCmsPages.push(row);
+    return okJson(row, '创建成功');
+  }),
+  http.put('/api/cms/pages/:id', async ({ params, request }) => {
+    const idx = mockCmsPages.findIndex((p) => p.id === Number(params.id));
+    if (idx === -1) return notFound('页面不存在');
+    Object.assign(mockCmsPages[idx], await request.json(), { updatedAt: mockDateTime() });
+    return okJson(mockCmsPages[idx], '更新成功');
+  }),
+  http.delete('/api/cms/pages/:id', ({ params }) => {
+    const idx = mockCmsPages.findIndex((p) => p.id === Number(params.id));
+    if (idx === -1) return notFound('页面不存在');
+    mockCmsPages.splice(idx, 1);
+    return okJson(null, '删除成功');
+  }),
+];

@@ -2,7 +2,7 @@ import { Layout } from './Layout';
 import type {
   CmsBaseContext, CmsBreadcrumb, CmsContentItem, CmsHomeContext, CmsListContext,
   CmsDetailContext, CmsPageContext, CmsSearchContext, CmsNotFoundContext, CmsPagination,
-  CmsCommentItem, CmsCommentFormConfig, CmsFrontFormConfig, CmsTagPageContext,
+  CmsCommentItem, CmsCommentFormConfig, CmsFrontFormConfig, CmsTagPageContext, CmsCustomPageContext,
 } from '../types';
 
 function Breadcrumbs({ items }: { items: CmsBreadcrumb[] }) {
@@ -290,6 +290,15 @@ export function NotFoundTemplate(ctx: CmsNotFoundContext) {
         <p>您访问的页面不存在或已下线。</p>
         <p><a href={`${ctx.baseUrl}/`}>返回首页</a></p>
       </div>
+    </Layout>
+  );
+}
+
+// ─── 可视化搭建页面（P3 Batch6）────────────────────────────────────────────────
+export function CustomPageTemplate(ctx: CmsCustomPageContext) {
+  return (
+    <Layout ctx={ctx}>
+      <div dangerouslySetInnerHTML={{ __html: ctx.blocksHtml }} />
     </Layout>
   );
 }
