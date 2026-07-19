@@ -375,7 +375,8 @@ export default function CacheManagePage() {
         {
           key: 'view',
           label: '查看',
-          hidden: record.value == null,
+          disabled: record.value == null,
+          disabledReason: '仅 string 类型支持查看值',
           onClick: () => { void openValueModal(record); },
         },
         {
