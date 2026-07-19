@@ -177,6 +177,8 @@ export const cmsContents = pgTable('cms_contents', {
   /** 定时发布时间（P2 调度使用，先建列） */
   scheduledAt: timestamp('scheduled_at'),
   viewCount: integer('view_count').notNull().default(0),
+  /** 乐观锁版本号（每次更新 +1；更新携带 expectedVersion 不一致时拒绝，防并发编辑覆盖） */
+  version: integer('version').notNull().default(1),
   sort: integer('sort').notNull().default(0),
   // 内容级 SEO（覆盖栏目/站点默认）
   seoTitle: varchar('seo_title', { length: 255 }),

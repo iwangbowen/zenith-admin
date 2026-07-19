@@ -96,3 +96,49 @@ export async function restoreContentVersion(contentId: number, versionId: number
   });
   return version.snapshot;
 }
+
+// ─── 版本差异对比 ─────────────────────────────────────────────────────────────
+const SNAPSHOT_FIELD_LABELS: Record<string, string> = {
+  channelId: '所属栏目',
+  title: '标题',
+  slug: 'URL 标识',
+  summary: '摘要',
+  coverImage: '封面图',
+  author: '作者',
+  source: '来源',
+  body: '正文',
+  extend: '扩展字段',
+  externalLink: '外链地址',
+  isTop: '置顶',
+  isRecommend: '推荐',
+  isHot: '热门',
+  sort: '排序权重',
+  seoTitle: 'SEO 标题',
+  seoKeywords: 'SEO 关键词',
+  seoDescription: 'SEO 描述',
+};
+
+export interface CmsVersionDiffItem {
+  field: string;
+  label: string;
+  before: unknown;
+  after: unknown;
+}
+
+/** 对比版本快照与当前内容（before=历史版本值，after=当前值），仅返回有差异的字段 */
+export async function diffContentVersion(contentId: number, versionId: number): Promise<CmsVersionDiffItem[]> {
+  const version = await ensureVersionExists(contentId, versionId);
+  const [current] = await db.select().from(cmsContents).where(eq(cmsContents.id, contentId)).limit(1);
+  if (!current) throw new HTTPException(404, { message: '内容不存在' });
+  const currentSnapshot = buildContentSnapshot(current);
+  const versionSnapshot = version.snapshot as Record<string, unknown>;
+  const diffs: CmsVersionDiffItem[] = [];
+  for (const [field, label] of Object.entries(SNAPSHOT_FIELD_LABELS)) {
+    const before = versionSnapshot[field] ?? null;
+    const after = currentSnapshot[field] ?? null;
+    if (JSON.stringify(before) !== JSON.stringify(after)) {
+      diffs.push({ field, label, before, after });
+    }
+  }
+  return diffs;
+}

@@ -40,6 +40,7 @@ export function mapCmsContent(row: CmsContentRow, extra?: { channelName?: string
     publishedAt: formatNullableDateTime(row.publishedAt),
     scheduledAt: formatNullableDateTime(row.scheduledAt),
     viewCount: row.viewCount,
+    version: row.version,
     sort: row.sort,
     seoTitle: row.seoTitle ?? null,
     seoKeywords: row.seoKeywords ?? null,
@@ -217,16 +218,24 @@ export async function updateCmsContent(id: number, data: UpdateCmsContentInput) 
     const channel = await ensureChannelForContent(current.siteId, data.channelId);
     modelId = channel.modelId ?? null;
   }
-  const { tagIds, scheduledAt, ...rest } = data;
+  const { tagIds, scheduledAt, expectedVersion, ...rest } = data;
+  // 乐观锁：携带 expectedVersion 时先行比对，冲突返回 409（前端提示刷新后重试）
+  if (expectedVersion !== undefined && current.version !== expectedVersion) {
+    throw new HTTPException(409, { message: '内容已被其他人修改，请刷新页面获取最新版本后再保存' });
+  }
   const nextExtend = (rest.extend ?? current.extend ?? {}) as Record<string, unknown>;
   const extendTexts = await collectSearchableExtendTexts(modelId, nextExtend);
   try {
     await db.transaction(async (tx) => {
       // 更新前自动留档版本快照（可在编辑页回滚）
       await snapshotContentVersion(tx, current, '更新前留档');
+      const versionGuard = expectedVersion !== undefined
+        ? and(eq(cmsContents.id, id), eq(cmsContents.version, expectedVersion))!
+        : eq(cmsContents.id, id);
       const [updated] = await tx.update(cmsContents).set({
         ...rest,
         modelId,
+        version: sql`${cmsContents.version} + 1`,
         ...(scheduledAt !== undefined ? { scheduledAt: parseDateTimeInput(scheduledAt) } : {}),
         searchVector: buildSearchVector({
           title: rest.title ?? current.title,
@@ -235,8 +244,10 @@ export async function updateCmsContent(id: number, data: UpdateCmsContentInput) 
           body: rest.body !== undefined ? rest.body : current.body,
           extendTexts,
         }),
-      }).where(eq(cmsContents.id, id)).returning();
-      if (!updated) throw new HTTPException(404, { message: '内容不存在' });
+      }).where(versionGuard).returning();
+      if (!updated) {
+        throw new HTTPException(409, { message: '内容已被其他人修改，请刷新页面获取最新版本后再保存' });
+      }
       if (tagIds) {
         await setContentTags(tx, id, current.siteId, tagIds);
       }

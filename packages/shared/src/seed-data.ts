@@ -2953,7 +2953,7 @@ export const SEED_CMS_CONTENTS: (CmsContent & { tagIds: number[] })[] = [
     coverImage: null, author: '管理员', source: '官方', body: '<p>Zenith Admin 全新 CMS 模块正式发布：支持站群管理、内容模型自定义字段、React SSR 静态化与 PostgreSQL 全文检索，功能全面对标国内主流 CMS。</p>',
     extend: {}, externalLink: null, isTop: true, isRecommend: true, isHot: false,
     status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null,
-    viewCount: 128, sort: 0, seoTitle: null, seoKeywords: 'CMS,发布', seoDescription: null,
+    viewCount: 128, version: 1, sort: 0, seoTitle: null, seoKeywords: 'CMS,发布', seoDescription: null,
     tagIds: [1], createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
   {
@@ -2963,7 +2963,7 @@ export const SEED_CMS_CONTENTS: (CmsContent & { tagIds: number[] })[] = [
     coverImage: null, author: '管理员', source: '原创', body: '<p>本文介绍混合静态化模式（发布时增量生成 + 访问时回写）与应用层中文分词方案在 PostgreSQL tsvector 上的落地实践。</p>',
     extend: {}, externalLink: null, isTop: false, isRecommend: true, isHot: true,
     status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null,
-    viewCount: 86, sort: 0, seoTitle: null, seoKeywords: '静态化,全文检索', seoDescription: null,
+    viewCount: 86, version: 1, sort: 0, seoTitle: null, seoKeywords: '静态化,全文检索', seoDescription: null,
     tagIds: [2], createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
   {
@@ -2974,7 +2974,7 @@ export const SEED_CMS_CONTENTS: (CmsContent & { tagIds: number[] })[] = [
     extend: { price: '联系销售', spec: '支持私有化部署，PostgreSQL 16 + Redis 7' }, externalLink: null,
     isTop: false, isRecommend: false, isHot: false,
     status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null,
-    viewCount: 45, sort: 0, seoTitle: null, seoKeywords: null, seoDescription: null,
+    viewCount: 45, version: 1, sort: 0, seoTitle: null, seoKeywords: null, seoDescription: null,
     tagIds: [], createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
 ];

@@ -353,6 +353,7 @@ export const cmsHandlers = [
       publishedAt: null,
       scheduledAt: null,
       viewCount: 0,
+      version: 1,
       sort: Number(body.sort ?? 0),
       seoTitle: (body.seoTitle as string) ?? null,
       seoKeywords: (body.seoKeywords as string) ?? null,
@@ -368,9 +369,18 @@ export const cmsHandlers = [
     const idx = mockCmsContents.findIndex((c) => c.id === Number(params.id));
     if (idx === -1) return notFound('内容不存在');
     const body = (await request.json()) as Body;
-    Object.assign(mockCmsContents[idx], body, { updatedAt: mockDateTime() });
+    const { expectedVersion: _expectedVersion, ...rest } = body;
+    Object.assign(mockCmsContents[idx], rest, {
+      version: (mockCmsContents[idx].version ?? 1) + 1,
+      updatedAt: mockDateTime(),
+    });
     return okJson(mockCmsContents[idx], '更新成功');
   }),
+  // ─── 编辑锁 / 草稿预览（demo 模式恒定成功）───────────────────────────────
+  http.post('/api/cms/contents/:id/edit-lock', () => okJson({ acquired: true, holder: null })),
+  http.delete('/api/cms/contents/:id/edit-lock', () => okJson(null, '已释放')),
+  http.post('/api/cms/contents/:id/preview-link', ({ params }) =>
+    okJson({ url: `/__cms/main/preview/${params.id}?exp=0&sig=demo`, expiresAt: mockDateTime() }, 'Demo 模式无前台渲染，链接仅作展示')),
 
   // ═══ 标签 ═══════════════════════════════════════════════════════════════
   http.get('/api/cms/tags/all', ({ request }) => {
@@ -563,6 +573,14 @@ export const cmsP2Handlers = [
     const content = mockCmsContents.find((c) => c.id === Number(params.id));
     if (!content) return notFound('内容不存在');
     return okJson(content, '回滚成功');
+  }),
+  http.get('/api/cms/contents/:id/versions/:versionId/diff', ({ params }) => {
+    const content = mockCmsContents.find((c) => c.id === Number(params.id));
+    const version = mockCmsContentVersions.find((v) => v.id === Number(params.versionId));
+    if (!content || !version) return notFound('版本不存在');
+    const beforeTitle = (version.snapshot as { title?: string }).title ?? version.title;
+    if (beforeTitle === content.title) return okJson([]);
+    return okJson([{ field: 'title', label: '标题', before: beforeTitle, after: content.title }]);
   }),
 
   // ─── SEO：重定向 ────────────────────────────────────────────────────────────

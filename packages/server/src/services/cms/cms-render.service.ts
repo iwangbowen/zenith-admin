@@ -23,6 +23,7 @@ import { listApprovedComments } from './cms-comments.service';
 import { getActiveAds } from './cms-ads.service';
 import { getCmsFormByCode } from './cms-forms.service';
 import type { CmsChannel } from '@zenith/shared';
+import { CMS_CONTENT_STATUS_LABELS } from '@zenith/shared';
 
 // ─── URL 规则（站点内相对路径，静态文件名与之一一对应）──────────────────────────
 export function channelUrl(baseUrl: string, path: string, page = 1): string {
@@ -374,6 +375,56 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
     },
   });
   return { status: 200, html, kind: 'detail', contentId: row.id };
+}
+
+/**
+ * 草稿预览渲染（签名链接访问，不校验发布状态）：
+ * 复用详情页模板，顶部注入预览提示条；无缓存、无静态回写、无浏览计数。
+ */
+export async function renderContentPreviewPage(site: CmsSiteRow, baseUrl: string, contentId: number): Promise<RenderResult> {
+  const theme = getTheme(site.theme);
+  const [row] = await db.select().from(cmsContents)
+    .where(and(eq(cmsContents.id, contentId), eq(cmsContents.siteId, site.id), isNull(cmsContents.deletedAt)))
+    .limit(1);
+  if (!row) return renderNotFound(site, baseUrl, `/preview/${contentId}`);
+  const [channel] = await db.select().from(cmsChannels).where(eq(cmsChannels.id, row.channelId)).limit(1);
+  if (!channel) return renderNotFound(site, baseUrl, `/preview/${contentId}`);
+
+  const seo = mergeSeo(site, {
+    title: `【预览】${row.title}`,
+    description: row.seoDescription ?? row.summary ?? undefined,
+    ogTitle: row.title,
+  });
+  const [base, breadcrumbs, tags, linkWords] = await Promise.all([
+    buildBaseContext(site, baseUrl, seo),
+    buildBreadcrumbs(site, baseUrl, channel),
+    listContentTags(row.id),
+    getEnabledLinkWords(site.id),
+  ]);
+  const html = renderDoc(resolveDetailTemplate(theme, channel.detailTemplate), {
+    ...base,
+    channel: toChannelInfo(channel, baseUrl),
+    breadcrumbs,
+    content: {
+      ...toContentItem(row, baseUrl, channel.path),
+      body: applyLinkWords(row.body ?? '', linkWords),
+      extend: row.extend ?? {},
+      tags: tags.map((t) => ({ name: t.name, slug: t.slug, url: tagUrl(baseUrl, t.slug) })),
+      prev: null,
+      next: null,
+    },
+    comments: [],
+    commentForm: {
+      action: '/api/public/cms/comments',
+      contentId: row.id,
+      returnUrl: contentUrl(baseUrl, channel.path, row),
+    },
+  });
+  const statusLabel = CMS_CONTENT_STATUS_LABELS[row.status] ?? row.status;
+  const banner = '<div style="position:sticky;top:0;z-index:9999;background:#fff7e6;border-bottom:1px solid #ffd591;'
+    + 'color:#874d00;padding:8px 16px;font-size:13px;text-align:center">'
+    + `草稿预览 — 当前状态：${statusLabel}；本页面由带签名的临时链接生成，与最终发布效果可能存在差异</div>`;
+  return { status: 200, html: html.replace(/(<body[^>]*>)/i, `$1${banner}`), kind: 'detail', contentId: row.id };
 }
 
 export async function renderSearchPage(site: CmsSiteRow, baseUrl: string, keyword: string, page = 1): Promise<RenderResult> {

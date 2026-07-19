@@ -5,6 +5,7 @@ import type {
   CmsContentVersion, CmsRedirect, CmsLinkWord, CmsComment, CmsCommentStatus,
   CmsAdSlot, CmsAd, CmsForm, CmsFormSubmission, CmsSensitiveWord, CmsPushLog,
   CmsSearchWord, CmsHotKeyword, CmsCollectRule, CmsCollectItem, CmsPage,
+  CmsEditLock, CmsPreviewLink, CmsContentVersionDiff,
 } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { toQueryString, unwrap, LOOKUP_STALE_TIME } from '@/lib/query';
@@ -442,6 +443,34 @@ export function useRestoreCmsContentVersion() {
       void qc.invalidateQueries({ queryKey: cmsContentKeys.all });
       void qc.invalidateQueries({ queryKey: cmsVersionKeys.all });
     },
+  });
+}
+
+/** 版本差异对比（历史版本 vs 当前内容） */
+export function useCmsVersionDiff(contentId: number | undefined, versionId: number | undefined) {
+  return useQuery({
+    queryKey: [...cmsVersionKeys.all, 'diff', contentId, versionId] as const,
+    queryFn: () => request.get<CmsContentVersionDiff[]>(`/api/cms/contents/${contentId}/versions/${versionId}/diff`).then(unwrap),
+    enabled: contentId !== undefined && versionId !== undefined,
+  });
+}
+
+// ─── 编辑锁 / 草稿预览 ─────────────────────────────────────────────────────────
+/** 抢占/心跳续期编辑锁（打开编辑页调用，之后每 30s 心跳一次） */
+export function acquireCmsEditLock(contentId: number): Promise<CmsEditLock> {
+  return request.post<CmsEditLock>(`/api/cms/contents/${contentId}/edit-lock`, {}, { silent: true }).then(unwrap);
+}
+
+/** 释放编辑锁（离开编辑页调用，仅持有人生效） */
+export function releaseCmsEditLock(contentId: number): Promise<null> {
+  return request.delete<null>(`/api/cms/contents/${contentId}/edit-lock`, undefined, { silent: true }).then(unwrap);
+}
+
+/** 生成草稿预览链接 */
+export function useCmsPreviewLink() {
+  return useMutation({
+    mutationFn: (contentId: number) =>
+      request.post<CmsPreviewLink>(`/api/cms/contents/${contentId}/preview-link`, {}).then(unwrap),
   });
 }
 

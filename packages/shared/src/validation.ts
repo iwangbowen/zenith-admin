@@ -5145,7 +5145,10 @@ export const createCmsContentSchema = z.object({
   seoDescription: z.string().max(500).nullable().optional(),
   tagIds: z.array(z.number().int().positive()).default([]),
 });
-export const updateCmsContentSchema = createCmsContentSchema.partial().omit({ siteId: true });
+export const updateCmsContentSchema = createCmsContentSchema.partial().omit({ siteId: true }).extend({
+  /** 乐观锁：携带读取时的版本号，服务端版本不一致返回 409（不传则跳过检查） */
+  expectedVersion: z.number().int().positive().optional(),
+});
 
 export const createCmsTagSchema = z.object({
   siteId: z.number().int().positive(),

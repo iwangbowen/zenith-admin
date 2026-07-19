@@ -10383,6 +10383,8 @@ export interface CmsContent {
   publishedAt: string | null;
   scheduledAt: string | null;
   viewCount: number;
+  /** 乐观锁版本号（更新时回传 expectedVersion） */
+  version: number;
   sort: number;
   seoTitle: string | null;
   seoKeywords: string | null;
@@ -10403,6 +10405,26 @@ export interface CmsTag {
   contentCount: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/** 内容编辑锁状态（软锁，防多人同编相互覆盖） */
+export interface CmsEditLock {
+  acquired: boolean;
+  holder: { userId: number; nickname: string; lockedAt: string } | null;
+}
+
+/** 草稿预览链接（签名临时链接） */
+export interface CmsPreviewLink {
+  url: string;
+  expiresAt: string;
+}
+
+/** 版本差异对比项（before=历史版本值，after=当前值） */
+export interface CmsContentVersionDiff {
+  field: string;
+  label: string;
+  before: unknown;
+  after: unknown;
 }
 
 export interface CmsFragment {

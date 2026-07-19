@@ -14,10 +14,12 @@ import {
   batchMoveCmsContents, batchSetCmsContentFlags, batchAddCmsContentTags,
   duplicateCmsContent, distributeCmsContents,
 } from '../../services/cms/cms-contents.service';
-import { listContentVersions } from '../../services/cms/cms-versions.service';
+import { listContentVersions, diffContentVersion } from '../../services/cms/cms-versions.service';
+import { acquireContentEditLock, releaseContentEditLock } from '../../services/cms/cms-edit-lock.service';
+import { createContentPreviewLink } from '../../services/cms/cms-preview.service';
 import { triggerContentStaticRefresh } from '../../services/cms/cms-static.service';
 import { triggerAutoPushForContent } from '../../services/cms/cms-push.service';
-import { CmsContentVersionDTO } from '../../lib/openapi-dtos';
+import { CmsContentVersionDTO, CmsContentVersionDiffDTO, CmsEditLockDTO, CmsPreviewLinkDTO } from '../../lib/openapi-dtos';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -252,6 +254,65 @@ const restoreVersionRoute = defineOpenAPIRoute({
   },
 });
 
+const versionDiffRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}/versions/{versionId}/diff',
+    tags: ['CMS-内容管理'], summary: '版本差异对比（历史版本 vs 当前内容，仅返回变更字段）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:content:list' })] as const,
+    request: {
+      params: IdParam.extend({
+        versionId: z.coerce.number().int().positive().openapi({ param: { name: 'versionId', in: 'path' } }),
+      }),
+    },
+    responses: { ...commonErrorResponses, ...ok(z.array(CmsContentVersionDiffDTO), '差异字段列表') },
+  }),
+  handler: async (c) => {
+    const { id, versionId } = c.req.valid('param');
+    return c.json(okBody(await diffContentVersion(id, versionId)), 200);
+  },
+});
+
+// ─── 编辑锁 / 草稿预览 ─────────────────────────────────────────────────────────
+const editLockAcquireRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/edit-lock',
+    tags: ['CMS-内容管理'], summary: '抢占/续期内容编辑锁（软锁，防多人同编相互覆盖）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:content:update' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(CmsEditLockDTO, '锁状态') },
+  }),
+  handler: async (c) => c.json(okBody(await acquireContentEditLock(c.req.valid('param').id)), 200),
+});
+
+const editLockReleaseRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete', path: '/{id}/edit-lock',
+    tags: ['CMS-内容管理'], summary: '释放内容编辑锁（仅持有人生效）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:content:update' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...okMsg('已释放') },
+  }),
+  handler: async (c) => {
+    await releaseContentEditLock(c.req.valid('param').id);
+    return c.json(okBody(null, '已释放'), 200);
+  },
+});
+
+const previewLinkRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/preview-link',
+    tags: ['CMS-内容管理'], summary: '生成草稿预览链接（签名临时链接，默认 2 小时有效）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:content:list' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(CmsPreviewLinkDTO, '预览链接') },
+  }),
+  handler: async (c) => c.json(okBody(await createContentPreviewLink(c.req.valid('param').id)), 200),
+});
+
 // ─── P3：批量操作 / 复制 / 站群分发 ─────────────────────────────────────────────
 const batchMoveRoute = defineOpenAPIRoute({
   route: createRoute({
@@ -352,7 +413,8 @@ router.openapiRoutes([
   listRoute, getOneRoute, createRoute_, updateRoute_,
   submitRoute, publishRoute, rejectRoute, offlineRoute,
   recycleRoute, restoreRoute, purgeRoute,
-  versionsRoute, restoreVersionRoute,
+  versionsRoute, restoreVersionRoute, versionDiffRoute,
+  editLockAcquireRoute, editLockReleaseRoute, previewLinkRoute,
   batchMoveRoute, batchFlagsRoute, batchTagRoute, duplicateRoute, distributeRoute,
 ] as const);
 

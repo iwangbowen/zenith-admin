@@ -136,6 +136,7 @@ export const CmsContentDTO = z
     publishedAt: z.string().nullable(),
     scheduledAt: z.string().nullable(),
     viewCount: z.number().int(),
+    version: z.number().int().openapi({ description: '乐观锁版本号，更新时回传 expectedVersion' }),
     sort: z.number().int(),
     seoTitle: z.string().nullable(),
     seoKeywords: z.string().nullable(),
@@ -215,6 +216,36 @@ export const CmsContentVersionDTO = z
     createdAt: z.string(),
   })
   .openapi('CmsContentVersion');
+
+export const CmsContentVersionDiffDTO = z
+  .object({
+    field: z.string().openapi({ example: 'title' }),
+    label: z.string().openapi({ example: '标题' }),
+    before: z.unknown().nullable(),
+    after: z.unknown().nullable(),
+  })
+  .openapi('CmsContentVersionDiff');
+
+export const CmsEditLockDTO = z
+  .object({
+    acquired: z.boolean().openapi({ description: 'true=当前用户持有编辑锁' }),
+    holder: z
+      .object({
+        userId: z.number().int(),
+        nickname: z.string(),
+        lockedAt: z.string(),
+      })
+      .nullable()
+      .openapi({ description: '他人持锁时的持有人信息' }),
+  })
+  .openapi('CmsEditLock');
+
+export const CmsPreviewLinkDTO = z
+  .object({
+    url: z.string().openapi({ example: '/__cms/main/preview/1?exp=1789000000&sig=abc' }),
+    expiresAt: z.string(),
+  })
+  .openapi('CmsPreviewLink');
 
 export const CmsRedirectDTO = z
   .object({

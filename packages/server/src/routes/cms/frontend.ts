@@ -8,8 +8,9 @@ import type { CmsSiteRow } from '../../db/schema';
 import { resolveSiteByHost, resolveSiteByCode } from '../../services/cms/cms-sites.service';
 import { resolveRedirect } from '../../services/cms/cms-redirects.service';
 import {
-  renderSitePath, renderSearchPage, type RenderResult,
+  renderSitePath, renderSearchPage, renderContentPreviewPage, type RenderResult,
 } from '../../services/cms/cms-render.service';
+import { verifyContentPreviewToken } from '../../services/cms/cms-preview.service';
 import { readStaticFile, writeStaticFile, generateSitemapXml, buildRobotsTxt } from '../../services/cms/cms-static.service';
 import { generateRssXml, findChannelByPath } from '../../services/cms/cms-render.service';
 
@@ -112,6 +113,19 @@ export function createCmsFrontendRoutes(): Hono {
         redis.setex(cacheKey, SITEMAP_CACHE_TTL_SECONDS, xml).catch(() => undefined);
       }
       return c.newResponse(xml, 200, { 'Content-Type': 'application/rss+xml; charset=utf-8' });
+    }
+
+    // 草稿预览（签名临时链接，未发布内容可分享给审核人查看；无缓存、不回写静态）
+    const previewMatch = /^preview\/(\d+)$/.exec(sitePath.replace(/\/+$/, ''));
+    if (previewMatch) {
+      const contentId = Number(previewMatch[1]);
+      const exp = Number(c.req.query('exp'));
+      const sig = c.req.query('sig') ?? '';
+      if (!verifyContentPreviewToken(contentId, exp, sig)) {
+        return c.text('预览链接无效或已过期', 403);
+      }
+      const result = await renderContentPreviewPage(site, baseUrl, contentId);
+      return respond(c, result);
     }
 
     // 搜索页：永远动态渲染（不静态化、不缓存）
