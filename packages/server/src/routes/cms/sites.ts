@@ -1,16 +1,16 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { createCmsSiteSchema, updateCmsSiteSchema } from '@zenith/shared';
 import { authMiddleware } from '../../middleware/auth';
-import { guard, setAuditBeforeData } from '../../middleware/guard';
+import { guard, setAuditBeforeData, setAuditAfterData } from '../../middleware/guard';
 import {
   ErrorResponse, jsonContent, PaginationQuery, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, IdParam, okBody,
 } from '../../lib/openapi-schemas';
-import { CmsSiteDTO, CmsThemeDTO } from '../../lib/openapi-dtos';
+import { CmsSiteDTO, CmsThemeDTO, CmsSiteUsersDTO } from '../../lib/openapi-dtos';
 import { listThemes } from '../../cms/themes/registry';
 import {
   listCmsSites, listAllCmsSites, getCmsSite, createCmsSite, updateCmsSite, deleteCmsSite,
-  ensureCmsSiteExists, mapCmsSite,
+  ensureCmsSiteExists, mapCmsSite, getCmsSiteUsers, setCmsSiteUsers,
 } from '../../services/cms/cms-sites.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -123,6 +123,43 @@ const deleteRoute_ = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRoute, allRoute, themesRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_] as const);
+// ─── 站点授权用户（站点级数据权限）────────────────────────────────────────────
+const getSiteUsersRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}/users',
+    tags: ['CMS-站点管理'], summary: '站点授权用户',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:site:list' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(CmsSiteUsersDTO, '授权用户') },
+  }),
+  handler: async (c) => c.json(okBody(await getCmsSiteUsers(c.req.valid('param').id)), 200),
+});
+
+const setSiteUsersRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put', path: '/{id}/users',
+    tags: ['CMS-站点管理'], summary: '设置站点授权用户（绑定后仅授权用户可管理该站点）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:site:update', audit: { description: '设置 CMS 站点授权用户', module: 'CMS内容管理' } })] as const,
+    request: {
+      params: IdParam,
+      body: { content: jsonContent(z.object({ userIds: z.array(z.number().int().positive()).default([]) })), required: true },
+    },
+    responses: { ...commonErrorResponses, ...okMsg('保存成功') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const { userIds } = c.req.valid('json');
+    const before = await getCmsSiteUsers(id);
+    setAuditBeforeData(c, before);
+    await setCmsSiteUsers(id, userIds);
+    const after = await getCmsSiteUsers(id);
+    setAuditAfterData(c, after);
+    return c.json(okBody(null, '保存成功'), 200);
+  },
+});
+
+router.openapiRoutes([listRoute, allRoute, themesRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_, getSiteUsersRoute, setSiteUsersRoute] as const);
 
 export default router;

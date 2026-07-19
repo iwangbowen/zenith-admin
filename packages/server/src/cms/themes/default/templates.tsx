@@ -2,6 +2,7 @@ import { Layout } from './Layout';
 import type {
   CmsBaseContext, CmsBreadcrumb, CmsContentItem, CmsHomeContext, CmsListContext,
   CmsDetailContext, CmsPageContext, CmsSearchContext, CmsNotFoundContext, CmsPagination,
+  CmsCommentItem, CmsCommentFormConfig, CmsFrontFormConfig,
 } from '../types';
 
 function Breadcrumbs({ items }: { items: CmsBreadcrumb[] }) {
@@ -66,11 +67,85 @@ function HtmlFragment({ ctx, code, className }: { ctx: CmsBaseContext; code: str
   return <div className={className} dangerouslySetInnerHTML={{ __html: fragment.content }} />;
 }
 
+/** 广告位：图片广告渲染图片，无图广告渲染文字条 */
+function AdSlot({ ctx, code }: { ctx: CmsBaseContext; code: string }) {
+  const ads = ctx.ads[code];
+  if (!ads || ads.length === 0) return null;
+  return (
+    <div className="ad-slot">
+      {ads.map((ad) => (
+        <a key={ad.name} href={ad.linkUrl ?? '#'} target={ad.linkUrl?.startsWith('http') ? '_blank' : '_self'} rel="noopener nofollow" aria-label={ad.name}>
+          {ad.image ? <img src={ad.image} alt={ad.name} loading="lazy" /> : <div className="ad-text">{ad.name}</div>}
+        </a>
+      ))}
+    </div>
+  );
+}
+
+/** 评论区：已审核评论列表 + 原生 form POST 提交（含蜜罐字段，静态页零 JS 可用） */
+function CommentsBlock({ comments, form }: { comments: CmsCommentItem[]; form: CmsCommentFormConfig }) {
+  return (
+    <section className="comments">
+      <h2>评论（{comments.length}）</h2>
+      {comments.map((cm, i) => (
+        <div className="comment-item" key={`${cm.nickname}-${i}`}>
+          <div className="meta"><b>{cm.nickname}</b><time>{cm.createdAt}</time></div>
+          <p>{cm.content}</p>
+        </div>
+      ))}
+      <form className="front-form" method="post" action={form.action}>
+        <input type="hidden" name="contentId" value={form.contentId} />
+        <input type="hidden" name="returnUrl" value={form.returnUrl} />
+        <input className="hp" type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" />
+        <label>昵称 <span className="req">*</span><input type="text" name="nickname" required maxLength={50} /></label>
+        <label>评论内容 <span className="req">*</span><textarea name="content" required maxLength={1000} /></label>
+        <button type="submit">提交评论（审核后显示）</button>
+      </form>
+    </section>
+  );
+}
+
+/** 自定义表单（栏目绑定，原生 form POST） */
+function FrontForm({ form }: { form: CmsFrontFormConfig }) {
+  return (
+    <form className="front-form" method="post" action={form.action}>
+      <h2>{form.name}</h2>
+      <input type="hidden" name="returnUrl" value={form.returnUrl} />
+      <input className="hp" type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" />
+      {form.fields.map((f) => (
+        <label key={f.name}>
+          {f.label} {f.required ? <span className="req">*</span> : null}
+          {f.fieldType === 'textarea' ? (
+            <textarea name={f.name} required={f.required} maxLength={2000} />
+          ) : f.fieldType === 'select' ? (
+            <select name={f.name} required={f.required} defaultValue="">
+              <option value="" disabled>请选择</option>
+              {(f.options ?? []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          ) : f.fieldType === 'radio' ? (
+            <span>
+              {(f.options ?? []).map((o) => (
+                <label key={o.value} style={{ display: 'inline-flex', flexDirection: 'row', gap: 4, marginRight: 16 }}>
+                  <input type="radio" name={f.name} value={o.value} required={f.required} /> {o.label}
+                </label>
+              ))}
+            </span>
+          ) : (
+            <input type="text" name={f.name} required={f.required} maxLength={200} />
+          )}
+        </label>
+      ))}
+      <button type="submit">提交</button>
+    </form>
+  );
+}
+
 // ─── 首页 ─────────────────────────────────────────────────────────────────────
 export function IndexTemplate(ctx: CmsHomeContext) {
   return (
     <Layout ctx={ctx} currentUrl={`${ctx.baseUrl}/`}>
       <HtmlFragment ctx={ctx} code="home-banner" className="fragment-banner" />
+      <AdSlot ctx={ctx} code="home-ad" />
       <div className="home-grid">
         <section>
           <h2 className="section-title">最新发布</h2>
@@ -147,6 +222,7 @@ export function DetailTemplate(ctx: CmsDetailContext) {
           {content.next ? <span>下一篇：<a href={content.next.url}>{content.next.title}</a></span> : null}
         </nav>
       ) : null}
+      <CommentsBlock comments={ctx.comments} form={ctx.commentForm} />
     </Layout>
   );
 }
@@ -160,6 +236,7 @@ export function PageTemplate(ctx: CmsPageContext) {
         <h1>{ctx.channel.name}</h1>
         <div className="body" dangerouslySetInnerHTML={{ __html: ctx.contentHtml }} />
       </article>
+      {ctx.form ? <FrontForm form={ctx.form} /> : null}
     </Layout>
   );
 }

@@ -201,3 +201,167 @@ export const CmsThemeDTO = z
     label: z.string().openapi({ example: '默认主题' }),
   })
   .openapi('CmsTheme');
+
+// ─── P2 ───────────────────────────────────────────────────────────────────────
+export const CmsContentVersionDTO = z
+  .object({
+    id: z.number().int(),
+    contentId: z.number().int(),
+    version: z.number().int(),
+    title: z.string(),
+    snapshot: z.record(z.string(), z.unknown()),
+    remark: z.string().nullable(),
+    createdByName: z.string().nullable().optional(),
+    createdAt: z.string(),
+  })
+  .openapi('CmsContentVersion');
+
+export const CmsRedirectDTO = z
+  .object({
+    id: z.number().int(),
+    siteId: z.number().int(),
+    fromPath: z.string().openapi({ example: '/old-page.html' }),
+    toUrl: z.string().openapi({ example: '/news/' }),
+    redirectType: z.number().int().openapi({ example: 301 }),
+    status: z.enum(['enabled', 'disabled']),
+    remark: z.string().nullable(),
+    ...auditFields,
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('CmsRedirect');
+
+export const CmsLinkWordDTO = z
+  .object({
+    id: z.number().int(),
+    siteId: z.number().int(),
+    keyword: z.string().openapi({ example: '全文检索' }),
+    url: z.string(),
+    maxReplaces: z.number().int(),
+    status: z.enum(['enabled', 'disabled']),
+    ...auditFields,
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('CmsLinkWord');
+
+export const CmsCommentDTO = z
+  .object({
+    id: z.number().int(),
+    siteId: z.number().int(),
+    contentId: z.number().int(),
+    contentTitle: z.string().nullable().optional(),
+    nickname: z.string(),
+    content: z.string(),
+    status: z.enum(['pending', 'approved', 'rejected']),
+    ip: z.string().nullable(),
+    userAgent: z.string().nullable(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('CmsComment');
+
+export const CmsAdSlotDTO = z
+  .object({
+    id: z.number().int(),
+    siteId: z.number().int(),
+    code: z.string().openapi({ example: 'home-ad' }),
+    name: z.string(),
+    remark: z.string().nullable(),
+    adCount: z.number().int().optional(),
+    ...auditFields,
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('CmsAdSlot');
+
+export const CmsAdDTO = z
+  .object({
+    id: z.number().int(),
+    slotId: z.number().int(),
+    slotName: z.string().nullable().optional(),
+    name: z.string(),
+    image: z.string().nullable(),
+    linkUrl: z.string().nullable(),
+    startAt: z.string().nullable(),
+    endAt: z.string().nullable(),
+    sort: z.number().int(),
+    status: z.enum(['enabled', 'disabled']),
+    ...auditFields,
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('CmsAd');
+
+export const CmsFormDTO = z
+  .object({
+    id: z.number().int(),
+    siteId: z.number().int(),
+    code: z.string().openapi({ example: 'contact' }),
+    name: z.string(),
+    fields: z.array(z.object({
+      name: z.string(),
+      label: z.string(),
+      fieldType: z.string(),
+      required: z.boolean(),
+      options: z.array(z.object({ label: z.string(), value: z.string() })).nullable().optional(),
+    })),
+    successMessage: z.string().nullable(),
+    status: z.enum(['enabled', 'disabled']),
+    submissionCount: z.number().int().optional(),
+    ...auditFields,
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('CmsForm');
+
+export const CmsFormSubmissionDTO = z
+  .object({
+    id: z.number().int(),
+    formId: z.number().int(),
+    data: z.record(z.string(), z.unknown()),
+    ip: z.string().nullable(),
+    userAgent: z.string().nullable(),
+    createdAt: z.string(),
+  })
+  .openapi('CmsFormSubmission');
+
+export const CmsSensitiveWordDTO = z
+  .object({
+    id: z.number().int(),
+    word: z.string(),
+    replaceWith: z.string().nullable(),
+    status: z.enum(['enabled', 'disabled']),
+    ...auditFields,
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('CmsSensitiveWord');
+
+export const CmsPushLogDTO = z
+  .object({
+    id: z.number().int(),
+    siteId: z.number().int(),
+    engine: z.string().openapi({ example: 'baidu' }),
+    urls: z.array(z.string()),
+    success: z.boolean(),
+    statusCode: z.number().int().nullable(),
+    response: z.string().nullable(),
+    createdAt: z.string(),
+  })
+  .openapi('CmsPushLog');
+
+export const CmsPushResultDTO = z
+  .object({
+    engine: z.string(),
+    submitted: z.boolean(),
+    reason: z.string().optional(),
+  })
+  .openapi('CmsPushResult');
+
+export const CmsSiteUsersDTO = z
+  .object({
+    userIds: z.array(z.number().int()),
+    users: z.array(z.object({ id: z.number().int(), username: z.string(), nickname: z.string() })),
+  })
+  .openapi('CmsSiteUsers');

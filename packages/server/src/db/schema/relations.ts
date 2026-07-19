@@ -45,7 +45,7 @@ import {
   reportSlaRules,
   reportSlaViolations,
 } from './report-platform';
-import { cmsChannels, cmsContents, cmsContentTags, cmsFragments, cmsFriendLinks, cmsModelFields, cmsModels, cmsSites, cmsTags } from './cms';
+import { cmsChannels, cmsContents, cmsContentTags, cmsFragments, cmsFriendLinks, cmsModelFields, cmsModels, cmsSites, cmsTags, cmsContentVersions, cmsRedirects, cmsLinkWords, cmsComments, cmsAdSlots, cmsAds, cmsForms, cmsFormSubmissions, cmsPushLogs, cmsSiteUsers } from './cms';
 
 // ─── 关联关系 ────────────────────────────────────────────────────────────────
 export const errorGroupsRelations = relations(errorGroups, ({ many, one }) => ({
@@ -1294,4 +1294,50 @@ export const cmsFragmentsRelations = relations(cmsFragments, ({ one }) => ({
 
 export const cmsFriendLinksRelations = relations(cmsFriendLinks, ({ one }) => ({
   site: one(cmsSites, { fields: [cmsFriendLinks.siteId], references: [cmsSites.id] }),
+}));
+
+// ─── CMS P2 ──────────────────────────────────────────────────────────────────
+export const cmsContentVersionsRelations = relations(cmsContentVersions, ({ one }) => ({
+  content: one(cmsContents, { fields: [cmsContentVersions.contentId], references: [cmsContents.id] }),
+  createdByUser: one(users, { fields: [cmsContentVersions.createdBy], references: [users.id], relationName: 'cmsContentVersionCreatedBy' }),
+}));
+
+export const cmsRedirectsRelations = relations(cmsRedirects, ({ one }) => ({
+  site: one(cmsSites, { fields: [cmsRedirects.siteId], references: [cmsSites.id] }),
+}));
+
+export const cmsLinkWordsRelations = relations(cmsLinkWords, ({ one }) => ({
+  site: one(cmsSites, { fields: [cmsLinkWords.siteId], references: [cmsSites.id] }),
+}));
+
+export const cmsCommentsRelations = relations(cmsComments, ({ one }) => ({
+  site: one(cmsSites, { fields: [cmsComments.siteId], references: [cmsSites.id] }),
+  content: one(cmsContents, { fields: [cmsComments.contentId], references: [cmsContents.id] }),
+}));
+
+export const cmsAdSlotsRelations = relations(cmsAdSlots, ({ one, many }) => ({
+  site: one(cmsSites, { fields: [cmsAdSlots.siteId], references: [cmsSites.id] }),
+  ads: many(cmsAds),
+}));
+
+export const cmsAdsRelations = relations(cmsAds, ({ one }) => ({
+  slot: one(cmsAdSlots, { fields: [cmsAds.slotId], references: [cmsAdSlots.id] }),
+}));
+
+export const cmsFormsRelations = relations(cmsForms, ({ one, many }) => ({
+  site: one(cmsSites, { fields: [cmsForms.siteId], references: [cmsSites.id] }),
+  submissions: many(cmsFormSubmissions),
+}));
+
+export const cmsFormSubmissionsRelations = relations(cmsFormSubmissions, ({ one }) => ({
+  form: one(cmsForms, { fields: [cmsFormSubmissions.formId], references: [cmsForms.id] }),
+}));
+
+export const cmsPushLogsRelations = relations(cmsPushLogs, ({ one }) => ({
+  site: one(cmsSites, { fields: [cmsPushLogs.siteId], references: [cmsSites.id] }),
+}));
+
+export const cmsSiteUsersRelations = relations(cmsSiteUsers, ({ one }) => ({
+  site: one(cmsSites, { fields: [cmsSiteUsers.siteId], references: [cmsSites.id] }),
+  user: one(users, { fields: [cmsSiteUsers.userId], references: [users.id], relationName: 'cmsSiteUserUser' }),
 }));

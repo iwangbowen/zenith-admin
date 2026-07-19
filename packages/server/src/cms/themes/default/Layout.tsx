@@ -51,6 +51,24 @@ main { min-height: 60vh; padding: 24px 0 48px; }
 .fragment-banner { border-radius: 10px; overflow: hidden; margin-bottom: 24px; }
 .search-result mark { background: #fff8c5; color: #953800; padding: 0 1px; }
 .search-result .content-item h3 mark { background: none; color: #d1242f; }
+.ad-slot { margin-bottom: 24px; display: flex; flex-direction: column; gap: 12px; }
+.ad-slot a { display: block; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.ad-slot .ad-text { padding: 14px 18px; background: var(--bg-2); font-size: 14px; }
+.cms-link-word { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
+.comments { max-width: 800px; margin: 32px auto 0; }
+.comments h2 { font-size: 18px; margin-bottom: 12px; }
+.comment-item { padding: 12px 0; border-bottom: 1px dashed var(--border); }
+.comment-item .meta { font-size: 12px; color: var(--text-2); margin-bottom: 4px; display: flex; gap: 10px; }
+.comment-item .meta b { color: var(--text); font-weight: 600; }
+.comment-item p { font-size: 14px; }
+.front-form { max-width: 800px; margin: 24px auto 0; display: flex; flex-direction: column; gap: 12px; }
+.front-form label { font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
+.front-form label .req { color: #d1242f; }
+.front-form input[type="text"], .front-form textarea, .front-form select { border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; font-size: 14px; font-family: inherit; width: 100%; }
+.front-form textarea { min-height: 90px; resize: vertical; }
+.front-form button { align-self: flex-start; background: var(--primary); color: #fff; border: none; border-radius: 6px; padding: 8px 22px; font-size: 14px; cursor: pointer; }
+.front-form button:hover { opacity: .9; }
+.front-form .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 .site-footer { border-top: 1px solid var(--border); background: var(--bg-2); padding: 24px 0; font-size: 13px; color: var(--text-2); }
 .site-footer .links { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
 .empty { text-align: center; color: var(--text-2); padding: 48px 0; }

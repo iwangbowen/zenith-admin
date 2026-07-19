@@ -1,8 +1,14 @@
 import {
   SEED_CMS_SITES, SEED_CMS_MODELS, SEED_CMS_CHANNELS, SEED_CMS_CONTENTS,
   SEED_CMS_TAGS, SEED_CMS_FRAGMENTS, SEED_CMS_FRIEND_LINKS,
+  SEED_CMS_AD_SLOTS, SEED_CMS_ADS, SEED_CMS_FORMS, SEED_CMS_SENSITIVE_WORDS,
+  SEED_CMS_LINK_WORDS, SEED_CMS_COMMENTS,
 } from '@zenith/shared';
-import type { CmsSite, CmsModel, CmsChannel, CmsContent, CmsTag, CmsFragment, CmsFriendLink } from '@zenith/shared';
+import type {
+  CmsSite, CmsModel, CmsChannel, CmsContent, CmsTag, CmsFragment, CmsFriendLink,
+  CmsAdSlot, CmsAd, CmsForm, CmsFormSubmission, CmsSensitiveWord, CmsLinkWord, CmsComment,
+  CmsRedirect, CmsPushLog, CmsContentVersion,
+} from '@zenith/shared';
 
 // 从共享种子数据派生（禁止重复定义静态数组）
 export const mockCmsSites: CmsSite[] = SEED_CMS_SITES.map((s) => ({ ...s }));
@@ -48,3 +54,25 @@ export function buildMockChannelTree(list: CmsChannel[]): CmsChannel[] {
   prune(roots);
   return roots;
 }
+
+// ─── P2 ───────────────────────────────────────────────────────────────────────
+export const mockCmsAdSlots: CmsAdSlot[] = SEED_CMS_AD_SLOTS.map((s) => ({ ...s, adCount: SEED_CMS_ADS.filter((a) => a.slotId === s.id).length }));
+export const mockCmsAds: CmsAd[] = SEED_CMS_ADS.map((a) => ({ ...a, slotName: SEED_CMS_AD_SLOTS.find((s) => s.id === a.slotId)?.name ?? null }));
+export const mockCmsForms: (CmsForm & { submissionCount: number })[] = SEED_CMS_FORMS.map((f) => ({ ...f, fields: f.fields.map((x) => ({ ...x })), submissionCount: 1 }));
+export const mockCmsFormSubmissions: CmsFormSubmission[] = [
+  { id: 1, formId: 1, data: { name: '张三', phone: '13800000000', message: '想了解企业版报价' }, ip: '127.0.0.1', userAgent: null, createdAt: '2024-01-01 00:00:00' },
+];
+export const mockCmsSensitiveWords: CmsSensitiveWord[] = SEED_CMS_SENSITIVE_WORDS.map((w) => ({ ...w }));
+export const mockCmsLinkWords: CmsLinkWord[] = SEED_CMS_LINK_WORDS.map((w) => ({ ...w }));
+export const mockCmsComments: CmsComment[] = SEED_CMS_COMMENTS.map((c) => ({ ...c, contentTitle: SEED_CMS_CONTENTS.find((x) => x.id === c.contentId)?.title ?? null }));
+export const mockCmsRedirects: CmsRedirect[] = [];
+export const mockCmsPushLogs: CmsPushLog[] = [];
+export const mockCmsContentVersions: CmsContentVersion[] = [];
+
+export const getNextCmsAdSlotId = nextIdFactory(Math.max(0, ...mockCmsAdSlots.map((x) => x.id)) + 1);
+export const getNextCmsAdId = nextIdFactory(Math.max(0, ...mockCmsAds.map((x) => x.id)) + 1);
+export const getNextCmsFormId = nextIdFactory(Math.max(0, ...mockCmsForms.map((x) => x.id)) + 1);
+export const getNextCmsSensitiveWordId = nextIdFactory(Math.max(0, ...mockCmsSensitiveWords.map((x) => x.id)) + 1);
+export const getNextCmsLinkWordId = nextIdFactory(Math.max(0, ...mockCmsLinkWords.map((x) => x.id)) + 1);
+export const getNextCmsCommentId = nextIdFactory(Math.max(0, ...mockCmsComments.map((x) => x.id)) + 1);
+export const getNextCmsRedirectId = nextIdFactory(1);

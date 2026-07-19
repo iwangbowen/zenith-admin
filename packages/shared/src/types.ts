@@ -10444,3 +10444,135 @@ export interface CmsSearchResult {
   publishedAt: string | null;
   rank: number;
 }
+
+// ─── CMS P2：版本 / 重定向 / 内链词 / 评论 / 广告 / 表单 / 敏感词 / 推送 ─────────
+export type CmsCommentStatus = 'pending' | 'approved' | 'rejected';
+
+export interface CmsContentVersion {
+  id: number;
+  contentId: number;
+  version: number;
+  title: string;
+  snapshot: Record<string, unknown>;
+  remark: string | null;
+  /** 操作人昵称（JOIN 后附加） */
+  createdByName?: string | null;
+  createdAt: string;
+}
+
+export interface CmsRedirect {
+  id: number;
+  siteId: number;
+  fromPath: string;
+  toUrl: string;
+  redirectType: number;
+  status: 'enabled' | 'disabled';
+  remark: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CmsLinkWord {
+  id: number;
+  siteId: number;
+  keyword: string;
+  url: string;
+  maxReplaces: number;
+  status: 'enabled' | 'disabled';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CmsComment {
+  id: number;
+  siteId: number;
+  contentId: number;
+  /** 内容标题（JOIN 后附加） */
+  contentTitle?: string | null;
+  nickname: string;
+  content: string;
+  status: CmsCommentStatus;
+  ip: string | null;
+  userAgent: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CmsAdSlot {
+  id: number;
+  siteId: number;
+  code: string;
+  name: string;
+  remark: string | null;
+  /** 投放中的广告数（JOIN 后附加） */
+  adCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CmsAd {
+  id: number;
+  slotId: number;
+  /** 广告位名称（JOIN 后附加） */
+  slotName?: string | null;
+  name: string;
+  image: string | null;
+  linkUrl: string | null;
+  startAt: string | null;
+  endAt: string | null;
+  sort: number;
+  status: 'enabled' | 'disabled';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CmsFormField {
+  name: string;
+  label: string;
+  fieldType: string;
+  required: boolean;
+  options?: { label: string; value: string }[] | null;
+}
+
+export interface CmsForm {
+  id: number;
+  siteId: number;
+  code: string;
+  name: string;
+  fields: CmsFormField[];
+  successMessage: string | null;
+  status: 'enabled' | 'disabled';
+  /** 提交数（JOIN 后附加） */
+  submissionCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CmsFormSubmission {
+  id: number;
+  formId: number;
+  data: Record<string, unknown>;
+  ip: string | null;
+  userAgent: string | null;
+  createdAt: string;
+}
+
+export interface CmsSensitiveWord {
+  id: number;
+  word: string;
+  replaceWith: string | null;
+  status: 'enabled' | 'disabled';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CmsPushLog {
+  id: number;
+  siteId: number;
+  engine: string;
+  urls: string[];
+  success: boolean;
+  statusCode: number | null;
+  response: string | null;
+  createdAt: string;
+}

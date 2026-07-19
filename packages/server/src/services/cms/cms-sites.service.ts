@@ -1,11 +1,13 @@
-import { eq, asc, and, or, like, type SQL } from 'drizzle-orm';
+import { eq, asc, and, or, like, inArray, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import { cmsSites, cmsChannels } from '../../db/schema';
+import { cmsSites, cmsChannels, cmsSiteUsers, users } from '../../db/schema';
 import type { CmsSiteRow } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
 import { mergeWhere, escapeLike, withPagination } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
+import { currentUserOrNull } from '../../lib/context';
+import { isSuperAdmin } from '../../lib/permissions';
 import type { CreateCmsSiteInput, UpdateCmsSiteInput } from '@zenith/shared';
 
 // ─── 站点配置内存缓存（前台按 Host 高频查找；写操作后失效）──────────────────────
@@ -53,6 +55,54 @@ export async function resolveSiteByHost(host: string | undefined): Promise<CmsSi
 export async function resolveSiteByCode(code: string): Promise<CmsSiteRow | null> {
   const cache = await getSiteCache();
   return cache.byCode.get(code) ?? null;
+}
+
+// ─── 站点级数据权限 ────────────────────────────────────────────────────────────
+// 策略：用户在 cms_site_users 中存在绑定 → 仅可管理绑定站点；未绑定/超管 → 不受限。
+
+/** 当前用户可管理的站点 id 集合；null = 不受限 */
+export async function getAccessibleSiteIds(): Promise<number[] | null> {
+  const user = currentUserOrNull();
+  if (!user || isSuperAdmin(user)) return null;
+  const rows = await db.select({ siteId: cmsSiteUsers.siteId }).from(cmsSiteUsers).where(eq(cmsSiteUsers.userId, user.userId));
+  if (rows.length === 0) return null;
+  return rows.map((r) => r.siteId);
+}
+
+/** 站点访问断言：绑定用户操作非授权站点时抛 403（各 CMS service 写入口调用） */
+export async function assertSiteAccess(siteId: number): Promise<void> {
+  const ids = await getAccessibleSiteIds();
+  if (ids && !ids.includes(siteId)) {
+    throw new HTTPException(403, { message: '无权管理该站点' });
+  }
+}
+
+/** 站点授权用户列表 */
+export async function getCmsSiteUsers(siteId: number) {
+  await ensureCmsSiteExists(siteId);
+  const rows = await db.query.cmsSiteUsers.findMany({
+    where: eq(cmsSiteUsers.siteId, siteId),
+    with: { user: { columns: { id: true, username: true, nickname: true } } },
+  });
+  return {
+    userIds: rows.map((r) => r.userId),
+    users: rows.map((r) => ({ id: r.user.id, username: r.user.username, nickname: r.user.nickname })),
+  };
+}
+
+/** 原子替换站点授权用户 */
+export async function setCmsSiteUsers(siteId: number, userIds: number[]) {
+  await ensureCmsSiteExists(siteId);
+  if (userIds.length > 0) {
+    const valid = await db.select({ id: users.id }).from(users).where(inArray(users.id, userIds));
+    if (valid.length !== userIds.length) throw new HTTPException(400, { message: '存在无效用户' });
+  }
+  await db.transaction(async (tx) => {
+    await tx.delete(cmsSiteUsers).where(eq(cmsSiteUsers.siteId, siteId));
+    if (userIds.length > 0) {
+      await tx.insert(cmsSiteUsers).values(userIds.map((userId) => ({ siteId, userId })));
+    }
+  });
 }
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
@@ -105,6 +155,8 @@ export interface ListCmsSitesQuery {
 export async function listCmsSites(q: ListCmsSitesQuery) {
   const { keyword = '', status, page, pageSize } = q;
   const conditions: SQL[] = [];
+  const accessible = await getAccessibleSiteIds();
+  if (accessible) conditions.push(inArray(cmsSites.id, accessible));
   if (keyword) {
     const kw = or(
       like(cmsSites.name, `%${escapeLike(keyword)}%`),
@@ -127,10 +179,14 @@ export async function listCmsSites(q: ListCmsSitesQuery) {
   return { list: list.map(mapCmsSite), total, page, pageSize };
 }
 
-/** 全部启用站点（下拉选择/站点切换器用） */
+/** 全部启用站点（下拉选择/站点切换器用，绑定用户仅见授权站点） */
 export async function listAllCmsSites() {
+  const accessible = await getAccessibleSiteIds();
+  const where = accessible
+    ? and(eq(cmsSites.status, 'enabled'), inArray(cmsSites.id, accessible))
+    : eq(cmsSites.status, 'enabled');
   const rows = await db.select().from(cmsSites)
-    .where(eq(cmsSites.status, 'enabled'))
+    .where(where)
     .orderBy(asc(cmsSites.sort), asc(cmsSites.id));
   return rows.map(mapCmsSite);
 }
@@ -160,6 +216,7 @@ export async function createCmsSite(data: CreateCmsSiteInput) {
 
 // ─── 更新 ─────────────────────────────────────────────────────────────────────
 export async function updateCmsSite(id: number, data: UpdateCmsSiteInput) {
+  await assertSiteAccess(id);
   try {
     const row = await db.transaction(async (tx) => {
       if (data.isDefault) {
@@ -181,6 +238,7 @@ export async function updateCmsSite(id: number, data: UpdateCmsSiteInput) {
 
 // ─── 删除 ─────────────────────────────────────────────────────────────────────
 export async function deleteCmsSite(id: number) {
+  await assertSiteAccess(id);
   const channelCount = await db.$count(cmsChannels, eq(cmsChannels.siteId, id));
   if (channelCount > 0) {
     throw new HTTPException(400, { message: `该站点下存在 ${channelCount} 个栏目，请先删除栏目` });

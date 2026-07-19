@@ -19,6 +19,7 @@ import type {
   UserFeedback, ReportFolder, ReportMetric, ReportEnvironment, ReportDqRule, ReportQueryQuota,
   ReportSlaRule, ReportAssetTemplate, ReportFillTemplate, AnalyticsEventPropertyDef, AnalyticsSite,
   CmsSite, CmsModel, CmsChannel, CmsContent, CmsTag, CmsFragment, CmsFriendLink,
+  CmsAdSlot, CmsAd, CmsForm, CmsSensitiveWord, CmsLinkWord, CmsComment,
 } from './types';
 import { ANALYTICS_EXPERIMENT_EXPOSURE_EVENT, ANALYTICS_SEMANTIC_EVENT_LABELS, type AnalyticsSemanticEventName } from './constants';
 
@@ -700,6 +701,17 @@ export const SEED_MENUS: Menu[] = [
   { id: 1743, parentId: 1740, title: '删除友链',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'cms:link:delete',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1745, parentId: 1700, title: '静态化管理',   name: 'CmsStatic',        path: '/cms/static',      component: 'cms/StaticBuildPage',        icon: 'Zap',          type: 'menu',      sort: 8,  status: 'enabled', visible: true,  permission: 'cms:static:build',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1750, parentId: 1700, title: '检索管理',     name: 'CmsSearch',        path: '/cms/search',      component: 'cms/SearchAdminPage',        icon: 'SearchCheck',  type: 'menu',      sort: 9,  status: 'enabled', visible: true,  permission: 'cms:search:manage',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1755, parentId: 1700, title: 'SEO 管理',     name: 'CmsSeo',           path: '/cms/seo',         component: 'cms/SeoPage',                icon: 'TrendingUp',   type: 'menu',      sort: 10, status: 'enabled', visible: true,  permission: 'cms:seo:manage',     createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1756, parentId: 1755, title: '搜索引擎推送', name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:seo:push',       createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1760, parentId: 1700, title: '评论管理',     name: 'CmsComments',      path: '/cms/comments',    component: 'cms/CommentsPage',           icon: 'MessageSquare', type: 'menu',     sort: 11, status: 'enabled', visible: true,  permission: 'cms:comment:list',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1761, parentId: 1760, title: '审核评论',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:comment:audit',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1762, parentId: 1760, title: '删除评论',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'cms:comment:delete', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1765, parentId: 1700, title: '广告管理',     name: 'CmsAds',           path: '/cms/ads',         component: 'cms/AdsPage',                icon: 'Megaphone',    type: 'menu',      sort: 12, status: 'enabled', visible: true,  permission: 'cms:ad:list',        createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1766, parentId: 1765, title: '管理广告',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:ad:manage',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1770, parentId: 1700, title: '表单管理',     name: 'CmsForms',         path: '/cms/forms',       component: 'cms/FormsPage',              icon: 'ClipboardList', type: 'menu',     sort: 13, status: 'enabled', visible: true,  permission: 'cms:form:list',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1771, parentId: 1770, title: '管理表单',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:form:manage',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1775, parentId: 1700, title: '敏感词库',     name: 'CmsSensitiveWords', path: '/cms/sensitive-words', component: 'cms/SensitiveWordsPage', icon: 'ShieldAlert',  type: 'menu',      sort: 14, status: 'enabled', visible: true,  permission: 'cms:sensitive:list', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1776, parentId: 1775, title: '管理敏感词',   name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:sensitive:manage', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 角色 ─────────────────────────────────────────────────────────────────────
@@ -2942,4 +2954,40 @@ export const SEED_CMS_FRAGMENTS: CmsFragment[] = [
 export const SEED_CMS_FRIEND_LINKS: CmsFriendLink[] = [
   { id: 1, siteId: 1, name: 'Hono',       url: 'https://hono.dev',           logo: null, status: 'enabled', sort: 1, remark: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 2, siteId: 1, name: 'PostgreSQL', url: 'https://www.postgresql.org', logo: null, status: 'enabled', sort: 2, remark: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+// ─── CMS P2：广告位 / 广告 / 表单 / 敏感词 / 内链词 / 评论（示例）────────────────
+export const SEED_CMS_AD_SLOTS: CmsAdSlot[] = [
+  { id: 1, siteId: 1, code: 'home-ad', name: '首页通栏广告位', remark: '首页横幅下方', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+export const SEED_CMS_ADS: CmsAd[] = [
+  { id: 1, slotId: 1, name: 'Zenith 企业版上线', image: null, linkUrl: '/products/enterprise.html', startAt: null, endAt: null, sort: 1, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+export const SEED_CMS_FORMS: CmsForm[] = [
+  {
+    id: 1, siteId: 1, code: 'contact', name: '联系我们',
+    fields: [
+      { name: 'name', label: '姓名', fieldType: 'text', required: true },
+      { name: 'phone', label: '联系电话', fieldType: 'text', required: true },
+      { name: 'message', label: '留言内容', fieldType: 'textarea', required: true },
+    ],
+    successMessage: '提交成功，我们会尽快与您联系！',
+    status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE,
+  },
+];
+
+export const SEED_CMS_SENSITIVE_WORDS: CmsSensitiveWord[] = [
+  { id: 1, word: '赌博', replaceWith: null, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, word: '广告勿扰', replaceWith: '***', status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+export const SEED_CMS_LINK_WORDS: CmsLinkWord[] = [
+  { id: 1, siteId: 1, keyword: '全文检索', url: '/news/2.html', maxReplaces: 1, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+export const SEED_CMS_COMMENTS: CmsComment[] = [
+  { id: 1, siteId: 1, contentId: 1, nickname: '热心网友', content: '期待 CMS 模块的采集功能！', status: 'approved', ip: null, userAgent: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, siteId: 1, contentId: 1, nickname: '路人甲', content: '静态化方案讲得很清楚', status: 'pending', ip: null, userAgent: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];

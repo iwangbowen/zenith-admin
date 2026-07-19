@@ -80,6 +80,13 @@ export interface CmsPagination {
   pages: { page: number; url: string; current: boolean }[];
 }
 
+/** 广告条目 */
+export interface CmsAdItem {
+  name: string;
+  image: string | null;
+  linkUrl: string | null;
+}
+
 /** 所有模板共享的基础上下文 */
 export interface CmsBaseContext {
   site: CmsRenderSite;
@@ -88,6 +95,8 @@ export interface CmsBaseContext {
   nav: CmsNavItem[];
   /** 碎片 code → { type, content } */
   fragments: Record<string, { type: string; content: string }>;
+  /** 广告位 code → 投放中广告列表 */
+  ads: Record<string, CmsAdItem[]>;
   friendLinks: { name: string; url: string; logo: string | null }[];
   seo: CmsSeo;
   searchUrl: string;
@@ -114,16 +123,43 @@ export interface CmsListContext extends CmsBaseContext {
   pagination: CmsPagination;
 }
 
+/** 前台评论（已审核） */
+export interface CmsCommentItem {
+  nickname: string;
+  content: string;
+  createdAt: string;
+}
+
+/** 评论提交表单配置（原生 HTML form POST） */
+export interface CmsCommentFormConfig {
+  action: string;
+  contentId: number;
+  returnUrl: string;
+}
+
 export interface CmsDetailContext extends CmsBaseContext {
   channel: CmsChannelInfo;
   breadcrumbs: CmsBreadcrumb[];
   content: CmsContentDetail;
+  comments: CmsCommentItem[];
+  commentForm: CmsCommentFormConfig;
+}
+
+/** 前台自定义表单配置（栏目 settings.formCode 绑定） */
+export interface CmsFrontFormConfig {
+  code: string;
+  name: string;
+  action: string;
+  returnUrl: string;
+  successMessage: string | null;
+  fields: { name: string; label: string; fieldType: string; required: boolean; options?: { label: string; value: string }[] | null }[];
 }
 
 export interface CmsPageContext extends CmsBaseContext {
   channel: CmsChannelInfo;
   breadcrumbs: CmsBreadcrumb[];
   contentHtml: string;
+  form: CmsFrontFormConfig | null;
 }
 
 export interface CmsSearchContext extends CmsBaseContext {

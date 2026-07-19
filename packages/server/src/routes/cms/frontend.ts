@@ -6,6 +6,7 @@ import redis from '../../lib/redis';
 import logger from '../../lib/logger';
 import type { CmsSiteRow } from '../../db/schema';
 import { resolveSiteByHost, resolveSiteByCode } from '../../services/cms/cms-sites.service';
+import { resolveRedirect } from '../../services/cms/cms-redirects.service';
 import {
   renderSitePath, renderSearchPage, type RenderResult,
 } from '../../services/cms/cms-render.service';
@@ -71,6 +72,19 @@ export function createCmsFrontendRoutes(): Hono {
     const target = await resolveTarget(c.req.header('host'), pathname);
     if (!target) return next();
     const { site, sitePath, baseUrl, isPreview } = target;
+
+    // 301/302 重定向规则（优先级最高）
+    const redirect = await resolveRedirect(site.id, `/${sitePath}`);
+    if (redirect) {
+      const location = redirect.toUrl.startsWith('/') ? `${baseUrl}${redirect.toUrl}` : redirect.toUrl;
+      return c.redirect(location, redirect.type === 302 ? 302 : 301);
+    }
+
+    // IndexNow key 校验文件（{key}.txt，配置于站点 settings.indexNowKey）
+    const indexNowKey = (site.settings as Record<string, unknown> | null)?.indexNowKey;
+    if (typeof indexNowKey === 'string' && indexNowKey && sitePath === `${indexNowKey}.txt`) {
+      return c.text(indexNowKey);
+    }
 
     // robots.txt / sitemap.xml（始终动态生成，保证实时；sitemap 带 Redis 缓存）
     if (sitePath === 'robots.txt') {

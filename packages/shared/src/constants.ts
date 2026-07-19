@@ -1309,3 +1309,28 @@ export const CMS_FRAGMENT_TYPE_LABELS: Record<(typeof CMS_FRAGMENT_TYPES)[number
 
 /** CMS 前台预览路径前缀（无域名绑定时通过 /__cms/{siteCode}/... 访问站点） */
 export const CMS_PREVIEW_PREFIX = '/__cms';
+
+// ─── CMS P2 ───────────────────────────────────────────────────────────────────
+export const CMS_COMMENT_STATUSES = ['pending', 'approved', 'rejected'] as const;
+
+export const CMS_COMMENT_STATUS_LABELS: Record<(typeof CMS_COMMENT_STATUSES)[number], string> = {
+  pending: '待审核',
+  approved: '已通过',
+  rejected: '已拒绝',
+};
+
+export const CMS_PUSH_ENGINES = ['baidu', 'indexnow'] as const;
+
+export const CMS_PUSH_ENGINE_LABELS: Record<(typeof CMS_PUSH_ENGINES)[number], string> = {
+  baidu: '百度普通收录',
+  indexnow: 'IndexNow（Bing 等）',
+};
+
+export const CMS_FORM_FIELD_TYPES = ['text', 'textarea', 'select', 'radio'] as const;
+
+export const CMS_FORM_FIELD_TYPE_LABELS: Record<(typeof CMS_FORM_FIELD_TYPES)[number], string> = {
+  text: '单行文本',
+  textarea: '多行文本',
+  select: '下拉选择',
+  radio: '单选',
+};

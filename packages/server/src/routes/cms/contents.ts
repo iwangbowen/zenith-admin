@@ -10,9 +10,12 @@ import { CmsContentDTO } from '../../lib/openapi-dtos';
 import {
   listCmsContents, getCmsContent, createCmsContent, updateCmsContent,
   submitCmsContent, publishCmsContent, rejectCmsContent, offlineCmsContent,
-  recycleCmsContents, restoreCmsContents, purgeCmsContents,
+  recycleCmsContents, restoreCmsContents, purgeCmsContents, restoreCmsContentToVersion,
 } from '../../services/cms/cms-contents.service';
+import { listContentVersions } from '../../services/cms/cms-versions.service';
 import { triggerContentStaticRefresh } from '../../services/cms/cms-static.service';
+import { triggerAutoPushForContent } from '../../services/cms/cms-push.service';
+import { CmsContentVersionDTO } from '../../lib/openapi-dtos';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -120,6 +123,7 @@ const publishRoute = defineOpenAPIRoute({
     const { id } = c.req.valid('param');
     const row = await publishCmsContent(id);
     triggerContentStaticRefresh(id);
+    triggerAutoPushForContent(id);
     return c.json(okBody(row, '发布成功'), 200);
   },
 });
@@ -210,10 +214,47 @@ const purgeRoute = defineOpenAPIRoute({
   },
 });
 
+// ─── 版本历史 ─────────────────────────────────────────────────────────────────
+const versionsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}/versions',
+    tags: ['CMS-内容管理'], summary: '内容版本历史',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:content:list' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(z.array(CmsContentVersionDTO), '版本列表') },
+  }),
+  handler: async (c) => c.json(okBody(await listContentVersions(c.req.valid('param').id)), 200),
+});
+
+const restoreVersionRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/versions/{versionId}/restore',
+    tags: ['CMS-内容管理'], summary: '回滚到指定版本（回滚前自动留档当前状态）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:content:update', audit: { description: 'CMS 内容版本回滚', module: 'CMS内容管理' } })] as const,
+    request: {
+      params: IdParam.extend({
+        versionId: z.coerce.number().int().positive().openapi({ param: { name: 'versionId', in: 'path' } }),
+      }),
+    },
+    responses: { ...commonErrorResponses, ...ok(CmsContentDTO, '回滚成功') },
+  }),
+  handler: async (c) => {
+    const { id, versionId } = c.req.valid('param');
+    const before = await getCmsContent(id);
+    setAuditBeforeData(c, { ...before, body: undefined });
+    const row = await restoreCmsContentToVersion(id, versionId);
+    if (row.status === 'published') triggerContentStaticRefresh(id);
+    return c.json(okBody(row, '回滚成功'), 200);
+  },
+});
+
 router.openapiRoutes([
   listRoute, getOneRoute, createRoute_, updateRoute_,
   submitRoute, publishRoute, rejectRoute, offlineRoute,
   recycleRoute, restoreRoute, purgeRoute,
+  versionsRoute, restoreVersionRoute,
 ] as const);
 
 export default router;

@@ -287,4 +287,15 @@ export async function registerSystemTasks(): Promise<void> {
       return `处理了 ${count} 条资产弃用公告`;
     },
   });
+
+  const { publishScheduledCmsContents } = await import('../services/cms/cms-scheduled.service');
+  await registerSystemRecurringJob({
+    name: 'cms-scheduled-publish',
+    title: 'CMS 定时发布',
+    module: 'CMS内容管理',
+    cronExpression: '* * * * *',
+    description: '每分钟扫描到期的定时发布内容并自动发布（含增量静态化与搜索引擎推送）。',
+    allowManualRun: true,
+    run: publishScheduledCmsContents,
+  });
 }

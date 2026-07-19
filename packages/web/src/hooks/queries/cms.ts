@@ -2,6 +2,8 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import type {
   PaginatedResponse, CmsSite, CmsModel, CmsChannel, CmsContent, CmsTag, CmsFragment,
   CmsFriendLink, CmsSearchResult, CmsContentStatus, CmsFragmentType, AsyncTask,
+  CmsContentVersion, CmsRedirect, CmsLinkWord, CmsComment, CmsCommentStatus,
+  CmsAdSlot, CmsAd, CmsForm, CmsFormSubmission, CmsSensitiveWord, CmsPushLog,
 } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { toQueryString, unwrap, LOOKUP_STALE_TIME } from '@/lib/query';
@@ -411,5 +413,347 @@ export function useCmsSegmentPreview(text: string, enabled: boolean) {
     queryKey: cmsSearchKeys.segment(text),
     queryFn: () => request.get<{ tokens: string[] }>(`/api/cms/search/segment${toQueryString({ text })}`).then(unwrap),
     enabled: enabled && !!text,
+  });
+}
+
+// ═══ P2：版本 / SEO / 评论 / 广告 / 表单 / 敏感词 ═══════════════════════════════
+
+// ─── 内容版本 ─────────────────────────────────────────────────────────────────
+export const cmsVersionKeys = {
+  all: ['cms-content-versions'] as const,
+  list: (contentId: number | undefined) => ['cms-content-versions', contentId] as const,
+};
+
+export function useCmsContentVersions(contentId: number | undefined, enabled = true) {
+  return useQuery({
+    queryKey: cmsVersionKeys.list(contentId),
+    queryFn: () => request.get<CmsContentVersion[]>(`/api/cms/contents/${contentId}/versions`).then(unwrap),
+    enabled: enabled && contentId !== undefined,
+  });
+}
+
+export function useRestoreCmsContentVersion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ contentId, versionId }: { contentId: number; versionId: number }) =>
+      request.post<CmsContent>(`/api/cms/contents/${contentId}/versions/${versionId}/restore`, {}).then(unwrap),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: cmsContentKeys.all });
+      void qc.invalidateQueries({ queryKey: cmsVersionKeys.all });
+    },
+  });
+}
+
+// ─── SEO：重定向 / 内链词 / 推送 ────────────────────────────────────────────────
+export interface CmsSeoListParams {
+  page: number;
+  pageSize: number;
+  siteId: number;
+  keyword?: string;
+}
+
+export const cmsRedirectKeys = {
+  all: ['cms-redirects'] as const,
+  lists: ['cms-redirects', 'list'] as const,
+  list: (params: CmsSeoListParams) => ['cms-redirects', 'list', params] as const,
+};
+
+export function useCmsRedirectList(params: CmsSeoListParams, enabled = true) {
+  return useQuery({
+    queryKey: cmsRedirectKeys.list(params),
+    queryFn: () => request.get<PaginatedResponse<CmsRedirect>>(`/api/cms/seo/redirects${toQueryString(params)}`).then(unwrap),
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
+export function useSaveCmsRedirect() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
+      (id === undefined
+        ? request.post<CmsRedirect>('/api/cms/seo/redirects', values)
+        : request.put<CmsRedirect>(`/api/cms/seo/redirects/${id}`, values)
+      ).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsRedirectKeys.all }),
+  });
+}
+
+export function useDeleteCmsRedirect() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.delete<null>(`/api/cms/seo/redirects/${id}`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsRedirectKeys.all }),
+  });
+}
+
+export const cmsLinkWordKeys = {
+  all: ['cms-link-words'] as const,
+  lists: ['cms-link-words', 'list'] as const,
+  list: (params: CmsSeoListParams) => ['cms-link-words', 'list', params] as const,
+};
+
+export function useCmsLinkWordList(params: CmsSeoListParams, enabled = true) {
+  return useQuery({
+    queryKey: cmsLinkWordKeys.list(params),
+    queryFn: () => request.get<PaginatedResponse<CmsLinkWord>>(`/api/cms/seo/link-words${toQueryString(params)}`).then(unwrap),
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
+export function useSaveCmsLinkWord() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
+      (id === undefined
+        ? request.post<CmsLinkWord>('/api/cms/seo/link-words', values)
+        : request.put<CmsLinkWord>(`/api/cms/seo/link-words/${id}`, values)
+      ).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsLinkWordKeys.all }),
+  });
+}
+
+export function useDeleteCmsLinkWord() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.delete<null>(`/api/cms/seo/link-words/${id}`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsLinkWordKeys.all }),
+  });
+}
+
+export const cmsPushLogKeys = {
+  all: ['cms-push-logs'] as const,
+  lists: ['cms-push-logs', 'list'] as const,
+  list: (params: { page: number; pageSize: number; siteId: number }) => ['cms-push-logs', 'list', params] as const,
+};
+
+export function useCmsPushLogList(params: { page: number; pageSize: number; siteId: number }, enabled = true) {
+  return useQuery({
+    queryKey: cmsPushLogKeys.list(params),
+    queryFn: () => request.get<PaginatedResponse<CmsPushLog>>(`/api/cms/seo/push-logs${toQueryString(params)}`).then(unwrap),
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
+export function useCmsPush() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { siteId: number; urls: string[]; engines?: string[] }) =>
+      request.post<{ engine: string; submitted: boolean; reason?: string }[]>('/api/cms/seo/push', body).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsPushLogKeys.all }),
+  });
+}
+
+// ─── 评论 ─────────────────────────────────────────────────────────────────────
+export interface CmsCommentListParams {
+  page: number;
+  pageSize: number;
+  siteId: number;
+  status?: CmsCommentStatus;
+}
+
+export const cmsCommentKeys = {
+  all: ['cms-comments'] as const,
+  lists: ['cms-comments', 'list'] as const,
+  list: (params: CmsCommentListParams) => ['cms-comments', 'list', params] as const,
+};
+
+export function useCmsCommentList(params: CmsCommentListParams, enabled = true) {
+  return useQuery({
+    queryKey: cmsCommentKeys.list(params),
+    queryFn: () => request.get<PaginatedResponse<CmsComment>>(`/api/cms/comments${toQueryString(params)}`).then(unwrap),
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
+export function useCmsCommentAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ action, ids }: { action: 'approve' | 'reject' | 'delete'; ids: number[] }) =>
+      request.post<null>(`/api/cms/comments/${action}`, { ids }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsCommentKeys.all }),
+  });
+}
+
+// ─── 广告 ─────────────────────────────────────────────────────────────────────
+export const cmsAdKeys = {
+  all: ['cms-ads'] as const,
+  lists: ['cms-ads', 'list'] as const,
+  slots: (siteId: number | undefined) => ['cms-ads', 'slots', siteId] as const,
+  list: (params: { page: number; pageSize: number; siteId: number; slotId?: number }) => ['cms-ads', 'list', params] as const,
+};
+
+export function useCmsAdSlots(siteId: number | undefined) {
+  return useQuery({
+    queryKey: cmsAdKeys.slots(siteId),
+    queryFn: () => request.get<CmsAdSlot[]>(`/api/cms/ads/slots?siteId=${siteId}`).then(unwrap),
+    enabled: siteId !== undefined,
+  });
+}
+
+export function useSaveCmsAdSlot() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
+      (id === undefined
+        ? request.post<CmsAdSlot>('/api/cms/ads/slots', values)
+        : request.put<CmsAdSlot>(`/api/cms/ads/slots/${id}`, values)
+      ).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsAdKeys.all }),
+  });
+}
+
+export function useDeleteCmsAdSlot() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.delete<null>(`/api/cms/ads/slots/${id}`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsAdKeys.all }),
+  });
+}
+
+export function useCmsAdList(params: { page: number; pageSize: number; siteId: number; slotId?: number }, enabled = true) {
+  return useQuery({
+    queryKey: cmsAdKeys.list(params),
+    queryFn: () => request.get<PaginatedResponse<CmsAd>>(`/api/cms/ads${toQueryString(params)}`).then(unwrap),
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
+export function useSaveCmsAd() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
+      (id === undefined
+        ? request.post<CmsAd>('/api/cms/ads', values)
+        : request.put<CmsAd>(`/api/cms/ads/${id}`, values)
+      ).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsAdKeys.all }),
+  });
+}
+
+export function useDeleteCmsAd() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.delete<null>(`/api/cms/ads/${id}`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsAdKeys.all }),
+  });
+}
+
+// ─── 表单 ─────────────────────────────────────────────────────────────────────
+export const cmsFormKeys = {
+  all: ['cms-forms'] as const,
+  lists: ['cms-forms', 'list'] as const,
+  list: (params: CmsSeoListParams) => ['cms-forms', 'list', params] as const,
+  submissions: (formId: number | undefined, page: number, pageSize: number) => ['cms-forms', 'submissions', formId, page, pageSize] as const,
+};
+
+export function useCmsFormList(params: CmsSeoListParams, enabled = true) {
+  return useQuery({
+    queryKey: cmsFormKeys.list(params),
+    queryFn: () => request.get<PaginatedResponse<CmsForm>>(`/api/cms/forms${toQueryString(params)}`).then(unwrap),
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
+export function useSaveCmsForm() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
+      (id === undefined
+        ? request.post<CmsForm>('/api/cms/forms', values)
+        : request.put<CmsForm>(`/api/cms/forms/${id}`, values)
+      ).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsFormKeys.all }),
+  });
+}
+
+export function useDeleteCmsForm() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.delete<null>(`/api/cms/forms/${id}`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsFormKeys.all }),
+  });
+}
+
+export function useCmsFormSubmissions(formId: number | undefined, page: number, pageSize: number) {
+  return useQuery({
+    queryKey: cmsFormKeys.submissions(formId, page, pageSize),
+    queryFn: () => request.get<PaginatedResponse<CmsFormSubmission>>(`/api/cms/forms/${formId}/submissions${toQueryString({ page, pageSize })}`).then(unwrap),
+    placeholderData: keepPreviousData,
+    enabled: formId !== undefined,
+  });
+}
+
+export function useDeleteCmsFormSubmissions() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ formId, ids }: { formId: number; ids: number[] }) =>
+      request.post<null>(`/api/cms/forms/${formId}/submissions/delete`, { ids }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsFormKeys.all }),
+  });
+}
+
+// ─── 敏感词 ───────────────────────────────────────────────────────────────────
+export interface CmsSensitiveWordListParams {
+  page: number;
+  pageSize: number;
+  keyword?: string;
+  status?: string;
+}
+
+export const cmsSensitiveWordKeys = {
+  all: ['cms-sensitive-words'] as const,
+  lists: ['cms-sensitive-words', 'list'] as const,
+  list: (params: CmsSensitiveWordListParams) => ['cms-sensitive-words', 'list', params] as const,
+};
+
+export function useCmsSensitiveWordList(params: CmsSensitiveWordListParams) {
+  return useQuery({
+    queryKey: cmsSensitiveWordKeys.list(params),
+    queryFn: () => request.get<PaginatedResponse<CmsSensitiveWord>>(`/api/cms/sensitive-words${toQueryString(params)}`).then(unwrap),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useSaveCmsSensitiveWord() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
+      (id === undefined
+        ? request.post<CmsSensitiveWord>('/api/cms/sensitive-words', values)
+        : request.put<CmsSensitiveWord>(`/api/cms/sensitive-words/${id}`, values)
+      ).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsSensitiveWordKeys.all }),
+  });
+}
+
+export function useDeleteCmsSensitiveWord() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.delete<null>(`/api/cms/sensitive-words/${id}`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsSensitiveWordKeys.all }),
+  });
+}
+
+// ─── 站点授权用户 ─────────────────────────────────────────────────────────────
+export function useCmsSiteUsers(siteId: number | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ['cms-sites', 'users', siteId] as const,
+    queryFn: () => request.get<{ userIds: number[]; users: { id: number; username: string; nickname: string }[] }>(`/api/cms/sites/${siteId}/users`).then(unwrap),
+    enabled: enabled && siteId !== undefined,
+  });
+}
+
+export function useSetCmsSiteUsers() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ siteId, userIds }: { siteId: number; userIds: number[] }) =>
+      request.put<null>(`/api/cms/sites/${siteId}/users`, { userIds }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsSiteKeys.all }),
   });
 }

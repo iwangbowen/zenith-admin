@@ -36,7 +36,13 @@ import cmsFragmentsRoutes from './routes/cms/fragments';
 import cmsFriendLinksRoutes from './routes/cms/friend-links';
 import cmsStaticRoutes from './routes/cms/static';
 import cmsSearchRoutes from './routes/cms/search';
+import cmsSeoRoutes from './routes/cms/seo';
+import cmsCommentsRoutes from './routes/cms/comments';
+import cmsAdsRoutes from './routes/cms/ads';
+import cmsFormsRoutes from './routes/cms/forms';
+import cmsSensitiveWordsRoutes from './routes/cms/sensitive-words';
 import { createCmsFrontendRoutes } from './routes/cms/frontend';
+import { createCmsFrontPublicRoutes } from './routes/cms/front-public';
 import { registerCmsTaskHandlers } from './services/cms/cms-tasks';
 import memberAuthRoutes from './routes/member/member-auth';
 import memberSelfRoutes from './routes/member/member-self';
@@ -621,6 +627,12 @@ app.route('/api/cms/fragments', cmsFragmentsRoutes);
 app.route('/api/cms/friend-links', cmsFriendLinksRoutes);
 app.route('/api/cms/static', cmsStaticRoutes);
 app.route('/api/cms/search', cmsSearchRoutes);
+app.route('/api/cms/seo', cmsSeoRoutes);
+app.route('/api/cms/comments', cmsCommentsRoutes);
+app.route('/api/cms/ads', cmsAdsRoutes);
+app.route('/api/cms/forms', cmsFormsRoutes);
+app.route('/api/cms/sensitive-words', cmsSensitiveWordsRoutes);
+app.route('/api/public/cms', createCmsFrontPublicRoutes());
 app.get('/metrics', printMetrics);
 
 // API 文档（无需认证）

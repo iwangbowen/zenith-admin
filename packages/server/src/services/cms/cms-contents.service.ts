@@ -10,6 +10,8 @@ import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { buildSearchVector } from './cms-search.service';
 import { listCmsModelFields } from './cms-models.service';
 import { ensureCmsChannelExists } from './cms-channels.service';
+import { snapshotContentVersion, restoreContentVersion } from './cms-versions.service';
+import { assertSiteAccess } from './cms-sites.service';
 import type { CreateCmsContentInput, UpdateCmsContentInput, CmsContentStatus } from '@zenith/shared';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
@@ -90,6 +92,7 @@ export interface ListCmsContentsQuery {
 }
 
 export async function listCmsContents(q: ListCmsContentsQuery) {
+  await assertSiteAccess(q.siteId);
   const conditions: SQL[] = [eq(cmsContents.siteId, q.siteId)];
   conditions.push(q.deleted ? isNotNull(cmsContents.deletedAt) : isNull(cmsContents.deletedAt));
   if (q.channelId) conditions.push(eq(cmsContents.channelId, q.channelId));
@@ -170,6 +173,7 @@ async function ensureChannelForContent(siteId: number, channelId: number) {
 
 // ─── 创建 ─────────────────────────────────────────────────────────────────────
 export async function createCmsContent(data: CreateCmsContentInput) {
+  await assertSiteAccess(data.siteId);
   const channel = await ensureChannelForContent(data.siteId, data.channelId);
   const { tagIds = [], scheduledAt, ...rest } = data;
   const extend = (rest.extend ?? {}) as Record<string, unknown>;
@@ -202,6 +206,7 @@ export async function createCmsContent(data: CreateCmsContentInput) {
 // ─── 更新 ─────────────────────────────────────────────────────────────────────
 export async function updateCmsContent(id: number, data: UpdateCmsContentInput) {
   const current = await ensureCmsContentExists(id);
+  await assertSiteAccess(current.siteId);
   let modelId = current.modelId;
   if (data.channelId && data.channelId !== current.channelId) {
     const channel = await ensureChannelForContent(current.siteId, data.channelId);
@@ -212,6 +217,8 @@ export async function updateCmsContent(id: number, data: UpdateCmsContentInput) 
   const extendTexts = await collectSearchableExtendTexts(modelId, nextExtend);
   try {
     await db.transaction(async (tx) => {
+      // 更新前自动留档版本快照（可在编辑页回滚）
+      await snapshotContentVersion(tx, current, '更新前留档');
       const [updated] = await tx.update(cmsContents).set({
         ...rest,
         modelId,
@@ -245,6 +252,7 @@ const STATUS_TRANSITIONS: Record<string, CmsContentStatus[]> = {
 
 async function transitionStatus(id: number, action: keyof typeof STATUS_TRANSITIONS, patch: Partial<typeof cmsContents.$inferInsert>) {
   const current = await ensureCmsContentExists(id);
+  await assertSiteAccess(current.siteId);
   if (current.deletedAt) throw new HTTPException(400, { message: '回收站中的内容不可操作，请先恢复' });
   if (!STATUS_TRANSITIONS[action].includes(current.status)) {
     throw new HTTPException(400, { message: `当前状态（${current.status}）不允许此操作` });
@@ -274,8 +282,17 @@ export async function offlineCmsContent(id: number) {
 }
 
 // ─── 回收站 ───────────────────────────────────────────────────────────────────
+async function assertBatchSiteAccess(ids: number[]): Promise<void> {
+  if (ids.length === 0) return;
+  const rows = await db.select({ siteId: cmsContents.siteId }).from(cmsContents).where(inArray(cmsContents.id, ids));
+  for (const siteId of new Set(rows.map((r) => r.siteId))) {
+    await assertSiteAccess(siteId);
+  }
+}
+
 export async function recycleCmsContents(ids: number[]) {
   if (ids.length === 0) return 0;
+  await assertBatchSiteAccess(ids);
   const rows = await db.update(cmsContents)
     .set({ deletedAt: new Date(), status: 'offline' })
     .where(and(inArray(cmsContents.id, ids), isNull(cmsContents.deletedAt)))
@@ -285,6 +302,7 @@ export async function recycleCmsContents(ids: number[]) {
 
 export async function restoreCmsContents(ids: number[]) {
   if (ids.length === 0) return 0;
+  await assertBatchSiteAccess(ids);
   const rows = await db.update(cmsContents)
     .set({ deletedAt: null, status: 'draft' })
     .where(and(inArray(cmsContents.id, ids), isNotNull(cmsContents.deletedAt)))
@@ -295,6 +313,7 @@ export async function restoreCmsContents(ids: number[]) {
 /** 彻底删除（仅限回收站中的内容） */
 export async function purgeCmsContents(ids: number[]) {
   if (ids.length === 0) return 0;
+  await assertBatchSiteAccess(ids);
   const targets = await db.select({ id: cmsContents.id }).from(cmsContents)
     .where(and(inArray(cmsContents.id, ids), isNotNull(cmsContents.deletedAt)));
   if (targets.length === 0) return 0;
@@ -309,6 +328,12 @@ export async function purgeCmsContents(ids: number[]) {
     }
   });
   return targetIds.length;
+}
+
+/** 回滚内容到指定版本（复用更新管道：重算检索向量并留档） */
+export async function restoreCmsContentToVersion(contentId: number, versionId: number) {
+  const snapshot = await restoreContentVersion(contentId, versionId);
+  return updateCmsContent(contentId, snapshot as UpdateCmsContentInput);
 }
 
 // ─── 前台查询（渲染上下文使用）────────────────────────────────────────────────

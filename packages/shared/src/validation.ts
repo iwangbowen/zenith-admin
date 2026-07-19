@@ -5191,3 +5191,91 @@ export type CreateCmsFragmentInput = z.input<typeof createCmsFragmentSchema>;
 export type UpdateCmsFragmentInput = z.input<typeof updateCmsFragmentSchema>;
 export type CreateCmsFriendLinkInput = z.input<typeof createCmsFriendLinkSchema>;
 export type UpdateCmsFriendLinkInput = z.input<typeof updateCmsFriendLinkSchema>;
+
+// ─── CMS P2 Schema ────────────────────────────────────────────────────────────
+export const createCmsRedirectSchema = z.object({
+  siteId: z.number().int().positive(),
+  fromPath: z.string().min(1, '来源路径不能为空').max(500).regex(/^\//, '来源路径须以 / 开头'),
+  toUrl: z.string().min(1, '目标地址不能为空').max(500),
+  redirectType: z.union([z.literal(301), z.literal(302)]).default(301),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  remark: z.string().max(200).nullable().optional(),
+});
+export const updateCmsRedirectSchema = createCmsRedirectSchema.partial().omit({ siteId: true });
+
+export const createCmsLinkWordSchema = z.object({
+  siteId: z.number().int().positive(),
+  keyword: z.string().min(1, '关键词不能为空').max(50),
+  url: z.string().min(1, '链接地址不能为空').max(500),
+  maxReplaces: z.number().int().min(1).max(10).default(1),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+});
+export const updateCmsLinkWordSchema = createCmsLinkWordSchema.partial().omit({ siteId: true });
+
+export const createCmsAdSlotSchema = z.object({
+  siteId: z.number().int().positive(),
+  code: z.string().min(1, '标识不能为空').max(50).regex(cmsSlugRegex, '标识仅支持小写字母、数字、中划线'),
+  name: z.string().min(1, '名称不能为空').max(100),
+  remark: z.string().max(200).nullable().optional(),
+});
+export const updateCmsAdSlotSchema = createCmsAdSlotSchema.partial().omit({ siteId: true });
+
+export const createCmsAdSchema = z.object({
+  slotId: z.number().int().positive(),
+  name: z.string().min(1, '广告名称不能为空').max(100),
+  image: z.string().max(500).nullable().optional(),
+  linkUrl: z.string().max(500).nullable().optional(),
+  startAt: z.string().nullable().optional(),
+  endAt: z.string().nullable().optional(),
+  sort: z.number().int().default(0),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+});
+export const updateCmsAdSchema = createCmsAdSchema.partial();
+
+export const cmsFormFieldSchema = z.object({
+  name: z.string().min(1).max(50).regex(/^[a-z][a-z0-9_]*$/, '字段标识须以小写字母开头'),
+  label: z.string().min(1).max(100),
+  fieldType: z.enum(['text', 'textarea', 'select', 'radio']).default('text'),
+  required: z.boolean().default(false),
+  options: z.array(z.object({ label: z.string().max(100), value: z.string().max(100) })).nullable().optional(),
+});
+
+export const createCmsFormSchema = z.object({
+  siteId: z.number().int().positive(),
+  code: z.string().min(1, '表单标识不能为空').max(50).regex(cmsSlugRegex, '标识仅支持小写字母、数字、中划线'),
+  name: z.string().min(1, '表单名称不能为空').max(100),
+  fields: z.array(cmsFormFieldSchema).min(1, '至少配置一个字段').default([]),
+  successMessage: z.string().max(255).nullable().optional(),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+});
+export const updateCmsFormSchema = createCmsFormSchema.partial().omit({ siteId: true });
+
+export const createCmsSensitiveWordSchema = z.object({
+  word: z.string().min(1, '敏感词不能为空').max(50),
+  replaceWith: z.string().max(50).nullable().optional(),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+});
+export const updateCmsSensitiveWordSchema = createCmsSensitiveWordSchema.partial();
+
+export const submitCmsCommentSchema = z.object({
+  contentId: z.coerce.number().int().positive(),
+  nickname: z.string().min(1, '昵称不能为空').max(50),
+  content: z.string().min(1, '评论内容不能为空').max(1000),
+  /** 蜜罐字段：正常用户不可见不填写，机器人填写即拒绝 */
+  website: z.string().max(0, '提交被拒绝').optional(),
+});
+
+export type CreateCmsRedirectInput = z.input<typeof createCmsRedirectSchema>;
+export type UpdateCmsRedirectInput = z.input<typeof updateCmsRedirectSchema>;
+export type CreateCmsLinkWordInput = z.input<typeof createCmsLinkWordSchema>;
+export type UpdateCmsLinkWordInput = z.input<typeof updateCmsLinkWordSchema>;
+export type CreateCmsAdSlotInput = z.input<typeof createCmsAdSlotSchema>;
+export type UpdateCmsAdSlotInput = z.input<typeof updateCmsAdSlotSchema>;
+export type CreateCmsAdInput = z.input<typeof createCmsAdSchema>;
+export type UpdateCmsAdInput = z.input<typeof updateCmsAdSchema>;
+export type CmsFormFieldInput = z.input<typeof cmsFormFieldSchema>;
+export type CreateCmsFormInput = z.input<typeof createCmsFormSchema>;
+export type UpdateCmsFormInput = z.input<typeof updateCmsFormSchema>;
+export type CreateCmsSensitiveWordInput = z.input<typeof createCmsSensitiveWordSchema>;
+export type UpdateCmsSensitiveWordInput = z.input<typeof updateCmsSensitiveWordSchema>;
+export type SubmitCmsCommentInput = z.input<typeof submitCmsCommentSchema>;

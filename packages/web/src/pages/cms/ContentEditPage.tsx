@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Button, Form, Spin, Toast, Row, Col, Banner } from '@douyinfe/semi-ui';
+import { Button, Form, Spin, Toast, Row, Col, Banner, SideSheet, Timeline, Modal } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
-import { ArrowLeft, Save, Send } from 'lucide-react';
+import { ArrowLeft, Save, Send, History } from 'lucide-react';
 import RichTextEditor from '@/components/RichTextEditor';
+import { formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import {
   useCmsContentDetail, useCmsChannelTree, useAllCmsModels, useAllCmsTags,
-  useSaveCmsContent, useCmsContentAction,
+  useSaveCmsContent, useCmsContentAction, useCmsContentVersions, useRestoreCmsContentVersion,
 } from '@/hooks/queries/cms';
 import { CMS_CONTENT_STATUS_LABELS } from '@zenith/shared';
 import type { CmsChannel, CmsModelField } from '@zenith/shared';
@@ -91,6 +92,9 @@ export default function ContentEditPage() {
 
   const [body, setBody] = useState('');
   const [selectedChannelId, setSelectedChannelId] = useState<number | undefined>(channelIdParam);
+  const [versionsVisible, setVersionsVisible] = useState(false);
+  const versionsQuery = useCmsContentVersions(id, versionsVisible);
+  const restoreMutation = useRestoreCmsContentVersion();
 
   useEffect(() => {
     if (detail) {
@@ -124,6 +128,7 @@ export default function ContentEditPage() {
         seoTitle: detail.seoTitle ?? '',
         seoKeywords: detail.seoKeywords ?? '',
         seoDescription: detail.seoDescription ?? '',
+        scheduledAt: detail.scheduledAt ?? undefined,
         extend: detail.extend ?? {},
       }
     : { channelId: channelIdParam, isTop: false, isRecommend: false, isHot: false, sort: 0, tagIds: [], extend: {} };
@@ -138,6 +143,8 @@ export default function ContentEditPage() {
     }
     const payload: Record<string, unknown> = { ...values, body };
     if (!values.slug) payload.slug = null;
+    if (values.scheduledAt instanceof Date) payload.scheduledAt = formatDateTimeForApi(values.scheduledAt);
+    if (!values.scheduledAt) payload.scheduledAt = null;
     if (!id) payload.siteId = siteId;
     const saved = await saveMutation.mutateAsync({ id, values: payload });
     return saved.id;
@@ -171,6 +178,9 @@ export default function ContentEditPage() {
           {detail ? <span style={{ marginLeft: 12, fontSize: 13, fontWeight: 'normal', color: 'var(--semi-color-text-2)' }}>状态：{CMS_CONTENT_STATUS_LABELS[detail.status]}</span> : null}
         </h3>
         <Button icon={<Save size={14} />} loading={saveMutation.isPending} onClick={() => void handleSaveDraft()}>保存</Button>
+        {id ? (
+          <Button icon={<History size={14} />} onClick={() => setVersionsVisible(true)}>历史版本</Button>
+        ) : null}
         {hasPermission('cms:content:publish') ? (
           <Button type="primary" icon={<Send size={14} />} loading={actionMutation.isPending} onClick={() => void handleSaveAndPublish()}>保存并发布</Button>
         ) : null}
@@ -240,6 +250,14 @@ export default function ContentEditPage() {
                 <Col span={8}><Form.Switch field="isHot" label="热门" /></Col>
               </Row>
               <Form.InputNumber field="sort" label="排序权重" style={{ width: '100%' }} />
+              <Form.DatePicker
+                field="scheduledAt"
+                label="定时发布"
+                type="dateTime"
+                density="compact"
+                style={{ width: '100%' }}
+                placeholder="到期自动发布（每分钟检查）"
+              />
               <Form.Section text="SEO（留空继承栏目/站点）">
                 <Form.Input field="seoTitle" label="SEO 标题" />
                 <Form.Input field="seoKeywords" label="SEO 关键词" />
@@ -249,6 +267,47 @@ export default function ContentEditPage() {
           </Row>
         </Form>
       </Spin>
+
+      {/* 版本历史抽屉 */}
+      <SideSheet title="历史版本" visible={versionsVisible} onCancel={() => setVersionsVisible(false)} width={420}>
+        {versionsQuery.data && versionsQuery.data.length > 0 ? (
+          <Timeline>
+            {versionsQuery.data.map((v) => (
+              <Timeline.Item key={v.id} time={v.createdAt}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <b>v{v.version}</b>
+                  <span style={{ flex: 1, minWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.title}</span>
+                  <Button
+                    size="small"
+                    theme="borderless"
+                    loading={restoreMutation.isPending}
+                    onClick={() => {
+                      Modal.confirm({
+                        title: `回滚到 v${v.version}？`,
+                        content: '当前内容将自动留档后被该版本覆盖',
+                        onOk: async () => {
+                          await restoreMutation.mutateAsync({ contentId: id!, versionId: v.id });
+                          Toast.success('回滚成功');
+                          setVersionsVisible(false);
+                        },
+                      });
+                    }}
+                  >
+                    回滚
+                  </Button>
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)' }}>
+                  {v.remark ?? ''}{v.createdByName ? ` · ${v.createdByName}` : ''}
+                </div>
+              </Timeline.Item>
+            ))}
+          </Timeline>
+        ) : (
+          <div style={{ color: 'var(--semi-color-text-2)', padding: 24, textAlign: 'center' }}>
+            {versionsQuery.isFetching ? '加载中…' : '暂无历史版本（每次保存自动留档）'}
+          </div>
+        )}
+      </SideSheet>
     </div>
   );
 }

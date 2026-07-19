@@ -16,6 +16,10 @@ import {
 import { getFragmentMap } from './cms-fragments.service';
 import { listEnabledFriendLinks } from './cms-friend-links.service';
 import { searchCmsContents, stripHtml } from './cms-search.service';
+import { getEnabledLinkWords, applyLinkWords } from './cms-link-words.service';
+import { listApprovedComments } from './cms-comments.service';
+import { getActiveAds } from './cms-ads.service';
+import { getCmsFormByCode } from './cms-forms.service';
 import type { CmsChannel } from '@zenith/shared';
 
 // ─── URL 规则（站点内相对路径，静态文件名与之一一对应）──────────────────────────
@@ -76,10 +80,11 @@ function mergeSeo(site: CmsSiteRow, overrides: Partial<CmsSeo> & { pathForCanoni
 }
 
 async function buildBaseContext(site: CmsSiteRow, baseUrl: string, seo: CmsSeo): Promise<CmsBaseContext> {
-  const [tree, fragments, friendLinks] = await Promise.all([
+  const [tree, fragments, friendLinks, ads] = await Promise.all([
     listCmsChannelTree({ siteId: site.id, status: 'enabled' }),
     getFragmentMap(site.id),
     listEnabledFriendLinks(site.id),
+    getActiveAds(site.id),
   ]);
   return {
     site: {
@@ -99,6 +104,7 @@ async function buildBaseContext(site: CmsSiteRow, baseUrl: string, seo: CmsSeo):
     baseUrl,
     nav: navFromTree(tree, baseUrl),
     fragments,
+    ads,
     friendLinks: friendLinks.map((l) => ({ name: l.name, url: l.url, logo: l.logo })),
     seo,
     searchUrl: `${baseUrl}/search`,
@@ -214,11 +220,24 @@ export async function renderChannelPage(site: CmsSiteRow, baseUrl: string, chann
   const breadcrumbs = await buildBreadcrumbs(site, baseUrl, channel);
 
   if (channel.type === 'page') {
+    // 栏目 settings.formCode 绑定自定义表单（联系我们/报名等）
+    const formCode = typeof (channel.settings as Record<string, unknown> | null)?.formCode === 'string'
+      ? String((channel.settings as Record<string, unknown>).formCode)
+      : null;
+    const form = formCode ? await getCmsFormByCode(site.id, formCode) : null;
     const html = renderDoc(theme.templates.page, {
       ...base,
       channel: toChannelInfo(channel, baseUrl),
       breadcrumbs,
       contentHtml: channel.pageContent ?? '',
+      form: form ? {
+        code: form.code,
+        name: form.name,
+        action: `/api/public/cms/forms/${site.code}/${form.code}`,
+        returnUrl: channelUrl(baseUrl, channel.path),
+        successMessage: form.successMessage ?? null,
+        fields: form.fields ?? [],
+      } : null,
     });
     return { status: 200, html, kind: 'page' };
   }
@@ -261,11 +280,13 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
       mainEntityOfPage: origin ? `${origin}${canonicalPath}` : undefined,
     },
   });
-  const [base, breadcrumbs, adjacent, tags] = await Promise.all([
+  const [base, breadcrumbs, adjacent, tags, linkWords, comments] = await Promise.all([
     buildBaseContext(site, baseUrl, seo),
     buildBreadcrumbs(site, baseUrl, channel),
     getAdjacentContents(row),
     listContentTags(row.id),
+    getEnabledLinkWords(site.id),
+    listApprovedComments(row.id),
   ]);
   const html = renderDoc(resolveDetailTemplate(theme, channel.detailTemplate), {
     ...base,
@@ -273,11 +294,17 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
     breadcrumbs,
     content: {
       ...toContentItem(row, baseUrl, channel.path),
-      body: row.body ?? '',
+      body: applyLinkWords(row.body ?? '', linkWords),
       extend: row.extend ?? {},
       tags: tags.map((t) => ({ name: t.name, slug: t.slug })),
       prev: adjacent.prev ? { title: adjacent.prev.title, url: contentUrl(baseUrl, channel.path, adjacent.prev) } : null,
       next: adjacent.next ? { title: adjacent.next.title, url: contentUrl(baseUrl, channel.path, adjacent.next) } : null,
+    },
+    comments: comments.map((cm) => ({ nickname: cm.nickname, content: cm.content, createdAt: cm.createdAt })),
+    commentForm: {
+      action: '/api/public/cms/comments',
+      contentId: row.id,
+      returnUrl: contentUrl(baseUrl, channel.path, row),
     },
   });
   return { status: 200, html, kind: 'detail', contentId: row.id };

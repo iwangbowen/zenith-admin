@@ -11,7 +11,11 @@ import AppModal from '@/components/AppModal';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
-import { useCmsSiteList, useCmsThemes, useSaveCmsSite, useDeleteCmsSite, cmsSiteKeys } from '@/hooks/queries/cms';
+import { useAllUsers } from '@/hooks/queries/users';
+import {
+  useCmsSiteList, useCmsThemes, useSaveCmsSite, useDeleteCmsSite, cmsSiteKeys,
+  useCmsSiteUsers, useSetCmsSiteUsers,
+} from '@/hooks/queries/cms';
 import { CMS_STATIC_MODE_LABELS, CMS_STATIC_MODES } from '@zenith/shared';
 import type { CmsSite } from '@zenith/shared';
 import { cmsPreviewUrl } from './CmsSiteSelect';
@@ -46,6 +50,32 @@ export default function SitesPage() {
   const [editingRecord, setEditingRecord] = useState<CmsSite | null>(null);
   const saveMutation = useSaveCmsSite();
   const deleteMutation = useDeleteCmsSite();
+
+  // ─── 授权用户（站点级数据权限）────────────────────────────────────────────
+  const [usersModalSite, setUsersModalSite] = useState<CmsSite | null>(null);
+  const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
+  const siteUsersQuery = useCmsSiteUsers(usersModalSite?.id, !!usersModalSite);
+  const setSiteUsersMutation = useSetCmsSiteUsers();
+  const { data: allUsers } = useAllUsers({ enabled: !!usersModalSite });
+  const siteUserIds = siteUsersQuery.data?.userIds;
+  const usersInitialized = useRef(false);
+  if (usersModalSite && siteUserIds && !usersInitialized.current) {
+    usersInitialized.current = true;
+    setSelectedUserIds(siteUserIds);
+  }
+
+  function openUsersModal(record: CmsSite) {
+    usersInitialized.current = false;
+    setSelectedUserIds([]);
+    setUsersModalSite(record);
+  }
+
+  async function handleUsersModalOk() {
+    if (!usersModalSite) return;
+    await setSiteUsersMutation.mutateAsync({ siteId: usersModalSite.id, userIds: selectedUserIds });
+    Toast.success('保存成功');
+    setUsersModalSite(null);
+  }
 
   function handleSearch() {
     setPage(1);
@@ -92,6 +122,8 @@ export default function SitesPage() {
         copyright: editingRecord.copyright ?? '',
         robots: editingRecord.robots ?? '',
         remark: editingRecord.remark ?? '',
+        baiduPushToken: String((editingRecord.settings as Record<string, unknown>)?.baiduPushToken ?? ''),
+        indexNowKey: String((editingRecord.settings as Record<string, unknown>)?.indexNowKey ?? ''),
       }
     : { theme: 'default', staticMode: 'hybrid', status: 'enabled', isDefault: false, aliasDomains: [] };
 
@@ -103,7 +135,14 @@ export default function SitesPage() {
       throw new Error('validation');
     }
     if (!values.domain) values.domain = null;
-    await saveMutation.mutateAsync({ id: editingRecord?.id, values });
+    // 推送凭证并入 settings JSONB（保留既有 settings 键）
+    const { baiduPushToken, indexNowKey, ...rest } = values;
+    rest.settings = {
+      ...(editingRecord?.settings ?? {}),
+      baiduPushToken: String(baiduPushToken ?? '').trim(),
+      indexNowKey: String(indexNowKey ?? '').trim(),
+    };
+    await saveMutation.mutateAsync({ id: editingRecord?.id, values: rest });
     Toast.success(editingRecord ? '更新成功' : '创建成功');
     closeModal();
   }
@@ -149,7 +188,7 @@ export default function SitesPage() {
       render: (v: string) => (v === 'enabled' ? <Tag color="green" size="small">启用</Tag> : <Tag color="red" size="small">停用</Tag>),
     },
     createOperationColumn<CmsSite>({
-      width: 200,
+      width: 240,
       desktopInlineKeys: ['visit', 'edit', 'delete'],
       actions: (record) => [
         {
@@ -161,6 +200,10 @@ export default function SitesPage() {
           key: 'edit',
           label: '编辑',
           onClick: () => openEdit(record),
+        }, {
+          key: 'users',
+          label: '授权用户',
+          onClick: () => openUsersModal(record),
         }] : []),
         ...(hasPermission('cms:site:delete') ? [{
           key: 'delete',
@@ -303,6 +346,16 @@ export default function SitesPage() {
             <Form.TextArea field="description" label="SEO 描述" rows={2} />
             <Form.TextArea field="robots" label="robots.txt" rows={3} placeholder="留空使用默认规则（Allow all + Sitemap）" />
           </Form.Section>
+          <Form.Section text="搜索推送（配置后发布内容自动推送搜索引擎）">
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Input field="baiduPushToken" label="百度推送 Token" placeholder="百度搜索资源平台 → 普通收录" />
+              </Col>
+              <Col span={12}>
+                <Form.Input field="indexNowKey" label="IndexNow Key" placeholder="Bing 等引擎；key 文件自动托管" />
+              </Col>
+            </Row>
+          </Form.Section>
           <Form.Section text="备案与版权">
             <Row gutter={16}>
               <Col span={12}>
@@ -315,6 +368,31 @@ export default function SitesPage() {
             <Form.Input field="remark" label="备注" />
           </Form.Section>
         </Form>
+      </AppModal>
+
+      {/* 授权用户弹窗（站点级数据权限） */}
+      <AppModal
+        title={usersModalSite ? `「${usersModalSite.name}」授权用户` : '授权用户'}
+        visible={!!usersModalSite}
+        onOk={handleUsersModalOk}
+        onCancel={() => setUsersModalSite(null)}
+        okButtonProps={{ loading: setSiteUsersMutation.isPending, disabled: siteUsersQuery.isFetching }}
+        width={520}
+        closeOnEsc
+      >
+        <div style={{ marginBottom: 12, color: 'var(--semi-color-text-2)', fontSize: 13 }}>
+          绑定用户后，仅超管与授权用户可管理该站点；不绑定任何用户则全员（有 CMS 权限者）可管理。
+        </div>
+        <Select
+          multiple
+          filter
+          placeholder="选择授权用户"
+          value={selectedUserIds}
+          onChange={(v) => setSelectedUserIds((v as number[]) ?? [])}
+          style={{ width: '100%' }}
+          loading={siteUsersQuery.isFetching}
+          optionList={(allUsers ?? []).map((u) => ({ value: u.id, label: `${u.nickname}（${u.username}）` }))}
+        />
       </AppModal>
     </div>
   );
