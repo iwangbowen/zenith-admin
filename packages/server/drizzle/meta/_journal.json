@@ -540,6 +540,13 @@
       "when": 1784467521739,
       "tag": "0076_left_inertia",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1784471423789,
+      "tag": "0077_amazing_gauntlet",
+      "breakpoints": true
     }
   ]
 }

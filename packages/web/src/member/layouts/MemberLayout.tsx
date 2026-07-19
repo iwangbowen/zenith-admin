@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate, NavLink } from 'react-router-dom';
 import { Nav, Avatar, Badge, Modal } from '@douyinfe/semi-ui';
-import { Crown, House, Coins, Wallet, Ticket, UserCog, Lock, LogOut, ArrowLeft, History, CalendarCheck, Settings, Bell, Gift, User } from 'lucide-react';
+import { Crown, House, Coins, Wallet, Ticket, UserCog, Lock, LogOut, ArrowLeft, History, CalendarCheck, Settings, Bell, Gift, User, PenLine } from 'lucide-react';
 import { useMemberAuth } from '../hooks/useMemberAuth';
 import { useUnreadNotificationCount } from '../hooks/queries';
 
@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { itemKey: '/checkin', text: '每日签到', icon: <CalendarCheck size={15} /> },
   { itemKey: '/level', text: '等级权益', icon: <Crown size={15} /> },
   { itemKey: '/messages', text: '消息中心', icon: <Bell size={15} /> },
+  { itemKey: '/contributions', text: '我的投稿', icon: <PenLine size={15} /> },
   { itemKey: '/invite', text: '邀请有礼', icon: <Gift size={15} /> },
   { itemKey: '/profile', text: '个人设置', icon: <Settings size={15} /> },
   { itemKey: '/profile/edit', text: '编辑资料', icon: <UserCog size={15} /> },

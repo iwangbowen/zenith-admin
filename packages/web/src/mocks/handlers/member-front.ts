@@ -122,4 +122,64 @@ export const memberFrontHandlers = [
     const list = mockMemberLoginLogs.slice(start, start + pageSize);
     return HttpResponse.json({ code: 0, message: 'ok', data: { list, total: mockMemberLoginLogs.length, page, pageSize } });
   }),
+
+  // ── CMS 会员投稿 ──────────────────────────────────────────────────────────
+  http.get('/api/member/cms/channels', () => ok([
+    { id: 1, name: 'Zenith 官方网站', channels: [{ id: 2, name: '新闻中心' }, { id: 3, name: '产品中心' }] },
+  ])),
+  http.get('/api/member/cms/contributions/:id', ({ params }) => {
+    const row = mockContributions.find((x) => x.id === Number(params.id));
+    return row ? ok(row) : HttpResponse.json({ code: 404, message: '投稿不存在', data: null }, { status: 404 });
+  }),
+  http.get('/api/member/cms/contributions', ({ request }) => {
+    const url = new URL(request.url);
+    const status = url.searchParams.get('status');
+    const list = status ? mockContributions.filter((x) => x.status === status) : mockContributions;
+    return paginated(list);
+  }),
+  http.post('/api/member/cms/contributions', async ({ request }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    const now = mockDateTime();
+    const row = {
+      id: mockContributions.length + 100,
+      siteId: Number(body.siteId ?? 1),
+      channelId: Number(body.channelId ?? 2),
+      channelName: '新闻中心',
+      title: String(body.title ?? ''),
+      summary: (body.summary as string) ?? null,
+      coverImage: null,
+      body: String(body.body ?? ''),
+      status: 'pending' as const,
+      rejectReason: null,
+      publishedAt: null,
+      viewCount: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+    mockContributions.unshift(row);
+    return ok(row, '投稿已提交，等待审核');
+  }),
+  http.put('/api/member/cms/contributions/:id', async ({ params, request }) => {
+    const idx = mockContributions.findIndex((x) => x.id === Number(params.id));
+    if (idx === -1) return HttpResponse.json({ code: 404, message: '投稿不存在', data: null }, { status: 404 });
+    Object.assign(mockContributions[idx], await request.json(), { status: 'pending', rejectReason: null, updatedAt: mockDateTime() });
+    return ok(mockContributions[idx], '已重新提交，等待审核');
+  }),
+  http.delete('/api/member/cms/contributions/:id', ({ params }) => {
+    const idx = mockContributions.findIndex((x) => x.id === Number(params.id));
+    if (idx !== -1) mockContributions.splice(idx, 1);
+    return ok(null, '删除成功');
+  }),
+];
+
+const mockContributions: {
+  id: number; siteId: number; channelId: number; channelName: string | null;
+  title: string; summary: string | null; coverImage: string | null; body: string | null;
+  status: 'draft' | 'pending' | 'published' | 'offline' | 'rejected';
+  rejectReason: string | null; publishedAt: string | null; viewCount: number;
+  createdAt: string; updatedAt: string;
+}[] = [
+  { id: 1, siteId: 1, channelId: 2, channelName: '新闻中心', title: '我的第一篇投稿', summary: '演示投稿数据', coverImage: null, body: '<p>投稿正文</p>', status: 'published', rejectReason: null, publishedAt: '2024-06-01 10:00:00', viewCount: 88, createdAt: '2024-05-30 09:00:00', updatedAt: '2024-06-01 10:00:00' },
+  { id: 2, siteId: 1, channelId: 3, channelName: '产品中心', title: '待审核的投稿示例', summary: null, coverImage: null, body: '<p>等待审核</p>', status: 'pending', rejectReason: null, publishedAt: null, viewCount: 0, createdAt: '2024-06-02 14:00:00', updatedAt: '2024-06-02 14:00:00' },
+  { id: 3, siteId: 1, channelId: 2, channelName: '新闻中心', title: '被驳回的投稿示例', summary: null, coverImage: null, body: '<p>需要修改</p>', status: 'rejected', rejectReason: '内容与栏目主题不符，请调整后重新提交', publishedAt: null, viewCount: 0, createdAt: '2024-06-03 16:00:00', updatedAt: '2024-06-03 18:00:00' },
 ];

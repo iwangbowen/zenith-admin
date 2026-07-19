@@ -2,6 +2,7 @@ import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryK
 import { sql } from 'drizzle-orm';
 import { statusEnum } from './common';
 import { auditColumns, tenants, users } from './core';
+import { members } from './member';
 
 // ─── 枚举（pgEnum / TS union / Zod enum 三处同步，见 @zenith/shared）────────────
 export const cmsStaticModeEnum = pgEnum('cms_static_mode', ['dynamic', 'hybrid', 'static']);
@@ -185,6 +186,8 @@ export const cmsContents = pgTable('cms_contents', {
   searchVector: tsvector('search_vector'),
   /** 回收站：非空表示已进回收站 */
   deletedAt: timestamp('deleted_at'),
+  /** 会员投稿：非空表示由前台会员提交（P3 会员投稿） */
+  memberId: integer('member_id').references(() => members.id, { onDelete: 'set null' }),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
@@ -193,6 +196,7 @@ export const cmsContents = pgTable('cms_contents', {
   index('cms_contents_status_idx').on(t.status),
   index('cms_contents_published_at_idx').on(t.publishedAt),
   index('cms_contents_search_idx').using('gin', t.searchVector),
+  index('cms_contents_member_idx').on(t.memberId),
   uniqueIndex('cms_contents_site_slug_uq').on(t.siteId, t.slug)
     .where(sql`${t.slug} is not null and ${t.deletedAt} is null`),
 ]);

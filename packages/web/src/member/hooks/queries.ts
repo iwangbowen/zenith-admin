@@ -1,5 +1,7 @@
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  CmsContribSite,
+  CmsContribution,
   Coupon,
   Member,
   MemberBenefits,
@@ -420,5 +422,58 @@ export function useUploadMemberAvatar() {
   return useMutation({
     mutationFn: (formData: FormData) =>
       memberRequest.post<{ url: string }>('/api/member/files/avatar', formData).then(unwrap),
+  });
+}
+
+// ─── CMS 会员投稿（P3）────────────────────────────────────────────────────────
+export const contributionKeys = {
+  all: ['member', 'contributions'] as const,
+  lists: ['member', 'contributions', 'list'] as const,
+  list: (params: object) => ['member', 'contributions', 'list', params] as const,
+  detail: (id: number | undefined) => ['member', 'contributions', 'detail', id ?? null] as const,
+  channels: ['member', 'contributions', 'channels'] as const,
+};
+
+export function useContribChannels() {
+  return useQuery({
+    queryKey: contributionKeys.channels,
+    queryFn: () => memberRequest.get<CmsContribSite[]>('/api/member/cms/channels').then(unwrap),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useMyContributions(params: { page: number; pageSize: number; status?: string }) {
+  return useQuery({
+    queryKey: contributionKeys.list(params),
+    queryFn: () => memberRequest.get<PaginatedResponse<CmsContribution>>(`/api/member/cms/contributions${toQueryString(params)}`).then(unwrap),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useMyContribution(id: number | undefined) {
+  return useQuery({
+    queryKey: contributionKeys.detail(id),
+    queryFn: () => memberRequest.get<CmsContribution>(`/api/member/cms/contributions/${id}`).then(unwrap),
+    enabled: !!id,
+  });
+}
+
+export function useSaveContribution() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
+      (id
+        ? memberRequest.put<CmsContribution>(`/api/member/cms/contributions/${id}`, values)
+        : memberRequest.post<CmsContribution>('/api/member/cms/contributions', values)
+      ).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: contributionKeys.all }),
+  });
+}
+
+export function useDeleteContribution() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => memberRequest.delete<null>(`/api/member/cms/contributions/${id}`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: contributionKeys.all }),
   });
 }

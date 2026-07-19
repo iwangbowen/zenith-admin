@@ -10389,6 +10389,8 @@ export interface CmsContent {
   seoDescription: string | null;
   tagIds?: number[];
   tags?: CmsTag[];
+  /** 会员投稿：非空表示由前台会员提交 */
+  memberId?: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -10591,4 +10593,28 @@ export interface CmsSearchWord {
 export interface CmsHotKeyword {
   keyword: string;
   count: number;
+}
+
+// ─── CMS 会员投稿（P3 Batch4）──────────────────────────────────────────────────
+export interface CmsContribution {
+  id: number;
+  siteId: number;
+  channelId: number;
+  channelName: string | null;
+  title: string;
+  summary: string | null;
+  coverImage: string | null;
+  body: string | null;
+  status: CmsContentStatus;
+  rejectReason: string | null;
+  publishedAt: string | null;
+  viewCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CmsContribSite {
+  id: number;
+  name: string;
+  channels: { id: number; name: string }[];
 }

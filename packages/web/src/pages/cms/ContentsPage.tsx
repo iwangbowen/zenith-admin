@@ -207,6 +207,7 @@ export default function ContentsPage() {
           {record.isTop ? <Tag size="small" color="blue" style={{ marginRight: 4 }}>顶</Tag> : null}
           {record.isRecommend ? <Tag size="small" color="cyan" style={{ marginRight: 4 }}>荐</Tag> : null}
           {record.isHot ? <Tag size="small" color="red" style={{ marginRight: 4 }}>热</Tag> : null}
+          {record.memberId ? <Tag size="small" color="purple" style={{ marginRight: 4 }}>投稿</Tag> : null}
           <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 240, verticalAlign: 'middle' }}>{v}</Typography.Text>
         </span>
       ),

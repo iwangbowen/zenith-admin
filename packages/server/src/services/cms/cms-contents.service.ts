@@ -44,6 +44,7 @@ export function mapCmsContent(row: CmsContentRow, extra?: { channelName?: string
     seoTitle: row.seoTitle ?? null,
     seoKeywords: row.seoKeywords ?? null,
     seoDescription: row.seoDescription ?? null,
+    memberId: row.memberId ?? null,
     ...(extra?.tags ? {
       tags: extra.tags.map((t) => ({
         id: t.id, siteId: t.siteId, name: t.name, slug: t.slug, contentCount: t.contentCount,

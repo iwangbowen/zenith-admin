@@ -398,3 +398,31 @@ export const CmsImageUploadDTO = z
     watermarked: z.boolean(),
   })
   .openapi('CmsImageUpload');
+
+// ─── P3 Batch4：会员投稿 ──────────────────────────────────────────────────────
+export const CmsContributionDTO = z
+  .object({
+    id: z.number().int(),
+    siteId: z.number().int(),
+    channelId: z.number().int(),
+    channelName: z.string().nullable(),
+    title: z.string(),
+    summary: z.string().nullable(),
+    coverImage: z.string().nullable(),
+    body: z.string().nullable(),
+    status: z.enum(['draft', 'pending', 'published', 'offline', 'rejected']),
+    rejectReason: z.string().nullable(),
+    publishedAt: z.string().nullable(),
+    viewCount: z.number().int(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('CmsContribution');
+
+export const CmsContribChannelsDTO = z
+  .array(z.object({
+    id: z.number().int(),
+    name: z.string(),
+    channels: z.array(z.object({ id: z.number().int(), name: z.string() })),
+  }))
+  .openapi('CmsContribChannels');
