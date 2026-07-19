@@ -438,6 +438,8 @@ export async function finalizeDeliveryRun(input: {
   triggered?: boolean | null;
 }): Promise<typeof reportDeliveryRuns.$inferSelect> {
   const now = new Date();
+  // sql 模板裸插值 Date 无列编码器会导致驱动序列化失败，需绑定格式化串并显式 cast（started_at 为 timestamptz）
+  const nowText = formatDateTime(now);
   const [row] = await db.update(reportDeliveryRuns)
     .set({
       status: input.status,
@@ -446,7 +448,7 @@ export async function finalizeDeliveryRun(input: {
       ...(input.lastValue !== undefined ? { lastValue: input.lastValue } : {}),
       ...(input.triggered !== undefined ? { triggered: input.triggered } : {}),
       completedAt: now,
-      durationMs: sql`greatest(0, extract(epoch from (${now} - coalesce(${reportDeliveryRuns.startedAt}, ${now}))) * 1000)::int`,
+      durationMs: sql`greatest(0, extract(epoch from (${nowText}::timestamptz - coalesce(${reportDeliveryRuns.startedAt}, ${nowText}::timestamptz))) * 1000)::int`,
       nextRetryAt: null,
     })
     .where(eq(reportDeliveryRuns.id, input.runId))

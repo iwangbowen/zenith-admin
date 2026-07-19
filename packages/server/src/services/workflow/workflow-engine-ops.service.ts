@@ -75,7 +75,8 @@ export async function runWorkflowEngineHealthCapture(): Promise<string> {
  * 超期后分批删除（每批 batchLimit），避免长事务锁表。返回删除总数。
  */
 export async function cleanupTerminalInstanceTokens(retentionDays = 90, batchLimit = 5000, maxBatches = 20): Promise<number> {
-  const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60_000);
+  // sql 模板裸插值 Date 无列编码器会导致驱动序列化失败，需绑定格式化串并显式 cast
+  const cutoffText = formatDateTime(new Date(Date.now() - retentionDays * 24 * 60 * 60_000));
   let total = 0;
   for (let i = 0; i < maxBatches; i++) {
     const res = await db.execute(sql`
@@ -84,7 +85,7 @@ export async function cleanupTerminalInstanceTokens(retentionDays = 90, batchLim
         SELECT wt.id FROM workflow_tokens wt
         JOIN workflow_instances wi ON wi.id = wt.instance_id
         WHERE wi.status IN ('approved', 'rejected', 'withdrawn', 'cancelled')
-          AND wi.updated_at < ${cutoff}
+          AND wi.updated_at < ${cutoffText}::timestamp
         LIMIT ${batchLimit}
       )
     `);

@@ -8,7 +8,7 @@
  * 状态机：pending →(商户回复) processing →(完结/退款) resolved | refunded。
  * 投诉退款直接复用支付中心 refund()（含审批阈值链路），退款单号回填工单。
  */
-import { and, desc, eq, gte, inArray, like, lt, notInArray, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, like, lt, lte, notInArray, or, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { randomInt } from 'node:crypto';
 import dayjs from 'dayjs';
@@ -119,7 +119,7 @@ export async function buildDisputesWhere(q: ListDisputesQuery) {
   const start = parseDateRangeStart(q.startTime);
   const end = parseDateRangeEnd(q.endTime);
   if (start) conds.push(gte(paymentDisputes.createdAt, start));
-  if (end) conds.push(sql`${paymentDisputes.createdAt} <= ${end}`);
+  if (end) conds.push(lte(paymentDisputes.createdAt, end));
   return mergeWhere(conds.length ? and(...conds) : undefined, disputesTenantCondition());
 }
 
