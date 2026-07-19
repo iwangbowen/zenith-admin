@@ -436,7 +436,7 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
         </section>
         <div className="login-card">
           <div className="login-form-header">
-            <Title heading={3} style={{ marginBottom: 6, fontWeight: 700 }}>
+            <Title heading={3} style={{ marginBottom: 8, fontWeight: 600 }}>
               {mfaChallenge ? '安全验证' : (isDemoMode || tab === 'login' ? '欢迎回来' : '创建账号')}
             </Title>
             <Text type="tertiary" style={{ fontSize: 14, display: 'block', marginBottom: 24 }}>
@@ -463,9 +463,9 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
           )}
           {/* OAuth 第三方登录 */}
           {!mfaChallenge && enterpriseProviders.length > 0 && (
-            <div style={{ marginTop: 14 }}>
+            <div className="login-enterprise">
               <Divider />
-              <div style={{ display: 'grid', gap: 8 }}>
+              <div className="login-enterprise-list">
                 {enterpriseProviders.map((provider) => (
                   <Button
                     key={provider.id}
@@ -520,6 +520,14 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
                 体验账号：<code>admin</code> / 密码：<code>123456</code>
               </div>
             </div>
+          )}
+          {!mfaChallenge && (
+            <p className="login-agreement">
+              登录即表示您已阅读并同意本平台
+              <span className="login-agreement-em">《服务协议》</span>
+              与
+              <span className="login-agreement-em">《隐私政策》</span>
+            </p>
           )}
         </div>
       </main>
