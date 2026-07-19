@@ -4951,7 +4951,13 @@ export const createDecisionTableSchema = z.object({
   outputs: z.array(ruleDecisionOutputSchema).default([]),
   rules: z.array(ruleDecisionRowSchema).default([]),
 });
-export const updateDecisionTableSchema = createDecisionTableSchema.partial().omit({ key: true });
+export const updateDecisionTableSchema = createDecisionTableSchema.partial().omit({ key: true }).extend({
+  /** 编辑乐观锁：携带打开编辑时的 updatedAt，服务端不一致时返回 409 */
+  expectedUpdatedAt: z.string().optional(),
+});
+export const toggleDecisionTableSchema = z.object({
+  enabled: z.boolean(),
+});
 export const evaluateDecisionTableSchema = z.object({
   input: z.record(z.string(), z.unknown()).default({}),
 });

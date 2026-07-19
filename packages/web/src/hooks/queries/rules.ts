@@ -95,6 +95,15 @@ export function useRollbackRuleDecisionTable() {
   });
 }
 
+export function useToggleRuleDecisionTable() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, enabled }: { id: number; enabled: boolean }) =>
+      request.post<RuleDecisionTable>(`/api/rules/decision-tables/${id}/toggle`, { enabled }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ruleKeys.decisionTables.all }),
+  });
+}
+
 export function useRuleTestCases(id: number | undefined, enabled = true) {
   return useQuery({
     queryKey: ruleKeys.decisionTables.cases(id),

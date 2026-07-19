@@ -36,6 +36,7 @@ export const DecisionTableDTO = z
     rules: z.array(RuleRowDTO),
     version: z.number().int(),
     publishedAt: z.string().nullable(),
+    dirty: z.boolean().optional(),
     ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
@@ -64,6 +65,7 @@ export const RuleEvaluateResultDTO = z
     matchedRowIds: z.array(z.string()),
     hitPolicy,
     collected: z.array(z.record(z.string(), z.unknown())).optional(),
+    reason: z.enum(['no_match', 'unique_conflict', 'any_conflict']).optional(),
   })
   .openapi('RuleEvaluateResult');
 

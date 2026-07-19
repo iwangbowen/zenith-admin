@@ -29,6 +29,7 @@ import {
   useSaveRuleDecisionTable,
   useSaveRuleTestCase,
   useTestRuleDecisionTable,
+  useToggleRuleDecisionTable,
 } from '@/hooks/queries/rules';
 import { PUBLISHABLE_STATUS_META as STATUS } from '@/lib/publishable-status';
 
@@ -87,6 +88,7 @@ export default function RuleTablesPage() {
   const publishMutation = usePublishRuleDecisionTable();
   const deleteMutation = useDeleteRuleDecisionTable();
   const rollbackMutation = useRollbackRuleDecisionTable();
+  const toggleMutation = useToggleRuleDecisionTable();
   const saveCaseMutation = useSaveRuleTestCase();
   const deleteCaseMutation = useDeleteRuleTestCase();
   const runCasesMutation = useRunRuleTestCases();
@@ -135,7 +137,12 @@ export default function RuleTablesPage() {
       return;
     }
     const payload = { name: v.name, description: v.description ?? null, hitPolicy, ...draft };
-    await saveMutation.mutateAsync({ id: editing?.id, values: editing ? payload : { ...payload, key: v.key } });
+    await saveMutation.mutateAsync({
+      id: editing?.id,
+      values: editing
+        ? { ...payload, expectedUpdatedAt: editing.updatedAt }
+        : { ...payload, key: v.key },
+    });
     Toast.success(editing ? '更新成功' : '创建成功');
     setModalVisible(false); setEditorFullscreen(false);
   };
@@ -156,6 +163,22 @@ export default function RuleTablesPage() {
     title: '确定删除？', content: '删除后不可恢复', okButtonProps: { type: 'danger' },
     onOk: async () => { await deleteMutation.mutateAsync(r.id); Toast.success('删除成功'); },
   }); };
+  const handleToggle = (r: RuleDecisionTable) => {
+    if (r.status === 'disabled') {
+      Modal.confirm({
+        title: `启用「${r.name}」？`,
+        content: r.publishedAt ? '启用后恢复为已发布，运行时按最新发布版本求值' : '该表尚未发布过，启用后恢复为草稿',
+        onOk: async () => { await toggleMutation.mutateAsync({ id: r.id, enabled: true }); Toast.success('已启用'); },
+      });
+      return;
+    }
+    Modal.confirm({
+      title: `停用「${r.name}」？`,
+      content: '停用后运行时求值将返回空结果（工作流网关/审批矩阵等引用方按未命中处理）',
+      okButtonProps: { type: 'danger' },
+      onOk: async () => { await toggleMutation.mutateAsync({ id: r.id, enabled: false }); Toast.success('已停用'); },
+    });
+  };
   const openTest = (r: RuleDecisionTable) => { setTestRow(r); setTestForm({}); setTestScope({}); setTestResult(null); setTestExplanations([]); };
   const openVersions = (r: RuleDecisionTable) => {
     setVerRow(r); setDiffVersion(null);
@@ -399,7 +422,12 @@ export default function RuleTablesPage() {
     { title: '命中策略', dataIndex: 'hitPolicy', width: 110, render: (p: string) => HIT_POLICIES.find((x) => x.value === p)?.label ?? p },
     { title: '规模', width: 120, render: (_: unknown, r: RuleDecisionTable) => <Text type="tertiary" size="small">{r.inputs.length}入/{r.outputs.length}出/{r.rules.length}行</Text> },
     { title: '版本', dataIndex: 'version', width: 70 },
-    { title: '状态', dataIndex: 'status', width: 90, fixed: 'right', render: (s: string) => <Tag color={STATUS[s]?.color as never}>{STATUS[s]?.text ?? s}</Tag> },
+    { title: '状态', dataIndex: 'status', width: 132, fixed: 'right', render: (s: string, r: RuleDecisionTable) => (
+      <Space spacing={4} wrap>
+        <Tag color={STATUS[s]?.color as never}>{STATUS[s]?.text ?? s}</Tag>
+        {r.dirty && s === 'published' && <Tag size="small" color="orange">改动未发布</Tag>}
+      </Space>
+    ) },
     createdAtColumn,
     createOperationColumn<RuleDecisionTable>({
       desktopInlineKeys: ['edit', 'publish'],
@@ -409,7 +437,8 @@ export default function RuleTablesPage() {
         { key: 'cases', label: '用例', onClick: () => openCases(r) },
         { key: 'audit', label: '审计', onClick: () => openExec(r) },
         { key: 'edit', label: '编辑', hidden: !canEdit, onClick: () => openEdit(r) },
-        { key: 'publish', label: '发布', hidden: !canPublish, onClick: () => handlePublish(r) },
+        { key: 'publish', label: '发布', hidden: !canPublish || r.status === 'disabled', onClick: () => handlePublish(r) },
+        { key: 'toggle', label: r.status === 'disabled' ? '启用' : '停用', danger: r.status !== 'disabled', hidden: !canPublish, onClick: () => handleToggle(r) },
         { key: 'delete', label: '删除', danger: true, hidden: !canDelete, onClick: () => handleDelete(r) },
       ],
     }),
@@ -475,8 +504,12 @@ export default function RuleTablesPage() {
         {testResult && (
           <div style={{ marginTop: 12, background: 'var(--semi-color-fill-0)', padding: 12, borderRadius: 'var(--semi-border-radius-medium)' }}>
             <Space spacing={8} align="center">
-              <Tag color={testResult.matched ? 'green' : 'red'}>{testResult.matched ? '命中' : '未命中'}</Tag>
+              <Tag color={testResult.matched ? 'green' : 'red'}>
+                {testResult.matched ? '命中' : testResult.reason === 'unique_conflict' ? '唯一命中冲突' : testResult.reason === 'any_conflict' ? '输出不一致' : '未命中'}
+              </Tag>
               {testResult.matched && <Text type="tertiary" size="small">命中行 {testResult.matchedRowIds.join(', ')}</Text>}
+              {!testResult.matched && testResult.reason === 'unique_conflict' && <Text type="danger" size="small">unique 策略要求唯一命中，实际命中多行：{testResult.matchedRowIds.join(', ')}</Text>}
+              {!testResult.matched && testResult.reason === 'any_conflict' && <Text type="danger" size="small">any 策略要求多命中行输出一致，冲突行：{testResult.matchedRowIds.join(', ')}</Text>}
               <Button size="small" theme="borderless" icon={<Save size={14} />} loading={saveCurrentTestAsCaseMutation.isPending} onClick={saveCurrentTestAsCase}>保存为用例</Button>
             </Space>
             <pre style={{ margin: '8px 0 0', whiteSpace: 'pre-wrap' }}>{sample(testResult.outputs, null, 2)}</pre>

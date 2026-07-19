@@ -64,11 +64,11 @@ export function evaluateDecisionTable(table: DecisionTableLike, scope: Record<st
   const colValues = table.inputs.map((col) => evaluateExpression(col.expr, scope));
   const matched = table.rules.filter((row) => rowMatches(row, table.inputs, colValues));
   const empty: RuleEvaluateResult = { matched: false, outputs: {}, matchedRowIds: [], hitPolicy: table.hitPolicy };
-  if (matched.length === 0) return empty;
+  if (matched.length === 0) return { ...empty, reason: 'no_match' };
 
   switch (table.hitPolicy) {
     case 'unique':
-      if (matched.length > 1) return { ...empty, matchedRowIds: matched.map((r) => r.id) };
+      if (matched.length > 1) return { ...empty, matchedRowIds: matched.map((r) => r.id), reason: 'unique_conflict' };
       return { matched: true, outputs: buildOutputs(matched[0], table.outputs), matchedRowIds: [matched[0].id], hitPolicy: 'unique' };
     case 'priority': {
       const top = [...matched].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))[0];
@@ -76,8 +76,16 @@ export function evaluateDecisionTable(table: DecisionTableLike, scope: Record<st
     }
     case 'collect':
       return { matched: true, outputs: buildOutputs(matched[0], table.outputs), matchedRowIds: matched.map((r) => r.id), hitPolicy: 'collect', collected: matched.map((r) => buildOutputs(r, table.outputs)) };
+    case 'any': {
+      // DMN ANY 语义：允许多命中，但所有命中行输出必须一致，否则视为冲突
+      const all = matched.map((r) => buildOutputs(r, table.outputs));
+      const head = JSON.stringify(all[0]);
+      if (all.some((o) => JSON.stringify(o) !== head)) {
+        return { ...empty, matchedRowIds: matched.map((r) => r.id), reason: 'any_conflict' };
+      }
+      return { matched: true, outputs: all[0], matchedRowIds: matched.map((r) => r.id), hitPolicy: 'any' };
+    }
     case 'first':
-    case 'any':
     default:
       return { matched: true, outputs: buildOutputs(matched[0], table.outputs), matchedRowIds: [matched[0].id], hitPolicy: table.hitPolicy };
   }

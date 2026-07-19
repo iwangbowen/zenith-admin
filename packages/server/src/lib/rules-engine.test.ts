@@ -30,6 +30,36 @@ describe('evaluateDecisionTable', () => {
     const t = { ...table, rules: [{ id: 'r', when: ['10-20'], then: { level: 'mid' } }] };
     expect(evaluateDecisionTable(t, { form: { amount: 15 } }).matched).toBe(true);
     expect(evaluateDecisionTable(t, { form: { amount: 99 } }).matched).toBe(false);
+    expect(evaluateDecisionTable(t, { form: { amount: 99 } }).reason).toBe('no_match');
+  });
+  it('unique policy conflicts on multi-hit', () => {
+    const t = { ...table, hitPolicy: 'unique' as const, rules: [
+      { id: 'a', when: ['>= 1'], then: { level: 'x' } },
+      { id: 'b', when: ['>= 2'], then: { level: 'y' } },
+    ] };
+    const res = evaluateDecisionTable(t, { form: { amount: 5 } });
+    expect(res.matched).toBe(false);
+    expect(res.reason).toBe('unique_conflict');
+    expect(res.matchedRowIds).toEqual(['a', 'b']);
+    expect(evaluateDecisionTable(t, { form: { amount: 1.5 } }).matched).toBe(true);
+  });
+  it('any policy requires consistent outputs', () => {
+    const outputs = [{ key: 'level', label: 'l', type: 'string' as const }];
+    const consistent = { ...table, hitPolicy: 'any' as const, outputs, rules: [
+      { id: 'a', when: ['>= 1'], then: { level: 'same' } },
+      { id: 'b', when: ['>= 2'], then: { level: 'same' } },
+    ] };
+    const okRes = evaluateDecisionTable(consistent, { form: { amount: 5 } });
+    expect(okRes.matched).toBe(true);
+    expect(okRes.outputs.level).toBe('same');
+    expect(okRes.matchedRowIds).toEqual(['a', 'b']);
+    const conflict = { ...consistent, rules: [
+      { id: 'a', when: ['>= 1'], then: { level: 'x' } },
+      { id: 'b', when: ['>= 2'], then: { level: 'y' } },
+    ] };
+    const bad = evaluateDecisionTable(conflict, { form: { amount: 5 } });
+    expect(bad.matched).toBe(false);
+    expect(bad.reason).toBe('any_conflict');
   });
 });
 

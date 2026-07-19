@@ -9,6 +9,7 @@ export const mockDecisionTables: RuleDecisionTable[] = SEED_DECISION_TABLES.map(
   status: 'draft',
   version: 1,
   publishedAt: null,
+  dirty: false,
   createdAt: mockDateTime(),
   updatedAt: mockDateTime(),
 }));

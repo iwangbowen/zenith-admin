@@ -9962,6 +9962,8 @@ export interface RuleDecisionTable {
   rules: RuleDecisionRow[];
   version: number;
   publishedAt?: string | null;
+  /** 当前编辑态与最新发布快照不一致（有未发布修改） */
+  dirty?: boolean;
   createdAt: string;
   updatedAt: string;
   createdBy?: number | null;
@@ -9980,12 +9982,17 @@ export interface RuleDecisionTableVersion {
   publishedBy?: number | null;
   publishedByName?: string | null;
 }
+/** 求值未命中/冲突原因：no_match=无行命中；unique_conflict=唯一命中策略下命中多行；any_conflict=any 策略下多行输出不一致 */
+export type RuleEvaluateReason = 'no_match' | 'unique_conflict' | 'any_conflict';
+
 export interface RuleEvaluateResult {
   matched: boolean;
   outputs: Record<string, unknown>;
   matchedRowIds: string[];
   hitPolicy: RuleHitPolicy;
   collected?: Array<Record<string, unknown>>;
+  /** matched 为 false 时的原因 */
+  reason?: RuleEvaluateReason;
 }
 
 // ─── 规则中心：版本 diff ─────────────────────────────────────────────────────────

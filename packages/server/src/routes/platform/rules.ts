@@ -6,12 +6,12 @@ import {
   ok, okPaginated, okMsg, IdParam, okBody, BatchIdsBody,
 } from '../../lib/openapi-schemas';
 import { DecisionTableDTO, DecisionTableVersionDTO, RuleEvaluateResultDTO, RuleVersionDiffDTO, RuleTestCaseDTO, RuleTestRunResultDTO, RuleExecutionDTO } from '../../lib/openapi-dtos';
-import { createDecisionTableSchema, updateDecisionTableSchema, createRuleTestCaseSchema, updateRuleTestCaseSchema } from '@zenith/shared';
+import { createDecisionTableSchema, updateDecisionTableSchema, createRuleTestCaseSchema, updateRuleTestCaseSchema, toggleDecisionTableSchema } from '@zenith/shared';
 import {
   listDecisionTables, getDecisionTable, getDecisionTableBeforeAudit,
   createDecisionTable, updateDecisionTable, deleteDecisionTable, deleteDecisionTables,
   publishDecisionTable, listDecisionTableVersions, evaluateDecisionTableByKey, testEvaluateDecisionTable,
-  diffDecisionTableVersions, rollbackDecisionTable,
+  diffDecisionTableVersions, rollbackDecisionTable, toggleDecisionTable,
   listTestCases, createTestCase, updateTestCase, deleteTestCase, runTestCases, listDecisionExecutions,
 } from '../../services/platform/rules.service';
 
@@ -165,6 +165,23 @@ const publishRoute = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await publishDecisionTable(c.req.valid('param').id), '发布成功'), 200),
 });
 
+const toggleRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/toggle', tags: ['DecisionTables'], summary: '启用/停用决策表',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'rule:table:publish', audit: { description: '启用/停用决策表', module: '规则中心' } })] as const,
+    request: { params: IdParam, body: { content: jsonContent(toggleDecisionTableSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(DecisionTableDTO, '操作成功') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const { enabled } = c.req.valid('json');
+    const before = await getDecisionTableBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
+    return c.json(okBody(await toggleDecisionTable(id, enabled), enabled ? '已启用' : '已停用'), 200);
+  },
+});
+
 const testRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/{id}/test', tags: ['DecisionTables'], summary: '测试求值（编辑态）',
@@ -226,6 +243,6 @@ const executionsRoute = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await listDecisionExecutions(c.req.valid('query'))), 200),
 });
 
-router.openapiRoutes([listRoute, executionsRoute, getRoute, versionsRoute, diffRoute, rollbackRoute, casesRoute, caseCreateRoute, caseRunRoute, caseUpdateRoute, caseDeleteRoute, createRouteDef, updateRoute, publishRoute, testRoute, evaluateRoute, batchDeleteRoute, deleteRoute] as const);
+router.openapiRoutes([listRoute, executionsRoute, getRoute, versionsRoute, diffRoute, rollbackRoute, casesRoute, caseCreateRoute, caseRunRoute, caseUpdateRoute, caseDeleteRoute, createRouteDef, updateRoute, publishRoute, toggleRoute, testRoute, evaluateRoute, batchDeleteRoute, deleteRoute] as const);
 
 export default router;
