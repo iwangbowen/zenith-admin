@@ -569,13 +569,13 @@ export default function ContentEditPage() {
                   <Row gutter={12}>
                     <Col span={12}>
                       <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginBottom: 4 }}>v{diffVersion?.version ?? ''}（历史版本）</div>
-                      <pre style={{ margin: 0, padding: 8, background: 'var(--semi-color-danger-light-default)', borderRadius: 4, whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 12, maxHeight: 200, overflow: 'auto' }}>
+                      <pre style={{ margin: 0, padding: 8, background: 'var(--semi-color-danger-light-default)', borderRadius: 'var(--semi-border-radius-small)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 12, maxHeight: 200, overflow: 'auto' }}>
                         {diffValueText(d.before)}
                       </pre>
                     </Col>
                     <Col span={12}>
                       <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginBottom: 4 }}>当前内容</div>
-                      <pre style={{ margin: 0, padding: 8, background: 'var(--semi-color-success-light-default)', borderRadius: 4, whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 12, maxHeight: 200, overflow: 'auto' }}>
+                      <pre style={{ margin: 0, padding: 8, background: 'var(--semi-color-success-light-default)', borderRadius: 'var(--semi-border-radius-small)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 12, maxHeight: 200, overflow: 'auto' }}>
                         {diffValueText(d.after)}
                       </pre>
                     </Col>

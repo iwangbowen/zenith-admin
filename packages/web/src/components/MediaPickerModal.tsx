@@ -107,7 +107,7 @@ export function MediaPickerModal({ visible, onCancel, onSelect, imageOnly = true
                   style={{
                     cursor: 'pointer',
                     border: '1px solid var(--semi-color-border)',
-                    borderRadius: 6,
+                    borderRadius: 'var(--semi-border-radius-medium)',
                     padding: 0,
                     background: 'var(--semi-color-bg-1)',
                     overflow: 'hidden',

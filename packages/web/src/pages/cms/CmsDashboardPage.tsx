@@ -100,7 +100,7 @@ export default function CmsDashboardPage() {
                       width: '60%',
                       height: `${Math.max(2, Math.round((t.count / maxTrend) * 100))}px`,
                       background: t.count > 0 ? 'var(--semi-color-primary)' : 'var(--semi-color-fill-1)',
-                      borderRadius: 3,
+                      borderRadius: 'var(--semi-border-radius-small)',
                     }}
                   />
                   <span style={{ fontSize: 11, color: 'var(--semi-color-text-3)', whiteSpace: 'nowrap' }}>{t.date.slice(5)}</span>
@@ -134,8 +134,8 @@ export default function CmsDashboardPage() {
                       <span>{ch.channelName}</span>
                       <span style={{ color: 'var(--semi-color-text-2)' }}>{ch.count}</span>
                     </div>
-                    <div style={{ height: 8, background: 'var(--semi-color-fill-0)', borderRadius: 4, overflow: 'hidden' }}>
-                      <div style={{ width: `${Math.round((ch.count / maxChannel) * 100)}%`, height: '100%', background: 'var(--semi-color-primary)', borderRadius: 4 }} />
+                    <div style={{ height: 8, background: 'var(--semi-color-fill-0)', borderRadius: 'var(--semi-border-radius-small)', overflow: 'hidden' }}>
+                      <div style={{ width: `${Math.round((ch.count / maxChannel) * 100)}%`, height: '100%', background: 'var(--semi-color-primary)', borderRadius: 'var(--semi-border-radius-small)' }} />
                     </div>
                   </div>
                 ))
