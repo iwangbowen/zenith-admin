@@ -42,6 +42,9 @@ export async function getEnabledLinkWords(siteId: number): Promise<CmsLinkWordRo
 export function applyLinkWords(html: string, words: Pick<CmsLinkWordRow, 'keyword' | 'url' | 'maxReplaces'>[]): string {
   if (!html || words.length === 0) return html;
   const budgets = new Map(words.map((w) => [w.keyword, w.maxReplaces]));
+  // URL 进入 href 属性上下文，必须转义防注入；命中的关键词文本保持原样（源 HTML 已是安全文本节点）
+  const escapeAttr = (s: string) =>
+    s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
   const parts = html.split(/(<[^>]+>)/g);
   let skipDepth = 0; // 处于 <a>/<script>/<style> 内部的层级
   const out = parts.map((part) => {
@@ -61,7 +64,7 @@ export function applyLinkWords(html: string, words: Pick<CmsLinkWordRow, 'keywor
       while (budget > 0) {
         const idx = text.indexOf(w.keyword, cursor);
         if (idx < 0) break;
-        const anchor = `<a href="${w.url}" class="cms-link-word">${w.keyword}</a>`;
+        const anchor = `<a href="${escapeAttr(w.url)}" class="cms-link-word">${w.keyword}</a>`;
         text = text.slice(0, idx) + anchor + text.slice(idx + w.keyword.length);
         cursor = idx + anchor.length;
         budget -= 1;

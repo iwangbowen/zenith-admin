@@ -1,13 +1,40 @@
 import { eq, asc, and, like, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import { cmsRedirects } from '../../db/schema';
+import { cmsRedirects, cmsSites } from '../../db/schema';
 import type { CmsRedirectRow } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
 import { mergeWhere, escapeLike, withPagination } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { assertSiteAccess } from './cms-sites.service';
 import type { CreateCmsRedirectInput, UpdateCmsRedirectInput } from '@zenith/shared';
+
+// ─── 开放重定向防护 ────────────────────────────────────────────────────────────
+/** 目标地址是否可信：站内相对路径，或域名属于本系统任一站点（站群互跳） */
+async function isTrustedRedirectTarget(toUrl: string): Promise<boolean> {
+  if (toUrl.startsWith('/') && !toUrl.startsWith('//')) return true;
+  let parsed: URL;
+  try {
+    parsed = new URL(toUrl);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+  const rows = await db.select({ domain: cmsSites.domain, aliasDomains: cmsSites.aliasDomains }).from(cmsSites);
+  const trusted = new Set<string>();
+  for (const row of rows) {
+    if (row.domain) trusted.add(row.domain.toLowerCase());
+    for (const alias of row.aliasDomains ?? []) trusted.add(alias.toLowerCase());
+  }
+  return trusted.has(parsed.hostname.toLowerCase());
+}
+
+/** 创建/更新前校验目标地址，防止配置为任意外域形成钓鱼跳板 */
+async function assertTrustedRedirectTarget(toUrl: string): Promise<void> {
+  if (!(await isTrustedRedirectTarget(toUrl))) {
+    throw new HTTPException(400, { message: '目标地址仅允许站内路径（/ 开头）或本系统站点域名的完整 URL' });
+  }
+}
 
 // ─── 前台匹配缓存（30s 内存缓存，写操作后失效）─────────────────────────────────
 let redirectCache: { bySite: Map<number, Map<string, CmsRedirectRow>>; loadedAt: number } | null = null;
@@ -30,12 +57,14 @@ async function getRedirectCache() {
   return redirectCache;
 }
 
-/** 前台路由：解析站内路径是否命中重定向规则 */
+/** 前台路由：解析站内路径是否命中重定向规则（目标地址二次校验兜底，防历史脏数据外跳） */
 export async function resolveRedirect(siteId: number, path: string): Promise<{ toUrl: string; type: number } | null> {
   const cache = await getRedirectCache();
   const normalized = path.startsWith('/') ? path : `/${path}`;
   const hit = cache.bySite.get(siteId)?.get(normalized);
-  return hit ? { toUrl: hit.toUrl, type: hit.redirectType } : null;
+  if (!hit) return null;
+  if (!(await isTrustedRedirectTarget(hit.toUrl))) return null;
+  return { toUrl: hit.toUrl, type: hit.redirectType };
 }
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
@@ -85,6 +114,7 @@ export async function listCmsRedirects(q: ListCmsRedirectsQuery) {
 
 export async function createCmsRedirect(data: CreateCmsRedirectInput) {
   await assertSiteAccess(data.siteId);
+  await assertTrustedRedirectTarget(data.toUrl);
   try {
     const [row] = await db.insert(cmsRedirects).values(data).returning();
     invalidateRedirectCache();
@@ -97,6 +127,7 @@ export async function createCmsRedirect(data: CreateCmsRedirectInput) {
 export async function updateCmsRedirect(id: number, data: UpdateCmsRedirectInput) {
   const current = await ensureCmsRedirectExists(id);
   await assertSiteAccess(current.siteId);
+  if (data.toUrl !== undefined) await assertTrustedRedirectTarget(data.toUrl);
   try {
     const [row] = await db.update(cmsRedirects).set(data).where(eq(cmsRedirects.id, id)).returning();
     invalidateRedirectCache();

@@ -99,6 +99,13 @@ export function registerCmsWorkflowSubscribers(): void {
     onApproved: async (instance) => {
       const contentId = Number(instance.bizId);
       try {
+        // 复验内容当前状态：长周期流程通过时内容可能已被回收/驳回/下线，仅待审状态才自动发布
+        const [current] = await db.select({ status: cmsContents.status, deletedAt: cmsContents.deletedAt })
+          .from(cmsContents).where(eq(cmsContents.id, contentId)).limit(1);
+        if (!current || current.deletedAt || current.status !== 'pending') {
+          logger.warn(`[cms-workflow] 内容 #${contentId} 流程通过但当前状态不可发布（status=${current?.status ?? '不存在'}），跳过自动发布`);
+          return;
+        }
         const { publishCmsContent } = await import('./cms-contents.service');
         await publishCmsContent(contentId, { fromWorkflow: true });
         const { triggerContentStaticRefresh } = await import('./cms-static.service');

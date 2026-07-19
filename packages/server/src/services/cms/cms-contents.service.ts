@@ -145,6 +145,14 @@ async function collectSearchableExtendTexts(modelId: number | null | undefined, 
     .filter((v): v is string => typeof v === 'string' && v.trim() !== '');
 }
 
+/** 单条 SQL 重算标签冗余计数（关联子查询，避免逐标签 COUNT 的 N+1 与竞态） */
+async function recalcTagContentCounts(executor: DbExecutor, tagIds: number[]): Promise<void> {
+  if (tagIds.length === 0) return;
+  await executor.update(cmsTags)
+    .set({ contentCount: sql<number>`(select count(*)::int from ${cmsContentTags} where ${cmsContentTags.tagId} = ${cmsTags.id})` })
+    .where(inArray(cmsTags.id, [...new Set(tagIds)]));
+}
+
 /** 先删后插替换内容标签，并重算受影响标签的 contentCount */
 async function setContentTags(executor: DbExecutor, contentId: number, siteId: number, tagIds: number[]): Promise<void> {
   const previous = await executor.select({ tagId: cmsContentTags.tagId }).from(cmsContentTags).where(eq(cmsContentTags.contentId, contentId));
@@ -157,12 +165,7 @@ async function setContentTags(executor: DbExecutor, contentId: number, siteId: n
     }
     await executor.insert(cmsContentTags).values(tagIds.map((tagId) => ({ contentId, tagId })));
   }
-  const affected = [...new Set([...previous.map((p) => p.tagId), ...tagIds])];
-  for (const tagId of affected) {
-    await executor.update(cmsTags)
-      .set({ contentCount: await executor.$count(cmsContentTags, eq(cmsContentTags.tagId, tagId)) })
-      .where(eq(cmsTags.id, tagId));
-  }
+  await recalcTagContentCounts(executor, [...previous.map((p) => p.tagId), ...tagIds]);
 }
 
 /** 校验栏目归属与类型（内容只能挂在本站点的列表栏目下） */
@@ -349,11 +352,7 @@ export async function purgeCmsContents(ids: number[]) {
   await db.transaction(async (tx) => {
     const tagRows = await tx.select({ tagId: cmsContentTags.tagId }).from(cmsContentTags).where(inArray(cmsContentTags.contentId, targetIds));
     await tx.delete(cmsContents).where(inArray(cmsContents.id, targetIds));
-    for (const tagId of [...new Set(tagRows.map((t) => t.tagId))]) {
-      await tx.update(cmsTags)
-        .set({ contentCount: await tx.$count(cmsContentTags, eq(cmsContentTags.tagId, tagId)) })
-        .where(eq(cmsTags.id, tagId));
-    }
+    await recalcTagContentCounts(tx, tagRows.map((t) => t.tagId));
   });
   return targetIds.length;
 }
@@ -454,21 +453,23 @@ export async function listPublishedContentsByTag(siteId: number, tagId: number, 
   return { total, rows };
 }
 
-/** 批量移动栏目（目标须为本站点列表栏目；重算 modelId） */
+/** 批量移动栏目（目标须为本站点列表栏目；重算 modelId；事务保证读写一致） */
 export async function batchMoveCmsContents(ids: number[], channelId: number): Promise<number> {
   if (ids.length === 0) return 0;
   await assertBatchSiteAccess(ids);
-  const rows = await db.select({ id: cmsContents.id, siteId: cmsContents.siteId }).from(cmsContents).where(inArray(cmsContents.id, ids));
-  const siteIds = new Set(rows.map((r) => r.siteId));
-  if (siteIds.size > 1) throw new HTTPException(400, { message: '仅支持同站点内容批量移动' });
-  const siteId = [...siteIds][0];
-  if (siteId === undefined) return 0;
-  const channel = await ensureChannelForContent(siteId, channelId);
-  const updated = await db.update(cmsContents)
-    .set({ channelId, modelId: channel.modelId ?? null })
-    .where(inArray(cmsContents.id, rows.map((r) => r.id)))
-    .returning({ id: cmsContents.id });
-  return updated.length;
+  return db.transaction(async (tx) => {
+    const rows = await tx.select({ id: cmsContents.id, siteId: cmsContents.siteId }).from(cmsContents).where(inArray(cmsContents.id, ids));
+    const siteIds = new Set(rows.map((r) => r.siteId));
+    if (siteIds.size > 1) throw new HTTPException(400, { message: '仅支持同站点内容批量移动' });
+    const siteId = [...siteIds][0];
+    if (siteId === undefined) return 0;
+    const channel = await ensureChannelForContent(siteId, channelId);
+    const updated = await tx.update(cmsContents)
+      .set({ channelId, modelId: channel.modelId ?? null })
+      .where(inArray(cmsContents.id, rows.map((r) => r.id)))
+      .returning({ id: cmsContents.id });
+    return updated.length;
+  });
 }
 
 /** 批量设置属性（置顶/推荐/热门，仅更新传入的字段） */
@@ -501,11 +502,7 @@ export async function batchAddCmsContentTags(ids: number[], tagIds: number[]): P
           .onConflictDoNothing();
       }
     }
-    for (const tagId of tagIds) {
-      await tx.update(cmsTags)
-        .set({ contentCount: await tx.$count(cmsContentTags, eq(cmsContentTags.tagId, tagId)) })
-        .where(eq(cmsTags.id, tagId));
-    }
+    await recalcTagContentCounts(tx, tagIds);
   });
   return rows.length;
 }
@@ -546,54 +543,52 @@ export async function duplicateCmsContent(id: number) {
     }).returning();
     if (tagRows.length > 0) {
       await tx.insert(cmsContentTags).values(tagRows.map((t) => ({ contentId: created.id, tagId: t.tagId })));
-      for (const t of tagRows) {
-        await tx.update(cmsTags)
-          .set({ contentCount: await tx.$count(cmsContentTags, eq(cmsContentTags.tagId, t.tagId)) })
-          .where(eq(cmsTags.id, t.tagId));
-      }
+      await recalcTagContentCounts(tx, tagRows.map((t) => t.tagId));
     }
     return created;
   });
   return getCmsContent(row.id);
 }
 
-/** 站群内容分发：复制到目标站点栏目（草稿，标签不跨站复制） */
+/** 站群内容分发：复制到目标站点栏目（草稿，标签不跨站复制；事务保证全部成功或回滚） */
 export async function distributeCmsContents(ids: number[], targetSiteId: number, targetChannelId: number): Promise<number> {
   if (ids.length === 0) return 0;
   await assertBatchSiteAccess(ids);
   await assertSiteAccess(targetSiteId);
   const channel = await ensureChannelForContent(targetSiteId, targetChannelId);
   const rows = await db.select().from(cmsContents).where(inArray(cmsContents.id, ids));
-  let copied = 0;
-  for (const current of rows) {
-    if (current.siteId === targetSiteId) continue; // 同站分发无意义，跳过
-    await db.insert(cmsContents).values({
-      siteId: targetSiteId,
-      channelId: targetChannelId,
-      modelId: channel.modelId ?? null,
-      title: current.title,
-      slug: null,
-      summary: current.summary,
-      coverImage: current.coverImage,
-      author: current.author,
-      source: current.source,
-      body: current.body,
-      extend: current.extend ?? {},
-      externalLink: current.externalLink,
-      status: 'draft',
-      seoTitle: current.seoTitle,
-      seoKeywords: current.seoKeywords,
-      seoDescription: current.seoDescription,
-      searchVector: buildSearchVector({
+  return db.transaction(async (tx) => {
+    let copied = 0;
+    for (const current of rows) {
+      if (current.siteId === targetSiteId) continue; // 同站分发无意义，跳过
+      await tx.insert(cmsContents).values({
+        siteId: targetSiteId,
+        channelId: targetChannelId,
+        modelId: channel.modelId ?? null,
         title: current.title,
-        seoKeywords: current.seoKeywords,
+        slug: null,
         summary: current.summary,
+        coverImage: current.coverImage,
+        author: current.author,
+        source: current.source,
         body: current.body,
-      }),
-    });
-    copied += 1;
-  }
-  return copied;
+        extend: current.extend ?? {},
+        externalLink: current.externalLink,
+        status: 'draft',
+        seoTitle: current.seoTitle,
+        seoKeywords: current.seoKeywords,
+        seoDescription: current.seoDescription,
+        searchVector: buildSearchVector({
+          title: current.title,
+          seoKeywords: current.seoKeywords,
+          summary: current.summary,
+          body: current.body,
+        }),
+      });
+      copied += 1;
+    }
+    return copied;
+  });
 }
 
 /** 回收站自动清理：彻底删除进入回收站超过 N 天的内容（系统周期任务调用） */

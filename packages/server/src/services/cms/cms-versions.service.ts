@@ -1,4 +1,4 @@
-import { eq, desc, max } from 'drizzle-orm';
+import { eq, desc, max, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { cmsContentVersions, cmsContents } from '../../db/schema';
@@ -46,17 +46,13 @@ export async function snapshotContentVersion(executor: DbExecutor, row: CmsConte
     snapshot: buildContentSnapshot(row),
     remark,
   });
-  // 裁剪最旧版本
-  const stale = await executor.select({ id: cmsContentVersions.id })
+  // 裁剪最旧版本（单条 DELETE 子查询，避免逐条删除）
+  const staleIds = executor.select({ id: cmsContentVersions.id })
     .from(cmsContentVersions)
     .where(eq(cmsContentVersions.contentId, row.id))
     .orderBy(desc(cmsContentVersions.version))
     .offset(MAX_VERSIONS);
-  if (stale.length > 0) {
-    for (const s of stale) {
-      await executor.delete(cmsContentVersions).where(eq(cmsContentVersions.id, s.id));
-    }
-  }
+  await executor.delete(cmsContentVersions).where(inArray(cmsContentVersions.id, staleIds));
 }
 
 export function mapCmsContentVersion(row: CmsContentVersionRow, createdByName?: string | null) {
