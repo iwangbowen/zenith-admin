@@ -112,7 +112,11 @@ const submitRoute = defineOpenAPIRoute({
     request: { params: IdParam },
     responses: { ...commonErrorResponses, ...ok(CmsContentDTO, '已提交审核') },
   }),
-  handler: async (c) => c.json(okBody(await submitCmsContent(c.req.valid('param').id), '已提交审核'), 200),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    setAuditBeforeData(c, { ...await getCmsContent(id), body: undefined });
+    return c.json(okBody(await submitCmsContent(id), '已提交审核'), 200);
+  },
 });
 
 const publishRoute = defineOpenAPIRoute({
@@ -126,6 +130,7 @@ const publishRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    setAuditBeforeData(c, { ...await getCmsContent(id), body: undefined });
     const row = await publishCmsContent(id);
     triggerContentStaticRefresh(id);
     triggerAutoPushForContent(id);
@@ -148,6 +153,7 @@ const rejectRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const { reason } = c.req.valid('json');
+    setAuditBeforeData(c, { ...await getCmsContent(id), body: undefined });
     return c.json(okBody(await rejectCmsContent(id, reason), '已驳回'), 200);
   },
 });
@@ -163,6 +169,7 @@ const offlineRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    setAuditBeforeData(c, { ...await getCmsContent(id), body: undefined });
     const row = await offlineCmsContent(id);
     triggerContentStaticRefresh(id);
     return c.json(okBody(row, '已下线'), 200);

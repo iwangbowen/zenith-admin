@@ -250,6 +250,34 @@ export const CmsPreviewLinkDTO = z
   })
   .openapi('CmsPreviewLink');
 
+export const CmsDashboardStatsDTO = z
+  .object({
+    totals: z.object({
+      published: z.number().int(),
+      draft: z.number().int(),
+      pending: z.number().int(),
+      offline: z.number().int(),
+      rejected: z.number().int(),
+      recycled: z.number().int(),
+    }),
+    pendingComments: z.number().int(),
+    todayPublished: z.number().int(),
+    totalViews: z.number().int(),
+    publishTrend: z.array(z.object({ date: z.string(), count: z.number().int() })),
+    topViewed: z.array(z.object({
+      id: z.number().int(),
+      title: z.string(),
+      viewCount: z.number().int(),
+      channelName: z.string().nullable(),
+    })),
+    channelDistribution: z.array(z.object({
+      channelId: z.number().int(),
+      channelName: z.string(),
+      count: z.number().int(),
+    })),
+  })
+  .openapi('CmsDashboardStats');
+
 export const CmsRedirectDTO = z
   .object({
     id: z.number().int(),

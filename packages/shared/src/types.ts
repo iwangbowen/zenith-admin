@@ -10433,6 +10433,24 @@ export interface CmsContentVersionDiff {
   after: unknown;
 }
 
+/** CMS 数据看板统计 */
+export interface CmsDashboardStats {
+  totals: {
+    published: number;
+    draft: number;
+    pending: number;
+    offline: number;
+    rejected: number;
+    recycled: number;
+  };
+  pendingComments: number;
+  todayPublished: number;
+  totalViews: number;
+  publishTrend: { date: string; count: number }[];
+  topViewed: { id: number; title: string; viewCount: number; channelName: string | null }[];
+  channelDistribution: { channelId: number; channelName: string; count: number }[];
+}
+
 export interface CmsFragment {
   id: number;
   siteId: number;

@@ -16,10 +16,42 @@ import { generateRssXml, findChannelByPath } from '../../services/cms/cms-render
 
 const PAGE_CACHE_PREFIX = `${config.redis.keyPrefix}cms:page:`;
 const SITEMAP_CACHE_PREFIX = `${config.redis.keyPrefix}cms:sitemap:`;
-const PAGE_CACHE_TTL_SECONDS = 60;
 const SITEMAP_CACHE_TTL_SECONDS = 600;
 
+/** dynamic 模式 Redis 页面缓存 TTL：按页面类型分级（详情最长，搜索最短） */
+const PAGE_CACHE_TTL_BY_KIND: Record<string, number> = {
+  home: 300,
+  list: 180,
+  page: 300,
+  detail: 600,
+};
+const PAGE_CACHE_TTL_DEFAULT_SECONDS = 60;
+
 const HTML_HEADERS = { 'Content-Type': 'text/html; charset=utf-8' } as const;
+
+/** 弱 ETag（FNV-1a 哈希，CDN/浏览器协商缓存用） */
+function weakEtag(html: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < html.length; i++) {
+    hash ^= html.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `W/"${(hash >>> 0).toString(16)}-${html.length.toString(16)}"`;
+}
+
+/** HTML 响应：附带 ETag/Cache-Control，If-None-Match 命中返回 304 */
+function htmlResponse(c: Context, html: string, cacheSeconds: number, extraHeaders?: Record<string, string>) {
+  const etag = weakEtag(html);
+  if (c.req.header('if-none-match') === etag) {
+    return c.newResponse(null, 304, { ETag: etag });
+  }
+  return c.newResponse(html, 200, {
+    ...HTML_HEADERS,
+    ETag: etag,
+    'Cache-Control': cacheSeconds > 0 ? `public, max-age=${cacheSeconds}` : 'no-cache',
+    ...extraHeaders,
+  });
+}
 
 interface ResolvedTarget {
   site: CmsSiteRow;
@@ -140,7 +172,7 @@ export function createCmsFrontendRoutes(): Hono {
     if (!isPreview && site.staticMode !== 'dynamic' && (sitePath === '' || sitePath.endsWith('/') || sitePath.endsWith('.html'))) {
       const cached = await readStaticFile(site.code, sitePath);
       if (cached !== null) {
-        return c.newResponse(cached, 200, { ...HTML_HEADERS, 'X-Cms-Cache': 'static' });
+        return htmlResponse(c, cached, PAGE_CACHE_TTL_DEFAULT_SECONDS, { 'X-Cms-Cache': 'static' });
       }
     }
 
@@ -149,13 +181,14 @@ export function createCmsFrontendRoutes(): Hono {
     if (!isPreview && site.staticMode === 'dynamic') {
       const cached = await redis.get(cacheKey).catch(() => null);
       if (cached) {
-        return c.newResponse(cached, 200, { ...HTML_HEADERS, 'X-Cms-Cache': 'redis' });
+        return htmlResponse(c, cached, PAGE_CACHE_TTL_DEFAULT_SECONDS, { 'X-Cms-Cache': 'redis' });
       }
     }
 
     // SSR 渲染
     const result = await renderSitePath(site, baseUrl, sitePath);
     if (result.status === 200) {
+      const ttl = PAGE_CACHE_TTL_BY_KIND[result.kind] ?? PAGE_CACHE_TTL_DEFAULT_SECONDS;
       if (!isPreview && site.staticMode === 'hybrid') {
         // 混合模式：miss 即渲染并回写，下次直接命中静态文件
         void writeStaticFile(site.code, sitePath, result.html).catch((err) => {
@@ -163,7 +196,10 @@ export function createCmsFrontendRoutes(): Hono {
         });
       }
       if (!isPreview && site.staticMode === 'dynamic') {
-        redis.setex(cacheKey, PAGE_CACHE_TTL_SECONDS, result.html).catch(() => undefined);
+        redis.setex(cacheKey, ttl, result.html).catch(() => undefined);
+      }
+      if (!isPreview) {
+        return htmlResponse(c, result.html, ttl);
       }
     }
     return respond(c, result);

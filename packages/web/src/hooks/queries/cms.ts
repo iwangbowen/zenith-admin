@@ -5,7 +5,7 @@ import type {
   CmsContentVersion, CmsRedirect, CmsLinkWord, CmsComment, CmsCommentStatus,
   CmsAdSlot, CmsAd, CmsForm, CmsFormSubmission, CmsSensitiveWord, CmsPushLog,
   CmsSearchWord, CmsHotKeyword, CmsCollectRule, CmsCollectItem, CmsPage,
-  CmsEditLock, CmsPreviewLink, CmsContentVersionDiff,
+  CmsEditLock, CmsPreviewLink, CmsContentVersionDiff, CmsDashboardStats,
 } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { toQueryString, unwrap, LOOKUP_STALE_TIME } from '@/lib/query';
@@ -481,6 +481,21 @@ export function useCmsPreviewLink() {
   return useMutation({
     mutationFn: (contentId: number) =>
       request.post<CmsPreviewLink>(`/api/cms/contents/${contentId}/preview-link`, {}).then(unwrap),
+  });
+}
+
+// ─── 数据看板 ─────────────────────────────────────────────────────────────────
+export const cmsDashboardKeys = {
+  all: ['cms-dashboard'] as const,
+  stats: (siteId: number | undefined) => ['cms-dashboard', 'stats', siteId] as const,
+};
+
+export function useCmsDashboardStats(siteId: number | undefined) {
+  return useQuery({
+    queryKey: cmsDashboardKeys.stats(siteId),
+    queryFn: () => request.get<CmsDashboardStats>(`/api/cms/dashboard/stats?siteId=${siteId}`).then(unwrap),
+    enabled: siteId !== undefined,
+    refetchInterval: 60_000,
   });
 }
 

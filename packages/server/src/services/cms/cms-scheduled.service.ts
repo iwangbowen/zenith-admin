@@ -6,7 +6,8 @@ import redis from '../../lib/redis';
 import logger from '../../lib/logger';
 import { refreshContentStatic } from './cms-static.service';
 import { triggerAutoPushForContent } from './cms-push.service';
-import { offlineExpiredCmsContents } from './cms-contents.service';
+import { offlineExpiredCmsContents, flushViewCountBuffer } from './cms-contents.service';
+import { triggerCmsContentWebhook } from './cms-webhook.service';
 
 const LOCK_KEY = `${config.redis.keyPrefix}cms:scheduled-publish-lock`;
 const LOCK_TTL_SECONDS = 300;
@@ -50,6 +51,7 @@ export async function publishScheduledCmsContents(): Promise<string> {
           logger.error(`[CMS] 定时发布内容 ${row.id} 静态化失败`, err);
         });
         triggerAutoPushForContent(row.id);
+        triggerCmsContentWebhook('content.published', row.id);
       } catch (err) {
         logger.error(`[CMS] 定时发布内容 ${row.id} 失败`, err);
       }
@@ -61,10 +63,17 @@ export async function publishScheduledCmsContents(): Promise<string> {
       await refreshContentStatic(id).catch((err) => {
         logger.error(`[CMS] 过期下线内容 ${id} 静态刷新失败`, err);
       });
+      triggerCmsContentWebhook('content.offline', id);
     }
 
-    if (due.length === 0 && expiredIds.length === 0) return '无到期的定时发布/过期内容';
-    return `定时发布 ${published}/${due.length} 条，过期下线 ${expiredIds.length} 条`;
+    // 浏览计数缓冲落库
+    const flushed = await flushViewCountBuffer().catch((err) => {
+      logger.error('[CMS] 浏览计数落库失败', err);
+      return 0;
+    });
+
+    if (due.length === 0 && expiredIds.length === 0 && flushed === 0) return '无到期的定时发布/过期内容';
+    return `定时发布 ${published}/${due.length} 条，过期下线 ${expiredIds.length} 条，浏览计数落库 ${flushed} 条`;
   } finally {
     await redis.del(LOCK_KEY).catch(() => undefined);
   }

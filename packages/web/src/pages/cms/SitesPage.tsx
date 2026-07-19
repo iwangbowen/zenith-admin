@@ -139,6 +139,8 @@ export default function SitesPage() {
         watermarkOpacity: Number((editingRecord.settings as Record<string, unknown>)?.watermarkOpacity ?? 45),
         thumbEnabled: (editingRecord.settings as Record<string, unknown>)?.thumbEnabled === true,
         thumbWidth: Number((editingRecord.settings as Record<string, unknown>)?.thumbWidth ?? 400),
+        webhookUrl: String((editingRecord.settings as Record<string, unknown>)?.webhookUrl ?? ''),
+        webhookSecret: String((editingRecord.settings as Record<string, unknown>)?.webhookSecret ?? ''),
       }
     : {
         theme: 'default', staticMode: 'hybrid', status: 'enabled', isDefault: false, aliasDomains: [],
@@ -159,6 +161,7 @@ export default function SitesPage() {
       baiduPushToken, indexNowKey, themePrimary, themeDark,
       imageMaxWidth, watermarkEnabled, watermarkText, watermarkPosition, watermarkOpacity, thumbEnabled, thumbWidth,
       auditMode, auditWorkflowDefinitionId,
+      webhookUrl, webhookSecret,
       ...rest
     } = values;
     rest.settings = {
@@ -176,6 +179,8 @@ export default function SitesPage() {
       thumbWidth: Number(thumbWidth ?? 400),
       auditMode: auditMode ?? 'simple',
       auditWorkflowDefinitionId: auditWorkflowDefinitionId ?? null,
+      webhookUrl: String(webhookUrl ?? '').trim(),
+      webhookSecret: String(webhookSecret ?? '').trim(),
     };
     await saveMutation.mutateAsync({ id: editingRecord?.id, values: rest });
     Toast.success(editingRecord ? '更新成功' : '创建成功');
@@ -406,6 +411,16 @@ export default function SitesPage() {
               </Col>
               <Col span={12}>
                 <Form.Input field="indexNowKey" label="IndexNow Key" placeholder="Bing 等引擎；key 文件自动托管" />
+              </Col>
+            </Row>
+          </Form.Section>
+          <Form.Section text="Webhook（内容发布/下线/回收时向外部系统推送事件）">
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Input field="webhookUrl" label="回调地址" placeholder="https://... 留空不推送" />
+              </Col>
+              <Col span={12}>
+                <Form.Input field="webhookSecret" label="签名密钥" placeholder="可选；请求头 X-Cms-Signature 携带 HMAC-SHA256 签名" />
               </Col>
             </Row>
           </Form.Section>

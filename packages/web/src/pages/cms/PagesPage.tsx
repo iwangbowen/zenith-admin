@@ -6,7 +6,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, RotateCcw, Plus, ArrowUp, ArrowDown, Trash2, Pencil, ExternalLink, ChevronDown } from 'lucide-react';
+import { Search, RotateCcw, Plus, ArrowUp, ArrowDown, Trash2, Pencil, ExternalLink, ChevronDown, GripVertical, RefreshCw } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -76,6 +76,10 @@ export default function PagesPage() {
   // 区块编辑
   const [blockModal, setBlockModal] = useState<{ block: CmsPageBlock; index: number } | null>(null);
   const blockFormApi = useRef<FormApi | null>(null);
+  // 拖拽排序 + 内嵌预览
+  const dragIndexRef = useRef<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [previewEpoch, setPreviewEpoch] = useState(0);
 
   useEffect(() => {
     if (builderVisible) setBlocks(editingPage?.blocks ?? []);
@@ -121,6 +125,17 @@ export default function PagesPage() {
     });
   }
 
+  /** 原生 HTML5 拖拽排序：把 from 位置的区块移动到 to 位置 */
+  function reorderBlock(from: number, to: number) {
+    if (from === to) return;
+    setBlocks((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+  }
+
   function removeBlock(index: number) {
     setBlocks((prev) => prev.filter((_, i) => i !== index));
   }
@@ -145,7 +160,11 @@ export default function PagesPage() {
       values: { ...(editingPage ? {} : { siteId }), ...base, blocks },
     });
     Toast.success(editingPage ? '保存成功（静态页已刷新）' : '创建成功');
-    setBuilderVisible(false);
+    if (editingPage) {
+      setPreviewEpoch((e) => e + 1); // 刷新内嵌预览
+    } else {
+      setBuilderVisible(false);
+    }
   }
 
   const currentSite = (sitesPage?.list ?? []).find((s) => s.id === siteId);
@@ -309,13 +328,37 @@ export default function PagesPage() {
             {blocks.map((block, index) => (
               <div
                 key={block.id}
+                draggable
+                onDragStart={(e) => {
+                  dragIndexRef.current = index;
+                  e.dataTransfer.effectAllowed = 'move';
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  if (dragOverIndex !== index) setDragOverIndex(index);
+                }}
+                onDragLeave={() => setDragOverIndex((cur) => (cur === index ? null : cur))}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (dragIndexRef.current !== null) reorderBlock(dragIndexRef.current, index);
+                  dragIndexRef.current = null;
+                  setDragOverIndex(null);
+                }}
+                onDragEnd={() => {
+                  dragIndexRef.current = null;
+                  setDragOverIndex(null);
+                }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10,
-                  border: '1px solid var(--semi-color-border)',
+                  border: dragOverIndex === index ? '1px dashed var(--semi-color-primary)' : '1px solid var(--semi-color-border)',
                   borderRadius: 'var(--semi-border-radius-medium)',
                   padding: '10px 14px',
+                  cursor: 'grab',
+                  background: dragOverIndex === index ? 'var(--semi-color-primary-light-default)' : undefined,
                 }}
               >
+                <GripVertical size={14} color="var(--semi-color-text-3)" />
                 <Tag size="small">{BLOCK_TYPE_LABEL[block.type] ?? block.type}</Tag>
                 <Typography.Text ellipsis={{ showTooltip: true }} style={{ flex: 1, fontSize: 13, color: 'var(--semi-color-text-2)' }}>
                   {blockSummary(block) || '（未配置）'}
@@ -330,14 +373,28 @@ export default function PagesPage() {
         )}
 
         {editingPage && currentSite ? (
-          <Button
-            style={{ marginTop: 14 }}
-            icon={<ExternalLink size={13} />}
-            size="small"
-            onClick={() => window.open(cmsPreviewUrl(currentSite.code, editingPage.isHome ? '/' : `/p/${editingPage.slug}/`), '_blank')}
-          >
-            预览页面
-          </Button>
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '18px 0 8px' }}>
+              <Typography.Title heading={6} style={{ margin: 0 }}>实时预览（保存后自动刷新）</Typography.Title>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Button size="small" theme="borderless" icon={<RefreshCw size={13} />} onClick={() => setPreviewEpoch((e) => e + 1)}>刷新</Button>
+                <Button
+                  size="small"
+                  theme="borderless"
+                  icon={<ExternalLink size={13} />}
+                  onClick={() => window.open(cmsPreviewUrl(currentSite.code, editingPage.isHome ? '/' : `/p/${editingPage.slug}/`), '_blank')}
+                >
+                  新窗口打开
+                </Button>
+              </div>
+            </div>
+            <iframe
+              key={previewEpoch}
+              title="页面预览"
+              src={`${cmsPreviewUrl(currentSite.code, editingPage.isHome ? '/' : `/p/${editingPage.slug}/`)}?_t=${previewEpoch}`}
+              style={{ width: '100%', height: 380, border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', background: '#fff' }}
+            />
+          </>
         ) : null}
       </SideSheet>
 

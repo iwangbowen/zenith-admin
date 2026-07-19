@@ -64,4 +64,55 @@ router.get('/v1/userinfo', (c) => {
   }), 200);
 });
 
+// ═══ CMS Headless 内容 API（scope: cms:read，只读已发布数据）═════════════════════
+
+/** 解析 siteCode 参数为站点（未找到统一 404） */
+async function resolveCmsSite(c: Context) {
+  const siteCode = c.req.query('siteCode') ?? '';
+  if (!siteCode) return null;
+  const { resolveSiteByCode } = await import('../../services/cms/cms-sites.service');
+  return resolveSiteByCode(siteCode);
+}
+
+// GET /v1/cms/channels?siteCode= —— 站点栏目树（启用中）
+router.get('/v1/cms/channels', async (c) => {
+  if (!hasScope(c, 'cms:read')) return c.json(errBody('应用未授权 scope：cms:read', 403), 403);
+  const site = await resolveCmsSite(c);
+  if (!site) return c.json(errBody('站点不存在（请携带 siteCode 参数）', 404), 404);
+  const { listCmsChannelTree } = await import('../../services/cms/cms-channels.service');
+  const tree = await listCmsChannelTree({ siteId: site.id, status: 'enabled' });
+  return c.json(okBody(tree), 200);
+});
+
+// GET /v1/cms/contents?siteCode=&channelId=&page=&pageSize= —— 已发布内容分页
+router.get('/v1/cms/contents', async (c) => {
+  if (!hasScope(c, 'cms:read')) return c.json(errBody('应用未授权 scope：cms:read', 403), 403);
+  const site = await resolveCmsSite(c);
+  if (!site) return c.json(errBody('站点不存在（请携带 siteCode 参数）', 404), 404);
+  const channelId = Number(c.req.query('channelId')) || 0;
+  if (!channelId) return c.json(errBody('缺少 channelId 参数', 400), 400);
+  const page = Math.max(1, Number(c.req.query('page')) || 1);
+  const pageSize = Math.min(50, Math.max(1, Number(c.req.query('pageSize')) || 20));
+  const { listPublishedContents, mapCmsContent } = await import('../../services/cms/cms-contents.service');
+  const { total, rows } = await listPublishedContents(site.id, channelId, page, pageSize);
+  const list = rows.map((row) => {
+    const mapped = mapCmsContent(row);
+    return { ...mapped, body: undefined }; // 列表不返回正文，减小载荷
+  });
+  return c.json(okBody({ list, total, page, pageSize }), 200);
+});
+
+// GET /v1/cms/contents/{id}?siteCode= —— 已发布内容详情（含正文）
+router.get('/v1/cms/contents/:id', async (c) => {
+  if (!hasScope(c, 'cms:read')) return c.json(errBody('应用未授权 scope：cms:read', 403), 403);
+  const site = await resolveCmsSite(c);
+  if (!site) return c.json(errBody('站点不存在（请携带 siteCode 参数）', 404), 404);
+  const id = Number(c.req.param('id')) || 0;
+  const { getPublishedContentById, mapCmsContent, listContentTags } = await import('../../services/cms/cms-contents.service');
+  const row = id > 0 ? await getPublishedContentById(site.id, id) : null;
+  if (!row) return c.json(errBody('内容不存在或未发布', 404), 404);
+  const tags = await listContentTags(row.id);
+  return c.json(okBody(mapCmsContent(row, { tags })), 200);
+});
+
 export default router;

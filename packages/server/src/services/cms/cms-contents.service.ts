@@ -7,12 +7,15 @@ import type { DbExecutor } from '../../db/types';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
 import { mergeWhere, escapeLike, withPagination } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
+import { config } from '../../config';
+import redis from '../../lib/redis';
 import { buildSearchVector } from './cms-search.service';
 import { listCmsModelFields } from './cms-models.service';
 import { ensureCmsChannelExists } from './cms-channels.service';
 import { snapshotContentVersion, restoreContentVersion } from './cms-versions.service';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
 import { isWorkflowAuditEnabled, startCmsContentWorkflow, assertNoActiveContentWorkflow } from './cms-workflow.service';
+import { triggerCmsContentWebhook } from './cms-webhook.service';
 import type { CreateCmsContentInput, UpdateCmsContentInput, CmsContentStatus } from '@zenith/shared';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
@@ -355,7 +358,9 @@ export async function submitCmsContent(id: number) {
 /** 发布（直接发布或审核通过）；工作流审核期间禁止手动发布 */
 export async function publishCmsContent(id: number, opts?: { fromWorkflow?: boolean }) {
   if (!opts?.fromWorkflow) await assertNoActiveContentWorkflow(id);
-  return transitionStatus(id, 'publish', { status: 'published', publishedAt: new Date(), rejectReason: null });
+  const result = await transitionStatus(id, 'publish', { status: 'published', publishedAt: new Date(), rejectReason: null });
+  triggerCmsContentWebhook('content.published', id);
+  return result;
 }
 
 /** 驳回；工作流审核期间禁止手动驳回 */
@@ -366,7 +371,9 @@ export async function rejectCmsContent(id: number, reason: string, opts?: { from
 
 /** 下线 */
 export async function offlineCmsContent(id: number) {
-  return transitionStatus(id, 'offline', { status: 'offline' });
+  const result = await transitionStatus(id, 'offline', { status: 'offline' });
+  triggerCmsContentWebhook('content.offline', id);
+  return result;
 }
 
 // ─── 回收站 ───────────────────────────────────────────────────────────────────
@@ -385,6 +392,7 @@ export async function recycleCmsContents(ids: number[]) {
     .set({ deletedAt: new Date(), status: 'offline' })
     .where(and(inArray(cmsContents.id, ids), isNull(cmsContents.deletedAt)))
     .returning({ id: cmsContents.id });
+  for (const row of rows) triggerCmsContentWebhook('content.recycled', row.id);
   return rows.length;
 }
 
@@ -469,6 +477,14 @@ export async function getPublishedContent(siteId: number, channelId: number, idO
   return row ?? null;
 }
 
+/** 按 id 取站点内已发布内容（不限栏目；Headless API 用） */
+export async function getPublishedContentById(siteId: number, id: number): Promise<CmsContentRow | null> {
+  const [row] = await db.select().from(cmsContents)
+    .where(and(publishedWhere(siteId), eq(cmsContents.id, id)))
+    .limit(1);
+  return row ?? null;
+}
+
 /** 上一篇 / 下一篇（同栏目按发布时间序） */
 export async function getAdjacentContents(row: CmsContentRow) {
   const base = and(publishedWhere(row.siteId), eq(cmsContents.channelId, row.channelId), ne(cmsContents.id, row.id))!;
@@ -480,11 +496,37 @@ export async function getAdjacentContents(row: CmsContentRow) {
   return { prev: prevRows[0] ?? null, next: nextRows[0] ?? null };
 }
 
-/** 浏览计数（动态渲染路径下累加；静态页不计数为已知取舍） */
+/**
+ * 浏览计数：Redis 缓冲累加（zenith:cms:viewbuf hash），周期任务批量落库，
+ * 避免高并发下逐次 UPDATE 行锁排队；Redis 不可用时降级直写 DB。
+ */
+const VIEW_BUFFER_KEY = `${config.redis.keyPrefix}cms:viewbuf`;
+
 export async function increaseViewCount(id: number): Promise<void> {
-  await db.update(cmsContents)
-    .set({ viewCount: sql`${cmsContents.viewCount} + 1` })
-    .where(eq(cmsContents.id, id));
+  try {
+    await redis.hincrby(VIEW_BUFFER_KEY, String(id), 1);
+  } catch {
+    await db.update(cmsContents)
+      .set({ viewCount: sql`${cmsContents.viewCount} + 1` })
+      .where(eq(cmsContents.id, id));
+  }
+}
+
+/** 浏览计数落库（系统周期任务调用，每分钟）：取走缓冲并批量累加 */
+export async function flushViewCountBuffer(): Promise<number> {
+  const buffer = await redis.hgetall(VIEW_BUFFER_KEY).catch(() => ({} as Record<string, string>));
+  const entries = Object.entries(buffer).filter(([, v]) => Number(v) > 0);
+  if (entries.length === 0) return 0;
+  await redis.del(VIEW_BUFFER_KEY).catch(() => undefined);
+  for (const [idText, countText] of entries) {
+    const id = Number(idText);
+    const count = Number(countText);
+    if (!Number.isInteger(id) || !Number.isInteger(count) || count <= 0) continue;
+    await db.update(cmsContents)
+      .set({ viewCount: sql`${cmsContents.viewCount} + ${count}` })
+      .where(eq(cmsContents.id, id));
+  }
+  return entries.length;
 }
 
 /** 内容标签（前台详情页展示） */

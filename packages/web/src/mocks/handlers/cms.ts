@@ -12,7 +12,7 @@ import {
   mockCmsSearchWords, mockCmsHotKeywords, getNextCmsSearchWordId,
 } from '../data/cms';
 import { createProgressingMockTask } from './async-tasks';
-import { mockDateTime } from '../utils/date';
+import { mockDateTime, mockDate } from '../utils/date';
 
 type Body = Record<string, unknown>;
 
@@ -540,6 +540,45 @@ export const cmsHandlers = [
       itemDelayMs: 300,
     });
     return okJson(task, '导入任务已提交，可在任务中心查看进度');
+  }),
+
+  // ═══ 数据看板 ═════════════════════════════════════════════════════════════
+  http.get('/api/cms/dashboard/stats', ({ request }) => {
+    const siteId = Number(new URL(request.url).searchParams.get('siteId'));
+    const contents = mockCmsContents.filter((c) => c.siteId === siteId && !(c as { deleted?: boolean }).deleted);
+    const byStatus = (s: string) => contents.filter((c) => c.status === s).length;
+    const today = mockDate();
+    const trend = Array.from({ length: 14 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (13 - i));
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      return { date: key, count: key === today ? contents.filter((c) => c.status === 'published').length : (i % 5 === 0 ? 1 : 0) };
+    });
+    const channelCounts = new Map<number, number>();
+    for (const c of contents) channelCounts.set(c.channelId, (channelCounts.get(c.channelId) ?? 0) + 1);
+    return okJson({
+      totals: {
+        published: byStatus('published'),
+        draft: byStatus('draft'),
+        pending: byStatus('pending'),
+        offline: byStatus('offline'),
+        rejected: byStatus('rejected'),
+        recycled: mockCmsContents.filter((c) => c.siteId === siteId && (c as { deleted?: boolean }).deleted).length,
+      },
+      pendingComments: mockCmsComments.filter((c) => c.siteId === siteId && c.status === 'pending').length,
+      todayPublished: 0,
+      totalViews: contents.reduce((sum, c) => sum + c.viewCount, 0),
+      publishTrend: trend,
+      topViewed: [...contents]
+        .filter((c) => c.status === 'published')
+        .sort((a, b) => b.viewCount - a.viewCount)
+        .slice(0, 10)
+        .map((c) => ({ id: c.id, title: c.title, viewCount: c.viewCount, channelName: mockCmsChannels.find((ch) => ch.id === c.channelId)?.name ?? null })),
+      channelDistribution: [...channelCounts.entries()]
+        .map(([channelId, count]) => ({ channelId, channelName: mockCmsChannels.find((ch) => ch.id === channelId)?.name ?? `栏目 ${channelId}`, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10),
+    });
   }),
 
   // ═══ 检索 ═══════════════════════════════════════════════════════════════

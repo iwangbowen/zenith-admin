@@ -668,6 +668,7 @@ export const SEED_MENUS: Menu[] = [
 
   // ─── CMS 内容管理（1700 段）────────────────────────────────────────────────────
   { id: 1700, parentId: 0,    title: 'CMS 内容管理', name: 'CmsCenter',        path: undefined,          component: undefined,                    icon: 'Newspaper',    type: 'directory', sort: 15, status: 'enabled', visible: true,  createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1790, parentId: 1700, title: '数据看板',     name: 'CmsDashboard',     path: '/cms/dashboard',   component: 'cms/CmsDashboardPage',       icon: 'LayoutDashboard', type: 'menu',   sort: 0,  status: 'enabled', visible: true,  permission: 'cms:dashboard:view', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1705, parentId: 1700, title: '站点管理',     name: 'CmsSites',         path: '/cms/sites',       component: 'cms/SitesPage',              icon: 'Globe',        type: 'menu',      sort: 1,  status: 'enabled', visible: true,  permission: 'cms:site:list',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1706, parentId: 1705, title: '新增站点',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:site:create',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1707, parentId: 1705, title: '编辑站点',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'cms:site:update',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
@@ -2718,6 +2719,7 @@ export const SEED_API_SCOPES: ApiScope[] = [
   { id: 6, code: 'data:read',      name: '读取数据',         description: '调用只读数据类接口',         scopeGroup: 'data',    status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 7, code: 'data:write',     name: '写入数据',         description: '调用写入/变更类接口',        scopeGroup: 'data',    status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 8, code: 'order:read',     name: '读取订单',         description: '读取订单数据',              scopeGroup: 'order',   status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 9, code: 'cms:read',       name: '读取 CMS 内容',    description: '读取 CMS 栏目与已发布内容（Headless API）', scopeGroup: 'data', status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 开放平台：限流套餐 ───────────────────────────────────────────────────────
