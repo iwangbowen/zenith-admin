@@ -4,6 +4,26 @@
 
 ---
 
+## v1.2.0 - 2026-07-18
+
+### Added
+
+#### 日志管理
+
+- **日志搜索与实时追踪增强**：重构日志文件搜索逻辑，增加日志级别检测；优化实时追踪（tail）连接管理
+
+### Changed
+
+- **依赖升级**：`hono` → 4.12.30（含 serve-static 路径穿越与 CORS 相关安全修复）、OpenTelemetry → 0.220.0、`@types/archiver` → 8（`archiver` 用法随之迁移到 `ZipArchive` 命名导出）、`source-map` / `@types/node` / `vitest` 等一并更新
+
+### Fixed
+
+- **链接预览 SSRF 加固**：`/api/chat/link-preview` 抓取外链改用带 SSRF 防护的 `http-client`（DNS 解析 + 逐 IP 校验，拦截私网 / 保留 / 云元数据地址并防 DNS rebinding），并移除可被利用的重定向跟随路径
+- **会员登录防暴破**：新增会员账号级登录失败锁定与短信验证码校验尝试次数上限（超限即作废验证码），并启用登录接口 IP 限流
+- **分片上传权限校验**：`/api/files/upload/chunk` 补齐 `system:file:upload` 权限校验，与 init / complete / abort 保持一致
+
+---
+
 ## v1.1.0 - 2026-07-18
 
 ### Added
