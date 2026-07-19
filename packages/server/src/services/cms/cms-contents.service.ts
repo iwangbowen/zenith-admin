@@ -406,3 +406,173 @@ export async function listContentTags(contentId: number): Promise<CmsTagRow[]> {
   });
   return rows.map((r) => r.tag);
 }
+
+// ═══ P3 Batch1 ════════════════════════════════════════════════════════════════
+
+/** 标签聚合页：按标签取已发布内容分页 */
+export async function listPublishedContentsByTag(siteId: number, tagId: number, page: number, pageSize: number) {
+  const idsQuery = db.select({ contentId: cmsContentTags.contentId }).from(cmsContentTags).where(eq(cmsContentTags.tagId, tagId));
+  const where = and(publishedWhere(siteId), inArray(cmsContents.id, idsQuery))!;
+  const [total, rows] = await Promise.all([
+    db.$count(cmsContents, where),
+    withPagination(
+      db.select().from(cmsContents).where(where)
+        .orderBy(desc(cmsContents.publishedAt), desc(cmsContents.id))
+        .$dynamic(),
+      page,
+      pageSize,
+    ),
+  ]);
+  return { total, rows };
+}
+
+/** 批量移动栏目（目标须为本站点列表栏目；重算 modelId） */
+export async function batchMoveCmsContents(ids: number[], channelId: number): Promise<number> {
+  if (ids.length === 0) return 0;
+  await assertBatchSiteAccess(ids);
+  const rows = await db.select({ id: cmsContents.id, siteId: cmsContents.siteId }).from(cmsContents).where(inArray(cmsContents.id, ids));
+  const siteIds = new Set(rows.map((r) => r.siteId));
+  if (siteIds.size > 1) throw new HTTPException(400, { message: '仅支持同站点内容批量移动' });
+  const siteId = [...siteIds][0];
+  if (siteId === undefined) return 0;
+  const channel = await ensureChannelForContent(siteId, channelId);
+  const updated = await db.update(cmsContents)
+    .set({ channelId, modelId: channel.modelId ?? null })
+    .where(inArray(cmsContents.id, rows.map((r) => r.id)))
+    .returning({ id: cmsContents.id });
+  return updated.length;
+}
+
+/** 批量设置属性（置顶/推荐/热门，仅更新传入的字段） */
+export async function batchSetCmsContentFlags(ids: number[], flags: { isTop?: boolean; isRecommend?: boolean; isHot?: boolean }): Promise<number> {
+  if (ids.length === 0) return 0;
+  await assertBatchSiteAccess(ids);
+  const patch: Record<string, boolean> = {};
+  if (flags.isTop !== undefined) patch.isTop = flags.isTop;
+  if (flags.isRecommend !== undefined) patch.isRecommend = flags.isRecommend;
+  if (flags.isHot !== undefined) patch.isHot = flags.isHot;
+  if (Object.keys(patch).length === 0) return 0;
+  const updated = await db.update(cmsContents).set(patch)
+    .where(and(inArray(cmsContents.id, ids), isNull(cmsContents.deletedAt)))
+    .returning({ id: cmsContents.id });
+  return updated.length;
+}
+
+/** 批量追加标签（跳过已存在的绑定，重算计数） */
+export async function batchAddCmsContentTags(ids: number[], tagIds: number[]): Promise<number> {
+  if (ids.length === 0 || tagIds.length === 0) return 0;
+  await assertBatchSiteAccess(ids);
+  const rows = await db.select({ id: cmsContents.id, siteId: cmsContents.siteId }).from(cmsContents).where(inArray(cmsContents.id, ids));
+  await db.transaction(async (tx) => {
+    for (const row of rows) {
+      const validTags = await tx.select({ id: cmsTags.id }).from(cmsTags)
+        .where(and(inArray(cmsTags.id, tagIds), eq(cmsTags.siteId, row.siteId)));
+      if (validTags.length > 0) {
+        await tx.insert(cmsContentTags)
+          .values(validTags.map((t) => ({ contentId: row.id, tagId: t.id })))
+          .onConflictDoNothing();
+      }
+    }
+    for (const tagId of tagIds) {
+      await tx.update(cmsTags)
+        .set({ contentCount: await tx.$count(cmsContentTags, eq(cmsContentTags.tagId, tagId)) })
+        .where(eq(cmsTags.id, tagId));
+    }
+  });
+  return rows.length;
+}
+
+/** 复制内容为草稿（标题加后缀，slug 置空避免唯一冲突，标签一并复制） */
+export async function duplicateCmsContent(id: number) {
+  const current = await ensureCmsContentExists(id);
+  await assertSiteAccess(current.siteId);
+  const tagRows = await db.select({ tagId: cmsContentTags.tagId }).from(cmsContentTags).where(eq(cmsContentTags.contentId, id));
+  const row = await db.transaction(async (tx) => {
+    const [created] = await tx.insert(cmsContents).values({
+      siteId: current.siteId,
+      channelId: current.channelId,
+      modelId: current.modelId,
+      title: `${current.title}（副本）`.slice(0, 255),
+      slug: null,
+      summary: current.summary,
+      coverImage: current.coverImage,
+      author: current.author,
+      source: current.source,
+      body: current.body,
+      extend: current.extend ?? {},
+      externalLink: current.externalLink,
+      isTop: false,
+      isRecommend: current.isRecommend,
+      isHot: current.isHot,
+      status: 'draft',
+      sort: current.sort,
+      seoTitle: current.seoTitle,
+      seoKeywords: current.seoKeywords,
+      seoDescription: current.seoDescription,
+      searchVector: buildSearchVector({
+        title: `${current.title}（副本）`,
+        seoKeywords: current.seoKeywords,
+        summary: current.summary,
+        body: current.body,
+      }),
+    }).returning();
+    if (tagRows.length > 0) {
+      await tx.insert(cmsContentTags).values(tagRows.map((t) => ({ contentId: created.id, tagId: t.tagId })));
+      for (const t of tagRows) {
+        await tx.update(cmsTags)
+          .set({ contentCount: await tx.$count(cmsContentTags, eq(cmsContentTags.tagId, t.tagId)) })
+          .where(eq(cmsTags.id, t.tagId));
+      }
+    }
+    return created;
+  });
+  return getCmsContent(row.id);
+}
+
+/** 站群内容分发：复制到目标站点栏目（草稿，标签不跨站复制） */
+export async function distributeCmsContents(ids: number[], targetSiteId: number, targetChannelId: number): Promise<number> {
+  if (ids.length === 0) return 0;
+  await assertBatchSiteAccess(ids);
+  await assertSiteAccess(targetSiteId);
+  const channel = await ensureChannelForContent(targetSiteId, targetChannelId);
+  const rows = await db.select().from(cmsContents).where(inArray(cmsContents.id, ids));
+  let copied = 0;
+  for (const current of rows) {
+    if (current.siteId === targetSiteId) continue; // 同站分发无意义，跳过
+    await db.insert(cmsContents).values({
+      siteId: targetSiteId,
+      channelId: targetChannelId,
+      modelId: channel.modelId ?? null,
+      title: current.title,
+      slug: null,
+      summary: current.summary,
+      coverImage: current.coverImage,
+      author: current.author,
+      source: current.source,
+      body: current.body,
+      extend: current.extend ?? {},
+      externalLink: current.externalLink,
+      status: 'draft',
+      seoTitle: current.seoTitle,
+      seoKeywords: current.seoKeywords,
+      seoDescription: current.seoDescription,
+      searchVector: buildSearchVector({
+        title: current.title,
+        seoKeywords: current.seoKeywords,
+        summary: current.summary,
+        body: current.body,
+      }),
+    });
+    copied += 1;
+  }
+  return copied;
+}
+
+/** 回收站自动清理：彻底删除进入回收站超过 N 天的内容（系统周期任务调用） */
+export async function cleanupCmsRecycleBin(retentionDays = 30): Promise<number> {
+  const threshold = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+  const targets = await db.select({ id: cmsContents.id }).from(cmsContents)
+    .where(and(isNotNull(cmsContents.deletedAt), lt(cmsContents.deletedAt, threshold)));
+  if (targets.length === 0) return 0;
+  return purgeCmsContents(targets.map((t) => t.id));
+}

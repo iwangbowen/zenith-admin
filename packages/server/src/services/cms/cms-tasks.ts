@@ -1,9 +1,11 @@
 import { registerTaskHandler } from '../../lib/task-center';
 import { buildSiteStatic } from './cms-static.service';
 import { rebuildSearchIndex } from './cms-search.service';
+import { registerCmsDeadlinkTaskHandler } from './cms-deadlink.service';
 
 /** CMS 任务中心 handler 注册（index.ts 启动流程中、registerSystemTasks 之前调用） */
 export function registerCmsTaskHandlers(): void {
+  registerCmsDeadlinkTaskHandler();
   registerTaskHandler({
     taskType: 'cms-static-build',
     title: 'CMS 全站静态化',

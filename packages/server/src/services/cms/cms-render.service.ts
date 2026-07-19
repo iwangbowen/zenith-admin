@@ -1,9 +1,9 @@
 import { createElement, type ComponentType } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, desc, isNull } from 'drizzle-orm';
 import { db } from '../../db';
-import { cmsChannels } from '../../db/schema';
-import type { CmsSiteRow, CmsChannelRow, CmsContentRow } from '../../db/schema';
+import { cmsChannels, cmsTags, cmsContents } from '../../db/schema';
+import type { CmsSiteRow, CmsChannelRow, CmsContentRow, CmsTagRow } from '../../db/schema';
 import { formatNullableDateTime, formatIso8601 } from '../../lib/datetime';
 import { getTheme, resolveListTemplate, resolveDetailTemplate } from '../../cms/themes/registry';
 import type {
@@ -12,6 +12,7 @@ import type {
 import { listCmsChannelTree } from './cms-channels.service';
 import {
   listPublishedContents, listHomeContents, getPublishedContent, getAdjacentContents, listContentTags,
+  listPublishedContentsByTag,
 } from './cms-contents.service';
 import { getFragmentMap } from './cms-fragments.service';
 import { listEnabledFriendLinks } from './cms-friend-links.service';
@@ -25,6 +26,10 @@ import type { CmsChannel } from '@zenith/shared';
 // ─── URL 规则（站点内相对路径，静态文件名与之一一对应）──────────────────────────
 export function channelUrl(baseUrl: string, path: string, page = 1): string {
   return page <= 1 ? `${baseUrl}/${path}/` : `${baseUrl}/${path}/index_${page}.html`;
+}
+
+export function tagUrl(baseUrl: string, slug: string, page = 1): string {
+  return page <= 1 ? `${baseUrl}/tag/${slug}/` : `${baseUrl}/tag/${slug}/index_${page}.html`;
 }
 
 export function contentUrl(baseUrl: string, channelPath: string, content: Pick<CmsContentRow, 'id' | 'slug'>): string {
@@ -79,13 +84,14 @@ function mergeSeo(site: CmsSiteRow, overrides: Partial<CmsSeo> & { pathForCanoni
   };
 }
 
-async function buildBaseContext(site: CmsSiteRow, baseUrl: string, seo: CmsSeo): Promise<CmsBaseContext> {
+async function buildBaseContext(site: CmsSiteRow, baseUrl: string, seo: CmsSeo, analyticsContentId?: number): Promise<CmsBaseContext> {
   const [tree, fragments, friendLinks, ads] = await Promise.all([
     listCmsChannelTree({ siteId: site.id, status: 'enabled' }),
     getFragmentMap(site.id),
     listEnabledFriendLinks(site.id),
     getActiveAds(site.id),
   ]);
+  const analyticsSiteKey = (site.settings as Record<string, unknown> | null)?.analyticsSiteKey;
   return {
     site: {
       id: site.id,
@@ -108,6 +114,9 @@ async function buildBaseContext(site: CmsSiteRow, baseUrl: string, seo: CmsSeo):
     friendLinks: friendLinks.map((l) => ({ name: l.name, url: l.url, logo: l.logo })),
     seo,
     searchUrl: `${baseUrl}/search`,
+    analytics: typeof analyticsSiteKey === 'string' && analyticsSiteKey
+      ? { siteKey: analyticsSiteKey, ...(analyticsContentId ? { contentId: analyticsContentId } : {}) }
+      : null,
   };
 }
 
@@ -281,7 +290,7 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
     },
   });
   const [base, breadcrumbs, adjacent, tags, linkWords, comments] = await Promise.all([
-    buildBaseContext(site, baseUrl, seo),
+    buildBaseContext(site, baseUrl, seo, row.id),
     buildBreadcrumbs(site, baseUrl, channel),
     getAdjacentContents(row),
     listContentTags(row.id),
@@ -296,7 +305,7 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
       ...toContentItem(row, baseUrl, channel.path),
       body: applyLinkWords(row.body ?? '', linkWords),
       extend: row.extend ?? {},
-      tags: tags.map((t) => ({ name: t.name, slug: t.slug })),
+      tags: tags.map((t) => ({ name: t.name, slug: t.slug, url: tagUrl(baseUrl, t.slug) })),
       prev: adjacent.prev ? { title: adjacent.prev.title, url: contentUrl(baseUrl, channel.path, adjacent.prev) } : null,
       next: adjacent.next ? { title: adjacent.next.title, url: contentUrl(baseUrl, channel.path, adjacent.next) } : null,
     },
@@ -347,15 +356,120 @@ export async function renderNotFound(site: CmsSiteRow, baseUrl: string, path: st
   return { status: 404, html, kind: 'notFound' };
 }
 
+// ─── 标签聚合页 ───────────────────────────────────────────────────────────────
+export async function findTagBySlug(siteId: number, slug: string): Promise<CmsTagRow | null> {
+  const [row] = await db.select().from(cmsTags)
+    .where(and(eq(cmsTags.siteId, siteId), eq(cmsTags.slug, slug)))
+    .limit(1);
+  return row ?? null;
+}
+
+/** 站点全部标签（静态化/sitemap 用） */
+export async function listSiteTags(siteId: number): Promise<CmsTagRow[]> {
+  return db.select().from(cmsTags).where(eq(cmsTags.siteId, siteId));
+}
+
+export async function renderTagPage(site: CmsSiteRow, baseUrl: string, slug: string, page = 1): Promise<RenderResult> {
+  const theme = getTheme(site.theme);
+  const tag = await findTagBySlug(site.id, slug);
+  if (!tag) return renderNotFound(site, baseUrl, tagUrl('', slug, page));
+  const seo = mergeSeo(site, {
+    title: `标签：${tag.name} - ${site.title?.trim() || site.name}`,
+    keywords: tag.name,
+    pathForCanonical: tagUrl('', slug, page),
+  });
+  const base = await buildBaseContext(site, baseUrl, seo);
+  const pageSize = 20;
+  const { total, rows } = await listPublishedContentsByTag(site.id, tag.id, page, pageSize);
+  if (page > 1 && rows.length === 0) return renderNotFound(site, baseUrl, tagUrl('', slug, page));
+  const channelPathMap = await loadChannelPathMap(site.id);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const window = 5;
+  const start = Math.max(1, Math.min(page - Math.floor(window / 2), totalPages - window + 1));
+  const pages = [];
+  for (let p = start; p <= Math.min(totalPages, start + window - 1); p++) {
+    pages.push({ page: p, url: tagUrl(baseUrl, slug, p), current: p === page });
+  }
+  const html = renderDoc(theme.templates.tag, {
+    ...base,
+    tag: { name: tag.name, slug: tag.slug, contentCount: tag.contentCount },
+    breadcrumbs: [
+      { name: '首页', url: `${baseUrl}/` },
+      { name: `标签：${tag.name}`, url: tagUrl(baseUrl, slug) },
+    ],
+    items: rows.map((r) => toContentItem(r, baseUrl, channelPathMap.get(r.channelId) ?? '')),
+    pagination: {
+      page, pageSize, total, totalPages,
+      prevUrl: page > 1 ? tagUrl(baseUrl, slug, page - 1) : null,
+      nextUrl: page < totalPages ? tagUrl(baseUrl, slug, page + 1) : null,
+      pages,
+    },
+  });
+  return { status: 200, html, kind: 'list' };
+}
+
+// ─── RSS 2.0 ─────────────────────────────────────────────────────────────────
+function rssEscape(s: string): string {
+  return s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}
+
+/** 生成站点或栏目 RSS（最新 50 条已发布内容） */
+export async function generateRssXml(site: CmsSiteRow, channel?: CmsChannelRow | null): Promise<string> {
+  const origin = siteOrigin(site) ?? '';
+  const rows = await db.select().from(cmsContents)
+    .where(and(
+      eq(cmsContents.siteId, site.id),
+      ...(channel ? [eq(cmsContents.channelId, channel.id)] : []),
+      eq(cmsContents.status, 'published'),
+      isNull(cmsContents.deletedAt),
+    ))
+    .orderBy(desc(cmsContents.publishedAt), desc(cmsContents.id))
+    .limit(50);
+  const channelPathMap = await loadChannelPathMap(site.id);
+  const feedTitle = channel ? `${channel.name} - ${site.name}` : (site.title?.trim() || site.name);
+  const feedLink = channel ? `${origin}${channelUrl('', channel.path)}` : `${origin}/`;
+  const items = rows.map((row) => {
+    const link = row.externalLink?.trim() || `${origin}${contentUrl('', channelPathMap.get(row.channelId) ?? '', row)}`;
+    return [
+      '    <item>',
+      `      <title>${rssEscape(row.title)}</title>`,
+      `      <link>${rssEscape(link)}</link>`,
+      `      <guid isPermaLink="false">cms-content-${row.id}</guid>`,
+      row.summary ? `      <description>${rssEscape(stripHtml(row.summary).slice(0, 300))}</description>` : '',
+      row.publishedAt ? `      <pubDate>${new Date(row.publishedAt).toUTCString()}</pubDate>` : '',
+      '    </item>',
+    ].filter(Boolean).join('\n');
+  }).join('\n');
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<rss version="2.0">',
+    '  <channel>',
+    `    <title>${rssEscape(feedTitle)}</title>`,
+    `    <link>${rssEscape(feedLink)}</link>`,
+    `    <description>${rssEscape(site.description ?? feedTitle)}</description>`,
+    items,
+    '  </channel>',
+    '</rss>',
+    '',
+  ].join('\n');
+}
+
 // ─── URL 解析：站内相对路径 → 渲染 ───────────────────────────────────────────────
 /**
- * 解析并渲染站内路径（不含 search，search 由前台路由单独处理查询参数）。
- * 约定：'' 首页；'{path}/' 栏目页1；'{path}/index_{n}.html' 栏目页n；'{path}/{idOrSlug}.html' 详情。
+ * 解析并渲染站内路径（不含 search/rss，由前台路由单独处理）。
+ * 约定：'' 首页；'{path}/' 栏目页1；'{path}/index_{n}.html' 栏目页n；
+ * '{path}/{idOrSlug}.html' 详情；'tag/{slug}/' 与 'tag/{slug}/index_{n}.html' 标签页。
  */
 export async function renderSitePath(site: CmsSiteRow, baseUrl: string, rawPath: string): Promise<RenderResult> {
   const cleaned = rawPath.replace(/^\/+|\/+$/g, '');
   if (cleaned === '' || cleaned === 'index.html') {
     return renderHomePage(site, baseUrl);
+  }
+
+  // 标签聚合页
+  const tagMatch = /^tag\/([^/]+)(?:\/(?:index_(\d+)\.html)?)?$/.exec(cleaned);
+  if (tagMatch) {
+    return renderTagPage(site, baseUrl, decodeURIComponent(tagMatch[1]), Number(tagMatch[2] ?? 1));
   }
 
   if (cleaned.endsWith('.html')) {

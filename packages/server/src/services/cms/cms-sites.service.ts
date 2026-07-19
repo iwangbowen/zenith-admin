@@ -247,3 +247,31 @@ export async function deleteCmsSite(id: number) {
   if (!row) throw new HTTPException(404, { message: '站点不存在' });
   invalidateSiteCache();
 }
+
+// ─── 行为统计开通（P3：关联 analytics_sites，前台注入采集 beacon）───────────────
+export async function enableSiteAnalytics(siteId: number) {
+  await assertSiteAccess(siteId);
+  const site = await ensureCmsSiteExists(siteId);
+  const settings = (site.settings ?? {}) as Record<string, unknown>;
+  if (typeof settings.analyticsSiteKey === 'string' && settings.analyticsSiteKey) {
+    return { siteKey: settings.analyticsSiteKey, created: false };
+  }
+  const { createSite } = await import('../analytics/analytics-sites.service');
+  const origins: string[] = [];
+  if (site.domain) origins.push(`https://${site.domain}`, `http://${site.domain}`);
+  for (const alias of site.aliasDomains ?? []) {
+    if (alias) origins.push(`https://${alias}`, `http://${alias}`);
+  }
+  const analyticsSite = await createSite({
+    name: `CMS：${site.name}`,
+    appId: `cms-${site.code}`,
+    allowedOrigins: origins,
+    status: 'enabled',
+    remark: `CMS 站点「${site.name}」自动创建`,
+  });
+  await db.update(cmsSites)
+    .set({ settings: { ...settings, analyticsSiteKey: analyticsSite.siteKey } })
+    .where(eq(cmsSites.id, siteId));
+  invalidateSiteCache();
+  return { siteKey: analyticsSite.siteKey, created: true };
+}

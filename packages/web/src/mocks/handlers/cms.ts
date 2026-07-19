@@ -9,6 +9,7 @@ import {
   mockCmsLinkWords, mockCmsComments, mockCmsRedirects, mockCmsPushLogs, mockCmsContentVersions,
   getNextCmsAdSlotId, getNextCmsAdId, getNextCmsFormId, getNextCmsSensitiveWordId,
   getNextCmsLinkWordId, getNextCmsRedirectId,
+  mockCmsSearchWords, mockCmsHotKeywords, getNextCmsSearchWordId,
 } from '../data/cms';
 import { createProgressingMockTask } from './async-tasks';
 import { mockDateTime } from '../utils/date';
@@ -872,4 +873,140 @@ export const cmsP2Handlers = [
   // ─── 站点授权用户 ───────────────────────────────────────────────────────────
   http.get('/api/cms/sites/:id/users', () => okJson({ userIds: [], users: [] })),
   http.put('/api/cms/sites/:id/users', () => okJson(null, '保存成功')),
+];
+
+// ─── P3：词典 / 热词 / 批量操作 / 统计开通 / 死链检测 ──────────────────────────
+export const cmsP3Handlers = [
+  // 自定义词典
+  http.get('/api/cms/search/words', ({ request }) => {
+    const { page, pageSize, keyword } = pageParams(request);
+    let list = [...mockCmsSearchWords];
+    if (keyword) list = list.filter((w) => w.word.includes(keyword));
+    return okJson(paginate(list, page, pageSize));
+  }),
+  http.post('/api/cms/search/words', async ({ request }) => {
+    const body = (await request.json()) as Body;
+    const now = mockDateTime();
+    const row = {
+      id: getNextCmsSearchWordId(),
+      word: String(body.word ?? ''),
+      weight: Number(body.weight ?? 100),
+      status: (body.status as 'enabled' | 'disabled') ?? 'enabled',
+      remark: (body.remark as string) ?? null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    mockCmsSearchWords.push(row);
+    return okJson(row, '创建成功');
+  }),
+  http.put('/api/cms/search/words/:id', async ({ params, request }) => {
+    const idx = mockCmsSearchWords.findIndex((w) => w.id === Number(params.id));
+    if (idx === -1) return notFound('词条不存在');
+    Object.assign(mockCmsSearchWords[idx], await request.json(), { updatedAt: mockDateTime() });
+    return okJson(mockCmsSearchWords[idx], '更新成功');
+  }),
+  http.delete('/api/cms/search/words/:id', ({ params }) => {
+    const idx = mockCmsSearchWords.findIndex((w) => w.id === Number(params.id));
+    if (idx === -1) return notFound('词条不存在');
+    mockCmsSearchWords.splice(idx, 1);
+    return okJson(null, '删除成功（重启服务后从进程词典移除）');
+  }),
+
+  // 搜索热词
+  http.get('/api/cms/search/hot-keywords', () => okJson(mockCmsHotKeywords)),
+  http.post('/api/cms/search/hot-keywords/clear', () => {
+    mockCmsHotKeywords.length = 0;
+    return okJson(null, '已清空');
+  }),
+
+  // 内容批量操作
+  http.post('/api/cms/contents/batch-move', async ({ request }) => {
+    const body = (await request.json()) as Body;
+    const ids = (body.ids as number[]) ?? [];
+    for (const c of mockCmsContents) {
+      if (ids.includes(c.id)) c.channelId = Number(body.channelId);
+    }
+    return okJson(null, `已移动 ${ids.length} 条内容`);
+  }),
+  http.post('/api/cms/contents/batch-flags', async ({ request }) => {
+    const body = (await request.json()) as Body;
+    const ids = (body.ids as number[]) ?? [];
+    for (const c of mockCmsContents) {
+      if (!ids.includes(c.id)) continue;
+      if (typeof body.isTop === 'boolean') c.isTop = body.isTop;
+      if (typeof body.isRecommend === 'boolean') c.isRecommend = body.isRecommend;
+      if (typeof body.isHot === 'boolean') c.isHot = body.isHot;
+    }
+    return okJson(null, `已更新 ${ids.length} 条内容`);
+  }),
+  http.post('/api/cms/contents/batch-tag', async ({ request }) => {
+    const body = (await request.json()) as Body;
+    const ids = (body.ids as number[]) ?? [];
+    const tagIds = (body.tagIds as number[]) ?? [];
+    for (const c of mockCmsContents) {
+      if (ids.includes(c.id)) c.tagIds = Array.from(new Set([...c.tagIds, ...tagIds]));
+    }
+    return okJson(null, `已打标 ${ids.length} 条内容`);
+  }),
+  http.post('/api/cms/contents/distribute', async ({ request }) => {
+    const body = (await request.json()) as Body;
+    const ids = (body.ids as number[]) ?? [];
+    const now = mockDateTime();
+    for (const src of mockCmsContents.filter((c) => ids.includes(c.id))) {
+      mockCmsContents.push({
+        ...src,
+        id: getNextCmsContentId(),
+        siteId: Number(body.targetSiteId),
+        channelId: Number(body.targetChannelId),
+        status: 'draft',
+        publishedAt: null,
+        viewCount: 0,
+        tagIds: [],
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+    return okJson(null, `已分发 ${ids.length} 条内容（目标站点草稿箱）`);
+  }),
+  http.post('/api/cms/contents/:id/duplicate', ({ params }) => {
+    const src = mockCmsContents.find((c) => c.id === Number(params.id));
+    if (!src) return notFound('内容不存在');
+    const now = mockDateTime();
+    const copy = {
+      ...src,
+      id: getNextCmsContentId(),
+      title: `${src.title}（副本）`,
+      slug: null,
+      status: 'draft' as CmsContentStatus,
+      publishedAt: null,
+      viewCount: 0,
+      tagIds: [...src.tagIds],
+      createdAt: now,
+      updatedAt: now,
+    };
+    mockCmsContents.push(copy);
+    return okJson(copy, '已复制为草稿');
+  }),
+
+  // 站点开通统计
+  http.post('/api/cms/sites/:id/enable-analytics', ({ params }) => {
+    const site = mockCmsSites.find((s) => s.id === Number(params.id));
+    if (!site) return notFound('站点不存在');
+    const settings = { ...(site.settings ?? {}) } as Record<string, unknown>;
+    if (settings.analyticsSiteKey) {
+      return okJson({ siteKey: settings.analyticsSiteKey, created: false }, '已开通');
+    }
+    settings.analyticsSiteKey = `mock-key-${site.code}`;
+    site.settings = settings;
+    return okJson({ siteKey: settings.analyticsSiteKey, created: true }, '开通成功');
+  }),
+
+  // 死链检测（复用任务中心 mock 进度模拟）
+  http.post('/api/cms/seo/deadlink-check', () => {
+    return okJson(createProgressingMockTask({
+      taskType: 'cms-deadlink-check',
+      title: 'CMS 死链检测',
+      totalItems: 30,
+    }), '任务已提交');
+  }),
 ];

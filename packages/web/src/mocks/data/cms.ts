@@ -7,7 +7,7 @@ import {
 import type {
   CmsSite, CmsModel, CmsChannel, CmsContent, CmsTag, CmsFragment, CmsFriendLink,
   CmsAdSlot, CmsAd, CmsForm, CmsFormSubmission, CmsSensitiveWord, CmsLinkWord, CmsComment,
-  CmsRedirect, CmsPushLog, CmsContentVersion,
+  CmsRedirect, CmsPushLog, CmsContentVersion, CmsSearchWord, CmsHotKeyword,
 } from '@zenith/shared';
 
 // 从共享种子数据派生（禁止重复定义静态数组）
@@ -76,3 +76,15 @@ export const getNextCmsSensitiveWordId = nextIdFactory(Math.max(0, ...mockCmsSen
 export const getNextCmsLinkWordId = nextIdFactory(Math.max(0, ...mockCmsLinkWords.map((x) => x.id)) + 1);
 export const getNextCmsCommentId = nextIdFactory(Math.max(0, ...mockCmsComments.map((x) => x.id)) + 1);
 export const getNextCmsRedirectId = nextIdFactory(1);
+
+// ─── P3 ───────────────────────────────────────────────────────────────────────
+export const mockCmsSearchWords: CmsSearchWord[] = [
+  { id: 1, word: '云原生', weight: 100, status: 'enabled', remark: '技术词', createdAt: '2024-01-01 00:00:00', updatedAt: '2024-01-01 00:00:00' },
+  { id: 2, word: '低代码', weight: 100, status: 'enabled', remark: null, createdAt: '2024-01-01 00:00:00', updatedAt: '2024-01-01 00:00:00' },
+];
+export const mockCmsHotKeywords: CmsHotKeyword[] = [
+  { keyword: '产品', count: 42 },
+  { keyword: '价格', count: 31 },
+  { keyword: '教程', count: 18 },
+];
+export const getNextCmsSearchWordId = nextIdFactory(Math.max(0, ...mockCmsSearchWords.map((x) => x.id)) + 1);

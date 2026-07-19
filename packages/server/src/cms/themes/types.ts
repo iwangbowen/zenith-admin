@@ -64,7 +64,7 @@ export interface CmsContentItem {
 export interface CmsContentDetail extends CmsContentItem {
   body: string;
   extend: Record<string, unknown>;
-  tags: { name: string; slug: string }[];
+  tags: { name: string; slug: string; url: string }[];
   prev: { title: string; url: string } | null;
   next: { title: string; url: string } | null;
 }
@@ -100,6 +100,8 @@ export interface CmsBaseContext {
   friendLinks: { name: string; url: string; logo: string | null }[];
   seo: CmsSeo;
   searchUrl: string;
+  /** 行为统计（站点开启后注入采集脚本）；detail 页附 contentId 供浏览计数 beacon */
+  analytics: { siteKey: string; contentId?: number } | null;
 }
 
 export interface CmsHomeContext extends CmsBaseContext {
@@ -168,6 +170,14 @@ export interface CmsSearchContext extends CmsBaseContext {
   pagination: CmsPagination;
 }
 
+/** 标签聚合页上下文 */
+export interface CmsTagPageContext extends CmsBaseContext {
+  tag: { name: string; slug: string; contentCount: number };
+  breadcrumbs: CmsBreadcrumb[];
+  items: CmsContentItem[];
+  pagination: CmsPagination;
+}
+
 export interface CmsNotFoundContext extends CmsBaseContext {
   path: string;
 }
@@ -179,6 +189,7 @@ export interface CmsThemeTemplates {
   detail: ComponentType<CmsDetailContext>;
   page: ComponentType<CmsPageContext>;
   search: ComponentType<CmsSearchContext>;
+  tag: ComponentType<CmsTagPageContext>;
   notFound: ComponentType<CmsNotFoundContext>;
 }
 

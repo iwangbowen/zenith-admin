@@ -98,6 +98,19 @@ export interface LayoutProps {
   children: ReactNode;
 }
 
+/** 行为采集 beacon 脚本（page_view + 详情页浏览计数），仅站点开启统计时注入 */
+function buildAnalyticsBeacon(analytics: NonNullable<CmsBaseContext['analytics']>): string {
+  return `(function(){try{
+var K=${JSON.stringify(analytics.siteKey)};var C=${analytics.contentId ?? 'null'};
+var ls=window.localStorage,ss=window.sessionStorage;
+var aid=ls.getItem('cms_aid')||(Date.now().toString(36)+Math.random().toString(36).slice(2,10));ls.setItem('cms_aid',aid);
+var sid=ss.getItem('cms_sid')||(Date.now().toString(36)+Math.random().toString(36).slice(2,10));ss.setItem('cms_sid',sid);
+var ev={eventType:'page_view',sessionId:sid,anonymousId:aid,pagePath:location.pathname,pageTitle:document.title,referrer:document.referrer||undefined};
+navigator.sendBeacon('/api/analytics/events?siteKey='+encodeURIComponent(K),new Blob([JSON.stringify({events:[ev]})],{type:'application/json'}));
+if(C){navigator.sendBeacon('/api/public/cms/view',new Blob([JSON.stringify({contentId:C})],{type:'application/json'}));}
+}catch(e){}})();`;
+}
+
 /** 默认主题布局：完整 HTML 文档（内联样式，静态页零外部依赖） */
 export function Layout({ ctx, currentUrl, children }: LayoutProps) {
   const { site, seo, nav, friendLinks, baseUrl } = ctx;
@@ -122,6 +135,10 @@ export function Layout({ ctx, currentUrl, children }: LayoutProps) {
         <style dangerouslySetInnerHTML={{ __html: styles }} />
       </head>
       <body>
+        {ctx.analytics ? (
+          // 轻量行为采集 beacon：page_view 上报 + 详情页浏览计数（静态页零依赖）
+          <script dangerouslySetInnerHTML={{ __html: buildAnalyticsBeacon(ctx.analytics) }} />
+        ) : null}
         <header className="site-header">
           <div className="container">
             <a className="site-brand" href={`${baseUrl}/`}>

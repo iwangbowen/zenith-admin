@@ -14,7 +14,7 @@ import { usePagination } from '@/hooks/usePagination';
 import { useAllUsers } from '@/hooks/queries/users';
 import {
   useCmsSiteList, useCmsThemes, useSaveCmsSite, useDeleteCmsSite, cmsSiteKeys,
-  useCmsSiteUsers, useSetCmsSiteUsers,
+  useCmsSiteUsers, useSetCmsSiteUsers, useEnableSiteAnalytics,
 } from '@/hooks/queries/cms';
 import { CMS_STATIC_MODE_LABELS, CMS_STATIC_MODES } from '@zenith/shared';
 import type { CmsSite } from '@zenith/shared';
@@ -56,6 +56,7 @@ export default function SitesPage() {
   const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
   const siteUsersQuery = useCmsSiteUsers(usersModalSite?.id, !!usersModalSite);
   const setSiteUsersMutation = useSetCmsSiteUsers();
+  const enableAnalyticsMutation = useEnableSiteAnalytics();
   const { data: allUsers } = useAllUsers({ enabled: !!usersModalSite });
   const siteUserIds = siteUsersQuery.data?.userIds;
   const usersInitialized = useRef(false);
@@ -204,6 +205,23 @@ export default function SitesPage() {
           key: 'users',
           label: '授权用户',
           onClick: () => openUsersModal(record),
+        }, {
+          key: 'analytics',
+          label: (record.settings as Record<string, unknown>)?.analyticsSiteKey ? '统计已开通' : '开通统计',
+          onClick: () => {
+            if ((record.settings as Record<string, unknown>)?.analyticsSiteKey) {
+              Toast.info('该站点已开通行为统计，数据见「数据分析 → 行为分析」');
+              return;
+            }
+            Modal.confirm({
+              title: `为「${record.name}」开通行为统计？`,
+              content: '将自动创建统计站点并在前台页面注入采集脚本（需重新生成静态页生效）',
+              onOk: async () => {
+                await enableAnalyticsMutation.mutateAsync(record.id);
+                Toast.success('已开通，重新生成静态页后生效');
+              },
+            });
+          },
         }] : []),
         ...(hasPermission('cms:site:delete') ? [{
           key: 'delete',

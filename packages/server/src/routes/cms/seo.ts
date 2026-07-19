@@ -14,6 +14,9 @@ import {
   listCmsLinkWords, createCmsLinkWord, updateCmsLinkWord, deleteCmsLinkWord, ensureCmsLinkWordExists, mapCmsLinkWord,
 } from '../../services/cms/cms-link-words.service';
 import { pushCmsUrls, listCmsPushLogs } from '../../services/cms/cms-push.service';
+import { mapAsyncTask, submitAsyncTask } from '../../lib/task-center';
+import { AsyncTaskDTO } from '../../lib/openapi-dtos';
+import { ensureCmsSiteExists } from '../../services/cms/cms-sites.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -201,10 +204,32 @@ const pushLogsRoute = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await listCmsPushLogs(c.req.valid('query'))), 200),
 });
 
+// ─── 死链检测（P3，任务中心执行）──────────────────────────────────────────────
+const deadlinkRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/deadlink-check',
+    tags: ['CMS-SEO'], summary: '提交死链检测任务（站内链接查库 + 外链探测）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:seo:manage', audit: { description: 'CMS 死链检测', module: 'CMS内容管理' } })] as const,
+    request: { body: { content: jsonContent(z.object({ siteId: z.number().int().positive() })), required: true } },
+    responses: { ...commonErrorResponses, ...ok(AsyncTaskDTO, '任务已提交') },
+  }),
+  handler: async (c) => {
+    const { siteId } = c.req.valid('json');
+    const site = await ensureCmsSiteExists(siteId);
+    const row = await submitAsyncTask({
+      taskType: 'cms-deadlink-check',
+      title: `CMS 死链检测（${site.name}）`,
+      payload: { siteId },
+    });
+    return c.json(okBody(mapAsyncTask(row), '任务已提交，可在任务中心查看进度与坏链明细'), 200);
+  },
+});
+
 router.openapiRoutes([
   listRedirects, createRedirect, updateRedirect, deleteRedirect,
   listLinkWords, createLinkWord, updateLinkWord, deleteLinkWord,
-  pushRoute, pushLogsRoute,
+  pushRoute, pushLogsRoute, deadlinkRoute,
 ] as const);
 
 export default router;

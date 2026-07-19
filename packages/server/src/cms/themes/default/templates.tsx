@@ -2,7 +2,7 @@ import { Layout } from './Layout';
 import type {
   CmsBaseContext, CmsBreadcrumb, CmsContentItem, CmsHomeContext, CmsListContext,
   CmsDetailContext, CmsPageContext, CmsSearchContext, CmsNotFoundContext, CmsPagination,
-  CmsCommentItem, CmsCommentFormConfig, CmsFrontFormConfig,
+  CmsCommentItem, CmsCommentFormConfig, CmsFrontFormConfig, CmsTagPageContext,
 } from '../types';
 
 function Breadcrumbs({ items }: { items: CmsBreadcrumb[] }) {
@@ -212,7 +212,7 @@ export function DetailTemplate(ctx: CmsDetailContext) {
         <div className="body" dangerouslySetInnerHTML={{ __html: content.body }} />
         {content.tags.length > 0 ? (
           <div className="tags">
-            {content.tags.map((t) => <span key={t.slug}>{t.name}</span>)}
+            {content.tags.map((t) => <a key={t.slug} href={t.url}><span>{t.name}</span></a>)}
           </div>
         ) : null}
       </article>
@@ -261,6 +261,20 @@ export function SearchTemplate(ctx: CmsSearchContext) {
             </div>
           </div>
         ))}
+      </div>
+      <Pagination p={ctx.pagination} />
+    </Layout>
+  );
+}
+
+// ─── 标签聚合页 ───────────────────────────────────────────────────────────────
+export function TagTemplate(ctx: CmsTagPageContext) {
+  return (
+    <Layout ctx={ctx}>
+      <Breadcrumbs items={ctx.breadcrumbs} />
+      <h1 className="page-title">标签：{ctx.tag.name}（{ctx.tag.contentCount}）</h1>
+      <div className="content-list">
+        {ctx.items.length === 0 ? <div className="empty">该标签下暂无内容</div> : ctx.items.map((item) => <ContentItemRow key={item.id} item={item} />)}
       </div>
       <Pagination p={ctx.pagination} />
     </Layout>

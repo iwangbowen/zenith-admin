@@ -10,7 +10,7 @@ import { CmsSiteDTO, CmsThemeDTO, CmsSiteUsersDTO } from '../../lib/openapi-dtos
 import { listThemes } from '../../cms/themes/registry';
 import {
   listCmsSites, listAllCmsSites, getCmsSite, createCmsSite, updateCmsSite, deleteCmsSite,
-  ensureCmsSiteExists, mapCmsSite, getCmsSiteUsers, setCmsSiteUsers,
+  ensureCmsSiteExists, mapCmsSite, getCmsSiteUsers, setCmsSiteUsers, enableSiteAnalytics,
 } from '../../services/cms/cms-sites.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -160,6 +160,22 @@ const setSiteUsersRoute = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRoute, allRoute, themesRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_, getSiteUsersRoute, setSiteUsersRoute] as const);
+// ─── 开通行为统计（P3：自动创建 analytics 站点并注入采集脚本）───────────────────
+const enableAnalyticsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/enable-analytics',
+    tags: ['CMS-站点管理'], summary: '开通行为统计（自动创建统计站点，前台注入采集脚本）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:site:update', audit: { description: 'CMS 站点开通行为统计', module: 'CMS内容管理' } })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(z.object({ siteKey: z.string(), created: z.boolean() }), '已开通') },
+  }),
+  handler: async (c) => {
+    const result = await enableSiteAnalytics(c.req.valid('param').id);
+    return c.json(okBody(result, result.created ? '已开通行为统计' : '行为统计已开通过'), 200);
+  },
+});
+
+router.openapiRoutes([listRoute, allRoute, themesRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_, getSiteUsersRoute, setSiteUsersRoute, enableAnalyticsRoute] as const);
 
 export default router;

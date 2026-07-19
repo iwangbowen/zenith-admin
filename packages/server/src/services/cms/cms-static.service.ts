@@ -7,8 +7,8 @@ import type { CmsSiteRow, CmsChannelRow } from '../../db/schema';
 import logger from '../../lib/logger';
 import { formatIso8601 } from '../../lib/datetime';
 import {
-  renderSitePath, renderHomePage, renderChannelPage, renderDetailPage,
-  channelUrl, contentUrl, siteOrigin,
+  renderSitePath, renderHomePage, renderChannelPage, renderDetailPage, renderTagPage,
+  channelUrl, contentUrl, tagUrl, siteOrigin, listSiteTags, generateRssXml,
 } from './cms-render.service';
 
 // ─── 静态目录 ─────────────────────────────────────────────────────────────────
@@ -104,6 +104,13 @@ export async function generateSitemapXml(site: CmsSiteRow): Promise<string> {
     entries.push({ loc: `${origin}${contentUrl('', chPath, row)}`, lastmod: formatIso8601(row.publishedAt), priority: '0.6' });
   }
 
+  // 标签聚合页
+  const tags = await listSiteTags(site.id);
+  for (const tag of tags) {
+    if (tag.contentCount <= 0) continue;
+    entries.push({ loc: `${origin}${tagUrl('', tag.slug)}`, lastmod: null, priority: '0.4' });
+  }
+
   const body = entries.map((e) => [
     '  <url>',
     `    <loc>${xmlEscape(e.loc)}</loc>`,
@@ -196,6 +203,7 @@ export async function refreshContentStatic(contentId: number): Promise<void> {
   const home = await renderHomePage(site, '');
   if (home.status === 200) await writeStaticFile(site.code, '', home.html);
   await writeStaticFile(site.code, 'sitemap.xml', await generateSitemapXml(site));
+  await writeStaticFile(site.code, 'rss.xml', await generateRssXml(site));
 }
 
 /** 路由层调用：后台不阻塞响应，失败仅记录日志 */
@@ -228,7 +236,9 @@ export async function buildSiteStatic(
     .where(and(eq(cmsContents.siteId, siteId), eq(cmsContents.status, 'published'), isNull(cmsContents.deletedAt)));
 
   const channelMap = new Map(channels.map((c) => [c.id, c]));
-  const total = 1 + channels.length + contents.length + 2; // 首页 + 栏目 + 内容 + sitemap/robots
+  const siteTags = await listSiteTags(siteId);
+  const activeTags = siteTags.filter((t) => t.contentCount > 0);
+  const total = 1 + channels.length + contents.length + activeTags.length + 3; // 首页 + 栏目 + 内容 + 标签 + sitemap/rss/robots
   let processed = 0;
   let pages = 0;
 
@@ -259,8 +269,20 @@ export async function buildSiteStatic(
     if (await report(`内容 ${row.id} 已生成`)) return { pages };
   }
 
+  // 标签聚合页（仅首屏分页；深分页访问时由 hybrid 模式按需回写）
+  for (const tag of activeTags) {
+    const result = await renderTagPage(site, '', tag.slug, 1);
+    if (result.status === 200) {
+      await writeStaticFile(site.code, `tag/${tag.slug}/`, result.html);
+      pages += 1;
+    }
+    if (await report(`标签「${tag.name}」已生成`)) return { pages };
+  }
+
   await writeStaticFile(site.code, 'sitemap.xml', await generateSitemapXml(site));
   await report('sitemap.xml 已生成');
+  await writeStaticFile(site.code, 'rss.xml', await generateRssXml(site));
+  await report('rss.xml 已生成');
   await writeStaticFile(site.code, 'robots.txt', buildRobotsTxt(site));
   await report('robots.txt 已生成');
   return { pages };

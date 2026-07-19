@@ -1,19 +1,21 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Input, Tag, Toast, Modal, Tabs, TabPane, Tree, Typography } from '@douyinfe/semi-ui';
+import { Button, Input, Tag, Toast, Modal, Tabs, TabPane, Tree, Typography, Dropdown, Form } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
-import { Search, RotateCcw, Plus } from 'lucide-react';
+import { Search, RotateCcw, Plus, ChevronDown } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import AppModal from '@/components/AppModal';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import {
   useCmsChannelTree, useCmsContentList, useCmsContentAction, useCmsContentBatch,
-  useAllCmsSites, cmsContentKeys,
+  useAllCmsSites, useAllCmsTags, useCmsContentBatchOps, useDuplicateCmsContent, cmsContentKeys,
 } from '@/hooks/queries/cms';
 import { CMS_CONTENT_STATUS_LABELS } from '@zenith/shared';
 import type { CmsChannel, CmsContent, CmsContentStatus } from '@zenith/shared';
@@ -34,6 +36,16 @@ function channelsToTree(nodes: CmsChannel[]): TreeNodeData[] {
     key: String(n.id),
     label: n.name,
     children: n.children ? channelsToTree(n.children) : undefined,
+  }));
+}
+
+function channelsToSelectTree(nodes: CmsChannel[]): TreeNodeData[] {
+  return nodes.map((n) => ({
+    key: String(n.id),
+    value: n.id,
+    label: n.name,
+    disabled: n.type !== 'list',
+    children: n.children ? channelsToSelectTree(n.children) : undefined,
   }));
 }
 
@@ -72,6 +84,17 @@ export default function ContentsPage() {
 
   const actionMutation = useCmsContentAction();
   const batchMutation = useCmsContentBatch();
+  const batchOpsMutation = useCmsContentBatchOps();
+  const duplicateMutation = useDuplicateCmsContent();
+  const { data: allTags } = useAllCmsTags(siteId);
+  const moveFormApi = useRef<FormApi | null>(null);
+  const tagFormApi = useRef<FormApi | null>(null);
+  const distributeFormApi = useRef<FormApi | null>(null);
+  const [moveModalVisible, setMoveModalVisible] = useState(false);
+  const [tagModalVisible, setTagModalVisible] = useState(false);
+  const [distributeModalVisible, setDistributeModalVisible] = useState(false);
+  const [distributeTargetSiteId, setDistributeTargetSiteId] = useState<number | undefined>(undefined);
+  const distributeTargetTreeQuery = useCmsChannelTree(distributeTargetSiteId);
 
   function handleSearch() {
     setPage(1);
@@ -120,6 +143,40 @@ export default function ContentsPage() {
     await batchMutation.mutateAsync({ action, ids });
     setSelectedIds([]);
     Toast.success(successMsg);
+  }
+
+  // ─── P3 批量操作 ──────────────────────────────────────────────────────────
+  async function handleBatchFlags(flags: Record<string, boolean>, label: string) {
+    await batchOpsMutation.mutateAsync({ action: 'batch-flags', body: { ids: selectedIds, ...flags } });
+    setSelectedIds([]);
+    Toast.success(`已${label} ${selectedIds.length} 条内容`);
+  }
+
+  async function handleBatchMoveOk() {
+    const values = await moveFormApi.current?.validate().catch(() => null);
+    if (!values?.channelId) throw new Error('validation');
+    await batchOpsMutation.mutateAsync({ action: 'batch-move', body: { ids: selectedIds, channelId: values.channelId } });
+    setSelectedIds([]);
+    setMoveModalVisible(false);
+    Toast.success('移动成功');
+  }
+
+  async function handleBatchTagOk() {
+    const values = await tagFormApi.current?.validate().catch(() => null);
+    if (!values?.tagIds || (values.tagIds as number[]).length === 0) throw new Error('validation');
+    await batchOpsMutation.mutateAsync({ action: 'batch-tag', body: { ids: selectedIds, tagIds: values.tagIds } });
+    setSelectedIds([]);
+    setTagModalVisible(false);
+    Toast.success('打标成功');
+  }
+
+  async function handleDistributeOk() {
+    const values = await distributeFormApi.current?.validate().catch(() => null);
+    if (!values?.targetSiteId || !values?.targetChannelId) throw new Error('validation');
+    await batchOpsMutation.mutateAsync({ action: 'distribute', body: { ids: selectedIds, targetSiteId: values.targetSiteId, targetChannelId: values.targetChannelId } });
+    setSelectedIds([]);
+    setDistributeModalVisible(false);
+    Toast.success('分发成功（目标站点草稿箱）');
   }
 
   const channelPathMap = useMemo(() => {
@@ -216,6 +273,13 @@ export default function ContentsPage() {
               danger: true,
               onClick: () => void runAction(record.id, 'offline', '已下线'),
             }] : []),
+            ...(hasPermission('cms:content:create') ? [{
+              key: 'duplicate',
+              label: '复制',
+              onClick: () => {
+                void duplicateMutation.mutateAsync(record.id).then(() => Toast.success('已复制为草稿'));
+              },
+            }] : []),
             ...(hasPermission('cms:content:delete') ? [{
               key: 'recycle',
               label: '回收站',
@@ -252,13 +316,47 @@ export default function ContentsPage() {
     </Button>
   ) : null;
 
-  const batchBar = activeTab === 'recycle' && selectedIds.length > 0 && hasPermission('cms:content:delete') ? (
-    <>
-      <Button onClick={() => void runBatch('restore', selectedIds, `已恢复 ${selectedIds.length} 条`)}>批量恢复</Button>
-      <Button type="danger" onClick={() => {
-        Modal.confirm({ title: `彻底删除 ${selectedIds.length} 条内容？`, content: '删除后不可恢复', onOk: () => runBatch('purge', selectedIds, '已彻底删除') });
-      }}>批量删除</Button>
-    </>
+  const batchBar = selectedIds.length > 0 ? (
+    activeTab === 'recycle' ? (hasPermission('cms:content:delete') ? (
+      <>
+        <Button onClick={() => void runBatch('restore', selectedIds, `已恢复 ${selectedIds.length} 条`)}>批量恢复</Button>
+        <Button type="danger" onClick={() => {
+          Modal.confirm({ title: `彻底删除 ${selectedIds.length} 条内容？`, content: '删除后不可恢复', onOk: () => runBatch('purge', selectedIds, '已彻底删除') });
+        }}>批量删除</Button>
+      </>
+    ) : null) : (
+      <>
+        {hasPermission('cms:content:update') ? (
+          <>
+            <Button onClick={() => setMoveModalVisible(true)}>批量移动</Button>
+            <Button onClick={() => setTagModalVisible(true)}>批量打标</Button>
+            <Dropdown
+              trigger="click"
+              render={(
+                <Dropdown.Menu>
+                  <Dropdown.Item onClick={() => void handleBatchFlags({ isTop: true }, '置顶')}>置顶</Dropdown.Item>
+                  <Dropdown.Item onClick={() => void handleBatchFlags({ isTop: false }, '取消置顶')}>取消置顶</Dropdown.Item>
+                  <Dropdown.Item onClick={() => void handleBatchFlags({ isRecommend: true }, '推荐')}>推荐</Dropdown.Item>
+                  <Dropdown.Item onClick={() => void handleBatchFlags({ isRecommend: false }, '取消推荐')}>取消推荐</Dropdown.Item>
+                  <Dropdown.Item onClick={() => void handleBatchFlags({ isHot: true }, '设为热门')}>设为热门</Dropdown.Item>
+                  <Dropdown.Item onClick={() => void handleBatchFlags({ isHot: false }, '取消热门')}>取消热门</Dropdown.Item>
+                </Dropdown.Menu>
+              )}
+            >
+              <Button icon={<ChevronDown size={14} />} iconPosition="right">批量属性</Button>
+            </Dropdown>
+          </>
+        ) : null}
+        {hasPermission('cms:content:create') ? (
+          <Button onClick={() => { setDistributeTargetSiteId(undefined); setDistributeModalVisible(true); }}>站群分发</Button>
+        ) : null}
+        {hasPermission('cms:content:delete') ? (
+          <Button type="danger" onClick={() => {
+            Modal.confirm({ title: `移入回收站 ${selectedIds.length} 条？`, content: '已发布内容将同时下线', onOk: () => runBatch('recycle', selectedIds, '已移入回收站') });
+          }}>批量回收</Button>
+        ) : null}
+      </>
+    )
   ) : null;
 
   const tableContent = (
@@ -297,11 +395,68 @@ export default function ContentsPage() {
         onRefresh={() => void listQuery.refetch()}
         refreshLoading={listQuery.isFetching}
         pagination={buildPagination(total)}
-        rowSelection={activeTab === 'recycle' ? {
+        rowSelection={{
           selectedRowKeys: selectedIds.map(String),
           onChange: (keys) => setSelectedIds((keys ?? []).map(Number)),
-        } : undefined}
+        }}
       />
+      {/* P3 批量操作弹窗 */}
+      <AppModal
+        title={`批量移动 ${selectedIds.length} 条内容`}
+        visible={moveModalVisible}
+        onOk={handleBatchMoveOk}
+        onCancel={() => setMoveModalVisible(false)}
+        okButtonProps={{ loading: batchOpsMutation.isPending }}
+        width={480}
+        closeOnEsc
+      >
+        <Form getFormApi={(api) => { moveFormApi.current = api; }} allowEmpty labelPosition="left" labelWidth={90}>
+          <Form.TreeSelect field="channelId" label="目标栏目" style={{ width: '100%' }}
+            treeData={channelsToSelectTree(treeQuery.data ?? [])}
+            rules={[{ required: true, message: '请选择目标栏目' }]} />
+        </Form>
+      </AppModal>
+      <AppModal
+        title={`批量打标 ${selectedIds.length} 条内容`}
+        visible={tagModalVisible}
+        onOk={handleBatchTagOk}
+        onCancel={() => setTagModalVisible(false)}
+        okButtonProps={{ loading: batchOpsMutation.isPending }}
+        width={480}
+        closeOnEsc
+      >
+        <Form getFormApi={(api) => { tagFormApi.current = api; }} allowEmpty labelPosition="left" labelWidth={90}>
+          <Form.Select field="tagIds" label="追加标签" multiple style={{ width: '100%' }}
+            optionList={(allTags ?? []).map((t) => ({ value: t.id, label: t.name }))}
+            rules={[{ required: true, message: '请选择标签' }]} />
+        </Form>
+      </AppModal>
+      <AppModal
+        title={`站群分发 ${selectedIds.length} 条内容`}
+        visible={distributeModalVisible}
+        onOk={handleDistributeOk}
+        onCancel={() => setDistributeModalVisible(false)}
+        okButtonProps={{ loading: batchOpsMutation.isPending }}
+        width={520}
+        closeOnEsc
+      >
+        <Form
+          getFormApi={(api) => { distributeFormApi.current = api; }}
+          allowEmpty
+          labelPosition="left"
+          labelWidth={90}
+          onValueChange={(values) => {
+            if (values.targetSiteId !== distributeTargetSiteId) setDistributeTargetSiteId(values.targetSiteId as number);
+          }}
+        >
+          <Form.Select field="targetSiteId" label="目标站点" style={{ width: '100%' }}
+            optionList={(sites ?? []).filter((s) => s.id !== siteId).map((s) => ({ value: s.id, label: s.name }))}
+            rules={[{ required: true, message: '请选择目标站点' }]} />
+          <Form.TreeSelect field="targetChannelId" label="目标栏目" style={{ width: '100%' }}
+            treeData={channelsToSelectTree(distributeTargetTreeQuery.data ?? [])}
+            rules={[{ required: true, message: '请选择目标栏目' }]} />
+        </Form>
+      </AppModal>
     </>
   );
 

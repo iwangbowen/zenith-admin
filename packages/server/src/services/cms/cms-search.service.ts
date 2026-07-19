@@ -2,17 +2,69 @@ import { sql, and, eq, isNull, type SQL } from 'drizzle-orm';
 import { Jieba } from '@node-rs/jieba';
 import { dict } from '@node-rs/jieba/dict';
 import { db } from '../../db';
-import { cmsContents, cmsChannels } from '../../db/schema';
+import { cmsContents, cmsChannels, cmsSearchWords } from '../../db/schema';
 import { formatNullableDateTime } from '../../lib/datetime';
 import { escapeLike } from '../../lib/where-helpers';
+import { config } from '../../config';
+import redis from '../../lib/redis';
+import logger from '../../lib/logger';
 import type { CmsSearchResult } from '@zenith/shared';
 
-// ─── 分词器（进程级单例，加载默认词典）─────────────────────────────────────────
+// ─── 分词器（进程级单例，加载默认词典 + DB 自定义词典）─────────────────────────
 let jiebaInstance: Jieba | null = null;
 
 function getJieba(): Jieba {
   if (!jiebaInstance) jiebaInstance = Jieba.withDict(dict);
   return jiebaInstance;
+}
+
+/**
+ * 从 DB 重载自定义词典（追加模式；删除词条需重启进程才彻底失效）。
+ * 启动时与词典 CRUD 后调用。
+ */
+export async function reloadCmsSearchDict(): Promise<number> {
+  const rows = await db.select().from(cmsSearchWords).where(eq(cmsSearchWords.status, 'enabled'));
+  if (rows.length === 0) return 0;
+  const lines = rows.map((r) => `${r.word} ${r.weight} n`).join('\n');
+  try {
+    getJieba().loadDict(Buffer.from(`${lines}\n`, 'utf8'));
+  } catch (err) {
+    logger.error('[CMS] 自定义词典加载失败', err);
+    return 0;
+  }
+  return rows.length;
+}
+
+// ─── tsvector 解析器配置（默认 simple=应用层 jieba 分词；可切 zhparser 等 PG 扩展配置）──
+const TSVECTOR_CONFIG = /^[a-z_][a-z0-9_]*$/.test(process.env.CMS_TSVECTOR_CONFIG ?? '')
+  ? (process.env.CMS_TSVECTOR_CONFIG as string)
+  : 'simple';
+
+/** 当前是否使用应用层分词（simple parser 需要预分词；PG 扩展配置直接吃原文） */
+export function usesAppSegmentation(): boolean {
+  return TSVECTOR_CONFIG === 'simple';
+}
+
+// ─── 搜索热词（Redis ZSET，前台每次检索计数）───────────────────────────────────
+const HOTWORD_PREFIX = `${config.redis.keyPrefix}cms:hotwords:`;
+
+export function recordSearchKeyword(siteId: number, keyword: string): void {
+  const kw = keyword.trim().slice(0, 32);
+  if (!kw) return;
+  redis.zincrby(`${HOTWORD_PREFIX}${siteId}`, 1, kw).catch(() => undefined);
+}
+
+export async function getHotKeywords(siteId: number, limit = 20): Promise<{ keyword: string; count: number }[]> {
+  const raw = await redis.zrevrange(`${HOTWORD_PREFIX}${siteId}`, 0, limit - 1, 'WITHSCORES').catch(() => [] as string[]);
+  const out: { keyword: string; count: number }[] = [];
+  for (let i = 0; i < raw.length; i += 2) {
+    out.push({ keyword: raw[i], count: Number(raw[i + 1]) || 0 });
+  }
+  return out;
+}
+
+export async function clearHotKeywords(siteId: number): Promise<void> {
+  await redis.del(`${HOTWORD_PREFIX}${siteId}`).catch(() => undefined);
 }
 
 /** 去除 HTML 标签与常见实体，得到纯文本（用于索引与摘要） */
@@ -79,12 +131,20 @@ export interface SearchVectorInput {
 /**
  * 生成 search_vector 的 SQL 表达式：
  * 标题权重 A，关键词/摘要权重 B，正文与扩展字段权重 C。
+ * simple 配置走应用层 jieba 分词；其他配置（如 zhparser 的 chinese_zh）由 PG 直接解析原文。
  */
 export function buildSearchVector(input: SearchVectorInput): SQL {
-  const a = segmentForIndex(input.title);
-  const b = segmentForIndex([input.seoKeywords ?? '', input.summary ?? ''].join(' '));
-  const c = segmentForIndex([input.body ?? '', ...(input.extendTexts ?? [])].join(' '));
-  return sql`setweight(to_tsvector('simple', ${a}), 'A') || setweight(to_tsvector('simple', ${b}), 'B') || setweight(to_tsvector('simple', ${c}), 'C')`;
+  const cfg = sql.raw(`'${TSVECTOR_CONFIG}'`);
+  if (usesAppSegmentation()) {
+    const a = segmentForIndex(input.title);
+    const b = segmentForIndex([input.seoKeywords ?? '', input.summary ?? ''].join(' '));
+    const c = segmentForIndex([input.body ?? '', ...(input.extendTexts ?? [])].join(' '));
+    return sql`setweight(to_tsvector(${cfg}::regconfig, ${a}), 'A') || setweight(to_tsvector(${cfg}::regconfig, ${b}), 'B') || setweight(to_tsvector(${cfg}::regconfig, ${c}), 'C')`;
+  }
+  const a = stripHtml(input.title);
+  const b = stripHtml([input.seoKeywords ?? '', input.summary ?? ''].join(' '));
+  const c = stripHtml([input.body ?? '', ...(input.extendTexts ?? [])].join(' ')).slice(0, 20000);
+  return sql`setweight(to_tsvector(${cfg}::regconfig, ${a}), 'A') || setweight(to_tsvector(${cfg}::regconfig, ${b}), 'B') || setweight(to_tsvector(${cfg}::regconfig, ${c}), 'C')`;
 }
 
 function escapeHtml(s: string): string {
@@ -164,8 +224,12 @@ export async function searchCmsContents(q: CmsSearchQuery): Promise<{ list: CmsS
   const tokens = segmentForQuery(keyword);
   const empty = { list: [] as CmsSearchResult[], total: 0, page, pageSize, tokens };
   if (tokens.length === 0) return empty;
+  recordSearchKeyword(siteId, keyword);
 
-  const tsquery = sql`plainto_tsquery('simple', ${tokens.join(' ')})`;
+  const cfg = sql.raw(`'${TSVECTOR_CONFIG}'`);
+  const tsquery = usesAppSegmentation()
+    ? sql`plainto_tsquery(${cfg}::regconfig, ${tokens.join(' ')})`
+    : sql`plainto_tsquery(${cfg}::regconfig, ${keyword.trim()})`;
   const baseWhere = and(
     eq(cmsContents.siteId, siteId),
     eq(cmsContents.status, 'published'),

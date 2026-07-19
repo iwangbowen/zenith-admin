@@ -11,6 +11,8 @@ import {
   listCmsContents, getCmsContent, createCmsContent, updateCmsContent,
   submitCmsContent, publishCmsContent, rejectCmsContent, offlineCmsContent,
   recycleCmsContents, restoreCmsContents, purgeCmsContents, restoreCmsContentToVersion,
+  batchMoveCmsContents, batchSetCmsContentFlags, batchAddCmsContentTags,
+  duplicateCmsContent, distributeCmsContents,
 } from '../../services/cms/cms-contents.service';
 import { listContentVersions } from '../../services/cms/cms-versions.service';
 import { triggerContentStaticRefresh } from '../../services/cms/cms-static.service';
@@ -250,11 +252,108 @@ const restoreVersionRoute = defineOpenAPIRoute({
   },
 });
 
+// ─── P3：批量操作 / 复制 / 站群分发 ─────────────────────────────────────────────
+const batchMoveRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/batch-move',
+    tags: ['CMS-内容管理'], summary: '批量移动栏目',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:content:update', audit: { description: 'CMS 内容批量移动', module: 'CMS内容管理' } })] as const,
+    request: { body: { content: jsonContent(z.object({ ids: z.array(z.number().int()).min(1), channelId: z.number().int().positive() })), required: true } },
+    responses: { ...commonErrorResponses, ...okMsg('移动成功') },
+  }),
+  handler: async (c) => {
+    const { ids, channelId } = c.req.valid('json');
+    const count = await batchMoveCmsContents(ids, channelId);
+    return c.json(okBody(null, `已移动 ${count} 条内容`), 200);
+  },
+});
+
+const batchFlagsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/batch-flags',
+    tags: ['CMS-内容管理'], summary: '批量设置属性（置顶/推荐/热门）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:content:update', audit: { description: 'CMS 内容批量设置属性', module: 'CMS内容管理' } })] as const,
+    request: {
+      body: {
+        content: jsonContent(z.object({
+          ids: z.array(z.number().int()).min(1),
+          isTop: z.boolean().optional(),
+          isRecommend: z.boolean().optional(),
+          isHot: z.boolean().optional(),
+        })),
+        required: true,
+      },
+    },
+    responses: { ...commonErrorResponses, ...okMsg('设置成功') },
+  }),
+  handler: async (c) => {
+    const { ids, ...flags } = c.req.valid('json');
+    const count = await batchSetCmsContentFlags(ids, flags);
+    return c.json(okBody(null, `已更新 ${count} 条内容`), 200);
+  },
+});
+
+const batchTagRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/batch-tag',
+    tags: ['CMS-内容管理'], summary: '批量追加标签',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:content:update', audit: { description: 'CMS 内容批量打标', module: 'CMS内容管理' } })] as const,
+    request: { body: { content: jsonContent(z.object({ ids: z.array(z.number().int()).min(1), tagIds: z.array(z.number().int()).min(1) })), required: true } },
+    responses: { ...commonErrorResponses, ...okMsg('打标成功') },
+  }),
+  handler: async (c) => {
+    const { ids, tagIds } = c.req.valid('json');
+    const count = await batchAddCmsContentTags(ids, tagIds);
+    return c.json(okBody(null, `已为 ${count} 条内容追加标签`), 200);
+  },
+});
+
+const duplicateRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/duplicate',
+    tags: ['CMS-内容管理'], summary: '复制为草稿',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:content:create', audit: { description: 'CMS 内容复制', module: 'CMS内容管理' } })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(CmsContentDTO, '复制成功') },
+  }),
+  handler: async (c) => c.json(okBody(await duplicateCmsContent(c.req.valid('param').id), '复制成功'), 200),
+});
+
+const distributeRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/distribute',
+    tags: ['CMS-内容管理'], summary: '站群分发（复制到目标站点栏目为草稿）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:content:create', audit: { description: 'CMS 内容站群分发', module: 'CMS内容管理' } })] as const,
+    request: {
+      body: {
+        content: jsonContent(z.object({
+          ids: z.array(z.number().int()).min(1),
+          targetSiteId: z.number().int().positive(),
+          targetChannelId: z.number().int().positive(),
+        })),
+        required: true,
+      },
+    },
+    responses: { ...commonErrorResponses, ...okMsg('分发成功') },
+  }),
+  handler: async (c) => {
+    const { ids, targetSiteId, targetChannelId } = c.req.valid('json');
+    const count = await distributeCmsContents(ids, targetSiteId, targetChannelId);
+    return c.json(okBody(null, `已分发 ${count} 条内容（同站内容自动跳过）`), 200);
+  },
+});
+
 router.openapiRoutes([
   listRoute, getOneRoute, createRoute_, updateRoute_,
   submitRoute, publishRoute, rejectRoute, offlineRoute,
   recycleRoute, restoreRoute, purgeRoute,
   versionsRoute, restoreVersionRoute,
+  batchMoveRoute, batchFlagsRoute, batchTagRoute, duplicateRoute, distributeRoute,
 ] as const);
 
 export default router;

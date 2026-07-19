@@ -11,7 +11,7 @@ import {
   renderSitePath, renderSearchPage, type RenderResult,
 } from '../../services/cms/cms-render.service';
 import { readStaticFile, writeStaticFile, generateSitemapXml, buildRobotsTxt } from '../../services/cms/cms-static.service';
-import { increaseViewCount } from '../../services/cms/cms-contents.service';
+import { generateRssXml, findChannelByPath } from '../../services/cms/cms-render.service';
 
 const PAGE_CACHE_PREFIX = `${config.redis.keyPrefix}cms:page:`;
 const SITEMAP_CACHE_PREFIX = `${config.redis.keyPrefix}cms:sitemap:`;
@@ -100,6 +100,20 @@ export function createCmsFrontendRoutes(): Hono {
       return c.newResponse(xml, 200, { 'Content-Type': 'application/xml; charset=utf-8' });
     }
 
+    // RSS：站点级 /rss.xml 与栏目级 /{channelPath}/rss.xml
+    if (sitePath === 'rss.xml' || sitePath.endsWith('/rss.xml')) {
+      const channelPath = sitePath === 'rss.xml' ? null : sitePath.slice(0, -'/rss.xml'.length);
+      const channel = channelPath ? await findChannelByPath(site.id, channelPath) : null;
+      if (channelPath && !channel) return next();
+      const cacheKey = `${SITEMAP_CACHE_PREFIX}rss:${site.id}:${channelPath ?? ''}`;
+      let xml = await redis.get(cacheKey).catch(() => null);
+      if (!xml) {
+        xml = await generateRssXml(site, channel);
+        redis.setex(cacheKey, SITEMAP_CACHE_TTL_SECONDS, xml).catch(() => undefined);
+      }
+      return c.newResponse(xml, 200, { 'Content-Type': 'application/rss+xml; charset=utf-8' });
+    }
+
     // 搜索页：永远动态渲染（不静态化、不缓存）
     if (sitePath === 'search' || sitePath === 'search/') {
       const keyword = (c.req.query('q') ?? '').trim().slice(0, 64);
@@ -128,9 +142,6 @@ export function createCmsFrontendRoutes(): Hono {
     // SSR 渲染
     const result = await renderSitePath(site, baseUrl, sitePath);
     if (result.status === 200) {
-      if (result.kind === 'detail' && result.contentId && !isPreview) {
-        void increaseViewCount(result.contentId).catch(() => undefined);
-      }
       if (!isPreview && site.staticMode === 'hybrid') {
         // 混合模式：miss 即渲染并回写，下次直接命中静态文件
         void writeStaticFile(site.code, sitePath, result.html).catch((err) => {

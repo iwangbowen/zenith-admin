@@ -10576,3 +10576,19 @@ export interface CmsPushLog {
   response: string | null;
   createdAt: string;
 }
+
+// ─── CMS P3 Batch1 ────────────────────────────────────────────────────────────
+export interface CmsSearchWord {
+  id: number;
+  word: string;
+  weight: number;
+  status: 'enabled' | 'disabled';
+  remark: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CmsHotKeyword {
+  keyword: string;
+  count: number;
+}

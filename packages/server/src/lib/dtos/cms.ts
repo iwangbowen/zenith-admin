@@ -365,3 +365,24 @@ export const CmsSiteUsersDTO = z
     users: z.array(z.object({ id: z.number().int(), username: z.string(), nickname: z.string() })),
   })
   .openapi('CmsSiteUsers');
+
+// ─── P3 Batch1 ────────────────────────────────────────────────────────────────
+export const CmsSearchWordDTO = z
+  .object({
+    id: z.number().int(),
+    word: z.string().openapi({ example: '全文检索' }),
+    weight: z.number().int(),
+    status: z.enum(['enabled', 'disabled']),
+    remark: z.string().nullable(),
+    ...auditFields,
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('CmsSearchWord');
+
+export const CmsHotKeywordDTO = z
+  .object({
+    keyword: z.string(),
+    count: z.number().int(),
+  })
+  .openapi('CmsHotKeyword');

@@ -450,3 +450,20 @@ export const cmsSiteUsers = pgTable('cms_site_users', {
 }, (t) => [primaryKey({ columns: [t.siteId, t.userId] })]);
 
 export type CmsSiteUserRow = typeof cmsSiteUsers.$inferSelect;
+
+// ═══ P3 Batch1 ════════════════════════════════════════════════════════════════
+
+// ─── 检索自定义词典（jieba 运行时加载；删除词条需重启进程才彻底失效）─────────────
+export const cmsSearchWords = pgTable('cms_search_words', {
+  id: serial('id').primaryKey(),
+  word: varchar('word', { length: 50 }).notNull().unique(),
+  /** 词频权重（越大越优先成词），jieba 用户词典格式 */
+  weight: integer('weight').notNull().default(1000),
+  status: statusEnum('status').notNull().default('enabled'),
+  remark: varchar('remark', { length: 200 }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type CmsSearchWordRow = typeof cmsSearchWords.$inferSelect;

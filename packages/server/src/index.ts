@@ -720,7 +720,9 @@ try {
   const { registerExportJobWorker } = await import('./services/tasks/export-jobs.service');
   const { registerSystemTasks } = await import('./lib/system-tasks.registry');
   registerTaskDemoHandlers(); // 演示任务类型需在任务中心 Worker 启动前注册
-  registerCmsTaskHandlers(); // CMS 全站静态化 / 检索索引重建
+  registerCmsTaskHandlers(); // CMS 全站静态化 / 检索索引重建 / 死链检测
+  const { reloadCmsSearchDict } = await import('./services/cms/cms-search.service');
+  await reloadCmsSearchDict(); // CMS 检索自定义词典（DB → jieba）
   registerAiEvalTaskHandlers(); // AI 评测任务
   registerReportDatasourceTaskHandlers();
   registerReportDatasetTaskHandlers();

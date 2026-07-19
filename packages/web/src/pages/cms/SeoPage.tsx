@@ -13,8 +13,10 @@ import { usePagination } from '@/hooks/usePagination';
 import {
   useCmsRedirectList, useSaveCmsRedirect, useDeleteCmsRedirect, cmsRedirectKeys,
   useCmsLinkWordList, useSaveCmsLinkWord, useDeleteCmsLinkWord, cmsLinkWordKeys,
-  useCmsPushLogList, useCmsPush, useAllCmsSites,
+  useCmsPushLogList, useCmsPush, useAllCmsSites, useCmsDeadlinkCheck,
 } from '@/hooks/queries/cms';
+import { useMyAsyncTasks } from '@/hooks/useAsyncTasks';
+import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import { CMS_PUSH_ENGINE_LABELS } from '@zenith/shared';
 import type { CmsRedirect, CmsLinkWord, CmsPushLog } from '@zenith/shared';
 import { CmsSiteSelect } from './CmsSiteSelect';
@@ -344,6 +346,56 @@ function PushTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
   );
 }
 
+// ─── 死链检测 Tab（P3）─────────────────────────────────────────────────────────
+function DeadlinkTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
+  const { hasPermission } = usePermission();
+  const checkMutation = useCmsDeadlinkCheck();
+  const { tasks, loading, refresh } = useMyAsyncTasks({ taskTypes: ['cms-deadlink-check'] });
+
+  const columns: ColumnProps[] = [
+    { title: '任务', dataIndex: 'title', width: 260 },
+    { title: '进度', width: 280, render: (_: unknown, record) => <AsyncTaskProgress task={record} /> },
+    { title: '提交时间', dataIndex: 'createdAt', width: 160 },
+    { title: '完成时间', dataIndex: 'completedAt', width: 160, render: (v: string | null) => v ?? '-' },
+  ];
+
+  return (
+    <>
+      <Banner type="info" closeIcon={null} style={{ marginBottom: 12 }} description="扫描已发布内容正文与友情链接中的链接：站内链接校验目标是否存在，外链探测可达性（限 200 条）。坏链明细在任务中心的任务详情中查看。" />
+      <SearchToolbar>
+        {hasPermission('cms:seo:manage') ? (
+          <Button
+            type="primary"
+            icon={<Search size={14} />}
+            loading={checkMutation.isPending}
+            disabled={!siteId}
+            onClick={async () => {
+              if (!siteId) return;
+              await checkMutation.mutateAsync(siteId);
+              Toast.success('死链检测任务已提交');
+              refresh();
+            }}
+          >
+            开始检测
+          </Button>
+        ) : null}
+      </SearchToolbar>
+      <ConfigurableTable
+        bordered
+        columns={columns}
+        dataSource={tasks}
+        loading={loading}
+        rowKey="id"
+        size="small"
+        empty="暂无检测任务"
+        onRefresh={refresh}
+        refreshLoading={loading}
+        pagination={false}
+      />
+    </>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 export default function SeoPage() {
   const [siteId, setSiteId] = useState<number | undefined>(undefined);
@@ -363,6 +415,9 @@ export default function SeoPage() {
         </TabPane>
         <TabPane tab="搜索推送" itemKey="push">
           <PushTab siteId={siteId} />
+        </TabPane>
+        <TabPane tab="死链检测" itemKey="deadlink">
+          <DeadlinkTab siteId={siteId} />
         </TabPane>
       </Tabs>
     </div>

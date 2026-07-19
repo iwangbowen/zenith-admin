@@ -4,6 +4,7 @@ import type {
   CmsFriendLink, CmsSearchResult, CmsContentStatus, CmsFragmentType, AsyncTask,
   CmsContentVersion, CmsRedirect, CmsLinkWord, CmsComment, CmsCommentStatus,
   CmsAdSlot, CmsAd, CmsForm, CmsFormSubmission, CmsSensitiveWord, CmsPushLog,
+  CmsSearchWord, CmsHotKeyword,
 } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { toQueryString, unwrap, LOOKUP_STALE_TIME } from '@/lib/query';
@@ -755,5 +756,92 @@ export function useSetCmsSiteUsers() {
     mutationFn: ({ siteId, userIds }: { siteId: number; userIds: number[] }) =>
       request.put<null>(`/api/cms/sites/${siteId}/users`, { userIds }).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: cmsSiteKeys.all }),
+  });
+}
+
+// ═══ P3 Batch1 ════════════════════════════════════════════════════════════════
+
+// ─── 检索词典 / 热词 ──────────────────────────────────────────────────────────
+export const cmsSearchWordKeys = {
+  all: ['cms-search-words'] as const,
+  lists: ['cms-search-words', 'list'] as const,
+  list: (params: { page: number; pageSize: number; keyword?: string }) => ['cms-search-words', 'list', params] as const,
+  hot: (siteId: number | undefined) => ['cms-search-words', 'hot', siteId] as const,
+};
+
+export function useCmsSearchWordList(params: { page: number; pageSize: number; keyword?: string }) {
+  return useQuery({
+    queryKey: cmsSearchWordKeys.list(params),
+    queryFn: () => request.get<PaginatedResponse<CmsSearchWord>>(`/api/cms/search/words${toQueryString(params)}`).then(unwrap),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useSaveCmsSearchWord() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
+      (id === undefined
+        ? request.post<CmsSearchWord>('/api/cms/search/words', values)
+        : request.put<CmsSearchWord>(`/api/cms/search/words/${id}`, values)
+      ).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsSearchWordKeys.all }),
+  });
+}
+
+export function useDeleteCmsSearchWord() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.delete<null>(`/api/cms/search/words/${id}`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsSearchWordKeys.all }),
+  });
+}
+
+export function useCmsHotKeywords(siteId: number | undefined) {
+  return useQuery({
+    queryKey: cmsSearchWordKeys.hot(siteId),
+    queryFn: () => request.get<CmsHotKeyword[]>(`/api/cms/search/hot-keywords?siteId=${siteId}&limit=30`).then(unwrap),
+    enabled: siteId !== undefined,
+  });
+}
+
+export function useClearCmsHotKeywords() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (siteId: number) => request.post<null>('/api/cms/search/hot-keywords/clear', { siteId }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsSearchWordKeys.all }),
+  });
+}
+
+// ─── 内容批量操作 / 分发 ──────────────────────────────────────────────────────
+export function useCmsContentBatchOps() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ action, body }: { action: 'batch-move' | 'batch-flags' | 'batch-tag' | 'distribute'; body: Record<string, unknown> }) =>
+      request.post<null>(`/api/cms/contents/${action}`, body).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsContentKeys.all }),
+  });
+}
+
+export function useDuplicateCmsContent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.post<CmsContent>(`/api/cms/contents/${id}/duplicate`, {}).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsContentKeys.all }),
+  });
+}
+
+// ─── 站点开通统计 / 死链检测 ──────────────────────────────────────────────────
+export function useEnableSiteAnalytics() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (siteId: number) => request.post<{ siteKey: string; created: boolean }>(`/api/cms/sites/${siteId}/enable-analytics`, {}).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsSiteKeys.all }),
+  });
+}
+
+export function useCmsDeadlinkCheck() {
+  return useMutation({
+    mutationFn: (siteId: number) => request.post<AsyncTask>('/api/cms/seo/deadlink-check', { siteId }).then(unwrap),
   });
 }

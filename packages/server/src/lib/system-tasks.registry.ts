@@ -298,4 +298,18 @@ export async function registerSystemTasks(): Promise<void> {
     allowManualRun: true,
     run: publishScheduledCmsContents,
   });
+
+  const { cleanupCmsRecycleBin } = await import('../services/cms/cms-contents.service');
+  await registerSystemRecurringJob({
+    name: 'cms-recycle-cleanup',
+    title: 'CMS 回收站自动清理',
+    module: 'CMS内容管理',
+    cronExpression: '50 3 * * *',
+    description: '每天清理进入回收站超过 30 天的内容（彻底删除，含标签计数重算）。',
+    allowManualRun: true,
+    run: async () => {
+      const count = await cleanupCmsRecycleBin(30);
+      return `清理了 ${count} 条回收站内容`;
+    },
+  });
 }

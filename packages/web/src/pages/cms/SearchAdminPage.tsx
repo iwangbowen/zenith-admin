@@ -1,19 +1,26 @@
-import { useState } from 'react';
-import { Banner, Button, Input, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { useRef, useState } from 'react';
+import { Banner, Button, Form, Input, Tag, Toast, Typography, Tabs, TabPane, Modal } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Search, RefreshCw, SplitSquareHorizontal } from 'lucide-react';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
+import { Search, RefreshCw, SplitSquareHorizontal, Plus, Trash2 } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import AppModal from '@/components/AppModal';
 import { useMyAsyncTasks } from '@/hooks/useAsyncTasks';
 import { usePermission } from '@/hooks/usePermission';
-import { useCmsSearchTest, useCmsSegmentPreview, useCmsSearchReindex } from '@/hooks/queries/cms';
-import type { CmsSearchResult } from '@zenith/shared';
+import { usePagination } from '@/hooks/usePagination';
+import {
+  useCmsSearchTest, useCmsSegmentPreview, useCmsSearchReindex,
+  useCmsSearchWordList, useSaveCmsSearchWord, useDeleteCmsSearchWord,
+  useCmsHotKeywords, useClearCmsHotKeywords,
+} from '@/hooks/queries/cms';
+import type { CmsSearchResult, CmsSearchWord, CmsHotKeyword } from '@zenith/shared';
 import { CmsSiteSelect } from './CmsSiteSelect';
 
-export default function SearchAdminPage() {
+// ─── 检索测试 Tab ─────────────────────────────────────────────────────────────
+function SearchTestTab({ siteId, onSiteChange }: Readonly<{ siteId: number | undefined; onSiteChange: (v: number) => void }>) {
   const { hasPermission } = usePermission();
-  const [siteId, setSiteId] = useState<number | undefined>(undefined);
   const [draftKeyword, setDraftKeyword] = useState('');
   const [keyword, setKeyword] = useState('');
   const [page, setPage] = useState(1);
@@ -62,21 +69,9 @@ export default function SearchAdminPage() {
   ];
 
   return (
-    <div className="page-container">
-      <Banner
-        type="info"
-        closeIcon={null}
-        style={{ marginBottom: 12 }}
-        description={(
-          <Typography.Text>
-            全文检索基于 PostgreSQL tsvector + GIN 索引，中文分词由服务端 jieba 完成（标题权重 A / 关键词摘要 B / 正文 C）。
-            内容保存时自动更新索引；批量导入历史数据或调整分词逻辑后可在此重建索引。
-          </Typography.Text>
-        )}
-      />
-
+    <>
       <SearchToolbar>
-        <CmsSiteSelect value={siteId} onChange={(v) => { setSiteId(v); setPage(1); }} width={180} />
+        <CmsSiteSelect value={siteId} onChange={(v) => { onSiteChange(v); setPage(1); }} width={180} />
         <Input
           prefix={<Search size={14} />}
           placeholder="输入关键词测试检索效果..."
@@ -88,11 +83,7 @@ export default function SearchAdminPage() {
         />
         <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>检索测试</Button>
         {hasPermission('cms:search:manage') ? (
-          <Button
-            icon={<RefreshCw size={14} />}
-            loading={reindexMutation.isPending}
-            onClick={() => void handleReindex()}
-          >
+          <Button icon={<RefreshCw size={14} />} loading={reindexMutation.isPending} onClick={() => void handleReindex()}>
             重建索引{siteId ? '（当前站点）' : '（全部站点）'}
           </Button>
         ) : null}
@@ -115,12 +106,7 @@ export default function SearchAdminPage() {
         rowKey="id"
         size="small"
         empty={keyword ? '未检索到内容' : '输入关键词开始检索测试'}
-        pagination={{
-          currentPage: page,
-          pageSize: 10,
-          total,
-          onPageChange: setPage,
-        }}
+        pagination={{ currentPage: page, pageSize: 10, total, onPageChange: setPage }}
       />
 
       <Typography.Title heading={6} style={{ margin: '20px 0 8px' }}>索引重建任务</Typography.Title>
@@ -136,6 +122,183 @@ export default function SearchAdminPage() {
         refreshLoading={tasksLoading}
         pagination={false}
       />
+    </>
+  );
+}
+
+// ─── 自定义词典 Tab ───────────────────────────────────────────────────────────
+function DictTab() {
+  const { hasPermission } = usePermission();
+  const formApi = useRef<FormApi | null>(null);
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftKeyword, setDraftKeyword] = useState('');
+  const [submittedKeyword, setSubmittedKeyword] = useState('');
+  const [modalVisible, setModalVisible] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<CmsSearchWord | null>(null);
+
+  const listQuery = useCmsSearchWordList({ page, pageSize, keyword: submittedKeyword || undefined });
+  const saveMutation = useSaveCmsSearchWord();
+  const deleteMutation = useDeleteCmsSearchWord();
+  const canManage = hasPermission('cms:search:manage');
+
+  async function handleModalOk() {
+    let values: Record<string, unknown>;
+    try {
+      values = (await formApi.current?.validate()) ?? {};
+    } catch {
+      throw new Error('validation');
+    }
+    await saveMutation.mutateAsync({ id: editingRecord?.id, values });
+    Toast.success(editingRecord ? '更新成功' : '创建成功');
+    setModalVisible(false);
+    setEditingRecord(null);
+  }
+
+  const columns: ColumnProps<CmsSearchWord>[] = [
+    { title: '词条', dataIndex: 'word', width: 200 },
+    { title: '词频权重', dataIndex: 'weight', width: 110 },
+    { title: '备注', dataIndex: 'remark', width: 220, render: (v: string | null) => v ?? '-' },
+    {
+      title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
+      render: (v: string) => (v === 'enabled' ? <Tag color="green" size="small">启用</Tag> : <Tag color="red" size="small">停用</Tag>),
+    },
+    {
+      title: '操作', width: 140, fixed: 'right',
+      render: (_: unknown, record: CmsSearchWord) => canManage ? (
+        <span style={{ display: 'flex', gap: 4 }}>
+          <Button theme="borderless" size="small" onClick={() => { setEditingRecord(record); setModalVisible(true); }}>编辑</Button>
+          <Button theme="borderless" type="danger" size="small" onClick={() => {
+            Modal.confirm({
+              title: '确定要删除该词条吗？',
+              content: '词条删除后需重启服务或重建索引才完全失效',
+              onOk: async () => {
+                await deleteMutation.mutateAsync(record.id);
+                Toast.success('删除成功');
+              },
+            });
+          }}>删除</Button>
+        </span>
+      ) : null,
+    },
+  ];
+
+  return (
+    <>
+      <Banner type="info" closeIcon={null} style={{ marginBottom: 12 }} description="自定义词典用于纠正分词（如品牌名、行业术语）。新增/修改即时对新内容生效；历史内容需在「检索测试」中重建索引。" />
+      <SearchToolbar>
+        <Input prefix={<Search size={14} />} placeholder="搜索词条..." value={draftKeyword} onChange={setDraftKeyword} showClear style={{ width: 200 }}
+          onEnterPress={() => { setPage(1); setSubmittedKeyword(draftKeyword); }} />
+        <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); setSubmittedKeyword(draftKeyword); }}>查询</Button>
+        {canManage ? <Button type="primary" icon={<Plus size={14} />} onClick={() => { setEditingRecord(null); setModalVisible(true); }}>新增词条</Button> : null}
+      </SearchToolbar>
+      <ConfigurableTable
+        bordered
+        columns={columns}
+        dataSource={listQuery.data?.list ?? []}
+        loading={listQuery.isFetching}
+        rowKey="id"
+        size="small"
+        empty="暂无自定义词条"
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
+        pagination={buildPagination(listQuery.data?.total ?? 0)}
+      />
+      <AppModal
+        title={editingRecord ? '编辑词条' : '新增词条'}
+        visible={modalVisible}
+        onOk={handleModalOk}
+        onCancel={() => { setModalVisible(false); setEditingRecord(null); }}
+        okButtonProps={{ loading: saveMutation.isPending }}
+        width={480}
+        closeOnEsc
+      >
+        <Form
+          key={editingRecord?.id ?? 'new'}
+          getFormApi={(api) => { formApi.current = api; }}
+          allowEmpty
+          initValues={editingRecord
+            ? { word: editingRecord.word, weight: editingRecord.weight, status: editingRecord.status, remark: editingRecord.remark ?? '' }
+            : { weight: 1000, status: 'enabled' }}
+          labelPosition="left"
+          labelWidth={90}
+        >
+          <Form.Input field="word" label="词条" placeholder="如：泽尼斯系统" rules={[{ required: true, message: '请输入词条' }]} />
+          <Form.InputNumber field="weight" label="词频权重" min={1} max={999999} style={{ width: 180 }} extraText="越大越优先成词，默认 1000" />
+          <Form.RadioGroup field="status" label="状态">
+            <Form.Radio value="enabled">启用</Form.Radio>
+            <Form.Radio value="disabled">停用</Form.Radio>
+          </Form.RadioGroup>
+          <Form.Input field="remark" label="备注" />
+        </Form>
+      </AppModal>
+    </>
+  );
+}
+
+// ─── 搜索热词 Tab ─────────────────────────────────────────────────────────────
+function HotKeywordsTab({ siteId, onSiteChange }: Readonly<{ siteId: number | undefined; onSiteChange: (v: number) => void }>) {
+  const { hasPermission } = usePermission();
+  const hotQuery = useCmsHotKeywords(siteId);
+  const clearMutation = useClearCmsHotKeywords();
+
+  const columns: ColumnProps<CmsHotKeyword>[] = [
+    { title: '排名', width: 80, render: (_: unknown, __: CmsHotKeyword, index: number) => index + 1 },
+    { title: '关键词', dataIndex: 'keyword', width: 260 },
+    { title: '搜索次数', dataIndex: 'count', width: 120 },
+  ];
+
+  return (
+    <>
+      <Banner type="info" closeIcon={null} style={{ marginBottom: 12 }} description="统计前台搜索框的关键词频次（Redis 累计），可用于运营选题与内链词建设。" />
+      <SearchToolbar>
+        <CmsSiteSelect value={siteId} onChange={onSiteChange} width={180} />
+        {hasPermission('cms:search:manage') && siteId ? (
+          <Button type="danger" icon={<Trash2 size={14} />} onClick={() => {
+            Modal.confirm({
+              title: '清空当前站点的搜索热词？',
+              onOk: async () => {
+                await clearMutation.mutateAsync(siteId);
+                Toast.success('已清空');
+                void hotQuery.refetch();
+              },
+            });
+          }}>清空热词</Button>
+        ) : null}
+      </SearchToolbar>
+      <ConfigurableTable
+        bordered
+        columns={columns}
+        dataSource={hotQuery.data ?? []}
+        loading={hotQuery.isFetching}
+        rowKey="keyword"
+        size="small"
+        empty="暂无搜索记录"
+        onRefresh={() => void hotQuery.refetch()}
+        refreshLoading={hotQuery.isFetching}
+        pagination={false}
+      />
+    </>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+export default function SearchAdminPage() {
+  const [siteId, setSiteId] = useState<number | undefined>(undefined);
+  const [activeTab, setActiveTab] = useState('test');
+
+  return (
+    <div className="page-container page-tabs-page">
+      <Tabs activeKey={activeTab} onChange={setActiveTab} type="line" lazyRender keepDOM={false}>
+        <TabPane tab="检索测试" itemKey="test">
+          <SearchTestTab siteId={siteId} onSiteChange={setSiteId} />
+        </TabPane>
+        <TabPane tab="自定义词典" itemKey="dict">
+          <DictTab />
+        </TabPane>
+        <TabPane tab="搜索热词" itemKey="hot">
+          <HotKeywordsTab siteId={siteId} onSiteChange={setSiteId} />
+        </TabPane>
+      </Tabs>
     </div>
   );
 }

@@ -5279,3 +5279,15 @@ export type UpdateCmsFormInput = z.input<typeof updateCmsFormSchema>;
 export type CreateCmsSensitiveWordInput = z.input<typeof createCmsSensitiveWordSchema>;
 export type UpdateCmsSensitiveWordInput = z.input<typeof updateCmsSensitiveWordSchema>;
 export type SubmitCmsCommentInput = z.input<typeof submitCmsCommentSchema>;
+
+// ─── CMS P3 Batch1 Schema ─────────────────────────────────────────────────────
+export const createCmsSearchWordSchema = z.object({
+  word: z.string().min(2, '词条至少 2 个字符').max(50),
+  weight: z.number().int().min(1).max(999999).default(1000),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  remark: z.string().max(200).nullable().optional(),
+});
+export const updateCmsSearchWordSchema = createCmsSearchWordSchema.partial();
+
+export type CreateCmsSearchWordInput = z.input<typeof createCmsSearchWordSchema>;
+export type UpdateCmsSearchWordInput = z.input<typeof updateCmsSearchWordSchema>;

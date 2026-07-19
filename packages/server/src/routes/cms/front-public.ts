@@ -4,6 +4,9 @@ import { submitCmsCommentSchema } from '@zenith/shared';
 import { resolveSiteByCode } from '../../services/cms/cms-sites.service';
 import { submitCmsComment } from '../../services/cms/cms-comments.service';
 import { getCmsFormByCode, submitCmsForm } from '../../services/cms/cms-forms.service';
+import { increaseViewCount } from '../../services/cms/cms-contents.service';
+import { config } from '../../config';
+import redis from '../../lib/redis';
 
 /**
  * CMS 前台公开提交接口（评论 / 自定义表单）。
@@ -93,6 +96,25 @@ export function createCmsFrontPublicRoutes(): Hono {
       return respond('提交失败', msg, status);
     }
     return respond('提交成功', form.successMessage?.trim() || '我们已收到您的信息。');
+  });
+
+  // ─── 浏览计数 beacon（静态页 sendBeacon 上报；同 IP+内容 60s 去重防刷）────────
+  app.post('/view', async (c) => {
+    let contentId = 0;
+    try {
+      const body = await c.req.json<{ contentId?: number }>();
+      contentId = Number(body?.contentId) || 0;
+    } catch {
+      return c.body(null, 204);
+    }
+    if (!contentId) return c.body(null, 204);
+    const ip = clientIp(c.req.raw.headers);
+    const dedupeKey = `${config.redis.keyPrefix}cms:view:${contentId}:${ip}`;
+    const first = await redis.set(dedupeKey, '1', 'EX', 60, 'NX').catch(() => 'OK');
+    if (first) {
+      await increaseViewCount(contentId).catch(() => undefined);
+    }
+    return c.body(null, 204);
   });
 
   return app;
