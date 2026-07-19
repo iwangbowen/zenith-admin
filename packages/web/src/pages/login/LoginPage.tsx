@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Form, Button, Toast, Typography, Tabs, TabPane, Divider } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { User, Lock, Mail, AtSign, Building2, ShieldCheck, BriefcaseBusiness } from 'lucide-react';
+import { User, Lock, Mail, AtSign, Building2, ShieldCheck, BriefcaseBusiness, Check } from 'lucide-react';
 import { Icon } from '@iconify/react';
+import dayjs from 'dayjs';
 import { REFRESH_TOKEN_KEY, TOKEN_KEY, type RegisterInput, type OAuthProviderType, type LoginResult, type LoginResponse, type TenantIdentityProviderSummary } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { config } from '@/config';
@@ -403,15 +404,16 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
 
   return (
     <div className="login-page">
-      <div className="login-left">
-        <div className="login-glow-top" />
-        <div className="login-glow-bottom" />
-        <div className="login-ring" />
-        <div className="login-brand">
-          <div className="login-logo-wrap">
-            <AppLogo size={40} variant="glass" />
-            <span className="login-brand-name">{config.appTitle}</span>
-          </div>
+      <div className="login-bg" aria-hidden="true">
+        <div className="login-wash login-wash-a" />
+        <div className="login-wash login-wash-b" />
+      </div>
+      <header className="login-topbar">
+        <AppLogo size={34} />
+        <span className="login-brand-name">{config.appTitle}</span>
+      </header>
+      <main className="login-main">
+        <section className="login-hero">
           <div className="login-eyebrow">企业级后台管理</div>
           <h1 className="login-headline">
             高效管理，
@@ -421,21 +423,18 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
           <p className="login-desc">
             企业级后台管理系统，为团队提供高效、稳定、安全的一站式管理解决方案。
           </p>
-          <div className="login-divider" />
-          <div className="login-feature-tags">
-            <span className="login-feature-tag">精细化权限管理</span>
-            <span className="login-feature-tag">安全审计机制</span>
-            <span className="login-feature-tag">稳定可靠运行</span>
-            <span className="login-feature-tag">多租户支持</span>
+          <div className="login-feature-list">
+            {['精细化权限管理', '安全审计机制', '稳定可靠运行', '多租户支持'].map((feature) => (
+              <div key={feature} className="login-feature-item">
+                <span className="login-feature-check">
+                  <Check size={12} strokeWidth={3} />
+                </span>
+                {feature}
+              </div>
+            ))}
           </div>
-        </div>
-      </div>
-      <div className="login-right">
-        <div className="login-form-wrapper">
-          <div className="login-mobile-brand">
-            <AppLogo size={40} />
-            <span className="login-brand-name">{config.appTitle}</span>
-          </div>
+        </section>
+        <div className="login-card">
           <div className="login-form-header">
             <Title heading={3} style={{ marginBottom: 6, fontWeight: 700 }}>
               {mfaChallenge ? '安全验证' : (isDemoMode || tab === 'login' ? '欢迎回来' : '创建账号')}
@@ -465,7 +464,7 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
           {/* OAuth 第三方登录 */}
           {!mfaChallenge && enterpriseProviders.length > 0 && (
             <div style={{ marginTop: 14 }}>
-              <Divider margin="12px 0" />
+              <Divider />
               <div style={{ display: 'grid', gap: 8 }}>
                 {enterpriseProviders.map((provider) => (
                   <Button
@@ -481,9 +480,11 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
               </div>
             </div>
           )}
-          {!mfaChallenge && <div style={{ textAlign: 'center', marginTop: 16 }}>
-            <Text type="tertiary" size="small">其他方式登录</Text>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 10 }}>
+          {!mfaChallenge && <div className="login-oauth">
+            <Divider align="center">
+              <span className="login-oauth-label">其他方式登录</span>
+            </Divider>
+            <div className="login-oauth-list">
               <button
                 type="button"
                 className="oauth-btn"
@@ -511,16 +512,7 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
             </div>
           </div>}
           {import.meta.env.VITE_DEMO_MODE === 'true' && (
-            <div style={{
-              marginTop: 20,
-              padding: '10px 14px',
-              borderRadius: 'var(--semi-border-radius-medium)',
-              background: 'var(--semi-color-primary-light-default)',
-              border: '1px solid var(--semi-color-primary-light-active)',
-              fontSize: 13,
-              textAlign: 'left',
-              color: 'var(--semi-color-primary)',
-            }}>
+            <div className="login-demo-tip">
               <div style={{ marginBottom: 4 }}>
                 <strong>演示模式</strong>：当前站点使用模拟数据，仅开放预置账号体验主要流程，不提供注册入口。
               </div>
@@ -530,7 +522,10 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
             </div>
           )}
         </div>
-      </div>
+      </main>
+      <footer className="login-footer">
+        © {dayjs().year()} {config.appTitle} · 高效 · 稳定 · 安全
+      </footer>
       <ForgotPasswordModal
         visible={forgotPasswordVisible}
         onClose={() => setForgotPasswordVisible(false)}
