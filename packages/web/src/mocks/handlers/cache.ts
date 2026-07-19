@@ -1,4 +1,5 @@
 import { http, HttpResponse } from 'msw';
+import { mockDate } from '../utils/date';
 
 interface MockCacheItem {
   key: string;
@@ -71,6 +72,76 @@ const mockCacheItems: MockCacheItem[] = [
     ttl: 180,
     size: 1,
     value: '2',
+  },
+  {
+    key: 'zenith:rl:172.16.0.10',
+    displayKey: 'rl:172.16.0.10',
+    segment: 'rl',
+    category: '接口限流计数',
+    type: 'string',
+    ttl: 45,
+    size: 1,
+    value: '3',
+  },
+  {
+    key: 'zenith:rlstats:ai_chat_send:hit',
+    displayKey: 'rlstats:ai_chat_send:hit',
+    segment: 'rlstats',
+    category: '限流统计',
+    type: 'string',
+    ttl: 86400,
+    size: 1,
+    value: '5',
+  },
+  {
+    key: `zenith:ai:req:${mockDate()}`,
+    displayKey: `ai:req:${mockDate()}`,
+    segment: 'ai',
+    category: 'AI 服务',
+    type: 'string',
+    ttl: 3600 * 24 * 30,
+    size: 2,
+    value: '12',
+  },
+  {
+    key: 'zenith:openrl:monthly:demo-app:api_call',
+    displayKey: 'openrl:monthly:demo-app:api_call',
+    segment: 'openrl',
+    category: '开放平台限流',
+    type: 'string',
+    ttl: 3600 * 24 * 10,
+    size: 2,
+    value: '42',
+  },
+  {
+    key: `zenith:report:quota:1:${mockDate()}`,
+    displayKey: `report:quota:1:${mockDate()}`,
+    segment: 'report',
+    category: '报表中心',
+    type: 'hash',
+    ttl: 3600 * 16,
+    size: 5,
+    value: null,
+  },
+  {
+    key: 'zenith:member-session:9f1c2b3a-4d5e-6f70-8192-a3b4c5d6e7f8',
+    displayKey: 'member-session:9f1c2b3a-4d5e-6f70-8192-a3b4c5d6e7f8',
+    segment: 'member-session',
+    category: '会员会话',
+    type: 'string',
+    ttl: 25200,
+    size: 186,
+    value: '{"memberId":1,"nickname":"演示会员","loginType":"phone_password"}',
+  },
+  {
+    key: 'zenith:mp:access_token:wx1234567890abcdef',
+    displayKey: 'mp:access_token:wx1234567890abcdef',
+    segment: 'mp',
+    category: '公众号凭证',
+    type: 'string',
+    ttl: 6800,
+    size: 110,
+    value: '88_demo_access_token…',
   },
 ];
 

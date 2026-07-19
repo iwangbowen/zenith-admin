@@ -55,12 +55,35 @@ const TYPE_COLORS: Record<string, 'blue' | 'green' | 'orange' | 'purple' | 'cyan
   zset: 'cyan',
 };
 
-const CATEGORY_COLORS: Record<string, 'amber' | 'blue' | 'green' | 'red' | 'orange' | 'teal'> = {
+type CategoryColor =
+  | 'amber' | 'blue' | 'cyan' | 'green' | 'indigo' | 'light-blue' | 'light-green'
+  | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow';
+
+const CATEGORY_COLORS: Record<string, CategoryColor> = {
   '会话 Token': 'blue',
   '强制下线黑名单': 'red',
   '权限缓存': 'teal',
   '登录失败计数': 'orange',
   '登录锁定': 'amber',
+  '接口限流计数': 'green',
+  '限流统计': 'lime',
+  '幂等控制': 'cyan',
+  'AI 服务': 'purple',
+  '开放平台限流': 'indigo',
+  '开放平台防重放': 'indigo',
+  '开放平台配额告警': 'indigo',
+  'OIDC 登录状态': 'violet',
+  'SAML 登录状态': 'violet',
+  'SAML 认证请求': 'violet',
+  'SAML 登录票据': 'violet',
+  '工作流自动化': 'pink',
+  '工作流连接器': 'pink',
+  '会员会话': 'light-blue',
+  '会员下线黑名单': 'red',
+  '会员安全': 'orange',
+  '公众号凭证': 'light-green',
+  '报表中心': 'yellow',
+  '埋点分析': 'cyan',
 };
 
 function TtlBadge({ ttl }: Readonly<{ ttl: number }>) {
