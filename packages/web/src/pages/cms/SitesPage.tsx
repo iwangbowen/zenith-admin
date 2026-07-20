@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Form, Input, Select, Tag, Toast, Modal, Row, Col } from '@douyinfe/semi-ui';
+import { Button, Form, Input, Select, Tag, Toast, Modal, Row, Col, SideSheet, Tabs, TabPane } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, RotateCcw, Plus } from 'lucide-react';
@@ -49,6 +49,7 @@ export default function SitesPage() {
   const { data: themes } = useCmsThemes();
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<CmsSite | null>(null);
+  const [activeTab, setActiveTab] = useState('basic');
   const saveMutation = useSaveCmsSite();
   const deleteMutation = useDeleteCmsSite();
 
@@ -96,11 +97,13 @@ export default function SitesPage() {
 
   function openCreate() {
     setEditingRecord(null);
+    setActiveTab('basic');
     setModalVisible(true);
   }
 
   function openEdit(record: CmsSite) {
     setEditingRecord(record);
+    setActiveTab('basic');
     setModalVisible(true);
   }
 
@@ -148,12 +151,14 @@ export default function SitesPage() {
         watermarkOpacity: 45, thumbEnabled: false, thumbWidth: 400, auditMode: 'simple',
       };
 
-  async function handleModalOk() {
+  async function handleSave() {
     let values: Record<string, unknown>;
     try {
       values = (await formApi.current?.validate()) ?? {};
     } catch {
-      throw new Error('validation');
+      // 必填项（站点名称/标识）都在基础信息页，校验失败跳回该页
+      setActiveTab('basic');
+      return;
     }
     if (!values.domain) values.domain = null;
     // 推送凭证/主题参数/图片处理并入 settings JSONB（保留既有 settings 键）
@@ -182,7 +187,11 @@ export default function SitesPage() {
       webhookUrl: String(webhookUrl ?? '').trim(),
       webhookSecret: String(webhookSecret ?? '').trim(),
     };
-    await saveMutation.mutateAsync({ id: editingRecord?.id, values: rest });
+    try {
+      await saveMutation.mutateAsync({ id: editingRecord?.id, values: rest });
+    } catch {
+      return; // 错误提示由请求层统一 Toast
+    }
     Toast.success(editingRecord ? '更新成功' : '创建成功');
     closeModal();
   }
@@ -350,14 +359,18 @@ export default function SitesPage() {
         pagination={buildPagination(total)}
       />
 
-      <AppModal
+      <SideSheet
         title={editingRecord ? '编辑站点' : '新增站点'}
         visible={modalVisible}
-        onOk={handleModalOk}
         onCancel={closeModal}
-        okButtonProps={{ loading: saveMutation.isPending }}
         width={720}
         closeOnEsc
+        footer={(
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <Button type="tertiary" onClick={closeModal}>取消</Button>
+            <Button type="primary" theme="solid" loading={saveMutation.isPending} onClick={() => void handleSave()}>保存</Button>
+          </div>
+        )}
       >
         <Form
           key={editingRecord?.id ?? 'new'}
@@ -367,138 +380,160 @@ export default function SitesPage() {
           labelPosition="left"
           labelWidth={100}
         >
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Input field="name" label="站点名称" rules={[{ required: true, message: '请输入站点名称' }]} />
-            </Col>
-            <Col span={12}>
-              <Form.Input field="code" label="站点标识" disabled={!!editingRecord} placeholder="小写字母/数字/中划线" rules={[{ required: true, message: '请输入站点标识' }]} />
-            </Col>
-            <Col span={12}>
-              <Form.Input field="domain" label="绑定域名" placeholder="如 www.example.com" />
-            </Col>
-            <Col span={12}>
-              <Form.TagInput field="aliasDomains" label="别名域名" placeholder="回车添加" />
-            </Col>
-            <Col span={12}>
-              <Form.Select field="theme" label="主题" style={{ width: '100%' }}
-                optionList={(themes ?? []).map((t) => ({ value: t.code, label: t.label }))} />
-            </Col>
-            <Col span={12}>
-              <Form.Select field="staticMode" label="静态化模式" style={{ width: '100%' }}
-                optionList={CMS_STATIC_MODES.map((m) => ({ value: m, label: CMS_STATIC_MODE_LABELS[m] }))} />
-            </Col>
-            <Col span={12}>
-              <Form.Switch field="isDefault" label="默认站点" extraText="未匹配到域名的请求兜底到默认站点" />
-            </Col>
-            <Col span={12}>
-              <Form.RadioGroup field="status" label="状态">
-                <Form.Radio value="enabled">启用</Form.Radio>
-                <Form.Radio value="disabled">停用</Form.Radio>
-              </Form.RadioGroup>
-            </Col>
-          </Row>
-          <Form.Section text="SEO 设置">
-            <Form.Input field="title" label="SEO 标题" placeholder="站点默认 title" />
-            <Form.Input field="keywords" label="SEO 关键词" placeholder="逗号分隔" />
-            <Form.TextArea field="description" label="SEO 描述" rows={2} />
-            <Form.TextArea field="robots" label="robots.txt" rows={3} placeholder="留空使用默认规则（Allow all + Sitemap）" />
-          </Form.Section>
-          <Form.Section text="搜索推送（配置后发布内容自动推送搜索引擎）">
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Input field="baiduPushToken" label="百度推送 Token" placeholder="百度搜索资源平台 → 普通收录" />
-              </Col>
-              <Col span={12}>
-                <Form.Input field="indexNowKey" label="IndexNow Key" placeholder="Bing 等引擎；key 文件自动托管" />
-              </Col>
-            </Row>
-          </Form.Section>
-          <Form.Section text="Webhook（内容发布/下线/回收时向外部系统推送事件）">
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Input field="webhookUrl" label="回调地址" placeholder="https://... 留空不推送" />
-              </Col>
-              <Col span={12}>
-                <Form.Input field="webhookSecret" label="签名密钥" placeholder="可选；请求头 X-Cms-Signature 携带 HMAC-SHA256 签名" />
-              </Col>
-            </Row>
-          </Form.Section>
-          <Form.Section text="内容审核">
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Select field="auditMode" label="审核方式" style={{ width: '100%' }}
-                  optionList={[
-                    { value: 'simple', label: '简单审核（审核 Tab 通过/驳回）' },
-                    { value: 'workflow', label: '工作流审核（提交后走审批流程）' },
-                  ]} />
-              </Col>
-              <Col span={12}>
-                <Form.Select field="auditWorkflowDefinitionId" label="审核流程" style={{ width: '100%' }} showClear
-                  placeholder="留空使用「CMS 内容审核」流程"
-                  optionList={(publishedDefs ?? []).map((d) => ({ value: d.id, label: d.name }))} />
-              </Col>
-            </Row>
-          </Form.Section>
-          <Form.Section text="主题参数">
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Input field="themePrimary" label="主题色" placeholder="如 #1f6feb，留空用主题默认" />
-              </Col>
-              <Col span={12}>
-                <Form.Select field="themeDark" label="暗色模式" style={{ width: '100%' }}
-                  optionList={[
-                    { value: 'light', label: '仅浅色' },
-                    { value: 'auto', label: '跟随系统（带切换按钮）' },
-                    { value: 'dark', label: '支持切换（带切换按钮）' },
-                  ]} />
-              </Col>
-            </Row>
-          </Form.Section>
-          <Form.Section text="图片处理（编辑器/封面上传时生效）">
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.InputNumber field="imageMaxWidth" label="最大宽度(px)" min={0} style={{ width: '100%' }} extraText="超宽等比压缩，0 = 不限制" />
-              </Col>
-              <Col span={12}>
-                <Form.Switch field="thumbEnabled" label="生成缩略图" />
-              </Col>
-            </Row>
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Switch field="watermarkEnabled" label="文字水印" />
-              </Col>
-              <Col span={12}>
-                <Form.Input field="watermarkText" label="水印文字" placeholder="如站点名称" />
-              </Col>
-            </Row>
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Select field="watermarkPosition" label="水印位置" style={{ width: '100%' }}
-                  optionList={[
-                    { value: 'northwest', label: '左上' }, { value: 'north', label: '上中' }, { value: 'northeast', label: '右上' },
-                    { value: 'west', label: '左中' }, { value: 'center', label: '居中' }, { value: 'east', label: '右中' },
-                    { value: 'southwest', label: '左下' }, { value: 'south', label: '下中' }, { value: 'southeast', label: '右下' },
-                  ]} />
-              </Col>
-              <Col span={12}>
-                <Form.InputNumber field="watermarkOpacity" label="水印不透明度(%)" min={0} max={100} style={{ width: '100%' }} />
-              </Col>
-            </Row>
-          </Form.Section>
-          <Form.Section text="备案与版权">
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Input field="icp" label="ICP 备案号" />
-              </Col>
-              <Col span={12}>
-                <Form.Input field="copyright" label="版权信息" />
-              </Col>
-            </Row>
-            <Form.Input field="remark" label="备注" />
-          </Form.Section>
+          {/* keepDOM（默认）保证非激活页字段仍挂载，切换标签不丢值、validate 全量生效 */}
+          <Tabs type="line" activeKey={activeTab} onChange={setActiveTab}>
+            <TabPane tab="基础信息" itemKey="basic">
+              <Row gutter={16} style={{ paddingTop: 16 }}>
+                <Col span={12}>
+                  <Form.Input field="name" label="站点名称" rules={[{ required: true, message: '请输入站点名称' }]} />
+                </Col>
+                <Col span={12}>
+                  <Form.Input field="code" label="站点标识" disabled={!!editingRecord} placeholder="小写字母/数字/中划线" rules={[{ required: true, message: '请输入站点标识' }]} />
+                </Col>
+                <Col span={12}>
+                  <Form.Input field="domain" label="绑定域名" placeholder="如 www.example.com" />
+                </Col>
+                <Col span={12}>
+                  <Form.TagInput field="aliasDomains" label="别名域名" placeholder="回车添加" />
+                </Col>
+                <Col span={12}>
+                  <Form.Select field="theme" label="主题" style={{ width: '100%' }}
+                    optionList={(themes ?? []).map((t) => ({ value: t.code, label: t.label }))} />
+                </Col>
+                <Col span={12}>
+                  <Form.Select field="staticMode" label="静态化模式" style={{ width: '100%' }}
+                    optionList={CMS_STATIC_MODES.map((m) => ({ value: m, label: CMS_STATIC_MODE_LABELS[m] }))} />
+                </Col>
+                <Col span={12}>
+                  <Form.Switch field="isDefault" label="默认站点" extraText="未匹配到域名的请求兜底到默认站点" />
+                </Col>
+                <Col span={12}>
+                  <Form.RadioGroup field="status" label="状态">
+                    <Form.Radio value="enabled">启用</Form.Radio>
+                    <Form.Radio value="disabled">停用</Form.Radio>
+                  </Form.RadioGroup>
+                </Col>
+              </Row>
+            </TabPane>
+            <TabPane tab="SEO 与推送" itemKey="seo">
+              <div style={{ paddingTop: 16 }}>
+                <Form.Input field="title" label="SEO 标题" placeholder="站点默认 title" />
+                <Form.Input field="keywords" label="SEO 关键词" placeholder="逗号分隔" />
+                <Form.TextArea field="description" label="SEO 描述" rows={2} />
+                <Form.TextArea field="robots" label="robots.txt" rows={3} placeholder="留空使用默认规则（Allow all + Sitemap）" />
+                <Form.Section text="搜索推送（配置后发布内容自动推送搜索引擎）">
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.Input field="baiduPushToken" label="百度推送 Token" placeholder="百度搜索资源平台 → 普通收录" />
+                    </Col>
+                    <Col span={12}>
+                      <Form.Input field="indexNowKey" label="IndexNow Key" placeholder="Bing 等引擎；key 文件自动托管" />
+                    </Col>
+                  </Row>
+                </Form.Section>
+              </div>
+            </TabPane>
+            <TabPane tab="审核与 Webhook" itemKey="integration">
+              <div style={{ paddingTop: 16 }}>
+                <Form.Section text="内容审核">
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.Select field="auditMode" label="审核方式" style={{ width: '100%' }}
+                        optionList={[
+                          { value: 'simple', label: '简单审核（审核 Tab 通过/驳回）' },
+                          { value: 'workflow', label: '工作流审核（提交后走审批流程）' },
+                        ]} />
+                    </Col>
+                    <Col span={12}>
+                      <Form.Select field="auditWorkflowDefinitionId" label="审核流程" style={{ width: '100%' }} showClear
+                        placeholder="留空使用「CMS 内容审核」流程"
+                        optionList={(publishedDefs ?? []).map((d) => ({ value: d.id, label: d.name }))} />
+                    </Col>
+                  </Row>
+                </Form.Section>
+                <Form.Section text="Webhook（内容发布/下线/回收时向外部系统推送事件）">
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.Input field="webhookUrl" label="回调地址" placeholder="https://... 留空不推送" />
+                    </Col>
+                    <Col span={12}>
+                      <Form.Input field="webhookSecret" label="签名密钥" placeholder="可选；请求头 X-Cms-Signature 携带 HMAC-SHA256 签名" />
+                    </Col>
+                  </Row>
+                </Form.Section>
+              </div>
+            </TabPane>
+            <TabPane tab="主题与图片" itemKey="appearance">
+              <div style={{ paddingTop: 16 }}>
+                <Form.Section text="主题参数">
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.Input field="themePrimary" label="主题色" placeholder="如 #1f6feb，留空用主题默认" />
+                    </Col>
+                    <Col span={12}>
+                      <Form.Select field="themeDark" label="暗色模式" style={{ width: '100%' }}
+                        optionList={[
+                          { value: 'light', label: '仅浅色' },
+                          { value: 'auto', label: '跟随系统（带切换按钮）' },
+                          { value: 'dark', label: '支持切换（带切换按钮）' },
+                        ]} />
+                    </Col>
+                  </Row>
+                </Form.Section>
+                <Form.Section text="图片处理（编辑器/封面上传时生效）">
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.InputNumber field="imageMaxWidth" label="最大宽度(px)" min={0} style={{ width: '100%' }} extraText="超宽等比压缩，0 = 不限制" />
+                    </Col>
+                    <Col span={12}>
+                      <Form.Switch field="thumbEnabled" label="生成缩略图" />
+                    </Col>
+                  </Row>
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.InputNumber field="thumbWidth" label="缩略图宽度(px)" min={0} style={{ width: '100%' }} extraText="开启缩略图后生效" />
+                    </Col>
+                  </Row>
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.Switch field="watermarkEnabled" label="文字水印" />
+                    </Col>
+                    <Col span={12}>
+                      <Form.Input field="watermarkText" label="水印文字" placeholder="如站点名称" />
+                    </Col>
+                  </Row>
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.Select field="watermarkPosition" label="水印位置" style={{ width: '100%' }}
+                        optionList={[
+                          { value: 'northwest', label: '左上' }, { value: 'north', label: '上中' }, { value: 'northeast', label: '右上' },
+                          { value: 'west', label: '左中' }, { value: 'center', label: '居中' }, { value: 'east', label: '右中' },
+                          { value: 'southwest', label: '左下' }, { value: 'south', label: '下中' }, { value: 'southeast', label: '右下' },
+                        ]} />
+                    </Col>
+                    <Col span={12}>
+                      <Form.InputNumber field="watermarkOpacity" label="水印不透明度(%)" min={0} max={100} style={{ width: '100%' }} />
+                    </Col>
+                  </Row>
+                </Form.Section>
+              </div>
+            </TabPane>
+            <TabPane tab="备案与备注" itemKey="misc">
+              <div style={{ paddingTop: 16 }}>
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Input field="icp" label="ICP 备案号" />
+                  </Col>
+                  <Col span={12}>
+                    <Form.Input field="copyright" label="版权信息" />
+                  </Col>
+                </Row>
+                <Form.Input field="remark" label="备注" />
+              </div>
+            </TabPane>
+          </Tabs>
         </Form>
-      </AppModal>
+      </SideSheet>
 
       {/* 授权用户弹窗（站点级数据权限） */}
       <AppModal
