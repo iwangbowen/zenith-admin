@@ -165,6 +165,8 @@ export const CmsContentDTO = z
     scheduledAt: z.string().nullable(),
     expireAt: z.string().nullable().openapi({ description: '过期自动下线时间（空 = 永不过期）' }),
     viewCount: z.number().int(),
+    likeCount: z.number().int().openapi({ description: '会员点赞数（冗余计数）' }),
+    favoriteCount: z.number().int().openapi({ description: '会员收藏数（冗余计数）' }),
     version: z.number().int().openapi({ description: '乐观锁版本号，更新时回传 expectedVersion' }),
     sort: z.number().int(),
     seoTitle: z.string().nullable(),
@@ -491,6 +493,79 @@ export const CmsTextCheckResultDTO = z
     })),
   })
   .openapi('CmsTextCheckResult');
+
+// ─── P3 会员互动 / 问卷 ────────────────────────────────────────────────────────
+export const CmsInteractionStateDTO = z
+  .object({
+    liked: z.boolean(),
+    favorited: z.boolean(),
+    likeCount: z.number().int(),
+    favoriteCount: z.number().int(),
+  })
+  .openapi('CmsInteractionState');
+
+export const CmsMemberContentItemDTO = z
+  .object({
+    contentId: z.number().int(),
+    title: z.string(),
+    url: z.string().nullable().openapi({ description: '前台详情站内路径（内容已下线/删除时为 null）' }),
+    coverThumb: z.string().nullable(),
+    contentType: z.enum(['article', 'album', 'media', 'link']),
+    viewCount: z.number().int().optional().openapi({ description: '浏览历史：累计次数' }),
+    createdAt: z.string(),
+    updatedAt: z.string().optional().openapi({ description: '浏览历史：最近浏览时间' }),
+  })
+  .openapi('CmsMemberContentItem');
+
+export const CmsSurveyQuestionDTO = z
+  .object({
+    id: z.number().int(),
+    surveyId: z.number().int(),
+    label: z.string().openapi({ example: '您最常用的功能是？' }),
+    type: z.enum(['single', 'multiple', 'text']),
+    required: z.boolean(),
+    options: z.array(z.object({ label: z.string(), value: z.string() })),
+    sort: z.number().int(),
+  })
+  .openapi('CmsSurveyQuestion');
+
+export const CmsSurveyDTO = z
+  .object({
+    id: z.number().int(),
+    siteId: z.number().int(),
+    code: z.string().openapi({ example: 'satisfaction-2026' }),
+    title: z.string().openapi({ example: '产品满意度调查' }),
+    description: z.string().nullable(),
+    status: z.enum(['draft', 'published', 'closed']),
+    allowAnonymous: z.boolean(),
+    startAt: z.string().nullable(),
+    endAt: z.string().nullable(),
+    answerCount: z.number().int(),
+    questions: z.array(CmsSurveyQuestionDTO).optional(),
+    ...auditFields,
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('CmsSurvey');
+
+export const CmsSurveyStatsDTO = z
+  .object({
+    surveyId: z.number().int(),
+    answerCount: z.number().int(),
+    questions: z.array(z.object({
+      id: z.number().int(),
+      label: z.string(),
+      type: z.enum(['single', 'multiple', 'text']),
+      options: z.array(z.object({
+        label: z.string(),
+        value: z.string(),
+        count: z.number().int(),
+        percent: z.number().openapi({ description: '按已答人数计算的百分比（0-100，1 位小数）' }),
+      })),
+      texts: z.array(z.string()).openapi({ description: '文字题最近样本（最多 50 条）' }),
+    })),
+  })
+  .openapi('CmsSurveyStats');
 
 export const CmsPushLogDTO = z
   .object({

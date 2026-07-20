@@ -5318,6 +5318,34 @@ export const createCmsErrorProneWordSchema = z.object({
 });
 export const updateCmsErrorProneWordSchema = createCmsErrorProneWordSchema.partial();
 
+// ─── CMS 问卷（P3）────────────────────────────────────────────────────────────
+export const cmsSurveyQuestionSchema = z.object({
+  id: z.number().int().positive().optional(),
+  label: z.string().min(1, '题目不能为空').max(200),
+  type: z.enum(['single', 'multiple', 'text']).default('single'),
+  required: z.boolean().default(true),
+  options: z.array(z.object({ label: z.string().min(1).max(100), value: z.string().min(1).max(100) })).max(20).default([]),
+  sort: z.number().int().default(0),
+});
+
+export const createCmsSurveySchema = z.object({
+  siteId: z.number().int().positive(),
+  code: z.string().min(1, '问卷标识不能为空').max(50).regex(cmsSlugRegex, '标识仅支持小写字母、数字、中划线'),
+  title: z.string().min(1, '问卷标题不能为空').max(200),
+  description: z.string().max(2000).nullable().optional(),
+  status: z.enum(['draft', 'published', 'closed']).default('draft'),
+  allowAnonymous: z.boolean().default(true),
+  startAt: z.string().nullable().optional(),
+  endAt: z.string().nullable().optional(),
+  questions: z.array(cmsSurveyQuestionSchema).min(1, '至少配置一道题目').max(50),
+});
+export const updateCmsSurveySchema = createCmsSurveySchema.partial().omit({ siteId: true });
+
+/** 前台答卷提交：key = 题目 id 字符串 */
+export const submitCmsSurveySchema = z.object({
+  answers: z.record(z.string(), z.union([z.string().max(2000), z.array(z.string().max(100)).max(20)])),
+});
+
 export const submitCmsCommentSchema = z.object({
   contentId: z.coerce.number().int().positive(),
   nickname: z.string().min(1, '昵称不能为空').max(50),
@@ -5343,6 +5371,10 @@ export type CreateCmsSensitiveWordInput = z.input<typeof createCmsSensitiveWordS
 export type UpdateCmsSensitiveWordInput = z.input<typeof updateCmsSensitiveWordSchema>;
 export type CreateCmsErrorProneWordInput = z.input<typeof createCmsErrorProneWordSchema>;
 export type UpdateCmsErrorProneWordInput = z.input<typeof updateCmsErrorProneWordSchema>;
+export type CmsSurveyQuestionInput = z.input<typeof cmsSurveyQuestionSchema>;
+export type CreateCmsSurveyInput = z.input<typeof createCmsSurveySchema>;
+export type UpdateCmsSurveyInput = z.input<typeof updateCmsSurveySchema>;
+export type SubmitCmsSurveyInput = z.input<typeof submitCmsSurveySchema>;
 export type SubmitCmsCommentInput = z.input<typeof submitCmsCommentSchema>;
 
 // ─── CMS P3 Batch1 Schema ─────────────────────────────────────────────────────

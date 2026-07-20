@@ -20,6 +20,7 @@ import type {
   ReportSlaRule, ReportAssetTemplate, ReportFillTemplate, AnalyticsEventPropertyDef, AnalyticsSite,
   CmsSite, CmsPublishChannel, CmsModel, CmsChannel, CmsContent, CmsTag, CmsFragment, CmsFriendLink,
   CmsAdSlot, CmsAd, CmsForm, CmsSensitiveWord, CmsErrorProneWord, CmsLinkWord, CmsComment,
+  CmsSurvey, CmsSurveyQuestion,
 } from './types';
 import { ANALYTICS_EXPERIMENT_EXPOSURE_EVENT, ANALYTICS_SEMANTIC_EVENT_LABELS, type AnalyticsSemanticEventName } from './constants';
 
@@ -719,6 +720,8 @@ export const SEED_MENUS: Menu[] = [
   { id: 1776, parentId: 1775, title: '管理敏感词',   name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:sensitive:manage', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1790, parentId: 1700, title: '易错词库',     name: 'CmsErrorProneWords', path: '/cms/error-prone-words', component: 'cms/ErrorProneWordsPage', icon: 'SpellCheck', type: 'menu',  sort: 18, status: 'enabled', visible: true,  permission: 'cms:word:list',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1791, parentId: 1790, title: '管理易错词',   name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:word:manage',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1792, parentId: 1700, title: '问卷调查',     name: 'CmsSurveys',       path: '/cms/surveys',     component: 'cms/SurveysPage',            icon: 'ListChecks',   type: 'menu',      sort: 19, status: 'enabled', visible: true,  permission: 'cms:survey:list',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1793, parentId: 1792, title: '管理问卷',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:survey:manage',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1780, parentId: 1700, title: '采集中心',     name: 'CmsCollect',       path: '/cms/collect',     component: 'cms/CollectPage',            icon: 'Download',     type: 'menu',      sort: 15, status: 'enabled', visible: true,  permission: 'cms:collect:list',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1781, parentId: 1780, title: '新增规则',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:collect:create', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1782, parentId: 1780, title: '编辑规则',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'cms:collect:update', createdAt: SEED_DATE, updatedAt: SEED_DATE },
@@ -2967,7 +2970,7 @@ export const SEED_CMS_CONTENTS: (CmsContent & { tagIds: number[] })[] = [
     coverImage: null, coverThumb: null, author: '管理员', editor: '管理员', source: '官方', sourceUrl: null, isOriginal: true, body: '<p>Zenith Admin 全新 CMS 模块正式发布：支持站群管理、内容模型自定义字段、React SSR 静态化与 PostgreSQL 全文检索，功能全面对标国内主流 CMS。</p>',
     extend: {}, externalLink: null, detailTemplate: null, isTop: true, topWeight: 10, topExpireAt: null, isRecommend: true, isHot: false,
     status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null, expireAt: null,
-    viewCount: 128, version: 1, sort: 0, seoTitle: null, seoKeywords: 'CMS,发布', seoDescription: null,
+    viewCount: 128, likeCount: 0, favoriteCount: 0, version: 1, sort: 0, seoTitle: null, seoKeywords: 'CMS,发布', seoDescription: null,
     archivedAt: null, mappingSourceId: null,
     tagIds: [1], createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
@@ -2979,7 +2982,7 @@ export const SEED_CMS_CONTENTS: (CmsContent & { tagIds: number[] })[] = [
     coverImage: null, coverThumb: null, author: '管理员', editor: null, source: '原创', sourceUrl: null, isOriginal: true, body: '<p>本文介绍混合静态化模式（发布时增量生成 + 访问时回写）与应用层中文分词方案在 PostgreSQL tsvector 上的落地实践。</p>',
     extend: {}, externalLink: null, detailTemplate: null, isTop: false, topWeight: 0, topExpireAt: null, isRecommend: true, isHot: true,
     status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null, expireAt: null,
-    viewCount: 86, version: 1, sort: 0, seoTitle: null, seoKeywords: '静态化,全文检索', seoDescription: null,
+    viewCount: 86, likeCount: 0, favoriteCount: 0, version: 1, sort: 0, seoTitle: null, seoKeywords: '静态化,全文检索', seoDescription: null,
     archivedAt: null, mappingSourceId: null,
     tagIds: [2], createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
@@ -2992,7 +2995,7 @@ export const SEED_CMS_CONTENTS: (CmsContent & { tagIds: number[] })[] = [
     extend: { price: '联系销售', spec: '支持私有化部署，PostgreSQL 16 + Redis 7' }, externalLink: null, detailTemplate: null,
     isTop: false, topWeight: 0, topExpireAt: null, isRecommend: false, isHot: false,
     status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null, expireAt: null,
-    viewCount: 45, version: 1, sort: 0, seoTitle: null, seoKeywords: null, seoDescription: null,
+    viewCount: 45, likeCount: 0, favoriteCount: 0, version: 1, sort: 0, seoTitle: null, seoKeywords: null, seoDescription: null,
     archivedAt: null, mappingSourceId: null,
     tagIds: [], createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
@@ -3011,7 +3014,7 @@ export const SEED_CMS_CONTENTS: (CmsContent & { tagIds: number[] })[] = [
     author: '管理员', editor: null, source: '官方', sourceUrl: null, isOriginal: true, body: '<p>发布会现场图集，点击图片查看大图。</p>',
     extend: {}, externalLink: null, detailTemplate: null, isTop: false, topWeight: 0, topExpireAt: null, isRecommend: true, isHot: false,
     status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null, expireAt: null,
-    viewCount: 66, version: 1, sort: 0, seoTitle: null, seoKeywords: '发布会,图集', seoDescription: null,
+    viewCount: 66, likeCount: 0, favoriteCount: 0, version: 1, sort: 0, seoTitle: null, seoKeywords: '发布会,图集', seoDescription: null,
     archivedAt: null, mappingSourceId: null,
     tagIds: [1], createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
@@ -3029,7 +3032,7 @@ export const SEED_CMS_CONTENTS: (CmsContent & { tagIds: number[] })[] = [
     author: '管理员', editor: null, source: '官方', sourceUrl: null, isOriginal: true, body: '<p>视频简介：本片演示 CMS 模块核心能力。</p>',
     extend: {}, externalLink: null, detailTemplate: null, isTop: false, topWeight: 0, topExpireAt: null, isRecommend: false, isHot: true,
     status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null, expireAt: null,
-    viewCount: 88, version: 1, sort: 0, seoTitle: null, seoKeywords: '视频,导览', seoDescription: null,
+    viewCount: 88, likeCount: 0, favoriteCount: 0, version: 1, sort: 0, seoTitle: null, seoKeywords: '视频,导览', seoDescription: null,
     archivedAt: null, mappingSourceId: null,
     tagIds: [], createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
@@ -3081,6 +3084,37 @@ export const SEED_CMS_ERROR_PRONE_WORDS: CmsErrorProneWord[] = [
 
 export const SEED_CMS_LINK_WORDS: CmsLinkWord[] = [
   { id: 1, siteId: 1, keyword: '全文检索', url: '/news/2.html', maxReplaces: 1, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+// ─── CMS P3：问卷调查（示例）────────────────────────────────────────────────────
+export const SEED_CMS_SURVEYS: (CmsSurvey & { questions: CmsSurveyQuestion[] })[] = [
+  {
+    id: 1, siteId: 1, code: 'satisfaction', title: '产品满意度调查',
+    description: '感谢使用 Zenith CMS，您的反馈将帮助我们持续改进。', status: 'published',
+    allowAnonymous: true, startAt: null, endAt: null, answerCount: 0,
+    createdAt: SEED_DATE, updatedAt: SEED_DATE,
+    questions: [
+      {
+        id: 1, surveyId: 1, label: '您对 Zenith CMS 的整体满意度？', type: 'single', required: true, sort: 0,
+        options: [
+          { label: '非常满意', value: 'opt-1-非常满意' },
+          { label: '满意', value: 'opt-2-满意' },
+          { label: '一般', value: 'opt-3-一般' },
+          { label: '不满意', value: 'opt-4-不满意' },
+        ],
+      },
+      {
+        id: 2, surveyId: 1, label: '您使用过哪些功能？', type: 'multiple', required: false, sort: 1,
+        options: [
+          { label: '站群管理', value: 'opt-1-站群管理' },
+          { label: '静态化发布', value: 'opt-2-静态化发布' },
+          { label: '全文检索', value: 'opt-3-全文检索' },
+          { label: '问卷调查', value: 'opt-4-问卷调查' },
+        ],
+      },
+      { id: 3, surveyId: 1, label: '其他意见或建议', type: 'text', required: false, sort: 2, options: [] },
+    ],
+  },
 ];
 
 export const SEED_CMS_COMMENTS: CmsComment[] = [

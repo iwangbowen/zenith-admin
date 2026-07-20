@@ -3,16 +3,24 @@
  * 全部按 currentMemberId 过滤防越权；提交走 CMS 统一审核管道。
  */
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { HTTPException } from 'hono/http-exception';
+import { submitCmsSurveySchema } from '@zenith/shared';
 import { memberAuthMiddleware } from '../../middleware/member-auth';
 import { idempotencyGuard } from '../../middleware/idempotency';
 import {
   jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, okBody, PaginationQuery, IdParam,
 } from '../../lib/openapi-schemas';
-import { CmsContributionDTO, CmsContribChannelsDTO } from '../../lib/openapi-dtos';
+import { CmsContributionDTO, CmsContribChannelsDTO, CmsInteractionStateDTO, CmsMemberContentItemDTO } from '../../lib/openapi-dtos';
 import {
   listContributableChannels, listMyContributions, getMyContribution,
   createContribution, updateMyContribution, deleteMyContribution,
 } from '../../services/cms/cms-contribution.service';
+import {
+  likeContent, unlikeContent, favoriteContent, unfavoriteContent, getInteractionState,
+  recordMemberView, listMyFavorites, listMyViewHistory, clearMyViewHistory,
+} from '../../services/cms/cms-member-interaction.service';
+import { getPublishedSurveyById, submitCmsSurvey } from '../../services/cms/cms-surveys.service';
+import { currentMemberId } from '../../lib/member-context';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -102,6 +110,140 @@ const deleteRouteDef = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([channelsRoute, listRoute, detailRoute, createRouteDef, updateRouteDef, deleteRouteDef] as const);
+// ─── P3 会员互动：点赞 / 收藏 / 浏览历史 ─────────────────────────────────────────
+const interactionStateRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/contents/{id}/interaction-state', tags: ['MemberCms'], summary: '我对内容的互动状态（点赞/收藏 + 计数）',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(CmsInteractionStateDTO, '互动状态') },
+  }),
+  handler: async (c) => c.json(okBody(await getInteractionState(c.req.valid('param').id)), 200),
+});
+
+const likeRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/contents/{id}/like', tags: ['MemberCms'], summary: '点赞内容',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(CmsInteractionStateDTO, '已点赞') },
+  }),
+  handler: async (c) => c.json(okBody(await likeContent(c.req.valid('param').id), '已点赞'), 200),
+});
+
+const unlikeRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete', path: '/contents/{id}/like', tags: ['MemberCms'], summary: '取消点赞',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(CmsInteractionStateDTO, '已取消点赞') },
+  }),
+  handler: async (c) => c.json(okBody(await unlikeContent(c.req.valid('param').id), '已取消点赞'), 200),
+});
+
+const favoriteRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/contents/{id}/favorite', tags: ['MemberCms'], summary: '收藏内容',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(CmsInteractionStateDTO, '已收藏') },
+  }),
+  handler: async (c) => c.json(okBody(await favoriteContent(c.req.valid('param').id), '已收藏'), 200),
+});
+
+const unfavoriteRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete', path: '/contents/{id}/favorite', tags: ['MemberCms'], summary: '取消收藏',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(CmsInteractionStateDTO, '已取消收藏') },
+  }),
+  handler: async (c) => c.json(okBody(await unfavoriteContent(c.req.valid('param').id), '已取消收藏'), 200),
+});
+
+const viewRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/contents/{id}/view', tags: ['MemberCms'], summary: '记录浏览历史（去重累计，保留最近 100 条）',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...okMsg('已记录') },
+  }),
+  handler: async (c) => {
+    await recordMemberView(c.req.valid('param').id);
+    return c.json(okBody(null, '已记录'), 200);
+  },
+});
+
+const favoritesListRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/favorites', tags: ['MemberCms'], summary: '我的收藏列表',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    request: { query: PaginationQuery },
+    responses: { ...commonErrorResponses, ...okPaginated(CmsMemberContentItemDTO, '收藏列表') },
+  }),
+  handler: async (c) => {
+    const { page, pageSize } = c.req.valid('query');
+    return c.json(okBody(await listMyFavorites(page, pageSize)), 200);
+  },
+});
+
+const historyListRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/view-history', tags: ['MemberCms'], summary: '我的浏览历史（最近浏览优先）',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    request: { query: PaginationQuery },
+    responses: { ...commonErrorResponses, ...okPaginated(CmsMemberContentItemDTO, '浏览历史') },
+  }),
+  handler: async (c) => {
+    const { page, pageSize } = c.req.valid('query');
+    return c.json(okBody(await listMyViewHistory(page, pageSize)), 200);
+  },
+});
+
+const clearHistoryRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete', path: '/view-history', tags: ['MemberCms'], summary: '清空我的浏览历史',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    responses: { ...commonErrorResponses, ...okMsg('已清空') },
+  }),
+  handler: async (c) => {
+    const count = await clearMyViewHistory();
+    return c.json(okBody(null, `已清空 ${count} 条浏览记录`), 200);
+  },
+});
+
+// ─── P3 问卷：会员提交（JSON；一人一份由 DB 唯一约束保证）────────────────────────
+const surveySubmitRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/surveys/{id}/submit', tags: ['MemberCms'], summary: '提交问卷答卷（会员，一人一份）',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    request: { params: IdParam, body: { content: jsonContent(submitCmsSurveySchema), required: true } },
+    responses: { ...commonErrorResponses, ...okMsg('提交成功') },
+  }),
+  handler: async (c) => {
+    const survey = await getPublishedSurveyById(c.req.valid('param').id);
+    if (!survey) throw new HTTPException(404, { message: '问卷不存在或未开放' });
+    const forwarded = c.req.header('x-forwarded-for');
+    const ip = forwarded?.split(',')[0].trim() || c.req.header('x-real-ip') || null;
+    await submitCmsSurvey(survey, c.req.valid('json'), { memberId: currentMemberId(), ip });
+    return c.json(okBody(null, '提交成功，感谢您的参与！'), 200);
+  },
+});
+
+router.openapiRoutes([
+  channelsRoute, listRoute, detailRoute, createRouteDef, updateRouteDef, deleteRouteDef,
+  interactionStateRoute, likeRoute, unlikeRoute, favoriteRoute, unfavoriteRoute, viewRoute,
+  favoritesListRoute, historyListRoute, clearHistoryRoute, surveySubmitRoute,
+] as const);
 
 export default router;

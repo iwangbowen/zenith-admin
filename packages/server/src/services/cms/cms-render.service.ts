@@ -5,7 +5,7 @@ import { db } from '../../db';
 import { cmsChannels, cmsTags, cmsContents, cmsModels } from '../../db/schema';
 import type { CmsSiteRow, CmsChannelRow, CmsContentRow, CmsTagRow } from '../../db/schema';
 import { formatNullableDateTime, formatIso8601 } from '../../lib/datetime';
-import { getTheme, resolveListTemplate, resolveDetailTemplate, resolveCustomPageTemplate } from '../../cms/themes/registry';
+import { getTheme, resolveListTemplate, resolveDetailTemplate, resolveCustomPageTemplate, resolveSurveyTemplate } from '../../cms/themes/registry';
 import { renderBlocksHtml } from '../../cms/themes/blocks';
 import type {
   CmsBaseContext, CmsNavItem, CmsSeo, CmsContentItem, CmsPagination, CmsBreadcrumb, CmsChannelInfo,
@@ -213,6 +213,8 @@ function toContentItem(row: CmsContentRow, baseUrl: string, channelPath: string)
     source: row.source ?? null,
     publishedAt: formatNullableDateTime(row.publishedAt),
     viewCount: row.viewCount,
+    likeCount: row.likeCount,
+    favoriteCount: row.favoriteCount,
     isTop: row.isTop,
     isRecommend: row.isRecommend,
     isHot: row.isHot,
@@ -611,6 +613,42 @@ export async function renderNotFound(site: CmsSiteRow, baseUrl: string, path: st
   return { status: 404, html, kind: 'notFound' };
 }
 
+// ─── 前台问卷页（P3；动态成分低，可静态化，提交走 API）───────────────────────────
+export async function renderSurveyPage(site: CmsSiteRow, baseUrl: string, code: string): Promise<RenderResult> {
+  const { getPublishedSurveyByCode } = await import('./cms-surveys.service');
+  const survey = await getPublishedSurveyByCode(site.id, code);
+  if (!survey) return renderNotFound(site, baseUrl, `/survey/${code}/`);
+  const seo = mergeSeo(site, {
+    title: `${survey.title} - ${site.title?.trim() || site.name}`,
+    description: survey.description ?? undefined,
+    pathForCanonical: `/survey/${code}/`,
+  });
+  const base = await buildBaseContext(site, baseUrl, seo);
+  const html = renderDoc(resolveSurveyTemplate(getTheme(site.theme)), {
+    ...base,
+    breadcrumbs: [
+      { name: '首页', url: `${baseUrl}/` },
+      { name: survey.title, url: `${baseUrl}/survey/${code}/` },
+    ],
+    survey: {
+      id: survey.id,
+      code: survey.code,
+      title: survey.title,
+      description: survey.description ?? null,
+      allowAnonymous: survey.allowAnonymous,
+      questions: [...survey.questions].sort((a, b) => a.sort - b.sort || a.id - b.id).map((q) => ({
+        id: q.id, label: q.label, type: q.type, required: q.required, options: q.options ?? [],
+      })),
+    },
+    submitForm: {
+      action: `/api/public/cms/surveys/${site.code}/${survey.code}`,
+      memberSubmitApi: `/api/member/cms/surveys/${survey.id}/submit`,
+      returnUrl: `${baseUrl}/survey/${code}/`,
+    },
+  });
+  return { status: 200, html, kind: 'page' };
+}
+
 // ─── 标签聚合页 ───────────────────────────────────────────────────────────────
 export async function findTagBySlug(siteId: number, slug: string): Promise<CmsTagRow | null> {
   const [row] = await db.select().from(cmsTags)
@@ -734,6 +772,12 @@ export async function renderSitePath(site: CmsSiteRow, baseUrl: string, rawPath:
     const pageRow = await getPublishedPageBySlug(site.id, pageMatch2[1]);
     if (!pageRow) return renderNotFound(site, baseUrl, `/${cleaned}`);
     return renderCustomPage(site, baseUrl, pageRow);
+  }
+
+  // 前台问卷页 /survey/{code}/
+  const surveyMatch = /^survey\/([a-z0-9-]+)(?:\/(?:index\.html)?)?$/.exec(cleaned);
+  if (surveyMatch) {
+    return renderSurveyPage(site, baseUrl, surveyMatch[1]);
   }
 
   if (cleaned.endsWith('.html')) {

@@ -45,7 +45,7 @@ import {
   reportSlaRules,
   reportSlaViolations,
 } from './report-platform';
-import { cmsChannels, cmsContents, cmsContentTags, cmsFragments, cmsFriendLinks, cmsModelFields, cmsModels, cmsSites, cmsTags, cmsContentVersions, cmsRedirects, cmsLinkWords, cmsComments, cmsAdSlots, cmsAds, cmsForms, cmsFormSubmissions, cmsPushLogs, cmsSiteUsers, cmsContentChannels, cmsContentRelations, cmsContentOpLogs } from './cms';
+import { cmsChannels, cmsContents, cmsContentTags, cmsFragments, cmsFriendLinks, cmsModelFields, cmsModels, cmsSites, cmsTags, cmsContentVersions, cmsRedirects, cmsLinkWords, cmsComments, cmsAdSlots, cmsAds, cmsForms, cmsFormSubmissions, cmsPushLogs, cmsSiteUsers, cmsContentChannels, cmsContentRelations, cmsContentOpLogs, cmsContentLikes, cmsContentFavorites, cmsMemberViewHistory, cmsSurveys, cmsSurveyQuestions, cmsSurveyAnswers } from './cms';
 
 // ─── 关联关系 ────────────────────────────────────────────────────────────────
 export const errorGroupsRelations = relations(errorGroups, ({ many, one }) => ({
@@ -1286,6 +1286,38 @@ export const cmsContentsRelations = relations(cmsContents, ({ one, many }) => ({
 export const cmsContentOpLogsRelations = relations(cmsContentOpLogs, ({ one }) => ({
   content: one(cmsContents, { fields: [cmsContentOpLogs.contentId], references: [cmsContents.id] }),
   operator: one(users, { fields: [cmsContentOpLogs.operatorId], references: [users.id] }),
+}));
+
+// ─── P3 会员互动 / 问卷 ────────────────────────────────────────────────────────
+export const cmsContentLikesRelations = relations(cmsContentLikes, ({ one }) => ({
+  member: one(members, { fields: [cmsContentLikes.memberId], references: [members.id] }),
+  content: one(cmsContents, { fields: [cmsContentLikes.contentId], references: [cmsContents.id] }),
+}));
+
+export const cmsContentFavoritesRelations = relations(cmsContentFavorites, ({ one }) => ({
+  member: one(members, { fields: [cmsContentFavorites.memberId], references: [members.id] }),
+  content: one(cmsContents, { fields: [cmsContentFavorites.contentId], references: [cmsContents.id] }),
+}));
+
+export const cmsMemberViewHistoryRelations = relations(cmsMemberViewHistory, ({ one }) => ({
+  member: one(members, { fields: [cmsMemberViewHistory.memberId], references: [members.id] }),
+  content: one(cmsContents, { fields: [cmsMemberViewHistory.contentId], references: [cmsContents.id] }),
+  site: one(cmsSites, { fields: [cmsMemberViewHistory.siteId], references: [cmsSites.id] }),
+}));
+
+export const cmsSurveysRelations = relations(cmsSurveys, ({ one, many }) => ({
+  site: one(cmsSites, { fields: [cmsSurveys.siteId], references: [cmsSites.id] }),
+  questions: many(cmsSurveyQuestions),
+  surveyAnswers: many(cmsSurveyAnswers),
+}));
+
+export const cmsSurveyQuestionsRelations = relations(cmsSurveyQuestions, ({ one }) => ({
+  survey: one(cmsSurveys, { fields: [cmsSurveyQuestions.surveyId], references: [cmsSurveys.id] }),
+}));
+
+export const cmsSurveyAnswersRelations = relations(cmsSurveyAnswers, ({ one }) => ({
+  survey: one(cmsSurveys, { fields: [cmsSurveyAnswers.surveyId], references: [cmsSurveys.id] }),
+  member: one(members, { fields: [cmsSurveyAnswers.memberId], references: [members.id] }),
 }));
 
 export const cmsContentChannelsRelations = relations(cmsContentChannels, ({ one }) => ({

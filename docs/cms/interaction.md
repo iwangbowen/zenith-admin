@@ -1,5 +1,21 @@
 # 互动与运营
 
+## 会员互动（点赞 / 收藏 / 浏览历史）
+
+前台详情页底部渲染**互动条**（点赞/收藏按钮 + 计数，静态页可用）：内联 JS 读取会员 token（`zenith_member_token`），已登录调用 `/api/member/cms/contents/{id}/like|favorite` 并自动上报浏览历史；未登录点击跳会员端登录。
+
+- **点赞/收藏**：会员×内容唯一（`cms_content_likes` / `cms_content_favorites`），计数原子回写 `cms_contents.like_count/favorite_count`，后台内容列表展示「赞/藏」列
+- **浏览历史**：`cms_member_view_history` 去重累计，每人保留最近 100 条；会员中心「我的收藏」「浏览历史」页支持取消收藏/清空
+- **积分联动**：阅读 +1（日限 10）、点赞 +1（日限 5）、收藏 +2（日限 5）、投稿发布 +10，复用积分中心 `changePoints()` 记账（`bizType='cms_interaction'`）；Redis `SET NX`（30 天窗口）防同内容重复给分 + 日限额计数，取消后再操作不重复给分。规则常量：`@zenith/shared` 的 `CMS_INTERACTION_POINTS` / `CMS_INTERACTION_DAILY_LIMITS`
+
+## 调查问卷
+
+问卷（`/cms/surveys`，权限 `cms:survey:list|manage`）支持**单选/多选/文字**三种题型：
+
+- **配置**：访问标识（前台 `/survey/{code}/`）、说明、发布状态、**允许匿名**开关、答卷时间窗；题目全量替换式编辑（选项每行一个）
+- **前台提交**：已登录会员 JS 拦截提交走 JSON API（**一人一份**，DB 唯一约束）；匿名走原生 form POST（IP 24h 限一次 + 蜜罐）；仅会员问卷未登录自动跳登录
+- **结果统计**：选择题按已答人数计算选项占比（进度条），文字题展示最近 50 条样本；答卷数冗余计数原子累加
+
 ## 评论
 
 - **提交**：前台原生 form POST `/api/public/cms/comments`（静态页可用），Redis IP 限流（60s 5 次）+ 蜜罐字段 + 敏感词过滤，入库后待审核

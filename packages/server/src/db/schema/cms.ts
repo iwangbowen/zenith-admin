@@ -229,6 +229,10 @@ export const cmsContents = pgTable('cms_contents', {
   /** 过期自动下线时间（到期由周期任务下线，空 = 永不过期） */
   expireAt: timestamp('expire_at'),
   viewCount: integer('view_count').notNull().default(0),
+  /** 会员点赞数（cms_content_likes 冗余计数，原子回写） */
+  likeCount: integer('like_count').notNull().default(0),
+  /** 会员收藏数（cms_content_favorites 冗余计数，原子回写） */
+  favoriteCount: integer('favorite_count').notNull().default(0),
   /** 乐观锁版本号（每次更新 +1；更新携带 expectedVersion 不一致时拒绝，防并发编辑覆盖） */
   version: integer('version').notNull().default(1),
   sort: integer('sort').notNull().default(0),
@@ -295,6 +299,112 @@ export const cmsErrorProneWords = pgTable('cms_error_prone_words', {
 });
 
 export type CmsErrorProneWordRow = typeof cmsErrorProneWords.$inferSelect;
+
+// ═══ P3 会员互动 ═══════════════════════════════════════════════════════════════
+
+// ─── 内容点赞（会员×内容唯一；计数冗余在 cms_contents.like_count）────────────────
+export const cmsContentLikes = pgTable('cms_content_likes', {
+  memberId: integer('member_id').notNull().references(() => members.id, { onDelete: 'cascade' }),
+  contentId: integer('content_id').notNull().references(() => cmsContents.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  primaryKey({ columns: [t.memberId, t.contentId] }),
+  index('cms_content_likes_content_idx').on(t.contentId),
+]);
+
+export type CmsContentLikeRow = typeof cmsContentLikes.$inferSelect;
+
+// ─── 内容收藏（会员×内容唯一；计数冗余在 cms_contents.favorite_count）───────────
+export const cmsContentFavorites = pgTable('cms_content_favorites', {
+  memberId: integer('member_id').notNull().references(() => members.id, { onDelete: 'cascade' }),
+  contentId: integer('content_id').notNull().references(() => cmsContents.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  primaryKey({ columns: [t.memberId, t.contentId] }),
+  index('cms_content_favorites_content_idx').on(t.contentId),
+  index('cms_content_favorites_member_idx').on(t.memberId, t.createdAt),
+]);
+
+export type CmsContentFavoriteRow = typeof cmsContentFavorites.$inferSelect;
+
+// ─── 会员浏览历史（会员×内容去重累计；每人保留最近 100 条由 service 裁剪）─────────
+export const cmsMemberViewHistory = pgTable('cms_member_view_history', {
+  id: serial('id').primaryKey(),
+  memberId: integer('member_id').notNull().references(() => members.id, { onDelete: 'cascade' }),
+  contentId: integer('content_id').notNull().references(() => cmsContents.id, { onDelete: 'cascade' }),
+  siteId: integer('site_id').notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
+  /** 重复浏览累计次数 */
+  viewCount: integer('view_count').notNull().default(1),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  uniqueIndex('cms_member_view_history_uq').on(t.memberId, t.contentId),
+  index('cms_member_view_history_member_idx').on(t.memberId, t.updatedAt),
+]);
+
+export type CmsMemberViewHistoryRow = typeof cmsMemberViewHistory.$inferSelect;
+
+// ═══ P3 调查问卷 ═══════════════════════════════════════════════════════════════
+
+export const cmsSurveyStatusEnum = pgEnum('cms_survey_status', ['draft', 'published', 'closed']);
+export const cmsSurveyQuestionTypeEnum = pgEnum('cms_survey_question_type', ['single', 'multiple', 'text']);
+
+// ─── 问卷（前台 /survey/{code}/ 访问；发布中才可提交）───────────────────────────
+export const cmsSurveys = pgTable('cms_surveys', {
+  id: serial('id').primaryKey(),
+  siteId: integer('site_id').notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
+  /** 前台访问标识（站点内唯一） */
+  code: varchar('code', { length: 50 }).notNull(),
+  title: varchar('title', { length: 200 }).notNull(),
+  description: text('description'),
+  status: cmsSurveyStatusEnum('status').notNull().default('draft'),
+  /** 允许匿名提交（false = 仅登录会员；匿名按 IP 限重） */
+  allowAnonymous: boolean('allow_anonymous').notNull().default(true),
+  /** 答卷时间窗（空 = 不限） */
+  startAt: timestamp('start_at'),
+  endAt: timestamp('end_at'),
+  /** 答卷数冗余计数（提交时原子 +1） */
+  answerCount: integer('answer_count').notNull().default(0),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  uniqueIndex('cms_surveys_site_code_uq').on(t.siteId, t.code),
+]);
+
+export type CmsSurveyRow = typeof cmsSurveys.$inferSelect;
+
+// ─── 问卷题目（single=单选 multiple=多选 text=文字）─────────────────────────────
+export const cmsSurveyQuestions = pgTable('cms_survey_questions', {
+  id: serial('id').primaryKey(),
+  surveyId: integer('survey_id').notNull().references(() => cmsSurveys.id, { onDelete: 'cascade' }),
+  label: varchar('label', { length: 200 }).notNull(),
+  type: cmsSurveyQuestionTypeEnum('type').notNull().default('single'),
+  required: boolean('required').notNull().default(true),
+  /** 选择题选项（text 题为空） */
+  options: jsonb('options').$type<{ label: string; value: string }[]>().notNull().default([]),
+  sort: integer('sort').notNull().default(0),
+}, (t) => [
+  index('cms_survey_questions_survey_idx').on(t.surveyId, t.sort),
+]);
+
+export type CmsSurveyQuestionRow = typeof cmsSurveyQuestions.$inferSelect;
+
+// ─── 答卷（会员一人一份；匿名按 IP + Redis 限重）────────────────────────────────
+export const cmsSurveyAnswers = pgTable('cms_survey_answers', {
+  id: serial('id').primaryKey(),
+  surveyId: integer('survey_id').notNull().references(() => cmsSurveys.id, { onDelete: 'cascade' }),
+  memberId: integer('member_id').references(() => members.id, { onDelete: 'set null' }),
+  ip: varchar('ip', { length: 64 }),
+  /** 答案：key = 题目 id 字符串，值 = 选项 value / value 数组 / 文字 */
+  answers: jsonb('answers').$type<Record<string, string | string[]>>().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  index('cms_survey_answers_survey_idx').on(t.surveyId, t.createdAt),
+  uniqueIndex('cms_survey_answers_member_uq').on(t.surveyId, t.memberId).where(sql`${t.memberId} is not null`),
+]);
+
+export type CmsSurveyAnswerRow = typeof cmsSurveyAnswers.$inferSelect;
 
 // ─── CMS 内容-副栏目关联（一文多栏目：主栏目在 cms_contents.channel_id，副栏目在此表）──
 export const cmsContentChannels = pgTable('cms_content_channels', {

@@ -31,6 +31,8 @@ const InvitePage = React.lazy(() => import('./pages/invite/InvitePage'));
 const RenewalPage = React.lazy(() => import('./pages/renewal/RenewalPage'));
 const ContributionsPage = React.lazy(() => import('./pages/contributions/ContributionsPage'));
 const ContributionEditPage = React.lazy(() => import('./pages/contributions/ContributionEditPage'));
+const FavoritesPage = React.lazy(() => import('./pages/favorites/FavoritesPage'));
+const ViewHistoryPage = React.lazy(() => import('./pages/history/ViewHistoryPage'));
 
 const routeFallback = (
   <div className="m-loading-wrap">
@@ -95,6 +97,8 @@ function AppRoutes() {
         <Route path="/invite" element={<InvitePage />} />
         <Route path="/contributions" element={<ContributionsPage />} />
         <Route path="/contributions/edit" element={<ContributionEditPage />} />
+        <Route path="/favorites" element={<FavoritesPage />} />
+        <Route path="/view-history" element={<ViewHistoryPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/profile/edit" element={<EditProfilePage />} />
         <Route path="/profile/password" element={<ChangePasswordPage />} />

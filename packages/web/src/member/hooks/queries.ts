@@ -2,6 +2,7 @@ import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClie
 import type {
   CmsContribSite,
   CmsContribution,
+  CmsMemberContentItem,
   Coupon,
   Member,
   MemberBenefits,
@@ -475,5 +476,45 @@ export function useDeleteContribution() {
   return useMutation({
     mutationFn: (id: number) => memberRequest.delete<null>(`/api/member/cms/contributions/${id}`).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: contributionKeys.all }),
+  });
+}
+
+// ─── CMS 会员互动：收藏 / 浏览历史（P3）───────────────────────────────────────
+export const cmsInteractionKeys = {
+  favorites: (params: object) => ['member', 'cms-favorites', params] as const,
+  favoritesAll: ['member', 'cms-favorites'] as const,
+  history: (params: object) => ['member', 'cms-history', params] as const,
+  historyAll: ['member', 'cms-history'] as const,
+};
+
+export function useMyCmsFavorites(params: { page: number; pageSize: number }) {
+  return useQuery({
+    queryKey: cmsInteractionKeys.favorites(params),
+    queryFn: () => memberRequest.get<PaginatedResponse<CmsMemberContentItem>>(`/api/member/cms/favorites${toQueryString(params)}`).then(unwrap),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useRemoveCmsFavorite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (contentId: number) => memberRequest.delete<unknown>(`/api/member/cms/contents/${contentId}/favorite`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsInteractionKeys.favoritesAll }),
+  });
+}
+
+export function useMyCmsViewHistory(params: { page: number; pageSize: number }) {
+  return useQuery({
+    queryKey: cmsInteractionKeys.history(params),
+    queryFn: () => memberRequest.get<PaginatedResponse<CmsMemberContentItem>>(`/api/member/cms/view-history${toQueryString(params)}`).then(unwrap),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useClearCmsViewHistory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => memberRequest.delete<null>('/api/member/cms/view-history').then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsInteractionKeys.historyAll }),
   });
 }

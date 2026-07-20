@@ -44,6 +44,17 @@ main { min-height: 60vh; padding: 24px 0 48px; }
 .body-pagination { display: flex; gap: 6px; justify-content: center; margin: 20px 0 4px; flex-wrap: wrap; }
 .body-pagination a, .body-pagination span { padding: 5px 11px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; }
 .body-pagination .current { background: var(--primary); border-color: var(--primary); color: #fff; }
+.interaction-bar { display: flex; align-items: center; gap: 12px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.interaction-bar button { padding: 7px 16px; border: 1px solid var(--border); border-radius: 18px; background: var(--bg-2); font-size: 14px; cursor: pointer; color: var(--text-1); }
+.interaction-bar button.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+.interaction-hint { font-size: 12px; color: var(--text-2); }
+.survey-desc { color: var(--text-2); margin-bottom: 16px; }
+.survey-hint { font-size: 13px; color: #953800; background: #fff8c5; padding: 8px 12px; border-radius: 6px; }
+.survey-question { border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; margin: 14px 0; }
+.survey-question legend { font-weight: 600; font-size: 15px; padding: 0 6px; }
+.survey-options { display: flex; flex-direction: column; gap: 8px; }
+.survey-option { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.survey-done { padding: 32px; text-align: center; font-size: 16px; color: var(--primary); }
 .pagination { display: flex; gap: 6px; justify-content: center; margin-top: 24px; flex-wrap: wrap; }
 .pagination a, .pagination span { padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; }
 .pagination .current { background: var(--primary); border-color: var(--primary); color: #fff; }

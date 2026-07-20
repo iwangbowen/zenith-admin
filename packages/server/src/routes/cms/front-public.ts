@@ -4,6 +4,7 @@ import { submitCmsCommentSchema } from '@zenith/shared';
 import { resolveSiteByCode } from '../../services/cms/cms-sites.service';
 import { submitCmsComment, likeCmsComment, throttleFrontSubmit } from '../../services/cms/cms-comments.service';
 import { getCmsFormByCode, submitCmsForm } from '../../services/cms/cms-forms.service';
+import { getPublishedSurveyByCode, submitCmsSurvey } from '../../services/cms/cms-surveys.service';
 import { increaseViewCount } from '../../services/cms/cms-contents.service';
 import { recordAdClick } from '../../services/cms/cms-ads.service';
 import { config } from '../../config';
@@ -99,6 +100,40 @@ export function createCmsFrontPublicRoutes(): Hono {
       return respond('提交失败', msg, status);
     }
     return respond('提交成功', form.successMessage?.trim() || '我们已收到您的信息。');
+  });
+
+  // ─── 问卷匿名提交（原生 form POST；字段名 q_{题目id}，多选同名多值）────────────
+  app.post('/surveys/:siteCode/:code', async (c) => {
+    const body = await c.req.parseBody({ all: true });
+    const backUrl = safeReturnUrl(body.returnUrl);
+    const respond = (title: string, text: string, status: 200 | 400 | 401 | 404 | 429 | 500 = 200) =>
+      c.newResponse(messagePage(title, text, backUrl), status, { 'Content-Type': 'text/html; charset=utf-8' });
+
+    if (typeof body.website === 'string' && body.website) {
+      return respond('提交失败', '提交被拒绝', 400);
+    }
+    const site = await resolveSiteByCode(c.req.param('siteCode'));
+    if (!site) return respond('提交失败', '站点不存在', 404);
+    const survey = await getPublishedSurveyByCode(site.id, c.req.param('code'));
+    if (!survey) return respond('提交失败', '问卷不存在或未开放', 404);
+    const answers: Record<string, string | string[]> = {};
+    for (const [key, value] of Object.entries(body)) {
+      if (!key.startsWith('q_')) continue;
+      const qid = key.slice(2);
+      if (Array.isArray(value)) {
+        answers[qid] = value.filter((v): v is string => typeof v === 'string');
+      } else if (typeof value === 'string') {
+        answers[qid] = value;
+      }
+    }
+    try {
+      await submitCmsSurvey(survey, { answers }, { memberId: null, ip: clientIp(c.req.raw.headers) });
+    } catch (err) {
+      const msg = err instanceof HTTPException ? err.message : '提交失败，请稍后再试';
+      const status = err instanceof HTTPException ? (err.status as 400 | 401 | 429) : 500;
+      return respond('提交失败', msg, status);
+    }
+    return respond('提交成功', '感谢您的参与！');
   });
 
   // ─── 评论点赞（同 IP 对同评论 24h 去重；原生 form POST，处理后跳回来源页）─────

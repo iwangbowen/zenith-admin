@@ -48,6 +48,7 @@ graph LR
 | 表单管理 | `/cms/forms` | 自定义表单、提交数据导出、邮件通知 | [互动与运营](./interaction) |
 | 敏感词库 | `/cms/sensitive-words` | Aho-Corasick 引擎，评论/表单提交拦截 | [互动与运营](./interaction) |
 | 易错词库 | `/cms/error-prone-words` | 编辑辅助：错误词→正确词，内容检查一键替换 | [内容管线](./content-pipeline) |
+| 问卷调查 | `/cms/surveys` | 单选/多选/文字题、匿名/会员提交、结果统计 | [互动与运营](./interaction) |
 | 采集中心 | `/cms/collect` | CSS 选择器采集 + 图片本地化 | [互动与运营](./interaction) |
 | 页面搭建 | `/cms/pages` | 区块拖拽装配 + 内嵌实时预览 | [互动与运营](./interaction) |
 
@@ -74,6 +75,8 @@ CMS 前台路由（Hono 兜底路由）
 
 运营表：`cms_comments` / `cms_ad_slots` / `cms_ads` / `cms_forms` / `cms_form_submissions` / `cms_sensitive_words` / `cms_error_prone_words`（易错词）/ `cms_fragments` / `cms_friend_links` / `cms_pages`
 
+会员互动表：`cms_content_likes` / `cms_content_favorites` / `cms_member_view_history` / `cms_surveys` / `cms_survey_questions` / `cms_survey_answers`
+
 SEO 与采集：`cms_redirects` / `cms_link_words` / `cms_push_logs` / `cms_search_words` / `cms_collect_rules` / `cms_collect_items`
 
 权限：`cms_site_users`（站点数据权限绑定）
@@ -92,6 +95,6 @@ SEO 与采集：`cms_redirects` / `cms_link_words` / `cms_push_logs` / `cms_sear
 
 ## 权限码
 
-所有权限以 `cms:` 前缀，按资源划分：`cms:site:*`、`cms:channel:*`、`cms:content:list|create|update|delete|publish|audit`、`cms:model:*`、`cms:tag:*`、`cms:fragment:*`、`cms:link:*`、`cms:static:build`、`cms:search:manage`、`cms:seo:manage|push`、`cms:comment:audit|delete`、`cms:ad:manage`、`cms:form:manage`、`cms:sensitive:manage`、`cms:word:list|manage`（易错词）、`cms:collect:*`、`cms:page:*`、`cms:dashboard:view`。
+所有权限以 `cms:` 前缀，按资源划分：`cms:site:*`、`cms:channel:*`、`cms:content:list|create|update|delete|publish|audit`、`cms:model:*`、`cms:tag:*`、`cms:fragment:*`、`cms:link:*`、`cms:static:build`、`cms:search:manage`、`cms:seo:manage|push`、`cms:comment:audit|delete`、`cms:ad:manage`、`cms:form:manage`、`cms:sensitive:manage`、`cms:word:list|manage`（易错词）、`cms:survey:list|manage`（问卷）、`cms:collect:*`、`cms:page:*`、`cms:dashboard:view`。
 
 站点级数据权限：在「站点管理 → 授权用户」绑定后，该用户仅能管理绑定站点；未绑定的非超管用户不受限（兼容策略）。

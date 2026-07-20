@@ -2,12 +2,12 @@ import {
   SEED_CMS_SITES, SEED_CMS_PUBLISH_CHANNELS, SEED_CMS_MODELS, SEED_CMS_CHANNELS, SEED_CMS_CONTENTS,
   SEED_CMS_TAGS, SEED_CMS_FRAGMENTS, SEED_CMS_FRIEND_LINKS,
   SEED_CMS_AD_SLOTS, SEED_CMS_ADS, SEED_CMS_FORMS, SEED_CMS_SENSITIVE_WORDS,
-  SEED_CMS_ERROR_PRONE_WORDS, SEED_CMS_LINK_WORDS, SEED_CMS_COMMENTS,
+  SEED_CMS_ERROR_PRONE_WORDS, SEED_CMS_LINK_WORDS, SEED_CMS_COMMENTS, SEED_CMS_SURVEYS,
 } from '@zenith/shared';
 import type {
   CmsSite, CmsPublishChannel, CmsModel, CmsChannel, CmsContent, CmsTag, CmsFragment, CmsFriendLink,
   CmsAdSlot, CmsAd, CmsForm, CmsFormSubmission, CmsSensitiveWord, CmsErrorProneWord, CmsLinkWord, CmsComment,
-  CmsRedirect, CmsPushLog, CmsContentVersion, CmsSearchWord, CmsHotKeyword, CmsContentOpLog,
+  CmsRedirect, CmsPushLog, CmsContentVersion, CmsSearchWord, CmsHotKeyword, CmsContentOpLog, CmsSurvey,
 } from '@zenith/shared';
 
 // 从共享种子数据派生（禁止重复定义静态数组）
@@ -91,6 +91,8 @@ export const mockCmsSearchWords: CmsSearchWord[] = [
   { id: 1, word: '云原生', weight: 100, status: 'enabled', remark: '技术词', createdAt: '2024-01-01 00:00:00', updatedAt: '2024-01-01 00:00:00' },
   { id: 2, word: '低代码', weight: 100, status: 'enabled', remark: null, createdAt: '2024-01-01 00:00:00', updatedAt: '2024-01-01 00:00:00' },
 ];
+export const mockCmsSurveys: CmsSurvey[] = SEED_CMS_SURVEYS.map((s) => ({ ...s, questions: s.questions.map((q) => ({ ...q, options: q.options.map((o) => ({ ...o })) })) }));
+export const getNextCmsSurveyId = nextIdFactory(Math.max(0, ...mockCmsSurveys.map((x) => x.id)) + 1);
 export const mockCmsHotKeywords: CmsHotKeyword[] = [
   { keyword: '产品', count: 42 },
   { keyword: '价格', count: 31 },

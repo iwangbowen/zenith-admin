@@ -3,6 +3,7 @@ import type {
   CmsBaseContext, CmsBreadcrumb, CmsContentItem, CmsHomeContext, CmsListContext,
   CmsDetailContext, CmsPageContext, CmsSearchContext, CmsNotFoundContext, CmsPagination,
   CmsCommentItem, CmsCommentFormConfig, CmsFrontFormConfig, CmsTagPageContext, CmsCustomPageContext,
+  CmsSurveyPageContext,
 } from '../types';
 
 function Breadcrumbs({ items }: { items: CmsBreadcrumb[] }) {
@@ -289,6 +290,25 @@ function BodyPagination({ p }: { p: CmsDetailContext['content']['bodyPagination'
   );
 }
 
+/**
+ * 会员互动条（点赞/收藏）：内联 JS 读取会员 token（zenith_member_token），
+ * 已登录 fetch 会员 API 并上报浏览历史；未登录点击跳会员端登录。静态页可用。
+ */
+const INTERACTION_SCRIPT = `(function(){var bar=document.getElementById('interaction-bar');if(!bar)return;var id=bar.getAttribute('data-content-id');var t=null;try{t=localStorage.getItem('zenith_member_token')}catch(e){}function hdr(){var h={'Content-Type':'application/json'};if(t)h.Authorization='Bearer '+t;return h}function api(m,p){return fetch('/api/member/cms/contents/'+id+p,{method:m,headers:hdr()}).then(function(r){return r.json()})}function paint(s){var lb=document.getElementById('btn-like'),fb=document.getElementById('btn-fav');if(!s||!lb||!fb)return;lb.classList.toggle('active',!!s.liked);fb.classList.toggle('active',!!s.favorited);document.getElementById('like-count').textContent=s.likeCount;document.getElementById('fav-count').textContent=s.favoriteCount;lb.dataset.on=s.liked?'1':'';fb.dataset.on=s.favorited?'1':''}if(t){api('GET','/interaction-state').then(function(r){if(r&&r.code===0)paint(r.data)}).catch(function(){});api('POST','/view').catch(function(){})}bar.addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;if(!t){location.href='/member.html#/';return}var isLike=b.id==='btn-like';var on=b.dataset.on==='1';api(on?'DELETE':'POST',isLike?'/like':'/favorite').then(function(r){if(r&&r.code===0)paint(r.data);else if(r&&r.code===401){location.href='/member.html#/'}}).catch(function(){})});})();`;
+
+function InteractionBar({ content }: { content: CmsDetailContext['content'] }) {
+  return (
+    <>
+      <div className="interaction-bar" id="interaction-bar" data-content-id={content.id}>
+        <button type="button" id="btn-like" aria-label="点赞">👍 赞 <span id="like-count">{content.likeCount}</span></button>
+        <button type="button" id="btn-fav" aria-label="收藏">⭐ 收藏 <span id="fav-count">{content.favoriteCount}</span></button>
+        <span className="interaction-hint">登录会员后可点赞收藏，同步至会员中心</span>
+      </div>
+      <script dangerouslySetInnerHTML={{ __html: INTERACTION_SCRIPT }} />
+    </>
+  );
+}
+
 export function DetailTemplate(ctx: CmsDetailContext) {
   const { content } = ctx;
   return (
@@ -310,6 +330,7 @@ export function DetailTemplate(ctx: CmsDetailContext) {
             {content.tags.map((t) => <a key={t.slug} href={t.url}><span>{t.name}</span></a>)}
           </div>
         ) : null}
+        <InteractionBar content={content} />
       </article>
       {(content.prev || content.next) ? (
         <nav className="article-nav">
@@ -509,6 +530,62 @@ export function DetailPlainTemplate(ctx: CmsDetailContext) {
           {content.next ? <span>下一篇：<a href={content.next.url}>{content.next.title}</a></span> : null}
         </nav>
       ) : null}
+    </Layout>
+  );
+}
+
+// ─── 前台问卷页 ───────────────────────────────────────────────────────────────
+/**
+ * 问卷提交脚本：已登录会员拦截 submit 走 JSON API（一人一份）；
+ * 未登录且允许匿名走原生 form POST；不允许匿名则跳会员端登录。
+ */
+const SURVEY_SCRIPT = `(function(){var f=document.getElementById('survey-form');if(!f)return;var api=f.getAttribute('data-member-api');var anon=f.getAttribute('data-allow-anonymous')==='1';var t=null;try{t=localStorage.getItem('zenith_member_token')}catch(e){}function done(msg){f.innerHTML='<p class="survey-done">'+msg+'</p>'}f.addEventListener('submit',function(e){if(!t){if(!anon){e.preventDefault();location.href='/member.html#/'}return}e.preventDefault();var answers={};f.querySelectorAll('[name^="q_"]').forEach(function(el){var k=el.name.slice(2);if(el.type==='checkbox'){if(!answers[k])answers[k]=[];if(el.checked)answers[k].push(el.value)}else if(el.type==='radio'){if(el.checked)answers[k]=el.value}else if(el.value){answers[k]=el.value}});fetch(api,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+t},body:JSON.stringify({answers:answers})}).then(function(r){return r.json()}).then(function(r){if(r&&r.code===0){done('提交成功，感谢您的参与！')}else{alert((r&&r.message)||'提交失败，请稍后再试')}}).catch(function(){alert('提交失败，请稍后再试')})});})();`;
+
+export function SurveyTemplate(ctx: CmsSurveyPageContext) {
+  const { survey, submitForm } = ctx;
+  return (
+    <Layout ctx={ctx} currentUrl={`${ctx.baseUrl}/survey/${survey.code}/`}>
+      <Breadcrumbs items={ctx.breadcrumbs} />
+      <article className="article survey">
+        <h1>{survey.title}</h1>
+        {survey.description ? <p className="survey-desc">{survey.description}</p> : null}
+        {!survey.allowAnonymous ? <p className="survey-hint">本问卷仅限登录会员填写</p> : null}
+        <form
+          className="front-form"
+          id="survey-form"
+          method="post"
+          action={submitForm.action}
+          data-member-api={submitForm.memberSubmitApi}
+          data-allow-anonymous={survey.allowAnonymous ? '1' : '0'}
+        >
+          <input type="hidden" name="returnUrl" value={submitForm.returnUrl} />
+          <input className="hp" type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" />
+          {survey.questions.map((q, qi) => (
+            <fieldset className="survey-question" key={q.id}>
+              <legend>{qi + 1}. {q.label}{q.required ? <span className="req"> *</span> : null}</legend>
+              {q.type === 'text' ? (
+                <textarea name={`q_${q.id}`} required={q.required} maxLength={2000} />
+              ) : (
+                <div className="survey-options">
+                  {q.options.map((o) => (
+                    <label key={o.value} className="survey-option">
+                      <input
+                        type={q.type === 'multiple' ? 'checkbox' : 'radio'}
+                        name={`q_${q.id}`}
+                        value={o.value}
+                        required={q.required && q.type === 'single'}
+                      />
+                      {o.label}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </fieldset>
+          ))}
+          <button type="submit">提交答卷</button>
+        </form>
+      </article>
+      <script dangerouslySetInnerHTML={{ __html: SURVEY_SCRIPT }} />
     </Layout>
   );
 }

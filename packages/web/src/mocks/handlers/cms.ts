@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import type { CmsChannel, CmsContent, CmsContentStatus, CmsModelField, CmsPublishChannel } from '@zenith/shared';
+import type { CmsChannel, CmsContent, CmsContentStatus, CmsModelField, CmsPublishChannel, CmsSurvey } from '@zenith/shared';
 import {
   mockCmsSites, mockCmsModels, mockCmsChannels, mockCmsContents, mockCmsTags,
   mockCmsFragments, mockCmsFriendLinks, buildMockChannelTree,
@@ -11,6 +11,7 @@ import {
   getNextCmsErrorProneWordId, getNextCmsContentOpLogId, getNextCmsLinkWordId, getNextCmsRedirectId,
   mockCmsSearchWords, mockCmsHotKeywords, getNextCmsSearchWordId,
   mockCmsPublishChannels, getNextCmsPublishChannelId,
+  mockCmsSurveys, getNextCmsSurveyId,
 } from '../data/cms';
 import { createProgressingMockTask } from './async-tasks';
 import { mockDateTime, mockDate } from '../utils/date';
@@ -478,6 +479,8 @@ export const cmsHandlers = [
       scheduledAt: null,
       expireAt: (body.expireAt as string) ?? null,
       viewCount: 0,
+      likeCount: 0,
+      favoriteCount: 0,
       version: 1,
       sort: Number(body.sort ?? 0),
       seoTitle: (body.seoTitle as string) ?? null,
@@ -1184,6 +1187,80 @@ export const cmsP2Handlers = [
       }
     }
     return okJson(null, `已将 ${count} 条内容移入回收站`);
+  }),
+
+  // ═══ 问卷调查（P3）═══════════════════════════════════════════════════════
+  http.get('/api/cms/surveys', ({ request }) => {
+    const { url, page, pageSize, keyword } = pageParams(request);
+    const siteId = Number(url.searchParams.get('siteId'));
+    let list = mockCmsSurveys.filter((s) => s.siteId === siteId);
+    if (keyword) list = list.filter((s) => s.title.includes(keyword));
+    return okJson(paginate(list, page, pageSize));
+  }),
+  http.get('/api/cms/surveys/:id/stats', ({ params }) => {
+    const survey = mockCmsSurveys.find((s) => s.id === Number(params.id));
+    if (!survey) return notFound('问卷不存在');
+    return okJson({
+      surveyId: survey.id,
+      answerCount: 42,
+      questions: (survey.questions ?? []).map((q) => ({
+        id: q.id,
+        label: q.label,
+        type: q.type,
+        options: q.type === 'text' ? [] : q.options.map((o, i) => ({
+          label: o.label, value: o.value,
+          count: Math.max(0, 20 - i * 6),
+          percent: Math.max(0, Math.round((20 - i * 6) / 42 * 1000) / 10),
+        })),
+        texts: q.type === 'text' ? ['界面很清爽，希望增加更多主题', '静态化速度很快'] : [],
+      })),
+    });
+  }),
+  http.get('/api/cms/surveys/:id', ({ params }) => {
+    const survey = mockCmsSurveys.find((s) => s.id === Number(params.id));
+    return survey ? okJson(survey) : notFound('问卷不存在');
+  }),
+  http.post('/api/cms/surveys', async ({ request }) => {
+    const body = (await request.json()) as Body;
+    const now = mockDateTime();
+    const id = getNextCmsSurveyId();
+    const questions = ((body.questions as { label: string; type: 'single' | 'multiple' | 'text'; required: boolean; options: { label: string; value: string }[]; sort: number }[]) ?? [])
+      .map((q, i) => ({ id: i + 1, surveyId: id, label: q.label, type: q.type, required: q.required, options: q.options ?? [], sort: q.sort ?? i }));
+    const row: CmsSurvey = {
+      id,
+      siteId: Number(body.siteId),
+      code: String(body.code ?? ''),
+      title: String(body.title ?? ''),
+      description: (body.description as string) ?? null,
+      status: (body.status as CmsSurvey['status']) ?? 'draft',
+      allowAnonymous: body.allowAnonymous !== false,
+      startAt: (body.startAt as string) ?? null,
+      endAt: (body.endAt as string) ?? null,
+      answerCount: 0,
+      questions,
+      createdAt: now,
+      updatedAt: now,
+    };
+    mockCmsSurveys.push(row);
+    return okJson(row, '创建成功');
+  }),
+  http.put('/api/cms/surveys/:id', async ({ params, request }) => {
+    const idx = mockCmsSurveys.findIndex((s) => s.id === Number(params.id));
+    if (idx === -1) return notFound('问卷不存在');
+    const body = (await request.json()) as Body;
+    const { questions, ...rest } = body;
+    Object.assign(mockCmsSurveys[idx], rest, { updatedAt: mockDateTime() });
+    if (Array.isArray(questions)) {
+      mockCmsSurveys[idx].questions = (questions as { label: string; type: 'single' | 'multiple' | 'text'; required: boolean; options: { label: string; value: string }[]; sort: number }[])
+        .map((q, i) => ({ id: i + 1, surveyId: mockCmsSurveys[idx].id, label: q.label, type: q.type, required: q.required, options: q.options ?? [], sort: q.sort ?? i }));
+    }
+    return okJson(mockCmsSurveys[idx], '更新成功');
+  }),
+  http.delete('/api/cms/surveys/:id', ({ params }) => {
+    const idx = mockCmsSurveys.findIndex((s) => s.id === Number(params.id));
+    if (idx === -1) return notFound('问卷不存在');
+    mockCmsSurveys.splice(idx, 1);
+    return okJson(null, '删除成功');
   }),
 
   // ─── 站点授权用户 ───────────────────────────────────────────────────────────

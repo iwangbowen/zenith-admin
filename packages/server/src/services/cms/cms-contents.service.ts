@@ -56,6 +56,8 @@ export function mapCmsContent(row: CmsContentRow, extra?: { channelName?: string
     scheduledAt: formatNullableDateTime(row.scheduledAt),
     expireAt: formatNullableDateTime(row.expireAt),
     viewCount: row.viewCount,
+    likeCount: row.likeCount,
+    favoriteCount: row.favoriteCount,
     version: row.version,
     sort: row.sort,
     seoTitle: row.seoTitle ?? null,
@@ -426,6 +428,9 @@ export async function publishCmsContent(id: number, opts?: { fromWorkflow?: bool
   assertContentTypeReady(row);
   const result = await transitionStatus(id, 'publish', { status: 'published', publishedAt: new Date(), rejectReason: null });
   await logContentOp(db, id, 'published', opts?.fromWorkflow ? '工作流审核通过' : null);
+  // 会员投稿发布：发放投稿积分（每内容仅一次，Redis NX 防重）
+  const { awardContributionPoints } = await import('./cms-member-interaction.service');
+  awardContributionPoints(row);
   triggerCmsContentWebhook('content.published', id);
   return result;
 }

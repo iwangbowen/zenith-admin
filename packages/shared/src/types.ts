@@ -10475,6 +10475,10 @@ export interface CmsContent {
   /** 过期自动下线时间（空 = 永不过期） */
   expireAt: string | null;
   viewCount: number;
+  /** 会员点赞数（冗余计数） */
+  likeCount: number;
+  /** 会员收藏数（冗余计数） */
+  favoriteCount: number;
   /** 乐观锁版本号（更新时回传 expectedVersion） */
   version: number;
   sort: number;
@@ -10527,6 +10531,75 @@ export interface CmsErrorProneWord {
 export interface CmsTextCheckResult {
   sensitive: { word: string; replaceWith: string | null; count: number }[];
   errorProne: { word: string; correction: string; count: number }[];
+}
+
+// ─── P3 会员互动 / 问卷 ────────────────────────────────────────────────────────
+
+/** 会员对某内容的互动状态（前台详情页交互条用） */
+export interface CmsInteractionState {
+  liked: boolean;
+  favorited: boolean;
+  likeCount: number;
+  favoriteCount: number;
+}
+
+/** 会员收藏 / 浏览历史条目（会员中心列表） */
+export interface CmsMemberContentItem {
+  contentId: number;
+  title: string;
+  /** 前台详情 URL（站内路径） */
+  url: string | null;
+  coverThumb: string | null;
+  contentType: CmsContentType;
+  /** 浏览历史：累计次数 */
+  viewCount?: number;
+  createdAt: string;
+  /** 浏览历史：最近浏览时间 */
+  updatedAt?: string;
+}
+
+export type CmsSurveyStatus = 'draft' | 'published' | 'closed';
+export type CmsSurveyQuestionType = 'single' | 'multiple' | 'text';
+
+export interface CmsSurveyQuestion {
+  id: number;
+  surveyId: number;
+  label: string;
+  type: CmsSurveyQuestionType;
+  required: boolean;
+  options: { label: string; value: string }[];
+  sort: number;
+}
+
+export interface CmsSurvey {
+  id: number;
+  siteId: number;
+  code: string;
+  title: string;
+  description: string | null;
+  status: CmsSurveyStatus;
+  allowAnonymous: boolean;
+  startAt: string | null;
+  endAt: string | null;
+  answerCount: number;
+  questions?: CmsSurveyQuestion[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 问卷结果统计（选择题选项占比 + 文字题最近样本） */
+export interface CmsSurveyStats {
+  surveyId: number;
+  answerCount: number;
+  questions: {
+    id: number;
+    label: string;
+    type: CmsSurveyQuestionType;
+    /** 选择题：各选项计数 */
+    options: { label: string; value: string; count: number; percent: number }[];
+    /** 文字题：最近样本（最多 50 条） */
+    texts: string[];
+  }[];
 }
 
 export interface CmsTag {

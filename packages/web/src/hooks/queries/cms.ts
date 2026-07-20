@@ -7,7 +7,7 @@ import type {
   CmsSearchWord, CmsHotKeyword, CmsCollectRule, CmsCollectItem, CmsPage,
   CmsEditLock, CmsPreviewLink, CmsContentVersionDiff, CmsDashboardStats,
   CmsThemeTemplateManifest, CmsPublishChannel, CmsContentOpLog, CmsErrorProneWord, CmsTextCheckResult,
-  CmsContentType,
+  CmsContentType, CmsSurvey, CmsSurveyStats,
 } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { toQueryString, unwrap, LOOKUP_STALE_TIME } from '@/lib/query';
@@ -934,6 +934,68 @@ export function useDeleteCmsErrorProneWord() {
   return useMutation({
     mutationFn: (id: number) => request.delete<null>(`/api/cms/error-prone-words/${id}`).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: cmsErrorProneWordKeys.all }),
+  });
+}
+
+// ═══ 问卷调查（P3）═══════════════════════════════════════════════════════════
+export interface CmsSurveyListParams {
+  page: number;
+  pageSize: number;
+  siteId: number;
+  keyword?: string;
+  status?: string;
+}
+
+export const cmsSurveyKeys = {
+  all: ['cms-surveys'] as const,
+  lists: ['cms-surveys', 'list'] as const,
+  list: (params: CmsSurveyListParams) => ['cms-surveys', 'list', params] as const,
+  detail: (id: number | undefined) => ['cms-surveys', 'detail', id] as const,
+  stats: (id: number | undefined) => ['cms-surveys', 'stats', id] as const,
+};
+
+export function useCmsSurveyList(params: CmsSurveyListParams, enabled = true) {
+  return useQuery({
+    queryKey: cmsSurveyKeys.list(params),
+    queryFn: () => request.get<PaginatedResponse<CmsSurvey>>(`/api/cms/surveys${toQueryString(params)}`).then(unwrap),
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
+export function useCmsSurveyDetail(id: number | undefined, enabled = true) {
+  return useQuery({
+    queryKey: cmsSurveyKeys.detail(id),
+    queryFn: () => request.get<CmsSurvey>(`/api/cms/surveys/${id}`).then(unwrap),
+    enabled: enabled && id !== undefined,
+  });
+}
+
+export function useCmsSurveyStats(id: number | undefined, enabled = true) {
+  return useQuery({
+    queryKey: cmsSurveyKeys.stats(id),
+    queryFn: () => request.get<CmsSurveyStats>(`/api/cms/surveys/${id}/stats`).then(unwrap),
+    enabled: enabled && id !== undefined,
+  });
+}
+
+export function useSaveCmsSurvey() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
+      (id === undefined
+        ? request.post<CmsSurvey>('/api/cms/surveys', values)
+        : request.put<CmsSurvey>(`/api/cms/surveys/${id}`, values)
+      ).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsSurveyKeys.all }),
+  });
+}
+
+export function useDeleteCmsSurvey() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.delete<null>(`/api/cms/surveys/${id}`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsSurveyKeys.all }),
   });
 }
 

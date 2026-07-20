@@ -170,6 +170,73 @@ export const memberFrontHandlers = [
     if (idx !== -1) mockContributions.splice(idx, 1);
     return ok(null, '删除成功');
   }),
+
+  // ── CMS 会员互动：点赞 / 收藏 / 浏览历史（P3）──────────────────────────────
+  http.get('/api/member/cms/contents/:id/interaction-state', ({ params }) => {
+    const id = Number(params.id);
+    return ok({
+      liked: mockLikedIds.has(id),
+      favorited: mockFavorites.some((f) => f.contentId === id),
+      likeCount: mockLikedIds.has(id) ? 13 : 12,
+      favoriteCount: mockFavorites.some((f) => f.contentId === id) ? 6 : 5,
+    });
+  }),
+  http.post('/api/member/cms/contents/:id/like', ({ params }) => {
+    const id = Number(params.id);
+    mockLikedIds.add(id);
+    return ok({ liked: true, favorited: mockFavorites.some((f) => f.contentId === id), likeCount: 13, favoriteCount: 5 }, '已点赞');
+  }),
+  http.delete('/api/member/cms/contents/:id/like', ({ params }) => {
+    const id = Number(params.id);
+    mockLikedIds.delete(id);
+    return ok({ liked: false, favorited: mockFavorites.some((f) => f.contentId === id), likeCount: 12, favoriteCount: 5 }, '已取消点赞');
+  }),
+  http.post('/api/member/cms/contents/:id/favorite', ({ params }) => {
+    const id = Number(params.id);
+    if (!mockFavorites.some((f) => f.contentId === id)) {
+      mockFavorites.unshift({ contentId: id, title: `内容 #${id}`, url: `/news/${id}.html`, coverThumb: null, contentType: 'article', createdAt: mockDateTime() });
+    }
+    return ok({ liked: mockLikedIds.has(id), favorited: true, likeCount: 12, favoriteCount: 6 }, '已收藏');
+  }),
+  http.delete('/api/member/cms/contents/:id/favorite', ({ params }) => {
+    const id = Number(params.id);
+    const idx = mockFavorites.findIndex((f) => f.contentId === id);
+    if (idx !== -1) mockFavorites.splice(idx, 1);
+    return ok({ liked: mockLikedIds.has(id), favorited: false, likeCount: 12, favoriteCount: 5 }, '已取消收藏');
+  }),
+  http.post('/api/member/cms/contents/:id/view', ({ params }) => {
+    const id = Number(params.id);
+    const hit = mockViewHistory.find((v) => v.contentId === id);
+    if (hit) {
+      hit.viewCount = (hit.viewCount ?? 1) + 1;
+      hit.updatedAt = mockDateTime();
+    } else {
+      mockViewHistory.unshift({ contentId: id, title: `内容 #${id}`, url: `/news/${id}.html`, coverThumb: null, contentType: 'article', viewCount: 1, createdAt: mockDateTime(), updatedAt: mockDateTime() });
+    }
+    return ok(null, '已记录');
+  }),
+  http.get('/api/member/cms/favorites', () => paginated(mockFavorites)),
+  http.get('/api/member/cms/view-history', () => paginated(mockViewHistory)),
+  http.delete('/api/member/cms/view-history', () => {
+    const count = mockViewHistory.length;
+    mockViewHistory.length = 0;
+    return ok(null, `已清空 ${count} 条浏览记录`);
+  }),
+  http.post('/api/member/cms/surveys/:id/submit', () => ok(null, '提交成功，感谢您的参与！')),
+];
+
+interface MockMemberContentItem {
+  contentId: number; title: string; url: string | null; coverThumb: string | null;
+  contentType: 'article' | 'album' | 'media' | 'link';
+  viewCount?: number; createdAt: string; updatedAt?: string;
+}
+
+const mockLikedIds = new Set<number>();
+const mockFavorites: MockMemberContentItem[] = [
+  { contentId: 1, title: 'Zenith Admin 发布 CMS 内容管理模块', url: '/news/1.html', coverThumb: null, contentType: 'article', createdAt: '2026-01-05 10:00:00' },
+];
+const mockViewHistory: MockMemberContentItem[] = [
+  { contentId: 2, title: '内容管理系统选型指南：静态化与全文检索实践', url: '/news/2.html', coverThumb: null, contentType: 'article', viewCount: 3, createdAt: '2026-01-04 09:00:00', updatedAt: '2026-01-06 15:30:00' },
 ];
 
 const mockContributions: {

@@ -227,6 +227,7 @@ export default function ContentsPage() {
     { title: '栏目', dataIndex: 'channelName', width: 110 },
     { title: '作者', dataIndex: 'author', width: 90, render: (v: string | null) => v ?? '-' },
     { title: '浏览', dataIndex: 'viewCount', width: 80 },
+    { title: '赞/藏', dataIndex: 'likeCount', width: 90, render: (_: number, record) => `${record.likeCount}/${record.favoriteCount}` },
     { title: '发布时间', dataIndex: 'publishedAt', width: 180, render: (v: string | null) => v ?? '-' },
     { title: '更新时间', dataIndex: 'updatedAt', width: 180 },
     {

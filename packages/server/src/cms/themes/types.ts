@@ -65,6 +65,9 @@ export interface CmsContentItem {
   source: string | null;
   publishedAt: string | null;
   viewCount: number;
+  /** 会员点赞数 / 收藏数（冗余计数） */
+  likeCount: number;
+  favoriteCount: number;
   isTop: boolean;
   isRecommend: boolean;
   isHot: boolean;
@@ -225,6 +228,27 @@ export interface CmsCustomPageContext extends CmsBaseContext {
   blocksHtml: string;
 }
 
+/** 前台问卷页上下文 */
+export interface CmsSurveyPageContext extends CmsBaseContext {
+  breadcrumbs: CmsBreadcrumb[];
+  survey: {
+    id: number;
+    code: string;
+    title: string;
+    description: string | null;
+    allowAnonymous: boolean;
+    questions: {
+      id: number;
+      label: string;
+      type: 'single' | 'multiple' | 'text';
+      required: boolean;
+      options: { label: string; value: string }[];
+    }[];
+  };
+  /** 匿名 form POST 地址 / 会员 JSON 提交 API / 回跳地址 */
+  submitForm: { action: string; memberSubmitApi: string; returnUrl: string };
+}
+
 export interface CmsNotFoundContext extends CmsBaseContext {
   path: string;
 }
@@ -252,6 +276,8 @@ export interface CmsTheme {
   templates: CmsThemeTemplates;
   /** 可视化搭建页面模板（缺省回退 default 主题实现） */
   customPage?: ComponentType<CmsCustomPageContext>;
+  /** 前台问卷页模板（缺省回退 default 主题实现） */
+  survey?: ComponentType<CmsSurveyPageContext>;
   /** 扩展模板：站点默认模板 / 栏目 listTemplate / 内容 detailTemplate 按名称引用（如 list-card / detail-plain） */
   extraListTemplates?: Record<string, CmsTemplateVariant<CmsListContext>>;
   extraDetailTemplates?: Record<string, CmsTemplateVariant<CmsDetailContext>>;
