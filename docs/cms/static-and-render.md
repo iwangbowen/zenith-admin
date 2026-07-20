@@ -60,7 +60,7 @@ SSR 响应按页面类型分级缓存（v1.6.0+）：
 
 | 页面 | 解析顺序 |
 |------|----------|
-| 列表页 | 栏目 `listTemplate` → 站点 `settings.defaultTemplates[通道].list` → 主题默认 |
-| 详情页 | 内容 `detailTemplate` → 栏目 `detailTemplate` → 站点 `defaultTemplates[通道].detailByModel[模型code]` → 站点 `defaultTemplates[通道].detail` → 主题默认 |
+| 列表页 | 栏目 `settings.templates[通道].list` → 栏目 `listTemplate`（全通道通用） → 站点 `settings.defaultTemplates[通道].list` → 主题默认 |
+| 详情页 | 内容 `detailTemplate` → 栏目 `settings.templates[通道].detailByModel[模型code]` → 栏目 `settings.templates[通道].detail` → 栏目 `detailTemplate`（全通道通用） → 站点 `defaultTemplates[通道].detailByModel[模型code]` → 站点 `defaultTemplates[通道].detail` → 主题默认 |
 
-通道维度 key 为发布通道编码（`cms_publish_channels.code`，用户自建），站点级默认模板可按通道分别配置（站点编辑 →「模板与通道」标签页，页签跟随站点通道列表动态渲染）。
+通道维度 key 为发布通道编码（`cms_publish_channels.code`，用户自建）。站点级默认模板在站点编辑 →「模板与通道」页签配置；栏目级在栏目编辑「模板配置」区按「全通道通用 + 各通道」页签配置，均支持按内容模型细分详情模板。

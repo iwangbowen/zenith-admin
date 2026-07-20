@@ -63,6 +63,13 @@ function siteTemplateDefaults(site: CmsSiteRow, device: CmsDeviceChannel): CmsSi
   return all?.[device] ?? {};
 }
 
+/** 栏目 settings.templates 按发布通道取栏目级模板覆盖（结构与站点默认一致） */
+function channelTemplateOverrides(channel: CmsChannelRow, device: CmsDeviceChannel): CmsSiteTemplateDefaults {
+  const settings = channel.settings as Record<string, unknown> | null;
+  const all = settings?.templates as Record<string, CmsSiteTemplateDefaults | undefined> | undefined;
+  return all?.[device] ?? {};
+}
+
 // 模型 id → code 内存缓存（detailByModel 解析用；模型极少变动）
 let modelCodeCache: { map: Map<number, string>; loadedAt: number } | null = null;
 const MODEL_CACHE_TTL_MS = 30_000;
@@ -75,14 +82,20 @@ async function getModelCode(modelId: number): Promise<string | null> {
   return modelCodeCache.map.get(modelId) ?? null;
 }
 
-/** 列表模板：栏目覆盖 → 站点默认[通道] → 主题默认 */
+/** 列表模板：栏目[通道] → 栏目通用 → 站点默认[通道] → 主题默认 */
 function resolveListComponent(site: CmsSiteRow, device: CmsDeviceChannel, channel: CmsChannelRow) {
   const theme = getTheme(site.theme);
-  const name = channel.listTemplate || siteTemplateDefaults(site, device).list || null;
+  const name = channelTemplateOverrides(channel, device).list
+    || channel.listTemplate
+    || siteTemplateDefaults(site, device).list
+    || null;
   return resolveListTemplate(theme, name);
 }
 
-/** 详情模板：内容覆盖 → 栏目覆盖 → 站点默认[通道].detailByModel[模型] → 站点默认[通道].detail → 主题默认 */
+/**
+ * 详情模板：内容覆盖 → 栏目[通道].detailByModel[模型] → 栏目[通道].detail → 栏目通用
+ * → 站点默认[通道].detailByModel[模型] → 站点默认[通道].detail → 主题默认
+ */
 async function resolveDetailComponent(
   site: CmsSiteRow,
   device: CmsDeviceChannel,
@@ -91,16 +104,15 @@ async function resolveDetailComponent(
   contentModelId?: number | null,
 ) {
   const theme = getTheme(site.theme);
-  let name = contentTemplate || channel.detailTemplate || null;
-  if (!name) {
-    const defaults = siteTemplateDefaults(site, device);
-    const modelId = contentModelId ?? channel.modelId;
-    if (defaults.detailByModel && modelId) {
-      const code = await getModelCode(modelId);
-      if (code) name = defaults.detailByModel[code] || null;
-    }
-    name = name || defaults.detail || null;
-  }
+  let name = contentTemplate || null;
+  const modelId = contentModelId ?? channel.modelId;
+  const modelCode = modelId ? await getModelCode(modelId) : null;
+  const pickDetail = (cfg: CmsSiteTemplateDefaults): string | null => {
+    if (modelCode && cfg.detailByModel?.[modelCode]) return cfg.detailByModel[modelCode] ?? null;
+    return cfg.detail ?? null;
+  };
+  name = name || pickDetail(channelTemplateOverrides(channel, device)) || channel.detailTemplate || null;
+  name = name || pickDetail(siteTemplateDefaults(site, device)) || null;
   return resolveDetailTemplate(theme, name);
 }
 

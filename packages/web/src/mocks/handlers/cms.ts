@@ -296,7 +296,7 @@ export const cmsHandlers = [
       visible: body.visible === undefined ? true : Boolean(body.visible),
       status: (body.status as 'enabled' | 'disabled') ?? 'enabled',
       sort: Number(body.sort ?? 0),
-      settings: {},
+      settings: (body.settings as Record<string, unknown>) ?? {},
       createdAt: now,
       updatedAt: now,
     };

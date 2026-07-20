@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Button, Form, Tag, Toast, Modal, Row, Col } from '@douyinfe/semi-ui';
+import { Button, Form, Tag, Toast, Modal, Row, Col, Select, Tabs, TabPane } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
@@ -10,10 +10,45 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import RichTextEditor from '@/components/RichTextEditor';
 import { usePermission } from '@/hooks/usePermission';
-import { useCmsChannelTree, useAllCmsModels, useAllCmsSites, useSaveCmsChannel, useDeleteCmsChannel, useCmsThemeTemplates } from '@/hooks/queries/cms';
-import { CMS_CHANNEL_TYPE_LABELS } from '@zenith/shared';
-import type { CmsChannel } from '@zenith/shared';
+import { useCmsChannelTree, useAllCmsModels, useAllCmsSites, useSaveCmsChannel, useDeleteCmsChannel, useCmsThemeTemplates, useCmsPublishChannels } from '@/hooks/queries/cms';
+import { CMS_CHANNEL_TYPE_LABELS, CMS_DEFAULT_CHANNEL_CODE } from '@zenith/shared';
+import type { CmsChannel, CmsSiteTemplateDefaults } from '@zenith/shared';
 import { CmsSiteSelect, cmsPreviewUrl } from './CmsSiteSelect';
+
+interface ChannelTemplateConfig {
+  list: string | null;
+  detail: string | null;
+  detailByModel: Record<string, string | null>;
+}
+
+/** 栏目级按发布通道模板覆盖编辑态（存 settings.templates[通道code]，动态字段名不走 Form） */
+type ChannelTemplatesState = Record<string, ChannelTemplateConfig>;
+
+const EMPTY_TPL_CONFIG: ChannelTemplateConfig = { list: null, detail: null, detailByModel: {} };
+
+function channelTemplatesFromSettings(settings: Record<string, unknown> | null | undefined): ChannelTemplatesState {
+  const state: ChannelTemplatesState = {};
+  const all = settings?.templates as Record<string, CmsSiteTemplateDefaults | undefined> | undefined;
+  for (const [code, cfg] of Object.entries(all ?? {})) {
+    if (!cfg) continue;
+    state[code] = { list: cfg.list ?? null, detail: cfg.detail ?? null, detailByModel: { ...(cfg.detailByModel ?? {}) } };
+  }
+  return state;
+}
+
+function channelTemplatesToSettings(state: ChannelTemplatesState): Record<string, CmsSiteTemplateDefaults> {
+  const out: Record<string, CmsSiteTemplateDefaults> = {};
+  for (const [code, cfg] of Object.entries(state)) {
+    const detailByModel = Object.fromEntries(Object.entries(cfg.detailByModel).filter(([, v]) => v));
+    const entry: CmsSiteTemplateDefaults = {
+      ...(cfg.list ? { list: cfg.list } : {}),
+      ...(cfg.detail ? { detail: cfg.detail } : {}),
+      ...(Object.keys(detailByModel).length > 0 ? { detailByModel } : {}),
+    };
+    if (Object.keys(entry).length > 0) out[code] = entry;
+  }
+  return out;
+}
 
 function toTreeSelectData(nodes: CmsChannel[], excludeId?: number): TreeNodeData[] {
   return nodes
@@ -37,11 +72,13 @@ export default function ChannelsPage() {
   const { data: sites } = useAllCmsSites();
   const currentSite = sites?.find((s) => s.id === siteId);
   const { data: themeTemplates } = useCmsThemeTemplates(currentSite?.theme);
+  const { data: publishChannels } = useCmsPublishChannels(siteId);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<CmsChannel | null>(null);
   const [channelType, setChannelType] = useState<string>('list');
   const [pageContent, setPageContent] = useState('');
+  const [channelTemplates, setChannelTemplates] = useState<ChannelTemplatesState>({});
   const saveMutation = useSaveCmsChannel();
   const deleteMutation = useDeleteCmsChannel();
 
@@ -49,6 +86,7 @@ export default function ChannelsPage() {
     setEditingRecord(null);
     setChannelType('list');
     setPageContent('');
+    setChannelTemplates({});
     setModalVisible(true);
     // Form initValues 由 key 重置，父栏目通过 setTimeout 设置避免 Form 未挂载
     setTimeout(() => formApi.current?.setValue('parentId', parentId), 0);
@@ -58,6 +96,7 @@ export default function ChannelsPage() {
     setEditingRecord(record);
     setChannelType(record.type);
     setPageContent(record.pageContent ?? '');
+    setChannelTemplates(channelTemplatesFromSettings(record.settings));
     setModalVisible(true);
   }
 
@@ -99,6 +138,11 @@ export default function ChannelsPage() {
     values.listTemplate = values.listTemplate ?? null;
     values.detailTemplate = values.detailTemplate ?? null;
     const payload: Record<string, unknown> = { ...values, pageContent };
+    // 按通道模板覆盖并入 settings.templates（保留 formCode 等既有 settings 键）
+    payload.settings = {
+      ...(editingRecord?.settings ?? {}),
+      templates: channelTemplatesToSettings(channelTemplates),
+    };
     if (!editingRecord) payload.siteId = siteId;
     await saveMutation.mutateAsync({ id: editingRecord?.id, values: payload });
     Toast.success(editingRecord ? '更新成功' : '创建成功');
@@ -173,6 +217,65 @@ export default function ChannelsPage() {
       ],
     }),
   ];
+
+  // 模板配置页签的通道来源（站点无通道记录时回退虚拟 PC 默认通道，与站点编辑页一致）
+  const tplChannelTabs: { code: string; name: string }[] = (() => {
+    const enabled = (publishChannels ?? []).filter((ch) => ch.status === 'enabled');
+    if (enabled.length > 0) return enabled.map((ch) => ({ code: ch.code, name: ch.name }));
+    return [{ code: CMS_DEFAULT_CHANNEL_CODE, name: 'PC 桌面' }];
+  })();
+
+  /** 单个发布通道的栏目级模板覆盖面板（动态字段名不走 Form，受控 state 管理） */
+  const renderChannelTplPane = (ch: { code: string; name: string }) => {
+    const cfg = channelTemplates[ch.code] ?? EMPTY_TPL_CONFIG;
+    const patch = (p: Partial<ChannelTemplateConfig>) =>
+      setChannelTemplates((s) => ({ ...s, [ch.code]: { ...(s[ch.code] ?? EMPTY_TPL_CONFIG), ...p } }));
+    const rowStyle = { display: 'flex', alignItems: 'center', gap: 12 } as const;
+    const labelStyle = { width: 130, flexShrink: 0, textAlign: 'right', fontSize: 14, color: 'var(--semi-color-text-0)' } as const;
+    const listTplOptions = (themeTemplates?.list ?? []).map((t) => ({ value: t.name, label: t.label }));
+    const detailTplOptions = (themeTemplates?.detail ?? []).map((t) => ({ value: t.name, label: t.label }));
+    return (
+      <TabPane tab={ch.name} itemKey={ch.code} key={ch.code}>
+        <div style={{ paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={rowStyle}>
+            <span style={labelStyle}>列表模板</span>
+            <Select
+              placeholder="跟随全通道通用"
+              value={cfg.list ?? undefined}
+              onChange={(v) => patch({ list: (v as string) ?? null })}
+              showClear
+              style={{ width: 300 }}
+              optionList={listTplOptions}
+            />
+          </div>
+          <div style={rowStyle}>
+            <span style={labelStyle}>详情模板</span>
+            <Select
+              placeholder="跟随全通道通用"
+              value={cfg.detail ?? undefined}
+              onChange={(v) => patch({ detail: (v as string) ?? null })}
+              showClear
+              style={{ width: 300 }}
+              optionList={detailTplOptions}
+            />
+          </div>
+          {(models ?? []).map((m) => (
+            <div style={rowStyle} key={m.id}>
+              <span style={labelStyle}>{m.name}详情模板</span>
+              <Select
+                placeholder="跟随详情模板"
+                value={cfg.detailByModel[m.code] ?? undefined}
+                onChange={(v) => patch({ detailByModel: { ...cfg.detailByModel, [m.code]: (v as string) ?? null } })}
+                showClear
+                style={{ width: 300 }}
+                optionList={detailTplOptions}
+              />
+            </div>
+          ))}
+        </div>
+      </TabPane>
+    );
+  };
 
   return (
     <div className="page-container">
@@ -265,20 +368,6 @@ export default function ChannelsPage() {
                 <Form.InputNumber field="pageSize" label="每页条数" min={1} max={100} style={{ width: '100%' }} />
               </Col>
             ) : null}
-            {channelType === 'list' ? (
-              <>
-                <Col span={12}>
-                  <Form.Select field="listTemplate" label="列表模板" style={{ width: '100%' }} showClear
-                    placeholder="跟随站点默认"
-                    optionList={(themeTemplates?.list ?? []).map((t) => ({ value: t.name, label: t.label }))} />
-                </Col>
-                <Col span={12}>
-                  <Form.Select field="detailTemplate" label="详情模板" style={{ width: '100%' }} showClear
-                    placeholder="跟随站点默认"
-                    optionList={(themeTemplates?.detail ?? []).map((t) => ({ value: t.name, label: t.label }))} />
-                </Col>
-              </>
-            ) : null}
             <Col span={12}>
               <Form.InputNumber field="sort" label="排序" style={{ width: '100%' }} />
             </Col>
@@ -296,6 +385,27 @@ export default function ChannelsPage() {
             <Form.Slot label="单页内容">
               <RichTextEditor value={pageContent} onChange={setPageContent} height={240} />
             </Form.Slot>
+          ) : null}
+          {channelType === 'list' ? (
+            <Form.Section text="模板配置（按发布通道 × 内容模型；留空逐级回退：通道配置 → 全通道通用 → 站点默认 → 主题默认）">
+              <Tabs type="card" size="small">
+                <TabPane tab="全通道通用" itemKey="__common">
+                  <Row gutter={16} style={{ paddingTop: 12 }}>
+                    <Col span={12}>
+                      <Form.Select field="listTemplate" label="列表模板" style={{ width: '100%' }} showClear
+                        placeholder="跟随站点默认"
+                        optionList={(themeTemplates?.list ?? []).map((t) => ({ value: t.name, label: t.label }))} />
+                    </Col>
+                    <Col span={12}>
+                      <Form.Select field="detailTemplate" label="详情模板" style={{ width: '100%' }} showClear
+                        placeholder="跟随站点默认"
+                        optionList={(themeTemplates?.detail ?? []).map((t) => ({ value: t.name, label: t.label }))} />
+                    </Col>
+                  </Row>
+                </TabPane>
+                {tplChannelTabs.map((ch) => renderChannelTplPane(ch))}
+              </Tabs>
+            </Form.Section>
           ) : null}
           <Form.Section text="SEO 设置（留空继承站点默认）">
             <Form.Input field="seoTitle" label="SEO 标题" />
