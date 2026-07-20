@@ -8,6 +8,8 @@ import { members } from './member';
 export const cmsStaticModeEnum = pgEnum('cms_static_mode', ['dynamic', 'hybrid', 'static']);
 export const cmsChannelTypeEnum = pgEnum('cms_channel_type', ['list', 'page', 'link']);
 export const cmsContentStatusEnum = pgEnum('cms_content_status', ['draft', 'pending', 'published', 'offline', 'rejected']);
+/** 内容形态：article=图文 album=图集 media=音视频 link=外链 */
+export const cmsContentTypeEnum = pgEnum('cms_content_type', ['article', 'album', 'media', 'link']);
 export const cmsFieldTypeEnum = pgEnum('cms_field_type', ['text', 'textarea', 'richtext', 'number', 'date', 'datetime', 'image', 'file', 'select', 'radio', 'checkbox', 'switch']);
 export const cmsFragmentTypeEnum = pgEnum('cms_fragment_type', ['html', 'text', 'image', 'json']);
 
@@ -181,6 +183,10 @@ export const cmsContents = pgTable('cms_contents', {
   siteId: integer('site_id').notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
   channelId: integer('channel_id').notNull().references(() => cmsChannels.id, { onDelete: 'restrict' }),
   modelId: integer('model_id').references(() => cmsModels.id, { onDelete: 'set null' }),
+  /** 内容形态（P2 多形态内容类型；创建后不可变更） */
+  contentType: cmsContentTypeEnum('content_type').notNull().default('article'),
+  /** 形态结构化数据：album={images:[{url,thumb?,caption?}]} media={mediaType,mediaUrl,poster?,duration?} */
+  mediaData: jsonb('media_data').$type<Record<string, unknown>>().notNull().default({}),
   title: varchar('title', { length: 255 }).notNull(),
   /** 副标题（P1 内容字段增强） */
   subTitle: varchar('sub_title', { length: 255 }),
@@ -190,6 +196,8 @@ export const cmsContents = pgTable('cms_contents', {
   slug: varchar('slug', { length: 255 }),
   summary: text('summary'),
   coverImage: varchar('cover_image', { length: 500 }),
+  /** 封面缩略图（上传管线按站点配置生成；空 = 前台回退原图） */
+  coverThumb: varchar('cover_thumb', { length: 500 }),
   author: varchar('author', { length: 50 }),
   /** 责任编辑 */
   editor: varchar('editor', { length: 50 }),

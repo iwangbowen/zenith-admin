@@ -7,6 +7,7 @@ import type {
   CmsSearchWord, CmsHotKeyword, CmsCollectRule, CmsCollectItem, CmsPage,
   CmsEditLock, CmsPreviewLink, CmsContentVersionDiff, CmsDashboardStats,
   CmsThemeTemplateManifest, CmsPublishChannel, CmsContentOpLog, CmsErrorProneWord, CmsTextCheckResult,
+  CmsContentType,
 } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { toQueryString, unwrap, LOOKUP_STALE_TIME } from '@/lib/query';
@@ -257,6 +258,7 @@ export interface CmsContentListParams {
   siteId: number;
   channelId?: number;
   status?: CmsContentStatus;
+  contentType?: CmsContentType;
   keyword?: string;
   deleted?: boolean;
   archived?: boolean;

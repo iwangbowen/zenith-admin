@@ -875,8 +875,8 @@ async function seedRest() {
   await db.execute(sql`SELECT setval('cms_tags_id_seq', GREATEST((SELECT MAX(id) FROM cms_tags), 1))`);
 
   await db.insert(cmsContents).values(
-    SEED_CMS_CONTENTS.map(({ id, siteId, channelId, modelId, title, slug, summary, coverImage, author, source, body, extend, externalLink, isTop, isRecommend, isHot, status, publishedAt, viewCount, sort, seoTitle, seoKeywords, seoDescription }) => ({
-      id, siteId, channelId, modelId, title, slug, summary, coverImage, author, source, body, extend, externalLink, isTop, isRecommend, isHot, status,
+    SEED_CMS_CONTENTS.map(({ id, siteId, channelId, modelId, contentType, mediaData, title, subTitle, shortTitle, slug, summary, coverImage, coverThumb, author, editor, source, sourceUrl, isOriginal, body, extend, externalLink, isTop, topWeight, isRecommend, isHot, status, publishedAt, viewCount, sort, seoTitle, seoKeywords, seoDescription }) => ({
+      id, siteId, channelId, modelId, contentType, mediaData: mediaData as Record<string, unknown>, title, subTitle, shortTitle, slug, summary, coverImage, coverThumb, author, editor, source, sourceUrl, isOriginal, body, extend, externalLink, isTop, topWeight, isRecommend, isHot, status,
       publishedAt: publishedAt ? new Date(publishedAt) : null,
       viewCount, sort, seoTitle, seoKeywords, seoDescription,
       searchVector: buildSearchVector({

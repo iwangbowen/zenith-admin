@@ -18,15 +18,31 @@ function Breadcrumbs({ items }: { items: CmsBreadcrumb[] }) {
   );
 }
 
+const TYPE_BADGES: Record<string, string | null> = { article: null, album: '图集', media: '视频', link: '外链' };
+
+function typeBadgeText(item: CmsContentItem): string | null {
+  if (item.contentType === 'media') return item.mediaType === 'audio' ? '音频' : '视频';
+  if (item.contentType === 'album') return item.imageCount > 1 ? `图集·${item.imageCount}` : '图集';
+  return TYPE_BADGES[item.contentType] ?? null;
+}
+
 function ContentItemRow({ item }: { item: CmsContentItem }) {
+  const cover = item.coverThumb ?? item.coverImage;
+  const badge = typeBadgeText(item);
   return (
     <div className="content-item">
-      {item.coverImage ? <img className="thumb" src={item.coverImage} alt={item.title} loading="lazy" /> : null}
+      {cover ? <img className="thumb" src={cover} alt={item.title} loading="lazy" /> : null}
       <div>
         <h3>
           {item.isTop ? <span className="badge">置顶</span> : null}
           {item.isHot ? <span className="badge hot">热门</span> : null}
-          <a href={item.url}>{item.title}</a>
+          {badge ? <span className="badge type">{badge}</span> : null}
+          <a
+            href={item.url}
+            {...(item.isExternal ? { target: '_blank', rel: 'noopener nofollow' } : {})}
+          >
+            {item.title}{item.isExternal ? ' ↗' : ''}
+          </a>
         </h3>
         {item.summary ? <div className="summary">{item.summary}</div> : null}
         <div className="meta">
@@ -228,6 +244,51 @@ export function ListTemplate(ctx: CmsListContext) {
 }
 
 // ─── 详情页 ───────────────────────────────────────────────────────────────────
+/** 形态区块：图集九宫格 / 音视频播放器（article/link 返回 null） */
+function MediaBlock({ content }: { content: CmsDetailContext['content'] }) {
+  if (content.contentType === 'album' && content.albumImages.length > 0) {
+    return (
+      <div className="album-grid">
+        {content.albumImages.map((img, i) => (
+          <figure key={`${img.url}-${i}`}>
+            <a href={img.url} target="_blank" rel="noopener">
+              <img src={img.thumb ?? img.url} alt={img.caption ?? `${content.title} ${i + 1}`} loading="lazy" />
+            </a>
+            {img.caption ? <figcaption>{img.caption}</figcaption> : null}
+          </figure>
+        ))}
+      </div>
+    );
+  }
+  if (content.contentType === 'media' && content.mediaUrl) {
+    return (
+      <div className="media-player">
+        {content.mediaType === 'audio'
+          ? <audio src={content.mediaUrl} controls preload="metadata" />
+          : <video src={content.mediaUrl} controls preload="metadata" poster={content.mediaPoster ?? undefined} />}
+        {content.mediaDuration ? <div className="media-duration">时长：{content.mediaDuration}</div> : null}
+      </div>
+    );
+  }
+  return null;
+}
+
+/** 正文多页分页导航（单页时不渲染） */
+function BodyPagination({ p }: { p: CmsDetailContext['content']['bodyPagination'] }) {
+  if (!p || p.totalPages <= 1) return null;
+  return (
+    <nav className="body-pagination">
+      {p.prevUrl ? <a href={p.prevUrl}>上一页</a> : null}
+      {p.pages.map((pg) => (
+        pg.current
+          ? <span key={pg.page} className="current">{pg.page}</span>
+          : <a key={pg.page} href={pg.url}>{pg.page}</a>
+      ))}
+      {p.nextUrl ? <a href={p.nextUrl}>下一页</a> : null}
+    </nav>
+  );
+}
+
 export function DetailTemplate(ctx: CmsDetailContext) {
   const { content } = ctx;
   return (
@@ -241,7 +302,9 @@ export function DetailTemplate(ctx: CmsDetailContext) {
           {content.publishedAt ? <time>{content.publishedAt}</time> : null}
           <span>{content.viewCount} 阅读</span>
         </div>
+        <MediaBlock content={content} />
         <div className="body" dangerouslySetInnerHTML={{ __html: content.body }} />
+        <BodyPagination p={content.bodyPagination} />
         {content.tags.length > 0 ? (
           <div className="tags">
             {content.tags.map((t) => <a key={t.slug} href={t.url}><span>{t.name}</span></a>)}
@@ -436,7 +499,9 @@ export function DetailPlainTemplate(ctx: CmsDetailContext) {
           {content.publishedAt ? <time>{content.publishedAt}</time> : null}
           <span>{content.viewCount} 阅读</span>
         </div>
+        <MediaBlock content={content} />
         <div className="body" dangerouslySetInnerHTML={{ __html: content.body }} />
+        <BodyPagination p={content.bodyPagination} />
       </article>
       {(content.prev || content.next) ? (
         <nav className="article-nav">

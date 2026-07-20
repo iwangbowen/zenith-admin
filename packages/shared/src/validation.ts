@@ -5141,12 +5141,28 @@ export const updateCmsChannelSchema = createCmsChannelSchema.partial().omit({ si
 export const createCmsContentSchema = z.object({
   siteId: z.number().int().positive(),
   channelId: z.number().int().positive(),
+  /** 内容形态（创建后不可变更）：article=图文 album=图集 media=音视频 link=外链 */
+  contentType: z.enum(['article', 'album', 'media', 'link']).default('article'),
+  /** 形态结构化数据：album.images / media.mediaType|mediaUrl|poster|duration */
+  mediaData: z.object({
+    images: z.array(z.object({
+      url: z.string().min(1).max(500),
+      thumb: z.string().max(500).nullable().optional(),
+      caption: z.string().max(200).nullable().optional(),
+    })).max(100).optional(),
+    mediaType: z.enum(['video', 'audio']).optional(),
+    mediaUrl: z.string().max(500).optional(),
+    poster: z.string().max(500).optional(),
+    duration: z.string().max(20).optional(),
+  }).default({}),
   title: z.string().min(1, '标题不能为空').max(255),
   subTitle: z.string().max(255).nullable().optional(),
   shortTitle: z.string().max(100).nullable().optional(),
   slug: z.string().max(255).regex(cmsSlugRegex, '标识仅支持小写字母、数字、中划线').nullable().optional(),
   summary: z.string().max(2000).nullable().optional(),
   coverImage: z.string().max(500).nullable().optional(),
+  /** 封面缩略图（上传管线生成；空 = 前台回退原图） */
+  coverThumb: z.string().max(500).nullable().optional(),
   author: z.string().max(50).nullable().optional(),
   /** 责任编辑 */
   editor: z.string().max(50).nullable().optional(),
@@ -5178,7 +5194,7 @@ export const createCmsContentSchema = z.object({
   /** 相关文章 id 列表（手动关联） */
   relatedIds: z.array(z.number().int().positive()).default([]),
 });
-export const updateCmsContentSchema = createCmsContentSchema.partial().omit({ siteId: true }).extend({
+export const updateCmsContentSchema = createCmsContentSchema.partial().omit({ siteId: true, contentType: true }).extend({
   /** 乐观锁：携带读取时的版本号，服务端版本不一致返回 409（不传则跳过检查） */
   expectedVersion: z.number().int().positive().optional(),
 });

@@ -31,6 +31,19 @@ main { min-height: 60vh; padding: 24px 0 48px; }
 .content-item .meta { font-size: 12px; color: var(--text-2); margin-top: 8px; display: flex; gap: 12px; }
 .badge { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--primary); color: #fff; margin-right: 6px; vertical-align: 2px; }
 .badge.hot { background: #d1242f; }
+.badge.type { background: var(--bg-2); color: var(--text-2); border: 1px solid var(--border); }
+.album-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 16px 0; }
+.album-grid figure { margin: 0; }
+.album-grid a { display: block; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+.album-grid img { width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block; }
+.album-grid figcaption { font-size: 13px; color: var(--text-2); padding: 6px 2px; text-align: center; }
+.media-player { margin: 16px 0; }
+.media-player video, .media-player audio { width: 100%; border-radius: 8px; background: #000; }
+.media-player audio { background: transparent; }
+.media-duration { font-size: 13px; color: var(--text-2); margin-top: 6px; }
+.body-pagination { display: flex; gap: 6px; justify-content: center; margin: 20px 0 4px; flex-wrap: wrap; }
+.body-pagination a, .body-pagination span { padding: 5px 11px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; }
+.body-pagination .current { background: var(--primary); border-color: var(--primary); color: #fff; }
 .pagination { display: flex; gap: 6px; justify-content: center; margin-top: 24px; flex-wrap: wrap; }
 .pagination a, .pagination span { padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; }
 .pagination .current { background: var(--primary); border-color: var(--primary); color: #fff; }

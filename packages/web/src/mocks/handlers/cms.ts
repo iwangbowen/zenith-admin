@@ -332,12 +332,14 @@ export const cmsHandlers = [
     const siteId = Number(url.searchParams.get('siteId'));
     const channelId = url.searchParams.get('channelId');
     const status = url.searchParams.get('status') || '';
+    const contentType = url.searchParams.get('contentType') || '';
     const deleted = url.searchParams.get('deleted') === 'true';
     const archived = url.searchParams.get('archived') === 'true';
     let list = mockCmsContents.filter((c) => c.siteId === siteId && (deleted ? c.status === 'offline' && (c as { deleted?: boolean }).deleted : !(c as { deleted?: boolean }).deleted));
     if (!deleted) list = list.filter((c) => (archived ? !!c.archivedAt : !c.archivedAt));
     if (channelId) list = list.filter((c) => c.channelId === Number(channelId));
     if (status) list = list.filter((c) => c.status === status);
+    if (contentType) list = list.filter((c) => c.contentType === contentType);
     if (keyword) list = list.filter((c) => c.title.includes(keyword) || (c.author ?? '').includes(keyword));
     list = [...list].sort((a, b) => Number(b.isTop) - Number(a.isTop) || (b.topWeight ?? 0) - (a.topWeight ?? 0) || b.id - a.id);
     return okJson(paginate(list.map((c) => ({ ...c, channelName: mockCmsChannels.find((ch) => ch.id === c.channelId)?.name ?? null })), page, pageSize));
@@ -447,12 +449,15 @@ export const cmsHandlers = [
       siteId: Number(body.siteId),
       channelId: Number(body.channelId),
       modelId: mockCmsChannels.find((c) => c.id === Number(body.channelId))?.modelId ?? null,
+      contentType: (body.contentType as CmsContent['contentType']) ?? 'article',
+      mediaData: (body.mediaData as CmsContent['mediaData']) ?? {},
       title: String(body.title ?? ''),
       subTitle: (body.subTitle as string) ?? null,
       shortTitle: (body.shortTitle as string) ?? null,
       slug: (body.slug as string) ?? null,
       summary: (body.summary as string) ?? null,
       coverImage: (body.coverImage as string) ?? null,
+      coverThumb: (body.coverThumb as string) ?? null,
       author: (body.author as string) ?? null,
       editor: (body.editor as string) ?? null,
       source: (body.source as string) ?? null,
@@ -1320,7 +1325,7 @@ export const cmsP3Handlers = [
   // 图片上传（水印/缩略图管道）
   http.post('/api/cms/upload-image', () => okJson({
     url: 'https://picsum.photos/seed/cms-upload/800/450',
-    thumbUrl: null,
+    thumbUrl: 'https://picsum.photos/seed/cms-upload/400/225',
     fileId: 'mock-file-id',
     width: 800,
     height: 450,

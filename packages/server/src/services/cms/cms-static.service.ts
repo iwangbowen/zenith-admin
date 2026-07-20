@@ -10,7 +10,7 @@ import { CMS_CHANNEL_SEGMENT_PREFIX } from '@zenith/shared';
 import { getActivePublishChannels, type PublishChannelInfo } from './cms-publish-channels.service';
 import {
   renderSitePath, renderHomePage, renderChannelPage, renderDetailPage, renderTagPage, renderCustomPage,
-  channelUrl, contentUrl, tagUrl, customPageUrl, siteOrigin, listSiteTags, generateRssXml,
+  channelUrl, contentUrl, tagUrl, customPageUrl, siteOrigin, listSiteTags, generateRssXml, countContentBodyPages,
 } from './cms-render.service';
 
 // ─── 静态目录 ─────────────────────────────────────────────────────────────────
@@ -206,12 +206,19 @@ export async function refreshContentStatic(contentId: number): Promise<void> {
 
   const detailPath = contentUrl('', channel.path, content);
   const isVisible = content.status === 'published' && !content.deletedAt && !content.externalLink?.trim();
+  const bodyPages = isVisible ? await countContentBodyPages(content) : 1;
   for (const publishChannel of await getActivePublishChannels(site.id)) {
     if (isVisible) {
-      const result = await renderDetailPage(site, '', channel, String(content.slug ?? content.id), publishChannel.code);
-      if (result.status === 200) await writeStaticFile(site.code, channelStaticPath(publishChannel, detailPath), result.html);
+      for (let p = 1; p <= bodyPages; p++) {
+        const result = await renderDetailPage(site, '', channel, String(content.slug ?? content.id), publishChannel.code, p);
+        if (result.status === 200) await writeStaticFile(site.code, channelStaticPath(publishChannel, contentUrl('', channel.path, content, p)), result.html);
+      }
     } else {
       await deleteStaticFile(site.code, channelStaticPath(publishChannel, detailPath));
+    }
+    // 清理已收缩/下线的多余分页文件（best-effort，窗口 5 页）
+    for (let p = Math.max(2, bodyPages + 1); p <= bodyPages + 5; p++) {
+      await deleteStaticFile(site.code, channelStaticPath(publishChannel, contentUrl('', channel.path, content, p)));
     }
 
     await regenerateChannelPages(site, channel, publishChannel);
@@ -281,7 +288,7 @@ export async function buildSiteStatic(
 
   const channels = await db.select().from(cmsChannels)
     .where(and(eq(cmsChannels.siteId, siteId), eq(cmsChannels.status, 'enabled')));
-  const contents = await db.select({ id: cmsContents.id, slug: cmsContents.slug, channelId: cmsContents.channelId, externalLink: cmsContents.externalLink })
+  const contents = await db.select({ id: cmsContents.id, slug: cmsContents.slug, channelId: cmsContents.channelId, externalLink: cmsContents.externalLink, body: cmsContents.body, extend: cmsContents.extend, mappingSourceId: cmsContents.mappingSourceId })
     .from(cmsContents)
     .where(and(eq(cmsContents.siteId, siteId), eq(cmsContents.status, 'published'), isNull(cmsContents.deletedAt)));
 
@@ -319,8 +326,11 @@ export async function buildSiteStatic(
     for (const row of contents) {
       const channel = channelMap.get(row.channelId);
       if (channel && !row.externalLink?.trim()) {
-        const ok = await writeRenderedPath(site, contentUrl('', channel.path, row), publishChannel);
-        if (ok) pages += 1;
+        const bodyPages = await countContentBodyPages(row);
+        for (let p = 1; p <= bodyPages; p++) {
+          const ok = await writeRenderedPath(site, contentUrl('', channel.path, row, p), publishChannel);
+          if (ok) pages += 1;
+        }
       }
       if (await report(`${channelLabel}内容 ${row.id} 已生成`)) return { pages };
     }

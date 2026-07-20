@@ -10271,6 +10271,29 @@ export type CmsChannelType = 'list' | 'page' | 'link';
 
 export type CmsContentStatus = 'draft' | 'pending' | 'published' | 'offline' | 'rejected';
 
+/** 内容形态：article=图文 album=图集 media=音视频 link=外链 */
+export type CmsContentType = 'article' | 'album' | 'media' | 'link';
+
+/** 图集单图 */
+export interface CmsAlbumImage {
+  url: string;
+  /** 缩略图（上传管线生成；空 = 用原图） */
+  thumb?: string | null;
+  caption?: string | null;
+}
+
+/** 内容形态结构化数据（album/media 使用，article/link 为空对象） */
+export interface CmsContentMediaData {
+  /** album：图片列表 */
+  images?: CmsAlbumImage[];
+  /** media：音频/视频 */
+  mediaType?: 'video' | 'audio';
+  mediaUrl?: string;
+  poster?: string;
+  /** 展示用时长文本（如 03:45） */
+  duration?: string;
+}
+
 export type CmsFieldType = 'text' | 'textarea' | 'richtext' | 'number' | 'date' | 'datetime' | 'image' | 'file' | 'select' | 'radio' | 'checkbox' | 'switch';
 
 export type CmsFragmentType = 'html' | 'text' | 'image' | 'json';
@@ -10411,6 +10434,10 @@ export interface CmsContent {
   /** 栏目名称（JOIN 后附加） */
   channelName?: string | null;
   modelId: number | null;
+  /** 内容形态（创建后不可变更） */
+  contentType: CmsContentType;
+  /** 形态结构化数据（album/media 使用） */
+  mediaData: CmsContentMediaData;
   title: string;
   /** 副标题 */
   subTitle: string | null;
@@ -10419,6 +10446,8 @@ export interface CmsContent {
   slug: string | null;
   summary: string | null;
   coverImage: string | null;
+  /** 封面缩略图（上传管线生成；空 = 前台回退原图） */
+  coverThumb: string | null;
   author: string | null;
   /** 责任编辑 */
   editor: string | null;

@@ -15,6 +15,8 @@ interface RichTextEditorProps {
   readOnly?: boolean;
   /** 图片上传接口（默认通用文件上传；CMS 等场景可指向带处理管道的专用接口） */
   uploadServer?: string;
+  /** 启用「插入分页符」按钮（CMS 正文多页：前台按 [分页] 标记拆分为多个静态页） */
+  enablePageBreak?: boolean;
 }
 
 export default function RichTextEditor({
@@ -25,6 +27,7 @@ export default function RichTextEditor({
   disableFullscreen = false,
   readOnly = false,
   uploadServer,
+  enablePageBreak = false,
 }: Readonly<RichTextEditorProps>) {
   const [editor, setEditor] = useState<IDomEditor | null>(null);
 
@@ -95,6 +98,18 @@ export default function RichTextEditor({
           display: readOnly ? 'none' : undefined,
         }}
       />
+      {enablePageBreak && !readOnly ? (
+        <div style={{ padding: '4px 8px', borderBottom: '1px solid var(--semi-color-border)', backgroundColor: 'var(--semi-color-fill-0)', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            type="button"
+            style={{ border: '1px solid var(--semi-color-border)', borderRadius: 4, padding: '2px 10px', background: 'var(--semi-color-bg-0)', cursor: 'pointer', fontSize: 12, color: 'var(--semi-color-text-1)' }}
+            onClick={() => editor?.dangerouslyInsertHtml('<p>[分页]</p>')}
+          >
+            插入分页符
+          </button>
+          <span style={{ fontSize: 12, color: 'var(--semi-color-text-2)' }}>前台按 [分页] 标记拆分为多页（详情页 _2.html …）</span>
+        </div>
+      ) : null}
       <Editor
         defaultConfig={editorConfig}
         value={value}

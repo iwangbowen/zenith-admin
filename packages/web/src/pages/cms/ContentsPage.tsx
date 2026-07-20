@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Input, Tag, Toast, Modal, Tabs, TabPane, Tree, Typography, Dropdown, Form, Upload } from '@douyinfe/semi-ui';
+import { Button, Input, Tag, Toast, Modal, Tabs, TabPane, Tree, Typography, Dropdown, Form, Upload, Select } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
@@ -19,8 +19,8 @@ import {
   useCmsChannelTree, useCmsContentList, useCmsContentAction, useCmsContentBatch,
   useAllCmsSites, useAllCmsTags, useCmsContentBatchOps, useDuplicateCmsContent, useImportCmsContents, cmsContentKeys,
 } from '@/hooks/queries/cms';
-import { CMS_CONTENT_STATUS_LABELS } from '@zenith/shared';
-import type { CmsChannel, CmsContent, CmsContentStatus } from '@zenith/shared';
+import { CMS_CONTENT_STATUS_LABELS, CMS_CONTENT_TYPE_LABELS } from '@zenith/shared';
+import type { CmsChannel, CmsContent, CmsContentStatus, CmsContentType } from '@zenith/shared';
 import { CmsSiteSelect, cmsPreviewUrl } from './CmsSiteSelect';
 
 const STATUS_COLORS: Record<CmsContentStatus, 'grey' | 'orange' | 'green' | 'red' | 'violet'> = {
@@ -60,6 +60,7 @@ export default function ContentsPage() {
   const [siteId, setSiteId] = useState<number | undefined>(undefined);
   const [activeTab, setActiveTab] = useState<TabKey>('all');
   const [channelId, setChannelId] = useState<number | undefined>(undefined);
+  const [contentType, setContentType] = useState<CmsContentType | undefined>(undefined);
   const { page, pageSize, setPage, buildPagination } = usePagination();
   const [draftKeyword, setDraftKeyword] = useState('');
   const [submittedKeyword, setSubmittedKeyword] = useState('');
@@ -78,6 +79,7 @@ export default function ContentsPage() {
     siteId: siteId ?? 0,
     channelId,
     status: statusFilter,
+    contentType,
     keyword: submittedKeyword || undefined,
     deleted: activeTab === 'recycle' ? true : undefined,
     archived: activeTab === 'archived' ? true : undefined,
@@ -112,6 +114,7 @@ export default function ContentsPage() {
     setDraftKeyword('');
     setSubmittedKeyword('');
     setChannelId(undefined);
+    setContentType(undefined);
     void queryClient.invalidateQueries({ queryKey: cmsContentKeys.lists });
   }
 
@@ -211,6 +214,7 @@ export default function ContentsPage() {
       render: (v: string, record) => (
         <span>
           {record.isTop ? <Tag size="small" color="blue" style={{ marginRight: 4 }}>{record.topWeight > 0 ? `顶${record.topWeight}` : '顶'}</Tag> : null}
+          {record.contentType !== 'article' ? <Tag size="small" color="light-blue" style={{ marginRight: 4 }}>{CMS_CONTENT_TYPE_LABELS[record.contentType]}</Tag> : null}
           {record.isRecommend ? <Tag size="small" color="cyan" style={{ marginRight: 4 }}>荐</Tag> : null}
           {record.isHot ? <Tag size="small" color="red" style={{ marginRight: 4 }}>热</Tag> : null}
           {record.memberId ? <Tag size="small" color="purple" style={{ marginRight: 4 }}>投稿</Tag> : null}
@@ -332,6 +336,16 @@ export default function ContentsPage() {
       onEnterPress={handleSearch}
     />
   );
+  const renderTypeFilter = () => (
+    <Select
+      placeholder="内容形态"
+      value={contentType}
+      onChange={(v) => { setContentType(v as CmsContentType | undefined); setPage(1); }}
+      showClear
+      style={{ width: 130 }}
+      optionList={Object.entries(CMS_CONTENT_TYPE_LABELS).map(([value, label]) => ({ value, label }))}
+    />
+  );
   const renderSearchButton = () => (
     <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
   );
@@ -440,6 +454,7 @@ export default function ContentsPage() {
           <>
             <CmsSiteSelect value={siteId} onChange={(v) => { setSiteId(v); setChannelId(undefined); setPage(1); }} width={180} />
             {renderKeywordSearch()}
+            {renderTypeFilter()}
             {renderSearchButton()}
             {renderResetButton()}
             {batchBar}
@@ -459,7 +474,12 @@ export default function ContentsPage() {
             {renderCreateButton()}
           </>
         )}
-        mobileFilters={<CmsSiteSelect value={siteId} onChange={(v) => { setSiteId(v); setChannelId(undefined); setPage(1); }} width={180} />}
+        mobileFilters={(
+          <>
+            <CmsSiteSelect value={siteId} onChange={(v) => { setSiteId(v); setChannelId(undefined); setPage(1); }} width={180} />
+            {renderTypeFilter()}
+          </>
+        )}
         filterTitle="筛选条件"
         onFilterApply={handleSearch}
         onFilterReset={handleReset}

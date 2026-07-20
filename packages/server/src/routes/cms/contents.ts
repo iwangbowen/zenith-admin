@@ -39,6 +39,7 @@ const listRoute = defineOpenAPIRoute({
         siteId: z.coerce.number().int().positive(),
         channelId: z.coerce.number().int().positive().optional(),
         status: z.enum(['draft', 'pending', 'published', 'offline', 'rejected']).optional(),
+        contentType: z.enum(['article', 'album', 'media', 'link']).optional(),
         keyword: z.string().optional(),
         isTop: boolParam,
         isRecommend: boolParam,

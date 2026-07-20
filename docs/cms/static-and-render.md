@@ -14,7 +14,7 @@
 |------|-----|
 | 首页 | `/`（可被「页面搭建」isHome 页面接管） |
 | 栏目列表 | `/{channelPath}/`，分页 `/{channelPath}/index_{n}.html` |
-| 内容详情 | `/{channelPath}/{idOrSlug}.html` |
+| 内容详情 | `/{channelPath}/{idOrSlug}.html`，正文多页 `/{channelPath}/{idOrSlug}_{n}.html` |
 | 标签聚合 | `/tag/{slug}/` |
 | 搭建页面 | `/p/{slug}/` |
 | 搜索 | `/search?q=`（永远动态） |

@@ -49,8 +49,18 @@ export interface CmsContentItem {
   id: number;
   title: string;
   url: string;
+  /** 外链型内容：列表点击新窗口直达外链 */
+  isExternal: boolean;
+  /** 内容形态：article=图文 album=图集 media=音视频 link=外链 */
+  contentType: 'article' | 'album' | 'media' | 'link';
   summary: string | null;
   coverImage: string | null;
+  /** 封面缩略图（空 = 回退 coverImage） */
+  coverThumb: string | null;
+  /** album：图片数 */
+  imageCount: number;
+  /** media：音频/视频 */
+  mediaType: 'video' | 'audio' | null;
   author: string | null;
   source: string | null;
   publishedAt: string | null;
@@ -60,9 +70,33 @@ export interface CmsContentItem {
   isHot: boolean;
 }
 
+/** 图集图片（详情渲染） */
+export interface CmsAlbumImageItem {
+  url: string;
+  thumb: string | null;
+  caption: string | null;
+}
+
+/** 正文多页分页（分页符拆分；单页时为 null） */
+export interface CmsBodyPagination {
+  page: number;
+  totalPages: number;
+  pages: { page: number; url: string; current: boolean }[];
+  prevUrl: string | null;
+  nextUrl: string | null;
+}
+
 /** 详情数据 */
 export interface CmsContentDetail extends CmsContentItem {
   body: string;
+  /** 正文多页分页（含分页符时非 null，body 为当前页片段） */
+  bodyPagination: CmsBodyPagination | null;
+  /** album：图片列表 */
+  albumImages: CmsAlbumImageItem[];
+  /** media：媒体地址与海报 */
+  mediaUrl: string | null;
+  mediaPoster: string | null;
+  mediaDuration: string | null;
   extend: Record<string, unknown>;
   tags: { name: string; slug: string; url: string }[];
   prev: { title: string; url: string } | null;

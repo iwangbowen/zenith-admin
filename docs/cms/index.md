@@ -35,7 +35,7 @@ graph LR
 | 数据看板 | `/cms/dashboard` | 状态分布、发布趋势、热文 TOP、栏目分布 | 本页 |
 | 站点管理 | `/cms/sites` | 站群、域名路由、主题、审核模式、Webhook | [内容管线](./content-pipeline) |
 | 栏目管理 | `/cms/channels` | 树形栏目（列表/单页/外链），级联 path | [内容管线](./content-pipeline) |
-| 内容管理 | `/cms/contents` | 5 态状态机、批量操作、导入导出、回收站 | [内容管线](./content-pipeline) |
+| 内容管理 | `/cms/contents` | 5 态状态机、多形态内容（图文/图集/音视频/外链）、批量操作、导入导出、回收站 | [内容管线](./content-pipeline) |
 | 内容模型 | `/cms/models` | 12 种自定义字段类型（EAV via JSONB） | [内容管线](./content-pipeline) |
 | 标签管理 | `/cms/tags` | 站点级标签 + 前台聚合页 | [内容管线](./content-pipeline) |
 | 碎片管理 | `/cms/fragments` | 模板可引用的后台可编辑区块 | [互动与运营](./interaction) |

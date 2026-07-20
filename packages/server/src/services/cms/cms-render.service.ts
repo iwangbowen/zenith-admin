@@ -34,8 +34,20 @@ export function tagUrl(baseUrl: string, slug: string, page = 1): string {
   return page <= 1 ? `${baseUrl}/tag/${slug}/` : `${baseUrl}/tag/${slug}/index_${page}.html`;
 }
 
-export function contentUrl(baseUrl: string, channelPath: string, content: Pick<CmsContentRow, 'id' | 'slug'>): string {
-  return `${baseUrl}/${channelPath}/${content.slug ?? content.id}.html`;
+export function contentUrl(baseUrl: string, channelPath: string, content: Pick<CmsContentRow, 'id' | 'slug'>, bodyPage = 1): string {
+  const base = content.slug ?? content.id;
+  return bodyPage <= 1
+    ? `${baseUrl}/${channelPath}/${base}.html`
+    : `${baseUrl}/${channelPath}/${base}_${bodyPage}.html`;
+}
+
+/** 正文分页拆分：编辑器插入 <p>[分页]</p>（兼容 <!-- pagebreak --> 与 <hr data-page-break>） */
+const PAGE_BREAK_RE = /<p[^>]*>(?:\s|&nbsp;|<br\s*\/?>)*\[分页\](?:\s|&nbsp;|<br\s*\/?>)*<\/p>|<!--\s*pagebreak\s*-->|<hr[^>]*data-page-break[^>]*\/?>/gi;
+
+export function splitBodyPages(body: string | null | undefined): string[] {
+  if (!body) return [''];
+  const parts = body.split(PAGE_BREAK_RE).map((p) => p.trim()).filter((p) => p !== '');
+  return parts.length > 0 ? parts : [body];
 }
 
 /** 站点绝对地址前缀（canonical / sitemap 用）；未绑定域名返回 null */
@@ -184,12 +196,19 @@ async function buildBaseContext(site: CmsSiteRow, baseUrl: string, seo: CmsSeo, 
 }
 
 function toContentItem(row: CmsContentRow, baseUrl: string, channelPath: string): CmsContentItem {
+  const isExternal = !!row.externalLink?.trim();
+  const media = (row.mediaData ?? {}) as { images?: unknown[]; mediaType?: 'video' | 'audio' };
   return {
     id: row.id,
     title: row.title,
-    url: row.externalLink?.trim() ? row.externalLink : contentUrl(baseUrl, channelPath, row),
+    url: isExternal ? row.externalLink! : contentUrl(baseUrl, channelPath, row),
+    isExternal,
+    contentType: row.contentType,
     summary: row.summary?.trim() ? row.summary : (row.body ? stripHtml(row.body).slice(0, 120) : null),
     coverImage: row.coverImage ?? null,
+    coverThumb: row.coverThumb ?? null,
+    imageCount: Array.isArray(media.images) ? media.images.length : 0,
+    mediaType: row.contentType === 'media' ? (media.mediaType ?? 'video') : null,
     author: row.author ?? null,
     source: row.source ?? null,
     publishedAt: formatNullableDateTime(row.publishedAt),
@@ -382,15 +401,59 @@ export async function renderChannelPage(site: CmsSiteRow, baseUrl: string, chann
   return { status: 200, html, kind: 'list' };
 }
 
-export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channel: CmsChannelRow, idOrSlug: string, device: CmsDeviceChannel = 'pc'): Promise<RenderResult> {
+/** 详情页专属上下文片段：形态数据 + 正文分页 */
+function buildDetailExtras(row: CmsContentRow, resolvedBody: string | null, baseUrl: string, channelPath: string, bodyPage: number) {
+  const media = (row.mediaData ?? {}) as {
+    images?: { url?: string; thumb?: string | null; caption?: string | null }[];
+    mediaUrl?: string; poster?: string; duration?: string;
+  };
+  const albumImages = (Array.isArray(media.images) ? media.images : [])
+    .filter((img) => typeof img?.url === 'string' && img.url)
+    .map((img) => ({ url: img.url!, thumb: img.thumb ?? null, caption: img.caption ?? null }));
+
+  const bodyPages = splitBodyPages(resolvedBody);
+  const totalPages = bodyPages.length;
+  const pageBody = bodyPages[Math.min(bodyPage, totalPages) - 1] ?? '';
+  const bodyPagination = totalPages > 1 ? {
+    page: bodyPage,
+    totalPages,
+    pages: bodyPages.map((_, i) => ({
+      page: i + 1,
+      url: contentUrl(baseUrl, channelPath, row, i + 1),
+      current: i + 1 === bodyPage,
+    })),
+    prevUrl: bodyPage > 1 ? contentUrl(baseUrl, channelPath, row, bodyPage - 1) : null,
+    nextUrl: bodyPage < totalPages ? contentUrl(baseUrl, channelPath, row, bodyPage + 1) : null,
+  } : null;
+
+  return {
+    pageBody,
+    totalPages,
+    extras: {
+      bodyPagination,
+      albumImages,
+      mediaUrl: media.mediaUrl ?? null,
+      mediaPoster: media.poster ?? null,
+      mediaDuration: media.duration ?? null,
+    },
+  };
+}
+
+/** 内容正文分页数（静态化生成 _n.html 时用；映射内容透传来源正文） */
+export async function countContentBodyPages(row: Pick<CmsContentRow, 'body' | 'extend' | 'mappingSourceId'>): Promise<number> {
+  const resolved = await resolveContentBodyExtend(row);
+  return splitBodyPages(resolved.body).length;
+}
+
+export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channel: CmsChannelRow, idOrSlug: string, device: CmsDeviceChannel = 'pc', bodyPage = 1): Promise<RenderResult> {
   const row = await getPublishedContent(site.id, channel.id, idOrSlug);
   if (!row) return renderNotFound(site, baseUrl, `/${channel.path}/${idOrSlug}.html`);
   if (row.externalLink?.trim()) return { status: 302, location: row.externalLink };
 
-  const canonicalPath = contentUrl('', channel.path, row);
+  const canonicalPath = contentUrl('', channel.path, row, bodyPage);
   const origin = siteOrigin(site);
   const seo = mergeSeo(site, {
-    title: row.seoTitle ?? `${row.title} - ${site.title?.trim() || site.name}`,
+    title: (row.seoTitle ?? `${row.title} - ${site.title?.trim() || site.name}`) + (bodyPage > 1 ? `（第${bodyPage}页）` : ''),
     keywords: row.seoKeywords ?? undefined,
     description: row.seoDescription ?? row.summary ?? undefined,
     ogTitle: row.title,
@@ -418,6 +481,8 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
     resolveContentBodyExtend(row),
   ]);
   const related = await buildRelatedLinks(baseUrl, relatedRows);
+  const { pageBody, totalPages, extras } = buildDetailExtras(row, resolved.body, baseUrl, channel.path, bodyPage);
+  if (bodyPage > totalPages) return renderNotFound(site, baseUrl, `/${channel.path}/${idOrSlug}_${bodyPage}.html`);
   const detailComponent = await resolveDetailComponent(site, device, channel, row.detailTemplate, row.modelId);
   const html = renderDoc(detailComponent, {
     ...base,
@@ -425,7 +490,8 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
     breadcrumbs,
     content: {
       ...toContentItem(row, baseUrl, channel.path),
-      body: applyLinkWords(resolved.body ?? '', linkWords),
+      body: applyLinkWords(pageBody, linkWords),
+      ...extras,
       extend: resolved.extend,
       tags: tags.map((t) => ({ name: t.name, slug: t.slug, url: tagUrl(baseUrl, t.slug) })),
       prev: adjacent.prev ? { title: adjacent.prev.title, url: contentUrl(baseUrl, channel.path, adjacent.prev) } : null,
@@ -479,13 +545,15 @@ export async function renderContentPreviewPage(site: CmsSiteRow, baseUrl: string
     resolveContentBodyExtend(row),
   ]);
   const previewComponent = await resolveDetailComponent(site, device, channel, row.detailTemplate, row.modelId);
+  const { pageBody: previewBody, extras: previewExtras } = buildDetailExtras(row, resolved.body, baseUrl, channel.path, 1);
   const html = renderDoc(previewComponent, {
     ...base,
     channel: toChannelInfo(channel, baseUrl),
     breadcrumbs,
     content: {
       ...toContentItem(row, baseUrl, channel.path),
-      body: applyLinkWords(resolved.body ?? '', linkWords),
+      body: applyLinkWords(previewBody, linkWords),
+      ...previewExtras,
       extend: resolved.extend,
       tags: tags.map((t) => ({ name: t.name, slug: t.slug, url: tagUrl(baseUrl, t.slug) })),
       prev: null,
@@ -682,7 +750,13 @@ export async function renderSitePath(site: CmsSiteRow, baseUrl: string, rawPath:
     if (!dir) return renderNotFound(site, baseUrl, `/${cleaned}`);
     const channel = await findChannelByPath(site.id, dir);
     if (!channel) return renderNotFound(site, baseUrl, `/${cleaned}`);
-    return renderDetailPage(site, baseUrl, channel, file.slice(0, -'.html'.length), device);
+    const fileBase = file.slice(0, -'.html'.length);
+    // 正文多页：{idOrSlug}_{n}.html（slug 不含下划线，无歧义）
+    const bodyPageMatch = /^(.+)_(\d+)$/.exec(fileBase);
+    if (bodyPageMatch && Number(bodyPageMatch[2]) >= 2) {
+      return renderDetailPage(site, baseUrl, channel, bodyPageMatch[1], device, Number(bodyPageMatch[2]));
+    }
+    return renderDetailPage(site, baseUrl, channel, fileBase, device);
   }
 
   const channel = await findChannelByPath(site.id, cleaned);

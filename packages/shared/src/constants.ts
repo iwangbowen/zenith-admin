@@ -1281,6 +1281,19 @@ export const CMS_CONTENT_STATUS_LABELS: Record<(typeof CMS_CONTENT_STATUSES)[num
   rejected: '已驳回',
 };
 
+/** CMS 内容形态（P2 多形态内容类型） */
+export const CMS_CONTENT_TYPES = ['article', 'album', 'media', 'link'] as const;
+
+export const CMS_CONTENT_TYPE_LABELS: Record<(typeof CMS_CONTENT_TYPES)[number], string> = {
+  article: '图文',
+  album: '图集',
+  media: '音视频',
+  link: '外链',
+};
+
+/** 正文分页符标记（编辑器插入 <p>[分页]</p>，服务端按此拆分多页） */
+export const CMS_PAGE_BREAK_TEXT = '[分页]';
+
 /** CMS 内容操作日志动作（内容级时间线） */
 export const CMS_CONTENT_OP_ACTIONS = ['created', 'updated', 'submitted', 'published', 'rejected', 'offlined', 'recycled', 'restored', 'rolled_back', 'archived', 'unarchived', 'moved'] as const;
 

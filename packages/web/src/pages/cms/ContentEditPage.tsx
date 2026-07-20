@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Button, Form, Spin, Toast, Row, Col, Banner, SideSheet, Timeline, Modal, Upload, Typography, useFormApi } from '@douyinfe/semi-ui';
+import { Button, Form, Spin, Toast, Row, Col, Banner, SideSheet, Timeline, Modal, Upload, Typography, useFormApi, Select, Input } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
 import { ArrowLeft, Save, Send, History, ImageUp, Eye, GitCompare, Images, SpellCheck, ScrollText } from 'lucide-react';
@@ -8,6 +8,7 @@ import RichTextEditor from '@/components/RichTextEditor';
 import { MediaPickerModal } from '@/components/MediaPickerModal';
 import { formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
+import { useUploadFile } from '@/hooks/queries/files';
 import { config as appConfig } from '@/config';
 import { request } from '@/utils/request';
 import { unwrap } from '@/lib/query';
@@ -17,8 +18,8 @@ import {
   useCmsVersionDiff, useCmsPreviewLink, acquireCmsEditLock, releaseCmsEditLock, useCmsContentList,
   useAllCmsSites, useCmsThemeTemplates, useCmsContentOpLogs, useCmsCheckText,
 } from '@/hooks/queries/cms';
-import { CMS_CONTENT_STATUS_LABELS } from '@zenith/shared';
-import type { CmsChannel, CmsModelField, CmsEditLock, CmsTextCheckResult } from '@zenith/shared';
+import { CMS_CONTENT_STATUS_LABELS, CMS_CONTENT_TYPE_LABELS } from '@zenith/shared';
+import type { CmsChannel, CmsModelField, CmsEditLock, CmsTextCheckResult, CmsContentType, CmsAlbumImage } from '@zenith/shared';
 
 const AUTO_SAVE_INTERVAL_MS = 30_000;
 const EDIT_LOCK_HEARTBEAT_MS = 30_000;
@@ -141,9 +142,16 @@ export default function ContentEditPage() {
   const saveMutation = useSaveCmsContent();
   const actionMutation = useCmsContentAction();
   const previewMutation = useCmsPreviewLink();
+  const uploadMediaMutation = useUploadFile();
 
   const [body, setBody] = useState('');
   const [selectedChannelId, setSelectedChannelId] = useState<number | undefined>(channelIdParam);
+  // 内容形态：新建可选，保存后不可变更
+  const [newContentType, setNewContentType] = useState<CmsContentType>('article');
+  const contentType: CmsContentType = detail?.contentType ?? newContentType;
+  // 图集图片（受控管理，保存时并入 mediaData.images）
+  const [albumImages, setAlbumImages] = useState<CmsAlbumImage[]>([]);
+  const [albumPickerVisible, setAlbumPickerVisible] = useState(false);
   const [versionsVisible, setVersionsVisible] = useState(false);
   const versionsQuery = useCmsContentVersions(id, versionsVisible);
   const restoreMutation = useRestoreCmsContentVersion();
@@ -156,6 +164,11 @@ export default function ContentEditPage() {
   const [checkResult, setCheckResult] = useState<CmsTextCheckResult | null>(null);
   const [checkModalVisible, setCheckModalVisible] = useState(false);
   const isMapped = !!detail?.mappingSourceId;
+
+  // 封面缩略图跟踪：上传时随 thumbUrl 更新；手动改 URL/媒体库选择时清空（防错配）
+  const coverThumbRef = useRef<string | null>(null);
+  const coverProgrammaticRef = useRef(false);
+  const lastCoverImageRef = useRef<string>('');
 
   // ─── 编辑锁 / 乐观锁 / 自动保存状态 ─────────────────────────────────────────
   const [lockHolder, setLockHolder] = useState<CmsEditLock['holder']>(null);
@@ -182,6 +195,9 @@ export default function ContentEditPage() {
       bodyInitializedForRef.current = detail.id;
       setBody(detail.body ?? '');
       setSelectedChannelId(detail.channelId);
+      setAlbumImages(Array.isArray(detail.mediaData?.images) ? detail.mediaData.images.map((img) => ({ ...img })) : []);
+      coverThumbRef.current = detail.coverThumb ?? null;
+      lastCoverImageRef.current = detail.coverImage ?? '';
     }
   }, [detail]);
 
@@ -244,8 +260,12 @@ export default function ContentEditPage() {
         scheduledAt: detail.scheduledAt ?? undefined,
         expireAt: detail.expireAt ?? undefined,
         extend: detail.extend ?? {},
+        mediaType: detail.mediaData?.mediaType ?? 'video',
+        mediaUrl: detail.mediaData?.mediaUrl ?? '',
+        mediaPoster: detail.mediaData?.poster ?? '',
+        mediaDuration: detail.mediaData?.duration ?? '',
       }
-    : { channelId: channelIdParam, isTop: false, topWeight: 0, isOriginal: false, isRecommend: false, isHot: false, sort: 0, tagIds: [], extraChannelIds: [], relatedIds: [], extend: {} };
+    : { channelId: channelIdParam, isTop: false, topWeight: 0, isOriginal: false, isRecommend: false, isHot: false, sort: 0, tagIds: [], extraChannelIds: [], relatedIds: [], extend: {}, mediaType: 'video' };
 
   async function save(opts?: { silent?: boolean }): Promise<number | null> {
     if (!siteId) return null;
@@ -266,6 +286,26 @@ export default function ContentEditPage() {
     if (!values.expireAt) payload.expireAt = null;
     if (values.topExpireAt instanceof Date) payload.topExpireAt = formatDateTimeForApi(values.topExpireAt);
     if (!values.topExpireAt) payload.topExpireAt = null;
+    // 内容形态：新建时提交；mediaType 等临时字段组装进 mediaData 后从 payload 移除
+    if (!id) payload.contentType = contentType;
+    if (contentType === 'album') {
+      payload.mediaData = { images: albumImages };
+    } else if (contentType === 'media') {
+      payload.mediaData = {
+        mediaType: (values.mediaType as string) || 'video',
+        ...(values.mediaUrl ? { mediaUrl: String(values.mediaUrl) } : {}),
+        ...(values.mediaPoster ? { poster: String(values.mediaPoster) } : {}),
+        ...(values.mediaDuration ? { duration: String(values.mediaDuration) } : {}),
+      };
+    } else {
+      payload.mediaData = {};
+    }
+    delete payload.mediaType;
+    delete payload.mediaUrl;
+    delete payload.mediaPoster;
+    delete payload.mediaDuration;
+    // 封面缩略图（随上传更新；封面清空则一并清空）
+    payload.coverThumb = values.coverImage ? coverThumbRef.current : null;
     // 映射内容：正文/扩展字段共享来源，不随保存提交（服务端也会拒绝）
     if (isMapped) {
       delete payload.body;
@@ -420,33 +460,151 @@ export default function ContentEditPage() {
           onValueChange={(values) => {
             dirtyRef.current = true;
             if (values.channelId !== selectedChannelId) setSelectedChannelId(values.channelId as number);
+            // 封面 URL 手动变更（非上传回填）时清空缩略图，防止图不对版
+            const cover = (values.coverImage as string) ?? '';
+            if (cover !== lastCoverImageRef.current) {
+              if (!coverProgrammaticRef.current) coverThumbRef.current = null;
+              coverProgrammaticRef.current = false;
+              lastCoverImageRef.current = cover;
+            }
           }}
           labelPosition="top"
         >
           <Row gutter={24}>
             {/* 左：主编辑区 */}
             <Col xs={24} lg={16}>
+              <Form.Slot label="内容形态">
+                <Select
+                  value={contentType}
+                  onChange={(v) => { if (!id) { setNewContentType(v as CmsContentType); dirtyRef.current = true; } }}
+                  disabled={!!id}
+                  style={{ width: 220 }}
+                  optionList={Object.entries(CMS_CONTENT_TYPE_LABELS).map(([value, label]) => ({ value, label }))}
+                />
+                {id ? <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--semi-color-text-2)' }}>形态创建后不可变更</span> : null}
+              </Form.Slot>
               <Form.Input field="title" label="标题" size="large" rules={[{ required: true, message: '请输入标题' }]} />
               <Row gutter={12}>
                 <Col span={12}><Form.Input field="subTitle" label="副标题" placeholder="可选" /></Col>
                 <Col span={12}><Form.Input field="shortTitle" label="短标题" placeholder="列表窄位展示（可选）" /></Col>
               </Row>
               <Form.TextArea field="summary" label="摘要" rows={2} placeholder="留空时前台自动截取正文" />
-              <Form.Slot label="正文">
-                {isMapped ? (
-                  <div
-                    style={{ border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', padding: 16, maxHeight: 420, overflow: 'auto', background: 'var(--semi-color-fill-0)' }}
-                    dangerouslySetInnerHTML={{ __html: body }}
-                  />
-                ) : (
-                  <RichTextEditor
-                    value={body}
-                    onChange={(v) => { setBody(v); dirtyRef.current = true; }}
-                    height={420}
-                    uploadServer={siteId ? `${appConfig.apiBaseUrl}/api/cms/upload-image?siteId=${siteId}` : undefined}
-                  />
-                )}
-              </Form.Slot>
+              {contentType === 'link' ? (
+                <Banner type="info" closeIcon={null} style={{ marginBottom: 12 }} description="外链型内容：前台列表点击标题直接新窗口跳转外链地址（右侧「外链地址」必填），不生成详情页。" />
+              ) : null}
+              {contentType === 'album' && !isMapped ? (
+                <Form.Slot label={`图集图片（${albumImages.length}）`}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {albumImages.map((img, i) => (
+                      <div key={`${img.url}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', padding: 8 }}>
+                        <img src={img.thumb ?? img.url} alt="" style={{ width: 72, height: 54, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }} />
+                        <Input
+                          placeholder="图片说明（可选）"
+                          value={img.caption ?? ''}
+                          onChange={(v) => {
+                            setAlbumImages((list) => list.map((x, xi) => xi === i ? { ...x, caption: v || null } : x));
+                            dirtyRef.current = true;
+                          }}
+                          style={{ flex: 1 }}
+                        />
+                        <Button size="small" theme="borderless" disabled={i === 0}
+                          onClick={() => { setAlbumImages((list) => { const next = [...list]; [next[i - 1], next[i]] = [next[i], next[i - 1]]; return next; }); dirtyRef.current = true; }}>上移</Button>
+                        <Button size="small" theme="borderless" disabled={i === albumImages.length - 1}
+                          onClick={() => { setAlbumImages((list) => { const next = [...list]; [next[i], next[i + 1]] = [next[i + 1], next[i]]; return next; }); dirtyRef.current = true; }}>下移</Button>
+                        <Button size="small" theme="borderless" type="danger"
+                          onClick={() => { setAlbumImages((list) => list.filter((_, xi) => xi !== i)); dirtyRef.current = true; }}>删除</Button>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <Upload
+                        action=""
+                        accept="image/*"
+                        multiple
+                        limit={20}
+                        showUploadList={false}
+                        customRequest={async ({ fileInstance, onSuccess, onError }) => {
+                          if (!siteId) { onError?.({ status: 0 }); return; }
+                          try {
+                            const formData = new FormData();
+                            formData.append('file', fileInstance);
+                            const res = await request.postForm<{ url: string; thumbUrl: string | null }>(
+                              `/api/cms/upload-image?siteId=${siteId}`, formData,
+                            ).then(unwrap);
+                            setAlbumImages((list) => [...list, { url: res.url, thumb: res.thumbUrl ?? null, caption: null }]);
+                            dirtyRef.current = true;
+                            onSuccess?.({});
+                          } catch {
+                            onError?.({ status: 0 });
+                          }
+                        }}
+                      >
+                        <Button icon={<ImageUp size={14} />}>上传图片</Button>
+                      </Upload>
+                      <Button icon={<Images size={14} />} onClick={() => setAlbumPickerVisible(true)}>媒体库添加</Button>
+                    </div>
+                  </div>
+                </Form.Slot>
+              ) : null}
+              {contentType === 'media' && !isMapped ? (
+                <Form.Section text="音视频">
+                  <Row gutter={12}>
+                    <Col span={12}>
+                      <Form.RadioGroup field="mediaType" label="媒体类型">
+                        <Form.Radio value="video">视频</Form.Radio>
+                        <Form.Radio value="audio">音频</Form.Radio>
+                      </Form.RadioGroup>
+                    </Col>
+                    <Col span={12}><Form.Input field="mediaDuration" label="时长" placeholder="如 03:45（可选）" /></Col>
+                    <Col span={24}>
+                      <Form.Input
+                        field="mediaUrl"
+                        label="媒体地址"
+                        placeholder="https://...（发布前必填）"
+                        suffix={(
+                          <Upload
+                            action=""
+                            accept="video/*,audio/*"
+                            limit={1}
+                            showUploadList={false}
+                            customRequest={async ({ fileInstance, onSuccess, onError }) => {
+                              try {
+                                const uploaded = await uploadMediaMutation.mutateAsync({ formData: (() => { const fd = new FormData(); fd.append('file', fileInstance); return fd; })() });
+                                formApi.current?.setValue('mediaUrl', uploaded.url ?? '');
+                                dirtyRef.current = true;
+                                Toast.success('上传成功');
+                                onSuccess?.({});
+                              } catch {
+                                onError?.({ status: 0 });
+                              }
+                            }}
+                          >
+                            <Button size="small" theme="borderless" icon={<ImageUp size={14} />} loading={uploadMediaMutation.isPending}>上传</Button>
+                          </Upload>
+                        )}
+                      />
+                    </Col>
+                    <Col span={24}><Form.Input field="mediaPoster" label="封面海报 URL" placeholder="视频封面（可选，留空用封面图）" /></Col>
+                  </Row>
+                </Form.Section>
+              ) : null}
+              {contentType !== 'link' ? (
+                <Form.Slot label={contentType === 'article' ? '正文' : '图文说明（可选）'}>
+                  {isMapped ? (
+                    <div
+                      style={{ border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', padding: 16, maxHeight: 420, overflow: 'auto', background: 'var(--semi-color-fill-0)' }}
+                      dangerouslySetInnerHTML={{ __html: body }}
+                    />
+                  ) : (
+                    <RichTextEditor
+                      value={body}
+                      onChange={(v) => { setBody(v); dirtyRef.current = true; }}
+                      height={contentType === 'article' ? 420 : 240}
+                      enablePageBreak={contentType === 'article'}
+                      uploadServer={siteId ? `${appConfig.apiBaseUrl}/api/cms/upload-image?siteId=${siteId}` : undefined}
+                    />
+                  )}
+                </Form.Slot>
+              ) : null}
               {modelFields.length > 0 && !isMapped ? (
                 <Form.Section text={`模型字段（${currentModel?.name}）`}>
                   <Row gutter={16}>
@@ -519,9 +677,11 @@ export default function ContentEditPage() {
                         try {
                           const formData = new FormData();
                           formData.append('file', fileInstance);
-                          const res = await request.postForm<{ url: string; watermarked: boolean }>(
+                          const res = await request.postForm<{ url: string; thumbUrl: string | null; watermarked: boolean }>(
                             `/api/cms/upload-image?siteId=${siteId}`, formData,
                           ).then(unwrap);
+                          coverProgrammaticRef.current = true;
+                          coverThumbRef.current = res.thumbUrl ?? null;
                           formApi.current?.setValue('coverImage', res.url);
                           dirtyRef.current = true;
                           Toast.success(res.watermarked ? '上传成功（已加水印）' : '上传成功');
@@ -537,7 +697,12 @@ export default function ContentEditPage() {
                 )}
               />
               <Form.Input field="slug" label="自定义 URL 标识" placeholder="留空使用 ID" />
-              <Form.Input field="externalLink" label="外链地址" placeholder="填写后点击标题直接跳转" />
+              <Form.Input
+                field="externalLink"
+                label="外链地址"
+                placeholder={contentType === 'link' ? 'https://（外链型内容必填）' : '填写后点击标题直接跳转'}
+                rules={contentType === 'link' ? [{ required: true, message: '外链型内容须填写外链地址' }] : undefined}
+              />
               <Form.Select field="detailTemplate" label="详情模板" style={{ width: '100%' }} showClear
                 placeholder="跟随栏目/站点默认"
                 optionList={(themeTemplates?.detail ?? []).map((t) => ({ value: t.name, label: t.label }))} />
@@ -594,9 +759,23 @@ export default function ContentEditPage() {
         visible={coverPickerVisible}
         onCancel={() => setCoverPickerVisible(false)}
         onSelect={(file) => {
+          coverProgrammaticRef.current = true;
+          coverThumbRef.current = null;
           formApi.current?.setValue('coverImage', file.url);
           dirtyRef.current = true;
           setCoverPickerVisible(false);
+        }}
+      />
+
+      {/* 图集媒体库添加 */}
+      <MediaPickerModal
+        visible={albumPickerVisible}
+        imageOnly
+        onCancel={() => setAlbumPickerVisible(false)}
+        onSelect={(file) => {
+          setAlbumImages((list) => [...list, { url: file.url ?? '', thumb: null, caption: null }]);
+          dirtyRef.current = true;
+          setAlbumPickerVisible(false);
         }}
       />
 

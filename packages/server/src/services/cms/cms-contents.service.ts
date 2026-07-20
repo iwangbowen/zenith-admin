@@ -27,12 +27,15 @@ export function mapCmsContent(row: CmsContentRow, extra?: { channelName?: string
     channelId: row.channelId,
     channelName: extra?.channelName ?? null,
     modelId: row.modelId ?? null,
+    contentType: row.contentType,
+    mediaData: row.mediaData ?? {},
     title: row.title,
     subTitle: row.subTitle ?? null,
     shortTitle: row.shortTitle ?? null,
     slug: row.slug ?? null,
     summary: row.summary ?? null,
     coverImage: row.coverImage ?? null,
+    coverThumb: row.coverThumb ?? null,
     author: row.author ?? null,
     editor: row.editor ?? null,
     source: row.source ?? null,
@@ -115,6 +118,7 @@ export interface ListCmsContentsQuery {
   siteId: number;
   channelId?: number;
   status?: CmsContentStatus;
+  contentType?: 'article' | 'album' | 'media' | 'link';
   keyword?: string;
   isTop?: boolean;
   isRecommend?: boolean;
@@ -137,6 +141,7 @@ export async function listCmsContents(q: ListCmsContentsQuery) {
   if (!q.deleted) conditions.push(q.archived ? isNotNull(cmsContents.archivedAt) : isNull(cmsContents.archivedAt));
   if (q.channelId) conditions.push(eq(cmsContents.channelId, q.channelId));
   if (q.status) conditions.push(eq(cmsContents.status, q.status));
+  if (q.contentType) conditions.push(eq(cmsContents.contentType, q.contentType));
   if (q.isTop !== undefined) conditions.push(eq(cmsContents.isTop, q.isTop));
   if (q.isRecommend !== undefined) conditions.push(eq(cmsContents.isRecommend, q.isRecommend));
   if (q.isHot !== undefined) conditions.push(eq(cmsContents.isHot, q.isHot));
@@ -214,6 +219,27 @@ async function ensureChannelForContent(siteId: number, channelId: number) {
   return channel;
 }
 
+/** 形态结构化数据中的可检索文本（图集说明等纳入全文索引） */
+function mediaDataTexts(mediaData: Record<string, unknown> | null | undefined): string[] {
+  const images = (mediaData as { images?: { caption?: string | null }[] } | null)?.images;
+  if (!Array.isArray(images)) return [];
+  return images.map((img) => img?.caption).filter((v): v is string => typeof v === 'string' && v.trim() !== '');
+}
+
+/** 发布前按内容形态校验必要数据（草稿允许不完整，发布必须齐备） */
+function assertContentTypeReady(row: CmsContentRow): void {
+  const media = (row.mediaData ?? {}) as { images?: unknown[]; mediaUrl?: string };
+  if (row.contentType === 'link' && !row.externalLink?.trim()) {
+    throw new HTTPException(400, { message: '外链型内容须填写外链地址后才能发布' });
+  }
+  if (row.contentType === 'album' && (!Array.isArray(media.images) || media.images.length === 0)) {
+    throw new HTTPException(400, { message: '图集内容须至少添加一张图片后才能发布' });
+  }
+  if (row.contentType === 'media' && !media.mediaUrl?.trim()) {
+    throw new HTTPException(400, { message: '音视频内容须填写媒体地址后才能发布' });
+  }
+}
+
 /** 先删后插替换副栏目（一文多栏目；副栏目须为本站列表栏目且 ≠ 主栏目） */
 async function setContentExtraChannels(executor: DbExecutor, contentId: number, siteId: number, mainChannelId: number, extraChannelIds: number[]): Promise<void> {
   await executor.delete(cmsContentChannels).where(eq(cmsContentChannels.contentId, contentId));
@@ -247,7 +273,7 @@ export async function createCmsContent(data: CreateCmsContentInput) {
   const { tagIds = [], extraChannelIds = [], relatedIds = [], scheduledAt, expireAt, topExpireAt, ...rest } = data;
   const extend = (rest.extend ?? {}) as Record<string, unknown>;
   const modelId = channel.modelId ?? null;
-  const extendTexts = await collectSearchableExtendTexts(modelId, extend);
+  const extendTexts = [...await collectSearchableExtendTexts(modelId, extend), ...mediaDataTexts(rest.mediaData as Record<string, unknown>)];
   try {
     const row = await db.transaction(async (tx) => {
       const [created] = await tx.insert(cmsContents).values({
@@ -296,7 +322,8 @@ export async function updateCmsContent(id: number, data: UpdateCmsContentInput) 
     throw new HTTPException(400, { message: '映射内容的正文与扩展字段共享来源内容，不可独立编辑' });
   }
   const nextExtend = (rest.extend ?? current.extend ?? {}) as Record<string, unknown>;
-  const extendTexts = await collectSearchableExtendTexts(modelId, nextExtend);
+  const nextMediaData = (rest.mediaData ?? current.mediaData ?? {}) as Record<string, unknown>;
+  const extendTexts = [...await collectSearchableExtendTexts(modelId, nextExtend), ...mediaDataTexts(nextMediaData)];
   try {
     await db.transaction(async (tx) => {
       // 更新前自动留档版本快照（可在编辑页回滚）
@@ -395,6 +422,8 @@ export async function submitCmsContent(id: number) {
 /** 发布（直接发布或审核通过）；工作流审核期间禁止手动发布 */
 export async function publishCmsContent(id: number, opts?: { fromWorkflow?: boolean }) {
   if (!opts?.fromWorkflow) await assertNoActiveContentWorkflow(id);
+  const row = await ensureCmsContentExists(id);
+  assertContentTypeReady(row);
   const result = await transitionStatus(id, 'publish', { status: 'published', publishedAt: new Date(), rejectReason: null });
   await logContentOp(db, id, 'published', opts?.fromWorkflow ? '工作流审核通过' : null);
   triggerCmsContentWebhook('content.published', id);
@@ -584,7 +613,7 @@ export async function getPublishedContentById(siteId: number, id: number): Promi
  * 解析内容正文/扩展字段（映射内容透传来源行）：
  * 前台详情渲染、草稿预览、Headless API 输出正文前统一经过此函数。
  */
-export async function resolveContentBodyExtend(row: CmsContentRow): Promise<{ body: string | null; extend: Record<string, unknown> }> {
+export async function resolveContentBodyExtend(row: Pick<CmsContentRow, 'body' | 'extend' | 'mappingSourceId'>): Promise<{ body: string | null; extend: Record<string, unknown> }> {
   if (!row.mappingSourceId) return { body: row.body ?? null, extend: row.extend ?? {} };
   const [src] = await db.select({ body: cmsContents.body, extend: cmsContents.extend })
     .from(cmsContents).where(eq(cmsContents.id, row.mappingSourceId)).limit(1);
@@ -786,12 +815,15 @@ export async function duplicateCmsContent(id: number) {
       siteId: current.siteId,
       channelId: current.channelId,
       modelId: current.modelId,
+      contentType: current.contentType,
+      mediaData: current.mediaData ?? {},
       title: `${current.title}（副本）`.slice(0, 255),
       subTitle: current.subTitle,
       shortTitle: current.shortTitle,
       slug: null,
       summary: current.summary,
       coverImage: current.coverImage,
+      coverThumb: current.coverThumb,
       author: current.author,
       editor: current.editor,
       source: current.source,
@@ -847,12 +879,15 @@ export async function distributeCmsContents(ids: number[], targetSiteId: number,
         siteId: targetSiteId,
         channelId: targetChannelId,
         modelId: channel.modelId ?? null,
+        contentType: current.contentType,
+        mediaData: current.mediaData ?? {},
         title: current.title,
         subTitle: current.subTitle,
         shortTitle: current.shortTitle,
         slug: null,
         summary: current.summary,
         coverImage: current.coverImage,
+        coverThumb: current.coverThumb,
         author: current.author,
         editor: current.editor,
         source: current.source,
