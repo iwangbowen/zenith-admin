@@ -214,6 +214,11 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           ws: true,
         },
+        // CMS 前台预览（/__cms/{siteCode}/...）由后端 SSR 渲染，需转发到 server
+        '/__cms': {
+          target: apiTarget,
+          changeOrigin: true,
+        },
       },
     },
   };
