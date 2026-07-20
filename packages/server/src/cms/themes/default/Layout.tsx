@@ -167,6 +167,14 @@ if(C){navigator.sendBeacon('/api/public/cms/view',new Blob([JSON.stringify({cont
 }catch(e){}})();`;
 }
 
+/** 广告曝光 beacon：收集本页 data-ad-id 去重后一次性上报（无广告不发请求） */
+const AD_VIEW_BEACON_SCRIPT = `(function(){try{
+var els=document.querySelectorAll('[data-ad-id]');if(!els.length)return;
+var ids=[];els.forEach(function(el){var v=Number(el.getAttribute('data-ad-id'));if(v&&ids.indexOf(v)<0)ids.push(v);});
+if(!ids.length)return;
+navigator.sendBeacon('/api/public/cms/ads/view',new Blob([JSON.stringify({ids:ids})],{type:'application/json'}));
+}catch(e){}})();`;
+
 /** 默认主题布局：完整 HTML 文档（内联样式，静态页零外部依赖） */
 export function Layout({ ctx, currentUrl, children }: LayoutProps) {
   const { site, seo, nav, friendLinks, baseUrl } = ctx;
@@ -199,6 +207,8 @@ export function Layout({ ctx, currentUrl, children }: LayoutProps) {
           // 轻量行为采集 beacon：page_view 上报 + 详情页浏览计数（静态页零依赖）
           <script dangerouslySetInnerHTML={{ __html: buildAnalyticsBeacon(ctx.analytics) }} />
         ) : null}
+        {/* 广告曝光 beacon：页面加载后批量上报本页广告 id（无广告时零开销） */}
+        <script dangerouslySetInnerHTML={{ __html: AD_VIEW_BEACON_SCRIPT }} />
         <header className="site-header">
           <div className="container">
             <a className="site-brand" href={`${baseUrl}/`}>

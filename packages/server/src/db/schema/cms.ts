@@ -406,6 +406,66 @@ export const cmsSurveyAnswers = pgTable('cms_survey_answers', {
 
 export type CmsSurveyAnswerRow = typeof cmsSurveyAnswers.$inferSelect;
 
+// ═══ P4 统计分析 ═══════════════════════════════════════════════════════════════
+
+export const cmsDeviceTypeEnum = pgEnum('cms_device_type', ['pc', 'mobile', 'bot']);
+
+// ─── 前台访问日志（服务端响应路径记录，静态命中同样统计；原始日志保留 90 天）──────
+export const cmsVisitLogs = pgTable('cms_visit_logs', {
+  id: serial('id').primaryKey(),
+  siteId: integer('site_id').notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
+  /** 站内相对路径（含前导 /，截断 500） */
+  path: varchar('path', { length: 500 }).notNull(),
+  /** 页面类型：home/list/detail/page/search/tag 等（渲染 kind） */
+  pageKind: varchar('page_kind', { length: 20 }).notNull().default('other'),
+  /** 详情页关联内容（内容排行用） */
+  contentId: integer('content_id'),
+  /** 发布通道编码 */
+  channelCode: varchar('channel_code', { length: 50 }).notNull().default('pc'),
+  /** 访客标识（ip+ua 哈希，UV 去重用） */
+  visitorHash: varchar('visitor_hash', { length: 32 }).notNull(),
+  ip: varchar('ip', { length: 64 }),
+  deviceType: cmsDeviceTypeEnum('device_type').notNull().default('pc'),
+  /** 来源页 Host（referrer 域名；直达为空） */
+  referrerHost: varchar('referrer_host', { length: 255 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  index('cms_visit_logs_site_time_idx').on(t.siteId, t.createdAt),
+  index('cms_visit_logs_content_idx').on(t.contentId).where(sql`${t.contentId} is not null`),
+]);
+
+export type CmsVisitLogRow = typeof cmsVisitLogs.$inferSelect;
+
+// ─── 广告效果日聚合（曝光/点击；CTR 报表用）─────────────────────────────────────
+export const cmsAdStats = pgTable('cms_ad_stats', {
+  id: serial('id').primaryKey(),
+  adId: integer('ad_id').notNull().references(() => cmsAds.id, { onDelete: 'cascade' }),
+  /** 统计日（YYYY-MM-DD） */
+  statDate: varchar('stat_date', { length: 10 }).notNull(),
+  views: integer('views').notNull().default(0),
+  clicks: integer('clicks').notNull().default(0),
+}, (t) => [
+  uniqueIndex('cms_ad_stats_ad_date_uq').on(t.adId, t.statDate),
+]);
+
+export type CmsAdStatRow = typeof cmsAdStats.$inferSelect;
+
+// ─── 前台搜索日志（搜索量趋势 / 无结果词榜；原始日志保留 90 天）──────────────────
+export const cmsSearchLogs = pgTable('cms_search_logs', {
+  id: serial('id').primaryKey(),
+  siteId: integer('site_id').notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
+  keyword: varchar('keyword', { length: 64 }).notNull(),
+  resultCount: integer('result_count').notNull().default(0),
+  ip: varchar('ip', { length: 64 }),
+  deviceType: cmsDeviceTypeEnum('device_type').notNull().default('pc'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  index('cms_search_logs_site_time_idx').on(t.siteId, t.createdAt),
+  index('cms_search_logs_keyword_idx').on(t.siteId, t.keyword),
+]);
+
+export type CmsSearchLogRow = typeof cmsSearchLogs.$inferSelect;
+
 // ─── CMS 内容-副栏目关联（一文多栏目：主栏目在 cms_contents.channel_id，副栏目在此表）──
 export const cmsContentChannels = pgTable('cms_content_channels', {
   contentId: integer('content_id').notNull().references(() => cmsContents.id, { onDelete: 'cascade' }),
@@ -599,6 +659,8 @@ export const cmsAds = pgTable('cms_ads', {
   endAt: timestamp('end_at'),
   /** 点击计数（前台经由 /api/public/cms/ads/{id}/click 中转累加） */
   clickCount: integer('click_count').notNull().default(0),
+  /** 曝光计数（前台页面加载 beacon 批量上报累加） */
+  viewCount: integer('view_count').notNull().default(0),
   sort: integer('sort').notNull().default(0),
   status: statusEnum('status').notNull().default('enabled'),
   ...auditColumns(),

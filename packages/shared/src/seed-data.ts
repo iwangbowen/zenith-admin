@@ -722,6 +722,7 @@ export const SEED_MENUS: Menu[] = [
   { id: 1791, parentId: 1790, title: '管理易错词',   name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:word:manage',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1792, parentId: 1700, title: '问卷调查',     name: 'CmsSurveys',       path: '/cms/surveys',     component: 'cms/SurveysPage',            icon: 'ListChecks',   type: 'menu',      sort: 19, status: 'enabled', visible: true,  permission: 'cms:survey:list',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1793, parentId: 1792, title: '管理问卷',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:survey:manage',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1794, parentId: 1700, title: '访问统计',     name: 'CmsStats',         path: '/cms/stats',       component: 'cms/StatsPage',              icon: 'ChartLine',    type: 'menu',      sort: 20, status: 'enabled', visible: true,  permission: 'cms:stat:view',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1780, parentId: 1700, title: '采集中心',     name: 'CmsCollect',       path: '/cms/collect',     component: 'cms/CollectPage',            icon: 'Download',     type: 'menu',      sort: 15, status: 'enabled', visible: true,  permission: 'cms:collect:list',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1781, parentId: 1780, title: '新增规则',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:collect:create', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1782, parentId: 1780, title: '编辑规则',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'cms:collect:update', createdAt: SEED_DATE, updatedAt: SEED_DATE },
@@ -3054,7 +3055,7 @@ export const SEED_CMS_AD_SLOTS: CmsAdSlot[] = [
 ];
 
 export const SEED_CMS_ADS: CmsAd[] = [
-  { id: 1, slotId: 1, name: 'Zenith 企业版上线', image: null, linkUrl: '/products/enterprise.html', startAt: null, endAt: null, clickCount: 0, sort: 1, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1, slotId: 1, name: 'Zenith 企业版上线', image: null, linkUrl: '/products/enterprise.html', startAt: null, endAt: null, clickCount: 0, viewCount: 0, sort: 1, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 export const SEED_CMS_FORMS: CmsForm[] = [

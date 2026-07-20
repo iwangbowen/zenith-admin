@@ -576,7 +576,13 @@ export async function renderContentPreviewPage(site: CmsSiteRow, baseUrl: string
   return { status: 200, html: html.replace(/(<body[^>]*>)/i, `$1${banner}`), kind: 'detail', contentId: row.id };
 }
 
-export async function renderSearchPage(site: CmsSiteRow, baseUrl: string, keyword: string, page = 1): Promise<RenderResult> {
+export async function renderSearchPage(
+  site: CmsSiteRow,
+  baseUrl: string,
+  keyword: string,
+  page = 1,
+  track?: { ip: string | null; userAgent: string | null },
+): Promise<RenderResult> {
   const theme = getTheme(site.theme);
   const pageSize = 10;
   const seo = mergeSeo(site, { title: keyword ? `搜索：${keyword} - ${site.name}` : `搜索 - ${site.name}` });
@@ -584,6 +590,11 @@ export async function renderSearchPage(site: CmsSiteRow, baseUrl: string, keywor
   const result = keyword
     ? await searchCmsContents({ siteId: site.id, keyword, page, pageSize })
     : { list: [], total: 0, page, pageSize, tokens: [] };
+  // 搜索日志（仅首屏记一次，翻页不重复计）
+  if (track && keyword && page === 1) {
+    const { recordCmsSearchLog } = await import('./cms-stats.service');
+    recordCmsSearchLog({ siteId: site.id, keyword, resultCount: result.total, ip: track.ip, userAgent: track.userAgent });
+  }
   const searchPageUrl = (p: number) => `${baseUrl}/search?q=${encodeURIComponent(keyword)}&page=${p}`;
   const totalPages = Math.max(1, Math.ceil(result.total / pageSize));
   const pages = [];

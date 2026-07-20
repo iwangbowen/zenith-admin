@@ -10774,10 +10774,32 @@ export interface CmsAd {
   endAt: string | null;
   /** 点击计数（前台点击中转累加） */
   clickCount: number;
+  /** 曝光计数（前台页面 beacon 上报累加） */
+  viewCount: number;
   sort: number;
   status: 'enabled' | 'disabled';
   createdAt: string;
   updatedAt: string;
+}
+
+/** CMS 访问统计总览（P4；bot 流量不计入） */
+export interface CmsVisitStats {
+  today: { pv: number; uv: number; ips: number };
+  yesterday: { pv: number; uv: number; ips: number };
+  totalPv: number;
+  trend: { date: string; pv: number; uv: number }[];
+  topContents: { contentId: number; title: string; pv: number; uv: number }[];
+  devices: { deviceType: 'pc' | 'mobile' | 'bot'; pv: number }[];
+  referrers: { host: string; pv: number }[];
+  channels: { channelCode: string; pv: number }[];
+}
+
+/** CMS 搜索分析（P4） */
+export interface CmsSearchAnalytics {
+  total: number;
+  trend: { date: string; count: number }[];
+  topKeywords: { keyword: string; count: number; avgResults: number }[];
+  noResultKeywords: { keyword: string; count: number }[];
 }
 
 export interface CmsFormField {

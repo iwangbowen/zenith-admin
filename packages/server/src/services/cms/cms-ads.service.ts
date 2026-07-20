@@ -33,6 +33,7 @@ export function mapCmsAd(row: CmsAdRow, slotName?: string | null) {
     startAt: formatNullableDateTime(row.startAt),
     endAt: formatNullableDateTime(row.endAt),
     clickCount: row.clickCount,
+    viewCount: row.viewCount,
     sort: row.sort,
     status: row.status,
     createdAt: formatDateTime(row.createdAt),

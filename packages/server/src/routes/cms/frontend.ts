@@ -17,6 +17,7 @@ import {
 import { verifyContentPreviewToken } from '../../services/cms/cms-preview.service';
 import { readStaticFile, writeStaticFile, generateSitemapXml, buildRobotsTxt } from '../../services/cms/cms-static.service';
 import { generateRssXml, findChannelByPath } from '../../services/cms/cms-render.service';
+import { recordCmsVisit, pageKindFromPath } from '../../services/cms/cms-stats.service';
 
 const PAGE_CACHE_PREFIX = `${config.redis.keyPrefix}cms:page:`;
 const SITEMAP_CACHE_PREFIX = `${config.redis.keyPrefix}cms:sitemap:`;
@@ -140,6 +141,12 @@ function channelStaticPath(channel: PublishChannelInfo, sitePath: string): strin
   return channel.isDefault ? sitePath : `${CMS_CHANNEL_SEGMENT_PREFIX}${channel.code}/${sitePath}`;
 }
 
+/** 详情路径提取纯数字内容 id（静态命中无渲染上下文时尽力关联；slug 详情返回 null） */
+function extractContentIdFromPath(sitePath: string): number | null {
+  const m = /\/(\d+)(?:_\d+)?\.html$/.exec(`/${sitePath}`);
+  return m ? Number(m[1]) : null;
+}
+
 function respond(c: Context, result: RenderResult) {
   if (result.status === 302) return c.redirect(result.location, 302);
   return c.newResponse(result.html, result.status, { ...HTML_HEADERS });
@@ -164,6 +171,23 @@ export function createCmsFrontendRoutes(): Hono {
     const target = await resolveTarget(c.req.header('host'), pathname);
     if (!target) return next();
     const { site, sitePath, baseUrl, isPreview, channel } = target;
+
+    // 访问统计埋点（fire-and-forget；预览流量不计入）
+    const trackVisit = (pageKind: string, contentId?: number | null) => {
+      if (isPreview) return;
+      const forwarded = c.req.header('x-forwarded-for');
+      recordCmsVisit({
+        siteId: site.id,
+        sitePath,
+        pageKind,
+        contentId: contentId ?? extractContentIdFromPath(sitePath),
+        channelCode: channel.code,
+        ip: forwarded?.split(',')[0].trim() || c.req.header('x-real-ip') || null,
+        userAgent: c.req.header('user-agent') ?? null,
+        referrer: c.req.header('referer') ?? null,
+        host: c.req.header('host') ?? null,
+      });
+    };
 
     // 默认通道 ↔ 独立域名通道按 UA 302 互跳
     const uaRedirect = await resolveUaRedirect(c, target);
@@ -230,7 +254,12 @@ export function createCmsFrontendRoutes(): Hono {
     if (sitePath === 'search' || sitePath === 'search/') {
       const keyword = (c.req.query('q') ?? '').trim().slice(0, 64);
       const page = Math.max(1, Number(c.req.query('page')) || 1);
-      const result = await renderSearchPage(site, baseUrl, keyword, page);
+      const forwarded = c.req.header('x-forwarded-for');
+      const result = await renderSearchPage(site, baseUrl, keyword, page, {
+        ip: forwarded?.split(',')[0].trim() || c.req.header('x-real-ip') || null,
+        userAgent: c.req.header('user-agent') ?? null,
+      });
+      trackVisit('search');
       return respond(c, result);
     }
 
@@ -238,6 +267,7 @@ export function createCmsFrontendRoutes(): Hono {
     if (!isPreview && site.staticMode !== 'dynamic' && (sitePath === '' || sitePath.endsWith('/') || sitePath.endsWith('.html'))) {
       const cached = await readStaticFile(site.code, channelStaticPath(channel, sitePath));
       if (cached !== null) {
+        trackVisit(pageKindFromPath(sitePath));
         return htmlResponse(c, cached, PAGE_CACHE_TTL_DEFAULT_SECONDS, { 'X-Cms-Cache': 'static' });
       }
     }
@@ -247,6 +277,7 @@ export function createCmsFrontendRoutes(): Hono {
     if (!isPreview && site.staticMode === 'dynamic') {
       const cached = await redis.get(cacheKey).catch(() => null);
       if (cached) {
+        trackVisit(pageKindFromPath(sitePath));
         return htmlResponse(c, cached, PAGE_CACHE_TTL_DEFAULT_SECONDS, { 'X-Cms-Cache': 'redis' });
       }
     }
@@ -254,6 +285,7 @@ export function createCmsFrontendRoutes(): Hono {
     // SSR 渲染
     const result = await renderSitePath(site, baseUrl, sitePath, channel.code);
     if (result.status === 200) {
+      trackVisit(result.kind, 'contentId' in result ? result.contentId : null);
       const ttl = PAGE_CACHE_TTL_BY_KIND[result.kind] ?? PAGE_CACHE_TTL_DEFAULT_SECONDS;
       if (!isPreview && site.staticMode === 'hybrid') {
         // 混合模式：miss 即渲染并回写，下次直接命中静态文件

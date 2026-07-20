@@ -49,6 +49,7 @@ graph LR
 | 敏感词库 | `/cms/sensitive-words` | Aho-Corasick 引擎，评论/表单提交拦截 | [互动与运营](./interaction) |
 | 易错词库 | `/cms/error-prone-words` | 编辑辅助：错误词→正确词，内容检查一键替换 | [内容管线](./content-pipeline) |
 | 问卷调查 | `/cms/surveys` | 单选/多选/文字题、匿名/会员提交、结果统计 | [互动与运营](./interaction) |
+| 访问统计 | `/cms/stats` | PV/UV 趋势、内容 TOP、来源/设备/通道分布、搜索分析 | [全文检索](./search) |
 | 采集中心 | `/cms/collect` | CSS 选择器采集 + 图片本地化 | [互动与运营](./interaction) |
 | 页面搭建 | `/cms/pages` | 区块拖拽装配 + 内嵌实时预览 | [互动与运营](./interaction) |
 
@@ -77,6 +78,10 @@ CMS 前台路由（Hono 兜底路由）
 
 会员互动表：`cms_content_likes` / `cms_content_favorites` / `cms_member_view_history` / `cms_surveys` / `cms_survey_questions` / `cms_survey_answers`
 
+统计表：`cms_visit_logs`（前台访问原始日志，90 天保留）/ `cms_ad_stats`（广告曝光/点击日聚合）/ `cms_search_logs`（搜索日志，90 天保留）
+
+> 访问统计为**服务端响应路径埋点**（静态命中同样统计，无需前端 JS），UV 按 ip+ua 哈希去重，爬虫流量单独归类不计入 PV/UV 卡片；报表基于原始日志实时聚合，原始日志由周期任务保留 90 天。
+
 SEO 与采集：`cms_redirects` / `cms_link_words` / `cms_push_logs` / `cms_search_words` / `cms_collect_rules` / `cms_collect_items`
 
 权限：`cms_site_users`（站点数据权限绑定）
@@ -95,6 +100,6 @@ SEO 与采集：`cms_redirects` / `cms_link_words` / `cms_push_logs` / `cms_sear
 
 ## 权限码
 
-所有权限以 `cms:` 前缀，按资源划分：`cms:site:*`、`cms:channel:*`、`cms:content:list|create|update|delete|publish|audit`、`cms:model:*`、`cms:tag:*`、`cms:fragment:*`、`cms:link:*`、`cms:static:build`、`cms:search:manage`、`cms:seo:manage|push`、`cms:comment:audit|delete`、`cms:ad:manage`、`cms:form:manage`、`cms:sensitive:manage`、`cms:word:list|manage`（易错词）、`cms:survey:list|manage`（问卷）、`cms:collect:*`、`cms:page:*`、`cms:dashboard:view`。
+所有权限以 `cms:` 前缀，按资源划分：`cms:site:*`、`cms:channel:*`、`cms:content:list|create|update|delete|publish|audit`、`cms:model:*`、`cms:tag:*`、`cms:fragment:*`、`cms:link:*`、`cms:static:build`、`cms:search:manage`、`cms:seo:manage|push`、`cms:comment:audit|delete`、`cms:ad:manage`、`cms:form:manage`、`cms:sensitive:manage`、`cms:word:list|manage`（易错词）、`cms:survey:list|manage`（问卷）、`cms:stat:view`（访问统计）、`cms:collect:*`、`cms:page:*`、`cms:dashboard:view`。
 
 站点级数据权限：在「站点管理 → 授权用户」绑定后，该用户仅能管理绑定站点；未绑定的非超管用户不受限（兼容策略）。

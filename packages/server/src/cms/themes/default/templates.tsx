@@ -97,6 +97,7 @@ function AdSlot({ ctx, code }: { ctx: CmsBaseContext; code: string }) {
           target={ad.linkUrl ? '_blank' : '_self'}
           rel="noopener nofollow"
           aria-label={ad.name}
+          data-ad-id={ad.id}
         >
           {ad.image ? <img src={ad.image} alt={ad.name} loading="lazy" /> : <div className="ad-text">{ad.name}</div>}
         </a>

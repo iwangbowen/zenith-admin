@@ -965,6 +965,7 @@ export const cmsP2Handlers = [
       startAt: (body.startAt as string) ?? null,
       endAt: (body.endAt as string) ?? null,
       clickCount: 0,
+      viewCount: 0,
       sort: Number(body.sort ?? 0),
       status: (body.status as 'enabled' | 'disabled') ?? 'enabled',
       createdAt: now,
@@ -1261,6 +1262,63 @@ export const cmsP2Handlers = [
     if (idx === -1) return notFound('问卷不存在');
     mockCmsSurveys.splice(idx, 1);
     return okJson(null, '删除成功');
+  }),
+
+  // ═══ 访问统计（P4）═══════════════════════════════════════════════════════
+  http.get('/api/cms/stats/visits', ({ request }) => {
+    const url = new URL(request.url);
+    const days = Math.min(90, Math.max(1, Number(url.searchParams.get('days')) || 30));
+    const trend = Array.from({ length: days }, (_, i) => {
+      const d = new Date(Date.now() - (days - 1 - i) * 86400_000);
+      const pv = 80 + Math.round(Math.sin(i / 3) * 30) + (i % 7 === 5 ? 40 : 0);
+      return { date: mockDate(d), pv, uv: Math.round(pv * 0.6) };
+    });
+    const today = trend[trend.length - 1];
+    const yesterday = trend[trend.length - 2] ?? today;
+    return okJson({
+      today: { pv: today.pv, uv: today.uv, ips: Math.round(today.uv * 0.9) },
+      yesterday: { pv: yesterday.pv, uv: yesterday.uv, ips: Math.round(yesterday.uv * 0.9) },
+      totalPv: trend.reduce((s, t) => s + t.pv, 0),
+      trend,
+      topContents: mockCmsContents.filter((c) => c.status === 'published').slice(0, 10).map((c, i) => ({
+        contentId: c.id, title: c.title, pv: 320 - i * 40, uv: 210 - i * 26,
+      })),
+      devices: [
+        { deviceType: 'pc', pv: 1450 },
+        { deviceType: 'mobile', pv: 980 },
+        { deviceType: 'bot', pv: 260 },
+      ],
+      referrers: [
+        { host: 'www.google.com', pv: 320 },
+        { host: 'www.baidu.com', pv: 260 },
+        { host: 'github.com', pv: 90 },
+      ],
+      channels: [
+        { channelCode: 'pc', pv: 1450 },
+        { channelCode: 'h5', pv: 980 },
+      ],
+    });
+  }),
+  http.get('/api/cms/stats/search', ({ request }) => {
+    const url = new URL(request.url);
+    const days = Math.min(90, Math.max(1, Number(url.searchParams.get('days')) || 30));
+    const trend = Array.from({ length: days }, (_, i) => {
+      const d = new Date(Date.now() - (days - 1 - i) * 86400_000);
+      return { date: mockDate(d), count: 6 + (i % 5) };
+    });
+    return okJson({
+      total: trend.reduce((s, t) => s + t.count, 0),
+      trend,
+      topKeywords: [
+        { keyword: 'CMS', count: 46, avgResults: 5 },
+        { keyword: '静态化', count: 31, avgResults: 3 },
+        { keyword: '全文检索', count: 22, avgResults: 2 },
+      ],
+      noResultKeywords: [
+        { keyword: '小程序模板', count: 9 },
+        { keyword: '价格表', count: 5 },
+      ],
+    });
   }),
 
   // ─── 站点授权用户 ───────────────────────────────────────────────────────────

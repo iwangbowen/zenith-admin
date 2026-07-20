@@ -399,6 +399,7 @@ export const CmsAdDTO = z
     startAt: z.string().nullable(),
     endAt: z.string().nullable(),
     clickCount: z.number().int().openapi({ description: '点击计数（前台点击中转累加）' }),
+    viewCount: z.number().int().openapi({ description: '曝光计数（前台页面 beacon 上报累加）' }),
     sort: z.number().int(),
     status: z.enum(['enabled', 'disabled']),
     ...auditFields,
@@ -566,6 +567,36 @@ export const CmsSurveyStatsDTO = z
     })),
   })
   .openapi('CmsSurveyStats');
+
+// ─── P4 统计分析 ───────────────────────────────────────────────────────────────
+const dayMetric = z.object({ pv: z.number().int(), uv: z.number().int(), ips: z.number().int() });
+
+export const CmsVisitStatsDTO = z
+  .object({
+    today: dayMetric,
+    yesterday: dayMetric,
+    totalPv: z.number().int().openapi({ description: '统计区间累计 PV（不含爬虫）' }),
+    trend: z.array(z.object({ date: z.string(), pv: z.number().int(), uv: z.number().int() })),
+    topContents: z.array(z.object({
+      contentId: z.number().int(),
+      title: z.string(),
+      pv: z.number().int(),
+      uv: z.number().int(),
+    })),
+    devices: z.array(z.object({ deviceType: z.enum(['pc', 'mobile', 'bot']), pv: z.number().int() })),
+    referrers: z.array(z.object({ host: z.string(), pv: z.number().int() })),
+    channels: z.array(z.object({ channelCode: z.string(), pv: z.number().int() })),
+  })
+  .openapi('CmsVisitStats');
+
+export const CmsSearchAnalyticsDTO = z
+  .object({
+    total: z.number().int(),
+    trend: z.array(z.object({ date: z.string(), count: z.number().int() })),
+    topKeywords: z.array(z.object({ keyword: z.string(), count: z.number().int(), avgResults: z.number().int() })),
+    noResultKeywords: z.array(z.object({ keyword: z.string(), count: z.number().int() })).openapi({ description: '无结果搜索词榜（内容选题参考）' }),
+  })
+  .openapi('CmsSearchAnalytics');
 
 export const CmsPushLogDTO = z
   .object({

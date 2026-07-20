@@ -7,6 +7,7 @@ import { getCmsFormByCode, submitCmsForm } from '../../services/cms/cms-forms.se
 import { getPublishedSurveyByCode, submitCmsSurvey } from '../../services/cms/cms-surveys.service';
 import { increaseViewCount } from '../../services/cms/cms-contents.service';
 import { recordAdClick } from '../../services/cms/cms-ads.service';
+import { recordAdViews, recordAdClickStat } from '../../services/cms/cms-stats.service';
 import { config } from '../../config';
 import redis from '../../lib/redis';
 
@@ -154,7 +155,27 @@ export function createCmsFrontPublicRoutes(): Hono {
     const adId = Number(c.req.param('id')) || 0;
     const linkUrl = adId > 0 ? await recordAdClick(adId).catch(() => null) : null;
     if (!linkUrl) return c.text('广告不存在或未投放', 404);
+    recordAdClickStat(adId);
     return c.redirect(linkUrl, 302);
+  });
+
+  // ─── 广告曝光 beacon（页面加载时批量上报本页广告 id；同 IP 60s 去重防刷）───────
+  app.post('/ads/view', async (c) => {
+    let ids: number[];
+    try {
+      const body = await c.req.json<{ ids?: number[] }>();
+      ids = Array.isArray(body?.ids) ? body.ids : [];
+    } catch {
+      return c.body(null, 204);
+    }
+    if (ids.length === 0) return c.body(null, 204);
+    const ip = clientIp(c.req.raw.headers);
+    const dedupeKey = `${config.redis.keyPrefix}cms:adview:${ip}:${[...new Set(ids)].sort((a, b) => a - b).join(',')}`;
+    const first = await redis.set(dedupeKey, '1', 'EX', 60, 'NX').catch(() => 'OK');
+    if (first) {
+      await recordAdViews(ids).catch(() => undefined);
+    }
+    return c.body(null, 204);
   });
 
   // ─── 浏览计数 beacon（静态页 sendBeacon 上报；同 IP+内容 60s 去重防刷）────────

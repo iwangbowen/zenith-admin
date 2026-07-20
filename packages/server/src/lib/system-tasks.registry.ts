@@ -312,4 +312,15 @@ export async function registerSystemTasks(): Promise<void> {
       return `清理了 ${count} 条回收站内容`;
     },
   });
+
+  const { cleanupCmsStatLogs } = await import('../services/cms/cms-stats.service');
+  await registerSystemRecurringJob({
+    name: 'cms-stat-logs-cleanup',
+    title: 'CMS 统计日志清理',
+    module: 'CMS内容管理',
+    cronExpression: '20 4 * * *',
+    description: '每天清理超过 90 天的前台访问日志与搜索日志（报表基于原始日志实时聚合）。',
+    allowManualRun: true,
+    run: () => cleanupCmsStatLogs(90),
+  });
 }

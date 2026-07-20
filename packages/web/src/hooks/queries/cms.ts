@@ -7,7 +7,7 @@ import type {
   CmsSearchWord, CmsHotKeyword, CmsCollectRule, CmsCollectItem, CmsPage,
   CmsEditLock, CmsPreviewLink, CmsContentVersionDiff, CmsDashboardStats,
   CmsThemeTemplateManifest, CmsPublishChannel, CmsContentOpLog, CmsErrorProneWord, CmsTextCheckResult,
-  CmsContentType, CmsSurvey, CmsSurveyStats,
+  CmsContentType, CmsSurvey, CmsSurveyStats, CmsVisitStats, CmsSearchAnalytics,
 } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { toQueryString, unwrap, LOOKUP_STALE_TIME } from '@/lib/query';
@@ -996,6 +996,29 @@ export function useDeleteCmsSurvey() {
   return useMutation({
     mutationFn: (id: number) => request.delete<null>(`/api/cms/surveys/${id}`).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: cmsSurveyKeys.all }),
+  });
+}
+
+// ═══ 访问统计（P4）═══════════════════════════════════════════════════════════
+export const cmsStatKeys = {
+  visits: (siteId: number | undefined, days: number) => ['cms-stats', 'visits', siteId, days] as const,
+  search: (siteId: number | undefined, days: number) => ['cms-stats', 'search', siteId, days] as const,
+};
+
+export function useCmsVisitStats(siteId: number | undefined, days: number) {
+  return useQuery({
+    queryKey: cmsStatKeys.visits(siteId, days),
+    queryFn: () => request.get<CmsVisitStats>(`/api/cms/stats/visits?siteId=${siteId}&days=${days}`).then(unwrap),
+    enabled: siteId !== undefined,
+    refetchInterval: 60_000,
+  });
+}
+
+export function useCmsSearchAnalytics(siteId: number | undefined, days: number) {
+  return useQuery({
+    queryKey: cmsStatKeys.search(siteId, days),
+    queryFn: () => request.get<CmsSearchAnalytics>(`/api/cms/stats/search?siteId=${siteId}&days=${days}`).then(unwrap),
+    enabled: siteId !== undefined,
   });
 }
 
