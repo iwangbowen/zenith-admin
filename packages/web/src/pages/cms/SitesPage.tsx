@@ -422,14 +422,8 @@ export default function SitesPage() {
                 <Form.TextArea field="description" label="SEO 描述" rows={2} />
                 <Form.TextArea field="robots" label="robots.txt" rows={3} placeholder="留空使用默认规则（Allow all + Sitemap）" />
                 <Form.Section text="搜索推送（配置后发布内容自动推送搜索引擎）">
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Form.Input field="baiduPushToken" label="百度推送 Token" placeholder="百度搜索资源平台 → 普通收录" />
-                    </Col>
-                    <Col span={12}>
-                      <Form.Input field="indexNowKey" label="IndexNow Key" placeholder="Bing 等引擎；key 文件自动托管" />
-                    </Col>
-                  </Row>
+                  <Form.Input field="baiduPushToken" label="百度推送 Token" placeholder="百度搜索资源平台 → 普通收录" />
+                  <Form.Input field="indexNowKey" label="IndexNow Key" placeholder="Bing 等引擎；key 文件自动托管" />
                 </Form.Section>
               </div>
             </TabPane>
@@ -468,10 +462,10 @@ export default function SitesPage() {
                 <Form.Section text="主题参数">
                   <Row gutter={16}>
                     <Col span={12}>
-                      <Form.Input field="themePrimary" label="主题色" placeholder="如 #1f6feb，留空用主题默认" />
+                      <Form.Input field="themePrimary" label="主题色" labelWidth={140} placeholder="如 #1f6feb，留空用主题默认" />
                     </Col>
                     <Col span={12}>
-                      <Form.Select field="themeDark" label="暗色模式" style={{ width: '100%' }}
+                      <Form.Select field="themeDark" label="暗色模式" labelWidth={140} style={{ width: '100%' }}
                         optionList={[
                           { value: 'light', label: '仅浅色' },
                           { value: 'auto', label: '跟随系统（带切换按钮）' },
@@ -483,28 +477,28 @@ export default function SitesPage() {
                 <Form.Section text="图片处理（编辑器/封面上传时生效）">
                   <Row gutter={16}>
                     <Col span={12}>
-                      <Form.InputNumber field="imageMaxWidth" label="最大宽度(px)" min={0} style={{ width: '100%' }} extraText="超宽等比压缩，0 = 不限制" />
+                      <Form.InputNumber field="imageMaxWidth" label="最大宽度(px)" labelWidth={140} min={0} style={{ width: '100%' }} extraText="超宽等比压缩，0 = 不限制" />
                     </Col>
                     <Col span={12}>
-                      <Form.Switch field="thumbEnabled" label="生成缩略图" />
-                    </Col>
-                  </Row>
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Form.InputNumber field="thumbWidth" label="缩略图宽度(px)" min={0} style={{ width: '100%' }} extraText="开启缩略图后生效" />
+                      <Form.Switch field="thumbEnabled" label="生成缩略图" labelWidth={140} />
                     </Col>
                   </Row>
                   <Row gutter={16}>
                     <Col span={12}>
-                      <Form.Switch field="watermarkEnabled" label="文字水印" />
-                    </Col>
-                    <Col span={12}>
-                      <Form.Input field="watermarkText" label="水印文字" placeholder="如站点名称" />
+                      <Form.InputNumber field="thumbWidth" label="缩略图宽度(px)" labelWidth={140} min={0} style={{ width: '100%' }} extraText="开启缩略图后生效" />
                     </Col>
                   </Row>
                   <Row gutter={16}>
                     <Col span={12}>
-                      <Form.Select field="watermarkPosition" label="水印位置" style={{ width: '100%' }}
+                      <Form.Switch field="watermarkEnabled" label="文字水印" labelWidth={140} />
+                    </Col>
+                    <Col span={12}>
+                      <Form.Input field="watermarkText" label="水印文字" labelWidth={140} placeholder="如站点名称" />
+                    </Col>
+                  </Row>
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.Select field="watermarkPosition" label="水印位置" labelWidth={140} style={{ width: '100%' }}
                         optionList={[
                           { value: 'northwest', label: '左上' }, { value: 'north', label: '上中' }, { value: 'northeast', label: '右上' },
                           { value: 'west', label: '左中' }, { value: 'center', label: '居中' }, { value: 'east', label: '右中' },
@@ -512,7 +506,7 @@ export default function SitesPage() {
                         ]} />
                     </Col>
                     <Col span={12}>
-                      <Form.InputNumber field="watermarkOpacity" label="水印不透明度(%)" min={0} max={100} style={{ width: '100%' }} />
+                      <Form.InputNumber field="watermarkOpacity" label="水印不透明度(%)" labelWidth={140} min={0} max={100} style={{ width: '100%' }} />
                     </Col>
                   </Row>
                 </Form.Section>
