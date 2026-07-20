@@ -1310,16 +1310,11 @@ export const CMS_FRAGMENT_TYPE_LABELS: Record<(typeof CMS_FRAGMENT_TYPES)[number
 /** CMS 前台预览路径前缀（无域名绑定时通过 /__cms/{siteCode}/... 访问站点） */
 export const CMS_PREVIEW_PREFIX = '/__cms';
 
-/** CMS H5 通道路径段（预览 /__cms/{code}/__h5/...；静态产物 {code}/__h5/... 子树） */
-export const CMS_H5_PATH_SEGMENT = '__h5';
+/** CMS 发布通道路径段前缀：非默认通道预览 /__cms/{site}/__{code}/...、静态产物 __{code}/ 子树 */
+export const CMS_CHANNEL_SEGMENT_PREFIX = '__';
 
-/** CMS 发布通道（模板与静态产物的设备维度） */
-export const CMS_DEVICE_CHANNELS = ['pc', 'h5'] as const;
-
-export const CMS_DEVICE_CHANNEL_LABELS: Record<(typeof CMS_DEVICE_CHANNELS)[number], string> = {
-  pc: 'PC 桌面',
-  h5: 'H5 移动',
-};
+/** 默认发布通道编码（站点无通道记录时的虚拟默认通道） */
+export const CMS_DEFAULT_CHANNEL_CODE = 'pc';
 
 // ─── CMS P2 ───────────────────────────────────────────────────────────────────
 export const CMS_COMMENT_STATUSES = ['pending', 'approved', 'rejected'] as const;

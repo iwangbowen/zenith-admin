@@ -5,8 +5,8 @@
 ## 站点路由
 
 - **域名模式**：前台按请求 Host 精确匹配站点 `domain` / `aliasDomains`，未命中回退默认站点（`isDefault`）
-- **预览模式**：`/__cms/{siteCode}/...` 前缀直达任意站点（跳过静态缓存，后台改动即时可见）；H5 通道预览走 `/__cms/{siteCode}/__h5/...`
-- **H5 发布通道**：站点 `settings.h5Enabled` 开启后，`settings.h5Domain`（如 `m.example.com`）精确匹配 H5 通道；PC/H5 域名都绑定时按 UA 302 互跳（移动 UA 访问 PC 域名跳 H5，反之亦然，响应带 `Vary: User-Agent`）
+- **预览模式**：`/__cms/{siteCode}/...` 前缀直达任意站点（跳过静态缓存，后台改动即时可见）；非默认通道预览走 `/__cms/{siteCode}/__{channelCode}/...`
+- **发布通道**：通道（PC/H5/小程序等输出端）在「CMS 内容管理 → 发布通道」按站点自由创建（`cms_publish_channels` 表）。默认通道服务站点主域名与静态根目录；非默认通道可绑定独立域名（Host 精确匹配）与 UA 正则——两者同配时，主域名按 UA 302 跳通道域名、通道域名 UA 不匹配时跳回主域名（响应带 `Vary: User-Agent`）。站点无通道记录时自动回退虚拟 PC 默认通道，零迁移兼容
 
 ## URL 规则
 
@@ -31,7 +31,7 @@
 | `hybrid`（默认） | 静态文件命中直返；miss 时 SSR 渲染并**回写**静态文件 | 通用推荐 |
 | `static` | 仅发布时生成，miss 不回写 | 高安全静态托管 |
 
-静态产物：首页、栏目全分页（上限 50 页）、详情页、标签页、搭建页、`sitemap.xml`（5 万条上限）、`robots.txt`、RSS。写入采用 `.tmp` + rename 原子操作。H5 通道开启后，页面产物在 `{siteCode}/__h5/` 子树双份生成；`sitemap.xml`/`robots.txt`/RSS 仅站点级一份。dynamic 模式 Redis 页面缓存 key 含通道维度（`cms:page:{siteId}:{device}:{path}`）。
+静态产物：首页、栏目全分页（上限 50 页）、详情页、标签页、搭建页、`sitemap.xml`（5 万条上限）、`robots.txt`、RSS。写入采用 `.tmp` + rename 原子操作。默认通道产物在站点根目录，非默认通道在 `{siteCode}/__{channelCode}/` 子树逐通道生成；`sitemap.xml`/`robots.txt`/RSS 仅站点级一份。dynamic 模式 Redis 页面缓存 key 含通道维度（`cms:page:{siteId}:{channelCode}:{path}`）。
 
 ## 增量刷新
 
@@ -60,7 +60,7 @@ SSR 响应按页面类型分级缓存（v1.6.0+）：
 
 | 页面 | 解析顺序 |
 |------|----------|
-| 列表页 | 栏目 `listTemplate` → 站点 `settings.defaultTemplates[device].list` → 主题默认 |
-| 详情页 | 内容 `detailTemplate` → 栏目 `detailTemplate` → 站点 `defaultTemplates[device].detailByModel[模型code]` → 站点 `defaultTemplates[device].detail` → 主题默认 |
+| 列表页 | 栏目 `listTemplate` → 站点 `settings.defaultTemplates[通道].list` → 主题默认 |
+| 详情页 | 内容 `detailTemplate` → 栏目 `detailTemplate` → 站点 `defaultTemplates[通道].detailByModel[模型code]` → 站点 `defaultTemplates[通道].detail` → 主题默认 |
 
-`device` 为发布通道（`pc` / `h5`），站点级默认模板可按通道分别配置（站点编辑 →「模板与通道」标签页）。
+通道维度 key 为发布通道编码（`cms_publish_channels.code`，用户自建），站点级默认模板可按通道分别配置（站点编辑 →「模板与通道」标签页，页签跟随站点通道列表动态渲染）。

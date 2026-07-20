@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import type { CmsChannel, CmsContent, CmsContentStatus, CmsModelField } from '@zenith/shared';
+import type { CmsChannel, CmsContent, CmsContentStatus, CmsModelField, CmsPublishChannel } from '@zenith/shared';
 import {
   mockCmsSites, mockCmsModels, mockCmsChannels, mockCmsContents, mockCmsTags,
   mockCmsFragments, mockCmsFriendLinks, buildMockChannelTree,
@@ -10,6 +10,7 @@ import {
   getNextCmsAdSlotId, getNextCmsAdId, getNextCmsFormId, getNextCmsSensitiveWordId,
   getNextCmsLinkWordId, getNextCmsRedirectId,
   mockCmsSearchWords, mockCmsHotKeywords, getNextCmsSearchWordId,
+  mockCmsPublishChannels, getNextCmsPublishChannelId,
 } from '../data/cms';
 import { createProgressingMockTask } from './async-tasks';
 import { mockDateTime, mockDate } from '../utils/date';
@@ -115,6 +116,58 @@ export const cmsHandlers = [
     const idx = mockCmsSites.findIndex((s) => s.id === id);
     if (idx === -1) return notFound('站点不存在');
     mockCmsSites.splice(idx, 1);
+    return okJson(null, '删除成功');
+  }),
+
+  // ═══ 发布通道 ═══════════════════════════════════════════════════════════
+  http.get('/api/cms/publish-channels', ({ request }) => {
+    const url = new URL(request.url);
+    const siteId = Number(url.searchParams.get('siteId')) || 0;
+    return okJson(mockCmsPublishChannels.filter((c) => c.siteId === siteId));
+  }),
+  http.post('/api/cms/publish-channels', async ({ request }) => {
+    const body = (await request.json()) as Body;
+    const now = mockDateTime();
+    const siteId = Number(body.siteId);
+    if (body.isDefault) mockCmsPublishChannels.forEach((c) => { if (c.siteId === siteId) c.isDefault = false; });
+    const channel: CmsPublishChannel = {
+      id: getNextCmsPublishChannelId(),
+      siteId,
+      name: String(body.name ?? ''),
+      code: String(body.code ?? ''),
+      domain: (body.domain as string) ?? null,
+      uaRegex: (body.uaRegex as string) ?? null,
+      isDefault: body.isDefault === true,
+      status: (body.status as 'enabled' | 'disabled') ?? 'enabled',
+      sort: Number(body.sort ?? 0),
+      remark: (body.remark as string) ?? null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    mockCmsPublishChannels.push(channel);
+    return okJson(channel, '创建成功');
+  }),
+  http.put('/api/cms/publish-channels/:id', async ({ params, request }) => {
+    const idx = mockCmsPublishChannels.findIndex((c) => c.id === Number(params.id));
+    if (idx === -1) return notFound('发布通道不存在');
+    const body = (await request.json()) as Body;
+    const current = mockCmsPublishChannels[idx];
+    if (current.isDefault && body.isDefault === false) {
+      return HttpResponse.json({ code: 400, message: '默认通道不可取消默认，请将其他通道设为默认', data: null }, { status: 400 });
+    }
+    if (body.isDefault === true && !current.isDefault) {
+      mockCmsPublishChannels.forEach((c) => { if (c.siteId === current.siteId) c.isDefault = false; });
+    }
+    Object.assign(current, body, { updatedAt: mockDateTime() });
+    return okJson(current, '更新成功');
+  }),
+  http.delete('/api/cms/publish-channels/:id', ({ params }) => {
+    const idx = mockCmsPublishChannels.findIndex((c) => c.id === Number(params.id));
+    if (idx === -1) return notFound('发布通道不存在');
+    if (mockCmsPublishChannels[idx].isDefault) {
+      return HttpResponse.json({ code: 400, message: '默认通道不可删除', data: null }, { status: 400 });
+    }
+    mockCmsPublishChannels.splice(idx, 1);
     return okJson(null, '删除成功');
   }),
 

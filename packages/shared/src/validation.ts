@@ -5076,6 +5076,21 @@ export const createCmsSiteSchema = z.object({
 });
 export const updateCmsSiteSchema = createCmsSiteSchema.partial();
 
+export const createCmsPublishChannelSchema = z.object({
+  siteId: z.number().int().positive(),
+  name: z.string().min(1, '通道名称不能为空').max(100),
+  code: z.string().min(1, '通道编码不能为空').max(50).regex(cmsSlugRegex, '编码仅支持小写字母、数字、中划线'),
+  domain: z.string().max(255).nullable().optional(),
+  uaRegex: z.string().max(255).nullable().optional(),
+  isDefault: z.boolean().default(false),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  sort: z.number().int().default(0),
+  remark: z.string().max(500).nullable().optional(),
+});
+export const updateCmsPublishChannelSchema = createCmsPublishChannelSchema.partial().omit({ siteId: true });
+export type CreateCmsPublishChannelInput = z.input<typeof createCmsPublishChannelSchema>;
+export type UpdateCmsPublishChannelInput = z.input<typeof updateCmsPublishChannelSchema>;
+
 export const cmsModelFieldSchema = z.object({
   id: z.number().int().positive().optional(),
   name: z.string().min(1, '字段标识不能为空').max(50).regex(/^[a-z][a-z0-9_]*$/, '字段标识须以小写字母开头，仅含小写字母/数字/下划线'),

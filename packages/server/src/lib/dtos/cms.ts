@@ -32,6 +32,23 @@ export const CmsSiteDTO = z
   })
   .openapi('CmsSite');
 
+export const CmsPublishChannelDTO = z
+  .object({
+    id: z.number().int(),
+    siteId: z.number().int(),
+    name: z.string().openapi({ example: 'H5 移动' }),
+    code: z.string().openapi({ example: 'h5', description: '通道编码（站点内唯一）：预览段 /__cms/{site}/__{code}、静态子树 __{code}/' }),
+    domain: z.string().nullable().openapi({ description: '通道独立域名；默认通道使用站点主域名' }),
+    uaRegex: z.string().nullable().openapi({ description: 'UA 匹配正则（与 domain 同配时启用 UA 302 互跳）' }),
+    isDefault: z.boolean().openapi({ description: '默认通道（每站点唯一，不可删除/停用）' }),
+    status: z.enum(['enabled', 'disabled']),
+    sort: z.number().int(),
+    remark: z.string().nullable(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('CmsPublishChannel');
+
 export const CmsModelFieldDTO = z
   .object({
     id: z.number().int(),

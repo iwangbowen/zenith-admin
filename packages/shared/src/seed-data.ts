@@ -18,7 +18,7 @@ import type {
   ReportDatasource, ReportDataset, ReportDashboard, ApiScope, RatePlan, ReportPrintTemplate,
   UserFeedback, ReportFolder, ReportMetric, ReportEnvironment, ReportDqRule, ReportQueryQuota,
   ReportSlaRule, ReportAssetTemplate, ReportFillTemplate, AnalyticsEventPropertyDef, AnalyticsSite,
-  CmsSite, CmsModel, CmsChannel, CmsContent, CmsTag, CmsFragment, CmsFriendLink,
+  CmsSite, CmsPublishChannel, CmsModel, CmsChannel, CmsContent, CmsTag, CmsFragment, CmsFriendLink,
   CmsAdSlot, CmsAd, CmsForm, CmsSensitiveWord, CmsLinkWord, CmsComment,
 } from './types';
 import { ANALYTICS_EXPERIMENT_EXPOSURE_EVENT, ANALYTICS_SEMANTIC_EVENT_LABELS, type AnalyticsSemanticEventName } from './constants';
@@ -673,6 +673,10 @@ export const SEED_MENUS: Menu[] = [
   { id: 1706, parentId: 1705, title: '新增站点',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:site:create',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1707, parentId: 1705, title: '编辑站点',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'cms:site:update',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1708, parentId: 1705, title: '删除站点',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'cms:site:delete',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1795, parentId: 1700, title: '发布通道',     name: 'CmsPublishChannels', path: '/cms/publish-channels', component: 'cms/PublishChannelsPage', icon: 'Radio',   type: 'menu',      sort: 17, status: 'enabled', visible: true,  permission: 'cms:publish-channel:list',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1796, parentId: 1795, title: '新增通道',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:publish-channel:create', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1797, parentId: 1795, title: '编辑通道',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'cms:publish-channel:update', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1798, parentId: 1795, title: '删除通道',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'cms:publish-channel:delete', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1710, parentId: 1700, title: '栏目管理',     name: 'CmsChannels',      path: '/cms/channels',    component: 'cms/ChannelsPage',           icon: 'FolderTree',   type: 'menu',      sort: 2,  status: 'enabled', visible: true,  permission: 'cms:channel:list',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1711, parentId: 1710, title: '新增栏目',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:channel:create', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1712, parentId: 1710, title: '编辑栏目',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'cms:channel:update', createdAt: SEED_DATE, updatedAt: SEED_DATE },
@@ -2918,6 +2922,11 @@ export const SEED_CMS_SITES: CmsSite[] = [
     staticMode: 'hybrid', robots: null, settings: {}, status: 'enabled', sort: 0, remark: '默认演示站点',
     createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
+];
+
+export const SEED_CMS_PUBLISH_CHANNELS: CmsPublishChannel[] = [
+  { id: 1, siteId: 1, name: 'PC 桌面', code: 'pc', domain: null, uaRegex: null, isDefault: true, status: 'enabled', sort: 1, remark: '默认通道', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, siteId: 1, name: 'H5 移动', code: 'h5', domain: null, uaRegex: 'Mobile|Android|iPhone', isDefault: false, status: 'enabled', sort: 2, remark: '移动端通道（绑定域名后按 UA 自动跳转）', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 export const SEED_CMS_MODELS: (CmsModel & { fields: NonNullable<CmsModel['fields']> })[] = [

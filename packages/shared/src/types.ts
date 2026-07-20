@@ -10300,8 +10300,28 @@ export interface CmsSite {
   updatedAt: string;
 }
 
-/** 发布通道（模板解析与静态产物的设备维度） */
-export type CmsDeviceChannel = 'pc' | 'h5';
+/** 发布通道编码（cms_publish_channels.code）：模板解析与静态产物的通道维度，用户可自建 */
+export type CmsDeviceChannel = string;
+
+/** CMS 发布通道（输出端维度：PC/H5/小程序/大屏…，站点内自由创建） */
+export interface CmsPublishChannel {
+  id: number;
+  siteId: number;
+  name: string;
+  /** 通道编码（站点内唯一）：预览段 /__cms/{site}/__{code}、静态子树 __{code}/ */
+  code: string;
+  /** 通道独立域名；默认通道使用站点主域名，留空 */
+  domain: string | null;
+  /** UA 匹配正则（与 domain 同配时启用默认通道 ↔ 本通道 UA 302 互跳） */
+  uaRegex: string | null;
+  /** 默认通道（每站点唯一）：服务静态根目录，不可删除/停用 */
+  isDefault: boolean;
+  status: 'enabled' | 'disabled';
+  sort: number;
+  remark: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
 /** 站点级默认模板配置（存于 sites.settings.defaultTemplates[device]） */
 export interface CmsSiteTemplateDefaults {

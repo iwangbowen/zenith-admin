@@ -61,6 +61,32 @@ export const cmsSites = pgTable('cms_sites', {
 export type CmsSiteRow = typeof cmsSites.$inferSelect;
 export type NewCmsSite = typeof cmsSites.$inferInsert;
 
+// ─── CMS 发布通道（用户自建的输出端维度：PC/H5/小程序/大屏…）────────────────────
+export const cmsPublishChannels = pgTable('cms_publish_channels', {
+  id: serial('id').primaryKey(),
+  siteId: integer('site_id').notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 100 }).notNull(),
+  /** 通道编码（站点内唯一）：预览路径段 /__cms/{site}/__{code}、静态子树 __{code}/ */
+  code: varchar('code', { length: 50 }).notNull(),
+  /** 通道独立域名（host）；默认通道使用站点主域名，此字段留空 */
+  domain: varchar('domain', { length: 255 }),
+  /** UA 匹配正则（与 domain 同时配置时启用默认通道 ↔ 本通道的 UA 302 互跳） */
+  uaRegex: varchar('ua_regex', { length: 255 }),
+  /** 默认通道（每站点唯一）：服务静态根目录，不可删除/停用 */
+  isDefault: boolean('is_default').notNull().default(false),
+  status: statusEnum('status').notNull().default('enabled'),
+  sort: integer('sort').notNull().default(0),
+  remark: text('remark'),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  uniqueIndex('cms_publish_channels_site_code_uq').on(t.siteId, t.code),
+]);
+
+export type CmsPublishChannelRow = typeof cmsPublishChannels.$inferSelect;
+export type NewCmsPublishChannel = typeof cmsPublishChannels.$inferInsert;
+
 // ─── CMS 内容模型（元数据驱动的自定义字段体系）─────────────────────────────────
 export const cmsModels = pgTable('cms_models', {
   id: serial('id').primaryKey(),

@@ -6,7 +6,7 @@ import type {
   CmsAdSlot, CmsAd, CmsForm, CmsFormSubmission, CmsSensitiveWord, CmsPushLog,
   CmsSearchWord, CmsHotKeyword, CmsCollectRule, CmsCollectItem, CmsPage,
   CmsEditLock, CmsPreviewLink, CmsContentVersionDiff, CmsDashboardStats,
-  CmsThemeTemplateManifest,
+  CmsThemeTemplateManifest, CmsPublishChannel,
 } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { toQueryString, unwrap, LOOKUP_STALE_TIME } from '@/lib/query';
@@ -81,6 +81,42 @@ export function useDeleteCmsSite() {
   return useMutation({
     mutationFn: (id: number) => request.delete<null>(`/api/cms/sites/${id}`).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: cmsSiteKeys.all }),
+  });
+}
+
+// ═══ 发布通道 ═══════════════════════════════════════════════════════════════
+export const cmsPublishChannelKeys = {
+  all: ['cms-publish-channels'] as const,
+  lists: ['cms-publish-channels', 'list'] as const,
+  list: (siteId: number | undefined) => ['cms-publish-channels', 'list', siteId] as const,
+};
+
+/** 站点发布通道列表（含停用；后台管理与站点默认模板页签共用） */
+export function useCmsPublishChannels(siteId: number | undefined, enabled = true) {
+  return useQuery({
+    queryKey: cmsPublishChannelKeys.list(siteId),
+    queryFn: () => request.get<CmsPublishChannel[]>(`/api/cms/publish-channels?siteId=${siteId}`).then(unwrap),
+    enabled: enabled && siteId !== undefined,
+  });
+}
+
+export function useSaveCmsPublishChannel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
+      (id === undefined
+        ? request.post<CmsPublishChannel>('/api/cms/publish-channels', values)
+        : request.put<CmsPublishChannel>(`/api/cms/publish-channels/${id}`, values)
+      ).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsPublishChannelKeys.all }),
+  });
+}
+
+export function useDeleteCmsPublishChannel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.delete<null>(`/api/cms/publish-channels/${id}`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsPublishChannelKeys.all }),
   });
 }
 

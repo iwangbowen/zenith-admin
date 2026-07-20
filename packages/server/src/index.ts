@@ -28,6 +28,7 @@ import { authRateLimit, captchaRateLimit, sensitiveRateLimit, bootstrapRateLimit
 import rateLimitRoutes from './routes/platform/rate-limit';
 import authRoutes from './routes/identity/auth';
 import cmsSitesRoutes from './routes/cms/sites';
+import cmsPublishChannelsRoutes from './routes/cms/publish-channels';
 import cmsModelsRoutes from './routes/cms/models';
 import cmsChannelsRoutes from './routes/cms/channels';
 import cmsContentsRoutes from './routes/cms/contents';
@@ -626,6 +627,7 @@ app.route('/api/nginx-sites', nginxSitesRoutes);
 app.route('/api/health', healthRoutes);
 app.route('/api/log-files', logFilesRoutes);
 app.route('/api/cms/sites', cmsSitesRoutes);
+app.route('/api/cms/publish-channels', cmsPublishChannelsRoutes);
 app.route('/api/cms/models', cmsModelsRoutes);
 app.route('/api/cms/channels', cmsChannelsRoutes);
 app.route('/api/cms/contents', cmsContentsRoutes);

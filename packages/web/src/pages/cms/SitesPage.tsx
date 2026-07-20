@@ -15,11 +15,11 @@ import { useAllUsers } from '@/hooks/queries/users';
 import {
   useCmsSiteList, useCmsThemes, useSaveCmsSite, useDeleteCmsSite, cmsSiteKeys,
   useCmsSiteUsers, useSetCmsSiteUsers, useEnableSiteAnalytics,
-  useCmsThemeTemplates, useAllCmsModels,
+  useCmsThemeTemplates, useAllCmsModels, useCmsPublishChannels,
 } from '@/hooks/queries/cms';
 import { useWorkflowDefinitionList } from '@/hooks/queries/workflow-definitions';
-import { CMS_STATIC_MODE_LABELS, CMS_STATIC_MODES, CMS_DEVICE_CHANNELS, CMS_DEVICE_CHANNEL_LABELS } from '@zenith/shared';
-import type { CmsSite, CmsDeviceChannel, CmsSiteTemplateDefaults } from '@zenith/shared';
+import { CMS_STATIC_MODE_LABELS, CMS_STATIC_MODES, CMS_DEFAULT_CHANNEL_CODE } from '@zenith/shared';
+import type { CmsSite, CmsSiteTemplateDefaults } from '@zenith/shared';
 import { cmsPreviewUrl } from './CmsSiteSelect';
 
 interface SearchParams {
@@ -29,24 +29,23 @@ interface SearchParams {
 
 const defaultSearchParams: SearchParams = { keyword: '', status: '' };
 
-/** 站点默认模板编辑态（受控管理，字段名含动态模型 code 不走 Form） */
-type TemplateDefaultsState = Record<CmsDeviceChannel, {
+interface ChannelTemplateConfig {
   list: string | null;
   detail: string | null;
   detailByModel: Record<string, string | null>;
-}>;
-
-function emptyTemplateDefaults(): TemplateDefaultsState {
-  return { pc: { list: null, detail: null, detailByModel: {} }, h5: { list: null, detail: null, detailByModel: {} } };
 }
 
+/** 站点默认模板编辑态（key = 发布通道编码；受控管理，字段名含动态编码不走 Form） */
+type TemplateDefaultsState = Record<string, ChannelTemplateConfig>;
+
+const EMPTY_CHANNEL_CONFIG: ChannelTemplateConfig = { list: null, detail: null, detailByModel: {} };
+
 function templateDefaultsFromSettings(settings: Record<string, unknown> | null | undefined): TemplateDefaultsState {
-  const state = emptyTemplateDefaults();
+  const state: TemplateDefaultsState = {};
   const all = settings?.defaultTemplates as Record<string, CmsSiteTemplateDefaults | undefined> | undefined;
-  for (const device of CMS_DEVICE_CHANNELS) {
-    const cfg = all?.[device];
+  for (const [code, cfg] of Object.entries(all ?? {})) {
     if (!cfg) continue;
-    state[device] = {
+    state[code] = {
       list: cfg.list ?? null,
       detail: cfg.detail ?? null,
       detailByModel: { ...(cfg.detailByModel ?? {}) },
@@ -58,15 +57,14 @@ function templateDefaultsFromSettings(settings: Record<string, unknown> | null |
 /** 序列化为 settings.defaultTemplates（去掉空值，保持 JSONB 干净） */
 function templateDefaultsToSettings(state: TemplateDefaultsState): Record<string, CmsSiteTemplateDefaults> {
   const out: Record<string, CmsSiteTemplateDefaults> = {};
-  for (const device of CMS_DEVICE_CHANNELS) {
-    const cfg = state[device];
+  for (const [code, cfg] of Object.entries(state)) {
     const detailByModel = Object.fromEntries(Object.entries(cfg.detailByModel).filter(([, v]) => v));
     const entry: CmsSiteTemplateDefaults = {
       ...(cfg.list ? { list: cfg.list } : {}),
       ...(cfg.detail ? { detail: cfg.detail } : {}),
       ...(Object.keys(detailByModel).length > 0 ? { detailByModel } : {}),
     };
-    if (Object.keys(entry).length > 0) out[device] = entry;
+    if (Object.keys(entry).length > 0) out[code] = entry;
   }
   return out;
 }
@@ -95,9 +93,11 @@ export default function SitesPage() {
   const [activeTab, setActiveTab] = useState('basic');
   // 模板下拉跟随表单里实时选中的主题（Form 值不具备响应性，用 state 镜像）
   const [selectedTheme, setSelectedTheme] = useState('default');
-  const [templateDefaults, setTemplateDefaults] = useState<TemplateDefaultsState>(emptyTemplateDefaults());
+  const [templateDefaults, setTemplateDefaults] = useState<TemplateDefaultsState>({});
   const { data: themeTemplates } = useCmsThemeTemplates(modalVisible ? selectedTheme : undefined);
   const { data: allModels } = useAllCmsModels();
+  // 站点发布通道（模板页签动态渲染；新建站点回退虚拟 PC 默认通道）
+  const { data: sitePublishChannels } = useCmsPublishChannels(editingRecord?.id, modalVisible);
   const saveMutation = useSaveCmsSite();
   const deleteMutation = useDeleteCmsSite();
 
@@ -147,7 +147,7 @@ export default function SitesPage() {
     setEditingRecord(null);
     setActiveTab('basic');
     setSelectedTheme('default');
-    setTemplateDefaults(emptyTemplateDefaults());
+    setTemplateDefaults({});
     setModalVisible(true);
   }
 
@@ -196,14 +196,11 @@ export default function SitesPage() {
         thumbWidth: Number((editingRecord.settings as Record<string, unknown>)?.thumbWidth ?? 400),
         webhookUrl: String((editingRecord.settings as Record<string, unknown>)?.webhookUrl ?? ''),
         webhookSecret: String((editingRecord.settings as Record<string, unknown>)?.webhookSecret ?? ''),
-        h5Enabled: (editingRecord.settings as Record<string, unknown>)?.h5Enabled === true,
-        h5Domain: String((editingRecord.settings as Record<string, unknown>)?.h5Domain ?? ''),
       }
     : {
         theme: 'default', staticMode: 'hybrid', status: 'enabled', isDefault: false, aliasDomains: [],
         themeDark: 'light', imageMaxWidth: 1600, watermarkEnabled: false, watermarkPosition: 'southeast',
         watermarkOpacity: 45, thumbEnabled: false, thumbWidth: 400, auditMode: 'simple',
-        h5Enabled: false,
       };
 
   async function handleSave() {
@@ -216,17 +213,17 @@ export default function SitesPage() {
       return;
     }
     if (!values.domain) values.domain = null;
-    // 推送凭证/主题参数/图片处理/H5 通道/默认模板并入 settings JSONB（保留既有 settings 键）
+    // 推送凭证/主题参数/图片处理/默认模板并入 settings JSONB（保留既有 settings 键；剔除已下线的 h5 旧键）
     const {
       baiduPushToken, indexNowKey, themePrimary, themeDark,
       imageMaxWidth, watermarkEnabled, watermarkText, watermarkPosition, watermarkOpacity, thumbEnabled, thumbWidth,
       auditMode, auditWorkflowDefinitionId,
       webhookUrl, webhookSecret,
-      h5Enabled, h5Domain,
       ...rest
     } = values;
+    const { h5Enabled: _legacyH5Enabled, h5Domain: _legacyH5Domain, ...prevSettings } = (editingRecord?.settings ?? {}) as Record<string, unknown>;
     rest.settings = {
-      ...(editingRecord?.settings ?? {}),
+      ...prevSettings,
       baiduPushToken: String(baiduPushToken ?? '').trim(),
       indexNowKey: String(indexNowKey ?? '').trim(),
       themePrimary: String(themePrimary ?? '').trim(),
@@ -242,8 +239,6 @@ export default function SitesPage() {
       auditWorkflowDefinitionId: auditWorkflowDefinitionId ?? null,
       webhookUrl: String(webhookUrl ?? '').trim(),
       webhookSecret: String(webhookSecret ?? '').trim(),
-      h5Enabled: h5Enabled === true,
-      h5Domain: String(h5Domain ?? '').trim(),
       defaultTemplates: templateDefaultsToSettings(templateDefaults),
     };
     try {
@@ -382,15 +377,22 @@ export default function SitesPage() {
   const listTplOptions = (themeTemplates?.list ?? []).map((t) => ({ value: t.name, label: t.label }));
   const detailTplOptions = (themeTemplates?.detail ?? []).map((t) => ({ value: t.name, label: t.label }));
 
+  // 模板页签的通道来源：编辑时取站点通道（启用的）；新建站点尚无通道记录，回退虚拟默认通道
+  const templateChannelTabs: { code: string; name: string }[] = (() => {
+    const enabled = (sitePublishChannels ?? []).filter((ch) => ch.status === 'enabled');
+    if (enabled.length > 0) return enabled.map((ch) => ({ code: ch.code, name: ch.name }));
+    return [{ code: CMS_DEFAULT_CHANNEL_CODE, name: 'PC 桌面' }];
+  })();
+
   /** 单个发布通道的默认模板配置面板（动态字段名不走 Form，受控 state 管理） */
-  const renderDeviceTemplates = (device: CmsDeviceChannel) => {
-    const cfg = templateDefaults[device];
-    const patch = (p: Partial<TemplateDefaultsState[CmsDeviceChannel]>) =>
-      setTemplateDefaults((s) => ({ ...s, [device]: { ...s[device], ...p } }));
+  const renderChannelTemplates = (channel: { code: string; name: string }) => {
+    const cfg = templateDefaults[channel.code] ?? EMPTY_CHANNEL_CONFIG;
+    const patch = (p: Partial<ChannelTemplateConfig>) =>
+      setTemplateDefaults((s) => ({ ...s, [channel.code]: { ...(s[channel.code] ?? EMPTY_CHANNEL_CONFIG), ...p } }));
     const rowStyle = { display: 'flex', alignItems: 'center', gap: 12 } as const;
     const labelStyle = { width: 140, flexShrink: 0, textAlign: 'right', fontSize: 14, color: 'var(--semi-color-text-0)' } as const;
     return (
-      <TabPane tab={CMS_DEVICE_CHANNEL_LABELS[device]} itemKey={device} key={device}>
+      <TabPane tab={channel.name} itemKey={channel.code} key={channel.code}>
         <div style={{ paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={rowStyle}>
             <span style={labelStyle}>栏目列表页模板</span>
@@ -630,19 +632,13 @@ export default function SitesPage() {
             </TabPane>
             <TabPane tab="模板与通道" itemKey="templates">
               <div style={{ paddingTop: 16 }}>
-                <Form.Section text="H5 发布通道（开启后静态页双通道生成；同时绑定 PC/H5 域名可按访问设备自动跳转）">
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Form.Switch field="h5Enabled" label="启用 H5 通道" labelWidth={120} />
-                    </Col>
-                    <Col span={12}>
-                      <Form.Input field="h5Domain" label="H5 域名" labelWidth={120} placeholder="如 m.example.com，留空仅预览" />
-                    </Col>
-                  </Row>
-                </Form.Section>
+                <div style={{ marginBottom: 16, color: 'var(--semi-color-text-2)', fontSize: 13 }}>
+                  发布通道（PC/H5/小程序等输出端）在「CMS 内容管理 → 发布通道」页面按站点自由创建，
+                  每个通道可独立绑定域名与 UA 跳转规则；此处按通道配置站点级默认模板。
+                </div>
                 <Form.Section text="默认模板（栏目/内容未指定模板时的站点级兜底；留空 = 主题默认）">
                   <Tabs type="card" size="small">
-                    {CMS_DEVICE_CHANNELS.map((device) => renderDeviceTemplates(device))}
+                    {templateChannelTabs.map((channel) => renderChannelTemplates(channel))}
                   </Tabs>
                 </Form.Section>
               </div>
