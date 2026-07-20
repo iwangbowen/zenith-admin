@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryKey, text, jsonb, uniqueIndex, index, customType } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryKey, text, jsonb, uniqueIndex, index, customType, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { statusEnum } from './common';
 import { auditColumns, tenants, users } from './core';
@@ -182,12 +182,22 @@ export const cmsContents = pgTable('cms_contents', {
   channelId: integer('channel_id').notNull().references(() => cmsChannels.id, { onDelete: 'restrict' }),
   modelId: integer('model_id').references(() => cmsModels.id, { onDelete: 'set null' }),
   title: varchar('title', { length: 255 }).notNull(),
+  /** 副标题（P1 内容字段增强） */
+  subTitle: varchar('sub_title', { length: 255 }),
+  /** 短标题（列表窄位展示） */
+  shortTitle: varchar('short_title', { length: 100 }),
   /** 自定义 URL 名（可空，默认用 id 生成 URL） */
   slug: varchar('slug', { length: 255 }),
   summary: text('summary'),
   coverImage: varchar('cover_image', { length: 500 }),
   author: varchar('author', { length: 50 }),
+  /** 责任编辑 */
+  editor: varchar('editor', { length: 50 }),
   source: varchar('source', { length: 100 }),
+  /** 来源链接 */
+  sourceUrl: varchar('source_url', { length: 500 }),
+  /** 原创标记 */
+  isOriginal: boolean('is_original').notNull().default(false),
   /** 正文富文本 HTML */
   body: text('body'),
   /** 模型自定义字段值（key = cms_model_fields.name） */
@@ -197,6 +207,10 @@ export const cmsContents = pgTable('cms_contents', {
   /** 详情模板覆盖（主题变体模板名；null = 跟随栏目/站点默认） */
   detailTemplate: varchar('detail_template', { length: 50 }),
   isTop: boolean('is_top').notNull().default(false),
+  /** 置顶权重（数值越大越靠前，isTop=true 时生效） */
+  topWeight: integer('top_weight').notNull().default(0),
+  /** 置顶到期时间（到期由周期任务自动取消置顶；空 = 永久置顶） */
+  topExpireAt: timestamp('top_expire_at'),
   isRecommend: boolean('is_recommend').notNull().default(false),
   isHot: boolean('is_hot').notNull().default(false),
   status: cmsContentStatusEnum('status').notNull().default('draft'),
@@ -218,6 +232,10 @@ export const cmsContents = pgTable('cms_contents', {
   searchVector: tsvector('search_vector'),
   /** 回收站：非空表示已进回收站 */
   deletedAt: timestamp('deleted_at'),
+  /** 归档：非空表示已归档（前台详情保留，不参与列表聚合；仅已发布/已下线内容可归档） */
+  archivedAt: timestamp('archived_at'),
+  /** 映射来源内容 id：非空表示本内容为“映射”（正文/扩展字段共享来源内容，禁止独立编辑） */
+  mappingSourceId: integer('mapping_source_id').references((): AnyPgColumn => cmsContents.id, { onDelete: 'set null' }),
   /** 会员投稿：非空表示由前台会员提交（P3 会员投稿） */
   memberId: integer('member_id').references(() => members.id, { onDelete: 'set null' }),
   ...auditColumns(),
@@ -229,12 +247,46 @@ export const cmsContents = pgTable('cms_contents', {
   index('cms_contents_published_at_idx').on(t.publishedAt),
   index('cms_contents_search_idx').using('gin', t.searchVector),
   index('cms_contents_member_idx').on(t.memberId),
+  index('cms_contents_mapping_source_idx').on(t.mappingSourceId),
   uniqueIndex('cms_contents_site_slug_uq').on(t.siteId, t.slug)
     .where(sql`${t.slug} is not null and ${t.deletedAt} is null`),
 ]);
 
 export type CmsContentRow = typeof cmsContents.$inferSelect;
 export type NewCmsContent = typeof cmsContents.$inferInsert;
+
+// ─── CMS 内容操作日志（内容级时间线：创建/发布/驳回/归档等；随内容级联删除）────────
+export const cmsContentOpLogs = pgTable('cms_content_op_logs', {
+  id: serial('id').primaryKey(),
+  contentId: integer('content_id').notNull().references(() => cmsContents.id, { onDelete: 'cascade' }),
+  /** 操作类型：created/updated/submitted/published/rejected/offlined/recycled/restored/rolled_back/archived/unarchived/moved */
+  action: varchar('action', { length: 30 }).notNull(),
+  /** 补充说明（驳回原因、移动目标栏目等） */
+  detail: varchar('detail', { length: 500 }),
+  operatorId: integer('operator_id').references(() => users.id, { onDelete: 'set null' }),
+  /** 冗余操作人昵称（防用户删除后时间线失名；系统任务为“系统”） */
+  operatorName: varchar('operator_name', { length: 50 }).notNull().default('系统'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  index('cms_content_op_logs_content_idx').on(t.contentId, t.createdAt),
+]);
+
+export type CmsContentOpLogRow = typeof cmsContentOpLogs.$inferSelect;
+
+// ─── CMS 易错词库（编辑辅助：常见错误词 → 正确词，编辑器检查一键替换）────────────
+export const cmsErrorProneWords = pgTable('cms_error_prone_words', {
+  id: serial('id').primaryKey(),
+  word: varchar('word', { length: 50 }).notNull().unique(),
+  /** 对应正确写法 */
+  correction: varchar('correction', { length: 50 }).notNull(),
+  status: statusEnum('status').notNull().default('enabled'),
+  remark: varchar('remark', { length: 200 }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type CmsErrorProneWordRow = typeof cmsErrorProneWords.$inferSelect;
 
 // ─── CMS 内容-副栏目关联（一文多栏目：主栏目在 cms_contents.channel_id，副栏目在此表）──
 export const cmsContentChannels = pgTable('cms_content_channels', {

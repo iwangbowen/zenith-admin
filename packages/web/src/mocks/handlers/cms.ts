@@ -6,9 +6,9 @@ import {
   getNextCmsSiteId, getNextCmsModelId, getNextCmsModelFieldId, getNextCmsChannelId,
   getNextCmsContentId, getNextCmsTagId, getNextCmsFragmentId, getNextCmsFriendLinkId,
   mockCmsAdSlots, mockCmsAds, mockCmsForms, mockCmsFormSubmissions, mockCmsSensitiveWords,
-  mockCmsLinkWords, mockCmsComments, mockCmsRedirects, mockCmsPushLogs, mockCmsContentVersions,
+  mockCmsErrorProneWords, mockCmsContentOpLogs, mockCmsLinkWords, mockCmsComments, mockCmsRedirects, mockCmsPushLogs, mockCmsContentVersions,
   getNextCmsAdSlotId, getNextCmsAdId, getNextCmsFormId, getNextCmsSensitiveWordId,
-  getNextCmsLinkWordId, getNextCmsRedirectId,
+  getNextCmsErrorProneWordId, getNextCmsContentOpLogId, getNextCmsLinkWordId, getNextCmsRedirectId,
   mockCmsSearchWords, mockCmsHotKeywords, getNextCmsSearchWordId,
   mockCmsPublishChannels, getNextCmsPublishChannelId,
 } from '../data/cms';
@@ -333,11 +333,13 @@ export const cmsHandlers = [
     const channelId = url.searchParams.get('channelId');
     const status = url.searchParams.get('status') || '';
     const deleted = url.searchParams.get('deleted') === 'true';
+    const archived = url.searchParams.get('archived') === 'true';
     let list = mockCmsContents.filter((c) => c.siteId === siteId && (deleted ? c.status === 'offline' && (c as { deleted?: boolean }).deleted : !(c as { deleted?: boolean }).deleted));
+    if (!deleted) list = list.filter((c) => (archived ? !!c.archivedAt : !c.archivedAt));
     if (channelId) list = list.filter((c) => c.channelId === Number(channelId));
     if (status) list = list.filter((c) => c.status === status);
     if (keyword) list = list.filter((c) => c.title.includes(keyword) || (c.author ?? '').includes(keyword));
-    list = [...list].sort((a, b) => Number(b.isTop) - Number(a.isTop) || b.id - a.id);
+    list = [...list].sort((a, b) => Number(b.isTop) - Number(a.isTop) || (b.topWeight ?? 0) - (a.topWeight ?? 0) || b.id - a.id);
     return okJson(paginate(list.map((c) => ({ ...c, channelName: mockCmsChannels.find((ch) => ch.id === c.channelId)?.name ?? null })), page, pageSize));
   }),
   http.get('/api/cms/contents/:id', ({ params }) => {
@@ -377,6 +379,39 @@ export const cmsHandlers = [
     }
     return okJson(null, '已彻底删除');
   }),
+  // ─── 归档（P1）────────────────────────────────────────────────────────────
+  http.post('/api/cms/contents/archive', async ({ request }) => {
+    const { ids } = (await request.json()) as { ids: number[] };
+    let count = 0;
+    for (const c of mockCmsContents) {
+      if (ids.includes(c.id) && (c.status === 'published' || c.status === 'offline') && !c.archivedAt) {
+        c.archivedAt = mockDateTime();
+        count += 1;
+      }
+    }
+    return okJson(null, `已归档 ${count} 条（仅已发布/已下线内容可归档）`);
+  }),
+  http.post('/api/cms/contents/unarchive', async ({ request }) => {
+    const { ids } = (await request.json()) as { ids: number[] };
+    for (const c of mockCmsContents) {
+      if (ids.includes(c.id)) c.archivedAt = null;
+    }
+    return okJson(null, `已取消归档 ${ids.length} 条`);
+  }),
+  // ─── 词库检查（P1：敏感词 + 易错词命中清单）───────────────────────────────
+  http.post('/api/cms/contents/check-text', async ({ request }) => {
+    const { text } = (await request.json()) as { text: string };
+    const countHits = (word: string) => (word ? (text ?? '').split(word).length - 1 : 0);
+    const sensitive = mockCmsSensitiveWords
+      .filter((w) => w.status === 'enabled')
+      .map((w) => ({ word: w.word, replaceWith: w.replaceWith ?? null, count: countHits(w.word) }))
+      .filter((h) => h.count > 0);
+    const errorProne = mockCmsErrorProneWords
+      .filter((w) => w.status === 'enabled')
+      .map((w) => ({ word: w.word, correction: w.correction, count: countHits(w.word) }))
+      .filter((h) => h.count > 0);
+    return okJson({ sensitive, errorProne });
+  }),
   http.post('/api/cms/contents/:id/:action', ({ params }) => {
     const content = mockCmsContents.find((c) => c.id === Number(params.id));
     if (!content) return notFound('内容不存在');
@@ -388,6 +423,19 @@ export const cmsHandlers = [
       content.status = statusMap[action];
       if (action === 'publish') content.publishedAt = mockDateTime();
       content.updatedAt = mockDateTime();
+      const opActionMap: Record<string, { action: string; label: string }> = {
+        submit: { action: 'submitted', label: '提交审核' },
+        publish: { action: 'published', label: '发布' },
+        reject: { action: 'rejected', label: '驳回' },
+        offline: { action: 'offlined', label: '下线' },
+      };
+      const op = opActionMap[action];
+      if (op) {
+        mockCmsContentOpLogs.push({
+          id: getNextCmsContentOpLogId(), contentId: content.id, action: op.action, actionLabel: op.label,
+          detail: null, operatorId: 1, operatorName: 'admin', createdAt: mockDateTime(),
+        });
+      }
     }
     return okJson(content, '操作成功');
   }),
@@ -400,16 +448,23 @@ export const cmsHandlers = [
       channelId: Number(body.channelId),
       modelId: mockCmsChannels.find((c) => c.id === Number(body.channelId))?.modelId ?? null,
       title: String(body.title ?? ''),
+      subTitle: (body.subTitle as string) ?? null,
+      shortTitle: (body.shortTitle as string) ?? null,
       slug: (body.slug as string) ?? null,
       summary: (body.summary as string) ?? null,
       coverImage: (body.coverImage as string) ?? null,
       author: (body.author as string) ?? null,
+      editor: (body.editor as string) ?? null,
       source: (body.source as string) ?? null,
+      sourceUrl: (body.sourceUrl as string) ?? null,
+      isOriginal: Boolean(body.isOriginal),
       body: (body.body as string) ?? null,
       extend: (body.extend as Record<string, unknown>) ?? {},
       externalLink: (body.externalLink as string) ?? null,
       detailTemplate: (body.detailTemplate as string) ?? null,
       isTop: Boolean(body.isTop),
+      topWeight: Number(body.topWeight ?? 0),
+      topExpireAt: (body.topExpireAt as string) ?? null,
       isRecommend: Boolean(body.isRecommend),
       isHot: Boolean(body.isHot),
       status: 'draft',
@@ -423,11 +478,17 @@ export const cmsHandlers = [
       seoTitle: (body.seoTitle as string) ?? null,
       seoKeywords: (body.seoKeywords as string) ?? null,
       seoDescription: (body.seoDescription as string) ?? null,
+      archivedAt: null,
+      mappingSourceId: null,
       tagIds: (body.tagIds as number[]) ?? [],
       createdAt: now,
       updatedAt: now,
     };
     mockCmsContents.push(content);
+    mockCmsContentOpLogs.push({
+      id: getNextCmsContentOpLogId(), contentId: content.id, action: 'created', actionLabel: '创建',
+      detail: null, operatorId: 1, operatorName: 'admin', createdAt: now,
+    });
     return okJson(content, '创建成功');
   }),
   http.put('/api/cms/contents/:id', async ({ params, request }) => {
@@ -446,6 +507,9 @@ export const cmsHandlers = [
   http.delete('/api/cms/contents/:id/edit-lock', () => okJson(null, '已释放')),
   http.post('/api/cms/contents/:id/preview-link', ({ params }) =>
     okJson({ url: `/__cms/main/preview/${params.id}?exp=0&sig=demo`, expiresAt: mockDateTime() }, 'Demo 模式无前台渲染，链接仅作展示')),
+  // ─── 操作日志时间线（P1）─────────────────────────────────────────────────
+  http.get('/api/cms/contents/:id/op-logs', ({ params }) =>
+    okJson(mockCmsContentOpLogs.filter((l) => l.contentId === Number(params.id)).sort((a, b) => b.id - a.id))),
 
   // ═══ 标签 ═══════════════════════════════════════════════════════════════
   http.get('/api/cms/tags/all', ({ request }) => {
@@ -1007,6 +1071,116 @@ export const cmsP2Handlers = [
     return okJson(null, '删除成功');
   }),
 
+  // ═══ 易错词库（P1）═══════════════════════════════════════════════════════
+  http.get('/api/cms/error-prone-words', ({ request }) => {
+    const { url, page, pageSize, keyword } = pageParams(request);
+    const status = url.searchParams.get('status') || '';
+    let list = [...mockCmsErrorProneWords];
+    if (keyword) list = list.filter((w) => w.word.includes(keyword) || w.correction.includes(keyword));
+    if (status) list = list.filter((w) => w.status === status);
+    return okJson(paginate(list, page, pageSize));
+  }),
+  http.post('/api/cms/error-prone-words', async ({ request }) => {
+    const body = (await request.json()) as Body;
+    if (mockCmsErrorProneWords.some((w) => w.word === body.word)) {
+      return HttpResponse.json({ code: 400, message: '该易错词已存在', data: null }, { status: 400 });
+    }
+    const now = mockDateTime();
+    const row = {
+      id: getNextCmsErrorProneWordId(),
+      word: String(body.word ?? ''),
+      correction: String(body.correction ?? ''),
+      status: (body.status as 'enabled' | 'disabled') ?? 'enabled',
+      remark: (body.remark as string) ?? null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    mockCmsErrorProneWords.push(row);
+    return okJson(row, '创建成功');
+  }),
+  http.put('/api/cms/error-prone-words/:id', async ({ params, request }) => {
+    const idx = mockCmsErrorProneWords.findIndex((w) => w.id === Number(params.id));
+    if (idx === -1) return notFound('易错词不存在');
+    Object.assign(mockCmsErrorProneWords[idx], await request.json(), { updatedAt: mockDateTime() });
+    return okJson(mockCmsErrorProneWords[idx], '更新成功');
+  }),
+  http.delete('/api/cms/error-prone-words/:id', ({ params }) => {
+    const idx = mockCmsErrorProneWords.findIndex((w) => w.id === Number(params.id));
+    if (idx === -1) return notFound('易错词不存在');
+    mockCmsErrorProneWords.splice(idx, 1);
+    return okJson(null, '删除成功');
+  }),
+
+  // ═══ 栏目运维（P1：合并 / 清空 / 批量新增）═══════════════════════════════
+  http.post('/api/cms/channels/merge', async ({ request }) => {
+    const body = (await request.json()) as Body;
+    const sourceIds = (body.sourceIds as number[]) ?? [];
+    const targetId = Number(body.targetId);
+    const target = mockCmsChannels.find((c) => c.id === targetId);
+    if (!target) return notFound('目标栏目不存在');
+    let moved = 0;
+    for (const c of mockCmsContents) {
+      if (sourceIds.includes(c.channelId)) {
+        c.channelId = targetId;
+        moved += 1;
+      }
+    }
+    for (const id of sourceIds) {
+      const idx = mockCmsChannels.findIndex((c) => c.id === id);
+      if (idx >= 0) mockCmsChannels.splice(idx, 1);
+    }
+    return okJson(null, `合并完成，已迁移 ${moved} 条内容`);
+  }),
+  http.post('/api/cms/channels/batch-create', async ({ request }) => {
+    const body = (await request.json()) as Body;
+    const names = (body.names as string[]) ?? [];
+    const parentId = Number(body.parentId ?? 0);
+    const parentPath = parentId ? (mockCmsChannels.find((c) => c.id === parentId)?.path ?? '') : '';
+    const now = mockDateTime();
+    for (const [i, name] of names.entries()) {
+      const slug = `channel-${Date.now()}-${i}`;
+      mockCmsChannels.push({
+        id: getNextCmsChannelId(),
+        siteId: Number(body.siteId),
+        parentId,
+        modelId: null,
+        modelName: null,
+        name,
+        slug,
+        path: parentPath ? `${parentPath}/${slug}` : slug,
+        type: 'list',
+        linkUrl: null,
+        listTemplate: null,
+        detailTemplate: null,
+        pageSize: 20,
+        pageContent: null,
+        seoTitle: null,
+        seoKeywords: null,
+        seoDescription: null,
+        image: null,
+        visible: true,
+        status: 'enabled',
+        sort: 0,
+        settings: {},
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+    return okJson(null, `已创建 ${names.length} 个栏目`);
+  }),
+  http.post('/api/cms/channels/:id/clear', ({ params }) => {
+    const channelId = Number(params.id);
+    let count = 0;
+    for (const c of mockCmsContents) {
+      if (c.channelId === channelId && !(c as { deleted?: boolean }).deleted) {
+        (c as { deleted?: boolean }).deleted = true;
+        c.status = 'offline';
+        count += 1;
+      }
+    }
+    return okJson(null, `已将 ${count} 条内容移入回收站`);
+  }),
+
   // ─── 站点授权用户 ───────────────────────────────────────────────────────────
   http.get('/api/cms/sites/:id/users', () => okJson({ userIds: [], users: [] })),
   http.put('/api/cms/sites/:id/users', () => okJson(null, '保存成功')),
@@ -1088,6 +1262,7 @@ export const cmsP3Handlers = [
   http.post('/api/cms/contents/distribute', async ({ request }) => {
     const body = (await request.json()) as Body;
     const ids = (body.ids as number[]) ?? [];
+    const mode = (body.mode as 'copy' | 'mapping') ?? 'copy';
     const now = mockDateTime();
     for (const src of mockCmsContents.filter((c) => ids.includes(c.id))) {
       mockCmsContents.push({
@@ -1099,11 +1274,15 @@ export const cmsP3Handlers = [
         publishedAt: null,
         viewCount: 0,
         tagIds: [],
+        // 映射：标记来源（demo 简化为正文同拷，真实实现运行时透传来源正文）
+        mappingSourceId: mode === 'mapping' ? (src.mappingSourceId ?? src.id) : null,
+        mappingSourceTitle: mode === 'mapping' ? src.title : null,
+        archivedAt: null,
         createdAt: now,
         updatedAt: now,
       });
     }
-    return okJson(null, `已分发 ${ids.length} 条内容（目标站点草稿箱）`);
+    return okJson(null, `已${mode === 'mapping' ? '映射' : '分发'} ${ids.length} 条内容（目标站点草稿箱）`);
   }),
   http.post('/api/cms/contents/:id/duplicate', ({ params }) => {
     const src = mockCmsContents.find((c) => c.id === Number(params.id));

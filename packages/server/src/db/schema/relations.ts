@@ -45,7 +45,7 @@ import {
   reportSlaRules,
   reportSlaViolations,
 } from './report-platform';
-import { cmsChannels, cmsContents, cmsContentTags, cmsFragments, cmsFriendLinks, cmsModelFields, cmsModels, cmsSites, cmsTags, cmsContentVersions, cmsRedirects, cmsLinkWords, cmsComments, cmsAdSlots, cmsAds, cmsForms, cmsFormSubmissions, cmsPushLogs, cmsSiteUsers, cmsContentChannels, cmsContentRelations } from './cms';
+import { cmsChannels, cmsContents, cmsContentTags, cmsFragments, cmsFriendLinks, cmsModelFields, cmsModels, cmsSites, cmsTags, cmsContentVersions, cmsRedirects, cmsLinkWords, cmsComments, cmsAdSlots, cmsAds, cmsForms, cmsFormSubmissions, cmsPushLogs, cmsSiteUsers, cmsContentChannels, cmsContentRelations, cmsContentOpLogs } from './cms';
 
 // ─── 关联关系 ────────────────────────────────────────────────────────────────
 export const errorGroupsRelations = relations(errorGroups, ({ many, one }) => ({
@@ -1278,6 +1278,14 @@ export const cmsContentsRelations = relations(cmsContents, ({ one, many }) => ({
   extraChannels: many(cmsContentChannels),
   relatedContents: many(cmsContentRelations, { relationName: 'cmsContentRelationsSource' }),
   createdByUser: one(users, { fields: [cmsContents.createdBy], references: [users.id], relationName: 'cmsContentCreatedBy' }),
+  mappingSource: one(cmsContents, { fields: [cmsContents.mappingSourceId], references: [cmsContents.id], relationName: 'cmsContentMapping' }),
+  mappedCopies: many(cmsContents, { relationName: 'cmsContentMapping' }),
+  opLogs: many(cmsContentOpLogs),
+}));
+
+export const cmsContentOpLogsRelations = relations(cmsContentOpLogs, ({ one }) => ({
+  content: one(cmsContents, { fields: [cmsContentOpLogs.contentId], references: [cmsContents.id] }),
+  operator: one(users, { fields: [cmsContentOpLogs.operatorId], references: [users.id] }),
 }));
 
 export const cmsContentChannelsRelations = relations(cmsContentChannels, ({ one }) => ({

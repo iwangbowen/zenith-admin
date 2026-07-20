@@ -6,7 +6,7 @@ import type {
   CmsAdSlot, CmsAd, CmsForm, CmsFormSubmission, CmsSensitiveWord, CmsPushLog,
   CmsSearchWord, CmsHotKeyword, CmsCollectRule, CmsCollectItem, CmsPage,
   CmsEditLock, CmsPreviewLink, CmsContentVersionDiff, CmsDashboardStats,
-  CmsThemeTemplateManifest, CmsPublishChannel,
+  CmsThemeTemplateManifest, CmsPublishChannel, CmsContentOpLog, CmsErrorProneWord, CmsTextCheckResult,
 } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { toQueryString, unwrap, LOOKUP_STALE_TIME } from '@/lib/query';
@@ -217,6 +217,39 @@ export function useDeleteCmsChannel() {
   });
 }
 
+/** 栏目运维（P1）：合并 / 清空 / 批量新增 */
+export function useMergeCmsChannels() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { sourceIds: number[]; targetId: number }) =>
+      request.post<null>('/api/cms/channels/merge', body).then(unwrap),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: cmsChannelKeys.all });
+      void qc.invalidateQueries({ queryKey: cmsContentKeys.all });
+    },
+  });
+}
+
+export function useClearCmsChannel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.post<null>(`/api/cms/channels/${id}/clear`, {}).then(unwrap),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: cmsChannelKeys.all });
+      void qc.invalidateQueries({ queryKey: cmsContentKeys.all });
+    },
+  });
+}
+
+export function useBatchCreateCmsChannels() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { siteId: number; parentId: number; names: string[] }) =>
+      request.post<null>('/api/cms/channels/batch-create', body).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsChannelKeys.all }),
+  });
+}
+
 // ═══ 内容 ═══════════════════════════════════════════════════════════════════
 export interface CmsContentListParams {
   page: number;
@@ -226,6 +259,7 @@ export interface CmsContentListParams {
   status?: CmsContentStatus;
   keyword?: string;
   deleted?: boolean;
+  archived?: boolean;
 }
 
 export const cmsContentKeys = {
@@ -274,13 +308,29 @@ export function useCmsContentAction() {
   });
 }
 
-/** 回收站批量操作：recycle / restore / purge */
+/** 回收站/归档批量操作：recycle / restore / purge / archive / unarchive */
 export function useCmsContentBatch() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ action, ids }: { action: 'recycle' | 'restore' | 'purge'; ids: number[] }) =>
+    mutationFn: ({ action, ids }: { action: 'recycle' | 'restore' | 'purge' | 'archive' | 'unarchive'; ids: number[] }) =>
       request.post<null>(`/api/cms/contents/${action}`, { ids }).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: cmsContentKeys.all }),
+  });
+}
+
+/** 内容操作日志时间线（打开抽屉时启用） */
+export function useCmsContentOpLogs(contentId: number | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ['cms-contents', 'op-logs', contentId] as const,
+    queryFn: () => request.get<CmsContentOpLog[]>(`/api/cms/contents/${contentId}/op-logs`).then(unwrap),
+    enabled: enabled && contentId !== undefined,
+  });
+}
+
+/** 内容词库检查（敏感词 + 易错词命中） */
+export function useCmsCheckText() {
+  return useMutation({
+    mutationFn: (text: string) => request.post<CmsTextCheckResult>('/api/cms/contents/check-text', { text }).then(unwrap),
   });
 }
 
@@ -840,6 +890,48 @@ export function useDeleteCmsSensitiveWord() {
   return useMutation({
     mutationFn: (id: number) => request.delete<null>(`/api/cms/sensitive-words/${id}`).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: cmsSensitiveWordKeys.all }),
+  });
+}
+
+// ═══ 易错词库（P1）═══════════════════════════════════════════════════════════
+export interface CmsErrorProneWordListParams {
+  page: number;
+  pageSize: number;
+  keyword?: string;
+  status?: string;
+}
+
+export const cmsErrorProneWordKeys = {
+  all: ['cms-error-prone-words'] as const,
+  lists: ['cms-error-prone-words', 'list'] as const,
+  list: (params: CmsErrorProneWordListParams) => ['cms-error-prone-words', 'list', params] as const,
+};
+
+export function useCmsErrorProneWordList(params: CmsErrorProneWordListParams) {
+  return useQuery({
+    queryKey: cmsErrorProneWordKeys.list(params),
+    queryFn: () => request.get<PaginatedResponse<CmsErrorProneWord>>(`/api/cms/error-prone-words${toQueryString(params)}`).then(unwrap),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useSaveCmsErrorProneWord() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
+      (id === undefined
+        ? request.post<CmsErrorProneWord>('/api/cms/error-prone-words', values)
+        : request.put<CmsErrorProneWord>(`/api/cms/error-prone-words/${id}`, values)
+      ).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsErrorProneWordKeys.all }),
+  });
+}
+
+export function useDeleteCmsErrorProneWord() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.delete<null>(`/api/cms/error-prone-words/${id}`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsErrorProneWordKeys.all }),
   });
 }
 

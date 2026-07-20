@@ -12,14 +12,16 @@ import {
   submitCmsContent, publishCmsContent, rejectCmsContent, offlineCmsContent,
   recycleCmsContents, restoreCmsContents, purgeCmsContents, restoreCmsContentToVersion,
   batchMoveCmsContents, batchSetCmsContentFlags, batchAddCmsContentTags,
-  duplicateCmsContent, distributeCmsContents,
+  duplicateCmsContent, distributeCmsContents, archiveCmsContents, unarchiveCmsContents,
 } from '../../services/cms/cms-contents.service';
 import { listContentVersions, diffContentVersion } from '../../services/cms/cms-versions.service';
+import { listContentOpLogs } from '../../services/cms/cms-content-op-logs.service';
+import { checkCmsText } from '../../services/cms/cms-word-check.service';
 import { acquireContentEditLock, releaseContentEditLock } from '../../services/cms/cms-edit-lock.service';
 import { createContentPreviewLink } from '../../services/cms/cms-preview.service';
 import { triggerContentStaticRefresh } from '../../services/cms/cms-static.service';
 import { triggerAutoPushForContent } from '../../services/cms/cms-push.service';
-import { CmsContentVersionDTO, CmsContentVersionDiffDTO, CmsEditLockDTO, CmsPreviewLinkDTO, AsyncTaskDTO } from '../../lib/openapi-dtos';
+import { CmsContentVersionDTO, CmsContentVersionDiffDTO, CmsEditLockDTO, CmsPreviewLinkDTO, AsyncTaskDTO, CmsContentOpLogDTO, CmsTextCheckResultDTO } from '../../lib/openapi-dtos';
 import { mapAsyncTask, submitAsyncTask } from '../../lib/task-center';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -42,6 +44,7 @@ const listRoute = defineOpenAPIRoute({
         isRecommend: boolParam,
         isHot: boolParam,
         deleted: boolParam,
+        archived: boolParam,
         startTime: z.string().optional(),
         endTime: z.string().optional(),
       }),
@@ -395,7 +398,7 @@ const duplicateRoute = defineOpenAPIRoute({
 const distributeRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/distribute',
-    tags: ['CMS-内容管理'], summary: '站群分发（复制到目标站点栏目为草稿）',
+    tags: ['CMS-内容管理'], summary: '站群分发（copy=独立复制 / mapping=映射，正文共享来源）',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'cms:content:create', audit: { description: 'CMS 内容站群分发', module: 'CMS内容管理' } })] as const,
     request: {
@@ -404,6 +407,7 @@ const distributeRoute = defineOpenAPIRoute({
           ids: z.array(z.number().int()).min(1),
           targetSiteId: z.number().int().positive(),
           targetChannelId: z.number().int().positive(),
+          mode: z.enum(['copy', 'mapping']).default('copy'),
         })),
         required: true,
       },
@@ -411,9 +415,9 @@ const distributeRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okMsg('分发成功') },
   }),
   handler: async (c) => {
-    const { ids, targetSiteId, targetChannelId } = c.req.valid('json');
-    const count = await distributeCmsContents(ids, targetSiteId, targetChannelId);
-    return c.json(okBody(null, `已分发 ${count} 条内容（同站内容自动跳过）`), 200);
+    const { ids, targetSiteId, targetChannelId, mode } = c.req.valid('json');
+    const count = await distributeCmsContents(ids, targetSiteId, targetChannelId, mode);
+    return c.json(okBody(null, `已${mode === 'mapping' ? '映射' : '分发'} ${count} 条内容（同站内容自动跳过）`), 200);
   },
 });
 
@@ -446,6 +450,71 @@ const importRoute = defineOpenAPIRoute({
   },
 });
 
+// ─── 归档（P1）────────────────────────────────────────────────────────────────
+const archiveRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/archive',
+    tags: ['CMS-内容管理'], summary: '归档（批量，仅已发布/已下线内容；前台详情保留，不参与列表聚合）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:content:update', audit: { description: 'CMS 内容归档', module: 'CMS内容管理' } })] as const,
+    request: { body: { content: jsonContent(BatchIdsBody), required: true } },
+    responses: { ...commonErrorResponses, ...okMsg('已归档') },
+  }),
+  handler: async (c) => {
+    const { ids } = c.req.valid('json');
+    const count = await archiveCmsContents(ids);
+    for (const id of ids) triggerContentStaticRefresh(id);
+    return c.json(okBody(null, `已归档 ${count} 条（仅已发布/已下线内容可归档）`), 200);
+  },
+});
+
+const unarchiveRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/unarchive',
+    tags: ['CMS-内容管理'], summary: '取消归档（批量）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:content:update', audit: { description: 'CMS 内容取消归档', module: 'CMS内容管理' } })] as const,
+    request: { body: { content: jsonContent(BatchIdsBody), required: true } },
+    responses: { ...commonErrorResponses, ...okMsg('已取消归档') },
+  }),
+  handler: async (c) => {
+    const { ids } = c.req.valid('json');
+    const count = await unarchiveCmsContents(ids);
+    for (const id of ids) triggerContentStaticRefresh(id);
+    return c.json(okBody(null, `已取消归档 ${count} 条`), 200);
+  },
+});
+
+// ─── 操作日志 / 词库检查（P1）─────────────────────────────────────────────────
+const opLogsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}/op-logs',
+    tags: ['CMS-内容管理'], summary: '内容操作日志时间线（新→旧，最近 100 条）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:content:list' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(z.array(CmsContentOpLogDTO), '操作日志') },
+  }),
+  handler: async (c) => c.json(okBody(await listContentOpLogs(c.req.valid('param').id)), 200),
+});
+
+const checkTextRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/check-text',
+    tags: ['CMS-内容管理'], summary: '内容词库检查（敏感词 + 易错词命中清单，编辑辅助）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:content:update' })] as const,
+    request: {
+      body: {
+        content: jsonContent(z.object({ text: z.string().max(200_000, '检查文本过长') })),
+        required: true,
+      },
+    },
+    responses: { ...commonErrorResponses, ...ok(CmsTextCheckResultDTO, '命中清单') },
+  }),
+  handler: async (c) => c.json(okBody(await checkCmsText(c.req.valid('json').text)), 200),
+});
+
 router.openapiRoutes([
   listRoute, getOneRoute, createRoute_, updateRoute_,
   submitRoute, publishRoute, rejectRoute, offlineRoute,
@@ -453,7 +522,7 @@ router.openapiRoutes([
   versionsRoute, restoreVersionRoute, versionDiffRoute,
   editLockAcquireRoute, editLockReleaseRoute, previewLinkRoute,
   batchMoveRoute, batchFlagsRoute, batchTagRoute, duplicateRoute, distributeRoute,
-  importRoute,
+  importRoute, archiveRoute, unarchiveRoute, opLogsRoute, checkTextRoute,
 ] as const);
 
 export default router;

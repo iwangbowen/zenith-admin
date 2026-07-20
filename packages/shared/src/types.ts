@@ -10412,17 +10412,31 @@ export interface CmsContent {
   channelName?: string | null;
   modelId: number | null;
   title: string;
+  /** 副标题 */
+  subTitle: string | null;
+  /** 短标题（列表窄位展示） */
+  shortTitle: string | null;
   slug: string | null;
   summary: string | null;
   coverImage: string | null;
   author: string | null;
+  /** 责任编辑 */
+  editor: string | null;
   source: string | null;
+  /** 来源链接 */
+  sourceUrl: string | null;
+  /** 原创标记 */
+  isOriginal: boolean;
   body: string | null;
   extend: Record<string, unknown>;
   externalLink: string | null;
   /** 详情模板覆盖（主题变体模板名；null = 跟随栏目/站点默认） */
   detailTemplate: string | null;
   isTop: boolean;
+  /** 置顶权重（数值越大越靠前，isTop=true 时生效） */
+  topWeight: number;
+  /** 置顶到期时间（到期自动取消置顶；空 = 永久置顶） */
+  topExpireAt: string | null;
   isRecommend: boolean;
   isHot: boolean;
   status: CmsContentStatus;
@@ -10446,8 +10460,44 @@ export interface CmsContent {
   relatedIds?: number[];
   /** 会员投稿：非空表示由前台会员提交 */
   memberId?: number | null;
+  /** 归档时间（非空表示已归档：前台详情保留，不参与列表聚合） */
+  archivedAt: string | null;
+  /** 映射来源内容 id（非空表示本内容为映射，正文/扩展字段共享来源内容） */
+  mappingSourceId: number | null;
+  /** 映射来源内容标题（JOIN 后附加） */
+  mappingSourceTitle?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** CMS 内容操作日志（内容级时间线） */
+export interface CmsContentOpLog {
+  id: number;
+  contentId: number;
+  action: string;
+  /** 动作显示名 */
+  actionLabel: string;
+  detail: string | null;
+  operatorId: number | null;
+  operatorName: string;
+  createdAt: string;
+}
+
+/** CMS 易错词（编辑辅助：错误词 → 正确词） */
+export interface CmsErrorProneWord {
+  id: number;
+  word: string;
+  correction: string;
+  status: 'enabled' | 'disabled';
+  remark: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 内容文本检查命中结果（敏感词 + 易错词） */
+export interface CmsTextCheckResult {
+  sensitive: { word: string; replaceWith: string | null; count: number }[];
+  errorProne: { word: string; correction: string; count: number }[];
 }
 
 export interface CmsTag {

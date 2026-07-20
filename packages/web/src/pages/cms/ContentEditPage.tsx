@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, Form, Spin, Toast, Row, Col, Banner, SideSheet, Timeline, Modal, Upload, Typography, useFormApi } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
-import { ArrowLeft, Save, Send, History, ImageUp, Eye, GitCompare, Images } from 'lucide-react';
+import { ArrowLeft, Save, Send, History, ImageUp, Eye, GitCompare, Images, SpellCheck, ScrollText } from 'lucide-react';
 import RichTextEditor from '@/components/RichTextEditor';
 import { MediaPickerModal } from '@/components/MediaPickerModal';
 import { formatDateTimeForApi } from '@/utils/date';
@@ -15,10 +15,10 @@ import {
   useCmsContentDetail, useCmsChannelTree, useAllCmsModels, useAllCmsTags,
   useSaveCmsContent, useCmsContentAction, useCmsContentVersions, useRestoreCmsContentVersion,
   useCmsVersionDiff, useCmsPreviewLink, acquireCmsEditLock, releaseCmsEditLock, useCmsContentList,
-  useAllCmsSites, useCmsThemeTemplates,
+  useAllCmsSites, useCmsThemeTemplates, useCmsContentOpLogs, useCmsCheckText,
 } from '@/hooks/queries/cms';
 import { CMS_CONTENT_STATUS_LABELS } from '@zenith/shared';
-import type { CmsChannel, CmsModelField, CmsEditLock } from '@zenith/shared';
+import type { CmsChannel, CmsModelField, CmsEditLock, CmsTextCheckResult } from '@zenith/shared';
 
 const AUTO_SAVE_INTERVAL_MS = 30_000;
 const EDIT_LOCK_HEARTBEAT_MS = 30_000;
@@ -150,6 +150,12 @@ export default function ContentEditPage() {
   const [diffVersionId, setDiffVersionId] = useState<number | undefined>(undefined);
   const diffQuery = useCmsVersionDiff(id, diffVersionId);
   const [coverPickerVisible, setCoverPickerVisible] = useState(false);
+  const [opLogsVisible, setOpLogsVisible] = useState(false);
+  const opLogsQuery = useCmsContentOpLogs(id, opLogsVisible);
+  const checkMutation = useCmsCheckText();
+  const [checkResult, setCheckResult] = useState<CmsTextCheckResult | null>(null);
+  const [checkModalVisible, setCheckModalVisible] = useState(false);
+  const isMapped = !!detail?.mappingSourceId;
 
   // ─── 编辑锁 / 乐观锁 / 自动保存状态 ─────────────────────────────────────────
   const [lockHolder, setLockHolder] = useState<CmsEditLock['holder']>(null);
@@ -211,14 +217,21 @@ export default function ContentEditPage() {
     ? {
         channelId: detail.channelId,
         title: detail.title,
+        subTitle: detail.subTitle ?? '',
+        shortTitle: detail.shortTitle ?? '',
         slug: detail.slug ?? '',
         summary: detail.summary ?? '',
         coverImage: detail.coverImage ?? '',
         author: detail.author ?? '',
+        editor: detail.editor ?? '',
         source: detail.source ?? '',
+        sourceUrl: detail.sourceUrl ?? '',
+        isOriginal: detail.isOriginal,
         externalLink: detail.externalLink ?? '',
         detailTemplate: detail.detailTemplate ?? undefined,
         isTop: detail.isTop,
+        topWeight: detail.topWeight,
+        topExpireAt: detail.topExpireAt ?? undefined,
         isRecommend: detail.isRecommend,
         isHot: detail.isHot,
         sort: detail.sort,
@@ -232,7 +245,7 @@ export default function ContentEditPage() {
         expireAt: detail.expireAt ?? undefined,
         extend: detail.extend ?? {},
       }
-    : { channelId: channelIdParam, isTop: false, isRecommend: false, isHot: false, sort: 0, tagIds: [], extraChannelIds: [], relatedIds: [], extend: {} };
+    : { channelId: channelIdParam, isTop: false, topWeight: 0, isOriginal: false, isRecommend: false, isHot: false, sort: 0, tagIds: [], extraChannelIds: [], relatedIds: [], extend: {} };
 
   async function save(opts?: { silent?: boolean }): Promise<number | null> {
     if (!siteId) return null;
@@ -251,6 +264,13 @@ export default function ContentEditPage() {
     if (!values.scheduledAt) payload.scheduledAt = null;
     if (values.expireAt instanceof Date) payload.expireAt = formatDateTimeForApi(values.expireAt);
     if (!values.expireAt) payload.expireAt = null;
+    if (values.topExpireAt instanceof Date) payload.topExpireAt = formatDateTimeForApi(values.topExpireAt);
+    if (!values.topExpireAt) payload.topExpireAt = null;
+    // 映射内容：正文/扩展字段共享来源，不随保存提交（服务端也会拒绝）
+    if (isMapped) {
+      delete payload.body;
+      delete payload.extend;
+    }
     if (!id) payload.siteId = siteId;
     // 乐观锁：携带读取时的版本号，被他人修改时后端返回 409
     if (id && versionRef.current !== undefined) payload.expectedVersion = versionRef.current;
@@ -316,6 +336,33 @@ export default function ContentEditPage() {
     window.open(link.url, '_blank');
   }
 
+  // ─── 词库检查（敏感词 + 易错词）────────────────────────────────────────────
+  function collectCheckText(): string {
+    const values = formApi.current?.getValues() ?? {};
+    const plainBody = body.replace(/<[^>]+>/g, ' ');
+    return [values.title, values.subTitle, values.summary, plainBody].filter(Boolean).join('\n');
+  }
+
+  async function handleCheckText() {
+    const result = await checkMutation.mutateAsync(collectCheckText());
+    setCheckResult(result);
+    setCheckModalVisible(true);
+  }
+
+  /** 易错词一键替换：作用于标题/副标题/摘要/正文 */
+  function applyCorrection(word: string, correction: string) {
+    const api = formApi.current;
+    if (!api) return;
+    for (const field of ['title', 'subTitle', 'summary'] as const) {
+      const v = api.getValue(field);
+      if (typeof v === 'string' && v.includes(word)) api.setValue(field, v.replaceAll(word, correction));
+    }
+    if (body.includes(word)) setBody(body.replaceAll(word, correction));
+    dirtyRef.current = true;
+    setCheckResult((prev) => prev ? { ...prev, errorProne: prev.errorProne.filter((h) => h.word !== word) } : prev);
+    Toast.success(`已替换「${word}」→「${correction}」`);
+  }
+
   const loading = (!!id && detailQuery.isFetching && !detail) || treeQuery.isLoading;
   const diffVersion = (versionsQuery.data ?? []).find((v) => v.id === diffVersionId);
 
@@ -329,10 +376,12 @@ export default function ContentEditPage() {
           {autoSavedAt ? <span style={{ marginLeft: 12, fontSize: 12, fontWeight: 'normal', color: 'var(--semi-color-text-2)' }}>已自动保存 {autoSavedAt}</span> : null}
         </h3>
         <Button icon={<Save size={14} />} loading={saveMutation.isPending} onClick={() => void handleSaveDraft()}>保存</Button>
+        <Button icon={<SpellCheck size={14} />} loading={checkMutation.isPending} onClick={() => void handleCheckText()}>内容检查</Button>
         {id ? (
           <>
             <Button icon={<Eye size={14} />} loading={previewMutation.isPending} onClick={() => void handlePreview()}>预览</Button>
             <Button icon={<History size={14} />} onClick={() => setVersionsVisible(true)}>历史版本</Button>
+            <Button icon={<ScrollText size={14} />} onClick={() => setOpLogsVisible(true)}>操作记录</Button>
           </>
         ) : null}
         {hasPermission('cms:content:publish') ? (
@@ -344,6 +393,15 @@ export default function ContentEditPage() {
         <Banner
           type="warning"
           description={`${lockHolder.nickname} 正在编辑此内容（${lockHolder.lockedAt} 开始）。继续编辑可能相互覆盖：保存时系统会做版本冲突检测。`}
+          style={{ marginBottom: 12 }}
+          closeIcon={null}
+        />
+      ) : null}
+
+      {isMapped ? (
+        <Banner
+          type="info"
+          description={`本内容为映射内容（来源：${detail?.mappingSourceTitle ?? `#${detail?.mappingSourceId}`}）。正文与扩展字段共享来源内容并随其更新，此处不可编辑；如需独立编辑请使用「复制」创建副本。`}
           style={{ marginBottom: 12 }}
           closeIcon={null}
         />
@@ -369,16 +427,27 @@ export default function ContentEditPage() {
             {/* 左：主编辑区 */}
             <Col xs={24} lg={16}>
               <Form.Input field="title" label="标题" size="large" rules={[{ required: true, message: '请输入标题' }]} />
+              <Row gutter={12}>
+                <Col span={12}><Form.Input field="subTitle" label="副标题" placeholder="可选" /></Col>
+                <Col span={12}><Form.Input field="shortTitle" label="短标题" placeholder="列表窄位展示（可选）" /></Col>
+              </Row>
               <Form.TextArea field="summary" label="摘要" rows={2} placeholder="留空时前台自动截取正文" />
               <Form.Slot label="正文">
-                <RichTextEditor
-                  value={body}
-                  onChange={(v) => { setBody(v); dirtyRef.current = true; }}
-                  height={420}
-                  uploadServer={siteId ? `${appConfig.apiBaseUrl}/api/cms/upload-image?siteId=${siteId}` : undefined}
-                />
+                {isMapped ? (
+                  <div
+                    style={{ border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', padding: 16, maxHeight: 420, overflow: 'auto', background: 'var(--semi-color-fill-0)' }}
+                    dangerouslySetInnerHTML={{ __html: body }}
+                  />
+                ) : (
+                  <RichTextEditor
+                    value={body}
+                    onChange={(v) => { setBody(v); dirtyRef.current = true; }}
+                    height={420}
+                    uploadServer={siteId ? `${appConfig.apiBaseUrl}/api/cms/upload-image?siteId=${siteId}` : undefined}
+                  />
+                )}
               </Form.Slot>
-              {modelFields.length > 0 ? (
+              {modelFields.length > 0 && !isMapped ? (
                 <Form.Section text={`模型字段（${currentModel?.name}）`}>
                   <Row gutter={16}>
                     {modelFields.map((f) => (
@@ -427,7 +496,11 @@ export default function ContentEditPage() {
               />
               <Row gutter={12}>
                 <Col span={12}><Form.Input field="author" label="作者" /></Col>
+                <Col span={12}><Form.Input field="editor" label="责任编辑" /></Col>
+              </Row>
+              <Row gutter={12}>
                 <Col span={12}><Form.Input field="source" label="来源" /></Col>
+                <Col span={12}><Form.Input field="sourceUrl" label="来源链接" placeholder="https://（可选）" /></Col>
               </Row>
               <Form.Input
                 field="coverImage"
@@ -469,9 +542,25 @@ export default function ContentEditPage() {
                 placeholder="跟随栏目/站点默认"
                 optionList={(themeTemplates?.detail ?? []).map((t) => ({ value: t.name, label: t.label }))} />
               <Row gutter={12}>
-                <Col span={8}><Form.Switch field="isTop" label="置顶" /></Col>
-                <Col span={8}><Form.Switch field="isRecommend" label="推荐" /></Col>
-                <Col span={8}><Form.Switch field="isHot" label="热门" /></Col>
+                <Col span={6}><Form.Switch field="isTop" label="置顶" /></Col>
+                <Col span={6}><Form.Switch field="isOriginal" label="原创" /></Col>
+                <Col span={6}><Form.Switch field="isRecommend" label="推荐" /></Col>
+                <Col span={6}><Form.Switch field="isHot" label="热门" /></Col>
+              </Row>
+              <Row gutter={12}>
+                <Col span={12}>
+                  <Form.InputNumber field="topWeight" label="置顶权重" min={0} max={9999} style={{ width: '100%' }} />
+                </Col>
+                <Col span={12}>
+                  <Form.DatePicker
+                    field="topExpireAt"
+                    label="置顶到期"
+                    type="dateTime"
+                    density="compact"
+                    style={{ width: '100%' }}
+                    placeholder="到期自动取消置顶"
+                  />
+                </Col>
               </Row>
               <Form.InputNumber field="sort" label="排序权重" style={{ width: '100%' }} />
               <Form.DatePicker
@@ -599,6 +688,80 @@ export default function ContentEditPage() {
             </div>
           )}
         </Spin>
+      </Modal>
+
+      {/* 操作记录抽屉 */}
+      <SideSheet title="操作记录" visible={opLogsVisible} onCancel={() => setOpLogsVisible(false)} width={420}>
+        {opLogsQuery.data && opLogsQuery.data.length > 0 ? (
+          <Timeline>
+            {opLogsQuery.data.map((log) => (
+              <Timeline.Item key={log.id} time={log.createdAt}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <b>{log.actionLabel}</b>
+                  <span style={{ fontSize: 12, color: 'var(--semi-color-text-2)' }}>{log.operatorName}</span>
+                </div>
+                {log.detail ? <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)' }}>{log.detail}</div> : null}
+              </Timeline.Item>
+            ))}
+          </Timeline>
+        ) : (
+          <div style={{ color: 'var(--semi-color-text-2)', padding: 24, textAlign: 'center' }}>
+            {opLogsQuery.isFetching ? '加载中…' : '暂无操作记录'}
+          </div>
+        )}
+      </SideSheet>
+
+      {/* 词库检查结果 */}
+      <Modal
+        title="内容检查结果"
+        visible={checkModalVisible}
+        onCancel={() => setCheckModalVisible(false)}
+        footer={null}
+        width={560}
+        closeOnEsc
+      >
+        {checkResult && checkResult.sensitive.length === 0 && checkResult.errorProne.length === 0 ? (
+          <Banner type="success" description="未发现敏感词与易错词" closeIcon={null} />
+        ) : checkResult ? (
+          <div style={{ maxHeight: '60vh', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {checkResult.sensitive.length > 0 ? (
+              <div>
+                <Typography.Title heading={6} style={{ marginBottom: 8 }}>敏感词（{checkResult.sensitive.length}）</Typography.Title>
+                {checkResult.sensitive.map((hit) => (
+                  <div key={hit.word} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--semi-color-border)' }}>
+                    <Typography.Text type="danger" strong>{hit.word}</Typography.Text>
+                    <span style={{ fontSize: 12, color: 'var(--semi-color-text-2)', flex: 1 }}>
+                      命中 {hit.count} 次 · {hit.replaceWith ? `提交时将被替换为「${hit.replaceWith}」` : '拦截词，请删除后再提交'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {checkResult.errorProne.length > 0 ? (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                  <Typography.Title heading={6} style={{ margin: 0, flex: 1 }}>易错词（{checkResult.errorProne.length}）</Typography.Title>
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      for (const hit of checkResult.errorProne) applyCorrection(hit.word, hit.correction);
+                    }}
+                  >
+                    全部替换
+                  </Button>
+                </div>
+                {checkResult.errorProne.map((hit) => (
+                  <div key={hit.word} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--semi-color-border)' }}>
+                    <Typography.Text type="warning" strong>{hit.word}</Typography.Text>
+                    <span style={{ fontSize: 12 }}>→ {hit.correction}</span>
+                    <span style={{ fontSize: 12, color: 'var(--semi-color-text-2)', flex: 1 }}>命中 {hit.count} 次</span>
+                    <Button size="small" theme="borderless" onClick={() => applyCorrection(hit.word, hit.correction)}>一键替换</Button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </Modal>
     </div>
   );

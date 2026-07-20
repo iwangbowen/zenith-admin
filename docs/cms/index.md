@@ -47,6 +47,7 @@ graph LR
 | 广告管理 | `/cms/ads` | 广告位 + 投放窗口 + 点击统计 | [互动与运营](./interaction) |
 | 表单管理 | `/cms/forms` | 自定义表单、提交数据导出、邮件通知 | [互动与运营](./interaction) |
 | 敏感词库 | `/cms/sensitive-words` | Aho-Corasick 引擎，评论/表单提交拦截 | [互动与运营](./interaction) |
+| 易错词库 | `/cms/error-prone-words` | 编辑辅助：错误词→正确词，内容检查一键替换 | [内容管线](./content-pipeline) |
 | 采集中心 | `/cms/collect` | CSS 选择器采集 + 图片本地化 | [互动与运营](./interaction) |
 | 页面搭建 | `/cms/pages` | 区块拖拽装配 + 内嵌实时预览 | [互动与运营](./interaction) |
 
@@ -69,9 +70,9 @@ CMS 前台路由（Hono 兜底路由）
 
 ## 数据表
 
-核心表：`cms_sites` / `cms_models` / `cms_model_fields` / `cms_channels` / `cms_contents` / `cms_tags` / `cms_content_tags` / `cms_content_channels`（副栏目）/ `cms_content_relations`（相关文章）/ `cms_content_versions`
+核心表：`cms_sites` / `cms_models` / `cms_model_fields` / `cms_channels` / `cms_contents` / `cms_tags` / `cms_content_tags` / `cms_content_channels`（副栏目）/ `cms_content_relations`（相关文章）/ `cms_content_versions` / `cms_content_op_logs`（操作日志时间线）
 
-运营表：`cms_comments` / `cms_ad_slots` / `cms_ads` / `cms_forms` / `cms_form_submissions` / `cms_sensitive_words` / `cms_fragments` / `cms_friend_links` / `cms_pages`
+运营表：`cms_comments` / `cms_ad_slots` / `cms_ads` / `cms_forms` / `cms_form_submissions` / `cms_sensitive_words` / `cms_error_prone_words`（易错词）/ `cms_fragments` / `cms_friend_links` / `cms_pages`
 
 SEO 与采集：`cms_redirects` / `cms_link_words` / `cms_push_logs` / `cms_search_words` / `cms_collect_rules` / `cms_collect_items`
 
@@ -91,6 +92,6 @@ SEO 与采集：`cms_redirects` / `cms_link_words` / `cms_push_logs` / `cms_sear
 
 ## 权限码
 
-所有权限以 `cms:` 前缀，按资源划分：`cms:site:*`、`cms:channel:*`、`cms:content:list|create|update|delete|publish|audit`、`cms:model:*`、`cms:tag:*`、`cms:fragment:*`、`cms:link:*`、`cms:static:build`、`cms:search:manage`、`cms:seo:manage|push`、`cms:comment:audit|delete`、`cms:ad:manage`、`cms:form:manage`、`cms:sensitive:manage`、`cms:collect:*`、`cms:page:*`、`cms:dashboard:view`。
+所有权限以 `cms:` 前缀，按资源划分：`cms:site:*`、`cms:channel:*`、`cms:content:list|create|update|delete|publish|audit`、`cms:model:*`、`cms:tag:*`、`cms:fragment:*`、`cms:link:*`、`cms:static:build`、`cms:search:manage`、`cms:seo:manage|push`、`cms:comment:audit|delete`、`cms:ad:manage`、`cms:form:manage`、`cms:sensitive:manage`、`cms:word:list|manage`（易错词）、`cms:collect:*`、`cms:page:*`、`cms:dashboard:view`。
 
 站点级数据权限：在「站点管理 → 授权用户」绑定后，该用户仅能管理绑定站点；未绑定的非超管用户不受限（兼容策略）。

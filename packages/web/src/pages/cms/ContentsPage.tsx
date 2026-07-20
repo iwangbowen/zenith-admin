@@ -31,7 +31,7 @@ const STATUS_COLORS: Record<CmsContentStatus, 'grey' | 'orange' | 'green' | 'red
   rejected: 'red',
 };
 
-type TabKey = 'all' | 'pending' | 'published' | 'recycle';
+type TabKey = 'all' | 'pending' | 'published' | 'archived' | 'recycle';
 
 function channelsToTree(nodes: CmsChannel[]): TreeNodeData[] {
   return nodes.map((n) => ({
@@ -80,6 +80,7 @@ export default function ContentsPage() {
     status: statusFilter,
     keyword: submittedKeyword || undefined,
     deleted: activeTab === 'recycle' ? true : undefined,
+    archived: activeTab === 'archived' ? true : undefined,
   }, siteId !== undefined);
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
@@ -143,7 +144,7 @@ export default function ContentsPage() {
     });
   }
 
-  async function runBatch(action: 'recycle' | 'restore' | 'purge', ids: number[], successMsg: string) {
+  async function runBatch(action: 'recycle' | 'restore' | 'purge' | 'archive' | 'unarchive', ids: number[], successMsg: string) {
     await batchMutation.mutateAsync({ action, ids });
     setSelectedIds([]);
     Toast.success(successMsg);
@@ -177,10 +178,11 @@ export default function ContentsPage() {
   async function handleDistributeOk() {
     const values = await distributeFormApi.current?.validate().catch(() => null);
     if (!values?.targetSiteId || !values?.targetChannelId) throw new Error('validation');
-    await batchOpsMutation.mutateAsync({ action: 'distribute', body: { ids: selectedIds, targetSiteId: values.targetSiteId, targetChannelId: values.targetChannelId } });
+    const mode = (values.mode as 'copy' | 'mapping') ?? 'copy';
+    await batchOpsMutation.mutateAsync({ action: 'distribute', body: { ids: selectedIds, targetSiteId: values.targetSiteId, targetChannelId: values.targetChannelId, mode } });
     setSelectedIds([]);
     setDistributeModalVisible(false);
-    Toast.success('分发成功（目标站点草稿箱）');
+    Toast.success(mode === 'mapping' ? '映射成功（正文将跟随来源内容更新）' : '分发成功（目标站点草稿箱）');
   }
 
   const channelPathMap = useMemo(() => {
@@ -208,10 +210,12 @@ export default function ContentsPage() {
       width: 320,
       render: (v: string, record) => (
         <span>
-          {record.isTop ? <Tag size="small" color="blue" style={{ marginRight: 4 }}>顶</Tag> : null}
+          {record.isTop ? <Tag size="small" color="blue" style={{ marginRight: 4 }}>{record.topWeight > 0 ? `顶${record.topWeight}` : '顶'}</Tag> : null}
           {record.isRecommend ? <Tag size="small" color="cyan" style={{ marginRight: 4 }}>荐</Tag> : null}
           {record.isHot ? <Tag size="small" color="red" style={{ marginRight: 4 }}>热</Tag> : null}
           {record.memberId ? <Tag size="small" color="purple" style={{ marginRight: 4 }}>投稿</Tag> : null}
+          {record.mappingSourceId ? <Tag size="small" color="teal" style={{ marginRight: 4 }}>映射</Tag> : null}
+          {record.isOriginal ? <Tag size="small" color="green" style={{ marginRight: 4 }}>原创</Tag> : null}
           <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 240, verticalAlign: 'middle' }}>{v}</Typography.Text>
         </span>
       ),
@@ -230,7 +234,7 @@ export default function ContentsPage() {
     },
     createOperationColumn<CmsContent>({
       width: 220,
-      desktopInlineKeys: activeTab === 'recycle' ? ['restore', 'purge'] : ['edit', 'publish'],
+      desktopInlineKeys: activeTab === 'recycle' ? ['restore', 'purge'] : activeTab === 'archived' ? ['unarchive'] : ['edit', 'publish'],
       actions: (record) => activeTab === 'recycle'
         ? [
             ...(hasPermission('cms:content:delete') ? [
@@ -244,6 +248,19 @@ export default function ContentsPage() {
                 },
               },
             ] : []),
+          ]
+        : activeTab === 'archived'
+        ? [
+            ...(hasPermission('cms:content:update') ? [{
+              key: 'unarchive',
+              label: '取消归档',
+              onClick: () => void runBatch('unarchive', [record.id], '已取消归档'),
+            }] : []),
+            ...(record.status === 'published' ? [{
+              key: 'preview',
+              label: '预览',
+              onClick: () => previewContent(record),
+            }] : []),
           ]
         : [
             ...(hasPermission('cms:content:update') ? [{
@@ -283,6 +300,13 @@ export default function ContentsPage() {
               label: '复制',
               onClick: () => {
                 void duplicateMutation.mutateAsync(record.id).then(() => Toast.success('已复制为草稿'));
+              },
+            }] : []),
+            ...(hasPermission('cms:content:update') && (record.status === 'published' || record.status === 'offline') ? [{
+              key: 'archive',
+              label: '归档',
+              onClick: () => {
+                Modal.confirm({ title: `归档「${record.title}」？`, content: '归档后前台详情页保留，但不再出现在栏目列表/首页/标签页等聚合位', onOk: () => runBatch('archive', [record.id], '已归档') });
               },
             }] : []),
             ...(hasPermission('cms:content:delete') ? [{
@@ -369,6 +393,8 @@ export default function ContentsPage() {
           Modal.confirm({ title: `彻底删除 ${selectedIds.length} 条内容？`, content: '删除后不可恢复', onOk: () => runBatch('purge', selectedIds, '已彻底删除') });
         }}>批量删除</Button>
       </>
+    ) : null) : activeTab === 'archived' ? (hasPermission('cms:content:update') ? (
+      <Button onClick={() => void runBatch('unarchive', selectedIds, `已取消归档 ${selectedIds.length} 条`)}>批量取消归档</Button>
     ) : null) : (
       <>
         {hasPermission('cms:content:update') ? (
@@ -390,6 +416,9 @@ export default function ContentsPage() {
             >
               <Button icon={<ChevronDown size={14} />} iconPosition="right">批量属性</Button>
             </Dropdown>
+            <Button onClick={() => {
+              Modal.confirm({ title: `归档 ${selectedIds.length} 条内容？`, content: '仅已发布/已下线内容会被归档；归档后不参与前台列表聚合', onOk: () => runBatch('archive', selectedIds, '归档完成') });
+            }}>批量归档</Button>
           </>
         ) : null}
         {hasPermission('cms:content:create') ? (
@@ -507,6 +536,10 @@ export default function ContentsPage() {
           <Form.TreeSelect field="targetChannelId" label="目标栏目" style={{ width: '100%' }}
             treeData={channelsToSelectTree(distributeTargetTreeQuery.data ?? [])}
             rules={[{ required: true, message: '请选择目标栏目' }]} />
+          <Form.RadioGroup field="mode" label="分发方式" initValue="copy">
+            <Form.Radio value="copy">独立复制（完整拷贝，分发后独立编辑）</Form.Radio>
+            <Form.Radio value="mapping">映射（正文共享来源内容，源改动自动同步）</Form.Radio>
+          </Form.RadioGroup>
         </Form>
       </AppModal>
     </>
@@ -533,6 +566,7 @@ export default function ContentsPage() {
             <TabPane tab="全部" itemKey="all">{tableContent}</TabPane>
             <TabPane tab="待审核" itemKey="pending">{tableContent}</TabPane>
             <TabPane tab="已发布" itemKey="published">{tableContent}</TabPane>
+            <TabPane tab="归档" itemKey="archived">{tableContent}</TabPane>
             <TabPane tab="回收站" itemKey="recycle">{tableContent}</TabPane>
           </Tabs>
         </div>

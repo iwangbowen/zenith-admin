@@ -13,7 +13,7 @@ import type {
 import { listCmsChannelTree } from './cms-channels.service';
 import {
   listPublishedContents, listHomeContents, getPublishedContent, getAdjacentContents, listContentTags,
-  listPublishedContentsByTag, listRelatedContents,
+  listPublishedContentsByTag, listRelatedContents, resolveContentBodyExtend,
 } from './cms-contents.service';
 import { getFragmentMap } from './cms-fragments.service';
 import { listEnabledFriendLinks } from './cms-friend-links.service';
@@ -407,7 +407,7 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
       mainEntityOfPage: origin ? `${origin}${canonicalPath}` : undefined,
     },
   });
-  const [base, breadcrumbs, adjacent, tags, linkWords, comments, relatedRows] = await Promise.all([
+  const [base, breadcrumbs, adjacent, tags, linkWords, comments, relatedRows, resolved] = await Promise.all([
     buildBaseContext(site, baseUrl, seo, row.id),
     buildBreadcrumbs(site, baseUrl, channel),
     getAdjacentContents(row),
@@ -415,6 +415,7 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
     getEnabledLinkWords(site.id),
     listApprovedComments(row.id),
     listRelatedContents(row),
+    resolveContentBodyExtend(row),
   ]);
   const related = await buildRelatedLinks(baseUrl, relatedRows);
   const detailComponent = await resolveDetailComponent(site, device, channel, row.detailTemplate, row.modelId);
@@ -424,8 +425,8 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
     breadcrumbs,
     content: {
       ...toContentItem(row, baseUrl, channel.path),
-      body: applyLinkWords(row.body ?? '', linkWords),
-      extend: row.extend ?? {},
+      body: applyLinkWords(resolved.body ?? '', linkWords),
+      extend: resolved.extend,
       tags: tags.map((t) => ({ name: t.name, slug: t.slug, url: tagUrl(baseUrl, t.slug) })),
       prev: adjacent.prev ? { title: adjacent.prev.title, url: contentUrl(baseUrl, channel.path, adjacent.prev) } : null,
       next: adjacent.next ? { title: adjacent.next.title, url: contentUrl(baseUrl, channel.path, adjacent.next) } : null,
@@ -470,11 +471,12 @@ export async function renderContentPreviewPage(site: CmsSiteRow, baseUrl: string
     description: row.seoDescription ?? row.summary ?? undefined,
     ogTitle: row.title,
   });
-  const [base, breadcrumbs, tags, linkWords] = await Promise.all([
+  const [base, breadcrumbs, tags, linkWords, resolved] = await Promise.all([
     buildBaseContext(site, baseUrl, seo),
     buildBreadcrumbs(site, baseUrl, channel),
     listContentTags(row.id),
     getEnabledLinkWords(site.id),
+    resolveContentBodyExtend(row),
   ]);
   const previewComponent = await resolveDetailComponent(site, device, channel, row.detailTemplate, row.modelId);
   const html = renderDoc(previewComponent, {
@@ -483,8 +485,8 @@ export async function renderContentPreviewPage(site: CmsSiteRow, baseUrl: string
     breadcrumbs,
     content: {
       ...toContentItem(row, baseUrl, channel.path),
-      body: applyLinkWords(row.body ?? '', linkWords),
-      extend: row.extend ?? {},
+      body: applyLinkWords(resolved.body ?? '', linkWords),
+      extend: resolved.extend,
       tags: tags.map((t) => ({ name: t.name, slug: t.slug, url: tagUrl(baseUrl, t.slug) })),
       prev: null,
       next: null,

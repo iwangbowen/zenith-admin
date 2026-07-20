@@ -1281,6 +1281,24 @@ export const CMS_CONTENT_STATUS_LABELS: Record<(typeof CMS_CONTENT_STATUSES)[num
   rejected: '已驳回',
 };
 
+/** CMS 内容操作日志动作（内容级时间线） */
+export const CMS_CONTENT_OP_ACTIONS = ['created', 'updated', 'submitted', 'published', 'rejected', 'offlined', 'recycled', 'restored', 'rolled_back', 'archived', 'unarchived', 'moved'] as const;
+
+export const CMS_CONTENT_OP_ACTION_LABELS: Record<(typeof CMS_CONTENT_OP_ACTIONS)[number], string> = {
+  created: '创建',
+  updated: '更新',
+  submitted: '提交审核',
+  published: '发布',
+  rejected: '驳回',
+  offlined: '下线',
+  recycled: '移入回收站',
+  restored: '恢复',
+  rolled_back: '版本回滚',
+  archived: '归档',
+  unarchived: '取消归档',
+  moved: '移动栏目',
+};
+
 export const CMS_FIELD_TYPES = ['text', 'textarea', 'richtext', 'number', 'date', 'datetime', 'image', 'file', 'select', 'radio', 'checkbox', 'switch'] as const;
 
 export const CMS_FIELD_TYPE_LABELS: Record<(typeof CMS_FIELD_TYPES)[number], string> = {

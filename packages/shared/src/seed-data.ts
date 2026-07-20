@@ -19,7 +19,7 @@ import type {
   UserFeedback, ReportFolder, ReportMetric, ReportEnvironment, ReportDqRule, ReportQueryQuota,
   ReportSlaRule, ReportAssetTemplate, ReportFillTemplate, AnalyticsEventPropertyDef, AnalyticsSite,
   CmsSite, CmsPublishChannel, CmsModel, CmsChannel, CmsContent, CmsTag, CmsFragment, CmsFriendLink,
-  CmsAdSlot, CmsAd, CmsForm, CmsSensitiveWord, CmsLinkWord, CmsComment,
+  CmsAdSlot, CmsAd, CmsForm, CmsSensitiveWord, CmsErrorProneWord, CmsLinkWord, CmsComment,
 } from './types';
 import { ANALYTICS_EXPERIMENT_EXPOSURE_EVENT, ANALYTICS_SEMANTIC_EVENT_LABELS, type AnalyticsSemanticEventName } from './constants';
 
@@ -717,6 +717,8 @@ export const SEED_MENUS: Menu[] = [
   { id: 1771, parentId: 1770, title: '管理表单',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:form:manage',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1775, parentId: 1700, title: '敏感词库',     name: 'CmsSensitiveWords', path: '/cms/sensitive-words', component: 'cms/SensitiveWordsPage', icon: 'ShieldAlert',  type: 'menu',      sort: 14, status: 'enabled', visible: true,  permission: 'cms:sensitive:list', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1776, parentId: 1775, title: '管理敏感词',   name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:sensitive:manage', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1790, parentId: 1700, title: '易错词库',     name: 'CmsErrorProneWords', path: '/cms/error-prone-words', component: 'cms/ErrorProneWordsPage', icon: 'SpellCheck', type: 'menu',  sort: 18, status: 'enabled', visible: true,  permission: 'cms:word:list',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1791, parentId: 1790, title: '管理易错词',   name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:word:manage',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1780, parentId: 1700, title: '采集中心',     name: 'CmsCollect',       path: '/cms/collect',     component: 'cms/CollectPage',            icon: 'Download',     type: 'menu',      sort: 15, status: 'enabled', visible: true,  permission: 'cms:collect:list',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1781, parentId: 1780, title: '新增规则',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:collect:create', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1782, parentId: 1780, title: '编辑规则',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'cms:collect:update', createdAt: SEED_DATE, updatedAt: SEED_DATE },
@@ -2959,33 +2961,36 @@ export const SEED_CMS_TAGS: CmsTag[] = [
 export const SEED_CMS_CONTENTS: (CmsContent & { tagIds: number[] })[] = [
   {
     id: 1, siteId: 1, channelId: 1, channelName: '新闻中心', modelId: 1,
-    title: 'Zenith Admin 发布 CMS 内容管理模块', slug: null,
+    title: 'Zenith Admin 发布 CMS 内容管理模块', subTitle: null, shortTitle: 'CMS 模块发布', slug: null,
     summary: '全新 CMS 模块支持多站点、SEO 优化、SSR 静态化发布与基于 PostgreSQL 的中文全文检索。',
-    coverImage: null, author: '管理员', source: '官方', body: '<p>Zenith Admin 全新 CMS 模块正式发布：支持站群管理、内容模型自定义字段、React SSR 静态化与 PostgreSQL 全文检索，功能全面对标国内主流 CMS。</p>',
-    extend: {}, externalLink: null, detailTemplate: null, isTop: true, isRecommend: true, isHot: false,
+    coverImage: null, author: '管理员', editor: '管理员', source: '官方', sourceUrl: null, isOriginal: true, body: '<p>Zenith Admin 全新 CMS 模块正式发布：支持站群管理、内容模型自定义字段、React SSR 静态化与 PostgreSQL 全文检索，功能全面对标国内主流 CMS。</p>',
+    extend: {}, externalLink: null, detailTemplate: null, isTop: true, topWeight: 10, topExpireAt: null, isRecommend: true, isHot: false,
     status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null, expireAt: null,
     viewCount: 128, version: 1, sort: 0, seoTitle: null, seoKeywords: 'CMS,发布', seoDescription: null,
+    archivedAt: null, mappingSourceId: null,
     tagIds: [1], createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
   {
     id: 2, siteId: 1, channelId: 1, channelName: '新闻中心', modelId: 1,
-    title: '内容管理系统选型指南：静态化与全文检索实践', slug: null,
+    title: '内容管理系统选型指南：静态化与全文检索实践', subTitle: null, shortTitle: null, slug: null,
     summary: '解析传统 CMS 的静态化方案与现代 SSR 渲染的结合方式，以及不依赖 Elasticsearch 的 PostgreSQL 全文检索实现。',
-    coverImage: null, author: '管理员', source: '原创', body: '<p>本文介绍混合静态化模式（发布时增量生成 + 访问时回写）与应用层中文分词方案在 PostgreSQL tsvector 上的落地实践。</p>',
-    extend: {}, externalLink: null, detailTemplate: null, isTop: false, isRecommend: true, isHot: true,
+    coverImage: null, author: '管理员', editor: null, source: '原创', sourceUrl: null, isOriginal: true, body: '<p>本文介绍混合静态化模式（发布时增量生成 + 访问时回写）与应用层中文分词方案在 PostgreSQL tsvector 上的落地实践。</p>',
+    extend: {}, externalLink: null, detailTemplate: null, isTop: false, topWeight: 0, topExpireAt: null, isRecommend: true, isHot: true,
     status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null, expireAt: null,
     viewCount: 86, version: 1, sort: 0, seoTitle: null, seoKeywords: '静态化,全文检索', seoDescription: null,
+    archivedAt: null, mappingSourceId: null,
     tagIds: [2], createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
   {
     id: 3, siteId: 1, channelId: 2, channelName: '产品中心', modelId: 2,
-    title: 'Zenith 企业版', slug: 'enterprise',
+    title: 'Zenith 企业版', subTitle: '一体化数字化底座', shortTitle: null, slug: 'enterprise',
     summary: '面向中大型企业的一体化数字化底座。',
-    coverImage: null, author: null, source: null, body: '<p>Zenith 企业版提供完整的权限体系、工作流引擎、支付中心与 CMS 内容管理能力。</p>',
+    coverImage: null, author: null, editor: null, source: null, sourceUrl: null, isOriginal: false, body: '<p>Zenith 企业版提供完整的权限体系、工作流引擎、支付中心与 CMS 内容管理能力。</p>',
     extend: { price: '联系销售', spec: '支持私有化部署，PostgreSQL 16 + Redis 7' }, externalLink: null, detailTemplate: null,
-    isTop: false, isRecommend: false, isHot: false,
+    isTop: false, topWeight: 0, topExpireAt: null, isRecommend: false, isHot: false,
     status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null, expireAt: null,
     viewCount: 45, version: 1, sort: 0, seoTitle: null, seoKeywords: null, seoDescription: null,
+    archivedAt: null, mappingSourceId: null,
     tagIds: [], createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
 ];
@@ -3026,6 +3031,12 @@ export const SEED_CMS_FORMS: CmsForm[] = [
 export const SEED_CMS_SENSITIVE_WORDS: CmsSensitiveWord[] = [
   { id: 1, word: '赌博', replaceWith: null, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 2, word: '广告勿扰', replaceWith: '***', status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+export const SEED_CMS_ERROR_PRONE_WORDS: CmsErrorProneWord[] = [
+  { id: 1, word: '登陆系统', correction: '登录系统', status: 'enabled', remark: '登陆=着陆义，账号进入应为登录', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, word: '按装', correction: '安装', status: 'enabled', remark: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 3, word: '部署完毕', correction: '部署完成', status: 'enabled', remark: '书面语统一用“完成”', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 export const SEED_CMS_LINK_WORDS: CmsLinkWord[] = [

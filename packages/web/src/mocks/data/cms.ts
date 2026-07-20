@@ -2,12 +2,12 @@ import {
   SEED_CMS_SITES, SEED_CMS_PUBLISH_CHANNELS, SEED_CMS_MODELS, SEED_CMS_CHANNELS, SEED_CMS_CONTENTS,
   SEED_CMS_TAGS, SEED_CMS_FRAGMENTS, SEED_CMS_FRIEND_LINKS,
   SEED_CMS_AD_SLOTS, SEED_CMS_ADS, SEED_CMS_FORMS, SEED_CMS_SENSITIVE_WORDS,
-  SEED_CMS_LINK_WORDS, SEED_CMS_COMMENTS,
+  SEED_CMS_ERROR_PRONE_WORDS, SEED_CMS_LINK_WORDS, SEED_CMS_COMMENTS,
 } from '@zenith/shared';
 import type {
   CmsSite, CmsPublishChannel, CmsModel, CmsChannel, CmsContent, CmsTag, CmsFragment, CmsFriendLink,
-  CmsAdSlot, CmsAd, CmsForm, CmsFormSubmission, CmsSensitiveWord, CmsLinkWord, CmsComment,
-  CmsRedirect, CmsPushLog, CmsContentVersion, CmsSearchWord, CmsHotKeyword,
+  CmsAdSlot, CmsAd, CmsForm, CmsFormSubmission, CmsSensitiveWord, CmsErrorProneWord, CmsLinkWord, CmsComment,
+  CmsRedirect, CmsPushLog, CmsContentVersion, CmsSearchWord, CmsHotKeyword, CmsContentOpLog,
 } from '@zenith/shared';
 
 // 从共享种子数据派生（禁止重复定义静态数组）
@@ -65,16 +65,23 @@ export const mockCmsFormSubmissions: CmsFormSubmission[] = [
   { id: 1, formId: 1, data: { name: '张三', phone: '13800000000', message: '想了解企业版报价' }, ip: '127.0.0.1', userAgent: null, createdAt: '2024-01-01 00:00:00' },
 ];
 export const mockCmsSensitiveWords: CmsSensitiveWord[] = SEED_CMS_SENSITIVE_WORDS.map((w) => ({ ...w }));
+export const mockCmsErrorProneWords: CmsErrorProneWord[] = SEED_CMS_ERROR_PRONE_WORDS.map((w) => ({ ...w }));
 export const mockCmsLinkWords: CmsLinkWord[] = SEED_CMS_LINK_WORDS.map((w) => ({ ...w }));
 export const mockCmsComments: CmsComment[] = SEED_CMS_COMMENTS.map((c) => ({ ...c, contentTitle: SEED_CMS_CONTENTS.find((x) => x.id === c.contentId)?.title ?? null }));
 export const mockCmsRedirects: CmsRedirect[] = [];
 export const mockCmsPushLogs: CmsPushLog[] = [];
 export const mockCmsContentVersions: CmsContentVersion[] = [];
+export const mockCmsContentOpLogs: CmsContentOpLog[] = [
+  { id: 1, contentId: 1, action: 'created', actionLabel: '创建', detail: null, operatorId: 1, operatorName: 'admin', createdAt: '2024-01-01 09:00:00' },
+  { id: 2, contentId: 1, action: 'published', actionLabel: '发布', detail: null, operatorId: 1, operatorName: 'admin', createdAt: '2024-01-01 10:00:00' },
+];
 
 export const getNextCmsAdSlotId = nextIdFactory(Math.max(0, ...mockCmsAdSlots.map((x) => x.id)) + 1);
 export const getNextCmsAdId = nextIdFactory(Math.max(0, ...mockCmsAds.map((x) => x.id)) + 1);
 export const getNextCmsFormId = nextIdFactory(Math.max(0, ...mockCmsForms.map((x) => x.id)) + 1);
 export const getNextCmsSensitiveWordId = nextIdFactory(Math.max(0, ...mockCmsSensitiveWords.map((x) => x.id)) + 1);
+export const getNextCmsErrorProneWordId = nextIdFactory(Math.max(0, ...mockCmsErrorProneWords.map((x) => x.id)) + 1);
+export const getNextCmsContentOpLogId = nextIdFactory(Math.max(0, ...mockCmsContentOpLogs.map((x) => x.id)) + 1);
 export const getNextCmsLinkWordId = nextIdFactory(Math.max(0, ...mockCmsLinkWords.map((x) => x.id)) + 1);
 export const getNextCmsCommentId = nextIdFactory(Math.max(0, ...mockCmsComments.map((x) => x.id)) + 1);
 export const getNextCmsRedirectId = nextIdFactory(1);

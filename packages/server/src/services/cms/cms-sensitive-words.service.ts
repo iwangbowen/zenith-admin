@@ -6,6 +6,7 @@ import type { CmsSensitiveWordRow } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
 import { mergeWhere, escapeLike, withPagination } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
+import { invalidateWordCheckCache } from './cms-word-check.service';
 import type { CreateCmsSensitiveWordInput, UpdateCmsSensitiveWordInput } from '@zenith/shared';
 
 // ─── 内存缓存 + Aho-Corasick 自动机 ────────────────────────────────────────────
@@ -54,6 +55,7 @@ const CACHE_TTL_MS = 60_000;
 
 function invalidateSensitiveWordCache() {
   cache = null;
+  invalidateWordCheckCache();
 }
 
 async function getAutomaton(): Promise<AcNode> {

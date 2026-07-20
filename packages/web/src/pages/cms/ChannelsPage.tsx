@@ -3,14 +3,18 @@ import { Button, Form, Tag, Toast, Modal, Row, Col, Select, Tabs, TabPane } from
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
-import { Plus, ExternalLink } from 'lucide-react';
+import { Plus, ExternalLink, Merge, ListPlus } from 'lucide-react';
+import { pinyin } from 'pinyin-pro';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import RichTextEditor from '@/components/RichTextEditor';
 import { usePermission } from '@/hooks/usePermission';
-import { useCmsChannelTree, useAllCmsModels, useAllCmsSites, useSaveCmsChannel, useDeleteCmsChannel, useCmsThemeTemplates, useCmsPublishChannels } from '@/hooks/queries/cms';
+import {
+  useCmsChannelTree, useAllCmsModels, useAllCmsSites, useSaveCmsChannel, useDeleteCmsChannel,
+  useCmsThemeTemplates, useCmsPublishChannels, useMergeCmsChannels, useClearCmsChannel, useBatchCreateCmsChannels,
+} from '@/hooks/queries/cms';
 import { CMS_CHANNEL_TYPE_LABELS, CMS_DEFAULT_CHANNEL_CODE } from '@zenith/shared';
 import type { CmsChannel, CmsSiteTemplateDefaults } from '@zenith/shared';
 import { CmsSiteSelect, cmsPreviewUrl } from './CmsSiteSelect';
@@ -61,6 +65,12 @@ function toTreeSelectData(nodes: CmsChannel[], excludeId?: number): TreeNodeData
     }));
 }
 
+/** 汉字名称 → 拼音 slug（与服务端 slugifyChannelName 规则一致） */
+function slugifyName(name: string): string {
+  const py = pinyin(name, { toneType: 'none', type: 'array', nonZh: 'consecutive' }).join('-');
+  return py.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 100);
+}
+
 export default function ChannelsPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
@@ -81,6 +91,13 @@ export default function ChannelsPage() {
   const [channelTemplates, setChannelTemplates] = useState<ChannelTemplatesState>({});
   const saveMutation = useSaveCmsChannel();
   const deleteMutation = useDeleteCmsChannel();
+  const mergeMutation = useMergeCmsChannels();
+  const clearMutation = useClearCmsChannel();
+  const batchCreateMutation = useBatchCreateCmsChannels();
+  const [mergeModalVisible, setMergeModalVisible] = useState(false);
+  const [batchModalVisible, setBatchModalVisible] = useState(false);
+  const mergeFormApi = useRef<FormApi | null>(null);
+  const batchFormApi = useRef<FormApi | null>(null);
 
   function openCreate(parentId = 0) {
     setEditingRecord(null);
@@ -154,6 +171,28 @@ export default function ChannelsPage() {
     Toast.success('删除成功');
   }
 
+  async function handleMergeOk() {
+    const values = await mergeFormApi.current?.validate().catch(() => null);
+    if (!values?.sourceIds || !(values.sourceIds as number[]).length || !values.targetId) throw new Error('validation');
+    await mergeMutation.mutateAsync({ sourceIds: values.sourceIds as number[], targetId: values.targetId as number });
+    setMergeModalVisible(false);
+    Toast.success('合并完成，来源栏目已删除');
+  }
+
+  async function handleBatchCreateOk() {
+    if (!siteId) return;
+    const values = await batchFormApi.current?.validate().catch(() => null);
+    if (!values?.names) throw new Error('validation');
+    const names = String(values.names).split('\n').map((s) => s.trim()).filter(Boolean);
+    if (names.length === 0) {
+      Toast.warning('请输入至少一个栏目名称');
+      throw new Error('validation');
+    }
+    await batchCreateMutation.mutateAsync({ siteId, parentId: (values.parentId as number) ?? 0, names });
+    setBatchModalVisible(false);
+    Toast.success(`已创建 ${names.length} 个栏目（slug 自动取拼音）`);
+  }
+
   const columns: ColumnProps<CmsChannel>[] = [
     { title: '栏目名称', dataIndex: 'name', width: 220 },
     {
@@ -201,6 +240,21 @@ export default function ChannelsPage() {
           key: 'edit',
           label: '编辑',
           onClick: () => openEdit(record),
+        }] : []),
+        ...(hasPermission('cms:channel:update') && record.type === 'list' ? [{
+          key: 'clear',
+          label: '清空栏目',
+          danger: true,
+          onClick: () => {
+            Modal.confirm({
+              title: `清空「${record.name}」？`,
+              content: '栏目下全部内容将移入回收站（不含子栏目）',
+              onOk: async () => {
+                await clearMutation.mutateAsync(record.id);
+                Toast.success('已清空，内容移入回收站');
+              },
+            });
+          },
         }] : []),
         ...(hasPermission('cms:channel:delete') ? [{
           key: 'delete',
@@ -289,6 +343,12 @@ export default function ChannelsPage() {
             访问站点
           </Button>
         ) : null}
+        {hasPermission('cms:channel:update') ? (
+          <Button icon={<Merge size={14} />} onClick={() => setMergeModalVisible(true)}>栏目合并</Button>
+        ) : null}
+        {hasPermission('cms:channel:create') ? (
+          <Button icon={<ListPlus size={14} />} onClick={() => setBatchModalVisible(true)}>批量新增</Button>
+        ) : null}
         {hasPermission('cms:channel:create') ? (
           <Button type="primary" icon={<Plus size={14} />} onClick={() => openCreate(0)}>新增栏目</Button>
         ) : null}
@@ -339,7 +399,20 @@ export default function ChannelsPage() {
           </Form.Slot>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Input field="name" label="栏目名称" rules={[{ required: true, message: '请输入栏目名称' }]} />
+              <Form.Input
+                field="name"
+                label="栏目名称"
+                rules={[{ required: true, message: '请输入栏目名称' }]}
+                onBlur={() => {
+                  // 新建且 slug 为空时按名称自动生成拼音标识
+                  if (editingRecord) return;
+                  const api = formApi.current;
+                  const name = api?.getValue('name');
+                  if (typeof name === 'string' && name.trim() && !api?.getValue('slug')) {
+                    api?.setValue('slug', slugifyName(name));
+                  }
+                }}
+              />
             </Col>
             <Col span={12}>
               <Form.Input field="slug" label="URL 标识" placeholder="小写字母/数字/中划线" rules={[{ required: true, message: '请输入 URL 标识' }]} />
@@ -412,6 +485,48 @@ export default function ChannelsPage() {
             <Form.Input field="seoKeywords" label="SEO 关键词" />
             <Form.TextArea field="seoDescription" label="SEO 描述" rows={2} />
           </Form.Section>
+        </Form>
+      </AppModal>
+
+      {/* 栏目合并 */}
+      <AppModal
+        title="栏目合并"
+        visible={mergeModalVisible}
+        onOk={handleMergeOk}
+        onCancel={() => setMergeModalVisible(false)}
+        okButtonProps={{ loading: mergeMutation.isPending }}
+        width={520}
+        closeOnEsc
+      >
+        <Form getFormApi={(api) => { mergeFormApi.current = api; }} allowEmpty labelPosition="left" labelWidth={90}>
+          <Form.TreeSelect field="sourceIds" label="来源栏目" multiple style={{ width: '100%' }}
+            treeData={toTreeSelectData(tree)}
+            placeholder="内容将被迁出并删除的栏目（须为无子栏目的列表栏目）"
+            rules={[{ required: true, message: '请选择来源栏目' }]} />
+          <Form.TreeSelect field="targetId" label="目标栏目" style={{ width: '100%' }}
+            treeData={toTreeSelectData(tree)}
+            placeholder="内容并入的列表栏目"
+            rules={[{ required: true, message: '请选择目标栏目' }]} />
+        </Form>
+      </AppModal>
+
+      {/* 批量新增栏目 */}
+      <AppModal
+        title="批量新增栏目"
+        visible={batchModalVisible}
+        onOk={handleBatchCreateOk}
+        onCancel={() => setBatchModalVisible(false)}
+        okButtonProps={{ loading: batchCreateMutation.isPending }}
+        width={520}
+        closeOnEsc
+      >
+        <Form getFormApi={(api) => { batchFormApi.current = api; }} allowEmpty labelPosition="left" labelWidth={90}
+          initValues={{ parentId: 0 }}>
+          <Form.TreeSelect field="parentId" label="父栏目" style={{ width: '100%' }}
+            treeData={[{ key: '0', value: 0, label: '顶级栏目' }, ...toTreeSelectData(tree)]} />
+          <Form.TextArea field="names" label="栏目名称" rows={6}
+            placeholder={'每行一个栏目名称，如：\n公司新闻\n行业动态\n通知公告\n\nURL 标识自动取拼音，路径冲突自动加序号'}
+            rules={[{ required: true, message: '请输入栏目名称' }]} />
         </Form>
       </AppModal>
     </div>

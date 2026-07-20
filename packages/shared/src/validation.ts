@@ -5142,17 +5142,27 @@ export const createCmsContentSchema = z.object({
   siteId: z.number().int().positive(),
   channelId: z.number().int().positive(),
   title: z.string().min(1, '标题不能为空').max(255),
+  subTitle: z.string().max(255).nullable().optional(),
+  shortTitle: z.string().max(100).nullable().optional(),
   slug: z.string().max(255).regex(cmsSlugRegex, '标识仅支持小写字母、数字、中划线').nullable().optional(),
   summary: z.string().max(2000).nullable().optional(),
   coverImage: z.string().max(500).nullable().optional(),
   author: z.string().max(50).nullable().optional(),
+  /** 责任编辑 */
+  editor: z.string().max(50).nullable().optional(),
   source: z.string().max(100).nullable().optional(),
+  sourceUrl: z.string().max(500).nullable().optional(),
+  isOriginal: z.boolean().default(false),
   body: z.string().nullable().optional(),
   extend: z.record(z.string(), z.unknown()).default({}),
   externalLink: z.string().max(500).nullable().optional(),
   /** 详情模板覆盖（主题变体模板名；空 = 跟随栏目/站点默认） */
   detailTemplate: z.string().max(50).nullable().optional(),
   isTop: z.boolean().default(false),
+  /** 置顶权重（数值越大越靠前，isTop=true 时生效） */
+  topWeight: z.number().int().min(0).max(9999).default(0),
+  /** 置顶到期时间（到期自动取消置顶；空 = 永久置顶） */
+  topExpireAt: z.string().nullable().optional(),
   isRecommend: z.boolean().default(false),
   isHot: z.boolean().default(false),
   scheduledAt: z.string().nullable().optional(),
@@ -5284,6 +5294,14 @@ export const createCmsSensitiveWordSchema = z.object({
 });
 export const updateCmsSensitiveWordSchema = createCmsSensitiveWordSchema.partial();
 
+export const createCmsErrorProneWordSchema = z.object({
+  word: z.string().min(1, '易错词不能为空').max(50),
+  correction: z.string().min(1, '正确写法不能为空').max(50),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  remark: z.string().max(200).nullable().optional(),
+});
+export const updateCmsErrorProneWordSchema = createCmsErrorProneWordSchema.partial();
+
 export const submitCmsCommentSchema = z.object({
   contentId: z.coerce.number().int().positive(),
   nickname: z.string().min(1, '昵称不能为空').max(50),
@@ -5307,6 +5325,8 @@ export type CreateCmsFormInput = z.input<typeof createCmsFormSchema>;
 export type UpdateCmsFormInput = z.input<typeof updateCmsFormSchema>;
 export type CreateCmsSensitiveWordInput = z.input<typeof createCmsSensitiveWordSchema>;
 export type UpdateCmsSensitiveWordInput = z.input<typeof updateCmsSensitiveWordSchema>;
+export type CreateCmsErrorProneWordInput = z.input<typeof createCmsErrorProneWordSchema>;
+export type UpdateCmsErrorProneWordInput = z.input<typeof updateCmsErrorProneWordSchema>;
 export type SubmitCmsCommentInput = z.input<typeof submitCmsCommentSchema>;
 
 // ─── CMS P3 Batch1 Schema ─────────────────────────────────────────────────────

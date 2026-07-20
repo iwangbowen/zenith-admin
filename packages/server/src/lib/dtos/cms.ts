@@ -137,16 +137,23 @@ export const CmsContentDTO = z
     channelName: z.string().nullable().optional(),
     modelId: z.number().int().nullable(),
     title: z.string().openapi({ example: '公司荣获行业大奖' }),
+    subTitle: z.string().nullable().openapi({ description: '副标题' }),
+    shortTitle: z.string().nullable().openapi({ description: '短标题（列表窄位展示）' }),
     slug: z.string().nullable(),
     summary: z.string().nullable(),
     coverImage: z.string().nullable(),
     author: z.string().nullable(),
+    editor: z.string().nullable().openapi({ description: '责任编辑' }),
     source: z.string().nullable(),
+    sourceUrl: z.string().nullable().openapi({ description: '来源链接' }),
+    isOriginal: z.boolean().openapi({ description: '原创标记' }),
     body: z.string().nullable(),
     extend: z.record(z.string(), z.unknown()),
     externalLink: z.string().nullable(),
     detailTemplate: z.string().nullable().openapi({ description: '详情模板覆盖（主题变体模板名；空 = 跟随栏目/站点默认）' }),
     isTop: z.boolean(),
+    topWeight: z.number().int().openapi({ description: '置顶权重（数值越大越靠前）' }),
+    topExpireAt: z.string().nullable().openapi({ description: '置顶到期时间（到期自动取消置顶；空 = 永久）' }),
     isRecommend: z.boolean(),
     isHot: z.boolean(),
     status: z.enum(['draft', 'pending', 'published', 'offline', 'rejected']),
@@ -164,6 +171,9 @@ export const CmsContentDTO = z
     tagIds: z.array(z.number().int()).optional(),
     extraChannelIds: z.array(z.number().int()).optional().openapi({ description: '副栏目 id（一文多栏目）' }),
     relatedIds: z.array(z.number().int()).optional().openapi({ description: '相关文章 id（手动关联）' }),
+    archivedAt: z.string().nullable().openapi({ description: '归档时间（非空 = 已归档）' }),
+    mappingSourceId: z.number().int().nullable().openapi({ description: '映射来源内容 id（非空 = 映射内容，正文共享来源）' }),
+    mappingSourceTitle: z.string().nullable().optional().openapi({ description: '映射来源内容标题' }),
     ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
@@ -437,6 +447,47 @@ export const CmsSensitiveWordDTO = z
     updatedAt: z.string(),
   })
   .openapi('CmsSensitiveWord');
+
+export const CmsErrorProneWordDTO = z
+  .object({
+    id: z.number().int(),
+    word: z.string().openapi({ example: '登陆系统' }),
+    correction: z.string().openapi({ example: '登录系统' }),
+    status: z.enum(['enabled', 'disabled']),
+    remark: z.string().nullable(),
+    ...auditFields,
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('CmsErrorProneWord');
+
+export const CmsContentOpLogDTO = z
+  .object({
+    id: z.number().int(),
+    contentId: z.number().int(),
+    action: z.string().openapi({ example: 'published' }),
+    actionLabel: z.string().openapi({ example: '发布' }),
+    detail: z.string().nullable(),
+    operatorId: z.number().int().nullable(),
+    operatorName: z.string(),
+    createdAt: z.string(),
+  })
+  .openapi('CmsContentOpLog');
+
+export const CmsTextCheckResultDTO = z
+  .object({
+    sensitive: z.array(z.object({
+      word: z.string(),
+      replaceWith: z.string().nullable().openapi({ description: '空 = 拦截词（提交会被拒绝）' }),
+      count: z.number().int(),
+    })),
+    errorProne: z.array(z.object({
+      word: z.string(),
+      correction: z.string(),
+      count: z.number().int(),
+    })),
+  })
+  .openapi('CmsTextCheckResult');
 
 export const CmsPushLogDTO = z
   .object({

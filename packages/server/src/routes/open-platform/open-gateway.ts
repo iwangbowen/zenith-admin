@@ -108,11 +108,11 @@ router.get('/v1/cms/contents/:id', async (c) => {
   const site = await resolveCmsSite(c);
   if (!site) return c.json(errBody('站点不存在（请携带 siteCode 参数）', 404), 404);
   const id = Number(c.req.param('id')) || 0;
-  const { getPublishedContentById, mapCmsContent, listContentTags } = await import('../../services/cms/cms-contents.service');
+  const { getPublishedContentById, mapCmsContent, listContentTags, resolveContentBodyExtend } = await import('../../services/cms/cms-contents.service');
   const row = id > 0 ? await getPublishedContentById(site.id, id) : null;
   if (!row) return c.json(errBody('内容不存在或未发布', 404), 404);
-  const tags = await listContentTags(row.id);
-  return c.json(okBody(mapCmsContent(row, { tags })), 200);
+  const [tags, resolved] = await Promise.all([listContentTags(row.id), resolveContentBodyExtend(row)]);
+  return c.json(okBody({ ...mapCmsContent(row, { tags }), body: resolved.body, extend: resolved.extend }), 200);
 });
 
 export default router;
