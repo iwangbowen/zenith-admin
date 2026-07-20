@@ -417,13 +417,13 @@ export default function SitesPage() {
             </TabPane>
             <TabPane tab="SEO 与推送" itemKey="seo">
               <div style={{ paddingTop: 16 }}>
-                <Form.Input field="title" label="SEO 标题" placeholder="站点默认 title" />
-                <Form.Input field="keywords" label="SEO 关键词" placeholder="逗号分隔" />
-                <Form.TextArea field="description" label="SEO 描述" rows={2} />
-                <Form.TextArea field="robots" label="robots.txt" rows={3} placeholder="留空使用默认规则（Allow all + Sitemap）" />
+                <Form.Input field="title" label="SEO 标题" labelWidth={140} placeholder="站点默认 title" />
+                <Form.Input field="keywords" label="SEO 关键词" labelWidth={140} placeholder="逗号分隔" />
+                <Form.TextArea field="description" label="SEO 描述" labelWidth={140} rows={2} />
+                <Form.TextArea field="robots" label="robots.txt" labelWidth={140} rows={3} placeholder="留空使用默认规则（Allow all + Sitemap）" />
                 <Form.Section text="搜索推送（配置后发布内容自动推送搜索引擎）">
-                  <Form.Input field="baiduPushToken" label="百度推送 Token" placeholder="百度搜索资源平台 → 普通收录" />
-                  <Form.Input field="indexNowKey" label="IndexNow Key" placeholder="Bing 等引擎；key 文件自动托管" />
+                  <Form.Input field="baiduPushToken" label="百度推送 Token" labelWidth={140} placeholder="百度搜索资源平台 → 普通收录" />
+                  <Form.Input field="indexNowKey" label="IndexNow Key" labelWidth={140} placeholder="Bing 等引擎；key 文件自动托管" />
                 </Form.Section>
               </div>
             </TabPane>
