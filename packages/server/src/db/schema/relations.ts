@@ -45,7 +45,7 @@ import {
   reportSlaRules,
   reportSlaViolations,
 } from './report-platform';
-import { cmsChannels, cmsContents, cmsContentTags, cmsFragments, cmsFriendLinks, cmsModelFields, cmsModels, cmsSites, cmsTags, cmsContentVersions, cmsRedirects, cmsLinkWords, cmsComments, cmsAdSlots, cmsAds, cmsForms, cmsFormSubmissions, cmsPushLogs, cmsSiteUsers, cmsContentChannels, cmsContentRelations, cmsContentOpLogs, cmsContentLikes, cmsContentFavorites, cmsMemberViewHistory, cmsSurveys, cmsSurveyQuestions, cmsSurveyAnswers } from './cms';
+import { cmsChannels, cmsContents, cmsContentTags, cmsFragments, cmsFriendLinks, cmsModelFields, cmsModels, cmsSites, cmsTags, cmsContentVersions, cmsRedirects, cmsLinkWords, cmsComments, cmsAdSlots, cmsAds, cmsForms, cmsFormSubmissions, cmsPushLogs, cmsSiteUsers, cmsChannelUsers, cmsContentChannels, cmsContentRelations, cmsContentOpLogs, cmsContentLikes, cmsContentFavorites, cmsMemberViewHistory, cmsSurveys, cmsSurveyQuestions, cmsSurveyAnswers } from './cms';
 
 // ─── 关联关系 ────────────────────────────────────────────────────────────────
 export const errorGroupsRelations = relations(errorGroups, ({ many, one }) => ({
@@ -1393,4 +1393,9 @@ export const cmsPushLogsRelations = relations(cmsPushLogs, ({ one }) => ({
 export const cmsSiteUsersRelations = relations(cmsSiteUsers, ({ one }) => ({
   site: one(cmsSites, { fields: [cmsSiteUsers.siteId], references: [cmsSites.id] }),
   user: one(users, { fields: [cmsSiteUsers.userId], references: [users.id], relationName: 'cmsSiteUserUser' }),
+}));
+
+export const cmsChannelUsersRelations = relations(cmsChannelUsers, ({ one }) => ({
+  channel: one(cmsChannels, { fields: [cmsChannelUsers.channelId], references: [cmsChannels.id] }),
+  user: one(users, { fields: [cmsChannelUsers.userId], references: [users.id], relationName: 'cmsChannelUserUser' }),
 }));

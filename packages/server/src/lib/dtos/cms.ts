@@ -626,6 +626,35 @@ export const CmsSiteUsersDTO = z
   })
   .openapi('CmsSiteUsers');
 
+// ─── P5 企业级治理 ─────────────────────────────────────────────────────────────
+export const CmsChannelUsersDTO = z
+  .object({
+    userIds: z.array(z.number().int()),
+    users: z.array(z.object({ id: z.number().int(), username: z.string(), nickname: z.string() })),
+  })
+  .openapi('CmsChannelUsers');
+
+export const CmsSiteImportResultDTO = z
+  .object({
+    siteId: z.number().int(),
+    siteName: z.string(),
+    siteCode: z.string(),
+    counts: z.object({
+      channels: z.number().int(),
+      tags: z.number().int(),
+      contents: z.number().int(),
+      fragments: z.number().int(),
+      friendLinks: z.number().int(),
+      redirects: z.number().int(),
+      linkWords: z.number().int(),
+      adSlots: z.number().int(),
+      ads: z.number().int(),
+      forms: z.number().int(),
+      pages: z.number().int(),
+    }),
+  })
+  .openapi('CmsSiteImportResult');
+
 // ─── P3 Batch1 ────────────────────────────────────────────────────────────────
 export const CmsSearchWordDTO = z
   .object({

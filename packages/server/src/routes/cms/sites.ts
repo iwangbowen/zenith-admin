@@ -6,12 +6,14 @@ import {
   ErrorResponse, jsonContent, PaginationQuery, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, IdParam, okBody,
 } from '../../lib/openapi-schemas';
-import { CmsSiteDTO, CmsThemeDTO, CmsThemeTemplatesDTO, CmsSiteUsersDTO } from '../../lib/openapi-dtos';
+import { CmsSiteDTO, CmsThemeDTO, CmsThemeTemplatesDTO, CmsSiteUsersDTO, CmsSiteImportResultDTO } from '../../lib/openapi-dtos';
 import { listThemes, listThemeTemplates } from '../../cms/themes/registry';
 import {
   listCmsSites, listAllCmsSites, getCmsSite, createCmsSite, updateCmsSite, deleteCmsSite,
   ensureCmsSiteExists, mapCmsSite, getCmsSiteUsers, setCmsSiteUsers, enableSiteAnalytics,
 } from '../../services/cms/cms-sites.service';
+import { exportCmsSite, importCmsSite } from '../../services/cms/cms-site-transfer.service';
+import { formatFileTimestamp } from '../../lib/datetime';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -188,6 +190,47 @@ const enableAnalyticsRoute = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRoute, allRoute, themesRoute, themeTemplatesRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_, getSiteUsersRoute, setSiteUsersRoute, enableAnalyticsRoute] as const);
+// ─── 站点导入导出（P5：整站备份迁移）──────────────────────────────────────────
+const importSiteRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/import',
+    tags: ['CMS-站点管理'], summary: '导入站点（上传导出包 JSON，创建为新站点）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:site:create', audit: { description: '导入 CMS 站点', module: 'CMS内容管理' } })] as const,
+    request: {
+      body: { content: jsonContent(z.object({}).passthrough().openapi({ description: '站点导出包 JSON（GET /cms/sites/{id}/export 的产物）' })), required: true },
+    },
+    responses: { ...commonErrorResponses, ...ok(CmsSiteImportResultDTO, '导入结果') },
+  }),
+  handler: async (c) => {
+    const result = await importCmsSite(c.req.valid('json'));
+    setAuditAfterData(c, result);
+    return c.json(okBody(result, `站点「${result.siteName}」导入成功`), 200);
+  },
+});
+
+router.openapiRoutes([listRoute, allRoute, themesRoute, themeTemplatesRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_, getSiteUsersRoute, setSiteUsersRoute, enableAnalyticsRoute, importSiteRoute] as const);
+
+// 站点导出：JSON 附件下载（结构+内容整站打包，不含运行数据）
+router.get('/:id/export', authMiddleware, guard({
+  permission: 'cms:site:update',
+  audit: { description: '导出 CMS 站点', module: 'CMS内容管理' },
+}), async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) {
+    return c.json({ code: 400, message: '无效的站点 id', data: null }, 400);
+  }
+  const pkg = await exportCmsSite(id);
+  const siteCode = String((pkg.site as Record<string, unknown>).code ?? id);
+  const filename = `cms-site-${siteCode}-${formatFileTimestamp(new Date())}.json`;
+  return new Response(JSON.stringify(pkg, null, 2), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      'Cache-Control': 'no-store',
+    },
+  });
+});
 
 export default router;

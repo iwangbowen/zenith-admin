@@ -1,15 +1,15 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { createCmsChannelSchema, updateCmsChannelSchema } from '@zenith/shared';
 import { authMiddleware } from '../../middleware/auth';
-import { guard, setAuditBeforeData } from '../../middleware/guard';
+import { guard, setAuditBeforeData, setAuditAfterData } from '../../middleware/guard';
 import {
   ErrorResponse, jsonContent, validationHook, commonErrorResponses,
   ok, okMsg, IdParam, okBody,
 } from '../../lib/openapi-schemas';
-import { CmsChannelDTO } from '../../lib/openapi-dtos';
+import { CmsChannelDTO, CmsChannelUsersDTO } from '../../lib/openapi-dtos';
 import {
   listCmsChannelTree, getCmsChannel, createCmsChannel, updateCmsChannel, deleteCmsChannel,
-  mergeCmsChannels, clearCmsChannel, batchCreateCmsChannels,
+  mergeCmsChannels, clearCmsChannel, batchCreateCmsChannels, getCmsChannelUsers, setCmsChannelUsers,
 } from '../../services/cms/cms-channels.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -165,6 +165,41 @@ const batchCreateRoute = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([treeRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_, mergeRoute, clearRoute, batchCreateRoute] as const);
+// ─── 栏目授权用户（P5 栏目级数据权限：绑定后仅授权用户可管理该栏目下内容）────────
+const getChannelUsersRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}/users',
+    tags: ['CMS-栏目管理'], summary: '栏目授权用户',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:channel:list' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(CmsChannelUsersDTO, '授权用户') },
+  }),
+  handler: async (c) => c.json(okBody(await getCmsChannelUsers(c.req.valid('param').id)), 200),
+});
+
+const setChannelUsersRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put', path: '/{id}/users',
+    tags: ['CMS-栏目管理'], summary: '设置栏目授权用户（绑定后仅授权用户可管理该栏目下内容）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:channel:update', audit: { description: '设置 CMS 栏目授权用户', module: 'CMS内容管理' } })] as const,
+    request: {
+      params: IdParam,
+      body: { content: jsonContent(z.object({ userIds: z.array(z.number().int().positive()).default([]) })), required: true },
+    },
+    responses: { ...commonErrorResponses, ...okMsg('保存成功') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const { userIds } = c.req.valid('json');
+    setAuditBeforeData(c, await getCmsChannelUsers(id));
+    await setCmsChannelUsers(id, userIds);
+    setAuditAfterData(c, await getCmsChannelUsers(id));
+    return c.json(okBody(null, '保存成功'), 200);
+  },
+});
+
+router.openapiRoutes([treeRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_, mergeRoute, clearRoute, batchCreateRoute, getChannelUsersRoute, setChannelUsersRoute] as const);
 
 export default router;

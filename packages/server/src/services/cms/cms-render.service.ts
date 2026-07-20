@@ -2,7 +2,7 @@ import { createElement, type ComponentType } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { eq, and, desc, isNull, inArray } from 'drizzle-orm';
 import { db } from '../../db';
-import { cmsChannels, cmsTags, cmsContents, cmsModels } from '../../db/schema';
+import { cmsChannels, cmsTags, cmsContents, cmsModels, cmsSites } from '../../db/schema';
 import type { CmsSiteRow, CmsChannelRow, CmsContentRow, CmsTagRow } from '../../db/schema';
 import { formatNullableDateTime, formatIso8601 } from '../../lib/datetime';
 import { getTheme, resolveListTemplate, resolveDetailTemplate, resolveCustomPageTemplate, resolveSurveyTemplate } from '../../cms/themes/registry';
@@ -160,11 +160,12 @@ function mergeSeo(site: CmsSiteRow, overrides: Partial<CmsSeo> & { pathForCanoni
 }
 
 async function buildBaseContext(site: CmsSiteRow, baseUrl: string, seo: CmsSeo, analyticsContentId?: number): Promise<CmsBaseContext> {
-  const [tree, fragments, friendLinks, ads] = await Promise.all([
+  const [tree, fragments, friendLinks, ads, langAlternates] = await Promise.all([
     listCmsChannelTree({ siteId: site.id, status: 'enabled' }),
     getFragmentMap(site.id),
     listEnabledFriendLinks(site.id),
     getActiveAds(site.id),
+    buildLangAlternates(site),
   ]);
   const analyticsSiteKey = (site.settings as Record<string, unknown> | null)?.analyticsSiteKey;
   return {
@@ -192,7 +193,41 @@ async function buildBaseContext(site: CmsSiteRow, baseUrl: string, seo: CmsSeo, 
     analytics: typeof analyticsSiteKey === 'string' && analyticsSiteKey
       ? { siteKey: analyticsSiteKey, ...(analyticsContentId ? { contentId: analyticsContentId } : {}) }
       : null,
+    langAlternates,
   };
+}
+
+/**
+ * 多语言站点关联（P5）：站点 settings.language 声明本站语言，
+ * settings.langLinks=[{language,siteCode}] 关联其他语言版本站点。
+ * 生成 hreflang alternate 列表（含本站）；未配置返回空数组。
+ */
+async function buildLangAlternates(site: CmsSiteRow): Promise<CmsBaseContext['langAlternates']> {
+  const settings = (site.settings ?? {}) as Record<string, unknown>;
+  const language = typeof settings.language === 'string' ? settings.language.trim() : '';
+  const rawLinks = Array.isArray(settings.langLinks) ? settings.langLinks : [];
+  const links = rawLinks
+    .map((l) => l as { language?: unknown; siteCode?: unknown })
+    .filter((l): l is { language: string; siteCode: string } =>
+      typeof l.language === 'string' && l.language.trim() !== '' && typeof l.siteCode === 'string' && l.siteCode.trim() !== '')
+    .map((l) => ({ language: l.language.trim(), siteCode: l.siteCode.trim() }));
+  if (!language || links.length === 0) return [];
+
+  const linkedSites = await db.query.cmsSites.findMany({
+    where: and(inArray(cmsSites.code, links.map((l) => l.siteCode)), eq(cmsSites.status, 'enabled')),
+  });
+  const siteByCode = new Map(linkedSites.map((s) => [s.code, s]));
+  const urlOf = (s: CmsSiteRow) => siteOrigin(s) ?? `/__cms/${s.code}`;
+
+  const alternates: CmsBaseContext['langAlternates'] = [
+    { language, name: site.name, url: urlOf(site) || '/', current: true },
+  ];
+  for (const link of links) {
+    const target = siteByCode.get(link.siteCode);
+    if (!target || target.id === site.id) continue;
+    alternates.push({ language: link.language, name: target.name, url: urlOf(target), current: false });
+  }
+  return alternates.length > 1 ? alternates : [];
 }
 
 function toContentItem(row: CmsContentRow, baseUrl: string, channelPath: string): CmsContentItem {

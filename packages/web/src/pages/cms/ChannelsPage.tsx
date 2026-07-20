@@ -14,7 +14,9 @@ import { usePermission } from '@/hooks/usePermission';
 import {
   useCmsChannelTree, useAllCmsModels, useAllCmsSites, useSaveCmsChannel, useDeleteCmsChannel,
   useCmsThemeTemplates, useCmsPublishChannels, useMergeCmsChannels, useClearCmsChannel, useBatchCreateCmsChannels,
+  useCmsChannelUsers, useSetCmsChannelUsers,
 } from '@/hooks/queries/cms';
+import { useAllUsers } from '@/hooks/queries/users';
 import { CMS_CHANNEL_TYPE_LABELS, CMS_DEFAULT_CHANNEL_CODE } from '@zenith/shared';
 import type { CmsChannel, CmsSiteTemplateDefaults } from '@zenith/shared';
 import { CmsSiteSelect, cmsPreviewUrl } from './CmsSiteSelect';
@@ -96,6 +98,31 @@ export default function ChannelsPage() {
   const batchCreateMutation = useBatchCreateCmsChannels();
   const [mergeModalVisible, setMergeModalVisible] = useState(false);
   const [batchModalVisible, setBatchModalVisible] = useState(false);
+
+  // ─── 栏目授权用户（P5 栏目级数据权限）──────────────────────────────────────
+  const [usersModalChannel, setUsersModalChannel] = useState<CmsChannel | null>(null);
+  const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
+  const channelUsersQuery = useCmsChannelUsers(usersModalChannel?.id, !!usersModalChannel);
+  const setChannelUsersMutation = useSetCmsChannelUsers();
+  const { data: allUsers } = useAllUsers({ enabled: !!usersModalChannel });
+  const usersInitialized = useRef(false);
+  if (usersModalChannel && channelUsersQuery.data?.userIds && !usersInitialized.current) {
+    usersInitialized.current = true;
+    setSelectedUserIds(channelUsersQuery.data.userIds);
+  }
+
+  function openUsersModal(record: CmsChannel) {
+    usersInitialized.current = false;
+    setSelectedUserIds([]);
+    setUsersModalChannel(record);
+  }
+
+  async function handleUsersModalOk() {
+    if (!usersModalChannel) return;
+    await setChannelUsersMutation.mutateAsync({ channelId: usersModalChannel.id, userIds: selectedUserIds });
+    Toast.success('保存成功');
+    setUsersModalChannel(null);
+  }
   const mergeFormApi = useRef<FormApi | null>(null);
   const batchFormApi = useRef<FormApi | null>(null);
 
@@ -240,6 +267,10 @@ export default function ChannelsPage() {
           key: 'edit',
           label: '编辑',
           onClick: () => openEdit(record),
+        }, {
+          key: 'users',
+          label: '授权用户',
+          onClick: () => openUsersModal(record),
         }] : []),
         ...(hasPermission('cms:channel:update') && record.type === 'list' ? [{
           key: 'clear',
@@ -528,6 +559,31 @@ export default function ChannelsPage() {
             placeholder={'每行一个栏目名称，如：\n公司新闻\n行业动态\n通知公告\n\nURL 标识自动取拼音，路径冲突自动加序号'}
             rules={[{ required: true, message: '请输入栏目名称' }]} />
         </Form>
+      </AppModal>
+
+      {/* 栏目授权用户（P5 栏目级数据权限） */}
+      <AppModal
+        title={usersModalChannel ? `「${usersModalChannel.name}」授权用户` : '授权用户'}
+        visible={!!usersModalChannel}
+        onOk={handleUsersModalOk}
+        onCancel={() => setUsersModalChannel(null)}
+        okButtonProps={{ loading: setChannelUsersMutation.isPending, disabled: channelUsersQuery.isFetching }}
+        width={520}
+        closeOnEsc
+      >
+        <div style={{ marginBottom: 12, color: 'var(--semi-color-text-2)', fontSize: 13 }}>
+          绑定用户后，仅超管与授权用户可管理该栏目下的内容（列表可见性与增删改均受限）；不绑定则不限制。
+        </div>
+        <Select
+          multiple
+          filter
+          placeholder="选择授权用户"
+          value={selectedUserIds}
+          onChange={(v) => setSelectedUserIds((v as number[]) ?? [])}
+          style={{ width: '100%' }}
+          loading={channelUsersQuery.isFetching}
+          optionList={(allUsers ?? []).map((u) => ({ value: u.id, label: `${u.nickname}（${u.username}）` }))}
+        />
       </AppModal>
     </div>
   );

@@ -98,6 +98,10 @@ main { min-height: 60vh; padding: 24px 0 48px; }
 .empty { text-align: center; color: var(--text-2); padding: 48px 0; }
 .theme-toggle { background: none; border: 1px solid var(--border); border-radius: 6px; width: 32px; height: 32px; cursor: pointer; font-size: 15px; line-height: 1; color: var(--text-2); flex-shrink: 0; }
 .theme-toggle:hover { color: var(--primary); border-color: var(--primary); }
+.lang-switch { display: flex; gap: 8px; font-size: 13px; }
+.lang-switch a { color: var(--text-2); text-decoration: none; }
+.lang-switch a:hover { color: var(--primary); }
+.lang-switch .active { color: var(--primary); font-weight: 600; }
 @media (max-width: 768px) {
   .site-header .container { height: auto; flex-wrap: wrap; padding: 8px 16px; gap: 8px; }
   .site-search { display: none; }
@@ -188,6 +192,9 @@ export function Layout({ ctx, currentUrl, children }: LayoutProps) {
         {seo.keywords ? <meta name="keywords" content={seo.keywords} /> : null}
         {seo.description ? <meta name="description" content={seo.description} /> : null}
         {seo.canonical ? <link rel="canonical" href={seo.canonical} /> : null}
+        {ctx.langAlternates.map((alt) => (
+          <link key={alt.language} rel="alternate" hrefLang={alt.language} href={alt.url} />
+        ))}
         <meta property="og:type" content="website" />
         <meta property="og:title" content={seo.ogTitle} />
         {seo.ogDescription ? <meta property="og:description" content={seo.ogDescription} /> : null}
@@ -216,6 +223,15 @@ export function Layout({ ctx, currentUrl, children }: LayoutProps) {
               <span>{site.name}</span>
             </a>
             <NavLinks items={nav} currentUrl={currentUrl} />
+            {ctx.langAlternates.length > 0 ? (
+              <nav className="lang-switch" aria-label="语言切换">
+                {ctx.langAlternates.map((alt) => (
+                  alt.current
+                    ? <span key={alt.language} className="active">{alt.language}</span>
+                    : <a key={alt.language} href={alt.url} hrefLang={alt.language}>{alt.language}</a>
+                ))}
+              </nav>
+            ) : null}
             <form className="site-search" action={ctx.searchUrl} method="get">
               <input type="search" name="q" placeholder="站内搜索…" />
             </form>

@@ -1,7 +1,7 @@
 import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryKey, text, jsonb, uniqueIndex, index, customType, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { statusEnum } from './common';
-import { auditColumns, tenants, users } from './core';
+import { auditColumns, tenants, users, departments } from './core';
 import { members } from './member';
 
 // ─── 枚举（pgEnum / TS union / Zod enum 三处同步，见 @zenith/shared）────────────
@@ -250,6 +250,8 @@ export const cmsContents = pgTable('cms_contents', {
   mappingSourceId: integer('mapping_source_id').references((): AnyPgColumn => cmsContents.id, { onDelete: 'set null' }),
   /** 会员投稿：非空表示由前台会员提交（P3 会员投稿） */
   memberId: integer('member_id').references(() => members.id, { onDelete: 'set null' }),
+  /** 部门归属（P5 部门数据权限：创建时快照创建人部门；投稿/导入为 null） */
+  deptId: integer('dept_id').references(() => departments.id, { onDelete: 'set null' }),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
@@ -743,6 +745,17 @@ export const cmsSiteUsers = pgTable('cms_site_users', {
 }, (t) => [primaryKey({ columns: [t.siteId, t.userId] })]);
 
 export type CmsSiteUserRow = typeof cmsSiteUsers.$inferSelect;
+
+// ─── 栏目数据权限（P5：绑定后该用户仅可管理绑定栏目下的内容；未绑定用户不受限）────
+export const cmsChannelUsers = pgTable('cms_channel_users', {
+  channelId: integer('channel_id').notNull().references(() => cmsChannels.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+}, (t) => [
+  primaryKey({ columns: [t.channelId, t.userId] }),
+  index('cms_channel_users_user_idx').on(t.userId),
+]);
+
+export type CmsChannelUserRow = typeof cmsChannelUsers.$inferSelect;
 
 // ═══ P3 Batch1 ════════════════════════════════════════════════════════════════
 

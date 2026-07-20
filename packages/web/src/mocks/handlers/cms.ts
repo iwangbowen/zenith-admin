@@ -1324,6 +1324,37 @@ export const cmsP2Handlers = [
   // ─── 站点授权用户 ───────────────────────────────────────────────────────────
   http.get('/api/cms/sites/:id/users', () => okJson({ userIds: [], users: [] })),
   http.put('/api/cms/sites/:id/users', () => okJson(null, '保存成功')),
+
+  // ─── P5 企业级治理 ─────────────────────────────────────────────────────────
+  // 栏目授权用户（栏目级数据权限）
+  http.get('/api/cms/channels/:id/users', () => okJson({ userIds: [], users: [] })),
+  http.put('/api/cms/channels/:id/users', () => okJson(null, '保存成功')),
+  // 站点导出（JSON 附件）/ 导入
+  http.get('/api/cms/sites/:id/export', ({ params }) => {
+    const site = mockCmsSites.find((s) => s.id === Number(params.id));
+    const pkg = {
+      version: 1,
+      exportedAt: mockDateTime(),
+      site: { name: site?.name ?? '演示站点', code: site?.code ?? 'demo' },
+      channels: [], tags: [], contents: [], contentTags: [], contentChannels: [], contentRelations: [],
+      fragments: [], friendLinks: [], redirects: [], linkWords: [], adSlots: [], ads: [], forms: [], pages: [],
+    };
+    return new HttpResponse(JSON.stringify(pkg, null, 2), {
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Disposition': `attachment; filename="cms-site-${pkg.site.code}.json"`,
+      },
+    });
+  }),
+  http.post('/api/cms/sites/import', async ({ request }) => {
+    const body = (await request.json()) as { site?: { name?: string; code?: string } };
+    return okJson({
+      siteId: 999,
+      siteName: body?.site?.name ?? '导入站点',
+      siteCode: `${body?.site?.code ?? 'imported'}-2`,
+      counts: { channels: 0, tags: 0, contents: 0, fragments: 0, friendLinks: 0, redirects: 0, linkWords: 0, adSlots: 0, ads: 0, forms: 0, pages: 0 },
+    }, '站点导入成功');
+  }),
 ];
 
 // ─── P3：词典 / 热词 / 批量操作 / 统计开通 / 死链检测 ──────────────────────────

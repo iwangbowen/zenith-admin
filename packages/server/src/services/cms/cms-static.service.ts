@@ -12,6 +12,7 @@ import {
   renderSitePath, renderHomePage, renderChannelPage, renderDetailPage, renderTagPage, renderCustomPage,
   channelUrl, contentUrl, tagUrl, customPageUrl, siteOrigin, listSiteTags, generateRssXml, countContentBodyPages,
 } from './cms-render.service';
+import { triggerCdnPurge, triggerCdnPurgeAll } from './cms-cdn.service';
 
 // ─── 静态目录 ─────────────────────────────────────────────────────────────────
 const STATIC_ROOT = process.env.CMS_STATIC_ROOT?.trim()
@@ -207,6 +208,7 @@ export async function refreshContentStatic(contentId: number): Promise<void> {
   const detailPath = contentUrl('', channel.path, content);
   const isVisible = content.status === 'published' && !content.deletedAt && !content.externalLink?.trim();
   const bodyPages = isVisible ? await countContentBodyPages(content) : 1;
+  const purgePaths: string[] = ['sitemap.xml', 'rss.xml'];
   for (const publishChannel of await getActivePublishChannels(site.id)) {
     if (isVisible) {
       for (let p = 1; p <= bodyPages; p++) {
@@ -224,9 +226,16 @@ export async function refreshContentStatic(contentId: number): Promise<void> {
     await regenerateChannelPages(site, channel, publishChannel);
     const home = await renderHomePage(site, '');
     if (home.status === 200) await writeStaticFile(site.code, channelStaticPath(publishChannel, ''), home.html);
+    // CDN 刷新路径：详情页（含正文分页）+ 栏目列表页 + 首页
+    for (let p = 1; p <= bodyPages; p++) {
+      purgePaths.push(channelStaticPath(publishChannel, contentUrl('', channel.path, content, p)));
+    }
+    purgePaths.push(channelStaticPath(publishChannel, channelUrl('', channel.path)));
+    purgePaths.push(channelStaticPath(publishChannel, ''));
   }
   await writeStaticFile(site.code, 'sitemap.xml', await generateSitemapXml(site));
   await writeStaticFile(site.code, 'rss.xml', await generateRssXml(site));
+  triggerCdnPurge(site, purgePaths);
 }
 
 /** 路由层调用：后台不阻塞响应，失败仅记录日志 */
@@ -262,6 +271,13 @@ export async function refreshCustomPageStatic(input: { siteId: number; slug: str
     }
   }
   await writeStaticFile(site.code, 'sitemap.xml', await generateSitemapXml(site));
+  triggerCdnPurge(site, [
+    'sitemap.xml',
+    ...publishChannels.flatMap((ch) => [
+      channelStaticPath(ch, `p/${input.slug}/`),
+      ...(input.isHome ? [channelStaticPath(ch, '')] : []),
+    ]),
+  ]);
 }
 
 export function triggerCustomPageStaticRefresh(input: { siteId: number; slug: string; isHome: boolean; removed?: boolean }): void {
@@ -362,5 +378,6 @@ export async function buildSiteStatic(
   await report('rss.xml 已生成');
   await writeStaticFile(site.code, 'robots.txt', buildRobotsTxt(site));
   await report('robots.txt 已生成');
+  triggerCdnPurgeAll(site);
   return { pages };
 }

@@ -2,12 +2,14 @@ import { eq, asc, and, inArray, isNull, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { pinyin } from 'pinyin-pro';
 import { db } from '../../db';
-import { cmsChannels, cmsContents, cmsModels, cmsContentChannels } from '../../db/schema';
+import { cmsChannels, cmsContents, cmsModels, cmsContentChannels, cmsChannelUsers, users } from '../../db/schema';
 import type { CmsChannelRow } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import { formatDateTime } from '../../lib/datetime';
 import { mergeWhere } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
+import { currentUserOrNull } from '../../lib/context';
+import { isSuperAdmin } from '../../lib/permissions';
 import type { CreateCmsChannelInput, UpdateCmsChannelInput, CmsChannel } from '@zenith/shared';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
@@ -275,4 +277,63 @@ export async function batchCreateCmsChannels(siteId: number, parentId: number, n
   } catch (err) {
     rethrowPgUniqueViolation(err, '存在与现有栏目重复的路径');
   }
+}
+
+// ─── 栏目级数据权限（P5）────────────────────────────────────────────────────────
+// 策略：用户在 cms_channel_users 中存在绑定 → 仅可管理绑定栏目下的内容；未绑定/超管 → 不受限。
+
+/** 当前用户可管理的栏目 id 集合；null = 不受限 */
+export async function getAccessibleChannelIds(): Promise<number[] | null> {
+  const user = currentUserOrNull();
+  if (!user || isSuperAdmin(user)) return null;
+  const rows = await db.select({ channelId: cmsChannelUsers.channelId }).from(cmsChannelUsers).where(eq(cmsChannelUsers.userId, user.userId));
+  if (rows.length === 0) return null;
+  return rows.map((r) => r.channelId);
+}
+
+/** 栏目访问断言：绑定用户操作非授权栏目下的内容时抛 403 */
+export async function assertChannelAccess(channelId: number): Promise<void> {
+  const ids = await getAccessibleChannelIds();
+  if (ids && !ids.includes(channelId)) {
+    throw new HTTPException(403, { message: '无权管理该栏目下的内容' });
+  }
+}
+
+/** 批量栏目访问断言（批量内容操作按 distinct 栏目校验） */
+export async function assertChannelsAccess(channelIds: number[]): Promise<void> {
+  const ids = await getAccessibleChannelIds();
+  if (!ids) return;
+  const denied = [...new Set(channelIds)].filter((id) => !ids.includes(id));
+  if (denied.length > 0) {
+    throw new HTTPException(403, { message: '所选内容中包含无权管理的栏目' });
+  }
+}
+
+/** 栏目授权用户列表 */
+export async function getCmsChannelUsers(channelId: number) {
+  await ensureCmsChannelExists(channelId);
+  const rows = await db.query.cmsChannelUsers.findMany({
+    where: eq(cmsChannelUsers.channelId, channelId),
+    with: { user: { columns: { id: true, username: true, nickname: true } } },
+  });
+  return {
+    userIds: rows.map((r) => r.userId),
+    users: rows.map((r) => ({ id: r.user.id, username: r.user.username, nickname: r.user.nickname })),
+  };
+}
+
+/** 原子替换栏目授权用户 */
+export async function setCmsChannelUsers(channelId: number, userIds: number[]) {
+  await ensureCmsChannelExists(channelId);
+  const unique = [...new Set(userIds)];
+  if (unique.length > 0) {
+    const valid = await db.select({ id: users.id }).from(users).where(inArray(users.id, unique));
+    if (valid.length !== unique.length) throw new HTTPException(400, { message: '存在无效用户' });
+  }
+  await db.transaction(async (tx) => {
+    await tx.delete(cmsChannelUsers).where(eq(cmsChannelUsers.channelId, channelId));
+    if (unique.length > 0) {
+      await tx.insert(cmsChannelUsers).values(unique.map((userId) => ({ channelId, userId })));
+    }
+  });
 }

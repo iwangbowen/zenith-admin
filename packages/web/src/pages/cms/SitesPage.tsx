@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Input, Select, Tag, Toast, Modal, Row, Col, SideSheet, Tabs, TabPane } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, RotateCcw, Plus } from 'lucide-react';
+import { Search, RotateCcw, Plus, Upload } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -14,9 +14,10 @@ import { usePagination } from '@/hooks/usePagination';
 import { useAllUsers } from '@/hooks/queries/users';
 import {
   useCmsSiteList, useCmsThemes, useSaveCmsSite, useDeleteCmsSite, cmsSiteKeys,
-  useCmsSiteUsers, useSetCmsSiteUsers, useEnableSiteAnalytics,
+  useCmsSiteUsers, useSetCmsSiteUsers, useEnableSiteAnalytics, useImportCmsSite,
   useCmsThemeTemplates, useAllCmsModels, useCmsPublishChannels,
 } from '@/hooks/queries/cms';
+import { request } from '@/utils/request';
 import { useWorkflowDefinitionList } from '@/hooks/queries/workflow-definitions';
 import { CMS_STATIC_MODE_LABELS, CMS_STATIC_MODES, CMS_DEFAULT_CHANNEL_CODE } from '@zenith/shared';
 import type { CmsSite, CmsSiteTemplateDefaults } from '@zenith/shared';
@@ -69,6 +70,34 @@ function templateDefaultsToSettings(state: TemplateDefaultsState): Record<string
   return out;
 }
 
+/** settings.langLinks → 每行 `语言代码=站点标识` 文本（表单编辑态） */
+function langLinksToText(v: unknown): string {
+  if (!Array.isArray(v)) return '';
+  return v
+    .map((l) => {
+      const o = l as { language?: unknown; siteCode?: unknown };
+      return typeof o.language === 'string' && typeof o.siteCode === 'string' ? `${o.language}=${o.siteCode}` : null;
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
+/** 每行 `语言代码=站点标识` 文本 → settings.langLinks */
+function parseLangLinks(text: string): { language: string; siteCode: string }[] {
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const i = line.indexOf('=');
+      if (i <= 0) return null;
+      const language = line.slice(0, i).trim();
+      const siteCode = line.slice(i + 1).trim();
+      return language && siteCode ? { language, siteCode } : null;
+    })
+    .filter((x): x is { language: string; siteCode: string } => !!x);
+}
+
 export default function SitesPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
@@ -100,6 +129,8 @@ export default function SitesPage() {
   const { data: sitePublishChannels } = useCmsPublishChannels(editingRecord?.id, modalVisible);
   const saveMutation = useSaveCmsSite();
   const deleteMutation = useDeleteCmsSite();
+  const importMutation = useImportCmsSite();
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   // ─── 授权用户（站点级数据权限）────────────────────────────────────────────
   const [usersModalSite, setUsersModalSite] = useState<CmsSite | null>(null);
@@ -196,6 +227,10 @@ export default function SitesPage() {
         thumbWidth: Number((editingRecord.settings as Record<string, unknown>)?.thumbWidth ?? 400),
         webhookUrl: String((editingRecord.settings as Record<string, unknown>)?.webhookUrl ?? ''),
         webhookSecret: String((editingRecord.settings as Record<string, unknown>)?.webhookSecret ?? ''),
+        cdnPurgeUrl: String((editingRecord.settings as Record<string, unknown>)?.cdnPurgeUrl ?? ''),
+        cdnPurgeToken: String((editingRecord.settings as Record<string, unknown>)?.cdnPurgeToken ?? ''),
+        language: String((editingRecord.settings as Record<string, unknown>)?.language ?? ''),
+        langLinksText: langLinksToText((editingRecord.settings as Record<string, unknown>)?.langLinks),
       }
     : {
         theme: 'default', staticMode: 'hybrid', status: 'enabled', isDefault: false, aliasDomains: [],
@@ -219,6 +254,7 @@ export default function SitesPage() {
       imageMaxWidth, watermarkEnabled, watermarkText, watermarkPosition, watermarkOpacity, thumbEnabled, thumbWidth,
       auditMode, auditWorkflowDefinitionId,
       webhookUrl, webhookSecret,
+      cdnPurgeUrl, cdnPurgeToken, language, langLinksText,
       ...rest
     } = values;
     const { h5Enabled: _legacyH5Enabled, h5Domain: _legacyH5Domain, ...prevSettings } = (editingRecord?.settings ?? {}) as Record<string, unknown>;
@@ -239,6 +275,10 @@ export default function SitesPage() {
       auditWorkflowDefinitionId: auditWorkflowDefinitionId ?? null,
       webhookUrl: String(webhookUrl ?? '').trim(),
       webhookSecret: String(webhookSecret ?? '').trim(),
+      cdnPurgeUrl: String(cdnPurgeUrl ?? '').trim(),
+      cdnPurgeToken: String(cdnPurgeToken ?? '').trim(),
+      language: String(language ?? '').trim(),
+      langLinks: parseLangLinks(String(langLinksText ?? '')),
       defaultTemplates: templateDefaultsToSettings(templateDefaults),
     };
     try {
@@ -253,6 +293,31 @@ export default function SitesPage() {
   async function handleDelete(id: number) {
     await deleteMutation.mutateAsync(id);
     Toast.success('删除成功');
+  }
+
+  // ─── 站点导入导出（P5 整站备份迁移）────────────────────────────────────────
+  function handleExport(record: CmsSite) {
+    void request.download(`/api/cms/sites/${record.id}/export`, `cms-site-${record.code}-${Date.now()}.json`)
+      .catch(() => Toast.error('导出失败'));
+  }
+
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    let pkg: Record<string, unknown>;
+    try {
+      pkg = JSON.parse(await file.text()) as Record<string, unknown>;
+    } catch {
+      Toast.error('文件不是有效的 JSON');
+      return;
+    }
+    try {
+      const result = await importMutation.mutateAsync(pkg);
+      Toast.success(`站点「${result.siteName}」导入成功（栏目 ${result.counts.channels ?? 0}、内容 ${result.counts.contents ?? 0}）`);
+    } catch {
+      // 错误提示由请求层统一 Toast
+    }
   }
 
   const columns: ColumnProps<CmsSite>[] = [
@@ -307,6 +372,10 @@ export default function SitesPage() {
           key: 'users',
           label: '授权用户',
           onClick: () => openUsersModal(record),
+        }, {
+          key: 'export',
+          label: '导出',
+          onClick: () => handleExport(record),
         }, {
           key: 'analytics',
           label: (record.settings as Record<string, unknown>)?.analyticsSiteKey ? '统计已开通' : '开通统计',
@@ -372,6 +441,9 @@ export default function SitesPage() {
   );
   const renderCreateButton = () => hasPermission('cms:site:create') ? (
     <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+  ) : null;
+  const renderImportButton = () => hasPermission('cms:site:create') ? (
+    <Button icon={<Upload size={14} />} loading={importMutation.isPending} onClick={() => importFileRef.current?.click()}>导入</Button>
   ) : null;
 
   const listTplOptions = (themeTemplates?.list ?? []).map((t) => ({ value: t.name, label: t.label }));
@@ -445,7 +517,12 @@ export default function SitesPage() {
             {renderResetButton()}
           </>
         )}
-        actions={renderCreateButton()}
+        actions={(
+          <>
+            {renderImportButton()}
+            {renderCreateButton()}
+          </>
+        )}
         mobilePrimary={(
           <>
             {renderKeywordSearch()}
@@ -573,6 +650,27 @@ export default function SitesPage() {
                     </Col>
                   </Row>
                 </Form.Section>
+                <Form.Section text="CDN 刷新（静态页更新后向 purge webhook 推送变更路径）">
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.Input field="cdnPurgeUrl" label="刷新回调地址" placeholder="https://... 留空不启用" />
+                    </Col>
+                    <Col span={12}>
+                      <Form.Input field="cdnPurgeToken" label="鉴权令牌" placeholder="可选；Authorization: Bearer 携带" />
+                    </Col>
+                  </Row>
+                </Form.Section>
+                <Form.Section text="多语言站点关联（前台输出 hreflang 与语言切换）">
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.Input field="language" label="本站语言" placeholder="如 zh-CN；留空不启用" />
+                    </Col>
+                    <Col span={12}>
+                      <Form.TextArea field="langLinksText" label="关联站点" rows={3}
+                        placeholder={'每行一条：语言代码=站点标识\n如 en-US=en-site'} />
+                    </Col>
+                  </Row>
+                </Form.Section>
               </div>
             </TabPane>
             <TabPane tab="主题与图片" itemKey="appearance">
@@ -659,6 +757,9 @@ export default function SitesPage() {
           </Tabs>
         </Form>
       </SideSheet>
+
+      {/* 站点导入：隐藏文件选择器（读取导出包 JSON 后提交） */}
+      <input type="file" accept=".json,application/json" hidden ref={importFileRef} onChange={(e) => void handleImportFile(e)} />
 
       {/* 授权用户弹窗（站点级数据权限） */}
       <AppModal

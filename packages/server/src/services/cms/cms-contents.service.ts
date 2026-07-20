@@ -1,7 +1,7 @@
 import { eq, asc, desc, and, or, like, inArray, notInArray, isNull, isNotNull, ne, lt, gt, lte, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import { cmsContents, cmsContentTags, cmsTags, cmsChannels, cmsContentChannels, cmsContentRelations } from '../../db/schema';
+import { cmsContents, cmsContentTags, cmsTags, cmsChannels, cmsContentChannels, cmsContentRelations, users } from '../../db/schema';
 import type { CmsContentRow, CmsTagRow } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
@@ -11,10 +11,12 @@ import { config } from '../../config';
 import redis from '../../lib/redis';
 import { buildSearchVector } from './cms-search.service';
 import { listCmsModelFields } from './cms-models.service';
-import { ensureCmsChannelExists } from './cms-channels.service';
+import { ensureCmsChannelExists, getAccessibleChannelIds, assertChannelAccess, assertChannelsAccess } from './cms-channels.service';
 import { snapshotContentVersion, restoreContentVersion } from './cms-versions.service';
 import { logContentOp, logContentOps } from './cms-content-op-logs.service';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
+import { getDataScopeCondition } from '../../lib/data-scope';
+import { currentUserOrNull } from '../../lib/context';
 import { isWorkflowAuditEnabled, startCmsContentWorkflow, assertNoActiveContentWorkflow } from './cms-workflow.service';
 import { triggerCmsContentWebhook } from './cms-webhook.service';
 import type { CreateCmsContentInput, UpdateCmsContentInput, CmsContentStatus } from '@zenith/shared';
@@ -159,6 +161,20 @@ export async function listCmsContents(q: ListCmsContentsQuery) {
   if (start) conditions.push(gt(cmsContents.createdAt, start));
   if (end) conditions.push(lt(cmsContents.createdAt, end));
 
+  // P5 栏目级数据权限：绑定用户仅见授权栏目（按主栏目过滤）
+  const accessibleChannelIds = await getAccessibleChannelIds();
+  if (accessibleChannelIds) conditions.push(inArray(cmsContents.channelId, accessibleChannelIds));
+  // P5 部门数据权限：按创建时快照的部门/创建人过滤
+  const scopeUser = currentUserOrNull();
+  if (scopeUser) {
+    const scopeCondition = await getDataScopeCondition({
+      currentUserId: scopeUser.userId,
+      deptColumn: cmsContents.deptId,
+      ownerColumn: cmsContents.createdBy,
+    });
+    if (scopeCondition) conditions.push(scopeCondition);
+  }
+
   const where = mergeWhere(and(...conditions));
   const [total, rows] = await Promise.all([
     db.$count(cmsContents, where),
@@ -271,17 +287,25 @@ async function setContentRelations(executor: DbExecutor, contentId: number, site
 // ─── 创建 ─────────────────────────────────────────────────────────────────────
 export async function createCmsContent(data: CreateCmsContentInput) {
   await assertSiteAccess(data.siteId);
+  await assertChannelAccess(data.channelId);
   const channel = await ensureChannelForContent(data.siteId, data.channelId);
   const { tagIds = [], extraChannelIds = [], relatedIds = [], scheduledAt, expireAt, topExpireAt, ...rest } = data;
   const extend = (rest.extend ?? {}) as Record<string, unknown>;
   const modelId = channel.modelId ?? null;
   const extendTexts = [...await collectSearchableExtendTexts(modelId, extend), ...mediaDataTexts(rest.mediaData as Record<string, unknown>)];
+  // P5 部门数据权限：创建时快照创建人及其部门
+  const creator = currentUserOrNull();
+  const creatorDept = creator
+    ? await db.query.users.findFirst({ where: eq(users.id, creator.userId), columns: { departmentId: true } })
+    : null;
   try {
     const row = await db.transaction(async (tx) => {
       const [created] = await tx.insert(cmsContents).values({
         ...rest,
         extend,
         modelId,
+        createdBy: creator?.userId ?? null,
+        deptId: creatorDept?.departmentId ?? null,
         scheduledAt: parseDateTimeInput(scheduledAt),
         expireAt: parseDateTimeInput(expireAt),
         topExpireAt: parseDateTimeInput(topExpireAt),
@@ -309,8 +333,10 @@ export async function createCmsContent(data: CreateCmsContentInput) {
 export async function updateCmsContent(id: number, data: UpdateCmsContentInput) {
   const current = await ensureCmsContentExists(id);
   await assertSiteAccess(current.siteId);
+  await assertChannelAccess(current.channelId);
   let modelId = current.modelId;
   if (data.channelId && data.channelId !== current.channelId) {
+    await assertChannelAccess(data.channelId);
     const channel = await ensureChannelForContent(current.siteId, data.channelId);
     modelId = channel.modelId ?? null;
   }
@@ -382,6 +408,7 @@ const STATUS_TRANSITIONS: Record<string, CmsContentStatus[]> = {
 async function transitionStatus(id: number, action: keyof typeof STATUS_TRANSITIONS, patch: Partial<typeof cmsContents.$inferInsert>) {
   const current = await ensureCmsContentExists(id);
   await assertSiteAccess(current.siteId);
+  await assertChannelAccess(current.channelId);
   if (current.deletedAt) throw new HTTPException(400, { message: '回收站中的内容不可操作，请先恢复' });
   if (current.archivedAt) throw new HTTPException(400, { message: '已归档的内容不可操作，请先取消归档' });
   if (!STATUS_TRANSITIONS[action].includes(current.status)) {
@@ -454,10 +481,11 @@ export async function offlineCmsContent(id: number) {
 // ─── 回收站 ───────────────────────────────────────────────────────────────────
 async function assertBatchSiteAccess(ids: number[]): Promise<void> {
   if (ids.length === 0) return;
-  const rows = await db.select({ siteId: cmsContents.siteId }).from(cmsContents).where(inArray(cmsContents.id, ids));
+  const rows = await db.select({ siteId: cmsContents.siteId, channelId: cmsContents.channelId }).from(cmsContents).where(inArray(cmsContents.id, ids));
   for (const siteId of new Set(rows.map((r) => r.siteId))) {
     await assertSiteAccess(siteId);
   }
+  await assertChannelsAccess(rows.map((r) => r.channelId));
 }
 
 export async function recycleCmsContents(ids: number[]) {
@@ -759,6 +787,7 @@ export async function listPublishedContentsByTag(siteId: number, tagId: number, 
 export async function batchMoveCmsContents(ids: number[], channelId: number): Promise<number> {
   if (ids.length === 0) return 0;
   await assertBatchSiteAccess(ids);
+  await assertChannelAccess(channelId);
   return db.transaction(async (tx) => {
     const rows = await tx.select({ id: cmsContents.id, siteId: cmsContents.siteId }).from(cmsContents).where(inArray(cmsContents.id, ids));
     const siteIds = new Set(rows.map((r) => r.siteId));
@@ -872,6 +901,7 @@ export async function distributeCmsContents(ids: number[], targetSiteId: number,
   if (ids.length === 0) return 0;
   await assertBatchSiteAccess(ids);
   await assertSiteAccess(targetSiteId);
+  await assertChannelAccess(targetChannelId);
   const channel = await ensureChannelForContent(targetSiteId, targetChannelId);
   const rows = await db.select().from(cmsContents).where(inArray(cmsContents.id, ids));
   return db.transaction(async (tx) => {

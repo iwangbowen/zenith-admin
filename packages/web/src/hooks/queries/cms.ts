@@ -1040,6 +1040,41 @@ export function useSetCmsSiteUsers() {
   });
 }
 
+// ─── 栏目授权用户（P5 栏目级数据权限）─────────────────────────────────────────
+export function useCmsChannelUsers(channelId: number | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ['cms-channels', 'users', channelId] as const,
+    queryFn: () => request.get<{ userIds: number[]; users: { id: number; username: string; nickname: string }[] }>(`/api/cms/channels/${channelId}/users`).then(unwrap),
+    enabled: enabled && channelId !== undefined,
+  });
+}
+
+export function useSetCmsChannelUsers() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ channelId, userIds }: { channelId: number; userIds: number[] }) =>
+      request.put<null>(`/api/cms/channels/${channelId}/users`, { userIds }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cms-channels'] }),
+  });
+}
+
+// ─── 站点导入（P5 整站备份迁移；导出走 request.download 直接下载）─────────────
+export interface CmsSiteImportResult {
+  siteId: number;
+  siteName: string;
+  siteCode: string;
+  counts: Record<string, number>;
+}
+
+export function useImportCmsSite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (pkg: Record<string, unknown>) =>
+      request.post<CmsSiteImportResult>('/api/cms/sites/import', pkg).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsSiteKeys.all }),
+  });
+}
+
 // ═══ P3 Batch1 ════════════════════════════════════════════════════════════════
 
 // ─── 检索词典 / 热词 ──────────────────────────────────────────────────────────

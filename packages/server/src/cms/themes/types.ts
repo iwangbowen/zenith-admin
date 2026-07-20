@@ -140,6 +140,8 @@ export interface CmsBaseContext {
   searchUrl: string;
   /** 行为统计（站点开启后注入采集脚本）；detail 页附 contentId 供浏览计数 beacon */
   analytics: { siteKey: string; contentId?: number } | null;
+  /** 多语言站点关联（P5）：hreflang alternate + 语言切换；空数组 = 未配置 */
+  langAlternates: { language: string; name: string; url: string; current: boolean }[];
 }
 
 export interface CmsHomeContext extends CmsBaseContext {
