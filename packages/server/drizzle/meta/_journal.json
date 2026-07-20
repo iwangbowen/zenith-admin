@@ -575,6 +575,13 @@
       "when": 1784491129992,
       "tag": "0081_certain_queen_noir",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1784514143203,
+      "tag": "0082_massive_magik",
+      "breakpoints": true
     }
   ]
 }

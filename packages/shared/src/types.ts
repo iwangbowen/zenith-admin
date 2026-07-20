@@ -10300,6 +10300,31 @@ export interface CmsSite {
   updatedAt: string;
 }
 
+/** 发布通道（模板解析与静态产物的设备维度） */
+export type CmsDeviceChannel = 'pc' | 'h5';
+
+/** 站点级默认模板配置（存于 sites.settings.defaultTemplates[device]） */
+export interface CmsSiteTemplateDefaults {
+  /** 栏目列表页默认模板（空 = 主题默认） */
+  list?: string | null;
+  /** 内容详情页默认模板（空 = 主题默认） */
+  detail?: string | null;
+  /** 按内容模型细分的详情模板（key = 模型 code，优先于 detail） */
+  detailByModel?: Record<string, string | null>;
+}
+
+/** 主题可选模板项（后台模板下拉） */
+export interface CmsThemeTemplateOption {
+  name: string;
+  label: string;
+}
+
+/** 主题可选模板清单（不含主题默认模板本身） */
+export interface CmsThemeTemplateManifest {
+  list: CmsThemeTemplateOption[];
+  detail: CmsThemeTemplateOption[];
+}
+
 export interface CmsModelField {
   id: number;
   modelId: number;
@@ -10375,6 +10400,8 @@ export interface CmsContent {
   body: string | null;
   extend: Record<string, unknown>;
   externalLink: string | null;
+  /** 详情模板覆盖（主题变体模板名；null = 跟随栏目/站点默认） */
+  detailTemplate: string | null;
   isTop: boolean;
   isRecommend: boolean;
   isHot: boolean;

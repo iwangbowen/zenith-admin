@@ -35,6 +35,7 @@ export function mapCmsContent(row: CmsContentRow, extra?: { channelName?: string
     body: row.body ?? null,
     extend: row.extend ?? {},
     externalLink: row.externalLink ?? null,
+    detailTemplate: row.detailTemplate ?? null,
     isTop: row.isTop,
     isRecommend: row.isRecommend,
     isHot: row.isHot,

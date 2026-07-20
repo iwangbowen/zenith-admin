@@ -168,6 +168,8 @@ export const cmsContents = pgTable('cms_contents', {
   extend: jsonb('extend').$type<Record<string, unknown>>().notNull().default({}),
   /** 外链型内容：点击直接跳转 */
   externalLink: varchar('external_link', { length: 500 }),
+  /** 详情模板覆盖（主题变体模板名；null = 跟随栏目/站点默认） */
+  detailTemplate: varchar('detail_template', { length: 50 }),
   isTop: boolean('is_top').notNull().default(false),
   isRecommend: boolean('is_recommend').notNull().default(false),
   isHot: boolean('is_hot').notNull().default(false),

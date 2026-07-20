@@ -1,11 +1,12 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
-import { CMS_PREVIEW_PREFIX } from '@zenith/shared';
+import { CMS_PREVIEW_PREFIX, CMS_H5_PATH_SEGMENT } from '@zenith/shared';
+import type { CmsDeviceChannel } from '@zenith/shared';
 import { config } from '../../config';
 import redis from '../../lib/redis';
 import logger from '../../lib/logger';
 import type { CmsSiteRow } from '../../db/schema';
-import { resolveSiteByHost, resolveSiteByCode } from '../../services/cms/cms-sites.service';
+import { resolveSiteByHostWithDevice, resolveSiteByCode, siteH5Config } from '../../services/cms/cms-sites.service';
 import { resolveRedirect } from '../../services/cms/cms-redirects.service';
 import {
   renderSitePath, renderSearchPage, renderContentPreviewPage, type RenderResult,
@@ -55,11 +56,15 @@ function htmlResponse(c: Context, html: string, cacheSeconds: number, extraHeade
 
 interface ResolvedTarget {
   site: CmsSiteRow;
-  /** 站内相对路径（不含预览前缀） */
+  /** 站内相对路径（不含预览前缀 / H5 通道段） */
   sitePath: string;
-  /** 渲染链接前缀：正式域名 ''，预览 /__cms/{code} */
+  /** 渲染链接前缀：正式域名 ''，预览 /__cms/{code}（H5 预览再加 /__h5） */
   baseUrl: string;
   isPreview: boolean;
+  /** 发布通道：H5 独立域名或 __h5 预览段命中时为 'h5' */
+  device: CmsDeviceChannel;
+  /** Host 是否精确命中站点域名（false = 默认站点兜底，跳过 UA 跳转） */
+  hostMatched: boolean;
 }
 
 async function resolveTarget(host: string | undefined, pathname: string): Promise<ResolvedTarget | null> {
@@ -69,16 +74,57 @@ async function resolveTarget(host: string | undefined, pathname: string): Promis
     if (!code) return null;
     const site = await resolveSiteByCode(code);
     if (!site) return null;
+    // /__cms/{code}/__h5/... → H5 通道预览
+    const isH5 = restSegments[0] === CMS_H5_PATH_SEGMENT;
+    const pathSegments = isH5 ? restSegments.slice(1) : restSegments;
     return {
       site,
-      sitePath: restSegments.join('/'),
-      baseUrl: `${CMS_PREVIEW_PREFIX}/${code}`,
+      sitePath: pathSegments.join('/'),
+      baseUrl: `${CMS_PREVIEW_PREFIX}/${code}${isH5 ? `/${CMS_H5_PATH_SEGMENT}` : ''}`,
       isPreview: true,
+      device: isH5 ? 'h5' : 'pc',
+      hostMatched: false,
     };
   }
-  const site = await resolveSiteByHost(host);
-  if (!site) return null;
-  return { site, sitePath: pathname.replace(/^\/+/, ''), baseUrl: '', isPreview: false };
+  const resolved = await resolveSiteByHostWithDevice(host);
+  if (!resolved) return null;
+  const hostname = host?.split(':')[0].toLowerCase() ?? '';
+  const h5 = siteH5Config(resolved.site);
+  const pcHosts = [resolved.site.domain?.toLowerCase(), ...(resolved.site.aliasDomains ?? []).map((d) => d.toLowerCase())];
+  const hostMatched = !!hostname && (pcHosts.includes(hostname) || hostname === h5.domain);
+  return {
+    site: resolved.site,
+    sitePath: pathname.replace(/^\/+/, ''),
+    baseUrl: '',
+    isPreview: false,
+    device: resolved.device,
+    hostMatched,
+  };
+}
+
+/** 移动端 UA 粗判（PC/H5 双域名互跳用） */
+function isMobileUa(ua: string | undefined): boolean {
+  return !!ua && /Mobile|Android|iPhone/i.test(ua);
+}
+
+/** PC/H5 双域名按 UA 302 互跳；返回 null 表示无需跳转 */
+function resolveUaRedirect(c: Context, target: ResolvedTarget): string | null {
+  if (target.isPreview || !target.hostMatched) return null;
+  const { site, device } = target;
+  const h5 = siteH5Config(site);
+  if (!h5.enabled || !h5.domain || !site.domain) return null;
+  const protocol = (site.settings as Record<string, unknown> | null)?.protocol === 'http' ? 'http' : 'https';
+  const url = new URL(c.req.url);
+  const suffix = `${url.pathname}${url.search}`;
+  const mobile = isMobileUa(c.req.header('user-agent'));
+  if (device === 'pc' && mobile) return `${protocol}://${h5.domain}${suffix}`;
+  if (device === 'h5' && !mobile) return `${protocol}://${site.domain}${suffix}`;
+  return null;
+}
+
+/** 静态产物相对路径：H5 通道写入 __h5/ 子树 */
+function deviceStaticPath(device: CmsDeviceChannel, sitePath: string): string {
+  return device === 'h5' ? `${CMS_H5_PATH_SEGMENT}/${sitePath}` : sitePath;
 }
 
 function respond(c: Context, result: RenderResult) {
@@ -104,7 +150,14 @@ export function createCmsFrontendRoutes(): Hono {
 
     const target = await resolveTarget(c.req.header('host'), pathname);
     if (!target) return next();
-    const { site, sitePath, baseUrl, isPreview } = target;
+    const { site, sitePath, baseUrl, isPreview, device } = target;
+
+    // PC/H5 双域名按 UA 302 互跳（两侧域名都已绑定时才启用）
+    const uaRedirect = resolveUaRedirect(c, target);
+    if (uaRedirect) {
+      c.header('Vary', 'User-Agent');
+      return c.redirect(uaRedirect, 302);
+    }
 
     // 301/302 重定向规则（优先级最高）
     const redirect = await resolveRedirect(site.id, `/${sitePath}`);
@@ -156,7 +209,7 @@ export function createCmsFrontendRoutes(): Hono {
       if (!verifyContentPreviewToken(contentId, exp, sig)) {
         return c.text('预览链接无效或已过期', 403);
       }
-      const result = await renderContentPreviewPage(site, baseUrl, contentId);
+      const result = await renderContentPreviewPage(site, baseUrl, contentId, device);
       return respond(c, result);
     }
 
@@ -168,16 +221,16 @@ export function createCmsFrontendRoutes(): Hono {
       return respond(c, result);
     }
 
-    // 静态文件命中（预览模式跳过，保证后台改动即时可见）
+    // 静态文件命中（预览模式跳过，保证后台改动即时可见；H5 通道走 __h5/ 子树）
     if (!isPreview && site.staticMode !== 'dynamic' && (sitePath === '' || sitePath.endsWith('/') || sitePath.endsWith('.html'))) {
-      const cached = await readStaticFile(site.code, sitePath);
+      const cached = await readStaticFile(site.code, deviceStaticPath(device, sitePath));
       if (cached !== null) {
         return htmlResponse(c, cached, PAGE_CACHE_TTL_DEFAULT_SECONDS, { 'X-Cms-Cache': 'static' });
       }
     }
 
-    // dynamic 模式：Redis 页面缓存
-    const cacheKey = `${PAGE_CACHE_PREFIX}${site.id}:${sitePath}`;
+    // dynamic 模式：Redis 页面缓存（key 带发布通道维度）
+    const cacheKey = `${PAGE_CACHE_PREFIX}${site.id}:${device}:${sitePath}`;
     if (!isPreview && site.staticMode === 'dynamic') {
       const cached = await redis.get(cacheKey).catch(() => null);
       if (cached) {
@@ -186,13 +239,13 @@ export function createCmsFrontendRoutes(): Hono {
     }
 
     // SSR 渲染
-    const result = await renderSitePath(site, baseUrl, sitePath);
+    const result = await renderSitePath(site, baseUrl, sitePath, device);
     if (result.status === 200) {
       const ttl = PAGE_CACHE_TTL_BY_KIND[result.kind] ?? PAGE_CACHE_TTL_DEFAULT_SECONDS;
       if (!isPreview && site.staticMode === 'hybrid') {
         // 混合模式：miss 即渲染并回写，下次直接命中静态文件
-        void writeStaticFile(site.code, sitePath, result.html).catch((err) => {
-          logger.error(`[CMS] 静态回写失败 site=${site.code} path=${sitePath}`, err);
+        void writeStaticFile(site.code, deviceStaticPath(device, sitePath), result.html).catch((err) => {
+          logger.error(`[CMS] 静态回写失败 site=${site.code} device=${device} path=${sitePath}`, err);
         });
       }
       if (!isPreview && site.staticMode === 'dynamic') {

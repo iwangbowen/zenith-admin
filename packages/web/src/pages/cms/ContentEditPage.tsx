@@ -15,6 +15,7 @@ import {
   useCmsContentDetail, useCmsChannelTree, useAllCmsModels, useAllCmsTags,
   useSaveCmsContent, useCmsContentAction, useCmsContentVersions, useRestoreCmsContentVersion,
   useCmsVersionDiff, useCmsPreviewLink, acquireCmsEditLock, releaseCmsEditLock, useCmsContentList,
+  useAllCmsSites, useCmsThemeTemplates,
 } from '@/hooks/queries/cms';
 import { CMS_CONTENT_STATUS_LABELS } from '@zenith/shared';
 import type { CmsChannel, CmsModelField, CmsEditLock } from '@zenith/shared';
@@ -197,6 +198,9 @@ export default function ContentEditPage() {
   }, [id]);
 
   const currentChannel = findChannel(treeQuery.data ?? [], selectedChannelId);
+  const { data: allSites } = useAllCmsSites();
+  const siteTheme = allSites?.find((s) => s.id === siteId)?.theme;
+  const { data: themeTemplates } = useCmsThemeTemplates(siteTheme);
   const currentModel = useMemo(
     () => (models ?? []).find((m) => m.id === (currentChannel?.modelId ?? detail?.modelId)),
     [models, currentChannel, detail],
@@ -213,6 +217,7 @@ export default function ContentEditPage() {
         author: detail.author ?? '',
         source: detail.source ?? '',
         externalLink: detail.externalLink ?? '',
+        detailTemplate: detail.detailTemplate ?? undefined,
         isTop: detail.isTop,
         isRecommend: detail.isRecommend,
         isHot: detail.isHot,
@@ -240,6 +245,8 @@ export default function ContentEditPage() {
     }
     const payload: Record<string, unknown> = { ...values, body };
     if (!values.slug) payload.slug = null;
+    // 模板下拉清空后为 undefined，显式置 null 才能在更新时清除覆盖
+    payload.detailTemplate = values.detailTemplate ?? null;
     if (values.scheduledAt instanceof Date) payload.scheduledAt = formatDateTimeForApi(values.scheduledAt);
     if (!values.scheduledAt) payload.scheduledAt = null;
     if (values.expireAt instanceof Date) payload.expireAt = formatDateTimeForApi(values.expireAt);
@@ -458,6 +465,9 @@ export default function ContentEditPage() {
               />
               <Form.Input field="slug" label="自定义 URL 标识" placeholder="留空使用 ID" />
               <Form.Input field="externalLink" label="外链地址" placeholder="填写后点击标题直接跳转" />
+              <Form.Select field="detailTemplate" label="详情模板" style={{ width: '100%' }} showClear
+                placeholder="跟随栏目/站点默认"
+                optionList={(themeTemplates?.detail ?? []).map((t) => ({ value: t.name, label: t.label }))} />
               <Row gutter={12}>
                 <Col span={8}><Form.Switch field="isTop" label="置顶" /></Col>
                 <Col span={8}><Form.Switch field="isRecommend" label="推荐" /></Col>

@@ -6,6 +6,7 @@ import type {
   CmsAdSlot, CmsAd, CmsForm, CmsFormSubmission, CmsSensitiveWord, CmsPushLog,
   CmsSearchWord, CmsHotKeyword, CmsCollectRule, CmsCollectItem, CmsPage,
   CmsEditLock, CmsPreviewLink, CmsContentVersionDiff, CmsDashboardStats,
+  CmsThemeTemplateManifest,
 } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { toQueryString, unwrap, LOOKUP_STALE_TIME } from '@/lib/query';
@@ -25,6 +26,7 @@ export const cmsSiteKeys = {
   detail: (id: number | undefined) => ['cms-sites', 'detail', id] as const,
   allSites: ['cms-sites', 'all'] as const,
   themes: ['cms-sites', 'themes'] as const,
+  themeTemplates: (code: string | undefined) => ['cms-sites', 'themes', code, 'templates'] as const,
 };
 
 export function useCmsSiteList(params: CmsSiteListParams) {
@@ -48,6 +50,16 @@ export function useCmsThemes() {
   return useQuery({
     queryKey: cmsSiteKeys.themes,
     queryFn: () => request.get<{ code: string; label: string }[]>('/api/cms/sites/themes').then(unwrap),
+    staleTime: LOOKUP_STALE_TIME,
+  });
+}
+
+/** 主题可选模板清单（站点默认模板 / 栏目 / 内容模板下拉） */
+export function useCmsThemeTemplates(themeCode: string | undefined) {
+  return useQuery({
+    queryKey: cmsSiteKeys.themeTemplates(themeCode),
+    queryFn: () => request.get<CmsThemeTemplateManifest>(`/api/cms/sites/themes/${themeCode}/templates`).then(unwrap),
+    enabled: !!themeCode,
     staleTime: LOOKUP_STALE_TIME,
   });
 }

@@ -46,6 +46,16 @@ export const cmsHandlers = [
   // ═══ 站点 ═══════════════════════════════════════════════════════════════
   http.get('/api/cms/sites/all', () => okJson(mockCmsSites.filter((s) => s.status === 'enabled'))),
   http.get('/api/cms/sites/themes', () => okJson([{ code: 'default', label: '默认主题' }])),
+  // 主题可选模板清单（与 packages/server/src/cms/themes/default 注册的变体保持一致）
+  http.get('/api/cms/sites/themes/:code/templates', () => okJson({
+    list: [
+      { name: 'list-card', label: '卡片网格（产品/案例）' },
+      { name: 'list-compact', label: '紧凑标题（公告/文件）' },
+    ],
+    detail: [
+      { name: 'detail-plain', label: '简洁正文（公告/政策）' },
+    ],
+  })),
   http.get('/api/cms/sites', ({ request }) => {
     const { url, page, pageSize, keyword } = pageParams(request);
     const status = url.searchParams.get('status') || '';
@@ -222,8 +232,8 @@ export const cmsHandlers = [
       path: parent ? `${parent.path}/${slug}` : slug,
       type: (body.type as CmsChannel['type']) ?? 'list',
       linkUrl: (body.linkUrl as string) ?? null,
-      listTemplate: null,
-      detailTemplate: null,
+      listTemplate: (body.listTemplate as string) ?? null,
+      detailTemplate: (body.detailTemplate as string) ?? null,
       pageSize: Number(body.pageSize ?? 20),
       pageContent: (body.pageContent as string) ?? null,
       seoTitle: (body.seoTitle as string) ?? null,
@@ -345,6 +355,7 @@ export const cmsHandlers = [
       body: (body.body as string) ?? null,
       extend: (body.extend as Record<string, unknown>) ?? {},
       externalLink: (body.externalLink as string) ?? null,
+      detailTemplate: (body.detailTemplate as string) ?? null,
       isTop: Boolean(body.isTop),
       isRecommend: Boolean(body.isRecommend),
       isHot: Boolean(body.isHot),

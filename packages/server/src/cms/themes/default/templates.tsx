@@ -342,3 +342,108 @@ export function CustomPageTemplate(ctx: CmsCustomPageContext) {
     </Layout>
   );
 }
+
+// ─── 变体模板（站点默认模板 / 栏目 / 内容可按名称选用；样式自带 scoped <style>）────
+
+/** 卡片列表：封面优先的响应式卡片网格（产品/案例/图集类栏目） */
+export function ListCardTemplate(ctx: CmsListContext) {
+  return (
+    <Layout ctx={ctx} currentUrl={ctx.channel.url}>
+      <style>{`
+.card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 16px; }
+.card-grid .card { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
+.card-grid .card .cover { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; display: block; background: var(--border); }
+.card-grid .card .card-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 6px; }
+.card-grid .card h3 { font-size: 15px; font-weight: 600; line-height: 1.4; }
+.card-grid .card .summary { font-size: 13px; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.card-grid .card .meta { font-size: 12px; color: var(--text-2); margin-top: auto; display: flex; gap: 10px; }
+@media (max-width: 900px) { .card-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .card-grid { grid-template-columns: 1fr; } }
+      `}</style>
+      <Breadcrumbs items={ctx.breadcrumbs} />
+      <h1 className="page-title">{ctx.channel.name}</h1>
+      {ctx.items.length === 0 ? <div className="empty">该栏目暂无内容</div> : (
+        <div className="card-grid">
+          {ctx.items.map((item) => (
+            <a className="card" key={item.id} href={item.url}>
+              {item.coverImage ? <img className="cover" src={item.coverImage} alt={item.title} loading="lazy" /> : null}
+              <div className="card-body">
+                <h3>
+                  {item.isTop ? <span className="badge">置顶</span> : null}
+                  {item.title}
+                </h3>
+                {item.summary ? <div className="summary">{item.summary}</div> : null}
+                <div className="meta">
+                  {item.publishedAt ? <time>{item.publishedAt}</time> : null}
+                  <span>{item.viewCount} 阅读</span>
+                </div>
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+      <Pagination p={ctx.pagination} />
+    </Layout>
+  );
+}
+
+/** 紧凑列表：纯标题 + 日期行，无封面摘要（公告/文件/下载类栏目） */
+export function ListCompactTemplate(ctx: CmsListContext) {
+  return (
+    <Layout ctx={ctx} currentUrl={ctx.channel.url}>
+      <style>{`
+.compact-list { margin-top: 8px; }
+.compact-list li { list-style: none; display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 12px 0; border-bottom: 1px dashed var(--border); font-size: 15px; }
+.compact-list li a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compact-list li time { color: var(--text-2); font-size: 13px; flex-shrink: 0; }
+      `}</style>
+      <Breadcrumbs items={ctx.breadcrumbs} />
+      <h1 className="page-title">{ctx.channel.name}</h1>
+      {ctx.items.length === 0 ? <div className="empty">该栏目暂无内容</div> : (
+        <ul className="compact-list">
+          {ctx.items.map((item) => (
+            <li key={item.id}>
+              <a href={item.url}>
+                {item.isTop ? <span className="badge">置顶</span> : null}
+                {item.title}
+              </a>
+              {item.publishedAt ? <time>{item.publishedAt.slice(0, 10)}</time> : null}
+            </li>
+          ))}
+        </ul>
+      )}
+      <Pagination p={ctx.pagination} />
+    </Layout>
+  );
+}
+
+/** 简洁详情：正文居中窄栏、隐藏评论区与相关阅读（公告/政策/制度类内容） */
+export function DetailPlainTemplate(ctx: CmsDetailContext) {
+  const { content } = ctx;
+  return (
+    <Layout ctx={ctx} currentUrl={ctx.channel.url}>
+      <style>{`
+.article-plain { max-width: 760px; margin: 0 auto; }
+.article-plain h1 { text-align: center; }
+.article-plain .meta { justify-content: center; }
+      `}</style>
+      <Breadcrumbs items={ctx.breadcrumbs} />
+      <article className="article article-plain">
+        <h1>{content.title}</h1>
+        <div className="meta">
+          {content.author ? <span>作者：{content.author}</span> : null}
+          {content.source ? <span>来源：{content.source}</span> : null}
+          {content.publishedAt ? <time>{content.publishedAt}</time> : null}
+          <span>{content.viewCount} 阅读</span>
+        </div>
+        <div className="body" dangerouslySetInnerHTML={{ __html: content.body }} />
+      </article>
+      {(content.prev || content.next) ? (
+        <nav className="article-nav">
+          {content.prev ? <span>上一篇：<a href={content.prev.url}>{content.prev.title}</a></span> : null}
+          {content.next ? <span>下一篇：<a href={content.next.url}>{content.next.title}</a></span> : null}
+        </nav>
+      ) : null}
+    </Layout>
+  );
+}

@@ -2,7 +2,7 @@ import { createElement, type ComponentType } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { eq, and, desc, isNull, inArray } from 'drizzle-orm';
 import { db } from '../../db';
-import { cmsChannels, cmsTags, cmsContents } from '../../db/schema';
+import { cmsChannels, cmsTags, cmsContents, cmsModels } from '../../db/schema';
 import type { CmsSiteRow, CmsChannelRow, CmsContentRow, CmsTagRow } from '../../db/schema';
 import { formatNullableDateTime, formatIso8601 } from '../../lib/datetime';
 import { getTheme, resolveListTemplate, resolveDetailTemplate, resolveCustomPageTemplate } from '../../cms/themes/registry';
@@ -22,7 +22,7 @@ import { getEnabledLinkWords, applyLinkWords } from './cms-link-words.service';
 import { listApprovedComments } from './cms-comments.service';
 import { getActiveAds } from './cms-ads.service';
 import { getCmsFormByCode } from './cms-forms.service';
-import type { CmsChannel } from '@zenith/shared';
+import type { CmsChannel, CmsDeviceChannel, CmsSiteTemplateDefaults } from '@zenith/shared';
 import { CMS_CONTENT_STATUS_LABELS } from '@zenith/shared';
 
 // ─── URL 规则（站点内相对路径，静态文件名与之一一对应）──────────────────────────
@@ -53,6 +53,55 @@ export type RenderResult =
 
 function renderDoc<P extends object>(component: ComponentType<P>, props: P): string {
   return '<!DOCTYPE html>' + renderToStaticMarkup(createElement(component, props));
+}
+
+// ─── 模板解析链（发布通道感知）───────────────────────────────────────────────────
+/** 站点 settings.defaultTemplates 按发布通道取默认模板配置 */
+function siteTemplateDefaults(site: CmsSiteRow, device: CmsDeviceChannel): CmsSiteTemplateDefaults {
+  const settings = site.settings as Record<string, unknown> | null;
+  const all = settings?.defaultTemplates as Record<string, CmsSiteTemplateDefaults | undefined> | undefined;
+  return all?.[device] ?? {};
+}
+
+// 模型 id → code 内存缓存（detailByModel 解析用；模型极少变动）
+let modelCodeCache: { map: Map<number, string>; loadedAt: number } | null = null;
+const MODEL_CACHE_TTL_MS = 30_000;
+
+async function getModelCode(modelId: number): Promise<string | null> {
+  if (!modelCodeCache || Date.now() - modelCodeCache.loadedAt > MODEL_CACHE_TTL_MS) {
+    const rows = await db.select({ id: cmsModels.id, code: cmsModels.code }).from(cmsModels);
+    modelCodeCache = { map: new Map(rows.map((r) => [r.id, r.code])), loadedAt: Date.now() };
+  }
+  return modelCodeCache.map.get(modelId) ?? null;
+}
+
+/** 列表模板：栏目覆盖 → 站点默认[通道] → 主题默认 */
+function resolveListComponent(site: CmsSiteRow, device: CmsDeviceChannel, channel: CmsChannelRow) {
+  const theme = getTheme(site.theme);
+  const name = channel.listTemplate || siteTemplateDefaults(site, device).list || null;
+  return resolveListTemplate(theme, name);
+}
+
+/** 详情模板：内容覆盖 → 栏目覆盖 → 站点默认[通道].detailByModel[模型] → 站点默认[通道].detail → 主题默认 */
+async function resolveDetailComponent(
+  site: CmsSiteRow,
+  device: CmsDeviceChannel,
+  channel: CmsChannelRow,
+  contentTemplate?: string | null,
+  contentModelId?: number | null,
+) {
+  const theme = getTheme(site.theme);
+  let name = contentTemplate || channel.detailTemplate || null;
+  if (!name) {
+    const defaults = siteTemplateDefaults(site, device);
+    const modelId = contentModelId ?? channel.modelId;
+    if (defaults.detailByModel && modelId) {
+      const code = await getModelCode(modelId);
+      if (code) name = defaults.detailByModel[code] || null;
+    }
+    name = name || defaults.detail || null;
+  }
+  return resolveDetailTemplate(theme, name);
 }
 
 // ─── 上下文组装 ───────────────────────────────────────────────────────────────
@@ -272,7 +321,7 @@ async function loadChannelPathMap(siteId: number): Promise<Map<number, string>> 
   return new Map(rows.map((r) => [r.id, r.path]));
 }
 
-export async function renderChannelPage(site: CmsSiteRow, baseUrl: string, channel: CmsChannelRow, page = 1): Promise<RenderResult> {
+export async function renderChannelPage(site: CmsSiteRow, baseUrl: string, channel: CmsChannelRow, page = 1, device: CmsDeviceChannel = 'pc'): Promise<RenderResult> {
   const theme = getTheme(site.theme);
   if (channel.type === 'link') {
     return { status: 302, location: channel.linkUrl ?? `${baseUrl}/` };
@@ -311,7 +360,7 @@ export async function renderChannelPage(site: CmsSiteRow, baseUrl: string, chann
 
   const { total, rows } = await listPublishedContents(site.id, channel.id, page, channel.pageSize);
   if (page > 1 && rows.length === 0) return renderNotFound(site, baseUrl, `/${channel.path}/index_${page}.html`);
-  const html = renderDoc(resolveListTemplate(theme, channel.listTemplate), {
+  const html = renderDoc(resolveListComponent(site, device, channel), {
     ...base,
     channel: toChannelInfo(channel, baseUrl),
     breadcrumbs,
@@ -321,8 +370,7 @@ export async function renderChannelPage(site: CmsSiteRow, baseUrl: string, chann
   return { status: 200, html, kind: 'list' };
 }
 
-export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channel: CmsChannelRow, idOrSlug: string): Promise<RenderResult> {
-  const theme = getTheme(site.theme);
+export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channel: CmsChannelRow, idOrSlug: string, device: CmsDeviceChannel = 'pc'): Promise<RenderResult> {
   const row = await getPublishedContent(site.id, channel.id, idOrSlug);
   if (!row) return renderNotFound(site, baseUrl, `/${channel.path}/${idOrSlug}.html`);
   if (row.externalLink?.trim()) return { status: 302, location: row.externalLink };
@@ -357,7 +405,8 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
     listRelatedContents(row),
   ]);
   const related = await buildRelatedLinks(baseUrl, relatedRows);
-  const html = renderDoc(resolveDetailTemplate(theme, channel.detailTemplate), {
+  const detailComponent = await resolveDetailComponent(site, device, channel, row.detailTemplate, row.modelId);
+  const html = renderDoc(detailComponent, {
     ...base,
     channel: toChannelInfo(channel, baseUrl),
     breadcrumbs,
@@ -396,8 +445,7 @@ async function buildRelatedLinks(baseUrl: string, rows: CmsContentRow[]): Promis
  * 草稿预览渲染（签名链接访问，不校验发布状态）：
  * 复用详情页模板，顶部注入预览提示条；无缓存、无静态回写、无浏览计数。
  */
-export async function renderContentPreviewPage(site: CmsSiteRow, baseUrl: string, contentId: number): Promise<RenderResult> {
-  const theme = getTheme(site.theme);
+export async function renderContentPreviewPage(site: CmsSiteRow, baseUrl: string, contentId: number, device: CmsDeviceChannel = 'pc'): Promise<RenderResult> {
   const [row] = await db.select().from(cmsContents)
     .where(and(eq(cmsContents.id, contentId), eq(cmsContents.siteId, site.id), isNull(cmsContents.deletedAt)))
     .limit(1);
@@ -416,7 +464,8 @@ export async function renderContentPreviewPage(site: CmsSiteRow, baseUrl: string
     listContentTags(row.id),
     getEnabledLinkWords(site.id),
   ]);
-  const html = renderDoc(resolveDetailTemplate(theme, channel.detailTemplate), {
+  const previewComponent = await resolveDetailComponent(site, device, channel, row.detailTemplate, row.modelId);
+  const html = renderDoc(previewComponent, {
     ...base,
     channel: toChannelInfo(channel, baseUrl),
     breadcrumbs,
@@ -584,7 +633,7 @@ export async function generateRssXml(site: CmsSiteRow, channel?: CmsChannelRow |
  * 约定：'' 首页；'{path}/' 栏目页1；'{path}/index_{n}.html' 栏目页n；
  * '{path}/{idOrSlug}.html' 详情；'tag/{slug}/' 与 'tag/{slug}/index_{n}.html' 标签页。
  */
-export async function renderSitePath(site: CmsSiteRow, baseUrl: string, rawPath: string): Promise<RenderResult> {
+export async function renderSitePath(site: CmsSiteRow, baseUrl: string, rawPath: string, device: CmsDeviceChannel = 'pc'): Promise<RenderResult> {
   const cleaned = rawPath.replace(/^\/+|\/+$/g, '');
   if (cleaned === '' || cleaned === 'index.html') {
     return renderHomePage(site, baseUrl);
@@ -614,15 +663,15 @@ export async function renderSitePath(site: CmsSiteRow, baseUrl: string, rawPath:
       if (!dir) return renderNotFound(site, baseUrl, `/${cleaned}`);
       const channel = await findChannelByPath(site.id, dir);
       if (!channel) return renderNotFound(site, baseUrl, `/${cleaned}`);
-      return renderChannelPage(site, baseUrl, channel, Number(pageMatch[1]));
+      return renderChannelPage(site, baseUrl, channel, Number(pageMatch[1]), device);
     }
     if (!dir) return renderNotFound(site, baseUrl, `/${cleaned}`);
     const channel = await findChannelByPath(site.id, dir);
     if (!channel) return renderNotFound(site, baseUrl, `/${cleaned}`);
-    return renderDetailPage(site, baseUrl, channel, file.slice(0, -'.html'.length));
+    return renderDetailPage(site, baseUrl, channel, file.slice(0, -'.html'.length), device);
   }
 
   const channel = await findChannelByPath(site.id, cleaned);
   if (!channel) return renderNotFound(site, baseUrl, `/${cleaned}`);
-  return renderChannelPage(site, baseUrl, channel, 1);
+  return renderChannelPage(site, baseUrl, channel, 1, device);
 }

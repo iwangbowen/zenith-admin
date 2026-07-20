@@ -6,8 +6,8 @@ import {
   ErrorResponse, jsonContent, PaginationQuery, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, IdParam, okBody,
 } from '../../lib/openapi-schemas';
-import { CmsSiteDTO, CmsThemeDTO, CmsSiteUsersDTO } from '../../lib/openapi-dtos';
-import { listThemes } from '../../cms/themes/registry';
+import { CmsSiteDTO, CmsThemeDTO, CmsThemeTemplatesDTO, CmsSiteUsersDTO } from '../../lib/openapi-dtos';
+import { listThemes, listThemeTemplates } from '../../cms/themes/registry';
 import {
   listCmsSites, listAllCmsSites, getCmsSite, createCmsSite, updateCmsSite, deleteCmsSite,
   ensureCmsSiteExists, mapCmsSite, getCmsSiteUsers, setCmsSiteUsers, enableSiteAnalytics,
@@ -52,6 +52,18 @@ const themesRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...ok(z.array(CmsThemeDTO), '主题列表') },
   }),
   handler: (c) => c.json(okBody(listThemes()), 200),
+});
+
+const themeTemplatesRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/themes/{code}/templates',
+    tags: ['CMS-站点管理'], summary: '主题可选模板清单（站点默认模板/栏目/内容模板下拉）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:site:list' })] as const,
+    request: { params: z.object({ code: z.string().min(1) }) },
+    responses: { ...commonErrorResponses, ...ok(CmsThemeTemplatesDTO, '模板清单') },
+  }),
+  handler: (c) => c.json(okBody(listThemeTemplates(c.req.valid('param').code)), 200),
 });
 
 const getOneRoute = defineOpenAPIRoute({
@@ -176,6 +188,6 @@ const enableAnalyticsRoute = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRoute, allRoute, themesRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_, getSiteUsersRoute, setSiteUsersRoute, enableAnalyticsRoute] as const);
+router.openapiRoutes([listRoute, allRoute, themesRoute, themeTemplatesRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_, getSiteUsersRoute, setSiteUsersRoute, enableAnalyticsRoute] as const);
 
 export default router;

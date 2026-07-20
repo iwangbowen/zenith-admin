@@ -15,10 +15,11 @@ import { useAllUsers } from '@/hooks/queries/users';
 import {
   useCmsSiteList, useCmsThemes, useSaveCmsSite, useDeleteCmsSite, cmsSiteKeys,
   useCmsSiteUsers, useSetCmsSiteUsers, useEnableSiteAnalytics,
+  useCmsThemeTemplates, useAllCmsModels,
 } from '@/hooks/queries/cms';
 import { useWorkflowDefinitionList } from '@/hooks/queries/workflow-definitions';
-import { CMS_STATIC_MODE_LABELS, CMS_STATIC_MODES } from '@zenith/shared';
-import type { CmsSite } from '@zenith/shared';
+import { CMS_STATIC_MODE_LABELS, CMS_STATIC_MODES, CMS_DEVICE_CHANNELS, CMS_DEVICE_CHANNEL_LABELS } from '@zenith/shared';
+import type { CmsSite, CmsDeviceChannel, CmsSiteTemplateDefaults } from '@zenith/shared';
 import { cmsPreviewUrl } from './CmsSiteSelect';
 
 interface SearchParams {
@@ -27,6 +28,48 @@ interface SearchParams {
 }
 
 const defaultSearchParams: SearchParams = { keyword: '', status: '' };
+
+/** 站点默认模板编辑态（受控管理，字段名含动态模型 code 不走 Form） */
+type TemplateDefaultsState = Record<CmsDeviceChannel, {
+  list: string | null;
+  detail: string | null;
+  detailByModel: Record<string, string | null>;
+}>;
+
+function emptyTemplateDefaults(): TemplateDefaultsState {
+  return { pc: { list: null, detail: null, detailByModel: {} }, h5: { list: null, detail: null, detailByModel: {} } };
+}
+
+function templateDefaultsFromSettings(settings: Record<string, unknown> | null | undefined): TemplateDefaultsState {
+  const state = emptyTemplateDefaults();
+  const all = settings?.defaultTemplates as Record<string, CmsSiteTemplateDefaults | undefined> | undefined;
+  for (const device of CMS_DEVICE_CHANNELS) {
+    const cfg = all?.[device];
+    if (!cfg) continue;
+    state[device] = {
+      list: cfg.list ?? null,
+      detail: cfg.detail ?? null,
+      detailByModel: { ...(cfg.detailByModel ?? {}) },
+    };
+  }
+  return state;
+}
+
+/** 序列化为 settings.defaultTemplates（去掉空值，保持 JSONB 干净） */
+function templateDefaultsToSettings(state: TemplateDefaultsState): Record<string, CmsSiteTemplateDefaults> {
+  const out: Record<string, CmsSiteTemplateDefaults> = {};
+  for (const device of CMS_DEVICE_CHANNELS) {
+    const cfg = state[device];
+    const detailByModel = Object.fromEntries(Object.entries(cfg.detailByModel).filter(([, v]) => v));
+    const entry: CmsSiteTemplateDefaults = {
+      ...(cfg.list ? { list: cfg.list } : {}),
+      ...(cfg.detail ? { detail: cfg.detail } : {}),
+      ...(Object.keys(detailByModel).length > 0 ? { detailByModel } : {}),
+    };
+    if (Object.keys(entry).length > 0) out[device] = entry;
+  }
+  return out;
+}
 
 export default function SitesPage() {
   const { hasPermission } = usePermission();
@@ -50,6 +93,11 @@ export default function SitesPage() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<CmsSite | null>(null);
   const [activeTab, setActiveTab] = useState('basic');
+  // 模板下拉跟随表单里实时选中的主题（Form 值不具备响应性，用 state 镜像）
+  const [selectedTheme, setSelectedTheme] = useState('default');
+  const [templateDefaults, setTemplateDefaults] = useState<TemplateDefaultsState>(emptyTemplateDefaults());
+  const { data: themeTemplates } = useCmsThemeTemplates(modalVisible ? selectedTheme : undefined);
+  const { data: allModels } = useAllCmsModels();
   const saveMutation = useSaveCmsSite();
   const deleteMutation = useDeleteCmsSite();
 
@@ -98,12 +146,16 @@ export default function SitesPage() {
   function openCreate() {
     setEditingRecord(null);
     setActiveTab('basic');
+    setSelectedTheme('default');
+    setTemplateDefaults(emptyTemplateDefaults());
     setModalVisible(true);
   }
 
   function openEdit(record: CmsSite) {
     setEditingRecord(record);
     setActiveTab('basic');
+    setSelectedTheme(record.theme);
+    setTemplateDefaults(templateDefaultsFromSettings(record.settings));
     setModalVisible(true);
   }
 
@@ -144,11 +196,14 @@ export default function SitesPage() {
         thumbWidth: Number((editingRecord.settings as Record<string, unknown>)?.thumbWidth ?? 400),
         webhookUrl: String((editingRecord.settings as Record<string, unknown>)?.webhookUrl ?? ''),
         webhookSecret: String((editingRecord.settings as Record<string, unknown>)?.webhookSecret ?? ''),
+        h5Enabled: (editingRecord.settings as Record<string, unknown>)?.h5Enabled === true,
+        h5Domain: String((editingRecord.settings as Record<string, unknown>)?.h5Domain ?? ''),
       }
     : {
         theme: 'default', staticMode: 'hybrid', status: 'enabled', isDefault: false, aliasDomains: [],
         themeDark: 'light', imageMaxWidth: 1600, watermarkEnabled: false, watermarkPosition: 'southeast',
         watermarkOpacity: 45, thumbEnabled: false, thumbWidth: 400, auditMode: 'simple',
+        h5Enabled: false,
       };
 
   async function handleSave() {
@@ -161,12 +216,13 @@ export default function SitesPage() {
       return;
     }
     if (!values.domain) values.domain = null;
-    // 推送凭证/主题参数/图片处理并入 settings JSONB（保留既有 settings 键）
+    // 推送凭证/主题参数/图片处理/H5 通道/默认模板并入 settings JSONB（保留既有 settings 键）
     const {
       baiduPushToken, indexNowKey, themePrimary, themeDark,
       imageMaxWidth, watermarkEnabled, watermarkText, watermarkPosition, watermarkOpacity, thumbEnabled, thumbWidth,
       auditMode, auditWorkflowDefinitionId,
       webhookUrl, webhookSecret,
+      h5Enabled, h5Domain,
       ...rest
     } = values;
     rest.settings = {
@@ -186,6 +242,9 @@ export default function SitesPage() {
       auditWorkflowDefinitionId: auditWorkflowDefinitionId ?? null,
       webhookUrl: String(webhookUrl ?? '').trim(),
       webhookSecret: String(webhookSecret ?? '').trim(),
+      h5Enabled: h5Enabled === true,
+      h5Domain: String(h5Domain ?? '').trim(),
+      defaultTemplates: templateDefaultsToSettings(templateDefaults),
     };
     try {
       await saveMutation.mutateAsync({ id: editingRecord?.id, values: rest });
@@ -320,6 +379,59 @@ export default function SitesPage() {
     <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
   ) : null;
 
+  const listTplOptions = (themeTemplates?.list ?? []).map((t) => ({ value: t.name, label: t.label }));
+  const detailTplOptions = (themeTemplates?.detail ?? []).map((t) => ({ value: t.name, label: t.label }));
+
+  /** 单个发布通道的默认模板配置面板（动态字段名不走 Form，受控 state 管理） */
+  const renderDeviceTemplates = (device: CmsDeviceChannel) => {
+    const cfg = templateDefaults[device];
+    const patch = (p: Partial<TemplateDefaultsState[CmsDeviceChannel]>) =>
+      setTemplateDefaults((s) => ({ ...s, [device]: { ...s[device], ...p } }));
+    const rowStyle = { display: 'flex', alignItems: 'center', gap: 12 } as const;
+    const labelStyle = { width: 140, flexShrink: 0, textAlign: 'right', fontSize: 14, color: 'var(--semi-color-text-0)' } as const;
+    return (
+      <TabPane tab={CMS_DEVICE_CHANNEL_LABELS[device]} itemKey={device} key={device}>
+        <div style={{ paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={rowStyle}>
+            <span style={labelStyle}>栏目列表页模板</span>
+            <Select
+              placeholder="跟随主题默认"
+              value={cfg.list ?? undefined}
+              onChange={(v) => patch({ list: (v as string) ?? null })}
+              showClear
+              style={{ width: 320 }}
+              optionList={listTplOptions}
+            />
+          </div>
+          <div style={rowStyle}>
+            <span style={labelStyle}>内容详情页模板</span>
+            <Select
+              placeholder="跟随主题默认"
+              value={cfg.detail ?? undefined}
+              onChange={(v) => patch({ detail: (v as string) ?? null })}
+              showClear
+              style={{ width: 320 }}
+              optionList={detailTplOptions}
+            />
+          </div>
+          {(allModels ?? []).map((m) => (
+            <div style={rowStyle} key={m.id}>
+              <span style={labelStyle}>{m.name}详情模板</span>
+              <Select
+                placeholder="跟随详情页默认"
+                value={cfg.detailByModel[m.code] ?? undefined}
+                onChange={(v) => patch({ detailByModel: { ...cfg.detailByModel, [m.code]: (v as string) ?? null } })}
+                showClear
+                style={{ width: 320 }}
+                optionList={detailTplOptions}
+              />
+            </div>
+          ))}
+        </div>
+      </TabPane>
+    );
+  };
+
   return (
     <div className="page-container">
       <SearchToolbar
@@ -379,6 +491,10 @@ export default function SitesPage() {
           initValues={formInitValues}
           labelPosition="left"
           labelWidth={100}
+          onValueChange={(vals) => {
+            const t = (vals as { theme?: string }).theme;
+            if (t && t !== selectedTheme) setSelectedTheme(t);
+          }}
         >
           {/* keepDOM（默认）保证非激活页字段仍挂载，切换标签不丢值、validate 全量生效 */}
           <Tabs type="line" activeKey={activeTab} onChange={setActiveTab}>
@@ -509,6 +625,25 @@ export default function SitesPage() {
                       <Form.InputNumber field="watermarkOpacity" label="水印不透明度(%)" labelWidth={140} min={0} max={100} style={{ width: '100%' }} />
                     </Col>
                   </Row>
+                </Form.Section>
+              </div>
+            </TabPane>
+            <TabPane tab="模板与通道" itemKey="templates">
+              <div style={{ paddingTop: 16 }}>
+                <Form.Section text="H5 发布通道（开启后静态页双通道生成；同时绑定 PC/H5 域名可按访问设备自动跳转）">
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.Switch field="h5Enabled" label="启用 H5 通道" labelWidth={120} />
+                    </Col>
+                    <Col span={12}>
+                      <Form.Input field="h5Domain" label="H5 域名" labelWidth={120} placeholder="如 m.example.com，留空仅预览" />
+                    </Col>
+                  </Row>
+                </Form.Section>
+                <Form.Section text="默认模板（栏目/内容未指定模板时的站点级兜底；留空 = 主题默认）">
+                  <Tabs type="card" size="small">
+                    {CMS_DEVICE_CHANNELS.map((device) => renderDeviceTemplates(device))}
+                  </Tabs>
                 </Form.Section>
               </div>
             </TabPane>

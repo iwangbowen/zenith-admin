@@ -5135,6 +5135,8 @@ export const createCmsContentSchema = z.object({
   body: z.string().nullable().optional(),
   extend: z.record(z.string(), z.unknown()).default({}),
   externalLink: z.string().max(500).nullable().optional(),
+  /** 详情模板覆盖（主题变体模板名；空 = 跟随栏目/站点默认） */
+  detailTemplate: z.string().max(50).nullable().optional(),
   isTop: z.boolean().default(false),
   isRecommend: z.boolean().default(false),
   isHot: z.boolean().default(false),

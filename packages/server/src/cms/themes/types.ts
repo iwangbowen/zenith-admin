@@ -206,13 +206,19 @@ export interface CmsThemeTemplates {
   notFound: ComponentType<CmsNotFoundContext>;
 }
 
+/** 变体模板：带展示名，供后台「模板选择」下拉列出 */
+export interface CmsTemplateVariant<P> {
+  label: string;
+  component: ComponentType<P>;
+}
+
 export interface CmsTheme {
   code: string;
   label: string;
   templates: CmsThemeTemplates;
   /** 可视化搭建页面模板（缺省回退 default 主题实现） */
   customPage?: ComponentType<CmsCustomPageContext>;
-  /** 扩展模板：栏目 listTemplate/detailTemplate 可按名称引用（如 list-image / detail-video） */
-  extraListTemplates?: Record<string, ComponentType<CmsListContext>>;
-  extraDetailTemplates?: Record<string, ComponentType<CmsDetailContext>>;
+  /** 扩展模板：站点默认模板 / 栏目 listTemplate / 内容 detailTemplate 按名称引用（如 list-card / detail-plain） */
+  extraListTemplates?: Record<string, CmsTemplateVariant<CmsListContext>>;
+  extraDetailTemplates?: Record<string, CmsTemplateVariant<CmsDetailContext>>;
 }

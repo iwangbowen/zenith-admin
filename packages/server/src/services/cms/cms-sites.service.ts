@@ -11,16 +11,27 @@ import { isSuperAdmin } from '../../lib/permissions';
 import type { CreateCmsSiteInput, UpdateCmsSiteInput } from '@zenith/shared';
 
 // ─── 站点配置内存缓存（前台按 Host 高频查找；写操作后失效）──────────────────────
-let siteCache: { byHost: Map<string, CmsSiteRow>; byCode: Map<string, CmsSiteRow>; defaultSite: CmsSiteRow | null; loadedAt: number } | null = null;
+let siteCache: { byHost: Map<string, CmsSiteRow>; byH5Host: Map<string, CmsSiteRow>; byCode: Map<string, CmsSiteRow>; defaultSite: CmsSiteRow | null; loadedAt: number } | null = null;
 const SITE_CACHE_TTL_MS = 30_000;
 
 export function invalidateSiteCache(): void {
   siteCache = null;
 }
 
+/** 站点 H5 通道配置（存于 settings.h5Enabled / settings.h5Domain） */
+export function siteH5Config(site: CmsSiteRow): { enabled: boolean; domain: string | null } {
+  const settings = site.settings as Record<string, unknown> | null;
+  const enabled = settings?.h5Enabled === true;
+  const domain = typeof settings?.h5Domain === 'string' && settings.h5Domain.trim()
+    ? settings.h5Domain.trim().toLowerCase()
+    : null;
+  return { enabled, domain };
+}
+
 async function loadSiteCache() {
   const rows = await db.select().from(cmsSites).where(eq(cmsSites.status, 'enabled'));
   const byHost = new Map<string, CmsSiteRow>();
+  const byH5Host = new Map<string, CmsSiteRow>();
   const byCode = new Map<string, CmsSiteRow>();
   let defaultSite: CmsSiteRow | null = null;
   for (const row of rows) {
@@ -29,9 +40,11 @@ async function loadSiteCache() {
     for (const alias of row.aliasDomains ?? []) {
       if (alias) byHost.set(alias.toLowerCase(), row);
     }
+    const h5 = siteH5Config(row);
+    if (h5.enabled && h5.domain) byH5Host.set(h5.domain, row);
     if (row.isDefault && !defaultSite) defaultSite = row;
   }
-  siteCache = { byHost, byCode, defaultSite, loadedAt: Date.now() };
+  siteCache = { byHost, byH5Host, byCode, defaultSite, loadedAt: Date.now() };
   return siteCache;
 }
 
@@ -49,6 +62,19 @@ export async function resolveSiteByHost(host: string | undefined): Promise<CmsSi
     if (hit) return hit;
   }
   return cache.defaultSite;
+}
+
+/** 前台按 Host 匹配站点 + 发布通道（H5 独立域名命中返回 device='h5'） */
+export async function resolveSiteByHostWithDevice(host: string | undefined): Promise<{ site: CmsSiteRow; device: 'pc' | 'h5' } | null> {
+  const cache = await getSiteCache();
+  if (host) {
+    const hostname = host.split(':')[0].toLowerCase();
+    const h5Hit = cache.byH5Host.get(hostname);
+    if (h5Hit) return { site: h5Hit, device: 'h5' };
+    const hit = cache.byHost.get(hostname);
+    if (hit) return { site: hit, device: 'pc' };
+  }
+  return cache.defaultSite ? { site: cache.defaultSite, device: 'pc' } : null;
 }
 
 /** 预览模式按 code 匹配站点 */

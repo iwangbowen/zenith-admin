@@ -1,0 +1,1 @@
+ALTER TABLE "cms_contents" ADD COLUMN "detail_template" varchar(50);

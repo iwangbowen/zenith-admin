@@ -6,6 +6,9 @@ import { cmsSites, cmsChannels, cmsContents } from '../../db/schema';
 import type { CmsSiteRow, CmsChannelRow } from '../../db/schema';
 import logger from '../../lib/logger';
 import { formatIso8601 } from '../../lib/datetime';
+import { CMS_H5_PATH_SEGMENT } from '@zenith/shared';
+import type { CmsDeviceChannel } from '@zenith/shared';
+import { siteH5Config } from './cms-sites.service';
 import {
   renderSitePath, renderHomePage, renderChannelPage, renderDetailPage, renderTagPage, renderCustomPage,
   channelUrl, contentUrl, tagUrl, customPageUrl, siteOrigin, listSiteTags, generateRssXml,
@@ -142,25 +145,35 @@ export function buildRobotsTxt(site: CmsSiteRow): string {
 // ─── 增量静态化 ───────────────────────────────────────────────────────────────
 const MAX_LIST_PAGES = 50;
 
-async function writeRenderedPath(site: CmsSiteRow, relPath: string): Promise<boolean> {
-  const result = await renderSitePath(site, '', relPath);
+/** 站点启用的发布通道（H5 开启后静态产物双通道生成） */
+function siteDevices(site: CmsSiteRow): CmsDeviceChannel[] {
+  return siteH5Config(site).enabled ? ['pc', 'h5'] : ['pc'];
+}
+
+/** 静态产物相对路径：H5 通道落在 __h5/ 子树 */
+function deviceStaticPath(device: CmsDeviceChannel, relPath: string): string {
+  return device === 'h5' ? `${CMS_H5_PATH_SEGMENT}/${relPath}` : relPath;
+}
+
+async function writeRenderedPath(site: CmsSiteRow, relPath: string, device: CmsDeviceChannel): Promise<boolean> {
+  const result = await renderSitePath(site, '', relPath, device);
   if (result.status === 200) {
-    await writeStaticFile(site.code, relPath, result.html);
+    await writeStaticFile(site.code, deviceStaticPath(device, relPath), result.html);
     return true;
   }
   if (result.status === 404) {
-    await deleteStaticFile(site.code, relPath);
+    await deleteStaticFile(site.code, deviceStaticPath(device, relPath));
   }
   return false;
 }
 
 /** 重新生成栏目的全部分页列表（超出的旧分页文件删除） */
-async function regenerateChannelPages(site: CmsSiteRow, channel: CmsChannelRow): Promise<number> {
+async function regenerateChannelPages(site: CmsSiteRow, channel: CmsChannelRow, device: CmsDeviceChannel): Promise<number> {
   if (channel.type === 'link') return 0;
   let generated = 0;
-  const first = await renderChannelPage(site, '', channel, 1);
+  const first = await renderChannelPage(site, '', channel, 1, device);
   if (first.status !== 200) return 0;
-  await writeStaticFile(site.code, `${channel.path}/`, first.html);
+  await writeStaticFile(site.code, deviceStaticPath(device, `${channel.path}/`), first.html);
   generated += 1;
   if (channel.type === 'page') return generated;
 
@@ -172,22 +185,22 @@ async function regenerateChannelPages(site: CmsSiteRow, channel: CmsChannelRow):
   ));
   const totalPages = Math.min(Math.max(1, Math.ceil(total / channel.pageSize)), MAX_LIST_PAGES);
   for (let p = 2; p <= totalPages; p++) {
-    const result = await renderChannelPage(site, '', channel, p);
+    const result = await renderChannelPage(site, '', channel, p, device);
     if (result.status === 200) {
-      await writeStaticFile(site.code, `${channel.path}/index_${p}.html`, result.html);
+      await writeStaticFile(site.code, deviceStaticPath(device, `${channel.path}/index_${p}.html`), result.html);
       generated += 1;
     }
   }
   // 清掉超出当前页数的历史分页
   for (let p = totalPages + 1; p <= MAX_LIST_PAGES; p++) {
-    await deleteStaticFile(site.code, `${channel.path}/index_${p}.html`);
+    await deleteStaticFile(site.code, deviceStaticPath(device, `${channel.path}/index_${p}.html`));
   }
   return generated;
 }
 
 /**
  * 内容发布/更新/下线后的增量静态化：
- * 详情页 + 所属栏目全部分页 + 首页 + sitemap。staticMode=dynamic 的站点直接跳过。
+ * 详情页 + 所属栏目全部分页 + 首页 + sitemap（H5 通道开启时双通道生成）。staticMode=dynamic 的站点直接跳过。
  */
 export async function refreshContentStatic(contentId: number): Promise<void> {
   const [content] = await db.select().from(cmsContents).where(eq(cmsContents.id, contentId)).limit(1);
@@ -199,16 +212,18 @@ export async function refreshContentStatic(contentId: number): Promise<void> {
 
   const detailPath = contentUrl('', channel.path, content);
   const isVisible = content.status === 'published' && !content.deletedAt && !content.externalLink?.trim();
-  if (isVisible) {
-    const result = await renderDetailPage(site, '', channel, String(content.slug ?? content.id));
-    if (result.status === 200) await writeStaticFile(site.code, detailPath, result.html);
-  } else {
-    await deleteStaticFile(site.code, detailPath);
-  }
+  for (const device of siteDevices(site)) {
+    if (isVisible) {
+      const result = await renderDetailPage(site, '', channel, String(content.slug ?? content.id), device);
+      if (result.status === 200) await writeStaticFile(site.code, deviceStaticPath(device, detailPath), result.html);
+    } else {
+      await deleteStaticFile(site.code, deviceStaticPath(device, detailPath));
+    }
 
-  await regenerateChannelPages(site, channel);
-  const home = await renderHomePage(site, '');
-  if (home.status === 200) await writeStaticFile(site.code, '', home.html);
+    await regenerateChannelPages(site, channel, device);
+    const home = await renderHomePage(site, '');
+    if (home.status === 200) await writeStaticFile(site.code, deviceStaticPath(device, ''), home.html);
+  }
   await writeStaticFile(site.code, 'sitemap.xml', await generateSitemapXml(site));
   await writeStaticFile(site.code, 'rss.xml', await generateRssXml(site));
 }
@@ -224,21 +239,26 @@ export function triggerContentStaticRefresh(contentId: number): void {
 export async function refreshCustomPageStatic(input: { siteId: number; slug: string; isHome: boolean; removed?: boolean }): Promise<void> {
   const [site] = await db.select().from(cmsSites).where(eq(cmsSites.id, input.siteId)).limit(1);
   if (!site || site.staticMode === 'dynamic') return;
+  const devices = siteDevices(site);
   if (input.removed) {
-    await deleteStaticFile(site.code, `p/${input.slug}/`);
+    for (const device of devices) await deleteStaticFile(site.code, deviceStaticPath(device, `p/${input.slug}/`));
   } else {
     const { getPublishedPageBySlug } = await import('./cms-pages.service');
     const pageRow = await getPublishedPageBySlug(site.id, input.slug);
     if (pageRow) {
       const result = await renderCustomPage(site, '', pageRow);
-      if (result.status === 200) await writeStaticFile(site.code, `p/${input.slug}/`, result.html);
+      if (result.status === 200) {
+        for (const device of devices) await writeStaticFile(site.code, deviceStaticPath(device, `p/${input.slug}/`), result.html);
+      }
     } else {
-      await deleteStaticFile(site.code, `p/${input.slug}/`);
+      for (const device of devices) await deleteStaticFile(site.code, deviceStaticPath(device, `p/${input.slug}/`));
     }
   }
   if (input.isHome) {
     const home = await renderHomePage(site, '');
-    if (home.status === 200) await writeStaticFile(site.code, '', home.html);
+    if (home.status === 200) {
+      for (const device of devices) await writeStaticFile(site.code, deviceStaticPath(device, ''), home.html);
+    }
   }
   await writeStaticFile(site.code, 'sitemap.xml', await generateSitemapXml(site));
 }
@@ -276,7 +296,9 @@ export async function buildSiteStatic(
   const activeTags = siteTags.filter((t) => t.contentCount > 0);
   const { listPublishedPages } = await import('./cms-pages.service');
   const customPages = (await listPublishedPages(siteId)).filter((p) => !p.isHome);
-  const total = 1 + channels.length + contents.length + activeTags.length + customPages.length + 3; // 首页 + 栏目 + 内容 + 标签 + 搭建页 + sitemap/rss/robots
+  const devices = siteDevices(site);
+  // 每通道：首页 + 栏目 + 内容 + 标签 + 搭建页；站点级：sitemap/rss/robots
+  const total = devices.length * (1 + channels.length + contents.length + activeTags.length + customPages.length) + 3;
   let processed = 0;
   let pages = 0;
 
@@ -286,45 +308,48 @@ export async function buildSiteStatic(
     return cancelled === true;
   };
 
-  const home = await renderHomePage(site, '');
-  if (home.status === 200) {
-    await writeStaticFile(site.code, '', home.html);
-    pages += 1;
-  }
-  if (await report('首页已生成')) return { pages };
-
-  for (const channel of channels) {
-    pages += await regenerateChannelPages(site, channel);
-    if (await report(`栏目「${channel.name}」已生成`)) return { pages };
-  }
-
-  for (const row of contents) {
-    const channel = channelMap.get(row.channelId);
-    if (channel && !row.externalLink?.trim()) {
-      const ok = await writeRenderedPath(site, contentUrl('', channel.path, row));
-      if (ok) pages += 1;
-    }
-    if (await report(`内容 ${row.id} 已生成`)) return { pages };
-  }
-
-  // 标签聚合页（仅首屏分页；深分页访问时由 hybrid 模式按需回写）
-  for (const tag of activeTags) {
-    const result = await renderTagPage(site, '', tag.slug, 1);
-    if (result.status === 200) {
-      await writeStaticFile(site.code, `tag/${tag.slug}/`, result.html);
+  for (const device of devices) {
+    const deviceLabel = devices.length > 1 ? `[${device.toUpperCase()}] ` : '';
+    const home = await renderHomePage(site, '');
+    if (home.status === 200) {
+      await writeStaticFile(site.code, deviceStaticPath(device, ''), home.html);
       pages += 1;
     }
-    if (await report(`标签「${tag.name}」已生成`)) return { pages };
-  }
+    if (await report(`${deviceLabel}首页已生成`)) return { pages };
 
-  // 可视化搭建页面 /p/{slug}/
-  for (const page of customPages) {
-    const result = await renderCustomPage(site, '', page);
-    if (result.status === 200) {
-      await writeStaticFile(site.code, `p/${page.slug}/`, result.html);
-      pages += 1;
+    for (const channel of channels) {
+      pages += await regenerateChannelPages(site, channel, device);
+      if (await report(`${deviceLabel}栏目「${channel.name}」已生成`)) return { pages };
     }
-    if (await report(`搭建页「${page.name}」已生成`)) return { pages };
+
+    for (const row of contents) {
+      const channel = channelMap.get(row.channelId);
+      if (channel && !row.externalLink?.trim()) {
+        const ok = await writeRenderedPath(site, contentUrl('', channel.path, row), device);
+        if (ok) pages += 1;
+      }
+      if (await report(`${deviceLabel}内容 ${row.id} 已生成`)) return { pages };
+    }
+
+    // 标签聚合页（仅首屏分页；深分页访问时由 hybrid 模式按需回写）
+    for (const tag of activeTags) {
+      const result = await renderTagPage(site, '', tag.slug, 1);
+      if (result.status === 200) {
+        await writeStaticFile(site.code, deviceStaticPath(device, `tag/${tag.slug}/`), result.html);
+        pages += 1;
+      }
+      if (await report(`${deviceLabel}标签「${tag.name}」已生成`)) return { pages };
+    }
+
+    // 可视化搭建页面 /p/{slug}/
+    for (const page of customPages) {
+      const result = await renderCustomPage(site, '', page);
+      if (result.status === 200) {
+        await writeStaticFile(site.code, deviceStaticPath(device, `p/${page.slug}/`), result.html);
+        pages += 1;
+      }
+      if (await report(`${deviceLabel}搭建页「${page.name}」已生成`)) return { pages };
+    }
   }
 
   await writeStaticFile(site.code, 'sitemap.xml', await generateSitemapXml(site));

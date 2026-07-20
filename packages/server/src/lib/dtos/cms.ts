@@ -128,6 +128,7 @@ export const CmsContentDTO = z
     body: z.string().nullable(),
     extend: z.record(z.string(), z.unknown()),
     externalLink: z.string().nullable(),
+    detailTemplate: z.string().nullable().openapi({ description: '详情模板覆盖（主题变体模板名；空 = 跟随栏目/站点默认）' }),
     isTop: z.boolean(),
     isRecommend: z.boolean(),
     isHot: z.boolean(),
@@ -205,6 +206,21 @@ export const CmsThemeDTO = z
     label: z.string().openapi({ example: '默认主题' }),
   })
   .openapi('CmsTheme');
+
+export const CmsThemeTemplateOptionDTO = z
+  .object({
+    name: z.string().openapi({ example: 'list-card' }),
+    label: z.string().openapi({ example: '卡片网格（产品/案例）' }),
+  })
+  .openapi('CmsThemeTemplateOption');
+
+/** 主题可选模板清单（不含主题默认模板本身，前端下拉自行加「跟随默认」项） */
+export const CmsThemeTemplatesDTO = z
+  .object({
+    list: z.array(CmsThemeTemplateOptionDTO),
+    detail: z.array(CmsThemeTemplateOptionDTO),
+  })
+  .openapi('CmsThemeTemplates');
 
 // ─── P2 ───────────────────────────────────────────────────────────────────────
 export const CmsContentVersionDTO = z

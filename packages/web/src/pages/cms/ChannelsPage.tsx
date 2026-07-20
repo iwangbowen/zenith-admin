@@ -10,7 +10,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import RichTextEditor from '@/components/RichTextEditor';
 import { usePermission } from '@/hooks/usePermission';
-import { useCmsChannelTree, useAllCmsModels, useAllCmsSites, useSaveCmsChannel, useDeleteCmsChannel } from '@/hooks/queries/cms';
+import { useCmsChannelTree, useAllCmsModels, useAllCmsSites, useSaveCmsChannel, useDeleteCmsChannel, useCmsThemeTemplates } from '@/hooks/queries/cms';
 import { CMS_CHANNEL_TYPE_LABELS } from '@zenith/shared';
 import type { CmsChannel } from '@zenith/shared';
 import { CmsSiteSelect, cmsPreviewUrl } from './CmsSiteSelect';
@@ -36,6 +36,7 @@ export default function ChannelsPage() {
   const { data: models } = useAllCmsModels();
   const { data: sites } = useAllCmsSites();
   const currentSite = sites?.find((s) => s.id === siteId);
+  const { data: themeTemplates } = useCmsThemeTemplates(currentSite?.theme);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<CmsChannel | null>(null);
@@ -80,6 +81,8 @@ export default function ChannelsPage() {
         seoTitle: editingRecord.seoTitle ?? '',
         seoKeywords: editingRecord.seoKeywords ?? '',
         seoDescription: editingRecord.seoDescription ?? '',
+        listTemplate: editingRecord.listTemplate ?? undefined,
+        detailTemplate: editingRecord.detailTemplate ?? undefined,
       }
     : { parentId: 0, type: 'list', pageSize: 20, sort: 0, visible: true, status: 'enabled' };
 
@@ -92,6 +95,9 @@ export default function ChannelsPage() {
       throw new Error('validation');
     }
     if (values.modelId === undefined) values.modelId = null;
+    // 模板下拉清空后为 undefined，显式置 null 才能在更新时清除覆盖
+    values.listTemplate = values.listTemplate ?? null;
+    values.detailTemplate = values.detailTemplate ?? null;
     const payload: Record<string, unknown> = { ...values, pageContent };
     if (!editingRecord) payload.siteId = siteId;
     await saveMutation.mutateAsync({ id: editingRecord?.id, values: payload });
@@ -258,6 +264,20 @@ export default function ChannelsPage() {
               <Col span={12}>
                 <Form.InputNumber field="pageSize" label="每页条数" min={1} max={100} style={{ width: '100%' }} />
               </Col>
+            ) : null}
+            {channelType === 'list' ? (
+              <>
+                <Col span={12}>
+                  <Form.Select field="listTemplate" label="列表模板" style={{ width: '100%' }} showClear
+                    placeholder="跟随站点默认"
+                    optionList={(themeTemplates?.list ?? []).map((t) => ({ value: t.name, label: t.label }))} />
+                </Col>
+                <Col span={12}>
+                  <Form.Select field="detailTemplate" label="详情模板" style={{ width: '100%' }} showClear
+                    placeholder="跟随站点默认"
+                    optionList={(themeTemplates?.detail ?? []).map((t) => ({ value: t.name, label: t.label }))} />
+                </Col>
+              </>
             ) : null}
             <Col span={12}>
               <Form.InputNumber field="sort" label="排序" style={{ width: '100%' }} />
