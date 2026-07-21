@@ -916,58 +916,30 @@ export default function SitesPage() {
             <TabPane tab="审核与 Webhook" itemKey="integration">
               <div style={{ paddingTop: 16 }}>
                 <Form.Section text="内容审核">
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Form.Select field="auditMode" label="审核方式" style={{ width: '100%' }}
-                        optionList={[
-                          { value: 'simple', label: '简单审核（审核 Tab 通过/驳回）' },
-                          { value: 'workflow', label: '工作流审核（提交后走审批流程）' },
-                        ]} />
-                    </Col>
-                    <Col span={12}>
-                      <Form.Select field="auditWorkflowDefinitionId" label="审核流程" style={{ width: '100%' }} showClear
-                        placeholder="留空使用「CMS 内容审核」流程"
-                        optionList={(publishedDefs ?? []).map((d) => ({ value: d.id, label: d.name }))} />
-                    </Col>
-                  </Row>
+                  <Form.Select field="auditMode" label="审核方式" labelWidth={140} style={{ width: '100%' }}
+                    optionList={[
+                      { value: 'simple', label: '简单审核（审核 Tab 通过/驳回）' },
+                      { value: 'workflow', label: '工作流审核（提交后走审批流程）' },
+                    ]} />
+                  <Form.Select field="auditWorkflowDefinitionId" label="审核流程" labelWidth={140} style={{ width: '100%' }} showClear
+                    placeholder="留空使用「CMS 内容审核」流程"
+                    optionList={(publishedDefs ?? []).map((d) => ({ value: d.id, label: d.name }))} />
                 </Form.Section>
                 <Form.Section text="Webhook（内容发布/下线/回收时向外部系统推送事件）">
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Form.Input field="webhookUrl" label="回调地址" placeholder="https://... 留空不推送" />
-                    </Col>
-                    <Col span={12}>
-                      <Form.Input field="webhookSecret" label="签名密钥" placeholder="可选；请求头 X-Cms-Signature 携带 HMAC-SHA256 签名" />
-                    </Col>
-                  </Row>
+                  <Form.Input field="webhookUrl" label="回调地址" labelWidth={140} placeholder="https://... 留空不推送" />
+                  <Form.Input field="webhookSecret" label="签名密钥" labelWidth={140} placeholder="可选；请求头 X-Cms-Signature 携带 HMAC-SHA256 签名" />
                 </Form.Section>
                 <Form.Section text="前台防护">
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Form.Switch field="captchaEnabled" label="图形验证码" extraText="开启后前台游客提交评论/自定义表单需完成算术验证码（登录会员免验证）" />
-                    </Col>
-                  </Row>
+                  <Form.Switch field="captchaEnabled" label="图形验证码" labelWidth={140} extraText="开启后前台游客提交评论/自定义表单需完成算术验证码（登录会员免验证）" />
                 </Form.Section>
                 <Form.Section text="CDN 刷新（静态页更新后向 purge webhook 推送变更路径）">
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Form.Input field="cdnPurgeUrl" label="刷新回调地址" placeholder="https://... 留空不启用" />
-                    </Col>
-                    <Col span={12}>
-                      <Form.Input field="cdnPurgeToken" label="鉴权令牌" placeholder="可选；Authorization: Bearer 携带" />
-                    </Col>
-                  </Row>
+                  <Form.Input field="cdnPurgeUrl" label="刷新回调地址" labelWidth={140} placeholder="https://... 留空不启用" />
+                  <Form.Input field="cdnPurgeToken" label="鉴权令牌" labelWidth={140} placeholder="可选；Authorization: Bearer 携带" />
                 </Form.Section>
                 <Form.Section text="多语言站点关联（前台输出 hreflang 与语言切换）">
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Form.Input field="language" label="本站语言" placeholder="如 zh-CN；留空不启用" />
-                    </Col>
-                    <Col span={12}>
-                      <Form.TextArea field="langLinksText" label="关联站点" rows={3}
-                        placeholder={'每行一条：语言代码=站点标识\n如 en-US=en-site'} />
-                    </Col>
-                  </Row>
+                  <Form.Input field="language" label="本站语言" labelWidth={140} placeholder="如 zh-CN；留空不启用" />
+                  <Form.TextArea field="langLinksText" label="关联站点" labelWidth={140} rows={3}
+                    placeholder={'每行一条：语言代码=站点标识\n如 en-US=en-site'} />
                 </Form.Section>
               </div>
             </TabPane>
