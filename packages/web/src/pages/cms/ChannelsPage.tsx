@@ -529,7 +529,7 @@ export default function ChannelsPage() {
               <Tabs type="card" size="small">
                 <TabPane tab="全通道通用" itemKey="__common">
                   <Row gutter={16} style={{ paddingTop: 12 }}>
-                    <Col span={12}>
+                    <Col span={24}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <Form.Select field="listTemplate" label="列表模板" style={{ width: '100%' }} showClear
@@ -542,7 +542,7 @@ export default function ChannelsPage() {
                         ) : null}
                       </div>
                     </Col>
-                    <Col span={12}>
+                    <Col span={24}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <Form.Select field="detailTemplate" label="详情模板" style={{ width: '100%' }} showClear
