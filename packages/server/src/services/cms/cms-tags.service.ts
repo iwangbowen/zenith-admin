@@ -15,6 +15,7 @@ export function mapCmsTag(row: CmsTagRow) {
     siteId: row.siteId,
     name: row.name,
     slug: row.slug,
+    groupName: row.groupName ?? null,
     contentCount: row.contentCount,
     createdAt: formatDateTime(row.createdAt),
     updatedAt: formatDateTime(row.updatedAt),

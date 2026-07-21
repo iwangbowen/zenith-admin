@@ -870,13 +870,14 @@ async function seedRest() {
   await db.execute(sql`SELECT setval('cms_channels_id_seq', GREATEST((SELECT MAX(id) FROM cms_channels), 1))`);
 
   await db.insert(cmsTags).values(
-    SEED_CMS_TAGS.map(({ id, siteId, name, slug, contentCount }) => ({ id, siteId, name, slug, contentCount })),
+    SEED_CMS_TAGS.map(({ id, siteId, name, slug, groupName, contentCount }) => ({ id, siteId, name, slug, groupName, contentCount })),
   ).onConflictDoNothing({ target: cmsTags.id });
   await db.execute(sql`SELECT setval('cms_tags_id_seq', GREATEST((SELECT MAX(id) FROM cms_tags), 1))`);
 
   await db.insert(cmsContents).values(
-    SEED_CMS_CONTENTS.map(({ id, siteId, channelId, modelId, contentType, mediaData, title, subTitle, shortTitle, slug, summary, coverImage, coverThumb, author, editor, source, sourceUrl, isOriginal, body, extend, externalLink, isTop, topWeight, isRecommend, isHot, status, publishedAt, viewCount, sort, seoTitle, seoKeywords, seoDescription }) => ({
+    SEED_CMS_CONTENTS.map(({ id, siteId, channelId, modelId, contentType, mediaData, title, subTitle, shortTitle, slug, summary, coverImage, coverThumb, author, editor, source, sourceUrl, isOriginal, body, extend, externalLink, isTop, topWeight, isRecommend, isHot, hasImage, hasVideo, hasAttachment, status, publishedAt, viewCount, sort, seoTitle, seoKeywords, seoDescription }) => ({
       id, siteId, channelId, modelId, contentType, mediaData: mediaData as Record<string, unknown>, title, subTitle, shortTitle, slug, summary, coverImage, coverThumb, author, editor, source, sourceUrl, isOriginal, body, extend, externalLink, isTop, topWeight, isRecommend, isHot, status,
+      hasImage: hasImage ?? false, hasVideo: hasVideo ?? false, hasAttachment: hasAttachment ?? false,
       publishedAt: publishedAt ? new Date(publishedAt) : null,
       viewCount, sort, seoTitle, seoKeywords, seoDescription,
       searchVector: buildSearchVector({

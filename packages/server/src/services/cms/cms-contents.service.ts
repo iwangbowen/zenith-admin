@@ -52,6 +52,9 @@ export function mapCmsContent(row: CmsContentRow, extra?: { channelName?: string
     topExpireAt: formatNullableDateTime(row.topExpireAt),
     isRecommend: row.isRecommend,
     isHot: row.isHot,
+    hasImage: row.hasImage,
+    hasVideo: row.hasVideo,
+    hasAttachment: row.hasAttachment,
     status: row.status,
     rejectReason: row.rejectReason ?? null,
     publishedAt: formatNullableDateTime(row.publishedAt),
@@ -71,7 +74,7 @@ export function mapCmsContent(row: CmsContentRow, extra?: { channelName?: string
     mappingSourceTitle: extra?.mappingSourceTitle ?? null,
     ...(extra?.tags ? {
       tags: extra.tags.map((t) => ({
-        id: t.id, siteId: t.siteId, name: t.name, slug: t.slug, contentCount: t.contentCount,
+        id: t.id, siteId: t.siteId, name: t.name, slug: t.slug, groupName: t.groupName ?? null, contentCount: t.contentCount,
         createdAt: formatDateTime(t.createdAt), updatedAt: formatDateTime(t.updatedAt),
       })),
       tagIds: extra.tags.map((t) => t.id),
@@ -284,6 +287,47 @@ async function setContentRelations(executor: DbExecutor, contentId: number, site
   await executor.insert(cmsContentRelations).values(targets.map((relatedId, index) => ({ contentId, relatedId, sort: index })));
 }
 
+// ─── 标题查重（P4：编辑辅助提示，不阻断保存；排除回收站与自身）───────────────────
+export async function checkCmsContentTitle(siteId: number, title: string, excludeId?: number) {
+  await assertSiteAccess(siteId);
+  const conditions: SQL[] = [
+    eq(cmsContents.siteId, siteId),
+    eq(cmsContents.title, title.trim()),
+    isNull(cmsContents.deletedAt),
+  ];
+  if (excludeId) conditions.push(ne(cmsContents.id, excludeId));
+  const rows = await db.select({ id: cmsContents.id, title: cmsContents.title, status: cmsContents.status, channelId: cmsContents.channelId })
+    .from(cmsContents)
+    .where(and(...conditions))
+    .orderBy(desc(cmsContents.id))
+    .limit(5);
+  return {
+    duplicate: rows.length > 0,
+    matches: rows.map((r) => ({ id: r.id, title: r.title, status: r.status })),
+  };
+}
+
+// ─── 属性自动标记（P4：保存时按正文/形态数据/封面检测含图/含视频/含附件）──────────
+const ATTACHMENT_LINK_RE = /<a\b[^>]*href="[^"]*\.(?:pdf|docx?|xlsx?|pptx?|zip|rar|7z|csv)(?:[?#][^"]*)?"/i;
+
+export function detectContentFlags(input: {
+  contentType: string;
+  body: string | null | undefined;
+  mediaData: Record<string, unknown> | null | undefined;
+  coverImage: string | null | undefined;
+}): { hasImage: boolean; hasVideo: boolean; hasAttachment: boolean } {
+  const body = input.body ?? '';
+  const media = input.mediaData ?? {};
+  const albumImages = Array.isArray((media as { images?: unknown[] }).images) ? (media as { images: unknown[] }).images : [];
+  const hasImage = Boolean(input.coverImage)
+    || /<img\b/i.test(body)
+    || (input.contentType === 'album' && albumImages.length > 0);
+  const hasVideo = /<video\b|<iframe\b[^>]*(?:youtube|bilibili|qq\.com\/txp)/i.test(body)
+    || (input.contentType === 'media' && (media as { mediaType?: string }).mediaType === 'video');
+  const hasAttachment = ATTACHMENT_LINK_RE.test(body) || /<a\b[^>]*href="[^"]*\/api\/files\//i.test(body);
+  return { hasImage, hasVideo, hasAttachment };
+}
+
 // ─── 创建 ─────────────────────────────────────────────────────────────────────
 export async function createCmsContent(data: CreateCmsContentInput) {
   await assertSiteAccess(data.siteId);
@@ -309,6 +353,12 @@ export async function createCmsContent(data: CreateCmsContentInput) {
         scheduledAt: parseDateTimeInput(scheduledAt),
         expireAt: parseDateTimeInput(expireAt),
         topExpireAt: parseDateTimeInput(topExpireAt),
+        ...detectContentFlags({
+          contentType: rest.contentType ?? 'article',
+          body: rest.body,
+          mediaData: rest.mediaData as Record<string, unknown>,
+          coverImage: rest.coverImage,
+        }),
         searchVector: buildSearchVector({
           title: rest.title,
           seoKeywords: rest.seoKeywords,
@@ -366,6 +416,12 @@ export async function updateCmsContent(id: number, data: UpdateCmsContentInput) 
         ...(scheduledAt !== undefined ? { scheduledAt: parseDateTimeInput(scheduledAt) } : {}),
         ...(expireAt !== undefined ? { expireAt: parseDateTimeInput(expireAt) } : {}),
         ...(topExpireAt !== undefined ? { topExpireAt: parseDateTimeInput(topExpireAt) } : {}),
+        ...detectContentFlags({
+          contentType: current.contentType,
+          body: rest.body !== undefined ? rest.body : current.body,
+          mediaData: nextMediaData,
+          coverImage: rest.coverImage !== undefined ? rest.coverImage : current.coverImage,
+        }),
         // 映射内容正文在来源行，保持自身检索向量不动（分发时已按来源快照写入）
         ...(current.mappingSourceId ? {} : {
           searchVector: buildSearchVector({

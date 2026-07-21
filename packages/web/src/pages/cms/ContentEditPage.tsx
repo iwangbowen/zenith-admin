@@ -144,6 +144,25 @@ export default function ContentEditPage() {
   const previewMutation = useCmsPreviewLink();
   const uploadMediaMutation = useUploadFile();
 
+  // P4 标题查重：失焦时同站查重提示（不阻断保存）
+  const lastCheckedTitle = useRef('');
+  async function checkTitleDuplicate() {
+    const title = String(formApi.current?.getValue('title') ?? '').trim();
+    if (!title || !siteId || title === lastCheckedTitle.current) return;
+    lastCheckedTitle.current = title;
+    try {
+      const res = await request.get<{ duplicate: boolean; matches: { id: number; title: string; status: string }[] }>(
+        `/api/cms/contents/check-title?siteId=${siteId}&title=${encodeURIComponent(title)}${id ? `&excludeId=${id}` : ''}`,
+        { silent: true },
+      );
+      if (res.code === 0 && res.data?.duplicate) {
+        Toast.warning({ content: `本站已存在 ${res.data.matches.length} 条同名内容（如 #${res.data.matches[0].id}），请确认是否重复发布`, duration: 5 });
+      }
+    } catch {
+      // 查重失败静默忽略（编辑辅助功能）
+    }
+  }
+
   const [body, setBody] = useState('');
   const [selectedChannelId, setSelectedChannelId] = useState<number | undefined>(channelIdParam);
   // 内容形态：新建可选，保存后不可变更
@@ -473,7 +492,11 @@ export default function ContentEditPage() {
           <Row gutter={24}>
             {/* 左：主编辑区 —— 标题+正文首屏即达,次要字段折叠收纳 */}
             <Col xs={24} lg={16}>
-              <Form.Input field="title" label="标题" size="large" rules={[{ required: true, message: '请输入标题' }]} />
+              <Form.Input
+                field="title" label="标题" size="large"
+                rules={[{ required: true, message: '请输入标题' }]}
+                onBlur={() => void checkTitleDuplicate()}
+              />
               {/* 次要标题字段紧随标题,默认折叠 */}
               <Collapse keepDOM style={{ marginBottom: 12 }}>
                 <Collapse.Panel header="副标题 / 短标题 / 摘要（可选）" itemKey="extra-titles">

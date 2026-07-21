@@ -5,7 +5,7 @@ import { Button, Input, Tag, Toast, Modal, Tabs, TabPane, Tree, Typography, Drop
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
-import { Search, RotateCcw, Plus, ChevronDown, FileUp } from 'lucide-react';
+import { Search, RotateCcw, Plus, ChevronDown, FileUp, Image as ImageIcon, Film, Paperclip } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -225,6 +225,19 @@ export default function ContentsPage() {
       ),
     },
     { title: '栏目', dataIndex: 'channelName', width: 110 },
+    {
+      title: '属性', dataIndex: 'hasImage', width: 90,
+      render: (_: boolean, record) => {
+        const icons = [
+          record.hasImage ? <ImageIcon key="img" size={14} aria-label="含图" /> : null,
+          record.hasVideo ? <Film key="video" size={14} aria-label="含视频" /> : null,
+          record.hasAttachment ? <Paperclip key="attach" size={14} aria-label="含附件" /> : null,
+        ].filter(Boolean);
+        return icons.length > 0
+          ? <span style={{ display: 'inline-flex', gap: 6, color: 'var(--semi-color-text-2)' }}>{icons}</span>
+          : '-';
+      },
+    },
     { title: '作者', dataIndex: 'author', width: 90, render: (v: string | null) => v ?? '-' },
     { title: '浏览', dataIndex: 'viewCount', width: 80 },
     { title: '赞/藏', dataIndex: 'likeCount', width: 90, render: (_: number, record) => `${record.likeCount}/${record.favoriteCount}` },

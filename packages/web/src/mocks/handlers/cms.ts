@@ -347,6 +347,17 @@ export const cmsHandlers = [
     list = [...list].sort((a, b) => Number(b.isTop) - Number(a.isTop) || (b.topWeight ?? 0) - (a.topWeight ?? 0) || b.id - a.id);
     return okJson(paginate(list.map((c) => ({ ...c, channelName: mockCmsChannels.find((ch) => ch.id === c.channelId)?.name ?? null })), page, pageSize));
   }),
+  http.get('/api/cms/contents/check-title', ({ request }) => {
+    const url = new URL(request.url);
+    const siteId = Number(url.searchParams.get('siteId'));
+    const title = (url.searchParams.get('title') ?? '').trim();
+    const excludeId = Number(url.searchParams.get('excludeId')) || 0;
+    const matches = mockCmsContents
+      .filter((c) => c.siteId === siteId && c.title === title && c.id !== excludeId)
+      .slice(0, 5)
+      .map((c) => ({ id: c.id, title: c.title, status: c.status }));
+    return okJson({ duplicate: matches.length > 0, matches });
+  }),
   http.get('/api/cms/contents/:id', ({ params }) => {
     const content = mockCmsContents.find((c) => c.id === Number(params.id));
     if (!content) return notFound('内容不存在');
@@ -541,6 +552,7 @@ export const cmsHandlers = [
       siteId: Number(body.siteId),
       name: String(body.name ?? ''),
       slug: String(body.slug ?? ''),
+      groupName: (body.groupName as string | null) ?? null,
       contentCount: 0,
       createdAt: now,
       updatedAt: now,

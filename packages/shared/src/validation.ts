@@ -5203,6 +5203,7 @@ export const createCmsTagSchema = z.object({
   siteId: z.number().int().positive(),
   name: z.string().min(1, '标签名称不能为空').max(50),
   slug: z.string().min(1, 'URL 标识不能为空').max(100).regex(cmsSlugRegex, '标识仅支持小写字母、数字、中划线'),
+  groupName: z.string().max(50).nullable().optional(),
 });
 export const updateCmsTagSchema = createCmsTagSchema.partial().omit({ siteId: true });
 

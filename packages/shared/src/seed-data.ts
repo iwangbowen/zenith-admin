@@ -2964,8 +2964,8 @@ export const SEED_CMS_CHANNELS: CmsChannel[] = [
 ];
 
 export const SEED_CMS_TAGS: CmsTag[] = [
-  { id: 1, siteId: 1, name: '产品发布', slug: 'release',  contentCount: 1, createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 2, siteId: 1, name: '行业动态', slug: 'industry', contentCount: 1, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1, siteId: 1, name: '产品发布', slug: 'release',  groupName: '产品', contentCount: 1, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, siteId: 1, name: '行业动态', slug: 'industry', groupName: '资讯', contentCount: 1, createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 export const SEED_CMS_CONTENTS: (CmsContent & { tagIds: number[] })[] = [
@@ -3020,6 +3020,7 @@ export const SEED_CMS_CONTENTS: (CmsContent & { tagIds: number[] })[] = [
     coverImage: 'https://picsum.photos/seed/zenith-album-1/1200/800', coverThumb: 'https://picsum.photos/seed/zenith-album-1/400/267',
     author: '管理员', editor: null, source: '官方', sourceUrl: null, isOriginal: true, body: '<p>发布会现场图集，点击图片查看大图。</p>',
     extend: {}, externalLink: null, detailTemplate: null, isTop: false, topWeight: 0, topExpireAt: null, isRecommend: true, isHot: false,
+    hasImage: true,
     status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null, expireAt: null,
     viewCount: 66, likeCount: 0, favoriteCount: 0, version: 1, sort: 0, seoTitle: null, seoKeywords: '发布会,图集', seoDescription: null,
     archivedAt: null, mappingSourceId: null,
@@ -3038,6 +3039,7 @@ export const SEED_CMS_CONTENTS: (CmsContent & { tagIds: number[] })[] = [
     coverImage: 'https://picsum.photos/seed/zenith-video/1200/675', coverThumb: null,
     author: '管理员', editor: null, source: '官方', sourceUrl: null, isOriginal: true, body: '<p>视频简介：本片演示 CMS 模块核心能力。</p>',
     extend: {}, externalLink: null, detailTemplate: null, isTop: false, topWeight: 0, topExpireAt: null, isRecommend: false, isHot: true,
+    hasImage: true, hasVideo: true,
     status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null, expireAt: null,
     viewCount: 88, likeCount: 0, favoriteCount: 0, version: 1, sort: 0, seoTitle: null, seoKeywords: '视频,导览', seoDescription: null,
     archivedAt: null, mappingSourceId: null,

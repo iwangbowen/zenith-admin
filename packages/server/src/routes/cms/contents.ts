@@ -13,6 +13,7 @@ import {
   recycleCmsContents, restoreCmsContents, purgeCmsContents, restoreCmsContentToVersion,
   batchMoveCmsContents, batchSetCmsContentFlags, batchAddCmsContentTags,
   duplicateCmsContent, distributeCmsContents, archiveCmsContents, unarchiveCmsContents,
+  checkCmsContentTitle,
 } from '../../services/cms/cms-contents.service';
 import { listContentVersions, diffContentVersion } from '../../services/cms/cms-versions.service';
 import { listContentOpLogs } from '../../services/cms/cms-content-op-logs.service';
@@ -53,6 +54,33 @@ const listRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okPaginated(CmsContentDTO, '内容列表') },
   }),
   handler: async (c) => c.json(okBody(await listCmsContents(c.req.valid('query'))), 200),
+});
+
+const checkTitleRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/check-title',
+    tags: ['CMS-内容管理'], summary: '同站标题查重（编辑辅助，不阻断保存）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:content:list' })] as const,
+    request: {
+      query: z.object({
+        siteId: z.coerce.number().int().positive(),
+        title: z.string().min(1).max(255),
+        excludeId: z.coerce.number().int().positive().optional(),
+      }),
+    },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(z.object({
+        duplicate: z.boolean(),
+        matches: z.array(z.object({ id: z.number().int(), title: z.string(), status: z.string() })),
+      }), '查重结果'),
+    },
+  }),
+  handler: async (c) => {
+    const { siteId, title, excludeId } = c.req.valid('query');
+    return c.json(okBody(await checkCmsContentTitle(siteId, title, excludeId)), 200);
+  },
 });
 
 const getOneRoute = defineOpenAPIRoute({
@@ -517,7 +545,7 @@ const checkTextRoute = defineOpenAPIRoute({
 });
 
 router.openapiRoutes([
-  listRoute, getOneRoute, createRoute_, updateRoute_,
+  listRoute, checkTitleRoute, getOneRoute, createRoute_, updateRoute_,
   submitRoute, publishRoute, rejectRoute, offlineRoute,
   recycleRoute, restoreRoute, purgeRoute,
   versionsRoute, restoreVersionRoute, versionDiffRoute,

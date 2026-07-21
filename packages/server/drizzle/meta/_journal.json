@@ -645,6 +645,13 @@
       "when": 1784629366974,
       "tag": "0091_flippant_kulan_gath",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1784630886356,
+      "tag": "0092_vengeful_inertia",
+      "breakpoints": true
     }
   ]
 }

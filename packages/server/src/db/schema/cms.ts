@@ -221,6 +221,10 @@ export const cmsContents = pgTable('cms_contents', {
   topExpireAt: timestamp('top_expire_at'),
   isRecommend: boolean('is_recommend').notNull().default(false),
   isHot: boolean('is_hot').notNull().default(false),
+  /** 内容属性自动标记（保存时按正文/形态数据/封面自动检测，列表展示图标） */
+  hasImage: boolean('has_image').notNull().default(false),
+  hasVideo: boolean('has_video').notNull().default(false),
+  hasAttachment: boolean('has_attachment').notNull().default(false),
   status: cmsContentStatusEnum('status').notNull().default('draft'),
   rejectReason: varchar('reject_reason', { length: 500 }),
   publishedAt: timestamp('published_at'),
@@ -485,12 +489,14 @@ export const cmsContentRelations = pgTable('cms_content_relations', {
 
 export type CmsContentRelationRow = typeof cmsContentRelations.$inferSelect;
 
-// ─── CMS 标签（按站点隔离，带 slug 供生成 tag 聚合页）───────────────────────────
+// ─── CMS 标签（按站点隔离，带 slug 供生成 tag 聚合页；可选分组便于归类管理）──────
 export const cmsTags = pgTable('cms_tags', {
   id: serial('id').primaryKey(),
   siteId: integer('site_id').notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
   name: varchar('name', { length: 50 }).notNull(),
   slug: varchar('slug', { length: 100 }).notNull(),
+  /** 标签分组（可空；同组标签在管理页聚合展示） */
+  groupName: varchar('group_name', { length: 50 }),
   /** 冗余计数（打标/移除时由 service 维护） */
   contentCount: integer('content_count').notNull().default(0),
   ...auditColumns(),

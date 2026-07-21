@@ -68,6 +68,7 @@ export default function TagsPage() {
       throw new Error('validation');
     }
     if (!editingRecord) values.siteId = siteId;
+    if (typeof values.groupName === 'string' && values.groupName.trim() === '') values.groupName = null;
     await saveMutation.mutateAsync({ id: editingRecord?.id, values });
     Toast.success(editingRecord ? '更新成功' : '创建成功');
     setModalVisible(false);
@@ -77,6 +78,7 @@ export default function TagsPage() {
   const columns: ColumnProps<CmsTag>[] = [
     { title: '标签名称', dataIndex: 'name', width: 180 },
     { title: 'URL 标识', dataIndex: 'slug', width: 160 },
+    { title: '分组', dataIndex: 'groupName', width: 130, render: (v: string | null) => v ?? '-' },
     { title: '关联内容数', dataIndex: 'contentCount', width: 120 },
     createdAtColumn,
     createOperationColumn<CmsTag>({
@@ -153,12 +155,13 @@ export default function TagsPage() {
           key={editingRecord?.id ?? 'new'}
           getFormApi={(api) => { formApi.current = api; }}
           allowEmpty
-          initValues={editingRecord ? { name: editingRecord.name, slug: editingRecord.slug } : {}}
+          initValues={editingRecord ? { name: editingRecord.name, slug: editingRecord.slug, groupName: editingRecord.groupName ?? '' } : {}}
           labelPosition="left"
           labelWidth={90}
         >
           <Form.Input field="name" label="标签名称" rules={[{ required: true, message: '请输入标签名称' }]} />
           <Form.Input field="slug" label="URL 标识" placeholder="小写字母/数字/中划线" rules={[{ required: true, message: '请输入 URL 标识' }]} />
+          <Form.Input field="groupName" label="分组" placeholder="可选，如「产品」「行业」，便于归类管理" maxLength={50} />
         </Form>
       </AppModal>
     </div>

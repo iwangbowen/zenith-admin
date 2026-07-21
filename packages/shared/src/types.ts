@@ -10468,6 +10468,10 @@ export interface CmsContent {
   topExpireAt: string | null;
   isRecommend: boolean;
   isHot: boolean;
+  /** 内容属性自动标记（保存时按正文/形态数据/封面自动检测） */
+  hasImage?: boolean;
+  hasVideo?: boolean;
+  hasAttachment?: boolean;
   status: CmsContentStatus;
   rejectReason: string | null;
   publishedAt: string | null;
@@ -10607,6 +10611,8 @@ export interface CmsTag {
   siteId: number;
   name: string;
   slug: string;
+  /** 标签分组（可空；同组标签聚合管理） */
+  groupName?: string | null;
   contentCount: number;
   createdAt: string;
   updatedAt: string;
