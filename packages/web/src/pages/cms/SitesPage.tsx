@@ -130,10 +130,10 @@ function SiteStaticPanel({ site, canBuild }: { site: CmsSite; canBuild: boolean 
   }
 
   const columns: ColumnProps<AsyncTask>[] = [
-    { title: '任务', dataIndex: 'title', width: 220, render: renderEllipsis },
-    { title: '进度', width: 260, render: (_: unknown, record) => <AsyncTaskProgress task={record} /> },
-    { title: '提交时间', dataIndex: 'createdAt', width: 160 },
-    { title: '完成时间', dataIndex: 'completedAt', width: 160, render: (v: string | null) => v ?? '-' },
+    { title: '任务', dataIndex: 'title', width: 200, render: renderEllipsis },
+    { title: '进度', width: 230, render: (_: unknown, record) => <AsyncTaskProgress task={record} /> },
+    { title: '提交时间', dataIndex: 'createdAt', width: 180 },
+    { title: '完成时间', dataIndex: 'completedAt', width: 180, render: (v: string | null) => v ?? '-' },
   ];
 
   return (
