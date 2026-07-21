@@ -756,6 +756,9 @@ try {
   registerAnalyticsTaskHandlers();
   await registerExportJobWorker();
   await registerSystemTasks();
+  // 主题代码指纹检测：变更自动重建受影响站点静态页（零维护，详见 cms-theme-watch.service）
+  const { checkThemeChangesAndRebuild } = await import('./services/cms/cms-theme-watch.service');
+  void checkThemeChangesAndRebuild();
 } catch (err) {
   logger.error('Failed to initialize cron scheduler', err);
 }

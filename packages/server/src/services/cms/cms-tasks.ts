@@ -32,6 +32,39 @@ export function registerCmsTaskHandlers(): void {
     },
   });
 
+  // 主题代码变更自动重建（cms-theme-watch.service 检测指纹变化后提交）：单任务串行重建多站点
+  registerTaskHandler({
+    taskType: 'cms-theme-rebuild',
+    title: 'CMS 主题变更重建',
+    module: 'CMS内容管理',
+    allowConcurrent: false,
+    maxAttempts: 1,
+    async run(ctx) {
+      const siteIds = ((ctx.payload as { siteIds?: number[] })?.siteIds ?? []).filter((id) => Number.isInteger(id) && id > 0);
+      if (siteIds.length === 0) throw new Error('缺少 siteIds 参数');
+      let pages = 0;
+      for (let i = 0; i < siteIds.length; i++) {
+        const siteId = siteIds[i];
+        const result = await buildSiteStatic(siteId, async (p) => {
+          const { cancelRequested } = await ctx.progress({
+            processed: i,
+            total: siteIds.length,
+            note: `站点 ${i + 1}/${siteIds.length}：${p.note}`,
+          });
+          return cancelRequested;
+        });
+        pages += result.pages;
+        const { cancelRequested } = await ctx.progress({
+          processed: i + 1,
+          total: siteIds.length,
+          note: `站点 ${i + 1}/${siteIds.length} 完成`,
+        });
+        if (cancelRequested) return { pages, sites: i + 1 };
+      }
+      return { pages, sites: siteIds.length };
+    },
+  });
+
   registerTaskHandler({
     taskType: 'cms-search-reindex',
     title: 'CMS 检索索引重建',

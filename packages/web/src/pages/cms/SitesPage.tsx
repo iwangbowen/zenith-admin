@@ -3,26 +3,28 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Banner, Button, Form, Input, InputNumber, Select, Switch, Tag, TextArea, Toast, Modal, Row, Col, SideSheet, Tabs, TabPane, Upload } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, RotateCcw, Plus, Upload as UploadIcon, ImageUp } from 'lucide-react';
+import { Search, RotateCcw, Plus, Upload as UploadIcon, ImageUp, Zap, ExternalLink } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
+import { useMyAsyncTasks } from '@/hooks/useAsyncTasks';
 import { useAllUsers } from '@/hooks/queries/users';
 import {
   useCmsSiteList, useCmsThemes, useSaveCmsSite, useDeleteCmsSite, cmsSiteKeys,
   useCmsSiteUsers, useSetCmsSiteUsers, useEnableSiteAnalytics, useImportCmsSite,
   useCmsThemeTemplates, useAllCmsModels, useCmsPublishChannels, useCmsSiteTemplateHealth,
-  useCmsThemeSettingsSchema,
+  useCmsThemeSettingsSchema, useCmsStaticBuild,
 } from '@/hooks/queries/cms';
 import { request } from '@/utils/request';
 import { unwrap } from '@/lib/query';
 import { useWorkflowDefinitionList } from '@/hooks/queries/workflow-definitions';
 import { CMS_STATIC_MODE_LABELS, CMS_STATIC_MODES, CMS_DEFAULT_CHANNEL_CODE } from '@zenith/shared';
-import type { CmsSite, CmsSiteTemplateDefaults, CmsInvalidTemplateRef, CmsThemeSettingField } from '@zenith/shared';
+import type { AsyncTask, CmsSite, CmsSiteTemplateDefaults, CmsInvalidTemplateRef, CmsThemeSettingField } from '@zenith/shared';
 import { cmsPreviewUrl } from './CmsSiteSelect';
 
 interface SearchParams {
@@ -112,6 +114,65 @@ function describeInvalidRef(ref: CmsInvalidTemplateRef): string {
   return `${prefix}${ref.location}「${ref.template}」${suffix}`;
 }
 
+/** 站点静态化面板（SideSheet 打开时才挂载，任务列表轮询随关闭停止） */
+function SiteStaticPanel({ site, canBuild }: { site: CmsSite; canBuild: boolean }) {
+  const buildMutation = useCmsStaticBuild();
+  const { tasks, loading, refresh } = useMyAsyncTasks({ taskTypes: ['cms-static-build', 'cms-theme-rebuild'] });
+  const siteTasks = tasks.filter((t) => {
+    const payload = t.payload as { siteId?: number; siteIds?: number[] };
+    return payload.siteId === site.id || (Array.isArray(payload.siteIds) && payload.siteIds.includes(site.id));
+  });
+
+  async function handleBuild() {
+    await buildMutation.mutateAsync(site.id);
+    Toast.success('任务已提交，可在下方列表查看进度');
+    void refresh();
+  }
+
+  const columns: ColumnProps<AsyncTask>[] = [
+    { title: '任务', dataIndex: 'title', width: 220, render: renderEllipsis },
+    { title: '进度', width: 260, render: (_: unknown, record) => <AsyncTaskProgress task={record} /> },
+    { title: '提交时间', dataIndex: 'createdAt', width: 160 },
+    { title: '完成时间', dataIndex: 'completedAt', width: 160, render: (v: string | null) => v ?? '-' },
+  ];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <Banner
+        type="info"
+        closeIcon={null}
+        description={(
+          <span>
+            全站静态化会将首页、全部栏目分页、全部已发布内容、sitemap.xml、robots.txt 渲染为静态 HTML 文件。
+            当前静态化模式：<b>{CMS_STATIC_MODE_LABELS[site.staticMode]}</b>。
+            混合模式下内容发布时已自动增量生成，全量生成用于模板/碎片/导航变更后的整站刷新（主题代码变更已由系统自动检测重建）。
+          </span>
+        )}
+      />
+      <div style={{ display: 'flex', gap: 8 }}>
+        {canBuild ? (
+          <Button type="primary" icon={<Zap size={14} />} loading={buildMutation.isPending} onClick={() => void handleBuild()}>
+            全站生成
+          </Button>
+        ) : null}
+        <Button icon={<ExternalLink size={14} />} onClick={() => window.open(cmsPreviewUrl(site.code), '_blank')}>访问站点</Button>
+      </div>
+      <ConfigurableTable
+        bordered
+        columns={columns}
+        dataSource={siteTasks}
+        loading={loading}
+        rowKey="id"
+        size="small"
+        empty="该站点暂无静态化任务"
+        onRefresh={() => void refresh()}
+        refreshLoading={loading}
+        pagination={false}
+      />
+    </div>
+  );
+}
+
 export default function SitesPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
@@ -184,6 +245,8 @@ export default function SitesPage() {
   // ─── 授权用户（站点级数据权限）────────────────────────────────────────────
   const [usersModalSite, setUsersModalSite] = useState<CmsSite | null>(null);
   const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
+  // 静态化面板（原独立「静态化管理」页面整合至此）
+  const [staticSheetSite, setStaticSheetSite] = useState<CmsSite | null>(null);
   const siteUsersQuery = useCmsSiteUsers(usersModalSite?.id, !!usersModalSite);
   const setSiteUsersMutation = useSetCmsSiteUsers();
   const enableAnalyticsMutation = useEnableSiteAnalytics();
@@ -434,6 +497,11 @@ export default function SitesPage() {
           label: '访问',
           onClick: () => window.open(cmsPreviewUrl(record.code), '_blank'),
         },
+        ...(hasPermission('cms:static:build') ? [{
+          key: 'static',
+          label: '静态化',
+          onClick: () => setStaticSheetSite(record),
+        }] : []),
         ...(hasPermission('cms:site:update') ? [{
           key: 'edit',
           label: '编辑',
@@ -1035,6 +1103,21 @@ export default function SitesPage() {
           optionList={(allUsers ?? []).map((u) => ({ value: u.id, label: `${u.nickname}（${u.username}）` }))}
         />
       </AppModal>
+
+      {/* 静态化面板（原「静态化管理」独立页面整合至此） */}
+      <SideSheet
+        title={staticSheetSite ? `静态化 —「${staticSheetSite.name}」` : '静态化'}
+        visible={!!staticSheetSite}
+        onCancel={() => setStaticSheetSite(null)}
+        width={820}
+        closeOnEsc
+      >
+        {staticSheetSite ? (
+          <div style={{ paddingTop: 8 }}>
+            <SiteStaticPanel site={staticSheetSite} canBuild={hasPermission('cms:static:build')} />
+          </div>
+        ) : null}
+      </SideSheet>
     </div>
   );
 }

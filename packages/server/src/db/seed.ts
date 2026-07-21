@@ -110,6 +110,8 @@ async function seedRest() {
   // 菜单结构调整（幂等）：将「OAuth2 应用」从系统设置迁移到「开放平台」，仅当仍在旧位置时生效
   await db.execute(sql`UPDATE menus SET parent_id = 1300, title = '应用管理', sort = 1 WHERE id = 480 AND parent_id = 200`);
   await db.execute(sql`UPDATE menus SET permission = 'analytics:clean' WHERE id = 603 AND permission = 'analytics:manage'`);
+  // 「静态化管理」独立菜单下线：功能整合进站点管理操作列，权限保留为站点管理下的按钮（仅当仍是旧菜单形态时生效）
+  await db.execute(sql`UPDATE menus SET parent_id = 1705, title = '全站静态化', name = NULL, path = NULL, component = NULL, icon = NULL, type = 'button', sort = 4 WHERE id = 1745 AND type = 'menu'`);
   await db.execute(sql`SELECT setval('menus_id_seq', GREATEST((SELECT MAX(id) FROM menus), 1))`);
   logger.info('  ✔ Menus seeded (onConflictDoNothing)');
 
