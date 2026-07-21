@@ -223,6 +223,29 @@ export const memberFrontHandlers = [
     return ok(null, `已清空 ${count} 条浏览记录`);
   }),
   http.post('/api/member/cms/surveys/:id/submit', () => ok(null, '提交成功，感谢您的参与！')),
+
+  // ── CMS 我的评论（P1 评论会员化）──────────────────────────────────────────
+  http.post('/api/member/cms/contents/:id/comments', async ({ params, request }) => {
+    const body = (await request.json()) as { content: string; parentId?: number };
+    mockMyComments.unshift({
+      id: nextMyCommentId++,
+      contentId: Number(params.id),
+      contentTitle: `内容 #${params.id}`,
+      contentUrl: `/news/${params.id}.html`,
+      parentId: body.parentId ?? 0,
+      content: body.content,
+      likeCount: 0,
+      status: 'pending',
+      createdAt: mockDateTime(),
+    });
+    return ok(null, '评论已提交，审核通过后显示');
+  }),
+  http.get('/api/member/cms/comments', () => paginated(mockMyComments)),
+  http.delete('/api/member/cms/comments/:id', ({ params }) => {
+    const idx = mockMyComments.findIndex((c) => c.id === Number(params.id));
+    if (idx >= 0) mockMyComments.splice(idx, 1);
+    return ok(null, '删除成功');
+  }),
 ];
 
 interface MockMemberContentItem {
@@ -238,6 +261,17 @@ const mockFavorites: MockMemberContentItem[] = [
 const mockViewHistory: MockMemberContentItem[] = [
   { contentId: 2, title: '内容管理系统选型指南：静态化与全文检索实践', url: '/news/2.html', coverThumb: null, contentType: 'article', viewCount: 3, createdAt: '2026-01-04 09:00:00', updatedAt: '2026-01-06 15:30:00' },
 ];
+
+interface MockMyComment {
+  id: number; contentId: number; contentTitle: string | null; contentUrl: string | null;
+  parentId: number; content: string; likeCount: number;
+  status: 'pending' | 'approved' | 'rejected'; createdAt: string;
+}
+
+const mockMyComments: MockMyComment[] = [
+  { id: 3, contentId: 1, contentTitle: 'Zenith Admin 发布 CMS 内容管理模块', contentUrl: '/news/1.html', parentId: 0, content: '登录会员的评论会带会员标识，支持在会员中心统一管理。', likeCount: 1, status: 'approved', createdAt: '2026-01-05 11:00:00' },
+];
+let nextMyCommentId = 100;
 
 const mockContributions: {
   id: number; siteId: number; channelId: number; channelName: string | null;

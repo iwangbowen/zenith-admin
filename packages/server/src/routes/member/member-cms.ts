@@ -4,13 +4,13 @@
  */
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
-import { submitCmsSurveySchema } from '@zenith/shared';
+import { submitCmsSurveySchema, memberSubmitCmsCommentSchema } from '@zenith/shared';
 import { memberAuthMiddleware } from '../../middleware/member-auth';
 import { idempotencyGuard } from '../../middleware/idempotency';
 import {
   jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, okBody, PaginationQuery, IdParam,
 } from '../../lib/openapi-schemas';
-import { CmsContributionDTO, CmsContribChannelsDTO, CmsInteractionStateDTO, CmsMemberContentItemDTO } from '../../lib/openapi-dtos';
+import { CmsContributionDTO, CmsContribChannelsDTO, CmsInteractionStateDTO, CmsMemberContentItemDTO, CmsMemberCommentDTO } from '../../lib/openapi-dtos';
 import {
   listContributableChannels, listMyContributions, getMyContribution,
   createContribution, updateMyContribution, deleteMyContribution,
@@ -18,8 +18,10 @@ import {
 import {
   likeContent, unlikeContent, favoriteContent, unfavoriteContent, getInteractionState,
   recordMemberView, listMyFavorites, listMyViewHistory, clearMyViewHistory,
+  submitMemberComment, listMyComments, deleteMyComment,
 } from '../../services/cms/cms-member-interaction.service';
 import { getPublishedSurveyById, submitCmsSurvey } from '../../services/cms/cms-surveys.service';
+import { triggerContentStaticRefresh } from '../../services/cms/cms-static.service';
 import { currentMemberId } from '../../lib/member-context';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -240,10 +242,59 @@ const surveySubmitRoute = defineOpenAPIRoute({
   },
 });
 
+// ─── P1 评论会员化：会员提交评论 / 我的评论 ──────────────────────────────────────
+const commentSubmitRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/contents/{id}/comments', tags: ['MemberCms'], summary: '会员提交评论（进入审核，昵称自动取会员资料）',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware, idempotencyGuard({ ttlSeconds: 5 })] as const,
+    request: { params: IdParam, body: { content: jsonContent(memberSubmitCmsCommentSchema), required: true } },
+    responses: { ...commonErrorResponses, ...okMsg('评论已提交') },
+  }),
+  handler: async (c) => {
+    const forwarded = c.req.header('x-forwarded-for');
+    const ip = forwarded?.split(',')[0].trim() || c.req.header('x-real-ip') || 'unknown';
+    await submitMemberComment(c.req.valid('param').id, c.req.valid('json'), {
+      ip, userAgent: c.req.header('user-agent')?.slice(0, 255) ?? null,
+    });
+    return c.json(okBody(null, '评论已提交，审核通过后显示'), 200);
+  },
+});
+
+const myCommentsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/comments', tags: ['MemberCms'], summary: '我的评论列表',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    request: { query: PaginationQuery },
+    responses: { ...commonErrorResponses, ...okPaginated(CmsMemberCommentDTO, '我的评论') },
+  }),
+  handler: async (c) => {
+    const { page, pageSize } = c.req.valid('query');
+    return c.json(okBody(await listMyComments(page, pageSize)), 200);
+  },
+});
+
+const deleteMyCommentRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete', path: '/comments/{id}', tags: ['MemberCms'], summary: '删除我的评论',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...okMsg('删除成功') },
+  }),
+  handler: async (c) => {
+    const contentId = await deleteMyComment(c.req.valid('param').id);
+    if (contentId) triggerContentStaticRefresh(contentId);
+    return c.json(okBody(null, '删除成功'), 200);
+  },
+});
+
 router.openapiRoutes([
   channelsRoute, listRoute, detailRoute, createRouteDef, updateRouteDef, deleteRouteDef,
   interactionStateRoute, likeRoute, unlikeRoute, favoriteRoute, unfavoriteRoute, viewRoute,
   favoritesListRoute, historyListRoute, clearHistoryRoute, surveySubmitRoute,
+  commentSubmitRoute, myCommentsRoute, deleteMyCommentRoute,
 ] as const);
 
 export default router;

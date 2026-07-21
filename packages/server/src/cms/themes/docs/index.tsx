@@ -334,7 +334,7 @@ function DetailTemplate(ctx: CmsDetailContext) {
         <h2>评论（{ctx.comments.length}）</h2>
         {ctx.comments.map((cm, i) => (
           <div className="comment-item" key={`${cm.nickname}-${i}`}>
-            <div className="meta"><b>{cm.nickname}</b><time>{cm.createdAt}</time></div>
+            <div className="meta"><b>{cm.nickname}</b>{cm.isMember ? <span className="member-badge">会员</span> : null}<time>{cm.createdAt}</time></div>
             <p>{cm.content}</p>
           </div>
         ))}

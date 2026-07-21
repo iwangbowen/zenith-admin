@@ -2,7 +2,7 @@ import { and, desc, eq, sql, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import {
-  cmsContents, cmsContentLikes, cmsContentFavorites, cmsMemberViewHistory, cmsChannels,
+  cmsContents, cmsContentLikes, cmsContentFavorites, cmsMemberViewHistory, cmsChannels, cmsComments,
 } from '../../db/schema';
 import type { CmsContentRow } from '../../db/schema';
 import { config } from '../../config';
@@ -11,8 +11,10 @@ import logger from '../../lib/logger';
 import { formatDateTime } from '../../lib/datetime';
 import { currentMemberId } from '../../lib/member-context';
 import { changePoints } from '../member/member-points.service';
+import { submitCmsComment } from './cms-comments.service';
+import { withPagination } from '../../lib/where-helpers';
 import { CMS_INTERACTION_POINTS, CMS_INTERACTION_DAILY_LIMITS } from '@zenith/shared';
-import type { CmsInteractionState, CmsMemberContentItem } from '@zenith/shared';
+import type { CmsInteractionState, CmsMemberContentItem, CmsMemberComment, PaginatedResponse } from '@zenith/shared';
 
 /** 每位会员保留的浏览历史上限（超出裁剪最旧） */
 const VIEW_HISTORY_LIMIT = 100;
@@ -239,4 +241,71 @@ export async function clearMyViewHistory(): Promise<number> {
 /** 取消收藏（收藏列表页操作，等价 unfavorite） */
 export async function removeFavorite(contentId: number): Promise<void> {
   await unfavoriteContent(contentId);
+}
+
+// ─── 会员评论（P1 评论会员化）──────────────────────────────────────────────────
+/** 会员提交评论：昵称自动取会员资料快照，复用游客评论管道（限流+敏感词+待审核） */
+export async function submitMemberComment(contentId: number, input: { content: string; parentId?: number }, meta: { ip: string; userAgent: string | null }) {
+  const memberId = currentMemberId();
+  const member = await db.query.members.findFirst({
+    columns: { id: true, nickname: true, username: true, status: true },
+    where: (m, { eq: eq_ }) => eq_(m.id, memberId),
+  });
+  if (!member || member.status !== 'active') throw new HTTPException(403, { message: '会员状态异常，无法评论' });
+  return submitCmsComment({
+    contentId,
+    nickname: member.nickname || member.username || `会员${member.id}`,
+    content: input.content,
+    parentId: input.parentId,
+    memberId,
+    ip: meta.ip,
+    userAgent: meta.userAgent,
+  });
+}
+
+/** 我的评论（分页，新→旧；含内容标题与前台地址） */
+export async function listMyComments(page: number, pageSize: number): Promise<PaginatedResponse<CmsMemberComment>> {
+  const memberId = currentMemberId();
+  const where = eq(cmsComments.memberId, memberId);
+  const [total, rows] = await Promise.all([
+    db.$count(cmsComments, where),
+    withPagination(
+      db.select({ comment: cmsComments, content: { id: cmsContents.id, title: cmsContents.title, slug: cmsContents.slug, channelId: cmsContents.channelId, status: cmsContents.status, deletedAt: cmsContents.deletedAt } })
+        .from(cmsComments)
+        .leftJoin(cmsContents, eq(cmsComments.contentId, cmsContents.id))
+        .where(where)
+        .orderBy(desc(cmsComments.id))
+        .$dynamic(),
+      page, pageSize,
+    ),
+  ]);
+  const paths = await loadChannelPaths(rows.flatMap((r) => (r.content ? [r.content.channelId] : [])));
+  return {
+    list: rows.map((r) => {
+      const path = r.content ? paths.get(r.content.channelId) : undefined;
+      const available = r.content && r.content.status === 'published' && !r.content.deletedAt && path;
+      return {
+        id: r.comment.id,
+        contentId: r.comment.contentId,
+        contentTitle: r.content?.title ?? null,
+        contentUrl: available ? `/${path}/${r.content!.slug ?? r.content!.id}.html` : null,
+        parentId: r.comment.parentId,
+        content: r.comment.content,
+        likeCount: r.comment.likeCount,
+        status: r.comment.status,
+        createdAt: formatDateTime(r.comment.createdAt),
+      };
+    }),
+    total, page, pageSize,
+  };
+}
+
+/** 删除自己的评论；返回内容 id（已审核评论删除需刷新详情页静态文件，否则 null） */
+export async function deleteMyComment(commentId: number): Promise<number | null> {
+  const memberId = currentMemberId();
+  const [row] = await db.delete(cmsComments)
+    .where(and(eq(cmsComments.id, commentId), eq(cmsComments.memberId, memberId)))
+    .returning({ contentId: cmsComments.contentId, status: cmsComments.status });
+  if (!row) throw new HTTPException(404, { message: '评论不存在或无权删除' });
+  return row.status === 'approved' ? row.contentId : null;
 }

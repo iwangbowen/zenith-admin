@@ -10740,6 +10740,10 @@ export interface CmsComment {
   parentId: number;
   /** 父评论昵称（JOIN 后附加） */
   parentNickname?: string | null;
+  /** 会员评论：非空表示由登录会员提交 */
+  memberId: number | null;
+  /** 会员用户名（JOIN 后附加，用于后台辨识） */
+  memberUsername?: string | null;
   nickname: string;
   content: string;
   likeCount: number;
@@ -10748,6 +10752,20 @@ export interface CmsComment {
   userAgent: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** 会员端「我的评论」条目 */
+export interface CmsMemberComment {
+  id: number;
+  contentId: number;
+  contentTitle: string | null;
+  /** 内容前台地址（站点未绑定域名时为相对路径） */
+  contentUrl: string | null;
+  parentId: number;
+  content: string;
+  likeCount: number;
+  status: CmsCommentStatus;
+  createdAt: string;
 }
 
 export interface CmsAdSlot {

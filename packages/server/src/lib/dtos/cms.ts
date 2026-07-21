@@ -363,6 +363,8 @@ export const CmsCommentDTO = z
     contentTitle: z.string().nullable().optional(),
     parentId: z.number().int().openapi({ description: '父评论 id，0 = 顶级' }),
     parentNickname: z.string().nullable().optional(),
+    memberId: z.number().int().nullable().openapi({ description: '会员评论：非空表示由登录会员提交' }),
+    memberUsername: z.string().nullable().optional(),
     nickname: z.string(),
     content: z.string(),
     likeCount: z.number().int(),
@@ -373,6 +375,20 @@ export const CmsCommentDTO = z
     updatedAt: z.string(),
   })
   .openapi('CmsComment');
+
+export const CmsMemberCommentDTO = z
+  .object({
+    id: z.number().int(),
+    contentId: z.number().int(),
+    contentTitle: z.string().nullable(),
+    contentUrl: z.string().nullable().openapi({ description: '内容前台地址（未绑定域名时为相对路径）' }),
+    parentId: z.number().int(),
+    content: z.string(),
+    likeCount: z.number().int(),
+    status: z.enum(['pending', 'approved', 'rejected']),
+    createdAt: z.string(),
+  })
+  .openapi('CmsMemberComment');
 
 export const CmsAdSlotDTO = z
   .object({

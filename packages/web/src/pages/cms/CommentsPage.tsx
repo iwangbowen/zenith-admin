@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Tag, Toast, Modal, Tabs, TabPane, Typography } from '@douyinfe/semi-ui';
+import { Button, Tag, Toast, Modal, Tabs, TabPane, Typography, Select } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -23,6 +23,7 @@ export default function CommentsPage() {
   const { hasPermission } = usePermission();
   const [siteId, setSiteId] = useState<number | undefined>(undefined);
   const [activeTab, setActiveTab] = useState<TabKey>('pending');
+  const [source, setSource] = useState<'member' | 'guest' | undefined>(undefined);
   const { page, pageSize, setPage, buildPagination } = usePagination();
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
@@ -31,6 +32,7 @@ export default function CommentsPage() {
     pageSize,
     siteId: siteId ?? 0,
     status: activeTab === 'all' ? undefined : activeTab,
+    source,
   }, siteId !== undefined);
   const actionMutation = useCmsCommentAction();
   const canAudit = hasPermission('cms:comment:audit');
@@ -49,7 +51,15 @@ export default function CommentsPage() {
   }
 
   const columns: ColumnProps<CmsComment>[] = [
-    { title: '昵称', dataIndex: 'nickname', width: 120 },
+    {
+      title: '昵称', dataIndex: 'nickname', width: 150,
+      render: (v: string, record: CmsComment) => (
+        <span>
+          {v}
+          {record.memberId != null ? <Tag size="small" color="green" style={{ marginLeft: 6 }}>会员</Tag> : null}
+        </span>
+      ),
+    },
     {
       title: '评论内容',
       dataIndex: 'content',
@@ -111,6 +121,14 @@ export default function CommentsPage() {
     <>
       <SearchToolbar>
         <CmsSiteSelect value={siteId} onChange={(v) => { setSiteId(v); setPage(1); }} width={200} />
+        <Select
+          placeholder="评论来源"
+          style={{ width: 140 }}
+          showClear
+          value={source}
+          onChange={(v) => { setSource(v as 'member' | 'guest' | undefined); setPage(1); }}
+          optionList={[{ label: '会员评论', value: 'member' }, { label: '游客评论', value: 'guest' }]}
+        />
         {batchBar}
       </SearchToolbar>
       <ConfigurableTable

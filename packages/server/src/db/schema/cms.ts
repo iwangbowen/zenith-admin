@@ -611,13 +611,15 @@ export const cmsLinkWords = pgTable('cms_link_words', {
 
 export type CmsLinkWordRow = typeof cmsLinkWords.$inferSelect;
 
-// ─── 评论（前台游客提交，审核后展示；审核通过触发详情页增量重建）─────────────────
+// ─── 评论（前台游客/登录会员提交，审核后展示；审核通过触发详情页增量重建）─────────
 export const cmsComments = pgTable('cms_comments', {
   id: serial('id').primaryKey(),
   siteId: integer('site_id').notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
   contentId: integer('content_id').notNull().references(() => cmsContents.id, { onDelete: 'cascade' }),
   /** 父评论 id，0 = 顶级（树形回复，前台展示两级） */
   parentId: integer('parent_id').notNull().default(0),
+  /** 会员评论：非空表示由登录会员提交（昵称快照仍存 nickname；会员注销后保留评论） */
+  memberId: integer('member_id').references(() => members.id, { onDelete: 'set null' }),
   nickname: varchar('nickname', { length: 50 }).notNull(),
   content: text('content').notNull(),
   /** 点赞数（前台匿名点赞，IP 去重） */
@@ -629,6 +631,7 @@ export const cmsComments = pgTable('cms_comments', {
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (t) => [
   index('cms_comments_content_idx').on(t.contentId, t.status),
+  index('cms_comments_member_idx').on(t.memberId),
 ]);
 
 export type CmsCommentRow = typeof cmsComments.$inferSelect;

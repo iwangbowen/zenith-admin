@@ -881,8 +881,11 @@ export const cmsP2Handlers = [
     const { url, page, pageSize } = pageParams(request);
     const siteId = Number(url.searchParams.get('siteId'));
     const status = url.searchParams.get('status') || '';
+    const source = url.searchParams.get('source') || '';
     let list = mockCmsComments.filter((c) => c.siteId === siteId);
     if (status) list = list.filter((c) => c.status === status);
+    if (source === 'member') list = list.filter((c) => c.memberId != null);
+    if (source === 'guest') list = list.filter((c) => c.memberId == null);
     return okJson(paginate([...list].sort((a, b) => b.id - a.id), page, pageSize));
   }),
   http.post('/api/cms/comments/:action', async ({ params, request }) => {

@@ -707,6 +707,8 @@ export interface CmsCommentListParams {
   pageSize: number;
   siteId: number;
   status?: CmsCommentStatus;
+  /** 来源筛选：member=会员评论 guest=游客评论 */
+  source?: 'member' | 'guest';
 }
 
 export const cmsCommentKeys = {

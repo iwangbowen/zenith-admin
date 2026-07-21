@@ -84,6 +84,7 @@ main { min-height: 60vh; padding: 24px 0 48px; }
 .comment-item { padding: 12px 0; border-bottom: 1px dashed var(--border); }
 .comment-item .meta { font-size: 12px; color: var(--text-2); margin-bottom: 4px; display: flex; gap: 10px; }
 .comment-item .meta b { color: var(--text); font-weight: 600; }
+.comment-item .meta .member-badge { display: inline-block; padding: 0 6px; border-radius: 8px; background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--primary); font-size: 11px; line-height: 18px; }
 .comment-item p { font-size: 14px; }
 .front-form { max-width: 800px; margin: 24px auto 0; display: flex; flex-direction: column; gap: 12px; }
 .front-form label { font-size: 14px; display: flex; flex-direction: column; gap: 4px; }

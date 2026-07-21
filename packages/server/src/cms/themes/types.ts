@@ -172,14 +172,18 @@ export interface CmsCommentItem {
   nickname: string;
   content: string;
   likeCount: number;
+  /** 是否登录会员发表（前台展示会员徽标） */
+  isMember: boolean;
   createdAt: string;
 }
 
-/** 评论提交表单配置（原生 HTML form POST） */
+/** 评论提交表单配置（原生 HTML form POST；登录会员由内联 JS 走会员 API） */
 export interface CmsCommentFormConfig {
   action: string;
   contentId: number;
   returnUrl: string;
+  /** 会员评论提交 API（携带 Bearer token 的 JSON POST） */
+  memberSubmitApi: string;
 }
 
 export interface CmsDetailContext extends CmsBaseContext {

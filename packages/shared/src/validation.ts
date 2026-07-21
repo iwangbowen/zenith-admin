@@ -5356,6 +5356,13 @@ export const submitCmsCommentSchema = z.object({
   website: z.string().max(0, '提交被拒绝').optional(),
 });
 
+/** 会员评论提交（昵称自动取会员资料，无需蜜罐） */
+export const memberSubmitCmsCommentSchema = z.object({
+  content: z.string().min(1, '评论内容不能为空').max(1000),
+  /** 回复的父评论 id（0/缺省 = 顶级评论） */
+  parentId: z.coerce.number().int().min(0).optional(),
+});
+
 export type CreateCmsRedirectInput = z.input<typeof createCmsRedirectSchema>;
 export type UpdateCmsRedirectInput = z.input<typeof updateCmsRedirectSchema>;
 export type CreateCmsLinkWordInput = z.input<typeof createCmsLinkWordSchema>;
@@ -5376,6 +5383,7 @@ export type CreateCmsSurveyInput = z.input<typeof createCmsSurveySchema>;
 export type UpdateCmsSurveyInput = z.input<typeof updateCmsSurveySchema>;
 export type SubmitCmsSurveyInput = z.input<typeof submitCmsSurveySchema>;
 export type SubmitCmsCommentInput = z.input<typeof submitCmsCommentSchema>;
+export type MemberSubmitCmsCommentInput = z.input<typeof memberSubmitCmsCommentSchema>;
 
 // ─── CMS P3 Batch1 Schema ─────────────────────────────────────────────────────
 export const createCmsSearchWordSchema = z.object({

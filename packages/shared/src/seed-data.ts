@@ -3119,6 +3119,7 @@ export const SEED_CMS_SURVEYS: (CmsSurvey & { questions: CmsSurveyQuestion[] })[
 ];
 
 export const SEED_CMS_COMMENTS: CmsComment[] = [
-  { id: 1, siteId: 1, contentId: 1, parentId: 0, nickname: '热心网友', content: '期待 CMS 模块的采集功能！', likeCount: 3, status: 'approved', ip: null, userAgent: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 2, siteId: 1, contentId: 1, parentId: 0, nickname: '路人甲', content: '静态化方案讲得很清楚', likeCount: 0, status: 'pending', ip: null, userAgent: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1, siteId: 1, contentId: 1, parentId: 0, memberId: null, nickname: '热心网友', content: '期待 CMS 模块的采集功能！', likeCount: 3, status: 'approved', ip: null, userAgent: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, siteId: 1, contentId: 1, parentId: 0, memberId: null, nickname: '路人甲', content: '静态化方案讲得很清楚', likeCount: 0, status: 'pending', ip: null, userAgent: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 3, siteId: 1, contentId: 1, parentId: 0, memberId: 1, nickname: '演示会员', content: '登录会员的评论会带会员标识，支持在会员中心统一管理。', likeCount: 1, status: 'approved', ip: null, userAgent: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];

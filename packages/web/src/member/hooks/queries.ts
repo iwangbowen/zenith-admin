@@ -2,6 +2,7 @@ import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClie
 import type {
   CmsContribSite,
   CmsContribution,
+  CmsMemberComment,
   CmsMemberContentItem,
   Coupon,
   Member,
@@ -516,5 +517,27 @@ export function useClearCmsViewHistory() {
   return useMutation({
     mutationFn: () => memberRequest.delete<null>('/api/member/cms/view-history').then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: cmsInteractionKeys.historyAll }),
+  });
+}
+
+// ─── CMS 我的评论（P1 评论会员化）─────────────────────────────────────────────
+export const cmsMyCommentKeys = {
+  all: ['member', 'cms-comments'] as const,
+  list: (params: object) => ['member', 'cms-comments', params] as const,
+};
+
+export function useMyCmsComments(params: { page: number; pageSize: number }) {
+  return useQuery({
+    queryKey: cmsMyCommentKeys.list(params),
+    queryFn: () => memberRequest.get<PaginatedResponse<CmsMemberComment>>(`/api/member/cms/comments${toQueryString(params)}`).then(unwrap),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useDeleteMyCmsComment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => memberRequest.delete<null>(`/api/member/cms/comments/${id}`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsMyCommentKeys.all }),
   });
 }

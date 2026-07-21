@@ -535,11 +535,12 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
       next: adjacent.next ? { title: adjacent.next.title, url: contentUrl(baseUrl, channel.path, adjacent.next) } : null,
     },
     related,
-    comments: comments.map((cm) => ({ id: cm.id, parentId: cm.parentId, nickname: cm.nickname, content: cm.content, likeCount: cm.likeCount, createdAt: cm.createdAt })),
+    comments: comments.map((cm) => ({ id: cm.id, parentId: cm.parentId, nickname: cm.nickname, content: cm.content, likeCount: cm.likeCount, isMember: cm.memberId != null, createdAt: cm.createdAt })),
     commentForm: {
       action: '/api/public/cms/comments',
       contentId: row.id,
       returnUrl: contentUrl(baseUrl, channel.path, row),
+      memberSubmitApi: `/api/member/cms/contents/${row.id}/comments`,
     },
   });
   return { status: 200, html, kind: 'detail', contentId: row.id };
@@ -602,6 +603,7 @@ export async function renderContentPreviewPage(site: CmsSiteRow, baseUrl: string
       action: '/api/public/cms/comments',
       contentId: row.id,
       returnUrl: contentUrl(baseUrl, channel.path, row),
+      memberSubmitApi: `/api/member/cms/contents/${row.id}/comments`,
     },
   });
   const statusLabel = CMS_CONTENT_STATUS_LABELS[row.status] ?? row.status;

@@ -1,7 +1,7 @@
-import { eq, asc, desc, and, inArray, sql, type SQL } from 'drizzle-orm';
+import { eq, asc, desc, and, inArray, isNull, isNotNull, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import { cmsComments, cmsContents } from '../../db/schema';
+import { cmsComments, cmsContents, members } from '../../db/schema';
 import type { CmsCommentRow } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
 import { mergeWhere, withPagination } from '../../lib/where-helpers';
@@ -27,7 +27,7 @@ export async function throttleFrontSubmit(ip: string): Promise<void> {
 }
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
-export function mapCmsComment(row: CmsCommentRow, extra?: { contentTitle?: string | null; parentNickname?: string | null }) {
+export function mapCmsComment(row: CmsCommentRow, extra?: { contentTitle?: string | null; parentNickname?: string | null; memberUsername?: string | null }) {
   return {
     id: row.id,
     siteId: row.siteId,
@@ -35,6 +35,8 @@ export function mapCmsComment(row: CmsCommentRow, extra?: { contentTitle?: strin
     contentTitle: extra?.contentTitle ?? null,
     parentId: row.parentId,
     parentNickname: extra?.parentNickname ?? null,
+    memberId: row.memberId ?? null,
+    memberUsername: extra?.memberUsername ?? null,
     nickname: row.nickname,
     content: row.content,
     likeCount: row.likeCount,
@@ -53,6 +55,8 @@ export interface SubmitCommentInput {
   content: string;
   /** 回复的父评论 id（0/缺省 = 顶级评论） */
   parentId?: number;
+  /** 登录会员提交时携带（昵称仍写入 nickname 快照） */
+  memberId?: number | null;
   ip: string;
   userAgent: string | null;
 }
@@ -81,6 +85,7 @@ export async function submitCmsComment(input: SubmitCommentInput) {
     siteId: content.siteId,
     contentId: input.contentId,
     parentId,
+    memberId: input.memberId ?? null,
     nickname,
     content: text,
     status: 'pending',
@@ -115,6 +120,8 @@ export async function listApprovedComments(contentId: number, limit = 100) {
 export interface ListCmsCommentsQuery {
   siteId: number;
   status?: CmsCommentStatus;
+  /** 来源筛选：member = 会员评论；guest = 游客评论 */
+  source?: 'member' | 'guest';
   page: number;
   pageSize: number;
 }
@@ -123,16 +130,19 @@ export async function listCmsComments(q: ListCmsCommentsQuery) {
   await assertSiteAccess(q.siteId);
   const conditions: SQL[] = [eq(cmsComments.siteId, q.siteId)];
   if (q.status) conditions.push(eq(cmsComments.status, q.status));
+  if (q.source === 'member') conditions.push(isNotNull(cmsComments.memberId));
+  if (q.source === 'guest') conditions.push(isNull(cmsComments.memberId));
   const where = mergeWhere(and(...conditions));
   // 注意：不能用 RQB `with: { content: ... }`——关系名与评论正文列 content 同名，会覆盖正文字段
   const parentComments = alias(cmsComments, 'parent_comments');
   const [total, rows] = await Promise.all([
     db.$count(cmsComments, where),
     withPagination(
-      db.select({ comment: cmsComments, contentTitle: cmsContents.title, parentNickname: parentComments.nickname })
+      db.select({ comment: cmsComments, contentTitle: cmsContents.title, parentNickname: parentComments.nickname, memberUsername: members.username })
         .from(cmsComments)
         .leftJoin(cmsContents, eq(cmsComments.contentId, cmsContents.id))
         .leftJoin(parentComments, eq(cmsComments.parentId, parentComments.id))
+        .leftJoin(members, eq(cmsComments.memberId, members.id))
         .where(where)
         .orderBy(desc(cmsComments.id))
         .$dynamic(),
@@ -140,7 +150,7 @@ export async function listCmsComments(q: ListCmsCommentsQuery) {
     ),
   ]);
   return {
-    list: rows.map((r) => mapCmsComment(r.comment, { contentTitle: r.contentTitle, parentNickname: r.parentNickname })),
+    list: rows.map((r) => mapCmsComment(r.comment, { contentTitle: r.contentTitle, parentNickname: r.parentNickname, memberUsername: r.memberUsername })),
     total,
     page: q.page,
     pageSize: q.pageSize,

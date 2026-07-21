@@ -23,6 +23,7 @@ const listRoute = defineOpenAPIRoute({
       query: PaginationQuery.extend({
         siteId: z.coerce.number().int().positive(),
         status: z.enum(['pending', 'approved', 'rejected']).optional(),
+        source: z.enum(['member', 'guest']).optional().openapi({ description: '来源筛选：member=会员评论 guest=游客评论' }),
       }),
     },
     responses: { ...commonErrorResponses, ...okPaginated(CmsCommentDTO, '评论列表') },

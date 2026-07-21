@@ -106,7 +106,13 @@ function AdSlot({ ctx, code }: { ctx: CmsBaseContext; code: string }) {
   );
 }
 
-/** 评论区：树形两级（顶级+回复）+ 点赞/回复 + 原生 form POST 提交（含蜜罐字段） */
+/**
+ * 评论区会员增强：检测 zenith_member_token —— 有 token 时隐藏昵称输入并改走会员 API（JSON POST），
+ * 401 自动回退游客表单；游客保持原生 form POST 零依赖。
+ */
+const COMMENT_MEMBER_SCRIPT = `(function(){var f=document.getElementById('comment-form');if(!f)return;var api=f.getAttribute('data-member-api');var t=null;try{t=localStorage.getItem('zenith_member_token')}catch(e){}if(!t||!api)return;var nickRow=document.getElementById('comment-nick-row');if(nickRow){nickRow.style.display='none';var inp=nickRow.querySelector('input');if(inp){inp.required=false;inp.value='会员'}}var hint=document.createElement('p');hint.style.cssText='font-size:12px;color:#59636e;margin:0';hint.textContent='已以会员身份登录，评论将使用会员昵称';f.insertBefore(hint,f.firstChild);f.addEventListener('submit',function(e){e.preventDefault();var content=f.querySelector('textarea[name="content"]').value.trim();if(!content)return;var parentId=Number(document.getElementById('comment-parent-id').value)||0;fetch(api,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+t},body:JSON.stringify({content:content,parentId:parentId})}).then(function(r){return r.json()}).then(function(r){if(r&&r.code===0){f.innerHTML='<p class="survey-done">'+(r.message||'评论已提交，审核通过后显示')+'</p>'}else if(r&&r.code===401){t=null;f.removeAttribute('data-member-api');if(nickRow){nickRow.style.display='';var i2=nickRow.querySelector('input');if(i2){i2.required=true;i2.value=''}}hint.remove();alert('会员登录已过期，请以游客身份提交或重新登录')}else{alert((r&&r.message)||'提交失败，请稍后再试')}}).catch(function(){alert('提交失败，请稍后再试')})});})();`;
+
+/** 评论区：树形两级（顶级+回复）+ 点赞/回复 + 原生 form POST 提交（含蜜罐字段）；登录会员自动切会员通道 */
 function CommentsBlock({ comments, form }: { comments: CmsCommentItem[]; form: CmsCommentFormConfig }) {
   const topLevel = comments.filter((cm) => cm.parentId === 0);
   const repliesOf = (id: number) => comments.filter((cm) => cm.parentId === id);
@@ -115,6 +121,7 @@ function CommentsBlock({ comments, form }: { comments: CmsCommentItem[]; form: C
     <div className={isReply ? 'comment-item comment-reply' : 'comment-item'} key={cm.id} style={isReply ? { marginLeft: 24 } : undefined}>
       <div className="meta">
         <b>{cm.nickname}</b>
+        {cm.isMember ? <span className="member-badge">会员</span> : null}
         <time>{cm.createdAt}</time>
       </div>
       <p>{cm.content}</p>
@@ -134,7 +141,7 @@ function CommentsBlock({ comments, form }: { comments: CmsCommentItem[]; form: C
     <section className="comments">
       <h2>评论（{comments.length}）</h2>
       {topLevel.map((cm) => renderItem(cm, false))}
-      <form className="front-form" id="comment-form" method="post" action={form.action}>
+      <form className="front-form" id="comment-form" method="post" action={form.action} data-member-api={form.memberSubmitApi}>
         <input type="hidden" name="contentId" value={form.contentId} />
         <input type="hidden" name="returnUrl" value={form.returnUrl} />
         <input type="hidden" name="parentId" id="comment-parent-id" value="0" />
@@ -142,13 +149,13 @@ function CommentsBlock({ comments, form }: { comments: CmsCommentItem[]; form: C
         <div id="reply-hint" style={{ display: 'none', fontSize: 13, color: '#59636e' }}>
           回复给：<span id="reply-target" /> <button type="button" id="cancel-reply">取消回复</button>
         </div>
-        <label>昵称 <span className="req">*</span><input type="text" name="nickname" required maxLength={50} /></label>
+        <label id="comment-nick-row">昵称 <span className="req">*</span><input type="text" name="nickname" required maxLength={50} /></label>
         <label>评论内容 <span className="req">*</span><textarea name="content" required maxLength={1000} /></label>
         <button type="submit">提交评论（审核后显示）</button>
       </form>
       <script
         dangerouslySetInnerHTML={{
-          __html: 'document.querySelectorAll(".comment-reply-btn").forEach(function(b){b.addEventListener("click",function(){document.getElementById("comment-parent-id").value=b.dataset.commentId;document.getElementById("reply-target").textContent=b.dataset.nickname;document.getElementById("reply-hint").style.display="block";document.getElementById("comment-form").scrollIntoView({behavior:"smooth"});});});var c=document.getElementById("cancel-reply");if(c){c.addEventListener("click",function(){document.getElementById("comment-parent-id").value="0";document.getElementById("reply-hint").style.display="none";});}',
+          __html: 'document.querySelectorAll(".comment-reply-btn").forEach(function(b){b.addEventListener("click",function(){document.getElementById("comment-parent-id").value=b.dataset.commentId;document.getElementById("reply-target").textContent=b.dataset.nickname;document.getElementById("reply-hint").style.display="block";document.getElementById("comment-form").scrollIntoView({behavior:"smooth"});});});var c=document.getElementById("cancel-reply");if(c){c.addEventListener("click",function(){document.getElementById("comment-parent-id").value="0";document.getElementById("reply-hint").style.display="none";});}' + COMMENT_MEMBER_SCRIPT,
         }}
       />
     </section>
