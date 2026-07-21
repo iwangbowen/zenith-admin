@@ -1294,6 +1294,17 @@ export const CMS_CONTENT_TYPE_LABELS: Record<(typeof CMS_CONTENT_TYPES)[number],
 /** 正文分页符标记（编辑器插入 <p>[分页]</p>，服务端按此拆分多页） */
 export const CMS_PAGE_BREAK_TEXT = '[分页]';
 
+/** CMS 素材类型（P2 素材中心） */
+export const CMS_RESOURCE_TYPES = ['image', 'video', 'audio', 'document', 'other'] as const;
+
+export const CMS_RESOURCE_TYPE_LABELS: Record<(typeof CMS_RESOURCE_TYPES)[number], string> = {
+  image: '图片',
+  video: '视频',
+  audio: '音频',
+  document: '文档',
+  other: '其他',
+};
+
 /** CMS 会员互动积分规则（earn 记账 bizType='cms_interaction'） */
 export const CMS_INTERACTION_POINTS = {
   /** 阅读内容（每内容仅一次，30 天窗口） */

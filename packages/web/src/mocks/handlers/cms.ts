@@ -12,6 +12,7 @@ import {
   mockCmsSearchWords, mockCmsHotKeywords, getNextCmsSearchWordId,
   mockCmsPublishChannels, getNextCmsPublishChannelId,
   mockCmsSurveys, getNextCmsSurveyId,
+  mockCmsResources, getNextCmsResourceId,
 } from '../data/cms';
 import { createProgressingMockTask } from './async-tasks';
 import { mockDateTime, mockDate } from '../utils/date';
@@ -903,6 +904,101 @@ export const cmsP2Handlers = [
       if (ids.includes(c.id)) c.status = status;
     }
     return okJson(null, '操作成功');
+  }),
+
+  // ─── 素材中心（P2）──────────────────────────────────────────────────────────
+  http.get('/api/cms/resources/:id/references', ({ params }) => {
+    const res = mockCmsResources.find((r) => r.id === Number(params.id));
+    if (!res) return notFound('素材不存在');
+    const refs = mockCmsContents
+      .filter((c) => c.siteId === res.siteId && (c.coverImage === res.url || (c.body ?? '').includes(res.url)))
+      .map((c) => ({ kind: 'content' as const, id: c.id, title: c.title }));
+    return okJson(refs);
+  }),
+  http.get('/api/cms/resources', ({ request }) => {
+    const { url, page, pageSize, keyword } = pageParams(request);
+    const siteId = Number(url.searchParams.get('siteId'));
+    const type = url.searchParams.get('type') || '';
+    let list = mockCmsResources.filter((r) => r.siteId === siteId);
+    if (type) list = list.filter((r) => r.type === type);
+    if (keyword) list = list.filter((r) => r.name.includes(keyword));
+    return okJson(paginate([...list].sort((a, b) => b.id - a.id), page, pageSize));
+  }),
+  http.post('/api/cms/resources/upload', async ({ request }) => {
+    const url = new URL(request.url);
+    const siteId = Number(url.searchParams.get('siteId')) || 1;
+    const form = await request.formData();
+    const file = form.get('file') as File | null;
+    if (!file) return HttpResponse.json({ code: 400, message: '请选择要上传的文件', data: null }, { status: 400 });
+    const mime = file.type || 'application/octet-stream';
+    let type: (typeof mockCmsResources)[number]['type'] = 'other';
+    if (mime.startsWith('image/')) type = 'image';
+    else if (mime.startsWith('video/')) type = 'video';
+    else if (mime.startsWith('audio/')) type = 'audio';
+    else if (mime === 'application/pdf' || mime.startsWith('text/')) type = 'document';
+    const idx = Math.floor(Math.random() * 12) + 1;
+    const resource = {
+      id: getNextCmsResourceId(),
+      siteId,
+      type,
+      name: file.name,
+      url: type === 'image' ? `/avatars/avatar-${String(idx).padStart(2, '0')}.svg` : `/files/${file.name}`,
+      thumbUrl: null,
+      fileId: null,
+      size: file.size,
+      width: type === 'image' ? 128 : null,
+      height: type === 'image' ? 128 : null,
+      mimeType: mime,
+      remark: null,
+      createdAt: mockDateTime(),
+      updatedAt: mockDateTime(),
+    };
+    mockCmsResources.unshift(resource);
+    return okJson(resource, '上传成功');
+  }),
+  http.put('/api/cms/resources/:id', async ({ params, request }) => {
+    const res = mockCmsResources.find((r) => r.id === Number(params.id));
+    if (!res) return notFound('素材不存在');
+    const body = (await request.json()) as Body;
+    if (typeof body.name === 'string') res.name = body.name;
+    if (body.remark !== undefined) res.remark = (body.remark as string | null) || null;
+    res.updatedAt = mockDateTime();
+    return okJson(res, '已保存');
+  }),
+  http.post('/api/cms/resources/:id/crop', async ({ params, request }) => {
+    const res = mockCmsResources.find((r) => r.id === Number(params.id));
+    if (!res) return notFound('素材不存在');
+    const rect = (await request.json()) as { width: number; height: number };
+    const dot = res.name.lastIndexOf('.');
+    const cropName = dot > 0 ? `${res.name.slice(0, dot)}_crop${res.name.slice(dot)}` : `${res.name}_crop`;
+    const cropped = {
+      ...res,
+      id: getNextCmsResourceId(),
+      name: cropName,
+      width: rect.width,
+      height: rect.height,
+      remark: `裁剪自素材 #${res.id}`,
+      createdAt: mockDateTime(),
+      updatedAt: mockDateTime(),
+    };
+    mockCmsResources.unshift(cropped);
+    return okJson(cropped, '裁剪成功，已另存为新素材');
+  }),
+  http.post('/api/cms/resources/delete', async ({ request }) => {
+    const { ids } = (await request.json()) as { ids: number[] };
+    for (const id of ids) {
+      const res = mockCmsResources.find((r) => r.id === id);
+      if (!res) continue;
+      const referenced = mockCmsContents.some((c) => c.siteId === res.siteId && (c.coverImage === res.url || (c.body ?? '').includes(res.url)));
+      if (referenced) {
+        return HttpResponse.json({ code: 400, message: `素材「${res.name}」仍被引用，请先处理引用后再删除`, data: null }, { status: 400 });
+      }
+    }
+    for (const id of ids) {
+      const idx = mockCmsResources.findIndex((r) => r.id === id);
+      if (idx >= 0) mockCmsResources.splice(idx, 1);
+    }
+    return okJson(null, `已删除 ${ids.length} 个素材`);
   }),
 
   // ─── 广告 ───────────────────────────────────────────────────────────────────

@@ -8,6 +8,7 @@ import type {
   CmsEditLock, CmsPreviewLink, CmsContentVersionDiff, CmsDashboardStats,
   CmsThemeTemplateManifest, CmsPublishChannel, CmsContentOpLog, CmsErrorProneWord, CmsTextCheckResult,
   CmsContentType, CmsSurvey, CmsSurveyStats, CmsVisitStats, CmsSearchAnalytics,
+  CmsResource, CmsResourceType, CmsResourceReference, UpdateCmsResourceInput, CropCmsResourceInput,
 } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { toQueryString, unwrap, LOOKUP_STALE_TIME } from '@/lib/query';
@@ -732,6 +733,77 @@ export function useCmsCommentAction() {
     mutationFn: ({ action, ids }: { action: 'approve' | 'reject' | 'delete'; ids: number[] }) =>
       request.post<null>(`/api/cms/comments/${action}`, { ids }).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: cmsCommentKeys.all }),
+  });
+}
+
+// ─── 素材中心（P2）────────────────────────────────────────────────────────────
+export interface CmsResourceListParams {
+  page: number;
+  pageSize: number;
+  siteId: number;
+  type?: CmsResourceType;
+  keyword?: string;
+}
+
+export const cmsResourceKeys = {
+  all: ['cms-resources'] as const,
+  lists: ['cms-resources', 'list'] as const,
+  list: (params: CmsResourceListParams) => ['cms-resources', 'list', params] as const,
+  references: (id: number) => ['cms-resources', 'references', id] as const,
+};
+
+export function useCmsResourceList(params: CmsResourceListParams, enabled = true) {
+  return useQuery({
+    queryKey: cmsResourceKeys.list(params),
+    queryFn: () => request.get<PaginatedResponse<CmsResource>>(`/api/cms/resources${toQueryString(params)}`).then(unwrap),
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
+export function useCmsResourceReferences(id: number | null) {
+  return useQuery({
+    queryKey: cmsResourceKeys.references(id ?? 0),
+    queryFn: () => request.get<CmsResourceReference[]>(`/api/cms/resources/${id}/references`).then(unwrap),
+    enabled: id != null,
+  });
+}
+
+export function useUploadCmsResource() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ siteId, file }: { siteId: number; file: File }) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return request.post<CmsResource>(`/api/cms/resources/upload?siteId=${siteId}`, formData).then(unwrap);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsResourceKeys.all }),
+  });
+}
+
+export function useUpdateCmsResource() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }: { id: number; values: UpdateCmsResourceInput }) =>
+      request.put<CmsResource>(`/api/cms/resources/${id}`, values).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsResourceKeys.all }),
+  });
+}
+
+export function useCropCmsResource() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, rect }: { id: number; rect: CropCmsResourceInput }) =>
+      request.post<CmsResource>(`/api/cms/resources/${id}/crop`, rect).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsResourceKeys.all }),
+  });
+}
+
+export function useDeleteCmsResources() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: number[]) => request.post<null>('/api/cms/resources/delete', { ids }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsResourceKeys.all }),
   });
 }
 

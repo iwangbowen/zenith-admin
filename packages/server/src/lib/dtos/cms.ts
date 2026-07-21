@@ -390,6 +390,33 @@ export const CmsMemberCommentDTO = z
   })
   .openapi('CmsMemberComment');
 
+export const CmsResourceDTO = z
+  .object({
+    id: z.number().int(),
+    siteId: z.number().int(),
+    type: z.enum(['image', 'video', 'audio', 'document', 'other']),
+    name: z.string(),
+    url: z.string(),
+    thumbUrl: z.string().nullable(),
+    fileId: z.string().nullable(),
+    size: z.number().int(),
+    width: z.number().int().nullable(),
+    height: z.number().int().nullable(),
+    mimeType: z.string().nullable(),
+    remark: z.string().nullable(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('CmsResource');
+
+export const CmsResourceReferenceDTO = z
+  .object({
+    kind: z.enum(['content', 'ad', 'fragment']),
+    id: z.number().int(),
+    title: z.string(),
+  })
+  .openapi('CmsResourceReference');
+
 export const CmsAdSlotDTO = z
   .object({
     id: z.number().int(),

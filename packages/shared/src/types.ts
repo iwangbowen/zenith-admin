@@ -10768,6 +10768,34 @@ export interface CmsMemberComment {
   createdAt: string;
 }
 
+// ─── CMS 素材中心（P2）────────────────────────────────────────────────────────
+export type CmsResourceType = 'image' | 'video' | 'audio' | 'document' | 'other';
+
+export interface CmsResource {
+  id: number;
+  siteId: number;
+  type: CmsResourceType;
+  name: string;
+  url: string;
+  thumbUrl: string | null;
+  fileId: string | null;
+  size: number;
+  width: number | null;
+  height: number | null;
+  mimeType: string | null;
+  remark: string | null;
+  /** 站内引用数（列表 JOIN 后附加，可选） */
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 素材引用位置（删除前校验 / 引用查询） */
+export interface CmsResourceReference {
+  kind: 'content' | 'ad' | 'fragment';
+  id: number;
+  title: string;
+}
+
 export interface CmsAdSlot {
   id: number;
   siteId: number;

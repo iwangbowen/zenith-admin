@@ -5385,6 +5385,23 @@ export type SubmitCmsSurveyInput = z.input<typeof submitCmsSurveySchema>;
 export type SubmitCmsCommentInput = z.input<typeof submitCmsCommentSchema>;
 export type MemberSubmitCmsCommentInput = z.input<typeof memberSubmitCmsCommentSchema>;
 
+// ─── CMS 素材中心（P2）────────────────────────────────────────────────────────
+export const updateCmsResourceSchema = z.object({
+  name: z.string().min(1, '素材名称不能为空').max(255).optional(),
+  remark: z.string().max(200).nullable().optional(),
+});
+
+/** 图片裁剪（像素坐标，基于原图） */
+export const cropCmsResourceSchema = z.object({
+  left: z.number().int().min(0),
+  top: z.number().int().min(0),
+  width: z.number().int().min(8, '裁剪宽度至少 8px'),
+  height: z.number().int().min(8, '裁剪高度至少 8px'),
+});
+
+export type UpdateCmsResourceInput = z.input<typeof updateCmsResourceSchema>;
+export type CropCmsResourceInput = z.input<typeof cropCmsResourceSchema>;
+
 // ─── CMS P3 Batch1 Schema ─────────────────────────────────────────────────────
 export const createCmsSearchWordSchema = z.object({
   word: z.string().min(2, '词条至少 2 个字符').max(50),

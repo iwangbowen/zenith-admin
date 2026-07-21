@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryKey, text, jsonb, uniqueIndex, index, customType, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryKey, text, jsonb, uniqueIndex, index, customType, uuid as pgUuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { statusEnum } from './common';
 import { auditColumns, tenants, users, departments } from './core';
@@ -863,3 +863,31 @@ export const cmsPages = pgTable('cms_pages', {
 ]);
 
 export type CmsPageRow = typeof cmsPages.$inferSelect;
+
+// ═══ P2 素材中心 ═══════════════════════════════════════════════════════════════
+
+// ─── 素材（站点级资源库：图片经站点管线处理；删除前校验站内引用）─────────────────
+export const cmsResourceTypeEnum = pgEnum('cms_resource_type', ['image', 'video', 'audio', 'document', 'other']);
+
+export const cmsResources = pgTable('cms_resources', {
+  id: serial('id').primaryKey(),
+  siteId: integer('site_id').notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
+  type: cmsResourceTypeEnum('type').notNull().default('image'),
+  name: varchar('name', { length: 255 }).notNull(),
+  url: varchar('url', { length: 500 }).notNull(),
+  thumbUrl: varchar('thumb_url', { length: 500 }),
+  /** 底层 managed_files id（删除素材时联动删除物理文件；手动登记的外链素材为 null） */
+  fileId: pgUuid('file_id'),
+  size: integer('size').notNull().default(0),
+  width: integer('width'),
+  height: integer('height'),
+  mimeType: varchar('mime_type', { length: 128 }),
+  remark: varchar('remark', { length: 200 }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  index('cms_resources_site_type_idx').on(t.siteId, t.type),
+]);
+
+export type CmsResourceRow = typeof cmsResources.$inferSelect;

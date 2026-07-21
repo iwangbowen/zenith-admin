@@ -20,7 +20,7 @@ import type {
   ReportSlaRule, ReportAssetTemplate, ReportFillTemplate, AnalyticsEventPropertyDef, AnalyticsSite,
   CmsSite, CmsPublishChannel, CmsModel, CmsChannel, CmsContent, CmsTag, CmsFragment, CmsFriendLink,
   CmsAdSlot, CmsAd, CmsForm, CmsSensitiveWord, CmsErrorProneWord, CmsLinkWord, CmsComment,
-  CmsSurvey, CmsSurveyQuestion,
+  CmsSurvey, CmsSurveyQuestion, CmsResource,
 } from './types';
 import { ANALYTICS_EXPERIMENT_EXPOSURE_EVENT, ANALYTICS_SEMANTIC_EVENT_LABELS, type AnalyticsSemanticEventName } from './constants';
 
@@ -669,7 +669,7 @@ export const SEED_MENUS: Menu[] = [
 
   // ─── CMS 内容管理（1700 段）────────────────────────────────────────────────────
   { id: 1700, parentId: 0,    title: 'CMS 内容管理', name: 'CmsCenter',        path: undefined,          component: undefined,                    icon: 'Newspaper',    type: 'directory', sort: 15, status: 'enabled', visible: true,  createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 1790, parentId: 1700, title: '数据看板',     name: 'CmsDashboard',     path: '/cms/dashboard',   component: 'cms/CmsDashboardPage',       icon: 'LayoutDashboard', type: 'menu',   sort: 0,  status: 'enabled', visible: true,  permission: 'cms:dashboard:view', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1701, parentId: 1700, title: '数据看板',     name: 'CmsDashboard',     path: '/cms/dashboard',   component: 'cms/CmsDashboardPage',       icon: 'LayoutDashboard', type: 'menu',   sort: 0,  status: 'enabled', visible: true,  permission: 'cms:dashboard:view', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1705, parentId: 1700, title: '站点管理',     name: 'CmsSites',         path: '/cms/sites',       component: 'cms/SitesPage',              icon: 'Globe',        type: 'menu',      sort: 1,  status: 'enabled', visible: true,  permission: 'cms:site:list',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1706, parentId: 1705, title: '新增站点',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:site:create',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1707, parentId: 1705, title: '编辑站点',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'cms:site:update',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
@@ -689,6 +689,10 @@ export const SEED_MENUS: Menu[] = [
   { id: 1719, parentId: 1715, title: '发布内容',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 4,  status: 'enabled', visible: true,  permission: 'cms:content:publish', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1720, parentId: 1715, title: '审核内容',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 5,  status: 'enabled', visible: true,  permission: 'cms:content:audit',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1721, parentId: 1715, title: '内容编辑页',   name: 'CmsContentEdit',   path: '/cms/contents/edit', component: 'cms/ContentEditPage',      icon: undefined,      type: 'menu',      sort: 6,  status: 'enabled', visible: false, permission: 'cms:content:list',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1746, parentId: 1700, title: '素材中心',     name: 'CmsResources',     path: '/cms/resources',   component: 'cms/ResourcesPage',          icon: 'Image',        type: 'menu',      sort: 3,  status: 'enabled', visible: true,  permission: 'cms:resource:list',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1747, parentId: 1746, title: '上传素材',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:resource:upload', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1748, parentId: 1746, title: '编辑素材',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'cms:resource:update', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1749, parentId: 1746, title: '删除素材',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'cms:resource:delete', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1725, parentId: 1700, title: '内容模型',     name: 'CmsModels',        path: '/cms/models',      component: 'cms/ModelsPage',             icon: 'Blocks',       type: 'menu',      sort: 4,  status: 'enabled', visible: true,  permission: 'cms:model:list',     createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1726, parentId: 1725, title: '新增模型',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:model:create',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1727, parentId: 1725, title: '编辑模型',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'cms:model:update',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
@@ -3047,6 +3051,13 @@ export const SEED_CMS_FRAGMENTS: CmsFragment[] = [
 export const SEED_CMS_FRIEND_LINKS: CmsFriendLink[] = [
   { id: 1, siteId: 1, name: 'Hono',       url: 'https://hono.dev',           logo: null, status: 'enabled', sort: 1, remark: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 2, siteId: 1, name: 'PostgreSQL', url: 'https://www.postgresql.org', logo: null, status: 'enabled', sort: 2, remark: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+// ─── CMS 素材中心（P2 示例素材）──────────────────────────────────────────────────
+export const SEED_CMS_RESOURCES: CmsResource[] = [
+  { id: 1, siteId: 1, type: 'image', name: 'demo-avatar-01.svg', url: '/avatars/avatar-01.svg', thumbUrl: null, fileId: null, size: 4096, width: 128, height: 128, mimeType: 'image/svg+xml', remark: '演示素材（外链登记）', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, siteId: 1, type: 'image', name: 'demo-avatar-02.svg', url: '/avatars/avatar-02.svg', thumbUrl: null, fileId: null, size: 4096, width: 128, height: 128, mimeType: 'image/svg+xml', remark: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 3, siteId: 1, type: 'document', name: '产品白皮书.pdf', url: '/files/demo-whitepaper.pdf', thumbUrl: null, fileId: null, size: 1048576, width: null, height: null, mimeType: 'application/pdf', remark: '示例文档素材', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── CMS P2：广告位 / 广告 / 表单 / 敏感词 / 内链词 / 评论（示例）────────────────
