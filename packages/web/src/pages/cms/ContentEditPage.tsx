@@ -20,6 +20,7 @@ import {
 } from '@/hooks/queries/cms';
 import { CMS_CONTENT_STATUS_LABELS, CMS_CONTENT_TYPE_LABELS } from '@zenith/shared';
 import type { CmsChannel, CmsModelField, CmsEditLock, CmsTextCheckResult, CmsContentType, CmsAlbumImage } from '@zenith/shared';
+import { cmsPreviewUrl } from './CmsSiteSelect';
 
 const AUTO_SAVE_INTERVAL_MS = 30_000;
 const EDIT_LOCK_HEARTBEAT_MS = 30_000;
@@ -247,6 +248,20 @@ export default function ContentEditPage() {
     [models, currentChannel, detail],
   );
   const modelFields = currentModel?.fields ?? [];
+
+  /** 模板试穿：以选中详情模板打开预览（?__template= 仅预览路径生效，不影响线上） */
+  function handleTemplateTryOn() {
+    if (!detail || detail.status !== 'published') {
+      Toast.info('仅已发布内容支持模板试穿；草稿请先用「预览」生成预览链接查看');
+      return;
+    }
+    const siteCode = allSites?.find((s) => s.id === siteId)?.code;
+    const channelPath = currentChannel?.path;
+    if (!siteCode || !channelPath) return;
+    const tpl = (formApi.current?.getValue('detailTemplate') as string | undefined) ?? '';
+    const query = tpl ? `?__template=${encodeURIComponent(tpl)}` : '';
+    window.open(`${cmsPreviewUrl(siteCode, `${channelPath}/${detail.slug || detail.id}.html`)}${query}`, '_blank');
+  }
 
   const initValues = detail
     ? {
@@ -784,9 +799,17 @@ export default function ContentEditPage() {
                       placeholder="填写后点击标题直接跳转"
                     />
                   ) : null}
-                  <Form.Select field="detailTemplate" label="详情模板" style={{ width: '100%' }} showClear
-                    placeholder="跟随栏目/站点默认"
-                    optionList={(themeTemplates?.detail ?? []).map((t) => ({ value: t.name, label: t.label }))} />
+                  <Form.Slot noLabel>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+                      <div style={{ flex: 1 }}>
+                        <Form.Select field="detailTemplate" label="详情模板" style={{ width: '100%' }} showClear
+                          placeholder="跟随栏目/站点默认"
+                          optionList={(themeTemplates?.detail ?? []).map((t) => ({ value: t.name, label: t.label }))} />
+                      </div>
+                      <Button style={{ marginBottom: 12 }} icon={<Eye size={14} />} title="以当前选中模板试穿预览本文（不影响线上）"
+                        onClick={handleTemplateTryOn}>试穿</Button>
+                    </div>
+                  </Form.Slot>
                 </Collapse.Panel>
                 <Collapse.Panel header="SEO（留空继承栏目/站点）" itemKey="seo">
                   <Form.Input field="seoTitle" label="SEO 标题" />

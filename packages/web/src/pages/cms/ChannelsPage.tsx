@@ -3,7 +3,7 @@ import { Button, Form, Tag, Toast, Modal, Row, Col, Select, Tabs, TabPane } from
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
-import { Plus, ExternalLink, Merge, ListPlus } from 'lucide-react';
+import { Plus, ExternalLink, Merge, ListPlus, Eye } from 'lucide-react';
 import { pinyin } from 'pinyin-pro';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -17,8 +17,10 @@ import {
   useCmsChannelUsers, useSetCmsChannelUsers,
 } from '@/hooks/queries/cms';
 import { useAllUsers } from '@/hooks/queries/users';
+import { request } from '@/utils/request';
+import { unwrap } from '@/lib/query';
 import { CMS_CHANNEL_TYPE_LABELS, CMS_DEFAULT_CHANNEL_CODE } from '@zenith/shared';
-import type { CmsChannel, CmsSiteTemplateDefaults } from '@zenith/shared';
+import type { CmsChannel, CmsContent, CmsSiteTemplateDefaults, PaginatedResponse } from '@zenith/shared';
 import { CmsSiteSelect, cmsPreviewUrl } from './CmsSiteSelect';
 
 interface ChannelTemplateConfig {
@@ -196,6 +198,30 @@ export default function ChannelsPage() {
   async function handleDelete(id: number) {
     await deleteMutation.mutateAsync(id);
     Toast.success('删除成功');
+  }
+
+  // ─── 模板试穿预览（?__template= 仅预览路径生效，不影响线上静态页）──────────
+  function previewListTemplate() {
+    if (!currentSite || !editingRecord) return;
+    const tpl = (formApi.current?.getValue('listTemplate') as string | undefined) ?? '';
+    const query = tpl ? `?__template=${encodeURIComponent(tpl)}` : '';
+    window.open(`${cmsPreviewUrl(currentSite.code, `${editingRecord.path}/`)}${query}`, '_blank');
+  }
+
+  async function previewDetailTemplate() {
+    if (!currentSite || !editingRecord) return;
+    const tpl = (formApi.current?.getValue('detailTemplate') as string | undefined) ?? '';
+    const data = await request
+      .get<PaginatedResponse<CmsContent>>(`/api/cms/contents?siteId=${currentSite.id}&channelId=${editingRecord.id}&status=published&page=1&pageSize=1`)
+      .then(unwrap)
+      .catch(() => null);
+    const content = data?.list?.[0];
+    if (!content) {
+      Toast.info('该栏目暂无已发布内容，无法预览详情模板');
+      return;
+    }
+    const query = tpl ? `?__template=${encodeURIComponent(tpl)}` : '';
+    window.open(`${cmsPreviewUrl(currentSite.code, `${editingRecord.path}/${content.slug || content.id}.html`)}${query}`, '_blank');
   }
 
   async function handleMergeOk() {
@@ -496,14 +522,30 @@ export default function ChannelsPage() {
                 <TabPane tab="全通道通用" itemKey="__common">
                   <Row gutter={16} style={{ paddingTop: 12 }}>
                     <Col span={12}>
-                      <Form.Select field="listTemplate" label="列表模板" style={{ width: '100%' }} showClear
-                        placeholder="跟随站点默认"
-                        optionList={(themeTemplates?.list ?? []).map((t) => ({ value: t.name, label: t.label }))} />
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                        <div style={{ flex: 1 }}>
+                          <Form.Select field="listTemplate" label="列表模板" style={{ width: '100%' }} showClear
+                            placeholder="跟随站点默认"
+                            optionList={(themeTemplates?.list ?? []).map((t) => ({ value: t.name, label: t.label }))} />
+                        </div>
+                        {editingRecord ? (
+                          <Button style={{ marginTop: 30 }} icon={<Eye size={14} />} title="以当前选中模板试穿预览栏目列表页（不影响线上）"
+                            onClick={previewListTemplate}>预览</Button>
+                        ) : null}
+                      </div>
                     </Col>
                     <Col span={12}>
-                      <Form.Select field="detailTemplate" label="详情模板" style={{ width: '100%' }} showClear
-                        placeholder="跟随站点默认"
-                        optionList={(themeTemplates?.detail ?? []).map((t) => ({ value: t.name, label: t.label }))} />
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                        <div style={{ flex: 1 }}>
+                          <Form.Select field="detailTemplate" label="详情模板" style={{ width: '100%' }} showClear
+                            placeholder="跟随站点默认"
+                            optionList={(themeTemplates?.detail ?? []).map((t) => ({ value: t.name, label: t.label }))} />
+                        </div>
+                        {editingRecord ? (
+                          <Button style={{ marginTop: 30 }} icon={<Eye size={14} />} title="以当前选中模板试穿预览最新一篇已发布内容（不影响线上）"
+                            onClick={() => void previewDetailTemplate()}>预览</Button>
+                        ) : null}
+                      </div>
                     </Col>
                   </Row>
                 </TabPane>
