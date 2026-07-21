@@ -19,6 +19,7 @@ import { getDataScopeCondition } from '../../lib/data-scope';
 import { currentUserOrNull } from '../../lib/context';
 import { isWorkflowAuditEnabled, startCmsContentWorkflow, assertNoActiveContentWorkflow } from './cms-workflow.service';
 import { triggerCmsContentWebhook } from './cms-webhook.service';
+import { assertContentTemplateBySite } from './cms-template-refs.service';
 import type { CreateCmsContentInput, UpdateCmsContentInput, CmsContentStatus } from '@zenith/shared';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
@@ -332,6 +333,7 @@ export function detectContentFlags(input: {
 export async function createCmsContent(data: CreateCmsContentInput) {
   await assertSiteAccess(data.siteId);
   await assertChannelAccess(data.channelId);
+  await assertContentTemplateBySite(data.siteId, data.detailTemplate);
   const channel = await ensureChannelForContent(data.siteId, data.channelId);
   const { tagIds = [], extraChannelIds = [], relatedIds = [], scheduledAt, expireAt, topExpireAt, ...rest } = data;
   const extend = (rest.extend ?? {}) as Record<string, unknown>;
@@ -384,6 +386,7 @@ export async function updateCmsContent(id: number, data: UpdateCmsContentInput) 
   const current = await ensureCmsContentExists(id);
   await assertSiteAccess(current.siteId);
   await assertChannelAccess(current.channelId);
+  await assertContentTemplateBySite(current.siteId, data.detailTemplate);
   let modelId = current.modelId;
   if (data.channelId && data.channelId !== current.channelId) {
     await assertChannelAccess(data.channelId);

@@ -6,12 +6,13 @@ import {
   ErrorResponse, jsonContent, PaginationQuery, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, IdParam, okBody,
 } from '../../lib/openapi-schemas';
-import { CmsSiteDTO, CmsThemeDTO, CmsThemeTemplatesDTO, CmsSiteUsersDTO, CmsSiteImportResultDTO } from '../../lib/openapi-dtos';
+import { CmsSiteDTO, CmsThemeDTO, CmsThemeTemplatesDTO, CmsTemplateHealthDTO, CmsSiteUsersDTO, CmsSiteImportResultDTO } from '../../lib/openapi-dtos';
 import { listThemes, listThemeTemplates } from '../../cms/themes/registry';
 import {
   listCmsSites, listAllCmsSites, getCmsSite, createCmsSite, updateCmsSite, deleteCmsSite,
-  ensureCmsSiteExists, mapCmsSite, getCmsSiteUsers, setCmsSiteUsers, enableSiteAnalytics,
+  ensureCmsSiteExists, mapCmsSite, getCmsSiteUsers, setCmsSiteUsers, enableSiteAnalytics, assertSiteAccess,
 } from '../../services/cms/cms-sites.service';
+import { getSiteTemplateHealth } from '../../services/cms/cms-template-refs.service';
 import { exportCmsSite, importCmsSite } from '../../services/cms/cms-site-transfer.service';
 import { formatFileTimestamp } from '../../lib/datetime';
 
@@ -68,8 +69,26 @@ const themeTemplatesRoute = defineOpenAPIRoute({
   handler: (c) => c.json(okBody(listThemeTemplates(c.req.valid('param').code)), 200),
 });
 
-const getOneRoute = defineOpenAPIRoute({
+const templateHealthRoute = defineOpenAPIRoute({
   route: createRoute({
+    method: 'get', path: '/{id}/template-health',
+    tags: ['CMS-站点管理'], summary: '站点模板健康检查（扫描站点/栏目/内容的失效模板引用；?theme= 预检切换目标主题）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:site:list' })] as const,
+    request: {
+      params: IdParam,
+      query: z.object({ theme: z.string().max(50).optional() }),
+    },
+    responses: { ...commonErrorResponses, ...ok(CmsTemplateHealthDTO, '健康检查结果') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    await assertSiteAccess(id);
+    return c.json(okBody(await getSiteTemplateHealth(id, c.req.valid('query').theme)), 200);
+  },
+});
+
+const getOneRoute = defineOpenAPIRoute({  route: createRoute({
     method: 'get', path: '/{id}',
     tags: ['CMS-站点管理'], summary: '站点详情',
     security: [{ BearerAuth: [] }],
@@ -209,7 +228,7 @@ const importSiteRoute = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRoute, allRoute, themesRoute, themeTemplatesRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_, getSiteUsersRoute, setSiteUsersRoute, enableAnalyticsRoute, importSiteRoute] as const);
+router.openapiRoutes([listRoute, allRoute, themesRoute, themeTemplatesRoute, templateHealthRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_, getSiteUsersRoute, setSiteUsersRoute, enableAnalyticsRoute, importSiteRoute] as const);
 
 // 站点导出：JSON 附件下载（结构+内容整站打包，不含运行数据）
 router.get('/:id/export', authMiddleware, guard({

@@ -1,4 +1,5 @@
 import type { ComponentType } from 'react';
+import logger from '../../lib/logger';
 import type { CmsTheme, CmsListContext, CmsDetailContext, CmsTemplateVariant } from './types';
 import { defaultTheme } from './default';
 import { docsTheme } from './docs';
@@ -12,21 +13,58 @@ const themes = new Map<string, CmsTheme>([
   [docsTheme.code, docsTheme],
 ]);
 
+// 回退告警去重（同一失效引用只记一次，避免高频渲染刷日志）
+const warnedFallbacks = new Set<string>();
+
+function warnOnce(key: string, message: string): void {
+  if (warnedFallbacks.has(key)) return;
+  warnedFallbacks.add(key);
+  logger.warn(message);
+}
+
 export function getTheme(code: string): CmsTheme {
-  return themes.get(code) ?? defaultTheme;
+  const theme = themes.get(code);
+  if (!theme) {
+    warnOnce(`theme:${code}`, `[CMS] 主题 "${code}" 未在注册表登记，已回退 "${defaultTheme.code}" 主题`);
+    return defaultTheme;
+  }
+  return theme;
 }
 
 export function listThemes(): { code: string; label: string }[] {
   return [...themes.values()].map((t) => ({ code: t.code, label: t.label }));
 }
 
+/** 主题是否已注册（未注册的主题 code 渲染时回退 default） */
+export function isThemeRegistered(code: string): boolean {
+  return themes.has(code);
+}
+
+/**
+ * 模板名是否在主题中存在（写入校验/健康检查共用）。
+ * 与运行时行为一致：未注册主题按 getTheme 的回退结果（default 主题）判定。
+ */
+export function isTemplateRegistered(themeCode: string, kind: 'list' | 'detail', name: string): boolean {
+  const theme = getTheme(themeCode);
+  const variants = kind === 'list' ? theme.extraListTemplates : theme.extraDetailTemplates;
+  return Boolean(variants?.[name]);
+}
+
 export function resolveListTemplate(theme: CmsTheme, name: string | null | undefined): ComponentType<CmsListContext> {
-  if (name && theme.extraListTemplates?.[name]) return theme.extraListTemplates[name].component;
+  if (name) {
+    const variant = theme.extraListTemplates?.[name];
+    if (variant) return variant.component;
+    warnOnce(`${theme.code}:list:${name}`, `[CMS] 列表模板 "${name}" 在主题 "${theme.code}" 中不存在，已回退主题默认模板`);
+  }
   return theme.templates.list;
 }
 
 export function resolveDetailTemplate(theme: CmsTheme, name: string | null | undefined): ComponentType<CmsDetailContext> {
-  if (name && theme.extraDetailTemplates?.[name]) return theme.extraDetailTemplates[name].component;
+  if (name) {
+    const variant = theme.extraDetailTemplates?.[name];
+    if (variant) return variant.component;
+    warnOnce(`${theme.code}:detail:${name}`, `[CMS] 详情模板 "${name}" 在主题 "${theme.code}" 中不存在，已回退主题默认模板`);
+  }
   return theme.templates.detail;
 }
 

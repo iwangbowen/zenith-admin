@@ -11,6 +11,7 @@ import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { currentUserOrNull } from '../../lib/context';
 import { isSuperAdmin } from '../../lib/permissions';
 import type { CreateCmsChannelInput, UpdateCmsChannelInput, CmsChannel } from '@zenith/shared';
+import { assertChannelTemplatesBySite } from './cms-template-refs.service';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 export function mapCmsChannel(row: CmsChannelRow, modelName?: string | null): CmsChannel {
@@ -128,6 +129,11 @@ async function recomputeChildPaths(executor: DbExecutor, channelId: number, newP
 // ─── 创建 ─────────────────────────────────────────────────────────────────────
 export async function createCmsChannel(data: CreateCmsChannelInput) {
   await ensureModelValid(data.modelId);
+  await assertChannelTemplatesBySite(data.siteId, {
+    listTemplate: data.listTemplate,
+    detailTemplate: data.detailTemplate,
+    settings: data.settings as Record<string, unknown> | undefined,
+  });
   try {
     const row = await db.transaction(async (tx) => {
       const path = await computePath(tx, data.siteId, data.parentId ?? 0, data.slug);
@@ -144,6 +150,11 @@ export async function createCmsChannel(data: CreateCmsChannelInput) {
 export async function updateCmsChannel(id: number, data: UpdateCmsChannelInput) {
   const current = await ensureCmsChannelExists(id);
   await ensureModelValid(data.modelId);
+  await assertChannelTemplatesBySite(current.siteId, {
+    listTemplate: data.listTemplate,
+    detailTemplate: data.detailTemplate,
+    settings: data.settings as Record<string, unknown> | undefined,
+  });
 
   const nextParentId = data.parentId ?? current.parentId;
   const nextSlug = data.slug ?? current.slug;

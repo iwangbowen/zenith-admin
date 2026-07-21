@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Form, Input, Select, Tag, Toast, Modal, Row, Col, SideSheet, Tabs, TabPane } from '@douyinfe/semi-ui';
+import { Banner, Button, Form, Input, Select, Tag, Toast, Modal, Row, Col, SideSheet, Tabs, TabPane } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, RotateCcw, Plus, Upload } from 'lucide-react';
@@ -15,12 +15,12 @@ import { useAllUsers } from '@/hooks/queries/users';
 import {
   useCmsSiteList, useCmsThemes, useSaveCmsSite, useDeleteCmsSite, cmsSiteKeys,
   useCmsSiteUsers, useSetCmsSiteUsers, useEnableSiteAnalytics, useImportCmsSite,
-  useCmsThemeTemplates, useAllCmsModels, useCmsPublishChannels,
+  useCmsThemeTemplates, useAllCmsModels, useCmsPublishChannels, useCmsSiteTemplateHealth,
 } from '@/hooks/queries/cms';
 import { request } from '@/utils/request';
 import { useWorkflowDefinitionList } from '@/hooks/queries/workflow-definitions';
 import { CMS_STATIC_MODE_LABELS, CMS_STATIC_MODES, CMS_DEFAULT_CHANNEL_CODE } from '@zenith/shared';
-import type { CmsSite, CmsSiteTemplateDefaults } from '@zenith/shared';
+import type { CmsSite, CmsSiteTemplateDefaults, CmsInvalidTemplateRef } from '@zenith/shared';
 import { cmsPreviewUrl } from './CmsSiteSelect';
 
 interface SearchParams {
@@ -98,6 +98,13 @@ function parseLangLinks(text: string): { language: string; siteCode: string }[] 
     .filter((x): x is { language: string; siteCode: string } => !!x);
 }
 
+/** 失效模板引用的人类可读描述（健康检查 Banner 用） */
+function describeInvalidRef(ref: CmsInvalidTemplateRef): string {
+  const prefix = ref.source === 'channel' && ref.channelName ? `栏目「${ref.channelName}」` : '';
+  const suffix = ref.source === 'content' && ref.count ? `（${ref.count} 条内容）` : '';
+  return `${prefix}${ref.location}「${ref.template}」${suffix}`;
+}
+
 export default function SitesPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
@@ -127,10 +134,42 @@ export default function SitesPage() {
   const { data: allModels } = useAllCmsModels();
   // 站点发布通道（模板页签动态渲染；新建站点回退虚拟 PC 默认通道）
   const { data: sitePublishChannels } = useCmsPublishChannels(editingRecord?.id, modalVisible);
+  // 模板健康检查：按当前选中主题扫描栏目/内容级失效引用（切主题即预检）
+  const { data: templateHealth } = useCmsSiteTemplateHealth(editingRecord?.id, selectedTheme, modalVisible);
   const saveMutation = useSaveCmsSite();
   const deleteMutation = useDeleteCmsSite();
   const importMutation = useImportCmsSite();
   const importFileRef = useRef<HTMLInputElement>(null);
+
+  // 主题模板清单加载后，自动清理本地编辑态中在该主题下失效的站点级模板引用（保存即生效，后端也会校验拦截）
+  useEffect(() => {
+    if (!modalVisible || !themeTemplates) return;
+    const validList = new Set(themeTemplates.list.map((t) => t.name));
+    const validDetail = new Set(themeTemplates.detail.map((t) => t.name));
+    const removed: string[] = [];
+    const cleaned: TemplateDefaultsState = {};
+    for (const [code, cfg] of Object.entries(templateDefaults)) {
+      const detailByModel = Object.fromEntries(
+        Object.entries(cfg.detailByModel).filter(([model, v]) => {
+          if (!v || validDetail.has(v)) return true;
+          removed.push(`[${code}]${model} 详情模板「${v}」`);
+          return false;
+        }),
+      );
+      if (cfg.list && !validList.has(cfg.list)) removed.push(`[${code}]列表模板「${cfg.list}」`);
+      if (cfg.detail && !validDetail.has(cfg.detail)) removed.push(`[${code}]详情模板「${cfg.detail}」`);
+      cleaned[code] = {
+        list: cfg.list && validList.has(cfg.list) ? cfg.list : null,
+        detail: cfg.detail && validDetail.has(cfg.detail) ? cfg.detail : null,
+        detailByModel,
+      };
+    }
+    if (removed.length > 0) {
+      setTemplateDefaults(cleaned);
+      Toast.warning({ content: `已清除 ${removed.length} 项在主题「${selectedTheme}」下失效的默认模板配置：${removed.join('、')}（保存后生效）`, duration: 6 });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在主题清单变化时清理，避免编辑操作反复触发
+  }, [themeTemplates, modalVisible]);
 
   // ─── 授权用户（站点级数据权限）────────────────────────────────────────────
   const [usersModalSite, setUsersModalSite] = useState<CmsSite | null>(null);
@@ -451,6 +490,9 @@ export default function SitesPage() {
   const listTplOptions = (themeTemplates?.list ?? []).map((t) => ({ value: t.name, label: t.label }));
   const detailTplOptions = (themeTemplates?.detail ?? []).map((t) => ({ value: t.name, label: t.label }));
 
+  // 栏目/内容级失效引用（站点级由本地自动清理负责；这两级存在其他表，仅提示不阻断保存）
+  const externalInvalidRefs = (templateHealth?.invalidRefs ?? []).filter((r) => r.source !== 'site');
+
   // 模板页签的通道来源：编辑时取站点通道（启用的）；新建站点尚无通道记录，回退虚拟默认通道
   const templateChannelTabs: { code: string; name: string }[] = (() => {
     const enabled = (sitePublishChannels ?? []).filter((ch) => ch.status === 'enabled');
@@ -739,6 +781,25 @@ export default function SitesPage() {
             </TabPane>
             <TabPane tab="模板与通道" itemKey="templates">
               <div style={{ paddingTop: 16 }}>
+                {externalInvalidRefs.length > 0 && (
+                  <Banner
+                    type="warning"
+                    closeIcon={null}
+                    style={{ marginBottom: 16 }}
+                    description={(
+                      <div>
+                        主题「{selectedTheme}」下存在 {externalInvalidRefs.length} 处失效模板引用，前台渲染时将回退主题默认模板：
+                        <ul style={{ margin: '4px 0 0', paddingLeft: 20 }}>
+                          {externalInvalidRefs.slice(0, 8).map((ref, i) => (
+                            <li key={i}>{describeInvalidRef(ref)}</li>
+                          ))}
+                          {externalInvalidRefs.length > 8 && <li>等共 {externalInvalidRefs.length} 处…</li>}
+                        </ul>
+                        请到栏目管理 / 内容编辑中调整对应模板配置。
+                      </div>
+                    )}
+                  />
+                )}
                 <div style={{ marginBottom: 16, color: 'var(--semi-color-text-2)', fontSize: 13 }}>
                   发布通道（PC/H5/小程序等输出端）在「CMS 内容管理 → 发布通道」页面按站点自由创建，
                   每个通道可独立绑定域名与 UA 跳转规则；此处按通道配置站点级默认模板。

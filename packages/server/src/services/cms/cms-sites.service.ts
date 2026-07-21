@@ -9,6 +9,7 @@ import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { currentUserOrNull } from '../../lib/context';
 import { isSuperAdmin } from '../../lib/permissions';
 import type { CreateCmsSiteInput, UpdateCmsSiteInput } from '@zenith/shared';
+import { assertSiteTemplateSettings } from './cms-template-refs.service';
 
 // ─── 站点配置内存缓存（前台按 Host 高频查找；写操作后失效）──────────────────────
 let siteCache: { byHost: Map<string, CmsSiteRow>; byId: Map<number, CmsSiteRow>; byCode: Map<string, CmsSiteRow>; defaultSite: CmsSiteRow | null; loadedAt: number } | null = null;
@@ -203,6 +204,7 @@ export async function listAllCmsSites() {
 
 // ─── 创建 ─────────────────────────────────────────────────────────────────────
 export async function createCmsSite(data: CreateCmsSiteInput) {
+  assertSiteTemplateSettings(data.theme ?? 'default', data.settings as Record<string, unknown> | undefined);
   try {
     const row = await db.transaction(async (tx) => {
       if (data.isDefault) {
@@ -225,6 +227,11 @@ export async function createCmsSite(data: CreateCmsSiteInput) {
 // ─── 更新 ─────────────────────────────────────────────────────────────────────
 export async function updateCmsSite(id: number, data: UpdateCmsSiteInput) {
   await assertSiteAccess(id);
+  // 模板引用校验：提交的默认模板配置须存在于生效主题（theme 未变更时取当前值）
+  if (data.settings !== undefined) {
+    const theme = data.theme ?? (await ensureCmsSiteExists(id)).theme;
+    assertSiteTemplateSettings(theme, data.settings as Record<string, unknown>);
+  }
   try {
     const row = await db.transaction(async (tx) => {
       if (data.isDefault) {

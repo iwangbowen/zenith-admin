@@ -10368,6 +10368,30 @@ export interface CmsThemeTemplateManifest {
   detail: CmsThemeTemplateOption[];
 }
 
+/** 失效模板引用（配置里写了、但目标主题中不存在的模板名） */
+export interface CmsInvalidTemplateRef {
+  /** 引用位置层级：site=站点默认模板 channel=栏目配置 content=内容覆盖 */
+  source: 'site' | 'channel' | 'content';
+  kind: 'list' | 'detail';
+  /** 失效的模板名 */
+  template: string;
+  /** 人类可读位置描述（如「站点默认模板[pc]列表」「列表模板」） */
+  location: string;
+  channelId?: number;
+  channelName?: string;
+  /** source=content 时聚合的内容条数 */
+  count?: number;
+}
+
+/** 站点模板健康检查结果（GET /cms/sites/{id}/template-health） */
+export interface CmsTemplateHealth {
+  /** 被检查的主题（默认站点当前主题，可用 ?theme= 预检目标主题） */
+  theme: string;
+  /** 主题本身是否已在代码注册表登记（未登记 = 渲染回退 default 主题） */
+  themeRegistered: boolean;
+  invalidRefs: CmsInvalidTemplateRef[];
+}
+
 export interface CmsModelField {
   id: number;
   modelId: number;

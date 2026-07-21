@@ -7,6 +7,7 @@ import type {
   CmsSearchWord, CmsHotKeyword, CmsCollectRule, CmsCollectItem, CmsPage,
   CmsEditLock, CmsPreviewLink, CmsContentVersionDiff, CmsDashboardStats,
   CmsThemeTemplateManifest, CmsPublishChannel, CmsContentOpLog, CmsErrorProneWord, CmsTextCheckResult,
+  CmsTemplateHealth,
   CmsContentType, CmsSurvey, CmsSurveyStats, CmsVisitStats, CmsSearchAnalytics,
   CmsResource, CmsResourceType, CmsResourceReference, UpdateCmsResourceInput, CropCmsResourceInput,
   CmsPoll, CmsPollStatus, CmsPollResults,
@@ -30,6 +31,7 @@ export const cmsSiteKeys = {
   allSites: ['cms-sites', 'all'] as const,
   themes: ['cms-sites', 'themes'] as const,
   themeTemplates: (code: string | undefined) => ['cms-sites', 'themes', code, 'templates'] as const,
+  templateHealth: (id: number | undefined, theme: string | undefined) => ['cms-sites', 'detail', id, 'template-health', theme ?? ''] as const,
 };
 
 export function useCmsSiteList(params: CmsSiteListParams) {
@@ -64,6 +66,17 @@ export function useCmsThemeTemplates(themeCode: string | undefined) {
     queryFn: () => request.get<CmsThemeTemplateManifest>(`/api/cms/sites/themes/${themeCode}/templates`).then(unwrap),
     enabled: !!themeCode,
     staleTime: LOOKUP_STALE_TIME,
+  });
+}
+
+/** 站点模板健康检查（失效模板引用扫描；theme 传目标主题可做切换前预检） */
+export function useCmsSiteTemplateHealth(siteId: number | undefined, theme: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: cmsSiteKeys.templateHealth(siteId, theme),
+    queryFn: () => request
+      .get<CmsTemplateHealth>(`/api/cms/sites/${siteId}/template-health${theme ? `?theme=${encodeURIComponent(theme)}` : ''}`)
+      .then(unwrap),
+    enabled: enabled && siteId !== undefined,
   });
 }
 

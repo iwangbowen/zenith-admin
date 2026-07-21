@@ -258,6 +258,27 @@ export const CmsThemeTemplatesDTO = z
   })
   .openapi('CmsThemeTemplates');
 
+export const CmsInvalidTemplateRefDTO = z
+  .object({
+    source: z.enum(['site', 'channel', 'content']).openapi({ description: '引用位置层级' }),
+    kind: z.enum(['list', 'detail']),
+    template: z.string().openapi({ example: 'list-card', description: '失效的模板名' }),
+    location: z.string().openapi({ example: '站点默认模板[pc]列表' }),
+    channelId: z.number().int().optional(),
+    channelName: z.string().optional(),
+    count: z.number().int().optional().openapi({ description: 'source=content 时聚合的内容条数' }),
+  })
+  .openapi('CmsInvalidTemplateRef');
+
+/** 站点模板健康检查：配置中引用但目标主题不存在的模板清单 */
+export const CmsTemplateHealthDTO = z
+  .object({
+    theme: z.string().openapi({ example: 'default' }),
+    themeRegistered: z.boolean().openapi({ description: '主题是否已在代码注册表登记（未登记 = 渲染回退 default）' }),
+    invalidRefs: z.array(CmsInvalidTemplateRefDTO),
+  })
+  .openapi('CmsTemplateHealth');
+
 // ─── P2 ───────────────────────────────────────────────────────────────────────
 export const CmsContentVersionDTO = z
   .object({

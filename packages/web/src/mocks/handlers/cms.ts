@@ -60,6 +60,13 @@ export const cmsHandlers = [
       { name: 'detail-plain', label: '简洁正文（公告/政策）' },
     ],
   })),
+  // 站点模板健康检查（Demo 种子数据与主题清单对齐，无失效引用）
+  http.get('/api/cms/sites/:id/template-health', ({ request, params }) => {
+    const site = mockCmsSites.find((s) => s.id === Number(params.id));
+    if (!site) return notFound('站点不存在');
+    const theme = new URL(request.url).searchParams.get('theme') || site.theme;
+    return okJson({ theme, themeRegistered: ['default', 'docs'].includes(theme), invalidRefs: [] });
+  }),
   http.get('/api/cms/sites', ({ request }) => {
     const { url, page, pageSize, keyword } = pageParams(request);
     const status = url.searchParams.get('status') || '';
