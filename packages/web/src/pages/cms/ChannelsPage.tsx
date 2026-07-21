@@ -530,27 +530,27 @@ export default function ChannelsPage() {
                 <TabPane tab="全通道通用" itemKey="__common">
                   <Row gutter={16} style={{ paddingTop: 12 }}>
                     <Col span={12}>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                        <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
                           <Form.Select field="listTemplate" label="列表模板" style={{ width: '100%' }} showClear
                             placeholder="跟随站点默认"
                             optionList={(themeTemplates?.list ?? []).map((t) => ({ value: t.name, label: t.label }))} />
                         </div>
                         {editingRecord ? (
-                          <Button style={{ marginTop: 30 }} icon={<Eye size={14} />} title="以当前选中模板试穿预览栏目列表页（不影响线上）"
+                          <Button icon={<Eye size={14} />} title="以当前选中模板试穿预览栏目列表页（不影响线上）"
                             onClick={previewListTemplate}>预览</Button>
                         ) : null}
                       </div>
                     </Col>
                     <Col span={12}>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                        <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
                           <Form.Select field="detailTemplate" label="详情模板" style={{ width: '100%' }} showClear
                             placeholder="跟随站点默认"
                             optionList={(themeTemplates?.detail ?? []).map((t) => ({ value: t.name, label: t.label }))} />
                         </div>
                         {editingRecord ? (
-                          <Button style={{ marginTop: 30 }} icon={<Eye size={14} />} title="以当前选中模板试穿预览最新一篇已发布内容（不影响线上）"
+                          <Button icon={<Eye size={14} />} title="以当前选中模板试穿预览最新一篇已发布内容（不影响线上）"
                             onClick={() => void previewDetailTemplate()}>预览</Button>
                         ) : null}
                       </div>
