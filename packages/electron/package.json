@@ -1,6 +1,6 @@
 {
   "name": "@zenith/electron",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "private": true,
   "description": "Zenith Admin Electron Client",
   "author": "Zenith Admin",

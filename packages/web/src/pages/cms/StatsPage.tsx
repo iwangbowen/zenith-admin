@@ -34,8 +34,8 @@ function TrendChart({ trend }: { trend: CmsVisitStats['trend'] }) {
         {trend.map((t) => (
           <div key={t.date} title={`${t.date}\nPV ${t.pv} / UV ${t.uv}`}
             style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%', position: 'relative' }}>
-            <div style={{ height: `${Math.max(t.pv > 0 ? 2 : 0, Math.round((t.pv / max) * 100))}%`, background: 'var(--semi-color-primary-light-active)', borderRadius: 2, position: 'relative' }}>
-              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: `${t.pv > 0 ? Math.round((t.uv / t.pv) * 100) : 0}%`, background: 'var(--semi-color-primary)', borderRadius: 2 }} />
+            <div style={{ height: `${Math.max(t.pv > 0 ? 2 : 0, Math.round((t.pv / max) * 100))}%`, background: 'var(--semi-color-primary-light-active)', borderRadius: 'var(--semi-border-radius-small)', position: 'relative' }}>
+                          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: `${t.pv > 0 ? Math.round((t.uv / t.pv) * 100) : 0}%`, background: 'var(--semi-color-primary)', borderRadius: 'var(--semi-border-radius-small)' }} />
             </div>
           </div>
         ))}
@@ -43,8 +43,8 @@ function TrendChart({ trend }: { trend: CmsVisitStats['trend'] }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--semi-color-text-3)', marginTop: 6 }}>
         <span>{trend[0]?.date}</span>
         <span style={{ display: 'inline-flex', gap: 12 }}>
-          <span><span style={{ display: 'inline-block', width: 10, height: 10, background: 'var(--semi-color-primary-light-active)', borderRadius: 2, marginRight: 4 }} />PV</span>
-          <span><span style={{ display: 'inline-block', width: 10, height: 10, background: 'var(--semi-color-primary)', borderRadius: 2, marginRight: 4 }} />UV</span>
+          <span><span style={{ display: 'inline-block', width: 10, height: 10, background: 'var(--semi-color-primary-light-active)', borderRadius: 'var(--semi-border-radius-small)', marginRight: 4 }} />PV</span>
+          <span><span style={{ display: 'inline-block', width: 10, height: 10, background: 'var(--semi-color-primary)', borderRadius: 'var(--semi-border-radius-small)', marginRight: 4 }} />UV</span>
         </span>
         <span>{trend[trend.length - 1]?.date}</span>
       </div>
@@ -152,7 +152,7 @@ function SearchTab({ siteId, days }: { siteId: number | undefined; days: number 
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 120 }}>
             {data.trend.map((t) => (
               <div key={t.date} title={`${t.date}：${t.count} 次`}
-                style={{ flex: 1, minWidth: 0, height: `${Math.max(t.count > 0 ? 3 : 1, Math.round((t.count / maxTrend) * 100))}%`, background: t.count > 0 ? 'var(--semi-color-primary)' : 'var(--semi-color-fill-1)', borderRadius: 2 }} />
+                style={{ flex: 1, minWidth: 0, height: `${Math.max(t.count > 0 ? 3 : 1, Math.round((t.count / maxTrend) * 100))}%`, background: t.count > 0 ? 'var(--semi-color-primary)' : 'var(--semi-color-fill-1)', borderRadius: 'var(--semi-border-radius-small)' }} />
             ))}
           </div>
         ) : (

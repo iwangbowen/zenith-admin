@@ -284,7 +284,7 @@ export default function SurveysPage() {
                     q.texts.length > 0 ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflow: 'auto' }}>
                         {q.texts.map((t, ti) => (
-                          <div key={`${q.id}-${ti}`} style={{ fontSize: 13, padding: '6px 10px', background: 'var(--semi-color-fill-0)', borderRadius: 6 }}>{t}</div>
+                          <div key={`${q.id}-${ti}`} style={{ fontSize: 13, padding: '6px 10px', background: 'var(--semi-color-fill-0)', borderRadius: 'var(--semi-border-radius-medium)' }}>{t}</div>
                         ))}
                       </div>
                     ) : <Typography.Text type="tertiary" size="small">暂无回答</Typography.Text>

@@ -497,7 +497,7 @@ export default function ContentEditPage() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {albumImages.map((img, i) => (
                       <div key={`${img.url}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', padding: 8 }}>
-                        <img src={img.thumb ?? img.url} alt="" style={{ width: 72, height: 54, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }} />
+                        <img src={img.thumb ?? img.url} alt="" style={{ width: 72, height: 54, objectFit: 'cover', borderRadius: 'var(--semi-border-radius-small)', flexShrink: 0 }} />
                         <Input
                           placeholder="图片说明（可选）"
                           value={img.caption ?? ''}

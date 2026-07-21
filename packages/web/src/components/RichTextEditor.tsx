@@ -102,7 +102,7 @@ export default function RichTextEditor({
         <div style={{ padding: '4px 8px', borderBottom: '1px solid var(--semi-color-border)', backgroundColor: 'var(--semi-color-fill-0)', display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
             type="button"
-            style={{ border: '1px solid var(--semi-color-border)', borderRadius: 4, padding: '2px 10px', background: 'var(--semi-color-bg-0)', cursor: 'pointer', fontSize: 12, color: 'var(--semi-color-text-1)' }}
+            style={{ border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-small)', padding: '2px 10px', background: 'var(--semi-color-bg-0)', cursor: 'pointer', fontSize: 12, color: 'var(--semi-color-text-1)' }}
             onClick={() => editor?.dangerouslyInsertHtml('<p>[分页]</p>')}
           >
             插入分页符
