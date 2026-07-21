@@ -1305,6 +1305,16 @@ export const CMS_RESOURCE_TYPE_LABELS: Record<(typeof CMS_RESOURCE_TYPES)[number
   other: '其他',
 };
 
+/** CMS 投票状态（P3 轻量投票） */
+export const CMS_POLL_STATUS_LABELS: Record<'draft' | 'published' | 'closed', string> = {
+  draft: '草稿',
+  published: '投票中',
+  closed: '已结束',
+};
+
+/** 正文投票嵌入标记：[投票:code]（渲染时替换为投票组件占位） */
+export const CMS_POLL_MARKER_PREFIX = '[投票:';
+
 /** CMS 会员互动积分规则（earn 记账 bizType='cms_interaction'） */
 export const CMS_INTERACTION_POINTS = {
   /** 阅读内容（每内容仅一次，30 天窗口） */

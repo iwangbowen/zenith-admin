@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { submitCmsCommentSchema } from '@zenith/shared';
+import { submitCmsCommentSchema, voteCmsPollSchema } from '@zenith/shared';
 import { resolveSiteByCode } from '../../services/cms/cms-sites.service';
 import { submitCmsComment, likeCmsComment, throttleFrontSubmit } from '../../services/cms/cms-comments.service';
 import { getCmsFormByCode, submitCmsForm } from '../../services/cms/cms-forms.service';
@@ -8,6 +8,13 @@ import { getPublishedSurveyByCode, submitCmsSurvey } from '../../services/cms/cm
 import { increaseViewCount } from '../../services/cms/cms-contents.service';
 import { recordAdClick } from '../../services/cms/cms-ads.service';
 import { recordAdViews, recordAdClickStat } from '../../services/cms/cms-stats.service';
+import { generateCmsCaptcha, verifyCmsCaptcha, isCaptchaEnabled } from '../../services/cms/cms-captcha.service';
+import {
+  getPublishedPollByCode, getCmsPollResults, voteCmsPoll, hasVotedCmsPoll, isPollOpen, mapCmsPoll,
+} from '../../services/cms/cms-polls.service';
+import { db } from '../../db';
+import { cmsSites, cmsContents } from '../../db/schema';
+import { eq } from 'drizzle-orm';
 import { config } from '../../config';
 import redis from '../../lib/redis';
 
@@ -39,8 +46,26 @@ function clientIp(headers: Headers): string {
   return forwarded?.split(',')[0].trim() || headers.get('x-real-ip') || 'unknown';
 }
 
+/** 站点开启验证码时校验（一次性）；未开启直接放行 */
+async function assertCaptchaIfEnabled(site: { settings: unknown } | null, body: Record<string, unknown>): Promise<string | null> {
+  if (!site || !isCaptchaEnabled(site as Parameters<typeof isCaptchaEnabled>[0])) return null;
+  const passed = await verifyCmsCaptcha(
+    typeof body.captchaId === 'string' ? body.captchaId : undefined,
+    typeof body.captchaAnswer === 'string' ? body.captchaAnswer : undefined,
+  );
+  return passed ? null : '验证码错误或已过期，请重试';
+}
+
 export function createCmsFrontPublicRoutes(): Hono {
   const app = new Hono();
+
+  // ─── 图形验证码（站点开启 captchaEnabled 时评论/表单提交必须携带）──────────────
+  app.get('/captcha', async (c) => {
+    const ip = clientIp(c.req.raw.headers);
+    await throttleFrontSubmit(ip).catch(() => undefined);
+    const challenge = await generateCmsCaptcha();
+    return c.json({ code: 0, message: 'ok', data: challenge });
+  });
 
   // ─── 评论提交 ───────────────────────────────────────────────────────────────
   app.post('/comments', async (c) => {
@@ -58,6 +83,12 @@ export function createCmsFrontPublicRoutes(): Hono {
       return c.newResponse(messagePage('提交失败', msg, backUrl), 400, { 'Content-Type': 'text/html; charset=utf-8' });
     }
     try {
+      const [row] = await db.select({ siteId: cmsContents.siteId }).from(cmsContents).where(eq(cmsContents.id, parsed.data.contentId)).limit(1);
+      const site = row ? (await db.select().from(cmsSites).where(eq(cmsSites.id, row.siteId)).limit(1))[0] ?? null : null;
+      const captchaError = await assertCaptchaIfEnabled(site, body as Record<string, unknown>);
+      if (captchaError) {
+        return c.newResponse(messagePage('提交失败', captchaError, backUrl), 400, { 'Content-Type': 'text/html; charset=utf-8' });
+      }
       await submitCmsComment({
         contentId: parsed.data.contentId,
         nickname: parsed.data.nickname,
@@ -86,6 +117,8 @@ export function createCmsFrontPublicRoutes(): Hono {
     }
     const site = await resolveSiteByCode(c.req.param('siteCode'));
     if (!site) return respond('提交失败', '站点不存在', 404);
+    const captchaError = await assertCaptchaIfEnabled(site, body as Record<string, unknown>);
+    if (captchaError) return respond('提交失败', captchaError, 400);
     const form = await getCmsFormByCode(site.id, c.req.param('formCode'));
     if (!form) return respond('提交失败', '表单不存在或已停用', 404);
     try {
@@ -148,6 +181,51 @@ export function createCmsFrontPublicRoutes(): Hono {
       await likeCmsComment(commentId, ip).catch(() => undefined);
     }
     return c.redirect(backUrl, 302);
+  });
+
+  // ─── 投票：查询（含实时计票与我的投票状态）────────────────────────────────────
+  app.get('/polls/:siteCode/:code', async (c) => {
+    const site = await resolveSiteByCode(c.req.param('siteCode'));
+    if (!site) return c.json({ code: 404, message: '站点不存在', data: null }, 404);
+    const poll = await getPublishedPollByCode(site.id, c.req.param('code'));
+    if (!poll || poll.status === 'draft') return c.json({ code: 404, message: '投票不存在', data: null }, 404);
+    const ip = clientIp(c.req.raw.headers);
+    const [results, voted] = await Promise.all([
+      getCmsPollResults(poll),
+      hasVotedCmsPoll(poll.id, { memberId: null, ip }),
+    ]);
+    return c.json({
+      code: 0, message: 'ok',
+      data: { poll: mapCmsPoll(poll), results, voted, open: isPollOpen(poll) },
+    });
+  });
+
+  // ─── 投票：游客提交（同 IP 一票；JSON POST）───────────────────────────────────
+  app.post('/polls/:siteCode/:code/vote', async (c) => {
+    const site = await resolveSiteByCode(c.req.param('siteCode'));
+    if (!site) return c.json({ code: 404, message: '站点不存在', data: null }, 404);
+    const poll = await getPublishedPollByCode(site.id, c.req.param('code'));
+    if (!poll || poll.status === 'draft') return c.json({ code: 404, message: '投票不存在', data: null }, 404);
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ code: 400, message: '提交参数有误', data: null }, 400);
+    }
+    const parsed = voteCmsPollSchema.safeParse(raw);
+    if (!parsed.success) {
+      return c.json({ code: 400, message: parsed.error.issues[0]?.message ?? '提交参数有误', data: null }, 400);
+    }
+    const ip = clientIp(c.req.raw.headers);
+    try {
+      await throttleFrontSubmit(ip);
+      const results = await voteCmsPoll(poll, parsed.data.optionIds, { memberId: null, ip });
+      return c.json({ code: 0, message: '投票成功', data: results });
+    } catch (err) {
+      const msg = err instanceof HTTPException ? err.message : '投票失败，请稍后再试';
+      const status = err instanceof HTTPException ? err.status : 500;
+      return c.json({ code: status, message: msg, data: null }, status);
+    }
   });
 
   // ─── 广告点击中转（计数 +1 后 302 跳目标地址；静态页零 JS 可用）───────────────

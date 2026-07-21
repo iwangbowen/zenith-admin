@@ -184,6 +184,8 @@ export interface CmsCommentFormConfig {
   returnUrl: string;
   /** 会员评论提交 API（携带 Bearer token 的 JSON POST） */
   memberSubmitApi: string;
+  /** 站点开启图形验证码（游客提交时前端加载并携带答案） */
+  captchaEnabled: boolean;
 }
 
 export interface CmsDetailContext extends CmsBaseContext {
@@ -204,6 +206,8 @@ export interface CmsFrontFormConfig {
   returnUrl: string;
   successMessage: string | null;
   fields: { name: string; label: string; fieldType: string; required: boolean; options?: { label: string; value: string }[] | null }[];
+  /** 站点开启图形验证码（提交时必须携带答案） */
+  captchaEnabled: boolean;
 }
 
 export interface CmsPageContext extends CmsBaseContext {

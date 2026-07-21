@@ -108,9 +108,30 @@ function AdSlot({ ctx, code }: { ctx: CmsBaseContext; code: string }) {
 
 /**
  * 评论区会员增强：检测 zenith_member_token —— 有 token 时隐藏昵称输入并改走会员 API（JSON POST），
- * 401 自动回退游客表单；游客保持原生 form POST 零依赖。
+ * 401 自动回退游客表单；游客保持原生 form POST 零依赖。会员通道无需验证码，一并隐藏。
  */
-const COMMENT_MEMBER_SCRIPT = `(function(){var f=document.getElementById('comment-form');if(!f)return;var api=f.getAttribute('data-member-api');var t=null;try{t=localStorage.getItem('zenith_member_token')}catch(e){}if(!t||!api)return;var nickRow=document.getElementById('comment-nick-row');if(nickRow){nickRow.style.display='none';var inp=nickRow.querySelector('input');if(inp){inp.required=false;inp.value='会员'}}var hint=document.createElement('p');hint.style.cssText='font-size:12px;color:#59636e;margin:0';hint.textContent='已以会员身份登录，评论将使用会员昵称';f.insertBefore(hint,f.firstChild);f.addEventListener('submit',function(e){e.preventDefault();var content=f.querySelector('textarea[name="content"]').value.trim();if(!content)return;var parentId=Number(document.getElementById('comment-parent-id').value)||0;fetch(api,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+t},body:JSON.stringify({content:content,parentId:parentId})}).then(function(r){return r.json()}).then(function(r){if(r&&r.code===0){f.innerHTML='<p class="survey-done">'+(r.message||'评论已提交，审核通过后显示')+'</p>'}else if(r&&r.code===401){t=null;f.removeAttribute('data-member-api');if(nickRow){nickRow.style.display='';var i2=nickRow.querySelector('input');if(i2){i2.required=true;i2.value=''}}hint.remove();alert('会员登录已过期，请以游客身份提交或重新登录')}else{alert((r&&r.message)||'提交失败，请稍后再试')}}).catch(function(){alert('提交失败，请稍后再试')})});})();`;
+const COMMENT_MEMBER_SCRIPT = `(function(){var f=document.getElementById('comment-form');if(!f)return;var api=f.getAttribute('data-member-api');var t=null;try{t=localStorage.getItem('zenith_member_token')}catch(e){}if(!t||!api)return;var nickRow=document.getElementById('comment-nick-row');if(nickRow){nickRow.style.display='none';var inp=nickRow.querySelector('input');if(inp){inp.required=false;inp.value='会员'}}var capRow=f.querySelector('.cms-captcha-box');if(capRow){capRow.style.display='none';var ci=capRow.querySelector('input[name="captchaAnswer"]');if(ci)ci.required=false}var hint=document.createElement('p');hint.style.cssText='font-size:12px;color:#59636e;margin:0';hint.textContent='已以会员身份登录，评论将使用会员昵称';f.insertBefore(hint,f.firstChild);f.addEventListener('submit',function(e){e.preventDefault();var content=f.querySelector('textarea[name="content"]').value.trim();if(!content)return;var parentId=Number(document.getElementById('comment-parent-id').value)||0;fetch(api,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+t},body:JSON.stringify({content:content,parentId:parentId})}).then(function(r){return r.json()}).then(function(r){if(r&&r.code===0){f.innerHTML='<p class="survey-done">'+(r.message||'评论已提交，审核通过后显示')+'</p>'}else if(r&&r.code===401){t=null;f.removeAttribute('data-member-api');if(nickRow){nickRow.style.display='';var i2=nickRow.querySelector('input');if(i2){i2.required=true;i2.value=''}}if(capRow){capRow.style.display=''}hint.remove();alert('会员登录已过期，请以游客身份提交或重新登录')}else{alert((r&&r.message)||'提交失败，请稍后再试')}}).catch(function(){alert('提交失败，请稍后再试')})});})();`;
+
+/** 图形验证码加载：为页面上所有 .cms-captcha-box 拉取算术题 SVG，点击图片刷新 */
+const CAPTCHA_SCRIPT = `(function(){function load(box){fetch('/api/public/cms/captcha').then(function(r){return r.json()}).then(function(r){if(!r||r.code!==0)return;box.querySelector('input[name="captchaId"]').value=r.data.id;var img=box.querySelector('.cms-captcha-img');img.innerHTML=r.data.svg;img.title='看不清？点击刷新'}).catch(function(){})}document.querySelectorAll('.cms-captcha-box').forEach(function(box){load(box);var img=box.querySelector('.cms-captcha-img');if(img)img.addEventListener('click',function(){load(box)})});})();`;
+
+/** 验证码行（站点开启时渲染；SVG 由脚本注入，点击刷新） */
+function CaptchaBox({ enabled }: { enabled: boolean }) {
+  if (!enabled) return null;
+  return (
+    <div className="cms-captcha-box" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <input type="hidden" name="captchaId" value="" />
+      <label style={{ flex: 1 }}>验证码 <span className="req">*</span><input type="text" name="captchaAnswer" required autoComplete="off" placeholder="计算结果" /></label>
+      <span className="cms-captcha-img" style={{ cursor: 'pointer', lineHeight: 0 }} />
+    </div>
+  );
+}
+
+/**
+ * 投票组件加载：为 .cms-poll 占位拉取投票数据渲染选项表单；已投/结束显示结果条。
+ * 登录会员走会员 API（一人一票），游客走公开 API（IP 去重）。
+ */
+const POLL_SCRIPT = `(function(){var boxes=document.querySelectorAll('.cms-poll');if(!boxes.length)return;var t=null;try{t=localStorage.getItem('zenith_member_token')}catch(e){}function esc(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML}function bars(box,data){var total=data.totalVotes||0;var html='<h3 class="poll-title">'+esc(data.title)+'</h3>';data.options.forEach(function(o){var pct=total>0?Math.round(o.votes*100/total):0;html+='<div class="poll-bar-row"><span class="poll-bar-label">'+esc(o.label)+'</span><span class="poll-bar-track"><span class="poll-bar-fill" style="width:'+pct+'%"></span></span><span class="poll-bar-num">'+o.votes+' 票 · '+pct+'%</span></div>'});html+='<p class="poll-total">共 '+total+' 人参与</p>';box.innerHTML=html}function form(box,payload){var p=payload.poll;var multi=p.maxChoices>1;var html='<h3 class="poll-title">'+esc(p.title)+'</h3><form class="poll-form">';p.options.forEach(function(o){html+='<label class="poll-option"><input type="'+(multi?'checkbox':'radio')+'" name="poll-opt" value="'+o.id+'"> '+esc(o.label)+'</label>'});html+='<button type="submit">投票</button>'+(multi?'<p class="poll-hint">最多可选 '+p.maxChoices+' 项</p>':'')+'</form>';box.innerHTML=html;box.querySelector('form').addEventListener('submit',function(e){e.preventDefault();var ids=[].slice.call(box.querySelectorAll('input:checked')).map(function(i){return Number(i.value)});if(!ids.length){alert('请选择投票选项');return}if(ids.length>p.maxChoices){alert('最多可选 '+p.maxChoices+' 项');return}var url=t?'/api/member/cms/polls/'+p.id+'/vote':'/api/public/cms/polls/'+box.dataset.site+'/'+box.dataset.code+'/vote';var h={'Content-Type':'application/json'};if(t)h.Authorization='Bearer '+t;fetch(url,{method:'POST',headers:h,body:JSON.stringify({optionIds:ids})}).then(function(r){return r.json()}).then(function(r){if(r&&r.code===0){bars(box,r.data)}else{alert((r&&r.message)||'投票失败，请稍后再试')}}).catch(function(){alert('投票失败，请稍后再试')})})}boxes.forEach(function(box){fetch('/api/public/cms/polls/'+box.dataset.site+'/'+box.dataset.code).then(function(r){return r.json()}).then(function(r){if(!r||r.code!==0){box.style.display='none';return}if(r.data.voted||!r.data.open){bars(box,r.data.results)}else{form(box,r.data)}}).catch(function(){box.style.display='none'})})})();`;
 
 /** 评论区：树形两级（顶级+回复）+ 点赞/回复 + 原生 form POST 提交（含蜜罐字段）；登录会员自动切会员通道 */
 function CommentsBlock({ comments, form }: { comments: CmsCommentItem[]; form: CmsCommentFormConfig }) {
@@ -151,11 +172,12 @@ function CommentsBlock({ comments, form }: { comments: CmsCommentItem[]; form: C
         </div>
         <label id="comment-nick-row">昵称 <span className="req">*</span><input type="text" name="nickname" required maxLength={50} /></label>
         <label>评论内容 <span className="req">*</span><textarea name="content" required maxLength={1000} /></label>
+        <CaptchaBox enabled={form.captchaEnabled} />
         <button type="submit">提交评论（审核后显示）</button>
       </form>
       <script
         dangerouslySetInnerHTML={{
-          __html: 'document.querySelectorAll(".comment-reply-btn").forEach(function(b){b.addEventListener("click",function(){document.getElementById("comment-parent-id").value=b.dataset.commentId;document.getElementById("reply-target").textContent=b.dataset.nickname;document.getElementById("reply-hint").style.display="block";document.getElementById("comment-form").scrollIntoView({behavior:"smooth"});});});var c=document.getElementById("cancel-reply");if(c){c.addEventListener("click",function(){document.getElementById("comment-parent-id").value="0";document.getElementById("reply-hint").style.display="none";});}' + COMMENT_MEMBER_SCRIPT,
+          __html: 'document.querySelectorAll(".comment-reply-btn").forEach(function(b){b.addEventListener("click",function(){document.getElementById("comment-parent-id").value=b.dataset.commentId;document.getElementById("reply-target").textContent=b.dataset.nickname;document.getElementById("reply-hint").style.display="block";document.getElementById("comment-form").scrollIntoView({behavior:"smooth"});});});var c=document.getElementById("cancel-reply");if(c){c.addEventListener("click",function(){document.getElementById("comment-parent-id").value="0";document.getElementById("reply-hint").style.display="none";});}' + COMMENT_MEMBER_SCRIPT + (form.captchaEnabled ? CAPTCHA_SCRIPT : ''),
         }}
       />
     </section>
@@ -192,7 +214,9 @@ function FrontForm({ form }: { form: CmsFrontFormConfig }) {
           )}
         </label>
       ))}
+      <CaptchaBox enabled={form.captchaEnabled} />
       <button type="submit">提交</button>
+      {form.captchaEnabled ? <script dangerouslySetInnerHTML={{ __html: CAPTCHA_SCRIPT }} /> : null}
     </form>
   );
 }
@@ -355,6 +379,7 @@ export function DetailTemplate(ctx: CmsDetailContext) {
         </section>
       ) : null}
       <CommentsBlock comments={ctx.comments} form={ctx.commentForm} />
+      <script dangerouslySetInnerHTML={{ __html: POLL_SCRIPT }} />
     </Layout>
   );
 }

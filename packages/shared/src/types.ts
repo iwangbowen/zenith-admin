@@ -10796,6 +10796,39 @@ export interface CmsResourceReference {
   title: string;
 }
 
+// ─── CMS 轻量投票（P3）────────────────────────────────────────────────────────
+export type CmsPollStatus = 'draft' | 'published' | 'closed';
+
+export interface CmsPollOption {
+  id: number;
+  label: string;
+}
+
+export interface CmsPoll {
+  id: number;
+  siteId: number;
+  code: string;
+  title: string;
+  options: CmsPollOption[];
+  maxChoices: number;
+  allowAnonymous: boolean;
+  startAt: string | null;
+  endAt: string | null;
+  status: CmsPollStatus;
+  totalVotes: number;
+  remark: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 投票结果（选项计票） */
+export interface CmsPollResults {
+  pollId: number;
+  title: string;
+  totalVotes: number;
+  options: (CmsPollOption & { votes: number })[];
+}
+
 export interface CmsAdSlot {
   id: number;
   siteId: number;

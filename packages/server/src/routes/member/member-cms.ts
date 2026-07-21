@@ -4,13 +4,13 @@
  */
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
-import { submitCmsSurveySchema, memberSubmitCmsCommentSchema } from '@zenith/shared';
+import { submitCmsSurveySchema, memberSubmitCmsCommentSchema, voteCmsPollSchema } from '@zenith/shared';
 import { memberAuthMiddleware } from '../../middleware/member-auth';
 import { idempotencyGuard } from '../../middleware/idempotency';
 import {
   jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, okBody, PaginationQuery, IdParam,
 } from '../../lib/openapi-schemas';
-import { CmsContributionDTO, CmsContribChannelsDTO, CmsInteractionStateDTO, CmsMemberContentItemDTO, CmsMemberCommentDTO } from '../../lib/openapi-dtos';
+import { CmsContributionDTO, CmsContribChannelsDTO, CmsInteractionStateDTO, CmsMemberContentItemDTO, CmsMemberCommentDTO, CmsPollResultsDTO } from '../../lib/openapi-dtos';
 import {
   listContributableChannels, listMyContributions, getMyContribution,
   createContribution, updateMyContribution, deleteMyContribution,
@@ -21,6 +21,7 @@ import {
   submitMemberComment, listMyComments, deleteMyComment,
 } from '../../services/cms/cms-member-interaction.service';
 import { getPublishedSurveyById, submitCmsSurvey } from '../../services/cms/cms-surveys.service';
+import { getCmsPollByIdForVote, voteCmsPoll } from '../../services/cms/cms-polls.service';
 import { triggerContentStaticRefresh } from '../../services/cms/cms-static.service';
 import { currentMemberId } from '../../lib/member-context';
 
@@ -290,11 +291,29 @@ const deleteMyCommentRoute = defineOpenAPIRoute({
   },
 });
 
+// ─── P3 轻量投票：会员投票（一人一票）───────────────────────────────────────────
+const pollVoteRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/polls/{id}/vote', tags: ['MemberCms'], summary: '会员投票（一人一票）',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    request: { params: IdParam, body: { content: jsonContent(voteCmsPollSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(CmsPollResultsDTO, '投票成功') },
+  }),
+  handler: async (c) => {
+    const poll = await getCmsPollByIdForVote(c.req.valid('param').id);
+    const forwarded = c.req.header('x-forwarded-for');
+    const ip = forwarded?.split(',')[0].trim() || c.req.header('x-real-ip') || 'unknown';
+    const results = await voteCmsPoll(poll, c.req.valid('json').optionIds, { memberId: currentMemberId(), ip });
+    return c.json(okBody(results, '投票成功'), 200);
+  },
+});
+
 router.openapiRoutes([
   channelsRoute, listRoute, detailRoute, createRouteDef, updateRouteDef, deleteRouteDef,
   interactionStateRoute, likeRoute, unlikeRoute, favoriteRoute, unfavoriteRoute, viewRoute,
   favoritesListRoute, historyListRoute, clearHistoryRoute, surveySubmitRoute,
-  commentSubmitRoute, myCommentsRoute, deleteMyCommentRoute,
+  commentSubmitRoute, myCommentsRoute, deleteMyCommentRoute, pollVoteRoute,
 ] as const);
 
 export default router;

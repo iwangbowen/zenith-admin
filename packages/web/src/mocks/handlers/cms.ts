@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import type { CmsChannel, CmsContent, CmsContentStatus, CmsModelField, CmsPublishChannel, CmsSurvey } from '@zenith/shared';
+import type { CmsChannel, CmsContent, CmsContentStatus, CmsModelField, CmsPublishChannel, CmsSurvey, CmsPoll } from '@zenith/shared';
 import {
   mockCmsSites, mockCmsModels, mockCmsChannels, mockCmsContents, mockCmsTags,
   mockCmsFragments, mockCmsFriendLinks, buildMockChannelTree,
@@ -13,6 +13,7 @@ import {
   mockCmsPublishChannels, getNextCmsPublishChannelId,
   mockCmsSurveys, getNextCmsSurveyId,
   mockCmsResources, getNextCmsResourceId,
+  mockCmsPolls, getNextCmsPollId, mockCmsPollVotes,
 } from '../data/cms';
 import { createProgressingMockTask } from './async-tasks';
 import { mockDateTime, mockDate } from '../utils/date';
@@ -999,6 +1000,73 @@ export const cmsP2Handlers = [
       if (idx >= 0) mockCmsResources.splice(idx, 1);
     }
     return okJson(null, `已删除 ${ids.length} 个素材`);
+  }),
+
+  // ─── 轻量投票（P3）──────────────────────────────────────────────────────────
+  http.get('/api/cms/polls/:id/results', ({ params }) => {
+    const poll = mockCmsPolls.find((p) => p.id === Number(params.id));
+    if (!poll) return notFound('投票不存在');
+    const counts = mockCmsPollVotes.get(poll.id) ?? new Map<number, number>();
+    return okJson({
+      pollId: poll.id,
+      title: poll.title,
+      totalVotes: poll.totalVotes,
+      options: poll.options.map((o) => ({ ...o, votes: counts.get(o.id) ?? 0 })),
+    });
+  }),
+  http.get('/api/cms/polls', ({ request }) => {
+    const { url, page, pageSize } = pageParams(request);
+    const siteId = Number(url.searchParams.get('siteId'));
+    const status = url.searchParams.get('status') || '';
+    let list = mockCmsPolls.filter((p) => p.siteId === siteId);
+    if (status) list = list.filter((p) => p.status === status);
+    return okJson(paginate([...list].sort((a, b) => b.id - a.id), page, pageSize));
+  }),
+  http.post('/api/cms/polls/:id/status', async ({ params, request }) => {
+    const poll = mockCmsPolls.find((p) => p.id === Number(params.id));
+    if (!poll) return notFound('投票不存在');
+    const { status } = (await request.json()) as { status: CmsPoll['status'] };
+    poll.status = status;
+    poll.updatedAt = mockDateTime();
+    return okJson(poll, '已更新');
+  }),
+  http.post('/api/cms/polls', async ({ request }) => {
+    const body = (await request.json()) as Body;
+    const poll: CmsPoll = {
+      id: getNextCmsPollId(),
+      siteId: Number(body.siteId),
+      code: String(body.code),
+      title: String(body.title),
+      options: (body.options as CmsPoll['options']) ?? [],
+      maxChoices: Number(body.maxChoices ?? 1),
+      allowAnonymous: body.allowAnonymous !== false,
+      startAt: null,
+      endAt: null,
+      status: 'draft',
+      totalVotes: 0,
+      remark: (body.remark as string | null) ?? null,
+      createdAt: mockDateTime(),
+      updatedAt: mockDateTime(),
+    };
+    mockCmsPolls.unshift(poll);
+    return okJson(poll, '创建成功');
+  }),
+  http.put('/api/cms/polls/:id', async ({ params, request }) => {
+    const poll = mockCmsPolls.find((p) => p.id === Number(params.id));
+    if (!poll) return notFound('投票不存在');
+    const body = (await request.json()) as Body;
+    if (typeof body.title === 'string') poll.title = body.title;
+    if (Array.isArray(body.options)) poll.options = body.options as CmsPoll['options'];
+    if (body.maxChoices !== undefined) poll.maxChoices = Number(body.maxChoices);
+    if (body.allowAnonymous !== undefined) poll.allowAnonymous = body.allowAnonymous === true;
+    if (body.remark !== undefined) poll.remark = (body.remark as string | null) || null;
+    poll.updatedAt = mockDateTime();
+    return okJson(poll, '已保存');
+  }),
+  http.delete('/api/cms/polls/:id', ({ params }) => {
+    const idx = mockCmsPolls.findIndex((p) => p.id === Number(params.id));
+    if (idx >= 0) mockCmsPolls.splice(idx, 1);
+    return okJson(null, '删除成功');
   }),
 
   // ─── 广告 ───────────────────────────────────────────────────────────────────

@@ -55,6 +55,17 @@ main { min-height: 60vh; padding: 24px 0 48px; }
 .survey-options { display: flex; flex-direction: column; gap: 8px; }
 .survey-option { display: flex; align-items: center; gap: 8px; font-size: 14px; }
 .survey-done { padding: 32px; text-align: center; font-size: 16px; color: var(--primary); }
+.poll-title { font-size: 16px; margin: 0 0 10px; }
+.cms-poll { margin: 16px 0; padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-2); }
+.poll-option { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 14px; cursor: pointer; }
+.poll-form button { margin-top: 10px; }
+.poll-hint { font-size: 12px; color: var(--text-2); margin: 6px 0 0; }
+.poll-bar-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: 13px; }
+.poll-bar-label { flex: 0 0 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.poll-bar-track { flex: 1; height: 10px; border-radius: 5px; background: var(--bg-3, rgba(140, 149, 159, 0.2)); overflow: hidden; }
+.poll-bar-fill { display: block; height: 100%; border-radius: 5px; background: var(--primary); }
+.poll-bar-num { flex: 0 0 90px; text-align: right; color: var(--text-2); font-size: 12px; }
+.poll-total { margin: 8px 0 0; font-size: 12px; color: var(--text-2); }
 .pagination { display: flex; gap: 6px; justify-content: center; margin-top: 24px; flex-wrap: wrap; }
 .pagination a, .pagination span { padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; }
 .pagination .current { background: var(--primary); border-color: var(--primary); color: #fff; }

@@ -9,6 +9,7 @@ import type {
   CmsThemeTemplateManifest, CmsPublishChannel, CmsContentOpLog, CmsErrorProneWord, CmsTextCheckResult,
   CmsContentType, CmsSurvey, CmsSurveyStats, CmsVisitStats, CmsSearchAnalytics,
   CmsResource, CmsResourceType, CmsResourceReference, UpdateCmsResourceInput, CropCmsResourceInput,
+  CmsPoll, CmsPollStatus, CmsPollResults,
 } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { toQueryString, unwrap, LOOKUP_STALE_TIME } from '@/lib/query';
@@ -804,6 +805,64 @@ export function useDeleteCmsResources() {
   return useMutation({
     mutationFn: (ids: number[]) => request.post<null>('/api/cms/resources/delete', { ids }).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: cmsResourceKeys.all }),
+  });
+}
+
+// ─── 轻量投票（P3）────────────────────────────────────────────────────────────
+export interface CmsPollListParams {
+  page: number;
+  pageSize: number;
+  siteId: number;
+  status?: CmsPollStatus;
+}
+
+export const cmsPollKeys = {
+  all: ['cms-polls'] as const,
+  lists: ['cms-polls', 'list'] as const,
+  list: (params: CmsPollListParams) => ['cms-polls', 'list', params] as const,
+  results: (id: number) => ['cms-polls', 'results', id] as const,
+};
+
+export function useCmsPollList(params: CmsPollListParams, enabled = true) {
+  return useQuery({
+    queryKey: cmsPollKeys.list(params),
+    queryFn: () => request.get<PaginatedResponse<CmsPoll>>(`/api/cms/polls${toQueryString(params)}`).then(unwrap),
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
+export function useCmsPollResults(id: number | null) {
+  return useQuery({
+    queryKey: cmsPollKeys.results(id ?? 0),
+    queryFn: () => request.get<CmsPollResults>(`/api/cms/polls/${id}/results`).then(unwrap),
+    enabled: id != null,
+  });
+}
+
+export function useSaveCmsPoll() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
+      (id ? request.put<CmsPoll>(`/api/cms/polls/${id}`, values) : request.post<CmsPoll>('/api/cms/polls', values)).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsPollKeys.all }),
+  });
+}
+
+export function useSetCmsPollStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: number; status: CmsPollStatus }) =>
+      request.post<CmsPoll>(`/api/cms/polls/${id}/status`, { status }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsPollKeys.all }),
+  });
+}
+
+export function useDeleteCmsPoll() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.delete<null>(`/api/cms/polls/${id}`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsPollKeys.all }),
   });
 }
 

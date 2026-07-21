@@ -344,7 +344,17 @@ function DetailTemplate(ctx: CmsDetailContext) {
           <input className="hp" type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" />
           <label>昵称 <span className="req">*</span><input type="text" name="nickname" required maxLength={50} /></label>
           <label>评论内容 <span className="req">*</span><textarea name="content" required maxLength={1000} /></label>
+          {ctx.commentForm.captchaEnabled ? (
+            <div className="cms-captcha-box" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="hidden" name="captchaId" value="" />
+              <label style={{ flex: 1 }}>验证码 <span className="req">*</span><input type="text" name="captchaAnswer" required autoComplete="off" placeholder="计算结果" /></label>
+              <span className="cms-captcha-img" style={{ cursor: 'pointer', lineHeight: 0 }} />
+            </div>
+          ) : null}
           <button type="submit">提交评论（审核后显示）</button>
+          {ctx.commentForm.captchaEnabled ? (
+            <script dangerouslySetInnerHTML={{ __html: `(function(){function load(box){fetch('/api/public/cms/captcha').then(function(r){return r.json()}).then(function(r){if(!r||r.code!==0)return;box.querySelector('input[name="captchaId"]').value=r.data.id;var img=box.querySelector('.cms-captcha-img');img.innerHTML=r.data.svg;img.title='看不清？点击刷新'}).catch(function(){})}document.querySelectorAll('.cms-captcha-box').forEach(function(box){load(box);var img=box.querySelector('.cms-captcha-img');if(img)img.addEventListener('click',function(){load(box)})});})();` }} />
+          ) : null}
         </form>
       </section>
     </Layout>

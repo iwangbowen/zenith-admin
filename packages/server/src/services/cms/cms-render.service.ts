@@ -19,6 +19,8 @@ import { getFragmentMap } from './cms-fragments.service';
 import { listEnabledFriendLinks } from './cms-friend-links.service';
 import { searchCmsContents, stripHtml } from './cms-search.service';
 import { getEnabledLinkWords, applyLinkWords } from './cms-link-words.service';
+import { applyPollMarkers } from './cms-polls.service';
+import { isCaptchaEnabled } from './cms-captcha.service';
 import { listApprovedComments } from './cms-comments.service';
 import { getActiveAds } from './cms-ads.service';
 import { getCmsFormByCode } from './cms-forms.service';
@@ -421,6 +423,7 @@ export async function renderChannelPage(site: CmsSiteRow, baseUrl: string, chann
         returnUrl: channelUrl(baseUrl, channel.path),
         successMessage: form.successMessage ?? null,
         fields: form.fields ?? [],
+        captchaEnabled: isCaptchaEnabled(site),
       } : null,
     });
     return { status: 200, html, kind: 'page' };
@@ -527,7 +530,7 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
     breadcrumbs,
     content: {
       ...toContentItem(row, baseUrl, channel.path),
-      body: applyLinkWords(pageBody, linkWords),
+      body: applyPollMarkers(applyLinkWords(pageBody, linkWords), site.code),
       ...extras,
       extend: resolved.extend,
       tags: tags.map((t) => ({ name: t.name, slug: t.slug, url: tagUrl(baseUrl, t.slug) })),
@@ -541,6 +544,7 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
       contentId: row.id,
       returnUrl: contentUrl(baseUrl, channel.path, row),
       memberSubmitApi: `/api/member/cms/contents/${row.id}/comments`,
+      captchaEnabled: isCaptchaEnabled(site),
     },
   });
   return { status: 200, html, kind: 'detail', contentId: row.id };
@@ -590,7 +594,7 @@ export async function renderContentPreviewPage(site: CmsSiteRow, baseUrl: string
     breadcrumbs,
     content: {
       ...toContentItem(row, baseUrl, channel.path),
-      body: applyLinkWords(previewBody, linkWords),
+      body: applyPollMarkers(applyLinkWords(previewBody, linkWords), site.code),
       ...previewExtras,
       extend: resolved.extend,
       tags: tags.map((t) => ({ name: t.name, slug: t.slug, url: tagUrl(baseUrl, t.slug) })),
@@ -604,6 +608,7 @@ export async function renderContentPreviewPage(site: CmsSiteRow, baseUrl: string
       contentId: row.id,
       returnUrl: contentUrl(baseUrl, channel.path, row),
       memberSubmitApi: `/api/member/cms/contents/${row.id}/comments`,
+      captchaEnabled: isCaptchaEnabled(site),
     },
   });
   const statusLabel = CMS_CONTENT_STATUS_LABELS[row.status] ?? row.status;

@@ -20,7 +20,7 @@ import type {
   ReportSlaRule, ReportAssetTemplate, ReportFillTemplate, AnalyticsEventPropertyDef, AnalyticsSite,
   CmsSite, CmsPublishChannel, CmsModel, CmsChannel, CmsContent, CmsTag, CmsFragment, CmsFriendLink,
   CmsAdSlot, CmsAd, CmsForm, CmsSensitiveWord, CmsErrorProneWord, CmsLinkWord, CmsComment,
-  CmsSurvey, CmsSurveyQuestion, CmsResource,
+  CmsSurvey, CmsSurveyQuestion, CmsResource, CmsPoll,
 } from './types';
 import { ANALYTICS_EXPERIMENT_EXPOSURE_EVENT, ANALYTICS_SEMANTIC_EVENT_LABELS, type AnalyticsSemanticEventName } from './constants';
 
@@ -726,6 +726,8 @@ export const SEED_MENUS: Menu[] = [
   { id: 1791, parentId: 1790, title: '管理易错词',   name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:word:manage',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1792, parentId: 1700, title: '问卷调查',     name: 'CmsSurveys',       path: '/cms/surveys',     component: 'cms/SurveysPage',            icon: 'ListChecks',   type: 'menu',      sort: 19, status: 'enabled', visible: true,  permission: 'cms:survey:list',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1793, parentId: 1792, title: '管理问卷',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:survey:manage',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1751, parentId: 1700, title: '投票管理',     name: 'CmsPolls',         path: '/cms/polls',       component: 'cms/PollsPage',              icon: 'Vote',         type: 'menu',      sort: 19, status: 'enabled', visible: true,  permission: 'cms:poll:list',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1752, parentId: 1751, title: '管理投票',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:poll:manage',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1794, parentId: 1700, title: '访问统计',     name: 'CmsStats',         path: '/cms/stats',       component: 'cms/StatsPage',              icon: 'ChartLine',    type: 'menu',      sort: 20, status: 'enabled', visible: true,  permission: 'cms:stat:view',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1780, parentId: 1700, title: '采集中心',     name: 'CmsCollect',       path: '/cms/collect',     component: 'cms/CollectPage',            icon: 'Download',     type: 'menu',      sort: 15, status: 'enabled', visible: true,  permission: 'cms:collect:list',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1781, parentId: 1780, title: '新增规则',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:collect:create', createdAt: SEED_DATE, updatedAt: SEED_DATE },
@@ -3058,6 +3060,22 @@ export const SEED_CMS_RESOURCES: CmsResource[] = [
   { id: 1, siteId: 1, type: 'image', name: 'demo-avatar-01.svg', url: '/avatars/avatar-01.svg', thumbUrl: null, fileId: null, size: 4096, width: 128, height: 128, mimeType: 'image/svg+xml', remark: '演示素材（外链登记）', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 2, siteId: 1, type: 'image', name: 'demo-avatar-02.svg', url: '/avatars/avatar-02.svg', thumbUrl: null, fileId: null, size: 4096, width: 128, height: 128, mimeType: 'image/svg+xml', remark: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 3, siteId: 1, type: 'document', name: '产品白皮书.pdf', url: '/files/demo-whitepaper.pdf', thumbUrl: null, fileId: null, size: 1048576, width: null, height: null, mimeType: 'application/pdf', remark: '示例文档素材', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+// ─── CMS 轻量投票（P3 示例投票）──────────────────────────────────────────────────
+export const SEED_CMS_POLLS: CmsPoll[] = [
+  {
+    id: 1, siteId: 1, code: 'reader-vote', title: '您最期待哪些 CMS 能力？',
+    options: [
+      { id: 1, label: 'AI 辅助写作' },
+      { id: 2, label: '可视化页面搭建' },
+      { id: 3, label: '多语言站点' },
+      { id: 4, label: '内容分发推送' },
+    ],
+    maxChoices: 2, allowAnonymous: true, startAt: null, endAt: null,
+    status: 'published', totalVotes: 5, remark: '正文插入 [投票:reader-vote] 嵌入',
+    createdAt: SEED_DATE, updatedAt: SEED_DATE,
+  },
 ];
 
 // ─── CMS P2：广告位 / 广告 / 表单 / 敏感词 / 内链词 / 评论（示例）────────────────

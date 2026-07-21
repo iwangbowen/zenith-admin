@@ -3,13 +3,13 @@ import {
   SEED_CMS_TAGS, SEED_CMS_FRAGMENTS, SEED_CMS_FRIEND_LINKS,
   SEED_CMS_AD_SLOTS, SEED_CMS_ADS, SEED_CMS_FORMS, SEED_CMS_SENSITIVE_WORDS,
   SEED_CMS_ERROR_PRONE_WORDS, SEED_CMS_LINK_WORDS, SEED_CMS_COMMENTS, SEED_CMS_SURVEYS,
-  SEED_CMS_RESOURCES,
+  SEED_CMS_RESOURCES, SEED_CMS_POLLS,
 } from '@zenith/shared';
 import type {
   CmsSite, CmsPublishChannel, CmsModel, CmsChannel, CmsContent, CmsTag, CmsFragment, CmsFriendLink,
   CmsAdSlot, CmsAd, CmsForm, CmsFormSubmission, CmsSensitiveWord, CmsErrorProneWord, CmsLinkWord, CmsComment,
   CmsRedirect, CmsPushLog, CmsContentVersion, CmsSearchWord, CmsHotKeyword, CmsContentOpLog, CmsSurvey,
-  CmsResource,
+  CmsResource, CmsPoll,
 } from '@zenith/shared';
 
 // 从共享种子数据派生（禁止重复定义静态数组）
@@ -105,3 +105,11 @@ export const getNextCmsSearchWordId = nextIdFactory(Math.max(0, ...mockCmsSearch
 // ─── P2 素材中心 ───────────────────────────────────────────────────────────────
 export const mockCmsResources: CmsResource[] = SEED_CMS_RESOURCES.map((r) => ({ ...r }));
 export const getNextCmsResourceId = nextIdFactory(Math.max(0, ...mockCmsResources.map((x) => x.id)) + 1);
+
+// ─── P3 轻量投票 ───────────────────────────────────────────────────────────────
+export const mockCmsPolls: CmsPoll[] = SEED_CMS_POLLS.map((p) => ({ ...p, options: p.options.map((o) => ({ ...o })) }));
+export const getNextCmsPollId = nextIdFactory(Math.max(0, ...mockCmsPolls.map((x) => x.id)) + 1);
+/** 选项计票（演示数据：按选项 id 递减分布） */
+export const mockCmsPollVotes = new Map<number, Map<number, number>>([
+  [1, new Map([[1, 3], [2, 2], [3, 1], [4, 1]])],
+]);

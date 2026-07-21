@@ -417,6 +417,39 @@ export const CmsResourceReferenceDTO = z
   })
   .openapi('CmsResourceReference');
 
+export const CmsPollOptionDTO = z.object({
+  id: z.number().int(),
+  label: z.string(),
+});
+
+export const CmsPollDTO = z
+  .object({
+    id: z.number().int(),
+    siteId: z.number().int(),
+    code: z.string().openapi({ example: 'reader-vote' }),
+    title: z.string(),
+    options: z.array(CmsPollOptionDTO),
+    maxChoices: z.number().int(),
+    allowAnonymous: z.boolean(),
+    startAt: z.string().nullable(),
+    endAt: z.string().nullable(),
+    status: z.enum(['draft', 'published', 'closed']),
+    totalVotes: z.number().int(),
+    remark: z.string().nullable(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('CmsPoll');
+
+export const CmsPollResultsDTO = z
+  .object({
+    pollId: z.number().int(),
+    title: z.string(),
+    totalVotes: z.number().int(),
+    options: z.array(CmsPollOptionDTO.extend({ votes: z.number().int() })),
+  })
+  .openapi('CmsPollResults');
+
 export const CmsAdSlotDTO = z
   .object({
     id: z.number().int(),

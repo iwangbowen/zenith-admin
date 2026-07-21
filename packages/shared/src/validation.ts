@@ -5402,6 +5402,35 @@ export const cropCmsResourceSchema = z.object({
 export type UpdateCmsResourceInput = z.input<typeof updateCmsResourceSchema>;
 export type CropCmsResourceInput = z.input<typeof cropCmsResourceSchema>;
 
+// ─── CMS 轻量投票（P3）────────────────────────────────────────────────────────
+export const cmsPollOptionSchema = z.object({
+  id: z.number().int().min(1),
+  label: z.string().min(1, '选项内容不能为空').max(100),
+});
+
+export const createCmsPollSchema = z.object({
+  siteId: z.number().int().positive(),
+  code: z.string().min(2, '标识至少 2 个字符').max(50).regex(/^[a-z0-9-]+$/, '仅支持小写字母、数字和连字符'),
+  title: z.string().min(1, '请输入投票标题').max(200),
+  options: z.array(cmsPollOptionSchema).min(2, '至少配置 2 个选项').max(20),
+  maxChoices: z.number().int().min(1).max(20).default(1),
+  allowAnonymous: z.boolean().default(true),
+  startAt: z.string().nullable().optional(),
+  endAt: z.string().nullable().optional(),
+  remark: z.string().max(200).nullable().optional(),
+});
+export const updateCmsPollSchema = createCmsPollSchema.partial().omit({ siteId: true, code: true });
+
+/** 前台投票提交 */
+export const voteCmsPollSchema = z.object({
+  optionIds: z.array(z.number().int().min(1)).min(1, '请选择投票选项').max(20),
+});
+
+export type CmsPollOptionInput = z.input<typeof cmsPollOptionSchema>;
+export type CreateCmsPollInput = z.input<typeof createCmsPollSchema>;
+export type UpdateCmsPollInput = z.input<typeof updateCmsPollSchema>;
+export type VoteCmsPollInput = z.input<typeof voteCmsPollSchema>;
+
 // ─── CMS P3 Batch1 Schema ─────────────────────────────────────────────────────
 export const createCmsSearchWordSchema = z.object({
   word: z.string().min(2, '词条至少 2 个字符').max(50),

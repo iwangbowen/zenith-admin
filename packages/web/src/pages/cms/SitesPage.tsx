@@ -227,6 +227,7 @@ export default function SitesPage() {
         thumbWidth: Number((editingRecord.settings as Record<string, unknown>)?.thumbWidth ?? 400),
         webhookUrl: String((editingRecord.settings as Record<string, unknown>)?.webhookUrl ?? ''),
         webhookSecret: String((editingRecord.settings as Record<string, unknown>)?.webhookSecret ?? ''),
+        captchaEnabled: (editingRecord.settings as Record<string, unknown>)?.captchaEnabled === true,
         cdnPurgeUrl: String((editingRecord.settings as Record<string, unknown>)?.cdnPurgeUrl ?? ''),
         cdnPurgeToken: String((editingRecord.settings as Record<string, unknown>)?.cdnPurgeToken ?? ''),
         language: String((editingRecord.settings as Record<string, unknown>)?.language ?? ''),
@@ -253,7 +254,7 @@ export default function SitesPage() {
       baiduPushToken, indexNowKey, themePrimary, themeDark,
       imageMaxWidth, watermarkEnabled, watermarkText, watermarkPosition, watermarkOpacity, thumbEnabled, thumbWidth,
       auditMode, auditWorkflowDefinitionId,
-      webhookUrl, webhookSecret,
+      webhookUrl, webhookSecret, captchaEnabled,
       cdnPurgeUrl, cdnPurgeToken, language, langLinksText,
       ...rest
     } = values;
@@ -275,6 +276,7 @@ export default function SitesPage() {
       auditWorkflowDefinitionId: auditWorkflowDefinitionId ?? null,
       webhookUrl: String(webhookUrl ?? '').trim(),
       webhookSecret: String(webhookSecret ?? '').trim(),
+      captchaEnabled: captchaEnabled === true,
       cdnPurgeUrl: String(cdnPurgeUrl ?? '').trim(),
       cdnPurgeToken: String(cdnPurgeToken ?? '').trim(),
       language: String(language ?? '').trim(),
@@ -647,6 +649,13 @@ export default function SitesPage() {
                     </Col>
                     <Col span={12}>
                       <Form.Input field="webhookSecret" label="签名密钥" placeholder="可选；请求头 X-Cms-Signature 携带 HMAC-SHA256 签名" />
+                    </Col>
+                  </Row>
+                </Form.Section>
+                <Form.Section text="前台防护">
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.Switch field="captchaEnabled" label="图形验证码" extraText="开启后前台游客提交评论/自定义表单需完成算术验证码（登录会员免验证）" />
                     </Col>
                   </Row>
                 </Form.Section>

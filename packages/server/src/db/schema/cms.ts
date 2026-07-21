@@ -891,3 +891,55 @@ export const cmsResources = pgTable('cms_resources', {
 ]);
 
 export type CmsResourceRow = typeof cmsResources.$inferSelect;
+
+// ═══ P3 轻量投票 ═══════════════════════════════════════════════════════════════
+
+// ─── 投票（内容页内嵌 [投票:code]；游客 IP 去重 / 会员唯一约束）──────────────────
+export const cmsPollStatusEnum = pgEnum('cms_poll_status', ['draft', 'published', 'closed']);
+
+export const cmsPolls = pgTable('cms_polls', {
+  id: serial('id').primaryKey(),
+  siteId: integer('site_id').notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
+  /** 正文嵌入引用标识：[投票:code] */
+  code: varchar('code', { length: 50 }).notNull(),
+  title: varchar('title', { length: 200 }).notNull(),
+  /** 选项数组：[{ id, label }]（id 为选项稳定标识，votes 表按 id 记票） */
+  options: jsonb('options').$type<{ id: number; label: string }[]>().notNull().default([]),
+  /** 每票最多可选项数（1 = 单选） */
+  maxChoices: integer('max_choices').notNull().default(1),
+  /** 允许游客投票（同 IP 去重）；false = 仅登录会员 */
+  allowAnonymous: boolean('allow_anonymous').notNull().default(true),
+  /** 投票窗口（空 = 不限） */
+  startAt: timestamp('start_at'),
+  endAt: timestamp('end_at'),
+  status: cmsPollStatusEnum('status').notNull().default('draft'),
+  /** 冗余总票数（投票事务内原子 +1） */
+  totalVotes: integer('total_votes').notNull().default(0),
+  remark: varchar('remark', { length: 200 }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  uniqueIndex('cms_polls_site_code_uq').on(t.siteId, t.code),
+]);
+
+export type CmsPollRow = typeof cmsPolls.$inferSelect;
+
+export const cmsPollVotes = pgTable('cms_poll_votes', {
+  id: serial('id').primaryKey(),
+  pollId: integer('poll_id').notNull().references(() => cmsPolls.id, { onDelete: 'cascade' }),
+  /** 所选选项 id 数组 */
+  optionIds: jsonb('option_ids').$type<number[]>().notNull().default([]),
+  /** 会员投票：非空即一人一票（唯一约束） */
+  memberId: integer('member_id').references(() => members.id, { onDelete: 'cascade' }),
+  /** 游客身份键（IP），游客一 IP 一票 */
+  voterKey: varchar('voter_key', { length: 64 }),
+  ip: varchar('ip', { length: 64 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  uniqueIndex('cms_poll_votes_member_uq').on(t.pollId, t.memberId).where(sql`${t.memberId} is not null`),
+  uniqueIndex('cms_poll_votes_guest_uq').on(t.pollId, t.voterKey).where(sql`${t.memberId} is null and ${t.voterKey} is not null`),
+  index('cms_poll_votes_poll_idx').on(t.pollId),
+]);
+
+export type CmsPollVoteRow = typeof cmsPollVotes.$inferSelect;
