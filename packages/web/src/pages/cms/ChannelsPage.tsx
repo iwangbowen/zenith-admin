@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Button, Form, Tag, Toast, Modal, Row, Col, Select, Tabs, TabPane } from '@douyinfe/semi-ui';
+import { Button, Form, Tag, Toast, Modal, Row, Col, Select, SideSheet, Tabs, TabPane } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
@@ -177,7 +177,7 @@ export default function ChannelsPage() {
     try {
       values = (await formApi.current?.validate()) ?? {};
     } catch {
-      throw new Error('validation');
+      return; // 校验失败保持抽屉打开
     }
     if (values.modelId === undefined) values.modelId = null;
     // 模板下拉清空后为 undefined，显式置 null 才能在更新时清除覆盖
@@ -190,7 +190,11 @@ export default function ChannelsPage() {
       templates: channelTemplatesToSettings(channelTemplates),
     };
     if (!editingRecord) payload.siteId = siteId;
-    await saveMutation.mutateAsync({ id: editingRecord?.id, values: payload });
+    try {
+      await saveMutation.mutateAsync({ id: editingRecord?.id, values: payload });
+    } catch {
+      return; // 错误提示由请求层统一 Toast，保持抽屉打开
+    }
     Toast.success(editingRecord ? '更新成功' : '创建成功');
     closeModal();
   }
@@ -426,14 +430,18 @@ export default function ChannelsPage() {
         expandAllRows
       />
 
-      <AppModal
+      <SideSheet
         title={editingRecord ? '编辑栏目' : '新增栏目'}
         visible={modalVisible}
-        onOk={handleModalOk}
         onCancel={closeModal}
-        okButtonProps={{ loading: saveMutation.isPending }}
         width={720}
         closeOnEsc
+        footer={(
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <Button type="tertiary" onClick={closeModal}>取消</Button>
+            <Button type="primary" theme="solid" loading={saveMutation.isPending} onClick={() => void handleModalOk()}>保存</Button>
+          </div>
+        )}
       >
         <Form
           key={editingRecord?.id ?? 'new'}
@@ -559,7 +567,7 @@ export default function ChannelsPage() {
             <Form.TextArea field="seoDescription" label="SEO 描述" rows={2} />
           </Form.Section>
         </Form>
-      </AppModal>
+      </SideSheet>
 
       {/* 栏目合并 */}
       <AppModal
