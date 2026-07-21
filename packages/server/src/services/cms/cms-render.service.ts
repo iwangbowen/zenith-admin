@@ -5,7 +5,7 @@ import { db } from '../../db';
 import { cmsChannels, cmsTags, cmsContents, cmsModels, cmsSites } from '../../db/schema';
 import type { CmsSiteRow, CmsChannelRow, CmsContentRow, CmsTagRow } from '../../db/schema';
 import { formatNullableDateTime, formatIso8601 } from '../../lib/datetime';
-import { getTheme, resolveListTemplate, resolveDetailTemplate, resolveCustomPageTemplate, resolveSurveyTemplate } from '../../cms/themes/registry';
+import { getTheme, resolveListTemplate, resolveDetailTemplate, resolveCustomPageTemplate, resolveSurveyTemplate, resolveThemeConfig } from '../../cms/themes/registry';
 import { renderBlocksHtml } from '../../cms/themes/blocks';
 import type {
   CmsBaseContext, CmsNavItem, CmsSeo, CmsContentItem, CmsPagination, CmsBreadcrumb, CmsChannelInfo,
@@ -184,6 +184,7 @@ async function buildBaseContext(site: CmsSiteRow, baseUrl: string, seo: CmsSeo, 
       copyright: site.copyright ?? null,
       theme: site.theme,
       settings: site.settings ?? {},
+      themeConfig: resolveThemeConfig(site.theme, site.settings as Record<string, unknown> | null),
     },
     baseUrl,
     nav: navFromTree(tree, baseUrl),

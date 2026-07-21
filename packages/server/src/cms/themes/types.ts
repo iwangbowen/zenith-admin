@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react';
-import type { CmsSearchResult } from '@zenith/shared';
+import type { CmsSearchResult, CmsThemeSettingField } from '@zenith/shared';
 
 /** 渲染上下文：站点信息 */
 export interface CmsRenderSite {
@@ -15,6 +15,8 @@ export interface CmsRenderSite {
   copyright: string | null;
   theme: string;
   settings: Record<string, unknown>;
+  /** 主题参数（settingsSchema 默认值 ⊕ settings.themeConfig 合并后的最终值，模板直接消费） */
+  themeConfig: Record<string, unknown>;
 }
 
 /** 前台导航节点 */
@@ -291,4 +293,6 @@ export interface CmsTheme {
   /** 扩展模板：站点默认模板 / 栏目 listTemplate / 内容 detailTemplate 按名称引用（如 list-card / detail-plain） */
   extraListTemplates?: Record<string, CmsTemplateVariant<CmsListContext>>;
   extraDetailTemplates?: Record<string, CmsTemplateVariant<CmsDetailContext>>;
+  /** 主题参数声明：后台「主题参数」面板按此渲染表单，值存 settings.themeConfig，模板经 site.themeConfig 消费 */
+  settingsSchema?: CmsThemeSettingField[];
 }

@@ -10392,6 +10392,26 @@ export interface CmsTemplateHealth {
   invalidRefs: CmsInvalidTemplateRef[];
 }
 
+/** 主题参数字段类型（后台主题参数面板动态表单） */
+export type CmsThemeSettingFieldType = 'text' | 'textarea' | 'color' | 'number' | 'switch' | 'select' | 'image';
+
+/** 主题参数字段声明（主题包 settingsSchema，值存 cms_sites.settings.themeConfig[name]） */
+export interface CmsThemeSettingField {
+  /** settings.themeConfig 的 key（小写字母开头驼峰） */
+  name: string;
+  label: string;
+  fieldType: CmsThemeSettingFieldType;
+  /** 缺省值（站点未配置时渲染用；switch 建议显式声明） */
+  defaultValue?: string | number | boolean;
+  placeholder?: string;
+  /** 表单辅助说明 */
+  description?: string;
+  /** select 的选项 */
+  options?: { label: string; value: string }[];
+  /** 分组标题（同组字段渲染在同一 Form.Section 下；空 = 默认分组） */
+  group?: string;
+}
+
 export interface CmsModelField {
   id: number;
   modelId: number;

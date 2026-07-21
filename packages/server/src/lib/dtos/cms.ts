@@ -279,6 +279,20 @@ export const CmsTemplateHealthDTO = z
   })
   .openapi('CmsTemplateHealth');
 
+/** 主题参数字段声明（后台主题参数面板动态表单） */
+export const CmsThemeSettingFieldDTO = z
+  .object({
+    name: z.string().openapi({ example: 'footerText' }),
+    label: z.string().openapi({ example: '页脚附加文案' }),
+    fieldType: z.enum(['text', 'textarea', 'color', 'number', 'switch', 'select', 'image']),
+    defaultValue: z.union([z.string(), z.number(), z.boolean()]).optional(),
+    placeholder: z.string().optional(),
+    description: z.string().optional(),
+    options: z.array(z.object({ label: z.string(), value: z.string() })).optional(),
+    group: z.string().optional(),
+  })
+  .openapi('CmsThemeSettingField');
+
 // ─── P2 ───────────────────────────────────────────────────────────────────────
 export const CmsContentVersionDTO = z
   .object({

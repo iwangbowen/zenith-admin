@@ -7,7 +7,7 @@ import type {
   CmsSearchWord, CmsHotKeyword, CmsCollectRule, CmsCollectItem, CmsPage,
   CmsEditLock, CmsPreviewLink, CmsContentVersionDiff, CmsDashboardStats,
   CmsThemeTemplateManifest, CmsPublishChannel, CmsContentOpLog, CmsErrorProneWord, CmsTextCheckResult,
-  CmsTemplateHealth,
+  CmsTemplateHealth, CmsThemeSettingField,
   CmsContentType, CmsSurvey, CmsSurveyStats, CmsVisitStats, CmsSearchAnalytics,
   CmsResource, CmsResourceType, CmsResourceReference, UpdateCmsResourceInput, CropCmsResourceInput,
   CmsPoll, CmsPollStatus, CmsPollResults,
@@ -31,6 +31,7 @@ export const cmsSiteKeys = {
   allSites: ['cms-sites', 'all'] as const,
   themes: ['cms-sites', 'themes'] as const,
   themeTemplates: (code: string | undefined) => ['cms-sites', 'themes', code, 'templates'] as const,
+  themeSettingsSchema: (code: string | undefined) => ['cms-sites', 'themes', code, 'settings-schema'] as const,
   templateHealth: (id: number | undefined, theme: string | undefined) => ['cms-sites', 'detail', id, 'template-health', theme ?? ''] as const,
 };
 
@@ -64,6 +65,16 @@ export function useCmsThemeTemplates(themeCode: string | undefined) {
   return useQuery({
     queryKey: cmsSiteKeys.themeTemplates(themeCode),
     queryFn: () => request.get<CmsThemeTemplateManifest>(`/api/cms/sites/themes/${themeCode}/templates`).then(unwrap),
+    enabled: !!themeCode,
+    staleTime: LOOKUP_STALE_TIME,
+  });
+}
+
+/** 主题参数声明（后台主题参数面板动态表单） */
+export function useCmsThemeSettingsSchema(themeCode: string | undefined) {
+  return useQuery({
+    queryKey: cmsSiteKeys.themeSettingsSchema(themeCode),
+    queryFn: () => request.get<CmsThemeSettingField[]>(`/api/cms/sites/themes/${themeCode}/settings-schema`).then(unwrap),
     enabled: !!themeCode,
     staleTime: LOOKUP_STALE_TIME,
   });

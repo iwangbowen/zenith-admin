@@ -223,8 +223,18 @@ function FrontForm({ form }: { form: CmsFrontFormConfig }) {
 
 // ─── 首页 ─────────────────────────────────────────────────────────────────────
 export function IndexTemplate(ctx: CmsHomeContext) {
+  const bannerImage = typeof ctx.site.themeConfig.bannerImage === 'string' ? ctx.site.themeConfig.bannerImage : null;
+  const bannerLink = typeof ctx.site.themeConfig.bannerLink === 'string' ? ctx.site.themeConfig.bannerLink : null;
+  const showHot = ctx.site.themeConfig.showHotSection !== false;
   return (
     <Layout ctx={ctx} currentUrl={`${ctx.baseUrl}/`}>
+      {bannerImage ? (
+        <div className="fragment-banner">
+          {bannerLink
+            ? <a href={bannerLink} target="_blank" rel="noopener noreferrer"><img src={bannerImage} alt="banner" /></a>
+            : <img src={bannerImage} alt="banner" />}
+        </div>
+      ) : null}
       <HtmlFragment ctx={ctx} code="home-banner" className="fragment-banner" />
       <AdSlot ctx={ctx} code="home-ad" />
       <div className="home-grid">
@@ -245,7 +255,7 @@ export function IndexTemplate(ctx: CmsHomeContext) {
               </ul>
             </>
           ) : null}
-          {ctx.hot.length > 0 ? (
+          {showHot && ctx.hot.length > 0 ? (
             <>
               <h2 className="section-title">热门排行</h2>
               <ul className="side-list">

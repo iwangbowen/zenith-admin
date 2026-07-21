@@ -18,6 +18,7 @@ img { max-width: 100%; }
 .site-nav a.active, .site-nav a:hover { background: var(--bg-2); color: var(--primary); }
 .site-search { flex-shrink: 0; }
 .site-search input { border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; font-size: 14px; width: 160px; }
+.site-contact { flex-shrink: 0; font-size: 14px; font-weight: 600; color: var(--primary); white-space: nowrap; }
 main { min-height: 60vh; padding: 24px 0 48px; }
 .breadcrumbs { font-size: 13px; color: var(--text-2); margin-bottom: 16px; }
 .breadcrumbs a { color: var(--text-2); }
@@ -107,6 +108,7 @@ main { min-height: 60vh; padding: 24px 0 48px; }
 .front-form .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 .site-footer { border-top: 1px solid var(--border); background: var(--bg-2); padding: 24px 0; font-size: 13px; color: var(--text-2); }
 .site-footer .links { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+.site-footer .extra { white-space: pre-line; margin-bottom: 8px; }
 .empty { text-align: center; color: var(--text-2); padding: 48px 0; }
 .theme-toggle { background: none; border: 1px solid var(--border); border-radius: 6px; width: 32px; height: 32px; cursor: pointer; font-size: 15px; line-height: 1; color: var(--text-2); flex-shrink: 0; }
 .theme-toggle:hover { color: var(--primary); border-color: var(--primary); }
@@ -195,6 +197,8 @@ navigator.sendBeacon('/api/public/cms/ads/view',new Blob([JSON.stringify({ids:id
 export function Layout({ ctx, currentUrl, children }: LayoutProps) {
   const { site, seo, nav, friendLinks, baseUrl } = ctx;
   const theme = buildThemeOverrides(site.settings);
+  const contactPhone = typeof site.themeConfig.contactPhone === 'string' ? site.themeConfig.contactPhone : null;
+  const footerText = typeof site.themeConfig.footerText === 'string' ? site.themeConfig.footerText : null;
   return (
     <html lang="zh-CN">
       <head>
@@ -235,6 +239,7 @@ export function Layout({ ctx, currentUrl, children }: LayoutProps) {
               <span>{site.name}</span>
             </a>
             <NavLinks items={nav} currentUrl={currentUrl} />
+            {contactPhone ? <span className="site-contact">☎ {contactPhone}</span> : null}
             {ctx.langAlternates.length > 0 ? (
               <nav className="lang-switch" aria-label="语言切换">
                 {ctx.langAlternates.map((alt) => (
@@ -265,6 +270,7 @@ export function Layout({ ctx, currentUrl, children }: LayoutProps) {
                 ))}
               </div>
             ) : null}
+            {footerText ? <div className="extra">{footerText}</div> : null}
             <div>{site.copyright ?? `© ${new Date().getFullYear()} ${site.name}`}</div>
             {site.icp ? (
               <div>

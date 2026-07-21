@@ -12,7 +12,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { cmsSites, cmsChannels, cmsContents } from '../../db/schema';
 import type { CmsChannelRow } from '../../db/schema';
-import { isThemeRegistered, isTemplateRegistered, listThemeTemplates } from '../../cms/themes/registry';
+import { isThemeRegistered, isTemplateRegistered, listThemeTemplates, getThemeSettingsSchema } from '../../cms/themes/registry';
 import type { CmsSiteTemplateDefaults, CmsTemplateHealth, CmsInvalidTemplateRef } from '@zenith/shared';
 
 type TemplateKind = 'list' | 'detail';
@@ -69,6 +69,22 @@ function assertTemplateDefaultsMap(themeCode: string, value: unknown, locationPr
 /** 站点保存校验：settings.defaultTemplates 中的模板名须存在于目标主题 */
 export function assertSiteTemplateSettings(themeCode: string, settings: Record<string, unknown> | null | undefined): void {
   assertTemplateDefaultsMap(themeCode, settings?.defaultTemplates, '站点默认模板');
+}
+
+/** 站点保存校验：settings.themeConfig 中 select 类型参数的值须在主题声明的选项内 */
+export function assertSiteThemeConfig(themeCode: string, settings: Record<string, unknown> | null | undefined): void {
+  const raw = settings?.themeConfig;
+  if (!raw || typeof raw !== 'object') return;
+  const config = raw as Record<string, unknown>;
+  for (const field of getThemeSettingsSchema(themeCode)) {
+    if (field.fieldType !== 'select') continue;
+    const value = config[field.name];
+    if (value === undefined || value === null || value === '') continue;
+    if (!(field.options ?? []).some((o) => o.value === value)) {
+      const options = (field.options ?? []).map((o) => o.value).join('、');
+      throw new HTTPException(400, { message: `主题参数「${field.label}」的值无效（可选：${options}）` });
+    }
+  }
 }
 
 /** 栏目保存校验：listTemplate / detailTemplate / settings.templates 中的模板名须存在于站点主题 */

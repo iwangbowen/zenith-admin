@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Banner, Button, Form, Input, Select, Tag, Toast, Modal, Row, Col, SideSheet, Tabs, TabPane } from '@douyinfe/semi-ui';
+import { Banner, Button, Form, Input, InputNumber, Select, Switch, Tag, TextArea, Toast, Modal, Row, Col, SideSheet, Tabs, TabPane, Upload } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, RotateCcw, Plus, Upload } from 'lucide-react';
+import { Search, RotateCcw, Plus, Upload as UploadIcon, ImageUp } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -16,11 +16,13 @@ import {
   useCmsSiteList, useCmsThemes, useSaveCmsSite, useDeleteCmsSite, cmsSiteKeys,
   useCmsSiteUsers, useSetCmsSiteUsers, useEnableSiteAnalytics, useImportCmsSite,
   useCmsThemeTemplates, useAllCmsModels, useCmsPublishChannels, useCmsSiteTemplateHealth,
+  useCmsThemeSettingsSchema,
 } from '@/hooks/queries/cms';
 import { request } from '@/utils/request';
+import { unwrap } from '@/lib/query';
 import { useWorkflowDefinitionList } from '@/hooks/queries/workflow-definitions';
 import { CMS_STATIC_MODE_LABELS, CMS_STATIC_MODES, CMS_DEFAULT_CHANNEL_CODE } from '@zenith/shared';
-import type { CmsSite, CmsSiteTemplateDefaults, CmsInvalidTemplateRef } from '@zenith/shared';
+import type { CmsSite, CmsSiteTemplateDefaults, CmsInvalidTemplateRef, CmsThemeSettingField } from '@zenith/shared';
 import { cmsPreviewUrl } from './CmsSiteSelect';
 
 interface SearchParams {
@@ -98,6 +100,11 @@ function parseLangLinks(text: string): { language: string; siteCode: string }[] 
     .filter((x): x is { language: string; siteCode: string } => !!x);
 }
 
+/** 主题参数编辑态 → settings.themeConfig（剔除空值，保持 JSONB 干净） */
+function cleanThemeConfig(config: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(config).filter(([, v]) => v !== undefined && v !== null && v !== ''));
+}
+
 /** 失效模板引用的人类可读描述（健康检查 Banner 用） */
 function describeInvalidRef(ref: CmsInvalidTemplateRef): string {
   const prefix = ref.source === 'channel' && ref.channelName ? `栏目「${ref.channelName}」` : '';
@@ -130,7 +137,10 @@ export default function SitesPage() {
   // 模板下拉跟随表单里实时选中的主题（Form 值不具备响应性，用 state 镜像）
   const [selectedTheme, setSelectedTheme] = useState('default');
   const [templateDefaults, setTemplateDefaults] = useState<TemplateDefaultsState>({});
+  // 主题参数编辑态（settings.themeConfig；动态字段名不走 Form，受控管理）
+  const [themeConfig, setThemeConfig] = useState<Record<string, unknown>>({});
   const { data: themeTemplates } = useCmsThemeTemplates(modalVisible ? selectedTheme : undefined);
+  const { data: themeSettingsSchema } = useCmsThemeSettingsSchema(modalVisible ? selectedTheme : undefined);
   const { data: allModels } = useAllCmsModels();
   // 站点发布通道（模板页签动态渲染；新建站点回退虚拟 PC 默认通道）
   const { data: sitePublishChannels } = useCmsPublishChannels(editingRecord?.id, modalVisible);
@@ -218,6 +228,7 @@ export default function SitesPage() {
     setActiveTab('basic');
     setSelectedTheme('default');
     setTemplateDefaults({});
+    setThemeConfig({});
     setModalVisible(true);
   }
 
@@ -226,6 +237,7 @@ export default function SitesPage() {
     setActiveTab('basic');
     setSelectedTheme(record.theme);
     setTemplateDefaults(templateDefaultsFromSettings(record.settings));
+    setThemeConfig({ ...((record.settings as Record<string, unknown>)?.themeConfig as Record<string, unknown> ?? {}) });
     setModalVisible(true);
   }
 
@@ -321,14 +333,31 @@ export default function SitesPage() {
       language: String(language ?? '').trim(),
       langLinks: parseLangLinks(String(langLinksText ?? '')),
       defaultTemplates: templateDefaultsToSettings(templateDefaults),
+      themeConfig: cleanThemeConfig(themeConfig),
     };
+    // 主题参数变更 + 非纯动态站点 → 保存后提示重新生成静态页
+    const prevThemeConfig = JSON.stringify(cleanThemeConfig((prevSettings.themeConfig as Record<string, unknown>) ?? {}));
+    const themeConfigChanged = editingRecord !== null && prevThemeConfig !== JSON.stringify(cleanThemeConfig(themeConfig));
+    let saved: CmsSite;
     try {
-      await saveMutation.mutateAsync({ id: editingRecord?.id, values: rest });
+      saved = await saveMutation.mutateAsync({ id: editingRecord?.id, values: rest });
     } catch {
       return; // 错误提示由请求层统一 Toast
     }
     Toast.success(editingRecord ? '更新成功' : '创建成功');
     closeModal();
+    if (themeConfigChanged && saved.staticMode !== 'dynamic') {
+      Modal.confirm({
+        title: '重新生成静态页？',
+        content: '主题参数已变更，已生成的静态页仍是旧样式。是否立即提交全站静态化任务？',
+        okText: '立即生成',
+        cancelText: '稍后手动',
+        onOk: async () => {
+          await request.post(`/api/cms/static/build`, { siteId: saved.id }).then(unwrap);
+          Toast.success('静态化任务已提交，可在任务中心查看进度');
+        },
+      });
+    }
   }
 
   async function handleDelete(id: number) {
@@ -484,7 +513,7 @@ export default function SitesPage() {
     <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
   ) : null;
   const renderImportButton = () => hasPermission('cms:site:create') ? (
-    <Button icon={<Upload size={14} />} loading={importMutation.isPending} onClick={() => importFileRef.current?.click()}>导入</Button>
+    <Button icon={<UploadIcon size={14} />} loading={importMutation.isPending} onClick={() => importFileRef.current?.click()}>导入</Button>
   ) : null;
 
   const listTplOptions = (themeTemplates?.list ?? []).map((t) => ({ value: t.name, label: t.label }));
@@ -548,6 +577,156 @@ export default function SitesPage() {
         </div>
       </TabPane>
     );
+  };
+
+  // ─── 主题参数动态表单（settingsSchema 驱动，值存 settings.themeConfig）────────
+  const themeConfigPatch = (name: string, value: unknown) =>
+    setThemeConfig((c) => ({ ...c, [name]: value }));
+
+  const renderThemeSettingControl = (field: CmsThemeSettingField) => {
+    const value = themeConfig[field.name];
+    switch (field.fieldType) {
+      case 'switch':
+        return (
+          <Switch
+            checked={typeof value === 'boolean' ? value : field.defaultValue === true}
+            onChange={(v) => themeConfigPatch(field.name, v)}
+          />
+        );
+      case 'number':
+        return (
+          <InputNumber
+            value={typeof value === 'number' ? value : undefined}
+            placeholder={field.placeholder ?? (field.defaultValue !== undefined ? `默认 ${field.defaultValue}` : undefined)}
+            onChange={(v) => themeConfigPatch(field.name, typeof v === 'number' ? v : undefined)}
+            style={{ width: 320 }}
+          />
+        );
+      case 'select':
+        return (
+          <Select
+            value={typeof value === 'string' ? value : undefined}
+            placeholder={field.placeholder ?? '请选择'}
+            showClear
+            onChange={(v) => themeConfigPatch(field.name, v ?? undefined)}
+            optionList={(field.options ?? []).map((o) => ({ value: o.value, label: o.label }))}
+            style={{ width: 320 }}
+          />
+        );
+      case 'textarea':
+        return (
+          <TextArea
+            value={typeof value === 'string' ? value : ''}
+            placeholder={field.placeholder}
+            rows={3}
+            onChange={(v) => themeConfigPatch(field.name, v)}
+            style={{ width: 480, maxWidth: '100%' }}
+          />
+        );
+      case 'color': {
+        const text = typeof value === 'string' ? value : '';
+        const swatch = /^#[0-9a-fA-F]{3,8}$/.test(text) ? text : '#1f6feb';
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Input
+              value={text}
+              placeholder={field.placeholder ?? '如 #1f6feb'}
+              showClear
+              onChange={(v) => themeConfigPatch(field.name, v)}
+              style={{ width: 240 }}
+            />
+            <input
+              type="color"
+              value={swatch}
+              onChange={(e) => themeConfigPatch(field.name, e.target.value)}
+              style={{ width: 32, height: 32, padding: 0, border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', cursor: 'pointer', background: 'transparent' }}
+              aria-label={`${field.label}取色`}
+            />
+          </div>
+        );
+      }
+      case 'image': {
+        const url = typeof value === 'string' ? value : '';
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: 480, maxWidth: '100%' }}>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Input
+                value={url}
+                placeholder={field.placeholder ?? '图片 URL，或点击上传'}
+                showClear
+                onChange={(v) => themeConfigPatch(field.name, v)}
+                style={{ flex: 1 }}
+              />
+              <Upload
+                action=""
+                accept="image/*"
+                showUploadList={false}
+                disabled={!editingRecord}
+                customRequest={async ({ fileInstance, onSuccess, onError }) => {
+                  if (!editingRecord) { onError?.({ status: 0 }); return; }
+                  try {
+                    const formData = new FormData();
+                    formData.append('file', fileInstance);
+                    const res = await request.postForm<{ url: string }>(
+                      `/api/cms/upload-image?siteId=${editingRecord.id}`, formData,
+                    ).then(unwrap);
+                    themeConfigPatch(field.name, res.url);
+                    onSuccess?.({});
+                  } catch {
+                    onError?.({ status: 0 });
+                  }
+                }}
+              >
+                <Button icon={<ImageUp size={14} />} disabled={!editingRecord}
+                  title={editingRecord ? undefined : '保存站点后可上传，也可直接粘贴 URL'}>上传</Button>
+              </Upload>
+            </div>
+            {url ? <img src={url} alt={field.label} style={{ maxWidth: 320, maxHeight: 120, borderRadius: 'var(--semi-border-radius-medium)', objectFit: 'cover', border: '1px solid var(--semi-color-border)' }} /> : null}
+          </div>
+        );
+      }
+      default:
+        return (
+          <Input
+            value={typeof value === 'string' ? value : ''}
+            placeholder={field.placeholder}
+            showClear
+            onChange={(v) => themeConfigPatch(field.name, v)}
+            style={{ width: 320 }}
+          />
+        );
+    }
+  };
+
+  /** 主题参数按 group 分组渲染（无 schema 的主题不显示该区域） */
+  const renderThemeSettingsSections = () => {
+    const schema = themeSettingsSchema ?? [];
+    if (schema.length === 0) return null;
+    const groups = new Map<string, CmsThemeSettingField[]>();
+    for (const field of schema) {
+      const key = field.group ?? '通用';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(field);
+    }
+    const rowStyle = { display: 'flex', alignItems: 'flex-start', gap: 12 } as const;
+    const labelStyle = { width: 140, flexShrink: 0, textAlign: 'right', fontSize: 14, color: 'var(--semi-color-text-0)', lineHeight: '32px' } as const;
+    return [...groups.entries()].map(([group, fields]) => (
+      <Form.Section key={group} text={`主题专属参数 — ${group}`}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingTop: 4 }}>
+          {fields.map((field) => (
+            <div style={rowStyle} key={field.name}>
+              <span style={labelStyle}>{field.label}</span>
+              <div style={{ flex: 1 }}>
+                {renderThemeSettingControl(field)}
+                {field.description ? (
+                  <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginTop: 4 }}>{field.description}</div>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Form.Section>
+    ));
   };
 
   return (
@@ -741,6 +920,7 @@ export default function SitesPage() {
                     </Col>
                   </Row>
                 </Form.Section>
+                {renderThemeSettingsSections()}
                 <Form.Section text="图片处理（编辑器/封面上传时生效）">
                   <Row gutter={16}>
                     <Col span={12}>

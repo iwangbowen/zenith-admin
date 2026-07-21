@@ -6,8 +6,8 @@ import {
   ErrorResponse, jsonContent, PaginationQuery, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, IdParam, okBody,
 } from '../../lib/openapi-schemas';
-import { CmsSiteDTO, CmsThemeDTO, CmsThemeTemplatesDTO, CmsTemplateHealthDTO, CmsSiteUsersDTO, CmsSiteImportResultDTO } from '../../lib/openapi-dtos';
-import { listThemes, listThemeTemplates } from '../../cms/themes/registry';
+import { CmsSiteDTO, CmsThemeDTO, CmsThemeTemplatesDTO, CmsTemplateHealthDTO, CmsThemeSettingFieldDTO, CmsSiteUsersDTO, CmsSiteImportResultDTO } from '../../lib/openapi-dtos';
+import { listThemes, listThemeTemplates, getThemeSettingsSchema } from '../../cms/themes/registry';
 import {
   listCmsSites, listAllCmsSites, getCmsSite, createCmsSite, updateCmsSite, deleteCmsSite,
   ensureCmsSiteExists, mapCmsSite, getCmsSiteUsers, setCmsSiteUsers, enableSiteAnalytics, assertSiteAccess,
@@ -67,6 +67,18 @@ const themeTemplatesRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...ok(CmsThemeTemplatesDTO, '模板清单') },
   }),
   handler: (c) => c.json(okBody(listThemeTemplates(c.req.valid('param').code)), 200),
+});
+
+const themeSettingsSchemaRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/themes/{code}/settings-schema',
+    tags: ['CMS-站点管理'], summary: '主题参数声明（后台主题参数面板动态表单）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:site:list' })] as const,
+    request: { params: z.object({ code: z.string().min(1) }) },
+    responses: { ...commonErrorResponses, ...ok(z.array(CmsThemeSettingFieldDTO), '参数声明') },
+  }),
+  handler: (c) => c.json(okBody(getThemeSettingsSchema(c.req.valid('param').code)), 200),
 });
 
 const templateHealthRoute = defineOpenAPIRoute({
@@ -228,7 +240,7 @@ const importSiteRoute = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRoute, allRoute, themesRoute, themeTemplatesRoute, templateHealthRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_, getSiteUsersRoute, setSiteUsersRoute, enableAnalyticsRoute, importSiteRoute] as const);
+router.openapiRoutes([listRoute, allRoute, themesRoute, themeTemplatesRoute, themeSettingsSchemaRoute, templateHealthRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_, getSiteUsersRoute, setSiteUsersRoute, enableAnalyticsRoute, importSiteRoute] as const);
 
 // 站点导出：JSON 附件下载（结构+内容整站打包，不含运行数据）
 router.get('/:id/export', authMiddleware, guard({

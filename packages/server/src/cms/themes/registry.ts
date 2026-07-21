@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react';
 import logger from '../../lib/logger';
+import type { CmsThemeSettingField } from '@zenith/shared';
 import type { CmsTheme, CmsListContext, CmsDetailContext, CmsTemplateVariant } from './types';
 import { defaultTheme } from './default';
 import { docsTheme } from './docs';
@@ -88,4 +89,43 @@ export function listThemeTemplates(code: string): {
     list: toOptions(theme.extraListTemplates as Record<string, CmsTemplateVariant<never>> | undefined),
     detail: toOptions(theme.extraDetailTemplates as Record<string, CmsTemplateVariant<never>> | undefined),
   };
+}
+
+/** 主题参数声明（后台「主题参数」面板动态表单用） */
+export function getThemeSettingsSchema(code: string): CmsThemeSettingField[] {
+  return getTheme(code).settingsSchema ?? [];
+}
+
+/** 按字段类型宽容解析单个主题参数值；非法值回退 undefined（走默认值） */
+function parseThemeConfigValue(field: CmsThemeSettingField, raw: unknown): unknown {
+  if (raw === undefined || raw === null) return undefined;
+  switch (field.fieldType) {
+    case 'switch':
+      return typeof raw === 'boolean' ? raw : undefined;
+    case 'number': {
+      const n = typeof raw === 'number' ? raw : Number(raw);
+      return Number.isFinite(n) ? n : undefined;
+    }
+    case 'select':
+      return typeof raw === 'string' && (field.options ?? []).some((o) => o.value === raw) ? raw : undefined;
+    default:
+      // text / textarea / color / image：非空字符串
+      return typeof raw === 'string' && raw.trim() !== '' ? raw : undefined;
+  }
+}
+
+/**
+ * 解析站点主题参数：settingsSchema 默认值 ⊕ settings.themeConfig（按字段类型宽容解析）。
+ * 渲染上下文 site.themeConfig 由此产出，模板无需自行处理缺省与类型。
+ */
+export function resolveThemeConfig(themeCode: string, settings: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  const schema = getThemeSettingsSchema(themeCode);
+  const raw = (settings?.themeConfig ?? {}) as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const field of schema) {
+    const parsed = parseThemeConfigValue(field, raw[field.name]);
+    const value = parsed !== undefined ? parsed : field.defaultValue;
+    if (value !== undefined) out[field.name] = value;
+  }
+  return out;
 }
