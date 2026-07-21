@@ -162,6 +162,13 @@ export default function ContentsPage() {
     Toast.success(`已${label} ${selectedIds.length} 条内容`);
   }
 
+  /** 行级标记快捷切换（置顶/推荐/热门/原创，复用 batch-flags 单条调用） */
+  async function handleRowFlag(record: CmsContent, flag: 'isTop' | 'isRecommend' | 'isHot' | 'isOriginal', label: string) {
+    const next = !record[flag];
+    await batchOpsMutation.mutateAsync({ action: 'batch-flags', body: { ids: [record.id], [flag]: next } });
+    Toast.success(`「${record.title}」${next ? '已' : '已取消'}${label}`);
+  }
+
   async function handleBatchMoveOk() {
     const values = await moveFormApi.current?.validate().catch(() => null);
     if (!values?.channelId) throw new Error('validation');
@@ -253,8 +260,8 @@ export default function ContentsPage() {
       render: (v: CmsContentStatus) => <Tag size="small" color={STATUS_COLORS[v]}>{CMS_CONTENT_STATUS_LABELS[v]}</Tag>,
     },
     createOperationColumn<CmsContent>({
-      width: 220,
-      desktopInlineKeys: activeTab === 'recycle' ? ['restore', 'purge'] : activeTab === 'archived' ? ['unarchive'] : ['edit', 'publish'],
+      width: 260,
+      desktopInlineKeys: activeTab === 'recycle' ? ['restore', 'purge'] : activeTab === 'archived' ? ['unarchive', 'preview'] : ['edit', 'preview', 'submit', 'publish', 'offline'],
       actions: (record) => activeTab === 'recycle'
         ? [
             ...(hasPermission('cms:content:delete') ? [
@@ -321,6 +328,24 @@ export default function ContentsPage() {
               onClick: () => {
                 void duplicateMutation.mutateAsync(record.id).then(() => Toast.success('已复制为草稿'));
               },
+            }] : []),
+            // 标记快捷切换（收纳在更多菜单，按当前值显示反向操作）
+            ...(hasPermission('cms:content:update') ? [{
+              key: 'toggle-top',
+              label: record.isTop ? '取消置顶' : '置顶',
+              onClick: () => void handleRowFlag(record, 'isTop', '置顶'),
+            }, {
+              key: 'toggle-recommend',
+              label: record.isRecommend ? '取消推荐' : '推荐',
+              onClick: () => void handleRowFlag(record, 'isRecommend', '推荐'),
+            }, {
+              key: 'toggle-hot',
+              label: record.isHot ? '取消热门' : '设为热门',
+              onClick: () => void handleRowFlag(record, 'isHot', '热门'),
+            }, {
+              key: 'toggle-original',
+              label: record.isOriginal ? '取消原创' : '标记原创',
+              onClick: () => void handleRowFlag(record, 'isOriginal', '标记原创'),
             }] : []),
             ...(hasPermission('cms:content:update') && (record.status === 'published' || record.status === 'offline') ? [{
               key: 'archive',

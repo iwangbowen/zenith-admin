@@ -864,13 +864,14 @@ export async function batchMoveCmsContents(ids: number[], channelId: number): Pr
 }
 
 /** 批量设置属性（置顶/推荐/热门，仅更新传入的字段） */
-export async function batchSetCmsContentFlags(ids: number[], flags: { isTop?: boolean; isRecommend?: boolean; isHot?: boolean }): Promise<number> {
+export async function batchSetCmsContentFlags(ids: number[], flags: { isTop?: boolean; isRecommend?: boolean; isHot?: boolean; isOriginal?: boolean }): Promise<number> {
   if (ids.length === 0) return 0;
   await assertBatchSiteAccess(ids);
   const patch: Record<string, boolean> = {};
   if (flags.isTop !== undefined) patch.isTop = flags.isTop;
   if (flags.isRecommend !== undefined) patch.isRecommend = flags.isRecommend;
   if (flags.isHot !== undefined) patch.isHot = flags.isHot;
+  if (flags.isOriginal !== undefined) patch.isOriginal = flags.isOriginal;
   if (Object.keys(patch).length === 0) return 0;
   const updated = await db.update(cmsContents).set(patch)
     .where(and(inArray(cmsContents.id, ids), isNull(cmsContents.deletedAt)))

@@ -1612,6 +1612,7 @@ export const cmsP3Handlers = [
       if (typeof body.isTop === 'boolean') c.isTop = body.isTop;
       if (typeof body.isRecommend === 'boolean') c.isRecommend = body.isRecommend;
       if (typeof body.isHot === 'boolean') c.isHot = body.isHot;
+      if (typeof body.isOriginal === 'boolean') c.isOriginal = body.isOriginal;
     }
     return okJson(null, `已更新 ${ids.length} 条内容`);
   }),

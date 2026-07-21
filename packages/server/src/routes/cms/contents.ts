@@ -373,7 +373,7 @@ const batchMoveRoute = defineOpenAPIRoute({
 const batchFlagsRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/batch-flags',
-    tags: ['CMS-内容管理'], summary: '批量设置属性（置顶/推荐/热门）',
+    tags: ['CMS-内容管理'], summary: '批量设置属性（置顶/推荐/热门/原创）',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'cms:content:update', audit: { description: 'CMS 内容批量设置属性', module: 'CMS内容管理' } })] as const,
     request: {
@@ -383,6 +383,7 @@ const batchFlagsRoute = defineOpenAPIRoute({
           isTop: z.boolean().optional(),
           isRecommend: z.boolean().optional(),
           isHot: z.boolean().optional(),
+          isOriginal: z.boolean().optional(),
         })),
         required: true,
       },
