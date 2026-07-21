@@ -5,15 +5,15 @@ import { Button, Input, Tag, Toast, Modal, Tabs, TabPane, Tree, Typography, Drop
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
-import { Search, RotateCcw, Plus, ChevronDown, FileUp, Image as ImageIcon, Film, Paperclip } from 'lucide-react';
+import { Search, RotateCcw, Plus, ChevronDown, FileUp, Image as ImageIcon, Film, Paperclip, ArrowLeft, FolderTree } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import { ExportButton } from '@/components/ExportButton';
+import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
-import { useIsMobile } from '@/hooks/useMediaQuery';
 import { useUploadFile } from '@/hooks/queries/files';
 import {
   useCmsChannelTree, useCmsContentList, useCmsContentAction, useCmsContentBatch,
@@ -55,7 +55,6 @@ export default function ContentsPage() {
   const { hasPermission } = usePermission();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const isMobile = useIsMobile();
 
   const [siteId, setSiteId] = useState<number | undefined>(undefined);
   const [activeTab, setActiveTab] = useState<TabKey>('all');
@@ -65,6 +64,9 @@ export default function ContentsPage() {
   const [draftKeyword, setDraftKeyword] = useState('');
   const [submittedKeyword, setSubmittedKeyword] = useState('');
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  // 窄屏单栏模式下的栏目树显隐（MasterDetailLayout 响应式）
+  const [showChannelTree, setShowChannelTree] = useState(false);
+  const [isLayoutNarrow, setIsLayoutNarrow] = useState(false);
 
   const treeQuery = useCmsChannelTree(siteId);
   const { data: sites } = useAllCmsSites();
@@ -413,8 +415,19 @@ export default function ContentsPage() {
     />
   ) : null;
 
-  const batchBar = selectedIds.length > 0 ? (
-    activeTab === 'recycle' ? (hasPermission('cms:content:delete') ? (
+  /** 窄屏单栏模式下的「按栏目」入口（宽屏侧栏常驻时隐藏，与用户管理「按部门」一致） */
+  const renderChannelTreeButton = (forceVisible = false) => (
+    <Button
+      theme="borderless"
+      icon={<FolderTree size={14} />}
+      onClick={() => setShowChannelTree(true)}
+      style={{ display: forceVisible || isLayoutNarrow ? undefined : 'none' }}
+    >
+      按栏目
+    </Button>
+  );
+
+  const batchBar = selectedIds.length > 0 ? (    activeTab === 'recycle' ? (hasPermission('cms:content:delete') ? (
       <>
         <Button onClick={() => void runBatch('restore', selectedIds, `已恢复 ${selectedIds.length} 条`)}>批量恢复</Button>
         <Button type="danger" onClick={() => {
@@ -466,6 +479,7 @@ export default function ContentsPage() {
       <SearchToolbar
         primary={(
           <>
+            {renderChannelTreeButton()}
             <CmsSiteSelect value={siteId} onChange={(v) => { setSiteId(v); setChannelId(undefined); setPage(1); }} width={180} />
             {renderKeywordSearch()}
             {renderTypeFilter()}
@@ -494,6 +508,7 @@ export default function ContentsPage() {
             {renderTypeFilter()}
           </>
         )}
+        mobileActions={renderChannelTreeButton(true)}
         filterTitle="筛选条件"
         onFilterApply={handleSearch}
         onFilterReset={handleReset}
@@ -579,32 +594,69 @@ export default function ContentsPage() {
     </>
   );
 
+  // ─── 栏目树侧栏（MasterDetailLayout：可拖宽/持久化/窄屏单栏切换，与用户管理一致）──
+  const masterContent = (
+    <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+      {showChannelTree && (
+        <button
+          type="button"
+          onClick={() => setShowChannelTree(false)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', border: 0,
+            borderBottom: '1px solid var(--semi-color-border)', background: 'transparent', cursor: 'pointer',
+            color: 'var(--semi-color-text-2)', fontSize: 13, width: '100%', flexShrink: 0,
+          }}
+        >
+          <ArrowLeft size={14} />
+          返回内容列表
+        </button>
+      )}
+      <div style={{
+        display: 'flex', alignItems: 'center', fontWeight: 600, fontSize: 13, padding: '10px 12px',
+        color: 'var(--semi-color-text-0)', borderBottom: '1px solid var(--semi-color-border)', marginBottom: 4, flexShrink: 0,
+      }}>
+        栏目
+      </div>
+      <Tree
+        treeData={[{ key: 'all', label: '全部栏目' }, ...channelsToTree(treeQuery.data ?? [])]}
+        value={channelId ? String(channelId) : 'all'}
+        filterTreeNode
+        showFilteredOnly
+        searchPlaceholder="搜索栏目"
+        onSelect={(key) => {
+          setChannelId(key === 'all' ? undefined : Number(key));
+          setPage(1);
+          setShowChannelTree(false);
+        }}
+        defaultExpandAll
+        style={{ width: '100%' }}
+      />
+    </div>
+  );
+
   return (
     <div className="page-container page-tabs-page">
-      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-        {!isMobile && (
-          <div style={{ width: 216, flexShrink: 0, background: 'var(--semi-color-bg-1)', borderRadius: 'var(--semi-border-radius-medium)', border: '1px solid var(--semi-color-border)', padding: '8px 4px', maxHeight: 'calc(100vh - 180px)', overflow: 'auto' }}>
-            <Tree
-              treeData={[{ key: 'all', label: '全部栏目' }, ...channelsToTree(treeQuery.data ?? [])]}
-              value={channelId ? String(channelId) : 'all'}
-              onSelect={(key) => {
-                setChannelId(key === 'all' ? undefined : Number(key));
-                setPage(1);
-              }}
-              defaultExpandAll
-            />
+      <MasterDetailLayout
+        master={masterContent}
+        detail={(
+          <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <Tabs activeKey={activeTab} onChange={handleTabChange} type="line" lazyRender keepDOM={false}>
+              <TabPane tab="全部" itemKey="all">{tableContent}</TabPane>
+              <TabPane tab="待审核" itemKey="pending">{tableContent}</TabPane>
+              <TabPane tab="已发布" itemKey="published">{tableContent}</TabPane>
+              <TabPane tab="归档" itemKey="archived">{tableContent}</TabPane>
+              <TabPane tab="回收站" itemKey="recycle">{tableContent}</TabPane>
+            </Tabs>
           </div>
         )}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <Tabs activeKey={activeTab} onChange={handleTabChange} type="line" lazyRender keepDOM={false}>
-            <TabPane tab="全部" itemKey="all">{tableContent}</TabPane>
-            <TabPane tab="待审核" itemKey="pending">{tableContent}</TabPane>
-            <TabPane tab="已发布" itemKey="published">{tableContent}</TabPane>
-            <TabPane tab="归档" itemKey="archived">{tableContent}</TabPane>
-            <TabPane tab="回收站" itemKey="recycle">{tableContent}</TabPane>
-          </Tabs>
-        </div>
-      </div>
+        defaultSize={216}
+        minSize={160}
+        maxSize={400}
+        showDetail={!showChannelTree}
+        onResponsiveChange={setIsLayoutNarrow}
+        persistKey="cms-contents"
+        style={{ flex: 1, overflow: 'hidden' }}
+      />
     </div>
   );
 }
