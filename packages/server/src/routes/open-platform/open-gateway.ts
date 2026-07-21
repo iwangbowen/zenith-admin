@@ -80,7 +80,7 @@ router.get('/v1/cms/channels', async (c) => {
   const site = await resolveCmsSite(c);
   if (!site) return c.json(errBody('站点不存在（请携带 siteCode 参数）', 404), 404);
   const { listCmsChannelTree } = await import('../../services/cms/cms-channels.service');
-  const tree = await listCmsChannelTree({ siteId: site.id, status: 'enabled' });
+  const tree = await listCmsChannelTree({ siteId: site.id, status: 'enabled' }, { skipAccessCheck: true });
   return c.json(okBody(tree), 200);
 });
 

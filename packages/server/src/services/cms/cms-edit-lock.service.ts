@@ -14,6 +14,7 @@ import { currentUser } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
 import { ensureCmsContentExists } from './cms-contents.service';
 import { assertSiteAccess } from './cms-sites.service';
+import { assertChannelAccess } from './cms-channels.service';
 
 const LOCK_PREFIX = `${config.redis.keyPrefix}cms:edit-lock:`;
 const LOCK_TTL_SECONDS = 120;
@@ -55,6 +56,7 @@ async function currentNickname(): Promise<string> {
 export async function acquireContentEditLock(contentId: number): Promise<CmsEditLockResult> {
   const row = await ensureCmsContentExists(contentId);
   await assertSiteAccess(row.siteId);
+  await assertChannelAccess(row.channelId);
   const user = currentUser();
   const key = lockKey(contentId);
   const value = JSON.stringify({
@@ -79,6 +81,9 @@ export async function acquireContentEditLock(contentId: number): Promise<CmsEdit
 
 /** 释放编辑锁（仅持有人可释放，他人调用为空操作） */
 export async function releaseContentEditLock(contentId: number): Promise<void> {
+  const row = await ensureCmsContentExists(contentId);
+  await assertSiteAccess(row.siteId);
+  await assertChannelAccess(row.channelId);
   const user = currentUser();
   const key = lockKey(contentId);
   const holder = parseHolder(await redis.get(key));

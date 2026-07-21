@@ -1257,6 +1257,9 @@ export const BASIC_COMPARISON_SYMBOL_OPTIONS: Array<{
 // ─── CMS 内容管理 ─────────────────────────────────────────────────────────────
 export const CMS_STATIC_MODES = ['dynamic', 'hybrid', 'static'] as const;
 
+/** Write-only CMS setting placeholder; never represents the stored secret value. */
+export const CMS_SECRET_MASK = '********';
+
 export const CMS_STATIC_MODE_LABELS: Record<(typeof CMS_STATIC_MODES)[number], string> = {
   dynamic: '动态渲染',
   hybrid: '混合（推荐）',

@@ -12,6 +12,7 @@ import { withPagination } from '../../lib/where-helpers';
 import { currentMemberId } from '../../lib/member-context';
 import { buildSearchVector } from './cms-search.service';
 import { submitCmsContent } from './cms-contents.service';
+import { sanitizeCmsHtml } from './cms-html-sanitizer';
 
 const CONTRIBUTION_SOURCE = '会员投稿';
 
@@ -61,7 +62,9 @@ export async function listMyContributions(params: { page: number; pageSize: numb
     withPagination(
       db.select({ content: cmsContents, channelName: cmsChannels.name })
         .from(cmsContents)
-        .leftJoin(cmsChannels, eq(cmsContents.channelId, cmsChannels.id))
+        .leftJoin(cmsChannels, and(
+          eq(cmsContents.channelId, cmsChannels.id),
+        ))
         .where(where)
         .orderBy(desc(cmsContents.id))
         .$dynamic(),
@@ -85,13 +88,21 @@ async function getOwnContribution(id: number): Promise<CmsContentRow> {
 
 export async function getMyContribution(id: number) {
   const row = await getOwnContribution(id);
-  const [channel] = await db.select({ name: cmsChannels.name }).from(cmsChannels).where(eq(cmsChannels.id, row.channelId)).limit(1);
+  const [channel] = await db.select({ name: cmsChannels.name }).from(cmsChannels).where(and(
+    eq(cmsChannels.id, row.channelId),
+  )).limit(1);
   return mapContribution(row, channel?.name);
 }
 
 async function ensureContributableChannel(siteId: number, channelId: number) {
+  const [site] = await db.select({ id: cmsSites.id }).from(cmsSites)
+    .where(and(eq(cmsSites.id, siteId), eq(cmsSites.status, 'enabled'))).limit(1);
+  if (!site) throw new HTTPException(400, { message: '该站点不可投稿' });
   const [channel] = await db.select().from(cmsChannels)
-    .where(and(eq(cmsChannels.id, channelId), eq(cmsChannels.siteId, siteId))).limit(1);
+    .where(and(
+      eq(cmsChannels.id, channelId),
+      eq(cmsChannels.siteId, siteId),
+    )).limit(1);
   if (!channel || channel.type !== 'list' || channel.status !== 'enabled') {
     throw new HTTPException(400, { message: '该栏目不可投稿' });
   }
@@ -110,6 +121,8 @@ export interface ContributionInput {
 export async function createContribution(input: ContributionInput) {
   const memberId = currentMemberId();
   const channel = await ensureContributableChannel(input.siteId, input.channelId);
+  const body = sanitizeCmsHtml(input.body);
+  if (!body.trim()) throw new HTTPException(400, { message: '正文净化后不能为空' });
   const [me] = await db.select({ nickname: members.nickname }).from(members).where(eq(members.id, memberId)).limit(1);
   const [created] = await db.insert(cmsContents).values({
     siteId: input.siteId,
@@ -117,14 +130,14 @@ export async function createContribution(input: ContributionInput) {
     modelId: channel.modelId ?? null,
     title: input.title,
     summary: input.summary ?? null,
-    body: input.body,
+    body,
     author: me?.nickname ?? `会员${memberId}`,
     source: CONTRIBUTION_SOURCE,
     status: 'draft',
     memberId,
-    searchVector: buildSearchVector({ title: input.title, summary: input.summary ?? null, body: input.body, seoKeywords: null, extendTexts: [] }),
+    searchVector: buildSearchVector({ title: input.title, summary: input.summary ?? null, body, seoKeywords: null, extendTexts: [] }),
   }).returning();
-  await submitCmsContent(created.id);
+  await submitCmsContent(created.id, { skipAccessCheck: true });
   return getMyContribution(created.id);
 }
 
@@ -135,14 +148,16 @@ export async function updateMyContribution(id: number, input: Omit<ContributionI
     throw new HTTPException(400, { message: '仅草稿或被驳回的投稿可修改' });
   }
   await ensureContributableChannel(row.siteId, input.channelId);
+  const body = sanitizeCmsHtml(input.body);
+  if (!body.trim()) throw new HTTPException(400, { message: '正文净化后不能为空' });
   await db.update(cmsContents).set({
     channelId: input.channelId,
     title: input.title,
     summary: input.summary ?? null,
-    body: input.body,
-    searchVector: buildSearchVector({ title: input.title, summary: input.summary ?? null, body: input.body, seoKeywords: null, extendTexts: [] }),
+    body,
+    searchVector: buildSearchVector({ title: input.title, summary: input.summary ?? null, body, seoKeywords: null, extendTexts: [] }),
   }).where(eq(cmsContents.id, id));
-  await submitCmsContent(id);
+  await submitCmsContent(id, { skipAccessCheck: true });
   return getMyContribution(id);
 }
 

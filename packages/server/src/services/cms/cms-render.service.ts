@@ -167,7 +167,7 @@ function mergeSeo(site: CmsSiteRow, overrides: Partial<CmsSeo> & { pathForCanoni
 
 async function buildBaseContext(site: CmsSiteRow, baseUrl: string, seo: CmsSeo, analyticsContentId?: number): Promise<CmsBaseContext> {
   const [tree, fragments, friendLinks, ads, langAlternates] = await Promise.all([
-    listCmsChannelTree({ siteId: site.id, status: 'enabled' }),
+    listCmsChannelTree({ siteId: site.id, status: 'enabled' }, { skipAccessCheck: true }),
     getFragmentMap(site.id),
     listEnabledFriendLinks(site.id),
     getActiveAds(site.id),
@@ -635,7 +635,7 @@ export async function renderSearchPage(
   const seo = mergeSeo(site, { title: keyword ? `搜索：${keyword} - ${site.name}` : `搜索 - ${site.name}` });
   const base = await buildBaseContext(site, baseUrl, seo);
   const result = keyword
-    ? await searchCmsContents({ siteId: site.id, keyword, page, pageSize })
+    ? await searchCmsContents({ siteId: site.id, keyword, page, pageSize, skipAccessCheck: true })
     : { list: [], total: 0, page, pageSize, tokens: [] };
   // 搜索日志（仅首屏记一次，翻页不重复计）
   if (track && keyword && page === 1) {

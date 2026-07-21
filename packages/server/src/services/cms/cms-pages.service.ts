@@ -9,6 +9,8 @@ import { formatDateTime } from '../../lib/datetime';
 import { escapeLike, withPagination } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { assertSiteAccess } from './cms-sites.service';
+import { ensureCmsSiteExists } from './cms-sites.service';
+import { sanitizeCmsPageBlocks } from './cms-page-blocks';
 
 export function mapCmsPage(row: CmsPageRow) {
   return {
@@ -29,6 +31,8 @@ export function mapCmsPage(row: CmsPageRow) {
 }
 
 export async function listCmsPages(params: { page: number; pageSize: number; siteId: number; keyword?: string }) {
+  await ensureCmsSiteExists(params.siteId);
+  await assertSiteAccess(params.siteId);
   const conds = [eq(cmsPages.siteId, params.siteId)];
   if (params.keyword) {
     conds.push(sql`(${cmsPages.name} ILIKE ${`%${escapeLike(params.keyword)}%`} OR ${cmsPages.slug} ILIKE ${`%${escapeLike(params.keyword)}%`})`);
@@ -44,6 +48,7 @@ export async function listCmsPages(params: { page: number; pageSize: number; sit
 export async function getCmsPage(id: number) {
   const [row] = await db.select().from(cmsPages).where(eq(cmsPages.id, id)).limit(1);
   if (!row) throw new HTTPException(404, { message: '页面不存在' });
+  await assertSiteAccess(row.siteId);
   return mapCmsPage(row);
 }
 
@@ -62,11 +67,6 @@ export interface CmsPageInput {
   remark?: string | null;
 }
 
-function validateBlocks(blocks: CmsPageBlock[] | undefined) {
-  if (!blocks) return;
-  if (blocks.length > 50) throw new HTTPException(400, { message: '区块数量超出上限（50）' });
-}
-
 async function clearOtherHome(siteId: number, exceptId?: number) {
   const conds = [eq(cmsPages.siteId, siteId), eq(cmsPages.isHome, true)];
   if (exceptId) conds.push(ne(cmsPages.id, exceptId));
@@ -74,12 +74,13 @@ async function clearOtherHome(siteId: number, exceptId?: number) {
 }
 
 export async function createCmsPage(input: CmsPageInput) {
+  await ensureCmsSiteExists(input.siteId);
   await assertSiteAccess(input.siteId);
   if (!SLUG_RE.test(input.slug)) throw new HTTPException(400, { message: 'slug 仅允许小写字母/数字/中划线' });
-  validateBlocks(input.blocks);
+  const blocks = input.blocks === undefined ? undefined : sanitizeCmsPageBlocks(input.blocks);
   try {
     if (input.isHome) await clearOtherHome(input.siteId);
-    const [created] = await db.insert(cmsPages).values(input).returning();
+    const [created] = await db.insert(cmsPages).values({ ...input, ...(blocks ? { blocks } : {}) }).returning();
     return mapCmsPage(created);
   } catch (err) {
     rethrowPgUniqueViolation(err, '同站点下已存在相同 slug 的页面');
@@ -91,11 +92,16 @@ export async function updateCmsPage(id: number, input: Partial<CmsPageInput>) {
   if (!current) throw new HTTPException(404, { message: '页面不存在' });
   await assertSiteAccess(current.siteId);
   if (input.slug && !SLUG_RE.test(input.slug)) throw new HTTPException(400, { message: 'slug 仅允许小写字母/数字/中划线' });
-  validateBlocks(input.blocks);
+  const blocks = input.blocks === undefined ? undefined : sanitizeCmsPageBlocks(input.blocks);
   const { siteId: _ignored, ...rest } = input;
   try {
     if (rest.isHome) await clearOtherHome(current.siteId, id);
-    const [updated] = await db.update(cmsPages).set(rest).where(eq(cmsPages.id, id)).returning();
+    const [updated] = await db.update(cmsPages).set({
+      ...rest,
+      ...(blocks ? { blocks } : {}),
+    }).where(and(
+      eq(cmsPages.id, id),
+    )).returning();
     return mapCmsPage(updated);
   } catch (err) {
     rethrowPgUniqueViolation(err, '同站点下已存在相同 slug 的页面');

@@ -1,4 +1,5 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { HTTPException } from 'hono/http-exception';
 import { createCmsSearchWordSchema, updateCmsSearchWordSchema } from '@zenith/shared';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
@@ -10,7 +11,9 @@ import {
   listCmsSearchWords, createCmsSearchWord, updateCmsSearchWord, deleteCmsSearchWord,
   ensureCmsSearchWordExists, mapCmsSearchWord,
 } from '../../services/cms/cms-search-words.service';
-import { ensureCmsSiteExists } from '../../services/cms/cms-sites.service';
+import { assertSiteAccess, ensureCmsSiteExists } from '../../services/cms/cms-sites.service';
+import { isCmsPlatformAdmin } from '../../services/cms/cms-access';
+import { assertAllCmsSiteChannelsAccess } from '../../services/cms/cms-channels.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -63,7 +66,11 @@ const reindexRoute = defineOpenAPIRoute({
     let title = 'CMS 检索索引重建（全部站点）';
     if (siteId) {
       const site = await ensureCmsSiteExists(siteId);
+      await assertSiteAccess(siteId);
+      await assertAllCmsSiteChannelsAccess(siteId);
       title = `CMS 检索索引重建（${site.name}）`;
+    } else if (!isCmsPlatformAdmin()) {
+      throw new HTTPException(403, { message: '非平台管理员重建索引时必须选择并拥有完整栏目权限的站点' });
     }
     const row = await submitAsyncTask({
       taskType: 'cms-search-reindex',

@@ -7,6 +7,8 @@ import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../.
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { assertSiteAccess } from './cms-sites.service';
 import type { CreateCmsAdSlotInput, UpdateCmsAdSlotInput, CreateCmsAdInput, UpdateCmsAdInput } from '@zenith/shared';
+import { ensureCmsSiteExists } from './cms-sites.service';
+import { pageOffset } from '../../lib/pagination';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 export function mapCmsAdSlot(row: CmsAdSlotRow, adCount?: number) {
@@ -93,6 +95,7 @@ export async function recordAdClick(id: number): Promise<string | null> {
 
 // ─── 广告位 CRUD ──────────────────────────────────────────────────────────────
 export async function listCmsAdSlots(siteId: number) {
+  await ensureCmsSiteExists(siteId);
   await assertSiteAccess(siteId);
   const rows = await db.select({
     slot: cmsAdSlots,
@@ -105,6 +108,7 @@ export async function listCmsAdSlots(siteId: number) {
 }
 
 export async function createCmsAdSlot(data: CreateCmsAdSlotInput) {
+  await ensureCmsSiteExists(data.siteId);
   await assertSiteAccess(data.siteId);
   try {
     const [row] = await db.insert(cmsAdSlots).values(data).returning();
@@ -118,7 +122,9 @@ export async function updateCmsAdSlot(id: number, data: UpdateCmsAdSlotInput) {
   const current = await ensureCmsAdSlotExists(id);
   await assertSiteAccess(current.siteId);
   try {
-    const [row] = await db.update(cmsAdSlots).set(data).where(eq(cmsAdSlots.id, id)).returning();
+    const [row] = await db.update(cmsAdSlots).set(data).where(and(
+      eq(cmsAdSlots.id, id),
+    )).returning();
     return mapCmsAdSlot(row);
   } catch (err) {
     rethrowPgUniqueViolation(err, '同站点下广告位标识已存在');
@@ -142,8 +148,11 @@ export interface ListCmsAdsQuery {
 }
 
 export async function listCmsAds(q: ListCmsAdsQuery) {
+  await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
-  const conditions = [eq(cmsAdSlots.siteId, q.siteId)];
+  const conditions = [
+    eq(cmsAdSlots.siteId, q.siteId),
+  ];
   if (q.slotId) conditions.push(eq(cmsAds.slotId, q.slotId));
   const where = and(...conditions);
   const base = db.select({ ad: cmsAds, slotName: cmsAdSlots.name })
@@ -152,7 +161,7 @@ export async function listCmsAds(q: ListCmsAdsQuery) {
     .where(where);
   const [totalRows, rows] = await Promise.all([
     db.select({ count: sql<number>`count(*)::int` }).from(cmsAds).innerJoin(cmsAdSlots, eq(cmsAds.slotId, cmsAdSlots.id)).where(where),
-    base.orderBy(asc(cmsAds.sort), asc(cmsAds.id)).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
+    base.orderBy(asc(cmsAds.sort), asc(cmsAds.id)).limit(q.pageSize).offset(pageOffset(q.page, q.pageSize)),
   ]);
   return {
     list: rows.map((r) => mapCmsAd(r.ad, r.slotName)),
@@ -176,6 +185,8 @@ export async function createCmsAd(data: CreateCmsAdInput) {
 
 export async function updateCmsAd(id: number, data: UpdateCmsAdInput) {
   const current = await ensureCmsAdExists(id);
+  const currentSlot = await ensureCmsAdSlotExists(current.slotId);
+  await assertSiteAccess(currentSlot.siteId);
   const slot = await ensureCmsAdSlotExists(data.slotId ?? current.slotId);
   await assertSiteAccess(slot.siteId);
   const { startAt, endAt, ...rest } = data;

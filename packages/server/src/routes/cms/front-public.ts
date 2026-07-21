@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { submitCmsCommentSchema, voteCmsPollSchema } from '@zenith/shared';
 import { resolveSiteByCode } from '../../services/cms/cms-sites.service';
-import { submitCmsComment, likeCmsComment, throttleFrontSubmit } from '../../services/cms/cms-comments.service';
+import { getCmsCommentSite, submitCmsComment, likeCmsComment, throttleFrontSubmit } from '../../services/cms/cms-comments.service';
 import { getCmsFormByCode, submitCmsForm } from '../../services/cms/cms-forms.service';
 import { getPublishedSurveyByCode, submitCmsSurvey } from '../../services/cms/cms-surveys.service';
 import { increaseViewCount } from '../../services/cms/cms-contents.service';
@@ -12,9 +12,6 @@ import { generateCmsCaptcha, verifyCmsCaptcha, isCaptchaEnabled } from '../../se
 import {
   getPublishedPollByCode, getCmsPollResults, voteCmsPoll, hasVotedCmsPoll, isPollOpen, mapCmsPoll,
 } from '../../services/cms/cms-polls.service';
-import { db } from '../../db';
-import { cmsSites, cmsContents } from '../../db/schema';
-import { eq } from 'drizzle-orm';
 import { config } from '../../config';
 import redis from '../../lib/redis';
 
@@ -83,8 +80,7 @@ export function createCmsFrontPublicRoutes(): Hono {
       return c.newResponse(messagePage('提交失败', msg, backUrl), 400, { 'Content-Type': 'text/html; charset=utf-8' });
     }
     try {
-      const [row] = await db.select({ siteId: cmsContents.siteId }).from(cmsContents).where(eq(cmsContents.id, parsed.data.contentId)).limit(1);
-      const site = row ? (await db.select().from(cmsSites).where(eq(cmsSites.id, row.siteId)).limit(1))[0] ?? null : null;
+      const site = await getCmsCommentSite(parsed.data.contentId);
       const captchaError = await assertCaptchaIfEnabled(site, body as Record<string, unknown>);
       if (captchaError) {
         return c.newResponse(messagePage('提交失败', captchaError, backUrl), 400, { 'Content-Type': 'text/html; charset=utf-8' });

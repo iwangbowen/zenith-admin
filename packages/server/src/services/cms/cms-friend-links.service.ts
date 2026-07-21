@@ -6,6 +6,7 @@ import type { CmsFriendLinkRow } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
 import { mergeWhere, escapeLike, withPagination } from '../../lib/where-helpers';
 import type { CreateCmsFriendLinkInput, UpdateCmsFriendLinkInput } from '@zenith/shared';
+import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 export function mapCmsFriendLink(row: CmsFriendLinkRow) {
@@ -40,6 +41,8 @@ export interface ListCmsFriendLinksQuery {
 }
 
 export async function listCmsFriendLinks(q: ListCmsFriendLinksQuery) {
+  await ensureCmsSiteExists(q.siteId);
+  await assertSiteAccess(q.siteId);
   const conditions: SQL[] = [eq(cmsFriendLinks.siteId, q.siteId)];
   if (q.keyword) conditions.push(like(cmsFriendLinks.name, `%${escapeLike(q.keyword)}%`));
   if (q.status) conditions.push(eq(cmsFriendLinks.status, q.status));
@@ -65,17 +68,27 @@ export async function listEnabledFriendLinks(siteId: number) {
 
 // ─── 创建 / 更新 / 删除 ────────────────────────────────────────────────────────
 export async function createCmsFriendLink(data: CreateCmsFriendLinkInput) {
+  await ensureCmsSiteExists(data.siteId);
+  await assertSiteAccess(data.siteId);
   const [row] = await db.insert(cmsFriendLinks).values(data).returning();
   return mapCmsFriendLink(row);
 }
 
 export async function updateCmsFriendLink(id: number, data: UpdateCmsFriendLinkInput) {
-  const [row] = await db.update(cmsFriendLinks).set(data).where(eq(cmsFriendLinks.id, id)).returning();
+  const current = await ensureCmsFriendLinkExists(id);
+  await assertSiteAccess(current.siteId);
+  const [row] = await db.update(cmsFriendLinks).set(data).where(and(
+    eq(cmsFriendLinks.id, id),
+  )).returning();
   if (!row) throw new HTTPException(404, { message: '友情链接不存在' });
   return mapCmsFriendLink(row);
 }
 
 export async function deleteCmsFriendLink(id: number) {
-  const [row] = await db.delete(cmsFriendLinks).where(eq(cmsFriendLinks.id, id)).returning();
+  const current = await ensureCmsFriendLinkExists(id);
+  await assertSiteAccess(current.siteId);
+  const [row] = await db.delete(cmsFriendLinks).where(and(
+    eq(cmsFriendLinks.id, id),
+  )).returning();
   if (!row) throw new HTTPException(404, { message: '友情链接不存在' });
 }

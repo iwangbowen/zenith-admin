@@ -7,7 +7,7 @@
  * 流程通过 → 自动发布 + 刷新静态页 + 搜索引擎推送；驳回 / 撤回 → 回写内容状态。
  * 流程审核期间禁止后台手动发布 / 驳回，避免双轨状态漂移。
  */
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { WORKFLOW_ACTIVE_INSTANCE_STATUSES } from '@zenith/shared';
 import { db } from '../../db';
@@ -27,13 +27,18 @@ async function resolveAuditDefinitionId(settings: Record<string, unknown>): Prom
   const configured = Number(settings.auditWorkflowDefinitionId);
   if (Number.isInteger(configured) && configured > 0) {
     const [def] = await db.select({ id: workflowDefinitions.id }).from(workflowDefinitions)
-      .where(and(eq(workflowDefinitions.id, configured), eq(workflowDefinitions.status, 'published')))
+      .where(and(
+        isNull(workflowDefinitions.tenantId),
+        eq(workflowDefinitions.id, configured),
+        eq(workflowDefinitions.status, 'published'),
+      ))
       .limit(1);
     if (def) return def.id;
   }
   const [fallback] = await db.select({ id: workflowDefinitions.id }).from(workflowDefinitions)
     .where(and(
       eq(workflowDefinitions.name, CMS_AUDIT_WORKFLOW_NAME),
+      isNull(workflowDefinitions.tenantId),
       eq(workflowDefinitions.status, 'published'),
       eq(workflowDefinitions.formType, 'external'),
     ))
@@ -73,6 +78,7 @@ export async function startCmsContentWorkflow(input: {
   siteName: string;
   channelName: string;
   settings: Record<string, unknown>;
+  caller?: { userId: number; username: string; tenantId: null; roles?: string[] };
 }) {
   const existing = await findActiveContentWorkflow(input.contentId);
   if (existing) return existing;
@@ -87,6 +93,7 @@ export async function startCmsContentWorkflow(input: {
       siteName: input.siteName,
       channelName: input.channelName,
     },
+    caller: input.caller,
   });
 }
 
@@ -107,11 +114,7 @@ export function registerCmsWorkflowSubscribers(): void {
           return;
         }
         const { publishCmsContent } = await import('./cms-contents.service');
-        await publishCmsContent(contentId, { fromWorkflow: true });
-        const { triggerContentStaticRefresh } = await import('./cms-static.service');
-        const { triggerAutoPushForContent } = await import('./cms-push.service');
-        triggerContentStaticRefresh(contentId);
-        triggerAutoPushForContent(contentId);
+        await publishCmsContent(contentId, { fromWorkflow: true, skipAccessCheck: true });
         logger.info(`[cms-workflow] 内容 #${contentId} 流程审核通过，已自动发布`);
       } catch (err) {
         logger.error(`[cms-workflow] 内容 #${contentId} 流程通过后发布失败`, err);
@@ -120,8 +123,14 @@ export function registerCmsWorkflowSubscribers(): void {
     onRejected: async (instance) => {
       const contentId = Number(instance.bizId);
       try {
+        const [current] = await db.select({ id: cmsContents.id }).from(cmsContents)
+          .where(eq(cmsContents.id, contentId)).limit(1);
+        if (!current) return;
         const { rejectCmsContent } = await import('./cms-contents.service');
-        await rejectCmsContent(contentId, '工作流审核驳回', { fromWorkflow: true });
+        await rejectCmsContent(contentId, '工作流审核驳回', {
+          fromWorkflow: true,
+          skipAccessCheck: true,
+        });
         logger.info(`[cms-workflow] 内容 #${contentId} 流程审核驳回`);
       } catch (err) {
         logger.error(`[cms-workflow] 内容 #${contentId} 流程驳回回写失败`, err);
@@ -130,9 +139,15 @@ export function registerCmsWorkflowSubscribers(): void {
     onWithdrawn: async (instance) => {
       const contentId = Number(instance.bizId);
       try {
+        const [current] = await db.select({ id: cmsContents.id }).from(cmsContents)
+          .where(eq(cmsContents.id, contentId)).limit(1);
+        if (!current) return;
         await db.update(cmsContents)
           .set({ status: 'draft' })
-          .where(and(eq(cmsContents.id, contentId), eq(cmsContents.status, 'pending')));
+          .where(and(
+            eq(cmsContents.id, contentId),
+            eq(cmsContents.status, 'pending'),
+          ));
         logger.info(`[cms-workflow] 内容 #${contentId} 流程撤回，已退回草稿`);
       } catch (err) {
         logger.error(`[cms-workflow] 内容 #${contentId} 流程撤回回写失败`, err);

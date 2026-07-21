@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto';
-import { and, eq, gte, sql, desc, isNotNull, lt } from 'drizzle-orm';
+import { and, eq, gte, sql, desc, inArray, isNotNull, lt } from 'drizzle-orm';
 import { db } from '../../db';
 import { cmsVisitLogs, cmsSearchLogs, cmsAdStats, cmsAds, cmsContents } from '../../db/schema';
 import logger from '../../lib/logger';
 import { formatDate } from '../../lib/datetime';
 import { assertSiteAccess } from './cms-sites.service';
+import { ensureCmsSiteExists } from './cms-sites.service';
+import { assertAllCmsSiteChannelsAccess } from './cms-channels.service';
 
 /** 原始统计日志保留天数（访问 / 搜索） */
 const LOG_RETENTION_DAYS = 90;
@@ -97,9 +99,15 @@ export function recordCmsSearchLog(input: { siteId: number; keyword: string; res
 export async function recordAdViews(ids: number[]): Promise<void> {
   const unique = [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))].slice(0, 50);
   if (unique.length === 0) return;
+  const ads = await db.select({ id: cmsAds.id }).from(cmsAds)
+    .where(inArray(cmsAds.id, unique));
+  const validIds = new Set(ads.map((ad) => ad.id));
   const today = formatDate(new Date());
   for (const adId of unique) {
-    await db.update(cmsAds).set({ viewCount: sql`${cmsAds.viewCount} + 1` }).where(eq(cmsAds.id, adId));
+    if (!validIds.has(adId)) continue;
+    await db.update(cmsAds).set({ viewCount: sql`${cmsAds.viewCount} + 1` }).where(and(
+      eq(cmsAds.id, adId),
+    ));
     await db.insert(cmsAdStats)
       .values({ adId, statDate: today, views: 1 })
       .onConflictDoUpdate({
@@ -112,11 +120,15 @@ export async function recordAdViews(ids: number[]): Promise<void> {
 /** 广告点击日聚合（recordAdClick 成功后调用） */
 export function recordAdClickStat(adId: number): void {
   const today = formatDate(new Date());
-  void db.insert(cmsAdStats)
-    .values({ adId, statDate: today, clicks: 1 })
-    .onConflictDoUpdate({
-      target: [cmsAdStats.adId, cmsAdStats.statDate],
-      set: { clicks: sql`${cmsAdStats.clicks} + 1` },
+  void db.select({ id: cmsAds.id }).from(cmsAds).where(eq(cmsAds.id, adId)).limit(1)
+    .then(async ([ad]) => {
+      if (!ad) return;
+      await db.insert(cmsAdStats)
+        .values({ adId, statDate: today, clicks: 1 })
+        .onConflictDoUpdate({
+          target: [cmsAdStats.adId, cmsAdStats.statDate],
+          set: { clicks: sql`${cmsAdStats.clicks} + 1` },
+        });
     })
     .catch((err) => {
       logger.warn('[CMS] 广告点击日聚合写入失败', err);
@@ -135,7 +147,9 @@ function sinceDate(days: number): Date {
 
 /** 访问统计总览：今日/昨日卡片 + 趋势 + 内容TOP + 栏目/来源/设备/通道分布（bot 不计入） */
 export async function getCmsVisitStats(siteId: number, days = 30) {
+  await ensureCmsSiteExists(siteId);
   await assertSiteAccess(siteId);
+  await assertAllCmsSiteChannelsAccess(siteId);
   const rangeDays = Math.min(90, Math.max(1, days));
   const since = sinceDate(rangeDays);
   const base = and(
@@ -175,7 +189,9 @@ export async function getCmsVisitStats(siteId: number, days = 30) {
       uv: sql<number>`count(distinct ${cmsVisitLogs.visitorHash})::int`,
       title: cmsContents.title,
     }).from(cmsVisitLogs)
-      .innerJoin(cmsContents, eq(cmsVisitLogs.contentId, cmsContents.id))
+      .innerJoin(cmsContents, and(
+        eq(cmsVisitLogs.contentId, cmsContents.id),
+      ))
       .where(and(base, isNotNull(cmsVisitLogs.contentId)))
       .groupBy(cmsVisitLogs.contentId, cmsContents.title)
       .orderBy(desc(sql`count(*)`))
@@ -211,10 +227,15 @@ export async function getCmsVisitStats(siteId: number, days = 30) {
 
 /** 搜索分析：搜索量趋势 + 热搜词榜 + 无结果词榜（选题风向标） */
 export async function getCmsSearchAnalytics(siteId: number, days = 30) {
+  await ensureCmsSiteExists(siteId);
   await assertSiteAccess(siteId);
+  await assertAllCmsSiteChannelsAccess(siteId);
   const rangeDays = Math.min(90, Math.max(1, days));
   const since = sinceDate(rangeDays);
-  const base = and(eq(cmsSearchLogs.siteId, siteId), gte(cmsSearchLogs.createdAt, since))!;
+  const base = and(
+    eq(cmsSearchLogs.siteId, siteId),
+    gte(cmsSearchLogs.createdAt, since),
+  )!;
   const searchDateExpr = sql<string>`to_char(${cmsSearchLogs.createdAt}, 'YYYY-MM-DD')`;
 
   const [trendRows, topRows, noResultRows] = await Promise.all([

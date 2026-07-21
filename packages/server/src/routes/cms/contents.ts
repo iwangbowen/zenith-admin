@@ -13,7 +13,7 @@ import {
   recycleCmsContents, restoreCmsContents, purgeCmsContents, restoreCmsContentToVersion,
   batchMoveCmsContents, batchSetCmsContentFlags, batchAddCmsContentTags,
   duplicateCmsContent, distributeCmsContents, archiveCmsContents, unarchiveCmsContents,
-  checkCmsContentTitle,
+  checkCmsContentTitle, ensureCmsContentTargetAccess,
 } from '../../services/cms/cms-contents.service';
 import { listContentVersions, diffContentVersion } from '../../services/cms/cms-versions.service';
 import { listContentOpLogs } from '../../services/cms/cms-content-op-logs.service';
@@ -21,7 +21,6 @@ import { checkCmsText } from '../../services/cms/cms-word-check.service';
 import { acquireContentEditLock, releaseContentEditLock } from '../../services/cms/cms-edit-lock.service';
 import { createContentPreviewLink } from '../../services/cms/cms-preview.service';
 import { triggerContentStaticRefresh } from '../../services/cms/cms-static.service';
-import { triggerAutoPushForContent } from '../../services/cms/cms-push.service';
 import { CmsContentVersionDTO, CmsContentVersionDiffDTO, CmsEditLockDTO, CmsPreviewLinkDTO, AsyncTaskDTO, CmsContentOpLogDTO, CmsTextCheckResultDTO } from '../../lib/openapi-dtos';
 import { mapAsyncTask, submitAsyncTask } from '../../lib/task-center';
 
@@ -164,8 +163,6 @@ const publishRoute = defineOpenAPIRoute({
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, { ...await getCmsContent(id), body: undefined });
     const row = await publishCmsContent(id);
-    triggerContentStaticRefresh(id);
-    triggerAutoPushForContent(id);
     return c.json(okBody(row, '发布成功'), 200);
   },
 });
@@ -471,6 +468,7 @@ const importRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { fileId, siteId, channelId } = c.req.valid('json');
+    await ensureCmsContentTargetAccess(siteId, channelId);
     const row = await submitAsyncTask({
       taskType: 'cms-content-import',
       payload: { fileId, siteId, channelId },

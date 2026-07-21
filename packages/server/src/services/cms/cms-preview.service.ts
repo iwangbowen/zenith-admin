@@ -11,6 +11,7 @@ import { config } from '../../config';
 import { formatDateTime } from '../../lib/datetime';
 import { ensureCmsContentExists } from './cms-contents.service';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
+import { assertChannelAccess } from './cms-channels.service';
 
 const PREVIEW_TTL_SECONDS = 2 * 60 * 60;
 
@@ -28,6 +29,7 @@ export interface CmsPreviewLink {
 export async function createContentPreviewLink(contentId: number): Promise<CmsPreviewLink> {
   const row = await ensureCmsContentExists(contentId);
   await assertSiteAccess(row.siteId);
+  await assertChannelAccess(row.channelId);
   const site = await ensureCmsSiteExists(row.siteId);
   const exp = Math.floor(Date.now() / 1000) + PREVIEW_TTL_SECONDS;
   const sig = sign(contentId, exp);

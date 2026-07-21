@@ -11,48 +11,9 @@ import {
 } from '../../services/cms/cms-collect.service';
 import { mapAsyncTask, submitAsyncTask } from '../../lib/task-center';
 import { currentUser } from '../../lib/context';
+import { createCmsCollectRuleSchema, updateCmsCollectRuleSchema } from '@zenith/shared';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
-
-const ruleBody = z.object({
-  siteId: z.number().int().positive(),
-  channelId: z.number().int().positive(),
-  name: z.string().min(1).max(100),
-  listUrl: z.string().url().max(500),
-  pageStart: z.number().int().min(1).default(1),
-  pageEnd: z.number().int().min(1).default(1),
-  listSelector: z.string().min(1).max(200),
-  titleSelector: z.string().min(1).max(200),
-  bodySelector: z.string().min(1).max(200),
-  summarySelector: z.string().max(200).nullish(),
-  coverSelector: z.string().max(200).nullish(),
-  removeSelectors: z.array(z.string().max(200)).max(20).default([]),
-  autoPublish: z.boolean().default(false),
-  localizeImages: z.boolean().default(false),
-  maxItems: z.number().int().min(1).max(200).default(50),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
-  remark: z.string().max(200).nullish(),
-});
-
-/** 部分更新：不复用 ruleBody.partial()——partial 后 .default() 仍会注入默认值，导致未提交字段被重置 */
-const ruleUpdateBody = z.object({
-  channelId: z.number().int().positive().optional(),
-  name: z.string().min(1).max(100).optional(),
-  listUrl: z.string().url().max(500).optional(),
-  pageStart: z.number().int().min(1).optional(),
-  pageEnd: z.number().int().min(1).optional(),
-  listSelector: z.string().min(1).max(200).optional(),
-  titleSelector: z.string().min(1).max(200).optional(),
-  bodySelector: z.string().min(1).max(200).optional(),
-  summarySelector: z.string().max(200).nullish(),
-  coverSelector: z.string().max(200).nullish(),
-  removeSelectors: z.array(z.string().max(200)).max(20).optional(),
-  autoPublish: z.boolean().optional(),
-  localizeImages: z.boolean().optional(),
-  maxItems: z.number().int().min(1).max(200).optional(),
-  status: z.enum(['enabled', 'disabled']).optional(),
-  remark: z.string().max(200).nullish(),
-});
 
 const listRoute = defineOpenAPIRoute({
   route: createRoute({
@@ -77,7 +38,7 @@ const createRouteDef = defineOpenAPIRoute({
     tags: ['CMS-采集中心'], summary: '创建采集规则',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'cms:collect:create', audit: { description: '创建 CMS 采集规则', module: 'CMS内容管理' } })] as const,
-    request: { body: { content: jsonContent(ruleBody), required: true } },
+    request: { body: { content: jsonContent(createCmsCollectRuleSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(CmsCollectRuleDTO, '创建成功') },
   }),
   handler: async (c) => c.json(okBody(await createCollectRule(c.req.valid('json')), '创建成功'), 200),
@@ -89,7 +50,7 @@ const updateRouteDef = defineOpenAPIRoute({
     tags: ['CMS-采集中心'], summary: '更新采集规则',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'cms:collect:update', audit: { description: '更新 CMS 采集规则', module: 'CMS内容管理' } })] as const,
-    request: { params: IdParam, body: { content: jsonContent(ruleUpdateBody), required: true } },
+    request: { params: IdParam, body: { content: jsonContent(updateCmsCollectRuleSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(CmsCollectRuleDTO, '更新成功') },
   }),
   handler: async (c) => {

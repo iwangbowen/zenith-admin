@@ -4,8 +4,9 @@
  * 区块样式内联 <style>（.pb-* 前缀），静态页零外部依赖。
  */
 import { renderToStaticMarkup } from 'react-dom/server';
-import type { CmsPageBlock } from '@zenith/shared';
+import type { CmsFragmentType, CmsPageBlock } from '@zenith/shared';
 import type { CmsBaseContext, CmsContentItem } from './types';
+import { sanitizeCmsHtml } from '../../services/cms/cms-html-sanitizer';
 
 export const BLOCK_STYLES = `
 .pb-hero { text-align: center; padding: 64px 24px; border-radius: 12px; background: var(--bg-2); background-size: cover; background-position: center; margin-bottom: 32px; }
@@ -53,7 +54,7 @@ function HeroBlock({ props }: { props: Record<string, unknown> }) {
 }
 
 function RichtextBlock({ props }: { props: Record<string, unknown> }) {
-  return <section className="pb-richtext" dangerouslySetInnerHTML={{ __html: str(props.html) }} />;
+  return <section className="pb-richtext" dangerouslySetInnerHTML={{ __html: sanitizeCmsHtml(str(props.html)) }} />;
 }
 
 function ImageBlock({ props }: { props: Record<string, unknown> }) {
@@ -93,12 +94,42 @@ function ColumnsBlock({ props }: { props: Record<string, unknown> }) {
   );
 }
 
-function FragmentBlock({ props, ctx }: { props: Record<string, unknown>; ctx: CmsBaseContext }) {
-  const fragment = ctx.fragments[str(props.code)];
+export function CmsFragmentContent({
+  fragment,
+  className,
+  imageAlt,
+  as: Wrapper = 'div',
+}: {
+  fragment: { type: CmsFragmentType | string; content: string } | undefined;
+  className?: string;
+  imageAlt: string;
+  as?: 'div' | 'section';
+}) {
   if (!fragment?.content) return null;
-  if (fragment.type === 'image') return <section className="pb-fragment"><img src={fragment.content} alt={str(props.code)} /></section>;
-  if (fragment.type === 'text') return <section className="pb-fragment">{fragment.content}</section>;
-  return <section className="pb-fragment" dangerouslySetInnerHTML={{ __html: fragment.content }} />;
+  if (fragment.type === 'html') {
+    return <Wrapper className={className} dangerouslySetInnerHTML={{ __html: sanitizeCmsHtml(fragment.content) }} />;
+  }
+  if (fragment.type === 'image') {
+    return <Wrapper className={className}><img src={fragment.content} alt={imageAlt} /></Wrapper>;
+  }
+  if (fragment.type === 'text') {
+    return <Wrapper className={className}>{fragment.content}</Wrapper>;
+  }
+  if (fragment.type === 'json') {
+    let display = fragment.content;
+    try {
+      display = JSON.stringify(JSON.parse(fragment.content), null, 2);
+    } catch {
+      // Legacy invalid JSON remains inert text.
+    }
+    return <Wrapper className={className}><pre>{display}</pre></Wrapper>;
+  }
+  return null;
+}
+
+function FragmentBlock({ props, ctx }: { props: Record<string, unknown>; ctx: CmsBaseContext }) {
+  const code = str(props.code);
+  return <CmsFragmentContent fragment={ctx.fragments[code]} className="pb-fragment" imageAlt={code} as="section" />;
 }
 
 export interface BlockRenderInput {

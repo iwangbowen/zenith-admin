@@ -1,11 +1,13 @@
 import { load } from 'cheerio';
 import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '../../db';
-import { cmsSites, cmsContents, cmsFriendLinks } from '../../db/schema';
+import { cmsContents, cmsFriendLinks } from '../../db/schema';
 import { httpRequest } from '../../lib/http-client';
 import { registerTaskHandler } from '../../lib/task-center';
 import { findChannelByPath } from './cms-render.service';
 import { getPublishedContent } from './cms-contents.service';
+import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
+import { assertAllCmsSiteChannelsAccess } from './cms-channels.service';
 
 /**
  * 死链检测（任务中心执行）：
@@ -89,10 +91,12 @@ export function registerCmsDeadlinkTaskHandler(): void {
     allowConcurrent: false,
     maxAttempts: 1,
     async run(ctx) {
-      const siteId = Number((ctx.payload as { siteId?: number })?.siteId);
+      const payload = ctx.payload as { siteId?: number };
+      const siteId = Number(payload.siteId);
       if (!siteId) throw new Error('缺少 siteId 参数');
-      const [site] = await db.select().from(cmsSites).where(eq(cmsSites.id, siteId)).limit(1);
-      if (!site) throw new Error(`站点不存在（id=${siteId}）`);
+      await ensureCmsSiteExists(siteId);
+      await assertSiteAccess(siteId);
+      await assertAllCmsSiteChannelsAccess(siteId);
 
       const links = await collectSiteLinks(siteId);
       const internal = links.filter((l) => l.url.startsWith('/'));

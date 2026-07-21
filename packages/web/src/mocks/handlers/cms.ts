@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import type { CmsChannel, CmsContent, CmsContentStatus, CmsModelField, CmsPublishChannel, CmsSurvey, CmsPoll } from '@zenith/shared';
+import { CMS_SECRET_MASK } from '@zenith/shared';
 import {
   mockCmsSites, mockCmsModels, mockCmsChannels, mockCmsContents, mockCmsTags,
   mockCmsFragments, mockCmsFriendLinks, buildMockChannelTree,
@@ -28,6 +29,10 @@ function notFound(message: string) {
   return HttpResponse.json({ code: 404, message, data: null }, { status: 404 });
 }
 
+function badRequest(message: string) {
+  return HttpResponse.json({ code: 400, message, data: null }, { status: 400 });
+}
+
 function paginate<T>(list: T[], page: number, pageSize: number) {
   return { list: list.slice((page - 1) * pageSize, page * pageSize), total: list.length, page, pageSize };
 }
@@ -46,10 +51,50 @@ function channelPath(channelId: number): string {
   return mockCmsChannels.find((c) => c.id === channelId)?.path ?? '';
 }
 
+const sensitiveCmsSettingKey = /(?:secret|token|password|private[_-]?key|api[_-]?key|access[_-]?key|indexnow[_-]?key|credential)/i;
+
+function redactMockSettingValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactMockSettingValue);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, nested]) => [
+    key,
+    sensitiveCmsSettingKey.test(key) ? CMS_SECRET_MASK : redactMockSettingValue(nested),
+  ]));
+}
+
+function redactMockSite<T extends { settings: Record<string, unknown> }>(site: T): T {
+  const settings = redactMockSettingValue(site.settings) as Record<string, unknown>;
+  return { ...site, settings };
+}
+
+function mergeMockSiteSettings(
+  current: Record<string, unknown>,
+  incoming: Record<string, unknown>,
+): Record<string, unknown> {
+  const out = { ...current };
+  for (const [key, value] of Object.entries(incoming)) {
+    if (sensitiveCmsSettingKey.test(key) && (value === '' || value === CMS_SECRET_MASK)) continue;
+    if (sensitiveCmsSettingKey.test(key) && value === null) delete out[key];
+    else if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const existing = out[key] && typeof out[key] === 'object' && !Array.isArray(out[key])
+        ? out[key] as Record<string, unknown>
+        : {};
+      out[key] = mergeMockSiteSettings(
+        existing,
+        value as Record<string, unknown>,
+      );
+    } else out[key] = value;
+  }
+  return out;
+}
+
 export const cmsHandlers = [
   // ═══ 站点 ═══════════════════════════════════════════════════════════════
-  http.get('/api/cms/sites/all', () => okJson(mockCmsSites.filter((s) => s.status === 'enabled'))),
-  http.get('/api/cms/sites/themes', () => okJson([{ code: 'default', label: '默认主题' }])),
+  http.get('/api/cms/sites/all', () => okJson(mockCmsSites.filter((s) => s.status === 'enabled').map(redactMockSite))),
+  http.get('/api/cms/sites/themes', () => okJson([
+    { code: 'default', label: '默认主题' },
+    { code: 'docs', label: '文档主题' },
+  ])),
   // 主题可选模板清单（与 packages/server/src/cms/themes/default 注册的变体保持一致）
   http.get('/api/cms/sites/themes/:code/templates', () => okJson({
     list: [
@@ -81,20 +126,24 @@ export const cmsHandlers = [
     let list = [...mockCmsSites];
     if (keyword) list = list.filter((s) => s.name.includes(keyword) || s.code.includes(keyword) || (s.domain ?? '').includes(keyword));
     if (status) list = list.filter((s) => s.status === status);
-    return okJson(paginate(list, page, pageSize));
+    return okJson({ ...paginate(list, page, pageSize), list: paginate(list, page, pageSize).list.map(redactMockSite) });
   }),
   http.get('/api/cms/sites/:id', ({ params }) => {
     const site = mockCmsSites.find((s) => s.id === Number(params.id));
-    return site ? okJson(site) : notFound('站点不存在');
+    return site ? okJson(redactMockSite(site)) : notFound('站点不存在');
   }),
   http.post('/api/cms/sites', async ({ request }) => {
     const body = (await request.json()) as Body;
+    const code = String(body.code ?? '');
+    if (mockCmsSites.some((site) => site.code === code)) {
+      return badRequest('站点标识或域名已存在');
+    }
     const now = mockDateTime();
     if (body.isDefault) mockCmsSites.forEach((s) => { s.isDefault = false; });
     const site = {
       id: getNextCmsSiteId(),
       name: String(body.name ?? ''),
-      code: String(body.code ?? ''),
+      code,
       domain: (body.domain as string) ?? null,
       aliasDomains: (body.aliasDomains as string[]) ?? [],
       isDefault: Boolean(body.isDefault),
@@ -108,7 +157,7 @@ export const cmsHandlers = [
       theme: String(body.theme ?? 'default'),
       staticMode: (body.staticMode as 'dynamic' | 'hybrid' | 'static') ?? 'hybrid',
       robots: (body.robots as string) ?? null,
-      settings: {},
+      settings: mergeMockSiteSettings({}, (body.settings as Record<string, unknown>) ?? {}),
       status: (body.status as 'enabled' | 'disabled') ?? 'enabled',
       sort: Number(body.sort ?? 0),
       remark: (body.remark as string) ?? null,
@@ -116,15 +165,25 @@ export const cmsHandlers = [
       updatedAt: now,
     };
     mockCmsSites.push(site);
-    return okJson(site, '创建成功');
+    return okJson(redactMockSite(site), '创建成功');
   }),
   http.put('/api/cms/sites/:id', async ({ params, request }) => {
     const idx = mockCmsSites.findIndex((s) => s.id === Number(params.id));
     if (idx === -1) return notFound('站点不存在');
     const body = (await request.json()) as Body;
+    const code = body.code === undefined ? mockCmsSites[idx].code : String(body.code);
+    if (mockCmsSites.some((site, siteIndex) => siteIndex !== idx && site.code === code)) {
+      return badRequest('站点标识或域名已存在');
+    }
+    if (body.settings && typeof body.settings === 'object') {
+      body.settings = mergeMockSiteSettings(
+        mockCmsSites[idx].settings,
+        body.settings as Record<string, unknown>,
+      );
+    }
     if (body.isDefault) mockCmsSites.forEach((s) => { s.isDefault = false; });
-    Object.assign(mockCmsSites[idx], body, { updatedAt: mockDateTime() });
-    return okJson(mockCmsSites[idx], '更新成功');
+    Object.assign(mockCmsSites[idx], body, { code, updatedAt: mockDateTime() });
+    return okJson(redactMockSite(mockCmsSites[idx]), '更新成功');
   }),
   http.delete('/api/cms/sites/:id', ({ params }) => {
     const id = Number(params.id);
@@ -504,7 +563,7 @@ export const cmsHandlers = [
       status: 'draft',
       rejectReason: null,
       publishedAt: null,
-      scheduledAt: null,
+      scheduledAt: (body.scheduledAt as string) ?? null,
       expireAt: (body.expireAt as string) ?? null,
       viewCount: 0,
       likeCount: 0,
@@ -1547,7 +1606,7 @@ export const cmsP2Handlers = [
       siteName: body?.site?.name ?? '导入站点',
       siteCode: `${body?.site?.code ?? 'imported'}-2`,
       counts: { channels: 0, tags: 0, contents: 0, fragments: 0, friendLinks: 0, redirects: 0, linkWords: 0, adSlots: 0, ads: 0, forms: 0, pages: 0 },
-    }, '站点导入成功');
+    }, '站点导入成功，内容已统一转为草稿');
   }),
 ];
 

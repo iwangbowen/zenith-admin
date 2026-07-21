@@ -1,13 +1,13 @@
-import { and, lte, ne, isNull, isNotNull, eq } from 'drizzle-orm';
+import { and, lte, ne, isNull, isNotNull } from 'drizzle-orm';
 import { db } from '../../db';
 import { cmsContents } from '../../db/schema';
 import { config } from '../../config';
 import redis from '../../lib/redis';
 import logger from '../../lib/logger';
 import { refreshContentStatic } from './cms-static.service';
-import { triggerAutoPushForContent } from './cms-push.service';
 import { offlineExpiredCmsContents, cancelExpiredTopContents, flushViewCountBuffer } from './cms-contents.service';
 import { triggerCmsContentWebhook } from './cms-webhook.service';
+import { publishCmsContent } from './cms-contents.service';
 
 const LOCK_KEY = `${config.redis.keyPrefix}cms:scheduled-publish-lock`;
 const LOCK_TTL_SECONDS = 300;
@@ -36,22 +36,8 @@ export async function publishScheduledCmsContents(): Promise<string> {
     let published = 0;
     for (const row of due) {
       try {
-        // 条件更新兜底：即使锁失效，也只有仍处于待发布状态的行会被发布
-        const updated = await db.update(cmsContents)
-          .set({ status: 'published', publishedAt: now, scheduledAt: null, rejectReason: null })
-          .where(and(
-            eq(cmsContents.id, row.id),
-            ne(cmsContents.status, 'published'),
-            isNotNull(cmsContents.scheduledAt),
-          ))
-          .returning({ id: cmsContents.id });
-        if (updated.length === 0) continue;
+        await publishCmsContent(row.id, { skipAccessCheck: true, scheduledAtBefore: now });
         published += 1;
-        await refreshContentStatic(row.id).catch((err) => {
-          logger.error(`[CMS] 定时发布内容 ${row.id} 静态化失败`, err);
-        });
-        triggerAutoPushForContent(row.id);
-        triggerCmsContentWebhook('content.published', row.id);
       } catch (err) {
         logger.error(`[CMS] 定时发布内容 ${row.id} 失败`, err);
       }

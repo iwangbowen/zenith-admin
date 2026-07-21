@@ -4,7 +4,7 @@ import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData, setAuditAfterData } from '../../middleware/guard';
 import {
   ErrorResponse, jsonContent, PaginationQuery, validationHook, commonErrorResponses,
-  ok, okPaginated, okMsg, IdParam, okBody,
+  ok, okPaginated, okMsg, IdParam, okBody, errBody,
 } from '../../lib/openapi-schemas';
 import { CmsSiteDTO, CmsThemeDTO, CmsThemeTemplatesDTO, CmsTemplateHealthDTO, CmsThemeSettingFieldDTO, CmsSiteUsersDTO, CmsSiteImportResultDTO } from '../../lib/openapi-dtos';
 import { listThemes, listThemeTemplates, getThemeSettingsSchema } from '../../cms/themes/registry';
@@ -15,6 +15,7 @@ import {
 import { getSiteTemplateHealth } from '../../services/cms/cms-template-refs.service';
 import { exportCmsSite, importCmsSite } from '../../services/cms/cms-site-transfer.service';
 import { formatFileTimestamp } from '../../lib/datetime';
+import { assertAllCmsSiteChannelsAccess } from '../../services/cms/cms-channels.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -96,6 +97,7 @@ const templateHealthRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     await assertSiteAccess(id);
+    await assertAllCmsSiteChannelsAccess(id);
     return c.json(okBody(await getSiteTemplateHealth(id, c.req.valid('query').theme)), 200);
   },
 });
@@ -198,8 +200,7 @@ const setSiteUsersRoute = defineOpenAPIRoute({
     const { userIds } = c.req.valid('json');
     const before = await getCmsSiteUsers(id);
     setAuditBeforeData(c, before);
-    await setCmsSiteUsers(id, userIds);
-    const after = await getCmsSiteUsers(id);
+    const after = await setCmsSiteUsers(id, userIds);
     setAuditAfterData(c, after);
     return c.json(okBody(null, '保存成功'), 200);
   },
@@ -236,7 +237,7 @@ const importSiteRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const result = await importCmsSite(c.req.valid('json'));
     setAuditAfterData(c, result);
-    return c.json(okBody(result, `站点「${result.siteName}」导入成功`), 200);
+    return c.json(okBody(result, `站点「${result.siteName}」导入成功，内容已统一转为草稿`), 200);
   },
 });
 
@@ -249,7 +250,7 @@ router.get('/:id/export', authMiddleware, guard({
 }), async (c) => {
   const id = Number(c.req.param('id'));
   if (!Number.isInteger(id) || id <= 0) {
-    return c.json({ code: 400, message: '无效的站点 id', data: null }, 400);
+    return c.json(errBody('无效的站点 id', 400), 400);
   }
   const pkg = await exportCmsSite(id);
   const siteCode = String((pkg.site as Record<string, unknown>).code ?? id);

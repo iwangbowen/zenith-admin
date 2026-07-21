@@ -779,7 +779,8 @@ export default function ContentEditPage() {
                     type="dateTime"
                     density="compact"
                     style={{ width: '100%' }}
-                    placeholder="到期自动发布（每分钟检查）"
+                    disabled={!hasPermission('cms:content:publish')}
+                    placeholder={hasPermission('cms:content:publish') ? '到期自动发布（每分钟检查）' : '需要内容发布权限'}
                   />
                   <Form.DatePicker
                     field="expireAt"

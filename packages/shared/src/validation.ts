@@ -5051,7 +5051,7 @@ export type CreateUserFeedbackInput = z.input<typeof createUserFeedbackSchema>;
 export type HandleUserFeedbackInput = z.input<typeof handleUserFeedbackSchema>;
 
 // ─── CMS 内容管理 Schema ──────────────────────────────────────────────────────
-export const cmsSlugRegex = /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/;
+export const cmsSlugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export const createCmsSiteSchema = z.object({
   name: z.string().min(1, '站点名称不能为空').max(100),
@@ -5443,3 +5443,49 @@ export const updateCmsSearchWordSchema = createCmsSearchWordSchema.partial();
 
 export type CreateCmsSearchWordInput = z.input<typeof createCmsSearchWordSchema>;
 export type UpdateCmsSearchWordInput = z.input<typeof updateCmsSearchWordSchema>;
+
+// ─── CMS 采集规则（CMS 为平台级全局模块）──────────────────────────────────────
+export const createCmsCollectRuleSchema = z.object({
+  siteId: z.number().int().positive(),
+  channelId: z.number().int().positive(),
+  name: z.string().min(1).max(100),
+  listUrl: z.string().url().max(500),
+  pageStart: z.number().int().min(1).default(1),
+  pageEnd: z.number().int().min(1).default(1),
+  listSelector: z.string().min(1).max(200),
+  titleSelector: z.string().min(1).max(200),
+  bodySelector: z.string().min(1).max(200),
+  summarySelector: z.string().max(200).nullish(),
+  coverSelector: z.string().max(200).nullish(),
+  removeSelectors: z.array(z.string().max(200)).max(20).default([]),
+  autoPublish: z.boolean().default(false),
+  localizeImages: z.boolean().default(false),
+  maxItems: z.number().int().min(1).max(200).default(50),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  remark: z.string().max(200).nullish(),
+}).refine((value) => value.pageEnd >= value.pageStart, {
+  message: '结束页不能小于起始页',
+  path: ['pageEnd'],
+});
+
+export const updateCmsCollectRuleSchema = z.object({
+  channelId: z.number().int().positive().optional(),
+  name: z.string().min(1).max(100).optional(),
+  listUrl: z.string().url().max(500).optional(),
+  pageStart: z.number().int().min(1).optional(),
+  pageEnd: z.number().int().min(1).optional(),
+  listSelector: z.string().min(1).max(200).optional(),
+  titleSelector: z.string().min(1).max(200).optional(),
+  bodySelector: z.string().min(1).max(200).optional(),
+  summarySelector: z.string().max(200).nullish(),
+  coverSelector: z.string().max(200).nullish(),
+  removeSelectors: z.array(z.string().max(200)).max(20).optional(),
+  autoPublish: z.boolean().optional(),
+  localizeImages: z.boolean().optional(),
+  maxItems: z.number().int().min(1).max(200).optional(),
+  status: z.enum(['enabled', 'disabled']).optional(),
+  remark: z.string().max(200).nullish(),
+});
+
+export type CreateCmsCollectRuleInput = z.input<typeof createCmsCollectRuleSchema>;
+export type UpdateCmsCollectRuleInput = z.input<typeof updateCmsCollectRuleSchema>;

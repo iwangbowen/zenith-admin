@@ -1,11 +1,13 @@
 /**
  * CMS 数据看板：站点内容概览（状态分布 / 发布趋势 / 热文 / 栏目分布 / 待办）。
  */
-import { and, desc, eq, gte, isNull, isNotNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, isNotNull, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { cmsContents, cmsChannels, cmsComments } from '../../db/schema';
 import { formatDate } from '../../lib/datetime';
 import { assertSiteAccess } from './cms-sites.service';
+import { ensureCmsSiteExists } from './cms-sites.service';
+import { getAccessibleChannelIds } from './cms-channels.service';
 
 export interface CmsDashboardStats {
   totals: {
@@ -28,8 +30,26 @@ export interface CmsDashboardStats {
 const TREND_DAYS = 14;
 
 export async function getCmsDashboardStats(siteId: number): Promise<CmsDashboardStats> {
+  await ensureCmsSiteExists(siteId);
   await assertSiteAccess(siteId);
-  const activeWhere = and(eq(cmsContents.siteId, siteId), isNull(cmsContents.deletedAt))!;
+  const accessibleChannelIds = await getAccessibleChannelIds();
+  const activeConditions: SQL[] = [
+    eq(cmsContents.siteId, siteId),
+    isNull(cmsContents.deletedAt),
+  ];
+  if (accessibleChannelIds !== null) activeConditions.push(inArray(cmsContents.channelId, accessibleChannelIds));
+  const activeWhere = and(...activeConditions)!;
+  const pendingCommentConditions: SQL[] = [
+    eq(cmsComments.siteId, siteId),
+    eq(cmsComments.status, 'pending'),
+  ];
+  if (accessibleChannelIds !== null) {
+    const contentIds = db.select({ id: cmsContents.id }).from(cmsContents).where(and(
+      eq(cmsContents.siteId, siteId),
+      inArray(cmsContents.channelId, accessibleChannelIds),
+    ));
+    pendingCommentConditions.push(inArray(cmsComments.contentId, contentIds));
+  }
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const trendStart = new Date(todayStart);
@@ -38,8 +58,12 @@ export async function getCmsDashboardStats(siteId: number): Promise<CmsDashboard
   const [statusRows, recycled, pendingComments, todayPublished, viewsRow, trendRows, topViewed, channelRows] = await Promise.all([
     db.select({ status: cmsContents.status, count: sql<number>`count(*)::int` })
       .from(cmsContents).where(activeWhere).groupBy(cmsContents.status),
-    db.$count(cmsContents, and(eq(cmsContents.siteId, siteId), isNotNull(cmsContents.deletedAt))),
-    db.$count(cmsComments, and(eq(cmsComments.siteId, siteId), eq(cmsComments.status, 'pending'))),
+    db.$count(cmsContents, and(
+      eq(cmsContents.siteId, siteId),
+      isNotNull(cmsContents.deletedAt),
+      accessibleChannelIds !== null ? inArray(cmsContents.channelId, accessibleChannelIds) : undefined,
+    )),
+    db.$count(cmsComments, and(...pendingCommentConditions)),
     db.$count(cmsContents, and(activeWhere, eq(cmsContents.status, 'published'), gte(cmsContents.publishedAt, todayStart))),
     db.select({ total: sql<number>`coalesce(sum(${cmsContents.viewCount}), 0)::int` })
       .from(cmsContents).where(activeWhere),
@@ -52,7 +76,9 @@ export async function getCmsDashboardStats(siteId: number): Promise<CmsDashboard
       .groupBy(sql`to_char(${cmsContents.publishedAt}, 'YYYY-MM-DD')`),
     db.select({ content: cmsContents, channelName: cmsChannels.name })
       .from(cmsContents)
-      .leftJoin(cmsChannels, eq(cmsContents.channelId, cmsChannels.id))
+      .leftJoin(cmsChannels, and(
+        eq(cmsContents.channelId, cmsChannels.id),
+      ))
       .where(and(activeWhere, eq(cmsContents.status, 'published')))
       .orderBy(desc(cmsContents.viewCount), desc(cmsContents.id))
       .limit(10),
@@ -62,7 +88,9 @@ export async function getCmsDashboardStats(siteId: number): Promise<CmsDashboard
       count: sql<number>`count(*)::int`,
     })
       .from(cmsContents)
-      .innerJoin(cmsChannels, eq(cmsContents.channelId, cmsChannels.id))
+      .innerJoin(cmsChannels, and(
+        eq(cmsContents.channelId, cmsChannels.id),
+      ))
       .where(activeWhere)
       .groupBy(cmsContents.channelId, cmsChannels.name)
       .orderBy(desc(sql`count(*)`))

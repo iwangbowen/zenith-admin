@@ -1,10 +1,12 @@
-import { eq, desc, max, inArray } from 'drizzle-orm';
+import { and, eq, desc, max, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { cmsContentVersions, cmsContents } from '../../db/schema';
 import type { CmsContentRow, CmsContentVersionRow } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import { formatDateTime } from '../../lib/datetime';
+import { assertSiteAccess } from './cms-sites.service';
+import { assertChannelAccess } from './cms-channels.service';
 
 /** 每条内容保留的最大版本数（超出自动裁剪最旧版本） */
 const MAX_VERSIONS = 20;
@@ -45,7 +47,9 @@ export async function snapshotContentVersion(executor: DbExecutor, row: CmsConte
   const [{ latest }] = await executor
     .select({ latest: max(cmsContentVersions.version) })
     .from(cmsContentVersions)
-    .where(eq(cmsContentVersions.contentId, row.id));
+    .where(and(
+      eq(cmsContentVersions.contentId, row.id),
+    ));
   const version = (latest ?? 0) + 1;
   await executor.insert(cmsContentVersions).values({
     contentId: row.id,
@@ -57,10 +61,14 @@ export async function snapshotContentVersion(executor: DbExecutor, row: CmsConte
   // 裁剪最旧版本（单条 DELETE 子查询，避免逐条删除）
   const staleIds = executor.select({ id: cmsContentVersions.id })
     .from(cmsContentVersions)
-    .where(eq(cmsContentVersions.contentId, row.id))
+    .where(and(
+      eq(cmsContentVersions.contentId, row.id),
+    ))
     .orderBy(desc(cmsContentVersions.version))
     .offset(MAX_VERSIONS);
-  await executor.delete(cmsContentVersions).where(inArray(cmsContentVersions.id, staleIds));
+  await executor.delete(cmsContentVersions).where(and(
+    inArray(cmsContentVersions.id, staleIds),
+  ));
 }
 
 export function mapCmsContentVersion(row: CmsContentVersionRow, createdByName?: string | null) {
@@ -78,8 +86,11 @@ export function mapCmsContentVersion(row: CmsContentVersionRow, createdByName?: 
 
 /** 内容的版本列表（新→旧） */
 export async function listContentVersions(contentId: number) {
+  await ensureContentVersionAccess(contentId);
   const rows = await db.query.cmsContentVersions.findMany({
-    where: eq(cmsContentVersions.contentId, contentId),
+    where: and(
+      eq(cmsContentVersions.contentId, contentId),
+    ),
     with: { createdByUser: { columns: { nickname: true } } },
     orderBy: desc(cmsContentVersions.version),
   });
@@ -87,18 +98,29 @@ export async function listContentVersions(contentId: number) {
 }
 
 export async function ensureVersionExists(contentId: number, versionId: number): Promise<CmsContentVersionRow> {
+  await ensureContentVersionAccess(contentId);
   const [row] = await db.select().from(cmsContentVersions)
-    .where(eq(cmsContentVersions.id, versionId))
+    .where(and(
+      eq(cmsContentVersions.id, versionId),
+      eq(cmsContentVersions.contentId, contentId),
+    ))
     .limit(1);
-  if (!row || row.contentId !== contentId) throw new HTTPException(404, { message: '版本不存在' });
+  if (!row) throw new HTTPException(404, { message: '版本不存在' });
   return row;
+}
+
+async function ensureContentVersionAccess(contentId: number): Promise<CmsContentRow> {
+  const [content] = await db.select().from(cmsContents).where(eq(cmsContents.id, contentId)).limit(1);
+  if (!content) throw new HTTPException(404, { message: '内容不存在' });
+  await assertSiteAccess(content.siteId);
+  await assertChannelAccess(content.channelId);
+  return content;
 }
 
 /** 回滚到指定版本（回滚前自动为当前状态留档） */
 export async function restoreContentVersion(contentId: number, versionId: number): Promise<Record<string, unknown>> {
   const version = await ensureVersionExists(contentId, versionId);
-  const [current] = await db.select().from(cmsContents).where(eq(cmsContents.id, contentId)).limit(1);
-  if (!current) throw new HTTPException(404, { message: '内容不存在' });
+  const current = await ensureContentVersionAccess(contentId);
   await db.transaction(async (tx) => {
     await snapshotContentVersion(tx, current, `回滚到 v${version.version} 前留档`);
   });
@@ -144,8 +166,7 @@ export interface CmsVersionDiffItem {
 /** 对比版本快照与当前内容（before=历史版本值，after=当前值），仅返回有差异的字段 */
 export async function diffContentVersion(contentId: number, versionId: number): Promise<CmsVersionDiffItem[]> {
   const version = await ensureVersionExists(contentId, versionId);
-  const [current] = await db.select().from(cmsContents).where(eq(cmsContents.id, contentId)).limit(1);
-  if (!current) throw new HTTPException(404, { message: '内容不存在' });
+  const current = await ensureContentVersionAccess(contentId);
   const currentSnapshot = buildContentSnapshot(current);
   const versionSnapshot = version.snapshot as Record<string, unknown>;
   const diffs: CmsVersionDiffItem[] = [];

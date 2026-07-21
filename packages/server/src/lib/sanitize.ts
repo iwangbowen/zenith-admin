@@ -1,7 +1,7 @@
 const SENSITIVE_KEYS = [
   'password', 'secret', 'token', 'authorization', 'cookie', 'webhook',
   'accessKey', 'access_key', 'privateKey', 'private_key', 'apiKey', 'api_key',
-  'clientSecret', 'refreshToken', 'x-api-key', 'apiv3', 'credential',
+  'clientSecret', 'refreshToken', 'indexNowKey', 'x-api-key', 'apiv3', 'credential',
 ];
 
 /**

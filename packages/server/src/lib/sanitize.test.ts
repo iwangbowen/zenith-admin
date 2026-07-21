@@ -27,6 +27,7 @@ describe('sanitizeBody', () => {
       token: 'tok',
       privateKey: 'pk',
       access_key: 'ak',
+      indexNowKey: 'index-now',
       normalField: 'ok',
     };
     const result = JSON.parse(sanitizeBody(body));
@@ -34,6 +35,7 @@ describe('sanitizeBody', () => {
     expect(result.token).toBe('***');
     expect(result.privateKey).toBe('***');
     expect(result.access_key).toBe('***');
+    expect(result.indexNowKey).toBe('***');
     expect(result.normalField).toBe('ok');
   });
 

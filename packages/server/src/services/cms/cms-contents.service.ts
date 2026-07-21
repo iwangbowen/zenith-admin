@@ -1,7 +1,7 @@
 import { eq, asc, desc, and, or, like, inArray, notInArray, isNull, isNotNull, ne, lt, gt, lte, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import { cmsContents, cmsContentTags, cmsTags, cmsChannels, cmsContentChannels, cmsContentRelations, users } from '../../db/schema';
+import { cmsSites, cmsContents, cmsContentTags, cmsTags, cmsChannels, cmsContentChannels, cmsContentRelations, cmsCollectItems, users } from '../../db/schema';
 import type { CmsContentRow, CmsTagRow } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
@@ -21,6 +21,13 @@ import { isWorkflowAuditEnabled, startCmsContentWorkflow, assertNoActiveContentW
 import { triggerCmsContentWebhook } from './cms-webhook.service';
 import { assertContentTemplateBySite } from './cms-template-refs.service';
 import type { CreateCmsContentInput, UpdateCmsContentInput, CmsContentStatus } from '@zenith/shared';
+import {
+  assertCompleteCmsBatch, } from './cms-access';
+import { pageOffset } from '../../lib/pagination';
+import {
+  canTransitionCmsContentStatus, type CmsContentTransitionAction,
+} from './cms-content-state';
+import { requireCmsScheduledAtMutationPermission } from './cms-publish-permission';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 export function mapCmsContent(row: CmsContentRow, extra?: { channelName?: string | null; tags?: CmsTagRow[]; extraChannelIds?: number[]; relatedIds?: number[]; mappingSourceTitle?: string | null }) {
@@ -95,6 +102,9 @@ export async function ensureCmsContentExists(id: number): Promise<CmsContentRow>
 }
 
 export async function getCmsContent(id: number) {
+  const current = await ensureCmsContentExists(id);
+  await assertSiteAccess(current.siteId);
+  await assertChannelAccess(current.channelId);
   const row = await db.query.cmsContents.findFirst({
     where: eq(cmsContents.id, id),
     with: {
@@ -142,8 +152,14 @@ export interface ListCmsContentsQuery {
 }
 
 export async function listCmsContents(q: ListCmsContentsQuery) {
+  await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
-  const conditions: SQL[] = [eq(cmsContents.siteId, q.siteId)];
+  if (q.channelId) await assertChannelAccess(q.channelId);
+  const conditions: SQL[] = [
+    eq(cmsContents.siteId, q.siteId),
+  ];
+  const accessibleChannelIds = await getAccessibleChannelIds();
+  if (accessibleChannelIds !== null) conditions.push(inArray(cmsContents.channelId, accessibleChannelIds));
   conditions.push(q.deleted ? isNotNull(cmsContents.deletedAt) : isNull(cmsContents.deletedAt));
   // 归档独立视图：默认列表排除归档，archived=true 仅看归档（回收站视图不叠加归档过滤）
   if (!q.deleted) conditions.push(q.archived ? isNotNull(cmsContents.archivedAt) : isNull(cmsContents.archivedAt));
@@ -165,9 +181,6 @@ export async function listCmsContents(q: ListCmsContentsQuery) {
   if (start) conditions.push(gt(cmsContents.createdAt, start));
   if (end) conditions.push(lt(cmsContents.createdAt, end));
 
-  // P5 栏目级数据权限：绑定用户仅见授权栏目（按主栏目过滤）
-  const accessibleChannelIds = await getAccessibleChannelIds();
-  if (accessibleChannelIds) conditions.push(inArray(cmsContents.channelId, accessibleChannelIds));
   // P5 部门数据权限：按创建时快照的部门/创建人过滤
   const scopeUser = currentUserOrNull();
   if (scopeUser) {
@@ -187,7 +200,7 @@ export async function listCmsContents(q: ListCmsContentsQuery) {
       with: { channel: { columns: { name: true } } },
       orderBy: [desc(cmsContents.isTop), desc(cmsContents.topWeight), desc(cmsContents.id)],
       limit: q.pageSize,
-      offset: (q.page - 1) * q.pageSize,
+      offset: pageOffset(q.page, q.pageSize),
     }),
   ]);
   return {
@@ -220,8 +233,12 @@ async function recalcTagContentCounts(executor: DbExecutor, tagIds: number[]): P
 
 /** 先删后插替换内容标签，并重算受影响标签的 contentCount */
 async function setContentTags(executor: DbExecutor, contentId: number, siteId: number, tagIds: number[]): Promise<void> {
-  const previous = await executor.select({ tagId: cmsContentTags.tagId }).from(cmsContentTags).where(eq(cmsContentTags.contentId, contentId));
-  await executor.delete(cmsContentTags).where(eq(cmsContentTags.contentId, contentId));
+  const previous = await executor.select({ tagId: cmsContentTags.tagId }).from(cmsContentTags).where(and(
+    eq(cmsContentTags.contentId, contentId),
+  ));
+  await executor.delete(cmsContentTags).where(and(
+    eq(cmsContentTags.contentId, contentId),
+  ));
   if (tagIds.length > 0) {
     const validTags = await executor.select({ id: cmsTags.id }).from(cmsTags)
       .where(and(inArray(cmsTags.id, tagIds), eq(cmsTags.siteId, siteId)));
@@ -239,6 +256,14 @@ async function ensureChannelForContent(siteId: number, channelId: number) {
   if (channel.siteId !== siteId) throw new HTTPException(400, { message: '栏目不属于当前站点' });
   if (channel.type !== 'list') throw new HTTPException(400, { message: '只有列表栏目可以发布内容' });
   return channel;
+}
+
+export async function ensureCmsContentTargetAccess(siteId: number, channelId: number) {
+  await ensureCmsSiteExists(siteId);
+  await assertSiteAccess(siteId);
+  await assertChannelAccess(channelId);
+  const channel = await ensureChannelForContent(siteId, channelId);
+  return { channel };
 }
 
 /** 形态结构化数据中的可检索文本（图集说明等纳入全文索引） */
@@ -264,7 +289,9 @@ function assertContentTypeReady(row: CmsContentRow): void {
 
 /** 先删后插替换副栏目（一文多栏目；副栏目须为本站列表栏目且 ≠ 主栏目） */
 async function setContentExtraChannels(executor: DbExecutor, contentId: number, siteId: number, mainChannelId: number, extraChannelIds: number[]): Promise<void> {
-  await executor.delete(cmsContentChannels).where(eq(cmsContentChannels.contentId, contentId));
+  await executor.delete(cmsContentChannels).where(and(
+    eq(cmsContentChannels.contentId, contentId),
+  ));
   const targets = [...new Set(extraChannelIds)].filter((id) => id !== mainChannelId);
   if (targets.length === 0) return;
   const valid = await executor.select({ id: cmsChannels.id }).from(cmsChannels)
@@ -277,7 +304,9 @@ async function setContentExtraChannels(executor: DbExecutor, contentId: number, 
 
 /** 先删后插替换相关文章（须为本站内容且 ≠ 自身） */
 async function setContentRelations(executor: DbExecutor, contentId: number, siteId: number, relatedIds: number[]): Promise<void> {
-  await executor.delete(cmsContentRelations).where(eq(cmsContentRelations.contentId, contentId));
+  await executor.delete(cmsContentRelations).where(and(
+    eq(cmsContentRelations.contentId, contentId),
+  ));
   const targets = [...new Set(relatedIds)].filter((id) => id !== contentId);
   if (targets.length === 0) return;
   const valid = await executor.select({ id: cmsContents.id }).from(cmsContents)
@@ -285,17 +314,39 @@ async function setContentRelations(executor: DbExecutor, contentId: number, site
   if (valid.length !== targets.length) {
     throw new HTTPException(400, { message: '存在无效的相关文章（须为本站点内容）' });
   }
-  await executor.insert(cmsContentRelations).values(targets.map((relatedId, index) => ({ contentId, relatedId, sort: index })));
+
+  await executor.insert(cmsContentRelations).values(targets.map((relatedId, index) => ({
+    contentId,
+    relatedId,
+    sort: index,
+  })));
+}
+
+async function assertRelatedContentAccess(siteId: number, relatedIds: number[]): Promise<void> {
+  const targets = [...new Set(relatedIds)];
+  if (targets.length === 0) return;
+  const rows = await db.select({ id: cmsContents.id, channelId: cmsContents.channelId })
+    .from(cmsContents)
+    .where(and(
+      eq(cmsContents.siteId, siteId),
+      inArray(cmsContents.id, targets),
+      isNull(cmsContents.deletedAt),
+    ));
+  assertCompleteCmsBatch(targets, rows.map((row) => row.id), '相关文章');
+  await assertChannelsAccess(rows.map((row) => row.channelId));
 }
 
 // ─── 标题查重（P4：编辑辅助提示，不阻断保存；排除回收站与自身）───────────────────
 export async function checkCmsContentTitle(siteId: number, title: string, excludeId?: number) {
+  await ensureCmsSiteExists(siteId);
   await assertSiteAccess(siteId);
   const conditions: SQL[] = [
     eq(cmsContents.siteId, siteId),
     eq(cmsContents.title, title.trim()),
     isNull(cmsContents.deletedAt),
   ];
+  const accessibleChannelIds = await getAccessibleChannelIds();
+  if (accessibleChannelIds !== null) conditions.push(inArray(cmsContents.channelId, accessibleChannelIds));
   if (excludeId) conditions.push(ne(cmsContents.id, excludeId));
   const rows = await db.select({ id: cmsContents.id, title: cmsContents.title, status: cmsContents.status, channelId: cmsContents.channelId })
     .from(cmsContents)
@@ -331,11 +382,19 @@ export function detectContentFlags(input: {
 
 // ─── 创建 ─────────────────────────────────────────────────────────────────────
 export async function createCmsContent(data: CreateCmsContentInput) {
+  await ensureCmsSiteExists(data.siteId);
   await assertSiteAccess(data.siteId);
   await assertChannelAccess(data.channelId);
   await assertContentTemplateBySite(data.siteId, data.detailTemplate);
   const channel = await ensureChannelForContent(data.siteId, data.channelId);
   const { tagIds = [], extraChannelIds = [], relatedIds = [], scheduledAt, expireAt, topExpireAt, ...rest } = data;
+  const parsedScheduledAt = parseDateTimeInput(scheduledAt);
+  await requireCmsScheduledAtMutationPermission({
+    current: null,
+    requested: parsedScheduledAt,
+  });
+  await assertChannelsAccess(extraChannelIds);
+  await assertRelatedContentAccess(data.siteId, relatedIds);
   const extend = (rest.extend ?? {}) as Record<string, unknown>;
   const modelId = channel.modelId ?? null;
   const extendTexts = [...await collectSearchableExtendTexts(modelId, extend), ...mediaDataTexts(rest.mediaData as Record<string, unknown>)];
@@ -352,7 +411,7 @@ export async function createCmsContent(data: CreateCmsContentInput) {
         modelId,
         createdBy: creator?.userId ?? null,
         deptId: creatorDept?.departmentId ?? null,
-        scheduledAt: parseDateTimeInput(scheduledAt),
+        scheduledAt: parsedScheduledAt,
         expireAt: parseDateTimeInput(expireAt),
         topExpireAt: parseDateTimeInput(topExpireAt),
         ...detectContentFlags({
@@ -394,6 +453,13 @@ export async function updateCmsContent(id: number, data: UpdateCmsContentInput) 
     modelId = channel.modelId ?? null;
   }
   const { tagIds, extraChannelIds, relatedIds, scheduledAt, expireAt, topExpireAt, expectedVersion, ...rest } = data;
+  const parsedScheduledAt = scheduledAt === undefined ? undefined : parseDateTimeInput(scheduledAt);
+  await requireCmsScheduledAtMutationPermission({
+    current: current.scheduledAt,
+    requested: parsedScheduledAt,
+  });
+  if (extraChannelIds) await assertChannelsAccess(extraChannelIds);
+  if (relatedIds) await assertRelatedContentAccess(current.siteId, relatedIds);
   // 乐观锁：携带 expectedVersion 时先行比对，冲突返回 409（前端提示刷新后重试）
   if (expectedVersion !== undefined && current.version !== expectedVersion) {
     throw new HTTPException(409, { message: '内容已被其他人修改，请刷新页面获取最新版本后再保存' });
@@ -411,12 +477,12 @@ export async function updateCmsContent(id: number, data: UpdateCmsContentInput) 
       await snapshotContentVersion(tx, current, '更新前留档');
       const versionGuard = expectedVersion !== undefined
         ? and(eq(cmsContents.id, id), eq(cmsContents.version, expectedVersion))!
-        : eq(cmsContents.id, id);
+        : eq(cmsContents.id, id)!;
       const [updated] = await tx.update(cmsContents).set({
         ...rest,
         modelId,
         version: sql`${cmsContents.version} + 1`,
-        ...(scheduledAt !== undefined ? { scheduledAt: parseDateTimeInput(scheduledAt) } : {}),
+        ...(parsedScheduledAt !== undefined ? { scheduledAt: parsedScheduledAt } : {}),
         ...(expireAt !== undefined ? { expireAt: parseDateTimeInput(expireAt) } : {}),
         ...(topExpireAt !== undefined ? { topExpireAt: parseDateTimeInput(topExpireAt) } : {}),
         ...detectContentFlags({
@@ -457,33 +523,41 @@ export async function updateCmsContent(id: number, data: UpdateCmsContentInput) 
 }
 
 // ─── 状态流转 ─────────────────────────────────────────────────────────────────
-const STATUS_TRANSITIONS: Record<string, CmsContentStatus[]> = {
-  submit: ['draft', 'rejected'],
-  publish: ['draft', 'pending', 'rejected', 'offline'],
-  reject: ['pending'],
-  offline: ['published'],
-};
-
-async function transitionStatus(id: number, action: keyof typeof STATUS_TRANSITIONS, patch: Partial<typeof cmsContents.$inferInsert>) {
+async function transitionStatus(
+  id: number,
+  action: CmsContentTransitionAction,
+  patch: Partial<typeof cmsContents.$inferInsert>,
+  options?: { skipAccessCheck?: boolean },
+) {
   const current = await ensureCmsContentExists(id);
-  await assertSiteAccess(current.siteId);
-  await assertChannelAccess(current.channelId);
+  if (!options?.skipAccessCheck) {
+    await assertSiteAccess(current.siteId);
+    await assertChannelAccess(current.channelId);
+  }
   if (current.deletedAt) throw new HTTPException(400, { message: '回收站中的内容不可操作，请先恢复' });
   if (current.archivedAt) throw new HTTPException(400, { message: '已归档的内容不可操作，请先取消归档' });
-  if (!STATUS_TRANSITIONS[action].includes(current.status)) {
+  if (!canTransitionCmsContentStatus(current.status, action)) {
     throw new HTTPException(400, { message: `当前状态（${current.status}）不允许此操作` });
   }
-  await db.update(cmsContents).set(patch).where(eq(cmsContents.id, id));
-  return getCmsContent(id);
+  const [updated] = await db.update(cmsContents).set(patch).where(and(
+    eq(cmsContents.id, id),
+    eq(cmsContents.status, current.status),
+  )).returning();
+  if (!updated) throw new HTTPException(409, { message: '内容状态已变化，请刷新后重试' });
+  return options?.skipAccessCheck ? mapCmsContent(updated) : getCmsContent(id);
 }
 
 /** 提交审核：站点开启工作流审核模式时自动发起审核流程 */
-export async function submitCmsContent(id: number) {
+export async function submitCmsContent(id: number, options?: { skipAccessCheck?: boolean }) {
   const current = await ensureCmsContentExists(id);
-  await assertSiteAccess(current.siteId);
-  const site = await ensureCmsSiteExists(current.siteId);
+  if (!options?.skipAccessCheck) {
+    await assertSiteAccess(current.siteId);
+    await assertChannelAccess(current.channelId);
+  }
+  const site = await db.select().from(cmsSites).where(eq(cmsSites.id, current.siteId)).limit(1).then((rows) => rows[0]);
+  if (!site) throw new HTTPException(404, { message: '站点不存在' });
   const settings = (site.settings ?? {}) as Record<string, unknown>;
-  const result = await transitionStatus(id, 'submit', { status: 'pending', rejectReason: null });
+  const result = await transitionStatus(id, 'submit', { status: 'pending', rejectReason: null }, options);
   await logContentOp(db, id, 'submitted');
   if (isWorkflowAuditEnabled(settings)) {
     try {
@@ -491,40 +565,115 @@ export async function submitCmsContent(id: number) {
         where: eq(cmsChannels.id, current.channelId),
         columns: { name: true },
       });
+      let caller: { userId: number; username: string; tenantId: null; roles?: string[] } | undefined;
+      if (options?.skipAccessCheck) {
+        if (!site.createdBy) {
+          throw new HTTPException(400, { message: '站点未配置可用的工作流发起人' });
+        }
+        const [siteCreator] = await db.select({ username: users.username }).from(users)
+          .where(eq(users.id, site.createdBy)).limit(1);
+        if (!siteCreator) throw new HTTPException(400, { message: '站点工作流发起人不存在' });
+        caller = {
+          userId: site.createdBy,
+          username: siteCreator.username,
+          tenantId: null,
+          roles: [],
+        };
+      }
       await startCmsContentWorkflow({
         contentId: id,
         title: current.title,
         siteName: site.name,
         channelName: channel?.name ?? '',
         settings,
+        caller,
       });
     } catch (err) {
       // 流程发起失败回退待审状态，避免内容卡在 pending 无人处理
-      await db.update(cmsContents).set({ status: current.status }).where(eq(cmsContents.id, id));
+      await db.update(cmsContents).set({ status: current.status }).where(and(
+        eq(cmsContents.id, id),
+      ));
       throw err;
     }
   }
   return result;
 }
 
-/** 发布（直接发布或审核通过）；工作流审核期间禁止手动发布 */
-export async function publishCmsContent(id: number, opts?: { fromWorkflow?: boolean }) {
-  if (!opts?.fromWorkflow) await assertNoActiveContentWorkflow(id);
+export interface PublishCmsContentOptions {
+  fromWorkflow?: boolean;
+  skipAccessCheck?: boolean;
+  scheduledAtBefore?: Date;
+}
+
+/** 发布（直接、审核通过、采集或定时发布均走此原子管道）。 */
+export async function publishCmsContent(id: number, opts?: PublishCmsContentOptions) {
   const row = await ensureCmsContentExists(id);
+  if (!opts?.skipAccessCheck) {
+    await assertSiteAccess(row.siteId);
+    await assertChannelAccess(row.channelId);
+  }
+  if (!opts?.fromWorkflow) await assertNoActiveContentWorkflow(id);
   assertContentTypeReady(row);
-  const result = await transitionStatus(id, 'publish', { status: 'published', publishedAt: new Date(), rejectReason: null });
-  await logContentOp(db, id, 'published', opts?.fromWorkflow ? '工作流审核通过' : null);
-  // 会员投稿发布：发放投稿积分（每内容仅一次，Redis NX 防重）
-  const { awardContributionPoints } = await import('./cms-member-interaction.service');
-  awardContributionPoints(row);
-  triggerCmsContentWebhook('content.published', id);
-  return result;
+  if (!canTransitionCmsContentStatus(row.status, 'publish')) {
+    throw new HTTPException(400, { message: `当前状态（${row.status}）不允许此操作` });
+  }
+  if (row.deletedAt || row.archivedAt) {
+    throw new HTTPException(400, { message: '回收站或已归档内容不可发布' });
+  }
+  const published = await db.transaction(async (tx) => {
+    const conditions: SQL[] = [
+      eq(cmsContents.id, id),
+      eq(cmsContents.status, row.status),
+      isNull(cmsContents.deletedAt),
+      isNull(cmsContents.archivedAt),
+    ];
+    if (opts?.scheduledAtBefore) {
+      conditions.push(isNotNull(cmsContents.scheduledAt), lte(cmsContents.scheduledAt, opts.scheduledAtBefore));
+    }
+    const [updated] = await tx.update(cmsContents).set({
+      status: 'published',
+      publishedAt: new Date(),
+      scheduledAt: null,
+      rejectReason: null,
+    }).where(and(...conditions)).returning();
+    if (!updated) throw new HTTPException(409, { message: '内容已发布或定时发布条件已变化' });
+    await logContentOp(tx, id, 'published', opts?.fromWorkflow ? '工作流审核通过' : null);
+    return updated;
+  });
+  triggerCmsPublishedSideEffects(published);
+  return opts?.skipAccessCheck ? mapCmsContent(published) : getCmsContent(id);
+}
+
+function triggerCmsPublishedSideEffects(row: CmsContentRow): void {
+  void import('./cms-member-interaction.service').then(({ awardContributionPoints }) => {
+    awardContributionPoints(row);
+  });
+  triggerCmsContentWebhook('content.published', row.id);
+  void Promise.all([
+    import('./cms-static.service'),
+    import('./cms-push.service'),
+  ]).then(([staticService, pushService]) => {
+    staticService.triggerContentStaticRefresh(row.id);
+    pushService.triggerAutoPushForContent(row.id);
+  });
 }
 
 /** 驳回；工作流审核期间禁止手动驳回 */
-export async function rejectCmsContent(id: number, reason: string, opts?: { fromWorkflow?: boolean }) {
-  if (!opts?.fromWorkflow) await assertNoActiveContentWorkflow(id);
-  const result = await transitionStatus(id, 'reject', { status: 'rejected', rejectReason: reason });
+export async function rejectCmsContent(id: number, reason: string, opts?: { fromWorkflow?: boolean; skipAccessCheck?: boolean }) {
+  if (!opts?.fromWorkflow) {
+    const row = await ensureCmsContentExists(id);
+    if (!opts?.skipAccessCheck) {
+      await assertSiteAccess(row.siteId);
+      await assertChannelAccess(row.channelId);
+    }
+    await assertNoActiveContentWorkflow(id);
+  }
+  const result = await transitionStatus(
+    id,
+    'reject',
+    { status: 'rejected', rejectReason: reason },
+    opts?.skipAccessCheck ? { skipAccessCheck: true } : undefined,
+  );
   await logContentOp(db, id, 'rejected', reason);
   return result;
 }
@@ -540,7 +689,13 @@ export async function offlineCmsContent(id: number) {
 // ─── 回收站 ───────────────────────────────────────────────────────────────────
 async function assertBatchSiteAccess(ids: number[]): Promise<void> {
   if (ids.length === 0) return;
-  const rows = await db.select({ siteId: cmsContents.siteId, channelId: cmsContents.channelId }).from(cmsContents).where(inArray(cmsContents.id, ids));
+  const unique = [...new Set(ids)];
+  const rows = await db.select({
+    id: cmsContents.id,
+    siteId: cmsContents.siteId,
+    channelId: cmsContents.channelId,
+  }).from(cmsContents).where(inArray(cmsContents.id, unique));
+  assertCompleteCmsBatch(unique, rows.map((row) => row.id), '内容');
   for (const siteId of new Set(rows.map((r) => r.siteId))) {
     await assertSiteAccess(siteId);
   }
@@ -554,7 +709,7 @@ export async function recycleCmsContents(ids: number[]) {
     .set({ deletedAt: new Date(), status: 'offline' })
     .where(and(inArray(cmsContents.id, ids), isNull(cmsContents.deletedAt)))
     .returning({ id: cmsContents.id });
-  await logContentOps(db, rows.map((r) => r.id), 'recycled');
+  await logContentOps(db, rows, 'recycled');
   for (const row of rows) triggerCmsContentWebhook('content.recycled', row.id);
   return rows.length;
 }
@@ -566,14 +721,14 @@ export async function restoreCmsContents(ids: number[]) {
     .set({ deletedAt: null, status: 'draft' })
     .where(and(inArray(cmsContents.id, ids), isNotNull(cmsContents.deletedAt)))
     .returning({ id: cmsContents.id });
-  await logContentOps(db, rows.map((r) => r.id), 'restored');
+  await logContentOps(db, rows, 'restored');
   return rows.length;
 }
 
 /** 彻底删除（仅限回收站中的内容）；被映射引用的正文先物化到映射行，避免映射内容失源 */
-export async function purgeCmsContents(ids: number[]) {
+export async function purgeCmsContents(ids: number[], options?: { skipAccessCheck?: boolean }) {
   if (ids.length === 0) return 0;
-  await assertBatchSiteAccess(ids);
+  if (!options?.skipAccessCheck) await assertBatchSiteAccess(ids);
   const targets = await db.select({ id: cmsContents.id }).from(cmsContents)
     .where(and(inArray(cmsContents.id, ids), isNotNull(cmsContents.deletedAt)));
   if (targets.length === 0) return 0;
@@ -594,7 +749,11 @@ export async function purgeCmsContents(ids: number[]) {
           .where(eq(cmsContents.id, m.id));
       }
     }
-    const tagRows = await tx.select({ tagId: cmsContentTags.tagId }).from(cmsContentTags).where(inArray(cmsContentTags.contentId, targetIds));
+    await tx.update(cmsCollectItems)
+      .set({ contentId: null })
+      .where(inArray(cmsCollectItems.contentId, targetIds));
+    const tagRows = await tx.select({ tagId: cmsContentTags.tagId }).from(cmsContentTags)
+      .where(inArray(cmsContentTags.contentId, targetIds));
     await tx.delete(cmsContents).where(inArray(cmsContents.id, targetIds));
     await recalcTagContentCounts(tx, tagRows.map((t) => t.tagId));
   });
@@ -628,7 +787,7 @@ export async function archiveCmsContents(ids: number[]) {
       inArray(cmsContents.status, ['published', 'offline']),
     ))
     .returning({ id: cmsContents.id });
-  await logContentOps(db, rows.map((r) => r.id), 'archived');
+  await logContentOps(db, rows, 'archived');
   return rows.length;
 }
 
@@ -639,7 +798,7 @@ export async function unarchiveCmsContents(ids: number[]) {
     .set({ archivedAt: null })
     .where(and(inArray(cmsContents.id, ids), isNotNull(cmsContents.archivedAt)))
     .returning({ id: cmsContents.id });
-  await logContentOps(db, rows.map((r) => r.id), 'unarchived');
+  await logContentOps(db, rows, 'unarchived');
   return rows.length;
 }
 
@@ -653,7 +812,9 @@ const publishedWhere = (siteId: number) => and(
 /** 栏目下已发布内容分页（含以此为副栏目的内容；归档内容不参与聚合；置顶权重优先，发布时间倒序） */
 export async function listPublishedContents(siteId: number, channelId: number, page: number, pageSize: number) {
   const extraIdsQuery = db.select({ contentId: cmsContentChannels.contentId })
-    .from(cmsContentChannels).where(eq(cmsContentChannels.channelId, channelId));
+    .from(cmsContentChannels).where(and(
+      eq(cmsContentChannels.channelId, channelId),
+    ));
   const where = and(
     publishedWhere(siteId),
     isNull(cmsContents.archivedAt),
@@ -708,7 +869,9 @@ export async function getPublishedContentById(siteId: number, id: number): Promi
 export async function resolveContentBodyExtend(row: Pick<CmsContentRow, 'body' | 'extend' | 'mappingSourceId'>): Promise<{ body: string | null; extend: Record<string, unknown> }> {
   if (!row.mappingSourceId) return { body: row.body ?? null, extend: row.extend ?? {} };
   const [src] = await db.select({ body: cmsContents.body, extend: cmsContents.extend })
-    .from(cmsContents).where(eq(cmsContents.id, row.mappingSourceId)).limit(1);
+    .from(cmsContents).where(and(
+      eq(cmsContents.id, row.mappingSourceId),
+    )).limit(1);
   return { body: src?.body ?? null, extend: src?.extend ?? {} };
 }
 
@@ -777,8 +940,12 @@ export async function listRelatedContents(row: CmsContentRow, limit = 5): Promis
     .filter((c): c is CmsContentRow => !!c && c.status === 'published' && !c.deletedAt && !c.archivedAt)
     .slice(0, limit);
   if (result.length < limit) {
-    const tagIdsQuery = db.select({ tagId: cmsContentTags.tagId }).from(cmsContentTags).where(eq(cmsContentTags.contentId, row.id));
-    const candidateIdsQuery = db.select({ contentId: cmsContentTags.contentId }).from(cmsContentTags).where(inArray(cmsContentTags.tagId, tagIdsQuery));
+    const tagIdsQuery = db.select({ tagId: cmsContentTags.tagId }).from(cmsContentTags).where(and(
+      eq(cmsContentTags.contentId, row.id),
+    ));
+    const candidateIdsQuery = db.select({ contentId: cmsContentTags.contentId }).from(cmsContentTags).where(and(
+      inArray(cmsContentTags.tagId, tagIdsQuery),
+    ));
     const excluded = [row.id, ...result.map((c) => c.id)];
     const fill = await db.select().from(cmsContents)
       .where(and(
@@ -819,7 +986,7 @@ export async function cancelExpiredTopContents(now = new Date()): Promise<number
       isNull(cmsContents.deletedAt),
     ))
     .returning({ id: cmsContents.id });
-  await logContentOps(db, rows.map((r) => r.id), 'updated', '置顶到期自动取消');
+  await logContentOps(db, rows, 'updated', '置顶到期自动取消');
   return rows.map((r) => r.id);
 }
 
@@ -827,7 +994,9 @@ export async function cancelExpiredTopContents(now = new Date()): Promise<number
 
 /** 标签聚合页：按标签取已发布内容分页（归档内容不参与） */
 export async function listPublishedContentsByTag(siteId: number, tagId: number, page: number, pageSize: number) {
-  const idsQuery = db.select({ contentId: cmsContentTags.contentId }).from(cmsContentTags).where(eq(cmsContentTags.tagId, tagId));
+  const idsQuery = db.select({ contentId: cmsContentTags.contentId }).from(cmsContentTags).where(and(
+    eq(cmsContentTags.tagId, tagId),
+  ));
   const where = and(publishedWhere(siteId), isNull(cmsContents.archivedAt), inArray(cmsContents.id, idsQuery))!;
   const [total, rows] = await Promise.all([
     db.$count(cmsContents, where),
@@ -848,7 +1017,11 @@ export async function batchMoveCmsContents(ids: number[], channelId: number): Pr
   await assertBatchSiteAccess(ids);
   await assertChannelAccess(channelId);
   return db.transaction(async (tx) => {
-    const rows = await tx.select({ id: cmsContents.id, siteId: cmsContents.siteId }).from(cmsContents).where(inArray(cmsContents.id, ids));
+    const rows = await tx.select({
+      id: cmsContents.id,
+      siteId: cmsContents.siteId,
+    }).from(cmsContents).where(inArray(cmsContents.id, ids));
+    assertCompleteCmsBatch(ids, rows.map((row) => row.id), '内容');
     const siteIds = new Set(rows.map((r) => r.siteId));
     if (siteIds.size > 1) throw new HTTPException(400, { message: '仅支持同站点内容批量移动' });
     const siteId = [...siteIds][0];
@@ -858,7 +1031,7 @@ export async function batchMoveCmsContents(ids: number[], channelId: number): Pr
       .set({ channelId, modelId: channel.modelId ?? null })
       .where(inArray(cmsContents.id, rows.map((r) => r.id)))
       .returning({ id: cmsContents.id });
-    await logContentOps(tx, updated.map((r) => r.id), 'moved', `移动到栏目「${channel.name}」`);
+    await logContentOps(tx, updated, 'moved', `移动到栏目「${channel.name}」`);
     return updated.length;
   });
 }
@@ -883,16 +1056,19 @@ export async function batchSetCmsContentFlags(ids: number[], flags: { isTop?: bo
 export async function batchAddCmsContentTags(ids: number[], tagIds: number[]): Promise<number> {
   if (ids.length === 0 || tagIds.length === 0) return 0;
   await assertBatchSiteAccess(ids);
-  const rows = await db.select({ id: cmsContents.id, siteId: cmsContents.siteId }).from(cmsContents).where(inArray(cmsContents.id, ids));
+  const rows = await db.select({
+    id: cmsContents.id,
+    siteId: cmsContents.siteId,
+  }).from(cmsContents).where(inArray(cmsContents.id, ids));
+  assertCompleteCmsBatch(ids, rows.map((row) => row.id), '内容');
   await db.transaction(async (tx) => {
     for (const row of rows) {
       const validTags = await tx.select({ id: cmsTags.id }).from(cmsTags)
         .where(and(inArray(cmsTags.id, tagIds), eq(cmsTags.siteId, row.siteId)));
-      if (validTags.length > 0) {
-        await tx.insert(cmsContentTags)
-          .values(validTags.map((t) => ({ contentId: row.id, tagId: t.id })))
-          .onConflictDoNothing();
-      }
+      assertCompleteCmsBatch(tagIds, validTags.map((tag) => tag.id), '标签');
+      await tx.insert(cmsContentTags)
+        .values(validTags.map((tag) => ({ contentId: row.id, tagId: tag.id })))
+        .onConflictDoNothing();
     }
     await recalcTagContentCounts(tx, tagIds);
   });
@@ -903,7 +1079,10 @@ export async function batchAddCmsContentTags(ids: number[], tagIds: number[]): P
 export async function duplicateCmsContent(id: number) {
   const current = await ensureCmsContentExists(id);
   await assertSiteAccess(current.siteId);
-  const tagRows = await db.select({ tagId: cmsContentTags.tagId }).from(cmsContentTags).where(eq(cmsContentTags.contentId, id));
+  await assertChannelAccess(current.channelId);
+  const tagRows = await db.select({ tagId: cmsContentTags.tagId }).from(cmsContentTags).where(and(
+    eq(cmsContentTags.contentId, id),
+  ));
   const row = await db.transaction(async (tx) => {
     const [created] = await tx.insert(cmsContents).values({
       siteId: current.siteId,
@@ -942,7 +1121,10 @@ export async function duplicateCmsContent(id: number) {
       }),
     }).returning();
     if (tagRows.length > 0) {
-      await tx.insert(cmsContentTags).values(tagRows.map((t) => ({ contentId: created.id, tagId: t.tagId })));
+      await tx.insert(cmsContentTags).values(tagRows.map((t) => ({
+        contentId: created.id,
+        tagId: t.tagId,
+      })));
       await recalcTagContentCounts(tx, tagRows.map((t) => t.tagId));
     }
     await logContentOp(tx, created.id, 'created', `复制自内容 #${current.id}`);
@@ -962,8 +1144,10 @@ export async function distributeCmsContents(ids: number[], targetSiteId: number,
   await assertBatchSiteAccess(ids);
   await assertSiteAccess(targetSiteId);
   await assertChannelAccess(targetChannelId);
+  await ensureCmsSiteExists(targetSiteId);
   const channel = await ensureChannelForContent(targetSiteId, targetChannelId);
   const rows = await db.select().from(cmsContents).where(inArray(cmsContents.id, ids));
+  assertCompleteCmsBatch(ids, rows.map((row) => row.id), '内容');
   return db.transaction(async (tx) => {
     let copied = 0;
     for (const current of rows) {
@@ -1017,5 +1201,5 @@ export async function cleanupCmsRecycleBin(retentionDays = 30): Promise<number> 
   const targets = await db.select({ id: cmsContents.id }).from(cmsContents)
     .where(and(isNotNull(cmsContents.deletedAt), lt(cmsContents.deletedAt, threshold)));
   if (targets.length === 0) return 0;
-  return purgeCmsContents(targets.map((t) => t.id));
+  return purgeCmsContents(targets.map((t) => t.id), { skipAccessCheck: true });
 }

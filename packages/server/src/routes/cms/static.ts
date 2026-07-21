@@ -4,7 +4,7 @@ import { guard } from '../../middleware/guard';
 import { commonErrorResponses, jsonContent, ok, okBody, validationHook } from '../../lib/openapi-schemas';
 import { AsyncTaskDTO } from '../../lib/openapi-dtos';
 import { mapAsyncTask, submitAsyncTask } from '../../lib/task-center';
-import { ensureCmsSiteExists } from '../../services/cms/cms-sites.service';
+import { ensureCmsStaticBuildAccess } from '../../services/cms/cms-static.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -19,7 +19,7 @@ const buildRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { siteId } = c.req.valid('json');
-    const site = await ensureCmsSiteExists(siteId);
+    const site = await ensureCmsStaticBuildAccess(siteId);
     const row = await submitAsyncTask({
       taskType: 'cms-static-build',
       title: `CMS 全站静态化（${site.name}）`,

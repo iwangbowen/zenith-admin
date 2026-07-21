@@ -4,10 +4,21 @@ import { db } from '../../db';
 import {
   cmsSites, cmsChannels, cmsContents, cmsTags, cmsContentTags, cmsContentChannels, cmsContentRelations,
   cmsFragments, cmsFriendLinks, cmsRedirects, cmsLinkWords, cmsAdSlots, cmsAds, cmsForms, cmsPages,
+  cmsSiteUsers, cmsChannelUsers,
 } from '../../db/schema';
 import { formatDateTime, parseDateTimeInput } from '../../lib/datetime';
 import { buildSearchVector } from './cms-search.service';
-import { ensureCmsSiteExists, assertSiteAccess } from './cms-sites.service';
+import { ensureCmsSiteExists, assertSiteAccess, invalidateSiteCache } from './cms-sites.service';
+import { isCmsPlatformAdmin } from './cms-access';
+import { normalizeNewCmsSiteSettings, redactCmsSiteSettings } from './cms-site-settings';
+import { sanitizeCmsHtml } from './cms-html-sanitizer';
+import { cmsSlugRegex } from '@zenith/shared';
+import { parseCmsImportSiteCode } from './cms-import-security';
+import { currentUser } from '../../lib/context';
+import { assertAllCmsSiteChannelsAccess } from './cms-channels.service';
+import { sanitizeCmsPageBlocks } from './cms-page-blocks';
+import { CMS_IMPORTED_CONTENT_LIFECYCLE } from './cms-publish-permission';
+import { sanitizeCmsImportedFragment } from './cms-fragment-content';
 
 /**
  * 站点导入导出（P5 企业级治理）：整站结构与内容打包为 JSON，用于备份迁移 / 环境同步。
@@ -37,6 +48,7 @@ function exportRow(row: PlainRow, omit: string[] = []): PlainRow {
 
 export async function exportCmsSite(siteId: number) {
   await assertSiteAccess(siteId);
+  await assertAllCmsSiteChannelsAccess(siteId);
   const site = await ensureCmsSiteExists(siteId);
 
   const [channels, tags, contents, fragments, friendLinks, redirects, linkWords, adSlots, forms, pages] = await Promise.all([
@@ -68,7 +80,9 @@ export async function exportCmsSite(siteId: number) {
     let { body, extend } = c;
     if (c.mappingSourceId) {
       const source = contentById.get(c.mappingSourceId)
-        ?? await db.query.cmsContents.findFirst({ where: eq(cmsContents.id, c.mappingSourceId) });
+        ?? await db.query.cmsContents.findFirst({
+          where: eq(cmsContents.id, c.mappingSourceId),
+        });
       if (source) {
         body = source.body;
         extend = source.extend;
@@ -83,7 +97,7 @@ export async function exportCmsSite(siteId: number) {
   return {
     version: CMS_SITE_EXPORT_VERSION,
     exportedAt: formatDateTime(new Date()),
-    site: exportRow(site, ['id', 'isDefault', 'domain', 'aliasDomains', 'tenantId']),
+    site: exportRow({ ...site, settings: redactCmsSiteSettings(site.settings) }, ['id', 'isDefault', 'domain', 'aliasDomains']),
     channels: channels.map((r) => exportRow(r, ['siteId'])),
     tags: tags.map((r) => exportRow(r, ['siteId', 'contentCount'])),
     contents: exportedContents,
@@ -107,6 +121,7 @@ export type CmsSiteExportPackage = Awaited<ReturnType<typeof exportCmsSite>>;
 
 /** 站点 code 冲突时自动追加序号找空位 */
 async function resolveSiteCode(code: string): Promise<string> {
+  parseCmsImportSiteCode(code);
   const base = String(code || 'imported-site').slice(0, 44);
   for (let i = 0; i < 100; i++) {
     const candidate = i === 0 ? base : `${base}-${i + 1}`;
@@ -123,6 +138,14 @@ function str(v: unknown): string | null {
   return typeof v === 'string' ? v : null;
 }
 
+function requireCmsSlug(value: unknown, label: string, maxLength = 100): string {
+  const slug = str(value);
+  if (!slug || slug.length > maxLength || !cmsSlugRegex.test(slug)) {
+    throw new HTTPException(400, { message: `${label}格式无效，仅允许小写字母、数字或中划线` });
+  }
+  return slug;
+}
+
 /** 导入整站：创建新站点并重映射全部内部引用。返回新站点 id 与各实体导入数量 */
 export async function importCmsSite(payload: unknown) {
   const pkg = payload as Partial<CmsSiteExportPackage> | null;
@@ -130,9 +153,11 @@ export async function importCmsSite(payload: unknown) {
     throw new HTTPException(400, { message: '导入文件格式不正确或版本不兼容' });
   }
   const site = pkg.site as PlainRow;
-  const code = await resolveSiteCode(str(site.code) ?? 'imported-site');
+  const code = await resolveSiteCode(parseCmsImportSiteCode(site.code));
+  const platformAdmin = isCmsPlatformAdmin();
+  const creatorId = currentUser().userId;
 
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     // 1. 站点（域名/默认站标记不迁移，避免与现有站点冲突）
     const [newSite] = await tx.insert(cmsSites).values({
       name: str(site.name) ?? '导入站点',
@@ -147,15 +172,19 @@ export async function importCmsSite(payload: unknown) {
       theme: str(site.theme) ?? 'default',
       staticMode: (str(site.staticMode) as typeof cmsSites.$inferInsert.staticMode) ?? 'hybrid',
       robots: str(site.robots),
-      settings: (site.settings ?? {}) as Record<string, unknown>,
+      settings: normalizeNewCmsSiteSettings((site.settings ?? {}) as Record<string, unknown>),
       status: (str(site.status) as typeof cmsSites.$inferInsert.status) ?? 'enabled',
       sort: num(site.sort) ?? 0,
       remark: str(site.remark),
     }).returning();
     const siteId = newSite.id;
+    if (!platformAdmin) {
+      await tx.insert(cmsSiteUsers).values({ siteId, userId: creatorId });
+    }
 
     // 2. 栏目树：先父后子逐层插入，重映射 id/parentId
     const channelIdMap = new Map<number, number>();
+    const channelPathMap = new Map<number, string>();
     const pendingChannels = [...(pkg.channels ?? [])] as PlainRow[];
     let guard = pendingChannels.length * 2 + 10;
     while (pendingChannels.length > 0 && guard-- > 0) {
@@ -163,21 +192,27 @@ export async function importCmsSite(payload: unknown) {
         const parentId = num(ch.parentId) ?? 0;
         return parentId === 0 || channelIdMap.has(parentId);
       });
-      if (idx === -1) break; // 剩余栏目父节点缺失：按顶级挂载兜底
+      if (idx === -1) break;
       const ch = pendingChannels.splice(idx, 1)[0];
       const oldId = num(ch.id);
+      if (oldId === null) throw new HTTPException(400, { message: '导入栏目缺少有效 id' });
+      const oldParentId = num(ch.parentId) ?? 0;
+      const slug = requireCmsSlug(ch.slug, `栏目 #${oldId} slug`);
+      const parentPath = oldParentId === 0 ? '' : channelPathMap.get(oldParentId);
+      if (oldParentId !== 0 && !parentPath) throw new HTTPException(400, { message: `栏目 #${oldId} 的父栏目不存在` });
+      const channelPath = parentPath ? `${parentPath}/${slug}` : slug;
       const [created] = await tx.insert(cmsChannels).values({
         siteId,
-        parentId: channelIdMap.get(num(ch.parentId) ?? 0) ?? 0,
+        parentId: channelIdMap.get(oldParentId) ?? 0,
         name: str(ch.name) ?? '未命名栏目',
-        slug: str(ch.slug) ?? `channel-${oldId}`,
-        path: str(ch.path) ?? `channel-${oldId}`,
+        slug,
+        path: channelPath,
         type: (str(ch.type) as typeof cmsChannels.$inferInsert.type) ?? 'list',
         linkUrl: str(ch.linkUrl),
         listTemplate: str(ch.listTemplate),
         detailTemplate: str(ch.detailTemplate),
         pageSize: num(ch.pageSize) ?? 20,
-        pageContent: str(ch.pageContent),
+        pageContent: sanitizeCmsHtml(str(ch.pageContent)),
         seoTitle: str(ch.seoTitle),
         seoKeywords: str(ch.seoKeywords),
         seoDescription: str(ch.seoDescription),
@@ -187,19 +222,17 @@ export async function importCmsSite(payload: unknown) {
         sort: num(ch.sort) ?? 0,
         settings: (ch.settings ?? {}) as Record<string, unknown>,
       }).returning({ id: cmsChannels.id });
-      if (oldId !== null) channelIdMap.set(oldId, created.id);
+      channelIdMap.set(oldId, created.id);
+      channelPathMap.set(oldId, channelPath);
+      if (!platformAdmin) {
+        await tx.insert(cmsChannelUsers).values({
+          channelId: created.id,
+          userId: creatorId,
+        });
+      }
     }
-    // 父节点缺失的孤儿栏目挂顶级
-    for (const ch of pendingChannels) {
-      const oldId = num(ch.id);
-      const [created] = await tx.insert(cmsChannels).values({
-        siteId, parentId: 0,
-        name: str(ch.name) ?? '未命名栏目',
-        slug: str(ch.slug) ?? `channel-${oldId}`,
-        path: str(ch.slug) ?? `channel-${oldId}`,
-        type: 'list',
-      }).returning({ id: cmsChannels.id });
-      if (oldId !== null) channelIdMap.set(oldId, created.id);
+    if (pendingChannels.length > 0) {
+      throw new HTTPException(400, { message: '导入栏目树包含缺失父节点或循环引用' });
     }
 
     // 3. 标签
@@ -209,18 +242,19 @@ export async function importCmsSite(payload: unknown) {
       const [created] = await tx.insert(cmsTags).values({
         siteId,
         name: str(tag.name) ?? `tag-${oldId}`,
-        slug: str(tag.slug) ?? `tag-${oldId}`,
+        slug: requireCmsSlug(tag.slug, `标签 #${oldId} slug`),
       }).returning({ id: cmsTags.id });
       if (oldId !== null) tagIdMap.set(oldId, created.id);
     }
 
-    // 4. 内容（searchVector 重建；发布时间等业务时间保留）
+    // 4. 内容（searchVector 重建；发布/排期/归档状态统一降级为草稿）
     const contentIdMap = new Map<number, number>();
     for (const c of (pkg.contents ?? []) as PlainRow[]) {
       const oldId = num(c.id);
       const channelId = channelIdMap.get(num(c.channelId) ?? 0);
       if (!channelId) continue; // 栏目缺失的内容跳过
       const title = str(c.title) ?? '未命名内容';
+      const rawContentSlug = str(c.slug);
       const [created] = await tx.insert(cmsContents).values({
         siteId,
         channelId,
@@ -230,7 +264,7 @@ export async function importCmsSite(payload: unknown) {
         title,
         subTitle: str(c.subTitle),
         shortTitle: str(c.shortTitle),
-        slug: str(c.slug),
+        slug: rawContentSlug ? requireCmsSlug(rawContentSlug, `内容 #${oldId} slug`, 255) : null,
         summary: str(c.summary),
         coverImage: str(c.coverImage),
         coverThumb: str(c.coverThumb),
@@ -239,7 +273,7 @@ export async function importCmsSite(payload: unknown) {
         source: str(c.source),
         sourceUrl: str(c.sourceUrl),
         isOriginal: c.isOriginal === true,
-        body: str(c.body),
+        body: sanitizeCmsHtml(str(c.body)),
         extend: (c.extend ?? {}) as Record<string, unknown>,
         externalLink: str(c.externalLink),
         detailTemplate: str(c.detailTemplate),
@@ -248,11 +282,8 @@ export async function importCmsSite(payload: unknown) {
         topExpireAt: parseDateTimeInput(str(c.topExpireAt) ?? undefined),
         isRecommend: c.isRecommend === true,
         isHot: c.isHot === true,
-        status: (str(c.status) as typeof cmsContents.$inferInsert.status) ?? 'draft',
-        publishedAt: parseDateTimeInput(str(c.publishedAt) ?? undefined),
-        scheduledAt: parseDateTimeInput(str(c.scheduledAt) ?? undefined),
+        ...CMS_IMPORTED_CONTENT_LIFECYCLE,
         expireAt: parseDateTimeInput(str(c.expireAt) ?? undefined),
-        archivedAt: parseDateTimeInput(str(c.archivedAt) ?? undefined),
         sort: num(c.sort) ?? 0,
         seoTitle: str(c.seoTitle),
         seoKeywords: str(c.seoKeywords),
@@ -261,7 +292,7 @@ export async function importCmsSite(payload: unknown) {
           title,
           seoKeywords: str(c.seoKeywords),
           summary: str(c.summary),
-          body: str(c.body),
+          body: sanitizeCmsHtml(str(c.body)),
         }),
       }).returning({ id: cmsContents.id });
       if (oldId !== null) contentIdMap.set(oldId, created.id);
@@ -292,12 +323,13 @@ export async function importCmsSite(payload: unknown) {
 
     // 6. 站点附属实体
     for (const f of (pkg.fragments ?? []) as PlainRow[]) {
+      const type = str(f.type) ?? 'html';
       await tx.insert(cmsFragments).values({
         siteId,
         code: str(f.code) ?? `fragment-${num(f.id)}`,
         name: str(f.name) ?? '未命名碎片',
-        type: (str(f.type) as typeof cmsFragments.$inferInsert.type) ?? 'html',
-        content: str(f.content),
+        type: type as typeof cmsFragments.$inferInsert.type,
+        content: sanitizeCmsImportedFragment(type, f.content),
         status: (str(f.status) as typeof cmsFragments.$inferInsert.status) ?? 'enabled',
         remark: str(f.remark),
       });
@@ -374,9 +406,9 @@ export async function importCmsSite(payload: unknown) {
       await tx.insert(cmsPages).values({
         siteId,
         name: str(p.name) ?? '未命名页面',
-        slug: str(p.slug) ?? `page-${num(p.id)}`,
+        slug: requireCmsSlug(p.slug, `页面 #${num(p.id)} slug`),
         isHome: false,
-        blocks: (p.blocks ?? []) as typeof cmsPages.$inferInsert.blocks,
+        blocks: sanitizeCmsPageBlocks(p.blocks ?? []),
         seoTitle: str(p.seoTitle),
         seoKeywords: str(p.seoKeywords),
         seoDescription: str(p.seoDescription),
@@ -404,4 +436,6 @@ export async function importCmsSite(payload: unknown) {
       },
     };
   });
+  invalidateSiteCache();
+  return result;
 }

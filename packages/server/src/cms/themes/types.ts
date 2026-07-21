@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react';
-import type { CmsSearchResult, CmsThemeSettingField } from '@zenith/shared';
+import type { CmsFragmentType, CmsSearchResult, CmsThemeSettingField } from '@zenith/shared';
 
 /** 渲染上下文：站点信息 */
 export interface CmsRenderSite {
@@ -134,7 +134,7 @@ export interface CmsBaseContext {
   baseUrl: string;
   nav: CmsNavItem[];
   /** 碎片 code → { type, content } */
-  fragments: Record<string, { type: string; content: string }>;
+  fragments: Record<string, { type: CmsFragmentType; content: string }>;
   /** 广告位 code → 投放中广告列表 */
   ads: Record<string, CmsAdItem[]>;
   friendLinks: { name: string; url: string; logo: string | null }[];

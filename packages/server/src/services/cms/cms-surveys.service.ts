@@ -11,6 +11,7 @@ import { mergeWhere, escapeLike, withPagination } from '../../lib/where-helpers'
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { assertSiteAccess } from './cms-sites.service';
 import type { CreateCmsSurveyInput, UpdateCmsSurveyInput, SubmitCmsSurveyInput, CmsSurveyStats } from '@zenith/shared';
+import { ensureCmsSiteExists } from './cms-sites.service';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 export function mapCmsSurveyQuestion(row: CmsSurveyQuestionRow) {
@@ -59,6 +60,7 @@ export interface ListCmsSurveysQuery {
 }
 
 export async function listCmsSurveys(q: ListCmsSurveysQuery) {
+  await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
   const conditions: SQL[] = [eq(cmsSurveys.siteId, q.siteId)];
   if (q.keyword) conditions.push(like(cmsSurveys.title, `%${escapeLike(q.keyword)}%`));
@@ -76,6 +78,8 @@ export async function listCmsSurveys(q: ListCmsSurveysQuery) {
 }
 
 export async function getCmsSurvey(id: number) {
+  const current = await ensureCmsSurveyExists(id);
+  await assertSiteAccess(current.siteId);
   const row = await db.query.cmsSurveys.findFirst({
     where: eq(cmsSurveys.id, id),
     with: { questions: true },
@@ -94,7 +98,9 @@ function assertQuestionsValid(questions: CreateCmsSurveyInput['questions']): voi
 }
 
 async function replaceQuestions(tx: DbExecutor, surveyId: number, questions: NonNullable<CreateCmsSurveyInput['questions']>): Promise<void> {
-  await tx.delete(cmsSurveyQuestions).where(eq(cmsSurveyQuestions.surveyId, surveyId));
+  await tx.delete(cmsSurveyQuestions).where(and(
+    eq(cmsSurveyQuestions.surveyId, surveyId),
+  ));
   if (questions.length > 0) {
     await tx.insert(cmsSurveyQuestions).values(questions.map((q, i) => ({
       surveyId,
@@ -108,6 +114,7 @@ async function replaceQuestions(tx: DbExecutor, surveyId: number, questions: Non
 }
 
 export async function createCmsSurvey(data: CreateCmsSurveyInput) {
+  await ensureCmsSiteExists(data.siteId);
   await assertSiteAccess(data.siteId);
   assertQuestionsValid(data.questions);
   const { questions, startAt, endAt, ...rest } = data;

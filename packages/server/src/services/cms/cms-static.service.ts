@@ -15,28 +15,20 @@ import {
 import { triggerCdnPurge, triggerCdnPurgeAll } from './cms-cdn.service';
 
 // ─── 静态目录 ─────────────────────────────────────────────────────────────────
-const STATIC_ROOT = process.env.CMS_STATIC_ROOT?.trim()
-  ? path.resolve(process.env.CMS_STATIC_ROOT.trim())
-  : path.resolve(process.cwd(), 'storage/cms-static');
+import {
+  CMS_STATIC_ROOT, isStrictlyWithin, resolveStaticFile, siteStaticDir,
+} from './cms-static-path';
+import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
+import { assertAllCmsSiteChannelsAccess } from './cms-channels.service';
+export {
+  CMS_STATIC_ROOT, isStrictlyWithin, pathToStaticFile, resolveStaticFile, siteStaticDir,
+} from './cms-static-path';
 
-export function siteStaticDir(siteCode: string): string {
-  return path.join(STATIC_ROOT, siteCode);
-}
-
-/** 站内相对路径 → 静态文件相对路径（'' → index.html；'a/b/' → a/b/index.html） */
-export function pathToStaticFile(relPath: string): string {
-  const cleaned = relPath.replace(/^\/+/, '');
-  if (cleaned === '' || cleaned === '/') return 'index.html';
-  if (cleaned.endsWith('/')) return `${cleaned}index.html`;
-  return cleaned;
-}
-
-/** 解析并校验静态文件绝对路径（防目录穿越） */
-export function resolveStaticFile(siteCode: string, relPath: string): string | null {
-  const dir = siteStaticDir(siteCode);
-  const abs = path.resolve(dir, pathToStaticFile(relPath));
-  if (!abs.startsWith(dir + path.sep) && abs !== dir) return null;
-  return abs;
+export async function ensureCmsStaticBuildAccess(siteId: number): Promise<CmsSiteRow> {
+  const site = await ensureCmsSiteExists(siteId);
+  await assertSiteAccess(siteId);
+  await assertAllCmsSiteChannelsAccess(siteId);
+  return site;
 }
 
 export async function readStaticFile(siteCode: string, relPath: string): Promise<string | null> {
@@ -67,7 +59,9 @@ export async function deleteStaticFile(siteCode: string, relPath: string): Promi
 
 /** 清空站点静态目录（全量重建前调用） */
 export async function clearSiteStatic(siteCode: string): Promise<void> {
-  await fs.rm(siteStaticDir(siteCode), { recursive: true, force: true });
+  const dir = siteStaticDir(siteCode);
+  if (!isStrictlyWithin(CMS_STATIC_ROOT, dir)) throw new Error('CMS 站点静态目录越界');
+  await fs.rm(dir, { recursive: true, force: true });
 }
 
 // ─── sitemap / robots ─────────────────────────────────────────────────────────
@@ -82,7 +76,10 @@ export async function generateSitemapXml(site: CmsSiteRow): Promise<string> {
   entries.push({ loc: `${origin}/`, lastmod: formatIso8601(new Date()), priority: '1.0' });
 
   const channels = await db.select().from(cmsChannels)
-    .where(and(eq(cmsChannels.siteId, site.id), eq(cmsChannels.status, 'enabled')));
+    .where(and(
+      eq(cmsChannels.siteId, site.id),
+      eq(cmsChannels.status, 'enabled'),
+    ));
   const channelPathMap = new Map<number, string>();
   for (const ch of channels) {
     channelPathMap.set(ch.id, ch.path);
@@ -200,9 +197,13 @@ async function regenerateChannelPages(site: CmsSiteRow, channel: CmsChannelRow, 
 export async function refreshContentStatic(contentId: number): Promise<void> {
   const [content] = await db.select().from(cmsContents).where(eq(cmsContents.id, contentId)).limit(1);
   if (!content) return;
-  const [site] = await db.select().from(cmsSites).where(eq(cmsSites.id, content.siteId)).limit(1);
+  const [site] = await db.select().from(cmsSites).where(and(
+    eq(cmsSites.id, content.siteId),
+  )).limit(1);
   if (!site || site.staticMode === 'dynamic') return;
-  const [channel] = await db.select().from(cmsChannels).where(eq(cmsChannels.id, content.channelId)).limit(1);
+  const [channel] = await db.select().from(cmsChannels).where(and(
+    eq(cmsChannels.id, content.channelId),
+  )).limit(1);
   if (!channel) return;
 
   const detailPath = contentUrl('', channel.path, content);

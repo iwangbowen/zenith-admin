@@ -9,6 +9,8 @@ import { httpPost } from '../../lib/http-client';
 import logger from '../../lib/logger';
 import { assertSiteAccess } from './cms-sites.service';
 import { siteOrigin, contentUrl } from './cms-render.service';
+import { ensureCmsSiteExists } from './cms-sites.service';
+import { assertAllCmsSiteChannelsAccess } from './cms-channels.service';
 
 export type CmsPushEngine = 'baidu' | 'indexnow';
 
@@ -88,10 +90,7 @@ export interface PushResult {
   reason?: string;
 }
 
-/** 推送 URL 到已配置的搜索引擎；urls 为站内相对路径或绝对地址 */
-export async function pushCmsUrls(siteId: number, urls: string[], engines?: CmsPushEngine[]): Promise<PushResult[]> {
-  const [site] = await db.select().from(cmsSites).where(eq(cmsSites.id, siteId)).limit(1);
-  if (!site) throw new HTTPException(404, { message: '站点不存在' });
+async function pushCmsUrlsForSite(site: CmsSiteRow, urls: string[], engines?: CmsPushEngine[]): Promise<PushResult[]> {
   const origin = siteOrigin(site);
   if (!origin) throw new HTTPException(400, { message: '站点未绑定域名，无法推送搜索引擎' });
   const absolute = [...new Set(urls.map((u) => (u.startsWith('http') ? u : `${origin}${u.startsWith('/') ? u : `/${u}`}`)))].slice(0, 2000);
@@ -118,6 +117,14 @@ export async function pushCmsUrls(siteId: number, urls: string[], engines?: CmsP
   return results;
 }
 
+/** 推送 URL 到已配置的搜索引擎；urls 为站内相对路径或绝对地址 */
+export async function pushCmsUrls(siteId: number, urls: string[], engines?: CmsPushEngine[]): Promise<PushResult[]> {
+  const site = await ensureCmsSiteExists(siteId);
+  await assertSiteAccess(siteId);
+  await assertAllCmsSiteChannelsAccess(siteId);
+  return pushCmsUrlsForSite(site, urls, engines);
+}
+
 /** 内容发布后自动推送（未配置引擎时静默跳过；路由 fire-and-forget 调用） */
 export function triggerAutoPushForContent(contentId: number): void {
   void (async () => {
@@ -127,15 +134,19 @@ export function triggerAutoPushForContent(contentId: number): void {
       site: cmsSites,
     })
       .from(cmsContents)
-      .innerJoin(cmsChannels, eq(cmsContents.channelId, cmsChannels.id))
-      .innerJoin(cmsSites, eq(cmsContents.siteId, cmsSites.id))
+      .innerJoin(cmsChannels, and(
+        eq(cmsContents.channelId, cmsChannels.id),
+      ))
+      .innerJoin(cmsSites, and(
+        eq(cmsContents.siteId, cmsSites.id),
+      ))
       .where(eq(cmsContents.id, contentId))
       .limit(1);
     if (!row || row.content.status !== 'published' || row.content.externalLink?.trim()) return;
     const cfg = getSitePushConfig(row.site);
     if (!cfg.baiduPushToken && !cfg.indexNowKey) return;
     if (!siteOrigin(row.site)) return;
-    await pushCmsUrls(row.site.id, [contentUrl('', row.channelPath, row.content)]);
+    await pushCmsUrlsForSite(row.site, [contentUrl('', row.channelPath, row.content)]);
   })().catch((err) => {
     logger.error(`[CMS] 内容 ${contentId} 自动推送失败`, err);
   });
@@ -150,7 +161,9 @@ export interface ListCmsPushLogsQuery {
 }
 
 export async function listCmsPushLogs(q: ListCmsPushLogsQuery) {
+  await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
+  await assertAllCmsSiteChannelsAccess(q.siteId);
   const conditions: SQL[] = [eq(cmsPushLogs.siteId, q.siteId)];
   if (q.engine) conditions.push(eq(cmsPushLogs.engine, q.engine));
   const where = mergeWhere(and(...conditions));

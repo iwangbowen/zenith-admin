@@ -4,6 +4,7 @@ import type {
   CmsDetailContext, CmsPageContext, CmsSearchContext, CmsNotFoundContext, CmsPagination,
   CmsTagPageContext, CmsNavItem, CmsTheme, CmsCustomPageContext,
 } from '../types';
+import { CmsFragmentContent } from '../blocks';
 
 const styles = `
 :root { --primary: #3451b2; --text: #213547; --text-2: #67676c; --border: #e2e2e3; --bg: #ffffff; --bg-2: #f6f6f7; --sidebar-w: 250px; }
@@ -268,9 +269,7 @@ function IndexTemplate(ctx: CmsHomeContext) {
         <h1>{ctx.site.name}</h1>
         {ctx.site.description ? <p>{ctx.site.description}</p> : null}
       </div>
-      {banner?.content && banner.type === 'html' ? (
-        <div dangerouslySetInnerHTML={{ __html: banner.content }} />
-      ) : null}
+      <CmsFragmentContent fragment={banner} imageAlt="home-banner" />
       <h2 className="section-heading">最新更新</h2>
       <div className="doc-list">
         {ctx.latest.length === 0 ? <div className="empty">暂无内容</div> : ctx.latest.map((item) => <DocItemRow key={item.id} item={item} />)}

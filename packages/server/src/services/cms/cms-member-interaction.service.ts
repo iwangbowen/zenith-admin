@@ -13,8 +13,10 @@ import { currentMemberId } from '../../lib/member-context';
 import { changePoints } from '../member/member-points.service';
 import { submitCmsComment } from './cms-comments.service';
 import { withPagination } from '../../lib/where-helpers';
+import { pageOffset } from '../../lib/pagination';
 import { CMS_INTERACTION_POINTS, CMS_INTERACTION_DAILY_LIMITS } from '@zenith/shared';
 import type { CmsInteractionState, CmsMemberContentItem, CmsMemberComment, PaginatedResponse } from '@zenith/shared';
+import { formatDate } from '../../lib/datetime';
 
 /** 每位会员保留的浏览历史上限（超出裁剪最旧） */
 const VIEW_HISTORY_LIMIT = 100;
@@ -36,7 +38,7 @@ export async function awardInteractionPoints(memberId: number, contentId: number
     if (!acquired) return;
     const dailyLimit = (CMS_INTERACTION_DAILY_LIMITS as Record<string, number>)[action];
     if (dailyLimit) {
-      const today = new Date().toISOString().slice(0, 10).replaceAll('-', '');
+      const today = formatDate(new Date()).replaceAll('-', '');
       const dailyKey = `${config.redis.keyPrefix}cms:pts:daily:${action}:${memberId}:${today}`;
       const count = await redis.incr(dailyKey);
       if (count === 1) await redis.expire(dailyKey, 26 * 3600);
@@ -79,7 +81,9 @@ export async function likeContent(contentId: number): Promise<CmsInteractionStat
     .onConflictDoNothing()
     .returning({ memberId: cmsContentLikes.memberId });
   if (inserted.length > 0) {
-    await db.update(cmsContents).set({ likeCount: sql`${cmsContents.likeCount} + 1` }).where(eq(cmsContents.id, contentId));
+    await db.update(cmsContents).set({ likeCount: sql`${cmsContents.likeCount} + 1` }).where(and(
+      eq(cmsContents.id, contentId),
+    ));
     void awardInteractionPoints(memberId, contentId, 'like');
   }
   return getInteractionState(contentId);
@@ -87,6 +91,7 @@ export async function likeContent(contentId: number): Promise<CmsInteractionStat
 
 export async function unlikeContent(contentId: number): Promise<CmsInteractionState> {
   const memberId = currentMemberId();
+  await ensureInteractableContent(contentId);
   const deleted = await db.delete(cmsContentLikes)
     .where(and(eq(cmsContentLikes.memberId, memberId), eq(cmsContentLikes.contentId, contentId)))
     .returning({ memberId: cmsContentLikes.memberId });
@@ -106,7 +111,9 @@ export async function favoriteContent(contentId: number): Promise<CmsInteraction
     .onConflictDoNothing()
     .returning({ memberId: cmsContentFavorites.memberId });
   if (inserted.length > 0) {
-    await db.update(cmsContents).set({ favoriteCount: sql`${cmsContents.favoriteCount} + 1` }).where(eq(cmsContents.id, contentId));
+    await db.update(cmsContents).set({ favoriteCount: sql`${cmsContents.favoriteCount} + 1` }).where(and(
+      eq(cmsContents.id, contentId),
+    ));
     void awardInteractionPoints(memberId, contentId, 'favorite');
   }
   return getInteractionState(contentId);
@@ -114,6 +121,7 @@ export async function favoriteContent(contentId: number): Promise<CmsInteraction
 
 export async function unfavoriteContent(contentId: number): Promise<CmsInteractionState> {
   const memberId = currentMemberId();
+  await ensureInteractableContent(contentId);
   const deleted = await db.delete(cmsContentFavorites)
     .where(and(eq(cmsContentFavorites.memberId, memberId), eq(cmsContentFavorites.contentId, contentId)))
     .returning({ memberId: cmsContentFavorites.memberId });
@@ -128,6 +136,7 @@ export async function unfavoriteContent(contentId: number): Promise<CmsInteracti
 /** 当前会员对内容的互动状态 + 最新计数（详情页交互条轮询/操作后回显） */
 export async function getInteractionState(contentId: number): Promise<CmsInteractionState> {
   const memberId = currentMemberId();
+  await ensureInteractableContent(contentId);
   const [row, liked, favorited] = await Promise.all([
     db.select({ likeCount: cmsContents.likeCount, favoriteCount: cmsContents.favoriteCount })
       .from(cmsContents).where(eq(cmsContents.id, contentId)).limit(1).then((r) => r[0]),
@@ -155,7 +164,9 @@ export async function recordMemberView(contentId: number): Promise<void> {
     .where(eq(cmsMemberViewHistory.memberId, memberId))
     .orderBy(desc(cmsMemberViewHistory.updatedAt), desc(cmsMemberViewHistory.id))
     .offset(VIEW_HISTORY_LIMIT);
-  await db.delete(cmsMemberViewHistory).where(inArray(cmsMemberViewHistory.id, staleIds));
+  await db.delete(cmsMemberViewHistory).where(and(
+    inArray(cmsMemberViewHistory.id, staleIds),
+  ));
   void awardInteractionPoints(memberId, contentId, 'view');
 }
 
@@ -196,7 +207,7 @@ export async function listMyFavorites(page: number, pageSize: number) {
       with: { content: true },
       orderBy: desc(cmsContentFavorites.createdAt),
       limit: pageSize,
-      offset: (page - 1) * pageSize,
+      offset: pageOffset(page, pageSize),
     }),
   ]);
   const paths = await loadChannelPaths(rows.map((r) => r.content.channelId));
@@ -217,7 +228,7 @@ export async function listMyViewHistory(page: number, pageSize: number) {
       with: { content: true },
       orderBy: desc(cmsMemberViewHistory.updatedAt),
       limit: pageSize,
-      offset: (page - 1) * pageSize,
+      offset: pageOffset(page, pageSize),
     }),
   ]);
   const paths = await loadChannelPaths(rows.map((r) => r.content.channelId));

@@ -13,6 +13,8 @@ import { throttleFrontSubmit } from './cms-comments.service';
 import { sendMail } from '../../lib/email';
 import logger from '../../lib/logger';
 import type { CreateCmsFormInput, UpdateCmsFormInput } from '@zenith/shared';
+import { assertCompleteCmsBatch } from './cms-access';
+import { ensureCmsSiteExists } from './cms-sites.service';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 export function mapCmsForm(row: CmsFormRow, submissionCount?: number) {
@@ -122,6 +124,7 @@ export interface ListCmsFormsQuery {
 }
 
 export async function listCmsForms(q: ListCmsFormsQuery) {
+  await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
   const conditions: SQL[] = [eq(cmsForms.siteId, q.siteId)];
   if (q.keyword) conditions.push(like(cmsForms.name, `%${escapeLike(q.keyword)}%`));
@@ -154,6 +157,7 @@ function normalizeFormFields(fields: FormFieldInput[] | undefined) {
 }
 
 export async function createCmsForm(data: CreateCmsFormInput) {
+  await ensureCmsSiteExists(data.siteId);
   await assertSiteAccess(data.siteId);
   try {
     const [row] = await db.insert(cmsForms).values({
@@ -191,7 +195,9 @@ export async function deleteCmsForm(id: number) {
 export async function listCmsFormSubmissions(formId: number, page: number, pageSize: number) {
   const form = await ensureCmsFormExists(formId);
   await assertSiteAccess(form.siteId);
-  const where = eq(cmsFormSubmissions.formId, formId);
+  const where = and(
+    eq(cmsFormSubmissions.formId, formId),
+  );
   const [total, list] = await Promise.all([
     db.$count(cmsFormSubmissions, where),
     withPagination(
@@ -207,5 +213,13 @@ export async function deleteCmsFormSubmissions(formId: number, ids: number[]) {
   const form = await ensureCmsFormExists(formId);
   await assertSiteAccess(form.siteId);
   if (ids.length === 0) return;
-  await db.delete(cmsFormSubmissions).where(and(eq(cmsFormSubmissions.formId, formId), inArray(cmsFormSubmissions.id, ids)));
+  const rows = await db.select({ id: cmsFormSubmissions.id }).from(cmsFormSubmissions).where(and(
+    eq(cmsFormSubmissions.formId, formId),
+    inArray(cmsFormSubmissions.id, ids),
+  ));
+  assertCompleteCmsBatch(ids, rows.map((row) => row.id), '表单提交');
+  await db.delete(cmsFormSubmissions).where(and(
+    eq(cmsFormSubmissions.formId, formId),
+    inArray(cmsFormSubmissions.id, ids),
+  ));
 }

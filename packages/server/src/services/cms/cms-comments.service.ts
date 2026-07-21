@@ -1,7 +1,8 @@
 import { eq, asc, desc, and, inArray, isNull, isNotNull, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import { cmsComments, cmsContents, members } from '../../db/schema';
+import { cmsComments, cmsContents, cmsSites, members } from '../../db/schema';
+import type { CmsSiteRow } from '../../db/schema';
 import type { CmsCommentRow } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
 import { mergeWhere, withPagination } from '../../lib/where-helpers';
@@ -11,6 +12,9 @@ import { sanitizeUserText } from './cms-sensitive-words.service';
 import { assertSiteAccess } from './cms-sites.service';
 import type { CmsCommentStatus } from '@zenith/shared';
 import { alias } from 'drizzle-orm/pg-core';
+import { assertCompleteCmsBatch } from './cms-access';
+import { assertChannelsAccess, getAccessibleChannelIds } from './cms-channels.service';
+import { ensureCmsSiteExists } from './cms-sites.service';
 
 const SUBMIT_RL_PREFIX = `${config.redis.keyPrefix}cms:submit:`;
 const SUBMIT_RL_WINDOW_SECONDS = 60;
@@ -61,6 +65,17 @@ export interface SubmitCommentInput {
   userAgent: string | null;
 }
 
+export async function getCmsCommentSite(contentId: number): Promise<CmsSiteRow | null> {
+  const [row] = await db.select({ site: cmsSites })
+    .from(cmsContents)
+    .innerJoin(cmsSites, and(
+      eq(cmsContents.siteId, cmsSites.id),
+    ))
+    .where(eq(cmsContents.id, contentId))
+    .limit(1);
+  return row?.site ?? null;
+}
+
 /** 前台评论提交：限流 + 敏感词过滤 → 待审核；回复统一挂到顶级评论下（两级树） */
 export async function submitCmsComment(input: SubmitCommentInput) {
   await throttleFrontSubmit(input.ip);
@@ -72,7 +87,9 @@ export async function submitCmsComment(input: SubmitCommentInput) {
   let parentId = 0;
   if (input.parentId && input.parentId > 0) {
     const [parent] = await db.select({ id: cmsComments.id, contentId: cmsComments.contentId, parentId: cmsComments.parentId, status: cmsComments.status })
-      .from(cmsComments).where(eq(cmsComments.id, input.parentId)).limit(1);
+      .from(cmsComments).where(and(
+        eq(cmsComments.id, input.parentId),
+      )).limit(1);
     if (!parent || parent.contentId !== input.contentId || parent.status !== 'approved') {
       throw new HTTPException(400, { message: '回复的评论不存在' });
     }
@@ -127,8 +144,17 @@ export interface ListCmsCommentsQuery {
 }
 
 export async function listCmsComments(q: ListCmsCommentsQuery) {
+  await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
   const conditions: SQL[] = [eq(cmsComments.siteId, q.siteId)];
+  const accessibleChannelIds = await getAccessibleChannelIds();
+  if (accessibleChannelIds !== null) {
+    const contentIds = db.select({ id: cmsContents.id }).from(cmsContents).where(and(
+      eq(cmsContents.siteId, q.siteId),
+      inArray(cmsContents.channelId, accessibleChannelIds),
+    ));
+    conditions.push(inArray(cmsComments.contentId, contentIds));
+  }
   if (q.status) conditions.push(eq(cmsComments.status, q.status));
   if (q.source === 'member') conditions.push(isNotNull(cmsComments.memberId));
   if (q.source === 'guest') conditions.push(isNull(cmsComments.memberId));
@@ -140,8 +166,12 @@ export async function listCmsComments(q: ListCmsCommentsQuery) {
     withPagination(
       db.select({ comment: cmsComments, contentTitle: cmsContents.title, parentNickname: parentComments.nickname, memberUsername: members.username })
         .from(cmsComments)
-        .leftJoin(cmsContents, eq(cmsComments.contentId, cmsContents.id))
-        .leftJoin(parentComments, eq(cmsComments.parentId, parentComments.id))
+        .leftJoin(cmsContents, and(
+          eq(cmsComments.contentId, cmsContents.id),
+        ))
+        .leftJoin(parentComments, and(
+          eq(cmsComments.parentId, parentComments.id),
+        ))
         .leftJoin(members, eq(cmsComments.memberId, members.id))
         .where(where)
         .orderBy(desc(cmsComments.id))
@@ -161,9 +191,14 @@ export async function listCmsComments(q: ListCmsCommentsQuery) {
 export async function auditCmsComments(ids: number[], status: 'approved' | 'rejected'): Promise<number[]> {
   if (ids.length === 0) return [];
   const rows = await db.select().from(cmsComments).where(inArray(cmsComments.id, ids));
+  assertCompleteCmsBatch(ids, rows.map((row) => row.id), '评论');
   for (const siteId of new Set(rows.map((r) => r.siteId))) {
     await assertSiteAccess(siteId);
   }
+  const contents = await db.select({ id: cmsContents.id, channelId: cmsContents.channelId }).from(cmsContents).where(and(
+    inArray(cmsContents.id, rows.map((row) => row.contentId)),
+  ));
+  await assertChannelsAccess(contents.map((content) => content.channelId));
   await db.update(cmsComments).set({ status }).where(inArray(cmsComments.id, ids));
   return [...new Set(rows.map((r) => r.contentId))];
 }
@@ -172,14 +207,34 @@ export async function auditCmsComments(ids: number[], status: 'approved' | 'reje
 export async function deleteCmsComments(ids: number[]): Promise<number[]> {
   if (ids.length === 0) return [];
   const rows = await db.select().from(cmsComments).where(inArray(cmsComments.id, ids));
+  assertCompleteCmsBatch(ids, rows.map((row) => row.id), '评论');
   for (const siteId of new Set(rows.map((r) => r.siteId))) {
     await assertSiteAccess(siteId);
   }
+  const contents = await db.select({ channelId: cmsContents.channelId }).from(cmsContents).where(inArray(
+    cmsContents.id,
+    rows.map((row) => row.contentId),
+  ));
+  await assertChannelsAccess(contents.map((content) => content.channelId));
   await db.delete(cmsComments).where(inArray(cmsComments.id, ids));
   return [...new Set(rows.filter((r) => r.status === 'approved').map((r) => r.contentId))];
 }
 
 /** 待审核评论数（角标） */
 export async function countPendingComments(siteId: number): Promise<number> {
-  return db.$count(cmsComments, and(eq(cmsComments.siteId, siteId), eq(cmsComments.status, 'pending')));
+  await ensureCmsSiteExists(siteId);
+  await assertSiteAccess(siteId);
+  const conditions: SQL[] = [
+    eq(cmsComments.siteId, siteId),
+    eq(cmsComments.status, 'pending'),
+  ];
+  const accessibleChannelIds = await getAccessibleChannelIds();
+  if (accessibleChannelIds !== null) {
+    const contentIds = db.select({ id: cmsContents.id }).from(cmsContents).where(and(
+      eq(cmsContents.siteId, siteId),
+      inArray(cmsContents.channelId, accessibleChannelIds),
+    ));
+    conditions.push(inArray(cmsComments.contentId, contentIds));
+  }
+  return db.$count(cmsComments, and(...conditions));
 }

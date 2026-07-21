@@ -1245,8 +1245,7 @@ export const reportFillRecordsRelations = relations(reportFillRecords, ({ one })
 }));
 
 // ─── CMS 内容管理 ─────────────────────────────────────────────────────────────
-export const cmsSitesRelations = relations(cmsSites, ({ one, many }) => ({
-  tenant: one(tenants, { fields: [cmsSites.tenantId], references: [tenants.id] }),
+export const cmsSitesRelations = relations(cmsSites, ({ many }) => ({
   channels: many(cmsChannels),
   contents: many(cmsContents),
   tags: many(cmsTags),

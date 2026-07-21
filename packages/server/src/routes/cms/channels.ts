@@ -194,8 +194,8 @@ const setChannelUsersRoute = defineOpenAPIRoute({
     const { id } = c.req.valid('param');
     const { userIds } = c.req.valid('json');
     setAuditBeforeData(c, await getCmsChannelUsers(id));
-    await setCmsChannelUsers(id, userIds);
-    setAuditAfterData(c, await getCmsChannelUsers(id));
+    const after = await setCmsChannelUsers(id, userIds);
+    setAuditAfterData(c, after);
     return c.json(okBody(null, '保存成功'), 200);
   },
 });

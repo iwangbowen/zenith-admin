@@ -1,7 +1,7 @@
 import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryKey, text, jsonb, uniqueIndex, index, customType, uuid as pgUuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { statusEnum } from './common';
-import { auditColumns, tenants, users, departments } from './core';
+import { auditColumns, users, departments } from './core';
 import { members } from './member';
 
 // ─── 枚举（pgEnum / TS union / Zod enum 三处同步，见 @zenith/shared）────────────
@@ -51,13 +51,12 @@ export const cmsSites = pgTable('cms_sites', {
   status: statusEnum('status').notNull().default('enabled'),
   sort: integer('sort').notNull().default(0),
   remark: text('remark'),
-  /** 预留：多租户隔离（第一期不启用，默认 null） */
-  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'set null' }),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (t) => [
   uniqueIndex('cms_sites_domain_uq').on(t.domain).where(sql`${t.domain} is not null`),
+  uniqueIndex('cms_sites_default_uq').on(t.isDefault).where(sql`${t.isDefault} = true`),
 ]);
 
 export type CmsSiteRow = typeof cmsSites.$inferSelect;

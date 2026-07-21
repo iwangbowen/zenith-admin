@@ -9,7 +9,7 @@
  * fire-and-forget：不阻塞主流程，失败仅记日志（5s 超时，SSRF 防护）。
  */
 import { createHmac } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../../db';
 import { cmsContents, cmsSites } from '../../db/schema';
 import { httpRequest } from '../../lib/http-client';
@@ -36,7 +36,9 @@ async function deliverCmsContentWebhook(event: CmsWebhookEvent, contentId: numbe
   }).from(cmsContents).where(eq(cmsContents.id, contentId)).limit(1);
   if (!content) return;
   const [site] = await db.select({ code: cmsSites.code, settings: cmsSites.settings })
-    .from(cmsSites).where(eq(cmsSites.id, content.siteId)).limit(1);
+    .from(cmsSites).where(and(
+      eq(cmsSites.id, content.siteId),
+    )).limit(1);
   if (!site) return;
   const settings = (site.settings ?? {}) as Record<string, unknown>;
   const url = typeof settings.webhookUrl === 'string' ? settings.webhookUrl.trim() : '';

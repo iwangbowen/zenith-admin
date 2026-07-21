@@ -26,6 +26,7 @@ import { useWorkflowDefinitionList } from '@/hooks/queries/workflow-definitions'
 import { CMS_STATIC_MODE_LABELS, CMS_STATIC_MODES, CMS_DEFAULT_CHANNEL_CODE } from '@zenith/shared';
 import type { AsyncTask, CmsSite, CmsSiteTemplateDefaults, CmsInvalidTemplateRef, CmsThemeSettingField } from '@zenith/shared';
 import { cmsPreviewUrl } from './CmsSiteSelect';
+import { cmsCredentialWriteValue } from './cms-site-credentials';
 
 interface SearchParams {
   keyword: string;
@@ -328,6 +329,7 @@ export default function SitesPage() {
         remark: editingRecord.remark ?? '',
         baiduPushToken: String((editingRecord.settings as Record<string, unknown>)?.baiduPushToken ?? ''),
         indexNowKey: String((editingRecord.settings as Record<string, unknown>)?.indexNowKey ?? ''),
+        clearIndexNowKey: false,
         themePrimary: String((editingRecord.settings as Record<string, unknown>)?.themePrimary ?? ''),
         themeDark: String((editingRecord.settings as Record<string, unknown>)?.themeDark ?? 'light'),
         auditMode: String((editingRecord.settings as Record<string, unknown>)?.auditMode ?? 'simple'),
@@ -341,9 +343,12 @@ export default function SitesPage() {
         thumbWidth: Number((editingRecord.settings as Record<string, unknown>)?.thumbWidth ?? 400),
         webhookUrl: String((editingRecord.settings as Record<string, unknown>)?.webhookUrl ?? ''),
         webhookSecret: String((editingRecord.settings as Record<string, unknown>)?.webhookSecret ?? ''),
+        clearWebhookSecret: false,
         captchaEnabled: (editingRecord.settings as Record<string, unknown>)?.captchaEnabled === true,
         cdnPurgeUrl: String((editingRecord.settings as Record<string, unknown>)?.cdnPurgeUrl ?? ''),
         cdnPurgeToken: String((editingRecord.settings as Record<string, unknown>)?.cdnPurgeToken ?? ''),
+        clearCdnPurgeToken: false,
+        clearBaiduPushToken: false,
         language: String((editingRecord.settings as Record<string, unknown>)?.language ?? ''),
         langLinksText: langLinksToText((editingRecord.settings as Record<string, unknown>)?.langLinks),
       }
@@ -365,18 +370,18 @@ export default function SitesPage() {
     if (!values.domain) values.domain = null;
     // 推送凭证/主题参数/图片处理/默认模板并入 settings JSONB（保留既有 settings 键；剔除已下线的 h5 旧键）
     const {
-      baiduPushToken, indexNowKey, themePrimary, themeDark,
+      baiduPushToken, indexNowKey, clearIndexNowKey, themePrimary, themeDark,
       imageMaxWidth, watermarkEnabled, watermarkText, watermarkPosition, watermarkOpacity, thumbEnabled, thumbWidth,
       auditMode, auditWorkflowDefinitionId,
-      webhookUrl, webhookSecret, captchaEnabled,
-      cdnPurgeUrl, cdnPurgeToken, language, langLinksText,
+      webhookUrl, webhookSecret, clearWebhookSecret, captchaEnabled,
+      cdnPurgeUrl, cdnPurgeToken, clearCdnPurgeToken, clearBaiduPushToken, language, langLinksText,
       ...rest
     } = values;
     const { h5Enabled: _legacyH5Enabled, h5Domain: _legacyH5Domain, ...prevSettings } = (editingRecord?.settings ?? {}) as Record<string, unknown>;
     rest.settings = {
       ...prevSettings,
-      baiduPushToken: String(baiduPushToken ?? '').trim(),
-      indexNowKey: String(indexNowKey ?? '').trim(),
+      baiduPushToken: cmsCredentialWriteValue(baiduPushToken, clearBaiduPushToken),
+      indexNowKey: cmsCredentialWriteValue(indexNowKey, clearIndexNowKey),
       themePrimary: String(themePrimary ?? '').trim(),
       themeDark: themeDark ?? 'light',
       imageMaxWidth: Number(imageMaxWidth ?? 1600),
@@ -389,10 +394,10 @@ export default function SitesPage() {
       auditMode: auditMode ?? 'simple',
       auditWorkflowDefinitionId: auditWorkflowDefinitionId ?? null,
       webhookUrl: String(webhookUrl ?? '').trim(),
-      webhookSecret: String(webhookSecret ?? '').trim(),
+      webhookSecret: cmsCredentialWriteValue(webhookSecret, clearWebhookSecret),
       captchaEnabled: captchaEnabled === true,
       cdnPurgeUrl: String(cdnPurgeUrl ?? '').trim(),
-      cdnPurgeToken: String(cdnPurgeToken ?? '').trim(),
+      cdnPurgeToken: cmsCredentialWriteValue(cdnPurgeToken, clearCdnPurgeToken),
       language: String(language ?? '').trim(),
       langLinks: parseLangLinks(String(langLinksText ?? '')),
       defaultTemplates: templateDefaultsToSettings(templateDefaults),
@@ -908,8 +913,10 @@ export default function SitesPage() {
                 <Form.TextArea field="description" label="SEO 描述" labelWidth={140} rows={2} />
                 <Form.TextArea field="robots" label="robots.txt" labelWidth={140} rows={3} placeholder="留空使用默认规则（Allow all + Sitemap）" />
                 <Form.Section text="搜索推送（配置后发布内容自动推送搜索引擎）">
-                  <Form.Input field="baiduPushToken" label="百度推送 Token" labelWidth={140} placeholder="百度搜索资源平台 → 普通收录" />
-                  <Form.Input field="indexNowKey" label="IndexNow Key" labelWidth={140} placeholder="Bing 等引擎；key 文件自动托管" />
+                  <Form.Input field="baiduPushToken" type="password" label="百度推送 Token" labelWidth={140} placeholder="留空或保留掩码表示不修改" />
+                  {editingRecord && <Form.Checkbox field="clearBaiduPushToken" noLabel>清除已配置的百度推送 Token</Form.Checkbox>}
+                  <Form.Input field="indexNowKey" type="password" label="IndexNow Key" labelWidth={140} placeholder="留空或保留掩码表示不修改" />
+                  {editingRecord && <Form.Checkbox field="clearIndexNowKey" noLabel>清除已配置的 IndexNow Key</Form.Checkbox>}
                 </Form.Section>
               </div>
             </TabPane>
@@ -927,7 +934,8 @@ export default function SitesPage() {
                 </Form.Section>
                 <Form.Section text="Webhook（内容发布/下线/回收时向外部系统推送事件）">
                   <Form.Input field="webhookUrl" label="回调地址" labelWidth={140} placeholder="https://... 留空不推送" />
-                  <Form.Input field="webhookSecret" label="签名密钥" labelWidth={140} placeholder="可选；请求头 X-Cms-Signature 携带 HMAC-SHA256 签名" />
+                  <Form.Input field="webhookSecret" type="password" label="签名密钥" labelWidth={140} placeholder="留空或保留掩码表示不修改" />
+                  {editingRecord && <Form.Checkbox field="clearWebhookSecret" noLabel>清除已配置的 Webhook 签名密钥</Form.Checkbox>}
                 </Form.Section>
                 <Form.Section text="前台防护">
                   <Form.Switch field="captchaEnabled" label="图形验证码" labelWidth={140} extraText="开启后前台游客提交评论/自定义表单需完成算术验证码（登录会员免验证）" />
@@ -935,6 +943,7 @@ export default function SitesPage() {
                 <Form.Section text="CDN 刷新（静态页更新后向 purge webhook 推送变更路径）">
                   <Form.Input field="cdnPurgeUrl" label="刷新回调地址" labelWidth={140} placeholder="https://... 留空不启用" />
                   <Form.Input field="cdnPurgeToken" label="鉴权令牌" labelWidth={140} placeholder="可选；Authorization: Bearer 携带" />
+                  {editingRecord && <Form.Checkbox field="clearCdnPurgeToken" noLabel>清除已配置的 CDN 鉴权令牌</Form.Checkbox>}
                 </Form.Section>
                 <Form.Section text="多语言站点关联（前台输出 hreflang 与语言切换）">
                   <Form.Input field="language" label="本站语言" labelWidth={140} placeholder="如 zh-CN；留空不启用" />

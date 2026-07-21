@@ -1,4 +1,4 @@
-import { sql, and, eq, isNull, type SQL } from 'drizzle-orm';
+import { sql, and, eq, inArray, isNull, type SQL } from 'drizzle-orm';
 import { Jieba } from '@node-rs/jieba';
 import { dict } from '@node-rs/jieba/dict';
 import { db } from '../../db';
@@ -9,6 +9,9 @@ import { config } from '../../config';
 import redis from '../../lib/redis';
 import logger from '../../lib/logger';
 import type { CmsSearchResult } from '@zenith/shared';
+import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
+import { pageOffset } from '../../lib/pagination';
+import { assertAllCmsSiteChannelsAccess, getAccessibleChannelIds } from './cms-channels.service';
 
 // ─── 分词器（进程级单例，加载默认词典 + DB 自定义词典）─────────────────────────
 let jiebaInstance: Jieba | null = null;
@@ -55,6 +58,8 @@ export function recordSearchKeyword(siteId: number, keyword: string): void {
 }
 
 export async function getHotKeywords(siteId: number, limit = 20): Promise<{ keyword: string; count: number }[]> {
+  await assertSiteAccess(siteId);
+  await assertAllCmsSiteChannelsAccess(siteId);
   const raw = await redis.zrevrange(`${HOTWORD_PREFIX}${siteId}`, 0, limit - 1, 'WITHSCORES').catch(() => [] as string[]);
   const out: { keyword: string; count: number }[] = [];
   for (let i = 0; i < raw.length; i += 2) {
@@ -64,6 +69,8 @@ export async function getHotKeywords(siteId: number, limit = 20): Promise<{ keyw
 }
 
 export async function clearHotKeywords(siteId: number): Promise<void> {
+  await assertSiteAccess(siteId);
+  await assertAllCmsSiteChannelsAccess(siteId);
   await redis.del(`${HOTWORD_PREFIX}${siteId}`).catch(() => undefined);
 }
 
@@ -182,6 +189,7 @@ export function buildSnippet(plainText: string, tokens: string[], radius = 60): 
 }
 
 export interface CmsSearchQuery {
+  skipAccessCheck?: boolean;
   siteId: number;
   keyword: string;
   page: number;
@@ -221,6 +229,11 @@ function mapSearchRow(row: SearchRowShape, tokens: string[]): CmsSearchResult {
 /** 站内全文检索：tsvector 匹配 + ts_rank_cd 排序；无命中且关键词很短时回退 ILIKE（pg_trgm 索引加速） */
 export async function searchCmsContents(q: CmsSearchQuery): Promise<{ list: CmsSearchResult[]; total: number; page: number; pageSize: number; tokens: string[] }> {
   const { siteId, keyword, page, pageSize } = q;
+  if (!q.skipAccessCheck) {
+    await ensureCmsSiteExists(siteId);
+    await assertSiteAccess(siteId);
+  }
+  const accessibleChannelIds = q.skipAccessCheck ? null : await getAccessibleChannelIds();
   const tokens = segmentForQuery(keyword);
   const empty = { list: [] as CmsSearchResult[], total: 0, page, pageSize, tokens };
   if (tokens.length === 0) return empty;
@@ -230,11 +243,15 @@ export async function searchCmsContents(q: CmsSearchQuery): Promise<{ list: CmsS
   const tsquery = usesAppSegmentation()
     ? sql`plainto_tsquery(${cfg}::regconfig, ${tokens.join(' ')})`
     : sql`plainto_tsquery(${cfg}::regconfig, ${keyword.trim()})`;
-  const baseWhere = and(
+  const baseConditions: SQL[] = [
     eq(cmsContents.siteId, siteId),
     eq(cmsContents.status, 'published'),
     isNull(cmsContents.deletedAt),
-  )!;
+  ];
+  if (accessibleChannelIds !== null) {
+    baseConditions.push(inArray(cmsContents.channelId, accessibleChannelIds));
+  }
+  const baseWhere = and(...baseConditions)!;
 
   const selectShape = {
     id: cmsContents.id,
@@ -258,7 +275,7 @@ export async function searchCmsContents(q: CmsSearchQuery): Promise<{ list: CmsS
       .where(ftsWhere)
       .orderBy(sql`rank desc`, sql`${cmsContents.publishedAt} desc nulls last`)
       .limit(pageSize)
-      .offset((page - 1) * pageSize),
+      .offset(pageOffset(page, pageSize)),
   ]);
 
   if (total > 0) {
@@ -276,7 +293,7 @@ export async function searchCmsContents(q: CmsSearchQuery): Promise<{ list: CmsS
         .where(likeWhere)
         .orderBy(sql`${cmsContents.publishedAt} desc nulls last`)
         .limit(pageSize)
-        .offset((page - 1) * pageSize),
+        .offset(pageOffset(page, pageSize)),
     ]);
     return { list: likeRows.map((r) => mapSearchRow(r, [keyword.trim()])), total: likeTotal, page, pageSize, tokens };
   }

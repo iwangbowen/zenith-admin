@@ -10,6 +10,9 @@ import { uploadManagedFile, deleteManagedFile, readFileContent } from '../files/
 import { processCmsImageUpload } from './cms-image.service';
 import { assertSiteAccess } from './cms-sites.service';
 import type { CmsResourceType, CmsResourceReference, UpdateCmsResourceInput, CropCmsResourceInput } from '@zenith/shared';
+import { assertCompleteCmsBatch } from './cms-access';
+import { ensureCmsSiteExists } from './cms-sites.service';
+import { assertAllCmsSiteChannelsAccess } from './cms-channels.service';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 export function mapCmsResource(row: CmsResourceRow) {
@@ -54,6 +57,7 @@ export interface ListCmsResourcesQuery {
 }
 
 export async function listCmsResources(q: ListCmsResourcesQuery) {
+  await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
   const conditions: SQL[] = [eq(cmsResources.siteId, q.siteId)];
   if (q.type) conditions.push(eq(cmsResources.type, q.type));
@@ -71,6 +75,7 @@ export async function listCmsResources(q: ListCmsResourcesQuery) {
 
 /** 素材上传：图片走站点图片管线（压缩/水印/缩略图），其他类型原样入库 */
 export async function uploadCmsResource(file: File, siteId: number) {
+  await ensureCmsSiteExists(siteId);
   await assertSiteAccess(siteId);
   const type = detectResourceType(file.type);
   if (type === 'image') {
@@ -108,6 +113,7 @@ export async function updateCmsResource(id: number, data: UpdateCmsResourceInput
 /** 单素材站内引用扫描：内容封面/正文/形态数据 + 广告图 + 图片碎片 */
 export async function listCmsResourceReferences(id: number): Promise<CmsResourceReference[]> {
   const res = await ensureResource(id);
+  await assertAllCmsSiteChannelsAccess(res.siteId);
   const pattern = `%${escapeLike(res.url)}%`;
   const [contents, ads, fragments] = await Promise.all([
     db.select({ id: cmsContents.id, title: cmsContents.title }).from(cmsContents)
@@ -117,7 +123,10 @@ export async function listCmsResourceReferences(id: number): Promise<CmsResource
       )).limit(50),
     db.select({ id: cmsAds.id, name: cmsAds.name }).from(cmsAds)
       .innerJoin(cmsAdSlots, eq(cmsAds.slotId, cmsAdSlots.id))
-      .where(and(eq(cmsAdSlots.siteId, res.siteId), eq(cmsAds.image, res.url))).limit(50),
+      .where(and(
+        eq(cmsAdSlots.siteId, res.siteId),
+        eq(cmsAds.image, res.url),
+      )).limit(50),
     db.select({ id: cmsFragments.id, name: cmsFragments.name }).from(cmsFragments)
       .where(and(eq(cmsFragments.siteId, res.siteId), sql`${cmsFragments.content} like ${pattern}`)).limit(50),
   ]);
@@ -132,6 +141,7 @@ export async function listCmsResourceReferences(id: number): Promise<CmsResource
 export async function deleteCmsResources(ids: number[]): Promise<number> {
   if (ids.length === 0) return 0;
   const rows = await db.select().from(cmsResources).where(inArray(cmsResources.id, ids));
+  assertCompleteCmsBatch(ids, rows.map((row) => row.id), '素材');
   for (const siteId of new Set(rows.map((r) => r.siteId))) {
     await assertSiteAccess(siteId);
   }

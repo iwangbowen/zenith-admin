@@ -1,10 +1,12 @@
 import { registerTaskHandler } from '../../lib/task-center';
-import { buildSiteStatic } from './cms-static.service';
+import { buildSiteStatic, ensureCmsStaticBuildAccess } from './cms-static.service';
 import { rebuildSearchIndex } from './cms-search.service';
 import { registerCmsDeadlinkTaskHandler } from './cms-deadlink.service';
 import { registerCmsCollectTaskHandler } from './cms-collect.service';
-import { createCmsContent } from './cms-contents.service';
+import { createCmsContent, ensureCmsContentTargetAccess } from './cms-contents.service';
 import { readFileContent } from '../files/files.service';
+import { isCmsPlatformAdmin } from './cms-access';
+import { assertAllCmsSiteChannelsAccess } from './cms-channels.service';
 
 /** CMS 任务中心 handler 注册（index.ts 启动流程中、registerSystemTasks 之前调用） */
 export function registerCmsTaskHandlers(): void {
@@ -18,8 +20,10 @@ export function registerCmsTaskHandlers(): void {
     allowConcurrent: false,
     maxAttempts: 1,
     async run(ctx) {
-      const siteId = Number((ctx.payload as { siteId?: number })?.siteId);
+      const payload = ctx.payload as { siteId?: number };
+      const siteId = Number(payload.siteId);
       if (!siteId) throw new Error('缺少 siteId 参数');
+      await ensureCmsStaticBuildAccess(siteId);
       const result = await buildSiteStatic(siteId, async (p) => {
         const { cancelRequested } = await ctx.progress({
           processed: p.processed,
@@ -72,7 +76,10 @@ export function registerCmsTaskHandlers(): void {
     allowConcurrent: false,
     maxAttempts: 1,
     async run(ctx) {
-      const siteId = (ctx.payload as { siteId?: number | null })?.siteId ?? null;
+      const payload = ctx.payload as { siteId?: number | null };
+      const siteId = payload.siteId ?? null;
+      if (siteId) await assertAllCmsSiteChannelsAccess(siteId);
+      else if (!isCmsPlatformAdmin()) throw new Error('非平台管理员不可重建全部 CMS 索引');
       const startAfterId = Number(ctx.checkpoint?.lastId ?? 0);
       const processedBefore = Number(ctx.checkpoint?.processed ?? 0);
       const processed = await rebuildSearchIndex({
@@ -108,6 +115,7 @@ function registerCmsContentImportTaskHandler(): void {
       const payload = ctx.payload as { fileId?: string; siteId?: number; channelId?: number };
       const { fileId, siteId, channelId } = payload;
       if (!fileId || !siteId || !channelId) throw new Error('缺少 fileId / siteId / channelId 参数');
+      await ensureCmsContentTargetAccess(siteId, channelId);
 
       const { default: ExcelJS } = await import('exceljs');
       const stored = await readFileContent(fileId);

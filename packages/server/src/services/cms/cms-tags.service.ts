@@ -7,6 +7,7 @@ import { formatDateTime } from '../../lib/datetime';
 import { mergeWhere, escapeLike, withPagination } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import type { CreateCmsTagInput, UpdateCmsTagInput } from '@zenith/shared';
+import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 export function mapCmsTag(row: CmsTagRow) {
@@ -30,7 +31,9 @@ export async function ensureCmsTagExists(id: number): Promise<CmsTagRow> {
 }
 
 export async function getCmsTag(id: number) {
-  return mapCmsTag(await ensureCmsTagExists(id));
+  const row = await ensureCmsTagExists(id);
+  await assertSiteAccess(row.siteId);
+  return mapCmsTag(row);
 }
 
 // ─── 列表 ─────────────────────────────────────────────────────────────────────
@@ -42,6 +45,8 @@ export interface ListCmsTagsQuery {
 }
 
 export async function listCmsTags(q: ListCmsTagsQuery) {
+  await ensureCmsSiteExists(q.siteId);
+  await assertSiteAccess(q.siteId);
   const conditions: SQL[] = [eq(cmsTags.siteId, q.siteId)];
   if (q.keyword) {
     const kw = or(
@@ -64,12 +69,18 @@ export async function listCmsTags(q: ListCmsTagsQuery) {
 
 /** 站点全部标签（内容编辑打标下拉用） */
 export async function listAllCmsTags(siteId: number) {
-  const rows = await db.select().from(cmsTags).where(eq(cmsTags.siteId, siteId)).orderBy(asc(cmsTags.id));
+  await ensureCmsSiteExists(siteId);
+  await assertSiteAccess(siteId);
+  const rows = await db.select().from(cmsTags).where(and(
+    eq(cmsTags.siteId, siteId),
+  )).orderBy(asc(cmsTags.id));
   return rows.map(mapCmsTag);
 }
 
 // ─── 创建 / 更新 / 删除 ────────────────────────────────────────────────────────
 export async function createCmsTag(data: CreateCmsTagInput) {
+  await ensureCmsSiteExists(data.siteId);
+  await assertSiteAccess(data.siteId);
   try {
     const [row] = await db.insert(cmsTags).values(data).returning();
     return mapCmsTag(row);
@@ -79,8 +90,12 @@ export async function createCmsTag(data: CreateCmsTagInput) {
 }
 
 export async function updateCmsTag(id: number, data: UpdateCmsTagInput) {
+  const current = await ensureCmsTagExists(id);
+  await assertSiteAccess(current.siteId);
   try {
-    const [row] = await db.update(cmsTags).set(data).where(eq(cmsTags.id, id)).returning();
+    const [row] = await db.update(cmsTags).set(data).where(and(
+      eq(cmsTags.id, id),
+    )).returning();
     if (!row) throw new HTTPException(404, { message: '标签不存在' });
     return mapCmsTag(row);
   } catch (err) {
@@ -89,6 +104,10 @@ export async function updateCmsTag(id: number, data: UpdateCmsTagInput) {
 }
 
 export async function deleteCmsTag(id: number) {
-  const [row] = await db.delete(cmsTags).where(eq(cmsTags.id, id)).returning();
+  const current = await ensureCmsTagExists(id);
+  await assertSiteAccess(current.siteId);
+  const [row] = await db.delete(cmsTags).where(and(
+    eq(cmsTags.id, id),
+  )).returning();
   if (!row) throw new HTTPException(404, { message: '标签不存在' });
 }

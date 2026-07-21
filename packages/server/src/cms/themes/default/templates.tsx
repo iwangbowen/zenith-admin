@@ -5,6 +5,7 @@ import type {
   CmsCommentItem, CmsCommentFormConfig, CmsFrontFormConfig, CmsTagPageContext, CmsCustomPageContext,
   CmsSurveyPageContext,
 } from '../types';
+import { CmsFragmentContent } from '../blocks';
 
 function Breadcrumbs({ items }: { items: CmsBreadcrumb[] }) {
   return (
@@ -73,15 +74,7 @@ function Pagination({ p }: { p: CmsPagination }) {
 }
 
 function HtmlFragment({ ctx, code, className }: { ctx: CmsBaseContext; code: string; className?: string }) {
-  const fragment = ctx.fragments[code];
-  if (!fragment?.content) return null;
-  if (fragment.type === 'image') {
-    return <div className={className}><img src={fragment.content} alt={code} /></div>;
-  }
-  if (fragment.type === 'text') {
-    return <div className={className}>{fragment.content}</div>;
-  }
-  return <div className={className} dangerouslySetInnerHTML={{ __html: fragment.content }} />;
+  return <CmsFragmentContent fragment={ctx.fragments[code]} className={className} imageAlt={code} />;
 }
 
 /** 广告位：图片广告渲染图片，无图广告渲染文字条；点击经由计数中转 302 跳转 */

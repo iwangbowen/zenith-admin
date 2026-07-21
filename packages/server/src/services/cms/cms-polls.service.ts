@@ -8,6 +8,7 @@ import { mergeWhere, withPagination } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { assertSiteAccess } from './cms-sites.service';
 import type { CmsPollResults, CreateCmsPollInput, UpdateCmsPollInput } from '@zenith/shared';
+import { ensureCmsSiteExists } from './cms-sites.service';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 export function mapCmsPoll(row: CmsPollRow) {
@@ -44,6 +45,7 @@ export interface ListCmsPollsQuery {
 }
 
 export async function listCmsPolls(q: ListCmsPollsQuery) {
+  await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
   const conditions: SQL[] = [eq(cmsPolls.siteId, q.siteId)];
   if (q.status) conditions.push(eq(cmsPolls.status, q.status));
@@ -59,6 +61,7 @@ export async function listCmsPolls(q: ListCmsPollsQuery) {
 }
 
 export async function createCmsPoll(data: CreateCmsPollInput) {
+  await ensureCmsSiteExists(data.siteId);
   await assertSiteAccess(data.siteId);
   try {
     const [row] = await db.insert(cmsPolls).values({
@@ -97,7 +100,9 @@ export async function updateCmsPoll(id: number, data: UpdateCmsPollInput) {
 export async function setCmsPollStatus(id: number, status: 'draft' | 'published' | 'closed') {
   const current = await ensurePoll(id);
   await assertSiteAccess(current.siteId);
-  const [row] = await db.update(cmsPolls).set({ status }).where(eq(cmsPolls.id, id)).returning();
+  const [row] = await db.update(cmsPolls).set({ status }).where(and(
+    eq(cmsPolls.id, id),
+  )).returning();
   return mapCmsPoll(row);
 }
 
@@ -111,7 +116,9 @@ export async function deleteCmsPoll(id: number): Promise<void> {
 export async function getCmsPollResults(poll: CmsPollRow): Promise<CmsPollResults> {
   const rows = await db.execute<{ option_id: number; votes: string }>(sql`
     SELECT (jsonb_array_elements_text(${cmsPollVotes.optionIds}))::int AS option_id, count(*) AS votes
-    FROM ${cmsPollVotes} WHERE ${cmsPollVotes.pollId} = ${poll.id} GROUP BY 1
+    FROM ${cmsPollVotes}
+    WHERE ${cmsPollVotes.pollId} = ${poll.id}
+    GROUP BY 1
   `);
   const countById = new Map([...rows].map((r) => [Number(r.option_id), Number(r.votes)]));
   return {
@@ -177,12 +184,16 @@ export async function voteCmsPoll(poll: CmsPollRow, optionIds: number[], meta: V
       ip: meta.ip,
     }).onConflictDoNothing().returning({ id: cmsPollVotes.id });
     if (rows.length > 0) {
-      await tx.update(cmsPolls).set({ totalVotes: sql`${cmsPolls.totalVotes} + 1` }).where(eq(cmsPolls.id, poll.id));
+      await tx.update(cmsPolls).set({ totalVotes: sql`${cmsPolls.totalVotes} + 1` }).where(and(
+        eq(cmsPolls.id, poll.id),
+      ));
     }
     return rows.length > 0;
   });
   if (!inserted) throw new HTTPException(400, { message: '您已参与过本次投票' });
-  const [fresh] = await db.select().from(cmsPolls).where(eq(cmsPolls.id, poll.id)).limit(1);
+  const [fresh] = await db.select().from(cmsPolls).where(and(
+    eq(cmsPolls.id, poll.id),
+  )).limit(1);
   return getCmsPollResults(fresh);
 }
 

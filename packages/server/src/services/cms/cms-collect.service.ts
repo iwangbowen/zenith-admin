@@ -3,7 +3,7 @@
  * 执行走任务中心（进度/取消/行级明细）；URL 级去重防重复采集；全程 http-client SSRF 防护。
  */
 import { load } from 'cheerio';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { cmsCollectRules, cmsCollectItems, cmsContents, cmsChannels } from '../../db/schema';
@@ -14,7 +14,12 @@ import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { escapeLike, withPagination } from '../../lib/where-helpers';
 import { buildManagedFileProxyUrl } from '../../lib/file-storage';
 import { buildSearchVector } from './cms-search.service';
-import { assertSiteAccess } from './cms-sites.service';
+import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
+import { assertChannelAccess, getAccessibleChannelIds } from './cms-channels.service';
+import { hasPermission } from '../../lib/context';
+import { sanitizeCmsHtml } from './cms-html-sanitizer';
+import { publishCmsContent } from './cms-contents.service';
+import { requireCmsCollectPublishPermission } from './cms-collect-policy';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 export function mapCollectRule(row: CmsCollectRuleRow, channelName?: string | null) {
@@ -46,7 +51,15 @@ export function mapCollectRule(row: CmsCollectRuleRow, channelName?: string | nu
 
 // ─── 规则 CRUD ────────────────────────────────────────────────────────────────
 export async function listCollectRules(params: { page: number; pageSize: number; siteId: number; keyword?: string }) {
-  const conds = [eq(cmsCollectRules.siteId, params.siteId)];
+  await ensureCmsSiteExists(params.siteId);
+  await assertSiteAccess(params.siteId);
+  const conds = [
+    eq(cmsCollectRules.siteId, params.siteId),
+  ];
+  const accessibleChannelIds = await getAccessibleChannelIds();
+  if (accessibleChannelIds !== null) {
+    conds.push(inArray(cmsCollectRules.channelId, accessibleChannelIds));
+  }
   if (params.keyword) conds.push(sql`${cmsCollectRules.name} ILIKE ${`%${escapeLike(params.keyword)}%`}`);
   const where = and(...conds);
   const [total, rows] = await Promise.all([
@@ -54,7 +67,9 @@ export async function listCollectRules(params: { page: number; pageSize: number;
     withPagination(
       db.select({ rule: cmsCollectRules, channelName: cmsChannels.name })
         .from(cmsCollectRules)
-        .leftJoin(cmsChannels, eq(cmsCollectRules.channelId, cmsChannels.id))
+        .leftJoin(cmsChannels, and(
+          eq(cmsCollectRules.channelId, cmsChannels.id),
+        ))
         .where(where)
         .orderBy(desc(cmsCollectRules.id))
         .$dynamic(),
@@ -66,9 +81,19 @@ export async function listCollectRules(params: { page: number; pageSize: number;
 
 async function ensureRuleChannel(siteId: number, channelId: number) {
   const [channel] = await db.select().from(cmsChannels)
-    .where(and(eq(cmsChannels.id, channelId), eq(cmsChannels.siteId, siteId))).limit(1);
+    .where(and(
+      eq(cmsChannels.id, channelId),
+      eq(cmsChannels.siteId, siteId),
+    )).limit(1);
   if (!channel || channel.type !== 'list') throw new HTTPException(400, { message: '目标栏目必须是本站点的列表型栏目' });
   return channel;
+}
+
+export async function assertCollectAutoPublishPermission(
+  autoPublish: boolean,
+  permissionCheck: () => Promise<boolean> = () => hasPermission('cms:content:publish'),
+): Promise<void> {
+  await requireCmsCollectPublishPermission(autoPublish, permissionCheck);
 }
 
 export interface CollectRuleInput {
@@ -92,9 +117,14 @@ export interface CollectRuleInput {
 }
 
 export async function createCollectRule(input: CollectRuleInput) {
+  await ensureCmsSiteExists(input.siteId);
   await assertSiteAccess(input.siteId);
+  await assertChannelAccess(input.channelId);
+  await assertCollectAutoPublishPermission(input.autoPublish === true);
   await ensureRuleChannel(input.siteId, input.channelId);
-  const [created] = await db.insert(cmsCollectRules).values(input).returning();
+  const [created] = await db.insert(cmsCollectRules).values({
+    ...input,
+  }).returning();
   return mapCollectRule(created);
 }
 
@@ -102,32 +132,52 @@ export async function updateCollectRule(id: number, input: Partial<CollectRuleIn
   const [current] = await db.select().from(cmsCollectRules).where(eq(cmsCollectRules.id, id)).limit(1);
   if (!current) throw new HTTPException(404, { message: '采集规则不存在' });
   await assertSiteAccess(current.siteId);
+  await assertChannelAccess(current.channelId);
+  await assertCollectAutoPublishPermission(input.autoPublish ?? current.autoPublish);
   if (input.channelId && input.channelId !== current.channelId) {
+    await assertChannelAccess(input.channelId);
     await ensureRuleChannel(current.siteId, input.channelId);
   }
   const { siteId: _ignored, ...rest } = input;
-  const [updated] = await db.update(cmsCollectRules).set(rest).where(eq(cmsCollectRules.id, id)).returning();
+  const [updated] = await db.update(cmsCollectRules).set(rest).where(and(
+    eq(cmsCollectRules.id, id),
+  )).returning();
   return mapCollectRule(updated);
 }
 
 export async function deleteCollectRule(id: number) {
-  const [current] = await db.select().from(cmsCollectRules).where(eq(cmsCollectRules.id, id)).limit(1);
+  const current = await ensureCollectRuleExists(id);
   if (!current) throw new HTTPException(404, { message: '采集规则不存在' });
   await assertSiteAccess(current.siteId);
-  await db.delete(cmsCollectRules).where(eq(cmsCollectRules.id, id));
+  await assertChannelAccess(current.channelId);
+  await db.delete(cmsCollectRules).where(and(
+    eq(cmsCollectRules.id, id),
+  ));
 }
 
 export async function ensureCollectRuleRunnable(id: number): Promise<CmsCollectRuleRow> {
+  const rule = await ensureCollectRuleExists(id);
+  await assertSiteAccess(rule.siteId);
+  await assertChannelAccess(rule.channelId);
+  await assertCollectAutoPublishPermission(rule.autoPublish);
+  if (rule.status !== 'enabled') throw new HTTPException(400, { message: '规则已停用' });
+  return rule;
+}
+
+async function ensureCollectRuleExists(id: number): Promise<CmsCollectRuleRow> {
   const [rule] = await db.select().from(cmsCollectRules).where(eq(cmsCollectRules.id, id)).limit(1);
   if (!rule) throw new HTTPException(404, { message: '采集规则不存在' });
-  await assertSiteAccess(rule.siteId);
-  if (rule.status !== 'enabled') throw new HTTPException(400, { message: '规则已停用' });
   return rule;
 }
 
 // ─── 采集明细 ─────────────────────────────────────────────────────────────────
 export async function listCollectItems(params: { page: number; pageSize: number; ruleId: number; status?: string }) {
-  const conds = [eq(cmsCollectItems.ruleId, params.ruleId)];
+  const rule = await ensureCollectRuleExists(params.ruleId);
+  await assertSiteAccess(rule.siteId);
+  await assertChannelAccess(rule.channelId);
+  const conds = [
+    eq(cmsCollectItems.ruleId, params.ruleId),
+  ];
   if (params.status) conds.push(eq(cmsCollectItems.status, params.status as 'success' | 'skipped' | 'failed'));
   const where = and(...conds);
   const [total, rows] = await Promise.all([
@@ -232,7 +282,12 @@ export function extractArticle(html: string, pageUrl: string, rule: Pick<CmsColl
     const src = coverNode.is('img') ? coverNode.attr('src') : coverNode.find('img').first().attr('src');
     coverImage = src ? absolutize(pageUrl, String(src)) : null;
   }
-  return { title: title.slice(0, 255), summary, coverImage, bodyHtml: bodyNode.html() ?? '' };
+  return {
+    title: title.slice(0, 255),
+    summary,
+    coverImage,
+    bodyHtml: sanitizeCmsHtml(bodyNode.html() ?? ''),
+  };
 }
 
 /** 正文远程图片本地化：下载 → 文件中心 → 替换 src（失败保留原地址） */
@@ -262,7 +317,7 @@ async function localizeArticleImages(bodyHtml: string, createdBy: number): Promi
       // 单图失败不影响整篇
     }
   }
-  return $.html();
+  return sanitizeCmsHtml($.html());
 }
 
 // ─── 任务中心 handler ─────────────────────────────────────────────────────────
@@ -277,9 +332,10 @@ export function registerCmsCollectTaskHandler(): void {
       const ruleId = Number((ctx.payload as { ruleId?: number })?.ruleId);
       const operatorId = Number((ctx.payload as { operatorId?: number })?.operatorId) || 1;
       if (!ruleId) throw new Error('缺少 ruleId 参数');
-      const [rule] = await db.select().from(cmsCollectRules).where(eq(cmsCollectRules.id, ruleId)).limit(1);
-      if (!rule) throw new Error(`采集规则不存在（id=${ruleId}）`);
-      const [channel] = await db.select().from(cmsChannels).where(eq(cmsChannels.id, rule.channelId)).limit(1);
+      const rule = await ensureCollectRuleRunnable(ruleId);
+      const [channel] = await db.select().from(cmsChannels).where(and(
+        eq(cmsChannels.id, rule.channelId),
+      )).limit(1);
       if (!channel) throw new Error('目标栏目不存在');
 
       await ctx.progress({ processed: 0, total: 0, note: '抓取列表页…' });
@@ -294,7 +350,10 @@ export function registerCmsCollectTaskHandler(): void {
         processed += 1;
         // URL 级去重
         const [dup] = await db.select({ id: cmsCollectItems.id }).from(cmsCollectItems)
-          .where(and(eq(cmsCollectItems.ruleId, rule.id), eq(cmsCollectItems.url, url))).limit(1);
+          .where(and(
+            eq(cmsCollectItems.ruleId, rule.id),
+            eq(cmsCollectItems.url, url),
+          )).limit(1);
         if (dup) {
           skipped += 1;
           const { cancelRequested } = await ctx.progress({ processed, total, note: `跳过重复 ${skipped} 条` });
@@ -308,6 +367,7 @@ export function registerCmsCollectTaskHandler(): void {
           if (rule.localizeImages) {
             bodyHtml = await localizeArticleImages(bodyHtml, operatorId);
           }
+          bodyHtml = sanitizeCmsHtml(bodyHtml);
           const [content] = await db.insert(cmsContents).values({
             siteId: rule.siteId,
             channelId: rule.channelId,
@@ -317,22 +377,29 @@ export function registerCmsCollectTaskHandler(): void {
             coverImage: article.coverImage,
             body: bodyHtml,
             source: '采集',
-            status: rule.autoPublish ? 'published' : 'draft',
-            publishedAt: rule.autoPublish ? new Date() : null,
+            status: 'draft',
             searchVector: buildSearchVector({ title: article.title, summary: article.summary, body: bodyHtml, seoKeywords: null, extendTexts: [] }),
           }).returning({ id: cmsContents.id });
-          await db.insert(cmsCollectItems).values({ ruleId: rule.id, url, title: article.title, status: 'success', contentId: content.id })
+          if (rule.autoPublish) await publishCmsContent(content.id);
+          await db.insert(cmsCollectItems).values({
+            ruleId: rule.id,
+            url,
+            title: article.title,
+            status: 'success',
+            contentId: content.id,
+          })
             .onConflictDoNothing();
           success += 1;
           await ctx.reportItems([{ key: url.slice(0, 200), label: article.title, status: 'success' }]);
-          if (rule.autoPublish) {
-            const { triggerContentStaticRefresh } = await import('./cms-static.service');
-            triggerContentStaticRefresh(content.id);
-          }
         } catch (err) {
           failed += 1;
           const message = err instanceof Error ? err.message.slice(0, 500) : '采集失败';
-          await db.insert(cmsCollectItems).values({ ruleId: rule.id, url, status: 'failed', error: message })
+          await db.insert(cmsCollectItems).values({
+            ruleId: rule.id,
+            url,
+            status: 'failed',
+            error: message,
+          })
             .onConflictDoNothing();
           await ctx.reportItems([{ key: url.slice(0, 200), label: url, status: 'failed', message }]);
         }
@@ -340,7 +407,9 @@ export function registerCmsCollectTaskHandler(): void {
         if (cancelRequested) break;
       }
 
-      await db.update(cmsCollectRules).set({ lastRunAt: new Date() }).where(eq(cmsCollectRules.id, rule.id));
+      await db.update(cmsCollectRules).set({ lastRunAt: new Date() }).where(and(
+        eq(cmsCollectRules.id, rule.id),
+      ));
       return { total, success, skipped, failed };
     },
   });

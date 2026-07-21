@@ -16,7 +16,8 @@ import {
 import { pushCmsUrls, listCmsPushLogs } from '../../services/cms/cms-push.service';
 import { mapAsyncTask, submitAsyncTask } from '../../lib/task-center';
 import { AsyncTaskDTO } from '../../lib/openapi-dtos';
-import { ensureCmsSiteExists } from '../../services/cms/cms-sites.service';
+import { assertSiteAccess, ensureCmsSiteExists } from '../../services/cms/cms-sites.service';
+import { assertAllCmsSiteChannelsAccess } from '../../services/cms/cms-channels.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -217,6 +218,8 @@ const deadlinkRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { siteId } = c.req.valid('json');
     const site = await ensureCmsSiteExists(siteId);
+    await assertSiteAccess(siteId);
+    await assertAllCmsSiteChannelsAccess(siteId);
     const row = await submitAsyncTask({
       taskType: 'cms-deadlink-check',
       title: `CMS 死链检测（${site.name}）`,
