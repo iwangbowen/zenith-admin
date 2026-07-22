@@ -2234,9 +2234,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
             onCancel={() => { setPrefsVisible(false); setPrefsSearch(''); }}
             width={380}
           >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-
-              {/* 搜索设置项 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 24 }}>
               <Input
                 prefix={<Search size={14} />}
                 placeholder="搜索设置项…"
