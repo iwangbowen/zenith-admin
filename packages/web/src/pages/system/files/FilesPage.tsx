@@ -33,6 +33,7 @@ import { FilePreviewLayer } from '@/components/FilePreviewLayer';
 import { useFilePreview } from '@/hooks/useFilePreview';
 import FileStatsPanel from './FileStatsPanel';
 import { FileGridCard } from './components/FileGridCard';
+import { FileNameCell } from './components/FileNameCell';
 import { config } from '@/config';
 import { usePermission } from '@/hooks/usePermission';
 import { renderEllipsis } from '@/utils/table-columns';
@@ -327,17 +328,10 @@ export default function FilesPage() {
       title: '文件名',
       dataIndex: 'originalName',
       width: 220,
-      ellipsis: true,
-      render: (name: string, record: ManagedFile) => {
-        return (
-          <Space spacing={6} style={{ flexWrap: 'nowrap', overflow: 'hidden' }}>
-            <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>{getFileTypeIcon(record.mimeType, 16, name)}</span>
-            <Tooltip content={name}>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
-            </Tooltip>
-          </Space>
-        );
-      },
+      ellipsis: { showTitle: false },
+      render: (name: string, record: ManagedFile) => (
+        <FileNameCell name={name} mimeType={record.mimeType} />
+      ),
     },
     {
       title: '来源服务',

@@ -16,7 +16,7 @@ import { Folder, ChevronLeft, ChevronRight, LayoutGrid, List as ListIcon } from 
 import type { FileStorageConfig, FolderEntry, ManagedFile } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { formatDateTime } from '@/utils/date';
-import { formatFileSize, getFileFullUrl, getFileTypeIcon } from '@/utils/file-utils';
+import { formatFileSize, getFileFullUrl } from '@/utils/file-utils';
 import { buildManagedFileActions } from '@/utils/managed-file-actions';
 import { renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
@@ -26,6 +26,7 @@ import { useFilePreview } from '@/hooks/useFilePreview';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { FileGridCard } from '../files/components/FileGridCard';
+import { FileNameCell } from '../files/components/FileNameCell';
 import { useDeleteFile, useFileDetail } from '@/hooks/queries/files';
 import { useStorageBrowse } from '@/hooks/queries/file-storage-configs';
 import './StorageFileBrowser.css';
@@ -146,19 +147,12 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
             >
               <Folder size={15} className="storage-browser__folder-icon" />
               <Tooltip content={record.name}>
-                <span className="storage-browser__name-text">{record.name}</span>
+                <span className="storage-browser__folder-name">{record.name}</span>
               </Tooltip>
             </button>
           );
         }
-        return (
-          <div className="storage-browser__name-cell">
-            <span className="storage-browser__file-icon">{getFileTypeIcon(record.mimeType, 16, record.originalName)}</span>
-            <Tooltip content={record.originalName}>
-              <span className="storage-browser__name-text">{record.originalName}</span>
-            </Tooltip>
-          </div>
-        );
+        return <FileNameCell name={record.originalName} mimeType={record.mimeType} />;
       },
     },
     {

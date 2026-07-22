@@ -6,6 +6,30 @@
   justify-content: space-between;
 }
 
+.files-table-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.files-table-name-cell__icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.files-table-name-cell__text {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Grid view */
 .files-grid-select-bar {
   padding: 4px 2px 8px;
