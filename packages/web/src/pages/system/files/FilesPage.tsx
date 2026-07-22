@@ -33,7 +33,7 @@ import { FilePreviewLayer } from '@/components/FilePreviewLayer';
 import { useFilePreview } from '@/hooks/useFilePreview';
 import FileStatsPanel from './FileStatsPanel';
 import { FileGridCard } from './components/FileGridCard';
-import { FileNameCell } from './components/FileNameCell';
+import { FileNameCell } from '@/components/FileNameCell';
 import { config } from '@/config';
 import { usePermission } from '@/hooks/usePermission';
 import { renderEllipsis } from '@/utils/table-columns';

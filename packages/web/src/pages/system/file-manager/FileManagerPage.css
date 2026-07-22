@@ -201,38 +201,6 @@
   color: var(--semi-color-text-2);
 }
 
-.fm-table-name-cell {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.fm-table-name-cell--button {
-  padding: 0;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  background: none;
-  border: none;
-}
-
-.fm-table-name-cell__icon {
-  flex-shrink: 0;
-}
-
-.fm-table-name-cell__text {
-  display: block;
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* ── 目录切换进度条（保留旧列表时的加载指示） ── */
 .fm-progress-line {
   position: absolute;

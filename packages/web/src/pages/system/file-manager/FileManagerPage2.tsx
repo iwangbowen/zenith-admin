@@ -24,6 +24,7 @@ import { toQueryString, unwrap } from '@/lib/query';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config as appConfig } from '@/config';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { FileNameCell } from '@/components/FileNameCell';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import FilePreviewModal from '@/components/FilePreviewModal';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
@@ -1235,29 +1236,12 @@ export default function FileManagerPage() {
       ellipsis: { showTitle: false },
       render: (v: string, r: FsEntry) => {
         const iconId = r.type === 'dir' ? getFolderIcon(v, false) : getFileIcon(v);
-        const inner = (
-          <>
-            <Icon className="fm-table-name-cell__icon" icon={iconId} width={16} height={16} />
-            <Tooltip content={v}>
-              <span className="fm-table-name-cell__text">{v}</span>
-            </Tooltip>
-          </>
-        );
-        if (r.type === 'dir') {
-          return (
-            <button
-              type="button"
-              className="fm-table-name-cell fm-table-name-cell--button"
-              onClick={() => void navigateTo(r.path)}
-            >
-              {inner}
-            </button>
-          );
-        }
         return (
-          <div className="fm-table-name-cell">
-            {inner}
-          </div>
+          <FileNameCell
+            name={v}
+            icon={<Icon icon={iconId} width={16} height={16} />}
+            onClick={r.type === 'dir' ? () => void navigateTo(r.path) : undefined}
+          />
         );
       },
     },

@@ -26,7 +26,7 @@ import { useFilePreview } from '@/hooks/useFilePreview';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { FileGridCard } from '../files/components/FileGridCard';
-import { FileNameCell } from '../files/components/FileNameCell';
+import { FileNameCell } from '@/components/FileNameCell';
 import { useDeleteFile, useFileDetail } from '@/hooks/queries/files';
 import { useStorageBrowse } from '@/hooks/queries/file-storage-configs';
 import './StorageFileBrowser.css';
@@ -140,16 +140,11 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
         if (!('id' in record)) {
           // Folder row
           return (
-            <button
-              type="button"
-              className="storage-browser__folder-row-btn"
+            <FileNameCell
+              name={record.name}
+              icon={<Folder size={15} className="storage-browser__folder-icon" />}
               onClick={() => navigateToFolder(record)}
-            >
-              <Folder size={15} className="storage-browser__folder-icon" />
-              <Tooltip content={record.name}>
-                <span className="storage-browser__folder-name">{record.name}</span>
-              </Tooltip>
-            </button>
+            />
           );
         }
         return <FileNameCell name={record.originalName} mimeType={record.mimeType} />;
