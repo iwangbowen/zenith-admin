@@ -1,8 +1,9 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
-import { Button, Empty } from '@douyinfe/semi-ui';
+import { Button, Empty, Toast } from '@douyinfe/semi-ui';
 import { IllustrationFailure, IllustrationFailureDark } from '@douyinfe/semi-illustrations';
-import { RefreshCw, Home } from 'lucide-react';
+import { RefreshCw, Home, Copy } from 'lucide-react';
+import { formatDateTime } from '@/utils/date';
 
 interface Props {
   children: React.ReactNode;
@@ -15,6 +16,7 @@ interface Props {
 
 interface State {
   error: Error | null;
+  componentStack: string | null;
   resetKey: string | undefined;
 }
 
@@ -35,7 +37,7 @@ interface State {
 export class PageErrorBoundary extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { error: null, resetKey: props.resetKey };
+    this.state = { error: null, componentStack: null, resetKey: props.resetKey };
   }
 
   static getDerivedStateFromError(error: Error): Partial<State> {
@@ -45,17 +47,37 @@ export class PageErrorBoundary extends React.Component<Props, State> {
   static getDerivedStateFromProps(props: Props, state: State): Partial<State> | null {
     // 路由切换时重置
     if (props.resetKey !== state.resetKey) {
-      return { error: null, resetKey: props.resetKey };
+      return { error: null, componentStack: null, resetKey: props.resetKey };
     }
     return null;
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('[PageErrorBoundary] 捕获到运行时错误:', error, info.componentStack);
+    this.setState({ componentStack: info.componentStack ?? null });
   }
 
   handleRetry = () => {
-    this.setState({ error: null });
+    this.setState({ error: null, componentStack: null });
+  };
+
+  handleCopy = () => {
+    const { error, componentStack } = this.state;
+    if (!error) return;
+    const report = [
+      `[Zenith Admin 页面错误报告]`,
+      `时间: ${formatDateTime(new Date())}`,
+      `页面: ${globalThis.location.href}`,
+      `浏览器: ${navigator.userAgent}`,
+      ``,
+      `${error.name}: ${error.message}`,
+      error.stack ? `\n堆栈:\n${error.stack}` : '',
+      componentStack ? `\n组件栈:${componentStack}` : '',
+    ].filter(Boolean).join('\n');
+    navigator.clipboard.writeText(report).then(
+      () => Toast.success('错误信息已复制，可粘贴给开发人员排查'),
+      () => Toast.error('复制失败，请手动选择复制'),
+    );
   };
 
   render() {
@@ -125,6 +147,14 @@ export class PageErrorBoundary extends React.Component<Props, State> {
               onClick={() => { globalThis.location.href = import.meta.env.BASE_URL; }}
             >
               返回首页
+            </Button>
+            <Button
+              icon={<Copy size={14} />}
+              theme="borderless"
+              type="tertiary"
+              onClick={this.handleCopy}
+            >
+              复制错误信息
             </Button>
           </div>
         </Empty>
