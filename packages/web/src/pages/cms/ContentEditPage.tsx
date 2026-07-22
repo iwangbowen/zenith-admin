@@ -184,6 +184,7 @@ export default function ContentEditPage() {
   const [checkResult, setCheckResult] = useState<CmsTextCheckResult | null>(null);
   const [checkModalVisible, setCheckModalVisible] = useState(false);
   const isMapped = !!detail?.mappingSourceId;
+  const isPersistentlyLocked = !!detail?.lockedAt;
 
   // 封面缩略图跟踪：上传时随 thumbUrl 更新；手动改 URL/媒体库选择时清空（防错配）
   const coverThumbRef = useRef<string | null>(null);
@@ -223,7 +224,7 @@ export default function ContentEditPage() {
 
   // 编辑锁：进入抢占 + 30s 心跳续期，离开释放（软锁，保存冲突由乐观锁兜底）
   useEffect(() => {
-    if (!id) return;
+    if (!id || !detail || isPersistentlyLocked) return;
     let stopped = false;
     const beat = () => {
       acquireCmsEditLock(id)
@@ -237,7 +238,7 @@ export default function ContentEditPage() {
       clearInterval(timer);
       void releaseCmsEditLock(id).catch(() => undefined);
     };
-  }, [id]);
+  }, [detail, id, isPersistentlyLocked]);
 
   const currentChannel = findChannel(treeQuery.data ?? [], selectedChannelId);
   const { data: allSites } = useAllCmsSites();
@@ -291,6 +292,8 @@ export default function ContentEditPage() {
         seoTitle: detail.seoTitle ?? '',
         seoKeywords: detail.seoKeywords ?? '',
         seoDescription: detail.seoDescription ?? '',
+        socialImageAlt: detail.socialImageAlt ?? '',
+        twitterCreator: detail.twitterCreator ?? '',
         scheduledAt: detail.scheduledAt ?? undefined,
         expireAt: detail.expireAt ?? undefined,
         extend: detail.extend ?? {},
@@ -302,6 +305,10 @@ export default function ContentEditPage() {
     : { channelId: channelIdParam, isTop: false, topWeight: 0, isOriginal: false, isRecommend: false, isHot: false, sort: 0, tagIds: [], extraChannelIds: [], relatedIds: [], extend: {}, mediaType: 'video' };
 
   async function save(opts?: { silent?: boolean }): Promise<number | null> {
+    if (isPersistentlyLocked) {
+      if (!opts?.silent) Toast.warning('内容已被持久锁定，当前页面为只读状态');
+      return null;
+    }
     if (!siteId) return null;
     let values: Record<string, unknown>;
     try {
@@ -312,6 +319,8 @@ export default function ContentEditPage() {
     }
     const payload: Record<string, unknown> = { ...values, body };
     if (!values.slug) payload.slug = null;
+    payload.twitterCreator = values.twitterCreator ? String(values.twitterCreator).trim() : null;
+    payload.socialImageAlt = values.socialImageAlt ? String(values.socialImageAlt).trim() : null;
     // 模板下拉清空后为 undefined，显式置 null 才能在更新时清除覆盖
     payload.detailTemplate = values.detailTemplate ?? null;
     if (values.scheduledAt instanceof Date) payload.scheduledAt = formatDateTimeForApi(values.scheduledAt);
@@ -366,7 +375,7 @@ export default function ContentEditPage() {
 
   // 自动保存：仅对已存在的草稿/驳回内容，有改动时每 30s 静默保存一次
   useEffect(() => {
-    if (!id) return;
+    if (!id || isPersistentlyLocked) return;
     const timer = setInterval(() => {
       if (!dirtyRef.current) return;
       const status = detailStatusRef.current;
@@ -378,7 +387,7 @@ export default function ContentEditPage() {
         .catch(() => undefined);
     }, AUTO_SAVE_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [id]);
+  }, [id, isPersistentlyLocked]);
 
   async function handleSaveDraft() {
     const savedId = await save();
@@ -449,7 +458,7 @@ export default function ContentEditPage() {
           {detail ? <span style={{ marginLeft: 12, fontSize: 13, fontWeight: 'normal', color: 'var(--semi-color-text-2)' }}>状态：{CMS_CONTENT_STATUS_LABELS[detail.status]}</span> : null}
           {autoSavedAt ? <span style={{ marginLeft: 12, fontSize: 12, fontWeight: 'normal', color: 'var(--semi-color-text-2)' }}>已自动保存 {autoSavedAt}</span> : null}
         </h3>
-        <Button icon={<Save size={14} />} loading={saveMutation.isPending} onClick={() => void handleSaveDraft()}>保存</Button>
+        <Button icon={<Save size={14} />} loading={saveMutation.isPending} disabled={isPersistentlyLocked} onClick={() => void handleSaveDraft()}>保存</Button>
         <Button icon={<SpellCheck size={14} />} loading={checkMutation.isPending} onClick={() => void handleCheckText()}>内容检查</Button>
         {id ? (
           <>
@@ -459,7 +468,7 @@ export default function ContentEditPage() {
           </>
         ) : null}
         {hasPermission('cms:content:publish') ? (
-          <Button type="primary" icon={<Send size={14} />} loading={actionMutation.isPending} onClick={() => void handleSaveAndPublish()}>保存并发布</Button>
+          <Button type="primary" icon={<Send size={14} />} loading={actionMutation.isPending} disabled={isPersistentlyLocked} onClick={() => void handleSaveAndPublish()}>保存并发布</Button>
         ) : null}
       </div>
 
@@ -467,6 +476,15 @@ export default function ContentEditPage() {
         <Banner
           type="warning"
           description={`${lockHolder.nickname} 正在编辑此内容（${lockHolder.lockedAt} 开始）。继续编辑可能相互覆盖：保存时系统会做版本冲突检测。`}
+          style={{ marginBottom: 12 }}
+          closeIcon={null}
+        />
+      ) : null}
+
+      {isPersistentlyLocked ? (
+        <Banner
+          type="danger"
+          description={`内容已被持久锁定${detail?.lockedByName ? `（操作人：${detail.lockedByName}）` : ''}${detail?.lockReason ? `：${detail.lockReason}` : ''}。当前仅允许读取、预览和查看历史记录。`}
           style={{ marginBottom: 12 }}
           closeIcon={null}
         />
@@ -490,6 +508,7 @@ export default function ContentEditPage() {
           key={`${detail?.id ?? 'new'}-${formEpoch}`}
           getFormApi={(api) => { formApi.current = api; }}
           allowEmpty
+          disabled={isPersistentlyLocked}
           initValues={initValues}
           onValueChange={(values) => {
             dirtyRef.current = true;
@@ -816,6 +835,8 @@ export default function ContentEditPage() {
                   <Form.Input field="seoTitle" label="SEO 标题" />
                   <Form.Input field="seoKeywords" label="SEO 关键词" />
                   <Form.TextArea field="seoDescription" label="SEO 描述" rows={2} />
+                  <Form.Input field="socialImageAlt" label="社交图片说明" maxLength={255} placeholder="用于 og:image:alt / twitter:image:alt" />
+                  <Form.Input field="twitterCreator" label="Twitter/X 作者" maxLength={100} placeholder="@creator" />
                 </Collapse.Panel>
               </Collapse>
             </Col>

@@ -15,6 +15,7 @@ import {
   assertCompleteCmsBatch, isCmsPlatformAdmin,
 } from './cms-access';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
+import { assertCmsContentsUnlocked } from './cms-content-lock.service';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 export function mapCmsChannel(row: CmsChannelRow, modelName?: string | null): CmsChannel {
@@ -278,12 +279,15 @@ export async function mergeCmsChannels(sourceIds: number[], targetId: number): P
     inArray(cmsChannels.parentId, uniqueSources),
   ));
   if (childCount > 0) throw new HTTPException(400, { message: '来源栏目存在子栏目，请先处理子栏目' });
+  const sourceContents = await db.select({ id: cmsContents.id }).from(cmsContents)
+    .where(inArray(cmsContents.channelId, uniqueSources));
+  await assertCmsContentsUnlocked(sourceContents.map((row) => row.id));
 
   return db.transaction(async (tx) => {
     // 主栏目迁移（含回收站内容，保证来源栏目可删）
     const moved = await tx.update(cmsContents)
       .set({ channelId: targetId, modelId: target.modelId ?? null })
-      .where(inArray(cmsContents.channelId, uniqueSources))
+      .where(and(inArray(cmsContents.channelId, uniqueSources), isNull(cmsContents.lockedAt)))
       .returning({ id: cmsContents.id });
     // 副栏目绑定重指向：先清掉「已在目标栏目/主栏目即目标」的冗余绑定，再整体改指向
     await tx.delete(cmsContentChannels).where(and(
@@ -321,11 +325,15 @@ export async function clearCmsChannel(id: number): Promise<number> {
   const channel = await ensureCmsChannelExists(id);
   await assertSiteAccess(channel.siteId);
   await assertChannelAccess(id);
+  const contents = await db.select({ id: cmsContents.id }).from(cmsContents)
+    .where(and(eq(cmsContents.channelId, id), isNull(cmsContents.deletedAt)));
+  await assertCmsContentsUnlocked(contents.map((row) => row.id));
   const rows = await db.update(cmsContents)
     .set({ deletedAt: new Date(), status: 'offline' })
     .where(and(
       eq(cmsContents.channelId, id),
       isNull(cmsContents.deletedAt),
+      isNull(cmsContents.lockedAt),
     ))
     .returning({ id: cmsContents.id });
   return rows.length;

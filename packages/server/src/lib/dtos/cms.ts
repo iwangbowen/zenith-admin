@@ -103,6 +103,8 @@ export const CmsChannelDTO: z.ZodType = z
     seoTitle: z.string().nullable(),
     seoKeywords: z.string().nullable(),
     seoDescription: z.string().nullable(),
+    socialImageAlt: z.string().nullable(),
+    twitterCreator: z.string().nullable(),
     image: z.string().nullable(),
     visible: z.boolean(),
     status: z.enum(['enabled', 'disabled']),
@@ -183,11 +185,23 @@ export const CmsContentDTO = z
     archivedAt: z.string().nullable().openapi({ description: '归档时间（非空 = 已归档）' }),
     mappingSourceId: z.number().int().nullable().openapi({ description: '映射来源内容 id（非空 = 映射内容，正文共享来源）' }),
     mappingSourceTitle: z.string().nullable().optional().openapi({ description: '映射来源内容标题' }),
+    lockedAt: z.string().nullable(),
+    lockedBy: z.number().int().nullable(),
+    lockedByName: z.string().nullable().optional(),
+    lockReason: z.string().nullable(),
     ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
   })
   .openapi('CmsContent');
+
+export const CmsContentLockDTO = z
+  .object({
+    lockedAt: z.string(),
+    lockedBy: z.number().int().nullable(),
+    lockReason: z.string().nullable(),
+  })
+  .openapi('CmsContentLock');
 
 export const CmsFragmentDTO = z
   .object({
@@ -433,6 +447,8 @@ export const CmsResourceDTO = z
   .object({
     id: z.number().int(),
     siteId: z.number().int(),
+    folderId: z.number().int().nullable(),
+    folderName: z.string().nullable().optional(),
     type: z.enum(['image', 'video', 'audio', 'document', 'other']),
     name: z.string(),
     url: z.string(),
@@ -450,11 +466,28 @@ export const CmsResourceDTO = z
 
 export const CmsResourceReferenceDTO = z
   .object({
-    kind: z.enum(['content', 'ad', 'fragment']),
+    kind: z.enum(['site', 'content', 'channel', 'fragment', 'friendLink', 'ad', 'page', 'form', 'theme']),
     id: z.number().int(),
     title: z.string(),
+    field: z.string(),
   })
   .openapi('CmsResourceReference');
+
+export const CmsResourceFolderDTO: z.ZodType = z
+  .object({
+    id: z.number().int(),
+    siteId: z.number().int(),
+    parentId: z.number().int().nullable(),
+    name: z.string(),
+    sort: z.number().int(),
+    resourceCount: z.number().int().optional(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+    get children() {
+      return z.array(CmsResourceFolderDTO).optional();
+    },
+  })
+  .openapi('CmsResourceFolder');
 
 export const CmsPollOptionDTO = z.object({
   id: z.number().int(),
@@ -535,9 +568,18 @@ export const CmsFormDTO = z
       fieldType: z.string(),
       required: z.boolean(),
       options: z.array(z.object({ label: z.string(), value: z.string() })).nullable().optional(),
+      minLength: z.number().int().nullable().optional(),
+      maxLength: z.number().int().nullable().optional(),
+      pattern: z.string().nullable().optional(),
+      min: z.number().nullable().optional(),
+      max: z.number().nullable().optional(),
+      errorMessage: z.string().nullable().optional(),
     })),
     successMessage: z.string().nullable(),
     notifyEmail: z.string().nullable().openapi({ description: '新提交通知邮箱（逗号分隔多个）' }),
+    captchaProvider: z.enum(['inherit', 'none', 'math', 'turnstile']),
+    turnstileSiteKey: z.string().nullable(),
+    turnstileSecret: z.string().nullable().openapi({ description: 'write-only 掩码；空串/掩码保留，null 清除' }),
     status: z.enum(['enabled', 'disabled']),
     submissionCount: z.number().int().optional(),
     ...auditFields,
@@ -774,7 +816,10 @@ export const CmsSiteImportResultDTO = z
 export const CmsSearchWordDTO = z
   .object({
     id: z.number().int(),
+    siteId: z.number().int(),
     word: z.string().openapi({ example: '全文检索' }),
+    type: z.enum(['extension', 'stop']),
+    groupName: z.string(),
     weight: z.number().int(),
     status: z.enum(['enabled', 'disabled']),
     remark: z.string().nullable(),
@@ -786,10 +831,29 @@ export const CmsSearchWordDTO = z
 
 export const CmsHotKeywordDTO = z
   .object({
+    id: z.number().int().nullable(),
+    siteId: z.number().int(),
+    groupId: z.number().int().nullable(),
+    groupName: z.string().nullable(),
     keyword: z.string(),
     count: z.number().int(),
+    sort: z.number().int(),
+    status: z.enum(['enabled', 'disabled']),
   })
   .openapi('CmsHotKeyword');
+
+export const CmsHotwordGroupDTO = z
+  .object({
+    id: z.number().int(),
+    siteId: z.number().int(),
+    name: z.string(),
+    sort: z.number().int(),
+    status: z.enum(['enabled', 'disabled']),
+    ...auditFields,
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('CmsHotwordGroup');
 
 // ─── P3 Batch2 ────────────────────────────────────────────────────────────────
 export const CmsImageUploadDTO = z

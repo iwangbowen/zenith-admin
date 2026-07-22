@@ -10533,6 +10533,8 @@ export interface CmsContent {
   seoTitle: string | null;
   seoKeywords: string | null;
   seoDescription: string | null;
+  socialImageAlt: string | null;
+  twitterCreator: string | null;
   tagIds?: number[];
   tags?: CmsTag[];
   /** 副栏目 id 列表（一文多栏目） */
@@ -10547,6 +10549,11 @@ export interface CmsContent {
   mappingSourceId: number | null;
   /** 映射来源内容标题（JOIN 后附加） */
   mappingSourceTitle?: string | null;
+  /** 持久化管理员合规锁（非 Redis 编辑软锁） */
+  lockedAt: string | null;
+  lockedBy: number | null;
+  lockedByName?: string | null;
+  lockReason: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -10562,6 +10569,12 @@ export interface CmsContentOpLog {
   operatorId: number | null;
   operatorName: string;
   createdAt: string;
+}
+
+export interface CmsContentLockState {
+  lockedAt: string;
+  lockedBy: number | null;
+  lockReason: string | null;
 }
 
 /** CMS 易错词（编辑辅助：错误词 → 正确词） */
@@ -10824,6 +10837,8 @@ export type CmsResourceType = 'image' | 'video' | 'audio' | 'document' | 'other'
 export interface CmsResource {
   id: number;
   siteId: number;
+  folderId: number | null;
+  folderName?: string | null;
   type: CmsResourceType;
   name: string;
   url: string;
@@ -10841,9 +10856,22 @@ export interface CmsResource {
 
 /** 素材引用位置（删除前校验 / 引用查询） */
 export interface CmsResourceReference {
-  kind: 'content' | 'ad' | 'fragment';
+  kind: 'site' | 'content' | 'channel' | 'fragment' | 'friendLink' | 'ad' | 'page' | 'form' | 'theme';
   id: number;
   title: string;
+  field: string;
+}
+
+export interface CmsResourceFolder {
+  id: number;
+  siteId: number;
+  parentId: number | null;
+  name: string;
+  sort: number;
+  resourceCount?: number;
+  children?: CmsResourceFolder[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ─── CMS 轻量投票（P3）────────────────────────────────────────────────────────
@@ -10934,9 +10962,15 @@ export interface CmsSearchAnalytics {
 export interface CmsFormField {
   name: string;
   label: string;
-  fieldType: string;
+  fieldType: 'text' | 'textarea' | 'select' | 'radio' | 'email' | 'mobile' | 'url' | 'number';
   required: boolean;
   options?: { label: string; value: string }[] | null;
+  minLength?: number | null;
+  maxLength?: number | null;
+  pattern?: string | null;
+  min?: number | null;
+  max?: number | null;
+  errorMessage?: string | null;
 }
 
 export interface CmsForm {
@@ -10948,6 +10982,10 @@ export interface CmsForm {
   successMessage: string | null;
   /** 新提交通知邮箱（逗号分隔多个，空 = 不通知） */
   notifyEmail: string | null;
+  captchaProvider: 'inherit' | 'none' | 'math' | 'turnstile';
+  turnstileSiteKey: string | null;
+  /** API 仅返回掩码；空串/掩码保留，null 清除 */
+  turnstileSecret: string | null;
   status: 'enabled' | 'disabled';
   /** 提交数（JOIN 后附加） */
   submissionCount?: number;
@@ -10987,7 +11025,10 @@ export interface CmsPushLog {
 // ─── CMS P3 Batch1 ────────────────────────────────────────────────────────────
 export interface CmsSearchWord {
   id: number;
+  siteId: number;
   word: string;
+  type: 'extension' | 'stop';
+  groupName: string;
   weight: number;
   status: 'enabled' | 'disabled';
   remark: string | null;
@@ -10996,8 +11037,24 @@ export interface CmsSearchWord {
 }
 
 export interface CmsHotKeyword {
+  id: number | null;
+  siteId: number;
+  groupId: number | null;
+  groupName: string | null;
   keyword: string;
   count: number;
+  sort: number;
+  status: 'enabled' | 'disabled';
+}
+
+export interface CmsHotwordGroup {
+  id: number;
+  siteId: number;
+  name: string;
+  sort: number;
+  status: 'enabled' | 'disabled';
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ─── CMS 会员投稿（P3 Batch4）──────────────────────────────────────────────────

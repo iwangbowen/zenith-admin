@@ -211,10 +211,23 @@ export function Layout({ ctx, currentUrl, children }: LayoutProps) {
         {ctx.langAlternates.map((alt) => (
           <link key={alt.language} rel="alternate" hrefLang={alt.language} href={alt.url} />
         ))}
-        <meta property="og:type" content="website" />
+        <meta property="og:type" content={seo.ogType} />
         <meta property="og:title" content={seo.ogTitle} />
         {seo.ogDescription ? <meta property="og:description" content={seo.ogDescription} /> : null}
         {seo.ogImage ? <meta property="og:image" content={seo.ogImage} /> : null}
+        {seo.ogImageAlt ? <meta property="og:image:alt" content={seo.ogImageAlt} /> : null}
+        {seo.ogUrl ? <meta property="og:url" content={seo.ogUrl} /> : null}
+        <meta property="og:site_name" content={seo.ogSiteName} />
+        {seo.articlePublishedTime ? <meta property="article:published_time" content={seo.articlePublishedTime} /> : null}
+        {seo.articleModifiedTime ? <meta property="article:modified_time" content={seo.articleModifiedTime} /> : null}
+        {seo.articleAuthor ? <meta property="article:author" content={seo.articleAuthor} /> : null}
+        <meta name="twitter:card" content={seo.twitterCard} />
+        {seo.twitterSite ? <meta name="twitter:site" content={seo.twitterSite} /> : null}
+        {seo.twitterCreator ? <meta name="twitter:creator" content={seo.twitterCreator} /> : null}
+        <meta name="twitter:title" content={seo.twitterTitle} />
+        {seo.twitterDescription ? <meta name="twitter:description" content={seo.twitterDescription} /> : null}
+        {seo.twitterImage ? <meta name="twitter:image" content={seo.twitterImage} /> : null}
+        {seo.twitterImageAlt ? <meta name="twitter:image:alt" content={seo.twitterImageAlt} /> : null}
         {site.favicon ? <link rel="icon" href={site.favicon} /> : null}
         <meta name="generator" content="Zenith CMS" />
         {seo.jsonLd ? (

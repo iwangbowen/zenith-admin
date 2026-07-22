@@ -1,8 +1,11 @@
-import { eq, and, desc, inArray, like, sql, type SQL } from 'drizzle-orm';
+import { eq, and, desc, gt, inArray, isNull, like, or, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import sharp from 'sharp';
 import { db } from '../../db';
-import { cmsResources, cmsContents, cmsAds, cmsAdSlots, cmsFragments } from '../../db/schema';
+import {
+  cmsResources, cmsContents, cmsAds, cmsAdSlots, cmsFragments, cmsSites, cmsChannels,
+  cmsPages, cmsForms, cmsResourceFolders, cmsFriendLinks, cmsContentVersions,
+} from '../../db/schema';
 import type { CmsResourceRow } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
 import { mergeWhere, withPagination, escapeLike } from '../../lib/where-helpers';
@@ -13,12 +16,44 @@ import type { CmsResourceType, CmsResourceReference, UpdateCmsResourceInput, Cro
 import { assertCompleteCmsBatch } from './cms-access';
 import { ensureCmsSiteExists } from './cms-sites.service';
 import { assertAllCmsSiteChannelsAccess } from './cms-channels.service';
+import { ensureCmsResourceFolderExists } from './cms-resource-folders.service';
+
+const CONTENT_RESOURCE_FIELDS = [
+  ['coverImage', cmsContents.coverImage],
+  ['coverThumb', cmsContents.coverThumb],
+  ['body', cmsContents.body],
+  ['mediaData', cmsContents.mediaData],
+  ['extend', cmsContents.extend],
+  ['sourceUrl', cmsContents.sourceUrl],
+  ['externalLink', cmsContents.externalLink],
+] as const;
+const CHANNEL_RESOURCE_FIELDS = [
+  ['image', cmsChannels.image],
+  ['pageContent', cmsChannels.pageContent],
+  ['settings', cmsChannels.settings],
+  ['linkUrl', cmsChannels.linkUrl],
+] as const;
+const FRIEND_LINK_RESOURCE_FIELDS = [
+  ['logo', cmsFriendLinks.logo],
+  ['url', cmsFriendLinks.url],
+] as const;
+
+function referenceWhere(fields: ReadonlyArray<readonly [string, unknown]>, pattern: string): SQL {
+  return or(...fields.map(([, column]) => sql`${column}::text like ${pattern}`))!;
+}
+
+function referenceValues(row: object, fields: ReadonlyArray<readonly [string, unknown]>): Record<string, unknown> {
+  const record = row as Record<string, unknown>;
+  return Object.fromEntries(fields.map(([field]) => [field, record[field]]));
+}
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
-export function mapCmsResource(row: CmsResourceRow) {
+export function mapCmsResource(row: CmsResourceRow, folderName?: string | null) {
   return {
     id: row.id,
     siteId: row.siteId,
+    folderId: row.folderId ?? null,
+    folderName: folderName ?? null,
     type: row.type,
     name: row.name,
     url: row.url,
@@ -52,6 +87,8 @@ export interface ListCmsResourcesQuery {
   siteId: number;
   type?: CmsResourceType;
   keyword?: string;
+  /** undefined = 全部；0 = 根目录；正数 = 指定文件夹 */
+  folderId?: number;
   page: number;
   pageSize: number;
 }
@@ -61,34 +98,43 @@ export async function listCmsResources(q: ListCmsResourcesQuery) {
   await assertSiteAccess(q.siteId);
   const conditions: SQL[] = [eq(cmsResources.siteId, q.siteId)];
   if (q.type) conditions.push(eq(cmsResources.type, q.type));
+  if (q.folderId === 0) conditions.push(isNull(cmsResources.folderId));
+  else if (q.folderId) conditions.push(eq(cmsResources.folderId, q.folderId));
   if (q.keyword?.trim()) conditions.push(like(cmsResources.name, `%${escapeLike(q.keyword.trim())}%`));
   const where = mergeWhere(and(...conditions));
   const [total, rows] = await Promise.all([
     db.$count(cmsResources, where),
     withPagination(
-      db.select().from(cmsResources).where(where).orderBy(desc(cmsResources.id)).$dynamic(),
+      db.select({ resource: cmsResources, folderName: cmsResourceFolders.name })
+        .from(cmsResources)
+        .leftJoin(cmsResourceFolders, eq(cmsResources.folderId, cmsResourceFolders.id))
+        .where(where).orderBy(desc(cmsResources.id)).$dynamic(),
       q.page, q.pageSize,
     ),
   ]);
-  return { list: rows.map(mapCmsResource), total, page: q.page, pageSize: q.pageSize };
+  return { list: rows.map((row) => mapCmsResource(row.resource, row.folderName)), total, page: q.page, pageSize: q.pageSize };
 }
 
 /** 素材上传：图片走站点图片管线（压缩/水印/缩略图），其他类型原样入库 */
-export async function uploadCmsResource(file: File, siteId: number) {
+export async function uploadCmsResource(file: File, siteId: number, folderId?: number | null) {
   await ensureCmsSiteExists(siteId);
   await assertSiteAccess(siteId);
+  if (folderId) {
+    const folder = await ensureCmsResourceFolderExists(folderId);
+    if (folder.siteId !== siteId) throw new HTTPException(400, { message: '素材文件夹不属于当前站点' });
+  }
   const type = detectResourceType(file.type);
   if (type === 'image') {
     const img = await processCmsImageUpload(file, siteId);
     const [row] = await db.insert(cmsResources).values({
-      siteId, type, name: file.name, url: img.url, thumbUrl: img.thumbUrl,
+      siteId, folderId: folderId ?? null, type, name: file.name, url: img.url, thumbUrl: img.thumbUrl,
       fileId: img.fileId, size: file.size, width: img.width, height: img.height, mimeType: file.type,
     }).returning();
     return mapCmsResource(row);
   }
   const raw = await uploadManagedFile(file);
   const [row] = await db.insert(cmsResources).values({
-    siteId, type, name: file.name, url: raw.url ?? '', thumbUrl: null,
+    siteId, folderId: folderId ?? null, type, name: file.name, url: raw.url ?? '', thumbUrl: null,
     fileId: raw.id, size: file.size, width: null, height: null, mimeType: file.type || null,
   }).returning();
   return mapCmsResource(row);
@@ -102,39 +148,141 @@ async function ensureResource(id: number): Promise<CmsResourceRow> {
 }
 
 export async function updateCmsResource(id: number, data: UpdateCmsResourceInput) {
-  await ensureResource(id);
+  const current = await ensureResource(id);
+  if (data.folderId) {
+    const folder = await ensureCmsResourceFolderExists(data.folderId);
+    if (folder.siteId !== current.siteId) throw new HTTPException(400, { message: '素材文件夹不属于当前站点' });
+  }
   const [row] = await db.update(cmsResources).set({
     ...(data.name !== undefined ? { name: data.name } : {}),
     ...(data.remark !== undefined ? { remark: data.remark } : {}),
+    ...(data.folderId !== undefined ? { folderId: data.folderId } : {}),
   }).where(eq(cmsResources.id, id)).returning();
   return mapCmsResource(row);
 }
 
-/** 单素材站内引用扫描：内容封面/正文/形态数据 + 广告图 + 图片碎片 */
+export function cmsResourceContainsUrl(value: unknown, url: string): boolean {
+  if (typeof value === 'string') return value.includes(url);
+  return value != null && typeof value === 'object' && JSON.stringify(value).includes(url);
+}
+
+export function cmsResourceMatchingFields(fields: Record<string, unknown>, url: string): string[] {
+  return Object.entries(fields)
+    .filter(([, value]) => cmsResourceContainsUrl(value, url))
+    .map(([field]) => field);
+}
+
+export function buildCmsFieldReferences(
+  kind: CmsResourceReference['kind'],
+  id: number,
+  title: string,
+  fields: Record<string, unknown>,
+  url: string,
+): CmsResourceReference[] {
+  return cmsResourceMatchingFields(fields, url).map((field) => ({ kind, id, title, field }));
+}
+
+export function isCmsResourceOrphan(references: CmsResourceReference[]): boolean {
+  return references.length === 0;
+}
+
+/** 单素材完整引用扫描：站点、内容、栏目、碎片、广告、页面、表单与主题配置。 */
 export async function listCmsResourceReferences(id: number): Promise<CmsResourceReference[]> {
   const res = await ensureResource(id);
   await assertAllCmsSiteChannelsAccess(res.siteId);
   const pattern = `%${escapeLike(res.url)}%`;
-  const [contents, ads, fragments] = await Promise.all([
-    db.select({ id: cmsContents.id, title: cmsContents.title }).from(cmsContents)
+  const [siteRows, contents, channels, ads, fragments, friendLinks, pages, forms, versions] = await Promise.all([
+    db.select().from(cmsSites).where(and(
+      eq(cmsSites.id, res.siteId),
+      sql`(${cmsSites.logo} = ${res.url} or ${cmsSites.favicon} = ${res.url} or ${cmsSites.settings}::text like ${pattern})`,
+    )),
+    db.select().from(cmsContents)
       .where(and(
         eq(cmsContents.siteId, res.siteId),
-        sql`(${cmsContents.coverImage} = ${res.url} or ${cmsContents.coverThumb} = ${res.url} or ${cmsContents.body} like ${pattern} or ${cmsContents.mediaData}::text like ${pattern})`,
-      )).limit(50),
-    db.select({ id: cmsAds.id, name: cmsAds.name }).from(cmsAds)
+        referenceWhere(CONTENT_RESOURCE_FIELDS, pattern),
+      )),
+    db.select().from(cmsChannels).where(and(
+      eq(cmsChannels.siteId, res.siteId),
+      referenceWhere(CHANNEL_RESOURCE_FIELDS, pattern),
+    )),
+    db.select({ id: cmsAds.id, name: cmsAds.name, image: cmsAds.image, linkUrl: cmsAds.linkUrl }).from(cmsAds)
       .innerJoin(cmsAdSlots, eq(cmsAds.slotId, cmsAdSlots.id))
       .where(and(
         eq(cmsAdSlots.siteId, res.siteId),
-        eq(cmsAds.image, res.url),
-      )).limit(50),
+        sql`(${cmsAds.image} = ${res.url} or ${cmsAds.linkUrl} = ${res.url})`,
+      )),
     db.select({ id: cmsFragments.id, name: cmsFragments.name }).from(cmsFragments)
-      .where(and(eq(cmsFragments.siteId, res.siteId), sql`${cmsFragments.content} like ${pattern}`)).limit(50),
+      .where(and(eq(cmsFragments.siteId, res.siteId), sql`${cmsFragments.content} like ${pattern}`)),
+    db.select({ id: cmsFriendLinks.id, name: cmsFriendLinks.name, logo: cmsFriendLinks.logo, url: cmsFriendLinks.url }).from(cmsFriendLinks)
+      .where(and(eq(cmsFriendLinks.siteId, res.siteId), referenceWhere(FRIEND_LINK_RESOURCE_FIELDS, pattern))),
+    db.select().from(cmsPages).where(and(eq(cmsPages.siteId, res.siteId), sql`${cmsPages.blocks}::text like ${pattern}`)),
+    db.select().from(cmsForms).where(and(eq(cmsForms.siteId, res.siteId), sql`${cmsForms.fields}::text like ${pattern}`)),
+    db.select({
+      contentId: cmsContentVersions.contentId,
+      version: cmsContentVersions.version,
+      title: cmsContents.title,
+    }).from(cmsContentVersions)
+      .innerJoin(cmsContents, eq(cmsContentVersions.contentId, cmsContents.id))
+      .where(and(eq(cmsContents.siteId, res.siteId), sql`${cmsContentVersions.snapshot}::text like ${pattern}`)),
   ]);
-  return [
-    ...contents.map((c): CmsResourceReference => ({ kind: 'content', id: c.id, title: c.title })),
-    ...ads.map((a): CmsResourceReference => ({ kind: 'ad', id: a.id, title: a.name })),
-    ...fragments.map((f): CmsResourceReference => ({ kind: 'fragment', id: f.id, title: f.name })),
-  ];
+  const refs: CmsResourceReference[] = [];
+  for (const site of siteRows) {
+    if (site.logo === res.url) refs.push({ kind: 'site', id: site.id, title: site.name, field: 'logo' });
+    if (site.favicon === res.url) refs.push({ kind: 'site', id: site.id, title: site.name, field: 'favicon' });
+    if (cmsResourceContainsUrl(site.settings, res.url)) refs.push({ kind: 'theme', id: site.id, title: site.name, field: 'settings/themeConfig' });
+  }
+  for (const content of contents) {
+    refs.push(...buildCmsFieldReferences('content', content.id, content.title, referenceValues(content, CONTENT_RESOURCE_FIELDS), res.url));
+  }
+  for (const channel of channels) {
+    refs.push(...buildCmsFieldReferences('channel', channel.id, channel.name, referenceValues(channel, CHANNEL_RESOURCE_FIELDS), res.url));
+  }
+  for (const ad of ads) {
+    for (const field of cmsResourceMatchingFields({ image: ad.image, linkUrl: ad.linkUrl }, res.url)) {
+      refs.push({ kind: 'ad', id: ad.id, title: ad.name, field });
+    }
+  }
+  refs.push(...fragments.map((row) => ({ kind: 'fragment' as const, id: row.id, title: row.name, field: 'content' })));
+  for (const link of friendLinks) {
+    refs.push(...buildCmsFieldReferences('friendLink', link.id, link.name, referenceValues(link, FRIEND_LINK_RESOURCE_FIELDS), res.url));
+  }
+  refs.push(...pages.map((row) => ({ kind: 'page' as const, id: row.id, title: row.name, field: 'blocks' })));
+  refs.push(...forms.map((row) => ({ kind: 'form' as const, id: row.id, title: row.name, field: 'fields' })));
+  refs.push(...versions.map((row) => ({ kind: 'content' as const, id: row.contentId, title: `${row.title}（版本 ${row.version}）`, field: 'versionSnapshot' })));
+  return refs;
+}
+
+export async function moveCmsResources(ids: number[], folderId: number | null): Promise<number> {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return 0;
+  const rows = await db.select().from(cmsResources).where(inArray(cmsResources.id, unique));
+  assertCompleteCmsBatch(unique, rows.map((row) => row.id), '素材');
+  const siteIds = [...new Set(rows.map((row) => row.siteId))];
+  if (siteIds.length !== 1) throw new HTTPException(400, { message: '仅支持同站点素材批量移动' });
+  await assertSiteAccess(siteIds[0]);
+  if (folderId) {
+    const folder = await ensureCmsResourceFolderExists(folderId);
+    if (folder.siteId !== siteIds[0]) throw new HTTPException(400, { message: '目标文件夹不属于素材站点' });
+  }
+  const updated = await db.update(cmsResources).set({ folderId })
+    .where(inArray(cmsResources.id, unique)).returning({ id: cmsResources.id });
+  return updated.length;
+}
+
+export async function listCmsResourcesAfter(siteId: number, afterId: number, limit = 100): Promise<CmsResourceRow[]> {
+  await ensureCmsSiteExists(siteId);
+  await assertSiteAccess(siteId);
+  return db.select().from(cmsResources)
+    .where(and(eq(cmsResources.siteId, siteId), gt(cmsResources.id, afterId)))
+    .orderBy(cmsResources.id)
+    .limit(limit);
+}
+
+export async function deleteCmsOrphanResource(row: CmsResourceRow): Promise<void> {
+  const refs = await listCmsResourceReferences(row.id);
+  if (!isCmsResourceOrphan(refs)) throw new HTTPException(409, { message: '素材已产生引用，无法治理删除' });
+  await db.delete(cmsResources).where(eq(cmsResources.id, row.id));
+  if (row.fileId) await deleteManagedFile(row.fileId).catch(() => undefined);
 }
 
 /** 批量删除：任一素材存在站内引用则整体拒绝；联动删除底层物理文件（尽力而为） */
@@ -191,7 +339,7 @@ export async function cropCmsResource(id: number, rect: CropCmsResourceInput) {
   const cropFile = new File([new Blob([new Uint8Array(output.data)], { type: mime })], cropName, { type: mime });
   const uploaded = await uploadManagedFile(cropFile);
   const [row] = await db.insert(cmsResources).values({
-    siteId: res.siteId, type: 'image', name: cropName, url: uploaded.url ?? '', thumbUrl: null,
+    siteId: res.siteId, folderId: res.folderId, type: 'image', name: cropName, url: uploaded.url ?? '', thumbUrl: null,
     fileId: uploaded.id, size: output.data.length, width: output.info.width ?? null, height: output.info.height ?? null,
     mimeType: mime, remark: `裁剪自素材 #${res.id}`,
   }).returning();

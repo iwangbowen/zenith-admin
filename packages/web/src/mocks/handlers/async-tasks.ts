@@ -65,6 +65,17 @@ const taskTypes: AsyncTaskTypeMeta[] = [
     retentionDays: 30,
   },
   {
+    taskType: 'cms-resource-governance',
+    title: 'CMS 素材治理',
+    module: 'CMS内容管理',
+    description: '扫描/清理孤立素材或批量移动素材，输出行级治理明细。',
+    allowConcurrent: false,
+    enabled: true,
+    maxAttempts: 2,
+    retryDelayMs: 3000,
+    retentionDays: 30,
+  },
+  {
     taskType: 'report-dq-rule-run',
     title: '报表质量规则执行',
     module: '报表中心',
@@ -291,7 +302,7 @@ export function createImmediateMockTask(input: {
 }
 
 export function createProgressingMockTask(input: {
-  taskType: 'report-dq-rule-run' | 'report-dataset-materialize' | 'report-sla-rule-evaluate' | 'report-fill-sync' | 'analytics-rollup-rebuild' | 'analytics-segment-materialize' | 'analytics-campaign-execute' | 'cms-static-build' | 'cms-search-reindex' | 'cms-deadlink-check' | 'cms-collect-run' | 'cms-content-import';
+  taskType: 'report-dq-rule-run' | 'report-dataset-materialize' | 'report-sla-rule-evaluate' | 'report-fill-sync' | 'analytics-rollup-rebuild' | 'analytics-segment-materialize' | 'analytics-campaign-execute' | 'cms-static-build' | 'cms-search-reindex' | 'cms-deadlink-check' | 'cms-collect-run' | 'cms-content-import' | 'cms-resource-governance';
   title: string;
   payload?: Record<string, unknown>;
   totalItems?: number;

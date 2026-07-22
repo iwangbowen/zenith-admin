@@ -18,9 +18,9 @@ function cmsTables(): { name: string; table: PgTable }[] {
 }
 
 describe('global CMS schema', () => {
-  it('keeps all 42 CMS tables outside tenant ownership', () => {
+  it('keeps all 45 CMS tables outside tenant ownership', () => {
     const tables = cmsTables();
-    expect(tables).toHaveLength(42);
+    expect(tables).toHaveLength(45);
     for (const { name, table } of tables) {
       const tenantColumn = getTableConfig(table).columns.find((column) => column.name === 'tenant_id');
       expect(tenantColumn, `${name} must not expose tenant_id`).toBeUndefined();

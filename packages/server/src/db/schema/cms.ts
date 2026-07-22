@@ -12,6 +12,8 @@ export const cmsContentStatusEnum = pgEnum('cms_content_status', ['draft', 'pend
 export const cmsContentTypeEnum = pgEnum('cms_content_type', ['article', 'album', 'media', 'link']);
 export const cmsFieldTypeEnum = pgEnum('cms_field_type', ['text', 'textarea', 'richtext', 'number', 'date', 'datetime', 'image', 'file', 'select', 'radio', 'checkbox', 'switch']);
 export const cmsFragmentTypeEnum = pgEnum('cms_fragment_type', ['html', 'text', 'image', 'json']);
+export const cmsSearchWordTypeEnum = pgEnum('cms_search_word_type', ['extension', 'stop']);
+export const cmsFormCaptchaProviderEnum = pgEnum('cms_form_captcha_provider', ['inherit', 'none', 'math', 'turnstile']);
 
 /** PostgreSQL tsvector 列（drizzle 无内置类型），存全文检索向量 */
 const tsvector = customType<{ data: string }>({
@@ -243,6 +245,9 @@ export const cmsContents = pgTable('cms_contents', {
   seoTitle: varchar('seo_title', { length: 255 }),
   seoKeywords: varchar('seo_keywords', { length: 500 }),
   seoDescription: varchar('seo_description', { length: 500 }),
+  /** Social SEO 图片替代文本与 Twitter 作者账号 */
+  socialImageAlt: varchar('social_image_alt', { length: 255 }),
+  twitterCreator: varchar('twitter_creator', { length: 100 }),
   /** 全文检索向量（应用层 jieba 分词后写入，'simple' parser + setweight A/B/C） */
   searchVector: tsvector('search_vector'),
   /** 回收站：非空表示已进回收站 */
@@ -255,6 +260,10 @@ export const cmsContents = pgTable('cms_contents', {
   memberId: integer('member_id').references(() => members.id, { onDelete: 'set null' }),
   /** 部门归属（P5 部门数据权限：创建时快照创建人部门；投稿/导入为 null） */
   deptId: integer('dept_id').references(() => departments.id, { onDelete: 'set null' }),
+  /** 管理员持久化合规锁（与 Redis 120s 编辑协作锁、version 乐观锁相互独立） */
+  lockedAt: timestamp('locked_at'),
+  lockedBy: integer('locked_by').references(() => users.id, { onDelete: 'set null' }),
+  lockReason: varchar('lock_reason', { length: 500 }),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
@@ -265,6 +274,7 @@ export const cmsContents = pgTable('cms_contents', {
   index('cms_contents_search_idx').using('gin', t.searchVector),
   index('cms_contents_member_idx').on(t.memberId),
   index('cms_contents_mapping_source_idx').on(t.mappingSourceId),
+  index('cms_contents_locked_at_idx').on(t.lockedAt),
   uniqueIndex('cms_contents_site_slug_uq').on(t.siteId, t.slug)
     .where(sql`${t.slug} is not null and ${t.deletedAt} is null`),
 ]);
@@ -687,11 +697,28 @@ export const cmsForms = pgTable('cms_forms', {
   /** 前台提交与栏目绑定引用标识 */
   code: varchar('code', { length: 50 }).notNull(),
   name: varchar('name', { length: 100 }).notNull(),
-  /** 字段定义：name/label/fieldType(text|textarea|select|radio)/required/options */
-  fields: jsonb('fields').$type<{ name: string; label: string; fieldType: string; required: boolean; options?: { label: string; value: string }[] | null }[]>().notNull().default([]),
+  /** 字段定义与服务端验证策略 */
+  fields: jsonb('fields').$type<{
+    name: string;
+    label: string;
+    fieldType: string;
+    required: boolean;
+    options?: { label: string; value: string }[] | null;
+    minLength?: number | null;
+    maxLength?: number | null;
+    pattern?: string | null;
+    min?: number | null;
+    max?: number | null;
+    errorMessage?: string | null;
+  }[]>().notNull().default([]),
   successMessage: varchar('success_message', { length: 255 }),
   /** 新提交通知邮箱（逗号分隔多个，空 = 不通知） */
   notifyEmail: varchar('notify_email', { length: 255 }),
+  /** 表单级验证码策略；inherit 保持站点开关兼容 */
+  captchaProvider: cmsFormCaptchaProviderEnum('captcha_provider').notNull().default('inherit'),
+  turnstileSiteKey: varchar('turnstile_site_key', { length: 200 }),
+  /** write-only；DTO 仅返回掩码 */
+  turnstileSecret: varchar('turnstile_secret', { length: 500 }),
   status: statusEnum('status').notNull().default('enabled'),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -770,7 +797,10 @@ export type CmsChannelUserRow = typeof cmsChannelUsers.$inferSelect;
 // ─── 检索自定义词典（jieba 运行时加载；删除词条需重启进程才彻底失效）─────────────
 export const cmsSearchWords = pgTable('cms_search_words', {
   id: serial('id').primaryKey(),
-  word: varchar('word', { length: 50 }).notNull().unique(),
+  siteId: integer('site_id').notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
+  word: varchar('word', { length: 50 }).notNull(),
+  type: cmsSearchWordTypeEnum('type').notNull().default('extension'),
+  groupName: varchar('group_name', { length: 100 }).notNull().default('默认分组'),
   /** 词频权重（越大越优先成词），jieba 用户词典格式 */
   weight: integer('weight').notNull().default(1000),
   status: statusEnum('status').notNull().default('enabled'),
@@ -778,9 +808,46 @@ export const cmsSearchWords = pgTable('cms_search_words', {
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
-});
+}, (t) => [
+  uniqueIndex('cms_search_words_site_type_word_uq').on(t.siteId, t.type, t.word),
+  index('cms_search_words_site_group_idx').on(t.siteId, t.type, t.groupName),
+]);
 
 export type CmsSearchWordRow = typeof cmsSearchWords.$inferSelect;
+
+// ─── 可管理热词分组与词条（实时热度仍存 Redis ZSET）────────────────────────────
+export const cmsHotwordGroups = pgTable('cms_hotword_groups', {
+  id: serial('id').primaryKey(),
+  siteId: integer('site_id').notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 100 }).notNull(),
+  sort: integer('sort').notNull().default(0),
+  status: statusEnum('status').notNull().default('enabled'),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  uniqueIndex('cms_hotword_groups_site_name_uq').on(t.siteId, t.name),
+  index('cms_hotword_groups_site_sort_idx').on(t.siteId, t.sort),
+]);
+
+export type CmsHotwordGroupRow = typeof cmsHotwordGroups.$inferSelect;
+
+export const cmsHotwords = pgTable('cms_hotwords', {
+  id: serial('id').primaryKey(),
+  siteId: integer('site_id').notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
+  groupId: integer('group_id').references(() => cmsHotwordGroups.id, { onDelete: 'set null' }),
+  keyword: varchar('keyword', { length: 100 }).notNull(),
+  sort: integer('sort').notNull().default(0),
+  status: statusEnum('status').notNull().default('enabled'),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  uniqueIndex('cms_hotwords_site_keyword_uq').on(t.siteId, t.keyword),
+  index('cms_hotwords_site_group_sort_idx').on(t.siteId, t.groupId, t.sort),
+]);
+
+export type CmsHotwordRow = typeof cmsHotwords.$inferSelect;
 
 // ═══ P3 Batch5：采集中心 ════════════════════════════════════════════════════════
 
@@ -874,9 +941,30 @@ export type CmsPageRow = typeof cmsPages.$inferSelect;
 // ─── 素材（站点级资源库：图片经站点管线处理；删除前校验站内引用）─────────────────
 export const cmsResourceTypeEnum = pgEnum('cms_resource_type', ['image', 'video', 'audio', 'document', 'other']);
 
+export const cmsResourceFolders = pgTable('cms_resource_folders', {
+  id: serial('id').primaryKey(),
+  siteId: integer('site_id').notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
+  /** null = 根目录；规范化自关联，删除前由 service 做非空保护 */
+  parentId: integer('parent_id').references((): AnyPgColumn => cmsResourceFolders.id, { onDelete: 'restrict' }),
+  name: varchar('name', { length: 100 }).notNull(),
+  sort: integer('sort').notNull().default(0),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  uniqueIndex('cms_resource_folders_site_parent_name_uq').on(t.siteId, t.parentId, t.name)
+    .where(sql`${t.parentId} is not null`),
+  uniqueIndex('cms_resource_folders_site_root_name_uq').on(t.siteId, t.name)
+    .where(sql`${t.parentId} is null`),
+  index('cms_resource_folders_site_parent_idx').on(t.siteId, t.parentId),
+]);
+
+export type CmsResourceFolderRow = typeof cmsResourceFolders.$inferSelect;
+
 export const cmsResources = pgTable('cms_resources', {
   id: serial('id').primaryKey(),
   siteId: integer('site_id').notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
+  folderId: integer('folder_id').references(() => cmsResourceFolders.id, { onDelete: 'set null' }),
   type: cmsResourceTypeEnum('type').notNull().default('image'),
   name: varchar('name', { length: 255 }).notNull(),
   url: varchar('url', { length: 500 }).notNull(),
@@ -893,6 +981,7 @@ export const cmsResources = pgTable('cms_resources', {
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (t) => [
   index('cms_resources_site_type_idx').on(t.siteId, t.type),
+  index('cms_resources_site_folder_idx').on(t.siteId, t.folderId),
 ]);
 
 export type CmsResourceRow = typeof cmsResources.$inferSelect;

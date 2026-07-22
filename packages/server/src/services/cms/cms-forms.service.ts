@@ -2,7 +2,7 @@ import { eq, asc, desc, and, inArray, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { cmsForms, cmsFormSubmissions } from '../../db/schema';
-import type { CmsFormRow, CmsFormSubmissionRow } from '../../db/schema';
+import type { CmsFormRow, CmsFormSubmissionRow, CmsSiteRow } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
 import { mergeWhere, escapeLike, withPagination } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
@@ -12,9 +12,12 @@ import { assertSiteAccess } from './cms-sites.service';
 import { throttleFrontSubmit } from './cms-comments.service';
 import { sendMail } from '../../lib/email';
 import logger from '../../lib/logger';
-import type { CreateCmsFormInput, UpdateCmsFormInput } from '@zenith/shared';
+import { CMS_SECRET_MASK, type CmsFormField, type CreateCmsFormInput, type UpdateCmsFormInput } from '@zenith/shared';
 import { assertCompleteCmsBatch } from './cms-access';
 import { ensureCmsSiteExists } from './cms-sites.service';
+import { validateCmsFormFields } from './cms-form-validation';
+import { verifyCmsFormCaptcha } from './cms-form-captcha.service';
+import { compileCmsFormPattern } from './cms-form-pattern';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 export function mapCmsForm(row: CmsFormRow, submissionCount?: number) {
@@ -26,6 +29,9 @@ export function mapCmsForm(row: CmsFormRow, submissionCount?: number) {
     fields: row.fields ?? [],
     successMessage: row.successMessage ?? null,
     notifyEmail: row.notifyEmail ?? null,
+    captchaProvider: row.captchaProvider,
+    turnstileSiteKey: row.turnstileSiteKey ?? null,
+    turnstileSecret: row.turnstileSecret ? CMS_SECRET_MASK : null,
     status: row.status,
     ...(submissionCount !== undefined ? { submissionCount } : {}),
     createdAt: formatDateTime(row.createdAt),
@@ -61,6 +67,7 @@ export async function getCmsFormByCode(siteId: number, code: string): Promise<Cm
 // ─── 前台提交 ─────────────────────────────────────────────────────────────────
 export interface SubmitFormInput {
   form: CmsFormRow;
+  site: CmsSiteRow;
   raw: Record<string, unknown>;
   ip: string;
   userAgent: string | null;
@@ -69,21 +76,11 @@ export interface SubmitFormInput {
 /** 前台表单提交：限流 + 按字段定义校验 + 敏感词过滤 */
 export async function submitCmsForm(input: SubmitFormInput) {
   await throttleFrontSubmit(input.ip);
+  await verifyCmsFormCaptcha(input);
+  const validated = validateCmsFormFields(input.form.fields as CmsFormField[], input.raw);
   const data: Record<string, unknown> = {};
-  for (const field of input.form.fields ?? []) {
-    const rawValue = input.raw[field.name];
-    const value = typeof rawValue === 'string' ? rawValue.trim() : '';
-    if (field.required && !value) {
-      throw new HTTPException(400, { message: `请填写「${field.label}」` });
-    }
-    if (value.length > 2000) {
-      throw new HTTPException(400, { message: `「${field.label}」内容过长` });
-    }
-    if ((field.fieldType === 'select' || field.fieldType === 'radio') && value) {
-      const allowed = (field.options ?? []).map((o) => o.value);
-      if (!allowed.includes(value)) throw new HTTPException(400, { message: `「${field.label}」选项无效` });
-    }
-    data[field.name] = value ? await sanitizeUserText(value) : '';
+  for (const [name, value] of Object.entries(validated)) {
+    data[name] = value ? await sanitizeUserText(value) : '';
   }
   const [row] = await db.insert(cmsFormSubmissions).values({
     formId: input.form.id,
@@ -143,26 +140,76 @@ export async function listCmsForms(q: ListCmsFormsQuery) {
   return { list: rows.map((r) => mapCmsForm(r.form, r.submissionCount)), total, page: q.page, pageSize: q.pageSize };
 }
 
-type FormFieldInput = { name: string; label: string; fieldType?: string; required?: boolean; options?: { label: string; value: string }[] | null };
+export type FormFieldInput = {
+  name: string;
+  label: string;
+  fieldType?: CmsFormField['fieldType'];
+  required?: boolean;
+  options?: { label: string; value: string }[] | null;
+  minLength?: number | null;
+  maxLength?: number | null;
+  pattern?: string | null;
+  min?: number | null;
+  max?: number | null;
+  errorMessage?: string | null;
+};
 
 /** zod input 的可选默认值 → DB 非空结构 */
-function normalizeFormFields(fields: FormFieldInput[] | undefined) {
-  return (fields ?? []).map((f) => ({
-    name: f.name,
-    label: f.label,
-    fieldType: f.fieldType ?? 'text',
-    required: f.required ?? false,
-    options: f.options ?? null,
-  }));
+export function normalizeCmsFormFields(fields: FormFieldInput[] | undefined) {
+  return (fields ?? []).map((field) => {
+    const pattern = field.pattern?.trim() || null;
+    if (pattern) {
+      try {
+        compileCmsFormPattern(pattern);
+      } catch {
+        throw new HTTPException(400, { message: `字段「${field.label}」不是有效的 RE2-compatible 规则` });
+      }
+    }
+    return {
+      name: field.name,
+      label: field.label,
+      fieldType: field.fieldType ?? 'text',
+      required: field.required ?? false,
+      options: field.options ?? null,
+      minLength: field.minLength ?? null,
+      maxLength: field.maxLength ?? null,
+      pattern,
+      min: field.min ?? null,
+      max: field.max ?? null,
+      errorMessage: field.errorMessage?.trim() || null,
+    };
+  });
+}
+
+function mergeTurnstileSecret(current: string | null, incoming: string | null | undefined): string | null {
+  if (incoming === undefined || incoming === '' || incoming === CMS_SECRET_MASK) return current;
+  return incoming;
+}
+
+function assertCaptchaConfig(input: {
+  captchaProvider: CmsFormRow['captchaProvider'];
+  turnstileSiteKey: string | null;
+  turnstileSecret: string | null;
+}) {
+  if (input.captchaProvider === 'turnstile' && (!input.turnstileSiteKey?.trim() || !input.turnstileSecret?.trim())) {
+    throw new HTTPException(400, { message: 'Turnstile 必须同时配置 Site Key 和服务端 Secret' });
+  }
 }
 
 export async function createCmsForm(data: CreateCmsFormInput) {
   await ensureCmsSiteExists(data.siteId);
   await assertSiteAccess(data.siteId);
+  const turnstileSecret = mergeTurnstileSecret(null, data.turnstileSecret);
+  assertCaptchaConfig({
+    captchaProvider: data.captchaProvider ?? 'inherit',
+    turnstileSiteKey: data.turnstileSiteKey ?? null,
+    turnstileSecret,
+  });
   try {
     const [row] = await db.insert(cmsForms).values({
       ...data,
-      fields: normalizeFormFields(data.fields),
+      fields: normalizeCmsFormFields(data.fields),
+      turnstileSecret,
     }).returning();
     return mapCmsForm(row);
   } catch (err) {
@@ -173,11 +220,18 @@ export async function createCmsForm(data: CreateCmsFormInput) {
 export async function updateCmsForm(id: number, data: UpdateCmsFormInput) {
   const current = await ensureCmsFormExists(id);
   await assertSiteAccess(current.siteId);
-  const { fields, ...rest } = data;
+  const { fields, turnstileSecret: incomingSecret, ...rest } = data;
+  const turnstileSecret = mergeTurnstileSecret(current.turnstileSecret, incomingSecret);
+  assertCaptchaConfig({
+    captchaProvider: rest.captchaProvider ?? current.captchaProvider,
+    turnstileSiteKey: rest.turnstileSiteKey === undefined ? current.turnstileSiteKey : rest.turnstileSiteKey,
+    turnstileSecret,
+  });
   try {
     const [row] = await db.update(cmsForms).set({
       ...rest,
-      ...(fields !== undefined ? { fields: normalizeFormFields(fields) } : {}),
+      ...(fields !== undefined ? { fields: normalizeCmsFormFields(fields) } : {}),
+      ...(incomingSecret !== undefined ? { turnstileSecret } : {}),
     }).where(eq(cmsForms.id, id)).returning();
     return mapCmsForm(row);
   } catch (err) {

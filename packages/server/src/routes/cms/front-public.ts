@@ -113,13 +113,12 @@ export function createCmsFrontPublicRoutes(): Hono {
     }
     const site = await resolveSiteByCode(c.req.param('siteCode'));
     if (!site) return respond('提交失败', '站点不存在', 404);
-    const captchaError = await assertCaptchaIfEnabled(site, body as Record<string, unknown>);
-    if (captchaError) return respond('提交失败', captchaError, 400);
     const form = await getCmsFormByCode(site.id, c.req.param('formCode'));
     if (!form) return respond('提交失败', '表单不存在或已停用', 404);
     try {
       await submitCmsForm({
         form,
+        site,
         raw: body,
         ip: clientIp(c.req.raw.headers),
         userAgent: c.req.header('user-agent')?.slice(0, 255) ?? null,

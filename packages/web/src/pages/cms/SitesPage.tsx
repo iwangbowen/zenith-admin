@@ -23,7 +23,7 @@ import {
 import { request } from '@/utils/request';
 import { unwrap } from '@/lib/query';
 import { useWorkflowDefinitionList } from '@/hooks/queries/workflow-definitions';
-import { CMS_STATIC_MODE_LABELS, CMS_STATIC_MODES, CMS_DEFAULT_CHANNEL_CODE } from '@zenith/shared';
+import { CMS_STATIC_MODE_LABELS, CMS_STATIC_MODES, CMS_DEFAULT_CHANNEL_CODE, CMS_TWITTER_CARDS, CMS_TWITTER_CARD_LABELS } from '@zenith/shared';
 import type { AsyncTask, CmsSite, CmsSiteTemplateDefaults, CmsInvalidTemplateRef, CmsThemeSettingField } from '@zenith/shared';
 import { cmsPreviewUrl } from './CmsSiteSelect';
 import { cmsCredentialWriteValue } from './cms-site-credentials';
@@ -330,6 +330,9 @@ export default function SitesPage() {
         baiduPushToken: String((editingRecord.settings as Record<string, unknown>)?.baiduPushToken ?? ''),
         indexNowKey: String((editingRecord.settings as Record<string, unknown>)?.indexNowKey ?? ''),
         clearIndexNowKey: false,
+        twitterSite: String((editingRecord.settings as Record<string, unknown>)?.twitterSite ?? ''),
+        twitterCard: String((editingRecord.settings as Record<string, unknown>)?.twitterCard ?? 'summary_large_image'),
+        socialImageAlt: String((editingRecord.settings as Record<string, unknown>)?.socialImageAlt ?? ''),
         themePrimary: String((editingRecord.settings as Record<string, unknown>)?.themePrimary ?? ''),
         themeDark: String((editingRecord.settings as Record<string, unknown>)?.themeDark ?? 'light'),
         auditMode: String((editingRecord.settings as Record<string, unknown>)?.auditMode ?? 'simple'),
@@ -370,7 +373,7 @@ export default function SitesPage() {
     if (!values.domain) values.domain = null;
     // 推送凭证/主题参数/图片处理/默认模板并入 settings JSONB（保留既有 settings 键；剔除已下线的 h5 旧键）
     const {
-      baiduPushToken, indexNowKey, clearIndexNowKey, themePrimary, themeDark,
+      baiduPushToken, indexNowKey, clearIndexNowKey, twitterSite, twitterCard, socialImageAlt, themePrimary, themeDark,
       imageMaxWidth, watermarkEnabled, watermarkText, watermarkPosition, watermarkOpacity, thumbEnabled, thumbWidth,
       auditMode, auditWorkflowDefinitionId,
       webhookUrl, webhookSecret, clearWebhookSecret, captchaEnabled,
@@ -382,6 +385,9 @@ export default function SitesPage() {
       ...prevSettings,
       baiduPushToken: cmsCredentialWriteValue(baiduPushToken, clearBaiduPushToken),
       indexNowKey: cmsCredentialWriteValue(indexNowKey, clearIndexNowKey),
+      twitterSite: String(twitterSite ?? '').trim(),
+      twitterCard: twitterCard === 'summary' ? 'summary' : 'summary_large_image',
+      socialImageAlt: String(socialImageAlt ?? '').trim(),
       themePrimary: String(themePrimary ?? '').trim(),
       themeDark: themeDark ?? 'light',
       imageMaxWidth: Number(imageMaxWidth ?? 1600),
@@ -917,6 +923,12 @@ export default function SitesPage() {
                   {editingRecord && <Form.Checkbox field="clearBaiduPushToken" noLabel>清除已配置的百度推送 Token</Form.Checkbox>}
                   <Form.Input field="indexNowKey" type="password" label="IndexNow Key" labelWidth={140} placeholder="留空或保留掩码表示不修改" />
                   {editingRecord && <Form.Checkbox field="clearIndexNowKey" noLabel>清除已配置的 IndexNow Key</Form.Checkbox>}
+                </Form.Section>
+                <Form.Section text="Social SEO">
+                  <Form.Input field="twitterSite" label="Twitter/X 站点账号" labelWidth={140} placeholder="@site" />
+                  <Form.Select field="twitterCard" label="Twitter Card" labelWidth={140} style={{ width: '100%' }}
+                    optionList={CMS_TWITTER_CARDS.map((value) => ({ value, label: CMS_TWITTER_CARD_LABELS[value] }))} />
+                  <Form.Input field="socialImageAlt" label="默认社交图片说明" labelWidth={140} maxLength={255} />
                 </Form.Section>
               </div>
             </TabPane>

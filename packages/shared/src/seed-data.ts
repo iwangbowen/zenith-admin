@@ -20,11 +20,21 @@ import type {
   ReportSlaRule, ReportAssetTemplate, ReportFillTemplate, AnalyticsEventPropertyDef, AnalyticsSite,
   CmsSite, CmsPublishChannel, CmsModel, CmsChannel, CmsContent, CmsTag, CmsFragment, CmsFriendLink,
   CmsAdSlot, CmsAd, CmsForm, CmsSensitiveWord, CmsErrorProneWord, CmsLinkWord, CmsComment,
-  CmsSurvey, CmsSurveyQuestion, CmsResource, CmsPoll,
+  CmsSurvey, CmsSurveyQuestion, CmsResource, CmsResourceFolder, CmsSearchWord, CmsHotwordGroup, CmsPoll,
+  CmsContentVersion, CmsCollectRule, CmsCollectItem, CmsPage,
 } from './types';
 import { ANALYTICS_EXPERIMENT_EXPOSURE_EVENT, ANALYTICS_SEMANTIC_EVENT_LABELS, type AnalyticsSemanticEventName } from './constants';
 
 const SEED_DATE = '2024-01-01 00:00:00';
+
+export const SEED_CMS_EDITOR_USER = {
+  username: 'cms_editor',
+  nickname: 'CMS 演示编辑',
+  email: 'cms-editor@zenith.dev',
+  password: '123456',
+  roleId: 3,
+  departmentId: 2,
+} as const;
 
 // ─── 菜单 ─────────────────────────────────────────────────────────────────────
 
@@ -688,7 +698,8 @@ export const SEED_MENUS: Menu[] = [
   { id: 1718, parentId: 1715, title: '删除内容',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'cms:content:delete', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1719, parentId: 1715, title: '发布内容',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 4,  status: 'enabled', visible: true,  permission: 'cms:content:publish', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1720, parentId: 1715, title: '审核内容',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 5,  status: 'enabled', visible: true,  permission: 'cms:content:audit',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 1721, parentId: 1715, title: '内容编辑页',   name: 'CmsContentEdit',   path: '/cms/contents/edit', component: 'cms/ContentEditPage',      icon: undefined,      type: 'menu',      sort: 6,  status: 'enabled', visible: false, permission: 'cms:content:list',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1799, parentId: 1715, title: '锁定内容',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 6,  status: 'enabled', visible: true,  permission: 'cms:content:lock',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1721, parentId: 1715, title: '内容编辑页',   name: 'CmsContentEdit',   path: '/cms/contents/edit', component: 'cms/ContentEditPage',      icon: undefined,      type: 'menu',      sort: 7,  status: 'enabled', visible: false, permission: 'cms:content:list',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1746, parentId: 1700, title: '素材中心',     name: 'CmsResources',     path: '/cms/resources',   component: 'cms/ResourcesPage',          icon: 'Image',        type: 'menu',      sort: 3,  status: 'enabled', visible: true,  permission: 'cms:resource:list',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1747, parentId: 1746, title: '上传素材',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:resource:upload', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1748, parentId: 1746, title: '编辑素材',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'cms:resource:update', createdAt: SEED_DATE, updatedAt: SEED_DATE },
@@ -764,6 +775,17 @@ export const SEED_ROLES: Role[] = [
     createdAt: SEED_DATE,
     updatedAt: SEED_DATE,
     menuIds: [1, 202, 203, 310, 315],
+  },
+  {
+    id: 3,
+    name: 'CMS 编辑',
+    code: 'cms_editor',
+    description: 'CMS 非超管演示角色（受站点/栏目 ACL 约束）',
+    dataScope: 'all',
+    status: 'enabled',
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+    menuIds: SEED_MENUS.filter((menu) => menu.id === 1700 || (menu.id >= 1705 && menu.id <= 1799)).map((menu) => menu.id),
   },
 ];
 
@@ -2977,9 +2999,9 @@ export const SEED_CMS_CONTENTS: (CmsContent & { tagIds: number[] })[] = [
     coverImage: null, coverThumb: null, author: '管理员', editor: '管理员', source: '官方', sourceUrl: null, isOriginal: true, body: '<p>Zenith Admin 全新 CMS 模块正式发布：支持站群管理、内容模型自定义字段、React SSR 静态化与 PostgreSQL 全文检索，功能全面对标国内主流 CMS。</p>',
     extend: {}, externalLink: null, detailTemplate: null, isTop: true, topWeight: 10, topExpireAt: null, isRecommend: true, isHot: false,
     status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null, expireAt: null,
-    viewCount: 128, likeCount: 0, favoriteCount: 0, version: 1, sort: 0, seoTitle: null, seoKeywords: 'CMS,发布', seoDescription: null,
-    archivedAt: null, mappingSourceId: null,
-    tagIds: [1], createdAt: SEED_DATE, updatedAt: SEED_DATE,
+    viewCount: 128, likeCount: 0, favoriteCount: 0, version: 1, sort: 0, seoTitle: null, seoKeywords: 'CMS,发布', seoDescription: null, socialImageAlt: null, twitterCreator: null,
+    archivedAt: null, mappingSourceId: null, lockedAt: null, lockedBy: null, lockReason: null,
+    tagIds: [1], extraChannelIds: [2], relatedIds: [2], createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
   {
     id: 2, siteId: 1, channelId: 1, channelName: '新闻中心', modelId: 1,
@@ -2989,9 +3011,9 @@ export const SEED_CMS_CONTENTS: (CmsContent & { tagIds: number[] })[] = [
     coverImage: null, coverThumb: null, author: '管理员', editor: null, source: '原创', sourceUrl: null, isOriginal: true, body: '<p>本文介绍混合静态化模式（发布时增量生成 + 访问时回写）与应用层中文分词方案在 PostgreSQL tsvector 上的落地实践。</p>',
     extend: {}, externalLink: null, detailTemplate: null, isTop: false, topWeight: 0, topExpireAt: null, isRecommend: true, isHot: true,
     status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null, expireAt: null,
-    viewCount: 86, likeCount: 0, favoriteCount: 0, version: 1, sort: 0, seoTitle: null, seoKeywords: '静态化,全文检索', seoDescription: null,
-    archivedAt: null, mappingSourceId: null,
-    tagIds: [2], createdAt: SEED_DATE, updatedAt: SEED_DATE,
+    viewCount: 86, likeCount: 0, favoriteCount: 0, version: 1, sort: 0, seoTitle: null, seoKeywords: '静态化,全文检索', seoDescription: null, socialImageAlt: null, twitterCreator: null,
+    archivedAt: null, mappingSourceId: null, lockedAt: null, lockedBy: null, lockReason: null,
+    tagIds: [2], extraChannelIds: [], relatedIds: [1], createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
   {
     id: 3, siteId: 1, channelId: 2, channelName: '产品中心', modelId: 2,
@@ -3002,8 +3024,8 @@ export const SEED_CMS_CONTENTS: (CmsContent & { tagIds: number[] })[] = [
     extend: { price: '联系销售', spec: '支持私有化部署，PostgreSQL 16 + Redis 7' }, externalLink: null, detailTemplate: null,
     isTop: false, topWeight: 0, topExpireAt: null, isRecommend: false, isHot: false,
     status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null, expireAt: null,
-    viewCount: 45, likeCount: 0, favoriteCount: 0, version: 1, sort: 0, seoTitle: null, seoKeywords: null, seoDescription: null,
-    archivedAt: null, mappingSourceId: null,
+    viewCount: 45, likeCount: 0, favoriteCount: 0, version: 1, sort: 0, seoTitle: null, seoKeywords: null, seoDescription: null, socialImageAlt: null, twitterCreator: null,
+    archivedAt: null, mappingSourceId: null, lockedAt: null, lockedBy: null, lockReason: null,
     tagIds: [], createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
   {
@@ -3022,8 +3044,8 @@ export const SEED_CMS_CONTENTS: (CmsContent & { tagIds: number[] })[] = [
     extend: {}, externalLink: null, detailTemplate: null, isTop: false, topWeight: 0, topExpireAt: null, isRecommend: true, isHot: false,
     hasImage: true,
     status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null, expireAt: null,
-    viewCount: 66, likeCount: 0, favoriteCount: 0, version: 1, sort: 0, seoTitle: null, seoKeywords: '发布会,图集', seoDescription: null,
-    archivedAt: null, mappingSourceId: null,
+    viewCount: 66, likeCount: 0, favoriteCount: 0, version: 1, sort: 0, seoTitle: null, seoKeywords: '发布会,图集', seoDescription: null, socialImageAlt: 'Zenith 产品发布会现场', twitterCreator: '@zenith_admin',
+    archivedAt: null, mappingSourceId: null, lockedAt: null, lockedBy: null, lockReason: null,
     tagIds: [1], createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
   {
@@ -3041,9 +3063,31 @@ export const SEED_CMS_CONTENTS: (CmsContent & { tagIds: number[] })[] = [
     extend: {}, externalLink: null, detailTemplate: null, isTop: false, topWeight: 0, topExpireAt: null, isRecommend: false, isHot: true,
     hasImage: true, hasVideo: true,
     status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null, expireAt: null,
-    viewCount: 88, likeCount: 0, favoriteCount: 0, version: 1, sort: 0, seoTitle: null, seoKeywords: '视频,导览', seoDescription: null,
-    archivedAt: null, mappingSourceId: null,
+    viewCount: 88, likeCount: 0, favoriteCount: 0, version: 1, sort: 0, seoTitle: null, seoKeywords: '视频,导览', seoDescription: null, socialImageAlt: 'Zenith CMS 视频导览', twitterCreator: '@zenith_admin',
+    archivedAt: null, mappingSourceId: null, lockedAt: null, lockedBy: null, lockReason: null,
     tagIds: [], createdAt: SEED_DATE, updatedAt: SEED_DATE,
+  },
+];
+
+export const SEED_CMS_CONTENT_CHANNELS = [
+  { contentId: 1, channelId: 2 },
+];
+
+export const SEED_CMS_CONTENT_RELATIONS = [
+  { contentId: 1, relatedId: 2, sort: 1 },
+  { contentId: 2, relatedId: 1, sort: 1 },
+];
+
+export const SEED_CMS_CONTENT_VERSIONS: CmsContentVersion[] = [
+  {
+    id: 1,
+    contentId: 1,
+    version: 1,
+    title: 'Zenith Admin 发布 CMS 内容管理模块',
+    snapshot: { title: 'Zenith Admin 发布 CMS 内容管理模块', summary: '首个已发布版本' },
+    remark: 'Demo 初始发布快照',
+    createdByName: '管理员',
+    createdAt: SEED_DATE,
   },
 ];
 
@@ -3059,9 +3103,28 @@ export const SEED_CMS_FRIEND_LINKS: CmsFriendLink[] = [
 
 // ─── CMS 素材中心（P2 示例素材）──────────────────────────────────────────────────
 export const SEED_CMS_RESOURCES: CmsResource[] = [
-  { id: 1, siteId: 1, type: 'image', name: 'demo-avatar-01.svg', url: '/avatars/avatar-01.svg', thumbUrl: null, fileId: null, size: 4096, width: 128, height: 128, mimeType: 'image/svg+xml', remark: '演示素材（外链登记）', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 2, siteId: 1, type: 'image', name: 'demo-avatar-02.svg', url: '/avatars/avatar-02.svg', thumbUrl: null, fileId: null, size: 4096, width: 128, height: 128, mimeType: 'image/svg+xml', remark: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 3, siteId: 1, type: 'document', name: '产品白皮书.pdf', url: '/files/demo-whitepaper.pdf', thumbUrl: null, fileId: null, size: 1048576, width: null, height: null, mimeType: 'application/pdf', remark: '示例文档素材', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1, siteId: 1, folderId: 1, type: 'image', name: 'demo-avatar-01.svg', url: '/avatars/avatar-01.svg', thumbUrl: null, fileId: null, size: 4096, width: 128, height: 128, mimeType: 'image/svg+xml', remark: '演示素材（外链登记）', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, siteId: 1, folderId: 1, type: 'image', name: 'demo-avatar-02.svg', url: '/avatars/avatar-02.svg', thumbUrl: null, fileId: null, size: 4096, width: 128, height: 128, mimeType: 'image/svg+xml', remark: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 3, siteId: 1, folderId: 2, type: 'document', name: '产品白皮书.pdf', url: '/files/demo-whitepaper.pdf', thumbUrl: null, fileId: null, size: 1048576, width: null, height: null, mimeType: 'application/pdf', remark: '示例文档素材', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+export const SEED_CMS_RESOURCE_FOLDERS: CmsResourceFolder[] = [
+  { id: 1, siteId: 1, parentId: null, name: '图片素材', sort: 1, resourceCount: 2, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, siteId: 1, parentId: null, name: '文档资料', sort: 2, resourceCount: 1, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+export const SEED_CMS_SEARCH_WORDS: CmsSearchWord[] = [
+  { id: 1, siteId: 1, word: 'ZenithAdmin', type: 'extension', groupName: '品牌词', weight: 3000, status: 'enabled', remark: '品牌完整词（词典 token 不含空白）', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, siteId: 1, word: '的', type: 'stop', groupName: '通用停用词', weight: 1, status: 'enabled', remark: '过滤低价值助词', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+export const SEED_CMS_HOTWORD_GROUPS: CmsHotwordGroup[] = [
+  { id: 1, siteId: 1, name: '产品推荐', sort: 1, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+export const SEED_CMS_HOTWORDS = [
+  { id: 1, siteId: 1, groupId: 1, keyword: 'CMS', sort: 1, status: 'enabled' as const },
+  { id: 2, siteId: 1, groupId: 1, keyword: '企业版', sort: 2, status: 'enabled' as const },
 ];
 
 // ─── CMS 轻量投票（P3 示例投票）──────────────────────────────────────────────────
@@ -3078,6 +3141,43 @@ export const SEED_CMS_POLLS: CmsPoll[] = [
     status: 'published', totalVotes: 5, remark: '正文插入 [投票:reader-vote] 嵌入',
     createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
+];
+
+export const SEED_CMS_POLL_VOTES = [
+  { id: 1, pollId: 1, memberId: 1, ip: null, optionIds: [1, 2], createdAt: SEED_DATE },
+  { id: 2, pollId: 1, memberId: null, ip: '127.0.0.1', optionIds: [2], createdAt: SEED_DATE },
+];
+
+export const SEED_CMS_COLLECT_RULES: CmsCollectRule[] = [
+  {
+    id: 1, siteId: 1, channelId: 1, channelName: '新闻中心', name: '官方博客采集演示',
+    listUrl: 'https://example.com/news?page={page}', pageStart: 1, pageEnd: 1,
+    listSelector: '.news-list a', titleSelector: 'h1', bodySelector: 'article',
+    summarySelector: '.summary', coverSelector: '.cover img', removeSelectors: ['.ad'],
+    autoPublish: false, localizeImages: false, maxItems: 10, status: 'enabled',
+    lastRunAt: SEED_DATE, remark: '仅用于展示任务中心与采集明细', createdAt: SEED_DATE, updatedAt: SEED_DATE,
+  },
+];
+
+export const SEED_CMS_COLLECT_ITEMS: CmsCollectItem[] = [
+  { id: 1, ruleId: 1, url: 'https://example.com/news/demo', title: '采集演示文章', status: 'success', contentId: 1, error: null, createdAt: SEED_DATE },
+  { id: 2, ruleId: 1, url: 'https://example.com/news/failure', title: null, status: 'failed', contentId: null, error: '演示：页面结构不匹配', createdAt: SEED_DATE },
+];
+
+export const SEED_CMS_PAGES: CmsPage[] = [
+  {
+    id: 1, siteId: 1, name: '产品能力落地页', slug: 'capabilities', isHome: false,
+    blocks: [
+      { id: 'hero-1', type: 'hero', props: { title: 'Zenith CMS', subtitle: '内容、检索与素材治理一体化' } },
+      { id: 'content-1', type: 'content-list', props: { title: '最新内容', channelId: 1, limit: 5 } },
+    ],
+    seoTitle: 'Zenith CMS 产品能力', seoKeywords: 'CMS,内容管理', seoDescription: '可视化页面搭建演示',
+    status: 'enabled', remark: 'Stage 2 Demo 页面', createdAt: SEED_DATE, updatedAt: SEED_DATE,
+  },
+];
+
+export const SEED_CMS_SURVEY_ANSWERS = [
+  { id: 1, surveyId: 1, memberId: 1, ip: null, answers: { '1': 'opt-1-非常满意', '2': ['opt-1-站点管理', 'opt-3-全文检索'], '3': '继续完善素材治理' }, createdAt: SEED_DATE },
 ];
 
 // ─── CMS P2：广告位 / 广告 / 表单 / 敏感词 / 内链词 / 评论（示例）────────────────
@@ -3099,6 +3199,7 @@ export const SEED_CMS_FORMS: CmsForm[] = [
     ],
     successMessage: '提交成功，我们会尽快与您联系！',
     notifyEmail: null,
+    captchaProvider: 'math', turnstileSiteKey: null, turnstileSecret: null,
     status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
 ];
@@ -3123,7 +3224,7 @@ export const SEED_CMS_SURVEYS: (CmsSurvey & { questions: CmsSurveyQuestion[] })[
   {
     id: 1, siteId: 1, code: 'satisfaction', title: '产品满意度调查',
     description: '感谢使用 Zenith CMS，您的反馈将帮助我们持续改进。', status: 'published',
-    allowAnonymous: true, startAt: null, endAt: null, answerCount: 0,
+    allowAnonymous: true, startAt: null, endAt: null, answerCount: 1,
     createdAt: SEED_DATE, updatedAt: SEED_DATE,
     questions: [
       {

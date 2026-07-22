@@ -40,6 +40,7 @@ graph LR
 | 标签管理 | `/cms/tags` | 站点级标签 + 前台聚合页 | [内容管线](./content-pipeline) |
 | 碎片管理 | `/cms/fragments` | 模板可引用的后台可编辑区块 | [互动与运营](./interaction) |
 | 友情链接 | `/cms/friend-links` | 前台页脚友链 | [互动与运营](./interaction) |
+| 素材中心 | `/cms/resources` | 文件夹树、完整引用扫描、孤立素材治理任务与报告导出 | [内容管线](./content-pipeline) |
 | 站点静态化 | `/cms/sites` | 站点管理操作中提交全站静态化任务 | [渲染与静态化](./static-and-render) |
 | 检索管理 | `/cms/search` | 分词测试、词典、热词、死链检测 | [全文检索](./search) |
 | SEO 管理 | `/cms/seo` | 301 重定向、内链词、推送日志 | [SEO 与流量](./seo) |

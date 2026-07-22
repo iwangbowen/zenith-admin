@@ -13,6 +13,7 @@ import { currentMemberId } from '../../lib/member-context';
 import { buildSearchVector } from './cms-search.service';
 import { submitCmsContent } from './cms-contents.service';
 import { sanitizeCmsHtml } from './cms-html-sanitizer';
+import { assertCmsContentUnlocked } from './cms-content-lock.service';
 
 const CONTRIBUTION_SOURCE = '会员投稿';
 
@@ -135,7 +136,7 @@ export async function createContribution(input: ContributionInput) {
     source: CONTRIBUTION_SOURCE,
     status: 'draft',
     memberId,
-    searchVector: buildSearchVector({ title: input.title, summary: input.summary ?? null, body, seoKeywords: null, extendTexts: [] }),
+    searchVector: buildSearchVector({ siteId: input.siteId, title: input.title, summary: input.summary ?? null, body, seoKeywords: null, extendTexts: [] }),
   }).returning();
   await submitCmsContent(created.id, { skipAccessCheck: true });
   return getMyContribution(created.id);
@@ -144,6 +145,7 @@ export async function createContribution(input: ContributionInput) {
 /** 修改被驳回/草稿投稿并重新提交审核 */
 export async function updateMyContribution(id: number, input: Omit<ContributionInput, 'siteId'>) {
   const row = await getOwnContribution(id);
+  assertCmsContentUnlocked(row);
   if (row.status !== 'draft' && row.status !== 'rejected') {
     throw new HTTPException(400, { message: '仅草稿或被驳回的投稿可修改' });
   }
@@ -155,8 +157,8 @@ export async function updateMyContribution(id: number, input: Omit<ContributionI
     title: input.title,
     summary: input.summary ?? null,
     body,
-    searchVector: buildSearchVector({ title: input.title, summary: input.summary ?? null, body, seoKeywords: null, extendTexts: [] }),
-  }).where(eq(cmsContents.id, id));
+    searchVector: buildSearchVector({ siteId: row.siteId, title: input.title, summary: input.summary ?? null, body, seoKeywords: null, extendTexts: [] }),
+  }).where(and(eq(cmsContents.id, id), isNull(cmsContents.lockedAt)));
   await submitCmsContent(id, { skipAccessCheck: true });
   return getMyContribution(id);
 }
@@ -164,8 +166,9 @@ export async function updateMyContribution(id: number, input: Omit<ContributionI
 /** 删除投稿（仅草稿/被驳回；已发布内容不可自行删除） */
 export async function deleteMyContribution(id: number) {
   const row = await getOwnContribution(id);
+  assertCmsContentUnlocked(row);
   if (row.status !== 'draft' && row.status !== 'rejected') {
     throw new HTTPException(400, { message: '仅草稿或被驳回的投稿可删除' });
   }
-  await db.delete(cmsContents).where(eq(cmsContents.id, id));
+  await db.delete(cmsContents).where(and(eq(cmsContents.id, id), isNull(cmsContents.lockedAt)));
 }

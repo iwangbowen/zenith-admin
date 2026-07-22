@@ -98,11 +98,23 @@ export async function listMyAsyncTasks(query: ListAsyncTasksQuery) {
 }
 
 /** 校验当前用户可访问/操作该任务（创建者本人，或持有指定权限的管理员） */
+export interface AsyncTaskAccessScope {
+  userId: number;
+  global: boolean;
+}
+
+export async function resolveAsyncTaskAccessScope(
+  permission: 'system:async-task:list' | 'system:async-task:manage' = 'system:async-task:list',
+): Promise<AsyncTaskAccessScope> {
+  const user = currentUser();
+  return { userId: user.userId, global: await hasPermission(permission) };
+}
+
 async function ensureTaskAccessible(id: number, permission: 'system:async-task:list' | 'system:async-task:manage') {
   const row = await db.query.asyncTasks.findFirst({ where: eq(asyncTasks.id, id) });
   if (!row) throw new HTTPException(404, { message: '任务不存在' });
-  const user = currentUser();
-  if (row.createdBy !== user.userId && !(await hasPermission(permission))) {
+  const scope = await resolveAsyncTaskAccessScope(permission);
+  if (row.createdBy !== scope.userId && !scope.global) {
     throw new HTTPException(403, { message: '无权访问该任务' });
   }
   return row;

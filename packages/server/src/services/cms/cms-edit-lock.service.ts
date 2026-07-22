@@ -15,6 +15,7 @@ import { formatDateTime } from '../../lib/datetime';
 import { ensureCmsContentExists } from './cms-contents.service';
 import { assertSiteAccess } from './cms-sites.service';
 import { assertChannelAccess } from './cms-channels.service';
+import { assertCmsContentUnlocked } from './cms-content-lock.service';
 
 const LOCK_PREFIX = `${config.redis.keyPrefix}cms:edit-lock:`;
 const LOCK_TTL_SECONDS = 120;
@@ -57,6 +58,7 @@ export async function acquireContentEditLock(contentId: number): Promise<CmsEdit
   const row = await ensureCmsContentExists(contentId);
   await assertSiteAccess(row.siteId);
   await assertChannelAccess(row.channelId);
+  assertCmsContentUnlocked(row);
   const user = currentUser();
   const key = lockKey(contentId);
   const value = JSON.stringify({

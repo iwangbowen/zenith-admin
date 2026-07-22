@@ -10,7 +10,7 @@ import type {
   CmsTemplateHealth, CmsThemeSettingField,
   CmsContentType, CmsSurvey, CmsSurveyStats, CmsVisitStats, CmsSearchAnalytics,
   CmsResource, CmsResourceType, CmsResourceReference, UpdateCmsResourceInput, CropCmsResourceInput,
-  CmsPoll, CmsPollStatus, CmsPollResults,
+  CmsPoll, CmsPollStatus, CmsPollResults, CmsContentLockState, CmsResourceFolder, CmsHotwordGroup,
 } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { toQueryString, unwrap, LOOKUP_STALE_TIME } from '@/lib/query';
@@ -20,6 +20,7 @@ export interface CmsSiteListParams {
   page: number;
   pageSize: number;
   keyword?: string;
+  folderId?: number;
   status?: string;
 }
 
@@ -336,6 +337,18 @@ export function useCmsContentAction() {
   });
 }
 
+export function useCmsContentPersistentLock() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, action, reason }: { id: number; action: 'lock' | 'unlock'; reason?: string }) =>
+      (action === 'lock'
+        ? request.post<CmsContentLockState>(`/api/cms/contents/${id}/lock`, { reason })
+        : request.post<null>(`/api/cms/contents/${id}/unlock`, {})
+      ).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsContentKeys.all }),
+  });
+}
+
 /** 回收站/归档批量操作：recycle / restore / purge / archive / unarchive */
 export function useCmsContentBatch() {
   const qc = useQueryClient();
@@ -532,7 +545,7 @@ export function useCmsSearchReindex() {
 export const cmsSearchKeys = {
   all: ['cms-search'] as const,
   test: (params: { siteId: number | undefined; keyword: string; page: number }) => ['cms-search', 'test', params] as const,
-  segment: (text: string) => ['cms-search', 'segment', text] as const,
+  segment: (siteId: number | undefined, text: string) => ['cms-search', 'segment', siteId, text] as const,
 };
 
 export function useCmsSearchTest(params: { siteId: number | undefined; keyword: string; page: number }, enabled: boolean) {
@@ -546,11 +559,11 @@ export function useCmsSearchTest(params: { siteId: number | undefined; keyword: 
   });
 }
 
-export function useCmsSegmentPreview(text: string, enabled: boolean) {
+export function useCmsSegmentPreview(siteId: number | undefined, text: string, enabled: boolean) {
   return useQuery({
-    queryKey: cmsSearchKeys.segment(text),
-    queryFn: () => request.get<{ tokens: string[] }>(`/api/cms/search/segment${toQueryString({ text })}`).then(unwrap),
-    enabled: enabled && !!text,
+    queryKey: cmsSearchKeys.segment(siteId, text),
+    queryFn: () => request.get<{ tokens: string[] }>(`/api/cms/search/segment${toQueryString({ siteId, text })}`).then(unwrap),
+    enabled: enabled && siteId !== undefined && !!text,
   });
 }
 
@@ -768,6 +781,7 @@ export interface CmsResourceListParams {
   siteId: number;
   type?: CmsResourceType;
   keyword?: string;
+  folderId?: number;
 }
 
 export const cmsResourceKeys = {
@@ -775,6 +789,7 @@ export const cmsResourceKeys = {
   lists: ['cms-resources', 'list'] as const,
   list: (params: CmsResourceListParams) => ['cms-resources', 'list', params] as const,
   references: (id: number) => ['cms-resources', 'references', id] as const,
+  folders: (siteId: number | undefined) => ['cms-resources', 'folders', siteId] as const,
 };
 
 export function useCmsResourceList(params: CmsResourceListParams, enabled = true) {
@@ -794,13 +809,41 @@ export function useCmsResourceReferences(id: number | null) {
   });
 }
 
+export function useCmsResourceFolders(siteId: number | undefined) {
+  return useQuery({
+    queryKey: cmsResourceKeys.folders(siteId),
+    queryFn: () => request.get<CmsResourceFolder[]>(`/api/cms/resources/folders?siteId=${siteId}`).then(unwrap),
+    enabled: siteId !== undefined,
+  });
+}
+
+export function useSaveCmsResourceFolder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
+      (id === undefined
+        ? request.post<CmsResourceFolder>('/api/cms/resources/folders', values)
+        : request.put<CmsResourceFolder>(`/api/cms/resources/folders/${id}`, values)
+      ).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsResourceKeys.all }),
+  });
+}
+
+export function useDeleteCmsResourceFolder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.delete<null>(`/api/cms/resources/folders/${id}`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsResourceKeys.all }),
+  });
+}
+
 export function useUploadCmsResource() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ siteId, file }: { siteId: number; file: File }) => {
+    mutationFn: ({ siteId, folderId, file }: { siteId: number; folderId?: number; file: File }) => {
       const formData = new FormData();
       formData.append('file', file);
-      return request.post<CmsResource>(`/api/cms/resources/upload?siteId=${siteId}`, formData).then(unwrap);
+      return request.post<CmsResource>(`/api/cms/resources/upload${toQueryString({ siteId, folderId })}`, formData).then(unwrap);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: cmsResourceKeys.all }),
   });
@@ -828,6 +871,22 @@ export function useDeleteCmsResources() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (ids: number[]) => request.post<null>('/api/cms/resources/delete', { ids }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsResourceKeys.all }),
+  });
+}
+
+export function useCmsResourceGovernance() {
+  return useMutation({
+    mutationFn: (body: { siteId: number; operation: 'scan' | 'cleanup'; dryRun: boolean }) =>
+      request.post<AsyncTask>('/api/cms/resources/governance', body).then(unwrap),
+  });
+}
+
+export function useMoveCmsResources() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { siteId: number; ids: number[]; folderId: number | null }) =>
+      request.post<AsyncTask>('/api/cms/resources/move', body).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: cmsResourceKeys.all }),
   });
 }
@@ -1238,15 +1297,17 @@ export function useImportCmsSite() {
 export const cmsSearchWordKeys = {
   all: ['cms-search-words'] as const,
   lists: ['cms-search-words', 'list'] as const,
-  list: (params: { page: number; pageSize: number; keyword?: string }) => ['cms-search-words', 'list', params] as const,
-  hot: (siteId: number | undefined) => ['cms-search-words', 'hot', siteId] as const,
+  list: (params: Record<string, unknown>) => ['cms-search-words', 'list', params] as const,
+  hot: (params: Record<string, unknown>) => ['cms-search-words', 'hot', params] as const,
+  groups: (siteId: number | undefined) => ['cms-search-words', 'groups', siteId] as const,
 };
 
-export function useCmsSearchWordList(params: { page: number; pageSize: number; keyword?: string }) {
+export function useCmsSearchWordList(params: { page: number; pageSize: number; siteId: number; keyword?: string; type?: 'extension' | 'stop'; groupName?: string; status?: string }, enabled = true) {
   return useQuery({
     queryKey: cmsSearchWordKeys.list(params),
     queryFn: () => request.get<PaginatedResponse<CmsSearchWord>>(`/api/cms/search/words${toQueryString(params)}`).then(unwrap),
     placeholderData: keepPreviousData,
+    enabled,
   });
 }
 
@@ -1270,11 +1331,71 @@ export function useDeleteCmsSearchWord() {
   });
 }
 
-export function useCmsHotKeywords(siteId: number | undefined) {
+export function useBatchCmsSearchWords() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ action, body }: { action: 'update' | 'delete'; body: Record<string, unknown> }) =>
+      (action === 'update'
+        ? request.put<null>('/api/cms/search/words/batch', body)
+        : request.delete<null>('/api/cms/search/words/batch', body)
+      ).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsSearchWordKeys.all }),
+  });
+}
+
+export function useCmsHotKeywords(params: { siteId: number | undefined; groupId?: number; keyword?: string; status?: string; startTime?: string; endTime?: string }) {
   return useQuery({
-    queryKey: cmsSearchWordKeys.hot(siteId),
-    queryFn: () => request.get<CmsHotKeyword[]>(`/api/cms/search/hot-keywords?siteId=${siteId}&limit=30`).then(unwrap),
+    queryKey: cmsSearchWordKeys.hot(params),
+    queryFn: () => request.get<CmsHotKeyword[]>(`/api/cms/search/hot-keywords${toQueryString({ ...params, limit: 200 })}`).then(unwrap),
+    enabled: params.siteId !== undefined,
+  });
+}
+
+export function useCmsHotwordGroups(siteId: number | undefined) {
+  return useQuery({
+    queryKey: cmsSearchWordKeys.groups(siteId),
+    queryFn: () => request.get<CmsHotwordGroup[]>(`/api/cms/search/hotword-groups?siteId=${siteId}`).then(unwrap),
     enabled: siteId !== undefined,
+  });
+}
+
+export function useSaveCmsHotwordGroup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
+      (id === undefined
+        ? request.post<CmsHotwordGroup>('/api/cms/search/hotword-groups', values)
+        : request.put<CmsHotwordGroup>(`/api/cms/search/hotword-groups/${id}`, values)
+      ).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsSearchWordKeys.all }),
+  });
+}
+
+export function useDeleteCmsHotwordGroup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.delete<null>(`/api/cms/search/hotword-groups/${id}`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsSearchWordKeys.all }),
+  });
+}
+
+export function useSaveCmsHotword() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
+      (id === undefined
+        ? request.post<null>('/api/cms/search/hot-keywords', values)
+        : request.put<null>(`/api/cms/search/hot-keywords/${id}`, values)
+      ).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsSearchWordKeys.all }),
+  });
+}
+
+export function useDeleteCmsHotword() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.delete<null>(`/api/cms/search/hot-keywords/${id}`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsSearchWordKeys.all }),
   });
 }
 

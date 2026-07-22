@@ -30,6 +30,7 @@ export async function publishScheduledCmsContents(): Promise<string> {
         lte(cmsContents.scheduledAt, now),
         ne(cmsContents.status, 'published'),
         isNull(cmsContents.deletedAt),
+        isNull(cmsContents.lockedAt),
       ))
       .limit(200);
 

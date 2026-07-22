@@ -6,6 +6,8 @@ import type {
 } from '../types';
 import { CmsFragmentContent } from '../blocks';
 
+const CAPTCHA_SCRIPT = `(function(){function load(box){fetch('/api/public/cms/captcha').then(function(r){return r.json()}).then(function(r){if(!r||r.code!==0)return;box.querySelector('input[name="captchaId"]').value=r.data.id;var img=box.querySelector('.cms-captcha-img');img.innerHTML=r.data.svg;img.title='看不清？点击刷新'}).catch(function(){})}document.querySelectorAll('.cms-captcha-box').forEach(function(box){load(box);var img=box.querySelector('.cms-captcha-img');if(img)img.addEventListener('click',function(){load(box)})});})();`;
+
 const styles = `
 :root { --primary: #3451b2; --text: #213547; --text-2: #67676c; --border: #e2e2e3; --bg: #ffffff; --bg-2: #f6f6f7; --sidebar-w: 250px; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -154,7 +156,7 @@ interface DocLayoutProps {
   children: ReactNode;
 }
 
-function Layout({ ctx, currentUrl, sidebar = true, children }: DocLayoutProps) {
+export function Layout({ ctx, currentUrl, sidebar = true, children }: DocLayoutProps) {
   const { site, seo, nav, friendLinks, baseUrl } = ctx;
   const theme = buildThemeOverrides(site.settings);
   return (
@@ -166,10 +168,23 @@ function Layout({ ctx, currentUrl, sidebar = true, children }: DocLayoutProps) {
         {seo.keywords ? <meta name="keywords" content={seo.keywords} /> : null}
         {seo.description ? <meta name="description" content={seo.description} /> : null}
         {seo.canonical ? <link rel="canonical" href={seo.canonical} /> : null}
-        <meta property="og:type" content="website" />
+        <meta property="og:type" content={seo.ogType} />
         <meta property="og:title" content={seo.ogTitle} />
         {seo.ogDescription ? <meta property="og:description" content={seo.ogDescription} /> : null}
         {seo.ogImage ? <meta property="og:image" content={seo.ogImage} /> : null}
+        {seo.ogImageAlt ? <meta property="og:image:alt" content={seo.ogImageAlt} /> : null}
+        {seo.ogUrl ? <meta property="og:url" content={seo.ogUrl} /> : null}
+        <meta property="og:site_name" content={seo.ogSiteName} />
+        {seo.articlePublishedTime ? <meta property="article:published_time" content={seo.articlePublishedTime} /> : null}
+        {seo.articleModifiedTime ? <meta property="article:modified_time" content={seo.articleModifiedTime} /> : null}
+        {seo.articleAuthor ? <meta property="article:author" content={seo.articleAuthor} /> : null}
+        <meta name="twitter:card" content={seo.twitterCard} />
+        {seo.twitterSite ? <meta name="twitter:site" content={seo.twitterSite} /> : null}
+        {seo.twitterCreator ? <meta name="twitter:creator" content={seo.twitterCreator} /> : null}
+        <meta name="twitter:title" content={seo.twitterTitle} />
+        {seo.twitterDescription ? <meta name="twitter:description" content={seo.twitterDescription} /> : null}
+        {seo.twitterImage ? <meta name="twitter:image" content={seo.twitterImage} /> : null}
+        {seo.twitterImageAlt ? <meta name="twitter:image:alt" content={seo.twitterImageAlt} /> : null}
         {site.favicon ? <link rel="icon" href={site.favicon} /> : null}
         <meta name="generator" content="Zenith CMS" />
         {seo.jsonLd ? (
@@ -352,7 +367,7 @@ function DetailTemplate(ctx: CmsDetailContext) {
           ) : null}
           <button type="submit">提交评论（审核后显示）</button>
           {ctx.commentForm.captchaEnabled ? (
-            <script dangerouslySetInnerHTML={{ __html: `(function(){function load(box){fetch('/api/public/cms/captcha').then(function(r){return r.json()}).then(function(r){if(!r||r.code!==0)return;box.querySelector('input[name="captchaId"]').value=r.data.id;var img=box.querySelector('.cms-captcha-img');img.innerHTML=r.data.svg;img.title='看不清？点击刷新'}).catch(function(){})}document.querySelectorAll('.cms-captcha-box').forEach(function(box){load(box);var img=box.querySelector('.cms-captcha-img');if(img)img.addEventListener('click',function(){load(box)})});})();` }} />
+            <script dangerouslySetInnerHTML={{ __html: CAPTCHA_SCRIPT }} />
           ) : null}
         </form>
       </section>
@@ -377,17 +392,42 @@ function PageTemplate(ctx: CmsPageContext) {
             <label key={f.name}>
               {f.label} {f.required ? <span className="req">*</span> : null}
               {f.fieldType === 'textarea' ? (
-                <textarea name={f.name} required={f.required} maxLength={2000} />
+                <textarea name={f.name} required={f.required} minLength={f.minLength ?? undefined} maxLength={f.maxLength ?? 2000} />
               ) : f.fieldType === 'select' ? (
                 <select name={f.name} required={f.required} defaultValue="">
                   <option value="" disabled>请选择</option>
                   {(f.options ?? []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
+              ) : f.fieldType === 'radio' ? (
+                <span>
+                  {(f.options ?? []).map((option) => (
+                    <label key={option.value}><input type="radio" name={f.name} value={option.value} required={f.required} /> {option.label}</label>
+                  ))}
+                </span>
               ) : (
-                <input type="text" name={f.name} required={f.required} maxLength={200} />
+                <input
+                  type={f.fieldType === 'email' ? 'email' : f.fieldType === 'url' ? 'url' : f.fieldType === 'number' ? 'number' : 'text'}
+                  inputMode={f.fieldType === 'mobile' ? 'tel' : undefined}
+                  name={f.name}
+                  required={f.required}
+                  minLength={f.minLength ?? undefined}
+                  maxLength={f.maxLength ?? 200}
+                  pattern={f.fieldType === 'mobile' ? '1[3-9][0-9]{9}' : (f.pattern ?? undefined)}
+                  min={f.min ?? undefined}
+                  max={f.max ?? undefined}
+                />
               )}
             </label>
           ))}
+          {ctx.form.captcha.provider === 'math' ? (
+            <>
+              <div className="cms-captcha-box"><input type="hidden" name="captchaId" value="" /><label>验证码 <span className="req">*</span><input type="text" name="captchaAnswer" required /></label><span className="cms-captcha-img" /></div>
+              <script dangerouslySetInnerHTML={{ __html: CAPTCHA_SCRIPT }} />
+            </>
+          ) : null}
+          {ctx.form.captcha.provider === 'turnstile' && ctx.form.captcha.siteKey ? (
+            <><div className="cf-turnstile" data-sitekey={ctx.form.captcha.siteKey} /><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer /></>
+          ) : null}
           <button type="submit">提交</button>
         </form>
       ) : null}

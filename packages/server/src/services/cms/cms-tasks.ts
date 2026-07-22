@@ -7,12 +7,14 @@ import { createCmsContent, ensureCmsContentTargetAccess } from './cms-contents.s
 import { readFileContent } from '../files/files.service';
 import { isCmsPlatformAdmin } from './cms-access';
 import { assertAllCmsSiteChannelsAccess } from './cms-channels.service';
+import { registerCmsResourceTaskHandler } from './cms-resource-tasks';
 
 /** CMS 任务中心 handler 注册（index.ts 启动流程中、registerSystemTasks 之前调用） */
 export function registerCmsTaskHandlers(): void {
   registerCmsDeadlinkTaskHandler();
   registerCmsCollectTaskHandler();
   registerCmsContentImportTaskHandler();
+  registerCmsResourceTaskHandler();
   registerTaskHandler({
     taskType: 'cms-static-build',
     title: 'CMS 全站静态化',

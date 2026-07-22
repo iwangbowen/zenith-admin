@@ -18,6 +18,7 @@ import { useUploadFile } from '@/hooks/queries/files';
 import {
   useCmsChannelTree, useCmsContentList, useCmsContentAction, useCmsContentBatch,
   useAllCmsSites, useAllCmsTags, useCmsContentBatchOps, useDuplicateCmsContent, useImportCmsContents, cmsContentKeys,
+  useCmsContentPersistentLock,
 } from '@/hooks/queries/cms';
 import { CMS_CONTENT_STATUS_LABELS, CMS_CONTENT_TYPE_LABELS } from '@zenith/shared';
 import type { CmsChannel, CmsContent, CmsContentStatus, CmsContentType } from '@zenith/shared';
@@ -95,6 +96,7 @@ export default function ContentsPage() {
   const duplicateMutation = useDuplicateCmsContent();
   const uploadMutation = useUploadFile();
   const importMutation = useImportCmsContents();
+  const persistentLockMutation = useCmsContentPersistentLock();
   const { data: allTags } = useAllCmsTags(siteId);
   const moveFormApi = useRef<FormApi | null>(null);
   const tagFormApi = useRef<FormApi | null>(null);
@@ -143,8 +145,36 @@ export default function ContentsPage() {
           Toast.warning('请输入驳回原因');
           throw new Error('validation');
         }
+
         await actionMutation.mutateAsync({ id: record.id, action: 'reject', body: { reason } });
         Toast.success('已驳回');
+      },
+    });
+  }
+
+  function handlePersistentLock(record: CmsContent) {
+    if (record.lockedAt) {
+      Modal.confirm({
+        title: `解除「${record.title}」的持久锁？`,
+        content: '解锁后内容可再次编辑和流转；已取消的计划发布时间不会自动恢复。',
+        onOk: async () => {
+          await persistentLockMutation.mutateAsync({ id: record.id, action: 'unlock' });
+          Toast.success('已解除持久锁');
+        },
+      });
+      return;
+    }
+    let reason = '';
+    Modal.confirm({
+      title: `持久锁定「${record.title}」`,
+      content: <Input placeholder="请输入合规锁定原因" maxLength={500} onChange={(value) => { reason = value; }} />,
+      onOk: async () => {
+        if (!reason.trim()) {
+          Toast.warning('请输入锁定原因');
+          throw new Error('validation');
+        }
+        await persistentLockMutation.mutateAsync({ id: record.id, action: 'lock', reason: reason.trim() });
+        Toast.success('内容已持久锁定');
       },
     });
   }
@@ -228,6 +258,7 @@ export default function ContentsPage() {
           {record.isHot ? <Tag size="small" color="red" style={{ marginRight: 4 }}>热</Tag> : null}
           {record.memberId ? <Tag size="small" color="purple" style={{ marginRight: 4 }}>投稿</Tag> : null}
           {record.mappingSourceId ? <Tag size="small" color="teal" style={{ marginRight: 4 }}>映射</Tag> : null}
+          {record.lockedAt ? <Tag size="small" color="red" style={{ marginRight: 4 }}>锁定</Tag> : null}
           {record.isOriginal ? <Tag size="small" color="green" style={{ marginRight: 4 }}>原创</Tag> : null}
           <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 240, verticalAlign: 'middle' }}>{v}</Typography.Text>
         </span>
@@ -262,7 +293,14 @@ export default function ContentsPage() {
     createOperationColumn<CmsContent>({
       width: 260,
       desktopInlineKeys: activeTab === 'recycle' ? ['restore', 'purge'] : activeTab === 'archived' ? ['unarchive', 'preview'] : ['edit', 'preview', 'submit', 'publish', 'offline'],
-      actions: (record) => activeTab === 'recycle'
+      actions: (record) => record.lockedAt
+        ? [
+            ...(record.status === 'published' ? [{ key: 'preview', label: '预览', onClick: () => previewContent(record) }] : []),
+            ...(hasPermission('cms:content:lock') ? [{
+              key: 'unlock', label: '解锁', onClick: () => handlePersistentLock(record),
+            }] : []),
+          ]
+        : activeTab === 'recycle'
         ? [
             ...(hasPermission('cms:content:delete') ? [
               { key: 'restore', label: '恢复', onClick: () => void runBatch('restore', [record.id], '已恢复为草稿') },
@@ -275,6 +313,7 @@ export default function ContentsPage() {
                 },
               },
             ] : []),
+            ...(hasPermission('cms:content:lock') ? [{ key: 'lock', label: '锁定', onClick: () => handlePersistentLock(record) }] : []),
           ]
         : activeTab === 'archived'
         ? [
@@ -288,6 +327,7 @@ export default function ContentsPage() {
               label: '预览',
               onClick: () => previewContent(record),
             }] : []),
+            ...(hasPermission('cms:content:lock') ? [{ key: 'lock', label: '锁定', onClick: () => handlePersistentLock(record) }] : []),
           ]
         : [
             ...(hasPermission('cms:content:update') ? [{
@@ -362,6 +402,7 @@ export default function ContentsPage() {
                 Modal.confirm({ title: '移入回收站？', content: '已发布内容将同时下线', onOk: () => runBatch('recycle', [record.id], '已移入回收站') });
               },
             }] : []),
+            ...(hasPermission('cms:content:lock') ? [{ key: 'lock', label: '锁定', onClick: () => handlePersistentLock(record) }] : []),
           ],
     }),
   ];

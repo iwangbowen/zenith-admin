@@ -14,7 +14,10 @@ import {
   useCmsFormList, useSaveCmsForm, useDeleteCmsForm,
   useCmsFormSubmissions, useDeleteCmsFormSubmissions,
 } from '@/hooks/queries/cms';
-import { CMS_FORM_FIELD_TYPES, CMS_FORM_FIELD_TYPE_LABELS } from '@zenith/shared';
+import {
+  CMS_FORM_CAPTCHA_PROVIDERS, CMS_FORM_CAPTCHA_PROVIDER_LABELS,
+  CMS_FORM_FIELD_TYPES, CMS_FORM_FIELD_TYPE_LABELS,
+} from '@zenith/shared';
 import type { CmsForm, CmsFormSubmission } from '@zenith/shared';
 import { CmsSiteSelect } from './CmsSiteSelect';
 
@@ -102,6 +105,7 @@ export default function FormsPage() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<CmsForm | null>(null);
   const [viewingForm, setViewingForm] = useState<CmsForm | null>(null);
+  const [previewingForm, setPreviewingForm] = useState<CmsForm | null>(null);
 
   const listQuery = useCmsFormList({ page, pageSize, siteId: siteId ?? 0 }, siteId !== undefined);
   const saveMutation = useSaveCmsForm();
@@ -117,6 +121,16 @@ export default function FormsPage() {
       throw new Error('validation');
     }
     if (!editingRecord) values.siteId = siteId;
+    values.turnstileSecret = values.clearTurnstileSecret === true ? null : (values.turnstileSecret ?? '');
+    delete values.clearTurnstileSecret;
+    values.fields = ((values.fields as Array<Record<string, unknown>> | undefined) ?? []).map((field) => {
+      const options = String(field.optionsText ?? '').split('\n').map((line) => line.trim()).filter(Boolean).map((line) => {
+        const [label, value = label] = line.split('=').map((part) => part.trim());
+        return { label, value };
+      });
+      const { optionsText: _optionsText, ...rest } = field;
+      return { ...rest, options: options.length > 0 ? options : null };
+    });
     await saveMutation.mutateAsync({ id: editingRecord?.id, values });
     Toast.success(editingRecord ? '更新成功' : '创建成功');
     setModalVisible(false);
@@ -142,6 +156,7 @@ export default function FormsPage() {
       desktopInlineKeys: ['data', 'edit', 'delete'],
       actions: (record) => [
         { key: 'data', label: '提交数据', onClick: () => setViewingForm(record) },
+        { key: 'preview', label: '预览', onClick: () => setPreviewingForm(record) },
         ...(canManage ? [
           { key: 'edit', label: '编辑', onClick: () => { setEditingRecord(record); setModalVisible(true); } },
           {
@@ -199,10 +214,17 @@ export default function FormsPage() {
             ? {
                 name: editingRecord.name, code: editingRecord.code, successMessage: editingRecord.successMessage ?? '',
                 notifyEmail: editingRecord.notifyEmail ?? '',
+                captchaProvider: editingRecord.captchaProvider,
+                turnstileSiteKey: editingRecord.turnstileSiteKey ?? '',
+                turnstileSecret: editingRecord.turnstileSecret ?? '',
+                clearTurnstileSecret: false,
                 status: editingRecord.status,
-                fields: editingRecord.fields.map((f) => ({ ...f })),
+                fields: editingRecord.fields.map((f) => ({
+                  ...f,
+                  optionsText: (f.options ?? []).map((option) => `${option.label}=${option.value}`).join('\n'),
+                })),
               }
-            : { status: 'enabled', fields: [{ name: 'name', label: '姓名', fieldType: 'text', required: true }] }}
+            : { status: 'enabled', captchaProvider: 'inherit', fields: [{ name: 'name', label: '姓名', fieldType: 'text', required: true }] }}
           labelPosition="left"
           labelWidth={90}
         >
@@ -210,6 +232,11 @@ export default function FormsPage() {
           <Form.Input field="code" label="表单标识" disabled={!!editingRecord} placeholder="如 contact（前台提交与栏目绑定用）" rules={[{ required: true, message: '请输入表单标识' }]} />
           <Form.Input field="successMessage" label="成功提示" placeholder="提交成功后展示的文案" />
           <Form.Input field="notifyEmail" label="通知邮箱" placeholder="收到新提交时通知，多个邮箱用逗号分隔（留空不通知）" />
+          <Form.Select field="captchaProvider" label="验证码策略" style={{ width: '100%' }}
+            optionList={CMS_FORM_CAPTCHA_PROVIDERS.map((value) => ({ value, label: CMS_FORM_CAPTCHA_PROVIDER_LABELS[value] }))} />
+          <Form.Input field="turnstileSiteKey" label="Turnstile Site Key" maxLength={200} />
+          <Form.Input field="turnstileSecret" type="password" label="Turnstile Secret" maxLength={500} placeholder="留空或保留掩码表示不修改" />
+          {editingRecord ? <Form.Checkbox field="clearTurnstileSecret" noLabel>清除已配置的 Turnstile Secret</Form.Checkbox> : null}
           <Form.RadioGroup field="status" label="状态">
             <Form.Radio value="enabled">启用</Form.Radio>
             <Form.Radio value="disabled">停用</Form.Radio>
@@ -219,19 +246,30 @@ export default function FormsPage() {
               {({ add, arrayFields }) => (
                 <>
                   {arrayFields.map(({ field, key, remove }) => (
-                    <div key={key} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 4 }}>
-                      <Form.Input field={`${field}[name]`} noLabel placeholder="字段标识（英文）" style={{ width: 140 }}
+                    <div key={key} style={{ border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', padding: 10, marginBottom: 8 }}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                        <Form.Input field={`${field}[name]`} noLabel placeholder="字段标识（英文）" style={{ width: 140 }}
                         rules={[{ required: true, message: '必填' }, { pattern: /^[a-z][a-z0-9_]*$/, message: '小写字母开头' }]} />
-                      <Form.Input field={`${field}[label]`} noLabel placeholder="字段名称" style={{ width: 130 }}
+                        <Form.Input field={`${field}[label]`} noLabel placeholder="字段名称" style={{ width: 130 }}
                         rules={[{ required: true, message: '必填' }]} />
-                      <Form.Select field={`${field}[fieldType]`} noLabel initValue="text" style={{ width: 110 }} optionList={FIELD_TYPE_OPTIONS} />
-                      <Form.Checkbox field={`${field}[required]`} noLabel>必填</Form.Checkbox>
-                      <Button type="danger" theme="borderless" icon={<Trash2 size={14} />} onClick={() => remove()} style={{ marginTop: 4 }} />
+                        <Form.Select field={`${field}[fieldType]`} noLabel initValue="text" style={{ width: 110 }} optionList={FIELD_TYPE_OPTIONS} />
+                        <Form.Checkbox field={`${field}[required]`} noLabel>必填</Form.Checkbox>
+                        <Button type="danger" theme="borderless" icon={<Trash2 size={14} />} onClick={() => remove()} style={{ marginTop: 4 }} />
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: 8 }}>
+                        <Form.InputNumber field={`${field}[minLength]`} noLabel placeholder="最小长度" min={0} max={2000} />
+                        <Form.InputNumber field={`${field}[maxLength]`} noLabel placeholder="最大长度" min={1} max={2000} />
+                        <Form.Input field={`${field}[pattern]`} noLabel placeholder="RE2 规则，如 ^[A-Z]{2}-\\d{4}$" />
+                        <Form.InputNumber field={`${field}[min]`} noLabel placeholder="数字最小值" />
+                        <Form.InputNumber field={`${field}[max]`} noLabel placeholder="数字最大值" />
+                        <Form.Input field={`${field}[errorMessage]`} noLabel placeholder="自定义错误提示" />
+                        <Form.TextArea field={`${field}[optionsText]`} noLabel rows={2} placeholder={'选项（select/radio），每行：显示名=值'} />
+                      </div>
                     </div>
                   ))}
                   <Button icon={<Plus size={14} />} onClick={() => add()}>添加字段</Button>
                   <Typography.Text type="secondary" size="small" style={{ display: 'block', marginTop: 8 }}>
-                    下拉/单选字段的选项配置将在编辑保存后由前台按需扩展；文本类字段开箱即用。
+                    自定义规则由服务端 RE2JS 线性时间引擎编译执行（最长 200 字符）；不支持反向引用等非 RE2 语法。
                   </Typography.Text>
                 </>
               )}
@@ -241,6 +279,29 @@ export default function FormsPage() {
       </AppModal>
 
       <SubmissionsSheet form={viewingForm} onClose={() => setViewingForm(null)} />
+      <AppModal
+        title={`前台表单预览 — ${previewingForm?.name ?? ''}`}
+        visible={previewingForm !== null}
+        onCancel={() => setPreviewingForm(null)}
+        footer={null}
+        width={560}
+        closeOnEsc
+      >
+        {previewingForm ? (
+          <Form labelPosition="top" disabled>
+            {previewingForm.fields.map((field) => (
+              field.fieldType === 'textarea'
+                ? <Form.TextArea key={field.name} field={field.name} label={field.label} placeholder={field.errorMessage ?? undefined} />
+                : field.fieldType === 'select'
+                ? <Form.Select key={field.name} field={field.name} label={field.label} optionList={field.options ?? []} />
+                : <Form.Input key={field.name} field={field.name} label={field.label} type={field.fieldType === 'email' ? 'email' : field.fieldType === 'number' ? 'number' : 'text'} />
+            ))}
+            <Typography.Text type="tertiary">
+              验证码：{CMS_FORM_CAPTCHA_PROVIDER_LABELS[previewingForm.captchaProvider]}
+            </Typography.Text>
+          </Form>
+        ) : null}
+      </AppModal>
     </div>
   );
 }

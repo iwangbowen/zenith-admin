@@ -378,7 +378,7 @@ export function registerCmsCollectTaskHandler(): void {
             body: bodyHtml,
             source: '采集',
             status: 'draft',
-            searchVector: buildSearchVector({ title: article.title, summary: article.summary, body: bodyHtml, seoKeywords: null, extendTexts: [] }),
+            searchVector: buildSearchVector({ siteId: rule.siteId, title: article.title, summary: article.summary, body: bodyHtml, seoKeywords: null, extendTexts: [] }),
           }).returning({ id: cmsContents.id });
           if (rule.autoPublish) await publishCmsContent(content.id);
           await db.insert(cmsCollectItems).values({

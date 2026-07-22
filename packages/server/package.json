@@ -71,6 +71,7 @@
 		"prom-client": "^15.1.3",
 		"qiniu": "^7.15.2",
 		"qrcode": "^1.5.4",
+		"re2js": "^2.8.6",
 		"react": "^19.2.7",
 		"react-dom": "^19.2.7",
 		"sanitize-html": "^2.17.6",

@@ -21,10 +21,11 @@ import { searchCmsContents, stripHtml } from './cms-search.service';
 import { getEnabledLinkWords, applyLinkWords } from './cms-link-words.service';
 import { applyPollMarkers } from './cms-polls.service';
 import { isCaptchaEnabled } from './cms-captcha.service';
+import { resolveCmsFormCaptcha } from './cms-form-captcha.service';
 import { listApprovedComments } from './cms-comments.service';
 import { getActiveAds } from './cms-ads.service';
 import { getCmsFormByCode } from './cms-forms.service';
-import type { CmsChannel, CmsDeviceChannel, CmsSiteTemplateDefaults } from '@zenith/shared';
+import type { CmsChannel, CmsDeviceChannel, CmsFormField, CmsSiteTemplateDefaults } from '@zenith/shared';
 import { CMS_CONTENT_STATUS_LABELS } from '@zenith/shared';
 
 // ─── URL 规则（站点内相对路径，静态文件名与之一一对应）──────────────────────────
@@ -150,20 +151,47 @@ function navFromTree(tree: CmsChannel[], baseUrl: string): CmsNavItem[] {
 
 function mergeSeo(site: CmsSiteRow, overrides: Partial<CmsSeo> & { pathForCanonical?: string }): CmsSeo {
   const origin = siteOrigin(site);
+  const settings = (site.settings ?? {}) as Record<string, unknown>;
   const siteTitle = site.title?.trim() || site.name;
   const title = overrides.title ?? siteTitle;
   const description = overrides.description ?? site.description ?? '';
+  const canonical = origin && overrides.pathForCanonical !== undefined ? `${origin}${overrides.pathForCanonical}` : null;
+  const image = overrides.ogImage ?? site.logo ?? null;
+  const imageAbsolute = image && origin && image.startsWith('/') ? `${origin}${image}` : image;
+  const twitterCard = settings.twitterCard === 'summary' ? 'summary' : 'summary_large_image';
+  const twitterSite = typeof settings.twitterSite === 'string' && settings.twitterSite.trim()
+    ? settings.twitterSite.trim()
+    : null;
+  const defaultImageAlt = typeof settings.socialImageAlt === 'string' && settings.socialImageAlt.trim()
+    ? settings.socialImageAlt.trim()
+    : site.name;
   return {
     title,
     keywords: overrides.keywords ?? site.keywords ?? '',
     description,
-    canonical: origin && overrides.pathForCanonical !== undefined ? `${origin}${overrides.pathForCanonical}` : null,
+    canonical,
     ogTitle: overrides.ogTitle ?? title,
     ogDescription: overrides.ogDescription ?? description,
-    ogImage: overrides.ogImage ?? site.logo ?? null,
+    ogImage: imageAbsolute,
+    ogImageAlt: overrides.ogImageAlt ?? (imageAbsolute ? defaultImageAlt : null),
+    ogType: overrides.ogType ?? 'website',
+    ogUrl: overrides.ogUrl ?? canonical,
+    ogSiteName: overrides.ogSiteName ?? site.name,
+    articlePublishedTime: overrides.articlePublishedTime ?? null,
+    articleModifiedTime: overrides.articleModifiedTime ?? null,
+    articleAuthor: overrides.articleAuthor ?? null,
+    twitterCard: overrides.twitterCard ?? twitterCard,
+    twitterSite: overrides.twitterSite ?? twitterSite,
+    twitterCreator: overrides.twitterCreator ?? null,
+    twitterTitle: overrides.twitterTitle ?? overrides.ogTitle ?? title,
+    twitterDescription: overrides.twitterDescription ?? overrides.ogDescription ?? description,
+    twitterImage: overrides.twitterImage ?? imageAbsolute,
+    twitterImageAlt: overrides.twitterImageAlt ?? overrides.ogImageAlt ?? (imageAbsolute ? defaultImageAlt : null),
     jsonLd: overrides.jsonLd ?? null,
   };
 }
+
+export { mergeSeo as mergeCmsSeo };
 
 async function buildBaseContext(site: CmsSiteRow, baseUrl: string, seo: CmsSeo, analyticsContentId?: number): Promise<CmsBaseContext> {
   const [tree, fragments, friendLinks, ads, langAlternates] = await Promise.all([
@@ -427,8 +455,8 @@ export async function renderChannelPage(site: CmsSiteRow, baseUrl: string, chann
         action: `/api/public/cms/forms/${site.code}/${form.code}`,
         returnUrl: channelUrl(baseUrl, channel.path),
         successMessage: form.successMessage ?? null,
-        fields: form.fields ?? [],
-        captchaEnabled: isCaptchaEnabled(site),
+        fields: (form.fields ?? []) as CmsFormField[],
+        captcha: resolveCmsFormCaptcha(form, site),
       } : null,
     });
     return { status: 200, html, kind: 'page' };
@@ -503,6 +531,12 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
     description: row.seoDescription ?? row.summary ?? undefined,
     ogTitle: row.title,
     ogImage: row.coverImage ?? undefined,
+    ogImageAlt: row.socialImageAlt ?? undefined,
+    ogType: 'article',
+    articlePublishedTime: formatIso8601(row.publishedAt),
+    articleModifiedTime: formatIso8601(row.updatedAt),
+    articleAuthor: row.author ?? null,
+    twitterCreator: row.twitterCreator ?? null,
     pathForCanonical: canonicalPath,
     jsonLd: {
       '@context': 'https://schema.org',
@@ -582,7 +616,15 @@ export async function renderContentPreviewPage(site: CmsSiteRow, baseUrl: string
   const seo = mergeSeo(site, {
     title: `【预览】${row.title}`,
     description: row.seoDescription ?? row.summary ?? undefined,
+    pathForCanonical: contentUrl('', channel.path, row),
     ogTitle: row.title,
+    ogImage: row.coverImage ?? undefined,
+    ogImageAlt: row.socialImageAlt ?? undefined,
+    ogType: 'article',
+    articlePublishedTime: formatIso8601(row.publishedAt),
+    articleModifiedTime: formatIso8601(row.updatedAt),
+    articleAuthor: row.author ?? null,
+    twitterCreator: row.twitterCreator ?? null,
   });
   const [base, breadcrumbs, tags, linkWords, resolved] = await Promise.all([
     buildBaseContext(site, baseUrl, seo),

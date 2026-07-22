@@ -120,6 +120,20 @@ function CaptchaBox({ enabled }: { enabled: boolean }) {
   );
 }
 
+function FormCaptcha({ config }: { config: CmsFrontFormConfig['captcha'] }) {
+  if (config.provider === 'none') return null;
+  if (config.provider === 'math') {
+    return <><CaptchaBox enabled /><script dangerouslySetInnerHTML={{ __html: CAPTCHA_SCRIPT }} /></>;
+  }
+  if (!config.siteKey) return null;
+  return (
+    <>
+      <div className="cf-turnstile" data-sitekey={config.siteKey} />
+      <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer />
+    </>
+  );
+}
+
 /**
  * 投票组件加载：为 .cms-poll 占位拉取投票数据渲染选项表单；已投/结束显示结果条。
  * 登录会员走会员 API（一人一票），游客走公开 API（IP 去重）。
@@ -188,7 +202,7 @@ function FrontForm({ form }: { form: CmsFrontFormConfig }) {
         <label key={f.name}>
           {f.label} {f.required ? <span className="req">*</span> : null}
           {f.fieldType === 'textarea' ? (
-            <textarea name={f.name} required={f.required} maxLength={2000} />
+            <textarea name={f.name} required={f.required} minLength={f.minLength ?? undefined} maxLength={f.maxLength ?? 2000} />
           ) : f.fieldType === 'select' ? (
             <select name={f.name} required={f.required} defaultValue="">
               <option value="" disabled>请选择</option>
@@ -203,13 +217,22 @@ function FrontForm({ form }: { form: CmsFrontFormConfig }) {
               ))}
             </span>
           ) : (
-            <input type="text" name={f.name} required={f.required} maxLength={200} />
+            <input
+              type={f.fieldType === 'email' ? 'email' : f.fieldType === 'url' ? 'url' : f.fieldType === 'number' ? 'number' : 'text'}
+              inputMode={f.fieldType === 'mobile' ? 'tel' : undefined}
+              name={f.name}
+              required={f.required}
+              minLength={f.minLength ?? undefined}
+              maxLength={f.maxLength ?? 200}
+              pattern={f.fieldType === 'mobile' ? '1[3-9][0-9]{9}' : (f.pattern ?? undefined)}
+              min={f.min ?? undefined}
+              max={f.max ?? undefined}
+            />
           )}
         </label>
       ))}
-      <CaptchaBox enabled={form.captchaEnabled} />
+      <FormCaptcha config={form.captcha} />
       <button type="submit">提交</button>
-      {form.captchaEnabled ? <script dangerouslySetInnerHTML={{ __html: CAPTCHA_SCRIPT }} /> : null}
     </form>
   );
 }

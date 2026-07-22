@@ -1,5 +1,9 @@
 # SEO 与流量
 
+## Social SEO
+
+default/docs 主题、动态 SSR、静态页和草稿预览统一输出 `og:url`、`og:site_name`、图片说明、Article 发布时间/修改时间/作者，以及完整 Twitter Card（card/site/creator/title/description/image/image alt）。站点配置提供默认 Twitter 账号、Card 类型和图片说明，内容可覆盖作者账号与社交图片说明。
+
 ## 三级 TDK 覆盖
 
 SEO 标题/关键词/描述按 **内容 → 栏目 → 站点** 三级向上回退，留空即继承。详情页额外输出 canonical、Open Graph 与 Article JSON-LD 结构化数据。

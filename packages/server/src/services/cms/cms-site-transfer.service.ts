@@ -12,13 +12,14 @@ import { ensureCmsSiteExists, assertSiteAccess, invalidateSiteCache } from './cm
 import { isCmsPlatformAdmin } from './cms-access';
 import { normalizeNewCmsSiteSettings, redactCmsSiteSettings } from './cms-site-settings';
 import { sanitizeCmsHtml } from './cms-html-sanitizer';
-import { cmsSlugRegex } from '@zenith/shared';
+import { CMS_SECRET_MASK, cmsSlugRegex } from '@zenith/shared';
 import { parseCmsImportSiteCode } from './cms-import-security';
 import { currentUser } from '../../lib/context';
 import { assertAllCmsSiteChannelsAccess } from './cms-channels.service';
 import { sanitizeCmsPageBlocks } from './cms-page-blocks';
 import { CMS_IMPORTED_CONTENT_LIFECYCLE } from './cms-publish-permission';
 import { sanitizeCmsImportedFragment } from './cms-fragment-content';
+import { normalizeCmsFormFields, type FormFieldInput } from './cms-forms.service';
 
 /**
  * 站点导入导出（P5 企业级治理）：整站结构与内容打包为 JSON，用于备份迁移 / 环境同步。
@@ -110,7 +111,10 @@ export async function exportCmsSite(siteId: number) {
     linkWords: linkWords.map((r) => exportRow(r, ['id', 'siteId'])),
     adSlots: adSlots.map((r) => exportRow(r, ['siteId'])),
     ads: ads.map((r) => exportRow(r, ['id', 'clickCount', 'viewCount'])),
-    forms: forms.map((r) => exportRow(r, ['id', 'siteId'])),
+    forms: forms.map((r) => exportRow({
+      ...r,
+      turnstileSecret: r.turnstileSecret ? CMS_SECRET_MASK : null,
+    }, ['id', 'siteId'])),
     pages: pages.map((r) => exportRow(r, ['id', 'siteId', 'isHome'])),
   };
 }
@@ -288,7 +292,10 @@ export async function importCmsSite(payload: unknown) {
         seoTitle: str(c.seoTitle),
         seoKeywords: str(c.seoKeywords),
         seoDescription: str(c.seoDescription),
+        socialImageAlt: str(c.socialImageAlt),
+        twitterCreator: str(c.twitterCreator),
         searchVector: buildSearchVector({
+          siteId,
           title,
           seoKeywords: str(c.seoKeywords),
           summary: str(c.summary),
@@ -392,13 +399,17 @@ export async function importCmsSite(payload: unknown) {
       });
     }
     for (const f of (pkg.forms ?? []) as PlainRow[]) {
+      const importedSecret = str(f.turnstileSecret);
       await tx.insert(cmsForms).values({
         siteId,
         code: str(f.code) ?? `form-${num(f.id)}`,
         name: str(f.name) ?? '未命名表单',
-        fields: (f.fields ?? []) as typeof cmsForms.$inferInsert.fields,
+        fields: normalizeCmsFormFields((f.fields ?? []) as FormFieldInput[]),
         successMessage: str(f.successMessage),
         notifyEmail: str(f.notifyEmail),
+        captchaProvider: (str(f.captchaProvider) as typeof cmsForms.$inferInsert.captchaProvider) ?? 'inherit',
+        turnstileSiteKey: str(f.turnstileSiteKey),
+        turnstileSecret: importedSecret && importedSecret !== CMS_SECRET_MASK ? importedSecret : null,
         status: (str(f.status) as typeof cmsForms.$inferInsert.status) ?? 'enabled',
       });
     }

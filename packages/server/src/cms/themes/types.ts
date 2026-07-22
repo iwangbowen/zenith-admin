@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react';
-import type { CmsFragmentType, CmsSearchResult, CmsThemeSettingField } from '@zenith/shared';
+import type { CmsFormField, CmsFragmentType, CmsSearchResult, CmsThemeSettingField } from '@zenith/shared';
 
 /** 渲染上下文：站点信息 */
 export interface CmsRenderSite {
@@ -42,6 +42,20 @@ export interface CmsSeo {
   ogTitle: string;
   ogDescription: string;
   ogImage: string | null;
+  ogImageAlt: string | null;
+  ogType: 'website' | 'article';
+  ogUrl: string | null;
+  ogSiteName: string;
+  articlePublishedTime: string | null;
+  articleModifiedTime: string | null;
+  articleAuthor: string | null;
+  twitterCard: 'summary' | 'summary_large_image';
+  twitterSite: string | null;
+  twitterCreator: string | null;
+  twitterTitle: string;
+  twitterDescription: string;
+  twitterImage: string | null;
+  twitterImageAlt: string | null;
   /** JSON-LD 结构化数据（detail 页为 Article） */
   jsonLd: Record<string, unknown> | null;
 }
@@ -207,9 +221,8 @@ export interface CmsFrontFormConfig {
   action: string;
   returnUrl: string;
   successMessage: string | null;
-  fields: { name: string; label: string; fieldType: string; required: boolean; options?: { label: string; value: string }[] | null }[];
-  /** 站点开启图形验证码（提交时必须携带答案） */
-  captchaEnabled: boolean;
+  fields: CmsFormField[];
+  captcha: { provider: 'none' | 'math' | 'turnstile'; siteKey: string | null };
 }
 
 export interface CmsPageContext extends CmsBaseContext {

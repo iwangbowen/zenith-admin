@@ -1,12 +1,12 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { createCmsContentSchema, updateCmsContentSchema } from '@zenith/shared';
+import { createCmsContentSchema, lockCmsContentSchema, updateCmsContentSchema } from '@zenith/shared';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
 import {
   ErrorResponse, jsonContent, PaginationQuery, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, IdParam, BatchIdsBody, okBody,
 } from '../../lib/openapi-schemas';
-import { CmsContentDTO } from '../../lib/openapi-dtos';
+import { CmsContentDTO, CmsContentLockDTO } from '../../lib/openapi-dtos';
 import {
   listCmsContents, getCmsContent, createCmsContent, updateCmsContent,
   submitCmsContent, publishCmsContent, rejectCmsContent, offlineCmsContent,
@@ -23,6 +23,7 @@ import { createContentPreviewLink } from '../../services/cms/cms-preview.service
 import { triggerContentStaticRefresh } from '../../services/cms/cms-static.service';
 import { CmsContentVersionDTO, CmsContentVersionDiffDTO, CmsEditLockDTO, CmsPreviewLinkDTO, AsyncTaskDTO, CmsContentOpLogDTO, CmsTextCheckResultDTO } from '../../lib/openapi-dtos';
 import { mapAsyncTask, submitAsyncTask } from '../../lib/task-center';
+import { lockCmsContent, unlockCmsContent } from '../../services/cms/cms-content-lock.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -543,6 +544,39 @@ const checkTextRoute = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await checkCmsText(c.req.valid('json').text)), 200),
 });
 
+const persistentLockRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/lock',
+    tags: ['CMS-内容管理'], summary: '持久锁定内容（取消待执行计划发布时间）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:content:lock', audit: { description: '持久锁定 CMS 内容', module: 'CMS内容管理' } })] as const,
+    request: { params: IdParam, body: { content: jsonContent(lockCmsContentSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(CmsContentLockDTO, '锁定成功') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await getCmsContent(id));
+    return c.json(okBody(await lockCmsContent(id, c.req.valid('json').reason), '锁定成功'), 200);
+  },
+});
+
+const persistentUnlockRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/unlock',
+    tags: ['CMS-内容管理'], summary: '解除内容持久锁',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:content:lock', audit: { description: '解除 CMS 内容持久锁', module: 'CMS内容管理' } })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...okMsg('解锁成功') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await getCmsContent(id));
+    await unlockCmsContent(id);
+    return c.json(okBody(null, '解锁成功'), 200);
+  },
+});
+
 router.openapiRoutes([
   listRoute, checkTitleRoute, getOneRoute, createRoute_, updateRoute_,
   submitRoute, publishRoute, rejectRoute, offlineRoute,
@@ -551,6 +585,7 @@ router.openapiRoutes([
   editLockAcquireRoute, editLockReleaseRoute, previewLinkRoute,
   batchMoveRoute, batchFlagsRoute, batchTagRoute, duplicateRoute, distributeRoute,
   importRoute, archiveRoute, unarchiveRoute, opLogsRoute, checkTextRoute,
+  persistentLockRoute, persistentUnlockRoute,
 ] as const);
 
 export default router;

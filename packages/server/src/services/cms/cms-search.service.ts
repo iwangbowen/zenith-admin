@@ -12,30 +12,56 @@ import type { CmsSearchResult } from '@zenith/shared';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
 import { pageOffset } from '../../lib/pagination';
 import { assertAllCmsSiteChannelsAccess, getAccessibleChannelIds } from './cms-channels.service';
+import { loadCmsExtensionWords, normalizeCmsSearchDictionaryWord } from './cms-search-dictionary';
 
 // ─── 分词器（进程级单例，加载默认词典 + DB 自定义词典）─────────────────────────
-let jiebaInstance: Jieba | null = null;
+const jiebaBySite = new Map<number, Jieba>();
+const stopWordsBySite = new Map<number, Set<string>>();
+let defaultJieba: Jieba | null = null;
 
-function getJieba(): Jieba {
-  if (!jiebaInstance) jiebaInstance = Jieba.withDict(dict);
-  return jiebaInstance;
+function getJieba(siteId?: number): Jieba {
+  if (siteId && jiebaBySite.has(siteId)) return jiebaBySite.get(siteId)!;
+  if (!defaultJieba) defaultJieba = Jieba.withDict(dict);
+  return defaultJieba;
 }
 
 /**
- * 从 DB 重载自定义词典（追加模式；删除词条需重启进程才彻底失效）。
+ * 从 DB 为每个站点重建独立词典；逐词加载隔离坏词，停用词单独维护。
  * 启动时与词典 CRUD 后调用。
  */
-export async function reloadCmsSearchDict(): Promise<number> {
-  const rows = await db.select().from(cmsSearchWords).where(eq(cmsSearchWords.status, 'enabled'));
-  if (rows.length === 0) return 0;
-  const lines = rows.map((r) => `${r.word} ${r.weight} n`).join('\n');
-  try {
-    getJieba().loadDict(Buffer.from(`${lines}\n`, 'utf8'));
-  } catch (err) {
-    logger.error('[CMS] 自定义词典加载失败', err);
-    return 0;
+export async function reloadCmsSearchDict(siteId?: number): Promise<number> {
+  const rows = await db.select().from(cmsSearchWords).where(and(
+    eq(cmsSearchWords.status, 'enabled'),
+    ...(siteId ? [eq(cmsSearchWords.siteId, siteId)] : []),
+  ));
+  const grouped = new Map<number, typeof rows>();
+  for (const row of rows) grouped.set(row.siteId, [...(grouped.get(row.siteId) ?? []), row]);
+  if (siteId && !grouped.has(siteId)) grouped.set(siteId, []);
+  if (!siteId) {
+    jiebaBySite.clear();
+    stopWordsBySite.clear();
   }
-  return rows.length;
+  let accepted = 0;
+  for (const [targetSiteId, siteRows] of grouped) {
+    const jieba = Jieba.withDict(dict);
+    const extensions = siteRows.filter((row) => row.type === 'extension');
+    const loadedExtensions = loadCmsExtensionWords(jieba, extensions, (row, error) => {
+      logger.warn(`[CMS] 站点 ${targetSiteId} 跳过无效扩展词 #${row.id}「${row.word}」`, error);
+    });
+    jiebaBySite.set(targetSiteId, jieba);
+    const stopWords = new Set(
+      siteRows
+        .filter((row) => row.type === 'stop')
+        .map((row) => normalizeCmsSearchDictionaryWord(row.word)?.toLowerCase())
+        .filter((word): word is string => !!word),
+    );
+    stopWordsBySite.set(targetSiteId, stopWords);
+    accepted += loadedExtensions + stopWords.size;
+    if (loadedExtensions !== extensions.length) {
+      logger.warn(`[CMS] 站点 ${targetSiteId} 扩展词加载 ${loadedExtensions}/${extensions.length}`);
+    }
+  }
+  return accepted;
 }
 
 // ─── tsvector 解析器配置（默认 simple=应用层 jieba 分词；可切 zhparser 等 PG 扩展配置）──
@@ -93,40 +119,40 @@ export function stripHtml(html: string | null | undefined): string {
 
 const TOKEN_FILTER = /^[\s\p{P}\p{S}]*$/u;
 
+export function filterCmsSearchTokens(tokens: string[], stopWords: ReadonlySet<string> = new Set()): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const token of tokens) {
+    const word = token.trim().toLowerCase();
+    if (!word || TOKEN_FILTER.test(word) || stopWords.has(word) || seen.has(word)) continue;
+    seen.add(word);
+    result.push(word);
+  }
+  return result;
+}
+
 /** 索引分词：cutForSearch 细粒度切分（同时产出复合词与子词），空格连接供 to_tsvector('simple') 使用 */
-export function segmentForIndex(text: string | null | undefined): string {
+export function segmentForIndex(text: string | null | undefined, siteId?: number): string {
   const plain = stripHtml(text ?? '');
   if (!plain) return '';
   // 索引正文截断，避免超长文章拖慢写入（tsvector 位置上限 16383）
   const bounded = plain.length > 20000 ? plain.slice(0, 20000) : plain;
-  const tokens = getJieba().cutForSearch(bounded, true);
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const t of tokens) {
-    const w = t.trim().toLowerCase();
-    if (!w || TOKEN_FILTER.test(w)) continue;
-    if (seen.has(w)) continue; // simple parser 不做归一化，重复词无增益，去重减小向量体积
-    seen.add(w);
-    out.push(w);
-  }
-  return out.join(' ');
+  const tokens = getJieba(siteId).cutForSearch(bounded, true);
+  const stopWords = siteId ? stopWordsBySite.get(siteId) : undefined;
+  return filterCmsSearchTokens(tokens, stopWords).join(' ');
 }
 
 /** 查询分词：cut 粗粒度（与索引的细粒度切分配合保证可命中），返回去重 token 数组 */
-export function segmentForQuery(keyword: string): string[] {
+export function segmentForQuery(keyword: string, siteId?: number): string[] {
   const plain = keyword.trim();
   if (!plain) return [];
-  const tokens = getJieba().cut(plain, true);
-  const out: string[] = [];
-  for (const t of tokens) {
-    const w = t.trim().toLowerCase();
-    if (!w || TOKEN_FILTER.test(w)) continue;
-    out.push(w);
-  }
-  return [...new Set(out)];
+  const tokens = getJieba(siteId).cut(plain, true);
+  const stopWords = siteId ? stopWordsBySite.get(siteId) : undefined;
+  return filterCmsSearchTokens(tokens, stopWords);
 }
 
 export interface SearchVectorInput {
+  siteId?: number;
   title: string;
   seoKeywords?: string | null;
   summary?: string | null;
@@ -143,9 +169,9 @@ export interface SearchVectorInput {
 export function buildSearchVector(input: SearchVectorInput): SQL {
   const cfg = sql.raw(`'${TSVECTOR_CONFIG}'`);
   if (usesAppSegmentation()) {
-    const a = segmentForIndex(input.title);
-    const b = segmentForIndex([input.seoKeywords ?? '', input.summary ?? ''].join(' '));
-    const c = segmentForIndex([input.body ?? '', ...(input.extendTexts ?? [])].join(' '));
+    const a = segmentForIndex(input.title, input.siteId);
+    const b = segmentForIndex([input.seoKeywords ?? '', input.summary ?? ''].join(' '), input.siteId);
+    const c = segmentForIndex([input.body ?? '', ...(input.extendTexts ?? [])].join(' '), input.siteId);
     return sql`setweight(to_tsvector(${cfg}::regconfig, ${a}), 'A') || setweight(to_tsvector(${cfg}::regconfig, ${b}), 'B') || setweight(to_tsvector(${cfg}::regconfig, ${c}), 'C')`;
   }
   const a = stripHtml(input.title);
@@ -234,7 +260,8 @@ export async function searchCmsContents(q: CmsSearchQuery): Promise<{ list: CmsS
     await assertSiteAccess(siteId);
   }
   const accessibleChannelIds = q.skipAccessCheck ? null : await getAccessibleChannelIds();
-  const tokens = segmentForQuery(keyword);
+  if (!jiebaBySite.has(siteId)) await reloadCmsSearchDict(siteId);
+  const tokens = segmentForQuery(keyword, siteId);
   const empty = { list: [] as CmsSearchResult[], total: 0, page, pageSize, tokens };
   if (tokens.length === 0) return empty;
   recordSearchKeyword(siteId, keyword);
@@ -322,9 +349,10 @@ export async function rebuildSearchIndex(options: {
       summary: cmsContents.summary,
       body: cmsContents.body,
       extend: cmsContents.extend,
+      siteId: cmsContents.siteId,
     })
       .from(cmsContents)
-      .where(scope ? and(scope, cursor) : cursor)
+      .where(scope ? and(scope, cursor, isNull(cmsContents.lockedAt)) : and(cursor, isNull(cmsContents.lockedAt)))
       .orderBy(cmsContents.id)
       .limit(batchSize);
     if (rows.length === 0) break;

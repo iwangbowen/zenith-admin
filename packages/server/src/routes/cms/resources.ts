@@ -1,17 +1,25 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
-import { updateCmsResourceSchema, cropCmsResourceSchema } from '@zenith/shared';
+import {
+  createCmsResourceFolderSchema, cropCmsResourceSchema, moveCmsResourcesSchema,
+  updateCmsResourceFolderSchema, updateCmsResourceSchema,
+} from '@zenith/shared';
 import { authMiddleware } from '../../middleware/auth';
 import { guard } from '../../middleware/guard';
 import {
   ErrorResponse, jsonContent, PaginationQuery, IdParam, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, okBody, BatchIdsBody,
 } from '../../lib/openapi-schemas';
-import { CmsResourceDTO, CmsResourceReferenceDTO } from '../../lib/openapi-dtos';
+import { AsyncTaskDTO, CmsResourceDTO, CmsResourceFolderDTO, CmsResourceReferenceDTO } from '../../lib/openapi-dtos';
 import {
   listCmsResources, uploadCmsResource, updateCmsResource, deleteCmsResources,
   listCmsResourceReferences, cropCmsResource,
 } from '../../services/cms/cms-resources.service';
+import {
+  createCmsResourceFolder, deleteCmsResourceFolder, listCmsResourceFolderTree, updateCmsResourceFolder,
+} from '../../services/cms/cms-resource-folders.service';
+import { mapAsyncTask } from '../../lib/task-center';
+import { submitCmsResourceTask } from '../../services/cms/cms-resource-task-submit.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -26,6 +34,7 @@ const listRoute = defineOpenAPIRoute({
         siteId: z.coerce.number().int().positive(),
         type: z.enum(['image', 'video', 'audio', 'document', 'other']).optional(),
         keyword: z.string().max(100).optional(),
+        folderId: z.coerce.number().int().min(0).optional(),
       }),
     },
     responses: { ...commonErrorResponses, ...okPaginated(CmsResourceDTO, '素材列表') },
@@ -40,7 +49,10 @@ const uploadRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'cms:resource:upload', audit: { description: 'CMS 上传素材', module: 'CMS内容管理', recordBody: false } })] as const,
     request: {
-      query: z.object({ siteId: z.coerce.number().int().positive() }),
+      query: z.object({
+        siteId: z.coerce.number().int().positive(),
+        folderId: z.coerce.number().int().positive().optional(),
+      }),
       body: {
         content: {
           'multipart/form-data': {
@@ -59,13 +71,13 @@ const uploadRoute = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    const { siteId } = c.req.valid('query');
+    const { siteId, folderId } = c.req.valid('query');
     const body = await c.req.parseBody();
     const file = body.file;
     if (!file || typeof (file as File).arrayBuffer !== 'function') {
       throw new HTTPException(400, { message: '请选择要上传的文件' });
     }
-    return c.json(okBody(await uploadCmsResource(file as File, siteId), '上传成功'), 200);
+    return c.json(okBody(await uploadCmsResource(file as File, siteId, folderId), '上传成功'), 200);
   },
 });
 
@@ -121,6 +133,114 @@ const deleteRoute = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRoute, uploadRoute, updateRoute, referencesRoute, cropRoute, deleteRoute] as const);
+const folderTreeRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/folders',
+    tags: ['CMS-素材中心'], summary: '素材文件夹树',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:resource:list' })] as const,
+    request: { query: z.object({ siteId: z.coerce.number().int().positive() }) },
+    responses: { ...commonErrorResponses, ...ok(z.array(CmsResourceFolderDTO), '文件夹树') },
+  }),
+  handler: async (c) => c.json(okBody(await listCmsResourceFolderTree(c.req.valid('query').siteId)), 200),
+});
+
+const createFolderRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/folders',
+    tags: ['CMS-素材中心'], summary: '创建素材文件夹',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:resource:update', audit: { description: '创建 CMS 素材文件夹', module: 'CMS内容管理' } })] as const,
+    request: { body: { content: jsonContent(createCmsResourceFolderSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(CmsResourceFolderDTO, '创建成功') },
+  }),
+  handler: async (c) => c.json(okBody(await createCmsResourceFolder(c.req.valid('json')), '创建成功'), 200),
+});
+
+const updateFolderRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put', path: '/folders/{id}',
+    tags: ['CMS-素材中心'], summary: '移动或重命名素材文件夹',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:resource:update', audit: { description: '更新 CMS 素材文件夹', module: 'CMS内容管理' } })] as const,
+    request: { params: IdParam, body: { content: jsonContent(updateCmsResourceFolderSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(CmsResourceFolderDTO, '更新成功') },
+  }),
+  handler: async (c) => c.json(okBody(await updateCmsResourceFolder(c.req.valid('param').id, c.req.valid('json')), '更新成功'), 200),
+});
+
+const deleteFolderRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete', path: '/folders/{id}',
+    tags: ['CMS-素材中心'], summary: '删除空素材文件夹',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:resource:delete', audit: { description: '删除 CMS 素材文件夹', module: 'CMS内容管理' } })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...okMsg('删除成功') },
+  }),
+  handler: async (c) => {
+    await deleteCmsResourceFolder(c.req.valid('param').id);
+    return c.json(okBody(null, '删除成功'), 200);
+  },
+});
+
+const governanceRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/governance',
+    tags: ['CMS-素材中心'], summary: '提交孤立素材扫描/清理任务',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:resource:delete', audit: { description: '提交 CMS 素材治理任务', module: 'CMS内容管理' } })] as const,
+    request: {
+      body: {
+        content: jsonContent(z.object({
+          siteId: z.number().int().positive(),
+          operation: z.enum(['scan', 'cleanup']),
+          dryRun: z.boolean().default(true),
+        })),
+        required: true,
+      },
+    },
+    responses: { ...commonErrorResponses, ...ok(AsyncTaskDTO, '任务已提交') },
+  }),
+  handler: async (c) => {
+    const payload = c.req.valid('json');
+    const row = await submitCmsResourceTask(
+      payload,
+      payload.operation === 'scan' ? 'CMS 孤立素材扫描' : (payload.dryRun ? 'CMS 素材清理预演' : 'CMS 孤立素材清理'),
+    );
+    return c.json(okBody(mapAsyncTask(row), '任务已提交'), 200);
+  },
+});
+
+const moveResourcesRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/move',
+    tags: ['CMS-素材中心'], summary: '提交批量移动素材任务',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:resource:update', audit: { description: '批量移动 CMS 素材', module: 'CMS内容管理' } })] as const,
+    request: {
+      body: {
+        content: jsonContent(moveCmsResourcesSchema.extend({ siteId: z.number().int().positive() })),
+        required: true,
+      },
+    },
+    responses: { ...commonErrorResponses, ...ok(AsyncTaskDTO, '任务已提交') },
+  }),
+  handler: async (c) => {
+    const body = c.req.valid('json');
+    const row = await submitCmsResourceTask({
+      operation: 'move',
+      siteId: body.siteId,
+      resourceIds: body.ids,
+      folderId: body.folderId,
+    }, 'CMS 素材批量移动');
+    return c.json(okBody(mapAsyncTask(row), '移动任务已提交'), 200);
+  },
+});
+
+router.openapiRoutes([
+  listRoute, folderTreeRoute, createFolderRoute, updateFolderRoute, deleteFolderRoute,
+  uploadRoute, updateRoute, referencesRoute, cropRoute, deleteRoute, governanceRoute, moveResourcesRoute,
+] as const);
 
 export default router;

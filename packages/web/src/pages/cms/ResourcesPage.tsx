@@ -1,34 +1,61 @@
 import { useRef, useState } from 'react';
-import { Button, Form, Input, Modal, Select, Space, Tag, Toast, Typography, Empty, Spin } from '@douyinfe/semi-ui';
+import { Button, DatePicker, Form, Input, Modal, Select, Space, Tag, Toast, Typography, Empty, Spin, Tree } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Search, RotateCcw, Upload, FileText, Film, Music, File as FileIcon } from 'lucide-react';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
+import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
+import { Search, RotateCcw, Upload, FileText, Film, Music, File as FileIcon, FolderPlus, FolderPen, FolderX, Move, ShieldCheck } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
+import { MasterDetailLayout } from '@/components/MasterDetailLayout';
+import AsyncTaskProgress from '@/components/AsyncTaskProgress';
+import { ExportButton } from '@/components/ExportButton';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import {
   cmsResourceKeys, useCmsResourceList, useCmsResourceReferences,
   useUploadCmsResource, useUpdateCmsResource, useCropCmsResource, useDeleteCmsResources,
+  useCmsResourceFolders, useSaveCmsResourceFolder, useDeleteCmsResourceFolder,
+  useCmsResourceGovernance, useMoveCmsResources,
 } from '@/hooks/queries/cms';
+import { useMyAsyncTasks } from '@/hooks/useAsyncTasks';
 import { CMS_RESOURCE_TYPE_LABELS, CMS_RESOURCE_TYPES } from '@zenith/shared';
-import type { CmsResource, CmsResourceType } from '@zenith/shared';
+import type { CmsResource, CmsResourceFolder, CmsResourceReference, CmsResourceType } from '@zenith/shared';
 import { CmsSiteSelect } from './CmsSiteSelect';
+import { formatDateTimeForApi } from '@/utils/date';
 
 const TYPE_COLORS: Record<CmsResourceType, 'blue' | 'purple' | 'cyan' | 'orange' | 'grey'> = {
   image: 'blue', video: 'purple', audio: 'cyan', document: 'orange', other: 'grey',
 };
 
-const REFERENCE_KIND_LABELS: Record<'content' | 'ad' | 'fragment', string> = {
-  content: '内容', ad: '广告', fragment: '碎片',
+const REFERENCE_KIND_LABELS: Record<CmsResourceReference['kind'], string> = {
+  site: '站点', content: '内容', channel: '栏目', fragment: '碎片', friendLink: '友情链接', ad: '广告', page: '页面', form: '表单', theme: '主题',
 };
 
 function formatSize(bytes: number): string {
   if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`;
   if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${bytes} B`;
+}
+
+function foldersToTree(folders: CmsResourceFolder[]): TreeNodeData[] {
+  return folders.map((folder) => ({
+    key: String(folder.id),
+    value: folder.id,
+    label: `${folder.name}${folder.resourceCount ? ` (${folder.resourceCount})` : ''}`,
+    children: folder.children ? foldersToTree(folder.children) : undefined,
+  }));
+}
+
+function findFolder(folders: CmsResourceFolder[], id: number): CmsResourceFolder | null {
+  for (const folder of folders) {
+    if (folder.id === id) return folder;
+    const child = folder.children ? findFolder(folder.children, id) : null;
+    if (child) return child;
+  }
+  return null;
 }
 
 function TypeIcon({ type }: Readonly<{ type: CmsResourceType }>) {
@@ -155,6 +182,8 @@ function ReferencesModal({ resource, onClose }: Readonly<{ resource: CmsResource
     <AppModal title={`引用位置 — ${resource?.name ?? ''}`} visible={resource !== null} onCancel={onClose} footer={null} width={480} centered closeOnEsc>
       {refsQuery.isLoading ? (
         <div style={{ textAlign: 'center', padding: 24 }}><Spin /></div>
+      ) : refsQuery.isError ? (
+        <Empty title="引用扫描失败" description="请稍后重试或检查权限" style={{ padding: 24 }} />
       ) : refs.length === 0 ? (
         <Empty title="暂无引用" description="该素材未被站内内容、广告或碎片引用，可安全删除" style={{ padding: 24 }} />
       ) : (
@@ -162,7 +191,7 @@ function ReferencesModal({ resource, onClose }: Readonly<{ resource: CmsResource
           {refs.map((r) => (
             <div key={`${r.kind}-${r.id}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Tag size="small">{REFERENCE_KIND_LABELS[r.kind]}</Tag>
-              <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 360 }}>#{r.id} {r.title}</Typography.Text>
+              <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 360 }}>#{r.id} {r.title} · {r.field}</Typography.Text>
             </div>
           ))}
         </div>
@@ -175,6 +204,9 @@ export default function ResourcesPage() {
   const { hasPermission } = usePermission();
   const qc = useQueryClient();
   const [siteId, setSiteId] = useState<number | undefined>(undefined);
+  const [folderKey, setFolderKey] = useState('all');
+  const [governanceStart, setGovernanceStart] = useState<Date | undefined>(undefined);
+  const [governanceEnd, setGovernanceEnd] = useState<Date | undefined>(undefined);
   const [type, setType] = useState<CmsResourceType | undefined>(undefined);
   const [keywordDraft, setKeywordDraft] = useState('');
   const [keyword, setKeyword] = useState<string | undefined>(undefined);
@@ -183,16 +215,27 @@ export default function ResourcesPage() {
   const [renameTarget, setRenameTarget] = useState<CmsResource | null>(null);
   const [cropTarget, setCropTarget] = useState<CmsResource | null>(null);
   const [refsTarget, setRefsTarget] = useState<CmsResource | null>(null);
+  const [folderModalVisible, setFolderModalVisible] = useState(false);
+  const [editingFolder, setEditingFolder] = useState<CmsResourceFolder | null>(null);
+  const folderFormApi = useRef<FormApi | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const listQuery = useCmsResourceList({ page, pageSize, siteId: siteId ?? 0, type, keyword }, siteId !== undefined);
+  const folderId = folderKey === 'all' ? undefined : Number(folderKey);
+  const listQuery = useCmsResourceList({ page, pageSize, siteId: siteId ?? 0, type, keyword, folderId }, siteId !== undefined);
+  const foldersQuery = useCmsResourceFolders(siteId);
   const uploadMutation = useUploadCmsResource();
   const updateMutation = useUpdateCmsResource();
   const deleteMutation = useDeleteCmsResources();
+  const saveFolderMutation = useSaveCmsResourceFolder();
+  const deleteFolderMutation = useDeleteCmsResourceFolder();
+  const governanceMutation = useCmsResourceGovernance();
+  const moveMutation = useMoveCmsResources();
+  const { tasks, loading: tasksLoading, refresh: refreshTasks } = useMyAsyncTasks({ taskTypes: ['cms-resource-governance'] });
 
   const canUpload = hasPermission('cms:resource:upload');
   const canUpdate = hasPermission('cms:resource:update');
   const canDelete = hasPermission('cms:resource:delete');
+  const selectedFolder = folderId && folderId > 0 ? findFolder(foldersQuery.data ?? [], folderId) : null;
 
   function handleSearch() {
     setKeyword(keywordDraft.trim() || undefined);
@@ -212,8 +255,40 @@ export default function ResourcesPage() {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file || siteId === undefined) return;
-    await uploadMutation.mutateAsync({ siteId, file });
+    await uploadMutation.mutateAsync({ siteId, folderId: folderId && folderId > 0 ? folderId : undefined, file });
     Toast.success('上传成功');
+  }
+
+  async function submitFolder() {
+    if (!siteId) return;
+    const values = await folderFormApi.current?.validate().catch(() => null);
+    if (!values?.name) throw new Error('validation');
+    await saveFolderMutation.mutateAsync({
+      id: editingFolder?.id,
+      values: {
+        ...values,
+        parentId: Number(values.parentId) > 0 ? Number(values.parentId) : null,
+        ...(!editingFolder ? { siteId } : {}),
+      },
+    });
+    setFolderModalVisible(false);
+    setEditingFolder(null);
+    Toast.success('文件夹已保存');
+  }
+
+  async function submitGovernance(operation: 'scan' | 'cleanup', dryRun: boolean) {
+    if (!siteId) return;
+    await governanceMutation.mutateAsync({ siteId, operation, dryRun });
+    Toast.success('素材治理任务已提交');
+    void refreshTasks();
+  }
+
+  async function moveSelected(folderIdValue: number | null) {
+    if (!siteId || selectedIds.length === 0) return;
+    await moveMutation.mutateAsync({ siteId, ids: selectedIds, folderId: folderIdValue });
+    setSelectedIds([]);
+    Toast.success('批量移动任务已提交');
+    void refreshTasks();
   }
 
   function handleDelete(ids: number[]) {
@@ -292,9 +367,74 @@ export default function ResourcesPage() {
         {selectedIds.length > 0 && canDelete ? (
           <Button type="danger" onClick={() => handleDelete(selectedIds)}>批量删除（{selectedIds.length}）</Button>
         ) : null}
+        {selectedIds.length > 0 && canUpdate ? (
+          <Button icon={<Move size={14} />} onClick={() => void moveSelected(folderId && folderId > 0 ? folderId : null)}>
+            移动到当前目录
+          </Button>
+        ) : null}
+        {siteId && canDelete ? (
+          <>
+            <Button icon={<ShieldCheck size={14} />} onClick={() => void submitGovernance('scan', true)}>孤立扫描</Button>
+            <Button type="danger" onClick={() => {
+              Modal.confirm({
+                title: '清理全部孤立素材？',
+                content: '任务会逐项复核完整引用后删除底层文件，支持取消与明细报告。',
+                onOk: () => submitGovernance('cleanup', false),
+              });
+            }}>清理孤立素材</Button>
+          </>
+        ) : null}
+        <DatePicker type="dateTime" value={governanceStart} onChange={(value) => setGovernanceStart(value as Date | undefined)} placeholder="治理开始时间" />
+        <DatePicker type="dateTime" value={governanceEnd} onChange={(value) => setGovernanceEnd(value as Date | undefined)} placeholder="治理结束时间" />
+        {siteId ? <ExportButton entity="cms.resource-governance" query={{
+          siteId,
+          startTime: governanceStart ? formatDateTimeForApi(governanceStart) : undefined,
+          endTime: governanceEnd ? formatDateTimeForApi(governanceEnd) : undefined,
+        }} label="导出治理报告" /> : null}
       </SearchToolbar>
-      <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={(e) => void handleUploadFile(e)} />
-      <ConfigurableTable
+      <MasterDetailLayout
+        persistKey="cms-resources-folders"
+        defaultSize={260}
+        minSize={220}
+        maxSize={380}
+        bordered
+        style={{ height: 'calc(100vh - 190px)', minHeight: 520 }}
+        master={(
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+            <div style={{ flexShrink: 0, padding: 12, display: 'flex', gap: 6, borderBottom: '1px solid var(--semi-color-border)' }}>
+              <Typography.Text strong style={{ flex: 1 }}>素材文件夹</Typography.Text>
+              {canUpdate ? <Button theme="borderless" icon={<FolderPlus size={15} />} onClick={() => { setEditingFolder(null); setFolderModalVisible(true); }} /> : null}
+              {canUpdate && selectedFolder ? <Button theme="borderless" icon={<FolderPen size={15} />} onClick={() => { setEditingFolder(selectedFolder); setFolderModalVisible(true); }} /> : null}
+              {canDelete && selectedFolder ? <Button theme="borderless" type="danger" icon={<FolderX size={15} />} onClick={() => {
+                Modal.confirm({
+                  title: `删除文件夹「${selectedFolder.name}」？`,
+                  content: '仅空文件夹可删除。',
+                  onOk: async () => {
+                    await deleteFolderMutation.mutateAsync(selectedFolder.id);
+                    setFolderKey('all');
+                    Toast.success('文件夹已删除');
+                  },
+                });
+              }} /> : null}
+            </div>
+            <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 8 }}>
+              {foldersQuery.isError ? <Empty title="文件夹加载失败" description="请刷新重试" /> : <Tree
+                treeData={[
+                  { key: 'all', label: '全部素材' },
+                  { key: '0', label: '根目录（未分类）' },
+                  ...foldersToTree(foldersQuery.data ?? []),
+                ]}
+                value={folderKey}
+                onChange={(key) => { setFolderKey(String(key)); setPage(1); setSelectedIds([]); }}
+                defaultExpandAll
+              />}
+            </div>
+          </div>
+        )}
+        detail={(
+          <div style={{ height: '100%', overflow: 'auto', paddingLeft: 16 }}>
+            <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={(e) => void handleUploadFile(e)} />
+            <ConfigurableTable
         bordered
         columns={columns}
         dataSource={listQuery.data?.list ?? []}
@@ -310,6 +450,32 @@ export default function ResourcesPage() {
           selectedRowKeys: selectedIds.map(String),
           onChange: (keys) => setSelectedIds((keys ?? []).map(Number)),
         }}
+            />
+            <Typography.Title heading={6} style={{ margin: '18px 0 8px' }}>素材治理任务</Typography.Title>
+            <ConfigurableTable
+              bordered
+              columns={[
+                { title: '任务', dataIndex: 'title', width: 240 },
+                { title: '进度', width: 280, render: (_: unknown, record) => <AsyncTaskProgress task={record} /> },
+                {
+                  title: '结果',
+                  width: 220,
+                  render: (_: unknown, record) => record.result
+                    ? `孤立 ${Number(record.result.orphanCount ?? 0)} / 清理 ${Number(record.result.deletedCount ?? 0)}`
+                    : (record.errorMessage ?? '-'),
+                },
+                { title: '提交时间', dataIndex: 'createdAt', width: 180 },
+              ]}
+              dataSource={tasks}
+              loading={tasksLoading}
+              rowKey="id"
+              pagination={false}
+              empty="暂无素材治理任务"
+              onRefresh={refreshTasks}
+              refreshLoading={tasksLoading}
+            />
+          </div>
+        )}
       />
 
       {/* 重命名/备注 */}
@@ -341,6 +507,35 @@ export default function ResourcesPage() {
             </div>
           </Form>
         ) : null}
+      </AppModal>
+
+      <AppModal
+        title={editingFolder ? '编辑素材文件夹' : '新建素材文件夹'}
+        visible={folderModalVisible}
+        onOk={submitFolder}
+        onCancel={() => { setFolderModalVisible(false); setEditingFolder(null); }}
+        okButtonProps={{ loading: saveFolderMutation.isPending }}
+        width={480}
+        closeOnEsc
+      >
+        <Form
+          key={editingFolder?.id ?? `new-${folderId ?? 0}`}
+          getFormApi={(api) => { folderFormApi.current = api; }}
+          initValues={editingFolder
+            ? { name: editingFolder.name, sort: editingFolder.sort, parentId: editingFolder.parentId ?? 0 }
+            : { sort: 0, parentId: folderId && folderId > 0 ? folderId : 0 }}
+          labelPosition="left"
+          labelWidth={80}
+        >
+          <Form.Input field="name" label="名称" maxLength={100} rules={[{ required: true, message: '请输入文件夹名称' }]} />
+          <Form.TreeSelect
+            field="parentId"
+            label="父文件夹"
+            treeData={[{ key: '0', value: 0, label: '根目录', children: foldersToTree(foldersQuery.data ?? []) }]}
+            style={{ width: '100%' }}
+          />
+          <Form.InputNumber field="sort" label="排序" style={{ width: '100%' }} />
+        </Form>
       </AppModal>
 
       <CropModal resource={cropTarget} onClose={() => setCropTarget(null)} />

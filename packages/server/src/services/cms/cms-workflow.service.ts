@@ -123,9 +123,13 @@ export function registerCmsWorkflowSubscribers(): void {
     onRejected: async (instance) => {
       const contentId = Number(instance.bizId);
       try {
-        const [current] = await db.select({ id: cmsContents.id }).from(cmsContents)
+        const [current] = await db.select({ id: cmsContents.id, lockedAt: cmsContents.lockedAt }).from(cmsContents)
           .where(eq(cmsContents.id, contentId)).limit(1);
         if (!current) return;
+        if (current.lockedAt) {
+          logger.warn(`[cms-workflow] 内容 #${contentId} 已被持久锁定，忽略流程撤回回写`);
+          return;
+        }
         const { rejectCmsContent } = await import('./cms-contents.service');
         await rejectCmsContent(contentId, '工作流审核驳回', {
           fromWorkflow: true,
@@ -147,6 +151,7 @@ export function registerCmsWorkflowSubscribers(): void {
           .where(and(
             eq(cmsContents.id, contentId),
             eq(cmsContents.status, 'pending'),
+            isNull(cmsContents.lockedAt),
           ));
         logger.info(`[cms-workflow] 内容 #${contentId} 流程撤回，已退回草稿`);
       } catch (err) {

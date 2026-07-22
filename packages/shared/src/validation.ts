@@ -50,6 +50,7 @@ import {
   SOURCE_MAP_MAX_BYTES,
   OAUTH2_GRANT_TYPES,
   OPEN_APP_ENVIRONMENTS,
+  CMS_SEARCH_DICTIONARY_WORD_PATTERN,
 } from './constants';
 
 const DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
@@ -5130,6 +5131,8 @@ export const createCmsChannelSchema = z.object({
   seoTitle: z.string().max(255).nullable().optional(),
   seoKeywords: z.string().max(500).nullable().optional(),
   seoDescription: z.string().max(500).nullable().optional(),
+  socialImageAlt: z.string().max(255).nullable().optional(),
+  twitterCreator: z.string().max(100).regex(/^@?[A-Za-z0-9_]{1,50}$/, 'Twitter/X 作者账号格式无效').nullable().optional(),
   image: z.string().max(500).nullable().optional(),
   visible: z.boolean().default(true),
   status: z.enum(['enabled', 'disabled']).default('enabled'),
@@ -5197,6 +5200,9 @@ export const createCmsContentSchema = z.object({
 export const updateCmsContentSchema = createCmsContentSchema.partial().omit({ siteId: true, contentType: true }).extend({
   /** 乐观锁：携带读取时的版本号，服务端版本不一致返回 409（不传则跳过检查） */
   expectedVersion: z.number().int().positive().optional(),
+});
+export const lockCmsContentSchema = z.object({
+  reason: z.string().trim().min(1, '请输入锁定原因').max(500),
 });
 
 export const createCmsTagSchema = z.object({
@@ -5288,21 +5294,44 @@ export const updateCmsAdSchema = createCmsAdSchema.partial();
 export const cmsFormFieldSchema = z.object({
   name: z.string().min(1).max(50).regex(/^[a-z][a-z0-9_]*$/, '字段标识须以小写字母开头'),
   label: z.string().min(1).max(100),
-  fieldType: z.enum(['text', 'textarea', 'select', 'radio']).default('text'),
+  fieldType: z.enum(['text', 'textarea', 'select', 'radio', 'email', 'mobile', 'url', 'number']).default('text'),
   required: z.boolean().default(false),
   options: z.array(z.object({ label: z.string().max(100), value: z.string().max(100) })).nullable().optional(),
+  minLength: z.number().int().min(0).max(2000).nullable().optional(),
+  maxLength: z.number().int().min(1).max(2000).nullable().optional(),
+  pattern: z.string().max(200)
+    .refine((value) => !/[\0\r\n]/.test(value), '规则不能包含控制字符或换行')
+    .nullable().optional(),
+  min: z.number().nullable().optional(),
+  max: z.number().nullable().optional(),
+  errorMessage: z.string().max(200).nullable().optional(),
+}).superRefine((field, ctx) => {
+  if (field.minLength != null && field.maxLength != null && field.minLength > field.maxLength) {
+    ctx.addIssue({ code: 'custom', path: ['maxLength'], message: '最大长度不能小于最小长度' });
+  }
+  if (field.min != null && field.max != null && field.min > field.max) {
+    ctx.addIssue({ code: 'custom', path: ['max'], message: '最大值不能小于最小值' });
+  }
 });
 
-export const createCmsFormSchema = z.object({
+const cmsFormBaseSchema = z.object({
   siteId: z.number().int().positive(),
   code: z.string().min(1, '表单标识不能为空').max(50).regex(cmsSlugRegex, '标识仅支持小写字母、数字、中划线'),
   name: z.string().min(1, '表单名称不能为空').max(100),
   fields: z.array(cmsFormFieldSchema).min(1, '至少配置一个字段').default([]),
   successMessage: z.string().max(255).nullable().optional(),
   notifyEmail: z.string().max(255).nullable().optional(),
+  captchaProvider: z.enum(['inherit', 'none', 'math', 'turnstile']).default('inherit'),
+  turnstileSiteKey: z.string().max(200).nullable().optional(),
+  turnstileSecret: z.string().max(500).nullable().optional(),
   status: z.enum(['enabled', 'disabled']).default('enabled'),
 });
-export const updateCmsFormSchema = createCmsFormSchema.partial().omit({ siteId: true });
+export const createCmsFormSchema = cmsFormBaseSchema.superRefine((form, ctx) => {
+  if (form.captchaProvider === 'turnstile' && !form.turnstileSiteKey?.trim()) {
+    ctx.addIssue({ code: 'custom', path: ['turnstileSiteKey'], message: 'Turnstile Site Key 不能为空' });
+  }
+});
+export const updateCmsFormSchema = cmsFormBaseSchema.partial().omit({ siteId: true });
 
 export const createCmsSensitiveWordSchema = z.object({
   word: z.string().min(1, '敏感词不能为空').max(50),
@@ -5390,6 +5419,19 @@ export type MemberSubmitCmsCommentInput = z.input<typeof memberSubmitCmsCommentS
 export const updateCmsResourceSchema = z.object({
   name: z.string().min(1, '素材名称不能为空').max(255).optional(),
   remark: z.string().max(200).nullable().optional(),
+  folderId: z.number().int().positive().nullable().optional(),
+});
+
+export const createCmsResourceFolderSchema = z.object({
+  siteId: z.number().int().positive(),
+  parentId: z.number().int().positive().nullable().default(null),
+  name: z.string().trim().min(1, '文件夹名称不能为空').max(100),
+  sort: z.number().int().default(0),
+});
+export const updateCmsResourceFolderSchema = createCmsResourceFolderSchema.partial().omit({ siteId: true });
+export const moveCmsResourcesSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1).max(1000),
+  folderId: z.number().int().positive().nullable(),
 });
 
 /** 图片裁剪（像素坐标，基于原图） */
@@ -5402,6 +5444,9 @@ export const cropCmsResourceSchema = z.object({
 
 export type UpdateCmsResourceInput = z.input<typeof updateCmsResourceSchema>;
 export type CropCmsResourceInput = z.input<typeof cropCmsResourceSchema>;
+export type CreateCmsResourceFolderInput = z.input<typeof createCmsResourceFolderSchema>;
+export type UpdateCmsResourceFolderInput = z.input<typeof updateCmsResourceFolderSchema>;
+export type MoveCmsResourcesInput = z.input<typeof moveCmsResourcesSchema>;
 
 // ─── CMS 轻量投票（P3）────────────────────────────────────────────────────────
 export const cmsPollOptionSchema = z.object({
@@ -5434,15 +5479,49 @@ export type VoteCmsPollInput = z.input<typeof voteCmsPollSchema>;
 
 // ─── CMS P3 Batch1 Schema ─────────────────────────────────────────────────────
 export const createCmsSearchWordSchema = z.object({
-  word: z.string().min(2, '词条至少 2 个字符').max(50),
+  siteId: z.number().int().positive(),
+  word: z.string().trim().min(1, '词条不能为空').max(50)
+    .regex(CMS_SEARCH_DICTIONARY_WORD_PATTERN, '词条仅允许字母、数字、中文及 _ + . # -，且不能包含空白'),
+  type: z.enum(['extension', 'stop']).default('extension'),
+  groupName: z.string().trim().min(1).max(100).default('默认分组'),
   weight: z.number().int().min(1).max(999999).default(1000),
   status: z.enum(['enabled', 'disabled']).default('enabled'),
   remark: z.string().max(200).nullable().optional(),
 });
-export const updateCmsSearchWordSchema = createCmsSearchWordSchema.partial();
+export const updateCmsSearchWordSchema = createCmsSearchWordSchema.partial().omit({ siteId: true });
+
+export const batchUpdateCmsSearchWordsSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1).max(1000),
+  status: z.enum(['enabled', 'disabled']).optional(),
+  groupName: z.string().trim().min(1).max(100).optional(),
+}).refine((value) => value.status !== undefined || value.groupName !== undefined, {
+  message: '至少指定一个批量更新字段',
+});
+
+export const createCmsHotwordGroupSchema = z.object({
+  siteId: z.number().int().positive(),
+  name: z.string().trim().min(1).max(100),
+  sort: z.number().int().default(0),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+});
+export const updateCmsHotwordGroupSchema = createCmsHotwordGroupSchema.partial().omit({ siteId: true });
+
+export const createCmsHotwordSchema = z.object({
+  siteId: z.number().int().positive(),
+  groupId: z.number().int().positive().nullable().optional(),
+  keyword: z.string().trim().min(1).max(100),
+  sort: z.number().int().default(0),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+});
+export const updateCmsHotwordSchema = createCmsHotwordSchema.partial().omit({ siteId: true });
 
 export type CreateCmsSearchWordInput = z.input<typeof createCmsSearchWordSchema>;
 export type UpdateCmsSearchWordInput = z.input<typeof updateCmsSearchWordSchema>;
+export type BatchUpdateCmsSearchWordsInput = z.input<typeof batchUpdateCmsSearchWordsSchema>;
+export type CreateCmsHotwordGroupInput = z.input<typeof createCmsHotwordGroupSchema>;
+export type UpdateCmsHotwordGroupInput = z.input<typeof updateCmsHotwordGroupSchema>;
+export type CreateCmsHotwordInput = z.input<typeof createCmsHotwordSchema>;
+export type UpdateCmsHotwordInput = z.input<typeof updateCmsHotwordSchema>;
 
 // ─── CMS 采集规则（CMS 为平台级全局模块）──────────────────────────────────────
 export const createCmsCollectRuleSchema = z.object({

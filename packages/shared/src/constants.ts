@@ -1356,7 +1356,7 @@ export const CMS_SURVEY_QUESTION_TYPE_LABELS: Record<(typeof CMS_SURVEY_QUESTION
 };
 
 /** CMS 内容操作日志动作（内容级时间线） */
-export const CMS_CONTENT_OP_ACTIONS = ['created', 'updated', 'submitted', 'published', 'rejected', 'offlined', 'recycled', 'restored', 'rolled_back', 'archived', 'unarchived', 'moved'] as const;
+export const CMS_CONTENT_OP_ACTIONS = ['created', 'updated', 'submitted', 'published', 'rejected', 'offlined', 'recycled', 'restored', 'rolled_back', 'archived', 'unarchived', 'moved', 'locked', 'unlocked'] as const;
 
 export const CMS_CONTENT_OP_ACTION_LABELS: Record<(typeof CMS_CONTENT_OP_ACTIONS)[number], string> = {
   created: '创建',
@@ -1371,6 +1371,8 @@ export const CMS_CONTENT_OP_ACTION_LABELS: Record<(typeof CMS_CONTENT_OP_ACTIONS
   archived: '归档',
   unarchived: '取消归档',
   moved: '移动栏目',
+  locked: '持久锁定',
+  unlocked: '解除锁定',
 };
 
 export const CMS_FIELD_TYPES = ['text', 'textarea', 'richtext', 'number', 'date', 'datetime', 'image', 'file', 'select', 'radio', 'checkbox', 'switch'] as const;
@@ -1424,11 +1426,39 @@ export const CMS_PUSH_ENGINE_LABELS: Record<(typeof CMS_PUSH_ENGINES)[number], s
   indexnow: 'IndexNow（Bing 等）',
 };
 
-export const CMS_FORM_FIELD_TYPES = ['text', 'textarea', 'select', 'radio'] as const;
+export const CMS_FORM_FIELD_TYPES = ['text', 'textarea', 'select', 'radio', 'email', 'mobile', 'url', 'number'] as const;
 
 export const CMS_FORM_FIELD_TYPE_LABELS: Record<(typeof CMS_FORM_FIELD_TYPES)[number], string> = {
   text: '单行文本',
   textarea: '多行文本',
   select: '下拉选择',
   radio: '单选',
+  email: '邮箱',
+  mobile: '手机号',
+  url: '网址',
+  number: '数字',
+};
+
+export const CMS_FORM_CAPTCHA_PROVIDERS = ['inherit', 'none', 'math', 'turnstile'] as const;
+
+export const CMS_FORM_CAPTCHA_PROVIDER_LABELS: Record<(typeof CMS_FORM_CAPTCHA_PROVIDERS)[number], string> = {
+  inherit: '继承站点策略',
+  none: '不启用',
+  math: '算术验证码',
+  turnstile: 'Cloudflare Turnstile',
+};
+
+export const CMS_SEARCH_WORD_TYPES = ['extension', 'stop'] as const;
+export const CMS_SEARCH_DICTIONARY_WORD_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N}_+.#-]{0,49}$/u;
+
+export const CMS_SEARCH_WORD_TYPE_LABELS: Record<(typeof CMS_SEARCH_WORD_TYPES)[number], string> = {
+  extension: '扩展词',
+  stop: '停用词',
+};
+
+export const CMS_TWITTER_CARDS = ['summary_large_image', 'summary'] as const;
+
+export const CMS_TWITTER_CARD_LABELS: Record<(typeof CMS_TWITTER_CARDS)[number], string> = {
+  summary_large_image: '大图摘要',
+  summary: '标准摘要',
 };

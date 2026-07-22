@@ -45,7 +45,7 @@ import {
   reportSlaRules,
   reportSlaViolations,
 } from './report-platform';
-import { cmsChannels, cmsContents, cmsContentTags, cmsFragments, cmsFriendLinks, cmsModelFields, cmsModels, cmsSites, cmsTags, cmsContentVersions, cmsRedirects, cmsLinkWords, cmsComments, cmsAdSlots, cmsAds, cmsForms, cmsFormSubmissions, cmsPushLogs, cmsSiteUsers, cmsChannelUsers, cmsContentChannels, cmsContentRelations, cmsContentOpLogs, cmsContentLikes, cmsContentFavorites, cmsMemberViewHistory, cmsSurveys, cmsSurveyQuestions, cmsSurveyAnswers } from './cms';
+import { cmsChannels, cmsContents, cmsContentTags, cmsFragments, cmsFriendLinks, cmsModelFields, cmsModels, cmsSites, cmsTags, cmsContentVersions, cmsRedirects, cmsLinkWords, cmsComments, cmsAdSlots, cmsAds, cmsForms, cmsFormSubmissions, cmsPushLogs, cmsSiteUsers, cmsChannelUsers, cmsContentChannels, cmsContentRelations, cmsContentOpLogs, cmsContentLikes, cmsContentFavorites, cmsMemberViewHistory, cmsSurveys, cmsSurveyQuestions, cmsSurveyAnswers, cmsResources, cmsResourceFolders, cmsSearchWords, cmsHotwordGroups, cmsHotwords } from './cms';
 
 // ─── 关联关系 ────────────────────────────────────────────────────────────────
 export const errorGroupsRelations = relations(errorGroups, ({ many, one }) => ({
@@ -1251,6 +1251,11 @@ export const cmsSitesRelations = relations(cmsSites, ({ many }) => ({
   tags: many(cmsTags),
   fragments: many(cmsFragments),
   friendLinks: many(cmsFriendLinks),
+  resourceFolders: many(cmsResourceFolders),
+  resources: many(cmsResources),
+  searchWords: many(cmsSearchWords),
+  hotwordGroups: many(cmsHotwordGroups),
+  hotwords: many(cmsHotwords),
 }));
 
 export const cmsModelsRelations = relations(cmsModels, ({ many }) => ({
@@ -1277,6 +1282,7 @@ export const cmsContentsRelations = relations(cmsContents, ({ one, many }) => ({
   extraChannels: many(cmsContentChannels),
   relatedContents: many(cmsContentRelations, { relationName: 'cmsContentRelationsSource' }),
   createdByUser: one(users, { fields: [cmsContents.createdBy], references: [users.id], relationName: 'cmsContentCreatedBy' }),
+  lockedByUser: one(users, { fields: [cmsContents.lockedBy], references: [users.id], relationName: 'cmsContentLockedBy' }),
   mappingSource: one(cmsContents, { fields: [cmsContents.mappingSourceId], references: [cmsContents.id], relationName: 'cmsContentMapping' }),
   mappedCopies: many(cmsContents, { relationName: 'cmsContentMapping' }),
   opLogs: many(cmsContentOpLogs),
@@ -1397,4 +1403,30 @@ export const cmsSiteUsersRelations = relations(cmsSiteUsers, ({ one }) => ({
 export const cmsChannelUsersRelations = relations(cmsChannelUsers, ({ one }) => ({
   channel: one(cmsChannels, { fields: [cmsChannelUsers.channelId], references: [cmsChannels.id] }),
   user: one(users, { fields: [cmsChannelUsers.userId], references: [users.id], relationName: 'cmsChannelUserUser' }),
+}));
+
+export const cmsResourceFoldersRelations = relations(cmsResourceFolders, ({ one, many }) => ({
+  site: one(cmsSites, { fields: [cmsResourceFolders.siteId], references: [cmsSites.id] }),
+  parent: one(cmsResourceFolders, { fields: [cmsResourceFolders.parentId], references: [cmsResourceFolders.id], relationName: 'cmsResourceFolderTree' }),
+  children: many(cmsResourceFolders, { relationName: 'cmsResourceFolderTree' }),
+  resources: many(cmsResources),
+}));
+
+export const cmsResourcesRelations = relations(cmsResources, ({ one }) => ({
+  site: one(cmsSites, { fields: [cmsResources.siteId], references: [cmsSites.id] }),
+  folder: one(cmsResourceFolders, { fields: [cmsResources.folderId], references: [cmsResourceFolders.id] }),
+}));
+
+export const cmsSearchWordsRelations = relations(cmsSearchWords, ({ one }) => ({
+  site: one(cmsSites, { fields: [cmsSearchWords.siteId], references: [cmsSites.id] }),
+}));
+
+export const cmsHotwordGroupsRelations = relations(cmsHotwordGroups, ({ one, many }) => ({
+  site: one(cmsSites, { fields: [cmsHotwordGroups.siteId], references: [cmsSites.id] }),
+  hotwords: many(cmsHotwords),
+}));
+
+export const cmsHotwordsRelations = relations(cmsHotwords, ({ one }) => ({
+  site: one(cmsSites, { fields: [cmsHotwords.siteId], references: [cmsSites.id] }),
+  group: one(cmsHotwordGroups, { fields: [cmsHotwords.groupId], references: [cmsHotwordGroups.id] }),
 }));
