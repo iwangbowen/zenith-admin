@@ -55,6 +55,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+  overflow: hidden;
   background: none;
   border: none;
   padding: 0;
@@ -63,6 +65,30 @@
   font-size: 14px;
   width: 100%;
   text-align: left;
+}
+
+.storage-browser__name-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.storage-browser__name-text {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.storage-browser__file-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .storage-browser__folder-row-btn:hover {

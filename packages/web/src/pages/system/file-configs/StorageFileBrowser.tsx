@@ -134,6 +134,7 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
     {
       title: '名称',
       key: 'name',
+      ellipsis: { showTitle: false },
       render: (_: unknown, record: ManagedFile | FolderEntry) => {
         if (!('id' in record)) {
           // Folder row
@@ -144,17 +145,19 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
               onClick={() => navigateToFolder(record)}
             >
               <Folder size={15} className="storage-browser__folder-icon" />
-              <span>{record.name}</span>
+              <Tooltip content={record.name}>
+                <span className="storage-browser__name-text">{record.name}</span>
+              </Tooltip>
             </button>
           );
         }
         return (
-          <Space spacing={6} style={{ flexWrap: 'nowrap', overflow: 'hidden' }}>
-            <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>{getFileTypeIcon(record.mimeType, 16, record.originalName)}</span>
+          <div className="storage-browser__name-cell">
+            <span className="storage-browser__file-icon">{getFileTypeIcon(record.mimeType, 16, record.originalName)}</span>
             <Tooltip content={record.originalName}>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{record.originalName}</span>
+              <span className="storage-browser__name-text">{record.originalName}</span>
             </Tooltip>
-          </Space>
+          </div>
         );
       },
     },
