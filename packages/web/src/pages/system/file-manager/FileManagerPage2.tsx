@@ -1232,19 +1232,22 @@ export default function FileManagerPage() {
       dataIndex: 'name',
       sorter: true,
       sortOrder: sortState?.field === 'name' ? sortState.order : false,
+      ellipsis: { showTitle: false },
       render: (v: string, r: FsEntry) => {
         const iconId = r.type === 'dir' ? getFolderIcon(v, false) : getFileIcon(v);
         const inner = (
           <>
-            <Icon icon={iconId} width={16} height={16} />
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 300 }}>{v}</span>
+            <Icon className="fm-table-name-cell__icon" icon={iconId} width={16} height={16} />
+            <Tooltip content={v}>
+              <span className="fm-table-name-cell__text">{v}</span>
+            </Tooltip>
           </>
         );
         if (r.type === 'dir') {
           return (
             <button
               type="button"
-              style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', background: 'none', border: 'none', padding: 0, font: 'inherit', color: 'inherit', textAlign: 'left', width: '100%', overflow: 'hidden' }}
+              className="fm-table-name-cell fm-table-name-cell--button"
               onClick={() => void navigateTo(r.path)}
             >
               {inner}
@@ -1252,7 +1255,7 @@ export default function FileManagerPage() {
           );
         }
         return (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div className="fm-table-name-cell">
             {inner}
           </div>
         );
