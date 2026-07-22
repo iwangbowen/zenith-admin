@@ -1,0 +1,37 @@
+.file-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.file-name-cell--button {
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.file-name-cell--button:hover {
+  color: var(--semi-color-primary);
+}
+
+.file-name-cell__icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.file-name-cell__text {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
