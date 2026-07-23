@@ -5327,7 +5327,7 @@ export const cmsTemplateDslNodeSchema: z.ZodTypeAny = z.lazy(() => z.discriminat
 ]));
 
 export const cmsTemplateDslSchema = z.object({
-  version: z.literal(1),
+  version: z.literal(2),
   root: cmsTemplateDslNodeSchema,
 }).strict();
 
@@ -5363,7 +5363,7 @@ export const activateCmsTemplateSchema = z.object({
 });
 
 export const cmsThemePackageManifestSchema = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   code: cmsTemplateCodeSchema.max(50),
   name: z.string().trim().min(1).max(100),
   version: z.string().regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/, '主题版本须为 SemVer'),
@@ -5479,6 +5479,11 @@ export const createCmsAdSchema = z.object({
 });
 export const updateCmsAdSchema = createCmsAdSchema.partial();
 
+export const cleanupCmsAdEventsSchema = z.object({
+  siteId: z.number().int().positive().optional(),
+  retentionDays: z.number().int().min(1).max(3650).optional(),
+});
+
 export const cmsFormFieldSchema = z.object({
   name: z.string().min(1).max(50).regex(/^[a-z][a-z0-9_]*$/, '字段标识须以小写字母开头'),
   label: z.string().min(1).max(100),
@@ -5536,32 +5541,174 @@ export const createCmsErrorProneWordSchema = z.object({
 });
 export const updateCmsErrorProneWordSchema = createCmsErrorProneWordSchema.partial();
 
-// ─── CMS 问卷（P3）────────────────────────────────────────────────────────────
-export const cmsSurveyQuestionSchema = z.object({
+// ─── CMS Stage 4：统一互动问卷 ────────────────────────────────────────────────
+export const cmsInteractionOptionSchema = z.object({
+  id: z.string().trim().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/, '选项 id 仅支持字母、数字、下划线和中划线'),
+  label: z.string().trim().min(1).max(100),
+  value: z.string().trim().min(1).max(100),
+}).strict();
+
+export const cmsInteractionQuestionSchema = z.object({
   id: z.number().int().positive().optional(),
   label: z.string().min(1, '题目不能为空').max(200),
   type: z.enum(['single', 'multiple', 'text']).default('single'),
   required: z.boolean().default(true),
-  options: z.array(z.object({ label: z.string().min(1).max(100), value: z.string().min(1).max(100) })).max(20).default([]),
+  options: z.array(cmsInteractionOptionSchema).max(50).default([]),
+  minChoices: z.number().int().min(0).max(50).default(1),
+  maxChoices: z.number().int().min(1).max(50).default(1),
   sort: z.number().int().default(0),
-});
+}).strict();
 
-export const createCmsSurveySchema = z.object({
+const cmsInteractionBaseSchema = z.object({
   siteId: z.number().int().positive(),
-  code: z.string().min(1, '问卷标识不能为空').max(50).regex(cmsSlugRegex, '标识仅支持小写字母、数字、中划线'),
-  title: z.string().min(1, '问卷标题不能为空').max(200),
+  code: z.string().min(1, '互动标识不能为空').max(50).regex(cmsSlugRegex, '标识仅支持小写字母、数字、中划线'),
+  kind: z.enum(['survey', 'poll']).default('survey'),
+  title: z.string().min(1, '标题不能为空').max(200),
   description: z.string().max(2000).nullable().optional(),
   status: z.enum(['draft', 'published', 'closed']).default('draft'),
-  allowAnonymous: z.boolean().default(true),
+  participantScope: z.enum(['anonymous', 'member']).default('anonymous'),
+  repeatPolicy: z.enum(['once_per_member', 'once_per_ip', 'multiple']).default('once_per_ip'),
+  resultVisibility: z.enum(['always', 'after_submit', 'after_close', 'hidden']).default('after_submit'),
+  captchaPolicy: z.enum(['inherit', 'none', 'math', 'turnstile']).default('inherit'),
+  turnstileSiteKey: z.string().trim().max(200).nullable().optional(),
+  turnstileSecret: z.string().trim().max(500).nullable().optional(),
+  thankYouMessage: z.string().trim().min(1).max(500).default('感谢您的参与！'),
   startAt: z.string().nullable().optional(),
   endAt: z.string().nullable().optional(),
-  questions: z.array(cmsSurveyQuestionSchema).min(1, '至少配置一道题目').max(50),
+  questions: z.array(cmsInteractionQuestionSchema).min(1, '至少配置一道题目').max(100),
 });
-export const updateCmsSurveySchema = createCmsSurveySchema.partial().omit({ siteId: true });
 
-/** 前台答卷提交：key = 题目 id 字符串 */
-export const submitCmsSurveySchema = z.object({
-  answers: z.record(z.string(), z.union([z.string().max(2000), z.array(z.string().max(100)).max(20)])),
+function validateCmsInteractionDefinition(
+  value: z.infer<typeof cmsInteractionBaseSchema>,
+  ctx: z.RefinementCtx,
+) {
+  if (value.repeatPolicy === 'once_per_member' && value.participantScope !== 'member') {
+    ctx.addIssue({ code: 'custom', path: ['repeatPolicy'], message: '每位会员一次仅适用于仅会员参与' });
+  }
+  if (value.startAt && value.endAt && value.startAt > value.endAt) {
+    ctx.addIssue({ code: 'custom', path: ['endAt'], message: '结束时间不能早于开始时间' });
+  }
+  if (value.captchaPolicy === 'turnstile') {
+    if (!value.turnstileSiteKey?.trim()) {
+      ctx.addIssue({ code: 'custom', path: ['turnstileSiteKey'], message: 'Turnstile Site Key 不能为空' });
+    }
+    if (!value.turnstileSecret?.trim()) {
+      ctx.addIssue({ code: 'custom', path: ['turnstileSecret'], message: 'Turnstile Secret Key 不能为空' });
+    }
+  }
+  if (value.kind === 'poll' && value.questions.length !== 1) {
+    ctx.addIssue({ code: 'custom', path: ['questions'], message: '投票必须且只能包含一道选择题' });
+  }
+  value.questions.forEach((question, index) => {
+    if (value.kind === 'poll' && question.type === 'text') {
+      ctx.addIssue({ code: 'custom', path: ['questions', index, 'type'], message: '投票不支持文本题' });
+    }
+    if (question.type === 'text' && question.options.length > 0) {
+      ctx.addIssue({ code: 'custom', path: ['questions', index, 'options'], message: '文本题不能配置选项' });
+    }
+    if (question.type !== 'text' && question.options.length < 2) {
+      ctx.addIssue({ code: 'custom', path: ['questions', index, 'options'], message: '选择题至少配置两个选项' });
+    }
+    if (question.type === 'single' && (question.minChoices > 1 || question.maxChoices > 1)) {
+      ctx.addIssue({ code: 'custom', path: ['questions', index, 'maxChoices'], message: '单选题只能选择一项' });
+    }
+    if (question.minChoices > question.maxChoices || (question.type !== 'text' && question.maxChoices > question.options.length)) {
+      ctx.addIssue({ code: 'custom', path: ['questions', index, 'maxChoices'], message: '选择数量范围无效' });
+    }
+    const optionIds = new Set(question.options.map((option) => option.id));
+    const optionValues = new Set(question.options.map((option) => option.value));
+    if (optionIds.size !== question.options.length || optionValues.size !== question.options.length) {
+      ctx.addIssue({ code: 'custom', path: ['questions', index, 'options'], message: '选项 id 与 value 必须唯一' });
+    }
+  });
+}
+
+export const createCmsInteractionSchema = cmsInteractionBaseSchema.superRefine(validateCmsInteractionDefinition);
+export const updateCmsInteractionSchema = cmsInteractionBaseSchema.partial().omit({ siteId: true, code: true });
+
+/** 前台统一答卷提交：key = 题目 id 字符串。 */
+export const submitCmsInteractionSchema = z.object({
+  answers: z.record(z.string(), z.union([z.string().max(2000), z.array(z.string().max(100)).max(50)])),
+  captchaId: z.string().max(128).optional(),
+  captchaAnswer: z.string().max(32).optional(),
+  turnstileToken: z.string().max(4096).optional(),
+  idempotencyKey: z.string().trim().min(8).max(128).optional(),
+});
+
+export const batchCmsInteractionStatusSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1).max(1000),
+  status: z.enum(['published', 'closed']),
+});
+
+// ─── CMS Stage 4：会员订阅 ────────────────────────────────────────────────────
+export const cmsSubscriptionSubjectSchema = z.object({
+  siteId: z.number().int().positive(),
+  subjectType: z.enum(['site', 'channel', 'author']),
+  subjectId: z.number().int().positive().nullable().optional(),
+  subjectKey: z.string().trim().max(255).nullable().optional(),
+  notificationEnabled: z.boolean().default(true),
+}).superRefine((value, ctx) => {
+  if ((value.subjectType === 'site' || value.subjectType === 'channel') && !value.subjectId) {
+    ctx.addIssue({ code: 'custom', path: ['subjectId'], message: '站点/栏目订阅必须指定对象 ID' });
+  }
+  if (value.subjectType === 'author' && !value.subjectKey?.trim()) {
+    ctx.addIssue({ code: 'custom', path: ['subjectKey'], message: '作者订阅必须指定作者名称' });
+  }
+});
+
+export const updateCmsSubscriptionSchema = z.object({
+  notificationEnabled: z.boolean(),
+});
+
+// ─── CMS Stage 4：页面区块 ACL 与公开展示条件 ────────────────────────────────
+export const cmsPageBlockDisplayConditionSchema = z.object({
+  audience: z.enum(['always', 'guest', 'member']).default('always'),
+  startAt: z.string().nullable().optional(),
+  endAt: z.string().nullable().optional(),
+}).superRefine((value, ctx) => {
+  if (value.startAt && value.endAt && value.startAt > value.endAt) {
+    ctx.addIssue({ code: 'custom', path: ['endAt'], message: '展示结束时间不能早于开始时间' });
+  }
+});
+
+export const cmsPageBlockSchema = z.object({
+  id: z.string().trim().min(1).max(100),
+  type: z.enum(['hero', 'richtext', 'image', 'content-list', 'columns', 'fragment']),
+  props: z.record(z.string(), z.unknown()),
+  displayCondition: cmsPageBlockDisplayConditionSchema.optional(),
+}).strict();
+
+export const createCmsPageSchema = z.object({
+  siteId: z.number().int().positive(),
+  name: z.string().trim().min(1).max(100),
+  slug: z.string().trim().min(1).max(100).regex(cmsSlugRegex, 'slug 仅允许小写字母、数字、中划线'),
+  isHome: z.boolean().default(false),
+  blocks: z.array(cmsPageBlockSchema).max(50).default([]),
+  seoTitle: z.string().max(255).nullish(),
+  seoKeywords: z.string().max(500).nullish(),
+  seoDescription: z.string().max(500).nullish(),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  remark: z.string().max(200).nullish(),
+});
+
+export const updateCmsPageSchema = z.object({
+  name: z.string().trim().min(1).max(100).optional(),
+  slug: z.string().trim().min(1).max(100).regex(cmsSlugRegex, 'slug 仅允许小写字母、数字、中划线').optional(),
+  isHome: z.boolean().optional(),
+  blocks: z.array(cmsPageBlockSchema).max(50).optional(),
+  seoTitle: z.string().max(255).nullish(),
+  seoKeywords: z.string().max(500).nullish(),
+  seoDescription: z.string().max(500).nullish(),
+  status: z.enum(['enabled', 'disabled']).optional(),
+  remark: z.string().max(200).nullish(),
+});
+
+export const setCmsPageBlockAclSchema = z.object({
+  blockIds: z.array(z.string().trim().min(1).max(100)).min(1).max(50),
+  grants: z.array(z.object({
+    subjectType: z.enum(['user', 'role']),
+    subjectId: z.number().int().positive(),
+  }).strict()).max(200),
 });
 
 export const submitCmsCommentSchema = z.object({
@@ -5589,6 +5736,7 @@ export type CreateCmsAdSlotInput = z.input<typeof createCmsAdSlotSchema>;
 export type UpdateCmsAdSlotInput = z.input<typeof updateCmsAdSlotSchema>;
 export type CreateCmsAdInput = z.input<typeof createCmsAdSchema>;
 export type UpdateCmsAdInput = z.input<typeof updateCmsAdSchema>;
+export type CleanupCmsAdEventsInput = z.input<typeof cleanupCmsAdEventsSchema>;
 export type CmsFormFieldInput = z.input<typeof cmsFormFieldSchema>;
 export type CreateCmsFormInput = z.input<typeof createCmsFormSchema>;
 export type UpdateCmsFormInput = z.input<typeof updateCmsFormSchema>;
@@ -5596,10 +5744,18 @@ export type CreateCmsSensitiveWordInput = z.input<typeof createCmsSensitiveWordS
 export type UpdateCmsSensitiveWordInput = z.input<typeof updateCmsSensitiveWordSchema>;
 export type CreateCmsErrorProneWordInput = z.input<typeof createCmsErrorProneWordSchema>;
 export type UpdateCmsErrorProneWordInput = z.input<typeof updateCmsErrorProneWordSchema>;
-export type CmsSurveyQuestionInput = z.input<typeof cmsSurveyQuestionSchema>;
-export type CreateCmsSurveyInput = z.input<typeof createCmsSurveySchema>;
-export type UpdateCmsSurveyInput = z.input<typeof updateCmsSurveySchema>;
-export type SubmitCmsSurveyInput = z.input<typeof submitCmsSurveySchema>;
+export type CmsInteractionOptionInput = z.input<typeof cmsInteractionOptionSchema>;
+export type CmsInteractionQuestionInput = z.input<typeof cmsInteractionQuestionSchema>;
+export type CreateCmsInteractionInput = z.input<typeof createCmsInteractionSchema>;
+export type UpdateCmsInteractionInput = z.input<typeof updateCmsInteractionSchema>;
+export type SubmitCmsInteractionInput = z.input<typeof submitCmsInteractionSchema>;
+export type BatchCmsInteractionStatusInput = z.input<typeof batchCmsInteractionStatusSchema>;
+export type CmsSubscriptionSubjectInput = z.input<typeof cmsSubscriptionSubjectSchema>;
+export type UpdateCmsSubscriptionInput = z.input<typeof updateCmsSubscriptionSchema>;
+export type CmsPageBlockInput = z.input<typeof cmsPageBlockSchema>;
+export type CreateCmsPageInput = z.input<typeof createCmsPageSchema>;
+export type UpdateCmsPageInput = z.input<typeof updateCmsPageSchema>;
+export type SetCmsPageBlockAclInput = z.input<typeof setCmsPageBlockAclSchema>;
 export type SubmitCmsCommentInput = z.input<typeof submitCmsCommentSchema>;
 export type MemberSubmitCmsCommentInput = z.input<typeof memberSubmitCmsCommentSchema>;
 
@@ -5635,35 +5791,6 @@ export type CropCmsResourceInput = z.input<typeof cropCmsResourceSchema>;
 export type CreateCmsResourceFolderInput = z.input<typeof createCmsResourceFolderSchema>;
 export type UpdateCmsResourceFolderInput = z.input<typeof updateCmsResourceFolderSchema>;
 export type MoveCmsResourcesInput = z.input<typeof moveCmsResourcesSchema>;
-
-// ─── CMS 轻量投票（P3）────────────────────────────────────────────────────────
-export const cmsPollOptionSchema = z.object({
-  id: z.number().int().min(1),
-  label: z.string().min(1, '选项内容不能为空').max(100),
-});
-
-export const createCmsPollSchema = z.object({
-  siteId: z.number().int().positive(),
-  code: z.string().min(2, '标识至少 2 个字符').max(50).regex(/^[a-z0-9-]+$/, '仅支持小写字母、数字和连字符'),
-  title: z.string().min(1, '请输入投票标题').max(200),
-  options: z.array(cmsPollOptionSchema).min(2, '至少配置 2 个选项').max(20),
-  maxChoices: z.number().int().min(1).max(20).default(1),
-  allowAnonymous: z.boolean().default(true),
-  startAt: z.string().nullable().optional(),
-  endAt: z.string().nullable().optional(),
-  remark: z.string().max(200).nullable().optional(),
-});
-export const updateCmsPollSchema = createCmsPollSchema.partial().omit({ siteId: true, code: true });
-
-/** 前台投票提交 */
-export const voteCmsPollSchema = z.object({
-  optionIds: z.array(z.number().int().min(1)).min(1, '请选择投票选项').max(20),
-});
-
-export type CmsPollOptionInput = z.input<typeof cmsPollOptionSchema>;
-export type CreateCmsPollInput = z.input<typeof createCmsPollSchema>;
-export type UpdateCmsPollInput = z.input<typeof updateCmsPollSchema>;
-export type VoteCmsPollInput = z.input<typeof voteCmsPollSchema>;
 
 // ─── CMS P3 Batch1 Schema ─────────────────────────────────────────────────────
 export const createCmsSearchWordSchema = z.object({

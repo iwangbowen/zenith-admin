@@ -56,7 +56,7 @@ async function call(method: string, path: string, body?: unknown, uploadName?: s
 describe('CMS Stage 3 MSW handlers', () => {
   it('returns actionable DSL validation feedback for executable nodes', async () => {
     const response = await call('POST', '/api/cms/templates/validate', {
-      dsl: { version: 1, root: { kind: 'element', tag: 'script', attrs: { onClick: 'alert(1)' }, children: [] } },
+      dsl: { version: 2, root: { kind: 'element', tag: 'script', attrs: { onClick: 'alert(1)' }, children: [] } },
     });
     expect(response.status).toBe(200);
     const report = (response.body as { data: { valid: boolean; issues: Array<{ code: string }> } }).data;

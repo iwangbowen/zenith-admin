@@ -323,4 +323,15 @@ export async function registerSystemTasks(): Promise<void> {
     allowManualRun: true,
     run: () => cleanupCmsStatLogs(90),
   });
+
+  const { enqueueCmsAdRetentionSystemTask } = await import('../services/cms/cms-stage4-tasks');
+  await registerSystemRecurringJob({
+    name: 'cms-ad-events-retention',
+    title: 'CMS 广告事件保留期清理',
+    module: 'CMS内容管理',
+    cronExpression: '40 4 * * *',
+    description: '每天按 cms_ad_event_retention_days 配置向任务中心提交分批清理任务。',
+    allowManualRun: true,
+    run: enqueueCmsAdRetentionSystemTask,
+  });
 }

@@ -58,7 +58,7 @@ async function hasPermission(user: JwtPayload, permission?: string): Promise<boo
   return permissions.includes(permission);
 }
 
-async function assertExportPermission(definition: AnyExportDefinition, raw: boolean, user: JwtPayload) {
+export async function assertExportPermission(definition: AnyExportDefinition, raw: boolean, user: JwtPayload) {
   if (!await hasPermission(user, definition.permissions.export)) {
     throw new HTTPException(403, { message: '无导出权限' });
   }

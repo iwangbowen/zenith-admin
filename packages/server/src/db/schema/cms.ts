@@ -7,6 +7,16 @@ import { asyncTasks } from './tasks';
 import {
   CMS_PUBLISH_ARTIFACT_STATUSES,
   CMS_PUBLISH_TARGET_TYPES,
+  CMS_AD_EVENT_TYPES,
+  CMS_DEVICE_TYPES,
+  CMS_INTERACTION_CAPTCHA_POLICIES,
+  CMS_INTERACTION_KINDS,
+  CMS_INTERACTION_PARTICIPANT_SCOPES,
+  CMS_INTERACTION_QUESTION_TYPES,
+  CMS_INTERACTION_REPEAT_POLICIES,
+  CMS_INTERACTION_RESULT_VISIBILITIES,
+  CMS_INTERACTION_STATUSES,
+  CMS_SUBSCRIPTION_SUBJECT_TYPES,
   CMS_TEMPLATE_SOURCES,
   CMS_TEMPLATE_TYPES,
   CMS_THEME_DEPLOYMENT_STATUSES,
@@ -32,6 +42,16 @@ export const cmsThemePackageStatusEnum = pgEnum('cms_theme_package_status', CMS_
 export const cmsThemeDeploymentStatusEnum = pgEnum('cms_theme_deployment_status', CMS_THEME_DEPLOYMENT_STATUSES);
 export const cmsPublishTargetTypeEnum = pgEnum('cms_publish_target_type', CMS_PUBLISH_TARGET_TYPES);
 export const cmsPublishArtifactStatusEnum = pgEnum('cms_publish_artifact_status', CMS_PUBLISH_ARTIFACT_STATUSES);
+export const cmsAdEventTypeEnum = pgEnum('cms_ad_event_type', CMS_AD_EVENT_TYPES);
+export const cmsSubscriptionSubjectTypeEnum = pgEnum('cms_subscription_subject_type', CMS_SUBSCRIPTION_SUBJECT_TYPES);
+export const cmsInteractionKindEnum = pgEnum('cms_interaction_kind', CMS_INTERACTION_KINDS);
+export const cmsInteractionStatusEnum = pgEnum('cms_interaction_status', CMS_INTERACTION_STATUSES);
+export const cmsInteractionQuestionTypeEnum = pgEnum('cms_interaction_question_type', CMS_INTERACTION_QUESTION_TYPES);
+export const cmsInteractionParticipantScopeEnum = pgEnum('cms_interaction_participant_scope', CMS_INTERACTION_PARTICIPANT_SCOPES);
+export const cmsInteractionRepeatPolicyEnum = pgEnum('cms_interaction_repeat_policy', CMS_INTERACTION_REPEAT_POLICIES);
+export const cmsInteractionResultVisibilityEnum = pgEnum('cms_interaction_result_visibility', CMS_INTERACTION_RESULT_VISIBILITIES);
+export const cmsInteractionCaptchaPolicyEnum = pgEnum('cms_interaction_captcha_policy', CMS_INTERACTION_CAPTCHA_POLICIES);
+export const cmsPageBlockAclSubjectTypeEnum = pgEnum('cms_page_block_acl_subject_type', ['user', 'role']);
 
 /** PostgreSQL tsvector 列（drizzle 无内置类型），存全文检索向量 */
 const tsvector = customType<{ data: string }>({
@@ -476,71 +496,113 @@ export const cmsMemberViewHistory = pgTable('cms_member_view_history', {
 
 export type CmsMemberViewHistoryRow = typeof cmsMemberViewHistory.$inferSelect;
 
-// ═══ P3 调查问卷 ═══════════════════════════════════════════════════════════════
+// ─── CMS 会员订阅（取消采用 inactive 留痕，保留首次积分幂等事实）────────────────
+export const cmsMemberSubscriptions = pgTable('cms_member_subscriptions', {
+  id: serial('id').primaryKey(),
+  memberId: integer('member_id').notNull().references(() => members.id, { onDelete: 'cascade' }),
+  siteId: integer('site_id').notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
+  subjectType: cmsSubscriptionSubjectTypeEnum('subject_type').notNull(),
+  /** site/channel 使用十进制 ID 字符串；author 使用 NFKC + trim + lowercase 后的稳定键。 */
+  subjectKey: varchar('subject_key', { length: 255 }).notNull(),
+  /** site/channel 的实体 ID；author 为 null。 */
+  subjectId: integer('subject_id'),
+  /** 展示文本快照，不参与唯一性判定。 */
+  subjectLabel: varchar('subject_label', { length: 255 }).notNull(),
+  notificationEnabled: boolean('notification_enabled').notNull().default(true),
+  active: boolean('active').notNull().default(true),
+  /** 首次有效订阅积分已发放的持久化标记；取消/重新关注不会清除。 */
+  pointsAwardedAt: timestamp('points_awarded_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  uniqueIndex('cms_member_subscriptions_subject_uq').on(t.memberId, t.siteId, t.subjectType, t.subjectKey),
+  index('cms_member_subscriptions_member_idx').on(t.memberId, t.active, t.createdAt),
+  index('cms_member_subscriptions_subject_idx').on(t.siteId, t.subjectType, t.subjectKey, t.active),
+]);
 
-export const cmsSurveyStatusEnum = pgEnum('cms_survey_status', ['draft', 'published', 'closed']);
-export const cmsSurveyQuestionTypeEnum = pgEnum('cms_survey_question_type', ['single', 'multiple', 'text']);
+export type CmsMemberSubscriptionRow = typeof cmsMemberSubscriptions.$inferSelect;
 
-// ─── 问卷（前台 /survey/{code}/ 访问；发布中才可提交）───────────────────────────
-export const cmsSurveys = pgTable('cms_surveys', {
+// ═══ Stage 4：统一互动问卷（survey / poll）══════════════════════════════════════
+
+export const cmsInteractions = pgTable('cms_interactions', {
   id: serial('id').primaryKey(),
   siteId: integer('site_id').notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
-  /** 前台访问标识（站点内唯一） */
   code: varchar('code', { length: 50 }).notNull(),
+  kind: cmsInteractionKindEnum('kind').notNull(),
   title: varchar('title', { length: 200 }).notNull(),
   description: text('description'),
-  status: cmsSurveyStatusEnum('status').notNull().default('draft'),
-  /** 允许匿名提交（false = 仅登录会员；匿名按 IP 限重） */
-  allowAnonymous: boolean('allow_anonymous').notNull().default(true),
-  /** 答卷时间窗（空 = 不限） */
+  status: cmsInteractionStatusEnum('status').notNull().default('draft'),
+  participantScope: cmsInteractionParticipantScopeEnum('participant_scope').notNull().default('anonymous'),
+  repeatPolicy: cmsInteractionRepeatPolicyEnum('repeat_policy').notNull().default('once_per_ip'),
+  resultVisibility: cmsInteractionResultVisibilityEnum('result_visibility').notNull().default('after_submit'),
+  captchaPolicy: cmsInteractionCaptchaPolicyEnum('captcha_policy').notNull().default('inherit'),
+  turnstileSiteKey: varchar('turnstile_site_key', { length: 200 }),
+  turnstileSecret: varchar('turnstile_secret', { length: 500 }),
+  thankYouMessage: varchar('thank_you_message', { length: 500 }).notNull().default('感谢您的参与！'),
   startAt: timestamp('start_at'),
   endAt: timestamp('end_at'),
-  /** 答卷数冗余计数（提交时原子 +1） */
-  answerCount: integer('answer_count').notNull().default(0),
+  responseCount: integer('response_count').notNull().default(0),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (t) => [
-  uniqueIndex('cms_surveys_site_code_uq').on(t.siteId, t.code),
+  uniqueIndex('cms_interactions_site_code_uq').on(t.siteId, t.code),
+  index('cms_interactions_site_status_idx').on(t.siteId, t.status, t.kind),
 ]);
 
-export type CmsSurveyRow = typeof cmsSurveys.$inferSelect;
+export type CmsInteractionRow = typeof cmsInteractions.$inferSelect;
 
-// ─── 问卷题目（single=单选 multiple=多选 text=文字）─────────────────────────────
-export const cmsSurveyQuestions = pgTable('cms_survey_questions', {
+export const cmsInteractionQuestions = pgTable('cms_interaction_questions', {
   id: serial('id').primaryKey(),
-  surveyId: integer('survey_id').notNull().references(() => cmsSurveys.id, { onDelete: 'cascade' }),
+  interactionId: integer('interaction_id').notNull().references(() => cmsInteractions.id, { onDelete: 'cascade' }),
   label: varchar('label', { length: 200 }).notNull(),
-  type: cmsSurveyQuestionTypeEnum('type').notNull().default('single'),
+  type: cmsInteractionQuestionTypeEnum('type').notNull().default('single'),
   required: boolean('required').notNull().default(true),
-  /** 选择题选项（text 题为空） */
-  options: jsonb('options').$type<{ label: string; value: string }[]>().notNull().default([]),
+  options: jsonb('options').$type<{ id: string; label: string; value: string }[]>().notNull().default([]),
+  minChoices: integer('min_choices').notNull().default(1),
+  maxChoices: integer('max_choices').notNull().default(1),
   sort: integer('sort').notNull().default(0),
 }, (t) => [
-  index('cms_survey_questions_survey_idx').on(t.surveyId, t.sort),
+  index('cms_interaction_questions_parent_idx').on(t.interactionId, t.sort),
 ]);
 
-export type CmsSurveyQuestionRow = typeof cmsSurveyQuestions.$inferSelect;
+export type CmsInteractionQuestionRow = typeof cmsInteractionQuestions.$inferSelect;
 
-// ─── 答卷（会员一人一份；匿名按 IP + Redis 限重）────────────────────────────────
-export const cmsSurveyAnswers = pgTable('cms_survey_answers', {
+export const cmsInteractionResponses = pgTable('cms_interaction_responses', {
   id: serial('id').primaryKey(),
-  surveyId: integer('survey_id').notNull().references(() => cmsSurveys.id, { onDelete: 'cascade' }),
+  interactionId: integer('interaction_id').notNull().references(() => cmsInteractions.id, { onDelete: 'cascade' }),
   memberId: integer('member_id').references(() => members.id, { onDelete: 'set null' }),
-  ip: varchar('ip', { length: 64 }),
-  /** 答案：key = 题目 id 字符串，值 = 选项 value / value 数组 / 文字 */
-  answers: jsonb('answers').$type<Record<string, string | string[]>>().notNull(),
+  visitorHash: varchar('visitor_hash', { length: 64 }).notNull(),
+  ipHash: varchar('ip_hash', { length: 64 }).notNull(),
+  /** once_per_member / once_per_ip 的数据库去重键；multiple 为 null。 */
+  repeatKey: varchar('repeat_key', { length: 80 }),
+  /** 显式请求幂等键的摘要；同一互动内唯一。 */
+  requestKey: varchar('request_key', { length: 64 }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => [
-  index('cms_survey_answers_survey_idx').on(t.surveyId, t.createdAt),
-  uniqueIndex('cms_survey_answers_member_uq').on(t.surveyId, t.memberId).where(sql`${t.memberId} is not null`),
+  index('cms_interaction_responses_parent_time_idx').on(t.interactionId, t.createdAt, t.id),
+  index('cms_interaction_responses_member_idx').on(t.memberId, t.createdAt),
+  uniqueIndex('cms_interaction_responses_repeat_uq').on(t.interactionId, t.repeatKey).where(sql`${t.repeatKey} is not null`),
+  uniqueIndex('cms_interaction_responses_request_uq').on(t.interactionId, t.requestKey).where(sql`${t.requestKey} is not null`),
 ]);
 
-export type CmsSurveyAnswerRow = typeof cmsSurveyAnswers.$inferSelect;
+export type CmsInteractionResponseRow = typeof cmsInteractionResponses.$inferSelect;
+
+export const cmsInteractionAnswers = pgTable('cms_interaction_answers', {
+  id: serial('id').primaryKey(),
+  responseId: integer('response_id').notNull().references(() => cmsInteractionResponses.id, { onDelete: 'cascade' }),
+  questionId: integer('question_id').notNull().references(() => cmsInteractionQuestions.id, { onDelete: 'cascade' }),
+  value: jsonb('value').$type<string | string[]>().notNull(),
+}, (t) => [
+  uniqueIndex('cms_interaction_answers_response_question_uq').on(t.responseId, t.questionId),
+  index('cms_interaction_answers_question_idx').on(t.questionId),
+]);
+
+export type CmsInteractionAnswerRow = typeof cmsInteractionAnswers.$inferSelect;
 
 // ═══ P4 统计分析 ═══════════════════════════════════════════════════════════════
 
-export const cmsDeviceTypeEnum = pgEnum('cms_device_type', ['pc', 'mobile', 'bot']);
+export const cmsDeviceTypeEnum = pgEnum('cms_device_type', CMS_DEVICE_TYPES);
 
 // ─── 前台访问日志（服务端响应路径记录，静态命中同样统计；原始日志保留 90 天）──────
 export const cmsVisitLogs = pgTable('cms_visit_logs', {
@@ -581,6 +643,37 @@ export const cmsAdStats = pgTable('cms_ad_stats', {
 ]);
 
 export type CmsAdStatRow = typeof cmsAdStats.$inferSelect;
+
+// ─── 广告事件明细（append-only；按 occurred_at 范围索引，便于未来按月分区）──────
+export const cmsAdEvents = pgTable('cms_ad_events', {
+  id: serial('id').primaryKey(),
+  siteId: integer('site_id').notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
+  /** 事实快照 ID，不设 FK：广告/广告位删除后事件仍保留至 retention 清理。 */
+  adId: integer('ad_id').notNull(),
+  slotId: integer('slot_id').notNull(),
+  eventType: cmsAdEventTypeEnum('event_type').notNull(),
+  occurredAt: timestamp('occurred_at').defaultNow().notNull(),
+  /** 服务端加盐 SHA-256；绝不保存明文 IP。 */
+  visitorHash: varchar('visitor_hash', { length: 64 }).notNull(),
+  ipHash: varchar('ip_hash', { length: 64 }).notNull(),
+  userAgent: varchar('user_agent', { length: 500 }),
+  device: cmsDeviceTypeEnum('device').notNull().default('pc'),
+  referrer: varchar('referrer', { length: 1000 }),
+  path: varchar('path', { length: 500 }),
+  publishChannelId: integer('publish_channel_id').references(() => cmsPublishChannels.id, { onDelete: 'set null' }),
+  memberId: integer('member_id').references(() => members.id, { onDelete: 'set null' }),
+  /** 事件类型 + 广告 + 访客 + 防刷时间桶的摘要，数据库唯一约束为最终幂等屏障。 */
+  dedupeKey: varchar('dedupe_key', { length: 64 }).notNull(),
+}, (t) => [
+  uniqueIndex('cms_ad_events_dedupe_uq').on(t.dedupeKey),
+  index('cms_ad_events_site_time_idx').on(t.siteId, t.occurredAt, t.id),
+  index('cms_ad_events_ad_time_idx').on(t.adId, t.occurredAt, t.id),
+  index('cms_ad_events_slot_time_idx').on(t.slotId, t.occurredAt, t.id),
+  index('cms_ad_events_type_device_time_idx').on(t.eventType, t.device, t.occurredAt),
+  index('cms_ad_events_channel_time_idx').on(t.publishChannelId, t.occurredAt),
+]);
+
+export type CmsAdEventRow = typeof cmsAdEvents.$inferSelect;
 
 // ─── 前台搜索日志（搜索量趋势 / 无结果词榜；原始日志保留 90 天）──────────────────
 export const cmsSearchLogs = pgTable('cms_search_logs', {
@@ -1036,8 +1129,15 @@ export const cmsPages = pgTable('cms_pages', {
   slug: varchar('slug', { length: 100 }).notNull(),
   /** 接管站点首页（每站点最多一个生效） */
   isHome: boolean('is_home').notNull().default(false),
-  /** 区块数组：{ id, type, props }[]，类型见 shared CmsPageBlock */
-  blocks: jsonb('blocks').$type<{ id: string; type: string; props: Record<string, unknown> }[]>().notNull().default([]),
+  /** 区块数组：{ id, type, props, displayCondition? }[]，类型见 shared CmsPageBlock */
+  blocks: jsonb('blocks').$type<{
+    id: string;
+    type: string;
+    props: Record<string, unknown>;
+    displayCondition?: { audience: 'always' | 'guest' | 'member'; startAt?: string | null; endAt?: string | null };
+  }[]>().notNull().default([]),
+  /** guest/member 条件存在时为 true；静态构建和混合回写必须跳过。 */
+  requiresDynamic: boolean('requires_dynamic').notNull().default(false),
   seoTitle: varchar('seo_title', { length: 255 }),
   seoKeywords: varchar('seo_keywords', { length: 500 }),
   seoDescription: varchar('seo_description', { length: 500 }),
@@ -1052,6 +1152,22 @@ export const cmsPages = pgTable('cms_pages', {
 ]);
 
 export type CmsPageRow = typeof cmsPages.$inferSelect;
+
+// ─── 页面区块管理 ACL（配置后 fail-closed；未配置继承页面编辑权限）─────────────
+export const cmsPageBlockAcls = pgTable('cms_page_block_acls', {
+  id: serial('id').primaryKey(),
+  pageId: integer('page_id').notNull().references(() => cmsPages.id, { onDelete: 'cascade' }),
+  blockId: varchar('block_id', { length: 100 }).notNull(),
+  subjectType: cmsPageBlockAclSubjectTypeEnum('subject_type').notNull(),
+  subjectId: integer('subject_id').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  uniqueIndex('cms_page_block_acls_grant_uq').on(t.pageId, t.blockId, t.subjectType, t.subjectId),
+  index('cms_page_block_acls_block_idx').on(t.pageId, t.blockId),
+  index('cms_page_block_acls_subject_idx').on(t.subjectType, t.subjectId),
+]);
+
+export type CmsPageBlockAclRow = typeof cmsPageBlockAcls.$inferSelect;
 
 // ─── CMS 发布产物事实（队列状态复用 async_tasks，不另建发布任务表）──────────────
 export const cmsPublishArtifacts = pgTable('cms_publish_artifacts', {
@@ -1134,55 +1250,3 @@ export const cmsResources = pgTable('cms_resources', {
 ]);
 
 export type CmsResourceRow = typeof cmsResources.$inferSelect;
-
-// ═══ P3 轻量投票 ═══════════════════════════════════════════════════════════════
-
-// ─── 投票（内容页内嵌 [投票:code]；游客 IP 去重 / 会员唯一约束）──────────────────
-export const cmsPollStatusEnum = pgEnum('cms_poll_status', ['draft', 'published', 'closed']);
-
-export const cmsPolls = pgTable('cms_polls', {
-  id: serial('id').primaryKey(),
-  siteId: integer('site_id').notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
-  /** 正文嵌入引用标识：[投票:code] */
-  code: varchar('code', { length: 50 }).notNull(),
-  title: varchar('title', { length: 200 }).notNull(),
-  /** 选项数组：[{ id, label }]（id 为选项稳定标识，votes 表按 id 记票） */
-  options: jsonb('options').$type<{ id: number; label: string }[]>().notNull().default([]),
-  /** 每票最多可选项数（1 = 单选） */
-  maxChoices: integer('max_choices').notNull().default(1),
-  /** 允许游客投票（同 IP 去重）；false = 仅登录会员 */
-  allowAnonymous: boolean('allow_anonymous').notNull().default(true),
-  /** 投票窗口（空 = 不限） */
-  startAt: timestamp('start_at'),
-  endAt: timestamp('end_at'),
-  status: cmsPollStatusEnum('status').notNull().default('draft'),
-  /** 冗余总票数（投票事务内原子 +1） */
-  totalVotes: integer('total_votes').notNull().default(0),
-  remark: varchar('remark', { length: 200 }),
-  ...auditColumns(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
-}, (t) => [
-  uniqueIndex('cms_polls_site_code_uq').on(t.siteId, t.code),
-]);
-
-export type CmsPollRow = typeof cmsPolls.$inferSelect;
-
-export const cmsPollVotes = pgTable('cms_poll_votes', {
-  id: serial('id').primaryKey(),
-  pollId: integer('poll_id').notNull().references(() => cmsPolls.id, { onDelete: 'cascade' }),
-  /** 所选选项 id 数组 */
-  optionIds: jsonb('option_ids').$type<number[]>().notNull().default([]),
-  /** 会员投票：非空即一人一票（唯一约束） */
-  memberId: integer('member_id').references(() => members.id, { onDelete: 'cascade' }),
-  /** 游客身份键（IP），游客一 IP 一票 */
-  voterKey: varchar('voter_key', { length: 64 }),
-  ip: varchar('ip', { length: 64 }),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-}, (t) => [
-  uniqueIndex('cms_poll_votes_member_uq').on(t.pollId, t.memberId).where(sql`${t.memberId} is not null`),
-  uniqueIndex('cms_poll_votes_guest_uq').on(t.pollId, t.voterKey).where(sql`${t.memberId} is null and ${t.voterKey} is not null`),
-  index('cms_poll_votes_poll_idx').on(t.pollId),
-]);
-
-export type CmsPollVoteRow = typeof cmsPollVotes.$inferSelect;

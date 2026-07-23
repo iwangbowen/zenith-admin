@@ -1267,7 +1267,7 @@ export const CMS_STATIC_MODE_LABELS: Record<(typeof CMS_STATIC_MODES)[number], s
 };
 
 /** CMS 声明式模板 DSL 当前引擎版本与硬性复杂度上限。 */
-export const CMS_TEMPLATE_DSL_VERSION = 1 as const;
+export const CMS_TEMPLATE_DSL_VERSION = 2 as const;
 export const CMS_TEMPLATE_DSL_LIMITS = {
   maxDepth: 32,
   maxNodes: 500,
@@ -1288,7 +1288,7 @@ export const CMS_TEMPLATE_TYPES = [
   'not_found',
   'custom_page',
   'block',
-  'survey',
+  'interaction',
 ] as const;
 
 export const CMS_TEMPLATE_TYPE_LABELS: Record<(typeof CMS_TEMPLATE_TYPES)[number], string> = {
@@ -1302,7 +1302,7 @@ export const CMS_TEMPLATE_TYPE_LABELS: Record<(typeof CMS_TEMPLATE_TYPES)[number
   not_found: '404 页面',
   custom_page: '搭建页面',
   block: '区块',
-  survey: '问卷页',
+  interaction: '互动问卷页',
 };
 
 export const CMS_TEMPLATE_SOURCES = ['manual', 'package'] as const;
@@ -1393,15 +1393,90 @@ export const CMS_RESOURCE_TYPE_LABELS: Record<(typeof CMS_RESOURCE_TYPES)[number
   other: '其他',
 };
 
-/** CMS 投票状态（P3 轻量投票） */
-export const CMS_POLL_STATUS_LABELS: Record<'draft' | 'published' | 'closed', string> = {
-  draft: '草稿',
-  published: '投票中',
-  closed: '已结束',
+/** CMS 广告事件类型。 */
+export const CMS_AD_EVENT_TYPES = ['impression', 'click'] as const;
+
+export const CMS_AD_EVENT_TYPE_LABELS: Record<(typeof CMS_AD_EVENT_TYPES)[number], string> = {
+  impression: '曝光',
+  click: '点击',
 };
 
-/** 正文投票嵌入标记：[投票:code]（渲染时替换为投票组件占位） */
-export const CMS_POLL_MARKER_PREFIX = '[投票:';
+export const CMS_DEVICE_TYPES = ['pc', 'mobile', 'bot'] as const;
+export const CMS_DEVICE_TYPE_LABELS: Record<(typeof CMS_DEVICE_TYPES)[number], string> = {
+  pc: '桌面端',
+  mobile: '移动端',
+  bot: '机器人',
+};
+
+export const CMS_PAGE_BLOCK_AUDIENCES = ['always', 'guest', 'member'] as const;
+export const CMS_PAGE_BLOCK_AUDIENCE_LABELS: Record<(typeof CMS_PAGE_BLOCK_AUDIENCES)[number], string> = {
+  always: '所有访客',
+  guest: '仅游客',
+  member: '仅登录会员',
+};
+
+/** CMS 会员订阅对象类型。 */
+export const CMS_SUBSCRIPTION_SUBJECT_TYPES = ['site', 'channel', 'author'] as const;
+
+export const CMS_SUBSCRIPTION_SUBJECT_TYPE_LABELS: Record<(typeof CMS_SUBSCRIPTION_SUBJECT_TYPES)[number], string> = {
+  site: '站点',
+  channel: '栏目',
+  author: '作者',
+};
+
+/** 统一互动问卷模型。 */
+export const CMS_INTERACTION_KINDS = ['survey', 'poll'] as const;
+export const CMS_INTERACTION_STATUSES = ['draft', 'published', 'closed'] as const;
+export const CMS_INTERACTION_QUESTION_TYPES = ['single', 'multiple', 'text'] as const;
+export const CMS_INTERACTION_PARTICIPANT_SCOPES = ['anonymous', 'member'] as const;
+export const CMS_INTERACTION_REPEAT_POLICIES = ['once_per_member', 'once_per_ip', 'multiple'] as const;
+export const CMS_INTERACTION_RESULT_VISIBILITIES = ['always', 'after_submit', 'after_close', 'hidden'] as const;
+export const CMS_INTERACTION_CAPTCHA_POLICIES = ['inherit', 'none', 'math', 'turnstile'] as const;
+
+export const CMS_INTERACTION_KIND_LABELS: Record<(typeof CMS_INTERACTION_KINDS)[number], string> = {
+  survey: '问卷',
+  poll: '投票',
+};
+
+export const CMS_INTERACTION_STATUS_LABELS: Record<(typeof CMS_INTERACTION_STATUSES)[number], string> = {
+  draft: '草稿',
+  published: '进行中',
+  closed: '已关闭',
+};
+
+export const CMS_INTERACTION_QUESTION_TYPE_LABELS: Record<(typeof CMS_INTERACTION_QUESTION_TYPES)[number], string> = {
+  single: '单选',
+  multiple: '多选',
+  text: '文本',
+};
+
+export const CMS_INTERACTION_PARTICIPANT_SCOPE_LABELS: Record<(typeof CMS_INTERACTION_PARTICIPANT_SCOPES)[number], string> = {
+  anonymous: '游客与会员',
+  member: '仅会员',
+};
+
+export const CMS_INTERACTION_REPEAT_POLICY_LABELS: Record<(typeof CMS_INTERACTION_REPEAT_POLICIES)[number], string> = {
+  once_per_member: '每位会员一次',
+  once_per_ip: '每个 IP 一次',
+  multiple: '允许多次',
+};
+
+export const CMS_INTERACTION_RESULT_VISIBILITY_LABELS: Record<(typeof CMS_INTERACTION_RESULT_VISIBILITIES)[number], string> = {
+  always: '始终可见',
+  after_submit: '提交后可见',
+  after_close: '关闭后可见',
+  hidden: '不公开',
+};
+
+export const CMS_INTERACTION_CAPTCHA_POLICY_LABELS: Record<(typeof CMS_INTERACTION_CAPTCHA_POLICIES)[number], string> = {
+  inherit: '继承站点',
+  none: '不启用',
+  math: '数学验证码',
+  turnstile: 'Cloudflare Turnstile',
+};
+
+/** 正文互动嵌入标记：[互动:code]。 */
+export const CMS_INTERACTION_MARKER_PREFIX = '[互动:';
 
 /** CMS 会员互动积分规则（earn 记账 bizType='cms_interaction'） */
 export const CMS_INTERACTION_POINTS = {
@@ -1411,6 +1486,8 @@ export const CMS_INTERACTION_POINTS = {
   like: 1,
   /** 收藏内容（每内容仅一次） */
   favorite: 2,
+  /** 首次有效订阅（同一标准化对象永久仅一次） */
+  subscribe: 2,
   /** 投稿发布（每内容仅一次） */
   contribution: 10,
 } as const;
@@ -1420,25 +1497,8 @@ export const CMS_INTERACTION_DAILY_LIMITS = {
   view: 10,
   like: 5,
   favorite: 5,
+  subscribe: 5,
 } as const;
-
-/** CMS 问卷状态 */
-export const CMS_SURVEY_STATUSES = ['draft', 'published', 'closed'] as const;
-
-export const CMS_SURVEY_STATUS_LABELS: Record<(typeof CMS_SURVEY_STATUSES)[number], string> = {
-  draft: '草稿',
-  published: '发布中',
-  closed: '已结束',
-};
-
-/** CMS 问卷题型 */
-export const CMS_SURVEY_QUESTION_TYPES = ['single', 'multiple', 'text'] as const;
-
-export const CMS_SURVEY_QUESTION_TYPE_LABELS: Record<(typeof CMS_SURVEY_QUESTION_TYPES)[number], string> = {
-  single: '单选',
-  multiple: '多选',
-  text: '文字',
-};
 
 /** CMS 内容操作日志动作（内容级时间线） */
 export const CMS_CONTENT_OP_ACTIONS = ['created', 'updated', 'submitted', 'published', 'rejected', 'offlined', 'recycled', 'restored', 'rolled_back', 'archived', 'unarchived', 'moved', 'locked', 'unlocked'] as const;

@@ -4,6 +4,7 @@ import type {
   CmsContribution,
   CmsMemberComment,
   CmsMemberContentItem,
+  CmsMemberSubscription,
   Coupon,
   Member,
   MemberBenefits,
@@ -114,6 +115,12 @@ export const memberKeys = {
     all: ['member', 'renewal'] as const,
     info: ['member', 'renewal', 'info'] as const,
     plans: ['member', 'renewal', 'plans'] as const,
+  },
+  subscriptions: {
+    all: ['member', 'cms-subscriptions'] as const,
+    lists: ['member', 'cms-subscriptions', 'list'] as const,
+    list: (params: MemberListParams) => ['member', 'cms-subscriptions', 'list', params] as const,
+    detail: (id: number | undefined) => ['member', 'cms-subscriptions', 'detail', id] as const,
   },
 };
 
@@ -477,6 +484,35 @@ export function useDeleteContribution() {
   return useMutation({
     mutationFn: (id: number) => memberRequest.delete<null>(`/api/member/cms/contributions/${id}`).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: contributionKeys.all }),
+  });
+}
+
+// ─── CMS 会员订阅 ────────────────────────────────────────────────────────────
+export function useMyCmsSubscriptions(params: MemberListParams & { subjectType?: string }) {
+  return useQuery({
+    queryKey: memberKeys.subscriptions.list(params),
+    queryFn: () => memberRequest.get<PaginatedResponse<CmsMemberSubscription>>(
+      `/api/member/cms/subscriptions${toQueryString(params)}`,
+    ).then(unwrap),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useUpdateCmsSubscription() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, notificationEnabled }: { id: number; notificationEnabled: boolean }) =>
+      memberRequest.put<CmsMemberSubscription>(`/api/member/cms/subscriptions/${id}`, { notificationEnabled }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: memberKeys.subscriptions.all }),
+  });
+}
+
+export function useCancelCmsSubscription() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) =>
+      memberRequest.delete<CmsMemberSubscription>(`/api/member/cms/subscriptions/${id}`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: memberKeys.subscriptions.all }),
   });
 }
 

@@ -43,7 +43,7 @@ const envSchema = z.object({
   CMS_THEME_TRUSTED_PUBLIC_KEYS: z.string().default(''),
   CMS_THEME_SIGNING_KEY_ID: z.string().default(''),
   CMS_THEME_SIGNING_PRIVATE_KEY: z.string().default(''),
-  CMS_THEME_ENGINE_VERSION: z.coerce.number().int().positive().default(1),
+  CMS_THEME_ENGINE_VERSION: z.coerce.number().int().positive().default(2),
   REDIS_URL: z.string().optional(),
   REDIS_HOST: z.string().default('127.0.0.1'),
   REDIS_PORT: z.coerce.number().int().positive().default(6379),

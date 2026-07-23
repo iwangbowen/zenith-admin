@@ -56,7 +56,7 @@ const listRoute = defineOpenAPIRoute({
       query: PaginationQuery.extend({
         siteId: z.coerce.number().int().positive().optional(),
         themeCode: z.string().max(50).optional(),
-        type: z.enum(['layout', 'index', 'list', 'detail', 'page', 'search', 'tag', 'not_found', 'custom_page', 'block', 'survey']).optional(),
+        type: z.enum(['layout', 'index', 'list', 'detail', 'page', 'search', 'tag', 'not_found', 'custom_page', 'block', 'interaction']).optional(),
         status: z.enum(['enabled', 'disabled']).optional(),
         keyword: z.string().max(100).optional(),
       }),

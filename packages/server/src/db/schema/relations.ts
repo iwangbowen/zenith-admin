@@ -45,7 +45,17 @@ import {
   reportSlaRules,
   reportSlaViolations,
 } from './report-platform';
-import { cmsChannels, cmsContents, cmsContentTags, cmsFragments, cmsFriendLinks, cmsModelFields, cmsModels, cmsSites, cmsTags, cmsContentVersions, cmsRedirects, cmsLinkWords, cmsComments, cmsAdSlots, cmsAds, cmsForms, cmsFormSubmissions, cmsPushLogs, cmsSiteUsers, cmsChannelUsers, cmsContentChannels, cmsContentRelations, cmsContentOpLogs, cmsContentLikes, cmsContentFavorites, cmsMemberViewHistory, cmsSurveys, cmsSurveyQuestions, cmsSurveyAnswers, cmsResources, cmsResourceFolders, cmsSearchWords, cmsHotwordGroups, cmsHotwords, cmsTemplates, cmsTemplateVersions, cmsThemePackages, cmsThemeDeployments, cmsPublishArtifacts, cmsPublishChannels, cmsPages } from './cms';
+import {
+  cmsAdEvents, cmsAds, cmsAdSlots, cmsChannelUsers, cmsChannels, cmsComments,
+  cmsContentChannels, cmsContentFavorites, cmsContentLikes, cmsContentOpLogs,
+  cmsContentRelations, cmsContents, cmsContentTags, cmsContentVersions, cmsForms,
+  cmsFormSubmissions, cmsFragments, cmsFriendLinks, cmsHotwordGroups, cmsHotwords,
+  cmsInteractionAnswers, cmsInteractionQuestions, cmsInteractionResponses, cmsInteractions,
+  cmsLinkWords, cmsMemberSubscriptions, cmsMemberViewHistory, cmsModelFields, cmsModels,
+  cmsPageBlockAcls, cmsPages, cmsPublishArtifacts, cmsPublishChannels, cmsPushLogs,
+  cmsRedirects, cmsResourceFolders, cmsResources, cmsSearchWords, cmsSites, cmsSiteUsers,
+  cmsTags, cmsTemplateVersions, cmsTemplates, cmsThemeDeployments, cmsThemePackages,
+} from './cms';
 
 // ─── 关联关系 ────────────────────────────────────────────────────────────────
 export const errorGroupsRelations = relations(errorGroups, ({ many, one }) => ({
@@ -1260,6 +1270,10 @@ export const cmsSitesRelations = relations(cmsSites, ({ many }) => ({
   templates: many(cmsTemplates),
   themeDeployments: many(cmsThemeDeployments),
   publishArtifacts: many(cmsPublishArtifacts),
+  interactions: many(cmsInteractions),
+  subscriptions: many(cmsMemberSubscriptions),
+  adEvents: many(cmsAdEvents),
+  pages: many(cmsPages),
 }));
 
 export const cmsTemplatesRelations = relations(cmsTemplates, ({ one, many }) => ({
@@ -1331,7 +1345,7 @@ export const cmsContentOpLogsRelations = relations(cmsContentOpLogs, ({ one }) =
   operator: one(users, { fields: [cmsContentOpLogs.operatorId], references: [users.id] }),
 }));
 
-// ─── P3 会员互动 / 问卷 ────────────────────────────────────────────────────────
+// ─── P3/Stage4 会员互动、订阅与统一互动问卷 ──────────────────────────────────
 export const cmsContentLikesRelations = relations(cmsContentLikes, ({ one }) => ({
   member: one(members, { fields: [cmsContentLikes.memberId], references: [members.id] }),
   content: one(cmsContents, { fields: [cmsContentLikes.contentId], references: [cmsContents.id] }),
@@ -1348,19 +1362,31 @@ export const cmsMemberViewHistoryRelations = relations(cmsMemberViewHistory, ({ 
   site: one(cmsSites, { fields: [cmsMemberViewHistory.siteId], references: [cmsSites.id] }),
 }));
 
-export const cmsSurveysRelations = relations(cmsSurveys, ({ one, many }) => ({
-  site: one(cmsSites, { fields: [cmsSurveys.siteId], references: [cmsSites.id] }),
-  questions: many(cmsSurveyQuestions),
-  surveyAnswers: many(cmsSurveyAnswers),
+export const cmsMemberSubscriptionsRelations = relations(cmsMemberSubscriptions, ({ one }) => ({
+  member: one(members, { fields: [cmsMemberSubscriptions.memberId], references: [members.id] }),
+  site: one(cmsSites, { fields: [cmsMemberSubscriptions.siteId], references: [cmsSites.id] }),
 }));
 
-export const cmsSurveyQuestionsRelations = relations(cmsSurveyQuestions, ({ one }) => ({
-  survey: one(cmsSurveys, { fields: [cmsSurveyQuestions.surveyId], references: [cmsSurveys.id] }),
+export const cmsInteractionsRelations = relations(cmsInteractions, ({ one, many }) => ({
+  site: one(cmsSites, { fields: [cmsInteractions.siteId], references: [cmsSites.id] }),
+  questions: many(cmsInteractionQuestions),
+  responses: many(cmsInteractionResponses),
 }));
 
-export const cmsSurveyAnswersRelations = relations(cmsSurveyAnswers, ({ one }) => ({
-  survey: one(cmsSurveys, { fields: [cmsSurveyAnswers.surveyId], references: [cmsSurveys.id] }),
-  member: one(members, { fields: [cmsSurveyAnswers.memberId], references: [members.id] }),
+export const cmsInteractionQuestionsRelations = relations(cmsInteractionQuestions, ({ one, many }) => ({
+  interaction: one(cmsInteractions, { fields: [cmsInteractionQuestions.interactionId], references: [cmsInteractions.id] }),
+  answers: many(cmsInteractionAnswers),
+}));
+
+export const cmsInteractionResponsesRelations = relations(cmsInteractionResponses, ({ one, many }) => ({
+  interaction: one(cmsInteractions, { fields: [cmsInteractionResponses.interactionId], references: [cmsInteractions.id] }),
+  member: one(members, { fields: [cmsInteractionResponses.memberId], references: [members.id] }),
+  answers: many(cmsInteractionAnswers),
+}));
+
+export const cmsInteractionAnswersRelations = relations(cmsInteractionAnswers, ({ one }) => ({
+  response: one(cmsInteractionResponses, { fields: [cmsInteractionAnswers.responseId], references: [cmsInteractionResponses.id] }),
+  question: one(cmsInteractionQuestions, { fields: [cmsInteractionAnswers.questionId], references: [cmsInteractionQuestions.id] }),
 }));
 
 export const cmsContentChannelsRelations = relations(cmsContentChannels, ({ one }) => ({
@@ -1418,6 +1444,23 @@ export const cmsAdSlotsRelations = relations(cmsAdSlots, ({ one, many }) => ({
 
 export const cmsAdsRelations = relations(cmsAds, ({ one }) => ({
   slot: one(cmsAdSlots, { fields: [cmsAds.slotId], references: [cmsAdSlots.id] }),
+}));
+
+export const cmsAdEventsRelations = relations(cmsAdEvents, ({ one }) => ({
+  site: one(cmsSites, { fields: [cmsAdEvents.siteId], references: [cmsSites.id] }),
+  ad: one(cmsAds, { fields: [cmsAdEvents.adId], references: [cmsAds.id] }),
+  slot: one(cmsAdSlots, { fields: [cmsAdEvents.slotId], references: [cmsAdSlots.id] }),
+  publishChannel: one(cmsPublishChannels, { fields: [cmsAdEvents.publishChannelId], references: [cmsPublishChannels.id] }),
+  member: one(members, { fields: [cmsAdEvents.memberId], references: [members.id] }),
+}));
+
+export const cmsPagesRelations = relations(cmsPages, ({ one, many }) => ({
+  site: one(cmsSites, { fields: [cmsPages.siteId], references: [cmsSites.id] }),
+  blockAcls: many(cmsPageBlockAcls),
+}));
+
+export const cmsPageBlockAclsRelations = relations(cmsPageBlockAcls, ({ one }) => ({
+  page: one(cmsPages, { fields: [cmsPageBlockAcls.pageId], references: [cmsPages.id] }),
 }));
 
 export const cmsFormsRelations = relations(cmsForms, ({ one, many }) => ({

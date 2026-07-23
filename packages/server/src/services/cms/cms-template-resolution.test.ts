@@ -5,11 +5,11 @@ import { packageTemplateOptions, resolvePackageTemplateEntry } from './cms-templ
 import { mapCmsTemplate } from './cms-templates.service';
 
 const manifest: CmsThemePackageManifest = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   code: 'review-theme',
   name: 'Review Theme',
   version: '1.0.0',
-  engine: { min: 1, max: 1 },
+  engine: { min: 2, max: 2 },
   templates: [
     { code: 'news-list', name: 'News List', type: 'list', path: 'templates/list.json' },
     { code: 'news-detail', name: 'News Detail', type: 'detail', path: 'templates/detail.json' },

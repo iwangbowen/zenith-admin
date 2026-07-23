@@ -1,18 +1,36 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { createCmsAdSlotSchema, updateCmsAdSlotSchema, createCmsAdSchema, updateCmsAdSchema } from '@zenith/shared';
+import {
+  cleanupCmsAdEventsSchema,
+  createCmsAdSlotSchema,
+  updateCmsAdSlotSchema,
+  createCmsAdSchema,
+  updateCmsAdSchema,
+} from '@zenith/shared';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
 import {
   ErrorResponse, jsonContent, PaginationQuery, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, IdParam, okBody,
 } from '../../lib/openapi-schemas';
-import { CmsAdSlotDTO, CmsAdDTO } from '../../lib/openapi-dtos';
+import { AsyncTaskDTO, CmsAdEventDTO, CmsAdEventStatsDTO, CmsAdSlotDTO, CmsAdDTO } from '../../lib/openapi-dtos';
 import {
   listCmsAdSlots, createCmsAdSlot, updateCmsAdSlot, deleteCmsAdSlot, ensureCmsAdSlotExists, mapCmsAdSlot,
   listCmsAds, createCmsAd, updateCmsAd, deleteCmsAd, ensureCmsAdExists, mapCmsAd,
 } from '../../services/cms/cms-ads.service';
+import { getCmsAdEventStats, listCmsAdEvents } from '../../services/cms/cms-ad-events.service';
+import { submitCmsAdEventCleanupTask } from '../../services/cms/cms-stage4-tasks';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
+const adEventFilters = {
+  siteId: z.coerce.number().int().positive(),
+  adId: z.coerce.number().int().positive().optional(),
+  slotId: z.coerce.number().int().positive().optional(),
+  eventType: z.enum(['impression', 'click']).optional(),
+  device: z.enum(['pc', 'mobile', 'bot']).optional(),
+  publishChannelId: z.coerce.number().int().positive().optional(),
+  startTime: z.string().optional(),
+  endTime: z.string().optional(),
+};
 
 // ─── 广告位 ───────────────────────────────────────────────────────────────────
 const listSlots = defineOpenAPIRoute({
@@ -110,6 +128,48 @@ const createAd = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await createCmsAd(c.req.valid('json')), '创建成功'), 200),
 });
 
+const listEvents = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/events',
+    tags: ['CMS-广告管理'], summary: '广告事件明细',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:ad-event:list' })] as const,
+    request: { query: PaginationQuery.extend(adEventFilters) },
+    responses: { ...commonErrorResponses, ...okPaginated(CmsAdEventDTO, '广告事件明细') },
+  }),
+  handler: async (c) => c.json(okBody(await listCmsAdEvents(c.req.valid('query'))), 200),
+});
+
+const eventStats = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/events/stats',
+    tags: ['CMS-广告管理'], summary: '广告事件统计',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:ad-event:list' })] as const,
+    request: { query: z.object(adEventFilters) },
+    responses: { ...commonErrorResponses, ...ok(CmsAdEventStatsDTO, '广告事件统计') },
+  }),
+  handler: async (c) => c.json(okBody(await getCmsAdEventStats(c.req.valid('query'))), 200),
+});
+
+const cleanupEvents = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/events/cleanup',
+    tags: ['CMS-广告管理'], summary: '按保留策略清理广告事件（任务中心）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({
+      permission: 'cms:ad-event:cleanup',
+      audit: { description: '清理 CMS 广告事件', module: 'CMS内容管理' },
+    })] as const,
+    request: { body: { content: jsonContent(cleanupCmsAdEventsSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(AsyncTaskDTO, '清理任务已提交') },
+  }),
+  handler: async (c) => c.json(okBody(
+    await submitCmsAdEventCleanupTask(c.req.valid('json')),
+    '清理任务已提交',
+  ), 200),
+});
+
 const updateAd = defineOpenAPIRoute({
   route: createRoute({
     method: 'put', path: '/{id}',
@@ -151,6 +211,18 @@ const deleteAd = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listSlots, createSlot, updateSlot, deleteSlot, listAds, createAd, updateAd, deleteAd] as const);
+router.openapiRoutes([
+  listSlots,
+  createSlot,
+  updateSlot,
+  deleteSlot,
+  listAds,
+  listEvents,
+  eventStats,
+  cleanupEvents,
+  createAd,
+  updateAd,
+  deleteAd,
+] as const);
 
 export default router;

@@ -142,22 +142,30 @@ export interface BlockRenderInput {
 /** 渲染全部区块为 HTML 字符串（含区块样式 <style>） */
 export function renderBlocksHtml({ blocks, ctx, contentListData }: BlockRenderInput): string {
   const rendered = blocks.map((block) => {
+    let html: string;
     switch (block.type) {
       case 'hero':
-        return renderToStaticMarkup(<HeroBlock props={block.props} />);
+        html = renderToStaticMarkup(<HeroBlock props={block.props} />);
+        break;
       case 'richtext':
-        return renderToStaticMarkup(<RichtextBlock props={block.props} />);
+        html = renderToStaticMarkup(<RichtextBlock props={block.props} />);
+        break;
       case 'image':
-        return renderToStaticMarkup(<ImageBlock props={block.props} />);
+        html = renderToStaticMarkup(<ImageBlock props={block.props} />);
+        break;
       case 'content-list':
-        return renderToStaticMarkup(<ContentListBlock props={block.props} items={contentListData.get(block.id) ?? []} />);
+        html = renderToStaticMarkup(<ContentListBlock props={block.props} items={contentListData.get(block.id) ?? []} />);
+        break;
       case 'columns':
-        return renderToStaticMarkup(<ColumnsBlock props={block.props} />);
+        html = renderToStaticMarkup(<ColumnsBlock props={block.props} />);
+        break;
       case 'fragment':
-        return renderToStaticMarkup(<FragmentBlock props={block.props} ctx={ctx} />);
+        html = renderToStaticMarkup(<FragmentBlock props={block.props} ctx={ctx} />);
+        break;
       default:
-        return '';
+        html = '';
     }
+    return html;
   }).join('\n');
   return `<style>${BLOCK_STYLES}</style>\n${rendered}`;
 }

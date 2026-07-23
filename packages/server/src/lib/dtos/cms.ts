@@ -330,7 +330,7 @@ export const CmsTemplateDTO = z.object({
   id: z.number().int(),
   siteId: z.number().int().nullable(),
   themeCode: z.string(),
-  type: z.enum(['layout', 'index', 'list', 'detail', 'page', 'search', 'tag', 'not_found', 'custom_page', 'block', 'survey']),
+  type: z.enum(['layout', 'index', 'list', 'detail', 'page', 'search', 'tag', 'not_found', 'custom_page', 'block', 'interaction']),
   code: z.string(),
   name: z.string(),
   source: z.enum(['manual', 'package']),
@@ -660,39 +660,6 @@ export const CmsResourceFolderDTO: z.ZodType = z
   })
   .openapi('CmsResourceFolder');
 
-export const CmsPollOptionDTO = z.object({
-  id: z.number().int(),
-  label: z.string(),
-});
-
-export const CmsPollDTO = z
-  .object({
-    id: z.number().int(),
-    siteId: z.number().int(),
-    code: z.string().openapi({ example: 'reader-vote' }),
-    title: z.string(),
-    options: z.array(CmsPollOptionDTO),
-    maxChoices: z.number().int(),
-    allowAnonymous: z.boolean(),
-    startAt: z.string().nullable(),
-    endAt: z.string().nullable(),
-    status: z.enum(['draft', 'published', 'closed']),
-    totalVotes: z.number().int(),
-    remark: z.string().nullable(),
-    createdAt: z.string(),
-    updatedAt: z.string(),
-  })
-  .openapi('CmsPoll');
-
-export const CmsPollResultsDTO = z
-  .object({
-    pollId: z.number().int(),
-    title: z.string(),
-    totalVotes: z.number().int(),
-    options: z.array(CmsPollOptionDTO.extend({ votes: z.number().int() })),
-  })
-  .openapi('CmsPollResults');
-
 export const CmsAdSlotDTO = z
   .object({
     id: z.number().int(),
@@ -726,6 +693,45 @@ export const CmsAdDTO = z
     updatedAt: z.string(),
   })
   .openapi('CmsAd');
+
+export const CmsAdEventDTO = z
+  .object({
+    id: z.number().int(),
+    siteId: z.number().int(),
+    siteName: z.string().nullable().optional(),
+    adId: z.number().int(),
+    adName: z.string().nullable().optional(),
+    slotId: z.number().int(),
+    slotName: z.string().nullable().optional(),
+    eventType: z.enum(['impression', 'click']),
+    occurredAt: z.string(),
+    visitorHash: z.string(),
+    ipHash: z.string(),
+    userAgent: z.string().nullable(),
+    device: z.enum(['pc', 'mobile', 'bot']),
+    referrer: z.string().nullable(),
+    path: z.string().nullable(),
+    publishChannelId: z.number().int().nullable(),
+    publishChannelName: z.string().nullable().optional(),
+    memberId: z.number().int().nullable(),
+  })
+  .openapi('CmsAdEvent');
+
+export const CmsAdEventStatsDTO = z
+  .object({
+    summary: z.object({
+      impressions: z.number().int(),
+      clicks: z.number().int(),
+      ctr: z.number(),
+    }),
+    trend: z.array(z.object({
+      date: z.string(),
+      impressions: z.number().int(),
+      clicks: z.number().int(),
+      ctr: z.number(),
+    })),
+  })
+  .openapi('CmsAdEventStats');
 
 export const CmsFormDTO = z
   .object({
@@ -846,55 +852,139 @@ export const CmsMemberContentItemDTO = z
   })
   .openapi('CmsMemberContentItem');
 
-export const CmsSurveyQuestionDTO = z
+export const CmsInteractionOptionDTO = z.object({
+  id: z.string(),
+  label: z.string(),
+  value: z.string(),
+});
+
+export const CmsInteractionQuestionDTO = z
   .object({
     id: z.number().int(),
-    surveyId: z.number().int(),
+    interactionId: z.number().int(),
     label: z.string().openapi({ example: '您最常用的功能是？' }),
     type: z.enum(['single', 'multiple', 'text']),
     required: z.boolean(),
-    options: z.array(z.object({ label: z.string(), value: z.string() })),
+    options: z.array(CmsInteractionOptionDTO),
+    minChoices: z.number().int(),
+    maxChoices: z.number().int(),
     sort: z.number().int(),
   })
-  .openapi('CmsSurveyQuestion');
+  .openapi('CmsInteractionQuestion');
 
-export const CmsSurveyDTO = z
+export const CmsInteractionDTO = z
   .object({
     id: z.number().int(),
     siteId: z.number().int(),
-    code: z.string().openapi({ example: 'satisfaction-2026' }),
-    title: z.string().openapi({ example: '产品满意度调查' }),
+    code: z.string().openapi({ example: 'product-feedback-2026' }),
+    kind: z.enum(['survey', 'poll']),
+    title: z.string().openapi({ example: '产品反馈互动' }),
     description: z.string().nullable(),
     status: z.enum(['draft', 'published', 'closed']),
-    allowAnonymous: z.boolean(),
+    participantScope: z.enum(['anonymous', 'member']),
+    repeatPolicy: z.enum(['once_per_member', 'once_per_ip', 'multiple']),
+    resultVisibility: z.enum(['always', 'after_submit', 'after_close', 'hidden']),
+    captchaPolicy: z.enum(['inherit', 'none', 'math', 'turnstile']),
+    turnstileSiteKey: z.string().nullable(),
+    turnstileSecretConfigured: z.boolean(),
+    thankYouMessage: z.string(),
     startAt: z.string().nullable(),
     endAt: z.string().nullable(),
-    answerCount: z.number().int(),
-    questions: z.array(CmsSurveyQuestionDTO).optional(),
+    responseCount: z.number().int(),
+    questions: z.array(CmsInteractionQuestionDTO).optional(),
     ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
   })
-  .openapi('CmsSurvey');
+  .openapi('CmsInteraction');
 
-export const CmsSurveyStatsDTO = z
+export const CmsInteractionStatsDTO = z
   .object({
-    surveyId: z.number().int(),
-    answerCount: z.number().int(),
+    interactionId: z.number().int(),
+    responseCount: z.number().int(),
     questions: z.array(z.object({
       id: z.number().int(),
       label: z.string(),
       type: z.enum(['single', 'multiple', 'text']),
-      options: z.array(z.object({
-        label: z.string(),
-        value: z.string(),
+      options: z.array(CmsInteractionOptionDTO.extend({
         count: z.number().int(),
         percent: z.number().openapi({ description: '按已答人数计算的百分比（0-100，1 位小数）' }),
       })),
       texts: z.array(z.string()).openapi({ description: '文字题最近样本（最多 50 条）' }),
     })),
   })
-  .openapi('CmsSurveyStats');
+  .openapi('CmsInteractionStats');
+
+export const CmsInteractionPublicStatsDTO = z
+  .object({
+    interactionId: z.number().int(),
+    responseCount: z.number().int(),
+    questions: z.array(z.object({
+      id: z.number().int(),
+      label: z.string(),
+      type: z.enum(['single', 'multiple', 'text']),
+      options: z.array(CmsInteractionOptionDTO.extend({
+        count: z.number().int(),
+        percent: z.number(),
+      })),
+    })),
+  })
+  .openapi('CmsInteractionPublicStats');
+
+export const CmsInteractionSubmitResultDTO = z
+  .object({
+    responseId: z.number().int(),
+    duplicate: z.boolean(),
+    message: z.string(),
+    results: CmsInteractionPublicStatsDTO.nullable(),
+  })
+  .openapi('CmsInteractionSubmitResult');
+
+export const CmsInteractionResponseDTO = z
+  .object({
+    id: z.number().int(),
+    interactionId: z.number().int(),
+    interactionTitle: z.string().optional(),
+    kind: z.enum(['survey', 'poll']).optional(),
+    memberId: z.number().int().nullable(),
+    memberDisplay: z.string().nullable(),
+    visitorHash: z.string(),
+    ipHash: z.string(),
+    answers: z.record(z.string(), z.union([z.string(), z.array(z.string())])),
+    createdAt: z.string(),
+  })
+  .openapi('CmsInteractionResponse');
+
+export const CmsMemberSubscriptionDTO = z
+  .object({
+    id: z.number().int(),
+    memberId: z.number().int(),
+    memberDisplay: z.string().nullable().optional(),
+    siteId: z.number().int(),
+    siteName: z.string().nullable().optional(),
+    subjectType: z.enum(['site', 'channel', 'author']),
+    subjectKey: z.string(),
+    subjectId: z.number().int().nullable(),
+    subjectLabel: z.string(),
+    notificationEnabled: z.boolean(),
+    active: z.boolean(),
+    pointsAwardedAt: z.string().nullable().optional(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('CmsMemberSubscription');
+
+export const CmsSubscriptionAggregateDTO = z
+  .object({
+    siteId: z.number().int(),
+    subjectType: z.enum(['site', 'channel', 'author']),
+    subjectKey: z.string(),
+    subjectId: z.number().int().nullable(),
+    subjectLabel: z.string(),
+    subscriberCount: z.number().int(),
+    notificationEnabledCount: z.number().int(),
+  })
+  .openapi('CmsSubscriptionAggregate');
 
 // ─── P4 统计分析 ───────────────────────────────────────────────────────────────
 const dayMetric = z.object({ pv: z.number().int(), uv: z.number().int(), ips: z.number().int() });
@@ -1113,8 +1203,28 @@ export const CmsPageBlockDTO = z
     id: z.string(),
     type: z.enum(['hero', 'richtext', 'image', 'content-list', 'columns', 'fragment']),
     props: z.record(z.string(), z.unknown()),
+    displayCondition: z.object({
+      audience: z.enum(['always', 'guest', 'member']),
+      startAt: z.string().nullable().optional(),
+      endAt: z.string().nullable().optional(),
+    }).optional(),
+    canManage: z.boolean().optional(),
+    aclConfigured: z.boolean().optional(),
+    disabledReason: z.string().nullable().optional(),
   })
   .openapi('CmsPageBlock');
+
+export const CmsPageBlockAclDTO = z
+  .object({
+    id: z.number().int(),
+    pageId: z.number().int(),
+    blockId: z.string(),
+    subjectType: z.enum(['user', 'role']),
+    subjectId: z.number().int(),
+    subjectName: z.string().nullable(),
+    createdAt: z.string(),
+  })
+  .openapi('CmsPageBlockAcl');
 
 export const CmsPageDTO = z
   .object({
@@ -1124,6 +1234,7 @@ export const CmsPageDTO = z
     slug: z.string(),
     isHome: z.boolean(),
     blocks: z.array(CmsPageBlockDTO),
+    requiresDynamic: z.boolean(),
     seoTitle: z.string().nullable(),
     seoKeywords: z.string().nullable(),
     seoDescription: z.string().nullable(),

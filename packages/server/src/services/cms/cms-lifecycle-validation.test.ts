@@ -13,7 +13,7 @@ describe('CMS lifecycle write boundaries', () => {
 
   it('rejects package asset references in manually managed templates with actionable feedback', () => {
     const report = validateCmsTemplateDsl({
-      version: 1,
+      version: 2,
       root: { kind: 'element', tag: 'link', attrs: { rel: 'stylesheet', href: { asset: 'styles/site.css' } } },
     });
     expect(report.valid).toBe(false);
@@ -34,10 +34,10 @@ describe('CMS lifecycle write boundaries', () => {
       type: 'list',
       code: 'deep-template',
       name: 'Deep',
-      dsl: { version: 1, root },
+      dsl: { version: 2, root },
     })).not.toThrow();
-    expect(() => saveCmsTemplateVersionSchema.parse({ dsl: { version: 1, root } })).not.toThrow();
-    expect(validateCmsTemplateDsl({ version: 1, root }).issues.some((issue) => issue.code === 'raw_too_deep')).toBe(true);
-    expect(() => ensureValidCmsTemplateDsl({ version: 1, root })).toThrow(expect.objectContaining({ status: 400 }));
+    expect(() => saveCmsTemplateVersionSchema.parse({ dsl: { version: 2, root } })).not.toThrow();
+    expect(validateCmsTemplateDsl({ version: 2, root }).issues.some((issue) => issue.code === 'raw_too_deep')).toBe(true);
+    expect(() => ensureValidCmsTemplateDsl({ version: 2, root })).toThrow(expect.objectContaining({ status: 400 }));
   });
 });

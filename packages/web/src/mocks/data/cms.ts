@@ -2,18 +2,20 @@ import {
   SEED_CMS_SITES, SEED_CMS_PUBLISH_CHANNELS, SEED_CMS_MODELS, SEED_CMS_CHANNELS, SEED_CMS_CONTENTS,
   SEED_CMS_TAGS, SEED_CMS_FRAGMENTS, SEED_CMS_FRIEND_LINKS,
   SEED_CMS_AD_SLOTS, SEED_CMS_ADS, SEED_CMS_FORMS, SEED_CMS_SENSITIVE_WORDS,
-  SEED_CMS_ERROR_PRONE_WORDS, SEED_CMS_LINK_WORDS, SEED_CMS_COMMENTS, SEED_CMS_SURVEYS,
+  SEED_CMS_ERROR_PRONE_WORDS, SEED_CMS_LINK_WORDS, SEED_CMS_COMMENTS, SEED_CMS_INTERACTIONS,
+  SEED_CMS_INTERACTION_RESPONSES, SEED_CMS_INTERACTION_ANSWERS, SEED_CMS_SUBSCRIPTIONS,
+  SEED_CMS_AD_EVENTS, SEED_CMS_PAGE_BLOCK_ACLS,
   SEED_CMS_RESOURCES, SEED_CMS_RESOURCE_FOLDERS, SEED_CMS_SEARCH_WORDS,
-  SEED_CMS_HOTWORD_GROUPS, SEED_CMS_HOTWORDS, SEED_CMS_POLLS,
+  SEED_CMS_HOTWORD_GROUPS, SEED_CMS_HOTWORDS,
   SEED_CMS_COLLECT_RULES, SEED_CMS_COLLECT_ITEMS, SEED_CMS_PAGES,
   SEED_CMS_CONTENT_VERSIONS,
-  SEED_CMS_POLL_VOTES,
 } from '@zenith/shared';
 import type {
   CmsSite, CmsPublishChannel, CmsModel, CmsChannel, CmsContent, CmsTag, CmsFragment, CmsFriendLink,
-  CmsAdSlot, CmsAd, CmsForm, CmsFormSubmission, CmsSensitiveWord, CmsErrorProneWord, CmsLinkWord, CmsComment,
-  CmsRedirect, CmsPushLog, CmsContentVersion, CmsSearchWord, CmsHotKeyword, CmsContentOpLog, CmsSurvey,
-  CmsResource, CmsResourceFolder, CmsHotwordGroup, CmsCollectRule, CmsCollectItem, CmsPage, CmsPoll,
+  CmsAdSlot, CmsAd, CmsAdEvent, CmsForm, CmsFormSubmission, CmsSensitiveWord, CmsErrorProneWord, CmsLinkWord, CmsComment,
+  CmsRedirect, CmsPushLog, CmsContentVersion, CmsSearchWord, CmsHotKeyword, CmsContentOpLog, CmsInteraction,
+  CmsInteractionResponse, CmsMemberSubscription, CmsPageBlockAcl,
+  CmsResource, CmsResourceFolder, CmsHotwordGroup, CmsCollectRule, CmsCollectItem, CmsPage,
 } from '@zenith/shared';
 
 // 从共享种子数据派生（禁止重复定义静态数组）
@@ -66,6 +68,13 @@ export function buildMockChannelTree(list: CmsChannel[]): CmsChannel[] {
 // ─── P2 ───────────────────────────────────────────────────────────────────────
 export const mockCmsAdSlots: CmsAdSlot[] = SEED_CMS_AD_SLOTS.map((s) => ({ ...s, adCount: SEED_CMS_ADS.filter((a) => a.slotId === s.id).length }));
 export const mockCmsAds: CmsAd[] = SEED_CMS_ADS.map((a) => ({ ...a, slotName: SEED_CMS_AD_SLOTS.find((s) => s.id === a.slotId)?.name ?? null }));
+export const mockCmsAdEvents: CmsAdEvent[] = SEED_CMS_AD_EVENTS.map((event) => ({
+  ...event,
+  siteName: SEED_CMS_SITES.find((site) => site.id === event.siteId)?.name ?? null,
+  adName: SEED_CMS_ADS.find((ad) => ad.id === event.adId)?.name ?? null,
+  slotName: SEED_CMS_AD_SLOTS.find((slot) => slot.id === event.slotId)?.name ?? null,
+  publishChannelName: SEED_CMS_PUBLISH_CHANNELS.find((channel) => channel.id === event.publishChannelId)?.name ?? null,
+}));
 export const mockCmsForms: (CmsForm & { submissionCount: number })[] = SEED_CMS_FORMS.map((f) => ({ ...f, fields: f.fields.map((x) => ({ ...x })), submissionCount: 1 }));
 export const mockCmsFormSubmissions: CmsFormSubmission[] = [
   { id: 1, formId: 1, data: { name: '张三', phone: '13800000000', message: '想了解企业版报价' }, ip: '127.0.0.1', userAgent: null, createdAt: '2024-01-01 00:00:00' },
@@ -84,6 +93,7 @@ export const mockCmsContentOpLogs: CmsContentOpLog[] = [
 
 export const getNextCmsAdSlotId = nextIdFactory(Math.max(0, ...mockCmsAdSlots.map((x) => x.id)) + 1);
 export const getNextCmsAdId = nextIdFactory(Math.max(0, ...mockCmsAds.map((x) => x.id)) + 1);
+export const getNextCmsAdEventId = nextIdFactory(Math.max(0, ...mockCmsAdEvents.map((x) => x.id)) + 1);
 export const getNextCmsFormId = nextIdFactory(Math.max(0, ...mockCmsForms.map((x) => x.id)) + 1);
 export const getNextCmsSensitiveWordId = nextIdFactory(Math.max(0, ...mockCmsSensitiveWords.map((x) => x.id)) + 1);
 export const getNextCmsErrorProneWordId = nextIdFactory(Math.max(0, ...mockCmsErrorProneWords.map((x) => x.id)) + 1);
@@ -94,8 +104,36 @@ export const getNextCmsRedirectId = nextIdFactory(1);
 
 // ─── P3 ───────────────────────────────────────────────────────────────────────
 export const mockCmsSearchWords: CmsSearchWord[] = SEED_CMS_SEARCH_WORDS.map((word) => ({ ...word }));
-export const mockCmsSurveys: CmsSurvey[] = SEED_CMS_SURVEYS.map((s) => ({ ...s, questions: s.questions.map((q) => ({ ...q, options: q.options.map((o) => ({ ...o })) })) }));
-export const getNextCmsSurveyId = nextIdFactory(Math.max(0, ...mockCmsSurveys.map((x) => x.id)) + 1);
+export const mockCmsInteractions: CmsInteraction[] = SEED_CMS_INTERACTIONS.map((interaction) => ({
+  ...interaction,
+  questions: interaction.questions.map((question) => ({
+    ...question,
+    options: question.options.map((option) => ({ ...option })),
+  })),
+}));
+export const mockCmsInteractionResponses: CmsInteractionResponse[] = SEED_CMS_INTERACTION_RESPONSES.map((response) => ({
+  id: response.id,
+  interactionId: response.interactionId,
+  interactionTitle: SEED_CMS_INTERACTIONS.find((interaction) => interaction.id === response.interactionId)?.title,
+  kind: SEED_CMS_INTERACTIONS.find((interaction) => interaction.id === response.interactionId)?.kind,
+  memberId: response.memberId,
+  memberDisplay: response.memberId ? '演***员' : '游客',
+  visitorHash: response.visitorHash,
+  ipHash: response.ipHash,
+  answers: Object.fromEntries(
+    SEED_CMS_INTERACTION_ANSWERS
+      .filter((answer) => answer.responseId === response.id)
+      .map((answer) => [String(answer.questionId), answer.value]),
+  ),
+  createdAt: response.createdAt,
+}));
+export const getNextCmsInteractionId = nextIdFactory(Math.max(0, ...mockCmsInteractions.map((x) => x.id)) + 1);
+export const getNextCmsInteractionResponseId = nextIdFactory(Math.max(0, ...mockCmsInteractionResponses.map((x) => x.id)) + 1);
+export const mockCmsSubscriptions: CmsMemberSubscription[] = SEED_CMS_SUBSCRIPTIONS.map((subscription) => ({
+  ...subscription,
+  memberDisplay: '演***员',
+  siteName: SEED_CMS_SITES.find((site) => site.id === subscription.siteId)?.name ?? null,
+}));
 export const mockCmsHotwordGroups: CmsHotwordGroup[] = SEED_CMS_HOTWORD_GROUPS.map((group) => ({ ...group }));
 export const mockCmsHotKeywords: CmsHotKeyword[] = SEED_CMS_HOTWORDS.map((word, index) => ({
   ...word,
@@ -114,16 +152,18 @@ export const getNextCmsResourceFolderId = nextIdFactory(Math.max(0, ...mockCmsRe
 export const mockCmsCollectRules: CmsCollectRule[] = SEED_CMS_COLLECT_RULES.map((rule) => ({ ...rule }));
 export const mockCmsCollectItems: CmsCollectItem[] = SEED_CMS_COLLECT_ITEMS.map((item) => ({ ...item }));
 export const getNextCmsCollectRuleId = nextIdFactory(Math.max(0, ...mockCmsCollectRules.map((x) => x.id)) + 1);
-export const mockCmsPages: CmsPage[] = SEED_CMS_PAGES.map((page) => ({ ...page, blocks: page.blocks.map((block) => ({ ...block, props: { ...block.props } })) }));
+export const mockCmsPages: CmsPage[] = SEED_CMS_PAGES.map((page) => ({
+  ...page,
+  blocks: page.blocks.map((block) => ({
+    ...block,
+    props: { ...block.props },
+    canManage: true,
+    aclConfigured: SEED_CMS_PAGE_BLOCK_ACLS.some((acl) => acl.pageId === page.id && acl.blockId === block.id),
+    disabledReason: null,
+  })),
+}));
+export const mockCmsPageBlockAcls: CmsPageBlockAcl[] = SEED_CMS_PAGE_BLOCK_ACLS.map((acl) => ({
+  ...acl,
+  subjectName: acl.subjectType === 'role' ? '超级管理员' : '管理员',
+}));
 export const getNextCmsPageId = nextIdFactory(Math.max(0, ...mockCmsPages.map((x) => x.id)) + 1);
-
-// ─── P3 轻量投票 ───────────────────────────────────────────────────────────────
-export const mockCmsPolls: CmsPoll[] = SEED_CMS_POLLS.map((p) => ({ ...p, options: p.options.map((o) => ({ ...o })) }));
-export const getNextCmsPollId = nextIdFactory(Math.max(0, ...mockCmsPolls.map((x) => x.id)) + 1);
-/** 选项计票（演示数据：按选项 id 递减分布） */
-export const mockCmsPollVotes = new Map<number, Map<number, number>>();
-for (const vote of SEED_CMS_POLL_VOTES) {
-  const counts = mockCmsPollVotes.get(vote.pollId) ?? new Map<number, number>();
-  for (const optionId of vote.optionIds) counts.set(optionId, (counts.get(optionId) ?? 0) + 1);
-  mockCmsPollVotes.set(vote.pollId, counts);
-}

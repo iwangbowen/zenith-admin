@@ -110,11 +110,18 @@ export async function resolveAsyncTaskAccessScope(
   return { userId: user.userId, global: await hasPermission(permission) };
 }
 
+export function canAccessAsyncTaskForScope(
+  task: { createdBy: number | null },
+  scope: AsyncTaskAccessScope,
+): boolean {
+  return task.createdBy === scope.userId || scope.global;
+}
+
 async function ensureTaskAccessible(id: number, permission: 'system:async-task:list' | 'system:async-task:manage') {
   const row = await db.query.asyncTasks.findFirst({ where: eq(asyncTasks.id, id) });
   if (!row) throw new HTTPException(404, { message: '任务不存在' });
   const scope = await resolveAsyncTaskAccessScope(permission);
-  if (row.createdBy !== scope.userId && !scope.global) {
+  if (!canAccessAsyncTaskForScope(row, scope)) {
     throw new HTTPException(403, { message: '无权访问该任务' });
   }
   return row;

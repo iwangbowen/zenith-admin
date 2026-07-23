@@ -2,11 +2,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  Button, Dropdown, Form, Input, Modal, SideSheet, Tag, Toast, Typography, Empty,
+  Button, Dropdown, Form, Input, Modal, Select, SideSheet, Tag, Toast, Typography, Empty,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, RotateCcw, Plus, ArrowUp, ArrowDown, Trash2, Pencil, ExternalLink, ChevronDown, GripVertical, RefreshCw } from 'lucide-react';
+import { Search, RotateCcw, Plus, ArrowUp, ArrowDown, Trash2, Pencil, ExternalLink, ChevronDown, GripVertical, RefreshCw, LockKeyhole, ShieldCheck } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -16,11 +16,14 @@ import { usePagination } from '@/hooks/usePagination';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import {
   useCmsSiteList, useCmsPageList, useSaveCmsPage, useDeleteCmsPage, useCmsChannelTree,
-  useCmsFragmentList, cmsPageKeys,
+  useCmsFragmentList, cmsPageKeys, useCmsPageDetail, useCmsPageBlockAcls, useSetCmsPageBlockAcls,
 } from '@/hooks/queries/cms';
-import { CMS_PAGE_BLOCK_TYPES } from '@zenith/shared';
+import { useAllRoles } from '@/hooks/queries/roles';
+import { useAllUsers } from '@/hooks/queries/users';
+import { CMS_PAGE_BLOCK_AUDIENCE_LABELS, CMS_PAGE_BLOCK_TYPES } from '@zenith/shared';
 import type { CmsChannel, CmsPage, CmsPageBlock, CmsPageBlockType } from '@zenith/shared';
 import { CmsSiteSelect, cmsPreviewUrl } from './CmsSiteSelect';
+import { formatDateTimeForApi } from '@/utils/date';
 
 function channelsToSelectTree(nodes: CmsChannel[]): { key: string; value: number; label: string; children?: ReturnType<typeof channelsToSelectTree> }[] {
   return nodes.map((n) => ({
@@ -70,6 +73,8 @@ export default function PagesPage() {
   const [builderVisible, setBuilderVisible] = useState(false);
   const [editingPage, setEditingPage] = useState<CmsPage | null>(null);
   const [blocks, setBlocks] = useState<CmsPageBlock[]>([]);
+  const detailQuery = useCmsPageDetail(editingPage?.id);
+  const editablePage = detailQuery.data ?? editingPage;
   const baseFormApi = useRef<FormApi | null>(null);
   const { data: fragmentsPage } = useCmsFragmentList({ page: 1, pageSize: 100, siteId: siteId ?? 0 }, !!siteId && builderVisible);
   const fragments = fragmentsPage?.list;
@@ -80,10 +85,25 @@ export default function PagesPage() {
   const dragIndexRef = useRef<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [previewEpoch, setPreviewEpoch] = useState(0);
+  const [aclBlock, setAclBlock] = useState<CmsPageBlock | null>(null);
+  const [aclUserIds, setAclUserIds] = useState<number[]>([]);
+  const [aclRoleIds, setAclRoleIds] = useState<number[]>([]);
+  const aclQuery = useCmsPageBlockAcls(editingPage?.id, !!aclBlock);
+  const setAclMutation = useSetCmsPageBlockAcls();
+  const usersQuery = useAllUsers({ enabled: !!aclBlock });
+  const rolesQuery = useAllRoles({ enabled: !!aclBlock });
+  const canEditPage = hasPermission('cms:page:update');
 
   useEffect(() => {
-    if (builderVisible) setBlocks(editingPage?.blocks ?? []);
-  }, [builderVisible, editingPage]);
+    if (builderVisible) setBlocks(editablePage?.blocks ?? []);
+  }, [builderVisible, editablePage]);
+
+  useEffect(() => {
+    if (!aclBlock) return;
+    const grants = (aclQuery.data ?? []).filter((grant) => grant.blockId === aclBlock.id);
+    setAclUserIds(grants.filter((grant) => grant.subjectType === 'user').map((grant) => grant.subjectId));
+    setAclRoleIds(grants.filter((grant) => grant.subjectType === 'role').map((grant) => grant.subjectId));
+  }, [aclBlock, aclQuery.data]);
 
   function handleSearch() {
     setKeyword(keywordDraft.trim());
@@ -112,11 +132,20 @@ export default function PagesPage() {
       columns: { items: [{ title: '特性一', description: '' }, { title: '特性二', description: '' }, { title: '特性三', description: '' }] },
       fragment: { code: '' },
     };
-    setBlocks((prev) => [...prev, { id: newBlockId(), type, props: defaults[type] }]);
+    setBlocks((prev) => [...prev, {
+      id: newBlockId(),
+      type,
+      props: defaults[type],
+      displayCondition: { audience: 'always' },
+      canManage: true,
+      aclConfigured: false,
+      disabledReason: null,
+    }]);
   }
 
   function moveBlock(index: number, dir: -1 | 1) {
     setBlocks((prev) => {
+      if (!prev.every((block) => block.canManage !== false) || prev[index]?.canManage === false) return prev;
       const next = [...prev];
       const target = index + dir;
       if (target < 0 || target >= next.length) return prev;
@@ -129,6 +158,7 @@ export default function PagesPage() {
   function reorderBlock(from: number, to: number) {
     if (from === to) return;
     setBlocks((prev) => {
+      if (!prev.every((block) => block.canManage !== false)) return prev;
       const next = [...prev];
       const [moved] = next.splice(from, 1);
       next.splice(to, 0, moved);
@@ -137,14 +167,30 @@ export default function PagesPage() {
   }
 
   function removeBlock(index: number) {
-    setBlocks((prev) => prev.filter((_, i) => i !== index));
+    setBlocks((prev) => prev[index]?.canManage === false ? prev : prev.filter((_, i) => i !== index));
   }
 
   async function handleBlockModalOk() {
     if (!blockModal) return;
     const values = (await blockFormApi.current?.validate().catch(() => null)) ?? null;
     if (!values) throw new Error('validation');
-    setBlocks((prev) => prev.map((b, i) => (i === blockModal.index ? { ...b, props: values as Record<string, unknown> } : b)));
+    const {
+      displayAudience,
+      displayStartAt,
+      displayEndAt,
+      ...props
+    } = values as Record<string, unknown>;
+    const startAt = displayStartAt instanceof Date ? formatDateTimeForApi(displayStartAt) : (displayStartAt || null);
+    const endAt = displayEndAt instanceof Date ? formatDateTimeForApi(displayEndAt) : (displayEndAt || null);
+    setBlocks((prev) => prev.map((block, index) => (index === blockModal.index ? {
+      ...block,
+      props,
+      displayCondition: {
+        audience: (displayAudience as 'always' | 'guest' | 'member') ?? 'always',
+        ...(startAt ? { startAt: String(startAt) } : {}),
+        ...(endAt ? { endAt: String(endAt) } : {}),
+      },
+    } : block)));
     setBlockModal(null);
   }
 
@@ -157,7 +203,11 @@ export default function PagesPage() {
     }
     await saveMutation.mutateAsync({
       id: editingPage?.id,
-      values: { ...(editingPage ? {} : { siteId }), ...base, blocks },
+      values: {
+        ...(editingPage ? {} : { siteId }),
+        ...(editingPage && !canEditPage ? {} : base),
+        blocks: blocks.map(({ id, type, props, displayCondition }) => ({ id, type, props, displayCondition })),
+      },
     });
     Toast.success(editingPage ? '保存成功（静态页已刷新）' : '创建成功');
     if (editingPage) {
@@ -184,6 +234,13 @@ export default function PagesPage() {
     { title: '路径', dataIndex: 'slug', width: 140, render: (v: string) => <Typography.Text code>/p/{v}/</Typography.Text> },
     { title: '区块数', width: 80, render: (_: unknown, r) => r.blocks.length },
     {
+      title: '渲染策略',
+      width: 110,
+      render: (_: unknown, record) => record.requiresDynamic
+        ? <Tag size="small" color="orange">动态受众</Tag>
+        : <Tag size="small">可静态化</Tag>,
+    },
+    {
       title: '区块构成',
       width: 240,
       render: (_: unknown, r) => (
@@ -206,7 +263,7 @@ export default function PagesPage() {
       width: 200,
       desktopInlineKeys: ['builder', 'preview'],
       actions: (record) => [
-        ...(hasPermission('cms:page:update') ? [{
+        ...(canEditPage || record.blocks.some((block) => block.canManage) ? [{
           key: 'builder',
           label: '搭建',
           onClick: () => openBuilder(record),
@@ -238,6 +295,7 @@ export default function PagesPage() {
   ];
 
   const editingBlockType = blockModal?.block.type;
+  const allBlocksManageable = blocks.every((block) => block.canManage !== false);
 
   return (
     <div className="page-container">
@@ -277,37 +335,38 @@ export default function PagesPage() {
         )}
       >
         <Form
-          key={editingPage?.id ?? 'new'}
+          key={editablePage?.id ?? 'new'}
           getFormApi={(api) => { baseFormApi.current = api; }}
           allowEmpty
           labelPosition="left"
           labelWidth={90}
-          initValues={editingPage ? {
-            name: editingPage.name,
-            slug: editingPage.slug,
-            isHome: editingPage.isHome,
-            status: editingPage.status,
-            seoTitle: editingPage.seoTitle ?? '',
-            seoKeywords: editingPage.seoKeywords ?? '',
-            seoDescription: editingPage.seoDescription ?? '',
+          initValues={editablePage ? {
+            name: editablePage.name,
+            slug: editablePage.slug,
+            isHome: editablePage.isHome,
+            status: editablePage.status,
+            seoTitle: editablePage.seoTitle ?? '',
+            seoKeywords: editablePage.seoKeywords ?? '',
+            seoDescription: editablePage.seoDescription ?? '',
           } : { isHome: false, status: 'enabled' }}
         >
-          <Form.Input field="name" label="页面名称" rules={[{ required: true, message: '请输入页面名称' }]} />
+          <Form.Input field="name" label="页面名称" disabled={!canEditPage} rules={[{ required: true, message: '请输入页面名称' }]} />
           <Form.Input field="slug" label="路径 slug" placeholder="小写字母/数字/中划线，访问 /p/{slug}/"
+            disabled={!canEditPage}
             rules={[{ required: true, message: '请输入 slug' }, { pattern: /^[a-z0-9-]+$/, message: '仅小写字母/数字/中划线' }]} />
-          <Form.Switch field="isHome" label="接管首页" extraText="启用后站点首页渲染此页面（每站点一个）" />
-          <Form.RadioGroup field="status" label="状态">
+          <Form.Switch field="isHome" label="接管首页" disabled={!canEditPage} extraText="启用后站点首页渲染此页面（每站点一个）" />
+          <Form.RadioGroup field="status" label="状态" disabled={!canEditPage}>
             <Form.Radio value="enabled">启用</Form.Radio>
             <Form.Radio value="disabled">停用</Form.Radio>
           </Form.RadioGroup>
-          <Form.Input field="seoTitle" label="SEO 标题" />
-          <Form.Input field="seoKeywords" label="SEO 关键词" />
-          <Form.TextArea field="seoDescription" label="SEO 描述" rows={2} />
+          <Form.Input field="seoTitle" label="SEO 标题" disabled={!canEditPage} />
+          <Form.Input field="seoKeywords" label="SEO 关键词" disabled={!canEditPage} />
+          <Form.TextArea field="seoDescription" label="SEO 描述" rows={2} disabled={!canEditPage} />
         </Form>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '18px 0 10px' }}>
           <Typography.Title heading={6} style={{ margin: 0 }}>区块（{blocks.length}）</Typography.Title>
-          <Dropdown
+          {canEditPage ? <Dropdown
             trigger="click"
             render={(
               <Dropdown.Menu>
@@ -318,7 +377,7 @@ export default function PagesPage() {
             )}
           >
             <Button icon={<ChevronDown size={14} />} iconPosition="right" size="small">添加区块</Button>
-          </Dropdown>
+          </Dropdown> : null}
         </div>
 
         {blocks.length === 0 ? (
@@ -328,7 +387,7 @@ export default function PagesPage() {
             {blocks.map((block, index) => (
               <div
                 key={block.id}
-                draggable
+                draggable={allBlocksManageable && block.canManage !== false}
                 onDragStart={(e) => {
                   dragIndexRef.current = index;
                   e.dataTransfer.effectAllowed = 'move';
@@ -354,19 +413,43 @@ export default function PagesPage() {
                   border: dragOverIndex === index ? '1px dashed var(--semi-color-primary)' : '1px solid var(--semi-color-border)',
                   borderRadius: 'var(--semi-border-radius-medium)',
                   padding: '10px 14px',
-                  cursor: 'grab',
+                  cursor: allBlocksManageable && block.canManage !== false ? 'grab' : 'default',
                   background: dragOverIndex === index ? 'var(--semi-color-primary-light-default)' : undefined,
                 }}
               >
                 <GripVertical size={14} color="var(--semi-color-text-3)" />
                 <Tag size="small">{BLOCK_TYPE_LABEL[block.type] ?? block.type}</Tag>
+                {block.canManage === false ? (
+                  <span title={block.disabledReason ?? '当前区块只读'}>
+                    <Tag size="small" color="orange">
+                      <LockKeyhole size={12} style={{ marginRight: 4, verticalAlign: 'text-bottom' }} />只读
+                    </Tag>
+                  </span>
+                ) : null}
+                {block.displayCondition?.audience && block.displayCondition.audience !== 'always' ? (
+                  <Tag size="small" color="blue">
+                    {CMS_PAGE_BLOCK_AUDIENCE_LABELS[block.displayCondition.audience]}
+                  </Tag>
+                ) : null}
                 <Typography.Text ellipsis={{ showTooltip: true }} style={{ flex: 1, fontSize: 13, color: 'var(--semi-color-text-2)' }}>
                   {blockSummary(block) || '（未配置）'}
                 </Typography.Text>
-                <Button size="small" theme="borderless" icon={<ArrowUp size={13} />} disabled={index === 0} onClick={() => moveBlock(index, -1)} />
-                <Button size="small" theme="borderless" icon={<ArrowDown size={13} />} disabled={index === blocks.length - 1} onClick={() => moveBlock(index, 1)} />
-                <Button size="small" theme="borderless" icon={<Pencil size={13} />} onClick={() => setBlockModal({ block, index })} />
-                <Button size="small" theme="borderless" type="danger" icon={<Trash2 size={13} />} onClick={() => removeBlock(index)} />
+                <Button aria-label="上移区块" title={!allBlocksManageable ? '页面含只读区块，禁止重排' : undefined}
+                  size="small" theme="borderless" icon={<ArrowUp size={13} />}
+                  disabled={!allBlocksManageable || block.canManage === false || index === 0} onClick={() => moveBlock(index, -1)} />
+                <Button aria-label="下移区块" title={!allBlocksManageable ? '页面含只读区块，禁止重排' : undefined}
+                  size="small" theme="borderless" icon={<ArrowDown size={13} />}
+                  disabled={!allBlocksManageable || block.canManage === false || index === blocks.length - 1} onClick={() => moveBlock(index, 1)} />
+                <Button aria-label="编辑区块" title={block.disabledReason ?? undefined}
+                  size="small" theme="borderless" icon={<Pencil size={13} />}
+                  disabled={block.canManage === false} onClick={() => setBlockModal({ block, index })} />
+                {hasPermission('cms:page:acl') && editingPage ? (
+                  <Button aria-label="设置区块权限" size="small" theme="borderless" icon={<ShieldCheck size={13} />}
+                    onClick={() => setAclBlock(block)} />
+                ) : null}
+                <Button aria-label="删除区块" title={block.disabledReason ?? undefined}
+                  size="small" theme="borderless" type="danger" icon={<Trash2 size={13} />}
+                  disabled={block.canManage === false} onClick={() => removeBlock(index)} />
               </div>
             ))}
           </div>
@@ -414,8 +497,34 @@ export default function PagesPage() {
             allowEmpty
             labelPosition="left"
             labelWidth={100}
-            initValues={blockModal.block.props}
+            initValues={{
+              ...blockModal.block.props,
+              displayAudience: blockModal.block.displayCondition?.audience ?? 'always',
+              displayStartAt: blockModal.block.displayCondition?.startAt ?? undefined,
+              displayEndAt: blockModal.block.displayCondition?.endAt ?? undefined,
+            }}
           >
+            <Form.Select
+              field="displayAudience"
+              label="展示受众"
+              style={{ width: '100%' }}
+              optionList={Object.entries(CMS_PAGE_BLOCK_AUDIENCE_LABELS).map(([value, label]) => ({ value, label }))}
+              extraText="游客/会员条件会自动强制页面动态渲染，敏感内容不可放入公开区块"
+            />
+            <Form.DatePicker
+              field="displayStartAt"
+              label="展示开始"
+              type="dateTime"
+              style={{ width: '100%' }}
+              placeholder="不限制"
+            />
+            <Form.DatePicker
+              field="displayEndAt"
+              label="展示结束"
+              type="dateTime"
+              style={{ width: '100%' }}
+              placeholder="不限制"
+            />
             {editingBlockType === 'hero' ? (
               <>
                 <Form.Input field="title" label="主标题" rules={[{ required: true, message: '请输入主标题' }]} />
@@ -462,6 +571,70 @@ export default function PagesPage() {
           </Form>
         ) : null}
       </AppModal>
+
+      <SideSheet
+        title={aclBlock ? `区块权限：${BLOCK_TYPE_LABEL[aclBlock.type]}` : '区块权限'}
+        visible={!!aclBlock}
+        onCancel={() => setAclBlock(null)}
+        width={480}
+        footer={(
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <Button onClick={() => setAclBlock(null)}>取消</Button>
+            <Button
+              type="primary"
+              loading={setAclMutation.isPending}
+              onClick={async () => {
+                if (!editingPage || !aclBlock) return;
+                await setAclMutation.mutateAsync({
+                  pageId: editingPage.id,
+                  blockIds: [aclBlock.id],
+                  grants: [
+                    ...aclUserIds.map((subjectId) => ({ subjectType: 'user' as const, subjectId })),
+                    ...aclRoleIds.map((subjectId) => ({ subjectType: 'role' as const, subjectId })),
+                  ],
+                });
+                Toast.success(aclUserIds.length + aclRoleIds.length > 0 ? '区块权限已更新' : '已恢复继承页面编辑权限');
+                setAclBlock(null);
+              }}
+            >
+              保存
+            </Button>
+          </div>
+        )}
+      >
+        <Typography.Paragraph type="tertiary">
+          未配置授权时继承页面编辑权限；配置任一授权后采用 fail-closed，仅获授权用户/角色及平台超管可管理。
+        </Typography.Paragraph>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18, marginTop: 18 }}>
+          <label>
+            <div style={{ marginBottom: 6, fontWeight: 600 }}>授权用户</div>
+            <Select
+              multiple
+              value={aclUserIds}
+              loading={usersQuery.isFetching || aclQuery.isFetching}
+              style={{ width: '100%' }}
+              placeholder="选择平台用户"
+              optionList={(usersQuery.data ?? []).map((user) => ({
+                value: user.id,
+                label: user.nickname || user.username,
+              }))}
+              onChange={(value) => setAclUserIds(value as number[])}
+            />
+          </label>
+          <label>
+            <div style={{ marginBottom: 6, fontWeight: 600 }}>授权角色</div>
+            <Select
+              multiple
+              value={aclRoleIds}
+              loading={rolesQuery.isFetching || aclQuery.isFetching}
+              style={{ width: '100%' }}
+              placeholder="选择平台角色"
+              optionList={(rolesQuery.data ?? []).map((role) => ({ value: role.id, label: role.name }))}
+              onChange={(value) => setAclRoleIds(value as number[])}
+            />
+          </label>
+        </div>
+      </SideSheet>
     </div>
   );
 }

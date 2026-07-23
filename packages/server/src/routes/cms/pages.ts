@@ -1,48 +1,18 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { createCmsPageSchema, setCmsPageBlockAclSchema, updateCmsPageSchema } from '@zenith/shared';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
 import {
   jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, okBody, PaginationQuery, IdParam,
 } from '../../lib/openapi-schemas';
-import { CmsPageDTO } from '../../lib/openapi-dtos';
+import { CmsPageBlockAclDTO, CmsPageDTO } from '../../lib/openapi-dtos';
 import {
   listCmsPages, getCmsPage, createCmsPage, updateCmsPage, deleteCmsPage,
 } from '../../services/cms/cms-pages.service';
 import { triggerCustomPageStaticRefresh } from '../../services/cms/cms-static.service';
+import { listCmsPageBlockAcls, setCmsPageBlockAcls } from '../../services/cms/cms-page-acl.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
-
-const blockSchema = z.object({
-  id: z.string().min(1).max(40),
-  type: z.enum(['hero', 'richtext', 'image', 'content-list', 'columns', 'fragment']),
-  props: z.record(z.string(), z.unknown()),
-});
-
-const pageBody = z.object({
-  siteId: z.number().int().positive(),
-  name: z.string().min(1).max(100),
-  slug: z.string().min(1).max(100),
-  isHome: z.boolean().default(false),
-  blocks: z.array(blockSchema).max(50).default([]),
-  seoTitle: z.string().max(255).nullish(),
-  seoKeywords: z.string().max(500).nullish(),
-  seoDescription: z.string().max(500).nullish(),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
-  remark: z.string().max(200).nullish(),
-});
-
-/** 部分更新：不复用 pageBody.partial()——partial 后 .default() 仍会注入默认值，导致未提交字段被重置 */
-const pageUpdateBody = z.object({
-  name: z.string().min(1).max(100).optional(),
-  slug: z.string().min(1).max(100).optional(),
-  isHome: z.boolean().optional(),
-  blocks: z.array(blockSchema).max(50).optional(),
-  seoTitle: z.string().max(255).nullish(),
-  seoKeywords: z.string().max(500).nullish(),
-  seoDescription: z.string().max(500).nullish(),
-  status: z.enum(['enabled', 'disabled']).optional(),
-  remark: z.string().max(200).nullish(),
-});
 
 const listRoute = defineOpenAPIRoute({
   route: createRoute({
@@ -79,7 +49,7 @@ const createRouteDef = defineOpenAPIRoute({
     tags: ['CMS-页面搭建'], summary: '创建页面',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'cms:page:create', audit: { description: '创建 CMS 搭建页面', module: 'CMS内容管理' } })] as const,
-    request: { body: { content: jsonContent(pageBody), required: true } },
+    request: { body: { content: jsonContent(createCmsPageSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(CmsPageDTO, '创建成功') },
   }),
   handler: async (c) => {
@@ -94,8 +64,8 @@ const updateRouteDef = defineOpenAPIRoute({
     method: 'put', path: '/{id}',
     tags: ['CMS-页面搭建'], summary: '更新页面',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:page:update', audit: { description: '更新 CMS 搭建页面', module: 'CMS内容管理' } })] as const,
-    request: { params: IdParam, body: { content: jsonContent(pageUpdateBody), required: true } },
+    middleware: [authMiddleware, guard({ permission: 'cms:page:list', audit: { description: '更新 CMS 搭建页面', module: 'CMS内容管理' } })] as const,
+    request: { params: IdParam, body: { content: jsonContent(updateCmsPageSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(CmsPageDTO, '更新成功') },
   }),
   handler: async (c) => {
@@ -128,6 +98,54 @@ const deleteRouteDef = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRoute, detailRoute, createRouteDef, updateRouteDef, deleteRouteDef] as const);
+const listBlockAclsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}/block-acls',
+    tags: ['CMS-页面搭建'], summary: '查看页面区块 ACL',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:page:acl' })] as const,
+    request: {
+      params: IdParam,
+      query: z.object({ blockId: z.string().min(1).max(100).optional() }),
+    },
+    responses: { ...commonErrorResponses, ...ok(z.array(CmsPageBlockAclDTO), '区块 ACL') },
+  }),
+  handler: async (c) => c.json(okBody(await listCmsPageBlockAcls(
+    c.req.valid('param').id,
+    c.req.valid('query').blockId,
+  )), 200),
+});
+
+const setBlockAclsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put', path: '/{id}/block-acls',
+    tags: ['CMS-页面搭建'], summary: '批量设置页面区块 ACL（用户/角色）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({
+      permission: 'cms:page:acl',
+      audit: { description: '设置 CMS 页面区块 ACL', module: 'CMS内容管理' },
+    })] as const,
+    request: {
+      params: IdParam,
+      body: { content: jsonContent(setCmsPageBlockAclSchema), required: true },
+    },
+    responses: { ...commonErrorResponses, ...ok(z.array(CmsPageBlockAclDTO), 'ACL 已更新') },
+  }),
+  handler: async (c) => {
+    const pageId = c.req.valid('param').id;
+    setAuditBeforeData(c, await listCmsPageBlockAcls(pageId));
+    return c.json(okBody(await setCmsPageBlockAcls(pageId, c.req.valid('json')), '区块权限已更新'), 200);
+  },
+});
+
+router.openapiRoutes([
+  listRoute,
+  listBlockAclsRoute,
+  setBlockAclsRoute,
+  detailRoute,
+  createRouteDef,
+  updateRouteDef,
+  deleteRouteDef,
+] as const);
 
 export default router;

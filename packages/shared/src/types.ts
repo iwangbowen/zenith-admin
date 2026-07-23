@@ -10426,7 +10426,7 @@ export type CmsTemplateType =
   | 'not_found'
   | 'custom_page'
   | 'block'
-  | 'survey';
+  | 'interaction';
 
 export type CmsTemplateSource = 'manual' | 'package';
 
@@ -10467,7 +10467,7 @@ export type CmsTemplateDslNode =
     };
 
 export interface CmsTemplateDslDocument {
-  version: 1;
+  version: 2;
   root: CmsTemplateDslNode;
 }
 
@@ -10537,7 +10537,7 @@ export interface CmsThemePackageTemplateEntry {
 }
 
 export interface CmsThemePackageManifest {
-  schemaVersion: 1;
+  schemaVersion: 2;
   code: string;
   name: string;
   version: string;
@@ -10893,48 +10893,120 @@ export interface CmsMemberContentItem {
   updatedAt?: string;
 }
 
-export type CmsSurveyStatus = 'draft' | 'published' | 'closed';
-export type CmsSurveyQuestionType = 'single' | 'multiple' | 'text';
+export type CmsInteractionKind = 'survey' | 'poll';
+export type CmsInteractionStatus = 'draft' | 'published' | 'closed';
+export type CmsInteractionQuestionType = 'single' | 'multiple' | 'text';
+export type CmsInteractionParticipantScope = 'anonymous' | 'member';
+export type CmsInteractionRepeatPolicy = 'once_per_member' | 'once_per_ip' | 'multiple';
+export type CmsInteractionResultVisibility = 'always' | 'after_submit' | 'after_close' | 'hidden';
+export type CmsInteractionCaptchaPolicy = 'inherit' | 'none' | 'math' | 'turnstile';
 
-export interface CmsSurveyQuestion {
-  id: number;
-  surveyId: number;
+export interface CmsInteractionOption {
+  id: string;
   label: string;
-  type: CmsSurveyQuestionType;
+  value: string;
+}
+
+export interface CmsInteractionQuestion {
+  id: number;
+  interactionId: number;
+  label: string;
+  type: CmsInteractionQuestionType;
   required: boolean;
-  options: { label: string; value: string }[];
+  options: CmsInteractionOption[];
+  minChoices: number;
+  maxChoices: number;
   sort: number;
 }
 
-export interface CmsSurvey {
+export interface CmsInteraction {
   id: number;
   siteId: number;
   code: string;
+  kind: CmsInteractionKind;
   title: string;
   description: string | null;
-  status: CmsSurveyStatus;
-  allowAnonymous: boolean;
+  status: CmsInteractionStatus;
+  participantScope: CmsInteractionParticipantScope;
+  repeatPolicy: CmsInteractionRepeatPolicy;
+  resultVisibility: CmsInteractionResultVisibility;
+  captchaPolicy: CmsInteractionCaptchaPolicy;
+  turnstileSiteKey: string | null;
+  turnstileSecretConfigured: boolean;
+  thankYouMessage: string;
   startAt: string | null;
   endAt: string | null;
-  answerCount: number;
-  questions?: CmsSurveyQuestion[];
+  responseCount: number;
+  questions?: CmsInteractionQuestion[];
   createdAt: string;
   updatedAt: string;
 }
 
-/** 问卷结果统计（选择题选项占比 + 文字题最近样本） */
-export interface CmsSurveyStats {
-  surveyId: number;
-  answerCount: number;
+/** 统一互动结果统计（选择题计数 + 文本题脱敏样本）。 */
+export interface CmsInteractionStats {
+  interactionId: number;
+  responseCount: number;
   questions: {
     id: number;
     label: string;
-    type: CmsSurveyQuestionType;
-    /** 选择题：各选项计数 */
-    options: { label: string; value: string; count: number; percent: number }[];
-    /** 文字题：最近样本（最多 50 条） */
+    type: CmsInteractionQuestionType;
+    options: (CmsInteractionOption & { count: number; percent: number })[];
     texts: string[];
   }[];
+}
+
+/** 前台可公开的互动统计；文本答卷永不进入公共响应。 */
+export interface CmsInteractionPublicStats {
+  interactionId: number;
+  responseCount: number;
+  questions: {
+    id: number;
+    label: string;
+    type: CmsInteractionQuestionType;
+    options: (CmsInteractionOption & { count: number; percent: number })[];
+  }[];
+}
+
+export interface CmsInteractionResponse {
+  id: number;
+  interactionId: number;
+  interactionTitle?: string;
+  kind?: CmsInteractionKind;
+  memberId: number | null;
+  memberDisplay: string | null;
+  visitorHash: string;
+  ipHash: string;
+  answers: Record<string, string | string[]>;
+  createdAt: string;
+}
+
+export type CmsSubscriptionSubjectType = 'site' | 'channel' | 'author';
+
+export interface CmsMemberSubscription {
+  id: number;
+  memberId: number;
+  memberDisplay?: string | null;
+  siteId: number;
+  siteName?: string | null;
+  subjectType: CmsSubscriptionSubjectType;
+  subjectKey: string;
+  subjectId: number | null;
+  subjectLabel: string;
+  notificationEnabled: boolean;
+  active: boolean;
+  pointsAwardedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CmsSubscriptionAggregate {
+  siteId: number;
+  subjectType: CmsSubscriptionSubjectType;
+  subjectKey: string;
+  subjectId: number | null;
+  subjectLabel: string;
+  subscriberCount: number;
+  notificationEnabledCount: number;
 }
 
 export interface CmsTag {
@@ -11148,39 +11220,6 @@ export interface CmsResourceFolder {
   updatedAt: string;
 }
 
-// ─── CMS 轻量投票（P3）────────────────────────────────────────────────────────
-export type CmsPollStatus = 'draft' | 'published' | 'closed';
-
-export interface CmsPollOption {
-  id: number;
-  label: string;
-}
-
-export interface CmsPoll {
-  id: number;
-  siteId: number;
-  code: string;
-  title: string;
-  options: CmsPollOption[];
-  maxChoices: number;
-  allowAnonymous: boolean;
-  startAt: string | null;
-  endAt: string | null;
-  status: CmsPollStatus;
-  totalVotes: number;
-  remark: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-/** 投票结果（选项计票） */
-export interface CmsPollResults {
-  pollId: number;
-  title: string;
-  totalVotes: number;
-  options: (CmsPollOption & { votes: number })[];
-}
-
 export interface CmsAdSlot {
   id: number;
   siteId: number;
@@ -11211,6 +11250,40 @@ export interface CmsAd {
   status: 'enabled' | 'disabled';
   createdAt: string;
   updatedAt: string;
+}
+
+export type CmsAdEventType = 'impression' | 'click';
+export type CmsDeviceType = 'pc' | 'mobile' | 'bot';
+
+export interface CmsAdEvent {
+  id: number;
+  siteId: number;
+  siteName?: string | null;
+  adId: number;
+  adName?: string | null;
+  slotId: number;
+  slotName?: string | null;
+  eventType: CmsAdEventType;
+  occurredAt: string;
+  visitorHash: string;
+  ipHash: string;
+  userAgent: string | null;
+  device: CmsDeviceType;
+  referrer: string | null;
+  path: string | null;
+  publishChannelId: number | null;
+  publishChannelName?: string | null;
+  memberId: number | null;
+}
+
+export interface CmsAdEventStats {
+  summary: { impressions: number; clicks: number; ctr: number };
+  trend: {
+    date: string;
+    impressions: number;
+    clicks: number;
+    ctr: number;
+  }[];
 }
 
 /** CMS 访问统计总览（P4；bot 流量不计入） */
@@ -11394,11 +11467,35 @@ export interface CmsCollectItem {
 
 // ─── CMS 可视化页面搭建（P3 Batch6）───────────────────────────────────────────
 export type CmsPageBlockType = 'hero' | 'richtext' | 'image' | 'content-list' | 'columns' | 'fragment';
+export type CmsPageBlockAudience = 'always' | 'guest' | 'member';
+
+export interface CmsPageBlockDisplayCondition {
+  audience: CmsPageBlockAudience;
+  startAt?: string | null;
+  endAt?: string | null;
+}
 
 export interface CmsPageBlock {
   id: string;
   type: CmsPageBlockType;
   props: Record<string, unknown>;
+  displayCondition?: CmsPageBlockDisplayCondition;
+  /** 管理端详情按当前用户计算；写入时忽略。 */
+  canManage?: boolean;
+  aclConfigured?: boolean;
+  disabledReason?: string | null;
+}
+
+export type CmsPageBlockAclSubjectType = 'user' | 'role';
+
+export interface CmsPageBlockAcl {
+  id: number;
+  pageId: number;
+  blockId: string;
+  subjectType: CmsPageBlockAclSubjectType;
+  subjectId: number;
+  subjectName: string | null;
+  createdAt: string;
 }
 
 export interface CmsPage {
@@ -11408,6 +11505,8 @@ export interface CmsPage {
   slug: string;
   isHome: boolean;
   blocks: CmsPageBlock[];
+  /** guest/member 展示条件存在时强制动态渲染，禁止静态输出。 */
+  requiresDynamic: boolean;
   seoTitle: string | null;
   seoKeywords: string | null;
   seoDescription: string | null;

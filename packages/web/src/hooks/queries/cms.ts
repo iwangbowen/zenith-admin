@@ -3,14 +3,15 @@ import type {
   PaginatedResponse, CmsSite, CmsModel, CmsChannel, CmsContent, CmsTag, CmsFragment,
   CmsFriendLink, CmsSearchResult, CmsContentStatus, CmsFragmentType, AsyncTask,
   CmsContentVersion, CmsRedirect, CmsLinkWord, CmsComment, CmsCommentStatus,
-  CmsAdSlot, CmsAd, CmsForm, CmsFormSubmission, CmsSensitiveWord, CmsPushLog,
+  CmsAdSlot, CmsAd, CmsAdEvent, CmsAdEventStats, CmsForm, CmsFormSubmission, CmsSensitiveWord, CmsPushLog,
   CmsSearchWord, CmsHotKeyword, CmsCollectRule, CmsCollectItem, CmsPage,
   CmsEditLock, CmsPreviewLink, CmsContentVersionDiff, CmsDashboardStats,
   CmsThemeTemplateManifest, CmsPublishChannel, CmsContentOpLog, CmsErrorProneWord, CmsTextCheckResult,
   CmsTemplateHealth, CmsThemeSettingField,
-  CmsContentType, CmsSurvey, CmsSurveyStats, CmsVisitStats, CmsSearchAnalytics,
+  CmsContentType, CmsInteraction, CmsInteractionResponse, CmsInteractionStats, CmsInteractionStatus, CmsVisitStats, CmsSearchAnalytics,
   CmsResource, CmsResourceType, CmsResourceReference, UpdateCmsResourceInput, CropCmsResourceInput,
-  CmsPoll, CmsPollStatus, CmsPollResults, CmsContentLockState, CmsResourceFolder, CmsHotwordGroup,
+  CmsContentLockState, CmsResourceFolder, CmsHotwordGroup, CmsMemberSubscription, CmsSubscriptionAggregate,
+  CmsPageBlockAcl,
 } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { toQueryString, unwrap, LOOKUP_STALE_TIME } from '@/lib/query';
@@ -891,64 +892,6 @@ export function useMoveCmsResources() {
   });
 }
 
-// ─── 轻量投票（P3）────────────────────────────────────────────────────────────
-export interface CmsPollListParams {
-  page: number;
-  pageSize: number;
-  siteId: number;
-  status?: CmsPollStatus;
-}
-
-export const cmsPollKeys = {
-  all: ['cms-polls'] as const,
-  lists: ['cms-polls', 'list'] as const,
-  list: (params: CmsPollListParams) => ['cms-polls', 'list', params] as const,
-  results: (id: number) => ['cms-polls', 'results', id] as const,
-};
-
-export function useCmsPollList(params: CmsPollListParams, enabled = true) {
-  return useQuery({
-    queryKey: cmsPollKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<CmsPoll>>(`/api/cms/polls${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-    enabled,
-  });
-}
-
-export function useCmsPollResults(id: number | null) {
-  return useQuery({
-    queryKey: cmsPollKeys.results(id ?? 0),
-    queryFn: () => request.get<CmsPollResults>(`/api/cms/polls/${id}/results`).then(unwrap),
-    enabled: id != null,
-  });
-}
-
-export function useSaveCmsPoll() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
-      (id ? request.put<CmsPoll>(`/api/cms/polls/${id}`, values) : request.post<CmsPoll>('/api/cms/polls', values)).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: cmsPollKeys.all }),
-  });
-}
-
-export function useSetCmsPollStatus() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, status }: { id: number; status: CmsPollStatus }) =>
-      request.post<CmsPoll>(`/api/cms/polls/${id}/status`, { status }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: cmsPollKeys.all }),
-  });
-}
-
-export function useDeleteCmsPoll() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/cms/polls/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: cmsPollKeys.all }),
-  });
-}
-
 // ─── 广告 ─────────────────────────────────────────────────────────────────────
 export const cmsAdKeys = {
   all: ['cms-ads'] as const,
@@ -1011,6 +954,53 @@ export function useDeleteCmsAd() {
   return useMutation({
     mutationFn: (id: number) => request.delete<null>(`/api/cms/ads/${id}`).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: cmsAdKeys.all }),
+  });
+}
+
+export interface CmsAdEventListParams {
+  page: number;
+  pageSize: number;
+  siteId: number;
+  adId?: number;
+  slotId?: number;
+  eventType?: 'impression' | 'click';
+  device?: 'pc' | 'mobile' | 'bot';
+  publishChannelId?: number;
+  startTime?: string;
+  endTime?: string;
+}
+
+export const cmsAdEventKeys = {
+  all: ['cms-ad-events'] as const,
+  lists: ['cms-ad-events', 'list'] as const,
+  list: (params: CmsAdEventListParams) => ['cms-ad-events', 'list', params] as const,
+  detail: (id: number | undefined) => ['cms-ad-events', 'detail', id] as const,
+  stats: (params: Omit<CmsAdEventListParams, 'page' | 'pageSize'>) => ['cms-ad-events', 'stats', params] as const,
+};
+
+export function useCmsAdEventList(params: CmsAdEventListParams, enabled = true) {
+  return useQuery({
+    queryKey: cmsAdEventKeys.list(params),
+    queryFn: () => request.get<PaginatedResponse<CmsAdEvent>>(`/api/cms/ads/events${toQueryString(params)}`).then(unwrap),
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
+export function useCmsAdEventStats(params: Omit<CmsAdEventListParams, 'page' | 'pageSize'>, enabled = true) {
+  return useQuery({
+    queryKey: cmsAdEventKeys.stats(params),
+    queryFn: () => request.get<CmsAdEventStats>(`/api/cms/ads/events/stats${toQueryString(params)}`).then(unwrap),
+    enabled,
+  });
+}
+
+export function useCleanupCmsAdEvents() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (values: { siteId?: number; retentionDays?: number }) =>
+      request.post<AsyncTask>('/api/cms/ads/events/cleanup', values).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsAdEventKeys.all }),
   });
 }
 
@@ -1153,65 +1143,105 @@ export function useDeleteCmsErrorProneWord() {
   });
 }
 
-// ═══ 问卷调查（P3）═══════════════════════════════════════════════════════════
-export interface CmsSurveyListParams {
+// ═══ Stage 4：统一互动问卷 ═══════════════════════════════════════════════════
+export interface CmsInteractionListParams {
   page: number;
   pageSize: number;
   siteId: number;
   keyword?: string;
-  status?: string;
+  kind?: 'survey' | 'poll';
+  status?: CmsInteractionStatus;
 }
 
-export const cmsSurveyKeys = {
-  all: ['cms-surveys'] as const,
-  lists: ['cms-surveys', 'list'] as const,
-  list: (params: CmsSurveyListParams) => ['cms-surveys', 'list', params] as const,
-  detail: (id: number | undefined) => ['cms-surveys', 'detail', id] as const,
-  stats: (id: number | undefined) => ['cms-surveys', 'stats', id] as const,
+export interface CmsInteractionResponseListParams {
+  page: number;
+  pageSize: number;
+  siteId: number;
+  interactionId?: number;
+  kind?: 'survey' | 'poll';
+  startTime?: string;
+  endTime?: string;
+}
+
+export const cmsInteractionKeys = {
+  all: ['cms-interactions'] as const,
+  lists: ['cms-interactions', 'list'] as const,
+  list: (params: CmsInteractionListParams) => ['cms-interactions', 'list', params] as const,
+  detail: (id: number | undefined) => ['cms-interactions', 'detail', id] as const,
+  stats: (id: number | undefined) => ['cms-interactions', 'stats', id] as const,
+  responseLists: ['cms-interactions', 'responses'] as const,
+  responseList: (params: CmsInteractionResponseListParams) => ['cms-interactions', 'responses', params] as const,
 };
 
-export function useCmsSurveyList(params: CmsSurveyListParams, enabled = true) {
+export function useCmsInteractionList(params: CmsInteractionListParams, enabled = true) {
   return useQuery({
-    queryKey: cmsSurveyKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<CmsSurvey>>(`/api/cms/surveys${toQueryString(params)}`).then(unwrap),
+    queryKey: cmsInteractionKeys.list(params),
+    queryFn: () => request.get<PaginatedResponse<CmsInteraction>>(`/api/cms/interactions${toQueryString(params)}`).then(unwrap),
     placeholderData: keepPreviousData,
     enabled,
   });
 }
 
-export function useCmsSurveyDetail(id: number | undefined, enabled = true) {
+export function useCmsInteractionDetail(id: number | undefined, enabled = true) {
   return useQuery({
-    queryKey: cmsSurveyKeys.detail(id),
-    queryFn: () => request.get<CmsSurvey>(`/api/cms/surveys/${id}`).then(unwrap),
+    queryKey: cmsInteractionKeys.detail(id),
+    queryFn: () => request.get<CmsInteraction>(`/api/cms/interactions/${id}`).then(unwrap),
     enabled: enabled && id !== undefined,
   });
 }
 
-export function useCmsSurveyStats(id: number | undefined, enabled = true) {
+export function useCmsInteractionStats(id: number | undefined, enabled = true) {
   return useQuery({
-    queryKey: cmsSurveyKeys.stats(id),
-    queryFn: () => request.get<CmsSurveyStats>(`/api/cms/surveys/${id}/stats`).then(unwrap),
+    queryKey: cmsInteractionKeys.stats(id),
+    queryFn: () => request.get<CmsInteractionStats>(`/api/cms/interactions/${id}/stats`).then(unwrap),
     enabled: enabled && id !== undefined,
   });
 }
 
-export function useSaveCmsSurvey() {
+export function useCmsInteractionResponseList(params: CmsInteractionResponseListParams, enabled = true) {
+  return useQuery({
+    queryKey: cmsInteractionKeys.responseList(params),
+    queryFn: () => request.get<PaginatedResponse<CmsInteractionResponse>>(`/api/cms/interactions/responses${toQueryString(params)}`).then(unwrap),
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
+export function useSaveCmsInteraction() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
       (id === undefined
-        ? request.post<CmsSurvey>('/api/cms/surveys', values)
-        : request.put<CmsSurvey>(`/api/cms/surveys/${id}`, values)
+        ? request.post<CmsInteraction>('/api/cms/interactions', values)
+        : request.put<CmsInteraction>(`/api/cms/interactions/${id}`, values)
       ).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: cmsSurveyKeys.all }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsInteractionKeys.all }),
   });
 }
 
-export function useDeleteCmsSurvey() {
+export function useSetCmsInteractionStatus() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/cms/surveys/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: cmsSurveyKeys.all }),
+    mutationFn: ({ id, status }: { id: number; status: CmsInteractionStatus }) =>
+      request.post<CmsInteraction>(`/api/cms/interactions/${id}/status`, { status }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsInteractionKeys.all }),
+  });
+}
+
+export function useBatchCmsInteractionStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (values: { ids: number[]; status: 'published' | 'closed' }) =>
+      request.post<AsyncTask>('/api/cms/interactions/batch/status', values).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsInteractionKeys.all }),
+  });
+}
+
+export function useDeleteCmsInteraction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request.delete<null>(`/api/cms/interactions/${id}`).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cmsInteractionKeys.all }),
   });
 }
 
@@ -1500,6 +1530,7 @@ export const cmsPageKeys = {
   lists: ['cms', 'pages', 'list'] as const,
   list: (params: object) => ['cms', 'pages', 'list', params] as const,
   detail: (id: number | undefined) => ['cms', 'pages', 'detail', id ?? null] as const,
+  acls: (id: number | undefined) => ['cms', 'pages', 'acls', id ?? null] as const,
 };
 
 export function useCmsPageList(params: { page: number; pageSize: number; siteId: number | undefined; keyword?: string }) {
@@ -1536,5 +1567,67 @@ export function useDeleteCmsPage() {
   return useMutation({
     mutationFn: (id: number) => request.delete<null>(`/api/cms/pages/${id}`).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: cmsPageKeys.all }),
+  });
+}
+
+export function useCmsPageBlockAcls(id: number | undefined, enabled = true) {
+  return useQuery({
+    queryKey: cmsPageKeys.acls(id),
+    queryFn: () => request.get<CmsPageBlockAcl[]>(`/api/cms/pages/${id}/block-acls`).then(unwrap),
+    enabled: enabled && !!id,
+  });
+}
+
+export function useSetCmsPageBlockAcls() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ pageId, blockIds, grants }: {
+      pageId: number;
+      blockIds: string[];
+      grants: Array<{ subjectType: 'user' | 'role'; subjectId: number }>;
+    }) => request.put<CmsPageBlockAcl[]>(`/api/cms/pages/${pageId}/block-acls`, { blockIds, grants }).then(unwrap),
+    onSuccess: (_data, variables) => {
+      void qc.invalidateQueries({ queryKey: cmsPageKeys.detail(variables.pageId) });
+      void qc.invalidateQueries({ queryKey: cmsPageKeys.acls(variables.pageId) });
+    },
+  });
+}
+
+// ─── Stage 4：CMS 会员订阅后台 ───────────────────────────────────────────────
+export interface CmsSubscriptionListParams {
+  page: number;
+  pageSize: number;
+  siteId: number;
+  subjectType?: 'site' | 'channel' | 'author';
+  subjectKeyword?: string;
+  startTime?: string;
+  endTime?: string;
+}
+
+export const cmsSubscriptionKeys = {
+  all: ['cms-subscriptions'] as const,
+  lists: ['cms-subscriptions', 'list'] as const,
+  list: (params: CmsSubscriptionListParams) => ['cms-subscriptions', 'list', params] as const,
+  detail: (id: number | undefined) => ['cms-subscriptions', 'detail', id] as const,
+  aggregates: (params: Omit<CmsSubscriptionListParams, 'page' | 'pageSize'>) => ['cms-subscriptions', 'aggregates', params] as const,
+};
+
+export function useCmsSubscriptionList(params: CmsSubscriptionListParams, enabled = true) {
+  return useQuery({
+    queryKey: cmsSubscriptionKeys.list(params),
+    queryFn: () => request.get<PaginatedResponse<CmsMemberSubscription>>(`/api/cms/subscriptions${toQueryString(params)}`).then(unwrap),
+    enabled,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useCmsSubscriptionAggregates(
+  params: Omit<CmsSubscriptionListParams, 'page' | 'pageSize'>,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: cmsSubscriptionKeys.aggregates(params),
+    queryFn: () => request.get<CmsSubscriptionAggregate[]>(`/api/cms/subscriptions/aggregates${toQueryString(params)}`).then(unwrap),
+    enabled,
   });
 }

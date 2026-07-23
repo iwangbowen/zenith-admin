@@ -11,10 +11,10 @@ import {
 describe('CMS declarative template DSL', () => {
   it('rejects executable elements, event attributes, arbitrary bindings and components', () => {
     const samples = [
-      { version: 1, root: { kind: 'element', tag: 'script', children: [] } },
-      { version: 1, root: { kind: 'element', tag: 'div', attrs: { onClick: 'alert(1)' } } },
-      { version: 1, root: { kind: 'binding', bind: 'process.env.SECRET' } },
-      { version: 1, root: { kind: 'component', name: 'ArbitraryImport' } },
+      { version: 2, root: { kind: 'element', tag: 'script', children: [] } },
+      { version: 2, root: { kind: 'element', tag: 'div', attrs: { onClick: 'alert(1)' } } },
+      { version: 2, root: { kind: 'binding', bind: 'process.env.SECRET' } },
+      { version: 2, root: { kind: 'component', name: 'ArbitraryImport' } },
     ];
     for (const sample of samples) {
       const report = validateCmsTemplateDsl(sample);
@@ -26,13 +26,13 @@ describe('CMS declarative template DSL', () => {
   it('enforces depth, node count, string length and DSL version limits', () => {
     let deep: CmsTemplateDslNode = { kind: 'text', value: 'leaf' };
     for (let i = 0; i < 34; i++) deep = { kind: 'element', tag: 'div', children: [deep] };
-    expect(validateCmsTemplateDsl({ version: 1, root: deep }).issues.some((item) => item.code === 'too_deep')).toBe(true);
+    expect(validateCmsTemplateDsl({ version: 2, root: deep }).issues.some((item) => item.code === 'too_deep')).toBe(true);
 
     const many = Array.from({ length: 501 }, () => ({ kind: 'text', value: 'x' } as const));
-    expect(validateCmsTemplateDsl({ version: 1, root: { kind: 'element', tag: 'div', children: many } }).issues.some((item) => item.code === 'too_many_nodes')).toBe(true);
-    expect(validateCmsTemplateDsl({ version: 1, root: { kind: 'text', value: 'x'.repeat(4097) } }).issues.some((item) => item.code === 'string_too_long')).toBe(true);
-    expect(validateCmsTemplateDsl({ version: 1, root: { kind: 'binding', bind: 'site.name', fallback: 'x'.repeat(4097) } }).issues.some((item) => item.code === 'string_too_long')).toBe(true);
-    expect(validateCmsTemplateDsl({ version: 2, root: { kind: 'text', value: 'x' } }).valid).toBe(false);
+    expect(validateCmsTemplateDsl({ version: 2, root: { kind: 'element', tag: 'div', children: many } }).issues.some((item) => item.code === 'too_many_nodes')).toBe(true);
+    expect(validateCmsTemplateDsl({ version: 2, root: { kind: 'text', value: 'x'.repeat(4097) } }).issues.some((item) => item.code === 'string_too_long')).toBe(true);
+    expect(validateCmsTemplateDsl({ version: 2, root: { kind: 'binding', bind: 'site.name', fallback: 'x'.repeat(4097) } }).issues.some((item) => item.code === 'string_too_long')).toBe(true);
+    expect(validateCmsTemplateDsl({ version: 1, root: { kind: 'text', value: 'legacy' } }).valid).toBe(false);
   });
 
   it('rejects extremely deep raw payloads before recursive Zod parsing without throwing RangeError', () => {
@@ -44,14 +44,14 @@ describe('CMS declarative template DSL', () => {
       cursor = next;
     }
     let report: ReturnType<typeof validateCmsTemplateDsl> | undefined;
-    expect(() => { report = validateCmsTemplateDsl({ version: 1, root }); }).not.toThrow();
+    expect(() => { report = validateCmsTemplateDsl({ version: 2, root }); }).not.toThrow();
     expect(report?.valid).toBe(false);
     expect(report?.issues.some((item) => item.code === 'raw_too_deep')).toBe(true);
   });
 
   it('fails explicitly when bounded collections would expand into excessive output', () => {
     const nested: CmsTemplateDslDocument = {
-      version: 1,
+      version: 2,
       root: {
         kind: 'each',
         source: 'items',
@@ -68,7 +68,7 @@ describe('CMS declarative template DSL', () => {
 
   it('escapes text bindings and sanitizes every rich-text sink with the Stage 1 sanitizer', () => {
     const textDsl: CmsTemplateDslDocument = {
-      version: 1,
+      version: 2,
       root: { kind: 'element', tag: 'p', children: [{ kind: 'binding', bind: 'site.name' }] },
     };
     const text = renderCmsTemplateDsl(textDsl, { site: { name: '<img src=x onerror=alert(1)>' } });
@@ -76,7 +76,7 @@ describe('CMS declarative template DSL', () => {
     expect(text).not.toContain('<img src=x');
 
     const richDsl: CmsTemplateDslDocument = {
-      version: 1,
+      version: 2,
       root: { kind: 'rich_text', bind: 'content.body' },
     };
     const rich = renderCmsTemplateDsl(richDsl, {
@@ -89,7 +89,7 @@ describe('CMS declarative template DSL', () => {
 
   it('fails rendering explicitly when a bound URL is unsafe', () => {
     const dsl: CmsTemplateDslDocument = {
-      version: 1,
+      version: 2,
       root: { kind: 'element', tag: 'a', attrs: { href: { bind: 'site.logo' } }, children: [{ kind: 'text', value: 'link' }] },
     };
     expect(() => renderCmsTemplateDsl(dsl, { site: { logo: 'javascript:alert(1)' } })).toThrow(CmsTemplateDslError);

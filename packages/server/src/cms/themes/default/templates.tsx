@@ -1,11 +1,15 @@
-import { Layout } from './Layout';
+import { CmsFollowButton, Layout } from './Layout';
 import type {
   CmsBaseContext, CmsBreadcrumb, CmsContentItem, CmsHomeContext, CmsListContext,
   CmsDetailContext, CmsPageContext, CmsSearchContext, CmsNotFoundContext, CmsPagination,
   CmsCommentItem, CmsCommentFormConfig, CmsFrontFormConfig, CmsTagPageContext, CmsCustomPageContext,
-  CmsSurveyPageContext,
+  CmsInteractionPageContext,
 } from '../types';
 import { CmsFragmentContent } from '../blocks';
+import {
+  resolveCmsRenderedPagePath,
+  signCmsAdRenderProof,
+} from '../../../services/cms/cms-ad-render-proof';
 
 function Breadcrumbs({ items }: { items: CmsBreadcrumb[] }) {
   return (
@@ -81,16 +85,28 @@ function HtmlFragment({ ctx, code, className }: { ctx: CmsBaseContext; code: str
 function AdSlot({ ctx, code }: { ctx: CmsBaseContext; code: string }) {
   const ads = ctx.ads[code];
   if (!ads || ads.length === 0) return null;
+  const pagePath = resolveCmsRenderedPagePath({
+    baseUrl: ctx.baseUrl,
+    canonical: ctx.seo.canonical,
+  });
   return (
     <div className="ad-slot">
       {ads.map((ad) => (
         <a
           key={ad.id}
-          href={ad.linkUrl ? `/api/public/cms/ads/${ad.id}/click` : '#'}
+          href="#"
           target={ad.linkUrl ? '_blank' : '_self'}
           rel="noopener nofollow"
           aria-label={ad.name}
           data-ad-id={ad.id}
+          data-ad-clickable={ad.linkUrl ? 'true' : 'false'}
+          data-ad-render-proof={signCmsAdRenderProof({
+            version: 1,
+            siteId: ctx.site.id,
+            siteCode: ctx.site.code,
+            adIds: [ad.id],
+            path: pagePath,
+          })}
         >
           {ad.image ? <img src={ad.image} alt={ad.name} loading="lazy" /> : <div className="ad-text">{ad.name}</div>}
         </a>
@@ -135,10 +151,23 @@ function FormCaptcha({ config }: { config: CmsFrontFormConfig['captcha'] }) {
 }
 
 /**
- * 投票组件加载：为 .cms-poll 占位拉取投票数据渲染选项表单；已投/结束显示结果条。
- * 登录会员走会员 API（一人一票），游客走公开 API（IP 去重）。
+ * 统一互动问卷组件：survey/poll 共用状态、提交与结果渲染；会员 token 存在时走会员 API。
+ * captchaRequired 由服务端按互动策略与站点配置计算，客户端只渲染公开挑战。
  */
-const POLL_SCRIPT = `(function(){var boxes=document.querySelectorAll('.cms-poll');if(!boxes.length)return;var t=null;try{t=localStorage.getItem('zenith_member_token')}catch(e){}function esc(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML}function bars(box,data){var total=data.totalVotes||0;var html='<h3 class="poll-title">'+esc(data.title)+'</h3>';data.options.forEach(function(o){var pct=total>0?Math.round(o.votes*100/total):0;html+='<div class="poll-bar-row"><span class="poll-bar-label">'+esc(o.label)+'</span><span class="poll-bar-track"><span class="poll-bar-fill" style="width:'+pct+'%"></span></span><span class="poll-bar-num">'+o.votes+' 票 · '+pct+'%</span></div>'});html+='<p class="poll-total">共 '+total+' 人参与</p>';box.innerHTML=html}function form(box,payload){var p=payload.poll;var multi=p.maxChoices>1;var html='<h3 class="poll-title">'+esc(p.title)+'</h3><form class="poll-form">';p.options.forEach(function(o){html+='<label class="poll-option"><input type="'+(multi?'checkbox':'radio')+'" name="poll-opt" value="'+o.id+'"> '+esc(o.label)+'</label>'});html+='<button type="submit">投票</button>'+(multi?'<p class="poll-hint">最多可选 '+p.maxChoices+' 项</p>':'')+'</form>';box.innerHTML=html;box.querySelector('form').addEventListener('submit',function(e){e.preventDefault();var ids=[].slice.call(box.querySelectorAll('input:checked')).map(function(i){return Number(i.value)});if(!ids.length){alert('请选择投票选项');return}if(ids.length>p.maxChoices){alert('最多可选 '+p.maxChoices+' 项');return}var url=t?'/api/member/cms/polls/'+p.id+'/vote':'/api/public/cms/polls/'+box.dataset.site+'/'+box.dataset.code+'/vote';var h={'Content-Type':'application/json'};if(t)h.Authorization='Bearer '+t;fetch(url,{method:'POST',headers:h,body:JSON.stringify({optionIds:ids})}).then(function(r){return r.json()}).then(function(r){if(r&&r.code===0){bars(box,r.data)}else{alert((r&&r.message)||'投票失败，请稍后再试')}}).catch(function(){alert('投票失败，请稍后再试')})})}boxes.forEach(function(box){fetch('/api/public/cms/polls/'+box.dataset.site+'/'+box.dataset.code).then(function(r){return r.json()}).then(function(r){if(!r||r.code!==0){box.style.display='none';return}if(r.data.voted||!r.data.open){bars(box,r.data.results)}else{form(box,r.data)}}).catch(function(){box.style.display='none'})})})();`;
+const INTERACTION_SCRIPT = `(function(){
+var boxes=document.querySelectorAll('.cms-interaction');if(!boxes.length)return;
+var token=null;try{token=localStorage.getItem('zenith_member_token')}catch(e){}
+function esc(v){var d=document.createElement('div');d.textContent=String(v==null?'':v);return d.innerHTML}
+function headers(json){var h=json?{'Content-Type':'application/json'}:{};if(token)h.Authorization='Bearer '+token;return h}
+function resultsHtml(data){if(!data)return '<p class="interaction-hint">结果暂不可见</p>';var html='<div class="interaction-results"><p>共 '+data.responseCount+' 人参与</p>';data.questions.forEach(function(q){html+='<section><h4>'+esc(q.label)+'</h4>';if(q.type==='text'){html+='<p class="interaction-hint">文本答案不公开展示</p>'}else{q.options.forEach(function(o){html+='<div class="poll-bar-row"><span class="poll-bar-label">'+esc(o.label)+'</span><span class="poll-bar-track"><span class="poll-bar-fill" style="width:'+o.percent+'%"></span></span><span class="poll-bar-num">'+o.count+' · '+o.percent+'%</span></div>'})}html+='</section>'});return html+'</div>'}
+function showResults(box,data){box.innerHTML=resultsHtml(data)}
+function loadMathCaptcha(form){var box=form.querySelector('.cms-captcha-box');if(!box)return;fetch('/api/public/cms/captcha').then(function(r){return r.json()}).then(function(r){if(!r||r.code!==0)return;box.querySelector('[name=captchaId]').value=r.data.id;box.querySelector('.cms-captcha-img').innerHTML=r.data.svg}).catch(function(){})}
+function loadTurnstile(form,state){var target=form.querySelector('.cms-turnstile');if(!target||!state.captcha.siteKey)return;function render(){if(!window.turnstile||target.dataset.widgetId)return;target.dataset.widgetId=String(window.turnstile.render(target,{sitekey:state.captcha.siteKey}))}if(window.turnstile){render();return}var script=document.querySelector('script[data-cms-turnstile]');if(!script){script=document.createElement('script');script.src='https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';script.async=true;script.defer=true;script.dataset.cmsTurnstile='1';document.head.appendChild(script)}script.addEventListener('load',render,{once:true})}
+function resetCaptcha(form,state){if(state.captcha.provider==='math')loadMathCaptcha(form);if(state.captcha.provider==='turnstile'&&window.turnstile){var target=form.querySelector('.cms-turnstile');if(target&&target.dataset.widgetId)window.turnstile.reset(target.dataset.widgetId)}}
+function renderForm(box,state){var i=state.interaction;if(i.participantScope==='member'&&!token){box.innerHTML='<p class="interaction-hint">本互动仅限会员参与，<a href="/member.html#/">请先登录</a></p>';return}var html='';if(i.repeatPolicy==='multiple'&&state.resultsVisible&&state.results)html+='<div class="interaction-live-results">'+resultsHtml(state.results)+'</div>';html+='<form class="front-form interaction-form">';i.questions.forEach(function(q,n){html+='<fieldset class="survey-question"><legend>'+(n+1)+'. '+esc(q.label)+(q.required?' <span class="req">*</span>':'')+'</legend>';if(q.type==='text'){html+='<textarea name="q_'+q.id+'" maxlength="2000" '+(q.required?'required':'')+'></textarea>'}else{html+='<div class="survey-options">';q.options.forEach(function(o){html+='<label class="survey-option"><input type="'+(q.type==='multiple'?'checkbox':'radio')+'" name="q_'+q.id+'" value="'+esc(o.value)+'" '+(q.required&&q.type==='single'?'required':'')+'> '+esc(o.label)+'</label>'});html+='</div>'}html+='</fieldset>'});if(state.captcha.provider==='math')html+='<div class="cms-captcha-box"><input type="hidden" name="captchaId"><label>验证码 <input name="captchaAnswer" required autocomplete="off"></label><span class="cms-captcha-img"></span></div>';if(state.captcha.provider==='turnstile')html+='<div class="cms-turnstile"></div>';html+='<button type="submit">提交</button></form>';box.innerHTML=html;var f=box.querySelector('form');if(state.captcha.provider==='math')loadMathCaptcha(f);if(state.captcha.provider==='turnstile')loadTurnstile(f,state);
+f.addEventListener('submit',function(e){e.preventDefault();var answers={};f.querySelectorAll('[name^=q_]').forEach(function(el){var k=el.name.slice(2);if(el.type==='checkbox'){if(el.checked)(answers[k]||(answers[k]=[])).push(el.value)}else if(el.type==='radio'){if(el.checked)answers[k]=el.value}else if(el.value)answers[k]=el.value});var payload={answers:answers,idempotencyKey:(Date.now().toString(36)+Math.random().toString(36).slice(2))};var ci=f.querySelector('[name=captchaId]'),ca=f.querySelector('[name=captchaAnswer]'),ct=f.querySelector('[name="cf-turnstile-response"]');if(ci)payload.captchaId=ci.value;if(ca)payload.captchaAnswer=ca.value;if(ct)payload.turnstileToken=ct.value;var url=token?'/api/member/cms/interactions/'+i.id+'/submit':'/api/public/cms/interactions/'+box.dataset.site+'/'+box.dataset.code+'/submit';fetch(url,{method:'POST',headers:headers(true),body:JSON.stringify(payload)}).then(function(r){return r.json()}).then(function(r){if(!r||r.code!==0){alert(r&&r.message||'提交失败');resetCaptcha(f,state);return}if(i.repeatPolicy==='multiple'){var old=box.querySelector('.survey-done');if(old)old.remove();f.insertAdjacentHTML('beforebegin','<p class="survey-done">'+esc(r.message||'提交成功，可继续参与')+'</p>');var live=box.querySelector('.interaction-live-results');if(r.data&&r.data.results){if(live)live.outerHTML='<div class="interaction-live-results">'+resultsHtml(r.data.results)+'</div>';else box.insertAdjacentHTML('afterbegin','<div class="interaction-live-results">'+resultsHtml(r.data.results)+'</div>')}f.reset();resetCaptcha(f,state);return}if(r.data&&r.data.results)showResults(box,r.data.results);else box.innerHTML='<p class="survey-done">'+esc(r.message||'提交成功')+'</p>'}).catch(function(){alert('提交失败，请稍后再试');resetCaptcha(f,state)})})}
+boxes.forEach(function(box){fetch('/api/public/cms/interactions/'+box.dataset.site+'/'+box.dataset.code,{headers:headers(false)}).then(function(r){return r.json()}).then(function(r){if(!r||r.code!==0){box.style.display='none';return}var s=r.data;if(!s.open){showResults(box,s.results);return}if(s.resultsVisible&&s.submitted&&s.interaction.repeatPolicy!=='multiple'){showResults(box,s.results);return}renderForm(box,s)}).catch(function(){box.style.display='none'})});
+})();`;
 
 /** 评论区：树形两级（顶级+回复）+ 点赞/回复 + 原生 form POST 提交（含蜜罐字段）；登录会员自动切会员通道 */
 function CommentsBlock({ comments, form }: { comments: CmsCommentItem[]; form: CmsCommentFormConfig }) {
@@ -294,6 +323,12 @@ export function ListTemplate(ctx: CmsListContext) {
     <Layout ctx={ctx} currentUrl={ctx.channel.url}>
       <Breadcrumbs items={ctx.breadcrumbs} />
       <h1 className="page-title">{ctx.channel.name}</h1>
+      <CmsFollowButton
+        siteId={ctx.site.id}
+        subjectType="channel"
+        subjectId={ctx.channel.id}
+        label={ctx.channel.name}
+      />
       <div className="content-list">
         {ctx.items.length === 0 ? <div className="empty">该栏目暂无内容</div> : ctx.items.map((item) => <ContentItemRow key={item.id} item={item} />)}
       </div>
@@ -352,7 +387,7 @@ function BodyPagination({ p }: { p: CmsDetailContext['content']['bodyPagination'
  * 会员互动条（点赞/收藏）：内联 JS 读取会员 token（zenith_member_token），
  * 已登录 fetch 会员 API 并上报浏览历史；未登录点击跳会员端登录。静态页可用。
  */
-const INTERACTION_SCRIPT = `(function(){var bar=document.getElementById('interaction-bar');if(!bar)return;var id=bar.getAttribute('data-content-id');var t=null;try{t=localStorage.getItem('zenith_member_token')}catch(e){}function hdr(){var h={'Content-Type':'application/json'};if(t)h.Authorization='Bearer '+t;return h}function api(m,p){return fetch('/api/member/cms/contents/'+id+p,{method:m,headers:hdr()}).then(function(r){return r.json()})}function paint(s){var lb=document.getElementById('btn-like'),fb=document.getElementById('btn-fav');if(!s||!lb||!fb)return;lb.classList.toggle('active',!!s.liked);fb.classList.toggle('active',!!s.favorited);document.getElementById('like-count').textContent=s.likeCount;document.getElementById('fav-count').textContent=s.favoriteCount;lb.dataset.on=s.liked?'1':'';fb.dataset.on=s.favorited?'1':''}if(t){api('GET','/interaction-state').then(function(r){if(r&&r.code===0)paint(r.data)}).catch(function(){});api('POST','/view').catch(function(){})}bar.addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;if(!t){location.href='/member.html#/';return}var isLike=b.id==='btn-like';var on=b.dataset.on==='1';api(on?'DELETE':'POST',isLike?'/like':'/favorite').then(function(r){if(r&&r.code===0)paint(r.data);else if(r&&r.code===401){location.href='/member.html#/'}}).catch(function(){})});})();`;
+const CONTENT_INTERACTION_SCRIPT = `(function(){var bar=document.getElementById('interaction-bar');if(!bar)return;var id=bar.getAttribute('data-content-id');var t=null;try{t=localStorage.getItem('zenith_member_token')}catch(e){}function hdr(){var h={'Content-Type':'application/json'};if(t)h.Authorization='Bearer '+t;return h}function api(m,p){return fetch('/api/member/cms/contents/'+id+p,{method:m,headers:hdr()}).then(function(r){return r.json()})}function paint(s){var lb=document.getElementById('btn-like'),fb=document.getElementById('btn-fav');if(!s||!lb||!fb)return;lb.classList.toggle('active',!!s.liked);fb.classList.toggle('active',!!s.favorited);document.getElementById('like-count').textContent=s.likeCount;document.getElementById('fav-count').textContent=s.favoriteCount;lb.dataset.on=s.liked?'1':'';fb.dataset.on=s.favorited?'1':''}if(t){api('GET','/interaction-state').then(function(r){if(r&&r.code===0)paint(r.data)}).catch(function(){});api('POST','/view').catch(function(){})}bar.addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;if(!t){location.href='/member.html#/';return}var isLike=b.id==='btn-like';var on=b.dataset.on==='1';api(on?'DELETE':'POST',isLike?'/like':'/favorite').then(function(r){if(r&&r.code===0)paint(r.data);else if(r&&r.code===401){location.href='/member.html#/'}}).catch(function(){})});})();`;
 
 function InteractionBar({ content }: { content: CmsDetailContext['content'] }) {
   return (
@@ -362,7 +397,7 @@ function InteractionBar({ content }: { content: CmsDetailContext['content'] }) {
         <button type="button" id="btn-fav" aria-label="收藏">⭐ 收藏 <span id="fav-count">{content.favoriteCount}</span></button>
         <span className="interaction-hint">登录会员后可点赞收藏，同步至会员中心</span>
       </div>
-      <script dangerouslySetInnerHTML={{ __html: INTERACTION_SCRIPT }} />
+      <script dangerouslySetInnerHTML={{ __html: CONTENT_INTERACTION_SCRIPT }} />
     </>
   );
 }
@@ -376,6 +411,9 @@ export function DetailTemplate(ctx: CmsDetailContext) {
         <h1>{content.title}</h1>
         <div className="meta">
           {content.author ? <span>作者：{content.author}</span> : null}
+          {content.author ? (
+            <CmsFollowButton siteId={ctx.site.id} subjectType="author" subjectKey={content.author} label={content.author} />
+          ) : null}
           {content.source ? <span>来源：{content.source}</span> : null}
           {content.publishedAt ? <time>{content.publishedAt}</time> : null}
           <span>{content.viewCount} 阅读</span>
@@ -405,7 +443,7 @@ export function DetailTemplate(ctx: CmsDetailContext) {
         </section>
       ) : null}
       <CommentsBlock comments={ctx.comments} form={ctx.commentForm} />
-      <script dangerouslySetInnerHTML={{ __html: POLL_SCRIPT }} />
+      <script dangerouslySetInnerHTML={{ __html: INTERACTION_SCRIPT }} />
     </Layout>
   );
 }
@@ -575,6 +613,9 @@ export function DetailPlainTemplate(ctx: CmsDetailContext) {
         <h1>{content.title}</h1>
         <div className="meta">
           {content.author ? <span>作者：{content.author}</span> : null}
+          {content.author ? (
+            <CmsFollowButton siteId={ctx.site.id} subjectType="author" subjectKey={content.author} label={content.author} />
+          ) : null}
           {content.source ? <span>来源：{content.source}</span> : null}
           {content.publishedAt ? <time>{content.publishedAt}</time> : null}
           <span>{content.viewCount} 阅读</span>
@@ -593,58 +634,21 @@ export function DetailPlainTemplate(ctx: CmsDetailContext) {
   );
 }
 
-// ─── 前台问卷页 ───────────────────────────────────────────────────────────────
-/**
- * 问卷提交脚本：已登录会员拦截 submit 走 JSON API（一人一份）；
- * 未登录且允许匿名走原生 form POST；不允许匿名则跳会员端登录。
- */
-const SURVEY_SCRIPT = `(function(){var f=document.getElementById('survey-form');if(!f)return;var api=f.getAttribute('data-member-api');var anon=f.getAttribute('data-allow-anonymous')==='1';var t=null;try{t=localStorage.getItem('zenith_member_token')}catch(e){}function done(msg){f.innerHTML='<p class="survey-done">'+msg+'</p>'}f.addEventListener('submit',function(e){if(!t){if(!anon){e.preventDefault();location.href='/member.html#/'}return}e.preventDefault();var answers={};f.querySelectorAll('[name^="q_"]').forEach(function(el){var k=el.name.slice(2);if(el.type==='checkbox'){if(!answers[k])answers[k]=[];if(el.checked)answers[k].push(el.value)}else if(el.type==='radio'){if(el.checked)answers[k]=el.value}else if(el.value){answers[k]=el.value}});fetch(api,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+t},body:JSON.stringify({answers:answers})}).then(function(r){return r.json()}).then(function(r){if(r&&r.code===0){done('提交成功，感谢您的参与！')}else{alert((r&&r.message)||'提交失败，请稍后再试')}}).catch(function(){alert('提交失败，请稍后再试')})});})();`;
-
-export function SurveyTemplate(ctx: CmsSurveyPageContext) {
-  const { survey, submitForm } = ctx;
+// ─── 前台统一互动问卷页 ───────────────────────────────────────────────────────
+export function InteractionTemplate(ctx: CmsInteractionPageContext) {
+  const { interaction } = ctx;
   return (
-    <Layout ctx={ctx} currentUrl={`${ctx.baseUrl}/survey/${survey.code}/`}>
+    <Layout ctx={ctx} currentUrl={`${ctx.baseUrl}/interaction/${interaction.code}/`}>
       <Breadcrumbs items={ctx.breadcrumbs} />
       <article className="article survey">
-        <h1>{survey.title}</h1>
-        {survey.description ? <p className="survey-desc">{survey.description}</p> : null}
-        {!survey.allowAnonymous ? <p className="survey-hint">本问卷仅限登录会员填写</p> : null}
-        <form
-          className="front-form"
-          id="survey-form"
-          method="post"
-          action={submitForm.action}
-          data-member-api={submitForm.memberSubmitApi}
-          data-allow-anonymous={survey.allowAnonymous ? '1' : '0'}
-        >
-          <input type="hidden" name="returnUrl" value={submitForm.returnUrl} />
-          <input className="hp" type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" />
-          {survey.questions.map((q, qi) => (
-            <fieldset className="survey-question" key={q.id}>
-              <legend>{qi + 1}. {q.label}{q.required ? <span className="req"> *</span> : null}</legend>
-              {q.type === 'text' ? (
-                <textarea name={`q_${q.id}`} required={q.required} maxLength={2000} />
-              ) : (
-                <div className="survey-options">
-                  {q.options.map((o) => (
-                    <label key={o.value} className="survey-option">
-                      <input
-                        type={q.type === 'multiple' ? 'checkbox' : 'radio'}
-                        name={`q_${q.id}`}
-                        value={o.value}
-                        required={q.required && q.type === 'single'}
-                      />
-                      {o.label}
-                    </label>
-                  ))}
-                </div>
-              )}
-            </fieldset>
-          ))}
-          <button type="submit">提交答卷</button>
-        </form>
+        <h1>{interaction.title}</h1>
+        {interaction.description ? <p className="survey-desc">{interaction.description}</p> : null}
+        {interaction.participantScope === 'member' ? <p className="survey-hint">本互动仅限登录会员参与</p> : null}
+        <div className="cms-interaction" data-site={ctx.site.code} data-code={interaction.code}>
+          <noscript>请启用 JavaScript 后参与互动。</noscript>
+        </div>
       </article>
-      <script dangerouslySetInnerHTML={{ __html: SURVEY_SCRIPT }} />
+      <script dangerouslySetInnerHTML={{ __html: INTERACTION_SCRIPT }} />
     </Layout>
   );
 }

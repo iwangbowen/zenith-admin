@@ -65,16 +65,16 @@ function testZip(entries: ZipTestEntry[]): Buffer {
 function signedPackage(extra?: ZipTestEntry[]) {
   const { publicKey, privateKey } = generateKeyPairSync('ed25519');
   const dsl: CmsTemplateDslDocument = {
-    version: 1,
+    version: 2,
     root: { kind: 'element', tag: 'html', children: [{ kind: 'element', tag: 'body', children: [{ kind: 'text', value: 'safe' }] }] },
   };
   const template = Buffer.from(JSON.stringify(dsl));
   const unsigned: Omit<CmsThemePackageManifest, 'signature' | 'signingKeyId'> = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     code: 'signed-theme',
     name: 'Signed Theme',
     version: '1.0.0',
-    engine: { min: 1, max: 1 },
+    engine: { min: 2, max: 2 },
     templates: [{ code: 'home', name: 'Home', type: 'index', path: 'templates/home.json' }],
     assets: [],
     checksums: { 'templates/home.json': createHash('sha256').update(template).digest('hex') },
@@ -100,7 +100,7 @@ function signedPackage(extra?: ZipTestEntry[]) {
 function signedPackageWithAssets(assets: ZipTestEntry[]) {
   const { publicKey, privateKey } = generateKeyPairSync('ed25519');
   const dsl: CmsTemplateDslDocument = {
-    version: 1,
+    version: 2,
     root: { kind: 'element', tag: 'html', children: [{ kind: 'element', tag: 'body', children: [{ kind: 'text', value: 'safe' }] }] },
   };
   const template = Buffer.from(JSON.stringify(dsl));
@@ -109,11 +109,11 @@ function signedPackageWithAssets(assets: ZipTestEntry[]) {
     ...assets.map((asset) => [asset.name, asset.content] as const),
   ].map(([name, content]) => [name, createHash('sha256').update(content).digest('hex')]));
   const manifest = signCmsThemePackageManifest({
-    schemaVersion: 1,
+    schemaVersion: 2,
     code: 'css-theme',
     name: 'CSS Theme',
     version: '1.0.0',
-    engine: { min: 1, max: 1 },
+    engine: { min: 2, max: 2 },
     templates: [{ code: 'home', name: 'Home', type: 'index', path: 'templates/home.json' }],
     assets: assets.map((asset) => asset.name),
     checksums,
@@ -152,7 +152,7 @@ describe('CMS signed theme package security', () => {
 
   it('accepts a valid Ed25519-signed declarative package', () => {
     const pkg = signedPackage();
-    const parsed = validateCmsThemePackageArchive(pkg.buffer, pkg.trusted, 1);
+    const parsed = validateCmsThemePackageArchive(pkg.buffer, pkg.trusted, 2);
     expect(parsed.report.valid).toBe(true);
     expect(parsed.report.manifest?.code).toBe('signed-theme');
     expect(parsed.files.has('templates/home.json')).toBe(true);
@@ -160,9 +160,9 @@ describe('CMS signed theme package security', () => {
 
   it('fails closed without trusted keys and rejects a wrong trust root', () => {
     const pkg = signedPackage();
-    expect(validateCmsThemePackageArchive(pkg.buffer, '', 1).report.issues[0]?.message).toContain('未配置');
+    expect(validateCmsThemePackageArchive(pkg.buffer, '', 2).report.issues[0]?.message).toContain('未配置');
     const other = generateKeyPairSync('ed25519').publicKey.export({ format: 'pem', type: 'spki' }).toString();
-    const result = validateCmsThemePackageArchive(pkg.buffer, JSON.stringify({ 'test-key': other }), 1);
+    const result = validateCmsThemePackageArchive(pkg.buffer, JSON.stringify({ 'test-key': other }), 2);
     expect(result.report.valid).toBe(false);
     expect(result.report.issues[0]?.message).toContain('签名验证失败');
   });
@@ -179,7 +179,7 @@ describe('CMS signed theme package security', () => {
       { name: 'templates/home.json', content: pkg.template },
       badEntry,
     ];
-    const result = validateCmsThemePackageArchive(testZip(entries), pkg.trusted, 1);
+    const result = validateCmsThemePackageArchive(testZip(entries), pkg.trusted, 2);
     expect(result.report.valid).toBe(false);
     expect(result.report.issues[0]?.message).toContain(message);
   });
@@ -190,7 +190,7 @@ describe('CMS signed theme package security', () => {
       { name: 'manifest.json', content: Buffer.from(JSON.stringify(pkg.manifest)) },
       { name: 'templates/home.json', content: Buffer.from('{"version":1,"root":{"kind":"text","value":"tampered"}}') },
     ]);
-    const result = validateCmsThemePackageArchive(tampered, pkg.trusted, 1);
+    const result = validateCmsThemePackageArchive(tampered, pkg.trusted, 2);
     expect(result.report.valid).toBe(false);
     expect(result.report.issues[0]?.message).toContain('校验和不匹配');
   });
@@ -207,7 +207,7 @@ describe('CMS signed theme package security', () => {
     String.raw`.hero{color:red;broken raw payload}`,
   ])('parses and rejects escaped/external CSS resource %s', (css) => {
     const pkg = signedPackageWithAssets([{ name: 'assets/css/site.css', content: Buffer.from(css) }]);
-    const result = validateCmsThemePackageArchive(pkg.buffer, pkg.trusted, 1);
+    const result = validateCmsThemePackageArchive(pkg.buffer, pkg.trusted, 2);
     expect(result.report.valid).toBe(false);
     expect(result.report.issues[0]?.message).toMatch(/CSS|URL|@import|资源/);
   });
@@ -218,6 +218,6 @@ describe('CMS signed theme package security', () => {
       { name: 'assets/css/site.css', content: Buffer.from('.hero{background-image:url(../images/bg.png)}') },
       { name: 'assets/images/bg.png', content: png },
     ]);
-    expect(validateCmsThemePackageArchive(pkg.buffer, pkg.trusted, 1).report.valid).toBe(true);
+    expect(validateCmsThemePackageArchive(pkg.buffer, pkg.trusted, 2).report.valid).toBe(true);
   });
 });

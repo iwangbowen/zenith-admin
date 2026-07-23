@@ -98,6 +98,39 @@ const taskTypes: AsyncTaskTypeMeta[] = [
     retentionDays: 30,
   },
   {
+    taskType: 'cms-ad-events-cleanup',
+    title: 'CMS 广告事件保留期清理',
+    module: 'CMS内容管理',
+    description: '按保留策略分批清理广告事件。',
+    allowConcurrent: false,
+    enabled: true,
+    maxAttempts: 3,
+    retryDelayMs: 5000,
+    retentionDays: 30,
+  },
+  {
+    taskType: 'cms-interactions-batch-status',
+    title: 'CMS 互动问卷批量状态流转',
+    module: 'CMS内容管理',
+    description: '批量发布或关闭统一互动问卷。',
+    allowConcurrent: false,
+    enabled: true,
+    maxAttempts: 2,
+    retryDelayMs: 3000,
+    retentionDays: 30,
+  },
+  {
+    taskType: 'cms-subscription-notify',
+    title: 'CMS 订阅发布通知',
+    module: 'CMS内容管理',
+    description: '按发布内容匹配订阅者并批量发送会员站内通知。',
+    allowConcurrent: true,
+    enabled: true,
+    maxAttempts: 3,
+    retryDelayMs: 5000,
+    retentionDays: 30,
+  },
+  {
     taskType: 'report-dq-rule-run',
     title: '报表质量规则执行',
     module: '报表中心',
@@ -324,7 +357,7 @@ export function createImmediateMockTask(input: {
 }
 
 export function createProgressingMockTask(input: {
-  taskType: 'report-dq-rule-run' | 'report-dataset-materialize' | 'report-sla-rule-evaluate' | 'report-fill-sync' | 'analytics-rollup-rebuild' | 'analytics-segment-materialize' | 'analytics-campaign-execute' | 'cms-static-build' | 'cms-search-reindex' | 'cms-deadlink-check' | 'cms-collect-run' | 'cms-content-import' | 'cms-resource-governance' | 'cms-theme-import' | 'cms-publish-build';
+  taskType: 'report-dq-rule-run' | 'report-dataset-materialize' | 'report-sla-rule-evaluate' | 'report-fill-sync' | 'analytics-rollup-rebuild' | 'analytics-segment-materialize' | 'analytics-campaign-execute' | 'cms-static-build' | 'cms-search-reindex' | 'cms-deadlink-check' | 'cms-collect-run' | 'cms-content-import' | 'cms-resource-governance' | 'cms-theme-import' | 'cms-publish-build' | 'cms-ad-events-cleanup' | 'cms-interactions-batch-status' | 'cms-subscription-notify';
   title: string;
   payload?: Record<string, unknown>;
   totalItems?: number;

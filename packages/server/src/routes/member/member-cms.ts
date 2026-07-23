@@ -4,13 +4,26 @@
  */
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
-import { submitCmsSurveySchema, memberSubmitCmsCommentSchema, voteCmsPollSchema } from '@zenith/shared';
+import {
+  cmsSubscriptionSubjectSchema,
+  memberSubmitCmsCommentSchema,
+  submitCmsInteractionSchema,
+  updateCmsSubscriptionSchema,
+} from '@zenith/shared';
 import { memberAuthMiddleware } from '../../middleware/member-auth';
 import { idempotencyGuard } from '../../middleware/idempotency';
 import {
   jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, okBody, PaginationQuery, IdParam,
 } from '../../lib/openapi-schemas';
-import { CmsContributionDTO, CmsContribChannelsDTO, CmsInteractionStateDTO, CmsMemberContentItemDTO, CmsMemberCommentDTO, CmsPollResultsDTO } from '../../lib/openapi-dtos';
+import {
+  CmsContributionDTO,
+  CmsContribChannelsDTO,
+  CmsInteractionStateDTO,
+  CmsInteractionSubmitResultDTO,
+  CmsMemberContentItemDTO,
+  CmsMemberCommentDTO,
+  CmsMemberSubscriptionDTO,
+} from '../../lib/openapi-dtos';
 import {
   listContributableChannels, listMyContributions, getMyContribution,
   createContribution, updateMyContribution, deleteMyContribution,
@@ -20,10 +33,20 @@ import {
   recordMemberView, listMyFavorites, listMyViewHistory, clearMyViewHistory,
   submitMemberComment, listMyComments, deleteMyComment,
 } from '../../services/cms/cms-member-interaction.service';
-import { getPublishedSurveyById, submitCmsSurvey } from '../../services/cms/cms-surveys.service';
-import { getCmsPollByIdForVote, voteCmsPoll } from '../../services/cms/cms-polls.service';
+import {
+  getPublicCmsInteractionById,
+  submitCmsInteraction,
+} from '../../services/cms/cms-interactions.service';
 import { triggerContentStaticRefresh } from '../../services/cms/cms-static.service';
 import { currentMemberId } from '../../lib/member-context';
+import { getClientIp } from '../../lib/request-helpers';
+import {
+  cancelMyCmsSubscription,
+  getMyCmsSubscriptionStatus,
+  listMyCmsSubscriptions,
+  subscribeCmsSubject,
+  updateMyCmsSubscription,
+} from '../../services/cms/cms-subscriptions.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -224,23 +247,80 @@ const clearHistoryRoute = defineOpenAPIRoute({
   },
 });
 
-// ─── P3 问卷：会员提交（JSON；一人一份由 DB 唯一约束保证）────────────────────────
-const surveySubmitRoute = defineOpenAPIRoute({
+// ─── Stage 4 会员订阅：全部按 currentMemberId() 归属校验 ──────────────────────
+const subscriptionsRoute = defineOpenAPIRoute({
   route: createRoute({
-    method: 'post', path: '/surveys/{id}/submit', tags: ['MemberCms'], summary: '提交问卷答卷（会员，一人一份）',
+    method: 'get', path: '/subscriptions', tags: ['MemberCms'], summary: '我的 CMS 订阅',
     security: [{ BearerAuth: [] }],
     middleware: [memberAuthMiddleware] as const,
-    request: { params: IdParam, body: { content: jsonContent(submitCmsSurveySchema), required: true } },
-    responses: { ...commonErrorResponses, ...okMsg('提交成功') },
+    request: {
+      query: PaginationQuery.extend({
+        subjectType: z.enum(['site', 'channel', 'author']).optional(),
+      }),
+    },
+    responses: { ...commonErrorResponses, ...okPaginated(CmsMemberSubscriptionDTO, '我的订阅') },
   }),
-  handler: async (c) => {
-    const survey = await getPublishedSurveyById(c.req.valid('param').id);
-    if (!survey) throw new HTTPException(404, { message: '问卷不存在或未开放' });
-    const forwarded = c.req.header('x-forwarded-for');
-    const ip = forwarded?.split(',')[0].trim() || c.req.header('x-real-ip') || null;
-    await submitCmsSurvey(survey, c.req.valid('json'), { memberId: currentMemberId(), ip });
-    return c.json(okBody(null, '提交成功，感谢您的参与！'), 200);
-  },
+  handler: async (c) => c.json(okBody(await listMyCmsSubscriptions(c.req.valid('query'))), 200),
+});
+
+const subscriptionStatusRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/subscriptions/status', tags: ['MemberCms'], summary: '查询 CMS 订阅状态',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    request: {
+      query: z.object({
+        siteId: z.coerce.number().int().positive(),
+        subjectType: z.enum(['site', 'channel', 'author']),
+        subjectId: z.coerce.number().int().positive().optional(),
+        subjectKey: z.string().max(255).optional(),
+      }),
+    },
+    responses: { ...commonErrorResponses, ...ok(CmsMemberSubscriptionDTO.nullable(), '订阅状态') },
+  }),
+  handler: async (c) => c.json(okBody(await getMyCmsSubscriptionStatus(c.req.valid('query'))), 200),
+});
+
+const subscribeRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/subscriptions', tags: ['MemberCms'], summary: '订阅 CMS 站点/栏目/作者',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware, idempotencyGuard({ ttlSeconds: 10 })] as const,
+    request: { body: { content: jsonContent(cmsSubscriptionSubjectSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(CmsMemberSubscriptionDTO, '订阅成功') },
+  }),
+  handler: async (c) => c.json(okBody(await subscribeCmsSubject(c.req.valid('json')), '订阅成功'), 200),
+});
+
+const updateSubscriptionRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put', path: '/subscriptions/{id}', tags: ['MemberCms'], summary: '更新我的订阅通知设置',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    request: {
+      params: IdParam,
+      body: { content: jsonContent(updateCmsSubscriptionSchema), required: true },
+    },
+    responses: { ...commonErrorResponses, ...ok(CmsMemberSubscriptionDTO, '订阅已更新') },
+  }),
+  handler: async (c) => c.json(okBody(await updateMyCmsSubscription(
+    c.req.valid('param').id,
+    c.req.valid('json').notificationEnabled,
+  ), '订阅已更新'), 200),
+});
+
+const cancelSubscriptionRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete', path: '/subscriptions/{id}', tags: ['MemberCms'], summary: '取消我的 CMS 订阅',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(CmsMemberSubscriptionDTO, '已取消订阅') },
+  }),
+  handler: async (c) => c.json(okBody(
+    await cancelMyCmsSubscription(c.req.valid('param').id),
+    '已取消订阅',
+  ), 200),
 });
 
 // ─── P1 评论会员化：会员提交评论 / 我的评论 ──────────────────────────────────────
@@ -253,8 +333,7 @@ const commentSubmitRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okMsg('评论已提交') },
   }),
   handler: async (c) => {
-    const forwarded = c.req.header('x-forwarded-for');
-    const ip = forwarded?.split(',')[0].trim() || c.req.header('x-real-ip') || 'unknown';
+    const ip = getClientIp(c);
     await submitMemberComment(c.req.valid('param').id, c.req.valid('json'), {
       ip, userAgent: c.req.header('user-agent')?.slice(0, 255) ?? null,
     });
@@ -291,29 +370,34 @@ const deleteMyCommentRoute = defineOpenAPIRoute({
   },
 });
 
-// ─── P3 轻量投票：会员投票（一人一票）───────────────────────────────────────────
-const pollVoteRoute = defineOpenAPIRoute({
+// ─── Stage 4 统一互动问卷：会员提交 ───────────────────────────────────────────
+const interactionSubmitRoute = defineOpenAPIRoute({
   route: createRoute({
-    method: 'post', path: '/polls/{id}/vote', tags: ['MemberCms'], summary: '会员投票（一人一票）',
+    method: 'post', path: '/interactions/{id}/submit', tags: ['MemberCms'], summary: '会员提交互动问卷',
     security: [{ BearerAuth: [] }],
-    middleware: [memberAuthMiddleware] as const,
-    request: { params: IdParam, body: { content: jsonContent(voteCmsPollSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(CmsPollResultsDTO, '投票成功') },
+    middleware: [memberAuthMiddleware, idempotencyGuard({ ttlSeconds: 10 })] as const,
+    request: { params: IdParam, body: { content: jsonContent(submitCmsInteractionSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(CmsInteractionSubmitResultDTO, '提交成功') },
   }),
   handler: async (c) => {
-    const poll = await getCmsPollByIdForVote(c.req.valid('param').id);
-    const forwarded = c.req.header('x-forwarded-for');
-    const ip = forwarded?.split(',')[0].trim() || c.req.header('x-real-ip') || 'unknown';
-    const results = await voteCmsPoll(poll, c.req.valid('json').optionIds, { memberId: currentMemberId(), ip });
-    return c.json(okBody(results, '投票成功'), 200);
+    const interaction = await getPublicCmsInteractionById(c.req.valid('param').id);
+    if (!interaction) throw new HTTPException(404, { message: '互动问卷不存在' });
+    const result = await submitCmsInteraction(interaction, c.req.valid('json'), {
+      memberId: currentMemberId(),
+      ip: getClientIp(c),
+      userAgent: c.req.header('user-agent') ?? null,
+      idempotencyKey: c.req.header('x-idempotency-key') ?? null,
+    });
+    return c.json(okBody(result, result.message), 200);
   },
 });
 
 router.openapiRoutes([
   channelsRoute, listRoute, detailRoute, createRouteDef, updateRouteDef, deleteRouteDef,
   interactionStateRoute, likeRoute, unlikeRoute, favoriteRoute, unfavoriteRoute, viewRoute,
-  favoritesListRoute, historyListRoute, clearHistoryRoute, surveySubmitRoute,
-  commentSubmitRoute, myCommentsRoute, deleteMyCommentRoute, pollVoteRoute,
+  favoritesListRoute, historyListRoute, clearHistoryRoute,
+  subscriptionsRoute, subscriptionStatusRoute, subscribeRoute, updateSubscriptionRoute, cancelSubscriptionRoute,
+  commentSubmitRoute, myCommentsRoute, deleteMyCommentRoute, interactionSubmitRoute,
 ] as const);
 
 export default router;

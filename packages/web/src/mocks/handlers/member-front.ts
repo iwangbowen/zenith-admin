@@ -222,7 +222,6 @@ export const memberFrontHandlers = [
     mockViewHistory.length = 0;
     return ok(null, `已清空 ${count} 条浏览记录`);
   }),
-  http.post('/api/member/cms/surveys/:id/submit', () => ok(null, '提交成功，感谢您的参与！')),
 
   // ── CMS 我的评论（P1 评论会员化）──────────────────────────────────────────
   http.post('/api/member/cms/contents/:id/comments', async ({ params, request }) => {

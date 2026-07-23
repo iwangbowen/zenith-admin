@@ -18,9 +18,16 @@ function cmsTables(): { name: string; table: PgTable }[] {
 }
 
 describe('global CMS schema', () => {
-  it('keeps all 50 CMS tables outside tenant ownership', () => {
+  it('keeps all 52 CMS tables outside tenant ownership', () => {
     const tables = cmsTables();
-    expect(tables).toHaveLength(50);
+    expect(tables).toHaveLength(52);
+    expect(tables.map((item) => item.name)).not.toEqual(expect.arrayContaining([
+      'cms_surveys',
+      'cms_survey_questions',
+      'cms_survey_answers',
+      'cms_polls',
+      'cms_poll_votes',
+    ]));
     for (const { name, table } of tables) {
       const tenantColumn = getTableConfig(table).columns.find((column) => column.name === 'tenant_id');
       expect(tenantColumn, `${name} must not expose tenant_id`).toBeUndefined();

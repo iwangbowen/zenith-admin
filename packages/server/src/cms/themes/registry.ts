@@ -80,8 +80,8 @@ export function resolveCustomPageTemplate(theme: CmsTheme) {
   return theme.customPage ?? defaultTheme.customPage!;
 }
 
-export function resolveSurveyTemplate(theme: CmsTheme) {
-  return theme.survey ?? defaultTheme.survey!;
+export function resolveInteractionTemplate(theme: CmsTheme) {
+  return theme.interaction ?? defaultTheme.interaction!;
 }
 
 /** 主题可选模板清单（后台站点/栏目/内容模板下拉用）；default 项代表主题默认模板 */

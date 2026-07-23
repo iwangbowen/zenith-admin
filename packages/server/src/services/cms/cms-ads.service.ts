@@ -1,4 +1,4 @@
-import { eq, asc, and, or, isNull, lte, gte, sql } from 'drizzle-orm';
+import { eq, asc, and, or, isNull, lte, gte, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { cmsAdSlots, cmsAds } from '../../db/schema';
@@ -8,7 +8,8 @@ import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { assertSiteAccess } from './cms-sites.service';
 import type { CreateCmsAdSlotInput, UpdateCmsAdSlotInput, CreateCmsAdInput, UpdateCmsAdInput } from '@zenith/shared';
 import { ensureCmsSiteExists } from './cms-sites.service';
-import { pageOffset } from '../../lib/pagination';
+import { withPagination } from '../../lib/where-helpers';
+import { normalizeCmsAdClickUrl } from './cms-ad-events.service';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 export function mapCmsAdSlot(row: CmsAdSlotRow, adCount?: number) {
@@ -75,24 +76,6 @@ export async function getActiveAds(siteId: number): Promise<Record<string, { id:
   return map;
 }
 
-/**
- * 前台广告点击中转：计数 +1 后返回跳转地址（302）。
- * 仅统计投放中的广告；无 linkUrl 或不在投放窗口返回 null（调用方回 404）。
- */
-export async function recordAdClick(id: number): Promise<string | null> {
-  const now = new Date();
-  const [row] = await db.update(cmsAds)
-    .set({ clickCount: sql`${cmsAds.clickCount} + 1` })
-    .where(and(
-      eq(cmsAds.id, id),
-      eq(cmsAds.status, 'enabled'),
-      or(isNull(cmsAds.startAt), lte(cmsAds.startAt, now)),
-      or(isNull(cmsAds.endAt), gte(cmsAds.endAt, now)),
-    ))
-    .returning({ linkUrl: cmsAds.linkUrl });
-  return row?.linkUrl ?? null;
-}
-
 // ─── 广告位 CRUD ──────────────────────────────────────────────────────────────
 export async function listCmsAdSlots(siteId: number) {
   await ensureCmsSiteExists(siteId);
@@ -155,17 +138,22 @@ export async function listCmsAds(q: ListCmsAdsQuery) {
   ];
   if (q.slotId) conditions.push(eq(cmsAds.slotId, q.slotId));
   const where = and(...conditions);
+  const adConditions = [
+    inArray(cmsAds.slotId, db.select({ id: cmsAdSlots.id }).from(cmsAdSlots).where(eq(cmsAdSlots.siteId, q.siteId))),
+  ];
+  if (q.slotId) adConditions.push(eq(cmsAds.slotId, q.slotId));
+  const adWhere = and(...adConditions);
   const base = db.select({ ad: cmsAds, slotName: cmsAdSlots.name })
     .from(cmsAds)
     .innerJoin(cmsAdSlots, eq(cmsAds.slotId, cmsAdSlots.id))
     .where(where);
-  const [totalRows, rows] = await Promise.all([
-    db.select({ count: sql<number>`count(*)::int` }).from(cmsAds).innerJoin(cmsAdSlots, eq(cmsAds.slotId, cmsAdSlots.id)).where(where),
-    base.orderBy(asc(cmsAds.sort), asc(cmsAds.id)).limit(q.pageSize).offset(pageOffset(q.page, q.pageSize)),
+  const [total, rows] = await Promise.all([
+    db.$count(cmsAds, adWhere),
+    withPagination(base.orderBy(asc(cmsAds.sort), asc(cmsAds.id)).$dynamic(), q.page, q.pageSize),
   ]);
   return {
     list: rows.map((r) => mapCmsAd(r.ad, r.slotName)),
-    total: totalRows[0]?.count ?? 0,
+    total,
     page: q.page,
     pageSize: q.pageSize,
   };
@@ -174,6 +162,9 @@ export async function listCmsAds(q: ListCmsAdsQuery) {
 export async function createCmsAd(data: CreateCmsAdInput) {
   const slot = await ensureCmsAdSlotExists(data.slotId);
   await assertSiteAccess(slot.siteId);
+  if (data.linkUrl && !normalizeCmsAdClickUrl(data.linkUrl)) {
+    throw new HTTPException(400, { message: '跳转地址仅允许站内相对路径或 http/https URL，且不得包含账号凭据' });
+  }
   const { startAt, endAt, ...rest } = data;
   const [row] = await db.insert(cmsAds).values({
     ...rest,
@@ -189,6 +180,9 @@ export async function updateCmsAd(id: number, data: UpdateCmsAdInput) {
   await assertSiteAccess(currentSlot.siteId);
   const slot = await ensureCmsAdSlotExists(data.slotId ?? current.slotId);
   await assertSiteAccess(slot.siteId);
+  if (data.linkUrl && !normalizeCmsAdClickUrl(data.linkUrl)) {
+    throw new HTTPException(400, { message: '跳转地址仅允许站内相对路径或 http/https URL，且不得包含账号凭据' });
+  }
   const { startAt, endAt, ...rest } = data;
   const [row] = await db.update(cmsAds).set({
     ...rest,

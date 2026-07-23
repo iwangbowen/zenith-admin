@@ -5,8 +5,9 @@ import { db } from '../../db';
 import { cmsChannels, cmsTags, cmsContents, cmsModels, cmsSites } from '../../db/schema';
 import type { CmsSiteRow, CmsChannelRow, CmsContentRow, CmsTagRow } from '../../db/schema';
 import { formatNullableDateTime, formatIso8601 } from '../../lib/datetime';
-import { getBuiltinThemeFallback, resolveListTemplate, resolveDetailTemplate, resolveCustomPageTemplate, resolveSurveyTemplate, resolveThemeConfig } from '../../cms/themes/registry';
+import { getBuiltinThemeFallback, resolveListTemplate, resolveDetailTemplate, resolveCustomPageTemplate, resolveInteractionTemplate, resolveThemeConfig } from '../../cms/themes/registry';
 import { renderBlocksHtml } from '../../cms/themes/blocks';
+import { filterCmsPageBlocksForViewer } from './cms-page-blocks';
 import type {
   CmsBaseContext, CmsNavItem, CmsSeo, CmsContentItem, CmsPagination, CmsBreadcrumb, CmsChannelInfo,
 } from '../../cms/themes/types';
@@ -19,7 +20,7 @@ import { getFragmentMap } from './cms-fragments.service';
 import { listEnabledFriendLinks } from './cms-friend-links.service';
 import { searchCmsContents, stripHtml } from './cms-search.service';
 import { getEnabledLinkWords, applyLinkWords } from './cms-link-words.service';
-import { applyPollMarkers } from './cms-polls.service';
+import { applyInteractionMarkers } from './cms-interactions.service';
 import { isCaptchaEnabled } from './cms-captcha.service';
 import { resolveCmsFormCaptcha } from './cms-form-captcha.service';
 import { listApprovedComments } from './cms-comments.service';
@@ -248,6 +249,7 @@ async function buildBaseContext(site: CmsSiteRow, baseUrl: string, seo: CmsSeo, 
       ? { siteKey: analyticsSiteKey, ...(analyticsContentId ? { contentId: analyticsContentId } : {}) }
       : null,
     langAlternates,
+    audience: { dynamic: false, member: false },
   };
 }
 
@@ -374,7 +376,7 @@ export async function renderCustomPage(
   site: CmsSiteRow,
   baseUrl: string,
   pageRow: import('../../db/schema').CmsPageRow,
-  opts?: { asHome?: boolean },
+  opts?: { asHome?: boolean; member?: boolean },
 ): Promise<RenderResult> {
   const theme = getBuiltinThemeFallback(site.theme);
   const seo = mergeSeo(site, {
@@ -383,8 +385,14 @@ export async function renderCustomPage(
     description: pageRow.seoDescription ?? undefined,
     pathForCanonical: opts?.asHome ? '/' : customPageUrl('', pageRow.slug),
   });
-  const base = await buildBaseContext(site, baseUrl, seo);
-  const blocks = (pageRow.blocks ?? []) as import('@zenith/shared').CmsPageBlock[];
+  const base = {
+    ...await buildBaseContext(site, baseUrl, seo),
+    audience: { dynamic: pageRow.requiresDynamic, member: opts?.member === true },
+  };
+  const blocks = filterCmsPageBlocksForViewer(
+    (pageRow.blocks ?? []) as import('@zenith/shared').CmsPageBlock[],
+    { member: opts?.member === true },
+  );
   // content-list 区块数据预取
   const channelPathMap = await loadChannelPathMap(site.id);
   const contentListData = new Map<string, CmsContentItem[]>();
@@ -417,11 +425,11 @@ async function listBlockContents(siteId: number, opts: { channelId?: number; cou
     .limit(opts.count);
 }
 
-export async function renderHomePage(site: CmsSiteRow, baseUrl: string): Promise<RenderResult> {
+export async function renderHomePage(site: CmsSiteRow, baseUrl: string, viewer?: { member?: boolean }): Promise<RenderResult> {
   // 可视化页面接管首页（isHome=true 的启用页面优先）
   const { getHomeTakeoverPage } = await import('./cms-pages.service');
   const takeover = await getHomeTakeoverPage(site.id);
-  if (takeover) return renderCustomPage(site, baseUrl, takeover, { asHome: true });
+  if (takeover) return renderCustomPage(site, baseUrl, takeover, { asHome: true, member: viewer?.member });
   const theme = getBuiltinThemeFallback(site.theme);
   const seo = mergeSeo(site, { pathForCanonical: '/' });
   const [base, home] = await Promise.all([
@@ -593,7 +601,7 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
     breadcrumbs,
     content: {
       ...toContentItem(row, baseUrl, channel.path),
-      body: applyPollMarkers(applyLinkWords(pageBody, linkWords), site.code),
+      body: applyInteractionMarkers(applyLinkWords(pageBody, linkWords), site.code),
       ...extras,
       extend: resolved.extend,
       tags: tags.map((t) => ({ name: t.name, slug: t.slug, url: tagUrl(baseUrl, t.slug) })),
@@ -666,7 +674,7 @@ export async function renderContentPreviewPage(site: CmsSiteRow, baseUrl: string
     breadcrumbs,
     content: {
       ...toContentItem(row, baseUrl, channel.path),
-      body: applyPollMarkers(applyLinkWords(previewBody, linkWords), site.code),
+      body: applyInteractionMarkers(applyLinkWords(previewBody, linkWords), site.code),
       ...previewExtras,
       extend: resolved.extend,
       tags: tags.map((t) => ({ name: t.name, slug: t.slug, url: tagUrl(baseUrl, t.slug) })),
@@ -741,40 +749,55 @@ export async function renderNotFound(site: CmsSiteRow, baseUrl: string, path: st
   return { status: 404, html, kind: 'notFound' };
 }
 
-// ─── 前台问卷页（P3；动态成分低，可静态化，提交走 API）───────────────────────────
-export async function renderSurveyPage(site: CmsSiteRow, baseUrl: string, code: string): Promise<RenderResult> {
-  const { getPublishedSurveyByCode } = await import('./cms-surveys.service');
-  const survey = await getPublishedSurveyByCode(site.id, code);
-  if (!survey) return renderNotFound(site, baseUrl, `/survey/${code}/`);
+// ─── 前台统一互动问卷页（题目公开；提交与结果状态走 API）─────────────────────────
+export async function renderInteractionPage(site: CmsSiteRow, baseUrl: string, code: string): Promise<RenderResult> {
+  const { getPublicCmsInteractionByCode } = await import('./cms-interactions.service');
+  const interaction = await getPublicCmsInteractionByCode(site.id, code);
+  if (!interaction) return renderNotFound(site, baseUrl, `/interaction/${code}/`);
   const seo = mergeSeo(site, {
-    title: `${survey.title} - ${site.title?.trim() || site.name}`,
-    description: survey.description ?? undefined,
-    pathForCanonical: `/survey/${code}/`,
+    title: `${interaction.title} - ${site.title?.trim() || site.name}`,
+    description: interaction.description ?? undefined,
+    pathForCanonical: `/interaction/${code}/`,
   });
   const base = await buildBaseContext(site, baseUrl, seo);
   const props = {
     ...base,
     breadcrumbs: [
       { name: '首页', url: `${baseUrl}/` },
-      { name: survey.title, url: `${baseUrl}/survey/${code}/` },
+      { name: interaction.title, url: `${baseUrl}/interaction/${code}/` },
     ],
-    survey: {
-      id: survey.id,
-      code: survey.code,
-      title: survey.title,
-      description: survey.description ?? null,
-      allowAnonymous: survey.allowAnonymous,
-      questions: [...survey.questions].sort((a, b) => a.sort - b.sort || a.id - b.id).map((q) => ({
-        id: q.id, label: q.label, type: q.type, required: q.required, options: q.options ?? [],
+    interaction: {
+      id: interaction.id,
+      code: interaction.code,
+      kind: interaction.kind,
+      title: interaction.title,
+      description: interaction.description ?? null,
+      participantScope: interaction.participantScope,
+      repeatPolicy: interaction.repeatPolicy,
+      resultVisibility: interaction.resultVisibility,
+      captchaPolicy: interaction.captchaPolicy,
+      questions: [...interaction.questions].sort((a, b) => a.sort - b.sort || a.id - b.id).map((question) => ({
+        id: question.id,
+        label: question.label,
+        type: question.type,
+        required: question.required,
+        options: question.options ?? [],
+        minChoices: question.minChoices,
+        maxChoices: question.maxChoices,
       })),
     },
-    submitForm: {
-      action: `/api/public/cms/surveys/${site.code}/${survey.code}`,
-      memberSubmitApi: `/api/member/cms/surveys/${survey.id}/submit`,
-      returnUrl: `${baseUrl}/survey/${code}/`,
+    submit: {
+      stateApi: `/api/public/cms/interactions/${site.code}/${interaction.code}`,
+      publicSubmitApi: `/api/public/cms/interactions/${site.code}/${interaction.code}/submit`,
+      memberSubmitApi: `/api/member/cms/interactions/${interaction.id}/submit`,
     },
   };
-  const html = await renderResolvedDoc(site, 'survey', resolveSurveyTemplate(getBuiltinThemeFallback(site.theme)), props);
+  const html = await renderResolvedDoc(
+    site,
+    'interaction',
+    resolveInteractionTemplate(getBuiltinThemeFallback(site.theme)),
+    props,
+  );
   return { status: 200, html, kind: 'page' };
 }
 
@@ -884,10 +907,17 @@ export async function generateRssXml(site: CmsSiteRow, channel?: CmsChannelRow |
  * '{path}/{idOrSlug}.html' 详情；'tag/{slug}/' 与 'tag/{slug}/index_{n}.html' 标签页。
  */
 /** 站内路径分发渲染；templateOverride = 预览态「模板试穿」参数（仅列表/详情页生效，非法名忽略） */
-export async function renderSitePath(site: CmsSiteRow, baseUrl: string, rawPath: string, device: CmsDeviceChannel = 'pc', templateOverride?: string | null): Promise<RenderResult> {
+export async function renderSitePath(
+  site: CmsSiteRow,
+  baseUrl: string,
+  rawPath: string,
+  device: CmsDeviceChannel = 'pc',
+  templateOverride?: string | null,
+  viewer?: { member?: boolean },
+): Promise<RenderResult> {
   const cleaned = rawPath.replace(/^\/+|\/+$/g, '');
   if (cleaned === '' || cleaned === 'index.html') {
-    return renderHomePage(site, baseUrl);
+    return renderHomePage(site, baseUrl, viewer);
   }
 
   // 标签聚合页
@@ -902,13 +932,13 @@ export async function renderSitePath(site: CmsSiteRow, baseUrl: string, rawPath:
     const { getPublishedPageBySlug } = await import('./cms-pages.service');
     const pageRow = await getPublishedPageBySlug(site.id, pageMatch2[1]);
     if (!pageRow) return renderNotFound(site, baseUrl, `/${cleaned}`);
-    return renderCustomPage(site, baseUrl, pageRow);
+    return renderCustomPage(site, baseUrl, pageRow, { member: viewer?.member });
   }
 
-  // 前台问卷页 /survey/{code}/
-  const surveyMatch = /^survey\/([a-z0-9-]+)(?:\/(?:index\.html)?)?$/.exec(cleaned);
-  if (surveyMatch) {
-    return renderSurveyPage(site, baseUrl, surveyMatch[1]);
+  // 前台统一互动问卷页 /interaction/{code}/
+  const interactionMatch = /^interaction\/([a-z0-9-]+)(?:\/(?:index\.html)?)?$/.exec(cleaned);
+  if (interactionMatch) {
+    return renderInteractionPage(site, baseUrl, interactionMatch[1]);
   }
 
   if (cleaned.endsWith('.html')) {

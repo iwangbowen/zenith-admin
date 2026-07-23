@@ -38,6 +38,10 @@ import {
 } from './cms-site-publish-lock.service';
 import { captureCmsContentPublishSnapshot } from './cms-content-publish-snapshot.service';
 import { enqueueCmsPublishOutboxes, insertCmsPublishOutbox, insertCmsSiteRefsRebuildOutbox } from './cms-publish-outbox.service';
+import {
+  enqueueCmsSubscriptionNotification,
+  insertCmsSubscriptionNotificationOutbox,
+} from './cms-stage4-tasks';
 
 async function insertContentPublishOutbox(
   tx: DbTransaction,
@@ -778,9 +782,11 @@ export async function publishCmsContent(id: number, opts?: PublishCmsContentOpti
     if (!updated) throw new HTTPException(409, { message: '内容已发布或定时发布条件已变化' });
     await logContentOp(tx, id, 'published', opts?.fromWorkflow ? '工作流审核通过' : null);
     const task = await insertContentPublishOutbox(tx, site, updated, 'publish', oldPublish.deletePaths, { build: true });
-    return { updated, task };
+    const notificationTask = await insertCmsSubscriptionNotificationOutbox(tx, updated);
+    return { updated, task, notificationTask };
   });
   await enqueueCmsPublishOutboxes([publication.task], `内容 #${id} 发布`);
+  await enqueueCmsSubscriptionNotification(publication.notificationTask);
   triggerCmsPublishedSideEffects(publication.updated);
   return opts?.skipAccessCheck ? mapCmsContent(publication.updated) : getCmsContent(id);
 }

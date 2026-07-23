@@ -38,7 +38,7 @@ export interface CmsTemplateCatalog {
   detail: Array<{ name: string; label: string }>;
 }
 
-const OPTIONAL_PACKAGE_FALLBACK_TYPES = new Set<CmsTemplateType>(['layout', 'custom_page', 'block', 'survey']);
+const OPTIONAL_PACKAGE_FALLBACK_TYPES = new Set<CmsTemplateType>(['layout', 'custom_page', 'block', 'interaction']);
 const renderOverrideStore = new AsyncLocalStorage<CmsRenderOverride>();
 
 export function packageTemplateOptions(

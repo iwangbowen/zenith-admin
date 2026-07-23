@@ -79,7 +79,7 @@ main { min-height: 60vh; padding: 24px 0 48px; }
 .article .tags { margin-top: 24px; display: flex; gap: 8px; flex-wrap: wrap; }
 .article .tags span { font-size: 12px; background: var(--bg-2); border-radius: 4px; padding: 3px 10px; color: var(--text-2); }
 .article-nav { max-width: 800px; margin: 24px auto 0; padding-top: 16px; border-top: 1px solid var(--border); font-size: 14px; color: var(--text-2); display: flex; flex-direction: column; gap: 6px; }
-.section-title { font-size: 18px; font-weight: 600; margin: 28px 0 8px; padding-left: 10px; border-left: 4px solid var(--primary); }
+.section-title { font-size: 18px; font-weight: 600; margin: 28px 0 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
 .home-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 32px; }
 .side-list li { list-style: none; padding: 8px 0; border-bottom: 1px dashed var(--border); font-size: 14px; display: flex; justify-content: space-between; gap: 8px; }
 .side-list li a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -112,6 +112,9 @@ main { min-height: 60vh; padding: 24px 0 48px; }
 .empty { text-align: center; color: var(--text-2); padding: 48px 0; }
 .theme-toggle { background: none; border: 1px solid var(--border); border-radius: 6px; width: 32px; height: 32px; cursor: pointer; font-size: 15px; line-height: 1; color: var(--text-2); flex-shrink: 0; }
 .theme-toggle:hover { color: var(--primary); border-color: var(--primary); }
+.cms-follow { border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--text-2); padding: 5px 12px; cursor: pointer; font-size: 12px; white-space: nowrap; }
+.cms-follow[aria-pressed="true"] { border-color: var(--primary); color: var(--primary); }
+.cms-follow:disabled { cursor: wait; opacity: .6; }
 .lang-switch { display: flex; gap: 8px; font-size: 13px; }
 .lang-switch a { color: var(--text-2); text-decoration: none; }
 .lang-switch a:hover { color: var(--primary); }
@@ -185,13 +188,47 @@ if(C){navigator.sendBeacon('/api/public/cms/view',new Blob([JSON.stringify({cont
 }catch(e){}})();`;
 }
 
-/** 广告曝光 beacon：收集本页 data-ad-id 去重后一次性上报（无广告不发请求） */
-const AD_VIEW_BEACON_SCRIPT = `(function(){try{
+/** 静态页也在浏览器渲染后领取短期一次性令牌，再启用广告点击并上报曝光。 */
+function buildAdEventScript(siteCode: string): string {
+  return `(function(){try{
 var els=document.querySelectorAll('[data-ad-id]');if(!els.length)return;
-var ids=[];els.forEach(function(el){var v=Number(el.getAttribute('data-ad-id'));if(v&&ids.indexOf(v)<0)ids.push(v);});
-if(!ids.length)return;
-navigator.sendBeacon('/api/public/cms/ads/view',new Blob([JSON.stringify({ids:ids})],{type:'application/json'}));
+var ads=[];els.forEach(function(el){var v=Number(el.getAttribute('data-ad-id')),p=el.getAttribute('data-ad-render-proof');if(v&&p&&!ads.some(function(x){return x.adId===v}))ads.push({adId:v,renderProof:p});});if(!ads.length)return;
+var h={'Content-Type':'application/json'},mt=null;try{mt=localStorage.getItem('zenith_member_token')}catch(e){}if(mt)h.Authorization='Bearer '+mt;
+fetch('/api/public/cms/ads/tokens/'+encodeURIComponent(${JSON.stringify(siteCode)}),{method:'POST',headers:h,body:JSON.stringify({ads:ads})})
+.then(function(r){return r.json()}).then(function(r){if(!r||r.code!==0||!Array.isArray(r.data))return;var views=[];
+r.data.forEach(function(item){var el=document.querySelector('[data-ad-id="'+item.adId+'"]');if(!el)return;if(item.clickToken&&el.getAttribute('data-ad-clickable')==='true')el.href='/api/public/cms/ads/'+item.adId+'/click?token='+encodeURIComponent(item.clickToken);if(item.viewToken)views.push(item.viewToken)});
+if(views.length)return fetch('/api/public/cms/ads/view',{method:'POST',headers:h,body:JSON.stringify({tokens:views}),keepalive:true});
+}).catch(function(){});
 }catch(e){}})();`;
+}
+
+const FOLLOW_SCRIPT = `(function(){var buttons=document.querySelectorAll('.cms-follow');if(!buttons.length)return;var token=null;try{token=localStorage.getItem('zenith_member_token')}catch(e){}function body(b){var v={siteId:Number(b.dataset.site),subjectType:b.dataset.subjectType,notificationEnabled:true};if(b.dataset.subjectId)v.subjectId=Number(b.dataset.subjectId);if(b.dataset.subjectKey)v.subjectKey=b.dataset.subjectKey;return v}function set(b,row){b.dataset.subscriptionId=row?String(row.id):'';b.setAttribute('aria-pressed',row?'true':'false');b.textContent=row?'已关注':'关注'}buttons.forEach(function(b){if(!token){b.textContent='登录后关注';b.addEventListener('click',function(){location.href='/member.html#/' });return}var v=body(b),p=new URLSearchParams();Object.keys(v).forEach(function(k){if(v[k]!=null)p.set(k,String(v[k]))});fetch('/api/member/cms/subscriptions/status?'+p.toString(),{headers:{Authorization:'Bearer '+token}}).then(function(r){return r.json()}).then(function(r){if(r&&r.code===0)set(b,r.data)}).catch(function(){});b.addEventListener('click',function(){b.disabled=true;var id=Number(b.dataset.subscriptionId)||0;var req=id?fetch('/api/member/cms/subscriptions/'+id,{method:'DELETE',headers:{Authorization:'Bearer '+token}}):fetch('/api/member/cms/subscriptions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token,'X-Idempotency-Key':'follow-'+Date.now()},body:JSON.stringify(v)});req.then(function(r){return r.json()}).then(function(r){if(!r||r.code!==0){alert(r&&r.message||'操作失败');return}set(b,id?null:r.data)}).catch(function(){alert('操作失败，请稍后重试')}).finally(function(){b.disabled=false})})})})();`;
+
+const MEMBER_AUDIENCE_RELOAD_SCRIPT = `(function(){var key='cms-audience:'+location.pathname;try{if(sessionStorage.getItem(key)==='1'){sessionStorage.removeItem(key);return}}catch(e){}var token=null;try{token=localStorage.getItem('zenith_member_token')}catch(e){}if(!token)return;try{sessionStorage.setItem(key,'1')}catch(e){}fetch(location.href,{headers:{Authorization:'Bearer '+token},cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('reload');return r.text()}).then(function(html){document.open();document.write(html);document.close()}).catch(function(){try{sessionStorage.removeItem(key)}catch(e){}})})();`;
+const MEMBER_AUDIENCE_CLEAR_SCRIPT = `(function(){try{sessionStorage.removeItem('cms-audience:'+location.pathname)}catch(e){}})();`;
+
+export function CmsFollowButton(props: {
+  siteId: number;
+  subjectType: 'site' | 'channel' | 'author';
+  subjectId?: number;
+  subjectKey?: string;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      className="cms-follow"
+      data-site={props.siteId}
+      data-subject-type={props.subjectType}
+      data-subject-id={props.subjectId}
+      data-subject-key={props.subjectKey}
+      aria-label={`关注${props.label}`}
+      aria-pressed="false"
+    >
+      关注
+    </button>
+  );
+}
 
 /** 默认主题布局：完整 HTML 文档（内联样式，静态页零外部依赖） */
 export function Layout({ ctx, currentUrl, children }: LayoutProps) {
@@ -244,13 +281,21 @@ export function Layout({ ctx, currentUrl, children }: LayoutProps) {
           <script dangerouslySetInnerHTML={{ __html: buildAnalyticsBeacon(ctx.analytics) }} />
         ) : null}
         {/* 广告曝光 beacon：页面加载后批量上报本页广告 id（无广告时零开销） */}
-        <script dangerouslySetInnerHTML={{ __html: AD_VIEW_BEACON_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: buildAdEventScript(ctx.site.code) }} />
+        <script dangerouslySetInnerHTML={{ __html: FOLLOW_SCRIPT }} />
+        {ctx.audience?.dynamic && !ctx.audience.member ? (
+          <script dangerouslySetInnerHTML={{ __html: MEMBER_AUDIENCE_RELOAD_SCRIPT }} />
+        ) : null}
+        {ctx.audience?.dynamic && ctx.audience.member ? (
+          <script dangerouslySetInnerHTML={{ __html: MEMBER_AUDIENCE_CLEAR_SCRIPT }} />
+        ) : null}
         <header className="site-header">
           <div className="container">
             <a className="site-brand" href={`${baseUrl}/`}>
               {site.logo ? <img src={site.logo} alt={site.name} /> : null}
               <span>{site.name}</span>
             </a>
+            <CmsFollowButton siteId={site.id} subjectType="site" subjectId={site.id} label={site.name} />
             <NavLinks items={nav} currentUrl={currentUrl} />
             {contactPhone ? <span className="site-contact">☎ {contactPhone}</span> : null}
             {ctx.langAlternates.length > 0 ? (

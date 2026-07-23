@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import { and, eq, gte, sql, desc, inArray, isNotNull, lt } from 'drizzle-orm';
+import { and, eq, gte, sql, desc, isNotNull, lt } from 'drizzle-orm';
 import { db } from '../../db';
-import { cmsVisitLogs, cmsSearchLogs, cmsAdStats, cmsAds, cmsContents } from '../../db/schema';
+import { cmsVisitLogs, cmsSearchLogs, cmsContents } from '../../db/schema';
 import logger from '../../lib/logger';
 import { formatDate } from '../../lib/datetime';
 import { assertSiteAccess } from './cms-sites.service';
@@ -93,46 +93,6 @@ export function recordCmsSearchLog(input: { siteId: number; keyword: string; res
   }).catch((err) => {
     logger.warn('[CMS] 搜索日志写入失败', err);
   });
-}
-
-/** 广告曝光批量上报：cms_ads.view_count 累加 + 日聚合 upsert（单次最多 50 条） */
-export async function recordAdViews(ids: number[]): Promise<void> {
-  const unique = [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))].slice(0, 50);
-  if (unique.length === 0) return;
-  const ads = await db.select({ id: cmsAds.id }).from(cmsAds)
-    .where(inArray(cmsAds.id, unique));
-  const validIds = new Set(ads.map((ad) => ad.id));
-  const today = formatDate(new Date());
-  for (const adId of unique) {
-    if (!validIds.has(adId)) continue;
-    await db.update(cmsAds).set({ viewCount: sql`${cmsAds.viewCount} + 1` }).where(and(
-      eq(cmsAds.id, adId),
-    ));
-    await db.insert(cmsAdStats)
-      .values({ adId, statDate: today, views: 1 })
-      .onConflictDoUpdate({
-        target: [cmsAdStats.adId, cmsAdStats.statDate],
-        set: { views: sql`${cmsAdStats.views} + 1` },
-      });
-  }
-}
-
-/** 广告点击日聚合（recordAdClick 成功后调用） */
-export function recordAdClickStat(adId: number): void {
-  const today = formatDate(new Date());
-  void db.select({ id: cmsAds.id }).from(cmsAds).where(eq(cmsAds.id, adId)).limit(1)
-    .then(async ([ad]) => {
-      if (!ad) return;
-      await db.insert(cmsAdStats)
-        .values({ adId, statDate: today, clicks: 1 })
-        .onConflictDoUpdate({
-          target: [cmsAdStats.adId, cmsAdStats.statDate],
-          set: { clicks: sql`${cmsAdStats.clicks} + 1` },
-        });
-    })
-    .catch((err) => {
-      logger.warn('[CMS] 广告点击日聚合写入失败', err);
-    });
 }
 
 // ─── 报表 ─────────────────────────────────────────────────────────────────────

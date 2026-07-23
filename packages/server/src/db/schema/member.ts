@@ -437,6 +437,9 @@ export const memberNotifications = pgTable('member_notifications', {
 }, (t) => [
   index('member_notifications_member_idx').on(t.memberId, t.createdAt),
   index('member_notifications_biz_idx').on(t.type, t.bizId),
+  uniqueIndex('member_notifications_member_type_biz_uq')
+    .on(t.memberId, t.type, t.bizId)
+    .where(sql`${t.bizId} is not null and ${t.type} = 'cms_content_published'`),
 ]);
 
 export type MemberNotificationRow = typeof memberNotifications.$inferSelect;

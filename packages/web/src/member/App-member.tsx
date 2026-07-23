@@ -34,6 +34,7 @@ const ContributionEditPage = React.lazy(() => import('./pages/contributions/Cont
 const FavoritesPage = React.lazy(() => import('./pages/favorites/FavoritesPage'));
 const ViewHistoryPage = React.lazy(() => import('./pages/history/ViewHistoryPage'));
 const MyCommentsPage = React.lazy(() => import('./pages/comments/MyCommentsPage'));
+const SubscriptionsPage = React.lazy(() => import('./pages/subscriptions/SubscriptionsPage'));
 
 const routeFallback = (
   <div className="m-loading-wrap">
@@ -99,6 +100,7 @@ function AppRoutes() {
         <Route path="/contributions" element={<ContributionsPage />} />
         <Route path="/contributions/edit" element={<ContributionEditPage />} />
         <Route path="/favorites" element={<FavoritesPage />} />
+        <Route path="/subscriptions" element={<SubscriptionsPage />} />
         <Route path="/my-comments" element={<MyCommentsPage />} />
         <Route path="/view-history" element={<ViewHistoryPage />} />
         <Route path="/profile" element={<ProfilePage />} />

@@ -18,6 +18,7 @@ import { ensureMemberExists } from './member-auth.service';
 import { trackServerEvent } from '../analytics/analytics-server-events.service';
 import type { PointTxType } from '@zenith/shared';
 import { ANALYTICS_MEMBER_POINTS_EVENT_BY_TX_TYPE } from '@zenith/shared';
+import type { DbTransaction } from '../../db/types';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 export function mapPointAccount(row: MemberPointAccountRow) {
@@ -107,44 +108,50 @@ export function computePointChange(
   };
 }
 
-export async function changePoints(input: ChangePointsInput): Promise<MemberPointAccountRow> {
+async function applyPointChangeInTransaction(
+  tx: DbTransaction,
+  input: ChangePointsInput,
+): Promise<MemberPointAccountRow> {
   if (input.amount === 0) throw new HTTPException(400, { message: '积分变动量不能为 0' });
+  const [acc] = await tx
+    .select()
+    .from(memberPointAccounts)
+    .where(eq(memberPointAccounts.memberId, input.memberId))
+    .limit(1);
+  if (!acc) throw new HTTPException(404, { message: '积分账户不存在' });
 
+  const { newBalance, newTotalEarned, newTotalSpent } = computePointChange(acc, input.amount);
+  const updated = await tx
+    .update(memberPointAccounts)
+    .set({
+      balance: newBalance,
+      totalEarned: newTotalEarned,
+      totalSpent: newTotalSpent,
+      version: acc.version + 1,
+    })
+    .where(and(eq(memberPointAccounts.id, acc.id), eq(memberPointAccounts.version, acc.version)))
+    .returning();
+  if (updated.length === 0) throw new OptimisticLockError();
+  await tx.insert(memberPointTransactions).values({
+    memberId: input.memberId,
+    type: input.type,
+    amount: input.amount,
+    balanceAfter: newBalance,
+    bizType: input.bizType ?? null,
+    bizId: input.bizId ?? null,
+    remark: input.remark ?? null,
+    operatorId: input.operatorId ?? null,
+  });
+  return updated[0];
+}
+
+export function changePointsInTransaction(input: ChangePointsInput, tx: DbTransaction) {
+  return applyPointChangeInTransaction(tx, input);
+}
+
+export async function changePoints(input: ChangePointsInput): Promise<MemberPointAccountRow> {
   const updated = await withOptimisticRetry(() =>
-    db.transaction(async (tx) => {
-      const [acc] = await tx
-        .select()
-        .from(memberPointAccounts)
-        .where(eq(memberPointAccounts.memberId, input.memberId))
-        .limit(1);
-      if (!acc) throw new HTTPException(404, { message: '积分账户不存在' });
-
-      const { newBalance, newTotalEarned, newTotalSpent } = computePointChange(acc, input.amount);
-
-      const updated = await tx
-        .update(memberPointAccounts)
-        .set({
-          balance: newBalance,
-          totalEarned: newTotalEarned,
-          totalSpent: newTotalSpent,
-          version: acc.version + 1,
-        })
-        .where(and(eq(memberPointAccounts.id, acc.id), eq(memberPointAccounts.version, acc.version)))
-        .returning();
-      if (updated.length === 0) throw new OptimisticLockError();
-
-      await tx.insert(memberPointTransactions).values({
-        memberId: input.memberId,
-        type: input.type,
-        amount: input.amount,
-        balanceAfter: newBalance,
-        bizType: input.bizType ?? null,
-        bizId: input.bizId ?? null,
-        remark: input.remark ?? null,
-        operatorId: input.operatorId ?? null,
-      });
-      return updated[0];
-    }),
+    db.transaction((tx) => applyPointChangeInTransaction(tx, input)),
   );
 
   // 服务端权威事件（best-effort，事务已提交后触发；会员体系第一期不分租户，tenantId 传 null）

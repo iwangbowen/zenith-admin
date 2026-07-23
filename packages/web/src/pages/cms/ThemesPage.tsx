@@ -67,7 +67,7 @@ import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 type TabKey = 'templates' | 'packages';
 
 const EMPTY_DSL: CmsTemplateDslDocument = {
-  version: 1,
+  version: 2,
   root: {
     kind: 'element',
     tag: 'html',
@@ -235,7 +235,7 @@ export default function ThemesPage() {
       tag: 'tag/industry/',
       not_found: 'not-existing-page',
       custom_page: 'p/capabilities/',
-      survey: 'survey/satisfaction/',
+      interaction: 'interaction/satisfaction/',
     };
     const path = pathByType[record.type];
     if (path === undefined) return Toast.warning(`${CMS_TEMPLATE_TYPE_LABELS[record.type]}没有独立页面上下文，请从引用页面预览`);

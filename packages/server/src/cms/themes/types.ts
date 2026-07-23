@@ -158,6 +158,8 @@ export interface CmsBaseContext {
   analytics: { siteKey: string; contentId?: number } | null;
   /** 多语言站点关联（P5）：hreflang alternate + 语言切换；空数组 = 未配置 */
   langAlternates: { language: string; name: string; url: string; current: boolean }[];
+  /** 搭建页受众渲染上下文；仅 dynamic=true 时使用 Bearer 可选会员身份二次渲染。 */
+  audience: { dynamic: boolean; member: boolean };
 }
 
 export interface CmsHomeContext extends CmsBaseContext {
@@ -253,25 +255,30 @@ export interface CmsCustomPageContext extends CmsBaseContext {
   blocksHtml: string;
 }
 
-/** 前台问卷页上下文 */
-export interface CmsSurveyPageContext extends CmsBaseContext {
+/** 前台统一互动问卷页上下文 */
+export interface CmsInteractionPageContext extends CmsBaseContext {
   breadcrumbs: CmsBreadcrumb[];
-  survey: {
+  interaction: {
     id: number;
     code: string;
+    kind: 'survey' | 'poll';
     title: string;
     description: string | null;
-    allowAnonymous: boolean;
+    participantScope: 'anonymous' | 'member';
+    repeatPolicy: 'once_per_member' | 'once_per_ip' | 'multiple';
+    resultVisibility: 'always' | 'after_submit' | 'after_close' | 'hidden';
+    captchaPolicy: 'inherit' | 'none' | 'math' | 'turnstile';
     questions: {
       id: number;
       label: string;
       type: 'single' | 'multiple' | 'text';
       required: boolean;
-      options: { label: string; value: string }[];
+      options: { id: string; label: string; value: string }[];
+      minChoices: number;
+      maxChoices: number;
     }[];
   };
-  /** 匿名 form POST 地址 / 会员 JSON 提交 API / 回跳地址 */
-  submitForm: { action: string; memberSubmitApi: string; returnUrl: string };
+  submit: { stateApi: string; publicSubmitApi: string; memberSubmitApi: string };
 }
 
 export interface CmsNotFoundContext extends CmsBaseContext {
@@ -301,8 +308,8 @@ export interface CmsTheme {
   templates: CmsThemeTemplates;
   /** 可视化搭建页面模板（缺省回退 default 主题实现） */
   customPage?: ComponentType<CmsCustomPageContext>;
-  /** 前台问卷页模板（缺省回退 default 主题实现） */
-  survey?: ComponentType<CmsSurveyPageContext>;
+  /** 前台统一互动问卷页模板（缺省回退 default 主题实现） */
+  interaction?: ComponentType<CmsInteractionPageContext>;
   /** 扩展模板：站点默认模板 / 栏目 listTemplate / 内容 detailTemplate 按名称引用（如 list-card / detail-plain） */
   extraListTemplates?: Record<string, CmsTemplateVariant<CmsListContext>>;
   extraDetailTemplates?: Record<string, CmsTemplateVariant<CmsDetailContext>>;

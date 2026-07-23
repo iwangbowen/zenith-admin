@@ -71,11 +71,11 @@ function validateDsl(dsl: unknown) {
     });
   };
   const document = dsl as { version?: unknown; root?: unknown };
-  if (document?.version !== 1) issues.push({ path: '$.version', code: 'version', message: '仅支持 DSL v1' });
+  if (document?.version !== 2) issues.push({ path: '$.version', code: 'version', message: '仅支持 DSL v2' });
   walk(document?.root, 1, '$.root');
   return {
     valid: issues.length === 0,
-    version: document?.version === 1 ? 1 : null,
+    version: document?.version === 2 ? 2 : null,
     checksum: issues.length ? null : 'demo-sha256-checksum',
     nodeCount: nodes,
     maxDepth: depth,
@@ -407,7 +407,7 @@ export const cmsStage3Handlers = [
           id: getNextCmsTemplateVersionId(),
           templateId: template.id,
           version: template.currentVersion,
-          dsl: { version: 1, root: { kind: 'element', tag: 'div', children: [{ kind: 'text', value: `${entry.name} Demo` }] } },
+          dsl: { version: 2, root: { kind: 'element', tag: 'div', children: [{ kind: 'text', value: `${entry.name} Demo` }] } },
           checksum: imported.manifest.checksums[entry.path] ?? 'demo-checksum',
           changeNote: `主题包 ${imported.code}@${imported.version}`,
           themePackageId: imported.id,

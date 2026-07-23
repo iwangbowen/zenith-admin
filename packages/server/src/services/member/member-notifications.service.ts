@@ -49,14 +49,14 @@ export async function createMemberNotification(input: CreateNotificationInput, e
       .limit(1);
     if (exist) return false;
   }
-  await executor.insert(memberNotifications).values({
+  const inserted = await executor.insert(memberNotifications).values({
     memberId: input.memberId,
     type: input.type,
     title: input.title,
     content: input.content ?? null,
     bizId: input.bizId ?? null,
-  });
-  return true;
+  }).onConflictDoNothing().returning({ id: memberNotifications.id });
+  return inserted.length > 0;
 }
 
 // ─── 前台自助 ─────────────────────────────────────────────────────────────────
