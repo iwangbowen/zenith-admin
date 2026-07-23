@@ -3,6 +3,18 @@ import { sql } from 'drizzle-orm';
 import { statusEnum } from './common';
 import { auditColumns, users, departments } from './core';
 import { members } from './member';
+import { asyncTasks } from './tasks';
+import {
+  CMS_PUBLISH_ARTIFACT_STATUSES,
+  CMS_PUBLISH_TARGET_TYPES,
+  CMS_TEMPLATE_SOURCES,
+  CMS_TEMPLATE_TYPES,
+  CMS_THEME_DEPLOYMENT_STATUSES,
+  CMS_THEME_PACKAGE_STATUSES,
+  type CmsTemplateDslDocument,
+  type CmsThemePackageManifest,
+  type CmsThemePackageValidationReport,
+} from '@zenith/shared';
 
 // ─── 枚举（pgEnum / TS union / Zod enum 三处同步，见 @zenith/shared）────────────
 export const cmsStaticModeEnum = pgEnum('cms_static_mode', ['dynamic', 'hybrid', 'static']);
@@ -14,6 +26,12 @@ export const cmsFieldTypeEnum = pgEnum('cms_field_type', ['text', 'textarea', 'r
 export const cmsFragmentTypeEnum = pgEnum('cms_fragment_type', ['html', 'text', 'image', 'json']);
 export const cmsSearchWordTypeEnum = pgEnum('cms_search_word_type', ['extension', 'stop']);
 export const cmsFormCaptchaProviderEnum = pgEnum('cms_form_captcha_provider', ['inherit', 'none', 'math', 'turnstile']);
+export const cmsTemplateTypeEnum = pgEnum('cms_template_type', CMS_TEMPLATE_TYPES);
+export const cmsTemplateSourceEnum = pgEnum('cms_template_source', CMS_TEMPLATE_SOURCES);
+export const cmsThemePackageStatusEnum = pgEnum('cms_theme_package_status', CMS_THEME_PACKAGE_STATUSES);
+export const cmsThemeDeploymentStatusEnum = pgEnum('cms_theme_deployment_status', CMS_THEME_DEPLOYMENT_STATUSES);
+export const cmsPublishTargetTypeEnum = pgEnum('cms_publish_target_type', CMS_PUBLISH_TARGET_TYPES);
+export const cmsPublishArtifactStatusEnum = pgEnum('cms_publish_artifact_status', CMS_PUBLISH_ARTIFACT_STATUSES);
 
 /** PostgreSQL tsvector 列（drizzle 无内置类型），存全文检索向量 */
 const tsvector = customType<{ data: string }>({
@@ -44,6 +62,10 @@ export const cmsSites = pgTable('cms_sites', {
   copyright: varchar('copyright', { length: 255 }),
   /** 主题包名（cms/themes/registry 注册的主题） */
   theme: varchar('theme', { length: 50 }).notNull().default('default'),
+  /** 主题生命周期事件修订号；每次激活/停用/回滚原子 +1，并进入发布任务幂等键。 */
+  themeRevision: integer('theme_revision').notNull().default(0),
+  /** 站点/栏目/内容/页面模板引用修订号；引用写入与主题健康检查的 TOCTOU 屏障。 */
+  templateRefsRevision: integer('template_refs_revision').notNull().default(0),
   /** 静态化模式：dynamic=纯 SSR；hybrid=miss 渲染并回写静态；static=仅发布时生成 */
   staticMode: cmsStaticModeEnum('static_mode').notNull().default('hybrid'),
   /** robots.txt 内容（每站点独立） */
@@ -89,6 +111,101 @@ export const cmsPublishChannels = pgTable('cms_publish_channels', {
 
 export type CmsPublishChannelRow = typeof cmsPublishChannels.$inferSelect;
 export type NewCmsPublishChannel = typeof cmsPublishChannels.$inferInsert;
+
+// ─── CMS 签名主题包版本（仅声明式模板与静态资源，不存私钥）──────────────────────
+export const cmsThemePackages = pgTable('cms_theme_packages', {
+  id: serial('id').primaryKey(),
+  code: varchar('code', { length: 50 }).notNull(),
+  name: varchar('name', { length: 100 }).notNull(),
+  version: varchar('version', { length: 64 }).notNull(),
+  engineMin: integer('engine_min').notNull(),
+  engineMax: integer('engine_max').notNull(),
+  signingKeyId: varchar('signing_key_id', { length: 64 }).notNull(),
+  archiveChecksum: varchar('archive_checksum', { length: 64 }).notNull(),
+  manifest: jsonb('manifest').$type<CmsThemePackageManifest>().notNull(),
+  validationReport: jsonb('validation_report').$type<CmsThemePackageValidationReport>().notNull(),
+  /** CMS_THEME_STORAGE_ROOT 下的相对目录；API 永不暴露物理绝对路径。 */
+  storageKey: varchar('storage_key', { length: 255 }).notNull(),
+  status: cmsThemePackageStatusEnum('status').notNull().default('validated'),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  uniqueIndex('cms_theme_packages_code_version_uq').on(t.code, t.version),
+  uniqueIndex('cms_theme_packages_archive_checksum_uq').on(t.archiveChecksum),
+  index('cms_theme_packages_code_status_idx').on(t.code, t.status),
+]);
+
+export type CmsThemePackageRow = typeof cmsThemePackages.$inferSelect;
+export type NewCmsThemePackage = typeof cmsThemePackages.$inferInsert;
+
+// ─── CMS 模板逻辑实体（版本只追加；site_id=null 表示主题级全局模板）──────────────
+export const cmsTemplates = pgTable('cms_templates', {
+  id: serial('id').primaryKey(),
+  siteId: integer('site_id').references(() => cmsSites.id, { onDelete: 'cascade' }),
+  themeCode: varchar('theme_code', { length: 50 }).notNull(),
+  type: cmsTemplateTypeEnum('type').notNull(),
+  code: varchar('code', { length: 64 }).notNull(),
+  name: varchar('name', { length: 100 }).notNull(),
+  source: cmsTemplateSourceEnum('source').notNull().default('manual'),
+  status: statusEnum('status').notNull().default('enabled'),
+  currentVersion: integer('current_version').notNull().default(1),
+  activeVersion: integer('active_version'),
+  /** 模板生命周期事件修订号；每次激活/停用/回滚原子 +1。 */
+  lifecycleRevision: integer('lifecycle_revision').notNull().default(0),
+  description: varchar('description', { length: 500 }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  uniqueIndex('cms_templates_global_code_uq').on(t.themeCode, t.type, t.code)
+    .where(sql`${t.siteId} is null`),
+  uniqueIndex('cms_templates_site_code_uq').on(t.siteId, t.themeCode, t.type, t.code)
+    .where(sql`${t.siteId} is not null`),
+  index('cms_templates_site_theme_idx').on(t.siteId, t.themeCode, t.status),
+]);
+
+export type CmsTemplateRow = typeof cmsTemplates.$inferSelect;
+export type NewCmsTemplate = typeof cmsTemplates.$inferInsert;
+
+export const cmsTemplateVersions = pgTable('cms_template_versions', {
+  id: serial('id').primaryKey(),
+  templateId: integer('template_id').notNull().references(() => cmsTemplates.id, { onDelete: 'cascade' }),
+  version: integer('version').notNull(),
+  dsl: jsonb('dsl').$type<CmsTemplateDslDocument>().notNull(),
+  checksum: varchar('checksum', { length: 64 }).notNull(),
+  changeNote: varchar('change_note', { length: 500 }),
+  themePackageId: integer('theme_package_id').references(() => cmsThemePackages.id, { onDelete: 'set null' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  uniqueIndex('cms_template_versions_template_version_uq').on(t.templateId, t.version),
+  index('cms_template_versions_package_idx').on(t.themePackageId),
+]);
+
+export type CmsTemplateVersionRow = typeof cmsTemplateVersions.$inferSelect;
+export type NewCmsTemplateVersion = typeof cmsTemplateVersions.$inferInsert;
+
+// ─── 主题包站点部署历史；部分唯一索引保证每个站点仅一个 active ─────────────────
+export const cmsThemeDeployments = pgTable('cms_theme_deployments', {
+  id: serial('id').primaryKey(),
+  siteId: integer('site_id').notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
+  themeCode: varchar('theme_code', { length: 50 }).notNull(),
+  themePackageId: integer('theme_package_id').notNull().references(() => cmsThemePackages.id, { onDelete: 'restrict' }),
+  status: cmsThemeDeploymentStatusEnum('status').notNull().default('active'),
+  activatedAt: timestamp('activated_at').defaultNow().notNull(),
+  deactivatedAt: timestamp('deactivated_at'),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  uniqueIndex('cms_theme_deployments_site_package_uq').on(t.siteId, t.themePackageId),
+  uniqueIndex('cms_theme_deployments_site_active_uq').on(t.siteId)
+    .where(sql`${t.status} = 'active'`),
+  index('cms_theme_deployments_site_history_idx').on(t.siteId, t.themeCode, t.activatedAt),
+]);
+
+export type CmsThemeDeploymentRow = typeof cmsThemeDeployments.$inferSelect;
 
 // ─── CMS 内容模型（元数据驱动的自定义字段体系）─────────────────────────────────
 export const cmsModels = pgTable('cms_models', {
@@ -935,6 +1052,38 @@ export const cmsPages = pgTable('cms_pages', {
 ]);
 
 export type CmsPageRow = typeof cmsPages.$inferSelect;
+
+// ─── CMS 发布产物事实（队列状态复用 async_tasks，不另建发布任务表）──────────────
+export const cmsPublishArtifacts = pgTable('cms_publish_artifacts', {
+  id: serial('id').primaryKey(),
+  taskId: integer('task_id').notNull().references(() => asyncTasks.id, { onDelete: 'cascade' }),
+  siteId: integer('site_id').notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
+  publishChannelId: integer('publish_channel_id').references(() => cmsPublishChannels.id, { onDelete: 'set null' }),
+  targetType: cmsPublishTargetTypeEnum('target_type').notNull(),
+  contentId: integer('content_id').references(() => cmsContents.id, { onDelete: 'set null' }),
+  channelId: integer('channel_id').references(() => cmsChannels.id, { onDelete: 'set null' }),
+  pageId: integer('page_id').references(() => cmsPages.id, { onDelete: 'set null' }),
+  themeCode: varchar('theme_code', { length: 50 }),
+  themePackageId: integer('theme_package_id').references(() => cmsThemePackages.id, { onDelete: 'set null' }),
+  templateId: integer('template_id').references(() => cmsTemplates.id, { onDelete: 'set null' }),
+  templateVersion: integer('template_version'),
+  path: varchar('path', { length: 1000 }).notNull(),
+  url: varchar('url', { length: 1000 }),
+  checksum: varchar('checksum', { length: 64 }),
+  size: integer('size'),
+  status: cmsPublishArtifactStatusEnum('status').notNull(),
+  error: text('error'),
+  generatedAt: timestamp('generated_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  uniqueIndex('cms_publish_artifacts_task_path_uq').on(t.taskId, t.path),
+  index('cms_publish_artifacts_site_time_idx').on(t.siteId, t.createdAt),
+  index('cms_publish_artifacts_task_status_idx').on(t.taskId, t.status),
+  index('cms_publish_artifacts_target_idx').on(t.targetType, t.contentId, t.channelId),
+]);
+
+export type CmsPublishArtifactRow = typeof cmsPublishArtifacts.$inferSelect;
 
 // ═══ P2 素材中心 ═══════════════════════════════════════════════════════════════
 

@@ -42,6 +42,8 @@ import { openApiCallLogsExportDefinition } from './open-api-call-logs';
 import { cmsContentsExportDefinition } from './cms-contents';
 import { cmsFormSubmissionsExportDefinition } from './cms-form-submissions';
 import { cmsResourceGovernanceExportDefinition } from './cms-resource-governance';
+import { cmsPublishArtifactsExportDefinition } from './cms-publish-artifacts';
+import { cmsPublishLogsExportDefinition } from './cms-publish-logs';
 
 let registered = false;
 
@@ -89,6 +91,8 @@ const definitions = [
   cmsContentsExportDefinition,
   cmsFormSubmissionsExportDefinition,
   cmsResourceGovernanceExportDefinition,
+  cmsPublishArtifactsExportDefinition,
+  cmsPublishLogsExportDefinition,
 ] as unknown as AnyExportDefinition[];
 
 export function registerExportDefinitions(): void {

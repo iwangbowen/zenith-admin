@@ -64,6 +64,52 @@ const entities: ExportEntityMeta[] = [
       requireExportRawPermission: false,
     },
   },
+  {
+    entity: 'cms.publish-artifacts',
+    moduleName: 'CMS发布中心',
+    filenamePrefix: 'CMS发布产物',
+    sourcePath: '/cms/publishing',
+    formats: ['xlsx', 'csv'],
+    renderMode: 'table',
+    sensitive: false,
+    columns: [
+      { key: 'taskId', header: '任务 ID', type: 'number', width: 12 },
+      { key: 'path', header: '产物路径', width: 44 },
+      { key: 'status', header: '状态', width: 12 },
+      { key: 'createdAt', header: '记录时间', type: 'datetime', width: 22 },
+    ],
+    execution: {
+      mode: 'sync',
+      syncMaxRows: 5000,
+      forceAsyncWhenSensitive: false,
+      forceAsyncWhenRaw: false,
+      syncModeOverridesAsyncPolicies: true,
+    },
+    permissions: { export: 'cms:publish:view', requireExportRawPermission: false },
+  },
+  {
+    entity: 'cms.publish-logs',
+    moduleName: 'CMS发布中心',
+    filenamePrefix: 'CMS发布日志',
+    sourcePath: '/cms/publishing',
+    formats: ['xlsx', 'csv'],
+    renderMode: 'table',
+    sensitive: false,
+    columns: [
+      { key: 'taskId', header: '任务 ID', type: 'number', width: 12 },
+      { key: 'itemKey', header: '路径/检查点', width: 42 },
+      { key: 'status', header: '状态', width: 12 },
+      { key: 'message', header: '消息/错误', width: 44 },
+    ],
+    execution: {
+      mode: 'sync',
+      syncMaxRows: 5000,
+      forceAsyncWhenSensitive: false,
+      forceAsyncWhenRaw: false,
+      syncModeOverridesAsyncPolicies: true,
+    },
+    permissions: { export: 'cms:publish:view', requireExportRawPermission: false },
+  },
 ];
 
 let nextJobId = 4;

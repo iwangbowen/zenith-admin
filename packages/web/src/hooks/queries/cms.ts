@@ -30,8 +30,8 @@ export const cmsSiteKeys = {
   list: (params: CmsSiteListParams) => ['cms-sites', 'list', params] as const,
   detail: (id: number | undefined) => ['cms-sites', 'detail', id] as const,
   allSites: ['cms-sites', 'all'] as const,
-  themes: ['cms-sites', 'themes'] as const,
-  themeTemplates: (code: string | undefined) => ['cms-sites', 'themes', code, 'templates'] as const,
+  themes: (siteId?: number) => ['cms-sites', 'themes', siteId ?? 'builtin'] as const,
+  themeTemplates: (code: string | undefined, siteId?: number) => ['cms-sites', 'themes', code, 'templates', siteId ?? 'global'] as const,
   themeSettingsSchema: (code: string | undefined) => ['cms-sites', 'themes', code, 'settings-schema'] as const,
   templateHealth: (id: number | undefined, theme: string | undefined) => ['cms-sites', 'detail', id, 'template-health', theme ?? ''] as const,
 };
@@ -53,19 +53,19 @@ export function useAllCmsSites() {
   });
 }
 
-export function useCmsThemes() {
+export function useCmsThemes(siteId?: number) {
   return useQuery({
-    queryKey: cmsSiteKeys.themes,
-    queryFn: () => request.get<{ code: string; label: string }[]>('/api/cms/sites/themes').then(unwrap),
+    queryKey: cmsSiteKeys.themes(siteId),
+    queryFn: () => request.get<{ code: string; label: string }[]>(`/api/cms/sites/themes${siteId ? `?siteId=${siteId}` : ''}`).then(unwrap),
     staleTime: LOOKUP_STALE_TIME,
   });
 }
 
 /** 主题可选模板清单（站点默认模板 / 栏目 / 内容模板下拉） */
-export function useCmsThemeTemplates(themeCode: string | undefined) {
+export function useCmsThemeTemplates(themeCode: string | undefined, siteId?: number) {
   return useQuery({
-    queryKey: cmsSiteKeys.themeTemplates(themeCode),
-    queryFn: () => request.get<CmsThemeTemplateManifest>(`/api/cms/sites/themes/${themeCode}/templates`).then(unwrap),
+    queryKey: cmsSiteKeys.themeTemplates(themeCode, siteId),
+    queryFn: () => request.get<CmsThemeTemplateManifest>(`/api/cms/sites/themes/${themeCode}/templates${siteId ? `?siteId=${siteId}` : ''}`).then(unwrap),
     enabled: !!themeCode,
     staleTime: LOOKUP_STALE_TIME,
   });

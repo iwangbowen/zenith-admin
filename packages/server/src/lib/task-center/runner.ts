@@ -3,6 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { asyncTaskItems, asyncTasks, asyncTaskTypeConfigs, users } from '../../db/schema';
 import type { AsyncTaskRow } from '../../db/schema';
+import type { DbExecutor } from '../../db/types';
 import { registerSystemQueueWorker, sendSystemJob, sendSystemJobAfter } from '../pg-boss-scheduler';
 import { currentUser, runWithCurrentUser } from '../context';
 import { getCreateTenantId } from '../tenant';
@@ -14,6 +15,7 @@ import {
   HEARTBEAT_STALE_MS,
   PENDING_REDISPATCH_MS,
   RETRY_BACKOFF_MAX_MS,
+  TaskCancelledError,
   type TaskItemReport,
   type TaskProgressResult,
   type TaskProgressUpdate,
@@ -35,17 +37,34 @@ export interface SubmitAsyncTaskInput {
   idempotencyKey?: string | null;
 }
 
-/** 提交异步任务（在业务路由的 HTTP 上下文中调用）：写任务表 + 入队 */
-export async function submitAsyncTask(input: SubmitAsyncTaskInput): Promise<AsyncTaskRow> {
+export interface SubmitAsyncTaskOptions {
+  /**
+   * 外部事务执行器。传入时仅在同一事务写入 pending outbox 记录，默认不立即入队；
+   * 调用方应在事务提交后调用 enqueueAsyncTask()。若提交后入队失败，pending 恢复扫描会补投。
+   */
+  executor?: DbExecutor;
+  /** 覆盖默认入队行为；外部事务中禁止设为 true。 */
+  enqueue?: boolean;
+}
+
+/** 提交异步任务：可直接写入并入队，也可作为外部事务中的 pending outbox 原子持久化。 */
+export async function submitAsyncTask(
+  input: SubmitAsyncTaskInput,
+  options: SubmitAsyncTaskOptions = {},
+): Promise<AsyncTaskRow> {
   const handler = getTaskHandler(input.taskType);
   if (!handler) throw new HTTPException(400, { message: `任务类型 "${input.taskType}" 未注册` });
+  if (options.executor && options.enqueue === true) {
+    throw new HTTPException(500, { message: '外部事务内不能直接入队异步任务' });
+  }
+  const executor = options.executor ?? db;
   const user = currentUser();
   const policy = await getTaskTypePolicy(input.taskType);
   if (!policy.enabled) {
     throw new HTTPException(400, { message: `「${handler.title}」已暂停提交，请联系管理员` });
   }
   if (!policy.allowConcurrent) {
-    const unfinished = await db.$count(asyncTasks, and(
+    const unfinished = await executor.$count(asyncTasks, and(
       eq(asyncTasks.taskType, input.taskType),
       eq(asyncTasks.createdBy, user.userId),
       inArray(asyncTasks.status, UNFINISHED_STATUSES),
@@ -65,23 +84,24 @@ export async function submitAsyncTask(input: SubmitAsyncTaskInput): Promise<Asyn
   };
   let row: AsyncTaskRow | undefined;
   if (idempotencyKey) {
-    [row] = await db.insert(asyncTasks).values(values)
+    [row] = await executor.insert(asyncTasks).values(values)
       .onConflictDoNothing({ target: asyncTasks.idempotencyKey }).returning();
     if (!row) {
       // 幂等命中：返回已存在的任务
-      const [existing] = await db.select().from(asyncTasks)
+      const [existing] = await executor.select().from(asyncTasks)
         .where(eq(asyncTasks.idempotencyKey, idempotencyKey)).limit(1);
       if (existing) return existing;
       throw new HTTPException(500, { message: '任务提交异常，请重试' });
     }
   } else {
-    [row] = await db.insert(asyncTasks).values(values).returning();
+    [row] = await executor.insert(asyncTasks).values(values).returning();
   }
-  await enqueueAsyncTask(row.id);
+  const shouldEnqueue = options.enqueue ?? !options.executor;
+  if (shouldEnqueue) await enqueueAsyncTask(row.id);
   return row;
 }
 
-async function enqueueAsyncTask(taskId: number): Promise<void> {
+export async function enqueueAsyncTask(taskId: number): Promise<void> {
   // singletonKey 防止同一任务在队列中堆积多条待消费消息；worker 侧原子领取兜底
   await sendSystemJob(ASYNC_TASK_QUEUE, { taskId }, {
     retryLimit: 0,
@@ -223,6 +243,20 @@ export async function runAsyncTask(taskId: number): Promise<string> {
     return finalStatus === 'cancelled' ? `任务 #${taskId}「${claimed.title}」已取消` : `任务 #${taskId}「${claimed.title}」执行成功`;
   } catch (err) {
     const message = (err instanceof Error ? err.message : '任务执行失败').slice(0, 2000);
+    if (err instanceof TaskCancelledError) {
+      const [cancelledRow] = await db.update(asyncTasks)
+        .set({
+          status: 'cancelled',
+          errorMessage: message,
+          ...(err.result ? { result: err.result } : {}),
+          completedAt: new Date(),
+          heartbeatAt: null,
+        })
+        .where(and(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'running')))
+        .returning();
+      if (cancelledRow) pushTaskProgress(cancelledRow, { force: true });
+      return `任务 #${taskId} 已取消：${message}`;
+    }
 
     // 自动重试：未用尽 maxAttempts 且未请求取消 → 回到 pending，按退避延迟重投（保留 checkpoint 断点续跑）
     const [currentRow] = await db.select({ cancelRequested: asyncTasks.cancelRequested })
@@ -297,12 +331,27 @@ export async function resumeAsyncTask(taskId: number): Promise<AsyncTaskRow> {
 }
 
 /** 重新开始：清空进度 / 断点 / 结果 / 明细，从头执行（任意已结束状态可用） */
-export async function restartAsyncTask(taskId: number): Promise<AsyncTaskRow> {
-  const [existing] = await db.select({ taskType: asyncTasks.taskType }).from(asyncTasks)
+export async function restartAsyncTask(
+  taskId: number,
+  options: SubmitAsyncTaskOptions = {},
+): Promise<AsyncTaskRow> {
+  if (options.executor && options.enqueue === true) {
+    throw new HTTPException(500, { message: '外部事务内不能直接入队异步任务' });
+  }
+  if (!options.executor) {
+    const row = await db.transaction((tx) => restartAsyncTask(taskId, { executor: tx }));
+    if (options.enqueue !== false) {
+      await enqueueAsyncTask(row.id);
+      pushTaskProgress(row, { force: true });
+    }
+    return row;
+  }
+  const executor = options.executor ?? db;
+  const [existing] = await executor.select({ taskType: asyncTasks.taskType }).from(asyncTasks)
     .where(eq(asyncTasks.id, taskId)).limit(1);
   if (!existing) throw new HTTPException(404, { message: '任务不存在' });
   const policy = await getTaskTypePolicy(existing.taskType);
-  const [row] = await db.update(asyncTasks)
+  const [row] = await executor.update(asyncTasks)
     .set({
       status: 'pending',
       processedCount: 0,
@@ -322,9 +371,7 @@ export async function restartAsyncTask(taskId: number): Promise<AsyncTaskRow> {
     .where(and(eq(asyncTasks.id, taskId), inArray(asyncTasks.status, TERMINAL_STATUSES)))
     .returning();
   if (!row) throw new HTTPException(400, { message: '仅已结束的任务可以重新开始' });
-  await db.delete(asyncTaskItems).where(eq(asyncTaskItems.taskId, taskId));
-  await enqueueAsyncTask(row.id);
-  pushTaskProgress(row, { force: true });
+  await executor.delete(asyncTaskItems).where(eq(asyncTaskItems.taskId, taskId));
   return row;
 }
 

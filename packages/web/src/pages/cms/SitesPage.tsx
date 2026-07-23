@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { Banner, Button, Form, Input, InputNumber, Select, Switch, Tag, TextArea, Toast, Modal, Row, Col, SideSheet, Tabs, TabPane, Upload } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -118,7 +119,7 @@ function describeInvalidRef(ref: CmsInvalidTemplateRef): string {
 /** 站点静态化面板（SideSheet 打开时才挂载，任务列表轮询随关闭停止） */
 function SiteStaticPanel({ site, canBuild }: { site: CmsSite; canBuild: boolean }) {
   const buildMutation = useCmsStaticBuild();
-  const { tasks, loading, refresh } = useMyAsyncTasks({ taskTypes: ['cms-static-build', 'cms-theme-rebuild'] });
+  const { tasks, loading, refresh } = useMyAsyncTasks({ taskTypes: ['cms-publish-build', 'cms-static-build', 'cms-theme-rebuild'] });
   const siteTasks = tasks.filter((t) => {
     const payload = t.payload as { siteId?: number; siteIds?: number[] };
     return payload.siteId === site.id || (Array.isArray(payload.siteIds) && payload.siteIds.includes(site.id));
@@ -178,6 +179,7 @@ export default function SitesPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const { page, pageSize, setPage, buildPagination } = usePagination();
   const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
@@ -192,16 +194,16 @@ export default function SitesPage() {
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
 
-  const { data: themes } = useCmsThemes();
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<CmsSite | null>(null);
+  const { data: themes } = useCmsThemes(editingRecord?.id);
   const [activeTab, setActiveTab] = useState('basic');
   // 模板下拉跟随表单里实时选中的主题（Form 值不具备响应性，用 state 镜像）
   const [selectedTheme, setSelectedTheme] = useState('default');
   const [templateDefaults, setTemplateDefaults] = useState<TemplateDefaultsState>({});
   // 主题参数编辑态（settings.themeConfig；动态字段名不走 Form，受控管理）
   const [themeConfig, setThemeConfig] = useState<Record<string, unknown>>({});
-  const { data: themeTemplates } = useCmsThemeTemplates(modalVisible ? selectedTheme : undefined);
+  const { data: themeTemplates } = useCmsThemeTemplates(modalVisible ? selectedTheme : undefined, editingRecord?.id);
   const { data: themeSettingsSchema } = useCmsThemeSettingsSchema(modalVisible ? selectedTheme : undefined);
   const { data: allModels } = useAllCmsModels();
   // 站点发布通道（模板页签动态渲染；新建站点回退虚拟 PC 默认通道）
@@ -317,7 +319,6 @@ export default function SitesPage() {
         domain: editingRecord.domain ?? '',
         aliasDomains: editingRecord.aliasDomains,
         isDefault: editingRecord.isDefault,
-        theme: editingRecord.theme,
         staticMode: editingRecord.staticMode,
         status: editingRecord.status,
         title: editingRecord.title ?? '',
@@ -378,8 +379,10 @@ export default function SitesPage() {
       auditMode, auditWorkflowDefinitionId,
       webhookUrl, webhookSecret, clearWebhookSecret, captchaEnabled,
       cdnPurgeUrl, cdnPurgeToken, clearCdnPurgeToken, clearBaiduPushToken, language, langLinksText,
+      theme: requestedTheme,
       ...rest
     } = values;
+    if (!editingRecord) rest.theme = requestedTheme ?? 'default';
     const { h5Enabled: _legacyH5Enabled, h5Domain: _legacyH5Domain, ...prevSettings } = (editingRecord?.settings ?? {}) as Record<string, unknown>;
     rest.settings = {
       ...prevSettings,
@@ -508,7 +511,7 @@ export default function SitesPage() {
           label: '访问',
           onClick: () => window.open(cmsPreviewUrl(record.code), '_blank'),
         },
-        ...(hasPermission('cms:static:build') ? [{
+        ...(hasPermission('cms:publish:build') ? [{
           key: 'static',
           label: '静态化',
           onClick: () => setStaticSheetSite(record),
@@ -894,8 +897,17 @@ export default function SitesPage() {
                   <Form.TagInput field="aliasDomains" label="别名域名" placeholder="回车添加" />
                 </Col>
                 <Col span={12}>
-                  <Form.Select field="theme" label="主题" style={{ width: '100%' }}
-                    optionList={(themes ?? []).map((t) => ({ value: t.code, label: t.label }))} />
+                  {editingRecord ? (
+                    <div className="semi-form-field">
+                      <div className="semi-form-field-label">当前主题</div>
+                      <Button theme="borderless" onClick={() => navigate('/cms/themes')}>
+                        {editingRecord.theme}（前往主题生命周期管理）
+                      </Button>
+                    </div>
+                  ) : (
+                    <Form.Select field="theme" label="主题" style={{ width: '100%' }}
+                      optionList={(themes ?? []).map((t) => ({ value: t.code, label: t.label }))} />
+                  )}
                 </Col>
                 <Col span={12}>
                   <Form.Select field="staticMode" label="静态化模式" style={{ width: '100%' }}
@@ -1029,7 +1041,7 @@ export default function SitesPage() {
                     style={{ marginBottom: 16 }}
                     description={(
                       <div>
-                        主题「{selectedTheme}」下存在 {externalInvalidRefs.length} 处失效模板引用，前台渲染时将回退主题默认模板：
+                        主题「{selectedTheme}」下存在 {externalInvalidRefs.length} 处失效模板引用；内置主题会回退默认模板，签名 DSL 主题将明确渲染失败：
                         <ul style={{ margin: '4px 0 0', paddingLeft: 20 }}>
                           {externalInvalidRefs.slice(0, 8).map((ref, i) => (
                             <li key={i}>{describeInvalidRef(ref)}</li>
@@ -1107,7 +1119,7 @@ export default function SitesPage() {
       >
         {staticSheetSite ? (
           <div style={{ paddingTop: 8 }}>
-            <SiteStaticPanel site={staticSheetSite} canBuild={hasPermission('cms:static:build')} />
+            <SiteStaticPanel site={staticSheetSite} canBuild={hasPermission('cms:publish:build')} />
           </div>
         ) : null}
       </SideSheet>

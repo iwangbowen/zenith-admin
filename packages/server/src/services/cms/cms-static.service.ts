@@ -1,12 +1,13 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, asc } from 'drizzle-orm';
 import { db } from '../../db';
 import { cmsSites, cmsChannels, cmsContents } from '../../db/schema';
 import type { CmsSiteRow, CmsChannelRow } from '../../db/schema';
 import logger from '../../lib/logger';
 import { formatIso8601 } from '../../lib/datetime';
-import { CMS_CHANNEL_SEGMENT_PREFIX } from '@zenith/shared';
+import { CMS_CHANNEL_SEGMENT_PREFIX, type CmsContentPublishSnapshot } from '@zenith/shared';
+import { TaskCancelledError } from '../../lib/task-center';
 import { getActivePublishChannels, type PublishChannelInfo } from './cms-publish-channels.service';
 import {
   renderSitePath, renderHomePage, renderChannelPage, renderDetailPage, renderTagPage, renderCustomPage,
@@ -20,6 +21,9 @@ import {
 } from './cms-static-path';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
 import { assertAllCmsSiteChannelsAccess } from './cms-channels.service';
+import { recordCmsPublishArtifact } from './cms-publish-artifact-tracker';
+import { cmsStaticTargetKey, isCmsStaticTargetCompleted } from './cms-static-build-plan';
+import { assertCmsStaticWriteFence } from './cms-site-publish-lock.service';
 export {
   CMS_STATIC_ROOT, isStrictlyWithin, pathToStaticFile, resolveStaticFile, siteStaticDir,
 } from './cms-static-path';
@@ -47,20 +51,51 @@ export async function writeStaticFile(siteCode: string, relPath: string, html: s
   if (!abs) return;
   await fs.mkdir(path.dirname(abs), { recursive: true });
   const tmp = `${abs}.${process.pid}.${Date.now()}.tmp`;
-  await fs.writeFile(tmp, html, 'utf8');
-  await fs.rename(tmp, abs);
+  try {
+    await fs.writeFile(tmp, html, 'utf8');
+    await assertCmsStaticWriteFence();
+    await fs.rename(tmp, abs);
+    await recordCmsPublishArtifact({ relPath, status: 'generated', content: html });
+  } catch (error) {
+    await fs.rm(tmp, { force: true }).catch(() => undefined);
+    await recordCmsPublishArtifact({
+      relPath,
+      status: 'failed',
+      error: error instanceof Error ? error.message : '写入静态产物失败',
+    }).catch(() => undefined);
+    throw error;
+  }
 }
 
-export async function deleteStaticFile(siteCode: string, relPath: string): Promise<void> {
+export async function deleteStaticFile(siteCode: string, relPath: string): Promise<boolean> {
   const abs = resolveStaticFile(siteCode, relPath);
-  if (!abs) return;
-  await fs.rm(abs, { force: true });
+  if (!abs) return false;
+  try {
+    try {
+      await fs.lstat(abs);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+      throw error;
+    }
+    await assertCmsStaticWriteFence();
+    await fs.rm(abs, { force: true });
+    await recordCmsPublishArtifact({ relPath, status: 'deleted' });
+    return true;
+  } catch (error) {
+    await recordCmsPublishArtifact({
+      relPath,
+      status: 'failed',
+      error: error instanceof Error ? error.message : '删除静态产物失败',
+    }).catch(() => undefined);
+    throw error;
+  }
 }
 
 /** 清空站点静态目录（全量重建前调用） */
 export async function clearSiteStatic(siteCode: string): Promise<void> {
   const dir = siteStaticDir(siteCode);
   if (!isStrictlyWithin(CMS_STATIC_ROOT, dir)) throw new Error('CMS 站点静态目录越界');
+  await assertCmsStaticWriteFence();
   await fs.rm(dir, { recursive: true, force: true });
 }
 
@@ -144,7 +179,8 @@ const MAX_LIST_PAGES = 50;
 
 /** 静态产物相对路径：非默认通道落在 __{code}/ 子树 */
 function channelStaticPath(channel: PublishChannelInfo, relPath: string): string {
-  return channel.isDefault ? relPath : `${CMS_CHANNEL_SEGMENT_PREFIX}${channel.code}/${relPath}`;
+  const clean = relPath.replace(/^\/+/, '');
+  return channel.isDefault ? clean : `${CMS_CHANNEL_SEGMENT_PREFIX}${channel.code}/${clean}`;
 }
 
 async function writeRenderedPath(site: CmsSiteRow, relPath: string, channel: PublishChannelInfo): Promise<boolean> {
@@ -239,11 +275,49 @@ export async function refreshContentStatic(contentId: number): Promise<void> {
   triggerCdnPurge(site, purgePaths);
 }
 
+/** 按事务内冻结的路径/版本快照执行内容发布，不依赖已删除行推导旧路径。 */
+export async function applyCmsContentPublishSnapshot(
+  snapshot: CmsContentPublishSnapshot,
+  deletePaths: readonly string[],
+): Promise<void> {
+  const [site] = await db.select().from(cmsSites).where(eq(cmsSites.id, snapshot.siteId)).limit(1);
+  if (!site) throw new TaskCancelledError(`内容 #${snapshot.contentId} 所属站点已删除`, { stale: true });
+  const [currentRow] = snapshot.purged
+    ? [null]
+    : await db.select().from(cmsContents).where(eq(cmsContents.id, snapshot.contentId)).limit(1);
+  const current = currentRow ?? null;
+  if (!snapshot.purged && (!current || current.version !== snapshot.contentVersion)) {
+    throw new TaskCancelledError(
+      `内容 #${snapshot.contentId} 发布快照已过期（期望版本 ${snapshot.contentVersion}，当前 ${current?.version ?? 'missing'}）`,
+      { stale: true, contentId: snapshot.contentId, expectedVersion: snapshot.contentVersion },
+    );
+  }
+  for (const relPath of [...new Set(deletePaths)].sort()) await deleteStaticFile(site.code, relPath);
+  if (site.staticMode === 'dynamic') return;
+  if (snapshot.build && current) {
+    const [channel] = await db.select().from(cmsChannels).where(eq(cmsChannels.id, snapshot.channelId)).limit(1);
+    if (!channel || channel.path !== snapshot.channelPath) {
+      throw new TaskCancelledError(`内容 #${snapshot.contentId} 栏目路径快照已过期`, { stale: true });
+    }
+    for (const target of snapshot.targets) {
+      for (let page = 1; page <= target.paths.length; page++) {
+        const rendered = await renderDetailPage(site, '', channel, snapshot.slug, target.publishChannelCode, page);
+        if (rendered.status !== 200) throw new Error(`内容 #${snapshot.contentId} 快照路径 ${target.paths[page - 1]} 渲染失败（${rendered.status}）`);
+        await writeStaticFile(site.code, target.paths[page - 1], rendered.html);
+      }
+    }
+  }
+  for (const channelId of snapshot.refreshChannelIds) {
+    const [channel] = await db.select({ id: cmsChannels.id }).from(cmsChannels).where(eq(cmsChannels.id, channelId)).limit(1);
+    if (channel) await refreshChannelStatic(channel.id);
+  }
+}
+
 /** 路由层调用：后台不阻塞响应，失败仅记录日志 */
 export function triggerContentStaticRefresh(contentId: number): void {
-  void refreshContentStatic(contentId).catch((err) => {
-    logger.error(`[CMS] 内容 ${contentId} 增量静态化失败`, err);
-  });
+  void import('./cms-publishing.service').then(({ submitCmsContentPublishSideEffect }) => {
+    submitCmsContentPublishSideEffect(contentId);
+  }).catch((err) => logger.error(`[CMS] 内容 ${contentId} 发布任务提交失败`, err));
 }
 
 /** 可视化搭建页面增量静态刷新：重写 /p/{slug}/（isHome 同时重写首页）；停用/删除时移除文件 */
@@ -282,65 +356,115 @@ export async function refreshCustomPageStatic(input: { siteId: number; slug: str
 }
 
 export function triggerCustomPageStaticRefresh(input: { siteId: number; slug: string; isHome: boolean; removed?: boolean }): void {
-  void refreshCustomPageStatic(input).catch((err) => {
-    logger.error(`[CMS] 搭建页 ${input.slug} 增量静态化失败`, err);
-  });
+  void import('./cms-publishing.service').then(({ submitCmsPagePublishSideEffect }) => {
+    submitCmsPagePublishSideEffect(input);
+  }).catch((err) => logger.error(`[CMS] 搭建页 ${input.slug} 发布任务提交失败`, err));
 }
 
-/** 碎片/友链/栏目等全局要素变化后触发整站重建提示（P1 由管理员在静态化管理页手动全量生成） */
+/** 发布中心栏目级重建：栏目全部分页 + 首页 + sitemap/RSS。 */
+export async function refreshChannelStatic(channelId: number): Promise<{ pages: number }> {
+  const [channel] = await db.select().from(cmsChannels).where(eq(cmsChannels.id, channelId)).limit(1);
+  if (!channel) throw new Error(`栏目不存在（id=${channelId}）`);
+  const [site] = await db.select().from(cmsSites).where(eq(cmsSites.id, channel.siteId)).limit(1);
+  if (!site) throw new Error(`站点不存在（id=${channel.siteId}）`);
+  let pages = 0;
+  for (const publishChannel of await getActivePublishChannels(site.id)) {
+    pages += await regenerateChannelPages(site, channel, publishChannel);
+    const home = await renderHomePage(site, '');
+    if (home.status === 200) {
+      await writeStaticFile(site.code, channelStaticPath(publishChannel, ''), home.html);
+      pages += 1;
+    }
+  }
+  await writeStaticFile(site.code, 'sitemap.xml', await generateSitemapXml(site));
+  await writeStaticFile(site.code, 'rss.xml', await generateRssXml(site));
+  triggerCdnPurgeAll(site);
+  return { pages };
+}
 
 // ─── 全量静态化（task-center handler 调用）───────────────────────────────────────
 export interface FullBuildProgress {
   processed: number;
   total: number;
   note: string;
+  checkpoint: CmsStaticBuildCheckpoint;
+}
+
+export interface CmsStaticBuildCheckpoint {
+  phase: 'home' | 'channel' | 'content' | 'tag' | 'page' | 'meta';
+  lastKey: string;
+  lastId: number | null;
+  publishChannelCode: string | null;
 }
 
 export async function buildSiteStatic(
   siteId: number,
   onProgress?: (p: FullBuildProgress) => Promise<boolean | void>,
+  options?: { resumeAfterKey?: string | null },
 ): Promise<{ pages: number }> {
   const [site] = await db.select().from(cmsSites).where(eq(cmsSites.id, siteId)).limit(1);
   if (!site) throw new Error(`站点不存在（id=${siteId}）`);
 
   const channels = await db.select().from(cmsChannels)
-    .where(and(eq(cmsChannels.siteId, siteId), eq(cmsChannels.status, 'enabled')));
+    .where(and(eq(cmsChannels.siteId, siteId), eq(cmsChannels.status, 'enabled')))
+    .orderBy(asc(cmsChannels.id));
   const contents = await db.select({ id: cmsContents.id, slug: cmsContents.slug, channelId: cmsContents.channelId, externalLink: cmsContents.externalLink, body: cmsContents.body, extend: cmsContents.extend, mappingSourceId: cmsContents.mappingSourceId })
     .from(cmsContents)
-    .where(and(eq(cmsContents.siteId, siteId), eq(cmsContents.status, 'published'), isNull(cmsContents.deletedAt)));
+    .where(and(eq(cmsContents.siteId, siteId), eq(cmsContents.status, 'published'), isNull(cmsContents.deletedAt)))
+    .orderBy(asc(cmsContents.id));
 
   const channelMap = new Map(channels.map((c) => [c.id, c]));
   const siteTags = await listSiteTags(siteId);
-  const activeTags = siteTags.filter((t) => t.contentCount > 0);
+  const activeTags = siteTags.filter((t) => t.contentCount > 0).sort((a, b) => a.id - b.id);
   const { listPublishedPages } = await import('./cms-pages.service');
-  const customPages = (await listPublishedPages(siteId)).filter((p) => !p.isHome);
-  const publishChannels = await getActivePublishChannels(siteId);
+  const customPages = (await listPublishedPages(siteId)).filter((p) => !p.isHome).sort((a, b) => a.id - b.id);
+  const publishChannels = [...await getActivePublishChannels(siteId)]
+    .sort((a, b) => a.code < b.code ? -1 : a.code > b.code ? 1 : 0);
   // 每通道：首页 + 栏目 + 内容 + 标签 + 搭建页；站点级：sitemap/rss/robots
   const total = publishChannels.length * (1 + channels.length + contents.length + activeTags.length + customPages.length) + 3;
   let processed = 0;
   let pages = 0;
-
-  const report = async (note: string): Promise<boolean> => {
+  const resumeAfterKey = options?.resumeAfterKey ?? null;
+  const skipCompleted = (key: string): boolean => {
+    if (!isCmsStaticTargetCompleted(key, resumeAfterKey)) return false;
     processed += 1;
-    const cancelled = await onProgress?.({ processed, total, note });
+    return true;
+  };
+  const report = async (
+    note: string,
+    checkpoint: CmsStaticBuildCheckpoint,
+  ): Promise<boolean> => {
+    processed += 1;
+    const cancelled = await onProgress?.({ processed, total, note, checkpoint });
     return cancelled === true;
   };
 
   for (const publishChannel of publishChannels) {
     const channelLabel = publishChannels.length > 1 ? `[${publishChannel.name}] ` : '';
-    const home = await renderHomePage(site, '');
-    if (home.status === 200) {
-      await writeStaticFile(site.code, channelStaticPath(publishChannel, ''), home.html);
-      pages += 1;
+    const homeKey = cmsStaticTargetKey(publishChannel.code, 0, 0);
+    if (!skipCompleted(homeKey)) {
+      const home = await renderHomePage(site, '');
+      if (home.status === 200) {
+        await writeStaticFile(site.code, channelStaticPath(publishChannel, ''), home.html);
+        pages += 1;
+      }
+      if (await report(`${channelLabel}首页已生成`, {
+        phase: 'home', lastKey: homeKey, lastId: null, publishChannelCode: publishChannel.code,
+      })) return { pages };
     }
-    if (await report(`${channelLabel}首页已生成`)) return { pages };
 
     for (const channel of channels) {
+      const key = cmsStaticTargetKey(publishChannel.code, 1, channel.id);
+      if (skipCompleted(key)) continue;
       pages += await regenerateChannelPages(site, channel, publishChannel);
-      if (await report(`${channelLabel}栏目「${channel.name}」已生成`)) return { pages };
+      if (await report(`${channelLabel}栏目「${channel.name}」已生成`, {
+        phase: 'channel', lastKey: key, lastId: channel.id, publishChannelCode: publishChannel.code,
+      })) return { pages };
     }
 
     for (const row of contents) {
+      const key = cmsStaticTargetKey(publishChannel.code, 2, row.id);
+      if (skipCompleted(key)) continue;
       const channel = channelMap.get(row.channelId);
       if (channel && !row.externalLink?.trim()) {
         const bodyPages = await countContentBodyPages(row);
@@ -349,36 +473,55 @@ export async function buildSiteStatic(
           if (ok) pages += 1;
         }
       }
-      if (await report(`${channelLabel}内容 ${row.id} 已生成`)) return { pages };
+      if (await report(`${channelLabel}内容 ${row.id} 已生成`, {
+        phase: 'content', lastKey: key, lastId: row.id, publishChannelCode: publishChannel.code,
+      })) return { pages };
     }
 
     // 标签聚合页（仅首屏分页；深分页访问时由 hybrid 模式按需回写）
     for (const tag of activeTags) {
+      const key = cmsStaticTargetKey(publishChannel.code, 3, tag.id);
+      if (skipCompleted(key)) continue;
       const result = await renderTagPage(site, '', tag.slug, 1);
       if (result.status === 200) {
         await writeStaticFile(site.code, channelStaticPath(publishChannel, `tag/${tag.slug}/`), result.html);
         pages += 1;
       }
-      if (await report(`${channelLabel}标签「${tag.name}」已生成`)) return { pages };
+      if (await report(`${channelLabel}标签「${tag.name}」已生成`, {
+        phase: 'tag', lastKey: key, lastId: tag.id, publishChannelCode: publishChannel.code,
+      })) return { pages };
     }
 
     // 可视化搭建页面 /p/{slug}/
     for (const page of customPages) {
+      const key = cmsStaticTargetKey(publishChannel.code, 4, page.id);
+      if (skipCompleted(key)) continue;
       const result = await renderCustomPage(site, '', page);
       if (result.status === 200) {
         await writeStaticFile(site.code, channelStaticPath(publishChannel, `p/${page.slug}/`), result.html);
         pages += 1;
       }
-      if (await report(`${channelLabel}搭建页「${page.name}」已生成`)) return { pages };
+      if (await report(`${channelLabel}搭建页「${page.name}」已生成`, {
+        phase: 'page', lastKey: key, lastId: page.id, publishChannelCode: publishChannel.code,
+      })) return { pages };
     }
   }
 
-  await writeStaticFile(site.code, 'sitemap.xml', await generateSitemapXml(site));
-  await report('sitemap.xml 已生成');
-  await writeStaticFile(site.code, 'rss.xml', await generateRssXml(site));
-  await report('rss.xml 已生成');
-  await writeStaticFile(site.code, 'robots.txt', buildRobotsTxt(site));
-  await report('robots.txt 已生成');
+  const sitemapKey = cmsStaticTargetKey('~meta', 0, 1);
+  if (!skipCompleted(sitemapKey)) {
+    await writeStaticFile(site.code, 'sitemap.xml', await generateSitemapXml(site));
+    if (await report('sitemap.xml 已生成', { phase: 'meta', lastKey: sitemapKey, lastId: 1, publishChannelCode: null })) return { pages };
+  }
+  const rssKey = cmsStaticTargetKey('~meta', 0, 2);
+  if (!skipCompleted(rssKey)) {
+    await writeStaticFile(site.code, 'rss.xml', await generateRssXml(site));
+    if (await report('rss.xml 已生成', { phase: 'meta', lastKey: rssKey, lastId: 2, publishChannelCode: null })) return { pages };
+  }
+  const robotsKey = cmsStaticTargetKey('~meta', 0, 3);
+  if (!skipCompleted(robotsKey)) {
+    await writeStaticFile(site.code, 'robots.txt', buildRobotsTxt(site));
+    if (await report('robots.txt 已生成', { phase: 'meta', lastKey: robotsKey, lastId: 3, publishChannelCode: null })) return { pages };
+  }
   triggerCdnPurgeAll(site);
   return { pages };
 }

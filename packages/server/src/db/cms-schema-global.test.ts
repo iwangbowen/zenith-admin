@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getTableConfig, type PgTable } from 'drizzle-orm/pg-core';
 import * as cmsSchema from './schema/cms';
-import { cmsSites } from './schema/cms';
+import { cmsSites, cmsThemeDeployments } from './schema/cms';
 
 function cmsTables(): { name: string; table: PgTable }[] {
   const tables: { name: string; table: PgTable }[] = [];
@@ -18,9 +18,9 @@ function cmsTables(): { name: string; table: PgTable }[] {
 }
 
 describe('global CMS schema', () => {
-  it('keeps all 45 CMS tables outside tenant ownership', () => {
+  it('keeps all 50 CMS tables outside tenant ownership', () => {
     const tables = cmsTables();
-    expect(tables).toHaveLength(45);
+    expect(tables).toHaveLength(50);
     for (const { name, table } of tables) {
       const tenantColumn = getTableConfig(table).columns.find((column) => column.name === 'tenant_id');
       expect(tenantColumn, `${name} must not expose tenant_id`).toBeUndefined();
@@ -33,5 +33,15 @@ describe('global CMS schema', () => {
     const defaultIndex = config.indexes.find((item) => item.config.name === 'cms_sites_default_uq');
     expect(defaultIndex?.config.unique).toBe(true);
     expect(defaultIndex?.config.where).toBeDefined();
+    expect(config.columns.find((column) => column.name === 'template_refs_revision')?.notNull).toBe(true);
+  });
+
+  it('allows at most one active theme deployment per site regardless of theme code', () => {
+    const config = getTableConfig(cmsThemeDeployments);
+    const activeIndex = config.indexes.find((item) => item.config.name === 'cms_theme_deployments_site_active_uq');
+    expect(activeIndex?.config.unique).toBe(true);
+    expect(activeIndex?.config.columns).toHaveLength(1);
+    expect(activeIndex?.config.columns[0]).toMatchObject({ name: 'site_id' });
+    expect(activeIndex?.config.where).toBeDefined();
   });
 });

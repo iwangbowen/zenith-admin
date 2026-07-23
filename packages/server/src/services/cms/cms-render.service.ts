@@ -5,7 +5,7 @@ import { db } from '../../db';
 import { cmsChannels, cmsTags, cmsContents, cmsModels, cmsSites } from '../../db/schema';
 import type { CmsSiteRow, CmsChannelRow, CmsContentRow, CmsTagRow } from '../../db/schema';
 import { formatNullableDateTime, formatIso8601 } from '../../lib/datetime';
-import { getTheme, resolveListTemplate, resolveDetailTemplate, resolveCustomPageTemplate, resolveSurveyTemplate, resolveThemeConfig, isTemplateRegistered } from '../../cms/themes/registry';
+import { getBuiltinThemeFallback, resolveListTemplate, resolveDetailTemplate, resolveCustomPageTemplate, resolveSurveyTemplate, resolveThemeConfig } from '../../cms/themes/registry';
 import { renderBlocksHtml } from '../../cms/themes/blocks';
 import type {
   CmsBaseContext, CmsNavItem, CmsSeo, CmsContentItem, CmsPagination, CmsBreadcrumb, CmsChannelInfo,
@@ -27,6 +27,8 @@ import { getActiveAds } from './cms-ads.service';
 import { getCmsFormByCode } from './cms-forms.service';
 import type { CmsChannel, CmsDeviceChannel, CmsFormField, CmsSiteTemplateDefaults } from '@zenith/shared';
 import { CMS_CONTENT_STATUS_LABELS } from '@zenith/shared';
+import type { CmsTemplateType } from '@zenith/shared';
+import { renderCmsDslTemplateIfConfigured } from './cms-templates.service';
 
 // ─── URL 规则（站点内相对路径，静态文件名与之一一对应）──────────────────────────
 export function channelUrl(baseUrl: string, path: string, page = 1): string {
@@ -70,6 +72,23 @@ function renderDoc<P extends object>(component: ComponentType<P>, props: P): str
   return '<!DOCTYPE html>' + renderToStaticMarkup(createElement(component, props));
 }
 
+async function renderResolvedDoc<P extends object>(
+  site: CmsSiteRow,
+  type: CmsTemplateType,
+  component: ComponentType<P>,
+  props: P,
+  templateCode?: string | null,
+): Promise<string> {
+  const dsl = await renderCmsDslTemplateIfConfigured({
+    siteId: site.id,
+    themeCode: site.theme,
+    type,
+    templateCode,
+    context: props as Record<string, unknown>,
+  });
+  return dsl ?? renderDoc(component, props);
+}
+
 // ─── 模板解析链（发布通道感知）───────────────────────────────────────────────────
 /** 站点 settings.defaultTemplates 按发布通道取默认模板配置 */
 function siteTemplateDefaults(site: CmsSiteRow, device: CmsDeviceChannel): CmsSiteTemplateDefaults {
@@ -99,14 +118,14 @@ async function getModelCode(modelId: number): Promise<string | null> {
 
 /** 列表模板：试穿参数（预览态） → 栏目[通道] → 栏目通用 → 站点默认[通道] → 主题默认 */
 function resolveListComponent(site: CmsSiteRow, device: CmsDeviceChannel, channel: CmsChannelRow, templateOverride?: string | null) {
-  const theme = getTheme(site.theme);
-  const tryOn = templateOverride && isTemplateRegistered(site.theme, 'list', templateOverride) ? templateOverride : null;
+  const theme = getBuiltinThemeFallback(site.theme);
+  const tryOn = templateOverride || null;
   const name = tryOn
     || channelTemplateOverrides(channel, device).list
     || channel.listTemplate
     || siteTemplateDefaults(site, device).list
     || null;
-  return resolveListTemplate(theme, name);
+  return { component: resolveListTemplate(theme, name), templateCode: name };
 }
 
 /**
@@ -121,8 +140,8 @@ async function resolveDetailComponent(
   contentModelId?: number | null,
   templateOverride?: string | null,
 ) {
-  const theme = getTheme(site.theme);
-  const tryOn = templateOverride && isTemplateRegistered(site.theme, 'detail', templateOverride) ? templateOverride : null;
+  const theme = getBuiltinThemeFallback(site.theme);
+  const tryOn = templateOverride || null;
   let name = tryOn || contentTemplate || null;
   const modelId = contentModelId ?? channel.modelId;
   const modelCode = modelId ? await getModelCode(modelId) : null;
@@ -132,7 +151,7 @@ async function resolveDetailComponent(
   };
   name = name || pickDetail(channelTemplateOverrides(channel, device)) || channel.detailTemplate || null;
   name = name || pickDetail(siteTemplateDefaults(site, device)) || null;
-  return resolveDetailTemplate(theme, name);
+  return { component: resolveDetailTemplate(theme, name), templateCode: name };
 }
 
 // ─── 上下文组装 ───────────────────────────────────────────────────────────────
@@ -357,7 +376,7 @@ export async function renderCustomPage(
   pageRow: import('../../db/schema').CmsPageRow,
   opts?: { asHome?: boolean },
 ): Promise<RenderResult> {
-  const theme = getTheme(site.theme);
+  const theme = getBuiltinThemeFallback(site.theme);
   const seo = mergeSeo(site, {
     title: pageRow.seoTitle ?? (opts?.asHome ? undefined : `${pageRow.name} - ${site.title?.trim() || site.name}`),
     keywords: pageRow.seoKeywords ?? undefined,
@@ -378,11 +397,12 @@ export async function renderCustomPage(
     contentListData.set(block.id, rows.map((row) => toContentItem(row, baseUrl, channelPathMap.get(row.channelId) ?? '')));
   }
   const blocksHtml = renderBlocksHtml({ blocks, ctx: base, contentListData });
-  const html = renderDoc(resolveCustomPageTemplate(theme), {
+  const props = {
     ...base,
     page: { name: pageRow.name, slug: pageRow.slug },
     blocksHtml,
-  });
+  };
+  const html = await renderResolvedDoc(site, 'custom_page', resolveCustomPageTemplate(theme), props);
   return { status: 200, html, kind: opts?.asHome ? 'home' : 'page' };
 }
 
@@ -402,7 +422,7 @@ export async function renderHomePage(site: CmsSiteRow, baseUrl: string): Promise
   const { getHomeTakeoverPage } = await import('./cms-pages.service');
   const takeover = await getHomeTakeoverPage(site.id);
   if (takeover) return renderCustomPage(site, baseUrl, takeover, { asHome: true });
-  const theme = getTheme(site.theme);
+  const theme = getBuiltinThemeFallback(site.theme);
   const seo = mergeSeo(site, { pathForCanonical: '/' });
   const [base, home] = await Promise.all([
     buildBaseContext(site, baseUrl, seo),
@@ -410,12 +430,13 @@ export async function renderHomePage(site: CmsSiteRow, baseUrl: string): Promise
   ]);
   const channelPathMap = await loadChannelPathMap(site.id);
   const toItem = (row: CmsContentRow) => toContentItem(row, baseUrl, channelPathMap.get(row.channelId) ?? '');
-  const html = renderDoc(theme.templates.index, {
+  const props = {
     ...base,
     latest: home.latest.map(toItem),
     recommended: home.recommended.map(toItem),
     hot: home.hot.map(toItem),
-  });
+  };
+  const html = await renderResolvedDoc(site, 'index', theme.templates.index, props);
   return { status: 200, html, kind: 'home' };
 }
 
@@ -425,7 +446,7 @@ async function loadChannelPathMap(siteId: number): Promise<Map<number, string>> 
 }
 
 export async function renderChannelPage(site: CmsSiteRow, baseUrl: string, channel: CmsChannelRow, page = 1, device: CmsDeviceChannel = 'pc', templateOverride?: string | null): Promise<RenderResult> {
-  const theme = getTheme(site.theme);
+  const theme = getBuiltinThemeFallback(site.theme);
   if (channel.type === 'link') {
     return { status: 302, location: channel.linkUrl ?? `${baseUrl}/` };
   }
@@ -444,7 +465,7 @@ export async function renderChannelPage(site: CmsSiteRow, baseUrl: string, chann
       ? String((channel.settings as Record<string, unknown>).formCode)
       : null;
     const form = formCode ? await getCmsFormByCode(site.id, formCode) : null;
-    const html = renderDoc(theme.templates.page, {
+    const props = {
       ...base,
       channel: toChannelInfo(channel, baseUrl),
       breadcrumbs,
@@ -458,19 +479,22 @@ export async function renderChannelPage(site: CmsSiteRow, baseUrl: string, chann
         fields: (form.fields ?? []) as CmsFormField[],
         captcha: resolveCmsFormCaptcha(form, site),
       } : null,
-    });
+    };
+    const html = await renderResolvedDoc(site, 'page', theme.templates.page, props);
     return { status: 200, html, kind: 'page' };
   }
 
   const { total, rows } = await listPublishedContents(site.id, channel.id, page, channel.pageSize);
   if (page > 1 && rows.length === 0) return renderNotFound(site, baseUrl, `/${channel.path}/index_${page}.html`);
-  const html = renderDoc(resolveListComponent(site, device, channel, templateOverride), {
+  const resolvedList = resolveListComponent(site, device, channel, templateOverride);
+  const props = {
     ...base,
     channel: toChannelInfo(channel, baseUrl),
     breadcrumbs,
     items: rows.map((r) => toContentItem(r, baseUrl, channel.path)),
     pagination: buildPagination(baseUrl, channel.path, page, channel.pageSize, total),
-  });
+  };
+  const html = await renderResolvedDoc(site, 'list', resolvedList.component, props, resolvedList.templateCode);
   return { status: 200, html, kind: 'list' };
 }
 
@@ -562,8 +586,8 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
   const related = await buildRelatedLinks(baseUrl, relatedRows);
   const { pageBody, totalPages, extras } = buildDetailExtras(row, resolved.body, baseUrl, channel.path, bodyPage);
   if (bodyPage > totalPages) return renderNotFound(site, baseUrl, `/${channel.path}/${idOrSlug}_${bodyPage}.html`);
-  const detailComponent = await resolveDetailComponent(site, device, channel, row.detailTemplate, row.modelId, templateOverride);
-  const html = renderDoc(detailComponent, {
+  const detailTemplate = await resolveDetailComponent(site, device, channel, row.detailTemplate, row.modelId, templateOverride);
+  const props = {
     ...base,
     channel: toChannelInfo(channel, baseUrl),
     breadcrumbs,
@@ -585,7 +609,8 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
       memberSubmitApi: `/api/member/cms/contents/${row.id}/comments`,
       captchaEnabled: isCaptchaEnabled(site),
     },
-  });
+  };
+  const html = await renderResolvedDoc(site, 'detail', detailTemplate.component, props, detailTemplate.templateCode);
   return { status: 200, html, kind: 'detail', contentId: row.id };
 }
 
@@ -633,9 +658,9 @@ export async function renderContentPreviewPage(site: CmsSiteRow, baseUrl: string
     getEnabledLinkWords(site.id),
     resolveContentBodyExtend(row),
   ]);
-  const previewComponent = await resolveDetailComponent(site, device, channel, row.detailTemplate, row.modelId);
+  const previewTemplate = await resolveDetailComponent(site, device, channel, row.detailTemplate, row.modelId);
   const { pageBody: previewBody, extras: previewExtras } = buildDetailExtras(row, resolved.body, baseUrl, channel.path, 1);
-  const html = renderDoc(previewComponent, {
+  const props = {
     ...base,
     channel: toChannelInfo(channel, baseUrl),
     breadcrumbs,
@@ -657,7 +682,8 @@ export async function renderContentPreviewPage(site: CmsSiteRow, baseUrl: string
       memberSubmitApi: `/api/member/cms/contents/${row.id}/comments`,
       captchaEnabled: isCaptchaEnabled(site),
     },
-  });
+  };
+  const html = await renderResolvedDoc(site, 'detail', previewTemplate.component, props, previewTemplate.templateCode);
   const statusLabel = CMS_CONTENT_STATUS_LABELS[row.status] ?? row.status;
   const banner = '<div style="position:sticky;top:0;z-index:9999;background:#fff7e6;border-bottom:1px solid #ffd591;'
     + 'color:#874d00;padding:8px 16px;font-size:13px;text-align:center">'
@@ -672,7 +698,7 @@ export async function renderSearchPage(
   page = 1,
   track?: { ip: string | null; userAgent: string | null },
 ): Promise<RenderResult> {
-  const theme = getTheme(site.theme);
+  const theme = getBuiltinThemeFallback(site.theme);
   const pageSize = 10;
   const seo = mergeSeo(site, { title: keyword ? `搜索：${keyword} - ${site.name}` : `搜索 - ${site.name}` });
   const base = await buildBaseContext(site, baseUrl, seo);
@@ -691,7 +717,7 @@ export async function renderSearchPage(
   for (let p = start; p <= Math.min(totalPages, start + 4); p++) {
     pages.push({ page: p, url: searchPageUrl(p), current: p === page });
   }
-  const html = renderDoc(theme.templates.search, {
+  const props = {
     ...base,
     keyword,
     results: result.list,
@@ -701,15 +727,17 @@ export async function renderSearchPage(
       nextUrl: page < totalPages ? searchPageUrl(page + 1) : null,
       pages,
     },
-  });
+  };
+  const html = await renderResolvedDoc(site, 'search', theme.templates.search, props);
   return { status: 200, html, kind: 'search' };
 }
 
 export async function renderNotFound(site: CmsSiteRow, baseUrl: string, path: string): Promise<RenderResult> {
-  const theme = getTheme(site.theme);
+  const theme = getBuiltinThemeFallback(site.theme);
   const seo = mergeSeo(site, { title: `页面不存在 - ${site.name}` });
   const base = await buildBaseContext(site, baseUrl, seo);
-  const html = renderDoc(theme.templates.notFound, { ...base, path });
+  const props = { ...base, path };
+  const html = await renderResolvedDoc(site, 'not_found', theme.templates.notFound, props);
   return { status: 404, html, kind: 'notFound' };
 }
 
@@ -724,7 +752,7 @@ export async function renderSurveyPage(site: CmsSiteRow, baseUrl: string, code: 
     pathForCanonical: `/survey/${code}/`,
   });
   const base = await buildBaseContext(site, baseUrl, seo);
-  const html = renderDoc(resolveSurveyTemplate(getTheme(site.theme)), {
+  const props = {
     ...base,
     breadcrumbs: [
       { name: '首页', url: `${baseUrl}/` },
@@ -745,7 +773,8 @@ export async function renderSurveyPage(site: CmsSiteRow, baseUrl: string, code: 
       memberSubmitApi: `/api/member/cms/surveys/${survey.id}/submit`,
       returnUrl: `${baseUrl}/survey/${code}/`,
     },
-  });
+  };
+  const html = await renderResolvedDoc(site, 'survey', resolveSurveyTemplate(getBuiltinThemeFallback(site.theme)), props);
   return { status: 200, html, kind: 'page' };
 }
 
@@ -763,7 +792,7 @@ export async function listSiteTags(siteId: number): Promise<CmsTagRow[]> {
 }
 
 export async function renderTagPage(site: CmsSiteRow, baseUrl: string, slug: string, page = 1): Promise<RenderResult> {
-  const theme = getTheme(site.theme);
+  const theme = getBuiltinThemeFallback(site.theme);
   const tag = await findTagBySlug(site.id, slug);
   if (!tag) return renderNotFound(site, baseUrl, tagUrl('', slug, page));
   const seo = mergeSeo(site, {
@@ -783,7 +812,7 @@ export async function renderTagPage(site: CmsSiteRow, baseUrl: string, slug: str
   for (let p = start; p <= Math.min(totalPages, start + window - 1); p++) {
     pages.push({ page: p, url: tagUrl(baseUrl, slug, p), current: p === page });
   }
-  const html = renderDoc(theme.templates.tag, {
+  const props = {
     ...base,
     tag: { name: tag.name, slug: tag.slug, contentCount: tag.contentCount },
     breadcrumbs: [
@@ -797,7 +826,8 @@ export async function renderTagPage(site: CmsSiteRow, baseUrl: string, slug: str
       nextUrl: page < totalPages ? tagUrl(baseUrl, slug, page + 1) : null,
       pages,
     },
-  });
+  };
+  const html = await renderResolvedDoc(site, 'tag', theme.templates.tag, props);
   return { status: 200, html, kind: 'list' };
 }
 

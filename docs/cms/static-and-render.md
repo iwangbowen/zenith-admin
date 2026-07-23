@@ -35,7 +35,7 @@
 
 ## 增量刷新
 
-内容发布/更新/下线/回收、评论过审、搭建页保存等操作自动触发**增量静态刷新**（详情页 + 所属栏目全分页 + 首页 + sitemap + RSS），异步执行不阻塞请求。全量重建走任务中心 `cms-static-build`（静态化管理页提交，带进度/取消）。
+内容发布/更新/下线/回收、评论过审、搭建页保存等操作自动触发**增量静态刷新**（详情页 + 所属栏目全分页 + 首页 + sitemap + RSS），异步执行不阻塞请求。新提交的全量重建统一走任务中心 `cms-publish-build`；`cms-static-build` 仅保留为存量任务兼容类型。
 
 ## 缓存分级与协商缓存
 
@@ -52,7 +52,7 @@ SSR 响应按页面类型分级缓存（v1.6.0+）：
 
 ## 主题与模板解析
 
-主题包注册于 `packages/server/src/cms/themes/registry.ts`，站点 `theme` 字段选择。模板上下文含导航、碎片、广告位、友链、SEO、评论、相关文章等。
+内置可信主题注册于 `packages/server/src/cms/themes/registry.ts`；签名扩展主题使用不可执行的声明式 DSL，由仓库内 React renderer 解释。站点主题只能经主题生命周期接口事务化切换，普通站点更新不能写 `theme`。模板上下文含导航、碎片、广告位、友链、SEO、评论、相关文章等。完整安全模型与发布生命周期见[模板、签名主题包与发布中心](./templates-themes-publishing)。
 
 主题除默认模板集外可注册**变体模板**（`extraListTemplates` / `extraDetailTemplates`，带展示名），default 主题内置 `list-card`（卡片网格）、`list-compact`（紧凑标题）、`detail-plain`（简洁正文）。可选清单通过 `GET /api/cms/sites/themes/{code}/templates` 返回，后台站点/栏目/内容三级下拉动态取。
 

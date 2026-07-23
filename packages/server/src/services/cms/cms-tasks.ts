@@ -8,6 +8,8 @@ import { readFileContent } from '../files/files.service';
 import { isCmsPlatformAdmin } from './cms-access';
 import { assertAllCmsSiteChannelsAccess } from './cms-channels.service';
 import { registerCmsResourceTaskHandler } from './cms-resource-tasks';
+import { registerCmsThemeTaskHandler } from './cms-themes.service';
+import { registerCmsPublishingTaskHandler } from './cms-publishing.service';
 
 /** CMS 任务中心 handler 注册（index.ts 启动流程中、registerSystemTasks 之前调用） */
 export function registerCmsTaskHandlers(): void {
@@ -15,6 +17,8 @@ export function registerCmsTaskHandlers(): void {
   registerCmsCollectTaskHandler();
   registerCmsContentImportTaskHandler();
   registerCmsResourceTaskHandler();
+  registerCmsThemeTaskHandler();
+  registerCmsPublishingTaskHandler();
   registerTaskHandler({
     taskType: 'cms-static-build',
     title: 'CMS 全站静态化',
@@ -31,9 +35,10 @@ export function registerCmsTaskHandlers(): void {
           processed: p.processed,
           total: p.total,
           note: p.note,
+          checkpoint: { ...p.checkpoint },
         });
         return cancelRequested;
-      });
+      }, { resumeAfterKey: typeof ctx.checkpoint?.lastKey === 'string' ? ctx.checkpoint.lastKey : null });
       return { pages: result.pages };
     },
   });
@@ -46,26 +51,43 @@ export function registerCmsTaskHandlers(): void {
     allowConcurrent: false,
     maxAttempts: 1,
     async run(ctx) {
-      const siteIds = ((ctx.payload as { siteIds?: number[] })?.siteIds ?? []).filter((id) => Number.isInteger(id) && id > 0);
+      const siteIds = [...new Set(((ctx.payload as { siteIds?: number[] })?.siteIds ?? [])
+        .filter((id) => Number.isInteger(id) && id > 0))].sort((a, b) => a - b);
       if (siteIds.length === 0) throw new Error('缺少 siteIds 参数');
       let pages = 0;
-      for (let i = 0; i < siteIds.length; i++) {
-        const siteId = siteIds[i];
+      const lastSiteId = Number(ctx.checkpoint?.lastSiteId ?? 0);
+      let completedSiteId = lastSiteId;
+      let completed = siteIds.filter((id) => id <= lastSiteId).length;
+      for (const siteId of siteIds) {
+        if (siteId <= lastSiteId) continue;
+        await ensureCmsStaticBuildAccess(siteId);
+        const resumeAfterKey = Number(ctx.checkpoint?.currentSiteId) === siteId && typeof ctx.checkpoint?.lastKey === 'string'
+          ? ctx.checkpoint.lastKey
+          : null;
         const result = await buildSiteStatic(siteId, async (p) => {
           const { cancelRequested } = await ctx.progress({
-            processed: i,
+            processed: completed,
             total: siteIds.length,
-            note: `站点 ${i + 1}/${siteIds.length}：${p.note}`,
+            note: `站点 ${completed + 1}/${siteIds.length}：${p.note}`,
+            checkpoint: {
+              phase: 'legacy-theme-site',
+              lastSiteId: completedSiteId,
+              currentSiteId: siteId,
+              lastKey: p.checkpoint.lastKey,
+            },
           });
           return cancelRequested;
-        });
+        }, { resumeAfterKey });
         pages += result.pages;
+        completed += 1;
+        completedSiteId = siteId;
         const { cancelRequested } = await ctx.progress({
-          processed: i + 1,
+          processed: completed,
           total: siteIds.length,
-          note: `站点 ${i + 1}/${siteIds.length} 完成`,
+          note: `站点 ${completed}/${siteIds.length} 完成`,
+          checkpoint: { phase: 'legacy-theme-site', lastSiteId: siteId, currentSiteId: null, lastKey: null },
         });
-        if (cancelRequested) return { pages, sites: i + 1 };
+        if (cancelRequested) return { pages, sites: completed };
       }
       return { pages, sites: siteIds.length };
     },

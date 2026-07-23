@@ -10313,6 +10313,8 @@ export interface CmsSite {
   icp: string | null;
   copyright: string | null;
   theme: string;
+  themeRevision: number;
+  templateRefsRevision: number;
   staticMode: CmsStaticMode;
   robots: string | null;
   settings: Record<string, unknown>;
@@ -10387,7 +10389,7 @@ export interface CmsInvalidTemplateRef {
 export interface CmsTemplateHealth {
   /** 被检查的主题（默认站点当前主题，可用 ?theme= 预检目标主题） */
   theme: string;
-  /** 主题本身是否已在代码注册表登记（未登记 = 渲染回退 default 主题） */
+  /** 主题是否为内置可信主题，或该站点已有活动且校验通过的签名主题包 */
   themeRegistered: boolean;
   invalidRefs: CmsInvalidTemplateRef[];
 }
@@ -10410,6 +10412,278 @@ export interface CmsThemeSettingField {
   options?: { label: string; value: string }[];
   /** 分组标题（同组字段渲染在同一 Form.Section 下；空 = 默认分组） */
   group?: string;
+}
+
+// ─── CMS Stage 3：声明式模板 / 签名主题包 / 发布中心 ───────────────────────────
+export type CmsTemplateType =
+  | 'layout'
+  | 'index'
+  | 'list'
+  | 'detail'
+  | 'page'
+  | 'search'
+  | 'tag'
+  | 'not_found'
+  | 'custom_page'
+  | 'block'
+  | 'survey';
+
+export type CmsTemplateSource = 'manual' | 'package';
+
+export type CmsTemplateDslScalar = string | number | boolean | null;
+
+export type CmsTemplateDslValue =
+  | CmsTemplateDslScalar
+  | { bind: string; fallback?: CmsTemplateDslScalar }
+  | { asset: string };
+
+export type CmsTemplateDslNode =
+  | {
+      kind: 'element';
+      tag: string;
+      attrs?: Record<string, CmsTemplateDslValue>;
+      children?: CmsTemplateDslNode[];
+    }
+  | { kind: 'text'; value: CmsTemplateDslValue }
+  | { kind: 'binding'; bind: string; fallback?: CmsTemplateDslScalar }
+  | {
+      kind: 'if';
+      bind: string;
+      children: CmsTemplateDslNode[];
+      fallback?: CmsTemplateDslNode[];
+    }
+  | {
+      kind: 'each';
+      source: string;
+      item?: string;
+      children: CmsTemplateDslNode[];
+      empty?: CmsTemplateDslNode[];
+    }
+  | { kind: 'rich_text'; bind: string; className?: string }
+  | {
+      kind: 'component';
+      name: string;
+      props?: Record<string, CmsTemplateDslValue>;
+    };
+
+export interface CmsTemplateDslDocument {
+  version: 1;
+  root: CmsTemplateDslNode;
+}
+
+export interface CmsTemplateValidationIssue {
+  path: string;
+  code: string;
+  message: string;
+}
+
+export interface CmsTemplateValidationReport {
+  valid: boolean;
+  version: number | null;
+  checksum: string | null;
+  nodeCount: number;
+  maxDepth: number;
+  issues: CmsTemplateValidationIssue[];
+}
+
+export interface CmsTemplate {
+  id: number;
+  siteId: number | null;
+  themeCode: string;
+  type: CmsTemplateType;
+  code: string;
+  name: string;
+  source: CmsTemplateSource;
+  status: 'enabled' | 'disabled';
+  currentVersion: number;
+  activeVersion: number | null;
+  lifecycleRevision: number;
+  description: string | null;
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CmsTemplateVersion {
+  id: number;
+  templateId: number;
+  version: number;
+  dsl: CmsTemplateDslDocument;
+  checksum: string;
+  changeNote: string | null;
+  themePackageId: number | null;
+  createdBy?: number | null;
+  createdByName?: string | null;
+  createdAt: string;
+}
+
+export interface CmsTemplateDetail extends CmsTemplate {
+  versions: CmsTemplateVersion[];
+}
+
+export interface CmsTemplateDiffItem {
+  path: string;
+  change: 'added' | 'removed' | 'changed';
+  before: unknown;
+  after: unknown;
+}
+
+export interface CmsThemePackageTemplateEntry {
+  code: string;
+  name: string;
+  type: CmsTemplateType;
+  path: string;
+}
+
+export interface CmsThemePackageManifest {
+  schemaVersion: 1;
+  code: string;
+  name: string;
+  version: string;
+  engine: { min: number; max: number };
+  templates: CmsThemePackageTemplateEntry[];
+  assets: string[];
+  checksums: Record<string, string>;
+  signingKeyId: string;
+  signature: string;
+}
+
+export interface CmsThemePackageValidationReport {
+  valid: boolean;
+  archiveChecksum: string;
+  manifest: CmsThemePackageManifest | null;
+  fileCount: number;
+  compressedBytes: number;
+  uncompressedBytes: number;
+  issues: CmsTemplateValidationIssue[];
+}
+
+export interface CmsThemePackage {
+  id: number;
+  code: string;
+  name: string;
+  version: string;
+  engineMin: number;
+  engineMax: number;
+  signingKeyId: string;
+  archiveChecksum: string;
+  status: 'validated' | 'disabled';
+  manifest: CmsThemePackageManifest;
+  validationReport: CmsThemePackageValidationReport;
+  activeSiteIds: number[];
+  exportAvailable: boolean;
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CmsThemeImpactReport {
+  siteId: number;
+  themeCode: string;
+  themeAvailable: boolean;
+  activePackageId: number | null;
+  activePackageVersion: string | null;
+  evaluatedPackageId: number | null;
+  evaluatedPackageVersion: string | null;
+  invalidRefs: CmsInvalidTemplateRef[];
+  affectedChannels: number;
+  affectedContents: number;
+  affectedPages: number;
+  pendingRebuildTasks: number;
+  estimatedPaths: number;
+  ranges: string[];
+}
+
+export type CmsPublishTargetType =
+  | 'content'
+  | 'contents'
+  | 'channel'
+  | 'site'
+  | 'theme'
+  | 'template'
+  | 'page';
+
+export type CmsPublishArtifactStatus = 'generated' | 'deleted' | 'failed';
+
+export interface CmsPublishArtifact {
+  id: number;
+  taskId: number;
+  siteId: number;
+  publishChannelId: number | null;
+  targetType: CmsPublishTargetType;
+  contentId: number | null;
+  channelId: number | null;
+  pageId: number | null;
+  themeCode: string | null;
+  themePackageId: number | null;
+  templateId: number | null;
+  templateVersion: number | null;
+  path: string;
+  url: string | null;
+  checksum: string | null;
+  size: number | null;
+  status: CmsPublishArtifactStatus;
+  error: string | null;
+  generatedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CmsPublishingTask extends AsyncTask {
+  siteId: number | null;
+  siteName: string | null;
+  siteIds: number[];
+  siteNames: string[];
+  targetType: CmsPublishTargetType;
+  artifactCount: number;
+  failedArtifactCount: number;
+}
+
+export interface CmsPublishingDetail {
+  task: CmsPublishingTask;
+  items: AsyncTaskItem[];
+  artifacts: CmsPublishArtifact[];
+}
+
+export interface CmsPublishSubmitInput {
+  siteId: number;
+  targetType: CmsPublishTargetType;
+  contentIds?: number[];
+  channelId?: number;
+  pageId?: number;
+  pageSlug?: string;
+  pageIsHome?: boolean;
+  pageRemoved?: boolean;
+  themeCode?: string;
+  themePackageId?: number;
+  templateId?: number;
+  reason?: string;
+  /** 生命周期/引用 fence，仅由可信服务端写入 task payload。 */
+  expectedThemeRevision?: number;
+  expectedTemplateRefsRevision?: number;
+  expectedTemplateLifecycleRevision?: number;
+  expectedDeploymentId?: number | null;
+  contentSnapshots?: CmsContentPublishSnapshot[];
+  deletePaths?: string[];
+}
+
+export interface CmsContentPublishSnapshot {
+  contentId: number;
+  siteId: number;
+  contentVersion: number;
+  channelId: number;
+  channelPath: string;
+  slug: string;
+  bodyPages: number;
+  build: boolean;
+  purged?: boolean;
+  targets: Array<{
+    publishChannelCode: string;
+    paths: string[];
+  }>;
+  refreshChannelIds: number[];
 }
 
 export interface CmsModelField {

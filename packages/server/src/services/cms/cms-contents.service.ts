@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { cmsSites, cmsContents, cmsContentTags, cmsTags, cmsChannels, cmsContentChannels, cmsContentRelations, cmsCollectItems, users } from '../../db/schema';
 import type { CmsContentRow, CmsTagRow } from '../../db/schema';
-import type { DbExecutor } from '../../db/types';
+import type { DbExecutor, DbTransaction } from '../../db/types';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
 import { mergeWhere, escapeLike, withPagination } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
@@ -20,7 +20,7 @@ import { currentUserOrNull } from '../../lib/context';
 import { isWorkflowAuditEnabled, startCmsContentWorkflow, assertNoActiveContentWorkflow } from './cms-workflow.service';
 import { triggerCmsContentWebhook } from './cms-webhook.service';
 import { assertContentTemplateBySite } from './cms-template-refs.service';
-import type { CreateCmsContentInput, UpdateCmsContentInput, CmsContentStatus } from '@zenith/shared';
+import type { AsyncTask, CmsContentPublishSnapshot, CreateCmsContentInput, UpdateCmsContentInput, CmsContentStatus } from '@zenith/shared';
 import {
   assertCompleteCmsBatch, } from './cms-access';
 import { pageOffset } from '../../lib/pagination';
@@ -31,6 +31,40 @@ import { requireCmsScheduledAtMutationPermission } from './cms-publish-permissio
 import {
   assertCmsContentUnlocked, assertCmsContentsUnlocked, assertNoLockedCmsMappedCopies,
 } from './cms-content-lock.service';
+import {
+  bumpCmsTemplateRefsRevision,
+  cmsSiteFencePayload,
+  lockCmsSiteForMutation,
+} from './cms-site-publish-lock.service';
+import { captureCmsContentPublishSnapshot } from './cms-content-publish-snapshot.service';
+import { enqueueCmsPublishOutboxes, insertCmsPublishOutbox, insertCmsSiteRefsRebuildOutbox } from './cms-publish-outbox.service';
+
+async function insertContentPublishOutbox(
+  tx: DbTransaction,
+  site: typeof cmsSites.$inferSelect,
+  row: CmsContentRow,
+  action: string,
+  deletePaths: readonly string[],
+  options?: { build?: boolean; purged?: boolean; refreshChannelIds?: number[]; snapshot?: CmsContentPublishSnapshot },
+): Promise<AsyncTask> {
+  const captured = options?.snapshot
+    ? { snapshot: { ...options.snapshot, build: options.build ?? options.snapshot.build, purged: options.purged ?? options.snapshot.purged } }
+    : await captureCmsContentPublishSnapshot(tx, row, {
+        build: options?.build,
+        purged: options?.purged,
+        refreshChannelIds: options?.refreshChannelIds,
+      });
+  const { expectedTemplateRefsRevision: _refsRevision, ...siteFence } = await cmsSiteFencePayload(tx, site);
+  return insertCmsPublishOutbox(tx, {
+    siteId: row.siteId,
+    targetType: 'content',
+    contentIds: [row.id],
+    contentSnapshots: [captured.snapshot],
+    deletePaths: [...new Set(deletePaths)].sort(),
+    ...siteFence,
+    reason: `内容 ${action} 静态发布`,
+  }, `content:${row.id}:version:${row.version}:${action}`);
+}
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 export function mapCmsContent(row: CmsContentRow, extra?: { channelName?: string | null; tags?: CmsTagRow[]; extraChannelIds?: number[]; relatedIds?: number[]; mappingSourceTitle?: string | null; lockedByName?: string | null }) {
@@ -421,7 +455,9 @@ export async function createCmsContent(data: CreateCmsContentInput) {
     ? await db.query.users.findFirst({ where: eq(users.id, creator.userId), columns: { departmentId: true } })
     : null;
   try {
-    const row = await db.transaction(async (tx) => {
+    const mutation = await db.transaction(async (tx) => {
+      let site = await lockCmsSiteForMutation(tx, data.siteId);
+      await assertContentTemplateBySite(data.siteId, data.detailTemplate);
       const [created] = await tx.insert(cmsContents).values({
         ...rest,
         extend,
@@ -450,9 +486,21 @@ export async function createCmsContent(data: CreateCmsContentInput) {
       await setContentExtraChannels(tx, created.id, data.siteId, created.channelId, extraChannelIds);
       await setContentRelations(tx, created.id, data.siteId, relatedIds);
       await logContentOp(tx, created.id, 'created');
-      return created;
+      let refsTask: AsyncTask | null = null;
+      if (created.detailTemplate) {
+        const revision = await bumpCmsTemplateRefsRevision(tx, data.siteId);
+        site = { ...site, templateRefsRevision: revision };
+        refsTask = await insertCmsSiteRefsRebuildOutbox(
+          tx,
+          site,
+          '内容模板引用创建',
+          `site:${data.siteId}:refs:${revision}`,
+        );
+      }
+      return { created, refsTask };
     });
-    return getCmsContent(row.id);
+    if (mutation.refsTask) await enqueueCmsPublishOutboxes([mutation.refsTask], `内容 #${mutation.created.id} 模板引用创建`);
+    return getCmsContent(mutation.created.id);
   } catch (err) {
     rethrowPgUniqueViolation(err, '同站点下已存在相同 URL 标识的内容');
   }
@@ -492,9 +540,16 @@ export async function updateCmsContent(id: number, data: UpdateCmsContentInput) 
   const nextMediaData = (rest.mediaData ?? current.mediaData ?? {}) as Record<string, unknown>;
   const extendTexts = [...await collectSearchableExtendTexts(modelId, nextExtend), ...mediaDataTexts(nextMediaData)];
   try {
-    await db.transaction(async (tx) => {
+    const mutation = await db.transaction(async (tx) => {
+      let site = await lockCmsSiteForMutation(tx, current.siteId);
+      const [locked] = await tx.select().from(cmsContents).where(eq(cmsContents.id, id)).for('update').limit(1);
+      if (!locked) throw new HTTPException(404, { message: '内容不存在' });
+      await assertContentTemplateBySite(current.siteId, data.detailTemplate);
+      const oldPublish = locked.status === 'published'
+        ? await captureCmsContentPublishSnapshot(tx, locked, { includeExistingArtifacts: true })
+        : null;
       // 更新前自动留档版本快照（可在编辑页回滚）
-      await snapshotContentVersion(tx, current, '更新前留档');
+      await snapshotContentVersion(tx, locked, '更新前留档');
       const versionGuard = expectedVersion !== undefined
         ? and(eq(cmsContents.id, id), eq(cmsContents.version, expectedVersion), isNull(cmsContents.lockedAt))!
         : and(eq(cmsContents.id, id), isNull(cmsContents.lockedAt))!;
@@ -536,7 +591,36 @@ export async function updateCmsContent(id: number, data: UpdateCmsContentInput) 
         await setContentRelations(tx, id, current.siteId, relatedIds);
       }
       await logContentOp(tx, id, 'updated');
+      let refsTask: AsyncTask | null = null;
+      if (data.detailTemplate !== undefined && data.detailTemplate !== locked.detailTemplate) {
+        const revision = await bumpCmsTemplateRefsRevision(tx, current.siteId);
+        site = { ...site, templateRefsRevision: revision };
+        refsTask = await insertCmsSiteRefsRebuildOutbox(
+          tx,
+          site,
+          '内容模板引用更新',
+          `site:${current.siteId}:refs:${revision}`,
+        );
+      }
+      const task = oldPublish
+        ? await insertContentPublishOutbox(
+            tx,
+            site,
+            updated,
+            'update',
+            oldPublish.deletePaths,
+            {
+              build: updated.status === 'published' && !updated.deletedAt && !updated.externalLink?.trim(),
+              refreshChannelIds: [locked.channelId, updated.channelId],
+            },
+          )
+        : null;
+      return { task, refsTask };
     });
+    await enqueueCmsPublishOutboxes(
+      [mutation.task, mutation.refsTask].filter((task): task is AsyncTask => task != null),
+      `内容 #${id} 更新`,
+    );
     return getCmsContent(id);
   } catch (err) {
     rethrowPgUniqueViolation(err, '同站点下已存在相同 URL 标识的内容');
@@ -630,6 +714,27 @@ export interface PublishCmsContentOptions {
   scheduledAtBefore?: Date;
 }
 
+export function assertLockedCmsPublishPreconditions(
+  initialStatus: CmsContentStatus,
+  locked: CmsContentRow,
+  opts?: PublishCmsContentOptions,
+): void {
+  assertCmsContentUnlocked(locked);
+  if (locked.status !== initialStatus || !canTransitionCmsContentStatus(locked.status, 'publish')) {
+    throw new HTTPException(409, { message: '内容发布前置状态已变化，请刷新后重试' });
+  }
+  if (locked.deletedAt || locked.archivedAt) {
+    throw new HTTPException(409, { message: '回收站或已归档内容不可发布' });
+  }
+  if (opts?.scheduledAtBefore && (
+    !locked.scheduledAt
+    || locked.scheduledAt.getTime() > opts.scheduledAtBefore.getTime()
+  )) {
+    throw new HTTPException(409, { message: '定时发布条件已变化，请等待下一轮调度' });
+  }
+  assertContentTypeReady(locked);
+}
+
 /** 发布（直接、审核通过、采集或定时发布均走此原子管道）。 */
 export async function publishCmsContent(id: number, opts?: PublishCmsContentOptions) {
   const row = await ensureCmsContentExists(id);
@@ -641,15 +746,21 @@ export async function publishCmsContent(id: number, opts?: PublishCmsContentOpti
   if (!opts?.fromWorkflow) await assertNoActiveContentWorkflow(id);
   assertContentTypeReady(row);
   if (!canTransitionCmsContentStatus(row.status, 'publish')) {
-    throw new HTTPException(400, { message: `当前状态（${row.status}）不允许此操作` });
+    throw new HTTPException(409, { message: `当前状态（${row.status}）不允许发布` });
   }
   if (row.deletedAt || row.archivedAt) {
     throw new HTTPException(400, { message: '回收站或已归档内容不可发布' });
   }
-  const published = await db.transaction(async (tx) => {
+  const publication = await db.transaction(async (tx) => {
+    const site = await lockCmsSiteForMutation(tx, row.siteId);
+    const [locked] = await tx.select().from(cmsContents).where(eq(cmsContents.id, id)).for('update').limit(1);
+    if (!locked) throw new HTTPException(404, { message: '内容不存在' });
+    assertLockedCmsPublishPreconditions(row.status, locked, opts);
+    if (!opts?.fromWorkflow) await assertNoActiveContentWorkflow(id);
+    const oldPublish = await captureCmsContentPublishSnapshot(tx, locked, { includeExistingArtifacts: true });
     const conditions: SQL[] = [
       eq(cmsContents.id, id),
-      eq(cmsContents.status, row.status),
+      eq(cmsContents.status, locked.status),
       isNull(cmsContents.deletedAt),
       isNull(cmsContents.archivedAt),
       isNull(cmsContents.lockedAt),
@@ -662,13 +773,16 @@ export async function publishCmsContent(id: number, opts?: PublishCmsContentOpti
       publishedAt: new Date(),
       scheduledAt: null,
       rejectReason: null,
+      version: sql`${cmsContents.version} + 1`,
     }).where(and(...conditions)).returning();
     if (!updated) throw new HTTPException(409, { message: '内容已发布或定时发布条件已变化' });
     await logContentOp(tx, id, 'published', opts?.fromWorkflow ? '工作流审核通过' : null);
-    return updated;
+    const task = await insertContentPublishOutbox(tx, site, updated, 'publish', oldPublish.deletePaths, { build: true });
+    return { updated, task };
   });
-  triggerCmsPublishedSideEffects(published);
-  return opts?.skipAccessCheck ? mapCmsContent(published) : getCmsContent(id);
+  await enqueueCmsPublishOutboxes([publication.task], `内容 #${id} 发布`);
+  triggerCmsPublishedSideEffects(publication.updated);
+  return opts?.skipAccessCheck ? mapCmsContent(publication.updated) : getCmsContent(id);
 }
 
 function triggerCmsPublishedSideEffects(row: CmsContentRow): void {
@@ -676,11 +790,7 @@ function triggerCmsPublishedSideEffects(row: CmsContentRow): void {
     awardContributionPoints(row);
   });
   triggerCmsContentWebhook('content.published', row.id);
-  void Promise.all([
-    import('./cms-static.service'),
-    import('./cms-push.service'),
-  ]).then(([staticService, pushService]) => {
-    staticService.triggerContentStaticRefresh(row.id);
+  void import('./cms-push.service').then((pushService) => {
     pushService.triggerAutoPushForContent(row.id);
   });
 }
@@ -706,11 +816,38 @@ export async function rejectCmsContent(id: number, reason: string, opts?: { from
 }
 
 /** 下线 */
-export async function offlineCmsContent(id: number) {
-  const result = await transitionStatus(id, 'offline', { status: 'offline' });
-  await logContentOp(db, id, 'offlined');
+export async function offlineCmsContent(id: number, options?: { skipAccessCheck?: boolean; expireAtBefore?: Date }) {
+  const current = await ensureCmsContentExists(id);
+  if (!options?.skipAccessCheck) {
+    await assertSiteAccess(current.siteId);
+    await assertChannelAccess(current.channelId);
+  }
+  assertCmsContentUnlocked(current);
+  const mutation = await db.transaction(async (tx) => {
+    const site = await lockCmsSiteForMutation(tx, current.siteId);
+    const [locked] = await tx.select().from(cmsContents).where(eq(cmsContents.id, id)).for('update').limit(1);
+    if (!locked) throw new HTTPException(404, { message: '内容不存在' });
+    if (!canTransitionCmsContentStatus(locked.status, 'offline')) {
+      throw new HTTPException(400, { message: `当前状态（${locked.status}）不允许此操作` });
+    }
+    const oldPublish = await captureCmsContentPublishSnapshot(tx, locked, { includeExistingArtifacts: true });
+    const [updated] = await tx.update(cmsContents).set({
+      status: 'offline',
+      version: sql`${cmsContents.version} + 1`,
+    }).where(and(
+      eq(cmsContents.id, id),
+      eq(cmsContents.status, locked.status),
+      isNull(cmsContents.lockedAt),
+      ...(options?.expireAtBefore ? [isNotNull(cmsContents.expireAt), lte(cmsContents.expireAt, options.expireAtBefore)] : []),
+    )).returning();
+    if (!updated) throw new HTTPException(409, { message: '内容状态已变化，请刷新后重试' });
+    await logContentOp(tx, id, 'offlined');
+    const task = await insertContentPublishOutbox(tx, site, updated, 'offline', oldPublish.deletePaths, { build: false });
+    return { updated, task };
+  });
+  await enqueueCmsPublishOutboxes([mutation.task], `内容 #${id} 下线`);
   triggerCmsContentWebhook('content.offline', id);
-  return result;
+  return options?.skipAccessCheck ? mapCmsContent(mutation.updated) : getCmsContent(id);
 }
 
 // ─── 回收站 ───────────────────────────────────────────────────────────────────
@@ -733,24 +870,83 @@ async function assertBatchSiteAccess(ids: number[]): Promise<void> {
 export async function recycleCmsContents(ids: number[]) {
   if (ids.length === 0) return 0;
   await assertBatchSiteAccess(ids);
-  const rows = await db.update(cmsContents)
-    .set({ deletedAt: new Date(), status: 'offline' })
-    .where(and(inArray(cmsContents.id, ids), isNull(cmsContents.deletedAt), isNull(cmsContents.lockedAt)))
-    .returning({ id: cmsContents.id });
-  await logContentOps(db, rows, 'recycled');
-  for (const row of rows) triggerCmsContentWebhook('content.recycled', row.id);
-  return rows.length;
+  const initial = await db.select({ id: cmsContents.id, siteId: cmsContents.siteId }).from(cmsContents)
+    .where(and(inArray(cmsContents.id, ids), isNull(cmsContents.deletedAt)));
+  const mutation = await db.transaction(async (tx) => {
+    const sites = new Map<number, typeof cmsSites.$inferSelect>();
+    for (const siteId of [...new Set(initial.map((row) => row.siteId))].sort((a, b) => a - b)) {
+      sites.set(siteId, await lockCmsSiteForMutation(tx, siteId));
+    }
+    const locked = await tx.select().from(cmsContents)
+      .where(and(inArray(cmsContents.id, ids), isNull(cmsContents.deletedAt), isNull(cmsContents.lockedAt)))
+      .for('update');
+    const oldSnapshots = new Map<number, Awaited<ReturnType<typeof captureCmsContentPublishSnapshot>>>();
+    for (const row of locked) {
+      oldSnapshots.set(row.id, await captureCmsContentPublishSnapshot(tx, row, { includeExistingArtifacts: true }));
+    }
+    const rows = await tx.update(cmsContents)
+      .set({ deletedAt: new Date(), status: 'offline', version: sql`${cmsContents.version} + 1` })
+      .where(and(inArray(cmsContents.id, locked.map((row) => row.id)), isNull(cmsContents.deletedAt), isNull(cmsContents.lockedAt)))
+      .returning();
+    const refsTasks: AsyncTask[] = [];
+    for (const siteId of new Set(rows.filter((row) => row.detailTemplate).map((row) => row.siteId))) {
+      const revision = await bumpCmsTemplateRefsRevision(tx, siteId);
+      const site = { ...sites.get(siteId)!, templateRefsRevision: revision };
+      sites.set(siteId, site);
+      refsTasks.push(await insertCmsSiteRefsRebuildOutbox(
+        tx,
+        site,
+        '回收内容模板引用移除',
+        `site:${siteId}:refs:${revision}`,
+      ));
+    }
+    await logContentOps(tx, rows.map((row) => ({ id: row.id })), 'recycled');
+    const tasks: AsyncTask[] = [];
+    for (const row of rows) {
+      tasks.push(await insertContentPublishOutbox(
+        tx,
+        sites.get(row.siteId)!,
+        row,
+        'recycle',
+        oldSnapshots.get(row.id)?.deletePaths ?? [],
+        { build: false },
+      ));
+    }
+    return { rows, tasks: [...tasks, ...refsTasks] };
+  });
+  await enqueueCmsPublishOutboxes(mutation.tasks, '内容批量回收');
+  for (const row of mutation.rows) triggerCmsContentWebhook('content.recycled', row.id);
+  return mutation.rows.length;
 }
 
 export async function restoreCmsContents(ids: number[]) {
   if (ids.length === 0) return 0;
   await assertBatchSiteAccess(ids);
-  const rows = await db.update(cmsContents)
-    .set({ deletedAt: null, status: 'draft' })
-    .where(and(inArray(cmsContents.id, ids), isNotNull(cmsContents.deletedAt), isNull(cmsContents.lockedAt)))
-    .returning({ id: cmsContents.id });
-  await logContentOps(db, rows, 'restored');
-  return rows.length;
+  const initial = await db.select({ siteId: cmsContents.siteId }).from(cmsContents).where(inArray(cmsContents.id, ids));
+  const mutation = await db.transaction(async (tx) => {
+    const sites = new Map<number, typeof cmsSites.$inferSelect>();
+    for (const siteId of [...new Set(initial.map((row) => row.siteId))].sort((a, b) => a - b)) {
+      sites.set(siteId, await lockCmsSiteForMutation(tx, siteId));
+    }
+    const rows = await tx.update(cmsContents)
+      .set({ deletedAt: null, status: 'draft' })
+      .where(and(inArray(cmsContents.id, ids), isNotNull(cmsContents.deletedAt), isNull(cmsContents.lockedAt)))
+      .returning();
+    const tasks: AsyncTask[] = [];
+    for (const siteId of new Set(rows.filter((row) => row.detailTemplate).map((row) => row.siteId))) {
+      const revision = await bumpCmsTemplateRefsRevision(tx, siteId);
+      tasks.push(await insertCmsSiteRefsRebuildOutbox(
+        tx,
+        { ...sites.get(siteId)!, templateRefsRevision: revision },
+        '恢复内容模板引用',
+        `site:${siteId}:refs:${revision}`,
+      ));
+    }
+    await logContentOps(tx, rows.map((row) => ({ id: row.id })), 'restored');
+    return { count: rows.length, tasks };
+  });
+  await enqueueCmsPublishOutboxes(mutation.tasks, '内容恢复');
+  return mutation.count;
 }
 
 /** 彻底删除（仅限回收站中的内容）；被映射引用的正文先物化到映射行，避免映射内容失源 */
@@ -758,14 +954,29 @@ export async function purgeCmsContents(ids: number[], options?: { skipAccessChec
   if (ids.length === 0) return 0;
   if (options?.skipAccessCheck) await assertCmsContentsUnlocked(ids);
   else await assertBatchSiteAccess(ids);
-  const targets = await db.select({ id: cmsContents.id }).from(cmsContents)
+  const targets = await db.select().from(cmsContents)
     .where(and(inArray(cmsContents.id, ids), isNotNull(cmsContents.deletedAt), isNull(cmsContents.lockedAt)));
   if (targets.length === 0) return 0;
   const targetIds = targets.map((t) => t.id);
-  await db.transaction(async (tx) => {
+  const mutation = await db.transaction(async (tx) => {
+    const sites = new Map<number, typeof cmsSites.$inferSelect>();
+    for (const siteId of [...new Set(targets.map((row) => row.siteId))].sort((a, b) => a - b)) {
+      sites.set(siteId, await lockCmsSiteForMutation(tx, siteId));
+    }
+    const lockedTargets = await tx.select().from(cmsContents).where(and(
+      inArray(cmsContents.id, targetIds),
+      isNotNull(cmsContents.deletedAt),
+      isNull(cmsContents.lockedAt),
+    )).for('update');
+    const captured = new Map<number, Awaited<ReturnType<typeof captureCmsContentPublishSnapshot>>>();
+    for (const row of lockedTargets) {
+      captured.set(row.id, await captureCmsContentPublishSnapshot(tx, row, { includeExistingArtifacts: true }));
+    }
+    const lockedIds = lockedTargets.map((row) => row.id);
+    if (lockedIds.length === 0) return { count: 0, tasks: [] as AsyncTask[] };
     // 物化：把被删来源的正文/扩展字段拷回映射行，映射行转为独立内容
     const mappedRows = await tx.select({ id: cmsContents.id, mappingSourceId: cmsContents.mappingSourceId, lockedAt: cmsContents.lockedAt, lockReason: cmsContents.lockReason })
-      .from(cmsContents).where(inArray(cmsContents.mappingSourceId, targetIds));
+      .from(cmsContents).where(inArray(cmsContents.mappingSourceId, lockedIds));
     const lockedMapped = mappedRows.find((row) => row.lockedAt);
     if (lockedMapped) throw new HTTPException(423, { message: `映射内容 #${lockedMapped.id} 已被持久锁定${lockedMapped.lockReason ? `：${lockedMapped.lockReason}` : ''}` });
     if (mappedRows.length > 0) {
@@ -782,13 +993,39 @@ export async function purgeCmsContents(ids: number[], options?: { skipAccessChec
     }
     await tx.update(cmsCollectItems)
       .set({ contentId: null })
-      .where(inArray(cmsCollectItems.contentId, targetIds));
+      .where(inArray(cmsCollectItems.contentId, lockedIds));
     const tagRows = await tx.select({ tagId: cmsContentTags.tagId }).from(cmsContentTags)
-      .where(inArray(cmsContentTags.contentId, targetIds));
-    await tx.delete(cmsContents).where(inArray(cmsContents.id, targetIds));
+      .where(inArray(cmsContentTags.contentId, lockedIds));
+    await tx.delete(cmsContents).where(inArray(cmsContents.id, lockedIds));
     await recalcTagContentCounts(tx, tagRows.map((t) => t.tagId));
+    const refsTasks: AsyncTask[] = [];
+    for (const siteId of new Set(lockedTargets.filter((row) => row.detailTemplate).map((row) => row.siteId))) {
+      const revision = await bumpCmsTemplateRefsRevision(tx, siteId);
+      const site = { ...sites.get(siteId)!, templateRefsRevision: revision };
+      sites.set(siteId, site);
+      refsTasks.push(await insertCmsSiteRefsRebuildOutbox(
+        tx,
+        site,
+        '彻底删除内容模板引用',
+        `site:${siteId}:refs:${revision}`,
+      ));
+    }
+    const tasks: AsyncTask[] = [];
+    for (const row of lockedTargets) {
+      const old = captured.get(row.id)!;
+      tasks.push(await insertContentPublishOutbox(
+        tx,
+        sites.get(row.siteId)!,
+        row,
+        'purge',
+        old.deletePaths,
+        { build: false, purged: true, snapshot: old.snapshot },
+      ));
+    }
+    return { count: lockedIds.length, tasks: [...tasks, ...refsTasks] };
   });
-  return targetIds.length;
+  await enqueueCmsPublishOutboxes(mutation.tasks, '内容彻底删除');
+  return mutation.count;
 }
 
 /** 回滚内容到指定版本（复用更新管道：重算检索向量并留档） */
@@ -806,32 +1043,56 @@ export async function restoreCmsContentToVersion(contentId: number, versionId: n
 }
 
 // ─── 归档（前台详情保留，不参与列表聚合；仅已发布/已下线内容可归档）──────────────
-export async function archiveCmsContents(ids: number[]) {
+async function setCmsContentsArchived(ids: number[], archived: boolean): Promise<number> {
   if (ids.length === 0) return 0;
   await assertBatchSiteAccess(ids);
-  const rows = await db.update(cmsContents)
-    .set({ archivedAt: new Date() })
-    .where(and(
+  const initial = await db.select().from(cmsContents).where(inArray(cmsContents.id, ids));
+  const mutation = await db.transaction(async (tx) => {
+    const sites = new Map<number, typeof cmsSites.$inferSelect>();
+    for (const siteId of [...new Set(initial.map((row) => row.siteId))].sort((a, b) => a - b)) {
+      sites.set(siteId, await lockCmsSiteForMutation(tx, siteId));
+    }
+    const archivedCondition = archived ? isNull(cmsContents.archivedAt) : isNotNull(cmsContents.archivedAt);
+    const locked = await tx.select().from(cmsContents).where(and(
       inArray(cmsContents.id, ids),
       isNull(cmsContents.deletedAt),
-      isNull(cmsContents.archivedAt),
+      archivedCondition,
       isNull(cmsContents.lockedAt),
-      inArray(cmsContents.status, ['published', 'offline']),
-    ))
-    .returning({ id: cmsContents.id });
-  await logContentOps(db, rows, 'archived');
-  return rows.length;
+      ...(archived ? [inArray(cmsContents.status, ['published', 'offline'])] : []),
+    )).for('update');
+    if (!locked.length) return { rows: [] as CmsContentRow[], tasks: [] as AsyncTask[] };
+    const oldSnapshots = new Map<number, Awaited<ReturnType<typeof captureCmsContentPublishSnapshot>>>();
+    for (const row of locked.filter((item) => item.status === 'published')) {
+      oldSnapshots.set(row.id, await captureCmsContentPublishSnapshot(tx, row, { includeExistingArtifacts: true }));
+    }
+    const rows = await tx.update(cmsContents)
+      .set({ archivedAt: archived ? new Date() : null, version: sql`${cmsContents.version} + 1` })
+      .where(inArray(cmsContents.id, locked.map((row) => row.id)))
+      .returning();
+    await logContentOps(tx, rows.map((row) => ({ id: row.id })), archived ? 'archived' : 'unarchived');
+    const tasks: AsyncTask[] = [];
+    for (const row of rows.filter((item) => oldSnapshots.has(item.id))) {
+      tasks.push(await insertContentPublishOutbox(
+        tx,
+        sites.get(row.siteId)!,
+        row,
+        archived ? 'archive' : 'unarchive',
+        oldSnapshots.get(row.id)!.deletePaths,
+        { build: true },
+      ));
+    }
+    return { rows, tasks };
+  });
+  await enqueueCmsPublishOutboxes(mutation.tasks, archived ? '内容归档' : '内容取消归档');
+  return mutation.rows.length;
+}
+
+export async function archiveCmsContents(ids: number[]) {
+  return setCmsContentsArchived(ids, true);
 }
 
 export async function unarchiveCmsContents(ids: number[]) {
-  if (ids.length === 0) return 0;
-  await assertBatchSiteAccess(ids);
-  const rows = await db.update(cmsContents)
-    .set({ archivedAt: null })
-    .where(and(inArray(cmsContents.id, ids), isNotNull(cmsContents.archivedAt), isNull(cmsContents.lockedAt)))
-    .returning({ id: cmsContents.id });
-  await logContentOps(db, rows, 'unarchived');
-  return rows.length;
+  return setCmsContentsArchived(ids, false);
 }
 
 // ─── 前台查询（渲染上下文使用）────────────────────────────────────────────────
@@ -1006,33 +1267,73 @@ export function canAutoOfflineCmsContent(
 
 /** 过期下线：expireAt 到期的已发布内容自动下线；返回受影响内容 id（供静态刷新） */
 export async function offlineExpiredCmsContents(now = new Date()): Promise<number[]> {
-  const rows = await db.update(cmsContents)
-    .set({ status: 'offline' })
-    .where(and(
+  const rows = await db.select({ id: cmsContents.id }).from(cmsContents).where(and(
       isNotNull(cmsContents.expireAt),
       lte(cmsContents.expireAt, now),
       eq(cmsContents.status, 'published'),
       isNull(cmsContents.deletedAt),
       isNull(cmsContents.lockedAt),
-    ))
-    .returning({ id: cmsContents.id });
-  return rows.map((r) => r.id);
+    ));
+  const completed: number[] = [];
+  for (const row of rows) {
+    try {
+      await offlineCmsContent(row.id, { skipAccessCheck: true, expireAtBefore: now });
+      completed.push(row.id);
+    } catch (error) {
+      if (!(error instanceof HTTPException) || error.status !== 409) throw error;
+    }
+  }
+  return completed;
 }
 
 /** 置顶到期自动取消：topExpireAt 到期的置顶内容取消置顶；返回受影响内容 id（供静态刷新） */
 export async function cancelExpiredTopContents(now = new Date()): Promise<number[]> {
-  const rows = await db.update(cmsContents)
-    .set({ isTop: false, topWeight: 0, topExpireAt: null })
-    .where(and(
+  const initial = await db.select().from(cmsContents).where(and(
       eq(cmsContents.isTop, true),
       isNotNull(cmsContents.topExpireAt),
       lte(cmsContents.topExpireAt, now),
       isNull(cmsContents.deletedAt),
       isNull(cmsContents.lockedAt),
-    ))
-    .returning({ id: cmsContents.id });
-  await logContentOps(db, rows, 'updated', '置顶到期自动取消');
-  return rows.map((r) => r.id);
+    ));
+  if (!initial.length) return [];
+  const mutation = await db.transaction(async (tx) => {
+    const sites = new Map<number, typeof cmsSites.$inferSelect>();
+    for (const siteId of [...new Set(initial.map((row) => row.siteId))].sort((a, b) => a - b)) {
+      sites.set(siteId, await lockCmsSiteForMutation(tx, siteId));
+    }
+    const locked = await tx.select().from(cmsContents).where(and(
+      inArray(cmsContents.id, initial.map((row) => row.id)),
+      eq(cmsContents.isTop, true),
+      isNotNull(cmsContents.topExpireAt),
+      lte(cmsContents.topExpireAt, now),
+      isNull(cmsContents.deletedAt),
+      isNull(cmsContents.lockedAt),
+    )).for('update');
+    if (!locked.length) return { rows: [] as CmsContentRow[], tasks: [] as AsyncTask[] };
+    const oldSnapshots = new Map<number, Awaited<ReturnType<typeof captureCmsContentPublishSnapshot>>>();
+    for (const row of locked.filter((item) => item.status === 'published')) {
+      oldSnapshots.set(row.id, await captureCmsContentPublishSnapshot(tx, row, { includeExistingArtifacts: true }));
+    }
+    const rows = await tx.update(cmsContents)
+      .set({ isTop: false, topWeight: 0, topExpireAt: null, version: sql`${cmsContents.version} + 1` })
+      .where(inArray(cmsContents.id, locked.map((row) => row.id)))
+      .returning();
+    await logContentOps(tx, rows.map((row) => ({ id: row.id })), 'updated', '置顶到期自动取消');
+    const tasks: AsyncTask[] = [];
+    for (const row of rows.filter((item) => oldSnapshots.has(item.id))) {
+      tasks.push(await insertContentPublishOutbox(
+        tx,
+        sites.get(row.siteId)!,
+        row,
+        'top-expired',
+        oldSnapshots.get(row.id)!.deletePaths,
+        { build: true },
+      ));
+    }
+    return { rows, tasks };
+  });
+  await enqueueCmsPublishOutboxes(mutation.tasks, '内容置顶到期');
+  return mutation.rows.map((row) => row.id);
 }
 
 // ═══ P3 Batch1 ════════════════════════════════════════════════════════════════
@@ -1061,24 +1362,45 @@ export async function batchMoveCmsContents(ids: number[], channelId: number): Pr
   if (ids.length === 0) return 0;
   await assertBatchSiteAccess(ids);
   await assertChannelAccess(channelId);
-  return db.transaction(async (tx) => {
-    const rows = await tx.select({
-      id: cmsContents.id,
-      siteId: cmsContents.siteId,
-    }).from(cmsContents).where(inArray(cmsContents.id, ids));
+  const mutation = await db.transaction(async (tx) => {
+    const rows = await tx.select().from(cmsContents).where(inArray(cmsContents.id, ids));
     assertCompleteCmsBatch(ids, rows.map((row) => row.id), '内容');
     const siteIds = new Set(rows.map((r) => r.siteId));
     if (siteIds.size > 1) throw new HTTPException(400, { message: '仅支持同站点内容批量移动' });
     const siteId = [...siteIds][0];
     if (siteId === undefined) return 0;
+    let site = await lockCmsSiteForMutation(tx, siteId);
+    const oldSnapshots = new Map<number, Awaited<ReturnType<typeof captureCmsContentPublishSnapshot>>>();
+    for (const row of rows.filter((item) => item.status === 'published')) {
+      oldSnapshots.set(row.id, await captureCmsContentPublishSnapshot(tx, row, { includeExistingArtifacts: true }));
+    }
     const channel = await ensureChannelForContent(siteId, channelId);
     const updated = await tx.update(cmsContents)
-      .set({ channelId, modelId: channel.modelId ?? null })
+      .set({ channelId, modelId: channel.modelId ?? null, version: sql`${cmsContents.version} + 1` })
       .where(and(inArray(cmsContents.id, rows.map((r) => r.id)), isNull(cmsContents.lockedAt)))
-      .returning({ id: cmsContents.id });
-    await logContentOps(tx, updated, 'moved', `移动到栏目「${channel.name}」`);
-    return updated.length;
+      .returning();
+    const revision = await bumpCmsTemplateRefsRevision(tx, siteId);
+    site = { ...site, templateRefsRevision: revision };
+    await logContentOps(tx, updated.map((row) => ({ id: row.id })), 'moved', `移动到栏目「${channel.name}」`);
+    const tasks: AsyncTask[] = [];
+    for (const row of updated.filter((item) => oldSnapshots.has(item.id))) {
+      const old = oldSnapshots.get(row.id)!;
+      tasks.push(await insertContentPublishOutbox(tx, site, row, 'move', old.deletePaths, {
+        build: true,
+        refreshChannelIds: [old.snapshot.channelId, row.channelId],
+      }));
+    }
+    tasks.push(await insertCmsSiteRefsRebuildOutbox(
+      tx,
+      site,
+      '内容跨栏目模板继承更新',
+      `site:${siteId}:refs:${revision}`,
+    ));
+    return { count: updated.length, tasks };
   });
+  if (typeof mutation === 'number') return mutation;
+  await enqueueCmsPublishOutboxes(mutation.tasks, '内容批量移动');
+  return mutation.count;
 }
 
 /** 批量设置属性（置顶/推荐/热门，仅更新传入的字段） */

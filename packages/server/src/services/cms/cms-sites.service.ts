@@ -1,4 +1,4 @@
-import { eq, asc, and, or, like, inArray, type SQL } from 'drizzle-orm';
+import { eq, asc, and, or, like, inArray, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { cmsSites, cmsChannels, cmsSiteUsers, users } from '../../db/schema';
@@ -14,6 +14,9 @@ import {
   mergeCmsSiteSettings, normalizeNewCmsSiteSettings, redactCmsSiteSettings,
 } from './cms-site-settings';
 import { cmsCdnPurgeHostAllowlist, validateCdnPurgeEndpoint } from './cms-cdn-policy';
+import { isThemeRegistered } from '../../cms/themes/registry';
+import { lockCmsSiteForMutation } from './cms-site-publish-lock.service';
+import { enqueueCmsPublishOutboxes, insertCmsSiteRefsRebuildOutbox } from './cms-publish-outbox.service';
 
 function assertCdnPurgeSetting(settings: Record<string, unknown>): void {
   const rawUrl = typeof settings.cdnPurgeUrl === 'string' ? settings.cdnPurgeUrl.trim() : '';
@@ -163,6 +166,8 @@ export function mapCmsSite(row: CmsSiteRow) {
     icp: row.icp ?? null,
     copyright: row.copyright ?? null,
     theme: row.theme,
+    themeRevision: row.themeRevision,
+    templateRefsRevision: row.templateRefsRevision,
     staticMode: row.staticMode,
     robots: row.robots ?? null,
     settings: redactCmsSiteSettings(row.settings),
@@ -240,8 +245,11 @@ export async function createCmsSite(data: CreateCmsSiteInput) {
   const user = currentUser();
   const platformAdmin = isCmsPlatformAdmin(user);
   const settings = normalizeNewCmsSiteSettings(data.settings as Record<string, unknown> | undefined);
+  if (!isThemeRegistered(data.theme ?? 'default')) {
+    throw new HTTPException(400, { message: '新站点只能先选择内置主题；签名主题包请在站点创建后通过主题管理激活' });
+  }
   assertCdnPurgeSetting(settings);
-  assertSiteTemplateSettings(data.theme ?? 'default', settings);
+  await assertSiteTemplateSettings(data.theme ?? 'default', settings);
   assertSiteThemeConfig(data.theme ?? 'default', settings);
   try {
     const row = await db.transaction(async (tx) => {
@@ -275,32 +283,68 @@ export async function updateCmsSite(id: number, data: UpdateCmsSiteInput) {
   const settings = data.settings === undefined
     ? current.settings
     : mergeCmsSiteSettings(current.settings, data.settings as Record<string, unknown>);
-  // 模板引用/主题参数校验：提交的配置须匹配生效主题（theme 未变更时取当前值）
+  // 模板引用/主题参数校验：普通站点更新始终按当前生效主题校验，theme 只允许生命周期接口修改。
   if (data.settings !== undefined) {
     assertCdnPurgeSetting(settings);
-    const theme = data.theme ?? current.theme;
-    assertSiteTemplateSettings(theme, settings);
-    assertSiteThemeConfig(theme, settings);
+    await assertSiteTemplateSettings(current.theme, settings, id);
+    assertSiteThemeConfig(current.theme, settings);
   }
   try {
     const row = await db.transaction(async (tx) => {
+      const locked = await lockCmsSiteForMutation(tx, id);
+      const lockedSettings = data.settings === undefined
+        ? locked.settings
+        : mergeCmsSiteSettings(locked.settings, data.settings as Record<string, unknown>);
+      if (data.settings !== undefined) {
+        assertCdnPurgeSetting(lockedSettings);
+        await assertSiteTemplateSettings(locked.theme, lockedSettings, id);
+        assertSiteThemeConfig(locked.theme, lockedSettings);
+      }
       if (data.isDefault) {
         await tx.update(cmsSites).set({ isDefault: false }).where(and(
           eq(cmsSites.isDefault, true),
         ));
       }
-      const patch: Record<string, unknown> = { ...data };
-      if (data.settings !== undefined) patch.settings = settings;
+      const patch: Record<string, unknown> = {
+        name: data.name,
+        code: data.code,
+        isDefault: data.isDefault,
+        title: data.title,
+        keywords: data.keywords,
+        description: data.description,
+        logo: data.logo,
+        favicon: data.favicon,
+        icp: data.icp,
+        copyright: data.copyright,
+        staticMode: data.staticMode,
+        robots: data.robots,
+        status: data.status,
+        sort: data.sort,
+        remark: data.remark,
+      };
+      if (data.settings !== undefined) {
+        patch.settings = lockedSettings;
+        patch.templateRefsRevision = sql`${cmsSites.templateRefsRevision} + 1`;
+      }
       if (data.domain !== undefined) patch.domain = data.domain?.trim() ? data.domain.trim().toLowerCase() : null;
       if (data.aliasDomains !== undefined) patch.aliasDomains = (data.aliasDomains ?? []).map((d) => d.trim().toLowerCase()).filter(Boolean);
       const [updated] = await tx.update(cmsSites).set(patch).where(and(
         eq(cmsSites.id, id),
       )).returning();
       if (!updated) throw new HTTPException(404, { message: '站点不存在' });
-      return updated;
+      const task = data.settings !== undefined
+        ? await insertCmsSiteRefsRebuildOutbox(
+            tx,
+            updated,
+            '站点模板引用配置更新',
+            `site:${id}:refs:${updated.templateRefsRevision}`,
+          )
+        : null;
+      return { updated, task };
     });
     invalidateSiteCache();
-    return mapCmsSite(row);
+    if (row.task) await enqueueCmsPublishOutboxes([row.task], `站点 #${id} 配置更新`);
+    return mapCmsSite(row.updated);
   } catch (err) {
     rethrowPgUniqueViolation(err, '站点标识或域名已存在');
   }
@@ -344,9 +388,12 @@ export async function enableSiteAnalytics(siteId: number) {
     status: 'enabled',
     remark: `CMS 站点「${site.name}」自动创建`,
   });
-  await db.update(cmsSites)
-    .set({ settings: { ...settings, analyticsSiteKey: analyticsSite.siteKey } })
-    .where(eq(cmsSites.id, siteId));
+  await db.transaction(async (tx) => {
+    const locked = await lockCmsSiteForMutation(tx, siteId);
+    await tx.update(cmsSites)
+      .set({ settings: { ...(locked.settings ?? {}), analyticsSiteKey: analyticsSite.siteKey } })
+      .where(eq(cmsSites.id, siteId));
+  });
   invalidateSiteCache();
   return { siteKey: analyticsSite.siteKey, created: true };
 }

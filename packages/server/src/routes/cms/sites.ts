@@ -7,7 +7,8 @@ import {
   ok, okPaginated, okMsg, IdParam, okBody, errBody,
 } from '../../lib/openapi-schemas';
 import { CmsSiteDTO, CmsThemeDTO, CmsThemeTemplatesDTO, CmsTemplateHealthDTO, CmsThemeSettingFieldDTO, CmsSiteUsersDTO, CmsSiteImportResultDTO } from '../../lib/openapi-dtos';
-import { listThemes, listThemeTemplates, getThemeSettingsSchema } from '../../cms/themes/registry';
+import { getThemeSettingsSchema, isThemeRegistered } from '../../cms/themes/registry';
+import { listCmsAvailableThemes, listCmsThemeTemplateOptions } from '../../services/cms/cms-templates.service';
 import {
   listCmsSites, listAllCmsSites, getCmsSite, createCmsSite, updateCmsSite, deleteCmsSite,
   ensureCmsSiteExists, mapCmsSite, getCmsSiteUsers, setCmsSiteUsers, enableSiteAnalytics, assertSiteAccess,
@@ -53,9 +54,10 @@ const themesRoute = defineOpenAPIRoute({
     tags: ['CMS-站点管理'], summary: '可用主题列表',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'cms:site:list' })] as const,
+    request: { query: z.object({ siteId: z.coerce.number().int().positive().optional() }) },
     responses: { ...commonErrorResponses, ...ok(z.array(CmsThemeDTO), '主题列表') },
   }),
-  handler: (c) => c.json(okBody(listThemes()), 200),
+  handler: async (c) => c.json(okBody(await listCmsAvailableThemes(c.req.valid('query').siteId)), 200),
 });
 
 const themeTemplatesRoute = defineOpenAPIRoute({
@@ -64,10 +66,16 @@ const themeTemplatesRoute = defineOpenAPIRoute({
     tags: ['CMS-站点管理'], summary: '主题可选模板清单（站点默认模板/栏目/内容模板下拉）',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'cms:site:list' })] as const,
-    request: { params: z.object({ code: z.string().min(1) }) },
+    request: {
+      params: z.object({ code: z.string().min(1) }),
+      query: z.object({ siteId: z.coerce.number().int().positive().optional() }),
+    },
     responses: { ...commonErrorResponses, ...ok(CmsThemeTemplatesDTO, '模板清单') },
   }),
-  handler: (c) => c.json(okBody(listThemeTemplates(c.req.valid('param').code)), 200),
+  handler: async (c) => c.json(okBody(await listCmsThemeTemplateOptions(
+    c.req.valid('param').code,
+    c.req.valid('query').siteId,
+  )), 200),
 });
 
 const themeSettingsSchemaRoute = defineOpenAPIRoute({
@@ -79,7 +87,10 @@ const themeSettingsSchemaRoute = defineOpenAPIRoute({
     request: { params: z.object({ code: z.string().min(1) }) },
     responses: { ...commonErrorResponses, ...ok(z.array(CmsThemeSettingFieldDTO), '参数声明') },
   }),
-  handler: (c) => c.json(okBody(getThemeSettingsSchema(c.req.valid('param').code)), 200),
+  handler: (c) => {
+    const { code } = c.req.valid('param');
+    return c.json(okBody(isThemeRegistered(code) ? getThemeSettingsSchema(code) : []), 200);
+  },
 });
 
 const templateHealthRoute = defineOpenAPIRoute({

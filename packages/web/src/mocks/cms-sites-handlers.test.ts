@@ -57,6 +57,7 @@ describe('CMS site MSW handlers', () => {
       code: existing.code,
       name: existing.name,
     });
+
     expect(unchanged.status).toBe(200);
 
     const code = `review-site-${Date.now()}`;
@@ -75,6 +76,25 @@ describe('CMS site MSW handlers', () => {
       data: null,
     });
     expect(mockCmsSites.find((site) => site.id === created.body.data.id)?.code).toBe(code);
+  });
+
+  it('keeps theme changes behind the dedicated lifecycle API', async () => {
+    const existing = mockCmsSites[0]!;
+    const originalTheme = existing.theme;
+    const updated = await call('PUT', `/api/cms/sites/${existing.id}`, {
+      name: `${existing.name} renamed`,
+      theme: 'uploaded-theme',
+    });
+    expect(updated.status).toBe(200);
+    expect(existing.theme).toBe(originalTheme);
+
+    const created = await call('POST', '/api/cms/sites', {
+      name: '非法主题站点',
+      code: `invalid-theme-${Date.now()}`,
+      theme: 'uploaded-theme',
+    });
+    expect(created.status).toBe(400);
+    expect(created.body.message).toContain('内置主题');
   });
 
   it('documents the safe draft policy in the import response', async () => {

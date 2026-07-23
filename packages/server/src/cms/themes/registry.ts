@@ -29,7 +29,13 @@ export function getTheme(code: string): CmsTheme {
     warnOnce(`theme:${code}`, `[CMS] 主题 "${code}" 未在注册表登记，已回退 "${defaultTheme.code}" 主题`);
     return defaultTheme;
   }
+
   return theme;
+}
+
+/** DSL 主题只借用仓库内可信组件作为可选页面兜底，不应产生“主题未注册”误报。 */
+export function getBuiltinThemeFallback(code: string): CmsTheme {
+  return themes.get(code) ?? defaultTheme;
 }
 
 export function listThemes(): { code: string; label: string }[] {
@@ -46,7 +52,8 @@ export function isThemeRegistered(code: string): boolean {
  * 与运行时行为一致：未注册主题按 getTheme 的回退结果（default 主题）判定。
  */
 export function isTemplateRegistered(themeCode: string, kind: 'list' | 'detail', name: string): boolean {
-  const theme = getTheme(themeCode);
+  const theme = themes.get(themeCode);
+  if (!theme) return false;
   const variants = kind === 'list' ? theme.extraListTemplates : theme.extraDetailTemplates;
   return Boolean(variants?.[name]);
 }
@@ -93,7 +100,7 @@ export function listThemeTemplates(code: string): {
 
 /** 主题参数声明（后台「主题参数」面板动态表单用） */
 export function getThemeSettingsSchema(code: string): CmsThemeSettingField[] {
-  return getTheme(code).settingsSchema ?? [];
+  return themes.get(code)?.settingsSchema ?? [];
 }
 
 /** 按字段类型宽容解析单个主题参数值；非法值回退 undefined（走默认值） */

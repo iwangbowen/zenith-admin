@@ -11,6 +11,9 @@ import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { assertSiteAccess } from './cms-sites.service';
 import { ensureCmsSiteExists } from './cms-sites.service';
 import { sanitizeCmsPageBlocks } from './cms-page-blocks';
+import type { DbExecutor } from '../../db/types';
+import { bumpCmsTemplateRefsRevision, lockCmsSiteForMutation } from './cms-site-publish-lock.service';
+import { enqueueCmsPublishOutboxes, insertCmsSiteRefsRebuildOutbox } from './cms-publish-outbox.service';
 
 export function mapCmsPage(row: CmsPageRow) {
   return {
@@ -67,10 +70,10 @@ export interface CmsPageInput {
   remark?: string | null;
 }
 
-async function clearOtherHome(siteId: number, exceptId?: number) {
+async function clearOtherHome(executor: DbExecutor, siteId: number, exceptId?: number) {
   const conds = [eq(cmsPages.siteId, siteId), eq(cmsPages.isHome, true)];
   if (exceptId) conds.push(ne(cmsPages.id, exceptId));
-  await db.update(cmsPages).set({ isHome: false }).where(and(...conds));
+  await executor.update(cmsPages).set({ isHome: false }).where(and(...conds));
 }
 
 export async function createCmsPage(input: CmsPageInput) {
@@ -79,9 +82,21 @@ export async function createCmsPage(input: CmsPageInput) {
   if (!SLUG_RE.test(input.slug)) throw new HTTPException(400, { message: 'slug 仅允许小写字母/数字/中划线' });
   const blocks = input.blocks === undefined ? undefined : sanitizeCmsPageBlocks(input.blocks);
   try {
-    if (input.isHome) await clearOtherHome(input.siteId);
-    const [created] = await db.insert(cmsPages).values({ ...input, ...(blocks ? { blocks } : {}) }).returning();
-    return mapCmsPage(created);
+    const mutation = await db.transaction(async (tx) => {
+      const site = await lockCmsSiteForMutation(tx, input.siteId);
+      if (input.isHome) await clearOtherHome(tx, input.siteId);
+      const [row] = await tx.insert(cmsPages).values({ ...input, ...(blocks ? { blocks } : {}) }).returning();
+      const revision = await bumpCmsTemplateRefsRevision(tx, input.siteId);
+      const task = await insertCmsSiteRefsRebuildOutbox(
+        tx,
+        { ...site, templateRefsRevision: revision },
+        '页面结构创建',
+        `site:${input.siteId}:refs:${revision}`,
+      );
+      return { row, task };
+    });
+    await enqueueCmsPublishOutboxes([mutation.task], `页面 #${mutation.row.id} 创建`);
+    return mapCmsPage(mutation.row);
   } catch (err) {
     rethrowPgUniqueViolation(err, '同站点下已存在相同 slug 的页面');
   }
@@ -95,14 +110,26 @@ export async function updateCmsPage(id: number, input: Partial<CmsPageInput>) {
   const blocks = input.blocks === undefined ? undefined : sanitizeCmsPageBlocks(input.blocks);
   const { siteId: _ignored, ...rest } = input;
   try {
-    if (rest.isHome) await clearOtherHome(current.siteId, id);
-    const [updated] = await db.update(cmsPages).set({
-      ...rest,
-      ...(blocks ? { blocks } : {}),
-    }).where(and(
-      eq(cmsPages.id, id),
-    )).returning();
-    return mapCmsPage(updated);
+    const mutation = await db.transaction(async (tx) => {
+      const site = await lockCmsSiteForMutation(tx, current.siteId);
+      if (rest.isHome) await clearOtherHome(tx, current.siteId, id);
+      const [row] = await tx.update(cmsPages).set({
+        ...rest,
+        ...(blocks ? { blocks } : {}),
+      }).where(and(
+        eq(cmsPages.id, id),
+      )).returning();
+      const revision = await bumpCmsTemplateRefsRevision(tx, current.siteId);
+      const task = await insertCmsSiteRefsRebuildOutbox(
+        tx,
+        { ...site, templateRefsRevision: revision },
+        '页面结构更新',
+        `site:${current.siteId}:refs:${revision}`,
+      );
+      return { row, task };
+    });
+    await enqueueCmsPublishOutboxes([mutation.task], `页面 #${id} 更新`);
+    return mapCmsPage(mutation.row);
   } catch (err) {
     rethrowPgUniqueViolation(err, '同站点下已存在相同 slug 的页面');
   }
@@ -112,7 +139,19 @@ export async function deleteCmsPage(id: number) {
   const [current] = await db.select().from(cmsPages).where(eq(cmsPages.id, id)).limit(1);
   if (!current) throw new HTTPException(404, { message: '页面不存在' });
   await assertSiteAccess(current.siteId);
-  await db.delete(cmsPages).where(eq(cmsPages.id, id));
+  const mutation = await db.transaction(async (tx) => {
+    const site = await lockCmsSiteForMutation(tx, current.siteId);
+    await tx.delete(cmsPages).where(eq(cmsPages.id, id));
+    const revision = await bumpCmsTemplateRefsRevision(tx, current.siteId);
+    const task = await insertCmsSiteRefsRebuildOutbox(
+      tx,
+      { ...site, templateRefsRevision: revision },
+      '页面结构删除',
+      `site:${current.siteId}:refs:${revision}`,
+    );
+    return { task };
+  });
+  await enqueueCmsPublishOutboxes([mutation.task], `页面 #${id} 删除`);
   return current;
 }
 

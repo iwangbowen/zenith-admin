@@ -19,6 +19,7 @@ import {
   mockCmsPages, getNextCmsPageId,
   mockCmsPolls, getNextCmsPollId, mockCmsPollVotes,
 } from '../data/cms';
+import { mockCmsPublishingTasks, mockCmsTemplates, mockCmsThemePackages } from '../data/cms-stage3';
 import { createProgressingMockTask } from './async-tasks';
 import { mockDateTime, mockDate } from '../utils/date';
 
@@ -107,20 +108,53 @@ function hasInvalidMockFormPattern(fields: unknown): boolean {
 export const cmsHandlers = [
   // ═══ 站点 ═══════════════════════════════════════════════════════════════
   http.get('/api/cms/sites/all', () => okJson(mockCmsSites.filter((s) => s.status === 'enabled').map(redactMockSite))),
-  http.get('/api/cms/sites/themes', () => okJson([
-    { code: 'default', label: '默认主题' },
-    { code: 'docs', label: '文档主题' },
-  ])),
+  http.get('/api/cms/sites/themes', ({ request }) => {
+    const siteId = Number(new URL(request.url).searchParams.get('siteId')) || undefined;
+    return okJson([
+      { code: 'default', label: '默认主题' },
+      { code: 'docs', label: '文档主题' },
+      ...mockCmsThemePackages
+        .filter((item) => siteId && item.activeSiteIds.includes(siteId))
+        .map((item) => ({ code: item.code, label: `${item.name} ${item.version}` })),
+    ]);
+  }),
   // 主题可选模板清单（与 packages/server/src/cms/themes/default 注册的变体保持一致）
-  http.get('/api/cms/sites/themes/:code/templates', () => okJson({
-    list: [
-      { name: 'list-card', label: '卡片网格（产品/案例）' },
-      { name: 'list-compact', label: '紧凑标题（公告/文件）' },
-    ],
-    detail: [
-      { name: 'detail-plain', label: '简洁正文（公告/政策）' },
-    ],
-  })),
+  http.get('/api/cms/sites/themes/:code/templates', ({ params, request }) => {
+    const siteId = Number(new URL(request.url).searchParams.get('siteId')) || undefined;
+    const code = String(params.code);
+    const site = mockCmsSites.find((item) => item.id === siteId);
+    const activePackage = mockCmsThemePackages.find((item) =>
+      item.code === code
+      && item.status === 'validated'
+      && item.activeSiteIds.includes(siteId ?? 0)
+      && site?.theme === code);
+    if (activePackage) {
+      return okJson({
+        list: activePackage.manifest.templates.filter((item) => item.type === 'list').map((item) => ({ name: item.code, label: item.name })),
+        detail: activePackage.manifest.templates.filter((item) => item.type === 'detail').map((item) => ({ name: item.code, label: item.name })),
+      });
+    }
+    if (!['default', 'docs'].includes(code)) return okJson({ list: [], detail: [] });
+    const dynamic = mockCmsTemplates.filter((item) =>
+      item.themeCode === code
+      && item.source === 'manual'
+      && item.status === 'enabled'
+      && item.activeVersion != null
+      && (item.siteId == null || item.siteId === siteId));
+    return okJson({
+      list: [
+        ...(code === 'default' ? [
+          { name: 'list-card', label: '卡片网格（产品/案例）' },
+          { name: 'list-compact', label: '紧凑标题（公告/文件）' },
+        ] : []),
+        ...dynamic.filter((item) => item.type === 'list').map((item) => ({ name: item.code, label: item.name })),
+      ],
+      detail: [
+        ...(code === 'default' ? [{ name: 'detail-plain', label: '简洁正文（公告/政策）' }] : []),
+        ...dynamic.filter((item) => item.type === 'detail').map((item) => ({ name: item.code, label: item.name })),
+      ],
+    });
+  }),
   // 主题参数声明（与 packages/server/src/cms/themes/default 的 settingsSchema 保持一致）
   http.get('/api/cms/sites/themes/:code/settings-schema', ({ params }) => okJson(params.code === 'default' ? [
     { name: 'contactPhone', label: '页头联系电话', fieldType: 'text', group: '页头', placeholder: '如 400-800-8888', description: '显示在页头搜索框左侧，留空不显示' },
@@ -134,7 +168,7 @@ export const cmsHandlers = [
     const site = mockCmsSites.find((s) => s.id === Number(params.id));
     if (!site) return notFound('站点不存在');
     const theme = new URL(request.url).searchParams.get('theme') || site.theme;
-    return okJson({ theme, themeRegistered: ['default', 'docs'].includes(theme), invalidRefs: [] });
+    return okJson({ theme, themeRegistered: ['default', 'docs'].includes(theme) || mockCmsThemePackages.some((item) => item.code === theme && item.activeSiteIds.includes(site.id)), invalidRefs: [] });
   }),
   http.get('/api/cms/sites', ({ request }) => {
     const { url, page, pageSize, keyword } = pageParams(request);
@@ -154,6 +188,10 @@ export const cmsHandlers = [
     if (mockCmsSites.some((site) => site.code === code)) {
       return badRequest('站点标识或域名已存在');
     }
+    const theme = String(body.theme ?? 'default');
+    if (!['default', 'docs'].includes(theme)) {
+      return badRequest('新站点只能先选择内置主题；签名主题包请在站点创建后通过主题管理激活');
+    }
     const now = mockDateTime();
     if (body.isDefault) mockCmsSites.forEach((s) => { s.isDefault = false; });
     const site = {
@@ -170,7 +208,9 @@ export const cmsHandlers = [
       favicon: null,
       icp: (body.icp as string) ?? null,
       copyright: (body.copyright as string) ?? null,
-      theme: String(body.theme ?? 'default'),
+      theme,
+      themeRevision: 0,
+      templateRefsRevision: 0,
       staticMode: (body.staticMode as 'dynamic' | 'hybrid' | 'static') ?? 'hybrid',
       robots: (body.robots as string) ?? null,
       settings: mergeMockSiteSettings({}, (body.settings as Record<string, unknown>) ?? {}),
@@ -196,9 +236,11 @@ export const cmsHandlers = [
         mockCmsSites[idx].settings,
         body.settings as Record<string, unknown>,
       );
+      mockCmsSites[idx].templateRefsRevision += 1;
     }
     if (body.isDefault) mockCmsSites.forEach((s) => { s.isDefault = false; });
-    Object.assign(mockCmsSites[idx], body, { code, updatedAt: mockDateTime() });
+    const { theme: _ignoredTheme, ...patch } = body;
+    Object.assign(mockCmsSites[idx], patch, { code, updatedAt: mockDateTime() });
     return okJson(redactMockSite(mockCmsSites[idx]), '更新成功');
   }),
   http.delete('/api/cms/sites/:id', ({ params }) => {
@@ -787,12 +829,21 @@ export const cmsHandlers = [
     if (!site) return notFound('站点不存在');
     const contentCount = mockCmsContents.filter((c) => c.siteId === siteId).length;
     const task = createProgressingMockTask({
-      taskType: 'cms-static-build',
+      taskType: 'cms-publish-build',
       title: `CMS 全站静态化（${site.name}）`,
-      payload: { siteId },
+      payload: { siteId, targetType: 'site', reason: '站点管理手动全站静态化' },
       totalItems: 3 + mockCmsChannels.filter((c) => c.siteId === siteId).length + contentCount,
       itemDelayMs: 400,
     });
+    mockCmsPublishingTasks.unshift(Object.assign(task, {
+      siteId,
+      siteName: site.name,
+      siteIds: [siteId],
+      siteNames: [site.name],
+      targetType: 'site' as const,
+      artifactCount: 0,
+      failedArtifactCount: 0,
+    }));
     return okJson(task, '任务已提交，可在任务中心查看进度');
   }),
   http.post('/api/cms/search/reindex', async ({ request }) => {

@@ -1,46 +1,109 @@
-import { readFile } from 'node:fs/promises';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import type { DbExecutor } from '../../db/types';
 
-async function source(name: string): Promise<string> {
-  return readFile(new URL(`./${name}`, import.meta.url), 'utf8');
-}
+const mocks = vi.hoisted(() => ({
+  submitAsyncTask: vi.fn(),
+  enqueueAsyncTask: vi.fn(),
+}));
+vi.mock('../../lib/task-center', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../lib/task-center')>(),
+  submitAsyncTask: mocks.submitAsyncTask,
+  enqueueAsyncTask: mocks.enqueueAsyncTask,
+  mapAsyncTask: (row: unknown) => row,
+}));
+vi.mock('../../lib/context', () => ({
+  currentUserOrNull: () => ({ userId: 7, username: 'editor', roles: ['cms_editor'], tenantId: null }),
+  runWithCurrentUser: (_user: unknown, fn: () => unknown) => Promise.resolve(fn()),
+}));
 
-describe('CMS standard publish pipeline', () => {
-  it('atomically claims scheduled content, clears the schedule and logs the transition', async () => {
-    const text = await source('cms-contents.service.ts');
-    const transaction = text.match(
-      /const published = await db\.transaction\([\s\S]*?return updated;\s*\}\);/,
-    )?.[0] ?? '';
-    expect(transaction).toContain('lte(cmsContents.scheduledAt, opts.scheduledAtBefore)');
-    expect(transaction).toContain('eq(cmsContents.status, row.status)');
-    expect(transaction).toContain('scheduledAt: null');
-    expect(transaction).toContain("logContentOp(tx, id, 'published'");
-    expect(transaction).toContain("throw new HTTPException(409");
-  });
+import { insertCmsPublishOutbox } from './cms-publish-outbox.service';
+import { assertLockedCmsPublishPreconditions, canAutoOfflineCmsContent } from './cms-contents.service';
+import type { CmsContentRow } from '../../db/schema';
 
-  it('makes the scheduler use the conditional standard pipeline without a second update', async () => {
-    const text = await source('cms-scheduled.service.ts');
-    expect(text).toContain('publishCmsContent(row.id, { skipAccessCheck: true, scheduledAtBefore: now })');
-    expect(text).not.toMatch(/update\(cmsContents\).*scheduledAt/s);
-  });
-
-  it('centralizes static refresh and search auto-push for every publish entry point', async () => {
-    const [contents, collect, workflow, scheduled, route] = await Promise.all([
-      source('cms-contents.service.ts'),
-      source('cms-collect.service.ts'),
-      source('cms-workflow.service.ts'),
-      source('cms-scheduled.service.ts'),
-      readFile(new URL('../../routes/cms/contents.ts', import.meta.url), 'utf8'),
-    ]);
-    expect(contents).toMatch(
-      /triggerCmsPublishedSideEffects[\s\S]*?triggerContentStaticRefresh\(row\.id\)[\s\S]*?triggerAutoPushForContent\(row\.id\)/,
+describe('CMS standard publish pipeline behavior', () => {
+  it('persists a content snapshot task through the caller transaction without pre-commit enqueue', async () => {
+    const executor = {} as DbExecutor;
+    const row = { id: 42, taskType: 'cms-publish-build', payload: {}, status: 'pending' };
+    mocks.submitAsyncTask.mockResolvedValueOnce(row);
+    const task = await insertCmsPublishOutbox(executor, {
+      siteId: 1,
+      targetType: 'content',
+      contentIds: [9],
+      expectedThemeRevision: 2,
+      expectedTemplateRefsRevision: 3,
+      expectedDeploymentId: null,
+      contentSnapshots: [{
+        contentId: 9,
+        siteId: 1,
+        contentVersion: 4,
+        channelId: 2,
+        channelPath: 'news',
+        slug: 'snapshot',
+        bodyPages: 1,
+        build: true,
+        targets: [{ publishChannelCode: 'pc', paths: ['news/snapshot.html'] }],
+        refreshChannelIds: [2],
+      }],
+      deletePaths: ['news/old.html'],
+    }, 'content:9:version:4:update');
+    expect(task).toBe(row);
+    expect(mocks.submitAsyncTask).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskType: 'cms-publish-build',
+        idempotencyKey: 'cms-publish-event:content:9:version:4:update',
+        payload: expect.objectContaining({
+          contentSnapshots: expect.any(Array),
+          deletePaths: ['news/old.html'],
+          systemTriggered: true,
+        }),
+      }),
+      { executor },
     );
-    expect(collect).toContain('if (rule.autoPublish) await publishCmsContent(content.id)');
-    expect(workflow).toContain("await publishCmsContent(contentId, { fromWorkflow: true, skipAccessCheck: true })");
-    expect(scheduled).toContain('await publishCmsContent(row.id, { skipAccessCheck: true, scheduledAtBefore: now })');
-    expect(route).toContain('const row = await publishCmsContent(id)');
-    for (const caller of [collect, workflow, scheduled, route]) {
-      expect(caller).not.toContain('triggerAutoPushForContent');
-    }
+    expect(mocks.enqueueAsyncTask).not.toHaveBeenCalled();
+  });
+
+  it('propagates outbox insertion failure so the surrounding content transaction can roll back', async () => {
+    mocks.submitAsyncTask.mockRejectedValueOnce(new Error('outbox insert failed'));
+    await expect(insertCmsPublishOutbox({} as DbExecutor, {
+      siteId: 1,
+      targetType: 'content',
+      contentIds: [9],
+    }, 'content:9:version:5:offline')).rejects.toThrow('outbox insert failed');
+  });
+
+  it('keeps scheduled offline eligibility deterministic', () => {
+    expect(canAutoOfflineCmsContent({
+      status: 'published',
+      expireAt: new Date('2026-07-23T10:00:00Z'),
+      deletedAt: null,
+      lockedAt: null,
+    }, new Date('2026-07-23T10:00:01Z'))).toBe(true);
+  });
+
+  it('rejects the second concurrent publish at the locked-row fence before version/outbox/side effects', () => {
+    const row = (status: CmsContentRow['status']) => ({
+      id: 9,
+      status,
+      contentType: 'article',
+      mediaData: {},
+      externalLink: null,
+      deletedAt: null,
+      archivedAt: null,
+      lockedAt: null,
+      lockReason: null,
+      scheduledAt: null,
+    }) as CmsContentRow;
+    let versionIncrements = 0;
+    let outboxes = 0;
+    let sideEffects = 0;
+    const commitAfterFence = (locked: CmsContentRow) => {
+      assertLockedCmsPublishPreconditions('draft', locked);
+      versionIncrements += 1;
+      outboxes += 1;
+      sideEffects += 1;
+    };
+    commitAfterFence(row('draft'));
+    expect(() => commitAfterFence(row('published'))).toThrow(expect.objectContaining({ status: 409 }));
+    expect({ versionIncrements, outboxes, sideEffects }).toEqual({ versionIncrements: 1, outboxes: 1, sideEffects: 1 });
   });
 });

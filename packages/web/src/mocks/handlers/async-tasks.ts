@@ -76,6 +76,28 @@ const taskTypes: AsyncTaskTypeMeta[] = [
     retentionDays: 30,
   },
   {
+    taskType: 'cms-theme-import',
+    title: 'CMS 签名主题包导入',
+    module: 'CMS内容管理',
+    description: '验证签名、ZIP 安全边界和声明式 DSL 后导入主题包。',
+    allowConcurrent: true,
+    enabled: true,
+    maxAttempts: 2,
+    retryDelayMs: 5000,
+    retentionDays: 30,
+  },
+  {
+    taskType: 'cms-publish-build',
+    title: 'CMS 统一发布',
+    module: 'CMS内容管理',
+    description: '统一执行内容、栏目、整站、主题与模板影响重建并记录逐路径产物。',
+    allowConcurrent: true,
+    enabled: true,
+    maxAttempts: 3,
+    retryDelayMs: 5000,
+    retentionDays: 30,
+  },
+  {
     taskType: 'report-dq-rule-run',
     title: '报表质量规则执行',
     module: '报表中心',
@@ -302,7 +324,7 @@ export function createImmediateMockTask(input: {
 }
 
 export function createProgressingMockTask(input: {
-  taskType: 'report-dq-rule-run' | 'report-dataset-materialize' | 'report-sla-rule-evaluate' | 'report-fill-sync' | 'analytics-rollup-rebuild' | 'analytics-segment-materialize' | 'analytics-campaign-execute' | 'cms-static-build' | 'cms-search-reindex' | 'cms-deadlink-check' | 'cms-collect-run' | 'cms-content-import' | 'cms-resource-governance';
+  taskType: 'report-dq-rule-run' | 'report-dataset-materialize' | 'report-sla-rule-evaluate' | 'report-fill-sync' | 'analytics-rollup-rebuild' | 'analytics-segment-materialize' | 'analytics-campaign-execute' | 'cms-static-build' | 'cms-search-reindex' | 'cms-deadlink-check' | 'cms-collect-run' | 'cms-content-import' | 'cms-resource-governance' | 'cms-theme-import' | 'cms-publish-build';
   title: string;
   payload?: Record<string, unknown>;
   totalItems?: number;
@@ -420,7 +442,8 @@ function tickTask(task: AsyncTask) {
   let failed = task.failedCount;
   for (let i = task.processedCount + 1; i <= reached; i++) {
     // 硬失败：仅第一次执行触发
-    if (sim.failAtItem !== null && i === sim.failAtItem && task.attempts === 1) {
+    const alwaysFail = (task.payload as { alwaysFail?: unknown }).alwaysFail === true;
+    if (sim.failAtItem !== null && i === sim.failAtItem && (task.attempts === 1 || alwaysFail)) {
       task.processedCount = i - 1;
       task.progressNote = `已处理 ${task.processedCount}/${total} 条`;
       const message = `模拟失败：第 ${sim.failAtItem} 条处理异常（自动重试后从断点续跑）`;

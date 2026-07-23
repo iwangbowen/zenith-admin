@@ -3,6 +3,7 @@
  */
 import { z } from '@hono/zod-openapi';
 import { auditFields } from './_audit';
+import { AsyncTaskDTO, AsyncTaskItemDTO } from './async-tasks';
 
 export const CmsSiteDTO = z
   .object({
@@ -20,6 +21,8 @@ export const CmsSiteDTO = z
     icp: z.string().nullable(),
     copyright: z.string().nullable(),
     theme: z.string(),
+    themeRevision: z.number().int(),
+    templateRefsRevision: z.number().int(),
     staticMode: z.enum(['dynamic', 'hybrid', 'static']),
     robots: z.string().nullable(),
     settings: z.record(z.string(), z.unknown()),
@@ -288,7 +291,7 @@ export const CmsInvalidTemplateRefDTO = z
 export const CmsTemplateHealthDTO = z
   .object({
     theme: z.string().openapi({ example: 'default' }),
-    themeRegistered: z.boolean().openapi({ description: '主题是否已在代码注册表登记（未登记 = 渲染回退 default）' }),
+    themeRegistered: z.boolean().openapi({ description: '主题是否为内置可信主题，或该站点已有活动且校验通过的签名主题包' }),
     invalidRefs: z.array(CmsInvalidTemplateRefDTO),
   })
   .openapi('CmsTemplateHealth');
@@ -306,6 +309,174 @@ export const CmsThemeSettingFieldDTO = z
     group: z.string().optional(),
   })
   .openapi('CmsThemeSettingField');
+
+// ─── Stage 3：声明式模板 / 签名主题包 / 发布中心 ───────────────────────────────
+export const CmsTemplateValidationIssueDTO = z.object({
+  path: z.string(),
+  code: z.string(),
+  message: z.string(),
+}).openapi('CmsTemplateValidationIssue');
+
+export const CmsTemplateValidationReportDTO = z.object({
+  valid: z.boolean(),
+  version: z.number().int().nullable(),
+  checksum: z.string().nullable(),
+  nodeCount: z.number().int(),
+  maxDepth: z.number().int(),
+  issues: z.array(CmsTemplateValidationIssueDTO),
+}).openapi('CmsTemplateValidationReport');
+
+export const CmsTemplateDTO = z.object({
+  id: z.number().int(),
+  siteId: z.number().int().nullable(),
+  themeCode: z.string(),
+  type: z.enum(['layout', 'index', 'list', 'detail', 'page', 'search', 'tag', 'not_found', 'custom_page', 'block', 'survey']),
+  code: z.string(),
+  name: z.string(),
+  source: z.enum(['manual', 'package']),
+  status: z.enum(['enabled', 'disabled']),
+  currentVersion: z.number().int(),
+  activeVersion: z.number().int().nullable(),
+  lifecycleRevision: z.number().int(),
+  description: z.string().nullable(),
+  ...auditFields,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+}).openapi('CmsTemplate');
+
+export const CmsTemplateVersionDTO = z.object({
+  id: z.number().int(),
+  templateId: z.number().int(),
+  version: z.number().int(),
+  dsl: z.record(z.string(), z.unknown()),
+  checksum: z.string(),
+  changeNote: z.string().nullable(),
+  themePackageId: z.number().int().nullable(),
+  createdBy: z.number().int().nullable().optional(),
+  createdByName: z.string().nullable().optional(),
+  createdAt: z.string(),
+}).openapi('CmsTemplateVersion');
+
+export const CmsTemplateDetailDTO = CmsTemplateDTO.extend({
+  versions: z.array(CmsTemplateVersionDTO),
+}).openapi('CmsTemplateDetail');
+
+export const CmsTemplateDiffItemDTO = z.object({
+  path: z.string(),
+  change: z.enum(['added', 'removed', 'changed']),
+  before: z.unknown().nullable(),
+  after: z.unknown().nullable(),
+}).openapi('CmsTemplateDiffItem');
+
+export const CmsTemplateDiffDTO = z.object({
+  templateId: z.number().int(),
+  from: z.number().int(),
+  to: z.number().int(),
+  changes: z.array(CmsTemplateDiffItemDTO),
+}).openapi('CmsTemplateDiff');
+
+export const CmsTemplateActionResultDTO = z.object({
+  template: CmsTemplateDTO,
+  tasks: z.array(AsyncTaskDTO),
+}).openapi('CmsTemplateActionResult');
+
+export const CmsThemePackageValidationReportDTO = z.object({
+  valid: z.boolean(),
+  archiveChecksum: z.string(),
+  manifest: z.record(z.string(), z.unknown()).nullable(),
+  fileCount: z.number().int(),
+  compressedBytes: z.number().int(),
+  uncompressedBytes: z.number().int(),
+  issues: z.array(CmsTemplateValidationIssueDTO),
+}).openapi('CmsThemePackageValidationReport');
+
+export const CmsThemePackageDTO = z.object({
+  id: z.number().int(),
+  code: z.string(),
+  name: z.string(),
+  version: z.string(),
+  engineMin: z.number().int(),
+  engineMax: z.number().int(),
+  signingKeyId: z.string(),
+  archiveChecksum: z.string(),
+  status: z.enum(['validated', 'disabled']),
+  manifest: z.record(z.string(), z.unknown()),
+  validationReport: CmsThemePackageValidationReportDTO,
+  activeSiteIds: z.array(z.number().int()),
+  exportAvailable: z.boolean(),
+  ...auditFields,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+}).openapi('CmsThemePackage');
+
+export const CmsThemePackageActivationDTO = z.object({
+  package: CmsThemePackageDTO,
+  siteName: z.string(),
+  task: AsyncTaskDTO,
+}).openapi('CmsThemePackageActivation');
+
+export const CmsBuiltinThemeActivationDTO = z.object({
+  themeCode: z.string(),
+  siteName: z.string(),
+  task: AsyncTaskDTO,
+}).openapi('CmsBuiltinThemeActivation');
+
+export const CmsThemeImpactDTO = z.object({
+  siteId: z.number().int(),
+  themeCode: z.string(),
+  themeAvailable: z.boolean(),
+  activePackageId: z.number().int().nullable(),
+  activePackageVersion: z.string().nullable(),
+  evaluatedPackageId: z.number().int().nullable(),
+  evaluatedPackageVersion: z.string().nullable(),
+  invalidRefs: z.array(CmsInvalidTemplateRefDTO),
+  affectedChannels: z.number().int(),
+  affectedContents: z.number().int(),
+  affectedPages: z.number().int(),
+  pendingRebuildTasks: z.number().int(),
+  estimatedPaths: z.number().int(),
+  ranges: z.array(z.string()),
+}).openapi('CmsThemeImpact');
+
+export const CmsPublishArtifactDTO = z.object({
+  id: z.number().int(),
+  taskId: z.number().int(),
+  siteId: z.number().int(),
+  publishChannelId: z.number().int().nullable(),
+  targetType: z.enum(['content', 'contents', 'channel', 'site', 'theme', 'template', 'page']),
+  contentId: z.number().int().nullable(),
+  channelId: z.number().int().nullable(),
+  pageId: z.number().int().nullable(),
+  themeCode: z.string().nullable(),
+  themePackageId: z.number().int().nullable(),
+  templateId: z.number().int().nullable(),
+  templateVersion: z.number().int().nullable(),
+  path: z.string(),
+  url: z.string().nullable(),
+  checksum: z.string().nullable(),
+  size: z.number().int().nullable(),
+  status: z.enum(['generated', 'deleted', 'failed']),
+  error: z.string().nullable(),
+  generatedAt: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+}).openapi('CmsPublishArtifact');
+
+export const CmsPublishingTaskDTO = AsyncTaskDTO.extend({
+  siteId: z.number().int().nullable(),
+  siteName: z.string().nullable(),
+  siteIds: z.array(z.number().int()),
+  siteNames: z.array(z.string()),
+  targetType: z.enum(['content', 'contents', 'channel', 'site', 'theme', 'template', 'page']),
+  artifactCount: z.number().int(),
+  failedArtifactCount: z.number().int(),
+}).openapi('CmsPublishingTask');
+
+export const CmsPublishingDetailDTO = z.object({
+  task: CmsPublishingTaskDTO,
+  items: z.array(AsyncTaskItemDTO),
+  artifacts: z.array(CmsPublishArtifactDTO),
+}).openapi('CmsPublishingDetail');
 
 // ─── P2 ───────────────────────────────────────────────────────────────────────
 export const CmsContentVersionDTO = z

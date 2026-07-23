@@ -4,9 +4,7 @@ import { cmsContents } from '../../db/schema';
 import { config } from '../../config';
 import redis from '../../lib/redis';
 import logger from '../../lib/logger';
-import { refreshContentStatic } from './cms-static.service';
 import { offlineExpiredCmsContents, cancelExpiredTopContents, flushViewCountBuffer } from './cms-contents.service';
-import { triggerCmsContentWebhook } from './cms-webhook.service';
 import { publishCmsContent } from './cms-contents.service';
 
 const LOCK_KEY = `${config.redis.keyPrefix}cms:scheduled-publish-lock`;
@@ -46,24 +44,12 @@ export async function publishScheduledCmsContents(): Promise<string> {
 
     // 过期下线
     const expiredIds = await offlineExpiredCmsContents(now);
-    for (const id of expiredIds) {
-      await refreshContentStatic(id).catch((err) => {
-        logger.error(`[CMS] 过期下线内容 ${id} 静态刷新失败`, err);
-      });
-      triggerCmsContentWebhook('content.offline', id);
-    }
 
     // 置顶到期自动取消（刷新静态页恢复正常排序）
     const untopIds = await cancelExpiredTopContents(now).catch((err) => {
       logger.error('[CMS] 置顶到期取消失败', err);
       return [] as number[];
     });
-    for (const id of untopIds) {
-      await refreshContentStatic(id).catch((err) => {
-        logger.error(`[CMS] 置顶取消内容 ${id} 静态刷新失败`, err);
-      });
-    }
-
     // 浏览计数缓冲落库
     const flushed = await flushViewCountBuffer().catch((err) => {
       logger.error('[CMS] 浏览计数落库失败', err);

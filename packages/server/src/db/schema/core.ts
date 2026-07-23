@@ -16,6 +16,13 @@ export const auditColumns = () => ({
   updatedBy: integer('updated_by').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
 });
 
+/** 版本化应用数据迁移记录；与 Drizzle DDL migration 同路径执行，生产无需额外 full seed。 */
+export const appDataMigrations = pgTable('app_data_migrations', {
+  key: varchar('key', { length: 128 }).primaryKey(),
+  description: varchar('description', { length: 500 }).notNull(),
+  appliedAt: timestamp('applied_at').defaultNow().notNull(),
+});
+
 // ─── 租户表 ───────────────────────────────────────────────────────────────────
 export const tenants = pgTable('tenants', {
   id: serial('id').primaryKey(),

@@ -16,6 +16,8 @@ import {
 } from './cms-access';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
 import { assertCmsContentsUnlocked } from './cms-content-lock.service';
+import { bumpCmsTemplateRefsRevision, lockCmsSiteForMutation } from './cms-site-publish-lock.service';
+import { enqueueCmsPublishOutboxes, insertCmsSiteRefsRebuildOutbox } from './cms-publish-outbox.service';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 export function mapCmsChannel(row: CmsChannelRow, modelName?: string | null): CmsChannel {
@@ -164,6 +166,12 @@ export async function createCmsChannel(data: CreateCmsChannelInput) {
   });
   try {
     const row = await db.transaction(async (tx) => {
+      const site = await lockCmsSiteForMutation(tx, data.siteId);
+      await assertChannelTemplatesBySite(data.siteId, {
+        listTemplate: data.listTemplate,
+        detailTemplate: data.detailTemplate,
+        settings: data.settings as Record<string, unknown> | undefined,
+      });
       const path = await computePath(tx, data.siteId, data.parentId ?? 0, data.slug);
       const [created] = await tx.insert(cmsChannels).values({
         ...data,
@@ -175,9 +183,17 @@ export async function createCmsChannel(data: CreateCmsChannelInput) {
           userId: currentUser().userId,
         });
       }
-      return created;
+      const revision = await bumpCmsTemplateRefsRevision(tx, data.siteId);
+      const task = await insertCmsSiteRefsRebuildOutbox(
+        tx,
+        { ...site, templateRefsRevision: revision },
+        '栏目模板引用创建',
+        `site:${data.siteId}:refs:${revision}`,
+      );
+      return { created, task };
     });
-    return getCmsChannel(row.id);
+    await enqueueCmsPublishOutboxes([row.task], `栏目 #${row.created.id} 创建`);
+    return getCmsChannel(row.created.id);
   } catch (err) {
     rethrowPgUniqueViolation(err, '同站点下已存在相同路径的栏目');
   }
@@ -203,7 +219,13 @@ export async function updateCmsChannel(id: number, data: UpdateCmsChannelInput) 
   }
 
   try {
-    await db.transaction(async (tx) => {
+    const mutation = await db.transaction(async (tx) => {
+      const site = await lockCmsSiteForMutation(tx, current.siteId);
+      await assertChannelTemplatesBySite(current.siteId, {
+        listTemplate: data.listTemplate,
+        detailTemplate: data.detailTemplate,
+        settings: data.settings as Record<string, unknown> | undefined,
+      });
       // 防环：新父栏目不能是自身后代
       if (nextParentId !== 0 && nextParentId !== current.parentId) {
         let cursor: number = nextParentId;
@@ -224,7 +246,16 @@ export async function updateCmsChannel(id: number, data: UpdateCmsChannelInput) 
       if (path !== current.path) {
         await recomputeChildPaths(tx, id, path);
       }
+      const revision = await bumpCmsTemplateRefsRevision(tx, current.siteId);
+      const task = await insertCmsSiteRefsRebuildOutbox(
+        tx,
+        { ...site, templateRefsRevision: revision },
+        '栏目模板引用更新',
+        `site:${current.siteId}:refs:${revision}`,
+      );
+      return { task };
     });
+    await enqueueCmsPublishOutboxes([mutation.task], `栏目 #${id} 更新`);
     return getCmsChannel(id);
   } catch (err) {
     rethrowPgUniqueViolation(err, '同站点下已存在相同路径的栏目');
@@ -244,7 +275,19 @@ export async function deleteCmsChannel(id: number) {
   if (childCount > 0) throw new HTTPException(400, { message: '存在子栏目，请先删除子栏目' });
   if (contentCount > 0) throw new HTTPException(400, { message: `栏目下存在 ${contentCount} 条内容，请先移除内容` });
   if (collectRuleCount > 0) throw new HTTPException(400, { message: `栏目被 ${collectRuleCount} 条采集规则引用，请先调整采集规则` });
-  await db.delete(cmsChannels).where(eq(cmsChannels.id, id));
+  const mutation = await db.transaction(async (tx) => {
+    const site = await lockCmsSiteForMutation(tx, current.siteId);
+    await tx.delete(cmsChannels).where(eq(cmsChannels.id, id));
+    const revision = await bumpCmsTemplateRefsRevision(tx, current.siteId);
+    const task = await insertCmsSiteRefsRebuildOutbox(
+      tx,
+      { ...site, templateRefsRevision: revision },
+      '栏目模板引用删除',
+      `site:${current.siteId}:refs:${revision}`,
+    );
+    return { task };
+  });
+  await enqueueCmsPublishOutboxes([mutation.task], `栏目 #${id} 删除`);
 }
 
 // ─── 栏目运维（P1：合并 / 清空 / 批量新增 / 拼音 slug）─────────────────────────
@@ -283,7 +326,8 @@ export async function mergeCmsChannels(sourceIds: number[], targetId: number): P
     .where(inArray(cmsContents.channelId, uniqueSources));
   await assertCmsContentsUnlocked(sourceContents.map((row) => row.id));
 
-  return db.transaction(async (tx) => {
+  const mutation = await db.transaction(async (tx) => {
+    const site = await lockCmsSiteForMutation(tx, target.siteId);
     // 主栏目迁移（含回收站内容，保证来源栏目可删）
     const moved = await tx.update(cmsContents)
       .set({ channelId: targetId, modelId: target.modelId ?? null })
@@ -316,8 +360,17 @@ export async function mergeCmsChannels(sourceIds: number[], targetId: number): P
     await tx.delete(cmsChannels).where(and(
       inArray(cmsChannels.id, uniqueSources),
     ));
-    return moved.length;
+    const revision = await bumpCmsTemplateRefsRevision(tx, target.siteId);
+    const task = await insertCmsSiteRefsRebuildOutbox(
+      tx,
+      { ...site, templateRefsRevision: revision },
+      '栏目合并与模板继承更新',
+      `site:${target.siteId}:refs:${revision}`,
+    );
+    return { count: moved.length, task };
   });
+  await enqueueCmsPublishOutboxes([mutation.task], '栏目合并');
+  return mutation.count;
 }
 
 /** 清空栏目：栏目下全部未删除内容移入回收站（不含子栏目） */
@@ -328,15 +381,8 @@ export async function clearCmsChannel(id: number): Promise<number> {
   const contents = await db.select({ id: cmsContents.id }).from(cmsContents)
     .where(and(eq(cmsContents.channelId, id), isNull(cmsContents.deletedAt)));
   await assertCmsContentsUnlocked(contents.map((row) => row.id));
-  const rows = await db.update(cmsContents)
-    .set({ deletedAt: new Date(), status: 'offline' })
-    .where(and(
-      eq(cmsContents.channelId, id),
-      isNull(cmsContents.deletedAt),
-      isNull(cmsContents.lockedAt),
-    ))
-    .returning({ id: cmsContents.id });
-  return rows.length;
+  const { recycleCmsContents } = await import('./cms-contents.service');
+  return recycleCmsContents(contents.map((row) => row.id));
 }
 
 /** 批量新增栏目：同一父栏目下按名称列表创建，slug 自动取拼音（重复自动加序号） */
@@ -355,7 +401,8 @@ export async function batchCreateCmsChannels(siteId: number, parentId: number, n
   ));
   const usedPaths = new Set(existing.map((r) => r.path));
   try {
-    return await db.transaction(async (tx) => {
+    const mutation = await db.transaction(async (tx) => {
+      const site = await lockCmsSiteForMutation(tx, siteId);
       let created = 0;
       for (const name of cleaned) {
         let slug = slugifyChannelName(name);
@@ -382,8 +429,18 @@ export async function batchCreateCmsChannels(siteId: number, parentId: number, n
         }
         created += 1;
       }
-      return created;
+      if (!created) return { count: 0, task: null };
+      const revision = await bumpCmsTemplateRefsRevision(tx, siteId);
+      const task = await insertCmsSiteRefsRebuildOutbox(
+        tx,
+        { ...site, templateRefsRevision: revision },
+        '批量创建栏目',
+        `site:${siteId}:refs:${revision}`,
+      );
+      return { count: created, task };
     });
+    if (mutation.task) await enqueueCmsPublishOutboxes([mutation.task], '批量创建栏目');
+    return mutation.count;
   } catch (err) {
     rethrowPgUniqueViolation(err, '存在与现有栏目重复的路径');
   }

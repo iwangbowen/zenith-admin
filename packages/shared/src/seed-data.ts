@@ -22,6 +22,7 @@ import type {
   CmsAdSlot, CmsAd, CmsForm, CmsSensitiveWord, CmsErrorProneWord, CmsLinkWord, CmsComment,
   CmsSurvey, CmsSurveyQuestion, CmsResource, CmsResourceFolder, CmsSearchWord, CmsHotwordGroup, CmsPoll,
   CmsContentVersion, CmsCollectRule, CmsCollectItem, CmsPage,
+  CmsTemplate, CmsTemplateVersion, CmsThemePackage, CmsTemplateDslDocument,
 } from './types';
 import { ANALYTICS_EXPERIMENT_EXPOSURE_EVENT, ANALYTICS_SEMANTIC_EVENT_LABELS, type AnalyticsSemanticEventName } from './constants';
 
@@ -720,7 +721,7 @@ export const SEED_MENUS: Menu[] = [
   { id: 1741, parentId: 1740, title: '新增友链',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:link:create',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1742, parentId: 1740, title: '编辑友链',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'cms:link:update',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1743, parentId: 1740, title: '删除友链',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'cms:link:delete',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 1745, parentId: 1705, title: '全站静态化',   name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 4,  status: 'enabled', visible: true,  permission: 'cms:static:build',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1745, parentId: 1705, title: '全站静态化',   name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 4,  status: 'enabled', visible: true,  permission: 'cms:publish:build',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1750, parentId: 1700, title: '检索管理',     name: 'CmsSearch',        path: '/cms/search',      component: 'cms/SearchAdminPage',        icon: 'SearchCheck',  type: 'menu',      sort: 9,  status: 'enabled', visible: true,  permission: 'cms:search:manage',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1755, parentId: 1700, title: 'SEO 管理',     name: 'CmsSeo',           path: '/cms/seo',         component: 'cms/SeoPage',                icon: 'TrendingUp',   type: 'menu',      sort: 10, status: 'enabled', visible: true,  permission: 'cms:seo:manage',     createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1756, parentId: 1755, title: '搜索引擎推送', name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:seo:push',       createdAt: SEED_DATE, updatedAt: SEED_DATE },
@@ -749,6 +750,15 @@ export const SEED_MENUS: Menu[] = [
   { id: 1786, parentId: 1785, title: '新增页面',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:page:create',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1787, parentId: 1785, title: '编辑页面',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'cms:page:update',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1788, parentId: 1785, title: '删除页面',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'cms:page:delete',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1800, parentId: 1700, title: '模板与主题',   name: 'CmsThemes',        path: '/cms/themes',      component: 'cms/ThemesPage',             icon: 'PanelsTopLeft', type: 'menu',     sort: 21, status: 'enabled', visible: true,  permission: 'cms:theme:view',       createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1801, parentId: 1800, title: '导入主题包',   name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:theme:import',     createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1802, parentId: 1800, title: '激活主题包',   name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'cms:theme:activate',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1803, parentId: 1800, title: '导出主题包',   name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'cms:theme:export',     createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1804, parentId: 1800, title: '查看模板',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 4,  status: 'enabled', visible: true,  permission: 'cms:template:view',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1805, parentId: 1800, title: '管理模板',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 5,  status: 'enabled', visible: true,  permission: 'cms:template:manage',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1806, parentId: 1800, title: '激活模板',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 6,  status: 'enabled', visible: true,  permission: 'cms:template:activate', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1810, parentId: 1700, title: '发布中心',     name: 'CmsPublishing',    path: '/cms/publishing',  component: 'cms/PublishingPage',         icon: 'Rocket',       type: 'menu',      sort: 22, status: 'enabled', visible: true,  permission: 'cms:publish:view',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1811, parentId: 1810, title: '管理发布任务', name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:publish:manage',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 角色 ─────────────────────────────────────────────────────────────────────
@@ -785,7 +795,7 @@ export const SEED_ROLES: Role[] = [
     status: 'enabled',
     createdAt: SEED_DATE,
     updatedAt: SEED_DATE,
-    menuIds: SEED_MENUS.filter((menu) => menu.id === 1700 || (menu.id >= 1705 && menu.id <= 1799)).map((menu) => menu.id),
+    menuIds: SEED_MENUS.filter((menu) => menu.id >= 1700 && menu.id < 1900).map((menu) => menu.id),
   },
 ];
 
@@ -2953,7 +2963,7 @@ export const SEED_CMS_SITES: CmsSite[] = [
     title: 'Zenith Admin — 企业级全栈管理系统', keywords: 'Zenith,CMS,后台管理,内容管理',
     description: 'Zenith Admin 是基于 Hono + React + PostgreSQL 的企业级全栈管理系统，内置 CMS 内容管理、多站点与全文检索。',
     logo: null, favicon: null, icp: null, copyright: '© 2024 Zenith Admin', theme: 'default',
-    staticMode: 'hybrid', robots: null, settings: {}, status: 'enabled', sort: 0, remark: '默认演示站点',
+    themeRevision: 0, templateRefsRevision: 0, staticMode: 'hybrid', robots: null, settings: {}, status: 'enabled', sort: 0, remark: '默认演示站点',
     createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
 ];
@@ -3174,6 +3184,160 @@ export const SEED_CMS_PAGES: CmsPage[] = [
     seoTitle: 'Zenith CMS 产品能力', seoKeywords: 'CMS,内容管理', seoDescription: '可视化页面搭建演示',
     status: 'enabled', remark: 'Stage 2 Demo 页面', createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
+];
+
+const CMS_SEED_LIST_DSL: CmsTemplateDslDocument = {
+  version: 1,
+  root: {
+    kind: 'element', tag: 'html', attrs: { lang: 'zh-CN' }, children: [
+      { kind: 'element', tag: 'head', children: [{ kind: 'component', name: 'seo_head' }] },
+      {
+        kind: 'element', tag: 'body', attrs: { className: 'cms-dsl-demo' }, children: [
+          { kind: 'component', name: 'site_header' },
+          {
+            kind: 'element', tag: 'main', attrs: { className: 'cms-dsl-main' }, children: [
+              { kind: 'element', tag: 'h1', children: [{ kind: 'binding', bind: 'channel.name' }] },
+              { kind: 'component', name: 'breadcrumbs' },
+              { kind: 'component', name: 'content_list', props: { source: 'items' } },
+              { kind: 'component', name: 'pagination' },
+            ],
+          },
+          { kind: 'component', name: 'site_footer' },
+        ],
+      },
+    ],
+  },
+};
+
+const CMS_SEED_DETAIL_DSL: CmsTemplateDslDocument = {
+  version: 1,
+  root: {
+    kind: 'element', tag: 'html', attrs: { lang: 'zh-CN' }, children: [
+      { kind: 'element', tag: 'head', children: [{ kind: 'component', name: 'seo_head' }] },
+      {
+        kind: 'element', tag: 'body', attrs: { className: 'cms-dsl-demo' }, children: [
+          { kind: 'component', name: 'site_header' },
+          {
+            kind: 'element', tag: 'main', attrs: { className: 'cms-dsl-main' }, children: [
+              { kind: 'component', name: 'breadcrumbs' },
+              { kind: 'component', name: 'content_detail' },
+            ],
+          },
+          { kind: 'component', name: 'site_footer' },
+        ],
+      },
+    ],
+  },
+};
+
+export const SEED_CMS_TEMPLATES: CmsTemplate[] = [
+  {
+    id: 1, siteId: 1, themeCode: 'default', type: 'list', code: 'list-editorial', name: '声明式资讯列表',
+    source: 'manual', status: 'enabled', currentVersion: 1, activeVersion: 1, lifecycleRevision: 0,
+    description: 'Stage 3 安全 DSL 演示模板（无 JS/TSX）',
+    createdAt: SEED_DATE, updatedAt: SEED_DATE,
+  },
+  {
+    id: 2, siteId: 1, themeCode: 'default', type: 'detail', code: 'detail-editorial', name: '声明式资讯详情',
+    source: 'manual', status: 'enabled', currentVersion: 1, activeVersion: 1, lifecycleRevision: 0,
+    description: '富文本由服务端 Stage 1 sanitizer 处理',
+    createdAt: SEED_DATE, updatedAt: SEED_DATE,
+  },
+];
+
+export const SEED_CMS_TEMPLATE_VERSIONS: CmsTemplateVersion[] = [
+  {
+    id: 1, templateId: 1, version: 1, dsl: CMS_SEED_LIST_DSL,
+    checksum: '6f52dac3daf2a6ee6c9a915d4b13768bb7c30602ba6362a069fa23c870b2b1a5',
+    changeNote: 'Stage 3 初始演示版本', themePackageId: null, createdAt: SEED_DATE,
+  },
+  {
+    id: 2, templateId: 2, version: 1, dsl: CMS_SEED_DETAIL_DSL,
+    checksum: 'ca3ca065758b9aaa3b11621e90540ec92c03d05c86b18d29e4798a7e3c5183b2',
+    changeNote: 'Stage 3 初始演示版本', themePackageId: null, createdAt: SEED_DATE,
+  },
+];
+
+export const SEED_CMS_THEME_PACKAGES: CmsThemePackage[] = [
+  {
+    id: 1,
+    code: 'editorial-demo',
+    name: 'Editorial 声明式主题',
+    version: '1.0.0',
+    engineMin: 1,
+    engineMax: 1,
+    signingKeyId: 'seed-demo',
+    archiveChecksum: 'c1d9494cc549a00cc03978d599ae6314ffd43a9c8f06d39fcbc3ca86df7cbbb2',
+    status: 'disabled',
+    manifest: {
+      schemaVersion: 1,
+      code: 'editorial-demo',
+      name: 'Editorial 声明式主题',
+      version: '1.0.0',
+      engine: { min: 1, max: 1 },
+      templates: [
+        { code: 'index-editorial', name: '主题首页', type: 'index', path: 'templates/index.json' },
+        { code: 'list-editorial', name: '资讯列表', type: 'list', path: 'templates/list.json' },
+        { code: 'detail-editorial', name: '资讯详情', type: 'detail', path: 'templates/detail.json' },
+        { code: 'page-editorial', name: '单页', type: 'page', path: 'templates/page.json' },
+        { code: 'search-editorial', name: '搜索结果', type: 'search', path: 'templates/search.json' },
+        { code: 'tag-editorial', name: '标签聚合', type: 'tag', path: 'templates/tag.json' },
+        { code: 'not-found-editorial', name: '未找到', type: 'not_found', path: 'templates/not-found.json' },
+      ],
+      assets: [],
+      checksums: {
+        'templates/index.json': '1111111111111111111111111111111111111111111111111111111111111111',
+        'templates/list.json': '6f52dac3daf2a6ee6c9a915d4b13768bb7c30602ba6362a069fa23c870b2b1a5',
+        'templates/detail.json': 'ca3ca065758b9aaa3b11621e90540ec92c03d05c86b18d29e4798a7e3c5183b2',
+        'templates/page.json': '2222222222222222222222222222222222222222222222222222222222222222',
+        'templates/search.json': '3333333333333333333333333333333333333333333333333333333333333333',
+        'templates/tag.json': '4444444444444444444444444444444444444444444444444444444444444444',
+        'templates/not-found.json': '5555555555555555555555555555555555555555555555555555555555555555',
+      },
+      signingKeyId: 'seed-demo',
+      signature: 'seed-demo-package-is-disabled-and-must-be-reimported-with-a-trusted-signature',
+    },
+    validationReport: {
+      valid: false,
+      archiveChecksum: 'c1d9494cc549a00cc03978d599ae6314ffd43a9c8f06d39fcbc3ca86df7cbbb2',
+      manifest: null,
+      fileCount: 8,
+      compressedBytes: 0,
+      uncompressedBytes: 0,
+      issues: [{ path: '$', code: 'seed_demo', message: '演示占位包已停用；请使用受信任 Ed25519 密钥重新签名并导入' }],
+    },
+    activeSiteIds: [],
+    exportAvailable: false,
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+  },
+];
+
+export const SEED_CMS_PUBLISH_TASKS = [
+  {
+    id: 900001,
+    taskType: 'cms-publish-build',
+    title: 'CMS 整站发布（演示）',
+    status: 'success' as const,
+    payload: { siteId: 1, targetType: 'site', reason: 'Stage 3 演示发布' },
+    totalCount: 3,
+    processedCount: 3,
+    failedCount: 0,
+    progressNote: '演示发布完成',
+    result: { artifacts: 3, failedArtifacts: 0, targetType: 'site' },
+    attempts: 1,
+    maxAttempts: 3,
+    startedAt: SEED_DATE,
+    completedAt: SEED_DATE,
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+  },
+];
+
+export const SEED_CMS_PUBLISH_ARTIFACTS = [
+  { id: 1, taskId: 900001, siteId: 1, publishChannelId: 1, targetType: 'site' as const, path: 'index.html', url: null, checksum: 'f3f39f3b8456f63a1a414a8c311260e0b73e978fdfc8e0161653c9b92fc9c4bc', size: 4280, status: 'generated' as const, generatedAt: SEED_DATE, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, taskId: 900001, siteId: 1, publishChannelId: 1, targetType: 'site' as const, path: 'sitemap.xml', url: null, checksum: 'e152f7eafc61e5aa9e0f8e83de6fdb203f415f8eaff86ab8f54cf0f9e850caef', size: 860, status: 'generated' as const, generatedAt: SEED_DATE, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 3, taskId: 900001, siteId: 1, publishChannelId: 1, targetType: 'site' as const, path: 'robots.txt', url: null, checksum: 'b884b75b9a9d5c1b28627a65105f0b62b7f24e633eeb3e4b3de414e8ee3dc1c4', size: 56, status: 'generated' as const, generatedAt: SEED_DATE, createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 export const SEED_CMS_SURVEY_ANSWERS = [

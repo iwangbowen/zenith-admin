@@ -45,7 +45,7 @@ import {
   reportSlaRules,
   reportSlaViolations,
 } from './report-platform';
-import { cmsChannels, cmsContents, cmsContentTags, cmsFragments, cmsFriendLinks, cmsModelFields, cmsModels, cmsSites, cmsTags, cmsContentVersions, cmsRedirects, cmsLinkWords, cmsComments, cmsAdSlots, cmsAds, cmsForms, cmsFormSubmissions, cmsPushLogs, cmsSiteUsers, cmsChannelUsers, cmsContentChannels, cmsContentRelations, cmsContentOpLogs, cmsContentLikes, cmsContentFavorites, cmsMemberViewHistory, cmsSurveys, cmsSurveyQuestions, cmsSurveyAnswers, cmsResources, cmsResourceFolders, cmsSearchWords, cmsHotwordGroups, cmsHotwords } from './cms';
+import { cmsChannels, cmsContents, cmsContentTags, cmsFragments, cmsFriendLinks, cmsModelFields, cmsModels, cmsSites, cmsTags, cmsContentVersions, cmsRedirects, cmsLinkWords, cmsComments, cmsAdSlots, cmsAds, cmsForms, cmsFormSubmissions, cmsPushLogs, cmsSiteUsers, cmsChannelUsers, cmsContentChannels, cmsContentRelations, cmsContentOpLogs, cmsContentLikes, cmsContentFavorites, cmsMemberViewHistory, cmsSurveys, cmsSurveyQuestions, cmsSurveyAnswers, cmsResources, cmsResourceFolders, cmsSearchWords, cmsHotwordGroups, cmsHotwords, cmsTemplates, cmsTemplateVersions, cmsThemePackages, cmsThemeDeployments, cmsPublishArtifacts, cmsPublishChannels, cmsPages } from './cms';
 
 // ─── 关联关系 ────────────────────────────────────────────────────────────────
 export const errorGroupsRelations = relations(errorGroups, ({ many, one }) => ({
@@ -413,6 +413,7 @@ export const asyncTasksRelations = relations(asyncTasks, ({ one, many }) => ({
   tenant: one(tenants, { fields: [asyncTasks.tenantId], references: [tenants.id] }),
   createdByUser: one(users, { fields: [asyncTasks.createdBy], references: [users.id] }),
   items: many(asyncTaskItems),
+  cmsPublishArtifacts: many(cmsPublishArtifacts),
 }));
 
 export const asyncTaskItemsRelations = relations(asyncTaskItems, ({ one }) => ({
@@ -1256,6 +1257,43 @@ export const cmsSitesRelations = relations(cmsSites, ({ many }) => ({
   searchWords: many(cmsSearchWords),
   hotwordGroups: many(cmsHotwordGroups),
   hotwords: many(cmsHotwords),
+  templates: many(cmsTemplates),
+  themeDeployments: many(cmsThemeDeployments),
+  publishArtifacts: many(cmsPublishArtifacts),
+}));
+
+export const cmsTemplatesRelations = relations(cmsTemplates, ({ one, many }) => ({
+  site: one(cmsSites, { fields: [cmsTemplates.siteId], references: [cmsSites.id] }),
+  versions: many(cmsTemplateVersions),
+  publishArtifacts: many(cmsPublishArtifacts),
+}));
+
+export const cmsTemplateVersionsRelations = relations(cmsTemplateVersions, ({ one }) => ({
+  template: one(cmsTemplates, { fields: [cmsTemplateVersions.templateId], references: [cmsTemplates.id] }),
+  themePackage: one(cmsThemePackages, { fields: [cmsTemplateVersions.themePackageId], references: [cmsThemePackages.id] }),
+  createdByUser: one(users, { fields: [cmsTemplateVersions.createdBy], references: [users.id] }),
+}));
+
+export const cmsThemePackagesRelations = relations(cmsThemePackages, ({ many }) => ({
+  templateVersions: many(cmsTemplateVersions),
+  deployments: many(cmsThemeDeployments),
+  publishArtifacts: many(cmsPublishArtifacts),
+}));
+
+export const cmsThemeDeploymentsRelations = relations(cmsThemeDeployments, ({ one }) => ({
+  site: one(cmsSites, { fields: [cmsThemeDeployments.siteId], references: [cmsSites.id] }),
+  themePackage: one(cmsThemePackages, { fields: [cmsThemeDeployments.themePackageId], references: [cmsThemePackages.id] }),
+}));
+
+export const cmsPublishArtifactsRelations = relations(cmsPublishArtifacts, ({ one }) => ({
+  task: one(asyncTasks, { fields: [cmsPublishArtifacts.taskId], references: [asyncTasks.id] }),
+  site: one(cmsSites, { fields: [cmsPublishArtifacts.siteId], references: [cmsSites.id] }),
+  publishChannel: one(cmsPublishChannels, { fields: [cmsPublishArtifacts.publishChannelId], references: [cmsPublishChannels.id] }),
+  content: one(cmsContents, { fields: [cmsPublishArtifacts.contentId], references: [cmsContents.id] }),
+  channel: one(cmsChannels, { fields: [cmsPublishArtifacts.channelId], references: [cmsChannels.id] }),
+  page: one(cmsPages, { fields: [cmsPublishArtifacts.pageId], references: [cmsPages.id] }),
+  themePackage: one(cmsThemePackages, { fields: [cmsPublishArtifacts.themePackageId], references: [cmsThemePackages.id] }),
+  template: one(cmsTemplates, { fields: [cmsPublishArtifacts.templateId], references: [cmsTemplates.id] }),
 }));
 
 export const cmsModelsRelations = relations(cmsModels, ({ many }) => ({

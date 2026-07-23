@@ -14,6 +14,7 @@ import {
 } from '../../services/cms/cms-polls.service';
 import { config } from '../../config';
 import redis from '../../lib/redis';
+import { readCmsThemeAsset, readCmsThemePreviewAsset } from '../../services/cms/cms-themes.service';
 
 /**
  * CMS 前台公开提交接口（评论 / 自定义表单）。
@@ -55,6 +56,48 @@ async function assertCaptchaIfEnabled(site: { settings: unknown } | null, body: 
 
 export function createCmsFrontPublicRoutes(): Hono {
   const app = new Hono();
+  const assetPath = (requestPath: string) => {
+    const marker = '/assets/';
+    const index = requestPath.indexOf(marker);
+    return index >= 0 ? requestPath.slice(index + marker.length) : '';
+  };
+
+  app.get('/theme-assets/:siteId/:code/:version/assets/*', async (c) => {
+    const result = await readCmsThemeAsset(
+      Number(c.req.param('siteId')),
+      c.req.param('code'),
+      c.req.param('version'),
+      assetPath(c.req.path),
+    );
+    return new Response(result.content, {
+      status: 200,
+      headers: {
+        'Content-Type': result.contentType,
+        'Cache-Control': 'public, max-age=31536000, immutable',
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Security-Policy': "default-src 'none'; style-src 'self'; img-src 'self'; font-src 'self'",
+      },
+    });
+  });
+
+  app.get('/theme-preview-assets/:siteId/:packageId/:expiresAt/:token/assets/*', async (c) => {
+    const result = await readCmsThemePreviewAsset(
+      Number(c.req.param('siteId')),
+      Number(c.req.param('packageId')),
+      Number(c.req.param('expiresAt')),
+      c.req.param('token'),
+      assetPath(c.req.path),
+    );
+    return new Response(result.content, {
+      status: 200,
+      headers: {
+        'Content-Type': result.contentType,
+        'Cache-Control': 'private, no-store',
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Security-Policy': "default-src 'none'; style-src 'self'; img-src 'self'; font-src 'self'",
+      },
+    });
+  });
 
   // ─── 图形验证码（站点开启 captchaEnabled 时评论/表单提交必须携带）──────────────
   app.get('/captcha', async (c) => {

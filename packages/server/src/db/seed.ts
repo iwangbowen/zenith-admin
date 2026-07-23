@@ -1,5 +1,5 @@
 import { db } from './index';
-import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs, rateLimitRules, regions, tenants, tenantPackages, tenantPackageMenus, emailTemplates, smsConfigs, smsTemplates, inAppTemplates, tags, dataMaskConfigs, memberLevels, memberTags, members, memberPointAccounts, memberPointTransactions, memberWallets, coupons, memberCoupons, checkinRules, checkinSettings, checkinMilestones, workflowForms, workflowDataSources, workflowConnectors, workflowTemplates, workflowDefinitions, aiPromptTemplates, paymentMethodConfigs, paymentDeductPlans, mpAccounts, mpTags, mpFans, mpMessages, mpAutoReplies, mpMenus, mpMaterials, mpDrafts, mpMessageTemplates, mpBroadcasts, mpQrcodes, mpKfAccounts, mpKfSessions, mpKfSessionEvents, mpKfRoutingConfigs, mpConditionalMenus, channels, channelQuickReplies, reportDatasources, reportDatasets, reportDashboards, apiScopes, ratePlans, reportPrintTemplates, ruleDecisionTables, ruleDecisionFlows, ruleLists, ruleListItems, reportFolders, reportEnvironments, reportMetrics, reportDqRules, reportQueryQuotas, reportSlaRules, reportAssetTemplates, reportFillTemplates, analyticsEventMeta, analyticsSites, cmsSites, cmsModels, cmsModelFields, cmsChannels, cmsContents, cmsTags, cmsContentTags, cmsContentChannels, cmsContentRelations, cmsContentVersions, cmsFragments, cmsFriendLinks, cmsAdSlots, cmsAds, cmsForms, cmsSensitiveWords, cmsErrorProneWords, cmsLinkWords, cmsComments, cmsPublishChannels, cmsSiteUsers, cmsChannelUsers, cmsSurveys, cmsSurveyQuestions, cmsSurveyAnswers, cmsResources, cmsResourceFolders, cmsSearchWords, cmsHotwordGroups, cmsHotwords, cmsCollectRules, cmsCollectItems, cmsPages, cmsPolls, cmsPollVotes } from './schema';
+import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs, rateLimitRules, regions, tenants, tenantPackages, tenantPackageMenus, emailTemplates, smsConfigs, smsTemplates, inAppTemplates, tags, dataMaskConfigs, memberLevels, memberTags, members, memberPointAccounts, memberPointTransactions, memberWallets, coupons, memberCoupons, checkinRules, checkinSettings, checkinMilestones, workflowForms, workflowDataSources, workflowConnectors, workflowTemplates, workflowDefinitions, aiPromptTemplates, paymentMethodConfigs, paymentDeductPlans, mpAccounts, mpTags, mpFans, mpMessages, mpAutoReplies, mpMenus, mpMaterials, mpDrafts, mpMessageTemplates, mpBroadcasts, mpQrcodes, mpKfAccounts, mpKfSessions, mpKfSessionEvents, mpKfRoutingConfigs, mpConditionalMenus, channels, channelQuickReplies, reportDatasources, reportDatasets, reportDashboards, apiScopes, ratePlans, reportPrintTemplates, ruleDecisionTables, ruleDecisionFlows, ruleLists, ruleListItems, reportFolders, reportEnvironments, reportMetrics, reportDqRules, reportQueryQuotas, reportSlaRules, reportAssetTemplates, reportFillTemplates, analyticsEventMeta, analyticsSites, asyncTasks, cmsSites, cmsModels, cmsModelFields, cmsChannels, cmsContents, cmsTags, cmsContentTags, cmsContentChannels, cmsContentRelations, cmsContentVersions, cmsFragments, cmsFriendLinks, cmsAdSlots, cmsAds, cmsForms, cmsSensitiveWords, cmsErrorProneWords, cmsLinkWords, cmsComments, cmsPublishChannels, cmsSiteUsers, cmsChannelUsers, cmsSurveys, cmsSurveyQuestions, cmsSurveyAnswers, cmsResources, cmsResourceFolders, cmsSearchWords, cmsHotwordGroups, cmsHotwords, cmsCollectRules, cmsCollectItems, cmsPages, cmsPolls, cmsPollVotes, cmsTemplates, cmsTemplateVersions, cmsThemePackages, cmsPublishArtifacts } from './schema';
 import bcrypt from 'bcryptjs';
 import { and, eq, isNull, inArray, sql } from 'drizzle-orm';
 import { createRequire } from 'node:module';
@@ -7,8 +7,9 @@ import logger from '../lib/logger';
 import { runAsUser } from '../lib/audit-context';
 import { SEED_MENUS, SEED_ROLES, SEED_DEPARTMENTS, SEED_POSITIONS, SEED_DICTS, SEED_DICT_ITEMS, SEED_SYSTEM_CONFIGS, SEED_CRON_JOBS, SEED_RATE_LIMIT_RULES, SEED_TAGS, SEED_DATA_MASK_CONFIGS, SEED_MEMBER_LEVELS, SEED_MEMBER_TAGS, SEED_COUPONS, SEED_EMAIL_TEMPLATES, SEED_SMS_TEMPLATES, SEED_INAPP_TEMPLATES, SEED_TENANTS, SEED_TENANT_PACKAGES, SEED_WORKFLOW_FORMS, SEED_WORKFLOW_DATA_SOURCES, SEED_WORKFLOW_CONNECTORS, SEED_WORKFLOW_TEMPLATES, SEED_WORKFLOW_DEFINITIONS, SEED_AI_PROMPT_TEMPLATES, SEED_PAYMENT_METHOD_CONFIGS, SEED_CHECKIN_MILESTONES, SEED_MP_ACCOUNTS, SEED_MP_TAGS, SEED_MP_FANS, SEED_MP_MESSAGES, SEED_MP_AUTO_REPLIES, SEED_MP_MENUS, SEED_MP_MATERIALS, SEED_MP_DRAFTS, SEED_MP_MESSAGE_TEMPLATES, SEED_MP_BROADCASTS, SEED_MP_QRCODES, SEED_MP_KF_ACCOUNTS, SEED_MP_KF_ROUTING_CONFIGS, SEED_MP_KF_SESSIONS, SEED_MP_KF_SESSION_EVENTS, SEED_MP_CONDITIONAL_MENUS, SEED_CHANNELS, SEED_CHANNEL_QUICK_REPLIES, SEED_REPORT_DATASOURCES, SEED_REPORT_DATASETS, SEED_REPORT_DASHBOARDS, SEED_API_SCOPES, SEED_RATE_PLANS, SEED_REPORT_PRINT_TEMPLATES, SEED_DECISION_TABLES, SEED_DECISION_FLOWS, SEED_RULE_LISTS, SEED_RULE_LIST_ITEMS, SEED_REPORT_FOLDERS, SEED_REPORT_ENVIRONMENTS, SEED_REPORT_METRICS, SEED_REPORT_DQ_RULES, SEED_REPORT_QUERY_QUOTAS, SEED_REPORT_SLA_RULES, SEED_REPORT_ASSET_TEMPLATES, SEED_REPORT_FILL_TEMPLATES, SEED_ANALYTICS_EVENT_META, SEED_ANALYTICS_SITES } from '@zenith/shared';
 import type { PaymentChannel, PaymentMethod } from '@zenith/shared';
-import { SEED_PAYMENT_DEDUCT_PLANS, SEED_CMS_EDITOR_USER, SEED_CMS_SITES, SEED_CMS_PUBLISH_CHANNELS, SEED_CMS_MODELS, SEED_CMS_CHANNELS, SEED_CMS_CONTENTS, SEED_CMS_CONTENT_CHANNELS, SEED_CMS_CONTENT_RELATIONS, SEED_CMS_CONTENT_VERSIONS, SEED_CMS_TAGS, SEED_CMS_FRAGMENTS, SEED_CMS_FRIEND_LINKS, SEED_CMS_AD_SLOTS, SEED_CMS_ADS, SEED_CMS_FORMS, SEED_CMS_SENSITIVE_WORDS, SEED_CMS_ERROR_PRONE_WORDS, SEED_CMS_LINK_WORDS, SEED_CMS_COMMENTS, SEED_CMS_SURVEYS, SEED_CMS_SURVEY_ANSWERS, SEED_CMS_RESOURCES, SEED_CMS_RESOURCE_FOLDERS, SEED_CMS_SEARCH_WORDS, SEED_CMS_HOTWORD_GROUPS, SEED_CMS_HOTWORDS, SEED_CMS_COLLECT_RULES, SEED_CMS_COLLECT_ITEMS, SEED_CMS_PAGES, SEED_CMS_POLLS, SEED_CMS_POLL_VOTES } from '@zenith/shared';
+import { SEED_PAYMENT_DEDUCT_PLANS, SEED_CMS_EDITOR_USER, SEED_CMS_SITES, SEED_CMS_PUBLISH_CHANNELS, SEED_CMS_MODELS, SEED_CMS_CHANNELS, SEED_CMS_CONTENTS, SEED_CMS_CONTENT_CHANNELS, SEED_CMS_CONTENT_RELATIONS, SEED_CMS_CONTENT_VERSIONS, SEED_CMS_TAGS, SEED_CMS_FRAGMENTS, SEED_CMS_FRIEND_LINKS, SEED_CMS_AD_SLOTS, SEED_CMS_ADS, SEED_CMS_FORMS, SEED_CMS_SENSITIVE_WORDS, SEED_CMS_ERROR_PRONE_WORDS, SEED_CMS_LINK_WORDS, SEED_CMS_COMMENTS, SEED_CMS_SURVEYS, SEED_CMS_SURVEY_ANSWERS, SEED_CMS_RESOURCES, SEED_CMS_RESOURCE_FOLDERS, SEED_CMS_SEARCH_WORDS, SEED_CMS_HOTWORD_GROUPS, SEED_CMS_HOTWORDS, SEED_CMS_COLLECT_RULES, SEED_CMS_COLLECT_ITEMS, SEED_CMS_PAGES, SEED_CMS_POLLS, SEED_CMS_POLL_VOTES, SEED_CMS_TEMPLATES, SEED_CMS_TEMPLATE_VERSIONS, SEED_CMS_THEME_PACKAGES, SEED_CMS_PUBLISH_TASKS, SEED_CMS_PUBLISH_ARTIFACTS } from '@zenith/shared';
 import { buildSearchVector } from '../services/cms/cms-search.service';
+import { mapMenuSeedRows, upsertCmsMenuSeedRows } from './cms-menu-seed';
 
 const require = createRequire(import.meta.url);
 
@@ -91,29 +92,15 @@ async function seed() {
 
 async function seedRest() {
   // ─── 2. 菜单数据（数据来源：@zenith/shared SEED_MENUS）─────────────────────
-  // onConflictDoNothing：只插入不存在的菜单，绝不覆盖用户通过 UI 修改的数据
-  const menuRows = SEED_MENUS.map((row) => ({
-    id: row.id,
-    parentId: row.parentId,
-    title: row.title,
-    name: row.name ?? null,
-    path: row.path ?? null,
-    component: row.component ?? null,
-    icon: row.icon ?? null,
-    type: row.type,
-    permission: row.permission ?? null,
-    sort: row.sort,
-    status: row.status,
-    visible: row.visible,
-  }));
+  // 非 CMS 菜单保持只插入；CMS 菜单随后按固定 id 安全 upsert，确保权限重命名可落到旧安装。
+  const menuRows = mapMenuSeedRows(SEED_MENUS);
   await db.insert(menus).values(menuRows).onConflictDoNothing({ target: menus.id });
+  await upsertCmsMenuSeedRows(db, menuRows);
   // 菜单结构调整（幂等）：将「OAuth2 应用」从系统设置迁移到「开放平台」，仅当仍在旧位置时生效
   await db.execute(sql`UPDATE menus SET parent_id = 1300, title = '应用管理', sort = 1 WHERE id = 480 AND parent_id = 200`);
   await db.execute(sql`UPDATE menus SET permission = 'analytics:clean' WHERE id = 603 AND permission = 'analytics:manage'`);
-  // 「静态化管理」独立菜单下线：功能整合进站点管理操作列，权限保留为站点管理下的按钮（仅当仍是旧菜单形态时生效）
-  await db.execute(sql`UPDATE menus SET parent_id = 1705, title = '全站静态化', name = NULL, path = NULL, component = NULL, icon = NULL, type = 'button', sort = 4 WHERE id = 1745 AND type = 'menu'`);
   await db.execute(sql`SELECT setval('menus_id_seq', GREATEST((SELECT MAX(id) FROM menus), 1))`);
-  logger.info('  ✔ Menus seeded (onConflictDoNothing)');
+  logger.info('  ✔ Menus seeded (CMS rows safely upserted)');
 
   // ─── 3. 角色数据（数据来源：@zenith/shared SEED_ROLES）────────────────────
   const roleRows = SEED_ROLES.map(({ id, name, code, description, status, dataScope }) => ({ id, name, code, description, status, dataScope }));
@@ -855,8 +842,8 @@ async function seedRest() {
 
   // ─── CMS：站点 / 模型 / 栏目 / 内容 / 标签 / 碎片 / 友链（数据来源：@zenith/shared SEED_CMS_*）──
   await db.insert(cmsSites).values(
-    SEED_CMS_SITES.map(({ id, name, code, domain, aliasDomains, isDefault, title, keywords, description, logo, favicon, icp, copyright, theme, staticMode, robots, settings, status, sort, remark }) => ({
-      id, name, code, domain, aliasDomains, isDefault, title, keywords, description, logo, favicon, icp, copyright, theme, staticMode, robots, settings, status, sort, remark,
+    SEED_CMS_SITES.map(({ id, name, code, domain, aliasDomains, isDefault, title, keywords, description, logo, favicon, icp, copyright, theme, themeRevision, templateRefsRevision, staticMode, robots, settings, status, sort, remark }) => ({
+      id, name, code, domain, aliasDomains, isDefault, title, keywords, description, logo, favicon, icp, copyright, theme, themeRevision, templateRefsRevision, staticMode, robots, settings, status, sort, remark,
     })),
   ).onConflictDoNothing({ target: cmsSites.id });
   await db.execute(sql`SELECT setval('cms_sites_id_seq', GREATEST((SELECT MAX(id) FROM cms_sites), 1))`);
@@ -867,6 +854,28 @@ async function seedRest() {
     })),
   ).onConflictDoNothing({ target: cmsPublishChannels.id });
   await db.execute(sql`SELECT setval('cms_publish_channels_id_seq', GREATEST((SELECT MAX(id) FROM cms_publish_channels), 1))`);
+
+  await db.insert(cmsThemePackages).values(
+    SEED_CMS_THEME_PACKAGES.map(({ id, code, name, version, engineMin, engineMax, signingKeyId, archiveChecksum, manifest, validationReport, status }) => ({
+      id, code, name, version, engineMin, engineMax, signingKeyId, archiveChecksum, manifest, validationReport,
+      storageKey: `${code}/${version}`, status,
+    })),
+  ).onConflictDoNothing({ target: cmsThemePackages.id });
+  await db.execute(sql`SELECT setval('cms_theme_packages_id_seq', GREATEST((SELECT MAX(id) FROM cms_theme_packages), 1))`);
+
+  await db.insert(cmsTemplates).values(
+    SEED_CMS_TEMPLATES.map(({ id, siteId, themeCode, type, code, name, source, status, currentVersion, activeVersion, lifecycleRevision, description }) => ({
+      id, siteId, themeCode, type, code, name, source, status, currentVersion, activeVersion, lifecycleRevision, description,
+    })),
+  ).onConflictDoNothing({ target: cmsTemplates.id });
+  await db.execute(sql`SELECT setval('cms_templates_id_seq', GREATEST((SELECT MAX(id) FROM cms_templates), 1))`);
+
+  await db.insert(cmsTemplateVersions).values(
+    SEED_CMS_TEMPLATE_VERSIONS.map(({ id, templateId, version, dsl, checksum, changeNote, themePackageId }) => ({
+      id, templateId, version, dsl, checksum, changeNote, themePackageId,
+    })),
+  ).onConflictDoNothing({ target: cmsTemplateVersions.id });
+  await db.execute(sql`SELECT setval('cms_template_versions_id_seq', GREATEST((SELECT MAX(id) FROM cms_template_versions), 1))`);
 
   await db.insert(cmsModels).values(
     SEED_CMS_MODELS.map(({ id, name, code, description, isSystem, status, sort }) => ({ id, name, code, description, isSystem, status, sort })),
@@ -1026,6 +1035,39 @@ async function seedRest() {
     })),
   ).onConflictDoNothing({ target: cmsPages.id });
   await db.execute(sql`SELECT setval('cms_pages_id_seq', GREATEST((SELECT MAX(id) FROM cms_pages), 1))`);
+
+  const seedPublishTaskInput = SEED_CMS_PUBLISH_TASKS[0];
+  const [insertedPublishTask] = await db.insert(asyncTasks).values({
+    taskType: seedPublishTaskInput.taskType,
+    title: seedPublishTaskInput.title,
+    status: seedPublishTaskInput.status,
+    payload: seedPublishTaskInput.payload,
+    totalCount: seedPublishTaskInput.totalCount,
+    processedCount: seedPublishTaskInput.processedCount,
+    failedCount: seedPublishTaskInput.failedCount,
+    progressNote: seedPublishTaskInput.progressNote,
+    result: seedPublishTaskInput.result,
+    attempts: seedPublishTaskInput.attempts,
+    maxAttempts: seedPublishTaskInput.maxAttempts,
+    startedAt: new Date(seedPublishTaskInput.startedAt),
+    completedAt: new Date(seedPublishTaskInput.completedAt),
+    createdAt: new Date(seedPublishTaskInput.createdAt),
+    idempotencyKey: 'seed:cms-publish-stage3-demo',
+  }).onConflictDoNothing({ target: asyncTasks.idempotencyKey }).returning({ id: asyncTasks.id });
+  const seedPublishTask = insertedPublishTask ?? (await db.select({ id: asyncTasks.id }).from(asyncTasks)
+    .where(eq(asyncTasks.idempotencyKey, 'seed:cms-publish-stage3-demo')).limit(1))[0];
+  if (!seedPublishTask) throw new Error('CMS 发布演示任务 seed 失败');
+
+  await db.insert(cmsPublishArtifacts).values(
+    SEED_CMS_PUBLISH_ARTIFACTS.map(({ id, taskId: _taskId, generatedAt, createdAt, updatedAt: _updatedAt, ...artifact }) => ({
+      id,
+      ...artifact,
+      taskId: seedPublishTask.id,
+      generatedAt: new Date(generatedAt),
+      createdAt: new Date(createdAt),
+    })),
+  ).onConflictDoNothing({ target: cmsPublishArtifacts.id });
+  await db.execute(sql`SELECT setval('cms_publish_artifacts_id_seq', GREATEST((SELECT MAX(id) FROM cms_publish_artifacts), 1))`);
 
   await db.insert(cmsPolls).values(
     SEED_CMS_POLLS.map(({ id, siteId, code, title, options, maxChoices, allowAnonymous, status, totalVotes, remark }) => ({ id, siteId, code, title, options, maxChoices, allowAnonymous, status, totalVotes, remark })),

@@ -1266,6 +1266,91 @@ export const CMS_STATIC_MODE_LABELS: Record<(typeof CMS_STATIC_MODES)[number], s
   static: '全静态',
 };
 
+/** CMS 声明式模板 DSL 当前引擎版本与硬性复杂度上限。 */
+export const CMS_TEMPLATE_DSL_VERSION = 1 as const;
+export const CMS_TEMPLATE_DSL_LIMITS = {
+  maxDepth: 32,
+  maxNodes: 500,
+  maxStringLength: 4096,
+  maxDocumentBytes: 256 * 1024,
+  maxAttributesPerNode: 16,
+  maxChildrenPerNode: 100,
+} as const;
+
+export const CMS_TEMPLATE_TYPES = [
+  'layout',
+  'index',
+  'list',
+  'detail',
+  'page',
+  'search',
+  'tag',
+  'not_found',
+  'custom_page',
+  'block',
+  'survey',
+] as const;
+
+export const CMS_TEMPLATE_TYPE_LABELS: Record<(typeof CMS_TEMPLATE_TYPES)[number], string> = {
+  layout: '布局',
+  index: '首页',
+  list: '列表页',
+  detail: '详情页',
+  page: '单页',
+  search: '搜索页',
+  tag: '标签页',
+  not_found: '404 页面',
+  custom_page: '搭建页面',
+  block: '区块',
+  survey: '问卷页',
+};
+
+export const CMS_TEMPLATE_SOURCES = ['manual', 'package'] as const;
+export const CMS_THEME_PACKAGE_STATUSES = ['validated', 'disabled'] as const;
+export const CMS_THEME_DEPLOYMENT_STATUSES = ['active', 'inactive'] as const;
+export const CMS_TEMPLATE_SOURCE_LABELS: Record<(typeof CMS_TEMPLATE_SOURCES)[number], string> = {
+  manual: '手工 DSL',
+  package: '主题包',
+};
+export const CMS_THEME_PACKAGE_STATUS_LABELS: Record<(typeof CMS_THEME_PACKAGE_STATUSES)[number], string> = {
+  validated: '校验通过',
+  disabled: '已停用',
+};
+
+export const CMS_PUBLISH_TARGET_TYPES = [
+  'content',
+  'contents',
+  'channel',
+  'site',
+  'theme',
+  'template',
+  'page',
+] as const;
+
+export const CMS_PUBLISH_TARGET_TYPE_LABELS: Record<(typeof CMS_PUBLISH_TARGET_TYPES)[number], string> = {
+  content: '单内容',
+  contents: '批量内容',
+  channel: '栏目',
+  site: '整站',
+  theme: '主题影响重建',
+  template: '模板影响重建',
+  page: '搭建页面',
+};
+
+export const CMS_PUBLISH_ARTIFACT_STATUSES = ['generated', 'deleted', 'failed'] as const;
+export const CMS_PUBLISH_ARTIFACT_STATUS_LABELS: Record<(typeof CMS_PUBLISH_ARTIFACT_STATUSES)[number], string> = {
+  generated: '已生成',
+  deleted: '已删除',
+  failed: '失败',
+};
+
+/** 发布中心受权投影包含统一任务和 Stage 2 留存任务。 */
+export const CMS_PUBLISH_TASK_TYPES = [
+  'cms-publish-build',
+  'cms-static-build',
+  'cms-theme-rebuild',
+] as const;
+
 export const CMS_CHANNEL_TYPES = ['list', 'page', 'link'] as const;
 
 export const CMS_CHANNEL_TYPE_LABELS: Record<(typeof CMS_CHANNEL_TYPES)[number], string> = {

@@ -85,7 +85,7 @@ export default function ChannelsPage() {
   const { data: models } = useAllCmsModels();
   const { data: sites } = useAllCmsSites();
   const currentSite = sites?.find((s) => s.id === siteId);
-  const { data: themeTemplates } = useCmsThemeTemplates(currentSite?.theme);
+  const { data: themeTemplates } = useCmsThemeTemplates(currentSite?.theme, currentSite?.id);
   const { data: publishChannels } = useCmsPublishChannels(siteId);
 
   const [modalVisible, setModalVisible] = useState(false);

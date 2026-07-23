@@ -51,6 +51,8 @@ import {
   OAUTH2_GRANT_TYPES,
   OPEN_APP_ENVIRONMENTS,
   CMS_SEARCH_DICTIONARY_WORD_PATTERN,
+  CMS_PUBLISH_TARGET_TYPES,
+  CMS_TEMPLATE_TYPES,
 } from './constants';
 
 const DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
@@ -5075,7 +5077,26 @@ export const createCmsSiteSchema = z.object({
   sort: z.number().int().default(0),
   remark: z.string().max(500).nullable().optional(),
 });
-export const updateCmsSiteSchema = createCmsSiteSchema.partial();
+export const updateCmsSiteSchema = z.object({
+  name: createCmsSiteSchema.shape.name.optional(),
+  code: createCmsSiteSchema.shape.code.optional(),
+  domain: createCmsSiteSchema.shape.domain.optional(),
+  aliasDomains: createCmsSiteSchema.shape.aliasDomains.removeDefault().optional(),
+  isDefault: createCmsSiteSchema.shape.isDefault.removeDefault().optional(),
+  title: createCmsSiteSchema.shape.title.optional(),
+  keywords: createCmsSiteSchema.shape.keywords.optional(),
+  description: createCmsSiteSchema.shape.description.optional(),
+  logo: createCmsSiteSchema.shape.logo.optional(),
+  favicon: createCmsSiteSchema.shape.favicon.optional(),
+  icp: createCmsSiteSchema.shape.icp.optional(),
+  copyright: createCmsSiteSchema.shape.copyright.optional(),
+  staticMode: createCmsSiteSchema.shape.staticMode.removeDefault().optional(),
+  robots: createCmsSiteSchema.shape.robots.optional(),
+  settings: createCmsSiteSchema.shape.settings.removeDefault().optional(),
+  status: createCmsSiteSchema.shape.status.removeDefault().optional(),
+  sort: createCmsSiteSchema.shape.sort.removeDefault().optional(),
+  remark: createCmsSiteSchema.shape.remark.optional(),
+});
 
 export const createCmsPublishChannelSchema = z.object({
   siteId: z.number().int().positive(),
@@ -5250,6 +5271,173 @@ export type CreateCmsFragmentInput = z.input<typeof createCmsFragmentSchema>;
 export type UpdateCmsFragmentInput = z.input<typeof updateCmsFragmentSchema>;
 export type CreateCmsFriendLinkInput = z.input<typeof createCmsFriendLinkSchema>;
 export type UpdateCmsFriendLinkInput = z.input<typeof updateCmsFriendLinkSchema>;
+
+// ─── CMS Stage 3：声明式模板 / 主题包 / 发布中心 ───────────────────────────────
+const cmsTemplateCodeSchema = z.string().min(1).max(64)
+  .regex(/^[a-z][a-z0-9-]*$/, '编码须以小写字母开头，仅含小写字母、数字、中划线');
+
+export const cmsTemplateDslValueSchema = z.union([
+  z.string(),
+  z.number().finite(),
+  z.boolean(),
+  z.null(),
+  z.object({
+    bind: z.string().min(1).max(128),
+    fallback: z.union([z.string(), z.number().finite(), z.boolean(), z.null()]).optional(),
+  }).strict(),
+  z.object({ asset: z.string().min(1).max(255) }).strict(),
+]);
+
+export const cmsTemplateDslNodeSchema: z.ZodTypeAny = z.lazy(() => z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('element'),
+    tag: z.string().min(1).max(32),
+    attrs: z.record(z.string(), cmsTemplateDslValueSchema).optional(),
+    children: z.array(cmsTemplateDslNodeSchema).optional(),
+  }).strict(),
+  z.object({ kind: z.literal('text'), value: cmsTemplateDslValueSchema }).strict(),
+  z.object({
+    kind: z.literal('binding'),
+    bind: z.string().min(1).max(128),
+    fallback: z.union([z.string(), z.number().finite(), z.boolean(), z.null()]).optional(),
+  }).strict(),
+  z.object({
+    kind: z.literal('if'),
+    bind: z.string().min(1).max(128),
+    children: z.array(cmsTemplateDslNodeSchema),
+    fallback: z.array(cmsTemplateDslNodeSchema).optional(),
+  }).strict(),
+  z.object({
+    kind: z.literal('each'),
+    source: z.string().min(1).max(128),
+    item: z.string().regex(/^[a-z][a-zA-Z0-9]*$/).max(32).optional(),
+    children: z.array(cmsTemplateDslNodeSchema),
+    empty: z.array(cmsTemplateDslNodeSchema).optional(),
+  }).strict(),
+  z.object({
+    kind: z.literal('rich_text'),
+    bind: z.string().min(1).max(128),
+    className: z.string().max(255).optional(),
+  }).strict(),
+  z.object({
+    kind: z.literal('component'),
+    name: z.string().min(1).max(64),
+    props: z.record(z.string(), cmsTemplateDslValueSchema).optional(),
+  }).strict(),
+]));
+
+export const cmsTemplateDslSchema = z.object({
+  version: z.literal(1),
+  root: cmsTemplateDslNodeSchema,
+}).strict();
+
+export const createCmsTemplateSchema = z.object({
+  siteId: z.number().int().positive().nullable().default(null),
+  themeCode: cmsTemplateCodeSchema.max(50),
+  type: z.enum(CMS_TEMPLATE_TYPES),
+  code: cmsTemplateCodeSchema,
+  name: z.string().trim().min(1).max(100),
+  description: z.string().max(500).nullable().optional(),
+  dsl: z.unknown(),
+  changeNote: z.string().max(500).nullable().optional(),
+});
+
+export const updateCmsTemplateSchema = z.object({
+  name: z.string().trim().min(1).max(100).optional(),
+  description: z.string().max(500).nullable().optional(),
+});
+
+export const saveCmsTemplateVersionSchema = z.object({
+  dsl: z.unknown(),
+  changeNote: z.string().max(500).nullable().optional(),
+});
+
+export const previewCmsTemplateSchema = z.object({
+  siteId: z.number().int().positive(),
+  path: z.string().max(500).default(''),
+  version: z.number().int().positive().optional(),
+});
+
+export const activateCmsTemplateSchema = z.object({
+  version: z.number().int().positive().optional(),
+});
+
+export const cmsThemePackageManifestSchema = z.object({
+  schemaVersion: z.literal(1),
+  code: cmsTemplateCodeSchema.max(50),
+  name: z.string().trim().min(1).max(100),
+  version: z.string().regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/, '主题版本须为 SemVer'),
+  engine: z.object({
+    min: z.number().int().positive(),
+    max: z.number().int().positive(),
+  }).strict(),
+  templates: z.array(z.object({
+    code: cmsTemplateCodeSchema,
+    name: z.string().trim().min(1).max(100),
+    type: z.enum(CMS_TEMPLATE_TYPES),
+    path: z.string().min(1).max(255),
+  }).strict()).min(1).max(64),
+  assets: z.array(z.string().min(1).max(255)).max(100),
+  checksums: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)),
+  signingKeyId: z.string().regex(/^[A-Za-z0-9._-]{1,64}$/),
+  signature: z.string().min(40).max(512),
+}).strict();
+
+export const activateCmsThemePackageSchema = z.object({
+  siteId: z.number().int().positive(),
+});
+
+export const cmsThemeDeploymentActionSchema = z.object({
+  siteId: z.number().int().positive(),
+  themeCode: cmsTemplateCodeSchema.max(50),
+  packageId: z.number().int().positive(),
+});
+
+export const previewCmsThemePackageSchema = z.object({
+  siteId: z.number().int().positive(),
+  path: z.string().max(500).default(''),
+});
+
+export const submitCmsPublishSchema = z.object({
+  siteId: z.number().int().positive(),
+  targetType: z.enum(CMS_PUBLISH_TARGET_TYPES),
+  contentIds: z.array(z.number().int().positive()).max(500).optional(),
+  channelId: z.number().int().positive().optional(),
+  pageId: z.number().int().positive().optional(),
+  pageSlug: cmsTemplateCodeSchema.max(100).optional(),
+  pageIsHome: z.boolean().optional(),
+  pageRemoved: z.boolean().optional(),
+  themeCode: cmsTemplateCodeSchema.max(50).optional(),
+  themePackageId: z.number().int().positive().optional(),
+  templateId: z.number().int().positive().optional(),
+  reason: z.string().max(500).optional(),
+}).superRefine((value, ctx) => {
+  if ((value.targetType === 'content' || value.targetType === 'contents') && !value.contentIds?.length) {
+    ctx.addIssue({ code: 'custom', path: ['contentIds'], message: '内容发布必须选择内容' });
+  }
+  if (value.targetType === 'content' && value.contentIds?.length && value.contentIds.length !== 1) {
+    ctx.addIssue({ code: 'custom', path: ['contentIds'], message: '单内容发布必须且只能选择一条内容' });
+  }
+  if (value.targetType === 'channel' && !value.channelId) {
+    ctx.addIssue({ code: 'custom', path: ['channelId'], message: '栏目发布必须选择栏目' });
+  }
+  if (value.targetType === 'page' && !value.pageId && !value.pageSlug) {
+    ctx.addIssue({ code: 'custom', path: ['pageId'], message: '页面发布必须选择页面或提供页面标识' });
+  }
+  if (value.targetType === 'template' && !value.templateId) {
+    ctx.addIssue({ code: 'custom', path: ['templateId'], message: '模板重建必须选择模板' });
+  }
+});
+
+export const batchCmsPublishActionSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1).max(100),
+  action: z.enum(['cancel', 'resume', 'restart', 'rebuild']),
+});
+
+export type CreateCmsTemplateInput = z.input<typeof createCmsTemplateSchema>;
+export type UpdateCmsTemplateInput = z.input<typeof updateCmsTemplateSchema>;
+export type SaveCmsTemplateVersionInput = z.input<typeof saveCmsTemplateVersionSchema>;
+export type SubmitCmsPublishInput = z.input<typeof submitCmsPublishSchema>;
 
 // ─── CMS P2 Schema ────────────────────────────────────────────────────────────
 export const createCmsRedirectSchema = z.object({

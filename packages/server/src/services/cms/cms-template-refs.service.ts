@@ -7,13 +7,14 @@
  * - 写入侧：assertXxx 系列在保存时校验模板名存在，杜绝新增失效引用；
  * - 存量侧：getSiteTemplateHealth 扫描全站引用，暴露主题变更后的静默回退。
  */
-import { and, eq, isNull, isNotNull, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { cmsSites, cmsChannels, cmsContents } from '../../db/schema';
 import type { CmsChannelRow } from '../../db/schema';
-import { isThemeRegistered, isTemplateRegistered, listThemeTemplates, getThemeSettingsSchema } from '../../cms/themes/registry';
+import { isTemplateRegistered, isThemeRegistered, listThemeTemplates, getThemeSettingsSchema } from '../../cms/themes/registry';
 import type { CmsSiteTemplateDefaults, CmsTemplateHealth, CmsInvalidTemplateRef } from '@zenith/shared';
+import { resolveAvailableCmsTemplateNames } from './cms-template-resolution.service';
 
 type TemplateKind = 'list' | 'detail';
 
@@ -54,25 +55,59 @@ function parseTemplateDefaults(value: unknown): CmsSiteTemplateDefaults {
 }
 
 /** 校验一组「通道 → 模板默认值」配置（站点 settings.defaultTemplates / 栏目 settings.templates 共用结构） */
-function assertTemplateDefaultsMap(themeCode: string, value: unknown, locationPrefix: string): void {
+function assertTemplateNameInSet(
+  names: Set<string>,
+  themeCode: string,
+  name: string | null | undefined,
+  location: string,
+): void {
+  if (!name || names.has(name)) return;
+  const options = [...names];
+  const available = options.length > 0 ? `可用：${options.join('、')}，或留空跟随默认` : '该主题无扩展模板，请留空跟随默认';
+  throw new HTTPException(400, { message: `${location}「${name}」在主题「${themeCode}」中不存在（${available}）` });
+}
+
+async function availableTemplateSets(themeCode: string, siteId?: number) {
+  if (!siteId) {
+    const builtin = isThemeRegistered(themeCode) ? listThemeTemplates(themeCode) : { list: [], detail: [] };
+    return {
+      themeAvailable: isThemeRegistered(themeCode),
+      list: new Set(builtin.list.map((item) => item.name)),
+      detail: new Set(builtin.detail.map((item) => item.name)),
+    };
+  }
+  return resolveAvailableCmsTemplateNames(siteId, themeCode);
+}
+
+function assertTemplateDefaultsMap(
+  themeCode: string,
+  value: unknown,
+  locationPrefix: string,
+  sets: { list: Set<string>; detail: Set<string> },
+): void {
   if (!value || typeof value !== 'object') return;
   for (const [device, raw] of Object.entries(value as Record<string, unknown>)) {
     const cfg = parseTemplateDefaults(raw);
-    assertTemplateName(themeCode, 'list', cfg.list, `${locationPrefix}[${device}]列表模板`);
-    assertTemplateName(themeCode, 'detail', cfg.detail, `${locationPrefix}[${device}]详情模板`);
+    assertTemplateNameInSet(sets.list, themeCode, cfg.list, `${locationPrefix}[${device}]列表模板`);
+    assertTemplateNameInSet(sets.detail, themeCode, cfg.detail, `${locationPrefix}[${device}]详情模板`);
     for (const [modelCode, name] of Object.entries(cfg.detailByModel ?? {})) {
-      assertTemplateName(themeCode, 'detail', name, `${locationPrefix}[${device}]${modelCode} 详情模板`);
+      assertTemplateNameInSet(sets.detail, themeCode, name, `${locationPrefix}[${device}]${modelCode} 详情模板`);
     }
   }
 }
 
 /** 站点保存校验：settings.defaultTemplates 中的模板名须存在于目标主题 */
-export function assertSiteTemplateSettings(themeCode: string, settings: Record<string, unknown> | null | undefined): void {
-  assertTemplateDefaultsMap(themeCode, settings?.defaultTemplates, '站点默认模板');
+export async function assertSiteTemplateSettings(
+  themeCode: string,
+  settings: Record<string, unknown> | null | undefined,
+  siteId?: number,
+): Promise<void> {
+  assertTemplateDefaultsMap(themeCode, settings?.defaultTemplates, '站点默认模板', await availableTemplateSets(themeCode, siteId));
 }
 
 /** 站点保存校验：settings.themeConfig 中 select 类型参数的值须在主题声明的选项内 */
 export function assertSiteThemeConfig(themeCode: string, settings: Record<string, unknown> | null | undefined): void {
+  if (!isThemeRegistered(themeCode)) return;
   const raw = settings?.themeConfig;
   if (!raw || typeof raw !== 'object') return;
   const config = raw as Record<string, unknown>;
@@ -96,43 +131,79 @@ export async function assertChannelTemplatesBySite(
     && Object.keys(data.settings.templates as Record<string, unknown>).length > 0;
   if (!data.listTemplate && !data.detailTemplate && !hasSettingsTemplates) return;
   const theme = await getSiteTheme(siteId);
-  assertTemplateName(theme, 'list', data.listTemplate, '列表模板');
-  assertTemplateName(theme, 'detail', data.detailTemplate, '详情模板');
-  assertTemplateDefaultsMap(theme, data.settings?.templates, '栏目通道模板');
+  const sets = await availableTemplateSets(theme, siteId);
+  assertTemplateNameInSet(sets.list, theme, data.listTemplate, '列表模板');
+  assertTemplateNameInSet(sets.detail, theme, data.detailTemplate, '详情模板');
+  assertTemplateDefaultsMap(theme, data.settings?.templates, '栏目通道模板', sets);
 }
 
 /** 内容保存校验：detailTemplate 须存在于站点主题 */
 export async function assertContentTemplateBySite(siteId: number, detailTemplate: string | null | undefined): Promise<void> {
   if (!detailTemplate) return;
   const theme = await getSiteTheme(siteId);
-  assertTemplateName(theme, 'detail', detailTemplate, '详情模板');
+  const sets = await availableTemplateSets(theme, siteId);
+  assertTemplateNameInSet(sets.detail, theme, detailTemplate, '详情模板');
+}
+
+/** 生命周期停用前扫描某个活动模板 code 的显式引用；返回可行动的位置摘要。 */
+export async function findCmsTemplateReferences(
+  siteId: number,
+  kind: TemplateKind,
+  templateCode: string,
+): Promise<string[]> {
+  const [site, channels, contentCount] = await Promise.all([
+    db.select({ settings: cmsSites.settings }).from(cmsSites).where(eq(cmsSites.id, siteId)).limit(1)
+      .then((rows) => rows[0]),
+    db.select().from(cmsChannels).where(eq(cmsChannels.siteId, siteId)),
+    kind === 'detail'
+      ? db.$count(cmsContents, and(
+          eq(cmsContents.siteId, siteId),
+          eq(cmsContents.detailTemplate, templateCode),
+        ))
+      : Promise.resolve(0),
+  ]);
+  if (!site) return [];
+  const refs: string[] = [];
+  const collectMap = (value: unknown, prefix: string) => {
+    if (!value || typeof value !== 'object') return;
+    for (const [device, raw] of Object.entries(value as Record<string, unknown>)) {
+      const cfg = parseTemplateDefaults(raw);
+      if (kind === 'list' && cfg.list === templateCode) refs.push(`${prefix}[${device}]列表`);
+      if (kind === 'detail' && cfg.detail === templateCode) refs.push(`${prefix}[${device}]详情`);
+      if (kind === 'detail') {
+        for (const [model, name] of Object.entries(cfg.detailByModel ?? {})) {
+          if (name === templateCode) refs.push(`${prefix}[${device}]${model}详情`);
+        }
+      }
+    }
+  };
+  collectMap((site.settings as Record<string, unknown> | null)?.defaultTemplates, '站点');
+  for (const channel of channels) {
+    if (kind === 'list' && channel.listTemplate === templateCode) refs.push(`栏目 #${channel.id} 列表`);
+    if (kind === 'detail' && channel.detailTemplate === templateCode) refs.push(`栏目 #${channel.id} 详情`);
+    collectMap((channel.settings as Record<string, unknown> | null)?.templates, `栏目 #${channel.id}`);
+  }
+  if (contentCount > 0) refs.push(`${contentCount} 条内容详情`);
+  return refs;
 }
 
 // ─── 存量扫描（主题健康检查）───────────────────────────────────────────────────
-function checkRef(
-  themeCode: string,
-  kind: TemplateKind,
-  name: string | null | undefined,
-  ref: Omit<CmsInvalidTemplateRef, 'kind' | 'template'>,
+function scanChannelRefs(
+  channel: CmsChannelRow,
+  available: { list: Set<string>; detail: Set<string> },
   out: CmsInvalidTemplateRef[],
 ): void {
-  if (!name) return;
-  if (isTemplateRegistered(themeCode, kind, name)) return;
-  out.push({ ...ref, kind, template: name });
-}
-
-function scanChannelRefs(themeCode: string, channel: CmsChannelRow, out: CmsInvalidTemplateRef[]): void {
   const base = { source: 'channel' as const, channelId: channel.id, channelName: channel.name };
-  checkRef(themeCode, 'list', channel.listTemplate, { ...base, location: '列表模板' }, out);
-  checkRef(themeCode, 'detail', channel.detailTemplate, { ...base, location: '详情模板' }, out);
+  if (channel.listTemplate && !available.list.has(channel.listTemplate)) out.push({ ...base, kind: 'list', template: channel.listTemplate, location: '列表模板' });
+  if (channel.detailTemplate && !available.detail.has(channel.detailTemplate)) out.push({ ...base, kind: 'detail', template: channel.detailTemplate, location: '详情模板' });
   const templates = (channel.settings as Record<string, unknown> | null)?.templates;
   if (!templates || typeof templates !== 'object') return;
   for (const [device, raw] of Object.entries(templates as Record<string, unknown>)) {
     const cfg = parseTemplateDefaults(raw);
-    checkRef(themeCode, 'list', cfg.list, { ...base, location: `通道模板[${device}]列表` }, out);
-    checkRef(themeCode, 'detail', cfg.detail, { ...base, location: `通道模板[${device}]详情` }, out);
+    if (cfg.list && !available.list.has(cfg.list)) out.push({ ...base, kind: 'list', template: cfg.list, location: `通道模板[${device}]列表` });
+    if (cfg.detail && !available.detail.has(cfg.detail)) out.push({ ...base, kind: 'detail', template: cfg.detail, location: `通道模板[${device}]详情` });
     for (const [modelCode, name] of Object.entries(cfg.detailByModel ?? {})) {
-      checkRef(themeCode, 'detail', name, { ...base, location: `通道模板[${device}]${modelCode} 详情` }, out);
+      if (name && !available.detail.has(name)) out.push({ ...base, kind: 'detail', template: name, location: `通道模板[${device}]${modelCode} 详情` });
     }
   }
 }
@@ -142,21 +213,28 @@ function scanChannelRefs(themeCode: string, channel: CmsChannelRow, out: CmsInva
  * themeOverride 用于「切换主题前预检」：按目标主题而非当前主题判定。
  * 站点数据权限（assertSiteAccess）由路由层负责。
  */
-export async function getSiteTemplateHealth(siteId: number, themeOverride?: string): Promise<CmsTemplateHealth> {
+export async function getSiteTemplateHealth(
+  siteId: number,
+  themeOverride?: string,
+  override?: { list: string[]; detail: string[]; themeAvailable?: boolean },
+): Promise<CmsTemplateHealth> {
   const [site] = await db.select().from(cmsSites).where(eq(cmsSites.id, siteId)).limit(1);
   if (!site) throw new HTTPException(404, { message: '站点不存在' });
   const theme = themeOverride?.trim() || site.theme;
   const invalidRefs: CmsInvalidTemplateRef[] = [];
+  const available = override
+    ? { themeAvailable: override.themeAvailable ?? true, list: new Set(override.list), detail: new Set(override.detail) }
+    : await availableTemplateSets(theme, siteId);
 
   // 站点级：settings.defaultTemplates
   const defaults = (site.settings as Record<string, unknown> | null)?.defaultTemplates;
   if (defaults && typeof defaults === 'object') {
     for (const [device, raw] of Object.entries(defaults as Record<string, unknown>)) {
       const cfg = parseTemplateDefaults(raw);
-      checkRef(theme, 'list', cfg.list, { source: 'site', location: `站点默认模板[${device}]列表` }, invalidRefs);
-      checkRef(theme, 'detail', cfg.detail, { source: 'site', location: `站点默认模板[${device}]详情` }, invalidRefs);
+      if (cfg.list && !available.list.has(cfg.list)) invalidRefs.push({ source: 'site', kind: 'list', template: cfg.list, location: `站点默认模板[${device}]列表` });
+      if (cfg.detail && !available.detail.has(cfg.detail)) invalidRefs.push({ source: 'site', kind: 'detail', template: cfg.detail, location: `站点默认模板[${device}]详情` });
       for (const [modelCode, name] of Object.entries(cfg.detailByModel ?? {})) {
-        checkRef(theme, 'detail', name, { source: 'site', location: `站点默认模板[${device}]${modelCode} 详情` }, invalidRefs);
+        if (name && !available.detail.has(name)) invalidRefs.push({ source: 'site', kind: 'detail', template: name, location: `站点默认模板[${device}]${modelCode} 详情` });
       }
     }
   }
@@ -166,14 +244,18 @@ export async function getSiteTemplateHealth(siteId: number, themeOverride?: stri
     db.select().from(cmsChannels).where(eq(cmsChannels.siteId, siteId)),
     db.select({ template: cmsContents.detailTemplate, count: sql<number>`count(*)::int` })
       .from(cmsContents)
-      .where(and(eq(cmsContents.siteId, siteId), isNotNull(cmsContents.detailTemplate), isNull(cmsContents.deletedAt)))
+      .where(and(eq(cmsContents.siteId, siteId), isNotNull(cmsContents.detailTemplate)))
       .groupBy(cmsContents.detailTemplate),
   ]);
-  for (const channel of channels) scanChannelRefs(theme, channel, invalidRefs);
+  for (const channel of channels) scanChannelRefs(channel, available, invalidRefs);
   for (const row of contentRefs) {
-    if (!row.template || isTemplateRegistered(theme, 'detail', row.template)) continue;
+    if (!row.template || available.detail.has(row.template)) continue;
     invalidRefs.push({ source: 'content', kind: 'detail', template: row.template, location: '内容详情模板', count: row.count });
   }
 
-  return { theme, themeRegistered: isThemeRegistered(theme), invalidRefs };
+  return {
+    theme,
+    themeRegistered: override?.themeAvailable ?? available.themeAvailable,
+    invalidRefs,
+  };
 }

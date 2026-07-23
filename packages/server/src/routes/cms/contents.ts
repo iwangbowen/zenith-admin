@@ -20,7 +20,6 @@ import { listContentOpLogs } from '../../services/cms/cms-content-op-logs.servic
 import { checkCmsText } from '../../services/cms/cms-word-check.service';
 import { acquireContentEditLock, releaseContentEditLock } from '../../services/cms/cms-edit-lock.service';
 import { createContentPreviewLink } from '../../services/cms/cms-preview.service';
-import { triggerContentStaticRefresh } from '../../services/cms/cms-static.service';
 import { CmsContentVersionDTO, CmsContentVersionDiffDTO, CmsEditLockDTO, CmsPreviewLinkDTO, AsyncTaskDTO, CmsContentOpLogDTO, CmsTextCheckResultDTO } from '../../lib/openapi-dtos';
 import { mapAsyncTask, submitAsyncTask } from '../../lib/task-center';
 import { lockCmsContent, unlockCmsContent } from '../../services/cms/cms-content-lock.service';
@@ -129,7 +128,6 @@ const updateRoute_ = defineOpenAPIRoute({
     const before = await getCmsContent(id);
     setAuditBeforeData(c, { ...before, body: undefined });
     const row = await updateCmsContent(id, c.req.valid('json'));
-    if (row.status === 'published') triggerContentStaticRefresh(id);
     return c.json(okBody(row, '更新成功'), 200);
   },
 });
@@ -201,7 +199,6 @@ const offlineRoute = defineOpenAPIRoute({
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, { ...await getCmsContent(id), body: undefined });
     const row = await offlineCmsContent(id);
-    triggerContentStaticRefresh(id);
     return c.json(okBody(row, '已下线'), 200);
   },
 });
@@ -219,7 +216,6 @@ const recycleRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { ids } = c.req.valid('json');
     const count = await recycleCmsContents(ids);
-    for (const id of ids) triggerContentStaticRefresh(id);
     return c.json(okBody(null, `已移入回收站 ${count} 条`), 200);
   },
 });
@@ -287,7 +283,6 @@ const restoreVersionRoute = defineOpenAPIRoute({
     const before = await getCmsContent(id);
     setAuditBeforeData(c, { ...before, body: undefined });
     const row = await restoreCmsContentToVersion(id, versionId);
-    if (row.status === 'published') triggerContentStaticRefresh(id);
     return c.json(okBody(row, '回滚成功'), 200);
   },
 });
@@ -492,7 +487,6 @@ const archiveRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { ids } = c.req.valid('json');
     const count = await archiveCmsContents(ids);
-    for (const id of ids) triggerContentStaticRefresh(id);
     return c.json(okBody(null, `已归档 ${count} 条（仅已发布/已下线内容可归档）`), 200);
   },
 });
@@ -509,7 +503,6 @@ const unarchiveRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { ids } = c.req.valid('json');
     const count = await unarchiveCmsContents(ids);
-    for (const id of ids) triggerContentStaticRefresh(id);
     return c.json(okBody(null, `已取消归档 ${count} 条`), 200);
   },
 });

@@ -18,7 +18,7 @@ import { and, eq, isNull, inArray, ne } from 'drizzle-orm';
 import { db } from '../../db';
 import { cmsSites, systemConfigs } from '../../db/schema';
 import { listThemes } from '../../cms/themes/registry';
-import { submitAsyncTask } from '../../lib/task-center';
+import { submitCmsPublishTask } from './cms-publishing.service';
 import { runWithCurrentUser } from '../../lib/context';
 import redis from '../../lib/redis';
 import { config } from '../../config';
@@ -130,7 +130,7 @@ export async function checkThemeChangesAndRebuild(): Promise<void> {
       return;
     }
 
-    const sites = await db.select({ id: cmsSites.id, name: cmsSites.name })
+    const sites = await db.select({ id: cmsSites.id, name: cmsSites.name, theme: cmsSites.theme })
       .from(cmsSites)
       .where(and(
         inArray(cmsSites.theme, changed),
@@ -144,15 +144,22 @@ export async function checkThemeChangesAndRebuild(): Promise<void> {
       return;
     }
 
-    const siteIds = sites.map((s) => s.id);
     // 幂等键含指纹摘要：多实例竞态或指纹保存失败后的重启不会重复建任务
     const fpDigest = createHash('sha256').update(changed.map((c) => `${c}:${current[c]}`).join('|')).digest('hex').slice(0, 32);
-    await runAsSystemAdmin(() => submitAsyncTask({
-      taskType: 'cms-theme-rebuild',
-      title: `CMS 主题变更重建（${changed.join('、')}：${sites.length} 个站点）`,
-      payload: { siteIds, themes: changed },
-      idempotencyKey: `cms-theme-rebuild:${fpDigest}`,
-    }));
+    await runAsSystemAdmin(async () => {
+      for (const site of sites) {
+        await submitCmsPublishTask({
+          siteId: site.id,
+          targetType: 'theme',
+          themeCode: site.theme,
+          reason: `内置主题代码变更：${changed.join('、')}`,
+        }, {
+          skipPermissionCheck: true,
+          skipAccessCheck: true,
+          eventKey: `theme-watch:${fpDigest}:${site.id}`,
+        });
+      }
+    });
     await saveFingerprints(current);
     logger.warn(`[cms-theme-watch] 检测到主题 [${changed.join(', ')}] 代码变更，已提交 ${sites.length} 个站点的静态页重建任务：${sites.map((s) => s.name).join('、')}`);
   } catch (err) {

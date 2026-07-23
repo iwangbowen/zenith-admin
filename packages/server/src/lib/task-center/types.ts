@@ -10,6 +10,14 @@ export const PENDING_REDISPATCH_MS = 3 * 60_000;
 /** 已结束任务默认保留天数（自动清理） */
 export const ASYNC_TASK_RETENTION_DAYS = 30;
 
+/** Handler 主动判定任务已过期/无需继续时抛出；runner 直接终止为 cancelled，不自动重试。 */
+export class TaskCancelledError extends Error {
+  constructor(message: string, readonly result?: Record<string, unknown>) {
+    super(message);
+    this.name = 'TaskCancelledError';
+  }
+}
+
 export interface TaskProgressUpdate {
   /** 已处理数 */
   processed?: number;
