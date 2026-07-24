@@ -705,6 +705,7 @@ export default function ThemesPage() {
                 { key: '主题可用', value: impactQuery.data.themeAvailable ? '是' : '否' },
                 { key: '当前活动版本', value: impactQuery.data.activePackageVersion ?? '内置/无' },
                 { key: '本次评估版本', value: impactQuery.data.evaluatedPackageVersion ?? '内置/无' },
+                { key: '继承影响站点', value: impactQuery.data.affectedSiteNames.join('、') || '-' },
                 { key: '影响栏目', value: impactQuery.data.affectedChannels },
                 { key: '影响内容', value: impactQuery.data.affectedContents },
                 { key: '影响页面', value: impactQuery.data.affectedPages },

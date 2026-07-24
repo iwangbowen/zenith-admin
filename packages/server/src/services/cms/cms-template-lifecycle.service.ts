@@ -3,29 +3,46 @@ import { HTTPException } from 'hono/http-exception';
 import type { AsyncTask } from '@zenith/shared';
 import { db } from '../../db';
 import type { DbTransaction } from '../../db/types';
-import { cmsSites, cmsTemplates, cmsTemplateVersions, cmsThemeDeployments, type CmsSiteRow, type CmsTemplateRow } from '../../db/schema';
+import { cmsTemplates, cmsTemplateVersions, type CmsSiteRow, type CmsTemplateRow } from '../../db/schema';
 import { enqueueAsyncTask } from '../../lib/task-center';
 import logger from '../../lib/logger';
-import { assertSiteAccess } from './cms-sites.service';
+import { assertSiteAccess, assertSitesAccess } from './cms-sites.service';
+import { assertAllCmsSiteChannelsAccess } from './cms-channels.service';
 import { isCmsPlatformAdmin } from './cms-access';
 import { mapCmsTemplate } from './cms-templates.service';
 import { submitCmsPublishTask } from './cms-publishing.service';
 import { cmsTemplateLifecycleEventKey, isManualTemplateLifecycleAllowed } from './cms-lifecycle-policy';
-import { acquireCmsGlobalThemeLifecycleLock, lockCmsSiteForMutation } from './cms-site-publish-lock.service';
+import {
+  acquireCmsGlobalThemeLifecycleLock,
+  bumpCmsTemplateRefsRevision,
+  cmsSiteFencePayload,
+  lockCmsSiteForMutation,
+} from './cms-site-publish-lock.service';
 import { findCmsTemplateReferences } from './cms-template-refs.service';
+import { listCmsTemplateAffectedSiteIds } from './cms-site-inheritance.service';
 
 async function assertLifecycleScope(row: CmsTemplateRow): Promise<void> {
   if (row.siteId != null) {
     await assertSiteAccess(row.siteId);
-    return;
+  } else if (!isCmsPlatformAdmin()) {
+    throw new HTTPException(403, { message: '仅平台超级管理员可变更主题级全局模板生命周期' });
   }
-  if (!isCmsPlatformAdmin()) throw new HTTPException(403, { message: '仅平台超级管理员可变更主题级全局模板生命周期' });
+  const affectedSiteIds = await listCmsTemplateAffectedSiteIds(row.siteId, row.themeCode, db, {
+    type: row.type,
+    code: row.code,
+  });
+  await assertSitesAccess(affectedSiteIds);
+  for (const siteId of affectedSiteIds) await assertAllCmsSiteChannelsAccess(siteId);
 }
 
 async function lockAffectedSites(tx: DbTransaction, row: CmsTemplateRow): Promise<CmsSiteRow[]> {
-  const ids = row.siteId != null
-    ? [row.siteId]
-    : (await tx.select({ id: cmsSites.id }).from(cmsSites).where(eq(cmsSites.theme, row.themeCode))).map((site) => site.id);
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext('cms-site-hierarchy'))`);
+  const ids = await listCmsTemplateAffectedSiteIds(row.siteId, row.themeCode, tx, {
+    type: row.type,
+    code: row.code,
+  });
+  await assertSitesAccess(ids);
+  for (const siteId of ids) await assertAllCmsSiteChannelsAccess(siteId);
   const sites: CmsSiteRow[] = [];
   for (const siteId of [...new Set(ids)].sort((a, b) => a - b)) {
     sites.push(await lockCmsSiteForMutation(tx, siteId));
@@ -50,25 +67,23 @@ async function insertLifecycleTasks(
 ): Promise<AsyncTask[]> {
   const tasks: AsyncTask[] = [];
   for (const site of sites) {
-    const [deployment] = await tx.select({ id: cmsThemeDeployments.id }).from(cmsThemeDeployments).where(and(
-      eq(cmsThemeDeployments.siteId, site.id),
-      eq(cmsThemeDeployments.status, 'active'),
-    )).limit(1);
+    const fencedSite = {
+      ...site,
+      templateRefsRevision: await bumpCmsTemplateRefsRevision(tx, site.id),
+    };
     tasks.push(await submitCmsPublishTask({
-      siteId: site.id,
+      siteId: fencedSite.id,
       targetType: 'template',
       templateId: row.id,
       themeCode: row.themeCode,
-      expectedThemeRevision: site.themeRevision,
-      expectedTemplateRefsRevision: site.templateRefsRevision,
+      ...await cmsSiteFencePayload(tx, fencedSite),
       expectedTemplateLifecycleRevision: revision,
-      expectedDeploymentId: deployment?.id ?? null,
       reason,
     }, {
       skipPermissionCheck: true,
       skipAccessCheck: true,
       executor: tx,
-      eventKey: cmsTemplateLifecycleEventKey(row.id, revision, site.id),
+      eventKey: cmsTemplateLifecycleEventKey(row.id, revision, fencedSite.id),
     }));
   }
   return tasks;

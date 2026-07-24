@@ -23,6 +23,7 @@ import type {
   CmsInteraction, CmsInteractionQuestion, CmsMemberSubscription, CmsResource, CmsResourceFolder, CmsSearchWord, CmsHotwordGroup,
   CmsContentVersion, CmsCollectRule, CmsCollectItem, CmsPage,
   CmsTemplate, CmsTemplateVersion, CmsThemePackage, CmsTemplateDslDocument,
+  CmsSiteInheritanceFlags, CmsDistributionRule,
 } from './types';
 import { ANALYTICS_EXPERIMENT_EXPOSURE_EVENT, ANALYTICS_SEMANTIC_EVENT_LABELS, type AnalyticsSemanticEventName } from './constants';
 
@@ -685,6 +686,8 @@ export const SEED_MENUS: Menu[] = [
   { id: 1706, parentId: 1705, title: '新增站点',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:site:create',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1707, parentId: 1705, title: '编辑站点',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'cms:site:update',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1708, parentId: 1705, title: '删除站点',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'cms:site:delete',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1836, parentId: 1705, title: '管理站群层级', name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 5,  status: 'enabled', visible: true,  permission: 'cms:site:hierarchy', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1837, parentId: 1705, title: '站群批量发布', name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 6,  status: 'enabled', visible: true,  permission: 'cms:publish:group',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1795, parentId: 1700, title: '发布通道',     name: 'CmsPublishChannels', path: '/cms/publish-channels', component: 'cms/PublishChannelsPage', icon: 'Radio',   type: 'menu',      sort: 17, status: 'enabled', visible: true,  permission: 'cms:publish-channel:list',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1796, parentId: 1795, title: '新增通道',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:publish-channel:create', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1797, parentId: 1795, title: '编辑通道',     name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'cms:publish-channel:update', createdAt: SEED_DATE, updatedAt: SEED_DATE },
@@ -768,6 +771,12 @@ export const SEED_MENUS: Menu[] = [
   { id: 1820, parentId: 1700, title: '会员订阅',     name: 'CmsSubscriptions', path: '/cms/subscriptions', component: 'cms/SubscriptionsPage',     icon: 'BellRing',     type: 'menu',      sort: 23, status: 'enabled', visible: true,  permission: 'cms:subscription:list', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1821, parentId: 1820, title: '导出订阅明细', name: undefined,          path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'cms:subscription:export', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1822, parentId: 1820, title: '导出订阅原始明细', name: undefined,       path: undefined,          component: undefined,                    icon: undefined,      type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'cms:subscription:export-raw', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1830, parentId: 1700, title: '内容分发',     name: 'CmsDistribution', path: '/cms/distribution', component: 'cms/DistributionPage', icon: 'Network', type: 'menu', sort: 24, status: 'enabled', visible: true, permission: 'cms:distribution:list', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1831, parentId: 1830, title: '新增分发规则', name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 1, status: 'enabled', visible: true, permission: 'cms:distribution:create', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1832, parentId: 1830, title: '编辑分发规则', name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 2, status: 'enabled', visible: true, permission: 'cms:distribution:update', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1833, parentId: 1830, title: '删除分发规则', name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 3, status: 'enabled', visible: true, permission: 'cms:distribution:delete', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1834, parentId: 1830, title: '执行内容分发', name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 4, status: 'enabled', visible: true, permission: 'cms:distribution:run', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1835, parentId: 1830, title: '导出分发结果', name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 5, status: 'enabled', visible: true, permission: 'cms:distribution:export', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 export const CMS_RAW_EXPORT_MENU_IDS = [1822, 1826, 1827] as const;
@@ -2973,18 +2982,64 @@ export const SEED_ANALYTICS_EVENT_META: SeedAnalyticsEventMeta[] = [
 // ─── CMS：站点 / 模型 / 栏目 / 内容 / 标签 / 碎片 / 友链 ─────────────────────────
 export const SEED_CMS_SITES: CmsSite[] = [
   {
-    id: 1, name: 'Zenith 官方网站', code: 'main', domain: null, aliasDomains: [], isDefault: true,
+    id: 1, parentId: null, name: 'Zenith 官方网站', code: 'main', domain: null, aliasDomains: [], isDefault: true,
     title: 'Zenith Admin — 企业级全栈管理系统', keywords: 'Zenith,CMS,后台管理,内容管理',
     description: 'Zenith Admin 是基于 Hono + React + PostgreSQL 的企业级全栈管理系统，内置 CMS 内容管理、多站点与全文检索。',
     logo: null, favicon: null, icp: null, copyright: '© 2024 Zenith Admin', theme: 'default',
-    themeRevision: 0, templateRefsRevision: 0, staticMode: 'hybrid', robots: null, settings: {}, status: 'enabled', sort: 0, remark: '默认演示站点',
+    themeRevision: 0, templateRefsRevision: 0, staticMode: 'hybrid', robots: null,
+    settings: {
+      auditMode: 'simple',
+      webhookUrl: 'https://hooks.example.invalid/cms',
+      webhookSecret: 'demo-parent-secret',
+      themeConfig: { footerText: '由 Zenith CMS 驱动' },
+      defaultTemplates: { pc: { list: 'list-editorial', detail: 'detail-editorial' } },
+    },
+    status: 'enabled', sort: 0, remark: '默认演示根站点',
+    inheritance: {
+      seoTitle: false, seoKeywords: false, seoDescription: false, staticMode: false,
+      reviewMode: false, webhook: false, cdn: false, theme: false, themeConfig: false, templates: false,
+    },
+    createdAt: SEED_DATE, updatedAt: SEED_DATE,
+  },
+  {
+    id: 2, parentId: 1, name: 'Zenith 技术子站', code: 'tech', domain: null, aliasDomains: [], isDefault: false,
+    title: 'Zenith 技术中心', keywords: null, description: null,
+    logo: null, favicon: null, icp: null, copyright: '© 2024 Zenith Tech', theme: 'default',
+    themeRevision: 0, templateRefsRevision: 0, staticMode: 'dynamic', robots: null,
+    settings: {
+      cdnPurgeUrl: 'https://cdn.example.invalid/purge',
+      cdnPurgeToken: 'demo-child-token',
+      themeConfig: { footerText: '子站自有文案（当前选择继承父级）' },
+      defaultTemplates: {},
+    },
+    status: 'enabled', sort: 1, remark: 'Stage 5 父子继承演示子站',
+    inheritance: {
+      seoTitle: false, seoKeywords: true, seoDescription: true, staticMode: true,
+      reviewMode: true, webhook: true, cdn: false, theme: true, themeConfig: true, templates: true,
+    },
     createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
 ];
 
+export const SEED_CMS_SITE_INHERITANCES: Array<{ siteId: number } & CmsSiteInheritanceFlags> =
+  SEED_CMS_SITES.map((site) => ({
+    siteId: site.id,
+    seoTitle: site.inheritance?.seoTitle ?? false,
+    seoKeywords: site.inheritance?.seoKeywords ?? false,
+    seoDescription: site.inheritance?.seoDescription ?? false,
+    staticMode: site.inheritance?.staticMode ?? false,
+    reviewMode: site.inheritance?.reviewMode ?? false,
+    webhook: site.inheritance?.webhook ?? false,
+    cdn: site.inheritance?.cdn ?? false,
+    theme: site.inheritance?.theme ?? false,
+    themeConfig: site.inheritance?.themeConfig ?? false,
+    templates: site.inheritance?.templates ?? false,
+  }));
+
 export const SEED_CMS_PUBLISH_CHANNELS: CmsPublishChannel[] = [
   { id: 1, siteId: 1, name: 'PC 桌面', code: 'pc', domain: null, uaRegex: null, isDefault: true, status: 'enabled', sort: 1, remark: '默认通道', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 2, siteId: 1, name: 'H5 移动', code: 'h5', domain: null, uaRegex: 'Mobile|Android|iPhone', isDefault: false, status: 'enabled', sort: 2, remark: '移动端通道（绑定域名后按 UA 自动跳转）', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 3, siteId: 2, name: 'PC 桌面', code: 'pc', domain: null, uaRegex: null, isDefault: true, status: 'enabled', sort: 1, remark: '技术子站默认通道', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 export const SEED_CMS_MODELS: (CmsModel & { fields: NonNullable<CmsModel['fields']> })[] = [
@@ -3007,6 +3062,7 @@ export const SEED_CMS_CHANNELS: CmsChannel[] = [
   { id: 1, siteId: 1, parentId: 0, modelId: 1, name: '新闻中心', slug: 'news',     path: 'news',     type: 'list', linkUrl: null, listTemplate: null, detailTemplate: null, pageSize: 20, pageContent: null, seoTitle: null, seoKeywords: null, seoDescription: '最新公司动态与行业资讯', image: null, visible: true, status: 'enabled', sort: 1, settings: {}, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 2, siteId: 1, parentId: 0, modelId: 2, name: '产品中心', slug: 'products', path: 'products', type: 'list', linkUrl: null, listTemplate: null, detailTemplate: null, pageSize: 20, pageContent: null, seoTitle: null, seoKeywords: null, seoDescription: '产品与解决方案', image: null, visible: true, status: 'enabled', sort: 2, settings: {}, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 3, siteId: 1, parentId: 0, modelId: null, name: '关于我们', slug: 'about', path: 'about',    type: 'page', linkUrl: null, listTemplate: null, detailTemplate: null, pageSize: 20, pageContent: '<h2>关于 Zenith</h2><p>Zenith Admin 是一套企业级全栈管理系统，本页面由 CMS 单页栏目渲染。</p>', seoTitle: null, seoKeywords: null, seoDescription: '关于 Zenith Admin', image: null, visible: true, status: 'enabled', sort: 3, settings: {}, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 4, siteId: 2, parentId: 0, modelId: 1, name: '技术动态', slug: 'news', path: 'news', type: 'list', linkUrl: null, listTemplate: null, detailTemplate: null, pageSize: 20, pageContent: null, seoTitle: null, seoKeywords: null, seoDescription: '来自根站点治理分发的技术动态', image: null, visible: true, status: 'enabled', sort: 1, settings: {}, createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 export const SEED_CMS_TAGS: CmsTag[] = [
@@ -3024,7 +3080,7 @@ export const SEED_CMS_CONTENTS: (CmsContent & { tagIds: number[] })[] = [
     extend: {}, externalLink: null, detailTemplate: null, isTop: true, topWeight: 10, topExpireAt: null, isRecommend: true, isHot: false,
     status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null, expireAt: null,
     viewCount: 128, likeCount: 0, favoriteCount: 0, version: 1, sort: 0, seoTitle: null, seoKeywords: 'CMS,发布', seoDescription: null, socialImageAlt: null, twitterCreator: null,
-    archivedAt: null, mappingSourceId: null, lockedAt: null, lockedBy: null, lockReason: null,
+    archivedAt: null, mappingSourceId: null, distributionRuleId: null, distributionSourceId: null, distributionSourceVersion: null, lockedAt: null, lockedBy: null, lockReason: null,
     tagIds: [1], extraChannelIds: [2], relatedIds: [2], createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
   {
@@ -3036,7 +3092,7 @@ export const SEED_CMS_CONTENTS: (CmsContent & { tagIds: number[] })[] = [
     extend: {}, externalLink: null, detailTemplate: null, isTop: false, topWeight: 0, topExpireAt: null, isRecommend: true, isHot: true,
     status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null, expireAt: null,
     viewCount: 86, likeCount: 0, favoriteCount: 0, version: 1, sort: 0, seoTitle: null, seoKeywords: '静态化,全文检索', seoDescription: null, socialImageAlt: null, twitterCreator: null,
-    archivedAt: null, mappingSourceId: null, lockedAt: null, lockedBy: null, lockReason: null,
+    archivedAt: null, mappingSourceId: null, distributionRuleId: null, distributionSourceId: null, distributionSourceVersion: null, lockedAt: null, lockedBy: null, lockReason: null,
     tagIds: [2], extraChannelIds: [], relatedIds: [1], createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
   {
@@ -3049,7 +3105,7 @@ export const SEED_CMS_CONTENTS: (CmsContent & { tagIds: number[] })[] = [
     isTop: false, topWeight: 0, topExpireAt: null, isRecommend: false, isHot: false,
     status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null, expireAt: null,
     viewCount: 45, likeCount: 0, favoriteCount: 0, version: 1, sort: 0, seoTitle: null, seoKeywords: null, seoDescription: null, socialImageAlt: null, twitterCreator: null,
-    archivedAt: null, mappingSourceId: null, lockedAt: null, lockedBy: null, lockReason: null,
+    archivedAt: null, mappingSourceId: null, distributionRuleId: null, distributionSourceId: null, distributionSourceVersion: null, lockedAt: null, lockedBy: null, lockReason: null,
     tagIds: [], createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
   {
@@ -3069,7 +3125,7 @@ export const SEED_CMS_CONTENTS: (CmsContent & { tagIds: number[] })[] = [
     hasImage: true,
     status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null, expireAt: null,
     viewCount: 66, likeCount: 0, favoriteCount: 0, version: 1, sort: 0, seoTitle: null, seoKeywords: '发布会,图集', seoDescription: null, socialImageAlt: 'Zenith 产品发布会现场', twitterCreator: '@zenith_admin',
-    archivedAt: null, mappingSourceId: null, lockedAt: null, lockedBy: null, lockReason: null,
+    archivedAt: null, mappingSourceId: null, distributionRuleId: null, distributionSourceId: null, distributionSourceVersion: null, lockedAt: null, lockedBy: null, lockReason: null,
     tagIds: [1], createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
   {
@@ -3088,8 +3144,23 @@ export const SEED_CMS_CONTENTS: (CmsContent & { tagIds: number[] })[] = [
     hasImage: true, hasVideo: true,
     status: 'published', rejectReason: null, publishedAt: SEED_DATE, scheduledAt: null, expireAt: null,
     viewCount: 88, likeCount: 0, favoriteCount: 0, version: 1, sort: 0, seoTitle: null, seoKeywords: '视频,导览', seoDescription: null, socialImageAlt: 'Zenith CMS 视频导览', twitterCreator: '@zenith_admin',
-    archivedAt: null, mappingSourceId: null, lockedAt: null, lockedBy: null, lockReason: null,
+    archivedAt: null, mappingSourceId: null, distributionRuleId: null, distributionSourceId: null, distributionSourceVersion: null, lockedAt: null, lockedBy: null, lockReason: null,
     tagIds: [], createdAt: SEED_DATE, updatedAt: SEED_DATE,
+  },
+  {
+    id: 6, siteId: 2, channelId: 4, channelName: '技术动态', modelId: 1,
+    contentType: 'article', mediaData: {},
+    title: 'Zenith Admin 发布 CMS 内容管理模块', subTitle: null, shortTitle: 'CMS 模块发布', slug: null,
+    summary: '由 Stage 5 分发规则映射自根站点；正文跟随来源，发布仍需走子站审核管道。',
+    coverImage: null, coverThumb: null, author: '管理员', editor: null, source: '站群分发', sourceUrl: null,
+    isOriginal: false, body: null, extend: {}, externalLink: null, detailTemplate: null,
+    isTop: false, topWeight: 0, topExpireAt: null, isRecommend: false, isHot: false,
+    status: 'draft', rejectReason: null, publishedAt: null, scheduledAt: null, expireAt: null,
+    viewCount: 0, likeCount: 0, favoriteCount: 0, version: 1, sort: 0,
+    seoTitle: null, seoKeywords: 'CMS,发布', seoDescription: null, socialImageAlt: null, twitterCreator: null,
+    archivedAt: null, mappingSourceId: 1, distributionRuleId: 1, distributionSourceId: 1,
+    distributionSourceVersion: 1, lockedAt: null, lockedBy: null, lockReason: null,
+    tagIds: [], extraChannelIds: [], relatedIds: [], createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
 ];
 
@@ -3167,6 +3238,38 @@ export const SEED_CMS_COLLECT_ITEMS: CmsCollectItem[] = [
   { id: 2, ruleId: 1, url: 'https://example.com/news/failure', title: null, status: 'failed', contentId: null, error: '演示：页面结构不匹配', createdAt: SEED_DATE },
 ];
 
+export const SEED_CMS_DISTRIBUTION_RULES: CmsDistributionRule[] = [
+  {
+    id: 1,
+    name: '根站技术资讯映射至子站',
+    sourceSiteId: 1,
+    sourceSiteName: 'Zenith 官方网站',
+    sourceChannelId: 1,
+    sourceChannelName: '新闻中心',
+    targetSiteId: 2,
+    targetSiteName: 'Zenith 技术子站',
+    targetChannelId: 4,
+    targetChannelName: '技术动态',
+    mode: 'mapping',
+    conflictStrategy: 'skip',
+    filters: {
+      statuses: ['published'],
+      contentTypes: ['article'],
+      keyword: 'CMS',
+      publishedFrom: null,
+      publishedTo: null,
+    },
+    scheduleCron: null,
+    nextRunAt: null,
+    lastRunAt: SEED_DATE,
+    status: 'enabled',
+    revision: 1,
+    remark: 'Stage 5 演示：正文跟随来源，目标内容仍为草稿并独立审核',
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+  },
+];
+
 export const SEED_CMS_PAGES: CmsPage[] = [
   {
     id: 1, siteId: 1, name: '产品能力落地页', slug: 'capabilities', isHome: false,
@@ -3241,6 +3344,12 @@ export const SEED_CMS_TEMPLATES: CmsTemplate[] = [
     description: '富文本由服务端 Stage 1 sanitizer 处理',
     createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
+  {
+    id: 3, siteId: 2, themeCode: 'default', type: 'detail', code: 'detail-editorial', name: '技术子站资讯详情覆盖',
+    source: 'manual', status: 'enabled', currentVersion: 1, activeVersion: 1, lifecycleRevision: 0,
+    description: '子站逐项覆盖同名详情模板；其余模板沿继承链解析',
+    createdAt: SEED_DATE, updatedAt: SEED_DATE,
+  },
 ];
 
 export const SEED_CMS_TEMPLATE_VERSIONS: CmsTemplateVersion[] = [
@@ -3253,6 +3362,11 @@ export const SEED_CMS_TEMPLATE_VERSIONS: CmsTemplateVersion[] = [
     id: 2, templateId: 2, version: 1, dsl: CMS_SEED_DETAIL_DSL,
     checksum: 'bc2917b6dba9ed734189eb796f752d2ccae6bbbb2d917c16f1b39470920794ff',
     changeNote: 'Stage 3 初始演示版本', themePackageId: null, createdAt: SEED_DATE,
+  },
+  {
+    id: 3, templateId: 3, version: 1, dsl: CMS_SEED_DETAIL_DSL,
+    checksum: 'bc2917b6dba9ed734189eb796f752d2ccae6bbbb2d917c16f1b39470920794ff',
+    changeNote: 'Stage 5 子站模板覆盖演示', themePackageId: null, createdAt: SEED_DATE,
   },
 ];
 
@@ -3329,6 +3443,48 @@ export const SEED_CMS_PUBLISH_TASKS = [
     completedAt: SEED_DATE,
     createdAt: SEED_DATE,
     updatedAt: SEED_DATE,
+  },
+];
+
+export const SEED_CMS_DISTRIBUTION_TASKS = [
+  {
+    id: 900002,
+    taskType: 'cms-distribution-sync',
+    title: 'CMS 内容分发：根站技术资讯映射至子站（演示）',
+    status: 'success' as const,
+    payload: {
+      ruleId: 1,
+      expectedRevision: 1,
+      sourceSiteId: 1,
+      targetSiteId: 2,
+      trigger: 'manual',
+    },
+    totalCount: 1,
+    processedCount: 1,
+    failedCount: 0,
+    progressNote: '分发完成：成功 1，跳过 0，冲突 0，失败 0',
+    result: { succeeded: 1, skipped: 0, conflicts: 0, failed: 0 },
+    attempts: 1,
+    maxAttempts: 3,
+    startedAt: SEED_DATE,
+    completedAt: SEED_DATE,
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+  },
+];
+
+export const SEED_CMS_DISTRIBUTION_TASK_ITEMS = [
+  {
+    key: 'source:1',
+    label: 'Zenith Admin 发布 CMS 内容管理模块',
+    status: 'success' as const,
+    message: '已创建映射草稿 #6',
+    data: {
+      outcome: 'success',
+      ruleId: 1,
+      sourceContentId: 1,
+      targetContentId: 6,
+    },
   },
 ];
 

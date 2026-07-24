@@ -17,12 +17,16 @@ import logger from '../../lib/logger';
 import { isThemeRegistered } from '../../cms/themes/registry';
 import { assertAllCmsSiteChannelsAccess } from './cms-channels.service';
 import { getSiteTemplateHealth } from './cms-template-refs.service';
-import { assertSiteAccess, invalidateSiteCache } from './cms-sites.service';
+import { assertSitesAccess, invalidateSiteCache } from './cms-sites.service';
 import { getCmsThemePackage } from './cms-themes.service';
 import { submitCmsPublishTask } from './cms-publishing.service';
 import { packageTemplateOptions, resolveAvailableCmsTemplateNames } from './cms-template-resolution.service';
 import { cmsThemeLifecycleEventKey, isCurrentCmsThemeDeployment } from './cms-lifecycle-policy';
 import { acquireCmsGlobalThemeLifecycleLock, lockCmsSiteForMutation } from './cms-site-publish-lock.service';
+import {
+  listCmsInheritanceAffectedSiteIds,
+  resolveEffectiveCmsSite,
+} from './cms-site-inheritance.service';
 
 async function enqueueLifecycleTask(task: AsyncTask): Promise<void> {
   await enqueueAsyncTask(task.id).catch((error) => {
@@ -81,6 +85,49 @@ async function insertThemeTask(
   });
 }
 
+async function assertThemeLifecycleScope(siteId: number): Promise<number[]> {
+  const snapshot = await resolveEffectiveCmsSite(siteId);
+  if (snapshot.sourceSiteIds.theme !== siteId) {
+    throw new HTTPException(409, { message: '该站点当前继承父级主题，请先在站点继承设置中切换为“本站覆盖”' });
+  }
+  const affectedSiteIds = await listCmsInheritanceAffectedSiteIds(siteId, 'theme');
+  await assertSitesAccess(affectedSiteIds);
+  for (const affectedId of affectedSiteIds) await assertAllCmsSiteChannelsAccess(affectedId);
+  return affectedSiteIds;
+}
+
+async function insertAffectedThemeTasks(
+  tx: DbTransaction,
+  rootSite: CmsSiteRow,
+  affectedSiteIds: readonly number[],
+  input: { themeCode: string; packageId?: number; deploymentId: number | null; reason: string },
+): Promise<AsyncTask[]> {
+  const tasks: AsyncTask[] = [];
+  for (const siteId of [...affectedSiteIds].sort((a, b) => a - b)) {
+    let site = rootSite;
+    if (siteId !== rootSite.id) {
+      await lockCmsSiteForMutation(tx, siteId);
+      [site] = await tx.update(cmsSites).set({
+        themeRevision: sql`${cmsSites.themeRevision} + 1`,
+      }).where(eq(cmsSites.id, siteId)).returning();
+    }
+    tasks.push(await insertThemeTask(tx, site, input));
+  }
+  return tasks;
+}
+
+async function currentAffectedThemeSiteIds(tx: DbTransaction, siteId: number): Promise<number[]> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext('cms-site-hierarchy'))`);
+  const snapshot = await resolveEffectiveCmsSite(siteId, tx);
+  if (snapshot.sourceSiteIds.theme !== siteId) {
+    throw new HTTPException(409, { message: '该站点已切换为继承父级主题，请刷新后重试' });
+  }
+  const affectedSiteIds = await listCmsInheritanceAffectedSiteIds(siteId, 'theme', tx);
+  await assertSitesAccess(affectedSiteIds);
+  for (const affectedId of affectedSiteIds) await assertAllCmsSiteChannelsAccess(affectedId);
+  return affectedSiteIds;
+}
+
 function assertPackageUsable(pkg: CmsThemePackageRow): void {
   if (pkg.status !== 'validated' || !pkg.validationReport.valid) {
     throw new HTTPException(400, { message: '主题包未通过可信校验或已停用，不能激活' });
@@ -116,19 +163,20 @@ async function assertBuiltinCompatible(siteId: number, themeCode: string): Promi
 }
 
 export async function activateCmsThemePackage(packageId: number, siteId: number) {
-  await assertSiteAccess(siteId);
-  await assertAllCmsSiteChannelsAccess(siteId);
+  const initialAffectedSiteIds = await assertThemeLifecycleScope(siteId);
   const initial = await db.query.cmsThemePackages.findFirst({ where: eq(cmsThemePackages.id, packageId) });
   if (!initial) throw new HTTPException(404, { message: '主题包版本不存在' });
   assertPackageUsable(initial);
-  await assertPackageCompatible(siteId, initial);
+  for (const affectedId of initialAffectedSiteIds) await assertPackageCompatible(affectedId, initial);
 
   const result = await db.transaction(async (tx) => {
     await acquireCmsGlobalThemeLifecycleLock(tx);
+    const affectedSiteIds = await currentAffectedThemeSiteIds(tx, siteId);
+    await assertSitesAccess(affectedSiteIds);
     const site = await lockSite(tx, siteId);
     const pkg = await lockPackage(tx, packageId);
     assertPackageUsable(pkg);
-    await assertPackageCompatible(siteId, pkg);
+    for (const affectedId of affectedSiteIds) await assertPackageCompatible(affectedId, pkg);
     const active = await lockActiveDeployment(tx, siteId);
     if (site.theme === pkg.code && active?.themePackageId === pkg.id) {
       throw new HTTPException(409, { message: `主题 ${pkg.code}@${pkg.version} 已是当前活动版本` });
@@ -160,28 +208,34 @@ export async function activateCmsThemePackage(packageId: number, siteId: number)
       theme: pkg.code,
       themeRevision: sql`${cmsSites.themeRevision} + 1`,
     }).where(eq(cmsSites.id, siteId)).returning();
-    const task = await insertThemeTask(tx, updatedSite, {
+    const tasks = await insertAffectedThemeTasks(tx, updatedSite, affectedSiteIds, {
       themeCode: pkg.code,
       packageId: pkg.id,
       deploymentId,
       reason: `激活主题 ${pkg.code}@${pkg.version}`,
     });
-    return { pkg, site: updatedSite, task };
+    return { pkg, site: updatedSite, tasks };
   });
   invalidateSiteCache();
-  await enqueueLifecycleTask(result.task);
-  return { package: await getCmsThemePackage(result.pkg.id), siteName: result.site.name, task: result.task };
+  for (const task of result.tasks) await enqueueLifecycleTask(task);
+  return {
+    package: await getCmsThemePackage(result.pkg.id),
+    siteName: result.site.name,
+    task: result.tasks[0],
+    tasks: result.tasks,
+  };
 }
 
 export async function activateBuiltinCmsTheme(siteId: number, themeCode: string) {
   if (!isThemeRegistered(themeCode)) throw new HTTPException(400, { message: `内置主题「${themeCode}」不存在` });
-  await assertSiteAccess(siteId);
-  await assertAllCmsSiteChannelsAccess(siteId);
-  await assertBuiltinCompatible(siteId, themeCode);
+  const initialAffectedSiteIds = await assertThemeLifecycleScope(siteId);
+  for (const affectedId of initialAffectedSiteIds) await assertBuiltinCompatible(affectedId, themeCode);
   const result = await db.transaction(async (tx) => {
     await acquireCmsGlobalThemeLifecycleLock(tx);
+    const affectedSiteIds = await currentAffectedThemeSiteIds(tx, siteId);
+    await assertSitesAccess(affectedSiteIds);
     const site = await lockSite(tx, siteId);
-    await assertBuiltinCompatible(siteId, themeCode);
+    for (const affectedId of affectedSiteIds) await assertBuiltinCompatible(affectedId, themeCode);
     const active = await lockActiveDeployment(tx, siteId);
     if (site.theme === themeCode && !active) throw new HTTPException(409, { message: `内置主题 ${themeCode} 已激活` });
     await deactivateDeployment(tx, active);
@@ -189,26 +243,27 @@ export async function activateBuiltinCmsTheme(siteId: number, themeCode: string)
       theme: themeCode,
       themeRevision: sql`${cmsSites.themeRevision} + 1`,
     }).where(eq(cmsSites.id, siteId)).returning();
-    const task = await insertThemeTask(tx, updatedSite, {
+    const tasks = await insertAffectedThemeTasks(tx, updatedSite, affectedSiteIds, {
       themeCode,
       deploymentId: null,
       reason: `激活内置主题 ${themeCode}`,
     });
-    return { site: updatedSite, task };
+    return { site: updatedSite, tasks };
   });
   invalidateSiteCache();
-  await enqueueLifecycleTask(result.task);
-  return { themeCode, siteName: result.site.name, task: result.task };
+  for (const task of result.tasks) await enqueueLifecycleTask(task);
+  return { themeCode, siteName: result.site.name, task: result.tasks[0], tasks: result.tasks };
 }
 
 export async function deactivateCmsThemeForSite(siteId: number, themeCode: string, packageId: number) {
-  await assertSiteAccess(siteId);
-  await assertAllCmsSiteChannelsAccess(siteId);
+  await assertThemeLifecycleScope(siteId);
   const result = await db.transaction(async (tx) => {
     await acquireCmsGlobalThemeLifecycleLock(tx);
+    const affectedSiteIds = await currentAffectedThemeSiteIds(tx, siteId);
+    await assertSitesAccess(affectedSiteIds);
     const site = await lockSite(tx, siteId);
     const pkg = await lockPackage(tx, packageId);
-    await assertBuiltinCompatible(siteId, 'default');
+    for (const affectedId of affectedSiteIds) await assertBuiltinCompatible(affectedId, 'default');
     const active = await lockActiveDeployment(tx, siteId);
     if (!isCurrentCmsThemeDeployment({
       siteTheme: site.theme,
@@ -224,23 +279,24 @@ export async function deactivateCmsThemeForSite(siteId: number, themeCode: strin
       theme: 'default',
       themeRevision: sql`${cmsSites.themeRevision} + 1`,
     }).where(eq(cmsSites.id, siteId)).returning();
-    const task = await insertThemeTask(tx, updatedSite, {
+    const tasks = await insertAffectedThemeTasks(tx, updatedSite, affectedSiteIds, {
       themeCode: 'default',
       deploymentId: null,
       reason: `停用主题 ${themeCode}@${pkg.version}，回退内置 default`,
     });
-    return { site: updatedSite, task };
+    return { site: updatedSite, tasks };
   });
   invalidateSiteCache();
-  await enqueueLifecycleTask(result.task);
-  return { task: result.task };
+  for (const task of result.tasks) await enqueueLifecycleTask(task);
+  return { task: result.tasks[0], tasks: result.tasks };
 }
 
 export async function rollbackCmsThemePackage(siteId: number, themeCode: string, currentPackageId: number) {
-  await assertSiteAccess(siteId);
-  await assertAllCmsSiteChannelsAccess(siteId);
+  await assertThemeLifecycleScope(siteId);
   const result = await db.transaction(async (tx) => {
     await acquireCmsGlobalThemeLifecycleLock(tx);
+    const affectedSiteIds = await currentAffectedThemeSiteIds(tx, siteId);
+    await assertSitesAccess(affectedSiteIds);
     const site = await lockSite(tx, siteId);
     const currentPackage = await lockPackage(tx, currentPackageId);
     const active = await lockActiveDeployment(tx, siteId);
@@ -257,7 +313,7 @@ export async function rollbackCmsThemePackage(siteId: number, themeCode: string,
       ? currentPackage
       : await lockPackage(tx, previous.themePackageId);
     assertPackageUsable(previousPackage);
-    await assertPackageCompatible(siteId, previousPackage);
+    for (const affectedId of affectedSiteIds) await assertPackageCompatible(affectedId, previousPackage);
     const [lockedPrevious] = await tx.select().from(cmsThemeDeployments)
       .where(and(eq(cmsThemeDeployments.id, previous.id), eq(cmsThemeDeployments.status, 'inactive')))
       .for('update').limit(1);
@@ -272,17 +328,22 @@ export async function rollbackCmsThemePackage(siteId: number, themeCode: string,
       theme: previousPackage.code,
       themeRevision: sql`${cmsSites.themeRevision} + 1`,
     }).where(eq(cmsSites.id, siteId)).returning();
-    const task = await insertThemeTask(tx, updatedSite, {
+    const tasks = await insertAffectedThemeTasks(tx, updatedSite, affectedSiteIds, {
       themeCode: previousPackage.code,
       packageId: previousPackage.id,
       deploymentId: lockedPrevious.id,
       reason: `主题回滚至 ${previousPackage.code}@${previousPackage.version}`,
     });
-    return { pkg: previousPackage, site: updatedSite, task };
+    return { pkg: previousPackage, site: updatedSite, tasks };
   });
   invalidateSiteCache();
-  await enqueueLifecycleTask(result.task);
-  return { package: await getCmsThemePackage(result.pkg.id), siteName: result.site.name, task: result.task };
+  for (const task of result.tasks) await enqueueLifecycleTask(task);
+  return {
+    package: await getCmsThemePackage(result.pkg.id),
+    siteName: result.site.name,
+    task: result.tasks[0],
+    tasks: result.tasks,
+  };
 }
 
 export async function setCmsThemePackageStatus(id: number, status: 'validated' | 'disabled') {

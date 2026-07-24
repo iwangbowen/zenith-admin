@@ -48,12 +48,12 @@ import {
 import {
   cmsAdEvents, cmsAds, cmsAdSlots, cmsChannelUsers, cmsChannels, cmsComments,
   cmsContentChannels, cmsContentFavorites, cmsContentLikes, cmsContentOpLogs,
-  cmsContentRelations, cmsContents, cmsContentTags, cmsContentVersions, cmsForms,
+  cmsContentRelations, cmsContents, cmsContentTags, cmsContentVersions, cmsDistributionRules, cmsForms,
   cmsFormSubmissions, cmsFragments, cmsFriendLinks, cmsHotwordGroups, cmsHotwords,
   cmsInteractionAnswers, cmsInteractionQuestions, cmsInteractionResponses, cmsInteractions,
   cmsLinkWords, cmsMemberSubscriptions, cmsMemberViewHistory, cmsModelFields, cmsModels,
   cmsPageBlockAcls, cmsPages, cmsPublishArtifacts, cmsPublishChannels, cmsPushLogs,
-  cmsRedirects, cmsResourceFolders, cmsResources, cmsSearchWords, cmsSites, cmsSiteUsers,
+  cmsRedirects, cmsResourceFolders, cmsResources, cmsSearchWords, cmsSiteInheritances, cmsSites, cmsSiteUsers,
   cmsTags, cmsTemplateVersions, cmsTemplates, cmsThemeDeployments, cmsThemePackages,
 } from './cms';
 
@@ -1256,7 +1256,10 @@ export const reportFillRecordsRelations = relations(reportFillRecords, ({ one })
 }));
 
 // ─── CMS 内容管理 ─────────────────────────────────────────────────────────────
-export const cmsSitesRelations = relations(cmsSites, ({ many }) => ({
+export const cmsSitesRelations = relations(cmsSites, ({ one, many }) => ({
+  parent: one(cmsSites, { fields: [cmsSites.parentId], references: [cmsSites.id], relationName: 'cmsSiteHierarchy' }),
+  children: many(cmsSites, { relationName: 'cmsSiteHierarchy' }),
+  inheritance: one(cmsSiteInheritances, { fields: [cmsSites.id], references: [cmsSiteInheritances.siteId] }),
   channels: many(cmsChannels),
   contents: many(cmsContents),
   tags: many(cmsTags),
@@ -1274,6 +1277,12 @@ export const cmsSitesRelations = relations(cmsSites, ({ many }) => ({
   subscriptions: many(cmsMemberSubscriptions),
   adEvents: many(cmsAdEvents),
   pages: many(cmsPages),
+  sourceDistributionRules: many(cmsDistributionRules, { relationName: 'cmsDistributionSourceSite' }),
+  targetDistributionRules: many(cmsDistributionRules, { relationName: 'cmsDistributionTargetSite' }),
+}));
+
+export const cmsSiteInheritancesRelations = relations(cmsSiteInheritances, ({ one }) => ({
+  site: one(cmsSites, { fields: [cmsSiteInheritances.siteId], references: [cmsSites.id] }),
 }));
 
 export const cmsTemplatesRelations = relations(cmsTemplates, ({ one, many }) => ({
@@ -1324,6 +1333,32 @@ export const cmsChannelsRelations = relations(cmsChannels, ({ one, many }) => ({
   site: one(cmsSites, { fields: [cmsChannels.siteId], references: [cmsSites.id] }),
   model: one(cmsModels, { fields: [cmsChannels.modelId], references: [cmsModels.id] }),
   contents: many(cmsContents),
+  sourceDistributionRules: many(cmsDistributionRules, { relationName: 'cmsDistributionSourceChannel' }),
+  targetDistributionRules: many(cmsDistributionRules, { relationName: 'cmsDistributionTargetChannel' }),
+}));
+
+export const cmsDistributionRulesRelations = relations(cmsDistributionRules, ({ one, many }) => ({
+  sourceSite: one(cmsSites, {
+    fields: [cmsDistributionRules.sourceSiteId],
+    references: [cmsSites.id],
+    relationName: 'cmsDistributionSourceSite',
+  }),
+  sourceChannel: one(cmsChannels, {
+    fields: [cmsDistributionRules.sourceChannelId],
+    references: [cmsChannels.id],
+    relationName: 'cmsDistributionSourceChannel',
+  }),
+  targetSite: one(cmsSites, {
+    fields: [cmsDistributionRules.targetSiteId],
+    references: [cmsSites.id],
+    relationName: 'cmsDistributionTargetSite',
+  }),
+  targetChannel: one(cmsChannels, {
+    fields: [cmsDistributionRules.targetChannelId],
+    references: [cmsChannels.id],
+    relationName: 'cmsDistributionTargetChannel',
+  }),
+  materializedContents: many(cmsContents),
 }));
 
 export const cmsContentsRelations = relations(cmsContents, ({ one, many }) => ({
@@ -1337,6 +1372,13 @@ export const cmsContentsRelations = relations(cmsContents, ({ one, many }) => ({
   lockedByUser: one(users, { fields: [cmsContents.lockedBy], references: [users.id], relationName: 'cmsContentLockedBy' }),
   mappingSource: one(cmsContents, { fields: [cmsContents.mappingSourceId], references: [cmsContents.id], relationName: 'cmsContentMapping' }),
   mappedCopies: many(cmsContents, { relationName: 'cmsContentMapping' }),
+  distributionRule: one(cmsDistributionRules, { fields: [cmsContents.distributionRuleId], references: [cmsDistributionRules.id] }),
+  distributionSource: one(cmsContents, {
+    fields: [cmsContents.distributionSourceId],
+    references: [cmsContents.id],
+    relationName: 'cmsContentDistribution',
+  }),
+  distributedCopies: many(cmsContents, { relationName: 'cmsContentDistribution' }),
   opLogs: many(cmsContentOpLogs),
 }));
 

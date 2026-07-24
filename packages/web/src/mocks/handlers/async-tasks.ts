@@ -131,6 +131,17 @@ const taskTypes: AsyncTaskTypeMeta[] = [
     retentionDays: 30,
   },
   {
+    taskType: 'cms-distribution-sync',
+    title: 'CMS 内容分发同步',
+    module: 'CMS内容管理',
+    description: '按站群分发规则同步已发布内容并输出行级成功、跳过、冲突和失败结果。',
+    allowConcurrent: true,
+    enabled: true,
+    maxAttempts: 3,
+    retryDelayMs: 5000,
+    retentionDays: 30,
+  },
+  {
     taskType: 'report-dq-rule-run',
     title: '报表质量规则执行',
     module: '报表中心',
@@ -357,7 +368,7 @@ export function createImmediateMockTask(input: {
 }
 
 export function createProgressingMockTask(input: {
-  taskType: 'report-dq-rule-run' | 'report-dataset-materialize' | 'report-sla-rule-evaluate' | 'report-fill-sync' | 'analytics-rollup-rebuild' | 'analytics-segment-materialize' | 'analytics-campaign-execute' | 'cms-static-build' | 'cms-search-reindex' | 'cms-deadlink-check' | 'cms-collect-run' | 'cms-content-import' | 'cms-resource-governance' | 'cms-theme-import' | 'cms-publish-build' | 'cms-ad-events-cleanup' | 'cms-interactions-batch-status' | 'cms-subscription-notify';
+  taskType: 'report-dq-rule-run' | 'report-dataset-materialize' | 'report-sla-rule-evaluate' | 'report-fill-sync' | 'analytics-rollup-rebuild' | 'analytics-segment-materialize' | 'analytics-campaign-execute' | 'cms-static-build' | 'cms-search-reindex' | 'cms-deadlink-check' | 'cms-collect-run' | 'cms-content-import' | 'cms-resource-governance' | 'cms-theme-import' | 'cms-publish-build' | 'cms-ad-events-cleanup' | 'cms-interactions-batch-status' | 'cms-subscription-notify' | 'cms-distribution-sync';
   title: string;
   payload?: Record<string, unknown>;
   totalItems?: number;
@@ -395,6 +406,10 @@ export function createProgressingMockTask(input: {
   tasks.unshift(task);
   startSim(task);
   return task;
+}
+
+export function setMockTaskItems(taskId: number, items: AsyncTaskItem[]): void {
+  itemsByTask.set(taskId, items);
 }
 
 function upsertItem(taskId: number, itemKey: string, patch: Omit<AsyncTaskItem, 'id' | 'taskId' | 'itemKey' | 'createdAt' | 'updatedAt'>) {

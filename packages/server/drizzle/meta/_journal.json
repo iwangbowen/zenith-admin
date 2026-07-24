@@ -680,6 +680,13 @@
       "when": 1784846010765,
       "tag": "0096_dear_jack_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1784850119208,
+      "tag": "0097_powerful_red_wolf",
+      "breakpoints": true
     }
   ]
 }

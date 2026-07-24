@@ -242,7 +242,8 @@ export default function ContentEditPage() {
 
   const currentChannel = findChannel(treeQuery.data ?? [], selectedChannelId);
   const { data: allSites } = useAllCmsSites();
-  const siteTheme = allSites?.find((s) => s.id === siteId)?.theme;
+  const selectedSite = allSites?.find((site) => site.id === siteId);
+  const siteTheme = selectedSite?.effectiveTheme ?? selectedSite?.theme;
   const { data: themeTemplates } = useCmsThemeTemplates(siteTheme, siteId || undefined);
   const currentModel = useMemo(
     () => (models ?? []).find((m) => m.id === (currentChannel?.modelId ?? detail?.modelId)),

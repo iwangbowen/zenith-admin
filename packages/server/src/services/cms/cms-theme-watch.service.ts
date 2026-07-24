@@ -14,15 +14,17 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { and, eq, isNull, inArray, ne } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '../../db';
-import { cmsSites, systemConfigs } from '../../db/schema';
+import { systemConfigs } from '../../db/schema';
 import { listThemes } from '../../cms/themes/registry';
 import { submitCmsPublishTask } from './cms-publishing.service';
 import { runWithCurrentUser } from '../../lib/context';
 import redis from '../../lib/redis';
 import { config } from '../../config';
 import logger from '../../lib/logger';
+import { loadCmsInheritanceState, resolveCmsSiteSnapshot } from './cms-site-inheritance.service';
+import { cmsSiteFencePayload } from './cms-site-publish-lock.service';
 
 const CONFIG_KEY = 'cms:theme:fingerprints';
 const LOCK_KEY = `${config.redis.keyPrefix}cms:theme-rebuild-lock`;
@@ -130,13 +132,20 @@ export async function checkThemeChangesAndRebuild(): Promise<void> {
       return;
     }
 
-    const sites = await db.select({ id: cmsSites.id, name: cmsSites.name, theme: cmsSites.theme })
-      .from(cmsSites)
-      .where(and(
-        inArray(cmsSites.theme, changed),
-        ne(cmsSites.staticMode, 'dynamic'),
-        eq(cmsSites.status, 'enabled'),
-      ));
+    const inheritanceState = await loadCmsInheritanceState();
+    const sites = inheritanceState.sites
+      .filter((site) => site.status === 'enabled')
+      .map((site) => ({
+        raw: site,
+        effective: resolveCmsSiteSnapshot(inheritanceState.sites, inheritanceState.inheritances, site.id).site,
+      }))
+      .filter(({ effective }) => changed.includes(effective.theme) && effective.staticMode !== 'dynamic')
+      .map(({ raw, effective }) => ({
+        id: raw.id,
+        name: raw.name,
+        theme: effective.theme,
+        raw,
+      }));
 
     if (sites.length === 0) {
       await saveFingerprints(current);
@@ -152,6 +161,7 @@ export async function checkThemeChangesAndRebuild(): Promise<void> {
           siteId: site.id,
           targetType: 'theme',
           themeCode: site.theme,
+          ...await cmsSiteFencePayload(db, site.raw),
           reason: `内置主题代码变更：${changed.join('、')}`,
         }, {
           skipPermissionCheck: true,

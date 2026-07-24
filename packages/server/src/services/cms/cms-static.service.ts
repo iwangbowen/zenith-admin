@@ -2,7 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { eq, and, isNull, asc } from 'drizzle-orm';
 import { db } from '../../db';
-import { cmsSites, cmsChannels, cmsContents } from '../../db/schema';
+import { cmsChannels, cmsContents } from '../../db/schema';
 import type { CmsSiteRow, CmsChannelRow } from '../../db/schema';
 import logger from '../../lib/logger';
 import { formatIso8601 } from '../../lib/datetime';
@@ -19,7 +19,8 @@ import { triggerCdnPurge, triggerCdnPurgeAll } from './cms-cdn.service';
 import {
   CMS_STATIC_ROOT, isStrictlyWithin, resolveStaticFile, siteStaticDir,
 } from './cms-static-path';
-import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
+import { assertSiteAccess } from './cms-sites.service';
+import { resolveEffectiveCmsSiteRow } from './cms-site-inheritance.service';
 import { assertAllCmsSiteChannelsAccess } from './cms-channels.service';
 import { recordCmsPublishArtifact } from './cms-publish-artifact-tracker';
 import { cmsStaticTargetKey, isCmsStaticTargetCompleted } from './cms-static-build-plan';
@@ -29,10 +30,9 @@ export {
 } from './cms-static-path';
 
 export async function ensureCmsStaticBuildAccess(siteId: number): Promise<CmsSiteRow> {
-  const site = await ensureCmsSiteExists(siteId);
   await assertSiteAccess(siteId);
   await assertAllCmsSiteChannelsAccess(siteId);
-  return site;
+  return resolveEffectiveCmsSiteRow(siteId);
 }
 
 export async function readStaticFile(siteCode: string, relPath: string): Promise<string | null> {
@@ -254,9 +254,7 @@ async function regenerateChannelPages(site: CmsSiteRow, channel: CmsChannelRow, 
 export async function refreshContentStatic(contentId: number): Promise<void> {
   const [content] = await db.select().from(cmsContents).where(eq(cmsContents.id, contentId)).limit(1);
   if (!content) return;
-  const [site] = await db.select().from(cmsSites).where(and(
-    eq(cmsSites.id, content.siteId),
-  )).limit(1);
+  const site = await resolveEffectiveCmsSiteRow(content.siteId).catch(() => null);
   if (!site || site.staticMode === 'dynamic') return;
   const [channel] = await db.select().from(cmsChannels).where(and(
     eq(cmsChannels.id, content.channelId),
@@ -300,7 +298,7 @@ export async function applyCmsContentPublishSnapshot(
   snapshot: CmsContentPublishSnapshot,
   deletePaths: readonly string[],
 ): Promise<void> {
-  const [site] = await db.select().from(cmsSites).where(eq(cmsSites.id, snapshot.siteId)).limit(1);
+  const site = await resolveEffectiveCmsSiteRow(snapshot.siteId).catch(() => null);
   if (!site) throw new TaskCancelledError(`内容 #${snapshot.contentId} 所属站点已删除`, { stale: true });
   const [currentRow] = snapshot.purged
     ? [null]
@@ -342,7 +340,7 @@ export function triggerContentStaticRefresh(contentId: number): void {
 
 /** 可视化搭建页面增量静态刷新：重写 /p/{slug}/（isHome 同时重写首页）；停用/删除时移除文件 */
 export async function refreshCustomPageStatic(input: { siteId: number; slug: string; isHome: boolean; removed?: boolean }): Promise<void> {
-  const [site] = await db.select().from(cmsSites).where(eq(cmsSites.id, input.siteId)).limit(1);
+  const site = await resolveEffectiveCmsSiteRow(input.siteId).catch(() => null);
   if (!site || site.staticMode === 'dynamic') return;
   const publishChannels = await getActivePublishChannels(site.id);
   if (input.removed) {
@@ -384,7 +382,7 @@ export function triggerCustomPageStaticRefresh(input: { siteId: number; slug: st
 export async function refreshChannelStatic(channelId: number): Promise<{ pages: number }> {
   const [channel] = await db.select().from(cmsChannels).where(eq(cmsChannels.id, channelId)).limit(1);
   if (!channel) throw new Error(`栏目不存在（id=${channelId}）`);
-  const [site] = await db.select().from(cmsSites).where(eq(cmsSites.id, channel.siteId)).limit(1);
+  const site = await resolveEffectiveCmsSiteRow(channel.siteId).catch(() => null);
   if (!site) throw new Error(`站点不存在（id=${channel.siteId}）`);
   let pages = 0;
   for (const publishChannel of await getActivePublishChannels(site.id)) {
@@ -417,7 +415,7 @@ export async function buildSiteStatic(
   onProgress?: (p: FullBuildProgress) => Promise<boolean | void>,
   options?: { resumeAfterKey?: string | null },
 ): Promise<{ pages: number }> {
-  const [site] = await db.select().from(cmsSites).where(eq(cmsSites.id, siteId)).limit(1);
+  const site = await resolveEffectiveCmsSiteRow(siteId).catch(() => null);
   if (!site) throw new Error(`站点不存在（id=${siteId}）`);
 
   const channels = await db.select().from(cmsChannels)

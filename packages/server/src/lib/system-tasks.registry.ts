@@ -299,6 +299,17 @@ export async function registerSystemTasks(): Promise<void> {
     run: publishScheduledCmsContents,
   });
 
+  const { dispatchDueCmsDistributionRules } = await import('../services/cms/cms-distributions.service');
+  await registerSystemRecurringJob({
+    name: 'cms-distribution-schedule',
+    title: 'CMS 定时内容分发',
+    module: 'CMS内容管理',
+    cronExpression: '* * * * *',
+    description: '每分钟扫描到期的站群分发规则并提交可取消、可续跑的任务中心任务。',
+    allowManualRun: true,
+    run: dispatchDueCmsDistributionRules,
+  });
+
   const { cleanupCmsRecycleBin } = await import('../services/cms/cms-contents.service');
   await registerSystemRecurringJob({
     name: 'cms-recycle-cleanup',

@@ -16,7 +16,7 @@ import { snapshotContentVersion, restoreContentVersion } from './cms-versions.se
 import { logContentOp, logContentOps } from './cms-content-op-logs.service';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
 import { getDataScopeCondition } from '../../lib/data-scope';
-import { currentUserOrNull } from '../../lib/context';
+import { currentUserOrNull, hasPermission } from '../../lib/context';
 import { isWorkflowAuditEnabled, startCmsContentWorkflow, assertNoActiveContentWorkflow } from './cms-workflow.service';
 import { triggerCmsContentWebhook } from './cms-webhook.service';
 import { assertContentTemplateBySite } from './cms-template-refs.service';
@@ -42,6 +42,9 @@ import {
   enqueueCmsSubscriptionNotification,
   insertCmsSubscriptionNotificationOutbox,
 } from './cms-stage4-tasks';
+import { resolveEffectiveCmsSiteRow } from './cms-site-inheritance.service';
+import logger from '../../lib/logger';
+import { sanitizeCmsHtml } from './cms-html-sanitizer';
 
 async function insertContentPublishOutbox(
   tx: DbTransaction,
@@ -123,6 +126,9 @@ export function mapCmsContent(row: CmsContentRow, extra?: { channelName?: string
     archivedAt: formatNullableDateTime(row.archivedAt),
     mappingSourceId: row.mappingSourceId ?? null,
     mappingSourceTitle: extra?.mappingSourceTitle ?? null,
+    distributionRuleId: row.distributionRuleId ?? null,
+    distributionSourceId: row.distributionSourceId ?? null,
+    distributionSourceVersion: row.distributionSourceVersion ?? null,
     lockedAt: formatNullableDateTime(row.lockedAt),
     lockedBy: row.lockedBy ?? null,
     lockedByName: extra?.lockedByName ?? null,
@@ -511,7 +517,11 @@ export async function createCmsContent(data: CreateCmsContentInput) {
 }
 
 // ─── 更新 ─────────────────────────────────────────────────────────────────────
-export async function updateCmsContent(id: number, data: UpdateCmsContentInput) {
+export async function updateCmsContent(
+  id: number,
+  data: UpdateCmsContentInput,
+  options?: { suppressDistributionSideEffects?: boolean },
+) {
   const current = await ensureCmsContentExists(id);
   await assertSiteAccess(current.siteId);
   await assertChannelAccess(current.channelId);
@@ -625,6 +635,12 @@ export async function updateCmsContent(id: number, data: UpdateCmsContentInput) 
       [mutation.task, mutation.refsTask].filter((task): task is AsyncTask => task != null),
       `内容 #${id} 更新`,
     );
+    if (!options?.suppressDistributionSideEffects) {
+      const { submitCmsMappingDistributionSideEffects } = await import('./cms-distributions.service');
+      await submitCmsMappingDistributionSideEffects(id).catch((error) => {
+        logger.warn(`[cms-distribution] 内容 #${id} 映射跟随任务提交失败`, error);
+      });
+    }
     return getCmsContent(id);
   } catch (err) {
     rethrowPgUniqueViolation(err, '同站点下已存在相同 URL 标识的内容');
@@ -644,6 +660,7 @@ async function transitionStatus(
     await assertChannelAccess(current.channelId);
   }
   assertCmsContentUnlocked(current);
+  await assertNoLockedCmsMappedCopies(id);
   if (current.deletedAt) throw new HTTPException(400, { message: '回收站中的内容不可操作，请先恢复' });
   if (current.archivedAt) throw new HTTPException(400, { message: '已归档的内容不可操作，请先取消归档' });
   if (!canTransitionCmsContentStatus(current.status, action)) {
@@ -666,8 +683,7 @@ export async function submitCmsContent(id: number, options?: { skipAccessCheck?:
     await assertChannelAccess(current.channelId);
   }
   assertCmsContentUnlocked(current);
-  const site = await db.select().from(cmsSites).where(eq(cmsSites.id, current.siteId)).limit(1).then((rows) => rows[0]);
-  if (!site) throw new HTTPException(404, { message: '站点不存在' });
+  const site = await resolveEffectiveCmsSiteRow(current.siteId);
   const settings = (site.settings ?? {}) as Record<string, unknown>;
   const result = await transitionStatus(id, 'submit', { status: 'pending', rejectReason: null }, options);
   await logContentOp(db, id, 'submitted');
@@ -799,6 +815,9 @@ function triggerCmsPublishedSideEffects(row: CmsContentRow): void {
   void import('./cms-push.service').then((pushService) => {
     pushService.triggerAutoPushForContent(row.id);
   });
+  void import('./cms-distributions.service')
+    .then(({ submitCmsMappingDistributionSideEffects }) => submitCmsMappingDistributionSideEffects(row.id))
+    .catch((error) => logger.warn(`[cms-distribution] 内容 #${row.id} 发布后的映射任务提交失败`, error));
 }
 
 /** 驳回；工作流审核期间禁止手动驳回 */
@@ -829,6 +848,7 @@ export async function offlineCmsContent(id: number, options?: { skipAccessCheck?
     await assertChannelAccess(current.channelId);
   }
   assertCmsContentUnlocked(current);
+  await assertNoLockedCmsMappedCopies(id);
   const mutation = await db.transaction(async (tx) => {
     const site = await lockCmsSiteForMutation(tx, current.siteId);
     const [locked] = await tx.select().from(cmsContents).where(eq(cmsContents.id, id)).for('update').limit(1);
@@ -853,6 +873,9 @@ export async function offlineCmsContent(id: number, options?: { skipAccessCheck?
   });
   await enqueueCmsPublishOutboxes([mutation.task], `内容 #${id} 下线`);
   triggerCmsContentWebhook('content.offline', id);
+  void import('./cms-distributions.service')
+    .then(({ submitCmsMappingDistributionSideEffects }) => submitCmsMappingDistributionSideEffects(id))
+    .catch((error) => logger.warn(`[cms-distribution] 内容 #${id} 下线后的映射任务提交失败`, error));
   return options?.skipAccessCheck ? mapCmsContent(mutation.updated) : getCmsContent(id);
 }
 
@@ -876,6 +899,7 @@ async function assertBatchSiteAccess(ids: number[]): Promise<void> {
 export async function recycleCmsContents(ids: number[]) {
   if (ids.length === 0) return 0;
   await assertBatchSiteAccess(ids);
+  for (const id of [...new Set(ids)]) await assertNoLockedCmsMappedCopies(id);
   const initial = await db.select({ id: cmsContents.id, siteId: cmsContents.siteId }).from(cmsContents)
     .where(and(inArray(cmsContents.id, ids), isNull(cmsContents.deletedAt)));
   const mutation = await db.transaction(async (tx) => {
@@ -921,7 +945,12 @@ export async function recycleCmsContents(ids: number[]) {
     return { rows, tasks: [...tasks, ...refsTasks] };
   });
   await enqueueCmsPublishOutboxes(mutation.tasks, '内容批量回收');
-  for (const row of mutation.rows) triggerCmsContentWebhook('content.recycled', row.id);
+  for (const row of mutation.rows) {
+    triggerCmsContentWebhook('content.recycled', row.id);
+    void import('./cms-distributions.service')
+      .then(({ submitCmsMappingDistributionSideEffects }) => submitCmsMappingDistributionSideEffects(row.id))
+      .catch((error) => logger.warn(`[cms-distribution] 内容 #${row.id} 回收后的映射任务提交失败`, error));
+  }
   return mutation.rows.length;
 }
 
@@ -993,7 +1022,7 @@ export async function purgeCmsContents(ids: number[], options?: { skipAccessChec
       for (const m of mappedRows) {
         const src = srcById.get(m.mappingSourceId!);
         await tx.update(cmsContents)
-          .set({ body: src?.body ?? null, extend: src?.extend ?? {}, mappingSourceId: null })
+          .set({ body: sanitizeCmsHtml(src?.body), extend: src?.extend ?? {}, mappingSourceId: null })
           .where(eq(cmsContents.id, m.id));
       }
     }
@@ -1052,6 +1081,9 @@ export async function restoreCmsContentToVersion(contentId: number, versionId: n
 async function setCmsContentsArchived(ids: number[], archived: boolean): Promise<number> {
   if (ids.length === 0) return 0;
   await assertBatchSiteAccess(ids);
+  if (archived) {
+    for (const id of [...new Set(ids)]) await assertNoLockedCmsMappedCopies(id);
+  }
   const initial = await db.select().from(cmsContents).where(inArray(cmsContents.id, ids));
   const mutation = await db.transaction(async (tx) => {
     const sites = new Map<number, typeof cmsSites.$inferSelect>();
@@ -1090,6 +1122,11 @@ async function setCmsContentsArchived(ids: number[], archived: boolean): Promise
     return { rows, tasks };
   });
   await enqueueCmsPublishOutboxes(mutation.tasks, archived ? '内容归档' : '内容取消归档');
+  for (const row of mutation.rows) {
+    void import('./cms-distributions.service')
+      .then(({ submitCmsMappingDistributionSideEffects }) => submitCmsMappingDistributionSideEffects(row.id))
+      .catch((error) => logger.warn(`[cms-distribution] 内容 #${row.id} 归档状态变更后的映射任务提交失败`, error));
+  }
   return mutation.rows.length;
 }
 
@@ -1516,6 +1553,9 @@ export async function duplicateCmsContent(id: number) {
  */
 export async function distributeCmsContents(ids: number[], targetSiteId: number, targetChannelId: number, mode: 'copy' | 'mapping' = 'copy'): Promise<number> {
   if (ids.length === 0) return 0;
+  if (!(await hasPermission('cms:distribution:run')) || !(await hasPermission('cms:content:create'))) {
+    throw new HTTPException(403, { message: '内容分发需要 cms:distribution:run 与 cms:content:create 权限' });
+  }
   await assertBatchSiteAccess(ids);
   await assertSiteAccess(targetSiteId);
   await assertChannelAccess(targetChannelId);
@@ -1523,6 +1563,10 @@ export async function distributeCmsContents(ids: number[], targetSiteId: number,
   const channel = await ensureChannelForContent(targetSiteId, targetChannelId);
   const rows = await db.select().from(cmsContents).where(inArray(cmsContents.id, ids));
   assertCompleteCmsBatch(ids, rows.map((row) => row.id), '内容');
+  const disallowed = rows.find((row) => row.status !== 'published' || row.deletedAt || row.archivedAt);
+  if (disallowed) {
+    throw new HTTPException(400, { message: `内容 #${disallowed.id} 不是可分发的已发布内容` });
+  }
   return db.transaction(async (tx) => {
     let copied = 0;
     for (const current of rows) {
@@ -1547,7 +1591,7 @@ export async function distributeCmsContents(ids: number[], targetSiteId: number,
         source: current.source,
         sourceUrl: current.sourceUrl,
         isOriginal: current.isOriginal,
-        body: mode === 'mapping' ? null : current.body,
+        body: mode === 'mapping' ? null : sanitizeCmsHtml(current.body),
         extend: mode === 'mapping' ? {} : (current.extend ?? {}),
         externalLink: current.externalLink,
         mappingSourceId,

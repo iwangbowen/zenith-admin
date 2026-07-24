@@ -14,6 +14,10 @@ describe('CMS menu seed upgrades', () => {
     expect(rows.some((row) => row.path === '/cms/polls')).toBe(false);
     expect(rows.some((row) => row.permission === 'cms:page:acl')).toBe(true);
     expect(rows.some((row) => row.permission === 'cms:subscription:list')).toBe(true);
+    expect(rows.some((row) => row.permission === 'cms:site:hierarchy')).toBe(true);
+    expect(rows.some((row) => row.permission === 'cms:publish:group')).toBe(true);
+    expect(rows.find((row) => row.path === '/cms/distribution')?.permission).toBe('cms:distribution:list');
+    expect(rows.filter((row) => row.permission?.startsWith('cms:distribution:'))).toHaveLength(6);
 
     const onConflictDoUpdate = vi.fn(async () => undefined);
     const values = vi.fn(() => ({ onConflictDoUpdate }));

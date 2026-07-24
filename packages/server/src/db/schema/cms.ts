@@ -9,6 +9,8 @@ import {
   CMS_PUBLISH_TARGET_TYPES,
   CMS_AD_EVENT_TYPES,
   CMS_DEVICE_TYPES,
+  CMS_DISTRIBUTION_CONFLICT_STRATEGIES,
+  CMS_DISTRIBUTION_MODES,
   CMS_INTERACTION_CAPTCHA_POLICIES,
   CMS_INTERACTION_KINDS,
   CMS_INTERACTION_PARTICIPANT_SCOPES,
@@ -22,6 +24,7 @@ import {
   CMS_THEME_DEPLOYMENT_STATUSES,
   CMS_THEME_PACKAGE_STATUSES,
   type CmsTemplateDslDocument,
+  type CmsDistributionFilters,
   type CmsThemePackageManifest,
   type CmsThemePackageValidationReport,
 } from '@zenith/shared';
@@ -52,6 +55,11 @@ export const cmsInteractionRepeatPolicyEnum = pgEnum('cms_interaction_repeat_pol
 export const cmsInteractionResultVisibilityEnum = pgEnum('cms_interaction_result_visibility', CMS_INTERACTION_RESULT_VISIBILITIES);
 export const cmsInteractionCaptchaPolicyEnum = pgEnum('cms_interaction_captcha_policy', CMS_INTERACTION_CAPTCHA_POLICIES);
 export const cmsPageBlockAclSubjectTypeEnum = pgEnum('cms_page_block_acl_subject_type', ['user', 'role']);
+export const cmsDistributionModeEnum = pgEnum('cms_distribution_mode', CMS_DISTRIBUTION_MODES);
+export const cmsDistributionConflictStrategyEnum = pgEnum(
+  'cms_distribution_conflict_strategy',
+  CMS_DISTRIBUTION_CONFLICT_STRATEGIES,
+);
 
 /** PostgreSQL tsvector 列（drizzle 无内置类型），存全文检索向量 */
 const tsvector = customType<{ data: string }>({
@@ -63,6 +71,8 @@ const tsvector = customType<{ data: string }>({
 // ─── CMS 站点（站群支持：一站一域名一主题）──────────────────────────────────────
 export const cmsSites = pgTable('cms_sites', {
   id: serial('id').primaryKey(),
+  /** 站群父站点；null 为根站点。层级约束由服务层在全局层级锁内维护。 */
+  parentId: integer('parent_id').references((): AnyPgColumn => cmsSites.id, { onDelete: 'restrict' }),
   name: varchar('name', { length: 100 }).notNull(),
   /** 站点唯一标识：静态目录名 / 预览路径（/__cms/{code}）*/
   code: varchar('code', { length: 50 }).notNull().unique(),
@@ -101,10 +111,32 @@ export const cmsSites = pgTable('cms_sites', {
 }, (t) => [
   uniqueIndex('cms_sites_domain_uq').on(t.domain).where(sql`${t.domain} is not null`),
   uniqueIndex('cms_sites_default_uq').on(t.isDefault).where(sql`${t.isDefault} = true`),
+  index('cms_sites_parent_idx').on(t.parentId, t.sort, t.id),
 ]);
 
 export type CmsSiteRow = typeof cmsSites.$inferSelect;
 export type NewCmsSite = typeof cmsSites.$inferInsert;
+
+// ─── CMS 站点逐项显式继承开关（值仍存站点本身，resolver 按字段选择来源）──────────
+export const cmsSiteInheritances = pgTable('cms_site_inheritances', {
+  siteId: integer('site_id').primaryKey().references(() => cmsSites.id, { onDelete: 'cascade' }),
+  seoTitle: boolean('seo_title').notNull().default(false),
+  seoKeywords: boolean('seo_keywords').notNull().default(false),
+  seoDescription: boolean('seo_description').notNull().default(false),
+  staticMode: boolean('static_mode').notNull().default(false),
+  reviewMode: boolean('review_mode').notNull().default(false),
+  webhook: boolean('webhook').notNull().default(false),
+  cdn: boolean('cdn').notNull().default(false),
+  theme: boolean('theme').notNull().default(false),
+  themeConfig: boolean('theme_config').notNull().default(false),
+  templates: boolean('templates').notNull().default(false),
+  revision: integer('revision').notNull().default(0),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type CmsSiteInheritanceRow = typeof cmsSiteInheritances.$inferSelect;
 
 // ─── CMS 发布通道（用户自建的输出端维度：PC/H5/小程序/大屏…）────────────────────
 export const cmsPublishChannels = pgTable('cms_publish_channels', {
@@ -315,6 +347,42 @@ export const cmsChannels = pgTable('cms_channels', {
 export type CmsChannelRow = typeof cmsChannels.$inferSelect;
 export type NewCmsChannel = typeof cmsChannels.$inferInsert;
 
+// ─── CMS 受治理内容分发规则（执行记录与行级结果复用 async_tasks/items）──────────
+export const cmsDistributionRules = pgTable('cms_distribution_rules', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 100 }).notNull(),
+  sourceSiteId: integer('source_site_id').notNull().references(() => cmsSites.id, { onDelete: 'restrict' }),
+  sourceChannelId: integer('source_channel_id').references(() => cmsChannels.id, { onDelete: 'restrict' }),
+  targetSiteId: integer('target_site_id').notNull().references(() => cmsSites.id, { onDelete: 'restrict' }),
+  targetChannelId: integer('target_channel_id').notNull().references(() => cmsChannels.id, { onDelete: 'restrict' }),
+  mode: cmsDistributionModeEnum('mode').notNull().default('copy'),
+  conflictStrategy: cmsDistributionConflictStrategyEnum('conflict_strategy').notNull().default('skip'),
+  filters: jsonb('filters').$type<CmsDistributionFilters>().notNull().default({
+    statuses: ['published'],
+    contentTypes: [],
+    keyword: null,
+    publishedFrom: null,
+    publishedTo: null,
+  }),
+  scheduleCron: varchar('schedule_cron', { length: 100 }),
+  nextRunAt: timestamp('next_run_at'),
+  lastRunAt: timestamp('last_run_at'),
+  status: statusEnum('status').notNull().default('enabled'),
+  /** 规则变更 fence；每次编辑/启停 +1，旧任务协作取消。 */
+  revision: integer('revision').notNull().default(1),
+  remark: varchar('remark', { length: 500 }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  index('cms_distribution_rules_source_idx').on(t.sourceSiteId, t.sourceChannelId, t.status),
+  index('cms_distribution_rules_target_idx').on(t.targetSiteId, t.targetChannelId, t.status),
+  index('cms_distribution_rules_due_idx').on(t.mode, t.status, t.nextRunAt),
+]);
+
+export type CmsDistributionRuleRow = typeof cmsDistributionRules.$inferSelect;
+export type NewCmsDistributionRule = typeof cmsDistributionRules.$inferInsert;
+
 // ─── CMS 内容（全站统一表 + JSONB 扩展字段 + tsvector 检索向量）─────────────────
 export const cmsContents = pgTable('cms_contents', {
   id: serial('id').primaryKey(),
@@ -393,6 +461,10 @@ export const cmsContents = pgTable('cms_contents', {
   archivedAt: timestamp('archived_at'),
   /** 映射来源内容 id：非空表示本内容为“映射”（正文/扩展字段共享来源内容，禁止独立编辑） */
   mappingSourceId: integer('mapping_source_id').references((): AnyPgColumn => cmsContents.id, { onDelete: 'set null' }),
+  /** 规则物化来源，用于同步幂等和冲突处理；规则删除后保留内容并清空规则引用。 */
+  distributionRuleId: integer('distribution_rule_id').references(() => cmsDistributionRules.id, { onDelete: 'set null' }),
+  distributionSourceId: integer('distribution_source_id').references((): AnyPgColumn => cmsContents.id, { onDelete: 'set null' }),
+  distributionSourceVersion: integer('distribution_source_version'),
   /** 会员投稿：非空表示由前台会员提交（P3 会员投稿） */
   memberId: integer('member_id').references(() => members.id, { onDelete: 'set null' }),
   /** 部门归属（P5 部门数据权限：创建时快照创建人部门；投稿/导入为 null） */
@@ -411,7 +483,10 @@ export const cmsContents = pgTable('cms_contents', {
   index('cms_contents_search_idx').using('gin', t.searchVector),
   index('cms_contents_member_idx').on(t.memberId),
   index('cms_contents_mapping_source_idx').on(t.mappingSourceId),
+  index('cms_contents_distribution_source_idx').on(t.distributionRuleId, t.distributionSourceId),
   index('cms_contents_locked_at_idx').on(t.lockedAt),
+  uniqueIndex('cms_contents_distribution_materialization_uq').on(t.distributionRuleId, t.distributionSourceId)
+    .where(sql`${t.distributionRuleId} is not null and ${t.distributionSourceId} is not null and ${t.deletedAt} is null`),
   uniqueIndex('cms_contents_site_slug_uq').on(t.siteId, t.slug)
     .where(sql`${t.slug} is not null and ${t.deletedAt} is null`),
 ]);

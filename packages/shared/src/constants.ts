@@ -1260,6 +1260,66 @@ export const CMS_STATIC_MODES = ['dynamic', 'hybrid', 'static'] as const;
 /** Write-only CMS setting placeholder; never represents the stored secret value. */
 export const CMS_SECRET_MASK = '********';
 
+/** 站群层级硬上限（根站点深度为 1）。 */
+export const CMS_SITE_MAX_DEPTH = 8;
+
+/** 可逐项显式继承的站点配置。 */
+export const CMS_SITE_INHERITABLE_FIELDS = [
+  'seoTitle',
+  'seoKeywords',
+  'seoDescription',
+  'staticMode',
+  'reviewMode',
+  'webhook',
+  'cdn',
+  'theme',
+  'themeConfig',
+  'templates',
+] as const;
+
+export const CMS_SITE_INHERITABLE_FIELD_LABELS: Record<(typeof CMS_SITE_INHERITABLE_FIELDS)[number], string> = {
+  seoTitle: 'SEO 标题',
+  seoKeywords: 'SEO 关键词',
+  seoDescription: 'SEO 描述',
+  staticMode: '静态化模式',
+  reviewMode: '审核模式',
+  webhook: 'Webhook',
+  cdn: 'CDN 刷新',
+  theme: '活动主题',
+  themeConfig: '主题参数',
+  templates: '默认模板',
+};
+
+export const CMS_DISTRIBUTION_MODES = ['copy', 'mapping', 'scheduled'] as const;
+export const CMS_DISTRIBUTION_MODE_LABELS: Record<(typeof CMS_DISTRIBUTION_MODES)[number], string> = {
+  copy: '一次性复制',
+  mapping: '映射跟随',
+  scheduled: '定时同步',
+};
+
+export const CMS_DISTRIBUTION_CONFLICT_STRATEGIES = ['skip', 'overwrite', 'create-new'] as const;
+export const CMS_DISTRIBUTION_CONFLICT_STRATEGY_LABELS: Record<(typeof CMS_DISTRIBUTION_CONFLICT_STRATEGIES)[number], string> = {
+  skip: '跳过冲突',
+  overwrite: '覆盖目标',
+  'create-new': '创建新内容',
+};
+
+export const CMS_DISTRIBUTION_RUN_OUTCOMES = ['success', 'skipped', 'conflict', 'failed'] as const;
+export const CMS_DISTRIBUTION_RUN_OUTCOME_LABELS: Record<(typeof CMS_DISTRIBUTION_RUN_OUTCOMES)[number], string> = {
+  success: '成功',
+  skipped: '跳过',
+  conflict: '冲突',
+  failed: '失败',
+};
+export const CMS_DISTRIBUTION_TASK_STATUSES = ['pending', 'running', 'success', 'failed', 'cancelled'] as const;
+export const CMS_DISTRIBUTION_TASK_STATUS_LABELS: Record<(typeof CMS_DISTRIBUTION_TASK_STATUSES)[number], string> = {
+  pending: '等待中',
+  running: '进行中',
+  success: '成功',
+  failed: '失败',
+  cancelled: '已取消',
+};
+
 export const CMS_STATIC_MODE_LABELS: Record<(typeof CMS_STATIC_MODES)[number], string> = {
   dynamic: '动态渲染',
   hybrid: '混合（推荐）',
@@ -1312,6 +1372,13 @@ export const CMS_TEMPLATE_SOURCE_LABELS: Record<(typeof CMS_TEMPLATE_SOURCES)[nu
   manual: '手工 DSL',
   package: '主题包',
 };
+export const CMS_TEMPLATE_RESOLUTION_SOURCE_LABELS = {
+  own: '本站',
+  inherited: '继承父级',
+  global: '主题全局',
+  builtin: '内置',
+  package: '主题包',
+} as const;
 export const CMS_THEME_PACKAGE_STATUS_LABELS: Record<(typeof CMS_THEME_PACKAGE_STATUSES)[number], string> = {
   validated: '校验通过',
   disabled: '已停用',

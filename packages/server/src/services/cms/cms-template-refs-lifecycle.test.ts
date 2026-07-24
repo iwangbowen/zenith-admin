@@ -6,7 +6,23 @@ vi.mock('../../db', () => ({
     select: () => ({
       from: (table: unknown) => {
         const rows = table === runtime.tables.cmsSites
-          ? [{ settings: { defaultTemplates: { pc: { detail: 'detail-review' } } } }]
+          ? [{
+              id: 1,
+              parentId: null,
+              name: 'Site',
+              code: 'site',
+              theme: 'default',
+              themeRevision: 0,
+              templateRefsRevision: 0,
+              staticMode: 'hybrid',
+              title: null,
+              keywords: null,
+              description: null,
+              settings: { defaultTemplates: { pc: { detail: 'detail-review' } } },
+              status: 'enabled',
+            }]
+          : table === runtime.tables.cmsSiteInheritances
+            ? []
           : table === runtime.tables.cmsChannels
             ? [{
                 id: 4,
@@ -30,10 +46,11 @@ vi.mock('../../db', () => ({
   },
 }));
 
-import { cmsChannels, cmsSites } from '../../db/schema';
+import { cmsChannels, cmsSiteInheritances, cmsSites } from '../../db/schema';
 import { findCmsTemplateReferences } from './cms-template-refs.service';
 
 runtime.tables.cmsSites = cmsSites;
+runtime.tables.cmsSiteInheritances = cmsSiteInheritances;
 runtime.tables.cmsChannels = cmsChannels;
 
 describe('CMS template deactivate reference guard', () => {

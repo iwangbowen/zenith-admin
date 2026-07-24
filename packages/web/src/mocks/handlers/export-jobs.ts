@@ -110,6 +110,31 @@ const entities: ExportEntityMeta[] = [
     },
     permissions: { export: 'cms:publish:view', requireExportRawPermission: false },
   },
+  {
+    entity: 'cms.distribution-runs',
+    moduleName: 'CMS内容管理',
+    filenamePrefix: 'CMS内容分发结果',
+    sourcePath: '/cms/distribution',
+    formats: ['xlsx', 'csv'],
+    renderMode: 'table',
+    sensitive: false,
+    columns: [
+      { key: 'taskId', header: '任务 ID', type: 'number', width: 12 },
+      { key: 'ruleName', header: '分发规则', width: 28 },
+      { key: 'sourceSite', header: '来源站点', width: 24 },
+      { key: 'targetSite', header: '目标站点', width: 24 },
+      { key: 'outcome', header: '结果', width: 14 },
+      { key: 'message', header: '处理说明', width: 42 },
+    ],
+    execution: {
+      mode: 'sync',
+      syncMaxRows: 5000,
+      forceAsyncWhenSensitive: false,
+      forceAsyncWhenRaw: false,
+      syncModeOverridesAsyncPolicies: true,
+    },
+    permissions: { export: 'cms:distribution:export', requireExportRawPermission: false },
+  },
 ];
 
 let nextJobId = 4;

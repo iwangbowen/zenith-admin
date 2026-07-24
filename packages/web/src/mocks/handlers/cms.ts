@@ -18,6 +18,7 @@ import {
   mockCmsPages, getNextCmsPageId,
 } from '../data/cms';
 import { mockCmsPublishingTasks, mockCmsTemplates, mockCmsThemePackages } from '../data/cms-stage3';
+import { mockCmsDistributionRules } from '../data/cms-stage5';
 import { createProgressingMockTask } from './async-tasks';
 import { mockDateTime, mockDate } from '../utils/date';
 
@@ -101,6 +102,10 @@ function hasInvalidMockFormPattern(fields: unknown): boolean {
     const pattern = (field as Record<string, unknown>).pattern;
     return typeof pattern === 'string' && (pattern.length > 200 || /[\0\r\n]/.test(pattern));
   });
+}
+
+function sanitizeMockCmsHtml(value: string | null): string | null {
+  return value?.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+="[^"]*"/gi, '') ?? null;
 }
 
 export const cmsHandlers = [
@@ -194,6 +199,7 @@ export const cmsHandlers = [
     if (body.isDefault) mockCmsSites.forEach((s) => { s.isDefault = false; });
     const site = {
       id: getNextCmsSiteId(),
+      parentId: (body.parentId as number) ?? null,
       name: String(body.name ?? ''),
       code,
       domain: (body.domain as string) ?? null,
@@ -225,6 +231,16 @@ export const cmsHandlers = [
     const idx = mockCmsSites.findIndex((s) => s.id === Number(params.id));
     if (idx === -1) return notFound('站点不存在');
     const body = (await request.json()) as Body;
+    if (body.status === 'disabled') {
+      if (mockCmsSites.some((site) => site.parentId === mockCmsSites[idx].id && site.status === 'enabled')) {
+        return badRequest('存在启用中的子站点，请先逐级停用子站点');
+      }
+      if (mockCmsDistributionRules.some((rule) =>
+        rule.status === 'enabled'
+        && (rule.sourceSiteId === mockCmsSites[idx].id || rule.targetSiteId === mockCmsSites[idx].id))) {
+        return badRequest('该站点被启用中的分发规则引用，请先停用规则');
+      }
+    }
     const code = body.code === undefined ? mockCmsSites[idx].code : String(body.code);
     if (mockCmsSites.some((site, siteIndex) => siteIndex !== idx && site.code === code)) {
       return badRequest('站点标识或域名已存在');
@@ -243,6 +259,12 @@ export const cmsHandlers = [
   }),
   http.delete('/api/cms/sites/:id', ({ params }) => {
     const id = Number(params.id);
+    if (mockCmsSites.some((site) => site.parentId === id)) {
+      return HttpResponse.json({ code: 400, message: '该站点下存在子站点，请先移动或删除子站点', data: null }, { status: 400 });
+    }
+    if (mockCmsDistributionRules.some((rule) => rule.sourceSiteId === id || rule.targetSiteId === id)) {
+      return HttpResponse.json({ code: 400, message: '该站点被分发规则引用，请先删除规则', data: null }, { status: 400 });
+    }
     if (mockCmsChannels.some((c) => c.siteId === id)) {
       return HttpResponse.json({ code: 400, message: '该站点下存在栏目，请先删除栏目', data: null }, { status: 400 });
     }
@@ -635,6 +657,9 @@ export const cmsHandlers = [
       twitterCreator: (body.twitterCreator as string) ?? null,
       archivedAt: null,
       mappingSourceId: null,
+      distributionRuleId: null,
+      distributionSourceId: null,
+      distributionSourceVersion: null,
       lockedAt: null,
       lockedBy: null,
       lockReason: null,
@@ -1829,7 +1854,10 @@ export const cmsP3Handlers = [
     const ids = (body.ids as number[]) ?? [];
     const mode = (body.mode as 'copy' | 'mapping') ?? 'copy';
     const now = mockDateTime();
-    for (const src of mockCmsContents.filter((c) => ids.includes(c.id))) {
+    const sources = mockCmsContents.filter((c) => ids.includes(c.id));
+    const disallowed = sources.find((content) => content.status !== 'published' || content.archivedAt);
+    if (disallowed) return badRequest(`内容 #${disallowed.id} 不是可分发的已发布内容`);
+    for (const src of sources) {
       mockCmsContents.push({
         ...src,
         id: getNextCmsContentId(),
@@ -1838,10 +1866,17 @@ export const cmsP3Handlers = [
         status: 'draft',
         publishedAt: null,
         viewCount: 0,
+        likeCount: 0,
+        favoriteCount: 0,
+        version: 1,
         tagIds: [],
-        // 映射：标记来源（demo 简化为正文同拷，真实实现运行时透传来源正文）
+        body: mode === 'mapping' ? null : sanitizeMockCmsHtml(src.body),
+        extend: mode === 'mapping' ? {} : structuredClone(src.extend),
         mappingSourceId: mode === 'mapping' ? (src.mappingSourceId ?? src.id) : null,
         mappingSourceTitle: mode === 'mapping' ? src.title : null,
+        distributionRuleId: null,
+        distributionSourceId: null,
+        distributionSourceVersion: null,
         archivedAt: null,
         createdAt: now,
         updatedAt: now,

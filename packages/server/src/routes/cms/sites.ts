@@ -1,17 +1,37 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { createCmsSiteSchema, updateCmsSiteSchema } from '@zenith/shared';
+import {
+  createCmsSiteSchema,
+  moveCmsSiteSchema,
+  updateCmsSiteInheritanceSchema,
+  updateCmsSiteSchema,
+} from '@zenith/shared';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData, setAuditAfterData } from '../../middleware/guard';
 import {
   ErrorResponse, jsonContent, PaginationQuery, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, IdParam, okBody, errBody,
 } from '../../lib/openapi-schemas';
-import { CmsSiteDTO, CmsThemeDTO, CmsThemeTemplatesDTO, CmsTemplateHealthDTO, CmsThemeSettingFieldDTO, CmsSiteUsersDTO, CmsSiteImportResultDTO } from '../../lib/openapi-dtos';
+import {
+  CmsSiteChainNodeDTO,
+  CmsSiteDTO,
+  CmsSiteEffectiveConfigDTO,
+  CmsSiteInheritanceUpdateResultDTO,
+  CmsSiteImportResultDTO,
+  CmsSiteMoveResultDTO,
+  CmsSiteTreeNodeDTO,
+  CmsSiteUsersDTO,
+  CmsTemplateHealthDTO,
+  CmsThemeDTO,
+  CmsThemeSettingFieldDTO,
+  CmsThemeTemplatesDTO,
+} from '../../lib/openapi-dtos';
 import { getThemeSettingsSchema, isThemeRegistered } from '../../cms/themes/registry';
 import { listCmsAvailableThemes, listCmsThemeTemplateOptions } from '../../services/cms/cms-templates.service';
 import {
   listCmsSites, listAllCmsSites, getCmsSite, createCmsSite, updateCmsSite, deleteCmsSite,
   ensureCmsSiteExists, mapCmsSite, getCmsSiteUsers, setCmsSiteUsers, enableSiteAnalytics, assertSiteAccess,
+  getCmsEffectiveConfig, getCmsSiteInheritanceChain, listCmsSiteTree, moveCmsSite,
+  updateCmsSiteInheritance,
 } from '../../services/cms/cms-sites.service';
 import { getSiteTemplateHealth } from '../../services/cms/cms-template-refs.service';
 import { exportCmsSite, importCmsSite } from '../../services/cms/cms-site-transfer.service';
@@ -46,6 +66,23 @@ const allRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...ok(z.array(CmsSiteDTO), '站点列表') },
   }),
   handler: async (c) => c.json(okBody(await listAllCmsSites()), 200),
+});
+
+const treeRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/tree',
+    tags: ['CMS-站点管理'], summary: '受权站点树（普通用户仅返回显式授权站点）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:site:list' })] as const,
+    request: {
+      query: z.object({
+        keyword: z.string().max(100).optional(),
+        status: z.enum(['enabled', 'disabled']).optional(),
+      }),
+    },
+    responses: { ...commonErrorResponses, ...ok(z.array(CmsSiteTreeNodeDTO), '站点树') },
+  }),
+  handler: async (c) => c.json(okBody(await listCmsSiteTree(c.req.valid('query'))), 200),
 });
 
 const themesRoute = defineOpenAPIRoute({
@@ -126,6 +163,71 @@ const getOneRoute = defineOpenAPIRoute({  route: createRoute({
     },
   }),
   handler: async (c) => c.json(okBody(await getCmsSite(c.req.valid('param').id)), 200),
+});
+
+const inheritanceChainRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}/inheritance-chain',
+    tags: ['CMS-站点管理'], summary: '查看站点继承链（隐藏无权父级）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:site:list' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(z.array(CmsSiteChainNodeDTO), '继承链') },
+  }),
+  handler: async (c) => c.json(okBody(await getCmsSiteInheritanceChain(c.req.valid('param').id)), 200),
+});
+
+const effectiveConfigRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}/effective-config',
+    tags: ['CMS-站点管理'], summary: '有效配置及逐项来源（secret 始终掩码）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'cms:site:list' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(CmsSiteEffectiveConfigDTO, '有效配置') },
+  }),
+  handler: async (c) => c.json(okBody(await getCmsEffectiveConfig(c.req.valid('param').id)), 200),
+});
+
+const moveRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put', path: '/{id}/parent',
+    tags: ['CMS-站点管理'], summary: '安全移动站点子树',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({
+      permission: 'cms:site:hierarchy',
+      audit: { description: '移动 CMS 站点子树', module: 'CMS内容管理' },
+    })] as const,
+    request: { params: IdParam, body: { content: jsonContent(moveCmsSiteSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(CmsSiteMoveResultDTO, '移动结果') },
+  }),
+  handler: async (c) => {
+    const result = await moveCmsSite(c.req.valid('param').id, c.req.valid('json').parentId);
+    setAuditAfterData(c, result);
+    return c.json(okBody(result, '站点子树已移动，受影响站点重建任务已提交'), 200);
+  },
+});
+
+const updateInheritanceRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put', path: '/{id}/inheritance',
+    tags: ['CMS-站点管理'], summary: '逐项覆盖或恢复继承',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({
+      permission: 'cms:site:hierarchy',
+      audit: { description: '更新 CMS 站点继承策略', module: 'CMS内容管理' },
+    })] as const,
+    request: {
+      params: IdParam,
+      body: { content: jsonContent(updateCmsSiteInheritanceSchema), required: true },
+    },
+    responses: { ...commonErrorResponses, ...ok(CmsSiteInheritanceUpdateResultDTO, '继承策略') },
+  }),
+  handler: async (c) => {
+    const result = await updateCmsSiteInheritance(c.req.valid('param').id, c.req.valid('json'));
+    setAuditAfterData(c, result);
+    return c.json(okBody(result, '继承策略已更新'), 200);
+  },
 });
 
 const createRoute_ = defineOpenAPIRoute({
@@ -252,7 +354,12 @@ const importSiteRoute = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRoute, allRoute, themesRoute, themeTemplatesRoute, themeSettingsSchemaRoute, templateHealthRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_, getSiteUsersRoute, setSiteUsersRoute, enableAnalyticsRoute, importSiteRoute] as const);
+router.openapiRoutes([
+  listRoute, allRoute, treeRoute, themesRoute, themeTemplatesRoute, themeSettingsSchemaRoute,
+  templateHealthRoute, inheritanceChainRoute, effectiveConfigRoute, moveRoute, updateInheritanceRoute,
+  getOneRoute, createRoute_, updateRoute_, deleteRoute_, getSiteUsersRoute, setSiteUsersRoute,
+  enableAnalyticsRoute, importSiteRoute,
+] as const);
 
 // 站点导出：JSON 附件下载（结构+内容整站打包，不含运行数据）
 router.get('/:id/export', authMiddleware, guard({

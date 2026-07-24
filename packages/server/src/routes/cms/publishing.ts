@@ -4,6 +4,7 @@ import {
   CMS_PUBLISH_ARTIFACT_STATUSES,
   CMS_PUBLISH_TARGET_TYPES,
   submitCmsPublishSchema,
+  submitCmsSiteGroupPublishSchema,
 } from '@zenith/shared';
 import { authMiddleware } from '../../middleware/auth';
 import { guard } from '../../middleware/guard';
@@ -23,6 +24,7 @@ import {
   CmsPublishingDetailDTO,
   CmsPublishingTaskDTO,
   CmsPublishArtifactDTO,
+  CmsSiteGroupPublishResultDTO,
 } from '../../lib/openapi-dtos';
 import {
   batchCmsPublishingAction,
@@ -31,6 +33,7 @@ import {
   listCmsPublishArtifacts,
   listCmsPublishingTasks,
   submitCmsPublishTask,
+  submitCmsSiteGroupPublish,
 } from '../../services/cms/cms-publishing.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -90,6 +93,27 @@ const submitRoute = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await submitCmsPublishTask(c.req.valid('json')), '发布任务已提交'), 200),
 });
 
+const groupSubmitRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/group-submit', tags: ['CMS-发布中心'], summary: '站点父子树整组重建',
+    security: [{ BearerAuth: [] }],
+    middleware: [
+      authMiddleware,
+      guard({
+        permission: 'cms:publish:group',
+        audit: { description: '提交 CMS 站群整组重建', module: 'CMS内容管理' },
+      }),
+      idempotencyGuard({ ttlSeconds: 30 }),
+    ] as const,
+    request: { body: { content: jsonContent(submitCmsSiteGroupPublishSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(CmsSiteGroupPublishResultDTO, '站群发布任务') },
+  }),
+  handler: async (c) => c.json(okBody(
+    await submitCmsSiteGroupPublish(c.req.valid('json')),
+    '站群重建任务已提交',
+  ), 200),
+});
+
 const batchActionRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/batch-action', tags: ['CMS-发布中心'], summary: '批量取消/恢复/重试/重建发布任务',
@@ -142,6 +166,7 @@ const actionRoute = defineOpenAPIRoute({
 
 router.openapiRoutes([
   listRoute, artifactsRoute, submitRoute, batchActionRoute, detailRoute, actionRoute,
+  groupSubmitRoute,
 ] as const);
 
 export default router;

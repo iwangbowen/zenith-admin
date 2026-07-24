@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Banner, Button, Form, Input, InputNumber, Select, Switch, Tag, TextArea, Toast, Modal, Row, Col, SideSheet, Tabs, TabPane, Upload } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, RotateCcw, Plus, Upload as UploadIcon, ImageUp, Zap, ExternalLink } from 'lucide-react';
+import { Search, RotateCcw, Plus, Upload as UploadIcon, ImageUp, Zap, ExternalLink, ChevronsDownUp, ChevronsUpDown, ListTree, List as ListIcon } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -20,12 +20,22 @@ import {
   useCmsSiteUsers, useSetCmsSiteUsers, useEnableSiteAnalytics, useImportCmsSite,
   useCmsThemeTemplates, useAllCmsModels, useCmsPublishChannels, useCmsSiteTemplateHealth,
   useCmsThemeSettingsSchema, useCmsStaticBuild,
+  useAllCmsSites,
 } from '@/hooks/queries/cms';
+import {
+  cmsSiteHierarchyKeys,
+  useCmsSiteEffectiveConfig,
+  useCmsSiteInheritanceChain,
+  useCmsSiteTree,
+  useMoveCmsSite,
+  useSubmitCmsSiteGroupPublish,
+  useUpdateCmsSiteInheritance,
+} from '@/hooks/queries/cms-stage5';
 import { request } from '@/utils/request';
 import { unwrap } from '@/lib/query';
 import { useWorkflowDefinitionList } from '@/hooks/queries/workflow-definitions';
-import { CMS_STATIC_MODE_LABELS, CMS_STATIC_MODES, CMS_DEFAULT_CHANNEL_CODE, CMS_TWITTER_CARDS, CMS_TWITTER_CARD_LABELS } from '@zenith/shared';
-import type { AsyncTask, CmsSite, CmsSiteTemplateDefaults, CmsInvalidTemplateRef, CmsThemeSettingField } from '@zenith/shared';
+import { CMS_SITE_INHERITABLE_FIELD_LABELS, CMS_SITE_INHERITABLE_FIELDS, CMS_STATIC_MODE_LABELS, CMS_STATIC_MODES, CMS_DEFAULT_CHANNEL_CODE, CMS_TWITTER_CARDS, CMS_TWITTER_CARD_LABELS } from '@zenith/shared';
+import type { AsyncTask, CmsSite, CmsSiteInheritanceFlags, CmsSiteInheritableField, CmsSiteTemplateDefaults, CmsInvalidTemplateRef, CmsThemeSettingField } from '@zenith/shared';
 import { cmsPreviewUrl } from './CmsSiteSelect';
 import { cmsCredentialWriteValue } from './cms-site-credentials';
 
@@ -46,6 +56,66 @@ interface ChannelTemplateConfig {
 type TemplateDefaultsState = Record<string, ChannelTemplateConfig>;
 
 const EMPTY_CHANNEL_CONFIG: ChannelTemplateConfig = { list: null, detail: null, detailByModel: {} };
+
+const EMPTY_INHERITANCE: CmsSiteInheritanceFlags = {
+  seoTitle: false,
+  seoKeywords: false,
+  seoDescription: false,
+  staticMode: false,
+  reviewMode: false,
+  webhook: false,
+  cdn: false,
+  theme: false,
+  themeConfig: false,
+  templates: false,
+};
+
+function collectSiteIds(nodes: CmsSite[]): number[] {
+  return nodes.flatMap((node) => [node.id, ...collectSiteIds(node.children ?? [])]);
+}
+
+function collectFlatSiteDescendantIds(sites: CmsSite[], rootId: number): Set<number> {
+  const result = new Set<number>([rootId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const site of sites) {
+      if (site.parentId != null && result.has(site.parentId) && !result.has(site.id)) {
+        result.add(site.id);
+        changed = true;
+      }
+    }
+  }
+  return result;
+}
+
+function displayEffectiveValue(field: CmsSiteInheritableField, resolved: Record<string, unknown>): string {
+  const valueByField: Record<CmsSiteInheritableField, unknown> = {
+    seoTitle: resolved.title,
+    seoKeywords: resolved.keywords,
+    seoDescription: resolved.description,
+    staticMode: resolved.staticMode,
+    reviewMode: resolved.auditMode,
+    webhook: {
+      url: resolved.webhookUrl,
+      secret: resolved.webhookSecret,
+    },
+    cdn: {
+      url: resolved.cdnPurgeUrl,
+      token: resolved.cdnPurgeToken,
+    },
+    theme: {
+      code: resolved.theme,
+      deploymentId: resolved.activeThemeDeploymentId,
+      packageVersion: resolved.activeThemePackageVersion,
+    },
+    themeConfig: resolved.themeConfig,
+    templates: resolved.defaultTemplates,
+  };
+  const value = valueByField[field];
+  if (value === null || value === undefined || value === '') return '-';
+  return typeof value === 'object' ? JSON.stringify(value) : String(value);
+}
 
 function templateDefaultsFromSettings(settings: Record<string, unknown> | null | undefined): TemplateDefaultsState {
   const state: TemplateDefaultsState = {};
@@ -119,6 +189,7 @@ function describeInvalidRef(ref: CmsInvalidTemplateRef): string {
 /** 站点静态化面板（SideSheet 打开时才挂载，任务列表轮询随关闭停止） */
 function SiteStaticPanel({ site, canBuild }: { site: CmsSite; canBuild: boolean }) {
   const buildMutation = useCmsStaticBuild();
+  const effectiveConfigQuery = useCmsSiteEffectiveConfig(site.id);
   const { tasks, loading, refresh } = useMyAsyncTasks({ taskTypes: ['cms-publish-build', 'cms-static-build', 'cms-theme-rebuild'] });
   const siteTasks = tasks.filter((t) => {
     const payload = t.payload as { siteId?: number; siteIds?: number[] };
@@ -146,7 +217,7 @@ function SiteStaticPanel({ site, canBuild }: { site: CmsSite; canBuild: boolean 
         description={(
           <span>
             全站静态化会将首页、全部栏目分页、全部已发布内容、sitemap.xml、robots.txt 渲染为静态 HTML 文件。
-            当前静态化模式：<b>{CMS_STATIC_MODE_LABELS[site.staticMode]}</b>。
+            当前有效静态化模式：<b>{CMS_STATIC_MODE_LABELS[effectiveConfigQuery.data?.resolved.staticMode ?? site.staticMode]}</b>。
             混合模式下内容发布时已自动增量生成，全量生成用于模板/碎片/导航变更后的整站刷新（主题代码变更已由系统自动检测重建）。
           </span>
         )}
@@ -184,6 +255,8 @@ export default function SitesPage() {
   const { page, pageSize, setPage, buildPagination } = usePagination();
   const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
   const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
+  const [treeView, setTreeView] = useState(true);
+  const [expandedRowKeys, setExpandedRowKeys] = useState<(string | number)[]>([]);
 
   const listQuery = useCmsSiteList({
     page,
@@ -193,6 +266,14 @@ export default function SitesPage() {
   });
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
+  const treeQuery = useCmsSiteTree({
+    keyword: submittedParams.keyword || undefined,
+    status: submittedParams.status || undefined,
+  }, treeView);
+  const tree = useMemo(() => treeQuery.data ?? [], [treeQuery.data]);
+  const allTreeIds = useMemo(() => collectSiteIds(tree), [tree]);
+  const allExpanded = allTreeIds.length > 0 && expandedRowKeys.length >= allTreeIds.length;
+  const { data: allSites } = useAllCmsSites();
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<CmsSite | null>(null);
@@ -248,16 +329,41 @@ export default function SitesPage() {
   // ─── 授权用户（站点级数据权限）────────────────────────────────────────────
   const [usersModalSite, setUsersModalSite] = useState<CmsSite | null>(null);
   const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
+  const [moveSite, setMoveSite] = useState<CmsSite | null>(null);
+  const [moveParentId, setMoveParentId] = useState<number | null>(null);
+  const [inheritanceSite, setInheritanceSite] = useState<CmsSite | null>(null);
+  const [inheritanceDraft, setInheritanceDraft] = useState<CmsSiteInheritanceFlags>(EMPTY_INHERITANCE);
+  const moveParentOptions = useMemo(() => {
+    const sites = allSites ?? [];
+    const excluded = moveSite ? collectFlatSiteDescendantIds(sites, moveSite.id) : new Set<number>();
+    return sites
+      .filter((site) => !excluded.has(site.id))
+      .map((site) => ({
+        value: site.id,
+        label: `${'—'.repeat(Math.max(0, (site.depth ?? 1) - 1))}${site.name}`,
+      }));
+  }, [allSites, moveSite]);
   // 静态化面板（原独立「静态化管理」页面整合至此）
   const [staticSheetSite, setStaticSheetSite] = useState<CmsSite | null>(null);
   const siteUsersQuery = useCmsSiteUsers(usersModalSite?.id, !!usersModalSite);
   const setSiteUsersMutation = useSetCmsSiteUsers();
   const enableAnalyticsMutation = useEnableSiteAnalytics();
+  const moveSiteMutation = useMoveCmsSite();
+  const updateInheritanceMutation = useUpdateCmsSiteInheritance();
+  const groupPublishMutation = useSubmitCmsSiteGroupPublish();
+  const effectiveConfigQuery = useCmsSiteEffectiveConfig(inheritanceSite?.id, !!inheritanceSite);
+  const inheritanceChainQuery = useCmsSiteInheritanceChain(inheritanceSite?.id, !!inheritanceSite);
   const { data: defsPage } = useWorkflowDefinitionList({ page: 1, pageSize: 100, status: 'published' });
   const publishedDefs = defsPage?.list;
   const { data: allUsers } = useAllUsers({ enabled: !!usersModalSite });
   const siteUserIds = siteUsersQuery.data?.userIds;
   const usersInitialized = useRef(false);
+
+  useEffect(() => {
+    if (!inheritanceSite) return;
+    const flags = effectiveConfigQuery.data?.inheritance ?? inheritanceSite.inheritance;
+    if (flags) setInheritanceDraft({ ...EMPTY_INHERITANCE, ...flags });
+  }, [effectiveConfigQuery.data?.inheritance, inheritanceSite]);
   if (usersModalSite && siteUserIds && !usersInitialized.current) {
     usersInitialized.current = true;
     setSelectedUserIds(siteUserIds);
@@ -276,10 +382,49 @@ export default function SitesPage() {
     setUsersModalSite(null);
   }
 
+  function openMoveSite(record: CmsSite) {
+    setMoveSite(record);
+    setMoveParentId(record.parentId ?? null);
+  }
+
+  async function handleMoveSite() {
+    if (!moveSite) return;
+    const result = await moveSiteMutation.mutateAsync({ siteId: moveSite.id, parentId: moveParentId });
+    Toast.success(`移动成功，已为 ${result.affectedSiteIds.length} 个受影响站点提交重建`);
+    setMoveSite(null);
+  }
+
+  function openInheritance(record: CmsSite) {
+    setInheritanceDraft({ ...EMPTY_INHERITANCE, ...(record.inheritance ?? {}) });
+    setInheritanceSite(record);
+  }
+
+  async function handleSaveInheritance() {
+    if (!inheritanceSite) return;
+    const result = await updateInheritanceMutation.mutateAsync({
+      siteId: inheritanceSite.id,
+      inheritance: inheritanceDraft,
+    });
+    Toast.success(`继承策略已保存，影响 ${result.affectedSiteIds.length} 个站点`);
+    setInheritanceSite(null);
+  }
+
+  function handleGroupPublish(record: CmsSite) {
+    Modal.confirm({
+      title: `整组重建「${record.name}」及全部子站点？`,
+      content: '系统会先校验全部目标站点与栏目 ACL，再为每个站点提交带 revision fence 的可取消任务。',
+      onOk: async () => {
+        const result = await groupPublishMutation.mutateAsync({ rootSiteId: record.id });
+        Toast.success(`已提交 ${result.tasks.length} 个站点重建任务`);
+      },
+    });
+  }
+
   function handleSearch() {
     setPage(1);
     setSubmittedParams(draftParams);
     void queryClient.invalidateQueries({ queryKey: cmsSiteKeys.lists });
+    void queryClient.invalidateQueries({ queryKey: cmsSiteHierarchyKeys.all });
   }
 
   function handleReset() {
@@ -287,6 +432,7 @@ export default function SitesPage() {
     setDraftParams(defaultSearchParams);
     setSubmittedParams(defaultSearchParams);
     void queryClient.invalidateQueries({ queryKey: cmsSiteKeys.lists });
+    void queryClient.invalidateQueries({ queryKey: cmsSiteHierarchyKeys.all });
   }
 
   function openCreate() {
@@ -301,7 +447,7 @@ export default function SitesPage() {
   function openEdit(record: CmsSite) {
     setEditingRecord(record);
     setActiveTab('basic');
-    setSelectedTheme(record.theme);
+    setSelectedTheme(record.effectiveTheme ?? record.theme);
     setTemplateDefaults(templateDefaultsFromSettings(record.settings));
     setThemeConfig({ ...((record.settings as Record<string, unknown>)?.themeConfig as Record<string, unknown> ?? {}) });
     setModalVisible(true);
@@ -357,7 +503,7 @@ export default function SitesPage() {
         langLinksText: langLinksToText((editingRecord.settings as Record<string, unknown>)?.langLinks),
       }
     : {
-        theme: 'default', staticMode: 'hybrid', status: 'enabled', isDefault: false, aliasDomains: [],
+        parentId: null, theme: 'default', staticMode: 'hybrid', status: 'enabled', isDefault: false, aliasDomains: [],
         themeDark: 'light', imageMaxWidth: 1600, watermarkEnabled: false, watermarkPosition: 'southeast',
         watermarkOpacity: 45, thumbEnabled: false, thumbWidth: 400, auditMode: 'simple',
       };
@@ -470,6 +616,13 @@ export default function SitesPage() {
   const columns: ColumnProps<CmsSite>[] = [
     { title: '站点名称', dataIndex: 'name', width: 160 },
     {
+      title: '父级 / 层级',
+      width: 150,
+      render: (_: unknown, record) => record.parentName
+        ? `${record.parentName} / L${record.depth ?? '-'}`
+        : `根站点 / L${record.depth ?? 1}`,
+    },
+    {
       title: '标识',
       dataIndex: 'code',
       width: 110,
@@ -486,12 +639,12 @@ export default function SitesPage() {
       width: 180,
       render: (v: string | null) => v || <span style={{ color: 'var(--semi-color-text-2)' }}>未绑定</span>,
     },
-    { title: '主题', dataIndex: 'theme', width: 100 },
+    { title: '有效主题', width: 110, render: (_: unknown, record) => record.effectiveTheme ?? record.theme },
     {
       title: '静态化模式',
       dataIndex: 'staticMode',
       width: 130,
-      render: (v: CmsSite['staticMode']) => CMS_STATIC_MODE_LABELS[v],
+      render: (_: unknown, record) => CMS_STATIC_MODE_LABELS[record.effectiveStaticMode ?? record.staticMode],
     },
     { title: 'SEO 标题', dataIndex: 'title', width: 220, render: renderEllipsis },
     createdAtColumn,
@@ -546,6 +699,20 @@ export default function SitesPage() {
             });
           },
         }] : []),
+        ...(hasPermission('cms:site:hierarchy') ? [{
+          key: 'inheritance',
+          label: '继承配置',
+          onClick: () => openInheritance(record),
+        }, {
+          key: 'move',
+          label: '移动',
+          onClick: () => openMoveSite(record),
+        }] : []),
+        ...(hasPermission('cms:publish:group') ? [{
+          key: 'group-publish',
+          label: '整组重建',
+          onClick: () => handleGroupPublish(record),
+        }] : []),
         ...(hasPermission('cms:site:delete') ? [{
           key: 'delete',
           label: '删除',
@@ -596,6 +763,24 @@ export default function SitesPage() {
   ) : null;
   const renderImportButton = () => hasPermission('cms:site:create') ? (
     <Button icon={<UploadIcon size={14} />} loading={importMutation.isPending} onClick={() => importFileRef.current?.click()}>导入</Button>
+  ) : null;
+  const renderViewToggle = () => (
+    <Button
+      type="tertiary"
+      icon={treeView ? <ListIcon size={14} /> : <ListTree size={14} />}
+      onClick={() => setTreeView((value) => !value)}
+    >
+      {treeView ? '列表视图' : '树视图'}
+    </Button>
+  );
+  const renderExpandToggle = () => treeView ? (
+    <Button
+      type="tertiary"
+      icon={allExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
+      onClick={() => setExpandedRowKeys(allExpanded ? [] : allTreeIds)}
+    >
+      {allExpanded ? '全部折叠' : '全部展开'}
+    </Button>
   ) : null;
 
   const listTplOptions = (themeTemplates?.list ?? []).map((t) => ({ value: t.name, label: t.label }));
@@ -820,6 +1005,8 @@ export default function SitesPage() {
             {renderStatusFilter()}
             {renderSearchButton()}
             {renderResetButton()}
+            {renderViewToggle()}
+            {renderExpandToggle()}
           </>
         )}
         actions={(
@@ -833,6 +1020,7 @@ export default function SitesPage() {
             {renderKeywordSearch()}
             {renderSearchButton()}
             {renderCreateButton()}
+            {renderViewToggle()}
           </>
         )}
         mobileFilters={renderStatusFilter()}
@@ -844,15 +1032,19 @@ export default function SitesPage() {
       <ConfigurableTable
         bordered
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
+        dataSource={treeView ? tree : list}
+        loading={treeView ? treeQuery.isFetching : listQuery.isFetching}
         rowKey="id"
         size="small"
         empty="暂无站点"
-        scroll={{ x: 1400 }}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        scroll={{ x: 1550 }}
+        expandedRowKeys={treeView ? expandedRowKeys : undefined}
+        onExpandedRowsChange={(rows) => setExpandedRowKeys(
+          rows?.filter((row): row is CmsSite => 'id' in row).map((row) => row.id) ?? [],
+        )}
+        onRefresh={() => void (treeView ? treeQuery.refetch() : listQuery.refetch())}
+        refreshLoading={treeView ? treeQuery.isFetching : listQuery.isFetching}
+        pagination={treeView ? false : buildPagination(total)}
       />
 
       <SideSheet
@@ -890,6 +1082,21 @@ export default function SitesPage() {
                 <Col span={12}>
                   <Form.Input field="code" label="站点标识" disabled={!!editingRecord} placeholder="小写字母/数字/中划线" rules={[{ required: true, message: '请输入站点标识' }]} />
                 </Col>
+                {!editingRecord && hasPermission('cms:site:hierarchy') ? (
+                  <Col span={12}>
+                    <Form.Select
+                      field="parentId"
+                      label="父级站点"
+                      showClear
+                      placeholder="留空创建根站点"
+                      style={{ width: '100%' }}
+                      optionList={(allSites ?? []).map((site) => ({
+                        value: site.id,
+                        label: `${'—'.repeat(Math.max(0, (site.depth ?? 1) - 1))}${site.name}`,
+                      }))}
+                    />
+                  </Col>
+                ) : null}
                 <Col span={12}>
                   <Form.Input field="domain" label="绑定域名" placeholder="如 www.example.com" />
                 </Col>
@@ -901,7 +1108,8 @@ export default function SitesPage() {
                     <div className="semi-form-field">
                       <div className="semi-form-field-label">当前主题</div>
                       <Button theme="borderless" onClick={() => navigate('/cms/themes')}>
-                        {editingRecord.theme}（前往主题生命周期管理）
+                        {editingRecord.effectiveTheme ?? editingRecord.theme}
+                        {editingRecord.inheritance?.theme ? '（继承父级）' : ''}（前往主题生命周期管理）
                       </Button>
                     </div>
                   ) : (
@@ -1108,6 +1316,106 @@ export default function SitesPage() {
           optionList={(allUsers ?? []).map((u) => ({ value: u.id, label: `${u.nickname}（${u.username}）` }))}
         />
       </AppModal>
+
+      <AppModal
+        title={moveSite ? `移动站点「${moveSite.name}」` : '移动站点'}
+        visible={!!moveSite}
+        onOk={handleMoveSite}
+        onCancel={() => setMoveSite(null)}
+        okButtonProps={{ loading: moveSiteMutation.isPending }}
+        width={520}
+        closeOnEsc
+      >
+        <Banner
+          type="warning"
+          closeIcon={null}
+          style={{ marginBottom: 16 }}
+          description="移动会保留整棵子树；系统会阻止环与超过 8 层的移动，并为受影响站点提交 fenced 重建任务。"
+        />
+        <div style={{ marginBottom: 8 }}>新父级站点</div>
+        <Select
+          showClear
+          filter
+          placeholder="留空移动为根站点"
+          value={moveParentId ?? undefined}
+          onChange={(value) => setMoveParentId(typeof value === 'number' ? value : null)}
+          optionList={moveParentOptions}
+          style={{ width: '100%' }}
+        />
+      </AppModal>
+
+      <SideSheet
+        title={inheritanceSite ? `继承配置 —「${inheritanceSite.name}」` : '继承配置'}
+        visible={!!inheritanceSite}
+        onCancel={() => setInheritanceSite(null)}
+        width={760}
+        closeOnEsc
+        footer={(
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <Button type="tertiary" onClick={() => setInheritanceSite(null)}>取消</Button>
+            <Button
+              type="primary"
+              loading={updateInheritanceMutation.isPending}
+              disabled={inheritanceSite?.parentId == null}
+              onClick={() => void handleSaveInheritance()}
+            >
+              保存继承策略
+            </Button>
+          </div>
+        )}
+      >
+        <Banner
+          type="info"
+          closeIcon={null}
+          description="开关开启表示该项沿父级链解析；关闭表示使用本站覆盖值。Webhook/CDN 密钥仅显示掩码，继承不会回显父级明文。"
+          style={{ marginBottom: 16 }}
+        />
+        <div style={{ marginBottom: 16 }}>
+          <b>继承链：</b>
+          {(inheritanceChainQuery.data ?? []).map((site, index) => (
+            <span key={site.id}>
+              {index > 0 ? ' → ' : ''}
+              {site.name}
+            </span>
+          ))}
+        </div>
+        <div style={{ border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', overflow: 'hidden' }}>
+          {CMS_SITE_INHERITABLE_FIELDS.map((field, index) => {
+            const source = effectiveConfigQuery.data?.sources[field];
+            const value = effectiveConfigQuery.data
+              ? displayEffectiveValue(field, effectiveConfigQuery.data.resolved as unknown as Record<string, unknown>)
+              : '-';
+            return (
+              <div
+                key={field}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '130px 110px 150px minmax(0, 1fr)',
+                  gap: 12,
+                  alignItems: 'center',
+                  padding: '12px 14px',
+                  borderTop: index ? '1px solid var(--semi-color-border)' : undefined,
+                }}
+              >
+                <b>{CMS_SITE_INHERITABLE_FIELD_LABELS[field]}</b>
+                <Switch
+                  checked={inheritanceDraft[field]}
+                  disabled={inheritanceSite?.parentId == null}
+                  checkedText="继承"
+                  uncheckedText="覆盖"
+                  onChange={(checked) => setInheritanceDraft((value) => ({ ...value, [field]: checked }))}
+                />
+                <Tag color={source?.kind === 'inherited' ? 'blue' : 'green'} size="small">
+                  {source?.kind === 'inherited'
+                    ? `继承：${source.siteName ?? '受限父级'}`
+                    : '本站'}
+                </Tag>
+                <span style={{ color: 'var(--semi-color-text-1)', overflowWrap: 'anywhere' }}>{value}</span>
+              </div>
+            );
+          })}
+        </div>
+      </SideSheet>
 
       {/* 静态化面板（原「静态化管理」独立页面整合至此） */}
       <SideSheet

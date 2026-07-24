@@ -423,7 +423,7 @@ const distributeRoute = defineOpenAPIRoute({
     method: 'post', path: '/distribute',
     tags: ['CMS-内容管理'], summary: '站群分发（copy=独立复制 / mapping=映射，正文共享来源）',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:content:create', audit: { description: 'CMS 内容站群分发', module: 'CMS内容管理' } })] as const,
+    middleware: [authMiddleware, guard({ permission: 'cms:distribution:run', audit: { description: 'CMS 内容站群分发', module: 'CMS内容管理' } })] as const,
     request: {
       body: {
         content: jsonContent(z.object({

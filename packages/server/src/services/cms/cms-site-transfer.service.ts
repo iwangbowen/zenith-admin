@@ -4,7 +4,7 @@ import { db } from '../../db';
 import {
   cmsSites, cmsChannels, cmsContents, cmsTags, cmsContentTags, cmsContentChannels, cmsContentRelations,
   cmsFragments, cmsFriendLinks, cmsRedirects, cmsLinkWords, cmsAdSlots, cmsAds, cmsForms, cmsPages,
-  cmsSiteUsers, cmsChannelUsers,
+  cmsSiteInheritances, cmsSiteUsers, cmsChannelUsers,
 } from '../../db/schema';
 import { formatDateTime, parseDateTimeInput } from '../../lib/datetime';
 import { buildSearchVector } from './cms-search.service';
@@ -91,14 +91,15 @@ export async function exportCmsSite(siteId: number) {
     }
     return exportRow({ ...c, body, extend }, [
       'siteId', 'searchVector', 'viewCount', 'likeCount', 'favoriteCount', 'version',
-      'deletedAt', 'mappingSourceId', 'memberId', 'deptId', 'rejectReason',
+      'deletedAt', 'mappingSourceId', 'distributionRuleId', 'distributionSourceId',
+      'distributionSourceVersion', 'memberId', 'deptId', 'rejectReason',
     ]);
   }));
 
   return {
     version: CMS_SITE_EXPORT_VERSION,
     exportedAt: formatDateTime(new Date()),
-    site: exportRow({ ...site, settings: redactCmsSiteSettings(site.settings) }, ['id', 'isDefault', 'domain', 'aliasDomains']),
+    site: exportRow({ ...site, settings: redactCmsSiteSettings(site.settings) }, ['id', 'parentId', 'isDefault', 'domain', 'aliasDomains']),
     channels: channels.map((r) => exportRow(r, ['siteId'])),
     tags: tags.map((r) => exportRow(r, ['siteId', 'contentCount'])),
     contents: exportedContents,
@@ -182,6 +183,7 @@ export async function importCmsSite(payload: unknown) {
       remark: str(site.remark),
     }).returning();
     const siteId = newSite.id;
+    await tx.insert(cmsSiteInheritances).values({ siteId });
     if (!platformAdmin) {
       await tx.insert(cmsSiteUsers).values({ siteId, userId: creatorId });
     }

@@ -10,19 +10,19 @@
 import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import { cmsSites, cmsChannels, cmsContents } from '../../db/schema';
+import type { DbExecutor } from '../../db/types';
+import { cmsChannels, cmsContents } from '../../db/schema';
 import type { CmsChannelRow } from '../../db/schema';
 import { isTemplateRegistered, isThemeRegistered, listThemeTemplates, getThemeSettingsSchema } from '../../cms/themes/registry';
 import type { CmsSiteTemplateDefaults, CmsTemplateHealth, CmsInvalidTemplateRef } from '@zenith/shared';
 import { resolveAvailableCmsTemplateNames } from './cms-template-resolution.service';
+import { resolveEffectiveCmsSiteRow } from './cms-site-inheritance.service';
 
 type TemplateKind = 'list' | 'detail';
 
 /** 站点主题查询（本文件不依赖 cms-sites.service，避免服务间循环导入） */
 async function getSiteTheme(siteId: number): Promise<string> {
-  const [row] = await db.select({ theme: cmsSites.theme }).from(cmsSites).where(eq(cmsSites.id, siteId)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '站点不存在' });
-  return row.theme;
+  return (await resolveEffectiveCmsSiteRow(siteId)).theme;
 }
 
 /** 校验模板名在主题中存在，不存在抛 400（附可用模板清单） */
@@ -67,7 +67,7 @@ function assertTemplateNameInSet(
   throw new HTTPException(400, { message: `${location}「${name}」在主题「${themeCode}」中不存在（${available}）` });
 }
 
-async function availableTemplateSets(themeCode: string, siteId?: number) {
+async function availableTemplateSets(themeCode: string, siteId?: number, executor?: DbExecutor) {
   if (!siteId) {
     const builtin = isThemeRegistered(themeCode) ? listThemeTemplates(themeCode) : { list: [], detail: [] };
     return {
@@ -76,7 +76,7 @@ async function availableTemplateSets(themeCode: string, siteId?: number) {
       detail: new Set(builtin.detail.map((item) => item.name)),
     };
   }
-  return resolveAvailableCmsTemplateNames(siteId, themeCode);
+  return resolveAvailableCmsTemplateNames(siteId, themeCode, { executor });
 }
 
 function assertTemplateDefaultsMap(
@@ -101,8 +101,14 @@ export async function assertSiteTemplateSettings(
   themeCode: string,
   settings: Record<string, unknown> | null | undefined,
   siteId?: number,
+  executor?: DbExecutor,
 ): Promise<void> {
-  assertTemplateDefaultsMap(themeCode, settings?.defaultTemplates, '站点默认模板', await availableTemplateSets(themeCode, siteId));
+  assertTemplateDefaultsMap(
+    themeCode,
+    settings?.defaultTemplates,
+    '站点默认模板',
+    await availableTemplateSets(themeCode, siteId, executor),
+  );
 }
 
 /** 站点保存校验：settings.themeConfig 中 select 类型参数的值须在主题声明的选项内 */
@@ -152,8 +158,7 @@ export async function findCmsTemplateReferences(
   templateCode: string,
 ): Promise<string[]> {
   const [site, channels, contentCount] = await Promise.all([
-    db.select({ settings: cmsSites.settings }).from(cmsSites).where(eq(cmsSites.id, siteId)).limit(1)
-      .then((rows) => rows[0]),
+    resolveEffectiveCmsSiteRow(siteId).catch(() => null),
     db.select().from(cmsChannels).where(eq(cmsChannels.siteId, siteId)),
     kind === 'detail'
       ? db.$count(cmsContents, and(
@@ -218,8 +223,7 @@ export async function getSiteTemplateHealth(
   themeOverride?: string,
   override?: { list: string[]; detail: string[]; themeAvailable?: boolean },
 ): Promise<CmsTemplateHealth> {
-  const [site] = await db.select().from(cmsSites).where(eq(cmsSites.id, siteId)).limit(1);
-  if (!site) throw new HTTPException(404, { message: '站点不存在' });
+  const site = await resolveEffectiveCmsSiteRow(siteId);
   const theme = themeOverride?.trim() || site.theme;
   const invalidRefs: CmsInvalidTemplateRef[] = [];
   const available = override

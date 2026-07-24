@@ -51,7 +51,10 @@ import {
   OAUTH2_GRANT_TYPES,
   OPEN_APP_ENVIRONMENTS,
   CMS_SEARCH_DICTIONARY_WORD_PATTERN,
+  CMS_DISTRIBUTION_CONFLICT_STRATEGIES,
+  CMS_DISTRIBUTION_MODES,
   CMS_PUBLISH_TARGET_TYPES,
+  CMS_SITE_INHERITABLE_FIELDS,
   CMS_TEMPLATE_TYPES,
 } from './constants';
 
@@ -5056,7 +5059,33 @@ export type HandleUserFeedbackInput = z.input<typeof handleUserFeedbackSchema>;
 // ─── CMS 内容管理 Schema ──────────────────────────────────────────────────────
 export const cmsSlugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+export const cmsSiteInheritanceSchema = z.object({
+  seoTitle: z.boolean().default(false),
+  seoKeywords: z.boolean().default(false),
+  seoDescription: z.boolean().default(false),
+  staticMode: z.boolean().default(false),
+  reviewMode: z.boolean().default(false),
+  webhook: z.boolean().default(false),
+  cdn: z.boolean().default(false),
+  theme: z.boolean().default(false),
+  themeConfig: z.boolean().default(false),
+  templates: z.boolean().default(false),
+});
+
 export const createCmsSiteSchema = z.object({
+  parentId: z.number().int().positive().nullable().default(null),
+  inheritance: cmsSiteInheritanceSchema.default({
+    seoTitle: false,
+    seoKeywords: false,
+    seoDescription: false,
+    staticMode: false,
+    reviewMode: false,
+    webhook: false,
+    cdn: false,
+    theme: false,
+    themeConfig: false,
+    templates: false,
+  }),
   name: z.string().min(1, '站点名称不能为空').max(100),
   code: z.string().min(1, '站点标识不能为空').max(50).regex(cmsSlugRegex, '标识仅支持小写字母、数字、中划线'),
   domain: z.string().max(255).nullable().optional(),
@@ -5097,6 +5126,76 @@ export const updateCmsSiteSchema = z.object({
   sort: createCmsSiteSchema.shape.sort.removeDefault().optional(),
   remark: createCmsSiteSchema.shape.remark.optional(),
 });
+
+export const moveCmsSiteSchema = z.object({
+  parentId: z.number().int().positive().nullable(),
+});
+
+export const updateCmsSiteInheritanceSchema = cmsSiteInheritanceSchema.partial()
+  .refine((value) => Object.keys(value).some((key) => CMS_SITE_INHERITABLE_FIELDS.includes(key as (typeof CMS_SITE_INHERITABLE_FIELDS)[number])), {
+    message: '至少提交一个继承项',
+  });
+
+export const cmsDistributionFiltersSchema = z.object({
+  statuses: z.array(z.literal('published')).min(1).default(['published']),
+  contentTypes: z.array(z.enum(['article', 'album', 'media', 'link'])).default([]),
+  keyword: z.string().max(100).nullable().default(null),
+  publishedFrom: dateTimeStringSchema.nullable().default(null),
+  publishedTo: dateTimeStringSchema.nullable().default(null),
+}).refine((value) => !value.publishedFrom || !value.publishedTo || value.publishedFrom <= value.publishedTo, {
+  message: '发布时间范围无效',
+  path: ['publishedTo'],
+});
+
+const cmsDistributionRuleBaseSchema = z.object({
+  name: z.string().trim().min(1, '规则名称不能为空').max(100),
+  sourceSiteId: z.number().int().positive(),
+  sourceChannelId: z.number().int().positive().nullable().default(null),
+  targetSiteId: z.number().int().positive(),
+  targetChannelId: z.number().int().positive(),
+  mode: z.enum(CMS_DISTRIBUTION_MODES).default('copy'),
+  conflictStrategy: z.enum(CMS_DISTRIBUTION_CONFLICT_STRATEGIES).default('skip'),
+  filters: cmsDistributionFiltersSchema.default({
+    statuses: ['published'],
+    contentTypes: [],
+    keyword: null,
+    publishedFrom: null,
+    publishedTo: null,
+  }),
+  scheduleCron: z.string().trim().min(5).max(100).nullable().default(null),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  remark: z.string().max(500).nullable().default(null),
+});
+
+function validateCmsDistributionRuleShape(
+  value: Partial<z.infer<typeof cmsDistributionRuleBaseSchema>>,
+  ctx: z.RefinementCtx,
+): void {
+  if (value.sourceSiteId === value.targetSiteId) {
+    ctx.addIssue({ code: 'custom', path: ['targetSiteId'], message: '来源站点与目标站点不能相同' });
+  }
+  if (value.mode === 'scheduled' && !value.scheduleCron) {
+    ctx.addIssue({ code: 'custom', path: ['scheduleCron'], message: '定时同步必须配置 Cron 表达式' });
+  }
+  if (value.mode !== 'scheduled' && value.scheduleCron) {
+    ctx.addIssue({ code: 'custom', path: ['scheduleCron'], message: '仅定时同步模式可配置 Cron 表达式' });
+  }
+}
+
+export const createCmsDistributionRuleSchema = cmsDistributionRuleBaseSchema.superRefine(validateCmsDistributionRuleShape);
+export const updateCmsDistributionRuleSchema = cmsDistributionRuleBaseSchema.partial().superRefine(validateCmsDistributionRuleShape);
+
+export const submitCmsSiteGroupPublishSchema = z.object({
+  rootSiteId: z.number().int().positive(),
+  reason: z.string().trim().max(500).nullable().default(null),
+});
+
+export type CmsSiteInheritanceInput = z.input<typeof cmsSiteInheritanceSchema>;
+export type UpdateCmsSiteInheritanceInput = z.input<typeof updateCmsSiteInheritanceSchema>;
+export type MoveCmsSiteInput = z.input<typeof moveCmsSiteSchema>;
+export type CreateCmsDistributionRuleInput = z.input<typeof createCmsDistributionRuleSchema>;
+export type UpdateCmsDistributionRuleInput = z.input<typeof updateCmsDistributionRuleSchema>;
+export type SubmitCmsSiteGroupPublishInput = z.input<typeof submitCmsSiteGroupPublishSchema>;
 
 export const createCmsPublishChannelSchema = z.object({
   siteId: z.number().int().positive(),

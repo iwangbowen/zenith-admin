@@ -10298,8 +10298,72 @@ export type CmsFieldType = 'text' | 'textarea' | 'richtext' | 'number' | 'date' 
 
 export type CmsFragmentType = 'html' | 'text' | 'image' | 'json';
 
+export type CmsSiteInheritableField =
+  | 'seoTitle'
+  | 'seoKeywords'
+  | 'seoDescription'
+  | 'staticMode'
+  | 'reviewMode'
+  | 'webhook'
+  | 'cdn'
+  | 'theme'
+  | 'themeConfig'
+  | 'templates';
+
+export interface CmsSiteInheritanceFlags {
+  seoTitle: boolean;
+  seoKeywords: boolean;
+  seoDescription: boolean;
+  staticMode: boolean;
+  reviewMode: boolean;
+  webhook: boolean;
+  cdn: boolean;
+  theme: boolean;
+  themeConfig: boolean;
+  templates: boolean;
+}
+
+export interface CmsSiteInheritanceSource {
+  kind: 'own' | 'inherited';
+  /** 无权查看来源站点时不返回其 id/name，避免层级侧信道泄露。 */
+  siteId: number | null;
+  siteName: string | null;
+}
+
+export interface CmsSiteEffectiveConfig {
+  siteId: number;
+  chain: Array<{ id: number; name: string; code: string; depth: number }>;
+  inheritance: CmsSiteInheritanceFlags;
+  resolved: {
+    title: string | null;
+    keywords: string | null;
+    description: string | null;
+    staticMode: CmsStaticMode;
+    auditMode: 'simple' | 'workflow';
+    auditWorkflowDefinitionId: number | null;
+    webhookUrl: string | null;
+    /** 仅为 CMS_SECRET_MASK 或 null，绝不包含明文。 */
+    webhookSecret: string | null;
+    cdnPurgeUrl: string | null;
+    /** 仅为 CMS_SECRET_MASK 或 null，绝不包含明文。 */
+    cdnPurgeToken: string | null;
+    theme: string;
+    themeSourceSiteId: number | null;
+    activeThemeDeploymentId: number | null;
+    activeThemePackageId: number | null;
+    activeThemePackageVersion: string | null;
+    themeConfig: Record<string, unknown>;
+    defaultTemplates: Record<string, CmsSiteTemplateDefaults>;
+  };
+  sources: Record<CmsSiteInheritableField, CmsSiteInheritanceSource>;
+}
+
 export interface CmsSite {
   id: number;
+  parentId: number | null;
+  parentName?: string | null;
+  depth?: number;
+  hasChildren?: boolean;
   name: string;
   code: string;
   domain: string | null;
@@ -10313,14 +10377,18 @@ export interface CmsSite {
   icp: string | null;
   copyright: string | null;
   theme: string;
+  effectiveTheme?: string;
   themeRevision: number;
   templateRefsRevision: number;
   staticMode: CmsStaticMode;
+  effectiveStaticMode?: CmsStaticMode;
   robots: string | null;
   settings: Record<string, unknown>;
   status: 'enabled' | 'disabled';
   sort: number;
   remark: string | null;
+  inheritance?: CmsSiteInheritanceFlags;
+  children?: CmsSite[];
   createdAt: string;
   updatedAt: string;
 }
@@ -10362,6 +10430,8 @@ export interface CmsSiteTemplateDefaults {
 export interface CmsThemeTemplateOption {
   name: string;
   label: string;
+  source?: 'own' | 'inherited' | 'global' | 'builtin' | 'package';
+  sourceSiteId?: number | null;
 }
 
 /** 主题可选模板清单（不含主题默认模板本身） */
@@ -10581,6 +10651,8 @@ export interface CmsThemePackage {
 
 export interface CmsThemeImpactReport {
   siteId: number;
+  affectedSiteIds: number[];
+  affectedSiteNames: string[];
   themeCode: string;
   themeAvailable: boolean;
   activePackageId: number | null;
@@ -10645,6 +10717,64 @@ export interface CmsPublishingDetail {
   task: CmsPublishingTask;
   items: AsyncTaskItem[];
   artifacts: CmsPublishArtifact[];
+}
+
+// ─── CMS Stage 5：站群内容分发 ────────────────────────────────────────────────
+export type CmsDistributionMode = 'copy' | 'mapping' | 'scheduled';
+export type CmsDistributionConflictStrategy = 'skip' | 'overwrite' | 'create-new';
+export type CmsDistributionRunOutcome = 'success' | 'skipped' | 'conflict' | 'failed';
+
+export interface CmsDistributionFilters {
+  /** Stage 5 仅允许 published；保留数组形状供后续安全扩展。 */
+  statuses: Array<'published'>;
+  contentTypes: CmsContentType[];
+  keyword: string | null;
+  publishedFrom: string | null;
+  publishedTo: string | null;
+}
+
+export interface CmsDistributionRule {
+  id: number;
+  name: string;
+  sourceSiteId: number;
+  sourceSiteName: string;
+  sourceChannelId: number | null;
+  sourceChannelName: string | null;
+  targetSiteId: number;
+  targetSiteName: string;
+  targetChannelId: number;
+  targetChannelName: string;
+  mode: CmsDistributionMode;
+  conflictStrategy: CmsDistributionConflictStrategy;
+  filters: CmsDistributionFilters;
+  scheduleCron: string | null;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  status: 'enabled' | 'disabled';
+  revision: number;
+  remark: string | null;
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CmsDistributionRun extends AsyncTask {
+  ruleId: number;
+  ruleName: string | null;
+  sourceSiteId: number;
+  sourceSiteName: string | null;
+  targetSiteId: number;
+  targetSiteName: string | null;
+  trigger: 'manual' | 'scheduled' | 'mapping-update';
+  succeeded: number;
+  skipped: number;
+  conflicts: number;
+}
+
+export interface CmsDistributionRunDetail {
+  run: CmsDistributionRun;
+  items: AsyncTaskItem[];
 }
 
 export interface CmsPublishSubmitInput {
@@ -10823,6 +10953,12 @@ export interface CmsContent {
   mappingSourceId: number | null;
   /** 映射来源内容标题（JOIN 后附加） */
   mappingSourceTitle?: string | null;
+  /** 受治理分发规则；空表示非规则物化内容。 */
+  distributionRuleId: number | null;
+  /** 分发来源内容（copy/mapping 均记录，用于有限幂等与冲突处理）。 */
+  distributionSourceId: number | null;
+  /** 最近同步的来源内容 version。 */
+  distributionSourceVersion: number | null;
   /** 持久化管理员合规锁（非 Redis 编辑软锁） */
   lockedAt: string | null;
   lockedBy: number | null;

@@ -42,6 +42,7 @@ import { userFeedbacksHandlers } from './user-feedbacks';
 import { cmsHandlers, cmsP2Handlers, cmsP3Handlers, cmsP6Handlers } from './cms';
 import { cmsStage3Handlers } from './cms-stage3';
 import { cmsStage4Handlers } from './cms-stage4';
+import { cmsStage5Handlers } from './cms-stage5';
 import { workflowAutomationsHandlers } from './workflow-automations';
 import { workflowEventSubscriptionsHandlers } from './workflow-event-subscriptions';
 import { workflowTriggerExecutionsHandlers } from './workflow-trigger-executions';
@@ -242,6 +243,7 @@ export const handlers = [
   ...decisionTablesHandlers,
   ...rulesP2Handlers,
   ...userFeedbacksHandlers,
+  ...cmsStage5Handlers,
   ...cmsStage4Handlers,
   ...cmsP6Handlers,
   ...cmsP3Handlers,

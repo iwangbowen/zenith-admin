@@ -68,6 +68,7 @@ export async function applyCmsStage4MenuData(tx: DbTransaction): Promise<void> {
   if (remappedPackages.length) {
     await tx.insert(tenantPackageMenus).values(remappedPackages as { packageId: number; menuId: number }[]).onConflictDoNothing();
   }
+
   await tx.delete(roleMenus).where(inArray(roleMenus.menuId, obsoleteMenuIds));
   await tx.delete(userMenus).where(inArray(userMenus.menuId, obsoleteMenuIds));
   await tx.delete(tenantPackageMenus).where(inArray(tenantPackageMenus.menuId, obsoleteMenuIds));
@@ -95,6 +96,11 @@ export async function applyCmsStage4MenuData(tx: DbTransaction): Promise<void> {
   }
 }
 
+/** Stage 5 菜单/权限生产同步：站群层级、整组发布与内容分发。 */
+export async function applyCmsStage5MenuData(tx: DbTransaction): Promise<void> {
+  await applyCmsStage4MenuData(tx);
+}
+
 const DATA_MIGRATIONS: AppDataMigration[] = [
   {
     key: '2026-07-cms-stage3-menus-v2',
@@ -105,6 +111,11 @@ const DATA_MIGRATIONS: AppDataMigration[] = [
     key: '2026-07-cms-stage4-menus-v2',
     description: '同步 CMS Stage4 菜单权限并安全重映射旧投票角色、用户与租户套餐绑定',
     run: applyCmsStage4MenuData,
+  },
+  {
+    key: '2026-07-cms-stage5-site-groups-v1',
+    description: '同步 CMS Stage5 站群层级、整组发布与内容分发菜单权限',
+    run: applyCmsStage5MenuData,
   },
 ];
 

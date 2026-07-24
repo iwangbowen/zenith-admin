@@ -528,8 +528,14 @@ export default function ContentsPage() {
             }}>批量归档</Button>
           </>
         ) : null}
-        {hasPermission('cms:content:create') ? (
-          <Button onClick={() => { setDistributeTargetSiteId(undefined); setDistributeModalVisible(true); }}>站群分发</Button>
+        {hasPermission('cms:content:create') && hasPermission('cms:distribution:run') ? (
+          <Button
+            disabled={selectedIds.some((id) => list.find((content) => content.id === id)?.status !== 'published')}
+            title="仅已发布内容可跨站分发"
+            onClick={() => { setDistributeTargetSiteId(undefined); setDistributeModalVisible(true); }}
+          >
+            站群分发
+          </Button>
         ) : null}
         {hasPermission('cms:content:delete') ? (
           <Button type="danger" onClick={() => {

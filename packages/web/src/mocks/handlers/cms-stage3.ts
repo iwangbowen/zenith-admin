@@ -324,8 +324,11 @@ export const cmsStage3Handlers = [
     const themeCode = targetPackage?.code ?? url.searchParams.get('themeCode') ?? mockCmsSites.find((item) => item.id === siteId)?.theme ?? 'default';
     const active = mockCmsThemePackages.find((item) => item.code === themeCode && item.activeSiteIds.includes(siteId));
     const evaluated = targetPackage ?? active;
+    const affectedSites = mockCmsSites.filter((site) => site.id === siteId || site.parentId === siteId);
     return ok({
       siteId,
+      affectedSiteIds: affectedSites.map((site) => site.id),
+      affectedSiteNames: affectedSites.map((site) => site.name),
       themeCode,
       themeAvailable: themeCode === 'default' || Boolean(evaluated?.validationReport.valid),
       activePackageId: active?.id ?? null,

@@ -33,7 +33,7 @@ graph LR
 | 菜单 | 路径 | 说明 | 文档 |
 |------|------|------|------|
 | 数据看板 | `/cms/dashboard` | 状态分布、发布趋势、热文 TOP、栏目分布 | 本页 |
-| 站点管理 | `/cms/sites` | 站群、域名路由、主题、审核模式、Webhook | [内容管线](./content-pipeline) |
+| 站点管理 | `/cms/sites` | 父子站群、显式继承、域名路由、主题、审核模式、Webhook | [站群与分发](./site-groups-and-distribution) |
 | 栏目管理 | `/cms/channels` | 树形栏目（列表/单页/外链），级联 path | [内容管线](./content-pipeline) |
 | 内容管理 | `/cms/contents` | 5 态状态机、多形态内容（图文/图集/音视频/外链）、批量操作、导入导出、回收站 | [内容管线](./content-pipeline) |
 | 内容模型 | `/cms/models` | 12 种自定义字段类型（EAV via JSONB） | [内容管线](./content-pipeline) |
@@ -56,6 +56,7 @@ graph LR
 | 会员订阅 | `/cms/subscriptions` | 站点/栏目/作者订阅聚合、脱敏明细与导出 | [互动与运营](./interaction) |
 | 模板与主题 | `/cms/themes` | 安全声明式 DSL、签名主题包、版本/影响分析 | [模板与发布](./templates-themes-publishing) |
 | 发布中心 | `/cms/publishing` | 通用任务队列投影、产物、失败恢复与导出 | [模板与发布](./templates-themes-publishing) |
+| 内容分发 | `/cms/distribution` | 跨站 copy/mapping/定时同步、冲突治理、行级结果与导出 | [站群与分发](./site-groups-and-distribution) |
 
 ## 架构总览
 
@@ -76,7 +77,7 @@ CMS 前台路由（Hono 兜底路由）
 
 ## 数据表
 
-核心表：`cms_sites` / `cms_models` / `cms_model_fields` / `cms_channels` / `cms_contents` / `cms_tags` / `cms_content_tags` / `cms_content_channels`（副栏目）/ `cms_content_relations`（相关文章）/ `cms_content_versions` / `cms_content_op_logs`（操作日志时间线）
+核心表：`cms_sites` / `cms_site_inheritances` / `cms_distribution_rules` / `cms_models` / `cms_model_fields` / `cms_channels` / `cms_contents` / `cms_tags` / `cms_content_tags` / `cms_content_channels`（副栏目）/ `cms_content_relations`（相关文章）/ `cms_content_versions` / `cms_content_op_logs`（操作日志时间线）
 
 运营表：`cms_comments` / `cms_ad_slots` / `cms_ads` / `cms_ad_events` / `cms_forms` / `cms_form_submissions` / `cms_sensitive_words` / `cms_error_prone_words`（易错词）/ `cms_fragments` / `cms_friend_links` / `cms_pages` / `cms_page_block_acls`
 
@@ -106,7 +107,7 @@ SEO 与采集：`cms_redirects` / `cms_link_words` / `cms_push_logs` / `cms_sear
 
 ## 权限码
 
-所有权限以 `cms:` 前缀，按资源划分：`cms:site:*`、`cms:channel:*`、`cms:content:list|create|update|delete|publish|audit`、`cms:model:*`、`cms:tag:*`、`cms:fragment:*`、`cms:link:*`、`cms:search:manage`、`cms:seo:manage|push`、`cms:comment:audit|delete`、`cms:ad:manage`、`cms:ad-event:list|export|export-raw|cleanup`、`cms:form:manage`、`cms:sensitive:manage`、`cms:word:list|manage`、`cms:interaction:list|manage|batch|export|export-raw`、`cms:subscription:list|export|export-raw`、`cms:stat:view`、`cms:collect:*`、`cms:page:create|update|delete|acl`、`cms:template:view|manage|activate`、`cms:theme:view|import|activate|export`、`cms:publish:view|build|manage`、`cms:dashboard:view`。
+所有权限以 `cms:` 前缀，按资源划分：`cms:site:*`、`cms:site:hierarchy`、`cms:channel:*`、`cms:content:list|create|update|delete|publish|audit`、`cms:distribution:list|create|update|delete|run|export`、`cms:model:*`、`cms:tag:*`、`cms:fragment:*`、`cms:link:*`、`cms:search:manage`、`cms:seo:manage|push`、`cms:comment:audit|delete`、`cms:ad:manage`、`cms:ad-event:list|export|export-raw|cleanup`、`cms:form:manage`、`cms:sensitive:manage`、`cms:word:list|manage`、`cms:interaction:list|manage|batch|export|export-raw`、`cms:subscription:list|export|export-raw`、`cms:stat:view`、`cms:collect:*`、`cms:page:create|update|delete|acl`、`cms:template:view|manage|activate`、`cms:theme:view|import|activate|export`、`cms:publish:view|build|manage|group`、`cms:dashboard:view`。
 
 站点级数据权限：非平台超管必须在「站点管理 → 授权用户」中显式绑定后才能访问；未绑定时默认拒绝。平台超管可跨站点管理。
 

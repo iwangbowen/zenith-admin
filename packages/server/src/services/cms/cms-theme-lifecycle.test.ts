@@ -165,8 +165,24 @@ vi.mock('./cms-template-resolution.service', () => ({
     detail: new Set<string>(),
   })),
 }));
+vi.mock('./cms-site-inheritance.service', () => ({
+  resolveEffectiveCmsSite: vi.fn(async () => ({
+    raw: runtime.state.site,
+    site: runtime.state.site,
+    chain: [runtime.state.site],
+    inheritance: {},
+    sourceSiteIds: { theme: 1 },
+  })),
+  listCmsInheritanceAffectedSiteIds: vi.fn(async () => [1]),
+  getCmsEffectiveThemeDeployment: vi.fn(async () => ({
+    resolved: { site: runtime.state.site },
+    themeSourceSiteId: 1,
+    deployment: runtime.state.deployment?.status === 'active' ? runtime.state.deployment : null,
+  })),
+}));
 vi.mock('./cms-sites.service', () => ({
   assertSiteAccess: vi.fn(async () => undefined),
+  assertSitesAccess: vi.fn(async () => undefined),
   invalidateSiteCache: vi.fn(),
 }));
 vi.mock('./cms-themes.service', () => ({

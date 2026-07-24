@@ -77,5 +77,26 @@ describe('CMS Stage3 production menu data migration', () => {
       expect(remapCmsMenuBindingRows([{ packageId: 4, menuId: 1751 }], 'packageId'))
         .toEqual([{ packageId: 4, menuId: 1792 }]);
     });
+
+    describe('CMS Stage5 production permission migration', () => {
+      it('ships every hierarchy, group publish and distribution permission through versioned data migration', async () => {
+        const source = await readFile(new URL('./data-migrations.ts', import.meta.url), 'utf8');
+        expect(source).toContain('2026-07-cms-stage5-site-groups-v1');
+        for (const permission of [
+          'cms:site:hierarchy',
+          'cms:publish:group',
+          'cms:distribution:list',
+          'cms:distribution:create',
+          'cms:distribution:update',
+          'cms:distribution:delete',
+          'cms:distribution:run',
+          'cms:distribution:export',
+        ]) {
+          expect(SEED_MENUS.filter((menu) => menu.permission === permission)).toHaveLength(1);
+        }
+        expect(source).toContain('applyCmsStage5MenuData');
+        expect(source).toContain('applyCmsStage4MenuData(tx)');
+      });
+    });
   });
 });

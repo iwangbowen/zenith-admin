@@ -19,6 +19,7 @@ import {
   type CmsPublishArtifactStatus,
   type CmsPublishSubmitInput,
   type CmsPublishTargetType,
+  type SubmitCmsSiteGroupPublishInput,
 } from '@zenith/shared';
 import { db } from '../../db';
 import {
@@ -61,6 +62,7 @@ import {
 import { assertCompleteCmsBatch, isCmsPlatformAdmin } from './cms-access';
 import {
   assertSiteAccess,
+  assertSitesAccess,
   ensureCmsSiteExists,
   getAccessibleSiteIds,
 } from './cms-sites.service';
@@ -87,7 +89,12 @@ import {
   remainingCmsContentTargets,
   stableCmsContentTargets,
 } from './cms-publishing-policy';
-import { withCmsSitePublishLock } from './cms-site-publish-lock.service';
+import { cmsSiteFencePayload, withCmsSitePublishLock } from './cms-site-publish-lock.service';
+import {
+  listCmsSubtreeIds,
+  loadCmsInheritanceState,
+  resolveEffectiveCmsSiteRow,
+} from './cms-site-inheritance.service';
 
 const SYSTEM_USER = { userId: 1, username: 'admin', roles: ['super_admin'], tenantId: null };
 
@@ -454,6 +461,50 @@ export async function submitCmsPublishTask(
   });
 }
 
+export async function submitCmsSiteGroupPublish(input: SubmitCmsSiteGroupPublishInput) {
+  if (!(await hasPermission('cms:publish:group'))) {
+    throw new HTTPException(403, { message: '缺少 cms:publish:group 权限' });
+  }
+  const state = await loadCmsInheritanceState();
+  const root = state.sites.find((site) => site.id === input.rootSiteId);
+  if (!root) throw new HTTPException(404, { message: '站群根站点不存在' });
+  const targetSiteIds = listCmsSubtreeIds(state.sites, root.id)
+    .filter((id) => state.sites.find((site) => site.id === id)?.status === 'enabled')
+    .sort((a, b) => a - b);
+  if (!targetSiteIds.length) throw new HTTPException(400, { message: '站群中没有可发布的启用站点' });
+  await assertSitesAccess(targetSiteIds);
+  for (const siteId of targetSiteIds) await assertAllCmsSiteChannelsAccess(siteId);
+
+  const tasks = await db.transaction(async (tx) => {
+    const submitted = [];
+    for (const siteId of targetSiteIds) {
+      const [site] = await tx.select().from(cmsSites).where(eq(cmsSites.id, siteId)).limit(1);
+      if (!site || site.status !== 'enabled') {
+        throw new HTTPException(409, { message: `站点 #${siteId} 状态已变化，请刷新后重试` });
+      }
+      const fence = await cmsSiteFencePayload(tx, site);
+      submitted.push(await submitCmsPublishTask({
+        siteId,
+        targetType: 'site',
+        ...fence,
+        reason: input.reason?.trim() || `站群 #${root.id} 整组重建`,
+      }, {
+        skipPermissionCheck: true,
+        skipAccessCheck: true,
+        executor: tx,
+        enqueue: false,
+      }));
+    }
+    return submitted;
+  });
+  for (const task of tasks) {
+    await enqueueAsyncTask(task.id).catch((error) => {
+      logger.error(`[cms-publishing] 站群任务 #${task.id} 入队失败，等待 pending 恢复扫描补投`, error);
+    });
+  }
+  return { rootSiteId: root.id, targetSiteIds, tasks };
+}
+
 /** 发布状态事务提交后的静态副作用入口；请求、工作流、采集与系统调度统一走任务中心。 */
 export function submitCmsPublishSideEffect(input: CmsPublishSubmitInput): void {
   const actor = currentUserOrNull() ?? SYSTEM_USER;
@@ -508,7 +559,7 @@ export function submitCmsPagePublishSideEffect(input: {
 }
 
 async function trackingContext(input: CmsPublishSubmitInput, taskId: number, ctx: TaskRunContext) {
-  const site = await ensureCmsSiteExists(input.siteId);
+  const site = await resolveEffectiveCmsSiteRow(input.siteId);
   const channels = await getActivePublishChannels(input.siteId);
   const [template] = input.templateId
     ? await db.select({ activeVersion: cmsTemplates.activeVersion, currentVersion: cmsTemplates.currentVersion })

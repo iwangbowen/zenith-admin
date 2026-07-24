@@ -2,12 +2,34 @@
  * CMS 内容管理 DTO
  */
 import { z } from '@hono/zod-openapi';
+import {
+  CMS_DISTRIBUTION_CONFLICT_STRATEGIES,
+  CMS_DISTRIBUTION_MODES,
+  CMS_SITE_INHERITABLE_FIELDS,
+} from '@zenith/shared';
 import { auditFields } from './_audit';
 import { AsyncTaskDTO, AsyncTaskItemDTO } from './async-tasks';
+
+export const CmsSiteInheritanceFlagsDTO = z.object({
+  seoTitle: z.boolean(),
+  seoKeywords: z.boolean(),
+  seoDescription: z.boolean(),
+  staticMode: z.boolean(),
+  reviewMode: z.boolean(),
+  webhook: z.boolean(),
+  cdn: z.boolean(),
+  theme: z.boolean(),
+  themeConfig: z.boolean(),
+  templates: z.boolean(),
+}).openapi('CmsSiteInheritanceFlags');
 
 export const CmsSiteDTO = z
   .object({
     id: z.number().int(),
+    parentId: z.number().int().nullable(),
+    parentName: z.string().nullable().optional(),
+    depth: z.number().int().positive().optional(),
+    hasChildren: z.boolean().optional(),
     name: z.string().openapi({ example: '官方网站' }),
     code: z.string().openapi({ example: 'main' }),
     domain: z.string().nullable(),
@@ -21,19 +43,84 @@ export const CmsSiteDTO = z
     icp: z.string().nullable(),
     copyright: z.string().nullable(),
     theme: z.string(),
+    effectiveTheme: z.string().optional(),
     themeRevision: z.number().int(),
     templateRefsRevision: z.number().int(),
     staticMode: z.enum(['dynamic', 'hybrid', 'static']),
+    effectiveStaticMode: z.enum(['dynamic', 'hybrid', 'static']).optional(),
     robots: z.string().nullable(),
     settings: z.record(z.string(), z.unknown()),
     status: z.enum(['enabled', 'disabled']),
     sort: z.number().int(),
     remark: z.string().nullable(),
+    inheritance: CmsSiteInheritanceFlagsDTO.optional(),
     ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
   })
   .openapi('CmsSite');
+
+export const CmsSiteTreeNodeDTO = CmsSiteDTO.extend({
+  children: z.array(CmsSiteDTO).optional(),
+}).openapi('CmsSiteTreeNode');
+
+export const CmsSiteInheritanceSourceDTO = z.object({
+  kind: z.enum(['own', 'inherited']),
+  siteId: z.number().int().nullable(),
+  siteName: z.string().nullable(),
+}).openapi('CmsSiteInheritanceSource');
+
+export const CmsSiteEffectiveConfigDTO = z.object({
+  siteId: z.number().int(),
+  chain: z.array(z.object({
+    id: z.number().int(),
+    name: z.string(),
+    code: z.string(),
+    depth: z.number().int().positive(),
+  })),
+  inheritance: CmsSiteInheritanceFlagsDTO,
+  resolved: z.object({
+    title: z.string().nullable(),
+    keywords: z.string().nullable(),
+    description: z.string().nullable(),
+    staticMode: z.enum(['dynamic', 'hybrid', 'static']),
+    auditMode: z.enum(['simple', 'workflow']),
+    auditWorkflowDefinitionId: z.number().int().nullable(),
+    webhookUrl: z.string().nullable(),
+    webhookSecret: z.string().nullable(),
+    cdnPurgeUrl: z.string().nullable(),
+    cdnPurgeToken: z.string().nullable(),
+    theme: z.string(),
+    themeSourceSiteId: z.number().int().nullable(),
+    activeThemeDeploymentId: z.number().int().nullable(),
+    activeThemePackageId: z.number().int().nullable(),
+    activeThemePackageVersion: z.string().nullable(),
+    themeConfig: z.record(z.string(), z.unknown()),
+    defaultTemplates: z.record(z.string(), z.unknown()),
+  }),
+  sources: z.record(z.enum(CMS_SITE_INHERITABLE_FIELDS), CmsSiteInheritanceSourceDTO),
+}).openapi('CmsSiteEffectiveConfig');
+
+export const CmsSiteChainNodeDTO = z.object({
+  id: z.number().int(),
+  parentId: z.number().int().nullable(),
+  name: z.string(),
+  code: z.string(),
+  depth: z.number().int().positive(),
+  status: z.enum(['enabled', 'disabled']),
+}).openapi('CmsSiteChainNode');
+
+export const CmsSiteMoveResultDTO = z.object({
+  site: CmsSiteDTO,
+  affectedSiteIds: z.array(z.number().int()),
+  maxDepth: z.number().int(),
+}).openapi('CmsSiteMoveResult');
+
+export const CmsSiteInheritanceUpdateResultDTO = z.object({
+  inheritance: CmsSiteInheritanceFlagsDTO,
+  effectiveConfig: CmsSiteEffectiveConfigDTO,
+  affectedSiteIds: z.array(z.number().int()),
+}).openapi('CmsSiteInheritanceUpdateResult');
 
 export const CmsPublishChannelDTO = z
   .object({
@@ -188,6 +275,9 @@ export const CmsContentDTO = z
     archivedAt: z.string().nullable().openapi({ description: '归档时间（非空 = 已归档）' }),
     mappingSourceId: z.number().int().nullable().openapi({ description: '映射来源内容 id（非空 = 映射内容，正文共享来源）' }),
     mappingSourceTitle: z.string().nullable().optional().openapi({ description: '映射来源内容标题' }),
+    distributionRuleId: z.number().int().nullable().openapi({ description: '分发规则 id' }),
+    distributionSourceId: z.number().int().nullable().openapi({ description: '分发来源内容 id' }),
+    distributionSourceVersion: z.number().int().nullable().openapi({ description: '最近同步的来源版本' }),
     lockedAt: z.string().nullable(),
     lockedBy: z.number().int().nullable(),
     lockedByName: z.string().nullable().optional(),
@@ -413,16 +503,20 @@ export const CmsThemePackageActivationDTO = z.object({
   package: CmsThemePackageDTO,
   siteName: z.string(),
   task: AsyncTaskDTO,
+  tasks: z.array(AsyncTaskDTO),
 }).openapi('CmsThemePackageActivation');
 
 export const CmsBuiltinThemeActivationDTO = z.object({
   themeCode: z.string(),
   siteName: z.string(),
   task: AsyncTaskDTO,
+  tasks: z.array(AsyncTaskDTO),
 }).openapi('CmsBuiltinThemeActivation');
 
 export const CmsThemeImpactDTO = z.object({
   siteId: z.number().int(),
+  affectedSiteIds: z.array(z.number().int()),
+  affectedSiteNames: z.array(z.string()),
   themeCode: z.string(),
   themeAvailable: z.boolean(),
   activePackageId: z.number().int().nullable(),
@@ -477,6 +571,63 @@ export const CmsPublishingDetailDTO = z.object({
   items: z.array(AsyncTaskItemDTO),
   artifacts: z.array(CmsPublishArtifactDTO),
 }).openapi('CmsPublishingDetail');
+
+export const CmsSiteGroupPublishResultDTO = z.object({
+  rootSiteId: z.number().int(),
+  targetSiteIds: z.array(z.number().int()),
+  tasks: z.array(AsyncTaskDTO),
+}).openapi('CmsSiteGroupPublishResult');
+
+export const CmsDistributionFiltersDTO = z.object({
+  statuses: z.array(z.literal('published')),
+  contentTypes: z.array(z.enum(['article', 'album', 'media', 'link'])),
+  keyword: z.string().nullable(),
+  publishedFrom: z.string().nullable(),
+  publishedTo: z.string().nullable(),
+}).openapi('CmsDistributionFilters');
+
+export const CmsDistributionRuleDTO = z.object({
+  id: z.number().int(),
+  name: z.string(),
+  sourceSiteId: z.number().int(),
+  sourceSiteName: z.string(),
+  sourceChannelId: z.number().int().nullable(),
+  sourceChannelName: z.string().nullable(),
+  targetSiteId: z.number().int(),
+  targetSiteName: z.string(),
+  targetChannelId: z.number().int(),
+  targetChannelName: z.string(),
+  mode: z.enum(CMS_DISTRIBUTION_MODES),
+  conflictStrategy: z.enum(CMS_DISTRIBUTION_CONFLICT_STRATEGIES),
+  filters: CmsDistributionFiltersDTO,
+  scheduleCron: z.string().nullable(),
+  nextRunAt: z.string().nullable(),
+  lastRunAt: z.string().nullable(),
+  status: z.enum(['enabled', 'disabled']),
+  revision: z.number().int(),
+  remark: z.string().nullable(),
+  ...auditFields,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+}).openapi('CmsDistributionRule');
+
+export const CmsDistributionRunDTO = AsyncTaskDTO.extend({
+  ruleId: z.number().int(),
+  ruleName: z.string().nullable(),
+  sourceSiteId: z.number().int(),
+  sourceSiteName: z.string().nullable(),
+  targetSiteId: z.number().int(),
+  targetSiteName: z.string().nullable(),
+  trigger: z.enum(['manual', 'scheduled', 'mapping-update']),
+  succeeded: z.number().int(),
+  skipped: z.number().int(),
+  conflicts: z.number().int(),
+}).openapi('CmsDistributionRun');
+
+export const CmsDistributionRunDetailDTO = z.object({
+  run: CmsDistributionRunDTO,
+  items: z.array(AsyncTaskItemDTO),
+}).openapi('CmsDistributionRunDetail');
 
 // ─── P2 ───────────────────────────────────────────────────────────────────────
 export const CmsContentVersionDTO = z

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, exists, ilike, inArray, isNull, not, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, exists, ilike, inArray, isNull, not, or, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type {
   CmsTemplateDiffItem,
@@ -11,7 +11,6 @@ import { db } from '../../db';
 import {
   cmsTemplateVersions,
   cmsTemplates,
-  cmsThemeDeployments,
   type CmsTemplateRow,
   type CmsTemplateVersionRow,
 } from '../../db/schema';
@@ -359,15 +358,12 @@ export async function listCmsAvailableThemes(siteId?: number) {
   const merged = new Map(listBuiltinThemes().map((item) => [item.code, item]));
   if (siteId) {
     await assertSiteAccess(siteId);
-    const deployments = await db.query.cmsThemeDeployments.findMany({
-      where: and(eq(cmsThemeDeployments.siteId, siteId), eq(cmsThemeDeployments.status, 'active')),
-      with: { themePackage: true },
-      orderBy: asc(cmsThemeDeployments.themeCode),
-    });
-    for (const deployment of deployments) {
-      if (deployment.themePackage.status === 'validated') {
-        merged.set(deployment.themeCode, { code: deployment.themeCode, label: `${deployment.themePackage.name} ${deployment.themePackage.version}` });
-      }
+    const activePackage = await getActiveCmsThemePackage(siteId);
+    if (activePackage?.status === 'validated') {
+      merged.set(activePackage.code, {
+        code: activePackage.code,
+        label: `${activePackage.name} ${activePackage.version}`,
+      });
     }
   }
   return [...merged.values()];

@@ -13,6 +13,7 @@ import type {
   CmsContentLockState, CmsResourceFolder, CmsHotwordGroup, CmsMemberSubscription, CmsSubscriptionAggregate,
   CmsPageBlockAcl,
 } from '@zenith/shared';
+import { CMS_TEMPLATE_RESOLUTION_SOURCE_LABELS } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { toQueryString, unwrap, LOOKUP_STALE_TIME } from '@/lib/query';
 
@@ -66,7 +67,18 @@ export function useCmsThemes(siteId?: number) {
 export function useCmsThemeTemplates(themeCode: string | undefined, siteId?: number) {
   return useQuery({
     queryKey: cmsSiteKeys.themeTemplates(themeCode, siteId),
-    queryFn: () => request.get<CmsThemeTemplateManifest>(`/api/cms/sites/themes/${themeCode}/templates${siteId ? `?siteId=${siteId}` : ''}`).then(unwrap),
+    queryFn: () => request
+      .get<CmsThemeTemplateManifest>(`/api/cms/sites/themes/${themeCode}/templates${siteId ? `?siteId=${siteId}` : ''}`)
+      .then(unwrap)
+      .then((catalog) => {
+        const annotate = (items: CmsThemeTemplateManifest['list']) => items.map((item) => ({
+          ...item,
+          label: item.source
+            ? `${item.label} · ${CMS_TEMPLATE_RESOLUTION_SOURCE_LABELS[item.source]}`
+            : item.label,
+        }));
+        return { list: annotate(catalog.list), detail: annotate(catalog.detail) };
+      }),
     enabled: !!themeCode,
     staleTime: LOOKUP_STALE_TIME,
   });

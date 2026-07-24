@@ -12,6 +12,7 @@ import {
   cmsChannels,
   cmsContents,
   cmsPages,
+  cmsSites,
   cmsTemplateVersions,
   cmsTemplates,
   cmsThemeDeployments,
@@ -24,7 +25,7 @@ import { escapeLike, withPagination } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { mapAsyncTask, registerTaskHandler, submitAsyncTask } from '../../lib/task-center';
 import { currentUser, hasPermission, runWithCurrentUser } from '../../lib/context';
-import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
+import { assertSiteAccess, assertSitesAccess } from './cms-sites.service';
 import { assertAllCmsSiteChannelsAccess } from './cms-channels.service';
 import { getSiteTemplateHealth } from './cms-template-refs.service';
 import { renderSearchPage, renderSitePath } from './cms-render.service';
@@ -40,6 +41,12 @@ import {
 } from './cms-theme-package-security';
 import { validateCmsTemplateDsl } from '../../cms/templates/dsl';
 import { packageTemplateOptions } from './cms-template-resolution.service';
+import {
+  getCmsEffectiveThemeDeployment,
+  listCmsInheritanceAffectedSiteIds,
+  resolveEffectiveCmsSite,
+  resolveEffectiveCmsSiteRow,
+} from './cms-site-inheritance.service';
 import {
   createCmsThemePreviewAssetBaseUrl,
   verifyCmsThemePreviewAssetToken,
@@ -100,7 +107,10 @@ async function activeSiteIdsByPackage(ids: number[]): Promise<Map<number, number
     eq(cmsThemeDeployments.status, 'active'),
   ));
   const result = new Map<number, number[]>();
-  for (const row of rows) result.set(row.packageId, [...(result.get(row.packageId) ?? []), row.siteId]);
+  for (const row of rows) {
+    const affected = await listCmsInheritanceAffectedSiteIds(row.siteId, 'theme');
+    result.set(row.packageId, [...new Set([...(result.get(row.packageId) ?? []), ...affected])]);
+  }
   return result;
 }
 
@@ -389,7 +399,7 @@ export async function previewCmsThemePackage(packageId: number, siteId: number, 
   if (pkg.status !== 'validated' || !pkg.validationReport.valid) {
     throw new HTTPException(400, { message: '主题包未通过可信校验或已停用，不能预览' });
   }
-  const site = await ensureCmsSiteExists(siteId);
+  const site = await resolveEffectiveCmsSiteRow(siteId);
   const assetBaseUrl = createCmsThemePreviewAssetBaseUrl(siteId, packageId, config.jwtSecret);
   const result = await withCmsRenderOverride({ packageId, assetBaseUrl }, () => renderSitePath(site, `/__cms/${site.code}`, rawPath));
   if (result.status === 302) throw new HTTPException(400, { message: '该预览路径返回重定向，无法内嵌预览' });
@@ -409,7 +419,7 @@ export async function previewCmsTemplate(templateId: number, siteId: number, raw
     await assertSiteAccess(template.siteId);
     if (template.siteId !== siteId) throw new HTTPException(400, { message: '站点级模板只能在所属站点预览' });
   }
-  const site = await ensureCmsSiteExists(siteId);
+  const site = await resolveEffectiveCmsSiteRow(siteId);
   if (template.type === 'layout' || template.type === 'block') {
     throw new HTTPException(400, { message: `${template.type} 模板没有独立页面上下文，请通过引用它的页面预览` });
   }
@@ -422,52 +432,60 @@ export async function previewCmsTemplate(templateId: number, siteId: number, raw
 }
 
 export async function getCmsThemeImpact(siteId: number, themeCode?: string, packageId?: number) {
-  const site = await ensureCmsSiteExists(siteId);
+  const site = await resolveEffectiveCmsSiteRow(siteId);
   await assertSiteAccess(siteId);
-  await assertAllCmsSiteChannelsAccess(siteId);
+  const inheritanceSnapshot = await resolveEffectiveCmsSite(siteId);
+  const affectedSiteIds = inheritanceSnapshot.sourceSiteIds.theme === siteId
+    ? await listCmsInheritanceAffectedSiteIds(siteId, 'theme')
+    : [siteId];
+  await assertSitesAccess(affectedSiteIds);
+  for (const affectedId of affectedSiteIds) await assertAllCmsSiteChannelsAccess(affectedId);
   const targetPackage = packageId ? await ensureCmsThemePackageExists(packageId) : null;
   const code = targetPackage?.code ?? themeCode ?? site.theme;
-  const [health, active, affectedChannels, affectedContents, affectedPages, pendingRebuildTasks] = await Promise.all([
-    targetPackage
-      ? getSiteTemplateHealth(siteId, code, {
-        list: packageTemplateOptions(targetPackage, 'list').map((item) => item.name),
-        detail: packageTemplateOptions(targetPackage, 'detail').map((item) => item.name),
-        themeAvailable: targetPackage.status === 'validated' && targetPackage.validationReport.valid,
-      })
-      : getSiteTemplateHealth(siteId, code),
-    db.query.cmsThemeDeployments.findFirst({
-      where: and(
-        eq(cmsThemeDeployments.siteId, siteId),
-        eq(cmsThemeDeployments.themeCode, code),
-        eq(cmsThemeDeployments.status, 'active'),
-      ),
-      with: { themePackage: true },
-    }),
-    db.$count(cmsChannels, and(eq(cmsChannels.siteId, siteId), eq(cmsChannels.status, 'enabled'))),
+  const healthReports = await Promise.all(affectedSiteIds.map((affectedId) => targetPackage
+    ? getSiteTemplateHealth(affectedId, code, {
+      list: packageTemplateOptions(targetPackage, 'list').map((item) => item.name),
+      detail: packageTemplateOptions(targetPackage, 'detail').map((item) => item.name),
+      themeAvailable: targetPackage.status === 'validated' && targetPackage.validationReport.valid,
+    })
+    : getSiteTemplateHealth(affectedId, code)));
+  const { deployment: active } = await getCmsEffectiveThemeDeployment(siteId);
+  const [siteRows, affectedChannels, affectedContents, affectedPages, pendingRebuildTasks] = await Promise.all([
+    db.select({ id: cmsSites.id, name: cmsSites.name }).from(cmsSites).where(inArray(cmsSites.id, affectedSiteIds)),
+    db.$count(cmsChannels, and(inArray(cmsChannels.siteId, affectedSiteIds), eq(cmsChannels.status, 'enabled'))),
     db.$count(cmsContents, and(
-      eq(cmsContents.siteId, siteId),
+      inArray(cmsContents.siteId, affectedSiteIds),
       eq(cmsContents.status, 'published'),
       isNull(cmsContents.deletedAt),
     )),
-    db.$count(cmsPages, and(eq(cmsPages.siteId, siteId), eq(cmsPages.status, 'enabled'))),
+    db.$count(cmsPages, and(inArray(cmsPages.siteId, affectedSiteIds), eq(cmsPages.status, 'enabled'))),
     db.$count(asyncTasks, and(
       inArray(asyncTasks.taskType, [...CMS_PUBLISH_TASK_TYPES]),
       inArray(asyncTasks.status, ['pending', 'running']),
       sql`(
-        ${asyncTasks.payload}->>'siteId' = ${String(siteId)}
-        or (${asyncTasks.payload}->'siteIds') @> ${JSON.stringify([siteId])}::jsonb
+        ${asyncTasks.payload}->>'siteId' in (${sql.join(affectedSiteIds.map((id) => sql`${String(id)}`), sql`, `)})
+        or exists (
+          select 1 from jsonb_array_elements_text(coalesce(${asyncTasks.payload}->'siteIds', '[]'::jsonb)) value
+          where value in (${sql.join(affectedSiteIds.map((id) => sql`${String(id)}`), sql`, `)})
+        )
       )`,
     )),
   ]);
+  const invalidRefs = healthReports.flatMap((health, index) => health.invalidRefs.map((ref) => ({
+    ...ref,
+    location: affectedSiteIds.length > 1 ? `站点 #${affectedSiteIds[index]} ${ref.location}` : ref.location,
+  })));
   return {
     siteId,
+    affectedSiteIds,
+    affectedSiteNames: affectedSiteIds.map((id) => siteRows.find((row) => row.id === id)?.name ?? `#${id}`),
     themeCode: code,
-    themeAvailable: health.themeRegistered,
+    themeAvailable: healthReports.every((health) => health.themeRegistered),
     activePackageId: active?.themePackageId ?? null,
     activePackageVersion: active?.themePackage.version ?? null,
     evaluatedPackageId: targetPackage?.id ?? active?.themePackageId ?? null,
     evaluatedPackageVersion: targetPackage?.version ?? active?.themePackage.version ?? null,
-    invalidRefs: health.invalidRefs,
+    invalidRefs,
     affectedChannels,
     affectedContents,
     affectedPages,
@@ -559,17 +577,11 @@ export async function readCmsThemeAsset(siteId: number, code: string, version: s
   } catch {
     throw new HTTPException(400, { message: '主题资源路径格式无效' });
   }
-  const deployment = await db.query.cmsThemeDeployments.findFirst({
-    where: and(
-      eq(cmsThemeDeployments.siteId, siteId),
-      eq(cmsThemeDeployments.status, 'active'),
-    ),
-    with: { site: true, themePackage: true },
-  });
+  const { resolved, deployment } = await getCmsEffectiveThemeDeployment(siteId);
   const pkg = deployment?.themePackage;
-  if (!deployment || !pkg || !isCmsThemeAssetDeploymentMatch({
-    siteId,
-    siteTheme: deployment.site.theme,
+  if (!resolved.chain.every((site) => site.status === 'enabled') || !deployment || !pkg || !isCmsThemeAssetDeploymentMatch({
+    siteId: deployment.siteId,
+    siteTheme: resolved.site.theme,
     deploymentSiteId: deployment.siteId,
     deploymentThemeCode: deployment.themeCode,
     deploymentStatus: deployment.status,

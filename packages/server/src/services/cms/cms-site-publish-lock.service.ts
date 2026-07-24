@@ -1,11 +1,12 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { and, eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { TaskCancelledError } from '../../lib/task-center';
 import { db } from '../../db';
 import type { DbExecutor, DbTransaction } from '../../db/types';
-import { cmsSites, cmsTemplates, cmsThemeDeployments, type CmsSiteRow } from '../../db/schema';
+import { cmsSites, cmsTemplates, type CmsSiteRow } from '../../db/schema';
 import type { CmsPublishSubmitInput } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
+import { getCmsEffectiveThemeDeployment } from './cms-site-inheritance.service';
 
 const writeFenceStore = new AsyncLocalStorage<() => Promise<void>>();
 
@@ -35,10 +36,7 @@ export async function bumpCmsTemplateRefsRevision(tx: DbTransaction, siteId: num
 }
 
 export async function cmsSiteFencePayload(executor: DbExecutor, site: CmsSiteRow) {
-  const [deployment] = await executor.select({ id: cmsThemeDeployments.id }).from(cmsThemeDeployments).where(and(
-    eq(cmsThemeDeployments.siteId, site.id),
-    eq(cmsThemeDeployments.status, 'active'),
-  )).limit(1);
+  const { deployment } = await getCmsEffectiveThemeDeployment(site.id, executor);
   return {
     expectedThemeRevision: site.themeRevision,
     expectedTemplateRefsRevision: site.templateRefsRevision,
@@ -70,13 +68,7 @@ export async function assertCmsPublishFence(
     stale(`templateRefsRevision 期望 ${input.expectedTemplateRefsRevision}，当前 ${site.templateRefsRevision}`);
   }
   if (input.expectedDeploymentId !== undefined) {
-    const [deployment] = await executor.select({ id: cmsThemeDeployments.id })
-      .from(cmsThemeDeployments)
-      .where(and(
-        eq(cmsThemeDeployments.siteId, input.siteId),
-        eq(cmsThemeDeployments.status, 'active'),
-      ))
-      .limit(1);
+    const { deployment } = await getCmsEffectiveThemeDeployment(input.siteId, executor);
     if ((deployment?.id ?? null) !== input.expectedDeploymentId) {
       stale(`deployment 期望 ${input.expectedDeploymentId ?? 'builtin'}，当前 ${deployment?.id ?? 'builtin'}`);
     }

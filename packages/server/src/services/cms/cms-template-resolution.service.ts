@@ -3,11 +3,11 @@ import { and, asc, desc, eq, inArray, isNotNull, isNull, or, type SQL } from 'dr
 import { HTTPException } from 'hono/http-exception';
 import type { CmsTemplateDslDocument, CmsTemplateType } from '@zenith/shared';
 import { db } from '../../db';
+import type { DbExecutor } from '../../db/types';
 import {
   cmsSites,
   cmsTemplateVersions,
   cmsTemplates,
-  cmsThemeDeployments,
   cmsThemePackages,
   type CmsThemePackageRow,
 } from '../../db/schema';
@@ -15,6 +15,11 @@ import {
   isThemeRegistered,
   listThemeTemplates as listBuiltinThemeTemplates,
 } from '../../cms/themes/registry';
+import {
+  buildCmsTemplateScopeChain,
+  getCmsEffectiveThemeDeployment,
+  loadCmsInheritanceState,
+} from './cms-site-inheritance.service';
 
 export interface CmsRenderOverride {
   packageId?: number;
@@ -34,8 +39,8 @@ export interface CmsTemplateCatalog {
   themeCode: string;
   mode: 'builtin' | 'package' | 'unavailable';
   activePackage: CmsThemePackageRow | null;
-  list: Array<{ name: string; label: string }>;
-  detail: Array<{ name: string; label: string }>;
+  list: Array<{ name: string; label: string; source?: 'own' | 'inherited' | 'global' | 'builtin' | 'package'; sourceSiteId?: number | null }>;
+  detail: Array<{ name: string; label: string; source?: 'own' | 'inherited' | 'global' | 'builtin' | 'package'; sourceSiteId?: number | null }>;
 }
 
 const OPTIONAL_PACKAGE_FALLBACK_TYPES = new Set<CmsTemplateType>(['layout', 'custom_page', 'block', 'interaction']);
@@ -62,49 +67,51 @@ export function withCmsRenderOverride<T>(override: CmsRenderOverride, fn: () => 
   return Promise.resolve(renderOverrideStore.run(override, fn));
 }
 
-export async function getActiveCmsThemePackage(siteId: number): Promise<CmsThemePackageRow | null> {
-  const deployment = await db.query.cmsThemeDeployments.findFirst({
-    where: and(
-      eq(cmsThemeDeployments.siteId, siteId),
-      eq(cmsThemeDeployments.status, 'active'),
-    ),
-    with: { themePackage: true, site: { columns: { theme: true } } },
-    orderBy: desc(cmsThemeDeployments.activatedAt),
-  });
+export async function getActiveCmsThemePackage(
+  siteId: number,
+  executor: DbExecutor = db,
+): Promise<CmsThemePackageRow | null> {
+  const { resolved, deployment } = await getCmsEffectiveThemeDeployment(siteId, executor);
   const pkg = deployment?.themePackage;
   if (
     !pkg
     || deployment.themeCode !== pkg.code
-    || deployment.site.theme !== pkg.code
+    || resolved.site.theme !== pkg.code
     || pkg.status !== 'validated'
     || !pkg.validationReport.valid
   ) return null;
   return pkg;
 }
 
-async function activeManualTemplates(siteId: number, themeCode: string, types: CmsTemplateType[]) {
-  const rows = await db.select().from(cmsTemplates).where(and(
-    or(isNull(cmsTemplates.siteId), eq(cmsTemplates.siteId, siteId)),
+async function activeManualTemplates(
+  siteId: number,
+  themeCode: string,
+  types: CmsTemplateType[],
+  executor: DbExecutor,
+) {
+  const state = await loadCmsInheritanceState(executor);
+  const scopeIds = buildCmsTemplateScopeChain(state.sites, state.inheritances, siteId);
+  const rows = await executor.select().from(cmsTemplates).where(and(
+    or(isNull(cmsTemplates.siteId), inArray(cmsTemplates.siteId, scopeIds)),
     eq(cmsTemplates.themeCode, themeCode),
     inArray(cmsTemplates.type, types),
     eq(cmsTemplates.source, 'manual'),
     eq(cmsTemplates.status, 'enabled'),
     isNotNull(cmsTemplates.activeVersion),
   )).orderBy(asc(cmsTemplates.id));
-  return [
-    ...rows.filter((row) => row.siteId == null),
-    ...rows.filter((row) => row.siteId === siteId),
-  ];
+  const rank = new Map(scopeIds.map((id, index) => [id, scopeIds.length - index]));
+  return rows.sort((a, b) => (a.siteId == null ? 0 : rank.get(a.siteId) ?? 0) - (b.siteId == null ? 0 : rank.get(b.siteId) ?? 0));
 }
 
 export async function resolveCmsTemplateCatalog(
   siteId: number,
   themeCode: string,
-  options?: { ignoreActivePackage?: boolean },
+  options?: { ignoreActivePackage?: boolean; executor?: DbExecutor },
 ): Promise<CmsTemplateCatalog> {
-  const [site] = await db.select({ code: cmsSites.code }).from(cmsSites).where(eq(cmsSites.id, siteId)).limit(1);
+  const executor = options?.executor ?? db;
+  const [site] = await executor.select({ code: cmsSites.code }).from(cmsSites).where(eq(cmsSites.id, siteId)).limit(1);
   if (!site) throw new HTTPException(404, { message: '站点不存在' });
-  const activePackage = options?.ignoreActivePackage ? null : await getActiveCmsThemePackage(siteId);
+  const activePackage = options?.ignoreActivePackage ? null : await getActiveCmsThemePackage(siteId, executor);
   if (activePackage && activePackage.code === themeCode) {
     return {
       siteId,
@@ -112,20 +119,26 @@ export async function resolveCmsTemplateCatalog(
       themeCode,
       mode: 'package',
       activePackage,
-      list: packageTemplateOptions(activePackage, 'list'),
-      detail: packageTemplateOptions(activePackage, 'detail'),
+      list: packageTemplateOptions(activePackage, 'list').map((item) => ({ ...item, source: 'package' as const })),
+      detail: packageTemplateOptions(activePackage, 'detail').map((item) => ({ ...item, source: 'package' as const })),
     };
   }
   if (!isThemeRegistered(themeCode)) {
     return { siteId, siteCode: site.code, themeCode, mode: 'unavailable', activePackage: null, list: [], detail: [] };
   }
   const builtin = listBuiltinThemeTemplates(themeCode);
-  const manual = await activeManualTemplates(siteId, themeCode, ['list', 'detail']);
-  const list = new Map(builtin.list.map((item) => [item.name, item]));
-  const detail = new Map(builtin.detail.map((item) => [item.name, item]));
+  const manual = await activeManualTemplates(siteId, themeCode, ['list', 'detail'], executor);
+  type CatalogOption = CmsTemplateCatalog['list'][number];
+  const list = new Map<string, CatalogOption>(builtin.list.map((item) => [item.name, { ...item, source: 'builtin', sourceSiteId: null }]));
+  const detail = new Map<string, CatalogOption>(builtin.detail.map((item) => [item.name, { ...item, source: 'builtin', sourceSiteId: null }]));
   for (const template of manual) {
     const target = template.type === 'list' ? list : detail;
-    target.set(template.code, { name: template.code, label: template.name });
+    target.set(template.code, {
+      name: template.code,
+      label: template.name,
+      source: template.siteId == null ? 'global' : template.siteId === siteId ? 'own' : 'inherited',
+      sourceSiteId: template.siteId,
+    });
   }
   return {
     siteId,
@@ -141,7 +154,7 @@ export async function resolveCmsTemplateCatalog(
 export async function resolveAvailableCmsTemplateNames(
   siteId: number,
   themeCode: string,
-  options?: { ignoreActivePackage?: boolean },
+  options?: { ignoreActivePackage?: boolean; executor?: DbExecutor },
 ) {
   const catalog = await resolveCmsTemplateCatalog(siteId, themeCode, options);
   return {
@@ -186,6 +199,8 @@ async function manualDslTemplate(
   type: CmsTemplateType,
   code?: string | null,
 ): Promise<CmsResolvedDslTemplate | null> {
+  const state = await loadCmsInheritanceState();
+  const scopeIds = buildCmsTemplateScopeChain(state.sites, state.inheritances, siteId);
   const findForScope = async (scopeSiteId: number | null) => {
     const scope: SQL = scopeSiteId == null ? isNull(cmsTemplates.siteId) : eq(cmsTemplates.siteId, scopeSiteId);
     const conditions: SQL[] = [
@@ -208,7 +223,12 @@ async function manualDslTemplate(
       .limit(1);
     return row ?? null;
   };
-  const row = (await findForScope(siteId)) ?? await findForScope(null);
+  let row: { dsl: CmsTemplateDslDocument } | null = null;
+  for (const scopeSiteId of scopeIds) {
+    row = await findForScope(scopeSiteId);
+    if (row) break;
+  }
+  row ??= await findForScope(null);
   return row ? { dsl: row.dsl, assetBaseUrl: null } : null;
 }
 

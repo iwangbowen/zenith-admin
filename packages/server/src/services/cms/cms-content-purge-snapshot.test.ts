@@ -17,6 +17,14 @@ vi.mock('../../db', () => ({
   },
 }));
 vi.mock('./cms-publish-artifact-tracker', () => ({ recordCmsPublishArtifact: vi.fn(async () => undefined) }));
+vi.mock('./cms-site-inheritance.service', () => ({
+  resolveEffectiveCmsSiteRow: vi.fn(async () => ({
+    id: 1,
+    code: 'purge-snapshot-test',
+    staticMode: 'hybrid',
+    settings: {},
+  })),
+}));
 
 import { cmsContents, cmsSites } from '../../db/schema';
 import { applyCmsContentPublishSnapshot, resolveStaticFile, siteStaticDir } from './cms-static.service';
