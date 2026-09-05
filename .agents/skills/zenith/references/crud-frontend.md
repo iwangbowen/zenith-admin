@@ -22,9 +22,10 @@ packages/web/src/pages/xxx/XxxPage.tsx     # 页面组件
 hooks 文件里不出现路径字面量。
 
 ```ts
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { xxxContract } from '@zenith/shared/{业务域}';
-import { apiQueryOptions, createResourceQueries, useApiMutation } from '@/lib/contract-query';
+import { apiQueryOptions, apiRaw, createResourceQueries, useApiMutation } from '@/lib/contract-query';
+import { unwrap } from '@/lib/query';
 
 export const {
   keys: xxxKeys,
@@ -43,7 +44,7 @@ export const {
 删除后 `removeQueries(detail(id))` + 失效 `lists` +（有 `all` 时）`lookup`。
 列表参数类型即契约查询参数（`QueryOf<typeof xxxContract.list>`），无需单独声明参数接口。
 
-**非标准操作**同样由契约驱动：mutation 变量就是契约输入 `{ params?, query?, body? }`，
+**非标准操作**同样由契约驱动：mutation 变量就是契约输入 `{ params?, query?, headers?, body? }`，
 用工厂导出的 `keys` 做失效，并注释说明为何只失效这些：
 
 ```ts
@@ -58,7 +59,20 @@ export const useAssignXxxMenus = () =>
 /** 单个只读操作 */
 export const useXxxStats = (id?: number) =>
   useQuery(apiQueryOptions(xxxContract.stats, { params: { id: id ?? 0 } }, { enabled: id !== undefined }));
+
+/** 结果文案在信封 message 里（如「已清理 N 条」）：用 apiRaw 读取信封，unwrap 负责 code !== 0 抛错 */
+export const usePurgeXxxs = () =>
+  useMutation({
+    mutationFn: async (days: number) => {
+      const res = await apiRaw(xxxContract.purge, { query: { days } });
+      unwrap(res);
+      return res.message;
+    },
+  });
 ```
+
+单操作的 query key 用 `contractKey(op, input)`；省略 input 得到该操作的公共前缀。非 JSON 通道（上传 `request.postForm` /
+`<Upload action>`、下载 `request.download`、SSE `request.fetchRaw`）只需要地址：`urlOf(op, { params?, query? })`。
 
 会员端 / 审批端用同一套函数，通过 `requestOptions: { client: memberRequest }` 指定请求实例。
 

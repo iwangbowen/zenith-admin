@@ -6,7 +6,7 @@
  * - instance.approved/rejected/withdrawn → 给发起人推送结果卡片
  *
  * 卡片经「系统机器人 → 用户单聊」投递（notifyUserWithCard），按钮在前端调用
- * 既有的 /api/workflows/tasks/{id}/approve|reject 接口。
+ * 审批任务的通过 / 驳回操作（`workflowTaskContract.approve` / `reject`）。
  */
 import { eq } from 'drizzle-orm';
 import { db } from '../../db';

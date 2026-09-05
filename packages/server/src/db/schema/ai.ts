@@ -118,7 +118,7 @@ export const aiMessages = pgTable('ai_messages', {
   toolCalls: jsonb().$type<{ name: string; arguments: string; result: string }[]>(),
   /** 知识库检索引用（assistant 消息,刷新后仍可展示） */
   kbReferences: jsonb().$type<{ docName: string; content: string; score: number }[]>(),
-  /** 用户消息附带的图片（managed file id 数组,内容经 /api/files/{id}/content 访问） */
+  /** 用户消息附带的图片（managed file id 数组，内容经文件中心 `fileContract.content` 访问） */
   images: jsonb().$type<string[]>(),
   createdAt: timestamp().defaultNow().notNull(),
 }, (t) => [

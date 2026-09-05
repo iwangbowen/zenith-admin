@@ -16,7 +16,7 @@ export type CreateExportJobInput = z.infer<typeof createExportJobSchema>;
 /** 提交数据导入任务 */
 export const submitImportJobSchema = z.object({
   entity: z.string().min(1).max(64),
-  /** 文件中心 fileId（先经 /api/files/upload 上传） */
+  /** 文件中心 fileId（先经 `fileContract.upload` 上传） */
   fileId: z.string().min(8).max(64),
   /** 预检模式：仅逐行校验不落库，输出行级校验报告 */
   dryRun: z.boolean().optional(),

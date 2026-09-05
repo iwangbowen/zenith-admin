@@ -82,7 +82,7 @@ export default defineRouteDomain({
     [cmsDistributionContract.basePath, cmsDistributionRoutes, { feature: 'cms' }],
     [cmsResourceContract.basePath, cmsResourcesRoutes, { feature: 'cms' }],
     [cmsSubscriptionContract.basePath, cmsSubscriptionsRoutes, { feature: 'cms' }],
-    // 站点级上传入口挂在各子资源之后，避免 /api/cms 前缀抢先匹配
+    // 站点级上传入口挂在各子资源之后，避免资源根前缀抢先匹配
     [cmsUploadContract.basePath, cmsUploadRoutes, { feature: 'cms' }],
     [publicCmsContract.basePath, createCmsFrontPublicRoutes()],
   ],

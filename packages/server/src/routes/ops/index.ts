@@ -91,7 +91,7 @@ export default defineRouteDomain({
     [hostFileContract.basePath, hostFilesRoutes, { feature: 'ops' }],
     [logFileContract.basePath, logFilesRoutes, { feature: 'ops' }],
     [retentionPolicyContract.basePath, retentionRoutes, { feature: 'ops' }],
-    // 应用版本管理：静态子资源前缀先挂载，再挂载 /api/app-releases 根（看板统计）
+    // 应用版本管理：静态子资源前缀先挂载，再挂载资源根（看板统计）
     [clientAppContract.basePath, clientAppsRouter],
     [appReleaseContract.basePath, appReleasesRouter],
     [appArtifactContract.basePath, appArtifactsRouter],

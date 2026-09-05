@@ -250,8 +250,8 @@ const FormSignature = withField(SignaturePad);
 
 /**
  * 工作流表单「人员选择」控件的选人数据源。
- * 不用系统管理接口 /api/users/all（要求 system:user:list，普通发起人 403 拿不到任何选项），
- * 统一走面向普通发起人/审批人开放的 /api/workflows/selectable-users（与转办/委派/抄送等选人一致）。
+ * 不用用户管理的 `userContract.all`（要求 system:user:list，普通发起人 403 拿不到任何选项），
+ * 统一走面向普通发起人/审批人开放的 `workflowInstanceContract.selectableUsers`（与转办/委派/抄送等选人一致）。
  */
 interface WorkflowUserSelectProps {
   value?: number | number[];

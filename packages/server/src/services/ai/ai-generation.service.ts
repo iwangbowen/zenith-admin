@@ -253,7 +253,7 @@ export async function runGeneration(params: StartGenerationParams): Promise<void
         const saved = await saveAssistantMessage(conversation.id, assistantContent, tokensInput, tokensOutput, snapshot, meta, regenerateParentId);
         assistantMsgId = saved.assistantMsgId;
       } else {
-        // 图片落统一文件存储,消息只存引用(内容经 /api/files/{id}/content 访问)
+        // 图片落统一文件存储，消息只存引用（内容经文件中心 `fileContract.content` 访问）
         const imageIds = images?.length ? await persistChatImages(images, userId, conversation.tenantId) : [];
         const saved = await saveMessages(
           conversation.id,

@@ -3,7 +3,7 @@
  *
  * 流程：产品开启注册密钥 → 管理端预置 SN 白名单 → 设备首连以
  * HMAC-SHA256(registrationSecret, `${sn}\n${ts}\n${body}`) 签名调用
- * POST /api/iot/ingest/register → 命中未使用白名单即自动建档，
+ * 设备动态注册（`iotIngestContract.register`）→ 命中未使用白名单即自动建档，
  * 返回设备专属密钥（一机一密），白名单条目一次性核销。
  * 已注册过的 SN 重复请求幂等拒绝（提示改用设备密钥接入）。
  */

@@ -50,7 +50,7 @@ export const enterpriseAuthUrlQuery = z.object({
 });
 
 /**
- * 企业身份源登录（公开端点）。`POST /saml/acs` 为 IdP 表单回调并 302 重定向到前端，
+ * 企业身份源登录（公开端点）。SAML ACS 端点为 IdP 表单回调并 302 重定向到前端，
  * 不是 JSON 协议，由路由文件单独声明。
  */
 export const enterpriseAuthContract = defineContract('/api/auth/enterprise', {

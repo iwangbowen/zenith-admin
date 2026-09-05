@@ -1,5 +1,5 @@
 /**
- * 前端错误上报：统一构造 payload 并发送到 /api/frontend-errors。
+ * 前端错误上报：统一构造 payload 并发送到错误监控采集端点。
  * 携带行为面包屑、会话 ID、发布版本，附带去重与限流保护。
  */
 import { TOKEN_KEY } from '@zenith/shared/core';

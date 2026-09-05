@@ -50,7 +50,7 @@ export const cmsSiteKeys = {
 export const useCmsSiteList = resource.useList;
 export const useCmsSiteDetail = resource.useDetail;
 export const useSaveCmsSite = resource.useSave;
-/** 单个走 DELETE /{id}；成功后移除详情缓存并失效列表与站点下拉源 */
+/** 单个删除；成功后移除详情缓存并失效列表与站点下拉源 */
 export const useDeleteCmsSites = resource.useDelete;
 
 /** 全部启用站点（各 CMS 页面顶部站点切换器共用） */

@@ -85,7 +85,7 @@ export const paymentContractListQuery = paginationQuery.extend({
   endTime: dateRangeBound('结束时间'),
 });
 
-/** 签约协议：与扣款计划同挂 `/api/payment` 根，操作名在根内唯一 */
+/** 签约协议：与扣款计划同挂支付资源根，操作名在根内唯一 */
 export const paymentSigningContract = defineContract('/api/payment', {
   contracts: op.get('/contracts', { query: paymentContractListQuery, response: paginated(paymentContractSchema), summary: '签约协议列表' }),
   contractDetail: op.get('/contracts/{id}', { params: idParam, query: paymentApplicationQuery, response: paymentContractSchema, summary: '签约协议详情' }),

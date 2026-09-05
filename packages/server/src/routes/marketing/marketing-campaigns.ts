@@ -1,5 +1,5 @@
 /**
- * 营销活动管理 API（/api/marketing/campaigns）
+ * 营销活动管理
  */
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { marketingCampaignContract } from '@zenith/shared/marketing';

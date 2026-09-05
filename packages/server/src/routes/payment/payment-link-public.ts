@@ -1,9 +1,9 @@
 /**
  * 支付链接公开端点（无需登录，供 C 端用户访问收款链接/收款码）。
  *
- * GET  /api/public/payment/link/{token}      展示链接信息
- * POST /api/public/payment/link/{token}/pay  创建收银台会话并下单
- * GET  /api/public/payment/link/{token}/sessions/{sessionToken} 恢复会话
+ * - 展示链接信息
+ * - 创建收银台会话并下单
+ * - 恢复收银台会话
  */
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { paymentLinkPublicContract } from '@zenith/shared/payment';

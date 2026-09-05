@@ -1,5 +1,5 @@
 /**
- * 开放 API 网关（对外）：/api/open/v1/*
+ * 开放 API 网关（对外）。
  *   - 鉴权方式：HMAC 签名（X-App-Key + 可选签名头），非管理员 Bearer Token
  *   - 鉴权方式：OAuth2 Bearer 令牌，或 AppKey + HMAC 签名（详见 middleware/open-gateway）
  *   - 经过 openGatewayAuth → openApiMetering → openRateLimit 三层网关中间件
@@ -57,7 +57,7 @@ function hasScope(c: Context, scope: string): boolean {
 
 const scopeDenied = (scope: string) => errBody(`应用未授权 scope：${scope}`, 403);
 
-// GET /v1/ping —— 连通性测试（无需 scope）
+// 连通性测试（无需 scope）
 const ping = defineContractRoute(openGatewayContract.ping, {
   middleware: [],
   handler: (c) => {
@@ -72,7 +72,7 @@ const ping = defineContractRoute(openGatewayContract.ping, {
   },
 });
 
-// GET /v1/echo —— 回显查询参数（scope: data:read）
+// 回显查询参数（scope: data:read）
 const echoQuery = defineContractRoute(openGatewayContract.echoQuery, {
   middleware: [],
   handler: (c) => {
@@ -82,7 +82,7 @@ const echoQuery = defineContractRoute(openGatewayContract.echoQuery, {
   },
 });
 
-// POST /v1/echo —— 回显 JSON 请求体（scope: data:write，用于演示带 body 的签名）
+// 回显 JSON 请求体（scope: data:write，用于演示带 body 的签名）
 const echoBody = defineContractRoute(openGatewayContract.echoBody, {
   middleware: [],
   handler: (c) => {
@@ -91,7 +91,7 @@ const echoBody = defineContractRoute(openGatewayContract.echoBody, {
   },
 });
 
-// GET /v1/userinfo —— 返回当前调用主体信息（scope: user:read）
+// 返回当前调用主体信息（scope: user:read）
 const userinfo = defineContractRoute(openGatewayContract.userinfo, {
   middleware: [],
   handler: (c) => {
@@ -108,7 +108,7 @@ const userinfo = defineContractRoute(openGatewayContract.userinfo, {
   },
 });
 
-// POST /v1/rules/evaluate —— 规则中心统一求值（scope: rules:evaluate）
+// 规则中心统一求值（scope: rules:evaluate）
 // 只允许求值已发布的平台级资产；kind=list 需传 subjects（待检测主体值集合）
 const evaluateRule = defineContractRoute(openGatewayContract.evaluateRule, {
   middleware: [],
@@ -137,7 +137,7 @@ const evaluateRule = defineContractRoute(openGatewayContract.evaluateRule, {
 });
 
 // ─── 短链服务（scope: data:write / data:read）────────────────────────────────
-// POST /v1/short-links —— 生成短链（支持自定义短码 / 标题 / 有效期）
+// 生成短链（支持自定义短码 / 标题 / 有效期）
 const createShortLink = defineContractRoute(openGatewayContract.createShortLink, {
   middleware: [],
   handler: async (c) => {
@@ -158,7 +158,7 @@ const createShortLink = defineContractRoute(openGatewayContract.createShortLink,
   },
 });
 
-// GET /v1/short-links/{code}/stats —— 短链访问统计（趋势/汇总）
+// 短链访问统计（趋势/汇总）
 const shortLinkStats = defineContractRoute(openGatewayContract.shortLinkStats, {
   middleware: [],
   handler: async (c) => {

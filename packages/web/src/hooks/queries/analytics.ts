@@ -59,7 +59,7 @@ const ANALYTICS_DATA_OPS: readonly AnyOperation[] = [
 ];
 
 export const analyticsKeys = {
-  /** 全部行为分析查询（/api/analytics 下的所有契约操作共享该前缀） */
+  /** 全部行为分析查询（本域所有契约操作共享该前缀） */
   all: [resourceKeyOf(analyticsContract.basePath)] as const,
   realtime: contractKey(analyticsContract.realtime),
   sessionsLists: contractKey(analyticsContract.sessions),

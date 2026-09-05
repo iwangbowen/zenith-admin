@@ -18,7 +18,7 @@ export function useImportEntities(enabled = true) {
   });
 }
 
-/** 提交导入任务（文件先经 /api/files/upload 上传拿 fileId）；导入历史是任务中心的 data-import 过滤视图 */
+/** 提交导入任务（文件先经文件中心 `fileContract.upload` 上传拿 fileId）；导入历史是任务中心的 data-import 过滤视图 */
 export function useSubmitImportJob() {
   return useApiMutation(importJobContract.submit, {
     invalidate: (qc) => void qc.invalidateQueries({ queryKey: asyncTaskKeys.lists }),

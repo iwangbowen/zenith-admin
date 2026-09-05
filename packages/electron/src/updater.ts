@@ -1,7 +1,7 @@
 /**
  * 在线升级（双层）。
  *
- * 消费服务端「应用版本管理」的公开 API（/api/public/app-releases）：
+ * 消费服务端「应用版本管理」的公开 API：
  *
  *  1. **Web 热更新（高频）**：check 返回 hotupdate 制品 → 下载 zip → SHA256 校验（必需）→
  *     安全解压到 userData/web-updates/{version} → 提示重载。壳不动，秒级生效。
@@ -103,7 +103,7 @@ function getDeviceId(): string {
 
 // ─── 运行时配置（serverUrl / channel）────────────────────────────────────────
 
-const CHANNELS: readonly UpdateChannel[] = ['stable', 'beta', 'internal'];
+const CHANNELS: ReadonlySet<UpdateChannel> = new Set<UpdateChannel>(['stable', 'beta', 'internal']);
 
 /** 开发 / 内网调试允许的明文 http 主机 */
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
@@ -137,12 +137,15 @@ function getConfig(): UpdateConfig {
   const serverUrl = sanitizeServerUrl(fileConfig.serverUrl)
     || sanitizeServerUrl(bundledUpdateServer())
     || (app.isPackaged ? '' : sanitizeServerUrl(process.env.ZENITH_UPDATE_SERVER));
-  const channel = fileConfig.channel && CHANNELS.includes(fileConfig.channel) ? fileConfig.channel : 'stable';
+  const channel = fileConfig.channel && CHANNELS.has(fileConfig.channel) ? fileConfig.channel : 'stable';
   return { serverUrl, channel };
 }
 
+/** 去掉尾部斜杠；逐字符回退而非 `/\/+$/`，避免长串斜杠上的回溯 */
 function normalizeBase(url: string): string {
-  return url.replace(/\/+$/, '');
+  let end = url.length;
+  while (end > 0 && url[end - 1] === '/') end--;
+  return url.slice(0, end);
 }
 
 /**

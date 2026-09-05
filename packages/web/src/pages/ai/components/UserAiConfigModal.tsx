@@ -127,7 +127,7 @@ export default function UserAiConfigModal({ visible, onClose, onSaved }: UserAiC
                               return uc.defaultModel ? `${uc.defaultModel}${extra}` : null;
                             })()
                           : (config as AiChatModel).model;
-                        // 系统配置走 /api/ai/models，仅返回启用项
+                        // 系统配置取模型列表，仅返回启用项
                         const isEnabled = isUser ? (config as UserAiConfig).isEnabled : true;
                         return (
                           <List.Item

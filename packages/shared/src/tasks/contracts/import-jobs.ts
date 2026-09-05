@@ -38,7 +38,7 @@ export const importEntityParam = z.object({
 
 /**
  * 导入中心：历史 / 进度 / 行级明细复用任务中心接口（taskType `data-import`）。
- * 文件先经 `/api/files/upload` 上传拿到 fileId，再提交导入任务。
+ * 文件先经文件中心 `fileContract.upload` 上传拿到 fileId，再提交导入任务。
  */
 export const importJobContract = defineContract('/api/import-jobs', {
   entities: op.get('/entities', { response: z.array(importEntityMetaSchema), summary: '可导入实体列表（按权限过滤）' }),

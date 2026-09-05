@@ -90,7 +90,7 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
       setHighlightMissing(false);
     };
 
-    // 当前登录人通过 /api/auth/me 异步加载，标题需等其就绪后再回填，避免出现占位「我」
+    // 当前登录人异步加载，标题需等其就绪后再回填，避免出现占位「我」
     const lastDefId = useRef<number | null>(null);
     const autoTitleRef = useRef('');
     useEffect(() => {

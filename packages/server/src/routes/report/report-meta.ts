@@ -6,7 +6,7 @@ import { defineContractRoute } from '../../lib/contract-route';
 import { ErrorResponse, jsonContent, okBody, validationHook } from '../../lib/openapi-schemas';
 import { listMetaTables, listMetaColumns } from '../../lib/report-schema-meta';
 
-// 可视化建模元数据：内置只读主库的表/列清单（敏感表/列已过滤）。挂载在 /api/report/meta。
+// 可视化建模元数据：内置只读主库的表/列清单（敏感表/列已过滤）。
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
 const tablesRoute = defineContractRoute(reportMetaContract.tables, {

@@ -1,5 +1,5 @@
 /**
- * CMS Headless 开放 API（`/api/open/v1/cms/*`）。
+ * CMS Headless 开放 API。
  *
  * 端点由 `openCmsContract` 定义并进入 Swagger，客户端可直接由 openapi.json 生成 SDK。
  * 鉴权链：网关中间件（签名 → 计量 → 限流）已在 open-gateway 上挂载，

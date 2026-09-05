@@ -9,6 +9,6 @@ export const {
   useList: usePaymentAppList,
   useDetail: usePaymentAppDetail,
   useSave: useSavePaymentApp,
-  /** 服务端未提供 DELETE /batch，多选删除按单条并发执行 */
+  /** 契约无批量删除操作，多选删除按单条并发执行 */
   useDelete: useDeletePaymentApp,
 } = createResourceQueries(paymentAppContract);

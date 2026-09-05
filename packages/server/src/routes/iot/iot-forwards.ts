@@ -1,5 +1,5 @@
 /**
- * IoT 数据流转 API（/api/iot/forward-rules）
+ * IoT 数据流转规则
  *
  * CRUD + 投递日志查询；运行时派发见 iot-forward.service（挂在遥测/事件/告警/生命周期）。
  */

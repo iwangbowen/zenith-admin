@@ -318,7 +318,7 @@ const driveUploadVersionBody = multipart(z.object({
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 /**
- * `/api/drive/nodes`：静态路径（列表 / 个人视图 / 回收站 / 批量 / 上传）与单节点 `/{id}/...`
+ * 网盘节点：静态路径（列表 / 个人视图 / 回收站 / 批量 / 上传）与单节点 `/{id}/...`
  * 共用一个契约；服务端按静态路径先于动态路径的顺序分两个路由器挂载。
  */
 export const driveNodeContract = defineContract('/api/drive/nodes', {

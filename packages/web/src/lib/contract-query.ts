@@ -8,11 +8,11 @@ import {
   type UseMutationOptions,
   type UseQueryOptions,
 } from '@tanstack/react-query';
-import type { ApiResponse } from '@zenith/shared/core';
 import {
   fillPath,
   resourceKeyOf,
   type AnyOperation,
+  type ApiResponse,
   type BodyOf,
   type EmptyInput,
   type InputOf,
@@ -31,6 +31,7 @@ import { LOOKUP_STALE_TIME, toQueryString, unwrap } from '@/lib/query';
  * 页面与域 hooks 不书写路径字符串或响应泛型。
  *
  * - `api(op, input)`：单次调用，返回解包后的 `data`
+ * - `apiRaw(op, input)`：单次调用，返回完整响应信封（需要 `message` / 非零 `code` 时）
  * - `apiQueryOptions(op, input)` / `useApiQuery(op, input)`：可缓存查询
  * - `useApiMutation(op)`：变更，变量即契约输入 `{ params?, query?, body? }`
  * - `createResourceQueries(contract)`：标准 CRUD 资源的 keys 与全套 hooks，失效契约焊死在工厂里
@@ -64,7 +65,10 @@ type UrlInputArgs<Op extends AnyOperation> = Record<never, never> extends UrlInp
   ? [input?: UrlInputOf<Op>]
   : [input: UrlInputOf<Op>];
 
-type LooseInput = { params?: Record<string, unknown>; query?: object; headers?: Record<string, unknown>; body?: unknown } | undefined;
+/** 契约 `headers` 段的取值：请求头只能是可直接序列化的标量 */
+type HeaderValue = string | number | boolean | null | undefined;
+
+type LooseInput = { params?: Record<string, unknown>; query?: object; headers?: Record<string, HeaderValue>; body?: unknown } | undefined;
 
 /**
  * 契约操作 + 输入 → 完整 URL（含查询串）。只需要 params / query 段，
@@ -76,7 +80,7 @@ export function urlOf<Op extends AnyOperation>(op: Op, ...args: UrlInputArgs<Op>
 }
 
 /** 契约声明的业务请求头（输入 `headers` 段）合并到请求选项；未声明时原样返回 */
-function withContractHeaders(options: RequestOptions, headers: Record<string, unknown> | undefined): RequestOptions {
+function withContractHeaders(options: RequestOptions, headers: Record<string, HeaderValue> | undefined): RequestOptions {
   if (!headers) return options;
   const merged = new Headers(options.headers);
   for (const [name, value] of Object.entries(headers)) {
@@ -85,11 +89,14 @@ function withContractHeaders(options: RequestOptions, headers: Record<string, un
   return { ...options, headers: merged };
 }
 
-/** 调用契约操作并解包 `data`；`code !== 0` 抛 `ApiError` */
-export async function api<Op extends AnyOperation>(
+/**
+ * 调用契约操作并返回完整响应信封 `{ code, message, data }`，不解包、不抛业务错误。
+ * 供需要读取 `message` / 非零 `code` 或额外信封字段（如限流倒计时）的调用使用；一般场景用 `api()`。
+ */
+export async function apiRaw<Op extends AnyOperation>(
   op: Op,
   ...args: [...InputArgs<Op>, options?: ApiCallOptions]
-): Promise<OutputOf<Op>> {
+): Promise<ApiResponse<OutputOf<Op>>> {
   const [rawInput, rawOptions] = splitArgs<Op>(op, args);
   if (op.kind !== 'json') {
     throw new Error(`契约操作「${op.name}」为 ${op.kind} 响应，请使用 request.download(urlOf(op, input)) 等二进制通道`);
@@ -98,10 +105,17 @@ export async function api<Op extends AnyOperation>(
   const requestOptions = withContractHeaders(baseOptions, (rawInput as LooseInput)?.headers);
   const url = urlOf(op, ...([rawInput] as unknown as UrlInputArgs<Op>));
   const body = (rawInput as LooseInput)?.body;
-  const response = op.method === 'get'
-    ? await client.get<OutputOf<Op>>(url, requestOptions)
-    : await client[op.method]<OutputOf<Op>>(url, body, requestOptions);
-  return unwrap(response);
+  return op.method === 'get'
+    ? client.get<OutputOf<Op>>(url, requestOptions)
+    : client[op.method]<OutputOf<Op>>(url, body, requestOptions);
+}
+
+/** 调用契约操作并解包 `data`；`code !== 0` 抛 `ApiError` */
+export async function api<Op extends AnyOperation>(
+  op: Op,
+  ...args: [...InputArgs<Op>, options?: ApiCallOptions]
+): Promise<OutputOf<Op>> {
+  return unwrap(await apiRaw(op, ...args));
 }
 
 const INPUT_KEYS = new Set(['params', 'query', 'headers', 'body']);

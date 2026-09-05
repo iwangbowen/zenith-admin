@@ -52,7 +52,7 @@ export const paymentRefundListQuery = paginationQuery.extend({
   endTime: dateRangeBound('结束时间'),
 });
 
-/** 退款：与商户配置 / 订单 / 签约代扣共用 `/api/payment` 根，操作名在根内唯一 */
+/** 退款：与商户配置 / 订单 / 签约代扣共用支付资源根，操作名在根内唯一 */
 export const paymentRefundContract = defineContract('/api/payment', {
   orderRefunds: op.get('/orders/{id}/refunds', { params: idParam, response: z.array(paymentRefundSchema), summary: '支付订单关联退款' }),
   createRefund: op.post('/refunds', { headers: idempotencyKeyHeaders, body: createRefundSchema, response: paymentRefundResultSchema, summary: '发起退款' }),

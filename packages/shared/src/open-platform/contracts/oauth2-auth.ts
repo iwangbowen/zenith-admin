@@ -34,7 +34,7 @@ export type OAuth2AuthorizeResponse = z.infer<typeof oauth2AuthorizeResponseSche
 // /token、/token/revoke、/token/introspect、/userinfo 以 application/x-www-form-urlencoded
 // 入参并按 RFC 返回顶层 JSON，不经契约 DSL；这里只固定其响应 schema 供服务端文档引用。
 
-/** /api/oauth2/token 响应（RFC 6749） */
+/** 令牌端点响应（RFC 6749） */
 export const oauth2TokenResponseSchema = z.object({
   access_token: z.string(),
   token_type: z.literal('Bearer'),
@@ -45,7 +45,7 @@ export const oauth2TokenResponseSchema = z.object({
 
 export type OAuth2TokenResponse = z.infer<typeof oauth2TokenResponseSchema>;
 
-/** /api/oauth2/userinfo 响应（OIDC Core 标准 claims） */
+/** UserInfo 端点响应（OIDC Core 标准 claims） */
 export const oauth2UserInfoSchema = z.object({
   sub: z.string(),
   name: z.string().optional(),
@@ -57,7 +57,7 @@ export const oauth2UserInfoSchema = z.object({
 
 export type OAuth2UserInfo = z.infer<typeof oauth2UserInfoSchema>;
 
-/** /api/oauth2/token/introspect 响应（RFC 7662） */
+/** 令牌自省端点响应（RFC 7662） */
 export const oauth2IntrospectResponseSchema = z.object({
   active: z.boolean(),
   scope: z.string().optional(),

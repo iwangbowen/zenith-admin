@@ -14,7 +14,7 @@ import {
  * 终端会话监控路由（管理员）
  *
  * 权限：`system:terminal:monitor`。提供活动会话列表与强制终止；
- * 实时旁观 / 接管走 WebSocket（/api/ws/terminal-monitor）。
+ * 实时旁观 / 接管走 WebSocket（ws-terminal 的监控通道）。
  */
 const router = new OpenAPIHono({ defaultHook: validationHook });
 const PERM = 'system:terminal:monitor';

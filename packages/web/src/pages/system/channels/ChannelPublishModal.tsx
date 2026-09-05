@@ -6,7 +6,7 @@
  * 支持发送方式：立即发送 / 定时发送 / 存草稿。
  *
  * 复用：UserSelect（指定用户）、DepartmentSelect（按部门，TreeSelect），
- * 角色通过 /api/roles/all 加载为 Select multiple。
+ * 角色通过角色下拉源（`roleContract.all`）加载为 Select multiple。
  * 封面图经通用单文件上传（`fileContract.uploadOne`，见 ImageUploadField）得到 URL。
  */
 import { useEffect, useMemo, useState } from 'react';

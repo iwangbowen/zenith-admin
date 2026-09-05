@@ -155,9 +155,9 @@ export const myOperationLogsQuery = paginationQuery.extend({
 export const authContract = defineContract('/api/auth', {
   captcha: op.get('/captcha', { response: captchaSchema, summary: '获取验证码', public: true }),
   login: op.post('/login', { body: loginSchema, response: loginResultSchema, summary: '登录', public: true }),
-  register: op.post('/register', { body: registerSchema, response: loginResultSchema, summary: '注册', public: true }),
+  register: op.post('/register', { body: registerSchema, response: loginResponseSchema, summary: '注册', public: true }),
   refresh: op.post('/refresh', { body: refreshTokenSchema, response: refreshTokenResultSchema, summary: '刷新令牌', public: true }),
-  mfaVerify: op.post('/mfa/verify', { body: mfaVerifySchema, response: loginResultSchema, summary: '登录 MFA 验证', public: true }),
+  mfaVerify: op.post('/mfa/verify', { body: mfaVerifySchema, response: loginResponseSchema, summary: '登录 MFA 验证', public: true }),
   logout: op.post('/logout', { summary: '退出登录' }),
   logoutByRefresh: op.post('/logout-by-refresh', { body: refreshTokenSchema, summary: '按 refresh token 退出会话（账号切换器注销停靠账号）', public: true }),
   me: op.get('/me', { response: userProfileSchema, summary: '获取当前用户' }),

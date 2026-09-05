@@ -1,5 +1,5 @@
 /**
- * IoT 总览仪表盘（/api/iot/dashboard）、固件包（/api/iot/firmwares）、OTA 升级任务（/api/iot/ota-tasks）。
+ * IoT 总览仪表盘、固件包与 OTA 升级任务。
  */
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { iotDashboardContract, iotFirmwareContract, iotOtaTaskContract } from '@zenith/shared/iot';

@@ -1,7 +1,8 @@
 import { keepPreviousData, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { sshProfileContract, terminalRecordingContract, terminalSessionContract } from '@zenith/shared/ops';
-import { api, contractKey, createResourceQueries, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { api, apiRaw, contractKey, createResourceQueries, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { unwrap } from '@/lib/query';
 import { request } from '@/utils/request';
 
 export type TerminalSessionListParams = NonNullable<QueryOf<typeof terminalSessionContract.list>>;
@@ -67,8 +68,8 @@ export function useCleanTerminalRecordings() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (days: number) => {
-      const res = await request.delete<null>(urlOf(terminalRecordingContract.clean, { query: { days } }));
-      if (res.code !== 0) throw new Error(res.message);
+      const res = await apiRaw(terminalRecordingContract.clean, { query: { days } });
+      unwrap(res);
       return res.message;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: terminalRecordingKeys.lists }),

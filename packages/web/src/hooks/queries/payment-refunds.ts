@@ -5,7 +5,7 @@ import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-qu
 
 export type PaymentRefundListParams = NonNullable<QueryOf<typeof paymentRefundContract.refunds>>;
 
-/** 退款与订单 / 商户配置共用 `/api/payment` 根，key 按操作名区分 */
+/** 退款与订单 / 商户配置共用支付资源根，key 按操作名区分 */
 export const paymentRefundKeys = {
   lists: contractKey(paymentRefundContract.refunds),
   list: (params: PaymentRefundListParams) => contractKey(paymentRefundContract.refunds, { query: params }),

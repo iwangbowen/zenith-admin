@@ -16,7 +16,7 @@ function isSafeRedirect(target: string | null | undefined): target is string {
 /**
  * 第三方登录 / 绑定的统一回调页。
  * 回调 URL 里的 `state` 必须与跳转前暂存的一致（浏览器侧防登录 CSRF），服务端再单次消费；
- * 绑定意图走 POST /bind（保持当前会话，不会被替换成第三方身份对应的账号）。
+ * 绑定意图走 `oauthContract.bind`（保持当前会话，不会被替换成第三方身份对应的账号）。
  */
 export default function OAuthCallbackPage() {
   const { provider } = useParams<{ provider: string }>();

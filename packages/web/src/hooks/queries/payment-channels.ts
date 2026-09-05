@@ -10,7 +10,7 @@ export type PaymentChannelListParams = NonNullable<QueryOf<typeof paymentChannel
 export type PaymentChannelSaveValues = Partial<BodyOf<typeof paymentChannelContract.createChannel>>;
 
 /**
- * 商户配置与订单 / 退款共用 `/api/payment` 根，key 按操作名区分：
+ * 商户配置与订单 / 退款共用支付资源根，key 按操作名区分：
  * 列表、详情、全量下拉与资金运营下拉各自独立失效。
  */
 export const paymentChannelKeys = {
@@ -64,7 +64,7 @@ export function useSavePaymentChannel() {
   });
 }
 
-/** 服务端未提供 DELETE /batch，多选删除按单条并发执行；详情缓存移除而非失效，避免已删记录回源 404 */
+/** 契约无批量删除操作，多选删除按单条并发执行；详情缓存移除而非失效，避免已删记录回源 404 */
 export function useDeletePaymentChannels() {
   const qc = useQueryClient();
   return useMutation<null, Error, number[]>({

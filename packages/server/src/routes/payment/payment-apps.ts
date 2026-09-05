@@ -1,5 +1,5 @@
 /**
- * 支付应用（App 维度）管理路由（/api/payment/apps）。
+ * 支付应用（App 维度）管理路由。
  * 外部身份由开放平台客户端管理，本模块只维护支付渠道路由。
  */
 import { OpenAPIHono } from '@hono/zod-openapi';

@@ -1,8 +1,8 @@
 /**
- * IoT 设备侧接入 API（/api/iot/ingest/*，设备 HMAC 签名鉴权，无管理端 token）。
+ * IoT 设备侧接入（设备 HMAC 签名鉴权，无管理端 token）。
  *
  * 签名基于原始请求体文本：鉴权中间件先读原文验签，契约校验器再从同一缓存解析 JSON。
- * 全局 pathBoundRateLimit 已覆盖 /api/*，平台「限流规则」配 /api/iot/ingest/* 即可精细限流。
+ * 全局 pathBoundRateLimit 已覆盖全部 API，平台「限流规则」按本域路径前缀配置即可精细限流。
  */
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { IOT_SIGN_HEADER, IOT_TIMESTAMP_HEADER, iotIngestContract } from '@zenith/shared/iot';

@@ -276,7 +276,7 @@ export const workflowMigrateBatchParam = z.object({
   definitionId: z.coerce.number().int().meta({ description: '流程定义 ID', example: 1 }),
 });
 
-/** 实例运维：诊断 / 轨迹 / Token / 管理员强制操作 / 迁移 / 补偿工单（与实例契约共用 /api/workflows 根路径） */
+/** 实例运维：诊断 / 轨迹 / Token / 管理员强制操作 / 迁移 / 补偿工单（与实例契约共用工作流资源根） */
 export const workflowInstanceOpsContract = defineContract('/api/workflows', {
   diagnostics: op.get('/instances/{id}/diagnostics', { params: idParam, response: workflowRuntimeDiagnosticsSchema, summary: '实例运行时技术诊断' }),
   trace: op.get('/instances/{id}/trace', { params: idParam, response: workflowInstanceTraceSchema, summary: '实例运行轨迹与引擎解释' }),

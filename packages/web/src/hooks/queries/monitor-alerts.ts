@@ -33,7 +33,7 @@ export const monitorAlertKeys = {
 
 export const useMonitorAlertList = resource.useList;
 export const useSaveMonitorAlert = resource.useSave;
-/** 单条走 DELETE /{id}，多条走 DELETE /batch */
+/** 单条与批量删除 */
 export const useDeleteMonitorAlerts = resource.useDelete;
 
 /** 启停会改变规则运行态，也可能关闭规则未恢复的告警事件，整域失效 */

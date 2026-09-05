@@ -7,7 +7,7 @@ import { paymentStatsKeys } from './payment-stats';
 
 export type PaymentOrderListParams = NonNullable<QueryOf<typeof paymentOrderContract.orders>>;
 
-/** 订单与商户配置 / 退款共用 `/api/payment` 根，key 按操作名区分 */
+/** 订单与商户配置 / 退款共用支付资源根，key 按操作名区分 */
 export const paymentOrderKeys = {
   lists: contractKey(paymentOrderContract.orders),
   list: (params: PaymentOrderListParams) => contractKey(paymentOrderContract.orders, { query: params }),

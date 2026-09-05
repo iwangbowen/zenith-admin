@@ -7,7 +7,7 @@ const resource = createResourceQueries(userFeedbackContract);
 export const userFeedbackKeys = resource.keys;
 
 export const useUserFeedbackList = resource.useList;
-/** 删除：单条走 DELETE /{id}，多条走 DELETE /batch */
+/** 删除：单条与批量 */
 export const useDeleteFeedbacks = resource.useDelete;
 
 /** 反馈没有详情接口，写操作后只需回源列表 */

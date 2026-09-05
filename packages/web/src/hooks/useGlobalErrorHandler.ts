@@ -8,7 +8,7 @@ import { SubmitAborted } from '@/lib/abort-submit';
 /**
  * 全局前端异常兜底 + 上报。
  *
- * 捕获并上报到错误监控（/api/frontend-errors）：
+ * 捕获并上报到错误监控：
  * - `error`（捕获阶段）：JS 运行时错误 + 资源加载失败
  * - `unhandledrejection`：未处理的 Promise 拒绝
  * - `console.error`：控制台错误（记录面包屑 + 上报）

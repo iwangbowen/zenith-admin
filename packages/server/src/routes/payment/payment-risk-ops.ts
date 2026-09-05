@@ -1,6 +1,6 @@
 /**
- * 支付风控运营路由（/api/payment/risk）。
- * 拦截/命中留痕列表、人工审核队列（放行/拒绝）。规则 CRUD 见 /api/payment/risk-rules。
+ * 支付风控运营路由。
+ * 拦截/命中留痕列表、人工审核队列（放行/拒绝）。规则 CRUD 见 payment-risk 路由。
  */
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { paymentRiskOpsContract } from '@zenith/shared/payment';

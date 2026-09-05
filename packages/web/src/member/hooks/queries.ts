@@ -60,7 +60,7 @@ export const memberKeys = {
 
 };
 
-/** 积分 / 钱包 / 优惠券 / 签到等自助资源都挂在 /api/member 之下，资料变更后按资源根整体回源 */
+/** 积分 / 钱包 / 优惠券 / 签到等自助资源共用会员自助资源根，资料变更后按资源根整体回源 */
 const memberSelfAll = [resourceKeyOf(memberSelfContract.basePath)] as const;
 
 // ─── 账户 / 积分 / 钱包 ──────────────────────────────────────────────────────

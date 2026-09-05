@@ -89,7 +89,7 @@ export const openPaymentRefundNoParam = z.object({
 });
 
 /**
- * 支付开放 API（`/api/open/v1/payments/*`）：应用、租户与商户路由全部由已验签 principal 推导。
+ * 支付开放 API：应用、租户与商户路由全部由已验签 principal 推导。
  * 鉴权 / 计量 / 限流由开放网关中间件统一施加，各端点只声明所需 scope。
  */
 export const openPaymentContract = defineContract('/api/open', {

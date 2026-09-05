@@ -49,7 +49,7 @@ export default defineRouteDomain({
   name: 'payment',
   mounts: () => [
     [paymentCapabilityContract.basePath, paymentCapabilityRoutes, { feature: 'payment' }],
-    // 商户配置 / 订单 / 退款 / 回调日志 / 统计与签约代扣共用 `/api/payment` 根：两个路由器先后挂载，顺序不可调换
+    // 商户配置 / 订单 / 退款 / 回调日志 / 统计与签约代扣共用同一资源根：两个路由器先后挂载，顺序不可调换
     [paymentOrderContract.basePath, paymentRoutes, { feature: 'payment' }],
     [paymentReconContract.basePath, paymentReconRoutes, { feature: 'payment' }],
     [paymentWebhookContract.basePath, paymentWebhookRoutes, { feature: 'payment' }],

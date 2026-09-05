@@ -206,7 +206,7 @@ export const publicArtifactParam = z.object({
   filename: z.string().min(1).max(255).meta({ example: 'latest.yml' }),
 });
 
-// ─── 契约：管理侧（五组子资源共享 /api/app-releases 前缀，各自独立挂载） ────────────
+// ─── 契约：管理侧（五组子资源共享同一资源前缀，各自独立挂载） ──────────────────────
 
 export const clientAppContract = defineContract('/api/app-releases/apps', {
   list: op.get('/', { query: clientAppListQuery, response: paginated(clientAppSchema), summary: '应用列表' }),

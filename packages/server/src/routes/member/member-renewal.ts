@@ -1,5 +1,5 @@
 /**
- * 会员自动续费路由（/api/member/renewal/*，memberAuthMiddleware 保护）。
+ * 会员自动续费路由（memberAuthMiddleware 保护）。
  * 可选计划 / 我的续费状态 / 签约 / 解约 / 手动续费一期。
  */
 import { OpenAPIHono } from '@hono/zod-openapi';

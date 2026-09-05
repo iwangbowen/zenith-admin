@@ -14,7 +14,7 @@ export interface UserSelectProps {
 }
 
 /**
- * 用户选择器 — 与系统用户体系集成，复用 useAllUsers 域 hook（/api/users/all）。
+ * 用户选择器 — 与系统用户体系集成，复用 useAllUsers 域 hook。
  * 支持单选 / 多选，可直接用于 Semi Form（withField 包裹）。
  */
 export default function UserSelect({

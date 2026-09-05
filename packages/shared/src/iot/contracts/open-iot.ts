@@ -40,7 +40,7 @@ export const openIotShadowSchema = z.object({
 
 export type OpenIotShadow = z.infer<typeof openIotShadowSchema>;
 
-// ─── 契约：开放网关 IoT 子路由（/api/open/v1/iot/*，OAuth2 令牌或 AppKey 签名） ────
+// ─── 契约：开放网关 IoT 子路由（OAuth2 令牌或 AppKey 签名） ─────────────────────
 
 export const openIotContract = defineContract('/api/open', {
   devices: op.get('/v1/iot/devices', {

@@ -6,7 +6,7 @@ import { HTTPException } from 'hono/http-exception';
 
 /**
  * 触发器回调唤醒：通过 externalCallbackId 找到等待中的 trigger 任务，标记为 approved 并推进流程。
- * 供 /api/public/workflow/trigger-callback 路由调用。
+ * 供触发器回调路由（`workflowTriggerCallbackContract`）调用。
  */
 export async function resumeTriggerTask(
   callbackId: string,

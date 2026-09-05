@@ -1,5 +1,5 @@
 /**
- * 前台会员投稿 API（/api/member/cms/*）：memberAuthMiddleware 鉴权，
+ * 前台会员投稿：memberAuthMiddleware 鉴权，
  * 全部按 currentMemberId 过滤防越权；提交走 CMS 统一审核管道。
  */
 import { OpenAPIHono } from '@hono/zod-openapi';

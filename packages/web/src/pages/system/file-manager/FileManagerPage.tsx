@@ -10,7 +10,7 @@
  * 二期新增 HostSelector：本机维持完整功能，远端 Linux 通过平台主机 SFTP 提供核心文件操作。
  *
  * ⚠️ 勿与 `pages/system/files/FilesPage.tsx` 混淆：那是应用内的**托管文件库**
- * （业务附件），走 `/api/files/*` + 存储抽象层（local/OSS/S3/COS），每个文件在
+ * （业务附件），走文件中心 `fileContract` + 存储抽象层（local/OSS/S3/COS），每个文件在
  * DB 有 `ManagedFile` 记录。两者数据源、后端域、权限码完全不同，没有重叠。
  *
  * 本文件是装配层：状态编排 + 子组件/特性 hooks 组合。

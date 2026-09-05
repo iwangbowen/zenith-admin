@@ -1,5 +1,5 @@
 /**
- * 营销活动 C 端 API（/api/member/marketing，会员登录态）：
+ * 营销活动 C 端（会员登录态）：
  * 活动详情 / 抽奖 / 我的记录，供会员前台或外部 H5 活动页对接。
  */
 import { OpenAPIHono } from '@hono/zod-openapi';

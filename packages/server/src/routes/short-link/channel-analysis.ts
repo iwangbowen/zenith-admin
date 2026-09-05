@@ -1,5 +1,5 @@
 /**
- * 渠道推广分析 API（/api/growth/channel-analysis，纯读）
+ * 渠道推广分析（纯读）
  */
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { channelAnalysisContract } from '@zenith/shared/short-link';

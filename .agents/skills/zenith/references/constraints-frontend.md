@@ -42,7 +42,9 @@
 
 - `createResourceQueries` 覆盖契约的 `list` / `detail` / `create` / `update` / `remove` / `removeBatch` / `all`；
   域内其余操作用 `useApiMutation(xxxContract.op, { invalidate })` / `useApiQuery(xxxContract.op, input)`，
-  失效用工厂导出的 `keys`。mutation 变量即契约输入 `{ params?, query?, body? }`，**禁止**再包一层手写 `useMutation`
+  失效用工厂导出的 `keys`。mutation 变量即契约输入 `{ params?, query?, headers?, body? }`，**禁止**再包一层手写 `useMutation`
+- 需要读取响应信封（结果 `message`、非零 `code` 分支、限流倒计时等）的调用用 `apiRaw(op, input, options)`，
+  **禁止**用 `request.post<T>(urlOf(op), body)` 手写响应泛型；`urlOf(op)` 只用于上传 / 下载 / SSE 等非 JSON 通道
 - `useEditModal` 的表单值类型取契约的创建入参：`useEditModal<Xxx, Partial<CreateXxxInput>>`；记录里的 `null`
   经 `toValues` / `beforeSave` 归一为未填，**禁止**把实体类型直接当表单值类型
 - 筛选控件的宽类型值（`string`）交给按枚举声明的契约查询参数前用 `enumValueOf(XXX_VALUES, value)`（`@zenith/shared/core`）收窄

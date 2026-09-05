@@ -1,8 +1,8 @@
 /**
  * 公众号消息回调（公开端点，无需登录，由微信服务器调用）。
  *
- *   GET  /api/public/mp/callback/{accountId}  — 服务器配置校验（返回 echostr）
- *   POST /api/public/mp/callback/{accountId}  — 接收消息/事件（明文或安全模式 AES 加密），落库
+ *   GET  — 服务器配置校验（返回 echostr）
+ *   POST — 接收消息/事件（明文或安全模式 AES 加密），落库
  *
  * 校验逻辑见 lib/wechat。账号查询不做租户过滤（回调无登录上下文）。
  */

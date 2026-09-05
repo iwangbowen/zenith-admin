@@ -27,7 +27,7 @@ export interface HttpClientConfig {
   tokenKey: string;
   /** localStorage 中 refreshToken 的 key */
   refreshTokenKey: string;
-  /** token 刷新接口路径，如 '/api/auth/refresh' */
+  /** token 刷新接口路径（取自认证契约） */
   refreshPath: string;
   /** 认证失效时的登录页跳转地址 */
   loginUrl: () => string;

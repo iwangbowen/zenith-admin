@@ -1,8 +1,8 @@
 /**
  * 通讯录同步的机器端点（公开路径，不走管理端登录态，也不进 OpenAPI 文档）：
  *
- *   GET/POST /api/directory-sync/callbacks/{key}          — 钉钉/企微/飞书通讯录变更回调（验签 + 触发同步）
- *   {base} = /api/directory-sync/scim/{key}/v2            — SCIM 2.0 Server（Bearer Token 认证）
+ *   callbacks/{key}          — 钉钉/企微/飞书通讯录变更回调（验签 + 触发同步）
+ *   {base} = scim/{key}/v2（相对本路由根）— SCIM 2.0 Server（Bearer Token 认证）
  *     GET  {base}/ServiceProviderConfig
  *     GET  {base}/Users · POST {base}/Users
  *     GET/PUT/PATCH/DELETE {base}/Users/{userId}

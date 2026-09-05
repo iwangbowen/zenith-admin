@@ -65,7 +65,7 @@ export const paymentChannelListQuery = paginationQuery.extend({
   status: entityStatusSchema.optional(),
 });
 
-/** 商户配置：与订单 / 退款 / 签约代扣共用 `/api/payment` 根，操作名在根内唯一 */
+/** 商户配置：与订单 / 退款 / 签约代扣共用支付资源根，操作名在根内唯一 */
 export const paymentChannelContract = defineContract('/api/payment', {
   channelOperationLookup: op.get('/channels/operation-lookup', { response: z.array(paymentChannelConfigLookupSchema), summary: '资金运营商户配置下拉' }),
   channelsAll: op.get('/channels/all', { response: z.array(paymentChannelConfigSchema), summary: '全量支付渠道（下拉）' }),

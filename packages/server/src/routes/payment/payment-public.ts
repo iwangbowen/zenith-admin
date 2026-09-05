@@ -1,7 +1,7 @@
 /**
  * 支付异步回调（公开端点，无需登录，由微信/支付宝服务器调用）。
  *
- * POST /api/public/payment/notify/{channel}/{callbackToken}
+ * 渠道异步通知回调（按渠道 + 回调令牌寻址）
  *
  * 处理流程见 payment.service.handleNotify：读取原始 body → 逐个启用配置验签 →
  * 幂等更新订单/退款 → 落回调日志 → 发支付事件，并返回渠道要求的 ACK（微信 JSON、支付宝纯文本）。

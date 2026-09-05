@@ -1,11 +1,11 @@
 /**
  * OAuth2 标准端点
- *   GET  /api/oauth2/authorize/info  — 查询应用信息（用于前端同意页面）
- *   POST /api/oauth2/authorize       — 用户确认授权
- *   POST /api/oauth2/token           — 令牌端点（application/x-www-form-urlencoded，RFC 6749）
- *   POST /api/oauth2/token/revoke    — 令牌撤销（RFC 7009）
- *   POST /api/oauth2/token/introspect — 令牌自省（RFC 7662）
- *   GET  /api/oauth2/userinfo        — UserInfo（OIDC Core）
+ *   authorize/info  — 查询应用信息（用于前端同意页面）
+ *   authorize       — 用户确认授权
+ *   token           — 令牌端点（application/x-www-form-urlencoded，RFC 6749）
+ *   token/revoke    — 令牌撤销（RFC 7009）
+ *   token/introspect — 令牌自省（RFC 7662）
+ *   userinfo        — UserInfo（OIDC Core）
  *
  * 前两个走业务信封，由契约定义；后四个是 RFC 协议端点（表单入参 + 顶层响应，无业务信封），
  * 契约 DSL 不表达，保持 createRoute 声明。
@@ -44,7 +44,7 @@ const authorizeInfo = defineContractRoute(oauth2AuthContract.authorizeInfo, {
   },
 });
 
-// ─── 用户确认授权（POST /authorize）──────────────────────────────────────────
+// ─── 用户确认授权 ────────────────────────────────────────────────────────────
 
 const authorize = defineContractRoute(oauth2AuthContract.authorize, {
   middleware: [authMiddleware],

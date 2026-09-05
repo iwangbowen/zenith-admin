@@ -7,7 +7,7 @@ export const AI_CUSTOM_PROVIDER_ID = 'custom';
 
 /**
  * 常用模型服务商(Mastra 模型目录 provider ID)。
- * 仅作为前端选择器的快捷分组;完整目录(178+ 家)由 `GET /api/ai/providers/catalog`
+ * 仅作为前端选择器的快捷分组;完整目录(178+ 家)由 `aiProviderContract.catalog`
  * 从 Mastra PROVIDER_REGISTRY 动态提供,后续集成更多服务商无需改代码。
  * id 必须与 Mastra 目录一致(见 @mastra/core/llm 的 getRegisteredProviders())。
  */

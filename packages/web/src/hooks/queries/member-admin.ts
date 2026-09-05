@@ -112,7 +112,7 @@ function invalidateCheckins(qc: QueryClient) {
 
 export const useMemberList = memberResource.useList;
 export const useMemberDetail = memberResource.useDetail;
-/** 单个走 DELETE /{id}；同时移除概览缓存，并回源等级会员数、看板与下拉源 */
+/** 单个删除；同时移除概览缓存，并回源等级会员数、看板与下拉源 */
 export const useDeleteMembers = memberResource.useDelete;
 
 /** 保存会员：等级列表含各等级会员数、看板含会员总量、下拉源展示昵称 / 等级，写后一并回源 */
@@ -320,7 +320,7 @@ export function useMemberStatsCharts() {
 export const useCouponList = couponResource.useList;
 export const useCouponDetail = couponResource.useDetail;
 export const useSaveCoupon = couponResource.useSave;
-/** 单个走 DELETE /{id}；模板删除级联清除券码，领券记录与看板一并回源 */
+/** 单个删除；模板删除级联清除券码，领券记录与看板一并回源 */
 export const useDeleteCoupons = couponResource.useDelete;
 
 /** 发券改变模板已发数量、会员概览持券数与看板可用券数 */

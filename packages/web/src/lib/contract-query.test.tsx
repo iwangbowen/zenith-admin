@@ -15,7 +15,7 @@ import {
 const recorder = new ApiRecorder();
 vi.mock('@/utils/request', () => ({ request: createRequestMock(() => recorder) }));
 
-import { api, apiQueryOptions, contractKey, createResourceQueries, urlOf, useApiMutation } from './contract-query';
+import { api, apiQueryOptions, apiRaw, contractKey, createResourceQueries, urlOf, useApiMutation } from './contract-query';
 
 const itemSchema = z.object({ id: z.int(), name: z.string() });
 const itemContract = defineContract('/api/items', {
@@ -111,6 +111,13 @@ describe('api', () => {
 
   it('refuses binary operations', async () => {
     await expect(api(itemContract.exportFile)).rejects.toThrow(/excel/);
+  });
+
+  it('apiRaw returns the envelope untouched for callers that need code / message', async () => {
+    const raw = await apiRaw(itemContract.create, { body: { name: 'y' } }, { silent: true });
+    expect(raw).toEqual({ code: 0, message: 'success', data: { id: 9, name: 'y' } });
+    expect(recorder.calls).toEqual([{ method: 'POST', url: '/api/items', body: { name: 'y' } }]);
+    expectTypeOf(raw.data).toEqualTypeOf<{ id: number; name: string }>();
   });
 });
 

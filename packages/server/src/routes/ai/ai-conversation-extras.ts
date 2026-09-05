@@ -8,7 +8,7 @@ import { setConversationKnowledgeBase } from '../../services/ai/ai-knowledge.ser
 import { updateConversationTags, switchConversationBranch, ensureConversationOwner } from '../../services/ai/ai-conversations.service';
 import { getActiveGeneration } from '../../lib/ai/generation-buffer';
 
-/** 挂载在 /api/ai/conversations 下的扩展能力：分享管理 + 知识库挂载 + 标签 / 分支 / 生成续传 */
+/** 会话资源的扩展能力：分享管理 + 知识库挂载 + 标签 / 分支 / 生成续传 */
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
 const authed = [authMiddleware] as const;

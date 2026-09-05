@@ -7,7 +7,7 @@ import { handleMpOAuthCallback } from '../../services/mp/mp-oauth.service';
 /**
  * 公众号网页授权回调（公开端点，无需登录）。
  * 微信在用户授权后回跳此地址并带上 code，服务端用 code 换取 openid/unionid（及用户信息）。
- *   GET /api/public/mp/oauth/{accountId}?code=&state=
+ *   回调携带 code 与 state 查询参数
  */
 const mpOAuthPublicRouter = new OpenAPIHono({ defaultHook: validationHook });
 

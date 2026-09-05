@@ -39,7 +39,7 @@ export const paymentNotifyLogListQuery = paginationQuery.extend({
   endTime: dateRangeBound('结束时间'),
 });
 
-/** 渠道回调日志：共用 `/api/payment` 根 */
+/** 渠道回调日志：共用支付资源根 */
 export const paymentNotifyLogContract = defineContract('/api/payment', {
   logs: op.get('/logs', { query: paymentNotifyLogListQuery, response: paginated(paymentNotifyLogSchema), summary: '支付回调日志' }),
 }, { tags: ['支付中心'] });

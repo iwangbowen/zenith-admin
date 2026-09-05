@@ -32,7 +32,7 @@ export const userKeys = {
 export const useSaveUser = resource.useSave;
 export const useUserList = resource.useList;
 export const useUserDetail = resource.useDetail;
-/** 单个走 DELETE /{id}，多个走 DELETE /batch；同时移除该用户的权限类缓存 */
+/** 单个与批量删除；同时移除该用户的权限类缓存 */
 export const useDeleteUsers = resource.useDelete;
 
 /** 全量用户下拉源的 queryOptions（供 ensureQueryData 等命令式取数） */

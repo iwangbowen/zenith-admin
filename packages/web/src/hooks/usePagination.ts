@@ -35,8 +35,7 @@ export interface UsePaginationReturn {
  * const { page, pageSize, setPage, resetPage, buildPagination } = usePagination();
  *
  * const fetchData = useCallback(async (p = page, ps = pageSize) => {
- *   const res = await request.get(`/api/items?page=${p}&pageSize=${ps}`);
- *   if (res.code === 0) setData(res.data);
+ *   setData(await api(itemContract.list, { query: { page: p, pageSize: ps } }));
  * }, [page, pageSize]);
  *
  * <ConfigurableTable pagination={buildPagination(data?.total ?? 0, fetchData)} />

@@ -434,7 +434,7 @@ export const workflowCcTaskParam = z.object({
 
 /**
  * 流程实例：查询 / 生命周期 / 抄送催办 / 评论 / 实例级批量操作。
- * 与 workflowTaskContract、workflowInstanceOpsContract 共用 /api/workflows 根路径，操作名全局唯一。
+ * 与 workflowTaskContract、workflowInstanceOpsContract 共用工作流资源根，操作名全局唯一。
  */
 export const workflowInstanceContract = defineContract('/api/workflows', {
   selectableUsers: op.get('/selectable-users', { response: z.array(workflowSelectableUserSchema), summary: '工作流协作选人清单' }),

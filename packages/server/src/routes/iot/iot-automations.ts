@@ -1,5 +1,5 @@
 /**
- * IoT 场景联动 API（/api/iot/automations）
+ * IoT 场景联动
  *
  * CRUD + 执行记录查询；触发评估在设备接入热路径（见 iot-automations.service）。
  */

@@ -9,7 +9,7 @@ export type PaymentContractListParams = NonNullable<QueryOf<typeof paymentSignin
 export type DeductPlanListParams = NonNullable<QueryOf<typeof paymentDeductPlanContract.deductPlans>>;
 export type DeductPlanSaveValues = Partial<BodyOf<typeof paymentDeductPlanContract.createDeductPlan>>;
 
-/** 签约协议与扣款计划共用 `/api/payment` 根，key 按操作名区分：协议状态变化不会连坐扣款计划下拉源 */
+/** 签约协议与扣款计划共用支付资源根，key 按操作名区分：协议状态变化不会连坐扣款计划下拉源 */
 export const paymentContractKeys = {
   lists: contractKey(paymentSigningContract.contracts),
   list: (params: PaymentContractListParams) => contractKey(paymentSigningContract.contracts, { query: params }),

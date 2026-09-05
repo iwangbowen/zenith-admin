@@ -1,5 +1,5 @@
 /**
- * 链路追踪查看器 API（/api/trace）
+ * 链路追踪查看器
  */
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { traceContract } from '@zenith/shared/platform';

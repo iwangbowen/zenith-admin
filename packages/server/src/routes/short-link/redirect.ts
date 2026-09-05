@@ -1,5 +1,5 @@
 /**
- * 短链公开跳转（GET /s/:code，无需登录）。
+ * 短链公开跳转（无需登录）。
  *
  * 非 OpenAPI 路由：输出为 30x 跳转或轻量 HTML 提示页，不进入 API 文档。
  * 限流复用 pathBoundRateLimit —— 平台「限流规则」中配置 pathPatterns ['/s/*'] 即可生效。

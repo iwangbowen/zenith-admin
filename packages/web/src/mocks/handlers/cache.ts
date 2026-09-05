@@ -5,7 +5,7 @@ import { removeWhere } from '@/mocks/utils/array';
 import { mockDate } from '../utils/date';
 
 interface MockCacheItem extends CacheItem {
-  /** 非 string 类型的完整值（序列化 JSON），对应 GET /value */
+  /** 非 string 类型的完整值（序列化 JSON），供取值操作返回 */
   fullValue?: string;
 }
 

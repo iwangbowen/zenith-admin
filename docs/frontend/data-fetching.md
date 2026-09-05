@@ -48,6 +48,7 @@ packages/web/src/
 | 导出 | 说明 |
 | --- | --- |
 | `api(op, input?, options?)` | 单次调用，返回解包后的 `data`；`input` 为契约输入 `{ params?, query?, headers?, body? }`（`headers` 段仅当契约声明了业务请求头时存在，自动并入请求头，不参与 query key），`options` 为请求选项（`silent`、`client` 等） |
+| `apiRaw(op, input?, options?)` | 同 `api`，但返回完整响应信封 `{ code, message, data }` 且不抛业务错误：供需要 `message`（结果文案）、非零 `code` 分支或额外信封字段（限流倒计时）的调用使用，如登录 / 注册 / 验证码、解封等 |
 | `urlOf(op, { params?, query? })` | 契约操作 + URL 相关输入段 → 完整 URL；带 body 的操作也只需 params / query（`request.postForm(urlOf(op), formData)`、`<Upload action>`、下载链接） |
 | `contractKey(op, input?)` | 单操作查询的 query key：`[资源键, 操作名, input]`；省略 input 得到该操作的公共前缀（`invalidateQueries` / `useListSearch({ listKey })`） |
 | `apiQueryOptions(op, input?, options?)` / `useApiQuery(op, input?, options?)` | 可缓存查询；`options` 透传 TanStack Query 选项（`enabled`、`staleTime`…） |
@@ -163,7 +164,7 @@ const modal = useEditModal<Xxx, Partial<CreateXxxInput>>({
 
 ## 会员端（member SPA）
 
-`src/member/` 是独立入口，使用 `memberQueryClient` 与 `memberRequest`。域 hooks 集中在 `member/hooks/queries.ts`：会员端契约（`memberAuthContract` / `memberSelfContract` / `memberRenewalContract`）经 `apiQueryOptions` / `useApiMutation` 驱动，并统一通过 `requestOptions: { client: memberRequest }` 指定会员请求实例，不得混用后台 `request`。登录 / 注册 / 验证码等需要直接消费响应包络（`code` / `message`）的调用按 `memberRequest.post(urlOf(op), body satisfies BodyOf<typeof op>)` 书写。会员端移动列表可使用 `useInfiniteQuery` 实现加载更多。
+`src/member/` 是独立入口，使用 `memberQueryClient` 与 `memberRequest`。域 hooks 集中在 `member/hooks/queries.ts`：会员端契约（`memberAuthContract` / `memberSelfContract` / `memberRenewalContract`）经 `apiQueryOptions` / `useApiMutation` 驱动，并统一通过 `requestOptions: { client: memberRequest }` 指定会员请求实例，不得混用后台 `request`。登录 / 注册 / 验证码等需要直接消费响应包络（`code` / `message`）的调用用 `apiRaw(op, input, { client: memberRequest })`。会员端移动列表可使用 `useInfiniteQuery` 实现加载更多。
 
 ## 不走 TanStack Query 的场景
 

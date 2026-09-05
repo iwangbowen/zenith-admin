@@ -2,7 +2,7 @@ import { tagContract } from '@zenith/shared/platform';
 import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 
-/** 分组选项由标签聚合而来（GET /groups），新建、改组、删除都可能改变集合 */
+/** 分组选项由标签聚合而来，新建、改组、删除都可能改变集合 */
 const TAG_GROUPS_KEY = contractKey(tagContract.groups);
 
 const resource = createResourceQueries(tagContract, {
@@ -15,7 +15,7 @@ export const tagKeys = { ...resource.keys, groups: TAG_GROUPS_KEY };
 export const useTagList = resource.useList;
 export const useTagDetail = resource.useDetail;
 export const useSaveTag = resource.useSave;
-/** 删除：单条走 DELETE /{id}，多条走 DELETE /batch */
+/** 删除：单条与批量 */
 export const useDeleteTags = resource.useDelete;
 
 export function useTagGroups() {

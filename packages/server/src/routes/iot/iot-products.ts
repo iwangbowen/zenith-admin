@@ -1,5 +1,5 @@
 /**
- * IoT 产品管理 API（/api/iot/products）：产品 CRUD + 物模型（属性/服务/事件）与 TSL 导入导出
+ * IoT 产品管理：产品 CRUD + 物模型（属性/服务/事件）与 TSL 导入导出
  */
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { iotProductContract } from '@zenith/shared/iot';

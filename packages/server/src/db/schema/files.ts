@@ -12,7 +12,7 @@ export const fileObjectAclEnum = pgEnum('file_object_acl', ['default', 'private'
 export const fileUrlStrategyEnum = pgEnum('file_url_strategy', ['proxy', 'public', 'presigned']);
 
 /**
- * 托管文件可见性：public=持有文件 ID 即可经 /api/files/{id}/content 读取（附件、头像等）；
+ * 托管文件可见性：public=持有文件 ID 即可经 `fileContract.content` 读取（附件、头像等）；
  * restricted=仅归属模块（如企业网盘）经自身鉴权接口读取，通用内容接口一律 404。
  */
 export const fileVisibilityEnum = pgEnum('file_visibility', ['public', 'restricted']);

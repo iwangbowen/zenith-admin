@@ -1,5 +1,5 @@
 /**
- * 用户下拉选项 hook —— 统一从 /api/users/all 拉取人员并映射为 { label, value }。
+ * 用户下拉选项 hook —— 统一从用户下拉源（`userContract.all`）拉取人员并映射为 { label, value }。
  *
  * 数据源复用 `hooks/queries/users.ts` 的 `allUsersQueryOptions`，缓存/在途去重/失效联动
  * 全部由 TanStack Query 承担（此前是模块级 `let cache` + `let inflight` 手写实现，

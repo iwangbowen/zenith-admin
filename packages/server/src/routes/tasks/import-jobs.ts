@@ -1,5 +1,5 @@
 /**
- * 数据导入中心 API（/api/import-jobs）。
+ * 数据导入中心。
  * 历史/进度/行级明细复用任务中心接口（taskType 'data-import'）。
  */
 import { OpenAPIHono } from '@hono/zod-openapi';

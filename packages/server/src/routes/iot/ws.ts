@@ -1,5 +1,5 @@
 /**
- * IoT 设备 WS 网关（/api/iot/ws）。
+ * IoT 设备 WebSocket 网关。
  *
  * 握手：query 携带 sn/ts/sign（body 为空串的 HMAC 签名），验签失败 4001 关闭。
  * 连接即在线；上线补推全部 pending 指令与未确认期望属性；断开即离线（HTTP 心跳设备可重建在线态）。

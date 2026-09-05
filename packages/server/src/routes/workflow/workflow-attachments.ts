@@ -9,7 +9,7 @@ import { uploadManagedFileFromBody } from '../../services/files/files.service';
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
 // 审批表单附件上传：面向流程发起/审批人，按工作流权限放行（system:file:upload 属于文件管理员权限，
-// 普通审批角色不持有，不能复用 /api/files/upload-one）
+// 普通审批角色不持有，不能复用文件中心的 `fileContract.uploadOne`）
 const uploadRoute = defineContractRoute(workflowAttachmentContract.upload, {
   middleware: [authMiddleware, guard({ permission: ['workflow:instance:create', 'workflow:task:handle'], audit: { description: '上传审批表单附件', module: '工作流管理', recordBody: false } })] as const,
   handler: async (c) => {

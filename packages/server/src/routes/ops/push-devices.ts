@@ -1,8 +1,8 @@
 /**
  * 设备推送绑定（管理端 App 调用，登录态即可，无需权限点）。
  *
- * 管理端 App：/api/push/devices（authMiddleware，绑定到 user 主体）
- * 会员端 App：/api/member/push/devices（memberAuthMiddleware，绑定到 member 主体，见 member 域挂载）
+ * 管理端 App：`pushDeviceContract`（authMiddleware，绑定到 user 主体）
+ * 会员端 App：`memberPushContract`（memberAuthMiddleware，绑定到 member 主体，见 member 域挂载）
  * 两端共用设备中心服务，只是主体解析不同。
  */
 import { OpenAPIHono } from '@hono/zod-openapi';

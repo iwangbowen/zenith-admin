@@ -7,7 +7,7 @@
  *
  * 但「中断」和「出错」在 Promise 上是同一种信号。`useGlobalErrorHandler` 因此需要区分两者，
  * 此前靠的是**消息形状**：`/^\w+$/` 的单词消息视为控制流标记、放行，其余一律当真错误处理
- * ——弹「操作失败：xxx」Toast 并上报 `/api/frontend-errors`。
+ * ——弹「操作失败：xxx」Toast 并上报错误监控。
  *
  * 这条规则不写在类型里、不写在调用点旁边，只写在兜底 hook 的注释里，于是必然被漏掉：
  * `throw new Error('empty content')`（带空格）、`throw new Error('save-failed')`（带连字符）

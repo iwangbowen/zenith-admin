@@ -427,7 +427,7 @@ describe('AuthProvider account switching', () => {
     act(() => result.current.logout());
 
     await waitFor(() => expect(localStorage.getItem(TOKEN_KEY)).toBe('lisi-access'));
-    expect(mockRequest.post).toHaveBeenCalledWith('/api/auth/logout', {}, expect.objectContaining({ skipAuth: true }));
+    expect(mockRequest.post).toHaveBeenCalledWith('/api/auth/logout', undefined, expect.objectContaining({ skipAuth: true }));
     expect(localStorage.getItem(REFRESH_TOKEN_KEY)).toBe('lisi-refresh');
     expect(listParkedAccounts()).toEqual([]);
     expect(vi.mocked(broadcastSwitchAndReload)).toHaveBeenCalledTimes(1);
@@ -471,7 +471,7 @@ describe('AuthProvider account switching', () => {
 
     expect(mockRequest.post).toHaveBeenCalledWith('/api/auth/logout-by-refresh', { refreshToken: 'lisi-refresh' }, expect.objectContaining({ skipAuth: true }));
     expect(mockRequest.post).toHaveBeenCalledWith('/api/auth/logout-by-refresh', { refreshToken: 'wangwu-refresh' }, expect.objectContaining({ skipAuth: true }));
-    expect(mockRequest.post).toHaveBeenCalledWith('/api/auth/logout', {}, expect.objectContaining({ skipAuth: true }));
+    expect(mockRequest.post).toHaveBeenCalledWith('/api/auth/logout', undefined, expect.objectContaining({ skipAuth: true }));
     await waitFor(() => expect(result.current.status).toBe('anonymous'));
     expect(listParkedAccounts()).toEqual([]);
     expect(localStorage.getItem(TOKEN_KEY)).toBeNull();

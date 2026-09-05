@@ -1,7 +1,7 @@
 /**
- * IoT 动态注册 API（/api/iot/whitelist + 产品注册密钥）
+ * IoT 动态注册：白名单 + 产品注册密钥
  *
- * 设备侧注册端点在 ingest 路由（POST /api/iot/ingest/register，产品注册密钥签名）。
+ * 设备侧注册端点在 ingest 路由（`iotIngestContract.register`，产品注册密钥签名）。
  */
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { iotWhitelistContract } from '@zenith/shared/iot';

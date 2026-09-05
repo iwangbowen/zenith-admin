@@ -44,7 +44,7 @@ export const paymentTrendQuery = z.object({
   days: z.coerce.number().int().min(1).max(365).default(30).meta({ description: '统计天数' }),
 });
 
-/** 统计概览与趋势：共用 `/api/payment` 根 */
+/** 统计概览与趋势：共用支付资源根 */
 export const paymentStatsContract = defineContract('/api/payment', {
   stats: op.get('/stats', { response: paymentStatsSchema, summary: '支付统计概览' }),
   trend: op.get('/trend', { query: paymentTrendQuery, response: z.array(paymentTrendPointSchema), summary: '收款趋势（近 N 天）' }),

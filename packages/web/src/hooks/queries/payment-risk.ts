@@ -32,7 +32,7 @@ export const paymentRiskKeys = {
 
 export const usePaymentRiskRuleList = rules.useList;
 export const useSavePaymentRiskRule = rules.useSave;
-/** 服务端未提供 DELETE /batch，多选删除按单条并发执行 */
+/** 契约无批量删除操作，多选删除按单条并发执行 */
 export const useDeletePaymentRiskRules = rules.useDelete;
 
 export function usePaymentRiskHitList(params: PaymentRiskHitListParams) {

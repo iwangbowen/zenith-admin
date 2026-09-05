@@ -33,7 +33,7 @@ export interface DepartmentSelectProps {
 }
 
 /**
- * 部门选择器 — 与系统组织架构集成，复用 useDepartmentTree 域 hook（/api/departments）。
+ * 部门选择器 — 与系统组织架构集成，复用 useDepartmentTree 域 hook。
  * 支持单选 / 多选，可直接用于 Semi Form（withField 包裹）。
  */
 export default function DepartmentSelect({

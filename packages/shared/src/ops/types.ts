@@ -3,7 +3,7 @@
  * API 实体类型一律从 `./contracts` 推导。
  */
 
-/** Terminal WebSocket 消息（独立端点 /api/ws/terminal） */
+/** Terminal WebSocket 消息 */
 export type TerminalMessage =
   | { type: 'terminal:input'; data: string }
   | { type: 'terminal:output'; data: string }

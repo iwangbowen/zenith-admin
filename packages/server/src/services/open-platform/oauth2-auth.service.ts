@@ -183,7 +183,7 @@ async function isTokenFamilyUsable(token: typeof oauth2Tokens.$inferSelect, exec
   return Boolean(family && !family.revoked && !family.compromised);
 }
 
-// ─── 授权码端点：查询应用信息（GET /api/oauth2/authorize/info）──────────────
+// ─── 授权码端点：查询应用信息 ────────────────────────────────────────────────
 
 export async function getAuthorizeInfo(params: {
   clientId: string;
@@ -258,7 +258,7 @@ export async function getAuthorizeInfo(params: {
   };
 }
 
-// ─── 授权码端点：用户确认授权（POST /api/oauth2/authorize）────────────────────
+// ─── 授权码端点：用户确认授权 ────────────────────────────────────────────────
 
 export async function createAuthorizationCode(params: {
   clientId: string;
@@ -351,7 +351,7 @@ export async function issueDebugAccessToken(clientId: string): Promise<string> {
   });
 }
 
-// ─── Token 端点（POST /api/oauth2/token）─────────────────────────────────────
+// ─── Token 端点 ──────────────────────────────────────────────────────────────
 
 async function issueTokenPair(executor: DbExecutor, opts: {
   clientId: string;
@@ -567,7 +567,7 @@ export async function refreshAccessToken(params: {
   return result.tokens;
 }
 
-// ─── Token 撤销（POST /api/oauth2/token/revoke）───────────────────────────────
+// ─── Token 撤销 ──────────────────────────────────────────────────────────────
 
 export async function revokeTokenByValue(
   token: string,
@@ -603,7 +603,7 @@ export async function revokeTokenByValue(
   // RFC 7009：无论是否找到，都返回 200
 }
 
-// ─── Token 自省（POST /api/oauth2/token/introspect）──────────────────────────
+// ─── Token 自省 ──────────────────────────────────────────────────────────────
 
 export async function introspectToken(token: string, clientId: string, clientSecret: string) {
   if (!clientId || !clientSecret) throw new OAuth2Error('invalid_client');
@@ -669,7 +669,7 @@ export async function resolveAccessToken(accessToken: string): Promise<ResolvedA
   return { clientId: row.clientId, userId: row.userId ?? null, scopes: row.scopes ?? [] };
 }
 
-// ─── UserInfo（GET /api/oauth2/userinfo）──────────────────────────────────────
+// ─── UserInfo ────────────────────────────────────────────────────────────────
 
 export async function getUserInfoByToken(accessToken: string) {
   const tokenHash = sha256(accessToken);

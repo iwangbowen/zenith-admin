@@ -29,7 +29,7 @@ import { listRecentNodes, listSharedWithMe, listStarredNodes, searchDriveNodes }
 import { batchDownloadDriveNodes } from '../../services/drive/drive-tasks.service';
 
 /**
- * /api/drive/nodes 静态路径路由（列表 / 个人视图 / 回收站 / 批量操作 / 上传）。
+ * 网盘节点静态路径路由（列表 / 个人视图 / 回收站 / 批量操作 / 上传）。
  * 单节点 /{id}/... 路由在 drive-node-item.ts，两者按顺序挂载在同一路径。
  */
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -38,7 +38,7 @@ const AUDIT = { module: '企业网盘' } as const;
 const read = [authMiddleware, guard({ permission: 'drive:node:list' })] as const;
 const upload = [authMiddleware, guard({ permission: 'drive:node:upload' })] as const;
 
-/** 可内联渲染的 MIME 白名单（与 /api/files/{id}/content 一致：可能含脚本的类型强制附件下载） */
+/** 可内联渲染的 MIME 白名单（与文件中心 `fileContract.content` 一致：可能含脚本的类型强制附件下载） */
 const SAFE_INLINE_MIME_TYPES = new Set([
   'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/ico', 'image/x-icon', 'image/avif',
   'video/mp4', 'video/webm', 'video/ogg',
@@ -212,7 +212,7 @@ const uploadRoute = defineContractRoute(driveNodeContract.upload, {
     if (!Number.isInteger(spaceId) || spaceId <= 0) return c.json(errBody('缺少 spaceId', 400), 400);
     const parentRaw = body.parentId ? Number(body.parentId) : null;
     const parentId = parentRaw && Number.isInteger(parentRaw) && parentRaw > 0 ? parentRaw : null;
-    const policyRaw = String(body.conflictPolicy ?? 'rename');
+    const policyRaw = typeof body.conflictPolicy === 'string' ? body.conflictPolicy : 'rename';
     const conflictPolicy = (DRIVE_UPLOAD_CONFLICT_POLICIES as readonly string[]).includes(policyRaw) ? policyRaw as typeof DRIVE_UPLOAD_CONFLICT_POLICIES[number] : 'rename';
     const node = await simpleDriveUpload(file as File, { spaceId, parentId, conflictPolicy });
     return c.json(okBody(node, '上传成功'), 200);
@@ -228,7 +228,7 @@ const uploadChunkRoute = defineContractRoute(driveNodeContract.uploadChunk, {
   middleware: upload,
   handler: async (c) => {
     const body = await c.req.parseBody();
-    const uploadId = String(body.uploadId ?? '');
+    const uploadId = typeof body.uploadId === 'string' ? body.uploadId : '';
     const index = Number(body.index);
     const chunk = body.chunk;
     if (!uploadId || !Number.isFinite(index) || typeof (chunk as File)?.arrayBuffer !== 'function') {

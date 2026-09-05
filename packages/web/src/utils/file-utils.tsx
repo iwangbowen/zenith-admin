@@ -377,7 +377,7 @@ export async function fetchProtectedFile(url: string): Promise<Blob> {
   return response.blob();
 }
 
-/** 由契约路径 `fileContract.content`（`/api/files/{id}/content`）派生的匹配器；捕获组 1 为文件 ID（UUID） */
+/** 由契约路径 `fileContract.content` 派生的匹配器；捕获组 1 为文件 ID（UUID） */
 const MANAGED_FILE_CONTENT_URL = (() => {
   const [prefix, suffix] = fileContract.content.fullPath.split('{id}');
   return new RegExp(`${escapeRegExp(prefix)}([0-9a-f-]{36})${escapeRegExp(suffix)}`, 'i');

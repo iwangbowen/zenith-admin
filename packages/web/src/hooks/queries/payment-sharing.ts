@@ -9,7 +9,7 @@ export type PaymentSharingOrderListParams = NonNullable<QueryOf<typeof paymentSh
 export type PaymentSharingReversalListParams = NonNullable<QueryOf<typeof paymentSharingContract.reversals>>;
 export type PaymentSharingReceiverSaveValues = Partial<BodyOf<typeof paymentSharingContract.createReceiver>>;
 
-/** 分账方 / 分账单 / 冲正共用 `/api/payment/sharing` 根，key 按操作名区分 */
+/** 分账方 / 分账单 / 冲正共用分账资源根，key 按操作名区分 */
 export const paymentSharingKeys = {
   receiverLists: contractKey(paymentSharingContract.receivers),
   receiverList: (params: PaymentSharingReceiverListParams) => contractKey(paymentSharingContract.receivers, { query: params }),
@@ -55,7 +55,7 @@ export function useSavePaymentSharingReceiver() {
   });
 }
 
-/** 服务端未提供 DELETE /batch，多选删除按单条并发执行 */
+/** 契约无批量删除操作，多选删除按单条并发执行 */
 export function useDeletePaymentSharingReceivers() {
   const qc = useQueryClient();
   return useMutation<null, Error, number[]>({

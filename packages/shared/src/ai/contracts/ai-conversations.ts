@@ -116,7 +116,7 @@ export const aiConversationContract = defineContract('/api/ai/conversations', {
   removeMessage: op.delete('/{id}/messages/{msgId}', { params: aiConversationMessageParams, summary: '删除 assistant 消息（用于重新生成）' }),
   removeMessageCascade: op.delete('/{id}/messages/{msgId}/cascade', { params: aiConversationMessageParams, summary: '删除消息及其之后所有消息' }),
 
-  // 流式对话：生成与连接解耦，断线后经 /api/ai/generations/{genId}/stream 续传
+  // 流式对话：生成与连接解耦，断线后经 `aiGenerationContract.stream` 续传
   chat: op.post('/{id}/chat', {
     params: idParam,
     body: sendAiChatMessageSchema,

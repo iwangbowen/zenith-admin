@@ -1,5 +1,5 @@
 /**
- * 预授权管理路由（/api/payment/preauths）。
+ * 预授权管理路由。
  * 发起冻结（沙箱即时生效）、转支付（生成正式交易并履约）、解冻、列表。
  */
 import { OpenAPIHono } from '@hono/zod-openapi';

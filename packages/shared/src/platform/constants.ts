@@ -35,7 +35,7 @@ export const FILE_OBJECT_ACL_SUPPORT: Partial<Record<(typeof FILE_STORAGE_PROVID
 export const FILE_URL_STRATEGIES = ['proxy', 'public', 'presigned'] as const;
 
 /**
- * 托管文件可见性：public=持有文件 ID 即可经 /api/files/{id}/content 读取；
+ * 托管文件可见性：public=持有文件 ID 即可经 `fileContract.content` 读取；
  * restricted=仅归属模块（企业网盘等）经自身鉴权接口读取，通用内容接口一律 404。
  */
 export const FILE_VISIBILITIES = ['public', 'restricted'] as const;

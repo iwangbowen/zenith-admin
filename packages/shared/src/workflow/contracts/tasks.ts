@@ -144,7 +144,7 @@ export const workflowHandoverPreviewQuery = z.object({
   fromUserId: z.coerce.number().int().positive().meta({ description: '交接人用户 ID', example: 1 }),
 });
 
-/** 审批任务动作 / 流转 / 协办 / 批量审批 / 任务监控 / 离职交接（与实例契约共用 /api/workflows 根路径） */
+/** 审批任务动作 / 流转 / 协办 / 批量审批 / 任务监控 / 离职交接（与实例契约共用工作流资源根） */
 export const workflowTaskContract = defineContract('/api/workflows', {
   taskMonitor: op.get('/tasks/monitor', { query: workflowTaskMonitorQuery, response: workflowTaskMonitorResultSchema, summary: '全局任务监控列表' }),
   myConsults: op.get('/instances/consults/mine', { query: workflowMyConsultsQuery, response: paginated(workflowTaskConsultSchema), summary: '我的协办列表' }),

@@ -84,7 +84,7 @@ export const openShortLinkCodeParam = z.object({
 });
 
 /**
- * 开放 API 网关核心端点（`/api/open/v1/*`）。鉴权 / 计量 / 限流由网关中间件统一施加
+ * 开放 API 网关核心端点。鉴权 / 计量 / 限流由网关中间件统一施加
  * （OAuth2 令牌或 AppKey + HMAC 签名二选一），各端点只声明所需 scope；
  * CMS / IoT / 支付子端点归属各自领域。
  */

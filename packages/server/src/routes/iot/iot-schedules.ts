@@ -1,5 +1,5 @@
 /**
- * IoT 设备计划任务 API（/api/iot/schedules）
+ * IoT 设备计划任务
  *
  * CRUD + 执行记录；到期调度由系统任务 iot-schedule-dispatch 每分钟执行。
  */

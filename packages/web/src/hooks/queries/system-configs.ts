@@ -27,7 +27,7 @@ export const systemConfigKeys = {
 export const useSystemConfigList = resource.useList;
 export const useSystemConfigDetail = resource.useDetail;
 export const useSaveSystemConfig = resource.useSave;
-/** 服务端未提供 DELETE /batch，多条时逐条删除 */
+/** 契约无批量删除操作，多条时逐条删除 */
 export const useDeleteSystemConfigs = resource.useDelete;
 
 export function useSystemPasswordPolicy() {

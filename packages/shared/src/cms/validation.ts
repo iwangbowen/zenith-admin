@@ -1135,7 +1135,7 @@ export const setCmsAuthorizedUsersSchema = z.object({
 
 export type SetCmsAuthorizedUsersInput = z.input<typeof setCmsAuthorizedUsersSchema>;
 
-/** 站点导出包（GET /api/cms/sites/{id}/export 的产物）原样回传导入 */
+/** 站点导出包（站点导出操作的产物）原样回传导入 */
 export const cmsSiteImportPackageSchema = z.looseObject({}).meta({ description: '站点导出包 JSON（GET /api/cms/sites/{id}/export 的产物）' });
 
 export type CmsSiteImportPackageInput = z.input<typeof cmsSiteImportPackageSchema>;

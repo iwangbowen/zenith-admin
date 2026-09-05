@@ -17,7 +17,7 @@ import { createDriveShareLink, listNodeShareLinks } from '../../services/drive/d
 import { binaryResponses, streamStoredContent } from './drive-nodes';
 
 /**
- * /api/drive/nodes/{id}/... 单节点路由。
+ * 网盘单节点路由。
  * 与 drive-nodes.ts（静态路径）拆成两个路由器顺序挂载在同一路径：静态路径先于 /{id}，
  * 同时避免单个 openapiRoutes 元组过大触发 TS2589。
  */

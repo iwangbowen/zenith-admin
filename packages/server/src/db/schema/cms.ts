@@ -879,7 +879,7 @@ export const cmsAds = pgTable('cms_ads', {
   /** 投放时间窗（空 = 不限） */
   startAt: timestamp(),
   endAt: timestamp(),
-  /** 点击计数（前台经由 /api/public/cms/ads/{id}/click 中转累加） */
+  /** 点击计数（前台经由公开广告点击中转累加） */
   clickCount: integer().notNull().default(0),
   /** 曝光计数（前台页面加载 beacon 批量上报累加） */
   viewCount: integer().notNull().default(0),

@@ -17,7 +17,7 @@ import { binaryResponses, streamStoredContent } from './drive-nodes';
 
 /**
  * 外链匿名访问：契约上为 public，不挂认证中间件；
- * 防密码枚举由路径绑定限流规则 drive_public_share（/api/drive/public/*）按 IP 限速。
+ * 防密码枚举由路径绑定限流规则 drive_public_share 按 IP 限速。
  */
 const router = new OpenAPIHono({ defaultHook: validationHook });
 

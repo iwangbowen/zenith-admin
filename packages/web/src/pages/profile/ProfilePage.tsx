@@ -250,7 +250,7 @@ export default function ProfilePage({ user }: ProfilePageProps) {
   async function handleOAuthBind(provider: OAuthProviderType) {
     const res = await oauthBindUrlMutation.mutateAsync({ params: { provider } });
     if (res.authUrl) {
-      // 绑定意图 + state 暂存：回调页据此走 POST /bind，保持当前会话不被替换
+      // 绑定意图 + state 暂存：回调页据此走 `oauthContract.bind`，保持当前会话不被替换
       rememberOAuthPending({ state: res.state, provider, intent: 'bind' });
       globalThis.location.href = res.authUrl;
     }

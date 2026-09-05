@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useMemo, t
 import { MEMBER_TOKEN_KEY, MEMBER_REFRESH_TOKEN_KEY } from '@zenith/shared/core';
 import type { ApiResponse, BodyOf } from '@zenith/shared/core';
 import { memberAuthContract, type Member, type MemberLoginResult } from '@zenith/shared/member';
-import { urlOf } from '@/lib/contract-query';
+import { apiRaw } from '@/lib/contract-query';
 import { prepareTrackerLogout } from '@/utils/tracker';
 import { memberRequest } from '../utils/member-request';
 import { memberQueryClient } from '../lib/member-query';
@@ -36,7 +36,7 @@ export function MemberAuthProvider({ children }: Readonly<{ children: ReactNode 
       return;
     }
     try {
-      const res = await memberRequest.get<Member>(urlOf(memberAuthContract.me), { silent: true });
+      const res = await apiRaw(memberAuthContract.me, { client: memberRequest, silent: true });
       if (res.code === 0) {
         setState({ member: res.data, loading: false });
       } else if (res.code === -1) {
@@ -58,7 +58,7 @@ export function MemberAuthProvider({ children }: Readonly<{ children: ReactNode 
 
   const login = useCallback(async (params: MemberLoginParams) => {
     // 直接消费响应包络：code / message 决定登录页的错误提示分支，不走 api() 解包
-    const res = await memberRequest.post<MemberLoginResult>(urlOf(memberAuthContract.login), params satisfies BodyOf<typeof memberAuthContract.login>, { silent: true });
+    const res = await apiRaw(memberAuthContract.login, { body: params }, { client: memberRequest, silent: true });
     if (res.code === 0) {
       localStorage.setItem(MEMBER_TOKEN_KEY, res.data.token.accessToken);
       localStorage.setItem(MEMBER_REFRESH_TOKEN_KEY, res.data.token.refreshToken);
@@ -68,7 +68,7 @@ export function MemberAuthProvider({ children }: Readonly<{ children: ReactNode 
   }, []);
 
   const register = useCallback(async (params: MemberRegisterParams) => {
-    const res = await memberRequest.post<MemberLoginResult>(urlOf(memberAuthContract.register), params satisfies BodyOf<typeof memberAuthContract.register>, { silent: true });
+    const res = await apiRaw(memberAuthContract.register, { body: params }, { client: memberRequest, silent: true });
     if (res.code === 0) {
       localStorage.setItem(MEMBER_TOKEN_KEY, res.data.token.accessToken);
       localStorage.setItem(MEMBER_REFRESH_TOKEN_KEY, res.data.token.refreshToken);
@@ -79,7 +79,7 @@ export function MemberAuthProvider({ children }: Readonly<{ children: ReactNode 
 
   const logout = useCallback(() => {
     // 请求构造会在本行同步读取当前 token，随后再清理本地身份。
-    memberRequest.post(urlOf(memberAuthContract.logout), {}, { silent: true }).catch(() => {});
+    apiRaw(memberAuthContract.logout, { client: memberRequest, silent: true }).catch(() => {});
     // 退出前用当前会员 token 尽力发送旧身份事件，避免残留队列被下一个账号接管
     prepareTrackerLogout();
     localStorage.removeItem(MEMBER_TOKEN_KEY);

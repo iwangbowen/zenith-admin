@@ -24,7 +24,7 @@ const rateLimitedResponse = {
 
 /**
  * SSE 流式对话接口 —— 生成与连接解耦：生成任务后台运行并写入 Redis 缓冲，
- * 本接口启动生成后 tail 缓冲透传；断线后可通过 /api/ai/generations/{genId}/stream 续传。
+ * 本接口启动生成后 tail 缓冲透传；断线后可通过 `aiGenerationContract.stream` 续传。
  */
 const chat = defineContractRoute(aiConversationContract.chat, {
   middleware: [authMiddleware, namedRateLimit('ai_chat_send')],

@@ -1,5 +1,5 @@
 /**
- * IoT 告警 API（/api/iot/alarms + /api/iot/alarm-rules + /api/iot/maintenance-windows）
+ * IoT 告警：告警记录 / 告警规则 / 维护窗口
  */
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { iotAlarmContract, iotAlarmRuleContract, iotMaintenanceWindowContract } from '@zenith/shared/iot';
@@ -19,7 +19,7 @@ import {
 const read = [authMiddleware, guard({ permission: 'iot:alarm:list' })] as const;
 const notFound = { 404: { content: jsonContent(ErrorResponse), description: '不存在' } } as const;
 
-// ─── 告警记录（/api/iot/alarms）──────────────────────────────────────────────
+// ─── 告警记录 ────────────────────────────────────────────────────────────────
 export const iotAlarmsRouter = new OpenAPIHono({ defaultHook: validationHook });
 
 const listAlarmsRoute = defineContractRoute(iotAlarmContract.list, {
@@ -54,7 +54,7 @@ const resolveAlarmRoute = defineContractRoute(iotAlarmContract.resolve, {
 
 iotAlarmsRouter.openapiRoutes([listAlarmsRoute, acknowledgeAlarmRoute, resolveAlarmRoute] as const);
 
-// ─── 告警规则（/api/iot/alarm-rules）─────────────────────────────────────────
+// ─── 告警规则 ────────────────────────────────────────────────────────────────
 export const iotAlarmRulesRouter = new OpenAPIHono({ defaultHook: validationHook });
 
 const listRulesRoute = defineContractRoute(iotAlarmRuleContract.list, {
@@ -104,7 +104,7 @@ iotAlarmRulesRouter.openapiRoutes([
   deleteRuleRoute,
 ] as const);
 
-// ─── 维护窗口（/api/iot/maintenance-windows）────────────────────────────────
+// ─── 维护窗口 ────────────────────────────────────────────────────────────────
 export const iotMaintenanceWindowsRouter = new OpenAPIHono({ defaultHook: validationHook });
 
 const listWindowsRoute = defineContractRoute(iotMaintenanceWindowContract.list, {

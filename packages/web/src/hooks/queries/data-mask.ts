@@ -11,7 +11,7 @@ export const dataMaskKeys = resource.keys;
 export const useDataMaskList = resource.useList;
 export const useDataMaskDetail = resource.useDetail;
 export const useSaveDataMask = resource.useSave;
-/** 服务端未提供 DELETE /batch，多条时逐条删除 */
+/** 契约无批量删除操作，多条时逐条删除 */
 export const useDeleteDataMasks = resource.useDelete;
 
 /**

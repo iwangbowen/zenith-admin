@@ -1,5 +1,5 @@
 /**
- * 短链管理 API（/api/short-links）
+ * 短链管理
  */
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { shortLinkContract } from '@zenith/shared/short-link';

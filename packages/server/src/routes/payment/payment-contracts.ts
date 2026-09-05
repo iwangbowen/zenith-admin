@@ -1,5 +1,5 @@
 /**
- * 签约代扣管理路由（/api/payment/contracts + /api/payment/deduct-plans）。
+ * 签约代扣管理路由：签约协议 + 扣款计划。
  * 扣款计划 CRUD、签约协议列表/详情、创建签约（演示）、解约/暂停/恢复、手动补扣。
  */
 import { OpenAPIHono } from '@hono/zod-openapi';

@@ -42,7 +42,7 @@ export default defineRouteDomain({
     [memberAuthContract.basePath, memberAuthRoutes, { feature: 'member' }],
     [memberRenewalContract.basePath, memberRenewalRoutes, { feature: 'member' }],
     [memberCmsContract.basePath, memberCmsRoutes, { feature: 'member' }],
-    // 会员端设备推送绑定;须先于 /api/member 兜底挂载
+    // 会员端设备推送绑定；须先于会员自助资源根挂载
     [memberPushContract.basePath, memberPushRoutes, { feature: 'member' }],
     [memberSelfContract.basePath, memberSelfRoutes, { feature: 'member' }],
     [memberContract.basePath, membersRoutes, { feature: 'member' }],

@@ -14,7 +14,7 @@ const monitor = [authMiddleware, guard({ permission: 'workflow:instance:monitor'
 
 /**
  * 工作流协作选人（转办/委派/加签/协办/转发/抄送共用）。
- * 面向普通发起人/审批人开放——不要求 system:user:list（管理接口 /api/users/all 的权限），
+ * 面向普通发起人/审批人开放——不要求 system:user:list（用户管理 `userContract.all` 的权限），
  * 仅返回协作必需的最小字段。
  */
 export const selectableUsersRoute = defineContractRoute(workflowInstanceContract.selectableUsers, {

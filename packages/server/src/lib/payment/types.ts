@@ -22,7 +22,7 @@ export interface DecryptedSecrets {
 export interface AdapterContext {
   config: PaymentChannelConfigRow;
   secrets: DecryptedSecrets;
-  /** 完整的异步通知回调地址（含渠道，如 https://host/api/public/payment/notify/wechat） */
+  /** 完整的异步通知回调地址（含渠道段） */
   notifyUrl: string;
 }
 
@@ -43,14 +43,17 @@ export interface PaymentQueryResult {
   raw?: unknown;
 }
 
+/** 渠道资金操作（退款 / 分账 / 冲正 / 转账 / 代扣）的标准化受理状态：processing 需后续查询收敛 */
+export type ChannelOperationStatus = 'processing' | 'success' | 'failed';
+
 export interface RefundResult {
   channelRefundNo?: string;
-  status: 'processing' | 'success' | 'failed';
+  status: ChannelOperationStatus;
   raw?: unknown;
 }
 
 export interface RefundQueryResult {
-  status: 'processing' | 'success' | 'failed';
+  status: ChannelOperationStatus;
   channelRefundNo?: string;
   refundedAt?: Date;
   raw?: unknown;
@@ -71,13 +74,13 @@ export interface ProfitShareReceiver {
 export interface ProfitShareResult {
   /** 渠道分账单号 */
   channelSharingNo?: string;
-  status: 'processing' | 'success' | 'failed';
+  status: ChannelOperationStatus;
   raw?: unknown;
 }
 
 /** 分账结果查询（processing 单的状态同步） */
 export interface ProfitShareQueryResult {
-  status: 'processing' | 'success' | 'failed';
+  status: ChannelOperationStatus;
   channelSharingNo?: string;
   finishedAt?: Date;
   raw?: unknown;
@@ -96,7 +99,7 @@ export interface ProfitShareReverseInput {
 
 export interface ProfitShareReverseResult {
   channelReversalNo?: string;
-  status: 'processing' | 'success' | 'failed';
+  status: ChannelOperationStatus;
   failReason?: string;
   raw?: unknown;
 }
@@ -122,12 +125,12 @@ export interface TransferInput {
 export interface TransferResult {
   /** 渠道转账单号（受理成功即返回） */
   channelTransferNo?: string;
-  status: 'processing' | 'success' | 'failed';
+  status: ChannelOperationStatus;
   raw?: unknown;
 }
 
 export interface TransferQueryResult {
-  status: 'processing' | 'success' | 'failed';
+  status: ChannelOperationStatus;
   channelTransferNo?: string;
   finishedAt?: Date;
   failReason?: string;
@@ -182,7 +185,7 @@ export interface ContractDeductInput {
 
 export interface ContractDeductResult {
   channelTradeNo?: string;
-  status: 'success' | 'processing' | 'failed';
+  status: ChannelOperationStatus;
   failReason?: string;
   raw?: unknown;
 }

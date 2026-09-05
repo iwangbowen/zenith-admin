@@ -31,6 +31,7 @@ export {
 } from './registry';
 export type {
   AdapterContext,
+  ChannelOperationStatus,
   DecryptedSecrets,
   ContractQueryInput,
   ContractQueryResult,

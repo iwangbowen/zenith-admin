@@ -1,5 +1,5 @@
 /**
- * IoT 设备管理 API（/api/iot/devices）
+ * IoT 设备管理
  */
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { iotDeviceContract } from '@zenith/shared/iot';
@@ -24,13 +24,13 @@ const read = [authMiddleware, guard({ permission: 'iot:device:list' })] as const
 const telemetryRead = [authMiddleware, guard({ permission: 'iot:telemetry:view' })] as const;
 const notFound = { 404: { content: jsonContent(ErrorResponse), description: '不存在' } } as const;
 
-// ─── GET / — 分页列表 ─────────────────────────────────────────────────────────
+// ─── 分页列表 ────────────────────────────────────────────────────────────────
 const listRoute = defineContractRoute(iotDeviceContract.list, {
   middleware: read,
   handler: async (c) => c.json(okBody(await listIotDevices(c.req.valid('query'))), 200),
 });
 
-// ─── DELETE /batch ────────────────────────────────────────────────────────────
+// ─── 批量删除 ────────────────────────────────────────────────────────────────
 const batchDeleteRoute = defineContractRoute(iotDeviceContract.removeBatch, {
   middleware: [authMiddleware, guard({
     permission: 'iot:device:delete',
@@ -44,7 +44,7 @@ const batchDeleteRoute = defineContractRoute(iotDeviceContract.removeBatch, {
   },
 });
 
-// ─── GET /{id} — 详情 ─────────────────────────────────────────────────────────
+// ─── 详情 ────────────────────────────────────────────────────────────────────
 const getOneRoute = defineContractRoute(iotDeviceContract.detail, {
   middleware: read,
   responses: notFound,
@@ -54,7 +54,7 @@ const getOneRoute = defineContractRoute(iotDeviceContract.detail, {
   },
 });
 
-// ─── GET /{id}/telemetry — 遥测点列 ──────────────────────────────────────────
+// ─── 遥测点列 ────────────────────────────────────────────────────────────────
 const telemetryRoute = defineContractRoute(iotDeviceContract.telemetry, {
   middleware: telemetryRead,
   handler: async (c) => {
@@ -63,7 +63,7 @@ const telemetryRoute = defineContractRoute(iotDeviceContract.telemetry, {
   },
 });
 
-// ─── GET /{id}/telemetry/agg — 长窗口小时聚合 ────────────────────────────────
+// ─── 长窗口小时聚合 ──────────────────────────────────────────────────────────
 const telemetryAggRoute = defineContractRoute(iotDeviceContract.telemetryAgg, {
   middleware: telemetryRead,
   handler: async (c) => {
@@ -94,7 +94,7 @@ const sendCommandRoute = defineContractRoute(iotDeviceContract.sendCommand, {
   },
 });
 
-// ─── POST /{id}/reset-secret ─────────────────────────────────────────────────
+// ─── 重置设备密钥 ────────────────────────────────────────────────────────────
 const resetSecretRoute = defineContractRoute(iotDeviceContract.resetSecret, {
   middleware: [authMiddleware, guard({
     permission: 'iot:device:update',
@@ -106,7 +106,7 @@ const resetSecretRoute = defineContractRoute(iotDeviceContract.resetSecret, {
   },
 });
 
-// ─── DELETE /{id}/telemetry — 清空遥测 ───────────────────────────────────────
+// ─── 清空遥测 ────────────────────────────────────────────────────────────────
 const clearTelemetryRoute = defineContractRoute(iotDeviceContract.clearTelemetry, {
   middleware: [authMiddleware, guard({
     permission: 'iot:device:update',
@@ -160,7 +160,7 @@ const listEventsRoute = defineContractRoute(iotDeviceContract.events, {
   },
 });
 
-// ─── POST / — 创建 ────────────────────────────────────────────────────────────
+// ─── 创建 ────────────────────────────────────────────────────────────────────
 const createRoute_ = defineContractRoute(iotDeviceContract.create, {
   middleware: [authMiddleware, guard({
     permission: 'iot:device:create',
@@ -169,7 +169,7 @@ const createRoute_ = defineContractRoute(iotDeviceContract.create, {
   handler: async (c) => c.json(okBody(await createIotDevice(c.req.valid('json')), '创建成功'), 200),
 });
 
-// ─── PUT /{id} — 更新 ─────────────────────────────────────────────────────────
+// ─── 更新 ────────────────────────────────────────────────────────────────────
 const updateRoute_ = defineContractRoute(iotDeviceContract.update, {
   middleware: [authMiddleware, guard({
     permission: 'iot:device:update',
@@ -186,7 +186,7 @@ const updateRoute_ = defineContractRoute(iotDeviceContract.update, {
   },
 });
 
-// ─── DELETE /{id} — 删除 ──────────────────────────────────────────────────────
+// ─── 删除 ────────────────────────────────────────────────────────────────────
 const deleteRoute_ = defineContractRoute(iotDeviceContract.remove, {
   middleware: [authMiddleware, guard({
     permission: 'iot:device:delete',

@@ -42,7 +42,7 @@ import workflowTemplatesRoutes from './workflow-templates';
 import workflowTriggerCallbackRoutes from './workflow-trigger-callback';
 import workflowTriggerExecutionsRoutes from './workflow-trigger-executions';
 
-// 子资源前缀先挂载，/api/workflows 根路径（实例 / 任务 / 运维契约共用）最后挂载
+// 子资源前缀先挂载，资源根路径（实例 / 任务 / 运维契约共用）最后挂载
 export default defineRouteDomain({
   name: 'workflow',
   mounts: () => [

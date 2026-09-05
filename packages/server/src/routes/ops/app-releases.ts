@@ -2,7 +2,7 @@
  * 应用版本管理（管理侧 API）。
  *
  * 应用 / 版本 / 制品 CRUD、发布状态机（publish / revoke）、灰度调整与升级看板统计、统一设备中心。
- * 五组子资源各自独立挂载在 /api/app-releases 下的静态前缀（apps / releases / artifacts / devices / stats），
+ * 五组子资源各自独立挂载在应用版本资源根下的静态前缀（apps / releases / artifacts / devices / stats），
  * 见 routes/ops/index.ts。公开侧（客户端检查更新 / 制品分发）在 public-app-releases.ts，不要混入本文件。
  */
 import { OpenAPIHono, z } from '@hono/zod-openapi';

@@ -12,7 +12,7 @@ export function httpUrl(message = 'URL 格式不正确，仅支持 http(s) 地�
   return z.url({ protocol: /^https?$/, error: message });
 }
 
-/** 绝对 http(s) URL 或站内根相对路径（如托管文件 `/api/files/{id}/content`）；用于 href / src 类字段 */
+/** 绝对 http(s) URL 或站内根相对路径（如托管文件内容地址）；用于 href / src 类字段 */
 export function linkUrl(message = '地址仅支持 http(s) URL 或站内路径') {
   return z.string().refine(isSafeLinkUrl, message);
 }

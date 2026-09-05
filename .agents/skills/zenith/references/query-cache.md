@@ -10,14 +10,14 @@
 
 - **契约层**：`@zenith/shared/{域}` 的 `xxxContract`——路径、入参与响应形状的唯一来源
 - **传输层**：`utils/request.ts`（token 刷新、401/429/503 处理、错误 Toast）
-- **契约调用层**：`lib/contract-query.ts`（`api()` / `apiQueryOptions()` / `useApiQuery()` / `useApiMutation()` /
+- **契约调用层**：`lib/contract-query.ts`（`api()` / `apiRaw()` / `apiQueryOptions()` / `useApiQuery()` / `useApiMutation()` /
   `createResourceQueries()`），基建在 `lib/query.ts`（`queryClient`、`unwrap()`、`toQueryString()`、`LOOKUP_STALE_TIME`）
 - **服务端状态层**：`hooks/queries/<域>.ts` 域 hooks + 页面内 `useQuery` / `useMutation`
 
 核心约定：
 
 1. 所有请求经契约发起：`api(op, input)` 构造 URL、发送并 `unwrap`（`code !== 0` 抛 `ApiError`，request 层已自动 Toast）；
-   域 hooks 与页面不出现 `/api/...` 字面量
+   需要信封 `message` / 非零 `code` 分支时用 `apiRaw(op, input)`；域 hooks 与页面不出现 `/api/...` 字面量
 2. 每个域文件导出 keys 常量对象（`createResourceQueries().keys`），至少含 `all` / `lists` / `list(params)` / `detail(id)`；
    单操作查询的 key 由 `contractKey(op, input)` 生成：`[资源键, 操作名, input]`
 3. 分页列表查询必须 `placeholderData: keepPreviousData`（翻页不闪白屏）

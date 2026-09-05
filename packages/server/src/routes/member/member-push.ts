@@ -1,5 +1,5 @@
 /**
- * 会员端推送设备绑定（/api/member/push/devices，memberAuthMiddleware 鉴权）。
+ * 会员端推送设备绑定（memberAuthMiddleware 鉴权）。
  * 与管理端 routes/ops/push-devices.ts 共用设备中心服务，主体固定为 member。
  */
 import { OpenAPIHono } from '@hono/zod-openapi';

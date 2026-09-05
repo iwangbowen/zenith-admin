@@ -29,7 +29,7 @@ export const paymentDeductPlanListQuery = paginationQuery.extend({
   status: entityStatusSchema.optional(),
 });
 
-/** 扣款计划：与签约协议同挂 `/api/payment` 根，操作名在根内唯一 */
+/** 扣款计划：与签约协议同挂支付资源根，操作名在根内唯一 */
 export const paymentDeductPlanContract = defineContract('/api/payment', {
   deductPlans: op.get('/deduct-plans', { query: paymentDeductPlanListQuery, response: paginated(paymentDeductPlanSchema), summary: '扣款计划列表' }),
   deductPlansAll: op.get('/deduct-plans/all', { response: z.array(paymentDeductPlanSchema), summary: '全量启用扣款计划（下拉）' }),

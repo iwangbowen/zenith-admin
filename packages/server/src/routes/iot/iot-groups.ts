@@ -1,5 +1,5 @@
 /**
- * IoT 设备分组 API（/api/iot/groups）
+ * IoT 设备分组
  */
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { iotDeviceGroupContract } from '@zenith/shared/iot';

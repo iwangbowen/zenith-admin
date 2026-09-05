@@ -11,8 +11,7 @@ import {
   type UpdateRateLimitRuleInput,
 } from '@zenith/shared/platform';
 import { config } from '@/config';
-import { request } from '@/utils/request';
-import { api, contractKey, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { api, apiRaw, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { unwrap, LOOKUP_STALE_TIME } from '@/lib/query';
 
 export type { RateLimitAlgorithm, RateLimitKeyType, RateLimitMode, RateLimitMountSource };
@@ -58,7 +57,7 @@ function invalidateRuleViews(qc: import('@tanstack/react-query').QueryClient) {
   void qc.invalidateQueries({ queryKey: rateLimitKeys.stats });
 }
 
-/** 无 id 走 POST /rules 新增，有 id 走 PATCH /rules/{id} 部分更新（规则名称不可更改） */
+/** 无 id 新增，有 id 部分更新（规则名称不可更改） */
 export function useSaveRateLimitRule() {
   const qc = useQueryClient();
   return useMutation<RateLimitRule, Error, { id?: number; values: Partial<CreateRateLimitRuleInput> }>({
@@ -78,7 +77,7 @@ export function useUnblockRateLimitKey() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ name, key }: { name: string; key: string }) => {
-      const res = await request.post<null>(urlOf(rateLimitContract.unblock), { name, key });
+      const res = await apiRaw(rateLimitContract.unblock, { body: { name, key } });
       unwrap(res);
       return res.message;
     },
@@ -110,7 +109,7 @@ export function useUnbanRateLimitKey() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ name, key }: { name: string; key: string }) => {
-      const res = await request.post<null>(urlOf(rateLimitContract.unban), { name, key });
+      const res = await apiRaw(rateLimitContract.unban, { body: { name, key } });
       unwrap(res);
       return res.message;
     },

@@ -20,9 +20,8 @@ import {
   type UpdateRuleListInput,
   type UpdateRuleTestCaseInput,
 } from '@zenith/shared/rules';
-import { api, contractKey, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { api, apiRaw, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { unwrap } from '@/lib/query';
-import { request } from '@/utils/request';
 
 export type RuleDecisionTableListParams = NonNullable<QueryOf<typeof decisionTableContract.list>>;
 
@@ -286,7 +285,7 @@ export function useBatchImportRuleListItems() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ listId, values, expiresAt }: { listId: number; values: string[]; expiresAt?: string | null }) => {
-      const res = await request.post<null>(urlOf(ruleListContract.createItemsBatch, { params: { id: listId } }), { values, expiresAt });
+      const res = await apiRaw(ruleListContract.createItemsBatch, { params: { id: listId }, body: { values, expiresAt } });
       unwrap(res);
       return res.message;
     },
@@ -303,7 +302,7 @@ export function usePurgeExpiredRuleListItems() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (listId: number) => {
-      const res = await request.post<null>(urlOf(ruleListContract.purgeExpiredItems, { params: { id: listId } }));
+      const res = await apiRaw(ruleListContract.purgeExpiredItems, { params: { id: listId } });
       unwrap(res);
       return res.message;
     },

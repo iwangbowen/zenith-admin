@@ -4,7 +4,7 @@ import { iotMetricsSchema } from './devices';
 
 /**
  * 开放 API 视角的设备（对外以 SN 寻址，不暴露内部 id、secret 与租户信息）。
- * 由开放平台网关（/api/open/v1/iot/*）以契约引用。
+ * 由开放平台网关的 IoT 子契约（`openIotContract`）引用。
  */
 export const openIotDeviceSchema = z.object({
   sn: z.string(),

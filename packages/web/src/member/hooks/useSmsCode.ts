@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Toast } from '@douyinfe/semi-ui';
-import type { BodyOf } from '@zenith/shared/core';
-import { memberAuthContract, type MemberSmsCodeResult, type MemberSmsScene } from '@zenith/shared/member';
-import { urlOf } from '@/lib/contract-query';
+import { memberAuthContract, type MemberSmsScene } from '@zenith/shared/member';
+import { apiRaw } from '@/lib/contract-query';
 import { memberRequest } from '../utils/member-request';
 
 const PHONE_REGEX = /^1[3-9]\d{9}$/;
@@ -26,10 +25,7 @@ export function useSmsCode(scene: MemberSmsScene) {
     }
     if (counting > 0) return false;
     // 直接消费响应包络：限流等业务失败由 http 层提示，此处只按 code 决定是否进入倒计时
-    const res = await memberRequest.post<MemberSmsCodeResult>(
-      urlOf(memberAuthContract.smsCode),
-      { phone, scene } satisfies BodyOf<typeof memberAuthContract.smsCode>,
-    );
+    const res = await apiRaw(memberAuthContract.smsCode, { body: { phone, scene } }, { client: memberRequest });
     if (res.code === 0) {
       Toast.success(res.data?.devCode ? `验证码已发送，开发验证码：${res.data.devCode}` : '验证码已发送');
       let n = 60;

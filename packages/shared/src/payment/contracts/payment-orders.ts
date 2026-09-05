@@ -83,7 +83,7 @@ export const paymentOrderNoParam = z.object({
   orderNo: z.string().min(1).max(64).meta({ description: '支付订单号', example: 'PAY1700000000001' }),
 });
 
-/** 支付订单：与商户配置 / 退款 / 签约代扣共用 `/api/payment` 根，操作名在根内唯一 */
+/** 支付订单：与商户配置 / 退款 / 签约代扣共用支付资源根，操作名在根内唯一 */
 export const paymentOrderContract = defineContract('/api/payment', {
   orders: op.get('/orders', { query: paymentOrderListQuery, response: paginated(paymentOrderSchema), summary: '支付订单列表' }),
   createOrder: op.post('/orders', { body: createPaymentSchema, response: createPaymentResponseSchema, summary: '发起支付下单' }),

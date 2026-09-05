@@ -1,5 +1,5 @@
 /**
- * 管理端实时通道 `/api/ws`。
+ * 管理端实时 WebSocket 通道。
  *
  * 安全边界：
  * - 升级鉴权复用 HTTP 口径（lib/ws-auth.ts）：只接受管理端 access token，实时校验用户 / 租户状态与黑名单

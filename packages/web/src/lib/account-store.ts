@@ -6,7 +6,7 @@ import { ACCOUNT_SWITCH_BROADCAST_KEY, ACCOUNTS_STORE_KEY, MAX_STORED_ACCOUNTS }
  * 设计约定：
  * - 活跃账号的凭证始终只存在 TOKEN_KEY / REFRESH_TOKEN_KEY 槽位（全站直接读取处零改动）；
  * - 本仓库只保存「非活跃」账号：资料快照 + refreshToken（不落盘 accessToken，
- *   切回时经 /api/auth/refresh 换发，天然校验会话有效性并缩小 XSS 暴露面）；
+ *   切回时经令牌刷新接口换发，天然校验会话有效性并缩小 XSS 暴露面）；
  * - refresh token 服务端不轮换，停靠期间保持有效，过期则引导重新登录。
  */
 export interface StoredAccount {

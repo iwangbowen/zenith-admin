@@ -33,7 +33,7 @@ export const paymentLinkKeys = {
 export const usePaymentLinkList = resource.useList;
 export const usePaymentLinkDetail = resource.useDetail;
 export const useSavePaymentLink = resource.useSave;
-/** 服务端未提供 DELETE /batch，多选删除按单条并发执行 */
+/** 契约无批量删除操作，多选删除按单条并发执行 */
 export const useDeletePaymentLinks = resource.useDelete;
 
 /** 换 token 后旧公开链接立即失效：列表、详情与公开视图全部回源 */

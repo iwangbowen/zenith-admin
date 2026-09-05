@@ -1,20 +1,18 @@
 import { useCallback, useMemo } from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ApiResponse, BodyOf } from '@zenith/shared/core';
+import type { BodyOf } from '@zenith/shared/core';
 import { dictContract } from '@zenith/shared/platform';
 import {
   reportDashboardContract,
   reportDatasetContract,
   reportMetricContract,
-  type ReportDashboard,
   type ReportDataResult,
   type ReportDataset,
   type ReportFilter,
   type ReportWidget,
 } from '@zenith/shared/report';
-import { api, contractKey, urlOf } from '@/lib/contract-query';
+import { api, apiRaw, contractKey } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
-import { request } from '@/utils/request';
 import { reportDashboardKeys } from './report-dashboards';
 import { mergeReportLookupOptions } from './report-lookups';
 
@@ -72,7 +70,7 @@ export function useSaveReportDashboardDesign() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, values }: { id: number; values: BodyOf<typeof reportDashboardContract.update> }) =>
-      request.put<ReportDashboard>(urlOf(reportDashboardContract.update, { params: { id } }), values, { silent: true }) as Promise<ApiResponse<ReportDashboard>>,
+      apiRaw(reportDashboardContract.update, { params: { id }, body: values }, { silent: true }),
     onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: reportDashboardKeys.detailOf(vars.id) });
       void qc.invalidateQueries({ queryKey: reportDashboardKeys.lists });

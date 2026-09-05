@@ -24,7 +24,7 @@ import { assertContentLengthWithinLimit } from '../../services/ops/terminal-file
 /**
  * SSH 远程文件（SFTP）路由
  *
- * 端点前缀：/api/ssh-sftp/:profileId/...
+ * 全部操作以 profileId 为路径参数。
  * 权限：system:terminal:execute（与 Web 终端一致）。所有操作针对 SSH 配置对应的远程主机，
  * 配置归属校验在 service 层（getSshConnectParams 按 userId 过滤）完成，杜绝越权访问他人主机。
  */

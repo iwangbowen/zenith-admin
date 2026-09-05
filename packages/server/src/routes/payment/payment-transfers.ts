@@ -1,5 +1,5 @@
 /**
- * 转账/代付管理路由（/api/payment/transfers）。
+ * 转账/代付管理路由。
  * 发起转账（微信零钱 / 支付宝账户）、四眼审批、查单同步、列表与汇总。
  */
 import { OpenAPIHono } from '@hono/zod-openapi';
