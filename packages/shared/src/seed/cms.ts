@@ -1,4 +1,4 @@
-import type { CmsAd, CmsAdEvent, CmsAdSlot, CmsChannel, CmsCollectItem, CmsCollectRule, CmsComment, CmsContent, CmsContentVersion, CmsDistributionRule, CmsErrorProneWord, CmsForm, CmsFriendLink, CmsFriendLinkGroup, CmsHotwordGroup, CmsInteraction, CmsInteractionQuestion, CmsLinkWord, CmsMemberSubscription, CmsModel, CmsPage, CmsResource, CmsResourceFolder, CmsSearchWord, CmsSensitiveWord, CmsSite, CmsSiteInheritanceFlags, CmsTag, CmsWidget } from '../cms/types';
+import type { CmsAd, CmsAdEvent, CmsAdSlot, CmsChannel, CmsCollectItem, CmsCollectRule, CmsComment, CmsContent, CmsContentVersion, CmsDistributionRule, CmsErrorProneWord, CmsForm, CmsFriendLink, CmsFriendLinkGroup, CmsHotwordGroup, CmsInteraction, CmsInteractionQuestion, CmsLinkWord, CmsMemberSubscription, CmsModel, CmsPage, CmsResource, CmsResourceFolder, CmsSearchWord, CmsSensitiveWord, CmsSite, CmsSiteInheritanceFlags, CmsTag, CmsWidget } from '../cms/contracts';
 import { SEED_DATE } from './_base';
 
 export const SEED_CMS_EDITOR_USER = {

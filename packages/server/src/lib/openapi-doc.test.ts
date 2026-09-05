@@ -7,8 +7,12 @@ import * as dtos from './openapi-dtos';
  * 回归防线：`/api/openapi.json`（Swagger / SDK 生成的唯一数据源）曾因递归 schema
  * 无限展开而整份返回 500。递归 schema 要生成 `$ref` 必须同时满足两个条件：
  * 1. `z.lazy` 的内部实例被缓存（shared 的 `lazyRecursive`），自引用命中同一实例；
- * 2. 递归 schema 自身注册了 refId（`.openapi('Xxx')`）。
- * 任一条件缺失都会栈溢出，且只在生成整份文档时才暴露，故在此逐个 DTO 兜底。
+ * 2. 递归 schema 自身注册了 refId（`.openapi('Xxx')` / `.meta({ id })`）。
+ * 任一条件缺失都会栈溢出，且只在生成整份文档时才暴露。
+ *
+ * 实体 schema 由 `@zenith/shared` 各域契约定义，整份文档的生成由 `app.contract.test.ts`
+ * 通过真实 `createApp()` 覆盖；本文件只逐个兜底仍以 DTO 形式导出的少数 schema
+ * （不经契约 DSL 的 OAuth2 RFC 协议端点），并守住开放网关的 OpenAPIHono 装配。
  */
 function isZodSchema(value: unknown): value is z.ZodType {
   return !!value && typeof (value as { safeParse?: unknown }).safeParse === 'function';
@@ -30,7 +34,7 @@ describe('OpenAPI 文档生成', () => {
   const entries = Object.entries(dtos as Record<string, unknown>).filter(([, s]) => isZodSchema(s));
 
   it('导出了 DTO', () => {
-    expect(entries.length).toBeGreaterThan(100);
+    expect(entries.length).toBeGreaterThan(0);
   });
 
   it('每个 DTO 都能独立生成（递归 schema 不会栈溢出）', () => {
@@ -49,7 +53,7 @@ describe('OpenAPI 文档生成', () => {
     const doc = generate((app) => {
       for (const [name, schema] of entries) app.openAPIRegistry.register(`Probe${name}`, schema as z.ZodType);
     });
-    expect(Object.keys(doc.components?.schemas ?? {}).length).toBeGreaterThan(entries.length);
+    expect(Object.keys(doc.components?.schemas ?? {}).length).toBeGreaterThanOrEqual(entries.length);
   }, HEAVY_DOC_TIMEOUT_MS);
 
   it('开放网关必须是 OpenAPIHono，否则子路由不会进入文档', async () => {

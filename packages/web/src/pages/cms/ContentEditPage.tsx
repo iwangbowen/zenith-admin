@@ -14,7 +14,7 @@ import {
   useSaveCmsContent, useCmsContentAction, useCmsContentVersions, useRestoreCmsContentVersion,
   useCmsVersionDiff, useCmsPreviewLink, acquireCmsEditLock, releaseCmsEditLock, useCmsContentList,
   useAllCmsSites, useCmsThemeTemplates, useCmsContentOpLogs, useCmsCheckText, useUploadCmsResource,
-  useCheckCmsContentTitle, useUploadCmsImage,
+  useCheckCmsContentTitle, useUploadCmsImage, cmsImageUploadUrl,
 } from '@/hooks/queries/cms';
 import { CMS_CONTENT_STATUS_LABELS, CMS_CONTENT_TYPE_LABELS, CMS_CONTENT_TYPES, CMS_TITLE_STYLE_COLORS } from '@zenith/shared/cms';
 import type { CmsChannel, CmsModelField, CmsEditLock, CmsTextCheckResult, CmsContentType, CmsAlbumImage, CmsContentAttachment } from '@zenith/shared/cms';
@@ -234,7 +234,7 @@ export default function ContentEditPage() {
     if (!title || !siteId || title === lastCheckedTitle.current) return;
     lastCheckedTitle.current = title;
     try {
-      const res = await checkTitleMutation.mutateAsync({ siteId, title, excludeId: id ? Number(id) : undefined });
+      const res = await checkTitleMutation.mutateAsync({ query: { siteId, title, excludeId: id ? Number(id) : undefined } });
       if (res?.duplicate) {
         Toast.warning({ content: `本站已存在 ${res.matches.length} 条同名内容（如 #${res.matches[0].id}），请确认是否重复发布`, duration: 5 });
       }
@@ -543,7 +543,7 @@ export default function ContentEditPage() {
         return;
       }
     }
-    const link = await previewMutation.mutateAsync(previewId);
+    const link = await previewMutation.mutateAsync({ params: { id: previewId } });
     window.open(link.url, '_blank');
   }
 
@@ -555,7 +555,7 @@ export default function ContentEditPage() {
   }
 
   async function handleCheckText() {
-    const result = await checkMutation.mutateAsync(collectCheckText());
+    const result = await checkMutation.mutateAsync({ body: { text: collectCheckText() } });
     setCheckResult(result);
     setCheckModalVisible(true);
   }
@@ -786,7 +786,7 @@ export default function ContentEditPage() {
                         height={contentType === 'article' ? 420 : 240}
                         enablePageBreak={contentType === 'article'}
                         placeholder={contentType === 'article' ? '请输入正文内容...' : '图文说明（可选）'}
-                        uploadServer={siteId && canUploadResources ? `${appConfig.apiBaseUrl}/api/cms/upload-image?siteId=${siteId}` : undefined}
+                        uploadServer={siteId && canUploadResources ? `${appConfig.apiBaseUrl}${cmsImageUploadUrl(siteId)}` : undefined}
                       />
                     </Suspense>
                   )}
@@ -1120,7 +1120,7 @@ export default function ContentEditPage() {
                         content: '当前内容将自动留档后被该版本覆盖',
                         onOk: async () => {
                           pendingFormResetRef.current = true;
-                          await restoreMutation.mutateAsync({ contentId: id!, versionId: v.id });
+                          await restoreMutation.mutateAsync({ params: { id: id!, versionId: v.id } });
                           Toast.success('回滚成功');
                           setVersionsVisible(false);
                         },

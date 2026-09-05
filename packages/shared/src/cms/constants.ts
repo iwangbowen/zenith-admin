@@ -53,6 +53,9 @@ export const CMS_DISTRIBUTION_CONFLICT_STRATEGY_LABELS: Record<(typeof CMS_DISTR
 
 export const CMS_DISTRIBUTION_RUN_OUTCOMES = ['success', 'skipped', 'conflict', 'failed'] as const;
 
+/** 分发同步任务的触发方式 */
+export const CMS_DISTRIBUTION_RUN_TRIGGERS = ['manual', 'scheduled', 'mapping-update'] as const;
+
 export const CMS_DISTRIBUTION_RUN_OUTCOME_LABELS: Record<(typeof CMS_DISTRIBUTION_RUN_OUTCOMES)[number], string> = {
   success: '成功',
   skipped: '跳过',
@@ -150,12 +153,17 @@ export const CMS_SITE_OPS_DEFAULTS = {
 } as const;
 
 /** 内置模板下拉的来源标签（本站直选 / 主题内置） */
-export const CMS_TEMPLATE_RESOLUTION_SOURCE_LABELS = {
+export const CMS_TEMPLATE_RESOLUTION_SOURCES = ['own', 'inherited', 'global', 'builtin'] as const;
+
+export const CMS_TEMPLATE_RESOLUTION_SOURCE_LABELS: Record<(typeof CMS_TEMPLATE_RESOLUTION_SOURCES)[number], string> = {
   own: '本站',
   inherited: '继承父级',
   global: '主题全局',
   builtin: '内置',
-} as const;
+};
+
+/** 主题参数字段类型（后台主题参数面板动态表单） */
+export const CMS_THEME_SETTING_FIELD_TYPES = ['text', 'textarea', 'color', 'number', 'switch', 'select', 'image'] as const;
 
 export const CMS_PUBLISH_TARGET_TYPES = [
   'content',
@@ -182,6 +190,9 @@ export const CMS_PUBLISH_ARTIFACT_STATUS_LABELS: Record<(typeof CMS_PUBLISH_ARTI
   deleted: '已删除',
   failed: '失败',
 };
+
+/** 发布任务可执行的操作 */
+export const CMS_PUBLISH_ACTIONS = ['cancel', 'resume', 'restart', 'rebuild'] as const;
 
 /** 发布中心受权投影只包含统一 CMS 发布任务。 */
 export const CMS_PUBLISH_TASK_TYPES = [
@@ -362,6 +373,22 @@ export const CMS_PAGE_BLOCK_AUDIENCE_LABELS: Record<(typeof CMS_PAGE_BLOCK_AUDIE
 
 export const CMS_PAGE_BLOCK_AUDIENCE_OPTIONS = createLabelOptionsFromMap(CMS_PAGE_BLOCK_AUDIENCE_LABELS);
 
+/** 可视化页面搭建的区块类型 */
+export const CMS_PAGE_BLOCK_TYPE_VALUES = ['hero', 'richtext', 'image', 'content-list', 'columns', 'widget-ref'] as const;
+
+export const CMS_PAGE_BLOCK_TYPE_LABELS: Record<(typeof CMS_PAGE_BLOCK_TYPE_VALUES)[number], string> = {
+  hero: 'Hero 横幅',
+  richtext: '富文本',
+  image: '图片',
+  'content-list': '内容列表',
+  columns: '多列卡片',
+  'widget-ref': '页面部件',
+};
+
+/** 区块类型选项（区块面板按此顺序展示） */
+export const CMS_PAGE_BLOCK_TYPES: { value: (typeof CMS_PAGE_BLOCK_TYPE_VALUES)[number]; label: string }[] =
+  CMS_PAGE_BLOCK_TYPE_VALUES.map((value) => ({ value, label: CMS_PAGE_BLOCK_TYPE_LABELS[value] }));
+
 /** CMS 页面部件。 */
 export const CMS_WIDGET_TYPES = ['manual-list'] as const;
 
@@ -436,6 +463,9 @@ export const CMS_INTERACTION_REPEAT_POLICIES = ['once_per_member', 'once_per_ip'
 export const CMS_INTERACTION_RESULT_VISIBILITIES = ['always', 'after_submit', 'after_close', 'hidden'] as const;
 
 export const CMS_INTERACTION_CAPTCHA_POLICIES = ['inherit', 'none', 'math', 'turnstile'] as const;
+
+/** 互动问卷生效的验证码方式（inherit 已按站点策略解析） */
+export const CMS_INTERACTION_RESOLVED_CAPTCHA_PROVIDERS = ['none', 'math', 'turnstile'] as const;
 
 export const CMS_INTERACTION_KIND_LABELS: Record<(typeof CMS_INTERACTION_KINDS)[number], string> = {
   survey: '问卷',
@@ -600,6 +630,15 @@ export function cmsCustomPagePath(page: { slug: string; path?: string | null }):
   if (!custom) return `p/${page.slug}/`;
   return custom.endsWith('.html') ? custom : `${custom}/`;
 }
+
+// ─── CMS 采集中心 ─────────────────────────────────────────────────────────────
+export const CMS_COLLECT_ITEM_STATUSES = ['success', 'skipped', 'failed'] as const;
+
+export const CMS_COLLECT_ITEM_STATUS_LABELS: Record<(typeof CMS_COLLECT_ITEM_STATUSES)[number], string> = {
+  success: '成功',
+  skipped: '跳过',
+  failed: '失败',
+};
 
 // ─── CMS P2 ───────────────────────────────────────────────────────────────────
 export const CMS_COMMENT_STATUSES = ['pending', 'approved', 'rejected'] as const;

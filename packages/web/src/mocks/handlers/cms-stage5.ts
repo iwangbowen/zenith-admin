@@ -1,10 +1,25 @@
-import { http, HttpResponse } from 'msw';
-import { ok, pageParams, pageResult } from '@/mocks/utils/handlers';
-import { CMS_SECRET_MASK, CMS_SITE_INHERITABLE_FIELDS, CMS_SITE_MAX_DEPTH } from '@zenith/shared/cms';
-import type { CmsDistributionRule, CmsDistributionRun, CmsSite, CmsSiteInheritableField, CmsSiteInheritanceFlags } from '@zenith/shared/cms';
+import { badRequest, conflict, locked, notFound } from '@/mocks/utils/handlers';
+import { mock } from '@/mocks/utils/contract';
+import {
+  CMS_SECRET_MASK,
+  CMS_SITE_INHERITABLE_FIELDS,
+  CMS_SITE_MAX_DEPTH,
+  cmsDistributionContract,
+  cmsPublishingContract,
+  cmsSiteContract,
+} from '@zenith/shared/cms';
+import type {
+  CmsDistributionRule,
+  CmsDistributionRun,
+  CmsSite,
+  CmsSiteEffectiveConfig,
+  CmsSiteInheritableField,
+  CmsSiteInheritanceFlags,
+  CmsSiteInheritanceSource,
+  CmsSiteTemplateDefaults,
+} from '@zenith/shared/cms';
 import type { AsyncTaskItem } from '@zenith/shared/tasks';
 import {
-  buildMockChannelTree,
   getNextCmsContentId,
   mockCmsChannels,
   mockCmsContents,
@@ -19,16 +34,6 @@ import {
 } from '../data/cms-stage5';
 import { createProgressingMockTask, setMockTaskItems } from './async-tasks';
 import { mockDateTime } from '../utils/date';
-
-type Body = Record<string, unknown>;
-
-function okJson<T>(data: T, message = 'ok') {
-  return ok(data, message);
-}
-
-function errorJson(status: number, message: string) {
-  return HttpResponse.json({ code: status, message, data: null }, { status });
-}
 
 const EMPTY_INHERITANCE: CmsSiteInheritanceFlags = {
   seoTitle: false,
@@ -122,16 +127,16 @@ function redactSettings(value: Record<string, unknown>): Record<string, unknown>
   }));
 }
 
-function effectiveConfig(site: CmsSite) {
+function effectiveConfig(site: CmsSite): CmsSiteEffectiveConfig {
   const settings = inheritedSettings(site);
-  const sources = Object.fromEntries(CMS_SITE_INHERITABLE_FIELDS.map((field) => {
+  const sources = Object.fromEntries(CMS_SITE_INHERITABLE_FIELDS.map((field): [CmsSiteInheritableField, CmsSiteInheritanceSource] => {
     const source = sourceForField(site.id, field);
     return [field, {
       kind: source.id === site.id ? 'own' : 'inherited',
       siteId: source.id,
       siteName: source.name,
     }];
-  }));
+  })) as Record<CmsSiteInheritableField, CmsSiteInheritanceSource>;
   return {
     siteId: site.id,
     chain: chain(site.id).reverse().map((item, index) => ({
@@ -154,8 +159,8 @@ function effectiveConfig(site: CmsSite) {
       cdnPurgeToken: masked(settings.cdnPurgeToken),
       theme: sourceForField(site.id, 'theme').theme,
       themeSourceSiteId: sourceForField(site.id, 'theme').id,
-      themeConfig: settings.themeConfig && typeof settings.themeConfig === 'object' ? settings.themeConfig : {},
-      defaultTemplates: settings.defaultTemplates && typeof settings.defaultTemplates === 'object' ? settings.defaultTemplates : {},
+      themeConfig: settings.themeConfig && typeof settings.themeConfig === 'object' ? settings.themeConfig as Record<string, unknown> : {},
+      defaultTemplates: settings.defaultTemplates && typeof settings.defaultTemplates === 'object' ? settings.defaultTemplates as CmsSiteTemplateDefaults : {},
     },
     sources,
   };
@@ -213,14 +218,14 @@ function executeMockDistribution(rule: CmsDistributionRule, taskId: number) {
     const tracked = mockCmsContents.find((content) =>
       content.distributionRuleId === rule.id
       && content.distributionSourceId === source.id);
-    const conflict = tracked ?? mockCmsContents.find((content) =>
+    const conflicting = tracked ?? mockCmsContents.find((content) =>
       content.siteId === rule.targetSiteId
       && content.channelId === rule.targetChannelId
       && content.title === source.title);
     let outcome: 'success' | 'skipped' | 'conflict';
     let message: string;
-    let targetId: number | null = conflict?.id ?? null;
-    if (conflict?.lockedAt) {
+    let targetId: number | null = conflicting?.id ?? null;
+    if (conflicting?.lockedAt) {
       outcome = 'conflict';
       conflicts += 1;
       message = '目标内容已锁定，禁止覆盖';
@@ -228,13 +233,13 @@ function executeMockDistribution(rule: CmsDistributionRule, taskId: number) {
       outcome = 'skipped';
       skipped += 1;
       message = '来源版本已同步，幂等跳过';
-    } else if (conflict && !tracked && rule.conflictStrategy === 'skip') {
+    } else if (conflicting && !tracked && rule.conflictStrategy === 'skip') {
       outcome = 'conflict';
       conflicts += 1;
       message = '目标存在同名内容，按规则跳过';
     } else {
-      const target = conflict && rule.conflictStrategy === 'overwrite'
-        ? conflict
+      const target = conflicting && rule.conflictStrategy === 'overwrite'
+        ? conflicting
         : tracked ?? {
           ...structuredClone(source),
           id: getNextCmsContentId(),
@@ -285,64 +290,58 @@ function executeMockDistribution(rule: CmsDistributionRule, taskId: number) {
 }
 
 export const cmsStage5Handlers = [
-  http.get('/api/cms/sites/all', () =>
-    okJson(mockCmsSites.filter((site) => site.status === 'enabled').map(withEffectiveSummary))),
+  mock(cmsSiteContract.all, ({ ok }) => ok(mockCmsSites.filter((site) => site.status === 'enabled').map(withEffectiveSummary))),
 
-  http.get('/api/cms/sites', ({ request }) => {
-    const url = new URL(request.url);
-    const { page, pageSize } = pageParams(url);
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const status = url.searchParams.get('status') ?? '';
+  mock(cmsSiteContract.list, ({ query, paginate, ok }) => {
+    const { keyword, status } = query;
     let rows = [...mockCmsSites];
     if (keyword) rows = rows.filter((site) => site.name.includes(keyword) || site.code.includes(keyword) || (site.domain ?? '').includes(keyword));
     if (status) rows = rows.filter((site) => site.status === status);
-    return okJson(pageResult(rows.map(withEffectiveSummary), page, pageSize));
+    return ok(paginate(rows.map(withEffectiveSummary)));
   }),
 
-  http.get('/api/cms/sites/themes', () => okJson([
+  mock(cmsSiteContract.themes, ({ ok }) => ok([
     { code: 'default', label: '默认主题' },
     { code: 'docs', label: '文档主题' },
   ])),
 
-  http.get('/api/cms/sites/themes/:code/templates', ({ params }) => {
-    const code = String(params.code);
-    if (!['default', 'docs'].includes(code)) return okJson({ list: [], detail: [] });
-    return okJson({
+  mock(cmsSiteContract.themeTemplates, ({ params, ok }) => {
+    const { code } = params;
+    if (!['default', 'docs'].includes(code)) return ok({ list: [], detail: [] });
+    return ok({
       list: code === 'default' ? [
-        { name: 'list-card', label: '卡片网格（产品/案例）', source: 'builtin', sourceSiteId: null },
-        { name: 'list-compact', label: '紧凑标题（公告/文件）', source: 'builtin', sourceSiteId: null },
+        { name: 'list-card', label: '卡片网格（产品/案例）', source: 'builtin' as const, sourceSiteId: null },
+        { name: 'list-compact', label: '紧凑标题（公告/文件）', source: 'builtin' as const, sourceSiteId: null },
       ] : [],
       detail: code === 'default' ? [
-        { name: 'detail-plain', label: '简洁正文（公告/政策）', source: 'builtin', sourceSiteId: null },
+        { name: 'detail-plain', label: '简洁正文（公告/政策）', source: 'builtin' as const, sourceSiteId: null },
       ] : [],
     });
   }),
 
-  http.get('/api/cms/sites/:id/template-health', ({ params, request }) => {
-    const site = mockCmsSites.find((item) => item.id === Number(params.id));
-    if (!site) return errorJson(404, '站点不存在');
-    const theme = new URL(request.url).searchParams.get('theme') || sourceForField(site.id, 'theme').theme;
-    return okJson({
+  mock(cmsSiteContract.templateHealth, ({ params, query, ok }) => {
+    const site = mockCmsSites.find((item) => item.id === params.id);
+    if (!site) return notFound('站点不存在', { status: 404 });
+    const theme = query.theme || sourceForField(site.id, 'theme').theme;
+    return ok({
       theme,
       themeRegistered: ['default', 'docs'].includes(theme),
       invalidRefs: [],
     });
   }),
 
-  http.get('/api/cms/sites/tree', ({ request }) => {
-    const url = new URL(request.url);
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const status = url.searchParams.get('status') ?? '';
+  mock(cmsSiteContract.tree, ({ query, ok }) => {
+    const { keyword, status } = query;
     let rows = [...mockCmsSites];
     if (keyword) rows = rows.filter((site) => site.name.includes(keyword) || site.code.includes(keyword));
     if (status) rows = rows.filter((site) => site.status === status);
-    return okJson(treeSites(rows));
+    return ok(treeSites(rows));
   }),
 
-  http.get('/api/cms/sites/:id/inheritance-chain', ({ params }) => {
-    const site = mockCmsSites.find((item) => item.id === Number(params.id));
-    if (!site) return errorJson(404, '站点不存在');
-    return okJson(chain(site.id).reverse().map((item, index) => ({
+  mock(cmsSiteContract.inheritanceChain, ({ params, ok }) => {
+    const site = mockCmsSites.find((item) => item.id === params.id);
+    if (!site) return notFound('站点不存在', { status: 404 });
+    return ok(chain(site.id).reverse().map((item, index) => ({
       id: item.id,
       parentId: item.parentId,
       name: item.name,
@@ -352,53 +351,50 @@ export const cmsStage5Handlers = [
     })));
   }),
 
-  http.get('/api/cms/sites/:id/effective-config', ({ params }) => {
-    const site = mockCmsSites.find((item) => item.id === Number(params.id));
-    return site ? okJson(effectiveConfig(site)) : errorJson(404, '站点不存在');
+  mock(cmsSiteContract.effectiveConfig, ({ params, ok }) => {
+    const site = mockCmsSites.find((item) => item.id === params.id);
+    return site ? ok(effectiveConfig(site)) : notFound('站点不存在', { status: 404 });
   }),
 
-  http.put('/api/cms/sites/:id/parent', async ({ params, request }) => {
-    const site = mockCmsSites.find((item) => item.id === Number(params.id));
-    if (!site) return errorJson(404, '站点不存在');
-    const body = await request.json() as { parentId?: number | null };
+  mock(cmsSiteContract.move, ({ params, body, ok }) => {
+    const site = mockCmsSites.find((item) => item.id === params.id);
+    if (!site) return notFound('站点不存在', { status: 404 });
     const parentId = body.parentId ?? null;
     if (parentId === site.id || descendants(site.id).includes(parentId ?? -1)) {
-      return errorJson(400, '不能把站点移动到自身子树中');
+      return badRequest('不能把站点移动到自身子树中', { status: 400 });
     }
     const subtreeHeight = Math.max(...descendants(site.id).map((id) => siteDepth(id) - siteDepth(site.id) + 1));
     const nextDepth = parentId == null ? 1 : siteDepth(parentId) + 1;
-    if (nextDepth + subtreeHeight - 1 > CMS_SITE_MAX_DEPTH) return errorJson(400, `移动后站点层级将超过 ${CMS_SITE_MAX_DEPTH} 层`);
+    if (nextDepth + subtreeHeight - 1 > CMS_SITE_MAX_DEPTH) return badRequest(`移动后站点层级将超过 ${CMS_SITE_MAX_DEPTH} 层`, { status: 400 });
     site.parentId = parentId;
     site.themeRevision += 1;
     site.templateRefsRevision += 1;
     site.updatedAt = mockDateTime();
-    return okJson({
+    return ok({
       site,
       affectedSiteIds: descendants(site.id),
       maxDepth: CMS_SITE_MAX_DEPTH,
     }, '站点子树已移动');
   }),
 
-  http.put('/api/cms/sites/:id/inheritance', async ({ params, request }) => {
-    const site = mockCmsSites.find((item) => item.id === Number(params.id));
-    if (!site) return errorJson(404, '站点不存在');
-    const patch = await request.json() as Partial<CmsSiteInheritanceFlags>;
-    if (site.parentId == null && Object.values(patch).some(Boolean)) return errorJson(400, '根站点没有父级，不能启用继承');
-    site.inheritance = { ...EMPTY_INHERITANCE, ...(site.inheritance ?? {}), ...patch };
+  mock(cmsSiteContract.updateInheritance, ({ params, body, ok }) => {
+    const site = mockCmsSites.find((item) => item.id === params.id);
+    if (!site) return notFound('站点不存在', { status: 404 });
+    if (site.parentId == null && Object.values(body).some(Boolean)) return badRequest('根站点没有父级，不能启用继承', { status: 400 });
+    site.inheritance = { ...EMPTY_INHERITANCE, ...(site.inheritance ?? {}), ...body };
     site.themeRevision += 1;
     site.templateRefsRevision += 1;
     site.updatedAt = mockDateTime();
-    return okJson({
+    return ok({
       inheritance: site.inheritance,
       effectiveConfig: effectiveConfig(site),
       affectedSiteIds: descendants(site.id),
     }, '继承策略已更新');
   }),
 
-  http.post('/api/cms/publishing/group-submit', async ({ request }) => {
-    const body = await request.json() as { rootSiteId?: number };
-    const root = mockCmsSites.find((site) => site.id === Number(body.rootSiteId));
-    if (!root) return errorJson(404, '站群根站点不存在');
+  mock(cmsPublishingContract.groupSubmit, ({ body, ok }) => {
+    const root = mockCmsSites.find((site) => site.id === body.rootSiteId);
+    if (!root) return notFound('站群根站点不存在', { status: 404 });
     const targetSiteIds = descendants(root.id).filter((id) => mockCmsSites.find((site) => site.id === id)?.status === 'enabled');
     const tasks = targetSiteIds.map((siteId) => createProgressingMockTask({
       taskType: 'cms-publish-build',
@@ -406,101 +402,91 @@ export const cmsStage5Handlers = [
       payload: { siteId, targetType: 'site', groupRootSiteId: root.id },
       totalItems: 5,
     }));
-    return okJson({ rootSiteId: root.id, targetSiteIds, tasks }, '站群重建任务已提交');
+    return ok({ rootSiteId: root.id, targetSiteIds, tasks }, '站群重建任务已提交');
   }),
 
-  http.get('/api/cms/distributions/runs', ({ request }) => {
-    const url = new URL(request.url);
-    const { page, pageSize } = pageParams(url);
-    const ruleId = Number(url.searchParams.get('ruleId')) || 0;
-    const siteId = Number(url.searchParams.get('siteId')) || 0;
-    const status = url.searchParams.get('status') ?? '';
+  mock(cmsDistributionContract.runs, ({ query, paginate, ok }) => {
+    const { ruleId, siteId, status } = query;
     let rows = [...mockCmsDistributionRuns];
     if (ruleId) rows = rows.filter((run) => run.ruleId === ruleId);
     if (siteId) rows = rows.filter((run) => run.sourceSiteId === siteId || run.targetSiteId === siteId);
     if (status) rows = rows.filter((run) => run.status === status);
-    return okJson(pageResult(rows, page, pageSize));
+    return ok(paginate(rows));
   }),
 
-  http.get('/api/cms/distributions/runs/:id', ({ params }) => {
-    const run = mockCmsDistributionRuns.find((item) => item.id === Number(params.id));
+  mock(cmsDistributionContract.runDetail, ({ params, ok }) => {
+    const run = mockCmsDistributionRuns.find((item) => item.id === params.id);
     return run
-      ? okJson({ run, items: mockCmsDistributionItems.get(run.id) ?? [] })
-      : errorJson(404, '分发同步记录不存在');
+      ? ok({ run, items: mockCmsDistributionItems.get(run.id) ?? [] })
+      : notFound('分发同步记录不存在', { status: 404 });
   }),
 
-  http.get('/api/cms/distributions', ({ request }) => {
-    const url = new URL(request.url);
-    const { page, pageSize } = pageParams(url);
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const mode = url.searchParams.get('mode') ?? '';
-    const status = url.searchParams.get('status') ?? '';
+  mock(cmsDistributionContract.list, ({ query, paginate, ok }) => {
+    const { keyword, mode, status } = query;
     let rows = [...mockCmsDistributionRules];
     if (keyword) rows = rows.filter((rule) => rule.name.includes(keyword));
     if (mode) rows = rows.filter((rule) => rule.mode === mode);
     if (status) rows = rows.filter((rule) => rule.status === status);
-    return okJson(pageResult(rows, page, pageSize));
+    return ok(paginate(rows));
   }),
 
-  http.post('/api/cms/distributions', async ({ request }) => {
-    const body = await request.json() as Body;
-    if (Number(body.sourceSiteId) === Number(body.targetSiteId)) return errorJson(400, '来源站点与目标站点不能相同');
-    const sourceSite = mockCmsSites.find((site) => site.id === Number(body.sourceSiteId));
-    const targetSite = mockCmsSites.find((site) => site.id === Number(body.targetSiteId));
-    const targetChannel = mockCmsChannels.find((channel) => channel.id === Number(body.targetChannelId));
-    if (!sourceSite || !targetSite || !targetChannel || targetChannel.siteId !== targetSite.id) return errorJson(400, '站点或栏目范围无效');
+  mock(cmsDistributionContract.create, ({ body, ok }) => {
+    if (body.sourceSiteId === body.targetSiteId) return badRequest('来源站点与目标站点不能相同', { status: 400 });
+    const sourceSite = mockCmsSites.find((site) => site.id === body.sourceSiteId);
+    const targetSite = mockCmsSites.find((site) => site.id === body.targetSiteId);
+    const targetChannel = mockCmsChannels.find((channel) => channel.id === body.targetChannelId);
+    if (!sourceSite || !targetSite || !targetChannel || targetChannel.siteId !== targetSite.id) return badRequest('站点或栏目范围无效', { status: 400 });
     const now = mockDateTime();
     const rule: CmsDistributionRule = {
       id: getNextCmsDistributionRuleId(),
-      name: String(body.name ?? ''),
+      name: body.name,
       sourceSiteId: sourceSite.id,
       sourceSiteName: sourceSite.name,
-      sourceChannelId: Number(body.sourceChannelId) || null,
-      sourceChannelName: mockCmsChannels.find((channel) => channel.id === Number(body.sourceChannelId))?.name ?? null,
+      sourceChannelId: body.sourceChannelId,
+      sourceChannelName: mockCmsChannels.find((channel) => channel.id === body.sourceChannelId)?.name ?? null,
       targetSiteId: targetSite.id,
       targetSiteName: targetSite.name,
       targetChannelId: targetChannel.id,
       targetChannelName: targetChannel.name,
-      mode: body.mode as CmsDistributionRule['mode'],
-      conflictStrategy: body.conflictStrategy as CmsDistributionRule['conflictStrategy'],
-      filters: structuredClone(body.filters as CmsDistributionRule['filters']),
-      scheduleCron: String(body.scheduleCron ?? '') || null,
+      mode: body.mode,
+      conflictStrategy: body.conflictStrategy,
+      filters: structuredClone(body.filters),
+      scheduleCron: body.scheduleCron || null,
       nextRunAt: null,
       lastRunAt: null,
-      status: body.status as CmsDistributionRule['status'],
+      status: body.status,
       revision: 1,
-      remark: String(body.remark ?? '') || null,
+      remark: body.remark || null,
       createdAt: now,
       updatedAt: now,
     };
     mockCmsDistributionRules.unshift(rule);
-    return okJson(rule, '分发规则已创建');
+    return ok(rule, '分发规则已创建');
   }),
 
-  http.get('/api/cms/distributions/:id', ({ params }) => {
-    const rule = mockCmsDistributionRules.find((item) => item.id === Number(params.id));
-    return rule ? okJson(rule) : errorJson(404, '分发规则不存在');
+  mock(cmsDistributionContract.detail, ({ params, ok }) => {
+    const rule = mockCmsDistributionRules.find((item) => item.id === params.id);
+    return rule ? ok(rule) : notFound('分发规则不存在', { status: 404 });
   }),
 
-  http.put('/api/cms/distributions/:id', async ({ params, request }) => {
-    const rule = mockCmsDistributionRules.find((item) => item.id === Number(params.id));
-    if (!rule) return errorJson(404, '分发规则不存在');
-    const body = await request.json() as Body;
+  mock(cmsDistributionContract.update, ({ params, body, ok }) => {
+    const rule = mockCmsDistributionRules.find((item) => item.id === params.id);
+    if (!rule) return notFound('分发规则不存在', { status: 404 });
     Object.assign(rule, body, {
       revision: rule.revision + 1,
       updatedAt: mockDateTime(),
     });
-    return okJson(rule, '分发规则已更新');
+    return ok(rule, '分发规则已更新');
   }),
 
-  http.post('/api/cms/distributions/:id/run', ({ params }) => {
-    const rule = mockCmsDistributionRules.find((item) => item.id === Number(params.id));
-    if (!rule) return errorJson(404, '分发规则不存在');
-    if (rule.status !== 'enabled') return errorJson(409, '分发规则已停用');
+  mock(cmsDistributionContract.run, ({ params, ok }) => {
+    const rule = mockCmsDistributionRules.find((item) => item.id === params.id);
+    if (!rule) return notFound('分发规则不存在', { status: 404 });
+    if (rule.status !== 'enabled') return conflict('分发规则已停用', { status: 409 });
     const watermark = `${rule.revision}-${mockCmsContents.filter((item) => item.siteId === rule.sourceSiteId).reduce((max, item) => Math.max(max, item.version), 0)}`;
     const duplicate = mockCmsDistributionRuns.find((run) =>
       run.ruleId === rule.id && run.payload.watermark === watermark && ['pending', 'running'].includes(run.status));
-    if (duplicate) return okJson(duplicate, '分发任务已存在');
+    if (duplicate) return ok(duplicate, '分发任务已存在');
     const task = createProgressingMockTask({
       taskType: 'cms-distribution-sync',
       title: `CMS 内容分发：${rule.name}`,
@@ -515,7 +501,7 @@ export const cmsStage5Handlers = [
       totalItems: Math.max(1, mockCmsContents.filter((content) => content.siteId === rule.sourceSiteId && content.status === 'published').length),
     });
     const result = executeMockDistribution(rule, task.id);
-    const run = Object.assign(task, {
+    const run: CmsDistributionRun = Object.assign(task, {
       ruleId: rule.id,
       ruleName: rule.name,
       sourceSiteId: rule.sourceSiteId,
@@ -527,19 +513,19 @@ export const cmsStage5Handlers = [
       skipped: result.skipped,
       conflicts: result.conflicts,
       failedCount: result.failed,
-    }) as CmsDistributionRun;
+    });
     mockCmsDistributionRuns.unshift(run);
     rule.lastRunAt = mockDateTime();
-    return okJson(run, '分发任务已提交');
+    return ok(run, '分发任务已提交');
   }),
 
-  http.delete('/api/cms/distributions/:id', ({ params }) => {
-    const index = mockCmsDistributionRules.findIndex((item) => item.id === Number(params.id));
-    if (index < 0) return errorJson(404, '分发规则不存在');
+  mock(cmsDistributionContract.remove, ({ params, ok }) => {
+    const index = mockCmsDistributionRules.findIndex((item) => item.id === params.id);
+    if (index < 0) return notFound('分发规则不存在', { status: 404 });
     const rule = mockCmsDistributionRules[index];
-    const locked = mockCmsContents.find((content) =>
+    const lockedContent = mockCmsContents.find((content) =>
       content.distributionRuleId === rule.id && content.mappingSourceId != null && content.lockedAt);
-    if (locked) return errorJson(423, `映射内容 #${locked.id} 已锁定，不能删除规则并解除映射`);
+    if (lockedContent) return locked(`映射内容 #${lockedContent.id} 已锁定，不能删除规则并解除映射`, { status: 423 });
     mockCmsContents.forEach((content) => {
       if (content.distributionRuleId !== rule.id) return;
       if (content.mappingSourceId != null) {
@@ -552,11 +538,6 @@ export const cmsStage5Handlers = [
       content.distributionRuleId = null;
     });
     mockCmsDistributionRules.splice(index, 1);
-    return okJson(null, '删除成功');
-  }),
-
-  http.get('/api/cms/distributions/:id/source-channels', ({ params }) => {
-    const rule = mockCmsDistributionRules.find((item) => item.id === Number(params.id));
-    return rule ? okJson(buildMockChannelTree(mockCmsChannels.filter((channel) => channel.siteId === rule.sourceSiteId))) : errorJson(404, '分发规则不存在');
+    return ok(null, '删除成功');
   }),
 ];

@@ -3,8 +3,8 @@
 CMS 内容可通过开放平台网关以 **Headless** 方式供外部系统消费：读取走查询 DSL 与增量同步，
 写入走受治理的双向接口，变更通过 Webhook 实时外推。本篇只说明 CMS 侧资源语义；应用、签名、限流、配额、Webhook 投递与调试台能力见 [开放平台](/open-platform/)。每次写请求都会建立独立的开放应用 scope，不能借用后台用户或平台管理员权限。
 
-所有端点与后台一致，由 `@zenith/shared/cms` 的契约经 `defineContractRoute` 定义，因此会进入 Swagger（`/api/docs`），
-客户端可直接由 `openapi.json` 生成 SDK。
+所有端点与后台一致，由 `@zenith/shared/cms` 的 `openCmsContract`（`packages/shared/src/cms/contracts/open-cms.ts`）经 `defineContractRoute` 定义，因此会进入 Swagger（`/api/docs`），
+客户端可直接由 `openapi.json` 生成 SDK；调试台的可调试端点目录同样由该契约派生。
 
 ## 接入方式
 

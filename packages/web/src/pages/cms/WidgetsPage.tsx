@@ -109,10 +109,10 @@ export default function WidgetsPage() {
   function runSingle(action: 'publish' | 'offline', widget: CmsWidget) {
     const execute = async () => {
       if (action === 'publish') {
-        await publishMutation.mutateAsync(widget.id);
+        await publishMutation.mutateAsync({ params: { id: widget.id } });
         Toast.success('发布成功，引用刷新任务已提交');
       } else {
-        await offlineMutation.mutateAsync(widget.id);
+        await offlineMutation.mutateAsync({ params: { id: widget.id } });
         Toast.success('下线成功，引用刷新任务已提交');
       }
     };
@@ -137,7 +137,7 @@ export default function WidgetsPage() {
         : '删除后不可恢复。',
       okButtonProps: { disabled: widget.referenceCount > 0 },
       onOk: async () => {
-        await deleteMutation.mutateAsync(widget.id);
+        await deleteMutation.mutateAsync({ params: { id: widget.id } });
         Toast.success('删除成功');
       },
     });
@@ -156,7 +156,7 @@ export default function WidgetsPage() {
           : '操作将在任务中心异步执行。',
       okButtonProps: action === 'delete' ? { type: 'danger', theme: 'solid' } : undefined,
       onOk: async () => {
-        const task = await batchMutation.mutateAsync({ ids: selectedIds, action });
+        const task = await batchMutation.mutateAsync({ body: { ids: selectedIds, action } });
         taskStatusesRef.current.set(task.id, task.status);
         await refreshTasks({ silent: true });
         setSelectedIds([]);
@@ -222,14 +222,14 @@ export default function WidgetsPage() {
           key: 'publish',
           label: '发布',
           hidden: !hasPermission('cms:widget:publish'),
-          loading: publishMutation.isPending && publishMutation.variables === record.id,
+          loading: publishMutation.isPending && publishMutation.variables?.params.id === record.id,
           onClick: () => runSingle('publish', record),
         },
         {
           key: 'offline',
           label: '下线',
           hidden: record.status !== 'published' || !hasPermission('cms:widget:offline'),
-          loading: offlineMutation.isPending && offlineMutation.variables === record.id,
+          loading: offlineMutation.isPending && offlineMutation.variables?.params.id === record.id,
           onClick: () => runSingle('offline', record),
         },
         {

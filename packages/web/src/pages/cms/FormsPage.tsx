@@ -11,7 +11,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePagination } from '@/hooks/usePagination';
 import {
-  useCmsFormList, useSaveCmsForm, useDeleteCmsForm,
+  useCmsFormList, useSaveCmsForm, useDeleteCmsForms,
   useCmsFormSubmissions, useDeleteCmsFormSubmissions,
 } from '@/hooks/queries/cms';
 import { CMS_FORM_CAPTCHA_PROVIDERS, CMS_FORM_CAPTCHA_PROVIDER_LABELS, CMS_FORM_FIELD_TYPES, CMS_FORM_FIELD_TYPE_LABELS } from '@zenith/shared/cms';
@@ -55,7 +55,7 @@ function SubmissionsSheet({ form, onClose }: Readonly<{ form: CmsForm | null; on
           confirmDelete({
             title: '确定要删除该提交记录吗？',
             onOk: async () => {
-              await deleteMutation.mutateAsync({ formId: form.id, ids: [record.id] });
+              await deleteMutation.mutateAsync({ params: { id: form.id }, body: { ids: [record.id] } });
               Toast.success('删除成功');
             },
           });
@@ -132,7 +132,7 @@ export default function FormsPage() {
     },
     labelWidth: 140,
   });
-  const deleteMutation = useDeleteCmsForm();
+  const deleteMutation = useDeleteCmsForms();
   const canManage = hasPermission('cms:form:manage');
 
   const columns: ColumnProps<CmsForm>[] = [
@@ -164,7 +164,7 @@ export default function FormsPage() {
                 title: '确定要删除该表单吗？',
                 content: '表单的全部提交数据将一并删除',
                 onOk: async () => {
-                  await deleteMutation.mutateAsync(record.id);
+                  await deleteMutation.mutateAsync([record.id]);
                   Toast.success('删除成功');
                 },
               });

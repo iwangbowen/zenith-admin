@@ -21,7 +21,7 @@ export default function ViewHistoryPage() {
       content: '确定清空全部浏览记录吗？',
       okText: '清空',
       onOk: async () => {
-        await clearMutation.mutateAsync();
+        await clearMutation.mutateAsync({});
         setPage(1);
         Toast.success('已清空');
       },

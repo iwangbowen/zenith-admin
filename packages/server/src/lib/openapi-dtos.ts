@@ -6,6 +6,5 @@
  *
  * 新增 DTO 请直接在对应的子文件中维护（已契约化的域没有独立 DTO，实体 schema 来自 `@zenith/shared`）：
  *   - dtos/oauth2.ts         OAuth2 RFC 协议端点响应
- *   - dtos/cms.ts            CMS 内容管理
  */
 export * from './dtos';

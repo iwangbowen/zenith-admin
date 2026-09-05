@@ -16,6 +16,7 @@ import {
   memberTagContract,
   memberWalletContract,
 } from '@zenith/shared/member';
+import { memberCmsContract } from '@zenith/shared/cms';
 import { defineRouteDomain } from '../_kit';
 import checkinMilestonesRoutes from './checkin-milestones';
 import checkinRulesRoutes from './checkin-rules';
@@ -40,7 +41,7 @@ export default defineRouteDomain({
   mounts: () => [
     [memberAuthContract.basePath, memberAuthRoutes, { feature: 'member' }],
     [memberRenewalContract.basePath, memberRenewalRoutes, { feature: 'member' }],
-    ['/api/member/cms', memberCmsRoutes, { feature: 'member' }],
+    [memberCmsContract.basePath, memberCmsRoutes, { feature: 'member' }],
     // 会员端设备推送绑定;须先于 /api/member 兜底挂载
     [memberPushContract.basePath, memberPushRoutes, { feature: 'member' }],
     [memberSelfContract.basePath, memberSelfRoutes, { feature: 'member' }],

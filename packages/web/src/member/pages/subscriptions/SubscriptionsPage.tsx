@@ -26,7 +26,7 @@ export default function SubscriptionsPage() {
       title: '取消关注',
       content: `确定取消关注「${label}」吗？取消不会倒扣已获得积分。`,
       onOk: async () => {
-        await cancelMutation.mutateAsync(id);
+        await cancelMutation.mutateAsync({ params: { id } });
         Toast.success('已取消关注');
       },
     });
@@ -97,9 +97,9 @@ export default function SubscriptionsPage() {
                 <Switch
                   size="small"
                   checked={item.notificationEnabled}
-                  loading={updateMutation.isPending && updateMutation.variables?.id === item.id}
+                  loading={updateMutation.isPending && updateMutation.variables?.params.id === item.id}
                   onChange={(notificationEnabled) => {
-                    void updateMutation.mutateAsync({ id: item.id, notificationEnabled });
+                    void updateMutation.mutateAsync({ params: { id: item.id }, body: { notificationEnabled } });
                   }}
                 />
               </label>

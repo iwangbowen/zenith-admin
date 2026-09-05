@@ -12,7 +12,7 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePagination } from '@/hooks/usePagination';
 import {
-  useCmsFriendLinkList, useSaveCmsFriendLink, useDeleteCmsFriendLink, cmsFriendLinkKeys,
+  useCmsFriendLinkList, useSaveCmsFriendLink, useDeleteCmsFriendLinks, cmsFriendLinkKeys,
   useAllCmsFriendLinkGroups, useCmsFriendLinkGroupList, useSaveCmsFriendLinkGroup, useDeleteCmsFriendLinkGroup,
 } from '@/hooks/queries/cms';
 import type { CmsFriendLink, CmsFriendLinkGroup } from '@zenith/shared/cms';
@@ -61,7 +61,7 @@ export default function FriendLinksPage() {
       };
     },
   });
-  const deleteMutation = useDeleteCmsFriendLink();
+  const deleteMutation = useDeleteCmsFriendLinks();
 
   const columns: ColumnProps<CmsFriendLink>[] = [
     { title: '链接名称', dataIndex: 'name', width: 180 },
@@ -101,7 +101,7 @@ export default function FriendLinksPage() {
             confirmDelete({
               title: '确定要删除该友链吗？',
               onOk: async () => {
-                await deleteMutation.mutateAsync(record.id);
+                await deleteMutation.mutateAsync([record.id]);
                 Toast.success('删除成功');
               },
             });

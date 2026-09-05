@@ -8,7 +8,7 @@ import { createdAtColumn, renderEnabledStatusTag } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
-import { useCmsSensitiveWordList, useSaveCmsSensitiveWord, useDeleteCmsSensitiveWord, cmsSensitiveWordKeys } from '@/hooks/queries/cms';
+import { useCmsSensitiveWordList, useSaveCmsSensitiveWord, useDeleteCmsSensitiveWords, cmsSensitiveWordKeys } from '@/hooks/queries/cms';
 import type { CmsSensitiveWord } from '@zenith/shared/cms';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
@@ -33,7 +33,7 @@ export default function SensitiveWordsPage() {
     toValues: (record) => ({ word: record.word, replaceWith: record.replaceWith ?? '', status: record.status }),
     beforeSave: (values) => ({ ...values, replaceWith: values.replaceWith || null }),
   });
-  const deleteMutation = useDeleteCmsSensitiveWord();
+  const deleteMutation = useDeleteCmsSensitiveWords();
   const canManage = hasPermission('cms:sensitive:manage');
 
   const columns: ColumnProps<CmsSensitiveWord>[] = [
@@ -62,7 +62,7 @@ export default function SensitiveWordsPage() {
             confirmDelete({
               title: '确定要删除该敏感词吗？',
               onOk: async () => {
-                await deleteMutation.mutateAsync(record.id);
+                await deleteMutation.mutateAsync([record.id]);
                 Toast.success('删除成功');
               },
             });

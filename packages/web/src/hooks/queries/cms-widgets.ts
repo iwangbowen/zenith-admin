@@ -1,59 +1,45 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CmsWidget, CmsWidgetPreview, CmsWidgetRef, CmsWidgetRendererKey, CmsWidgetRendererOption, CmsWidgetSlot, CmsWidgetSourceReference, CmsWidgetStatus, CmsWidgetType } from '@zenith/shared/cms';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { AsyncTask } from '@zenith/shared/tasks';
-import { request } from '@/utils/request';
-import { LOOKUP_STALE_TIME, toQueryString, unwrap } from '@/lib/query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import type { QueryOf } from '@zenith/shared/core';
+import { cmsWidgetContract, type CmsWidgetRendererKey, type CmsWidgetType } from '@zenith/shared/cms';
+import { apiQueryOptions, contractKey, createResourceQueries, useApiMutation } from '@/lib/contract-query';
+import { LOOKUP_STALE_TIME } from '@/lib/query';
 
-export interface CmsWidgetListParams {
-  page: number;
-  pageSize: number;
-  siteId: number | undefined;
-  keyword?: string;
-  status?: CmsWidgetStatus;
-  type?: CmsWidgetType;
-}
+export type CmsWidgetListParams = NonNullable<QueryOf<typeof cmsWidgetContract.list>>;
+
+const resource = createResourceQueries(cmsWidgetContract, {
+  // 预览按草稿渲染，保存草稿后必须回源；renderers / slots 是站点级配置，不随单个部件变化
+  onSaved: (qc, saved) => void qc.invalidateQueries({ queryKey: cmsWidgetKeys.previewsOf(saved.id) }),
+});
 
 export const cmsWidgetKeys = {
-  all: ['cms-widgets'] as const,
-  lists: ['cms-widgets', 'list'] as const,
-  list: (params: CmsWidgetListParams) => ['cms-widgets', 'list', params] as const,
-  detail: (id: number | undefined) => ['cms-widgets', 'detail', id] as const,
-  refs: (id: number | undefined) => ['cms-widgets', 'refs', id] as const,
+  ...resource.keys,
+  refs: (id: number | undefined) => contractKey(cmsWidgetContract.refs, { params: { id: id ?? 0 } }),
   preview: (id: number | undefined, rendererKey?: CmsWidgetRendererKey) =>
-    ['cms-widgets', 'preview', id, rendererKey ?? 'default'] as const,
-  optionsPrefix: ['cms-widgets', 'options'] as const,
-  options: (siteId: number | undefined) => ['cms-widgets', 'options', siteId] as const,
+    contractKey(cmsWidgetContract.preview, { params: { id: id ?? 0 }, query: { rendererKey } }),
+  /** 某部件全部展示模板的预览（失效 / 移除时按 params 前缀匹配） */
+  previewsOf: (id: number) => [...contractKey(cmsWidgetContract.preview), { params: { id } }] as const,
+  optionsPrefix: contractKey(cmsWidgetContract.options),
+  options: (siteId: number | undefined) => contractKey(cmsWidgetContract.options, { query: { siteId: siteId ?? 0 } }),
   renderers: (siteId: number | undefined, type: CmsWidgetType) =>
-    ['cms-widgets', 'renderers', siteId, type] as const,
-  slots: (siteId: number | undefined) => ['cms-widgets', 'slots', siteId] as const,
+    contractKey(cmsWidgetContract.renderers, { query: { siteId: siteId ?? 0, type } }),
+  slots: (siteId: number | undefined) => contractKey(cmsWidgetContract.slots, { query: { siteId: siteId ?? 0 } }),
   sourceRefs: (sourceType: 'content' | 'channel', sourceId: number | undefined) =>
-    ['cms-widgets', 'source-refs', sourceType, sourceId] as const,
+    contractKey(cmsWidgetContract.sourceRefs, { query: { sourceType, sourceId: sourceId ?? 0 } }),
 };
 
-export function useCmsWidgetList(params: CmsWidgetListParams) {
+export function useCmsWidgetList(params: Omit<CmsWidgetListParams, 'siteId'> & { siteId: number | undefined }) {
   return useQuery({
-    queryKey: cmsWidgetKeys.list(params),
-    queryFn: () => request
-      .get<PaginatedResponse<CmsWidget>>(`/api/cms/widgets${toQueryString(params)}`)
-      .then(unwrap),
+    ...apiQueryOptions(cmsWidgetContract.list, { query: { ...params, siteId: params.siteId ?? 0 } }),
     enabled: params.siteId !== undefined,
     placeholderData: keepPreviousData,
   });
 }
 
-export function useCmsWidgetDetail(id: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: cmsWidgetKeys.detail(id),
-    queryFn: () => request.get<CmsWidget>(`/api/cms/widgets/${id}`).then(unwrap),
-    enabled: enabled && id !== undefined,
-  });
-}
+export const useCmsWidgetDetail = resource.useDetail;
 
 export function usePublishedCmsWidgets(siteId: number | undefined, enabled = true) {
   return useQuery({
-    queryKey: cmsWidgetKeys.options(siteId),
-    queryFn: () => request.get<CmsWidget[]>(`/api/cms/widgets/options?siteId=${siteId}`).then(unwrap),
+    ...apiQueryOptions(cmsWidgetContract.options, { query: { siteId: siteId ?? 0 } }),
     enabled: enabled && siteId !== undefined,
     staleTime: LOOKUP_STALE_TIME,
   });
@@ -65,10 +51,7 @@ export function useCmsWidgetRenderers(
   enabled = true,
 ) {
   return useQuery({
-    queryKey: cmsWidgetKeys.renderers(siteId, type),
-    queryFn: () => request
-      .get<CmsWidgetRendererOption[]>(`/api/cms/widgets/renderers${toQueryString({ siteId, type })}`)
-      .then(unwrap),
+    ...apiQueryOptions(cmsWidgetContract.renderers, { query: { siteId: siteId ?? 0, type } }),
     enabled: enabled && siteId !== undefined,
     staleTime: LOOKUP_STALE_TIME,
   });
@@ -76,8 +59,7 @@ export function useCmsWidgetRenderers(
 
 export function useCmsWidgetRefs(id: number | undefined, enabled = true) {
   return useQuery({
-    queryKey: cmsWidgetKeys.refs(id),
-    queryFn: () => request.get<CmsWidgetRef[]>(`/api/cms/widgets/${id}/refs`).then(unwrap),
+    ...apiQueryOptions(cmsWidgetContract.refs, { params: { id: id ?? 0 } }),
     enabled: enabled && id !== undefined,
   });
 }
@@ -88,10 +70,7 @@ export function useCmsWidgetSourceRefs(
   enabled = true,
 ) {
   return useQuery({
-    queryKey: cmsWidgetKeys.sourceRefs(sourceType, sourceId),
-    queryFn: () => request
-      .get<CmsWidgetSourceReference[]>(`/api/cms/widgets/source-refs${toQueryString({ sourceType, sourceId })}`)
-      .then(unwrap),
+    ...apiQueryOptions(cmsWidgetContract.sourceRefs, { query: { sourceType, sourceId: sourceId ?? 0 } }),
     enabled: enabled && sourceId !== undefined,
   });
 }
@@ -102,109 +81,67 @@ export function useCmsWidgetPreview(
   enabled = true,
 ) {
   return useQuery({
-    queryKey: cmsWidgetKeys.preview(id, rendererKey),
-    queryFn: () => request
-      .get<CmsWidgetPreview>(`/api/cms/widgets/${id}/preview${toQueryString({ rendererKey })}`)
-      .then(unwrap),
+    ...apiQueryOptions(cmsWidgetContract.preview, { params: { id: id ?? 0 }, query: { rendererKey } }),
     enabled: enabled && id !== undefined,
   });
 }
 
 export function useCmsWidgetSlots(siteId: number | undefined, enabled = true) {
   return useQuery({
-    queryKey: cmsWidgetKeys.slots(siteId),
-    queryFn: () => request.get<CmsWidgetSlot[]>(`/api/cms/widgets/slots?siteId=${siteId}`).then(unwrap),
+    ...apiQueryOptions(cmsWidgetContract.slots, { query: { siteId: siteId ?? 0 } }),
     enabled: enabled && siteId !== undefined,
   });
 }
 
-export function useSaveCmsWidget() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
-      (id === undefined
-        ? request.post<CmsWidget>('/api/cms/widgets', values)
-        : request.put<CmsWidget>(`/api/cms/widgets/${id}`, values)
-      ).then(unwrap),
-    onSuccess: (saved) => {
-      void queryClient.invalidateQueries({ queryKey: cmsWidgetKeys.detail(saved.id) });
-      void queryClient.invalidateQueries({ queryKey: cmsWidgetKeys.lists });
-      void queryClient.invalidateQueries({ queryKey: cmsWidgetKeys.preview(saved.id) });
-      // renderers / slots 是站点级配置，不随单个组件的内容变化
-    },
-  });
-}
+export const useSaveCmsWidget = resource.useSave;
 
+/** 发布后部件才可被选用，可选部件下拉随之变化 */
 export function usePublishCmsWidget() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.post<CmsWidget>(`/api/cms/widgets/${id}/publish`).then(unwrap),
-    onSuccess: (_data, id) => {
-      void queryClient.invalidateQueries({ queryKey: cmsWidgetKeys.detail(id) });
-      void queryClient.invalidateQueries({ queryKey: cmsWidgetKeys.lists });
-      // 发布后组件才可被选用，可选组件下拉随之变化
-      void queryClient.invalidateQueries({ queryKey: cmsWidgetKeys.optionsPrefix });
+  return useApiMutation(cmsWidgetContract.publish, {
+    invalidate: (qc, _output, { params }) => {
+      void qc.invalidateQueries({ queryKey: cmsWidgetKeys.detail(params.id) });
+      void qc.invalidateQueries({ queryKey: cmsWidgetKeys.lists });
+      void qc.invalidateQueries({ queryKey: cmsWidgetKeys.optionsPrefix });
     },
   });
 }
 
 export function useOfflineCmsWidget() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.post<CmsWidget>(`/api/cms/widgets/${id}/offline`).then(unwrap),
-    onSuccess: (_data, id) => {
-      void queryClient.invalidateQueries({ queryKey: cmsWidgetKeys.detail(id) });
-      void queryClient.invalidateQueries({ queryKey: cmsWidgetKeys.lists });
-      void queryClient.invalidateQueries({ queryKey: cmsWidgetKeys.optionsPrefix });
+  return useApiMutation(cmsWidgetContract.offline, {
+    invalidate: (qc, _output, { params }) => {
+      void qc.invalidateQueries({ queryKey: cmsWidgetKeys.detail(params.id) });
+      void qc.invalidateQueries({ queryKey: cmsWidgetKeys.lists });
+      void qc.invalidateQueries({ queryKey: cmsWidgetKeys.optionsPrefix });
     },
   });
 }
 
+/** 删除后引用与预览都不再有对应资源 */
 export function useDeleteCmsWidget() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/cms/widgets/${id}`).then(unwrap),
-    onSuccess: (_data, id) => {
-      queryClient.removeQueries({ queryKey: cmsWidgetKeys.detail(id) });
-      queryClient.removeQueries({ queryKey: cmsWidgetKeys.refs(id) });
-      queryClient.removeQueries({ queryKey: ['cms-widgets', 'preview', id] });
-      void queryClient.invalidateQueries({ queryKey: cmsWidgetKeys.lists });
-      void queryClient.invalidateQueries({ queryKey: cmsWidgetKeys.optionsPrefix });
+  return useApiMutation(cmsWidgetContract.remove, {
+    invalidate: (qc, _output, { params }) => {
+      qc.removeQueries({ queryKey: cmsWidgetKeys.detail(params.id) });
+      qc.removeQueries({ queryKey: cmsWidgetKeys.refs(params.id) });
+      qc.removeQueries({ queryKey: cmsWidgetKeys.previewsOf(params.id) });
+      void qc.invalidateQueries({ queryKey: cmsWidgetKeys.lists });
+      void qc.invalidateQueries({ queryKey: cmsWidgetKeys.optionsPrefix });
     },
   });
 }
 
+/** 批量操作异步执行，结果未知，刷新列表与可选部件即可 */
 export function useCmsWidgetBatch() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (input: { ids: number[]; action: 'publish' | 'offline' | 'delete' }) =>
-      request.post<AsyncTask>('/api/cms/widgets/batch', input).then(unwrap),
-    // 批量操作异步执行，结果未知，刷新列表与可选组件即可
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: cmsWidgetKeys.lists });
-      void queryClient.invalidateQueries({ queryKey: cmsWidgetKeys.optionsPrefix });
+  return useApiMutation(cmsWidgetContract.batch, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: cmsWidgetKeys.lists });
+      void qc.invalidateQueries({ queryKey: cmsWidgetKeys.optionsPrefix });
     },
   });
 }
 
+/** slots(siteId) 已精确定位到该站点的插槽配置，无需再广播整个部件域 */
 export function useSaveCmsWidgetSlot() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({
-      slotKey,
-      values,
-    }: {
-      slotKey: 'home.sidebar';
-      values: {
-        siteId: number;
-        widgetId: number | null;
-        rendererKey: CmsWidgetRendererKey;
-        styleProps?: Record<string, unknown>;
-      };
-    }) => request.put<CmsWidgetSlot[]>(`/api/cms/widgets/slots/${slotKey}`, values).then(unwrap),
-    onSuccess: (_data, variables) => {
-      // slots(siteId) 已精确定位到该站点的插槽配置，无需再广播整个组件域
-      void queryClient.invalidateQueries({ queryKey: cmsWidgetKeys.slots(variables.values.siteId) });
-    },
+  return useApiMutation(cmsWidgetContract.saveSlot, {
+    invalidate: (qc, _output, { body }) => void qc.invalidateQueries({ queryKey: cmsWidgetKeys.slots(body.siteId) }),
   });
 }

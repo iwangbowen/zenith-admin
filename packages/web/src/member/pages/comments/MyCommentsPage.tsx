@@ -27,7 +27,7 @@ export default function MyCommentsPage() {
       title: '删除评论',
       content: '删除后不可恢复，确定删除这条评论吗？',
       onOk: async () => {
-        await deleteMutation.mutateAsync(id);
+        await deleteMutation.mutateAsync({ params: { id } });
         Toast.success('已删除');
       },
     });

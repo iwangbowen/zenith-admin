@@ -1,12 +1,9 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { createCmsSensitiveWordSchema, updateCmsSensitiveWordSchema } from '@zenith/shared/cms';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { cmsSensitiveWordContract } from '@zenith/shared/cms';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
-import {
-  ErrorResponse, jsonContent, PaginationQuery, validationHook, commonErrorResponses,
-  ok, okPaginated, okMsg, IdParam, okBody,
-} from '../../lib/openapi-schemas';
-import { CmsSensitiveWordDTO } from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   listCmsSensitiveWords, createCmsSensitiveWord, updateCmsSensitiveWord, deleteCmsSensitiveWord,
   ensureCmsSensitiveWordExists, mapCmsSensitiveWord,
@@ -14,48 +11,18 @@ import {
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
-const listRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/',
-    tags: ['CMS-敏感词库'], summary: '敏感词分页列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:sensitive:list' })] as const,
-    request: {
-      query: PaginationQuery.extend({
-        keyword: z.string().optional(),
-        status: z.enum(['enabled', 'disabled']).optional(),
-      }),
-    },
-    responses: { ...commonErrorResponses, ...okPaginated(CmsSensitiveWordDTO, '敏感词列表') },
-  }),
+const listRoute = defineContractRoute(cmsSensitiveWordContract.list, {
+  middleware: [authMiddleware, guard({ permission: 'cms:sensitive:list' })],
   handler: async (c) => c.json(okBody(await listCmsSensitiveWords(c.req.valid('query'))), 200),
 });
 
-const createRoute_ = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/',
-    tags: ['CMS-敏感词库'], summary: '创建敏感词',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:sensitive:manage', audit: { description: '创建 CMS 敏感词', module: 'CMS内容管理' } })] as const,
-    request: { body: { content: jsonContent(createCmsSensitiveWordSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(CmsSensitiveWordDTO, '创建成功') },
-  }),
+const createRouteDef = defineContractRoute(cmsSensitiveWordContract.create, {
+  middleware: [authMiddleware, guard({ permission: 'cms:sensitive:manage', audit: { description: '创建 CMS 敏感词', module: 'CMS内容管理' } })],
   handler: async (c) => c.json(okBody(await createCmsSensitiveWord(c.req.valid('json')), '创建成功'), 200),
 });
 
-const updateRoute_ = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/{id}',
-    tags: ['CMS-敏感词库'], summary: '更新敏感词',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:sensitive:manage', audit: { description: '更新 CMS 敏感词', module: 'CMS内容管理' } })] as const,
-    request: { params: IdParam, body: { content: jsonContent(updateCmsSensitiveWordSchema), required: true } },
-    responses: {
-      ...commonErrorResponses,
-      ...ok(CmsSensitiveWordDTO, '更新成功'),
-      404: { content: jsonContent(ErrorResponse), description: '不存在' },
-    },
-  }),
+const updateRouteDef = defineContractRoute(cmsSensitiveWordContract.update, {
+  middleware: [authMiddleware, guard({ permission: 'cms:sensitive:manage', audit: { description: '更新 CMS 敏感词', module: 'CMS内容管理' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, mapCmsSensitiveWord(await ensureCmsSensitiveWordExists(id)));
@@ -63,19 +30,8 @@ const updateRoute_ = defineOpenAPIRoute({
   },
 });
 
-const deleteRoute_ = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/{id}',
-    tags: ['CMS-敏感词库'], summary: '删除敏感词',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:sensitive:manage', audit: { description: '删除 CMS 敏感词', module: 'CMS内容管理' } })] as const,
-    request: { params: IdParam },
-    responses: {
-      ...commonErrorResponses,
-      ...okMsg('删除成功'),
-      404: { content: jsonContent(ErrorResponse), description: '不存在' },
-    },
-  }),
+const deleteRouteDef = defineContractRoute(cmsSensitiveWordContract.remove, {
+  middleware: [authMiddleware, guard({ permission: 'cms:sensitive:manage', audit: { description: '删除 CMS 敏感词', module: 'CMS内容管理' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, mapCmsSensitiveWord(await ensureCmsSensitiveWordExists(id)));
@@ -84,6 +40,6 @@ const deleteRoute_ = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRoute, createRoute_, updateRoute_, deleteRoute_] as const);
+router.openapiRoutes([listRoute, createRouteDef, updateRouteDef, deleteRouteDef] as const);
 
 export default router;

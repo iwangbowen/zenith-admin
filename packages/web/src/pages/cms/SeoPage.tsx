@@ -73,7 +73,7 @@ function RedirectsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
             confirmDelete({
               title: '确定要删除该规则吗？',
               onOk: async () => {
-                await deleteMutation.mutateAsync(record.id);
+                await deleteMutation.mutateAsync({ params: { id: record.id } });
                 Toast.success('删除成功');
               },
             });
@@ -164,7 +164,7 @@ function LinkWordsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
             confirmDelete({
               title: '确定要删除该内链词吗？',
               onOk: async () => {
-                await deleteMutation.mutateAsync(record.id);
+                await deleteMutation.mutateAsync({ params: { id: record.id } });
                 Toast.success('删除成功');
               },
             });
@@ -229,7 +229,7 @@ function PushTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
       Toast.warning('请输入要推送的 URL（每行一个）');
       return;
     }
-    const results = await pushMutation.mutateAsync({ siteId, urls });
+    const results = await pushMutation.mutateAsync({ body: { siteId, urls } });
     const okCount = results.filter((r) => r.submitted).length;
     const skipped = results.filter((r) => !r.submitted).map((r) => r.reason).filter(Boolean);
     Toast.success(`已提交 ${okCount} 个引擎${skipped.length > 0 ? `；跳过：${skipped.join('、')}` : ''}`);
@@ -318,7 +318,7 @@ function DeadlinkTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
             disabled={!siteId}
             onClick={async () => {
               if (!siteId) return;
-              await checkMutation.mutateAsync(siteId);
+              await checkMutation.mutateAsync({ body: { siteId } });
               Toast.success('死链检测任务已提交');
               refresh();
             }}

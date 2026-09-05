@@ -1,7 +1,42 @@
-import { http, HttpResponse } from 'msw';
-import { ok, badRequest, notFound, conflict, locked, pageResult } from '@/mocks/utils/handlers';
-import type { CmsChannel, CmsContent, CmsContentStatus, CmsForm, CmsModelField, CmsResourceReference } from '@zenith/shared/cms';
-import { CMS_SEARCH_DICTIONARY_WORD_PATTERN, CMS_SECRET_MASK, parseCmsLink } from '@zenith/shared/cms';
+import { HttpResponse } from 'msw';
+import type * as z from 'zod';
+import { badRequest, notFound, conflict, locked } from '@/mocks/utils/handlers';
+import { mock } from '@/mocks/utils/contract';
+import type {
+  CmsChannel,
+  CmsContent,
+  CmsContentStatus,
+  CmsForm,
+  CmsModel,
+  CmsModelField,
+  CmsResourceReference,
+  CmsSite,
+  cmsModelFieldSchema,
+} from '@zenith/shared/cms';
+import {
+  CMS_SECRET_MASK,
+  cmsAdContract,
+  cmsChannelContract,
+  cmsCollectContract,
+  cmsCommentContract,
+  cmsContentContract,
+  cmsDashboardContract,
+  cmsErrorProneWordContract,
+  cmsFormContract,
+  cmsFriendLinkContract,
+  cmsModelContract,
+  cmsPageContract,
+  cmsResourceContract,
+  cmsSearchContract,
+  cmsSensitiveWordContract,
+  cmsSeoContract,
+  cmsSiteContract,
+  cmsStatContract,
+  cmsStaticContract,
+  cmsTagContract,
+  cmsUploadContract,
+  parseCmsLink,
+} from '@zenith/shared/cms';
 import { SEED_CMS_EDITOR_USER } from '@zenith/shared/seed';
 import {
   mockCmsSites, mockCmsModels, mockCmsChannels, mockCmsContents, mockCmsTags,
@@ -25,7 +60,7 @@ import { createProgressingMockTask } from './async-tasks';
 import { submitMockCmsWidgetSourceRefresh } from './cms-widgets';
 import { mockDateTime, mockDate } from '../utils/date';
 
-type Body = Record<string, unknown>;
+type MockContent = CmsContent & { tagIds: number[]; deleted?: boolean };
 
 function syncMockPageWidgetRefs(page: (typeof mockCmsPages)[number]) {
   for (let index = mockCmsWidgetRefs.length - 1; index >= 0; index -= 1) {
@@ -44,7 +79,7 @@ function syncMockPageWidgetRefs(page: (typeof mockCmsPages)[number]) {
       ownerType: 'page',
       ownerId: page.id,
       field: block.id,
-      rendererKey: String(block.props.rendererKey ?? 'list-sidebar') as import('@zenith/shared').CmsWidgetRendererKey,
+      rendererKey: String(block.props.rendererKey ?? 'list-sidebar') as import('@zenith/shared/cms').CmsWidgetRendererKey,
       styleProps: block.props.styleProps && typeof block.props.styleProps === 'object'
         ? block.props.styleProps as Record<string, unknown>
         : {},
@@ -67,22 +102,16 @@ function publishedWidgetUsing(sourceType: 'content' | 'channel', sourceId: numbe
     )));
 }
 
-function okJson<T>(data: T, message = 'ok') {
-  return ok(data, message);
-}
-
-function pageParams(request: Request) {
-  const url = new URL(request.url);
-  return {
-    url,
-    page: Number(url.searchParams.get('page')) || 1,
-    pageSize: Number(url.searchParams.get('pageSize')) || 10,
-    keyword: url.searchParams.get('keyword') || '',
-  };
-}
-
 function channelPath(channelId: number): string {
   return mockCmsChannels.find((c) => c.id === channelId)?.path ?? '';
+}
+
+function isDeleted(content: CmsContent): boolean {
+  return (content as MockContent).deleted === true;
+}
+
+function setDeleted(content: CmsContent, deleted: boolean) {
+  (content as MockContent).deleted = deleted;
 }
 
 const sensitiveCmsSettingKey = /(?:secret|token|password|private[_-]?key|api[_-]?key|access[_-]?key|indexnow[_-]?key|credential)/i;
@@ -96,7 +125,7 @@ function redactMockSettingValue(value: unknown): unknown {
   ]));
 }
 
-function redactMockSite<T extends { settings: Record<string, unknown> }>(site: T): T {
+function redactMockSite(site: CmsSite): CmsSite {
   const settings = redactMockSettingValue(site.settings) as Record<string, unknown>;
   return { ...site, settings };
 }
@@ -127,14 +156,6 @@ function redactMockForm<T extends { turnstileSecret: string | null }>(form: T): 
   return { ...form, turnstileSecret: form.turnstileSecret ? CMS_SECRET_MASK : null };
 }
 
-function hasInvalidMockFormPattern(fields: unknown): boolean {
-  return Array.isArray(fields) && fields.some((field) => {
-    if (!field || typeof field !== 'object') return false;
-    const pattern = (field as Record<string, unknown>).pattern;
-    return typeof pattern === 'string' && (pattern.length > 200 || /[\0\r\n]/.test(pattern));
-  });
-}
-
 function sanitizeMockCmsHtml(value: string | null): string | null {
   return value?.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+="[^"]*"/gi, '') ?? null;
 }
@@ -162,101 +183,96 @@ function collectMockResourceRefs(res: { id: number; siteId: number; url: string 
   return refs;
 }
 
+type ModelFieldInput = z.output<typeof cmsModelFieldSchema>;
+
+function buildMockModelFields(modelId: number, fields: ModelFieldInput[], now: string): CmsModelField[] {
+  return fields.map((f, i) => ({
+    id: getNextCmsModelFieldId(),
+    modelId,
+    name: f.name,
+    label: f.label,
+    fieldType: f.fieldType,
+    required: f.required,
+    searchable: f.searchable,
+    showInList: f.showInList,
+    showInDetail: f.showInDetail,
+    detailGroup: f.detailGroup || null,
+    detailSort: i,
+    placeholder: f.placeholder ?? null,
+    defaultValue: null,
+    optionSource: f.optionSource,
+    dictCode: f.dictCode ?? null,
+    options: f.options ?? null,
+    sort: i,
+    createdAt: now,
+    updatedAt: now,
+  }));
+}
+
+function authorizedEditorUsers() {
+  return { userIds: [2], users: [{ id: 2, username: SEED_CMS_EDITOR_USER.username, nickname: SEED_CMS_EDITOR_USER.nickname }] };
+}
+
 export const cmsHandlers = [
   // ═══ 站点 ═══════════════════════════════════════════════════════════════
-  http.get('/api/cms/sites/all', () => okJson(mockCmsSites.filter((s) => s.status === 'enabled').map(redactMockSite))),
-  http.get('/api/cms/sites/themes', () => okJson([
-    { code: 'default', label: '默认主题' },
-    { code: 'docs', label: '文档主题' },
-  ])),
-  // 主题可选模板清单（与 packages/server/src/cms/themes/default 注册的变体保持一致）
-  http.get('/api/cms/sites/themes/:code/templates', ({ params }) => {
-    const code = String(params.code);
-    if (!['default', 'docs'].includes(code)) return okJson({ list: [], detail: [] });
-    return okJson({
-      list: code === 'default' ? [
-        { name: 'list-card', label: '卡片网格（产品/案例）' },
-        { name: 'list-compact', label: '紧凑标题（公告/文件）' },
-      ] : [],
-      detail: code === 'default' ? [{ name: 'detail-plain', label: '简洁正文（公告/政策）' }] : [],
-    });
-  }),
   // 主题参数声明（与 packages/server/src/cms/themes/default 的 settingsSchema 保持一致）
-  http.get('/api/cms/sites/themes/:code/settings-schema', ({ params }) => okJson(params.code === 'default' ? [
+  mock(cmsSiteContract.themeSettingsSchema, ({ params, ok }) => ok(params.code === 'default' ? [
     { name: 'contactPhone', label: '页头联系电话', fieldType: 'text', group: '页头', placeholder: '如 400-800-8888', description: '显示在页头搜索框左侧，留空不显示' },
     { name: 'bannerImage', label: '首页横幅图', fieldType: 'image', group: '首页', description: '显示在首页顶部，留空不显示' },
     { name: 'bannerLink', label: '横幅跳转链接', fieldType: 'text', group: '首页', placeholder: 'https://... 留空不跳转' },
     { name: 'showHotSection', label: '显示热门排行', fieldType: 'switch', defaultValue: true, group: '首页' },
     { name: 'footerText', label: '页脚附加文案', fieldType: 'textarea', group: '页脚', placeholder: '如联系地址、邮箱等，支持多行' },
   ] : [])),
-  // 站点模板健康检查（Demo 种子数据与主题清单对齐，无失效引用）
-  http.get('/api/cms/sites/:id/template-health', ({ request, params }) => {
-    const site = mockCmsSites.find((s) => s.id === Number(params.id));
-    if (!site) return notFound('站点不存在', { status: 404 });
-    const theme = new URL(request.url).searchParams.get('theme') || site.theme;
-    return okJson({ theme, themeRegistered: ['default', 'docs'].includes(theme), invalidRefs: [] });
+  mock(cmsSiteContract.detail, ({ params, ok }) => {
+    const site = mockCmsSites.find((s) => s.id === params.id);
+    return site ? ok(redactMockSite(site)) : notFound('站点不存在', { status: 404 });
   }),
-  http.get('/api/cms/sites', ({ request }) => {
-    const { url, page, pageSize, keyword } = pageParams(request);
-    const status = url.searchParams.get('status') || '';
-    let list = [...mockCmsSites];
-    if (keyword) list = list.filter((s) => s.name.includes(keyword) || s.code.includes(keyword) || (s.domain ?? '').includes(keyword));
-    if (status) list = list.filter((s) => s.status === status);
-    return okJson({ ...pageResult(list, page, pageSize), list: pageResult(list, page, pageSize).list.map(redactMockSite) });
-  }),
-  http.get('/api/cms/sites/:id', ({ params }) => {
-    const site = mockCmsSites.find((s) => s.id === Number(params.id));
-    return site ? okJson(redactMockSite(site)) : notFound('站点不存在', { status: 404 });
-  }),
-  http.post('/api/cms/sites', async ({ request }) => {
-    const body = (await request.json()) as Body;
-    const code = String(body.code ?? '');
-    if (mockCmsSites.some((site) => site.code === code)) {
+  mock(cmsSiteContract.create, ({ body, ok }) => {
+    if (mockCmsSites.some((site) => site.code === body.code)) {
       return badRequest('站点标识或域名已存在', { status: 400 });
     }
-    const theme = String(body.theme ?? 'default');
-    if (!['default', 'docs'].includes(theme)) {
-      return badRequest(`主题「${theme}」不存在，仅支持内置主题`, { status: 400 });
+    if (!['default', 'docs'].includes(body.theme)) {
+      return badRequest(`主题「${body.theme}」不存在，仅支持内置主题`, { status: 400 });
     }
     const now = mockDateTime();
     if (body.isDefault) mockCmsSites.forEach((s) => { s.isDefault = false; });
-    const site = {
+    const site: CmsSite = {
       id: getNextCmsSiteId(),
-      parentId: (body.parentId as number) ?? null,
-      name: String(body.name ?? ''),
-      code,
-      domain: (body.domain as string) ?? null,
-      aliasDomains: (body.aliasDomains as string[]) ?? [],
-      isDefault: Boolean(body.isDefault),
-      title: (body.title as string) ?? null,
-      keywords: (body.keywords as string) ?? null,
-      description: (body.description as string) ?? null,
+      parentId: body.parentId,
+      inheritance: body.inheritance,
+      name: body.name,
+      code: body.code,
+      domain: body.domain ?? null,
+      aliasDomains: body.aliasDomains,
+      isDefault: body.isDefault,
+      title: body.title ?? null,
+      keywords: body.keywords ?? null,
+      description: body.description ?? null,
       logo: null,
       favicon: null,
-      icp: (body.icp as string) ?? null,
-      copyright: (body.copyright as string) ?? null,
-      theme,
+      icp: body.icp ?? null,
+      copyright: body.copyright ?? null,
+      theme: body.theme,
       themeRevision: 0,
       publicRevision: 0,
       templateRefsRevision: 0,
-      staticMode: (body.staticMode as 'dynamic' | 'hybrid' | 'static') ?? 'hybrid',
-      robots: (body.robots as string) ?? null,
-      modelId: (body.modelId as number) ?? null,
-      extend: (body.extend as Record<string, unknown>) ?? {},
-      settings: mergeMockSiteSettings({}, (body.settings as Record<string, unknown>) ?? {}),
-      status: (body.status as 'enabled' | 'disabled') ?? 'enabled',
-      sort: Number(body.sort ?? 0),
-      remark: (body.remark as string) ?? null,
+      staticMode: body.staticMode,
+      robots: body.robots ?? null,
+      modelId: body.modelId ?? null,
+      extend: body.extend,
+      settings: mergeMockSiteSettings({}, body.settings),
+      status: body.status,
+      sort: body.sort,
+      remark: body.remark ?? null,
       createdAt: now,
       updatedAt: now,
     };
     mockCmsSites.push(site);
-    return okJson(redactMockSite(site), '创建成功');
+    return ok(redactMockSite(site), '创建成功');
   }),
-  http.put('/api/cms/sites/:id', async ({ params, request }) => {
-    const idx = mockCmsSites.findIndex((s) => s.id === Number(params.id));
+  mock(cmsSiteContract.update, ({ params, body, ok }) => {
+    const idx = mockCmsSites.findIndex((s) => s.id === params.id);
     if (idx === -1) return notFound('站点不存在', { status: 404 });
-    const body = (await request.json()) as Body;
     if (body.status === 'disabled') {
       if (mockCmsSites.some((site) => site.parentId === mockCmsSites[idx].id && site.status === 'enabled')) {
         return badRequest('存在启用中的子站点，请先逐级停用子站点', { status: 400 });
@@ -267,24 +283,21 @@ export const cmsHandlers = [
         return badRequest('该站点被启用中的分发规则引用，请先停用规则', { status: 400 });
       }
     }
-    const code = body.code === undefined ? mockCmsSites[idx].code : String(body.code);
+    const code = body.code === undefined ? mockCmsSites[idx].code : body.code;
     if (mockCmsSites.some((site, siteIndex) => siteIndex !== idx && site.code === code)) {
       return badRequest('站点标识或域名已存在', { status: 400 });
     }
-    if (body.settings && typeof body.settings === 'object') {
-      body.settings = mergeMockSiteSettings(
-        mockCmsSites[idx].settings,
-        body.settings as Record<string, unknown>,
-      );
-      mockCmsSites[idx].templateRefsRevision += 1;
-    }
+    const { theme: _ignoredTheme, settings, ...patch } = body;
+    const mergedSettings = settings
+      ? mergeMockSiteSettings(mockCmsSites[idx].settings, settings)
+      : undefined;
+    if (mergedSettings) mockCmsSites[idx].templateRefsRevision += 1;
     if (body.isDefault) mockCmsSites.forEach((s) => { s.isDefault = false; });
-    const { theme: _ignoredTheme, ...patch } = body;
-    Object.assign(mockCmsSites[idx], patch, { code, updatedAt: mockDateTime() });
-    return okJson(redactMockSite(mockCmsSites[idx]), '更新成功');
+    Object.assign(mockCmsSites[idx], patch, mergedSettings ? { settings: mergedSettings } : {}, { code, updatedAt: mockDateTime() });
+    return ok(redactMockSite(mockCmsSites[idx]), '更新成功');
   }),
-  http.delete('/api/cms/sites/:id', ({ params }) => {
-    const id = Number(params.id);
+  mock(cmsSiteContract.remove, ({ params, ok }) => {
+    const { id } = params;
     if (mockCmsSites.some((site) => site.parentId === id)) {
       return badRequest('该站点下存在子站点，请先移动或删除子站点', { status: 400 });
     }
@@ -297,175 +310,123 @@ export const cmsHandlers = [
     const idx = mockCmsSites.findIndex((s) => s.id === id);
     if (idx === -1) return notFound('站点不存在', { status: 404 });
     mockCmsSites.splice(idx, 1);
-    return okJson(null, '删除成功');
+    return ok(null, '删除成功');
   }),
 
   // ═══ 模型 ═══════════════════════════════════════════════════════════════
-  http.get('/api/cms/models/all', () => okJson(mockCmsModels.filter((m) => m.status === 'enabled'))),
-  http.get('/api/cms/models', ({ request }) => {
-    const { page, pageSize, keyword } = pageParams(request);
+  mock(cmsModelContract.all, ({ ok }) => ok(mockCmsModels.filter((m) => m.status === 'enabled'))),
+  mock(cmsModelContract.list, ({ query, ok, paginate }) => {
+    const { keyword } = query;
     let list = [...mockCmsModels];
     if (keyword) list = list.filter((m) => m.name.includes(keyword) || m.code.includes(keyword));
-    return okJson(pageResult(list, page, pageSize));
+    return ok(paginate(list));
   }),
-  http.get('/api/cms/models/:id', ({ params }) => {
-    const model = mockCmsModels.find((m) => m.id === Number(params.id));
-    return model ? okJson(model) : notFound('内容模型不存在', { status: 404 });
+  mock(cmsModelContract.detail, ({ params, ok }) => {
+    const model = mockCmsModels.find((m) => m.id === params.id);
+    return model ? ok(model) : notFound('内容模型不存在', { status: 404 });
   }),
-  http.post('/api/cms/models', async ({ request }) => {
-    const body = (await request.json()) as Body;
+  mock(cmsModelContract.create, ({ body, ok }) => {
     const now = mockDateTime();
     const modelId = getNextCmsModelId();
-    const fields = ((body.fields as Body[]) ?? []).map((f, i) => ({
-      id: getNextCmsModelFieldId(),
-      modelId,
-      name: String(f.name ?? ''),
-      label: String(f.label ?? ''),
-      fieldType: (f.fieldType as CmsModelField['fieldType']) ?? 'text',
-      required: Boolean(f.required),
-      searchable: Boolean(f.searchable),
-      showInList: Boolean(f.showInList),
-      showInDetail: Boolean(f.showInDetail),
-      detailGroup: (f.detailGroup as string) || null,
-      detailSort: i,
-      placeholder: (f.placeholder as string) ?? null,
-      defaultValue: null,
-      optionSource: (f.optionSource as 'manual' | 'dict') ?? 'manual',
-      dictCode: (f.dictCode as string) ?? null,
-      options: (f.options as { label: string; value: string }[]) ?? null,
-      sort: i,
-      createdAt: now,
-      updatedAt: now,
-    }));
-    const model = {
+    const model: CmsModel = {
       id: modelId,
-      ownerSiteId: (body.ownerSiteId as number | null) ?? null,
+      ownerSiteId: body.ownerSiteId,
       ownerSiteName: null,
-      name: String(body.name ?? ''),
-      code: String(body.code ?? ''),
-      description: (body.description as string) ?? null,
+      name: body.name,
+      code: body.code,
+      description: body.description ?? null,
       isSystem: false,
-      status: (body.status as 'enabled' | 'disabled') ?? 'enabled',
+      status: body.status,
       sort: 0,
-      fields,
+      fields: buildMockModelFields(modelId, body.fields, now),
       createdAt: now,
       updatedAt: now,
     };
     mockCmsModels.push(model);
-    return okJson(model, '创建成功');
+    return ok(model, '创建成功');
   }),
-  http.put('/api/cms/models/:id', async ({ params, request }) => {
-    const idx = mockCmsModels.findIndex((m) => m.id === Number(params.id));
+  mock(cmsModelContract.update, ({ params, body, ok }) => {
+    const idx = mockCmsModels.findIndex((m) => m.id === params.id);
     if (idx === -1) return notFound('内容模型不存在', { status: 404 });
-    const body = (await request.json()) as Body;
     const now = mockDateTime();
     const { fields, ...rest } = body;
     Object.assign(mockCmsModels[idx], rest, { updatedAt: now });
-    if (fields) {
-      mockCmsModels[idx].fields = (fields as Body[]).map((f, i) => ({
-        id: getNextCmsModelFieldId(),
-        modelId: mockCmsModels[idx].id,
-        name: String(f.name ?? ''),
-        label: String(f.label ?? ''),
-        fieldType: (f.fieldType as CmsModelField['fieldType']) ?? 'text',
-        required: Boolean(f.required),
-        searchable: Boolean(f.searchable),
-        showInList: Boolean(f.showInList),
-        showInDetail: Boolean(f.showInDetail),
-        detailGroup: (f.detailGroup as string) || null,
-        detailSort: i,
-        placeholder: (f.placeholder as string) ?? null,
-        defaultValue: null,
-        optionSource: (f.optionSource as 'manual' | 'dict') ?? 'manual',
-      dictCode: (f.dictCode as string) ?? null,
-      options: (f.options as { label: string; value: string }[]) ?? null,
-        sort: i,
-        createdAt: now,
-        updatedAt: now,
-      }));
-    }
-    return okJson(mockCmsModels[idx], '更新成功');
+    if (fields) mockCmsModels[idx].fields = buildMockModelFields(mockCmsModels[idx].id, fields, now);
+    return ok(mockCmsModels[idx], '更新成功');
   }),
-  http.delete('/api/cms/models/:id', ({ params }) => {
-    const id = Number(params.id);
-    const model = mockCmsModels.find((m) => m.id === id);
+  mock(cmsModelContract.remove, ({ params, ok }) => {
+    const model = mockCmsModels.find((m) => m.id === params.id);
     if (!model) return notFound('内容模型不存在', { status: 404 });
     if (model.isSystem) {
       return badRequest('系统内置模型不可删除', { status: 400 });
     }
     mockCmsModels.splice(mockCmsModels.indexOf(model), 1);
-    return okJson(null, '删除成功');
+    return ok(null, '删除成功');
   }),
 
   // ═══ 栏目 ═══════════════════════════════════════════════════════════════
-  http.get('/api/cms/channels/tree', ({ request }) => {
-    const url = new URL(request.url);
-    const siteId = Number(url.searchParams.get('siteId'));
+  mock(cmsChannelContract.tree, ({ query, ok }) => {
     const list = mockCmsChannels
-      .filter((c) => c.siteId === siteId)
+      .filter((c) => c.siteId === query.siteId)
       .map((c) => ({ ...c, modelName: mockCmsModels.find((m) => m.id === c.modelId)?.name ?? null }));
-    return okJson(buildMockChannelTree(list));
+    return ok(buildMockChannelTree(list));
   }),
-  http.get('/api/cms/channels/:id', ({ params }) => {
-    const channel = mockCmsChannels.find((c) => c.id === Number(params.id));
-    return channel ? okJson(channel) : notFound('栏目不存在', { status: 404 });
+  mock(cmsChannelContract.detail, ({ params, ok }) => {
+    const channel = mockCmsChannels.find((c) => c.id === params.id);
+    return channel ? ok(channel) : notFound('栏目不存在', { status: 404 });
   }),
-  http.post('/api/cms/channels', async ({ request }) => {
-    const body = (await request.json()) as Body;
+  mock(cmsChannelContract.create, ({ body, ok }) => {
     const now = mockDateTime();
-    const parentId = Number(body.parentId ?? 0);
+    const { parentId, slug, siteId } = body;
     const parent = mockCmsChannels.find((c) => c.id === parentId);
-    const slug = String(body.slug ?? '');
-    const siteId = Number(body.siteId);
     // 与服务端一致：code 留空取 slug，站点内冲突追加序号
     const usedCodes = new Set(mockCmsChannels.filter((c) => c.siteId === siteId).map((c) => c.code));
-    let code = String(body.code ?? '').trim() || slug;
+    let code = body.code?.trim() || slug;
     for (let i = 2; usedCodes.has(code) && i < 1000; i++) code = `${slug}-${i}`;
     const channel: CmsChannel = {
       id: getNextCmsChannelId(),
       siteId,
       parentId,
-      modelId: (body.modelId as number) ?? null,
-      name: String(body.name ?? ''),
+      modelId: body.modelId ?? null,
+      name: body.name,
       code,
       slug,
       path: parent ? `${parent.path}/${slug}` : slug,
-      type: (body.type as CmsChannel['type']) ?? 'list',
-      linkUrl: (body.linkUrl as string) ?? null,
-      listTemplate: (body.listTemplate as string) ?? null,
-      detailTemplate: (body.detailTemplate as string) ?? null,
-      staticMode: (body.staticMode as CmsChannel['staticMode']) ?? 'inherit',
-      detailPathRule: (body.detailPathRule as CmsChannel['detailPathRule']) ?? 'none',
-      pageSize: Number(body.pageSize ?? 20),
-      pageContent: (body.pageContent as string) ?? null,
-      seoTitle: (body.seoTitle as string) ?? null,
-      seoKeywords: (body.seoKeywords as string) ?? null,
-      seoDescription: (body.seoDescription as string) ?? null,
+      type: body.type,
+      linkUrl: body.linkUrl ?? null,
+      listTemplate: body.listTemplate ?? null,
+      detailTemplate: body.detailTemplate ?? null,
+      staticMode: body.staticMode,
+      detailPathRule: body.detailPathRule,
+      pageSize: body.pageSize,
+      pageContent: body.pageContent ?? null,
+      seoTitle: body.seoTitle ?? null,
+      seoKeywords: body.seoKeywords ?? null,
+      seoDescription: body.seoDescription ?? null,
       image: null,
-      visible: body.visible === undefined ? true : Boolean(body.visible),
-      status: (body.status as 'enabled' | 'disabled') ?? 'enabled',
-      sort: Number(body.sort ?? 0),
-      settings: (body.settings as Record<string, unknown>) ?? {},
+      visible: body.visible,
+      status: body.status,
+      sort: body.sort,
+      settings: body.settings,
       createdAt: now,
       updatedAt: now,
     };
     mockCmsChannels.push(channel);
-    return okJson(channel, '创建成功');
+    return ok(channel, '创建成功');
   }),
-  http.put('/api/cms/channels/:id', async ({ params, request }) => {
-    const idx = mockCmsChannels.findIndex((c) => c.id === Number(params.id));
+  mock(cmsChannelContract.update, ({ params, body, ok }) => {
+    const idx = mockCmsChannels.findIndex((c) => c.id === params.id);
     if (idx === -1) return notFound('栏目不存在', { status: 404 });
-    const body = (await request.json()) as Body;
-    const widget = body.status === 'disabled' ? publishedWidgetUsing('channel', Number(params.id)) : null;
+    const widget = body.status === 'disabled' ? publishedWidgetUsing('channel', params.id) : null;
     if (widget) return conflict(`已发布页面部件「${widget.name}」引用了该栏目`, { status: 409 });
     Object.assign(mockCmsChannels[idx], body, { updatedAt: mockDateTime() });
     const parent = mockCmsChannels.find((c) => c.id === mockCmsChannels[idx].parentId);
     mockCmsChannels[idx].path = parent ? `${parent.path}/${mockCmsChannels[idx].slug}` : mockCmsChannels[idx].slug;
-    submitMockCmsWidgetSourceRefresh('channel', [Number(params.id)]);
-    return okJson(mockCmsChannels[idx], '更新成功');
+    submitMockCmsWidgetSourceRefresh('channel', [params.id]);
+    return ok(mockCmsChannels[idx], '更新成功');
   }),
-  http.delete('/api/cms/channels/:id', ({ params }) => {
-    const id = Number(params.id);
+  mock(cmsChannelContract.remove, ({ params, ok }) => {
+    const { id } = params;
     const widget = publishedWidgetUsing('channel', id);
     if (widget) return conflict(`已发布页面部件「${widget.name}」引用了该栏目`, { status: 409 });
     if (mockCmsChannels.some((c) => c.parentId === id)) {
@@ -477,49 +438,40 @@ export const cmsHandlers = [
     const idx = mockCmsChannels.findIndex((c) => c.id === id);
     if (idx === -1) return notFound('栏目不存在', { status: 404 });
     mockCmsChannels.splice(idx, 1);
-    return okJson(null, '删除成功');
+    return ok(null, '删除成功');
   }),
 
   // ═══ 内容 ═══════════════════════════════════════════════════════════════
-  http.get('/api/cms/contents', ({ request }) => {
-    const { url, page, pageSize, keyword } = pageParams(request);
-    const siteId = Number(url.searchParams.get('siteId'));
-    const channelId = url.searchParams.get('channelId');
-    const status = url.searchParams.get('status') || '';
-    const contentType = url.searchParams.get('contentType') || '';
-    const deleted = url.searchParams.get('deleted') === 'true';
-    const archived = url.searchParams.get('archived') === 'true';
-    let list = mockCmsContents.filter((c) => c.siteId === siteId && (deleted ? c.status === 'offline' && (c as { deleted?: boolean }).deleted : !(c as { deleted?: boolean }).deleted));
+  mock(cmsContentContract.list, ({ query, ok, paginate }) => {
+    const { siteId, channelId, status, contentType, keyword, deleted, archived } = query;
+    let list = mockCmsContents.filter((c) => c.siteId === siteId && (deleted ? c.status === 'offline' && isDeleted(c) : !isDeleted(c)));
     if (!deleted) list = list.filter((c) => (archived ? !!c.archivedAt : !c.archivedAt));
-    if (channelId) list = list.filter((c) => c.channelId === Number(channelId));
+    if (channelId) list = list.filter((c) => c.channelId === channelId);
     if (status) list = list.filter((c) => c.status === status);
     if (contentType) list = list.filter((c) => c.contentType === contentType);
     if (keyword) list = list.filter((c) => c.title.includes(keyword) || (c.author ?? '').includes(keyword));
     list = [...list].sort((a, b) => Number(b.isTop) - Number(a.isTop) || (b.topWeight ?? 0) - (a.topWeight ?? 0) || b.id - a.id);
-    return okJson(pageResult(list.map((c) => ({ ...c, channelName: mockCmsChannels.find((ch) => ch.id === c.channelId)?.name ?? null })), page, pageSize));
+    return ok(paginate(list.map((c) => ({ ...c, channelName: mockCmsChannels.find((ch) => ch.id === c.channelId)?.name ?? null }))));
   }),
-  http.get('/api/cms/contents/check-title', ({ request }) => {
-    const url = new URL(request.url);
-    const siteId = Number(url.searchParams.get('siteId'));
-    const title = (url.searchParams.get('title') ?? '').trim();
-    const excludeId = Number(url.searchParams.get('excludeId')) || 0;
+  mock(cmsContentContract.checkTitle, ({ query, ok }) => {
+    const { siteId, excludeId } = query;
+    const title = query.title.trim();
     const matches = mockCmsContents
       .filter((c) => c.siteId === siteId && c.title === title && c.id !== excludeId)
       .slice(0, 5)
       .map((c) => ({ id: c.id, title: c.title, status: c.status }));
-    return okJson({ duplicate: matches.length > 0, matches });
+    return ok({ duplicate: matches.length > 0, matches });
   }),
-  http.get('/api/cms/contents/link-target', ({ request }) => {
-    const url = new URL(request.url);
-    const siteId = Number(url.searchParams.get('siteId'));
-    const link = (url.searchParams.get('link') ?? '').trim();
+  mock(cmsContentContract.linkTarget, ({ query, ok }) => {
+    const { siteId } = query;
+    const link = query.link.trim();
     const ref = parseCmsLink(link);
-    if (!ref) return okJson({ kind: 'invalid', label: link, targetId: null, targetCode: null, exists: false });
-    if (ref.kind === 'external') return okJson({ kind: 'external', label: ref.url, targetId: null, targetCode: null, exists: true });
-    if (ref.kind === 'internal') return okJson({ kind: 'internal', label: ref.path, targetId: null, targetCode: null, exists: true });
+    if (!ref) return ok({ kind: 'invalid', label: link, targetId: null, targetCode: null, exists: false });
+    if (ref.kind === 'external') return ok({ kind: 'external', label: ref.url, targetId: null, targetCode: null, exists: true });
+    if (ref.kind === 'internal') return ok({ kind: 'internal', label: ref.path, targetId: null, targetCode: null, exists: true });
     if (ref.code !== null) {
       const channel = mockCmsChannels.find((ch) => ch.code === ref.code && ch.siteId === siteId);
-      return okJson({
+      return ok({
         kind: 'entity-channel',
         label: channel?.name ?? `栏目「${ref.code}」（不存在）`,
         targetId: channel?.id ?? null,
@@ -529,7 +481,7 @@ export const cmsHandlers = [
     }
     if (ref.entityType === 'content') {
       const target = mockCmsContents.find((c) => c.id === ref.id && c.siteId === siteId);
-      return okJson({
+      return ok({
         kind: 'entity-content',
         label: target?.title ?? `内容 #${ref.id}（已删除）`,
         targetId: ref.id,
@@ -538,7 +490,7 @@ export const cmsHandlers = [
       });
     }
     const channel = mockCmsChannels.find((ch) => ch.id === ref.id && ch.siteId === siteId);
-    return okJson({
+    return ok({
       kind: 'entity-channel',
       label: channel?.name ?? `栏目 #${ref.id}（已删除）`,
       targetId: ref.id,
@@ -546,70 +498,68 @@ export const cmsHandlers = [
       exists: !!channel,
     });
   }),
-  http.get('/api/cms/contents/:id', ({ params }) => {
-    const content = mockCmsContents.find((c) => c.id === Number(params.id));
+  mock(cmsContentContract.detail, ({ params, ok }) => {
+    const content = mockCmsContents.find((c) => c.id === params.id);
     if (!content) return notFound('内容不存在', { status: 404 });
-    return okJson({
+    return ok({
       ...content,
       channelName: mockCmsChannels.find((ch) => ch.id === content.channelId)?.name ?? null,
       tags: mockCmsTags.filter((t) => content.tagIds.includes(t.id)),
     });
   }),
-  http.post('/api/cms/contents/recycle', async ({ request }) => {
-    const { ids } = (await request.json()) as { ids: number[] };
+  mock(cmsContentContract.recycle, ({ body, ok }) => {
+    const { ids } = body;
     const widget = ids.map((id) => publishedWidgetUsing('content', id)).find(Boolean);
     if (widget) return conflict(`已发布页面部件「${widget.name}」引用了所选内容`, { status: 409 });
     for (const c of mockCmsContents) {
       if (ids.includes(c.id)) {
-        (c as { deleted?: boolean }).deleted = true;
+        setDeleted(c, true);
         c.status = 'offline';
       }
     }
-    return okJson(null, `已移入回收站 ${ids.length} 条`);
+    return ok(null, `已移入回收站 ${ids.length} 条`);
   }),
-  http.post('/api/cms/contents/restore', async ({ request }) => {
-    const { ids } = (await request.json()) as { ids: number[] };
+  mock(cmsContentContract.restore, ({ body, ok }) => {
+    const { ids } = body;
     for (const c of mockCmsContents) {
       if (ids.includes(c.id)) {
-        (c as { deleted?: boolean }).deleted = false;
+        setDeleted(c, false);
         c.status = 'draft';
       }
     }
-    return okJson(null, `已恢复 ${ids.length} 条`);
+    return ok(null, `已恢复 ${ids.length} 条`);
   }),
-  http.post('/api/cms/contents/purge', async ({ request }) => {
-    const { ids } = (await request.json()) as { ids: number[] };
+  mock(cmsContentContract.purge, ({ body, ok }) => {
+    const { ids } = body;
     const widget = ids.map((id) => publishedWidgetUsing('content', id)).find(Boolean);
     if (widget) return conflict(`已发布页面部件「${widget.name}」引用了所选内容`, { status: 409 });
     for (const id of ids) {
       const idx = mockCmsContents.findIndex((c) => c.id === id);
       if (idx >= 0) mockCmsContents.splice(idx, 1);
     }
-    return okJson(null, '已彻底删除');
+    return ok(null, '已彻底删除');
   }),
-  // ─── 归档（P1）────────────────────────────────────────────────────────────
-  http.post('/api/cms/contents/archive', async ({ request }) => {
-    const { ids } = (await request.json()) as { ids: number[] };
+  // ─── 归档 ────────────────────────────────────────────────────────────────
+  mock(cmsContentContract.archive, ({ body, ok }) => {
     let count = 0;
     for (const c of mockCmsContents) {
-      if (ids.includes(c.id) && (c.status === 'published' || c.status === 'offline') && !c.archivedAt) {
+      if (body.ids.includes(c.id) && (c.status === 'published' || c.status === 'offline') && !c.archivedAt) {
         c.archivedAt = mockDateTime();
         count += 1;
       }
     }
-    return okJson(null, `已归档 ${count} 条（仅已发布/已下线内容可归档）`);
+    return ok(null, `已归档 ${count} 条（仅已发布/已下线内容可归档）`);
   }),
-  http.post('/api/cms/contents/unarchive', async ({ request }) => {
-    const { ids } = (await request.json()) as { ids: number[] };
+  mock(cmsContentContract.unarchive, ({ body, ok }) => {
     for (const c of mockCmsContents) {
-      if (ids.includes(c.id)) c.archivedAt = null;
+      if (body.ids.includes(c.id)) c.archivedAt = null;
     }
-    return okJson(null, `已取消归档 ${ids.length} 条`);
+    return ok(null, `已取消归档 ${body.ids.length} 条`);
   }),
-  // ─── 词库检查（P1：敏感词 + 易错词命中清单）───────────────────────────────
-  http.post('/api/cms/contents/check-text', async ({ request }) => {
-    const { text } = (await request.json()) as { text: string };
-    const countHits = (word: string) => (word ? (text ?? '').split(word).length - 1 : 0);
+  // ─── 词库检查（敏感词 + 易错词命中清单）─────────────────────────────────
+  mock(cmsContentContract.checkText, ({ body, ok }) => {
+    const { text } = body;
+    const countHits = (word: string) => (word ? text.split(word).length - 1 : 0);
     const sensitive = mockCmsSensitiveWords
       .filter((w) => w.status === 'enabled')
       .map((w) => ({ word: w.word, replaceWith: w.replaceWith ?? null, count: countHits(w.word) }))
@@ -618,89 +568,77 @@ export const cmsHandlers = [
       .filter((w) => w.status === 'enabled')
       .map((w) => ({ word: w.word, correction: w.correction, count: countHits(w.word) }))
       .filter((h) => h.count > 0);
-    return okJson({ sensitive, errorProne });
+    return ok({ sensitive, errorProne });
   }),
-  http.post('/api/cms/contents/:id/:action', ({ params }) => {
-    const content = mockCmsContents.find((c) => c.id === Number(params.id));
+  ...(['submit', 'reject', 'offline'] as const).map((action) => mock(cmsContentContract[action], ({ params, ok }) => {
+    const content = mockCmsContents.find((c) => c.id === params.id);
     if (!content) return notFound('内容不存在', { status: 404 });
-    const action = String(params.action);
-    const statusMap: Record<string, CmsContentStatus> = {
-      submit: 'pending', publish: 'published', reject: 'rejected', offline: 'offline',
+    const statusMap: Record<typeof action, CmsContentStatus> = { submit: 'pending', reject: 'rejected', offline: 'offline' };
+    const opActionMap: Record<typeof action, { action: string; label: string }> = {
+      submit: { action: 'submitted', label: '提交审核' },
+      reject: { action: 'rejected', label: '驳回' },
+      offline: { action: 'offlined', label: '下线' },
     };
-    if (!statusMap[action]) return undefined;
     const widget = action === 'offline' ? publishedWidgetUsing('content', content.id) : null;
     if (widget) return conflict(`已发布页面部件「${widget.name}」引用了该内容`, { status: 409 });
     if (content.lockedAt) return locked(`内容已被持久锁定：${content.lockReason ?? ''}`, { status: 423 });
-    if (statusMap[action]) {
-      content.status = statusMap[action];
-      if (action === 'publish') content.publishedAt = mockDateTime();
-      content.updatedAt = mockDateTime();
-      submitMockCmsWidgetSourceRefresh('content', [content.id]);
-      const opActionMap: Record<string, { action: string; label: string }> = {
-        submit: { action: 'submitted', label: '提交审核' },
-        publish: { action: 'published', label: '发布' },
-        reject: { action: 'rejected', label: '驳回' },
-        offline: { action: 'offlined', label: '下线' },
-      };
-      const op = opActionMap[action];
-      if (op) {
-        mockCmsContentOpLogs.push({
-          id: getNextCmsContentOpLogId(), contentId: content.id, action: op.action, actionLabel: op.label,
-          detail: null, operatorId: 1, operatorName: 'admin', createdAt: mockDateTime(),
-        });
-      }
-    }
-    return okJson(content, '操作成功');
-  }),
-  http.post('/api/cms/contents', async ({ request }) => {
-    const body = (await request.json()) as Body;
+    content.status = statusMap[action];
+    content.updatedAt = mockDateTime();
+    submitMockCmsWidgetSourceRefresh('content', [content.id]);
+    mockCmsContentOpLogs.push({
+      id: getNextCmsContentOpLogId(), contentId: content.id, action: opActionMap[action].action, actionLabel: opActionMap[action].label,
+      detail: null, operatorId: 1, operatorName: 'admin', createdAt: mockDateTime(),
+    });
+    return ok(content, '操作成功');
+  })),
+  mock(cmsContentContract.create, ({ body, ok }) => {
     const now = mockDateTime();
-    const content: CmsContent & { tagIds: number[] } = {
+    const content: MockContent = {
       id: getNextCmsContentId(),
-      siteId: Number(body.siteId),
-      channelId: Number(body.channelId),
-      modelId: mockCmsChannels.find((c) => c.id === Number(body.channelId))?.modelId ?? null,
-      contentType: (body.contentType as CmsContent['contentType']) ?? 'article',
-      mediaData: (body.mediaData as CmsContent['mediaData']) ?? {},
-      title: String(body.title ?? ''),
-      titleStyle: (body.titleStyle as CmsContent['titleStyle']) ?? {},
-      subTitle: (body.subTitle as string) ?? null,
-      shortTitle: (body.shortTitle as string) ?? null,
-      slug: (body.slug as string) ?? null,
-      summary: (body.summary as string) ?? null,
-      coverImage: (body.coverImage as string) ?? null,
+      siteId: body.siteId,
+      channelId: body.channelId,
+      modelId: mockCmsChannels.find((c) => c.id === body.channelId)?.modelId ?? null,
+      contentType: body.contentType,
+      mediaData: body.mediaData,
+      title: body.title,
+      titleStyle: body.titleStyle,
+      subTitle: body.subTitle ?? null,
+      shortTitle: body.shortTitle ?? null,
+      slug: body.slug ?? null,
+      summary: body.summary ?? null,
+      coverImage: body.coverImage ?? null,
       coverThumb: null,
-      author: (body.author as string) ?? null,
-      editor: (body.editor as string) ?? null,
-      source: (body.source as string) ?? null,
-      sourceUrl: (body.sourceUrl as string) ?? null,
-      isOriginal: Boolean(body.isOriginal),
-      body: (body.body as string) ?? null,
-      attachments: (body.attachments as CmsContent['attachments']) ?? [],
-      extend: (body.extend as Record<string, unknown>) ?? {},
-      externalLink: (body.externalLink as string) ?? null,
-      detailTemplate: (body.detailTemplate as string) ?? null,
-      staticPath: (body.staticPath as string) ?? null,
-      isTop: Boolean(body.isTop),
-      topWeight: Number(body.topWeight ?? 0),
-      topExpireAt: (body.topExpireAt as string) ?? null,
-      isRecommend: Boolean(body.isRecommend),
-      isHot: Boolean(body.isHot),
+      author: body.author ?? null,
+      editor: body.editor ?? null,
+      source: body.source ?? null,
+      sourceUrl: body.sourceUrl ?? null,
+      isOriginal: body.isOriginal,
+      body: body.body ?? null,
+      attachments: body.attachments,
+      extend: body.extend,
+      externalLink: body.externalLink ?? null,
+      detailTemplate: body.detailTemplate ?? null,
+      staticPath: body.staticPath ?? null,
+      isTop: body.isTop,
+      topWeight: body.topWeight,
+      topExpireAt: body.topExpireAt ?? null,
+      isRecommend: body.isRecommend,
+      isHot: body.isHot,
       status: 'draft',
       rejectReason: null,
       publishedAt: null,
-      scheduledAt: (body.scheduledAt as string) ?? null,
-      expireAt: (body.expireAt as string) ?? null,
+      scheduledAt: body.scheduledAt ?? null,
+      expireAt: body.expireAt ?? null,
       viewCount: 0,
       likeCount: 0,
       favoriteCount: 0,
       version: 1,
-      sort: Number(body.sort ?? 0),
-      seoTitle: (body.seoTitle as string) ?? null,
-      seoKeywords: (body.seoKeywords as string) ?? null,
-      seoDescription: (body.seoDescription as string) ?? null,
-      socialImageAlt: (body.socialImageAlt as string) ?? null,
-      twitterCreator: (body.twitterCreator as string) ?? null,
+      sort: body.sort,
+      seoTitle: body.seoTitle ?? null,
+      seoKeywords: body.seoKeywords ?? null,
+      seoDescription: body.seoDescription ?? null,
+      socialImageAlt: null,
+      twitterCreator: null,
       archivedAt: null,
       mappingSourceId: null,
       distributionRuleId: null,
@@ -709,7 +647,7 @@ export const cmsHandlers = [
       lockedAt: null,
       lockedBy: null,
       lockReason: null,
-      tagIds: (body.tagIds as number[]) ?? [],
+      tagIds: body.tagIds,
       createdAt: now,
       updatedAt: now,
     };
@@ -718,40 +656,39 @@ export const cmsHandlers = [
       id: getNextCmsContentOpLogId(), contentId: content.id, action: 'created', actionLabel: '创建',
       detail: null, operatorId: 1, operatorName: 'admin', createdAt: now,
     });
-    return okJson(content, '创建成功');
+    return ok(content, '创建成功');
   }),
-  http.put('/api/cms/contents/:id', async ({ params, request }) => {
-    const idx = mockCmsContents.findIndex((c) => c.id === Number(params.id));
+  mock(cmsContentContract.update, ({ params, body, ok }) => {
+    const idx = mockCmsContents.findIndex((c) => c.id === params.id);
     if (idx === -1) return notFound('内容不存在', { status: 404 });
     if (mockCmsContents[idx].lockedAt) return locked('内容已被持久锁定', { status: 423 });
-    const body = (await request.json()) as Body;
     const { expectedVersion: _expectedVersion, ...rest } = body;
     Object.assign(mockCmsContents[idx], rest, {
       version: (mockCmsContents[idx].version ?? 1) + 1,
       updatedAt: mockDateTime(),
     });
-    submitMockCmsWidgetSourceRefresh('content', [Number(params.id)]);
-    return okJson(mockCmsContents[idx], '更新成功');
+    submitMockCmsWidgetSourceRefresh('content', [params.id]);
+    return ok(mockCmsContents[idx], '更新成功');
   }),
-  http.post('/api/cms/contents/:id/lock', async ({ params, request }) => {
-    const content = mockCmsContents.find((item) => item.id === Number(params.id));
+  mock(cmsContentContract.lock, ({ params, body, ok }) => {
+    const content = mockCmsContents.find((item) => item.id === params.id);
     if (!content) return notFound('内容不存在', { status: 404 });
     if (content.lockedAt) return badRequest('内容已被持久锁定', { status: 400 });
-    const body = (await request.json()) as { reason?: string };
-    content.lockedAt = mockDateTime();
+    const lockedAt = mockDateTime();
+    content.lockedAt = lockedAt;
     content.lockedBy = 1;
     content.lockedByName = 'admin';
-    content.lockReason = body.reason?.trim() || 'Demo 合规锁定';
+    content.lockReason = body.reason.trim() || 'Demo 合规锁定';
     content.scheduledAt = null;
     content.version += 1;
     mockCmsContentOpLogs.push({
       id: getNextCmsContentOpLogId(), contentId: content.id, action: 'locked', actionLabel: '持久锁定',
       detail: content.lockReason, operatorId: 1, operatorName: 'admin', createdAt: mockDateTime(),
     });
-    return okJson({ lockedAt: content.lockedAt, lockedBy: content.lockedBy, lockReason: content.lockReason }, '锁定成功');
+    return ok({ lockedAt, lockedBy: content.lockedBy, lockReason: content.lockReason }, '锁定成功');
   }),
-  http.post('/api/cms/contents/:id/unlock', ({ params }) => {
-    const content = mockCmsContents.find((item) => item.id === Number(params.id));
+  mock(cmsContentContract.unlock, ({ params, ok }) => {
+    const content = mockCmsContents.find((item) => item.id === params.id);
     if (!content) return notFound('内容不存在', { status: 404 });
     content.lockedAt = null;
     content.lockedBy = null;
@@ -762,161 +699,151 @@ export const cmsHandlers = [
       id: getNextCmsContentOpLogId(), contentId: content.id, action: 'unlocked', actionLabel: '解除锁定',
       detail: null, operatorId: 1, operatorName: 'admin', createdAt: mockDateTime(),
     });
-    return okJson(null, '解锁成功');
+    return ok(null, '解锁成功');
   }),
   // ─── 编辑锁 / 草稿预览（demo 模式恒定成功）───────────────────────────────
-  http.post('/api/cms/contents/:id/edit-lock', () => okJson({ acquired: true, holder: null })),
-  http.delete('/api/cms/contents/:id/edit-lock', () => okJson(null, '已释放')),
-  http.post('/api/cms/contents/:id/preview-link', ({ params }) =>
-    okJson({ url: `/__cms/main/preview/${params.id}?exp=0&sig=demo`, expiresAt: mockDateTime() }, 'Demo 模式无前台渲染，链接仅作展示')),
-  // ─── 操作日志时间线（P1）─────────────────────────────────────────────────
-  http.get('/api/cms/contents/:id/op-logs', ({ params }) =>
-    okJson(mockCmsContentOpLogs.filter((l) => l.contentId === Number(params.id)).sort((a, b) => b.id - a.id))),
+  mock(cmsContentContract.acquireEditLock, ({ ok }) => ok({ acquired: true, holder: null })),
+  mock(cmsContentContract.releaseEditLock, ({ ok }) => ok(null, '已释放')),
+  mock(cmsContentContract.previewLink, ({ params, ok }) =>
+    ok({ url: `/__cms/main/preview/${params.id}?exp=0&sig=demo`, expiresAt: mockDateTime() }, 'Demo 模式无前台渲染，链接仅作展示')),
+  // ─── 操作日志时间线 ──────────────────────────────────────────────────────
+  mock(cmsContentContract.opLogs, ({ params, ok }) =>
+    ok(mockCmsContentOpLogs.filter((l) => l.contentId === params.id).sort((a, b) => b.id - a.id))),
 
   // ═══ 标签 ═══════════════════════════════════════════════════════════════
-  http.get('/api/cms/tags/all', ({ request }) => {
-    const siteId = Number(new URL(request.url).searchParams.get('siteId'));
-    return okJson(mockCmsTags.filter((t) => t.siteId === siteId));
-  }),
-  http.get('/api/cms/tags', ({ request }) => {
-    const { url, page, pageSize, keyword } = pageParams(request);
-    const siteId = Number(url.searchParams.get('siteId'));
+  mock(cmsTagContract.all, ({ query, ok }) => ok(mockCmsTags.filter((t) => t.siteId === query.siteId))),
+  mock(cmsTagContract.list, ({ query, ok, paginate }) => {
+    const { siteId, keyword } = query;
     let list = mockCmsTags.filter((t) => t.siteId === siteId);
     if (keyword) list = list.filter((t) => t.name.includes(keyword) || t.slug.includes(keyword));
-    return okJson(pageResult(list, page, pageSize));
+    return ok(paginate(list));
   }),
-  http.post('/api/cms/tags', async ({ request }) => {
-    const body = (await request.json()) as Body;
+  mock(cmsTagContract.detail, ({ params, ok }) => {
+    const tag = mockCmsTags.find((t) => t.id === params.id);
+    return tag ? ok(tag) : notFound('标签不存在', { status: 404 });
+  }),
+  mock(cmsTagContract.create, ({ body, ok }) => {
     const now = mockDateTime();
     const tag = {
       id: getNextCmsTagId(),
-      siteId: Number(body.siteId),
-      name: String(body.name ?? ''),
-      slug: String(body.slug ?? ''),
-      groupName: (body.groupName as string | null) ?? null,
+      siteId: body.siteId,
+      name: body.name,
+      slug: body.slug,
+      groupName: body.groupName ?? null,
       contentCount: 0,
       createdAt: now,
       updatedAt: now,
     };
     mockCmsTags.push(tag);
-    return okJson(tag, '创建成功');
+    return ok(tag, '创建成功');
   }),
-  http.put('/api/cms/tags/:id', async ({ params, request }) => {
-    const idx = mockCmsTags.findIndex((t) => t.id === Number(params.id));
+  mock(cmsTagContract.update, ({ params, body, ok }) => {
+    const idx = mockCmsTags.findIndex((t) => t.id === params.id);
     if (idx === -1) return notFound('标签不存在', { status: 404 });
-    Object.assign(mockCmsTags[idx], await request.json(), { updatedAt: mockDateTime() });
-    return okJson(mockCmsTags[idx], '更新成功');
+    Object.assign(mockCmsTags[idx], body, { updatedAt: mockDateTime() });
+    return ok(mockCmsTags[idx], '更新成功');
   }),
-  http.delete('/api/cms/tags/:id', ({ params }) => {
-    const idx = mockCmsTags.findIndex((t) => t.id === Number(params.id));
+  mock(cmsTagContract.remove, ({ params, ok }) => {
+    const idx = mockCmsTags.findIndex((t) => t.id === params.id);
     if (idx === -1) return notFound('标签不存在', { status: 404 });
     mockCmsTags.splice(idx, 1);
-    return okJson(null, '删除成功');
+    return ok(null, '删除成功');
   }),
 
   // ═══ 友情链接分组 ═══════════════════════════════════════════════════════
-  // 注册顺序必须早于 /friend-links/:id，否则 groups 会被当成 id 命中
-  http.get('/api/cms/friend-links/groups', ({ request }) => {
-    const { url, page, pageSize, keyword } = pageParams(request);
-    const siteId = Number(url.searchParams.get('siteId'));
+  mock(cmsFriendLinkContract.groupList, ({ query, ok, paginate }) => {
+    const { siteId, keyword } = query;
     let list = mockCmsFriendLinkGroups.filter((g) => g.siteId === siteId);
     if (keyword) list = list.filter((g) => g.name.includes(keyword) || g.code.includes(keyword));
     const withCount = list.map((g) => ({ ...g, linkCount: mockCmsFriendLinks.filter((l) => l.groupId === g.id).length }));
-    return okJson(pageResult(withCount, page, pageSize));
+    return ok(paginate(withCount));
   }),
-  http.get('/api/cms/friend-links/groups/all', ({ request }) => {
-    const siteId = Number(new URL(request.url).searchParams.get('siteId'));
-    return okJson(mockCmsFriendLinkGroups.filter((g) => g.siteId === siteId && g.status === 'enabled'));
-  }),
-  http.post('/api/cms/friend-links/groups', async ({ request }) => {
-    const body = (await request.json()) as Body;
+  mock(cmsFriendLinkContract.groupAll, ({ query, ok }) =>
+    ok(mockCmsFriendLinkGroups.filter((g) => g.siteId === query.siteId && g.status === 'enabled'))),
+  mock(cmsFriendLinkContract.groupCreate, ({ body, ok }) => {
     const now = mockDateTime();
     const group = {
       id: getNextCmsFriendLinkGroupId(),
-      siteId: Number(body.siteId),
-      name: String(body.name ?? ''),
-      code: String(body.code ?? ''),
-      status: (body.status as 'enabled' | 'disabled') ?? 'enabled',
-      sort: Number(body.sort ?? 0),
-      remark: (body.remark as string) ?? null,
+      siteId: body.siteId,
+      name: body.name,
+      code: body.code,
+      status: body.status,
+      sort: body.sort,
+      remark: body.remark ?? null,
       linkCount: 0,
       createdAt: now,
       updatedAt: now,
     };
     mockCmsFriendLinkGroups.push(group);
-    return okJson(group, '创建成功');
+    return ok(group, '创建成功');
   }),
-  http.put('/api/cms/friend-links/groups/:id', async ({ params, request }) => {
-    const idx = mockCmsFriendLinkGroups.findIndex((g) => g.id === Number(params.id));
+  mock(cmsFriendLinkContract.groupUpdate, ({ params, body, ok }) => {
+    const idx = mockCmsFriendLinkGroups.findIndex((g) => g.id === params.id);
     if (idx === -1) return notFound('友链分组不存在', { status: 404 });
-    Object.assign(mockCmsFriendLinkGroups[idx], await request.json(), { updatedAt: mockDateTime() });
+    Object.assign(mockCmsFriendLinkGroups[idx], body, { updatedAt: mockDateTime() });
     const group = mockCmsFriendLinkGroups[idx];
     for (const link of mockCmsFriendLinks) if (link.groupId === group.id) link.groupName = group.name;
-    return okJson(group, '更新成功');
+    return ok(group, '更新成功');
   }),
-  http.delete('/api/cms/friend-links/groups/:id', ({ params }) => {
-    const id = Number(params.id);
+  mock(cmsFriendLinkContract.groupRemove, ({ params, ok }) => {
+    const { id } = params;
     const idx = mockCmsFriendLinkGroups.findIndex((g) => g.id === id);
     if (idx === -1) return notFound('友链分组不存在', { status: 404 });
     mockCmsFriendLinkGroups.splice(idx, 1);
     for (const link of mockCmsFriendLinks) {
       if (link.groupId === id) { link.groupId = null; link.groupName = null; }
     }
-    return okJson(null, '删除成功');
+    return ok(null, '删除成功');
   }),
 
   // ═══ 友情链接 ═══════════════════════════════════════════════════════════
-  http.get('/api/cms/friend-links', ({ request }) => {
-    const { url, page, pageSize, keyword } = pageParams(request);
-    const siteId = Number(url.searchParams.get('siteId'));
-    const groupIdParam = url.searchParams.get('groupId');
+  mock(cmsFriendLinkContract.list, ({ query, ok, paginate }) => {
+    const { siteId, keyword, groupId } = query;
     let list = mockCmsFriendLinks.filter((l) => l.siteId === siteId);
     if (keyword) list = list.filter((l) => l.name.includes(keyword));
-    if (groupIdParam != null && groupIdParam !== '') {
-      const groupId = Number(groupIdParam);
+    if (groupId !== undefined) {
       list = list.filter((l) => (groupId === 0 ? l.groupId == null : l.groupId === groupId));
     }
-    return okJson(pageResult(list, page, pageSize));
+    return ok(paginate(list));
   }),
-  http.post('/api/cms/friend-links', async ({ request }) => {
-    const body = (await request.json()) as Body;
+  mock(cmsFriendLinkContract.create, ({ body, ok }) => {
     const now = mockDateTime();
-    const groupId = (body.groupId as number) ?? null;
+    const groupId = body.groupId ?? null;
     const link = {
       id: getNextCmsFriendLinkId(),
-      siteId: Number(body.siteId),
+      siteId: body.siteId,
       groupId,
       groupName: mockCmsFriendLinkGroups.find((g) => g.id === groupId)?.name ?? null,
-      name: String(body.name ?? ''),
-      url: String(body.url ?? ''),
-      logo: (body.logo as string) ?? null,
-      status: (body.status as 'enabled' | 'disabled') ?? 'enabled',
-      sort: Number(body.sort ?? 0),
-      remark: (body.remark as string) ?? null,
+      name: body.name,
+      url: body.url,
+      logo: body.logo ?? null,
+      status: body.status,
+      sort: body.sort,
+      remark: body.remark ?? null,
       createdAt: now,
       updatedAt: now,
     };
     mockCmsFriendLinks.push(link);
-    return okJson(link, '创建成功');
+    return ok(link, '创建成功');
   }),
-  http.put('/api/cms/friend-links/:id', async ({ params, request }) => {
-    const idx = mockCmsFriendLinks.findIndex((l) => l.id === Number(params.id));
+  mock(cmsFriendLinkContract.update, ({ params, body, ok }) => {
+    const idx = mockCmsFriendLinks.findIndex((l) => l.id === params.id);
     if (idx === -1) return notFound('友情链接不存在', { status: 404 });
-    Object.assign(mockCmsFriendLinks[idx], await request.json(), { updatedAt: mockDateTime() });
+    Object.assign(mockCmsFriendLinks[idx], body, { updatedAt: mockDateTime() });
     const link = mockCmsFriendLinks[idx];
     link.groupName = mockCmsFriendLinkGroups.find((g) => g.id === link.groupId)?.name ?? null;
-    return okJson(link, '更新成功');
+    return ok(link, '更新成功');
   }),
-  http.delete('/api/cms/friend-links/:id', ({ params }) => {
-    const idx = mockCmsFriendLinks.findIndex((l) => l.id === Number(params.id));
+  mock(cmsFriendLinkContract.remove, ({ params, ok }) => {
+    const idx = mockCmsFriendLinks.findIndex((l) => l.id === params.id);
     if (idx === -1) return notFound('友情链接不存在', { status: 404 });
     mockCmsFriendLinks.splice(idx, 1);
-    return okJson(null, '删除成功');
+    return ok(null, '删除成功');
   }),
 
   // ═══ 静态化 / 索引重建（任务中心模拟）═══════════════════════════════════
-  http.post('/api/cms/static/build', async ({ request }) => {
-    const { siteId } = (await request.json()) as { siteId: number };
+  mock(cmsStaticContract.build, ({ body, ok }) => {
+    const { siteId } = body;
     const site = mockCmsSites.find((s) => s.id === siteId);
     if (!site) return notFound('站点不存在', { status: 404 });
     const contentCount = mockCmsContents.filter((c) => c.siteId === siteId).length;
@@ -936,10 +863,10 @@ export const cmsHandlers = [
       artifactCount: 0,
       failedArtifactCount: 0,
     }));
-    return okJson(task, '任务已提交，可在任务中心查看进度');
+    return ok(task, '任务已提交，可在任务中心查看进度');
   }),
-  http.post('/api/cms/search/reindex', async ({ request }) => {
-    const { siteId } = (await request.json()) as { siteId: number | null };
+  mock(cmsSearchContract.reindex, ({ body, ok }) => {
+    const siteId = body.siteId ?? null;
     const site = siteId ? mockCmsSites.find((s) => s.id === siteId) : null;
     const task = createProgressingMockTask({
       taskType: 'cms-search-reindex',
@@ -948,13 +875,13 @@ export const cmsHandlers = [
       totalItems: mockCmsContents.filter((c) => !siteId || c.siteId === siteId).length || 1,
       itemDelayMs: 300,
     });
-    return okJson(task, '任务已提交，可在任务中心查看进度');
+    return ok(task, '任务已提交，可在任务中心查看进度');
   }),
 
   // ═══ 数据看板 ═════════════════════════════════════════════════════════════
-  http.get('/api/cms/dashboard/stats', ({ request }) => {
-    const siteId = Number(new URL(request.url).searchParams.get('siteId'));
-    const contents = mockCmsContents.filter((c) => c.siteId === siteId && !(c as { deleted?: boolean }).deleted);
+  mock(cmsDashboardContract.stats, ({ query, ok }) => {
+    const { siteId } = query;
+    const contents = mockCmsContents.filter((c) => c.siteId === siteId && !isDeleted(c));
     const byStatus = (s: string) => contents.filter((c) => c.status === s).length;
     const today = mockDate();
     const trend = Array.from({ length: 14 }, (_, i) => {
@@ -965,14 +892,14 @@ export const cmsHandlers = [
     });
     const channelCounts = new Map<number, number>();
     for (const c of contents) channelCounts.set(c.channelId, (channelCounts.get(c.channelId) ?? 0) + 1);
-    return okJson({
+    return ok({
       totals: {
         published: byStatus('published'),
         draft: byStatus('draft'),
         pending: byStatus('pending'),
         offline: byStatus('offline'),
         rejected: byStatus('rejected'),
-        recycled: mockCmsContents.filter((c) => c.siteId === siteId && (c as { deleted?: boolean }).deleted).length,
+        recycled: mockCmsContents.filter((c) => c.siteId === siteId && isDeleted(c)).length,
       },
       pendingComments: mockCmsComments.filter((c) => c.siteId === siteId && c.status === 'pending').length,
       todayPublished: 0,
@@ -991,10 +918,8 @@ export const cmsHandlers = [
   }),
 
   // ═══ 检索 ═══════════════════════════════════════════════════════════════
-  http.get('/api/cms/search/test', ({ request }) => {
-    const { url, page, pageSize, keyword } = pageParams(request);
-    const siteId = Number(url.searchParams.get('siteId'));
-    const kw = keyword || url.searchParams.get('keyword') || '';
+  mock(cmsSearchContract.test, ({ query, ok, paginate }) => {
+    const { siteId, keyword: kw } = query;
     const hits = mockCmsContents
       .filter((c) => c.siteId === siteId && c.status === 'published'
         && (c.title.includes(kw) || (c.summary ?? '').includes(kw) || (c.body ?? '').includes(kw)))
@@ -1007,13 +932,14 @@ export const cmsHandlers = [
         titleHighlight: c.title.replaceAll(kw, `<mark>${kw}</mark>`),
         snippet: (c.summary ?? '').replaceAll(kw, `<mark>${kw}</mark>`),
         url: `/${channelPath(c.channelId)}/${c.slug ?? c.id}.html`,
+        isExternal: false,
         publishedAt: c.publishedAt,
         rank: 1 - i * 0.05,
       }));
-    return okJson(pageResult(hits, page, pageSize));
+    return ok(paginate(hits));
   }),
-  http.get('/api/cms/search/segment', ({ request }) => {
-    const text = new URL(request.url).searchParams.get('text') ?? '';
+  mock(cmsSearchContract.segment, ({ query, ok }) => {
+    const { text } = query;
     // Demo 模式简化分词：按 2 字滑窗 + 原词
     const tokens = new Set<string>();
     if (text.length <= 2) tokens.add(text);
@@ -1021,108 +947,101 @@ export const cmsHandlers = [
       for (let i = 0; i < text.length - 1; i += 2) tokens.add(text.slice(i, i + 2));
       tokens.add(text);
     }
-    return okJson({ tokens: [...tokens].filter(Boolean) });
+    return ok({ tokens: [...tokens].filter(Boolean) });
   }),
 ];
 
 // ═══ P2 handlers ══════════════════════════════════════════════════════════════
 export const cmsP2Handlers = [
   // ─── 内容版本 ───────────────────────────────────────────────────────────────
-  http.get('/api/cms/contents/:id/versions', ({ params }) => {
-    return okJson(mockCmsContentVersions.filter((v) => v.contentId === Number(params.id)));
-  }),
-  http.post('/api/cms/contents/:id/versions/:versionId/restore', ({ params }) => {
-    const content = mockCmsContents.find((c) => c.id === Number(params.id));
+  mock(cmsContentContract.versions, ({ params, ok }) => ok(mockCmsContentVersions.filter((v) => v.contentId === params.id))),
+  mock(cmsContentContract.restoreVersion, ({ params, ok }) => {
+    const content = mockCmsContents.find((c) => c.id === params.id);
     if (!content) return notFound('内容不存在', { status: 404 });
-    return okJson(content, '回滚成功');
+    return ok(content, '回滚成功');
   }),
-  http.get('/api/cms/contents/:id/versions/:versionId/diff', ({ params }) => {
-    const content = mockCmsContents.find((c) => c.id === Number(params.id));
-    const version = mockCmsContentVersions.find((v) => v.id === Number(params.versionId));
+  mock(cmsContentContract.versionDiff, ({ params, ok }) => {
+    const content = mockCmsContents.find((c) => c.id === params.id);
+    const version = mockCmsContentVersions.find((v) => v.id === params.versionId);
     if (!content || !version) return notFound('版本不存在', { status: 404 });
     const beforeTitle = (version.snapshot as { title?: string }).title ?? version.title;
-    if (beforeTitle === content.title) return okJson([]);
-    return okJson([{ field: 'title', label: '标题', before: beforeTitle, after: content.title }]);
+    if (beforeTitle === content.title) return ok([]);
+    return ok([{ field: 'title', label: '标题', before: beforeTitle, after: content.title }]);
   }),
 
   // ─── SEO：重定向 ────────────────────────────────────────────────────────────
-  http.get('/api/cms/seo/redirects', ({ request }) => {
-    const { url, page, pageSize, keyword } = pageParams(request);
-    const siteId = Number(url.searchParams.get('siteId'));
+  mock(cmsSeoContract.redirectList, ({ query, ok, paginate }) => {
+    const { siteId, keyword } = query;
     let list = mockCmsRedirects.filter((r) => r.siteId === siteId);
     if (keyword) list = list.filter((r) => r.fromPath.includes(keyword));
-    return okJson(pageResult(list, page, pageSize));
+    return ok(paginate(list));
   }),
-  http.post('/api/cms/seo/redirects', async ({ request }) => {
-    const body = (await request.json()) as Body;
+  mock(cmsSeoContract.redirectCreate, ({ body, ok }) => {
     const now = mockDateTime();
     const row = {
       id: getNextCmsRedirectId(),
-      siteId: Number(body.siteId),
-      fromPath: String(body.fromPath ?? ''),
-      toUrl: String(body.toUrl ?? ''),
-      redirectType: Number(body.redirectType ?? 301),
-      status: (body.status as 'enabled' | 'disabled') ?? 'enabled',
-      remark: (body.remark as string) ?? null,
+      siteId: body.siteId,
+      fromPath: body.fromPath,
+      toUrl: body.toUrl,
+      redirectType: body.redirectType,
+      status: body.status,
+      remark: body.remark ?? null,
       createdAt: now,
       updatedAt: now,
     };
     mockCmsRedirects.push(row);
-    return okJson(row, '创建成功');
+    return ok(row, '创建成功');
   }),
-  http.put('/api/cms/seo/redirects/:id', async ({ params, request }) => {
-    const idx = mockCmsRedirects.findIndex((r) => r.id === Number(params.id));
+  mock(cmsSeoContract.redirectUpdate, ({ params, body, ok }) => {
+    const idx = mockCmsRedirects.findIndex((r) => r.id === params.id);
     if (idx === -1) return notFound('重定向规则不存在', { status: 404 });
-    Object.assign(mockCmsRedirects[idx], await request.json(), { updatedAt: mockDateTime() });
-    return okJson(mockCmsRedirects[idx], '更新成功');
+    Object.assign(mockCmsRedirects[idx], body, { updatedAt: mockDateTime() });
+    return ok(mockCmsRedirects[idx], '更新成功');
   }),
-  http.delete('/api/cms/seo/redirects/:id', ({ params }) => {
-    const idx = mockCmsRedirects.findIndex((r) => r.id === Number(params.id));
+  mock(cmsSeoContract.redirectRemove, ({ params, ok }) => {
+    const idx = mockCmsRedirects.findIndex((r) => r.id === params.id);
     if (idx === -1) return notFound('重定向规则不存在', { status: 404 });
     mockCmsRedirects.splice(idx, 1);
-    return okJson(null, '删除成功');
+    return ok(null, '删除成功');
   }),
 
   // ─── SEO：内链词 ────────────────────────────────────────────────────────────
-  http.get('/api/cms/seo/link-words', ({ request }) => {
-    const { url, page, pageSize, keyword } = pageParams(request);
-    const siteId = Number(url.searchParams.get('siteId'));
+  mock(cmsSeoContract.linkWordList, ({ query, ok, paginate }) => {
+    const { siteId, keyword } = query;
     let list = mockCmsLinkWords.filter((w) => w.siteId === siteId);
     if (keyword) list = list.filter((w) => w.keyword.includes(keyword));
-    return okJson(pageResult(list, page, pageSize));
+    return ok(paginate(list));
   }),
-  http.post('/api/cms/seo/link-words', async ({ request }) => {
-    const body = (await request.json()) as Body;
+  mock(cmsSeoContract.linkWordCreate, ({ body, ok }) => {
     const now = mockDateTime();
     const row = {
       id: getNextCmsLinkWordId(),
-      siteId: Number(body.siteId),
-      keyword: String(body.keyword ?? ''),
-      url: String(body.url ?? ''),
-      maxReplaces: Number(body.maxReplaces ?? 1),
-      status: (body.status as 'enabled' | 'disabled') ?? 'enabled',
+      siteId: body.siteId,
+      keyword: body.keyword,
+      url: body.url,
+      maxReplaces: body.maxReplaces,
+      status: body.status,
       createdAt: now,
       updatedAt: now,
     };
     mockCmsLinkWords.push(row);
-    return okJson(row, '创建成功');
+    return ok(row, '创建成功');
   }),
-  http.put('/api/cms/seo/link-words/:id', async ({ params, request }) => {
-    const idx = mockCmsLinkWords.findIndex((w) => w.id === Number(params.id));
+  mock(cmsSeoContract.linkWordUpdate, ({ params, body, ok }) => {
+    const idx = mockCmsLinkWords.findIndex((w) => w.id === params.id);
     if (idx === -1) return notFound('内链词不存在', { status: 404 });
-    Object.assign(mockCmsLinkWords[idx], await request.json(), { updatedAt: mockDateTime() });
-    return okJson(mockCmsLinkWords[idx], '更新成功');
+    Object.assign(mockCmsLinkWords[idx], body, { updatedAt: mockDateTime() });
+    return ok(mockCmsLinkWords[idx], '更新成功');
   }),
-  http.delete('/api/cms/seo/link-words/:id', ({ params }) => {
-    const idx = mockCmsLinkWords.findIndex((w) => w.id === Number(params.id));
+  mock(cmsSeoContract.linkWordRemove, ({ params, ok }) => {
+    const idx = mockCmsLinkWords.findIndex((w) => w.id === params.id);
     if (idx === -1) return notFound('内链词不存在', { status: 404 });
     mockCmsLinkWords.splice(idx, 1);
-    return okJson(null, '删除成功');
+    return ok(null, '删除成功');
   }),
 
   // ─── SEO：推送 ─────────────────────────────────────────────────────────────
-  http.post('/api/cms/seo/push', async ({ request }) => {
-    const body = (await request.json()) as { siteId: number; urls: string[] };
+  mock(cmsSeoContract.push, ({ body, ok }) => {
     const now = mockDateTime();
     mockCmsPushLogs.unshift({
       id: mockCmsPushLogs.length + 1,
@@ -1134,123 +1053,108 @@ export const cmsP2Handlers = [
       response: '{"success":' + body.urls.length + ',"remain":99}',
       createdAt: now,
     });
-    return okJson([
+    return ok([
       { engine: 'baidu', submitted: true },
       { engine: 'indexnow', submitted: false, reason: 'Demo 模式未配置 IndexNow Key' },
     ], '推送完成');
   }),
-  http.get('/api/cms/seo/push-logs', ({ request }) => {
-    const { url, page, pageSize } = pageParams(request);
-    const siteId = Number(url.searchParams.get('siteId'));
-    return okJson(pageResult(mockCmsPushLogs.filter((l) => l.siteId === siteId), page, pageSize));
-  }),
+  mock(cmsSeoContract.pushLogs, ({ query, ok, paginate }) => ok(paginate(mockCmsPushLogs.filter((l) => l.siteId === query.siteId)))),
 
   // ─── 评论 ───────────────────────────────────────────────────────────────────
-  http.get('/api/cms/comments/pending-count', ({ request }) => {
-    const siteId = Number(new URL(request.url).searchParams.get('siteId'));
-    return okJson({ count: mockCmsComments.filter((c) => c.siteId === siteId && c.status === 'pending').length });
-  }),
-  http.get('/api/cms/comments', ({ request }) => {
-    const { url, page, pageSize } = pageParams(request);
-    const siteId = Number(url.searchParams.get('siteId'));
-    const status = url.searchParams.get('status') || '';
-    const source = url.searchParams.get('source') || '';
+  mock(cmsCommentContract.pendingCount, ({ query, ok }) =>
+    ok({ count: mockCmsComments.filter((c) => c.siteId === query.siteId && c.status === 'pending').length })),
+  mock(cmsCommentContract.list, ({ query, ok, paginate }) => {
+    const { siteId, status, source } = query;
     let list = mockCmsComments.filter((c) => c.siteId === siteId);
     if (status) list = list.filter((c) => c.status === status);
     if (source === 'member') list = list.filter((c) => c.memberId != null);
     if (source === 'guest') list = list.filter((c) => c.memberId == null);
-    return okJson(pageResult([...list].sort((a, b) => b.id - a.id), page, pageSize));
+    return ok(paginate([...list].sort((a, b) => b.id - a.id)));
   }),
-  http.post('/api/cms/comments/:action', async ({ params, request }) => {
-    const { ids } = (await request.json()) as { ids: number[] };
-    const action = String(params.action);
-    if (action === 'delete') {
-      for (const id of ids) {
-        const idx = mockCmsComments.findIndex((c) => c.id === id);
-        if (idx >= 0) mockCmsComments.splice(idx, 1);
-      }
-      return okJson(null, '删除成功');
+  mock(cmsCommentContract.batchDelete, ({ body, ok }) => {
+    for (const id of body.ids) {
+      const idx = mockCmsComments.findIndex((c) => c.id === id);
+      if (idx >= 0) mockCmsComments.splice(idx, 1);
     }
-    const status = action === 'approve' ? 'approved' as const : 'rejected' as const;
+    return ok(null, '删除成功');
+  }),
+  mock(cmsCommentContract.approve, ({ body, ok }) => {
     for (const c of mockCmsComments) {
-      if (ids.includes(c.id)) c.status = status;
+      if (body.ids.includes(c.id)) c.status = 'approved';
     }
-    return okJson(null, '操作成功');
+    return ok(null, '操作成功');
+  }),
+  mock(cmsCommentContract.reject, ({ body, ok }) => {
+    for (const c of mockCmsComments) {
+      if (body.ids.includes(c.id)) c.status = 'rejected';
+    }
+    return ok(null, '操作成功');
   }),
 
-  // ─── 素材中心（P2）──────────────────────────────────────────────────────────
-  http.get('/api/cms/resources/folders', ({ request }) => {
-    const siteId = Number(new URL(request.url).searchParams.get('siteId'));
-    const rows = mockCmsResourceFolders.filter((folder) => folder.siteId === siteId).map((folder) => ({
+  // ─── 素材中心 ─────────────────────────────────────────────────────────────
+  mock(cmsResourceContract.folders, ({ query, ok }) => {
+    const rows = mockCmsResourceFolders.filter((folder) => folder.siteId === query.siteId).map((folder) => ({
       ...folder,
       resourceCount: mockCmsResources.filter((resource) => resource.folderId === folder.id).length,
     }));
-    return okJson(rows);
+    return ok(rows);
   }),
-  http.post('/api/cms/resources/folders', async ({ request }) => {
-    const body = (await request.json()) as Body;
+  mock(cmsResourceContract.folderCreate, ({ body, ok }) => {
     const folder = {
       id: getNextCmsResourceFolderId(),
-      siteId: Number(body.siteId),
-      parentId: body.parentId == null ? null : Number(body.parentId),
-      name: String(body.name ?? ''),
-      sort: Number(body.sort ?? 0),
+      siteId: body.siteId,
+      parentId: body.parentId,
+      name: body.name,
+      sort: body.sort,
       resourceCount: 0,
       createdAt: mockDateTime(),
       updatedAt: mockDateTime(),
     };
     mockCmsResourceFolders.push(folder);
-    return okJson(folder, '创建成功');
+    return ok(folder, '创建成功');
   }),
-  http.put('/api/cms/resources/folders/:id', async ({ params, request }) => {
-    const folder = mockCmsResourceFolders.find((item) => item.id === Number(params.id));
+  mock(cmsResourceContract.folderUpdate, ({ params, body, ok }) => {
+    const folder = mockCmsResourceFolders.find((item) => item.id === params.id);
     if (!folder) return notFound('素材文件夹不存在', { status: 404 });
-    Object.assign(folder, await request.json(), { updatedAt: mockDateTime() });
-    return okJson(folder, '更新成功');
+    Object.assign(folder, body, { updatedAt: mockDateTime() });
+    return ok(folder, '更新成功');
   }),
-  http.delete('/api/cms/resources/folders/:id', ({ params }) => {
-    const id = Number(params.id);
+  mock(cmsResourceContract.folderRemove, ({ params, ok }) => {
+    const { id } = params;
     if (mockCmsResourceFolders.some((folder) => folder.parentId === id) || mockCmsResources.some((resource) => resource.folderId === id)) {
       return badRequest('文件夹非空，请先移动其中的子文件夹和素材', { status: 400 });
     }
     const index = mockCmsResourceFolders.findIndex((folder) => folder.id === id);
     if (index < 0) return notFound('素材文件夹不存在', { status: 404 });
     mockCmsResourceFolders.splice(index, 1);
-    return okJson(null, '删除成功');
+    return ok(null, '删除成功');
   }),
-  http.post('/api/cms/resources/governance', async ({ request }) => {
-    const payload = (await request.json()) as { siteId: number; operation: string; dryRun: boolean };
-    return okJson(createProgressingMockTask({
-      taskType: 'cms-resource-governance',
-      title: payload.operation === 'scan' ? 'CMS 孤立素材扫描' : 'CMS 孤立素材清理',
-      payload,
-      totalItems: mockCmsResources.filter((resource) => resource.siteId === payload.siteId).length || 1,
-      itemDelayMs: 250,
-    }), '任务已提交');
-  }),
-  http.post('/api/cms/resources/move', async ({ request }) => {
-    const payload = (await request.json()) as { siteId: number; ids: number[]; folderId: number | null };
+  mock(cmsResourceContract.governance, ({ body, ok }) => ok(createProgressingMockTask({
+    taskType: 'cms-resource-governance',
+    title: body.operation === 'scan' ? 'CMS 孤立素材扫描' : 'CMS 孤立素材清理',
+    payload: body,
+    totalItems: mockCmsResources.filter((resource) => resource.siteId === body.siteId).length || 1,
+    itemDelayMs: 250,
+  }), '任务已提交')),
+  mock(cmsResourceContract.move, ({ body, ok }) => {
     for (const resource of mockCmsResources) {
-      if (payload.ids.includes(resource.id) && resource.siteId === payload.siteId) resource.folderId = payload.folderId;
+      if (body.ids.includes(resource.id) && resource.siteId === body.siteId) resource.folderId = body.folderId;
     }
-    return okJson(createProgressingMockTask({
+    return ok(createProgressingMockTask({
       taskType: 'cms-resource-governance',
       title: 'CMS 素材批量移动',
-      payload: { ...payload, operation: 'move' },
-      totalItems: payload.ids.length || 1,
+      payload: { ...body, operation: 'move' },
+      totalItems: body.ids.length || 1,
       itemDelayMs: 150,
     }), '移动任务已提交');
   }),
-  http.get('/api/cms/resources/:id/references', ({ params }) => {
-    const res = mockCmsResources.find((r) => r.id === Number(params.id));
+  mock(cmsResourceContract.references, ({ params, ok }) => {
+    const res = mockCmsResources.find((r) => r.id === params.id);
     if (!res) return notFound('素材不存在', { status: 404 });
-    return okJson(collectMockResourceRefs(res));
+    return ok(collectMockResourceRefs(res));
   }),
-  http.get('/api/cms/resources', ({ request }) => {
-    const { url, page, pageSize, keyword } = pageParams(request);
-    const siteId = Number(url.searchParams.get('siteId'));
-    const type = url.searchParams.get('type') || '';
-    const folderId = url.searchParams.has('folderId') ? Number(url.searchParams.get('folderId')) : undefined;
+  mock(cmsResourceContract.list, ({ query, ok, paginate }) => {
+    const { siteId, type, folderId, keyword } = query;
     let list = mockCmsResources.filter((r) => r.siteId === siteId);
     if (type) list = list.filter((r) => r.type === type);
     if (folderId === 0) list = list.filter((r) => r.folderId == null);
@@ -1258,15 +1162,13 @@ export const cmsP2Handlers = [
     if (keyword) list = list.filter((r) => r.name.includes(keyword));
     const sorted = [...list].sort((a, b) => b.id - a.id)
       .map((r) => ({ ...r, refCount: collectMockResourceRefs(r).length }));
-    return okJson(pageResult(sorted, page, pageSize));
+    return ok(paginate(sorted));
   }),
-  http.post('/api/cms/resources/upload', async ({ request }) => {
-    const url = new URL(request.url);
-    const siteId = Number(url.searchParams.get('siteId')) || 1;
-    const folderId = Number(url.searchParams.get('folderId')) || null;
-    const form = await request.formData();
-    const file = form.get('file') as File | null;
-    if (!file) return badRequest('请选择要上传的文件', { status: 400 });
+  mock(cmsResourceContract.upload, ({ query, body, ok }) => {
+    const siteId = query.siteId ?? 1;
+    const folderId = query.folderId ?? null;
+    const file = body.get('file');
+    if (!(file instanceof File)) return badRequest('请选择要上传的文件', { status: 400 });
     const mime = file.type || 'application/octet-stream';
     let type: (typeof mockCmsResources)[number]['type'] = 'other';
     if (mime.startsWith('image/')) type = 'image';
@@ -1294,42 +1196,40 @@ export const cmsP2Handlers = [
       updatedAt: mockDateTime(),
     };
     mockCmsResources.unshift(resource);
-    return okJson(resource, '上传成功');
+    return ok(resource, '上传成功');
   }),
-  http.put('/api/cms/resources/:id', async ({ params, request }) => {
-    const res = mockCmsResources.find((r) => r.id === Number(params.id));
+  mock(cmsResourceContract.update, ({ params, body, ok }) => {
+    const res = mockCmsResources.find((r) => r.id === params.id);
     if (!res) return notFound('素材不存在', { status: 404 });
-    const body = (await request.json()) as Body;
     if (typeof body.name === 'string') res.name = body.name;
-    if (body.remark !== undefined) res.remark = (body.remark as string | null) || null;
-    if (body.folderId !== undefined) res.folderId = body.folderId as number | null;
+    if (body.remark !== undefined) res.remark = body.remark || null;
+    if (body.folderId !== undefined) res.folderId = body.folderId;
     res.updatedAt = mockDateTime();
-    return okJson(res, '已保存');
+    return ok(res, '已保存');
   }),
-  http.post('/api/cms/resources/:id/crop', async ({ params, request }) => {    const res = mockCmsResources.find((r) => r.id === Number(params.id));
+  mock(cmsResourceContract.crop, ({ params, body, ok }) => {
+    const res = mockCmsResources.find((r) => r.id === params.id);
     if (!res) return notFound('素材不存在', { status: 404 });
-    const rect = (await request.json()) as { width: number; height: number };
     const dot = res.name.lastIndexOf('.');
     const cropName = dot > 0 ? `${res.name.slice(0, dot)}_crop${res.name.slice(dot)}` : `${res.name}_crop`;
     const cropped = {
       ...res,
       id: getNextCmsResourceId(),
       name: cropName,
-      width: rect.width,
-      height: rect.height,
+      width: body.width,
+      height: body.height,
       remark: `裁剪自素材 #${res.id}`,
       createdAt: mockDateTime(),
       updatedAt: mockDateTime(),
     };
     mockCmsResources.unshift(cropped);
-    return okJson(cropped, '裁剪成功，已另存为新素材');
+    return ok(cropped, '裁剪成功，已另存为新素材');
   }),
-  http.post('/api/cms/resources/:id/replace', async ({ params, request }) => {
-    const res = mockCmsResources.find((r) => r.id === Number(params.id));
+  mock(cmsResourceContract.replace, ({ params, body, ok }) => {
+    const res = mockCmsResources.find((r) => r.id === params.id);
     if (!res) return notFound('素材不存在', { status: 404 });
-    const form = await request.formData();
-    const file = form.get('file') as File | null;
-    if (!file) return badRequest('请选择要上传的文件', { status: 400 });
+    const file = body.get('file');
+    if (!(file instanceof File)) return badRequest('请选择要上传的文件', { status: 400 });
     // 句柄化后素材 id 是稳定引用，换文件只改素材行本身，站内引用无需改动
     const idx = Math.floor(Math.random() * 12) + 1;
     res.name = file.name;
@@ -1337,20 +1237,17 @@ export const cmsP2Handlers = [
     res.size = file.size;
     res.mimeType = file.type || res.mimeType;
     res.updatedAt = mockDateTime();
-    return okJson(res, '替换成功，引用该素材的位置将自动指向新文件');
+    return ok(res, '替换成功，引用该素材的位置将自动指向新文件');
   }),
-  http.post('/api/cms/resources/rebuild-refs', async ({ request }) => {
-    const payload = (await request.json()) as { siteId: number };
-    return okJson(createProgressingMockTask({
-      taskType: 'cms-resource-ref-rebuild',
-      title: 'CMS 素材引用索引重建',
-      payload,
-      totalItems: 9,
-      itemDelayMs: 150,
-    }), '任务已提交');
-  }),
-  http.post('/api/cms/resources/delete', async ({ request }) => {
-    const { ids } = (await request.json()) as { ids: number[] };
+  mock(cmsResourceContract.rebuildRefs, ({ body, ok }) => ok(createProgressingMockTask({
+    taskType: 'cms-resource-ref-rebuild',
+    title: 'CMS 素材引用索引重建',
+    payload: body,
+    totalItems: 9,
+    itemDelayMs: 150,
+  }), '任务已提交')),
+  mock(cmsResourceContract.batchDelete, ({ body, ok }) => {
+    const { ids } = body;
     for (const id of ids) {
       const res = mockCmsResources.find((r) => r.id === id);
       if (!res) continue;
@@ -1363,248 +1260,229 @@ export const cmsP2Handlers = [
       const idx = mockCmsResources.findIndex((r) => r.id === id);
       if (idx >= 0) mockCmsResources.splice(idx, 1);
     }
-    return okJson(null, `已删除 ${ids.length} 个素材`);
+    return ok(null, `已删除 ${ids.length} 个素材`);
   }),
 
   // ─── 广告 ───────────────────────────────────────────────────────────────────
-  http.get('/api/cms/ads/slots', ({ request }) => {
-    const siteId = Number(new URL(request.url).searchParams.get('siteId'));
-    return okJson(mockCmsAdSlots.filter((s) => s.siteId === siteId).map((s) => ({
-      ...s,
-      adCount: mockCmsAds.filter((a) => a.slotId === s.id).length,
-    })));
-  }),
-  http.post('/api/cms/ads/slots', async ({ request }) => {
-    const body = (await request.json()) as Body;
+  mock(cmsAdContract.slots, ({ query, ok }) => ok(mockCmsAdSlots.filter((s) => s.siteId === query.siteId).map((s) => ({
+    ...s,
+    adCount: mockCmsAds.filter((a) => a.slotId === s.id).length,
+  })))),
+  mock(cmsAdContract.slotCreate, ({ body, ok }) => {
     const now = mockDateTime();
     const row = {
       id: getNextCmsAdSlotId(),
-      siteId: Number(body.siteId),
-      code: String(body.code ?? ''),
-      name: String(body.name ?? ''),
-      remark: (body.remark as string) ?? null,
+      siteId: body.siteId,
+      code: body.code,
+      name: body.name,
+      remark: body.remark ?? null,
       adCount: 0,
       createdAt: now,
       updatedAt: now,
     };
     mockCmsAdSlots.push(row);
-    return okJson(row, '创建成功');
+    return ok(row, '创建成功');
   }),
-  http.put('/api/cms/ads/slots/:id', async ({ params, request }) => {
-    const idx = mockCmsAdSlots.findIndex((s) => s.id === Number(params.id));
+  mock(cmsAdContract.slotUpdate, ({ params, body, ok }) => {
+    const idx = mockCmsAdSlots.findIndex((s) => s.id === params.id);
     if (idx === -1) return notFound('广告位不存在', { status: 404 });
-    Object.assign(mockCmsAdSlots[idx], await request.json(), { updatedAt: mockDateTime() });
-    return okJson(mockCmsAdSlots[idx], '更新成功');
+    Object.assign(mockCmsAdSlots[idx], body, { updatedAt: mockDateTime() });
+    return ok(mockCmsAdSlots[idx], '更新成功');
   }),
-  http.delete('/api/cms/ads/slots/:id', ({ params }) => {
-    const id = Number(params.id);
+  mock(cmsAdContract.slotRemove, ({ params, ok }) => {
+    const { id } = params;
     if (mockCmsAds.some((a) => a.slotId === id)) {
       return badRequest('广告位下存在广告，请先删除广告', { status: 400 });
     }
     const idx = mockCmsAdSlots.findIndex((s) => s.id === id);
     if (idx === -1) return notFound('广告位不存在', { status: 404 });
     mockCmsAdSlots.splice(idx, 1);
-    return okJson(null, '删除成功');
+    return ok(null, '删除成功');
   }),
-  http.get('/api/cms/ads', ({ request }) => {
-    const { url, page, pageSize } = pageParams(request);
-    const siteId = Number(url.searchParams.get('siteId'));
-    const slotId = url.searchParams.get('slotId');
+  mock(cmsAdContract.list, ({ query, ok, paginate }) => {
+    const { siteId, slotId } = query;
     const siteSlotIds = new Set(mockCmsAdSlots.filter((s) => s.siteId === siteId).map((s) => s.id));
     let list = mockCmsAds.filter((a) => siteSlotIds.has(a.slotId));
-    if (slotId) list = list.filter((a) => a.slotId === Number(slotId));
-    return okJson(pageResult(list, page, pageSize));
+    if (slotId) list = list.filter((a) => a.slotId === slotId);
+    return ok(paginate(list));
   }),
-  http.post('/api/cms/ads', async ({ request }) => {
-    const body = (await request.json()) as Body;
+  mock(cmsAdContract.create, ({ body, ok }) => {
     const now = mockDateTime();
-    const slot = mockCmsAdSlots.find((s) => s.id === Number(body.slotId));
+    const slot = mockCmsAdSlots.find((s) => s.id === body.slotId);
     const row = {
       id: getNextCmsAdId(),
-      slotId: Number(body.slotId),
+      slotId: body.slotId,
       slotName: slot?.name ?? null,
-      name: String(body.name ?? ''),
-      image: (body.image as string) ?? null,
-      linkUrl: (body.linkUrl as string) ?? null,
-      startAt: (body.startAt as string) ?? null,
-      endAt: (body.endAt as string) ?? null,
+      name: body.name,
+      image: body.image ?? null,
+      linkUrl: body.linkUrl ?? null,
+      startAt: body.startAt ?? null,
+      endAt: body.endAt ?? null,
       clickCount: 0,
       viewCount: 0,
-      sort: Number(body.sort ?? 0),
-      status: (body.status as 'enabled' | 'disabled') ?? 'enabled',
+      sort: body.sort,
+      status: body.status,
       createdAt: now,
       updatedAt: now,
     };
     mockCmsAds.push(row);
-    return okJson(row, '创建成功');
+    return ok(row, '创建成功');
   }),
-  http.put('/api/cms/ads/:id', async ({ params, request }) => {
-    const idx = mockCmsAds.findIndex((a) => a.id === Number(params.id));
+  mock(cmsAdContract.update, ({ params, body, ok }) => {
+    const idx = mockCmsAds.findIndex((a) => a.id === params.id);
     if (idx === -1) return notFound('广告不存在', { status: 404 });
-    Object.assign(mockCmsAds[idx], await request.json(), { updatedAt: mockDateTime() });
-    return okJson(mockCmsAds[idx], '更新成功');
+    Object.assign(mockCmsAds[idx], body, { updatedAt: mockDateTime() });
+    return ok(mockCmsAds[idx], '更新成功');
   }),
-  http.delete('/api/cms/ads/:id', ({ params }) => {
-    const idx = mockCmsAds.findIndex((a) => a.id === Number(params.id));
+  mock(cmsAdContract.remove, ({ params, ok }) => {
+    const idx = mockCmsAds.findIndex((a) => a.id === params.id);
     if (idx === -1) return notFound('广告不存在', { status: 404 });
     mockCmsAds.splice(idx, 1);
-    return okJson(null, '删除成功');
+    return ok(null, '删除成功');
   }),
 
   // ─── 表单 ───────────────────────────────────────────────────────────────────
-  http.get('/api/cms/forms/:id/submissions', ({ params, request }) => {
-    const { page, pageSize } = pageParams(request);
-    const list = mockCmsFormSubmissions.filter((s) => s.formId === Number(params.id));
-    return okJson(pageResult([...list].sort((a, b) => b.id - a.id), page, pageSize));
+  mock(cmsFormContract.submissions, ({ params, ok, paginate }) => {
+    const list = mockCmsFormSubmissions.filter((s) => s.formId === params.id);
+    return ok(paginate([...list].sort((a, b) => b.id - a.id)));
   }),
-  http.post('/api/cms/forms/:id/submissions/delete', async ({ params, request }) => {
-    const { ids } = (await request.json()) as { ids: number[] };
-    for (const id of ids) {
-      const idx = mockCmsFormSubmissions.findIndex((s) => s.formId === Number(params.id) && s.id === id);
+  mock(cmsFormContract.deleteSubmissions, ({ params, body, ok }) => {
+    for (const id of body.ids) {
+      const idx = mockCmsFormSubmissions.findIndex((s) => s.formId === params.id && s.id === id);
       if (idx >= 0) mockCmsFormSubmissions.splice(idx, 1);
     }
-    return okJson(null, '删除成功');
+    return ok(null, '删除成功');
   }),
-  http.get('/api/cms/forms', ({ request }) => {
-    const { url, page, pageSize, keyword } = pageParams(request);
-    const siteId = Number(url.searchParams.get('siteId'));
+  mock(cmsFormContract.list, ({ query, ok, paginate }) => {
+    const { siteId, keyword } = query;
     let list = mockCmsForms.filter((f) => f.siteId === siteId);
     if (keyword) list = list.filter((f) => f.name.includes(keyword));
-    return okJson(pageResult(list.map((f) => redactMockForm({ ...f, submissionCount: mockCmsFormSubmissions.filter((s) => s.formId === f.id).length })), page, pageSize));
+    return ok(paginate(list.map((f) => redactMockForm({ ...f, submissionCount: mockCmsFormSubmissions.filter((s) => s.formId === f.id).length }))));
   }),
-  http.post('/api/cms/forms', async ({ request }) => {
-    const body = (await request.json()) as Body;
-    if (hasInvalidMockFormPattern(body.fields)) return badRequest('表单字段规则长度或基础语法无效', { status: 400 });
+  mock(cmsFormContract.create, ({ body, ok }) => {
     const now = mockDateTime();
     const row: CmsForm & { submissionCount: number } = {
       id: getNextCmsFormId(),
-      siteId: Number(body.siteId),
-      code: String(body.code ?? ''),
-      name: String(body.name ?? ''),
-      fields: ((body.fields as Body[]) ?? []).map((f) => ({
-        name: String(f.name ?? ''),
-        label: String(f.label ?? ''),
-        fieldType: String(f.fieldType ?? 'text') as CmsForm['fields'][number]['fieldType'],
-        required: Boolean(f.required),
-        optionSource: (f.optionSource as 'manual' | 'dict') ?? 'manual',
-      dictCode: (f.dictCode as string) ?? null,
-      options: (f.options as { label: string; value: string }[]) ?? null,
-        minLength: (f.minLength as number | null) ?? null,
-        maxLength: (f.maxLength as number | null) ?? null,
-        pattern: (f.pattern as string | null) ?? null,
-        min: (f.min as number | null) ?? null,
-        max: (f.max as number | null) ?? null,
-        errorMessage: (f.errorMessage as string | null) ?? null,
+      siteId: body.siteId,
+      code: body.code,
+      name: body.name,
+      fields: body.fields.map((f) => ({
+        name: f.name,
+        label: f.label,
+        fieldType: f.fieldType,
+        required: f.required,
+        options: f.options ?? null,
+        minLength: f.minLength ?? null,
+        maxLength: f.maxLength ?? null,
+        pattern: f.pattern ?? null,
+        min: f.min ?? null,
+        max: f.max ?? null,
+        errorMessage: f.errorMessage ?? null,
       })),
-      successMessage: (body.successMessage as string) ?? null,
-      notifyEmail: (body.notifyEmail as string) ?? null,
-      captchaProvider: (body.captchaProvider as 'inherit' | 'none' | 'math' | 'turnstile') ?? 'inherit',
-      turnstileSiteKey: (body.turnstileSiteKey as string) ?? null,
-      turnstileSecret: (body.turnstileSecret as string) || null,
-      status: (body.status as 'enabled' | 'disabled') ?? 'enabled',
+      successMessage: body.successMessage ?? null,
+      notifyEmail: body.notifyEmail ?? null,
+      captchaProvider: body.captchaProvider,
+      turnstileSiteKey: body.turnstileSiteKey ?? null,
+      turnstileSecret: body.turnstileSecret || null,
+      status: body.status,
       submissionCount: 0,
       createdAt: now,
       updatedAt: now,
     };
     mockCmsForms.push(row);
-    return okJson(redactMockForm(row), '创建成功');
+    return ok(redactMockForm(row), '创建成功');
   }),
-  http.put('/api/cms/forms/:id', async ({ params, request }) => {
-    const idx = mockCmsForms.findIndex((f) => f.id === Number(params.id));
+  mock(cmsFormContract.update, ({ params, body, ok }) => {
+    const idx = mockCmsForms.findIndex((f) => f.id === params.id);
     if (idx === -1) return notFound('表单不存在', { status: 404 });
-    const body = (await request.json()) as Body;
-    if (hasInvalidMockFormPattern(body.fields)) return badRequest('表单字段规则长度或基础语法无效', { status: 400 });
-    const secret = body.turnstileSecret;
-    if (secret === '' || secret === CMS_SECRET_MASK || secret === undefined) delete body.turnstileSecret;
-    Object.assign(mockCmsForms[idx], body, { updatedAt: mockDateTime() });
-    return okJson(redactMockForm(mockCmsForms[idx]), '更新成功');
+    const { turnstileSecret, ...patch } = body;
+    const secretPatch = turnstileSecret === '' || turnstileSecret === CMS_SECRET_MASK || turnstileSecret === undefined
+      ? {}
+      : { turnstileSecret };
+    Object.assign(mockCmsForms[idx], patch, secretPatch, { updatedAt: mockDateTime() });
+    return ok(redactMockForm(mockCmsForms[idx]), '更新成功');
   }),
-  http.delete('/api/cms/forms/:id', ({ params }) => {
-    const idx = mockCmsForms.findIndex((f) => f.id === Number(params.id));
+  mock(cmsFormContract.remove, ({ params, ok }) => {
+    const idx = mockCmsForms.findIndex((f) => f.id === params.id);
     if (idx === -1) return notFound('表单不存在', { status: 404 });
     mockCmsForms.splice(idx, 1);
-    return okJson(null, '删除成功');
+    return ok(null, '删除成功');
   }),
 
   // ─── 敏感词 ─────────────────────────────────────────────────────────────────
-  http.get('/api/cms/sensitive-words', ({ request }) => {
-    const { page, pageSize, keyword } = pageParams(request);
+  mock(cmsSensitiveWordContract.list, ({ query, ok, paginate }) => {
+    const { keyword } = query;
     let list = [...mockCmsSensitiveWords];
     if (keyword) list = list.filter((w) => w.word.includes(keyword));
-    return okJson(pageResult(list, page, pageSize));
+    return ok(paginate(list));
   }),
-  http.post('/api/cms/sensitive-words', async ({ request }) => {
-    const body = (await request.json()) as Body;
+  mock(cmsSensitiveWordContract.create, ({ body, ok }) => {
     const now = mockDateTime();
     const row = {
       id: getNextCmsSensitiveWordId(),
-      word: String(body.word ?? ''),
-      replaceWith: (body.replaceWith as string) ?? null,
-      status: (body.status as 'enabled' | 'disabled') ?? 'enabled',
+      word: body.word,
+      replaceWith: body.replaceWith ?? null,
+      status: body.status,
       createdAt: now,
       updatedAt: now,
     };
     mockCmsSensitiveWords.push(row);
-    return okJson(row, '创建成功');
+    return ok(row, '创建成功');
   }),
-  http.put('/api/cms/sensitive-words/:id', async ({ params, request }) => {
-    const idx = mockCmsSensitiveWords.findIndex((w) => w.id === Number(params.id));
+  mock(cmsSensitiveWordContract.update, ({ params, body, ok }) => {
+    const idx = mockCmsSensitiveWords.findIndex((w) => w.id === params.id);
     if (idx === -1) return notFound('敏感词不存在', { status: 404 });
-    Object.assign(mockCmsSensitiveWords[idx], await request.json(), { updatedAt: mockDateTime() });
-    return okJson(mockCmsSensitiveWords[idx], '更新成功');
+    Object.assign(mockCmsSensitiveWords[idx], body, { updatedAt: mockDateTime() });
+    return ok(mockCmsSensitiveWords[idx], '更新成功');
   }),
-  http.delete('/api/cms/sensitive-words/:id', ({ params }) => {
-    const idx = mockCmsSensitiveWords.findIndex((w) => w.id === Number(params.id));
+  mock(cmsSensitiveWordContract.remove, ({ params, ok }) => {
+    const idx = mockCmsSensitiveWords.findIndex((w) => w.id === params.id);
     if (idx === -1) return notFound('敏感词不存在', { status: 404 });
     mockCmsSensitiveWords.splice(idx, 1);
-    return okJson(null, '删除成功');
+    return ok(null, '删除成功');
   }),
 
-  // ═══ 易错词库（P1）═══════════════════════════════════════════════════════
-  http.get('/api/cms/error-prone-words', ({ request }) => {
-    const { url, page, pageSize, keyword } = pageParams(request);
-    const status = url.searchParams.get('status') || '';
+  // ═══ 易错词库 ═════════════════════════════════════════════════════════════
+  mock(cmsErrorProneWordContract.list, ({ query, ok, paginate }) => {
+    const { keyword, status } = query;
     let list = [...mockCmsErrorProneWords];
     if (keyword) list = list.filter((w) => w.word.includes(keyword) || w.correction.includes(keyword));
     if (status) list = list.filter((w) => w.status === status);
-    return okJson(pageResult(list, page, pageSize));
+    return ok(paginate(list));
   }),
-  http.post('/api/cms/error-prone-words', async ({ request }) => {
-    const body = (await request.json()) as Body;
+  mock(cmsErrorProneWordContract.create, ({ body, ok }) => {
     if (mockCmsErrorProneWords.some((w) => w.word === body.word)) {
       return badRequest('该易错词已存在', { status: 400 });
     }
     const now = mockDateTime();
     const row = {
       id: getNextCmsErrorProneWordId(),
-      word: String(body.word ?? ''),
-      correction: String(body.correction ?? ''),
-      status: (body.status as 'enabled' | 'disabled') ?? 'enabled',
-      remark: (body.remark as string) ?? null,
+      word: body.word,
+      correction: body.correction,
+      status: body.status,
+      remark: body.remark ?? null,
       createdAt: now,
       updatedAt: now,
     };
     mockCmsErrorProneWords.push(row);
-    return okJson(row, '创建成功');
+    return ok(row, '创建成功');
   }),
-  http.put('/api/cms/error-prone-words/:id', async ({ params, request }) => {
-    const idx = mockCmsErrorProneWords.findIndex((w) => w.id === Number(params.id));
+  mock(cmsErrorProneWordContract.update, ({ params, body, ok }) => {
+    const idx = mockCmsErrorProneWords.findIndex((w) => w.id === params.id);
     if (idx === -1) return notFound('易错词不存在', { status: 404 });
-    Object.assign(mockCmsErrorProneWords[idx], await request.json(), { updatedAt: mockDateTime() });
-    return okJson(mockCmsErrorProneWords[idx], '更新成功');
+    Object.assign(mockCmsErrorProneWords[idx], body, { updatedAt: mockDateTime() });
+    return ok(mockCmsErrorProneWords[idx], '更新成功');
   }),
-  http.delete('/api/cms/error-prone-words/:id', ({ params }) => {
-    const idx = mockCmsErrorProneWords.findIndex((w) => w.id === Number(params.id));
+  mock(cmsErrorProneWordContract.remove, ({ params, ok }) => {
+    const idx = mockCmsErrorProneWords.findIndex((w) => w.id === params.id);
     if (idx === -1) return notFound('易错词不存在', { status: 404 });
     mockCmsErrorProneWords.splice(idx, 1);
-    return okJson(null, '删除成功');
+    return ok(null, '删除成功');
   }),
 
-  // ═══ 栏目运维（P1：合并 / 清空 / 批量新增）═══════════════════════════════
-  http.post('/api/cms/channels/merge', async ({ request }) => {
-    const body = (await request.json()) as Body;
-    const sourceIds = (body.sourceIds as number[]) ?? [];
-    const targetId = Number(body.targetId);
+  // ═══ 栏目运维（合并 / 清空 / 批量新增）═════════════════════════════════════
+  mock(cmsChannelContract.merge, ({ body, ok }) => {
+    const { sourceIds, targetId } = body;
     const target = mockCmsChannels.find((c) => c.id === targetId);
     if (!target) return notFound('目标栏目不存在', { status: 404 });
     let moved = 0;
@@ -1618,19 +1496,17 @@ export const cmsP2Handlers = [
       const idx = mockCmsChannels.findIndex((c) => c.id === id);
       if (idx >= 0) mockCmsChannels.splice(idx, 1);
     }
-    return okJson(null, `合并完成，已迁移 ${moved} 条内容`);
+    return ok(null, `合并完成，已迁移 ${moved} 条内容`);
   }),
-  http.post('/api/cms/channels/batch-create', async ({ request }) => {
-    const body = (await request.json()) as Body;
-    const names = (body.names as string[]) ?? [];
-    const parentId = Number(body.parentId ?? 0);
+  mock(cmsChannelContract.batchCreate, ({ body, ok }) => {
+    const { names, parentId } = body;
     const parentPath = parentId ? (mockCmsChannels.find((c) => c.id === parentId)?.path ?? '') : '';
     const now = mockDateTime();
     for (const [i, name] of names.entries()) {
       const slug = `channel-${Date.now()}-${i}`;
       mockCmsChannels.push({
         id: getNextCmsChannelId(),
-        siteId: Number(body.siteId),
+        siteId: body.siteId,
         parentId,
         modelId: null,
         modelName: null,
@@ -1658,25 +1534,23 @@ export const cmsP2Handlers = [
         updatedAt: now,
       });
     }
-    return okJson(null, `已创建 ${names.length} 个栏目`);
+    return ok(null, `已创建 ${names.length} 个栏目`);
   }),
-  http.post('/api/cms/channels/:id/clear', ({ params }) => {
-    const channelId = Number(params.id);
+  mock(cmsChannelContract.clear, ({ params, ok }) => {
     let count = 0;
     for (const c of mockCmsContents) {
-      if (c.channelId === channelId && !(c as { deleted?: boolean }).deleted) {
-        (c as { deleted?: boolean }).deleted = true;
+      if (c.channelId === params.id && !isDeleted(c)) {
+        setDeleted(c, true);
         c.status = 'offline';
         count += 1;
       }
     }
-    return okJson(null, `已将 ${count} 条内容移入回收站`);
+    return ok(null, `已将 ${count} 条内容移入回收站`);
   }),
 
-  // ═══ 访问统计（P4）═══════════════════════════════════════════════════════
-  http.get('/api/cms/stats/visits', ({ request }) => {
-    const url = new URL(request.url);
-    const days = Math.min(90, Math.max(1, Number(url.searchParams.get('days')) || 30));
+  // ═══ 访问统计 ═════════════════════════════════════════════════════════════
+  mock(cmsStatContract.visits, ({ query, ok }) => {
+    const days = query.days ?? 30;
     const trend = Array.from({ length: days }, (_, i) => {
       const d = new Date(Date.now() - (days - 1 - i) * 86400_000);
       const pv = 80 + Math.round(Math.sin(i / 3) * 30) + (i % 7 === 5 ? 40 : 0);
@@ -1684,7 +1558,7 @@ export const cmsP2Handlers = [
     });
     const today = trend[trend.length - 1];
     const yesterday = trend[trend.length - 2] ?? today;
-    return okJson({
+    return ok({
       today: { pv: today.pv, uv: today.uv, ips: Math.round(today.uv * 0.9) },
       yesterday: { pv: yesterday.pv, uv: yesterday.uv, ips: Math.round(yesterday.uv * 0.9) },
       totalPv: trend.reduce((s, t) => s + t.pv, 0),
@@ -1704,14 +1578,13 @@ export const cmsP2Handlers = [
       ],
     });
   }),
-  http.get('/api/cms/stats/search', ({ request }) => {
-    const url = new URL(request.url);
-    const days = Math.min(90, Math.max(1, Number(url.searchParams.get('days')) || 30));
+  mock(cmsStatContract.search, ({ query, ok }) => {
+    const days = query.days ?? 30;
     const trend = Array.from({ length: days }, (_, i) => {
       const d = new Date(Date.now() - (days - 1 - i) * 86400_000);
       return { date: mockDate(d), count: 6 + (i % 5) };
     });
-    return okJson({
+    return ok({
       total: trend.reduce((s, t) => s + t.count, 0),
       trend,
       topKeywords: [
@@ -1727,17 +1600,13 @@ export const cmsP2Handlers = [
   }),
 
   // ─── 站点授权用户 ───────────────────────────────────────────────────────────
-  http.get('/api/cms/sites/:id/users', () => okJson({ userIds: [2], users: [{ id: 2, username: SEED_CMS_EDITOR_USER.username, nickname: SEED_CMS_EDITOR_USER.nickname }] })),
-  http.put('/api/cms/sites/:id/users', () => okJson(null, '保存成功')),
+  mock(cmsSiteContract.users, ({ ok }) => ok(authorizedEditorUsers())),
+  mock(cmsSiteContract.setUsers, ({ ok }) => ok(null, '保存成功')),
 
   // 开放应用授权（Headless 写入的 fail-closed 边界）
-  http.get('/api/cms/sites/:id/open-grants', ({ params }) =>
-    okJson(mockCmsOpenGrants.filter((g) => g.siteId === Number(params.id)))),
-  http.put('/api/cms/sites/:id/open-grants', async ({ params, request }) => {
-    const siteId = Number(params.id);
-    const body = (await request.json()) as {
-      clientId: string; channelIds?: number[]; canPublish?: boolean; status?: 'enabled' | 'disabled'; remark?: string | null;
-    };
+  mock(cmsSiteContract.openGrants, ({ params, ok }) => ok(mockCmsOpenGrants.filter((g) => g.siteId === params.id))),
+  mock(cmsSiteContract.saveOpenGrant, ({ params, body, ok }) => {
+    const siteId = params.id;
     const existing = mockCmsOpenGrants.find((g) => g.siteId === siteId && g.clientId === body.clientId);
     const row = {
       id: existing?.id ?? getNextCmsOpenGrantId(),
@@ -1745,31 +1614,31 @@ export const cmsP2Handlers = [
       appName: existing?.appName ?? '演示开放应用',
       siteId,
       siteName: mockCmsSites.find((s) => s.id === siteId)?.name ?? null,
-      channelIds: body.channelIds ?? [],
-      canPublish: body.canPublish === true,
-      status: body.status ?? ('enabled' as const),
+      channelIds: body.channelIds,
+      canPublish: body.canPublish,
+      status: body.status,
       remark: body.remark ?? null,
       createdAt: existing?.createdAt ?? mockDateTime(),
       updatedAt: mockDateTime(),
     };
     if (existing) Object.assign(existing, row);
     else mockCmsOpenGrants.unshift(row);
-    return okJson(row, '已保存');
+    return ok(row, '已保存');
   }),
-  http.delete('/api/cms/sites/open-grants/:grantId', ({ params }) => {
-    const idx = mockCmsOpenGrants.findIndex((g) => g.id === Number(params.grantId));
+  mock(cmsSiteContract.removeOpenGrant, ({ params, ok }) => {
+    const idx = mockCmsOpenGrants.findIndex((g) => g.id === params.grantId);
     if (idx < 0) return notFound('授权不存在', { status: 404 });
     mockCmsOpenGrants.splice(idx, 1);
-    return okJson(null, '已删除');
+    return ok(null, '已删除');
   }),
 
-  // ─── P5 企业级治理 ─────────────────────────────────────────────────────────
+  // ─── 企业级治理 ─────────────────────────────────────────────────────────────
   // 栏目授权用户（栏目级数据权限）
-  http.get('/api/cms/channels/:id/users', () => okJson({ userIds: [2], users: [{ id: 2, username: SEED_CMS_EDITOR_USER.username, nickname: SEED_CMS_EDITOR_USER.nickname }] })),
-  http.put('/api/cms/channels/:id/users', () => okJson(null, '保存成功')),
+  mock(cmsChannelContract.users, ({ ok }) => ok(authorizedEditorUsers())),
+  mock(cmsChannelContract.setUsers, ({ ok }) => ok(null, '保存成功')),
   // 站点导出（JSON 附件）/ 导入
-  http.get('/api/cms/sites/:id/export', ({ params }) => {
-    const site = mockCmsSites.find((s) => s.id === Number(params.id));
+  mock(cmsSiteContract.export, ({ params }) => {
+    const site = mockCmsSites.find((s) => s.id === params.id);
     const pkg = {
       version: 2,
       exportedAt: mockDateTime(),
@@ -1778,9 +1647,9 @@ export const cmsP2Handlers = [
       resources: [],
       channels: [], tags: [], contents: [], contentTags: [], contentChannels: [], contentRelations: [],
       friendLinks: [], redirects: [], linkWords: [], adSlots: [], ads: [], forms: [],
-      pages: mockCmsPages.filter((page) => page.siteId === Number(params.id)),
-      widgets: mockCmsWidgets.filter((widget) => widget.siteId === Number(params.id)),
-      widgetSlots: mockCmsWidgetRefs.filter((ref) => ref.siteId === Number(params.id) && ref.ownerType === 'theme_slot'),
+      pages: mockCmsPages.filter((page) => page.siteId === params.id),
+      widgets: mockCmsWidgets.filter((widget) => widget.siteId === params.id),
+      widgetSlots: mockCmsWidgetRefs.filter((ref) => ref.siteId === params.id && ref.ownerType === 'theme_slot'),
     };
     return new HttpResponse(JSON.stringify(pkg, null, 2), {
       headers: {
@@ -1789,19 +1658,19 @@ export const cmsP2Handlers = [
       },
     });
   }),
-  http.post('/api/cms/sites/import', async ({ request }) => {
-    const body = (await request.json()) as {
-      site?: { name?: string; code?: string };
-      widgets?: unknown[];
-      widgetSlots?: unknown[];
-    };
-    const widgetCount = body.widgets?.length ?? 0;
-    const skippedWidgetSlots = body.widgetSlots?.length ?? 0;
-    return okJson({
+  mock(cmsSiteContract.import, ({ body, ok }) => {
+    const pkg = body as { site?: { name?: string; code?: string }; widgets?: unknown[]; widgetSlots?: unknown[] };
+    const widgetCount = pkg.widgets?.length ?? 0;
+    const skippedWidgetSlots = pkg.widgetSlots?.length ?? 0;
+    return ok({
       siteId: 999,
-      siteName: body?.site?.name ?? '导入站点',
-      siteCode: `${body?.site?.code ?? 'imported'}-2`,
-      counts: { channels: 0, tags: 0, contents: 0, resourceFolders: 0, resources: 0, friendLinks: 0, redirects: 0, linkWords: 0, adSlots: 0, ads: 0, forms: 0, widgets: widgetCount, pages: 0 },
+      siteName: pkg.site?.name ?? '导入站点',
+      siteCode: `${pkg.site?.code ?? 'imported'}-2`,
+      counts: {
+        channels: 0, tags: 0, contents: 0, friendLinks: 0, redirects: 0, linkWords: 0, adSlots: 0, ads: 0, forms: 0,
+        interactions: 0, interactionQuestions: 0, resourceFolders: 0, resources: 0, models: 0, modelFields: 0, friendLinkGroups: 0,
+        widgets: widgetCount, pages: 0,
+      },
       skipped: { widgetSlots: skippedWidgetSlots },
       warnings: [
         ...(widgetCount > 0 ? [`已导入 ${widgetCount} 个页面部件并统一降级为草稿，请审核后重新发布`] : []),
@@ -1814,152 +1683,128 @@ export const cmsP2Handlers = [
 // ─── P3：词典 / 热词 / 批量操作 / 统计开通 / 死链检测 ──────────────────────────
 export const cmsP3Handlers = [
   // 自定义词典
-  http.get('/api/cms/search/words', ({ request }) => {
-    const { url, page, pageSize, keyword } = pageParams(request);
-    const siteId = Number(url.searchParams.get('siteId'));
-    const type = url.searchParams.get('type');
-    const groupName = url.searchParams.get('groupName');
-    const status = url.searchParams.get('status');
+  mock(cmsSearchContract.wordList, ({ query, ok, paginate }) => {
+    const { siteId, keyword, type, groupName, status } = query;
     let list = mockCmsSearchWords.filter((word) => word.siteId === siteId);
     if (keyword) list = list.filter((w) => w.word.includes(keyword));
     if (type) list = list.filter((word) => word.type === type);
     if (groupName) list = list.filter((word) => word.groupName === groupName);
     if (status) list = list.filter((word) => word.status === status);
-    return okJson(pageResult(list, page, pageSize));
+    return ok(paginate(list));
   }),
-  http.post('/api/cms/search/words', async ({ request }) => {
-    const body = (await request.json()) as Body;
-    const word = String(body.word ?? '').trim();
-    if (!CMS_SEARCH_DICTIONARY_WORD_PATTERN.test(word)) return badRequest('词条格式无效，不能包含空白', { status: 400 });
+  mock(cmsSearchContract.wordCreate, ({ body, ok }) => {
     const now = mockDateTime();
     const row = {
       id: getNextCmsSearchWordId(),
-      siteId: Number(body.siteId),
-      word,
-      type: (body.type as 'extension' | 'stop') ?? 'extension',
-      groupName: String(body.groupName ?? '默认分组'),
-      weight: Number(body.weight ?? 1000),
-      status: (body.status as 'enabled' | 'disabled') ?? 'enabled',
-      remark: (body.remark as string) ?? null,
+      siteId: body.siteId,
+      word: body.word,
+      type: body.type,
+      groupName: body.groupName,
+      weight: body.weight,
+      status: body.status,
+      remark: body.remark ?? null,
       createdAt: now,
       updatedAt: now,
     };
     mockCmsSearchWords.push(row);
-    return okJson(row, '创建成功');
+    return ok(row, '创建成功');
   }),
-  http.put('/api/cms/search/words/batch', async ({ request }) => {
-    const body = (await request.json()) as Body;
-    const ids = (body.ids as number[]) ?? [];
+  mock(cmsSearchContract.wordBatchUpdate, ({ body, ok }) => {
+    const { ids } = body;
     for (const word of mockCmsSearchWords) {
       if (!ids.includes(word.id)) continue;
-      if (body.status !== undefined) word.status = body.status as 'enabled' | 'disabled';
-      if (body.groupName !== undefined) word.groupName = String(body.groupName);
+      if (body.status !== undefined) word.status = body.status;
+      if (body.groupName !== undefined) word.groupName = body.groupName;
     }
-    return okJson(null, `已更新 ${ids.length} 个词条`);
+    return ok(null, `已更新 ${ids.length} 个词条`);
   }),
-  http.delete('/api/cms/search/words/batch', async ({ request }) => {
-    const ids = ((await request.json()) as { ids: number[] }).ids;
+  mock(cmsSearchContract.wordBatchRemove, ({ body, ok }) => {
+    const { ids } = body;
     for (let index = mockCmsSearchWords.length - 1; index >= 0; index--) {
       if (ids.includes(mockCmsSearchWords[index].id)) mockCmsSearchWords.splice(index, 1);
     }
-    return okJson(null, `已删除 ${ids.length} 个词条`);
+    return ok(null, `已删除 ${ids.length} 个词条`);
   }),
-  http.put('/api/cms/search/words/:id', async ({ params, request }) => {
-    const idx = mockCmsSearchWords.findIndex((w) => w.id === Number(params.id));
+  mock(cmsSearchContract.wordUpdate, ({ params, body, ok }) => {
+    const idx = mockCmsSearchWords.findIndex((w) => w.id === params.id);
     if (idx === -1) return notFound('词条不存在', { status: 404 });
-    const body = (await request.json()) as Body;
-    if (body.word !== undefined) {
-      const word = String(body.word).trim();
-      if (!CMS_SEARCH_DICTIONARY_WORD_PATTERN.test(word)) return badRequest('词条格式无效，不能包含空白', { status: 400 });
-      body.word = word;
-    }
     Object.assign(mockCmsSearchWords[idx], body, { updatedAt: mockDateTime() });
-    return okJson(mockCmsSearchWords[idx], '更新成功');
+    return ok(mockCmsSearchWords[idx], '更新成功');
   }),
-  http.delete('/api/cms/search/words/:id', ({ params }) => {
-    const idx = mockCmsSearchWords.findIndex((w) => w.id === Number(params.id));
+  mock(cmsSearchContract.wordRemove, ({ params, ok }) => {
+    const idx = mockCmsSearchWords.findIndex((w) => w.id === params.id);
     if (idx === -1) return notFound('词条不存在', { status: 404 });
     mockCmsSearchWords.splice(idx, 1);
-    return okJson(null, '删除成功（当前站点词典已重建）');
+    return ok(null, '删除成功（当前站点词典已重建）');
   }),
 
   // 搜索热词
-  http.get('/api/cms/search/hotword-groups', ({ request }) => {
-    const siteId = Number(new URL(request.url).searchParams.get('siteId'));
-    return okJson(mockCmsHotwordGroups.filter((group) => group.siteId === siteId));
-  }),
-  http.post('/api/cms/search/hotword-groups', async ({ request }) => {
-    const body = (await request.json()) as Body;
-    const row = { id: getNextCmsHotwordGroupId(), siteId: Number(body.siteId), name: String(body.name), sort: Number(body.sort ?? 0), status: (body.status as 'enabled' | 'disabled') ?? 'enabled', createdAt: mockDateTime(), updatedAt: mockDateTime() };
+  mock(cmsSearchContract.hotwordGroups, ({ query, ok }) => ok(mockCmsHotwordGroups.filter((group) => group.siteId === query.siteId))),
+  mock(cmsSearchContract.hotwordGroupCreate, ({ body, ok }) => {
+    const row = { id: getNextCmsHotwordGroupId(), siteId: body.siteId, name: body.name, sort: body.sort, status: body.status, createdAt: mockDateTime(), updatedAt: mockDateTime() };
     mockCmsHotwordGroups.push(row);
-    return okJson(row, '创建成功');
+    return ok(row, '创建成功');
   }),
-  http.put('/api/cms/search/hotword-groups/:id', async ({ params, request }) => {
-    const row = mockCmsHotwordGroups.find((group) => group.id === Number(params.id));
+  mock(cmsSearchContract.hotwordGroupUpdate, ({ params, body, ok }) => {
+    const row = mockCmsHotwordGroups.find((group) => group.id === params.id);
     if (!row) return notFound('热词分组不存在', { status: 404 });
-    Object.assign(row, await request.json(), { updatedAt: mockDateTime() });
-    return okJson(row, '更新成功');
+    Object.assign(row, body, { updatedAt: mockDateTime() });
+    return ok(row, '更新成功');
   }),
-  http.delete('/api/cms/search/hotword-groups/:id', ({ params }) => {
-    const id = Number(params.id);
+  mock(cmsSearchContract.hotwordGroupRemove, ({ params, ok }) => {
+    const { id } = params;
     if (mockCmsHotKeywords.some((word) => word.groupId === id)) return badRequest('分组内仍有热词', { status: 400 });
     const index = mockCmsHotwordGroups.findIndex((group) => group.id === id);
     if (index < 0) return notFound('热词分组不存在', { status: 404 });
     mockCmsHotwordGroups.splice(index, 1);
-    return okJson(null, '删除成功');
+    return ok(null, '删除成功');
   }),
-  http.get('/api/cms/search/hot-keywords', ({ request }) => {
-    const url = new URL(request.url);
-    const siteId = Number(url.searchParams.get('siteId'));
-    const groupId = Number(url.searchParams.get('groupId')) || undefined;
-    const keyword = url.searchParams.get('keyword') || '';
+  mock(cmsSearchContract.hotKeywords, ({ query, ok }) => {
+    const { siteId, groupId, keyword } = query;
     let list = mockCmsHotKeywords.filter((word) => word.siteId === siteId);
     if (groupId) list = list.filter((word) => word.groupId === groupId);
     if (keyword) list = list.filter((word) => word.keyword.includes(keyword));
-    return okJson(list);
+    return ok(list);
   }),
-  http.post('/api/cms/search/hot-keywords', async ({ request }) => {
-    const body = (await request.json()) as Body;
-    const groupId = Number(body.groupId) || null;
+  mock(cmsSearchContract.hotwordCreate, ({ body, ok }) => {
+    const groupId = body.groupId ?? null;
     mockCmsHotKeywords.push({
-      id: getNextCmsHotwordId(), siteId: Number(body.siteId), groupId,
+      id: getNextCmsHotwordId(), siteId: body.siteId, groupId,
       groupName: mockCmsHotwordGroups.find((group) => group.id === groupId)?.name ?? null,
-      keyword: String(body.keyword), count: 0, sort: Number(body.sort ?? 0),
-      status: (body.status as 'enabled' | 'disabled') ?? 'enabled',
+      keyword: body.keyword, count: 0, sort: body.sort,
+      status: body.status,
     });
-    return okJson(null, '创建成功');
+    return ok(null, '创建成功');
   }),
-  http.put('/api/cms/search/hot-keywords/:id', async ({ params, request }) => {
-    const row = mockCmsHotKeywords.find((word) => word.id === Number(params.id));
+  mock(cmsSearchContract.hotwordUpdate, ({ params, body, ok }) => {
+    const row = mockCmsHotKeywords.find((word) => word.id === params.id);
     if (!row) return notFound('热词不存在', { status: 404 });
-    Object.assign(row, await request.json());
+    Object.assign(row, body);
     row.groupName = mockCmsHotwordGroups.find((group) => group.id === row.groupId)?.name ?? null;
-    return okJson(null, '更新成功');
+    return ok(null, '更新成功');
   }),
-  http.delete('/api/cms/search/hot-keywords/:id', ({ params }) => {
-    const index = mockCmsHotKeywords.findIndex((word) => word.id === Number(params.id));
+  mock(cmsSearchContract.hotwordRemove, ({ params, ok }) => {
+    const index = mockCmsHotKeywords.findIndex((word) => word.id === params.id);
     if (index < 0) return notFound('热词不存在', { status: 404 });
     mockCmsHotKeywords.splice(index, 1);
-    return okJson(null, '删除成功');
+    return ok(null, '删除成功');
   }),
-  http.post('/api/cms/search/hot-keywords/clear', () => {
+  mock(cmsSearchContract.clearHotKeywords, ({ ok }) => {
     mockCmsHotKeywords.length = 0;
-    return okJson(null, '已清空');
+    return ok(null, '已清空');
   }),
 
   // 内容批量操作
-  http.post('/api/cms/contents/batch-move', async ({ request }) => {
-    const body = (await request.json()) as Body;
-    const ids = (body.ids as number[]) ?? [];
+  mock(cmsContentContract.batchMove, ({ body, ok }) => {
+    const { ids, channelId } = body;
     for (const c of mockCmsContents) {
-      if (ids.includes(c.id)) c.channelId = Number(body.channelId);
+      if (ids.includes(c.id)) c.channelId = channelId;
     }
     submitMockCmsWidgetSourceRefresh('content', ids);
-    return okJson(null, `已移动 ${ids.length} 条内容`);
+    return ok(null, `已移动 ${ids.length} 条内容`);
   }),
-  http.post('/api/cms/contents/batch-flags', async ({ request }) => {
-    const body = (await request.json()) as Body;
-    const ids = (body.ids as number[]) ?? [];
+  mock(cmsContentContract.batchFlags, ({ body, ok }) => {
+    const { ids } = body;
     for (const c of mockCmsContents) {
       if (!ids.includes(c.id)) continue;
       if (typeof body.isTop === 'boolean') c.isTop = body.isTop;
@@ -1967,22 +1812,18 @@ export const cmsP3Handlers = [
       if (typeof body.isHot === 'boolean') c.isHot = body.isHot;
       if (typeof body.isOriginal === 'boolean') c.isOriginal = body.isOriginal;
     }
-    return okJson(null, `已更新 ${ids.length} 条内容`);
+    return ok(null, `已更新 ${ids.length} 条内容`);
   }),
-  http.post('/api/cms/contents/batch-tag', async ({ request }) => {
-    const body = (await request.json()) as Body;
-    const ids = (body.ids as number[]) ?? [];
-    const tagIds = (body.tagIds as number[]) ?? [];
+  mock(cmsContentContract.batchTag, ({ body, ok }) => {
+    const { ids, tagIds } = body;
     for (const c of mockCmsContents) {
       if (ids.includes(c.id)) c.tagIds = Array.from(new Set([...c.tagIds, ...tagIds]));
     }
-    return okJson(null, `已打标 ${ids.length} 条内容`);
+    return ok(null, `已打标 ${ids.length} 条内容`);
   }),
-  http.post('/api/cms/contents/batch-status', async ({ request }) => {
-    const body = (await request.json()) as Body;
-    const ids = (body.ids as number[]) ?? [];
-    const action = body.action as 'submit' | 'publish' | 'reject' | 'offline';
-    const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+  mock(cmsContentContract.batchStatus, ({ body, ok }) => {
+    const { ids, action } = body;
+    const reason = body.reason?.trim() ?? '';
     const okIds: number[] = [];
     const failed: { id: number; reason: string }[] = [];
     for (const id of ids) {
@@ -2024,12 +1865,10 @@ export const cmsP3Handlers = [
     const message = failed.length === 0
       ? `已处理 ${okIds.length} 条内容`
       : `成功 ${okIds.length} 条，失败 ${failed.length} 条`;
-    return okJson({ okIds, failed }, message);
+    return ok({ okIds, failed }, message);
   }),
-  http.post('/api/cms/contents/distribute', async ({ request }) => {
-    const body = (await request.json()) as Body;
-    const ids = (body.ids as number[]) ?? [];
-    const mode = (body.mode as 'copy' | 'mapping') ?? 'copy';
+  mock(cmsContentContract.distribute, ({ body, ok }) => {
+    const { ids } = body;
     const now = mockDateTime();
     const sources = mockCmsContents.filter((c) => ids.includes(c.id));
     const disallowed = sources.find((content) => content.status !== 'published' || content.archivedAt);
@@ -2038,8 +1877,8 @@ export const cmsP3Handlers = [
       mockCmsContents.push({
         ...src,
         id: getNextCmsContentId(),
-        siteId: Number(body.targetSiteId),
-        channelId: Number(body.targetChannelId),
+        siteId: body.targetSiteId,
+        channelId: body.targetChannelId,
         status: 'draft',
         publishedAt: null,
         viewCount: 0,
@@ -2047,10 +1886,10 @@ export const cmsP3Handlers = [
         favoriteCount: 0,
         version: 1,
         tagIds: [],
-        body: mode === 'mapping' ? null : sanitizeMockCmsHtml(src.body),
-        extend: mode === 'mapping' ? {} : structuredClone(src.extend),
-        mappingSourceId: mode === 'mapping' ? (src.mappingSourceId ?? src.id) : null,
-        mappingSourceTitle: mode === 'mapping' ? src.title : null,
+        body: sanitizeMockCmsHtml(src.body),
+        extend: structuredClone(src.extend),
+        mappingSourceId: null,
+        mappingSourceTitle: null,
         distributionRuleId: null,
         distributionSourceId: null,
         distributionSourceVersion: null,
@@ -2059,15 +1898,16 @@ export const cmsP3Handlers = [
         updatedAt: now,
       });
     }
-    return okJson(null, `已${mode === 'mapping' ? '映射' : '分发'} ${ids.length} 条内容（目标站点草稿箱）`);
+    return ok(null, `已分发 ${ids.length} 条内容（目标站点草稿箱）`);
   }),
-  http.post('/api/cms/contents/:id/duplicate', ({ params }) => {
-    const src = mockCmsContents.find((c) => c.id === Number(params.id));
+  mock(cmsContentContract.duplicate, ({ params, body, ok }) => {
+    const src = mockCmsContents.find((c) => c.id === params.id);
     if (!src) return notFound('内容不存在', { status: 404 });
     const now = mockDateTime();
     const copy = {
       ...src,
       id: getNextCmsContentId(),
+      channelId: body.targetChannelId ?? src.channelId,
       title: `${src.title}（副本）`,
       slug: null,
       status: 'draft' as CmsContentStatus,
@@ -2078,24 +1918,25 @@ export const cmsP3Handlers = [
       updatedAt: now,
     };
     mockCmsContents.push(copy);
-    return okJson(copy, '已复制为草稿');
+    return ok(copy, '已复制为草稿');
   }),
 
   // 站点开通统计
-  http.post('/api/cms/sites/:id/enable-analytics', ({ params }) => {
-    const site = mockCmsSites.find((s) => s.id === Number(params.id));
+  mock(cmsSiteContract.enableAnalytics, ({ params, ok }) => {
+    const site = mockCmsSites.find((s) => s.id === params.id);
     if (!site) return notFound('站点不存在', { status: 404 });
     const settings = { ...(site.settings ?? {}) } as Record<string, unknown>;
-    if (settings.analyticsSiteKey) {
-      return okJson({ siteKey: settings.analyticsSiteKey, created: false }, '已开通');
+    if (typeof settings.analyticsSiteKey === 'string' && settings.analyticsSiteKey) {
+      return ok({ siteKey: settings.analyticsSiteKey, created: false }, '已开通');
     }
-    settings.analyticsSiteKey = `mock-key-${site.code}`;
+    const siteKey = `mock-key-${site.code}`;
+    settings.analyticsSiteKey = siteKey;
     site.settings = settings;
-    return okJson({ siteKey: settings.analyticsSiteKey, created: true }, '开通成功');
+    return ok({ siteKey, created: true }, '开通成功');
   }),
 
   // 图片上传（水印/缩略图管道）
-  http.post('/api/cms/upload-image', () => okJson({
+  mock(cmsUploadContract.uploadImage, ({ ok }) => ok({
     url: 'https://picsum.photos/seed/cms-upload/800/450',
     thumbUrl: 'https://picsum.photos/seed/cms-upload/400/225',
     fileId: 'mock-file-id',
@@ -2105,129 +1946,111 @@ export const cmsP3Handlers = [
   }, '上传成功')),
 
   // 死链检测（复用任务中心 mock 进度模拟）
-  http.post('/api/cms/seo/deadlink-check', () => {
-    return okJson(createProgressingMockTask({
-      taskType: 'cms-deadlink-check',
-      title: 'CMS 死链检测',
-      totalItems: 30,
-    }), '任务已提交');
-  }),
+  mock(cmsSeoContract.deadlinkCheck, ({ ok }) => ok(createProgressingMockTask({
+    taskType: 'cms-deadlink-check',
+    title: 'CMS 死链检测',
+    totalItems: 30,
+  }), '任务已提交')),
 
   // ─── 采集中心 ───────────────────────────────────────────────────────────────
-  http.get('/api/cms/collect/rules/:id/items', ({ params, request }) => {
-    const { page, pageSize } = pageParams(request);
-    const list = mockCmsCollectItems.filter((x) => x.ruleId === Number(params.id));
-    return okJson(pageResult(list, page, pageSize));
-  }),
-  http.post('/api/cms/collect/rules/:id/run', () => okJson(createProgressingMockTask({
+  mock(cmsCollectContract.items, ({ params, ok, paginate }) => ok(paginate(mockCmsCollectItems.filter((x) => x.ruleId === params.id)))),
+  mock(cmsCollectContract.run, ({ ok }) => ok(createProgressingMockTask({
     taskType: 'cms-collect-run',
     title: 'CMS 采集执行',
     totalItems: 20,
   }), '任务已提交')),
-  http.get('/api/cms/collect/rules', ({ request }) => {
-    const { url, page, pageSize, keyword } = pageParams(request);
-    const siteId = Number(url.searchParams.get('siteId'));
+  mock(cmsCollectContract.list, ({ query, ok, paginate }) => {
+    const { siteId, keyword } = query;
     let list = mockCmsCollectRules.filter((r) => r.siteId === siteId);
     if (keyword) list = list.filter((r) => r.name.includes(keyword));
-    return okJson(pageResult(list, page, pageSize));
+    return ok(paginate(list));
   }),
-  http.post('/api/cms/collect/rules', async ({ request }) => {
-    const body = (await request.json()) as Body;
+  mock(cmsCollectContract.create, ({ body, ok }) => {
     const now = mockDateTime();
     const row = {
       id: getNextCmsCollectRuleId(),
-      siteId: Number(body.siteId),
-      channelId: Number(body.channelId),
-      channelName: mockCmsChannels.find((c) => c.id === Number(body.channelId))?.name ?? null,
-      name: String(body.name ?? ''),
-      listUrl: String(body.listUrl ?? ''),
-      pageStart: Number(body.pageStart ?? 1),
-      pageEnd: Number(body.pageEnd ?? 1),
-      listSelector: String(body.listSelector ?? ''),
-      titleSelector: String(body.titleSelector ?? ''),
-      bodySelector: String(body.bodySelector ?? ''),
-      summarySelector: (body.summarySelector as string) || null,
-      coverSelector: (body.coverSelector as string) || null,
-      removeSelectors: (body.removeSelectors as string[]) ?? [],
-      autoPublish: body.autoPublish === true,
-      localizeImages: body.localizeImages === true,
-      maxItems: Number(body.maxItems ?? 50),
-      status: (body.status as 'enabled' | 'disabled') ?? 'enabled',
+      siteId: body.siteId,
+      channelId: body.channelId,
+      channelName: mockCmsChannels.find((c) => c.id === body.channelId)?.name ?? null,
+      name: body.name,
+      listUrl: body.listUrl,
+      pageStart: body.pageStart,
+      pageEnd: body.pageEnd,
+      listSelector: body.listSelector,
+      titleSelector: body.titleSelector,
+      bodySelector: body.bodySelector,
+      summarySelector: body.summarySelector || null,
+      coverSelector: body.coverSelector || null,
+      removeSelectors: body.removeSelectors,
+      autoPublish: body.autoPublish,
+      localizeImages: body.localizeImages,
+      maxItems: body.maxItems,
+      status: body.status,
       lastRunAt: null,
-      remark: (body.remark as string) || null,
+      remark: body.remark || null,
       createdAt: now,
       updatedAt: now,
     };
     mockCmsCollectRules.push(row);
-    return okJson(row, '创建成功');
+    return ok(row, '创建成功');
   }),
-  http.put('/api/cms/collect/rules/:id', async ({ params, request }) => {
-    const idx = mockCmsCollectRules.findIndex((r) => r.id === Number(params.id));
+  mock(cmsCollectContract.update, ({ params, body, ok }) => {
+    const idx = mockCmsCollectRules.findIndex((r) => r.id === params.id);
     if (idx === -1) return notFound('采集规则不存在', { status: 404 });
-    Object.assign(mockCmsCollectRules[idx], await request.json(), { updatedAt: mockDateTime() });
-    return okJson(mockCmsCollectRules[idx], '更新成功');
+    Object.assign(mockCmsCollectRules[idx], body, { updatedAt: mockDateTime() });
+    return ok(mockCmsCollectRules[idx], '更新成功');
   }),
-  http.delete('/api/cms/collect/rules/:id', ({ params }) => {
-    const idx = mockCmsCollectRules.findIndex((r) => r.id === Number(params.id));
+  mock(cmsCollectContract.remove, ({ params, ok }) => {
+    const idx = mockCmsCollectRules.findIndex((r) => r.id === params.id);
     if (idx === -1) return notFound('采集规则不存在', { status: 404 });
     mockCmsCollectRules.splice(idx, 1);
-    return okJson(null, '删除成功');
+    return ok(null, '删除成功');
   }),
 ];
 
-// P3 Batch5：采集中心 mock 数据
+// ─── 页面搭建 ─────────────────────────────────────────────────────────────────
 export const cmsP6Handlers = [
-  http.get('/api/cms/pages/:id', ({ params }) => {
-    const row = mockCmsPages.find((p) => p.id === Number(params.id));
-    return row ? okJson(row) : notFound('页面不存在', { status: 404 });
+  mock(cmsPageContract.detail, ({ params, ok }) => {
+    const row = mockCmsPages.find((p) => p.id === params.id);
+    return row ? ok(row) : notFound('页面不存在', { status: 404 });
   }),
-  http.get('/api/cms/pages', ({ request }) => {
-    const { url, page, pageSize, keyword } = pageParams(request);
-    const siteId = Number(url.searchParams.get('siteId'));
+  mock(cmsPageContract.list, ({ query, ok, paginate }) => {
+    const { siteId, keyword } = query;
     let list = mockCmsPages.filter((p) => p.siteId === siteId);
     if (keyword) list = list.filter((p) => p.name.includes(keyword) || p.slug.includes(keyword));
-    return okJson(pageResult(list, page, pageSize));
+    return ok(paginate(list));
   }),
-  http.post('/api/cms/pages', async ({ request }) => {
-    const body = (await request.json()) as Body;
+  mock(cmsPageContract.create, ({ body, ok }) => {
     const now = mockDateTime();
     const row = {
       id: getNextCmsPageId(),
-      siteId: Number(body.siteId),
-      name: String(body.name ?? ''),
-      slug: String(body.slug ?? ''),
-      path: (body.path as string)?.trim() || null,
-      isHome: body.isHome === true,
-      blocks: (body.blocks as import('@zenith/shared').CmsPageBlock[]) ?? [],
-      requiresDynamic: ((body.blocks as import('@zenith/shared').CmsPageBlock[]) ?? [])
-        .some((block) => ['guest', 'member'].includes(block.displayCondition?.audience ?? 'always')),
-      seoTitle: (body.seoTitle as string) || null,
-      seoKeywords: (body.seoKeywords as string) || null,
-      seoDescription: (body.seoDescription as string) || null,
-      status: (body.status as 'enabled' | 'disabled') ?? 'enabled',
-      remark: (body.remark as string) || null,
+      siteId: body.siteId,
+      name: body.name,
+      slug: body.slug,
+      path: body.path?.trim() || null,
+      isHome: body.isHome,
+      blocks: body.blocks,
+      requiresDynamic: body.blocks.some((block) => ['guest', 'member'].includes(block.displayCondition?.audience ?? 'always')),
+      seoTitle: body.seoTitle || null,
+      seoKeywords: body.seoKeywords || null,
+      seoDescription: body.seoDescription || null,
+      status: body.status,
+      remark: body.remark || null,
       createdAt: now,
       updatedAt: now,
     };
     mockCmsPages.push(row);
     syncMockPageWidgetRefs(row);
-    return okJson(row, '创建成功');
+    return ok(row, '创建成功');
   }),
-  http.put('/api/cms/pages/:id', async ({ params, request }) => {
-    const idx = mockCmsPages.findIndex((p) => p.id === Number(params.id));
-    if (idx === -1) return notFound('页面不存在', { status: 404 });
-    Object.assign(mockCmsPages[idx], await request.json(), { updatedAt: mockDateTime() });
-    syncMockPageWidgetRefs(mockCmsPages[idx]);
-    return okJson(mockCmsPages[idx], '更新成功');
-  }),
-  http.delete('/api/cms/pages/:id', ({ params }) => {
-    const idx = mockCmsPages.findIndex((p) => p.id === Number(params.id));
+  mock(cmsPageContract.remove, ({ params, ok }) => {
+    const idx = mockCmsPages.findIndex((p) => p.id === params.id);
     if (idx === -1) return notFound('页面不存在', { status: 404 });
     for (let refIndex = mockCmsWidgetRefs.length - 1; refIndex >= 0; refIndex -= 1) {
       const ref = mockCmsWidgetRefs[refIndex];
-      if (ref.ownerType === 'page' && ref.ownerId === Number(params.id)) mockCmsWidgetRefs.splice(refIndex, 1);
+      if (ref.ownerType === 'page' && ref.ownerId === params.id) mockCmsWidgetRefs.splice(refIndex, 1);
     }
     mockCmsPages.splice(idx, 1);
-    return okJson(null, '删除成功');
+    return ok(null, '删除成功');
   }),
 ];
