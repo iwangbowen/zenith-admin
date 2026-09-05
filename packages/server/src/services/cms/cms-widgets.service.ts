@@ -36,6 +36,7 @@ import {
 } from './cms-resource-refs.service';
 import { buildCmsLinkResolver } from './cms-link.service';
 import { channelUrl, contentUrl } from './cms-urls';
+import { cmsContentListColumns, listSummaryOf } from './cms-content-columns';
 import { refreshCmsPublicConfiguration } from './cms-public-config-refresh.service';
 import { getEffectivelyEnabledCmsChannelIds, resolveEffectivelyEnabledChannelIds } from './cms-channel-visibility.service';
 
@@ -706,7 +707,7 @@ export async function resolveCmsWidgetPlacements(
     }
   }
   const rawContents = contentIds.size
-    ? await db.select().from(cmsContents).where(and(
+    ? await db.select(cmsContentListColumns).from(cmsContents).where(and(
         inArray(cmsContents.id, [...contentIds]),
         eq(cmsContents.siteId, siteId),
         eq(cmsContents.status, 'published'),
@@ -753,7 +754,7 @@ export async function resolveCmsWidgetPlacements(
           const resolvedExternal = content.externalLink ? linkResolver(content.externalLink) : null;
           source = {
             title: content.title,
-            summary: content.summary ?? null,
+            summary: listSummaryOf(content, 120),
             url: resolvedExternal?.url ?? contentUrl(baseUrl, channel, content),
             image: content.coverThumb ?? content.coverImage ?? null,
             displayDate: formatNullableDateTime(content.publishedAt),

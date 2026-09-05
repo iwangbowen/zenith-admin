@@ -25,6 +25,7 @@ import {
 } from '../../lib/open-query';
 import { CMS_OPEN_SYNC_PAGE_SIZE_MAX, isValidCmsAssetUrl } from '@zenith/shared/cms';
 import { resolveCmsContentRows } from './cms-resource-refs.service';
+import { cmsContentListColumns, type CmsContentListRow } from './cms-content-columns';
 import { contentUrl } from './cms-urls';
 import { buildCmsSearchCondition } from './cms-search.service';
 import { isCmsContentPubliclyVisible } from './cms-content-state';
@@ -55,6 +56,21 @@ function publicWhere(siteId: number): SQL {
     // 即使定时下线 worker 尚未执行也不得继续通过 Headless API 暴露。
     or(isNull(cmsContents.expireAt), gt(cmsContents.expireAt, new Date())),
   )!;
+}
+
+/**
+ * 开放 API 的取数投影：列表投影 + 只在 include 请求时才追加 `body` / `extend` / `attachments`。
+ * 不请求的列在 PG 侧就不解压——`include` 从「裁输出」变成「裁取数」。
+ */
+type CmsOpenContentSourceRow = Omit<CmsContentListRow, 'extend'> & Partial<Pick<CmsContentRow, 'body' | 'extend' | 'attachments'>>;
+
+function openContentColumns(includes: ReadonlySet<string>) {
+  const { extend, ...base } = cmsContentListColumns;
+  const columns: Record<string, PgColumn> = { ...base };
+  if (includes.has('extend')) columns.extend = extend;
+  if (includes.has('body')) columns.body = cmsContents.body;
+  if (includes.has('attachments')) columns.attachments = cmsContents.attachments;
+  return columns as typeof cmsContentListColumns & { body: typeof cmsContents.body; attachments: typeof cmsContents.attachments };
 }
 
 async function resolveChannelIds(siteId: number, codes: string[]): Promise<number[]> {
@@ -147,7 +163,7 @@ function orderByOf(rules: CmsOpenSortRule[]) {
 }
 
 /** 主排序字段的游标值（时间列取**微秒**时间戳，见 TIME_SORT_FIELDS） */
-function cursorValueOf(row: CmsContentRow, field: CmsOpenSortRule['field']): number | null {
+function cursorValueOf(row: CmsContentListRow, field: CmsOpenSortRule['field']): number | null {
   const value = (row as unknown as Record<string, unknown>)[field];
   if (value == null) return null;
   if (value instanceof Date) return value.getTime() * 1000;
@@ -269,11 +285,10 @@ interface MapOpenContentOptions {
   includes: Set<string>;
   tags?: Map<number, { name: string; slug: string }[]>;
   relations?: Map<number, number[]>;
-  bodyExtend?: Map<number, { body: string | null; extend: Record<string, unknown> }>;
   linkResolver: CmsLinkResolver;
 }
 
-function mapOpenContent(row: CmsContentRow & { coverThumb: string | null }, opts: MapOpenContentOptions): CmsOpenContentOutput {
+function mapOpenContent(row: CmsOpenContentSourceRow & { coverThumb: string | null }, opts: MapOpenContentOptions): CmsOpenContentOutput {
   const channel = opts.channelMap.get(row.channelId);
   const resolvedExternal = row.externalLink ? opts.linkResolver(row.externalLink) : null;
   const resolvedSource = row.sourceUrl ? opts.linkResolver(row.sourceUrl) : null;
@@ -332,8 +347,8 @@ function mapOpenContent(row: CmsContentRow & { coverThumb: string | null }, opts
   if (opts.includes.has('channel')) {
     out.channel = channel ? { id: row.channelId, code: channel.code, path: channel.path } : null;
   }
-  if (opts.includes.has('body')) out.body = opts.bodyExtend?.get(row.id)?.body ?? null;
-  if (opts.includes.has('extend')) out.extend = opts.bodyExtend?.get(row.id)?.extend ?? {};
+  if (opts.includes.has('body')) out.body = row.body ?? null;
+  if (opts.includes.has('extend')) out.extend = (row.extend ?? {}) as Record<string, unknown>;
   if (row.contentType !== 'article') {
     const media = { ...((row.mediaData ?? {}) as Record<string, unknown>) };
     if (Array.isArray(media.images)) media.images = media.images.filter((item) => {
@@ -350,7 +365,7 @@ function mapOpenContent(row: CmsContentRow & { coverThumb: string | null }, opts
 
 async function buildMapOptions(
   siteId: number,
-  rows: readonly CmsContentRow[],
+  rows: readonly CmsOpenContentSourceRow[],
   includes: Set<string>,
 ): Promise<MapOpenContentOptions> {
   const channels = await db.select({
@@ -396,7 +411,10 @@ async function buildMapOptions(
       .orderBy(asc(cmsContentRelations.sort));
     const relatedIds = [...new Set(rowsRel.map((row) => row.relatedId))];
     const relatedRows = relatedIds.length > 0
-      ? await db.select().from(cmsContents).where(and(
+      ? await db.select({
+          id: cmsContents.id, channelId: cmsContents.channelId, status: cmsContents.status,
+          deletedAt: cmsContents.deletedAt, archivedAt: cmsContents.archivedAt, expireAt: cmsContents.expireAt,
+        }).from(cmsContents).where(and(
           inArray(cmsContents.id, relatedIds),
           eq(cmsContents.siteId, siteId),
         ))
@@ -414,22 +432,6 @@ async function buildMapOptions(
     }
     opts.relations = map;
   }
-
-  if ((includes.has('body') || includes.has('extend')) && rows.length > 0) {
-    // Mapping targets are materialized snapshots. The relationship is kept
-    // for governance only and is never dereferenced by the public API.
-    const raw = rows.map((row) => ({
-      id: row.id,
-      coverImage: null,
-      body: row.body ?? null,
-      extend: row.extend ?? {},
-    }));
-    const resolvedBodies = await resolveCmsContentRows(raw, siteId);
-    opts.bodyExtend = new Map(resolvedBodies.map((row) => [
-      row.id,
-      { body: row.body ?? null, extend: (row.extend ?? {}) as Record<string, unknown> },
-    ]));
-  }
   return opts;
 }
 
@@ -442,7 +444,7 @@ export async function listOpenCmsContents(site: CmsSiteRow, query: ParsedCmsOpen
 
   const [total, rows] = await Promise.all([
     db.$count(cmsContents, baseWhere),
-    db.select().from(cmsContents).where(baseWhere).orderBy(...order)
+    db.select(openContentColumns(query.includes)).from(cmsContents).where(baseWhere).orderBy(...order)
       .limit(query.pageSize).offset(pageOffset(query.page, query.pageSize)),
   ]);
   const resolved = await resolveCmsContentRows(rows, site.id);
@@ -467,7 +469,7 @@ export async function listOpenCmsContentsByCursor(site: CmsSiteRow, query: Parse
   const isTimeSort = TIME_SORT_FIELDS.has(primaryField);
   // 时间列的游标值必须取 PG 的微秒原值：JS Date 只有毫秒，回写的边界永远小于真实值
   const rows = await db.select({
-    row: cmsContents,
+    ...openContentColumns(query.includes),
     micros: isTimeSort ? microsOf(SORT_COLUMNS[primaryField]) : sql<string | null>`null`,
   }).from(cmsContents)
     .where(cursor ? and(and(...conditions)!, cursorCondition(query.sort, cursor)) : and(...conditions)!)
@@ -475,18 +477,18 @@ export async function listOpenCmsContentsByCursor(site: CmsSiteRow, query: Parse
     .limit(query.pageSize + 1);
   const hasMore = rows.length > query.pageSize;
   const pageRows = rows.slice(0, query.pageSize);
-  const page = pageRows.map((item) => item.row);
+  const page: CmsOpenContentSourceRow[] = pageRows.map(({ micros: _micros, ...row }) => row);
   const resolved = await resolveCmsContentRows(page, site.id);
   const opts = await buildMapOptions(site.id, page, query.includes);
   const last = pageRows.at(-1);
   const lastValue = last
-    ? (isTimeSort ? (last.micros == null ? null : Number(last.micros)) : cursorValueOf(last.row, primaryField))
+    ? (isTimeSort ? (last.micros == null ? null : Number(last.micros)) : cursorValueOf(last, primaryField))
     : null;
   return {
     list: resolved.map((row) => pickCmsOpenFields(mapOpenContent(row, opts), query.fields)),
     pageSize: query.pageSize,
     hasMore,
-    nextCursor: hasMore && last ? encodeCmsOpenCursor({ value: lastValue, id: last.row.id }) : null,
+    nextCursor: hasMore && last ? encodeCmsOpenCursor({ value: lastValue, id: last.id }) : null,
   };
 }
 
@@ -496,12 +498,12 @@ export async function getOpenCmsContent(site: CmsSiteRow, idOrSlug: string, quer
   const numericId = /^\d+$/.test(idOrSlug) ? Number(idOrSlug) : null;
   const matcher = numericId !== null ? eq(cmsContents.id, numericId) : eq(cmsContents.slug, idOrSlug);
   const enabledIds = await getEffectivelyEnabledCmsChannelIds(site.id);
-  const [row] = enabledIds.size > 0
-    ? await db.select().from(cmsContents).where(and(publicWhere(site.id), inArray(cmsContents.channelId, [...enabledIds]), matcher)).limit(1)
-    : [];
-  if (!row) throw new HTTPException(404, { message: '内容不存在或未发布' });
   // 详情默认返回正文与扩展字段，无需显式 include
   const includes = new Set([...query.includes, 'body', 'extend', 'tags', 'attachments', 'channel']);
+  const [row] = enabledIds.size > 0
+    ? await db.select(openContentColumns(includes)).from(cmsContents).where(and(publicWhere(site.id), inArray(cmsContents.channelId, [...enabledIds]), matcher)).limit(1)
+    : [];
+  if (!row) throw new HTTPException(404, { message: '内容不存在或未发布' });
   const [resolved] = await resolveCmsContentRows([row], site.id);
   const opts = await buildMapOptions(site.id, [row], includes);
   return pickCmsOpenFields(mapOpenContent(resolved, opts), query.fields);
@@ -550,7 +552,7 @@ export async function syncOpenCmsContents(
       : undefined;
 
   const [rows, tombstoneRows] = await Promise.all([
-    db.select({ row: cmsContents, micros: microsOf(cmsContents.updatedAt) }).from(cmsContents)
+    db.select({ ...openContentColumns(input.includes), micros: microsOf(cmsContents.updatedAt) }).from(cmsContents)
       .where(and(eq(cmsContents.siteId, site.id), after(cmsContents.updatedAt, cmsContents.id)))
       .orderBy(asc(cmsContents.updatedAt), asc(cmsContents.id))
       .limit(pageSize + 1),
@@ -563,9 +565,9 @@ export async function syncOpenCmsContents(
       .limit(pageSize + 1),
   ]);
 
-  type Entry = { micros: number; at: Date; id: number; row?: CmsContentRow };
+  type Entry = { micros: number; at: Date; id: number; row?: CmsOpenContentSourceRow };
   const merged: Entry[] = [
-    ...rows.map((item) => ({ micros: Number(item.micros), at: item.row.updatedAt, id: item.row.id, row: item.row })),
+    ...rows.map(({ micros, ...row }) => ({ micros: Number(micros), at: row.updatedAt, id: row.id, row: row as CmsOpenContentSourceRow })),
     ...tombstoneRows.map((item) => ({ micros: Number(item.micros), at: item.row.deletedAt, id: item.row.contentId })),
   ].sort((a, b) => (a.micros - b.micros) || (a.id - b.id));
 
@@ -578,7 +580,7 @@ export async function syncOpenCmsContents(
   const now = new Date();
   const visible = page
     .map((entry) => entry.row)
-    .filter((row): row is CmsContentRow =>
+    .filter((row): row is CmsOpenContentSourceRow =>
       !!row && isCmsContentPubliclyVisible(row, now)
       && enabledChannelIds.has(row.channelId));
   const resolved = await resolveCmsContentRows(visible, site.id);

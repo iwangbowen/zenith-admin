@@ -136,6 +136,14 @@ export const cmsContentSchema = z.object({
 
 export type CmsContent = z.infer<typeof cmsContentSchema>;
 
+/**
+ * 后台内容列表项：不含正文与两个大 JSONB（扩展字段 / 形态数据）。
+ * 列表页只展示元数据与附件计数；编辑、审批视图另走 detail 取全量。
+ */
+export const cmsContentListItemSchema = cmsContentSchema.omit({ body: true, extend: true, mediaData: true }).meta({ id: 'CmsContentListItem' });
+
+export type CmsContentListItem = z.infer<typeof cmsContentListItemSchema>;
+
 /** 持久化管理员合规锁状态 */
 export const cmsContentLockStateSchema = z.object({
   lockedAt: z.string(),
@@ -278,7 +286,7 @@ export const cmsContentVersionParam = idParam.extend({
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const cmsContentContract = defineContract('/api/cms/contents', {
-  list: op.get('/', { query: cmsContentListQuery, response: paginated(cmsContentSchema), summary: '内容分页列表' }),
+  list: op.get('/', { query: cmsContentListQuery, response: paginated(cmsContentListItemSchema), summary: '内容分页列表（不含正文 / 扩展字段 / 形态数据）' }),
   checkTitle: op.get('/check-title', { query: cmsContentTitleCheckQuery, response: cmsTitleDuplicateCheckSchema, summary: '同站标题查重（编辑辅助，不阻断保存）' }),
   linkTarget: op.get('/link-target', { query: cmsLinkTargetQuery, response: cmsLinkTargetSchema, summary: '解析内部链接目标（编辑页回显 entity: 链接的可读名称）' }),
   detail: op.get('/{id}', { params: idParam, response: cmsContentSchema, summary: '内容详情' }),

@@ -23,8 +23,9 @@ import { channelUrl, tagUrl, contentUrl, customPageUrl, type CmsUrlChannel } fro
 import { buildCmsLinkResolver, resolveCmsLink, type CmsLinkResolver } from './cms-link.service';
 import {
   listPublishedContents, listHomeContents, getPublishedContent, getAdjacentContents, listContentTags,
-  listPublishedContentsByTag, listRelatedContents, resolveContentBodyExtend, findPublishedContentByStaticPath, type ResolvedCmsContentRow,
+  listPublishedContentsByTag, listRelatedContents, resolveContentBodyExtend, findPublishedContentByStaticPath, type ResolvedCmsContentListRow,
 } from './cms-contents.service';
+import { cmsContentListColumns, listSummaryOf, type CmsContentLinkRow, type CmsContentListRow } from './cms-content-columns';
 import { resolveCmsContentRow, resolveCmsContentRows, resolveCmsResourcePayload } from './cms-resource-refs.service';
 import { listEnabledFriendLinks, listEnabledFriendLinkGroups } from './cms-friend-links.service';
 import { searchCmsContents, stripHtml } from './cms-search.service';
@@ -315,7 +316,8 @@ async function buildLangAlternates(site: CmsSiteRow): Promise<CmsBaseContext['la
   return alternates.length > 1 ? alternates : [];
 }
 
-function toContentItem(row: CmsContentRow, baseUrl: string, channel: CmsUrlChannel, resolveLink?: CmsLinkResolver, listFieldDefs?: Map<number, CmsListModelFieldDefs>): CmsContentItem {
+/** 列表项映射：只接受列表投影行（无 body），导语走 listSummaryOf（手填摘要 → 生成列 excerpt） */
+function toContentItem(row: CmsContentListRow & { coverThumb?: string | null }, baseUrl: string, channel: CmsUrlChannel, resolveLink?: CmsLinkResolver, listFieldDefs?: Map<number, CmsListModelFieldDefs>): CmsContentItem {
   const rawLink = row.externalLink?.trim();
   // 链接型内容：解析后指向目标；目标已删除/下线时降级为不可点（避免指向必然 404 的自身详情页）
   // A resolver miss is a dead/invalid link. Never fall back to the raw value,
@@ -329,9 +331,9 @@ function toContentItem(row: CmsContentRow, baseUrl: string, channel: CmsUrlChann
     url: rawLink ? (link?.url ?? '#') : contentUrl(baseUrl, channel, row),
     isExternal: link?.isExternal ?? false,
     contentType: row.contentType,
-    summary: row.summary?.trim() ? row.summary : (row.body ? stripHtml(row.body).slice(0, 120) : null),
+    summary: listSummaryOf(row, 120),
     coverImage: row.coverImage ?? null,
-    coverThumb: (row as { coverThumb?: string | null }).coverThumb ?? null,
+    coverThumb: row.coverThumb ?? null,
     imageCount: Array.isArray(media.images) ? media.images.length : 0,
     mediaType: row.contentType === 'media' ? (media.mediaType ?? 'video') : null,
     author: row.author ?? null,
@@ -488,7 +490,7 @@ export async function renderCustomPage(
   return { status: 200, html, kind: opts?.asHome ? 'home' : 'page' };
 }
 
-async function listBlockContents(siteId: number, opts: { channelId?: number; tagSlug?: string; count: number; mode: 'latest' | 'recommend' | 'hot' }): Promise<ResolvedCmsContentRow[]> {
+async function listBlockContents(siteId: number, opts: { channelId?: number; tagSlug?: string; count: number; mode: 'latest' | 'recommend' | 'hot' }): Promise<ResolvedCmsContentListRow[]> {
   const effectiveChannelIds = await getEffectivelyEnabledCmsChannelIds(siteId);
   if (effectiveChannelIds.size === 0 || (opts.channelId != null && !effectiveChannelIds.has(opts.channelId))) return [];
   const conds = [
@@ -513,9 +515,9 @@ async function listBlockContents(siteId: number, opts: { channelId?: number; tag
   }
   if (opts.mode === 'recommend') conds.push(eq(cmsContents.isRecommend, true));
   if (opts.mode === 'hot') conds.push(eq(cmsContents.isHot, true));
-  const rows = await db.select().from(cmsContents)
+  const rows = await db.select(cmsContentListColumns).from(cmsContents)
     .where(and(...conds))
-    .orderBy(desc(cmsContents.isTop), desc(cmsContents.publishedAt))
+    .orderBy(desc(cmsContents.isTop), desc(cmsContents.publishedAt), desc(cmsContents.id))
     .limit(opts.count);
   return resolveCmsContentRows(rows, siteId);
 }
@@ -645,7 +647,7 @@ export async function renderHomePage(
   const homeFieldDefs = await loadCmsListModelFieldDefs(
     [...home.latest, ...home.recommended, ...home.hot].map((r) => r.modelId),
   );
-  const toItem = (row: CmsContentRow) => toContentItem(row, baseUrl, channelPathMap.get(row.channelId) ?? FALLBACK_URL_CHANNEL, resolveLink, homeFieldDefs);
+  const toItem = (row: ResolvedCmsContentListRow) => toContentItem(row, baseUrl, channelPathMap.get(row.channelId) ?? FALLBACK_URL_CHANNEL, resolveLink, homeFieldDefs);
   const props = {
     ...base,
     latest: home.latest.map(toItem),
@@ -894,7 +896,7 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
 }
 
 /** 相关文章行 → 前台链接（跨栏目取各自栏目路径） */
-async function buildRelatedLinks(baseUrl: string, rows: CmsContentRow[]): Promise<{ title: string; url: string }[]> {
+async function buildRelatedLinks(baseUrl: string, rows: CmsContentLinkRow[]): Promise<{ title: string; url: string }[]> {
   if (rows.length === 0) return [];
   const channelIds = [...new Set(rows.map((r) => r.channelId))];
   const channels = await db.select({ id: cmsChannels.id, path: cmsChannels.path, detailPathRule: cmsChannels.detailPathRule })
@@ -1148,7 +1150,7 @@ export async function generateRssXml(site: CmsSiteRow, channel?: CmsChannelRow |
   if (channel && !effectiveChannelIds.has(channel.id)) {
     return '<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel></channel></rss>';
   }
-  const rows = await resolveCmsContentRows(await db.select().from(cmsContents)
+  const rows = await resolveCmsContentRows(await db.select(cmsContentListColumns).from(cmsContents)
     .where(and(
       eq(cmsContents.siteId, site.id),
       ...(channel ? [eq(cmsContents.channelId, channel.id)] : []),
@@ -1170,12 +1172,13 @@ export async function generateRssXml(site: CmsSiteRow, channel?: CmsChannelRow |
       ? resolveLink(rawLink)?.url
       : `${origin}${contentUrl('', channelPathMap.get(row.channelId) ?? FALLBACK_URL_CHANNEL, row)}`;
     if (!link) return null;
+    const description = listSummaryOf(row, 300);
     return [
       '    <item>',
       `      <title>${rssEscape(row.title)}</title>`,
       `      <link>${rssEscape(link)}</link>`,
       `      <guid isPermaLink="false">cms-content-${row.id}</guid>`,
-      row.summary ? `      <description>${rssEscape(stripHtml(row.summary).slice(0, 300))}</description>` : '',
+      description ? `      <description>${rssEscape(stripHtml(description).slice(0, 300))}</description>` : '',
       row.publishedAt ? `      <pubDate>${new Date(row.publishedAt).toUTCString()}</pubDate>` : '',
       '    </item>',
     ].filter(Boolean).join('\n');

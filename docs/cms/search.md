@@ -35,7 +35,7 @@ tsvector 解析器配置可用环境变量 `CMS_TSVECTOR_CONFIG` 切换（默认
 
 `/search?q=keyword`：永远动态渲染（不静态化、不缓存），关键词截断 64 字符。
 
-搜索结果由服务端生成 URL：站内内容使用栏目 `detailPathRule`/`staticPath` 解析后的规范路径，外链内容直接使用已校验的目标地址；标题和摘要高亮先做 HTML 转义再插入 `<mark>`，模板不应自行拼接链接或把原始 HTML 当作高亮结果。
+搜索结果由服务端生成 URL：站内内容使用栏目 `detailPathRule`/`staticPath` 解析后的规范路径，外链内容直接使用已校验的目标地址；标题和摘要高亮先做 HTML 转义再插入 `<mark>`，模板不应自行拼接链接或把原始 HTML 当作高亮结果。结果摘要取手填 `summary`，否则取 `excerpt` 生成列（正文纯文本前 400 字），再按命中词定位片段；结果页查询不读取 `body`。
 
 公开搜索的内容条件为 `published + 未回收 + 未归档 + 未过期`，并要求主栏目自身及全部祖先栏目有效启用；栏目停用或其祖先停用后立即从搜索结果消失。搜索结果 URL 统一由服务端按 `detailPathRule`/`staticPath` 解析，模板不得自行拼接路径。
 

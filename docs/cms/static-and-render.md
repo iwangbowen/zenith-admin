@@ -111,6 +111,39 @@ Theme API 的内容来源按 `published + 未回收 + 未归档 + 未过期` 读
 
 站点级 sitemap 与站点级/栏目级 RSS 由渲染服务生成并缓存 10 分钟；对每条内容检查其主栏目自身及全部祖先栏目有效启用，栏目级 RSS 另要求请求栏目自身及全部祖先栏目有效启用，并且只收录满足 `published + 未回收 + 未归档 + 未过期` 的站内内容。发布任务会清理对应 Redis 元数据 key；客户端/CDN 仍受其 HTTP 缓存策略与主动 purge 结果约束。
 
+### 聚合读取的列投影与导语
+
+`cms_contents` 一行里 `body`（富文本）与 `search_vector`（正文前 2 万字的 tsvector）各占几十 KB，`extend` / `media_data` / `attachments` 也可能很大。所有返回多行的读路径都只取 `services/cms/cms-content-columns.ts` 定义的投影：
+
+| 投影 | 内容 | 使用者 |
+| --- | --- | --- |
+| `cmsContentListColumns` | 全部列去掉 `body` / `search_vector` / `attachments`（保留 `extend` / `media_data`：列表要显示 showInList 模型字段与图集张数 / 媒体类型） | 栏目分页、首页区块、标签页、Theme API 与页面区块取数、部件内容源、RSS、Open API 列表 / 游标 / 增量同步、后台内容列表（另带 `attachments` 做附件计数） |
+| `cmsContentLinkColumns` | `id / siteId / channelId / title / slug / staticPath / externalLink / publishedAt / createdAt` | 上一篇 / 下一篇、相关文章 |
+| 全行 | 含正文 | 详情页、草稿预览、Headless 详情、写入路径 |
+
+导语来自 **`excerpt` 生成列**：PostgreSQL 在写入 `body` 时自动维护正文纯文本的前 400 字符（去标签、还原常见实体、去 `[分页]` 标记、折叠空白），任何写入路径（编辑、复制、投稿、采集、分发、导入、种子）都不需要也不能手工维护它。列表项、搜索结果摘要、RSS `description` 统一经 `listSummaryOf(row, maxLength)`：手填 `summary` 优先，否则取 `excerpt`；列表截 120 字、搜索与 RSS 截 400 / 300 字。
+
+Open API 的 `include=body|extend|attachments` 决定这三列是否进入 `SELECT`，不再取全行后裁输出。全站静态构建的计划只装载 URL 所需的窄列，正文分页数按 100 篇一批临时取 `body` 计算，全站正文不再一次性进入内存。
+
+索引：公开可见谓词（`status='published' AND deleted_at IS NULL AND archived_at IS NULL`）上有两个部分索引 `(site_id, published_at DESC, id DESC)` 与 `(channel_id, published_at DESC, id DESC)`，分别服务站点级时间序（首页最新 / 推荐、RSS、标签页、Open API 默认排序）与栏目级时间序（上下篇、栏目 RSS、栏目区块）；`expire_at > now()` 不可进部分索引谓词，留给扫描过滤。栏目分页的排序键以置顶 / 权重 / 排序值开头，走 top-N 排序，目标栏目条件放在 OR 的第一分支、「有效栏目」约束只落在副栏目聚合分支，使扫描量随栏目内容数而非站点内容数增长。
+
+基准（`packages/server/scripts/bench-cms-lists.ts`，3,000 篇 × 30.5 KB 正文 / 104 MB TOAST，7 轮中位数，PG 16，本机；原始数据 [`docs/backend/perf/`](https://github.com/iwangbowen/zenith-admin/tree/master/docs/backend/perf)，`baseline` 为全行读取，`current` 为当前投影）：
+
+| 读路径 | 耗时 ms | 交给下游的字节 KB | cms_contents TOAST 块 / 次 |
+| --- | --- | --- | --- |
+| 栏目分页第 1 页（20 行） | 33.1 → 9.9 | 1,118 → 32 | 123 → 0 |
+| 首页最新 / 推荐 / 热门 | 26.1 → 5.7 | 1,676 → 48 | 184 → 0 |
+| 标签页第 1 页 | 26.8 → 4.9 | 1,118 → 32 | 125 → 0 |
+| 详情页上下篇 + 相关文章 | 18.0 → 6.3 | 390 → 2 | 44 → 0 |
+| 站内搜索第 1 页 | 54.5 → 41.4 | 8 → 8 | 32,724 → 31,488 |
+| 后台内容列表第 1 页（= HTTP 响应体） | 39.3 → 15.1 | 636 → 25 | 121 → 0 |
+| Theme API `contents.list({ limit: 100 })` | 140.8 → 21.1 | 53 → 53 | 604 → 0 |
+| 整页 SSR：栏目列表页 | 53.2 → 23.9 | — | 123 → 0 |
+| 整页 SSR：首页 | 38.0 → 17.1 | — | 184 → 0 |
+| RSS（50 行） | 60.9 → 8.4 | 14 → 23 | 309 → 0 |
+
+两点说明：搜索剩余的 TOAST 访问来自 `ts_rank_cd` 对全部命中行的 `search_vector` 解压（本数据集全部 3,000 篇命中），与列表投影无关；`excerpt` 内联后主表行变宽（ASCII 400 字节、中文最多 1.2 KB），扫描同样多行会多摸 2–3 倍堆页（如栏目分页 216 → 628 块），这部分是缓冲区命中，被 TOAST 归零与 3–7 倍的耗时下降覆盖。RSS 字节上升是无手填摘要的条目现在也带 `description`。
+
 ## 增量刷新
 
 内容、栏目、页面、部件及其他公开配置的变更（例如内容发布/更新/下线/回收、评论过审、搭建页保存）自动触发**增量静态刷新**（详情页 + 所属栏目全分页 + 首页 + sitemap + RSS），异步执行不阻塞请求；事务 outbox 提交后先清理受影响站点的 Redis 页面和元数据缓存。新提交的全量重建统一走任务中心 `cms-publish-build`，文件生成/删除和 CDN purge 在任务中完成。

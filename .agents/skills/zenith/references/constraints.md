@@ -112,8 +112,15 @@
 - **CMS 检索向量**：`cmsContents` 的写入必须经 `contentSearchVector()` /
   `contentSearchVectorOnUpdate()`（`cms-search.service.ts`）派生 `searchVector`，
   **禁止**手工拼装 `to_tsvector` 表达式或漏更新可检索字段
+- **大列投影**：带 TOAST 大列（富文本 `text`、tsvector、可能很大的 jsonb）的表，任何返回多行的读路径
+  **禁止** `db.select().from(table)` / `findMany()` 不带 `columns` 取全行；用表旁定义的投影列集
+  （如 `cms-content-columns.ts` 的 `cmsContentListColumns` / `cmsContentLinkColumns`）并把函数签名收窄到对应行类型，
+  只有详情 / 写入路径取全行。列表需要「由大列派生的小字段」（导语、页数、标志位）时在写入侧物化：
+  能用 SQL 表达式描述的用 **PG 生成列**（`generatedAlwaysAs`，覆盖所有写入路径，含种子 / 导入 / 分发），
+  否则在写入 service 派生；**禁止**读取时从大列临时计算。`cmsContents` 的 `excerpt` 即导语生成列，
+  列表 / 搜索 / RSS 的导语只能经 `listSummaryOf()`（手填摘要 → `excerpt`），**禁止**再从 `body` 回退
 - **RQB 优先**：关联数据查询优先 `db.query.tableName.findMany/findFirst({ with: { ... } })`，
-  仅跨表 WHERE 过滤或聚合计数才手写 JOIN
+  仅跨表 WHERE 过滤或聚合计数才手写 JOIN；`with` 到带大列的表时必须带 `columns` 排除大列
 
 ### WHERE 条件构造
 

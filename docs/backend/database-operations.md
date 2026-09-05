@@ -88,6 +88,25 @@ const row = await db.query.workflowDefinitions.findFirst({
 
 若缺少关联，在 `relations.ts` 中补充 `xxxRelations`，不要因为缺关联而退回手写 JOIN。
 
+## 大列表的列投影
+
+含 TOAST 大列（富文本 `text`、`tsvector`、可能很大的 `jsonb`）的表，返回多行的读路径不取全行：`db.select().from(table)` 与不带 `columns` 的 `findMany()` 会让 PostgreSQL 为每一行解压、传输大列，应用层再为这些永远用不到的字节付 JSON 解析与正则扫描的成本。
+
+- 在表旁定义投影列集并导出对应行类型，函数签名收窄到该类型，任何想在列表里读大列的代码在编译期失败：
+
+  ```ts
+  const { body: _body, searchVector: _searchVector, ...listColumns } = getTableColumns(cmsContents);
+  export const cmsContentListColumns = listColumns;
+  export type CmsContentListRow = { [K in keyof typeof cmsContentListColumns]: CmsContentRow[K] };
+
+  db.select(cmsContentListColumns).from(cmsContents).where(where);
+  db.query.cmsContentFavorites.findMany({ with: { content: { columns: { body: false, searchVector: false } } } });
+  ```
+
+- 列表需要「由大列派生的小字段」时在写入侧物化，读取时不得从大列临时计算。能用 SQL 表达式描述的用 **PostgreSQL 生成列**（`text().generatedAlwaysAs(sql\`...\`)`），它覆盖全部写入路径（含种子、导入、分发、裸 SQL），PG 只在被引用列变更时重算；表达式无法描述的（分词、跨表）在写入 service 派生并落列。
+- 生成列不能被写入：drizzle 的 `insert().values()` 自动跳过它，但 `update().set()` 不会——`set({ ...整行 })` 会被 PG 拒绝，展开整行写回时先剔除生成列。
+- 参考实现：`services/cms/cms-content-columns.ts`（`cmsContentListColumns` / `cmsContentLinkColumns` / `listSummaryOf`）与 `cms_contents.excerpt` 生成列；效果见 [渲染与静态化 → 聚合读取的列投影与导语](../cms/static-and-render.md#聚合读取的列投影与导语)。
+
 常用 `with` 字段：
 
 | 表 | 常用 `with` 字段 |

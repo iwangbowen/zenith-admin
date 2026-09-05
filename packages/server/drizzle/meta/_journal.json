@@ -15,6 +15,13 @@
       "when": 1788615126927,
       "tag": "0001_extensions",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788650923071,
+      "tag": "0002_cms_content_excerpt_and_public_indexes",
+      "breakpoints": true
     }
   ]
 }

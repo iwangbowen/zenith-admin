@@ -1,0 +1,5 @@
+DROP INDEX "cms_contents_status_idx";--> statement-breakpoint
+DROP INDEX "cms_contents_published_at_idx";--> statement-breakpoint
+ALTER TABLE "cms_contents" ADD COLUMN "excerpt" text GENERATED ALWAYS AS (left(btrim(regexp_replace(replace(replace(replace(replace(replace(replace(replace(regexp_replace(coalesce(body, ''), '<[^>]+>', ' ', 'g'), '&nbsp;', ' '), '&lt;', '<'), '&gt;', '>'), '&quot;', '"'), '&#39;', ''''), '&amp;', '&'), '[分页]', ' '), '\s+', ' ', 'g')), 400)) STORED;--> statement-breakpoint
+CREATE INDEX "cms_contents_public_site_recent_idx" ON "cms_contents" USING btree ("site_id","published_at" DESC NULLS FIRST,"id" DESC NULLS FIRST) WHERE "cms_contents"."status" = 'published' and "cms_contents"."deleted_at" is null and "cms_contents"."archived_at" is null;--> statement-breakpoint
+CREATE INDEX "cms_contents_public_channel_recent_idx" ON "cms_contents" USING btree ("channel_id","published_at" DESC NULLS FIRST,"id" DESC NULLS FIRST) WHERE "cms_contents"."status" = 'published' and "cms_contents"."deleted_at" is null and "cms_contents"."archived_at" is null;

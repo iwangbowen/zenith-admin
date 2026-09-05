@@ -2,6 +2,7 @@
 // 此文件仅保留 re-export，导出符号集与拆分前完全一致，外部导入方无需改动。
 export {
   mapCmsContent,
+  mapCmsContentListItem,
   ensureCmsContentExists,
   getCmsContent,
   listCmsContents,
@@ -20,7 +21,7 @@ export {
   listRelatedContents,
   listPublishedContentsByTag,
 } from './cms-contents-query.service';
-export type { ResolvedCmsContentRow, ListCmsContentsQuery } from './cms-contents-query.service';
+export type { ResolvedCmsContentRow, ResolvedCmsContentListRow, ListCmsContentsQuery } from './cms-contents-query.service';
 export {
   ensureCmsContentTargetAccess,
   detectContentFlags,

@@ -14,7 +14,7 @@ import type { CmsContentPublishSnapshot, CmsStaticMode } from '@zenith/shared/cm
 import { TaskCancelledError } from '../../lib/task-center';
 import {
   renderSitePath, renderHomePage, renderChannelPage, renderDetailPage, renderTagPage, renderCustomPage,
-  channelUrl, contentUrl, tagUrl, customPageUrl, customPagePath, siteOrigin, listSiteTags, generateRssXml, countContentBodyPages,
+  channelUrl, contentUrl, tagUrl, customPageUrl, customPagePath, siteOrigin, listSiteTags, generateRssXml, countContentBodyPages, splitBodyPages,
 } from './cms-render.service';
 import { triggerCdnPurge, triggerCdnPurgeAll } from './cms-cdn.service';
 
@@ -848,7 +848,8 @@ async function buildSiteStaticInner(
       effectiveChannelIds.size > 0 ? inArray(cmsChannels.id, [...effectiveChannelIds]) : sql`false`,
     ))
     .orderBy(asc(cmsChannels.id));
-  const contents = await db.select({ id: cmsContents.id, slug: cmsContents.slug, staticPath: cmsContents.staticPath, publishedAt: cmsContents.publishedAt, createdAt: cmsContents.createdAt, channelId: cmsContents.channelId, externalLink: cmsContents.externalLink, body: cmsContents.body, extend: cmsContents.extend, mappingSourceId: cmsContents.mappingSourceId })
+  // 构建计划只装载 URL 所需的窄列；正文只在逐篇数分页时按批取，全站 body 不再一次性进入内存
+  const contents = await db.select({ id: cmsContents.id, slug: cmsContents.slug, staticPath: cmsContents.staticPath, publishedAt: cmsContents.publishedAt, createdAt: cmsContents.createdAt, channelId: cmsContents.channelId, externalLink: cmsContents.externalLink })
     .from(cmsContents)
     .where(and(
       eq(cmsContents.siteId, siteId),
@@ -916,20 +917,36 @@ async function buildSiteStaticInner(
     })) return { pages, pruned: 0 };
   }
 
-  for (const row of contents) {
-    const key = cmsStaticTargetKey('~site', 2, row.id);
-    if (skipCompleted(key)) continue;
-    const channel = channelMap.get(row.channelId);
-    if (channel && !row.externalLink?.trim() && !isChannelDynamic(site, channel)) {
-      const bodyPages = await countContentBodyPages(row, siteId);
-      for (let p = 1; p <= bodyPages; p++) {
-        const ok = await writeRenderedPath(site, contentUrl('', channel, row, p));
-        if (ok) pages += 1;
-      }
+  const BODY_PAGE_BATCH = 100;
+  for (let offset = 0; offset < contents.length; offset += BODY_PAGE_BATCH) {
+    const batch = contents.slice(offset, offset + BODY_PAGE_BATCH);
+    // 只为需要生成详情页的内容取正文数分页；正文按批进入内存，处理完即释放
+    const needBody = batch.filter((row) => {
+      if (isCmsStaticTargetCompleted(cmsStaticTargetKey('~site', 2, row.id), resumeAfterKey)) return false;
+      const channel = channelMap.get(row.channelId);
+      return !!channel && !row.externalLink?.trim() && !isChannelDynamic(site, channel);
+    });
+    const bodyPagesById = new Map<number, number>();
+    if (needBody.length > 0) {
+      const bodyRows = await db.select({ id: cmsContents.id, body: cmsContents.body })
+        .from(cmsContents).where(inArray(cmsContents.id, needBody.map((row) => row.id)));
+      for (const bodyRow of bodyRows) bodyPagesById.set(bodyRow.id, splitBodyPages(bodyRow.body).length);
     }
-    if (await report(`内容 ${row.id} 已生成`, {
-      phase: 'content', lastKey: key, lastId: row.id,
-    })) return { pages, pruned: 0 };
+    for (const row of batch) {
+      const key = cmsStaticTargetKey('~site', 2, row.id);
+      if (skipCompleted(key)) continue;
+      const channel = channelMap.get(row.channelId);
+      if (channel && !row.externalLink?.trim() && !isChannelDynamic(site, channel)) {
+        const bodyPages = bodyPagesById.get(row.id) ?? 1;
+        for (let p = 1; p <= bodyPages; p++) {
+          const ok = await writeRenderedPath(site, contentUrl('', channel, row, p));
+          if (ok) pages += 1;
+        }
+      }
+      if (await report(`内容 ${row.id} 已生成`, {
+        phase: 'content', lastKey: key, lastId: row.id,
+      })) return { pages, pruned: 0 };
+    }
   }
 
   // 标签聚合页（仅首屏分页；深分页访问时由 hybrid 模式按需回写）

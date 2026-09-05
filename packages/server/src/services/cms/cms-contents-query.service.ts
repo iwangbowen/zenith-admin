@@ -18,6 +18,8 @@ import { resolveCmsContentRow, resolveCmsContentRows } from './cms-resource-refs
 import { buildCmsContentUrls } from './cms-urls';
 import { buildCmsLinkResolver, resolveCmsLink } from './cms-link.service';
 import { getEffectivelyEnabledCmsChannelIds } from './cms-channel-visibility.service';
+import { cmsContentLinkColumns, cmsContentListColumns } from './cms-content-columns';
+import type { CmsContentLinkRow, CmsContentListRow } from './cms-content-columns';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 
@@ -28,8 +30,24 @@ import { getEffectivelyEnabledCmsChannelIds } from './cms-channel-visibility.ser
  * 且替换素材后自动跟随）；正文/形态数据/扩展字段中的 `cms-res://` 也已还原为真实 URL。
  */
 export type ResolvedCmsContentRow = CmsContentRow & { coverThumb: string | null };
+/** 列表投影（无 body / search_vector / attachments）的已解析行，见 cms-content-columns.ts */
+export type ResolvedCmsContentListRow = CmsContentListRow & { coverThumb: string | null };
 
-export function mapCmsContent(row: CmsContentRow & { coverThumb?: string | null }, extra?: {
+/** 后台列表项：全行映射去掉正文与两个大 JSONB，与契约 `cmsContentListItemSchema` 对齐 */
+export function mapCmsContentListItem(row: Omit<CmsContentMapRow, 'body'>, extra?: {
+  channelName?: string | null;
+  lockedByName?: string | null;
+  canonicalUrl?: string | null;
+  previewUrl?: string | null;
+}) {
+  const { body: _body, extend: _extend, mediaData: _mediaData, ...item } = mapCmsContent({ ...row, body: null }, extra);
+  return item;
+}
+
+/** `mapCmsContent` 不读取 search_vector，列表投影行补上 `body: null` 即可复用同一映射 */
+type CmsContentMapRow = Omit<CmsContentRow, 'searchVector'> & { coverThumb?: string | null };
+
+export function mapCmsContent(row: CmsContentMapRow, extra?: {
   channelName?: string | null;
   tags?: CmsTagRow[];
   extraChannelIds?: number[];
@@ -123,8 +141,16 @@ export async function ensureCmsContentExists(id: number): Promise<CmsContentRow>
   return row;
 }
 
+/** 只为站点 / 栏目访问断言取归属列，不解压正文（`getCmsContent` 随后会带关联取全行） */
+async function ensureCmsContentOwnership(id: number): Promise<Pick<CmsContentRow, 'id' | 'siteId' | 'channelId'>> {
+  const [row] = await db.select({ id: cmsContents.id, siteId: cmsContents.siteId, channelId: cmsContents.channelId })
+    .from(cmsContents).where(eq(cmsContents.id, id)).limit(1);
+  if (!row) throw new HTTPException(404, { message: '内容不存在' });
+  return row;
+}
+
 export async function getCmsContent(id: number) {
-  const current = await ensureCmsContentExists(id);
+  const current = await ensureCmsContentOwnership(id);
   await assertSiteAccess(current.siteId);
   const site = await ensureCmsSiteExists(current.siteId);
   await assertChannelAccess(current.channelId);
@@ -233,6 +259,8 @@ export async function listCmsContents(q: ListCmsContentsQuery) {
     db.$count(cmsContents, where),
     db.query.cmsContents.findMany({
       where,
+      // 列表不输出正文与检索向量（两个最大的 TOAST 列）；attachments 保留给列表的附件计数角标
+      columns: { body: false, searchVector: false },
       with: {
         channel: { columns: { name: true, path: true, detailPathRule: true } },
         lockedByUser: { columns: { nickname: true } },
@@ -248,7 +276,7 @@ export async function listCmsContents(q: ListCmsContentsQuery) {
     buildCmsLinkResolver(q.siteId, `${CMS_PREVIEW_PREFIX}/${site.code}`, resolvedRows.map((row) => row.externalLink)),
   ]);
   return {
-    list: resolvedRows.map((r) => mapCmsContent(r, {
+    list: resolvedRows.map((r) => mapCmsContentListItem(r, {
       channelName: r.channel?.name,
       ...(() => {
         const urls = buildCmsContentUrls(r, {
@@ -305,21 +333,26 @@ const publishedWhere = (siteId: number) => and(
 /** 栏目下已发布内容分页（含以此为副栏目的内容；归档内容不参与聚合；置顶权重优先，发布时间倒序） */
 export async function listPublishedContents(siteId: number, channelId: number, page: number, pageSize: number) {
   const effectiveChannelIds = await getEffectivelyEnabledCmsChannelIds(siteId);
-  if (!effectiveChannelIds.has(channelId)) return { total: 0, rows: [] as ResolvedCmsContentRow[] };
+  if (!effectiveChannelIds.has(channelId)) return { total: 0, rows: [] as ResolvedCmsContentListRow[] };
   const extraIdsQuery = db.select({ contentId: cmsContentChannels.contentId })
     .from(cmsContentChannels).where(and(
       eq(cmsContentChannels.channelId, channelId),
     ));
+  // 目标栏目已在上面确认为有效栏目，「有效栏目」约束只需落在副栏目聚合分支（内容自身主栏目必须有效）；
+  // 若把 channel_id IN (全部有效栏目) 放在外层 AND，规划器会以全站栏目驱动扫描、逐行过滤到本栏目，
+  // 堆块访问量随站点总内容数而非栏目内容数增长。
   const where = and(
     publishedWhere(siteId),
     isNull(cmsContents.archivedAt),
-    inArray(cmsContents.channelId, [...effectiveChannelIds]),
-    or(eq(cmsContents.channelId, channelId), inArray(cmsContents.id, extraIdsQuery)),
+    or(
+      eq(cmsContents.channelId, channelId),
+      and(inArray(cmsContents.id, extraIdsQuery), inArray(cmsContents.channelId, [...effectiveChannelIds])),
+    ),
   )!;
   const [total, rows] = await Promise.all([
     db.$count(cmsContents, where),
     withPagination(
-      db.select().from(cmsContents).where(where)
+      db.select(cmsContentListColumns).from(cmsContents).where(where)
         .orderBy(desc(cmsContents.isTop), desc(cmsContents.topWeight), desc(cmsContents.sort), desc(cmsContents.publishedAt), desc(cmsContents.id))
         .$dynamic(),
       page,
@@ -329,20 +362,21 @@ export async function listPublishedContents(siteId: number, channelId: number, p
   return { total, rows: await resolveCmsContentRows(rows, siteId) };
 }
 
-/** 首页区块：最新 / 推荐 / 热门（归档内容不参与） */
+/** 首页区块：最新 / 推荐 / 热门（归档内容不参与）；三组行合并做一次素材解析（内容大量重叠，素材 id 只查一遍） */
 export async function listHomeContents(siteId: number, limit = 10) {
   const effectiveChannelIds = await getEffectivelyEnabledCmsChannelIds(siteId);
-  if (effectiveChannelIds.size === 0) return { latest: [], recommended: [], hot: [] };
+  if (effectiveChannelIds.size === 0) return { latest: [] as ResolvedCmsContentListRow[], recommended: [] as ResolvedCmsContentListRow[], hot: [] as ResolvedCmsContentListRow[] };
   const base = and(publishedWhere(siteId), isNull(cmsContents.archivedAt), inArray(cmsContents.channelId, [...effectiveChannelIds]))!;
   const [latest, recommended, hot] = await Promise.all([
-    db.select().from(cmsContents).where(base).orderBy(desc(cmsContents.publishedAt), desc(cmsContents.id)).limit(limit),
-    db.select().from(cmsContents).where(and(base, eq(cmsContents.isRecommend, true))).orderBy(desc(cmsContents.publishedAt)).limit(limit),
-    db.select().from(cmsContents).where(and(base, eq(cmsContents.isHot, true))).orderBy(desc(cmsContents.viewCount)).limit(limit),
+    db.select(cmsContentListColumns).from(cmsContents).where(base).orderBy(desc(cmsContents.publishedAt), desc(cmsContents.id)).limit(limit),
+    db.select(cmsContentListColumns).from(cmsContents).where(and(base, eq(cmsContents.isRecommend, true))).orderBy(desc(cmsContents.publishedAt), desc(cmsContents.id)).limit(limit),
+    db.select(cmsContentListColumns).from(cmsContents).where(and(base, eq(cmsContents.isHot, true))).orderBy(desc(cmsContents.viewCount), desc(cmsContents.id)).limit(limit),
   ]);
+  const resolved = await resolveCmsContentRows([...latest, ...recommended, ...hot], siteId);
   return {
-    latest: await resolveCmsContentRows(latest, siteId),
-    recommended: await resolveCmsContentRows(recommended, siteId),
-    hot: await resolveCmsContentRows(hot, siteId),
+    latest: resolved.slice(0, latest.length),
+    recommended: resolved.slice(latest.length, latest.length + recommended.length),
+    hot: resolved.slice(latest.length + recommended.length),
   };
 }
 
@@ -437,20 +471,17 @@ export async function resolveContentBodyExtend(
   return { body: resolved.body ?? null, extend: (resolved.extend ?? {}) as Record<string, unknown> };
 }
 
-/** 上一篇 / 下一篇（同栏目按发布时间序；跳过归档内容） */
-export async function getAdjacentContents(row: CmsContentRow) {
+/** 上一篇 / 下一篇（同栏目按发布时间序；跳过归档内容）：只取拼「标题 + 链接」所需的列 */
+export async function getAdjacentContents(row: Pick<CmsContentRow, 'id' | 'siteId' | 'channelId' | 'publishedAt' | 'createdAt'>) {
   const effectiveChannelIds = await getEffectivelyEnabledCmsChannelIds(row.siteId);
-  if (!effectiveChannelIds.has(row.channelId)) return { prev: null, next: null };
+  if (!effectiveChannelIds.has(row.channelId)) return { prev: null as CmsContentLinkRow | null, next: null as CmsContentLinkRow | null };
   const base = and(publishedWhere(row.siteId), isNull(cmsContents.archivedAt), inArray(cmsContents.channelId, [...effectiveChannelIds]), eq(cmsContents.channelId, row.channelId), ne(cmsContents.id, row.id))!;
   const anchor = row.publishedAt ?? row.createdAt;
   const [prevRows, nextRows] = await Promise.all([
-    db.select().from(cmsContents).where(and(base, lt(cmsContents.publishedAt, anchor))).orderBy(desc(cmsContents.publishedAt)).limit(1),
-    db.select().from(cmsContents).where(and(base, gt(cmsContents.publishedAt, anchor))).orderBy(asc(cmsContents.publishedAt)).limit(1),
+    db.select(cmsContentLinkColumns).from(cmsContents).where(and(base, lt(cmsContents.publishedAt, anchor))).orderBy(desc(cmsContents.publishedAt), desc(cmsContents.id)).limit(1),
+    db.select(cmsContentLinkColumns).from(cmsContents).where(and(base, gt(cmsContents.publishedAt, anchor))).orderBy(asc(cmsContents.publishedAt), asc(cmsContents.id)).limit(1),
   ]);
-  return {
-    prev: prevRows[0] ? await resolveCmsContentRow(prevRows[0], row.siteId) : null,
-    next: nextRows[0] ? await resolveCmsContentRow(nextRows[0], row.siteId) : null,
-  };
+  return { prev: prevRows[0] ?? null, next: nextRows[0] ?? null };
 }
 
 /**
@@ -506,20 +537,17 @@ export async function listContentTags(contentId: number): Promise<CmsTagRow[]> {
   return rows.map((r) => r.tag);
 }
 
-/** 详情页相关文章：手动关联优先（按 sort），不足 limit 时按共同标签自动补齐 */
-export async function listRelatedContents(row: CmsContentRow, limit = 5): Promise<CmsContentRow[]> {
-  const now = new Date();
+/** 详情页相关文章：手动关联优先（按 sort），不足 limit 时按共同标签自动补齐；只取拼「标题 + 链接」所需的列 */
+export async function listRelatedContents(row: Pick<CmsContentRow, 'id' | 'siteId'>, limit = 5): Promise<CmsContentLinkRow[]> {
   const effectiveChannelIds = await getEffectivelyEnabledCmsChannelIds(row.siteId);
-  const manualRows = await db.query.cmsContentRelations.findMany({
-    where: eq(cmsContentRelations.contentId, row.id),
-    with: { related: true },
-    orderBy: asc(cmsContentRelations.sort),
-  });
-  const result = manualRows
-    .map((r) => r.related)
-    .filter((c): c is CmsContentRow => !!c && c.siteId === row.siteId && effectiveChannelIds.has(c.channelId)
-      && c.status === 'published' && !c.deletedAt && !c.archivedAt && (!c.expireAt || c.expireAt > now))
-    .slice(0, limit);
+  if (effectiveChannelIds.size === 0) return [];
+  const visible = and(publishedWhere(row.siteId), isNull(cmsContents.archivedAt), inArray(cmsContents.channelId, [...effectiveChannelIds]))!;
+  const result: CmsContentLinkRow[] = await db.select(cmsContentLinkColumns)
+    .from(cmsContentRelations)
+    .innerJoin(cmsContents, eq(cmsContentRelations.relatedId, cmsContents.id))
+    .where(and(eq(cmsContentRelations.contentId, row.id), visible))
+    .orderBy(asc(cmsContentRelations.sort), asc(cmsContents.id))
+    .limit(limit);
   if (result.length < limit) {
     const tagIdsQuery = db.select({ tagId: cmsContentTags.tagId }).from(cmsContentTags).where(and(
       eq(cmsContentTags.contentId, row.id),
@@ -528,11 +556,9 @@ export async function listRelatedContents(row: CmsContentRow, limit = 5): Promis
       inArray(cmsContentTags.tagId, tagIdsQuery),
     ));
     const excluded = [row.id, ...result.map((c) => c.id)];
-    const fill = await db.select().from(cmsContents)
+    const fill = await db.select(cmsContentLinkColumns).from(cmsContents)
       .where(and(
-        publishedWhere(row.siteId),
-        isNull(cmsContents.archivedAt),
-        inArray(cmsContents.channelId, [...effectiveChannelIds]),
+        visible,
         inArray(cmsContents.id, candidateIdsQuery),
         notInArray(cmsContents.id, excluded),
       ))
@@ -546,7 +572,7 @@ export async function listRelatedContents(row: CmsContentRow, limit = 5): Promis
 /** 标签聚合页：按标签取已发布内容分页（归档内容不参与） */
 export async function listPublishedContentsByTag(siteId: number, tagId: number, page: number, pageSize: number) {
   const effectiveChannelIds = await getEffectivelyEnabledCmsChannelIds(siteId);
-  if (effectiveChannelIds.size === 0) return { total: 0, rows: [] as ResolvedCmsContentRow[] };
+  if (effectiveChannelIds.size === 0) return { total: 0, rows: [] as ResolvedCmsContentListRow[] };
   const idsQuery = db.select({ contentId: cmsContentTags.contentId }).from(cmsContentTags).where(and(
     eq(cmsContentTags.tagId, tagId),
   ));
@@ -554,7 +580,7 @@ export async function listPublishedContentsByTag(siteId: number, tagId: number, 
   const [total, rows] = await Promise.all([
     db.$count(cmsContents, where),
     withPagination(
-      db.select().from(cmsContents).where(where)
+      db.select(cmsContentListColumns).from(cmsContents).where(where)
         .orderBy(desc(cmsContents.publishedAt), desc(cmsContents.id))
         .$dynamic(),
       page,

@@ -308,6 +308,12 @@ export const cmsContents = pgTable('cms_contents', {
   isOriginal: boolean().notNull().default(false),
   /** 正文富文本 HTML */
   body: text(),
+  /**
+   * 正文纯文本导语（数据库生成列，随 body 自动维护，PG 仅在 body 变更时重算）。
+   * 列表 / 搜索结果 / RSS 在 summary 为空时用它兜底，任何列表读路径都不再需要解压 body：
+   * 去标签 → 还原常见实体 → 去正文分页标记 → 折叠空白 → 截取前 400 字符。
+   */
+  excerpt: text().generatedAlwaysAs(sql`left(btrim(regexp_replace(replace(replace(replace(replace(replace(replace(replace(regexp_replace(coalesce(body, ''), '<[^>]+>', ' ', 'g'), '&nbsp;', ' '), '&lt;', '<'), '&gt;', '>'), '&quot;', '"'), '&#39;', ''''), '&amp;', '&'), '[分页]', ' '), '\\s+', ' ', 'g')), 400)`),
   /** 正文附件列表（前台详情页可下载；非空时 hasAttachment 自动置位） */
   attachments: jsonb().$type<CmsContentAttachment[]>().notNull().default([]),
   /** 模型自定义字段值（key = cms_model_fields.name） */
@@ -376,8 +382,12 @@ export const cmsContents = pgTable('cms_contents', {
   updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (t) => [index('cms_contents_channel_idx').on(t.channelId), 
   index('cms_contents_site_channel_idx').on(t.siteId, t.channelId),
-  index('cms_contents_status_idx').on(t.status),
-  index('cms_contents_published_at_idx').on(t.publishedAt),
+  // 公开可见内容的时间序部分索引：首页最新 / 推荐、RSS、标签页、Open API 默认排序走站点版；
+  // 上下篇、栏目 RSS、栏目区块走栏目版。expire_at > now() 非 immutable 不能进谓词，留给扫描过滤。
+  index('cms_contents_public_site_recent_idx').on(t.siteId, t.publishedAt.desc().nullsFirst(), t.id.desc().nullsFirst())
+    .where(sql`${t.status} = 'published' and ${t.deletedAt} is null and ${t.archivedAt} is null`),
+  index('cms_contents_public_channel_recent_idx').on(t.channelId, t.publishedAt.desc().nullsFirst(), t.id.desc().nullsFirst())
+    .where(sql`${t.status} = 'published' and ${t.deletedAt} is null and ${t.archivedAt} is null`),
   index('cms_contents_search_idx').using('gin', t.searchVector),
   // 标题模糊检索(pg_trgm 扩展由迁移基线 0000 顶部创建)
   index('cms_contents_title_trgm_idx').using('gin', t.title.op('gin_trgm_ops')),

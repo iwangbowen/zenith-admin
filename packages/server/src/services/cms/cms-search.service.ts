@@ -17,6 +17,7 @@ import { getEffectivelyEnabledCmsChannelIds } from './cms-channel-visibility.ser
 import { pageOffset } from '../../lib/pagination';
 import { assertAllCmsSiteChannelsAccess, getAccessibleChannelIds } from './cms-channels.service';
 import { loadCmsExtensionWords, normalizeCmsSearchDictionaryWord } from './cms-search-dictionary';
+import { listSummaryOf } from './cms-content-columns';
 import { escapeHtml } from '@zenith/shared/core';
 
 // ─── 分词器（进程级单例，加载默认词典 + DB 自定义词典）─────────────────────────
@@ -294,14 +295,15 @@ interface SearchRowShape {
   contentType: string;
   externalLink: string | null;
   summary: string | null;
-  body: string | null;
+  excerpt: string | null;
   publishedAt: Date | null;
   createdAt: Date | null;
   rank: number;
 }
 
 function mapSearchRow(row: SearchRowShape, tokens: string[], resolveLink?: CmsLinkResolver): CmsSearchResult {
-  const plainSummary = row.summary?.trim() ? stripHtml(row.summary) : stripHtml(row.body).slice(0, 400);
+  // 导语来源与列表一致：手填摘要，否则数据库生成列 excerpt（正文纯文本前 400 字），结果页不再解压正文
+  const plainSummary = stripHtml(listSummaryOf(row, 400) ?? '');
   // 外链形态：搜索结果直接指向外部地址；站内形态必须与静态化/模板共用 contentUrl()，
   // 否则归档目录（detailPathRule）与自定义 staticPath 的内容会得到指向 404 的手拼链接
   const resolvedLink = row.externalLink ? resolveLink?.(row.externalLink) : null;
@@ -376,7 +378,7 @@ export async function searchCmsContents(q: CmsSearchQuery): Promise<{ list: CmsS
     contentType: cmsContents.contentType,
     externalLink: cmsContents.externalLink,
     summary: cmsContents.summary,
-    body: cmsContents.body,
+    excerpt: cmsContents.excerpt,
     publishedAt: cmsContents.publishedAt,
     createdAt: cmsContents.createdAt,
   };

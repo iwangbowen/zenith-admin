@@ -65,7 +65,7 @@ GET /api/open/v1/cms/contents?siteCode=main&channel=news,notice&sort=-publishedA
 | `extend.{字段}` | 扩展字段过滤，**仅限模型中标记「纳入检索」的字段** |
 | `sort` | `-publishedAt,-topWeight`，前缀 `-` 为倒序 |
 | `fields` | 字段裁剪，逗号分隔；`id` 始终返回 |
-| `include` | `tags,channel,relations,attachments,body,extend` |
+| `include` | `tags,channel,relations,attachments,body,extend`；`body` / `extend` / `attachments` 三列只有被 include 时才进入数据库查询，列表默认不读取正文 |
 | `page` / `pageSize` | 页码分页；必须是十进制正整数，`pageSize` 上限 100、缺省 20。`0`、负数、小数、非数字和超过上限均返回 400，不做截断或归一化 |
 
 **白名单 fail-closed**：`sort` / `fields` / `include` / `contentType` 传入白名单之外的取值直接返回 400，

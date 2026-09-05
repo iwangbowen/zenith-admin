@@ -238,7 +238,7 @@ export async function listMyFavorites(page: number, pageSize: number) {
     db.$count(cmsContentFavorites, where),
     db.query.cmsContentFavorites.findMany({
       where,
-      with: { content: true },
+      with: { content: { columns: { body: false, searchVector: false, extend: false, mediaData: false, attachments: false } } },
       orderBy: desc(cmsContentFavorites.createdAt),
       limit: pageSize,
       offset: pageOffset(page, pageSize),
@@ -260,7 +260,7 @@ export async function listMyViewHistory(page: number, pageSize: number) {
     db.$count(cmsMemberViewHistory, where),
     db.query.cmsMemberViewHistory.findMany({
       where,
-      with: { content: true },
+      with: { content: { columns: { body: false, searchVector: false, extend: false, mediaData: false, attachments: false } } },
       orderBy: desc(cmsMemberViewHistory.updatedAt),
       limit: pageSize,
       offset: pageOffset(page, pageSize),
