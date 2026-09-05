@@ -1,9 +1,9 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { workflowQuickPhraseContract } from '@zenith/shared/workflow';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
-import { jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam, okBody } from '../../lib/openapi-schemas';
-import { createWorkflowQuickPhraseSchema, updateWorkflowQuickPhraseSchema } from '@zenith/shared/workflow';
-import { WorkflowQuickPhraseDTO } from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   listMyQuickPhrases, createMyQuickPhrase, updateMyQuickPhrase, deleteMyQuickPhrase,
   getQuickPhraseBeforeAudit,
@@ -11,35 +11,18 @@ import {
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
-const listRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/', tags: ['WorkflowQuickPhrases'], summary: '我的审批常用语',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({})] as const,
-    responses: { ...commonErrorResponses, ...ok(z.array(WorkflowQuickPhraseDTO), 'ok') },
-  }),
+const listRoute = defineContractRoute(workflowQuickPhraseContract.list, {
+  middleware: [authMiddleware, guard({})] as const,
   handler: async (c) => c.json(okBody(await listMyQuickPhrases()), 200),
 });
 
-const createRouteDef = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/', tags: ['WorkflowQuickPhrases'], summary: '新增常用语',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ audit: { description: '新增审批常用语', module: '工作流管理' } })] as const,
-    request: { body: { content: jsonContent(createWorkflowQuickPhraseSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(WorkflowQuickPhraseDTO, '已新增') },
-  }),
+const createRouteDef = defineContractRoute(workflowQuickPhraseContract.create, {
+  middleware: [authMiddleware, guard({ audit: { description: '新增审批常用语', module: '工作流管理' } })] as const,
   handler: async (c) => c.json(okBody(await createMyQuickPhrase(c.req.valid('json')), '已新增'), 200),
 });
 
-const updateRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/{id}', tags: ['WorkflowQuickPhrases'], summary: '更新常用语',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ audit: { description: '更新审批常用语', module: '工作流管理' } })] as const,
-    request: { params: IdParam, body: { content: jsonContent(updateWorkflowQuickPhraseSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(WorkflowQuickPhraseDTO, '已更新') },
-  }),
+const updateRoute = defineContractRoute(workflowQuickPhraseContract.update, {
+  middleware: [authMiddleware, guard({ audit: { description: '更新审批常用语', module: '工作流管理' } })] as const,
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const before = await getQuickPhraseBeforeAudit(id);
@@ -48,14 +31,8 @@ const updateRoute = defineOpenAPIRoute({
   },
 });
 
-const deleteRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/{id}', tags: ['WorkflowQuickPhrases'], summary: '删除常用语',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ audit: { description: '删除审批常用语', module: '工作流管理' } })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...okMsg('已删除') },
-  }),
+const deleteRoute = defineContractRoute(workflowQuickPhraseContract.remove, {
+  middleware: [authMiddleware, guard({ audit: { description: '删除审批常用语', module: '工作流管理' } })] as const,
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const before = await getQuickPhraseBeforeAudit(id);

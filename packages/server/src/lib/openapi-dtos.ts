@@ -13,7 +13,6 @@
  *   - dtos/cache.ts          缓存
  *   - dtos/db-backups.ts     数据库备份
  *   - dtos/monitor.ts        服务器监控
- *   - dtos/workflow.ts       工作流
  *   - dtos/region.ts         地区
  *   - dtos/messages.ts       消息模板
  */

@@ -1,12 +1,9 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { partialForUpdate } from '@zenith/shared/core';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { workflowCategoryContract } from '@zenith/shared/workflow';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
-import {
-  PaginationQuery, jsonContent, validationHook, commonErrorResponses,
-  ok, okPaginated, okMsg, IdParam, okBody,
-} from '../../lib/openapi-schemas';
-import { WorkflowCategoryDTO } from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   listWorkflowCategories,
   listAllWorkflowCategories,
@@ -19,68 +16,31 @@ import {
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
-const createSchema = z.object({
-  name: z.string().min(1).max(64),
-  code: z.string().max(64).nullable().optional(),
-  icon: z.string().max(64).nullable().optional(),
-  color: z.string().max(16).nullable().optional(),
-  sort: z.number().int().optional(),
-  description: z.string().max(500).nullable().optional(),
-});
-const updateSchema = partialForUpdate(createSchema);
+const read = [authMiddleware, guard({ permission: 'workflow:definition:list' })] as const;
 
-const listRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/', tags: ['WorkflowCategories'], summary: '流程分类分页列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'workflow:definition:list' })] as const,
-    request: { query: PaginationQuery.extend({ keyword: z.string().optional() }) },
-    responses: { ...commonErrorResponses, ...okPaginated(WorkflowCategoryDTO, 'ok') },
-  }),
+const listRoute = defineContractRoute(workflowCategoryContract.list, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await listWorkflowCategories(c.req.valid('query'))), 200),
 });
 
-const allRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/all', tags: ['WorkflowCategories'], summary: '全部流程分类（不分页）',
-    security: [{ BearerAuth: [] }],
-    // 发起工作台分组/待办筛选也要读取分类，放行发起与审批权限，避免非管理角色每次 ['workflow'] 缓存广播后 403 toast
-    middleware: [authMiddleware, guard({ permission: ['workflow:definition:list', 'workflow:instance:create', 'workflow:task:handle'] })] as const,
-    responses: { ...commonErrorResponses, ...ok(z.array(WorkflowCategoryDTO), 'ok') },
-  }),
+const allRoute = defineContractRoute(workflowCategoryContract.all, {
+  // 发起工作台分组/待办筛选也要读取分类，放行发起与审批权限，避免非管理角色每次 ['workflow'] 缓存广播后 403 toast
+  middleware: [authMiddleware, guard({ permission: ['workflow:definition:list', 'workflow:instance:create', 'workflow:task:handle'] })] as const,
   handler: async (c) => c.json(okBody(await listAllWorkflowCategories()), 200),
 });
 
-const getRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/{id}', tags: ['WorkflowCategories'], summary: '获取流程分类',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'workflow:definition:list' })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...ok(WorkflowCategoryDTO, 'ok') },
-  }),
+const getRoute = defineContractRoute(workflowCategoryContract.detail, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await getWorkflowCategory(c.req.valid('param').id)), 200),
 });
 
-const createRouteDef = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/', tags: ['WorkflowCategories'], summary: '创建流程分类',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'workflow:definition:edit', audit: { description: '创建流程分类', module: '工作流管理' } })] as const,
-    request: { body: { content: jsonContent(createSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(WorkflowCategoryDTO, '创建成功') },
-  }),
+const createRouteDef = defineContractRoute(workflowCategoryContract.create, {
+  middleware: [authMiddleware, guard({ permission: 'workflow:definition:edit', audit: { description: '创建流程分类', module: '工作流管理' } })] as const,
   handler: async (c) => c.json(okBody(await createWorkflowCategory(c.req.valid('json')), '创建成功'), 200),
 });
 
-const updateRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/{id}', tags: ['WorkflowCategories'], summary: '更新流程分类',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'workflow:definition:edit', audit: { description: '更新流程分类', module: '工作流管理' } })] as const,
-    request: { params: IdParam, body: { content: jsonContent(updateSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(WorkflowCategoryDTO, '更新成功') },
-  }),
+const updateRoute = defineContractRoute(workflowCategoryContract.update, {
+  middleware: [authMiddleware, guard({ permission: 'workflow:definition:edit', audit: { description: '更新流程分类', module: '工作流管理' } })] as const,
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const before = await getWorkflowCategoryBeforeAudit(id);
@@ -89,14 +49,8 @@ const updateRoute = defineOpenAPIRoute({
   },
 });
 
-const deleteRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/{id}', tags: ['WorkflowCategories'], summary: '删除流程分类',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'workflow:definition:edit', audit: { description: '删除流程分类', module: '工作流管理' } })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...okMsg('删除成功') },
-  }),
+const deleteRoute = defineContractRoute(workflowCategoryContract.remove, {
+  middleware: [authMiddleware, guard({ permission: 'workflow:definition:edit', audit: { description: '删除流程分类', module: '工作流管理' } })] as const,
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const before = await getWorkflowCategoryBeforeAudit(id);
