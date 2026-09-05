@@ -1,0 +1,123 @@
+{
+  "generatedAt": "2026-09-05T23:13:03.853Z",
+  "dataset": {
+    "contents": 3000,
+    "bodyKb": 30,
+    "avgBodyBytes": 31194,
+    "tableBytes": 119316480,
+    "toastBytes": 105938944
+  },
+  "runs": 7,
+  "results": [
+    {
+      "name": "channel-page-1",
+      "description": "栏目分页第 1 页（20 行）listPublishedContents",
+      "runs": 7,
+      "medianMs": 33.1,
+      "minMs": 31.8,
+      "payloadBytes": 1145030,
+      "heapBlksPerCall": 216,
+      "toastBlksPerCall": 123
+    },
+    {
+      "name": "channel-page-deep",
+      "description": "栏目分页第 15 页（20 行）",
+      "runs": 7,
+      "medianMs": 35.4,
+      "minMs": 32.7,
+      "payloadBytes": 1144730,
+      "heapBlksPerCall": 216,
+      "toastBlksPerCall": 121
+    },
+    {
+      "name": "home-blocks",
+      "description": "首页最新 / 推荐 / 热门（3 × 10 行）listHomeContents",
+      "runs": 7,
+      "medianMs": 26.1,
+      "minMs": 20.9,
+      "payloadBytes": 1716121,
+      "heapBlksPerCall": 118,
+      "toastBlksPerCall": 184
+    },
+    {
+      "name": "tag-page-1",
+      "description": "标签聚合页第 1 页（20 行）listPublishedContentsByTag",
+      "runs": 7,
+      "medianMs": 26.8,
+      "minMs": 25.1,
+      "payloadBytes": 1145299,
+      "heapBlksPerCall": 500,
+      "toastBlksPerCall": 125
+    },
+    {
+      "name": "detail-siblings",
+      "description": "详情页上下篇 + 相关文章（≤ 7 行）",
+      "runs": 7,
+      "medianMs": 18,
+      "minMs": 15.5,
+      "payloadBytes": 399551,
+      "heapBlksPerCall": 9,
+      "toastBlksPerCall": 44
+    },
+    {
+      "name": "search-page-1",
+      "description": "站内搜索第 1 页（20 行）searchCmsContents",
+      "runs": 7,
+      "medianMs": 54.5,
+      "minMs": 51.3,
+      "payloadBytes": 7962,
+      "heapBlksPerCall": 1080,
+      "toastBlksPerCall": 32724
+    },
+    {
+      "name": "admin-list-page-1",
+      "description": "后台内容列表第 1 页（20 行，即 HTTP 响应体）listCmsContents",
+      "runs": 7,
+      "medianMs": 39.3,
+      "minMs": 36.5,
+      "payloadBytes": 650829,
+      "heapBlksPerCall": 216,
+      "toastBlksPerCall": 121
+    },
+    {
+      "name": "theme-load-100",
+      "description": "主题 load() 数据门面 contents.list limit=100",
+      "runs": 7,
+      "medianMs": 140.8,
+      "minMs": 131.4,
+      "payloadBytes": 54479,
+      "heapBlksPerCall": 108,
+      "toastBlksPerCall": 604
+    },
+    {
+      "name": "render-channel",
+      "description": "整页 SSR：栏目列表页（缓存 miss 路径）renderChannelPage",
+      "runs": 7,
+      "medianMs": 53.2,
+      "minMs": 49.5,
+      "payloadBytes": 38702,
+      "heapBlksPerCall": 216,
+      "toastBlksPerCall": 123
+    },
+    {
+      "name": "render-home",
+      "description": "整页 SSR：首页（缓存 miss 路径）renderHomePage",
+      "runs": 7,
+      "medianMs": 38,
+      "minMs": 32.1,
+      "payloadBytes": 35472,
+      "heapBlksPerCall": 118,
+      "toastBlksPerCall": 184
+    },
+    {
+      "name": "rss",
+      "description": "站点 RSS（50 行）generateRssXml",
+      "runs": 7,
+      "medianMs": 60.9,
+      "minMs": 55,
+      "payloadBytes": 14252,
+      "heapBlksPerCall": 5,
+      "toastBlksPerCall": 309
+    }
+  ]
+}
