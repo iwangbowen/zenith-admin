@@ -74,7 +74,7 @@ export default function AiKnowledgePage() {
     } catch {
       abortSubmit('validation');
     }
-    await addDocMutation.mutateAsync({ kbId: docsKb.id, values: { name: values.name.trim(), content: values.content } });
+    await addDocMutation.mutateAsync({ params: { id: docsKb.id }, body: { name: values.name.trim(), content: values.content } });
     Toast.success('文档已入库');
     setDocModalVisible(false);
   }
@@ -87,7 +87,7 @@ export default function AiKnowledgePage() {
     } catch {
       abortSubmit('validation');
     }
-    await importUrlMutation.mutateAsync({ kbId: docsKb.id, values: { url: values.url.trim(), name: values.name?.trim() || undefined } });
+    await importUrlMutation.mutateAsync({ params: { id: docsKb.id }, body: { url: values.url.trim(), name: values.name?.trim() || undefined } });
     Toast.success('网页已入库');
     setUrlModalVisible(false);
   }
@@ -148,7 +148,7 @@ export default function AiKnowledgePage() {
               title: '确定要删除该知识库吗？',
               content: '将级联删除全部文档与分块，且解除已挂载对话',
               onOk: async () => {
-                await deleteMutation.mutateAsync(record.id);
+                await deleteMutation.mutateAsync({ params: { id: record.id } });
                 Toast.success('删除成功');
               },
             });
@@ -191,7 +191,7 @@ export default function AiKnowledgePage() {
               title: '确定要删除该文档吗？',
               onOk: async () => {
                 if (!docsKb) return;
-                await deleteDocMutation.mutateAsync({ kbId: docsKb.id, docId: record.id });
+                await deleteDocMutation.mutateAsync({ params: { id: docsKb.id, docId: record.id } });
                 Toast.success('删除成功');
               },
             });

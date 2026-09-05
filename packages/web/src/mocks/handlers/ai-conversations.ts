@@ -1,14 +1,17 @@
 import { http, HttpResponse } from 'msw';
-import { ok, badRequest, notFound, pageParams } from '@/mocks/utils/handlers';
+import { toColonPath } from '@zenith/shared/core';
+import { aiConversationContract, sendAiChatMessageSchema } from '@zenith/shared/ai';
+import type { AiConversation, AiFeedbackItem, AiMessage } from '@zenith/shared/ai';
+import { mock } from '@/mocks/utils/contract';
+import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockAiConversations, mockAiMessages, getNextConvId, getNextMsgId } from '@/mocks/data/ai';
 import { mockDateTime } from '@/mocks/utils/date';
-import type { AiConversation, AiMessage } from '@zenith/shared/ai';
 
 const convStore: AiConversation[] = [...mockAiConversations];
 const msgStore: Record<number, AiMessage[]> = { ...mockAiMessages };
 
 /** 反馈列表条目：补充反馈人 / 会话标题 / 前置提问 */
-function enrichFeedbackItem(m: AiMessage) {
+function enrichFeedbackItem(m: AiMessage): AiFeedbackItem {
   const conv = convStore.find((c) => c.id === m.conversationId);
   const msgs = msgStore[m.conversationId] ?? [];
   const idx = msgs.findIndex((x) => x.id === m.id);
@@ -23,14 +26,22 @@ function enrichFeedbackItem(m: AiMessage) {
   };
 }
 
+/** 有反馈的 assistant 消息，按筛选条件过滤并按时间倒序 */
+function listFeedbackMessages(filters: { feedback?: '1' | '-1'; status?: string; model?: string; startDate?: string; endDate?: string }) {
+  let allMsgs: AiMessage[] = Object.values(msgStore).flat().filter((m) => m.feedback !== null);
+  if (filters.feedback) allMsgs = allMsgs.filter((m) => m.feedback === Number(filters.feedback));
+  if (filters.status) allMsgs = allMsgs.filter((m) => m.feedbackStatus === filters.status);
+  if (filters.model) allMsgs = allMsgs.filter((m) => m.model === filters.model);
+  if (filters.startDate) allMsgs = allMsgs.filter((m) => m.createdAt >= `${filters.startDate} 00:00:00`);
+  if (filters.endDate) allMsgs = allMsgs.filter((m) => m.createdAt <= `${filters.endDate} 23:59:59`);
+  return allMsgs.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(enrichFeedbackItem);
+}
+
 export const aiConversationsHandlers = [
   // 列表（支持 archived / keyword 筛选 + limit/offset 分页）
-  http.get('/api/ai/conversations', ({ request }) => {
-    const url = new URL(request.url);
-    const archived = url.searchParams.get('archived') === 'true';
-    const keyword = (url.searchParams.get('keyword') ?? '').trim().toLowerCase();
-    const limit = Number(url.searchParams.get('limit')) || 0;
-    const offset = Number(url.searchParams.get('offset')) || 0;
+  mock(aiConversationContract.list, ({ query, ok }) => {
+    const archived = query.archived === 'true';
+    const keyword = (query.keyword ?? '').trim().toLowerCase();
     let list = convStore.filter((c) => c.isArchived === archived);
     if (keyword) {
       list = list.filter((c) =>
@@ -41,13 +52,12 @@ export const aiConversationsHandlers = [
     let sorted = [...list].sort((a, b) =>
       (Number(b.isPinned) - Number(a.isPinned)) || b.updatedAt.localeCompare(a.updatedAt),
     );
-    if (limit > 0) sorted = sorted.slice(offset, offset + limit);
+    if (query.limit) sorted = sorted.slice(query.offset ?? 0, (query.offset ?? 0) + query.limit);
     return ok(sorted);
   }),
 
   // 创建对话
-  http.post('/api/ai/conversations', async ({ request }) => {
-    const body = await request.json() as { title?: string; agentId?: number };
+  mock(aiConversationContract.create, ({ body, ok }) => {
     const now = mockDateTime();
     const newConv: AiConversation = {
       id: getNextConvId(),
@@ -70,25 +80,66 @@ export const aiConversationsHandlers = [
     return ok(newConv, '创建成功');
   }),
 
+  // ── 管理员反馈（/admin/feedback 静态段早于动态 /:id）────────────────────
+  mock(aiConversationContract.feedbackList, ({ query, ok, paginate }) =>
+    ok(paginate(listFeedbackMessages(query)))),
+
+  mock(aiConversationContract.feedbackExport, ({ query }) => {
+    const rows = listFeedbackMessages(query);
+    const header = '消息 ID,反馈,处理状态,模型,反馈用户,对话标题,用户提问,AI 回复,反馈时间';
+    const lines = rows.map((r) => [
+      r.id, r.feedback === 1 ? '点赞' : '点踩', r.feedbackStatus ?? '', r.model ?? '',
+      r.username ?? '', r.conversationTitle ?? '', JSON.stringify(r.question ?? ''), JSON.stringify(r.content.slice(0, 100)), r.createdAt,
+    ].join(','));
+    return new HttpResponse(`\uFEFF${header}\n${lines.join('\n')}`, {
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="ai-feedback.csv"',
+      },
+    });
+  }),
+
+  mock(aiConversationContract.feedbackContext, ({ params, ok }) => {
+    const entry = Object.entries(msgStore).find(([, msgs]) => msgs.some((m) => m.id === params.msgId));
+    if (!entry) return notFound('消息不存在', { status: 404 });
+    const convId = Number(entry[0]);
+    const msgs = entry[1];
+    const idx = msgs.findIndex((m) => m.id === params.msgId);
+    const messages = msgs.slice(Math.max(0, idx - 8), idx + 3);
+    const conv = convStore.find((c) => c.id === convId);
+    return ok({
+      conversationId: convId,
+      conversationTitle: conv?.title ?? null,
+      targetMsgId: params.msgId,
+      user: { id: conv?.userId ?? 1, username: 'admin', nickname: '管理员', avatar: null },
+      messages,
+    });
+  }),
+
+  mock(aiConversationContract.handleFeedback, ({ params, body, ok }) => {
+    const msg = Object.values(msgStore).flat().find((m) => m.id === params.msgId);
+    if (!msg) return notFound('消息不存在', { status: 404 });
+    if (msg.feedback === null) return badRequest('该消息没有用户反馈', { status: 400 });
+    msg.feedbackStatus = body.status;
+    msg.feedbackRemark = body.remark?.trim() || null;
+    msg.feedbackHandledAt = mockDateTime();
+    return ok(null, '处理成功');
+  }),
+
   // 更新对话标签
-  http.put('/api/ai/conversations/:id/tags', async ({ params, request }) => {
-    const id = Number(params.id);
-    const body = await request.json() as { tags?: string[] };
-    const conv = convStore.find((c) => c.id === id);
+  mock(aiConversationContract.setTags, ({ params, body, ok }) => {
+    const conv = convStore.find((c) => c.id === params.id);
     if (!conv) return notFound('对话不存在', { status: 404 });
-    conv.tags = (body.tags ?? []).slice(0, 10);
+    conv.tags = body.tags.slice(0, 10);
     return ok({ tags: conv.tags }, '标签已更新');
   }),
 
-  // 切换消息分支
-  http.put('/api/ai/conversations/:id/active-branch', async ({ params, request }) => {
-    const id = Number(params.id);
-    const body = await request.json() as { leafMsgId?: number };
-    const conv = convStore.find((c) => c.id === id);
+  // 切换消息分支（简化：沿最新子分支下探）
+  mock(aiConversationContract.switchBranch, ({ params, body, ok }) => {
+    const conv = convStore.find((c) => c.id === params.id);
     if (!conv) return notFound('对话不存在', { status: 404 });
-    // 简化：沿最新子分支下探
-    const msgs = msgStore[id] ?? [];
-    let leaf = body.leafMsgId ?? 0;
+    const msgs = msgStore[params.id] ?? [];
+    let leaf = body.leafMsgId;
     let advanced = true;
     while (advanced) {
       advanced = false;
@@ -103,33 +154,28 @@ export const aiConversationsHandlers = [
   }),
 
   // 进行中的生成任务（Demo：无后台生成，恒为 null）
-  http.get('/api/ai/conversations/:id/active-generation', () =>
-    ok({ genId: null })),
+  mock(aiConversationContract.activeGeneration, ({ ok }) => ok({ genId: null })),
 
   // 重命名对话
-  http.put('/api/ai/conversations/:id/rename', async ({ params, request }) => {
-    const id = Number(params.id);
-    const body = await request.json() as { title?: string };
-    const conv = convStore.find((c) => c.id === id);
+  mock(aiConversationContract.rename, ({ params, body, ok }) => {
+    const conv = convStore.find((c) => c.id === params.id);
     if (!conv) return notFound('对话不存在', { status: 404 });
-    conv.title = (body.title ?? '').trim().slice(0, 200) || '新对话';
+    conv.title = body.title.trim().slice(0, 200) || '新对话';
     conv.updatedAt = mockDateTime();
     return ok(null, '重命名成功');
   }),
 
   // 置顶 / 取消置顶
-  http.put('/api/ai/conversations/:id/pin', ({ params }) => {
-    const id = Number(params.id);
-    const conv = convStore.find((c) => c.id === id);
+  mock(aiConversationContract.pin, ({ params, ok }) => {
+    const conv = convStore.find((c) => c.id === params.id);
     if (!conv) return notFound('对话不存在', { status: 404 });
     conv.isPinned = !conv.isPinned;
     return ok({ isPinned: conv.isPinned });
   }),
 
   // 归档 / 取消归档
-  http.put('/api/ai/conversations/:id/archive', ({ params }) => {
-    const id = Number(params.id);
-    const conv = convStore.find((c) => c.id === id);
+  mock(aiConversationContract.archive, ({ params, ok }) => {
+    const conv = convStore.find((c) => c.id === params.id);
     if (!conv) return notFound('对话不存在', { status: 404 });
     conv.isArchived = !conv.isArchived;
     if (conv.isArchived) conv.isPinned = false;
@@ -137,10 +183,8 @@ export const aiConversationsHandlers = [
   }),
 
   // 设置 / 清除对话级提示词（角色模板）
-  http.put('/api/ai/conversations/:id/system-prompt', async ({ params, request }) => {
-    const id = Number(params.id);
-    const body = await request.json() as { systemPrompt?: string | null };
-    const conv = convStore.find((c) => c.id === id);
+  mock(aiConversationContract.setSystemPrompt, ({ params, body, ok }) => {
+    const conv = convStore.find((c) => c.id === params.id);
     if (!conv) return notFound('对话不存在', { status: 404 });
     const value = body.systemPrompt?.trim() ? body.systemPrompt.trim().slice(0, 5000) : null;
     conv.systemPromptOverride = value;
@@ -148,50 +192,39 @@ export const aiConversationsHandlers = [
   }),
 
   // 获取单条对话
-  http.get('/api/ai/conversations/:id', ({ params }) => {
-    const id = Number(params.id);
-    const conv = convStore.find((c) => c.id === id);
+  mock(aiConversationContract.detail, ({ params, ok }) => {
+    const conv = convStore.find((c) => c.id === params.id);
     if (!conv) return notFound('对话不存在', { status: 404 });
     return ok(conv);
   }),
 
   // 删除对话
-  http.delete('/api/ai/conversations/:id', ({ params }) => {
-    const id = Number(params.id);
-    const idx = convStore.findIndex((c) => c.id === id);
+  mock(aiConversationContract.remove, ({ params, ok }) => {
+    const idx = convStore.findIndex((c) => c.id === params.id);
     if (idx === -1) return notFound('对话不存在', { status: 404 });
     convStore.splice(idx, 1);
-    delete msgStore[id];
+    delete msgStore[params.id];
     return ok(null, '删除成功');
   }),
 
   // 获取消息列表
-  http.get('/api/ai/conversations/:id/messages', ({ params }) => {
-    const id = Number(params.id);
-    const msgs = msgStore[id] ?? [];
-    return ok(msgs);
-  }),
+  mock(aiConversationContract.messages, ({ params, ok }) => ok(msgStore[params.id] ?? [])),
 
   // 导出对话（Markdown / JSON）
-  http.get('/api/ai/conversations/:id/export', ({ params, request }) => {
-    const id = Number(params.id);
-    const conv = convStore.find((c) => c.id === id);
+  mock(aiConversationContract.exportFile, ({ params, query }) => {
+    const conv = convStore.find((c) => c.id === params.id);
     if (!conv) return notFound('对话不存在', { status: 404 });
-    const url = new URL(request.url);
-    const format = url.searchParams.get('format') === 'json' ? 'json' : 'md';
-    const msgs = msgStore[id] ?? [];
+    const msgs = msgStore[params.id] ?? [];
     const safeTitle = (conv.title || '对话').replace(/[\\/:*?"<>|]/g, '_').slice(0, 50);
     let content: string;
     let contentType: string;
-    let ext: string;
-    if (format === 'json') {
+    if (query.format === 'json') {
       content = JSON.stringify(
         { id: conv.id, title: conv.title, messages: msgs.map((m) => ({ role: m.role, content: m.content, model: m.model })) },
         null,
         2,
       );
       contentType = 'application/json; charset=utf-8';
-      ext = 'json';
     } else {
       const lines = [`# ${conv.title}`, ''];
       for (const m of msgs) {
@@ -200,20 +233,21 @@ export const aiConversationsHandlers = [
       }
       content = lines.join('\n');
       contentType = 'text/markdown; charset=utf-8';
-      ext = 'md';
     }
     return new HttpResponse(content, {
       headers: {
         'Content-Type': contentType,
-        'Content-Disposition': `attachment; filename="${encodeURIComponent(`${safeTitle}.${ext}`)}"`,
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(`${safeTitle}.${query.format}`)}"`,
       },
     });
   }),
 
-  // SSE 聊天 (模拟流式响应；regenerate 模式不保存新的 user 消息，回复成为兄弟分支)
-  http.post('/api/ai/conversations/:id/chat', async ({ params, request }) => {
+  // SSE 聊天：流式响应不走契约 handler，路径仍由契约派生；regenerate 模式不保存新的 user 消息，回复成为兄弟分支
+  http.post(toColonPath(aiConversationContract.chat.fullPath), async ({ params, request }) => {
     const id = Number(params.id);
-    const body = await request.json() as { message?: string; regenerate?: boolean; parentMsgId?: number | null; images?: string[] };
+    const parsed = sendAiChatMessageSchema.safeParse(await request.json());
+    if (!parsed.success) return badRequest('消息不能为空', { status: 400 });
+    const body = parsed.data;
     const regenerate = body.regenerate ?? false;
     if (!msgStore[id]) msgStore[id] = [];
 
@@ -232,7 +266,7 @@ export const aiConversationsHandlers = [
       userText = lastUser.content;
       assistantParentId = lastUser.id;
     } else {
-      // Save user message（parentMsgId 提供时为编辑重发分支，否则挂在末条消息后）
+      // 保存 user 消息（parentMsgId 提供时为编辑重发分支，否则挂在末条消息后）
       userMsgId = getNextMsgId();
       const lastMsg = msgStore[id][msgStore[id].length - 1];
       const userParentId = body.parentMsgId !== undefined ? body.parentMsgId : (lastMsg?.id ?? null);
@@ -275,7 +309,7 @@ export const aiConversationsHandlers = [
 
     const assistantMsgId = getNextMsgId();
 
-    // Update conversation title if still default（模拟 LLM 自动命名）
+    // 标题仍为默认值时自动命名（模拟 LLM 自动命名）
     const conv = convStore.find((c) => c.id === id);
     const needTitle = !regenerate && conv?.title === '新对话';
     const newTitle = userText.slice(0, 15) + (userText.length > 15 ? '…' : '');
@@ -284,7 +318,7 @@ export const aiConversationsHandlers = [
       conv.updatedAt = now;
     }
 
-    // Build SSE response（含思维链演示）
+    // 组装 SSE 响应（含思维链演示）
     let sseBody = `event: gen\ndata: ${JSON.stringify({ genId: `demo-gen-${assistantMsgId}` })}\n\n`;
     for (const chunk of reasoningText.match(/.{1,10}/g) ?? []) {
       sseBody += `event: reasoning\ndata: ${JSON.stringify({ content: chunk })}\n\n`;
@@ -298,7 +332,7 @@ export const aiConversationsHandlers = [
       sseBody += `event: title\ndata: ${JSON.stringify({ title: newTitle })}\n\n`;
     }
 
-    // Save assistant message
+    // 保存 assistant 消息
     const assistantMsg: AiMessage = {
       id: assistantMsgId,
       conversationId: id,
@@ -337,116 +371,35 @@ export const aiConversationsHandlers = [
   }),
 
   // 删除消息及其之后所有消息（级联）
-  http.delete('/api/ai/conversations/:convId/messages/:msgId/cascade', ({ params }) => {
-    const convId = Number(params.convId);
-    const msgId = Number(params.msgId);
-    const msgs = msgStore[convId];
+  mock(aiConversationContract.removeMessageCascade, ({ params, ok }) => {
+    const msgs = msgStore[params.id];
     if (!msgs) return notFound('对话不存在', { status: 404 });
-    const idx = msgs.findIndex((m) => m.id === msgId);
+    const idx = msgs.findIndex((m) => m.id === params.msgId);
     if (idx === -1) return notFound('消息不存在', { status: 404 });
-    msgStore[convId] = msgs.slice(0, idx);
+    msgStore[params.id] = msgs.slice(0, idx);
     return ok(null, '删除成功');
   }),
 
   // 删除单条 assistant 消息（用于重新生成）
-  http.delete('/api/ai/conversations/:convId/messages/:msgId', ({ params }) => {
-    const convId = Number(params.convId);
-    const msgId = Number(params.msgId);
-    const msgs = msgStore[convId];
+  mock(aiConversationContract.removeMessage, ({ params, ok }) => {
+    const msgs = msgStore[params.id];
     if (!msgs) return notFound('对话不存在', { status: 404 });
-    msgStore[convId] = msgs.filter((m) => m.id !== msgId);
+    msgStore[params.id] = msgs.filter((m) => m.id !== params.msgId);
     return ok(null, '删除成功');
   }),
 
-  // ── 管理员反馈列表（/api/ai/conversations/admin/feedback）────────────────
-  // 注意：必须在 /:id 路由之前注册，以避免 "admin" 被当成 id
-  http.get('/api/ai/conversations/admin/feedback', ({ request }) => {
-    const url = new URL(request.url);
-    const { page, pageSize } = pageParams(url);
-    const feedbackParam = url.searchParams.get('feedback');
-    const statusParam = url.searchParams.get('status');
-    const modelParam = url.searchParams.get('model');
-    const startDate = url.searchParams.get('startDate');
-    const endDate = url.searchParams.get('endDate');
-
-    // 收集所有带反馈的消息
-    let allMsgs: AiMessage[] = Object.values(msgStore).flat().filter((m) => m.feedback !== null);
-    if (feedbackParam !== null && feedbackParam !== '') {
-      const fb = Number(feedbackParam);
-      allMsgs = allMsgs.filter((m) => m.feedback === fb);
-    }
-    if (statusParam) {
-      allMsgs = allMsgs.filter((m) => m.feedbackStatus === statusParam);
-    }
-    if (modelParam) {
-      allMsgs = allMsgs.filter((m) => m.model === modelParam);
-    }
-    if (startDate) allMsgs = allMsgs.filter((m) => m.createdAt >= `${startDate} 00:00:00`);
-    if (endDate) allMsgs = allMsgs.filter((m) => m.createdAt <= `${endDate} 23:59:59`);
-    allMsgs = allMsgs.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-
-    const total = allMsgs.length;
-    const list = allMsgs.slice((page - 1) * pageSize, page * pageSize).map(enrichFeedbackItem);
-    return ok({ list, total, page, pageSize });
-  }),
-
-  // 管理员查看反馈上下文
-  http.get('/api/ai/conversations/admin/feedback/:msgId/context', ({ params }) => {
-    const msgId = Number(params.msgId);
-    const entry = Object.entries(msgStore).find(([, msgs]) => msgs.some((m) => m.id === msgId));
-    if (!entry) return notFound('消息不存在', { status: 404 });
-    const convId = Number(entry[0]);
-    const msgs = entry[1];
-    const idx = msgs.findIndex((m) => m.id === msgId);
-    const messages = msgs.slice(Math.max(0, idx - 8), idx + 3);
-    const conv = convStore.find((c) => c.id === convId);
-    return ok({ conversationId: convId, conversationTitle: conv?.title ?? null, targetMsgId: msgId, messages });
-  }),
-
-  // 管理员导出反馈 CSV
-  http.get('/api/ai/conversations/admin/feedback/export', () => {
-    const rows = Object.values(msgStore).flat().filter((m) => m.feedback !== null).map(enrichFeedbackItem);
-    const header = '消息 ID,反馈,处理状态,模型,反馈用户,对话标题,用户提问,AI 回复,反馈时间';
-    const lines = rows.map((r) => [
-      r.id, r.feedback === 1 ? '点赞' : '点踩', r.feedbackStatus ?? '', r.model ?? '',
-      r.username ?? '', r.conversationTitle ?? '', JSON.stringify(r.question ?? ''), JSON.stringify(r.content.slice(0, 100)), r.createdAt,
-    ].join(','));
-    return new HttpResponse(`\uFEFF${header}\n${lines.join('\n')}`, {
-      headers: {
-        'Content-Type': 'text/csv; charset=utf-8',
-        'Content-Disposition': 'attachment; filename="ai-feedback.csv"',
-      },
-    });
-  }),
-
-  // 管理员处理反馈（更新状态/备注）
-  http.put('/api/ai/conversations/admin/feedback/:msgId', async ({ params, request }) => {
-    const msgId = Number(params.msgId);
-    const body = await request.json() as { status?: 'pending' | 'resolved' | 'ignored'; remark?: string | null };
-    const msg = Object.values(msgStore).flat().find((m) => m.id === msgId);
-    if (!msg) return notFound('消息不存在', { status: 404 });
-    if (msg.feedback === null) return badRequest('该消息没有用户反馈', { status: 400 });
-    msg.feedbackStatus = body.status ?? 'resolved';
-    msg.feedbackRemark = body.remark?.trim() || null;
-    msg.feedbackHandledAt = mockDateTime();
-    return ok(null, '处理成功');
-  }),
-
   // 消息反馈（点赞/点踩）
-  http.put('/api/ai/conversations/:convId/messages/:msgId/feedback', async ({ params, request }) => {
-    const convId = Number(params.convId);
-    const msgId = Number(params.msgId);
-    const body = await request.json() as { feedback: number | null; reason?: string | null };
-    const msgs = msgStore[convId];
+  mock(aiConversationContract.submitFeedback, ({ params, body, ok }) => {
+    const msgs = msgStore[params.id];
     if (!msgs) return notFound('对话不存在', { status: 404 });
-    const msg = msgs.find((m) => m.id === msgId);
+    const msg = msgs.find((m) => m.id === params.msgId);
     if (!msg) return notFound('消息不存在', { status: 404 });
     const isDislike = body.feedback === -1;
-    msg.feedback = body.feedback ?? null;
+    msg.feedback = body.feedback;
     msg.feedbackReason = isDislike ? (body.reason ?? null) : null;
     msg.feedbackStatus = isDislike ? 'pending' : null;
     msg.feedbackRemark = null;
     msg.feedbackHandledAt = null;
-    return ok(msg);
+    return ok(null, '反馈成功');
   }),
 ];

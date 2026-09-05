@@ -4,7 +4,9 @@ import { Send, Square, Trophy } from 'lucide-react';
 import AppModal from '@/components/AppModal';
 import { request } from '@/utils/request';
 import { readSseStream } from '@/utils/streaming';
-import type { AiChatModel } from '@zenith/shared/ai';
+import { aiArenaContract } from '@zenith/shared/ai';
+import type { AiChatModel, ArenaChatInput } from '@zenith/shared/ai';
+import { urlOf } from '@/lib/contract-query';
 import { submitArenaVote } from '@/hooks/queries/ai-extras';
 import { healStreamingMarkdown } from '@/utils/streaming-markdown';
 
@@ -46,9 +48,10 @@ export default function ArenaModal({ visible, onClose, models }: ArenaModalProps
     const [configIdStr, ...modelParts] = selection.split(':');
     setPanel(() => ({ content: '', status: 'running' }));
     try {
-      const response = await request.fetchRaw('/api/ai/arena/chat', {
+      const body = { message: question, configId: Number(configIdStr), model: modelParts.join(':') || undefined } satisfies ArenaChatInput;
+      const response = await request.fetchRaw(urlOf(aiArenaContract.chat), {
         method: 'POST',
-        body: JSON.stringify({ message: question, configId: Number(configIdStr), model: modelParts.join(':') || undefined }),
+        body: JSON.stringify(body),
         signal,
         silent: true,
       });

@@ -1,4 +1,4 @@
-import type { AiPromptTemplate } from '../ai/types';
+import type { AiPromptTemplate } from '../ai/contracts';
 import { SEED_DATE } from './_base';
 
 // ─── AI 提示词模板（内置预设角色）─────────────────────────────────────────────────

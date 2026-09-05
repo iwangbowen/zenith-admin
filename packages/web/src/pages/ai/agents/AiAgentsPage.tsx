@@ -187,7 +187,7 @@ export default function AiAgentsPage() {
               <Space>
                 <Button theme="borderless" size="small" icon={<MessageSquare size={13} />} onClick={() => startChat(agent)}>对话</Button>
                 <Button theme="borderless" size="small" onClick={() => modal.openEdit(agent)}>编辑</Button>
-                <Popconfirm title="确定要删除该智能体吗？" content="关联对话会保留但不再应用预设" onConfirm={() => deleteMutation.mutateAsync(agent.id).then(() => Toast.success('已删除')).catch(() => {})}>
+                <Popconfirm title="确定要删除该智能体吗？" content="关联对话会保留但不再应用预设" onConfirm={() => deleteMutation.mutateAsync({ params: { id: agent.id } }).then(() => Toast.success('已删除')).catch(() => {})}>
                   <Button theme="borderless" type="danger" size="small">删除</Button>
                 </Popconfirm>
               </Space>

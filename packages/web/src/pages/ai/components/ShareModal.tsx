@@ -23,7 +23,7 @@ export default function ShareModal({ convId, onClose }: ShareModalProps) {
 
   const handleCreate = async () => {
     if (!convId) return;
-    await createMutation.mutateAsync({ convId, expiresDays });
+    await createMutation.mutateAsync({ params: { id: convId }, body: { expiresDays } });
     Toast.success('分享链接已生成');
   };
 
@@ -33,7 +33,7 @@ export default function ShareModal({ convId, onClose }: ShareModalProps) {
 
   const handleRevoke = async () => {
     if (!convId) return;
-    await revokeMutation.mutateAsync(convId);
+    await revokeMutation.mutateAsync({ params: { id: convId } });
     Toast.success('已取消分享');
   };
 
