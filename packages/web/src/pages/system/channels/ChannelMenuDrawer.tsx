@@ -96,7 +96,7 @@ export function ChannelMenuDrawer({ channelId, channelName, visible, readOnly = 
     const menus = tops.map((t) => (t.children.length > 0
       ? { name: t.name.trim(), type: 'click' as ChannelMenuType, value: null, children: t.children.map((c) => ({ name: c.name.trim(), type: c.type, value: c.value.trim() || null })) }
       : { name: t.name.trim(), type: t.type, value: t.value.trim() || null }));
-    await saveMenusMutation.mutateAsync({ channelId, menus });
+    await saveMenusMutation.mutateAsync({ params: { id: channelId }, body: { menus } });
     Toast.success('已保存');
     onClose();
   };

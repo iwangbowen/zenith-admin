@@ -6,10 +6,12 @@ import { useMemo, useState } from 'react';
 import { Card, Select, Skeleton, Tag, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { CheckCircle2, MousePointerClick, Send, XCircle } from 'lucide-react';
+import { enumValueOf } from '@zenith/shared/core';
 import {
   PUSH_DELIVERY_STATUS_LABELS,
   PUSH_PROVIDER_LABELS,
   SEND_SOURCE_LABELS,
+  SEND_STATUSES,
   type PushDeliveryStatus,
   type PushProvider,
   type PushSendLog,
@@ -135,7 +137,7 @@ export default function PushSendLogsPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
+    status: enumValueOf(SEND_STATUSES, submittedParams.status),
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
   const list = listQuery.data?.list ?? [];

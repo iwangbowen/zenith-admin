@@ -1,29 +1,22 @@
-import { http } from 'msw';
-import { ok, notFound, pageParams } from '@/mocks/utils/handlers';
+import { mpDraftContract, type MpDraft } from '@zenith/shared/mp';
+import { mock } from '@/mocks/utils/contract';
+import { notFound } from '@/mocks/utils/handlers';
 import { mockMpDrafts, getNextMpDraftId } from '@/mocks/data/mp-drafts';
 import { mockDateTime } from '@/mocks/utils/date';
-import type { MpDraft, MpArticle } from '@zenith/shared/mp';
 
 export const mpDraftsHandlers = [
-  http.get('/api/mp/drafts', ({ request }) => {
-    const url = new URL(request.url);
-    const accountId = Number(url.searchParams.get('accountId') ?? '0');
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const { page, pageSize } = pageParams(url, 20);
-    const filtered = mockMpDrafts.filter((d) => d.accountId === accountId && (!keyword || d.title.includes(keyword)));
-    const total = filtered.length;
-    const list = [...filtered].sort((a, b) => b.id - a.id).slice((page - 1) * pageSize, page * pageSize);
-    return ok({ list, total, page, pageSize });
+  mock(mpDraftContract.list, ({ query, ok, paginate }) => {
+    const filtered = mockMpDrafts.filter((d) => d.accountId === query.accountId && (!query.keyword || d.title.includes(query.keyword)));
+    return ok(paginate([...filtered].sort((a, b) => b.id - a.id)));
   }),
 
-  http.get('/api/mp/drafts/:id', ({ params }) => {
-    const d = mockMpDrafts.find((x) => x.id === Number(params.id));
+  mock(mpDraftContract.detail, ({ params, ok }) => {
+    const d = mockMpDrafts.find((x) => x.id === params.id);
     if (!d) return notFound('图文草稿不存在', { status: 404 });
     return ok(d);
   }),
 
-  http.post('/api/mp/drafts', async ({ request }) => {
-    const body = await request.json() as { accountId: number; articles: MpArticle[] };
+  mock(mpDraftContract.create, ({ body, ok }) => {
     const now = mockDateTime();
     const item: MpDraft = {
       id: getNextMpDraftId(), accountId: body.accountId, title: body.articles[0]?.title ?? '未命名图文',
@@ -33,10 +26,9 @@ export const mpDraftsHandlers = [
     return ok(item, '创建成功');
   }),
 
-  http.put('/api/mp/drafts/:id', async ({ params, request }) => {
-    const d = mockMpDrafts.find((x) => x.id === Number(params.id));
+  mock(mpDraftContract.update, ({ params, body, ok }) => {
+    const d = mockMpDrafts.find((x) => x.id === params.id);
     if (!d) return notFound('图文草稿不存在', { status: 404 });
-    const body = await request.json() as { articles: MpArticle[] };
     d.articles = body.articles;
     d.title = body.articles[0]?.title ?? '未命名图文';
     d.status = 'draft';
@@ -45,8 +37,8 @@ export const mpDraftsHandlers = [
     return ok(d, '更新成功');
   }),
 
-  http.post('/api/mp/drafts/:id/push', ({ params }) => {
-    const d = mockMpDrafts.find((x) => x.id === Number(params.id));
+  mock(mpDraftContract.push, ({ params, ok }) => {
+    const d = mockMpDrafts.find((x) => x.id === params.id);
     if (!d) return notFound('图文草稿不存在', { status: 404 });
     d.status = 'published';
     d.wechatMediaId = `mock_draft_${d.id}`;
@@ -54,8 +46,8 @@ export const mpDraftsHandlers = [
     return ok(d, '推送成功');
   }),
 
-  http.delete('/api/mp/drafts/:id', ({ params }) => {
-    const idx = mockMpDrafts.findIndex((x) => x.id === Number(params.id));
+  mock(mpDraftContract.remove, ({ params, ok }) => {
+    const idx = mockMpDrafts.findIndex((x) => x.id === params.id);
     if (idx === -1) return notFound('图文草稿不存在', { status: 404 });
     mockMpDrafts.splice(idx, 1);
     return ok(null, '删除成功');

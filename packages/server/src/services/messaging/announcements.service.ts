@@ -222,7 +222,7 @@ export async function getInbox(q: { page?: number; pageSize?: number; isRead?: s
   const [totalRow, rows] = await Promise.all([
     db.select({ total: count() }).from(announcements).leftJoin(announcementReads, joinCond).where(where),
     withPagination(
-      db.select({ ...getTableColumns(announcements), isRead: isNotNull(announcementReads.id) })
+      db.select({ ...getTableColumns(announcements), isRead: isNotNull(announcementReads.id).mapWith(Boolean) })
         .from(announcements)
         .leftJoin(announcementReads, joinCond)
         .where(where)

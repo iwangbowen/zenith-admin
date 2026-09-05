@@ -1,26 +1,23 @@
-import { http } from 'msw';
-import { ok, badRequest } from '@/mocks/utils/handlers';
+import { emailConfigContract } from '@zenith/shared/messaging';
+import type { EmailConfig } from '@zenith/shared/messaging';
+import { mock } from '@/mocks/utils/contract';
+import { badRequest } from '@/mocks/utils/handlers';
 import { mockEmailConfig } from '@/mocks/data/email-config';
 import { mockDateTime } from '@/mocks/utils/date';
-import type { EmailConfig } from '@zenith/shared/messaging';
 
 let emailConfig: EmailConfig = { ...mockEmailConfig };
 
 export const emailConfigHandlers = [
-  http.get('/api/email-config', () => {
+  mock(emailConfigContract.get, ({ ok }) => ok(emailConfig, 'success')),
 
-    const { smtpPassword: _masked, ...safeConfig } = emailConfig;
-    return ok(safeConfig, 'success');
-  }),
-
-  http.put('/api/email-config', async ({ request }) => {
-    const body = (await request.json()) as Partial<EmailConfig>;
-    emailConfig = { ...emailConfig, ...body, updatedAt: mockDateTime() };
+  // 密码只写不读：接口返回的配置从不包含 smtpPassword
+  mock(emailConfigContract.save, ({ body, ok }) => {
+    const { smtpPassword: _password, ...patch } = body;
+    emailConfig = { ...emailConfig, ...patch, updatedAt: mockDateTime() };
     return ok(emailConfig, '保存成功');
   }),
 
-  http.post('/api/email-config/test', async ({ request }) => {
-    const body = (await request.json()) as { email?: string };
+  mock(emailConfigContract.test, ({ body, ok }) => {
     if (!body.email) {
       return badRequest('请提供收件邮箱', { status: 400 });
     }

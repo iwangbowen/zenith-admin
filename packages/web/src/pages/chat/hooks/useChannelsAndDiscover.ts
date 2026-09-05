@@ -1,8 +1,8 @@
 import { useCallback, useEffect } from 'react';
 import { Toast } from '@douyinfe/semi-ui';
 import { chatContract } from '@zenith/shared/chat';
+import { channelContract } from '@zenith/shared/messaging';
 import { api } from '@/lib/contract-query';
-import { request } from '@/utils/request';
 import { confirmDanger } from '@/utils/confirm';
 import { useDiscoverableChannels } from '@/hooks/queries/chat';
 import type { ChatConversation } from '@zenith/shared/chat';
@@ -33,8 +33,8 @@ export function useChannelsAndDiscover({
   useEffect(() => { void fetchConversations(); }, [fetchConversations]);
 
   const fetchChannels = useCallback(async () => {
-    const res = await request.get<Channel[]>('/api/channels/mine', { silent: true });
-    if (res.code === 0 && res.data) setChannels(res.data);
+    const list = await api(channelContract.mine, { silent: true }).catch(() => null);
+    if (list) setChannels(list);
   }, []);
 
   useEffect(() => { void fetchChannels(); }, [fetchChannels]);
@@ -45,8 +45,8 @@ export function useChannelsAndDiscover({
       title: `确定退订「${ch.name}」吗？`,
       content: '退订后将不再接收该频道的消息推送，可随时在「发现频道」中重新订阅。',
       onOk: async () => {
-        const res = await request.delete(`/api/channels/${ch.id}/subscribe`);
-        if (res.code === 0) {
+        const done = await api(channelContract.unsubscribe, { params: { id: ch.id } }).then(() => true, () => false);
+        if (done) {
           Toast.success('已退订');
           setActiveChannelId(null);
           void fetchChannels();
@@ -68,8 +68,8 @@ export function useChannelsAndDiscover({
   const discoverList = discoverableChannels ?? [];
 
   const handleSubscribeChannel = useCallback(async (ch: Channel) => {
-    const res = await request.post(`/api/channels/${ch.id}/subscribe`, {});
-    if (res.code === 0) {
+    const done = await api(channelContract.subscribe, { params: { id: ch.id } }).then(() => true, () => false);
+    if (done) {
       Toast.success('已订阅');
       void refetchDiscoverableChannels();
       void fetchChannels();

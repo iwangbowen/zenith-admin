@@ -4,6 +4,7 @@ export const mockSmsSendLogs: SmsSendLog[] = [
   {
     id: 1,
     configId: 1,
+    configName: '阿里云默认',
     templateId: 1,
     templateName: '登录验证码',
     provider: 'aliyun',
@@ -16,7 +17,7 @@ export const mockSmsSendLogs: SmsSendLog[] = [
     deliveredAt: '2025-03-01 10:00:30',
     source: 'api',
     userId: 1,
-    userName: '管理员',
+    username: '管理员',
     ip: '127.0.0.1',
     sentAt: '2025-03-01 10:00:00',
     createdAt: '2025-03-01 10:00:00',
@@ -24,6 +25,7 @@ export const mockSmsSendLogs: SmsSendLog[] = [
   {
     id: 2,
     configId: 1,
+    configName: '阿里云默认',
     templateId: 2,
     templateName: '注册验证码',
     provider: 'aliyun',
@@ -36,7 +38,7 @@ export const mockSmsSendLogs: SmsSendLog[] = [
     deliveredAt: null,
     source: 'manual',
     userId: 1,
-    userName: '管理员',
+    username: '管理员',
     ip: '127.0.0.1',
     sentAt: null,
     createdAt: '2025-03-02 11:00:00',
@@ -44,6 +46,7 @@ export const mockSmsSendLogs: SmsSendLog[] = [
   {
     id: 3,
     configId: 2,
+    configName: '腾讯云备用',
     templateId: 3,
     templateName: '订单通知',
     provider: 'tencent',
@@ -56,7 +59,7 @@ export const mockSmsSendLogs: SmsSendLog[] = [
     deliveredAt: '2025-03-03 09:00:45',
     source: 'system',
     userId: null,
-    userName: null,
+    username: null,
     ip: '10.0.0.5', // NOSONAR
     sentAt: '2025-03-03 09:00:00',
     createdAt: '2025-03-03 09:00:00',

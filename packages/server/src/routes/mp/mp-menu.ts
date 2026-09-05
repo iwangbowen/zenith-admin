@@ -1,36 +1,20 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { mpMenuContract } from '@zenith/shared/mp';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
-import {
-  jsonContent, validationHook, commonErrorResponses, ok, okBody,
-} from '../../lib/openapi-schemas';
-import { saveMpMenuSchema } from '@zenith/shared/mp';
-import { MpMenuDTO } from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { getMpMenu, saveMpMenu, publishMpMenu, pullMpMenu, deleteMpMenu } from '../../services/mp/mp-menu.service';
 
 const mpMenuRouter = new OpenAPIHono({ defaultHook: validationHook });
 
-const accountBody = z.object({ accountId: z.number().int().positive() });
-
-const getRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/', tags: ['公众号菜单'], summary: '获取自定义菜单',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'mp:menu:list' })] as const,
-    request: { query: z.object({ accountId: z.coerce.number().int().positive() }) },
-    responses: { ...commonErrorResponses, ...ok(MpMenuDTO, '自定义菜单') },
-  }),
+const getRoute = defineContractRoute(mpMenuContract.get, {
+  middleware: [authMiddleware, guard({ permission: 'mp:menu:list' })],
   handler: async (c) => c.json(okBody(await getMpMenu(c.req.valid('query').accountId)), 200),
 });
 
-const saveRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/save', tags: ['公众号菜单'], summary: '保存菜单草稿',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'mp:menu:save', audit: { description: '保存公众号菜单', module: '公众号菜单' } })] as const,
-    request: { body: { content: jsonContent(saveMpMenuSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(MpMenuDTO, '保存成功') },
-  }),
+const saveRoute = defineContractRoute(mpMenuContract.save, {
+  middleware: [authMiddleware, guard({ permission: 'mp:menu:save', audit: { description: '保存公众号菜单', module: '公众号菜单' } })],
   handler: async (c) => {
     const { accountId, buttons } = c.req.valid('json');
     setAuditBeforeData(c, await getMpMenu(accountId));
@@ -38,14 +22,8 @@ const saveRoute = defineOpenAPIRoute({
   },
 });
 
-const publishRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/publish', tags: ['公众号菜单'], summary: '发布菜单到微信',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'mp:menu:publish', audit: { description: '发布公众号菜单', module: '公众号菜单' } })] as const,
-    request: { body: { content: jsonContent(accountBody), required: true } },
-    responses: { ...commonErrorResponses, ...ok(MpMenuDTO, '发布成功') },
-  }),
+const publishRoute = defineContractRoute(mpMenuContract.publish, {
+  middleware: [authMiddleware, guard({ permission: 'mp:menu:publish', audit: { description: '发布公众号菜单', module: '公众号菜单' } })],
   handler: async (c) => {
     const { accountId } = c.req.valid('json');
     setAuditBeforeData(c, await getMpMenu(accountId));
@@ -53,14 +31,8 @@ const publishRoute = defineOpenAPIRoute({
   },
 });
 
-const pullRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/pull', tags: ['公众号菜单'], summary: '从微信拉取菜单',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'mp:menu:pull', audit: { description: '拉取公众号菜单', module: '公众号菜单' } })] as const,
-    request: { body: { content: jsonContent(accountBody), required: true } },
-    responses: { ...commonErrorResponses, ...ok(MpMenuDTO, '拉取成功') },
-  }),
+const pullRoute = defineContractRoute(mpMenuContract.pull, {
+  middleware: [authMiddleware, guard({ permission: 'mp:menu:pull', audit: { description: '拉取公众号菜单', module: '公众号菜单' } })],
   handler: async (c) => {
     const { accountId } = c.req.valid('json');
     setAuditBeforeData(c, await getMpMenu(accountId));
@@ -68,14 +40,8 @@ const pullRoute = defineOpenAPIRoute({
   },
 });
 
-const deleteRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/delete', tags: ['公众号菜单'], summary: '删除微信菜单',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'mp:menu:delete', audit: { description: '删除公众号菜单', module: '公众号菜单' } })] as const,
-    request: { body: { content: jsonContent(accountBody), required: true } },
-    responses: { ...commonErrorResponses, ...ok(MpMenuDTO, '删除成功') },
-  }),
+const deleteRoute = defineContractRoute(mpMenuContract.remove, {
+  middleware: [authMiddleware, guard({ permission: 'mp:menu:delete', audit: { description: '删除公众号菜单', module: '公众号菜单' } })],
   handler: async (c) => {
     const { accountId } = c.req.valid('json');
     setAuditBeforeData(c, await getMpMenu(accountId));

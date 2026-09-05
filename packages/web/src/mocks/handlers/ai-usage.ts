@@ -1,15 +1,16 @@
-import { http } from 'msw';
-import { ok } from '@/mocks/utils/handlers';
+import { aiUsageContract } from '@zenith/shared/ai';
+import type { AiUsageByModel, AiUsageByUser, AiUsageOverview, AiUsageTrend } from '@zenith/shared/ai';
+import { mock } from '@/mocks/utils/contract';
 import { mockDate } from '../utils/date';
 
-const byModel = [
+const byModel: AiUsageByModel[] = [
   { model: 'qwen-max', provider: 'openai_compatible', messages: 320, tokensInput: 450000, tokensOutput: 210000, totalTokens: 660000, avgTtftMs: 780, costFen: 620 },
   { model: 'gpt-4o', provider: 'openai_compatible', messages: 220, tokensInput: 380000, tokensOutput: 175000, totalTokens: 555000, avgTtftMs: 920, costFen: 1944 },
   { model: 'deepseek-chat', provider: 'openai_compatible', messages: 180, tokensInput: 260000, tokensOutput: 110000, totalTokens: 370000, avgTtftMs: 650, costFen: 140 },
   { model: 'claude-3.5-sonnet', provider: null, messages: 90, tokensInput: 160000, tokensOutput: 82000, totalTokens: 242000, avgTtftMs: 1100, costFen: null },
 ];
 
-const byUser = [
+const byUser: AiUsageByUser[] = [
   { userId: 1, username: 'admin', nickname: '系统管理员', conversations: 48, messages: 166, totalTokens: 386000 },
   { userId: 2, username: 'zhangsan', nickname: '张三', conversations: 32, messages: 128, totalTokens: 296000 },
   { userId: 3, username: 'lisi', nickname: '李四', conversations: 27, messages: 104, totalTokens: 238000 },
@@ -20,7 +21,7 @@ const byUser = [
   { userId: 8, username: 'devops', nickname: '运维工程师', conversations: 9, messages: 46, totalTokens: 98000 },
 ];
 
-function buildTrend() {
+function buildTrend(): AiUsageTrend[] {
   const messages = [42, 38, 45, 51, 49, 56, 62, 58, 61, 64, 70, 72, 68, 74];
   const tokens = [92000, 87000, 101000, 113000, 108000, 126000, 141000, 130000, 139000, 145000, 158000, 162000, 153000, 172000];
   return messages.map((messageCount, index) => {
@@ -31,7 +32,7 @@ function buildTrend() {
   });
 }
 
-const overview = {
+const overview: AiUsageOverview = {
   totalConversations: byUser.reduce((sum, item) => sum + item.conversations, 0),
   totalMessages: byModel.reduce((sum, item) => sum + item.messages, 0),
   tokensInput: byModel.reduce((sum, item) => sum + item.tokensInput, 0),
@@ -44,12 +45,5 @@ const overview = {
 };
 
 export const aiUsageHandlers = [
-  http.get('/api/ai/usage/stats', () => {
-    return ok({
-      overview,
-      byModel,
-      byUser,
-      trend: buildTrend(),
-    }, 'success');
-  }),
+  mock(aiUsageContract.stats, ({ ok }) => ok({ overview, byModel, byUser, trend: buildTrend() }, 'success')),
 ];

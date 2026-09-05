@@ -8,7 +8,7 @@ import { useMemo } from 'react';
 import { Button, Modal, Spin, Switch, Tabs, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Lock, RotateCcw, Unlock } from 'lucide-react';
-import { NOTIFICATION_CHANNEL_LABELS, NOTIFICATION_DECISION_LABELS, NOTIFICATION_DECISION_OPTIONS, NOTIFICATION_REASON_CODE_LABELS, NOTIFICATION_SEVERITY_LABELS, type NotificationChannel, type NotificationDecision, type NotificationPolicyEvent, type NotificationReasonCode, NOTIFICATION_CHANNEL_OPTIONS } from '@zenith/shared/messaging';
+import { NOTIFICATION_CHANNEL_LABELS, NOTIFICATION_DECISION_LABELS, NOTIFICATION_DECISION_OPTIONS, NOTIFICATION_REASON_CODE_LABELS, NOTIFICATION_SEVERITY_LABELS, type NotificationChannel, type NotificationDecision, type NotificationDispatch, type NotificationPolicyEvent, type NotificationReasonCode, NOTIFICATION_CHANNEL_OPTIONS } from '@zenith/shared/messaging';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -26,7 +26,6 @@ import {
   useResetNotificationOverride,
   useSaveNotificationOverride,
   useTestFireNotification,
-  type NotificationDispatchItem,
 } from '@/hooks/queries/notification-policies';
 
 const { Text } = Typography;
@@ -66,7 +65,7 @@ function ChannelPolicyCell({ event, canSave }: Readonly<{ event: NotificationPol
               disabled={!canSave || saveMutation.isPending}
               onChange={(checked) => {
                 saveMutation.mutate(
-                  { eventKey: event.key, channel: cell.channel, enabled: checked, locked },
+                  { body: { eventKey: event.key, channel: cell.channel, enabled: checked, locked } },
                   { onSuccess: () => Toast.success('策略已更新') },
                 );
               }}
@@ -81,7 +80,7 @@ function ChannelPolicyCell({ event, canSave }: Readonly<{ event: NotificationPol
                   icon={locked ? <Lock size={13} /> : <Unlock size={13} style={{ color: 'var(--semi-color-text-3)' }} />}
                   onClick={() => {
                     saveMutation.mutate(
-                      { eventKey: event.key, channel: cell.channel, enabled: effective, locked: !locked },
+                      { body: { eventKey: event.key, channel: cell.channel, enabled: effective, locked: !locked } },
                       { onSuccess: () => Toast.success(locked ? '已解锁' : '已锁定') },
                     );
                   }}
@@ -99,7 +98,7 @@ function ChannelPolicyCell({ event, canSave }: Readonly<{ event: NotificationPol
                   loading={resetMutation.isPending}
                   onClick={() => {
                     resetMutation.mutate(
-                      { eventKey: event.key, channel: cell.channel },
+                      { body: { eventKey: event.key, channel: cell.channel } },
                       { onSuccess: () => Toast.success('已恢复默认') },
                     );
                   }}
@@ -168,14 +167,14 @@ function PolicyEventsTab() {
       actions: (record) => [{
         key: 'test',
         label: '测试触发',
-        loading: testMutation.isPending && testMutation.variables === record.key,
+        loading: testMutation.isPending && testMutation.variables?.body.eventKey === record.key,
         disabled: testMutation.isPending,
         onClick: () => {
           Modal.confirm({
             title: `测试触发「${record.label}」？`,
             content: '以当前账号为收件人真实派发一次，模板变量填示例值，结果见「投递日志」。',
             onOk: () => {
-              testMutation.mutate(record.key, {
+              testMutation.mutate({ body: { eventKey: record.key } }, {
                 onSuccess: () => Toast.success('已触发，请在「投递日志」查看派发结果'),
               });
             },
@@ -254,7 +253,7 @@ function DispatchLogTab() {
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
 
-  const columns: ColumnProps<NotificationDispatchItem>[] = [
+  const columns: ColumnProps<NotificationDispatch>[] = [
     dateTimeColumn('派发时间', 'createdAt'),
     { title: '事件', dataIndex: 'eventLabel', width: 180, render: renderEllipsis },
     {
@@ -309,7 +308,7 @@ function DispatchLogTab() {
           </>
         )}
       />
-      <ConfigurableTable<NotificationDispatchItem>
+      <ConfigurableTable<NotificationDispatch>
         bordered
         dataSource={list}
         columns={columns}

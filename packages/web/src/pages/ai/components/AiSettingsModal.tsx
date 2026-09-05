@@ -54,15 +54,17 @@ export default function AiSettingsModal({ visible, initialTab = 'instructions', 
       aboutMe?: string; replyStyle?: string; instructionsEnabled?: boolean; memoryEnabled?: boolean;
     } | undefined;
     await saveMutation.mutateAsync({
-      instructions: {
-        enabled: values?.instructionsEnabled ?? true,
-        aboutMe: values?.aboutMe?.trim() || null,
-        replyStyle: values?.replyStyle?.trim() || null,
+      body: {
+        instructions: {
+          enabled: values?.instructionsEnabled ?? true,
+          aboutMe: values?.aboutMe?.trim() || null,
+          replyStyle: values?.replyStyle?.trim() || null,
+        },
+        memory: { enabled: values?.memoryEnabled ?? true },
       },
-      memory: { enabled: values?.memoryEnabled ?? true },
     });
     if (profileDirty) {
-      await saveProfileMutation.mutateAsync(profileContent);
+      await saveProfileMutation.mutateAsync({ body: { content: profileContent } });
     }
     Toast.success('已保存，之后的对话将自动生效');
     onClose();
@@ -122,7 +124,7 @@ export default function AiSettingsModal({ visible, initialTab = 'instructions', 
                   title="确定清空 AI 记忆画像吗？"
                   content="清空后 AI 将忘记已学到的所有信息"
                   onConfirm={() => {
-                    void clearProfileMutation.mutateAsync().then(() => {
+                    void clearProfileMutation.mutateAsync({}).then(() => {
                       setProfileDraft(null);
                       Toast.success('已清空');
                     });

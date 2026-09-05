@@ -1,4 +1,4 @@
-import type { EmailTemplate, InAppTemplate, SmsTemplate } from '../messaging/types';
+import type { EmailTemplate, InAppTemplate, SmsTemplate } from '../messaging/contracts';
 import { SEED_DATE } from './_base';
 
 // ─── 邮件模板 ─────────────────────────────────────────────────────────────────

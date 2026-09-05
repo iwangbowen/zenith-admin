@@ -1,11 +1,11 @@
-import { http } from 'msw';
-import { ok, notFound, pageParams } from '@/mocks/utils/handlers';
+import { announcementContract } from '@zenith/shared/messaging';
+import type { AnnouncementAttachment, AnnouncementDetail, AnnouncementReadStatsUser } from '@zenith/shared/messaging';
+import { mock } from '@/mocks/utils/contract';
+import { notFound } from '@/mocks/utils/handlers';
+import { removeWhere } from '@/mocks/utils/array';
 import { mockAnnouncements, getNextAnnouncementId } from '@/mocks/data/announcements';
 import { mockManagedFiles } from '@/mocks/handlers/files';
 import { mockDateTime } from '@/mocks/utils/date';
-import type { Announcement, AnnouncementAttachment } from '@zenith/shared/messaging';
-
-type AnnouncementPayload = Partial<Announcement> & { fileIds?: string[] };
 
 function buildAnnouncementAttachments(fileIds: string[] = []): AnnouncementAttachment[] {
   return fileIds
@@ -30,92 +30,85 @@ function buildAnnouncementAttachments(fileIds: string[] = []): AnnouncementAttac
     .filter((item): item is AnnouncementAttachment => item !== null);
 }
 
-export const announcementsHandlers = [
-  // 公告列表（分页）
-  http.get('/api/announcements', ({ request }) => {
-    const url = new URL(request.url);
-    const { page, pageSize } = pageParams(url);
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const publishStatus = url.searchParams.get('publishStatus') ?? '';
-    const type = url.searchParams.get('type') ?? '';
+/** Demo 模式不持久化已读状态：收件视角的已发布公告始终视为未读 */
+function publishedForInbox() {
+  return mockAnnouncements
+    .filter((n) => n.publishStatus === 'published')
+    .sort((a, b) => (b.publishTime ?? '').localeCompare(a.publishTime ?? ''))
+    .map((n) => ({ ...n, isRead: false }));
+}
 
-    let list = mockAnnouncements.filter((n) => {
-      if (keyword && !n.title.includes(keyword)) return false;
-      if (publishStatus && n.publishStatus !== publishStatus) return false;
-      if (type && n.type !== type) return false;
+/** 模拟已读 / 未读用户列表 */
+const MOCK_READ_USERS: AnnouncementReadStatsUser[] = [
+  { id: 1, username: 'admin', nickname: '管理员', avatar: null, readAt: '2024-01-01 09:00:00' },
+  { id: 2, username: 'zhangsan', nickname: '张三', avatar: null, readAt: '2024-01-01 10:30:00' },
+  { id: 3, username: 'lisi', nickname: '李四', avatar: null, readAt: '2024-01-02 08:15:00' },
+  { id: 4, username: 'wangwu', nickname: '王五', avatar: null, readAt: '2024-01-02 14:20:00' },
+  { id: 5, username: 'zhaoliu', nickname: '赵六', avatar: null, readAt: '2024-01-03 11:00:00' },
+  { id: 6, username: 'sunqi', nickname: '孙七', avatar: null, readAt: '2024-01-03 16:45:00' },
+  { id: 7, username: 'zhouba', nickname: '周八', avatar: null, readAt: '2024-01-04 09:30:00' },
+  { id: 8, username: 'wujiu', nickname: '吴九', avatar: null, readAt: '2024-01-04 13:10:00' },
+];
+const MOCK_UNREAD_USERS: AnnouncementReadStatsUser[] = [
+  { id: 9, username: 'zhengshi', nickname: '郑十', avatar: null },
+  { id: 10, username: 'qianyi', nickname: '镰一', avatar: null },
+];
+
+export const announcementsHandlers = [
+  // 公告列表（管理，分页）
+  mock(announcementContract.list, ({ query, ok, paginate }) => {
+    const list = mockAnnouncements.filter((n) => {
+      if (query.title && !n.title.includes(query.title)) return false;
+      if (query.publishStatus && n.publishStatus !== query.publishStatus) return false;
+      if (query.type && n.type !== query.type) return false;
       return true;
     });
-    const total = list.length;
-    list = list.slice((page - 1) * pageSize, page * pageSize);
-    return ok({ list, total, page, pageSize });
+    return ok(paginate(list));
   }),
 
-  // 已发布公告列表（前台展示，无需鉴权）
-  http.get('/api/announcements/published', () => {
-    const data = mockAnnouncements
-      .filter((n) => n.publishStatus === 'published')
-      .sort((a, b) => (b.publishTime ?? '').localeCompare(a.publishTime ?? ''))
-      .slice(0, 20)
-      .map((n) => ({ ...n, isRead: false }));
-    return ok(data);
+  // 已发布公告（顶栏铃铛 / 工作台）
+  mock(announcementContract.published, ({ ok }) => ok(publishedForInbox().slice(0, 20))),
+
+  // 公告收件箱（分页）
+  mock(announcementContract.inbox, ({ query, ok, paginate }) => {
+    let list = publishedForInbox();
+    if (query.isRead === 'true') list = list.filter((n) => n.isRead);
+    else if (query.isRead === 'false') list = list.filter((n) => !n.isRead);
+    return ok(paginate(list));
   }),
 
-  // 公告收件箱（分页，含已读状态 — Demo 模式已读状态不持久化，始终 false）
-  http.get('/api/announcements/inbox', ({ request }) => {
-    const url = new URL(request.url);
-    const { page, pageSize } = pageParams(url);
-    const isReadFilter = url.searchParams.get('isRead');
-
-    let list = mockAnnouncements
-      .filter((n) => n.publishStatus === 'published')
-      .sort((a, b) => (b.publishTime ?? '').localeCompare(a.publishTime ?? ''))
-      .map((n) => ({ ...n, isRead: false }));
-
-    if (isReadFilter === 'true') list = list.filter((n) => n.isRead);
-    else if (isReadFilter === 'false') list = list.filter((n) => !n.isRead);
-
-    const total = list.length;
-    const paged = list.slice((page - 1) * pageSize, page * pageSize);
-    return ok({ list: paged, total, page, pageSize });
-  }),
-
-  // 未读公告数（Demo 模式：返回已发布公告总数，不持久化已读状态）
-  http.get('/api/announcements/unread-count', () => {
+  // 未读公告数（Demo 模式：返回已发布公告总数）
+  mock(announcementContract.unreadCount, ({ ok }) => {
     const count = mockAnnouncements.filter((n) => n.publishStatus === 'published').length;
     return ok({ count });
   }),
 
-  // 全部标记为已读（Demo 模式不持久化，直接返回成功）
-  http.post('/api/announcements/read-all', () => {
-    return ok(null);
-  }),
+  mock(announcementContract.markAllRead, ({ ok }) => ok(null)),
 
-  // 获取单个公告
-  http.get('/api/announcements/:id', ({ params }) => {
-    const notice = mockAnnouncements.find((n) => n.id === Number(params.id));
+  mock(announcementContract.detail, ({ params, ok }) => {
+    const notice = mockAnnouncements.find((n) => n.id === params.id);
     if (!notice) return notFound('公告不存在');
     return ok(notice);
   }),
 
-  // 新增公告
-  http.post('/api/announcements', async ({ request }) => {
-    const body = await request.json() as AnnouncementPayload;
+  mock(announcementContract.create, ({ body, ok }) => {
     const isScheduled = body.publishStatus === 'scheduled' && body.publishTime;
     let publishTime: string | null = null;
     if (isScheduled) publishTime = body.publishTime ?? null;
     else if (body.publishStatus === 'published') publishTime = mockDateTime();
-    const newNotice: Announcement = {
+    const newNotice: AnnouncementDetail = {
       id: getNextAnnouncementId(),
-      title: body.title ?? '',
-      content: body.content ?? '',
-      type: body.type ?? 'notice',
-      publishStatus: body.publishStatus ?? 'draft',
-      priority: body.priority ?? 'low',
+      title: body.title,
+      content: body.content,
+      type: body.type,
+      publishStatus: body.publishStatus,
+      priority: body.priority,
       publishTime,
       createById: 1,
       createByName: '管理员',
-      targetType: body.targetType ?? 'all',
-      recipients: body.recipients ?? [],
+      targetType: body.targetType,
+      tenantId: null,
+      recipients: body.recipients.map((r) => ({ ...r, recipientLabel: '' })),
       attachments: buildAnnouncementAttachments(body.fileIds),
       createdAt: mockDateTime(),
       updatedAt: mockDateTime(),
@@ -124,83 +117,47 @@ export const announcementsHandlers = [
     return ok(newNotice, '新增成功');
   }),
 
-  // 更新公告
-  http.put('/api/announcements/:id', async ({ params, request }) => {
-    const notice = mockAnnouncements.find((n) => n.id === Number(params.id));
+  mock(announcementContract.update, ({ params, body, ok }) => {
+    const notice = mockAnnouncements.find((n) => n.id === params.id);
     if (!notice) return notFound('公告不存在');
-    const body = await request.json() as AnnouncementPayload;
-    const { fileIds, ...announcementPatch } = body;
+    const { fileIds, recipients, ...announcementPatch } = body;
     Object.assign(notice, announcementPatch, { updatedAt: mockDateTime() });
+    if (recipients !== undefined) {
+      notice.recipients = recipients.map((r) => ({ ...r, recipientLabel: '' }));
+    }
     if (body.publishStatus === 'published' && !body.publishTime && !notice.publishTime) {
       notice.publishTime = mockDateTime();
     }
-    if (Object.hasOwn(body, 'fileIds')) {
+    if (fileIds !== undefined) {
       notice.attachments = buildAnnouncementAttachments(fileIds);
     }
     return ok(notice, '更新成功');
   }),
 
-  // 发布公告
-
-  // 撤回公告
-
-  // 批量删除公告
-  http.delete('/api/announcements/batch', async ({ request }) => {
-    const body = await request.json() as { ids: number[] };
-    const ids = body?.ids ?? [];
-    ids.forEach((id) => {
-      const index = mockAnnouncements.findIndex((n) => n.id === id);
-      if (index !== -1) mockAnnouncements.splice(index, 1);
-    });
-    return ok(null, `已删除 ${ids.length} 条公告`);
+  mock(announcementContract.removeBatch, ({ body, ok }) => {
+    const selected = new Set(body.ids);
+    const deleted = removeWhere(mockAnnouncements, (n) => selected.has(n.id));
+    return ok(null, `已删除 ${deleted} 条公告`);
   }),
 
-  // 删除公告
-  http.delete('/api/announcements/:id', ({ params }) => {
-    const index = mockAnnouncements.findIndex((n) => n.id === Number(params.id));
+  mock(announcementContract.remove, ({ params, ok }) => {
+    const index = mockAnnouncements.findIndex((n) => n.id === params.id);
     if (index === -1) return notFound('公告不存在');
     mockAnnouncements.splice(index, 1);
     return ok(null, '删除成功');
   }),
 
   // 已读统计详情（管理视角）
-  http.get('/api/announcements/:id/read-stats', ({ params, request }) => {
-    const url = new URL(request.url);
-    const { page, pageSize } = pageParams(url);
-    const tab = url.searchParams.get('tab') === 'unread' ? 'unread' : 'read';
-    const notice = mockAnnouncements.find((n) => n.id === Number(params.id));
+  mock(announcementContract.readStats, ({ params, query, ok, paginate }) => {
+    const tab = query.tab === 'unread' ? 'unread' : 'read';
+    const notice = mockAnnouncements.find((n) => n.id === params.id);
     if (!notice) return notFound('公告不存在');
 
-    // 模拟已读和未读用户列表
-    const mockReadUsers = [
-      { id: 1, username: 'admin', nickname: '管理员', avatar: null, readAt: '2024-01-01 09:00:00' },
-      { id: 2, username: 'zhangsan', nickname: '张三', avatar: null, readAt: '2024-01-01 10:30:00' },
-      { id: 3, username: 'lisi', nickname: '李四', avatar: null, readAt: '2024-01-02 08:15:00' },
-      { id: 4, username: 'wangwu', nickname: '王五', avatar: null, readAt: '2024-01-02 14:20:00' },
-      { id: 5, username: 'zhaoliu', nickname: '赵六', avatar: null, readAt: '2024-01-03 11:00:00' },
-      { id: 6, username: 'sunqi', nickname: '孙七', avatar: null, readAt: '2024-01-03 16:45:00' },
-      { id: 7, username: 'zhouba', nickname: '周八', avatar: null, readAt: '2024-01-04 09:30:00' },
-      { id: 8, username: 'wujiu', nickname: '吴九', avatar: null, readAt: '2024-01-04 13:10:00' },
-    ];
-    const mockUnreadUsers = [
-      { id: 9, username: 'zhengshi', nickname: '郑十', avatar: null },
-      { id: 10, username: 'qianyi', nickname: '镰一', avatar: null },
-    ];
-
     const readCount = notice.readCount ?? 0;
-    const totalCount = readCount + mockUnreadUsers.length;
-
-    const list = tab === 'read'
-      ? mockReadUsers.slice(0, readCount)
-      : mockUnreadUsers;
-    const total = list.length;
-    const paged = list.slice((page - 1) * pageSize, page * pageSize);
-
-    return ok({ readCount, totalCount, list: paged, total, page, pageSize });
+    const totalCount = readCount + MOCK_UNREAD_USERS.length;
+    const users = tab === 'read' ? MOCK_READ_USERS.slice(0, readCount) : MOCK_UNREAD_USERS;
+    return ok({ readCount, totalCount, ...paginate(users) });
   }),
 
-  // 标记公告已读
-  http.post('/api/announcements/:id/read', () => {
-    return ok(null);
-  }),
+  mock(announcementContract.markRead, ({ ok }) => ok(null)),
 ];

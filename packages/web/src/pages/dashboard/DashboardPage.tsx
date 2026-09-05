@@ -116,7 +116,7 @@ export default function DashboardPage() {
   ];
 
   function markAsRead(id: number) {
-    markReadMutation.mutate(id);
+    markReadMutation.mutate({ params: { id } });
   }
 
   async function openNotice(n: AnnouncementWithRead) {

@@ -1,8 +1,8 @@
-import { http } from 'msw';
-import { ok, badRequest, notFound, pageParams } from '@/mocks/utils/handlers';
+import { mpAccountContract, type MpAccount } from '@zenith/shared/mp';
+import { mock } from '@/mocks/utils/contract';
+import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockMpAccounts, getNextMpAccountId } from '@/mocks/data/mp-accounts';
 import { mockDateTime } from '@/mocks/utils/date';
-import type { MpAccount } from '@zenith/shared/mp';
 
 /** 列表脱敏：appSecret 显示掩码 */
 function maskSafe(a: MpAccount): MpAccount {
@@ -15,50 +15,42 @@ function maskForEdit(a: MpAccount): MpAccount {
 }
 
 export const mpAccountsHandlers = [
-  http.get('/api/mp/accounts', ({ request }) => {
-    const url = new URL(request.url);
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const type = url.searchParams.get('type') ?? '';
-    const status = url.searchParams.get('status') ?? '';
-    const { page, pageSize } = pageParams(url, 20);
+  mock(mpAccountContract.list, ({ query, ok, paginate }) => {
     const filtered = mockMpAccounts.filter((a) => {
-      if (keyword && !a.name.includes(keyword) && !(a.account ?? '').includes(keyword) && !a.appId.includes(keyword)) return false;
-      if (type && a.type !== type) return false;
-      if (status && a.status !== status) return false;
+      if (query.keyword && !a.name.includes(query.keyword) && !(a.account ?? '').includes(query.keyword) && !a.appId.includes(query.keyword)) return false;
+      if (query.type && a.type !== query.type) return false;
+      if (query.status && a.status !== query.status) return false;
       return true;
     });
-    const total = filtered.length;
-    const list = filtered.slice((page - 1) * pageSize, page * pageSize).map(maskSafe);
-    return ok({ list, total, page, pageSize });
+    return ok(paginate(filtered.map(maskSafe)));
   }),
 
-  http.get('/api/mp/accounts/:id', ({ params }) => {
-    const a = mockMpAccounts.find((x) => x.id === Number(params.id));
+  mock(mpAccountContract.detail, ({ params, ok }) => {
+    const a = mockMpAccounts.find((x) => x.id === params.id);
     if (!a) return notFound('公众号不存在', { status: 404 });
     return ok(maskForEdit(a));
   }),
 
-  http.post('/api/mp/accounts', async ({ request }) => {
-    const body = await request.json() as Partial<MpAccount>;
+  mock(mpAccountContract.create, ({ body, ok }) => {
     if (mockMpAccounts.some((a) => a.appId === body.appId)) {
       return badRequest('该 AppID 已存在', { status: 400 });
     }
     const now = mockDateTime();
     const item: MpAccount = {
       id: getNextMpAccountId(),
-      name: body.name ?? '',
+      name: body.name,
       account: body.account ?? null,
-      appId: body.appId ?? '',
-      appSecret: body.appSecret ?? '',
-      token: body.token ?? '',
+      appId: body.appId,
+      appSecret: body.appSecret,
+      token: body.token,
       encodingAesKey: body.encodingAesKey ?? null,
-      encryptMode: body.encryptMode ?? 'plaintext',
-      type: body.type ?? 'service',
+      encryptMode: body.encryptMode,
+      type: body.type,
       qrCodeUrl: body.qrCodeUrl ?? null,
-      isDefault: body.isDefault ?? false,
-      autoCreateMember: body.autoCreateMember ?? false,
-      contentCheckEnabled: body.contentCheckEnabled ?? false,
-      status: body.status ?? 'enabled',
+      isDefault: body.isDefault,
+      autoCreateMember: body.autoCreateMember,
+      contentCheckEnabled: body.contentCheckEnabled,
+      status: body.status,
       remark: body.remark ?? null,
       createdAt: now,
       updatedAt: now,
@@ -68,10 +60,9 @@ export const mpAccountsHandlers = [
     return ok(maskSafe(item), '创建成功');
   }),
 
-  http.put('/api/mp/accounts/:id', async ({ params, request }) => {
-    const a = mockMpAccounts.find((x) => x.id === Number(params.id));
+  mock(mpAccountContract.update, ({ params, body, ok }) => {
+    const a = mockMpAccounts.find((x) => x.id === params.id);
     if (!a) return notFound('公众号不存在', { status: 404 });
-    const body = await request.json() as Partial<MpAccount>;
     if (body.appId && body.appId !== a.appId && mockMpAccounts.some((x) => x.appId === body.appId)) {
       return badRequest('该 AppID 已存在', { status: 400 });
     }
@@ -82,22 +73,22 @@ export const mpAccountsHandlers = [
     return ok(maskSafe(a), '更新成功');
   }),
 
-  http.post('/api/mp/accounts/:id/default', ({ params }) => {
-    const a = mockMpAccounts.find((x) => x.id === Number(params.id));
+  mock(mpAccountContract.setDefault, ({ params, ok }) => {
+    const a = mockMpAccounts.find((x) => x.id === params.id);
     if (!a) return notFound('公众号不存在', { status: 404 });
     mockMpAccounts.forEach((x) => { x.isDefault = x.id === a.id; });
     a.updatedAt = mockDateTime();
     return ok(maskSafe(a), '操作成功');
   }),
 
-  http.post('/api/mp/accounts/:id/test', ({ params }) => {
-    const a = mockMpAccounts.find((x) => x.id === Number(params.id));
+  mock(mpAccountContract.testConnection, ({ params, ok }) => {
+    const a = mockMpAccounts.find((x) => x.id === params.id);
     if (!a) return notFound('公众号不存在', { status: 404 });
     return ok({ success: true, message: '连接成功（Demo 模式，未真实调用微信接口）' }, '连接成功');
   }),
 
-  http.delete('/api/mp/accounts/:id', ({ params }) => {
-    const idx = mockMpAccounts.findIndex((x) => x.id === Number(params.id));
+  mock(mpAccountContract.remove, ({ params, ok }) => {
+    const idx = mockMpAccounts.findIndex((x) => x.id === params.id);
     if (idx === -1) return notFound('公众号不存在', { status: 404 });
     mockMpAccounts.splice(idx, 1);
     return ok(null, '删除成功');

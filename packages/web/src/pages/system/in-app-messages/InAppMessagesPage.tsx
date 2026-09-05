@@ -19,17 +19,28 @@ import {
   useMarkAllInAppMessagesRead,
   useMarkInAppMessageRead,
   useSendInAppMessage,
+  type SendInAppValues,
 } from '@/hooks/queries/in-app-messages';
 import { IN_APP_MESSAGE_TYPE_OPTIONS_WITH_COLOR as TYPE_OPTIONS } from '../in-app-message-constants';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
-import { abortSubmit } from '@/lib/abort-submit';
+import { parseTemplateVariables } from '../send-log-constants';
 
 const READ_OPTIONS = [
   { label: '未读', value: 'false' },
   { label: '已读', value: 'true' },
 ];
+
+/** 发送站内信表单值：变量以 JSON 文本输入 */
+interface SendInAppFormValues {
+  templateId?: number;
+  userIds: number[];
+  title?: string;
+  content?: string;
+  type?: InAppMessageType;
+  variables?: string;
+}
 
 export default function InAppMessagesPage() {
   const { hasPermission: can } = usePermission();
@@ -47,44 +58,21 @@ export default function InAppMessagesPage() {
     pageSize,
     keyword: submittedParams.keyword || undefined,
     type: submittedParams.filterType,
-    isRead: submittedParams.filterRead,
+    isRead: submittedParams.filterRead === undefined ? undefined : submittedParams.filterRead === 'true',
   });
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
   const sendMutation = useSendInAppMessage();
-  const sendModal = useEditModal<{ id: number }, Record<string, unknown>>({
+  const sendModal = useEditModal<{ id: number }, SendInAppFormValues, SendInAppValues>({
     save: {
       isPending: sendMutation.isPending,
       mutateAsync: async ({ values }) => {
-        await sendMutation.mutateAsync(values);
+        await sendMutation.mutateAsync({ body: values });
         return { id: 0 };
       },
     },
     defaults: { type: 'info' },
-    beforeSave: (values) => {
-      const payload = { ...values };
-      if (typeof payload.variables === 'string') {
-        const raw = payload.variables.trim();
-        if (raw) {
-          let parsed: unknown;
-          try {
-            parsed = JSON.parse(raw);
-          } catch {
-            Toast.error('变量 JSON 格式错误');
-            abortSubmit();
-          }
-          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-            payload.variables = parsed as Record<string, string>;
-          } else {
-            Toast.error('变量必须是 JSON 对象');
-            abortSubmit();
-          }
-        } else {
-          delete payload.variables;
-        }
-      }
-      return payload;
-    },
+    beforeSave: (values) => ({ ...values, variables: parseTemplateVariables(values.variables) }),
     successMessage: () => '发送成功',
     onSaved: () => globalThis.dispatchEvent(new CustomEvent('in-app-messages:refresh')),
     labelWidth: 120,
@@ -98,7 +86,7 @@ export default function InAppMessagesPage() {
   const deleteMutation = useDeleteInAppMessage();
 
   const handleMarkRead = async (id: number) => {
-    await markReadMutation.mutateAsync(id);
+    await markReadMutation.mutateAsync({ params: { id } });
     Toast.success('已标记为已读');
     globalThis.dispatchEvent(new CustomEvent('in-app-messages:refresh'));
   };
@@ -107,7 +95,7 @@ export default function InAppMessagesPage() {
     Modal.confirm({
       title: '确定要将所有未读消息标记为已读吗？',
       onOk: async () => {
-        await markAllReadMutation.mutateAsync();
+        await markAllReadMutation.mutateAsync({});
         Toast.success('已全部标记为已读');
         globalThis.dispatchEvent(new CustomEvent('in-app-messages:refresh'));
       },
@@ -118,7 +106,7 @@ export default function InAppMessagesPage() {
     confirmDelete({
       title: '确定要删除该消息吗？',
       onOk: async () => {
-        await deleteMutation.mutateAsync(id);
+        await deleteMutation.mutateAsync({ params: { id } });
         Toast.success('删除成功');
         globalThis.dispatchEvent(new CustomEvent('in-app-messages:refresh'));
       },

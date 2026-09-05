@@ -1,5 +1,6 @@
 import { Col, Form, Row, Spin, Toast, Switch } from '@douyinfe/semi-ui';
-import type { EmailTemplate } from '@zenith/shared/messaging';
+import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
+import type { CreateEmailTemplateInput, EmailTemplate } from '@zenith/shared/messaging';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -36,16 +37,25 @@ export default function EmailTemplatesPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    status: submittedParams.filterStatus || undefined,
+    status: enumValueOf(USER_STATUSES, submittedParams.filterStatus),
   });
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
   const saveMutation = useSaveEmailTemplate();
-  const modal = useEditModal<EmailTemplate>({
+  const modal = useEditModal<EmailTemplate, Partial<CreateEmailTemplateInput>>({
     entityName: '邮件模板',
     save: saveMutation,
     useDetail: useEmailTemplateDetail,
     defaults: { status: 'enabled' },
+    toValues: (r) => ({
+      name: r.name,
+      code: r.code,
+      subject: r.subject,
+      content: r.content,
+      variables: r.variables ?? undefined,
+      status: r.status,
+      remark: r.remark ?? undefined,
+    }),
     labelWidth: 120,
   });
 

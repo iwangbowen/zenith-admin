@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import { aiAuditContract } from '@zenith/shared/ai';
 import type { AiFeedbackItem } from '@zenith/shared/ai';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
+import type { QueryOf } from '@zenith/shared/core';
+import { enumValueOf } from '@zenith/shared/core';
 import { formatDateForApi } from '@/utils/date';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -12,43 +14,26 @@ import { usePagination } from '@/hooks/usePagination';
 import AppModal from '@/components/AppModal';
 import AiMessagesViewer from '../components/AiMessagesViewer';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
-import type { AiFeedbackContext } from '@/hooks/queries/ai-feedback';
+import { contractKey, useApiQuery } from '@/lib/contract-query';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
 
 const { Text } = Typography;
 
-interface AuditParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  role?: string;
-  startDate?: string;
-  endDate?: string;
-}
+type AuditParams = NonNullable<QueryOf<typeof aiAuditContract.messages>>;
+
+const AUDIT_ROLES = ['user', 'assistant'] as const;
 
 const auditKeys = {
-  lists: ['ai-audit', 'list'] as const,
-  list: (params: AuditParams) => ['ai-audit', 'list', params] as const,
-  context: (msgId: number | null) => ['ai-audit', 'context', msgId] as const,
+  lists: contractKey(aiAuditContract.messages),
 };
 
 function useAuditList(params: AuditParams) {
-  return useQuery({
-    queryKey: auditKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<AiFeedbackItem>>(`/api/ai/audit/messages${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+  return useApiQuery(aiAuditContract.messages, { query: params }, { placeholderData: keepPreviousData });
 }
 
 function useAuditContext(msgId: number | null) {
-  return useQuery({
-    queryKey: auditKeys.context(msgId),
-    queryFn: () => request.get<AiFeedbackContext>(`/api/ai/audit/messages/${msgId}/context`).then(unwrap),
-    enabled: msgId !== null,
-  });
+  return useApiQuery(aiAuditContract.messageContext, { params: { msgId: msgId ?? 0 } }, { enabled: msgId !== null });
 }
 
 const ROLE_OPTIONS = [
@@ -69,7 +54,7 @@ export default function AiAuditPage() {
     page,
     pageSize,
     keyword: submitted.keyword || undefined,
-    role: submitted.role || undefined,
+    role: enumValueOf(AUDIT_ROLES, submitted.role),
     startDate: submitted.startDate || undefined,
     endDate: submitted.endDate || undefined,
   });

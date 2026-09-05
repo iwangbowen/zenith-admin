@@ -14,7 +14,7 @@ import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import {
   mpDraftKeys,
-  useDeleteMpDraft,
+  useDeleteMpDrafts,
   useMpDraftDetail,
   useMpDraftList,
   usePushMpDraft,
@@ -35,7 +35,7 @@ export default function MpDraftsPage() {
   const [draftKeyword, setDraftKeyword] = useState('');
   const [submittedKeyword, setSubmittedKeyword] = useState('');
 
-  const listQuery = useMpDraftList(currentId, { page, pageSize, keyword: submittedKeyword || undefined });
+  const listQuery = useMpDraftList({ accountId: currentId ?? 0, page, pageSize, keyword: submittedKeyword || undefined }, !!currentId);
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
 
@@ -46,8 +46,8 @@ export default function MpDraftsPage() {
 
   const saveMutation = useSaveMpDraft();
   const pushMutation = usePushMpDraft();
-  const deleteMutation = useDeleteMpDraft();
-  const pushingId = pushMutation.isPending ? (pushMutation.variables ?? null) : null;
+  const deleteMutation = useDeleteMpDrafts();
+  const pushingId = pushMutation.isPending ? (pushMutation.variables?.params.id ?? null) : null;
 
   useEffect(() => {
     if (modalVisible && editingRecord) setArticles(detailQuery.data?.articles.length ? detailQuery.data.articles : [blankArticle()]);
@@ -56,13 +56,13 @@ export default function MpDraftsPage() {
   const handleSearch = () => {
     setPage(1);
     setSubmittedKeyword(draftKeyword);
-    void queryClient.invalidateQueries({ queryKey: mpDraftKeys.lists(currentId) });
+    void queryClient.invalidateQueries({ queryKey: mpDraftKeys.lists });
   };
   const handleReset = () => {
     setDraftKeyword('');
     setSubmittedKeyword('');
     setPage(1);
-    void queryClient.invalidateQueries({ queryKey: mpDraftKeys.lists(currentId) });
+    void queryClient.invalidateQueries({ queryKey: mpDraftKeys.lists });
   };
 
   const openCreate = () => { setEditingRecord(null); setArticles([blankArticle()]); setModalVisible(true); };
@@ -78,13 +78,13 @@ export default function MpDraftsPage() {
       if (!a.title.trim()) { Toast.error('每篇图文都需要标题'); abortSubmit('validation'); }
       if (!a.content.trim()) { Toast.error('每篇图文都需要正文'); abortSubmit('validation'); }
     }
-    await saveMutation.mutateAsync({ id: editingRecord?.id, accountId: currentId, articles });
+    await saveMutation.mutateAsync({ id: editingRecord?.id, values: { accountId: currentId, articles } });
     Toast.success(editingRecord ? '更新成功' : '创建成功');
     setModalVisible(false);
   };
 
   const handlePush = async (record: MpDraft) => {
-    await pushMutation.mutateAsync(record.id);
+    await pushMutation.mutateAsync({ params: { id: record.id } });
     Toast.success('已推送到微信草稿箱');
   };
 
@@ -92,7 +92,7 @@ export default function MpDraftsPage() {
     confirmDelete({
       title: `确定删除图文「${record.title}」吗？`,
       onOk: async () => {
-        await deleteMutation.mutateAsync(record.id);
+        await deleteMutation.mutateAsync([record.id]);
         Toast.success('删除成功');
       },
     });

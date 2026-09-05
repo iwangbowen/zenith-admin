@@ -108,7 +108,7 @@ export default function ChannelsPage() {
       title: `确认删除频道「${ch.name}」？`,
       content: '该频道下的所有消息与订阅将一并删除',
       onOk: async () => {
-        await deleteMutation.mutateAsync(ch.id);
+        await deleteMutation.mutateAsync([ch.id]);
         Toast.success('已删除');
       },
     });

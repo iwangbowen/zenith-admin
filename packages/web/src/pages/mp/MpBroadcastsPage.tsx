@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Form, Modal, Select, Spin, Tag, Toast, Banner, Typography, Tooltip, Input, Descriptions } from '@douyinfe/semi-ui';
 import { MP_BROADCAST_TYPE_LABELS, MP_BROADCAST_TYPE_OPTIONS } from '@zenith/shared/mp';
-import type { MpBroadcast, MpBroadcastType, MpBroadcastTarget, MpBroadcastStatus } from '@zenith/shared/mp';
+import type { CreateMpBroadcastInput, MpBroadcast, MpBroadcastType, MpBroadcastTarget, MpBroadcastStatus } from '@zenith/shared/mp';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { formatDateTimeForApi } from '@/utils/date';
@@ -16,7 +16,7 @@ import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import {
   mpBroadcastKeys,
-  useDeleteMpBroadcast,
+  useDeleteMpBroadcasts,
   useMpBroadcastAux,
   useMpBroadcastList,
   useMpBroadcastResult,
@@ -34,6 +34,9 @@ const STATUS_OPTIONS = [
   { label: '已发送', value: 'sent' },
   { label: '失败', value: 'failed' },
 ];
+/** 表单里定时发送用 DatePicker 的 Date，提交时再格式化为接口字符串 */
+interface BroadcastFormValues { content?: string; mediaId?: string; tagId?: number; scheduledAt?: Date }
+
 const STATUS_META: Record<MpBroadcastStatus, { label: string; color: 'grey' | 'green' | 'red' }> = {
   draft: { label: '草稿', color: 'grey' },
   sent: { label: '已发送', color: 'green' },
@@ -48,7 +51,7 @@ export default function MpBroadcastsPage() {
   const [draftStatus, setDraftStatus] = useState<MpBroadcastStatus | undefined>(undefined);
   const [submittedStatus, setSubmittedStatus] = useState<MpBroadcastStatus | undefined>(undefined);
 
-  const listQuery = useMpBroadcastList(currentId, { page, pageSize, status: submittedStatus });
+  const listQuery = useMpBroadcastList({ accountId: currentId ?? 0, page, pageSize, status: submittedStatus }, !!currentId);
   const auxQuery = useMpBroadcastAux(currentId);
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
@@ -68,22 +71,22 @@ export default function MpBroadcastsPage() {
   const saveMutation = useSaveMpBroadcast();
   const sendMutation = useSendMpBroadcast();
   const previewMutation = usePreviewMpBroadcast();
-  const deleteMutation = useDeleteMpBroadcast();
-  const sendingId = sendMutation.isPending ? (sendMutation.variables ?? null) : null;
+  const deleteMutation = useDeleteMpBroadcasts();
+  const sendingId = sendMutation.isPending ? (sendMutation.variables?.params.id ?? null) : null;
 
   const handleSearch = () => {
     setPage(1);
     setSubmittedStatus(draftStatus);
-    void queryClient.invalidateQueries({ queryKey: mpBroadcastKeys.lists(currentId) });
+    void queryClient.invalidateQueries({ queryKey: mpBroadcastKeys.lists });
   };
   const handleReset = () => {
     setDraftStatus(undefined);
     setSubmittedStatus(undefined);
     setPage(1);
-    void queryClient.invalidateQueries({ queryKey: mpBroadcastKeys.lists(currentId) });
+    void queryClient.invalidateQueries({ queryKey: mpBroadcastKeys.lists });
   };
 
-  const modal = useEditModal<MpBroadcast, Record<string, unknown>>({
+  const modal = useEditModal<MpBroadcast, BroadcastFormValues, Partial<CreateMpBroadcastInput>>({
     save: saveMutation,
     defaults: { content: '', mediaId: '', tagId: undefined, scheduledAt: undefined },
     toValues: (record) => ({
@@ -94,11 +97,11 @@ export default function MpBroadcastsPage() {
     }),
     beforeSave: (values, { isEdit }) => {
       if (!currentId) abortSubmit('validation');
-      const payload: Record<string, unknown> = { msgType: modalType, target: modalTarget };
+      const payload: Partial<CreateMpBroadcastInput> = { msgType: modalType, target: modalTarget };
       if (modalType === 'text') payload.content = values.content;
       else payload.mediaId = values.mediaId;
       if (modalTarget === 'tag') payload.tagId = values.tagId;
-      payload.scheduledAt = values.scheduledAt ? formatDateTimeForApi(values.scheduledAt as Date) : null;
+      payload.scheduledAt = values.scheduledAt ? formatDateTimeForApi(values.scheduledAt) : null;
       return isEdit ? payload : { ...payload, accountId: currentId };
     },
     successMessage: ({ isEdit }) => (isEdit ? '更新成功' : '已创建群发草稿'),
@@ -113,7 +116,7 @@ export default function MpBroadcastsPage() {
       content: '发送后将立即推送给目标粉丝，且不可撤回。',
       okButtonProps: { type: 'primary', theme: 'solid' },
       onOk: async () => {
-        await sendMutation.mutateAsync(record.id);
+        await sendMutation.mutateAsync({ params: { id: record.id } });
         Toast.success('发送成功');
       },
     });
@@ -123,7 +126,7 @@ export default function MpBroadcastsPage() {
     confirmDelete({
       title: '确定要删除该群发记录吗？',
       onOk: async () => {
-        await deleteMutation.mutateAsync(record.id);
+        await deleteMutation.mutateAsync([record.id]);
         Toast.success('删除成功');
       },
     });
@@ -131,7 +134,7 @@ export default function MpBroadcastsPage() {
 
   const handlePreview = async () => {
     if (!previewState.id || !previewOpenid.trim()) { Toast.warning('请输入预览 openid'); return; }
-    await previewMutation.mutateAsync({ id: previewState.id, openid: previewOpenid.trim() });
+    await previewMutation.mutateAsync({ params: { id: previewState.id }, body: { openid: previewOpenid.trim() } });
     Toast.success('预览已发送');
     setPreviewState({ visible: false, id: null });
   };

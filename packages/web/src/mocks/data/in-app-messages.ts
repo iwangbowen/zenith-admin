@@ -1,11 +1,13 @@
 import type { InAppMessage } from '@zenith/shared/messaging';
+import { nextIdFrom } from '@/mocks/utils/handlers';
 
 export const mockInAppMessages: InAppMessage[] = [
   {
     id: 1,
     templateId: 1,
+    templateName: '系统升级通知',
     userId: 1,
-    userName: '管理员',
+    username: '管理员',
     title: '系统将于 2025-03-10 02:00 升级',
     content: '系统将于 2025-03-10 02:00 进行升级，预计耗时 30 分钟。',
     type: 'info',
@@ -14,13 +16,15 @@ export const mockInAppMessages: InAppMessage[] = [
     source: 'system',
     senderId: null,
     senderName: '系统',
+    link: null,
     createdAt: '2025-03-08 09:00:00',
   },
   {
     id: 6,
     templateId: null,
+    templateName: null,
     userId: 1,
-    userName: '管理员',
+    username: '管理员',
     title: '待办审批提醒',
     content: '你有一条新的待办：流程「出差申请 - 李四」（节点：直属主管审批），请及时处理',
     type: 'info',
@@ -35,8 +39,9 @@ export const mockInAppMessages: InAppMessage[] = [
   {
     id: 2,
     templateId: 2,
+    templateName: '审批通过',
     userId: 1,
-    userName: '管理员',
+    username: '管理员',
     title: '您的申请已通过',
     content: '您提交的【请假申请】已通过审批。',
     type: 'success',
@@ -45,13 +50,15 @@ export const mockInAppMessages: InAppMessage[] = [
     source: 'system',
     senderId: 1,
     senderName: '管理员',
+    link: null,
     createdAt: '2025-03-05 10:00:00',
   },
   {
     id: 3,
     templateId: null,
+    templateName: null,
     userId: 1,
-    userName: '管理员',
+    username: '管理员',
     title: '欢迎使用 Zenith Admin',
     content: '感谢您选择 Zenith Admin。',
     type: 'info',
@@ -60,11 +67,12 @@ export const mockInAppMessages: InAppMessage[] = [
     source: 'manual',
     senderId: 1,
     senderName: '管理员',
+    link: null,
     createdAt: '2025-03-01 08:00:00',
   },
 ];
 
-let nextId = Math.max(...mockInAppMessages.map((m) => m.id)) + 1;
+let nextId = nextIdFrom(mockInAppMessages);
 export function getNextInAppMessageId() {
   return nextId++;
 }

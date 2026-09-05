@@ -1,11 +1,26 @@
 import * as z from 'zod';
 import { dateTimeStringSchema, optionalLinkUrl, partialForUpdate } from '../core/validation';
 import { MP_CUSTOM_MSG_TYPES } from '../mp/constants';
-import { NOTIFICATION_CHANNELS, NOTIFICATION_DIGEST_MODES, PUSH_PROVIDERS, BROADCAST_AUDIENCE_TYPES, BROADCAST_CHANNELS } from './constants';
+import {
+  ANNOUNCEMENT_PUBLISH_STATUSES,
+  ANNOUNCEMENT_RECIPIENT_TYPES,
+  ANNOUNCEMENT_TARGET_TYPES,
+  BROADCAST_AUDIENCE_TYPES,
+  BROADCAST_CHANNELS,
+  CHANNEL_AUTO_REPLY_KEYWORD_MODES,
+  CHANNEL_AUTO_REPLY_MATCH_TYPES,
+  CHANNEL_PUBLISH_AUDIENCE_MODES,
+  EMAIL_ENCRYPTIONS,
+  IN_APP_MESSAGE_TYPES,
+  NOTIFICATION_CHANNELS,
+  NOTIFICATION_DIGEST_MODES,
+  PUSH_PROVIDERS,
+  SMS_PROVIDERS,
+} from './constants';
 
 // ─── 公告 Schema ─────────────────────────────────────────────────────────────
-export const announcementRecipientSchema = z.object({
-  recipientType: z.enum(['user', 'role', 'dept']),
+export const announcementRecipientInputSchema = z.object({
+  recipientType: z.enum(ANNOUNCEMENT_RECIPIENT_TYPES),
   recipientId: z.number().int().positive(),
 });
 
@@ -13,10 +28,10 @@ export const createAnnouncementSchema = z.object({
   title: z.string().min(1, '标题不能为空').max(128),
   content: z.string().min(1, '内容不能为空').max(4096),
   type: z.string().min(1).max(32).default('notice'),
-  publishStatus: z.enum(['draft', 'published', 'recalled', 'scheduled']).default('draft'),
+  publishStatus: z.enum(ANNOUNCEMENT_PUBLISH_STATUSES).default('draft'),
   priority: z.string().min(1).max(32).default('medium'),
-  targetType: z.enum(['all', 'specific']).default('all'),
-  recipients: z.array(announcementRecipientSchema).default([]),
+  targetType: z.enum(ANNOUNCEMENT_TARGET_TYPES).default('all'),
+  recipients: z.array(announcementRecipientInputSchema).default([]),
   publishTime: dateTimeStringSchema.optional().nullable(),
   fileIds: z.array(z.uuid()).default([]),
 });
@@ -25,10 +40,10 @@ export const updateAnnouncementSchema = z.object({
   title: z.string().min(1, '标题不能为空').max(128).optional(),
   content: z.string().min(1, '内容不能为空').max(4096).optional(),
   type: z.string().min(1).max(32).optional(),
-  publishStatus: z.enum(['draft', 'published', 'recalled', 'scheduled']).optional(),
+  publishStatus: z.enum(ANNOUNCEMENT_PUBLISH_STATUSES).optional(),
   priority: z.string().min(1).max(32).optional(),
-  targetType: z.enum(['all', 'specific']).optional(),
-  recipients: z.array(announcementRecipientSchema).optional(),
+  targetType: z.enum(ANNOUNCEMENT_TARGET_TYPES).optional(),
+  recipients: z.array(announcementRecipientInputSchema).optional(),
   publishTime: dateTimeStringSchema.optional().nullable(),
   fileIds: z.array(z.uuid()).optional(),
 });
@@ -37,30 +52,30 @@ export type CreateAnnouncementInput = z.infer<typeof createAnnouncementSchema>;
 
 export type UpdateAnnouncementInput = z.infer<typeof updateAnnouncementSchema>;
 
-export type AnnouncementRecipientInput = z.infer<typeof announcementRecipientSchema>;
+export type AnnouncementRecipientInput = z.infer<typeof announcementRecipientInputSchema>;
 
-// ─── 邮件配置 Schema ─────────────────────────────────────────────────────────
-export const emailConfigSchema = z.object({
+// ─── 邮件配置 Schema（单例配置整体保存） ──────────────────────────────────────
+export const saveEmailConfigSchema = z.object({
   smtpHost: z.string().min(1, 'SMTP 服务器地址不能为空').max(128).optional(),
   smtpPort: z.number().int().min(1).max(65535).default(465),
   smtpUser: z.string().min(1, 'SMTP 用户名不能为空').max(128).optional(),
   smtpPassword: z.string().max(256).optional(),
   fromName: z.string().max(64).default('Zenith Admin'),
   fromEmail: z.string().max(128).optional(),
-  encryption: z.enum(['none', 'ssl', 'tls']).default('ssl'),
+  encryption: z.enum(EMAIL_ENCRYPTIONS).default('ssl'),
   status: z.enum(['enabled', 'disabled']).default('enabled'),
 });
 
-export type EmailConfigInput = z.infer<typeof emailConfigSchema>;
+export type SaveEmailConfigInput = z.infer<typeof saveEmailConfigSchema>;
+
+/** 发送测试邮件（邮件配置页「测试连接」） */
+export const testEmailConfigSchema = z.object({
+  email: z.string(),
+});
+
+export type TestEmailConfigInput = z.infer<typeof testEmailConfigSchema>;
 
 // ─── 通知模块（邮件 / 短信 / 站内信）─────────────────────────────────────────
-export const SMS_PROVIDERS = ['aliyun', 'tencent'] as const;
-
-export const SEND_STATUSES = ['pending', 'success', 'failed'] as const;
-
-export const SEND_SOURCES = ['manual', 'test', 'system', 'api'] as const;
-
-export const IN_APP_MESSAGE_TYPES = ['info', 'success', 'warning', 'error'] as const;
 
 // ── 邮件模板 ────────────────────────────────────────────────────────────────
 export const createEmailTemplateSchema = z.object({
@@ -190,7 +205,7 @@ export type UpdateChannelInput = z.infer<typeof updateChannelSchema>;
 
 /** 群发受众范围定义（mode=all 时其余字段忽略） */
 export const channelPublishAudienceSchema = z.object({
-  mode: z.enum(['all', 'users', 'departments', 'roles']).default('all'),
+  mode: z.enum(CHANNEL_PUBLISH_AUDIENCE_MODES).default('all'),
   userIds: z.array(z.number().int().positive()).optional(),
   departmentIds: z.array(z.number().int().positive()).optional(),
   roleIds: z.array(z.number().int().positive()).optional(),
@@ -225,9 +240,9 @@ const channelRichReplyExtraSchema = z.object({
 /** 新建频道自动回复规则 */
 export const createChannelAutoReplySchema = z
   .object({
-    matchType: z.enum(['subscribe', 'keyword', 'default']),
+    matchType: z.enum(CHANNEL_AUTO_REPLY_MATCH_TYPES),
     keyword: z.string().max(100).nullable().optional(),
-    keywordMode: z.enum(['exact', 'contains']).default('contains'),
+    keywordMode: z.enum(CHANNEL_AUTO_REPLY_KEYWORD_MODES).default('contains'),
     replyType: z.enum(['text', 'image', 'news']).default('text'),
     replyContent: z.string().max(10000).default(''),
     replyExtra: channelRichReplyExtraSchema.nullable().optional(),
@@ -257,7 +272,7 @@ export type CreateChannelAutoReplyInput = z.infer<typeof createChannelAutoReplyS
 export const updateChannelAutoReplySchema = z
   .object({
     keyword: z.string().max(100).nullable().optional(),
-    keywordMode: z.enum(['exact', 'contains']).optional(),
+    keywordMode: z.enum(CHANNEL_AUTO_REPLY_KEYWORD_MODES).optional(),
     replyType: z.enum(['text', 'image', 'news']).optional(),
     replyContent: z.string().max(10000).optional(),
     replyExtra: channelRichReplyExtraSchema.nullable().optional(),
@@ -412,6 +427,27 @@ export const testPushSendSchema = z.object({
 });
 
 export type TestPushSendInput = z.infer<typeof testPushSendSchema>;
+
+// ── App 推送送达回执（供应商回调，公开）──────────────────────────────────────
+/** 极光单条回执事件：type 兼容字符串与数字编码（received/0=送达，click/opened/1=点击） */
+export const jpushReceiptEventSchema = z.looseObject({
+  msg_id: z.union([z.string(), z.number()]),
+  type: z.union([z.string(), z.number()]).optional(),
+  registration_id: z.string().optional(),
+  /** 事件发生时间（秒级时间戳） */
+  itime: z.number().optional(),
+});
+
+export type JPushReceiptEvent = z.infer<typeof jpushReceiptEventSchema>;
+
+/** 极光回调报文：data 支持单事件或事件数组 */
+export const jpushCallbackSchema = z.object({
+  appKey: z.string().optional(),
+  token: z.string().optional(),
+  data: z.union([jpushReceiptEventSchema, z.array(jpushReceiptEventSchema)]),
+}).meta({ id: 'JPushCallbackBody' });
+
+export type JPushCallbackInput = z.infer<typeof jpushCallbackSchema>;
 
 /** 通知策略页「测试触发」:真实走一遍 notify(),收件人为当前管理员 */
 export const testFireNotificationSchema = z.object({

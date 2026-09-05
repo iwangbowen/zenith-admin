@@ -1,9 +1,26 @@
 import { createLabelOptionsFromMap } from '../core/enum-options';
-import type { InAppMessageType, SendSource, SendStatus, SmsProvider } from './types';
 
 export const BUSINESS_TYPES = ['announcement'] as const;
 
 export type BusinessType = typeof BUSINESS_TYPES[number];
+
+// ─── 公告 ─────────────────────────────────────────────────────────────────────
+export const ANNOUNCEMENT_PUBLISH_STATUSES = ['draft', 'published', 'recalled', 'scheduled'] as const;
+
+export type AnnouncementPublishStatus = (typeof ANNOUNCEMENT_PUBLISH_STATUSES)[number];
+
+export const ANNOUNCEMENT_TARGET_TYPES = ['all', 'specific'] as const;
+
+export type AnnouncementTargetType = (typeof ANNOUNCEMENT_TARGET_TYPES)[number];
+
+export const ANNOUNCEMENT_RECIPIENT_TYPES = ['user', 'role', 'dept'] as const;
+
+export type AnnouncementRecipientType = (typeof ANNOUNCEMENT_RECIPIENT_TYPES)[number];
+
+// ─── 邮件配置 ─────────────────────────────────────────────────────────────────
+export const EMAIL_ENCRYPTIONS = ['none', 'ssl', 'tls'] as const;
+
+export type EmailEncryption = (typeof EMAIL_ENCRYPTIONS)[number];
 
 // ─── 通知/告警渠道 ────────────────────────────────────────────────────
 /**
@@ -45,6 +62,11 @@ export const CHANNEL_AUTO_REPLY_MATCH_TYPES = ['subscribe', 'keyword', 'default'
 export const CHANNEL_AUTO_REPLY_KEYWORD_MODES = ['exact', 'contains'] as const;
 
 export const CHANNEL_CONVERSATION_STATUSES = ['open', 'processing', 'resolved'] as const;
+
+/** 客服会话列表的指派筛选：mine=指派给我 / unassigned=未指派 / all=全部 */
+export const CHANNEL_CONVERSATION_ASSIGNEE_FILTERS = ['mine', 'unassigned', 'all'] as const;
+
+export type ChannelConversationAssigneeFilter = (typeof CHANNEL_CONVERSATION_ASSIGNEE_FILTERS)[number];
 
 export const CHANNEL_MENU_TYPE_LABELS: Record<(typeof CHANNEL_MENU_TYPES)[number], string> = {
   click: '点击关键词',
@@ -95,6 +117,22 @@ export const CHANNEL_CONVERSATION_STATUS_LABELS: Record<(typeof CHANNEL_CONVERSA
 };
 
 // ─── 消息与短信 ────────────────────────────────────────────────────────
+export const SMS_PROVIDERS = ['aliyun', 'tencent'] as const;
+
+export type SmsProvider = (typeof SMS_PROVIDERS)[number];
+
+export const SEND_STATUSES = ['pending', 'success', 'failed'] as const;
+
+export type SendStatus = (typeof SEND_STATUSES)[number];
+
+export const SEND_SOURCES = ['manual', 'test', 'system', 'api'] as const;
+
+export type SendSource = (typeof SEND_SOURCES)[number];
+
+export const IN_APP_MESSAGE_TYPES = ['info', 'success', 'warning', 'error'] as const;
+
+export type InAppMessageType = (typeof IN_APP_MESSAGE_TYPES)[number];
+
 export const SMS_PROVIDER_LABELS: Record<SmsProvider, string> = {
   aliyun: '阿里云',
   tencent: '腾讯云',

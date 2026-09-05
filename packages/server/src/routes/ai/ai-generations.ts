@@ -1,8 +1,10 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { streamSSE } from 'hono/streaming';
 import type { SSEStreamingApi } from 'hono/streaming';
+import { aiGenerationContract } from '@zenith/shared/ai';
 import { authMiddleware } from '../../middleware/auth';
-import { validationHook, okBody } from '../../lib/openapi-schemas';
+import { defineContractRoute } from '../../lib/contract-route';
+import { errBody, okBody, validationHook } from '../../lib/openapi-schemas';
 import { currentUser } from '../../lib/context';
 import {
   getGenerationMeta,
@@ -11,6 +13,8 @@ import {
 } from '../../lib/ai/generation-buffer';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
+
+const authed = [authMiddleware] as const;
 
 /** tail 轮询间隔（毫秒） */
 const POLL_INTERVAL = 150;
@@ -46,36 +50,38 @@ export async function tailGenerationToSSE(stream: SSEStreamingApi, genId: string
   }
 }
 
-/**
- * GET /api/ai/generations/:genId/stream?offset=N
- * SSE 恢复流：断线 / 刷新后从指定 offset 继续接收生成事件
- */
-router.get('/:genId/stream', authMiddleware, async (c) => {
-  const genId = c.req.param('genId');
-  const offset = Math.max(0, Number(c.req.query('offset')) || 0);
-  const meta = await getGenerationMeta(genId);
-  const user = currentUser();
-  if (!meta || meta.userId !== user.userId) {
-    return c.json({ code: 404, message: '生成任务不存在或已过期', data: null }, 404);
-  }
-  return streamSSE(c, async (stream) => {
-    await stream.writeSSE({ event: 'gen', data: JSON.stringify({ genId, resumed: true }) });
-    await tailGenerationToSSE(stream, genId, offset);
-  });
+/** SSE 恢复流：断线 / 刷新后从指定 offset 继续接收生成事件 */
+const stream = defineContractRoute(aiGenerationContract.stream, {
+  middleware: authed,
+  handler: async (c) => {
+    const { genId } = c.req.valid('param');
+    const { offset } = c.req.valid('query');
+    const meta = await getGenerationMeta(genId);
+    const user = currentUser();
+    if (!meta || meta.userId !== user.userId) {
+      return c.json(errBody('生成任务不存在或已过期', 404), 404);
+    }
+    return streamSSE(c, async (sse) => {
+      await sse.writeSSE({ event: 'gen', data: JSON.stringify({ genId, resumed: true }) });
+      await tailGenerationToSSE(sse, genId, offset);
+    });
+  },
 });
 
-/**
- * POST /api/ai/generations/:genId/cancel
- * 停止生成（生成与连接解耦后，前端"停止"按钮走此端点）
- */
-router.post('/:genId/cancel', authMiddleware, async (c) => {
-  const genId = c.req.param('genId');
-  const user = currentUser();
-  const ok = await requestCancelGeneration(genId, user.userId);
-  if (!ok) {
-    return c.json({ code: 404, message: '生成任务不存在或已结束', data: null }, 404);
-  }
-  return c.json(okBody(null, '已停止'), 200);
+/** 停止生成（生成与连接解耦后，前端"停止"按钮走此端点） */
+const cancel = defineContractRoute(aiGenerationContract.cancel, {
+  middleware: authed,
+  handler: async (c) => {
+    const { genId } = c.req.valid('param');
+    const user = currentUser();
+    const ok = await requestCancelGeneration(genId, user.userId);
+    if (!ok) {
+      return c.json(errBody('生成任务不存在或已结束', 404), 404);
+    }
+    return c.json(okBody(null, '已停止'), 200);
+  },
 });
+
+router.openapiRoutes([stream, cancel] as const);
 
 export default router;

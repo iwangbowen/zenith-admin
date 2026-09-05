@@ -78,17 +78,17 @@ export function ChannelMessagesDrawer({ channel, visible, onClose }: Readonly<Pr
   const openEdit = (m: ChannelMessage) => { setEditing(m); setEditVisible(true); };
 
   const handleDelete = async (m: ChannelMessage) => {
-    await deleteMutation.mutateAsync(m.id);
+    await deleteMutation.mutateAsync({ params: { id: m.id } });
     Toast.success('已删除');
   };
 
   const handleSendNow = async (m: ChannelMessage) => {
-    await publishNowMutation.mutateAsync(m.id);
+    await publishNowMutation.mutateAsync({ params: { id: m.id } });
     Toast.success('已发送');
   };
 
   const handleRetract = async (m: ChannelMessage) => {
-    await retractMutation.mutateAsync(m.id);
+    await retractMutation.mutateAsync({ params: { id: m.id } });
     Toast.success('已撤回');
   };
 

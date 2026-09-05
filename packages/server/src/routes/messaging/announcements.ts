@@ -1,9 +1,9 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { announcementContract } from '@zenith/shared/messaging';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
-import { createAnnouncementSchema, updateAnnouncementSchema } from '@zenith/shared/messaging';
-import { BatchIdsBody, ErrorResponse, IdParam, PaginationQuery, commonErrorResponses, dateRangeBound, jsonContent, ok, okBody, okMsg, okPaginated, validationHook } from '../../lib/openapi-schemas';
-import { AnnouncementDTO, AnnouncementReadStatsDTO, AnnouncementUnreadCountDTO } from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   listPublishedForUser, markAnnouncementRead, markAllAnnouncementsRead, getInbox, listAnnouncements,
   batchDeleteAnnouncements, getAnnouncementReadStats, getAnnouncementDetail,
@@ -13,35 +13,20 @@ import {
 
 const announcementsRouter = new OpenAPIHono({ defaultHook: validationHook });
 
+const manage = [authMiddleware, guard({ permission: 'system:announcement:list' })] as const;
 
-const publishedRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/published', tags: ['Announcements'], summary: '最近 20 条已发布公告',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware] as const,
-    responses: { ...commonErrorResponses, ...ok(z.array(AnnouncementDTO), 'ok') },
-  }),
+const publishedRoute = defineContractRoute(announcementContract.published, {
+  middleware: [authMiddleware],
   handler: async (c) => c.json(okBody(await listPublishedForUser()), 200),
 });
 
-const unreadCountRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/unread-count', tags: ['Announcements'], summary: '未读公告数',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware] as const,
-    responses: { ...commonErrorResponses, ...ok(AnnouncementUnreadCountDTO, '未读公告数') },
-  }),
+const unreadCountRoute = defineContractRoute(announcementContract.unreadCount, {
+  middleware: [authMiddleware],
   handler: async (c) => c.json(okBody({ count: await getUnreadAnnouncementCount() }), 200),
 });
 
-const readRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/{id}/read', tags: ['Announcements'], summary: '标记已读',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...okMsg('ok') },
-  }),
+const readRoute = defineContractRoute(announcementContract.markRead, {
+  middleware: [authMiddleware],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     await markAnnouncementRead(id);
@@ -49,53 +34,26 @@ const readRoute = defineOpenAPIRoute({
   },
 });
 
-const readAllRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/read-all', tags: ['Announcements'], summary: '全部标记已读',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware] as const,
-    responses: { ...commonErrorResponses, ...okMsg('ok') },
-  }),
+const readAllRoute = defineContractRoute(announcementContract.markAllRead, {
+  middleware: [authMiddleware],
   handler: async (c) => {
     await markAllAnnouncementsRead();
     return c.json(okBody(null), 200);
   },
 });
 
-const inboxRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/inbox', tags: ['Announcements'], summary: '收件箱',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware] as const,
-    request: { query: PaginationQuery.extend({ isRead: z.string().optional() }) },
-    responses: { ...commonErrorResponses, ...okPaginated(AnnouncementDTO, 'ok') },
-  }),
+const inboxRoute = defineContractRoute(announcementContract.inbox, {
+  middleware: [authMiddleware],
   handler: async (c) => c.json(okBody(await getInbox(c.req.valid('query'))), 200),
 });
 
-const listRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/', tags: ['Announcements'], summary: '公告列表（管理）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:announcement:list' })] as const,
-    request: { query: PaginationQuery.extend({ title: z.string().optional(), type: z.string().optional(), publishStatus: z.string().optional(), startTime: dateRangeBound('起始时间'), endTime: dateRangeBound('结束时间') }) },
-    responses: { ...commonErrorResponses, ...okPaginated(AnnouncementDTO, 'ok') },
-  }),
+const listRoute = defineContractRoute(announcementContract.list, {
+  middleware: manage,
   handler: async (c) => c.json(okBody(await listAnnouncements(c.req.valid('query'))), 200),
 });
 
-const batchDeleteRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/batch', tags: ['Announcements'], summary: '批量删除',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:announcement:delete', audit: { description: '批量删除公告', module: '公告' } })] as const,
-    request: { body: { content: jsonContent(BatchIdsBody), required: true } },
-    responses: {
-      ...commonErrorResponses,
-      ...okMsg('删除成功'),
-      400: { content: jsonContent(ErrorResponse), description: '参数错误' },
-    },
-  }),
+const batchDeleteRoute = defineContractRoute(announcementContract.removeBatch, {
+  middleware: [authMiddleware, guard({ permission: 'system:announcement:delete', audit: { description: '批量删除公告', module: '公告' } })],
   handler: async (c) => {
     const { ids } = c.req.valid('json');
     const before = await getAnnouncementsBeforeAudit(ids);
@@ -105,65 +63,29 @@ const batchDeleteRoute = defineOpenAPIRoute({
   },
 });
 
-const readStatsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/{id}/read-stats', tags: ['Announcements'], summary: '阅读统计',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:announcement:list' })] as const,
-    request: { params: IdParam, query: PaginationQuery.extend({ tab: z.string().optional() }) },
-    responses: {
-      ...commonErrorResponses,
-      ...ok(AnnouncementReadStatsDTO, 'ok'),
-      404: { content: jsonContent(ErrorResponse), description: '不存在' },
-    },
-  }),
+const readStatsRoute = defineContractRoute(announcementContract.readStats, {
+  middleware: manage,
   handler: async (c) => {
     const { id } = c.req.valid('param');
     return c.json(okBody(await getAnnouncementReadStats(id, c.req.valid('query'))), 200);
   },
 });
 
-const detailRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/{id}', tags: ['Announcements'], summary: '详情',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:announcement:list' })] as const,
-    request: { params: IdParam },
-    responses: {
-      ...commonErrorResponses,
-      ...ok(AnnouncementDTO, 'ok'),
-      404: { content: jsonContent(ErrorResponse), description: '不存在' },
-    },
-  }),
+const detailRoute = defineContractRoute(announcementContract.detail, {
+  middleware: manage,
   handler: async (c) => {
     const { id } = c.req.valid('param');
     return c.json(okBody(await getAnnouncementDetail(id)), 200);
   },
 });
 
-const createRouteDef = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/', tags: ['Announcements'], summary: '创建公告',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:announcement:create', audit: { description: '创建公告', module: '公告' } })] as const,
-    request: { body: { content: jsonContent(createAnnouncementSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(AnnouncementDTO, '创建成功') },
-  }),
+const createRouteDef = defineContractRoute(announcementContract.create, {
+  middleware: [authMiddleware, guard({ permission: 'system:announcement:create', audit: { description: '创建公告', module: '公告' } })],
   handler: async (c) => c.json(okBody(await createAnnouncement(c.req.valid('json')), '创建成功'), 200),
 });
 
-const updateRouteDef = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/{id}', tags: ['Announcements'], summary: '更新公告',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:announcement:update', audit: { description: '更新公告', module: '公告' } })] as const,
-    request: { params: IdParam, body: { content: jsonContent(updateAnnouncementSchema), required: true } },
-    responses: {
-      ...commonErrorResponses,
-      ...ok(AnnouncementDTO, '更新成功'),
-      404: { content: jsonContent(ErrorResponse), description: '不存在' },
-    },
-  }),
+const updateRouteDef = defineContractRoute(announcementContract.update, {
+  middleware: [authMiddleware, guard({ permission: 'system:announcement:update', audit: { description: '更新公告', module: '公告' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const before = await getAnnouncementBeforeAudit(id);
@@ -172,18 +94,8 @@ const updateRouteDef = defineOpenAPIRoute({
   },
 });
 
-const deleteRouteDef = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/{id}', tags: ['Announcements'], summary: '删除公告',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:announcement:delete', audit: { description: '删除公告', module: '公告' } })] as const,
-    request: { params: IdParam },
-    responses: {
-      ...commonErrorResponses,
-      ...okMsg('删除成功'),
-      404: { content: jsonContent(ErrorResponse), description: '不存在' },
-    },
-  }),
+const deleteRouteDef = defineContractRoute(announcementContract.remove, {
+  middleware: [authMiddleware, guard({ permission: 'system:announcement:delete', audit: { description: '删除公告', module: '公告' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const before = await getAnnouncementBeforeAudit(id);

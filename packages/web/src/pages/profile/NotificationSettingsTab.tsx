@@ -12,6 +12,7 @@ import {
   NOTIFICATION_CHANNEL_LABELS,
   NOTIFICATION_DIGEST_MODE_OPTIONS,
   NOTIFICATION_SEVERITY_LABELS,
+  type NotificationChannel,
   type NotificationMatrixEvent,
   type SaveNotificationSettingsInput,
 } from '@zenith/shared/messaging';
@@ -46,9 +47,9 @@ function EventRow({ event }: Readonly<{ event: NotificationMatrixEvent }>) {
   const saveMutation = useSaveNotificationPreferences();
   const [pendingChannel, setPendingChannel] = useState<string | null>(null);
 
-  const handleToggle = (channel: string, enabled: boolean) => {
+  const handleToggle = (channel: NotificationChannel, enabled: boolean) => {
     setPendingChannel(channel);
-    saveMutation.mutate([{ eventKey: event.key, channel: channel as never, enabled }], {
+    saveMutation.mutate({ body: { items: [{ eventKey: event.key, channel, enabled }] } }, {
       onSuccess: () => Toast.success(enabled ? '已开启' : '已关闭'),
       onSettled: () => setPendingChannel(null),
     });
@@ -131,7 +132,7 @@ export default function NotificationSettingsTab() {
       digestMode: values.digestMode as SaveNotificationSettingsInput['digestMode'],
       digestHour: (values.digestHour as number) ?? 9,
     };
-    saveSettings.mutate(payload, { onSuccess: () => Toast.success('通知设置已保存') });
+    saveSettings.mutate({ body: payload }, { onSuccess: () => Toast.success('通知设置已保存') });
   };
 
   if (settingsQuery.isPending || matrixQuery.isPending) {

@@ -1,45 +1,32 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { SendStatus, SmsSendLog } from '@zenith/shared/messaging';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import { keepPreviousData } from '@tanstack/react-query';
+import type { QueryOf } from '@zenith/shared/core';
+import { smsSendLogContract } from '@zenith/shared/messaging';
+import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
-export interface SmsSendLogListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  phone?: string;
-  status?: SendStatus;
-  source?: string;
-}
+export type SmsSendLogListParams = NonNullable<QueryOf<typeof smsSendLogContract.list>>;
 
 export const smsSendLogKeys = {
-  all: ['sms-send-logs'] as const,
-  lists: ['sms-send-logs', 'list'] as const,
-  list: (params: SmsSendLogListParams) => ['sms-send-logs', 'list', params] as const,
-  detail: (id: number | undefined) => ['sms-send-logs', 'detail', id] as const,
+  lists: contractKey(smsSendLogContract.list),
+  list: (params: SmsSendLogListParams) => contractKey(smsSendLogContract.list, { query: params }),
 };
 
 export function useSmsSendLogList(params: SmsSendLogListParams) {
-  return useQuery({
-    queryKey: smsSendLogKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<SmsSendLog>>(`/api/sms-send-logs${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+  return useApiQuery(smsSendLogContract.list, { query: params }, { placeholderData: keepPreviousData });
 }
 
+/** 测试发送会产生一条发送记录 */
 export function useTestSmsSendLog() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: Record<string, unknown>) => request.post<null>('/api/sms-send-logs/test-send', values).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: smsSendLogKeys.all }),
+  return useApiMutation(smsSendLogContract.testSend, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: smsSendLogKeys.lists });
+    },
   });
 }
 
 export function useDeleteSmsSendLog() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/sms-send-logs/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: smsSendLogKeys.all }),
+  return useApiMutation(smsSendLogContract.remove, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: smsSendLogKeys.lists });
+    },
   });
 }

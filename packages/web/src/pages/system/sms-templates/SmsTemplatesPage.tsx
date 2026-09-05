@@ -1,6 +1,7 @@
 import { Col, Form, Row, Spin, Toast, Switch } from '@douyinfe/semi-ui';
+import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import { SMS_PROVIDER_OPTIONS } from '@zenith/shared/messaging';
-import type { SmsProvider, SmsTemplate } from '@zenith/shared/messaging';
+import type { CreateSmsTemplateInput, SmsProvider, SmsTemplate } from '@zenith/shared/messaging';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -39,17 +40,28 @@ export default function SmsTemplatesPage() {
     pageSize,
     keyword: submittedParams.keyword || undefined,
     provider: submittedParams.filterProvider,
-    status: submittedParams.filterStatus || undefined,
+    status: enumValueOf(USER_STATUSES, submittedParams.filterStatus),
   });
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
 
   const saveMutation = useSaveSmsTemplate();
-  const templateModal = useEditModal<SmsTemplate>({
+  const templateModal = useEditModal<SmsTemplate, Partial<CreateSmsTemplateInput>>({
     entityName: '短信模板',
     save: saveMutation,
     useDetail: useSmsTemplateDetail,
     defaults: { status: 'enabled', provider: 'aliyun' },
+    toValues: (r) => ({
+      name: r.name,
+      code: r.code,
+      templateCode: r.templateCode,
+      signName: r.signName ?? undefined,
+      content: r.content,
+      variables: r.variables ?? undefined,
+      provider: r.provider,
+      status: r.status,
+      remark: r.remark ?? undefined,
+    }),
     labelWidth: 120,
   });
   const toggleStatusMutation = useSaveSmsTemplate();

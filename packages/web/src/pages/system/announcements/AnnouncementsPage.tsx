@@ -3,7 +3,9 @@ import { useDebouncer } from '@tanstack/react-pacer';
 import { useQueryClient } from '@tanstack/react-query';
 import { Table, Button, Tag, Space, Modal, SideSheet, Form, Spin, Toast, Select, RadioGroup, Radio, Tabs, TabPane, Typography } from '@douyinfe/semi-ui';
 import { Trash2 } from 'lucide-react';
-import type { Announcement, AnnouncementTargetType, AnnouncementReadStats, AnnouncementAttachment } from '@zenith/shared/messaging';
+import { enumValueOf } from '@zenith/shared/core';
+import { ANNOUNCEMENT_PUBLISH_STATUSES } from '@zenith/shared/messaging';
+import type { Announcement, AnnouncementTargetType, AnnouncementReadStats, AnnouncementAttachment, CreateAnnouncementInput } from '@zenith/shared/messaging';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { UserAvatar } from '@/components/UserAvatar';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -27,8 +29,7 @@ import {
   useAnnouncementReadStats,
   useAnnouncementRecipientOptions,
   useAnnouncementUserSearch,
-  useBatchDeleteAnnouncements,
-  useDeleteAnnouncement,
+  useDeleteAnnouncements,
   useSaveAnnouncement,
   useUpdateAnnouncementStatus,
 } from '@/hooks/queries/announcements';
@@ -66,6 +67,15 @@ type SearchParams = {
   type?: string;
   publishStatus?: string;
   timeRange: [Date, Date] | null;
+};
+
+/** 弹窗表单值：公告正文、收件人与附件由页面级状态持有，不进表单 */
+type AnnouncementFormValues = {
+  title: string;
+  type?: string;
+  publishStatus?: string;
+  priority?: string;
+  scheduledPublishTime?: Date | null;
 };
 
 export default function AnnouncementsPage() {
@@ -120,7 +130,7 @@ export default function AnnouncementsPage() {
   const data = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
   const saveMutation = useSaveAnnouncement();
-  const modal = useEditModal<Announcement, Record<string, unknown>, Record<string, unknown>>({
+  const modal = useEditModal<Announcement, AnnouncementFormValues, Partial<CreateAnnouncementInput>>({
     save: saveMutation,
     useDetail: useAnnouncementDetail,
     defaults: { type: 'notice', publishStatus: 'draft', priority: 'medium' },
@@ -147,8 +157,8 @@ export default function AnnouncementsPage() {
               ...selectedDeptIds.map((id) => ({ recipientType: 'dept' as const, recipientId: id })),
             ]
           : [];
-      const scheduledDate = values.scheduledPublishTime as Date | undefined | null;
-      let finalPublishStatus = (values.publishStatus as string) || 'draft';
+      const scheduledDate = values.scheduledPublishTime;
+      let finalPublishStatus = enumValueOf(ANNOUNCEMENT_PUBLISH_STATUSES, values.publishStatus) ?? 'draft';
       let finalPublishTime: string | null = null;
       if (scheduledDate) {
         if (scheduledDate <= new Date()) {
@@ -188,8 +198,7 @@ export default function AnnouncementsPage() {
   );
   const statsData = statsQuery.data ?? null;
   const statsLoading = statsQuery.isFetching;
-  const deleteMutation = useDeleteAnnouncement();
-  const batchDeleteMutation = useBatchDeleteAnnouncements();
+  const deleteMutation = useDeleteAnnouncements();
   const updateStatusMutation = useUpdateAnnouncementStatus();
 
   useEffect(() => {
@@ -214,7 +223,7 @@ export default function AnnouncementsPage() {
         const existingIds = new Set(prev.map((o) => o.value));
         const newOpts = userRecipients
           .filter((r) => !existingIds.has(r.recipientId))
-          .map((r) => ({ value: r.recipientId, label: r.recipientLabel ?? String(r.recipientId) }));
+          .map((r) => ({ value: r.recipientId, label: r.recipientLabel || String(r.recipientId) }));
         return [...prev, ...newOpts];
       });
     }
@@ -282,22 +291,22 @@ export default function AnnouncementsPage() {
   };
 
   const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync(id);
+    await deleteMutation.mutateAsync([id]);
     Toast.success('删除成功');
   };
 
   const handlePublish = async (id: number) => {
-    await updateStatusMutation.mutateAsync({ id, values: { publishStatus: 'published' } });
+    await updateStatusMutation.mutateAsync({ params: { id }, body: { publishStatus: 'published' } });
     Toast.success('发布成功');
   };
 
   const handleRecall = async (id: number) => {
-    await updateStatusMutation.mutateAsync({ id, values: { publishStatus: 'recalled' } });
+    await updateStatusMutation.mutateAsync({ params: { id }, body: { publishStatus: 'recalled' } });
     Toast.success('撤回成功');
   };
 
   const handleCancelSchedule = async (id: number) => {
-    await updateStatusMutation.mutateAsync({ id, values: { publishStatus: 'draft', publishTime: null } });
+    await updateStatusMutation.mutateAsync({ params: { id }, body: { publishStatus: 'draft', publishTime: null } });
     Toast.success('已取消定时发布');
   };
 
@@ -306,7 +315,7 @@ export default function AnnouncementsPage() {
       title: `确认删除选中的 ${selectedRowKeys.length} 条公告？`,
       content: '删除后无法恢复，请确认操作',
       onOk: async () => {
-        await batchDeleteMutation.mutateAsync(selectedRowKeys);
+        await deleteMutation.mutateAsync(selectedRowKeys);
         Toast.success('删除成功');
         setSelectedRowKeys([]);
       },

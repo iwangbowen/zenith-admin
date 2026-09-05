@@ -1,13 +1,10 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { mpBroadcastContract } from '@zenith/shared/mp';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
 import { idempotencyGuard } from '../../middleware/idempotency';
-import {
-  PaginationQuery, jsonContent, validationHook, commonErrorResponses,
-  ok, okPaginated, okMsg, IdParam, okBody,
-} from '../../lib/openapi-schemas';
-import { createMpBroadcastSchema, updateMpBroadcastSchema, previewMpBroadcastSchema } from '@zenith/shared/mp';
-import { MpBroadcastDTO, MpBroadcastResultDTO } from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   listMpBroadcasts, createMpBroadcast, updateMpBroadcast, deleteMpBroadcast, sendMpBroadcast, getMpBroadcastBeforeAudit,
   previewMpBroadcast, getMpBroadcastResult,
@@ -15,41 +12,20 @@ import {
 
 const mpBroadcastsRouter = new OpenAPIHono({ defaultHook: validationHook });
 
-const listRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/', tags: ['公众号群发'], summary: '群发列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'mp:broadcast:list' })] as const,
-    request: {
-      query: PaginationQuery.extend({
-        accountId: z.coerce.number().int().positive(),
-        status: z.enum(['draft', 'sent', 'failed']).optional(),
-      }),
-    },
-    responses: { ...commonErrorResponses, ...okPaginated(MpBroadcastDTO, '群发列表') },
-  }),
+const read = [authMiddleware, guard({ permission: 'mp:broadcast:list' })] as const;
+
+const listRoute = defineContractRoute(mpBroadcastContract.list, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await listMpBroadcasts(c.req.valid('query'))), 200),
 });
 
-const createRouteDef = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/', tags: ['公众号群发'], summary: '创建群发草稿',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'mp:broadcast:create', audit: { description: '创建公众号群发', module: '公众号群发' } })] as const,
-    request: { body: { content: jsonContent(createMpBroadcastSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(MpBroadcastDTO, '已创建群发草稿') },
-  }),
+const createRouteDef = defineContractRoute(mpBroadcastContract.create, {
+  middleware: [authMiddleware, guard({ permission: 'mp:broadcast:create', audit: { description: '创建公众号群发', module: '公众号群发' } })],
   handler: async (c) => c.json(okBody(await createMpBroadcast(c.req.valid('json')), '已创建群发草稿'), 200),
 });
 
-const updateRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/{id}', tags: ['公众号群发'], summary: '更新群发草稿',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'mp:broadcast:update', audit: { description: '更新公众号群发', module: '公众号群发' } })] as const,
-    request: { params: IdParam, body: { content: jsonContent(updateMpBroadcastSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(MpBroadcastDTO, '更新成功') },
-  }),
+const updateRoute = defineContractRoute(mpBroadcastContract.update, {
+  middleware: [authMiddleware, guard({ permission: 'mp:broadcast:update', audit: { description: '更新公众号群发', module: '公众号群发' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, await getMpBroadcastBeforeAudit(id));
@@ -57,18 +33,12 @@ const updateRoute = defineOpenAPIRoute({
   },
 });
 
-const sendRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/{id}/send', tags: ['公众号群发'], summary: '发送群发',
-    security: [{ BearerAuth: [] }],
-    middleware: [
-      authMiddleware,
-      guard({ permission: 'mp:broadcast:send', audit: { description: '发送公众号群发', module: '公众号群发' } }),
-      idempotencyGuard({ ttlSeconds: 10 }),
-    ] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...ok(MpBroadcastDTO, '发送成功') },
-  }),
+const sendRoute = defineContractRoute(mpBroadcastContract.send, {
+  middleware: [
+    authMiddleware,
+    guard({ permission: 'mp:broadcast:send', audit: { description: '发送公众号群发', module: '公众号群发' } }),
+    idempotencyGuard({ ttlSeconds: 10 }),
+  ],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, await getMpBroadcastBeforeAudit(id));
@@ -76,14 +46,8 @@ const sendRoute = defineOpenAPIRoute({
   },
 });
 
-const deleteRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/{id}', tags: ['公众号群发'], summary: '删除群发',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'mp:broadcast:delete', audit: { description: '删除公众号群发', module: '公众号群发' } })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...okMsg('删除成功') },
-  }),
+const deleteRoute = defineContractRoute(mpBroadcastContract.remove, {
+  middleware: [authMiddleware, guard({ permission: 'mp:broadcast:delete', audit: { description: '删除公众号群发', module: '公众号群发' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, await getMpBroadcastBeforeAudit(id));
@@ -92,14 +56,8 @@ const deleteRoute = defineOpenAPIRoute({
   },
 });
 
-const previewRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/{id}/preview', tags: ['公众号群发'], summary: '群发预览（发给指定 openid）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'mp:broadcast:send', audit: { description: '群发预览', module: '公众号群发' } })] as const,
-    request: { params: IdParam, body: { content: jsonContent(previewMpBroadcastSchema), required: true } },
-    responses: { ...commonErrorResponses, ...okMsg('预览已发送') },
-  }),
+const previewRoute = defineContractRoute(mpBroadcastContract.preview, {
+  middleware: [authMiddleware, guard({ permission: 'mp:broadcast:send', audit: { description: '群发预览', module: '公众号群发' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, await getMpBroadcastBeforeAudit(id));
@@ -108,14 +66,8 @@ const previewRoute = defineOpenAPIRoute({
   },
 });
 
-const resultRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/{id}/result', tags: ['公众号群发'], summary: '查询群发发送结果',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'mp:broadcast:list' })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...ok(MpBroadcastResultDTO, '发送结果') },
-  }),
+const resultRoute = defineContractRoute(mpBroadcastContract.result, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await getMpBroadcastResult(c.req.valid('param').id)), 200),
 });
 

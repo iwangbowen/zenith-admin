@@ -70,7 +70,7 @@ describe('useSendBroadcast', () => {
     const fetches = observeFetches(qc);
     api.resetCalls();
 
-    await hook.result.current.send.mutateAsync(1);
+    await hook.result.current.send.mutateAsync({ params: { id: 1 } });
     await waitFor(() => expect(hook.result.current.list.isFetching).toBe(false));
 
     expect(fetches.countOf(broadcastKeys.lists)).toBe(1);

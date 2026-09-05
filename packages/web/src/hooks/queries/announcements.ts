@@ -1,28 +1,19 @@
 import { useMemo } from 'react';
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { resourceKeyOf, type QueryOf } from '@zenith/shared/core';
 import { userContract } from '@zenith/shared/identity';
-import type { Announcement, AnnouncementAttachment, AnnouncementReadStats, AnnouncementRecipient } from '@zenith/shared/messaging';
-import { request } from '@/utils/request';
-import { LOOKUP_STALE_TIME, toQueryString, unwrap } from '@/lib/query';
-import { api } from '@/lib/contract-query';
+import { announcementContract } from '@zenith/shared/messaging';
+import type { Announcement, AnnouncementDetail, MyAnnouncement } from '@zenith/shared/messaging';
+import { LOOKUP_STALE_TIME } from '@/lib/query';
+import { api, createResourceQueries, useApiMutation } from '@/lib/contract-query';
 import { useAllRoles } from './roles';
 import { useFlatDepartments } from './departments';
 
-export interface AnnouncementListParams {
-  page: number;
-  pageSize: number;
-  title?: string;
-  type?: string;
-  publishStatus?: string;
-  startTime?: string;
-  endTime?: string;
-}
+export type AnnouncementListParams = NonNullable<QueryOf<typeof announcementContract.list>>;
 
-export type AnnouncementDetail = Announcement & {
-  recipients: AnnouncementRecipient[];
-  attachments: AnnouncementAttachment[];
-};
+export type MyAnnouncementListParams = NonNullable<QueryOf<typeof announcementContract.inbox>>;
+
+export type { AnnouncementDetail, MyAnnouncement };
 
 export interface AnnouncementStatsParams {
   id: number | undefined;
@@ -31,37 +22,53 @@ export interface AnnouncementStatsParams {
   pageSize: number;
 }
 
-export type MyAnnouncement = Announcement & { isRead: boolean };
+const KEY = resourceKeyOf(announcementContract.basePath);
 
-export interface MyAnnouncementListParams {
-  page: number;
-  pageSize: number;
-  isRead?: string;
-}
-
-export const announcementKeys = {
-  all: ['announcements'] as const,
-  lists: ['announcements', 'list'] as const,
-  list: (params: AnnouncementListParams) => ['announcements', 'list', params] as const,
-  detail: (id: number | undefined) => ['announcements', 'detail', id] as const,
-  my: ['announcements', 'my'] as const,
-  myLists: ['announcements', 'my', 'list'] as const,
-  myList: (params: MyAnnouncementListParams) => ['announcements', 'my', 'list', params] as const,
-  myDetail: (id: number | undefined) => ['announcements', 'my', 'detail', id] as const,
-  readStatsAll: ['announcements', 'read-stats'] as const,
-  readStats: (params: AnnouncementStatsParams) => ['announcements', 'read-stats', params] as const,
-  userSearch: (keyword: string) => ['announcements', 'user-search', keyword] as const,
+/**
+ * 同一根键下挂三棵互不相干的子树：管理端列表 / 详情、收件箱（`my`）、已读统计。
+ * 写操作按影响面精确失效，不用根键广播。
+ */
+const myKeys = {
+  my: [KEY, 'my'] as const,
+  myLists: [KEY, 'my', 'inbox'] as const,
+  myList: (params: MyAnnouncementListParams) => [KEY, 'my', 'inbox', params] as const,
+  myDetail: (id: number | undefined) => [KEY, 'my', 'detail', id] as const,
+  readStatsAll: [KEY, 'read-stats'] as const,
+  readStats: (params: AnnouncementStatsParams) => [KEY, 'read-stats', params] as const,
+  userSearch: (keyword: string) => [KEY, 'user-search', keyword] as const,
   /** 顶栏公告铃铛未读数 */
-  myUnreadCount: ['announcements', 'my', 'unread-count'] as const,
+  myUnreadCount: [KEY, 'my', 'unread-count'] as const,
   /** 顶栏公告气泡里的已发布公告 */
-  published: ['announcements', 'my', 'published'] as const,
+  published: [KEY, 'my', 'published'] as const,
 };
+
+const {
+  keys: crudKeys,
+  useList: useAnnouncementList,
+  useDetail: useAnnouncementDetail,
+  useSave: useSaveAnnouncement,
+  useDelete: useDeleteAnnouncements,
+} = createResourceQueries(announcementContract, {
+  // 发布 / 改内容会改变各用户收件箱；收件箱在另一路由，未挂载时仅标脏，代价接近零。
+  // 不碰 recipientOptions / userSearch：保存时弹窗尚未关闭，它们仍是活跃查询，且与本次保存无关
+  onSaved: (qc) => {
+    void qc.invalidateQueries({ queryKey: myKeys.my });
+  },
+  onDeleted: (qc, ids) => {
+    for (const id of ids) qc.removeQueries({ queryKey: myKeys.myDetail(id) });
+    void qc.invalidateQueries({ queryKey: myKeys.my });
+  },
+});
+
+export const announcementKeys = { ...crudKeys, ...myKeys };
+
+export { useAnnouncementList, useAnnouncementDetail, useSaveAnnouncement, useDeleteAnnouncements };
 
 /** 我的公告未读数（顶栏铃铛 badge） */
 export function useMyAnnouncementUnreadCount() {
   return useQuery({
     queryKey: announcementKeys.myUnreadCount,
-    queryFn: () => request.get<{ count: number }>('/api/announcements/unread-count', { silent: true }).then(unwrap),
+    queryFn: () => api(announcementContract.unreadCount, { silent: true }),
     select: (data) => data?.count ?? 0,
   });
 }
@@ -70,31 +77,14 @@ export function useMyAnnouncementUnreadCount() {
 export function usePublishedAnnouncements() {
   return useQuery({
     queryKey: announcementKeys.published,
-    queryFn: () => request.get<(Announcement & { isRead: boolean })[]>('/api/announcements/published', { silent: true }).then(unwrap),
-  });
-}
-
-export function useAnnouncementList(params: AnnouncementListParams) {
-  return useQuery({
-    queryKey: announcementKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<Announcement>>(`/api/announcements${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
-}
-
-export function useAnnouncementDetail(id: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: announcementKeys.detail(id),
-    queryFn: () => request.get<AnnouncementDetail>(`/api/announcements/${id}`).then(unwrap),
-    enabled: enabled && id !== undefined,
+    queryFn: () => api(announcementContract.published, { silent: true }),
   });
 }
 
 export function useMyAnnouncementList(params: MyAnnouncementListParams) {
   return useQuery({
     queryKey: announcementKeys.myList(params),
-    queryFn: () =>
-      request.get<PaginatedResponse<MyAnnouncement>>(`/api/announcements/inbox${toQueryString(params)}`).then(unwrap),
+    queryFn: () => api(announcementContract.inbox, { query: params }),
     placeholderData: keepPreviousData,
   });
 }
@@ -108,28 +98,25 @@ export function useMyAnnouncementList(params: MyAnnouncementListParams) {
 export function useMyAnnouncementDetail(id: number | undefined, enabled = true, silent = false) {
   return useQuery({
     queryKey: announcementKeys.myDetail(id),
-    queryFn: () => request.get<Announcement>(`/api/announcements/${id}`, { silent }).then(unwrap),
+    queryFn: () => api(announcementContract.detail, { params: { id: id ?? 0 } }, { silent }),
     enabled: enabled && id !== undefined,
   });
 }
 
+/** 标记已读只动收件箱与已读统计；管理端的已读统计在另一路由，未挂载时仅标脏 */
 export function useMarkMyAnnouncementRead() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.post<null>(`/api/announcements/${id}/read`, undefined, { silent: true }).then(unwrap),
-    onSuccess: () => {
+  return useApiMutation(announcementContract.markRead, {
+    requestOptions: { silent: true },
+    invalidate: (qc) => {
       void qc.invalidateQueries({ queryKey: announcementKeys.my });
-      // 管理端的已读统计随之变化；该页在另一路由，未挂载时仅标脏
       void qc.invalidateQueries({ queryKey: announcementKeys.readStatsAll });
     },
   });
 }
 
 export function useMarkAllMyAnnouncementsRead() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () => request.post<null>('/api/announcements/read-all', {}).then(unwrap),
-    onSuccess: () => {
+  return useApiMutation(announcementContract.markAllRead, {
+    invalidate: (qc) => {
       void qc.invalidateQueries({ queryKey: announcementKeys.my });
       void qc.invalidateQueries({ queryKey: announcementKeys.readStatsAll });
     },
@@ -139,16 +126,10 @@ export function useMarkAllMyAnnouncementsRead() {
 export function useAnnouncementReadStats(params: AnnouncementStatsParams, enabled = true) {
   return useQuery({
     queryKey: announcementKeys.readStats(params),
-    queryFn: () =>
-      request
-        .get<AnnouncementReadStats>(
-          `/api/announcements/${params.id}/read-stats${toQueryString({
-            tab: params.tab,
-            page: params.page,
-            pageSize: params.pageSize,
-          })}`,
-        )
-        .then(unwrap),
+    queryFn: () => api(announcementContract.readStats, {
+      params: { id: params.id ?? 0 },
+      query: { tab: params.tab, page: params.page, pageSize: params.pageSize },
+    }),
     placeholderData: keepPreviousData,
     enabled: enabled && params.id !== undefined,
   });
@@ -192,64 +173,12 @@ export function useAnnouncementUserSearch(keyword: string, enabled = true) {
   });
 }
 
-export function useSaveAnnouncement() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
-      (id === undefined
-        ? request.post<Announcement>('/api/announcements', values)
-        : request.put<Announcement>(`/api/announcements/${id}`, values)
-      ).then(unwrap),
-    onSuccess: (saved) => {
-      // 写接口返回的是公告主体，不含 recipients / attachments（详情接口才有），
-      // 形状不一致，不能回填，只能失效
-      void qc.invalidateQueries({ queryKey: announcementKeys.detail(saved.id) });
-      void qc.invalidateQueries({ queryKey: announcementKeys.lists });
-      // 发布/改内容会改变各用户收件箱；收件箱在另一路由，未挂载时仅标脏，代价接近零
-      void qc.invalidateQueries({ queryKey: announcementKeys.my });
-      // 不碰 recipientOptions / userSearch：保存时弹窗尚未关闭，它们仍是活跃查询，
-      // 而角色、部门、用户三份数据与本次保存无关
-    },
-  });
-}
-
-export function useDeleteAnnouncement() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/announcements/${id}`).then(unwrap),
-    onSuccess: (_data, id) => {
-      qc.removeQueries({ queryKey: announcementKeys.detail(id) });
-      qc.removeQueries({ queryKey: announcementKeys.myDetail(id) });
-      void qc.invalidateQueries({ queryKey: announcementKeys.lists });
-      void qc.invalidateQueries({ queryKey: announcementKeys.my });
-    },
-  });
-}
-
-export function useBatchDeleteAnnouncements() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (ids: number[]) => request.delete<null>('/api/announcements/batch', { ids }).then(unwrap),
-    onSuccess: (_data, ids) => {
-      for (const id of ids) {
-        qc.removeQueries({ queryKey: announcementKeys.detail(id) });
-        qc.removeQueries({ queryKey: announcementKeys.myDetail(id) });
-      }
-      void qc.invalidateQueries({ queryKey: announcementKeys.lists });
-      void qc.invalidateQueries({ queryKey: announcementKeys.my });
-    },
-  });
-}
-
+/** 上下架 / 取消定时：直接决定公告是否出现在收件箱，故连带失效 `my` */
 export function useUpdateAnnouncementStatus() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id: number; values: Partial<Announcement> }) =>
-      request.put<Announcement>(`/api/announcements/${id}`, values).then(unwrap),
-    onSuccess: (saved) => {
+  return useApiMutation(announcementContract.update, {
+    invalidate: (qc, saved: Announcement) => {
       void qc.invalidateQueries({ queryKey: announcementKeys.detail(saved.id) });
       void qc.invalidateQueries({ queryKey: announcementKeys.lists });
-      // 上下架直接决定公告是否出现在收件箱
       void qc.invalidateQueries({ queryKey: announcementKeys.my });
     },
   });

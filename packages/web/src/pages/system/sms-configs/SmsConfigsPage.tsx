@@ -1,6 +1,7 @@
 import { Col, Form, Row, Spin, Tag, Toast, Switch } from '@douyinfe/semi-ui';
+import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import { SMS_PROVIDER_OPTIONS } from '@zenith/shared/messaging';
-import type { SmsConfig, SmsProvider } from '@zenith/shared/messaging';
+import type { CreateSmsConfigInput, SmsConfig, SmsProvider } from '@zenith/shared/messaging';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -39,18 +40,29 @@ export default function SmsConfigsPage() {
     pageSize,
     keyword: submittedParams.keyword || undefined,
     provider: submittedParams.filterProvider,
-    status: submittedParams.filterStatus || undefined,
+    status: enumValueOf(USER_STATUSES, submittedParams.filterStatus),
   });
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
 
   const saveMutation = useSaveSmsConfig();
-  const configModal = useEditModal<SmsConfig, Partial<SmsConfig>, Partial<SmsConfig>>({
+  const configModal = useEditModal<SmsConfig, Partial<CreateSmsConfigInput>>({
     entityName: '短信配置',
     save: saveMutation,
     useDetail: useSmsConfigDetail,
     defaults: { status: 'enabled', isDefault: false, provider: 'aliyun' },
-    toValues: (config) => ({ ...config, accessKeySecret: '' }),
+    // 详情不回传密钥原文，编辑留空表示保持原值
+    toValues: (config) => ({
+      name: config.name,
+      provider: config.provider,
+      accessKeyId: config.accessKeyId,
+      accessKeySecret: '',
+      region: config.region ?? undefined,
+      signName: config.signName,
+      isDefault: config.isDefault,
+      status: config.status,
+      remark: config.remark ?? undefined,
+    }),
     beforeSave: (values, { isEdit }) => {
       const payload = { ...values };
       if (isEdit && !payload.accessKeySecret) delete payload.accessKeySecret;
@@ -64,7 +76,7 @@ export default function SmsConfigsPage() {
   const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
 
   const handleSetDefault = async (record: SmsConfig) => {
-    await setDefaultMutation.mutateAsync(record.id);
+    await setDefaultMutation.mutateAsync({ params: { id: record.id } });
     Toast.success('已设为默认');
   };
 
