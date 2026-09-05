@@ -20,7 +20,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { RefreshCw, Settings, Send, UserCheck, ArrowRightLeft, XCircle, MessageSquare, Star } from 'lucide-react';
-import type { MpKfSessionStatus, MpKfSessionEventType, MpKfSessionCloseReason, MpMessage } from '@zenith/shared/mp';
+import type { MpKfSessionStatus, MpKfSessionEventType, MpKfSessionCloseReason, MpMessage, UpdateMpKfRoutingConfigInput } from '@zenith/shared/mp';
 import type { WsMessage } from '@zenith/shared/platform';
 import { usePermission } from '@/hooks/usePermission';
 import { useWebSocket } from '@/hooks/useWebSocket';
@@ -29,7 +29,8 @@ import { AppModal } from '@/components/AppModal';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import {
-  mpKfKeys,
+  mpKfSessionKeys,
+  mpKfSessionStatsKeys,
   useAcceptMpKfSession,
   useCloseMpKfSession,
   useMpKfRoutingConfig,
@@ -92,9 +93,9 @@ export default function MpKfSessionsPage() {
   const [rateValue, setRateValue] = useState(5);
   const [rateRemark, setRateRemark] = useState('');
 
-  const listQuery = useMpKfSessionList(currentId, { status: tab, keyword: submittedKeyword || undefined, page: 1, pageSize: 50 });
+  const listQuery = useMpKfSessionList({ accountId: currentId ?? 0, status: tab, keyword: submittedKeyword || undefined, page: 1, pageSize: 50 }, !!currentId);
   const statsQuery = useMpKfSessionStats(currentId);
-  const detailQuery = useMpKfSessionDetail(selectedId);
+  const detailQuery = useMpKfSessionDetail(selectedId ?? undefined);
   const configQuery = useMpKfRoutingConfig(currentId, configVisible);
   const sessions = listQuery.data?.list ?? [];
   const stats = statsQuery.data ?? null;
@@ -109,9 +110,9 @@ export default function MpKfSessionsPage() {
   const saveConfigMutation = useSaveMpKfRoutingConfig();
 
   const refreshAll = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: mpKfKeys.sessionLists(currentId) });
-    void queryClient.invalidateQueries({ queryKey: mpKfKeys.sessionStats(currentId) });
-    if (selectedId) void queryClient.invalidateQueries({ queryKey: mpKfKeys.sessionDetail(selectedId) });
+    void queryClient.invalidateQueries({ queryKey: mpKfSessionKeys.lists });
+    void queryClient.invalidateQueries({ queryKey: mpKfSessionStatsKeys.detail(currentId) });
+    if (selectedId) void queryClient.invalidateQueries({ queryKey: mpKfSessionKeys.detail(selectedId) });
   }, [currentId, queryClient, selectedId]);
 
   useWebSocket(useCallback((msg: WsMessage) => {
@@ -123,7 +124,7 @@ export default function MpKfSessionsPage() {
 
   const handleRate = async () => {
     if (!detail) return;
-    await rateMutation.mutateAsync({ id: detail.id, values: { rating: rateValue, remark: rateRemark || undefined } });
+    await rateMutation.mutateAsync({ params: { id: detail.id }, body: { rating: rateValue, remark: rateRemark || undefined } });
     Toast.success('已记录评分');
     setRateVisible(false);
   };
@@ -139,12 +140,12 @@ export default function MpKfSessionsPage() {
 
   const handleSearch = () => {
     setSubmittedKeyword(keyword);
-    void queryClient.invalidateQueries({ queryKey: mpKfKeys.sessionLists(currentId) });
+    void queryClient.invalidateQueries({ queryKey: mpKfSessionKeys.lists });
   };
   const handleReset = () => {
     setKeyword('');
     setSubmittedKeyword('');
-    void queryClient.invalidateQueries({ queryKey: mpKfKeys.sessionLists(currentId) });
+    void queryClient.invalidateQueries({ queryKey: mpKfSessionKeys.lists });
   };
 
   const openPick = (mode: 'accept' | 'transfer') => {
@@ -157,10 +158,10 @@ export default function MpKfSessionsPage() {
   const handlePickConfirm = async () => {
     if (!detail || !pickKfId) { Toast.warning('请选择客服'); abortSubmit('validation'); }
     if (pickModal.mode === 'accept') {
-      await acceptMutation.mutateAsync({ id: detail.id, kfId: pickKfId });
+      await acceptMutation.mutateAsync({ params: { id: detail.id }, body: { kfId: pickKfId } });
       Toast.success('已接入');
     } else {
-      await transferMutation.mutateAsync({ id: detail.id, toKfId: pickKfId, remark: pickRemark || undefined });
+      await transferMutation.mutateAsync({ params: { id: detail.id }, body: { toKfId: pickKfId, remark: pickRemark || undefined } });
       Toast.success('已转接');
     }
     setPickModal((p) => ({ ...p, visible: false }));
@@ -171,7 +172,7 @@ export default function MpKfSessionsPage() {
     confirmDanger({
       title: '结束会话', content: '确定结束当前会话吗？',
       onOk: async () => {
-        await closeMutation.mutateAsync(detail.id);
+        await closeMutation.mutateAsync({ params: { id: detail.id }, body: {} });
         Toast.success('已结束');
       },
     });
@@ -179,7 +180,7 @@ export default function MpKfSessionsPage() {
 
   const handleSend = async () => {
     if (!detail || !replyText.trim()) return;
-    await replyMutation.mutateAsync({ id: detail.id, values: { msgType: 'text', content: replyText.trim() } });
+    await replyMutation.mutateAsync({ params: { id: detail.id }, body: { msgType: 'text', content: replyText.trim() } });
     setReplyText('');
   };
 
@@ -190,9 +191,9 @@ export default function MpKfSessionsPage() {
 
   const handleSaveConfig = async () => {
     if (!currentId) return;
-    let values: Record<string, unknown>;
+    let values: UpdateMpKfRoutingConfigInput;
     try { values = (await configFormRef.current?.validate())!; } catch { abortSubmit('validation'); }
-    await saveConfigMutation.mutateAsync({ accountId: currentId, values });
+    await saveConfigMutation.mutateAsync({ query: { accountId: currentId }, body: values });
     Toast.success('已保存');
     setConfigVisible(false);
   };

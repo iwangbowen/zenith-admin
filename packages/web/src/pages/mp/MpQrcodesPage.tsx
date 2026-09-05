@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Button, Form, Image, Select, Spin, Tag, Toast, Banner, Typography } from '@douyinfe/semi-ui';
 import { Plus } from 'lucide-react';
-import type { MpQrcode, MpQrcodeType } from '@zenith/shared/mp';
+import { enumValueOf } from '@zenith/shared/core';
+import { MP_QRCODE_TYPES, type CreateMpQrcodeInput, type MpQrcode, type MpQrcodeType } from '@zenith/shared/mp';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
@@ -10,7 +11,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn } from '../../utils/table-columns';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
-import { mpQrcodeKeys, useCreateMpQrcode, useDeleteMpQrcode, useMpQrcodeList } from '@/hooks/queries/mp-qrcodes';
+import { mpQrcodeKeys, useCreateMpQrcode, useDeleteMpQrcodes, useMpQrcodeList } from '@/hooks/queries/mp-qrcodes';
 import { useListSearch } from '@/hooks/useListSearch';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
@@ -26,7 +27,7 @@ const TYPE_META: Record<MpQrcodeType, { label: string; color: 'green' | 'orange'
   permanent: { label: '永久', color: 'green' },
   temporary: { label: '临时', color: 'orange' },
 };
-interface QrcodeFormValues { sceneStr: string; name: string; expireSeconds?: number; rewardPoints?: number; }
+type QrcodeFormValues = Pick<CreateMpQrcodeInput, 'sceneStr' | 'name' | 'expireSeconds' | 'rewardPoints'>;
 
 export default function MpQrcodesPage() {
   const { hasPermission: can } = usePermission();
@@ -38,31 +39,27 @@ export default function MpQrcodesPage() {
     page, pageSize, setPage, buildPagination,
     draftParams, setDraftParams, submittedParams,
     handleSearch, handleReset,
-  } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: mpQrcodeKeys.lists(currentId) });
+  } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: mpQrcodeKeys.lists });
 
   const [modalType, setModalType] = useState<MpQrcodeType>('permanent');
 
   const listQuery = useMpQrcodeList({
-    accountId: currentId,
+    accountId: currentId ?? 0,
     page,
     pageSize,
     type: submittedParams.filterType,
     keyword: submittedParams.keyword || undefined,
-  });
+  }, !!currentId);
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
   const createMutation = useCreateMpQrcode();
-  const deleteMutation = useDeleteMpQrcode();
-  const createSaveMutation = {
-    mutateAsync: ({ values }: { id?: number; values: Record<string, unknown> }) => createMutation.mutateAsync(values),
-    isPending: createMutation.isPending,
-  };
-  const createModal = useEditModal<MpQrcode, QrcodeFormValues, Record<string, unknown>>({
-    save: createSaveMutation,
+  const deleteMutation = useDeleteMpQrcodes();
+  const createModal = useEditModal<MpQrcode, QrcodeFormValues, Partial<CreateMpQrcodeInput>>({
+    save: createMutation,
     defaults: { sceneStr: '', name: '', expireSeconds: 604800, rewardPoints: 0 },
     beforeSave: (values) => {
       if (!currentId) abortSubmit('validation');
-      const payload: Record<string, unknown> = {
+      const payload: Partial<CreateMpQrcodeInput> = {
         accountId: currentId,
         type: modalType,
         sceneStr: values.sceneStr,
@@ -86,7 +83,7 @@ export default function MpQrcodesPage() {
       title: '确定要删除该二维码吗？',
       content: '删除后本地记录移除，已投放的二维码图片仍可能被扫描。',
       onOk: async () => {
-        await deleteMutation.mutateAsync(record.id);
+        await deleteMutation.mutateAsync([record.id]);
         Toast.success('删除成功');
       },
     });
@@ -123,7 +120,7 @@ export default function MpQrcodesPage() {
       placeholder="全部类型"
       items={TYPE_OPTIONS}
       value={draftParams.filterType}
-      onChange={(v) => setDraftParams({ ...draftParams, filterType: v as MpQrcodeType | undefined })}
+      onChange={(v) => setDraftParams({ ...draftParams, filterType: enumValueOf(MP_QRCODE_TYPES, v) })}
     />
   );
   const renderKeywordInput = () => (

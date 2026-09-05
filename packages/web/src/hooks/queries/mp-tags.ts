@@ -1,64 +1,28 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { MpTag } from '@zenith/shared/mp';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import type { QueryOf } from '@zenith/shared/core';
+import { mpTagContract } from '@zenith/shared/mp';
+import { createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
-export interface MpTagListParams {
-  accountId: number | null;
-  page: number;
-  pageSize: number;
-  keyword?: string;
-}
+export type MpTagListParams = QueryOf<typeof mpTagContract.list>;
 
-export const mpTagKeys = {
-  all: ['mp', 'tags'] as const,
-  lists: (accountId: number | null | undefined) => ['mp', 'tags', accountId, 'list'] as const,
-  list: (params: MpTagListParams) => ['mp', 'tags', params.accountId, 'list', params] as const,
-  options: (accountId: number | null | undefined) => ['mp', 'tags', accountId, 'options'] as const,
-};
+export const {
+  keys: mpTagKeys,
+  useList: useMpTagList,
+  useSave: useSaveMpTag,
+  useDelete: useDeleteMpTags,
+} = createResourceQueries(mpTagContract);
 
-export function useMpTagList(params: MpTagListParams) {
-  return useQuery({
-    queryKey: mpTagKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<MpTag>>(`/api/mp/tags${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-    enabled: !!params.accountId,
-  });
-}
-
+/** 标签下拉源（粉丝筛选 / 打标签）：取该公众号前 200 条；key 落在 lists 前缀下，随增删改与同步一并失效 */
 export function useMpTagOptions(accountId: number | null | undefined) {
-  return useQuery({
-    queryKey: mpTagKeys.options(accountId),
-    queryFn: () => request.get<PaginatedResponse<MpTag>>(`/api/mp/tags${toQueryString({ page: 1, pageSize: 200, accountId })}`).then(unwrap),
-    enabled: !!accountId,
-  });
+  return useApiQuery(
+    mpTagContract.list,
+    { query: { accountId: accountId ?? 0, page: 1, pageSize: 200 } },
+    { enabled: !!accountId },
+  );
 }
 
+/** 同步只重建标签清单（名称 / 微信 ID / 粉丝数） */
 export function useSyncMpTags() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (accountId: number) => request.post<{ created: number; updated: number; total: number }>('/api/mp/tags/sync', { accountId }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: mpTagKeys.all }),
-  });
-}
-
-export function useSaveMpTag() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, accountId, name }: { id?: number; accountId: number; name: string }) =>
-      (id === undefined
-        ? request.post<MpTag>('/api/mp/tags', { accountId, name })
-        : request.put<MpTag>(`/api/mp/tags/${id}`, { name })
-      ).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: mpTagKeys.all }),
-  });
-}
-
-export function useDeleteMpTag() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/mp/tags/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: mpTagKeys.all }),
+  return useApiMutation(mpTagContract.sync, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: mpTagKeys.lists }),
   });
 }

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Button, Col, Form, Input, Row, Select, Space, Spin, Tag, Toast, Switch, Banner, Typography } from '@douyinfe/semi-ui';
 import { Plus, Trash2, Flame } from 'lucide-react';
-import { MP_REPLY_CONTENT_TYPE_LABELS, MP_REPLY_CONTENT_TYPE_OPTIONS } from '@zenith/shared/mp';
-import type { MpAutoReply, MpAutoReplyType, MpReplyContentType, MpReplyArticle } from '@zenith/shared/mp';
+import { enumValueOf } from '@zenith/shared/core';
+import { MP_AUTO_REPLY_TYPES, MP_REPLY_CONTENT_TYPE_LABELS, MP_REPLY_CONTENT_TYPE_OPTIONS } from '@zenith/shared/mp';
+import type { CreateMpAutoReplyInput, MpAutoReply, MpAutoReplyType, MpReplyContentType, MpReplyArticle } from '@zenith/shared/mp';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -16,7 +17,7 @@ import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import {
   mpAutoReplyKeys,
-  useDeleteMpAutoReply,
+  useDeleteMpAutoReplies,
   useDeleteMpUnmatchedKeyword,
   useMpAutoReplyList,
   useMpAutoReplyMaterials,
@@ -65,32 +66,32 @@ export default function MpAutoRepliesPage() {
     page, pageSize, setPage, buildPagination,
     draftParams, setDraftParams, submittedParams,
     handleSearch, handleReset,
-  } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: mpAutoReplyKeys.lists(currentId) });
+  } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: mpAutoReplyKeys.lists });
 
   const [modalType, setModalType] = useState<MpAutoReplyType>('keyword');
   const [contentType, setContentType] = useState<MpReplyContentType>('text');
   const [articles, setArticles] = useState<MpReplyArticle[]>([emptyArticle()]);
   const listQuery = useMpAutoReplyList({
-    accountId: currentId,
+    accountId: currentId ?? 0,
     page,
     pageSize,
     replyType: submittedParams.filterType,
     keyword: submittedParams.keyword || undefined,
-  });
+  }, !!currentId);
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
   const materialsQuery = useMpAutoReplyMaterials(currentId);
   const materials = (materialsQuery.data?.list ?? []).filter((m) => m.wechatMediaId);
   const saveMutation = useSaveMpAutoReply();
   const toggleMutation = useSaveMpAutoReply();
-  const deleteMutation = useDeleteMpAutoReply();
+  const deleteMutation = useDeleteMpAutoReplies();
   const togglingId = toggleMutation.isPending ? (toggleMutation.variables?.id ?? null) : null;
 
   useEffect(() => {
     setPage(1);
   }, [currentId, setPage]);
 
-  const modal = useEditModal<MpAutoReply, Record<string, unknown>>({
+  const modal = useEditModal<MpAutoReply, Partial<CreateMpAutoReplyInput>>({
     entityName: '自动回复',
     save: saveMutation,
     defaults: { matchType: 'contain', content: '', mediaId: '', status: 'enabled', sort: 0, transferToKf: false },
@@ -105,7 +106,7 @@ export default function MpAutoRepliesPage() {
     }),
     beforeSave: (values, { isEdit }) => {
       if (!currentId) abortSubmit('validation');
-      const payload: Record<string, unknown> = {
+      const payload: Partial<CreateMpAutoReplyInput> = {
         contentType,
         matchType: values.matchType,
         keyword: values.keyword,
@@ -148,7 +149,7 @@ export default function MpAutoRepliesPage() {
     confirmDelete({
       title: '确定要删除该自动回复吗？',
       onOk: async () => {
-        await deleteMutation.mutateAsync(record.id);
+        await deleteMutation.mutateAsync([record.id]);
         Toast.success('删除成功');
       },
     });
@@ -197,7 +198,7 @@ export default function MpAutoRepliesPage() {
   };
 
   const handleDeleteHotword = async (id: number) => {
-    await deleteHotwordMutation.mutateAsync(id);
+    await deleteHotwordMutation.mutateAsync({ params: { id } });
   };
 
   const renderAccountFilter = () => (
@@ -208,7 +209,7 @@ export default function MpAutoRepliesPage() {
       placeholder="全部回复类型"
       items={REPLY_TYPE_OPTIONS}
       value={draftParams.filterType}
-      onChange={(v) => setDraftParams({ ...draftParams, filterType: v as MpAutoReplyType | undefined })}
+      onChange={(v) => setDraftParams({ ...draftParams, filterType: enumValueOf(MP_AUTO_REPLY_TYPES, v) })}
       width={140}
     />
   );

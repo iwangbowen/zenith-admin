@@ -19,6 +19,7 @@ import {
   usePublishMpConditionalMenu,
   useSaveMpConditionalMenu,
   useTryMatchMpConditionalMenu,
+  type MpConditionalMenuSaveValues,
 } from '@/hooks/queries/mp-menu';
 import { CreateButton, RefreshButton } from '@/components/toolbar-controls';
 import { confirmDelete } from '@/utils/confirm';
@@ -48,6 +49,9 @@ function ruleSummary(r: MpMenuMatchRule): string {
 }
 
 interface EditableButton extends MpMenuButton { sub_button?: EditableButton[] }
+
+/** 表单把匹配规则各字段平铺在名称旁 */
+interface ConditionalMenuFormValues extends MpMenuMatchRule { name?: string }
 
 /** 极简两级按钮编辑器（微信菜单固定两级） */
 function ButtonEditor({ value, onChange }: { value: EditableButton[]; onChange: (v: EditableButton[]) => void }) {
@@ -109,32 +113,25 @@ export default function MpConditionalMenusPage() {
   const tryMatchMutation = useTryMatchMpConditionalMenu();
   const matching = tryMatchMutation.isPending;
 
-  const menuSaveMutation = {
-    mutateAsync: ({ id, values }: { id?: number; values: Record<string, unknown> }) => {
-      if (!currentId) abortSubmit('validation');
-      return saveMutation.mutateAsync({ id, accountId: currentId, name: values.name as string, buttons, matchRule: values.matchRule as MpMenuMatchRule });
-    },
-    isPending: saveMutation.isPending,
-  };
-  const modal = useEditModal<MpConditionalMenu, Record<string, unknown>>({
+  const modal = useEditModal<MpConditionalMenu, ConditionalMenuFormValues, MpConditionalMenuSaveValues>({
     entityName: '个性化菜单',
-    save: menuSaveMutation,
+    save: saveMutation,
     defaults: { name: '' },
     toValues: (record) => ({ name: record.name, ...record.matchRule }),
     beforeSave: (values) => {
       if (!currentId) abortSubmit('validation');
       if (buttons.length === 0) { Toast.warning('请至少添加一个一级菜单'); abortSubmit('validation'); }
       const matchRule: MpMenuMatchRule = {
-        tagId: (values.tagId as string) || undefined,
-        sex: (values.sex as string) || undefined,
-        country: (values.country as string) || undefined,
-        province: (values.province as string) || undefined,
-        city: (values.city as string) || undefined,
-        clientPlatformType: (values.clientPlatformType as string) || undefined,
-        language: (values.language as string) || undefined,
+        tagId: values.tagId || undefined,
+        sex: values.sex || undefined,
+        country: values.country || undefined,
+        province: values.province || undefined,
+        city: values.city || undefined,
+        clientPlatformType: values.clientPlatformType || undefined,
+        language: values.language || undefined,
       };
       if (!Object.values(matchRule).some(Boolean)) { Toast.warning('请至少设置一个匹配条件'); abortSubmit('validation'); }
-      return { name: values.name, matchRule };
+      return { accountId: currentId, name: values.name ?? '', buttons, matchRule };
     },
     successMessage: ({ isEdit }) => (isEdit ? '已保存' : '已创建'),
     labelWidth: 110,
@@ -146,20 +143,20 @@ export default function MpConditionalMenusPage() {
   const handlePublish = (r: MpConditionalMenu) => {
     Modal.confirm({
       title: `发布「${r.name}」？`, content: '将向微信下发该个性化菜单。',
-      onOk: async () => { await publishMutation.mutateAsync(r.id); Toast.success('已发布'); },
+      onOk: async () => { await publishMutation.mutateAsync({ params: { id: r.id } }); Toast.success('已发布'); },
     });
   };
 
   const handleDelete = (r: MpConditionalMenu) => {
     confirmDelete({
       title: `删除「${r.name}」？`, content: '将同时删除微信侧个性化菜单。',
-      onOk: async () => { await deleteMutation.mutateAsync(r.id); Toast.success('已删除'); },
+      onOk: async () => { await deleteMutation.mutateAsync({ params: { id: r.id } }); Toast.success('已删除'); },
     });
   };
 
   const handleTryMatch = async () => {
     if (!currentId || !matchUserId.trim()) { Toast.warning('请输入 openid 或微信号'); return; }
-    const data = await tryMatchMutation.mutateAsync({ accountId: currentId, userId: matchUserId.trim() });
+    const data = await tryMatchMutation.mutateAsync({ body: { accountId: currentId, userId: matchUserId.trim() } });
     setMatchResult(data.buttons ?? []);
   };
 

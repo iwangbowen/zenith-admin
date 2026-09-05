@@ -1,80 +1,42 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { MpFan, MpFanSubscribe } from '@zenith/shared/mp';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import type { QueryClient } from '@tanstack/react-query';
+import type { QueryOf } from '@zenith/shared/core';
+import { mpFanContract } from '@zenith/shared/mp';
+import { createResourceQueries, useApiMutation } from '@/lib/contract-query';
 
-export interface MpFanListParams {
-  accountId: number | null;
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  subscribe?: MpFanSubscribe;
-  tagId?: number;
-  blacklisted?: 'true' | 'false';
-}
+export type MpFanListParams = QueryOf<typeof mpFanContract.list>;
 
-export const mpFanKeys = {
-  all: ['mp', 'fans'] as const,
-  lists: (accountId: number | null | undefined) => ['mp', 'fans', accountId, 'list'] as const,
-  list: (params: MpFanListParams) => ['mp', 'fans', params.accountId, 'list', params] as const,
+/** 粉丝只有列表与本地备注 / 标签更新走标准资源形态（无新增 / 删除） */
+export const {
+  keys: mpFanKeys,
+  useList: useMpFanList,
+  useSave: useSaveMpFan,
+} = createResourceQueries(mpFanContract);
+
+/** 以下操作都会改变粉丝列表行（关注状态 / 黑名单 / 会员绑定），统一失效列表 */
+const invalidateLists = (qc: QueryClient) => {
+  void qc.invalidateQueries({ queryKey: mpFanKeys.lists });
 };
 
-export function useMpFanList(params: MpFanListParams) {
-  return useQuery({
-    queryKey: mpFanKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<MpFan>>(`/api/mp/fans${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-    enabled: !!params.accountId,
-  });
-}
-
 export function useSyncMpFans() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (accountId: number) => request.post<{ synced: number; total: number }>('/api/mp/fans/sync', { accountId }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: mpFanKeys.all }),
-  });
+  return useApiMutation(mpFanContract.sync, { invalidate: invalidateLists });
 }
 
 export function useSyncMpBlacklist() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (accountId: number) => request.post<{ synced: number }>('/api/mp/fans/sync-blacklist', { accountId }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: mpFanKeys.all }),
-  });
+  return useApiMutation(mpFanContract.syncBlacklist, { invalidate: invalidateLists });
 }
 
-export function useSetMpFanBlacklist() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ accountId, openid, blacklisted }: { accountId: number; openid: string; blacklisted: boolean }) =>
-      request.post<null>(`/api/mp/fans/${blacklisted ? 'unblacklist' : 'blacklist'}`, { accountId, openids: [openid] }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: mpFanKeys.all }),
-  });
+export function useBlacklistMpFans() {
+  return useApiMutation(mpFanContract.blacklist, { invalidate: invalidateLists });
 }
 
-export function useSaveMpFan() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id: number; values: { remark: string; tagIds: number[] } }) =>
-      request.put<MpFan>(`/api/mp/fans/${id}`, values).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: mpFanKeys.all }),
-  });
+export function useUnblacklistMpFans() {
+  return useApiMutation(mpFanContract.unblacklist, { invalidate: invalidateLists });
 }
 
 export function useCreateMpFanMember() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.post<null>(`/api/mp/fans/${id}/create-member`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: mpFanKeys.all }),
-  });
+  return useApiMutation(mpFanContract.createMember, { invalidate: invalidateLists });
 }
 
 export function useUnbindMpFanMember() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.post<null>(`/api/mp/fans/${id}/unbind-member`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: mpFanKeys.all }),
-  });
+  return useApiMutation(mpFanContract.unbindMember, { invalidate: invalidateLists });
 }

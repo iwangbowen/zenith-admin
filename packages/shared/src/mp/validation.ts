@@ -1,7 +1,19 @@
 import * as z from 'zod';
 import { lazyRecursive, partialForUpdate } from '../core/validation';
 import { channelPublishAudienceSchema } from '../messaging/validation';
-import type { MpArticle, MpMenuButton } from './types';
+import {
+  MP_ACCOUNT_TYPES,
+  MP_AUTO_REPLY_MATCH_TYPES,
+  MP_AUTO_REPLY_TYPES,
+  MP_BROADCAST_TARGETS,
+  MP_BROADCAST_TYPES,
+  MP_ENCRYPT_MODES,
+  MP_KF_ROUTING_STRATEGIES,
+  MP_MATERIAL_TYPES,
+  MP_QRCODE_TYPES,
+  MP_REPLY_CONTENT_TYPES,
+} from './constants';
+import type { MpMenuButton } from './types';
 
 /** 管理端群发（文本 / 图片 / 图文 + 受众 + 立即/定时/草稿） */
 export const publishChannelSchema = z
@@ -105,10 +117,13 @@ export type RateConversationInput = z.infer<typeof rateConversationSchema>;
 
 
 // ─── 公众号管理 ────────────────────────────────────────────────────────────────
-export const MP_ACCOUNT_TYPES = ['subscribe', 'service', 'test'] as const;
+/** 仅携带所属公众号的请求体（同步 / 菜单发布等按账号触发的操作） */
+export const mpAccountIdBody = z.object({
+  accountId: z.number().int().positive(),
+});
 
 
-export const MP_ENCRYPT_MODES = ['plaintext', 'compatible', 'safe'] as const;
+export type MpAccountIdInput = z.infer<typeof mpAccountIdBody>;
 
 
 export const createMpAccountSchema = z.object({
@@ -168,14 +183,17 @@ export const updateMpFanSchema = z.object({
 export type UpdateMpFanInput = z.infer<typeof updateMpFanSchema>;
 
 
+/** 绑定粉丝到已有会员 */
+export const bindMpFanMemberSchema = z.object({
+  memberId: z.number().int().positive(),
+});
+
+
+export type BindMpFanMemberInput = z.infer<typeof bindMpFanMemberSchema>;
+
+
 // 公众号自动回复
-export const MP_AUTO_REPLY_TYPES = ['subscribe', 'keyword', 'default'] as const;
-
-
-export const MP_REPLY_CONTENT_TYPES = ['text', 'image', 'voice', 'video', 'news'] as const;
-
-
-const mpReplyArticleSchema = z.object({
+export const mpReplyArticleSchema = z.object({
   title: z.string().min(1, '标题不能为空').max(120),
   description: z.string().max(300).optional(),
   picUrl: z.string().max(1024).optional(),
@@ -183,11 +201,14 @@ const mpReplyArticleSchema = z.object({
 });
 
 
+export type MpReplyArticle = z.infer<typeof mpReplyArticleSchema>;
+
+
 const mpAutoReplyBase = z.object({
   accountId: z.number().int().positive(),
   replyType: z.enum(MP_AUTO_REPLY_TYPES),
   keyword: z.string().max(64).optional(),
-  matchType: z.enum(['exact', 'contain', 'regex']).default('contain'),
+  matchType: z.enum(MP_AUTO_REPLY_MATCH_TYPES).default('contain'),
   contentType: z.enum(MP_REPLY_CONTENT_TYPES).default('text'),
   content: z.string().max(2000).optional(),
   mediaId: z.string().max(128).optional(),
@@ -215,8 +236,8 @@ export type UpdateMpAutoReplyInput = z.infer<typeof updateMpAutoReplySchema>;
 
 
 // 公众号自定义菜单
-// 递归 schema：server 侧会为其注册 OpenAPI refId（见 packages/server/src/lib/dtos/mp.ts）
-export const mpMenuButtonSchema: z.ZodType<MpMenuButton> = lazyRecursive(() => z.object({
+/** 递归 schema：按钮可嵌套 sub_button，注册组件名后 OpenAPI 以 $ref 终止展开 */
+export const mpMenuButtonSchema: z.ZodType<MpMenuButton, MpMenuButton> = lazyRecursive(() => z.object({
   name: z.string().min(1, '按钮名称不能为空').max(60),
   type: z.string().max(32).optional(),
   key: z.string().max(128).optional(),
@@ -226,7 +247,7 @@ export const mpMenuButtonSchema: z.ZodType<MpMenuButton> = lazyRecursive(() => z
   media_id: z.string().max(128).optional(),
   article_id: z.string().max(128).optional(),
   sub_button: z.array(mpMenuButtonSchema).max(5).optional(),
-}));
+})).meta({ id: 'MpMenuButton' });
 
 
 export const saveMpMenuSchema = z.object({
@@ -239,7 +260,8 @@ export type SaveMpMenuInput = z.infer<typeof saveMpMenuSchema>;
 
 
 // 个性化菜单（按匹配规则下发）
-const mpMenuMatchRuleSchema = z.object({
+/** 个性化菜单匹配规则（字段值均为字符串，对齐微信 matchrule） */
+export const mpMenuMatchRuleSchema = z.object({
   tagId: z.string().max(16).optional(),
   sex: z.string().max(4).optional(),
   country: z.string().max(64).optional(),
@@ -248,6 +270,9 @@ const mpMenuMatchRuleSchema = z.object({
   clientPlatformType: z.string().max(4).optional(),
   language: z.string().max(16).optional(),
 });
+
+
+export type MpMenuMatchRule = z.infer<typeof mpMenuMatchRuleSchema>;
 
 
 export const createMpConditionalMenuSchema = z.object({
@@ -300,9 +325,6 @@ export type CheckMpContentInput = z.infer<typeof checkMpContentSchema>;
 
 
 // 公众号素材
-export const MP_MATERIAL_TYPES = ['image', 'voice', 'video', 'thumb'] as const;
-
-
 export const createMpMaterialSchema = z.object({
   accountId: z.number().int().positive(),
   type: z.enum(MP_MATERIAL_TYPES).default('image'),
@@ -324,7 +346,8 @@ export type UpdateMpMaterialInput = z.infer<typeof updateMpMaterialSchema>;
 
 
 // 公众号图文草稿
-export const mpArticleSchema: z.ZodType<MpArticle> = z.object({
+/** 图文消息单篇文章 */
+export const mpArticleSchema = z.object({
   title: z.string().min(1, '标题不能为空').max(120),
   author: z.string().max(60).optional(),
   digest: z.string().max(200).optional(),
@@ -334,6 +357,9 @@ export const mpArticleSchema: z.ZodType<MpArticle> = z.object({
   contentSourceUrl: z.string().max(1000).optional(),
   showCoverPic: z.boolean().optional(),
 });
+
+
+export type MpArticle = z.infer<typeof mpArticleSchema>;
 
 
 export const createMpDraftSchema = z.object({
@@ -354,12 +380,6 @@ export type UpdateMpDraftInput = z.infer<typeof updateMpDraftSchema>;
 
 
 // 公众号群发消息
-export const MP_BROADCAST_TYPES = ['text', 'image', 'mpnews'] as const;
-
-
-export const MP_BROADCAST_TARGETS = ['all', 'tag'] as const;
-
-
 const mpBroadcastBase = z.object({
   accountId: z.number().int().positive(),
   msgType: z.enum(MP_BROADCAST_TYPES).default('text'),
@@ -415,9 +435,6 @@ export type GetMpJsConfigInput = z.infer<typeof getMpJsConfigSchema>;
 
 
 // 公众号带参数二维码
-export const MP_QRCODE_TYPES = ['temporary', 'permanent'] as const;
-
-
 export const createMpQrcodeSchema = z.object({
   accountId: z.number().int().positive(),
   type: z.enum(MP_QRCODE_TYPES).default('permanent'),
@@ -460,7 +477,7 @@ export const transferMpKfSessionSchema = z.object({
 
 export const updateMpKfRoutingConfigSchema = z.object({
   enabled: z.boolean().optional(),
-  strategy: z.enum(['manual', 'round_robin', 'least_active']).optional(),
+  strategy: z.enum(MP_KF_ROUTING_STRATEGIES).optional(),
   maxConcurrent: z.number().int().min(1).max(100).optional(),
   waitTimeoutMinutes: z.number().int().min(1).max(1440).optional(),
   idleTimeoutMinutes: z.number().int().min(1).max(1440).optional(),

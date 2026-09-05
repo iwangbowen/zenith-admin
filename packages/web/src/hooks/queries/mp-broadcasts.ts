@@ -1,14 +1,16 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { MpBroadcast, MpBroadcastResult, MpBroadcastStatus, MpDraft, MpMaterial, MpTag } from '@zenith/shared/mp';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import { useQuery } from '@tanstack/react-query';
+import type { QueryOf } from '@zenith/shared/core';
+import { mpBroadcastContract, mpDraftContract, mpMaterialContract, mpTagContract, type MpDraft, type MpMaterial, type MpTag } from '@zenith/shared/mp';
+import { api, contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
-export interface MpBroadcastListParams {
-  page: number;
-  pageSize: number;
-  status?: MpBroadcastStatus;
-}
+export type MpBroadcastListParams = QueryOf<typeof mpBroadcastContract.list>;
+
+export const {
+  keys: mpBroadcastKeys,
+  useList: useMpBroadcastList,
+  useSave: useSaveMpBroadcast,
+  useDelete: useDeleteMpBroadcasts,
+} = createResourceQueries(mpBroadcastContract);
 
 export interface MpBroadcastAuxData {
   tags: MpTag[];
@@ -16,32 +18,16 @@ export interface MpBroadcastAuxData {
   drafts: MpDraft[];
 }
 
-export const mpBroadcastKeys = {
-  all: ['mp', 'broadcasts'] as const,
-  lists: (accountId: number | null | undefined) => ['mp', 'broadcasts', accountId] as const,
-  list: (accountId: number | null | undefined, params: MpBroadcastListParams) => ['mp', 'broadcasts', accountId, params] as const,
-  aux: (accountId: number | null | undefined) => ['mp', 'broadcasts', accountId, 'aux'] as const,
-  result: (id: number | null | undefined) => ['mp', 'broadcasts', 'result', id] as const,
-};
-
-export function useMpBroadcastList(accountId: number | null | undefined, params: MpBroadcastListParams) {
-  return useQuery({
-    queryKey: mpBroadcastKeys.list(accountId, params),
-    queryFn: () =>
-      request.get<PaginatedResponse<MpBroadcast>>(`/api/mp/broadcasts${toQueryString({ ...params, accountId })}`).then(unwrap),
-    enabled: !!accountId,
-    placeholderData: keepPreviousData,
-  });
-}
-
+/** 群发表单的候选标签 / 图片素材 / 图文草稿（跨资源聚合，只在打开表单时拉取） */
 export function useMpBroadcastAux(accountId: number | null | undefined) {
   return useQuery({
-    queryKey: mpBroadcastKeys.aux(accountId),
+    queryKey: [...mpBroadcastKeys.all, 'aux', accountId] as const,
     queryFn: async (): Promise<MpBroadcastAuxData> => {
+      const query = { accountId: accountId ?? 0, page: 1, pageSize: 200 };
       const [tags, materials, drafts] = await Promise.all([
-        request.get<PaginatedResponse<MpTag>>(`/api/mp/tags${toQueryString({ accountId, page: 1, pageSize: 200 })}`).then(unwrap),
-        request.get<PaginatedResponse<MpMaterial>>(`/api/mp/materials${toQueryString({ accountId, page: 1, pageSize: 200 })}`).then(unwrap),
-        request.get<PaginatedResponse<MpDraft>>(`/api/mp/drafts${toQueryString({ accountId, page: 1, pageSize: 200 })}`).then(unwrap),
+        api(mpTagContract.list, { query }),
+        api(mpMaterialContract.list, { query }),
+        api(mpDraftContract.list, { query }),
       ]);
       return {
         tags: tags.list,
@@ -54,41 +40,20 @@ export function useMpBroadcastAux(accountId: number | null | undefined) {
 }
 
 export function useMpBroadcastResult(id: number | null | undefined, enabled = true) {
-  return useQuery({
-    queryKey: mpBroadcastKeys.result(id),
-    queryFn: () => request.get<MpBroadcastResult>(`/api/mp/broadcasts/${id}/result`).then(unwrap),
-    enabled: enabled && id != null,
-  });
+  return useApiQuery(mpBroadcastContract.result, { params: { id: id ?? 0 } }, { enabled: enabled && id != null });
 }
 
-export function useSaveMpBroadcast() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number | null; values: Record<string, unknown> }) =>
-      (id ? request.put<MpBroadcast>(`/api/mp/broadcasts/${id}`, values) : request.post<MpBroadcast>('/api/mp/broadcasts', values)).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: mpBroadcastKeys.all }),
-  });
-}
-
+/** 发送改变该条记录的状态 / msgId：列表与发送结果都需刷新 */
 export function useSendMpBroadcast() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.post<null>(`/api/mp/broadcasts/${id}/send`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: mpBroadcastKeys.all }),
+  return useApiMutation(mpBroadcastContract.send, {
+    invalidate: (qc, _output, { params }) => {
+      void qc.invalidateQueries({ queryKey: mpBroadcastKeys.lists });
+      void qc.invalidateQueries({ queryKey: contractKey(mpBroadcastContract.result, { params }) });
+    },
   });
 }
 
+/** 预览只向指定 openid 试发，不改变群发状态 */
 export function usePreviewMpBroadcast() {
-  return useMutation({
-    mutationFn: ({ id, openid }: { id: number; openid: string }) =>
-      request.post<null>(`/api/mp/broadcasts/${id}/preview`, { openid }).then(unwrap),
-  });
-}
-
-export function useDeleteMpBroadcast() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/mp/broadcasts/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: mpBroadcastKeys.all }),
-  });
+  return useApiMutation(mpBroadcastContract.preview);
 }
