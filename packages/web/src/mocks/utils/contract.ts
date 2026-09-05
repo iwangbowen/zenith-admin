@@ -107,9 +107,13 @@ export function mock<Op extends AnyOperation>(op: Op, resolver: MockResolver<Op>
   });
 }
 
+/**
+ * 读取 JSON 请求体，与服务端校验器行为一致：无 JSON content-type 时按 `{}` 进入 schema 校验
+ * （全可选 schema 因此通过），带 JSON 头但报文非法时为 undefined（校验必然失败 → 400）。
+ */
 async function readJsonBody(request: Request): Promise<unknown> {
   const contentType = request.headers.get('content-type') ?? '';
-  if (!contentType.includes('application/json')) return undefined;
+  if (!contentType.includes('application/json')) return {};
   try {
     return await request.clone().json();
   } catch {
