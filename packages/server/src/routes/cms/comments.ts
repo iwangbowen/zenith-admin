@@ -1,11 +1,9 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { cmsCommentContract } from '@zenith/shared/cms';
 import { authMiddleware } from '../../middleware/auth';
 import { guard } from '../../middleware/guard';
-import {
-  jsonContent, PaginationQuery, validationHook, commonErrorResponses,
-  okPaginated, okMsg, BatchIdsBody, okBody, ok,
-} from '../../lib/openapi-schemas';
-import { CmsCommentDTO } from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   listCmsComments, auditCmsComments, deleteCmsComments, countPendingComments,
 } from '../../services/cms/cms-comments.service';
@@ -13,45 +11,20 @@ import { triggerContentStaticRefresh } from '../../services/cms/cms-static.servi
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
-const listRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/',
-    tags: ['CMS-评论管理'], summary: '评论分页列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:comment:list' })] as const,
-    request: {
-      query: PaginationQuery.extend({
-        siteId: z.coerce.number().int().positive(),
-        status: z.enum(['pending', 'approved', 'rejected']).optional(),
-        source: z.enum(['member', 'guest']).optional().openapi({ description: '来源筛选：member=会员评论 guest=游客评论' }),
-      }),
-    },
-    responses: { ...commonErrorResponses, ...okPaginated(CmsCommentDTO, '评论列表') },
-  }),
+const read = [authMiddleware, guard({ permission: 'cms:comment:list' })] as const;
+
+const listRoute = defineContractRoute(cmsCommentContract.list, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await listCmsComments(c.req.valid('query'))), 200),
 });
 
-const pendingCountRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/pending-count',
-    tags: ['CMS-评论管理'], summary: '待审核评论数',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:comment:list' })] as const,
-    request: { query: z.object({ siteId: z.coerce.number().int().positive() }) },
-    responses: { ...commonErrorResponses, ...ok(z.object({ count: z.number().int() }), '待审核数') },
-  }),
+const pendingCountRoute = defineContractRoute(cmsCommentContract.pendingCount, {
+  middleware: read,
   handler: async (c) => c.json(okBody({ count: await countPendingComments(c.req.valid('query').siteId) }), 200),
 });
 
-const approveRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/approve',
-    tags: ['CMS-评论管理'], summary: '批量审核通过（同步刷新详情页静态文件）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:comment:audit', audit: { description: 'CMS 评论审核通过', module: 'CMS内容管理' } })] as const,
-    request: { body: { content: jsonContent(BatchIdsBody), required: true } },
-    responses: { ...commonErrorResponses, ...okMsg('已通过') },
-  }),
+const approveRoute = defineContractRoute(cmsCommentContract.approve, {
+  middleware: [authMiddleware, guard({ permission: 'cms:comment:audit', audit: { description: 'CMS 评论审核通过', module: 'CMS内容管理' } })],
   handler: async (c) => {
     const { ids } = c.req.valid('json');
     const contentIds = await auditCmsComments(ids, 'approved');
@@ -60,15 +33,8 @@ const approveRoute = defineOpenAPIRoute({
   },
 });
 
-const rejectRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/reject',
-    tags: ['CMS-评论管理'], summary: '批量拒绝',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:comment:audit', audit: { description: 'CMS 评论拒绝', module: 'CMS内容管理' } })] as const,
-    request: { body: { content: jsonContent(BatchIdsBody), required: true } },
-    responses: { ...commonErrorResponses, ...okMsg('已拒绝') },
-  }),
+const rejectRoute = defineContractRoute(cmsCommentContract.reject, {
+  middleware: [authMiddleware, guard({ permission: 'cms:comment:audit', audit: { description: 'CMS 评论拒绝', module: 'CMS内容管理' } })],
   handler: async (c) => {
     const { ids } = c.req.valid('json');
     const contentIds = await auditCmsComments(ids, 'rejected');
@@ -77,15 +43,8 @@ const rejectRoute = defineOpenAPIRoute({
   },
 });
 
-const deleteRoute_ = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/delete',
-    tags: ['CMS-评论管理'], summary: '批量删除',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:comment:delete', audit: { description: 'CMS 评论删除', module: 'CMS内容管理' } })] as const,
-    request: { body: { content: jsonContent(BatchIdsBody), required: true } },
-    responses: { ...commonErrorResponses, ...okMsg('删除成功') },
-  }),
+const deleteRouteDef = defineContractRoute(cmsCommentContract.batchDelete, {
+  middleware: [authMiddleware, guard({ permission: 'cms:comment:delete', audit: { description: 'CMS 评论删除', module: 'CMS内容管理' } })],
   handler: async (c) => {
     const { ids } = c.req.valid('json');
     const contentIds = await deleteCmsComments(ids);
@@ -94,6 +53,6 @@ const deleteRoute_ = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRoute, pendingCountRoute, approveRoute, rejectRoute, deleteRoute_] as const);
+router.openapiRoutes([listRoute, pendingCountRoute, approveRoute, rejectRoute, deleteRouteDef] as const);
 
 export default router;

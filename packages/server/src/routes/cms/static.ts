@@ -1,22 +1,16 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { asyncTaskSchema } from '@zenith/shared/tasks';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { cmsStaticContract } from '@zenith/shared/cms';
 import { authMiddleware } from '../../middleware/auth';
 import { guard } from '../../middleware/guard';
-import { commonErrorResponses, jsonContent, ok, okBody, validationHook } from '../../lib/openapi-schemas';
-import { submitCmsPublishTask } from '../../services/cms/cms-publishing.service';
 import { idempotencyGuard } from '../../middleware/idempotency';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
+import { submitCmsPublishTask } from '../../services/cms/cms-publishing.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
-const buildRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/build',
-    tags: ['CMS-静态化'], summary: '提交全站静态化任务（任务中心执行）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:publish:build', audit: { description: 'CMS 全站静态化', module: 'CMS内容管理' } }), idempotencyGuard({ ttlSeconds: 30 })] as const,
-    request: { body: { content: jsonContent(z.object({ siteId: z.number().int().positive() })), required: true } },
-    responses: { ...commonErrorResponses, ...ok(asyncTaskSchema, '任务已提交') },
-  }),
+const buildRoute = defineContractRoute(cmsStaticContract.build, {
+  middleware: [authMiddleware, guard({ permission: 'cms:publish:build', audit: { description: 'CMS 全站静态化', module: 'CMS内容管理' } }), idempotencyGuard({ ttlSeconds: 30 })],
   handler: async (c) => {
     const { siteId } = c.req.valid('json');
     const task = await submitCmsPublishTask({

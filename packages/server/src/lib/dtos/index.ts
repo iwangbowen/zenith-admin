@@ -40,6 +40,5 @@ export * from './report-platform';
 export * from './open-payment';
 export * from './rules';
 export * from './user-feedbacks';
-export * from './cms';
 export * from './app-releases';
 export * from './trace';

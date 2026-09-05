@@ -156,8 +156,10 @@ describe('认证契约：声明与运行时行为必须一致', () => {
     // 因此在这里设一道阈值：新增公开端点会让这条断言失败，迫使评审。
     // 2026-09：企业网盘外链新增 4 个匿名端点（/api/drive/public/shares/*：换会话 / 元信息 / 子目录 / 内容），
     // 均受路径绑定限流 drive_public_share 与 Redis 访问会话（sessionVersion 可整体吊销）约束。
+    // CMS 前台 4 个匿名端点（/api/public/cms/*：验证码 / 互动问卷查询与提交 / 广告事件令牌），
+    // 均受 Redis IP 限流、站点解析与一次性令牌约束。
     const publicOps = operations.filter((op) => op.isDeclaredPublic);
-    expect(publicOps.length).toBeLessThanOrEqual(64);
+    expect(publicOps.length).toBeLessThanOrEqual(66);
   });
 });
 

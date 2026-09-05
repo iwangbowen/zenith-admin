@@ -1,26 +1,9 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { createCmsSiteSchema, moveCmsSiteSchema, updateCmsSiteInheritanceSchema, updateCmsSiteSchema } from '@zenith/shared/cms';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { cmsSiteContract } from '@zenith/shared/cms';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData, setAuditAfterData } from '../../middleware/guard';
-import {
-  ErrorResponse, jsonContent, PaginationQuery, validationHook, commonErrorResponses,
-  ok, okPaginated, okMsg, IdParam, okBody, errBody,
-} from '../../lib/openapi-schemas';
-import {
-  CmsSiteChainNodeDTO,
-  CmsSiteDTO,
-  CmsSiteEffectiveConfigDTO,
-  CmsSiteInheritanceUpdateResultDTO,
-  CmsSiteImportResultDTO,
-  CmsSiteMoveResultDTO,
-  CmsSiteTreeNodeDTO,
-  CmsSiteUsersDTO,
-  CmsTemplateHealthDTO,
-  CmsThemeDTO,
-  CmsThemeSettingFieldDTO,
-  CmsThemeTemplatesDTO,
-  CmsOpenAppGrantDTO,
-} from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { validationHook, okBody } from '../../lib/openapi-schemas';
 import { getThemeSettingsSchema, isThemeRegistered, listThemes, listThemeTemplates } from '../../cms/themes/registry';
 import {
   listCmsSites, listAllCmsSites, getCmsSite, createCmsSite, updateCmsSite, deleteCmsSite,
@@ -38,75 +21,30 @@ import { assertAllCmsSiteChannelsAccess } from '../../services/cms/cms-channels.
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
-const listRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/',
-    tags: ['CMS-站点管理'], summary: '站点分页列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:site:list' })] as const,
-    request: {
-      query: PaginationQuery.extend({
-        keyword: z.string().optional(),
-        status: z.enum(['enabled', 'disabled']).optional(),
-      }),
-    },
-    responses: { ...commonErrorResponses, ...okPaginated(CmsSiteDTO, '站点列表') },
-  }),
+const read = [authMiddleware, guard({ permission: 'cms:site:list' })] as const;
+
+const listRoute = defineContractRoute(cmsSiteContract.list, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await listCmsSites(c.req.valid('query'))), 200),
 });
 
-const allRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/all',
-    tags: ['CMS-站点管理'], summary: '全部启用站点（站点切换器）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:site:list' })] as const,
-    responses: { ...commonErrorResponses, ...ok(z.array(CmsSiteDTO), '站点列表') },
-  }),
+const allRoute = defineContractRoute(cmsSiteContract.all, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await listAllCmsSites()), 200),
 });
 
-const treeRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/tree',
-    tags: ['CMS-站点管理'], summary: '受权站点树（普通用户仅返回显式授权站点）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:site:list' })] as const,
-    request: {
-      query: z.object({
-        keyword: z.string().max(100).optional(),
-        status: z.enum(['enabled', 'disabled']).optional(),
-      }),
-    },
-    responses: { ...commonErrorResponses, ...ok(z.array(CmsSiteTreeNodeDTO), '站点树') },
-  }),
+const treeRoute = defineContractRoute(cmsSiteContract.tree, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await listCmsSiteTree(c.req.valid('query'))), 200),
 });
 
-const themesRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/themes',
-    tags: ['CMS-站点管理'], summary: '可用主题列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:site:list' })] as const,
-    request: { query: z.object({ siteId: z.coerce.number().int().positive().optional() }) },
-    responses: { ...commonErrorResponses, ...ok(z.array(CmsThemeDTO), '主题列表') },
-  }),
+const themesRoute = defineContractRoute(cmsSiteContract.themes, {
+  middleware: read,
   handler: async (c) => c.json(okBody(listThemes()), 200),
 });
 
-const themeTemplatesRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/themes/{code}/templates',
-    tags: ['CMS-站点管理'], summary: '主题可选模板清单（站点默认模板/栏目/内容模板下拉）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:site:list' })] as const,
-    request: {
-      params: z.object({ code: z.string().min(1) }),
-      query: z.object({ siteId: z.coerce.number().int().positive().optional() }),
-    },
-    responses: { ...commonErrorResponses, ...ok(CmsThemeTemplatesDTO, '模板清单') },
-  }),
+const themeTemplatesRoute = defineContractRoute(cmsSiteContract.themeTemplates, {
+  middleware: read,
   handler: async (c) => {
     const code = c.req.valid('param').code;
     const options = isThemeRegistered(code) ? listThemeTemplates(code) : { list: [], detail: [] };
@@ -114,33 +52,16 @@ const themeTemplatesRoute = defineOpenAPIRoute({
   },
 });
 
-const themeSettingsSchemaRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/themes/{code}/settings-schema',
-    tags: ['CMS-站点管理'], summary: '主题参数声明（后台主题参数面板动态表单）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:site:list' })] as const,
-    request: { params: z.object({ code: z.string().min(1) }) },
-    responses: { ...commonErrorResponses, ...ok(z.array(CmsThemeSettingFieldDTO), '参数声明') },
-  }),
+const themeSettingsSchemaRoute = defineContractRoute(cmsSiteContract.themeSettingsSchema, {
+  middleware: read,
   handler: (c) => {
     const { code } = c.req.valid('param');
     return c.json(okBody(isThemeRegistered(code) ? getThemeSettingsSchema(code) : []), 200);
   },
 });
 
-const templateHealthRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/{id}/template-health',
-    tags: ['CMS-站点管理'], summary: '站点模板健康检查（扫描站点/栏目/内容的失效模板引用；?theme= 预检切换目标主题）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:site:list' })] as const,
-    request: {
-      params: IdParam,
-      query: z.object({ theme: z.string().max(50).optional() }),
-    },
-    responses: { ...commonErrorResponses, ...ok(CmsTemplateHealthDTO, '健康检查结果') },
-  }),
+const templateHealthRoute = defineContractRoute(cmsSiteContract.templateHealth, {
+  middleware: read,
   handler: async (c) => {
     const { id } = c.req.valid('param');
     await assertSiteAccess(id);
@@ -149,57 +70,26 @@ const templateHealthRoute = defineOpenAPIRoute({
   },
 });
 
-const getOneRoute = defineOpenAPIRoute({  route: createRoute({
-    method: 'get', path: '/{id}',
-    tags: ['CMS-站点管理'], summary: '站点详情',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:site:list' })] as const,
-    request: { params: IdParam },
-    responses: {
-      ...commonErrorResponses,
-      ...ok(CmsSiteDTO, '站点详情'),
-      404: { content: jsonContent(ErrorResponse), description: '不存在' },
-    },
-  }),
+const getOneRoute = defineContractRoute(cmsSiteContract.detail, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await getCmsSite(c.req.valid('param').id)), 200),
 });
 
-const inheritanceChainRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/{id}/inheritance-chain',
-    tags: ['CMS-站点管理'], summary: '查看站点继承链（隐藏无权父级）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:site:list' })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...ok(z.array(CmsSiteChainNodeDTO), '继承链') },
-  }),
+const inheritanceChainRoute = defineContractRoute(cmsSiteContract.inheritanceChain, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await getCmsSiteInheritanceChain(c.req.valid('param').id)), 200),
 });
 
-const effectiveConfigRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/{id}/effective-config',
-    tags: ['CMS-站点管理'], summary: '有效配置及逐项来源（secret 始终掩码）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:site:list' })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...ok(CmsSiteEffectiveConfigDTO, '有效配置') },
-  }),
+const effectiveConfigRoute = defineContractRoute(cmsSiteContract.effectiveConfig, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await getCmsEffectiveConfig(c.req.valid('param').id)), 200),
 });
 
-const moveRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/{id}/parent',
-    tags: ['CMS-站点管理'], summary: '安全移动站点子树',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({
-      permission: 'cms:site:hierarchy',
-      audit: { description: '移动 CMS 站点子树', module: 'CMS内容管理' },
-    })] as const,
-    request: { params: IdParam, body: { content: jsonContent(moveCmsSiteSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(CmsSiteMoveResultDTO, '移动结果') },
-  }),
+const moveRoute = defineContractRoute(cmsSiteContract.move, {
+  middleware: [authMiddleware, guard({
+    permission: 'cms:site:hierarchy',
+    audit: { description: '移动 CMS 站点子树', module: 'CMS内容管理' },
+  })],
   handler: async (c) => {
     const result = await moveCmsSite(c.req.valid('param').id, c.req.valid('json').parentId);
     setAuditAfterData(c, result);
@@ -207,21 +97,11 @@ const moveRoute = defineOpenAPIRoute({
   },
 });
 
-const updateInheritanceRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/{id}/inheritance',
-    tags: ['CMS-站点管理'], summary: '逐项覆盖或恢复继承',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({
-      permission: 'cms:site:hierarchy',
-      audit: { description: '更新 CMS 站点继承策略', module: 'CMS内容管理' },
-    })] as const,
-    request: {
-      params: IdParam,
-      body: { content: jsonContent(updateCmsSiteInheritanceSchema), required: true },
-    },
-    responses: { ...commonErrorResponses, ...ok(CmsSiteInheritanceUpdateResultDTO, '继承策略') },
-  }),
+const updateInheritanceRoute = defineContractRoute(cmsSiteContract.updateInheritance, {
+  middleware: [authMiddleware, guard({
+    permission: 'cms:site:hierarchy',
+    audit: { description: '更新 CMS 站点继承策略', module: 'CMS内容管理' },
+  })],
   handler: async (c) => {
     const result = await updateCmsSiteInheritance(c.req.valid('param').id, c.req.valid('json'));
     setAuditAfterData(c, result);
@@ -229,31 +109,13 @@ const updateInheritanceRoute = defineOpenAPIRoute({
   },
 });
 
-const createRoute_ = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/',
-    tags: ['CMS-站点管理'], summary: '创建站点',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:site:create', audit: { description: '创建 CMS 站点', module: 'CMS内容管理' } })] as const,
-    request: { body: { content: jsonContent(createCmsSiteSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(CmsSiteDTO, '创建成功') },
-  }),
+const createRouteDef = defineContractRoute(cmsSiteContract.create, {
+  middleware: [authMiddleware, guard({ permission: 'cms:site:create', audit: { description: '创建 CMS 站点', module: 'CMS内容管理' } })],
   handler: async (c) => c.json(okBody(await createCmsSite(c.req.valid('json')), '创建成功'), 200),
 });
 
-const updateRoute_ = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/{id}',
-    tags: ['CMS-站点管理'], summary: '更新站点',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:site:update', audit: { description: '更新 CMS 站点', module: 'CMS内容管理' } })] as const,
-    request: { params: IdParam, body: { content: jsonContent(updateCmsSiteSchema), required: true } },
-    responses: {
-      ...commonErrorResponses,
-      ...ok(CmsSiteDTO, '更新成功'),
-      404: { content: jsonContent(ErrorResponse), description: '不存在' },
-    },
-  }),
+const updateRouteDef = defineContractRoute(cmsSiteContract.update, {
+  middleware: [authMiddleware, guard({ permission: 'cms:site:update', audit: { description: '更新 CMS 站点', module: 'CMS内容管理' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, mapCmsSite(await ensureCmsSiteExists(id)));
@@ -261,19 +123,8 @@ const updateRoute_ = defineOpenAPIRoute({
   },
 });
 
-const deleteRoute_ = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/{id}',
-    tags: ['CMS-站点管理'], summary: '删除站点',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:site:delete', audit: { description: '删除 CMS 站点', module: 'CMS内容管理' } })] as const,
-    request: { params: IdParam },
-    responses: {
-      ...commonErrorResponses,
-      ...okMsg('删除成功'),
-      404: { content: jsonContent(ErrorResponse), description: '不存在' },
-    },
-  }),
+const deleteRouteDef = defineContractRoute(cmsSiteContract.remove, {
+  middleware: [authMiddleware, guard({ permission: 'cms:site:delete', audit: { description: '删除 CMS 站点', module: 'CMS内容管理' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, mapCmsSite(await ensureCmsSiteExists(id)));
@@ -283,30 +134,13 @@ const deleteRoute_ = defineOpenAPIRoute({
 });
 
 // ─── 站点授权用户（站点级数据权限）────────────────────────────────────────────
-const getSiteUsersRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/{id}/users',
-    tags: ['CMS-站点管理'], summary: '站点授权用户',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:site:list' })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...ok(CmsSiteUsersDTO, '授权用户') },
-  }),
+const getSiteUsersRoute = defineContractRoute(cmsSiteContract.users, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await getCmsSiteUsers(c.req.valid('param').id)), 200),
 });
 
-const setSiteUsersRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/{id}/users',
-    tags: ['CMS-站点管理'], summary: '设置站点授权用户（绑定后仅授权用户可管理该站点）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:site:update', audit: { description: '设置 CMS 站点授权用户', module: 'CMS内容管理' } })] as const,
-    request: {
-      params: IdParam,
-      body: { content: jsonContent(z.object({ userIds: z.array(z.number().int().positive()) })), required: true },
-    },
-    responses: { ...commonErrorResponses, ...okMsg('保存成功') },
-  }),
+const setSiteUsersRoute = defineContractRoute(cmsSiteContract.setUsers, {
+  middleware: [authMiddleware, guard({ permission: 'cms:site:update', audit: { description: '设置 CMS 站点授权用户', module: 'CMS内容管理' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const { userIds } = c.req.valid('json');
@@ -318,34 +152,18 @@ const setSiteUsersRoute = defineOpenAPIRoute({
   },
 });
 
-// ─── 开通行为统计（P3：自动创建 analytics 站点并注入采集脚本）───────────────────
-const enableAnalyticsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/{id}/enable-analytics',
-    tags: ['CMS-站点管理'], summary: '开通行为统计（自动创建统计站点，前台注入采集脚本）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:site:update', audit: { description: 'CMS 站点开通行为统计', module: 'CMS内容管理' } })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...ok(z.object({ siteKey: z.string(), created: z.boolean() }), '已开通') },
-  }),
+// ─── 开通行为统计（自动创建 analytics 站点并注入采集脚本）─────────────────────
+const enableAnalyticsRoute = defineContractRoute(cmsSiteContract.enableAnalytics, {
+  middleware: [authMiddleware, guard({ permission: 'cms:site:update', audit: { description: 'CMS 站点开通行为统计', module: 'CMS内容管理' } })],
   handler: async (c) => {
     const result = await enableSiteAnalytics(c.req.valid('param').id);
     return c.json(okBody(result, result.created ? '已开通行为统计' : '行为统计已开通过'), 200);
   },
 });
 
-// ─── 站点导入导出（P5：整站备份迁移）──────────────────────────────────────────
-const importSiteRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/import',
-    tags: ['CMS-站点管理'], summary: '导入站点（上传导出包 JSON，创建为新站点）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:site:create', audit: { description: '导入 CMS 站点', module: 'CMS内容管理' } })] as const,
-    request: {
-      body: { content: jsonContent(z.looseObject({}).openapi({ description: '站点导出包 JSON（GET /cms/sites/{id}/export 的产物）' })), required: true },
-    },
-    responses: { ...commonErrorResponses, ...ok(CmsSiteImportResultDTO, '导入结果') },
-  }),
+// ─── 站点导入导出（整站备份迁移）──────────────────────────────────────────────
+const importSiteRoute = defineContractRoute(cmsSiteContract.import, {
+  middleware: [authMiddleware, guard({ permission: 'cms:site:create', audit: { description: '导入 CMS 站点', module: 'CMS内容管理' } })],
   handler: async (c) => {
     const result = await importCmsSite(c.req.valid('json'));
     setAuditAfterData(c, result);
@@ -353,16 +171,31 @@ const importSiteRoute = defineOpenAPIRoute({
   },
 });
 
+// 站点导出：JSON 附件下载（结构+内容整站打包，不含运行数据）
+const exportSiteRoute = defineContractRoute(cmsSiteContract.export, {
+  middleware: [authMiddleware, guard({
+    permission: 'cms:site:update',
+    audit: { description: '导出 CMS 站点', module: 'CMS内容管理' },
+  })],
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const pkg = await exportCmsSite(id);
+    const siteCode = String((pkg.site as Record<string, unknown>).code ?? id);
+    const filename = `cms-site-${siteCode}-${formatFileTimestamp(new Date())}.json`;
+    return new Response(JSON.stringify(pkg, null, 2), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+        'Cache-Control': 'no-store',
+      },
+    });
+  },
+});
+
 // ─── 开放授权（Headless 写入的 fail-closed 边界）──────────────────────────────
-const listGrantsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/{id}/open-grants',
-    tags: ['CMS-站点管理'], summary: '站点的开放应用授权列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:site:update' })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...ok(z.array(CmsOpenAppGrantDTO), '授权列表') },
-  }),
+const listGrantsRoute = defineContractRoute(cmsSiteContract.openGrants, {
+  middleware: [authMiddleware, guard({ permission: 'cms:site:update' })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     await assertSiteAccess(id);
@@ -370,27 +203,8 @@ const listGrantsRoute = defineOpenAPIRoute({
   },
 });
 
-const saveGrantRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/{id}/open-grants',
-    tags: ['CMS-站点管理'], summary: '授权开放应用写入本站点（未授权一律拒绝）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:site:update', audit: { description: '设置 CMS 站点开放授权', module: 'CMS内容管理' } })] as const,
-    request: {
-      params: IdParam,
-      body: {
-        content: jsonContent(z.object({
-          clientId: z.string().min(1).max(64).openapi({ description: '开放应用 AppKey' }),
-          channelIds: z.array(z.number().int().positive()).default([]).openapi({ description: '空数组 = 该站点全部栏目' }),
-          canPublish: z.boolean().default(false).openapi({ description: '允许直接发布；还需应用持有 cms:publish 且站点开启「允许开放 API 直接发布」' }),
-          status: z.enum(['enabled', 'disabled']).default('enabled'),
-          remark: z.string().max(200).nullable().optional(),
-        })),
-        required: true,
-      },
-    },
-    responses: { ...commonErrorResponses, ...ok(CmsOpenAppGrantDTO, '已保存') },
-  }),
+const saveGrantRoute = defineContractRoute(cmsSiteContract.saveOpenGrant, {
+  middleware: [authMiddleware, guard({ permission: 'cms:site:update', audit: { description: '设置 CMS 站点开放授权', module: 'CMS内容管理' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     await assertSiteAccess(id);
@@ -400,15 +214,8 @@ const saveGrantRoute = defineOpenAPIRoute({
   },
 });
 
-const deleteGrantRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/open-grants/{grantId}',
-    tags: ['CMS-站点管理'], summary: '删除开放应用授权',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:site:update', audit: { description: '删除 CMS 站点开放授权', module: 'CMS内容管理' } })] as const,
-    request: { params: z.object({ grantId: z.coerce.number().int().positive() }) },
-    responses: { ...commonErrorResponses, ...okMsg('已删除') },
-  }),
+const deleteGrantRoute = defineContractRoute(cmsSiteContract.removeOpenGrant, {
+  middleware: [authMiddleware, guard({ permission: 'cms:site:update', audit: { description: '删除 CMS 站点开放授权', module: 'CMS内容管理' } })],
   handler: async (c) => {
     await deleteCmsOpenAppGrant(c.req.valid('param').grantId);
     return c.json(okBody(null, '已删除'), 200);
@@ -418,31 +225,9 @@ const deleteGrantRoute = defineOpenAPIRoute({
 router.openapiRoutes([
   listRoute, allRoute, treeRoute, themesRoute, themeTemplatesRoute, themeSettingsSchemaRoute,
   templateHealthRoute, inheritanceChainRoute, effectiveConfigRoute, moveRoute, updateInheritanceRoute,
-  getOneRoute, createRoute_, updateRoute_, deleteRoute_, getSiteUsersRoute, setSiteUsersRoute,
-  enableAnalyticsRoute, importSiteRoute,
+  getOneRoute, createRouteDef, updateRouteDef, deleteRouteDef, getSiteUsersRoute, setSiteUsersRoute,
+  enableAnalyticsRoute, importSiteRoute, exportSiteRoute,
   listGrantsRoute, saveGrantRoute, deleteGrantRoute,
 ] as const);
-
-// 站点导出：JSON 附件下载（结构+内容整站打包，不含运行数据）
-router.get('/:id/export', authMiddleware, guard({
-  permission: 'cms:site:update',
-  audit: { description: '导出 CMS 站点', module: 'CMS内容管理' },
-}), async (c) => {
-  const id = Number(c.req.param('id'));
-  if (!Number.isInteger(id) || id <= 0) {
-    return c.json(errBody('无效的站点 id', 400), 400);
-  }
-  const pkg = await exportCmsSite(id);
-  const siteCode = String((pkg.site as Record<string, unknown>).code ?? id);
-  const filename = `cms-site-${siteCode}-${formatFileTimestamp(new Date())}.json`;
-  return new Response(JSON.stringify(pkg, null, 2), {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
-      'Cache-Control': 'no-store',
-    },
-  });
-});
 
 export default router;

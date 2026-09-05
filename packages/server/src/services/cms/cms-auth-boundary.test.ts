@@ -31,7 +31,13 @@ describe('CMS admin/member route authentication boundary', () => {
   });
 
   it('keeps direct publication as an explicit open API endpoint', async () => {
-    const source = await readFile(new URL('../../routes/open-platform/open-cms.ts', import.meta.url), 'utf8');
-    expect(source).toContain('partialForUpdate(ContentWriteBody.omit({ publish: true }))');
+    const [routeSource, validationSource] = await Promise.all([
+      readFile(new URL('../../routes/open-platform/open-cms.ts', import.meta.url), 'utf8'),
+      readFile(new URL('../../../../shared/src/cms/validation.ts', import.meta.url), 'utf8'),
+    ]);
+    // PATCH 入参由契约绑定的 update schema 派生，publish 意图只能走 /publish 端点
+    expect(routeSource).toContain('openCmsContract.updateContent');
+    expect(routeSource).toContain('openCmsContract.publishContent');
+    expect(validationSource).toContain('partialForUpdate(openCmsContentWriteSchema.omit({ publish: true }))');
   });
 });

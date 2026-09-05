@@ -260,7 +260,7 @@ async function buildListConditions(site: CmsSiteRow, query: ParsedCmsOpenQuery):
 
 // ─── 输出映射 ────────────────────────────────────────────────────────────────
 
-/** 开放 API 的内容输出形态（与 CmsOpenContentDTO 对齐：除 id 外均可被裁剪掉） */
+/** 开放 API 的内容输出形态（与 cmsOpenContentSchema 对齐：除 id 外均可被裁剪掉） */
 export type CmsOpenContentOutput = { id: number } & Record<string, unknown>;
 
 interface MapOpenContentOptions {
