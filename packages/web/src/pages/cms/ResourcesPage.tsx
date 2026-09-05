@@ -118,7 +118,7 @@ function CropModal({ resource, onClose }: Readonly<{ resource: CmsResource | nul
 
   async function handleConfirm() {
     if (!resource || !originalRect) return;
-    await cropMutation.mutateAsync({ id: resource.id, rect: originalRect });
+    await cropMutation.mutateAsync({ params: { id: resource.id }, body: originalRect });
     Toast.success('裁剪成功，已另存为新素材');
     onClose();
   }
@@ -323,21 +323,21 @@ export default function ResourcesPage() {
 
   async function submitRebuildRefs() {
     if (!siteId) return;
-    await rebuildRefsMutation.mutateAsync({ siteId });
+    await rebuildRefsMutation.mutateAsync({ body: { siteId } });
     Toast.success('引用索引重建任务已提交');
     void refreshTasks();
   }
 
   async function submitGovernance(operation: 'scan' | 'cleanup', dryRun: boolean) {
     if (!siteId) return;
-    await governanceMutation.mutateAsync({ siteId, operation, dryRun });
+    await governanceMutation.mutateAsync({ body: { siteId, operation, dryRun } });
     Toast.success('素材治理任务已提交');
     void refreshTasks();
   }
 
   async function moveSelected(folderIdValue: number | null) {
     if (!siteId || selectedIds.length === 0) return;
-    await moveMutation.mutateAsync({ siteId, ids: selectedIds, folderId: folderIdValue });
+    await moveMutation.mutateAsync({ body: { siteId, ids: selectedIds, folderId: folderIdValue } });
     setSelectedIds([]);
     Toast.success('批量移动任务已提交');
     void refreshTasks();
@@ -348,7 +348,7 @@ export default function ResourcesPage() {
       title: `删除 ${ids.length} 个素材？`,
       content: '存在站内引用的素材会被拒绝删除；删除会同步移除底层文件，不可恢复。',
       onOk: async () => {
-        await deleteMutation.mutateAsync(ids);
+        await deleteMutation.mutateAsync({ body: { ids } });
         setSelectedIds([]);
         Toast.success('删除成功');
       },
@@ -451,7 +451,7 @@ export default function ResourcesPage() {
                                   title: `删除文件夹「${selectedFolder.name}」？`,
                                   content: '仅空文件夹可删除。',
                                   onOk: async () => {
-                                    await deleteFolderMutation.mutateAsync(selectedFolder.id);
+                                    await deleteFolderMutation.mutateAsync({ params: { id: selectedFolder.id } });
                                     setFolderKey('all');
                                     Toast.success('文件夹已删除');
                                   },
@@ -634,7 +634,7 @@ export default function ResourcesPage() {
             labelWidth={80}
             initValues={{ name: renameTarget.name, remark: renameTarget.remark ?? '' }}
             onSubmit={async (values: { name: string; remark: string }) => {
-              await updateMutation.mutateAsync({ id: renameTarget.id, values: { name: values.name, remark: values.remark || null } });
+              await updateMutation.mutateAsync({ params: { id: renameTarget.id }, body: { name: values.name, remark: values.remark || null } });
               Toast.success('已保存');
               setRenameTarget(null);
             }}

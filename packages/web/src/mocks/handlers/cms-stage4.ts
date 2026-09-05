@@ -1,6 +1,29 @@
 import { http, HttpResponse } from 'msw';
-import { ok, badRequest, unauthorized, forbidden, notFound, conflict, pageResult, nextIdFrom } from '@/mocks/utils/handlers';
-import type { CmsInteraction, CmsInteractionOption, CmsInteractionQuestion, CmsInteractionResponse, CmsMemberSubscription, CmsPageBlock } from '@zenith/shared/cms';
+import type * as z from 'zod';
+import { badRequest, unauthorized, forbidden, notFound, conflict, nextIdFrom } from '@/mocks/utils/handlers';
+import { mock } from '@/mocks/utils/contract';
+import {
+  cmsAdContract,
+  cmsContentContract,
+  cmsInteractionContract,
+  cmsPageContract,
+  cmsSubscriptionContract,
+  memberCmsContract,
+  publicCmsContract,
+} from '@zenith/shared/cms';
+import type {
+  CmsInteraction,
+  CmsInteractionPublicState,
+  CmsInteractionPublicStats,
+  CmsInteractionQuestion,
+  CmsInteractionQuestionStats,
+  CmsInteractionResponse,
+  CmsInteractionStats,
+  CmsInteractionSubmitResult,
+  CmsMemberSubscription,
+  cmsInteractionQuestionSchema,
+  submitCmsInteractionSchema,
+} from '@zenith/shared/cms';
 import {
   buildMockAnswerDetails,
   getNextCmsAdEventId,
@@ -20,7 +43,10 @@ import {
 import { mockDate, mockDateTime } from '../utils/date';
 import { createProgressingMockTask } from './async-tasks';
 
-type Body = Record<string, unknown>;
+type InteractionQuestionInput = z.output<typeof cmsInteractionQuestionSchema>;
+type InteractionSubmitInput = z.output<typeof submitCmsInteractionSchema>;
+type SubmitOk = (data: CmsInteractionSubmitResult, message?: string) => Response;
+
 const awardedSubscriptionIds = new Set(mockCmsSubscriptions.filter((item) => item.pointsAwardedAt).map((item) => item.id));
 const interactionRequestKeys = new Map<string, number>();
 const adEventDedupe = new Set<string>();
@@ -43,15 +69,6 @@ function consumeDemoAdToken(token: string, eventType: 'impression' | 'click', ad
   if (!row || row.used || row.eventType !== eventType || (adId !== undefined && row.adId !== adId)) return null;
   row.used = true;
   return row;
-}
-
-function paging(request: Request) {
-  const url = new URL(request.url);
-  return {
-    url,
-    page: Number(url.searchParams.get('page')) || 1,
-    pageSize: Number(url.searchParams.get('pageSize')) || 10,
-  };
 }
 
 function resolveMockSubscriptionSubject(input: {
@@ -85,23 +102,23 @@ function resolveMockSubscriptionSubject(input: {
     : null;
 }
 
-function interactionStats(interaction: CmsInteraction) {
+function interactionStats(interaction: CmsInteraction): CmsInteractionStats {
   const responses = mockCmsInteractionResponses.filter((response) => response.interactionId === interaction.id);
   return {
     interactionId: interaction.id,
     responseCount: responses.length,
-    questions: (interaction.questions ?? []).map((question) => {
+    questions: (interaction.questions ?? []).map((question): CmsInteractionQuestionStats => {
       const answered = responses.filter((response) => response.answers[String(question.id)] !== undefined);
-      const base = {
+      const base: CmsInteractionQuestionStats = {
         id: question.id,
         label: question.label,
         type: question.type,
-        options: [] as (CmsInteractionOption & { count: number; percent: number })[],
-        texts: [] as string[],
+        options: [],
+        texts: [],
         answered: answered.length,
-        average: null as number | null,
-        npsScore: null as number | null,
-        matrixRows: [] as { id: string; label: string; options: (CmsInteractionOption & { count: number; percent: number })[] }[],
+        average: null,
+        npsScore: null,
+        matrixRows: [],
       };
       if (question.type === 'text' || question.type === 'date') {
         return {
@@ -162,58 +179,63 @@ function interactionStats(interaction: CmsInteraction) {
   };
 }
 
-function publicInteractionStats(interaction: CmsInteraction) {
+function publicInteractionStats(interaction: CmsInteraction): CmsInteractionPublicStats {
   const stats = interactionStats(interaction);
   return {
     ...stats,
-    questions: stats.questions.map(({ texts: _texts, ...question }) => question),
+    questions: stats.questions.map(({ texts: _texts, answered: _answered, matrixRows: _matrixRows, ...question }) => question),
   };
 }
 
-function normalizeQuestions(interactionId: number, raw: unknown): CmsInteractionQuestion[] {
-  return (Array.isArray(raw) ? raw : []).map((item, index) => {
-    const question = item as Partial<CmsInteractionQuestion>;
-    return {
-      id: question.id ?? interactionId * 100 + index + 1,
-      interactionId,
-      label: String(question.label ?? ''),
-      type: question.type ?? 'single',
-      required: question.required ?? true,
-      options: question.options?.map((option) => ({ ...option })) ?? [],
-      minChoices: question.minChoices ?? (question.required ? 1 : 0),
-      maxChoices: question.type === 'single' ? 1 : (question.maxChoices ?? 1),
-      sort: question.sort ?? index,
-      allowOther: question.allowOther ?? false,
-      otherLabel: question.otherLabel ?? null,
-      ratingMax: question.ratingMax ?? 5,
-      matrixRows: question.matrixRows?.map((row) => ({ ...row })) ?? [],
-      pageNo: question.pageNo ?? 1,
-      visibleWhen: question.visibleWhen ?? null,
-    };
-  });
+function normalizeQuestions(interactionId: number, raw: InteractionQuestionInput[]): CmsInteractionQuestion[] {
+  return raw.map((question, index) => ({
+    id: question.id ?? interactionId * 100 + index + 1,
+    interactionId,
+    label: question.label,
+    type: question.type,
+    required: question.required,
+    options: question.options.map((option) => ({ ...option })),
+    minChoices: question.minChoices,
+    maxChoices: question.type === 'single' ? 1 : question.maxChoices,
+    sort: question.sort,
+    allowOther: question.allowOther,
+    otherLabel: question.otherLabel ?? null,
+    ratingMax: question.ratingMax,
+    matrixRows: question.matrixRows.map((row) => ({ ...row })),
+    pageNo: question.pageNo,
+    visibleWhen: question.visibleWhen ?? null,
+  }));
 }
 
-function publicInteractionState(interaction: CmsInteraction, member: boolean) {
+function publicInteractionState(interaction: CmsInteraction, member: boolean): CmsInteractionPublicState {
   const responses = mockCmsInteractionResponses.filter((response) => response.interactionId === interaction.id);
   const submitted = responses.some((response) => member ? response.memberId === 1 : response.memberId === null);
   const resultsVisible = interaction.resultVisibility === 'always'
     || (interaction.resultVisibility === 'after_submit' && submitted)
     || (interaction.resultVisibility === 'after_close' && interaction.status === 'closed');
-  const {
-    responseCount: _responseCount,
-    createdAt: _createdAt,
-    updatedAt: _updatedAt,
-    turnstileSecretConfigured: _turnstileSecretConfigured,
-    turnstileSiteKey: _turnstileSiteKey,
-    ...publicInteraction
-  } = interaction;
   const captcha = interaction.captchaPolicy === 'turnstile'
-    ? { provider: 'turnstile', siteKey: interaction.turnstileSiteKey }
+    ? { provider: 'turnstile' as const, siteKey: interaction.turnstileSiteKey }
     : interaction.captchaPolicy === 'math'
-      ? { provider: 'math', siteKey: null }
-      : { provider: 'none', siteKey: null };
+      ? { provider: 'math' as const, siteKey: null }
+      : { provider: 'none' as const, siteKey: null };
   return {
-    interaction: publicInteraction,
+    interaction: {
+      id: interaction.id,
+      siteId: interaction.siteId,
+      code: interaction.code,
+      kind: interaction.kind,
+      title: interaction.title,
+      description: interaction.description,
+      status: interaction.status,
+      participantScope: interaction.participantScope,
+      repeatPolicy: interaction.repeatPolicy,
+      resultVisibility: interaction.resultVisibility,
+      captchaPolicy: interaction.captchaPolicy,
+      thankYouMessage: interaction.thankYouMessage,
+      startAt: interaction.startAt,
+      endAt: interaction.endAt,
+      questions: interaction.questions ?? [],
+    },
     open: interaction.status === 'published',
     submitted,
     captchaRequired: captcha.provider !== 'none',
@@ -223,20 +245,16 @@ function publicInteractionState(interaction: CmsInteraction, member: boolean) {
   };
 }
 
-function submitInteraction(
-  interaction: CmsInteraction,
-  body: Body,
-  member: boolean,
-): ReturnType<typeof ok> {
-  if (interaction.status !== 'published') return badRequest('互动问卷未开放', { status: 400 }) as ReturnType<typeof ok>;
-  if (interaction.participantScope === 'member' && !member) return unauthorized('该互动仅限会员参与', { status: 401 }) as ReturnType<typeof ok>;
-  if (interaction.captchaPolicy === 'math' && !String(body.captchaAnswer ?? '').trim()) {
-    return badRequest('验证码错误或已过期，请重试', { status: 400 }) as ReturnType<typeof ok>;
+function submitInteraction(interaction: CmsInteraction, body: InteractionSubmitInput, member: boolean, ok: SubmitOk): Response {
+  if (interaction.status !== 'published') return badRequest('互动问卷未开放', { status: 400 });
+  if (interaction.participantScope === 'member' && !member) return unauthorized('该互动仅限会员参与', { status: 401 });
+  if (interaction.captchaPolicy === 'math' && !body.captchaAnswer?.trim()) {
+    return badRequest('验证码错误或已过期，请重试', { status: 400 });
   }
-  if (interaction.captchaPolicy === 'turnstile' && !String(body.turnstileToken ?? '').trim()) {
-    return badRequest('验证码验证失败，请重试', { status: 400 }) as ReturnType<typeof ok>;
+  if (interaction.captchaPolicy === 'turnstile' && !body.turnstileToken?.trim()) {
+    return badRequest('验证码验证失败，请重试', { status: 400 });
   }
-  const idempotencyKey = String(body.idempotencyKey ?? '');
+  const idempotencyKey = body.idempotencyKey ?? '';
   const requestKey = `${interaction.id}:${idempotencyKey}`;
   if (idempotencyKey && interactionRequestKeys.has(requestKey)) {
     const responseId = interactionRequestKeys.get(requestKey)!;
@@ -249,7 +267,7 @@ function submitInteraction(
       : interaction.repeatPolicy === 'once_per_ip'
         ? response.memberId === (member ? 1 : null)
         : false));
-  if (duplicate && interaction.repeatPolicy !== 'multiple') return conflict('您已参与过本次互动', { status: 409 }) as ReturnType<typeof ok>;
+  if (duplicate && interaction.repeatPolicy !== 'multiple') return conflict('您已参与过本次互动', { status: 409 });
   const response: CmsInteractionResponse = {
     id: getNextCmsInteractionResponseId(),
     interactionId: interaction.id,
@@ -259,8 +277,8 @@ function submitInteraction(
     memberDisplay: member ? '演***员' : '游客',
     visitorHash: 'demo-visitor-hash',
     ipHash: 'demo-ip-hash',
-    answers: (body.answers as Record<string, string | string[]>) ?? {},
-    answerDetails: buildMockAnswerDetails(interaction.id, (body.answers as Record<string, string | string[]>) ?? {}),
+    answers: body.answers,
+    answerDetails: buildMockAnswerDetails(interaction.id, body.answers),
     createdAt: mockDateTime(),
   };
   mockCmsInteractionResponses.unshift(response);
@@ -272,9 +290,34 @@ function submitInteraction(
   return ok({ responseId: response.id, duplicate: false, message: interaction.thankYouMessage, results }, interaction.thankYouMessage);
 }
 
+function recordAdEvent(adId: number, eventType: 'impression' | 'click', path: string, referrer: string | null) {
+  const ad = mockCmsAds.find((item) => item.id === adId && item.status === 'enabled');
+  if (!ad) return;
+  const seed = mockCmsAdEvents.find((event) => event.adId === adId);
+  mockCmsAdEvents.unshift({
+    id: getNextCmsAdEventId(),
+    siteId: seed?.siteId ?? 1,
+    adId,
+    adName: ad.name,
+    slotId: ad.slotId,
+    slotName: seed?.slotName ?? null,
+    eventType,
+    occurredAt: mockDateTime(),
+    visitorHash: 'demo-visitor-hash',
+    ipHash: 'demo-ip-hash',
+    userAgent: 'MSW Demo',
+    device: 'pc',
+    referrer,
+    path,
+    memberId: null,
+  });
+  if (eventType === 'click') ad.clickCount += 1;
+  else ad.viewCount += 1;
+}
+
 export const cmsStage4Handlers = [
-  http.post('/api/cms/contents/:id/publish', ({ params }) => {
-    const content = mockCmsContents.find((item) => item.id === Number(params.id));
+  mock(cmsContentContract.publish, ({ params, ok }) => {
+    const content = mockCmsContents.find((item) => item.id === params.id);
     if (!content) return notFound('内容不存在', { status: 404 });
     content.status = 'published';
     content.version += 1;
@@ -294,28 +337,22 @@ export const cmsStage4Handlers = [
   }),
 
   // ─── 统一互动问卷后台 ───────────────────────────────────────────────────────
-  http.get('/api/cms/interactions/responses', ({ request }) => {
-    const { url, page, pageSize } = paging(request);
-    const siteId = Number(url.searchParams.get('siteId'));
-    const kind = url.searchParams.get('kind');
-    const start = url.searchParams.get('startTime');
-    const end = url.searchParams.get('endTime');
-    const interactionId = Number(url.searchParams.get('interactionId')) || undefined;
+  mock(cmsInteractionContract.responses, ({ query, ok, paginate }) => {
+    const { siteId, kind, startTime, endTime, interactionId } = query;
     const interactionIds = new Set(mockCmsInteractions
       .filter((interaction) => interaction.siteId === siteId && (!kind || interaction.kind === kind))
       .map((interaction) => interaction.id));
     let list = mockCmsInteractionResponses.filter((response) => interactionIds.has(response.interactionId));
     if (interactionId) list = list.filter((response) => response.interactionId === interactionId);
-    if (start) list = list.filter((response) => response.createdAt >= start);
-    if (end) list = list.filter((response) => response.createdAt <= end);
-    return ok(pageResult(list, page, pageSize));
+    if (startTime) list = list.filter((response) => response.createdAt >= startTime);
+    if (endTime) list = list.filter((response) => response.createdAt <= endTime);
+    return ok(paginate(list));
   }),
-  http.get('/api/cms/interactions/:id/stats/texts', ({ params, request }) => {
-    const interaction = mockCmsInteractions.find((item) => item.id === Number(params.id));
+  mock(cmsInteractionContract.texts, ({ params, query, ok, paginate }) => {
+    const interaction = mockCmsInteractions.find((item) => item.id === params.id);
     if (!interaction) return notFound('互动问卷不存在', { status: 404 });
-    const { url, page, pageSize } = paging(request);
-    const questionId = Number(url.searchParams.get('questionId'));
-    const keyword = url.searchParams.get('keyword')?.trim() ?? '';
+    const { questionId } = query;
+    const keyword = query.keyword?.trim() ?? '';
     const question = (interaction.questions ?? []).find((item) => item.id === questionId);
     if (!question) return notFound('题目不存在', { status: 404 });
     const isFreeText = ['text', 'date', 'number'].includes(question.type);
@@ -335,14 +372,12 @@ export const cmsStage4Handlers = [
       })
       .filter((item) => !keyword || item.value.includes(keyword))
       .reverse();
-    return ok(pageResult(list, page, pageSize));
+    return ok(paginate(list));
   }),
-  http.get('/api/cms/interactions/:id/stats/cross', ({ params, request }) => {
-    const interaction = mockCmsInteractions.find((item) => item.id === Number(params.id));
+  mock(cmsInteractionContract.crossStats, ({ params, query, ok }) => {
+    const interaction = mockCmsInteractions.find((item) => item.id === params.id);
     if (!interaction) return notFound('互动问卷不存在', { status: 404 });
-    const url = new URL(request.url);
-    const xId = Number(url.searchParams.get('xQuestionId'));
-    const yId = Number(url.searchParams.get('yQuestionId'));
+    const { xQuestionId: xId, yQuestionId: yId } = query;
     if (xId === yId) return badRequest('交叉分析需要选择两道不同的题目', { status: 400 });
     const questions = interaction.questions ?? [];
     const x = questions.find((item) => item.id === xId);
@@ -383,10 +418,10 @@ export const cmsStage4Handlers = [
       }),
     });
   }),
-  http.get('/api/cms/interactions/:id/stats/trend', ({ params, request }) => {
-    const interaction = mockCmsInteractions.find((item) => item.id === Number(params.id));
+  mock(cmsInteractionContract.trend, ({ params, query, ok }) => {
+    const interaction = mockCmsInteractions.find((item) => item.id === params.id);
     if (!interaction) return notFound('互动问卷不存在', { status: 404 });
-    const days = Math.min(Math.max(Number(new URL(request.url).searchParams.get('days')) || 30, 1), 180);
+    const days = query.days ?? 30;
     const byDay = new Map<string, number>();
     mockCmsInteractionResponses
       .filter((response) => response.interactionId === interaction.id)
@@ -402,76 +437,64 @@ export const cmsStage4Handlers = [
     });
     return ok({ interactionId: interaction.id, days, points });
   }),
-  http.get('/api/cms/interactions/:id/stats', ({ params }) => {
-    const interaction = mockCmsInteractions.find((item) => item.id === Number(params.id));
+  mock(cmsInteractionContract.stats, ({ params, ok }) => {
+    const interaction = mockCmsInteractions.find((item) => item.id === params.id);
     return interaction ? ok(interactionStats(interaction)) : notFound('互动问卷不存在', { status: 404 });
   }),
-  http.get('/api/cms/interactions/:id', ({ params }) => {
-    const interaction = mockCmsInteractions.find((item) => item.id === Number(params.id));
+  mock(cmsInteractionContract.detail, ({ params, ok }) => {
+    const interaction = mockCmsInteractions.find((item) => item.id === params.id);
     return interaction ? ok(interaction) : notFound('互动问卷不存在', { status: 404 });
   }),
-  http.get('/api/cms/interactions', ({ request }) => {
-    const { url, page, pageSize } = paging(request);
-    const siteId = Number(url.searchParams.get('siteId'));
-    const keyword = url.searchParams.get('keyword')?.trim() ?? '';
-    const kind = url.searchParams.get('kind');
-    const status = url.searchParams.get('status');
+  mock(cmsInteractionContract.list, ({ query, ok, paginate }) => {
+    const { siteId, kind, status } = query;
+    const keyword = query.keyword?.trim() ?? '';
     let list = mockCmsInteractions.filter((interaction) => interaction.siteId === siteId);
     if (keyword) list = list.filter((interaction) => interaction.title.includes(keyword) || interaction.code.includes(keyword));
     if (kind) list = list.filter((interaction) => interaction.kind === kind);
     if (status) list = list.filter((interaction) => interaction.status === status);
-    return ok(pageResult(list, page, pageSize));
+    return ok(paginate(list));
   }),
-  http.post('/api/cms/interactions', async ({ request }) => {
-    const body = await request.json() as Body;
+  mock(cmsInteractionContract.create, ({ body, ok }) => {
     const id = getNextCmsInteractionId();
-    const questions = normalizeQuestions(id, body.questions);
-    if (body.kind === 'poll' && (questions.length !== 1 || questions[0]?.type === 'text')) {
-      return badRequest('投票必须且只能包含一道选择题', { status: 400 });
-    }
-    if (body.repeatPolicy === 'once_per_member' && body.participantScope !== 'member') {
-      return badRequest('每位会员一次仅适用于仅会员参与', { status: 400 });
-    }
     const interaction: CmsInteraction = {
       id,
-      siteId: Number(body.siteId),
-      code: String(body.code ?? ''),
-      kind: body.kind === 'poll' ? 'poll' : 'survey',
-      title: String(body.title ?? ''),
-      description: body.description ? String(body.description) : null,
-      status: (body.status as CmsInteraction['status']) ?? 'draft',
-      participantScope: (body.participantScope as CmsInteraction['participantScope']) ?? 'anonymous',
-      repeatPolicy: (body.repeatPolicy as CmsInteraction['repeatPolicy']) ?? 'once_per_ip',
-      resultVisibility: (body.resultVisibility as CmsInteraction['resultVisibility']) ?? 'after_submit',
-      captchaPolicy: (body.captchaPolicy as CmsInteraction['captchaPolicy']) ?? 'inherit',
-      turnstileSiteKey: body.turnstileSiteKey ? String(body.turnstileSiteKey) : null,
+      siteId: body.siteId,
+      code: body.code,
+      kind: body.kind,
+      title: body.title,
+      description: body.description || null,
+      status: body.status,
+      participantScope: body.participantScope,
+      repeatPolicy: body.repeatPolicy,
+      resultVisibility: body.resultVisibility,
+      captchaPolicy: body.captchaPolicy,
+      turnstileSiteKey: body.turnstileSiteKey || null,
       turnstileSecretConfigured: !!body.turnstileSecret,
-      thankYouMessage: String(body.thankYouMessage ?? '感谢您的参与！'),
-      startAt: body.startAt ? String(body.startAt) : null,
-      endAt: body.endAt ? String(body.endAt) : null,
+      thankYouMessage: body.thankYouMessage,
+      startAt: body.startAt || null,
+      endAt: body.endAt || null,
       responseCount: 0,
-      questions,
+      questions: normalizeQuestions(id, body.questions),
       createdAt: mockDateTime(),
       updatedAt: mockDateTime(),
     };
     mockCmsInteractions.unshift(interaction);
     return ok(interaction, '创建成功');
   }),
-  http.put('/api/cms/interactions/:id', async ({ params, request }) => {
-    const interaction = mockCmsInteractions.find((item) => item.id === Number(params.id));
+  mock(cmsInteractionContract.update, ({ params, body, ok }) => {
+    const interaction = mockCmsInteractions.find((item) => item.id === params.id);
     if (!interaction) return notFound('互动问卷不存在', { status: 404 });
-    const body = await request.json() as Body;
     if (body.questions && interaction.responseCount > 0) return conflict('已有答卷，不可替换题目', { status: 409 });
-    const { turnstileSecret, ...safeBody } = body;
+    const { turnstileSecret, questions, ...safeBody } = body;
     Object.assign(interaction, safeBody, {
       turnstileSecretConfigured: turnstileSecret ? true : interaction.turnstileSecretConfigured,
-      questions: body.questions ? normalizeQuestions(interaction.id, body.questions) : interaction.questions,
+      questions: questions ? normalizeQuestions(interaction.id, questions) : interaction.questions,
       updatedAt: mockDateTime(),
     });
     return ok(interaction, '更新成功');
   }),
-  http.post('/api/cms/interactions/:id/copy', ({ params }) => {
-    const source = mockCmsInteractions.find((item) => item.id === Number(params.id));
+  mock(cmsInteractionContract.copy, ({ params, ok }) => {
+    const source = mockCmsInteractions.find((item) => item.id === params.id);
     if (!source) return notFound('互动问卷不存在', { status: 404 });
     const stem = source.code.replace(/-copy(?:-\d+)?$/, '') || source.code;
     const taken = new Set(mockCmsInteractions.filter((item) => item.siteId === source.siteId).map((item) => item.code));
@@ -497,16 +520,14 @@ export const cmsStage4Handlers = [
     mockCmsInteractions.unshift(copied);
     return ok(copied, '复制成功');
   }),
-  http.post('/api/cms/interactions/:id/status', async ({ params, request }) => {
-    const interaction = mockCmsInteractions.find((item) => item.id === Number(params.id));
+  mock(cmsInteractionContract.setStatus, ({ params, body, ok }) => {
+    const interaction = mockCmsInteractions.find((item) => item.id === params.id);
     if (!interaction) return notFound('互动问卷不存在', { status: 404 });
-    const body = await request.json() as { status: CmsInteraction['status'] };
     interaction.status = body.status;
     interaction.updatedAt = mockDateTime();
     return ok(interaction, '状态已更新');
   }),
-  http.post('/api/cms/interactions/batch/status', async ({ request }) => {
-    const body = await request.json() as { ids: number[]; status: 'published' | 'closed' };
+  mock(cmsInteractionContract.batchStatus, ({ body, ok }) => {
     mockCmsInteractions.forEach((interaction) => {
       if (body.ids.includes(interaction.id)) interaction.status = body.status;
     });
@@ -517,8 +538,8 @@ export const cmsStage4Handlers = [
       totalItems: body.ids.length,
     }), '批量任务已提交');
   }),
-  http.delete('/api/cms/interactions/:id', ({ params }) => {
-    const index = mockCmsInteractions.findIndex((item) => item.id === Number(params.id));
+  mock(cmsInteractionContract.remove, ({ params, ok }) => {
+    const index = mockCmsInteractions.findIndex((item) => item.id === params.id);
     if (index < 0) return notFound('互动问卷不存在', { status: 404 });
     const [removed] = mockCmsInteractions.splice(index, 1);
     for (let responseIndex = mockCmsInteractionResponses.length - 1; responseIndex >= 0; responseIndex -= 1) {
@@ -528,31 +549,27 @@ export const cmsStage4Handlers = [
   }),
 
   // ─── 统一互动问卷公开/会员提交 ──────────────────────────────────────────────
-  http.get('/api/public/cms/interactions/:siteCode/:code', ({ params, request }) => {
+  mock(publicCmsContract.interaction, ({ params, request, ok }) => {
     const site = mockCmsSites.find((item) => item.code === params.siteCode);
     const interaction = site && mockCmsInteractions.find((item) => item.siteId === site.id && item.code === params.code && item.status !== 'draft');
     if (!interaction) return notFound('互动问卷不存在', { status: 404 });
     return ok(publicInteractionState(interaction, request.headers.has('authorization')));
   }),
-  http.post('/api/public/cms/interactions/:siteCode/:code/submit', async ({ params, request }) => {
+  mock(publicCmsContract.submitInteraction, ({ params, body, request, ok }) => {
     const site = mockCmsSites.find((item) => item.code === params.siteCode);
     const interaction = site && mockCmsInteractions.find((item) => item.siteId === site.id && item.code === params.code);
     if (!interaction) return notFound('互动问卷不存在', { status: 404 });
-    return submitInteraction(interaction, await request.json() as Body, request.headers.has('authorization'));
+    return submitInteraction(interaction, body, request.headers.has('authorization'), ok);
   }),
-  http.post('/api/member/cms/interactions/:id/submit', async ({ params, request }) => {
-    const interaction = mockCmsInteractions.find((item) => item.id === Number(params.id));
-    if (!interaction) return notFound('互动问卷不存在', { status: 404 });
-    const siteId = Number(new URL(request.url).searchParams.get('siteId'));
-    if (!Number.isInteger(siteId) || siteId !== interaction.siteId) return notFound('互动问卷不存在', { status: 404 });
-    return submitInteraction(interaction, await request.json() as Body, true);
+  mock(memberCmsContract.submitInteraction, ({ params, query, body, ok }) => {
+    const interaction = mockCmsInteractions.find((item) => item.id === params.id);
+    if (!interaction || query.siteId !== interaction.siteId) return notFound('互动问卷不存在', { status: 404 });
+    return submitInteraction(interaction, body, true, ok);
   }),
 
   // ─── 广告事件明细/统计/清理与公开采集 ─────────────────────────────────────
-  http.get('/api/cms/ads/events/stats', ({ request }) => {
-    const url = new URL(request.url);
-    const siteId = Number(url.searchParams.get('siteId'));
-    const list = mockCmsAdEvents.filter((event) => event.siteId === siteId);
+  mock(cmsAdContract.eventStats, ({ query, ok }) => {
+    const list = mockCmsAdEvents.filter((event) => event.siteId === query.siteId);
     const grouped = new Map<string, { impressions: number; clicks: number }>();
     list.forEach((event) => {
       const date = event.occurredAt.slice(0, 10);
@@ -573,41 +590,29 @@ export const cmsStage4Handlers = [
       trend,
     });
   }),
-  http.get('/api/cms/ads/events', ({ request }) => {
-    const { url, page, pageSize } = paging(request);
-    let list = mockCmsAdEvents.filter((event) => event.siteId === Number(url.searchParams.get('siteId')));
-    const numericFilters = ['adId', 'slotId'] as const;
-    numericFilters.forEach((key) => {
-      const value = Number(url.searchParams.get(key));
-      if (value) list = list.filter((event) => event[key] === value);
-    });
-    const eventType = url.searchParams.get('eventType');
-    const device = url.searchParams.get('device');
-    const start = url.searchParams.get('startTime');
-    const end = url.searchParams.get('endTime');
+  mock(cmsAdContract.events, ({ query, ok, paginate }) => {
+    const { siteId, adId, slotId, eventType, device, startTime, endTime } = query;
+    let list = mockCmsAdEvents.filter((event) => event.siteId === siteId);
+    if (adId) list = list.filter((event) => event.adId === adId);
+    if (slotId) list = list.filter((event) => event.slotId === slotId);
     if (eventType) list = list.filter((event) => event.eventType === eventType);
     if (device) list = list.filter((event) => event.device === device);
-    if (start) list = list.filter((event) => event.occurredAt >= start);
-    if (end) list = list.filter((event) => event.occurredAt <= end);
-    return ok(pageResult(list, page, pageSize));
+    if (startTime) list = list.filter((event) => event.occurredAt >= startTime);
+    if (endTime) list = list.filter((event) => event.occurredAt <= endTime);
+    return ok(paginate(list));
   }),
-  http.post('/api/cms/ads/events/cleanup', async ({ request }) => {
-    const body = await request.json() as { siteId?: number; retentionDays?: number };
-    return ok(createProgressingMockTask({
-      taskType: 'cms-ad-events-cleanup',
-      title: `CMS 广告事件清理（保留 ${body.retentionDays ?? 180} 天）`,
-      payload: body,
-      totalItems: Math.max(1, mockCmsAdEvents.filter((event) => !body.siteId || event.siteId === body.siteId).length),
-    }), '清理任务已提交');
-  }),
-  http.post('/api/public/cms/ads/tokens/:siteCode', async ({ params, request }) => {
+  mock(cmsAdContract.cleanupEvents, ({ body, ok }) => ok(createProgressingMockTask({
+    taskType: 'cms-ad-events-cleanup',
+    title: `CMS 广告事件清理（保留 ${body.retentionDays ?? 180} 天）`,
+    payload: body,
+    totalItems: Math.max(1, mockCmsAdEvents.filter((event) => !body.siteId || event.siteId === body.siteId).length),
+  }), '清理任务已提交')),
+  mock(publicCmsContract.issueAdTokens, ({ params, body, ok }) => {
     const site = mockCmsSites.find((item) => item.code === params.siteCode && item.status === 'enabled');
     if (!site) return notFound('站点不存在或未启用', { status: 404 });
-    const body = await request.json() as { ads?: Array<{ adId: number; renderProof: string }> };
-    const requests = body.ads ?? [];
-    if (requests.some((item) => !item.renderProof)) return forbidden('广告渲染凭证无效', { status: 403 });
+    if (body.ads.some((item) => !item.renderProof)) return forbidden('广告渲染凭证无效', { status: 403 });
     const path = '/news/';
-    const data = [...new Map(requests.map((item) => [item.adId, item])).values()].flatMap(({ adId: id }) => {
+    const data = [...new Map(body.ads.map((item) => [item.adId, item])).values()].flatMap(({ adId: id }) => {
       const ad = mockCmsAds.find((item) => item.id === id && item.status === 'enabled');
       if (!ad) return [];
       return [{
@@ -628,29 +633,10 @@ export const cmsStage4Handlers = [
     if (!ad?.linkUrl || (!ad.linkUrl.startsWith('/') && !/^https?:\/\//i.test(ad.linkUrl))) {
       return new HttpResponse('广告不存在或未投放', { status: 404 });
     }
-    const bucket = Math.floor(Date.now() / 10_000);
-    const key = `click:${ad.id}:${bucket}`;
+    const key = `click:${ad.id}:${Math.floor(Date.now() / 10_000)}`;
     if (!adEventDedupe.has(key)) {
       adEventDedupe.add(key);
-      const seed = mockCmsAdEvents.find((event) => event.adId === ad.id);
-      mockCmsAdEvents.unshift({
-        id: getNextCmsAdEventId(),
-        siteId: seed?.siteId ?? 1,
-        adId: ad.id,
-        adName: ad.name,
-        slotId: ad.slotId,
-        slotName: seed?.slotName ?? null,
-        eventType: 'click',
-        occurredAt: mockDateTime(),
-        visitorHash: 'demo-visitor-hash',
-        ipHash: 'demo-ip-hash',
-        userAgent: 'MSW Demo',
-        device: 'pc',
-        referrer: request.headers.get('referer'),
-        path: eventToken.path,
-        memberId: null,
-      });
-      ad.clickCount += 1;
+      recordAdEvent(ad.id, 'click', eventToken.path, request.headers.get('referer'));
     }
     return HttpResponse.redirect(new URL(ad.linkUrl, request.url).toString(), 302);
   }),
@@ -662,66 +648,43 @@ export const cmsStage4Handlers = [
     }
     const bucket = Math.floor(Date.now() / 60_000);
     for (const eventToken of eventTokens) {
-      const id = eventToken!.adId;
-      const ad = mockCmsAds.find((item) => item.id === id && item.status === 'enabled');
-      if (!ad) continue;
-      const key = `impression:${id}:${bucket}`;
+      const key = `impression:${eventToken!.adId}:${bucket}`;
       if (adEventDedupe.has(key)) continue;
       adEventDedupe.add(key);
-      const slot = mockCmsAdEvents.find((event) => event.adId === id);
-      mockCmsAdEvents.unshift({
-        id: getNextCmsAdEventId(),
-        siteId: slot?.siteId ?? 1,
-        adId: id,
-        adName: ad.name,
-        slotId: ad.slotId,
-        slotName: slot?.slotName ?? null,
-        eventType: 'impression',
-        occurredAt: mockDateTime(),
-        visitorHash: 'demo-visitor-hash',
-        ipHash: 'demo-ip-hash',
-        userAgent: 'MSW Demo',
-        device: 'pc',
-        referrer: null,
-        path: eventToken!.path,
-        memberId: null,
-      });
-      ad.viewCount += 1;
+      recordAdEvent(eventToken!.adId, 'impression', eventToken!.path, null);
     }
     return new HttpResponse(null, { status: 204 });
   }),
 
   // ─── 会员订阅前台与后台 ────────────────────────────────────────────────────
-  http.get('/api/member/cms/subscriptions/status', ({ request }) => {
-    const url = new URL(request.url);
+  mock(memberCmsContract.subscriptionStatus, ({ query, ok }) => {
     const resolved = resolveMockSubscriptionSubject({
-      siteId: Number(url.searchParams.get('siteId')),
-      subjectType: url.searchParams.get('subjectType') as CmsMemberSubscription['subjectType'],
-      subjectId: url.searchParams.get('subjectId') ? Number(url.searchParams.get('subjectId')) : null,
-      subjectKey: String(url.searchParams.get('subjectKey') ?? ''),
+      siteId: query.siteId,
+      subjectType: query.subjectType,
+      subjectId: query.subjectId ?? null,
+      subjectKey: query.subjectKey ?? '',
     });
     if (!resolved) return notFound('订阅对象不存在或未开放', { status: 404 });
     const row = mockCmsSubscriptions.find((item) =>
       item.active
-      && item.siteId === Number(url.searchParams.get('siteId'))
-      && item.subjectType === url.searchParams.get('subjectType')
+      && item.siteId === query.siteId
+      && item.subjectType === query.subjectType
       && item.subjectKey === resolved.subjectKey);
     return ok(row ?? null);
   }),
-  http.get('/api/member/cms/subscriptions', ({ request }) => {
-    const { url, page, pageSize } = paging(request);
-    const type = url.searchParams.get('subjectType');
+  mock(memberCmsContract.subscriptions, ({ query, ok, paginate }) => {
     let list = mockCmsSubscriptions.filter((item) => item.memberId === 1 && item.active);
-    if (type) list = list.filter((item) => item.subjectType === type);
-    return ok(pageResult(list, page, pageSize));
+    if (query.subjectType) list = list.filter((item) => item.subjectType === query.subjectType);
+    return ok(paginate(list));
   }),
-  http.post('/api/member/cms/subscriptions', async ({ request }) => {
-    const body = await request.json() as Body;
-    const siteId = Number(body.siteId);
-    const subjectType = body.subjectType as CmsMemberSubscription['subjectType'];
-    const subjectId = body.subjectId ? Number(body.subjectId) : null;
-    const rawKey = String(body.subjectKey ?? '');
-    const resolved = resolveMockSubscriptionSubject({ siteId, subjectType, subjectId, subjectKey: rawKey });
+  mock(memberCmsContract.subscribe, ({ body, ok }) => {
+    const { siteId, subjectType } = body;
+    const resolved = resolveMockSubscriptionSubject({
+      siteId,
+      subjectType,
+      subjectId: body.subjectId ?? null,
+      subjectKey: body.subjectKey ?? '',
+    });
     if (!resolved) return notFound('订阅对象不存在或未开放', { status: 404 });
     const subjectKey = resolved.subjectKey;
     let row = mockCmsSubscriptions.find((item) =>
@@ -737,7 +700,7 @@ export const cmsStage4Handlers = [
         subjectKey,
         subjectId: resolved.subjectId,
         subjectLabel: resolved.subjectLabel,
-        notificationEnabled: body.notificationEnabled !== false,
+        notificationEnabled: body.notificationEnabled,
         active: true,
         pointsAwardedAt: mockDateTime(),
         createdAt: mockDateTime(),
@@ -747,29 +710,27 @@ export const cmsStage4Handlers = [
       awardedSubscriptionIds.add(row.id);
     } else {
       row.active = true;
-      row.notificationEnabled = body.notificationEnabled !== false;
+      row.notificationEnabled = body.notificationEnabled;
       row.updatedAt = mockDateTime();
     }
     return ok(row, '订阅成功');
   }),
-  http.put('/api/member/cms/subscriptions/:id', async ({ params, request }) => {
-    const row = mockCmsSubscriptions.find((item) => item.id === Number(params.id) && item.memberId === 1);
+  mock(memberCmsContract.updateSubscription, ({ params, body, ok }) => {
+    const row = mockCmsSubscriptions.find((item) => item.id === params.id && item.memberId === 1);
     if (!row) return notFound('订阅不存在', { status: 404 });
-    const body = await request.json() as { notificationEnabled: boolean };
     row.notificationEnabled = body.notificationEnabled;
     row.updatedAt = mockDateTime();
     return ok(row, '订阅已更新');
   }),
-  http.delete('/api/member/cms/subscriptions/:id', ({ params }) => {
-    const row = mockCmsSubscriptions.find((item) => item.id === Number(params.id) && item.memberId === 1);
+  mock(memberCmsContract.cancelSubscription, ({ params, ok }) => {
+    const row = mockCmsSubscriptions.find((item) => item.id === params.id && item.memberId === 1);
     if (!row) return notFound('订阅不存在', { status: 404 });
     row.active = false;
     row.updatedAt = mockDateTime();
     return ok(row, '已取消订阅');
   }),
-  http.get('/api/cms/subscriptions/aggregates', ({ request }) => {
-    const url = new URL(request.url);
-    const siteId = Number(url.searchParams.get('siteId'));
+  mock(cmsSubscriptionContract.aggregates, ({ query, ok }) => {
+    const { siteId } = query;
     const groups = new Map<string, typeof mockCmsSubscriptions>();
     mockCmsSubscriptions.filter((item) => item.siteId === siteId && item.active).forEach((item) => {
       const key = `${item.subjectType}:${item.subjectKey}`;
@@ -787,29 +748,20 @@ export const cmsStage4Handlers = [
       notificationEnabledCount: new Set(rows.filter((item) => item.notificationEnabled).map((item) => item.memberId)).size,
     })));
   }),
-  http.get('/api/cms/subscriptions', ({ request }) => {
-    const { url, page, pageSize } = paging(request);
-    const siteId = Number(url.searchParams.get('siteId'));
-    const type = url.searchParams.get('subjectType');
-    const keyword = url.searchParams.get('subjectKeyword') ?? '';
+  mock(cmsSubscriptionContract.list, ({ query, ok, paginate }) => {
+    const { siteId, subjectType, subjectKeyword } = query;
     let list = mockCmsSubscriptions.filter((item) => item.siteId === siteId && item.active);
-    if (type) list = list.filter((item) => item.subjectType === type);
-    if (keyword) list = list.filter((item) => item.subjectLabel.includes(keyword));
-    return ok(pageResult(list, page, pageSize));
+    if (subjectType) list = list.filter((item) => item.subjectType === subjectType);
+    if (subjectKeyword) list = list.filter((item) => item.subjectLabel.includes(subjectKeyword));
+    return ok(paginate(list));
   }),
 
   // ─── 页面区块 ACL / 展示条件安全更新 ──────────────────────────────────────
-  http.get('/api/cms/pages/:id/block-acls', ({ params }) => {
-    return ok(mockCmsPageBlockAcls.filter((acl) => acl.pageId === Number(params.id)));
-  }),
-  http.put('/api/cms/pages/:id/block-acls', async ({ params, request }) => {
-    const pageId = Number(params.id);
+  mock(cmsPageContract.blockAcls, ({ params, ok }) => ok(mockCmsPageBlockAcls.filter((acl) => acl.pageId === params.id))),
+  mock(cmsPageContract.setBlockAcls, ({ params, body, ok }) => {
+    const pageId = params.id;
     const page = mockCmsPages.find((item) => item.id === pageId);
     if (!page) return notFound('页面不存在', { status: 404 });
-    const body = await request.json() as {
-      blockIds: string[];
-      grants: Array<{ subjectType: 'user' | 'role'; subjectId: number }>;
-    };
     if (body.blockIds.some((blockId) => !page.blocks.some((block) => block.id === blockId))) {
       return notFound('所选页面区块包含不存在或已替换的 blockId', { status: 404 });
     }
@@ -842,11 +794,10 @@ export const cmsStage4Handlers = [
     });
     return ok(mockCmsPageBlockAcls.filter((acl) => acl.pageId === pageId), '区块权限已更新');
   }),
-  http.put('/api/cms/pages/:id', async ({ params, request }) => {
-    const page = mockCmsPages.find((item) => item.id === Number(params.id));
+  mock(cmsPageContract.update, ({ params, body, ok }) => {
+    const page = mockCmsPages.find((item) => item.id === params.id);
     if (!page) return notFound('页面不存在', { status: 404 });
-    const body = await request.json() as Body;
-    const incoming = Array.isArray(body.blocks) ? body.blocks as CmsPageBlock[] : null;
+    const { blocks: incoming, ...patch } = body;
     if (incoming) {
       const immutableBefore = page.blocks.filter((block) => block.canManage === false);
       const immutableIds = new Set(immutableBefore.map((block) => block.id));
@@ -862,13 +813,13 @@ export const cmsStage4Handlers = [
           return forbidden(`区块「${previous.id}」不可管理，禁止修改、删除、替换或重排`, { status: 403 });
         }
       }
-      body.blocks = incoming.map((block) => ({ ...block, canManage: true, aclConfigured: false, disabledReason: null }));
-      body.requiresDynamic = incoming.some((block) =>
+      page.blocks = incoming.map((block) => ({ ...block, canManage: true, aclConfigured: false, disabledReason: null }));
+      page.requiresDynamic = incoming.some((block) =>
         ['guest', 'member'].includes(block.displayCondition?.audience ?? 'always')
         || !!block.displayCondition?.startAt
         || !!block.displayCondition?.endAt);
     }
-    Object.assign(page, body, { updatedAt: mockDateTime() });
+    Object.assign(page, patch, { updatedAt: mockDateTime() });
     return ok(page, '更新成功');
   }),
 ];

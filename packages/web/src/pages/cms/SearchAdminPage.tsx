@@ -21,7 +21,7 @@ import {
   cmsSearchKeys, cmsSearchWordKeys,
 } from '@/hooks/queries/cms';
 import { CMS_SEARCH_WORD_TYPES, CMS_SEARCH_WORD_TYPE_LABELS } from '@zenith/shared/cms';
-import { COMMON_STATUS_OPTIONS } from '@zenith/shared/core';
+import { COMMON_STATUS_OPTIONS, enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import type { CmsSearchResult, CmsSearchWord, CmsHotKeyword } from '@zenith/shared/cms';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import { formatDateTimeForApi } from '@/utils/date';
@@ -53,11 +53,11 @@ function SearchTestTab({ siteId, onSiteChange }: Readonly<{ siteId: number | und
     setKeyword(draftKeyword.trim());
     // 「检索测试」是可重复点击的动作型按钮：关键词未变时 query key 不变，
     // 不显式失效就会在 staleTime 内静默复用上一次结果
-    void queryClient.invalidateQueries({ queryKey: cmsSearchKeys.all });
+    void queryClient.invalidateQueries({ queryKey: cmsSearchKeys.test({ siteId, keyword: draftKeyword.trim(), page: 1 }) });
   }
 
   async function handleReindex() {
-    await reindexMutation.mutateAsync(siteId ?? null);
+    await reindexMutation.mutateAsync({ body: { siteId: siteId ?? null } });
     Toast.success('索引重建任务已提交');
     refresh();
   }
@@ -164,7 +164,7 @@ function DictTab({ siteId, onSiteChange }: Readonly<{ siteId: number | undefined
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const listQuery = useCmsSearchWordList({
     page, pageSize, siteId: siteId ?? 0, keyword: submittedParams.keyword || undefined,
-    type, groupName: groupName || undefined, status,
+    type, groupName: groupName || undefined, status: enumValueOf(USER_STATUSES, status),
   }, siteId !== undefined);
   const saveMutation = useSaveCmsSearchWord();
   const modal = useEditModal<CmsSearchWord, Partial<CmsSearchWord>, Record<string, unknown>>({
@@ -427,7 +427,7 @@ function HotKeywordsTab({ siteId, onSiteChange }: Readonly<{ siteId: number | un
             confirmDelete({
               title: '清空当前站点的搜索热词？',
               onOk: async () => {
-                await clearMutation.mutateAsync(siteId);
+                await clearMutation.mutateAsync({ body: { siteId } });
                 Toast.success('已清空');
                 void hotQuery.refetch();
               },

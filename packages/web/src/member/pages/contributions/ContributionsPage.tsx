@@ -3,7 +3,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Empty, Pagination, Spin, Tag, Toast } from '@douyinfe/semi-ui';
 import { PenLine, Trash2, Pencil } from 'lucide-react';
-import type { CmsContentStatus } from '@zenith/shared/cms';
+import { CMS_CONTENT_STATUSES, type CmsContentStatus } from '@zenith/shared/cms';
+import { enumValueOf } from '@zenith/shared/core';
 import { MemberPage } from '../../components/MemberPage';
 import { useMyContributions, useDeleteContribution } from '../../hooks/queries';
 import { confirmDelete } from '@/utils/confirm';
@@ -27,7 +28,7 @@ export default function ContributionsPage() {
   const navigate = useNavigate();
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
-  const listQuery = useMyContributions({ page, pageSize: 10, ...(status ? { status } : {}) });
+  const listQuery = useMyContributions({ page, pageSize: 10, status: enumValueOf(CMS_CONTENT_STATUSES, status) });
   const deleteMutation = useDeleteContribution();
 
   const list = listQuery.data?.list ?? [];
@@ -39,7 +40,7 @@ export default function ContributionsPage() {
       content: '确定删除该投稿吗？删除后不可恢复。',
       okText: '删除',
       onOk: async () => {
-        await deleteMutation.mutateAsync(id);
+        await deleteMutation.mutateAsync({ params: { id } });
         Toast.success('已删除');
       },
     });

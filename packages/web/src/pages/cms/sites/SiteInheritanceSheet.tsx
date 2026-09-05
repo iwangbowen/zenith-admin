@@ -4,7 +4,7 @@
  */
 import { useEffect, useState } from 'react';
 import { Banner, Button, SideSheet, Space, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
-import { useCmsSiteEffectiveConfig, useCmsSiteInheritanceChain, useUpdateCmsSiteInheritance } from '@/hooks/queries/cms-stage5';
+import { useCmsSiteEffectiveConfig, useCmsSiteInheritanceChain, useUpdateCmsSiteInheritance } from '@/hooks/queries/cms';
 import { CMS_SITE_INHERITABLE_FIELD_LABELS, CMS_SITE_INHERITABLE_FIELDS } from '@zenith/shared/cms';
 import type { CmsSite, CmsSiteInheritanceFlags } from '@zenith/shared/cms';
 import { displayEffectiveValue } from './site-tree-utils';
@@ -45,8 +45,8 @@ export default function SiteInheritanceSheet({ site, onClose }: Readonly<SiteInh
   async function handleSave() {
     if (!site) return;
     const result = await updateInheritanceMutation.mutateAsync({
-      siteId: site.id,
-      inheritance: draft,
+      params: { id: site.id },
+      body: draft,
     });
     Toast.success(`继承策略已保存，影响 ${result.affectedSiteIds.length} 个站点`);
     onClose();

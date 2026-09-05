@@ -37,7 +37,7 @@ export default function SiteUsersModal({ site, onClose }: Readonly<SiteUsersModa
 
   async function handleOk() {
     if (!site) return;
-    await setSiteUsersMutation.mutateAsync({ siteId: site.id, userIds: selectedUserIds });
+    await setSiteUsersMutation.mutateAsync({ params: { id: site.id }, body: { userIds: selectedUserIds } });
     Toast.success('保存成功');
     onClose();
   }

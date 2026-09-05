@@ -6,7 +6,7 @@
  * site-form-mapping.test.ts 的往返测试锁定行为。
  */
 import { CMS_SITE_OPS_DEFAULTS } from '@zenith/shared/cms';
-import type { CmsSite, CmsSiteTemplateDefaults } from '@zenith/shared/cms';
+import type { CmsSite, CmsSiteTemplateDefaults, CreateCmsSiteInput } from '@zenith/shared/cms';
 import { cmsCredentialWriteValue } from '../cms-site-credentials';
 
 export interface TemplateDefaultsState {
@@ -157,8 +157,8 @@ interface BuildSavePayloadArgs {
 }
 
 export interface SiteSavePayloadResult {
-  /** 提交给保存接口的 payload（settings 已重组） */
-  payload: Record<string, unknown>;
+  /** 提交给保存接口的 payload（settings 已重组）；表单值经重组后按契约入参形状提交 */
+  payload: Partial<CreateCmsSiteInput>;
   /** 主题参数是否变化（编辑态 + 非纯动态站点时提示重新生成静态页） */
   themeConfigChanged: boolean;
   /** 主题本身是否切换（编辑态；与 themeConfigChanged 一起决定静态页重建提示） */
@@ -232,5 +232,5 @@ export function buildSiteSavePayload({ values, editingRecord, templateDefaults, 
   // 主题参数变更 + 非纯动态站点 → 保存后提示重新生成静态页
   const prevThemeConfig = JSON.stringify(cleanThemeConfig((prevSettings.themeConfig as Record<string, unknown>) ?? {}));
   const themeConfigChanged = editingRecord !== null && prevThemeConfig !== JSON.stringify(cleanThemeConfig(themeConfig));
-  return { payload: rest, themeConfigChanged, themeChanged };
+  return { payload: rest as Partial<CreateCmsSiteInput>, themeConfigChanged, themeChanged };
 }

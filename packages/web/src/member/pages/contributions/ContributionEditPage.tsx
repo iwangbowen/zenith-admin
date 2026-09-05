@@ -43,9 +43,7 @@ export default function ContributionEditPage() {
     if (!body.trim()) { Toast.warning('请输入正文'); return; }
     await saveMutation.mutateAsync({
       id,
-      values: id
-        ? { channelId, title: title.trim(), summary: summary.trim() || undefined, body }
-        : { siteId, channelId, title: title.trim(), summary: summary.trim() || undefined, body },
+      values: { siteId, channelId, title: title.trim(), summary: summary.trim() || undefined, body },
     });
     Toast.success('投稿已提交，等待审核');
     navigate('/contributions', { replace: true });

@@ -8,7 +8,7 @@ import { createdAtColumn, renderEnabledStatusTag } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
-import { useCmsErrorProneWordList, useSaveCmsErrorProneWord, useDeleteCmsErrorProneWord, cmsErrorProneWordKeys } from '@/hooks/queries/cms';
+import { useCmsErrorProneWordList, useSaveCmsErrorProneWord, useDeleteCmsErrorProneWords, cmsErrorProneWordKeys } from '@/hooks/queries/cms';
 import type { CmsErrorProneWord } from '@zenith/shared/cms';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
@@ -33,7 +33,7 @@ export default function ErrorProneWordsPage() {
     toValues: (record) => ({ word: record.word, correction: record.correction, remark: record.remark ?? '', status: record.status }),
     beforeSave: (values) => ({ ...values, remark: values.remark || null }),
   });
-  const deleteMutation = useDeleteCmsErrorProneWord();
+  const deleteMutation = useDeleteCmsErrorProneWords();
   const canManage = hasPermission('cms:word:manage');
 
   const columns: ColumnProps<CmsErrorProneWord>[] = [
@@ -61,7 +61,7 @@ export default function ErrorProneWordsPage() {
             confirmDelete({
               title: '确定要删除该易错词吗？',
               onOk: async () => {
-                await deleteMutation.mutateAsync(record.id);
+                await deleteMutation.mutateAsync([record.id]);
                 Toast.success('删除成功');
               },
             });

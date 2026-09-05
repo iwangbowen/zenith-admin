@@ -220,7 +220,7 @@ export default function WidgetEditPage() {
         ? `发布后将刷新 ${saved.impactCount} 个页面或首页${saved.highFanout ? '，该部件影响范围较大，请确认变更' : ''}。`
         : '当前没有页面或主题插槽引用，发布不会触发页面刷新。',
       onOk: async () => {
-        await publishMutation.mutateAsync(saved.id);
+        await publishMutation.mutateAsync({ params: { id: saved.id } });
         Toast.success('发布成功，引用刷新任务已提交');
       },
     });

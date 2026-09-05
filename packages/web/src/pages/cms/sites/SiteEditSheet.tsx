@@ -193,7 +193,7 @@ export default function SiteEditSheet({ open, site, onClose }: Readonly<SiteEdit
         okText: '立即生成',
         cancelText: '稍后手动',
         onOk: async () => {
-          await staticBuildMutation.mutateAsync(saved.id);
+          await staticBuildMutation.mutateAsync({ body: { siteId: saved.id } });
           Toast.success('静态化任务已提交，可在任务中心查看进度');
         },
       });
@@ -438,8 +438,8 @@ export default function SiteEditSheet({ open, site, onClose }: Readonly<SiteEdit
             disabled={!hasPermission('cms:widget:bind')}
             onClick={async () => {
               await saveWidgetSlotMutation.mutateAsync({
-                slotKey: 'home.sidebar',
-                values: {
+                params: { slotKey: 'home.sidebar' },
+                body: {
                   siteId: site.id,
                   widgetId: homeSidebarWidgetId,
                   rendererKey: homeSidebarRenderer,

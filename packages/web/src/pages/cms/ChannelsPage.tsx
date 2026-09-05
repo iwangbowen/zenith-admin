@@ -148,7 +148,7 @@ export default function ChannelsPage() {
 
   async function handleUsersModalOk() {
     if (!usersModalChannel) return;
-    await setChannelUsersMutation.mutateAsync({ channelId: usersModalChannel.id, userIds: selectedUserIds });
+    await setChannelUsersMutation.mutateAsync({ params: { id: usersModalChannel.id }, body: { userIds: selectedUserIds } });
     Toast.success('保存成功');
     setUsersModalChannel(null);
   }
@@ -242,7 +242,7 @@ export default function ChannelsPage() {
   }
 
   async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync(id);
+    await deleteMutation.mutateAsync({ params: { id } });
     if (selectedId === id) closeEditor();
     Toast.success('删除成功');
   }
@@ -272,7 +272,7 @@ export default function ChannelsPage() {
   async function handleMergeOk() {
     const values = await mergeFormApi.current?.validate().catch(() => null);
     if (!values?.sourceIds || !(values.sourceIds as number[]).length || !values.targetId) abortSubmit('validation');
-    await mergeMutation.mutateAsync({ sourceIds: values.sourceIds as number[], targetId: values.targetId as number });
+    await mergeMutation.mutateAsync({ body: { sourceIds: values.sourceIds as number[], targetId: values.targetId as number } });
     setMergeModalVisible(false);
     Toast.success('合并完成，来源栏目已删除');
   }
@@ -287,7 +287,7 @@ export default function ChannelsPage() {
       abortSubmit('validation');
     }
     const slugStrategy = (values.slugStrategy as 'initials' | 'pinyin') ?? 'initials';
-    await batchCreateMutation.mutateAsync({ siteId, parentId: (values.parentId as number) ?? 0, names, slugStrategy });
+    await batchCreateMutation.mutateAsync({ body: { siteId, parentId: (values.parentId as number) ?? 0, names, slugStrategy } });
     setBatchModalVisible(false);
     Toast.success(`已创建 ${names.length} 个栏目`);
   }
@@ -309,7 +309,7 @@ export default function ChannelsPage() {
       title: `清空「${record.name}」？`,
       content: '栏目下全部内容将移入回收站（不含子栏目）',
       onOk: async () => {
-        await clearMutation.mutateAsync(record.id);
+        await clearMutation.mutateAsync({ params: { id: record.id } });
         Toast.success('已清空，内容移入回收站');
       },
     });

@@ -38,7 +38,7 @@ export default function SiteOpenGrantsModal({ site, onClose }: Readonly<SiteOpen
       Toast.warning('请填写开放应用 AppKey');
       return;
     }
-    await saveGrantMutation.mutateAsync({ siteId: site.id, ...draft, clientId: draft.clientId.trim() });
+    await saveGrantMutation.mutateAsync({ params: { id: site.id }, body: { ...draft, clientId: draft.clientId.trim() } });
     setDraft(EMPTY_DRAFT);
     Toast.success('授权已保存');
   }
@@ -117,7 +117,7 @@ export default function SiteOpenGrantsModal({ site, onClose }: Readonly<SiteOpen
                 title: `删除对「${record.clientId}」的授权？`,
                 content: '删除后该应用将无法再写入本站点。',
                 onOk: async () => {
-                  await deleteGrantMutation.mutateAsync(record.id);
+                  await deleteGrantMutation.mutateAsync({ params: { grantId: record.id } });
                   Toast.success('已删除');
                 },
               }); },

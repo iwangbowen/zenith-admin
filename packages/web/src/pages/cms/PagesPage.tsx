@@ -14,7 +14,7 @@ import { usePagination } from '@/hooks/usePagination';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import { formRemountKey } from '@/hooks/useEditModal';
 import {
-  useCmsSiteList, useCmsPageList, useSaveCmsPage, useDeleteCmsPage, useCmsChannelTree,
+  useCmsSiteList, useCmsPageList, useSaveCmsPage, useDeleteCmsPages, useCmsChannelTree,
   cmsPageKeys, useCmsPageDetail, useCmsPageBlockAcls, useSetCmsPageBlockAcls, useCmsTagList,
 } from '@/hooks/queries/cms';
 import { useAllRoles } from '@/hooks/queries/roles';
@@ -71,7 +71,7 @@ export default function PagesPage() {
   const treeQuery = useCmsChannelTree(siteId);
   const tagOptionsQuery = useCmsTagList({ page: 1, pageSize: 200, siteId: siteId ?? 0 }, siteId !== undefined);
   const saveMutation = useSaveCmsPage();
-  const deleteMutation = useDeleteCmsPage();
+  const deleteMutation = useDeleteCmsPages();
 
   // 搭建器状态
   //
@@ -297,7 +297,7 @@ export default function PagesPage() {
               title: `删除页面「${record.name}」？`,
               content: '静态文件将同步移除',
               onOk: async () => {
-                await deleteMutation.mutateAsync(record.id);
+                await deleteMutation.mutateAsync([record.id]);
                 Toast.success('删除成功');
               },
             });
@@ -627,12 +627,14 @@ export default function PagesPage() {
               onClick={async () => {
                 if (!editingPage || !aclBlock) return;
                 await setAclMutation.mutateAsync({
-                  pageId: editingPage.id,
-                  blockIds: [aclBlock.id],
-                  grants: [
-                    ...aclUserIds.map((subjectId) => ({ subjectType: 'user' as const, subjectId })),
-                    ...aclRoleIds.map((subjectId) => ({ subjectType: 'role' as const, subjectId })),
-                  ],
+                  params: { id: editingPage.id },
+                  body: {
+                    blockIds: [aclBlock.id],
+                    grants: [
+                      ...aclUserIds.map((subjectId) => ({ subjectType: 'user' as const, subjectId })),
+                      ...aclRoleIds.map((subjectId) => ({ subjectType: 'role' as const, subjectId })),
+                    ],
+                  },
                 });
                 Toast.success(aclUserIds.length + aclRoleIds.length > 0 ? '区块权限已更新' : '已恢复继承页面编辑权限');
                 setAclBlock(null);

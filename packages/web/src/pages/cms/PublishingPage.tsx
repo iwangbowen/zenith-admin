@@ -135,7 +135,7 @@ export default function PublishingPage() {
   };
 
   const runAction = async (record: CmsPublishingTask, action: 'cancel' | 'resume' | 'restart' | 'rebuild') => {
-    await actionMutation.mutateAsync({ id: record.id, action });
+    await actionMutation.mutateAsync({ params: { id: record.id, action } });
     Toast.success(action === 'cancel' ? '已请求取消' : action === 'resume' ? '已从断点恢复' : '已重新提交执行');
   };
 
@@ -145,7 +145,7 @@ export default function PublishingPage() {
       title: '批量操作发布任务',
       content: `将对选中的 ${selected.length} 个发布任务执行「${action}」，不满足状态条件的任务会返回可行动错误。`,
       onOk: async () => {
-        const result = await batchMutation.mutateAsync({ ids: selected, action });
+        const result = await batchMutation.mutateAsync({ body: { ids: selected, action } });
         if (result.errors.length) {
           Toast.warning(`已处理 ${result.affected} 个，${result.errors.length} 个失败：${result.errors[0]?.message ?? '请刷新后重试'}`);
         } else {
@@ -160,12 +160,14 @@ export default function PublishingPage() {
     if (!submitForm.siteId) return Toast.warning('请选择站点');
     const contentIds = submitForm.contentIds.split(',').map((item) => Number(item.trim())).filter((item) => Number.isInteger(item) && item > 0);
     await submitMutation.mutateAsync({
-      siteId: submitForm.siteId,
-      targetType: submitForm.targetType,
-      contentIds: ['content', 'contents'].includes(submitForm.targetType) ? contentIds : undefined,
-      channelId: submitForm.targetType === 'channel' ? Number(submitForm.channelId) || undefined : undefined,
-      pageId: submitForm.targetType === 'page' ? Number(submitForm.pageId) || undefined : undefined,
-      reason: submitForm.reason || undefined,
+      body: {
+        siteId: submitForm.siteId,
+        targetType: submitForm.targetType,
+        contentIds: ['content', 'contents'].includes(submitForm.targetType) ? contentIds : undefined,
+        channelId: submitForm.targetType === 'channel' ? Number(submitForm.channelId) || undefined : undefined,
+        pageId: submitForm.targetType === 'page' ? Number(submitForm.pageId) || undefined : undefined,
+        reason: submitForm.reason || undefined,
+      },
     });
     Toast.success('发布任务已提交');
     setSubmitVisible(false);

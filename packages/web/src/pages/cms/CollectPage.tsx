@@ -12,7 +12,7 @@ import { usePagination } from '@/hooks/usePagination';
 import { useMyAsyncTasks } from '@/hooks/useAsyncTasks';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import {
-  useCmsChannelTree, useCmsCollectRules, useSaveCmsCollectRule, useDeleteCmsCollectRule,
+  useCmsChannelTree, useCmsCollectRules, useSaveCmsCollectRule, useDeleteCmsCollectRules,
   useRunCmsCollectRule, useCmsCollectItems, cmsCollectKeys,
 } from '@/hooks/queries/cms';
 import type { CmsCollectRule, CmsCollectItem } from '@zenith/shared/cms';
@@ -59,7 +59,7 @@ export default function CollectPage() {
       return { ...values, ...(!isEdit ? { siteId } : {}) };
     },
   });
-  const deleteMutation = useDeleteCmsCollectRule();
+  const deleteMutation = useDeleteCmsCollectRules();
   const runMutation = useRunCmsCollectRule();
   const itemsQuery = useCmsCollectItems(itemsRule?.id, { page: itemsPage, pageSize: 10 });
   const { tasks, refresh: refreshTasks } = useMyAsyncTasks({ taskTypes: ['cms-collect-run'] });
@@ -79,7 +79,7 @@ export default function CollectPage() {
   }
 
   async function handleRun(record: CmsCollectRule) {
-    await runMutation.mutateAsync(record.id);
+    await runMutation.mutateAsync({ params: { id: record.id } });
     Toast.success('采集任务已提交');
     refreshTasks();
   }
@@ -141,7 +141,7 @@ export default function CollectPage() {
               title: `删除规则「${record.name}」？`,
               content: '采集明细将一并删除，已入库内容不受影响',
               onOk: async () => {
-                await deleteMutation.mutateAsync(record.id);
+                await deleteMutation.mutateAsync([record.id]);
                 Toast.success('删除成功');
               },
             });
