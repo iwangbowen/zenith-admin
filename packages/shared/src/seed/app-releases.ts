@@ -5,7 +5,7 @@
  * 用户也可在「应用管理」中自由增删；版本与制品由管理员真实发布产生。
  * SEED_APP_RELEASES / SEED_APP_ARTIFACTS 仅供 Demo 模式（MSW mock）派生使用。
  */
-import type { AppRelease, AppArtifact, ClientApp } from '../ops/types';
+import type { AppRelease, AppArtifact, ClientApp } from '../ops/contracts';
 import { SEED_DATE } from './_base';
 
 export const SEED_CLIENT_APPS: ClientApp[] = [

@@ -32,12 +32,13 @@ export async function listDbBackups(q: ListDbBackupsQuery) {
     }),
   ]);
   return {
-    list: rows.map(({ createdByUser, startedAt, completedAt, createdAt, ...rest }) => ({
+    list: rows.map(({ createdByUser, startedAt, completedAt, createdAt, updatedAt, ...rest }) => ({
       ...rest,
       createdByName: createdByUser?.nickname ?? null,
       startedAt: formatNullableDateTime(startedAt),
       completedAt: formatNullableDateTime(completedAt),
       createdAt: formatDateTime(createdAt),
+      updatedAt: formatDateTime(updatedAt),
     })),
     total,
     page,
@@ -73,12 +74,13 @@ export async function getDbBackupBeforeAudit(id: number) {
     with: { createdByUser: { columns: { nickname: true } } },
   });
   if (!row) return null;
-  const { createdByUser, startedAt, completedAt, createdAt, ...rest } = row;
+  const { createdByUser, startedAt, completedAt, createdAt, updatedAt, ...rest } = row;
   return {
     ...rest,
     createdByName: createdByUser?.nickname ?? null,
     startedAt: formatNullableDateTime(startedAt),
     completedAt: formatNullableDateTime(completedAt),
     createdAt: formatDateTime(createdAt),
+    updatedAt: formatDateTime(updatedAt),
   };
 }

@@ -52,22 +52,6 @@ export type FileUrlStrategy = 'proxy' | 'public' | 'presigned';
 /** 托管文件可见性；public=持 ID 可读，restricted=仅归属模块鉴权接口可读 */
 export type FileVisibility = 'public' | 'restricted';
 
-// ─── Maintenance Logs ────────────────────────────────────
-export type MaintenanceLogStatus = 'ongoing' | 'completed';
-
-export interface MaintenanceLog {
-  id: number;
-  message: string;
-  estimatedEndAt: string | null;
-  startedAt: string | null;
-  startedByName: string | null;
-  endedAt: string | null;
-  endedByName: string | null;
-  durationSeconds: number | null;
-  status: MaintenanceLogStatus;
-  createdAt: string;
-}
-
 // ─── IP Access Logs ──────────────────────────────────────
 export interface IpAccessLog {
   id: number;
@@ -337,28 +321,6 @@ export interface Region {
   children?: Region[];
 }
 
-// ─── 数据库备份 ────────────────────────────────────────────────────────────
-export type BackupType = 'pg_dump' | 'drizzle_export';
-
-export type BackupStatus = 'pending' | 'running' | 'success' | 'failed';
-
-export interface DbBackup {
-  id: number;
-  name: string;
-  type: BackupType;
-  fileId: string | null;
-  fileSize: number | null;
-  status: BackupStatus;
-  tables: string | null;
-  startedAt: string | null;
-  completedAt: string | null;
-  durationMs: number | null;
-  errorMessage: string | null;
-  createdBy: number | null;
-  createdByName?: string | null;
-  createdAt: string;
-}
-
 export interface Tag {
   id: number;
   name: string;
@@ -402,13 +364,6 @@ export interface SensitiveField {
   suggestedMaskType: MaskType;
   suggestedLabel: string;
   hasRule: boolean;
-}
-
-export interface UploadCertInput {
-  name: string;
-  domain: string;
-  certContent: string;
-  keyContent: string;
 }
 
 // ─── 链路追踪 ─────────────────────────────────────────────────────────────────

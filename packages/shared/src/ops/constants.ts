@@ -1,7 +1,129 @@
 /**
- * 终端会话枚举常量（pg enum / TS union / 前端展示三端共用）。
+ * 运维域枚举常量（pg enum / TS union / 前端展示三端共用）。
  */
 import { createLabelOptions } from '../core/enum-options';
+
+// ─── 维护模式 ────────────────────────────────────────────────────────────────
+
+export const MAINTENANCE_LOG_STATUSES = ['ongoing', 'completed'] as const;
+export type MaintenanceLogStatus = (typeof MAINTENANCE_LOG_STATUSES)[number];
+
+// ─── SSL 证书 ────────────────────────────────────────────────────────────────
+
+export const SSL_CERT_TYPES = ['self_signed', 'uploaded', 'letsencrypt'] as const;
+export type SslCertType = (typeof SSL_CERT_TYPES)[number];
+
+export const SSL_CERT_STATUSES = ['valid', 'expiring', 'expired', 'invalid'] as const;
+export type SslCertStatus = (typeof SSL_CERT_STATUSES)[number];
+
+/** 证书下载文件类型：公钥证书 / 私钥 */
+export const SSL_CERT_DOWNLOAD_KINDS = ['cert', 'key'] as const;
+export type SslCertDownloadKind = (typeof SSL_CERT_DOWNLOAD_KINDS)[number];
+
+// ─── 数据库备份 ──────────────────────────────────────────────────────────────
+
+export const DB_BACKUP_TYPES = ['pg_dump', 'drizzle_export'] as const;
+export type DbBackupType = (typeof DB_BACKUP_TYPES)[number];
+
+export const DB_BACKUP_STATUSES = ['pending', 'running', 'success', 'failed'] as const;
+export type DbBackupStatus = (typeof DB_BACKUP_STATUSES)[number];
+
+// ─── 数据库管理 ──────────────────────────────────────────────────────────────
+
+/** table=普通表 view=视图 matview=物化视图 */
+export const DB_ADMIN_TABLE_KINDS = ['table', 'view', 'matview'] as const;
+export type DbAdminTableKind = (typeof DB_ADMIN_TABLE_KINDS)[number];
+
+export const DB_ADMIN_MAINTENANCE_ACTIONS = ['vacuum', 'vacuum_analyze', 'analyze', 'reindex'] as const;
+export type DbAdminMaintenanceAction = (typeof DB_ADMIN_MAINTENANCE_ACTIONS)[number];
+
+/** 表 SQL 导出范围：ddl=仅结构 data=仅数据 full=结构 + 数据 */
+export const DB_ADMIN_SQL_EXPORT_MODES = ['ddl', 'data', 'full'] as const;
+export type DbAdminSqlExportMode = (typeof DB_ADMIN_SQL_EXPORT_MODES)[number];
+
+export const DB_ADMIN_COLUMN_DIFF_ISSUES = ['missing_in_db', 'extra_in_db', 'type_mismatch', 'nullable_mismatch'] as const;
+export type DbAdminColumnDiffIssue = (typeof DB_ADMIN_COLUMN_DIFF_ISSUES)[number];
+
+export const DB_ADMIN_TABLE_DRIFT_STATUSES = ['missing_in_db', 'extra_in_db', 'column_diff'] as const;
+export type DbAdminTableDriftStatus = (typeof DB_ADMIN_TABLE_DRIFT_STATUSES)[number];
+
+// ─── 数据保留策略 ────────────────────────────────────────────────────────────
+
+/**
+ * 清理模式：
+ * - `age`       按时间列裁剪超期行
+ * - `ageAndCap` 在 `age` 之上，再按分组保留最近 N 行
+ * - `expiresAt` 按行内到期列裁剪（保留天数 = 到期后的宽限天数）
+ * - `custom`    删除逻辑委托给领域函数（跨表条件、文件副作用等），天数仍由本策略配置
+ */
+export const RETENTION_MODES = ['age', 'ageAndCap', 'expiresAt', 'custom'] as const;
+export type RetentionMode = (typeof RETENTION_MODES)[number];
+
+// ─── 防火墙 ──────────────────────────────────────────────────────────────────
+
+export const FIREWALL_TYPES = ['ufw', 'firewalld', 'iptables', 'unknown'] as const;
+export type FirewallType = (typeof FIREWALL_TYPES)[number];
+
+export const FIREWALL_RULE_TYPES = ['allow', 'deny', 'reject'] as const;
+export type FirewallRuleType = (typeof FIREWALL_RULE_TYPES)[number];
+
+export const FIREWALL_PROTOCOLS = ['tcp', 'udp', 'any'] as const;
+export type FirewallProtocol = (typeof FIREWALL_PROTOCOLS)[number];
+
+export const FIREWALL_DIRECTIONS = ['in', 'out', 'any'] as const;
+export type FirewallDirection = (typeof FIREWALL_DIRECTIONS)[number];
+
+// ─── Nginx 站点 ──────────────────────────────────────────────────────────────
+
+export const NGINX_RUNNING_STATUSES = ['running', 'stopped', 'unknown'] as const;
+export type NginxRunningStatus = (typeof NGINX_RUNNING_STATUSES)[number];
+
+// ─── systemd 服务 ────────────────────────────────────────────────────────────
+
+export const SYSTEMD_ACTIONS = ['start', 'stop', 'restart', 'reload', 'enable', 'disable', 'mask', 'unmask'] as const;
+export type SystemdAction = (typeof SYSTEMD_ACTIONS)[number];
+
+// ─── 网络诊断 ────────────────────────────────────────────────────────────────
+
+/** 流式诊断类型（输出逐行推送） */
+export const NET_DIAG_STREAM_TYPES = ['ping', 'traceroute'] as const;
+export type NetDiagStreamType = (typeof NET_DIAG_STREAM_TYPES)[number];
+
+export const DNS_RECORD_TYPES = ['A', 'AAAA', 'MX', 'TXT', 'NS', 'CNAME', 'SOA'] as const;
+export type DnsRecordType = (typeof DNS_RECORD_TYPES)[number];
+
+// ─── 进程管理 ────────────────────────────────────────────────────────────────
+
+export const PROCESS_KILL_SIGNALS = ['SIGTERM', 'SIGKILL', 'SIGINT', 'SIGHUP'] as const;
+export type ProcessKillSignal = (typeof PROCESS_KILL_SIGNALS)[number];
+
+/** Windows 进程优先级类 */
+export const PROCESS_PRIORITY_CLASSES = ['Idle', 'BelowNormal', 'Normal', 'AboveNormal', 'High', 'RealTime'] as const;
+export type ProcessPriorityClass = (typeof PROCESS_PRIORITY_CLASSES)[number];
+
+// ─── 文件系统（宿主机 / SFTP / 远程主机） ─────────────────────────────────────
+
+export const FS_ENTRY_TYPES = ['dir', 'file'] as const;
+export type FsEntryType = (typeof FS_ENTRY_TYPES)[number];
+
+/** 容器内目录项类型（tar 解析可区分符号链接） */
+export const DOCKER_FILE_ENTRY_TYPES = ['file', 'dir', 'symlink'] as const;
+export type DockerFileEntryType = (typeof DOCKER_FILE_ENTRY_TYPES)[number];
+
+export const FILE_CHECKSUM_ALGOS = ['md5', 'sha1', 'sha256'] as const;
+export type FileChecksumAlgo = (typeof FILE_CHECKSUM_ALGOS)[number];
+
+// ─── SSH 配置 ────────────────────────────────────────────────────────────────
+
+/** 个人 SSH 配置的认证方式（key_path / agent 依赖服务器本地文件与 ssh-agent，仅单实例部署可用） */
+export const SSH_AUTH_TYPES = ['password', 'key_path', 'key_content', 'agent'] as const;
+export type SshAuthType = (typeof SSH_AUTH_TYPES)[number];
+
+// ─── 终端录屏 ────────────────────────────────────────────────────────────────
+
+/** 录屏事件类型：o=输出 i=输入 */
+export const TERMINAL_RECORDING_EVENT_TYPES = ['o', 'i'] as const;
+export type TerminalRecordingEventType = (typeof TERMINAL_RECORDING_EVENT_TYPES)[number];
 
 /**
  * 终端会话生命周期状态。

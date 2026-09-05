@@ -1,11 +1,11 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono } from '@hono/zod-openapi';
 import { Readable } from 'node:stream';
 import { HTTPException } from 'hono/http-exception';
-import { asyncTaskSchema } from '@zenith/shared/tasks';
+import { terminalFileContract } from '@zenith/shared/ops';
 import { authMiddleware } from '../../middleware/auth';
 import { guard } from '../../middleware/guard';
-import { validationHook, commonErrorResponses, ok, okMsg, okBody, jsonContent, ErrorResponse } from '../../lib/openapi-schemas';
-import { TerminalDirListingDTO, TerminalFileEntryDTO, TerminalShellsDTO, TerminalFileContentDTO, TerminalRootInfoDTO } from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { ErrorResponse, jsonContent, okBody, validationHook } from '../../lib/openapi-schemas';
 import { mapAsyncTask, submitAsyncTask } from '../../lib/task-center';
 import { COMPRESS_TASK_TYPE, EXTRACT_TASK_TYPE } from '../../services/ops/terminal-file-tasks';
 import {
@@ -38,39 +38,23 @@ const terminalFilesRouter = new OpenAPIHono({ defaultHook: validationHook });
 /** 文件管理器独立权限;Web 终端页的文件树 / shell 探测复用终端权限,满足其一即可 */
 const TERMINAL_PERM = ['system:file:use', 'system:terminal:execute'];
 
-const rootInfoRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/root-info', tags: ['TerminalFiles'], summary: '获取文件系统根信息（盘符、home 目录等）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM })] as const,
-    responses: { ...commonErrorResponses, ...ok(TerminalRootInfoDTO, '根信息') },
-  }),
+const read = [authMiddleware, guard({ permission: TERMINAL_PERM })] as const;
+const write = (description: string, module = 'Web 终端', recordBody = true) =>
+  [authMiddleware, guard({ permission: TERMINAL_PERM, audit: { description, module, recordBody } })] as const;
+
+const rootInfoRoute = defineContractRoute(terminalFileContract.rootInfo, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await getRootInfo()), 200),
 });
 
-const listRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/list', tags: ['TerminalFiles'], summary: '列出目录内容',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM })] as const,
-    request: { query: z.object({ path: z.string().optional() }) },
-    responses: { ...commonErrorResponses, ...ok(TerminalDirListingDTO, '目录列表') },
-  }),
+const listRoute = defineContractRoute(terminalFileContract.list, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await listDirectory(c.req.valid('query').path)), 200),
 });
 
-const downloadRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/download', tags: ['TerminalFiles'], summary: '下载文件',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM })] as const,
-    request: { query: z.object({ path: z.string().min(1) }) },
-    responses: {
-      ...commonErrorResponses,
-      200: { content: { 'application/octet-stream': { schema: z.string() } }, description: '文件内容' },
-      404: { content: jsonContent(ErrorResponse), description: '文件不存在' },
-    },
-  }),
+const downloadRoute = defineContractRoute(terminalFileContract.download, {
+  middleware: read,
+  responses: { 404: { content: jsonContent(ErrorResponse), description: '文件不存在' } },
   handler: async (c) => {
     const { path: filePath } = c.req.valid('query');
     const { stream, fileName } = await openDownloadStream(filePath);
@@ -84,30 +68,9 @@ const downloadRoute = defineOpenAPIRoute({
   },
 });
 
-const uploadRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/upload', tags: ['TerminalFiles'], summary: '上传文件到目录',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM, audit: { description: '终端上传文件', module: 'Web 终端', recordBody: false } })] as const,
-    request: {
-      body: {
-        content: {
-          'multipart/form-data': {
-            schema: z.object({
-              path: z.string(),
-              file: z.any().openapi({ type: 'string', format: 'binary' }),
-            }),
-          },
-        },
-        required: true,
-      },
-    },
-    responses: {
-      ...commonErrorResponses,
-      ...ok(TerminalFileEntryDTO, '上传成功'),
-      400: { content: jsonContent(ErrorResponse), description: '未选择文件或目标无效' },
-    },
-  }),
+const uploadRoute = defineContractRoute(terminalFileContract.upload, {
+  middleware: write('终端上传文件', 'Web 终端', false),
+  responses: { 400: { content: jsonContent(ErrorResponse), description: '未选择文件或目标无效' } },
   handler: async (c) => {
     // 预检放在 parseBody 之前：Hono 会把整个请求体读入内存后才交给业务代码
     await assertContentLengthWithinLimit(c.req.header('content-length'));
@@ -122,136 +85,67 @@ const uploadRoute = defineOpenAPIRoute({
   },
 });
 
-const shellsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/shells', tags: ['TerminalFiles'], summary: '获取可用 shell 列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM })] as const,
-    responses: { ...commonErrorResponses, ...ok(TerminalShellsDTO, '可用 shell 列表') },
-  }),
+const shellsRoute = defineContractRoute(terminalFileContract.shells, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await listShells()), 200),
 });
 
-const readContentRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/content', tags: ['TerminalFiles'], summary: '读取文本文件内容',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM })] as const,
-    request: { query: z.object({ path: z.string().min(1) }) },
-    responses: { ...commonErrorResponses, ...ok(TerminalFileContentDTO, '文件内容') },
-  }),
+const readContentRoute = defineContractRoute(terminalFileContract.content, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await readTextFile(c.req.valid('query').path)), 200),
 });
 
-const writeContentRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/content', tags: ['TerminalFiles'], summary: '保存文本文件内容',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM, audit: { description: '终端保存文件', module: 'Web 终端', recordBody: false } })] as const,
-    request: {
-      body: {
-        content: jsonContent(z.object({
-          path: z.string().min(1),
-          content: z.string(),
-          /** 读取时拿到的版本；不传表示强制覆盖 */
-          baseEtag: z.string().optional(),
-        })),
-        required: true,
-      },
-    },
-    responses: {
-      ...commonErrorResponses,
-      ...ok(TerminalFileEntryDTO, '保存成功'),
-      409: { content: jsonContent(ErrorResponse), description: '文件已被他人修改' },
-    },
-  }),
+const writeContentRoute = defineContractRoute(terminalFileContract.saveContent, {
+  middleware: write('终端保存文件', 'Web 终端', false),
+  responses: { 409: { content: jsonContent(ErrorResponse), description: '文件已被他人修改' } },
   handler: async (c) => {
     const { path: filePath, content, baseEtag } = c.req.valid('json');
     return c.json(okBody(await writeTextFile(filePath, content, baseEtag), '保存成功'), 200);
   },
 });
 
-const createEntryRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/create', tags: ['TerminalFiles'], summary: '新建文件或目录',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM, audit: { description: '终端新建文件/目录', module: 'Web 终端' } })] as const,
-    request: { body: { content: jsonContent(z.object({ path: z.string().min(1), type: z.enum(['file', 'dir']) })), required: true } },
-    responses: { ...commonErrorResponses, ...ok(TerminalFileEntryDTO, '创建成功') },
-  }),
+const createEntryRoute = defineContractRoute(terminalFileContract.create, {
+  middleware: write('终端新建文件/目录'),
   handler: async (c) => {
     const { path: targetPath, type } = c.req.valid('json');
     return c.json(okBody(await createEntry(targetPath, type), '创建成功'), 200);
   },
 });
 
-const renameEntryRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/rename', tags: ['TerminalFiles'], summary: '重命名 / 移动文件或目录',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM, audit: { description: '终端重命名/移动', module: 'Web 终端' } })] as const,
-    request: { body: { content: jsonContent(z.object({ from: z.string().min(1), to: z.string().min(1) })), required: true } },
-    responses: { ...commonErrorResponses, ...ok(TerminalFileEntryDTO, '操作成功') },
-  }),
+const renameEntryRoute = defineContractRoute(terminalFileContract.rename, {
+  middleware: write('终端重命名/移动'),
   handler: async (c) => {
     const { from, to } = c.req.valid('json');
     return c.json(okBody(await renameEntry(from, to), '操作成功'), 200);
   },
 });
 
-const deleteEntryRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/entry', tags: ['TerminalFiles'], summary: '删除文件或目录',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM, audit: { description: '终端删除文件/目录', module: 'Web 终端' } })] as const,
-    request: { query: z.object({ path: z.string().min(1) }) },
-    responses: { ...commonErrorResponses, ...okMsg('删除成功') },
-  }),
+const deleteEntryRoute = defineContractRoute(terminalFileContract.remove, {
+  middleware: write('终端删除文件/目录'),
   handler: async (c) => {
     await deleteEntry(c.req.valid('query').path);
     return c.json(okBody(null, '删除成功'), 200);
   },
 });
 
-const moveEntryRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/move', tags: ['TerminalFiles'], summary: '移动文件或目录',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM, audit: { description: '文件管理器移动', module: '文件管理' } })] as const,
-    request: { body: { content: jsonContent(z.object({ from: z.string().min(1), to: z.string().min(1) })), required: true } },
-    responses: { ...commonErrorResponses, ...ok(TerminalFileEntryDTO, '移动成功') },
-  }),
+const moveEntryRoute = defineContractRoute(terminalFileContract.move, {
+  middleware: write('文件管理器移动', '文件管理'),
   handler: async (c) => {
     const { from, to } = c.req.valid('json');
     return c.json(okBody(await moveEntry(from, to), '移动成功'), 200);
   },
 });
 
-const copyEntryRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/copy', tags: ['TerminalFiles'], summary: '复制文件或目录',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM, audit: { description: '文件管理器复制', module: '文件管理' } })] as const,
-    request: { body: { content: jsonContent(z.object({ from: z.string().min(1), to: z.string().min(1) })), required: true } },
-    responses: { ...commonErrorResponses, ...ok(TerminalFileEntryDTO, '复制成功') },
-  }),
+const copyEntryRoute = defineContractRoute(terminalFileContract.copy, {
+  middleware: write('文件管理器复制', '文件管理'),
   handler: async (c) => {
     const { from, to } = c.req.valid('json');
     return c.json(okBody(await copyEntry(from, to), '复制成功'), 200);
   },
 });
 
-const compressRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/compress', tags: ['TerminalFiles'], summary: '压缩文件/目录为 ZIP（异步任务）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM, audit: { description: '文件管理器压缩', module: '文件管理' } })] as const,
-    request: { body: { content: jsonContent(z.object({
-      paths: z.array(z.string().min(1)).min(1),
-      destPath: z.string().min(1),
-    })), required: true } },
-    responses: { ...commonErrorResponses, ...ok(asyncTaskSchema, '压缩任务已提交') },
-  }),
+const compressRoute = defineContractRoute(terminalFileContract.compress, {
+  middleware: write('文件管理器压缩', '文件管理'),
   handler: async (c) => {
     const { paths, destPath } = c.req.valid('json');
     const task = await submitAsyncTask({
@@ -263,17 +157,8 @@ const compressRoute = defineOpenAPIRoute({
   },
 });
 
-const chmodRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/chmod', tags: ['TerminalFiles'], summary: '修改文件/目录权限（chmod）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM, audit: { description: '文件管理器修改权限', module: '文件管理' } })] as const,
-    request: { body: { content: jsonContent(z.object({
-      path: z.string().min(1),
-      mode: z.number().int().min(0).max(0o7777),
-    })), required: true } },
-    responses: { ...commonErrorResponses, ...okMsg('权限已修改') },
-  }),
+const chmodRoute = defineContractRoute(terminalFileContract.chmod, {
+  middleware: write('文件管理器修改权限', '文件管理'),
   handler: async (c) => {
     const { path: filePath, mode } = c.req.valid('json');
     await chmodEntry(filePath, mode);
@@ -281,17 +166,8 @@ const chmodRoute = defineOpenAPIRoute({
   },
 });
 
-const extractRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/extract', tags: ['TerminalFiles'], summary: '解压压缩包（异步任务）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM, audit: { description: '文件管理器解压', module: '文件管理' } })] as const,
-    request: { body: { content: jsonContent(z.object({
-      path: z.string().min(1),
-      destPath: z.string().optional(),
-    })), required: true } },
-    responses: { ...commonErrorResponses, ...ok(asyncTaskSchema, '解压任务已提交') },
-  }),
+const extractRoute = defineContractRoute(terminalFileContract.extract, {
+  middleware: write('文件管理器解压', '文件管理'),
   handler: async (c) => {
     const { path: archivePath, destPath } = c.req.valid('json');
     const task = await submitAsyncTask({
@@ -303,53 +179,24 @@ const extractRoute = defineOpenAPIRoute({
   },
 });
 
-const checksumRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/checksum', tags: ['TerminalFiles'], summary: '计算文件校验和',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM })] as const,
-    request: { query: z.object({ path: z.string().min(1), algo: z.enum(['md5', 'sha1', 'sha256']).default('sha256') }) },
-    responses: { ...commonErrorResponses, ...ok(z.object({ algo: z.string(), hash: z.string(), size: z.number() }), '校验和') },
-  }),
+const checksumRoute = defineContractRoute(terminalFileContract.checksum, {
+  middleware: read,
   handler: async (c) => {
     const { path: filePath, algo } = c.req.valid('query');
     return c.json(okBody(await computeChecksum(filePath, algo)), 200);
   },
 });
 
-const searchRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/search', tags: ['TerminalFiles'], summary: '递归搜索文件名',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM })] as const,
-    request: { query: z.object({ dir: z.string().min(1), keyword: z.string().min(1).max(128) }) },
-    responses: {
-      ...commonErrorResponses,
-      ...ok(z.object({ entries: z.array(TerminalFileEntryDTO), truncated: z.boolean() }), '搜索结果'),
-    },
-  }),
+const searchRoute = defineContractRoute(terminalFileContract.search, {
+  middleware: read,
   handler: async (c) => {
     const { dir, keyword } = c.req.valid('query');
     return c.json(okBody(await searchFiles(dir, keyword)), 200);
   },
 });
 
-const dirSizeRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/dir-size', tags: ['TerminalFiles'], summary: '递归统计目录大小',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM })] as const,
-    request: { query: z.object({ path: z.string().min(1) }) },
-    responses: {
-      ...commonErrorResponses,
-      ...ok(z.object({
-        size: z.number().openapi({ description: '总字节数' }),
-        files: z.number().openapi({ description: '文件数' }),
-        dirs: z.number().openapi({ description: '子目录数' }),
-        truncated: z.boolean().openapi({ description: '是否因目录过大而截断统计' }),
-      }), '目录大小统计'),
-    },
-  }),
+const dirSizeRoute = defineContractRoute(terminalFileContract.dirSize, {
+  middleware: read,
   handler: async (c) => {
     const { path: dirPath } = c.req.valid('query');
     return c.json(okBody(await computeDirSize(dirPath)), 200);

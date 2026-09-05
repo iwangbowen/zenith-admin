@@ -168,14 +168,6 @@ export function jsonContent<T extends z.ZodTypeAny>(schema: T) {
   return { 'application/json': { schema } };
 }
 
-/** 运维主机选择：缺省为本机，传 hostId 时经 assertRemoteHostAccess 校验远端准入 */
-export const HostQuery = z.object({
-  hostId: z.coerce.number().int().positive().optional().openapi({
-    param: { name: 'hostId', in: 'query' },
-    description: '远端运维主机 ID；缺省为本机',
-  }),
-});
-
 /** 常用分页入参 */
 export const PaginationQuery = z.object({
   page: z.coerce

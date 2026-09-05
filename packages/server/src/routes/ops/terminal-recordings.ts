@@ -1,10 +1,11 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { terminalRecordingContract } from '@zenith/shared/ops';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditAfterData, setAuditBeforeData } from '../../middleware/guard';
 import { currentUser } from '../../lib/context';
-import { IdParam, PaginationQuery, commonErrorResponses, dateRangeBound, fileBody, jsonContent, ok, okBody, okFile, okMsg, okPaginated, validationHook } from '../../lib/openapi-schemas';
+import { defineContractRoute } from '../../lib/contract-route';
+import { fileBody, okBody, validationHook } from '../../lib/openapi-schemas';
 import { parseDateRangeStart, parseDateRangeEnd } from '../../lib/datetime';
-import { TerminalRecordingDTO, TerminalRecordingDetailDTO } from '../../lib/openapi-dtos';
 import {
   createRecording,
   listRecordings,
@@ -19,30 +20,10 @@ const recordingsRouter = new OpenAPIHono({ defaultHook: validationHook });
 
 const PERM = 'system:terminal:execute';
 
-const CreateRecordingBody = z.object({
-  title: z.string().max(256).default(''),
-  shell: z.string().max(64).nullable().optional(),
-  cols: z.number().int().min(1).max(1000),
-  rows: z.number().int().min(1).max(500),
-  duration: z.number().min(0),
-  events: z.array(z.tuple([z.number(), z.enum(['o', 'i']), z.string()])),
-});
+const read = [authMiddleware, guard({ permission: PERM })] as const;
 
-const RecordingListQuery = PaginationQuery.extend({
-  keyword: z.string().optional(),
-  operatorUserId: z.coerce.number().int().positive().optional(),
-  startTime: dateRangeBound('起始时间'),
-  endTime: dateRangeBound('结束时间'),
-});
-
-const listRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/', tags: ['TerminalRecordings'], summary: '我的录屏列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: PERM })] as const,
-    request: { query: RecordingListQuery },
-    responses: { ...commonErrorResponses, ...okPaginated(TerminalRecordingDTO, '录屏列表') },
-  }),
+const listRoute = defineContractRoute(terminalRecordingContract.list, {
+  middleware: read,
   handler: async (c) => {
     const { page = 1, pageSize = 20, keyword, operatorUserId, startTime, endTime } = c.req.valid('query');
     return c.json(okBody(await listRecordings({
@@ -56,14 +37,8 @@ const listRoute = defineOpenAPIRoute({
   },
 });
 
-const createRoute_ = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/', tags: ['TerminalRecordings'], summary: '保存录屏',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: PERM, audit: { description: '保存终端录屏', module: 'Web 终端', recordBody: false } })] as const,
-    request: { body: { content: jsonContent(CreateRecordingBody), required: true } },
-    responses: { ...commonErrorResponses, ...ok(TerminalRecordingDTO, '保存成功') },
-  }),
+const createRoute_ = defineContractRoute(terminalRecordingContract.create, {
+  middleware: [authMiddleware, guard({ permission: PERM, audit: { description: '保存终端录屏', module: 'Web 终端', recordBody: false } })],
   handler: async (c) => {
     const user = currentUser();
     const body = c.req.valid('json');
@@ -80,28 +55,16 @@ const createRoute_ = defineOpenAPIRoute({
   },
 });
 
-const getRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/:id', tags: ['TerminalRecordings'], summary: '获取录屏详情（含 events）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: PERM })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...ok(TerminalRecordingDetailDTO, '录屏详情') },
-  }),
+const getRoute = defineContractRoute(terminalRecordingContract.detail, {
+  middleware: read,
   handler: async (c) => {
     const id = Number(c.req.valid('param').id);
     return c.json(okBody(await getRecording(id)), 200);
   },
 });
 
-const deleteRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/:id', tags: ['TerminalRecordings'], summary: '删除录屏',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: PERM, audit: { description: '删除终端录屏', module: 'Web 终端' } })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...okMsg('删除成功') },
-  }),
+const deleteRoute = defineContractRoute(terminalRecordingContract.remove, {
+  middleware: [authMiddleware, guard({ permission: PERM, audit: { description: '删除终端录屏', module: 'Web 终端' } })],
   handler: async (c) => {
     const id = Number(c.req.valid('param').id);
     setAuditBeforeData(c, await getRecordingBeforeAudit(id));
@@ -110,28 +73,16 @@ const deleteRoute = defineOpenAPIRoute({
   },
 });
 
-const exportAsciinemaRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/:id/asciinema', tags: ['TerminalRecordings'], summary: '导出 asciinema 录屏',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: PERM })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...okFile('asciinema cast 文件') },
-  }),
+const exportAsciinemaRoute = defineContractRoute(terminalRecordingContract.asciinema, {
+  middleware: read,
   handler: async (c) => {
     const result = await exportRecordingAsciinema(Number(c.req.valid('param').id));
     return fileBody(result.content, result.filename, result.contentType);
   },
 });
 
-const cleanRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/clean', tags: ['TerminalRecordings'], summary: '清除录屏记录',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: PERM, audit: { description: '清除终端录屏', module: 'Web 终端' } })] as const,
-    request: { query: z.object({ days: z.coerce.number().int().min(1).max(3650).default(180) }) },
-    responses: { ...commonErrorResponses, ...okMsg('清除成功') },
-  }),
+const cleanRoute = defineContractRoute(terminalRecordingContract.clean, {
+  middleware: [authMiddleware, guard({ permission: PERM, audit: { description: '清除终端录屏', module: 'Web 终端' } })],
   handler: async (c) => {
     const { days } = c.req.valid('query');
     const deleted = await cleanRecordings(days);
@@ -140,6 +91,7 @@ const cleanRoute = defineOpenAPIRoute({
   },
 });
 
+// 静态 DELETE /clean 必须先于 DELETE /{id} 注册
 recordingsRouter.openapiRoutes([listRoute, createRoute_, cleanRoute, exportAsciinemaRoute, getRoute, deleteRoute] as const);
 
 export default recordingsRouter;

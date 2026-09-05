@@ -26,7 +26,6 @@
   "d2s__ReportPrintTemplate",
   "d2s__ReportPublicAccessSession",
   "d2s__ReportPublicDashboard",
-  "d2s__RetentionRunResult",
   "d2s__WorkflowAnalytics",
   "d2s__WorkflowAutomation",
   "d2s__WorkflowAutomationRun",
@@ -63,6 +62,5 @@
   "s2d__RuleList",
   "s2d__RuleListItem",
   "s2d__RuleScorecard",
-  "s2d__SslCertificate",
   "s2d__UserFeedback"
 ]

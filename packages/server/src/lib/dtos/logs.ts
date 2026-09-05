@@ -1,5 +1,5 @@
 /**
- * 日志相关 DTO：IP 拦截日志、操作日志统计、日志文件
+ * 日志相关 DTO：IP 拦截日志、操作日志统计
  */
 import { z } from '@hono/zod-openapi';
 import { operationLogSchema } from '@zenith/shared/platform';
@@ -51,18 +51,3 @@ export const OperationLogStatsDTO = z
     userModuleFlows: z.array(z.object({ username: z.string(), module: z.string(), count: z.number() })),
   })
   .openapi('OperationLogStats');
-
-export const LogFileDTO = z
-  .object({
-    name: z.string(),
-    size: z.number(),
-    modifiedAt: z.string(),
-    isGzip: z.boolean(),
-  })
-  .openapi('LogFile');
-
-export const LogFileContentDTO = z
-  .object({
-    lines: z.array(z.string()),
-  })
-  .openapi('LogFileContent');

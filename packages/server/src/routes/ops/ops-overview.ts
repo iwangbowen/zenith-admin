@@ -1,19 +1,15 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute } from '@hono/zod-openapi';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { opsOverviewContract } from '@zenith/shared/ops';
 import { authMiddleware } from '../../middleware/auth';
 import { guard } from '../../middleware/guard';
-import { validationHook, commonErrorResponses, ok, okBody } from '../../lib/openapi-schemas';
-import { OpsOverviewDTO } from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { getOpsOverview } from '../../services/ops/ops-overview.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
-const overviewRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/', tags: ['OpsOverview'], summary: '运维概览聚合快照',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:ops:overview' })] as const,
-    responses: { ...commonErrorResponses, ...ok(OpsOverviewDTO, '运维概览') },
-  }),
+const overviewRoute = defineContractRoute(opsOverviewContract.get, {
+  middleware: [authMiddleware, guard({ permission: 'system:ops:overview' })],
   handler: async (c) => {
     const user = c.get('user');
     return c.json(okBody(await getOpsOverview(user.tenantId == null)), 200);
