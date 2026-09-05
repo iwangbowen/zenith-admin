@@ -1,0 +1,209 @@
+{
+  "generatedAt": "2026-09-05T21:13:58.118Z",
+  "dist": "C:\\Users\\iwang\\workspace\\zenith-admin\\packages\\web\\dist",
+  "totals": {
+    "jsChunks": 1542,
+    "jsTotalMB": 75.8,
+    "histogram": {
+      "<4KB": 764,
+      "4-10KB": 350,
+      "10-50KB": 299,
+      "50-200KB": 66,
+      "200-900KB": 47,
+      ">900KB": 16
+    },
+    "largest": [
+      {
+        "file": "assets/vendor-univerjs-DaQCwofW.js",
+        "kb": 8992.9
+      },
+      {
+        "file": "assets-approval/vendor-univerjs-BP94v_Ri.js",
+        "kb": 8992.8
+      },
+      {
+        "file": "assets-approval/vendor-mermaid-D8uZi5-B.js",
+        "kb": 2774.5
+      },
+      {
+        "file": "assets/vendor-mermaid-C3yU1DaE.js",
+        "kb": 2774.3
+      },
+      {
+        "file": "assets/vendor-visactor-CRhBnrS_.js",
+        "kb": 2127.2
+      },
+      {
+        "file": "assets-approval/vendor-visactor-DNDYYLAF.js",
+        "kb": 2127.2
+      },
+      {
+        "file": "assets-approval/vendor-embedpdf-BrRuGcia.js",
+        "kb": 2041.2
+      },
+      {
+        "file": "assets/vendor-embedpdf-f6eHbBjU.js",
+        "kb": 2041.2
+      },
+      {
+        "file": "assets/vendor-maplibre-C6Cxo-O9.js",
+        "kb": 1951.9
+      },
+      {
+        "file": "assets-approval/vendor-maplibre-B7tR7_ti.js",
+        "kb": 1951.9
+      },
+      {
+        "file": "assets/vendor-heic2any-CUPf3g2A.js",
+        "kb": 1320.5
+      },
+      {
+        "file": "assets-approval/vendor-heic2any-CUPf3g2A.js",
+        "kb": 1320.5
+      }
+    ]
+  },
+  "entries": {
+    "index.html": {
+      "scripts": [
+        "assets/vite-runtime-CqwWvUnY.js",
+        "assets/rolldown-runtime-C0FnF6B9.js",
+        "assets/vendor-react-core-C3WllogS.js",
+        "assets/initial-vendor-4KT1PRoS.js",
+        "assets/initial-app-yDE3Owf1.js"
+      ],
+      "modulepreloadHints": 0,
+      "critical": {
+        "files": 5,
+        "rawKB": 1649.5,
+        "gzKB": 469.8,
+        "brKB": 373.2,
+        "tiny": 2,
+        "css": {
+          "files": 2,
+          "rawKB": 441.5,
+          "gzKB": 53.4
+        },
+        "files_list": [
+          "assets/initial-vendor-4KT1PRoS.js",
+          "assets/initial-app-yDE3Owf1.js",
+          "assets/vendor-react-core-C3WllogS.js",
+          "assets/vite-runtime-CqwWvUnY.js",
+          "assets/rolldown-runtime-C0FnF6B9.js"
+        ]
+      },
+      "dynamicTargets": 276,
+      "heavyInCritical": [],
+      "attribution": null,
+      "routes": {
+        "AdminLayout": {
+          "files": 29,
+          "rawKB": 1414,
+          "gzKB": 402.2,
+          "brKB": 331,
+          "tiny": 18,
+          "largest": [
+            "assets/app-shared-nb1Z3Zu7.js(473.7KB)",
+            "assets/vendor-semi-BFcuT-b9.js(404.8KB)",
+            "assets/vendor-common-MvwvBIlb.js(356.7KB)",
+            "assets/AdminLayout-B3sRtu0l.js(99.1KB)",
+            "assets/tracker-1HP-igxY.js(17KB)",
+            "assets/chat-Yq6aMfgk.js(14.3KB)",
+            "assets/vendor~tracker~AdminLayout~ChannelAnalysisPage~NotFoundPage~ForbiddenPage~FrontendErrorsPag~n8wgsbys-CoGqKz2b.js(8.4KB)",
+            "assets/announcements-BMpuVDot.js(5.4KB)"
+          ]
+        },
+        "DashboardPage": {
+          "files": 16,
+          "rawKB": 1319.2,
+          "gzKB": 370.2,
+          "brKB": 304.4,
+          "tiny": 7,
+          "largest": [
+            "assets/app-shared-nb1Z3Zu7.js(473.7KB)",
+            "assets/vendor-semi-BFcuT-b9.js(404.8KB)",
+            "assets/vendor-common-MvwvBIlb.js(356.7KB)",
+            "assets/vendor-semi-media-D4woB2os.js(34.9KB)",
+            "assets/DashboardPage-BOanbsrT.js(14.9KB)",
+            "assets/FilePreviewModal-CZWskruJ.js(9.4KB)",
+            "assets/FileAttachment-GL63Gq3f.js(7.3KB)",
+            "assets/announcements-BMpuVDot.js(5.4KB)"
+          ]
+        }
+      },
+      "authenticatedFirstScreen": {
+        "files": 44,
+        "rawKB": 3139,
+        "gzKB": 896.2,
+        "brKB": 725.3,
+        "tiny": 25
+      }
+    },
+    "member.html": {
+      "scripts": [
+        "assets-member/vite-runtime-CqwWvUnY.js",
+        "assets-member/rolldown-runtime-hePW80VL.js",
+        "assets-member/vendor-react-core-5S0hSHUy.js",
+        "assets-member/initial-vendor-Dmo8Yk7f.js",
+        "assets-member/initial-app-inb8Wp3S.js"
+      ],
+      "modulepreloadHints": 0,
+      "critical": {
+        "files": 5,
+        "rawKB": 792.2,
+        "gzKB": 237.5,
+        "brKB": 199.8,
+        "tiny": 2,
+        "css": {
+          "files": 2,
+          "rawKB": 157,
+          "gzKB": 21.9
+        },
+        "files_list": [
+          "assets-member/initial-vendor-Dmo8Yk7f.js",
+          "assets-member/initial-app-inb8Wp3S.js",
+          "assets-member/vendor-react-core-5S0hSHUy.js",
+          "assets-member/vite-runtime-CqwWvUnY.js",
+          "assets-member/rolldown-runtime-hePW80VL.js"
+        ]
+      },
+      "dynamicTargets": 27,
+      "heavyInCritical": [],
+      "attribution": null,
+      "routes": {}
+    },
+    "approval.html": {
+      "scripts": [
+        "assets-approval/vite-runtime-CqwWvUnY.js",
+        "assets-approval/rolldown-runtime-C0FnF6B9.js",
+        "assets-approval/vendor-react-core-C3WllogS.js",
+        "assets-approval/initial-vendor-BU03FRwG.js",
+        "assets-approval/initial-app-BqiruSmd.js"
+      ],
+      "modulepreloadHints": 0,
+      "critical": {
+        "files": 5,
+        "rawKB": 632.3,
+        "gzKB": 191.6,
+        "brKB": 162.7,
+        "tiny": 2,
+        "css": {
+          "files": 2,
+          "rawKB": 96.8,
+          "gzKB": 15.6
+        },
+        "files_list": [
+          "assets-approval/initial-vendor-BU03FRwG.js",
+          "assets-approval/vendor-react-core-C3WllogS.js",
+          "assets-approval/initial-app-BqiruSmd.js",
+          "assets-approval/vite-runtime-CqwWvUnY.js",
+          "assets-approval/rolldown-runtime-C0FnF6B9.js"
+        ]
+      },
+      "dynamicTargets": 5,
+      "heavyInCritical": [],
+      "attribution": null,
+      "routes": {}
+    }
+  }
+}

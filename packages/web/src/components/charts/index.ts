@@ -7,7 +7,8 @@
  * 主题（亮/暗、主题色）在本模块首次加载时通过 initVChartSemiTheme 接入（见下方副作用），
  * 配色通过 useChartPalette() 读取 Semi CSS 变量，随主题切换自动刷新。
  */
-import { setupVChartSemiTheme } from '@/lib/vchart-theme';
+// 主题初始化与图表组件同目录：放在 lib/ 会被「应用公共层」分包捕获，把 ~2MB 的 vchart 静态拖进后台布局
+import { setupVChartSemiTheme } from './vchart-theme';
 
 // 主题注册副作用：本模块只存在于懒加载页面 chunk 中，模块求值先于任何图表组件渲染，
 // 既保证 VChart 实例创建前主题已就绪，又让 ~2MB 的 vchart 依赖不进入首屏。

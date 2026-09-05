@@ -2,14 +2,15 @@ import type { LucideIcon } from 'lucide-react';
 import React, { useSyncExternalStore } from 'react';
 
 /**
- * lucide-react 动态图标注册表（异步加载）。
+ * 按名字渲染图标的平台能力（菜单 / 标签栏 / 面包屑 / 命令面板 / 工作流模板与自定义表单……）。
  *
- * 菜单图标按 DB 中的名称字符串动态渲染，需要全量图标表（~600KB raw）；
- * 通过动态 import 将其移出首屏关键路径：未就绪时 renderLucideIcon 返回 null
- * 并自动触发加载，需要"加载完成后重渲染补齐"的组件用 useLucideIconsReady() 订阅
- * （如 AdminLayout 的 navItems memo）。
+ * 调用方只使用两个入口：`<DynamicIcon name />`（components/DynamicIcon.tsx，或函数形态 `renderLucideIcon`）与 `IconPicker`，
+ * 图标从哪来是本模块内部的「投递策略」：当前为「单个懒加载全量表 + 就绪订阅」——
+ * 全表是一个哈希文件、一年缓存；后台入口在检测到登录凭证时立即 `prewarmLucideIcons()`，
+ * 与 `/api/auth/me` 并行下载，侧栏首帧通常已有图标；未就绪时组件渲染 null 并在就绪后自动补齐。
+ * 将来若改为 sprite / 逐图标导入 / 服务端下发节点，只改本文件，调用点零改动。
  *
- * 页面里 `import { X } from 'lucide-react'` 的静态按需图标不受影响。
+ * 页面里 `import { X } from 'lucide-react'` 的静态按需图标不受影响（摇树成小子集）。
  */
 
 type Registry = Record<string, LucideIcon>;
@@ -49,6 +50,14 @@ export function ensureLucideIcons(): Promise<void> {
     listeners.forEach((l) => l());
   });
   return loadPromise;
+}
+
+/**
+ * 预热：在拿到登录凭证、尚未等到用户 / 菜单数据时就开始下载全量表，
+ * 让它与鉴权请求并行而不是排在侧栏首次渲染之后。失败静默（渲染路径会再次触发加载）。
+ */
+export function prewarmLucideIcons(): void {
+  void ensureLucideIcons().catch(() => {});
 }
 
 function subscribe(cb: () => void): () => void {

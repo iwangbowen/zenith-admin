@@ -52,15 +52,16 @@
 ## 动态菜单路由注册流程
 
 ```text
-登录成功（AuthProvider 写入 token、拉取 /api/auth/me）
+存在 token（含刷新页面）
     ↓
-App.tsx 渲染 AdminRouteLoader
+prefetchAdminShell()（lib/shell-prefetch.ts）与 /api/auth/me 并行启动：
+  预热 lucide 图标表 · import() AdminLayout / DashboardPage · prefetch GET /api/menus/user 与 /api/settings/me
     ↓
-两个 TanStack Query 并行加载（hooks/queries/menus.ts，staleTime 5 分钟）：
-  useCurrentUserMenuTree() → GET /api/menus/user   当前用户可见菜单树
-  useMenuTree()            → GET /api/menus        完整菜单树（403/404 判别用）
+AuthProvider 拉取 /api/auth/me 成功 → App.tsx 渲染 AdminRouteLoader
     ↓
-首载 gate：任一查询 isPending 时显示 PageLoading；后台 refetch 保留旧数据
+useCurrentUserMenuTree() → GET /api/menus/user   当前用户可见菜单树（hooks/queries/menus.ts，staleTime 5 分钟）
+    ↓
+首载 gate：仅此一个查询 isPending 时显示 PageLoading；后台 refetch 保留旧数据
     ↓
 flattenMenus()：扁平化用户菜单树，只保留有 path 且有 component 的节点，
 并跳过 FIXED_ROUTES 中的路径
@@ -70,10 +71,12 @@ lazyPageComponent(m.component)（utils/page-registry.ts）解析懒加载组件
 在 <Routes> 中动态注册 <Route>；侧边栏继续使用同一用户菜单树
 ```
 
+完整菜单树（`useMenuTree()` → `GET /api/menus`）不在启动链路上：只有命中 catch-all 的 `NotFoundOrForbidden` 才会请求它，用于 403 / 404 判别。
+
 ### 菜单数据的加载失败语义
 
 - **用户菜单树失败**：渲染整页「导航菜单加载失败」重试页，并提供退出登录入口
-- **完整菜单树失败**：不阻塞页面，只影响 catch-all 的 403 / 404 判别精度
+- **完整菜单树失败**：只影响 catch-all 的 403 / 404 判别精度，不阻塞任何已注册页面
 
 ### 权限变更即时生效
 
@@ -85,10 +88,14 @@ lazyPageComponent(m.component)（utils/page-registry.ts）解析懒加载组件
 
 解析统一走 `src/utils/page-registry.ts`：
 
-- `import.meta.glob(['../pages/**/*.tsx', '!../pages/**/*Skeleton.tsx', '!../pages/**/*.test.tsx'])` 收集页面组件
+- `import.meta.glob` 只收**页面级**组件：`../pages/**/*Page.tsx`、`../pages/biz/**/*.tsx`、`../pages/**/*BusinessForm.tsx`、`../pages/**/*ApprovalView.tsx`（排除 `*Skeleton.tsx` 与 `*.test.tsx`）
 - `resolvePageLoader(component)` 返回动态 import loader；`hasPageComponent(component)` 用于存在性判断
 - `lazyPageComponent(component)` 返回缓存过的 `React.lazy` 组件；路径不存在返回 `null`，路由跳过注册并打印 warning
 - 工作流自定义业务表单（`components/workflow/BusinessFormHost.tsx`）复用同一注册表
+
+::: warning 命名即注册
+glob 命中的每个文件都是独立的动态入口：页面内部的子组件、Tab、弹窗、面板**不得**以 `*Page.tsx` 命名，否则会从所属页面 chunk 中被拆出、多一次请求，并在注册表里多带一份预载依赖表。反过来，能被菜单 `component` 或工作流 `customForm` 引用的组件必须符合上述命名，否则 `hasPageComponent` 返回 `false`。`src/utils/page-registry.test.ts` 校验所有种子菜单与种子自定义表单都能解析。
+:::
 
 ### 外链内嵌菜单
 
@@ -179,10 +186,12 @@ const { hasPermission, hasAnyPermission } = usePermission();
 
 ## 路由加载性能
 
-- `AdminLayout` 懒加载，登录页与公开页不预载后台布局依赖
+- 登录页静态打包进入口关键路径（匿名用户首屏只有 5 个请求）；`AdminLayout`、仪表盘与其他页面懒加载
+- 存在 token 时 `prefetchAdminShell()` 与 `/api/auth/me` 并行预热壳层 chunk、图标表、用户菜单树与个人设置，认证完成后无需再等待网络
 - 固定页面与动态页面均使用 `React.lazy` + `Suspense`；仪表盘使用 `DashboardSkeleton`，其余页面使用 `PageLoading inline`
 - 后台布局内置 `NProgress` 顶部路由切换进度条，可由偏好 `showProgressBar` 关闭
 - `PageErrorBoundary` / `RouteErrorBoundary` 识别动态模块加载失败，提示页面资源加载失败并通过整页刷新恢复
+- chunk 分层、体积预算与度量脚本见 [打包与首屏性能](./bundle-performance.md)
 
 ---
 
@@ -203,7 +212,7 @@ users         wiki          workflow
 
 ## 新增页面的完整流程
 
-1. 在 `packages/web/src/pages/<module>/<ComponentName>.tsx` 创建页面组件
+1. 在 `packages/web/src/pages/<module>/<Name>Page.tsx` 创建页面组件（必须以 `Page.tsx` 结尾才会进入页面注册表；页面私有的子组件不要用该后缀）
 2. 在菜单数据中新增记录，`component` 填写相对路径（如 `system/users/UsersPage`），并配置权限
 3. 让角色、用户、用户组或租户套餐获得对应权限；相关 mutation 需刷新当前用户访问范围
 4. 刷新页面，动态路由注册，侧边栏展示该菜单

@@ -4,7 +4,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import FullPageRetry from '@/components/FullPageRetry';
 import { useGlobalErrorHandler } from '@/hooks/useGlobalErrorHandler';
-import { initTracker, identify, prepareTrackerLogout, resetIdentity } from '@/utils/tracker';
+import { scheduleTrackerInit, trackerIdentify, trackerPrepareLogout, trackerResetIdentity } from '@/lib/tracker-boot';
+import { prefetchAdminShell } from '@/lib/shell-prefetch';
 import ElectronTitleBar from '@/components/ElectronTitleBar';
 import { usePermission } from '@/hooks/usePermission';
 import { PreferencesProvider } from '@/hooks/PreferencesProvider';
@@ -23,7 +24,9 @@ import PageLoading from '@/components/PageLoading';
 // 登录页与公开页（支付链接、公开报表、OAuth 授权）不应预载它
 const AdminLayout = React.lazy(() => import('@/layouts/AdminLayout'));
 
-const LoginPage = React.lazy(() => import('@/pages/login/LoginPage'));
+// 登录页静态引入：未登录首屏只需关键路径本身，不再多一轮 chunk 下载；
+// 它依赖的 Semi 表单控件登录后几乎每页都要用，放进入口闭包不产生额外代价
+import LoginPage from '@/pages/login/LoginPage';
 const ResetPasswordPage = React.lazy(() => import('@/pages/reset-password/ResetPasswordPage'));
 const DashboardPage = React.lazy(() => import('@/pages/dashboard/DashboardPage'));
 import DashboardSkeleton from '@/pages/dashboard/DashboardSkeleton';
@@ -112,12 +115,19 @@ function RedirectFromLogin() {
 
 /**
  * Catch-all 路由守卫：区分 403（页面存在但无权限）和 404（页面不存在）。
- * 通过 allMenuPaths 判断当前路径是否对应一个已存在的页面组件；
+ * 通过全量菜单树的 path → component 映射判断当前路径是否对应一个已存在的页面组件；
  * 若命中的页面用户本就有权限（路由已注册仍落入 catch-all），说明只是子路径不存在，按 404 处理。
+ *
+ * 全量菜单树（含全部按钮节点，数百 KB）只在真正落入 catch-all 时才请求：
+ * 它不参与正常导航，不能作为首载 gate 让每个用户每次启动都下载一遍。
  */
-function NotFoundOrForbidden({ allMenuPaths, userMenuPaths }: Readonly<{ allMenuPaths: Map<string, string>; userMenuPaths: Set<string> }>) {
+function NotFoundOrForbidden({ userMenuPaths }: Readonly<{ userMenuPaths: Set<string> }>) {
   const location = useLocation();
   const path = location.pathname;
+  const allMenusQuery = useMenuTree();
+  const allMenuPaths = useMemo(() => buildAllMenuPaths(allMenusQuery.data ?? []), [allMenusQuery.data]);
+  // 树未到达前不下结论：直接渲染 404 会对「有页面但无权限」的路径闪一下错误结论
+  if (allMenusQuery.isPending) return <PageLoading />;
 
   // 精确匹配或前缀匹配（如 /system/users/123 匹配 /system/users）
   const segments = path.split('/').filter(Boolean);
@@ -195,20 +205,17 @@ const EMPTY_MENUS: Menu[] = [];
 function AdminRouteLoader({ user, logout }: Readonly<AdminRouteLoaderProps>) {
   const { permissions } = usePermission();
   const userMenusQuery = useCurrentUserMenuTree();
-  const allMenusQuery = useMenuTree();
 
   const menus = userMenusQuery.data ?? EMPTY_MENUS;
-  const allMenuPaths = useMemo(() => buildAllMenuPaths(allMenusQuery.data ?? []), [allMenusQuery.data]);
   const dynamicRoutes = useMemo(() => flattenMenus(menus), [menus]);
   const userMenuPaths = useMemo(() => new Set(dynamicRoutes.map((m) => m.path!)), [dynamicRoutes]);
   const embedRoutes = useMemo(() => flattenEmbedMenus(menus), [menus]);
 
-  // 首载 gate：两棵树并行加载；后台 refetch 保留旧数据，不会重新进入此分支
-  if (userMenusQuery.isPending || allMenusQuery.isPending) {
+  // 首载 gate 只等用户可见菜单树（有凭证时已在应用挂载期与 /me 并行预取）；后台 refetch 保留旧数据，不会重新进入此分支
+  if (userMenusQuery.isPending) {
     return <PageLoading />;
   }
   // 导航树失败必须显式可重试——空菜单渲染会把故障伪装成「全部页面 404」。
-  // 管理树失败不阻塞：仅降级 403→404 判别。
   if (userMenusQuery.isError) {
     return (
       <FullPageRetry
@@ -295,9 +302,9 @@ function AdminRouteLoader({ user, logout }: Readonly<AdminRouteLoaderProps>) {
           />
         ))}
 
-        <Route path="*" element={<Suspense fallback={routeFallback}><NotFoundOrForbidden allMenuPaths={allMenuPaths} userMenuPaths={userMenuPaths} /></Suspense>} />
+        <Route path="*" element={<Suspense fallback={routeFallback}><NotFoundOrForbidden userMenuPaths={userMenuPaths} /></Suspense>} />
       </Route>
-      <Route path="*" element={<Suspense fallback={routeFallback}><NotFoundOrForbidden allMenuPaths={allMenuPaths} userMenuPaths={userMenuPaths} /></Suspense>} />
+      <Route path="*" element={<Suspense fallback={routeFallback}><NotFoundOrForbidden userMenuPaths={userMenuPaths} /></Suspense>} />
     </Routes>
   );
 }
@@ -322,26 +329,29 @@ function AppChrome({ children }: Readonly<{ children: React.ReactNode }>) {
 
 export default function App() {
   useGlobalErrorHandler();
+  const queryClient = useQueryClient();
   const { user, status, refreshing, error, login, verifyMfaLogin, register, logout, refresh } = useAuth();
   const handleLogout = useCallback(() => {
-    prepareTrackerLogout();
+    trackerPrepareLogout();
     logout();
   }, [logout]);
 
   const isSuperAdmin = user?.roles?.some((r) => r.code === 'super_admin') ?? false;
 
-  // 初始化埋点 SDK（自动采集 / Web Vitals / API 监控）
-  useEffect(() => { initTracker(); }, []);
+  // 埋点 SDK 延后到空闲时初始化；有本地凭证时同时投机预取后台壳的 chunk 与图标表
+  useEffect(() => {
+    prefetchAdminShell(queryClient);
+    scheduleTrackerInit();
+  }, [queryClient]);
   // 登录身份合并（匿名 → 登录），退出时重置
   useEffect(() => {
-    if (user?.id) identify(user.id, user.username);
-    else resetIdentity();
+    if (user?.id) trackerIdentify(user.id, user.username);
+    else trackerResetIdentity();
   }, [user?.id, user?.username]);
 
   // 维护状态收敛为单一查询（与超管横幅、维护遮罩共用缓存），
   // 不再各自裸取 + 用本地 state 保存。auth 未就绪前不发起。
   const { data: maintenance } = usePublicMaintenanceStatus({ enabled: status !== 'checking' });
-  const queryClient = useQueryClient();
   const showMaintenance = !!maintenance?.enabled && !isSuperAdmin;
 
   // http-client 在 React 树之外拦截 503，只能靠事件通知；事件仅作失效触发器，

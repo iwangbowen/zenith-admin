@@ -149,6 +149,7 @@ export default withMermaid(defineConfig({
           { text: '数据获取与服务端状态', link: '/frontend/data-fetching' },
           { text: '公共组件', link: '/frontend/components' },
           { text: '文件预览组件', link: '/frontend/file-preview' },
+          { text: '打包与首屏性能', link: '/frontend/bundle-performance' },
         ],
       },
       {

@@ -11,7 +11,6 @@ import { configureTracker, initTracker } from '@/utils/tracker';
 import MemberApp from './App-member';
 import '../styles/global.css';
 import './styles/member.css';
-import { enableMocking } from '../mocks';
 import { initMemberTheme } from './hooks/useMemberTheme';
 import { hasMemberAnalyticsConsent } from './hooks/useAnalyticsConsent';
 
@@ -19,7 +18,11 @@ import { hasMemberAnalyticsConsent } from './hooks/useAnalyticsConsent';
 initMemberTheme();
 
 async function bootstrap() {
-  await enableMocking();
+  // Demo 模式才把 MSW 拉进模块图：生产构建的关键路径闭包里不出现 src/mocks/**
+  if (import.meta.env.VITE_DEMO_MODE === 'true') {
+    const { enableMocking } = await import('../mocks');
+    await enableMocking();
+  }
 
   // 埋点 SDK 运行时参数必须在 initTracker() 之前配置完毕
   configureTracker({

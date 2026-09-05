@@ -1,11 +1,14 @@
-import { useCallback, useState } from 'react';
+import { lazy, Suspense, useCallback, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Empty, Feedback, Radio, RadioGroup, Rating, TextArea, Typography } from '@douyinfe/semi-ui';
-import { IllustrationSuccess, IllustrationSuccessDark } from '@douyinfe/semi-illustrations';
 import { startManualReplay } from '@zenith/analytics-sdk';
 import { useSubmitFeedback } from '@/hooks/queries/user-feedbacks';
 import type { UserFeedbackCategory } from '@zenith/shared/platform';
 import { USER_FEEDBACK_CATEGORY_LABELS } from '@zenith/shared/platform';
+
+// 成功插图只在提交完成后出现，懒加载使 ~130KB 的 semi-illustrations 不随布局首屏下载
+const IllustrationSuccess = lazy(() => import('@douyinfe/semi-illustrations').then((m) => ({ default: m.IllustrationSuccess })));
+const IllustrationSuccessDark = lazy(() => import('@douyinfe/semi-illustrations').then((m) => ({ default: m.IllustrationSuccessDark })));
 
 const CATEGORY_OPTIONS: Array<{ value: UserFeedbackCategory; label: string }> =
   (Object.keys(USER_FEEDBACK_CATEGORY_LABELS) as UserFeedbackCategory[]).map((value) => ({ value, label: USER_FEEDBACK_CATEGORY_LABELS[value] }));
@@ -66,8 +69,8 @@ export function FeedbackWidget({ visible, onClose }: FeedbackWidgetProps) {
     if (showThanks) {
       return (
         <Empty
-          image={<IllustrationSuccess style={{ width: 120, height: 120 }} />}
-          darkModeImage={<IllustrationSuccessDark style={{ width: 120, height: 120 }} />}
+          image={<Suspense fallback={null}><IllustrationSuccess style={{ width: 120, height: 120 }} /></Suspense>}
+          darkModeImage={<Suspense fallback={null}><IllustrationSuccessDark style={{ width: 120, height: 120 }} /></Suspense>}
           description="感谢您的反馈"
           style={{ padding: 24 }}
         />

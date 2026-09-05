@@ -1,0 +1,796 @@
+{
+  "generatedAt": "2026-09-05T19:28:56.914Z",
+  "dist": "C:\\Users\\iwang\\.copilot\\session-state\\d14d04cd-f791-4c6e-8312-fd7803d146fc\\files\\dist-baseline",
+  "totals": {
+    "jsChunks": 1711,
+    "jsTotalMB": 38.5,
+    "histogram": {
+      "<4KB": 922,
+      "4-10KB": 393,
+      "10-50KB": 309,
+      "50-200KB": 47,
+      "200-900KB": 35,
+      ">900KB": 5
+    },
+    "largest": [
+      {
+        "file": "vendor-univerjs-engine-render-CGF2gooz.js",
+        "kb": 4909.9
+      },
+      {
+        "file": "vendor-embedpdf-snippet-BOHb8rl8.js",
+        "kb": 2040.6
+      },
+      {
+        "file": "vendor-maplibre-gl-BwkHbpi6.js",
+        "kb": 1951.9
+      },
+      {
+        "file": "vendor-mermaid-B2UvXYPl.js",
+        "kb": 1407.6
+      },
+      {
+        "file": "vendor-heic2any-CUPf3g2A.js",
+        "kb": 1320.5
+      },
+      {
+        "file": "vendor-visactor-vchart-MGP48LIl.js",
+        "kb": 861.2
+      },
+      {
+        "file": "vendor-univerjs-sheets-ui-B6VtJgFr.js",
+        "kb": 835.3
+      },
+      {
+        "file": "vendor-editor-core-C_rxFUS6.js",
+        "kb": 778.3
+      },
+      {
+        "file": "vendor-univerjs-sheets-formula-Dx-pGMkr.js",
+        "kb": 676.1
+      },
+      {
+        "file": "vendor-univerjs-engine-formula-CRMYonPd.js",
+        "kb": 665.7
+      },
+      {
+        "file": "vendor-mermaid-js-parser-CsPiCYQo.js",
+        "kb": 662
+      },
+      {
+        "file": "lucide-react-wPeSf5nl.js",
+        "kb": 615.1
+      }
+    ]
+  },
+  "entries": {
+    "index.html": {
+      "scripts": [
+        "main-COVfv4AZ.js"
+      ],
+      "modulepreloadHints": 84,
+      "critical": {
+        "files": 85,
+        "rawKB": 1434.4,
+        "gzKB": 368.7,
+        "brKB": 304.4,
+        "tiny": 54,
+        "css": {
+          "files": 14,
+          "rawKB": 112,
+          "gzKB": 20.6
+        },
+        "files_list": [
+          "page-registry-DdklRsP4.js",
+          "vendor-react-core-C3WllogS.js",
+          "main-COVfv4AZ.js",
+          "vendor-zod-O0BSAInC.js",
+          "vendor-date-fns-C4DxlQSe.js",
+          "request-E--EbBZ-.js",
+          "vendor-douyinfe-semi-icons-DNJ6MF1H.js",
+          "vendor-lodash-CYcOZtFN.js",
+          "vendor-react-router-B1SUf3mf.js",
+          "vendor-tanstack-query-core-6gs0LL3R.js",
+          "tracker-DYBZKlUa.js",
+          "usePreferences-BSm4azXG.js",
+          "vendor-semi-typography-BRVPFsxs.js",
+          "vendor-semi-fd-tooltip-ChLNK_Hh.js",
+          "vendor-dayjs-B1Vyw2jQ.js",
+          "vendor-semi-tooltip-Cj943X0n.js",
+          "vendor-semi-fd-utils-e-72Pi3o.js",
+          "vendor-date-fns-tz-C02x3Tzl.js",
+          "vendor-semi-toast-CK0YB4As.js",
+          "vendor-semi-button-D2-5Wkal.js",
+          "vendor-web-vitals-CoGqKz2b.js",
+          "constants-CFn49MOY.js",
+          "validation-DOtP7Ym-.js",
+          "vendor-semi-locale-BUMQIu6T.js",
+          "vendor-semi-_utils-Dj8HkbHZ.js",
+          "vendor-semi-popover-ClMXcedf.js",
+          "vendor-semi-configProvider-_s9hTxDv.js",
+          "vendor-tanstack-store-uWAfeoN6.js",
+          "vendor-babel-runtime-lfGcjrpR.js",
+          "vendor-semi-spin-C9-Of8PY.js",
+          "vendor-tanstack-pacer-DHPmfd4E.js",
+          "contract-query-hjLXWCc5.js",
+          "vendor-tanstack-react-query-Cs-cNUzO.js",
+          "vendor-semi-skeleton-tzILNvAi.js",
+          "menus-Cf0maEKQ.js",
+          "vendor-semi-resizeObserver-GSfVS9te.js",
+          "vendor-semi-empty-CzzXELKx.js",
+          "maintenance-D6LWcCRb.js",
+          "constants-CYtaNSud.js",
+          "vendor-semi-_portal-BQdBTLwL.js",
+          "vendor-semi-fd-typography-BRNLCg_J.js",
+          "vendor-semi-_cssAnimation-z1p1-9A9.js",
+          "vendor-semi-fd-toast-B2gjyuQl.js",
+          "vite-runtime-CqwWvUnY.js",
+          "date-CqBuFhLc.js",
+          "vendor-use-sync-external-store-Bqu7x50g.js",
+          "vendor-tanstack-react-pacer-EaFDlLPF.js",
+          "PageLoading-CmKGTu_6.js",
+          "vendor-semi-fd-base-D1hwUGNm.js",
+          "vendor-semi-_base-D7nJmJjj.js",
+          "createLucideIcon-CA3q5tgA.js",
+          "vendor-semi-fd-avatar-BxdLer9D.js",
+          "rolldown-runtime-C0FnF6B9.js",
+          "clipboard-DQYp9Leh.js",
+          "vendor-prop-types-D9WxI36-.js",
+          "vendor-classnames-CfLRLWYq.js",
+          "useMediaQuery-DtAkIssF.js",
+          "vendor-semi-fd-popover-DwB7WTL6.js",
+          "url-Byg2tBYk.js",
+          "auth-BBCOXOTt.js",
+          "constants-DRheicP4.js",
+          "vendor-copy-text-to-clipboard-DsX4bwTC.js",
+          "vendor-semi-fd-spin-BOWuF7GK.js",
+          "random-DwV2x4e1.js",
+          "vendor-tanstack-react-store-D2a08exU.js",
+          "usePermission-BX8grHet.js",
+          "vendor-semi-fd-button-CU-o7eGj.js",
+          "refresh-cw-eBtHbp6o.js",
+          "wrench-DgaeZtSE.js",
+          "theme-controller-CDW-Y3Ke.js",
+          "vendor-tanstack-devtools-event-client-CWiBZV7B.js",
+          "house-CdCfBsie.js",
+          "useAuth-CTxw1JuS.js",
+          "post-login-CEtz7CRO.js",
+          "download-DmoZ7yOr.js",
+          "copy-BnpLFPXP.js",
+          "mocks-DtjWiK7b.js",
+          "vendor-semi-fd-icons-CsDTM981.js",
+          "enum-options-Cpv_f4dU.js",
+          "vendor-semi-react19-adapter.js-CIQyI4pD.js",
+          "x-BILvRCME.js",
+          "square-gVqWffvo.js",
+          "minus-B9cqHp5f.js",
+          "vendor-semi-fd-skeleton-BnB3Uaua.js",
+          "vendor-semi-fd-empty-BM_kKb8X.js"
+        ]
+      },
+      "dynamicTargets": 544,
+      "heavyInCritical": [],
+      "attribution": [
+        {
+          "source": "web:utils",
+          "kb": 418.9
+        },
+        {
+          "source": "npm:react-dom",
+          "kb": 173.9
+        },
+        {
+          "source": "npm:zod",
+          "kb": 92.2
+        },
+        {
+          "source": "npm:date-fns",
+          "kb": 90.8
+        },
+        {
+          "source": "npm:@douyinfe/semi-ui",
+          "kb": 84.5
+        },
+        {
+          "source": "npm:@douyinfe/semi-icons",
+          "kb": 51
+        },
+        {
+          "source": "npm:lodash",
+          "kb": 45.1
+        },
+        {
+          "source": "npm:react-router",
+          "kb": 39.1
+        },
+        {
+          "source": "npm:@douyinfe/semi-foundation",
+          "kb": 37.7
+        },
+        {
+          "source": "npm:@tanstack/query-core",
+          "kb": 35.2
+        },
+        {
+          "source": "web:App.tsx",
+          "kb": 31
+        },
+        {
+          "source": "web:lib",
+          "kb": 22.9
+        },
+        {
+          "source": "npm:dayjs",
+          "kb": 17.3
+        },
+        {
+          "source": "shared:identity/contracts",
+          "kb": 15.3
+        },
+        {
+          "source": "workspace/zenith-admin/packages/analytics-sdk/src/tracker.ts",
+          "kb": 15
+        },
+        {
+          "source": "shared:identity",
+          "kb": 12.9
+        },
+        {
+          "source": "npm:date-fns-tz",
+          "kb": 10.6
+        },
+        {
+          "source": "web:components",
+          "kb": 9.6
+        },
+        {
+          "source": "web:hooks",
+          "kb": 8.8
+        },
+        {
+          "source": "npm:web-vitals",
+          "kb": 8.4
+        },
+        {
+          "source": "npm:react",
+          "kb": 7.7
+        },
+        {
+          "source": "shared:platform",
+          "kb": 7.6
+        },
+        {
+          "source": "shared:ops",
+          "kb": 7.3
+        },
+        {
+          "source": "web:providers",
+          "kb": 7.2
+        },
+        {
+          "source": "shared:core",
+          "kb": 6.7
+        },
+        {
+          "source": "shared:analytics",
+          "kb": 6.6
+        },
+        {
+          "source": "/workspace/zenith-admin/packages/analytics-sdk/src/replay.ts",
+          "kb": 4.8
+        },
+        {
+          "source": "npm:@tanstack/store",
+          "kb": 4.5
+        },
+        {
+          "source": "npm:@babel/runtime",
+          "kb": 4.1
+        },
+        {
+          "source": "npm:@tanstack/pacer",
+          "kb": 4
+        }
+      ],
+      "routes": {
+        "LoginPage": {
+          "files": 91,
+          "rawKB": 817.4,
+          "gzKB": 255.4,
+          "brKB": 221.2,
+          "tiny": 53,
+          "largest": [
+            "vendor-semi-form-CAsXQeYw.js(256.3KB)",
+            "vendor-semi-fd-datePicker-Bpf4XBsY.js(39.1KB)",
+            "vendor-dnd-kit-core-BeT561fL.js(38KB)",
+            "vendor-semi-upload-CiDBLxu4.js(27.3KB)",
+            "contracts-7JZbhKAs.js(18.3KB)",
+            "vendor-semi-tabs-Dn8h2k_Z.js(18.3KB)",
+            "vendor-iconify-BzNUiZqY.js(17.5KB)",
+            "vendor-semi-modal-IL7t84on.js(17KB)"
+          ]
+        },
+        "AdminLayout": {
+          "files": 154,
+          "rawKB": 1233.2,
+          "gzKB": 379.1,
+          "brKB": 324.8,
+          "tiny": 99,
+          "largest": [
+            "vendor-semi-form-CAsXQeYw.js(256.3KB)",
+            "AdminLayout-BjioUcmF.js(143.4KB)",
+            "vendor-douyinfe-semi-illustrations-Co_Z6991.js(130.1KB)",
+            "vendor-semi-fd-datePicker-Bpf4XBsY.js(39.1KB)",
+            "vendor-dnd-kit-core-BeT561fL.js(38KB)",
+            "vendor-semi-upload-CiDBLxu4.js(27.3KB)",
+            "vendor-semi-navigation-CLnbBZc-.js(21.9KB)",
+            "contracts-7JZbhKAs.js(18.3KB)"
+          ]
+        },
+        "DashboardPage": {
+          "files": 79,
+          "rawKB": 523.2,
+          "gzKB": 165.7,
+          "brKB": 143.4,
+          "tiny": 44,
+          "largest": [
+            "vendor-dompurify-D6SepjgE.js(79.6KB)",
+            "vendor-semi-upload-CiDBLxu4.js(27.3KB)",
+            "vendor-semi-image-CyQ6JVz_.js(26.2KB)",
+            "vendor-semi-calendar-D2j5ZnRU.js(24.8KB)",
+            "FilePreviewModal-CdalAy6Z.js(22.8KB)",
+            "fileIcons-BgHChmIn.js(19.4KB)",
+            "DashboardPage-Cdg_tNqs.js(17.5KB)",
+            "vendor-iconify-BzNUiZqY.js(17.5KB)"
+          ]
+        }
+      },
+      "authenticatedFirstScreen": {
+        "files": 278,
+        "rawKB": 2989.7,
+        "gzKB": 843,
+        "brKB": 710.9,
+        "tiny": 174
+      }
+    },
+    "member.html": {
+      "scripts": [
+        "member-Ci8DX7ql.js"
+      ],
+      "modulepreloadHints": 93,
+      "critical": {
+        "files": 94,
+        "rawKB": 1042.3,
+        "gzKB": 329.9,
+        "brKB": 281.7,
+        "tiny": 57,
+        "css": {
+          "files": 17,
+          "rawKB": 157.1,
+          "gzKB": 26.7
+        },
+        "files_list": [
+          "vendor-react-core-C3WllogS.js",
+          "vendor-zod-O0BSAInC.js",
+          "vendor-date-fns-C4DxlQSe.js",
+          "request-E--EbBZ-.js",
+          "member-Ci8DX7ql.js",
+          "vendor-douyinfe-semi-icons-DNJ6MF1H.js",
+          "vendor-lodash-CYcOZtFN.js",
+          "vendor-react-router-B1SUf3mf.js",
+          "vendor-tanstack-query-core-6gs0LL3R.js",
+          "tags-lD5l-ae_.js",
+          "tracker-DYBZKlUa.js",
+          "vendor-semi-navigation-CLnbBZc-.js",
+          "vendor-semi-typography-BRVPFsxs.js",
+          "vendor-semi-fd-tooltip-ChLNK_Hh.js",
+          "vendor-dayjs-B1Vyw2jQ.js",
+          "vendor-semi-modal-IL7t84on.js",
+          "vendor-semi-tooltip-Cj943X0n.js",
+          "members-Btj0JMVw.js",
+          "vendor-semi-fd-utils-e-72Pi3o.js",
+          "vendor-semi-avatar-CurFiUVQ.js",
+          "vendor-date-fns-tz-C02x3Tzl.js",
+          "vendor-semi-toast-CK0YB4As.js",
+          "vendor-semi-button-D2-5Wkal.js",
+          "vendor-web-vitals-CoGqKz2b.js",
+          "subscriptions-TIV3Bv3t.js",
+          "vendor-semi-dropdown-tK52rUoT.js",
+          "constants-YphQjlXA.js",
+          "constants-D08HmMPH.js",
+          "constants-CFn49MOY.js",
+          "vendor-semi-fd-navigation-Duwq6Fc_.js",
+          "async-tasks-HXfL9DJw.js",
+          "vendor-semi-locale-BUMQIu6T.js",
+          "vendor-semi-_utils-Dj8HkbHZ.js",
+          "vendor-semi-popover-ClMXcedf.js",
+          "vendor-semi-configProvider-_s9hTxDv.js",
+          "vendor-babel-runtime-lfGcjrpR.js",
+          "vendor-semi-spin-C9-Of8PY.js",
+          "contract-query-hjLXWCc5.js",
+          "vendor-semi-collapsible-FU-2nfJl.js",
+          "vendor-tanstack-react-query-Cs-cNUzO.js",
+          "member-levels-DlijqnKg.js",
+          "vendor-semi-fd-modal-rS55kl_r.js",
+          "vendor-semi-resizeObserver-GSfVS9te.js",
+          "vendor-semi-fd-dropdown-DEK9Swqk.js",
+          "vendor-semi-badge-CwrcyMjg.js",
+          "vendor-semi-_portal-BQdBTLwL.js",
+          "vendor-semi-fd-typography-BRNLCg_J.js",
+          "vendor-semi-_cssAnimation-z1p1-9A9.js",
+          "member-request-B2_hH3C3.js",
+          "vendor-semi-fd-toast-B2gjyuQl.js",
+          "vite-runtime-CqwWvUnY.js",
+          "date-CqBuFhLc.js",
+          "vendor-semi-fd-base-D1hwUGNm.js",
+          "vendor-semi-_base-D7nJmJjj.js",
+          "validation-Daaih8gg.js",
+          "createLucideIcon-CA3q5tgA.js",
+          "vendor-semi-fd-avatar-BxdLer9D.js",
+          "rolldown-runtime-C0FnF6B9.js",
+          "vendor-prop-types-D9WxI36-.js",
+          "vendor-classnames-CfLRLWYq.js",
+          "vendor-semi-fd-popover-DwB7WTL6.js",
+          "url-Byg2tBYk.js",
+          "constants-DRheicP4.js",
+          "user-cog-B0F_3fJW.js",
+          "vendor-copy-text-to-clipboard-DsX4bwTC.js",
+          "vendor-semi-fd-spin-BOWuF7GK.js",
+          "random-DwV2x4e1.js",
+          "settings-Dzm55aSB.js",
+          "star-qa62LlV-.js",
+          "vendor-semi-fd-collapsible-BQkoA1Zu.js",
+          "bell-ring-Ckj1lo1p.js",
+          "vendor-semi-fd-button-CU-o7eGj.js",
+          "crown-DM7KkUsE.js",
+          "usePageTracker-DhNz2unl.js",
+          "shield-check-BkmRdhUj.js",
+          "ticket-B7hAF30F.js",
+          "calendar-check-C2De8gIj.js",
+          "bell-CoMRWiDw.js",
+          "wallet-B_V_Wbk8.js",
+          "coins-BaKH710N.js",
+          "vendor-semi-fd-badge-MoVNXqdY.js",
+          "house-CdCfBsie.js",
+          "rotate-ccw-clock-OFLN35WU.js",
+          "message-square-dDxSLcV3.js",
+          "download-DmoZ7yOr.js",
+          "log-out-BJEpKJoZ.js",
+          "mocks-DtjWiK7b.js",
+          "lock-D2Z5zOTl.js",
+          "user-CSuc-WWT.js",
+          "vendor-semi-fd-icons-CsDTM981.js",
+          "enum-options-Cpv_f4dU.js",
+          "vendor-semi-react19-adapter.js-CIQyI4pD.js",
+          "arrow-left-D6rU89qG.js",
+          "clock-B9sHpR0S.js"
+        ]
+      },
+      "dynamicTargets": 27,
+      "heavyInCritical": [],
+      "attribution": [
+        {
+          "source": "npm:react-dom",
+          "kb": 173.9
+        },
+        {
+          "source": "npm:@douyinfe/semi-ui",
+          "kb": 139.8
+        },
+        {
+          "source": "npm:zod",
+          "kb": 92.2
+        },
+        {
+          "source": "npm:date-fns",
+          "kb": 90.8
+        },
+        {
+          "source": "npm:@douyinfe/semi-icons",
+          "kb": 51
+        },
+        {
+          "source": "npm:@douyinfe/semi-foundation",
+          "kb": 49.2
+        },
+        {
+          "source": "npm:lodash",
+          "kb": 45.1
+        },
+        {
+          "source": "npm:react-router",
+          "kb": 39.1
+        },
+        {
+          "source": "shared:cms",
+          "kb": 37.1
+        },
+        {
+          "source": "npm:@tanstack/query-core",
+          "kb": 35.2
+        },
+        {
+          "source": "shared:member/contracts",
+          "kb": 17.4
+        },
+        {
+          "source": "npm:dayjs",
+          "kb": 17.3
+        },
+        {
+          "source": "web:utils",
+          "kb": 16.4
+        },
+        {
+          "source": "web:member",
+          "kb": 16.3
+        },
+        {
+          "source": "shared:cms/contracts",
+          "kb": 15.5
+        },
+        {
+          "source": "workspace/zenith-admin/packages/analytics-sdk/src/tracker.ts",
+          "kb": 15
+        },
+        {
+          "source": "shared:identity/contracts",
+          "kb": 14.2
+        },
+        {
+          "source": "shared:identity",
+          "kb": 12.9
+        },
+        {
+          "source": "npm:date-fns-tz",
+          "kb": 10.6
+        },
+        {
+          "source": "web:member/hooks",
+          "kb": 10
+        },
+        {
+          "source": "npm:web-vitals",
+          "kb": 8.4
+        },
+        {
+          "source": "npm:react",
+          "kb": 7.7
+        },
+        {
+          "source": "web:member/layouts",
+          "kb": 7.6
+        },
+        {
+          "source": "shared:platform",
+          "kb": 7.6
+        },
+        {
+          "source": "shared:payment",
+          "kb": 7.4
+        },
+        {
+          "source": "shared:core",
+          "kb": 6.7
+        },
+        {
+          "source": "shared:analytics",
+          "kb": 6.6
+        },
+        {
+          "source": "npm:lucide-react",
+          "kb": 6.6
+        },
+        {
+          "source": "shared:member",
+          "kb": 5.9
+        },
+        {
+          "source": "shared:tasks/contracts",
+          "kb": 5.7
+        }
+      ],
+      "routes": {}
+    },
+    "approval.html": {
+      "scripts": [
+        "approval-CAH65sjc.js"
+      ],
+      "modulepreloadHints": 54,
+      "critical": {
+        "files": 55,
+        "rawKB": 839.9,
+        "gzKB": 258.3,
+        "brKB": 219.3,
+        "tiny": 29,
+        "css": {
+          "files": 11,
+          "rawKB": 96.9,
+          "gzKB": 18.2
+        },
+        "files_list": [
+          "vendor-react-core-C3WllogS.js",
+          "vendor-zod-O0BSAInC.js",
+          "vendor-date-fns-C4DxlQSe.js",
+          "request-E--EbBZ-.js",
+          "vendor-douyinfe-semi-icons-DNJ6MF1H.js",
+          "vendor-lodash-CYcOZtFN.js",
+          "vendor-react-router-B1SUf3mf.js",
+          "vendor-tanstack-query-core-6gs0LL3R.js",
+          "approval-CAH65sjc.js",
+          "validation-kKZ5v71v.js",
+          "vendor-semi-typography-BRVPFsxs.js",
+          "vendor-semi-fd-tooltip-ChLNK_Hh.js",
+          "vendor-semi-tooltip-Cj943X0n.js",
+          "instances-BlXEfG54.js",
+          "vendor-semi-fd-utils-e-72Pi3o.js",
+          "vendor-date-fns-tz-C02x3Tzl.js",
+          "vendor-semi-toast-CK0YB4As.js",
+          "vendor-semi-button-D2-5Wkal.js",
+          "definitions-B0J9jleq.js",
+          "vendor-semi-locale-BUMQIu6T.js",
+          "vendor-semi-_utils-Dj8HkbHZ.js",
+          "vendor-semi-popover-ClMXcedf.js",
+          "vendor-semi-configProvider-_s9hTxDv.js",
+          "tasks-CLMdgvCM.js",
+          "vendor-babel-runtime-lfGcjrpR.js",
+          "vendor-semi-spin-C9-Of8PY.js",
+          "contract-query-hjLXWCc5.js",
+          "constants-JR2CY264.js",
+          "flow-data-D0A2xKXn.js",
+          "vendor-tanstack-react-query-Cs-cNUzO.js",
+          "vendor-semi-resizeObserver-GSfVS9te.js",
+          "vendor-semi-_portal-BQdBTLwL.js",
+          "vendor-semi-fd-typography-BRNLCg_J.js",
+          "vendor-semi-_cssAnimation-z1p1-9A9.js",
+          "vendor-semi-fd-toast-B2gjyuQl.js",
+          "vite-runtime-CqwWvUnY.js",
+          "vendor-semi-fd-base-D1hwUGNm.js",
+          "vendor-semi-_base-D7nJmJjj.js",
+          "rolldown-runtime-C0FnF6B9.js",
+          "vendor-prop-types-D9WxI36-.js",
+          "vendor-classnames-CfLRLWYq.js",
+          "quick-phrases-BGPDI_Mq.js",
+          "vendor-semi-fd-popover-DwB7WTL6.js",
+          "url-Byg2tBYk.js",
+          "constants-DRheicP4.js",
+          "vendor-copy-text-to-clipboard-DsX4bwTC.js",
+          "vendor-semi-fd-spin-BOWuF7GK.js",
+          "random-DwV2x4e1.js",
+          "approval-request-BaqU_Ilw.js",
+          "vendor-semi-fd-button-CU-o7eGj.js",
+          "download-DmoZ7yOr.js",
+          "mocks-DtjWiK7b.js",
+          "vendor-semi-fd-icons-CsDTM981.js",
+          "enum-options-Cpv_f4dU.js",
+          "vendor-semi-react19-adapter.js-CIQyI4pD.js"
+        ]
+      },
+      "dynamicTargets": 5,
+      "heavyInCritical": [],
+      "attribution": [
+        {
+          "source": "npm:react-dom",
+          "kb": 173.9
+        },
+        {
+          "source": "npm:zod",
+          "kb": 92.2
+        },
+        {
+          "source": "npm:date-fns",
+          "kb": 90.8
+        },
+        {
+          "source": "npm:@douyinfe/semi-ui",
+          "kb": 80.1
+        },
+        {
+          "source": "npm:@douyinfe/semi-icons",
+          "kb": 51
+        },
+        {
+          "source": "npm:lodash",
+          "kb": 45.1
+        },
+        {
+          "source": "npm:react-router",
+          "kb": 39.1
+        },
+        {
+          "source": "npm:@douyinfe/semi-foundation",
+          "kb": 36.4
+        },
+        {
+          "source": "npm:@tanstack/query-core",
+          "kb": 35.2
+        },
+        {
+          "source": "shared:workflow/contracts",
+          "kb": 28.7
+        },
+        {
+          "source": "shared:workflow",
+          "kb": 25.8
+        },
+        {
+          "source": "web:utils",
+          "kb": 14.5
+        },
+        {
+          "source": "shared:identity/contracts",
+          "kb": 14.2
+        },
+        {
+          "source": "shared:identity",
+          "kb": 12.9
+        },
+        {
+          "source": "npm:date-fns-tz",
+          "kb": 10.6
+        },
+        {
+          "source": "npm:react",
+          "kb": 7.7
+        },
+        {
+          "source": "shared:platform",
+          "kb": 7.6
+        },
+        {
+          "source": "shared:core",
+          "kb": 6.7
+        },
+        {
+          "source": "web:approval",
+          "kb": 5.6
+        },
+        {
+          "source": "npm:@babel/runtime",
+          "kb": 4.1
+        },
+        {
+          "source": "web:lib",
+          "kb": 3.8
+        },
+        {
+          "source": "web:approval/lib",
+          "kb": 3.5
+        },
+        {
+          "source": "npm:scheduler",
+          "kb": 3.4
+        },
+        {
+          "source": "npm:@tanstack/react-query",
+          "kb": 3.1
+        },
+        {
+          "source": "shared:platform/contracts",
+          "kb": 2.6
+        },
+        {
+          "source": "shared:licensing",
+          "kb": 1.4
+        },
+        {
+          "source": "shared:mp",
+          "kb": 1.1
+        },
+        {
+          "source": "npm:prop-types",
+          "kb": 0.7
+        },
+        {
+          "source": "npm:classnames",
+          "kb": 0.7
+        },
+        {
+          "source": "npm:copy-text-to-clipboard",
+          "kb": 0.5
+        }
+      ],
+      "routes": {}
+    }
+  }
+}

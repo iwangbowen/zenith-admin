@@ -29,13 +29,18 @@ export function useMenuTree(options?: { enabled?: boolean }) {
   });
 }
 
-/** 当前用户可见菜单树；失败静默，由 App 渲染显式重试页（空菜单不得伪装成正常态） */
-export function useCurrentUserMenuTree() {
-  return useQuery({
+/** 当前用户可见菜单树的查询定义：hook 与启动期预取共用同一 key / fn，预取结果直接被 hook 命中 */
+export function userMenuTreeQueryOptions() {
+  return {
     queryKey: menuKeys.userTree,
     queryFn: () => api(menuContract.userTree, { silent: true }),
     staleTime: LOOKUP_STALE_TIME,
-  });
+  };
+}
+
+/** 当前用户可见菜单树；失败静默，由 App 渲染显式重试页（空菜单不得伪装成正常态） */
+export function useCurrentUserMenuTree() {
+  return useQuery(userMenuTreeQueryOptions());
 }
 
 export function useMenuDetail(id: number | undefined, enabled = true) {

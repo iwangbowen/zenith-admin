@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { RouteErrorBoundary } from '@/components/PageErrorBoundary';
-import { BackTop, Divider, SideSheet, Toast } from '@douyinfe/semi-ui';
+import { BackTop, Divider, SideSheet, Spin, Toast } from '@douyinfe/semi-ui';
 import { Expand, Shrink } from 'lucide-react';
 import { ensurePinyin } from '@/utils/pinyin';
 import { copyText } from '@/utils/clipboard';
@@ -29,6 +29,8 @@ const ChatNotifierHost = lazy(() => import('@/pages/chat/ChatNotifierHost'));
 const LockScreen = lazy(() => import('@/components/LockScreen').then((m) => ({ default: m.LockScreen })));
 // 公告详情弹窗拖 FileAttachment→FilePreviewModal 依赖链，改为打开时按需加载
 const AnnouncementDetailModal = lazy(() => import('@/components/AnnouncementDetailModal'));
+// 偏好抽屉正文（ColorPicker / Radio / Select 等仅此处使用）首次打开时才下载
+const PreferencesSheetBody = lazy(() => import('./admin/PreferencesSheetBody'));
 import TaskTray from '@/components/TaskTray';
 import { KeywordInput } from '@/components/search-filters';
 import { TabSwitcher } from './TabSwitcher';
@@ -67,7 +69,6 @@ import { TopBar } from './admin/TopBar';
 import { DoubleSidebar } from './admin/DoubleSidebar';
 import { SidebarNav } from './admin/SidebarNav';
 import { HeaderBreadcrumb } from './admin/HeaderBreadcrumb';
-import { PrefsLayoutSection, PrefsAppearanceSection, PrefsNavToolbarSection, PrefsSidebarSection, PrefsGeneralSection, PrefsTableSection, PrefsTabsSection, PrefsActionsSection } from './admin/PreferencesSections';
 import { ShortcutsModal } from './admin/ShortcutsModal';
 import { ImportPreferencesModal, LockPasswordModal, MessageDetailModal } from './admin/LayoutModals';
 import './AdminLayout.css';
@@ -981,82 +982,35 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 24 }}>
               <KeywordInput placeholder="搜索设置项…" value={prefsSearch} onChange={(v) => setPrefsSearch(v)} />
 
-              <PrefsLayoutSection
-                prefSection={prefSection}
-                matchesPref={matchesPref}
-                preferences={preferences}
-                setPreferences={setPreferences}
-                navLayout={navLayout}
-              />
-
-              <PrefsAppearanceSection
-                prefSection={prefSection}
-                matchesPref={matchesPref}
-                preferences={preferences}
-                setPreferences={setPreferences}
-                mode={mode}
-                handleThemeModeChange={handleThemeModeChange}
-                isDark={isDark}
-                themeColor={themeColor}
-                setThemeColor={setThemeColor}
-              />
-
-              <PrefsNavToolbarSection
-                prefSection={prefSection}
-                matchesPref={matchesPref}
-                preferences={preferences}
-                setPreferences={setPreferences}
-                prefsSearch={prefsSearch}
-                quickChatEnabled={quickChatEnabled}
-              />
-
-              <PrefsSidebarSection
-                prefSection={prefSection}
-                matchesPref={matchesPref}
-                preferences={preferences}
-                setPreferences={setPreferences}
-                navLayout={navLayout}
-              />
-
-              <PrefsGeneralSection
-                prefSection={prefSection}
-                matchesPref={matchesPref}
-                preferences={preferences}
-                setPreferences={setPreferences}
-                homePathOptions={homePathOptions}
-                autoLockMinutes={autoLockMinutes}
-                hasPassword={hasPassword}
-                clearLockPassword={clearLockPassword}
-                openLockPasswordModal={(m) => {
-                  setLockPasswordModalMode(m);
-                  setNewLockPassword('');
-                  setConfirmLockPassword('');
-                  setLockPasswordModalVisible(true);
-                }}
-              />
-
-              <PrefsTableSection
-                prefSection={prefSection}
-                matchesPref={matchesPref}
-                preferences={preferences}
-                setPreferences={setPreferences}
-              />
-
-              <PrefsTabsSection
-                prefSection={prefSection}
-                matchesPref={matchesPref}
-                preferences={preferences}
-                setPreferences={setPreferences}
-                prefsSearch={prefsSearch}
-              />
-
-              {/* ── 复制 / 导入 / 重置 ── */}
-              <PrefsActionsSection
-                handleCopyPreferences={handleCopyPreferences}
-                onOpenImport={() => setImportPrefsVisible(true)}
-                resetPreferences={resetPreferences}
-              />
-
+              <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}><Spin /></div>}>
+                <PreferencesSheetBody
+                  prefSection={prefSection}
+                  matchesPref={matchesPref}
+                  preferences={preferences}
+                  setPreferences={setPreferences}
+                  navLayout={navLayout}
+                  mode={mode}
+                  handleThemeModeChange={handleThemeModeChange}
+                  isDark={isDark}
+                  themeColor={themeColor}
+                  setThemeColor={setThemeColor}
+                  prefsSearch={prefsSearch}
+                  quickChatEnabled={quickChatEnabled}
+                  homePathOptions={homePathOptions}
+                  autoLockMinutes={autoLockMinutes}
+                  hasPassword={hasPassword}
+                  clearLockPassword={clearLockPassword}
+                  openLockPasswordModal={(m) => {
+                    setLockPasswordModalMode(m);
+                    setNewLockPassword('');
+                    setConfirmLockPassword('');
+                    setLockPasswordModalVisible(true);
+                  }}
+                  handleCopyPreferences={handleCopyPreferences}
+                  onOpenImport={() => setImportPrefsVisible(true)}
+                  resetPreferences={resetPreferences}
+                />
+              </Suspense>
             </div>
           </SideSheet>
 

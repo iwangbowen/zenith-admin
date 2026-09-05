@@ -1,0 +1,143 @@
+{
+  "generatedAt": "2026-09-05T19:35:09.554Z",
+  "baseUrl": "http://localhost:4174",
+  "network": {
+    "latencyMs": 50,
+    "downloadMbps": 10
+  },
+  "runs": 3,
+  "login": {
+    "interactiveMs": 3818,
+    "domContentLoaded": 2057,
+    "load": 2058,
+    "lcp": 3796,
+    "requests": 230,
+    "js": 174,
+    "css": 48,
+    "api": 6,
+    "other": 2,
+    "encodedBytes": 802577,
+    "jsEncodedBytes": 706141,
+    "encodedKB": 784,
+    "jsEncodedKB": 690,
+    "errors": []
+  },
+  "dashboard": {
+    "interactiveMs": 5888,
+    "domContentLoaded": 2093,
+    "load": 2093,
+    "lcp": 6124,
+    "requests": 412,
+    "js": 324,
+    "css": 65,
+    "api": 21,
+    "other": 2,
+    "encodedBytes": 2090637,
+    "jsEncodedBytes": 1915612,
+    "encodedKB": 2042,
+    "jsEncodedKB": 1871,
+    "errors": []
+  },
+  "samples": {
+    "login": [
+      {
+        "interactiveMs": 4050,
+        "domContentLoaded": 2276,
+        "load": 2277,
+        "lcp": 4184,
+        "requests": 230,
+        "js": 174,
+        "css": 48,
+        "api": 6,
+        "other": 2,
+        "encodedBytes": 802577,
+        "jsEncodedBytes": 706141,
+        "encodedKB": 784,
+        "jsEncodedKB": 690,
+        "errors": []
+      },
+      {
+        "interactiveMs": 3818,
+        "domContentLoaded": 2055,
+        "load": 2055,
+        "lcp": 3796,
+        "requests": 230,
+        "js": 174,
+        "css": 48,
+        "api": 6,
+        "other": 2,
+        "encodedBytes": 802577,
+        "jsEncodedBytes": 706141,
+        "encodedKB": 784,
+        "jsEncodedKB": 690,
+        "errors": []
+      },
+      {
+        "interactiveMs": 3798,
+        "domContentLoaded": 2057,
+        "load": 2058,
+        "lcp": 3788,
+        "requests": 230,
+        "js": 174,
+        "css": 48,
+        "api": 6,
+        "other": 2,
+        "encodedBytes": 802577,
+        "jsEncodedBytes": 706141,
+        "encodedKB": 784,
+        "jsEncodedKB": 690,
+        "errors": []
+      }
+    ],
+    "dashboard": [
+      {
+        "interactiveMs": 5872,
+        "domContentLoaded": 2064,
+        "load": 2064,
+        "lcp": 6112,
+        "requests": 412,
+        "js": 324,
+        "css": 65,
+        "api": 21,
+        "other": 2,
+        "encodedBytes": 2090637,
+        "jsEncodedBytes": 1915612,
+        "encodedKB": 2042,
+        "jsEncodedKB": 1871,
+        "errors": []
+      },
+      {
+        "interactiveMs": 5903,
+        "domContentLoaded": 2093,
+        "load": 2093,
+        "lcp": 6124,
+        "requests": 412,
+        "js": 324,
+        "css": 65,
+        "api": 21,
+        "other": 2,
+        "encodedBytes": 2090637,
+        "jsEncodedBytes": 1915612,
+        "encodedKB": 2042,
+        "jsEncodedKB": 1871,
+        "errors": []
+      },
+      {
+        "interactiveMs": 5888,
+        "domContentLoaded": 2104,
+        "load": 2104,
+        "lcp": 6144,
+        "requests": 411,
+        "js": 324,
+        "css": 65,
+        "api": 20,
+        "other": 2,
+        "encodedBytes": 2089905,
+        "jsEncodedBytes": 1915612,
+        "encodedKB": 2041,
+        "jsEncodedKB": 1871,
+        "errors": []
+      }
+    ]
+  }
+}

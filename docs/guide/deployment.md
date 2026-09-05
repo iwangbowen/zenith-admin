@@ -134,17 +134,27 @@ GitHub Release 的 `zenith-admin-web-vX.Y.Z.zip` 也包含 `web/dist/`，适合�
 - `/api` 代理到后端，并开启 WebSocket upgrade。
 - `/studio/` 托管 Mastra Studio 静态 SPA，数据面走 `/api/mastra`。
 - `/studio/refresh-events` 返回 204。
-- `/` fallback 到 `/index.html` 支持 React Router。
+- `/` fallback 到 `/index.html` 支持 React Router；HTML 入口 `Cache-Control: no-cache, must-revalidate`。
 - JS/CSS/字体/图片等静态资源使用一年 immutable 缓存。
+- `gzip_static on` 直接下发构建期预生成的 `.gz`（构建也产出 `.br`，需含 brotli 模块的 nginx 才能启用 `brotli_static`）。
+- 生产环境必须在 TLS 终结层启用 HTTP/2：多入口 SPA 首屏并发请求依赖 h2 多路复用，HTTP/1.1 会按域名 6 连接排队。
 
 最小同域配置示例：
 
 ```nginx
 server {
-    listen 80;
+    listen 443 ssl;
+    http2 on;
     server_name admin.example.com;
+    ssl_certificate     /path/to/fullchain.pem;
+    ssl_certificate_key /path/to/privkey.pem;
     root /path/to/packages/web/dist;
     index index.html;
+
+    gzip on;
+    gzip_static on;
+    gzip_comp_level 6;
+    gzip_types text/css application/javascript application/json image/svg+xml font/woff2 application/wasm;
 
     location /api {
         proxy_pass http://localhost:3300;
@@ -164,7 +174,17 @@ server {
     location = /studio { return 301 /studio/; }
     location = /studio/refresh-events { return 204; }
 
-    location / { try_files $uri $uri/ /index.html; }
+    location ~* \.(js|css|woff2?|ttf|png|jpe?g|gif|svg|webp|ico)$ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files $uri =404;
+    }
+
+    location ~* \.html$ { add_header Cache-Control "no-cache, must-revalidate"; }
+
+    location / {
+        add_header Cache-Control "no-cache, must-revalidate";
+        try_files $uri $uri/ /index.html;
+    }
 }
 ```
 

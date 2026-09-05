@@ -47,40 +47,60 @@ function cspMetaPlugin(): Plugin {
   };
 }
 
-function sanitizeChunkName(name: string) {
-  return name.replace(/^@/, '').replaceAll('/', '-');
+/**
+ * 构建入口：三个 SPA 各自独立构建（同一 dist、不同 assetsDir），由 `scripts/build.mjs` 顺序驱动。
+ * 原因：rolldown 的 `$initial`（入口静态闭包）标签对「任一用户入口」取并集，三入口共建时
+ * 后台入口的关键路径会混入会员 / 审批入口的模块，且每个共享模块的「入口集合」都掺进几十个懒加载页面，
+ * 关键路径无法收敛成少数几个 chunk。管理后台、C 端会员、移动审批面向三类用户，跨入口共享 chunk 收益≈0。
+ * 未设置 ZENITH_WEB_ENTRY 时保留三入口共建（dev server 与直接 `vite build` 仍可用）。
+ */
+const ENTRY_INPUTS = {
+  main: { input: 'index.html', assetsDir: 'assets' },
+  member: { input: 'member.html', assetsDir: 'assets-member' },
+  approval: { input: 'approval.html', assetsDir: 'assets-approval' },
+} as const;
+type BuildEntry = keyof typeof ENTRY_INPUTS;
+
+function resolveBuildEntry(): BuildEntry | null {
+  const raw = process.env.ZENITH_WEB_ENTRY;
+  if (!raw) return null;
+  if (raw in ENTRY_INPUTS) return raw as BuildEntry;
+  throw new Error(`ZENITH_WEB_ENTRY 只能是 ${Object.keys(ENTRY_INPUTS).join(' / ')}，收到：${raw}`);
 }
 
-// semi-ui 中与 form 互相循环引用的表单控件族，必须与 form 落在同一 chunk（见下方分包注释）
-const SEMI_FORM_FAMILY = new Set([
-  'form',
-  'input',
-  'inputNumber',
-  'select',
-  'tree',
-  'treeSelect',
-  'tagInput',
-  'cascader',
-  'autoComplete',
-  'datePicker',
-  'timePicker',
-  'pincode',
-]);
+/**
+ * 重型且自洽的第三方库：各自独立成 chunk，只被懒加载页面按需拉取，长期缓存互不干扰。
+ * 判定：单库 > 150KB、内部无对 Semi / 应用代码的反向依赖。d3 单列一组，供 xyflow / vchart / mermaid 共享。
+ */
+const HEAVY_LIBRARIES: Array<[name: string, test: RegExp]> = [
+  ['univerjs', /node_modules[\\/]@univerjs[\\/]/],
+  ['monaco', /node_modules[\\/](?:monaco-editor|@monaco-editor)[\\/]/],
+  ['xterm', /node_modules[\\/]@xterm[\\/]/],
+  ['visactor', /node_modules[\\/]@visactor[\\/]/],
+  ['maplibre', /node_modules[\\/]maplibre-gl[\\/]/],
+  ['mermaid', /node_modules[\\/](?:mermaid|@mermaid-js|cytoscape[^\\/]*|cose-base|layout-base|dagre-d3-es|khroma|elkjs)[\\/]/],
+  ['d3', /node_modules[\\/](?:d3|d3-[^\\/]+|internmap|delaunator|robust-predicates)[\\/]/],
+  ['embedpdf', /node_modules[\\/]@embedpdf[\\/]/],
+  ['wangeditor', /node_modules[\\/]@wangeditor[\\/]/],
+  ['rrweb', /node_modules[\\/](?:rrweb|rrweb-player|@rrweb)[\\/]/],
+  ['emoji', /node_modules[\\/](?:emoji-mart|@emoji-mart)[\\/]/],
+  ['heic2any', /node_modules[\\/]heic2any[\\/]/],
+  ['exceljs', /node_modules[\\/](?:exceljs|@styled[\\/]exceljs)[\\/]/],
+  ['file-viewer', /node_modules[\\/]@file-viewer[\\/]/],
+  ['xyflow', /node_modules[\\/](?:@xyflow|dagre)[\\/]/],
+  ['lottie', /node_modules[\\/]lottie-web[\\/]/],
+  ['lunar', /node_modules[\\/]lunar-typescript[\\/]/],
+  ['sql-formatter', /node_modules[\\/]sql-formatter[\\/]/],
+  ['pinyin', /node_modules[\\/]pinyin-pro[\\/]/],
+  ['unicode-regex', /node_modules[\\/]unicode-regex[\\/]/],
+  ['semi-illustrations', /node_modules[\\/]@douyinfe[\\/]semi-illustrations[\\/]/],
+  ['semi-json-viewer', /node_modules[\\/]@douyinfe[\\/]semi-json-viewer-core[\\/]/],
+];
 
-function getPackageName(id: string) {
-  const packagePath = id.replaceAll('\\', '/').split('/node_modules/').pop();
-  if (!packagePath) {
-    return null;
-  }
-
-  const segments = packagePath.split('/');
-  if (segments[0]?.startsWith('@')) {
-    return segments.slice(0, 2).join('/');
-  }
-
-  return segments[0] ?? null;
-}
-
+const APP_SOURCE = /[\\/]packages[\\/](?:web|shared|analytics-sdk)[\\/]src[\\/]/;
+// 应用公共层只收 hooks / lib / utils / 契约等「纯逻辑」模块：组件会把图表 / 编辑器等重型依赖静态拖进公共层，
+// 让登录页为一个共享组件下载 2MB 图表库
+const APP_SHARED_LOGIC = /[\\/]packages[\\/](?:shared|analytics-sdk)[\\/]src[\\/]|[\\/]packages[\\/]web[\\/]src[\\/](?:hooks|lib|utils|providers|config)[\\/.]/;
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   // 仅用于 Vite dev server 代理目标，不会暴露到客户端
@@ -95,6 +115,7 @@ export default defineConfig(({ mode }) => {
   // 使用 esnext 目标（React 19 要求现代浏览器）
   const buildTarget = 'esnext';
 
+  const entry = resolveBuildEntry();
   const pwaEnabled = env.VITE_PWA_ENABLED === 'true';
   const appVersion = env.VITE_APP_VERSION || process.env.npm_package_version || 'dev';
 
@@ -173,6 +194,9 @@ export default defineConfig(({ mode }) => {
     build: {
       ...(buildTarget ? { target: buildTarget } : {}),
       chunkSizeWarningLimit: 900,
+      assetsDir: entry ? ENTRY_INPUTS[entry].assetsDir : 'assets',
+      // 多入口分三次构建写入同一 dist：只有第一次（main）清空目录，由 scripts/build.mjs 控制
+      emptyOutDir: entry === null || entry === 'main',
       rollupOptions: {
         // 影子 barrel（semi-ui-barrel.ts）是纯 re-export，但 @zenith/web 未声明
         // package.json#sideEffects，源码文件默认被视为有副作用、无法摇树；
@@ -181,131 +205,58 @@ export default defineConfig(({ mode }) => {
           moduleSideEffects: (id: string): boolean | undefined =>
             id.replaceAll('\\', '/').endsWith('/src/lib/semi-ui-barrel.ts') ? false : undefined,
         },
-        // 多入口：后台管理（index.html）+ 会员前台（member.html）+ 移动审批轻页（approval.html）
-        input: {
-          main: fileURLToPath(new URL('./index.html', import.meta.url)),
-          member: fileURLToPath(new URL('./member.html', import.meta.url)),
-          approval: fileURLToPath(new URL('./approval.html', import.meta.url)),
-        },
+        input: entry
+          ? { [entry]: fileURLToPath(new URL(`./${ENTRY_INPUTS[entry].input}`, import.meta.url)) }
+          : Object.fromEntries(
+            (Object.keys(ENTRY_INPUTS) as BuildEntry[]).map((key) => [key, fileURLToPath(new URL(`./${ENTRY_INPUTS[key].input}`, import.meta.url))]),
+          ),
         output: {
-          // 使用 rolldown 原生 codeSplitting.groups（替代 rollup 兼容的 manualChunks 函数）：
-          // 兼容层的分组指派是"建议性"的——rolldown 为满足执行顺序约束会把模块挪出指派分组
-          // （react 本体曾被并进 vendor-charts / vendor-dnd-kit，jsx-runtime 曾被并进
-          // vendor-embedpdf），导致入口 HTML 被迫 preload 这些重型包、首屏体积暴涨。
-          // 原生 groups 的指派是权威的，且动态 name() 完整保留了原有按包分组策略。
+          /**
+           * 三层分包（rolldown 原生 codeSplitting.groups，分组指派是权威的）：
+           *
+           * ① 关键路径层 `initial-*`：入口静态闭包内的全部模块（第三方 / 应用各一个 chunk）。
+           *    闭包对 import 封闭——闭包内模块的依赖必然也在闭包内，因此不会与任何其它 chunk 成环；
+           *    也不按「哪些页面用到」再拆：这些模块在任何页面运行前都已加载，拆出来只会制造请求。
+           * ② 壳层：非关键路径的 Semi 全部落在 `vendor-semi` 一个 chunk（Semi 内部 button↔iconButton、
+           *    form↔各控件 等强连通分量全部留在 chunk 内；Semi 只被外部单向引用，不会形成跨 chunk 环）；
+           *    被 ≥10 个页面共享的第三方 / 应用纯逻辑模块各合成一个 `vendor-common` / `app-shared`，登录后一次加载长期缓存。
+           * ③ 页面层：重型库各自独立；其余第三方按「消费页面集合」精确分组（entriesAware，不做侧向合并）。
+           *
+           * 不要做的事（均已实测翻车，见 docs/frontend/bundle-performance.md）：
+           * - `entriesAwareMergeThreshold` / `minSize` 回落：把消费方不同的子组合并，会把邻组的静态依赖
+           *   （图表 / 编辑器）一并拖进消费方，登录页因此多出 3MB；
+           * - `strictExecutionOrder: true`：模块包装器给 chunk 图加边，关键路径层会因一个 init 包装器
+           *   引用整个公共层；
+           * - 把 Semi 按组件拆散或与其 foundation 分开：跨 chunk 环 → TDZ（"reading 'PREFIX'"）白屏，构建仍 exit 0；
+           * - 把 prismjs 与 Semi codeHighlight 分开：语言组件依赖 core 先设置全局 Prism，跨 chunk 后顺序丢失。
+           * 任何分包改动都必须通过 `npm run check:bundle`（预算）与 `npm run smoke`（真实浏览器启动）。
+           */
           codeSplitting: {
-            // 仅捕获组内直接匹配的模块：默认的递归捕获会让先建的组（如 aiChatDialogue）
-            // 连带吞掉 typography/tooltip/locale 等公共依赖，入口为取公共件被迫预载整包
             includeDependenciesRecursively: false,
             groups: [
               {
-                // Vite 运行时 helper（preload polyfill 等虚拟模块）必须独立成组且优先级最高：
-                // 它被所有含动态 import 的 chunk 依赖，若落入自动分组会被 rolldown 打进
-                // 任意重型 vendor 包（曾被并进 vendor-embedpdf，导致入口为拿 __vitePreload
-                // 被迫静态预载 1MB PDF 引擎）。
+                // Vite 运行时 helper（preload polyfill 等虚拟模块）独立成组且优先级最高：
+                // 它被所有含动态 import 的 chunk 依赖，落入任何 vendor 包都会让入口被迫预载该包
                 name: 'vite-runtime',
                 test: (id: string) => id.includes('vite/preload-helper') || id.includes('vite/modulepreload-polyfill') || id.includes('vite/dynamic-import-helper') || id.includes('commonjsHelpers'),
-                priority: 20,
+                priority: 40,
               },
-              {
-                // react 运行时（含 jsx-runtime）独立成组且最高优先级：全应用共享，
-                // 绝不允许被合并进任何业务/vendor 大包
-                name: 'vendor-react-core',
-                test: /node_modules[\\/](?:react|react-dom|scheduler)[\\/]/,
-                priority: 10,
-              },
-              {
-                // ⚠️ 这里曾配置 `minSize: 20 * 1024` 做微 chunk 收敛（按包分组会产出 500+ 个
-                // <10KB 的 vendor 碎片，阈值可少掉 ~250 个 chunk），但该回落机制不安全，已移除。
-                //
-                // minSize 的语义是：不足阈值的组放弃独立成 chunk，回落到 rolldown 自动分配，
-                // 被就近并进某个体量更大的 chunk。落点不可控，一旦落点 chunk 与消费方之间
-                // 存在跨 chunk 环，先求值的一方就会在对方完成赋值前访问其绑定——CJS 包装是
-                // `var require_x = __commonJS(...)`、基类是 `var A = class`，都不会被提升——
-                // 于是抛出 "n is not a function" / "Class extends value undefined"，
-                // 整个入口静默挂掉，而构建本身仍然 exit 0，CI 完全发现不了。
-                //
-                // 实测被击中的至少有三处且互不相关：prop-types / classnames 与 semi-foundation
-                // 的 base、toast 等基础模块被并进 semi-ui 影子 barrel 所在的自动 chunk
-                // （线上 demo 站 index / member / approval 三个入口全部白屏）；@mswjs/* 的小包
-                // 被并进 mocks/browser 自动 chunk（Demo 模式无法启动）。逐个加豁免组只是打地鼠，
-                // 故取消阈值：所有 node_modules 按包稳定成组，宁可多出碎片 chunk。
-                name(id: string): string | null {
-                  const normalizedId = id.replaceAll('\\', '/');
-
-                  if (!normalizedId.includes('node_modules')) {
-                    return null;
-                  }
-
-                  if (normalizedId.includes('/node_modules/@wangeditor/editor-for-react/')) {
-                    return 'vendor-editor-react';
-                  }
-
-                  if (normalizedId.includes('/node_modules/@wangeditor/editor/')) {
-                    return 'vendor-editor-core';
-                  }
-
-                  if (normalizedId.includes('/node_modules/@douyinfe/semi-ui/lib/es/')) {
-                    const componentName = normalizedId.split('/node_modules/@douyinfe/semi-ui/lib/es/')[1]?.split('/')[0];
-                    if (componentName) {
-                      // semi 组件之间存在天然的循环 import，拆成独立 chunk 后会变成跨 chunk 环：
-                      // 先求值的一方会读到尚未赋值的对方，抛 "Cannot read properties of
-                      // undefined (reading 'propTypes' / 'displayName')"，整页被 ErrorBoundary
-                      // 兜底或整个入口白屏，且构建期毫无提示。以下两族必须各自同组落在一个 chunk：
-                      // - button ↔ iconButton：Button 顶层执行 `propTypes = {...IconButton.propTypes}`
-                      // - form 表单控件族：form/index 顶层用 withField 包装各控件，withField 会读
-                      //   被包装组件的 displayName，而各控件又反向依赖 form
-                      // 判定依据是产物 chunk 图中的强连通分量，升级 semi 版本后需复核。
-                      if (componentName === 'iconButton') {
-                        return 'vendor-semi-button';
-                      }
-
-                      if (SEMI_FORM_FAMILY.has(componentName)) {
-                        return 'vendor-semi-form';
-                      }
-
-                      return `vendor-semi-${sanitizeChunkName(componentName)}`;
-                    }
-                  }
-
-                  // semi-foundation 同样按模块拆分：整包聚合会让入口为取 button/nav 等
-                  // 基础 foundation 连带预载 markdownRender(→mdx/acorn)、jsonViewer(50KB)
-                  // 等重型 foundation
-                  if (normalizedId.includes('/node_modules/@douyinfe/semi-foundation/lib/es/')) {
-                    const moduleName = normalizedId.split('/node_modules/@douyinfe/semi-foundation/lib/es/')[1]?.split('/')[0];
-                    if (moduleName) {
-                      return `vendor-semi-fd-${sanitizeChunkName(moduleName)}`;
-                    }
-                  }
-
-                  // ⚠️ 必须用 /node_modules/ 前缀精确匹配包目录，不能用宽泛子串：
-                  // 曾用 includes('/react/') 把 @tiptap/react、@monaco-editor/react 等
-                  // 错聚进 vendor-react，诱发跨组合并把重库拖进首屏
-                  if (
-                    normalizedId.includes('/node_modules/react-router/')
-                    || normalizedId.includes('/node_modules/react-router-dom/')
-                  ) {
-                    return 'vendor-react-router';
-                  }
-
-                  if (normalizedId.includes('/node_modules/@iconify/react/')) {
-                    return 'vendor-iconify';
-                  }
-
-                  // lucide-react 走自动分包：每个图标是独立模块，按包聚合会把全应用
-                  // 数百个图标的并集塞进单一 chunk 并被入口预载；自动分包让各页面
-                  // 只携带自己用到的图标
-                  // （date-fns 不适用同一策略：semi 的 locale/DatePicker foundation 成组消费
-                  // 大量 date-fns 模块，自动分包只会拆出 cloneObject/isBefore 等难以命名的
-                  // 共享微块，总量不降、请求数反增——已实测否决）
-                  if (normalizedId.includes('/node_modules/lucide-react/')) {
-                    return null;
-                  }
-
-                  const packageName = getPackageName(normalizedId);
-                  return packageName ? `vendor-${sanitizeChunkName(packageName)}` : 'vendor-misc';
-                },
-              },
+              // react 运行时（含 jsx-runtime）独立成组：全应用共享，绝不允许被合并进任何业务 / vendor 大包
+              { name: 'vendor-react-core', test: /node_modules[\\/](?:react|react-dom|scheduler)[\\/]/, priority: 30 },
+              ...HEAVY_LIBRARIES.map(([name, test]) => ({ name: `vendor-${name}`, test, priority: 20 })),
+              { name: 'initial-vendor', tags: ['$initial'], test: /node_modules/, priority: 16 },
+              { name: 'initial-app', tags: ['$initial'], test: APP_SOURCE, priority: 16 },
+              // Semi 中带重型依赖、且核心组件从不反向引用的部分单独成 chunk：markdownRender / chat（MDX + acorn +
+              // micromark ≈ 650KB）、codeHighlight（连同其唯一消费的 prismjs：core 必须先于语言组件求值，二者不可分离）、
+              // jsonViewer。它们只单向依赖核心，不会形成跨 chunk 环。
+              // cropper 被 upload 引用、image 被多处引用，必须留在核心。
+              { name: 'vendor-semi-markdown', test: /node_modules[\\/](?:@douyinfe[\\/](?:semi-ui|semi-foundation)[\\/]lib[\\/]es[\\/](?:aiChatDialogue|aiChatInput|chat|markdownRender|codeHighlight|jsonViewer)|prismjs)[\\/]/, priority: 15 },
+              // 媒体播放器与 markdown 族分开：文件预览只用播放器，不应连带 MDX 解析器
+              { name: 'vendor-semi-media', test: /node_modules[\\/]@douyinfe[\\/](?:semi-ui|semi-foundation)[\\/]lib[\\/]es[\\/](?:lottie|videoPlayer|audioPlayer)[\\/]/, priority: 15 },
+              { name: 'vendor-semi', test: /node_modules[\\/]@douyinfe[\\/](?:semi-ui|semi-foundation|semi-icons|semi-animation)[\\/]/, priority: 14 },
+              { name: 'vendor-common', test: /node_modules/, priority: 10, minShareCount: 10 },
+              { name: 'app-shared', test: APP_SHARED_LOGIC, priority: 8, minShareCount: 10 },
+              { name: 'vendor', test: /node_modules/, priority: 5, entriesAware: true, entriesAwareMergeThreshold: 0 },
             ],
           },
         },

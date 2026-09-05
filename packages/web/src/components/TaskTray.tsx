@@ -1,12 +1,15 @@
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { Badge, Button, Empty, Popover, Tag, Toast, Typography } from '@douyinfe/semi-ui';
-import { IllustrationIdle, IllustrationIdleDark } from '@douyinfe/semi-illustrations';
 import { ListChecks } from 'lucide-react';
 import type { AsyncTask, AsyncTaskStatus } from '@zenith/shared/tasks';
 import { useAsyncTaskAction } from '@/hooks/queries/async-tasks';
 import { useMyAsyncTasks } from '@/hooks/useAsyncTasks';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import { formatDateTime } from '@/utils/date';
+
+// 空态插图只在打开托盘且无任务时出现，懒加载使 ~130KB 的 semi-illustrations 不随布局首屏下载
+const IllustrationIdle = lazy(() => import('@douyinfe/semi-illustrations').then((m) => ({ default: m.IllustrationIdle })));
+const IllustrationIdleDark = lazy(() => import('@douyinfe/semi-illustrations').then((m) => ({ default: m.IllustrationIdleDark })));
 
 const statusTagMap = {
   pending: { color: 'blue', label: '排队中' },
@@ -73,8 +76,8 @@ export default function TaskTray() {
           </div>
           {trayTasks.length === 0 ? (
             <Empty
-              image={<IllustrationIdle style={{ width: 80, height: 80 }} />}
-              darkModeImage={<IllustrationIdleDark style={{ width: 80, height: 80 }} />}
+              image={<Suspense fallback={null}><IllustrationIdle style={{ width: 80, height: 80 }} /></Suspense>}
+              darkModeImage={<Suspense fallback={null}><IllustrationIdleDark style={{ width: 80, height: 80 }} /></Suspense>}
               description="暂无进行中的任务"
               style={{ padding: '16px 0 20px' }}
             />

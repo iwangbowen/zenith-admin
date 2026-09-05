@@ -1,7 +1,7 @@
 /**
  * 页面组件注册表
  *
- * 统一通过 Vite `import.meta.glob` 收集 `src/pages/**` 下的所有页面组件，
+ * 统一通过 Vite `import.meta.glob` 收集可被路由 / 流程配置直接引用的页面级组件，
  * 并提供「组件路径字符串 → 动态 import / React.lazy」的解析能力。
  *
  * 复用方：
@@ -9,7 +9,12 @@
  * - 工作流自定义业务表单：`customForm.createComponent` / `viewComponent`
  *
  * 组件路径约定：相对 `src/pages` 的路径，不含前导 `/` 与 `.tsx` 后缀，
- * 例如 `system/users/UsersPage`、`biz/leave/LeaveForm`。
+ * 例如 `system/users/UsersPage`、`biz/leave/LeaveApprovalView`。
+ *
+ * 只收页面级组件：`*Page.tsx`（菜单路由）、`pages/biz/**`（业务示例表单）、`*BusinessForm.tsx` /
+ * `*ApprovalView.tsx`（工作流自定义业务表单的发起 / 审批视图）。glob 命中的每个文件都会成为独立的
+ * 动态入口——页面内部的子组件 / Tab / 弹窗一旦被收进来，就会被迫从所属页面的 chunk 中拆出、多出一次请求，
+ * 且每个入口都在注册表里携带一份预载依赖表。新增可被 DB 引用的组件请遵守上述命名。
  */
 import React from 'react';
 
@@ -17,7 +22,10 @@ type PageModuleLoader = () => Promise<{ default: React.ComponentType<unknown> }>
 
 // glob 相对当前文件（src/utils），故使用 ../pages
 const pageModules = import.meta.glob([
-  '../pages/**/*.tsx',
+  '../pages/**/*Page.tsx',
+  '../pages/biz/**/*.tsx',
+  '../pages/**/*BusinessForm.tsx',
+  '../pages/**/*ApprovalView.tsx',
   '!../pages/**/*Skeleton.tsx',
   '!../pages/**/*.test.tsx',
 ]);

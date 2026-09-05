@@ -11,10 +11,13 @@ import App from './App';
 import { queryClient } from './lib/query';
 import { AuthProvider } from './providers/AuthProvider';
 import './styles/global.css';
-import { enableMocking } from './mocks';
 
 async function bootstrap() {
-  await enableMocking();
+  // Demo 模式才把 MSW 拉进模块图：生产构建的关键路径闭包里不出现 src/mocks/**
+  if (import.meta.env.VITE_DEMO_MODE === 'true') {
+    const { enableMocking } = await import('./mocks');
+    await enableMocking();
+  }
 
   createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>

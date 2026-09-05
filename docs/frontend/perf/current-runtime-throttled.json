@@ -1,0 +1,143 @@
+{
+  "generatedAt": "2026-09-05T20:28:22.088Z",
+  "baseUrl": "http://localhost:4174",
+  "network": {
+    "latencyMs": 50,
+    "downloadMbps": 10
+  },
+  "runs": 3,
+  "login": {
+    "interactiveMs": 1303,
+    "domContentLoaded": 1207,
+    "load": 1207,
+    "lcp": 1304,
+    "requests": 17,
+    "js": 7,
+    "css": 2,
+    "api": 6,
+    "other": 2,
+    "encodedBytes": 555371,
+    "jsEncodedBytes": 493314,
+    "encodedKB": 542,
+    "jsEncodedKB": 482,
+    "errors": []
+  },
+  "dashboard": {
+    "interactiveMs": 2363,
+    "domContentLoaded": 1188,
+    "load": 1188,
+    "lcp": 2356,
+    "requests": 89,
+    "js": 59,
+    "css": 8,
+    "api": 20,
+    "other": 2,
+    "encodedBytes": 2002429,
+    "jsEncodedBytes": 1885980,
+    "encodedKB": 1955,
+    "jsEncodedKB": 1842,
+    "errors": []
+  },
+  "samples": {
+    "login": [
+      {
+        "interactiveMs": 1787,
+        "domContentLoaded": 1436,
+        "load": 1436,
+        "lcp": 1636,
+        "requests": 17,
+        "js": 7,
+        "css": 2,
+        "api": 6,
+        "other": 2,
+        "encodedBytes": 555371,
+        "jsEncodedBytes": 493314,
+        "encodedKB": 542,
+        "jsEncodedKB": 482,
+        "errors": []
+      },
+      {
+        "interactiveMs": 1258,
+        "domContentLoaded": 1173,
+        "load": 1173,
+        "lcp": 1252,
+        "requests": 17,
+        "js": 7,
+        "css": 2,
+        "api": 6,
+        "other": 2,
+        "encodedBytes": 555371,
+        "jsEncodedBytes": 493314,
+        "encodedKB": 542,
+        "jsEncodedKB": 482,
+        "errors": []
+      },
+      {
+        "interactiveMs": 1303,
+        "domContentLoaded": 1207,
+        "load": 1207,
+        "lcp": 1304,
+        "requests": 17,
+        "js": 7,
+        "css": 2,
+        "api": 6,
+        "other": 2,
+        "encodedBytes": 555371,
+        "jsEncodedBytes": 493314,
+        "encodedKB": 542,
+        "jsEncodedKB": 482,
+        "errors": []
+      }
+    ],
+    "dashboard": [
+      {
+        "interactiveMs": 2363,
+        "domContentLoaded": 1201,
+        "load": 1202,
+        "lcp": 2392,
+        "requests": 89,
+        "js": 59,
+        "css": 8,
+        "api": 20,
+        "other": 2,
+        "encodedBytes": 2002428,
+        "jsEncodedBytes": 1885980,
+        "encodedKB": 1955,
+        "jsEncodedKB": 1842,
+        "errors": []
+      },
+      {
+        "interactiveMs": 2352,
+        "domContentLoaded": 1172,
+        "load": 1172,
+        "lcp": 2316,
+        "requests": 89,
+        "js": 59,
+        "css": 8,
+        "api": 20,
+        "other": 2,
+        "encodedBytes": 2002429,
+        "jsEncodedBytes": 1885980,
+        "encodedKB": 1955,
+        "jsEncodedKB": 1842,
+        "errors": []
+      },
+      {
+        "interactiveMs": 2401,
+        "domContentLoaded": 1188,
+        "load": 1188,
+        "lcp": 2356,
+        "requests": 89,
+        "js": 59,
+        "css": 8,
+        "api": 20,
+        "other": 2,
+        "encodedBytes": 2002429,
+        "jsEncodedBytes": 1885980,
+        "encodedKB": 1955,
+        "jsEncodedKB": 1842,
+        "errors": []
+      }
+    ]
+  }
+}

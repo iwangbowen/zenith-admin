@@ -107,7 +107,10 @@ API 容器以非 root 用户 `node` 运行；如需在容器内访问宿主机 D
 - `/studio/refresh-events` 返回 204，减少静态部署下的 EventSource 重试日志。
 - `/index` / `/index.html` 跳转到 `/`。
 - `/` fallback 到 `/index.html` 支持 SPA 路由。
+- 所有 HTML 入口（`/`、`member.html`、`approval.html`）下发 `Cache-Control: no-cache, must-revalidate`，浏览器每次校验后拿到最新的 hash 资源清单，发版不会留在旧壳层。
 - JS/CSS/字体/图片等静态资源使用一年 immutable 缓存。
+- `gzip_static on`：直接下发构建期预生成的 `.gz` 文件（`packages/web/scripts/precompress.mjs`，gzip level 9）；未预压缩的响应按 `gzip_comp_level 6` 动态压缩。构建同时产出 `.br`，官方 `nginx:1.30-alpine` 不含 brotli 模块，如自建含 `ngx_brotli` 的镜像可打开配置里注释的 `brotli_static on`。
+- 容器内 `listen 80` 只提供 HTTP/1.1。多入口 SPA 的资源请求并发度依赖 HTTP/2，生产环境应在 TLS 终结层（外层反向代理或本镜像挂证书后 `listen 443 ssl; http2 on;`）启用 HTTP/2，否则首屏请求会受 6 连接/域名限制排队。
 - 安全响应头：所有响应下发 `X-Content-Type-Options: nosniff`、`Referrer-Policy: strict-origin-when-cross-origin`，并以 `X-Frame-Options: SAMEORIGIN` + `Content-Security-Policy: frame-ancestors 'self'` 禁止跨站嵌入；仅 `/public/report/`（公开仪表盘嵌入）不下发帧保护头，嵌入来源由应用按仪表盘 `embed.allowedOrigins` 校验。SPA 的内容安全策略（`script-src` 不含 `'unsafe-inline'` 等）由 Vite 构建期注入入口 HTML 的 `<meta http-equiv="Content-Security-Policy">` 承担（见 `packages/web/vite.config.ts`），nginx 无需重复配置。
 
 ## 常用操作

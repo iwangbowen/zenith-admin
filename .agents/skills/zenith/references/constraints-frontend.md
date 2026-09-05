@@ -14,6 +14,7 @@
 | 搜索栏、筛选控件、表格、List 分页与操作列 | [搜索栏与表格](#搜索栏与表格) |
 | 弹窗表单、枚举标签、上传、时区、Cron、进度条、滑块、分割线 | [表单与展示组件](#表单与展示组件) |
 | 多 Tab、左右分栏、统计卡、栅格、抽屉宽度、行内成组间距 | [布局与响应式](#布局与响应式) |
+| 新增页面文件、引入重库 / 图标 / 插画、改启动链路、预算失败 | [打包与首屏性能](#打包与首屏性能) |
 
 ---
 
@@ -319,5 +320,35 @@
   时是 `stretch`——纵向布局下 `stretch`（子元素撑满宽度）与 `center` 观感完全不同，
   这种情况传 `align="start"`。`spacing` 预设只有 `tight` 8 / `medium` 16 / `loose` 24，
   其余直接写 `spacing={6}` 这类数字；`flexWrap: 'nowrap'` 无需映射（`Space` 默认即不换行）
+
+---
+
+## 打包与首屏性能
+
+chunk 分层机理、度量脚本与预算数字见 [docs/frontend/bundle-performance.md](../../../../docs/frontend/bundle-performance.md)；
+本节只列改动时必须遵守的规则。违规不会报错，只会表现为 `npm run check:bundle` 预算失败或首屏请求数 / 体积回退。
+
+- **页面文件命名即注册**：只有 `src/pages/**/*Page.tsx`、`pages/biz/**`、`*BusinessForm.tsx`、`*ApprovalView.tsx`
+  进入页面注册表并成为独立动态入口。页面私有的子组件 / Tab / 面板 / 弹窗**禁止**用 `Page.tsx` 后缀
+  （会被拆成独立 chunk 并多一次请求）；能被菜单 `component` 或工作流 `customForm` 引用的组件**必须**符合上述命名
+- **公共层禁止静态引入重库**：`src/hooks/`、`src/lib/`、`src/utils/`、`src/providers/`、`src/config/` 以及被 ≥ 10 个页面共享的
+  `src/components/**` 模块进入公共 chunk（`app-shared` / `vendor-common`），任何一处静态 `import` 了
+  `@visactor/*`、`@douyinfe/semi-illustrations`、`pinyin-pro`、`lottie-web`、`@wangeditor*`、`monaco-editor`、`@xyflow/*`、
+  `@formily/*`、`html2canvas`、`jspdf`、`xlsx`、`three`、`echarts`、`@mastra/*`、`react-markdown`、`prismjs` 等重库，
+  就会把整库拖进 `AdminLayout` 关键路径。重库只能在页面 / 功能组件内使用，或经 `lazy(() => import())` 边界隔离；
+  图表主题这类「配置 + 重库」放在 `components/charts/`，不放 `lib/`
+- **图标只走 `utils/icons.tsx` 的投递策略**：按名称渲染图标（菜单树、工作流模板、表单配置等任何来自数据的图标名）一律用
+  `components/DynamicIcon.tsx` 的 `DynamicIcon` 或 `utils/icons.tsx` 的 `renderLucideIcon`，**禁止**在业务代码 `import * as icons from 'lucide-react'`
+  或引入 `lucide-react/dynamicIconImports` 自建映射；静态已知的图标继续按名具名 `import { X } from 'lucide-react'`
+- **插画一律懒加载**：`@douyinfe/semi-illustrations` 只能在 `lazy(() => import('@douyinfe/semi-illustrations').then(m => ({ default: m.IllustrationXxx })))`
+  + `Suspense` 后使用，禁止静态引入
+- **Demo Mock 只在 Demo 模式进入产物**：`src/mocks/` 只能经入口文件的 `if (import.meta.env.VITE_DEMO_MODE === 'true') await import('./mocks')`
+  引入，任何业务模块**禁止**静态 `import` `mocks/**`
+- **启动链路的新增网络请求必须并行**：认证后壳层所需的数据（当前用户菜单树、个人设置等）通过 `lib/shell-prefetch.ts`
+  与 `/api/auth/me` 并行预取，**禁止**再往 `AdminRouteLoader` 首载 gate 里串行新增查询；
+  只在错误 / 兜底路径使用的数据（如完整菜单树）由对应组件自行拉取
+- **提交前必须通过**：`npm run check:bundle -w @zenith/web`（产物预算，`bundle-budget.json`）与
+  `npm run smoke -w @zenith/web`（demo 产物真实启动三入口 + 登录链路）。预算只能因明确的产品决策上调，
+  上调时同步更新 `bundle-performance.md` 的记录表；不得为让 CI 通过而放宽
 
 ---

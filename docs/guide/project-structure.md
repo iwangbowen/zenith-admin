@@ -47,28 +47,32 @@ tasks, wiki, workflow
 
 ## `packages/web`
 
-前端基于 **React 19 + Vite 8 + Semi Design v2**。Vite 多入口：
+前端基于 **React 19 + Vite 8 + Semi Design v2**。Vite 多入口，`npm run build` 由 `scripts/build.mjs` 对每个入口分别构建（环境变量 `ZENITH_WEB_ENTRY`）并预压缩产物：
 
-| 入口 | 说明 |
-| --- | --- |
-| `index.html` | 后台管理主应用 |
-| `member.html` | C 端会员前台 SPA |
-| `approval.html` | 移动审批轻页 |
+| 入口 | 产物目录 | 说明 |
+| --- | --- | --- |
+| `index.html` | `dist/assets/` | 后台管理主应用 |
+| `member.html` | `dist/assets-member/` | C 端会员前台 SPA |
+| `approval.html` | `dist/assets-approval/` | 移动审批轻页 |
 
 关键目录：
 
 | 目录 | 职责 |
 | --- | --- |
-| `src/pages/` | 后台页面，按业务域拆分（含 `rules`、`wiki`、`drive`、`open-platform`、`system/app-releases` 等） |
+| `src/pages/` | 后台页面，按业务域拆分（含 `rules`、`wiki`、`drive`、`open-platform`、`system/app-releases` 等）；`*Page.tsx` 进入页面注册表 |
 | `src/member/` | 会员前台独立应用 |
 | `src/approval/` | 移动审批入口 |
 | `src/layouts/` | 后台主布局、偏好面板、多账号切换、Electron 标题栏承载 |
 | `src/components/` | 公共组件（含 `settings/` 的 schema 驱动设置表单） |
 | `src/hooks/queries/` | TanStack Query v5 域 hooks（由 `lib/contract-query.ts` 按契约派生） |
-| `src/lib/` | 契约调用层（`contract-query.ts`）、请求、账号停靠、主题色等封装 |
+| `src/lib/` | 契约调用层（`contract-query.ts`）、请求、账号停靠、主题色、启动预取（`shell-prefetch.ts`）等封装 |
 | `src/mocks/` | MSW Demo 数据、handlers、测试与工具 |
 | `src/webrtc/` | Chat 音视频通话管理 |
 | `src/styles/` | 全局样式与响应式规则 |
+| `scripts/` | 构建编排（`build.mjs`、`precompress.mjs`）与性能守卫（`bundle-analyze.mjs`、`bench-runtime.mjs`、`smoke.mjs`） |
+| `bundle-budget.json` | CI 产物预算阈值 |
+
+chunk 分层与度量方式见 [打包与首屏性能](../frontend/bundle-performance.md)。
 
 ## `packages/shared`
 

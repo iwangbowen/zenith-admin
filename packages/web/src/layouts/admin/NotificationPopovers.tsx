@@ -1,10 +1,16 @@
-import type { Dispatch, SetStateAction } from 'react';
+import { lazy, Suspense, type Dispatch, type SetStateAction } from 'react';
 import { Badge, Button, Empty, List, Popover, Typography } from '@douyinfe/semi-ui';
-import { IllustrationIdle, IllustrationIdleDark } from '@douyinfe/semi-illustrations';
 import { Bell, Megaphone } from 'lucide-react';
 import type { NavigateFunction } from 'react-router-dom';
 import type { InAppMessage, Announcement } from '@zenith/shared/messaging';
 import { formatDateTime } from '@/utils/date';
+
+// 空态插图只在打开弹层且列表为空时出现，懒加载使 ~130KB 的 semi-illustrations 不随布局首屏下载
+const IllustrationIdle = lazy(() => import('@douyinfe/semi-illustrations').then((m) => ({ default: m.IllustrationIdle })));
+const IllustrationIdleDark = lazy(() => import('@douyinfe/semi-illustrations').then((m) => ({ default: m.IllustrationIdleDark })));
+
+const idleImage = <Suspense fallback={null}><IllustrationIdle style={{ width: 80, height: 80 }} /></Suspense>;
+const idleImageDark = <Suspense fallback={null}><IllustrationIdleDark style={{ width: 80, height: 80 }} /></Suspense>;
 
 // 公告悬浮弹层（顶栏喇叭图标）
 export function AnnouncementPopover({
@@ -42,8 +48,8 @@ export function AnnouncementPopover({
           </div>
           {recentAnnouncements.length === 0 ? (
             <Empty
-              image={<IllustrationIdle style={{ width: 80, height: 80 }} />}
-              darkModeImage={<IllustrationIdleDark style={{ width: 80, height: 80 }} />}
+              image={idleImage}
+              darkModeImage={idleImageDark}
               description="暂无公告" style={{ padding: '24px 0' }} />
           ) : (
             <List
@@ -129,8 +135,8 @@ export function MessagePopover({
           </div>
           {inAppMessages.length === 0 ? (
             <Empty
-              image={<IllustrationIdle style={{ width: 80, height: 80 }} />}
-              darkModeImage={<IllustrationIdleDark style={{ width: 80, height: 80 }} />}
+              image={idleImage}
+              darkModeImage={idleImageDark}
               description="暂无消息" style={{ padding: '24px 0' }} />
           ) : (
             <List
