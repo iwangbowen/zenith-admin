@@ -50,6 +50,10 @@ import {
   APP_RELEASE_STATUS_LABELS,
   APP_RELEASE_STATUS_OPTIONS,
   APP_FILE_ARTIFACT_KINDS,
+  APP_PLATFORMS,
+  APP_RELEASE_CHANNELS,
+  APP_RELEASE_STATUSES,
+  DEVICE_SUBJECT_TYPES,
   type AppArch,
   type AppArtifact,
   type AppFileArtifactKind,
@@ -59,7 +63,11 @@ import {
   type AppReleaseStatus,
   type ClientApp,
   type ClientDevice,
+  type CreateAppReleaseInput,
+  type CreateClientAppInput,
+  publicAppReleaseContract,
 } from '@zenith/shared/ops';
+import { enumValueOf } from '@zenith/shared/core';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import AppModal from '@/components/AppModal';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -109,6 +117,7 @@ import {
   useUploadAppArtifact,
 } from '@/hooks/queries/app-releases';
 import { formatBytes } from '@zenith/shared/core';
+import { urlOf } from '@/lib/contract-query';
 
 const { Text } = Typography;
 
@@ -132,7 +141,9 @@ function shortDate(dateStr: string) {
 function copyArtifactLink(release: AppRelease, artifact: AppArtifact) {
   const url = artifact.kind === 'external' && artifact.externalUrl
     ? artifact.externalUrl
-    : `${window.location.origin}/api/public/app-releases/${release.appKey}/${release.channel}/${artifact.platform}/${encodeURIComponent(artifact.fileName)}`;
+    : `${window.location.origin}${urlOf(publicAppReleaseContract.download, {
+      params: { app: release.appKey ?? '', channel: release.channel, platform: artifact.platform, filename: artifact.fileName },
+    })}`;
   void copyTextWithToast(url, { success: '下载链接已复制', error: '复制失败' });
 }
 
@@ -143,7 +154,7 @@ function AppsManageModal({ visible, onClose }: { visible: boolean; onClose: () =
   const listQuery = useClientAppList({ page: 1, pageSize: 100 }, visible);
   const apps = listQuery.data?.list ?? [];
 
-  const modal = useEditModal<ClientApp>({
+  const modal = useEditModal<ClientApp, Partial<CreateClientAppInput>>({
     entityName: '应用',
     save: useSaveClientApp(),
     toValues: (r) => ({ appKey: r.appKey, name: r.name, description: r.description ?? '' }),
@@ -273,7 +284,7 @@ function ExternalArtifactModal({ releaseId, visible, onClose }: {
     } catch {
       return;
     }
-    await addMutation.mutateAsync({ releaseId, values });
+    await addMutation.mutateAsync({ params: { id: releaseId }, body: values });
     Toast.success('外链制品已添加');
     onClose();
   }
@@ -380,7 +391,7 @@ function ArtifactsSheet({ releaseId, onClose }: { releaseId: number | null; onCl
             <Tag color={CHANNEL_TAG_COLORS[release.channel]} size="small">{APP_RELEASE_CHANNEL_LABELS[release.channel]}</Tag>
             <Tag color={STATUS_TAG_COLORS[release.status]} size="small">{APP_RELEASE_STATUS_LABELS[release.status]}</Tag>
             <Text type="tertiary" size="small">
-              electron-updater feed：/api/public/app-releases/{release.appKey}/{release.channel}/{'{platform}'}/latest.yml
+              electron-updater feed：{publicAppReleaseContract.basePath}/{release.appKey}/{release.channel}/{'{platform}'}/latest.yml
             </Text>
           </Space>
         )}
@@ -475,7 +486,7 @@ function RolloutModal({ release, onClose }: { release: AppRelease | null; onClos
       visible={release != null}
       onOk={async () => {
         if (releaseId == null) return;
-        await rolloutMutation.mutateAsync({ id: releaseId, rolloutPercent: effectivePercent });
+        await rolloutMutation.mutateAsync({ params: { id: releaseId }, body: { rolloutPercent: effectivePercent } });
         Toast.success(`灰度已调整为 ${effectivePercent}%`);
         onClose();
       }}
@@ -518,8 +529,8 @@ function ReleaseManageTab({ active }: { active: boolean }) {
     page,
     pageSize,
     appId: submittedParams.appId,
-    channel: submittedParams.channel || undefined,
-    status: submittedParams.status || undefined,
+    channel: enumValueOf(APP_RELEASE_CHANNELS, submittedParams.channel),
+    status: enumValueOf(APP_RELEASE_STATUSES, submittedParams.status),
     keyword: submittedParams.keyword || undefined,
   }, active);
   const list = listQuery.data?.list ?? [];
@@ -529,7 +540,7 @@ function ReleaseManageTab({ active }: { active: boolean }) {
   const apps = appsQuery.data ?? [];
   const appOptions = apps.map((a) => ({ value: a.id, label: a.name }));
 
-  const modal = useEditModal<AppRelease>({
+  const modal = useEditModal<AppRelease, Partial<CreateAppReleaseInput>>({
     entityName: '版本',
     save: useSaveAppRelease(),
     useDetail: useAppReleaseDetail,
@@ -567,7 +578,7 @@ function ReleaseManageTab({ active }: { active: boolean }) {
       title: `确认发布 v${record.version}？`,
       content: '发布后该版本立即对客户端可见（按灰度比例放量）',
       onOk: async () => {
-        await publishMutation.mutateAsync(record.id);
+        await publishMutation.mutateAsync({ params: { id: record.id } });
         Toast.success('发布成功');
       },
     });
@@ -578,7 +589,7 @@ function ReleaseManageTab({ active }: { active: boolean }) {
       title: `确认撤回 v${record.version}？`,
       content: '撤回后客户端将不再收到该版本，已下载的不受影响',
       onOk: async () => {
-        await revokeMutation.mutateAsync(record.id);
+        await revokeMutation.mutateAsync({ params: { id: record.id } });
         Toast.success('已撤回');
       },
     });
@@ -950,9 +961,9 @@ function DevicesTab({ active }: { active: boolean }) {
     page,
     pageSize,
     appId: submittedParams.appId,
-    platform: submittedParams.platform || undefined,
-    subjectType: submittedParams.subjectType || undefined,
-    pushBound: submittedParams.pushBound || undefined,
+    platform: enumValueOf(APP_PLATFORMS, submittedParams.platform),
+    subjectType: enumValueOf(DEVICE_SUBJECT_TYPES, submittedParams.subjectType),
+    pushBound: enumValueOf(['true', 'false'] as const, submittedParams.pushBound),
     keyword: submittedParams.keyword || undefined,
   }, active);
   const list = listQuery.data?.list ?? [];
@@ -1005,7 +1016,7 @@ function DevicesTab({ active }: { active: boolean }) {
               title: `确认解绑设备「${record.deviceId}」的推送？`,
               content: '解绑后该设备不再接收 App 推送,设备档案保留',
               onOk: async () => {
-                await unbindMutation.mutateAsync(record.id);
+                await unbindMutation.mutateAsync({ params: { id: record.id } });
                 Toast.success('已解绑');
               },
             });
@@ -1018,7 +1029,7 @@ function DevicesTab({ active }: { active: boolean }) {
               title: `确定要删除设备「${record.deviceId}」的档案吗？`,
               content: '删除后该设备的活跃与版本信息将从统计中消失,下次心跳会重新登记',
               onOk: async () => {
-                await deleteMutation.mutateAsync(record.id);
+                await deleteMutation.mutateAsync({ params: { id: record.id } });
                 Toast.success('删除成功');
               },
             });

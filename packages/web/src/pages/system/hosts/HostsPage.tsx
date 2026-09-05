@@ -17,7 +17,7 @@ import { abortSubmit } from '@/lib/abort-submit';
 import { confirmDanger, confirmDelete } from '@/utils/confirm';
 import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import {
-  useDeleteOpsHost,
+  useDeleteOpsHosts,
   useImportOpsHost,
   useOpsHost,
   useOpsHosts,
@@ -68,7 +68,7 @@ export default function HostsPage() {
   const hostsQuery = useOpsHosts();
   const hosts = hostsQuery.data ?? [];
   const saveMutation = useSaveOpsHost();
-  const deleteMutation = useDeleteOpsHost();
+  const deleteMutation = useDeleteOpsHosts();
   const testMutation = useTestOpsHost();
   const probeMutation = useProbeOpsHost();
   const probeAllMutation = useProbeAllOpsHosts();
@@ -122,13 +122,13 @@ export default function HostsPage() {
   });
 
   const handleTest = async (id: number) => {
-    const result = await testMutation.mutateAsync(id);
+    const result = await testMutation.mutateAsync({ params: { id } });
     if (result.ok) Toast.success(`连接成功${result.latencyMs != null ? `（${result.latencyMs}ms）` : ''}`);
     else Toast.error(result.message);
   };
 
   const handleProbe = async (id: number) => {
-    const result = await probeMutation.mutateAsync(id);
+    const result = await probeMutation.mutateAsync({ params: { id } });
     if (result.status === 'online') Toast.success('探测完成，主机在线');
     else Toast.error(result.probeError ?? '主机离线');
   };
@@ -165,14 +165,14 @@ export default function HostsPage() {
         {
           key: 'probe',
           label: '探测',
-          loading: probeMutation.isPending && probeMutation.variables === record.id,
+          loading: probeMutation.isPending && probeMutation.variables?.params.id === record.id,
           onClick: () => { void handleProbe(record.id); },
         },
         {
           key: 'test',
           label: '测试连接',
           hidden: !canManage,
-          loading: testMutation.isPending && testMutation.variables === record.id,
+          loading: testMutation.isPending && testMutation.variables?.params.id === record.id,
           onClick: () => { void handleTest(record.id); },
         },
         {
@@ -194,7 +194,7 @@ export default function HostsPage() {
               content: '仅在确认主机已安全重装或密钥已合法变更时执行。下次连接将重新信任收到的指纹。',
               okText: '确认重置',
               onOk: async () => {
-                await resetKeyMutation.mutateAsync(record.id);
+                await resetKeyMutation.mutateAsync({ params: { id: record.id } });
                 Toast.success('指纹已重置');
               },
             });
@@ -209,7 +209,7 @@ export default function HostsPage() {
             confirmDelete({
               content: `确认删除主机「${record.name}」？`,
               onOk: async () => {
-                await deleteMutation.mutateAsync(record.id);
+                await deleteMutation.mutateAsync([record.id]);
                 Toast.success('主机已删除');
               },
             });
@@ -231,7 +231,7 @@ export default function HostsPage() {
               icon={<Radar size={14} />}
               loading={probeAllMutation.isPending}
               onClick={async () => {
-                const list = await probeAllMutation.mutateAsync();
+                const list = await probeAllMutation.mutateAsync({});
                 const online = list.filter((host) => host.status === 'online').length;
                 Toast.success(`探测完成：在线 ${online} / ${list.length}`);
               }}
@@ -250,7 +250,7 @@ export default function HostsPage() {
                         <Dropdown.Item
                           key={profile.id}
                           onClick={async () => {
-                            await importMutation.mutateAsync(profile.id);
+                            await importMutation.mutateAsync({ params: { profileId: profile.id } });
                             Toast.success('SSH 配置已导入');
                           }}
                         >
@@ -405,7 +405,7 @@ export default function HostsPage() {
                       title: '重置 SSH host key 指纹？',
                       content: '下次连接将重新信任收到的主机指纹。',
                       onOk: async () => {
-                        await resetKeyMutation.mutateAsync(detail.id);
+                        await resetKeyMutation.mutateAsync({ params: { id: detail.id } });
                         Toast.success('指纹已重置');
                       },
                     });

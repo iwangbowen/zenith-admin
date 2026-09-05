@@ -1,23 +1,18 @@
-import { http, HttpResponse } from 'msw';
+import { HttpResponse } from 'msw';
+import { hostFileContract, type SftpFileEntry } from '@zenith/shared/ops';
+import { mock } from '@/mocks/utils/contract';
+import { removeWhere } from '@/mocks/utils/array';
 import { mockDateTime } from '@/mocks/utils/date';
-import { badRequest, ok, notFound } from '@/mocks/utils/handlers';
+import { badRequest, notFound } from '@/mocks/utils/handlers';
 
-const API = import.meta.env.VITE_API_BASE_URL || '';
 const HOME = '/home/ops';
 
-type Entry = {
-  name: string;
-  path: string;
-  type: 'dir' | 'file';
-  size: number;
-  mtime: string;
-  permissions: string;
-  content?: string;
-};
+/** 目录项 + 演示用文件正文（正文不随目录列表下发） */
+type Entry = SftpFileEntry & { content?: string };
 
-const entriesByHost = new Map<string, Entry[]>();
+const entriesByHost = new Map<number, Entry[]>();
 
-function hostEntries(hostId: string): Entry[] {
+function hostEntries(hostId: number): Entry[] {
   let entries = entriesByHost.get(hostId);
   if (!entries) {
     entries = [
@@ -35,35 +30,33 @@ function parent(path: string): string {
   return index <= 0 ? '/' : path.slice(0, index);
 }
 
+function toEntry({ content: _content, ...entry }: Entry): SftpFileEntry {
+  return entry;
+}
+
 export const hostFileHandlers = [
-  http.get(`${API}/api/host-files/:hostId/home`, () => ok({ home: HOME })),
-  http.get(`${API}/api/host-files/:hostId/list`, ({ params, request }) => {
-    const entries = hostEntries(String(params.hostId));
-    const path = new URL(request.url).searchParams.get('path') || HOME;
-    const list = entries.filter((entry) => parent(entry.path) === path).map(({ content: _content, ...entry }) => entry);
+  mock(hostFileContract.home, ({ ok }) => ok({ home: HOME })),
+  mock(hostFileContract.list, ({ params, query, ok }) => {
+    const entries = hostEntries(params.hostId);
+    const path = query.path || HOME;
+    const list = entries.filter((entry) => parent(entry.path) === path).map(toEntry);
     return ok({ path, parent: path === '/' ? null : parent(path), entries: list });
   }),
-  http.get(`${API}/api/host-files/:hostId/content`, ({ params, request }) => {
-    const entries = hostEntries(String(params.hostId));
-    const path = new URL(request.url).searchParams.get('path') ?? '';
-    const entry = entries.find((item) => item.path === path && item.type === 'file');
+  mock(hostFileContract.content, ({ params, query, ok }) => {
+    const entry = hostEntries(params.hostId).find((item) => item.path === query.path && item.type === 'file');
     return entry
-      ? ok({ path, content: entry.content ?? '', size: entry.size, etag: `demo-${entry.mtime}-${entry.size}` })
+      ? ok({ path: query.path, content: entry.content ?? '', size: entry.size, etag: `demo-${entry.mtime}-${entry.size}` })
       : notFound('文件不存在', { status: 404 });
   }),
-  http.put(`${API}/api/host-files/:hostId/content`, async ({ params, request }) => {
-    const entries = hostEntries(String(params.hostId));
-    const body = await request.json() as { path: string; content: string };
-    const entry = entries.find((item) => item.path === body.path);
+  mock(hostFileContract.saveContent, ({ params, body, ok }) => {
+    const entry = hostEntries(params.hostId).find((item) => item.path === body.path);
     if (!entry) return notFound('文件不存在', { status: 404 });
     entry.content = body.content;
     entry.size = new TextEncoder().encode(body.content).length;
     entry.mtime = mockDateTime();
-    return ok(entry);
+    return ok(toEntry(entry));
   }),
-  http.post(`${API}/api/host-files/:hostId/create`, async ({ params, request }) => {
-    const entries = hostEntries(String(params.hostId));
-    const body = await request.json() as { path: string; type: 'file' | 'dir' };
+  mock(hostFileContract.create, ({ params, body, ok }) => {
     const entry: Entry = {
       name: body.path.split('/').pop() ?? body.path,
       path: body.path,
@@ -73,34 +66,28 @@ export const hostFileHandlers = [
       permissions: body.type === 'dir' ? 'rwxr-xr-x' : 'rw-r--r--',
       ...(body.type === 'file' ? { content: '' } : {}),
     };
-    entries.push(entry);
-    return ok(entry);
+    hostEntries(params.hostId).push(entry);
+    return ok(toEntry(entry));
   }),
-  http.post(`${API}/api/host-files/:hostId/rename`, async ({ params, request }) => {
-    const entries = hostEntries(String(params.hostId));
-    const body = await request.json() as { from: string; to: string };
-    const entry = entries.find((item) => item.path === body.from);
+  mock(hostFileContract.rename, ({ params, body, ok }) => {
+    const entry = hostEntries(params.hostId).find((item) => item.path === body.from);
     if (!entry) return notFound('文件不存在', { status: 404 });
     entry.path = body.to;
     entry.name = body.to.split('/').pop() ?? body.to;
-    return ok(entry);
+    return ok(toEntry(entry));
   }),
-  http.post(`${API}/api/host-files/:hostId/chmod`, () => ok(null)),
-  http.get(`${API}/api/host-files/:hostId/download`, ({ params, request }) => {
-    const entries = hostEntries(String(params.hostId));
-    const path = new URL(request.url).searchParams.get('path') ?? '';
-    const entry = entries.find((item) => item.path === path && item.type === 'file');
+  mock(hostFileContract.chmod, ({ ok }) => ok(null)),
+  mock(hostFileContract.download, ({ params, query }) => {
+    const entry = hostEntries(params.hostId).find((item) => item.path === query.path && item.type === 'file');
     return entry
       ? new HttpResponse(entry.content ?? '', {
           headers: { 'Content-Type': 'application/octet-stream' },
         })
       : notFound('文件不存在', { status: 404 });
   }),
-  http.post(`${API}/api/host-files/:hostId/upload`, async ({ params, request }) => {
-    const entries = hostEntries(String(params.hostId));
-    const form = await request.formData();
-    const dir = String(form.get('path') ?? HOME);
-    const file = form.get('file');
+  mock(hostFileContract.upload, async ({ params, body, ok }) => {
+    const dir = String(body.get('path') ?? HOME);
+    const file = body.get('file');
     if (!(file instanceof File)) return badRequest('未选择文件');
     const entry: Entry = {
       name: file.name,
@@ -111,15 +98,11 @@ export const hostFileHandlers = [
       permissions: 'rw-r--r--',
       content: await file.text(),
     };
-    entries.push(entry);
-    return ok(entry);
+    hostEntries(params.hostId).push(entry);
+    return ok(toEntry(entry));
   }),
-  http.delete(`${API}/api/host-files/:hostId/entry`, ({ params, request }) => {
-    const entries = hostEntries(String(params.hostId));
-    const path = new URL(request.url).searchParams.get('path') ?? '';
-    for (let index = entries.length - 1; index >= 0; index -= 1) {
-      if (entries[index].path === path || entries[index].path.startsWith(`${path}/`)) entries.splice(index, 1);
-    }
+  mock(hostFileContract.remove, ({ params, query, ok }) => {
+    removeWhere(hostEntries(params.hostId), (entry) => entry.path === query.path || entry.path.startsWith(`${query.path}/`));
     return ok(null);
   }),
 ];

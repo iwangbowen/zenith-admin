@@ -62,7 +62,7 @@ export function useFsUpload(currentPath: string) {
       const abs = d.split('/').reduce((acc, seg) => joinPath(acc, seg), currentPath);
       // 目录已存在时后端返回 400，静默忽略
       await fileOperationMutation
-        .mutateAsync({ endpoint: '/api/terminal-files/create', values: { path: abs, type: 'dir' } })
+        .mutateAsync({ kind: 'create', path: abs, type: 'dir' })
         .catch(() => {});
     }
     setUploading(files.map((f) => ({ name: rel(f), progress: 0 })));

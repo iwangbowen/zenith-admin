@@ -116,7 +116,7 @@ describe('usePublishAppRelease —— 生命周期变更的连带失效', () => 
     const fetches = observeFetches(qc);
     api.resetCalls();
 
-    await hook.result.current.publish.mutateAsync(1);
+    await hook.result.current.publish.mutateAsync({ params: { id: 1 } });
     await waitFor(() => expect(hook.result.current.releases.isFetching).toBe(false));
 
     expect(fetches.countOf(appReleaseKeys.lists)).toBe(1);

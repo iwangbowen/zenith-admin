@@ -1,15 +1,6 @@
-import { http } from 'msw';
-import { ok } from '@/mocks/utils/handlers';
-
-interface PortEntry {
-  protocol: string;
-  localAddress: string;
-  localPort: number;
-  state: string;
-  pid: number | null;
-  processName: string | null;
-  serviceName: string | null;
-}
+import { portContract, type PortEntry } from '@zenith/shared/ops';
+import { mock } from '@/mocks/utils/contract';
+import { removeWhere } from '@/mocks/utils/array';
 
 const mockPorts: PortEntry[] = [
   { protocol: 'tcp', localAddress: '0.0.0.0', localPort: 80, state: 'LISTEN', pid: 1280, processName: 'nginx', serviceName: 'http' },
@@ -23,12 +14,11 @@ const mockPorts: PortEntry[] = [
 ];
 
 export const portsHandlers = [
-  http.get('/api/ports', () => ok(mockPorts)),
+  mock(portContract.list, ({ ok }) => ok(mockPorts)),
 
-  http.delete('/api/ports/:pid', ({ params }) => {
-    const pid = Number(params.pid);
-    const idx = mockPorts.findIndex((p) => p.pid === pid);
-    if (idx !== -1) mockPorts.splice(idx, 1);
+  // 结束进程：该进程占用的全部端口一并消失
+  mock(portContract.kill, ({ params, ok }) => {
+    removeWhere(mockPorts, (p) => p.pid === params.pid);
     return ok(null, '进程已结束');
   }),
 ];

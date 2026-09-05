@@ -1,7 +1,7 @@
-import { http } from 'msw';
-import { ok } from '@/mocks/utils/handlers';
+import { firewallContract, type FirewallRule, type FirewallStatus } from '@zenith/shared/ops';
+import { mock } from '@/mocks/utils/contract';
 
-const mockStatus = {
+const mockStatus: FirewallStatus = {
   enabled: true,
   type: 'ufw',
   version: '0.36.1',
@@ -9,18 +9,7 @@ const mockStatus = {
   defaultOutgoing: 'allow',
 };
 
-interface MockRule {
-  id: string;
-  type: 'allow' | 'deny' | 'reject';
-  protocol: 'tcp' | 'udp' | 'any';
-  port: string;
-  from: string;
-  to: string;
-  direction: 'in' | 'out' | 'any';
-  comment: string | null;
-}
-
-const mockRules: MockRule[] = [
+const mockRules: FirewallRule[] = [
   { id: '1', type: 'allow', protocol: 'tcp', port: '22', from: 'any', to: 'any', direction: 'in', comment: 'SSH' },
   { id: '2', type: 'allow', protocol: 'tcp', port: '80', from: 'any', to: 'any', direction: 'in', comment: 'HTTP' },
   { id: '3', type: 'allow', protocol: 'tcp', port: '443', from: 'any', to: 'any', direction: 'in', comment: 'HTTPS' },
@@ -29,33 +18,32 @@ const mockRules: MockRule[] = [
 ];
 
 export const firewallHandlers = [
-  http.get('/api/firewall', () => ok(mockStatus)),
-  http.get('/api/firewall/rules', () => ok({ type: 'ufw', rules: mockRules })),
-  http.post('/api/firewall/rules', async ({ request }) => {
-    const body = await request.json() as Partial<MockRule>;
-    const newRule: MockRule = {
+  mock(firewallContract.status, ({ ok }) => ok(mockStatus)),
+  mock(firewallContract.rules, ({ ok }) => ok({ type: 'ufw', rules: mockRules })),
+  // body 已按契约补齐 from / to / direction 默认值
+  mock(firewallContract.addRule, ({ body, ok }) => {
+    mockRules.push({
       id: String(Date.now()),
-      type: body.type ?? 'allow',
-      protocol: body.protocol ?? 'tcp',
-      port: body.port ?? '80',
-      from: body.from ?? 'any',
-      to: body.to ?? 'any',
-      direction: body.direction ?? 'in',
+      type: body.type,
+      protocol: body.protocol,
+      port: body.port,
+      from: body.from,
+      to: body.to,
+      direction: body.direction,
       comment: body.comment ?? null,
-    };
-    mockRules.push(newRule);
+    });
     return ok(null, '规则已添加');
   }),
-  http.delete('/api/firewall/rules/:id', ({ params }) => {
+  mock(firewallContract.removeRule, ({ params, ok }) => {
     const idx = mockRules.findIndex((rule) => rule.id === params.id);
     if (idx !== -1) mockRules.splice(idx, 1);
     return ok(null, '规则已删除');
   }),
-  http.post('/api/firewall/enable', () => {
+  mock(firewallContract.enable, ({ ok }) => {
     mockStatus.enabled = true;
     return ok(null, '防火墙已启用');
   }),
-  http.post('/api/firewall/disable', () => {
+  mock(firewallContract.disable, ({ ok }) => {
     mockStatus.enabled = false;
     return ok(null, '防火墙已关闭');
   }),

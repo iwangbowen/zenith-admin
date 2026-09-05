@@ -7,7 +7,7 @@ import {
 import { FolderOpen, Play, Square, Search, FileText, Download } from 'lucide-react';
 import { request } from '@/utils/request';
 import { streamText } from '@/utils/streaming';
-import { logViewerKeys, useLogViewerContent, useLogViewerRoots } from '@/hooks/queries/log-viewer';
+import { logViewerDownloadUrl, logViewerKeys, logViewerStreamUrl, useLogViewerContent, useLogViewerRoots } from '@/hooks/queries/log-viewer';
 import { HostSelector } from '@/components/HostSelector';
 import { useOpsHostSelection } from '@/hooks/useOpsHostSelection';
 import { FilterSelect } from '@/components/search-filters';
@@ -186,8 +186,7 @@ export default function LogViewerPage() {
     const abort = new AbortController();
     abortRef.current = abort;
     setFollowing(true);
-    const url = `/api/log-viewer/stream?path=${encodeURIComponent(filePath.trim())}${hostId == null ? '' : `&hostId=${hostId}`}`;
-    void streamText(url, (text) => setContent((prev) => prev + text), abort.signal)
+    void streamText(logViewerStreamUrl(filePath.trim(), hostId), (text) => setContent((prev) => prev + text), abort.signal)
       .catch(() => { /* abort = ok */ })
       .finally(() => setFollowing(false));
   }, [filePath, hostId]);
@@ -204,10 +203,7 @@ export default function LogViewerPage() {
     setDownloading(true);
     try {
       const name = filePath.trim().split('/').pop() ?? 'log.txt';
-      await request.download(
-        `/api/log-viewer/download?path=${encodeURIComponent(filePath.trim())}${hostId == null ? '' : `&hostId=${hostId}`}`,
-        name,
-      );
+      await request.download(logViewerDownloadUrl(filePath.trim(), hostId), name);
     } finally {
       setDownloading(false);
     }

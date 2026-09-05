@@ -14,8 +14,9 @@ import {
   useHostFileList,
   useHostFileMutation,
   useHostFileUpload,
-  type SftpEntry,
+  hostFileDownloadUrl,
 } from '@/hooks/queries/terminal-files';
+import type { SftpFileEntry } from '@zenith/shared/ops';
 import { permStringToOctal } from './fs-utils';
 import { formatBytes } from '@zenith/shared/core';
 
@@ -27,8 +28,8 @@ function joinPath(dir: string, name: string): string {
 
 type ActionDialog =
   | { kind: 'create'; type: 'file' | 'dir' }
-  | { kind: 'rename'; entry: SftpEntry }
-  | { kind: 'chmod'; entry: SftpEntry }
+  | { kind: 'rename'; entry: SftpFileEntry }
+  | { kind: 'chmod'; entry: SftpFileEntry }
   | null;
 
 export function RemoteHostFiles({ hostId }: Readonly<{ hostId: number }>) {
@@ -64,7 +65,7 @@ export function RemoteHostFiles({ hostId }: Readonly<{ hostId: number }>) {
     setPathDraft(path);
   };
 
-  const openEntry = (entry: SftpEntry) => {
+  const openEntry = (entry: SftpFileEntry) => {
     if (entry.type === 'dir') navigate(entry.path);
     else {
       setDraftContent('');
@@ -99,7 +100,7 @@ export function RemoteHostFiles({ hostId }: Readonly<{ hostId: number }>) {
     setDialog(null);
   };
 
-  const columns: ColumnProps<SftpEntry>[] = [
+  const columns: ColumnProps<SftpFileEntry>[] = [
     {
       title: '名称',
       dataIndex: 'name',
@@ -113,7 +114,7 @@ export function RemoteHostFiles({ hostId }: Readonly<{ hostId: number }>) {
     { title: '大小', dataIndex: 'size', width: 120, render: (value: number, entry) => entry.type === 'dir' ? '—' : formatBytes(value) },
     { title: '权限', dataIndex: 'permissions', width: 120, render: (value?: string) => value ?? '—' },
     { title: '修改时间', dataIndex: 'mtime', width: 180 },
-    createOperationColumn<SftpEntry>({
+    createOperationColumn<SftpFileEntry>({
       width: 180,
       desktopInlineKeys: ['open', 'download'],
       actions: (entry) => [
@@ -122,10 +123,7 @@ export function RemoteHostFiles({ hostId }: Readonly<{ hostId: number }>) {
           key: 'download',
           label: '下载',
           hidden: entry.type === 'dir',
-          onClick: () => void request.download(
-            `/api/host-files/${hostId}/download?path=${encodeURIComponent(entry.path)}`,
-            entry.name,
-          ),
+          onClick: () => void request.download(hostFileDownloadUrl(hostId, entry.path), entry.name),
         },
         {
           key: 'rename',

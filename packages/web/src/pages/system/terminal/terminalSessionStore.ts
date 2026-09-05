@@ -16,8 +16,10 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { TOKEN_KEY } from '@zenith/shared/core';
+import { terminalRecordingContract } from '@zenith/shared/ops';
 import { wsAuthProtocols } from '@zenith/shared/platform';
 import { config } from '@/config';
+import { api } from '@/lib/contract-query';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { copyText } from '@/utils/clipboard';
@@ -410,9 +412,8 @@ class TerminalSessionStore {
       const rec = session.recording;
       if (rec && rec.events.length > 0) {
         const duration = (Date.now() - rec.startTime) / 1000;
-        request.post(
-          '/api/terminal-recordings',
-          {
+        void api(terminalRecordingContract.create, {
+          body: {
             title: `${shell || 'terminal'} 录屏 - ${formatDateTime(Date.now())}`,
             shell: shell || null,
             cols: rec.cols,
@@ -420,8 +421,7 @@ class TerminalSessionStore {
             duration,
             events: rec.events,
           },
-          { silent: true },
-        );
+        }, { silent: true }).catch(() => undefined);
         session.recording = null;
         this.notifyStatus(sessionId);
       }

@@ -7,7 +7,8 @@ import { RefreshCw, ListOrdered, FunctionSquare, Zap, Tags, Package } from 'luci
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
-import { useDbAdminObjects, type DbAdminObjects } from '@/hooks/queries/db-admin';
+import type { DbAdminObjects } from '@zenith/shared/ops';
+import { useDbAdminObjects } from '@/hooks/queries/db-admin';
 
 const { Text } = Typography;
 

@@ -1,7 +1,8 @@
 
 import { Tag, Toast, Form } from '@douyinfe/semi-ui';
-import type { DbBackup, BackupType, BackupStatus } from '@zenith/shared/platform';
-import { fileContract } from '@zenith/shared/platform';
+import { enumValueOf } from '@zenith/shared/core';
+import { DB_BACKUP_STATUSES, DB_BACKUP_TYPES, type DbBackup, type DbBackupCreated, type DbBackupStatus, type DbBackupType } from '@zenith/shared/ops';
+import { fileContract, type CreateBackupInput } from '@zenith/shared/platform';
 import { AppModal } from '@/components/AppModal';
 import { urlOf } from '@/lib/contract-query';
 import { usePermission } from '@/hooks/usePermission';
@@ -15,7 +16,7 @@ import {
   dbBackupKeys,
   useCreateDbBackup,
   useDbBackupList,
-  useDeleteDbBackup,
+  useDeleteDbBackups,
 } from '@/hooks/queries/db-backups';
 import { request } from '@/utils/request';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
@@ -32,25 +33,25 @@ export default function DbBackupsPage() {
   const listQuery = useDbBackupList({
     page,
     pageSize,
-    status: submittedParams.status || undefined,
-    type: submittedParams.type || undefined,
+    status: enumValueOf(DB_BACKUP_STATUSES, submittedParams.status),
+    type: enumValueOf(DB_BACKUP_TYPES, submittedParams.type),
   });
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
   const createMutation = useCreateDbBackup();
-  const createModal = useEditModal<DbBackup, { type: BackupType; name?: string }>({
+  const createModal = useEditModal<DbBackupCreated, Partial<CreateBackupInput>>({
     save: {
       isPending: createMutation.isPending,
-      mutateAsync: async ({ values }) => createMutation.mutateAsync(values),
+      mutateAsync: async ({ values }) => createMutation.mutateAsync({ body: values as CreateBackupInput }),
     },
     defaults: { type: 'pg_dump' },
     successMessage: () => '备份任务已创建',
     onSaved: () => setPage(1),
   });
-  const deleteMutation = useDeleteDbBackup();
+  const deleteMutation = useDeleteDbBackups();
 
   const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync(id);
+    await deleteMutation.mutateAsync([id]);
     Toast.success('已删除');
   };
 
@@ -63,13 +64,13 @@ export default function DbBackupsPage() {
     await request.download(urlOf(fileContract.content, { params: { id: record.fileId } }), name);
   };
 
-  const statusColorMap: Record<BackupStatus, 'grey' | 'blue' | 'green' | 'red'> = {
+  const statusColorMap: Record<DbBackupStatus, 'grey' | 'blue' | 'green' | 'red'> = {
     pending: 'grey',
     running: 'blue',
     success: 'green',
     failed: 'red',
   };
-  const statusLabelMap: Record<BackupStatus, string> = {
+  const statusLabelMap: Record<DbBackupStatus, string> = {
     pending: '等待中',
     running: '执行中',
     success: '成功',
@@ -83,7 +84,7 @@ export default function DbBackupsPage() {
       title: '类型',
       dataIndex: 'type',
       width: 130,
-      render: (v: BackupType) => <Tag size="small">{v === 'pg_dump' ? 'pg_dump' : 'Drizzle 导出'}</Tag>,
+      render: (v: DbBackupType) => <Tag size="small">{v === 'pg_dump' ? 'pg_dump' : 'Drizzle 导出'}</Tag>,
     },
     {
       title: '文件大小',
@@ -106,7 +107,7 @@ export default function DbBackupsPage() {
       dataIndex: 'status',
       width: 90,
       fixed: 'right' as const,
-      render: (v: BackupStatus) => <Tag color={statusColorMap[v]} size="small">{statusLabelMap[v]}</Tag>,
+      render: (v: DbBackupStatus) => <Tag color={statusColorMap[v]} size="small">{statusLabelMap[v]}</Tag>,
     },
     createOperationColumn<DbBackup>({
       width: 150,

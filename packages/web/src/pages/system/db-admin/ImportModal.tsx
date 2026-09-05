@@ -141,7 +141,7 @@ export function ImportModal(props: Readonly<Props>) {
     });
 
     try {
-      const res = await importRowsMutation.mutateAsync({ schema, table, rows: payloadRows });
+      const res = await importRowsMutation.mutateAsync({ params: { schema, name: table }, body: { rows: payloadRows } });
       Toast.success(`成功导入 ${res.inserted} 行`);
       reset();
       onSuccess();

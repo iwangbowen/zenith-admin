@@ -1,6 +1,6 @@
-import { http } from 'msw';
-import type { RetentionPolicy } from '@zenith/shared/ops';
-import { ok, notFound } from '@/mocks/utils/handlers';
+import { retentionPolicyContract, type RetentionPolicy } from '@zenith/shared/ops';
+import { mock } from '@/mocks/utils/contract';
+import { notFound } from '@/mocks/utils/handlers';
 import { mockDateTime } from '../utils/date';
 
 const policies: RetentionPolicy[] = [
@@ -155,20 +155,19 @@ function findPolicy(key: string) {
 }
 
 export const retentionHandlers = [
-  http.get('/api/retention-policies', () => ok(policies)),
+  mock(retentionPolicyContract.list, ({ ok }) => ok(policies)),
 
-  http.put('/api/retention-policies/:key', async ({ params, request }) => {
-    const policy = findPolicy(String(params.key));
+  mock(retentionPolicyContract.update, ({ params, body, ok }) => {
+    const policy = findPolicy(params.key);
     if (!policy) return notFound('保留策略不存在', { status: 404 });
-    const body = await request.json() as Partial<RetentionPolicy>;
     if (body.enabled !== undefined) policy.enabled = body.enabled;
     if (body.retentionDays !== undefined) policy.retentionDays = body.retentionDays;
     if (body.batchSize !== undefined) policy.batchSize = body.batchSize;
     return ok(policy);
   }),
 
-  http.get('/api/retention-policies/:key/preview', ({ params }) => {
-    const policy = findPolicy(String(params.key));
+  mock(retentionPolicyContract.preview, ({ params, ok }) => {
+    const policy = findPolicy(params.key);
     if (!policy) return notFound('保留策略不存在', { status: 404 });
     if (policy.retentionDays === 0) {
       return ok({ key: policy.key, pending: 0, cutoff: null });
@@ -177,12 +176,12 @@ export const retentionHandlers = [
     return ok({
       key: policy.key,
       pending: Math.floor(Math.random() * 5000),
-      cutoff: cutoff.toISOString().slice(0, 19).replace('T', ' '),
+      cutoff: mockDateTime(cutoff.getTime()),
     });
   }),
 
-  http.post('/api/retention-policies/:key/run', ({ params }) => {
-    const policy = findPolicy(String(params.key));
+  mock(retentionPolicyContract.run, ({ params, ok }) => {
+    const policy = findPolicy(params.key);
     if (!policy) return notFound('保留策略不存在', { status: 404 });
     const deleted = policy.retentionDays === 0 ? 0 : Math.floor(Math.random() * 2000);
     policy.lastRunAt = mockDateTime();

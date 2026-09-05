@@ -2,6 +2,14 @@ import { useState } from 'react';
 import { Button, Descriptions, Form, SideSheet, Space, Spin, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Lock, Upload } from 'lucide-react';
+import { enumValueOf } from '@zenith/shared/core';
+import {
+  SSL_CERT_TYPES,
+  type GenerateSelfSignedCertInput,
+  type SslCertDownloadKind,
+  type SslCertificate,
+} from '@zenith/shared/ops';
+import type { UploadCertSchemaInput } from '@zenith/shared/platform';
 import AppModal from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -9,17 +17,16 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import {
+  downloadSslCertificate,
   sslCertificateKeys,
-  useDeleteSslCertificate,
+  useDeleteSslCertificates,
   useGenerateSslCertificate,
   useSslCertificateDetail,
   useSslCertificateList,
   useUploadSslCertificate,
-  type SslCertificateRecord,
 } from '@/hooks/queries/ssl-certificates';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
@@ -32,13 +39,13 @@ interface SearchParams {
 
 const defaultSearchParams: SearchParams = { keyword: '', type: '' };
 
-const TYPE_LABELS: Record<SslCertificateRecord['type'], string> = {
+const TYPE_LABELS: Record<SslCertificate['type'], string> = {
   self_signed: '自签名',
   uploaded: '上传',
   letsencrypt: 'Let\'s Encrypt',
 };
 
-const STATUS_CONFIG: Record<SslCertificateRecord['status'], { label: string; color: 'green' | 'orange' | 'red' | 'grey' }> = {
+const STATUS_CONFIG: Record<SslCertificate['status'], { label: string; color: 'green' | 'orange' | 'red' | 'grey' }> = {
   valid: { label: '有效', color: 'green' },
   expiring: { label: '即将过期', color: 'orange' },
   expired: { label: '已过期', color: 'red' },
@@ -66,12 +73,12 @@ export default function SslCertificatesPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: sslCertificateKeys.lists });
   const [detailVisible, setDetailVisible] = useState(false);
-  const [detail, setDetail] = useState<SslCertificateRecord | null>(null);
+  const [detail, setDetail] = useState<SslCertificate | null>(null);
   const listQuery = useSslCertificateList({
     page,
     pageSize,
     keyword: submittedParams.keyword.trim() || undefined,
-    type: submittedParams.type || undefined,
+    type: enumValueOf(SSL_CERT_TYPES, submittedParams.type),
   });
   const data = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
@@ -79,10 +86,10 @@ export default function SslCertificatesPage() {
   const displayDetail = detail ? (detailQuery.data ?? detail) : null;
   const generateMutation = useGenerateSslCertificate();
   const uploadMutation = useUploadSslCertificate();
-  const generateModal = useEditModal<{ id: number }, Record<string, unknown>>({
+  const generateModal = useEditModal<{ id: number }, Partial<GenerateSelfSignedCertInput>>({
     save: {
       mutateAsync: async ({ values }) => {
-        await generateMutation.mutateAsync(values);
+        await generateMutation.mutateAsync({ body: values as GenerateSelfSignedCertInput });
         return { id: 0 };
       },
       isPending: generateMutation.isPending,
@@ -90,28 +97,28 @@ export default function SslCertificatesPage() {
     defaults: { days: 365, country: 'CN', organization: 'Organization' },
     successMessage: () => '证书已生成',
   });
-  const uploadModal = useEditModal<{ id: number }, Record<string, unknown>>({
+  const uploadModal = useEditModal<{ id: number }, Partial<UploadCertSchemaInput>>({
     save: {
       mutateAsync: async ({ values }) => {
-        await uploadMutation.mutateAsync(values);
+        await uploadMutation.mutateAsync({ body: values as UploadCertSchemaInput });
         return { id: 0 };
       },
       isPending: uploadMutation.isPending,
     },
     successMessage: () => '证书已上传',
   });
-  const deleteMutation = useDeleteSslCertificate();
+  const deleteMutation = useDeleteSslCertificates();
 
   const canCreate = hasPermission('system:ssl:create');
   const canDelete = hasPermission('system:ssl:delete');
 
-  const openDetail = (record: SslCertificateRecord) => {
+  const openDetail = (record: SslCertificate) => {
     setDetailVisible(true);
     setDetail(record);
   };
 
   const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync(id);
+    await deleteMutation.mutateAsync([id]);
     Toast.success('证书已删除');
     if (detail?.id === id) {
       setDetailVisible(false);
@@ -119,24 +126,24 @@ export default function SslCertificatesPage() {
     }
   };
 
-  const handleDownload = async (kind: 'cert' | 'key') => {
+  const handleDownload = async (kind: SslCertDownloadKind) => {
     if (!displayDetail) return;
     try {
-      await request.download(`/api/ssl-certificates/${displayDetail.id}/download?kind=${kind}`, `${displayDetail.domain}-${kind}.pem`);
+      await downloadSslCertificate(displayDetail.id, kind, `${displayDetail.domain}-${kind}.pem`);
       Toast.success(kind === 'cert' ? '证书下载成功' : '私钥下载成功');
     } catch {
       Toast.error('下载失败');
     }
   };
 
-  const columns: ColumnProps<SslCertificateRecord>[] = [
+  const columns: ColumnProps<SslCertificate>[] = [
     { title: '名称', dataIndex: 'name', width: 180, render: renderEllipsis },
     { title: '域名', dataIndex: 'domain', minWidth: 220, render: renderEllipsis },
     {
       title: '类型',
       dataIndex: 'type',
       width: 110,
-      render: (value: SslCertificateRecord['type']) => <Tag size="small">{TYPE_LABELS[value]}</Tag>,
+      render: (value: SslCertificate['type']) => <Tag size="small">{TYPE_LABELS[value]}</Tag>,
     },
     { title: '颁发者', dataIndex: 'issuer', width: 220, render: renderEllipsis },
     dateTimeColumn('有效期至', 'validTo'),
@@ -152,13 +159,13 @@ export default function SslCertificatesPage() {
       dataIndex: 'status',
       width: 110,
       fixed: 'right',
-      render: (value: SslCertificateRecord['status']) => (
+      render: (value: SslCertificate['status']) => (
         <Tag color={STATUS_CONFIG[value].color} size="small">
           {STATUS_CONFIG[value].label}
         </Tag>
       ),
     },
-    createOperationColumn<SslCertificateRecord>({
+    createOperationColumn<SslCertificate>({
       width: 180,
       actions: (record) => [
         {

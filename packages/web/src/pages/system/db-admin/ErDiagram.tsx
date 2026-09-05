@@ -17,33 +17,13 @@ import {
 import dagre from 'dagre';
 import { AutoComplete, Button, Switch, Space, Tooltip, Toast } from '@douyinfe/semi-ui';
 import { Download, Search } from 'lucide-react';
+import type { DbAdminErColumn, DbAdminErDiagramFk, DbAdminErSchema, DbAdminErTable } from '@zenith/shared/ops';
 import { ThemedReactFlow } from '@/components/ThemedReactFlow';
 
-export interface ErColumn {
-  name: string;
-  dataType: string;
-  isPrimaryKey: boolean;
-}
-
-export interface ErTable {
-  schema: string;
-  name: string;
-  columns: ErColumn[];
-}
-
-export interface ErFk {
-  schema: string;
-  table: string;
-  columns: string[];
-  referencedSchema: string;
-  referencedTable: string;
-  referencedColumns: string[];
-}
-
-export interface ErSchema {
-  tables: ErTable[];
-  foreignKeys: ErFk[];
-}
+export type ErColumn = DbAdminErColumn;
+export type ErTable = DbAdminErTable;
+export type ErFk = DbAdminErDiagramFk;
+export type ErSchema = DbAdminErSchema;
 
 interface TableNodeData extends Record<string, unknown> {
   schema: string;

@@ -6,13 +6,13 @@ import {
 import { AppModal } from '@/components/AppModal';
 import { useEditModal } from '@/hooks/useEditModal';
 import { Plus, Pencil, Trash2, Server, ChevronUp, ChevronDown, Search, FolderOpen } from 'lucide-react';
+import { SSH_AUTH_TYPES, type CreateSshProfileInput, type SshAuthType, type SshProfile } from '@zenith/shared/ops';
+import { enumValueOf } from '@zenith/shared/core';
 import {
-  useDeleteSshProfile,
+  useDeleteSshProfiles,
   useSaveSshProfile,
   useSshProfiles,
   useUpdateSshProfileOrder,
-  type SshAuthType,
-  type SshProfile,
 } from '@/hooks/queries/terminal';
 
 export type { SshAuthType, SshProfile };
@@ -22,7 +22,7 @@ interface SshProfileFormData {
   host: string;
   port: number;
   username: string;
-  authType: 'password' | 'key_path' | 'key_content' | 'agent';
+  authType: SshAuthType;
   password?: string;
   keyPath?: string;
   keyContent?: string;
@@ -42,7 +42,7 @@ const UNGROUPED_KEY = '__ungrouped__';
 const EMPTY_PROFILES: SshProfile[] = [];
 
 export default function SshProfilesManager({ onConnect, onBrowseSftp }: Readonly<SshProfilesManagerProps>) {
-  const [formAuthType, setFormAuthType] = useState<'password' | 'key_path' | 'key_content' | 'agent'>('password');
+  const [formAuthType, setFormAuthType] = useState<SshAuthType>('password');
   const [keyword, setKeyword] = useState('');
   const [activeTag, setActiveTag] = useState<string | null>(null);
 
@@ -50,7 +50,7 @@ export default function SshProfilesManager({ onConnect, onBrowseSftp }: Readonly
   const profiles = profilesQuery.data ?? EMPTY_PROFILES;
   const loading = profilesQuery.isFetching;
   const saveMutation = useSaveSshProfile();
-  const profileModal = useEditModal<SshProfile, SshProfileFormData, Record<string, unknown>>({
+  const profileModal = useEditModal<SshProfile, SshProfileFormData, Partial<CreateSshProfileInput>>({
     save: saveMutation,
     defaults: { authType: 'password', port: 22, tags: [] },
     toValues: (profile) => getInitialValues(profile),
@@ -80,7 +80,7 @@ export default function SshProfilesManager({ onConnect, onBrowseSftp }: Readonly
       };
     },
   });
-  const deleteMutation = useDeleteSshProfile();
+  const deleteMutation = useDeleteSshProfiles();
   const reorderMutation = useUpdateSshProfileOrder();
 
   const openCreate = () => {
@@ -94,7 +94,7 @@ export default function SshProfilesManager({ onConnect, onBrowseSftp }: Readonly
   };
 
   const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync(id);
+    await deleteMutation.mutateAsync([id]);
     Toast.success('已删除');
   };
 
@@ -358,7 +358,7 @@ export default function SshProfilesManager({ onConnect, onBrowseSftp }: Readonly
                 field="authType"
                 label="认证方式"
                 style={{ width: '100%' }}
-                onChange={(v) => setFormAuthType(v as SshAuthType)}
+                onChange={(v) => setFormAuthType(enumValueOf(SSH_AUTH_TYPES, v) ?? 'password')}
               >
                 <Select.Option value="password">密码</Select.Option>
                 <Select.Option value="key_path">服务器私钥路径</Select.Option>

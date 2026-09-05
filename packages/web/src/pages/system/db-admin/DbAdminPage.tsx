@@ -71,6 +71,8 @@ import { GridContextMenu, type GridMenuState } from './GridContextMenu';
 import { QuickOpenDialog } from './QuickOpenDialog';
 import {
   dbAdminKeys,
+  dbAdminTableExportCsvUrl,
+  dbAdminTableExportSqlUrl,
   fetchDbAdminTableStructure,
   useClearDbQueryHistory,
   useDbAdminBatchMutateRows,
@@ -81,13 +83,16 @@ import {
   useDbAdminTableStructure,
   useDbAdminTruncateTable,
   useDeleteDbQueryHistory,
-  type DbAdminColumnInfo,
-  type DbAdminForeignKeyInfo,
-  type DbAdminIndexInfo,
-  type DbAdminQueryHistoryItem,
-  type DbAdminTableItem,
-  type DbAdminTableStructure,
 } from '@/hooks/queries/db-admin';
+import type {
+  DbAdminColumn as DbAdminColumnInfo,
+  DbAdminForeignKey as DbAdminForeignKeyInfo,
+  DbAdminIndex as DbAdminIndexInfo,
+  DbAdminQueryHistoryItem,
+  DbAdminSqlExportMode,
+  DbAdminTableItem,
+  DbAdminTableStructure,
+} from '@zenith/shared/ops';
 import './db-admin.css';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { request } from '@/utils/request';
@@ -430,7 +435,7 @@ export default function DbAdminPage() {
   const handleExportTableCsv = async (t: TableItem) => {
     if (!canExport) return;
     try {
-      const blob = await request.getBlob(`/api/db-admin/tables/${encodeURIComponent(t.schema)}/${encodeURIComponent(t.name)}/export.csv`);
+      const blob = await request.getBlob(dbAdminTableExportCsvUrl(t.schema, t.name));
       if (!blob) return;
       downloadBlob(blob, `${t.schema}_${t.name}_${Date.now()}.csv`);
       Toast.success(`${fullName(t)} 导出成功`);
@@ -439,10 +444,10 @@ export default function DbAdminPage() {
     }
   };
 
-  const handleExportTableSql = async (t: TableItem, mode: 'ddl' | 'data' | 'full') => {
+  const handleExportTableSql = async (t: TableItem, mode: DbAdminSqlExportMode) => {
     if (!canExport) return;
     try {
-      const blob = await request.getBlob(`/api/db-admin/tables/${encodeURIComponent(t.schema)}/${encodeURIComponent(t.name)}/export.sql?mode=${mode}`);
+      const blob = await request.getBlob(dbAdminTableExportSqlUrl(t.schema, t.name, mode));
       if (!blob) return;
       const suffixMap: Record<string, string> = { ddl: 'ddl', data: 'data', full: 'full' };
       const suffix = suffixMap[mode] ?? 'full';
@@ -474,7 +479,7 @@ export default function DbAdminPage() {
 
   const handleTruncateTable = async (t: TableItem) => {
     try {
-      await truncateTableMutation.mutateAsync({ schema: t.schema, table: t.name });
+      await truncateTableMutation.mutateAsync({ params: { schema: t.schema, name: t.name } });
       Toast.success(`已截断 ${fullName(t)}`);
       if (selected?.schema === t.schema && selected?.name === t.name) refreshRows();
     }
@@ -483,7 +488,7 @@ export default function DbAdminPage() {
 
   const handleRefreshMatview = async (t: TableItem) => {
     try {
-      await refreshMatviewMutation.mutateAsync({ schema: t.schema, table: t.name });
+      await refreshMatviewMutation.mutateAsync({ params: { schema: t.schema, name: t.name } });
       Toast.success(`已刷新 ${fullName(t)}`);
       if (selected?.schema === t.schema && selected?.name === t.name) refreshRows();
     }
@@ -563,12 +568,12 @@ export default function DbAdminPage() {
   };
 
   const deleteHistoryItem = async (id: number) => {
-    await deleteHistoryMutation.mutateAsync(id);
+    await deleteHistoryMutation.mutateAsync({ params: { id } });
     Toast.success('已删除');
   };
 
   const clearHistory = async () => {
-    await clearHistoryMutation.mutateAsync();
+    await clearHistoryMutation.mutateAsync({});
     Toast.success('已清空');
     setHistoryPage(1);
   };
@@ -795,12 +800,11 @@ export default function DbAdminPage() {
     if (!m || (m.inserts.length + m.updates.length + m.deletes.length === 0)) return;
     try {
       const d = await batchMutateRowsMutation.mutateAsync({
-        schema: selected.schema,
-        table: selected.name,
-        values: {
-        inserts: m.inserts.length > 0 ? m.inserts : undefined,
-        updates: m.updates.length > 0 ? m.updates.map(({ pk, changes }) => ({ pk, changes })) : undefined,
-        deletes: m.deletes.length > 0 ? m.deletes : undefined,
+        params: { schema: selected.schema, name: selected.name },
+        body: {
+          inserts: m.inserts.length > 0 ? m.inserts : undefined,
+          updates: m.updates.length > 0 ? m.updates.map(({ pk, changes }) => ({ pk, changes })) : undefined,
+          deletes: m.deletes.length > 0 ? m.deletes : undefined,
         },
       });
       const parts = [

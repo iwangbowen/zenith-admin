@@ -1,48 +1,40 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import type { QueryOf } from '@zenith/shared/core';
+import { logFileContract } from '@zenith/shared/ops';
+import { contractKey, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
-export interface LogFile {
-  name: string;
-  size: number;
-  modifiedAt: string;
-  isGzip: boolean;
-}
-
-export interface LogFileContentParams {
-  lines: number;
-  keyword?: string;
-  /** 全文过滤命中行前后保留的上下文行数（0-10） */
-  context?: number;
-}
+export type LogFileContentParams = NonNullable<QueryOf<typeof logFileContract.content>>;
 
 export const logFileKeys = {
   all: ['log-files'] as const,
-  lists: ['log-files', 'list'] as const,
-  list: () => ['log-files', 'list'] as const,
-  content: (filename: string | undefined, params: LogFileContentParams) => ['log-files', 'content', filename, params] as const,
+  lists: contractKey(logFileContract.list),
+  list: () => contractKey(logFileContract.list),
+  content: (filename: string | undefined, params: LogFileContentParams) =>
+    contractKey(logFileContract.content, { params: { filename: filename ?? '' }, query: params }),
 };
 
 export function useLogFiles() {
-  return useQuery({
-    queryKey: logFileKeys.list(),
-    queryFn: () => request.get<LogFile[]>('/api/log-files').then(unwrap),
-  });
+  return useApiQuery(logFileContract.list);
 }
 
 export function useLogFileContent(filename: string | undefined, params: LogFileContentParams, enabled = true) {
-  return useQuery({
-    queryKey: logFileKeys.content(filename, params),
-    queryFn: () =>
-      request.get<{ lines: string[] }>(`/api/log-files/${encodeURIComponent(filename ?? '')}/content${toQueryString(params)}`).then(unwrap),
+  return useApiQuery(logFileContract.content, { params: { filename: filename ?? '' }, query: params }, {
     enabled: enabled && !!filename,
   });
 }
 
 export function useDeleteLogFile() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (filename: string) => request.delete<null>(`/api/log-files/${encodeURIComponent(filename)}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: logFileKeys.all }),
+  return useApiMutation(logFileContract.remove, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: logFileKeys.all });
+    },
   });
+}
+
+export function logFileDownloadUrl(filename: string) {
+  return urlOf(logFileContract.download, { params: { filename } });
+}
+
+/** SSE 实时跟踪地址（event: log；`request.fetchRaw` + `readSseStream` 消费） */
+export function logFileTailUrl(filename: string) {
+  return urlOf(logFileContract.tail, { params: { filename } });
 }

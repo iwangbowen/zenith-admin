@@ -19,10 +19,8 @@ import {
   useReloadNginx,
   useTestNginxConfig,
   useUpdateNginxSite,
-  type CreateNginxSiteValues,
-  type NginxInfo,
-  type NginxSite,
 } from '@/hooks/queries/nginx-sites';
+import type { NginxInfo, NginxSite } from '@zenith/shared/ops';
 import { useQueryClient } from '@tanstack/react-query';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
@@ -40,6 +38,17 @@ const EMPTY_SITES: NginxSite[] = [];
 
 interface CreateNginxSiteModalRecord {
   id: number;
+}
+
+/** 新建站点表单：静态站点填 root，反向代理填 proxyPass，提交时按类型择一 */
+interface CreateNginxSiteFormValues {
+  name: string;
+  serverName: string;
+  listenPort: number;
+  type: 'static' | 'proxy';
+  root?: string;
+  proxyPass?: string;
+  sslEnabled?: boolean;
 }
 
 export default function NginxSitesPage() {
@@ -63,11 +72,19 @@ export default function NginxSitesPage() {
   const info = overviewQuery.data?.info ?? null;
   const sites = overviewQuery.data?.sites ?? EMPTY_SITES;
   const editorSite = detailQuery.data ?? null;
-  const createModal = useEditModal<CreateNginxSiteModalRecord, CreateNginxSiteValues>({
+  const createModal = useEditModal<CreateNginxSiteModalRecord, CreateNginxSiteFormValues>({
     entityName: '站点',
     save: {
       mutateAsync: async ({ values }) => {
-        await createMutation.mutateAsync(values);
+        await createMutation.mutateAsync({
+          body: {
+            name: values.name,
+            serverName: values.serverName,
+            listenPort: values.listenPort,
+            sslEnabled: !!values.sslEnabled,
+            ...(values.type === 'proxy' ? { proxyPass: values.proxyPass } : { root: values.root }),
+          },
+        });
         return { id: 0 };
       },
       isPending: createMutation.isPending,
@@ -99,7 +116,7 @@ export default function NginxSitesPage() {
 
   const handleSaveEditor = async () => {
     if (!editorSite) return;
-    await updateMutation.mutateAsync({ name: editorSite.name, content: editorContent });
+    await updateMutation.mutateAsync({ params: { name: editorSite.name }, body: { content: editorContent } });
     Toast.success('配置已保存');
     setEditorVisible(false);
   };
@@ -110,12 +127,12 @@ export default function NginxSitesPage() {
   };
 
   const handleTest = async () => {
-    const res = await testMutation.mutateAsync();
+    const res = await testMutation.mutateAsync({});
     setTestResult(res);
   };
 
   const handleReload = async () => {
-    await reloadMutation.mutateAsync();
+    await reloadMutation.mutateAsync({});
     Toast.success('Nginx 已重载');
   };
 

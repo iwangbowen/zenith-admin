@@ -14,10 +14,8 @@ import {
   useFirewallRules,
   useFirewallStatus,
   useToggleFirewall,
-  type AddFirewallRuleFormValues,
-  type FirewallRule,
-  type FirewallStatus,
 } from '@/hooks/queries/firewall';
+import type { AddFirewallRuleInput, FirewallRule, FirewallStatus } from '@zenith/shared/ops';
 import { CreateButton, ResetButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
@@ -72,11 +70,19 @@ export default function FirewallPage() {
   const fetchAll = async () => {
     await Promise.all([statusQuery.refetch(), rulesQuery.refetch()]);
   };
-  const ruleModal = useEditModal<FirewallRuleModalRecord, AddFirewallRuleFormValues>({
+  const ruleModal = useEditModal<FirewallRuleModalRecord, AddFirewallRuleInput>({
     entityName: '防火墙规则',
     save: {
       mutateAsync: async ({ values }) => {
-        await addRuleMutation.mutateAsync(values);
+        await addRuleMutation.mutateAsync({
+          query: {},
+          body: {
+            ...values,
+            from: values.from?.trim() || 'any',
+            to: values.to?.trim() || 'any',
+            comment: values.comment?.trim() || undefined,
+          },
+        });
         return { id: 0 };
       },
       isPending: addRuleMutation.isPending,
@@ -108,7 +114,7 @@ export default function FirewallPage() {
   }, [keyword, rules]);
 
   async function handleDelete(id: string) {
-    await deleteRuleMutation.mutateAsync(id);
+    await deleteRuleMutation.mutateAsync({ params: { id }, query: {} });
     Toast.success('规则已删除');
   }
 
@@ -157,7 +163,7 @@ export default function FirewallPage() {
           key: 'delete',
           label: '删除',
           danger: true,
-          loading: deleteRuleMutation.isPending && deleteRuleMutation.variables === record.id,
+          loading: deleteRuleMutation.isPending && deleteRuleMutation.variables?.params.id === record.id,
           hidden: !canManageCurrent,
           onClick: () => {
             confirmDelete({

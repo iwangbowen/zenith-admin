@@ -10,7 +10,8 @@ import SshProfilesManager, { type SshProfile } from './SshProfilesManager';
 import SftpExplorer from './SftpExplorer';
 import DockerExplorer from './DockerExplorer';
 import { useTerminalPreferences } from './useTerminalPreferences';
-import { request } from '@/utils/request';
+import { terminalFileContract, type TerminalShellInfo } from '@zenith/shared/ops';
+import { api } from '@/lib/contract-query';
 import { TOKEN_KEY } from '@zenith/shared/core';
 import { getFileIcon, getShellIcon } from '@/utils/fileIcons';
 import { CursorContextDropdown } from '@/components/CursorContextDropdown';
@@ -35,12 +36,6 @@ import {
 import { confirmDanger } from '@/utils/confirm';
 
 const IS_DEMO = import.meta.env.VITE_DEMO_MODE === 'true';
-
-interface ShellInfo {
-  id: string;
-  label: string;
-  path: string;
-}
 
 interface Session {
   id: string;
@@ -160,7 +155,7 @@ export default function TerminalPage() {
   const [showSftp, setShowSftp] = useState(false);
   const [sftpProfile, setSftpProfile] = useState<SshProfile | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [shells, setShells] = useState<ShellInfo[]>([]);
+  const [shells, setShells] = useState<TerminalShellInfo[]>([]);
   const [serverDefaultShell, setServerDefaultShell] = useState('');
   const [dirtyIds, setDirtyIds] = useState<Set<string>>(() => new Set());
   const [ctxMenu, setCtxMenu] = useState<{ id: string; x: number; y: number } | null>(null);
@@ -169,14 +164,12 @@ export default function TerminalPage() {
   // 拉取当前平台可用 shell 列表
   useEffect(() => {
     if (IS_DEMO) return;
-    void request
-      .get<{ platform: string; shells: ShellInfo[]; defaultShell: string }>('/api/terminal-files/shells', { silent: true })
+    void api(terminalFileContract.shells, { silent: true })
       .then((res) => {
-        if (res.code === 0 && res.data) {
-          setShells(res.data.shells);
-          setServerDefaultShell(res.data.defaultShell);
-        }
-      });
+        setShells(res.shells);
+        setServerDefaultShell(res.defaultShell);
+      })
+      .catch(() => undefined);
   }, []);
 
   const defaultShellId =

@@ -1,11 +1,11 @@
 /**
  * App 推送 Mock（Demo 模式）：配置 CRUD / 测试发送 / 发送记录 / 设备中心。
  */
-import { http } from 'msw';
 import { pushConfigContract, pushSendLogContract } from '@zenith/shared/messaging';
 import type { PushConfig } from '@zenith/shared/messaging';
+import { clientDeviceContract } from '@zenith/shared/ops';
 import { mock } from '@/mocks/utils/contract';
-import { badRequest, notFound, ok, paginate } from '@/mocks/utils/handlers';
+import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockDateTime } from '@/mocks/utils/date';
 import {
   getNextPushConfigId,
@@ -132,33 +132,27 @@ export const pushHandlers = [
   }),
 
   // ─── 设备中心（挂在应用版本域路径下）───────────────────────────────────────
-  http.get('/api/app-releases/devices', ({ request }) => {
-    const url = new URL(request.url);
-    const appId = url.searchParams.get('appId');
-    const platform = url.searchParams.get('platform') || '';
-    const subjectType = url.searchParams.get('subjectType') || '';
-    const pushBound = url.searchParams.get('pushBound') || '';
-    const keyword = url.searchParams.get('keyword') || '';
+  mock(clientDeviceContract.list, ({ query, ok, paginate }) => {
     let list = [...mockClientDevices];
-    if (appId) list = list.filter((d) => d.appId === Number(appId));
-    if (platform) list = list.filter((d) => d.platform === platform);
-    if (subjectType) list = list.filter((d) => d.subjectType === subjectType);
-    if (pushBound === 'true') list = list.filter((d) => d.pushRegistrationId);
-    if (keyword) {
-      list = list.filter((d) => d.deviceId.includes(keyword) || (d.deviceModel ?? '').includes(keyword) || (d.appVersion ?? '').includes(keyword));
+    if (query.appId) list = list.filter((d) => d.appId === query.appId);
+    if (query.platform) list = list.filter((d) => d.platform === query.platform);
+    if (query.subjectType) list = list.filter((d) => d.subjectType === query.subjectType);
+    if (query.pushBound === 'true') list = list.filter((d) => d.pushRegistrationId);
+    if (query.keyword) {
+      list = list.filter((d) => d.deviceId.includes(query.keyword!) || (d.deviceModel ?? '').includes(query.keyword!) || (d.appVersion ?? '').includes(query.keyword!));
     }
-    return ok(paginate(list, url));
+    return ok(paginate(list));
   }),
 
-  http.put('/api/app-releases/devices/:id/unbind', ({ params }) => {
-    const device = mockClientDevices.find((d) => d.id === Number(params.id));
+  mock(clientDeviceContract.unbind, ({ params, ok }) => {
+    const device = mockClientDevices.find((d) => d.id === params.id);
     if (!device) return notFound('设备不存在', { status: 404 });
     Object.assign(device, { subjectType: null, subjectId: null, subjectName: null, pushProvider: null, pushRegistrationId: null });
     return ok(null, '解绑成功');
   }),
 
-  http.delete('/api/app-releases/devices/:id', ({ params }) => {
-    const idx = mockClientDevices.findIndex((d) => d.id === Number(params.id));
+  mock(clientDeviceContract.remove, ({ params, ok }) => {
+    const idx = mockClientDevices.findIndex((d) => d.id === params.id);
     if (idx === -1) return notFound('设备不存在', { status: 404 });
     mockClientDevices.splice(idx, 1);
     return ok(null, '删除成功');

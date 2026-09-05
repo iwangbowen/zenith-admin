@@ -1,37 +1,35 @@
-import { http, HttpResponse } from 'msw';
-import { ok, notFound, pageParams } from '@/mocks/utils/handlers';
+import { HttpResponse } from 'msw';
+import {
+  dbAdminContract,
+  type DbAdminColumn,
+  type DbAdminForeignKey,
+  type DbAdminIndex,
+  type DbAdminQueryHistoryItem,
+  type DbAdminQueryResultColumn,
+  type DbAdminRow,
+  type DbAdminTableKind,
+} from '@zenith/shared/ops';
+import { mock } from '@/mocks/utils/contract';
+import { notFound } from '@/mocks/utils/handlers';
 import { mockDateTime } from '@/mocks/utils/date';
 
-const API = import.meta.env.VITE_API_BASE_URL || '';
-
 // ─── 类型 ──────────────────────────────────────────────────────────────────────
-interface MockColumn {
-  name: string;
-  dataType: string;
-  isNullable: boolean;
-  defaultValue: string | null;
-  isPrimaryKey: boolean;
-  comment: string | null;
-  maxLength: number | null;
-  enumValues: string[] | null;
-}
-
 interface MockTableDef {
   schema: string;
   name: string;
-  kind: 'table' | 'view' | 'matview';
+  kind: DbAdminTableKind;
   comment: string | null;
-  columns: MockColumn[];
-  indexes: Array<{ name: string; columns: string[]; isUnique: boolean; isPrimary: boolean; definition: string }>;
-  foreignKeys: Array<{ name: string; columns: string[]; referencedSchema: string; referencedTable: string; referencedColumns: string[]; onUpdate: string; onDelete: string }>;
-  rows: Array<Record<string, unknown>>;
+  columns: DbAdminColumn[];
+  indexes: DbAdminIndex[];
+  foreignKeys: DbAdminForeignKey[];
+  rows: DbAdminRow[];
 }
 
 function col(
   name: string,
   dataType: string,
-  opts: Partial<Omit<MockColumn, 'name' | 'dataType'>> = {},
-): MockColumn {
+  opts: Partial<Omit<DbAdminColumn, 'name' | 'dataType'>> = {},
+): DbAdminColumn {
   return {
     name,
     dataType,
@@ -45,7 +43,7 @@ function col(
 }
 
 // ─── 模拟数据 ───────────────────────────────────────────────────────────────────
-const usersRows: Array<Record<string, unknown>> = Array.from({ length: 42 }, (_, i) => ({
+const usersRows: DbAdminRow[] = Array.from({ length: 42 }, (_, i) => ({
   id: i + 1,
   username: i === 0 ? 'admin' : `user${i + 1}`,
   nickname: i === 0 ? '超级管理员' : `用户${i + 1}`,
@@ -55,14 +53,14 @@ const usersRows: Array<Record<string, unknown>> = Array.from({ length: 42 }, (_,
   created_at: mockDateTime(),
 }));
 
-const rolesRows: Array<Record<string, unknown>> = [
+const rolesRows: DbAdminRow[] = [
   { id: 1, name: '超级管理员', code: 'super_admin', sort: 1, status: 'enabled', remark: '拥有全部权限', created_at: mockDateTime() },
   { id: 2, name: '系统管理员', code: 'admin', sort: 2, status: 'enabled', remark: '系统管理', created_at: mockDateTime() },
   { id: 3, name: '普通用户', code: 'user', sort: 3, status: 'enabled', remark: null, created_at: mockDateTime() },
   { id: 4, name: '访客', code: 'guest', sort: 4, status: 'disabled', remark: '只读访客', created_at: mockDateTime() },
 ];
 
-const menusRows: Array<Record<string, unknown>> = Array.from({ length: 18 }, (_, i) => ({
+const menusRows: DbAdminRow[] = Array.from({ length: 18 }, (_, i) => ({
   id: i + 1,
   parent_id: i < 4 ? 0 : ((i % 4) + 1),
   title: `菜单${i + 1}`,
@@ -75,7 +73,7 @@ const menusRows: Array<Record<string, unknown>> = Array.from({ length: 18 }, (_,
   created_at: mockDateTime(),
 }));
 
-const operationLogsRows: Array<Record<string, unknown>> = Array.from({ length: 120 }, (_, i) => ({
+const operationLogsRows: DbAdminRow[] = Array.from({ length: 120 }, (_, i) => ({
   id: i + 1,
   username: i % 2 === 0 ? 'admin' : `user${(i % 10) + 1}`,
   module: ['用户管理', '角色管理', '菜单管理', '数据库管理'][i % 4],
@@ -86,7 +84,7 @@ const operationLogsRows: Array<Record<string, unknown>> = Array.from({ length: 1
   created_at: mockDateTime(),
 }));
 
-const departmentsRows: Array<Record<string, unknown>> = [
+const departmentsRows: DbAdminRow[] = [
   { id: 1, parent_id: 0, name: '总公司', sort: 1, status: 'enabled', created_at: mockDateTime() },
   { id: 2, parent_id: 1, name: '研发部', sort: 1, status: 'enabled', created_at: mockDateTime() },
   { id: 3, parent_id: 1, name: '市场部', sort: 2, status: 'enabled', created_at: mockDateTime() },
@@ -215,10 +213,7 @@ function prettySize(bytes: number): string {
 
 // ─── 查询历史（内存态） ──────────────────────────────────────────────────────────
 let historyId = 6;
-const queryHistory: Array<{
-  id: number; sqlText: string; durationMs: number; rowCount: number;
-  success: boolean; errorMessage: string | null; executedAt: string;
-}> = [
+const queryHistory: DbAdminQueryHistoryItem[] = [
   { id: 1, sqlText: 'SELECT * FROM users LIMIT 50;', durationMs: 12, rowCount: 42, success: true, errorMessage: null, executedAt: mockDateTime() },
   { id: 2, sqlText: 'SELECT count(*) FROM operation_logs;', durationMs: 8, rowCount: 1, success: true, errorMessage: null, executedAt: mockDateTime() },
   { id: 3, sqlText: 'SELECT r.name, count(*) FROM roles r GROUP BY r.name;', durationMs: 21, rowCount: 4, success: true, errorMessage: null, executedAt: mockDateTime() },
@@ -235,7 +230,7 @@ function recordHistory(sqlText: string, durationMs: number, rowCount: number, su
 function applyRowsQuery(
   t: MockTableDef,
   params: { orderBy?: string; orderDir?: string; filtersStr?: string; search?: string },
-): Array<Record<string, unknown>> {
+): DbAdminRow[] {
   let rows = [...t.rows];
   const { orderBy, orderDir, filtersStr, search } = params;
 
@@ -287,8 +282,8 @@ function applyRowsQuery(
 
 // ─── 查询执行（简单 SELECT 解析） ────────────────────────────────────────────────
 function runMockQuery(sqlText: string): {
-  columns: Array<{ name: string; dataType: string }>;
-  rows: Array<Record<string, unknown>>;
+  columns: DbAdminQueryResultColumn[];
+  rows: DbAdminRow[];
   durationMs: number;
   paginatable: boolean;
 } {
@@ -325,14 +320,15 @@ function runMockQuery(sqlText: string): {
   };
 }
 
+
 // ─── Handlers ───────────────────────────────────────────────────────────────────
 export const dbAdminHandlers = [
   // 数据库终端可用性（Demo 模式无真实服务端，统一不可用）
-  http.get(`${API}/api/db-admin/terminal-availability`, () =>
+  mock(dbAdminContract.terminalAvailability, ({ ok }) =>
     ok({ available: false, version: null, reason: 'Demo 模式不支持数据库终端（psql 会话需真实服务端）' })),
 
   // 表列表
-  http.get(`${API}/api/db-admin/tables`, () => {
+  mock(dbAdminContract.tables, ({ ok }) => {
     return ok(tables.map((t) => {
       const size = tableSize(t);
       return {
@@ -343,7 +339,7 @@ export const dbAdminHandlers = [
   }),
 
   // 总览
-  http.get(`${API}/api/db-admin/overview`, () => {
+  mock(dbAdminContract.overview, ({ ok }) => {
     const tableDefs = tables.filter((t) => t.kind === 'table');
     const viewDefs = tables.filter((t) => t.kind !== 'table');
     const totalRows = tableDefs.reduce((s, t) => s + t.rows.length, 0);
@@ -371,8 +367,8 @@ export const dbAdminHandlers = [
   }),
 
   // 表结构
-  http.get(`${API}/api/db-admin/tables/:schema/:name/structure`, ({ params }) => {
-    const t = findTable(String(params.schema), String(params.name));
+  mock(dbAdminContract.tableStructure, ({ params, ok }) => {
+    const t = findTable(params.schema, params.name);
     if (!t) return notFound('表不存在', { status: 404 });
     return ok({
       columns: t.columns,
@@ -383,39 +379,37 @@ export const dbAdminHandlers = [
   }),
 
   // 表数据
-  http.get(`${API}/api/db-admin/tables/:schema/:name/rows`, ({ params, request }) => {
-    const t = findTable(String(params.schema), String(params.name));
+  mock(dbAdminContract.tableRows, ({ params, query, ok }) => {
+    const t = findTable(params.schema, params.name);
     if (!t) return notFound('表不存在', { status: 404 });
-    const url = new URL(request.url);
-    const { page, pageSize } = pageParams(url, 20);
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
     const filtered = applyRowsQuery(t, {
-      orderBy: url.searchParams.get('orderBy') ?? undefined,
-      orderDir: url.searchParams.get('orderDir') ?? undefined,
-      filtersStr: url.searchParams.get('filters') ?? undefined,
-      search: url.searchParams.get('search') ?? undefined,
+      orderBy: query.orderBy,
+      orderDir: query.orderDir,
+      filtersStr: query.filters,
+      search: query.search,
     });
     const start = (page - 1) * pageSize;
     return ok({ list: filtered.slice(start, start + pageSize), total: filtered.length, page, pageSize }, 'success');
   }),
 
   // 插入行
-  http.post(`${API}/api/db-admin/tables/:schema/:name/rows`, async ({ params, request }) => {
-    const t = findTable(String(params.schema), String(params.name));
+  mock(dbAdminContract.insertRow, ({ params, body, ok }) => {
+    const t = findTable(params.schema, params.name);
     if (!t) return notFound('表不存在', { status: 404 });
-    const body = await request.json() as { values: Record<string, unknown> };
     const pk = t.columns.find((c) => c.isPrimaryKey)?.name ?? 'id';
     const maxId = t.rows.reduce((m, r) => Math.max(m, Number(r[pk]) || 0), 0);
-    const row: Record<string, unknown> = { ...body.values };
+    const row: DbAdminRow = { ...body.values };
     if (row[pk] == null) row[pk] = maxId + 1;
     t.rows.push(row);
     return ok(row, 'success');
   }),
 
   // 更新行
-  http.patch(`${API}/api/db-admin/tables/:schema/:name/rows`, async ({ params, request }) => {
-    const t = findTable(String(params.schema), String(params.name));
+  mock(dbAdminContract.updateRow, ({ params, body, ok }) => {
+    const t = findTable(params.schema, params.name);
     if (!t) return notFound('表不存在', { status: 404 });
-    const body = await request.json() as { pk: Record<string, unknown>; changes: Record<string, unknown> };
     const target = t.rows.find((r) => Object.entries(body.pk).every(([k, v]) => String(r[k]) === String(v)));
     if (!target) return notFound('记录不存在', { status: 404 });
     Object.assign(target, body.changes);
@@ -423,21 +417,16 @@ export const dbAdminHandlers = [
   }),
 
   // 批量变更行（事务语义：mock 中先全量校验再统一应用，顺序 INSERT → UPDATE → DELETE）
-  http.post(`${API}/api/db-admin/tables/:schema/:name/batch-mutate`, async ({ params, request }) => {
-    const t = findTable(String(params.schema), String(params.name));
+  mock(dbAdminContract.batchMutate, ({ params, body, ok }) => {
+    const t = findTable(params.schema, params.name);
     if (!t) return notFound('表不存在', { status: 404 });
-    const body = await request.json() as {
-      inserts?: Array<Record<string, unknown>>;
-      updates?: Array<{ pk: Record<string, unknown>; changes: Record<string, unknown> }>;
-      deletes?: Array<{ pk: Record<string, unknown> }>;
-    };
-    const inserts = Array.isArray(body.inserts) ? body.inserts : [];
-    const updates = Array.isArray(body.updates) ? body.updates : [];
-    const deletes = Array.isArray(body.deletes) ? body.deletes : [];
-    const matchPk = (r: Record<string, unknown>, pk: Record<string, unknown>) =>
+    const inserts = body.inserts ?? [];
+    const updates = body.updates ?? [];
+    const deletes = body.deletes ?? [];
+    const matchPk = (r: DbAdminRow, pk: DbAdminRow) =>
       Object.entries(pk).every(([k, v]) => String(r[k]) === String(v));
 
-    const updateTargets: Array<{ row: Record<string, unknown>; changes: Record<string, unknown> }> = [];
+    const updateTargets: Array<{ row: DbAdminRow; changes: DbAdminRow }> = [];
     for (const [i, u] of updates.entries()) {
       const row = t.rows.find((r) => matchPk(r, u.pk));
       if (!row) {
@@ -456,7 +445,7 @@ export const dbAdminHandlers = [
 
     const pkCol = t.columns.find((c) => c.isPrimaryKey)?.name;
     for (const values of inserts) {
-      const row: Record<string, unknown> = { ...values };
+      const row: DbAdminRow = { ...values };
       if (pkCol && (row[pkCol] === undefined || row[pkCol] === null)) {
         const maxId = t.rows.reduce((m, r) => Math.max(m, Number(r[pkCol]) || 0), 0);
         row[pkCol] = maxId + 1;
@@ -469,10 +458,9 @@ export const dbAdminHandlers = [
   }),
 
   // 删除行
-  http.delete(`${API}/api/db-admin/tables/:schema/:name/rows`, async ({ params, request }) => {
-    const t = findTable(String(params.schema), String(params.name));
+  mock(dbAdminContract.deleteRow, ({ params, body, ok }) => {
+    const t = findTable(params.schema, params.name);
     if (!t) return notFound('表不存在', { status: 404 });
-    const body = await request.json() as { pk: Record<string, unknown> };
     const idx = t.rows.findIndex((r) => Object.entries(body.pk).every(([k, v]) => String(r[k]) === String(v)));
     if (idx === -1) return notFound('记录不存在', { status: 404 });
     t.rows.splice(idx, 1);
@@ -480,30 +468,31 @@ export const dbAdminHandlers = [
   }),
 
   // 截断表
-  http.post(`${API}/api/db-admin/tables/:schema/:name/truncate`, ({ params }) => {
-    const t = findTable(String(params.schema), String(params.name));
+  mock(dbAdminContract.truncateTable, ({ params, ok }) => {
+    const t = findTable(params.schema, params.name);
     if (!t) return notFound('表不存在', { status: 404 });
     t.rows.length = 0;
     return ok(null, '已截断');
   }),
 
   // 执行 SQL
-  http.post(`${API}/api/db-admin/query`, async ({ request }) => {
-    const body = await request.json() as { sql: string; page?: number; pageSize?: number };
-    const r = runMockQuery(body.sql ?? '');
+  mock(dbAdminContract.query, ({ body, ok }) => {
+    const r = runMockQuery(body.sql);
     const wantPage = body.page != null && body.pageSize != null && body.pageSize > 0 && r.paginatable;
     if (wantPage) {
+      const page = body.page!;
+      const pageSize = body.pageSize!;
       const total = r.rows.length;
-      const start = (body.page! - 1) * body.pageSize!;
-      const rows = r.rows.slice(start, start + body.pageSize!);
-      recordHistory(body.sql ?? '', r.durationMs, rows.length, true, null);
+      const start = (page - 1) * pageSize;
+      const rows = r.rows.slice(start, start + pageSize);
+      recordHistory(body.sql, r.durationMs, rows.length, true, null);
       return ok({
         columns: r.columns, rows, rowCount: rows.length, durationMs: r.durationMs,
-        truncated: false, paginated: true, total, page: body.page!, pageSize: body.pageSize!,
+        truncated: false, paginated: true, total, page, pageSize,
       }, 'success');
     }
     const rows = r.rows.slice(0, 5000);
-    recordHistory(body.sql ?? '', r.durationMs, rows.length, true, null);
+    recordHistory(body.sql, r.durationMs, rows.length, true, null);
     return ok({
       columns: r.columns, rows, rowCount: rows.length, durationMs: r.durationMs,
       truncated: r.rows.length > 5000, paginated: false, total: null, page: null, pageSize: null,
@@ -511,27 +500,24 @@ export const dbAdminHandlers = [
   }),
 
   // 取消查询（Demo 模式下查询瞬时返回，恒为已结束）
-  http.post(`${API}/api/db-admin/query/cancel`, () => ok({ ok: false }, 'success')),
+  mock(dbAdminContract.cancelQuery, ({ ok }) => ok({ ok: false }, 'success')),
 
   // 批量导入
-  http.post(`${API}/api/db-admin/tables/:schema/:name/import`, async ({ params, request }) => {
-    const t = findTable(String(params.schema), String(params.name));
+  mock(dbAdminContract.importRows, ({ params, body, ok }) => {
+    const t = findTable(params.schema, params.name);
     if (!t) return notFound('表不存在', { status: 404 });
-    const body = await request.json() as { rows: Array<Record<string, unknown>> };
-    const rows = Array.isArray(body.rows) ? body.rows : [];
     const pk = t.columns.find((c) => c.isPrimaryKey)?.name ?? 'id';
     let maxId = t.rows.reduce((m, r) => Math.max(m, Number(r[pk]) || 0), 0);
-    for (const row of rows) {
+    for (const row of body.rows) {
       const next = { ...row };
       if (next[pk] == null) next[pk] = ++maxId;
       t.rows.push(next);
     }
-    return ok({ inserted: rows.length }, 'success');
+    return ok({ inserted: body.rows.length }, 'success');
   }),
 
   // EXPLAIN
-  http.post(`${API}/api/db-admin/explain`, async ({ request }) => {
-    const body = await request.json() as { sql: string; analyze?: boolean };
+  mock(dbAdminContract.explain, ({ body, ok }) => {
     const analyze = Boolean(body.analyze);
     const plan = {
       Plan: {
@@ -551,27 +537,21 @@ export const dbAdminHandlers = [
   }),
 
   // 查询历史
-  http.get(`${API}/api/db-admin/query/history`, ({ request }) => {
-    const url = new URL(request.url);
-    const { page, pageSize } = pageParams(url, 20);
-    const start = (page - 1) * pageSize;
-    return ok({ list: queryHistory.slice(start, start + pageSize), total: queryHistory.length, page, pageSize }, 'success');
-  }),
+  mock(dbAdminContract.history, ({ ok, paginate }) => ok(paginate(queryHistory), 'success')),
 
-  http.delete(`${API}/api/db-admin/query/history/:id`, ({ params }) => {
-    const id = Number(params.id);
-    const idx = queryHistory.findIndex((h) => h.id === id);
+  mock(dbAdminContract.removeHistory, ({ params, ok }) => {
+    const idx = queryHistory.findIndex((h) => h.id === params.id);
     if (idx !== -1) queryHistory.splice(idx, 1);
     return ok(null, '已删除');
   }),
 
-  http.delete(`${API}/api/db-admin/query/history`, () => {
+  mock(dbAdminContract.clearHistory, ({ ok }) => {
     queryHistory.length = 0;
     return ok(null, '已清空');
   }),
 
   // ER 图
-  http.get(`${API}/api/db-admin/er-schema`, () => {
+  mock(dbAdminContract.erSchema, ({ ok }) => {
     return ok({
       tables: tables.map((t) => ({
         schema: t.schema, name: t.name,
@@ -584,7 +564,7 @@ export const dbAdminHandlers = [
     }, 'success');
   }),
 
-  http.get(`${API}/api/db-admin/er-diagram`, () => {
+  mock(dbAdminContract.erDiagram, ({ ok }) => {
     return ok(tables.flatMap((t) => t.foreignKeys.map((fk) => ({
       schema: t.schema, table: t.name, columns: fk.columns,
       referencedSchema: fk.referencedSchema, referencedTable: fk.referencedTable, referencedColumns: fk.referencedColumns,
@@ -592,9 +572,8 @@ export const dbAdminHandlers = [
   }),
 
   // 导出（CSV / JSON）— 返回文本，供下载按钮工作
-  http.post(`${API}/api/db-admin/query/export.csv`, async ({ request }) => {
-    const body = await request.json() as { sql: string };
-    const result = runMockQuery(body.sql ?? '');
+  mock(dbAdminContract.exportQueryCsv, ({ body }) => {
+    const result = runMockQuery(body.sql);
     const header = result.columns.map((c) => c.name).join(',');
     const lines = result.rows.map((r) => result.columns.map((c) => String(r[c.name] ?? '')).join(','));
     return new HttpResponse(`\uFEFF${header}\n${lines.join('\n')}`, {
@@ -602,16 +581,15 @@ export const dbAdminHandlers = [
     });
   }),
 
-  http.post(`${API}/api/db-admin/query/export.json`, async ({ request }) => {
-    const body = await request.json() as { sql: string };
-    const result = runMockQuery(body.sql ?? '');
+  mock(dbAdminContract.exportQueryJson, ({ body }) => {
+    const result = runMockQuery(body.sql);
     return new HttpResponse(JSON.stringify(result.rows, null, 2), {
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
     });
   }),
 
-  http.get(`${API}/api/db-admin/tables/:schema/:name/export.csv`, ({ params }) => {
-    const t = findTable(String(params.schema), String(params.name));
+  mock(dbAdminContract.exportTableCsv, ({ params }) => {
+    const t = findTable(params.schema, params.name);
     if (!t) return notFound('表不存在', { status: 404 });
     const header = t.columns.map((c) => c.name).join(',');
     const lines = t.rows.map((r) => t.columns.map((c) => String(r[c.name] ?? '')).join(','));
@@ -620,8 +598,8 @@ export const dbAdminHandlers = [
     });
   }),
 
-  http.get(`${API}/api/db-admin/tables/:schema/:name/export.sql`, ({ params }) => {
-    const t = findTable(String(params.schema), String(params.name));
+  mock(dbAdminContract.exportTableSql, ({ params }) => {
+    const t = findTable(params.schema, params.name);
     if (!t) return notFound('表不存在', { status: 404 });
     const lines = t.rows.map((r) => {
       const cols = t.columns.map((c) => `"${c.name}"`).join(', ');
@@ -638,30 +616,30 @@ export const dbAdminHandlers = [
   }),
 
   // ─── 运维：活动连接 ──────────────────────────────────────────────────────────
-  http.get(`${API}/api/db-admin/activity`, () => {
+  mock(dbAdminContract.activity, ({ ok }) => {
     const now = mockDateTime();
     return ok([
       {
-        pid: 101, username: 'postgres', applicationName: 'zenith-admin', clientAddr: '172.18.0.1',
+        pid: 101, username: 'postgres', applicationName: 'zenith-admin', clientAddr: '172.18.0.1', database: 'zenith_admin',
         state: 'active', waitEventType: null, waitEvent: null, backendType: 'client backend',
         query: 'SELECT * FROM pg_stat_activity WHERE datname = current_database()',
         querySeconds: 0.03, xactSeconds: 0.03, backendSeconds: 1820,
         queryStart: now, backendStart: now, blockedBy: [], isCurrent: true,
       },
       {
-        pid: 102, username: 'postgres', applicationName: 'zenith-admin', clientAddr: '172.18.0.1',
+        pid: 102, username: 'postgres', applicationName: 'zenith-admin', clientAddr: '172.18.0.1', database: 'zenith_admin',
         state: 'idle', waitEventType: 'Client', waitEvent: 'ClientRead', backendType: 'client backend',
         query: 'SELECT id, username FROM users WHERE status = $1', querySeconds: 12.4, xactSeconds: null,
         backendSeconds: 3600, queryStart: now, backendStart: now, blockedBy: [], isCurrent: false,
       },
       {
-        pid: 103, username: 'app', applicationName: 'worker', clientAddr: '172.18.0.5',
+        pid: 103, username: 'app', applicationName: 'worker', clientAddr: '172.18.0.5', database: 'zenith_admin',
         state: 'active', waitEventType: 'Lock', waitEvent: 'transactionid', backendType: 'client backend',
         query: 'UPDATE operation_logs SET module = $1 WHERE id = $2', querySeconds: 45.8, xactSeconds: 46.0,
         backendSeconds: 600, queryStart: now, backendStart: now, blockedBy: [104], isCurrent: false,
       },
       {
-        pid: 104, username: 'app', applicationName: 'worker', clientAddr: '172.18.0.6',
+        pid: 104, username: 'app', applicationName: 'worker', clientAddr: '172.18.0.6', database: 'zenith_admin',
         state: 'idle in transaction', waitEventType: null, waitEvent: null, backendType: 'client backend',
         query: 'BEGIN', querySeconds: 60.1, xactSeconds: 62.0, backendSeconds: 700,
         queryStart: now, backendStart: now, blockedBy: [], isCurrent: false,
@@ -669,11 +647,11 @@ export const dbAdminHandlers = [
     ], 'success');
   }),
 
-  http.post(`${API}/api/db-admin/activity/:pid/cancel`, () => ok({ ok: true }, 'success')),
-  http.post(`${API}/api/db-admin/activity/:pid/terminate`, () => ok({ ok: true }, 'success')),
+  mock(dbAdminContract.cancelBackend, ({ ok }) => ok({ ok: true }, 'success')),
+  mock(dbAdminContract.terminateBackend, ({ ok }) => ok({ ok: true }, 'success')),
 
   // ─── 运维：表维护 ────────────────────────────────────────────────────────────
-  http.get(`${API}/api/db-admin/maintenance/tables`, () => {
+  mock(dbAdminContract.maintenanceTables, ({ ok }) => {
     const now = mockDateTime();
     return ok(tables.filter((t) => t.kind === 'table').map((t, i) => {
       const live = t.rows.length;
@@ -692,11 +670,11 @@ export const dbAdminHandlers = [
     }).sort((a, b) => b.deadTuples - a.deadTuples), 'success');
   }),
 
-  http.post(`${API}/api/db-admin/tables/:schema/:name/maintenance`, () => ok(null, '已执行')),
-  http.post(`${API}/api/db-admin/tables/:schema/:name/refresh`, () => ok(null, '已刷新')),
+  mock(dbAdminContract.runMaintenance, ({ ok }) => ok(null, '已执行')),
+  mock(dbAdminContract.refreshMatview, ({ ok }) => ok(null, '已刷新')),
 
   // ─── 运维：索引健康 ──────────────────────────────────────────────────────────
-  http.get(`${API}/api/db-admin/index-health`, () => {
+  mock(dbAdminContract.indexHealth, ({ ok }) => {
     return ok({
       unused: [
         { schema: 'public', table: 'operation_logs', index: 'idx_operation_logs_module', scans: 0, sizeBytes: 32768, sizeText: '32 kB', isUnique: false, isPrimary: false, columns: ['module'], definition: 'CREATE INDEX idx_operation_logs_module ON public.operation_logs USING btree (module)', partitions: 1 },
@@ -719,7 +697,7 @@ export const dbAdminHandlers = [
   }),
 
   // ─── 对象浏览 ────────────────────────────────────────────────────────────────
-  http.get(`${API}/api/db-admin/objects`, () => {
+  mock(dbAdminContract.objects, ({ ok }) => {
     return ok({
       sequences: [
         { schema: 'public', name: 'users_id_seq', dataType: 'bigint', startValue: '1', incrementBy: '1', lastValue: '42' },
@@ -746,7 +724,7 @@ export const dbAdminHandlers = [
   }),
 
   // ─── Drizzle Schema 漂移对照 ──────────────────────────────────────────────────
-  http.get(`${API}/api/db-admin/schema-drift`, () => {
+  mock(dbAdminContract.schemaDrift, ({ ok }) => {
     return ok({
       inSync: false,
       expectedTables: 109,

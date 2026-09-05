@@ -7,7 +7,7 @@ import { request } from '@/utils/request';
 import { useThemeController } from '@/providers/theme-controller';
 import { useTerminalPreferences } from './useTerminalPreferences';
 import { resolveTheme, toMonacoTheme, monacoThemeName } from './themes';
-import { useFileContent, useSaveFileContent } from '@/hooks/queries/terminal-files';
+import { editableFileDownloadUrl, useFileContent, useSaveFileContent, type EditableFileRef } from '@/hooks/queries/terminal-files';
 
 interface EditorTabProps {
   readonly filePath: string;
@@ -98,10 +98,9 @@ interface FileRef {
   /** 用于显示与语言检测的真实路径 */
   displayPath: string;
   readOnly: boolean;
-  readUrl: string;
-  writeUrl: string | null;
+  /** 契约层的文件引用（读取 / 保存 / 下载都由它派生） */
+  source: EditableFileRef;
   downloadUrl: string;
-  buildWriteBody: (content: string) => Record<string, string>;
 }
 
 /** 解析文件引用：local 普通路径 / docker:// 容器只读 / sftp:// 远程可写 */
@@ -111,40 +110,19 @@ function parseFileRef(filePath: string): FileRef {
     const slashIdx = withoutScheme.indexOf('/');
     const containerId = slashIdx >= 0 ? withoutScheme.slice(0, slashIdx) : withoutScheme;
     const containerPath = slashIdx >= 0 ? withoutScheme.slice(slashIdx) : '/';
-    return {
-      kind: 'docker',
-      displayPath: containerPath,
-      readOnly: true,
-      readUrl: `/api/docker/${containerId}/files/content?path=${encodeURIComponent(containerPath)}`,
-      writeUrl: null,
-      downloadUrl: '',
-      buildWriteBody: () => ({}),
-    };
+    const source: EditableFileRef = { kind: 'docker', containerId, path: containerPath };
+    return { kind: 'docker', displayPath: containerPath, readOnly: true, source, downloadUrl: editableFileDownloadUrl(source) };
   }
   if (filePath.startsWith('sftp://')) {
     const withoutScheme = filePath.slice('sftp://'.length);
     const slashIdx = withoutScheme.indexOf('/');
-    const profileId = slashIdx >= 0 ? withoutScheme.slice(0, slashIdx) : withoutScheme;
+    const profileId = Number(slashIdx >= 0 ? withoutScheme.slice(0, slashIdx) : withoutScheme);
     const remotePath = slashIdx >= 0 ? withoutScheme.slice(slashIdx) : '/';
-    return {
-      kind: 'sftp',
-      displayPath: remotePath,
-      readOnly: false,
-      readUrl: `/api/ssh-sftp/${profileId}/content?path=${encodeURIComponent(remotePath)}`,
-      writeUrl: `/api/ssh-sftp/${profileId}/content`,
-      downloadUrl: `/api/ssh-sftp/${profileId}/download?path=${encodeURIComponent(remotePath)}`,
-      buildWriteBody: (content) => ({ path: remotePath, content }),
-    };
+    const source: EditableFileRef = { kind: 'sftp', profileId, path: remotePath };
+    return { kind: 'sftp', displayPath: remotePath, readOnly: false, source, downloadUrl: editableFileDownloadUrl(source) };
   }
-  return {
-    kind: 'local',
-    displayPath: filePath,
-    readOnly: false,
-    readUrl: `/api/terminal-files/content?path=${encodeURIComponent(filePath)}`,
-    writeUrl: '/api/terminal-files/content',
-    downloadUrl: `/api/terminal-files/download?path=${encodeURIComponent(filePath)}`,
-    buildWriteBody: (content) => ({ path: filePath, content }),
-  };
+  const source: EditableFileRef = { kind: 'local', path: filePath };
+  return { kind: 'local', displayPath: filePath, readOnly: false, source, downloadUrl: editableFileDownloadUrl(source) };
 }
 
 export default function EditorTab({ filePath, active, onDirtyChange }: EditorTabProps) {
@@ -171,8 +149,8 @@ export default function EditorTab({ filePath, active, onDirtyChange }: EditorTab
   const onDirtyChangeRef = useRef(onDirtyChange);
   onDirtyChangeRef.current = onDirtyChange;
 
-  const contentQuery = useFileContent(filePath, fileRef.readUrl, active && !isImg);
-  const saveMutation = useSaveFileContent(filePath);
+  const contentQuery = useFileContent(fileRef.source, active && !isImg);
+  const saveMutation = useSaveFileContent(fileRef.source);
 
   useEffect(() => {
     if (isImg) return;
@@ -184,8 +162,8 @@ export default function EditorTab({ filePath, active, onDirtyChange }: EditorTab
   // 加载文件内容（仅依赖 filePath，图片文件跳过）
   useEffect(() => {
     if (isImg || !contentQuery.data || dirty) return;
-    const text = 'content' in contentQuery.data ? contentQuery.data.content ?? '' : '';
-    etagRef.current = 'etag' in contentQuery.data ? contentQuery.data.etag : undefined;
+    const text = contentQuery.data.content ?? '';
+    etagRef.current = contentQuery.data.etag;
     savedRef.current = text;
     setContent(text);
     setDirty(false);
@@ -210,14 +188,12 @@ export default function EditorTab({ filePath, active, onDirtyChange }: EditorTab
 
   const handleSave = useCallback(async () => {
     const ed = editorRef.current;
-    if (!ed || !fileRef.writeUrl) return;
+    if (!ed || fileRef.readOnly) return;
     const value = ed.getValue();
     // 带上读取时的版本：服务端据此拒绝覆盖他人在此期间的修改
-    const res = await saveMutation.mutateAsync({
-      url: fileRef.writeUrl,
-      body: { ...fileRef.buildWriteBody(value), ...(etagRef.current ? { baseEtag: etagRef.current } : {}) },
-    });
-    etagRef.current = res?.etag;
+    await saveMutation.mutateAsync({ content: value, baseEtag: etagRef.current });
+    // 保存响应为目录项（不含版本标识）；后续保存不再携带 baseEtag，直至重新读取
+    etagRef.current = undefined;
     savedRef.current = value;
     setDirty(false);
     onDirtyChangeRef.current?.(false);

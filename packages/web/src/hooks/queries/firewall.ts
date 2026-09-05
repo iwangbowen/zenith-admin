@@ -1,93 +1,45 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { request } from '@/utils/request';
-import { unwrap } from '@/lib/query';
-
-export interface FirewallStatus {
-  enabled: boolean;
-  type: 'ufw' | 'firewalld' | 'iptables' | 'unknown';
-  version: string | null;
-  defaultIncoming: string | null;
-  defaultOutgoing: string | null;
-}
-
-export interface FirewallRule {
-  id: string;
-  type: 'allow' | 'deny' | 'reject';
-  protocol: 'tcp' | 'udp' | 'any';
-  port: string;
-  from: string;
-  to: string;
-  direction: 'in' | 'out' | 'any';
-  comment: string | null;
-  raw?: string;
-}
-
-export interface FirewallRuleList {
-  type: FirewallStatus['type'];
-  rules: FirewallRule[];
-}
-
-export interface AddFirewallRuleFormValues {
-  type: FirewallRule['type'];
-  protocol: FirewallRule['protocol'];
-  port: string;
-  from: string;
-  to: string;
-  direction: FirewallRule['direction'];
-  comment?: string;
-}
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { firewallContract } from '@zenith/shared/ops';
+import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { hostQueryOf } from './ops-hosts';
 
 export const firewallKeys = {
   all: ['firewall'] as const,
-  status: (hostId: number | null) => ['firewall', 'status', hostId] as const,
-  lists: ['firewall', 'rules'] as const,
-  list: (hostId: number | null) => ['firewall', 'rules', hostId] as const,
+  status: (hostId: number | null) => contractKey(firewallContract.status, { query: hostQueryOf(hostId) }),
+  lists: contractKey(firewallContract.rules),
+  list: (hostId: number | null) => contractKey(firewallContract.rules, { query: hostQueryOf(hostId) }),
 };
 
-function hostQuery(hostId: number | null): string {
-  return hostId == null ? '' : `?hostId=${hostId}`;
-}
-
 export function useFirewallStatus(hostId: number | null = null) {
-  return useQuery({
-    queryKey: firewallKeys.status(hostId),
-    queryFn: () => request.get<FirewallStatus>(`/api/firewall${hostQuery(hostId)}`, { silent: true }).then(unwrap),
-  });
+  return useApiQuery(firewallContract.status, { query: hostQueryOf(hostId) }, { requestOptions: { silent: true } });
 }
 
 export function useFirewallRules(hostId: number | null = null) {
-  return useQuery({
-    queryKey: firewallKeys.list(hostId),
-    queryFn: () => request.get<FirewallRuleList>(`/api/firewall/rules${hostQuery(hostId)}`, { silent: true }).then(unwrap),
-  });
+  return useApiQuery(firewallContract.rules, { query: hostQueryOf(hostId) }, { requestOptions: { silent: true } });
 }
 
+/** 规则变更只作用于本机（服务端拒绝远端写入），状态与规则列表整体失效 */
 export function useAddFirewallRule() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: AddFirewallRuleFormValues) =>
-      request.post<null>('/api/firewall/rules', {
-        ...values,
-        from: values.from?.trim() || 'any',
-        to: values.to?.trim() || 'any',
-        comment: values.comment?.trim() || undefined,
-      }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: firewallKeys.all }),
+  return useApiMutation(firewallContract.addRule, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: firewallKeys.all });
+    },
   });
 }
 
 export function useDeleteFirewallRule() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => request.delete<null>(`/api/firewall/rules/${encodeURIComponent(id)}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: firewallKeys.all }),
+  return useApiMutation(firewallContract.removeRule, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: firewallKeys.all });
+    },
   });
 }
 
+/** 启用 / 禁用是两条操作，按目标状态择一调用 */
 export function useToggleFirewall() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (enabled: boolean) => request.post<null>(enabled ? '/api/firewall/enable' : '/api/firewall/disable').then(unwrap),
+    mutationFn: (enabled: boolean) => api(enabled ? firewallContract.enable : firewallContract.disable, { query: {} }),
     onSuccess: () => qc.invalidateQueries({ queryKey: firewallKeys.all }),
   });
 }

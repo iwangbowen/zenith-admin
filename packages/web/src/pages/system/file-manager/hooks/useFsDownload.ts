@@ -9,7 +9,7 @@ import { Toast } from '@douyinfe/semi-ui';
 import dayjs from 'dayjs';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { request } from '@/utils/request';
-import { useTerminalArchiveTask, waitForAsyncTask } from '@/hooks/queries/terminal-files';
+import { terminalFileDownloadUrl, useTerminalCompress, waitForAsyncTask, type TerminalFileOperation } from '@/hooks/queries/terminal-files';
 import { joinPath } from '../fs-utils';
 import type { FsEntry } from '../types';
 
@@ -17,16 +17,16 @@ interface UseFsDownloadArgs {
   currentPath: string;
   filteredEntries: FsEntry[];
   selectedPaths: Set<string>;
-  fileOperationMutation: UseMutationResult<null, Error, { endpoint: string; values: Record<string, unknown> }>;
+  fileOperationMutation: UseMutationResult<null, Error, TerminalFileOperation>;
   deleteEntriesMutation: UseMutationResult<number, Error, string[]>;
 }
 
 export function useFsDownload({ currentPath, filteredEntries, selectedPaths, deleteEntriesMutation }: UseFsDownloadArgs) {
-  const compressTask = useTerminalArchiveTask('compress');
+  const compressTask = useTerminalCompress();
 
   /** 按服务器路径下载文件；走统一 request 以复用 401 刷新、错误提示与 Demo 模式 */
   const downloadByPath = useCallback(async (path: string, fileName: string): Promise<void> => {
-    await request.download(`/api/terminal-files/download?path=${encodeURIComponent(path)}`, fileName);
+    await request.download(terminalFileDownloadUrl(path), fileName);
   }, []);
 
   const handleDownload = useCallback((entry: FsEntry) => {
@@ -46,7 +46,7 @@ export function useFsDownload({ currentPath, filteredEntries, selectedPaths, del
     Toast.info({ content: `正在打包 ${sel.length} 项…`, duration: 2 });
     let packed = false;
     try {
-      const task = await compressTask.mutateAsync({ paths: sel.map((e) => e.path), destPath: dest });
+      const task = await compressTask.mutateAsync({ body: { paths: sel.map((e) => e.path), destPath: dest } });
       const finished = await waitForAsyncTask(task.id);
       if (finished.status !== 'success') {
         Toast.error(finished.status === 'cancelled' ? '打包已取消' : '打包失败');

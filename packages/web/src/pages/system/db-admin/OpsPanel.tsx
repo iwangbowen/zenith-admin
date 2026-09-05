@@ -18,12 +18,14 @@ import {
   useDbAdminMaintenance,
   useDbAdminRunMaintenance,
   useDbAdminSchemaDrift,
-  type DbAdminActivityConnection,
-  type DbAdminColumnDiff,
-  type DbAdminIndexInfoRow,
-  type DbAdminTableDrift,
-  type DbAdminTableMaintenance,
 } from '@/hooks/queries/db-admin';
+import type {
+  DbAdminActivityConnection,
+  DbAdminColumnDiff,
+  DbAdminIndexInfo as DbAdminIndexInfoRow,
+  DbAdminTableDrift,
+  DbAdminTableMaintenance,
+} from '@zenith/shared/ops';
 
 const { Text } = Typography;
 
@@ -189,12 +191,12 @@ function MaintenancePanel({ canMaintain }: Readonly<{ canMaintain: boolean }>) {
   const list = maintenanceQuery.data ?? [];
   const loading = maintenanceQuery.isFetching;
   const busyKey = runMaintenanceMutation.isPending
-    ? `${runMaintenanceMutation.variables?.schema}.${runMaintenanceMutation.variables?.table}`
+    ? `${runMaintenanceMutation.variables?.params.schema}.${runMaintenanceMutation.variables?.params.name}`
     : null;
 
   const run = async (r: TableMaintenance, action: 'vacuum' | 'vacuum_analyze' | 'analyze' | 'reindex') => {
     const key = `${r.schema}.${r.name}`;
-    await runMaintenanceMutation.mutateAsync({ schema: r.schema, table: r.name, action });
+    await runMaintenanceMutation.mutateAsync({ params: { schema: r.schema, name: r.name }, body: { action } });
     Toast.success(`${key} 已执行`);
   };
 

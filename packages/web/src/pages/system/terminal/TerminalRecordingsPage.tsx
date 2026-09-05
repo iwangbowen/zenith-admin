@@ -3,7 +3,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button, Modal, Tag, Toast, Dropdown, SplitButtonGroup, Typography, Space } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Trash2, ChevronDown, Copy, Terminal, Star } from 'lucide-react';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -14,13 +13,12 @@ import RecordingPlayer from './RecordingPlayer';
 import {
   terminalKeys,
   useCleanTerminalRecordings,
-  useDeleteTerminalRecording,
+  downloadTerminalRecordingAsciinema,
+  useDeleteTerminalRecordings,
   useTerminalRecordingDetail,
   useTerminalRecordingList,
-  type Recording,
-  type RecordingDetail,
-  type RecordingEvent,
 } from '@/hooks/queries/terminal';
+import type { TerminalRecording, TerminalRecordingDetail, TerminalRecordingEvent } from '@zenith/shared/ops';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
 import { confirmDanger, confirmDelete } from '@/utils/confirm';
@@ -48,7 +46,7 @@ function formatDuration(secs: number): string {
 }
 
 /** 从录屏事件中还原用户执行的命令列表（按行切割 'i' 输入事件，处理退格和 ANSI 转义序列）。 */
-function extractCommands(events: RecordingEvent[]): CommandItem[] {
+function extractCommands(events: TerminalRecordingEvent[]): CommandItem[] {
   const commands: CommandItem[] = [];
   let buf = '';
   let cmdStart = 0;
@@ -122,9 +120,9 @@ export default function TerminalRecordingsPage() {
     draftParams, setDraftParams, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: terminalKeys.recordingLists });
-  const [playRec, setPlayRec] = useState<RecordingDetail | null>(null);
+  const [playRec, setPlayRec] = useState<TerminalRecordingDetail | null>(null);
   const [playStartTime, setPlayStartTime] = useState(0);
-  const [detailRec, setDetailRec] = useState<RecordingDetail | null>(null);
+  const [detailRec, setDetailRec] = useState<TerminalRecordingDetail | null>(null);
   const [exportingId, setExportingId] = useState<number | null>(null);
   const { userOptions, loading: userOptionsLoading, ensureLoaded } = useUserOptions({ immediate: true });
 
@@ -141,7 +139,7 @@ export default function TerminalRecordingsPage() {
   const [detailId, setDetailId] = useState<number | undefined>();
   const playQuery = useTerminalRecordingDetail(playId, playId !== undefined);
   const detailQuery = useTerminalRecordingDetail(detailId, detailId !== undefined);
-  const deleteMutation = useDeleteTerminalRecording();
+  const deleteMutation = useDeleteTerminalRecordings();
   const cleanMutation = useCleanTerminalRecordings();
 
   useEffect(() => {
@@ -154,19 +152,19 @@ export default function TerminalRecordingsPage() {
 
   const handlePlay = (id: number, startTime = 0) => {
     setPlayStartTime(startTime);
-    const cached = queryClient.getQueryData<RecordingDetail>(terminalKeys.recordingDetail(id));
+    const cached = queryClient.getQueryData<TerminalRecordingDetail>(terminalKeys.recordingDetail(id));
     if (cached) setPlayRec(cached);
     setPlayId(id);
   };
 
   const handleDetail = (id: number) => {
-    const cached = queryClient.getQueryData<RecordingDetail>(terminalKeys.recordingDetail(id));
+    const cached = queryClient.getQueryData<TerminalRecordingDetail>(terminalKeys.recordingDetail(id));
     if (cached) setDetailRec(cached);
     setDetailId(id);
   };
 
   const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync(id);
+    await deleteMutation.mutateAsync([id]);
     Toast.success('已删除');
   };
 
@@ -185,19 +183,16 @@ export default function TerminalRecordingsPage() {
     });
   };
 
-  const handleExportAsciinema = async (record: Recording) => {
+  const handleExportAsciinema = async (record: TerminalRecording) => {
     setExportingId(record.id);
     try {
-      await request.download(
-        `/api/terminal-recordings/${record.id}/asciinema`,
-        `terminal-recording-${record.id}.cast`,
-      );
+      await downloadTerminalRecordingAsciinema(record.id, `terminal-recording-${record.id}.cast`);
     } finally {
       setExportingId(null);
     }
   };
 
-  const columns: ColumnProps<Recording>[] = [
+  const columns: ColumnProps<TerminalRecording>[] = [
     {
       title: '标题',
       dataIndex: 'title',
@@ -218,7 +213,7 @@ export default function TerminalRecordingsPage() {
     {
       title: '字符网格',
       width: 140,
-      render: (_: unknown, r: Recording) => `${r.cols} 列 × ${r.rows} 行`,
+      render: (_: unknown, r: TerminalRecording) => `${r.cols} 列 × ${r.rows} 行`,
     },
     {
       title: '时长',
@@ -241,7 +236,7 @@ export default function TerminalRecordingsPage() {
       render: (v: string) => v || '-',
     },
     dateTimeColumn('录制时间', 'createdAt'),
-    createOperationColumn<Recording>({
+    createOperationColumn<TerminalRecording>({
       desktopInlineKeys: ['play', 'detail', 'delete'],
       width: 240,
       actions: (record) => [

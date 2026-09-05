@@ -1,40 +1,25 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { request } from '@/utils/request';
-import { unwrap } from '@/lib/query';
-
-export interface PortEntry {
-  protocol: string;
-  localAddress: string;
-  localPort: number;
-  state: string;
-  pid: number | null;
-  processName: string | null;
-  serviceName: string | null;
-}
+import { portContract } from '@zenith/shared/ops';
+import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { hostQueryOf } from './ops-hosts';
 
 export const portKeys = {
   all: ['ports'] as const,
-  lists: ['ports', 'list'] as const,
-  list: (hostId: number | null) => ['ports', 'list', hostId] as const,
+  lists: contractKey(portContract.list),
+  list: (hostId: number | null) => contractKey(portContract.list, { query: hostQueryOf(hostId) }),
 };
 
-function hostQuery(hostId: number | null): string {
-  return hostId == null ? '' : `?hostId=${hostId}`;
-}
-
 export function usePortList(refetchInterval: number | false, hostId: number | null = null) {
-  return useQuery({
-    queryKey: portKeys.list(hostId),
-    queryFn: () => request.get<PortEntry[]>(`/api/ports${hostQuery(hostId)}`, { silent: true }).then(unwrap),
+  return useApiQuery(portContract.list, { query: hostQueryOf(hostId) }, {
+    requestOptions: { silent: true },
     refetchInterval,
   });
 }
 
+/** 结束占用端口的进程：该进程的全部监听行消失，各主机端口列表整体失效 */
 export function useKillPortProcess() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ pid, hostId = null }: { pid: number; hostId?: number | null }) =>
-      request.delete<null>(`/api/ports/${pid}${hostQuery(hostId)}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: portKeys.all }),
+  return useApiMutation(portContract.kill, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: portKeys.all });
+    },
   });
 }

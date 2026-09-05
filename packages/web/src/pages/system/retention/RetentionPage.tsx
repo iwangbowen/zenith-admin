@@ -60,7 +60,7 @@ export default function RetentionPage() {
 
   const handleSave = async () => {
     if (!editing) return;
-    await updateMutation.mutateAsync({ key: editing.key, input: form });
+    await updateMutation.mutateAsync({ params: { key: editing.key }, body: form });
     Toast.success('保留策略已更新');
     setEditing(null);
   };
@@ -81,7 +81,7 @@ export default function RetentionPage() {
       okText: '确认清理',
       cancelText: '取消',
       onOk: async () => {
-        const result = await runMutation.mutateAsync(policy.key);
+        const result = await runMutation.mutateAsync({ params: { key: policy.key } });
         Toast.success(`「${policy.title}」已清理 ${result.deleted} 行`);
       },
     });

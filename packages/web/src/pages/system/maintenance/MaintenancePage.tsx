@@ -10,7 +10,7 @@ import {
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Wrench, Power, PowerOff, RefreshCw } from 'lucide-react';
-import type { MaintenanceLog } from '@zenith/shared/platform';
+import type { MaintenanceLog } from '@zenith/shared/ops';
 import { useQueryClient } from '@tanstack/react-query';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import PageLoading from '@/components/PageLoading';
@@ -84,9 +84,11 @@ export default function MaintenancePage() {
 
     const values = formApi.current?.getValues() as FormValues | undefined;
     await updateMutation.mutateAsync({
-      enabled: enable,
-      message: values?.message || '系统维护中，请稍后重试',
-      estimatedEndAt: values?.estimatedEndAt ? formatDateTimeForApi(values.estimatedEndAt) : null,
+      body: {
+        enabled: enable,
+        message: values?.message || '系统维护中，请稍后重试',
+        estimatedEndAt: values?.estimatedEndAt ? formatDateTimeForApi(values.estimatedEndAt) : null,
+      },
     });
     // mutation 的 onSuccess 已按 maintenanceKeys.all 失效（含超管横幅消费的 publicStatus），
     // 无需再手工 dispatch CustomEvent 跨组件广播。
