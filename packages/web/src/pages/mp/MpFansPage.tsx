@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import { Avatar, Button, Form, Modal, Space, Spin, Tag, Toast, Banner } from '@douyinfe/semi-ui';
 import { RefreshCw, Ban } from 'lucide-react';
-import type { MpFan, MpFanSubscribe } from '@zenith/shared/mp';
+import { MP_FAN_SUBSCRIBES, type MpFan, type MpFanSubscribe, type UpdateMpFanInput } from '@zenith/shared/mp';
+import { enumValueOf } from '@zenith/shared/core';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
@@ -12,12 +13,13 @@ import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import {
   mpFanKeys,
+  useBlacklistMpFans,
   useCreateMpFanMember,
   useMpFanList,
   useSaveMpFan,
-  useSetMpFanBlacklist,
   useSyncMpBlacklist,
   useSyncMpFans,
+  useUnblacklistMpFans,
   useUnbindMpFanMember,
 } from '@/hooks/queries/mp-fans';
 import { useMpTagOptions } from '@/hooks/queries/mp-tags';
@@ -32,7 +34,6 @@ const SUBSCRIBE_OPTIONS = [
   { label: '已关注', value: 'subscribed' },
   { label: '已取关', value: 'unsubscribed' },
 ];
-interface FanFormValues { remark?: string; tagIds?: number[]; }
 
 export default function MpFansPage() {
   const { hasPermission: can } = usePermission();
@@ -42,41 +43,35 @@ export default function MpFansPage() {
   const tags = tagsQuery.data?.list ?? [];
   const tagMap = new Map(tags.map((t) => [t.id, t.name]));
 
-  interface SearchParams { keyword: string; subscribe: MpFanSubscribe | undefined; tagId: number | undefined; blacklisted: 'true' | 'false' | undefined; }
+  interface SearchParams { keyword: string; subscribe: MpFanSubscribe | undefined; tagId: number | undefined; blacklisted: boolean | undefined; }
   const defaultSearch: SearchParams = { keyword: '', subscribe: undefined, tagId: undefined, blacklisted: undefined };
   const {
     page, pageSize, setPage, buildPagination,
     draftParams, setDraftParams, submittedParams,
     handleSearch, handleReset,
-  } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: mpFanKeys.lists(currentId) });
+  } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: mpFanKeys.lists });
 
   const listQuery = useMpFanList({
-    accountId: currentId,
+    accountId: currentId ?? 0,
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
     subscribe: submittedParams.subscribe,
     tagId: submittedParams.tagId,
     blacklisted: submittedParams.blacklisted,
-  });
+  }, !!currentId);
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
   const syncFansMutation = useSyncMpFans();
   const syncBlacklistMutation = useSyncMpBlacklist();
-  const blacklistMutation = useSetMpFanBlacklist();
+  const blacklistMutation = useBlacklistMpFans();
+  const unblacklistMutation = useUnblacklistMpFans();
   const saveMutation = useSaveMpFan();
   const createMemberMutation = useCreateMpFanMember();
   const unbindMemberMutation = useUnbindMpFanMember();
   const syncing = syncFansMutation.isPending || syncBlacklistMutation.isPending;
-  const fanSaveMutation = {
-    mutateAsync: ({ id, values }: { id?: number; values: { remark: string; tagIds: number[] } }) => {
-      if (id == null) throw new Error('缺少记录 ID，请刷新后重试');
-      return saveMutation.mutateAsync({ id, values });
-    },
-    isPending: saveMutation.isPending,
-  };
-  const fanModal = useEditModal<MpFan, FanFormValues, { remark: string; tagIds: number[] }>({
-    save: fanSaveMutation,
+  const fanModal = useEditModal<MpFan, Partial<UpdateMpFanInput>>({
+    save: saveMutation,
     toValues: (fan) => ({ remark: fan.remark ?? '', tagIds: fan.tagIds }),
     beforeSave: (values) => ({ remark: values.remark ?? '', tagIds: values.tagIds ?? [] }),
     successMessage: () => '保存成功',
@@ -89,29 +84,30 @@ export default function MpFansPage() {
 
   const handleSync = async () => {
     if (!currentId) return;
-    const data = await syncFansMutation.mutateAsync(currentId);
+    const data = await syncFansMutation.mutateAsync({ body: { accountId: currentId } });
     Toast.success(`同步完成：共处理 ${data.synced ?? 0} 个粉丝`);
   };
 
   const handleBlacklist = async (record: MpFan) => {
     if (!currentId) return;
-    await blacklistMutation.mutateAsync({ accountId: currentId, openid: record.openid, blacklisted: record.blacklisted });
+    const input = { body: { accountId: currentId, openids: [record.openid] } };
+    await (record.blacklisted ? unblacklistMutation.mutateAsync(input) : blacklistMutation.mutateAsync(input));
     Toast.success(record.blacklisted ? '已移出黑名单' : '已拉黑');
   };
 
   const handleSyncBlacklist = async () => {
     if (!currentId) return;
-    const data = await syncBlacklistMutation.mutateAsync(currentId);
+    const data = await syncBlacklistMutation.mutateAsync({ body: { accountId: currentId } });
     Toast.success(`黑名单同步完成：共 ${data.synced ?? 0} 个`);
   };
 
   const handleCreateMember = async (record: MpFan) => {
-    await createMemberMutation.mutateAsync(record.id);
+    await createMemberMutation.mutateAsync({ params: { id: record.id } });
     Toast.success('会员已创建并绑定');
   };
 
   const handleUnbindMember = async (record: MpFan) => {
-    await unbindMemberMutation.mutateAsync(record.id);
+    await unbindMemberMutation.mutateAsync({ params: { id: record.id } });
     Toast.success('已解绑会员');
   };
 
@@ -203,7 +199,7 @@ export default function MpFansPage() {
       placeholder="全部关注状态"
       items={SUBSCRIBE_OPTIONS}
       value={draftParams.subscribe}
-      onChange={(v) => setDraftParams({ ...draftParams, subscribe: v as MpFanSubscribe | undefined })}
+      onChange={(v) => setDraftParams({ ...draftParams, subscribe: enumValueOf(MP_FAN_SUBSCRIBES, v) })}
       width={140}
     />
   );
@@ -221,8 +217,8 @@ export default function MpFansPage() {
     <FilterSelect
       placeholder="全部黑名单"
       items={[{ label: '黑名单', value: 'true' }, { label: '正常', value: 'false' }]}
-      value={draftParams.blacklisted}
-      onChange={(v) => setDraftParams({ ...draftParams, blacklisted: v as 'true' | 'false' | undefined })}
+      value={draftParams.blacklisted === undefined ? undefined : String(draftParams.blacklisted)}
+      onChange={(v) => setDraftParams({ ...draftParams, blacklisted: v === undefined ? undefined : v === 'true' })}
       width={140}
     />
   );

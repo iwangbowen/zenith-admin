@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Space, Switch, Tag, Toast, Tabs, TabPane, Banner, Typography, TextArea } from '@douyinfe/semi-ui';
 import { Search, RefreshCw, Briefcase } from 'lucide-react';
-import type { MpMessageTemplate } from '@zenith/shared/mp';
+import { enumValueOf } from '@zenith/shared/core';
+import type { SendMpTemplateInput } from '@zenith/shared/messaging';
+import { MP_TEMPLATE_SEND_STATUSES, type MpMessageTemplate } from '@zenith/shared/mp';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
@@ -14,8 +16,9 @@ import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import {
   mpTemplateKeys,
+  mpTemplateLogKeys,
   useBatchSendMpTemplate,
-  useDeleteMpTemplate,
+  useDeleteMpTemplates,
   useMpTemplateIndustry,
   useMpTemplateList,
   useMpTemplateLogList,
@@ -40,8 +43,11 @@ export default function MpTemplateMessagesPage() {
   const [draftLogStatus, setDraftLogStatus] = useState<string | undefined>(undefined);
   const [submittedLogStatus, setSubmittedLogStatus] = useState<string | undefined>(undefined);
 
-  const templateQuery = useMpTemplateList(currentId, { page: tplPg.page, pageSize: tplPg.pageSize });
-  const logQuery = useMpTemplateLogList(currentId, { page: logPg.page, pageSize: logPg.pageSize, status: submittedLogStatus });
+  const templateQuery = useMpTemplateList({ accountId: currentId ?? 0, page: tplPg.page, pageSize: tplPg.pageSize }, !!currentId);
+  const logQuery = useMpTemplateLogList(
+    { accountId: currentId ?? 0, page: logPg.page, pageSize: logPg.pageSize, status: enumValueOf(MP_TEMPLATE_SEND_STATUSES, submittedLogStatus) },
+    !!currentId,
+  );
   const templates = templateQuery.data?.list ?? [];
   const tplTotal = templateQuery.data?.total ?? 0;
   const logs = logQuery.data?.list ?? [];
@@ -51,7 +57,7 @@ export default function MpTemplateMessagesPage() {
   const sendMutation = useSendMpTemplate();
   const batchSendMutation = useBatchSendMpTemplate();
   const saveIndustryMutation = useSaveMpTemplateIndustry();
-  const deleteMutation = useDeleteMpTemplate();
+  const deleteMutation = useDeleteMpTemplates();
 
   const [sendVisible, setSendVisible] = useState(false);
   const [sendTpl, setSendTpl] = useState<MpMessageTemplate | null>(null);
@@ -73,7 +79,7 @@ export default function MpTemplateMessagesPage() {
 
   const handleSync = async () => {
     if (!currentId) return;
-    const data = await syncMutation.mutateAsync(currentId);
+    const data = await syncMutation.mutateAsync({ body: { accountId: currentId } });
     Toast.success(`同步完成：新增 ${data.created ?? 0}，更新 ${data.updated ?? 0}`);
     tplPg.setPage(1);
   };
@@ -82,15 +88,15 @@ export default function MpTemplateMessagesPage() {
 
   const handleSend = async () => {
     if (!currentId || !sendTpl) return;
-    let data: Record<string, unknown>;
+    let data: SendMpTemplateInput['data'];
     try { data = JSON.parse(sendData); } catch { Toast.error('模板数据不是合法 JSON'); abortSubmit('validation'); }
     const openids = sendOpenid.split(/[\s,，]+/).map((s) => s.trim()).filter(Boolean);
     if (openids.length === 0) { Toast.error('请填写接收粉丝 openid'); abortSubmit('validation'); }
     if (sendBatch) {
-      const res = await batchSendMutation.mutateAsync({ accountId: currentId, templateId: sendTpl.templateId, openids, url: sendUrl.trim() || undefined, data });
+      const res = await batchSendMutation.mutateAsync({ body: { accountId: currentId, templateId: sendTpl.templateId, openids, url: sendUrl.trim() || undefined, data } });
       Toast.success(`批量发送完成：成功 ${res.success ?? 0}，失败 ${res.failed ?? 0}`);
     } else {
-      await sendMutation.mutateAsync({ accountId: currentId, templateId: sendTpl.templateId, openid: openids[0], url: sendUrl.trim() || undefined, data });
+      await sendMutation.mutateAsync({ body: { accountId: currentId, templateId: sendTpl.templateId, openid: openids[0], url: sendUrl.trim() || undefined, data } });
       Toast.success('发送成功');
     }
     setSendVisible(false);
@@ -105,7 +111,7 @@ export default function MpTemplateMessagesPage() {
   const handleSaveIndustry = async () => {
     if (!currentId) return;
     if (!industryId1.trim() || !industryId2.trim()) { Toast.warning('请填写主营/副营行业代码'); abortSubmit('validation'); }
-    await saveIndustryMutation.mutateAsync({ accountId: currentId, industryId1: industryId1.trim(), industryId2: industryId2.trim() });
+    await saveIndustryMutation.mutateAsync({ body: { accountId: currentId, industryId1: industryId1.trim(), industryId2: industryId2.trim() } });
     Toast.success('行业设置成功');
     setIndustryVisible(false);
   };
@@ -114,7 +120,7 @@ export default function MpTemplateMessagesPage() {
     confirmDelete({
       title: `确定删除模板「${record.title}」吗？`,
       onOk: async () => {
-        await deleteMutation.mutateAsync({ id: record.id, accountId: currentId });
+        await deleteMutation.mutateAsync([record.id]);
         Toast.success('删除成功');
       },
     });
@@ -151,7 +157,7 @@ export default function MpTemplateMessagesPage() {
     <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
   );
   const renderTemplateRefreshButton = () => (
-    <RefreshButton onClick={() => { tplPg.setPage(1); void queryClient.invalidateQueries({ queryKey: mpTemplateKeys.lists(currentId) }); }} />
+    <RefreshButton onClick={() => { tplPg.setPage(1); void queryClient.invalidateQueries({ queryKey: mpTemplateKeys.lists }); }} />
   );
   const renderTemplateActions = () => {
     if (!can('mp:template:sync')) return null;
@@ -172,7 +178,7 @@ export default function MpTemplateMessagesPage() {
   const refreshLogs = () => {
     logPg.setPage(1);
     setSubmittedLogStatus(draftLogStatus);
-    void queryClient.invalidateQueries({ queryKey: mpTemplateKeys.logLists(currentId) });
+    void queryClient.invalidateQueries({ queryKey: mpTemplateLogKeys.lists });
   };
   const renderLogRefreshButton = () => (
     <Button type="tertiary" icon={<Search size={14} />} onClick={refreshLogs}>刷新</Button>

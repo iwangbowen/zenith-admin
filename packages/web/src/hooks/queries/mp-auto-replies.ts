@@ -1,74 +1,39 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { MpAutoReply, MpAutoReplyType, MpMaterial, MpUnmatchedKeyword } from '@zenith/shared/mp';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import type { QueryOf } from '@zenith/shared/core';
+import { mpAutoReplyContract, mpMaterialContract } from '@zenith/shared/mp';
+import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
-export interface MpAutoReplyListParams {
-  accountId: number | null;
-  page: number;
-  pageSize: number;
-  replyType?: MpAutoReplyType;
-  keyword?: string;
-}
+export type MpAutoReplyListParams = QueryOf<typeof mpAutoReplyContract.list>;
 
-export const mpAutoReplyKeys = {
-  all: ['mp', 'auto-replies'] as const,
-  lists: (accountId: number | null | undefined) => ['mp', 'auto-replies', accountId, 'list'] as const,
-  list: (params: MpAutoReplyListParams) => ['mp', 'auto-replies', params.accountId, 'list', params] as const,
-  materials: (accountId: number | null | undefined) => ['mp', 'auto-replies', accountId, 'materials'] as const,
-  unmatched: (accountId: number | null | undefined) => ['mp', 'auto-replies', accountId, 'unmatched'] as const,
-};
+export const {
+  keys: mpAutoReplyKeys,
+  useList: useMpAutoReplyList,
+  useSave: useSaveMpAutoReply,
+  useDelete: useDeleteMpAutoReplies,
+} = createResourceQueries(mpAutoReplyContract);
 
-export function useMpAutoReplyList(params: MpAutoReplyListParams) {
-  return useQuery({
-    queryKey: mpAutoReplyKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<MpAutoReply>>(`/api/mp/auto-replies${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-    enabled: !!params.accountId,
-  });
-}
+/** 未命中热词列表查询的公共前缀 */
+const unmatchedKeys = contractKey(mpAutoReplyContract.unmatched);
 
+/** 回复可选的素材（素材域的列表查询，随素材增删改一并失效） */
 export function useMpAutoReplyMaterials(accountId: number | null | undefined) {
-  return useQuery({
-    queryKey: mpAutoReplyKeys.materials(accountId),
-    queryFn: () => request.get<PaginatedResponse<MpMaterial>>(`/api/mp/materials${toQueryString({ accountId, page: 1, pageSize: 200 })}`).then(unwrap),
-    enabled: !!accountId,
-  });
-}
-
-export function useSaveMpAutoReply() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
-      (id === undefined
-        ? request.post<MpAutoReply>('/api/mp/auto-replies', values)
-        : request.put<MpAutoReply>(`/api/mp/auto-replies/${id}`, values)
-      ).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: mpAutoReplyKeys.all }),
-  });
-}
-
-export function useDeleteMpAutoReply() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/mp/auto-replies/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: mpAutoReplyKeys.all }),
-  });
+  return useApiQuery(
+    mpMaterialContract.list,
+    { query: { accountId: accountId ?? 0, page: 1, pageSize: 200 } },
+    { enabled: !!accountId },
+  );
 }
 
 export function useMpUnmatchedKeywords(accountId: number | null | undefined, enabled: boolean) {
-  return useQuery({
-    queryKey: mpAutoReplyKeys.unmatched(accountId),
-    queryFn: () => request.get<PaginatedResponse<MpUnmatchedKeyword>>(`/api/mp/auto-replies/unmatched${toQueryString({ accountId, page: 1, pageSize: 50 })}`).then(unwrap),
-    enabled: enabled && !!accountId,
-  });
+  return useApiQuery(
+    mpAutoReplyContract.unmatched,
+    { query: { accountId: accountId ?? 0, page: 1, pageSize: 50 } },
+    { enabled: enabled && !!accountId },
+  );
 }
 
+/** 热词只出现在未命中列表，自动回复列表不受影响 */
 export function useDeleteMpUnmatchedKeyword() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/mp/auto-replies/unmatched/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: mpAutoReplyKeys.all }),
+  return useApiMutation(mpAutoReplyContract.removeUnmatched, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: unmatchedKeys }),
   });
 }

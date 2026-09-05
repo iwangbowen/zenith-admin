@@ -1,61 +1,23 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { MpArticle, MpDraft } from '@zenith/shared/mp';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import type { QueryOf } from '@zenith/shared/core';
+import { mpDraftContract } from '@zenith/shared/mp';
+import { createResourceQueries, useApiMutation } from '@/lib/contract-query';
 
-export interface MpDraftListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-}
+export type MpDraftListParams = QueryOf<typeof mpDraftContract.list>;
 
-export const mpDraftKeys = {
-  all: ['mp', 'drafts'] as const,
-  lists: (accountId: number | null | undefined) => ['mp', 'drafts', accountId] as const,
-  list: (accountId: number | null | undefined, params: MpDraftListParams) => ['mp', 'drafts', accountId, params] as const,
-  detail: (id: number | null | undefined) => ['mp', 'drafts', 'detail', id] as const,
-};
+export const {
+  keys: mpDraftKeys,
+  useList: useMpDraftList,
+  useDetail: useMpDraftDetail,
+  useSave: useSaveMpDraft,
+  useDelete: useDeleteMpDrafts,
+} = createResourceQueries(mpDraftContract);
 
-export function useMpDraftList(accountId: number | null | undefined, params: MpDraftListParams) {
-  return useQuery({
-    queryKey: mpDraftKeys.list(accountId, params),
-    queryFn: () =>
-      request.get<PaginatedResponse<MpDraft>>(`/api/mp/drafts${toQueryString({ ...params, accountId })}`).then(unwrap),
-    enabled: !!accountId,
-    placeholderData: keepPreviousData,
-  });
-}
-
-export function useMpDraftDetail(id: number | null | undefined, enabled = true) {
-  return useQuery({
-    queryKey: mpDraftKeys.detail(id),
-    queryFn: () => request.get<MpDraft>(`/api/mp/drafts/${id}`).then(unwrap),
-    enabled: enabled && id != null,
-  });
-}
-
-export function useSaveMpDraft() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, accountId, articles }: { id?: number | null; accountId?: number | null; articles: MpArticle[] }) =>
-      (id ? request.put<MpDraft>(`/api/mp/drafts/${id}`, { articles }) : request.post<MpDraft>('/api/mp/drafts', { accountId, articles })).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: mpDraftKeys.all }),
-  });
-}
-
+/** 推送会回填 wechatMediaId 并改状态：该草稿详情与列表都需刷新 */
 export function usePushMpDraft() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.post<null>(`/api/mp/drafts/${id}/push`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: mpDraftKeys.all }),
-  });
-}
-
-export function useDeleteMpDraft() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/mp/drafts/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: mpDraftKeys.all }),
+  return useApiMutation(mpDraftContract.push, {
+    invalidate: (qc, _output, { params }) => {
+      void qc.invalidateQueries({ queryKey: mpDraftKeys.detail(params.id) });
+      void qc.invalidateQueries({ queryKey: mpDraftKeys.lists });
+    },
   });
 }

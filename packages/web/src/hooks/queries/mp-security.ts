@@ -1,19 +1,7 @@
-import { useMutation } from '@tanstack/react-query';
-import type { CheckMpContentInput } from '@zenith/shared/mp';
-import { request } from '@/utils/request';
-import { unwrap } from '@/lib/query';
+import { mpSecurityContract } from '@zenith/shared/mp';
+import { useApiMutation } from '@/lib/contract-query';
 
-export interface MpContentCheckResult {
-  pass: boolean;
-  suggest: string;
-}
-
-export const mpSecurityKeys = {
-  all: ['mp', 'security'] as const,
-};
-
+/** 内容安全校验是只读探测，不涉及缓存 */
 export function useCheckMpContent() {
-  return useMutation({
-    mutationFn: (values: CheckMpContentInput) => request.post<MpContentCheckResult>('/api/mp/security/check-text', values).then(unwrap),
-  });
+  return useApiMutation(mpSecurityContract.checkText);
 }
