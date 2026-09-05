@@ -4,8 +4,8 @@ import { Empty, Feedback, Radio, RadioGroup, Rating, TextArea, Typography } from
 import { IllustrationSuccess, IllustrationSuccessDark } from '@douyinfe/semi-illustrations';
 import { startManualReplay } from '@zenith/analytics-sdk';
 import { useSubmitFeedback } from '@/hooks/queries/user-feedbacks';
-import type { UserFeedbackCategory } from '@zenith/shared/identity';
-import { USER_FEEDBACK_CATEGORY_LABELS } from '@zenith/shared/identity';
+import type { UserFeedbackCategory } from '@zenith/shared/platform';
+import { USER_FEEDBACK_CATEGORY_LABELS } from '@zenith/shared/platform';
 
 const CATEGORY_OPTIONS: Array<{ value: UserFeedbackCategory; label: string }> =
   (Object.keys(USER_FEEDBACK_CATEGORY_LABELS) as UserFeedbackCategory[]).map((value) => ({ value, label: USER_FEEDBACK_CATEGORY_LABELS[value] }));

@@ -1,22 +1,9 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import {
-  MONITOR_ALERT_EVENT_STATUSES,
-  MONITOR_ALERT_HANDLE_STATUSES,
-  MONITOR_ALERT_LEVELS,
-  MONITOR_ALERT_NOTIFY_STATUSES,
-  MONITOR_ALERT_OVERVIEW_RANGES,
-  MONITOR_METRICS,
-} from '@zenith/shared/platform';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { monitorAlertContract } from '@zenith/shared/platform';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
-import {
-  jsonContent, validationHook, commonErrorResponses, ok, okMsg, okPaginated, IdParam, PaginationQuery, okBody,
-  dateRangeBound,
-} from '../../lib/openapi-schemas';
-import {
-  MonitorAlertRuleDTO, MonitorAlertEventDTO, MonitorAlertOverviewDTO, MonitorAlertTestResultDTO,
-  CreateMonitorAlertRuleDTO, UpdateMonitorAlertRuleDTO,
-} from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   listRules, createRule, updateRule, deleteRule, deleteRules, setRuleEnabled, setRulesEnabled, listEvents,
   handleEvent, handleEvents, getAlertOverview, testRule,
@@ -25,81 +12,21 @@ import {
 
 const monitorAlertsRouter = new OpenAPIHono({ defaultHook: validationHook });
 
-/** HTTP query 只有字符串：`z.boolean()` 会把 `?enabled=false` 判成校验失败 */
-const boolParam = z.enum(['true', 'false']).transform((v) => v === 'true').optional();
-
-const RuleQuery = PaginationQuery.extend({
-  keyword: z.string().max(128).optional(),
-  metric: z.enum(MONITOR_METRICS).optional(),
-  level: z.enum(MONITOR_ALERT_LEVELS).optional(),
-  enabled: boolParam,
-  state: z.enum(['ok', 'firing']).optional(),
-});
-
-const EventQuery = PaginationQuery.extend({
-  keyword: z.string().max(128).optional(),
-  metric: z.enum(MONITOR_METRICS).optional(),
-  level: z.enum(MONITOR_ALERT_LEVELS).optional(),
-  status: z.enum(MONITOR_ALERT_EVENT_STATUSES).optional(),
-  notifyStatus: z.enum(MONITOR_ALERT_NOTIFY_STATUSES).optional(),
-  handleStatus: z.enum(MONITOR_ALERT_HANDLE_STATUSES).optional(),
-  ruleId: z.coerce.number().int().positive().optional(),
-  startTime: dateRangeBound('触发时间起'),
-  endTime: dateRangeBound('触发时间止'),
-});
-
-const OverviewQuery = z.object({
-  range: z.enum(MONITOR_ALERT_OVERVIEW_RANGES).default('24h'),
-});
-
-const EnabledBody = z.object({ enabled: z.boolean() });
-
-const IdsBody = z.object({ ids: z.array(z.number().int().positive()).min(1, '请至少选择一条规则').max(200) });
-
-const BatchEnabledBody = IdsBody.extend({ enabled: z.boolean() });
-
-const HandleBody = z.object({
-  handleStatus: z.enum(MONITOR_ALERT_HANDLE_STATUSES),
-  note: z.string().max(500).nullish(),
-});
-
-const BatchHandleBody = HandleBody.extend({
-  ids: z.array(z.number().int().positive()).min(1, '请至少选择一条告警').max(200),
-});
-
 // ─── 告警概览 ──────────────────────────────────────────────────────────────
-const overview = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/overview', tags: ['AlertCenter'], summary: '获取告警概览',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'alert:overview:list' })] as const,
-    request: { query: OverviewQuery },
-    responses: { ...ok(MonitorAlertOverviewDTO, '告警概览'), ...commonErrorResponses },
-  }),
+const overview = defineContractRoute(monitorAlertContract.overview, {
+  middleware: [authMiddleware, guard({ permission: 'alert:overview:list' })],
   handler: async (c) => c.json(okBody(await getAlertOverview(c.req.valid('query').range)), 200),
 });
 
 // ─── 告警事件（先于 /{id} 注册，避免冲突）──────────────────────────────────
-const eventsList = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/events', tags: ['AlertCenter'], summary: '获取告警事件列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'alert:event:list' })] as const,
-    request: { query: EventQuery },
-    responses: { ...okPaginated(MonitorAlertEventDTO, '告警事件'), ...commonErrorResponses },
-  }),
+const eventsList = defineContractRoute(monitorAlertContract.events, {
+  middleware: [authMiddleware, guard({ permission: 'alert:event:list' })],
   handler: async (c) => c.json(okBody(await listEvents(c.req.valid('query'))), 200),
 });
 
 // 批量必须先于 `/events/{id}/handle` 注册，否则 `batch` 会被当成事件 id
-const eventBatchHandle = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'patch', path: '/events/batch/handle', tags: ['AlertCenter'], summary: '批量处理告警事件',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'alert:event:handle', audit: { description: '批量处理告警事件', module: '告警中心' } })] as const,
-    request: { body: { content: jsonContent(BatchHandleBody), required: true } },
-    responses: { ...okMsg('操作成功'), ...commonErrorResponses },
-  }),
+const eventBatchHandle = defineContractRoute(monitorAlertContract.handleEventsBatch, {
+  middleware: [authMiddleware, guard({ permission: 'alert:event:handle', audit: { description: '批量处理告警事件', module: '告警中心' } })],
   handler: async (c) => {
     const { ids, ...input } = c.req.valid('json');
     const count = await handleEvents(ids, input);
@@ -107,14 +34,8 @@ const eventBatchHandle = defineOpenAPIRoute({
   },
 });
 
-const eventHandle = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'patch', path: '/events/{id}/handle', tags: ['AlertCenter'], summary: '处理告警事件',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'alert:event:handle', audit: { description: '处理告警事件', module: '告警中心' } })] as const,
-    request: { params: IdParam, body: { content: jsonContent(HandleBody), required: true } },
-    responses: { ...ok(MonitorAlertEventDTO, '操作成功'), ...commonErrorResponses },
-  }),
+const eventHandle = defineContractRoute(monitorAlertContract.handleEvent, {
+  middleware: [authMiddleware, guard({ permission: 'alert:event:handle', audit: { description: '处理告警事件', module: '告警中心' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, await getMonitorAlertEventBeforeAudit(id));
@@ -123,36 +44,18 @@ const eventHandle = defineOpenAPIRoute({
 });
 
 // ─── 告警规则 CRUD ─────────────────────────────────────────────────────────
-const rulesList = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/', tags: ['AlertCenter'], summary: '获取告警规则列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'alert:rule:list' })] as const,
-    request: { query: RuleQuery },
-    responses: { ...okPaginated(MonitorAlertRuleDTO, '告警规则'), ...commonErrorResponses },
-  }),
+const rulesList = defineContractRoute(monitorAlertContract.list, {
+  middleware: [authMiddleware, guard({ permission: 'alert:rule:list' })],
   handler: async (c) => c.json(okBody(await listRules(c.req.valid('query'))), 200),
 });
 
-const ruleCreate = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/', tags: ['AlertCenter'], summary: '创建告警规则',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'alert:rule:create', audit: { description: '创建告警规则', module: '告警中心' } })] as const,
-    request: { body: { content: jsonContent(CreateMonitorAlertRuleDTO), required: true } },
-    responses: { ...ok(MonitorAlertRuleDTO, '创建成功'), ...commonErrorResponses },
-  }),
+const ruleCreate = defineContractRoute(monitorAlertContract.create, {
+  middleware: [authMiddleware, guard({ permission: 'alert:rule:create', audit: { description: '创建告警规则', module: '告警中心' } })],
   handler: async (c) => c.json(okBody(await createRule(c.req.valid('json')), '创建成功'), 200),
 });
 
-const ruleUpdate = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/{id}', tags: ['AlertCenter'], summary: '更新告警规则',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'alert:rule:update', audit: { description: '更新告警规则', module: '告警中心' } })] as const,
-    request: { params: IdParam, body: { content: jsonContent(UpdateMonitorAlertRuleDTO), required: true } },
-    responses: { ...ok(MonitorAlertRuleDTO, '更新成功'), ...commonErrorResponses },
-  }),
+const ruleUpdate = defineContractRoute(monitorAlertContract.update, {
+  middleware: [authMiddleware, guard({ permission: 'alert:rule:update', audit: { description: '更新告警规则', module: '告警中心' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, await getMonitorAlertRuleBeforeAudit(id));
@@ -160,14 +63,8 @@ const ruleUpdate = defineOpenAPIRoute({
   },
 });
 
-const ruleToggle = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'patch', path: '/{id}/enabled', tags: ['AlertCenter'], summary: '启用/禁用告警规则',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'alert:rule:update', audit: { description: '切换告警规则状态', module: '告警中心' } })] as const,
-    request: { params: IdParam, body: { content: jsonContent(EnabledBody), required: true } },
-    responses: { ...ok(MonitorAlertRuleDTO, '操作成功'), ...commonErrorResponses },
-  }),
+const ruleToggle = defineContractRoute(monitorAlertContract.setEnabled, {
+  middleware: [authMiddleware, guard({ permission: 'alert:rule:update', audit: { description: '切换告警规则状态', module: '告警中心' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, await getMonitorAlertRuleBeforeAudit(id));
@@ -175,14 +72,8 @@ const ruleToggle = defineOpenAPIRoute({
   },
 });
 
-const ruleBatchToggle = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'patch', path: '/batch/enabled', tags: ['AlertCenter'], summary: '批量启用/禁用告警规则',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'alert:rule:update', audit: { description: '批量切换告警规则状态', module: '告警中心' } })] as const,
-    request: { body: { content: jsonContent(BatchEnabledBody), required: true } },
-    responses: { ...okMsg('操作成功'), ...commonErrorResponses },
-  }),
+const ruleBatchToggle = defineContractRoute(monitorAlertContract.setEnabledBatch, {
+  middleware: [authMiddleware, guard({ permission: 'alert:rule:update', audit: { description: '批量切换告警规则状态', module: '告警中心' } })],
   handler: async (c) => {
     const { ids, enabled } = c.req.valid('json');
     const count = await setRulesEnabled(ids, enabled);
@@ -191,28 +82,16 @@ const ruleBatchToggle = defineOpenAPIRoute({
 });
 
 // `DELETE /batch` 必须注册在 `DELETE /{id}` 之前，否则会被匹配成 id="batch"
-const ruleBatchDelete = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/batch', tags: ['AlertCenter'], summary: '批量删除告警规则',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'alert:rule:delete', audit: { description: '批量删除告警规则', module: '告警中心' } })] as const,
-    request: { body: { content: jsonContent(IdsBody), required: true } },
-    responses: { ...okMsg('删除成功'), ...commonErrorResponses },
-  }),
+const ruleBatchDelete = defineContractRoute(monitorAlertContract.removeBatch, {
+  middleware: [authMiddleware, guard({ permission: 'alert:rule:delete', audit: { description: '批量删除告警规则', module: '告警中心' } })],
   handler: async (c) => {
     await deleteRules(c.req.valid('json').ids);
     return c.json(okBody(null, '删除成功'), 200);
   },
 });
 
-const ruleDelete = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/{id}', tags: ['AlertCenter'], summary: '删除告警规则',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'alert:rule:delete', audit: { description: '删除告警规则', module: '告警中心' } })] as const,
-    request: { params: IdParam },
-    responses: { ...okMsg('删除成功'), ...commonErrorResponses },
-  }),
+const ruleDelete = defineContractRoute(monitorAlertContract.remove, {
+  middleware: [authMiddleware, guard({ permission: 'alert:rule:delete', audit: { description: '删除告警规则', module: '告警中心' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, await getMonitorAlertRuleBeforeAudit(id));
@@ -221,14 +100,8 @@ const ruleDelete = defineOpenAPIRoute({
   },
 });
 
-const ruleTest = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/{id}/test', tags: ['AlertCenter'], summary: '试发告警通知',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'alert:rule:test', audit: { description: '试发告警通知', module: '告警中心' } })] as const,
-    request: { params: IdParam },
-    responses: { ...ok(MonitorAlertTestResultDTO, '已试发'), ...commonErrorResponses },
-  }),
+const ruleTest = defineContractRoute(monitorAlertContract.test, {
+  middleware: [authMiddleware, guard({ permission: 'alert:rule:test', audit: { description: '试发告警通知', module: '告警中心' } })],
   handler: async (c) => c.json(okBody(await testRule(c.req.valid('param').id), '测试通知已发送'), 200),
 });
 

@@ -1,6 +1,6 @@
 import * as z from 'zod';
 import { partialForUpdate, webhookUrlSchema } from '../core/validation';
-import { CONFIG_TYPES, CRON_JOB_STATUSES, FILE_OBJECT_ACL_SUPPORT, MONITOR_ALERT_EVENT_STATUSES, MONITOR_ALERT_HANDLE_STATUSES, MONITOR_ALERT_LEVELS, MONITOR_ALERT_NOTIFY_STATUSES, MONITOR_ALERT_OVERVIEW_RANGES, MONITOR_METRICS, PRESIGNED_EXPIRY_DEFAULT_SECONDS, PRESIGNED_EXPIRY_MAX_SECONDS, PRESIGNED_EXPIRY_MIN_SECONDS, SYSTEM_SCHEDULER_ALERT_CHANNELS } from './constants';
+import { CONFIG_TYPES, CRON_JOB_STATUSES, FILE_OBJECT_ACL_SUPPORT, MASK_TYPES, MONITOR_ALERT_HANDLE_STATUSES, MONITOR_ALERT_LEVELS, MONITOR_ALERT_OPERATORS, MONITOR_HISTORY_RANGES, MONITOR_METRICS, PRESIGNED_EXPIRY_DEFAULT_SECONDS, PRESIGNED_EXPIRY_MAX_SECONDS, PRESIGNED_EXPIRY_MIN_SECONDS, RATE_LIMIT_ALGORITHMS, RATE_LIMIT_KEY_TYPES, RATE_LIMIT_MODES, REGION_LEVELS, SYSTEM_SCHEDULER_ALERT_CHANNELS, USER_FEEDBACK_CATEGORIES, USER_FEEDBACK_STATUSES } from './constants';
 
 // ─── 字典 Schema ──────────────────────────────────────────────────────────────
 export const createDictSchema = z.object({
@@ -297,7 +297,7 @@ export type AcknowledgeSystemSchedulerAlertInput = z.infer<typeof acknowledgeSys
 export const createRegionSchema = z.object({
   code:       z.string().min(1, '区划代码不能为空').max(12),
   name:       z.string().min(1, '名称不能为空').max(64),
-  level:      z.enum(['province', 'city', 'county']),
+  level:      z.enum(REGION_LEVELS),
   parentCode: z.string().max(12).nullable().optional(),
   sort:       z.coerce.number().int().default(0),
   status:     z.enum(['enabled', 'disabled']).default('enabled'),
@@ -337,8 +337,6 @@ export type UpdateTagInput = z.infer<typeof updateTagSchema>;
 
 // ─── 数据脱敏配置 Schema ──────────────────────────────────────────────────────
 
-export const maskTypeValues = ['phone', 'email', 'id_card', 'name', 'bank_card', 'custom'] as const;
-
 export const customMaskRuleSchema = z.object({
   prefixKeep: z.number().int().min(0).max(20),
   suffixKeep: z.number().int().min(0).max(20),
@@ -349,7 +347,7 @@ export const createDataMaskConfigSchema = z.object({
   entity:          z.string().min(1, '实体名称不能为空').max(64),
   field:           z.string().min(1, '字段名称不能为空').max(64),
   label:           z.string().min(1, '字段标签不能为空').max(64),
-  maskType:        z.enum(maskTypeValues),
+  maskType:        z.enum(MASK_TYPES),
   customRule:      customMaskRuleSchema.nullable().optional(),
   exemptRoleCodes: z.array(z.string().max(64)).default([]),
   enabled:         z.boolean().default(true),
@@ -368,10 +366,10 @@ export type UpdateDataMaskConfigInput = z.infer<typeof updateDataMaskConfigSchem
 const monitorAlertRuleBaseSchema = z.object({
   name: z.string().min(1, '名称不能为空').max(128),
   metric: z.enum(MONITOR_METRICS),
-  operator: z.enum(['gt', 'gte', 'lt', 'lte']).default('gt'),
+  operator: z.enum(MONITOR_ALERT_OPERATORS).default('gt'),
   threshold: z.number(),
   durationMinutes: z.number().int().min(0).max(1440).default(0),
-  level: z.enum(['info', 'warning', 'critical']).default('warning'),
+  level: z.enum(MONITOR_ALERT_LEVELS).default('warning'),
   channels: z.array(z.enum(['email', 'webhook', 'inapp'])).default([]),
   webhookUrl: webhookUrlSchema.nullable().optional(),
   recipientUserIds: z.array(z.number().int().positive()).max(100).default([]),
@@ -416,45 +414,18 @@ export const updateMonitorAlertRuleSchema = partialForUpdate(monitorAlertRuleBas
   if (value.enabled === true && value.channels !== undefined) validateMonitorAlertDelivery(value, ctx);
 });
 
-/**
- * 查询参数里的布尔值：HTTP query 只有字符串，`z.boolean()` 会把 `?enabled=false` 判成校验失败。
- * 前端不传该参数即代表「不筛选」。
- */
-const queryBoolean = z.enum(['true', 'false']).transform((value) => value === 'true').optional();
-
-/**
- * 时间范围端点：与服务端 `dateRangeBound` 的格式约定保持一致
- * （同时接受 `YYYY-MM-DD` 与 `YYYY-MM-DD HH:mm:ss`），裸字符串会让 `?endTime=abc` 被静默当成无筛选。
- */
-const queryDateRangeBound = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$/, '时间格式必须为 YYYY-MM-DD 或 YYYY-MM-DD HH:mm:ss')
-  .optional();
-
-export const monitorAlertRuleQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(20),
-  keyword: z.string().max(128).optional(),
-  metric: z.enum(MONITOR_METRICS).optional(),
-  level: z.enum(MONITOR_ALERT_LEVELS).optional(),
-  /** 规则是否参与定时评估 */
-  enabled: queryBoolean,
-  /** 规则当前是否处于告警中 */
-  state: z.enum(['ok', 'firing']).optional(),
+/** 启用 / 禁用单条告警规则 */
+export const setMonitorAlertRuleEnabledSchema = z.object({
+  enabled: z.boolean(),
 });
 
-export const monitorAlertEventQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(20),
-  keyword: z.string().max(128).optional(),
-  metric: z.enum(MONITOR_METRICS).optional(),
-  level: z.enum(MONITOR_ALERT_LEVELS).optional(),
-  status: z.enum(MONITOR_ALERT_EVENT_STATUSES).optional(),
-  notifyStatus: z.enum(MONITOR_ALERT_NOTIFY_STATUSES).optional(),
-  handleStatus: z.enum(MONITOR_ALERT_HANDLE_STATUSES).optional(),
-  ruleId: z.coerce.number().int().positive().optional(),
-  startTime: queryDateRangeBound,
-  endTime: queryDateRangeBound,
+/** 批量操作的告警规则 ID 列表 */
+export const monitorAlertRuleIdsBody = z.object({
+  ids: z.array(z.number().int().positive()).min(1, '请至少选择一条规则').max(200),
+});
+
+export const batchSetMonitorAlertRulesEnabledSchema = monitorAlertRuleIdsBody.extend({
+  enabled: z.boolean(),
 });
 
 /**
@@ -470,29 +441,89 @@ export const batchHandleMonitorAlertEventsSchema = handleMonitorAlertEventSchema
   ids: z.array(z.number().int().positive()).min(1, '请至少选择一条告警').max(200),
 });
 
-export const monitorAlertOverviewQuerySchema = z.object({
-  range: z.enum(MONITOR_ALERT_OVERVIEW_RANGES).default('24h'),
-});
-
 export const monitorHistoryQuerySchema = z.object({
-  range: z.enum(['1h', '6h', '24h', '7d', '30d']).default('1h'),
+  range: z.enum(MONITOR_HISTORY_RANGES).default('1h'),
 });
 
 export type CreateMonitorAlertRuleInput = z.infer<typeof createMonitorAlertRuleSchema>;
 
 export type UpdateMonitorAlertRuleInput = z.infer<typeof updateMonitorAlertRuleSchema>;
 
-export type MonitorAlertRuleQuery = z.infer<typeof monitorAlertRuleQuerySchema>;
+export type SetMonitorAlertRuleEnabledInput = z.infer<typeof setMonitorAlertRuleEnabledSchema>;
 
-export type MonitorAlertEventQuery = z.infer<typeof monitorAlertEventQuerySchema>;
+export type BatchSetMonitorAlertRulesEnabledInput = z.infer<typeof batchSetMonitorAlertRulesEnabledSchema>;
 
 export type HandleMonitorAlertEventInput = z.infer<typeof handleMonitorAlertEventSchema>;
 
 export type BatchHandleMonitorAlertEventsInput = z.infer<typeof batchHandleMonitorAlertEventsSchema>;
 
-export type MonitorAlertOverviewQuery = z.infer<typeof monitorAlertOverviewQuerySchema>;
-
 export type MonitorHistoryQuery = z.infer<typeof monitorHistoryQuerySchema>;
+
+// ─── 接口限流 Schema ──────────────────────────────────────────────────────────
+
+/** pathBoundRateLimit 只挂载在 /api/*，非 /api/ 前缀的 pattern 永远不会匹配 */
+const rateLimitPathPatternSchema = z.string().max(256).refine((p) => p.startsWith('/api/'), '绑定路径必须以 /api/ 开头');
+
+/** 白名单条目：IP / CIDR / u:{userId}；合法性在中间件运行期宽容处理，这里只做长度约束 */
+const rateLimitAllowlistSchema = z.array(z.string().min(1).max(128)).max(100);
+
+export const createRateLimitRuleSchema = z.object({
+  name: z.string().min(1).max(64).regex(/^[a-z][a-z0-9_-]*$/, '规则名称只能包含小写字母、数字、下划线和连字符'),
+  description: z.string().max(255).nullable().optional(),
+  windowMs: z.number().int().min(1000),
+  limit: z.number().int().min(1),
+  keyType: z.enum(RATE_LIMIT_KEY_TYPES),
+  enabled: z.boolean(),
+  mode: z.enum(RATE_LIMIT_MODES).optional(),
+  algorithm: z.enum(RATE_LIMIT_ALGORITHMS).optional(),
+  allowlist: rateLimitAllowlistSchema.optional(),
+  priority: z.number().int().min(0).max(9999).optional(),
+  alertThreshold: z.number().int().min(1).max(1_000_000).nullable().optional(),
+  blockedMessage: z.string().max(255).nullable().optional(),
+  pathPatterns: z.array(rateLimitPathPatternSchema).max(50).optional(),
+});
+
+/** 部分更新；规则名称不可更改，描述与拦截提示不限长度 */
+export const updateRateLimitRuleSchema = z.object({
+  windowMs: z.number().int().min(1000).optional(),
+  limit: z.number().int().min(1).optional(),
+  keyType: z.enum(RATE_LIMIT_KEY_TYPES).optional(),
+  enabled: z.boolean().optional(),
+  mode: z.enum(RATE_LIMIT_MODES).optional(),
+  algorithm: z.enum(RATE_LIMIT_ALGORITHMS).optional(),
+  allowlist: rateLimitAllowlistSchema.optional(),
+  priority: z.number().int().min(0).max(9999).optional(),
+  alertThreshold: z.number().int().min(1).max(1_000_000).nullable().optional(),
+  description: z.string().nullable().optional(),
+  blockedMessage: z.string().nullable().optional(),
+  pathPatterns: z.array(rateLimitPathPatternSchema).max(50).optional(),
+});
+
+export const unblockRateLimitSchema = z.object({
+  name: z.string().min(1),
+  key: z.string().min(1),
+});
+
+export const resetRateLimitStatsSchema = z.object({
+  name: z.string().min(1),
+});
+
+export const banRateLimitSchema = z.object({
+  name: z.string().min(1),
+  key: z.string().min(1).max(256),
+  durationSeconds: z.number().int().min(60).max(30 * 24 * 3600),
+});
+
+export const unbanRateLimitSchema = z.object({
+  name: z.string().min(1),
+  key: z.string().min(1).max(256),
+});
+
+export type CreateRateLimitRuleInput = z.infer<typeof createRateLimitRuleSchema>;
+
+export type UpdateRateLimitRuleInput = z.infer<typeof updateRateLimitRuleSchema>;
+
+export type BanRateLimitInput = z.infer<typeof banRateLimitSchema>;
 
 export const uploadCertSchema = z.object({
   name: z.string().min(1).max(128),
@@ -535,8 +566,23 @@ export type RateMpKfSessionInput = z.infer<typeof rateMpKfSessionSchema>;
 
 export type ReplyMpKfSessionInput = z.infer<typeof replyMpKfSessionSchema>;
 
+// ─── 意见反馈 Schema ─────────────────────────────────────────────────────────
+export const createUserFeedbackSchema = z.object({
+  score: z.number().int().min(1, '评分最低 1 分').max(5, '评分最高 5 分').nullable().optional(),
+  category: z.enum(USER_FEEDBACK_CATEGORIES).default('suggestion'),
+  content: z.string().max(1000, '反馈内容不能超过 1000 字').nullable().optional(),
+  pagePath: z.string().max(200).nullable().optional(),
+  /** 提交时活跃的会话回放 ID（SDK 联动附带） */
+  replayId: z.uuid().nullable().optional(),
+}).refine((v) => v.score != null || (v.content != null && v.content.trim() !== ''), {
+  message: '评分与反馈内容至少填写一项',
+  path: ['content'],
+});
+
+export type CreateUserFeedbackInput = z.input<typeof createUserFeedbackSchema>;
+
 export const handleUserFeedbackSchema = z.object({
-  status: z.enum(['pending', 'processing', 'resolved', 'ignored']),
+  status: z.enum(USER_FEEDBACK_STATUSES),
   handleRemark: z.string().max(500, '处理备注不能超过 500 字').nullable().optional(),
 });
 

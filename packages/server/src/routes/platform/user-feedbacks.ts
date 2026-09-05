@@ -1,11 +1,10 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { userFeedbackContract } from '@zenith/shared/platform';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
 import { idempotencyGuard } from '../../middleware/idempotency';
-import { BatchIdsBody, ErrorResponse, IdParam, PaginationQuery, commonErrorResponses, dateRangeBound, errBody, jsonContent, ok, okBody, okMsg, okPaginated, validationHook } from '../../lib/openapi-schemas';
-import { UserFeedbackDTO } from '../../lib/openapi-dtos';
-import { createUserFeedbackSchema } from '@zenith/shared/identity';
-import { handleUserFeedbackSchema } from '@zenith/shared/platform';
+import { defineContractRoute } from '../../lib/contract-route';
+import { ErrorResponse, errBody, jsonContent, okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   batchDeleteUserFeedbacks,
   createUserFeedback,
@@ -18,19 +17,11 @@ import {
 
 const userFeedbacksRouter = new OpenAPIHono({ defaultHook: validationHook });
 
-// ─── POST / — 提交反馈（所有登录用户可用，无需权限码）─────────────────────────
-const submitRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/',
-    tags: ['意见反馈'], summary: '提交意见反馈',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, idempotencyGuard({ ttlSeconds: 10, message: '反馈提交中，请勿重复提交' })] as const,
-    request: { body: { content: jsonContent(createUserFeedbackSchema), required: true } },
-    responses: {
-      ...commonErrorResponses,
-      ...ok(UserFeedbackDTO, '提交成功'),
-    },
-  }),
+const notFoundResponse = { 404: { content: jsonContent(ErrorResponse), description: '不存在' } } as const;
+
+// 提交反馈：所有登录用户可用，无需权限码
+const submitRoute = defineContractRoute(userFeedbackContract.submit, {
+  middleware: [authMiddleware, idempotencyGuard({ ttlSeconds: 10, message: '反馈提交中，请勿重复提交' })],
   handler: async (c) => {
     const data = c.req.valid('json');
     const row = await createUserFeedback(data);
@@ -38,47 +29,14 @@ const submitRoute = defineOpenAPIRoute({
   },
 });
 
-// ─── GET / — 分页列表 ────────────────────────────────────────────────────────
-const listRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/',
-    tags: ['意见反馈'], summary: '反馈列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:feedback:list' })] as const,
-    request: {
-      query: PaginationQuery.extend({
-        keyword: z.string().optional(),
-        category: z.enum(['suggestion', 'bug', 'ux', 'other']).optional(),
-        status: z.enum(['pending', 'processing', 'resolved', 'ignored']).optional(),
-        startTime: dateRangeBound('起始时间'),
-        endTime: dateRangeBound('结束时间'),
-      }),
-    },
-    responses: {
-      ...commonErrorResponses,
-      ...okPaginated(UserFeedbackDTO, 'ok'),
-    },
-  }),
+const listRoute = defineContractRoute(userFeedbackContract.list, {
+  middleware: [authMiddleware, guard({ permission: 'system:feedback:list' })],
   handler: async (c) => c.json(okBody(await listUserFeedbacks(c.req.valid('query'))), 200),
 });
 
-// ─── PUT /{id}/handle — 处理反馈 ─────────────────────────────────────────────
-const handleRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/{id}/handle',
-    tags: ['意见反馈'], summary: '处理反馈',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:feedback:handle', audit: { description: '处理意见反馈', module: '意见反馈' } })] as const,
-    request: {
-      params: IdParam,
-      body: { content: jsonContent(handleUserFeedbackSchema), required: true },
-    },
-    responses: {
-      ...commonErrorResponses,
-      ...ok(UserFeedbackDTO, '处理成功'),
-      404: { content: jsonContent(ErrorResponse), description: '不存在' },
-    },
-  }),
+const handleRoute = defineContractRoute(userFeedbackContract.handle, {
+  middleware: [authMiddleware, guard({ permission: 'system:feedback:handle', audit: { description: '处理意见反馈', module: '意见反馈' } })],
+  responses: notFoundResponse,
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const data = c.req.valid('json');
@@ -89,20 +47,9 @@ const handleRoute = defineOpenAPIRoute({
   },
 });
 
-// ─── DELETE /batch — 批量删除（必须注册在 /{id} 之前）───────────────────────
-const batchDeleteRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/batch',
-    tags: ['意见反馈'], summary: '批量删除反馈',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:feedback:delete', audit: { description: '批量删除意见反馈', module: '意见反馈' } })] as const,
-    request: { body: { content: jsonContent(BatchIdsBody), required: true } },
-    responses: {
-      ...commonErrorResponses,
-      ...okMsg('批量删除成功'),
-      400: { content: jsonContent(ErrorResponse), description: '参数错误' },
-    },
-  }),
+// `DELETE /batch` 必须注册在 `DELETE /{id}` 之前
+const batchDeleteRoute = defineContractRoute(userFeedbackContract.removeBatch, {
+  middleware: [authMiddleware, guard({ permission: 'system:feedback:delete', audit: { description: '批量删除意见反馈', module: '意见反馈' } })],
   handler: async (c) => {
     const { ids } = c.req.valid('json');
     if (!ids || ids.length === 0) {
@@ -113,20 +60,9 @@ const batchDeleteRoute = defineOpenAPIRoute({
   },
 });
 
-// ─── DELETE /{id} — 删除 ─────────────────────────────────────────────────────
-const deleteRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/{id}',
-    tags: ['意见反馈'], summary: '删除反馈',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:feedback:delete', audit: { description: '删除意见反馈', module: '意见反馈' } })] as const,
-    request: { params: IdParam },
-    responses: {
-      ...commonErrorResponses,
-      ...okMsg('删除成功'),
-      404: { content: jsonContent(ErrorResponse), description: '不存在' },
-    },
-  }),
+const deleteRoute = defineContractRoute(userFeedbackContract.remove, {
+  middleware: [authMiddleware, guard({ permission: 'system:feedback:delete', audit: { description: '删除意见反馈', module: '意见反馈' } })],
+  responses: notFoundResponse,
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const before = await ensureUserFeedbackExists(id);

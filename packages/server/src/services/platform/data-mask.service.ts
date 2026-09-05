@@ -57,12 +57,12 @@ export function mapDataMaskConfig(row: DataMaskConfigRow): DataMaskConfig {
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
-export async function listDataMaskConfigs(query: { page?: number; pageSize?: number; keyword?: string; maskType?: MaskType; enabled?: string } = {}) {
+export async function listDataMaskConfigs(query: { page?: number; pageSize?: number; keyword?: string; maskType?: MaskType; enabled?: boolean } = {}) {
   const { page = 1, pageSize = 20, keyword, maskType, enabled } = query;
   const conditions = [];
   conditions.push(keywordCondition(keyword, [dataMaskConfigs.entity, dataMaskConfigs.field, dataMaskConfigs.label], 'ilike'));
   if (maskType) conditions.push(eq(dataMaskConfigs.maskType, maskType));
-  if (enabled !== undefined) conditions.push(eq(dataMaskConfigs.enabled, enabled === 'true'));
+  if (enabled !== undefined) conditions.push(eq(dataMaskConfigs.enabled, enabled));
   const where = buildWhere(...conditions);
   const [total, rows] = await Promise.all([
     db.$count(dataMaskConfigs, where),

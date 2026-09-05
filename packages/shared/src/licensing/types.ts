@@ -1,9 +1,4 @@
-import type {
-  LicenseEdition,
-  LicenseEventType,
-  LicenseFeatureKey,
-  LicenseStatus,
-} from './constants';
+import type { LicenseEdition, LicenseFeatureKey } from './constants';
 
 // ─── License 文档（签名对象）──────────────────────────────────────────────────
 
@@ -53,61 +48,4 @@ export interface LicenseEnvelope {
 export interface TenantPackageQuotas {
   /** 套餐级席位上限；与 License.maxUsers、tenant.maxUsers 取最小值生效 */
   maxUsers?: number | null;
-}
-
-// ─── 视图模型 ─────────────────────────────────────────────────────────────────
-
-/** License 状态页概览（已验签数据的投影 + 运行时状态） */
-export interface LicenseInfo {
-  id: number;
-  licenseId: string;
-  status: LicenseStatus;
-  edition: LicenseEdition;
-  editionLabel: string;
-  customerId: string;
-  customerName: string;
-  features: LicenseFeatureKey[];
-  limits: LicensePayload['limits'];
-  issuedAt: string;
-  notBefore: string;
-  expiresAt: string;
-  graceUntil: string;
-  maintenanceUntil: string | null;
-  keyId: string;
-  activatedAt: string;
-  lastVerifiedAt: string | null;
-  invalidReason: string | null;
-  replacedById: number | null;
-}
-
-/** 安装身份与运行摘要 */
-export interface LicenseInstallationInfo {
-  installationId: string;
-  licenseEpoch: number;
-  createdAt: string;
-  /** 当前 LICENSE_MODE */
-  mode: string;
-  /** 近期活跃后端节点数（心跳统计，展示用） */
-  activeNodes: number;
-}
-
-/** 有效授权快照（当前部署最终生效的功能与限额） */
-export interface LicenseEffectiveState {
-  mode: string;
-  status: LicenseStatus | 'unlicensed';
-  features: LicenseFeatureKey[];
-  limits: LicensePayload['limits'] | null;
-  expiresAt: string | null;
-  graceUntil: string | null;
-  /** 当前是否处于受限模式（required 下 License 失效） */
-  restricted: boolean;
-}
-
-export interface LicenseEventItem {
-  id: number;
-  licenseId: number | null;
-  type: LicenseEventType;
-  typeLabel: string;
-  detail: string | null;
-  createdAt: string;
 }

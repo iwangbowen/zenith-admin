@@ -5,11 +5,6 @@
   "d2s__CmsPublishingDetail",
   "d2s__CmsPublishingTask",
   "d2s__CmsResourceFolder",
-  "d2s__Dict",
-  "d2s__DictItem",
-  "d2s__MonitorAlertEvent",
-  "d2s__MonitorAlertRule",
-  "d2s__Region",
   "d2s__ReportChatbiSession",
   "d2s__ReportChatbiSessionDetail",
   "d2s__ReportDashboard",
@@ -60,9 +55,5 @@
   "s2d__ReportPrintTemplate",
   "s2d__ReportPublicAccessSession",
   "s2d__ReportPublicDashboard",
-  "s2d__RuleList",
-  "s2d__RuleListItem",
-  "s2d__RuleScorecard",
-  "s2d__SslCertificate",
-  "s2d__UserFeedback"
+  "s2d__SslCertificate"
 ]
