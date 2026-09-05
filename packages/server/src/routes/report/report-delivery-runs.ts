@@ -1,36 +1,16 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { acknowledgeReportDeliveryRunSchema } from '@zenith/shared/report';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { reportDeliveryRunContract } from '@zenith/shared/report';
 import { authMiddleware } from '../../middleware/auth';
 import { guard } from '../../middleware/guard';
-import { ErrorResponse, IdParam, PaginationQuery, commonErrorResponses, dateRangeBound, jsonContent, ok, okBody, okPaginated, queryBool, validationHook } from '../../lib/openapi-schemas';
-import { ReportDeliveryRunDTO } from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { ErrorResponse, jsonContent, okBody, validationHook } from '../../lib/openapi-schemas';
 import { parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
 import { acknowledgeAlertDeliveryRun, listAccessibleDeliveryRuns } from '../../services/report/report-delivery.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
-const listRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get',
-    path: '/',
-    tags: ['报表投递'],
-    summary: '投递执行历史列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: ['report:alert:list', 'report:subscription:list'] })] as const,
-    request: {
-      query: PaginationQuery.extend({
-        targetType: z.enum(['subscription', 'alert']).optional(),
-        subscriptionId: z.coerce.number().int().positive().optional(),
-        alertRuleId: z.coerce.number().int().positive().optional(),
-        status: z.enum(['pending', 'running', 'success', 'partial', 'failed', 'cancelled']).optional(),
-        triggerType: z.enum(['trigger', 'recover', 'manual', 'scheduled']).optional(),
-        startAt: dateRangeBound('起始时间'),
-        endAt: dateRangeBound('结束时间'),
-        includeAttempts: queryBool(),
-      }),
-    },
-    responses: { ...commonErrorResponses, ...okPaginated(ReportDeliveryRunDTO, '投递执行历史') },
-  }),
+const listRoute = defineContractRoute(reportDeliveryRunContract.list, {
+  middleware: [authMiddleware, guard({ permission: ['report:alert:list', 'report:subscription:list'] })],
   handler: async (c) => {
     const query = c.req.valid('query');
     return c.json(okBody(await listAccessibleDeliveryRuns({
@@ -41,20 +21,9 @@ const listRoute = defineOpenAPIRoute({
   },
 });
 
-const ackRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post',
-    path: '/{id}/acknowledge',
-    tags: ['报表投递'],
-    summary: '确认告警投递记录',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'report:alert:update' })] as const,
-    request: {
-      params: IdParam,
-      body: { content: jsonContent(acknowledgeReportDeliveryRunSchema), required: true },
-    },
-    responses: { ...commonErrorResponses, ...ok(ReportDeliveryRunDTO, '确认成功'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
-  }),
+const ackRoute = defineContractRoute(reportDeliveryRunContract.acknowledge, {
+  middleware: [authMiddleware, guard({ permission: 'report:alert:update' })],
+  responses: { 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
   handler: async (c) => c.json(okBody(await acknowledgeAlertDeliveryRun(c.req.valid('param').id, c.req.valid('json').note), '确认成功'), 200),
 });
 

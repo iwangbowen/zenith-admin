@@ -1,6 +1,35 @@
 import { createLabelOptionsFromMap } from '../core/enum-options';
 import type { ReportAlertAggregate, ReportChatbiSessionStatus, ReportDatasourceType, ReportDeliveryStatus, ReportDeliveryTriggerType, ReportFieldType, ReportFillRecordStatus, ReportFillSyncStatus, ReportFillTemplateStatus, ReportScheduleMisfirePolicy } from './types';
 
+/** 数据集字段（列）数据类型 */
+export const REPORT_FIELD_TYPES = ['string', 'number', 'date', 'boolean'] as const;
+
+/** 仪表盘全局筛选器类型 */
+export const REPORT_FILTER_TYPES = ['date', 'daterange', 'select', 'multiSelect', 'input', 'numberRange'] as const;
+
+export const REPORT_SORT_ORDERS = ['asc', 'desc'] as const;
+
+/** 通知渠道（预警 / 订阅 / SLA 共用）：邮件 / 站内信 / Webhook */
+export const REPORT_NOTIFY_CHANNELS = ['email', 'inApp', 'webhook'] as const;
+
+export const REPORT_SCHEDULE_MISFIRE_POLICIES = ['skip', 'fire_once'] as const;
+
+export const REPORT_DELIVERY_TARGET_TYPES = ['subscription', 'alert', 'sla'] as const;
+
+export const REPORT_DELIVERY_TRIGGER_TYPES = ['manual', 'scheduled', 'trigger', 'recover'] as const;
+
+export const REPORT_DELIVERY_STATUSES = ['pending', 'running', 'success', 'partial', 'failed', 'cancelled'] as const;
+
+/** 预警比较运算符 */
+export const REPORT_ALERT_OPS = ['gt', 'gte', 'lt', 'lte', 'eq', 'neq'] as const;
+
+/** 预警聚合方式 */
+export const REPORT_ALERT_AGGREGATES = ['sum', 'avg', 'max', 'min', 'count', 'first'] as const;
+
+export const REPORT_APPROVAL_ACTIONS = ['publish', 'promote', 'deprecate'] as const;
+
+export const REPORT_DQ_TRIGGER_TYPES = ['manual', 'scheduled', 'dataset_refresh'] as const;
+
 export const REPORT_DASHBOARD_LIFECYCLE_STATUSES = ['draft', 'published', 'offline'] as const;
 
 export const REPORT_DASHBOARD_LIFECYCLE_LABELS = {
@@ -59,7 +88,7 @@ export const REPORT_MISFIRE_POLICY_LABELS: Record<ReportScheduleMisfirePolicy, s
 export const REPORT_MISFIRE_POLICY_OPTIONS: Array<{ value: ReportScheduleMisfirePolicy; label: string }> =
   createLabelOptionsFromMap(REPORT_MISFIRE_POLICY_LABELS);
 
-export const REPORT_DQ_TRIGGER_LABELS: Record<'manual' | 'scheduled' | 'dataset_refresh', string> = {
+export const REPORT_DQ_TRIGGER_LABELS: Record<typeof REPORT_DQ_TRIGGER_TYPES[number], string> = {
   manual: '手动',
   scheduled: '定时',
   dataset_refresh: '数据集刷新',

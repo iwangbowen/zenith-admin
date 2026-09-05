@@ -1,13 +1,9 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { createReportSubscriptionSchema, updateReportSubscriptionSchema } from '@zenith/shared/report';
-import { asyncTaskSchema } from '@zenith/shared/tasks';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { reportSubscriptionContract } from '@zenith/shared/report';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
-import {
-  ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses,
-  ok, okPaginated, okMsg, IdParam, okBody, queryBool,
-} from '../../lib/openapi-schemas';
-import { ReportDashboardSubscriptionDTO } from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { ErrorResponse, jsonContent, okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   listSubscriptions, createSubscription, updateSubscription, deleteSubscription,
   ensureSubscriptionExists, mapSubscription, batchSetSubscriptionEnabled,
@@ -16,41 +12,21 @@ import { submitSubscriptionDeliveryTask } from '../../services/report/report-del
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
-const listRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/', tags: ['报表订阅'], summary: '订阅列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'report:subscription:list' })] as const,
-    request: { query: PaginationQuery.extend({ keyword: z.string().optional(), dashboardId: z.coerce.number().int().positive().optional(), enabled: queryBool() }) },
-    responses: { ...commonErrorResponses, ...okPaginated(ReportDashboardSubscriptionDTO, 'ok') },
-  }),
+const notFound = { 404: { content: jsonContent(ErrorResponse), description: '不存在' } } as const;
+
+const listRoute = defineContractRoute(reportSubscriptionContract.list, {
+  middleware: [authMiddleware, guard({ permission: 'report:subscription:list' })],
   handler: async (c) => c.json(okBody(await listSubscriptions(c.req.valid('query'))), 200),
 });
 
-const batchStatusSchema = z.object({
-  ids: z.array(z.number().int().positive()).min(1).max(50),
-  enabled: z.boolean(),
-});
-
-const createRoute_ = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/', tags: ['报表订阅'], summary: '创建订阅',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'report:subscription:create', audit: { description: '创建报表订阅', module: '报表订阅' } })] as const,
-    request: { body: { content: jsonContent(createReportSubscriptionSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(ReportDashboardSubscriptionDTO, '创建成功') },
-  }),
+const createRoute_ = defineContractRoute(reportSubscriptionContract.create, {
+  middleware: [authMiddleware, guard({ permission: 'report:subscription:create', audit: { description: '创建报表订阅', module: '报表订阅' } })],
   handler: async (c) => c.json(okBody(await createSubscription(c.req.valid('json')), '创建成功'), 200),
 });
 
-const updateRoute_ = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/{id}', tags: ['报表订阅'], summary: '更新订阅',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'report:subscription:update', audit: { description: '更新报表订阅', module: '报表订阅' } })] as const,
-    request: { params: IdParam, body: { content: jsonContent(updateReportSubscriptionSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(ReportDashboardSubscriptionDTO, '更新成功'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
-  }),
+const updateRoute_ = defineContractRoute(reportSubscriptionContract.update, {
+  middleware: [authMiddleware, guard({ permission: 'report:subscription:update', audit: { description: '更新报表订阅', module: '报表订阅' } })],
+  responses: notFound,
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, mapSubscription(await ensureSubscriptionExists(id)));
@@ -58,14 +34,9 @@ const updateRoute_ = defineOpenAPIRoute({
   },
 });
 
-const deleteRoute_ = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/{id}', tags: ['报表订阅'], summary: '删除订阅',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'report:subscription:delete', audit: { description: '删除报表订阅', module: '报表订阅' } })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...okMsg('删除成功'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
-  }),
+const deleteRoute_ = defineContractRoute(reportSubscriptionContract.remove, {
+  middleware: [authMiddleware, guard({ permission: 'report:subscription:delete', audit: { description: '删除报表订阅', module: '报表订阅' } })],
+  responses: notFound,
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, mapSubscription(await ensureSubscriptionExists(id)));
@@ -74,14 +45,8 @@ const deleteRoute_ = defineOpenAPIRoute({
   },
 });
 
-const batchStatusRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/batch-status', tags: ['报表订阅'], summary: '批量启停订阅',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'report:subscription:update', audit: { description: '批量更新报表订阅状态', module: '报表订阅' } })] as const,
-    request: { body: { content: jsonContent(batchStatusSchema), required: true } },
-    responses: { ...commonErrorResponses, ...okMsg('已更新') },
-  }),
+const batchStatusRoute = defineContractRoute(reportSubscriptionContract.batchStatus, {
+  middleware: [authMiddleware, guard({ permission: 'report:subscription:update', audit: { description: '批量更新报表订阅状态', module: '报表订阅' } })],
   handler: async (c) => {
     const { ids, enabled } = c.req.valid('json');
     const count = await batchSetSubscriptionEnabled(ids, enabled);
@@ -89,17 +54,10 @@ const batchStatusRoute = defineOpenAPIRoute({
   },
 });
 
-const runRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/{id}/run', tags: ['报表订阅'], summary: '立即推送',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'report:subscription:update', audit: { description: '手动推送报表订阅', module: '报表订阅' } })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...ok(asyncTaskSchema, '任务已提交'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
-  }),
-  handler: async (c) => {
-    return c.json(okBody(await submitSubscriptionDeliveryTask(c.req.valid('param').id), '任务已提交，可在任务中心查看进度'), 200);
-  },
+const runRoute = defineContractRoute(reportSubscriptionContract.run, {
+  middleware: [authMiddleware, guard({ permission: 'report:subscription:update', audit: { description: '手动推送报表订阅', module: '报表订阅' } })],
+  responses: notFound,
+  handler: async (c) => c.json(okBody(await submitSubscriptionDeliveryTask(c.req.valid('param').id), '任务已提交，可在任务中心查看进度'), 200),
 });
 
 router.openapiRoutes([listRoute, batchStatusRoute, createRoute_, updateRoute_, deleteRoute_, runRoute] as const);

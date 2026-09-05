@@ -43,8 +43,6 @@ export * from './nginx-sites';
 export * from './firewall';
 export * from './ops-overview';
 export * from './ops-hosts';
-export * from './report';
-export * from './report-platform';
 export * from './open-payment';
 export * from './rules';
 export * from './user-feedbacks';
