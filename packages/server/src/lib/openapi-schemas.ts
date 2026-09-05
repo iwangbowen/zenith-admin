@@ -1,11 +1,11 @@
 /**
- * 通用 OpenAPI / Zod schema 工具，供所有路由模块复用。
+ * 路由层的响应信封与校验钩子：契约适配（lib/contract-route.ts）与少数协议端点共用。
  *
  * 统一接口响应结构：{ code, message, data }
  *  - 成功：code = 0
  *  - 失败：code 为非零（400/401/403/404/500 等）
  *
- * 分页响应：{ list, total, page, pageSize }
+ * 入参 schema 积木（分页 / 时间范围 / 查询串布尔与枚举 / 批量 ID）见 `@zenith/shared/core` 的 api-schemas。
  */
 import { z, type Hook } from '@hono/zod-openapi';
 import type { Context } from 'hono';
@@ -137,13 +137,6 @@ export function apiResponse<T extends z.ZodTypeAny>(data: T) {
   });
 }
 
-/** 通用成功响应（data 为 null） */
-export const MessageResponse = z.object({
-  code: z.literal(0),
-  message: z.string(),
-  data: z.null().optional(),
-});
-
 /** 通用错误响应 */
 export const ErrorResponse = z.object({
   code: z.number(),
@@ -151,90 +144,9 @@ export const ErrorResponse = z.object({
   data: z.null().optional().nullable(),
 });
 
-/** 分页响应 */
-export function paginatedResponse<T extends z.ZodTypeAny>(item: T) {
-  return apiResponse(
-    z.object({
-      list: z.array(item),
-      total: z.number(),
-      page: z.number(),
-      pageSize: z.number(),
-    }),
-  );
-}
-
 /** 构造 application/json content */
 export function jsonContent<T extends z.ZodTypeAny>(schema: T) {
   return { 'application/json': { schema } };
-}
-
-/** 常用分页入参 */
-export const PaginationQuery = z.object({
-  page: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .default(1)
-    .openapi({
-      param: { name: 'page', in: 'query' },
-      example: 1,
-      description: '页码（从 1 开始）',
-    }),
-  pageSize: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(200)
-    .default(10)
-    .openapi({
-      param: { name: 'pageSize', in: 'query' },
-      example: 10,
-      description: '每页数量，最大 200',
-    }),
-});
-
-/**
- * 时间范围端点参数（`startTime` / `endTime` / `dateStart` 之类）。
- *
- * 同时接受 `YYYY-MM-DD` 与 `YYYY-MM-DD HH:mm:ss`——与
- * `lib/where-helpers.ts` 的 `dateRangeConditions()` 口径一致：
- * 传纯日期时起点取当天 00:00:00、终点取当天 23:59:59.999。
- *
- * 范围端点参数必须经此校验格式，非法输入直接 400，而不是被当成「无筛选」返回全量数据。
- *
- * @example
- * request: { query: PaginationQuery.extend({
- *   startTime: dateRangeBound('创建时间起'),
- *   endTime: dateRangeBound('创建时间止'),
- * }) }
- */
-export function dateRangeBound(description: string) {
-  return z
-    .string()
-    .regex(
-      /^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$/,
-      '时间格式必须为 YYYY-MM-DD 或 YYYY-MM-DD HH:mm:ss',
-    )
-    .optional()
-    .openapi({ example: '2026-08-01 00:00:00', description });
-}
-
-/**
- * 查询串布尔参数（`?enabled=true` / `?enabled=false`）。
- *
- * **禁止用 `z.coerce.boolean()` 解析查询参数**：其实现是 `Boolean(input)`，
- * 字符串 `'false'` 会被转成 `true`，「筛选否」永远无法表达。
- *
- * 解析规则（基于 z.stringbool，大小写不敏感）：
- *  - `'true' | '1' | 'yes' | 'on'` → true；`'false' | '0' | 'no' | 'off'` → false
- *  - 空串视为未传（与前端清空筛选时 toQueryString 的行为对齐）→ undefined
- *  - 其余取值 → 400
- */
-export function queryBool(description?: string) {
-  return z
-    .union([z.literal('').transform(() => undefined), z.stringbool()])
-    .optional()
-    .openapi({ type: 'boolean', ...(description ? { description } : {}) });
 }
 
 /** 常用错误响应集合（复制到 responses 里） */
@@ -250,40 +162,6 @@ export const commonErrorResponses = {
 export const conflictResponse = {
   409: { content: jsonContent(ErrorResponse), description: '存在关联数据，操作冲突' },
 } as const;
-
-/** id 参数 schema（path/query 通用） */
-export const IdParam = z.object({
-  id: z.coerce
-    .number()
-    .int()
-    .positive()
-    .openapi({
-      param: { name: 'id', in: 'path' },
-      example: 1,
-      description: '主键 ID',
-    }),
-});
-
-/** 成功响应常量：200 + ApiResponse<any> */
-export function ok<T extends z.ZodTypeAny>(schema: T, description = '操作成功') {
-  return {
-    200: { content: jsonContent(apiResponse(schema)), description },
-  };
-}
-
-/** 分页成功响应 */
-export function okPaginated<T extends z.ZodTypeAny>(item: T, description = '列表数据') {
-  return {
-    200: { content: jsonContent(paginatedResponse(item)), description },
-  };
-}
-
-/** 纯消息成功响应（data 为 null） */
-export function okMsg(description = '操作成功') {
-  return {
-    200: { content: jsonContent(MessageResponse), description },
-  };
-}
 
 /** Excel 文件下载响应（OpenAPI responses 块） */
 export function okExcel(description = 'Excel 文件') {
@@ -345,11 +223,6 @@ export function fileBody(content: string, filename: string, contentType: string)
   }) as never;
 }
 
-/** 批量 ID 操作请求体（批量删除 / 批量更新等） */
-export const BatchIdsBody = z.object({
-  ids: z.array(z.number().int()),
-}).openapi('BatchIdsBody');
-
 /**
  * 构造成功响应体，配合 c.json(okBody(data), 200) 使用。
  * `0 as const` 将类型收窄为字面量 0，满足 z.literal(0) 的类型检查。
@@ -372,31 +245,3 @@ export const errBody = <const T extends number = 400>(
   message: string,
   code: T = 400 as T,
 ) => ({ code, message, data: null });
-
-/**
- * 设置 Excel 响应头并返回文件流，配合 `return excelBody(c, buffer, 'filename.xlsx')` 使用。
- * 返回类型为 `never`，可满足任意 handler 的类型约束（等同于 `c.body(buffer) as never`）。
- *
- * @example
- * return excelBody(c, buffer, 'users.xlsx');
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function excelBody(c: Context<any>, buffer: ArrayBuffer | Buffer, filename: string): never {
-  c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  c.header('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (c.body as any)(buffer) as never;
-}
-
-/**
- * 设置 Excel 响应头并以 ReadableStream 形式返回文件，配合流式导出使用。
- *
- * @example
- * return excelStreamBody(c, stream, 'users.xlsx');
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function excelStreamBody(c: Context<any>, stream: ReadableStream, filename: string): never {
-  c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  c.header('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
-  return new Response(stream) as never;
-}

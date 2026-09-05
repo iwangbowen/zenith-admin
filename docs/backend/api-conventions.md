@@ -187,7 +187,7 @@ export async function ensureXxxExists(id: number) {
 ## 响应实体 schema（契约单一来源）
 
 响应实体形状定义在契约文件的 `xxxSchema`（`.meta({ id: 'Xxx' })` 即 OpenAPI 组件名），
-`type Xxx = z.infer<typeof xxxSchema>` 是前后端共用的实体类型；服务端没有独立的响应 DTO 层。
+`type Xxx = z.infer<typeof xxxSchema>` 是前后端共用的实体类型；服务端直接以契约 schema 作为响应 schema，实体只有这一份定义。
 
 - 组件名全局唯一，按「域 + 实体」命名（`CmsContent` / `WikiComment`）。
 - 精简变体用 `xxxSchema.pick({...})`，附带关联数据的详情用 `xxxSchema.extend({...})`，各自给独立的 `id`。

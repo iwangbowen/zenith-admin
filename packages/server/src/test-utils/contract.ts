@@ -165,7 +165,7 @@ export function listOperations(doc: OpenAPIDoc): RouteOperation[] {
 /**
  * 把 `{id}` 之类的占位符替换成具体值。
  *
- * 用 `1` 而非任意字符串：数值型 path param 统一走 `IdParam`（`z.coerce.number()`），
+ * 用 `1` 而非任意字符串：数值型 path param 统一走 `idParam`（`z.coerce.number()`），
  * 传非数字会额外触发一层参数校验，干扰认证契约的判定。
  */
 export function fillPathParams(path: string): string {

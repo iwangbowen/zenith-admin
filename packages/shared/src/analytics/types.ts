@@ -1,5 +1,4 @@
-import type { UserBehaviorEventType } from '../identity/types';
-import type { AnalyticsEnvironment, AnalyticsEventSource } from './constants';
+import type { AnalyticsEnvironment, AnalyticsEventSource, UserBehaviorEventType } from './constants';
 
 /**
  * 单条上报事件（客户端 → 服务端）的扁平形态。

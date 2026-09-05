@@ -380,7 +380,7 @@ async function presignObjectUrl(
 
 /**
  * public 策略下的永久公开直链；策略不符 / ACL 不允许 / 无法拼接时返回 null。
- * 结果永久有效，可进入列表 DTO 的 directUrl 字段（仅渲染用，禁止持久化）。
+ * 结果永久有效，可进入列表实体的 directUrl 字段（仅渲染用，禁止持久化）。
  */
 export function buildPublicFileUrl(file: FileUrlSource, config?: FileStorageConfigRow): string | null {
   if (config?.urlStrategy !== 'public' || !publicAclAllowed(file)) return null;

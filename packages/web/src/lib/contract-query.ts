@@ -28,7 +28,7 @@ import { LOOKUP_STALE_TIME, toQueryString, unwrap } from '@/lib/query';
  * 契约驱动的数据访问层。
  *
  * 所有服务端调用都由 `@zenith/shared` 的契约操作驱动：URL、方法、入参与响应类型均来自契约，
- * 页面与域 hooks 不再书写路径字符串或响应泛型。
+ * 页面与域 hooks 不书写路径字符串或响应泛型。
  *
  * - `api(op, input)`：单次调用，返回解包后的 `data`
  * - `apiQueryOptions(op, input)` / `useApiQuery(op, input)`：可缓存查询

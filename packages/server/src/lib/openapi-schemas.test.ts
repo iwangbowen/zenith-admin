@@ -1,41 +1,16 @@
 /**
  * openapi-schemas 校验工具单测：
- *  - queryBool：查询串布尔解析（'false' 必须是 false——z.coerce.boolean 的历史坑）
  *  - formatZodIssue：Zod v4 issue → 中文文案（v4 码表 + 结构化字段）
  */
 import { describe, it, expect } from 'vitest';
 import { z } from '@hono/zod-openapi';
-import { queryBool, formatZodIssue } from './openapi-schemas';
+import { formatZodIssue } from './openapi-schemas';
 
 const firstIssue = (schema: z.ZodType, input: unknown) => {
   const result = schema.safeParse(input);
   if (result.success) throw new Error('期望解析失败');
   return result.error.issues[0];
 };
-
-describe('queryBool', () => {
-  const schema = z.object({ flag: queryBool() });
-
-  it("'true' / '1' / 'yes' → true", () => {
-    expect(schema.parse({ flag: 'true' }).flag).toBe(true);
-    expect(schema.parse({ flag: '1' }).flag).toBe(true);
-    expect(schema.parse({ flag: 'yes' }).flag).toBe(true);
-  });
-
-  it("'false' / '0' 必须解析为 false（而非 Boolean('false') === true）", () => {
-    expect(schema.parse({ flag: 'false' }).flag).toBe(false);
-    expect(schema.parse({ flag: '0' }).flag).toBe(false);
-  });
-
-  it('空串与缺失均视为未传', () => {
-    expect(schema.parse({ flag: '' }).flag).toBeUndefined();
-    expect(schema.parse({}).flag).toBeUndefined();
-  });
-
-  it('非法取值解析失败（交由 validationHook 转 400）', () => {
-    expect(schema.safeParse({ flag: 'abc' }).success).toBe(false);
-  });
-});
 
 describe('formatZodIssue', () => {
   it('无 issue 时返回通用提示', () => {

@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import { dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
-import { userBehaviorEventTypeEnum } from '../../identity/validation';
+import { userBehaviorEventTypeEnum } from '../validation';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import {
   ANALYTICS_ACQUISITION_DIMENSIONS,

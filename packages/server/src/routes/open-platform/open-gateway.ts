@@ -32,8 +32,8 @@ router.use('/v1/*', openGatewayAuth, openApiMetering, openRateLimit);
 // CMS Headless 端点（挂在中间件之后，共用同一条鉴权/计量/限流链；契约路径已含 /v1 前缀）
 router.route('/', openCmsRoutes);
 
-// IoT 设备查询与控制端点（同上）
-router.route('/v1', openIotRoutes);
+// IoT 设备查询与控制端点（同上，契约路径已含 /v1 前缀）
+router.route('/', openIotRoutes);
 
 // 支付开放端点（身份、计量和限流继续复用同一网关）。契约路径已含 `/v1` 前缀，挂在网关根。
 router.route('/', openPaymentRoutes);

@@ -1,6 +1,5 @@
 import { COMMON_STATUS_LABELS, COMMON_STATUS_OPTIONS } from '../core/constants';
 import { createLabelOptions, createLabelOptionsFromMap } from '../core/enum-options';
-import type { UserBehaviorEventType } from '../identity/types';
 
 export const SOURCE_MAP_MAX_BYTES = 20 * 1024 * 1024;
 
@@ -29,6 +28,13 @@ export const ANALYTICS_SAVED_REPORT_TYPES = ['funnel'] as const;
 export type AnalyticsSavedReportType = (typeof ANALYTICS_SAVED_REPORT_TYPES)[number];
 
 // ─── 数据分析与报表 ────────────────────────────────────────────────────
+/** 行为事件类型（SDK 上报、服务端落库枚举与前端筛选共用） */
+export const USER_BEHAVIOR_EVENT_TYPES = [
+  'page_view', 'page_leave', 'feature_use', 'area_click', 'custom', 'perf', 'api_request', 'identify',
+] as const;
+
+export type UserBehaviorEventType = (typeof USER_BEHAVIOR_EVENT_TYPES)[number];
+
 /** 行为事件类型中文标签（列表/详情/时间轴/字典分类统一使用，SSOT） */
 export const USER_BEHAVIOR_EVENT_TYPE_LABELS: Record<UserBehaviorEventType, string> = {
   page_view: '页面进入',

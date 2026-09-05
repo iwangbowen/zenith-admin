@@ -1,6 +1,5 @@
 import * as z from 'zod';
 import { boundedJsonRecord, dateTimeStringSchema, httpUrl, partialForUpdate, validateAlertDelivery, webhookUrlSchema } from '../core/validation';
-import { userBehaviorEventTypeEnum } from '../identity/validation';
 import {
   ANALYTICS_ACQUISITION_DIMENSIONS,
   ANALYTICS_ATTRIBUTION_MODELS,
@@ -40,7 +39,11 @@ import {
   REPLAY_TRIGGER_TYPES,
   SOURCE_MAP_MAX_BYTES,
   analyticsMetricRequiresProperty,
+  USER_BEHAVIOR_EVENT_TYPES,
 } from './constants';
+
+/** 行为事件类型枚举（上报 / 查询共用） */
+export const userBehaviorEventTypeEnum = z.enum(USER_BEHAVIOR_EVENT_TYPES);
 
 const trackEventBaseSchema = z.object({
   eventId: z.uuid().optional(),

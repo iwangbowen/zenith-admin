@@ -140,6 +140,6 @@ SEO 与采集：`cms_redirects` / `cms_link_words` / `cms_push_logs` / `cms_sear
 
 ### 运行时约定
 
-- 所有公开 URL（栏目、内容、搭建页、标签、互动和资源）由服务端 resolver 生成；内容 DTO 返回 `canonicalUrl`/`previewUrl`，主题和管理端不拼接 `channelPath + slug + 扩展名`。
+- 所有公开 URL（栏目、内容、搭建页、标签、互动和资源）由服务端 resolver 生成；内容实体返回 `canonicalUrl`/`previewUrl`，主题和管理端不拼接 `channelPath + slug + 扩展名`。
 - HTML 正文、单页正文和富文本区块写入前经过 `sanitizeCmsHtml`；CMS link 字段只接受安全站内路径、`entity:` 引用和 `http(s)`/明确允许的 `mailto`/`tel`。资源句柄按 `siteId` 隔离，跨站句柄拒绝。
 - 内容/栏目/页面/部件等公开语义变更通过发布任务中心异步处理；事务 outbox 提交后先清理站点 Redis 页面和 sitemap/RSS 元数据缓存，再异步生成或删除静态文件。整站/主题快照使用 `publicRevision`，路径级增量任务使用对象版本与路径快照；旧任务不能覆盖更新后的产物。

@@ -22,7 +22,7 @@
 | `ruleKey` | 资产 key |
 | `version` | 求值所用发布版本；名单和无版本场景为 `null` |
 | `caller` | 调用方标识 |
-| `callerName` | 查询 DTO 动态解析出的展示名，表内不落该字段 |
+| `callerName` | 查询时动态解析出的展示名，表内不落该字段 |
 | `bizRef` | 调用方自定义业务关联对象，支持前缀查询 |
 | `source` | `runtime` / `manual` / `test` / `open` |
 | `matched` | 是否命中 |

@@ -1,6 +1,6 @@
 import * as z from 'zod';
 import { paginated } from '../../core/api-schemas';
-import { userBehaviorEventTypeEnum } from '../../identity/validation';
+import { userBehaviorEventTypeEnum } from '../validation';
 import { ANALYTICS_DEVICE_TYPES, ANALYTICS_ENVIRONMENTS, ANALYTICS_EVENT_SOURCES, ANALYTICS_PERF_RATINGS } from '../constants';
 
 // ─── 概览 / 趋势 / 实时 ───────────────────────────────────────────────────────

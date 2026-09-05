@@ -164,7 +164,7 @@
 
 ## 维护要求
 
-- 新增 provider 必须同步更新 `FILE_STORAGE_PROVIDERS`、Drizzle 枚举、Zod schema、DTO/前端表单、上传/读取/删除/签名 URL 逻辑与必要 SDK 懒加载。
+- 新增 provider 必须同步更新 `FILE_STORAGE_PROVIDERS`、Drizzle 枚举、Zod schema、契约实体 / 前端表单、上传/读取/删除/签名 URL 逻辑与必要 SDK 懒加载。
 - 修改 ACL 或 URL 策略时同时核对 `FILE_OBJECT_ACL_SUPPORT`、`resolveObjectAcl()`、`buildPublicFileUrl()`、`resolveFileAccessUrl()`。
 - 上传能力变更需要同步普通上传、分片上传、Magic Bytes 校验与业务附件组件。
 - 区分通用文件上传与业务域秒传：存在 `contentHash` 字段不代表通用上传接口会跳过传输，网盘秒传行为在网盘专题维护。

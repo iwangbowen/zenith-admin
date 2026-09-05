@@ -1,4 +1,5 @@
 import { TOKEN_KEY, REFRESH_TOKEN_KEY } from '@zenith/shared/core';
+import { authContract } from '@zenith/shared/identity';
 import type { ApiResponse } from '@zenith/shared/core';
 import { config } from '@/config';
 import { HttpClient, type ApiResponseWithMeta, type HttpRequestOptions } from './http-client';
@@ -77,7 +78,7 @@ export const request = new Request({
   baseUrl: config.apiBaseUrl,
   tokenKey: TOKEN_KEY,
   refreshTokenKey: REFRESH_TOKEN_KEY,
-  refreshPath: '/api/auth/refresh',
+  refreshPath: authContract.refresh.fullPath,
   loginUrl: () => `${import.meta.env.BASE_URL.replace(/\/$/, '') || ''}/login`,
   onUnauthorized: () => globalThis.dispatchEvent(new Event(ADMIN_AUTH_INVALIDATED_EVENT)),
   unauthorizedFallbackMessage: '密码错误',

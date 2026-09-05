@@ -458,14 +458,6 @@ export type OAuthCallbackInput = z.infer<typeof oauthCallbackSchema>;
 export type OAuthBindInput = z.infer<typeof oauthBindSchema>;
 
 
-// ════════════════════════════════════════════════════════════════════════════
-// 数据分析 / 埋点 / 错误监控
-// ════════════════════════════════════════════════════════════════════════════
-
-export const userBehaviorEventTypeEnum = z.enum([
-  'page_view', 'page_leave', 'feature_use', 'area_click', 'custom', 'perf', 'api_request', 'identify',
-]);
-
 
 export const buildMpOAuthUrlSchema = z.object({
   accountId: z.number().int().positive(),

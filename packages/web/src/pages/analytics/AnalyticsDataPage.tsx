@@ -26,10 +26,9 @@ import {
   useSaveAnalyticsEventMeta,
   useSaveAnalyticsSettings,
 } from '@/hooks/queries/analytics';
-import type { AnalyticsEventMeta, AnalyticsEventMetaReferences, AnalyticsRollupItem, AnalyticsSettings, EventListItem } from '@zenith/shared/analytics';
-import { ANALYTICS_DEVICE_TYPES, ANALYTICS_DEVICE_TYPE_OPTIONS, ANALYTICS_EVENT_PROPERTY_TYPES, USER_BEHAVIOR_EVENT_TYPE_LABELS } from '@zenith/shared/analytics';
+import type { AnalyticsEventMeta, AnalyticsEventMetaReferences, AnalyticsRollupItem, AnalyticsSettings, EventListItem, UserBehaviorEventType } from '@zenith/shared/analytics';
+import { ANALYTICS_DEVICE_TYPES, ANALYTICS_DEVICE_TYPE_OPTIONS, ANALYTICS_EVENT_PROPERTY_TYPES, USER_BEHAVIOR_EVENT_TYPE_LABELS, userBehaviorEventTypeEnum } from '@zenith/shared/analytics';
 import { enumValueOf } from '@zenith/shared/core';
-import { userBehaviorEventTypeEnum, type UserBehaviorEventType } from '@zenith/shared/identity';
 import { usePermission } from '@/hooks/usePermission';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import AnalyticsQualityTab from './AnalyticsQualityTab';

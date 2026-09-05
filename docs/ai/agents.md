@@ -27,7 +27,7 @@
 | --- | --- |
 | 项目有哪些包、目录和业务域？ | `AGENTS.md` |
 | 常用命令怎么跑？ | `AGENTS.md` 与 [本地开发](/guide/development) |
-| 新增后端路由、DTO、Service 怎么写？ | `.agents/skills/zenith/references/constraints.md` + `crud-backend.md` |
+| 新增后端契约、路由、Service 怎么写？ | `.agents/skills/zenith/references/constraints.md` + `crud-backend.md` |
 | 新增页面、hooks、表格、弹窗怎么写？ | `.agents/skills/zenith/references/constraints-frontend.md` + `query-cache.md` + `crud-frontend.md` |
 | 完整 CRUD 模块怎么落地？ | `.agents/skills/zenith/SKILL.md` Step 0-11 |
 | 异步任务、通知、模块修改、发版怎么处理？ | 对应 reference 文件 |

@@ -7,6 +7,7 @@ export * from './forward-rules';
 export * from './groups';
 export * from './ingest';
 export * from './open-devices';
+export * from './open-iot';
 export * from './ota';
 export * from './products';
 export * from './schedules';

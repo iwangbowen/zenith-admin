@@ -211,9 +211,12 @@ export async function previewPolicy(key: string): Promise<RetentionPreview> {
   };
 }
 
+/** 定时任务的单条执行结果：API 响应形状之外附带策略标题，供运行日志汇总 */
+export type RetentionRunOutcome = RetentionRunResult & { title: string };
+
 /** 定时任务入口：按序执行全部启用策略。单条失败不影响其余策略。 */
-export async function runAllPolicies(): Promise<RetentionRunResult[]> {
-  const results: RetentionRunResult[] = [];
+export async function runAllPolicies(): Promise<RetentionRunOutcome[]> {
+  const results: RetentionRunOutcome[] = [];
   for (const policy of RETENTION_POLICIES) {
     try {
       const deleted = await runPolicy(policy.key);

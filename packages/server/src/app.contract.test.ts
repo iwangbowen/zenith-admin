@@ -198,9 +198,8 @@ describe('错误响应契约', () => {
 
 describe('成功响应契约', () => {
   /**
-   * constraints.md Route 层：200 响应统一用 `...ok()` / `...okPaginated()` / `...okMsg()`
-   * 构造，它们都会把 DTO 包进 `{ code, message, data }` 包络。
-   * 这里校验声明层面确实是这个形状，防止有人绕过辅助函数直接写裸 DTO。
+   * constraints.md Route 层：200 响应由 `defineContractRoute` 按契约 `response` 统一包进
+   * `{ code, message, data }` 包络。这里校验声明层面确实是这个形状，防止协议端点直接写裸实体。
    */
   it('所有 200 响应都是 { code, message, data } 包络', () => {
     const violations: string[] = [];

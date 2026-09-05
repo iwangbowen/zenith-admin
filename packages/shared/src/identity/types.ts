@@ -1,5 +1,4 @@
-import type { PaginatedResponse } from '../core/types';
-import type { IdentityProviderSyncStatus, OAuthProviderType } from './constants';
+import type { OAuthProviderType } from './constants';
 
 // ─── JWT Payload ──────────────────────────────────────────────────────────────
 export interface JwtPayload {
@@ -10,47 +9,6 @@ export interface JwtPayload {
   /** 超管切换租户视角时，存放目标租户 ID */
   viewingTenantId?: number | null;
   jti?: string;
-}
-
-// ─── 用户行为分析 ────────────────────────────────────────────
-export type UserBehaviorEventType =
-  | 'page_view' | 'page_leave' | 'feature_use' | 'area_click'
-  | 'custom' | 'perf' | 'api_request' | 'identify';
-
-export interface UserStatItem {
-  userId: number | null;
-  username: string | null;
-  totalEvents: number;
-  pageViews: number;
-  uniquePages: number;
-  featureUses: number;
-  totalDwellMs: number | null;
-  lastActiveAt: string | null;
-}
-
-export type UserStats = PaginatedResponse<UserStatItem>;
-
-export interface UserTimelineEvent {
-  id: number;
-  eventType: UserBehaviorEventType;
-  eventName: string | null;
-  pagePath: string;
-  pageTitle: string | null;
-  elementLabel: string | null;
-  componentArea: string | null;
-  durationMs: number | null;
-  sessionId: string | null;
-  properties: Record<string, unknown> | null;
-  createdAt: string;
-}
-
-export interface UserTimeline {
-  userId: number | null;
-  username: string | null;
-  totalEvents: number;
-  firstSeenAt: string | null;
-  lastSeenAt: string | null;
-  items: UserTimelineEvent[];
 }
 
 // ─── OAuth 第三方登录（UI 视图模型）──────────────────────────────────────────
@@ -66,25 +24,6 @@ export interface OAuthPendingState {
   provider: OAuthProviderType;
   intent: 'login' | 'bind';
   redirectTo?: string | null;
-}
-
-// ─── 企业身份源同步日志 ───────────────────────────────────────────────────────
-export interface IdentityProviderSyncLog {
-  id: number;
-  providerId: number;
-  status: IdentityProviderSyncStatus;
-  triggerType: string;
-  total: number;
-  created: number;
-  linked: number;
-  updated: number;
-  skipped: number;
-  failed: number;
-  message?: string | null;
-  errorMessage?: string | null;
-  startedAt: string;
-  completedAt?: string | null;
-  createdAt: string;
 }
 
 export type { UserAiConfig } from '../ai/contracts';

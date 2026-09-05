@@ -142,7 +142,7 @@ npx concurrently --group --timings --kill-others-on-fail -n lint,test,build,docs
 | --- | --- | --- |
 | `maxWorkers: 8` | `packages/server/vitest.config.ts`、`packages/web/vitest.config.ts` | worker 数默认 = 核数−1，worker 越多重复转译/执行越多，核多时反超并行收益；且与 build（rolldown 全量转译）并行时会打满 CPU、导致 worker 启动超时 |
 | `testTimeout: 15_000` | 两个 vitest.config.ts | 四路并行抢满 CPU 时秒级用例被放大 10-40 倍：exceljs 渲染、Semi 浮层交互都实测撞破过默认 5s——**这是"发布验证偶发竞态失败"的头号来源**，并非真死锁 |
-| `480_000` 超时 | `src/app.contract.test.ts` 的 `beforeAll` | 装配整套 app（转译+执行 1400+ 模块）独占跑约 60-90s，四路并行下曾贴 300s，故留足余量；契约与路由表快照共用这一次装配 |
+| `480_000` 超时 | `src/app.contract.test.ts` 的 `beforeAll` | 装配整套 app（转译+执行 1400+ 模块）独占跑约 60-90s，四路并行下可能接近 300s，故留足余量；契约与路由表快照共用这一次装配 |
 | `deps.optimizer.web` | `packages/web/vitest.config.ts` | Semi 的 CJS 里 require CSS，只能走 vite 逐模块管线；esbuild 预打包成单 chunk 后 web 全量 288.6s → 139.4s |
 | 全局 redis 替身 | `packages/server/src/test-setup.ts` | lib/redis 模块加载即建连，全局替身保证测试不发真实 TCP、worker 退出期没有重连竞态 |
 

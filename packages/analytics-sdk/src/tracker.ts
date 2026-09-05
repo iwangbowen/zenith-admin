@@ -8,8 +8,7 @@
 import { onCLS, onINP, onLCP, onFCP, onTTFB, type Metric } from 'web-vitals';
 import { ANALYTICS_CONFIG_VERSION_KEY, ANALYTICS_EXPERIMENT_EXPOSURE_EVENT, ANALYTICS_RAGE_CLICK_EVENT } from '@zenith/shared/analytics';
 import { TOKEN_KEY, randomUUID } from '@zenith/shared/core';
-import type { TrackEventInput, AnalyticsPublicConfig, AnalyticsExperimentAssignment } from '@zenith/shared/analytics';
-import type { UserBehaviorEventType } from '@zenith/shared/identity';
+import type { TrackEventInput, AnalyticsPublicConfig, AnalyticsExperimentAssignment, UserBehaviorEventType } from '@zenith/shared/analytics';
 import { addBreadcrumb } from './breadcrumbs';
 import { configureErrorReporting, configureErrorReporterRuntime, reportError } from './error-reporter';
 import { analyticsRequestHeaders } from './http';

@@ -40,7 +40,7 @@ import {
   analyticsExperimentContract,
   analyticsSiteContract,
 } from '@zenith/shared/analytics';
-import type { UserBehaviorEventType } from '@zenith/shared/identity';
+import type { UserBehaviorEventType } from '@zenith/shared/analytics';
 import { SEED_ANALYTICS_EVENT_META, SEED_ANALYTICS_SITES, SEED_ANALYTICS_SEGMENTS } from '@zenith/shared/seed';
 import { mock } from '@/mocks/utils/contract';
 import { badRequest, nextIdFrom, notFound, pageResult } from '@/mocks/utils/handlers';

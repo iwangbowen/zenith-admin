@@ -65,7 +65,7 @@ const { refundNo, status } = await refund({ orderNo, refundAmount: 500, reason: 
 | `bizId` | 业务单据 ID，字符串 |
 | `orderNo` | 支付中心订单号，`PAY` 前缀 |
 | `payMethod` | 收银台 7 种方式；`wechat_jsapi` 必须携带 `openId` |
-| 时间 | API DTO 使用格式化时间字符串 |
+| 时间 | API 实体使用格式化时间字符串 |
 
 ## HTTP 接口
 

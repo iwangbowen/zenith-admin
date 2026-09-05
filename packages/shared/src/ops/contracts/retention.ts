@@ -39,7 +39,7 @@ export const retentionRunResultSchema = z.object({
   deleted: z.int(),
 }).meta({ id: 'RetentionRunResult' });
 
-export type RetentionRunResponse = z.infer<typeof retentionRunResultSchema>;
+export type RetentionRunResult = z.infer<typeof retentionRunResultSchema>;
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 

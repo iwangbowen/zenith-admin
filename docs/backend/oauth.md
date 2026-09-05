@@ -20,7 +20,7 @@
 | `oauth_configs` | provider 配置：`provider`、`client_id`、`client_secret`、`agent_id`、`corp_id`、`enabled` |
 | `user_oauth_accounts` | 用户第三方账号绑定：`user_id`、`provider`、`open_id`、`union_id`、昵称、头像、token 与原始信息 |
 
-`oauth_configs.client_secret` 按明文落库；接口响应通过 DTO 映射为 `******`。账号绑定表中的第三方 access token、refresh token 与原始响应也按字段保存。
+`oauth_configs.client_secret` 按明文落库；接口响应经 service 映射为 `******`。账号绑定表中的第三方 access token、refresh token 与原始响应也按字段保存。
 
 ## 登录与绑定接口
 

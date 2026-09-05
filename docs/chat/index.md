@@ -31,7 +31,7 @@ Zenith Admin 的即时通讯模块提供后台用户之间的单聊、群聊、�
 | `chat_conversation_members` | `conversation_id`、`user_id`、`role`、`is_pinned`、`is_starred`、`is_muted`、`is_archived`、`muted_until`、`last_read_at`、`joined_at` | 会话成员表；主键为 `conversation_id + user_id`；`role` 使用 `chat_member_role`：`owner` / `admin` / `member`；`muted_until` 为禁言截止时间（`NULL` 且被禁言时为永久） |
 | `chat_messages` | `id`、`conversation_id`、`sender_id`、`type`、`content`、`reply_to_id`、`is_recalled`、`is_edited`、`extra`、`created_at`、`updated_at` | 消息表；`type` 使用 `chat_message_type`：`text`、`image`、`file`、`system`、`forward`、`vote`、`voice`、`card`、`video` |
 | `chat_message_reactions` | `id`、`message_id`、`user_id`、`emoji`、`created_at` | 表情回应表；`message_id + user_id + emoji` 唯一 |
-| `chat_message_favorites` | `id`、`message_id`、`user_id`、`created_at` | 消息个人收藏表；`message_id + user_id` 唯一，列表 DTO 按当前用户回填 `extra.isFavorited` |
+| `chat_message_favorites` | `id`、`message_id`、`user_id`、`created_at` | 消息个人收藏表；`message_id + user_id` 唯一，列表实体按当前用户回填 `extra.isFavorited` |
 | `chat_quick_replies` | `id`、`user_id`、`content`、`sort` | 用户私有常用语，每人最多 50 条 |
 | `chat_scheduled_messages` | `id`、`conversation_id`、`sender_id`、`type`、`content`、`extra`、`scheduled_at`、`status`、`fail_reason`、`sent_message_id` | 定时消息；`status` 使用 `chat_scheduled_status`：`pending` / `sent` / `canceled` / `failed` |
 | `chat_custom_emojis` | `id`、`user_id`、`url`、`file_id`、`name`、`width`、`height` | 用户自定义表情收藏，每人最多 100 个 |
@@ -46,7 +46,7 @@ Zenith Admin 的即时通讯模块提供后台用户之间的单聊、群聊、�
 - `mentions`：@提及用户列表
 
 > **URL 安全约束**：`image` / `file` / `voice` / `video` 消息的 `content`、`asset.thumbnailUrl`、卡片 `cover` 与 `link` 动作 `url` 只接受 `http(s)` URL 或站内路径（托管文件 `/api/files/{id}/content`）；`linkPreview.url` / `image` / `favicon` 只接受 `http(s)`。服务端在发送消息与 `/link-preview` 入口校验，前端渲染 href / src、`window.open` 前再经 `utils/safe-url` 过滤，桌面端 `shell.openExternal` 只放行 `http(s)` / `mailto`，杜绝 `javascript:` / `file:`（UNC）/ `data:` 链接。
-- `isFavorited`：DTO 中回填的当前用户收藏标记（持久化在 `chat_message_favorites`）
+- `isFavorited`：实体中回填的当前用户收藏标记（持久化在 `chat_message_favorites`）
 - `isPinned`：会话级消息置顶状态（持久化在消息 `extra`）
 - `announcementHistory`：群公告历史系统消息元数据
 - `forwardedMessages`、`forwardSourceConvName`：合并转发内容与来源会话名

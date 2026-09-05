@@ -5,7 +5,7 @@ import { USER_STATUSES } from './constants';
  * 契约层通用 schema 积木：路径 / 分页 / 状态 / 审计列 / 响应信封。
  *
  * OpenAPI 元数据一律用 zod 原生 `.meta()`：`id` 为组件名（`#/components/schemas/{id}`），
- * `description` / `example` 直接进入文档；server 端不再对 shared schema 施加任何补丁。
+ * `description` / `example` 直接进入文档；server 端不对 shared schema 施加任何补丁。
  */
 
 // ─── 通用状态 ────────────────────────────────────────────────────────────────

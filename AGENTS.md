@@ -140,12 +140,12 @@ packages/web/src/mocks/                 # 可选的 Demo API 替身（handler �
 | 应用装配 | `src/app.ts`、`src/middleware/` | 中间件、领域路由、CMS 兜底路由、Mastra 标准 API 挂载、OpenAPI 与全局错误处理 |
 | 协议边界 | `src/routes/` | 输入输出协议与参数校验；常规业务委托 Service |
 | 业务层 | `src/services/` | 业务规则、数据映射、事务和前置校验 |
-| 共享内核与基础设施 | `src/db/`、`src/lib/`、领域适配器 | DTO、上下文、数据库、缓存、任务、存储与第三方平台适配 |
+| 共享内核与基础设施 | `src/db/`、`src/lib/`、领域适配器 | 契约路由适配、上下文、数据库、缓存、任务、存储与第三方平台适配 |
 
 常规业务 API 的主链路按以下方向流动：
 
 ```text
-Client → Middleware → Route → Service → Database / Adapter → DTO
+Client → Middleware → Route（契约）→ Service → Database / Adapter → 契约实体
 ```
 
 `createApp()` 只负责应用装配，不启动进程级副作用。跨域后续动作通过事件订阅解耦；

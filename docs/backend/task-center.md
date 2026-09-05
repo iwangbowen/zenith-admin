@@ -40,7 +40,7 @@ data-retention（每天 03:00）:
 
 核心文件：
 
-- `packages/server/src/lib/task-center/`：框架入口、类型、注册表、运行器、策略与 DTO 映射。
+- `packages/server/src/lib/task-center/`：框架入口、类型、注册表、运行器、策略与实体映射。
 - `packages/server/src/routes/tasks/async-tasks.ts`：任务中心管理 API。
 - `packages/server/src/services/tasks/async-tasks.service.ts`：列表、统计、权限、操作服务。
 - `packages/server/src/bootstrap/workers.ts`：任务类型注册与 Worker 启动编排。

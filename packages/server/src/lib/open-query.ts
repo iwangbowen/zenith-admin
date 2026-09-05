@@ -224,7 +224,7 @@ export function parseCmsOpenQuery(query: Record<string, string>): ParsedCmsOpenQ
  * 按 `fields` 裁剪输出对象；未指定时原样返回。
  *
  * `id` 始终保留 —— 客户端要靠它对齐增量同步与本地缓存。返回类型仍标注为 `T`：
- * 输出对象的字段在 DTO 中除 id 外均为 optional，裁剪后的形态依然满足该契约。
+ * 输出对象的字段在契约实体（`cmsOpenContentSchema`）中除 id 外均为 optional，裁剪后的形态依然满足该契约。
  */
 export function pickCmsOpenFields<T extends { id: number }>(row: T, fields: string[] | null): T {
   if (!fields) return row;

@@ -1,6 +1,6 @@
 import * as z from 'zod';
 import { auditFieldsSchema } from '../../core/api-schemas';
-import { userBehaviorEventTypeEnum } from '../../identity/validation';
+import { userBehaviorEventTypeEnum } from '../validation';
 import {
   ANALYTICS_DEVICE_TYPES,
   ANALYTICS_ENVIRONMENTS,

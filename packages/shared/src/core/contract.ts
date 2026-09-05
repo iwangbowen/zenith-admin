@@ -5,7 +5,7 @@ import * as z from 'zod';
  *
  * 一个操作（Operation）同时描述 HTTP 方法、路径、路径参数 / 查询参数 / 请求体 schema
  * 与响应载荷 schema。server 用它生成路由与 OpenAPI，web 用它构造请求与 query hooks，
- * MSW 用它绑定 handler：三端只依赖这里的定义，URL 与形状不再手写。
+ * MSW 用它绑定 handler：三端只依赖这里的定义，URL 与形状不手写。
  *
  * - 路径使用 OpenAPI 风格占位符 `{id}`；`fillPath()` 负责填充，`toColonPath()` 转成 `:id`
  * - `response` 描述的是 `data` 载荷，`{ code, message, data }` 信封由传输层统一处理；
