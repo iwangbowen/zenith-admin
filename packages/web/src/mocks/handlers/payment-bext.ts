@@ -1,13 +1,46 @@
-import { http } from 'msw';
 import { PAYMENT_MOCK_SEED_TIME, getNextPaymentOrderId, mockPaymentChannels, mockPaymentOrders, mockPaymentRefunds } from '@/mocks/data/payment';
+import { mock } from '@/mocks/utils/contract';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
-import { ok, notFound, badRequest, conflict, forbidden, paginate } from '@/mocks/utils/handlers';
-import { PAYMENT_CASHIER_METHODS, PAYMENT_CHANNEL_LABELS, PAYMENT_METHOD_CHANNEL } from '@zenith/shared/payment';
+import { notFound, badRequest, conflict, forbidden } from '@/mocks/utils/handlers';
+import {
+  PAYMENT_CASHIER_METHODS,
+  PAYMENT_CHANNEL_LABELS,
+  PAYMENT_METHOD_CHANNEL,
+  paymentAppContract,
+  paymentFeeRuleContract,
+  paymentLinkContract,
+  paymentLinkPublicContract,
+  paymentMethodContract,
+  paymentReportContract,
+  paymentRiskRuleContract,
+  paymentSettlementContract,
+  paymentSharingContract,
+  paymentTransferContract,
+  type CreatePaymentResult,
+  type PaymentApp,
+  type PaymentCashierMethod,
+  type PaymentCashierSession,
+  type PaymentChannel,
+  type PaymentFeeRule,
+  type PaymentLink,
+  type PaymentLinkPublic,
+  type PaymentLinkStatus,
+  type PaymentMethod,
+  type PaymentMethodConfig,
+  type PaymentReportRow,
+  type PaymentRiskRule,
+  type PaymentSettlementBatch,
+  type PaymentSettlementItem,
+  type PaymentSettlementStatus,
+  type PaymentSharingOrder,
+  type PaymentSharingReceiver,
+  type PaymentSharingReversal,
+  type PaymentTransfer,
+} from '@zenith/shared/payment';
 import { SEED_PAYMENT_METHOD_CONFIGS } from '@zenith/shared/seed';
 import { recordMockPaymentSucceeded } from './payment-ext';
 import { recordMockSystemJournal } from './payment-journals';
 import { mockOAuth2Clients } from './oauth2-apps';
-import type { CreatePaymentResult, PaymentCashierMethod, PaymentCashierSession, PaymentChannel, PaymentApp, PaymentFeeRule, PaymentLink, PaymentLinkPublic, PaymentLinkStatus, PaymentMethod, PaymentMethodConfig, PaymentReportGroupBy, PaymentReportRow, PaymentRiskRule, PaymentSettlementBatch, PaymentSettlementItem, PaymentSettlementStatus, PaymentSharingOrder, PaymentSharingReceiver, PaymentSharingReversal, PaymentTransfer } from '@zenith/shared/payment';
 
 const SEED = PAYMENT_MOCK_SEED_TIME;
 const methodConfigs: PaymentMethodConfig[] = SEED_PAYMENT_METHOD_CONFIGS.map((m) => ({
@@ -38,37 +71,32 @@ const feeRules: PaymentFeeRule[] = [
 let nextFeeId = 3;
 
 const feeHandlers = [
-  http.get('/api/payment/fee-rules', ({ request }) => {
-    const url = new URL(request.url);
-    const channel = url.searchParams.get('channel') ?? '';
-    const status = url.searchParams.get('status') ?? '';
-    const filtered = feeRules.filter((r) => (!channel || r.channel === channel) && (!status || r.status === status));
-    return ok(paginate([...filtered].sort((a, b) => b.priority - a.priority), url));
+  mock(paymentFeeRuleContract.list, ({ query, ok, paginate }) => {
+    const filtered = feeRules.filter((r) => (!query.channel || r.channel === query.channel) && (!query.status || r.status === query.status));
+    return ok(paginate([...filtered].sort((a, b) => b.priority - a.priority)));
   }),
-  http.get('/api/payment/fee-rules/:id', ({ params }) => {
-    const r = feeRules.find((x) => x.id === Number(params.id));
+  mock(paymentFeeRuleContract.detail, ({ params, ok }) => {
+    const r = feeRules.find((x) => x.id === params.id);
     return r ? ok(r) : notFound('费率规则不存在');
   }),
-  http.post('/api/payment/fee-rules', async ({ request }) => {
-    const b = (await request.json()) as Partial<PaymentFeeRule>;
+  mock(paymentFeeRuleContract.create, ({ body, ok }) => {
     const now = mockDateTime();
     const item: PaymentFeeRule = {
-      id: nextFeeId++, name: b.name ?? '', channel: (b.channel as PaymentChannel) ?? 'wechat', payMethod: (b.payMethod as PaymentMethod) ?? null,
-      rateBps: b.rateBps ?? 0, fixedFee: b.fixedFee ?? 0, minFee: b.minFee ?? null, maxFee: b.maxFee ?? null,
-      status: b.status ?? 'enabled', priority: b.priority ?? 0, remark: b.remark ?? null, createdAt: now, updatedAt: now,
+      id: nextFeeId++, name: body.name, channel: body.channel, payMethod: body.payMethod ?? null,
+      rateBps: body.rateBps, fixedFee: body.fixedFee, minFee: body.minFee ?? null, maxFee: body.maxFee ?? null,
+      status: body.status, priority: body.priority, remark: body.remark ?? null, createdAt: now, updatedAt: now,
     };
     feeRules.push(item);
     return ok(item, '创建成功');
   }),
-  http.put('/api/payment/fee-rules/:id', async ({ params, request }) => {
-    const r = feeRules.find((x) => x.id === Number(params.id));
+  mock(paymentFeeRuleContract.update, ({ params, body, ok }) => {
+    const r = feeRules.find((x) => x.id === params.id);
     if (!r) return notFound('费率规则不存在');
-    const b = (await request.json()) as Partial<PaymentFeeRule>;
-    Object.assign(r, b, { updatedAt: mockDateTime() });
+    Object.assign(r, body, { updatedAt: mockDateTime() });
     return ok(r, '更新成功');
   }),
-  http.delete('/api/payment/fee-rules/:id', ({ params }) => {
-    const i = feeRules.findIndex((x) => x.id === Number(params.id));
+  mock(paymentFeeRuleContract.remove, ({ params, ok }) => {
+    const i = feeRules.findIndex((x) => x.id === params.id);
     if (i === -1) return notFound('费率规则不存在');
     feeRules.splice(i, 1);
     return ok(null, '删除成功');
@@ -100,15 +128,12 @@ const mockSettlementLines: MockSettlementLine[] = [
 const TRANSITIONS: Record<PaymentSettlementStatus, PaymentSettlementStatus[]> = { pending: ['settling', 'failed'], settling: ['settled', 'failed'], settled: [], failed: [] };
 
 const settlementHandlers = [
-  http.get('/api/payment/settlements', ({ request }) => {
-    const url = new URL(request.url);
-    const channel = url.searchParams.get('channel') ?? '';
-    const status = url.searchParams.get('status') ?? '';
-    const filtered = settlements.filter((s) => (!channel || s.channel === channel) && (!status || s.status === status));
-    return ok(paginate([...filtered].reverse(), url));
+  mock(paymentSettlementContract.list, ({ query, ok, paginate }) => {
+    const filtered = settlements.filter((s) => (!query.channel || s.channel === query.channel) && (!query.status || s.status === query.status));
+    return ok(paginate([...filtered].reverse()));
   }),
-  http.get('/api/payment/settlements/:id/items', ({ params }) => {
-    const batchId = Number(params.id);
+  mock(paymentSettlementContract.items, ({ params, ok }) => {
+    const batchId = params.id;
     if (!settlements.some((batch) => batch.id === batchId)) return notFound('结算批次不存在');
     const items: PaymentSettlementItem[] = mockSettlementLines
       .filter((line) => line.batchId === batchId)
@@ -124,23 +149,22 @@ const settlementHandlers = [
       }));
     return ok(items);
   }),
-  http.get('/api/payment/settlements/:id', ({ params }) => {
-    const s = settlements.find((x) => x.id === Number(params.id));
+  mock(paymentSettlementContract.detail, ({ params, ok }) => {
+    const s = settlements.find((x) => x.id === params.id);
     return s ? ok(s) : notFound('结算批次不存在');
   }),
-  http.post('/api/payment/settlements/generate', async ({ request }) => {
-    const b = (await request.json()) as { applicationId: number; channelConfigId: number; currency: string; periodStart: string; periodEnd: string; remark?: string };
-    const config = mockPaymentChannels.find((item) => item.id === b.channelConfigId && item.status === 'enabled');
-    const app = apps.find((item) => item.id === b.applicationId && item.status === 'enabled');
+  mock(paymentSettlementContract.generate, ({ body, ok }) => {
+    const config = mockPaymentChannels.find((item) => item.id === body.channelConfigId && item.status === 'enabled');
+    const app = apps.find((item) => item.id === body.applicationId && item.status === 'enabled');
     const appConfigIds = [app?.wechatConfigId, app?.alipayConfigId, app?.unionpayConfigId];
     if (!config || !app || !appConfigIds.includes(config.id)) return badRequest('支付应用或商户配置不存在、未启用或未绑定');
     const availableLines = mockSettlementLines.filter((line) =>
       line.batchId == null
-      && line.appId === b.applicationId
-      && line.channelConfigId === b.channelConfigId
-      && line.currency === b.currency
-      && line.postedDate >= b.periodStart
-      && line.postedDate <= b.periodEnd);
+      && line.appId === body.applicationId
+      && line.channelConfigId === body.channelConfigId
+      && line.currency === body.currency
+      && line.postedDate >= body.periodStart
+      && line.postedDate <= body.periodEnd);
     if (availableLines.length === 0) return badRequest('该账期没有未结算的可用资金分录');
     const netBigInt = availableLines.reduce((sum, line) => sum + BigInt(line.amount), 0n);
     if (netBigInt <= 0n || netBigInt > BigInt(Number.MAX_SAFE_INTEGER)) return badRequest('该账期可结算净额无效');
@@ -148,10 +172,10 @@ const settlementHandlers = [
     const batchId = nextSettlementId++;
     const now = mockDateTime();
     const item: PaymentSettlementBatch = {
-      id: batchId, batchNo: `SETTLE${Date.now()}`, channel: config.channel, appId: b.applicationId, channelConfigId: b.channelConfigId, currency: b.currency,
-      periodStart: b.periodStart, periodEnd: b.periodEnd,
+      id: batchId, batchNo: `SETTLE${Date.now()}`, channel: config.channel, appId: body.applicationId, channelConfigId: body.channelConfigId, currency: body.currency,
+      periodStart: body.periodStart, periodEnd: body.periodEnd,
       status: 'pending', orderCount: availableLines.length, grossAmount: netAmount, feeAmount: 0, refundAmount: 0, sharingAmount: 0, netAmount,
-      settledAt: null, failureReason: null, payoutReference: null, version: 0, remark: b.remark ?? null, createdAt: now, updatedAt: now,
+      settledAt: null, failureReason: null, payoutReference: null, version: 0, remark: body.remark ?? null, createdAt: now, updatedAt: now,
     };
     availableLines.forEach((line) => {
       line.batchId = batchId;
@@ -160,14 +184,10 @@ const settlementHandlers = [
     settlements.push(item);
     return ok(item, '生成成功');
   }),
-  http.post('/api/payment/settlements/:id/status', async ({ params, request }) => {
-    const s = settlements.find((x) => x.id === Number(params.id));
+  mock(paymentSettlementContract.transition, ({ params, body, ok }) => {
+    const s = settlements.find((x) => x.id === params.id);
     if (!s) return notFound('结算批次不存在');
-    const { status, failureReason, payoutReference } = (await request.json()) as {
-      status: PaymentSettlementStatus;
-      failureReason?: string;
-      payoutReference?: string;
-    };
+    const { status, failureReason, payoutReference } = body;
     if (!TRANSITIONS[s.status].includes(status)) return badRequest(`不允许从「${s.status}」流转到「${status}」`);
     if (status === 'failed' && !failureReason?.trim()) return badRequest('标记结算失败时必须填写失败原因');
     if (status === 'settled' && !payoutReference?.trim()) return badRequest('确认结算到账时必须填写出款或到账参考号');
@@ -182,8 +202,8 @@ const settlementHandlers = [
     s.updatedAt = mockDateTime();
     return ok(s, '操作成功');
   }),
-  http.delete('/api/payment/settlements/:id', ({ params }) => {
-    const i = settlements.findIndex((x) => x.id === Number(params.id));
+  mock(paymentSettlementContract.remove, ({ params, ok }) => {
+    const i = settlements.findIndex((x) => x.id === params.id);
     if (i === -1) return notFound('结算批次不存在');
     if (settlements[i].status === 'settling') return badRequest('结算中批次不可删除');
     mockSettlementLines.forEach((line) => {
@@ -215,94 +235,77 @@ let nextSharingReversalId = 2;
 const sharingReversalIdempotency = new Map<string, { requestHash: string; reversalId: number }>();
 
 const sharingHandlers = [
-  http.get('/api/payment/sharing/receivers', ({ request }) => {
-    const url = new URL(request.url);
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const status = url.searchParams.get('status') ?? '';
-    const filtered = receivers.filter((r) => (!keyword || r.name.includes(keyword)) && (!status || r.status === status));
-    return ok(paginate([...filtered].reverse(), url));
+  mock(paymentSharingContract.receivers, ({ query, ok, paginate }) => {
+    const filtered = receivers.filter((r) => (!query.keyword || r.name.includes(query.keyword)) && (!query.status || r.status === query.status));
+    return ok(paginate([...filtered].reverse()));
   }),
-  http.get('/api/payment/sharing/receivers/:id', ({ params }) => {
-    const r = receivers.find((x) => x.id === Number(params.id));
+  mock(paymentSharingContract.receiverDetail, ({ params, ok }) => {
+    const r = receivers.find((x) => x.id === params.id);
     return r ? ok(r) : notFound('分账接收方不存在');
   }),
-  http.post('/api/payment/sharing/receivers', async ({ request }) => {
-    const b = (await request.json()) as Partial<PaymentSharingReceiver>;
+  mock(paymentSharingContract.createReceiver, ({ body, ok }) => {
     const now = mockDateTime();
     const item: PaymentSharingReceiver = {
-      id: nextReceiverId++, name: b.name ?? '', receiverType: b.receiverType ?? 'merchant', account: b.account ?? '',
-      ratioBps: b.ratioBps ?? null, autoShare: b.autoShare ?? false, status: b.status ?? 'enabled', remark: b.remark ?? null, createdAt: now, updatedAt: now,
+      id: nextReceiverId++, name: body.name, receiverType: body.receiverType, account: body.account,
+      ratioBps: body.ratioBps ?? null, autoShare: body.autoShare, status: body.status, remark: body.remark ?? null, createdAt: now, updatedAt: now,
     };
     receivers.push(item);
     return ok(item, '创建成功');
   }),
-  http.put('/api/payment/sharing/receivers/:id', async ({ params, request }) => {
-    const r = receivers.find((x) => x.id === Number(params.id));
+  mock(paymentSharingContract.updateReceiver, ({ params, body, ok }) => {
+    const r = receivers.find((x) => x.id === params.id);
     if (!r) return notFound('分账接收方不存在');
-    const b = (await request.json()) as Partial<PaymentSharingReceiver>;
-    Object.assign(r, b, { updatedAt: mockDateTime() });
+    Object.assign(r, body, { updatedAt: mockDateTime() });
     return ok(r, '更新成功');
   }),
-  http.delete('/api/payment/sharing/receivers/:id', ({ params }) => {
-    const i = receivers.findIndex((x) => x.id === Number(params.id));
+  mock(paymentSharingContract.removeReceiver, ({ params, ok }) => {
+    const i = receivers.findIndex((x) => x.id === params.id);
     if (i === -1) return notFound('分账接收方不存在');
     receivers.splice(i, 1);
     return ok(null, '删除成功');
   }),
-  http.get('/api/payment/sharing/orders', ({ request }) => {
-    const url = new URL(request.url);
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const status = url.searchParams.get('status') ?? '';
-    const filtered = sharingOrders.filter((o) => (!keyword || o.orderNo.includes(keyword)) && (!status || o.status === status));
-    return ok(paginate([...filtered].reverse(), url));
+  mock(paymentSharingContract.orders, ({ query, ok, paginate }) => {
+    const filtered = sharingOrders.filter((o) => (!query.keyword || o.orderNo.includes(query.keyword)) && (!query.status || o.status === query.status) && (!query.receiverId || o.receiverId === query.receiverId));
+    return ok(paginate([...filtered].reverse()));
   }),
-  http.post('/api/payment/sharing/orders', async ({ request }) => {
-    const b = (await request.json()) as { orderNo: string; receiverId: number; amount?: number; remark?: string };
-    const order = mockPaymentOrders.find((o) => o.orderNo === b.orderNo);
+  mock(paymentSharingContract.dispatch, ({ body, ok }) => {
+    const order = mockPaymentOrders.find((o) => o.orderNo === body.orderNo);
     if (!order) return notFound('支付订单不存在');
     if (!['success', 'refunding', 'refunded'].includes(order.status)) return badRequest('仅支付成功的订单可发起分账');
-    const receiver = receivers.find((r) => r.id === b.receiverId);
+    const receiver = receivers.find((r) => r.id === body.receiverId);
     if (!receiver) return notFound('分账接收方不存在');
     if (receiver.status !== 'enabled') return badRequest('分账接收方已停用');
     const paid = order.paidAmount ?? order.amount;
-    const amount = b.amount ?? (receiver.ratioBps != null ? Math.round((paid * receiver.ratioBps) / 10000) : 0);
+    const amount = body.amount ?? (receiver.ratioBps != null ? Math.round((paid * receiver.ratioBps) / 10000) : 0);
     if (amount <= 0) return badRequest('分账金额必须大于 0');
     if (amount > paid) return badRequest('分账金额不能超过订单实付金额');
     const now = mockDateTime();
     const item: PaymentSharingOrder = {
-      id: nextSharingOrderId++, sharingNo: `SHR${Date.now()}`, orderNo: b.orderNo, receiverId: receiver.id, receiverName: receiver.name,
-      amount, status: 'success', channelSharingNo: `WXSHARE${Date.now()}`, version: 0, finishedAt: now, remark: b.remark ?? null, createdAt: now, updatedAt: now,
+      id: nextSharingOrderId++, sharingNo: `SHR${Date.now()}`, orderNo: body.orderNo, receiverId: receiver.id, receiverName: receiver.name,
+      amount, status: 'success', channelSharingNo: `WXSHARE${Date.now()}`, version: 0, finishedAt: now, remark: body.remark ?? null, createdAt: now, updatedAt: now,
     };
     sharingOrders.push(item);
     return ok(item, '分账已发起');
   }),
-  http.get('/api/payment/sharing/reversals', ({ request }) => {
-    const url = new URL(request.url);
-    const sharingOrderId = Number(url.searchParams.get('sharingOrderId')) || undefined;
-    const status = url.searchParams.get('status') ?? '';
-    const startTime = url.searchParams.get('startTime') ?? '';
-    const endTime = url.searchParams.get('endTime') ?? '';
+  mock(paymentSharingContract.reversals, ({ query, ok, paginate }) => {
     const filtered = sharingReversals.filter((record) =>
-      (!sharingOrderId || record.sharingOrderId === sharingOrderId)
-      && (!status || record.status === status)
-      && (!startTime || record.createdAt >= startTime)
-      && (!endTime || record.createdAt <= endTime));
-    return ok(paginate([...filtered].reverse(), url));
+      (!query.sharingOrderId || record.sharingOrderId === query.sharingOrderId)
+      && (!query.status || record.status === query.status)
+      && (!query.startTime || record.createdAt >= query.startTime)
+      && (!query.endTime || record.createdAt <= query.endTime));
+    return ok(paginate([...filtered].reverse()));
   }),
-  http.get('/api/payment/sharing/reversals/:id', ({ params }) => {
-    const reversal = sharingReversals.find((record) => record.id === Number(params.id));
+  mock(paymentSharingContract.reversalDetail, ({ params, ok }) => {
+    const reversal = sharingReversals.find((record) => record.id === params.id);
     return reversal ? ok(reversal) : notFound('分账冲正单不存在');
   }),
-  http.post('/api/payment/sharing/orders/:id/reverse', async ({ params, request }) => {
-    const sharingOrderId = Number(params.id);
+  mock(paymentSharingContract.reverse, ({ params, headers, body, ok }) => {
+    const sharingOrderId = params.id;
     const sharingOrder = sharingOrders.find((record) => record.id === sharingOrderId);
     if (!sharingOrder) return notFound('分账单不存在', { status: 404 });
     if (sharingOrder.status !== 'success') return badRequest('仅分账成功的分账单可冲正', { status: 400 });
-    const idempotencyKey = request.headers.get('X-Idempotency-Key')?.trim() ?? '';
-    if (idempotencyKey.length < 8) return badRequest('X-Idempotency-Key 不能为空且至少 8 位', { status: 400 });
-    const body = (await request.json()) as { reason?: string };
-    const reason = body.reason?.trim() ?? '';
-    if (!reason) return badRequest('冲正原因不能为空', { status: 400 });
+    const idempotencyKey = headers['x-idempotency-key'];
+    const reason = body.reason;
     const requestHash = JSON.stringify({ sharingOrderId, reason });
     const mapKey = `${sharingOrderId}:${idempotencyKey}`;
     const previous = sharingReversalIdempotency.get(mapKey);
@@ -321,8 +324,8 @@ const sharingHandlers = [
     sharingReversalIdempotency.set(mapKey, { requestHash, reversalId: reversal.id });
     return ok(reversal, '冲正已受理');
   }),
-  http.post('/api/payment/sharing/reversals/:id/query', ({ params }) => {
-    const reversal = sharingReversals.find((record) => record.id === Number(params.id));
+  mock(paymentSharingContract.queryReversal, ({ params, ok }) => {
+    const reversal = sharingReversals.find((record) => record.id === params.id);
     if (!reversal) return notFound('分账冲正单不存在', { status: 404 });
     reversal.queryAttempts += 1;
     reversal.version += 1;
@@ -360,27 +363,23 @@ function computeLinkStatus(l: PaymentLink): PaymentLinkStatus {
 }
 
 const linkHandlers = [
-  http.get('/api/payment/links', ({ request }) => {
-    const url = new URL(request.url);
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const status = url.searchParams.get('status') ?? '';
-    const filtered = links.filter((l) => (!keyword || l.subject.includes(keyword)) && (!status || computeLinkStatus(l) === status));
-    return ok(paginate([...filtered].reverse().map((l) => ({ ...l, status: computeLinkStatus(l) })), url));
+  mock(paymentLinkContract.list, ({ query, ok, paginate }) => {
+    const filtered = links.filter((l) => (!query.keyword || l.subject.includes(query.keyword)) && (!query.status || computeLinkStatus(l) === query.status));
+    return ok(paginate([...filtered].reverse().map((l) => ({ ...l, status: computeLinkStatus(l) }))));
   }),
-  http.get('/api/payment/links/:id', ({ params }) => {
-    const l = links.find((x) => x.id === Number(params.id));
+  mock(paymentLinkContract.detail, ({ params, ok }) => {
+    const l = links.find((x) => x.id === params.id);
     return l ? ok({ ...l, status: computeLinkStatus(l) }) : notFound('支付链接不存在');
   }),
-  http.post('/api/payment/links', async ({ request }) => {
-    const b = (await request.json()) as Partial<PaymentLink> & { applicationId?: number };
-    const app = apps.find((item) => item.id === b.applicationId && item.status === 'enabled');
+  mock(paymentLinkContract.create, ({ body, ok }) => {
+    const app = apps.find((item) => item.id === body.applicationId && item.status === 'enabled');
     if (!app) return badRequest('支付应用不存在或已停用');
     const now = mockDateTime();
     const item: PaymentLink = {
       id: nextLinkId++, linkNo: `LINK${Date.now()}`, token: `demotoken${String(nextLinkToken++).padStart(23, '0')}`,
-      appId: app.id, subject: b.subject ?? '', amount: b.amount ?? null, payMethod: (b.payMethod as PaymentMethod) ?? null, bizType: b.bizType ?? 'general',
-      maxUses: b.maxUses ?? null, usedCount: 0, reservedCount: 0, expiredAt: b.expiredAt ?? null, status: b.status === 'disabled' ? 'disabled' : 'active',
-      remark: b.remark ?? null, createdAt: now, updatedAt: now,
+      appId: app.id, subject: body.subject, amount: body.amount ?? null, payMethod: body.payMethod ?? null, bizType: body.bizType,
+      maxUses: body.maxUses ?? null, usedCount: 0, reservedCount: 0, expiredAt: body.expiredAt ?? null, status: body.status === 'disabled' ? 'disabled' : 'active',
+      remark: body.remark ?? null, createdAt: now, updatedAt: now,
     };
     if (getMockLinkAvailableMethods(item).length === 0) {
       return badRequest(item.payMethod ? '所选固定支付方式当前不可用' : '支付应用当前没有可用的公开收银台支付方式');
@@ -388,11 +387,10 @@ const linkHandlers = [
     links.push(item);
     return ok(item, '创建成功');
   }),
-  http.put('/api/payment/links/:id', async ({ params, request }) => {
-    const l = links.find((x) => x.id === Number(params.id));
+  mock(paymentLinkContract.update, ({ params, body, ok }) => {
+    const l = links.find((x) => x.id === params.id);
     if (!l) return notFound('支付链接不存在');
-    const b = (await request.json()) as Partial<PaymentLink>;
-    const next = { ...l, ...b, updatedAt: mockDateTime() };
+    const next: PaymentLink = { ...l, ...body, updatedAt: mockDateTime() };
     if (next.maxUses != null && next.maxUses < next.usedCount + next.reservedCount) {
       return badRequest('使用上限不能小于已核销次数与有效预占次数之和');
     }
@@ -402,21 +400,21 @@ const linkHandlers = [
     Object.assign(l, next);
     return ok({ ...l, status: computeLinkStatus(l) }, '更新成功');
   }),
-  http.post('/api/payment/links/:id/rotate-token', ({ params }) => {
-    const l = links.find((x) => x.id === Number(params.id));
+  mock(paymentLinkContract.rotateToken, ({ params, ok }) => {
+    const l = links.find((x) => x.id === params.id);
     if (!l) return notFound('支付链接不存在');
     l.token = `demotoken${Date.now()}`;
     l.updatedAt = mockDateTime();
     return ok({ ...l, status: computeLinkStatus(l) }, 'token 已重置');
   }),
-  http.delete('/api/payment/links/:id', ({ params }) => {
-    const i = links.findIndex((x) => x.id === Number(params.id));
+  mock(paymentLinkContract.remove, ({ params, ok }) => {
+    const i = links.findIndex((x) => x.id === params.id);
     if (i === -1) return notFound('支付链接不存在');
     links.splice(i, 1);
     return ok(null, '删除成功');
   }),
-  http.get('/api/public/payment/link/:token', ({ params }) => {
-    const l = links.find((x) => x.token === String(params.token));
+  mock(paymentLinkPublicContract.detail, ({ params, ok }) => {
+    const l = links.find((x) => x.token === params.token);
     if (!l) return notFound('支付链接不存在或已删除');
     const data: PaymentLinkPublic = {
       token: l.token,
@@ -431,18 +429,18 @@ const linkHandlers = [
     };
     return ok(data);
   }),
-  http.post('/api/public/payment/link/:token/pay', async ({ params, request }) => {
-    const l = links.find((x) => x.token === String(params.token));
+  mock(paymentLinkPublicContract.pay, ({ params, body, request, ok }) => {
+    const l = links.find((x) => x.token === params.token);
     if (!l) return notFound('支付链接不存在或已删除');
     const status = computeLinkStatus(l);
     if (status === 'disabled') return badRequest('该支付链接已停用');
     if (status === 'expired') return badRequest('该支付链接已过期或已达使用上限');
-    const body = (await request.json()) as { amount?: number; payMethod?: PaymentMethod; openId?: string };
     const amount = l.amount ?? body.amount;
     if (!amount || amount <= 0) return badRequest('请输入有效的支付金额');
     const payMethod = l.payMethod ?? body.payMethod;
     if (!payMethod) return badRequest('请选择支付方式');
-    if (!getMockLinkAvailableMethods(l).some((item) => item.method === payMethod)) return badRequest('该支付方式当前未启用或不属于此收款链接');
+    const availableMethod = getMockLinkAvailableMethods(l).find((item) => item.method === payMethod);
+    if (!availableMethod) return badRequest('该支付方式当前未启用或不属于此收款链接');
     if (l.maxUses != null && l.usedCount + l.reservedCount >= l.maxUses) return badRequest('该支付链接已过期或已达使用上限');
     const channel = PAYMENT_METHOD_CHANNEL[payMethod];
     const sessionToken = `${crypto.randomUUID().replaceAll('-', '')}${crypto.randomUUID().replaceAll('-', '')}`;
@@ -473,7 +471,7 @@ const linkHandlers = [
       linkId: l.id,
       appId: l.appId,
       orderNo,
-      payMethod: payMethod as PaymentCashierMethod,
+      payMethod: availableMethod.method,
       amount,
       status: 'processing',
       useSlotStatus: consumesUseSlot ? 'reserved' : 'none',
@@ -488,9 +486,9 @@ const linkHandlers = [
     cashierSessions.set(sessionToken, session);
     return ok(session, '收银台会话已创建');
   }),
-  http.get('/api/public/payment/link/:token/sessions/:sessionToken', ({ params }) => {
-    const link = links.find((item) => item.token === String(params.token));
-    const session = cashierSessions.get(String(params.sessionToken));
+  mock(paymentLinkPublicContract.session, ({ params, ok }) => {
+    const link = links.find((item) => item.token === params.token);
+    const session = cashierSessions.get(params.sessionToken);
     if (!link || !session || session.linkId !== link.id) return notFound('收银台会话不存在或已失效');
     const previousStatus = session.status;
     const previousError = session.errorMessage ?? null;
@@ -570,46 +568,41 @@ function fillPaymentAppConfigNames(app: PaymentApp) {
 }
 
 const appHandlers = [
-  http.get('/api/payment/apps', ({ request }) => {
-    const url = new URL(request.url);
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const status = url.searchParams.get('status') ?? '';
-    const filtered = apps.filter((a) => (!keyword || a.name.includes(keyword) || a.openClientKey.includes(keyword) || a.openClientName.includes(keyword)) && (!status || a.status === status));
-    return ok(paginate([...filtered].reverse().map((a) => fillPaymentAppConfigNames({ ...a })), url));
+  mock(paymentAppContract.list, ({ query, ok, paginate }) => {
+    const filtered = apps.filter((a) => (!query.keyword || a.name.includes(query.keyword) || a.openClientKey.includes(query.keyword) || a.openClientName.includes(query.keyword)) && (!query.status || a.status === query.status));
+    return ok(paginate([...filtered].reverse().map((a) => fillPaymentAppConfigNames({ ...a }))));
   }),
-  http.get('/api/payment/apps/:id', ({ params }) => {
-    const app = apps.find((x) => x.id === Number(params.id));
+  mock(paymentAppContract.detail, ({ params, ok }) => {
+    const app = apps.find((x) => x.id === params.id);
     return app ? ok(fillPaymentAppConfigNames({ ...app })) : notFound('支付应用不存在');
   }),
-  http.post('/api/payment/apps', async ({ request }) => {
-    const b = (await request.json()) as Partial<PaymentApp>;
-    const openClient = mockOAuth2Clients.find((client) => client.id === b.openClientId);
+  mock(paymentAppContract.create, ({ body, ok }) => {
+    const openClient = mockOAuth2Clients.find((client) => client.id === body.openClientId);
     if (!openClient || openClient.status !== 'enabled' || openClient.reviewStatus !== 'approved' || openClient.isPublic || !openClient.signEnabled) {
       return badRequest('所选开放客户端不可用于支付接入');
     }
     const now = mockDateTime();
     const item: PaymentApp = {
-      id: nextAppId++, name: b.name ?? '', openClientId: openClient.id, openClientKey: openClient.clientId,
-      openClientName: openClient.name, environment: openClient.environment, status: b.status ?? 'enabled',
-      wechatConfigId: b.wechatConfigId ?? null, wechatConfigName: null,
-      alipayConfigId: b.alipayConfigId ?? null, alipayConfigName: null,
-      unionpayConfigId: b.unionpayConfigId ?? null, unionpayConfigName: null,
-      remark: b.remark ?? null, createdAt: now, updatedAt: now,
+      id: nextAppId++, name: body.name, openClientId: openClient.id, openClientKey: openClient.clientId,
+      openClientName: openClient.name, environment: openClient.environment, status: body.status,
+      wechatConfigId: body.wechatConfigId ?? null, wechatConfigName: null,
+      alipayConfigId: body.alipayConfigId ?? null, alipayConfigName: null,
+      unionpayConfigId: body.unionpayConfigId ?? null, unionpayConfigName: null,
+      remark: body.remark ?? null, createdAt: now, updatedAt: now,
     };
     apps.push(fillPaymentAppConfigNames(item));
     return ok(item, '创建成功');
   }),
-  http.put('/api/payment/apps/:id', async ({ params, request }) => {
-    const app = apps.find((x) => x.id === Number(params.id));
+  mock(paymentAppContract.update, ({ params, body, ok }) => {
+    const app = apps.find((x) => x.id === params.id);
     if (!app) return notFound('支付应用不存在');
-    const b = (await request.json()) as Partial<PaymentApp>;
     Object.assign(app, {
-      name: b.name ?? app.name,
-      status: b.status ?? app.status,
-      wechatConfigId: b.wechatConfigId !== undefined ? b.wechatConfigId : app.wechatConfigId,
-      alipayConfigId: b.alipayConfigId !== undefined ? b.alipayConfigId : app.alipayConfigId,
-      unionpayConfigId: b.unionpayConfigId !== undefined ? b.unionpayConfigId : app.unionpayConfigId,
-      remark: b.remark !== undefined ? b.remark : app.remark,
+      name: body.name ?? app.name,
+      status: body.status ?? app.status,
+      wechatConfigId: body.wechatConfigId !== undefined ? body.wechatConfigId : app.wechatConfigId,
+      alipayConfigId: body.alipayConfigId !== undefined ? body.alipayConfigId : app.alipayConfigId,
+      unionpayConfigId: body.unionpayConfigId !== undefined ? body.unionpayConfigId : app.unionpayConfigId,
+      remark: body.remark !== undefined ? body.remark : app.remark,
       wechatConfigName: null,
       alipayConfigName: null,
       unionpayConfigName: null,
@@ -617,8 +610,8 @@ const appHandlers = [
     });
     return ok(fillPaymentAppConfigNames(app), '更新成功');
   }),
-  http.delete('/api/payment/apps/:id', ({ params }) => {
-    const i = apps.findIndex((x) => x.id === Number(params.id));
+  mock(paymentAppContract.remove, ({ params, ok }) => {
+    const i = apps.findIndex((x) => x.id === params.id);
     if (i === -1) return notFound('支付应用不存在');
     apps.splice(i, 1);
     return ok(null, '删除成功');
@@ -634,38 +627,33 @@ const riskRules = mockPaymentRiskRules;
 let nextRiskId = 3;
 
 const riskHandlers = [
-  http.get('/api/payment/risk-rules', ({ request }) => {
-    const url = new URL(request.url);
-    const scope = url.searchParams.get('scope') ?? '';
-    const status = url.searchParams.get('status') ?? '';
-    const filtered = riskRules.filter((r) => (!scope || r.scope === scope) && (!status || r.status === status));
-    return ok(paginate([...filtered].reverse(), url));
+  mock(paymentRiskRuleContract.list, ({ query, ok, paginate }) => {
+    const filtered = riskRules.filter((r) => (!query.scope || r.scope === query.scope) && (!query.status || r.status === query.status));
+    return ok(paginate([...filtered].reverse()));
   }),
-  http.get('/api/payment/risk-rules/:id', ({ params }) => {
-    const r = riskRules.find((x) => x.id === Number(params.id));
+  mock(paymentRiskRuleContract.detail, ({ params, ok }) => {
+    const r = riskRules.find((x) => x.id === params.id);
     return r ? ok(r) : notFound('风控规则不存在');
   }),
-  http.post('/api/payment/risk-rules', async ({ request }) => {
-    const b = (await request.json()) as Partial<PaymentRiskRule>;
+  mock(paymentRiskRuleContract.create, ({ body, ok }) => {
     const now = mockDateTime();
     const item: PaymentRiskRule = {
-      id: nextRiskId++, name: b.name ?? '', scope: b.scope ?? 'global', channel: (b.channel as PaymentChannel) ?? null, bizType: b.bizType ?? null,
-      singleLimit: b.singleLimit ?? null, dailyLimit: b.dailyLimit ?? null, dailyCountLimit: b.dailyCountLimit ?? null, blockListKeys: b.blockListKeys ?? [],
-      allowListKeys: b.allowListKeys ?? [], action: b.action ?? 'block',
-      status: b.status ?? 'enabled', remark: b.remark ?? null, createdAt: now, updatedAt: now,
+      id: nextRiskId++, name: body.name, scope: body.scope, channel: body.channel ?? null, bizType: body.bizType ?? null,
+      singleLimit: body.singleLimit ?? null, dailyLimit: body.dailyLimit ?? null, dailyCountLimit: body.dailyCountLimit ?? null, blockListKeys: body.blockListKeys,
+      allowListKeys: body.allowListKeys, action: body.action,
+      status: body.status, remark: body.remark ?? null, createdAt: now, updatedAt: now,
     };
     riskRules.push(item);
     return ok(item, '创建成功');
   }),
-  http.put('/api/payment/risk-rules/:id', async ({ params, request }) => {
-    const r = riskRules.find((x) => x.id === Number(params.id));
+  mock(paymentRiskRuleContract.update, ({ params, body, ok }) => {
+    const r = riskRules.find((x) => x.id === params.id);
     if (!r) return notFound('风控规则不存在');
-    const b = (await request.json()) as Partial<PaymentRiskRule>;
-    Object.assign(r, b, { updatedAt: mockDateTime() });
+    Object.assign(r, body, { updatedAt: mockDateTime() });
     return ok(r, '更新成功');
   }),
-  http.delete('/api/payment/risk-rules/:id', ({ params }) => {
-    const i = riskRules.findIndex((x) => x.id === Number(params.id));
+  mock(paymentRiskRuleContract.remove, ({ params, ok }) => {
+    const i = riskRules.findIndex((x) => x.id === params.id);
     if (i === -1) return notFound('风控规则不存在');
     riskRules.splice(i, 1);
     return ok(null, '删除成功');
@@ -674,28 +662,25 @@ const riskHandlers = [
 
 // ─── 支付方式配置 ─────────────────────────────────────────────────────────────
 const methodHandlers = [
-  http.get('/api/payment/methods/enabled', () => ok(methodConfigs.filter((m) => m.enabled).sort((a, b) => a.sort - b.sort))),
-  http.get('/api/payment/methods', () => ok([...methodConfigs].sort((a, b) => a.sort - b.sort))),
-  http.get('/api/payment/methods/:id', ({ params }) => {
-    const m = methodConfigs.find((x) => x.id === Number(params.id));
+  mock(paymentMethodContract.enabled, ({ ok }) => ok(methodConfigs.filter((m) => m.enabled).sort((a, b) => a.sort - b.sort))),
+  mock(paymentMethodContract.list, ({ ok }) => ok([...methodConfigs].sort((a, b) => a.sort - b.sort))),
+  mock(paymentMethodContract.detail, ({ params, ok }) => {
+    const m = methodConfigs.find((x) => x.id === params.id);
     return m ? ok(m) : notFound('支付方式配置不存在');
   }),
-  http.put('/api/payment/methods/:id', async ({ params, request }) => {
-    const m = methodConfigs.find((x) => x.id === Number(params.id));
+  mock(paymentMethodContract.update, ({ params, body, ok }) => {
+    const m = methodConfigs.find((x) => x.id === params.id);
     if (!m) return notFound('支付方式配置不存在');
-    const b = (await request.json()) as Partial<PaymentMethodConfig>;
-    Object.assign(m, b, { updatedAt: mockDateTime() });
+    Object.assign(m, body, { updatedAt: mockDateTime() });
     return ok(m, '更新成功');
   }),
 ];
 
 // ─── 财务报表 ─────────────────────────────────────────────────────────────────
 const reportHandlers = [
-  http.get('/api/payment/reports/summary', ({ request }) => {
-    const url = new URL(request.url);
-    const groupBy = (url.searchParams.get('groupBy') as PaymentReportGroupBy) ?? 'day';
-    const startTime = url.searchParams.get('startTime');
-    const endTime = url.searchParams.get('endTime');
+  mock(paymentReportContract.summary, ({ query, ok }) => {
+    const groupBy = query.groupBy ?? 'day';
+    const { startTime, endTime } = query;
     const paid = mockPaymentOrders.filter((o) => o.status === 'success' || o.status === 'refunding' || o.status === 'refunded');
     const groups = new Map<string, { gross: number; fee: number; refund: number; count: number }>();
     const orderGroup = new Map<string, string>();
@@ -752,10 +737,9 @@ const reportHandlers = [
       totalNet: rows.reduce((s, r) => s + r.net, 0),
       totalCount: rows.reduce((s, r) => s + r.count, 0),
     };
-    const compare = url.searchParams.get('compare') === 'true';
     return ok({
       ...summary,
-      prev: compare ? {
+      prev: query.compare ? {
         totalGross: Math.round(summary.totalGross * 0.8),
         totalFee: Math.round(summary.totalFee * 0.8),
         totalRefund: Math.round(summary.totalRefund * 0.8),
@@ -779,71 +763,66 @@ let nextTransferId = 5;
 const transferIdempotency = new Map<string, { requestHash: string; transferId: number }>();
 
 const transferHandlers = [
-  http.get('/api/payment/transfers/summary', () => {
-    const success = transfers.filter((t) => t.status === 'success');
+  mock(paymentTransferContract.summary, ({ query, ok }) => {
+    const scoped = transfers.filter((t) => !query.channel || t.channel === query.channel);
+    const success = scoped.filter((t) => t.status === 'success');
     return ok({
       totalAmount: success.reduce((s, t) => s + t.amount, 0),
       successCount: success.length,
-      processingCount: transfers.filter((t) => t.status === 'processing' || t.status === 'unknown').length,
-      failedCount: transfers.filter((t) => t.status === 'failed').length,
+      processingCount: scoped.filter((t) => t.status === 'processing' || t.status === 'unknown').length,
+      failedCount: scoped.filter((t) => t.status === 'failed').length,
     });
   }),
-  http.get('/api/payment/transfers', ({ request }) => {
-    const url = new URL(request.url);
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const channel = url.searchParams.get('channel') ?? '';
-    const status = url.searchParams.get('status') ?? '';
-    const approvalStatus = url.searchParams.get('approvalStatus') ?? '';
+  mock(paymentTransferContract.list, ({ query, ok, paginate }) => {
     const filtered = transfers.filter(
       (t) =>
-        (!keyword || t.transferNo.includes(keyword) || t.receiverAccount.includes(keyword)) &&
-        (!channel || t.channel === channel) &&
-        (!status || t.status === status) &&
-        (!approvalStatus || t.approvalStatus === approvalStatus),
+        (!query.keyword || t.transferNo.includes(query.keyword) || t.receiverAccount.includes(query.keyword)) &&
+        (!query.channel || t.channel === query.channel) &&
+        (!query.status || t.status === query.status) &&
+        (!query.approvalStatus || t.approvalStatus === query.approvalStatus) &&
+        (!query.startTime || t.createdAt >= query.startTime) &&
+        (!query.endTime || t.createdAt <= query.endTime),
     );
-    return ok(paginate([...filtered].reverse(), url));
+    return ok(paginate([...filtered].reverse()));
   }),
-  http.get('/api/payment/transfers/:id', ({ params }) => {
-    const t = transfers.find((x) => x.id === Number(params.id));
+  mock(paymentTransferContract.detail, ({ params, ok }) => {
+    const t = transfers.find((x) => x.id === params.id);
     return t ? ok(t) : notFound('转账单不存在');
   }),
-  http.post('/api/payment/transfers', async ({ request }) => {
-    const b = (await request.json()) as { applicationId: number; channel: PaymentChannel; currency?: string; receiverAccount: string; receiverName?: string; amount: number; remark?: string; bizType?: string; bizId?: string };
-    const idempotencyKey = request.headers.get('X-Idempotency-Key')?.trim() ?? '';
-    if (idempotencyKey.length < 8) return badRequest('X-Idempotency-Key 不能为空且至少 8 位', { status: 400 });
-    const remark = b.remark?.trim() ?? '';
-    if (!remark) return badRequest('转账原因不能为空', { status: 400 });
+  mock(paymentTransferContract.create, ({ headers, body, ok }) => {
+    const idempotencyKey = headers['x-idempotency-key'];
+    const remark = body.remark;
     const requestHash = JSON.stringify({
-      applicationId: b.applicationId,
-      channel: b.channel,
-      currency: b.currency ?? 'CNY',
-      receiverAccount: b.receiverAccount,
-      receiverName: b.receiverName ?? null,
-      amount: b.amount,
+      applicationId: body.applicationId,
+      channel: body.channel,
+      currency: body.currency,
+      receiverAccount: body.receiverAccount,
+      receiverName: body.receiverName ?? null,
+      amount: body.amount,
       remark,
-      bizType: b.bizType ?? null,
-      bizId: b.bizId ?? null,
+      bizType: body.bizType ?? null,
+      bizId: body.bizId ?? null,
     });
-    const mapKey = `${b.applicationId}:${idempotencyKey}`;
+    const mapKey = `${body.applicationId}:${idempotencyKey}`;
     const previous = transferIdempotency.get(mapKey);
     if (previous) {
       if (previous.requestHash !== requestHash) return conflict('同一幂等键不能用于不同转账请求', { status: 409 });
       const existing = transfers.find((transfer) => transfer.id === previous.transferId);
       return existing ? ok(existing, '转账已受理') : conflict('幂等记录对应的转账单不存在', { status: 409 });
     }
-    const app = apps.find((item) => item.id === b.applicationId && item.status === 'enabled');
-    const channelConfigId = b.channel === 'wechat' ? app?.wechatConfigId : b.channel === 'alipay' ? app?.alipayConfigId : app?.unionpayConfigId;
+    const app = apps.find((item) => item.id === body.applicationId && item.status === 'enabled');
+    const channelConfigId = body.channel === 'wechat' ? app?.wechatConfigId : body.channel === 'alipay' ? app?.alipayConfigId : app?.unionpayConfigId;
     if (!app || !channelConfigId) return badRequest('支付应用未绑定所选转账渠道');
     const now = mockDateTime();
     const no = `TRF${Date.now()}`;
     const transferId = nextTransferId++;
-    const needsApproval = b.amount >= 100_000;
+    const needsApproval = body.amount >= 100_000;
     const item: PaymentTransfer = {
-      id: transferId, transferNo: no, outTransferNo: no, channel: b.channel, appId: app.id, channelConfigId, currency: b.currency ?? 'CNY', receiverAccount: b.receiverAccount,
-      receiverName: b.receiverName ?? null, amount: b.amount, remark, status: needsApproval ? 'pending' : 'success',
+      id: transferId, transferNo: no, outTransferNo: no, channel: body.channel, appId: app.id, channelConfigId, currency: body.currency, receiverAccount: body.receiverAccount,
+      receiverName: body.receiverName ?? null, amount: body.amount, remark, status: needsApproval ? 'pending' : 'success',
       approvalStatus: needsApproval ? 'pending' : 'none', appliedById: 1, approverId: null, approvedAt: null, approvalRemark: null,
-      channelTransferNo: needsApproval ? null : `${b.channel === 'wechat' ? 'WXTRF' : 'ALITRF'}${Date.now()}`, failReason: null, attempts: needsApproval ? 0 : 1,
-      fundReservationId: 20000 + transferId, version: 0, bizType: b.bizType ?? null, bizId: b.bizId ?? null, finishedAt: needsApproval ? null : now, operatorName: '管理员', createdAt: now, updatedAt: now,
+      channelTransferNo: needsApproval ? null : `${body.channel === 'wechat' ? 'WXTRF' : 'ALITRF'}${Date.now()}`, failReason: null, attempts: needsApproval ? 0 : 1,
+      fundReservationId: 20000 + transferId, version: 0, bizType: body.bizType ?? null, bizId: body.bizId ?? null, finishedAt: needsApproval ? null : now, operatorName: '管理员', createdAt: now, updatedAt: now,
     };
     transfers.push(item);
     transferIdempotency.set(mapKey, { requestHash, transferId: item.id });
@@ -852,12 +831,10 @@ const transferHandlers = [
     }
     return ok(item, needsApproval ? '转账申请已提交，等待审批' : '转账已受理');
   }),
-  http.post('/api/payment/transfers/:id/approve', async ({ params, request }) => {
-    const t = transfers.find((x) => x.id === Number(params.id));
+  mock(paymentTransferContract.approve, ({ params, body, ok }) => {
+    const t = transfers.find((x) => x.id === params.id);
     if (!t) return notFound('转账单不存在');
-    const body = (await request.json()) as { remark?: string };
-    const remark = body.remark?.trim() ?? '';
-    if (!remark) return badRequest('审批意见不能为空');
+    const remark = body.remark;
     if (t.status !== 'pending' || t.approvalStatus !== 'pending') return badRequest('该转账单无需审批或已处理');
     if (t.appliedById === 1) return forbidden('转账申请人与审批人必须为不同用户');
     const now = mockDateTime();
@@ -874,12 +851,10 @@ const transferHandlers = [
     recordMockSystemJournal({ sourceType: 'payment.transfer', sourceId: t.transferNo, description: `转账出款 ${t.transferNo}`, appId: t.appId, channelConfigId: t.channelConfigId, currency: t.currency, lines: [{ accountCode: 'merchant_available', debitAmount: String(t.amount), memo: '扣减商户可用余额' }, { accountCode: 'provider_clearing', creditAmount: String(t.amount), memo: '渠道出款清算' }] });
     return ok(t, '转账审批通过并已受理');
   }),
-  http.post('/api/payment/transfers/:id/reject', async ({ params, request }) => {
-    const t = transfers.find((x) => x.id === Number(params.id));
+  mock(paymentTransferContract.reject, ({ params, body, ok }) => {
+    const t = transfers.find((x) => x.id === params.id);
     if (!t) return notFound('转账单不存在');
-    const body = (await request.json()) as { remark?: string };
-    const remark = body.remark?.trim() ?? '';
-    if (!remark) return badRequest('审批意见不能为空');
+    const remark = body.remark;
     if (t.status !== 'pending' || t.approvalStatus !== 'pending') return badRequest('该转账单无需审批或已处理');
     const now = mockDateTime();
     t.approvalStatus = 'rejected';
@@ -893,8 +868,8 @@ const transferHandlers = [
     t.version += 1;
     return ok(t, '转账已驳回');
   }),
-  http.post('/api/payment/transfers/:id/query', ({ params }) => {
-    const t = transfers.find((x) => x.id === Number(params.id));
+  mock(paymentTransferContract.query, ({ params, ok }) => {
+    const t = transfers.find((x) => x.id === params.id);
     if (!t) return notFound('转账单不存在');
     if (t.status === 'processing') {
       t.status = 'success';

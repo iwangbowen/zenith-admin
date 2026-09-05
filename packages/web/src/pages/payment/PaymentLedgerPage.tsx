@@ -281,7 +281,7 @@ export default function PaymentLedgerPage() {
   const accountModal = useEditModal<PaymentLedgerAccount, AccountFormValues, CreatePaymentLedgerAccountInput>({
     entityName: '账本账户',
     save: {
-      mutateAsync: ({ values }) => accountCreateMutation.mutateAsync(values),
+      mutateAsync: ({ values }) => accountCreateMutation.mutateAsync({ body: values }),
       isPending: accountCreateMutation.isPending,
     },
     defaults: { currency: 'CNY' },
@@ -294,7 +294,7 @@ export default function PaymentLedgerPage() {
   const journalModal = useEditModal<PaymentJournal, JournalFormValues, PostPaymentJournalInput>({
     entityName: '资金凭证',
     save: {
-      mutateAsync: ({ values }) => postJournalMutation.mutateAsync(values),
+      mutateAsync: ({ values }) => postJournalMutation.mutateAsync({ body: values }),
       isPending: postJournalMutation.isPending,
     },
     defaults: {
@@ -356,7 +356,7 @@ export default function PaymentLedgerPage() {
   const reservationModal = useEditModal<PaymentFundReservation, ReservationFormValues, CreatePaymentFundReservationInput>({
     entityName: '资金预占',
     save: {
-      mutateAsync: ({ values }) => reservationCreateMutation.mutateAsync(values),
+      mutateAsync: ({ values }) => reservationCreateMutation.mutateAsync({ body: values }),
       isPending: reservationCreateMutation.isPending,
     },
     defaults: { sourceType: 'manual.reservation' },
@@ -438,7 +438,7 @@ export default function PaymentLedgerPage() {
       title: `确认冲正凭证 ${reverseTarget.journalNo}？`,
       content: '系统将生成借贷方向完全相反的新凭证，原凭证保持不可变。',
       onOk: async () => {
-        await reverseMutation.mutateAsync({ id: reverseTarget.id, reason });
+        await reverseMutation.mutateAsync({ params: { id: reverseTarget.id }, body: { reason } });
         Toast.success('冲正凭证已过账');
         closeReverse();
       },
@@ -468,7 +468,7 @@ export default function PaymentLedgerPage() {
     const action = reservationTransitionAction;
     const execute = async () => {
       const mutation = action === 'capture' ? captureMutation : releaseMutation;
-      await mutation.mutateAsync({ id: target.id, accountId: target.accountId, version: target.version, reason });
+      await mutation.mutateAsync({ params: { id: target.id }, body: { version: target.version, reason } });
       Toast.success(action === 'capture' ? '资金预占已核销' : '资金预占已释放');
       closeReservationTransition();
     };

@@ -15,8 +15,9 @@ import {
   usePaymentFeeRuleList,
   useSavePaymentFeeRule,
 } from '@/hooks/queries/payment-fee';
-import { PAYMENT_CHANNEL_LABELS, PAYMENT_METHOD_LABELS, PAYMENT_CHANNEL_OPTIONS, PAYMENT_METHOD_OPTIONS } from '@zenith/shared/payment';
-import type { PaymentChannel, PaymentFeeRule, PaymentMethod } from '@zenith/shared/payment';
+import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
+import { PAYMENT_CASHIER_METHODS, PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNELS, PAYMENT_METHOD_LABELS, PAYMENT_CHANNEL_OPTIONS, PAYMENT_METHOD_OPTIONS } from '@zenith/shared/payment';
+import type { CreatePaymentFeeRuleInput, PaymentChannel, PaymentFeeRule, PaymentMethod } from '@zenith/shared/payment';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
@@ -25,7 +26,8 @@ import { FilterSelect, StatusSelect } from '@/components/search-filters';
 
 const yuan = formatYuan;
 const channelOptions = PAYMENT_CHANNEL_OPTIONS;
-const methodOptions = PAYMENT_METHOD_OPTIONS;
+// 费率规则只接受收银台支付方式（服务端 createPaymentFeeRuleSchema），代扣 / 预授权方式不参与计费
+const methodOptions = PAYMENT_METHOD_OPTIONS.filter((option) => enumValueOf(PAYMENT_CASHIER_METHODS, option.value) !== undefined);
 
 interface SearchParams { channel?: string; status?: string; }
 const defaultSearch: SearchParams = { channel: undefined, status: '' };
@@ -55,8 +57,8 @@ export default function PaymentFeeRulesPage() {
   const listQuery = usePaymentFeeRuleList({
     page,
     pageSize,
-    channel: submittedParams.channel || undefined,
-    status: submittedParams.status || undefined,
+    channel: enumValueOf(PAYMENT_CHANNELS, submittedParams.channel),
+    status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
   const data = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
@@ -65,7 +67,7 @@ export default function PaymentFeeRulesPage() {
   const deleteMutation = useDeletePaymentFeeRule();
   const togglingId = toggleMutation.isPending ? (toggleMutation.variables?.id ?? null) : null;
 
-  const modal = useEditModal<PaymentFeeRule, FeeFormValues, Partial<PaymentFeeRule>>({
+  const modal = useEditModal<PaymentFeeRule, FeeFormValues, Partial<CreatePaymentFeeRuleInput>>({
     entityName: '费率规则',
     save: saveMutation,
     defaults: { channel: 'wechat', status: 'enabled', priority: 0, ratePercent: 0.6, fixedYuan: 0 },
@@ -84,7 +86,7 @@ export default function PaymentFeeRulesPage() {
     beforeSave: (values) => ({
       name: values.name,
       channel: values.channel,
-      payMethod: values.payMethod || undefined,
+      payMethod: enumValueOf(PAYMENT_CASHIER_METHODS, values.payMethod),
       rateBps: Math.round((values.ratePercent ?? 0) * 100),
       fixedFee: Math.round((values.fixedYuan ?? 0) * 100),
       minFee: values.minYuan != null ? Math.round(values.minYuan * 100) : undefined,

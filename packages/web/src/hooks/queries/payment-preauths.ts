@@ -1,65 +1,32 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { PaymentPreauth, PaymentPreauthMethod } from '@zenith/shared/payment';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import type { QueryClient } from '@tanstack/react-query';
+import type { QueryOf } from '@zenith/shared/core';
+import { paymentPreauthContract } from '@zenith/shared/payment';
+import { createResourceQueries, useApiMutation } from '@/lib/contract-query';
 
-export interface PaymentPreauthListParams {
-  applicationId: number;
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  status?: string;
-  channel?: string;
-}
+export type PaymentPreauthListParams = NonNullable<QueryOf<typeof paymentPreauthContract.list>>;
 
-export const paymentPreauthKeys = {
-  all: ['payment-preauths'] as const,
-  lists: ['payment-preauths', 'list'] as const,
-  list: (params: PaymentPreauthListParams) => ['payment-preauths', 'list', params] as const,
-};
+const resource = createResourceQueries(paymentPreauthContract);
 
-export function usePaymentPreauthList(params: PaymentPreauthListParams, enabled = true) {
-  return useQuery({
-    queryKey: paymentPreauthKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<PaymentPreauth>>(`/api/payment/preauths${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-    enabled,
-  });
+export const paymentPreauthKeys = resource.keys;
+export const usePaymentPreauthList = resource.useList;
+
+/** 预授权单没有详情端点，任何资金操作只需回源列表 */
+function invalidatePreauthLists(qc: QueryClient) {
+  void qc.invalidateQueries({ queryKey: paymentPreauthKeys.lists });
 }
 
 export function useCreatePaymentPreauth() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: { applicationId: number; payMethod: PaymentPreauthMethod; currency: 'CNY'; payerAccount: string; subject: string; frozenAmount: number; bizType?: string; bizId: string; remark?: string }) =>
-      request.post<PaymentPreauth>('/api/payment/preauths', values).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: paymentPreauthKeys.all }),
-  });
+  return useApiMutation(paymentPreauthContract.create, { invalidate: invalidatePreauthLists });
 }
 
 export function useCapturePaymentPreauth() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, applicationId, captureAmount }: { id: number; applicationId: number; captureAmount?: number }) =>
-      request.post<PaymentPreauth>(`/api/payment/preauths/${id}/capture${toQueryString({ applicationId })}`, { captureAmount }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: paymentPreauthKeys.all }),
-  });
+  return useApiMutation(paymentPreauthContract.capture, { invalidate: invalidatePreauthLists });
 }
 
 export function useReleasePaymentPreauth() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, applicationId }: { id: number; applicationId: number }) =>
-      request.post<PaymentPreauth>(`/api/payment/preauths/${id}/release${toQueryString({ applicationId })}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: paymentPreauthKeys.all }),
-  });
+  return useApiMutation(paymentPreauthContract.release, { invalidate: invalidatePreauthLists });
 }
 
 export function useRecoverPaymentPreauth() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, applicationId }: { id: number; applicationId: number }) =>
-      request.post<PaymentPreauth>(`/api/payment/preauths/${id}/recover${toQueryString({ applicationId })}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: paymentPreauthKeys.all }),
-  });
+  return useApiMutation(paymentPreauthContract.recover, { invalidate: invalidatePreauthLists });
 }

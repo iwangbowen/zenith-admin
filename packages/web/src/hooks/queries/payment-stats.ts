@@ -1,24 +1,16 @@
-import { useQuery } from '@tanstack/react-query';
-import type { PaymentStats, PaymentTrendPoint } from '@zenith/shared/payment';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import { paymentStatsContract } from '@zenith/shared/payment';
+import { contractKey, useApiQuery } from '@/lib/contract-query';
 
 export const paymentStatsKeys = {
-  all: ['payment-stats'] as const,
-  stats: () => ['payment-stats', 'stats'] as const,
-  trend: (days: number) => ['payment-stats', 'trend', { days }] as const,
+  stats: contractKey(paymentStatsContract.stats),
+  trends: contractKey(paymentStatsContract.trend),
+  trend: (days: number) => contractKey(paymentStatsContract.trend, { query: { days } }),
 };
 
 export function usePaymentStats() {
-  return useQuery({
-    queryKey: paymentStatsKeys.stats(),
-    queryFn: () => request.get<PaymentStats>('/api/payment/stats').then(unwrap),
-  });
+  return useApiQuery(paymentStatsContract.stats);
 }
 
 export function usePaymentTrend(days: number) {
-  return useQuery({
-    queryKey: paymentStatsKeys.trend(days),
-    queryFn: () => request.get<PaymentTrendPoint[]>(`/api/payment/trend${toQueryString({ days })}`).then(unwrap),
-  });
+  return useApiQuery(paymentStatsContract.trend, { query: { days } });
 }

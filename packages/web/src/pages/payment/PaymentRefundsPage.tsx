@@ -10,7 +10,8 @@ import { AppModal } from '@/components/AppModal';
 import { formatDateTime, formatDateTimeRangeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
-import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS, PAYMENT_REFUND_STATUS_LABELS, PAYMENT_REFUND_APPROVAL_STATUS_LABELS, PAYMENT_REFUND_STATUS_OPTIONS, PAYMENT_REFUND_APPROVAL_STATUS_OPTIONS } from '@zenith/shared/payment';
+import { enumValueOf } from '@zenith/shared/core';
+import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS, PAYMENT_CHANNELS, PAYMENT_REFUND_APPROVAL_STATUSES, PAYMENT_REFUND_STATUS_LABELS, PAYMENT_REFUND_APPROVAL_STATUS_LABELS, PAYMENT_REFUND_STATUS_OPTIONS, PAYMENT_REFUND_STATUSES, PAYMENT_REFUND_APPROVAL_STATUS_OPTIONS } from '@zenith/shared/payment';
 import type { PaymentChannel, PaymentRefund, PaymentRefundStatus, PaymentRefundApprovalStatus } from '@zenith/shared/payment';
 import {
   paymentRefundKeys,
@@ -19,10 +20,10 @@ import {
   usePaymentRefundList,
   useQueryPaymentRefund,
   useRejectPaymentRefund,
+  type PaymentRefundListParams,
 } from '@/hooks/queries/payment-refunds';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { compactQuery } from '@/lib/query';
 import { copyableNoColumn, dateTimeColumn } from '@/utils/table-columns';
 
 const STATUS_COLOR = { pending: 'grey', processing: 'blue', unknown: 'amber', success: 'green', failed: 'red' } as const satisfies Record<PaymentRefundStatus, string>;
@@ -45,14 +46,14 @@ export default function PaymentRefundsPage() {
   const [rejectTarget, setRejectTarget] = useState<PaymentRefund | null>(null);
   const [rejectRemark, setRejectRemark] = useState('');
 
-  function buildQuery(active: SearchParams): Record<string, string> {
-    return compactQuery({
-      keyword: active.keyword,
-      channel: active.channel,
-      status: active.status,
-      approvalStatus: active.approvalStatus,
+  function buildQuery(active: SearchParams): Omit<PaymentRefundListParams, 'page' | 'pageSize'> {
+    return {
+      keyword: active.keyword || undefined,
+      channel: enumValueOf(PAYMENT_CHANNELS, active.channel),
+      status: enumValueOf(PAYMENT_REFUND_STATUSES, active.status),
+      approvalStatus: enumValueOf(PAYMENT_REFUND_APPROVAL_STATUSES, active.approvalStatus),
       ...formatDateTimeRangeForApi(active.timeRange),
-    });
+    };
   }
 
   const listQuery = usePaymentRefundList({ page, pageSize, ...buildQuery(submittedParams) });
@@ -62,11 +63,11 @@ export default function PaymentRefundsPage() {
   const queryMutation = useQueryPaymentRefund();
   const approveMutation = useApprovePaymentRefund();
   const rejectMutation = useRejectPaymentRefund();
-  const queryingId = queryMutation.isPending ? (queryMutation.variables ?? null) : null;
-  const approvingId = approveMutation.isPending ? (approveMutation.variables?.id ?? null) : null;
+  const queryingId = queryMutation.isPending ? (queryMutation.variables?.params.id ?? null) : null;
+  const approvingId = approveMutation.isPending ? (approveMutation.variables?.params.id ?? null) : null;
 
   function handleRefundQuery(record: PaymentRefund) {
-    queryMutation.mutate(record.id, {
+    queryMutation.mutate({ params: { id: record.id } }, {
       onSuccess: (refund) => Toast.success(`最新状态：${PAYMENT_REFUND_STATUS_LABELS[refund.status]}`),
     });
   }
@@ -75,7 +76,7 @@ export default function PaymentRefundsPage() {
   function openApprove(record: PaymentRefund) { setApproveTarget(record); setApproveRemark(''); }
   async function submitApprove() {
     if (!approveTarget) return;
-    await approveMutation.mutateAsync({ id: approveTarget.id, remark: approveRemark.trim() || undefined });
+    await approveMutation.mutateAsync({ params: { id: approveTarget.id }, body: { remark: approveRemark.trim() || undefined } });
     Toast.success('已审批通过，退款执行中');
     setApproveTarget(null);
   }
@@ -84,7 +85,7 @@ export default function PaymentRefundsPage() {
   async function submitReject() {
     if (!rejectTarget) return;
     if (!rejectRemark.trim()) { Toast.warning('请填写驳回原因'); return; }
-    await rejectMutation.mutateAsync({ id: rejectTarget.id, remark: rejectRemark.trim() });
+    await rejectMutation.mutateAsync({ params: { id: rejectTarget.id }, body: { remark: rejectRemark.trim() } });
     Toast.success('已驳回');
     setRejectTarget(null);
   }

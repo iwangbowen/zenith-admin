@@ -18,7 +18,6 @@ import { usePaymentAppList } from '@/hooks/queries/payment-apps';
 import {
   paymentContractKeys,
   useAllDeductPlans,
-  useCreateDeductPlan,
   useCreatePaymentContract,
   useDeductPaymentContract,
   useDeductPlanList,
@@ -27,11 +26,12 @@ import {
   usePaymentContractList,
   useResumePaymentContract,
   useRecoverPaymentContract,
+  useSaveDeductPlan,
   useTerminatePaymentContract,
-  useUpdateDeductPlan,
 } from '@/hooks/queries/payment-contracts';
-import { PAYMENT_CHANNEL_LABELS, PAYMENT_CONTRACT_STATUS_LABELS, PAYMENT_DEDUCT_PERIOD_LABELS, PAYMENT_DEDUCT_PERIOD_OPTIONS, PAYMENT_CONTRACT_STATUS_OPTIONS, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared/payment';
-import type { PaymentChannel, PaymentContract, PaymentContractStatus, PaymentDeductPeriod, PaymentDeductPlan } from '@zenith/shared/payment';
+import { enumValueOf } from '@zenith/shared/core';
+import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNELS, PAYMENT_CONTRACT_STATUS_LABELS, PAYMENT_CONTRACT_STATUSES, PAYMENT_DEDUCT_PERIOD_LABELS, PAYMENT_DEDUCT_PERIOD_OPTIONS, PAYMENT_CONTRACT_STATUS_OPTIONS, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared/payment';
+import type { CreatePaymentContractInput, CreatePaymentDeductPlanInput, PaymentChannel, PaymentContract, PaymentContractSignResult, PaymentContractStatus, PaymentDeductMethod, PaymentDeductPeriod, PaymentDeductPlan } from '@zenith/shared/payment';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
@@ -47,8 +47,8 @@ const DEDUCT_METHOD_OPTIONS = [
 ];
 
 interface PlanFormValues { name: string; period: PaymentDeductPeriod; customDays?: number; amountYuan: number; maxRetries: number; status?: 'enabled' | 'disabled'; remark?: string; }
-interface PlanPayload { name: string; period: PaymentDeductPeriod; customDays: number | null; amount: number; maxRetries: number; status?: 'enabled' | 'disabled'; remark?: string; }
-interface ContractFormValues { applicationId: number; planId: number; payMethod: string; currency: 'CNY'; signerAccount: string; signerName?: string; remark?: string; firstDeductNow?: boolean; }
+type PlanPayload = Partial<CreatePaymentDeductPlanInput>;
+interface ContractFormValues { applicationId: number; planId: number; payMethod: PaymentDeductMethod; currency: 'CNY'; signerAccount: string; signerName?: string; remark?: string; firstDeductNow?: boolean; }
 
 function describePlanPeriod(p: Pick<PaymentDeductPlan, 'period' | 'customDays'>): string {
   return p.period === 'custom' ? `每 ${p.customDays ?? '-'} 天` : PAYMENT_DEDUCT_PERIOD_LABELS[p.period];
@@ -62,7 +62,7 @@ export default function PaymentContractsPage() {
   const queryClient = useQueryClient();
   const canManage = hasPermission('payment:contract:manage');
   const canPlan = hasPermission('payment:contract:plan');
-  const latestContractResult = useRef<{ firstDeduct?: { deductStatus: 'success' | 'processing' | 'failed'; failReason?: string | null } | null } | null>(null);
+  const latestContractResult = useRef<PaymentContractSignResult | null>(null);
   const [activeTab, setActiveTab] = useUrlTabState(['contracts', 'plans'] as const, 'contracts');
 
   // ── 签约协议 ──
@@ -94,8 +94,8 @@ export default function PaymentContractsPage() {
     page: cPage,
     pageSize: cPageSize,
     keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
-    channel: submittedParams.channel || undefined,
+    status: enumValueOf(PAYMENT_CONTRACT_STATUSES, submittedParams.status),
+    channel: enumValueOf(PAYMENT_CHANNELS, submittedParams.channel),
   }, effectiveContractAppId != null);
   const contracts = contractQuery.data?.list ?? [];
   const contractTotal = contractQuery.data?.total ?? 0;
@@ -115,20 +115,19 @@ export default function PaymentContractsPage() {
   const resumeMutation = useResumePaymentContract();
   const deductMutation = useDeductPaymentContract();
   const recoverMutation = useRecoverPaymentContract();
-  const createPlanMutation = useCreateDeductPlan();
-  const updatePlanMutation = useUpdateDeductPlan();
+  const planSaveMutation = useSaveDeductPlan();
   const deletePlanMutation = useDeleteDeductPlan();
 
   const contractSaveMutation = {
-    mutateAsync: async ({ values }: { id?: number; values: { applicationId: number; planId: number; payMethod: string; currency: 'CNY'; signerAccount: string; signerName?: string; remark?: string; firstDeductNow: boolean } }) => {
-      const res = await createContractMutation.mutateAsync(values);
+    mutateAsync: async ({ values }: { id?: number; values: CreatePaymentContractInput }) => {
+      const res = await createContractMutation.mutateAsync({ body: values });
       latestContractResult.current = res;
       setContractAppId(res.contract.appId);
       return res.contract;
     },
     isPending: createContractMutation.isPending,
   };
-  const signModal = useEditModal<PaymentContract, ContractFormValues, { applicationId: number; planId: number; payMethod: string; currency: 'CNY'; signerAccount: string; signerName?: string; remark?: string; firstDeductNow: boolean }>({
+  const signModal = useEditModal<PaymentContract, ContractFormValues, CreatePaymentContractInput>({
     save: contractSaveMutation,
     defaults: { firstDeductNow: true },
     beforeSave: (values) => ({
@@ -153,38 +152,32 @@ export default function PaymentContractsPage() {
   // ── 协议操作 ──
 
   async function handleTerminate(record: PaymentContract) {
-    await terminateMutation.mutateAsync({ id: record.id, applicationId: record.appId });
+    await terminateMutation.mutateAsync({ params: { id: record.id }, query: { applicationId: record.appId } });
     Toast.success('已解约');
   }
 
   async function handlePause(record: PaymentContract) {
-    await pauseMutation.mutateAsync({ id: record.id, applicationId: record.appId });
+    await pauseMutation.mutateAsync({ params: { id: record.id }, query: { applicationId: record.appId } });
     Toast.success('已暂停扣款');
   }
 
   async function handleResume(record: PaymentContract) {
-    await resumeMutation.mutateAsync({ id: record.id, applicationId: record.appId });
+    await resumeMutation.mutateAsync({ params: { id: record.id }, query: { applicationId: record.appId } });
     Toast.success('已恢复，将尽快执行补扣');
   }
 
   async function handleDeduct(record: PaymentContract) {
-    const res = await deductMutation.mutateAsync({ id: record.id, applicationId: record.appId });
+    const res = await deductMutation.mutateAsync({ params: { id: record.id }, query: { applicationId: record.appId } });
     if (res.deductStatus === 'success') Toast.success(`扣款成功（订单 ${res.orderNo}）`);
     else if (res.deductStatus === 'processing') Toast.info('渠道受理中，稍后自动同步结果');
     else Toast.error(`扣款失败：${res.failReason ?? '未知原因'}`);
   }
 
   async function handleRecover(record: PaymentContract) {
-    const result = await recoverMutation.mutateAsync({ id: record.id, applicationId: record.appId });
+    const result = await recoverMutation.mutateAsync({ params: { id: record.id }, query: { applicationId: record.appId } });
     Toast.info(`查询完成：${PAYMENT_CONTRACT_STATUS_LABELS[result.status]}`);
   }
 
-  const planSaveMutation = {
-    mutateAsync: ({ id, values }: { id?: number; values: PlanPayload }) => (
-      id ? updatePlanMutation.mutateAsync({ id, values }) : createPlanMutation.mutateAsync(values)
-    ),
-    isPending: createPlanMutation.isPending || updatePlanMutation.isPending,
-  };
   const planModal = useEditModal<PaymentDeductPlan, PlanFormValues, PlanPayload>({
     entityName: '扣款计划',
     save: planSaveMutation,
@@ -215,7 +208,7 @@ export default function PaymentContractsPage() {
   function openEditPlan(p: PaymentDeductPlan) { setPlanPeriod(p.period); planModal.openEdit(p); }
 
   async function handleDeletePlan(id: number) {
-    await deletePlanMutation.mutateAsync(id);
+    await deletePlanMutation.mutateAsync({ params: { id } });
     Toast.success('删除成功');
   }
 
@@ -272,7 +265,7 @@ export default function PaymentContractsPage() {
         ...(r.status === 'pending' || r.status === 'unknown' ? [{
           key: 'recover',
           label: '查单恢复',
-          loading: recoverMutation.isPending && recoverMutation.variables?.id === r.id,
+          loading: recoverMutation.isPending && recoverMutation.variables?.params.id === r.id,
           onClick: () => { void handleRecover(r); },
         }] : []),
       ] : []),
