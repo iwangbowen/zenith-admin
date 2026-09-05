@@ -14,7 +14,7 @@ import {
   useBatchReportDatasetStatus,
   useCloneReportDataset,
   reportDatasetKeys,
-  useDeleteReportDataset,
+  useDeleteReportDatasets,
   useEnabledReportDatasources,
   useGenerateReportDatasetSql,
   useParseReportDatasetFile,
@@ -23,6 +23,7 @@ import {
   useReportDatasetList,
   useSaveReportDataset,
 } from '@/hooks/queries/report-datasets';
+import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import { REPORT_DATASOURCE_TYPE_LABELS, REPORT_FIELD_TYPE_OPTIONS } from '@zenith/shared/report';
 import type { ReportDataset, ReportDatasourceType, ReportField, ReportDataResult, ReportApiDatasetContent, ReportSqlDatasetContent, ReportComputedField, ReportStaticDatasetContent, ReportFieldFormat, ReportDatasetParam, ReportLookupOption, ReportRowRule, ReportVisualModel } from '@zenith/shared/report';
 import { useAllRoles } from '@/hooks/queries/roles';
@@ -125,7 +126,7 @@ export default function DatasetsPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
+    status: enumValueOf(USER_STATUSES, submittedParams.status),
     ownerId: submittedParams.ownerId,
     folderId: submittedParams.folderId,
   });
@@ -151,7 +152,7 @@ export default function DatasetsPage() {
   const saveMutation = useSaveReportDataset();
   const batchStatusMutation = useBatchReportDatasetStatus();
   const cloneMutation = useCloneReportDataset();
-  const deleteMutation = useDeleteReportDataset();
+  const deleteMutation = useDeleteReportDatasets();
   const previewMutation = usePreviewReportDataset();
   const parseFileMutation = useParseReportDatasetFile();
   const generateSqlMutation = useGenerateReportDatasetSql();
@@ -289,7 +290,7 @@ export default function DatasetsPage() {
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const res = await parseFileMutation.mutateAsync(formData);
+      const res = await parseFileMutation.mutateAsync({ body: formData });
       setStaticJsonText(JSON.stringify(res.rows, null, 2));
       applyStaticPreview(res.rows, res.columns);
       setFields(fieldsFromColumns(res.columns, res.rows));
@@ -406,13 +407,13 @@ export default function DatasetsPage() {
     const normalizedParams = normalizeParamDefs();
     if (normalizedParams === null) return;
     try {
-      const res = await previewMutation.mutateAsync({
+      const res = await previewMutation.mutateAsync({ body: {
         datasourceId: selectedDsId,
         content,
         params: buildPreviewParams(normalizedParams),
         computedFields: normalizedComputedFields,
         limit: 50,
-      });
+      } });
       setPreview(res);
     } catch (error) {
       Toast.error(error instanceof Error ? error.message : '预览失败');
@@ -424,7 +425,7 @@ export default function DatasetsPage() {
     const question = aiQuestion.trim();
     if (!question) { Toast.warning('请先输入问题'); return; }
     try {
-      const res = await generateSqlMutation.mutateAsync({ question, datasetId: datasetModal.editing?.id });
+      const res = await generateSqlMutation.mutateAsync({ body: { question, datasetId: datasetModal.editing?.id } });
       datasetModal.formApi.current?.setValue('sql', res.sql);
       Toast.success('SQL 已生成');
     } catch (error) {
@@ -439,12 +440,12 @@ export default function DatasetsPage() {
   }
 
   async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync(id);
+    await deleteMutation.mutateAsync([id]);
     Toast.success('删除成功');
   }
 
   async function handleClone(record: ReportDataset) {
-    const cloned = await cloneMutation.mutateAsync({ id: record.id });
+    const cloned = await cloneMutation.mutateAsync({ params: { id: record.id }, body: {} });
     Toast.success(`已复制为「${cloned.name}」`);
   }
 
@@ -453,7 +454,7 @@ export default function DatasetsPage() {
     Modal.confirm({
       title: `确认批量${status === 'enabled' ? '启用' : '停用'}选中的 ${selectedRowKeys.length} 个数据集？`,
       onOk: async () => {
-        await batchStatusMutation.mutateAsync({ ids: selectedRowKeys, status });
+        await batchStatusMutation.mutateAsync({ body: { ids: selectedRowKeys, status } });
         setSelectedRowKeys([]);
         Toast.success(status === 'enabled' ? '批量启用成功' : '批量停用成功');
       },
@@ -461,7 +462,7 @@ export default function DatasetsPage() {
   }
 
   async function handleRefreshMaterialize(record: ReportDataset) {
-    await refreshMaterializeMutation.mutateAsync(record.id);
+    await refreshMaterializeMutation.mutateAsync({ params: { id: record.id } });
     Toast.success('物化刷新成功');
   }
 

@@ -1,10 +1,9 @@
 import { useCallback, useState, type ReactNode } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AppModal } from '@/components/AppModal';
 import { Button, Input, Popconfirm, Space, Tag, Typography } from '@douyinfe/semi-ui';
-import type { WorkflowQuickPhrase } from '@zenith/shared/workflow';
-import { request } from '@/utils/request';
-import { unwrap } from '@/lib/query';
+import { workflowQuickPhraseContract, type WorkflowQuickPhrase } from '@zenith/shared/workflow';
+import { api, useApiMutation } from '@/lib/contract-query';
 import { CreateButton } from '@/components/toolbar-controls';
 
 const quickPhraseKeys = {
@@ -24,7 +23,7 @@ export function useQuickPhrases(): {
   const [editingPhraseContent, setEditingPhraseContent] = useState('');
   const quickPhrasesQuery = useQuery({
     queryKey: quickPhraseKeys.all,
-    queryFn: () => request.get<WorkflowQuickPhrase[]>('/api/workflows/quick-phrases').then(unwrap),
+    queryFn: () => api(workflowQuickPhraseContract.list),
   });
   const { data: quickPhraseData, refetch: refetchQuickPhrases } = quickPhrasesQuery;
   const quickPhrases = quickPhraseData ?? [];
@@ -37,29 +36,19 @@ export function useQuickPhrases(): {
     void queryClient.invalidateQueries({ queryKey: quickPhraseKeys.all });
   }, [queryClient]);
 
-  const addPhraseMutation = useMutation({
-    mutationFn: (content: string) => request.post('/api/workflows/quick-phrases', { content }).then(unwrap),
-    onSuccess: invalidate,
-  });
-  const deletePhraseMutation = useMutation({
-    mutationFn: (id: number) => request.delete(`/api/workflows/quick-phrases/${id}`).then(unwrap),
-    onSuccess: invalidate,
-  });
-  const updatePhraseMutation = useMutation({
-    mutationFn: ({ id, content }: { id: number; content: string }) =>
-      request.put(`/api/workflows/quick-phrases/${id}`, { content }).then(unwrap),
-    onSuccess: invalidate,
-  });
+  const addPhraseMutation = useApiMutation(workflowQuickPhraseContract.create, { onSuccess: invalidate });
+  const deletePhraseMutation = useApiMutation(workflowQuickPhraseContract.remove, { onSuccess: invalidate });
+  const updatePhraseMutation = useApiMutation(workflowQuickPhraseContract.update, { onSuccess: invalidate });
 
   const handleAddPhrase = async () => {
     const text = newPhrase.trim();
     if (!text) return;
-    await addPhraseMutation.mutateAsync(text);
+    await addPhraseMutation.mutateAsync({ body: { content: text } });
     setNewPhrase('');
   };
 
   const handleDeletePhrase = async (id: number) => {
-    await deletePhraseMutation.mutateAsync(id);
+    await deletePhraseMutation.mutateAsync({ params: { id } });
   };
 
   const startEditPhrase = (p: WorkflowQuickPhrase) => {
@@ -75,7 +64,7 @@ export function useQuickPhrases(): {
   const handleUpdatePhrase = async (id: number) => {
     const text = editingPhraseContent.trim();
     if (!text) return;
-    await updatePhraseMutation.mutateAsync({ id, content: text });
+    await updatePhraseMutation.mutateAsync({ params: { id }, body: { content: text } });
     cancelEditPhrase();
   };
 

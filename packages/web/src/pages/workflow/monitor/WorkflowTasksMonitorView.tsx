@@ -3,11 +3,12 @@
  * 字段对齐审批平台惯例：流程 / 发起人 / 发起时间 / 当前任务 / 任务起止时间 / 审批人 /
  * 审批状态 / 审批建议 / 耗时 / 流程编号 / 任务编号；行操作：详情（实例详情抽屉）/ 催办。
  */
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { DatePicker, Input, Modal, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search } from 'lucide-react';
-import type { WorkflowTaskMonitorItem } from '@zenith/shared/workflow';
+import { enumValueOf } from '@zenith/shared/core';
+import { WORKFLOW_TASK_MONITOR_NODE_TYPES, WORKFLOW_TASK_STATUSES, workflowTaskContract, type WorkflowTaskMonitorItem } from '@zenith/shared/workflow';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
@@ -21,8 +22,7 @@ import WorkflowInstanceCell from '@/components/workflow/WorkflowInstanceCell';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useWorkflowTaskMonitorList, workflowMonitorKeys, type WorkflowTaskMonitorParams } from '@/hooks/queries/workflow-monitor';
-import { request } from '@/utils/request';
-import { unwrap } from '@/lib/query';
+import { useApiMutation } from '@/lib/contract-query';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { FilterSelect } from '@/components/search-filters';
@@ -65,8 +65,8 @@ export default function WorkflowTasksMonitorView({ onOpenInstance }: Props) {
     pageSize,
     keyword: submittedParams.keyword || undefined,
     assigneeKeyword: submittedParams.assigneeKeyword || undefined,
-    status: submittedParams.status || undefined,
-    nodeType: submittedParams.nodeType || undefined,
+    status: enumValueOf(WORKFLOW_TASK_STATUSES, submittedParams.status),
+    nodeType: enumValueOf(WORKFLOW_TASK_MONITOR_NODE_TYPES, submittedParams.nodeType),
     stuckMinutes: submittedParams.stuckMinutes,
     startTime,
     endTime,
@@ -76,9 +76,8 @@ export default function WorkflowTasksMonitorView({ onOpenInstance }: Props) {
   const stats = data?.stats ?? { total: 0, pending: 0, waiting: 0, approved: 0, rejected: 0, skipped: 0 };
   const statValue = (v: number) => (listQuery.isLoading ? '—' : v);
 
-  const urgeMutation = useMutation({
-    // 必须 unwrap：非 0 code（如 429 催办限频）需抛错走全局错误提示，否则会同时弹「已催办」
-    mutationFn: (taskId: number) => request.post<unknown>(`/api/workflows/tasks/${taskId}/urge`, {}).then(unwrap),
+  // 非 0 code（如 429 催办限频）由 api() 抛错走全局错误提示，避免同时弹「已催办」
+  const urgeMutation = useApiMutation(workflowTaskContract.urgeTask, {
     onSuccess: () => {
       Toast.success('已催办');
       void queryClient.invalidateQueries({ queryKey: workflowMonitorKeys.taskMonitorLists });
@@ -131,7 +130,7 @@ export default function WorkflowTasksMonitorView({ onOpenInstance }: Props) {
             Modal.confirm({
               title: '确定催办该任务？',
               content: `将向处理人「${record.assigneeName ?? '未指派'}」发送催办提醒。`,
-              onOk: () => urgeMutation.mutateAsync(record.id).then(() => undefined),
+              onOk: () => urgeMutation.mutateAsync({ params: { taskId: record.id }, body: {} }).then(() => undefined),
             });
           },
         },

@@ -7,6 +7,5 @@
  * 新增 DTO 请直接在对应的子文件中维护（已契约化的域没有独立 DTO，实体 schema 来自 `@zenith/shared`）：
  *   - dtos/logs.ts           日志文件
  *   - dtos/db-backups.ts     数据库备份
- *   - dtos/workflow.ts       工作流
  */
 export * from './dtos';

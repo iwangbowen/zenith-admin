@@ -50,10 +50,12 @@ export default function WorkflowHandoverModal({ visible, onClose }: Readonly<Pro
       if (!fromUserId) { Toast.warning('请选择交接人'); return; }
       if (values.toUserId === fromUserId) { Toast.error('接手人不能与交接人相同'); return; }
       const res = await handoverMutation.mutateAsync({
-        fromUserId,
-        toUserId: values.toUserId,
-        disableDelegations,
-        comment: values.comment,
+        body: {
+          fromUserId,
+          toUserId: values.toUserId,
+          disableDelegations,
+          comment: values.comment,
+        },
       });
       setResult(res);
       if (res.failed === 0) Toast.success(`已交接 ${res.succeeded}/${res.taskTotal} 条待办`);

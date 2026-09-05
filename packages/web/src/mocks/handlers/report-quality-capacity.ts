@@ -1,5 +1,5 @@
-import { http } from 'msw';
-import type { ReportAssetCatalogItem, ReportAssetTemplate, ReportAssetTemplateApplyResult, ReportAssetUsageSummary, ReportDeprecationNotice, ReportDqAnomaly, ReportDqRule, ReportDqRun, ReportMaterializationSnapshot, ReportQueryQuota, ReportResourceType, ReportSlaRule } from '@zenith/shared/report';
+import type { ReportAssetCatalogItem, ReportAssetTemplate, ReportAssetTemplateApplyResult, ReportAssetUsageSummary, ReportDeprecationNotice, ReportDqRule, ReportDqRun, ReportMaterializationSnapshot, ReportQueryQuota, ReportResourceType, ReportSlaRule } from '@zenith/shared/report';
+import { reportAssetContract, reportDqContract, reportMaterializationContract, reportQueryCapacityContract, reportSlaContract } from '@zenith/shared/report';
 import {
   getNextReportDashboardId,
   getNextReportDatasetId,
@@ -26,17 +26,11 @@ import {
   mockReportSnapshots,
   nextReportP2Id,
 } from '@/mocks/data/report-p2';
-import { createProgressingMockTask } from './async-tasks';
+import { mock } from '@/mocks/utils/contract';
 import { mockDate, mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
-import {
-  DEMO_TENANT_ID,
-  DEMO_USER_ID,
-  DEMO_USER_NAME,
-  matchesNumberParam,
-  reportError,
-  reportOk,
-  reportPage,
-} from './report-mock-utils';
+import { badRequest, conflict, notFound } from '@/mocks/utils/handlers';
+import { createProgressingMockTask } from './async-tasks';
+import { DEMO_TENANT_ID, DEMO_USER_ID, DEMO_USER_NAME } from './report-mock-utils';
 
 function dqRuleView(rule: ReportDqRule): ReportDqRule {
   return { ...rule, datasetName: mockReportDatasets.find((item) => item.id === rule.datasetId)?.name ?? null };
@@ -102,36 +96,31 @@ function usageSummary(resourceType: ReportResourceType, resourceId: number): Rep
 }
 
 export const reportQualityCapacityHandlers = [
-  http.get('/api/report/dq/rules', ({ request }) => {
-    const url = new URL(request.url);
+  mock(reportDqContract.rules, ({ query, ok, paginate }) => {
     const list = mockReportDqRules.filter((item) =>
-      matchesNumberParam(url, 'datasetId', item.datasetId)
-      && (!url.searchParams.get('type') || item.type === url.searchParams.get('type'))
-      && (!url.searchParams.has('enabled') || item.enabled === (url.searchParams.get('enabled') === 'true')))
+      (!query.datasetId || item.datasetId === query.datasetId)
+      && (!query.type || item.type === query.type)
+      && (query.enabled === undefined || item.enabled === query.enabled))
       .map(dqRuleView);
-    return reportOk(reportPage(request, list));
+    return ok(paginate(list));
   }),
 
-  http.get('/api/report/dq/rules/:id', ({ params }) => {
-    const rule = mockReportDqRules.find((item) => item.id === Number(params.id));
-    return rule ? reportOk(dqRuleView(rule)) : reportError(404, '质量规则不存在');
+  mock(reportDqContract.ruleDetail, ({ params, ok }) => {
+    const rule = mockReportDqRules.find((item) => item.id === params.id);
+    return rule ? ok(dqRuleView(rule)) : notFound('质量规则不存在', { status: 404 });
   }),
 
-  http.post('/api/report/dq/rules', async ({ request }) => {
-    const body = await request.json() as Omit<ReportDqRule, 'id' | 'tenantId' | 'lastRunAt' | 'lastStatus' | 'createdAt' | 'updatedAt'>;
-    if (!mockReportDatasets.some((item) => item.id === body.datasetId)) return reportError(404, '数据集不存在');
+  mock(reportDqContract.createRule, ({ body, ok }) => {
+    if (!mockReportDatasets.some((item) => item.id === body.datasetId)) return notFound('数据集不存在', { status: 404 });
     const customSqlError = validateCustomDqSql(body);
-    if (customSqlError) return reportError(400, customSqlError);
+    if (customSqlError) return badRequest(customSqlError, { status: 400 });
     const now = mockDateTime();
     const rule: ReportDqRule = {
       ...body,
       id: nextReportP2Id('dq-rule', mockReportDqRules),
       tenantId: DEMO_TENANT_ID,
       field: body.field ?? null,
-      config: body.config ?? {},
       cron: body.cron ?? null,
-      timezone: body.timezone ?? 'Asia/Shanghai',
-      enabled: body.enabled ?? true,
       lastRunAt: null,
       lastStatus: null,
       createdBy: DEMO_USER_ID,
@@ -140,43 +129,40 @@ export const reportQualityCapacityHandlers = [
       updatedAt: now,
     };
     mockReportDqRules.push(rule);
-    return reportOk(dqRuleView(rule), '创建成功');
+    return ok(dqRuleView(rule), '创建成功');
   }),
 
-  http.put('/api/report/dq/rules/:id', async ({ params, request }) => {
-    const rule = mockReportDqRules.find((item) => item.id === Number(params.id));
-    if (!rule) return reportError(404, '质量规则不存在');
-    const body = await request.json() as Partial<ReportDqRule>;
+  mock(reportDqContract.updateRule, ({ params, body, ok }) => {
+    const rule = mockReportDqRules.find((item) => item.id === params.id);
+    if (!rule) return notFound('质量规则不存在', { status: 404 });
     const customSqlError = validateCustomDqSql({
       type: body.type ?? rule.type,
       config: body.config ?? rule.config,
     });
-    if (customSqlError) return reportError(400, customSqlError);
+    if (customSqlError) return badRequest(customSqlError, { status: 400 });
     Object.assign(rule, body, { updatedBy: DEMO_USER_ID, updatedAt: mockDateTime() });
-    return reportOk(dqRuleView(rule), '更新成功');
+    return ok(dqRuleView(rule), '更新成功');
   }),
 
-  http.delete('/api/report/dq/rules/:id', ({ params }) => {
-    const id = Number(params.id);
-    const index = mockReportDqRules.findIndex((item) => item.id === id);
-    if (index < 0) return reportError(404, '质量规则不存在');
+  mock(reportDqContract.removeRule, ({ params, ok }) => {
+    const index = mockReportDqRules.findIndex((item) => item.id === params.id);
+    if (index < 0) return notFound('质量规则不存在', { status: 404 });
     mockReportDqRules.splice(index, 1);
-    return reportOk(null, '删除成功');
+    return ok(null, '删除成功');
   }),
 
-  http.post('/api/report/dq/rules/:id/toggle', ({ params }) => {
-    const rule = mockReportDqRules.find((item) => item.id === Number(params.id));
-    if (!rule) return reportError(404, '质量规则不存在');
+  mock(reportDqContract.toggleRule, ({ params, ok }) => {
+    const rule = mockReportDqRules.find((item) => item.id === params.id);
+    if (!rule) return notFound('质量规则不存在', { status: 404 });
     rule.enabled = !rule.enabled;
     rule.updatedAt = mockDateTime();
-    return reportOk(dqRuleView(rule), rule.enabled ? '已启用' : '已停用');
+    return ok(dqRuleView(rule), rule.enabled ? '已启用' : '已停用');
   }),
 
-  http.post('/api/report/dq/rules/:id/run', async ({ params, request }) => {
-    const rule = mockReportDqRules.find((item) => item.id === Number(params.id));
-    if (!rule) return reportError(404, '质量规则不存在');
-    if (!rule.enabled) return reportError(409, '质量规则已停用');
-    const body = await request.json() as { sampleLimit?: number };
+  mock(reportDqContract.runRule, ({ params, body, ok }) => {
+    const rule = mockReportDqRules.find((item) => item.id === params.id);
+    if (!rule) return notFound('质量规则不存在', { status: 404 });
+    if (!rule.enabled) return conflict('质量规则已停用', { status: 409 });
     const now = mockDateTime();
     const failedRows = rule.type === 'row_count' ? 1 : 0;
     const run: ReportDqRun = {
@@ -189,7 +175,7 @@ export const reportQualityCapacityHandlers = [
       checkedRows: 6,
       failedRows,
       passRate: failedRows ? 83.33 : 100,
-      sampleRows: failedRows && (body.sampleLimit ?? 20) > 0 ? [{ name: '演示异常行', value: null }] : [],
+      sampleRows: failedRows && body.sampleLimit > 0 ? [{ name: '演示异常行', value: null }] : [],
       sampleRowCount: failedRows,
       sampleBytes: failedRows ? 48 : 0,
       startedAt: now,
@@ -240,41 +226,38 @@ export const reportQualityCapacityHandlers = [
         updatedAt: now,
       });
     }
-    return reportOk(createProgressingMockTask({
+    return ok(createProgressingMockTask({
       taskType: 'report-dq-rule-run',
       title: `执行质量规则 · ${rule.name}`,
-      payload: { ruleId: rule.id, runId: run.id, sampleLimit: body.sampleLimit ?? 20 },
+      payload: { ruleId: rule.id, runId: run.id, sampleLimit: body.sampleLimit },
       totalItems: 6,
     }), '任务已提交');
   }),
 
-  http.get('/api/report/dq/runs', ({ request }) => {
-    const url = new URL(request.url);
+  mock(reportDqContract.runs, ({ query, ok, paginate }) => {
     const list = mockReportDqRuns.filter((item) =>
-      matchesNumberParam(url, 'datasetId', item.datasetId)
-      && matchesNumberParam(url, 'ruleId', item.ruleId)
-      && (!url.searchParams.get('status') || item.status === url.searchParams.get('status')));
-    return reportOk(reportPage(request, list));
+      (!query.datasetId || item.datasetId === query.datasetId)
+      && (!query.ruleId || item.ruleId === query.ruleId)
+      && (!query.status || item.status === query.status));
+    return ok(paginate(list));
   }),
 
-  http.get('/api/report/dq/datasets/:id/scores', ({ params, request }) =>
-    reportOk(reportPage(request, mockReportDqScores.filter((item) => item.datasetId === Number(params.id))))),
+  mock(reportDqContract.scores, ({ params, ok, paginate }) =>
+    ok(paginate(mockReportDqScores.filter((item) => item.datasetId === params.id)))),
 
-  http.get('/api/report/dq/datasets/:id/score', ({ params }) =>
-    reportOk(mockReportDqScores.find((item) => item.datasetId === Number(params.id)) ?? null)),
+  mock(reportDqContract.currentScore, ({ params, ok }) =>
+    ok(mockReportDqScores.find((item) => item.datasetId === params.id) ?? null)),
 
-  http.get('/api/report/dq/anomalies', ({ request }) => {
-    const url = new URL(request.url);
+  mock(reportDqContract.anomalies, ({ query, ok, paginate }) => {
     const list = mockReportDqAnomalies.filter((item) =>
-      matchesNumberParam(url, 'datasetId', item.datasetId)
-      && (!url.searchParams.get('status') || item.status === url.searchParams.get('status')));
-    return reportOk(reportPage(request, list));
+      (!query.datasetId || item.datasetId === query.datasetId)
+      && (!query.status || item.status === query.status));
+    return ok(paginate(list));
   }),
 
-  http.post('/api/report/dq/anomalies/:id/status', async ({ params, request }) => {
-    const anomaly = mockReportDqAnomalies.find((item) => item.id === Number(params.id));
-    if (!anomaly) return reportError(404, '质量异常不存在');
-    const body = await request.json() as { status: ReportDqAnomaly['status']; note?: string };
+  mock(reportDqContract.updateAnomalyStatus, ({ params, body, ok }) => {
+    const anomaly = mockReportDqAnomalies.find((item) => item.id === params.id);
+    if (!anomaly) return notFound('质量异常不存在', { status: 404 });
     const now = mockDateTime();
     anomaly.status = body.status;
     anomaly.acknowledgementNote = body.note ?? null;
@@ -287,29 +270,26 @@ export const reportQualityCapacityHandlers = [
       anomaly.resolvedBy = DEMO_USER_ID;
     }
     anomaly.updatedAt = now;
-    return reportOk(anomaly, '操作成功');
+    return ok(anomaly, '操作成功');
   }),
 
-  http.get('/api/report/materializations/datasets/:id/snapshots', ({ params, request }) => {
-    const list = mockReportSnapshots.filter((item) => item.datasetId === Number(params.id));
-    return reportOk(reportPage(request, list));
-  }),
+  mock(reportMaterializationContract.snapshots, ({ params, ok, paginate }) =>
+    ok(paginate(mockReportSnapshots.filter((item) => item.datasetId === params.id)))),
 
-  http.get('/api/report/materializations/datasets/:id/current', ({ params }) =>
-    reportOk(mockReportSnapshots.find((item) => item.datasetId === Number(params.id) && item.status === 'ready') ?? null)),
+  mock(reportMaterializationContract.current, ({ params, ok }) =>
+    ok(mockReportSnapshots.find((item) => item.datasetId === params.id && item.status === 'ready') ?? null)),
 
-  http.post('/api/report/materializations/datasets/:id/refresh', async ({ params, request }) => {
-    const datasetId = Number(params.id);
+  mock(reportMaterializationContract.refresh, ({ params, body, ok }) => {
+    const datasetId = params.id;
     const dataset = mockReportDatasets.find((item) => item.id === datasetId);
-    if (!dataset) return reportError(404, '数据集不存在');
-    const body = await request.json() as { strategy?: 'full' | 'incremental'; keyField?: string | null; deltaWindowMinutes?: number | null; expiresAt?: string | null };
+    if (!dataset) return notFound('数据集不存在', { status: 404 });
     const now = mockDateTime();
     const revision = Math.max(0, ...mockReportSnapshots.filter((item) => item.datasetId === datasetId).map((item) => item.revision)) + 1;
     const snapshot: ReportMaterializationSnapshot = {
       id: nextReportP2Id('snapshot', mockReportSnapshots),
       tenantId: DEMO_TENANT_ID,
       datasetId,
-      strategy: body.strategy ?? 'full',
+      strategy: body.strategy,
       status: 'ready',
       revision,
       keyField: body.keyField ?? null,
@@ -328,7 +308,7 @@ export const reportQualityCapacityHandlers = [
       updatedAt: now,
     };
     mockReportSnapshots.unshift(snapshot);
-    return reportOk(createProgressingMockTask({
+    return ok(createProgressingMockTask({
       taskType: 'report-dataset-materialize',
       title: `物化数据集 · ${dataset.name}`,
       payload: { datasetId, snapshotId: snapshot.id, strategy: snapshot.strategy },
@@ -336,32 +316,31 @@ export const reportQualityCapacityHandlers = [
     }), '任务已提交');
   }),
 
-  http.delete('/api/report/materializations/snapshots/:id', ({ params }) => {
-    const snapshot = mockReportSnapshots.find((item) => item.id === Number(params.id));
-    if (!snapshot) return reportError(404, '物化快照不存在');
+  mock(reportMaterializationContract.purge, ({ params, ok }) => {
+    const snapshot = mockReportSnapshots.find((item) => item.id === params.id);
+    if (!snapshot) return notFound('物化快照不存在', { status: 404 });
     snapshot.status = 'deleted';
     snapshot.updatedAt = mockDateTime();
-    return reportOk(null, '清除成功');
+    return ok(null, '清除成功');
   }),
 
-  http.delete('/api/report/materializations/datasets/:id/snapshots', ({ params }) => {
+  mock(reportMaterializationContract.purgeDataset, ({ params, ok }) => {
     mockReportSnapshots
-      .filter((item) => item.datasetId === Number(params.id) && item.status !== 'deleted')
+      .filter((item) => item.datasetId === params.id && item.status !== 'deleted')
       .forEach((item) => { item.status = 'deleted'; item.updatedAt = mockDateTime(); });
-    return reportOk(null, '清除成功');
+    return ok(null, '清除成功');
   }),
 
-  http.get('/api/report/query-capacity/quotas', ({ request }) => reportOk(reportPage(request, mockReportQueryQuotas))),
+  mock(reportQueryCapacityContract.quotas, ({ ok, paginate }) => ok(paginate(mockReportQueryQuotas))),
 
-  http.get('/api/report/query-capacity/quotas/:id', ({ params }) => {
-    const quota = mockReportQueryQuotas.find((item) => item.id === Number(params.id));
-    return quota ? reportOk(quota) : reportError(404, '查询配额不存在');
+  mock(reportQueryCapacityContract.quotaDetail, ({ params, ok }) => {
+    const quota = mockReportQueryQuotas.find((item) => item.id === params.id);
+    return quota ? ok(quota) : notFound('查询配额不存在', { status: 404 });
   }),
 
-  http.post('/api/report/query-capacity/quotas', async ({ request }) => {
-    const body = await request.json() as Omit<ReportQueryQuota, 'id' | 'tenantId' | 'createdAt' | 'updatedAt'>;
+  mock(reportQueryCapacityContract.createQuota, ({ body, ok }) => {
     if (mockReportQueryQuotas.some((item) => item.scope === body.scope && item.userId === (body.userId ?? null))) {
-      return reportError(409, '该作用域已配置查询配额');
+      return conflict('该作用域已配置查询配额', { status: 409 });
     }
     const now = mockDateTime();
     const quota: ReportQueryQuota = {
@@ -369,41 +348,37 @@ export const reportQualityCapacityHandlers = [
       id: nextReportP2Id('quota', mockReportQueryQuotas),
       tenantId: DEMO_TENANT_ID,
       userId: body.userId ?? null,
-      resetTimezone: body.resetTimezone ?? 'Asia/Shanghai',
-      enabled: body.enabled ?? true,
       createdBy: DEMO_USER_ID,
       updatedBy: DEMO_USER_ID,
       createdAt: now,
       updatedAt: now,
     };
     mockReportQueryQuotas.push(quota);
-    return reportOk(quota, '创建成功');
+    return ok(quota, '创建成功');
   }),
 
-  http.put('/api/report/query-capacity/quotas/:id', async ({ params, request }) => {
-    const quota = mockReportQueryQuotas.find((item) => item.id === Number(params.id));
-    if (!quota) return reportError(404, '查询配额不存在');
-    const body = await request.json() as Partial<ReportQueryQuota>;
+  mock(reportQueryCapacityContract.updateQuota, ({ params, body, ok }) => {
+    const quota = mockReportQueryQuotas.find((item) => item.id === params.id);
+    if (!quota) return notFound('查询配额不存在', { status: 404 });
     Object.assign(quota, body, { updatedBy: DEMO_USER_ID, updatedAt: mockDateTime() });
-    return reportOk(quota, '更新成功');
+    return ok(quota, '更新成功');
   }),
 
-  http.delete('/api/report/query-capacity/quotas/:id', ({ params }) => {
-    const index = mockReportQueryQuotas.findIndex((item) => item.id === Number(params.id));
-    if (index < 0) return reportError(404, '查询配额不存在');
+  mock(reportQueryCapacityContract.removeQuota, ({ params, ok }) => {
+    const index = mockReportQueryQuotas.findIndex((item) => item.id === params.id);
+    if (index < 0) return notFound('查询配额不存在', { status: 404 });
     mockReportQueryQuotas.splice(index, 1);
-    return reportOk(null, '删除成功');
+    return ok(null, '删除成功');
   }),
 
-  http.get('/api/report/query-capacity/quotas/:id/usage', ({ params, request }) => {
-    const quota = mockReportQueryQuotas.find((item) => item.id === Number(params.id));
-    if (!quota) return reportError(404, '查询配额不存在');
-    const url = new URL(request.url);
-    return reportOk({
+  mock(reportQueryCapacityContract.quotaUsage, ({ params, query, ok }) => {
+    const quota = mockReportQueryQuotas.find((item) => item.id === params.id);
+    if (!quota) return notFound('查询配额不存在', { status: 404 });
+    return ok({
       tenantId: quota.tenantId,
       userId: quota.userId ?? null,
       timezone: quota.resetTimezone,
-      day: url.searchParams.get('scopeDate') ?? mockDate(),
+      day: query.scopeDate ?? mockDate(),
       concurrent: 1,
       queries: 42,
       rows: 2_860,
@@ -417,36 +392,35 @@ export const reportQualityCapacityHandlers = [
     });
   }),
 
-  http.post('/api/report/query-capacity/quotas/:id/reset', ({ params }) => {
-    if (!mockReportQueryQuotas.some((item) => item.id === Number(params.id))) return reportError(404, '查询配额不存在');
-    return reportOk(null, '重置成功');
+  mock(reportQueryCapacityContract.resetQuota, ({ params, ok }) => {
+    if (!mockReportQueryQuotas.some((item) => item.id === params.id)) return notFound('查询配额不存在', { status: 404 });
+    return ok(null, '重置成功');
   }),
 
-  http.get('/api/report/query-capacity/cost-logs', ({ request }) => {
-    const url = new URL(request.url);
+  mock(reportQueryCapacityContract.costLogs, ({ query, ok, paginate }) => {
     const list = mockReportQueryCostLogs.filter((item) =>
-      matchesNumberParam(url, 'userId', item.userId)
-      && matchesNumberParam(url, 'datasetId', item.datasetId)
-      && matchesNumberParam(url, 'datasourceId', item.datasourceId)
-      && (!url.searchParams.get('scene') || item.scene === url.searchParams.get('scene'))
-      && (!url.searchParams.has('success') || item.success === (url.searchParams.get('success') === 'true')));
-    return reportOk(reportPage(request, list));
+      (!query.userId || item.userId === query.userId)
+      && (!query.datasetId || item.datasetId === query.datasetId)
+      && (!query.datasourceId || item.datasourceId === query.datasourceId)
+      && (!query.scene || item.scene === query.scene)
+      && (query.success === undefined || item.success === query.success));
+    return ok(paginate(list));
   }),
 
-  http.get('/api/report/query-capacity/cost-stats', () => {
+  mock(reportQueryCapacityContract.costStats, ({ ok }) => {
     const queries = mockReportQueryCostLogs.length;
-    return reportOk({
+    return ok({
       queries,
       rows: mockReportQueryCostLogs.reduce((sum, item) => sum + item.rowCount, 0),
       bytes: mockReportQueryCostLogs.reduce((sum, item) => sum + item.byteSize, 0),
       costUnits: mockReportQueryCostLogs.reduce((sum, item) => sum + item.costUnits, 0),
-      avgDurationMs: queries ? mockReportQueryCostLogs.reduce((sum, item) => sum + item.durationMs, 0) / queries : 0,
+      avgDurationMs: queries ? Math.round(mockReportQueryCostLogs.reduce((sum, item) => sum + item.durationMs, 0) / queries) : 0,
       failures: mockReportQueryCostLogs.filter((item) => !item.success).length,
       capacity: { globalLimit: 100, running: 1, queueDepth: 0, datasourceQueues: 1 },
     });
   }),
 
-  http.get('/api/report/query-capacity/cost-trend', () => reportOk(
+  mock(reportQueryCapacityContract.costTrend, ({ ok }) => ok(
     Array.from({ length: 7 }, (_, index) => ({
       bucket: mockDateTimeOffset(-(6 - index) * 86_400_000),
       queries: 18 + index * 4,
@@ -458,22 +432,20 @@ export const reportQualityCapacityHandlers = [
     })),
   )),
 
-  http.get('/api/report/sla/rules', ({ request }) => {
-    const url = new URL(request.url);
+  mock(reportSlaContract.rules, ({ query, ok, paginate }) => {
     const list = mockReportSlaRules.filter((item) =>
-      matchesNumberParam(url, 'datasetId', item.datasetId)
-      && (!url.searchParams.get('type') || item.type === url.searchParams.get('type'))
-      && (!url.searchParams.has('enabled') || item.enabled === (url.searchParams.get('enabled') === 'true')));
-    return reportOk(reportPage(request, list));
+      (!query.datasetId || item.datasetId === query.datasetId)
+      && (!query.type || item.type === query.type)
+      && (query.enabled === undefined || item.enabled === query.enabled));
+    return ok(paginate(list));
   }),
 
-  http.get('/api/report/sla/rules/:id', ({ params }) => {
-    const rule = mockReportSlaRules.find((item) => item.id === Number(params.id));
-    return rule ? reportOk(rule) : reportError(404, 'SLA 规则不存在');
+  mock(reportSlaContract.ruleDetail, ({ params, ok }) => {
+    const rule = mockReportSlaRules.find((item) => item.id === params.id);
+    return rule ? ok(rule) : notFound('SLA 规则不存在', { status: 404 });
   }),
 
-  http.post('/api/report/sla/rules', async ({ request }) => {
-    const body = await request.json() as Omit<ReportSlaRule, 'id' | 'tenantId' | 'lastEvaluatedAt' | 'lastNotifiedAt' | 'createdAt' | 'updatedAt'>;
+  mock(reportSlaContract.createRule, ({ body, ok }) => {
     const now = mockDateTime();
     const rule: ReportSlaRule = {
       ...body,
@@ -481,7 +453,6 @@ export const reportQualityCapacityHandlers = [
       tenantId: DEMO_TENANT_ID,
       warningValue: body.warningValue ?? null,
       cron: body.cron ?? null,
-      channels: body.channels ?? [],
       recipients: body.recipients ?? null,
       webhookUrl: body.webhookUrl ?? null,
       lastEvaluatedAt: null,
@@ -492,30 +463,29 @@ export const reportQualityCapacityHandlers = [
       updatedAt: now,
     };
     mockReportSlaRules.push(rule);
-    return reportOk(rule, '创建成功');
+    return ok(rule, '创建成功');
   }),
 
-  http.put('/api/report/sla/rules/:id', async ({ params, request }) => {
-    const rule = mockReportSlaRules.find((item) => item.id === Number(params.id));
-    if (!rule) return reportError(404, 'SLA 规则不存在');
-    const body = await request.json() as Partial<ReportSlaRule>;
+  mock(reportSlaContract.updateRule, ({ params, body, ok }) => {
+    const rule = mockReportSlaRules.find((item) => item.id === params.id);
+    if (!rule) return notFound('SLA 规则不存在', { status: 404 });
     Object.assign(rule, body, { updatedBy: DEMO_USER_ID, updatedAt: mockDateTime() });
-    return reportOk(rule, '更新成功');
+    return ok(rule, '更新成功');
   }),
 
-  http.delete('/api/report/sla/rules/:id', ({ params }) => {
-    const index = mockReportSlaRules.findIndex((item) => item.id === Number(params.id));
-    if (index < 0) return reportError(404, 'SLA 规则不存在');
+  mock(reportSlaContract.removeRule, ({ params, ok }) => {
+    const index = mockReportSlaRules.findIndex((item) => item.id === params.id);
+    if (index < 0) return notFound('SLA 规则不存在', { status: 404 });
     mockReportSlaRules.splice(index, 1);
-    return reportOk(null, '删除成功');
+    return ok(null, '删除成功');
   }),
 
-  http.post('/api/report/sla/rules/:id/evaluate', ({ params }) => {
-    const rule = mockReportSlaRules.find((item) => item.id === Number(params.id));
-    if (!rule) return reportError(404, 'SLA 规则不存在');
+  mock(reportSlaContract.evaluate, ({ params, ok }) => {
+    const rule = mockReportSlaRules.find((item) => item.id === params.id);
+    if (!rule) return notFound('SLA 规则不存在', { status: 404 });
     rule.lastEvaluatedAt = mockDateTime();
     rule.updatedAt = rule.lastEvaluatedAt;
-    return reportOk(createProgressingMockTask({
+    return ok(createProgressingMockTask({
       taskType: 'report-sla-rule-evaluate',
       title: `评估 SLA · ${rule.name}`,
       payload: { ruleId: rule.id, datasetId: rule.datasetId },
@@ -523,19 +493,17 @@ export const reportQualityCapacityHandlers = [
     }), '任务已提交');
   }),
 
-  http.get('/api/report/sla/violations', ({ request }) => {
-    const url = new URL(request.url);
+  mock(reportSlaContract.violations, ({ query, ok, paginate }) => {
     const list = mockReportSlaViolations.filter((item) =>
-      matchesNumberParam(url, 'datasetId', item.datasetId)
-      && matchesNumberParam(url, 'ruleId', item.ruleId)
-      && (!url.searchParams.get('status') || item.status === url.searchParams.get('status')));
-    return reportOk(reportPage(request, list));
+      (!query.datasetId || item.datasetId === query.datasetId)
+      && (!query.ruleId || item.ruleId === query.ruleId)
+      && (!query.status || item.status === query.status));
+    return ok(paginate(list));
   }),
 
-  http.post('/api/report/sla/violations/:id/status', async ({ params, request }) => {
-    const violation = mockReportSlaViolations.find((item) => item.id === Number(params.id));
-    if (!violation) return reportError(404, 'SLA 违规不存在');
-    const body = await request.json() as { status: 'acknowledged' | 'resolved'; note?: string };
+  mock(reportSlaContract.updateViolationStatus, ({ params, body, ok }) => {
+    const violation = mockReportSlaViolations.find((item) => item.id === params.id);
+    if (!violation) return notFound('SLA 违规不存在', { status: 404 });
     const now = mockDateTime();
     violation.status = body.status;
     if (body.status === 'acknowledged') {
@@ -547,36 +515,31 @@ export const reportQualityCapacityHandlers = [
       violation.resolutionNote = body.note ?? null;
     }
     violation.updatedAt = now;
-    return reportOk(violation, '操作成功');
+    return ok(violation, '操作成功');
   }),
 
-  http.get('/api/report/assets/catalog', ({ request }) => {
-    const url = new URL(request.url);
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const types = (url.searchParams.get('types') ?? '').split(',').filter(Boolean);
+  mock(reportAssetContract.catalog, ({ query, ok, paginate }) => {
+    const types = (query.types ?? '').split(',').filter(Boolean);
     const list = assetCatalog().filter((item) =>
-      (!keyword || item.name.includes(keyword))
+      (!query.keyword || item.name.includes(query.keyword))
       && (!types.length || types.includes(item.resourceType))
-      && matchesNumberParam(url, 'ownerId', item.ownerId)
-      && matchesNumberParam(url, 'folderId', item.folderId)
-      && (!url.searchParams.get('lifecycle') || item.lifecycleStatus === url.searchParams.get('lifecycle'))
-      && (!url.searchParams.get('status') || item.status === url.searchParams.get('status')));
-    return reportOk(reportPage(request, list));
+      && (!query.ownerId || item.ownerId === query.ownerId)
+      && (!query.folderId || item.folderId === query.folderId)
+      && (!query.lifecycle || item.lifecycleStatus === query.lifecycle)
+      && (!query.status || item.status === query.status));
+    return ok(paginate(list));
   }),
 
-  http.get('/api/report/assets/usage/top', ({ request }) => {
-    const limit = Number(new URL(request.url).searchParams.get('limit')) || 20;
+  mock(reportAssetContract.topAssets, ({ query, ok }) => {
     const list = assetCatalog().map((item) => usageSummary(item.resourceType, item.resourceId))
-      .sort((a, b) => b.views - a.views).slice(0, limit);
-    return reportOk(list);
+      .sort((a, b) => b.views - a.views).slice(0, query.limit);
+    return ok(list);
   }),
 
-  http.get('/api/report/assets/usage/inactive', ({ request }) => {
-    const list = assetCatalog().filter((item) => item.resourceId % 2 === 0);
-    return reportOk(reportPage(request, list));
-  }),
+  mock(reportAssetContract.inactiveAssets, ({ ok, paginate }) =>
+    ok(paginate(assetCatalog().filter((item) => item.resourceId % 2 === 0)))),
 
-  http.get('/api/report/assets/usage/trend', () => reportOk(
+  mock(reportAssetContract.usageTrend, ({ ok }) => ok(
     Array.from({ length: 7 }, (_, index) => ({
       bucket: mockDateTimeOffset(-(6 - index) * 86_400_000),
       views: 20 + index * 5,
@@ -588,28 +551,24 @@ export const reportQualityCapacityHandlers = [
     })),
   )),
 
-  http.get('/api/report/assets/usage/:resourceType/:id', ({ params }) => {
-    const resourceType = String(params.resourceType) as ReportResourceType;
-    const resourceId = Number(params.id);
-    if (!assetCatalog().some((item) => item.resourceType === resourceType && item.resourceId === resourceId)) {
-      return reportError(404, '报表资产不存在');
+  mock(reportAssetContract.usage, ({ params, ok }) => {
+    if (!assetCatalog().some((item) => item.resourceType === params.resourceType && item.resourceId === params.id)) {
+      return notFound('报表资产不存在', { status: 404 });
     }
-    return reportOk(usageSummary(resourceType, resourceId));
+    return ok(usageSummary(params.resourceType, params.id));
   }),
 
-  http.get('/api/report/assets/deprecations', ({ request }) => {
-    const url = new URL(request.url);
+  mock(reportAssetContract.deprecations, ({ query, ok, paginate }) => {
     const list = mockReportDeprecations.filter((item) =>
-      (!url.searchParams.get('resourceType') || item.resourceType === url.searchParams.get('resourceType'))
-      && matchesNumberParam(url, 'resourceId', item.resourceId)
-      && (!url.searchParams.has('published') || Boolean(item.publishedAt) === (url.searchParams.get('published') === 'true')));
-    return reportOk(reportPage(request, list));
+      (!query.resourceType || item.resourceType === query.resourceType)
+      && (!query.resourceId || item.resourceId === query.resourceId)
+      && (query.published === undefined || Boolean(item.publishedAt) === query.published));
+    return ok(paginate(list));
   }),
 
-  http.post('/api/report/assets/deprecations', async ({ request }) => {
-    const body = await request.json() as Omit<ReportDeprecationNotice, 'id' | 'tenantId' | 'publishedAt' | 'publishedBy' | 'processedAt' | 'createdAt' | 'updatedAt'>;
+  mock(reportAssetContract.createDeprecation, ({ body, ok }) => {
     if (!assetCatalog().some((item) => item.resourceType === body.resourceType && item.resourceId === body.resourceId)) {
-      return reportError(404, '报表资产不存在');
+      return notFound('报表资产不存在', { status: 404 });
     }
     const now = mockDateTime();
     const notice: ReportDeprecationNotice = {
@@ -628,53 +587,48 @@ export const reportQualityCapacityHandlers = [
       updatedAt: now,
     };
     mockReportDeprecations.unshift(notice);
-    return reportOk(notice, '创建成功');
+    return ok(notice, '创建成功');
   }),
 
-  http.put('/api/report/assets/deprecations/:id', async ({ params, request }) => {
-    const notice = mockReportDeprecations.find((item) => item.id === Number(params.id));
-    if (!notice) return reportError(404, '弃用公告不存在');
-    if (notice.publishedAt) return reportError(409, '已发布公告不能编辑');
-    const body = await request.json() as Partial<ReportDeprecationNotice>;
+  mock(reportAssetContract.updateDeprecation, ({ params, body, ok }) => {
+    const notice = mockReportDeprecations.find((item) => item.id === params.id);
+    if (!notice) return notFound('弃用公告不存在', { status: 404 });
+    if (notice.publishedAt) return conflict('已发布公告不能编辑', { status: 409 });
     Object.assign(notice, body, { updatedBy: DEMO_USER_ID, updatedAt: mockDateTime() });
-    return reportOk(notice, '更新成功');
+    return ok(notice, '更新成功');
   }),
 
-  http.post('/api/report/assets/deprecations/:id/publish', async ({ params, request }) => {
-    const notice = mockReportDeprecations.find((item) => item.id === Number(params.id));
-    if (!notice) return reportError(404, '弃用公告不存在');
-    const body = await request.json() as { publish?: boolean };
-    notice.publishedAt = body.publish === false ? null : mockDateTime();
-    notice.publishedBy = body.publish === false ? null : DEMO_USER_ID;
+  mock(reportAssetContract.publishDeprecation, ({ params, body, ok }) => {
+    const notice = mockReportDeprecations.find((item) => item.id === params.id);
+    if (!notice) return notFound('弃用公告不存在', { status: 404 });
+    notice.publishedAt = body.publish ? mockDateTime() : null;
+    notice.publishedBy = body.publish ? DEMO_USER_ID : null;
     notice.updatedAt = mockDateTime();
-    return reportOk(notice, body.publish === false ? '已撤销发布' : '发布成功');
+    return ok(notice, body.publish ? '发布成功' : '已撤销发布');
   }),
 
-  http.delete('/api/report/assets/deprecations/:id', ({ params }) => {
-    const index = mockReportDeprecations.findIndex((item) => item.id === Number(params.id));
-    if (index < 0) return reportError(404, '弃用公告不存在');
+  mock(reportAssetContract.removeDeprecation, ({ params, ok }) => {
+    const index = mockReportDeprecations.findIndex((item) => item.id === params.id);
+    if (index < 0) return notFound('弃用公告不存在', { status: 404 });
     mockReportDeprecations.splice(index, 1);
-    return reportOk(null, '删除成功');
+    return ok(null, '删除成功');
   }),
 
-  http.get('/api/report/assets/templates', ({ request }) => {
-    const url = new URL(request.url);
-    const keyword = url.searchParams.get('keyword') ?? '';
+  mock(reportAssetContract.templates, ({ query, ok, paginate }) => {
     const list = mockReportAssetTemplates.filter((item) =>
-      (!keyword || item.name.includes(keyword) || item.code.includes(keyword))
-      && (!url.searchParams.get('type') || item.type === url.searchParams.get('type'))
-      && (!url.searchParams.get('status') || item.status === url.searchParams.get('status')));
-    return reportOk(reportPage(request, list));
+      (!query.keyword || item.name.includes(query.keyword) || item.code.includes(query.keyword))
+      && (!query.type || item.type === query.type)
+      && (!query.status || item.status === query.status));
+    return ok(paginate(list));
   }),
 
-  http.get('/api/report/assets/templates/:id', ({ params }) => {
-    const template = mockReportAssetTemplates.find((item) => item.id === Number(params.id));
-    return template ? reportOk(template) : reportError(404, '资产模板不存在');
+  mock(reportAssetContract.templateDetail, ({ params, ok }) => {
+    const template = mockReportAssetTemplates.find((item) => item.id === params.id);
+    return template ? ok(template) : notFound('资产模板不存在', { status: 404 });
   }),
 
-  http.post('/api/report/assets/templates', async ({ request }) => {
-    const body = await request.json() as Omit<ReportAssetTemplate, 'id' | 'tenantId' | 'version' | 'usageCount' | 'createdAt' | 'updatedAt'>;
-    if (mockReportAssetTemplates.some((item) => item.code === body.code)) return reportError(409, '模板编码已存在');
+  mock(reportAssetContract.createTemplate, ({ body, ok }) => {
+    if (mockReportAssetTemplates.some((item) => item.code === body.code)) return conflict('模板编码已存在', { status: 409 });
     const now = mockDateTime();
     const template: ReportAssetTemplate = {
       ...body,
@@ -693,21 +647,19 @@ export const reportQualityCapacityHandlers = [
       updatedAt: now,
     };
     mockReportAssetTemplates.push(template);
-    return reportOk(template, '创建成功');
+    return ok(template, '创建成功');
   }),
 
-  http.put('/api/report/assets/templates/:id', async ({ params, request }) => {
-    const template = mockReportAssetTemplates.find((item) => item.id === Number(params.id));
-    if (!template) return reportError(404, '资产模板不存在');
-    const body = await request.json() as Partial<ReportAssetTemplate>;
+  mock(reportAssetContract.updateTemplate, ({ params, body, ok }) => {
+    const template = mockReportAssetTemplates.find((item) => item.id === params.id);
+    if (!template) return notFound('资产模板不存在', { status: 404 });
     Object.assign(template, body, { version: template.version + 1, updatedBy: DEMO_USER_ID, updatedAt: mockDateTime() });
-    return reportOk(template, '更新成功');
+    return ok(template, '更新成功');
   }),
 
-  http.post('/api/report/assets/templates/:id/clone', async ({ params, request }) => {
-    const source = mockReportAssetTemplates.find((item) => item.id === Number(params.id));
-    if (!source) return reportError(404, '资产模板不存在');
-    const body = await request.json() as { name: string; folderId?: number | null };
+  mock(reportAssetContract.cloneTemplate, ({ params, body, ok }) => {
+    const source = mockReportAssetTemplates.find((item) => item.id === params.id);
+    if (!source) return notFound('资产模板不存在', { status: 404 });
     const now = mockDateTime();
     const copy: ReportAssetTemplate = {
       ...source,
@@ -722,14 +674,13 @@ export const reportQualityCapacityHandlers = [
       updatedAt: now,
     };
     mockReportAssetTemplates.push(copy);
-    return reportOk(copy, '克隆成功');
+    return ok(copy, '克隆成功');
   }),
 
-  http.post('/api/report/assets/templates/:id/apply', async ({ params, request }) => {
-    const template = mockReportAssetTemplates.find((item) => item.id === Number(params.id));
-    if (!template) return reportError(404, '资产模板不存在');
-    if (template.status !== 'enabled') return reportError(409, '资产模板已停用');
-    const body = await request.json() as { name?: string; folderId?: number | null; targetResourceId?: number };
+  mock(reportAssetContract.applyTemplate, ({ params, body, ok }) => {
+    const template = mockReportAssetTemplates.find((item) => item.id === params.id);
+    if (!template) return notFound('资产模板不存在', { status: 404 });
+    if (template.status !== 'enabled') return conflict('资产模板已停用', { status: 409 });
     let result: ReportAssetTemplateApplyResult;
     if (template.type === 'semantic_model') {
       const source = mockReportDatasets[0];
@@ -743,7 +694,7 @@ export const reportQualityCapacityHandlers = [
       result = { resourceType: 'print_template', resourceId: created.id, name: created.name };
     } else if (template.type === 'widget') {
       const dashboard = mockReportDashboards.find((item) => item.id === body.targetResourceId);
-      if (!dashboard) return reportError(400, '应用组件模板必须指定目标仪表盘');
+      if (!dashboard) return badRequest('应用组件模板必须指定目标仪表盘', { status: 400 });
       const widgetId = `tpl_${template.id}_${dashboard.widgets.length + 1}`;
       dashboard.widgets.push({ i: widgetId, type: 'text', title: template.name, options: { text: '模板组件' } });
       dashboard.layout.push({ i: widgetId, x: 0, y: dashboard.layout.length * 4, w: 6, h: 4 });
@@ -758,13 +709,13 @@ export const reportQualityCapacityHandlers = [
     }
     template.usageCount += 1;
     template.updatedAt = mockDateTime();
-    return reportOk(result, '应用成功');
+    return ok(result, '应用成功');
   }),
 
-  http.delete('/api/report/assets/templates/:id', ({ params }) => {
-    const index = mockReportAssetTemplates.findIndex((item) => item.id === Number(params.id));
-    if (index < 0) return reportError(404, '资产模板不存在');
+  mock(reportAssetContract.removeTemplate, ({ params, ok }) => {
+    const index = mockReportAssetTemplates.findIndex((item) => item.id === params.id);
+    if (index < 0) return notFound('资产模板不存在', { status: 404 });
     mockReportAssetTemplates.splice(index, 1);
-    return reportOk(null, '删除成功');
+    return ok(null, '删除成功');
   }),
 ];

@@ -1,27 +1,14 @@
-// ─── 任务流转：转办/委派/加签/减签/退回（拆分自 workflow-instances.ts 路由）───
-import { createRoute, defineOpenAPIRoute } from '@hono/zod-openapi';
+// ─── 任务流转：转办/委派/加签/减签/退回 ───
+import { workflowTaskContract } from '@zenith/shared/workflow';
 import { authMiddleware } from '../../../middleware/auth';
 import { guard, setAuditAfterData, setAuditBeforeData } from '../../../middleware/guard';
 import { idempotencyGuard } from '../../../middleware/idempotency';
-import { transferWorkflowTaskSchema, delegateWorkflowTaskSchema, addSignWorkflowTaskSchema, reduceSignWorkflowTaskSchema, returnWorkflowTaskSchema } from '@zenith/shared/workflow';
-import { ErrorResponse, jsonContent, commonErrorResponses, ok, okMsg, okBody } from '../../../lib/openapi-schemas';
-import { WorkflowInstanceDTO, WorkflowTaskDTO } from '../../../lib/openapi-dtos';
+import { defineContractRoute } from '../../../lib/contract-route';
+import { okBody } from '../../../lib/openapi-schemas';
 import { getWorkflowTaskBeforeAudit, transferTask, delegateTask, addSignTask, reduceSignTask, returnTask } from '../../../services/workflow/workflow-instances.service';
-import { taskIdParam } from './shared';
 
-export const transferRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/tasks/{taskId}/transfer', tags: ['WorkflowInstances'], summary: '转办',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, idempotencyGuard({ ttlSeconds: 10 }), guard({ permission: 'workflow:task:handle', audit: { description: '转办任务', module: '工作流管理' } })] as const,
-    request: { params: taskIdParam, body: { content: jsonContent(transferWorkflowTaskSchema), required: true } },
-    responses: {
-      ...commonErrorResponses,
-      ...ok(WorkflowTaskDTO, '已转办'),
-      400: { content: jsonContent(ErrorResponse), description: '参数错误' },
-      404: { content: jsonContent(ErrorResponse), description: '不存在' },
-    },
-  }),
+export const transferRoute = defineContractRoute(workflowTaskContract.transfer, {
+  middleware: [authMiddleware, idempotencyGuard({ ttlSeconds: 10 }), guard({ permission: 'workflow:task:handle', audit: { description: '转办任务', module: '工作流管理' } })] as const,
   handler: async (c) => {
     const { taskId } = c.req.valid('param');
     const { targetUserId, comment, attachments } = c.req.valid('json');
@@ -34,19 +21,8 @@ export const transferRoute = defineOpenAPIRoute({
   },
 });
 
-export const delegateRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/tasks/{taskId}/delegate', tags: ['WorkflowInstances'], summary: '委派',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, idempotencyGuard({ ttlSeconds: 10 }), guard({ permission: 'workflow:task:handle', audit: { description: '委派任务', module: '工作流管理' } })] as const,
-    request: { params: taskIdParam, body: { content: jsonContent(delegateWorkflowTaskSchema), required: true } },
-    responses: {
-      ...commonErrorResponses,
-      ...ok(WorkflowTaskDTO, '已委派'),
-      400: { content: jsonContent(ErrorResponse), description: '参数错误' },
-      404: { content: jsonContent(ErrorResponse), description: '不存在' },
-    },
-  }),
+export const delegateRoute = defineContractRoute(workflowTaskContract.delegate, {
+  middleware: [authMiddleware, idempotencyGuard({ ttlSeconds: 10 }), guard({ permission: 'workflow:task:handle', audit: { description: '委派任务', module: '工作流管理' } })] as const,
   handler: async (c) => {
     const { taskId } = c.req.valid('param');
     const { targetUserId, comment, attachments } = c.req.valid('json');
@@ -59,19 +35,8 @@ export const delegateRoute = defineOpenAPIRoute({
   },
 });
 
-export const addSignRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/tasks/{taskId}/add-sign', tags: ['WorkflowInstances'], summary: '加签',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, idempotencyGuard({ ttlSeconds: 10 }), guard({ permission: 'workflow:task:handle', audit: { description: '加签任务', module: '工作流管理' } })] as const,
-    request: { params: taskIdParam, body: { content: jsonContent(addSignWorkflowTaskSchema), required: true } },
-    responses: {
-      ...commonErrorResponses,
-      ...okMsg('已加签'),
-      400: { content: jsonContent(ErrorResponse), description: '参数错误' },
-      404: { content: jsonContent(ErrorResponse), description: '不存在' },
-    },
-  }),
+export const addSignRoute = defineContractRoute(workflowTaskContract.addSign, {
+  middleware: [authMiddleware, idempotencyGuard({ ttlSeconds: 10 }), guard({ permission: 'workflow:task:handle', audit: { description: '加签任务', module: '工作流管理' } })] as const,
   handler: async (c) => {
     const { taskId } = c.req.valid('param');
     const { targetUserIds, position, comment, signMode, attachments } = c.req.valid('json');
@@ -84,19 +49,8 @@ export const addSignRoute = defineOpenAPIRoute({
   },
 });
 
-export const reduceSignRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/tasks/{taskId}/reduce-sign', tags: ['WorkflowInstances'], summary: '减签',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, idempotencyGuard({ ttlSeconds: 10 }), guard({ permission: 'workflow:task:handle', audit: { description: '减签任务', module: '工作流管理' } })] as const,
-    request: { params: taskIdParam, body: { content: jsonContent(reduceSignWorkflowTaskSchema), required: true } },
-    responses: {
-      ...commonErrorResponses,
-      ...okMsg('已减签'),
-      400: { content: jsonContent(ErrorResponse), description: '参数错误' },
-      404: { content: jsonContent(ErrorResponse), description: '不存在' },
-    },
-  }),
+export const reduceSignRoute = defineContractRoute(workflowTaskContract.reduceSign, {
+  middleware: [authMiddleware, idempotencyGuard({ ttlSeconds: 10 }), guard({ permission: 'workflow:task:handle', audit: { description: '减签任务', module: '工作流管理' } })] as const,
   handler: async (c) => {
     const { taskId } = c.req.valid('param');
     const { targetTaskIds, comment } = c.req.valid('json');
@@ -109,19 +63,8 @@ export const reduceSignRoute = defineOpenAPIRoute({
   },
 });
 
-export const returnRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/tasks/{taskId}/return', tags: ['WorkflowInstances'], summary: '退回',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, idempotencyGuard({ ttlSeconds: 10 }), guard({ permission: 'workflow:task:handle', audit: { description: '退回任务', module: '工作流管理' } })] as const,
-    request: { params: taskIdParam, body: { content: jsonContent(returnWorkflowTaskSchema), required: true } },
-    responses: {
-      ...commonErrorResponses,
-      ...ok(WorkflowInstanceDTO, '已退回'),
-      400: { content: jsonContent(ErrorResponse), description: '参数错误' },
-      404: { content: jsonContent(ErrorResponse), description: '不存在' },
-    },
-  }),
+export const returnRoute = defineContractRoute(workflowTaskContract.returnTask, {
+  middleware: [authMiddleware, idempotencyGuard({ ttlSeconds: 10 }), guard({ permission: 'workflow:task:handle', audit: { description: '退回任务', module: '工作流管理' } })] as const,
   handler: async (c) => {
     const { taskId } = c.req.valid('param');
     const { targetNodeKeys, comment, attachments } = c.req.valid('json');

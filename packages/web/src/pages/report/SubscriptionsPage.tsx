@@ -106,7 +106,7 @@ export default function SubscriptionsPage() {
   function openEdit(r: ReportDashboardSubscription) { setCronExprValue(r.cron); setSelectedChannels(r.channels); subscriptionModal.openEdit(r); }
 
   async function handleRun(id: number) {
-    await runMutation.mutateAsync(id);
+    await runMutation.mutateAsync({ params: { id } });
     Toast.success('任务已提交，可在任务中心查看进度');
     // 推送任务在后台异步执行，稍后刷新列表，让「上次推送 / 最近投递」自动更新
     window.setTimeout(() => {
@@ -123,7 +123,7 @@ export default function SubscriptionsPage() {
     Modal.confirm({
       title: `确认批量${enabled ? '启用' : '停用'}选中的 ${selectedRowKeys.length} 条订阅？`,
       onOk: async () => {
-        await batchEnabledMutation.mutateAsync({ ids: selectedRowKeys, enabled });
+        await batchEnabledMutation.mutateAsync({ body: { ids: selectedRowKeys, enabled } });
         setSelectedRowKeys([]);
         Toast.success(enabled ? '批量启用成功' : '批量停用成功');
       },

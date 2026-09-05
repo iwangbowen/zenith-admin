@@ -1,12 +1,9 @@
-import { http, HttpResponse } from 'msw';
-import { ok, pageParams, pageResult } from '@/mocks/utils/handlers';
-import type { WorkflowEventDelivery, WorkflowEventDeliveryStatus, WorkflowEventSubscription, WorkflowEventType } from '@zenith/shared/workflow';
+import { workflowEventSubscriptionContract } from '@zenith/shared/workflow';
+import type { WorkflowEventDelivery, WorkflowEventSubscription } from '@zenith/shared/workflow';
+import { mock } from '@/mocks/utils/contract';
+import { badRequest, fail } from '@/mocks/utils/handlers';
 import { mockWorkflowDefinitions } from '@/mocks/data/workflow';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
-
-function err(message: string, code = 400) {
-  return HttpResponse.json({ code, message });
-}
 
 type StoredSubscription = WorkflowEventSubscription & { secret: string | null };
 
@@ -122,26 +119,18 @@ function toPublicSubscription(row: StoredSubscription): WorkflowEventSubscriptio
 }
 
 export const workflowEventSubscriptionsHandlers = [
-  http.get('/api/workflows/event-subscriptions/deliveries/list', ({ request }) => {
-    const url = new URL(request.url);
-    const { page, pageSize } = pageParams(url, 20);
-    const subscriptionId = url.searchParams.get('subscriptionId');
-    const instanceId = url.searchParams.get('instanceId');
-    const status = url.searchParams.get('status') as WorkflowEventDeliveryStatus | null;
-
+  mock(workflowEventSubscriptionContract.deliveries, ({ query, ok, paginate }) => {
     let list = [...mockDeliveries];
-    if (subscriptionId) list = list.filter((item) => item.subscriptionId === Number(subscriptionId));
-    if (instanceId) list = list.filter((item) => item.instanceId === Number(instanceId));
-    if (status) list = list.filter((item) => item.status === status);
+    if (query.subscriptionId) list = list.filter((item) => item.subscriptionId === query.subscriptionId);
+    if (query.instanceId) list = list.filter((item) => item.instanceId === query.instanceId);
+    if (query.status) list = list.filter((item) => item.status === query.status);
     list.sort((a, b) => b.id - a.id);
-
-    return ok(pageResult(list, page, pageSize));
+    return ok(paginate(list));
   }),
 
-  http.post('/api/workflows/event-subscriptions/deliveries/batch-retry', async ({ request }) => {
-    const body = await request.json() as { ids?: number[] };
+  mock(workflowEventSubscriptionContract.batchRetryDeliveries, ({ body, ok }) => {
     let count = 0;
-    for (const id of body.ids ?? []) {
+    for (const id of body.ids) {
       const row = mockDeliveries.find((item) => item.id === id);
       if (row && (row.status === 'failed' || row.status === 'retrying')) {
         row.status = 'retrying';
@@ -152,9 +141,8 @@ export const workflowEventSubscriptionsHandlers = [
     return ok({ count }, '已加入重试队列');
   }),
 
-  // 4B 按筛选批量重放（含补发已成功）
-  http.post('/api/workflows/event-subscriptions/deliveries/replay', async ({ request }) => {
-    const body = await request.json() as { subscriptionId?: number; eventType?: string; status?: 'all' | 'success' | 'failed' | 'pending' };
+  // 按筛选批量重放（含补发已成功）
+  mock(workflowEventSubscriptionContract.replayDeliveries, ({ body, ok }) => {
     let targets = mockDeliveries.slice();
     if (body.subscriptionId) targets = targets.filter((d) => d.subscriptionId === body.subscriptionId);
     if (body.eventType) targets = targets.filter((d) => d.eventType === body.eventType);
@@ -165,27 +153,23 @@ export const workflowEventSubscriptionsHandlers = [
     return ok({ count: targets.length }, `已重放 ${targets.length} 条投递`);
   }),
 
-  http.post('/api/workflows/event-subscriptions/deliveries/:id/retry', ({ params }) => {
-    const row = mockDeliveries.find((item) => item.id === Number(params.id));
-    if (!row) return err('投递记录不存在', 404);
+  mock(workflowEventSubscriptionContract.retryDelivery, ({ params, ok }) => {
+    const row = mockDeliveries.find((item) => item.id === params.id);
+    if (!row) return fail(404, '投递记录不存在');
     row.status = 'retrying';
     row.nextRetryAt = mockDateTime();
     row.attempt += 1;
     return ok(row, '已加入重试队列');
   }),
 
-  http.get('/api/workflows/event-subscriptions/deliveries/:id', ({ params }) => {
-    const row = mockDeliveries.find((item) => item.id === Number(params.id));
-    if (!row) return err('投递记录不存在', 404);
+  mock(workflowEventSubscriptionContract.deliveryDetail, ({ params, ok }) => {
+    const row = mockDeliveries.find((item) => item.id === params.id);
+    if (!row) return fail(404, '投递记录不存在');
     return ok(row);
   }),
 
-  http.get('/api/workflows/event-subscriptions', ({ request }) => {
-    const url = new URL(request.url);
-    const { page, pageSize } = pageParams(url, 20);
-    const keyword = (url.searchParams.get('keyword') ?? '').trim().toLowerCase();
-    const definitionId = url.searchParams.get('definitionId');
-    const enabled = url.searchParams.get('enabled');
+  mock(workflowEventSubscriptionContract.list, ({ query, ok, paginate }) => {
+    const keyword = (query.keyword ?? '').trim().toLowerCase();
 
     let list = mockSubscriptions.map(toPublicSubscription);
     if (keyword) {
@@ -194,21 +178,16 @@ export const workflowEventSubscriptionsHandlers = [
         item.url.toLowerCase().includes(keyword),
       );
     }
-    if (definitionId) list = list.filter((item) => item.definitionId === Number(definitionId));
-    if (enabled === 'true' || enabled === 'false') {
-      list = list.filter((item) => item.enabled === (enabled === 'true'));
-    }
+    if (query.definitionId) list = list.filter((item) => item.definitionId === query.definitionId);
+    if (query.enabled !== undefined) list = list.filter((item) => item.enabled === query.enabled);
     list.sort((a, b) => b.id - a.id);
 
-    return ok(pageResult(list, page, pageSize));
+    return ok(paginate(list));
   }),
 
-  http.post('/api/workflows/event-subscriptions', async ({ request }) => {
-    const body = await request.json() as Partial<WorkflowEventSubscription> & { secret?: string | null };
-    if (!body.name?.trim()) return err('请输入名称');
-    if (!body.url?.trim()) return err('请输入回调 URL');
-    if (!/^https?:\/\//i.test(body.url.trim())) return err('URL 必须以 http:// 或 https:// 开头');
-    if (!body.events || body.events.length === 0) return err('至少订阅一个事件类型');
+  mock(workflowEventSubscriptionContract.create, ({ body, ok }) => {
+    if (!body.name.trim()) return badRequest('请输入名称');
+    if (!body.url.trim()) return badRequest('请输入回调 URL');
 
     const createdAt = mockDateTime();
     const row: StoredSubscription = {
@@ -217,7 +196,7 @@ export const workflowEventSubscriptionsHandlers = [
       description: body.description ?? null,
       definitionId: body.definitionId ?? null,
       definitionName: resolveDefinitionName(body.definitionId ?? null),
-      events: body.events as WorkflowEventType[],
+      events: body.events,
       url: body.url.trim(),
       secret: body.secret?.trim() || `workflow-secret-${nextSubscriptionId}`,
       secretMasked: null,
@@ -234,41 +213,39 @@ export const workflowEventSubscriptionsHandlers = [
     return ok(toPublicSubscription(row), '已创建');
   }),
 
-  http.get('/api/workflows/event-subscriptions/:id/secret', ({ params }) => {
-    const row = mockSubscriptions.find((item) => item.id === Number(params.id));
-    if (!row) return err('事件订阅不存在', 404);
+  mock(workflowEventSubscriptionContract.secret, ({ params, ok }) => {
+    const row = mockSubscriptions.find((item) => item.id === params.id);
+    if (!row) return fail(404, '事件订阅不存在');
     return ok({ id: row.id, secret: row.secret });
   }),
 
-  http.patch('/api/workflows/event-subscriptions/:id/toggle', async ({ params, request }) => {
-    const row = mockSubscriptions.find((item) => item.id === Number(params.id));
-    if (!row) return err('事件订阅不存在', 404);
-    const body = await request.json() as { enabled?: boolean };
-    row.enabled = body.enabled ?? !row.enabled;
+  mock(workflowEventSubscriptionContract.toggle, ({ params, body, ok }) => {
+    const row = mockSubscriptions.find((item) => item.id === params.id);
+    if (!row) return fail(404, '事件订阅不存在');
+    row.enabled = body.enabled;
     row.updatedAt = mockDateTime();
     return ok(toPublicSubscription(row), '已切换');
   }),
 
-  http.get('/api/workflows/event-subscriptions/:id', ({ params }) => {
-    const row = mockSubscriptions.find((item) => item.id === Number(params.id));
-    if (!row) return err('事件订阅不存在', 404);
+  mock(workflowEventSubscriptionContract.detail, ({ params, ok }) => {
+    const row = mockSubscriptions.find((item) => item.id === params.id);
+    if (!row) return fail(404, '事件订阅不存在');
     return ok(toPublicSubscription(row));
   }),
 
-  http.put('/api/workflows/event-subscriptions/:id', async ({ params, request }) => {
-    const idx = mockSubscriptions.findIndex((item) => item.id === Number(params.id));
-    if (idx === -1) return err('事件订阅不存在', 404);
-    const body = await request.json() as Partial<WorkflowEventSubscription> & { secret?: string | null };
-    if (body.url !== undefined && !/^https?:\/\//i.test(body.url.trim())) return err('URL 必须以 http:// 或 https:// 开头');
+  mock(workflowEventSubscriptionContract.update, ({ params, body, ok }) => {
+    const idx = mockSubscriptions.findIndex((item) => item.id === params.id);
+    if (idx === -1) return fail(404, '事件订阅不存在');
     const current = mockSubscriptions[idx];
     const nextSecret = body.secret?.trim() ? body.secret.trim() : current.secret;
+    const definitionId = body.definitionId !== undefined ? body.definitionId : current.definitionId;
     mockSubscriptions[idx] = {
       ...current,
       name: body.name?.trim() ?? current.name,
       description: body.description !== undefined ? body.description : current.description,
-      definitionId: body.definitionId !== undefined ? body.definitionId : current.definitionId,
-      definitionName: resolveDefinitionName(body.definitionId !== undefined ? body.definitionId : current.definitionId),
-      events: body.events ? body.events as WorkflowEventType[] : current.events,
+      definitionId,
+      definitionName: resolveDefinitionName(definitionId),
+      events: body.events ?? current.events,
       url: body.url?.trim() ?? current.url,
       secret: nextSecret,
       secretMasked: maskSecret(nextSecret),
@@ -281,9 +258,9 @@ export const workflowEventSubscriptionsHandlers = [
     return ok(toPublicSubscription(mockSubscriptions[idx]), '已更新');
   }),
 
-  http.delete('/api/workflows/event-subscriptions/:id', ({ params }) => {
-    const idx = mockSubscriptions.findIndex((item) => item.id === Number(params.id));
-    if (idx === -1) return err('事件订阅不存在', 404);
+  mock(workflowEventSubscriptionContract.remove, ({ params, ok }) => {
+    const idx = mockSubscriptions.findIndex((item) => item.id === params.id);
+    if (idx === -1) return fail(404, '事件订阅不存在');
     mockSubscriptions.splice(idx, 1);
     return ok(null, '已删除');
   }),

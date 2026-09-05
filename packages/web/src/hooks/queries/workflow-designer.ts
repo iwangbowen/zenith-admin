@@ -1,12 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
+import type { BodyOf } from '@zenith/shared/core';
 import { dictContract } from '@zenith/shared/platform';
 import { decisionFlowContract, decisionTableContract, ruleScorecardContract } from '@zenith/shared/rules';
-import type { WorkflowDataSource, WorkflowDataSourceOption, WorkflowDefinition, WorkflowDefinitionHealthReport, WorkflowFlowData, WorkflowForm, WorkflowRelationOption, WorkflowSimulationCase, WorkflowSimulationDecision, WorkflowSimulationResult } from '@zenith/shared/workflow';
-import { request } from '@/utils/request';
-import { api } from '@/lib/contract-query';
+import type { WorkflowFlowData, WorkflowSimulationDecision } from '@zenith/shared/workflow';
+import {
+  workflowConnectorContract,
+  workflowDataSourceContract,
+  workflowDefinitionContract,
+  workflowFormContract,
+  workflowInstanceContract,
+  workflowSimulationCaseContract,
+} from '@zenith/shared/workflow';
+import { api, useApiMutation } from '@/lib/contract-query';
 import { positionContract, userGroupContract } from '@zenith/shared/identity';
-import { LOOKUP_STALE_TIME, toQueryString, unwrap } from '@/lib/query';
+import { LOOKUP_STALE_TIME } from '@/lib/query';
 import { workflowDefinitionKeys } from './workflow-definitions';
 
 export const workflowDesignerKeys = {
@@ -36,9 +43,17 @@ export interface WorkflowRemoteDataSourceOptionParams {
   keyword?: string;
 }
 
+/** 结构化流程图以自由 JSON 记录形态进入请求体（写侧契约按 record 校验，结构由引擎运行时保证） */
+const toJsonRecord = (value: WorkflowFlowData): Record<string, unknown> => ({ ...value });
+
+/** 设计器保存载荷：创建入参 + 结构化 flowData（编辑时同一载荷按部分更新提交） */
+export type WorkflowDefinitionSaveValues = Omit<BodyOf<typeof workflowDefinitionContract.create>, 'flowData'> & {
+  flowData?: WorkflowFlowData | null;
+};
+
 interface WorkflowDefinitionSavePayload {
   id?: number | null;
-  values: Record<string, unknown>;
+  values: WorkflowDefinitionSaveValues;
 }
 
 interface WorkflowHealthCheckPayload {
@@ -61,9 +76,7 @@ export function useWorkflowDesignerConnectorOptions(enabled = true) {
   return useQuery({
     queryKey: workflowDesignerKeys.connectorOptions,
     queryFn: () =>
-      request
-        .get<{ list: Array<{ id: number; name: string; type: string }> }>('/api/workflows/connectors?status=enabled&pageSize=100')
-        .then(unwrap)
+      api(workflowConnectorContract.list, { query: { status: 'enabled', pageSize: 100 } })
         .then((data) => data.list.map((c) => ({ value: c.id, label: `${c.name}（${c.type}）` }))),
     staleTime: LOOKUP_STALE_TIME,
     enabled,
@@ -119,9 +132,7 @@ export function useWorkflowDesignerDataSourceOptions() {
   return useQuery({
     queryKey: workflowDesignerKeys.dataSourceOptions,
     queryFn: () =>
-      request
-        .get<PaginatedResponse<WorkflowDataSource>>('/api/workflows/data-sources?page=1&pageSize=100&status=enabled', { silent: true })
-        .then(unwrap)
+      api(workflowDataSourceContract.list, { query: { page: 1, pageSize: 100, status: 'enabled' } }, { silent: true })
         .then((data) => data.list.map((d) => ({ id: d.id, name: d.name }))),
     staleTime: LOOKUP_STALE_TIME,
   });
@@ -140,10 +151,7 @@ export function useWorkflowDesignerDictOptions() {
 export function useWorkflowDesignerRelationOptions(params: WorkflowRelationOptionParams, enabled = true) {
   return useQuery({
     queryKey: workflowDesignerKeys.relationOptions(params),
-    queryFn: () =>
-      request
-        .get<WorkflowRelationOption[]>(`/api/workflows/instances/relation-options${toQueryString(params)}`, { silent: true })
-        .then(unwrap),
+    queryFn: () => api(workflowInstanceContract.relationOptions, { query: params }, { silent: true }),
     staleTime: LOOKUP_STALE_TIME,
     enabled,
   });
@@ -153,12 +161,7 @@ export function useWorkflowDesignerRemoteDataSourceOptions(params: WorkflowRemot
   return useQuery({
     queryKey: workflowDesignerKeys.remoteDataSourceOptions(params),
     queryFn: () =>
-      request
-        .get<WorkflowDataSourceOption[]>(
-          `/api/workflows/data-sources/${params.dataSourceId}/options${toQueryString({ keyword: params.keyword })}`,
-          { silent: true },
-        )
-        .then(unwrap),
+      api(workflowDataSourceContract.options, { params: { id: params.dataSourceId as number }, query: { keyword: params.keyword } }, { silent: true }),
     staleTime: LOOKUP_STALE_TIME,
     enabled: enabled && !!params.dataSourceId,
   });
@@ -166,21 +169,16 @@ export function useWorkflowDesignerRemoteDataSourceOptions(params: WorkflowRemot
 
 /** 按选项值取数据源完整记录（联动赋值回填用；命令式调用，失败抛错由调用方静默） */
 export function fetchWorkflowDataSourceRecord(dataSourceId: number, value: string): Promise<Record<string, unknown> | null> {
-  return request
-    .get<Record<string, unknown> | null>(
-      `/api/workflows/data-sources/${dataSourceId}/record${toQueryString({ value })}`,
-      { silent: true },
-    )
-    .then(unwrap);
+  return api(workflowDataSourceContract.record, { params: { id: dataSourceId }, query: { value } }, { silent: true });
 }
 
 export function useWorkflowDesignerFormOptions(formId: number | null | undefined) {
   return useQuery({
     queryKey: workflowDesignerKeys.formOptions(formId),
     queryFn: async () => {
-      let list = await request.get<WorkflowForm[]>('/api/workflows/forms/enabled').then(unwrap);
+      let list = await api(workflowFormContract.enabled);
       if (formId && !list.some((f) => f.id === formId)) {
-        const detail = await request.get<WorkflowForm>(`/api/workflows/forms/${formId}`, { silent: true }).then(unwrap);
+        const detail = await api(workflowFormContract.detail, { params: { id: formId } }, { silent: true });
         list = [detail, ...list];
       }
       return list;
@@ -192,11 +190,12 @@ export function useWorkflowDesignerFormOptions(formId: number | null | undefined
 export function useSaveWorkflowDesignerDefinition() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, values }: WorkflowDefinitionSavePayload) =>
-      (id
-        ? request.put<WorkflowDefinition>(`/api/workflows/definitions/${id}`, values)
-        : request.post<WorkflowDefinition>('/api/workflows/definitions', values)
-      ).then(unwrap),
+    mutationFn: ({ id, values }: WorkflowDefinitionSavePayload) => {
+      const body = { ...values, flowData: values.flowData ? toJsonRecord(values.flowData) : values.flowData };
+      return id
+        ? api(workflowDefinitionContract.update, { params: { id }, body })
+        : api(workflowDefinitionContract.create, { body });
+    },
     onSuccess: (saved) => {
       void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.detail(saved.id) });
       void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.lists });
@@ -207,13 +206,11 @@ export function useSaveWorkflowDesignerDefinition() {
 }
 
 export function usePublishWorkflowDesignerDefinition() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.post<WorkflowDefinition>(`/api/workflows/definitions/${id}/publish`, {}).then(unwrap),
-    onSuccess: (_data, id) => {
-      void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.detail(id) });
+  return useApiMutation(workflowDefinitionContract.publish, {
+    invalidate: (qc, _saved, { params }) => {
+      void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.detail(params.id) });
       void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.lists });
-      void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.versions(id) });
+      void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.versions(params.id) });
       // 发布会改变「已发布流程」下拉源（发起流程等场景使用）
       void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.published });
     },
@@ -222,55 +219,52 @@ export function usePublishWorkflowDesignerDefinition() {
 
 export function useWorkflowDesignerHealthCheck() {
   return useMutation({
-    mutationFn: ({ flowData, definitionId, formFields, silent }: WorkflowHealthCheckPayload) => {
-      const fieldPayload = formFields?.filter((f) => f.key).map((f) => ({ key: f.key, type: f.type }));
-      const body = flowData?.nodes?.length
-        ? { flowData, ...(fieldPayload?.length ? { formFields: fieldPayload } : {}) }
-        : { definitionId };
-      return request.post<WorkflowDefinitionHealthReport>('/api/workflows/definitions/health-check', body, silent ? { silent: true } : undefined).then(unwrap);
-    },
+    mutationFn: ({ flowData, definitionId, formFields, silent }: WorkflowHealthCheckPayload) =>
+      runWorkflowHealthCheck({ flowData, definitionId, formFields, silent }),
   });
+}
+
+/** 画布实时体检：inline flowData + 当前表单字段，静默失败不打扰编辑 */
+export function fetchWorkflowFlowHealth(flowData: WorkflowFlowData, formFields: ReadonlyArray<{ key: string; type?: string }>) {
+  return runWorkflowHealthCheck({ flowData, formFields, silent: true });
+}
+
+function runWorkflowHealthCheck({ flowData, definitionId, formFields, silent }: WorkflowHealthCheckPayload) {
+  const fieldPayload = formFields?.filter((f) => f.key).map((f) => ({ key: f.key, type: f.type }));
+  const body = flowData?.nodes?.length
+    ? { flowData: toJsonRecord(flowData), ...(fieldPayload?.length ? { formFields: fieldPayload } : {}) }
+    : { definitionId: definitionId ?? undefined };
+  return api(workflowDefinitionContract.healthCheck, { body }, silent ? { silent: true } : undefined);
 }
 
 export function useWorkflowDesignerSimulation() {
   return useMutation({
     mutationFn: (payload: WorkflowSimulationPayload) =>
-      request.post<WorkflowSimulationResult>('/api/workflows/definitions/simulate', payload).then(unwrap),
+      api(workflowDefinitionContract.simulate, {
+        body: { ...payload, definitionId: payload.definitionId ?? undefined, flowData: toJsonRecord(payload.flowData) },
+      }),
   });
 }
 
 export function useWorkflowSimulationCases(definitionId: number | null | undefined, enabled = true) {
   return useQuery({
     queryKey: workflowDesignerKeys.simulationCases(definitionId),
-    queryFn: () =>
-      request
-        .get<WorkflowSimulationCase[]>(`/api/workflows/simulation-cases${toQueryString({ definitionId })}`, { silent: true })
-        .then(unwrap),
+    queryFn: () => api(workflowSimulationCaseContract.list, { query: { definitionId: definitionId as number } }, { silent: true }),
     enabled: enabled && !!definitionId,
   });
 }
 
 export function useSaveWorkflowSimulationCase() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (payload: {
-      definitionId: number;
-      name: string;
-      starterUserId: number | null;
-      formData: Record<string, unknown>;
-      decisions: WorkflowSimulationDecision[];
-    }) => request.post<WorkflowSimulationCase>('/api/workflows/simulation-cases', payload).then(unwrap),
-    onSuccess: (_data, variables) => {
-      void qc.invalidateQueries({ queryKey: workflowDesignerKeys.simulationCases(variables.definitionId) });
+  return useApiMutation(workflowSimulationCaseContract.save, {
+    invalidate: (qc, _saved, { body }) => {
+      void qc.invalidateQueries({ queryKey: workflowDesignerKeys.simulationCases(body.definitionId) });
     },
   });
 }
 
 export function useDeleteWorkflowSimulationCase(definitionId: number | null | undefined) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/workflows/simulation-cases/${id}`).then(unwrap),
-    onSuccess: () => {
+  return useApiMutation(workflowSimulationCaseContract.remove, {
+    invalidate: (qc) => {
       void qc.invalidateQueries({ queryKey: workflowDesignerKeys.simulationCases(definitionId) });
     },
   });

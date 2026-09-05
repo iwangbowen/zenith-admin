@@ -75,14 +75,14 @@ export default function GovernanceEnvironmentTab() {
     },
     defaults: { resourceType: 'dashboard', sourceRevision: 1, sourceSnapshot: '{}' },
     labelWidth: 100,
-    beforeSave: (values) => ({
+    beforeSave: (values) => ({ body: {
         resourceType: values.resourceType as ReportResourceType,
         resourceId: Number(values.resourceId),
         sourceEnvironmentId: Number(values.sourceEnvironmentId),
         targetEnvironmentId: Number(values.targetEnvironmentId),
         sourceRevision: Number(values.sourceRevision),
         sourceSnapshot: parseJsonObject(String(values.sourceSnapshot), '来源快照'),
-    }),
+    } }),
     successMessage: () => '环境发布已创建',
   });
   const openPromotion = () => {
@@ -96,7 +96,7 @@ export default function GovernanceEnvironmentTab() {
       content: `${record.sourceEnvironmentName ?? record.sourceEnvironmentId} → ${record.targetEnvironmentName ?? record.targetEnvironmentId}`,
       okButtonProps: dangerous ? { type: 'danger', theme: 'solid' } : undefined,
       onOk: async () => {
-        await transitionMutation.mutateAsync({ id: record.id, values: { action, expectedStatus: record.status } });
+        await transitionMutation.mutateAsync({ params: { id: record.id }, body: { action, expectedStatus: record.status } });
         Toast.success('发布状态已更新');
       },
     });
@@ -120,7 +120,7 @@ export default function GovernanceEnvironmentTab() {
           onClick: () => { confirmDelete({
             title: `删除环境「${record.name}」？`,
             content: '默认环境或存在发布记录的环境无法删除。',
-            onOk: async () => { await deleteEnvironmentMutation.mutateAsync(record.id); Toast.success('环境已删除'); },
+            onOk: async () => { await deleteEnvironmentMutation.mutateAsync({ params: { id: record.id } }); Toast.success('环境已删除'); },
           }); },
         },
       ],

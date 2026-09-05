@@ -3,11 +3,11 @@ import { useQueries } from '@tanstack/react-query';
 import { Button, Input, InputNumber, Select, Space, Toast, Typography } from '@douyinfe/semi-ui';
 import { Wand2 } from 'lucide-react';
 import { BASIC_COMPARISON_OPERATOR_SYMBOLS } from '@zenith/shared/core';
-import { buildVisualSql, REPORT_VISUAL_AGGREGATE_OPTIONS, visualMetricAlias } from '@zenith/shared/report';
+import { buildVisualSql, REPORT_VISUAL_AGGREGATE_OPTIONS, reportMetaContract, visualMetricAlias } from '@zenith/shared/report';
 import type { ReportVisualModel, ReportVisualMetric, ReportVisualFilter, ReportVisualJoin, ReportMetaColumn } from '@zenith/shared/report';
-import { reportDatasetKeys, useReportMetaTables } from '@/hooks/queries/report-datasets';
-import { request } from '@/utils/request';
-import { LOOKUP_STALE_TIME, unwrap } from '@/lib/query';
+import { useReportMetaTables } from '@/hooks/queries/report-datasets';
+import { apiQueryOptions } from '@/lib/contract-query';
+import { LOOKUP_STALE_TIME } from '@/lib/query';
 
 const OP_OPTIONS = [
   ...(['eq', 'neq', 'gt', 'gte', 'lt', 'lte'] as const)
@@ -32,9 +32,7 @@ export function VisualModelBuilder({ initial, onGenerate }: Readonly<Props>) {
     [model.joins, model.table],
   );
   const columnQueries = useQueries({
-    queries: tableNames.map((table) => ({
-      queryKey: reportDatasetKeys.metaColumns(table),
-      queryFn: () => request.get<ReportMetaColumn[]>(`/api/report/meta/tables/${encodeURIComponent(table)}/columns`).then(unwrap),
+    queries: tableNames.map((table) => apiQueryOptions(reportMetaContract.columns, { params: { table } }, {
       enabled: !!table,
       staleTime: LOOKUP_STALE_TIME,
     })),

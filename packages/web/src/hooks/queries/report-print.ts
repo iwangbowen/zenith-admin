@@ -1,16 +1,9 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { CreateReportPrintTemplateInput, ReportPrintRenderResult, ReportPrintTemplate, UpdateReportPrintTemplateInput } from '@zenith/shared/report';
-import { request } from '@/utils/request';
-import { unwrap } from '@/lib/query';
-import { createCrudQueries, type CrudListParams } from '@/lib/crud-queries';
-import { useReportLookup } from './report-lookups';
+import type { QueryOf } from '@zenith/shared/core';
+import { reportPrintContract } from '@zenith/shared/report';
+import { createResourceQueries, useApiMutation } from '@/lib/contract-query';
+import { useReportLookup, type ReportLookupParams } from './report-lookups';
 
-export interface ReportPrintTemplateListParams extends CrudListParams {
-  keyword?: string;
-  status?: string;
-  ownerId?: number;
-  folderId?: number;
-}
+export type ReportPrintTemplateListParams = NonNullable<QueryOf<typeof reportPrintContract.list>>;
 
 export const {
   keys: reportPrintKeys,
@@ -18,40 +11,25 @@ export const {
   useDetail: useReportPrintTemplateDetail,
   useSave: useSaveReportPrintTemplate,
   useDelete: useDeleteReportPrintTemplates,
-} = createCrudQueries<ReportPrintTemplate, ReportPrintTemplateListParams, CreateReportPrintTemplateInput | UpdateReportPrintTemplateInput>({
-  resource: 'report-print',
-  // 保留原有嵌套 key：报表域用 ['report'] 前缀组织所有资源
-  keyPrefix: ['report', 'print'],
-  path: '/api/report/print',
-  // 服务端未提供 DELETE /batch
-  deleteMode: 'single',
-});
+} = createResourceQueries(reportPrintContract);
 
-export function useReportPrintTemplateLookup(params: { keyword?: string; status?: 'enabled' | 'disabled'; limit?: number } = {}, enabled = true) {
+export function useReportPrintTemplateLookup(params: ReportLookupParams = {}, enabled = true) {
   return useReportLookup('print', params, enabled);
 }
 
+/** 渲染结果只在预览弹窗内消费，不进入缓存 */
 export function useRenderReportPrintTemplate() {
-  return useMutation({
-    mutationFn: ({ id, params, limit }: { id: number; params: Record<string, unknown>; limit: number }) =>
-      request.post<ReportPrintRenderResult>(`/api/report/print/${id}/render`, { params, limit }, { silent: true }).then(unwrap),
-  });
+  return useApiMutation(reportPrintContract.render, { requestOptions: { silent: true } });
 }
 
 export function useBatchReportPrintTemplateStatus() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ ids, status }: { ids: number[]; status: 'enabled' | 'disabled' }) =>
-      request.put<null>('/api/report/print/batch-status', { ids, status }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportPrintKeys.all }),
+  return useApiMutation(reportPrintContract.batchStatus, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportPrintKeys.all }),
   });
 }
 
 export function useCloneReportPrintTemplate() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, name }: { id: number; name?: string }) =>
-      request.post<ReportPrintTemplate>(`/api/report/print/${id}/clone`, name ? { name } : {}).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportPrintKeys.all }),
+  return useApiMutation(reportPrintContract.clone, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportPrintKeys.all }),
   });
 }

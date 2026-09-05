@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { AppModal } from '@/components/AppModal';
 import {
   Banner,
@@ -16,7 +16,6 @@ import { ChevronDown } from 'lucide-react';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { WorkflowActionButtonConfig, WorkflowActionButtonKey, WorkflowDefinition, WorkflowFieldPermission, WorkflowInstance, WorkflowTask } from '@zenith/shared/workflow';
 import { hasEditableFieldPermission, WORKFLOW_RETURN_TO_INITIATOR_KEY } from '@zenith/shared/workflow';
-import { request } from '@/utils/request';
 import { resolveRejectTargetHint } from '@/utils/workflow-reject';
 import { resolveWorkflowDetailDefinition } from '@/utils/workflow-snapshot';
 import { useQuickPhrases } from '@/hooks/useQuickPhrases';
@@ -33,6 +32,7 @@ import {
   useWorkflowUserOptions,
   workflowSharedKeys,
 } from '@/hooks/queries/workflow-shared';
+import { useWorkflowTaskAction, type WorkflowTaskActionVariables } from '@/hooks/queries/workflow-tasks';
 
 type ApprovalInitialAction = 'approve' | 'reject' | null;
 type AddSignPosition = 'before' | 'after' | 'parallel';
@@ -376,31 +376,8 @@ export default function WorkflowApprovalDetailSheet({
     onClose();
   }, [onActionDone, onClose]);
 
-  const approveMutation = useMutation({
-    mutationFn: ({ id, body }: { id: number; body: Record<string, unknown> }) =>
-      request.post(
-        `/api/workflows/tasks/${id}/approve`,
-        body,
-        { headers: { 'X-Idempotency-Key': `workflow-approve-${id}` } },
-      ),
-  });
-  const rejectMutation = useMutation({
-    mutationFn: ({ id, body }: { id: number; body: Record<string, unknown> }) =>
-      request.post(
-        `/api/workflows/tasks/${id}/reject`,
-        body,
-        { headers: { 'X-Idempotency-Key': `workflow-reject-${id}` } },
-      ),
-  });
-  const simpleActionMutation = useMutation({
-    mutationFn: ({ id, path, body }: { id: number; path: string; body: Record<string, unknown> }) =>
-      request.post(
-        `/api/workflows/tasks/${id}/${path}`,
-        body,
-        { headers: { 'X-Idempotency-Key': `workflow-${path}-${id}` } },
-      ),
-  });
-  const submitting = approveMutation.isPending || rejectMutation.isPending || simpleActionMutation.isPending;
+  const taskActionMutation = useWorkflowTaskAction();
+  const submitting = taskActionMutation.isPending;
 
   const handleApprove = async () => {
     if (taskId == null) return;
@@ -421,8 +398,9 @@ export default function WorkflowApprovalDetailSheet({
         }
       }
       const formUpdates = await collectFormUpdates();
-      const res = await approveMutation.mutateAsync({
-        id: taskId,
+      await taskActionMutation.mutateAsync({
+        taskId,
+        action: 'approve',
         body: {
           comment: values?.comment ?? '',
           attachments: attachmentsPayload('approve'),
@@ -431,16 +409,14 @@ export default function WorkflowApprovalDetailSheet({
           formUpdates,
         },
       });
-      if (res.code === 0) {
-        Toast.success('审批通过');
-        setApproveVisible(false);
-        setAttachmentsFor('approve', []);
-        setApproveSignature('');
-        setSelectedNextApprovers({});
-        closeAfterAction();
-      }
+      Toast.success('审批通过');
+      setApproveVisible(false);
+      setAttachmentsFor('approve', []);
+      setApproveSignature('');
+      setSelectedNextApprovers({});
+      closeAfterAction();
     } catch {
-      // validation failed
+      // validation / request failed
     }
   };
 
@@ -450,35 +426,31 @@ export default function WorkflowApprovalDetailSheet({
     try {
       const values = await rejectFormApi.current?.validate() as Record<string, unknown>;
       if (!ensureUploadSatisfied(btnReject, 'reject')) return;
-      const res = await rejectMutation.mutateAsync({
-        id: taskId,
+      await taskActionMutation.mutateAsync({
+        taskId,
+        action: 'reject',
         body: { comment: values.comment as string, attachments: attachmentsPayload('reject') },
       });
-      if (res.code === 0) {
-        Toast.success('已驳回');
-        setRejectVisible(false);
-        setAttachmentsFor('reject', []);
-        closeAfterAction();
-      }
+      Toast.success('已驳回');
+      setRejectVisible(false);
+      setAttachmentsFor('reject', []);
+      closeAfterAction();
     } catch {
-      // validation failed
+      // validation / request failed
     }
   };
 
   const submitSimpleAction = async (
-    path: string,
-    body: Record<string, unknown>,
+    build: (id: number) => WorkflowTaskActionVariables,
     successMsg: string,
     closer: () => void,
   ) => {
     if (taskId == null) return;
     if (submitting) return;
-    const res = await simpleActionMutation.mutateAsync({ id: taskId, path, body });
-    if (res.code === 0) {
-      Toast.success(successMsg);
-      closer();
-      closeAfterAction();
-    }
+    await taskActionMutation.mutateAsync(build(taskId));
+    Toast.success(successMsg);
+    closer();
+    closeAfterAction();
   };
 
   const handleTransfer = async () => {
@@ -486,8 +458,7 @@ export default function WorkflowApprovalDetailSheet({
       const values = await transferFormApi.current?.validate() as { targetUserId: number; comment?: string };
       if (!ensureUploadSatisfied(btnTransfer, 'transfer')) return;
       await submitSimpleAction(
-        'transfer',
-        { ...values, attachments: attachmentsPayload('transfer') },
+        (id) => ({ taskId: id, action: 'transfer', body: { ...values, attachments: attachmentsPayload('transfer') } }),
         '已转办',
         () => { setTransferVisible(false); setAttachmentsFor('transfer', []); },
       );
@@ -499,8 +470,7 @@ export default function WorkflowApprovalDetailSheet({
       const values = await delegateFormApi.current?.validate() as { targetUserId: number; comment?: string };
       if (!ensureUploadSatisfied(btnDelegate, 'delegate')) return;
       await submitSimpleAction(
-        'delegate',
-        { ...values, attachments: attachmentsPayload('delegate') },
+        (id) => ({ taskId: id, action: 'delegate', body: { ...values, attachments: attachmentsPayload('delegate') } }),
         '已委派',
         () => { setDelegateVisible(false); setAttachmentsFor('delegate', []); },
       );
@@ -529,14 +499,17 @@ export default function WorkflowApprovalDetailSheet({
       const { targetUserIds, position, comment } = values;
       if (!ensureUploadSatisfied(btnAddSign, 'addSign')) return;
       await submitSimpleAction(
-        'add-sign',
-        {
-          targetUserIds,
-          position,
-          comment,
-          attachments: attachmentsPayload('addSign'),
-          ...(position === 'parallel' ? { signMode } : {}),
-        },
+        (id) => ({
+          taskId: id,
+          action: 'add-sign',
+          body: {
+            targetUserIds,
+            position,
+            comment,
+            attachments: attachmentsPayload('addSign'),
+            ...(position === 'parallel' ? { signMode } : {}),
+          },
+        }),
         '已加签',
         () => {
           resetAddSignForm();
@@ -550,7 +523,7 @@ export default function WorkflowApprovalDetailSheet({
   const handleReduceSign = async () => {
     try {
       const values = await reduceSignFormApi.current?.validate() as { targetTaskIds: number[]; comment?: string };
-      await submitSimpleAction('reduce-sign', values, '已减签', () => setReduceSignVisible(false));
+      await submitSimpleAction((id) => ({ taskId: id, action: 'reduce-sign', body: values }), '已减签', () => setReduceSignVisible(false));
     } catch { /* validation */ }
   };
 
@@ -559,8 +532,7 @@ export default function WorkflowApprovalDetailSheet({
       const values = await returnFormApi.current?.validate() as { targetNodeKeys: string[]; comment: string };
       if (!ensureUploadSatisfied(btnReturn, 'return')) return;
       await submitSimpleAction(
-        'return',
-        { ...values, attachments: attachmentsPayload('return') },
+        (id) => ({ taskId: id, action: 'return', body: { ...values, attachments: attachmentsPayload('return') } }),
         '已退回',
         () => { setReturnVisible(false); setAttachmentsFor('return', []); },
       );
@@ -588,8 +560,7 @@ export default function WorkflowApprovalDetailSheet({
     if (taskId == null || submitting) return;
     try {
       const formUpdates = await collectFormUpdates();
-      const res = await approveMutation.mutateAsync({ id: taskId, body: { comment: '', formUpdates } });
-      if (res.code !== 0) return;
+      await taskActionMutation.mutateAsync({ taskId, action: 'approve', body: { comment: '', formUpdates } });
       Toast.success('审批通过');
       closeAfterAction();
     } catch { /* request failed */ }

@@ -7,6 +7,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
+import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import type { WorkflowDataSource, WorkflowDataSourceOption } from '@zenith/shared/workflow';
 import {
   useDeleteWorkflowDataSources,
@@ -52,7 +53,7 @@ export default function WorkflowDataSourcesPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
+    status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
   const data = listQuery.data ?? null;
 
@@ -129,7 +130,7 @@ export default function WorkflowDataSourcesPage() {
     setTestError('');
     setTestOptions([]);
     try {
-      const options = await testMutation.mutateAsync(record.id);
+      const options = await testMutation.mutateAsync({ params: { id: record.id }, query: {} });
       setTestOptions(options);
     } catch (err) {
       setTestError((err as Error).message || '拉取失败');

@@ -2,16 +2,14 @@
  * 流程定义页左侧分类侧栏
  */
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
 import { Button, Dropdown, Toast, Form, Input } from '@douyinfe/semi-ui';
 import { MoreHorizontal, Plus, Layers, LayoutGrid, Pencil, Trash2 } from 'lucide-react';
-import type { WorkflowCategory } from '@zenith/shared/workflow';
-import { request } from '@/utils/request';
+import type { CreateWorkflowCategoryInput, WorkflowCategory } from '@zenith/shared/workflow';
 import AppModal from '@/components/AppModal';
+import { useDeleteWorkflowCategories, useSaveWorkflowCategory } from '@/hooks/useWorkflowCategories';
 import { NavListPanel, NavListItem } from '@/components/NavListPanel';
 import { confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
-import { abortSubmit } from '@/lib/abort-submit';
 
 interface Props {
   categories: WorkflowCategory[];
@@ -23,26 +21,20 @@ interface Props {
 
 const PRESET_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#64748b'];
 
+interface CategoryFormValues {
+  name: string;
+  code: string;
+  icon: string;
+  sort: number | string;
+  description: string;
+}
+
 export default function CategorySidebar({ categories, selectedId, onSelect, onChanged, canManage }: Readonly<Props>) {
   const [selectedColor, setSelectedColor] = useState<string>('');
-  const saveCategoryMutation = useMutation({
-    mutationFn: ({ id, payload }: { id?: number; payload: Record<string, unknown> }) =>
-      id
-        ? request.put(`/api/workflows/categories/${id}`, payload)
-        : request.post('/api/workflows/categories', payload),
-  });
-  const deleteCategoryMutation = useMutation({
-    mutationFn: (id: number) => request.delete(`/api/workflows/categories/${id}`),
-  });
-  const modal = useEditModal<WorkflowCategory, Record<string, unknown>, Record<string, unknown>>({
-    save: {
-      mutateAsync: async ({ id, values }) => {
-        const res = await saveCategoryMutation.mutateAsync({ id, payload: values });
-        if (res.code !== 0) abortSubmit('save failed');
-        return { id: id ?? 0, ...values } as WorkflowCategory;
-      },
-      isPending: saveCategoryMutation.isPending,
-    },
+  const saveMutation = useSaveWorkflowCategory();
+  const deleteMutation = useDeleteWorkflowCategories();
+  const modal = useEditModal<WorkflowCategory, CategoryFormValues, Partial<CreateWorkflowCategoryInput>>({
+    save: saveMutation,
     defaults: { name: '', code: '', icon: '', sort: 0, description: '' },
     toValues: (category) => ({
       name: category.name,
@@ -74,12 +66,10 @@ export default function CategorySidebar({ categories, selectedId, onSelect, onCh
   };
 
   const handleDelete = async (c: WorkflowCategory) => {
-    const res = await deleteCategoryMutation.mutateAsync(c.id);
-    if (res.code === 0) {
-      Toast.success('已删除');
-      if (selectedId === c.id) onSelect(null);
-      onChanged();
-    }
+    await deleteMutation.mutateAsync([c.id]);
+    Toast.success('已删除');
+    if (selectedId === c.id) onSelect(null);
+    onChanged();
   };
 
   type ListItem = { id: number | null; name: string; color?: string | null };
