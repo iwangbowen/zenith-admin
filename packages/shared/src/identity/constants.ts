@@ -1,5 +1,3 @@
-import type { UserFeedbackCategory, UserFeedbackStatus } from './types';
-
 export const USER_ROLES = ['admin', 'user'] as const;
 
 export const SUPER_ADMIN_CODE = 'super_admin';
@@ -84,21 +82,6 @@ export type LoginRiskAction = (typeof LOGIN_RISK_ACTIONS)[number];
 export const LOGIN_RISK_NEW_DEVICE_ACTIONS = ['allow', 'challenge'] as const;
 
 export type LoginRiskNewDeviceAction = (typeof LOGIN_RISK_NEW_DEVICE_ACTIONS)[number];
-
-// ─── 意见反馈 ────────────────────────────────────────────────────────
-export const USER_FEEDBACK_CATEGORY_LABELS: Record<UserFeedbackCategory, string> = {
-  suggestion: '功能建议',
-  bug: '问题反馈',
-  ux: '体验问题',
-  other: '其他',
-};
-
-export const USER_FEEDBACK_STATUS_LABELS: Record<UserFeedbackStatus, string> = {
-  pending: '待处理',
-  processing: '处理中',
-  resolved: '已解决',
-  ignored: '已忽略',
-};
 
 // ─── 自 validation 上移（枚举 SSOT：供跨域 z.enum() 引用，避免 validation 间值环）───
 export function isSafeOAuthRedirectUri(value: string): boolean {

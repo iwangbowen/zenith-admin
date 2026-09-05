@@ -1,8 +1,7 @@
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query';
 import { authContract, enterpriseAuthContract, oauthContract, type OAuthProviderType } from '@zenith/shared/identity';
+import { systemConfigContract } from '@zenith/shared/platform';
 import { api } from '@/lib/contract-query';
-import { unwrap } from '@/lib/query';
-import { request } from '@/utils/request';
 
 export const authPublicKeys = {
   all: ['auth-public'] as const,
@@ -22,7 +21,7 @@ export function usePublicCaptcha() {
 export function usePublicSystemConfig(key: string) {
   return useQuery({
     queryKey: authPublicKeys.publicConfig(key),
-    queryFn: () => request.get<{ configValue: string }>(`/api/system-configs/public/${key}`, { silent: true }).then(unwrap),
+    queryFn: () => api(systemConfigContract.publicByKey, { params: { key } }, { silent: true }),
   });
 }
 

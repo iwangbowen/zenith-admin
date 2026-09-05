@@ -1,90 +1,63 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { RuleAssetVersion, RuleScorecard, RuleScorecardEvaluateResult } from '@zenith/shared/rules';
-import { toQueryString, unwrap } from '@/lib/query';
-import { request } from '@/utils/request';
+import { keepPreviousData, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { resourceKeyOf, type QueryOf } from '@zenith/shared/core';
+import {
+  ruleScorecardContract,
+  type CreateRuleScorecardInput,
+  type RuleScorecard,
+  type UpdateRuleScorecardInput,
+} from '@zenith/shared/rules';
+import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
-export interface RuleScorecardListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  status?: 'draft' | 'published' | 'disabled';
-}
+export type RuleScorecardListParams = NonNullable<QueryOf<typeof ruleScorecardContract.list>>;
 
 /** 评分卡：独立命名空间（与决策表/名单同级），互不失效 */
 export const ruleScorecardKeys = {
-  all: ['rules', 'scorecards'] as const,
-  lists: ['rules', 'scorecards', 'list'] as const,
-  list: (params: RuleScorecardListParams) => ['rules', 'scorecards', 'list', params] as const,
-  versions: (id: number | undefined) => ['rules', 'scorecards', 'versions', id] as const,
+  all: [resourceKeyOf(ruleScorecardContract.basePath)] as const,
+  lists: contractKey(ruleScorecardContract.list),
+  list: (params: RuleScorecardListParams) => contractKey(ruleScorecardContract.list, { query: params }),
+  versions: (id: number | undefined) => contractKey(ruleScorecardContract.versions, { params: { id: id ?? 0 } }),
 };
 
+const invalidateScorecards = (qc: QueryClient) => void qc.invalidateQueries({ queryKey: ruleScorecardKeys.all });
+
 export function useRuleScorecardList(params: RuleScorecardListParams) {
-  return useQuery({
-    queryKey: ruleScorecardKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<RuleScorecard>>(`/api/rules/scorecards${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+  return useApiQuery(ruleScorecardContract.list, { query: params }, { placeholderData: keepPreviousData });
 }
 
+export type RuleScorecardSaveValues = Partial<CreateRuleScorecardInput & UpdateRuleScorecardInput>;
+
+/** 无 id 走 create，有 id 走 update（key 仅创建时提交） */
 export function useSaveRuleScorecard() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
-      (id === undefined
-        ? request.post<RuleScorecard>('/api/rules/scorecards', values)
-        : request.put<RuleScorecard>(`/api/rules/scorecards/${id}`, values)
-      ).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ruleScorecardKeys.all }),
+  return useMutation<RuleScorecard, Error, { id?: number; values: RuleScorecardSaveValues }>({
+    mutationFn: ({ id, values }) => (id === undefined
+      ? api(ruleScorecardContract.create, { body: values as CreateRuleScorecardInput })
+      : api(ruleScorecardContract.update, { params: { id }, body: values as UpdateRuleScorecardInput })),
+    onSuccess: () => invalidateScorecards(qc),
   });
 }
 
 export function useDeleteRuleScorecard() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/rules/scorecards/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ruleScorecardKeys.all }),
-  });
+  return useApiMutation(ruleScorecardContract.remove, { invalidate: invalidateScorecards });
 }
 
 export function usePublishRuleScorecard() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.post<RuleScorecard>(`/api/rules/scorecards/${id}/publish`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ruleScorecardKeys.all }),
-  });
+  return useApiMutation(ruleScorecardContract.publish, { invalidate: invalidateScorecards });
 }
 
 export function useToggleRuleScorecard() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, enabled }: { id: number; enabled: boolean }) =>
-      request.post<RuleScorecard>(`/api/rules/scorecards/${id}/toggle`, { enabled }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ruleScorecardKeys.all }),
-  });
+  return useApiMutation(ruleScorecardContract.toggle, { invalidate: invalidateScorecards });
 }
 
 /** 测试求值：纯读操作，不触发失效 */
 export function useEvaluateRuleScorecard() {
-  return useMutation({
-    mutationFn: ({ id, input }: { id: number; input: Record<string, unknown> }) =>
-      request.post<RuleScorecardEvaluateResult>(`/api/rules/scorecards/${id}/evaluate`, { input }).then(unwrap),
-  });
+  return useApiMutation(ruleScorecardContract.evaluate);
 }
 
 export function useRuleScorecardVersions(id: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: ruleScorecardKeys.versions(id),
-    queryFn: () => request.get<RuleAssetVersion[]>(`/api/rules/scorecards/${id}/versions`).then(unwrap),
-    enabled: enabled && id !== undefined,
-  });
+  return useApiQuery(ruleScorecardContract.versions, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
 }
 
 export function useRollbackRuleScorecard() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, version }: { id: number; version: number }) =>
-      request.post<RuleScorecard>(`/api/rules/scorecards/${id}/rollback/${version}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ruleScorecardKeys.all }),
-  });
+  return useApiMutation(ruleScorecardContract.rollback, { invalidate: invalidateScorecards });
 }

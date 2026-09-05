@@ -1,97 +1,38 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { RateLimitAlgorithm, RateLimitKeyType, RateLimitMode, RateLimitMountSource } from '@zenith/shared/platform';
+import { resourceKeyOf } from '@zenith/shared/core';
+import {
+  rateLimitContract,
+  type CreateRateLimitRuleInput,
+  type RateLimitAlgorithm,
+  type RateLimitKeyType,
+  type RateLimitMode,
+  type RateLimitMountSource,
+  type RateLimitRule,
+  type UpdateRateLimitRuleInput,
+} from '@zenith/shared/platform';
 import { config } from '@/config';
 import { request } from '@/utils/request';
+import { api, contractKey, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { unwrap, LOOKUP_STALE_TIME } from '@/lib/query';
 
 export type { RateLimitAlgorithm, RateLimitKeyType, RateLimitMode, RateLimitMountSource };
 
-export interface RateLimitRule {
-  id: number;
-  name: string;
-  description: string | null;
-  windowMs: number;
-  limit: number;
-  keyType: RateLimitKeyType;
-  enabled: boolean;
-  mode: RateLimitMode;
-  algorithm: RateLimitAlgorithm;
-  allowlist: string[];
-  priority: number;
-  alertThreshold: number | null;
-  blockedMessage: string | null;
-  pathPatterns: string[];
-  /** 是否内置规则（不可删除，由服务端下发） */
-  predefined: boolean;
-  /** 挂载来源：code=代码挂载；path=路径绑定；none=未生效（死规则） */
-  mountSource: RateLimitMountSource;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface RecentBlock {
-  at: string;
-  key: string;
-  path: string;
-  /** 观察模式命中：只记数未实际拦截 */
-  monitored: boolean;
-  /** 手动封禁命中 */
-  banned: boolean;
-}
-
-export interface RateLimitStatItem {
-  name: string;
-  description: string | null;
-  windowMs: number;
-  limit: number;
-  keyType: string;
-  enabled: boolean;
-  mode: RateLimitMode;
-  hitCount: number;
-  blockedCount: number;
-  blockRate: number;
-  recentBlocks: RecentBlock[];
-  hourlySeries: { hour: string; hits: number; blocked: number }[];
-  /** 近 30 天按日序列 */
-  dailySeries: { day: string; hits: number; blocked: number }[];
-  /** 今日 Top 拦截来源 */
-  topSources: { key: string; count: number }[];
-}
-
-export interface RateLimitStats {
-  items: RateLimitStatItem[];
-}
-
 export const rateLimitKeys = {
-  all: ['rate-limit'] as const,
-  rules: ['rate-limit', 'rules'] as const,
-  stats: ['rate-limit', 'stats'] as const,
-  bans: ['rate-limit', 'bans'] as const,
-  apiPaths: ['rate-limit', 'api-paths'] as const,
+  all: [resourceKeyOf(rateLimitContract.basePath)] as const,
+  rules: contractKey(rateLimitContract.rules),
+  stats: contractKey(rateLimitContract.stats),
+  bans: contractKey(rateLimitContract.bans),
+  apiPaths: [resourceKeyOf(rateLimitContract.basePath), 'api-paths'] as const,
 };
-
-export interface RateLimitBan {
-  name: string;
-  key: string;
-  expiresAt: string;
-  remainingSeconds: number;
-}
 
 /** 规则配置：仅管理操作后失效，不随统计轮询刷新 */
 export function useRateLimitRules() {
-  return useQuery({
-    queryKey: rateLimitKeys.rules,
-    queryFn: () => request.get<RateLimitRule[]>('/api/rate-limit/rules').then(unwrap),
-  });
+  return useApiQuery(rateLimitContract.rules);
 }
 
 /** 统计数据：30 秒轮询 */
 export function useRateLimitStats() {
-  return useQuery({
-    queryKey: rateLimitKeys.stats,
-    queryFn: () => request.get<RateLimitStats>('/api/rate-limit/stats').then(unwrap),
-    refetchInterval: 30 * 1000,
-  });
+  return useApiQuery(rateLimitContract.stats, { refetchInterval: 30 * 1000 });
 }
 
 export function useRateLimitApiPaths() {
@@ -111,31 +52,25 @@ export function useRateLimitApiPaths() {
   });
 }
 
+/** 统计接口的规则元信息（enabled/mode/窗口）派生自规则配置，两者都需失效 */
+function invalidateRuleViews(qc: import('@tanstack/react-query').QueryClient) {
+  void qc.invalidateQueries({ queryKey: rateLimitKeys.rules });
+  void qc.invalidateQueries({ queryKey: rateLimitKeys.stats });
+}
+
+/** 无 id 走 POST /rules 新增，有 id 走 PATCH /rules/{id} 部分更新（规则名称不可更改） */
 export function useSaveRateLimitRule() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: Partial<RateLimitRule> }) =>
-      (id === undefined
-        ? request.post<RateLimitRule>('/api/rate-limit/rules', values)
-        : request.patch<RateLimitRule>(`/api/rate-limit/rules/${id}`, values)
-      ).then(unwrap),
-    // 统计接口的规则元信息（enabled/mode/窗口）派生自规则配置，两者都需失效
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: rateLimitKeys.rules });
-      void qc.invalidateQueries({ queryKey: rateLimitKeys.stats });
-    },
+  return useMutation<RateLimitRule, Error, { id?: number; values: Partial<CreateRateLimitRuleInput> }>({
+    mutationFn: ({ id, values }) => (id === undefined
+      ? api(rateLimitContract.createRule, { body: values as CreateRateLimitRuleInput })
+      : api(rateLimitContract.updateRule, { params: { id }, body: values as UpdateRateLimitRuleInput })),
+    onSuccess: () => invalidateRuleViews(qc),
   });
 }
 
 export function useDeleteRateLimitRule() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/rate-limit/rules/${id}`).then(unwrap),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: rateLimitKeys.rules });
-      void qc.invalidateQueries({ queryKey: rateLimitKeys.stats });
-    },
-  });
+  return useApiMutation(rateLimitContract.removeRule, { invalidate: invalidateRuleViews });
 }
 
 /** 解封返回服务端结果消息（成功 / 未找到活跃计数窗口），由调用方展示 */
@@ -143,7 +78,7 @@ export function useUnblockRateLimitKey() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ name, key }: { name: string; key: string }) => {
-      const res = await request.post<null>('/api/rate-limit/unblock', { name, key });
+      const res = await request.post<null>(urlOf(rateLimitContract.unblock), { name, key });
       unwrap(res);
       return res.message;
     },
@@ -154,32 +89,19 @@ export function useUnblockRateLimitKey() {
 }
 
 export function useResetRateLimitStats() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (name: string) => request.post<null>('/api/rate-limit/reset-stats', { name }).then(unwrap),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: rateLimitKeys.stats });
-    },
+  return useApiMutation(rateLimitContract.resetStats, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: rateLimitKeys.stats }),
   });
 }
 
 /** 活跃封禁列表：30 秒轮询（TTL 持续变化） */
 export function useRateLimitBans() {
-  return useQuery({
-    queryKey: rateLimitKeys.bans,
-    queryFn: () => request.get<RateLimitBan[]>('/api/rate-limit/bans').then(unwrap),
-    refetchInterval: 30 * 1000,
-  });
+  return useApiQuery(rateLimitContract.bans, { refetchInterval: 30 * 1000 });
 }
 
 export function useBanRateLimitKey() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ name, key, durationSeconds }: { name: string; key: string; durationSeconds: number }) =>
-      request.post<null>('/api/rate-limit/ban', { name, key, durationSeconds }).then(unwrap),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: rateLimitKeys.bans });
-    },
+  return useApiMutation(rateLimitContract.ban, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: rateLimitKeys.bans }),
   });
 }
 
@@ -188,7 +110,7 @@ export function useUnbanRateLimitKey() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ name, key }: { name: string; key: string }) => {
-      const res = await request.post<null>('/api/rate-limit/unban', { name, key });
+      const res = await request.post<null>(urlOf(rateLimitContract.unban), { name, key });
       unwrap(res);
       return res.message;
     },

@@ -3,7 +3,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button, Checkbox, DatePicker, Input, InputNumber, Select, Space, Tag, Modal, Form, TextArea, Toast, Typography, SideSheet, List, Empty } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Save, Upload } from 'lucide-react';
-import type { RuleDecisionTable, RuleEvaluateResult, RuleTestRunResult, RuleHitPolicy, RuleTestCase, RuleUsageItem, RuleDecisionTableSettings, RuleShadowRunResult, RuleSimulateResult } from '@zenith/shared/rules';
+import { RULE_DECISION_STATUSES, type RuleDecisionTable, type RuleEvaluateResult, type RuleTestRunResult, type RuleHitPolicy, type RuleTestCase, type RuleUsageItem, type RuleDecisionTableSettings, type RuleShadowRunResult, type RuleSimulateResult } from '@zenith/shared/rules';
+import { enumValueOf } from '@zenith/shared/core';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
@@ -19,6 +20,7 @@ import { DataBar } from '@/components/data-viz/DataBar';
 import {
   fetchRuleUsages,
   ruleKeys,
+  type RuleDecisionTableSaveValues,
   useDeleteRuleDecisionTable,
   useDeleteRuleTestCase,
   useGrayActionRuleTable,
@@ -171,7 +173,7 @@ export default function RuleTablesPage() {
   const [execRow, setExecRow] = useState<RuleDecisionTable | null>(null);
   const [draft, setDraft] = useState<{ inputs: RuleDecisionTable['inputs']; outputs: RuleDecisionTable['outputs']; rules: RuleDecisionTable['rules'] }>({ inputs: [], outputs: [], rules: [] });
 
-  const listQuery = useRuleDecisionTableList({ page, pageSize, keyword: submittedKeyword || undefined, status: submittedStatus as 'draft' | 'published' | 'disabled' | undefined });
+  const listQuery = useRuleDecisionTableList({ page, pageSize, keyword: submittedKeyword || undefined, status: enumValueOf(RULE_DECISION_STATUSES, submittedStatus) });
   const data = listQuery.data ?? null;
   const versionsQuery = useRuleVersions(verRow?.id, !!verRow);
   const versions = versionsQuery.data ?? [];
@@ -205,7 +207,7 @@ export default function RuleTablesPage() {
   const approvalEnabledQuery = useRulePublishApprovalEnabled();
   const approvalEnabled = approvalEnabledQuery.data ?? false;
   const canApprove = hasPermission('rule:table:approve');
-  const modal = useEditModal<RuleDecisionTable, DecisionTableFormValues, Record<string, unknown>>({
+  const modal = useEditModal<RuleDecisionTable, DecisionTableFormValues, RuleDecisionTableSaveValues>({
     entityName: '决策表',
     save: saveMutation,
     beforeSave: (v, { editing }) => {
@@ -223,7 +225,7 @@ export default function RuleTablesPage() {
       const payload = { name: v.name, description: v.description ?? null, hitPolicy, settings, ...draft };
       return (editing
         ? { ...payload, expectedUpdatedAt: editing.updatedAt }
-        : { ...payload, key: v.key }) as Record<string, unknown>;
+        : { ...payload, key: v.key }) as RuleDecisionTableSaveValues;
     },
     onSaved: () => setEditorFullscreen(false),
   });
@@ -342,7 +344,7 @@ export default function RuleTablesPage() {
       Modal.confirm({
         title: `申请发布「${r.name}」？`,
         content: <div><Text>已开启发布审批（四眼原则）：提交前将执行全部发布门禁，通过后由审批人批准生效。</Text>{warnings.length > 0 && <div style={{ marginTop: 8 }}>{renderIssueList(warnings, 6)}</div>}</div>,
-        onOk: async () => { await submitReviewMutation.mutateAsync(r.id); Toast.success('已提交审批'); },
+        onOk: async () => { await submitReviewMutation.mutateAsync({ params: { id: r.id } }); Toast.success('已提交审批'); },
       });
       return;
     }
@@ -371,7 +373,7 @@ export default function RuleTablesPage() {
       ),
       onOk: async () => {
         const gray = grayRef.enabled ? { grayPercent: grayRef.percent, grayDimension: grayRef.dimension.trim() || null } : undefined;
-        await publishMutation.mutateAsync({ id: r.id, gray });
+        await publishMutation.mutateAsync({ params: { id: r.id }, body: gray ? { grayPercent: gray.grayPercent, grayDimension: gray.grayDimension ?? null } : {} });
         Toast.success(gray ? `已灰度发布（${gray.grayPercent}% 流量）` : '发布成功');
       },
     });
@@ -385,7 +387,7 @@ export default function RuleTablesPage() {
         : `旧版本 v${(r.gray?.grayVersion ?? 1) - 1} 内容将前滚为新版本全量生效（历史快照保留）`,
       okButtonProps: action === 'cancel' ? { type: 'danger' } : undefined,
       onOk: async () => {
-        await grayMutation.mutateAsync({ id: r.id, action });
+        await grayMutation.mutateAsync({ params: { id: r.id }, body: { action } });
         Toast.success(action === 'complete' ? '灰度已转正' : '已放弃灰度，回到旧版本');
       },
     });
@@ -421,7 +423,7 @@ export default function RuleTablesPage() {
     }
     if (rows.length === 0) { Toast.warning('请至少输入一行 JSON 数据'); return; }
     if (rows.length > 200) { Toast.warning('单次最多仿真 200 行'); return; }
-    setSimulateResult(await simulateMutation.mutateAsync({ id: simulateRow.id, rows }));
+    setSimulateResult(await simulateMutation.mutateAsync({ params: { id: simulateRow.id }, body: { rows } }));
   };
 
   const handleReview = (r: RuleDecisionTable, approve: boolean) => {    const commentRef = { current: '' };
@@ -435,7 +437,7 @@ export default function RuleTablesPage() {
         </div>
       ),
       onOk: async () => {
-        await reviewMutation.mutateAsync({ id: r.id, approve, comment: commentRef.current });
+        await reviewMutation.mutateAsync({ params: { id: r.id }, body: { approve, comment: commentRef.current } });
         Toast.success(approve ? '已批准并发布' : '已驳回');
       },
     });
@@ -444,7 +446,7 @@ export default function RuleTablesPage() {
   const runShadow = async (r: RuleDecisionTable) => {
     setShadowRow(r);
     setShadowResult(null);
-    const res = await shadowMutation.mutateAsync({ id: r.id, limit: 100 });
+    const res = await shadowMutation.mutateAsync({ params: { id: r.id }, body: { limit: 100 } });
     if (res) setShadowResult(res);
   };
   const renderUsageList = (usages: RuleUsageItem[]) => (
@@ -468,7 +470,7 @@ export default function RuleTablesPage() {
     }
     confirmDelete({
       title: '确定删除？', content: '删除后不可恢复',
-      onOk: async () => { await deleteMutation.mutateAsync(r.id); Toast.success('删除成功'); },
+      onOk: async () => { await deleteMutation.mutateAsync({ params: { id: r.id } }); Toast.success('删除成功'); },
     });
   };
   const handleToggle = async (r: RuleDecisionTable) => {
@@ -476,7 +478,7 @@ export default function RuleTablesPage() {
       Modal.confirm({
         title: `启用「${r.name}」？`,
         content: r.publishedAt ? '启用后恢复为已发布，运行时按最新发布版本求值' : '该表尚未发布过，启用后恢复为草稿',
-        onOk: async () => { await toggleMutation.mutateAsync({ id: r.id, enabled: true }); Toast.success('已启用'); },
+        onOk: async () => { await toggleMutation.mutateAsync({ params: { id: r.id }, body: { enabled: true } }); Toast.success('已启用'); },
       });
       return;
     }
@@ -489,7 +491,7 @@ export default function RuleTablesPage() {
           {usages.length > 0 && <><Text type="warning" style={{ display: 'block', marginTop: 8 }}>该表正被 {usages.length} 处引用，停用将立即影响：</Text>{renderUsageList(usages)}</>}
         </div>
       ),
-      onOk: async () => { await toggleMutation.mutateAsync({ id: r.id, enabled: false }); Toast.success('已停用'); },
+      onOk: async () => { await toggleMutation.mutateAsync({ params: { id: r.id }, body: { enabled: false } }); Toast.success('已停用'); },
     });
   };
   const openTest = (r: RuleDecisionTable) => { setTestRow(r); setTestForm({}); setTestScope({}); setTestResult(null); setTestExplanations([]); };
@@ -501,7 +503,7 @@ export default function RuleTablesPage() {
   };
   const rollback = (v: number) => confirmDanger({
     title: `回滚到 v${v}？`, content: '将以该版本快照覆盖当前编辑态并置为草稿',
-    onOk: async () => { await rollbackMutation.mutateAsync({ id: verRow!.id, version: v }); Toast.success('回滚成功'); setVerRow(null); },
+    onOk: async () => { await rollbackMutation.mutateAsync({ params: { id: verRow!.id, version: v } }); Toast.success('回滚成功'); setVerRow(null); },
   });
   const openCases = (r: RuleDecisionTable) => {
     setCaseRow(r); setRunRes(null); setEditingCase(null);
@@ -560,12 +562,12 @@ export default function RuleTablesPage() {
     });
   };
   const runCases = async () => {
-    const res = await runCasesMutation.mutateAsync(caseRow!.id);
+    const res = await runCasesMutation.mutateAsync({ params: { id: caseRow!.id } });
     setRunRes(res);
   };
   const runSingleCase = async (item: RuleTestCase) => {
     if (!caseRow) return;
-    const res = await runSingleCaseMutation.mutateAsync({ tableId: caseRow.id, input: item.input });
+    const res = await runSingleCaseMutation.mutateAsync({ params: { id: caseRow.id }, body: { input: item.input } });
     if (res) {
       const pass = sample(res.outputs) === sample(item.expected);
       setRunRes((prev) => {
@@ -576,14 +578,14 @@ export default function RuleTablesPage() {
       Toast[pass ? 'success' : 'error'](pass ? '单条用例通过' : '单条用例失败');
     }
   };
-  const delCase = async (cid: number) => { await deleteCaseMutation.mutateAsync({ tableId: caseRow!.id, caseId: cid }); };
+  const delCase = async (cid: number) => { await deleteCaseMutation.mutateAsync({ params: { id: caseRow!.id, caseId: cid } }); };
   const openExec = (r: RuleDecisionTable) => {
     setExecRow(r);
   };
   const runTest = async () => {
     const scope = buildTestScope(testRow!.inputs, testForm);
     setTestScope(scope);
-    const res = await runTestMutation.mutateAsync({ tableId: testRow!.id, input: scope });
+    const res = await runTestMutation.mutateAsync({ params: { id: testRow!.id }, body: { input: scope } });
     if (res) {
       setTestResult(res);
       setTestExplanations(explainDecisionRows(testRow!, scope));

@@ -1,18 +1,11 @@
-import { http } from 'msw';
-import { ok, badRequest, notFound } from '@/mocks/utils/handlers';
+import { cacheContract, type CacheItem } from '@zenith/shared/platform';
+import { mock } from '@/mocks/utils/contract';
+import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { removeWhere } from '@/mocks/utils/array';
 import { mockDate } from '../utils/date';
 
-interface MockCacheItem {
-  key: string;
-  displayKey: string;
-  segment: string;
-  category: string;
-  type: string;
-  ttl: number;
-  size: number;
-  value: string | null;
-  /** 非 string 类型的完整值（序列化 JSON），对应 /api/cache/value */
+interface MockCacheItem extends CacheItem {
+  /** 非 string 类型的完整值（序列化 JSON），对应 GET /value */
   fullValue?: string;
 }
 
@@ -150,9 +143,14 @@ const mockCacheItems: MockCacheItem[] = [
   },
 ];
 
+/** 列表 / 概览响应不含 mock 专属的 fullValue */
+function toCacheItem({ fullValue: _fullValue, ...item }: MockCacheItem): CacheItem {
+  return item;
+}
+
 export const cacheHandlers = [
   // Redis 概览统计
-  http.get('/api/cache/overview', () => {
+  mock(cacheContract.overview, ({ ok }) => {
     const totalKeys = mockCacheItems.length;
     return ok({
       connected: true,
@@ -172,36 +170,29 @@ export const cacheHandlers = [
   }),
 
   // 列出缓存 key
-  http.get('/api/cache', ({ request }) => {
-    const url = new URL(request.url);
-    const keyword = url.searchParams.get('keyword') ?? '';
-
+  mock(cacheContract.list, ({ query, ok }) => {
     let list = [...mockCacheItems];
-    if (keyword) {
-      list = list.filter((item) => item.key.includes(keyword));
+    if (query.keyword) {
+      list = list.filter((item) => item.key.includes(query.keyword!));
     }
-
-    return ok({ list, total: list.length });
+    return ok({ list: list.map(toCacheItem), total: list.length });
   }),
 
   // 获取指定 key 的完整值（string 返回原值，其他类型返回序列化 JSON）
-  http.get('/api/cache/value', ({ request }) => {
-    const url = new URL(request.url);
-    const key = url.searchParams.get('key') ?? '';
-    const item = mockCacheItems.find((i) => i.key === key);
+  mock(cacheContract.value, ({ query, ok }) => {
+    const item = mockCacheItems.find((i) => i.key === query.key);
     if (!item) return ok(null);
     const data = item.type === 'string' ? (item.value ?? null) : (item.fullValue ?? null);
     return ok(data);
   }),
 
   // 修改指定 key 的 TTL
-  http.put('/api/cache/ttl', async ({ request }) => {
-    const body = await request.json() as { key?: string; ttl?: number };
-    const item = mockCacheItems.find((i) => i.key === body?.key);
+  mock(cacheContract.updateTtl, ({ body, ok }) => {
+    const item = mockCacheItems.find((i) => i.key === body.key);
     if (!item) {
       return notFound('key 不存在', { status: 404 });
     }
-    if (body.ttl === undefined || (body.ttl !== -1 && body.ttl <= 0)) {
+    if (body.ttl !== -1 && body.ttl <= 0) {
       return badRequest('TTL 必须为 -1（永久）或大于 0 的秒数', { status: 400 });
     }
     item.ttl = body.ttl;
@@ -209,58 +200,42 @@ export const cacheHandlers = [
   }),
 
   // 修改指定 key 的值（仅字符串）
-  http.put('/api/cache/value', async ({ request }) => {
-    const body = await request.json() as { key?: string; value?: string; ttl?: number };
-    const item = mockCacheItems.find((i) => i.key === body?.key);
+  mock(cacheContract.updateValue, ({ body, ok }) => {
+    const item = mockCacheItems.find((i) => i.key === body.key);
     if (!item) {
       return notFound('key 不存在', { status: 404 });
     }
     if (item.type !== 'string') {
       return badRequest('仅支持编辑字符串类型的缓存', { status: 400 });
     }
-    item.value = body.value ?? '';
+    item.value = body.value;
     item.size = new TextEncoder().encode(item.value).length;
     if (body.ttl !== undefined) item.ttl = body.ttl;
     return ok(null, '修改成功');
   }),
 
   // 批量删除 key
-  http.delete('/api/cache/batch', async ({ request }) => {
-    const body = await request.json() as { keys?: string[] };
-    const keys = body?.keys;
-    if (!Array.isArray(keys) || keys.length === 0) {
-      return badRequest('参数错误：缺少 keys', { status: 400 });
-    }
-    let count = 0;
-    for (const key of keys) {
-      const index = mockCacheItems.findIndex((item) => item.key === key);
-      if (index !== -1) {
-        mockCacheItems.splice(index, 1);
-        count++;
-      }
-    }
+  mock(cacheContract.removeKeys, ({ body, ok }) => {
+    const keys = new Set(body.keys);
+    const count = removeWhere(mockCacheItems, (item) => keys.has(item.key));
     return ok({ count }, `已删除 ${count} 条缓存`);
   }),
 
   // 删除指定分类下的所有 key
-  http.delete('/api/cache/by-category', async ({ request }) => {
-    const body = await request.json() as { segment?: string };
-    const segment = body?.segment;
-    if (!segment) {
+  mock(cacheContract.removeByCategory, ({ body, ok }) => {
+    if (!body.segment) {
       return badRequest('参数错误：缺少 segment', { status: 400 });
     }
-    const count = removeWhere(mockCacheItems, (item) => item.segment === segment);
+    const count = removeWhere(mockCacheItems, (item) => item.segment === body.segment);
     return ok({ count }, `已删除 ${count} 条缓存`);
   }),
 
   // 删除单个 key
-  http.delete('/api/cache', async ({ request }) => {
-    const body = await request.json() as { key?: string };
-    const key = body?.key;
-    if (!key) {
+  mock(cacheContract.removeKey, ({ body, ok }) => {
+    if (!body.key) {
       return badRequest('参数错误：缺少 key', { status: 400 });
     }
-    const index = mockCacheItems.findIndex((item) => item.key === key);
+    const index = mockCacheItems.findIndex((item) => item.key === body.key);
     if (index === -1) {
       return notFound('key 不存在', { status: 404 });
     }
@@ -269,7 +244,7 @@ export const cacheHandlers = [
   }),
 
   // 清空所有缓存
-  http.delete('/api/cache/all', () => {
+  mock(cacheContract.removeAll, ({ ok }) => {
     const count = mockCacheItems.length;
     mockCacheItems.splice(0, mockCacheItems.length);
     return ok({ count }, `已清空 ${count} 条缓存`);

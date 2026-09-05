@@ -478,22 +478,6 @@ export const buildMpOAuthUrlSchema = z.object({
 export type BuildMpOAuthUrlInput = z.infer<typeof buildMpOAuthUrlSchema>;
 
 
-// ─── 意见反馈 Schema ─────────────────────────────────────────────────────────
-export const createUserFeedbackSchema = z.object({
-  score: z.number().int().min(1, '评分最低 1 分').max(5, '评分最高 5 分').nullable().optional(),
-  category: z.enum(['suggestion', 'bug', 'ux', 'other']).default('suggestion'),
-  content: z.string().max(1000, '反馈内容不能超过 1000 字').nullable().optional(),
-  pagePath: z.string().max(200).nullable().optional(),
-  /** 提交时活跃的会话回放 ID（SDK 联动附带） */
-  replayId: z.uuid().nullable().optional(),
-}).refine((v) => v.score != null || (v.content != null && v.content.trim() !== ''), {
-  message: '评分与反馈内容至少填写一项',
-  path: ['content'],
-});
-
-
-export type CreateUserFeedbackInput = z.input<typeof createUserFeedbackSchema>;
-
 // ─── 通讯录同步 Schema ────────────────────────────────────────────────────────
 export const directorySyncLifecycleSchema = z.object({
   disableOnLeave: z.boolean().default(true),

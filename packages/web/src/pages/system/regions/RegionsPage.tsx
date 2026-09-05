@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Form, Spin, Toast, Switch } from '@douyinfe/semi-ui';
 import type { CascaderData } from '@douyinfe/semi-ui/lib/es/cascader';
 import { ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
-import type { Region } from '@zenith/shared/platform';
+import type { CreateRegionInput, Region } from '@zenith/shared/platform';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useDictItems } from '@/hooks/useDictItems';
 import { createdAtColumn } from '@/utils/table-columns';
@@ -16,7 +16,8 @@ import { regionKeys, useDeleteRegion, useFlatRegions, useRegionDetail, useRegion
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useTreeExpansion } from '@/hooks/useTreeExpansion';
-import { REGION_LEVEL_LABELS } from '@zenith/shared/platform';
+import { REGION_LEVELS, REGION_LEVEL_LABELS } from '@zenith/shared/platform';
+import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDelete, confirmDangerAsync } from '@/utils/confirm';
@@ -47,14 +48,14 @@ export default function RegionsPage() {
   const { items: statusItems } = useDictItems('common_status');
   const treeQuery = useRegionTree({
     keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
-    level: submittedParams.level || undefined,
+    status: enumValueOf(USER_STATUSES, submittedParams.status),
+    level: enumValueOf(REGION_LEVELS, submittedParams.level),
   });
   const data = useMemo(() => treeQuery.data ?? [], [treeQuery.data]);
   const flatQuery = useFlatRegions();
   const flatData = useMemo(() => flatQuery.data ?? [], [flatQuery.data]);
   const saveMutation = useSaveRegion();
-  const regionModal = useEditModal<Region, Record<string, unknown>, Record<string, unknown>>({
+  const regionModal = useEditModal<Region, Record<string, unknown>, Partial<CreateRegionInput>>({
     entityName: '地区',
     save: saveMutation,
     useDetail: useRegionDetail,
@@ -72,7 +73,7 @@ export default function RegionsPage() {
       return {
         ...values,
         parentCode: values.level === 'province' ? null : (parentCodeArr.at(-1) ?? null),
-      };
+      } as Partial<CreateRegionInput>;
     },
   });
   const toggleStatusMutation = useSaveRegion();
@@ -141,7 +142,7 @@ export default function RegionsPage() {
   }
 
   async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync(id);
+    await deleteMutation.mutateAsync({ params: { id } });
     Toast.success('删除成功');
   }
 

@@ -1,8 +1,8 @@
-import { http } from 'msw';
-import { ok, badRequest, notFound } from '@/mocks/utils/handlers';
+import { regionContract, type Region } from '@zenith/shared/platform';
+import { mock } from '@/mocks/utils/contract';
+import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockRegions, getNextRegionId, buildRegionTree } from '@/mocks/data/regions';
 import { mockDateTime } from '@/mocks/utils/date';
-import type { Region } from '@zenith/shared/platform';
 
 // 与服务端一致的行政层级约束：province 仅根级、city 父须 province、county 父须 city
 function validateLevelHierarchy(level: Region['level'], parentCode: string | null | undefined): string | null {
@@ -26,44 +26,39 @@ function filterTree(nodes: Region[], keyword: string, status: string, level: str
 }
 
 export const regionsHandlers = [
-  // GET / — 树形数据
-  http.get('/api/regions', ({ request }) => {
-    const url = new URL(request.url);
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const status = url.searchParams.get('status') ?? '';
-    const level = url.searchParams.get('level') ?? '';
-
+  // 树形数据
+  mock(regionContract.tree, ({ query, ok }) => {
+    const keyword = query.keyword ?? '';
+    const status = query.status ?? '';
+    const level = query.level ?? '';
     const tree = buildRegionTree([...mockRegions]);
     const data = keyword || status || level ? filterTree(tree, keyword, status, level) : tree;
     return ok(data);
   }),
 
-  // GET /flat — 平铺列表
-  http.get('/api/regions/flat', () => {
-    return ok(mockRegions);
-  }),
+  // 平铺列表
+  mock(regionContract.flat, ({ ok }) => ok(mockRegions)),
 
-  // GET /:id — 地区详情
-  http.get('/api/regions/:id', ({ params }) => {
-    const region = mockRegions.find((r) => r.id === Number(params.id));
+  // 地区详情
+  mock(regionContract.detail, ({ params, ok }) => {
+    const region = mockRegions.find((r) => r.id === params.id);
     if (!region) return notFound('地区不存在', { status: 404 });
     return ok(region);
   }),
 
-  // POST / — 创建
-  http.post('/api/regions', async ({ request }) => {
-    const body = (await request.json()) as Partial<Region>;
-    const levelError = validateLevelHierarchy(body.level ?? 'province', body.parentCode);
+  // 创建
+  mock(regionContract.create, ({ body, ok }) => {
+    const levelError = validateLevelHierarchy(body.level, body.parentCode);
     if (levelError) return badRequest(levelError, { status: 400 });
     const now = mockDateTime();
     const newRegion: Region = {
       id: getNextRegionId(),
-      code: body.code ?? '',
-      name: body.name ?? '',
-      level: body.level ?? 'province',
+      code: body.code,
+      name: body.name,
+      level: body.level,
       parentCode: body.parentCode ?? null,
-      sort: body.sort ?? 0,
-      status: body.status ?? 'enabled',
+      sort: body.sort,
+      status: body.status,
       createdAt: now,
       updatedAt: now,
     };
@@ -71,14 +66,12 @@ export const regionsHandlers = [
     return ok(newRegion, '创建成功');
   }),
 
-  // PUT /:id — 更新
-  http.put('/api/regions/:id', async ({ params, request }) => {
-    const id = Number(params.id);
-    const region = mockRegions.find((r) => r.id === id);
+  // 更新
+  mock(regionContract.update, ({ params, body, ok }) => {
+    const region = mockRegions.find((r) => r.id === params.id);
     if (!region) {
       return notFound('地区不存在', { status: 404 });
     }
-    const body = (await request.json()) as Partial<Region>;
     const nextLevel = body.level ?? region.level;
     const nextParentCode = body.parentCode === undefined ? region.parentCode : body.parentCode;
     const levelError = validateLevelHierarchy(nextLevel, nextParentCode);
@@ -87,10 +80,9 @@ export const regionsHandlers = [
     return ok(region, '更新成功');
   }),
 
-  // DELETE /:id — 删除
-  http.delete('/api/regions/:id', ({ params }) => {
-    const id = Number(params.id);
-    const region = mockRegions.find((r) => r.id === id);
+  // 删除
+  mock(regionContract.remove, ({ params, ok }) => {
+    const region = mockRegions.find((r) => r.id === params.id);
     if (!region) {
       return notFound('地区不存在', { status: 404 });
     }
@@ -98,7 +90,7 @@ export const regionsHandlers = [
     if (hasChildren) {
       return badRequest('该地区下存在子地区，请先删除子地区', { status: 400 });
     }
-    const idx = mockRegions.findIndex((r) => r.id === id);
+    const idx = mockRegions.findIndex((r) => r.id === params.id);
     mockRegions.splice(idx, 1);
     return ok(null, '删除成功');
   }),

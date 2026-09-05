@@ -10,9 +10,9 @@ import AppModal from '@/components/AppModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
-import type { MonitorAlertRule, MonitorMetric } from '@zenith/shared/platform';
-import { MONITOR_ALERT_LEVEL_OPTIONS } from '@zenith/shared/platform';
-import { BASIC_COMPARISON_OPERATOR_LABELS } from '@zenith/shared/core';
+import type { CreateMonitorAlertRuleInput, MonitorAlertRule, MonitorMetric } from '@zenith/shared/platform';
+import { MONITOR_ALERT_LEVELS, MONITOR_ALERT_LEVEL_OPTIONS, MONITOR_ALERT_STATES, MONITOR_METRICS } from '@zenith/shared/platform';
+import { BASIC_COMPARISON_OPERATOR_LABELS, enumValueOf } from '@zenith/shared/core';
 import { NOTIFY_CHANNEL_LABELS, NOTIFY_CHANNEL_OPTIONS } from '@zenith/shared/messaging';
 import {
   monitorAlertKeys,
@@ -97,10 +97,10 @@ export default function AlertRulesPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    metric: submittedParams.metric || undefined,
-    level: submittedParams.level || undefined,
-    enabled: submittedParams.enabled || undefined,
-    state: submittedParams.state || undefined,
+    metric: enumValueOf(MONITOR_METRICS, submittedParams.metric),
+    level: enumValueOf(MONITOR_ALERT_LEVELS, submittedParams.level),
+    enabled: submittedParams.enabled === undefined ? undefined : submittedParams.enabled === 'true',
+    state: enumValueOf(MONITOR_ALERT_STATES, submittedParams.state),
   });
   const data = listQuery.data ?? null;
 
@@ -110,7 +110,7 @@ export default function AlertRulesPage() {
   const canTest = hasPermission('alert:rule:test');
   const canViewEvents = hasPermission('alert:event:list');
   const saveMutation = useSaveMonitorAlert();
-  const alertModal = useEditModal<MonitorAlertRule, Record<string, unknown>, Record<string, unknown>>({
+  const alertModal = useEditModal<MonitorAlertRule, Record<string, unknown>, Partial<CreateMonitorAlertRuleInput>>({
     entityName: '告警规则',
     save: saveMutation,
     defaults: { operator: 'gt', level: 'warning', channels: ['inapp'], durationMinutes: 0, silenceMinutes: 30, enabled: true, recipientUserIds: [], recipientEmails: [] },
@@ -138,14 +138,14 @@ export default function AlertRulesPage() {
         recipientEmails: channels.includes('email') && Array.isArray(values.recipientEmails)
           ? values.recipientEmails.map((email) => String(email).trim().toLowerCase()).filter(Boolean)
           : [],
-      };
+      } as Partial<CreateMonitorAlertRuleInput>;
     },
   });
   const deleteMutation = useDeleteMonitorAlerts();
   const toggleMutation = useToggleMonitorAlert();
   const batchToggleMutation = useBatchToggleMonitorAlerts();
   const testMutation = useTestMonitorAlert();
-  const togglingId = toggleMutation.isPending ? (toggleMutation.variables?.id ?? null) : null;
+  const togglingId = toggleMutation.isPending ? (toggleMutation.variables?.params.id ?? null) : null;
 
   async function handleDelete(id: number) {
     await deleteMutation.mutateAsync([id]);
@@ -157,7 +157,7 @@ export default function AlertRulesPage() {
    * 统一报「已发送」会把「渠道配错、根本没送出去」也说成成功，等于没验证。
    */
   async function handleTest(record: MonitorAlertRule) {
-    const result = await testMutation.mutateAsync(record.id);
+    const result = await testMutation.mutateAsync({ params: { id: record.id } });
     const channels = result.channels.map((c) => CHANNEL_LABELS[c] ?? c).join('、');
     if (result.status === 'skipped') {
       Toast.warning({ content: `「${record.name}」未配置任何通知渠道，没有可试发的目标`, duration: 5 });
@@ -175,7 +175,7 @@ export default function AlertRulesPage() {
 
   function handleToggle(record: MonitorAlertRule, checked: boolean) {
     toggleMutation.mutate(
-      { id: record.id, enabled: checked },
+      { params: { id: record.id }, body: { enabled: checked } },
       { onSuccess: () => Toast.success(checked ? '已启用' : '已停用') },
     );
   }
@@ -194,7 +194,7 @@ export default function AlertRulesPage() {
 
   function handleBatchToggle(enabled: boolean) {
     const doToggle = async () => {
-      await batchToggleMutation.mutateAsync({ ids: selectedRowKeys, enabled });
+      await batchToggleMutation.mutateAsync({ body: { ids: selectedRowKeys, enabled } });
       Toast.success(enabled ? '已批量启用' : '已批量停用');
       setSelectedRowKeys([]);
     };

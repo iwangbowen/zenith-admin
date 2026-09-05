@@ -3,7 +3,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button, DatePicker, Form, Input, Modal, Select, SideSheet, Space, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search } from 'lucide-react';
-import type { RuleList, RuleListItem, RuleUsageItem } from '@zenith/shared/rules';
+import { RULE_LIST_TYPES, type RuleList, type RuleListItem, type RuleUsageItem } from '@zenith/shared/rules';
+import { enumValueOf } from '@zenith/shared/core';
 import { createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
@@ -15,6 +16,7 @@ import { formatDateTimeForApi } from '@/utils/date';
 import {
   fetchRuleListUsages,
   ruleKeys,
+  type RuleListSaveValues,
   useBatchImportRuleListItems,
   useCheckRuleList,
   useDeleteRuleList,
@@ -65,7 +67,7 @@ export default function RuleListsPage() {
   const [checkValue, setCheckValue] = useState('');
   const [checkResult, setCheckResult] = useState<{ hit: boolean; listType?: string } | null>(null);
 
-  const listQuery = useRuleListList({ page, pageSize, keyword: submittedKeyword || undefined, type: submittedType as 'black' | 'white' | 'grey' | undefined });
+  const listQuery = useRuleListList({ page, pageSize, keyword: submittedKeyword || undefined, type: enumValueOf(RULE_LIST_TYPES, submittedType) });
   const data = listQuery.data ?? null;
   const itemsQuery = useRuleListItems(itemsRow?.id, { page: itemsPage, pageSize: 10, keyword: itemKeyword || undefined }, !!itemsRow);
   const items = itemsQuery.data ?? null;
@@ -76,7 +78,7 @@ export default function RuleListsPage() {
   const deleteItemMutation = useDeleteRuleListItem();
   const purgeMutation = usePurgeExpiredRuleListItems();
   const checkMutation = useCheckRuleList();
-  const modal = useEditModal<RuleList>({
+  const modal = useEditModal<RuleList, Partial<RuleList>, RuleListSaveValues>({
     entityName: '名单',
     save: saveMutation,
     defaults: { type: 'black' },
@@ -127,14 +129,14 @@ export default function RuleListsPage() {
     }
     confirmDelete({
       title: '确定删除？', content: '将级联删除全部条目，删除后不可恢复',
-      onOk: async () => { await deleteMutation.mutateAsync(r.id); Toast.success('删除成功'); },
+      onOk: async () => { await deleteMutation.mutateAsync({ params: { id: r.id } }); Toast.success('删除成功'); },
     });
   };
 
   const addItem = async () => {
     if (!itemsRow) return;
     if (!itemForm.value.trim()) { Toast.warning('请输入名单值'); return; }
-    await saveItemMutation.mutateAsync({ listId: itemsRow.id, values: { value: itemForm.value.trim(), label: itemForm.label || null, matchMode: itemForm.matchMode, expiresAt: itemForm.expiresAt ?? null, remark: itemForm.remark || null } });
+    await saveItemMutation.mutateAsync({ params: { id: itemsRow.id }, body: { value: itemForm.value.trim(), label: itemForm.label || null, matchMode: itemForm.matchMode, expiresAt: itemForm.expiresAt ?? null, remark: itemForm.remark || null } });
     Toast.success('已添加');
     setItemForm({ value: '', label: '', matchMode: 'exact', remark: '' });
   };
@@ -144,14 +146,14 @@ export default function RuleListsPage() {
     const values = importText.split(/[\n,;，；]+/).map((s) => s.trim()).filter(Boolean);
     if (values.length === 0) { Toast.warning('请粘贴要导入的值（换行或逗号分隔）'); return; }
     if (values.length > 500) { Toast.warning('单次最多导入 500 条'); return; }
-    const res = await batchImportMutation.mutateAsync({ listId: itemsRow.id, values });
-    Toast.success(res?.message ?? '导入完成');
+    const message = await batchImportMutation.mutateAsync({ listId: itemsRow.id, values });
+    Toast.success(message || '导入完成');
     setImportText('');
   };
 
   const runCheck = async () => {
     if (!itemsRow || !checkValue.trim()) return;
-    const res = await checkMutation.mutateAsync({ key: itemsRow.key, value: checkValue.trim() });
+    const res = await checkMutation.mutateAsync({ body: { key: itemsRow.key, value: checkValue.trim() } });
     if (res) setCheckResult(res);
   };
 
@@ -234,7 +236,7 @@ export default function RuleListsPage() {
               <TextArea value={importText} onChange={setImportText} placeholder="批量导入：每行一个值（或用逗号分隔），最多 500 条" autosize={{ minRows: 2, maxRows: 5 }} />
               <Space spacing={8} style={{ marginTop: 6 }}>
                 <Button size="small" loading={batchImportMutation.isPending} onClick={batchImport}>批量导入</Button>
-                <Button size="small" theme="borderless" loading={purgeMutation.isPending} onClick={async () => { if (itemsRow) { const res = await purgeMutation.mutateAsync(itemsRow.id); Toast.success(res?.message ?? '清理完成'); } }}>清理过期条目</Button>
+                <Button size="small" theme="borderless" loading={purgeMutation.isPending} onClick={async () => { if (itemsRow) { const message = await purgeMutation.mutateAsync(itemsRow.id); Toast.success(message || '清理完成'); } }}>清理过期条目</Button>
               </Space>
             </div>
           </div>
@@ -252,7 +254,7 @@ export default function RuleListsPage() {
               { title: '标签', dataIndex: 'label', width: 110, render: renderEllipsis },
               dateTimeColumn('过期时间', 'expiresAt', { empty: '永久' }),
               { title: '操作', width: 70, fixed: 'right', render: (_: unknown, item: RuleListItem) => (
-                <Button theme="borderless" type="danger" size="small" onClick={async () => { if (itemsRow) { await deleteItemMutation.mutateAsync({ listId: itemsRow.id, itemId: item.id }); Toast.success('已删除'); } }}>删除</Button>
+                <Button theme="borderless" type="danger" size="small" onClick={async () => { if (itemsRow) { await deleteItemMutation.mutateAsync({ params: { id: itemsRow.id, itemId: item.id } }); Toast.success('已删除'); } }}>删除</Button>
               ) },
             ]}
             dataSource={items?.list ?? []}

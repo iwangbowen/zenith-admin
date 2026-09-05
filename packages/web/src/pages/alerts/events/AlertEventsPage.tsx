@@ -14,11 +14,17 @@ import { formatDateTimeRangeForApi } from '@/utils/date';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import type { MonitorAlertEvent, MonitorAlertHandleStatus } from '@zenith/shared/platform';
+import { enumValueOf } from '@zenith/shared/core';
 import {
+  MONITOR_ALERT_EVENT_STATUSES,
   MONITOR_ALERT_EVENT_STATUS_OPTIONS,
+  MONITOR_ALERT_HANDLE_STATUSES,
   MONITOR_ALERT_HANDLE_STATUS_OPTIONS,
+  MONITOR_ALERT_LEVELS,
   MONITOR_ALERT_LEVEL_OPTIONS,
+  MONITOR_ALERT_NOTIFY_STATUSES,
   MONITOR_ALERT_NOTIFY_STATUS_OPTIONS,
+  MONITOR_METRICS,
 } from '@zenith/shared/platform';
 import { NOTIFY_CHANNEL_LABELS } from '@zenith/shared/messaging';
 import {
@@ -123,11 +129,11 @@ export default function AlertEventsPage() {
 
   const queryParams = useMemo(() => ({
     keyword: submittedParams.keyword || undefined,
-    metric: submittedParams.metric || undefined,
-    level: submittedParams.level || undefined,
-    status: submittedParams.status || undefined,
-    notifyStatus: submittedParams.notifyStatus || undefined,
-    handleStatus: submittedParams.handleStatus || undefined,
+    metric: enumValueOf(MONITOR_METRICS, submittedParams.metric),
+    level: enumValueOf(MONITOR_ALERT_LEVELS, submittedParams.level),
+    status: enumValueOf(MONITOR_ALERT_EVENT_STATUSES, submittedParams.status),
+    notifyStatus: enumValueOf(MONITOR_ALERT_NOTIFY_STATUSES, submittedParams.notifyStatus),
+    handleStatus: enumValueOf(MONITOR_ALERT_HANDLE_STATUSES, submittedParams.handleStatus),
     ruleId,
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
   }), [submittedParams, ruleId]);
@@ -147,9 +153,9 @@ export default function AlertEventsPage() {
     const note = (handleFormApi?.getValue('note') as string | undefined)?.trim() || null;
     const { ids, handleStatus } = handleTarget;
     if (ids.length === 1) {
-      await handleMutation.mutateAsync({ id: ids[0], handleStatus, note });
+      await handleMutation.mutateAsync({ params: { id: ids[0] }, body: { handleStatus, note } });
     } else {
-      await batchHandleMutation.mutateAsync({ ids, handleStatus, note });
+      await batchHandleMutation.mutateAsync({ body: { ids, handleStatus, note } });
     }
     const meta = HANDLE_ACTION_META[handleStatus];
     Toast.success(`${meta.done}${ids.length > 1 ? `（${ids.length} 条）` : ''}`);

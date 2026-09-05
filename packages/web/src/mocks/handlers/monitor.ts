@@ -1,8 +1,16 @@
-import { http, HttpResponse } from 'msw';
-import { ok } from '@/mocks/utils/handlers';
+import { HttpResponse } from 'msw';
+import {
+  monitorContract,
+  type MonitorHistory,
+  type MonitorHistoryRange,
+  type MonitorSnapshot,
+  type MonitorTimeseriesPoint,
+  type MonitorWsMetrics,
+} from '@zenith/shared/platform';
+import { mock } from '@/mocks/utils/contract';
 import dayjs from 'dayjs';
 
-const baseStatus = {
+const baseStatus: MonitorSnapshot = {
   os: {
     platform: 'linux',
     arch: 'x64',
@@ -14,7 +22,7 @@ const baseStatus = {
     model: 'Intel(R) Core(TM) i7-10700K CPU @ 3.80GHz',
     cores: 8,
     speed: 3800,
-    loadAvg: [0.42, 0.51, 0.6] as const,
+    loadAvg: [0.42, 0.51, 0.6],
     usage: 12,
     perCore: [
       { index: 0, usage: 18, user: 12, system: 6, idle: 82 },
@@ -129,6 +137,7 @@ const baseStatus = {
       heapTotal: 48 * 1024 * 1024,
       heapUsed: 32 * 1024 * 1024,
       external: 1 * 1024 * 1024,
+      arrayBuffers: 256 * 1024,
     },
     cpuUsagePercent: 4.5,
     eventLoop: { meanMs: 0.42, p50Ms: 0.36, p95Ms: 1.2, p99Ms: 2.4, maxMs: 8.6, stddevMs: 0.5 },
@@ -196,14 +205,9 @@ const baseStatus = {
   },
 };
 
-function buildSeries(): Array<{
-  t: number; cpu: number; mem: number; procCpu: number; heap: number;
-  loopLagMean: number; loopLagP99: number; loopLagMax: number; qps: number; errorRate: number;
-  netRxBps: number; netTxBps: number; diskReadBps: number; diskWriteBps: number;
-  dbConnections: number; redisMemBytes: number; redisHitRate: number;
-}> {
+function buildSeries(): MonitorTimeseriesPoint[] {
   const now = Date.now();
-  const points = [];
+  const points: MonitorTimeseriesPoint[] = [];
   for (let i = 359; i >= 0; i -= 1) {
     const t = now - i * 10_000;
     const wave = Math.sin(i / 12);
@@ -230,7 +234,7 @@ function buildSeries(): Array<{
   return points;
 }
 
-const HISTORY_RANGE_CFG: Record<string, { windowSec: number; bucketSec: number }> = {
+const HISTORY_RANGE_CFG: Record<MonitorHistoryRange, { windowSec: number; bucketSec: number }> = {
   '1h': { windowSec: 3600, bucketSec: 60 },
   '6h': { windowSec: 6 * 3600, bucketSec: 120 },
   '24h': { windowSec: 24 * 3600, bucketSec: 300 },
@@ -242,11 +246,11 @@ function fmtHistoryTime(d: Date): string {
   return dayjs(d).format('YYYY-MM-DD HH:mm:ss');
 }
 
-function buildHistory(range: string) {
-  const cfg = HISTORY_RANGE_CFG[range] ?? HISTORY_RANGE_CFG['1h'];
+function buildHistory(range: MonitorHistoryRange): MonitorHistory {
+  const cfg = HISTORY_RANGE_CFG[range];
   const count = Math.floor(cfg.windowSec / cfg.bucketSec);
   const now = Date.now();
-  const points = [];
+  const points: MonitorHistory['points'] = [];
   for (let i = count - 1; i >= 0; i -= 1) {
     const t = new Date(now - i * cfg.bucketSec * 1000);
     const wave = Math.sin(i / 14);
@@ -290,7 +294,7 @@ function buildHistory(range: string) {
   return { range, bucketSec: cfg.bucketSec, points };
 }
 
-function buildWsMetrics() {
+function buildWsMetrics(): MonitorWsMetrics {
   const now = Date.now();
   return {
     currentConnections: 3,
@@ -312,18 +316,12 @@ function buildWsMetrics() {
 }
 
 export const monitorHandlers = [
-  http.get('/api/monitor', () => ok(baseStatus, 'success')),
-  http.get('/api/monitor/timeseries', () =>
-    ok({ intervalSec: 10, capacity: 360, points: buildSeries() }, 'success')),
-  http.get('/api/monitor/history', ({ request }) => {
-    const range = new URL(request.url).searchParams.get('range') ?? '1h';
-    return ok(buildHistory(range), 'success');
-  }),
-  http.get('/api/monitor/ws', () => {
-    return ok(buildWsMetrics(), 'success');
-  }),
+  mock(monitorContract.snapshot, ({ ok }) => ok(baseStatus, 'success')),
+  mock(monitorContract.timeseries, ({ ok }) => ok({ intervalSec: 10, capacity: 360, points: buildSeries() }, 'success')),
+  mock(monitorContract.history, ({ query, ok }) => ok(buildHistory(query.range ?? '1h'), 'success')),
+  mock(monitorContract.ws, ({ ok }) => ok(buildWsMetrics(), 'success')),
   // SSE 推送：首帧发送 metrics/series/ws 全量；后续每 10s 发送 metrics:diff + series:point + ws
-  http.get('/api/monitor/stream', () => {
+  mock(monitorContract.stream, () => {
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       start(controller) {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Form, JsonViewer, Spin, Toast } from '@douyinfe/semi-ui';
-import type { SystemConfig } from '@zenith/shared/platform';
+import { CONFIG_TYPES, type CreateSystemConfigInput, type SystemConfig } from '@zenith/shared/platform';
+import { enumValueOf } from '@zenith/shared/core';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
@@ -66,12 +67,12 @@ export default function SystemConfigsPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    configType: submittedParams.configType || undefined,
+    configType: enumValueOf(CONFIG_TYPES, submittedParams.configType),
   });
   const data = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
   const saveMutation = useSaveSystemConfig();
-  const modal = useEditModal<SystemConfig>({
+  const modal = useEditModal<SystemConfig, Partial<CreateSystemConfigInput>>({
     entityName: '配置',
     save: saveMutation,
     useDetail: useSystemConfigDetail,

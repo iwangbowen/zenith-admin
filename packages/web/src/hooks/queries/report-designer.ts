@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ApiResponse, BodyOf } from '@zenith/shared/core';
-import type { DictItem } from '@zenith/shared/platform';
+import { dictContract } from '@zenith/shared/platform';
 import {
   reportDashboardContract,
   reportDatasetContract,
@@ -13,7 +13,7 @@ import {
   type ReportWidget,
 } from '@zenith/shared/report';
 import { api, contractKey, urlOf } from '@/lib/contract-query';
-import { LOOKUP_STALE_TIME, unwrap } from '@/lib/query';
+import { LOOKUP_STALE_TIME } from '@/lib/query';
 import { request } from '@/utils/request';
 import { reportDashboardKeys } from './report-dashboards';
 import { mergeReportLookupOptions } from './report-lookups';
@@ -234,7 +234,7 @@ export function useReportWidgetDictMaps(codes: string[]) {
   return useQueries({
     queries: normalizedCodes.map((code) => ({
       queryKey: reportDesignerKeys.dictItems(code),
-      queryFn: () => request.get<DictItem[]>(`/api/dicts/code/${encodeURIComponent(code)}/items`, { silent: true }).then(unwrap),
+      queryFn: () => api(dictContract.itemsByCode, { params: { code } }, { silent: true }),
       staleTime: LOOKUP_STALE_TIME,
     })),
     combine: (results) => {
