@@ -4,6 +4,43 @@
 
 ---
 
+## v2.18.0 - 2026-09-05
+
+**全域 API 契约统一**：实体 schema、操作路径、入参、响应与凭证类型统一在 shared 定义，服务端路由、前端数据访问、MSW Mock 和 OpenAPI 由同一份契约派生，减少跨层重复声明与接口漂移。
+
+> 本版无新增数据库迁移。二次开发代码若仍依赖服务端 `lib/dtos`、`lib/openapi-dtos` 或前端 `lib/crud-queries`，需改用共享契约与 `contract-query`；这些旧入口已移除。
+
+### Added
+
+#### API 契约基础设施
+
+- `shared/core` 新增 `defineContract` / `op` DSL、实体与操作类型推导，以及主键、分页、日期范围、查询枚举、multipart 等契约积木；`queryEnum()` 将空串视为未筛选
+- 契约支持声明业务请求头及管理员 Bearer、设备签名、开放网关凭证类型，服务端校验、OpenAPI 安全方案、前端输入与 Mock 解析保持一致
+- 服务端 `defineContractRoute` 从契约生成路由与 OpenAPI，并通过 `typecheck:contracts` 在编译期约束 handler 输入输出
+- 前端 `contract-query` 提供 `api`、`urlOf`、`contractKey`、`useApiQuery`、`useApiMutation` 和 `createResourceQueries`；资源工厂支持数值 / UUID 主键及没有详情端点的资源
+- MSW 新增契约绑定的 `mock(op, resolver)`；共享层接入 Vitest，前端 API 路径测试对照服务端路由快照，约束仍以字面量声明的请求与 Mock 路径
+
+### Changed
+
+#### 全域接入与旧实现收口
+
+- 权限组织、平台基础能力、规则、License、文件、企业网盘、任务、通知、Chat、会员、支付、工作流、CMS、Wiki、报表、分析、AI、公众号、开放平台、IoT、短链、营销及业务示例统一接入共享 API 契约
+- 服务端挂载取契约 `basePath`，实体类型由 schema 推导；移除手写 DTO 层及其漂移基线检查，`openapi-schemas` 保留响应信封与校验钩子，通用输入积木归入 `shared/core`
+- 前端域 hooks 与页面调用统一使用契约输入形状，上传、下载、流式请求地址和查询缓存键由契约派生；会员端、移动审批端继续使用各自请求客户端
+- 开放 CMS / IoT 端点目录从契约生成；Mock 的路径、请求解析与响应类型绑定同一操作，清理无真实服务端对应的旧 handler
+- 用户行为事件类型与枚举归入 analytics，清理残余手写类型与无引用 schema；根测试命令纳入 shared 契约用例
+- 架构文档、Zenith Skill 与 CRUD 指引同步契约标准；新增平台基础能力专题，明确 `platform` / `files` / `drive` 的领域与文档映射
+
+### Fixed
+
+- 修正邮件 / 短信测试发送、工作流实例迁移预检与迁移的错误请求 URL
+- 数据库查询收藏的更新方法由 PATCH 对齐服务端实际的 PUT
+- 应用版本统计接口按静态前缀优先挂载，避免 `/api/app-releases/stats` 被参数路由遮蔽
+- Mock 在缺少 JSON 请求头时按空对象进入请求体校验，与服务端保持一致：可选字段允许省略，必填字段仍返回 400
+- 功能文档将过时的「18 个路由领域」修正为当前 22 个，并补充统计来源；文件存储文档对齐公开内容读取与网盘秒传边界
+
+---
+
 ## v2.17.0 - 2026-09-05
 
 **新增「企业网盘」领域**：面向组织内文件存放、协作共享与治理的完整模块。以空间（个人 / 部门 / 协作）为容量与权限边界，
