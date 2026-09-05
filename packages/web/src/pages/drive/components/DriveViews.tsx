@@ -62,13 +62,14 @@ export function DriveViews({ view, onOpenFolder, onOpenDetail }: DriveViewsProps
   const listKey = driveKeys.viewOf(view === 'links' ? 'links' : view);
   const { page, pageSize, buildPagination, draftParams, setDraftParams, submittedParams, handleSearch, handleReset } =
     useListSearch<ViewSearch>({ defaults: { keyword: '', spaceId: undefined }, listKey });
-  const baseParams = { page, pageSize, keyword: submittedParams.keyword || undefined, spaceId: submittedParams.spaceId };
+  const baseParams = { page, pageSize, keyword: submittedParams.keyword || undefined };
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
   const shared = useDriveSharedWithMe(baseParams, view === 'shared');
   const starred = useDriveStarred(baseParams, view === 'starred');
   const recent = useDriveRecent(baseParams, view === 'recent');
-  const recycle = useDriveRecycle(baseParams, view === 'recycle');
+  // 个人视图中只有回收站支持按空间筛选
+  const recycle = useDriveRecycle({ ...baseParams, spaceId: submittedParams.spaceId }, view === 'recycle');
   const links = useMyDriveShareLinks(baseParams, view === 'links');
 
   const active = view === 'shared' ? shared : view === 'starred' ? starred : view === 'recent' ? recent : view === 'recycle' ? recycle : links;
@@ -94,7 +95,7 @@ export function DriveViews({ view, onOpenFolder, onOpenDetail }: DriveViewsProps
   const nodeActions = (node: AnyNode): ResponsiveTableAction[] => {
     if (view === 'recycle') {
       return [
-        { key: 'restore', label: '还原', hidden: !hasPermission('drive:recycle:restore'), onClick: async () => { await restore.mutateAsync({ ids: [node.id] }); Toast.success('已还原'); } },
+        { key: 'restore', label: '还原', hidden: !hasPermission('drive:recycle:restore'), onClick: async () => { await restore.mutateAsync({ body: { ids: [node.id] } }); Toast.success('已还原'); } },
         { key: 'purge', label: '彻底删除', danger: true, hidden: !hasPermission('drive:recycle:purge'), onClick: () => { confirmDanger({
           title: `彻底删除「${node.name}」？`, content: '文件将被永久删除且不可恢复。', okText: '彻底删除',
           onOk: () => purge.mutateAsync({ ids: [node.id] }).then(() => Toast.success('已彻底删除')),
@@ -169,7 +170,7 @@ export function DriveViews({ view, onOpenFolder, onOpenDetail }: DriveViewsProps
 
   const recycleBatch = view === 'recycle' && selectedIds.length > 0 && (
     <Space>
-      <Button size="small" icon={<RotateCcw size={14} />} onClick={() => restore.mutateAsync({ ids: selectedIds }).then(() => { Toast.success('已还原'); setSelectedIds([]); })}>还原所选</Button>
+      <Button size="small" icon={<RotateCcw size={14} />} onClick={() => restore.mutateAsync({ body: { ids: selectedIds } }).then(() => { Toast.success('已还原'); setSelectedIds([]); })}>还原所选</Button>
       {hasPermission('drive:recycle:purge') && (
         <Button size="small" type="danger" icon={<Trash2 size={14} />} onClick={() => confirmDanger({
           title: `彻底删除选中的 ${selectedIds.length} 项？`, content: '永久删除且不可恢复。', okText: '彻底删除',
@@ -195,7 +196,7 @@ export function DriveViews({ view, onOpenFolder, onOpenDetail }: DriveViewsProps
           <>
             <KeywordInput value={draftParams.keyword} width={200} placeholder={view === 'links' ? '搜索文件名 / 备注' : '搜索名称'}
               onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} />
-            {view !== 'links' && (
+            {view === 'recycle' && (
               <FilterSelect<number> value={draftParams.spaceId} placeholder="全部空间" width={160} items={spaceOptions}
                 onChange={(v) => setDraftParams((p) => ({ ...p, spaceId: v }))} />
             )}

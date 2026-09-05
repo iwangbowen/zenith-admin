@@ -18,9 +18,11 @@ import ShareModal from '../components/ShareModal';
 import ArenaModal from '../components/ArenaModal';
 import { request } from '@/utils/request';
 import { readSseStream } from '@/utils/streaming';
-import type { AiChatModel, AiConversation, AiMessage, AiPromptTemplate } from '@zenith/shared/ai';
+import { aiConversationContract, aiGenerationContract } from '@zenith/shared/ai';
+import type { AiChatModel, AiConversation, AiMessage, AiPromptTemplate, SendAiChatMessageInput, UserAiConfig } from '@zenith/shared/ai';
 import { AI_REASONING_LEVELS } from '@zenith/shared/ai';
-import type { UserAiConfig } from '@zenith/shared/identity';
+import type { AiReasoningLevel } from '@zenith/shared/ai';
+import { api, urlOf } from '@/lib/contract-query';
 import { useAiChatModels } from '@/hooks/queries/ai-providers';
 import { useAiUserConfigs, aiUserConfigKeys } from '@/hooks/queries/ai-user-config';
 import { useAvailableAiPrompts, recordAiPromptUse } from '@/hooks/queries/ai-prompts';
@@ -517,7 +519,7 @@ export default function AIChatPage() {
       if (!convId) {
         if (regenerate) return;
         try {
-          const newConv = await createConversationMutation.mutateAsync({ title: '新对话' });
+          const newConv = await createConversationMutation.mutateAsync({ body: { title: '新对话' } });
           convId = newConv.id;
           // onSuccess 的 invalidate 可能已把新会话经列表 refetch 写入,前插必须按 id 去重
           setConversations((prev) => (prev.some((c) => c.id === newConv.id) ? prev : [newConv, ...prev]));
@@ -563,31 +565,26 @@ export default function AIChatPage() {
       currentGenIdRef.current = null;
 
       try {
+        const selectedModel = configureValuesRef.current.model as string | undefined ?? '';
+        const reasoning = configureValuesRef.current.reasoning as AiReasoningLevel | '' | undefined;
+        // `user-${configId}:${model}` / `${configId}:${model}` 复合值（多模型配置，用户配置以 user- 前缀区分来源）
+        const [idStr, ...modelParts] = selectedModel.replace(/^user-/, '').split(':');
+        const model = modelParts.join(':');
+        const body = {
+          ...(regenerate ? { regenerate: true } : { message: text }),
+          ...(opts?.parentMsgId !== undefined ? { parentMsgId: opts.parentMsgId } : {}),
+          ...(!regenerate && pendingImages.length > 0 ? { images: pendingImages } : {}),
+          // 会话级推理力度(输入框配置区选择;空 = 跟随智能体/服务商配置)
+          ...(reasoning ? { reasoning } : {}),
+          configSource: selectedModel.startsWith('user-') ? 'user' : 'system',
+          configId: Number.parseInt(idStr, 10) || undefined,
+          ...(model ? { model } : {}),
+        } satisfies SendAiChatMessageInput;
         const response = await request.fetchRaw(
-          `/api/ai/conversations/${convId}/chat`,
+          urlOf(aiConversationContract.chat, { params: { id: convId } }),
           {
             method: 'POST',
-            body: JSON.stringify(
-              (() => {
-                const selectedModel = configureValuesRef.current.model as string | undefined ?? '';
-                const base: Record<string, unknown> = regenerate ? { regenerate: true } : { message: text };
-                if (opts?.parentMsgId !== undefined) base.parentMsgId = opts.parentMsgId;
-                if (!regenerate && pendingImages.length > 0) base.images = pendingImages;
-                // 会话级推理力度(输入框配置区选择;空 = 跟随智能体/服务商配置)
-                const reasoning = configureValuesRef.current.reasoning as string | undefined;
-                if (reasoning) base.reasoning = reasoning;
-                if (selectedModel.startsWith('user-')) {
-                  // `user-${configId}:${model}` 组合(用户配置多模型,与系统同构)
-                  const [idStr, ...modelParts] = selectedModel.replace('user-', '').split(':');
-                  const model = modelParts.join(':');
-                  return { ...base, configSource: 'user', configId: Number.parseInt(idStr, 10), ...(model && { model }) };
-                }
-                // `${configId}:${model}` 组合（多模型配置）
-                const [idStr, ...modelParts] = selectedModel.split(':');
-                const model = modelParts.join(':');
-                return { ...base, configSource: 'system', configId: Number(idStr) || undefined, ...(model && { model }) };
-              })()
-            ),
+            body: JSON.stringify(body),
             signal: abortController.signal,
             silent: true,
           }
@@ -636,7 +633,10 @@ export default function AIChatPage() {
     const abortController = new AbortController();
     abortRef.current = abortController;
     try {
-      const response = await request.fetchRaw(`/api/ai/generations/${genId}/stream?offset=0`, { signal: abortController.signal, silent: true });
+      const response = await request.fetchRaw(
+        urlOf(aiGenerationContract.stream, { params: { genId }, query: { offset: 0 } }),
+        { signal: abortController.signal, silent: true },
+      );
       if (!response?.ok) throw new Error('恢复生成流失败');
       Toast.info('检测到进行中的回复，已恢复实时输出');
       await consumeSSEStream(response, { convId, assistantMsgId, localUserMsgId: null, skipUserEvent: false });
@@ -740,7 +740,7 @@ export default function AIChatPage() {
   const handleNewConversation = async () => {
     try {
       setShowArchived(false);
-      const newConv = await createConversationMutation.mutateAsync({ title: '新对话' });
+      const newConv = await createConversationMutation.mutateAsync({ body: { title: '新对话' } });
       // onSuccess 的 invalidate 可能已把新会话经列表 refetch 写入,前插必须按 id 去重
       setConversations((prev) => (prev.some((c) => c.id === newConv.id) ? prev : [newConv, ...prev]));
       setActiveConvId(newConv.id);
@@ -754,7 +754,7 @@ export default function AIChatPage() {
 
   const handleDeleteConversation = async (id: number) => {
     try {
-      await request.delete(`/api/ai/conversations/${id}`);
+      await api(aiConversationContract.remove, { params: { id } });
       void queryClient.invalidateQueries({ queryKey: aiConversationKeys.all });
       setConversations((prev) => {
         const remaining = prev.filter((c) => c.id !== id);
@@ -772,7 +772,7 @@ export default function AIChatPage() {
   const handleRenameConv = async () => {
     if (!renameConvId || !renameText.trim()) return;
     try {
-      await request.put(`/api/ai/conversations/${renameConvId}/rename`, { title: renameText.trim() });
+      await api(aiConversationContract.rename, { params: { id: renameConvId }, body: { title: renameText.trim() } });
       void queryClient.invalidateQueries({ queryKey: aiConversationKeys.all });
       setConversations((prev) => prev.map((c) => c.id === renameConvId ? { ...c, title: renameText.trim() } : c));
       setRenameConvId(null);
@@ -783,9 +783,8 @@ export default function AIChatPage() {
 
   const handleTogglePin = async (id: number) => {
     try {
-      const res = await request.put<{ isPinned: boolean }>(`/api/ai/conversations/${id}/pin`, {});
+      const { isPinned: pinned } = await api(aiConversationContract.pin, { params: { id } });
       void queryClient.invalidateQueries({ queryKey: aiConversationKeys.all });
-      const pinned = res.data?.isPinned ?? false;
       setConversations((prev) => {
         const updated = prev.map((c) => c.id === id ? { ...c, isPinned: pinned } : c);
         // 重新排序：置顶在前
@@ -799,9 +798,8 @@ export default function AIChatPage() {
 
   const handleToggleArchive = async (id: number) => {
     try {
-      const res = await request.put<{ isArchived: boolean }>(`/api/ai/conversations/${id}/archive`, {});
+      const { isArchived: archived } = await api(aiConversationContract.archive, { params: { id } });
       void queryClient.invalidateQueries({ queryKey: aiConversationKeys.all });
-      const archived = res.data?.isArchived ?? false;
       // 归档状态改变后，会话从当前视图（与归档状态相反）移除
       setConversations((prev) => prev.filter((c) => c.id !== id));
       if (activeConvId === id) { setActiveConvId(null); setMessages([]); }
@@ -814,7 +812,7 @@ export default function AIChatPage() {
   const handleApplyTemplate = async (content: string | null, templateId?: number) => {
     if (!activeConvId) { Toast.warning('请先选择或创建对话'); return; }
     try {
-      await request.put(`/api/ai/conversations/${activeConvId}/system-prompt`, { systemPrompt: content });
+      await api(aiConversationContract.setSystemPrompt, { params: { id: activeConvId }, body: { systemPrompt: content } });
       setConversations((prev) => prev.map((c) => c.id === activeConvId ? { ...c, systemPromptOverride: content } : c));
       Toast.success(content ? '已应用角色' : '已清除角色');
       // 使用统计（fire-and-forget）
@@ -888,14 +886,14 @@ export default function AIChatPage() {
   };
 
   const handleExportConversation = (id: number, title: string, format: 'md' | 'json') => {
-    void request.download(`/api/ai/conversations/${id}/export?format=${format}`, `${title || '对话'}.${format}`);
+    void request.download(urlOf(aiConversationContract.exportFile, { params: { id }, query: { format } }), `${title || '对话'}.${format}`);
   };
 
   const submitDislikeReason = useCallback((reason: string | null) => {
     const dbId = dislikeMsgId;
     setDislikeMsgId(null);
     if (!dbId || !activeConvId || !reason) return;
-    void request.put(`/api/ai/conversations/${activeConvId}/messages/${dbId}/feedback`, { feedback: -1, reason })
+    void api(aiConversationContract.submitFeedback, { params: { id: activeConvId, msgId: dbId }, body: { feedback: -1, reason } })
       .then(() => Toast.success('感谢反馈，已记录'))
       .catch(() => {});
   }, [dislikeMsgId, activeConvId]);
@@ -918,7 +916,7 @@ export default function AIChatPage() {
     void (async () => {
       try {
         setShowArchived(false);
-        const newConv = await createConversationMutation.mutateAsync({ title: '新对话', agentId });
+        const newConv = await createConversationMutation.mutateAsync({ body: { title: '新对话', agentId } });
         // onSuccess 的 invalidate 可能已把新会话经列表 refetch 写入,前插必须按 id 去重
         setConversations((prev) => (prev.some((c) => c.id === newConv.id) ? prev : [newConv, ...prev]));
         setActiveConvId(newConv.id);
@@ -1400,14 +1398,14 @@ export default function AIChatPage() {
                         if (!msg) return;
                         const dbId = String(msg.id).startsWith('api-') ? Number(String(msg.id).replace('api-', '')) : null;
                         if (!dbId || !activeConvId) { Toast.success('感谢您的正向反馈'); return; }
-                        void request.put(`/api/ai/conversations/${activeConvId}/messages/${dbId}/feedback`, { feedback: 1 })
+                        void api(aiConversationContract.submitFeedback, { params: { id: activeConvId, msgId: dbId }, body: { feedback: 1 } })
                           .then(() => Toast.success('感谢您的正向反馈'));
                       }}
                       onMessageBadFeedback={(msg) => {
                         if (!msg) return;
                         const dbId = String(msg.id).startsWith('api-') ? Number(String(msg.id).replace('api-', '')) : null;
                         if (!dbId || !activeConvId) { Toast.info('感谢您的反馈，我们会持续改进'); return; }
-                        void request.put(`/api/ai/conversations/${activeConvId}/messages/${dbId}/feedback`, { feedback: -1 }).catch(() => {});
+                        void api(aiConversationContract.submitFeedback, { params: { id: activeConvId, msgId: dbId }, body: { feedback: -1 } }).catch(() => {});
                         setDislikeMsgId(dbId);
                       }}
                       messageEditRender={renderMessageEdit}
@@ -1416,7 +1414,7 @@ export default function AIChatPage() {
                         const dbId = String(msg.id).startsWith('api-') ? Number(String(msg.id).replace('api-', '')) : null;
                         // Semi 已在 UI 上删除该消息（onChatsChange）；后台级联删除该消息及之后所有消息
                         if (dbId) {
-                          void request.delete(`/api/ai/conversations/${activeConvId}/messages/${dbId}/cascade`).catch(() => {});
+                          void api(aiConversationContract.removeMessageCascade, { params: { id: activeConvId, msgId: dbId } }).catch(() => {});
                         }
                       }}
                       onMessageReset={(msg) => msg && !generating && void handleRegenerate(msg as Message)}

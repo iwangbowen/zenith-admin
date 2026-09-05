@@ -33,11 +33,10 @@ export interface ChunkedUploadOptions {
   onProgress?: (percent: number) => void;
   signal?: AbortSignal;
   /**
-   * 分片接口前缀，默认通用文件服务（`fileContract.uploadInit` 等四个操作）。
-   * 归属模块（如企业网盘 `/api/drive/nodes/upload`）传入自己的前缀，
-   * 四个子路径（init / chunk / complete / {id}/status）保持一致。
+   * 分片接口地址，默认通用文件服务（`fileContract.uploadInit` 等四个操作）。
+   * 归属模块（如企业网盘）传入由自己契约派生的四个地址（init / chunk / complete / status）。
    */
-  endpointBase?: string;
+  endpoints?: ChunkedUploadEndpoints;
   /** init 请求的附加字段（目标目录、冲突策略、内容哈希等），与 fileName / fileSize / mimeType / chunkSize 合并 */
   initExtra?: Record<string, unknown>;
   /** 续传键的额外维度：同一文件上传到不同目标时不应复用会话 */
@@ -48,20 +47,9 @@ function resumeKey(file: File, scope?: string) {
   return `${RESUME_KEY_PREFIX}${scope ? `${scope}:` : ''}${file.name}:${file.size}:${file.lastModified}`;
 }
 
-function endpointsOf(base?: string): ChunkedUploadEndpoints {
-  if (!base) return FILE_UPLOAD_ENDPOINTS;
-  return {
-    init: `${base}/init`,
-    chunk: `${base}/chunk`,
-    complete: `${base}/complete`,
-    status: (uploadId) => `${base}/${uploadId}/status`,
-  };
-}
-
 /** 对单个文件执行分片上传，返回最终的 ManagedFile（data）。 */
 export async function chunkedUpload<TFile = unknown>(file: File, opts: ChunkedUploadOptions): Promise<TFile> {
-  const { signal, endpointBase, initExtra, resumeScope } = opts;
-  const endpoints = endpointsOf(endpointBase);
+  const { signal, endpoints = FILE_UPLOAD_ENDPOINTS, initExtra, resumeScope } = opts;
   const key = resumeKey(file, resumeScope);
 
   let uploadId = '';

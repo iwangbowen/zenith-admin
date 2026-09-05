@@ -35,7 +35,7 @@ export default function AIProvidersPage() {
   const [search, setSearch] = useState('');
   const [editTarget, setEditTarget] = useState<AiProviderConfig | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
-  const listQuery = useAiProviderList({});
+  const listQuery = useAiProviderList();
   const list = listQuery.data ?? EMPTY_PROVIDER_CONFIGS;
   const toggleStatusMutation = useSaveAiProvider();
   const deleteMutation = useDeleteAiProvider();
@@ -78,12 +78,12 @@ export default function AIProvidersPage() {
   };
 
   const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync(id);
+    await deleteMutation.mutateAsync({ params: { id } });
     Toast.success('删除成功');
   };
 
   const handleSetDefault = async (id: number) => {
-    await setDefaultMutation.mutateAsync(id);
+    await setDefaultMutation.mutateAsync({ params: { id } });
     Toast.success('已设为默认');
   };
 

@@ -131,7 +131,7 @@ export default function CheckinLogsPage() {
       abortSubmit('validation');
     }
     if (!values?.memberId || !values?.date || !values?.reason) throw new Error('请完整填写补签信息');
-    await makeupMutation.mutateAsync({ memberId: values.memberId, date: formatDateForApi(values.date), reason: values.reason });
+    await makeupMutation.mutateAsync({ params: { id: values.memberId }, body: { date: formatDateForApi(values.date), reason: values.reason } });
     Toast.success('补签成功');
     setMakeupVisible(false);
   };

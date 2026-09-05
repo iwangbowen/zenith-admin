@@ -1,41 +1,21 @@
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CmsContribSite, CmsContribution, CmsMemberComment, CmsMemberContentItem, CmsMemberSubscription } from '@zenith/shared/cms';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { Coupon, Member, MemberBenefits, MemberCheckin, MemberCheckinStatus, MemberCoupon, MemberInviteSummary, MemberLevel, MemberLoginLog, MemberMilestoneStatus, MemberNotification, MemberPaymentApplicationOption, MemberPointAccount, MemberRenewalInfo, MemberWallet } from '@zenith/shared/member';
-import type { PaymentDeductPlan } from '@zenith/shared/payment';
+import { resourceKeyOf, type PaginatedResponse, type QueryOf } from '@zenith/shared/core';
+import { memberAuthContract, memberRenewalContract, memberSelfContract } from '@zenith/shared/member';
+import { api, apiQueryOptions, contractKey, useApiMutation, type ApiCallOptions } from '@/lib/contract-query';
 import { toQueryString, unwrap } from '@/lib/query';
 import { memberRequest } from '../utils/member-request';
 
-export interface MemberTransaction {
-  id: number;
-  type: string;
-  amount: number;
-  remark?: string | null;
-  bizType?: string | null;
-  createdAt: string;
-}
+/** 会员端一律走会员请求实例（独立 token 与刷新链路），不得混用后台 request */
+const memberClient: ApiCallOptions = { client: memberRequest };
+/** 静默：错误由页面自行处理（首屏 / 轮询类查询不弹全局提示） */
+const silentMemberClient: ApiCallOptions = { client: memberRequest, silent: true };
 
-export interface RechargeResult {
-  orderNo: string;
-  payMethod: string;
-  channel: string;
-  codeUrl?: string;
-  payUrl?: string;
-  formHtml?: string;
-  expiredAt?: string;
-}
-
-export interface CheckinResult {
-  consecutiveDays: number;
-  points: number;
-  experience: number;
-  checkinDate: string;
-}
-
-interface MakeupCheckinResult {
-  costPoints: number;
-  pointsAwarded: number;
-}
+export type MemberTransactionOp = typeof memberSelfContract.pointTransactions | typeof memberSelfContract.walletTransactions;
+export type MemberCouponListParams = NonNullable<QueryOf<typeof memberSelfContract.coupons>>;
+export type MemberCheckinHistoryParams = NonNullable<QueryOf<typeof memberSelfContract.checkinHistory>>;
+export type MemberNotificationListParams = NonNullable<QueryOf<typeof memberSelfContract.notifications>>;
+export type MemberLoginLogParams = NonNullable<QueryOf<typeof memberSelfContract.loginLogs>>;
 
 export interface MemberListParams {
   page: number;
@@ -43,59 +23,44 @@ export interface MemberListParams {
   [key: string]: string | number | undefined;
 }
 
-function appendQuery(url: string, params: object): string {
-  const qs = toQueryString(params);
-  if (!qs) return url;
-  return `${url}${url.includes('?') ? `&${qs.slice(1)}` : qs}`;
-}
-
 export const memberKeys = {
-  all: ['member'] as const,
-  me: ['member', 'me'] as const,
+  me: contractKey(memberAuthContract.me),
   points: {
-    all: ['member', 'points'] as const,
-    account: ['member', 'points', 'account'] as const,
+    account: contractKey(memberSelfContract.pointAccount),
+    transactions: contractKey(memberSelfContract.pointTransactions),
   },
   wallet: {
-    all: ['member', 'wallet'] as const,
-    detail: ['member', 'wallet', 'detail'] as const,
+    detail: contractKey(memberSelfContract.wallet),
+    transactions: contractKey(memberSelfContract.walletTransactions),
   },
+  paymentOptions: contractKey(memberSelfContract.paymentOptions),
   coupons: {
-    all: ['member', 'coupons'] as const,
-    lists: ['member', 'coupons', 'list'] as const,
-    list: (params: MemberListParams) => ['member', 'coupons', 'list', params] as const,
-    available: ['member', 'coupons', 'available'] as const,
-    exchangeable: ['member', 'coupons', 'exchangeable'] as const,
+    lists: contractKey(memberSelfContract.coupons),
+    list: (params: MemberCouponListParams) => contractKey(memberSelfContract.coupons, { query: params }),
+    available: contractKey(memberSelfContract.availableCoupons),
+    exchangeable: contractKey(memberSelfContract.exchangeableCoupons),
   },
-  levels: ['member', 'levels'] as const,
+  levels: contractKey(memberSelfContract.levels),
   loginLogs: {
-    lists: ['member', 'login-logs', 'list'] as const,
-    list: (params: MemberListParams) => ['member', 'login-logs', 'list', params] as const,
+    lists: contractKey(memberSelfContract.loginLogs),
+    list: (params: MemberLoginLogParams) => contractKey(memberSelfContract.loginLogs, { query: params }),
   },
   checkin: {
-    all: ['member', 'checkin'] as const,
-    status: ['member', 'checkin', 'status'] as const,
-    milestones: ['member', 'checkin', 'milestones'] as const,
-    historyLists: ['member', 'checkin', 'history'] as const,
-    history: (params: MemberListParams) => ['member', 'checkin', 'history', params] as const,
-    calendar: (month: string, dateStart: string, dateEnd: string) => ['member', 'checkin', 'calendar', month, dateStart, dateEnd] as const,
+    status: contractKey(memberSelfContract.checkinStatus),
+    milestones: contractKey(memberSelfContract.checkinMilestones),
+    historyLists: contractKey(memberSelfContract.checkinHistory),
+    history: (params: MemberCheckinHistoryParams) => contractKey(memberSelfContract.checkinHistory, { query: params }),
   },
-  transactions: {
-    lists: ['member', 'transactions', 'list'] as const,
-    list: (fetchUrl: string, params: MemberListParams) => ['member', 'transactions', 'list', fetchUrl, params] as const,
-  },
-  benefits: ['member', 'benefits'] as const,
+  benefits: contractKey(memberSelfContract.benefits),
   notifications: {
-    all: ['member', 'notifications'] as const,
-    lists: ['member', 'notifications', 'list'] as const,
-    list: (params: MemberListParams) => ['member', 'notifications', 'list', params] as const,
-    unreadCount: ['member', 'notifications', 'unread-count'] as const,
+    lists: contractKey(memberSelfContract.notifications),
+    list: (params: MemberNotificationListParams) => contractKey(memberSelfContract.notifications, { query: params }),
+    unreadCount: contractKey(memberSelfContract.unreadCount),
   },
-  invite: ['member', 'invite', 'summary'] as const,
+  invite: contractKey(memberSelfContract.inviteSummary),
   renewal: {
-    all: ['member', 'renewal'] as const,
-    info: (applicationId?: number) => ['member', 'renewal', 'info', applicationId] as const,
-    plans: (applicationId?: number) => ['member', 'renewal', 'plans', applicationId] as const,
+    info: (applicationId?: number) => contractKey(memberRenewalContract.info, { query: { applicationId: applicationId ?? 0 } }),
+    plans: (applicationId?: number) => contractKey(memberRenewalContract.plans, { query: { applicationId: applicationId ?? 0 } }),
   },
   subscriptions: {
     all: ['member', 'cms-subscriptions'] as const,
@@ -105,50 +70,58 @@ export const memberKeys = {
   },
 };
 
+/** 积分 / 钱包 / 优惠券 / 签到等自助资源都挂在 /api/member 之下，资料变更后按资源根整体回源 */
+const memberSelfAll = [resourceKeyOf(memberSelfContract.basePath)] as const;
+
+// ─── 账户 / 积分 / 钱包 ──────────────────────────────────────────────────────
+
 export function useMemberMe() {
-  return useQuery({
-    queryKey: memberKeys.me,
-    queryFn: () => memberRequest.get<Member>('/api/member/auth/me', { silent: true }).then(unwrap),
-  });
+  return useQuery(apiQueryOptions(memberAuthContract.me, { requestOptions: silentMemberClient }));
 }
 
 export function useMemberPointAccount() {
-  return useQuery({
-    queryKey: memberKeys.points.account,
-    queryFn: () => memberRequest.get<MemberPointAccount>('/api/member/points/account', { silent: true }).then(unwrap),
-  });
+  return useQuery(apiQueryOptions(memberSelfContract.pointAccount, { requestOptions: silentMemberClient }));
 }
 
 export function useMemberWallet() {
-  return useQuery({
-    queryKey: memberKeys.wallet.detail,
-    queryFn: () => memberRequest.get<MemberWallet>('/api/member/wallet', { silent: true }).then(unwrap),
-  });
+  return useQuery(apiQueryOptions(memberSelfContract.wallet, { requestOptions: silentMemberClient }));
 }
 
 export function useMemberPaymentOptions() {
+  return useQuery(apiQueryOptions(memberSelfContract.paymentOptions, { requestOptions: silentMemberClient, staleTime: 60_000 }));
+}
+
+/** 积分 / 钱包流水共用同一张表格，按契约操作切换数据源 */
+export function useMemberTransactions(op: MemberTransactionOp, params: { page: number; pageSize: number }) {
   return useQuery({
-    queryKey: [...memberKeys.me, 'payment-options'],
-    queryFn: () => memberRequest.get<MemberPaymentApplicationOption[]>('/api/member/payment-options', { silent: true }).then(unwrap),
-    staleTime: 60_000,
+    queryKey: contractKey(op, { query: params }),
+    queryFn: () => api(op, { query: params }, silentMemberClient),
+    placeholderData: keepPreviousData,
   });
 }
 
-export function useMemberCouponList(params: MemberListParams) {
-  return useQuery({
-    queryKey: memberKeys.coupons.list(params),
-    queryFn: () => memberRequest.get<PaginatedResponse<MemberCoupon>>(`/api/member/coupons${toQueryString(params)}`, { silent: true }).then(unwrap),
-    placeholderData: keepPreviousData,
+export function useCreateRechargeOrder() {
+  return useApiMutation(memberSelfContract.recharge, {
+    requestOptions: memberClient,
+    // 充值满减券在下单时锁定，钱包余额随支付回调变化
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: memberKeys.wallet.detail });
+      void qc.invalidateQueries({ queryKey: memberKeys.wallet.transactions });
+      void qc.invalidateQueries({ queryKey: memberKeys.coupons.lists });
+    },
   });
+}
+
+// ─── 优惠券 ──────────────────────────────────────────────────────────────────
+
+export function useMemberCouponList(params: MemberCouponListParams) {
+  return useQuery(apiQueryOptions(memberSelfContract.coupons, { query: params }, { requestOptions: silentMemberClient, placeholderData: keepPreviousData }));
 }
 
 export function useInfiniteMemberCoupons(pageSize = 10) {
   return useInfiniteQuery({
     queryKey: memberKeys.coupons.list({ page: 1, pageSize }),
-    queryFn: ({ pageParam }) =>
-      memberRequest
-        .get<PaginatedResponse<MemberCoupon>>(`/api/member/coupons${toQueryString({ page: pageParam, pageSize })}`, { silent: true })
-        .then(unwrap),
+    queryFn: ({ pageParam }) => api(memberSelfContract.coupons, { query: { page: pageParam, pageSize } }, silentMemberClient),
     initialPageParam: 1,
     getNextPageParam: (lastPage) => {
       const loaded = lastPage.page * lastPage.pageSize;
@@ -158,263 +131,182 @@ export function useInfiniteMemberCoupons(pageSize = 10) {
 }
 
 export function useAvailableCoupons() {
-  return useQuery({
-    queryKey: memberKeys.coupons.available,
-    queryFn: () => memberRequest.get<Coupon[]>('/api/member/coupons/available', { silent: true }).then(unwrap),
-  });
+  return useQuery(apiQueryOptions(memberSelfContract.availableCoupons, { requestOptions: silentMemberClient }));
 }
 
 export function useExchangeableCoupons() {
-  return useQuery({
-    queryKey: memberKeys.coupons.exchangeable,
-    queryFn: () => memberRequest.get<Coupon[]>('/api/member/coupons/exchangeable', { silent: true }).then(unwrap),
-  });
+  return useQuery(apiQueryOptions(memberSelfContract.exchangeableCoupons, { requestOptions: silentMemberClient }));
 }
 
-export function useMemberLevels() {
-  return useQuery({
-    queryKey: memberKeys.levels,
-    queryFn: () => memberRequest.get<MemberLevel[]>('/api/member/levels', { silent: true }).then(unwrap),
-  });
-}
-
-export function useMemberLoginLogs(params: MemberListParams) {
-  return useQuery({
-    queryKey: memberKeys.loginLogs.list(params),
-    queryFn: () => memberRequest.get<PaginatedResponse<MemberLoginLog>>(`/api/member/login-logs${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
-}
-
-export function useMemberTransactions(fetchUrl: string, params: MemberListParams) {
-  return useQuery({
-    queryKey: memberKeys.transactions.list(fetchUrl, params),
-    queryFn: () => memberRequest.get<PaginatedResponse<MemberTransaction>>(appendQuery(fetchUrl, params), { silent: true }).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
-}
-
-export function useCheckinStatus() {
-  return useQuery({
-    queryKey: memberKeys.checkin.status,
-    queryFn: () => memberRequest.get<MemberCheckinStatus>('/api/member/checkin/status', { silent: true }).then(unwrap),
-  });
-}
-
-export function useCheckinMilestones() {
-  return useQuery({
-    queryKey: memberKeys.checkin.milestones,
-    queryFn: () => memberRequest.get<MemberMilestoneStatus>('/api/member/checkin/milestones', { silent: true }).then(unwrap),
-  });
-}
-
-export function useCheckinHistory(params: MemberListParams) {
-  return useQuery({
-    queryKey: memberKeys.checkin.history(params),
-    queryFn: () => memberRequest.get<PaginatedResponse<MemberCheckin>>(`/api/member/checkin/history${toQueryString(params)}`, { silent: true }).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
-}
-
-export function useCheckinCalendar(monthKey: string, dateStart: string, dateEnd: string) {
-  return useQuery({
-    queryKey: memberKeys.checkin.calendar(monthKey, dateStart, dateEnd),
-    queryFn: () =>
-      memberRequest
-        .get<PaginatedResponse<MemberCheckin>>(
-          `/api/member/checkin/history${toQueryString({ page: 1, pageSize: 31, dateStart, dateEnd })}`,
-          { silent: true },
-        )
-        .then(unwrap),
-  });
-}
-
-export function useCreateRechargeOrder() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: { applicationId: number; amount: number; payMethod: string; memberCouponId?: number }) =>
-      memberRequest.post<RechargeResult>('/api/member/wallet/recharge', values).then(unwrap),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: memberKeys.wallet.all });
-      void qc.invalidateQueries({ queryKey: memberKeys.coupons.all });
-    },
-  });
+/** 领券改变我的券列表与模板剩余量（可领取列表按剩余量过滤） */
+function invalidateCoupons(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: memberKeys.coupons.lists });
+  void qc.invalidateQueries({ queryKey: memberKeys.coupons.available });
+  void qc.invalidateQueries({ queryKey: memberKeys.coupons.exchangeable });
 }
 
 export function useReceiveCoupon() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (couponId: number) =>
-      memberRequest.post<MemberCoupon>('/api/member/coupons/receive', { couponId }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: memberKeys.coupons.all }),
+  return useApiMutation(memberSelfContract.receiveCoupon, {
+    requestOptions: memberClient,
+    invalidate: invalidateCoupons,
   });
 }
 
+/** 积分兑换同时扣减积分账户并写积分流水 */
 export function useExchangeCoupon() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (couponId: number) =>
-      memberRequest.post<MemberCoupon>('/api/member/coupons/exchange', { couponId }).then(unwrap),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: memberKeys.coupons.all });
-      void qc.invalidateQueries({ queryKey: memberKeys.points.all });
+  return useApiMutation(memberSelfContract.exchangeCoupon, {
+    requestOptions: memberClient,
+    invalidate: (qc) => {
+      invalidateCoupons(qc);
+      void qc.invalidateQueries({ queryKey: memberKeys.points.account });
+      void qc.invalidateQueries({ queryKey: memberKeys.points.transactions });
     },
   });
 }
 
-// ─── 权益 / 通知 / 邀请 / 注销 ────────────────────────────────────────────────
+// ─── 等级 / 权益 ─────────────────────────────────────────────────────────────
+
+export function useMemberLevels() {
+  return useQuery(apiQueryOptions(memberSelfContract.levels, { requestOptions: silentMemberClient }));
+}
+
 export function useMyBenefits() {
+  return useQuery(apiQueryOptions(memberSelfContract.benefits, { requestOptions: silentMemberClient }));
+}
+
+// ─── 登录历史 ────────────────────────────────────────────────────────────────
+
+export function useMemberLoginLogs(params: MemberLoginLogParams) {
+  return useQuery(apiQueryOptions(memberSelfContract.loginLogs, { query: params }, { requestOptions: memberClient, placeholderData: keepPreviousData }));
+}
+
+// ─── 签到 ────────────────────────────────────────────────────────────────────
+
+export function useCheckinStatus() {
+  return useQuery(apiQueryOptions(memberSelfContract.checkinStatus, { requestOptions: silentMemberClient }));
+}
+
+export function useCheckinMilestones() {
+  return useQuery(apiQueryOptions(memberSelfContract.checkinMilestones, { requestOptions: silentMemberClient }));
+}
+
+export function useCheckinHistory(params: MemberCheckinHistoryParams) {
+  return useQuery(apiQueryOptions(memberSelfContract.checkinHistory, { query: params }, { requestOptions: silentMemberClient, placeholderData: keepPreviousData }));
+}
+
+/** 日历视图：一次取整月（最多 31 条）签到记录 */
+export function useCheckinCalendar(monthKey: string, dateStart: string, dateEnd: string) {
   return useQuery({
-    queryKey: memberKeys.benefits,
-    queryFn: () => memberRequest.get<MemberBenefits>('/api/member/benefits', { silent: true }).then(unwrap),
+    queryKey: [...memberKeys.checkin.historyLists, 'calendar', monthKey, dateStart, dateEnd] as const,
+    queryFn: () => api(memberSelfContract.checkinHistory, { query: { page: 1, pageSize: 31, dateStart, dateEnd } }, silentMemberClient),
   });
 }
 
-export function useMyNotifications(params: MemberListParams) {
-  return useQuery({
-    queryKey: memberKeys.notifications.list(params),
-    queryFn: () => memberRequest.get<PaginatedResponse<MemberNotification>>(`/api/member/notifications${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
-}
-
-export function useUnreadNotificationCount(enabled = true) {
-  return useQuery({
-    queryKey: memberKeys.notifications.unreadCount,
-    queryFn: () => memberRequest.get<{ count: number }>('/api/member/notifications/unread-count', { silent: true }).then(unwrap),
-    enabled,
-    refetchInterval: 60_000,
-  });
-}
-
-export function useMarkNotificationRead() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => memberRequest.put<null>(`/api/member/notifications/${id}/read`, {}).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: memberKeys.notifications.all }),
-  });
-}
-
-export function useMarkAllNotificationsRead() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () => memberRequest.put<null>('/api/member/notifications/read-all', {}).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: memberKeys.notifications.all }),
-  });
-}
-
-export function useInviteSummary() {
-  return useQuery({
-    queryKey: memberKeys.invite,
-    queryFn: () => memberRequest.get<MemberInviteSummary>('/api/member/invite/summary').then(unwrap),
-  });
-}
-
-export function useDeactivateAccount() {
-  return useMutation({
-    mutationFn: (values: { password?: string; smsCode?: string }) =>
-      memberRequest.post<null>('/api/member/auth/deactivate', values).then(unwrap),
-  });
+/** 签到 / 补签同时发放积分与经验：签到状态、历史、里程碑与积分账户一并回源 */
+function invalidateCheckin(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: memberKeys.checkin.status });
+  void qc.invalidateQueries({ queryKey: memberKeys.checkin.historyLists });
+  void qc.invalidateQueries({ queryKey: memberKeys.checkin.milestones });
+  void qc.invalidateQueries({ queryKey: memberKeys.points.account });
+  void qc.invalidateQueries({ queryKey: memberKeys.points.transactions });
 }
 
 export function useMemberCheckin() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () => memberRequest.post<CheckinResult>('/api/member/checkin', {}).then(unwrap),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: memberKeys.checkin.all });
-      void qc.invalidateQueries({ queryKey: memberKeys.points.all });
-    },
-  });
+  return useApiMutation(memberSelfContract.checkin, { requestOptions: memberClient, invalidate: invalidateCheckin });
 }
 
 export function useMakeupCheckin() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (date: string) =>
-      memberRequest.post<MakeupCheckinResult>('/api/member/checkin/makeup', { date }).then(unwrap),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: memberKeys.checkin.all });
-      void qc.invalidateQueries({ queryKey: memberKeys.points.all });
-    },
-  });
+  return useApiMutation(memberSelfContract.makeupCheckin, { requestOptions: memberClient, invalidate: invalidateCheckin });
+}
+
+// ─── 通知 / 邀请 / 注销 ─────────────────────────────────────────────────────
+
+export function useMyNotifications(params: MemberNotificationListParams) {
+  return useQuery(apiQueryOptions(memberSelfContract.notifications, { query: params }, { requestOptions: memberClient, placeholderData: keepPreviousData }));
+}
+
+export function useUnreadNotificationCount(enabled = true) {
+  return useQuery(apiQueryOptions(memberSelfContract.unreadCount, { requestOptions: silentMemberClient, enabled, refetchInterval: 60_000 }));
+}
+
+function invalidateNotifications(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: memberKeys.notifications.lists });
+  void qc.invalidateQueries({ queryKey: memberKeys.notifications.unreadCount });
+}
+
+export function useMarkNotificationRead() {
+  return useApiMutation(memberSelfContract.markRead, { requestOptions: memberClient, invalidate: invalidateNotifications });
+}
+
+export function useMarkAllNotificationsRead() {
+  return useApiMutation(memberSelfContract.markAllRead, { requestOptions: memberClient, invalidate: invalidateNotifications });
+}
+
+export function useInviteSummary() {
+  return useQuery(apiQueryOptions(memberSelfContract.inviteSummary, { requestOptions: memberClient }));
+}
+
+export function useDeactivateAccount() {
+  return useApiMutation(memberAuthContract.deactivate, { requestOptions: memberClient });
 }
 
 // ─── 自动续费 ─────────────────────────────────────────────────────────────────
 
-export interface RenewalDeductResult {
-  orderNo?: string | null;
-  deductStatus: 'success' | 'processing' | 'failed';
-  failReason?: string | null;
-}
-
 export function useMyRenewal(applicationId?: number) {
-  return useQuery({
-    queryKey: memberKeys.renewal.info(applicationId),
-    queryFn: () => memberRequest.get<MemberRenewalInfo>(`/api/member/renewal${toQueryString({ applicationId })}`, { silent: true }).then(unwrap),
-    enabled: applicationId != null,
-  });
+  return useQuery(apiQueryOptions(
+    memberRenewalContract.info,
+    { query: { applicationId: applicationId ?? 0 } },
+    { requestOptions: silentMemberClient, enabled: applicationId != null },
+  ));
 }
 
 export function useRenewalPlans(applicationId?: number) {
-  return useQuery({
-    queryKey: memberKeys.renewal.plans(applicationId),
-    queryFn: () => memberRequest.get<PaymentDeductPlan[]>(`/api/member/renewal/plans${toQueryString({ applicationId })}`, { silent: true }).then(unwrap),
-    enabled: applicationId != null,
-  });
+  return useQuery(apiQueryOptions(
+    memberRenewalContract.plans,
+    { query: { applicationId: applicationId ?? 0 } },
+    { requestOptions: silentMemberClient, enabled: applicationId != null },
+  ));
+}
+
+/** 签约 / 扣款改变协议状态与 VIP 到期时间（会员资料中的 vipExpireAt） */
+function invalidateRenewal(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: contractKey(memberRenewalContract.info) });
+  void qc.invalidateQueries({ queryKey: memberKeys.me });
 }
 
 export function useSignRenewal() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: { applicationId: number; planId: number; payMethod: string }) =>
-      memberRequest.post<{ firstDeduct?: RenewalDeductResult | null }>('/api/member/renewal/sign', values).then(unwrap),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: memberKeys.renewal.all });
-      void qc.invalidateQueries({ queryKey: memberKeys.me });
-    },
-  });
+  return useApiMutation(memberRenewalContract.sign, { requestOptions: memberClient, invalidate: invalidateRenewal });
 }
 
 export function useTerminateRenewal() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (applicationId: number) => memberRequest.post<null>(`/api/member/renewal/terminate${toQueryString({ applicationId })}`, {}).then(unwrap),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: memberKeys.renewal.all }),
+  return useApiMutation(memberRenewalContract.terminate, {
+    requestOptions: memberClient,
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: contractKey(memberRenewalContract.info) }),
   });
 }
 
 export function useRenewNow() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (applicationId: number) => memberRequest.post<RenewalDeductResult>(`/api/member/renewal/deduct${toQueryString({ applicationId })}`, {}).then(unwrap),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: memberKeys.renewal.all });
-      void qc.invalidateQueries({ queryKey: memberKeys.me });
-    },
-  });
+  return useApiMutation(memberRenewalContract.deduct, { requestOptions: memberClient, invalidate: invalidateRenewal });
 }
 
+// ─── 账号 ────────────────────────────────────────────────────────────────────
+
 export function useResetMemberPassword() {
-  return useMutation({
-    mutationFn: (values: { phone: string; smsCode: string; newPassword: string }) =>
-      memberRequest.post<null>('/api/member/auth/reset-password', values, { silent: true }).then(unwrap),
-  });
+  return useApiMutation(memberAuthContract.resetPassword, { requestOptions: silentMemberClient });
 }
 
 export function useChangeMemberPassword() {
-  return useMutation({
-    mutationFn: (values: { oldPassword?: string; newPassword: string }) =>
-      memberRequest.put<null>('/api/member/auth/password', values).then(unwrap),
-  });
+  return useApiMutation(memberAuthContract.changePassword, { requestOptions: memberClient });
 }
 
+/** 资料变更（昵称 / 头像）会出现在会员端所有展示处，整个会员端缓存回源 */
 export function useUpdateMemberProfile() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: { nickname: string; email: string | null; gender: string | null; avatar: string | null }) =>
-      memberRequest.put<Member>('/api/member/auth/profile', values).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: memberKeys.all }),
+  return useApiMutation(memberAuthContract.updateProfile, {
+    requestOptions: memberClient,
+    invalidate: (qc, saved) => {
+      qc.setQueryData(memberKeys.me, saved);
+      void qc.invalidateQueries({ queryKey: memberSelfAll });
+    },
   });
 }
 

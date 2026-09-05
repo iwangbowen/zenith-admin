@@ -1,4 +1,4 @@
-import type { Coupon, MemberLevel, MemberTag } from '../member/types';
+import type { Coupon, MemberLevel, MemberTag } from '../member/contracts';
 import { SEED_DATE } from './_base';
 
 // ─── 会员等级 ─────────────────────────────────────────────────────────────────

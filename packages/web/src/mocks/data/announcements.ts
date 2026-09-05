@@ -1,6 +1,8 @@
-import type { Announcement } from '@zenith/shared/messaging';
+import type { AnnouncementDetail } from '@zenith/shared/messaging';
+import { nextIdFrom } from '@/mocks/utils/handlers';
 
-export const mockAnnouncements: Announcement[] = [
+/** 内存中的公告同时承载列表 / 详情两种视角，故直接存详情形态（收件人与附件必带） */
+export const mockAnnouncements: AnnouncementDetail[] = [
   {
     id: 1,
     title: '系统上线公告',
@@ -12,6 +14,9 @@ export const mockAnnouncements: Announcement[] = [
     createById: 1,
     createByName: '管理员',
     targetType: 'all',
+    tenantId: null,
+    recipients: [],
+    attachments: [],
     createdAt: '2024-01-01 00:00:00',
     updatedAt: '2024-01-01 00:00:00',
     readCount: 8,
@@ -27,6 +32,9 @@ export const mockAnnouncements: Announcement[] = [
     createById: 1,
     createByName: '管理员',
     targetType: 'all',
+    tenantId: null,
+    recipients: [],
+    attachments: [],
     createdAt: '2024-01-02 00:00:00',
     updatedAt: '2024-01-02 00:00:00',
     readCount: 3,
@@ -42,13 +50,16 @@ export const mockAnnouncements: Announcement[] = [
     createById: 1,
     createByName: '管理员',
     targetType: 'all',
+    tenantId: null,
+    recipients: [],
+    attachments: [],
     createdAt: '2024-01-03 00:00:00',
     updatedAt: '2024-01-03 00:00:00',
     readCount: 0,
   },
 ];
 
-let nextAnnouncementId = 4;
+let nextAnnouncementId = nextIdFrom(mockAnnouncements);
 export function getNextAnnouncementId() {
   return nextAnnouncementId++;
 }

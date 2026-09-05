@@ -7,7 +7,8 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
-import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared/payment';
+import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
+import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS, PAYMENT_CHANNELS } from '@zenith/shared/payment';
 import type { PaymentChannel, PaymentChannelConfig } from '@zenith/shared/payment';
 import {
   paymentChannelKeys,
@@ -47,8 +48,8 @@ export default function PaymentChannelsPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    channel: submittedParams.channel || undefined,
-    status: submittedParams.status || undefined,
+    channel: enumValueOf(PAYMENT_CHANNELS, submittedParams.channel),
+    status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
   const data = listQuery.data ?? null;
   const saveMutation = useSavePaymentChannel();
@@ -86,8 +87,8 @@ export default function PaymentChannelsPage() {
   const testMutation = useTestPaymentChannel();
   const defaultMutation = useSetDefaultPaymentChannel();
   const togglingId = toggleMutation.isPending ? (toggleMutation.variables?.id ?? null) : null;
-  const testingId = testMutation.isPending ? (testMutation.variables ?? null) : null;
-  const defaultingId = defaultMutation.isPending ? (defaultMutation.variables ?? null) : null;
+  const testingId = testMutation.isPending ? (testMutation.variables?.params.id ?? null) : null;
+  const defaultingId = defaultMutation.isPending ? (defaultMutation.variables?.params.id ?? null) : null;
 
   useEffect(() => {
     if (modal.visible && editingDetail?.channel) setFormChannel(editingDetail.channel);
@@ -117,7 +118,7 @@ export default function PaymentChannelsPage() {
   }
 
   function handleTest(record: PaymentChannelConfig) {
-    testMutation.mutate(record.id, {
+    testMutation.mutate({ params: { id: record.id } }, {
       onSuccess: ({ success, message, latencyMs }) => {
         if (success) Toast.success(`连通性测试通过（${latencyMs}ms）：${message}`);
         else Toast.error(`连通性测试失败：${message}`);
@@ -126,7 +127,7 @@ export default function PaymentChannelsPage() {
   }
 
   function handleSetDefault(record: PaymentChannelConfig) {
-    defaultMutation.mutate(record.id, {
+    defaultMutation.mutate({ params: { id: record.id } }, {
       onSuccess: () => Toast.success(`已将「${record.name}」设为默认${PAYMENT_CHANNEL_LABELS[record.channel]}渠道`),
     });
   }

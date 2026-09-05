@@ -115,7 +115,7 @@ export default function PublicSharePage() {
   const save = useSaveFromDriveShare();
   const handleSave = async (target: FolderTarget) => {
     if (!session || !saving) return;
-    await save.mutateAsync({ token, session, targetSpaceId: target.spaceId, targetParentId: target.parentId, nodeIds: saving.map((n) => n.id) });
+    await save.mutateAsync({ params: { token }, body: { targetSpaceId: target.spaceId, targetParentId: target.parentId, nodeIds: saving.map((n) => n.id) }, session });
     Toast.success(`已转存到「${target.label}」`);
     setSaving(null);
   };

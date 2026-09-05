@@ -11,6 +11,7 @@ import {
   pathParamNames,
   resourceKeyOf,
   toColonPath,
+  type HeadersOf,
   type InputOf,
   type OutputOf,
   type QueryOf,
@@ -106,5 +107,20 @@ describe('type inference', () => {
     expectTypeOf<OutputOf<typeof contract.remove>>().toEqualTypeOf<null>();
     expectTypeOf<OutputOf<typeof contract.list>['list']>().toEqualTypeOf<{ id: number; name: string }[]>();
     expectTypeOf<InputOf<typeof contract.upload>>().toEqualTypeOf<{ body: FormData }>();
+  });
+
+  it('exposes declared business headers as an input segment', () => {
+    const secured = defineContract('/api/refunds', {
+      create: op.post('/', {
+        headers: z.object({ 'x-idempotency-key': z.string().min(8) }),
+        body: z.object({ orderNo: z.string() }),
+        response: itemSchema,
+        summary: '退款',
+      }),
+    });
+    expect(secured.create.headers?.shape['x-idempotency-key']).toBeDefined();
+    expect(contract.create.headers).toBeUndefined();
+    expectTypeOf<InputOf<typeof secured.create>>().toEqualTypeOf<{ headers: { 'x-idempotency-key': string }; body: { orderNo: string } }>();
+    expectTypeOf<HeadersOf<typeof contract.create>>().toEqualTypeOf<undefined>();
   });
 });

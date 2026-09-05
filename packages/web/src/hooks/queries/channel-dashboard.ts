@@ -1,16 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
-import type { ChannelDashboard } from '@zenith/shared/messaging';
-import { request } from '@/utils/request';
-import { unwrap } from '@/lib/query';
+import { channelDashboardContract } from '@zenith/shared/messaging';
+import { contractKey, useApiQuery } from '@/lib/contract-query';
 
 export const channelDashboardKeys = {
-  all: ['channel-dashboard'] as const,
-  stats: ['channel-dashboard', 'stats'] as const,
+  stats: contractKey(channelDashboardContract.dashboard),
 };
 
 export function useChannelDashboard() {
-  return useQuery({
-    queryKey: channelDashboardKeys.stats,
-    queryFn: () => request.get<ChannelDashboard>('/api/channels/dashboard').then(unwrap),
-  });
+  return useApiQuery(channelDashboardContract.dashboard);
 }

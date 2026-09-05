@@ -57,7 +57,7 @@ export function ChannelQuickReplyDrawer({ channelId, channelName, visible, onClo
   };
 
   const handleDelete = async (r: ChannelQuickReply) => {
-    await deleteMutation.mutateAsync(r.id);
+    await deleteMutation.mutateAsync({ params: { id: r.id } });
     Toast.success('已删除');
     onChanged?.();
   };

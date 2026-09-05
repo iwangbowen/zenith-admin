@@ -1,7 +1,9 @@
 import { Button, Form, Input, Tag, Toast } from '@douyinfe/semi-ui';
 import { AppModal } from '@/components/AppModal';
 import { Plus } from 'lucide-react';
-import type { EmailSendLog, SendStatus } from '@zenith/shared/messaging';
+import { enumValueOf } from '@zenith/shared/core';
+import { SEND_SOURCES } from '@zenith/shared/messaging';
+import type { EmailSendLog, SendEmailInput, SendStatus } from '@zenith/shared/messaging';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
@@ -17,10 +19,19 @@ import {
   useEmailSendLogList,
   useTestEmailSendLog,
 } from '@/hooks/queries/email-send-logs';
-import { SEND_LOG_STATUS_OPTIONS as STATUS_OPTIONS, SEND_SOURCE_OPTIONS as SOURCE_OPTIONS } from '../send-log-constants';
+import { SEND_LOG_STATUS_OPTIONS as STATUS_OPTIONS, SEND_SOURCE_OPTIONS as SOURCE_OPTIONS, parseTemplateVariables } from '../send-log-constants';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
+
+/** 测试发送表单值：变量以 JSON 文本输入 */
+interface TestEmailFormValues {
+  templateId?: number;
+  toEmail: string;
+  subject?: string;
+  content?: string;
+  variables?: string;
+}
 
 function StatusTag({ value }: Readonly<{ value: SendStatus }>) {
   const it = STATUS_OPTIONS.find((s) => s.value === value);
@@ -44,20 +55,21 @@ export default function EmailSendLogsPage() {
     keyword: submittedParams.keyword || undefined,
     toEmail: submittedParams.toEmail || undefined,
     status: submittedParams.filterStatus,
-    source: submittedParams.filterSource || undefined,
+    source: enumValueOf(SEND_SOURCES, submittedParams.filterSource),
   });
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
   const testMutation = useTestEmailSendLog();
-  const testModal = useEditModal<{ id: number }, Record<string, unknown>>({
+  const testModal = useEditModal<{ id: number }, TestEmailFormValues, SendEmailInput>({
     save: {
       isPending: testMutation.isPending,
       mutateAsync: async ({ values }) => {
-        await testMutation.mutateAsync(values);
+        await testMutation.mutateAsync({ body: values });
         return { id: 0 };
       },
     },
     defaults: {},
+    beforeSave: (values) => ({ ...values, variables: parseTemplateVariables(values.variables) }),
     successMessage: () => '测试邮件已发送',
   });
   const templatesQuery = useEmailTemplateList({ page: 1, pageSize: 100, status: 'enabled' }, testModal.visible);
@@ -75,7 +87,7 @@ export default function EmailSendLogsPage() {
     confirmDelete({
       title: '确定要删除该记录吗？',
       onOk: async () => {
-        await deleteMutation.mutateAsync(id);
+        await deleteMutation.mutateAsync({ params: { id } });
         Toast.success('删除成功');
       },
     });

@@ -1,8 +1,9 @@
 import { Button, Form, Input, Tag, Toast } from '@douyinfe/semi-ui';
 import { AppModal } from '@/components/AppModal';
 import { Plus } from 'lucide-react';
-import { SMS_PROVIDER_OPTIONS } from '@zenith/shared/messaging';
-import type { SendStatus, SmsSendLog } from '@zenith/shared/messaging';
+import { enumValueOf } from '@zenith/shared/core';
+import { SEND_SOURCES, SMS_PROVIDER_OPTIONS } from '@zenith/shared/messaging';
+import type { SendSmsInput, SendStatus, SmsSendLog } from '@zenith/shared/messaging';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -18,10 +19,17 @@ import {
   useSmsSendLogList,
   useTestSmsSendLog,
 } from '@/hooks/queries/sms-send-logs';
-import { SEND_LOG_STATUS_OPTIONS as STATUS_OPTIONS, SEND_SOURCE_OPTIONS as SOURCE_OPTIONS } from '../send-log-constants';
+import { SEND_LOG_STATUS_OPTIONS as STATUS_OPTIONS, SEND_SOURCE_OPTIONS as SOURCE_OPTIONS, parseTemplateVariables } from '../send-log-constants';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
+
+/** 测试发送表单值：变量以 JSON 文本输入 */
+interface TestSmsFormValues {
+  templateId: number;
+  phone: string;
+  variables?: string;
+}
 
 function StatusTag({ value }: Readonly<{ value: SendStatus }>) {
   const it = STATUS_OPTIONS.find((s) => s.value === value);
@@ -45,19 +53,20 @@ export default function SmsSendLogsPage() {
     keyword: submittedParams.keyword || undefined,
     phone: submittedParams.phone || undefined,
     status: submittedParams.filterStatus,
-    source: submittedParams.filterSource || undefined,
+    source: enumValueOf(SEND_SOURCES, submittedParams.filterSource),
   });
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
   const testMutation = useTestSmsSendLog();
-  const testModal = useEditModal<{ id: number }, Record<string, unknown>>({
+  const testModal = useEditModal<{ id: number }, TestSmsFormValues, SendSmsInput>({
     save: {
       mutateAsync: async ({ values }) => {
-        await testMutation.mutateAsync(values);
+        await testMutation.mutateAsync({ body: values });
         return { id: 0 };
       },
       isPending: testMutation.isPending,
     },
+    beforeSave: (values) => ({ ...values, variables: parseTemplateVariables(values.variables) }),
     successMessage: () => '测试短信已发送',
   });
   const templatesQuery = useSmsTemplateList({ page: 1, pageSize: 100, status: 'enabled' }, testModal.visible);
@@ -75,7 +84,7 @@ export default function SmsSendLogsPage() {
     confirmDelete({
       title: '确定要删除该记录吗？',
       onOk: async () => {
-        await deleteMutation.mutateAsync(id);
+        await deleteMutation.mutateAsync({ params: { id } });
         Toast.success('删除成功');
       },
     });

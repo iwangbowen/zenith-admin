@@ -18,6 +18,12 @@ const probe = defineContract('/api/contract-probe', {
   remove: op.delete('/{id}', { params: idParam, summary: '删除', description: '不可恢复' }),
   exportFile: op.get('/export', { kind: 'excel', summary: '导出' }),
   upload: op.post('/upload', { body: multipart(z.object({ file: fileField() })), response: itemSchema, summary: '上传' }),
+  refund: op.post('/{id}/refund', {
+    params: idParam,
+    headers: z.object({ 'x-idempotency-key': z.string().min(8).max(128) }),
+    response: itemSchema,
+    summary: '退款（幂等）',
+  }),
 });
 
 const store = [{ id: 1, name: 'one' }, { id: 2, name: 'two' }];
@@ -47,6 +53,13 @@ function buildApp() {
       handler: async (c) => {
         c.req.valid('param');
         return c.json(okBody(null, '删除成功'), 200);
+      },
+    }),
+    defineContractRoute(probe.refund, {
+      middleware: [],
+      handler: async (c) => {
+        const key = c.req.valid('header')['x-idempotency-key'];
+        return c.json(okBody({ id: c.req.valid('param').id, name: key }), 200);
       },
     }),
   ] as const);
@@ -145,5 +158,18 @@ describe('defineContractRoute', () => {
 
     const removed = await app.request('/api/contract-probe/1', { method: 'DELETE' });
     expect(await removed.json()).toEqual({ code: 0, message: '删除成功', data: null });
+  });
+
+  it('declares and validates business headers', async () => {
+    const doc = app.getOpenAPI31Document({ openapi: '3.1.0', info: { title: 't', version: '0' } }) as unknown as Doc;
+    const refund = doc.paths['/api/contract-probe/{id}/refund'].post;
+    expect(refund.parameters).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'x-idempotency-key', in: 'header', required: true })]));
+
+    const missing = await app.request('/api/contract-probe/1/refund', { method: 'POST' });
+    expect(missing.status).toBe(400);
+    const short = await app.request('/api/contract-probe/1/refund', { method: 'POST', headers: { 'x-idempotency-key': 'abc' } });
+    expect(short.status).toBe(400);
+    const accepted = await app.request('/api/contract-probe/1/refund', { method: 'POST', headers: { 'x-idempotency-key': 'idem-key-0001' } });
+    expect(await accepted.json()).toEqual({ code: 0, message: 'success', data: { id: 1, name: 'idem-key-0001' } });
   });
 });

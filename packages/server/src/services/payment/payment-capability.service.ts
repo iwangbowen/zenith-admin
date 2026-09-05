@@ -1,5 +1,12 @@
 import { asc } from 'drizzle-orm';
-import type { PaymentChannel, PaymentMethod } from '@zenith/shared/payment';
+import {
+  PAYMENT_PROVIDER_OPERATIONS as SHARED_PAYMENT_PROVIDER_OPERATIONS,
+  type PaymentCapabilitiesResponse,
+  type PaymentCapabilityQuery,
+  type PaymentConfigCapabilities,
+  type PaymentEffectiveCapability,
+  type PaymentMethod,
+} from '@zenith/shared/payment';
 import { db } from '../../db';
 import {
   paymentChannelConfigs,
@@ -14,78 +21,12 @@ import {
   initPaymentAdapters,
   listProviderManifests,
   type PaymentProviderCapability,
-  type PaymentProviderEnvironment,
   type PaymentProviderOperation,
 } from '../../lib/payment';
-import type { PaymentProviderExecution } from '../../lib/payment/types';
-import {
-  decidePaymentCapability,
-  paymentConfigEnvironment,
-  type PaymentCapabilityReasonCode,
-} from './payment-capability-evaluator';
+import { decidePaymentCapability, paymentConfigEnvironment } from './payment-capability-evaluator';
 
-export const PAYMENT_PROVIDER_OPERATIONS = [
-  'payment.create',
-  'payment.query',
-  'payment.close',
-  'refund.create',
-  'refund.query',
-  'notification.verify',
-  'profit-sharing.create',
-  'profit-sharing.query',
-  'profit-sharing.reverse',
-  'transfer.create',
-  'transfer.query',
-  'contract.sign',
-  'contract.query',
-  'contract.terminate',
-  'contract.deduct',
-  'preauth.freeze',
-  'preauth.query',
-  'preauth.capture',
-  'preauth.release',
-  'bill.download',
-] as const satisfies readonly PaymentProviderOperation[];
-
-export interface PaymentCapabilityQuery {
-  channelConfigId?: number;
-  channel?: PaymentChannel;
-  operation?: PaymentProviderOperation;
-  method?: PaymentMethod;
-  currency?: string;
-}
-
-export interface EffectivePaymentCapability {
-  operation: PaymentProviderOperation;
-  environment: PaymentProviderEnvironment;
-  declaredEnvironments: PaymentProviderEnvironment[];
-  paymentMethod: PaymentMethod | null;
-  currency: string;
-  execution: PaymentProviderExecution | null;
-  limits: { maxAmount: number | null; receiverNameRequiredAtOrAbove: number | null } | null;
-  supported: boolean;
-  reasonCode: PaymentCapabilityReasonCode | null;
-  reason: string | null;
-  missingConfigFields: string[];
-}
-
-export interface PaymentConfigCapabilities {
-  channelConfigId: number;
-  tenantId: number | null;
-  configName: string;
-  channel: PaymentChannel;
-  environment: PaymentProviderEnvironment;
-  configStatus: 'enabled' | 'disabled';
-  providerName: string;
-  supported: boolean;
-  reason: string | null;
-  capabilities: EffectivePaymentCapability[];
-}
-
-export interface PaymentCapabilitiesResponse {
-  engineMode: 'off' | 'sandbox' | 'live';
-  configs: PaymentConfigCapabilities[];
-}
+/** 契约枚举中的每个操作都必须是适配器已实现的操作（PaymentProviderOperation） */
+export const PAYMENT_PROVIDER_OPERATIONS = SHARED_PAYMENT_PROVIDER_OPERATIONS satisfies readonly PaymentProviderOperation[];
 
 function capabilityRows(
   row: PaymentChannelConfigRow,
@@ -100,7 +41,7 @@ function capabilityRows(
     ? capabilities.filter((capability) => capability.operation === query.operation)
     : [...capabilities];
 
-  let rows: EffectivePaymentCapability[];
+  let rows: PaymentEffectiveCapability[];
   if (declared.length === 0 && query.operation) {
     rows = [{
       operation: query.operation,
@@ -129,7 +70,7 @@ function capabilityRows(
       return methods.map((method) => ({ capability, method }));
     }).flatMap(({ capability, method }) => {
       const currencies = query.currency ? [query.currency] : [...capability.currencies];
-      return currencies.map((currency): EffectivePaymentCapability => {
+      return currencies.map((currency): PaymentEffectiveCapability => {
         const decision = decidePaymentCapability({
           configRow: row,
           manifestSandboxFields,

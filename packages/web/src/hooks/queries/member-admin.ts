@@ -1,471 +1,401 @@
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { CheckinMilestone, CheckinRule, CheckinSettings, Coupon, Member, MemberCheckin, MemberCheckinCalendarDay, MemberCoupon, MemberLevel, MemberLoginLog, MemberPointAccount, MemberPointTransaction, MemberRecharge, MemberStatsCharts, MemberStatsOverview, MemberTag, MemberWallet, MemberWalletTransaction } from '@zenith/shared/member';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import type { BodyOf, QueryOf } from '@zenith/shared/core';
+import { resourceKeyOf } from '@zenith/shared/core';
+import {
+  checkinMilestoneContract,
+  checkinRuleContract,
+  checkinSettingsContract,
+  couponContract,
+  memberCheckinContract,
+  memberContract,
+  memberLevelContract,
+  memberPointContract,
+  memberRechargeContract,
+  memberStatsContract,
+  memberTagContract,
+  memberWalletContract,
+  type CheckinMilestone,
+  type CheckinRule,
+  type Member,
+  type MemberLevel,
+  type MemberTag,
+} from '@zenith/shared/member';
+import { api, apiQueryOptions, contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { memberLookupKeys } from './members-lookup';
 
-export interface MemberListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  status?: string;
-  levelId?: number;
-  tagId?: number;
-}
+export type MemberListParams = NonNullable<QueryOf<typeof memberContract.list>>;
+export type MemberLoginLogListParams = NonNullable<QueryOf<typeof memberContract.loginLogs>>;
+export type MemberPointTransactionListParams = NonNullable<QueryOf<typeof memberPointContract.transactions>>;
+export type MemberWalletTransactionListParams = NonNullable<QueryOf<typeof memberWalletContract.transactions>>;
+export type MemberRechargeListParams = NonNullable<QueryOf<typeof memberRechargeContract.list>>;
+export type CouponListParams = NonNullable<QueryOf<typeof couponContract.list>>;
+export type CouponRecordListParams = NonNullable<QueryOf<typeof couponContract.records>>;
+export type CheckinLogListParams = NonNullable<QueryOf<typeof memberCheckinContract.list>>;
 
-export interface MemberTransactionListParams {
-  page: number;
-  pageSize: number;
-  memberKeyword?: string;
-  type?: string;
-}
+/**
+ * 会员表单载荷：编辑走 update（手机号 / 邮箱 / 头像允许置 null 清空），
+ * 新增走 create（额外可填用户名与初始密码），同一表单服务两种场景。
+ */
+export type MemberFormValues = Partial<BodyOf<typeof memberContract.update>> & Pick<Partial<BodyOf<typeof memberContract.create>>, 'username' | 'password'>;
+export type MemberTagFormValues = Partial<BodyOf<typeof memberTagContract.create>>;
+export type MemberLevelFormValues = Partial<BodyOf<typeof memberLevelContract.create>>;
+export type CheckinRuleFormValues = Partial<BodyOf<typeof checkinRuleContract.create>>;
+export type CheckinMilestoneFormValues = Partial<BodyOf<typeof checkinMilestoneContract.create>>;
 
-export interface MemberRechargeListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  status?: string;
-  channel?: string;
-  dateStart?: string;
-  dateEnd?: string;
-}
+// ─── 会员（标准资源）────────────────────────────────────────────────────────
 
-export interface MemberLoginLogListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  status?: string;
-  dateStart?: string;
-  dateEnd?: string;
-}
+const memberResource = createResourceQueries(memberContract, {
+  onDeleted: (qc, ids) => {
+    for (const id of ids) qc.removeQueries({ queryKey: memberAdminKeys.memberOverview(id) });
+    invalidate(qc, [memberAdminKeys.levels, memberAdminKeys.stats, memberLookupKeys.optionsRoot]);
+  },
+});
 
-export interface CouponListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  status?: string;
-  type?: string;
-}
-
-export interface CouponRecordListParams {
-  page: number;
-  pageSize: number;
-  memberKeyword?: string;
-  couponId?: number;
-  status?: string;
-}
-
-export interface CheckinLogListParams {
-  page: number;
-  pageSize: number;
-  memberKeyword?: string;
-  dateStart?: string;
-  dateEnd?: string;
-}
-
-export interface MemberOverview {
-  member: Member;
-  points: MemberPointAccount;
-  wallet: MemberWallet;
-  recentPointTxs: MemberPointTransaction[];
-  recentWalletTxs: MemberWalletTransaction[];
-  recentLoginLogs: MemberLoginLog[];
-  activeCouponCount: number;
-  loginLogCount: number;
-  checkinTotal: number;
-  inviteCode: string | null;
-  inviter: { id: number; nickname: string } | null;
-  invitedCount: number;
-  mpFans: { id: number; nickname: string | null; openid: string }[];
-}
+const couponResource = createResourceQueries(couponContract, {
+  // 看板统计可用券数；领券记录随模板级联删除
+  onSaved: (qc) => invalidate(qc, [memberAdminKeys.stats]),
+  onDeleted: (qc) => invalidate(qc, [memberAdminKeys.couponRecords, memberAdminKeys.stats]),
+});
 
 export const memberAdminKeys = {
-  all: ['member-admin'] as const,
-  members: ['member-admin', 'members'] as const,
-  memberLists: ['member-admin', 'members', 'list'] as const,
-  memberList: (params: MemberListParams) => ['member-admin', 'members', 'list', params] as const,
-  memberOverview: (id: number | null | undefined) => ['member-admin', 'members', 'overview', id] as const,
-  levels: ['member-admin', 'levels'] as const,
-  memberTags: ['member-admin', 'member-tags'] as const,
-  points: ['member-admin', 'points'] as const,
-  pointLists: ['member-admin', 'points', 'list'] as const,
-  pointList: (params: MemberTransactionListParams) => ['member-admin', 'points', 'list', params] as const,
-  wallets: ['member-admin', 'wallets'] as const,
-  walletLists: ['member-admin', 'wallets', 'list'] as const,
-  walletList: (params: MemberTransactionListParams) => ['member-admin', 'wallets', 'list', params] as const,
-  recharges: ['member-admin', 'recharges'] as const,
-  rechargeLists: ['member-admin', 'recharges', 'list'] as const,
-  rechargeList: (params: MemberRechargeListParams) => ['member-admin', 'recharges', 'list', params] as const,
-  loginLogs: ['member-admin', 'login-logs'] as const,
-  loginLogLists: ['member-admin', 'login-logs', 'list'] as const,
-  loginLogList: (params: MemberLoginLogListParams) => ['member-admin', 'login-logs', 'list', params] as const,
-  stats: ['member-admin', 'stats'] as const,
-  statsOverview: ['member-admin', 'stats', 'overview'] as const,
-  statsCharts: ['member-admin', 'stats', 'charts'] as const,
-  coupons: ['member-admin', 'coupons'] as const,
-  couponLists: ['member-admin', 'coupons', 'list'] as const,
-  couponList: (params: CouponListParams) => ['member-admin', 'coupons', 'list', params] as const,
-  couponRecords: ['member-admin', 'coupon-records'] as const,
-  couponRecordLists: ['member-admin', 'coupon-records', 'list'] as const,
-  couponRecordList: (params: CouponRecordListParams) => ['member-admin', 'coupon-records', 'list', params] as const,
-  checkins: ['member-admin', 'checkins'] as const,
-  checkinRules: ['member-admin', 'checkins', 'rules'] as const,
-  checkinSettings: ['member-admin', 'checkins', 'settings'] as const,
-  checkinLogLists: ['member-admin', 'checkins', 'logs', 'list'] as const,
-  checkinLogList: (params: CheckinLogListParams) => ['member-admin', 'checkins', 'logs', 'list', params] as const,
-  checkinCalendar: (month: string) => ['member-admin', 'checkins', 'calendar', month] as const,
-  checkinDayMembers: (date: string) => ['member-admin', 'checkins', 'day-members', date] as const,
-  checkinMilestones: ['member-admin', 'checkins', 'milestones'] as const,
+  members: memberResource.keys.all,
+  memberLists: memberResource.keys.lists,
+  memberList: memberResource.keys.list,
+  memberOverviews: contractKey(memberContract.overview),
+  memberOverview: (id: number | null | undefined) => contractKey(memberContract.overview, { params: { id: id ?? 0 } }),
+  levels: contractKey(memberLevelContract.list),
+  levelDetail: (id: number | undefined) => contractKey(memberLevelContract.detail, { params: { id: id ?? 0 } }),
+  memberTags: contractKey(memberTagContract.list),
+  points: [resourceKeyOf(memberPointContract.basePath)] as const,
+  pointLists: contractKey(memberPointContract.transactions),
+  pointList: (params: MemberPointTransactionListParams) => contractKey(memberPointContract.transactions, { query: params }),
+  wallets: [resourceKeyOf(memberWalletContract.basePath)] as const,
+  walletLists: contractKey(memberWalletContract.transactions),
+  walletList: (params: MemberWalletTransactionListParams) => contractKey(memberWalletContract.transactions, { query: params }),
+  rechargeLists: contractKey(memberRechargeContract.list),
+  rechargeList: (params: MemberRechargeListParams) => contractKey(memberRechargeContract.list, { query: params }),
+  loginLogLists: contractKey(memberContract.loginLogs),
+  loginLogList: (params: MemberLoginLogListParams) => contractKey(memberContract.loginLogs, { query: params }),
+  stats: [resourceKeyOf(memberStatsContract.basePath)] as const,
+  statsOverview: contractKey(memberStatsContract.overview),
+  statsCharts: contractKey(memberStatsContract.charts),
+  coupons: couponResource.keys.all,
+  couponLists: couponResource.keys.lists,
+  couponList: couponResource.keys.list,
+  couponRecords: contractKey(couponContract.records),
+  couponRecordList: (params: CouponRecordListParams) => contractKey(couponContract.records, { query: params }),
+  couponByCode: (code: string) => contractKey(couponContract.byCode, { params: { code } }),
+  checkinRules: contractKey(checkinRuleContract.list),
+  checkinSettings: contractKey(checkinSettingsContract.get),
+  checkinMilestones: contractKey(checkinMilestoneContract.list),
+  checkinLogs: [resourceKeyOf(memberCheckinContract.basePath)] as const,
+  checkinLogLists: contractKey(memberCheckinContract.list),
+  checkinLogList: (params: CheckinLogListParams) => contractKey(memberCheckinContract.list, { query: params }),
+  checkinCalendar: (month: string) => contractKey(memberCheckinContract.calendar, { query: { month } }),
+  checkinDayMembers: (date: string) => [resourceKeyOf(memberCheckinContract.basePath), 'day-members', date] as const,
 };
 
-/** 精准失效：只失效受影响的资源段，避免全量 memberAdminKeys.all 造成跨模块缓存污染 */
+/** 精准失效：只失效受影响的资源段，避免全量失效造成跨模块缓存污染 */
 function invalidate(qc: QueryClient, keys: ReadonlyArray<readonly unknown[]>) {
   for (const key of keys) void qc.invalidateQueries({ queryKey: key });
 }
 
-export function useMemberList(params: MemberListParams) {
-  return useQuery({
-    queryKey: memberAdminKeys.memberList(params),
-    queryFn: () => request.get<PaginatedResponse<Member>>(`/api/members${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+/** 会员数据变动：列表 / 概览 / 下拉源（MemberSelect 等）一并回源 */
+function invalidateMembers(qc: QueryClient) {
+  invalidate(qc, [memberAdminKeys.memberLists, memberAdminKeys.memberOverviews, memberLookupKeys.optionsRoot]);
 }
 
-export function useMemberLevels() {
-  return useQuery({
-    queryKey: memberAdminKeys.levels,
-    queryFn: () => request.get<MemberLevel[]>('/api/member-levels').then(unwrap),
-  });
+/** 签到规则 / 设置 / 里程碑 / 记录 / 日历互相影响（规则决定奖励、记录决定日历），整体回源 */
+function invalidateCheckins(qc: QueryClient) {
+  invalidate(qc, [memberAdminKeys.checkinRules, memberAdminKeys.checkinSettings, memberAdminKeys.checkinMilestones, memberAdminKeys.checkinLogs]);
 }
 
-// ─── 会员标签 ─────────────────────────────────────────────────────────────────
-export function useMemberTags() {
-  return useQuery({
-    queryKey: memberAdminKeys.memberTags,
-    queryFn: () => request.get<MemberTag[]>('/api/member-tags').then(unwrap),
-  });
-}
+export const useMemberList = memberResource.useList;
+export const useMemberDetail = memberResource.useDetail;
+/** 单个走 DELETE /{id}；同时移除概览缓存，并回源等级会员数、看板与下拉源 */
+export const useDeleteMembers = memberResource.useDelete;
 
-export function useSaveMemberTag() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
-      (id ? request.put<MemberTag>(`/api/member-tags/${id}`, values) : request.post<MemberTag>('/api/member-tags', values)).then(unwrap),
-    onSuccess: () => invalidate(qc, [memberAdminKeys.memberTags, memberAdminKeys.members]),
-  });
-}
-
-export function useDeleteMemberTag() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/member-tags/${id}`).then(unwrap),
-    onSuccess: () => invalidate(qc, [memberAdminKeys.memberTags, memberAdminKeys.members]),
-  });
-}
-
-export function useSetMemberTags() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, tagIds }: { id: number; tagIds: number[] }) =>
-      request.put<Member>(`/api/members/${id}/tags`, { tagIds }).then(unwrap),
-    onSuccess: () => invalidate(qc, [memberAdminKeys.members, memberAdminKeys.memberTags]),
-  });
-}
-
-export function useBatchMemberTags() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: { ids: number[]; tagIds: number[] }) =>
-      request.put<null>('/api/members/batch-tags', values).then(unwrap),
-    onSuccess: () => invalidate(qc, [memberAdminKeys.members, memberAdminKeys.memberTags]),
-  });
-}
-
+/** 保存会员：等级列表含各等级会员数、看板含会员总量、下拉源展示昵称 / 等级，写后一并回源 */
 export function useSaveMember() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
-      (id ? request.put<Member>(`/api/members/${id}`, values) : request.post<Member>('/api/members', values)).then(unwrap),
-    onSuccess: () => {
-      // levels 含各等级会员数，stats 含会员总量；['members'] 为 MemberSelect 等下拉源（members-lookup.ts）
-      invalidate(qc, [memberAdminKeys.members, memberAdminKeys.levels, memberAdminKeys.stats, ['members']]);
+  return useMutation<Member, Error, { id?: number; values: MemberFormValues }>({
+    mutationFn: ({ id, values }) =>
+      id === undefined
+        ? api(memberContract.create, { body: values as BodyOf<typeof memberContract.create> })
+        : api(memberContract.update, { params: { id }, body: values }),
+    onSuccess: (saved) => {
+      qc.setQueryData(memberResource.keys.detail(saved.id), saved);
+      invalidateMembers(qc);
+      invalidate(qc, [memberAdminKeys.levels, memberAdminKeys.stats]);
     },
   });
 }
 
-export function useDeleteMember() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/members/${id}`).then(unwrap),
-    onSuccess: () => {
-      invalidate(qc, [memberAdminKeys.members, memberAdminKeys.levels, memberAdminKeys.stats, ['members']]);
-    },
-  });
+export function useMemberOverview(id: number | null | undefined, enabled = true) {
+  return useQuery(apiQueryOptions(memberContract.overview, { params: { id: id ?? 0 } }, { enabled: enabled && !!id }));
 }
 
+/** 密码不出现在任何已挂载的查询里，但详情 / 概览中的 hasPassword 需要回源 */
 export function useResetMemberPassword() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id: number; values: Record<string, unknown> }) =>
-      request.post<null>(`/api/members/${id}/reset-password`, values).then(unwrap),
-    onSuccess: () => {
-      // 详情/概览中的 hasPassword 展示需要回源
-      invalidate(qc, [memberAdminKeys.members]);
+  return useApiMutation(memberContract.resetPassword, {
+    invalidate: (qc, _output, { params }) => {
+      void qc.invalidateQueries({ queryKey: memberResource.keys.detail(params.id) });
+      invalidateMembers(qc);
     },
   });
 }
 
+/** 成长值变动会自动重定级：等级会员数、看板与下拉源的等级名都需回源 */
 export function useAdjustMemberGrowth() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id: number; values: { delta: number; remark?: string } }) =>
-      request.post<Member>(`/api/members/${id}/growth`, values).then(unwrap),
-    onSuccess: () => {
-      invalidate(qc, [memberAdminKeys.members, memberAdminKeys.levels, memberAdminKeys.stats, ['members']]);
+  return useApiMutation(memberContract.adjustGrowth, {
+    invalidate: (qc, saved) => {
+      qc.setQueryData(memberResource.keys.detail(saved.id), saved);
+      invalidateMembers(qc);
+      invalidate(qc, [memberAdminKeys.levels, memberAdminKeys.stats]);
     },
   });
 }
 
 export function useBatchMemberStatus() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: { ids: number[]; status: string }) => request.put<null>('/api/members/batch-status', values).then(unwrap),
-    onSuccess: () => invalidate(qc, [memberAdminKeys.members, memberAdminKeys.stats]),
+  return useApiMutation(memberContract.batchStatus, {
+    invalidate: (qc, _output, { body }) => {
+      for (const id of body.ids) void qc.invalidateQueries({ queryKey: memberResource.keys.detail(id) });
+      invalidateMembers(qc);
+      invalidate(qc, [memberAdminKeys.stats]);
+    },
   });
 }
 
 export function useBatchMemberLevel() {
+  return useApiMutation(memberContract.batchLevel, {
+    invalidate: (qc, _output, { body }) => {
+      for (const id of body.ids) void qc.invalidateQueries({ queryKey: memberResource.keys.detail(id) });
+      invalidateMembers(qc);
+      invalidate(qc, [memberAdminKeys.levels, memberAdminKeys.stats]);
+    },
+  });
+}
+
+// ─── 会员标签 ────────────────────────────────────────────────────────────────
+
+export function useMemberTags() {
+  return useApiQuery(memberTagContract.list);
+}
+
+/** 标签列表含绑定会员数，会员列表展示标签名与颜色，改名 / 换色后一并回源 */
+export function useSaveMemberTag() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: { ids: number[]; levelId: number | null }) => request.put<null>('/api/members/batch-level', values).then(unwrap),
-    onSuccess: () => invalidate(qc, [memberAdminKeys.members, memberAdminKeys.levels, memberAdminKeys.stats]),
+  return useMutation<MemberTag, Error, { id?: number; values: MemberTagFormValues }>({
+    mutationFn: ({ id, values }) =>
+      id === undefined
+        ? api(memberTagContract.create, { body: values as BodyOf<typeof memberTagContract.create> })
+        : api(memberTagContract.update, { params: { id }, body: values }),
+    onSuccess: () => {
+      invalidate(qc, [memberAdminKeys.memberTags]);
+      invalidateMembers(qc);
+    },
   });
 }
 
-export function useMemberOverview(id: number | null | undefined, enabled = true) {
-  return useQuery({
-    queryKey: memberAdminKeys.memberOverview(id),
-    queryFn: () => request.get<MemberOverview>(`/api/members/${id}/overview`).then(unwrap),
-    enabled: enabled && !!id,
+/** 删除标签级联清除会员绑定，会员列表 / 概览的标签列需回源 */
+export function useDeleteMemberTag() {
+  return useApiMutation(memberTagContract.remove, {
+    invalidate: (qc) => {
+      invalidate(qc, [memberAdminKeys.memberTags]);
+      invalidateMembers(qc);
+    },
   });
 }
 
+export function useSetMemberTags() {
+  return useApiMutation(memberContract.setTags, {
+    invalidate: (qc, saved) => {
+      qc.setQueryData(memberResource.keys.detail(saved.id), saved);
+      invalidateMembers(qc);
+      invalidate(qc, [memberAdminKeys.memberTags]);
+    },
+  });
+}
+
+export function useBatchMemberTags() {
+  return useApiMutation(memberContract.batchTags, {
+    invalidate: (qc, _output, { body }) => {
+      for (const id of body.ids) void qc.invalidateQueries({ queryKey: memberResource.keys.detail(id) });
+      invalidateMembers(qc);
+      invalidate(qc, [memberAdminKeys.memberTags]);
+    },
+  });
+}
+
+// ─── 会员等级 ────────────────────────────────────────────────────────────────
+
+export function useMemberLevels() {
+  return useApiQuery(memberLevelContract.list);
+}
+
+/** 等级改名 / 改阈值影响会员列表的等级列与看板等级分布 */
 export function useSaveMemberLevel() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
-      (id ? request.put<MemberLevel>(`/api/member-levels/${id}`, values) : request.post<MemberLevel>('/api/member-levels', values)).then(unwrap),
-    onSuccess: () => invalidate(qc, [memberAdminKeys.levels, memberAdminKeys.members, memberAdminKeys.stats]),
+  return useMutation<MemberLevel, Error, { id?: number; values: MemberLevelFormValues }>({
+    mutationFn: ({ id, values }) =>
+      id === undefined
+        ? api(memberLevelContract.create, { body: values as BodyOf<typeof memberLevelContract.create> })
+        : api(memberLevelContract.update, { params: { id }, body: values }),
+    onSuccess: (saved) => {
+      qc.setQueryData(memberAdminKeys.levelDetail(saved.id), saved);
+      invalidate(qc, [memberAdminKeys.levels, memberAdminKeys.stats]);
+      invalidateMembers(qc);
+    },
   });
 }
 
 export function useDeleteMemberLevel() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/member-levels/${id}`).then(unwrap),
-    onSuccess: () => invalidate(qc, [memberAdminKeys.levels, memberAdminKeys.members, memberAdminKeys.stats]),
+  return useApiMutation(memberLevelContract.remove, {
+    invalidate: (qc, _output, { params }) => {
+      qc.removeQueries({ queryKey: memberAdminKeys.levelDetail(params.id) });
+      invalidate(qc, [memberAdminKeys.levels, memberAdminKeys.stats]);
+      invalidateMembers(qc);
+    },
   });
 }
 
-export function useMemberPointTransactions(params: MemberTransactionListParams) {
-  return useQuery({
-    queryKey: memberAdminKeys.pointList(params),
-    queryFn: () =>
-      request.get<PaginatedResponse<MemberPointTransaction>>(`/api/member-points/transactions${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+// ─── 积分 / 钱包 ─────────────────────────────────────────────────────────────
+
+export function useMemberPointTransactions(params: MemberPointTransactionListParams) {
+  return useQuery(apiQueryOptions(memberPointContract.transactions, { query: params }, { placeholderData: keepPreviousData }));
 }
 
+/** 会员列表的积分余额与概览的积分账户、看板积分总量随流水变化 */
 export function useAdjustMemberPoints() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: Record<string, unknown>) => request.post<null>('/api/member-points/adjust', values).then(unwrap),
-    // members 段含列表积分余额与详情概览
-    onSuccess: () => invalidate(qc, [memberAdminKeys.points, memberAdminKeys.members, memberAdminKeys.stats]),
+  return useApiMutation(memberPointContract.adjust, {
+    invalidate: (qc) => {
+      invalidate(qc, [memberAdminKeys.points, memberAdminKeys.stats]);
+      invalidateMembers(qc);
+    },
   });
 }
 
-export function useMemberWalletTransactions(params: MemberTransactionListParams) {
-  return useQuery({
-    queryKey: memberAdminKeys.walletList(params),
-    queryFn: () =>
-      request.get<PaginatedResponse<MemberWalletTransaction>>(`/api/member-wallets/transactions${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+export function useMemberWalletTransactions(params: MemberWalletTransactionListParams) {
+  return useQuery(apiQueryOptions(memberWalletContract.transactions, { query: params }, { placeholderData: keepPreviousData }));
 }
 
 export function useAdjustMemberWallet() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: { memberId: number; amount: number; remark?: string }) =>
-      request.post<null>('/api/member-wallets/adjust', values).then(unwrap),
-    onSuccess: () => invalidate(qc, [memberAdminKeys.wallets, memberAdminKeys.members, memberAdminKeys.stats]),
+  return useApiMutation(memberWalletContract.adjust, {
+    invalidate: (qc) => {
+      invalidate(qc, [memberAdminKeys.wallets, memberAdminKeys.stats]);
+      invalidateMembers(qc);
+    },
   });
 }
 
 export function useRefundMemberWallet() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: { memberId: number; amount: number; remark?: string; bizId?: string }) =>
-      request.post<null>('/api/member-wallets/refund', values).then(unwrap),
-    onSuccess: () => invalidate(qc, [memberAdminKeys.wallets, memberAdminKeys.members, memberAdminKeys.stats]),
+  return useApiMutation(memberWalletContract.refund, {
+    invalidate: (qc) => {
+      invalidate(qc, [memberAdminKeys.wallets, memberAdminKeys.stats]);
+      invalidateMembers(qc);
+    },
   });
 }
+
+// ─── 充值记录 / 登录日志 / 看板 ─────────────────────────────────────────────
 
 export function useMemberRechargeList(params: MemberRechargeListParams) {
-  return useQuery({
-    queryKey: memberAdminKeys.rechargeList(params),
-    queryFn: () => request.get<PaginatedResponse<MemberRecharge>>(`/api/member-recharges${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
-}
-
-export function useMemberStatsOverview() {
-  return useQuery({
-    queryKey: memberAdminKeys.statsOverview,
-    queryFn: () => request.get<MemberStatsOverview>('/api/member-stats/overview').then(unwrap),
-  });
-}
-
-export function useMemberStatsCharts() {
-  return useQuery({
-    queryKey: memberAdminKeys.statsCharts,
-    queryFn: () => request.get<MemberStatsCharts>('/api/member-stats/charts').then(unwrap),
-  });
+  return useQuery(apiQueryOptions(memberRechargeContract.list, { query: params }, { placeholderData: keepPreviousData }));
 }
 
 export function useMemberLoginLogList(params: MemberLoginLogListParams) {
-  return useQuery({
-    queryKey: memberAdminKeys.loginLogList(params),
-    queryFn: () => request.get<PaginatedResponse<MemberLoginLog>>(`/api/members/login-logs${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+  return useQuery(apiQueryOptions(memberContract.loginLogs, { query: params }, { placeholderData: keepPreviousData }));
 }
 
-export function useCouponList(params: CouponListParams) {
-  return useQuery({
-    queryKey: memberAdminKeys.couponList(params),
-    queryFn: () => request.get<PaginatedResponse<Coupon>>(`/api/coupons${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+export function useMemberStatsOverview() {
+  return useApiQuery(memberStatsContract.overview);
 }
 
-export function useSaveCoupon() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
-      (id ? request.put<Coupon>(`/api/coupons/${id}`, values) : request.post<Coupon>('/api/coupons', values)).then(unwrap),
-    onSuccess: () => invalidate(qc, [memberAdminKeys.coupons, memberAdminKeys.stats]),
-  });
+export function useMemberStatsCharts() {
+  return useApiQuery(memberStatsContract.charts);
 }
 
-export function useDeleteCoupon() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/coupons/${id}`).then(unwrap),
-    onSuccess: () => invalidate(qc, [memberAdminKeys.coupons, memberAdminKeys.couponRecords, memberAdminKeys.stats]),
-  });
-}
+// ─── 优惠券 ──────────────────────────────────────────────────────────────────
 
+export const useCouponList = couponResource.useList;
+export const useCouponDetail = couponResource.useDetail;
+export const useSaveCoupon = couponResource.useSave;
+/** 单个走 DELETE /{id}；模板删除级联清除券码，领券记录与看板一并回源 */
+export const useDeleteCoupons = couponResource.useDelete;
+
+/** 发券改变模板已发数量、会员概览持券数与看板可用券数 */
 export function useIssueCoupon() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, memberId }: { id: number; memberId: number }) =>
-      request.post<null>(`/api/coupons/${id}/issue`, { memberId }).then(unwrap),
-    // members 段覆盖详情概览的持券数
-    onSuccess: () => invalidate(qc, [memberAdminKeys.coupons, memberAdminKeys.couponRecords, memberAdminKeys.members, memberAdminKeys.stats]),
+  return useApiMutation(couponContract.issue, {
+    invalidate: (qc, _output, { params }) => {
+      void qc.invalidateQueries({ queryKey: couponResource.keys.detail(params.id) });
+      invalidate(qc, [memberAdminKeys.couponLists, memberAdminKeys.couponRecords, memberAdminKeys.memberOverviews, memberAdminKeys.stats]);
+    },
   });
 }
 
 export function useCouponRecordList(params: CouponRecordListParams) {
-  return useQuery({
-    queryKey: memberAdminKeys.couponRecordList(params),
-    queryFn: () => request.get<PaginatedResponse<MemberCoupon>>(`/api/coupons/records${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+  return useQuery(apiQueryOptions(couponContract.records, { query: params }, { placeholderData: keepPreviousData }));
 }
 
 export function useRevokeCouponRecord() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.post<null>(`/api/coupons/records/${id}/revoke`, {}).then(unwrap),
-    onSuccess: () => invalidate(qc, [memberAdminKeys.couponRecords, memberAdminKeys.members, memberAdminKeys.stats]),
+  return useApiMutation(couponContract.revokeRecord, {
+    invalidate: (qc) => invalidate(qc, [memberAdminKeys.couponRecords, memberAdminKeys.memberOverviews, memberAdminKeys.stats]),
   });
 }
 
 export function useCouponByCode(code: string, enabled: boolean) {
-  return useQuery({
-    queryKey: ['member-admin', 'coupon-code', code] as const,
-    queryFn: () => request.get<MemberCoupon>(`/api/coupons/code/${encodeURIComponent(code)}`).then(unwrap),
-    enabled: enabled && code.length >= 4,
-    retry: false,
-  });
+  return useQuery(apiQueryOptions(couponContract.byCode, { params: { code } }, { enabled: enabled && code.length >= 4, retry: false }));
 }
 
 export function useRedeemCoupon() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: { code: string; remark?: string }) =>
-      request.post<MemberCoupon>('/api/coupons/redeem', values).then(unwrap),
-    onSuccess: () => invalidate(qc, [memberAdminKeys.couponRecords, memberAdminKeys.members, memberAdminKeys.stats]),
+  return useApiMutation(couponContract.redeem, {
+    invalidate: (qc, redeemed) => {
+      qc.setQueryData(memberAdminKeys.couponByCode(redeemed.code), redeemed);
+      invalidate(qc, [memberAdminKeys.couponRecords, memberAdminKeys.memberOverviews, memberAdminKeys.stats]);
+    },
   });
 }
 
+// ─── 签到 ────────────────────────────────────────────────────────────────────
+
 export function useCheckinRules() {
-  return useQuery({
-    queryKey: memberAdminKeys.checkinRules,
-    queryFn: () => request.get<CheckinRule[]>('/api/checkin-rules').then(unwrap),
-  });
+  return useApiQuery(checkinRuleContract.list);
 }
 
 export function useCheckinSettings(enabled = true) {
-  return useQuery({
-    queryKey: memberAdminKeys.checkinSettings,
-    queryFn: () => request.get<CheckinSettings>('/api/checkin-settings').then(unwrap),
-    enabled,
-  });
+  return useApiQuery(checkinSettingsContract.get, { enabled });
 }
 
 export function useSaveCheckinSettings() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: Record<string, unknown>) => request.put<CheckinSettings>('/api/checkin-settings', values).then(unwrap),
-    onSuccess: () => invalidate(qc, [memberAdminKeys.checkins]),
+  return useApiMutation(checkinSettingsContract.update, {
+    invalidate: (qc, saved) => {
+      qc.setQueryData(memberAdminKeys.checkinSettings, saved);
+      invalidateCheckins(qc);
+    },
   });
 }
 
 export function useSaveCheckinRule() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
-      (id ? request.put<CheckinRule>(`/api/checkin-rules/${id}`, values) : request.post<CheckinRule>('/api/checkin-rules', values)).then(unwrap),
-    onSuccess: () => invalidate(qc, [memberAdminKeys.checkins]),
+  return useMutation<CheckinRule, Error, { id?: number; values: CheckinRuleFormValues }>({
+    mutationFn: ({ id, values }) =>
+      id === undefined
+        ? api(checkinRuleContract.create, { body: values as BodyOf<typeof checkinRuleContract.create> })
+        : api(checkinRuleContract.update, { params: { id }, body: values }),
+    onSuccess: () => invalidateCheckins(qc),
   });
 }
 
 export function useDeleteCheckinRule() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/checkin-rules/${id}`).then(unwrap),
-    onSuccess: () => invalidate(qc, [memberAdminKeys.checkins]),
-  });
+  return useApiMutation(checkinRuleContract.remove, { invalidate: invalidateCheckins });
 }
 
 export function useCheckinLogList(params: CheckinLogListParams) {
-  return useQuery({
-    queryKey: memberAdminKeys.checkinLogList(params),
-    queryFn: () => request.get<PaginatedResponse<MemberCheckin>>(`/api/member-checkins${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+  return useQuery(apiQueryOptions(memberCheckinContract.list, { query: params }, { placeholderData: keepPreviousData }));
 }
 
 export function useCheckinCalendar(month: string, enabled = true) {
-  return useQuery({
-    queryKey: memberAdminKeys.checkinCalendar(month),
-    queryFn: () => request.get<MemberCheckinCalendarDay[]>(`/api/member-checkins/calendar?month=${month}`).then(unwrap),
-    placeholderData: keepPreviousData,
-    enabled,
-  });
+  return useQuery(apiQueryOptions(memberCheckinContract.calendar, { query: { month } }, { placeholderData: keepPreviousData, enabled }));
 }
 
 /** 日历悬浮层分页大小 */
@@ -476,9 +406,7 @@ export function useCheckinDayMembersInfinite(date: string, enabled = true) {
   return useInfiniteQuery({
     queryKey: memberAdminKeys.checkinDayMembers(date),
     queryFn: ({ pageParam }) =>
-      request
-        .get<PaginatedResponse<MemberCheckin>>(`/api/member-checkins${toQueryString({ page: pageParam, pageSize: CHECKIN_DAY_PAGE_SIZE, dateStart: date, dateEnd: date })}`)
-        .then(unwrap),
+      api(memberCheckinContract.list, { query: { page: pageParam, pageSize: CHECKIN_DAY_PAGE_SIZE, dateStart: date, dateEnd: date } }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>
       (lastPage.page * lastPage.pageSize < lastPage.total ? lastPage.page + 1 : undefined),
@@ -486,39 +414,32 @@ export function useCheckinDayMembersInfinite(date: string, enabled = true) {
   });
 }
 
+/** 补签联动签到记录、积分流水、会员概览与看板 */
 export function useMakeupCheckin() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ memberId, date, reason }: { memberId: number; date: string; reason: string }) =>
-      request.post<null>(`/api/members/${memberId}/checkin/makeup`, { date, reason }).then(unwrap),
-    // 补签联动签到记录、积分流水、会员概览与看板
-    onSuccess: () => invalidate(qc, [memberAdminKeys.checkins, memberAdminKeys.points, memberAdminKeys.members, memberAdminKeys.stats]),
+  return useApiMutation(memberContract.makeupCheckin, {
+    invalidate: (qc) => {
+      invalidateCheckins(qc);
+      invalidate(qc, [memberAdminKeys.points, memberAdminKeys.stats]);
+      invalidateMembers(qc);
+    },
   });
 }
 
 export function useCheckinMilestones() {
-  return useQuery({
-    queryKey: memberAdminKeys.checkinMilestones,
-    queryFn: () => request.get<CheckinMilestone[]>('/api/checkin-milestones').then(unwrap),
-  });
+  return useApiQuery(checkinMilestoneContract.list);
 }
 
 export function useSaveCheckinMilestone() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
-      (id
-        ? request.put<CheckinMilestone>(`/api/checkin-milestones/${id}`, values)
-        : request.post<CheckinMilestone>('/api/checkin-milestones', values)
-      ).then(unwrap),
-    onSuccess: () => invalidate(qc, [memberAdminKeys.checkins]),
+  return useMutation<CheckinMilestone, Error, { id?: number; values: CheckinMilestoneFormValues }>({
+    mutationFn: ({ id, values }) =>
+      id === undefined
+        ? api(checkinMilestoneContract.create, { body: values as BodyOf<typeof checkinMilestoneContract.create> })
+        : api(checkinMilestoneContract.update, { params: { id }, body: values }),
+    onSuccess: () => invalidateCheckins(qc),
   });
 }
 
 export function useDeleteCheckinMilestone() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/checkin-milestones/${id}`).then(unwrap),
-    onSuccess: () => invalidate(qc, [memberAdminKeys.checkins]),
-  });
+  return useApiMutation(checkinMilestoneContract.remove, { invalidate: invalidateCheckins });
 }

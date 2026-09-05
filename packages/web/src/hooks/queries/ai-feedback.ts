@@ -1,71 +1,42 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { AiFeedbackItem, AiFeedbackStatus, AiMessage } from '@zenith/shared/ai';
-import type { PaginatedResponse } from '@zenith/shared/core';
+import { keepPreviousData } from '@tanstack/react-query';
+import { aiConversationContract } from '@zenith/shared/ai';
+import type { BodyOf, QueryOf } from '@zenith/shared/core';
+import { contractKey, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
 
-export interface AiFeedbackListParams {
-  page: number;
-  pageSize: number;
-  feedback?: string;
-  status?: string;
-  model?: string;
-  startDate?: string;
-  endDate?: string;
-}
+export type AiFeedbackListParams = NonNullable<QueryOf<typeof aiConversationContract.feedbackList>>;
 
-export interface AiFeedbackHandleValues {
-  status: AiFeedbackStatus;
-  remark: string | null;
-}
+export type AiFeedbackFilterParams = NonNullable<QueryOf<typeof aiConversationContract.feedbackExport>>;
 
-export interface AiFeedbackContext {
-  conversationId: number;
-  conversationTitle: string | null;
-  targetMsgId: number;
-  /** 会话属主（发送人） */
-  user: { id: number; username: string; nickname: string | null; avatar: string | null } | null;
-  messages: AiMessage[];
-}
+export type AiFeedbackHandleValues = BodyOf<typeof aiConversationContract.handleFeedback>;
 
 export const aiFeedbackKeys = {
-  all: ['ai-feedback'] as const,
-  lists: ['ai-feedback', 'list'] as const,
-  list: (params: AiFeedbackListParams) => ['ai-feedback', 'list', params] as const,
-  context: (msgId: number | null) => ['ai-feedback', 'context', msgId] as const,
+  lists: contractKey(aiConversationContract.feedbackList),
+  list: (params: AiFeedbackListParams) => contractKey(aiConversationContract.feedbackList, { query: params }),
+  contexts: contractKey(aiConversationContract.feedbackContext),
+  context: (msgId: number | null) => contractKey(aiConversationContract.feedbackContext, { params: { msgId: msgId ?? 0 } }),
 };
 
 export function useAiFeedbackList(params: AiFeedbackListParams) {
-  return useQuery({
-    queryKey: aiFeedbackKeys.list(params),
-    queryFn: () =>
-      request
-        .get<PaginatedResponse<AiFeedbackItem>>(`/api/ai/conversations/admin/feedback${toQueryString(params)}`)
-        .then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+  return useApiQuery(aiConversationContract.feedbackList, { query: params }, { placeholderData: keepPreviousData });
 }
 
 /** 反馈消息的会话上下文（回放弹窗） */
 export function useAiFeedbackContext(msgId: number | null) {
-  return useQuery({
-    queryKey: aiFeedbackKeys.context(msgId),
-    queryFn: () =>
-      request.get<AiFeedbackContext>(`/api/ai/conversations/admin/feedback/${msgId}/context`).then(unwrap),
-    enabled: msgId !== null,
-  });
+  return useApiQuery(aiConversationContract.feedbackContext, { params: { msgId: msgId ?? 0 } }, { enabled: msgId !== null });
 }
 
+/** 处理状态与备注同时出现在列表行与上下文回放里，两者一并失效 */
 export function useHandleAiFeedback() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id: number; values: AiFeedbackHandleValues }) =>
-      request.put<null>(`/api/ai/conversations/admin/feedback/${id}`, values).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: aiFeedbackKeys.all }),
+  return useApiMutation(aiConversationContract.handleFeedback, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: aiFeedbackKeys.lists });
+      void qc.invalidateQueries({ queryKey: aiFeedbackKeys.contexts });
+    },
   });
 }
 
 /** 导出反馈列表 CSV（携带当前筛选） */
-export function downloadAiFeedbackCsv(params: Omit<AiFeedbackListParams, 'page' | 'pageSize'>) {
-  return request.download(`/api/ai/conversations/admin/feedback/export${toQueryString(params)}`, 'ai-feedback.csv');
+export function downloadAiFeedbackCsv(params: AiFeedbackFilterParams) {
+  return request.download(urlOf(aiConversationContract.feedbackExport, { query: params }), 'ai-feedback.csv');
 }

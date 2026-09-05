@@ -1,7 +1,8 @@
 import { Tag } from '@douyinfe/semi-ui';
 import { formatBytes } from '@zenith/shared/core';
 import type { ManagedFile } from '@zenith/shared/platform';
-import { DRIVE_ROLE_RANK, type DriveNode, type DriveRole, type DriveShareLink, type DriveShareLinkState, type DriveSpaceType } from '@zenith/shared/drive';
+import { DRIVE_ROLE_RANK, driveNodeContract, type DriveNode, type DriveRole, type DriveShareLink, type DriveShareLinkState, type DriveSpaceType } from '@zenith/shared/drive';
+import { urlOf } from '@/lib/contract-query';
 
 export const SHARE_STATE_LABELS: Record<DriveShareLinkState, string> = {
   active: '有效', expired: '已过期', exhausted: '次数用尽', disabled: '已停用', revoked: '已撤销',
@@ -47,7 +48,7 @@ export function nodeToManagedFile(node: DriveNode): ManagedFile {
 
 /** 下载地址：附件语义（触发服务端 downloader 校验与 attachment 头） */
 export function nodeDownloadUrl(node: Pick<DriveNode, 'id'>): string {
-  return `/api/drive/nodes/${node.id}/content?download=true`;
+  return urlOf(driveNodeContract.content, { params: { id: node.id }, query: { download: true } });
 }
 
 export const SPACE_TYPE_ICON: Record<DriveSpaceType, string> = {

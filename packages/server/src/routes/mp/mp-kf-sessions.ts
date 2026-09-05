@@ -1,15 +1,9 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { mpKfSessionContract } from '@zenith/shared/mp';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
-import {
-  PaginationQuery, jsonContent, validationHook, commonErrorResponses,
-  ok, okPaginated, IdParam, okBody,
-} from '../../lib/openapi-schemas';
-import { transferMpKfSessionSchema, updateMpKfRoutingConfigSchema } from '@zenith/shared/mp';
-import { acceptMpKfSessionSchema, closeMpKfSessionSchema, replyMpKfSessionSchema, rateMpKfSessionSchema } from '@zenith/shared/platform';
-import {
-  MpKfSessionDTO, MpKfSessionDetailDTO, MpKfRoutingConfigDTO, MpKfSessionStatsDTO, MpKfSessionReportDTO,
-} from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   listMpKfSessions, getMpKfSessionDetail, getMpKfSessionStats,
   acceptMpKfSession, transferMpKfSession, closeMpKfSession, replyMpKfSession,
@@ -19,56 +13,25 @@ import {
 
 const mpKfSessionRouter = new OpenAPIHono({ defaultHook: validationHook });
 
-const accountIdQuery = z.object({ accountId: z.coerce.number().int().positive() });
+const read = [authMiddleware, guard({ permission: 'mp:kf:session:list' })] as const;
 
-const listRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/', tags: ['公众号多客服会话'], summary: '会话列表（工作台）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'mp:kf:session:list' })] as const,
-    request: {
-      query: PaginationQuery.extend({
-        accountId: z.coerce.number().int().positive(),
-        status: z.enum(['waiting', 'active', 'closed']).optional(),
-        kfId: z.coerce.number().int().positive().optional(),
-        keyword: z.string().optional(),
-      }),
-    },
-    responses: { ...commonErrorResponses, ...okPaginated(MpKfSessionDTO, '会话列表') },
-  }),
+const listRoute = defineContractRoute(mpKfSessionContract.list, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await listMpKfSessions(c.req.valid('query'))), 200),
 });
 
-const statsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/stats', tags: ['公众号多客服会话'], summary: '会话概览统计',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'mp:kf:session:list' })] as const,
-    request: { query: accountIdQuery },
-    responses: { ...commonErrorResponses, ...ok(MpKfSessionStatsDTO, '会话概览') },
-  }),
+const statsRoute = defineContractRoute(mpKfSessionContract.stats, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await getMpKfSessionStats(c.req.valid('query').accountId)), 200),
 });
 
-const getConfigRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/config', tags: ['公众号多客服会话'], summary: '获取路由治理配置',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'mp:kf:session:list' })] as const,
-    request: { query: accountIdQuery },
-    responses: { ...commonErrorResponses, ...ok(MpKfRoutingConfigDTO, '路由配置') },
-  }),
+const getConfigRoute = defineContractRoute(mpKfSessionContract.config, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await getMpKfRoutingConfig(c.req.valid('query').accountId)), 200),
 });
 
-const updateConfigRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/config', tags: ['公众号多客服会话'], summary: '保存路由治理配置',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'mp:kf:session:config', audit: { description: '保存多客服路由配置', module: '公众号多客服会话' } })] as const,
-    request: { query: accountIdQuery, body: { content: jsonContent(updateMpKfRoutingConfigSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(MpKfRoutingConfigDTO, '保存成功') },
-  }),
+const updateConfigRoute = defineContractRoute(mpKfSessionContract.updateConfig, {
+  middleware: [authMiddleware, guard({ permission: 'mp:kf:session:config', audit: { description: '保存多客服路由配置', module: '公众号多客服会话' } })],
   handler: async (c) => {
     const { accountId } = c.req.valid('query');
     setAuditBeforeData(c, await getMpKfRoutingConfigBeforeAudit(accountId));
@@ -76,25 +39,13 @@ const updateConfigRoute = defineOpenAPIRoute({
   },
 });
 
-const detailRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/{id}', tags: ['公众号多客服会话'], summary: '会话详情（含消息与事件时间线）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'mp:kf:session:list' })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...ok(MpKfSessionDetailDTO, '会话详情') },
-  }),
+const detailRoute = defineContractRoute(mpKfSessionContract.detail, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await getMpKfSessionDetail(c.req.valid('param').id)), 200),
 });
 
-const acceptRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/{id}/accept', tags: ['公众号多客服会话'], summary: '接入会话',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'mp:kf:session:accept', audit: { description: '接入会话', module: '公众号多客服会话' } })] as const,
-    request: { params: IdParam, body: { content: jsonContent(acceptMpKfSessionSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(MpKfSessionDTO, '接入成功') },
-  }),
+const acceptRoute = defineContractRoute(mpKfSessionContract.accept, {
+  middleware: [authMiddleware, guard({ permission: 'mp:kf:session:accept', audit: { description: '接入会话', module: '公众号多客服会话' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const before = await getMpKfSessionBeforeAudit(id);
@@ -103,14 +54,8 @@ const acceptRoute = defineOpenAPIRoute({
   },
 });
 
-const transferRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/{id}/transfer', tags: ['公众号多客服会话'], summary: '转接会话',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'mp:kf:session:transfer', audit: { description: '转接会话', module: '公众号多客服会话' } })] as const,
-    request: { params: IdParam, body: { content: jsonContent(transferMpKfSessionSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(MpKfSessionDTO, '转接成功') },
-  }),
+const transferRoute = defineContractRoute(mpKfSessionContract.transfer, {
+  middleware: [authMiddleware, guard({ permission: 'mp:kf:session:transfer', audit: { description: '转接会话', module: '公众号多客服会话' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const before = await getMpKfSessionBeforeAudit(id);
@@ -119,14 +64,8 @@ const transferRoute = defineOpenAPIRoute({
   },
 });
 
-const closeRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/{id}/close', tags: ['公众号多客服会话'], summary: '结束会话',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'mp:kf:session:close', audit: { description: '结束会话', module: '公众号多客服会话' } })] as const,
-    request: { params: IdParam, body: { content: jsonContent(closeMpKfSessionSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(MpKfSessionDTO, '已结束') },
-  }),
+const closeRoute = defineContractRoute(mpKfSessionContract.close, {
+  middleware: [authMiddleware, guard({ permission: 'mp:kf:session:close', audit: { description: '结束会话', module: '公众号多客服会话' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const before = await getMpKfSessionBeforeAudit(id);
@@ -135,14 +74,8 @@ const closeRoute = defineOpenAPIRoute({
   },
 });
 
-const replyRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/{id}/reply', tags: ['公众号多客服会话'], summary: '会话内回复粉丝',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'mp:kf:session:reply', audit: { description: '会话回复', module: '公众号多客服会话' } })] as const,
-    request: { params: IdParam, body: { content: jsonContent(replyMpKfSessionSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(MpKfSessionDTO, '已发送') },
-  }),
+const replyRoute = defineContractRoute(mpKfSessionContract.reply, {
+  middleware: [authMiddleware, guard({ permission: 'mp:kf:session:reply', audit: { description: '会话回复', module: '公众号多客服会话' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const before = await getMpKfSessionBeforeAudit(id);
@@ -151,25 +84,16 @@ const replyRoute = defineOpenAPIRoute({
   },
 });
 
-const reportRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/report', tags: ['公众号多客服会话'], summary: '会话数据报表（近 N 天）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'mp:kf:session:list' })] as const,
-    request: { query: accountIdQuery.extend({ days: z.coerce.number().int().min(1).max(31).default(7) }) },
-    responses: { ...commonErrorResponses, ...ok(z.array(MpKfSessionReportDTO), '会话报表') },
-  }),
-  handler: async (c) => { const q = c.req.valid('query'); return c.json(okBody(await getMpKfSessionReport(q.accountId, q.days)), 200); },
+const reportRoute = defineContractRoute(mpKfSessionContract.report, {
+  middleware: read,
+  handler: async (c) => {
+    const q = c.req.valid('query');
+    return c.json(okBody(await getMpKfSessionReport(q.accountId, q.days)), 200);
+  },
 });
 
-const rateRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/{id}/rate', tags: ['公众号多客服会话'], summary: '记录会话满意度',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'mp:kf:session:close', audit: { description: '会话满意度评分', module: '公众号多客服会话' } })] as const,
-    request: { params: IdParam, body: { content: jsonContent(rateMpKfSessionSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(MpKfSessionDTO, '已记录') },
-  }),
+const rateRoute = defineContractRoute(mpKfSessionContract.rate, {
+  middleware: [authMiddleware, guard({ permission: 'mp:kf:session:close', audit: { description: '会话满意度评分', module: '公众号多客服会话' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const b = c.req.valid('json');

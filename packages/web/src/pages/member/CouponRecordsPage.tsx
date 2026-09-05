@@ -3,7 +3,8 @@ import { Button, Descriptions, Input, InputNumber, Toast, Tag } from '@douyinfe/
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ScanLine } from 'lucide-react';
 import type { MemberCoupon, MemberCouponStatus } from '@zenith/shared/member';
-import { MEMBER_COUPON_STATUS_LABELS } from '@zenith/shared/member';
+import { MEMBER_COUPON_STATUSES, MEMBER_COUPON_STATUS_LABELS } from '@zenith/shared/member';
+import { enumValueOf } from '@zenith/shared/core';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -29,7 +30,7 @@ export default function CouponRecordsPage() {
     page, pageSize, buildPagination,
     draftParams, setDraftParams, submittedParams,
     handleSearch, handleReset, applySearch,
-  } = useListSearch<SearchParams>({ defaults: {}, listKey: memberAdminKeys.couponRecordLists });
+  } = useListSearch<SearchParams>({ defaults: {}, listKey: memberAdminKeys.couponRecords });
   // 会员详情/优惠券列表入口的深链筛选（?memberKeyword= / ?couponId=，消费后即从 URL 移除）
   useListDeepLink(['memberKeyword', 'couponId'], (p) => applySearch({
     ...(p.memberKeyword ? { memberKeyword: p.memberKeyword } : {}),
@@ -40,7 +41,7 @@ export default function CouponRecordsPage() {
     pageSize,
     memberKeyword: submittedParams.memberKeyword || undefined,
     couponId: submittedParams.couponId,
-    status: submittedParams.status || undefined,
+    status: enumValueOf(MEMBER_COUPON_STATUSES, submittedParams.status),
   });
   const data = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
@@ -55,7 +56,7 @@ export default function CouponRecordsPage() {
   const preview = previewQuery.data ?? null;
 
   const handleRevoke = async (id: number) => {
-    await revokeMutation.mutateAsync(id);
+    await revokeMutation.mutateAsync({ params: { id } });
     Toast.success('已作废');
   };
 
@@ -79,7 +80,7 @@ export default function CouponRecordsPage() {
       Toast.warning('请输入券码');
       return;
     }
-    await redeemMutation.mutateAsync({ code: redeemCode.trim(), remark: redeemRemark || undefined });
+    await redeemMutation.mutateAsync({ body: { code: redeemCode.trim(), remark: redeemRemark || undefined } });
     Toast.success('核销成功');
     setRedeemVisible(false);
   };

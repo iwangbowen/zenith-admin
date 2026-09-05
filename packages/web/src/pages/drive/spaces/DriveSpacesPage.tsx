@@ -55,7 +55,7 @@ function MembersModal({ space, onClose }: { readonly space: DriveSpace | null; r
       okText="保存" okButtonProps={{ loading: save.isPending }}
       onOk={async () => {
         if (!space) return;
-        await save.mutateAsync({ spaceId: space.id, members: draft.map(({ subjectType, subjectId, role }) => ({ subjectType, subjectId, role })) });
+        await save.mutateAsync({ params: { id: space.id }, body: { members: draft.map(({ subjectType, subjectId, role }) => ({ subjectType, subjectId, role })) } });
         Toast.success('成员已更新');
         onClose();
       }}>
@@ -84,7 +84,7 @@ function TransferModal({ space, onClose }: { readonly space: DriveSpace | null; 
       okButtonProps={{ loading: transfer.isPending, disabled: !ownerId }}
       onOk={async () => {
         if (!space || !ownerId) return;
-        await transfer.mutateAsync({ spaceId: space.id, ownerId });
+        await transfer.mutateAsync({ params: { id: space.id }, body: { ownerId } });
         Toast.success('已转让');
         onClose();
       }}>

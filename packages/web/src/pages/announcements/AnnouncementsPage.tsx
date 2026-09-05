@@ -79,7 +79,7 @@ export default function AnnouncementsPage() {
 
   const openNotice = async (item: AnnouncementWithRead, index: number) => {
     if (!item.isRead) {
-      await markReadMutation.mutateAsync(item.id);
+      await markReadMutation.mutateAsync({ params: { id: item.id } });
     }
 
     setSelectedIndex(index);
@@ -96,7 +96,7 @@ export default function AnnouncementsPage() {
   };
 
   const handleMarkAllRead = async () => {
-    await markAllReadMutation.mutateAsync();
+    await markAllReadMutation.mutateAsync({});
     Toast.success('已全部标记为已读');
     setPage(1);
   };

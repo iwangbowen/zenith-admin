@@ -1,41 +1,36 @@
 import { mockDateTime, mockDateOffset } from '../utils/date';
 import { SEED_MEMBER_LEVELS, SEED_MEMBER_TAGS, SEED_COUPONS } from '@zenith/shared/seed';
-import type { MemberTagBrief } from '@zenith/shared/member';
+import type {
+  Coupon,
+  Member,
+  MemberBenefits,
+  MemberCoupon,
+  MemberInviteSummary,
+  MemberLevel,
+  MemberLoginLog,
+  MemberNotification,
+  MemberPointAccount,
+  MemberPointTransaction,
+  MemberRecharge,
+  MemberStatsCharts,
+  MemberStatsOverview,
+  MemberTag,
+  MemberTagBrief,
+  MemberWallet,
+  MemberWalletTransaction,
+} from '@zenith/shared/member';
 
 const now = mockDateTime();
 
-export interface MockMember {
-  id: number;
-  username: string | null;
-  phone: string | null;
-  email: string | null;
-  nickname: string;
-  avatar: string | null;
-  gender: string | null;
-  birthday: string | null;
-  status: 'active' | 'inactive' | 'banned';
-  levelId: number | null;
-  levelName: string | null;
-  growthValue: number;
-  experience: number;
-  registerSource: string;
-  registerIp: string | null;
-  lastLoginAt: string | null;
-  remark: string | null;
-  hasPassword: boolean;
-  pointBalance: number;
-  walletBalance: number;
-  tags: MemberTagBrief[];
-  createdAt: string;
-  updatedAt: string;
+export interface MockMember extends Member {
   /** 仅 mock 登录校验用 */
   password: string;
 }
 
-// Demo 演示用额外字段（不在共享类型中）
+// Demo 演示用额外字段（不在种子中）
 const _levelMemberCounts = [86, 32, 12, 3];
 const _levelDescriptions = ['注册即可享受', '成长值满 1000', '成长值满 5000', '成长值满 20000'];
-export const mockMemberLevels = SEED_MEMBER_LEVELS.map((l, i) => ({
+export const mockMemberLevels: MemberLevel[] = SEED_MEMBER_LEVELS.map((l, i) => ({
   ...l,
   description: _levelDescriptions[i] ?? null,
   memberCount: _levelMemberCounts[i] ?? 0,
@@ -45,7 +40,7 @@ export const mockMemberLevels = SEED_MEMBER_LEVELS.map((l, i) => ({
 
 // 会员标签（与种子对齐 + 会员数）
 const _tagMemberCounts = [1, 1, 1];
-export const mockMemberTags = SEED_MEMBER_TAGS.map((t, i) => ({
+export const mockMemberTags: MemberTag[] = SEED_MEMBER_TAGS.map((t, i) => ({
   ...t,
   memberCount: _tagMemberCounts[i] ?? 0,
   createdAt: now,
@@ -58,41 +53,47 @@ const tagBrief = (id: number): MemberTagBrief => {
 };
 
 export const mockMembers: MockMember[] = [
-  { id: 1, username: null, phone: '13800138000', email: 'demo@member.dev', nickname: '演示会员', avatar: null, gender: 'male', birthday: null, status: 'active', levelId: 2, levelName: '银卡会员', growthValue: 1280, experience: 520, registerSource: 'seed', registerIp: '127.0.0.1', lastLoginAt: now, remark: null, hasPassword: true, pointBalance: 1280, walletBalance: 5000, tags: [tagBrief(1)], createdAt: now, updatedAt: now, password: '123456' },
-  { id: 2, username: 'alice', phone: '13900139001', email: 'alice@member.dev', nickname: 'Alice', avatar: null, gender: 'female', birthday: null, status: 'active', levelId: 1, levelName: '普通会员', growthValue: 320, experience: 120, registerSource: 'web', registerIp: '127.0.0.1', lastLoginAt: now, remark: null, hasPassword: true, pointBalance: 320, walletBalance: 0, tags: [tagBrief(3)], createdAt: now, updatedAt: now, password: '123456' },
-  { id: 3, username: null, phone: '13700137002', email: null, nickname: '老用户', avatar: null, gender: null, birthday: null, status: 'inactive', levelId: 3, levelName: '金卡会员', growthValue: 6200, experience: 1880, registerSource: 'h5', registerIp: '127.0.0.1', lastLoginAt: null, remark: '长期未登录', hasPassword: false, pointBalance: 80, walletBalance: 19900, tags: [tagBrief(2)], createdAt: now, updatedAt: now, password: '' },
+  { id: 1, username: null, phone: '13800138000', email: 'demo@member.dev', nickname: '演示会员', avatar: null, gender: 'male', birthday: null, status: 'active', levelId: 2, levelName: '银卡会员', vipExpireAt: null, growthValue: 1280, experience: 520, registerSource: 'seed', registerIp: '127.0.0.1', lastLoginAt: now, lastLoginIp: '127.0.0.1', remark: null, hasPassword: true, pointBalance: 1280, walletBalance: 5000, tags: [tagBrief(1)], createdAt: now, updatedAt: now, password: '123456' },
+  { id: 2, username: 'alice', phone: '13900139001', email: 'alice@member.dev', nickname: 'Alice', avatar: null, gender: 'female', birthday: null, status: 'active', levelId: 1, levelName: '普通会员', vipExpireAt: null, growthValue: 320, experience: 120, registerSource: 'web', registerIp: '127.0.0.1', lastLoginAt: now, lastLoginIp: '127.0.0.1', remark: null, hasPassword: true, pointBalance: 320, walletBalance: 0, tags: [tagBrief(3)], createdAt: now, updatedAt: now, password: '123456' },
+  { id: 3, username: null, phone: '13700137002', email: null, nickname: '老用户', avatar: null, gender: null, birthday: null, status: 'inactive', levelId: 3, levelName: '金卡会员', vipExpireAt: null, growthValue: 6200, experience: 1880, registerSource: 'h5', registerIp: '127.0.0.1', lastLoginAt: null, lastLoginIp: null, remark: '长期未登录', hasPassword: false, pointBalance: 80, walletBalance: 19900, tags: [tagBrief(2)], createdAt: now, updatedAt: now, password: '' },
 ];
 
-export const mockMemberPointAccount = { memberId: 1, balance: 1280, frozen: 0, totalEarned: 1500, totalSpent: 220 };
+/** 去掉仅供 mock 登录校验的密码字段，得到接口返回的会员实体 */
+export function memberView(m: MockMember): Member {
+  const { password: _pwd, ...rest } = m;
+  return rest;
+}
 
-export const mockMemberPointTxs = [
+export const mockMemberPointAccount: MemberPointAccount = { memberId: 1, balance: 1280, frozen: 0, totalEarned: 1500, totalSpent: 220 };
+
+export const mockMemberPointTxs: MemberPointTransaction[] = [
   { id: 1, memberId: 1, type: 'earn', amount: 100, balanceAfter: 100, bizType: 'register', bizId: null, remark: '注册赠送积分', memberName: '演示会员', createdAt: now },
   { id: 2, memberId: 1, type: 'earn', amount: 1200, balanceAfter: 1300, bizType: 'purchase', bizId: 'ORD202601', remark: '消费奖励', memberName: '演示会员', createdAt: now },
   { id: 3, memberId: 1, type: 'redeem', amount: -120, balanceAfter: 1180, bizType: 'redeem', bizId: null, remark: '积分兑换', memberName: '演示会员', createdAt: now },
   { id: 4, memberId: 1, type: 'adjust', amount: 100, balanceAfter: 1280, bizType: 'admin_adjust', bizId: null, remark: '客服补偿', memberName: '演示会员', createdAt: now },
 ];
 
-export const mockMemberWallet = { memberId: 1, balance: 5000, frozen: 0, totalRecharge: 10000, totalConsume: 5000 };
+export const mockMemberWallet: MemberWallet = { memberId: 1, balance: 5000, frozen: 0, totalRecharge: 10000, totalConsume: 5000 };
 
-export const mockMemberWalletTxs = [
+export const mockMemberWalletTxs: MemberWalletTransaction[] = [
   { id: 1, memberId: 1, type: 'recharge', amount: 10000, balanceAfter: 10000, bizType: 'member_recharge', bizId: 'PAY202601', remark: '账户充值', memberName: '演示会员', createdAt: now },
   { id: 2, memberId: 1, type: 'consume', amount: -5000, balanceAfter: 5000, bizType: 'order', bizId: 'ORD202602', remark: '订单支付', memberName: '演示会员', createdAt: now },
 ];
 
 const _issuedQty = [156, 88];
-export const mockCoupons = SEED_COUPONS.map((c, i) => ({
+export const mockCoupons: Coupon[] = SEED_COUPONS.map((c, i) => ({
   ...c,
   issuedQuantity: _issuedQty[i] ?? 0,
   createdAt: now,
   updatedAt: now,
 }));
 
-export const mockMemberCoupons: import('@zenith/shared').MemberCoupon[] = [
+export const mockMemberCoupons: MemberCoupon[] = [
   { id: 1, couponId: 1, memberId: 1, code: 'SEEDCOUPON0001', status: 'unused', receivedAt: now, usedAt: null, expireAt: '2027-01-01 00:00:00', coupon: mockCoupons[0], memberName: '演示会员', createdAt: now },
   { id: 2, couponId: 2, memberId: 1, code: 'SEEDCOUPON0002', status: 'used', receivedAt: now, usedAt: now, expireAt: '2027-01-01 00:00:00', coupon: mockCoupons[1], memberName: '演示会员', createdAt: now },
 ];
 
-export const mockMemberLoginLogs = [
+export const mockMemberLoginLogs: MemberLoginLog[] = [
   { id: 1, memberId: 1, ip: '127.0.0.1', location: '内网IP', browser: 'Chrome', os: 'macOS', userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0', status: 'success', message: '登录成功', createdAt: now },
   { id: 2, memberId: 1, ip: '1.2.3.4', location: '广东省深圳市', browser: 'Safari', os: 'iOS', userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)', status: 'success', message: '登录成功', createdAt: '2026-03-20 09:15:00' },
   { id: 3, memberId: 1, ip: '5.6.7.8', location: '北京市', browser: 'Chrome', os: 'Windows', userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0', status: 'fail', message: '账号或密码错误', createdAt: '2026-03-18 22:40:00' },
@@ -100,13 +101,13 @@ export const mockMemberLoginLogs = [
   { id: 5, memberId: 1, ip: '9.10.11.12', location: '上海市', browser: 'Chrome', os: 'Android', userAgent: 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0', status: 'success', message: '登录成功', createdAt: '2026-03-10 08:05:00' },
 ];
 
-export const mockMemberRecharges = [
+export const mockMemberRecharges: MemberRecharge[] = [
   { id: 1, orderNo: 'PAY20260320001', outTradeNo: 'OUT20260320001', channelTradeNo: '4200001234202603201', memberId: 1, memberNickname: '演示会员', memberPhone: '13800138000', subject: '会员钱包充值', amount: 10000, channel: 'wechat', payMethod: 'wechat_jsapi', status: 'success', paidAmount: 10000, paidAt: '2026-03-20 10:12:30', expiredAt: '2026-03-20 10:42:00', errorMessage: null, createdAt: '2026-03-20 10:12:00' },
   { id: 2, orderNo: 'PAY20260318002', outTradeNo: 'OUT20260318002', channelTradeNo: '2026031822001495', memberId: 2, memberNickname: 'Alice', memberPhone: '13900139001', subject: '会员钱包充值', amount: 5000, channel: 'alipay', payMethod: 'alipay_wap', status: 'success', paidAmount: 5000, paidAt: '2026-03-18 16:05:10', expiredAt: '2026-03-18 16:35:00', errorMessage: null, createdAt: '2026-03-18 16:05:00' },
   { id: 3, orderNo: 'PAY20260317003', outTradeNo: 'OUT20260317003', channelTradeNo: null, memberId: 3, memberNickname: '老用户', memberPhone: '13700137002', subject: '会员钱包充值', amount: 20000, channel: 'wechat', payMethod: 'wechat_native', status: 'closed', paidAmount: null, paidAt: null, expiredAt: '2026-03-17 09:30:00', errorMessage: '订单超时未支付', createdAt: '2026-03-17 09:00:00' },
 ];
 
-export const mockMemberStatsOverview = {
+export const mockMemberStatsOverview: MemberStatsOverview = {
   totalMembers: 1286,
   todayNewMembers: 18,
   monthNewMembers: 246,
@@ -118,14 +119,14 @@ export const mockMemberStatsOverview = {
   availableCoupons: 87,
 };
 
-function buildTrend(days: number, gen: (i: number) => Record<string, number>) {
+function buildTrend<T extends Record<string, number>>(days: number, gen: (i: number) => T) {
   return Array.from({ length: days }, (_, i) => ({
     date: mockDateOffset(i - (days - 1)),
     ...gen(i),
   }));
 }
 
-export const mockMemberStatsCharts = {
+export const mockMemberStatsCharts: MemberStatsCharts = {
   registerTrend: buildTrend(30, (i) => ({ count: 6 + ((i * 7 + 3) % 22) })),
   levelDistribution: [
     { name: '普通会员', value: 812 },
@@ -152,10 +153,27 @@ export const mockMemberStatsCharts = {
     { name: '100-500元', value: 152 },
     { name: '500元以上', value: 52 },
   ],
+  walletTrend: buildTrend(30, (i) => ({
+    income: 42000 + ((i * 911 + 300) % 38000),
+    expense: 18000 + ((i * 577 + 700) % 21000),
+  })),
+  sourceDistribution: [
+    { name: '网页注册', value: 684 },
+    { name: '公众号', value: 312 },
+    { name: '邀请注册', value: 158 },
+    { name: 'App', value: 86 },
+    { name: '后台创建', value: 32 },
+    { name: '批量导入', value: 14 },
+  ],
+  couponStatusDistribution: [
+    { name: '未使用', value: 87 },
+    { name: '已使用', value: 213 },
+    { name: '已过期', value: 46 },
+  ],
 };
 
 // ─── P3：权益 / 通知 / 邀请 ───────────────────────────────────────────────────
-export const mockMemberBenefits = {
+export const mockMemberBenefits: MemberBenefits = {
   growthValue: 1280,
   discount: 98,
   levelId: 2,
@@ -164,13 +182,13 @@ export const mockMemberBenefits = {
   nextLevel: { id: 3, name: '金卡会员', growthThreshold: 5000, discount: 95, growthGap: 3720 },
 };
 
-export const mockMemberNotifications: import('@zenith/shared').MemberNotification[] = [
+export const mockMemberNotifications: MemberNotification[] = [
   { id: 1, memberId: 1, type: 'coupon_expiring', title: '优惠券即将过期', content: '你的「全场9折券」将于 3 天后过期，记得及时使用。', readAt: null, createdAt: now },
   { id: 2, memberId: 1, type: 'point_adjust', title: '积分变动通知', content: '管理员增加了你的 100 积分（客服补偿），当前余额 1280。', readAt: null, createdAt: now },
   { id: 3, memberId: 1, type: 'birthday', title: '生日快乐 🎂', content: '生日礼 88 积分已到账，祝你生日快乐！', readAt: now, createdAt: now },
 ];
 
-export const mockInviteSummary = {
+export const mockInviteSummary: MemberInviteSummary = {
   inviteCode: 'ZENITH88',
   invitedCount: 2,
   totalRewardPoints: 100,
@@ -179,4 +197,3 @@ export const mockInviteSummary = {
     { id: 3, nickname: '老用户', createdAt: now },
   ],
 };
-

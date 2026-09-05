@@ -26,7 +26,7 @@ export default function EmailConfigPage() {
     if (!formApi.current) return;
     try {
       const values = await formApi.current.validate();
-      await saveMutation.mutateAsync(values);
+      await saveMutation.mutateAsync({ body: values });
       Toast.success('邮件配置保存成功');
     } catch {
       // validation failed
@@ -38,7 +38,7 @@ export default function EmailConfigPage() {
       Toast.warning('请输入收件邮箱');
       return;
     }
-    await testMutation.mutateAsync(testEmail);
+    await testMutation.mutateAsync({ body: { email: testEmail } });
     Toast.success('测试邮件发送成功！请检查收件箱');
     setTestModalVisible(false);
     setTestEmail('');

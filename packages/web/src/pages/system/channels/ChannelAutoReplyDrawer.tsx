@@ -8,8 +8,9 @@ import { Button, Form, SideSheet, Table, Tag, Toast, Typography } from '@douyinf
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Eye } from 'lucide-react';
-import type { ChannelAutoReply, ChannelMessageType, ChannelRichReplyExtra } from '@zenith/shared/messaging';
+import type { ChannelAutoReply, ChannelMessageType, ChannelRichReplyExtra, CreateChannelAutoReplyInput } from '@zenith/shared/messaging';
 import { CHANNEL_AUTO_REPLY_MATCH_LABELS, CHANNEL_AUTO_REPLY_KEYWORD_MODE_LABELS, CHANNEL_MESSAGE_TYPE_LABELS as REPLY_TYPE_LABELS } from '@zenith/shared/messaging';
+import { enumValueOf } from '@zenith/shared/core';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import { AppModal } from '@/components/AppModal';
@@ -35,11 +36,15 @@ interface Props {
   onClose: () => void;
 }
 
+/** 自动回复只支持文本 / 图片 / 图文（不含聊天卡片） */
+type AutoReplyType = CreateChannelAutoReplyInput['replyType'];
+const AUTO_REPLY_TYPES = ['text', 'image', 'news'] as const satisfies readonly AutoReplyType[];
+
 interface AutoReplyFormValues {
   matchType: ChannelAutoReply['matchType'];
   keyword?: string;
   keywordMode?: ChannelAutoReply['keywordMode'];
-  replyType?: ChannelMessageType;
+  replyType?: AutoReplyType;
   status?: ChannelAutoReply['status'];
   sort?: number;
 }
@@ -97,7 +102,7 @@ export function ChannelAutoReplyDrawer({ channelId, channelName, visible, onClos
     if (!formApi) return;
     // 直接读表单快照；onValueChange 收集在「打开后未改任何字段」时会拿到空值
     const values = formApi.getValues();
-    const replyType: ChannelMessageType = values.replyType ?? 'text';
+    const replyType: AutoReplyType = values.replyType ?? 'text';
 
     if (values.matchType === 'keyword' && !values.keyword?.trim()) { Toast.error('关键词回复必须填写关键词'); return; }
     const contentErr = validateChannelContent(replyType, content);
@@ -135,7 +140,7 @@ export function ChannelAutoReplyDrawer({ channelId, channelName, visible, onClos
   };
 
   const handleDelete = async (r: ChannelAutoReply) => {
-    await deleteMutation.mutateAsync({ channelId, id: r.id });
+    await deleteMutation.mutateAsync({ params: { channelId, replyId: r.id } });
     Toast.success('已删除');
   };
 
@@ -234,7 +239,7 @@ export function ChannelAutoReplyDrawer({ channelId, channelName, visible, onClos
             matchType: editing?.matchType ?? 'keyword',
             keyword: editing?.keyword ?? '',
             keywordMode: editing?.keywordMode ?? 'contains',
-            replyType: editing?.replyType ?? 'text',
+            replyType: enumValueOf(AUTO_REPLY_TYPES, editing?.replyType) ?? 'text',
             status: editing?.status ?? 'enabled',
             sort: editing?.sort ?? 0,
           }}

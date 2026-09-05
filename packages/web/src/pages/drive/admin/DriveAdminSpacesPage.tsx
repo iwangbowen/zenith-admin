@@ -62,7 +62,7 @@ function DepartmentSpaceModal({ visible, onClose }: { readonly visible: boolean;
           departmentId: values.departmentId, name: values.name?.trim() || undefined,
           defaultMemberRole: values.defaultMemberRole || null, quotaGb: values.quotaGb,
         };
-        await create.mutateAsync(payload);
+        await create.mutateAsync({ body: payload });
         Toast.success('部门空间已创建');
         setValues({ defaultMemberRole: 'editor', quotaGb: null });
         onClose();
@@ -100,7 +100,7 @@ export default function DriveAdminSpacesPage() {
 
   const modal = useEditModal<DriveSpace, AdminSpaceFormValues, AdminUpdateDriveSpaceInput>({
     entityName: '空间',
-    save: { mutateAsync: ({ id, values }) => update.mutateAsync({ id: id!, values }), isPending: update.isPending },
+    save: { mutateAsync: ({ id, values }) => update.mutateAsync({ params: { id: id! }, body: values }), isPending: update.isPending },
     useDetail: useDriveSpaceDetail,
     toValues: (s) => ({
       name: s.name, description: s.description, quotaGb: s.customQuotaBytes === null ? null : Math.round(s.customQuotaBytes / 1024 ** 3 * 100) / 100,
@@ -146,7 +146,7 @@ export default function DriveAdminSpacesPage() {
       { key: 'reindex', label: '补建索引', hidden: !canEdit, onClick: () => runTask('reindex', s.id) },
       { key: 'delete', label: '删除', danger: true, dividerBefore: true, hidden: !hasPermission('drive:admin:space:delete') || s.type === 'personal',
         onClick: () => { confirmDanger({ title: `删除空间「${s.name}」？`, content: '空间内全部文件将进入回收站，并在保留期后彻底清除。', okText: '删除',
-          onOk: () => remove.mutateAsync(s.id).then(() => Toast.success('已删除')) }); } },
+          onOk: () => remove.mutateAsync({ params: { id: s.id } }).then(() => Toast.success('已删除')) }); } },
     ] }),
   ];
 

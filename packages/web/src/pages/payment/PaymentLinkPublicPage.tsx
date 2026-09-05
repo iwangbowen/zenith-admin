@@ -8,8 +8,8 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { QRCodeSVG } from 'qrcode.react';
 import { CheckCircle2, Copy, ExternalLink, RefreshCw, ShieldCheck, XCircle } from 'lucide-react';
 import dayjs from 'dayjs';
-import { PAYMENT_METHOD_LABELS } from '@zenith/shared/payment';
-import type { PaymentCashierMethod, PaymentLinkPublic } from '@zenith/shared/payment';
+import { enumValueOf } from '@zenith/shared/core';
+import { PAYMENT_LINK_PAY_METHODS, PAYMENT_METHOD_LABELS, type PaymentCashierMethod, type PaymentLinkPublic } from '@zenith/shared/payment';
 import { usePayPublicPaymentLink, usePublicPaymentCashierSession, usePublicPaymentLink } from '@/hooks/queries/payment-links';
 
 const yuan = (cents: number | null | undefined) => formatYuan(cents, '自定义金额');
@@ -133,9 +133,11 @@ export default function PaymentLinkPublicPage() {
 
     try {
       const res = await payMutation.mutateAsync({
-        token,
-        amount: link.amount == null ? amount : undefined,
-        payMethod: link.payMethod == null ? payMethod : undefined,
+        params: { token },
+        body: {
+          amount: link.amount == null ? amount : undefined,
+          payMethod: link.payMethod == null ? enumValueOf(PAYMENT_LINK_PAY_METHODS, payMethod) : undefined,
+        },
       });
       const nextSearchParams = new URLSearchParams(searchParams);
       nextSearchParams.set('session', res.sessionToken);

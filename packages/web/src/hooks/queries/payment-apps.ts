@@ -1,18 +1,14 @@
-import type { PaymentApp } from '@zenith/shared/payment';
-import { createCrudQueries, type CrudListParams } from '@/lib/crud-queries';
+import type { QueryOf } from '@zenith/shared/core';
+import { paymentAppContract } from '@zenith/shared/payment';
+import { createResourceQueries } from '@/lib/contract-query';
 
-export interface PaymentAppListParams extends CrudListParams {
-  keyword?: string;
-  status?: string;
-}
+export type PaymentAppListParams = NonNullable<QueryOf<typeof paymentAppContract.list>>;
 
 export const {
   keys: paymentAppKeys,
   useList: usePaymentAppList,
+  useDetail: usePaymentAppDetail,
   useSave: useSavePaymentApp,
+  /** 服务端未提供 DELETE /batch，多选删除按单条并发执行 */
   useDelete: useDeletePaymentApp,
-} = createCrudQueries<PaymentApp, PaymentAppListParams>({
-  resource: 'payment-apps',
-  path: '/api/payment/apps',
-  deleteMode: 'single',
-});
+} = createResourceQueries(paymentAppContract);

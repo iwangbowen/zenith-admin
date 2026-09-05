@@ -29,7 +29,7 @@ export function DrivePermissionPanel({ node }: DrivePermissionPanelProps) {
   const canManage = useMemo(() => hasPermission('drive:node:grant') && roleAtLeast(query.data?.effectiveRole, 'manager'), [hasPermission, query.data?.effectiveRole]);
 
   const handleSave = async () => {
-    await save.mutateAsync({ id: node.id, permissions: draft.map(({ subjectType, subjectId, role }) => ({ subjectType, subjectId, role })) });
+    await save.mutateAsync({ params: { id: node.id }, body: { permissions: draft.map(({ subjectType, subjectId, role }) => ({ subjectType, subjectId, role })) } });
     setDirty(false);
     Toast.success('授权已保存');
   };
@@ -46,7 +46,7 @@ export function DrivePermissionPanel({ node }: DrivePermissionPanelProps) {
           <div className="drive-panel__inherit">
             <span className="drive-panel__label">继承上级授权</span>
             <Switch size="small" checked={inheritPermissions} disabled={!canManage || setInherit.isPending}
-              onChange={(checked) => setInherit.mutate({ id: node.id, inherit: checked }, { onSuccess: () => Toast.success(checked ? '已恢复继承' : '已断开继承，仅本目录授权与空间管理者可访问') })} />
+              onChange={(checked) => setInherit.mutate({ params: { id: node.id }, body: { inherit: checked } }, { onSuccess: () => Toast.success(checked ? '已恢复继承' : '已断开继承，仅本目录授权与空间管理者可访问') })} />
           </div>
         )}
       </div>

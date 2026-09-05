@@ -1,24 +1,8 @@
 /**
- * 日志相关 DTO：会员登录日志、IP 拦截日志、操作日志统计、日志文件
+ * 日志相关 DTO：IP 拦截日志、操作日志统计、日志文件
  */
 import { z } from '@hono/zod-openapi';
 import { operationLogSchema } from '@zenith/shared/platform';
-
-export const MemberLoginLogDTO = z
-  .object({
-    id: z.number().int(),
-    memberId: z.number().int().nullable(),
-    memberNickname: z.string().nullable().optional(),
-    ip: z.string().nullable(),
-    location: z.string().nullable(),
-    browser: z.string().nullable(),
-    os: z.string().nullable(),
-    userAgent: z.string().nullable(),
-    status: z.enum(['success', 'fail']),
-    message: z.string().nullable(),
-    createdAt: z.string(),
-  })
-  .openapi('MemberLoginLog');
 
 export const IpAccessLogDTO = z
   .object({

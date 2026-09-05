@@ -1,57 +1,37 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { MpMaterial, MpMaterialType } from '@zenith/shared/mp';
-import { request } from '@/utils/request';
+import type { OutputOf, QueryOf } from '@zenith/shared/core';
+import { mpMaterialContract } from '@zenith/shared/mp';
+import { createResourceQueries, urlOf, useApiMutation } from '@/lib/contract-query';
 import { unwrap } from '@/lib/query';
-import { createCrudQueries, type CrudListParams } from '@/lib/crud-queries';
+import { request } from '@/utils/request';
 
-export interface MpMaterialListParams extends CrudListParams {
-  type?: MpMaterialType;
-  keyword?: string;
-  accountId?: number;
-}
+export type MpMaterialListParams = QueryOf<typeof mpMaterialContract.list>;
 
-export interface MpMaterialSyncResult {
-  created: number;
-  updated: number;
-}
-
-const {
+export const {
   keys: mpMaterialKeys,
-  useList: useCrudMpMaterialList,
+  useList: useMpMaterialList,
   useSave: useSaveMpMaterial,
-  useDelete: useDeleteMpMaterial,
-} = createCrudQueries<MpMaterial, MpMaterialListParams, Record<string, unknown>>({
-  resource: 'mp-materials',
-  path: '/api/mp/materials',
-  deleteMode: 'single',
-});
+  useDelete: useDeleteMpMaterials,
+} = createResourceQueries(mpMaterialContract);
 
-export { mpMaterialKeys, useSaveMpMaterial, useDeleteMpMaterial };
-
-export function useMpMaterialList(accountId: number | null | undefined, params: Omit<MpMaterialListParams, 'accountId'>) {
-  return useCrudMpMaterialList({ ...params, accountId: accountId ?? undefined }, !!accountId);
-}
-
+/** 同步只会改变素材列表，不会影响公众号配置或其他域缓存 */
 export function useSyncMpMaterials() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (accountId: number) => request.post<MpMaterialSyncResult>('/api/mp/materials/sync', { accountId }).then(unwrap),
-    onSuccess: () => {
-      // 同步只会改变素材列表，不会影响公众号配置或其他域缓存。
-      void qc.invalidateQueries({ queryKey: mpMaterialKeys.lists });
-    },
+  return useApiMutation(mpMaterialContract.sync, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: mpMaterialKeys.lists }),
   });
 }
 
+interface UploadVariables {
+  formData: FormData;
+  onProgress?: (percent: number) => void;
+}
+
+/** 二进制素材上传：带上传进度，故走 XHR 表单通道而非 api()；成功后新增一条素材，刷新列表 */
 export function useUploadMpMaterial() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ formData, onProgress }: { formData: FormData; onProgress?: (percent: number) => void }) =>
-      request.postForm<MpMaterial>('/api/mp/materials/upload', formData, { onProgress }).then(unwrap),
-    onSuccess: (saved) => {
-      // 上传会新增一条素材，刷新列表并精确刷新返回的素材详情缓存。
-      void qc.invalidateQueries({ queryKey: mpMaterialKeys.detail(saved.id) });
-      void qc.invalidateQueries({ queryKey: mpMaterialKeys.lists });
-    },
+    mutationFn: ({ formData, onProgress }: UploadVariables) =>
+      request.postForm<OutputOf<typeof mpMaterialContract.upload>>(urlOf(mpMaterialContract.upload), formData, { onProgress }).then(unwrap),
+    onSuccess: () => qc.invalidateQueries({ queryKey: mpMaterialKeys.lists }),
   });
 }

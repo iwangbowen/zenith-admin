@@ -29,7 +29,7 @@ export default function ForgotPasswordPage() {
       return;
     }
     try {
-      await resetPasswordMutation.mutateAsync({ phone, smsCode, newPassword });
+      await resetPasswordMutation.mutateAsync({ body: { phone, smsCode, newPassword } });
       Toast.success('密码已重置，请重新登录');
       navigate('/login', { replace: true });
     } catch (err) {

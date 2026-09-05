@@ -41,7 +41,7 @@ export function DriveCommentsPanel({ node }: { readonly node: DriveNode }) {
   const submit = async () => {
     const text = content.trim();
     if (!text) return;
-    await create.mutateAsync({ id: node.id, content: text, parentId: null });
+    await create.mutateAsync({ params: { id: node.id }, body: { content: text, parentId: null } });
     setContent('');
     Toast.success('已评论');
   };
@@ -66,7 +66,7 @@ export function DriveCommentsPanel({ node }: { readonly node: DriveNode }) {
             )}
             extra={(c.authorId === user?.id || canManage) ? (
               <Button size="small" theme="borderless" type="danger" icon={<Trash2 size={14} />} aria-label="删除评论"
-                onClick={() => confirmDelete({ title: '删除这条评论？', onOk: () => remove.mutateAsync({ id: node.id, commentId: c.id }) })} />
+                onClick={() => confirmDelete({ title: '删除这条评论？', onOk: () => remove.mutateAsync({ params: { id: node.id, commentId: c.id } }) })} />
             ) : undefined}
           />
         )}

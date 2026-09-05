@@ -307,7 +307,7 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
 
   const markMyMessageRead = useMarkMyInAppMessageRead();
   const markAsRead = (id: number) => {
-    markMyMessageRead.mutate(id, {
+    markMyMessageRead.mutate({ params: { id } }, {
       onSuccess: () => {
         setInAppMessages(updateMessageRead(id));
         setUnreadCount((c) => Math.max(0, c - 1));

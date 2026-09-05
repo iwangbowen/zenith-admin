@@ -43,10 +43,27 @@ export type MemberRegisterSource = typeof MEMBER_REGISTER_SOURCES[number];
 
 export const CHECKIN_MILESTONE_REWARD_TYPES = ['points', 'coupon'] as const;
 
-export const CHECKIN_MILESTONE_REWARD_TYPE_LABELS: Record<typeof CHECKIN_MILESTONE_REWARD_TYPES[number], string> = {
+export type CheckinMilestoneRewardType = typeof CHECKIN_MILESTONE_REWARD_TYPES[number];
+
+export const CHECKIN_MILESTONE_REWARD_TYPE_LABELS: Record<CheckinMilestoneRewardType, string> = {
   points: '积分',
   coupon: '优惠券',
 };
+
+/** 会员短信验证码场景 */
+export const MEMBER_SMS_SCENES = ['register', 'login', 'reset'] as const;
+
+export type MemberSmsScene = typeof MEMBER_SMS_SCENES[number];
+
+/** 后台充值记录可筛选的支付单状态：不含瞬态的 `unknown`（渠道结果待确认，不作为筛选口径） */
+export const MEMBER_RECHARGE_STATUSES = ['pending', 'paying', 'success', 'closed', 'refunding', 'refunded', 'failed'] as const;
+
+export type MemberRechargeStatus = typeof MEMBER_RECHARGE_STATUSES[number];
+
+/** 会员自动续费单期扣款结果 */
+export const MEMBER_RENEWAL_DEDUCT_STATUSES = ['success', 'processing', 'failed'] as const;
+
+export type MemberRenewalDeductStatus = typeof MEMBER_RENEWAL_DEDUCT_STATUSES[number];
 
 export const MEMBER_STATUS_LABELS: Record<MemberStatus, string> = {
   active: '正常',

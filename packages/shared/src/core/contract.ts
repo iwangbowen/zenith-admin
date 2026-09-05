@@ -63,6 +63,7 @@ export interface OperationConfig<
   TBody extends z.ZodType | undefined,
   TResponse extends z.ZodType,
   TKind extends ResponseKind,
+  THeaders extends ParamsSchema | undefined = undefined,
 > {
   /** 一句话说明，进入 OpenAPI summary */
   readonly summary: string;
@@ -70,6 +71,11 @@ export interface OperationConfig<
   readonly params?: TParams;
   readonly query?: TQuery;
   readonly body?: TBody;
+  /**
+   * 业务请求头 schema（键为小写头名，如 `x-idempotency-key`）；进入 OpenAPI header 参数，
+   * 服务端 `c.req.valid('header')`，客户端在输入的 `headers` 段提供。认证头不在此声明
+   */
+  readonly headers?: THeaders;
   /** `data` 载荷 schema；省略 = `z.null()` */
   readonly response?: TResponse;
   /** 公开接口（无需任何凭证）；与 `security` 互斥。默认要求登录令牌 */
@@ -92,6 +98,7 @@ export interface UnboundOperation<
   TBody extends z.ZodType | undefined = z.ZodType | undefined,
   TResponse extends z.ZodType = z.ZodType,
   TKind extends ResponseKind = ResponseKind,
+  THeaders extends ParamsSchema | undefined = ParamsSchema | undefined,
 > {
   readonly method: TMethod;
   /** 相对资源根的路径，`/` 表示根；OpenAPI 风格 `{id}` 占位 */
@@ -101,6 +108,7 @@ export interface UnboundOperation<
   readonly params: TParams;
   readonly query: TQuery;
   readonly body: TBody;
+  readonly headers: THeaders;
   readonly response: TResponse;
   /** `security === 'none'` 的便捷读法 */
   readonly public: boolean;
@@ -119,7 +127,8 @@ export interface Operation<
   TBody extends z.ZodType | undefined = z.ZodType | undefined,
   TResponse extends z.ZodType = z.ZodType,
   TKind extends ResponseKind = ResponseKind,
-> extends UnboundOperation<TMethod, TPath, TParams, TQuery, TBody, TResponse, TKind> {
+  THeaders extends ParamsSchema | undefined = ParamsSchema | undefined,
+> extends UnboundOperation<TMethod, TPath, TParams, TQuery, TBody, TResponse, TKind, THeaders> {
   /** 契约组内的键名（如 `list` / `detail`），用于 query key 与日志 */
   readonly name: string;
   /** 资源根路径，如 `/api/tenants` */
@@ -130,7 +139,7 @@ export interface Operation<
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AnyOperation = Operation<HttpMethod, string, any, any, any, any, ResponseKind>;
+export type AnyOperation = Operation<HttpMethod, string, any, any, any, any, ResponseKind, any>;
 
 /** 展平交叉类型，悬停提示直接显示最终对象形状 */
 type Prettify<T> = T extends infer U ? { [K in keyof U]: U[K] } : never;
@@ -157,6 +166,7 @@ export type ShapeInput<S extends ParamsSchema> = Prettify<
 
 export type ParamsOf<Op extends AnyOperation> = Op['params'] extends ParamsSchema ? ShapeInput<Op['params']> : undefined;
 export type QueryOf<Op extends AnyOperation> = Op['query'] extends ParamsSchema ? ShapeInput<Op['query']> : undefined;
+export type HeadersOf<Op extends AnyOperation> = Op['headers'] extends ParamsSchema ? ShapeInput<Op['headers']> : undefined;
 /** 请求体取 **输入** 类型：带默认值的字段可省略，由服务端补默认；multipart 请求体为 FormData */
 export type BodyOf<Op extends AnyOperation> = Op['body'] extends MultipartBody
   ? FormData
@@ -167,6 +177,7 @@ export type OutputOf<Op extends AnyOperation> = z.output<Op['response']>;
 export type InputOf<Op extends AnyOperation> = Prettify<
   (Op['params'] extends ParamsSchema ? { params: ShapeInput<Op['params']> } : EmptyInput) &
   (Op['query'] extends ParamsSchema ? { query: ShapeInput<Op['query']> } : EmptyInput) &
+  (Op['headers'] extends ParamsSchema ? { headers: ShapeInput<Op['headers']> } : EmptyInput) &
   (Op['body'] extends MultipartBody ? { body: FormData } : Op['body'] extends z.ZodType ? { body: z.input<Op['body']> } : EmptyInput)
 >;
 
@@ -180,11 +191,12 @@ function createOperation<
   TBody extends z.ZodType | undefined = undefined,
   TResponse extends z.ZodType = z.ZodNull,
   TKind extends ResponseKind = 'json',
+  THeaders extends ParamsSchema | undefined = undefined,
 >(
   method: TMethod,
   path: TPath,
-  config: OperationConfig<TParams, TQuery, TBody, TResponse, TKind>,
-): UnboundOperation<TMethod, TPath, TParams, TQuery, TBody, TResponse, TKind> {
+  config: OperationConfig<TParams, TQuery, TBody, TResponse, TKind, THeaders>,
+): UnboundOperation<TMethod, TPath, TParams, TQuery, TBody, TResponse, TKind, THeaders> {
   if (!path.startsWith('/')) throw new Error(`契约路径必须以 / 开头：${path}`);
   if (config.public && config.security) throw new Error(`公开操作不能同时声明 security：${path}`);
   const security: SecurityScheme = config.public ? 'none' : (config.security ?? 'bearer');
@@ -196,6 +208,7 @@ function createOperation<
     params: config.params as TParams,
     query: config.query as TQuery,
     body: config.body as TBody,
+    headers: config.headers as THeaders,
     response: (config.response ?? z.null()) as TResponse,
     public: security === 'none',
     security,
@@ -212,10 +225,11 @@ type OpBuilder<TMethod extends HttpMethod> = <
   TBody extends z.ZodType | undefined = undefined,
   TResponse extends z.ZodType = z.ZodNull,
   TKind extends ResponseKind = 'json',
+  THeaders extends ParamsSchema | undefined = undefined,
 >(
   path: TPath,
-  config: OperationConfig<TParams, TQuery, TBody, TResponse, TKind>,
-) => UnboundOperation<TMethod, TPath, TParams, TQuery, TBody, TResponse, TKind>;
+  config: OperationConfig<TParams, TQuery, TBody, TResponse, TKind, THeaders>,
+) => UnboundOperation<TMethod, TPath, TParams, TQuery, TBody, TResponse, TKind, THeaders>;
 
 const builder = <TMethod extends HttpMethod>(method: TMethod): OpBuilder<TMethod> =>
   (path, config) => createOperation(method, path, config);
@@ -241,9 +255,10 @@ export type Bind<T> = T extends UnboundOperation<
   infer Q extends ParamsSchema | undefined,
   infer B extends z.ZodType | undefined,
   infer R extends z.ZodType,
-  infer K extends ResponseKind
+  infer K extends ResponseKind,
+  infer H extends ParamsSchema | undefined
 >
-  ? Operation<M, P, Pa, Q, B, R, K>
+  ? Operation<M, P, Pa, Q, B, R, K, H>
   : never;
 
 /**

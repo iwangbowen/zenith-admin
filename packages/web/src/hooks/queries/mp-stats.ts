@@ -1,31 +1,22 @@
-import { useQuery } from '@tanstack/react-query';
-import type { MpDatacube, MpStats } from '@zenith/shared/mp';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import type { QueryOf } from '@zenith/shared/core';
+import { mpStatsContract } from '@zenith/shared/mp';
+import { contractKey, useApiQuery } from '@/lib/contract-query';
 
-export interface MpDatacubeParams {
-  beginDate: string;
-  endDate: string;
-}
+export type MpDatacubeParams = Omit<QueryOf<typeof mpStatsContract.datacube>, 'accountId'>;
 
 export const mpStatsKeys = {
-  all: ['mp', 'stats'] as const,
-  overview: (accountId: number | null | undefined) => ['mp', 'stats', accountId] as const,
-  datacube: (accountId: number | null | undefined, params: MpDatacubeParams) => ['mp', 'stats', accountId, 'datacube', params] as const,
+  datacube: (accountId: number | null | undefined, params: MpDatacubeParams) =>
+    contractKey(mpStatsContract.datacube, { query: { accountId: accountId ?? 0, ...params } }),
 };
 
 export function useMpStats(accountId: number | null | undefined) {
-  return useQuery({
-    queryKey: mpStatsKeys.overview(accountId),
-    queryFn: () => request.get<MpStats>(`/api/mp/stats${toQueryString({ accountId })}`).then(unwrap),
-    enabled: !!accountId,
-  });
+  return useApiQuery(mpStatsContract.overview, { query: { accountId: accountId ?? 0 } }, { enabled: !!accountId });
 }
 
 export function useMpDatacube(accountId: number | null | undefined, params: MpDatacubeParams, enabled = true) {
-  return useQuery({
-    queryKey: mpStatsKeys.datacube(accountId, params),
-    queryFn: () => request.get<MpDatacube>(`/api/mp/stats/datacube${toQueryString({ ...params, accountId })}`).then(unwrap),
-    enabled: enabled && !!accountId,
-  });
+  return useApiQuery(
+    mpStatsContract.datacube,
+    { query: { accountId: accountId ?? 0, ...params } },
+    { enabled: enabled && !!accountId },
+  );
 }

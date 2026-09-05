@@ -59,7 +59,7 @@ describe('notification-preferences hooks', () => {
     api.resetCalls();
 
     const save = renderHook(() => useSaveNotificationPreferences(), { wrapper });
-    save.result.current.mutate([{ eventKey: 'wiki.doc.commented', channel: 'email', enabled: true }]);
+    save.result.current.mutate({ body: { items: [{ eventKey: 'wiki.doc.commented', channel: 'email', enabled: true }] } });
     await waitFor(() => expect(save.result.current.isSuccess).toBe(true));
 
     // 矩阵是唯一被打回源的查询
@@ -87,8 +87,10 @@ describe('notification-preferences hooks', () => {
 
     const save = renderHook(() => useSaveNotificationSettings(), { wrapper });
     save.result.current.mutate({
-      globalMuted: true, timezone: 'Asia/Shanghai',
-      quietStart: null, quietEnd: null, digestMode: 'realtime', digestHour: 9,
+      body: {
+        globalMuted: true, timezone: 'Asia/Shanghai',
+        quietStart: null, quietEnd: null, digestMode: 'realtime', digestHour: 9,
+      },
     });
     await waitFor(() => expect(save.result.current.isSuccess).toBe(true));
 

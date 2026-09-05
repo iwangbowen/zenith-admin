@@ -10,7 +10,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_METHOD_LABELS } from '@zenith/shared/payment';
 import type { PaymentChannel, PaymentMethod, PaymentMethodConfig } from '@zenith/shared/payment';
-import { paymentMethodKeys, usePaymentMethodList, useSavePaymentMethod } from '@/hooks/queries/payment-methods';
+import { paymentMethodKeys, usePaymentMethodList, useSavePaymentMethod, type PaymentMethodSaveValues } from '@/hooks/queries/payment-methods';
 import { RefreshButton } from '@/components/toolbar-controls';
 import { renderEllipsis } from '@/utils/table-columns';
 
@@ -27,13 +27,13 @@ export default function PaymentMethodsPage() {
   const togglingId = toggleMutation.isPending ? (toggleMutation.variables?.id ?? null) : null;
 
   const methodSaveMutation = {
-    mutateAsync: ({ id, values }: { id?: number; values: Partial<PaymentMethodConfig> }) => {
+    mutateAsync: ({ id, values }: { id?: number; values: PaymentMethodSaveValues }) => {
       if (id == null) throw new Error('缺少记录 ID，请刷新后重试');
       return saveMutation.mutateAsync({ id, values });
     },
     isPending: saveMutation.isPending,
   };
-  const methodModal = useEditModal<PaymentMethodConfig, MethodFormValues, Partial<PaymentMethodConfig>>({
+  const methodModal = useEditModal<PaymentMethodConfig, MethodFormValues, PaymentMethodSaveValues>({
     save: methodSaveMutation,
     toValues: (method) => ({ label: method.label, icon: method.icon ?? '', sort: method.sort }),
     beforeSave: (values) => ({ label: values.label, icon: values.icon || undefined, sort: values.sort ?? 0 }),

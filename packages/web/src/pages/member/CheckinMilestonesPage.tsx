@@ -16,6 +16,7 @@ import {
   useCouponList,
   useDeleteCheckinMilestone,
   useSaveCheckinMilestone,
+  type CheckinMilestoneFormValues,
 } from '@/hooks/queries/member-admin';
 import { CreateButton, RefreshButton } from '@/components/toolbar-controls';
 import { confirmDelete } from '@/utils/confirm';
@@ -36,7 +37,7 @@ export default function CheckinMilestonesPage() {
   const coupons: CouponOption[] = (couponsQuery.data?.list ?? []).map((c) => ({ value: c.id, label: c.name }));
   const saveMutation = useSaveCheckinMilestone();
   const deleteMutation = useDeleteCheckinMilestone();
-  const modal = useEditModal<CheckinMilestone, Record<string, unknown>>({
+  const modal = useEditModal<CheckinMilestone, CheckinMilestoneFormValues>({
     entityName: '里程碑',
     save: saveMutation,
     defaults: { title: '', cumulativeDays: 7, rewardType: 'points', rewardPoints: 0, couponId: undefined, enabled: true, remark: '' },
@@ -59,7 +60,7 @@ export default function CheckinMilestonesPage() {
       title: `确认删除里程碑「${record.title}」？`,
       content: '删除后该累计天数的奖励配置将失效。',
       onOk: async () => {
-        await deleteMutation.mutateAsync(record.id);
+        await deleteMutation.mutateAsync({ params: { id: record.id } });
         Toast.success('删除成功');
       },
     });

@@ -11,9 +11,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Dropdown, Empty, Rating, Spin, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import { ArrowLeft, BadgeCheck, ChevronUp, ExternalLink, Send, Star } from 'lucide-react';
 import type { ChatMessage, ChatCardAction } from '@zenith/shared/chat';
+import { channelContract } from '@zenith/shared/messaging';
 import type { Channel, ChannelMenu, ChannelMessage } from '@zenith/shared/messaging';
 import type { WsMessage } from '@zenith/shared/platform';
-import { request } from '@/utils/request';
+import { api } from '@/lib/contract-query';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { UserAvatar } from '@/components/UserAvatar';
 import AppModal from '@/components/AppModal';
@@ -116,7 +117,7 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
     setMessages(ordered.map((m) => toChatMessage(m, channelSender)));
     setRetractedIds(new Set(ordered.filter((m) => m.isRetracted).map((m) => m.id)));
     scrollToBottom();
-    void request.post(`/api/channels/${channel.id}/read`, {}, { silent: true });
+    void api(channelContract.markRead, { params: { id: channel.id } }, { silent: true }).catch(() => undefined);
   }, [channel.id, channelMessagesQuery.data, channelSender, scrollToBottom]);
 
   const handleWs = useCallback((wsMsg: WsMessage) => {
@@ -138,7 +139,7 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
     if (m.direction === 'in' && m.senderUserId !== currentUserId) return;
     appendMessage(m);
     scrollToBottom();
-    void request.post(`/api/channels/${channel.id}/read`, {}, { silent: true });
+    void api(channelContract.markRead, { params: { id: channel.id } }, { silent: true }).catch(() => undefined);
   }, [channel.id, currentUserId, appendMessage, scrollToBottom]);
 
   useWebSocket(handleWs);
@@ -148,17 +149,13 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
     if (!text || sending) return;
     setSending(true);
     try {
-      const res = await request.post<{ message: ChannelMessage; autoReply: ChannelMessage | null }>(
-        `/api/channels/${channel.id}/send`, { content: text }, { silent: true },
-      );
-      if (res.code === 0 && res.data) {
-        setInput('');
-        appendMessage(res.data.message);
-        if (res.data.autoReply) appendMessage(res.data.autoReply);
-        scrollToBottom();
-      } else {
-        Toast.error(res.message || '发送失败');
-      }
+      const result = await api(channelContract.send, { params: { id: channel.id }, body: { content: text } }, { silent: true });
+      setInput('');
+      appendMessage(result.message);
+      if (result.autoReply) appendMessage(result.autoReply);
+      scrollToBottom();
+    } catch (err) {
+      Toast.error(err instanceof Error && err.message ? err.message : '发送失败');
     } finally {
       setSending(false);
     }
@@ -168,19 +165,13 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
     if (rateSubmitting) return;
     setRateSubmitting(true);
     try {
-      const res = await request.post(
-        `/api/channels/${channel.id}/rate`,
-        { rating, comment: comment.trim() || null },
-        { silent: true },
-      );
-      if (res.code === 0) {
-        Toast.success('感谢您的评价');
-        setRateVisible(false);
-        setRating(5);
-        setComment('');
-      } else {
-        Toast.error(res.message || '评价失败');
-      }
+      await api(channelContract.rate, { params: { id: channel.id }, body: { rating, comment: comment.trim() || null } }, { silent: true });
+      Toast.success('感谢您的评价');
+      setRateVisible(false);
+      setRating(5);
+      setComment('');
+    } catch (err) {
+      Toast.error(err instanceof Error && err.message ? err.message : '评价失败');
     } finally {
       setRateSubmitting(false);
     }

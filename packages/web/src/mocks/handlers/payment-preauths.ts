@@ -1,7 +1,7 @@
-import { http } from 'msw';
+import { mock } from '@/mocks/utils/contract';
 import { mockDateTime } from '@/mocks/utils/date';
-import { ok, notFound, badRequest, paginate } from '@/mocks/utils/handlers';
-import { PAYMENT_METHOD_CHANNEL } from '@zenith/shared/payment';
+import { notFound, badRequest } from '@/mocks/utils/handlers';
+import { PAYMENT_METHOD_CHANNEL, paymentPreauthContract } from '@zenith/shared/payment';
 import type { PaymentChannel, PaymentPreauth } from '@zenith/shared/payment';
 import dayjs from 'dayjs';
 
@@ -35,46 +35,42 @@ const preauths: PaymentPreauth[] = [
   },
 ];
 
+/** 预授权单按支付应用隔离：applicationId 已由契约 query 校验为正整数 */
+function findScopedPreauth(id: number, applicationId: number): PaymentPreauth | undefined {
+  return preauths.find((x) => x.id === id && x.appId === applicationId);
+}
+
 export const paymentPreauthHandlers = [
-  http.get('/api/payment/preauths', ({ request }) => {
-    const url = new URL(request.url);
-    const applicationId = Number(url.searchParams.get('applicationId'));
-    if (!applicationId) return badRequest('请选择支付应用');
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const status = url.searchParams.get('status') ?? '';
-    const channel = url.searchParams.get('channel') ?? '';
-    const filtered = preauths.filter((p) => p.appId === applicationId &&
-      (!keyword || p.preauthNo.includes(keyword) || p.payerAccount.includes(keyword) || p.subject.includes(keyword)) &&
-      (!status || p.status === status) && (!channel || p.channel === channel),
+  mock(paymentPreauthContract.list, ({ query, ok, paginate }) => {
+    const filtered = preauths.filter((p) => p.appId === query.applicationId &&
+      (!query.keyword || p.preauthNo.includes(query.keyword) || p.payerAccount.includes(query.keyword) || p.subject.includes(query.keyword)) &&
+      (!query.status || p.status === query.status) && (!query.channel || p.channel === query.channel) &&
+      (!query.startTime || p.createdAt >= query.startTime) && (!query.endTime || p.createdAt <= query.endTime),
     );
-    return ok(paginate([...filtered].sort((a, b) => b.id - a.id), url));
+    return ok(paginate([...filtered].sort((a, b) => b.id - a.id)));
   }),
-  http.post('/api/payment/preauths', async ({ request }) => {
-    const b = (await request.json()) as { applicationId: number; payMethod: 'wechat_preauth' | 'alipay_preauth'; currency?: string; payerAccount: string; subject: string; frozenAmount: number; bizType?: string; bizId: string; remark?: string };
+  mock(paymentPreauthContract.create, ({ body, ok }) => {
     const now = mockDateTime();
-    const channel: PaymentChannel = PAYMENT_METHOD_CHANNEL[b.payMethod];
-    const channelConfigId = b.applicationId === 3 && channel === 'alipay' ? 2 : (b.applicationId === 1 || b.applicationId === 2) && channel === 'wechat' ? 1 : null;
+    const channel: PaymentChannel = PAYMENT_METHOD_CHANNEL[body.payMethod];
+    const channelConfigId = body.applicationId === 3 && channel === 'alipay' ? 2 : (body.applicationId === 1 || body.applicationId === 2) && channel === 'wechat' ? 1 : null;
     if (!channelConfigId) return badRequest('支付应用未绑定所选预授权方式对应的商户配置');
     const preauthNo = `PRE${Date.now()}`;
     const item: PaymentPreauth = {
-      id: nextId++, preauthNo, channel, channelConfigId, appId: b.applicationId, currency: b.currency ?? 'CNY',
+      id: nextId++, preauthNo, channel, channelConfigId, appId: body.applicationId, currency: body.currency,
       channelPreauthNo: `${channel === 'wechat' ? 'WXPA' : 'ALIPA'}${Date.now()}`,
-      bizType: b.bizType?.trim() || 'admin_preauth', bizId: b.bizId, subject: b.subject, payerAccount: b.payerAccount,
-      frozenAmount: b.frozenAmount, capturedAmount: null, captureOrderNo: null, status: 'frozen', errorMessage: null,
+      bizType: body.bizType?.trim() || 'admin_preauth', bizId: body.bizId, subject: body.subject, payerAccount: body.payerAccount,
+      frozenAmount: body.frozenAmount, capturedAmount: null, captureOrderNo: null, status: 'frozen', errorMessage: null,
       unknownOperation: null, version: 0,
-      frozenAt: now, finishedAt: null, remark: b.remark ?? null, operatorName: '管理员', createdAt: now, updatedAt: now,
+      frozenAt: now, finishedAt: null, remark: body.remark ?? null, operatorName: '管理员', createdAt: now, updatedAt: now,
     };
     preauths.push(item);
     return ok(item, '冻结完成');
   }),
-  http.post('/api/payment/preauths/:id/capture', async ({ params, request }) => {
-    const applicationId = Number(new URL(request.url).searchParams.get('applicationId'));
-    if (!applicationId) return badRequest('请选择支付应用');
-    const p = preauths.find((x) => x.id === Number(params.id) && x.appId === applicationId);
+  mock(paymentPreauthContract.capture, ({ params, query, body, ok }) => {
+    const p = findScopedPreauth(params.id, query.applicationId);
     if (!p) return notFound('预授权单不存在');
     if (p.status !== 'frozen') return badRequest('仅已冻结的预授权可转支付');
-    const b = (await request.json().catch(() => ({}))) as { captureAmount?: number };
-    const captureAmount = b.captureAmount ?? p.frozenAmount;
+    const captureAmount = body.captureAmount ?? p.frozenAmount;
     if (captureAmount > p.frozenAmount) return badRequest('转支付金额不能超过冻结金额');
     p.status = 'captured';
     p.version += 1;
@@ -84,10 +80,8 @@ export const paymentPreauthHandlers = [
     p.updatedAt = mockDateTime();
     return ok(p, '转支付完成');
   }),
-  http.post('/api/payment/preauths/:id/release', ({ params, request }) => {
-    const applicationId = Number(new URL(request.url).searchParams.get('applicationId'));
-    if (!applicationId) return badRequest('请选择支付应用');
-    const p = preauths.find((x) => x.id === Number(params.id) && x.appId === applicationId);
+  mock(paymentPreauthContract.release, ({ params, query, ok }) => {
+    const p = findScopedPreauth(params.id, query.applicationId);
     if (!p) return notFound('预授权单不存在');
     if (p.status !== 'frozen') return badRequest('仅已冻结的预授权可解冻');
     p.status = 'released';
@@ -96,10 +90,8 @@ export const paymentPreauthHandlers = [
     p.updatedAt = mockDateTime();
     return ok(p, '已解冻');
   }),
-  http.post('/api/payment/preauths/:id/recover', ({ params, request }) => {
-    const applicationId = Number(new URL(request.url).searchParams.get('applicationId'));
-    if (!applicationId) return badRequest('请选择支付应用');
-    const p = preauths.find((x) => x.id === Number(params.id) && x.appId === applicationId);
+  mock(paymentPreauthContract.recover, ({ params, query, ok }) => {
+    const p = findScopedPreauth(params.id, query.applicationId);
     if (!p) return notFound('预授权单不存在');
     if (p.status !== 'pending' && p.status !== 'unknown') return ok(p, '查询完成');
     const operation = p.unknownOperation ?? 'freeze';

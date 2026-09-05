@@ -3,6 +3,7 @@ import { Avatar, Button, Input, Toast, Banner, Spin, Empty, Select, Typography }
 import { RefreshCw, Send, Paperclip } from 'lucide-react';
 import { MP_MESSAGE_TYPE_LABELS } from '@zenith/shared/mp';
 import type { MpConversation, MpMessage, MpMessageType } from '@zenith/shared/mp';
+import type { SendMpMessageInput } from '@zenith/shared/messaging';
 import { usePermission } from '@/hooks/usePermission';
 import { useUrlSelectionParams } from '@/hooks/useUrlSelectionState';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
@@ -102,7 +103,7 @@ export default function MpMessagesPage() {
   const handleSend = async () => {
     const content = reply.trim();
     if (!content || !currentId || !selectedOpenid) return;
-    await sendMutation.mutateAsync({ accountId: currentId, openid: selectedOpenid, msgType: 'text', content });
+    await sendMutation.mutateAsync({ body: { accountId: currentId, openid: selectedOpenid, msgType: 'text', content } });
     setReply('');
     Toast.success('已发送');
   };
@@ -112,9 +113,9 @@ export default function MpMessagesPage() {
   const handleSendMedia = async () => {
     if (!currentId || !selectedOpenid) return;
     if (!mediaId) { Toast.error('请选择素材'); return; }
-    const body: Record<string, unknown> = { accountId: currentId, openid: selectedOpenid, msgType: mediaContentType, mediaId };
+    const body: SendMpMessageInput = { accountId: currentId, openid: selectedOpenid, msgType: mediaContentType, mediaId };
     if (mediaContentType === 'video' && mediaTitle) body.content = mediaTitle;
-    await sendMutation.mutateAsync(body);
+    await sendMutation.mutateAsync({ body });
     setMediaModalVisible(false);
     Toast.success('已发送');
   };

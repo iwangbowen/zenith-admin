@@ -1,35 +1,49 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaymentMethodConfig } from '@zenith/shared/payment';
-import { request } from '@/utils/request';
-import { unwrap } from '@/lib/query';
+import type { BodyOf } from '@zenith/shared/core';
+import { paymentMethodContract, type PaymentMethodConfig } from '@zenith/shared/payment';
+import { api, contractKey } from '@/lib/contract-query';
+
+export type PaymentMethodSaveValues = BodyOf<typeof paymentMethodContract.update>;
 
 export const paymentMethodKeys = {
-  all: ['payment-methods'] as const,
-  lists: ['payment-methods', 'list'] as const,
-  list: () => ['payment-methods', 'list'] as const,
-  detail: (id: number | undefined) => ['payment-methods', 'detail', id] as const,
+  lists: contractKey(paymentMethodContract.list),
+  enabled: contractKey(paymentMethodContract.enabled),
+  detail: (id: number | undefined) => contractKey(paymentMethodContract.detail, { params: { id: id ?? 0 } }),
 };
 
 export function usePaymentMethodList() {
   return useQuery({
-    queryKey: paymentMethodKeys.list(),
-    queryFn: () => request.get<PaymentMethodConfig[]>('/api/payment/methods').then(unwrap),
+    queryKey: paymentMethodKeys.lists,
+    queryFn: () => api(paymentMethodContract.list),
+  });
+}
+
+/** 可用支付方式（供下单选择），随配置启停变化 */
+export function useEnabledPaymentMethods(enabled = true) {
+  return useQuery({
+    queryKey: paymentMethodKeys.enabled,
+    queryFn: () => api(paymentMethodContract.enabled),
+    enabled,
   });
 }
 
 export function usePaymentMethodDetail(id: number | undefined, enabled = true) {
   return useQuery({
     queryKey: paymentMethodKeys.detail(id),
-    queryFn: () => request.get<PaymentMethodConfig>(`/api/payment/methods/${id}`).then(unwrap),
+    queryFn: () => api(paymentMethodContract.detail, { params: { id: id ?? 0 } }),
     enabled: enabled && id !== undefined,
   });
 }
 
+/** 支付方式只允许编辑（启停 / 排序 / 名称 / 图标）；启停会改变可用支付方式列表，一并失效 */
 export function useSavePaymentMethod() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id: number; values: Partial<PaymentMethodConfig> }) =>
-      request.put<PaymentMethodConfig>(`/api/payment/methods/${id}`, values).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: paymentMethodKeys.all }),
+  return useMutation<PaymentMethodConfig, Error, { id: number; values: PaymentMethodSaveValues }>({
+    mutationFn: ({ id, values }) => api(paymentMethodContract.update, { params: { id }, body: values }),
+    onSuccess: (saved) => {
+      void qc.invalidateQueries({ queryKey: paymentMethodKeys.lists });
+      void qc.invalidateQueries({ queryKey: paymentMethodKeys.enabled });
+      void qc.invalidateQueries({ queryKey: paymentMethodKeys.detail(saved.id) });
+    },
   });
 }

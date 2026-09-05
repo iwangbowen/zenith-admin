@@ -35,8 +35,8 @@ router.route('/v1', openCmsRoutes);
 // IoT 设备查询与控制端点（同上）
 router.route('/v1', openIotRoutes);
 
-// 支付开放端点（身份、计量和限流继续复用同一网关）。
-router.route('/v1', openPaymentRoutes);
+// 支付开放端点（身份、计量和限流继续复用同一网关）。契约路径已含 `/v1` 前缀，挂在网关根。
+router.route('/', openPaymentRoutes);
 
 /** 各核心端点所需 scope；同时供端点目录展示，null = 无需 scope */
 const CORE_ENDPOINT_SCOPES = {

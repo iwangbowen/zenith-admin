@@ -1,65 +1,48 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { PaymentRefund } from '@zenith/shared/payment';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import { keepPreviousData, useQuery, type QueryClient } from '@tanstack/react-query';
+import type { QueryOf } from '@zenith/shared/core';
+import { paymentRefundContract } from '@zenith/shared/payment';
+import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
-export interface PaymentRefundListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  channel?: string;
-  status?: string;
-  approvalStatus?: string;
-  startTime?: string;
-  endTime?: string;
-}
+export type PaymentRefundListParams = NonNullable<QueryOf<typeof paymentRefundContract.refunds>>;
 
+/** 退款与订单 / 商户配置共用 `/api/payment` 根，key 按操作名区分 */
 export const paymentRefundKeys = {
-  all: ['payment-refunds'] as const,
-  lists: ['payment-refunds', 'list'] as const,
-  list: (params: PaymentRefundListParams) => ['payment-refunds', 'list', params] as const,
-  detail: (id: number | undefined) => ['payment-refunds', 'detail', id] as const,
+  lists: contractKey(paymentRefundContract.refunds),
+  list: (params: PaymentRefundListParams) => contractKey(paymentRefundContract.refunds, { query: params }),
+  details: contractKey(paymentRefundContract.refundDetail),
+  detail: (id: number | undefined) => contractKey(paymentRefundContract.refundDetail, { params: { id: id ?? 0 } }),
+  /** 订单关联退款（订单详情弹窗） */
+  byOrders: contractKey(paymentRefundContract.orderRefunds),
+  byOrder: (orderId: number | undefined) => contractKey(paymentRefundContract.orderRefunds, { params: { id: orderId ?? 0 } }),
 };
 
+/** 退款状态变化影响退款列表、详情与订单关联退款三处 */
+export function invalidatePaymentRefunds(qc: QueryClient) {
+  void qc.invalidateQueries({ queryKey: paymentRefundKeys.lists });
+  void qc.invalidateQueries({ queryKey: paymentRefundKeys.details });
+  void qc.invalidateQueries({ queryKey: paymentRefundKeys.byOrders });
+}
+
 export function usePaymentRefundList(params: PaymentRefundListParams) {
-  return useQuery({
-    queryKey: paymentRefundKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<PaymentRefund>>(`/api/payment/refunds${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+  return useApiQuery(paymentRefundContract.refunds, { query: params }, { placeholderData: keepPreviousData });
 }
 
 export function usePaymentRefundDetail(id: number | undefined, enabled = true) {
   return useQuery({
     queryKey: paymentRefundKeys.detail(id),
-    queryFn: () => request.get<PaymentRefund>(`/api/payment/refunds/${id}`).then(unwrap),
+    queryFn: () => api(paymentRefundContract.refundDetail, { params: { id: id ?? 0 } }),
     enabled: enabled && id !== undefined,
   });
 }
 
 export function useQueryPaymentRefund() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.post<PaymentRefund>(`/api/payment/refunds/${id}/query`, {}).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: paymentRefundKeys.all }),
-  });
+  return useApiMutation(paymentRefundContract.queryRefund, { invalidate: invalidatePaymentRefunds });
 }
 
 export function useApprovePaymentRefund() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, remark }: { id: number; remark?: string }) =>
-      request.post<null>(`/api/payment/refunds/${id}/approve`, { remark }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: paymentRefundKeys.all }),
-  });
+  return useApiMutation(paymentRefundContract.approveRefund, { invalidate: invalidatePaymentRefunds });
 }
 
 export function useRejectPaymentRefund() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, remark }: { id: number; remark: string }) =>
-      request.post<null>(`/api/payment/refunds/${id}/reject`, { remark }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: paymentRefundKeys.all }),
-  });
+  return useApiMutation(paymentRefundContract.rejectRefund, { invalidate: invalidatePaymentRefunds });
 }

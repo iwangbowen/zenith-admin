@@ -63,7 +63,7 @@ export function useInAppNotifications() {
   }, [queryClient]);
 
   const markAnnouncementAsRead = useCallback((id: number) => {
-    markAnnouncementReadMutation.mutate(id, {
+    markAnnouncementReadMutation.mutate({ params: { id } }, {
       onSuccess: () => {
         void queryClient.invalidateQueries({ queryKey: announcementKeys.published });
         void queryClient.invalidateQueries({ queryKey: announcementKeys.myUnreadCount });

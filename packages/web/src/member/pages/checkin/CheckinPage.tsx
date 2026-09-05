@@ -43,7 +43,7 @@ export default function CheckinPage() {
   const milestones = milestonesQuery.data ?? null;
 
   const handleCheckin = async () => {
-    const res = await checkinMutation.mutateAsync();
+    const res = await checkinMutation.mutateAsync({});
     Toast.success(`签到成功，获得 ${res.points} 积分 / ${res.experience} 经验`);
     setHistoryPage(1);
     await refresh();
@@ -54,7 +54,7 @@ export default function CheckinPage() {
       Toast.warning('请选择补签日期');
       return;
     }
-    const res = await makeupMutation.mutateAsync(dayjs(makeupDate).format('YYYY-MM-DD'));
+    const res = await makeupMutation.mutateAsync({ body: { date: dayjs(makeupDate).format('YYYY-MM-DD') } });
     Toast.success(`补签成功，消耗 ${res.costPoints} 积分，获得 ${res.pointsAwarded} 积分`);
     setMakeupVisible(false);
     setMakeupDate(null);

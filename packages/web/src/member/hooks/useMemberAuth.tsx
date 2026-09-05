@@ -1,28 +1,15 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import { MEMBER_TOKEN_KEY, MEMBER_REFRESH_TOKEN_KEY } from '@zenith/shared/core';
-import type { ApiResponse } from '@zenith/shared/core';
-import type { Member, MemberLoginResult } from '@zenith/shared/member';
+import type { ApiResponse, BodyOf } from '@zenith/shared/core';
+import { memberAuthContract, type Member, type MemberLoginResult } from '@zenith/shared/member';
+import { urlOf } from '@/lib/contract-query';
 import { prepareTrackerLogout } from '@/utils/tracker';
 import { memberRequest } from '../utils/member-request';
 import { memberQueryClient } from '../lib/member-query';
 
-export interface MemberLoginParams {
-  loginType: 'password' | 'sms';
-  account?: string;
-  password?: string;
-  phone?: string;
-  smsCode?: string;
-}
+export type MemberLoginParams = BodyOf<typeof memberAuthContract.login>;
 
-export interface MemberRegisterParams {
-  username?: string;
-  phone?: string;
-  email?: string;
-  password?: string;
-  smsCode?: string;
-  nickname?: string;
-  inviteCode?: string;
-}
+export type MemberRegisterParams = BodyOf<typeof memberAuthContract.register>;
 
 interface MemberAuthState {
   member: Member | null;
@@ -49,7 +36,7 @@ export function MemberAuthProvider({ children }: Readonly<{ children: ReactNode 
       return;
     }
     try {
-      const res = await memberRequest.get<Member>('/api/member/auth/me', { silent: true });
+      const res = await memberRequest.get<Member>(urlOf(memberAuthContract.me), { silent: true });
       if (res.code === 0) {
         setState({ member: res.data, loading: false });
       } else if (res.code === -1) {
@@ -70,7 +57,8 @@ export function MemberAuthProvider({ children }: Readonly<{ children: ReactNode 
   }, [fetchMember]);
 
   const login = useCallback(async (params: MemberLoginParams) => {
-    const res = await memberRequest.post<MemberLoginResult>('/api/member/auth/login', params, { silent: true });
+    // 直接消费响应包络：code / message 决定登录页的错误提示分支，不走 api() 解包
+    const res = await memberRequest.post<MemberLoginResult>(urlOf(memberAuthContract.login), params satisfies BodyOf<typeof memberAuthContract.login>, { silent: true });
     if (res.code === 0) {
       localStorage.setItem(MEMBER_TOKEN_KEY, res.data.token.accessToken);
       localStorage.setItem(MEMBER_REFRESH_TOKEN_KEY, res.data.token.refreshToken);
@@ -80,7 +68,7 @@ export function MemberAuthProvider({ children }: Readonly<{ children: ReactNode 
   }, []);
 
   const register = useCallback(async (params: MemberRegisterParams) => {
-    const res = await memberRequest.post<MemberLoginResult>('/api/member/auth/register', params, { silent: true });
+    const res = await memberRequest.post<MemberLoginResult>(urlOf(memberAuthContract.register), params satisfies BodyOf<typeof memberAuthContract.register>, { silent: true });
     if (res.code === 0) {
       localStorage.setItem(MEMBER_TOKEN_KEY, res.data.token.accessToken);
       localStorage.setItem(MEMBER_REFRESH_TOKEN_KEY, res.data.token.refreshToken);
@@ -91,7 +79,7 @@ export function MemberAuthProvider({ children }: Readonly<{ children: ReactNode 
 
   const logout = useCallback(() => {
     // 请求构造会在本行同步读取当前 token，随后再清理本地身份。
-    memberRequest.post('/api/member/auth/logout', {}, { silent: true }).catch(() => {});
+    memberRequest.post(urlOf(memberAuthContract.logout), {}, { silent: true }).catch(() => {});
     // 退出前用当前会员 token 尽力发送旧身份事件，避免残留队列被下一个账号接管
     prepareTrackerLogout();
     localStorage.removeItem(MEMBER_TOKEN_KEY);

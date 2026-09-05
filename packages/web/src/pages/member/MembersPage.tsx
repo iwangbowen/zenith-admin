@@ -5,7 +5,8 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { KeyRound, ChevronDown, Tags } from 'lucide-react';
 import type { Member, MemberTag } from '@zenith/shared/member';
-import { MEMBER_STATUS_LABELS } from '@zenith/shared/member';
+import { MEMBER_STATUSES, MEMBER_STATUS_LABELS, type AdjustMemberGrowthInput } from '@zenith/shared/member';
+import { enumValueOf } from '@zenith/shared/core';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -26,13 +27,14 @@ import {
   useBatchMemberLevel,
   useBatchMemberStatus,
   useBatchMemberTags,
-  useDeleteMember,
+  useDeleteMembers,
   useMemberLevels,
   useMemberList,
   useMemberTags,
   useResetMemberPassword,
   useSaveMember,
   useSetMemberTags,
+  type MemberFormValues,
 } from '@/hooks/queries/member-admin';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
@@ -82,7 +84,7 @@ export default function MembersPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
+    status: enumValueOf(MEMBER_STATUSES, submittedParams.status),
     levelId: submittedParams.levelId,
     tagId: submittedParams.tagId,
   });
@@ -94,7 +96,7 @@ export default function MembersPage() {
   const memberTags = tagsQuery.data ?? [];
   const enabledTags = memberTags.filter((t: MemberTag) => t.status === 'enabled');
   const saveMutation = useSaveMember();
-  const deleteMutation = useDeleteMember();
+  const deleteMutation = useDeleteMembers();
   const resetPasswordMutation = useResetMemberPassword();
   const adjustGrowthMutation = useAdjustMemberGrowth();
   const batchStatusMutation = useBatchMemberStatus();
@@ -112,15 +114,15 @@ export default function MembersPage() {
     };
   };
 
-  const memberModal = useEditModal<Member>({
+  const memberModal = useEditModal<Member, MemberFormValues>({
     entityName: '会员',
     save: saveMutation,
     defaults: { status: 'active' as const },
     toValues: (record) => ({ nickname: record.nickname, phone: record.phone, email: record.email, gender: record.gender, levelId: record.levelId, status: record.status, remark: record.remark }),
     beforeSave: (values, ctx) => {
       // 与前台注册契约一致：无任何登录凭证的会员无法登录也无法找回密码
-      const username = ctx.editing?.username ?? (values as { username?: string }).username;
-      const { phone, email } = values as { phone?: string | null; email?: string | null };
+      const username = ctx.editing?.username ?? values.username;
+      const { phone, email } = values;
       if (!username?.toString().trim() && !phone?.toString().trim() && !email?.toString().trim()) {
         Toast.warning('用户名、手机号、邮箱至少填写一个，否则该会员将无法登录');
         abortSubmit('validation');
@@ -135,7 +137,7 @@ export default function MembersPage() {
       title: `确认删除会员「${record.nickname}」？`,
       content: '删除后该会员将无法登录、不再出现在列表中；其积分/钱包流水、券码与签到记录将保留用于审计对账。',
       onOk: async () => {
-        await deleteMutation.mutateAsync(record.id);
+        await deleteMutation.mutateAsync([record.id]);
         Toast.success('删除成功');
       },
     });
@@ -149,7 +151,7 @@ export default function MembersPage() {
       content: status === 'banned' ? '封禁后该会员将无法登录前台。' : '恢复后该会员可正常登录与使用。',
       okButtonProps: status === 'banned' ? { type: 'danger' } : undefined,
       onOk: async () => {
-        await batchStatusMutation.mutateAsync({ ids: [record.id], status });
+        await batchStatusMutation.mutateAsync({ body: { ids: [record.id], status } });
         Toast.success(`已${action}`);
       },
     });
@@ -160,7 +162,7 @@ export default function MembersPage() {
     let values;
     try { values = await growthFormApi.current!.validate(); } catch { abortSubmit('validation'); }
     if (!growthMember) return;
-    await adjustGrowthMutation.mutateAsync({ id: growthMember.id, values: values as { delta: number; remark?: string } });
+    await adjustGrowthMutation.mutateAsync({ params: { id: growthMember.id }, body: values as AdjustMemberGrowthInput });
     Toast.success('成长值已调整');
     setGrowthVisible(false);
     setGrowthMember(null);
@@ -173,13 +175,13 @@ export default function MembersPage() {
   };
   const handleSetTags = async () => {
     if (!tagsMember) return;
-    await setTagsMutation.mutateAsync({ id: tagsMember.id, tagIds: tagsDraft });
+    await setTagsMutation.mutateAsync({ params: { id: tagsMember.id }, body: { tagIds: tagsDraft } });
     Toast.success('标签已更新');
     setTagsMember(null);
   };
   const handleBatchTags = async () => {
     if (batchTagIds.length === 0) return;
-    await batchTagsMutation.mutateAsync({ ids: selectedRowKeys, tagIds: batchTagIds });
+    await batchTagsMutation.mutateAsync({ body: { ids: selectedRowKeys, tagIds: batchTagIds } });
     Toast.success('已批量打标签');
     setBatchTagsVisible(false);
     setBatchTagIds([]);
@@ -191,7 +193,7 @@ export default function MembersPage() {
     let values;
     try { values = await pwdFormApi.current!.validate(); } catch { abortSubmit('validation'); }
     if (!pwdMember) return;
-    await resetPasswordMutation.mutateAsync({ id: pwdMember.id, values });
+    await resetPasswordMutation.mutateAsync({ params: { id: pwdMember.id }, body: values as { newPassword: string } });
     Toast.success('密码已重置');
     setPwdVisible(false);
     setPwdMember(null);
@@ -199,8 +201,9 @@ export default function MembersPage() {
 
   // ── 批量操作 ──────────────────────────────────────────────────────────────
   const handleBatchStatus = async () => {
-    if (!batchStatus) return;
-    await batchStatusMutation.mutateAsync({ ids: selectedRowKeys, status: batchStatus });
+    const status = enumValueOf(MEMBER_STATUSES, batchStatus);
+    if (!status) return;
+    await batchStatusMutation.mutateAsync({ body: { ids: selectedRowKeys, status } });
     Toast.success('已更新');
     setBatchStatusVisible(false);
     setBatchStatus('');
@@ -208,7 +211,7 @@ export default function MembersPage() {
   };
 
   const handleBatchLevel = async () => {
-    await batchLevelMutation.mutateAsync({ ids: selectedRowKeys, levelId: batchLevelId ?? null });
+    await batchLevelMutation.mutateAsync({ body: { ids: selectedRowKeys, levelId: batchLevelId ?? null } });
     Toast.success('已更新');
     setBatchLevelVisible(false);
     setBatchLevelId(undefined);

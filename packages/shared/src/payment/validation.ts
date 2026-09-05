@@ -1,6 +1,6 @@
 import * as z from 'zod';
 import { partialForUpdate } from '../core/validation';
-import { PAYMENT_FUND_RESERVATION_STATUSES, PAYMENT_LEDGER_ACCOUNT_CODES, PAYMENT_METHOD_CHANNEL } from './constants';
+import { PAYMENT_FUND_RESERVATION_STATUSES, PAYMENT_LEDGER_ACCOUNT_CODES, PAYMENT_LINK_PAY_METHODS, PAYMENT_METHOD_CHANNEL } from './constants';
 
 // ─── 支付中心 ────────────────────────────────────────────────────────
 export const createPaymentChannelConfigSchema = z.object({
@@ -58,6 +58,24 @@ export const createRefundSchema = z.object({
   reason: z.string().max(256).optional(),
 });
 
+/** 审批通过退款（备注可选） */
+export const approveRefundSchema = z.object({
+  remark: z.string().max(256).optional(),
+});
+
+/** 驳回退款（必须说明原因） */
+export const rejectRefundSchema = z.object({
+  remark: z.string().min(1).max(256),
+});
+
+/**
+ * 资金流出接口的业务幂等键请求头：客户端为每次业务意图生成唯一键，
+ * 服务端按键去重，网络重试不会重复出款。
+ */
+export const idempotencyKeyHeaders = z.object({
+  'x-idempotency-key': z.string().trim().min(8).max(128).meta({ description: '业务幂等键（8-128 位，建议 UUID）', example: 'refund-01JABCDEF1234567890' }),
+});
+
 export type CreatePaymentChannelConfigInput = z.infer<typeof createPaymentChannelConfigSchema>;
 
 export type UpdatePaymentChannelConfigInput = z.infer<typeof updatePaymentChannelConfigSchema>;
@@ -66,17 +84,34 @@ export type CreatePaymentInput = z.infer<typeof createPaymentSchema>;
 
 export type CreateRefundInput = z.infer<typeof createRefundSchema>;
 
+export type ApproveRefundInput = z.infer<typeof approveRefundSchema>;
+
+export type RejectRefundInput = z.infer<typeof rejectRefundSchema>;
+
+const paymentBillDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '账单日期须为 YYYY-MM-DD');
+
 export const createPaymentReconBatchSchema = z.object({
   applicationId: z.number().int().positive(),
   channel: z.enum(['wechat', 'alipay', 'unionpay']),
   channelConfigId: z.number().int().positive(),
   currency: z.literal('CNY').default('CNY'),
-  billDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '账单日期须为 YYYY-MM-DD'),
+  billDate: paymentBillDate,
   billText: z.string().min(1).max(2_000_000),
   remark: z.string().max(256).optional(),
 });
 
 export type CreatePaymentReconBatchInput = z.infer<typeof createPaymentReconBatchSchema>;
+
+/** 自动拉取渠道账单并对账 */
+export const autoPaymentReconSchema = z.object({
+  applicationId: z.number().int().positive(),
+  channel: z.enum(['wechat', 'alipay', 'unionpay']),
+  channelConfigId: z.number().int().positive(),
+  currency: z.string().regex(/^[A-Z]{3}$/).default('CNY'),
+  billDate: paymentBillDate,
+});
+
+export type AutoPaymentReconInput = z.infer<typeof autoPaymentReconSchema>;
 
 const paymentPeriodDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '账期须为 YYYY-MM-DD');
 
@@ -150,6 +185,16 @@ export const createPaymentSharingReversalSchema = z.object({
 
 export type CreatePaymentSharingReversalInput = z.infer<typeof createPaymentSharingReversalSchema>;
 
+/** 发起分账（金额留空 = 按接收方比例计算） */
+export const dispatchPaymentSharingSchema = z.object({
+  orderNo: z.string().min(1).max(64),
+  receiverId: z.number().int().positive(),
+  amount: z.number().int().positive().optional(), // 分
+  remark: z.string().max(256).optional(),
+});
+
+export type DispatchPaymentSharingInput = z.infer<typeof dispatchPaymentSharingSchema>;
+
 /** 对账差异处理 */
 export const handlePaymentReconItemSchema = z.object({
   action: z.enum(['adjusted', 'suspended', 'ignored']),
@@ -208,6 +253,15 @@ export const createPaymentLinkSchema = z.object({
 });
 
 export const updatePaymentLinkSchema = partialForUpdate(createPaymentLinkSchema).omit({ applicationId: true });
+
+/** 公开收银台下单：金额仅在链接未固定金额时需要；微信 JSAPI 需 openId */
+export const payPaymentLinkSchema = z.object({
+  amount: z.number().int().positive().optional(), // 分
+  payMethod: z.enum(PAYMENT_LINK_PAY_METHODS).optional(),
+  openId: z.string().max(128).optional(),
+});
+
+export type PayPaymentLinkInput = z.infer<typeof payPaymentLinkSchema>;
 
 /** 风控限额规则 */
 export const createPaymentRiskRuleSchema = z.object({
@@ -327,11 +381,18 @@ export const refundPaymentDisputeSchema = z.object({
   reason: z.string().max(256).optional(),
 });
 
+/** 模拟一条投诉（演示 / 联调；不指定订单号则随机取一笔成功订单） */
+export const simulatePaymentDisputeSchema = z.object({
+  orderNo: z.string().max(64).optional(),
+});
+
 export type ReplyPaymentDisputeInput = z.infer<typeof replyPaymentDisputeSchema>;
 
 export type ResolvePaymentDisputeInput = z.infer<typeof resolvePaymentDisputeSchema>;
 
 export type RefundPaymentDisputeInput = z.infer<typeof refundPaymentDisputeSchema>;
+
+export type SimulatePaymentDisputeInput = z.infer<typeof simulatePaymentDisputeSchema>;
 
 // ─── 最终资金内核：双分录与资金预占 ──────────────────────────────────
 const PAYMENT_BIGINT_MAX = 9_223_372_036_854_775_807n;

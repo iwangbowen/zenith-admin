@@ -37,8 +37,10 @@ export default function ChangePasswordPage() {
       return;
     }
     await changePasswordMutation.mutateAsync({
-      oldPassword: needOld ? oldPassword : undefined,
-      newPassword,
+      body: {
+        oldPassword: needOld ? oldPassword : undefined,
+        newPassword,
+      },
     });
     Toast.success('密码已修改');
     navigate(-1);

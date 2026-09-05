@@ -1,98 +1,61 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { PaymentReconBatch, PaymentReconItem } from '@zenith/shared/payment';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import { keepPreviousData, useMutation, type QueryClient } from '@tanstack/react-query';
+import type { QueryOf } from '@zenith/shared/core';
+import { paymentReconContract } from '@zenith/shared/payment';
+import { api, contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
-export interface PaymentReconBatchListParams {
-  page: number;
-  pageSize: number;
-  channel?: string;
-  status?: string;
-}
+export type PaymentReconBatchListParams = NonNullable<QueryOf<typeof paymentReconContract.list>>;
+export type PaymentReconItemListParams = NonNullable<QueryOf<typeof paymentReconContract.items>>;
+export type PaymentReconSampleBillParams = NonNullable<QueryOf<typeof paymentReconContract.sampleBill>>;
 
-export interface PaymentReconItemListParams {
-  batchId?: number;
-  page: number;
-  pageSize: number;
-  result?: string;
-  handleStatus?: string;
-}
-
-export interface CreatePaymentReconBatchValues {
-  applicationId: number;
-  channel: string;
-  channelConfigId: number;
-  currency: 'CNY';
-  billDate: string;
-  billText: string;
-  remark?: string;
-}
+const resource = createResourceQueries(paymentReconContract);
 
 export const paymentReconKeys = {
-  all: ['payment-recon'] as const,
-  lists: ['payment-recon', 'list'] as const,
-  list: (params: PaymentReconBatchListParams) => ['payment-recon', 'list', params] as const,
-  items: (params: PaymentReconItemListParams) => ['payment-recon', 'items', params] as const,
-  detail: (id: number | undefined) => ['payment-recon', 'detail', id] as const,
+  ...resource.keys,
+  items: contractKey(paymentReconContract.items),
+  itemList: (batchId: number | undefined, params: PaymentReconItemListParams) =>
+    contractKey(paymentReconContract.items, { params: { id: batchId ?? 0 }, query: params }),
 };
 
-export function usePaymentReconBatchList(params: PaymentReconBatchListParams) {
-  return useQuery({
-    queryKey: paymentReconKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<PaymentReconBatch>>(`/api/payment/recon/batches${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+/** 对账批次的增删与差异处理都会改变批次统计（matched / diff 计数）与明细 */
+function invalidateRecon(qc: QueryClient) {
+  void qc.invalidateQueries({ queryKey: paymentReconKeys.all });
 }
 
-export function usePaymentReconItems(params: PaymentReconItemListParams, enabled = true) {
-  const { batchId, ...query } = params;
-  return useQuery({
-    queryKey: paymentReconKeys.items({ batchId, ...query }),
-    queryFn: () => request.get<PaginatedResponse<PaymentReconItem>>(`/api/payment/recon/batches/${batchId}/items${toQueryString(query)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-    enabled: enabled && batchId !== undefined,
-  });
+export const usePaymentReconBatchList = resource.useList;
+export const usePaymentReconBatchDetail = resource.useDetail;
+
+export function usePaymentReconItems(batchId: number | undefined, params: PaymentReconItemListParams, enabled = true) {
+  return useApiQuery(
+    paymentReconContract.items,
+    { params: { id: batchId ?? 0 }, query: params },
+    { placeholderData: keepPreviousData, enabled: enabled && batchId !== undefined },
+  );
 }
 
+/** 模拟账单是按需生成的文本，不进入缓存 */
 export function usePaymentReconSampleBill() {
   return useMutation({
-    mutationFn: (params: { applicationId: number; channel: string; channelConfigId: number; currency: string; billDate: string }) =>
-      request.get<{ billText: string }>(`/api/payment/recon/sample-bill${toQueryString(params)}`).then(unwrap),
+    mutationFn: (params: PaymentReconSampleBillParams) => api(paymentReconContract.sampleBill, { query: params }),
   });
 }
 
 export function useCreatePaymentReconBatch() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: CreatePaymentReconBatchValues) =>
-      request.post<PaymentReconBatch>('/api/payment/recon/batches', values).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: paymentReconKeys.all }),
-  });
+  return useApiMutation(paymentReconContract.create, { invalidate: invalidateRecon });
 }
 
 export function useAutoPaymentRecon() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: { applicationId: number; channel: string; channelConfigId: number; currency: string; billDate: string }) =>
-      request.post<PaymentReconBatch>('/api/payment/recon/auto', values).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: paymentReconKeys.all }),
-  });
+  return useApiMutation(paymentReconContract.auto, { invalidate: invalidateRecon });
 }
 
 export function useDeletePaymentReconBatch() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/payment/recon/batches/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: paymentReconKeys.all }),
+  return useApiMutation(paymentReconContract.remove, {
+    invalidate: (qc, _output, { params }) => {
+      qc.removeQueries({ queryKey: paymentReconKeys.detail(params.id) });
+      invalidateRecon(qc);
+    },
   });
 }
 
 export function useHandlePaymentReconItem() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id: number; values: { action: 'adjusted' | 'suspended' | 'ignored'; remark: string } }) =>
-      request.patch<PaymentReconItem>(`/api/payment/recon/items/${id}/handle`, values).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: paymentReconKeys.all }),
-  });
+  return useApiMutation(paymentReconContract.handleItem, { invalidate: invalidateRecon });
 }

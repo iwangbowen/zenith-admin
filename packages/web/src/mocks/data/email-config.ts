@@ -7,7 +7,6 @@ export const mockEmailConfig: EmailConfig = {
   smtpHost: 'smtp.example.com',
   smtpPort: 465,
   smtpUser: 'noreply@example.com',
-  // smtpPassword intentionally omitted to match real API behavior (masked)
   fromName: 'Zenith Admin',
   fromEmail: 'noreply@example.com',
   encryption: 'ssl',

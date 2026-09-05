@@ -32,6 +32,8 @@ export interface RecordedCall {
   url: string;
   /** 请求体（GET 无） */
   body?: unknown;
+  /** 请求选项里的请求头（小写头名 → 值；未传时无此键） */
+  headers?: Record<string, string>;
 }
 
 type Responder = (call: RecordedCall) => unknown;
@@ -67,8 +69,14 @@ export class ApiRecorder {
   }
 
   /** 供 `vi.mock('@/utils/request')` 的工厂调用；返回统一响应外壳 */
-  dispatch(method: HttpMethod, url: string, body?: unknown): Promise<unknown> {
-    const call: RecordedCall = { method, url, ...(body === undefined ? {} : { body }) };
+  dispatch(method: HttpMethod, url: string, body?: unknown, opts?: { headers?: HeadersInit }): Promise<unknown> {
+    const headers = opts?.headers ? Object.fromEntries(new Headers(opts.headers)) : undefined;
+    const call: RecordedCall = {
+      method,
+      url,
+      ...(body === undefined ? {} : { body }),
+      ...(headers && Object.keys(headers).length > 0 ? { headers } : {}),
+    };
     this.calls.push(call);
     const stub = this.stubs.find((s) => (s.method === '*' || s.method === method) && s.match(url));
     if (!stub) {
@@ -117,12 +125,13 @@ export class ApiRecorder {
  * ```
  */
 export function createRequestMock(getRecorder: () => ApiRecorder) {
+  type Opts = { headers?: HeadersInit };
   return {
-    get: (url: string) => getRecorder().dispatch('GET', url),
-    post: (url: string, body?: unknown) => getRecorder().dispatch('POST', url, body),
-    put: (url: string, body?: unknown) => getRecorder().dispatch('PUT', url, body),
-    patch: (url: string, body?: unknown) => getRecorder().dispatch('PATCH', url, body),
-    delete: (url: string, body?: unknown) => getRecorder().dispatch('DELETE', url, body),
+    get: (url: string, opts?: Opts) => getRecorder().dispatch('GET', url, undefined, opts),
+    post: (url: string, body?: unknown, opts?: Opts) => getRecorder().dispatch('POST', url, body, opts),
+    put: (url: string, body?: unknown, opts?: Opts) => getRecorder().dispatch('PUT', url, body, opts),
+    patch: (url: string, body?: unknown, opts?: Opts) => getRecorder().dispatch('PATCH', url, body, opts),
+    delete: (url: string, body?: unknown, opts?: Opts) => getRecorder().dispatch('DELETE', url, body, opts),
   };
 }
 

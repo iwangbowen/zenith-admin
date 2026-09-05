@@ -3,7 +3,7 @@ import { Button, Descriptions, Select, SideSheet, Space, Spin, Tabs, TabPane, Ta
 import { Download, Lock, LockOpen, Star, StarOff } from 'lucide-react';
 import { formatBytes } from '@zenith/shared/core';
 import { DRIVE_NODE_TYPE_LABELS, DRIVE_ROLE_LABELS, type DriveNode, type DriveNodeDetail } from '@zenith/shared/drive';
-import { useDriveNode, useDriveTags, useLockDriveNode, useSaveDriveTag, useSetDriveNodeTags, useStarDriveNode } from '@/hooks/queries/drive';
+import { useCreateDriveTag, useDriveNode, useDriveTags, useLockDriveNode, useSetDriveNodeTags, useStarDriveNode } from '@/hooks/queries/drive';
 import { usePermission } from '@/hooks/usePermission';
 import { getFileTypeIcon } from '@/utils/file-utils';
 import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
@@ -25,7 +25,7 @@ function TagsEditor({ node }: { readonly node: DriveNodeDetail }) {
   const { hasPermission } = usePermission();
   const tagsQuery = useDriveTags(node.spaceId);
   const setTags = useSetDriveNodeTags();
-  const saveTag = useSaveDriveTag();
+  const createTag = useCreateDriveTag();
   const canEdit = hasPermission('drive:node:edit') && roleAtLeast(node.myRole, 'editor');
   const value = useMemo(() => (node.tags ?? []).map((t) => t.id), [node.tags]);
   if (!canEdit) {
@@ -42,10 +42,10 @@ function TagsEditor({ node }: { readonly node: DriveNodeDetail }) {
         const ids: number[] = [];
         for (const item of raw) {
           if (typeof item === 'number') { ids.push(item); continue; }
-          const created = await saveTag.mutateAsync({ spaceId: node.spaceId, values: { name: String(item).trim().slice(0, 50), spaceId: node.spaceId } });
+          const created = await createTag.mutateAsync({ body: { spaceId: node.spaceId, name: String(item).trim().slice(0, 50) } });
           ids.push(created.id);
         }
-        await setTags.mutateAsync({ id: node.id, tagIds: ids });
+        await setTags.mutateAsync({ params: { id: node.id }, body: { tagIds: ids } });
       }}
     />
   );

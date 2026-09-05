@@ -4,11 +4,11 @@ import { BadgeCheck, CalendarClock, Repeat, ShieldCheck } from 'lucide-react';
 import { MemberPage } from '../../components/MemberPage';
 import { formatYuan } from '../../utils/format';
 import { useMemberPaymentOptions, useMyRenewal, useRenewalPlans, useRenewNow, useSignRenewal, useTerminateRenewal } from '../../hooks/queries';
+import type { MemberRenewalPlan } from '@zenith/shared/member';
 import { PAYMENT_CONTRACT_STATUS_LABELS, PAYMENT_DEDUCT_PERIOD_LABELS } from '@zenith/shared/payment';
-import type { PaymentDeductPlan } from '@zenith/shared/payment';
 import { confirmDanger } from '@/utils/confirm';
 
-function periodText(p: Pick<PaymentDeductPlan, 'period' | 'customDays'>): string {
+function periodText(p: Pick<MemberRenewalPlan, 'period' | 'customDays'>): string {
   return p.period === 'custom' ? `每 ${p.customDays ?? '-'} 天` : PAYMENT_DEDUCT_PERIOD_LABELS[p.period];
 }
 
@@ -43,7 +43,7 @@ export default function RenewalPage() {
   const contract = info?.contract ?? null;
   const active = contract && (contract.status === 'signed' || contract.status === 'paused');
 
-  const handleSign = (plan: PaymentDeductPlan) => {
+  const handleSign = (plan: MemberRenewalPlan) => {
     Modal.confirm({
       title: `开通「${plan.name}」自动续费？`,
       content: `${periodText(plan)}自动扣款 ${formatYuan(plan.amount)}，签约后立即扣首期，可随时关闭`,
@@ -53,7 +53,7 @@ export default function RenewalPage() {
         try {
           const payMethod = deductMethods[0]?.method;
           if (!applicationId || !payMethod) throw new Error('当前没有可用的自动续费方式');
-          const res = await signMutation.mutateAsync({ applicationId, planId: plan.id, payMethod });
+          const res = await signMutation.mutateAsync({ body: { applicationId, planId: plan.id, payMethod } });
           if (res.firstDeduct?.deductStatus === 'success') Toast.success('开通成功，首期已扣款');
           else if (res.firstDeduct?.deductStatus === 'failed') Toast.warning(`开通成功，首期扣款失败：${res.firstDeduct.failReason ?? '稍后将自动重试'}`);
           else Toast.success('开通成功');
@@ -71,7 +71,7 @@ export default function RenewalPage() {
       okText: '确认关闭',
       onOk: async () => {
         if (applicationId == null) return;
-        await terminateMutation.mutateAsync(applicationId);
+        await terminateMutation.mutateAsync({ query: { applicationId } });
         Toast.success('已关闭自动续费');
       },
     });
@@ -83,7 +83,7 @@ export default function RenewalPage() {
       content: contract?.planAmount != null ? `将立即扣款 ${formatYuan(contract.planAmount)} 并顺延有效期` : '将按签约计划立即扣款一期',
       onOk: async () => {
         if (applicationId == null) return;
-        const res = await renewNowMutation.mutateAsync(applicationId);
+        const res = await renewNowMutation.mutateAsync({ query: { applicationId } });
         if (res.deductStatus === 'success') Toast.success('续费成功');
         else if (res.deductStatus === 'processing') Toast.info('扣款受理中，稍后自动到账');
         else Toast.error(`续费失败：${res.failReason ?? '请稍后再试'}`);

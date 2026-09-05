@@ -1,68 +1,36 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute } from '@hono/zod-openapi';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { aiSettingsContract } from '@zenith/shared/ai';
 import { authMiddleware } from '../../middleware/auth';
-import { jsonContent, validationHook, commonErrorResponses, ok, okMsg, okBody } from '../../lib/openapi-schemas';
-import { AiUserSettingsDTO, AiMemoryProfileDTO } from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { getMyAiSettings, saveMyAiSettings } from '../../services/ai/ai-user-settings.service';
 import { getMemoryProfile, updateMemoryProfile, clearMemoryProfile } from '../../services/ai/ai-memory.service';
 import { currentUser } from '../../lib/context';
-import { saveAiUserSettingsSchema, updateAiMemoryProfileSchema } from '@zenith/shared/ai';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
-const get = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get',
-    path: '/',
-    tags: ['AI'],
-    summary: '获取我的 AI 设置（个人指令 / AI 记忆开关等）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware] as const,
-    responses: { ...commonErrorResponses, ...ok(AiUserSettingsDTO, 'AI 设置') },
-  }),
+const authed = [authMiddleware] as const;
+
+const get = defineContractRoute(aiSettingsContract.me, {
+  middleware: authed,
   handler: async (c) => c.json(okBody(await getMyAiSettings()), 200),
 });
 
-const save = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put',
-    path: '/',
-    tags: ['AI'],
-    summary: '保存我的 AI 设置（域内字段级合并）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware] as const,
-    request: { body: { content: jsonContent(saveAiUserSettingsSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(AiUserSettingsDTO, '保存成功') },
-  }),
+const save = defineContractRoute(aiSettingsContract.save, {
+  middleware: authed,
   handler: async (c) => c.json(okBody(await saveMyAiSettings(c.req.valid('json')), '保存成功'), 200),
 });
 
-const getProfile = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get',
-    path: '/memory-profile',
-    tags: ['AI'],
-    summary: '查看我的 AI 记忆画像（working memory）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware] as const,
-    responses: { ...commonErrorResponses, ...ok(AiMemoryProfileDTO, 'AI 记忆画像') },
-  }),
+const getProfile = defineContractRoute(aiSettingsContract.memoryProfile, {
+  middleware: authed,
   handler: async (c) => {
     const user = currentUser();
     return c.json(okBody({ content: await getMemoryProfile(user.userId) }), 200);
   },
 });
 
-const putProfile = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put',
-    path: '/memory-profile',
-    tags: ['AI'],
-    summary: '编辑我的 AI 记忆画像',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware] as const,
-    request: { body: { content: jsonContent(updateAiMemoryProfileSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(AiMemoryProfileDTO, '保存成功') },
-  }),
+const putProfile = defineContractRoute(aiSettingsContract.saveMemoryProfile, {
+  middleware: authed,
   handler: async (c) => {
     const user = currentUser();
     const { content } = c.req.valid('json');
@@ -71,16 +39,8 @@ const putProfile = defineOpenAPIRoute({
   },
 });
 
-const deleteProfile = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete',
-    path: '/memory-profile',
-    tags: ['AI'],
-    summary: '清空我的 AI 记忆画像',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware] as const,
-    responses: { ...commonErrorResponses, ...okMsg('已清空') },
-  }),
+const deleteProfile = defineContractRoute(aiSettingsContract.clearMemoryProfile, {
+  middleware: authed,
   handler: async (c) => {
     const user = currentUser();
     await clearMemoryProfile(user.userId);

@@ -1,45 +1,32 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { EmailSendLog, SendStatus } from '@zenith/shared/messaging';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import { keepPreviousData } from '@tanstack/react-query';
+import type { QueryOf } from '@zenith/shared/core';
+import { emailSendLogContract } from '@zenith/shared/messaging';
+import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
-export interface EmailSendLogListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  toEmail?: string;
-  status?: SendStatus;
-  source?: string;
-}
+export type EmailSendLogListParams = NonNullable<QueryOf<typeof emailSendLogContract.list>>;
 
 export const emailSendLogKeys = {
-  all: ['email-send-logs'] as const,
-  lists: ['email-send-logs', 'list'] as const,
-  list: (params: EmailSendLogListParams) => ['email-send-logs', 'list', params] as const,
-  detail: (id: number | undefined) => ['email-send-logs', 'detail', id] as const,
+  lists: contractKey(emailSendLogContract.list),
+  list: (params: EmailSendLogListParams) => contractKey(emailSendLogContract.list, { query: params }),
 };
 
 export function useEmailSendLogList(params: EmailSendLogListParams) {
-  return useQuery({
-    queryKey: emailSendLogKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<EmailSendLog>>(`/api/email-send-logs${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+  return useApiQuery(emailSendLogContract.list, { query: params }, { placeholderData: keepPreviousData });
 }
 
+/** 测试发送会产生一条发送记录 */
 export function useTestEmailSendLog() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: Record<string, unknown>) => request.post<null>('/api/email-send-logs/test-send', values).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: emailSendLogKeys.all }),
+  return useApiMutation(emailSendLogContract.testSend, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: emailSendLogKeys.lists });
+    },
   });
 }
 
 export function useDeleteEmailSendLog() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/email-send-logs/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: emailSendLogKeys.all }),
+  return useApiMutation(emailSendLogContract.remove, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: emailSendLogKeys.lists });
+    },
   });
 }

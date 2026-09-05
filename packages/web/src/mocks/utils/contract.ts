@@ -4,6 +4,7 @@ import {
   isMultipart,
   toColonPath,
   type AnyOperation,
+  type HeadersOf,
   type MultipartBody,
   type OutputOf,
   type ParamsOf,
@@ -31,6 +32,8 @@ export interface MockContext<Op extends AnyOperation> {
   readonly params: ParamsOf<Op>;
   /** 已按契约解析的查询参数；未声明时为 undefined */
   readonly query: QueryOf<Op>;
+  /** 已按契约解析的业务请求头（键为小写头名）；未声明时为 undefined */
+  readonly headers: HeadersOf<Op>;
   /** 已按契约解析的 JSON 请求体；multipart 为原始 FormData；未声明时为 undefined */
   readonly body: Op['body'] extends MultipartBody ? FormData : Op['body'] extends z.ZodType ? z.output<Op['body']> : undefined;
   readonly request: Request;
@@ -76,6 +79,9 @@ export function mock<Op extends AnyOperation>(op: Op, resolver: MockResolver<Op>
     const query = parseWith(op.query, searchParamsToObject(url), '参数');
     if (!query.ok) return badRequest(query.message, { status: 400 });
 
+    const headers = parseWith(op.headers, Object.fromEntries(request.headers), '请求头');
+    if (!headers.ok) return badRequest(headers.message, { status: 400 });
+
     let body: ParseOutcome = { ok: true, value: undefined };
     if (op.body && request.method !== 'GET') {
       if (isMultipart(op.body)) {
@@ -90,6 +96,7 @@ export function mock<Op extends AnyOperation>(op: Op, resolver: MockResolver<Op>
     const ctx: MockContext<Op> = {
       params: params.value as ParamsOf<Op>,
       query: query.value as QueryOf<Op>,
+      headers: headers.value as HeadersOf<Op>,
       body: body.value as MockContext<Op>['body'],
       request,
       url,

@@ -1,7 +1,19 @@
 import dayjs from 'dayjs';
-import { http } from 'msw';
-import { ok, badRequest, notFound, pageParams, nextIdFrom } from '@/mocks/utils/handlers';
+import {
+  checkinMilestoneContract,
+  checkinRuleContract,
+  checkinSettingsContract,
+  memberCheckinContract,
+  memberContract,
+  memberSelfContract,
+  type CheckinMilestone,
+  type CheckinRule,
+  type MemberCheckin,
+} from '@zenith/shared/member';
+import { mock } from '@/mocks/utils/contract';
+import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockCheckinRules, mockCheckinStatus, mockMemberCheckins, mockCheckinSettings, mockCheckinMilestones, buildMilestoneStatus } from '../data/checkin';
+import { mockCoupons } from '../data/members';
 import { mockDate, mockDateTime } from '../utils/date';
 
 const rules = [...mockCheckinRules];
@@ -10,12 +22,6 @@ let checkinStatus = { ...mockCheckinStatus };
 const settings = { ...mockCheckinSettings };
 const milestones = [...mockCheckinMilestones];
 
-function paginated<T>(list: T[], page: number, pageSize: number) {
-  const start = (page - 1) * pageSize;
-  const items = list.slice(start, start + pageSize);
-  return ok({ list: items, total: list.length, page, pageSize });
-}
-
 function getReward(days: number) {
   const sorted = [...rules].sort((a, b) => a.dayNumber - b.dayNumber);
   const exact = sorted.find((rule) => rule.dayNumber === days);
@@ -23,11 +29,30 @@ function getReward(days: number) {
   return sorted[sorted.length - 1];
 }
 
+/** 与服务端 leftJoin coupons 口径一致：奖励券名称按模板回填 */
+function couponNameOf(couponId: number | null | undefined): string | null {
+  return couponId ? (mockCoupons.find((c) => c.id === couponId)?.name ?? null) : null;
+}
+
+/** 管理端签到记录 / 会员端签到历史共用的会员维度筛选 */
+function matchesKeyword(item: MemberCheckin, memberKeyword: string | undefined): boolean {
+  if (!memberKeyword) return true;
+  const numId = /^\d+$/.test(memberKeyword) ? Number(memberKeyword) : null;
+  if (numId) return item.memberId === numId;
+  return (item.memberNickname ?? '').toLowerCase().includes(memberKeyword.toLowerCase());
+}
+
+function inDateRange(item: MemberCheckin, dateStart: string | undefined, dateEnd: string | undefined): boolean {
+  if (dateStart && item.checkinDate < dateStart.slice(0, 10)) return false;
+  if (dateEnd && item.checkinDate > dateEnd.slice(0, 10)) return false;
+  return true;
+}
+
 export const checkinHandlers = [
-  http.get('/api/checkin-rules', () => ok([...rules].sort((a, b) => a.dayNumber - b.dayNumber))),
-  http.post('/api/checkin-rules', async ({ request }) => {
-    const body = await request.json() as { dayNumber: number; points: number; experience: number; remark?: string | null };
-    const created = {
+  // ── 签到规则 ────────────────────────────────────────────────────
+  mock(checkinRuleContract.list, ({ ok }) => ok([...rules].sort((a, b) => a.dayNumber - b.dayNumber))),
+  mock(checkinRuleContract.create, ({ body, ok }) => {
+    const created: CheckinRule = {
       id: nextIdFrom(rules),
       dayNumber: body.dayNumber,
       points: body.points,
@@ -39,40 +64,38 @@ export const checkinHandlers = [
     rules.push(created);
     return ok(created, '创建成功');
   }),
-  http.put('/api/checkin-rules/:id', async ({ params, request }) => {
-    const id = Number(params.id);
-    const body = await request.json() as Partial<{ dayNumber: number; points: number; experience: number; remark: string | null }>;
-    const target = rules.find((rule) => rule.id === id);
+  mock(checkinRuleContract.update, ({ params, body, ok }) => {
+    const target = rules.find((rule) => rule.id === params.id);
     if (!target) return notFound('签到规则不存在', { status: 404 });
     Object.assign(target, body, { updatedAt: mockDateTime() });
     return ok(target, '更新成功');
   }),
-  http.delete('/api/checkin-rules/:id', ({ params }) => {
-    const id = Number(params.id);
-    const index = rules.findIndex((rule) => rule.id === id);
+  mock(checkinRuleContract.remove, ({ params, ok }) => {
+    const index = rules.findIndex((rule) => rule.id === params.id);
     if (index >= 0) rules.splice(index, 1);
     return ok(null, '删除成功');
   }),
-  http.get('/api/member-checkins', ({ request }) => {
-    const url = new URL(request.url);
-    const { page, pageSize } = pageParams(url);
-    const memberKeyword = url.searchParams.get('memberKeyword') ?? '';
-    const dateStart = url.searchParams.get('dateStart');
-    const dateEnd = url.searchParams.get('dateEnd');
-    const filtered = memberCheckins.filter((item) => {
-      if (memberKeyword) {
-        const numId = /^\d+$/.test(memberKeyword) ? Number(memberKeyword) : null;
-        if (numId) { if (item.memberId !== numId) return false; }
-        else if (!item.memberNickname?.toLowerCase().includes(memberKeyword.toLowerCase())) return false;
-      }
-      if (dateStart && item.checkinDate < dateStart) return false;
-      if (dateEnd && item.checkinDate > dateEnd) return false;
-      return true;
-    });
-    return paginated(filtered, page, pageSize);
+
+  // ── 管理端签到记录 / 日历 ────────────────────────────────────────
+  mock(memberCheckinContract.list, ({ query, ok, paginate }) => {
+    const filtered = memberCheckins.filter((item) => matchesKeyword(item, query.memberKeyword) && inDateRange(item, query.dateStart, query.dateEnd));
+    return ok(paginate(filtered));
   }),
-  http.get('/api/member/checkin/status', () => ok(checkinStatus)),
-  http.post('/api/member/checkin', () => {
+  mock(memberCheckinContract.calendar, ({ query, ok }) => {
+    const byDate = new Map<string, { date: string; count: number; makeupCount: number }>();
+    for (const item of memberCheckins) {
+      if (!item.checkinDate.startsWith(query.month)) continue;
+      const day = byDate.get(item.checkinDate) ?? { date: item.checkinDate, count: 0, makeupCount: 0 };
+      day.count += 1;
+      if (item.isMakeup) day.makeupCount += 1;
+      byDate.set(item.checkinDate, day);
+    }
+    return ok([...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)));
+  }),
+
+  // ── 会员端签到 ──────────────────────────────────────────────────
+  mock(memberSelfContract.checkinStatus, ({ ok }) => ok(checkinStatus)),
+  mock(memberSelfContract.checkin, ({ ok }) => {
     if (checkinStatus.checkedToday) {
       return badRequest('今天已经签到过了', { status: 400 });
     }
@@ -102,81 +125,74 @@ export const checkinHandlers = [
       consecutiveDays: result.consecutiveDays,
       pointsAwarded: result.points,
       experienceAwarded: result.experience,
+      isMakeup: false,
+      remark: null,
       createdAt: mockDateTime(dayjs().hour(9).minute(0).second(0).toDate()),
     });
     return ok(result, '签到成功');
   }),
-  http.get('/api/member/checkin/history', ({ request }) => {
-    const url = new URL(request.url);
-    const { page, pageSize } = pageParams(url);
-    const dateStart = url.searchParams.get('dateStart');
-    const dateEnd = url.searchParams.get('dateEnd');
-    const filtered = memberCheckins.filter((item) => {
-      if (dateStart && item.checkinDate < dateStart) return false;
-      if (dateEnd && item.checkinDate > dateEnd) return false;
-      return true;
-    });
-    return paginated(filtered, page, pageSize);
+  mock(memberSelfContract.checkinHistory, ({ query, ok, paginate }) => {
+    const filtered = memberCheckins.filter((item) => inDateRange(item, query.dateStart, query.dateEnd));
+    return ok(paginate(filtered));
   }),
 
   // ── 签到设置 ──────────────────────────────────────────────────
-  http.get('/api/checkin-settings', () => ok(settings)),
-  http.put('/api/checkin-settings', async ({ request }) => {
-    const body = await request.json() as Partial<typeof settings>;
+  mock(checkinSettingsContract.get, ({ ok }) => ok(settings)),
+  mock(checkinSettingsContract.update, ({ body, ok }) => {
     Object.assign(settings, body, { updatedAt: mockDateTime() });
     return ok(settings, '更新成功');
   }),
 
   // ── 签到里程碑 ────────────────────────────────────────────────
-  http.get('/api/checkin-milestones', () => ok([...milestones].sort((a, b) => a.cumulativeDays - b.cumulativeDays))),
-  http.post('/api/checkin-milestones', async ({ request }) => {
-    const body = await request.json() as Omit<(typeof milestones)[number], 'id' | 'createdAt' | 'updatedAt' | 'couponName'>;
-    const created = {
+  mock(checkinMilestoneContract.list, ({ ok }) => ok([...milestones].sort((a, b) => a.cumulativeDays - b.cumulativeDays))),
+  mock(checkinMilestoneContract.create, ({ body, ok }) => {
+    const created: CheckinMilestone = {
       id: nextIdFrom(milestones),
-      ...body,
-      couponName: body.couponId ? `优惠券#${body.couponId}` : null,
+      title: body.title,
+      cumulativeDays: body.cumulativeDays,
+      rewardType: body.rewardType,
+      rewardPoints: body.rewardPoints,
+      couponId: body.couponId ?? null,
+      couponName: couponNameOf(body.couponId),
+      enabled: body.enabled,
+      remark: body.remark ?? null,
       createdAt: mockDateTime(),
       updatedAt: mockDateTime(),
     };
     milestones.push(created);
     return ok(created, '创建成功');
   }),
-  http.put('/api/checkin-milestones/:id', async ({ params, request }) => {
-    const id = Number(params.id);
-    const body = await request.json() as Partial<(typeof milestones)[number]>;
-    const target = milestones.find((m) => m.id === id);
+  mock(checkinMilestoneContract.update, ({ params, body, ok }) => {
+    const target = milestones.find((m) => m.id === params.id);
     if (!target) return notFound('里程碑不存在', { status: 404 });
     Object.assign(target, body, {
-      couponName: (body.couponId ?? target.couponId) ? `优惠券#${body.couponId ?? target.couponId}` : null,
+      couponName: couponNameOf(body.couponId ?? target.couponId),
       updatedAt: mockDateTime(),
     });
     return ok(target, '更新成功');
   }),
-  http.delete('/api/checkin-milestones/:id', ({ params }) => {
-    const id = Number(params.id);
-    const index = milestones.findIndex((m) => m.id === id);
+  mock(checkinMilestoneContract.remove, ({ params, ok }) => {
+    const index = milestones.findIndex((m) => m.id === params.id);
     if (index >= 0) milestones.splice(index, 1);
     return ok(null, '删除成功');
   }),
 
   // ── 我的里程碑（C 端）─────────────────────────────────────────
-  http.get('/api/member/checkin/milestones', () => ok(buildMilestoneStatus(checkinStatus.totalDays))),
+  mock(memberSelfContract.checkinMilestones, ({ ok }) => ok(buildMilestoneStatus(checkinStatus.totalDays))),
 
   // ── 后台为会员补签 ────────────────────────────────────────────
-  http.post('/api/members/:id/checkin/makeup', async ({ params, request }) => {
-    const memberId = Number(params.id);
-    const body = await request.json() as { date: string; reason?: string };
+  mock(memberContract.makeupCheckin, ({ params, body, ok }) => {
     const reward = getReward(1);
-    const created = {
+    const created: MemberCheckin = {
       id: nextIdFrom(memberCheckins),
-      memberId,
-      memberNickname: `会员#${memberId}`,
+      memberId: params.id,
+      memberNickname: `会员#${params.id}`,
       checkinDate: body.date,
       consecutiveDays: 1,
       pointsAwarded: reward?.points ?? 0,
       experienceAwarded: reward?.experience ?? 0,
       isMakeup: true,
-      remark: body.reason ?? null,
+      remark: body.reason,
       createdAt: mockDateTime(),
     };
     memberCheckins.unshift(created);
@@ -190,11 +206,10 @@ export const checkinHandlers = [
   }),
 
   // ── 会员自助补签（C 端）───────────────────────────────────────
-  http.post('/api/member/checkin/makeup', async ({ request }) => {
+  mock(memberSelfContract.makeupCheckin, ({ body, ok }) => {
     if (!settings.makeupEnabled) {
       return badRequest('补签功能未开放', { status: 400 });
     }
-    const body = await request.json() as { date: string };
     const reward = getReward(1);
     checkinStatus = { ...checkinStatus, totalDays: checkinStatus.totalDays + 1 };
     memberCheckins.unshift({
@@ -206,6 +221,7 @@ export const checkinHandlers = [
       pointsAwarded: reward?.points ?? 0,
       experienceAwarded: reward?.experience ?? 0,
       isMakeup: true,
+      remark: null,
       createdAt: mockDateTime(),
     });
     return ok({

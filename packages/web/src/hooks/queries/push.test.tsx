@@ -74,7 +74,7 @@ describe('useTestPushSend', () => {
     const fetches = observeFetches(qc);
     api.resetCalls();
 
-    await hook.result.current.test.mutateAsync({ id: 1, values: { registrationId: 'reg-1', title: 't', content: 'c' } });
+    await hook.result.current.test.mutateAsync({ params: { id: 1 }, body: { registrationId: 'reg-1', title: 't', content: 'c' } });
     await waitFor(() => expect(hook.result.current.logs.isFetching).toBe(false));
 
     expect(fetches.countOf(pushSendLogKeys.lists)).toBe(1);

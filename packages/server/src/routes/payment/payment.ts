@@ -1,26 +1,16 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono } from '@hono/zod-openapi';
 import {
-  createPaymentSchema,
-  createRefundSchema,
-  createPaymentChannelConfigSchema,
-  updatePaymentChannelConfigSchema,
+  paymentChannelContract,
+  paymentNotifyLogContract,
+  paymentOrderContract,
+  paymentRefundContract,
+  paymentStatsContract,
 } from '@zenith/shared/payment';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditAfterData, setAuditBeforeData } from '../../middleware/guard';
 import { idempotencyGuard } from '../../middleware/idempotency';
-import { IdParam, PaginationQuery, commonErrorResponses, dateRangeBound, jsonContent, ok, okBody, okMsg, okPaginated, validationHook } from '../../lib/openapi-schemas';
-import {
-  PaymentChannelConfigDTO,
-  PaymentChannelConfigLookupDTO,
-  PaymentOrderDTO,
-  PaymentRefundDTO,
-  PaymentNotifyLogDTO,
-  CreatePaymentResponseDTO,
-  PaymentRefundResultDTO,
-  PaymentStatsDTO,
-  PaymentTrendPointDTO,
-  ChannelConnectivityResultDTO,
-} from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { getClientIp } from '../../lib/request-helpers';
 import {
   listAllChannelConfigs,
@@ -53,128 +43,54 @@ import { getPaymentStats, getPaymentTrend } from '../../services/payment/payment
 
 const paymentRouter = new OpenAPIHono({ defaultHook: validationHook });
 
-const channelEnum = z.enum(['wechat', 'alipay', 'unionpay']);
-const payMethodEnum = z.enum(['wechat_native', 'wechat_jsapi', 'wechat_h5', 'alipay_page', 'alipay_wap', 'alipay_app', 'unionpay_qr']);
-
-// 渠道配置入参复用 shared 契约（禁止本地重复定义——本地副本曾漏掉全部 unionpay 字段，
-// Zod strip 模式将其静默剥离，云闪付配置写入即丢失）
-const channelCreateSchema = createPaymentChannelConfigSchema;
-const channelUpdateSchema = updatePaymentChannelConfigSchema;
-
-// 下单/退款入参复用 shared 契约，应用路由只接受内部 applicationId。
-const paymentCreateSchema = createPaymentSchema;
-
-const refundCreateSchema = createRefundSchema;
-const idempotencyHeaders = z.object({
-  'x-idempotency-key': z.string().trim().min(8).max(128).openapi({
-    param: { in: 'header' },
-    example: 'refund-01JABCDEF1234567890',
-  }),
+// ─── 统计 ─────────────────────────────────────────────────────────────────────
+const statsRoute = defineContractRoute(paymentStatsContract.stats, {
+  middleware: [authMiddleware, guard({ permission: 'payment:order:list' })],
+  handler: async (c) => c.json(okBody(await getPaymentStats()), 200),
 });
 
-const listQuery = PaginationQuery.extend({
-  keyword: z.string().optional(),
-  channel: channelEnum.optional(),
-  status: z.enum(['pending', 'paying', 'unknown', 'success', 'closed', 'refunding', 'refunded', 'failed']).optional(),
-  payMethod: payMethodEnum.optional(),
-  bizType: z.string().optional(),
-  minAmount: z.coerce.number().int().nonnegative().optional(),
-  maxAmount: z.coerce.number().int().nonnegative().optional(),
-  startTime: dateRangeBound('起始时间'),
-  endTime: dateRangeBound('结束时间'),
-});
-
-const refundsQuery = z.object({
-  keyword: z.string().optional(),
-  channel: channelEnum.optional(),
-  status: z.enum(['pending', 'processing', 'unknown', 'success', 'failed']).optional(),
-  approvalStatus: z.enum(['none', 'pending', 'approved', 'rejected']).optional(),
-  startTime: dateRangeBound('起始时间'),
-  endTime: dateRangeBound('结束时间'),
-});
-
-const logsQuery = PaginationQuery.extend({
-  keyword: z.string().optional(),
-  channel: channelEnum.optional(),
-  scene: z.enum(['payment', 'refund']).optional(),
-  signatureValid: z.enum(['true', 'false']).optional().transform((v) => (v == null ? undefined : v === 'true')),
-  startTime: dateRangeBound('起始时间'),
-  endTime: dateRangeBound('结束时间'),
+const trendRoute = defineContractRoute(paymentStatsContract.trend, {
+  middleware: [authMiddleware, guard({ permission: 'payment:order:list' })],
+  handler: async (c) => c.json(okBody(await getPaymentTrend(c.req.valid('query').days)), 200),
 });
 
 // ─── 渠道配置 ───────────────────────────────────────────────────────────────────
-const channelsAllRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/channels/all', tags: ['支付中心'], summary: '全量支付渠道（下拉）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:channel:list' })] as const,
-    request: {},
-    responses: { ...ok(z.array(PaymentChannelConfigDTO), '全量渠道'), ...commonErrorResponses },
-  }),
-  handler: async (c) => c.json(okBody(await listAllChannelConfigs()), 200),
-});
-
-const channelLookupRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/channels/operation-lookup', tags: ['支付中心'], summary: '资金运营商户配置下拉',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: [
-      'payment:channel:list',
-      'payment:settlement:list',
-      'payment:recon:list',
-      'payment:ledger:list',
-      'payment:ledger:account:create',
-      'payment:ledger:post',
-      'payment:ledger:reverse',
-      'payment:ledger:reserve',
-    ] })] as const,
-    request: {},
-    responses: { ...ok(z.array(PaymentChannelConfigLookupDTO), '启用商户配置'), ...commonErrorResponses },
-  }),
+const channelLookupRoute = defineContractRoute(paymentChannelContract.channelOperationLookup, {
+  middleware: [authMiddleware, guard({ permission: [
+    'payment:channel:list',
+    'payment:settlement:list',
+    'payment:recon:list',
+    'payment:ledger:list',
+    'payment:ledger:account:create',
+    'payment:ledger:post',
+    'payment:ledger:reverse',
+    'payment:ledger:reserve',
+  ] })],
   handler: async (c) => c.json(okBody(await listChannelConfigLookup()), 200),
 });
 
-const channelsListRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/channels', tags: ['支付中心'], summary: '支付渠道列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:channel:list' })] as const,
-    request: { query: PaginationQuery.extend({ keyword: z.string().optional(), channel: channelEnum.optional(), status: z.enum(['enabled', 'disabled']).optional() }) },
-    responses: { ...okPaginated(PaymentChannelConfigDTO, '渠道列表'), ...commonErrorResponses },
-  }),
+const channelsAllRoute = defineContractRoute(paymentChannelContract.channelsAll, {
+  middleware: [authMiddleware, guard({ permission: 'payment:channel:list' })],
+  handler: async (c) => c.json(okBody(await listAllChannelConfigs()), 200),
+});
+
+const channelsListRoute = defineContractRoute(paymentChannelContract.channels, {
+  middleware: [authMiddleware, guard({ permission: 'payment:channel:list' })],
   handler: async (c) => c.json(okBody(await listChannelConfigs(c.req.valid('query'))), 200),
 });
 
-const channelGetRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/channels/{id}', tags: ['支付中心'], summary: '支付渠道详情',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:channel:list' })] as const,
-    request: { params: IdParam },
-    responses: { ...ok(PaymentChannelConfigDTO, '渠道详情'), ...commonErrorResponses },
-  }),
+const channelGetRoute = defineContractRoute(paymentChannelContract.channelDetail, {
+  middleware: [authMiddleware, guard({ permission: 'payment:channel:list' })],
   handler: async (c) => c.json(okBody(await getChannelConfig(c.req.valid('param').id)), 200),
 });
 
-const channelCreateRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/channels', tags: ['支付中心'], summary: '创建支付渠道',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:channel:create', audit: { description: '创建支付渠道', module: '支付中心', recordBody: false } })] as const,
-    request: { body: { content: jsonContent(channelCreateSchema), required: true } },
-    responses: { ...ok(PaymentChannelConfigDTO, '创建成功'), ...commonErrorResponses },
-  }),
+const channelCreateRoute = defineContractRoute(paymentChannelContract.createChannel, {
+  middleware: [authMiddleware, guard({ permission: 'payment:channel:create', audit: { description: '创建支付渠道', module: '支付中心', recordBody: false } })],
   handler: async (c) => c.json(okBody(await createChannelConfig(c.req.valid('json')), '创建成功'), 200),
 });
 
-const channelUpdateRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/channels/{id}', tags: ['支付中心'], summary: '更新支付渠道',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:channel:update', audit: { description: '更新支付渠道', module: '支付中心', recordBody: false } })] as const,
-    request: { params: IdParam, body: { content: jsonContent(channelUpdateSchema), required: true } },
-    responses: { ...ok(PaymentChannelConfigDTO, '更新成功'), ...commonErrorResponses },
-  }),
+const channelUpdateRoute = defineContractRoute(paymentChannelContract.updateChannel, {
+  middleware: [authMiddleware, guard({ permission: 'payment:channel:update', audit: { description: '更新支付渠道', module: '支付中心', recordBody: false } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, await getChannelConfig(id));
@@ -182,14 +98,8 @@ const channelUpdateRoute = defineOpenAPIRoute({
   },
 });
 
-const channelDeleteRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/channels/{id}', tags: ['支付中心'], summary: '删除支付渠道',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:channel:delete', audit: { description: '删除支付渠道', module: '支付中心' } })] as const,
-    request: { params: IdParam },
-    responses: { ...okMsg('删除成功'), ...commonErrorResponses },
-  }),
+const channelDeleteRoute = defineContractRoute(paymentChannelContract.removeChannel, {
+  middleware: [authMiddleware, guard({ permission: 'payment:channel:delete', audit: { description: '删除支付渠道', module: '支付中心' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, await getChannelConfig(id));
@@ -198,15 +108,8 @@ const channelDeleteRoute = defineOpenAPIRoute({
   },
 });
 
-const channelTestRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/channels/{id}/test', tags: ['支付中心'], summary: '测试渠道连通性',
-    description: '向支付渠道发起轻量探测请求（查询一个不存在的订单号），验证商户凭据是否正确。',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:channel:update' })] as const,
-    request: { params: IdParam },
-    responses: { ...ok(ChannelConnectivityResultDTO, '连通性测试结果'), ...commonErrorResponses },
-  }),
+const channelTestRoute = defineContractRoute(paymentChannelContract.testChannel, {
+  middleware: [authMiddleware, guard({ permission: 'payment:channel:update' })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const result = await testChannelConnectivity(id);
@@ -214,15 +117,8 @@ const channelTestRoute = defineOpenAPIRoute({
   },
 });
 
-const channelSetDefaultRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/channels/{id}/default', tags: ['支付中心'], summary: '设为默认渠道',
-    description: '将指定渠道配置设为该渠道（微信/支付宝）的默认，并自动启用；同渠道内其他配置取消默认。',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:channel:update', audit: { description: '设为默认支付渠道', module: '支付中心' } })] as const,
-    request: { params: IdParam },
-    responses: { ...ok(PaymentChannelConfigDTO, '设置成功'), ...commonErrorResponses },
-  }),
+const channelSetDefaultRoute = defineContractRoute(paymentChannelContract.setDefaultChannel, {
+  middleware: [authMiddleware, guard({ permission: 'payment:channel:update', audit: { description: '设为默认支付渠道', module: '支付中心' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, await getChannelConfig(id));
@@ -231,25 +127,13 @@ const channelSetDefaultRoute = defineOpenAPIRoute({
 });
 
 // ─── 支付订单 ─────────────────────────────────────────────────────────────
-const ordersListRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/orders', tags: ['支付中心'], summary: '支付订单列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:order:list' })] as const,
-    request: { query: listQuery },
-    responses: { ...okPaginated(PaymentOrderDTO, '订单列表'), ...commonErrorResponses },
-  }),
+const ordersListRoute = defineContractRoute(paymentOrderContract.orders, {
+  middleware: [authMiddleware, guard({ permission: 'payment:order:list' })],
   handler: async (c) => c.json(okBody(await listOrders(c.req.valid('query'))), 200),
 });
 
-const orderCreateRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/orders', tags: ['支付中心'], summary: '发起支付下单',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, idempotencyGuard({ ttlSeconds: 15, message: '下单处理中，请勿重复提交' }), guard({ permission: 'payment:order:create', audit: { description: '发起支付下单', module: '支付中心' } })] as const,
-    request: { body: { content: jsonContent(paymentCreateSchema), required: true } },
-    responses: { ...ok(CreatePaymentResponseDTO, '下单成功'), ...commonErrorResponses },
-  }),
+const orderCreateRoute = defineContractRoute(paymentOrderContract.createOrder, {
+  middleware: [authMiddleware, idempotencyGuard({ ttlSeconds: 15, message: '下单处理中，请勿重复提交' }), guard({ permission: 'payment:order:create', audit: { description: '发起支付下单', module: '支付中心' } })],
   handler: async (c) => c.json(okBody(await createPayment({
     ...c.req.valid('json'),
     clientIp: getClientIp(c),
@@ -257,51 +141,23 @@ const orderCreateRoute = defineOpenAPIRoute({
   }), '下单成功'), 200),
 });
 
-const orderGetRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/orders/{id}', tags: ['支付中心'], summary: '支付订单详情',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:order:list' })] as const,
-    request: { params: IdParam },
-    responses: { ...ok(PaymentOrderDTO, '订单详情'), ...commonErrorResponses },
-  }),
-  handler: async (c) => c.json(okBody(await getOrderDetail(c.req.valid('param').id)), 200),
-});
-
-const OrderNoParam = z.object({
-  orderNo: z.string().min(1).max(64).openapi({ param: { name: 'orderNo', in: 'path' }, example: 'PAY1700000000001' }),
-});
-
-const orderGetByNoRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/orders/by-no/{orderNo}', tags: ['支付中心'], summary: '按订单号查询支付订单详情',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:order:list' })] as const,
-    request: { params: OrderNoParam },
-    responses: { ...ok(PaymentOrderDTO, '订单详情'), ...commonErrorResponses },
-  }),
+const orderGetByNoRoute = defineContractRoute(paymentOrderContract.orderByNo, {
+  middleware: [authMiddleware, guard({ permission: 'payment:order:list' })],
   handler: async (c) => c.json(okBody(await getOrderDetailByNo(c.req.valid('param').orderNo)), 200),
 });
 
-const orderRefundsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/orders/{id}/refunds', tags: ['支付中心'], summary: '支付订单关联退款',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:order:list' }), guard({ permission: ['payment:refund:list', 'payment:order:refund'] })] as const,
-    request: { params: IdParam },
-    responses: { ...ok(z.array(PaymentRefundDTO), '订单关联退款'), ...commonErrorResponses },
-  }),
+const orderGetRoute = defineContractRoute(paymentOrderContract.orderDetail, {
+  middleware: [authMiddleware, guard({ permission: 'payment:order:list' })],
+  handler: async (c) => c.json(okBody(await getOrderDetail(c.req.valid('param').id)), 200),
+});
+
+const orderRefundsRoute = defineContractRoute(paymentRefundContract.orderRefunds, {
+  middleware: [authMiddleware, guard({ permission: 'payment:order:list' }), guard({ permission: ['payment:refund:list', 'payment:order:refund'] })],
   handler: async (c) => c.json(okBody(await listOrderRefunds(c.req.valid('param').id)), 200),
 });
 
-const orderQueryRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/orders/{id}/query', tags: ['支付中心'], summary: '主动查询并同步订单状态',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:order:list', audit: { description: '主动同步支付订单状态', module: '支付中心' } })] as const,
-    request: { params: IdParam },
-    responses: { ...ok(PaymentOrderDTO, '最新订单状态'), ...commonErrorResponses },
-  }),
+const orderQueryRoute = defineContractRoute(paymentOrderContract.queryOrder, {
+  middleware: [authMiddleware, guard({ permission: 'payment:order:list', audit: { description: '主动同步支付订单状态', module: '支付中心' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, await getOrderDetail(id));
@@ -309,14 +165,8 @@ const orderQueryRoute = defineOpenAPIRoute({
   },
 });
 
-const orderCloseRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/orders/{id}/close', tags: ['支付中心'], summary: '关闭订单',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:order:close', audit: { description: '关闭支付订单', module: '支付中心' } })] as const,
-    request: { params: IdParam },
-    responses: { ...okMsg('订单已关闭'), ...commonErrorResponses },
-  }),
+const orderCloseRoute = defineContractRoute(paymentOrderContract.closeOrder, {
+  middleware: [authMiddleware, guard({ permission: 'payment:order:close', audit: { description: '关闭支付订单', module: '支付中心' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, await getOrderDetail(id));
@@ -327,54 +177,26 @@ const orderCloseRoute = defineOpenAPIRoute({
 });
 
 // ─── 退款 ───────────────────────────────────────────────────────────────────────
-const refundCreateRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/refunds', tags: ['支付中心'], summary: '发起退款',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, idempotencyGuard({ ttlSeconds: 15, message: '退款处理中，请勿重复提交' }), guard({ permission: 'payment:order:refund', audit: { description: '发起退款', module: '支付中心' } })] as const,
-    request: {
-      headers: idempotencyHeaders,
-      body: { content: jsonContent(refundCreateSchema), required: true },
-    },
-    responses: { ...ok(PaymentRefundResultDTO, '退款已发起'), ...commonErrorResponses },
-  }),
+const refundCreateRoute = defineContractRoute(paymentRefundContract.createRefund, {
+  middleware: [authMiddleware, idempotencyGuard({ ttlSeconds: 15, message: '退款处理中，请勿重复提交' }), guard({ permission: 'payment:order:refund', audit: { description: '发起退款', module: '支付中心' } })],
   handler: async (c) => c.json(okBody(await refund({
     ...c.req.valid('json'),
     idempotencyKey: c.req.valid('header')['x-idempotency-key'],
   }), '退款已发起'), 200),
 });
 
-const refundsListRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/refunds', tags: ['支付中心'], summary: '退款记录列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:refund:list' })] as const,
-    request: { query: PaginationQuery.extend(refundsQuery.shape) },
-    responses: { ...okPaginated(PaymentRefundDTO, '退款列表'), ...commonErrorResponses },
-  }),
+const refundsListRoute = defineContractRoute(paymentRefundContract.refunds, {
+  middleware: [authMiddleware, guard({ permission: 'payment:refund:list' })],
   handler: async (c) => c.json(okBody(await listRefunds(c.req.valid('query'))), 200),
 });
 
-const refundGetRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/refunds/{id}', tags: ['支付中心'], summary: '退款详情',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:refund:list' })] as const,
-    request: { params: IdParam },
-    responses: { ...ok(PaymentRefundDTO, '退款详情'), ...commonErrorResponses },
-  }),
+const refundGetRoute = defineContractRoute(paymentRefundContract.refundDetail, {
+  middleware: [authMiddleware, guard({ permission: 'payment:refund:list' })],
   handler: async (c) => c.json(okBody(await getRefundDetail(c.req.valid('param').id)), 200),
 });
 
-const refundQueryRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/refunds/{id}/query', tags: ['支付中心'], summary: '主动查询并同步退款状态',
-    description: '向支付渠道发起退款查单，纠正本地退款单状态（处理中→成功/失败），回调兜底。',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:refund:list', audit: { description: '主动同步退款状态', module: '支付中心' } })] as const,
-    request: { params: IdParam },
-    responses: { ...ok(PaymentRefundDTO, '最新退款状态'), ...commonErrorResponses },
-  }),
+const refundQueryRoute = defineContractRoute(paymentRefundContract.queryRefund, {
+  middleware: [authMiddleware, guard({ permission: 'payment:refund:list', audit: { description: '主动同步退款状态', module: '支付中心' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, await getRefundDetail(id));
@@ -382,14 +204,8 @@ const refundQueryRoute = defineOpenAPIRoute({
   },
 });
 
-const refundApproveRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/refunds/{id}/approve', tags: ['支付中心'], summary: '审批通过退款并执行',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:refund:approve', audit: { description: '审批通过退款', module: '支付中心' } })] as const,
-    request: { params: IdParam, body: { content: jsonContent(z.object({ remark: z.string().max(256).optional() })), required: true } },
-    responses: { ...ok(PaymentRefundResultDTO, '审批通过'), ...commonErrorResponses },
-  }),
+const refundApproveRoute = defineContractRoute(paymentRefundContract.approveRefund, {
+  middleware: [authMiddleware, guard({ permission: 'payment:refund:approve', audit: { description: '审批通过退款', module: '支付中心' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, await getRefundDetail(id));
@@ -399,14 +215,8 @@ const refundApproveRoute = defineOpenAPIRoute({
   },
 });
 
-const refundRejectRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/refunds/{id}/reject', tags: ['支付中心'], summary: '驳回退款',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:refund:approve', audit: { description: '驳回退款', module: '支付中心' } })] as const,
-    request: { params: IdParam, body: { content: jsonContent(z.object({ remark: z.string().min(1).max(256) })), required: true } },
-    responses: { ...okMsg('已驳回'), ...commonErrorResponses },
-  }),
+const refundRejectRoute = defineContractRoute(paymentRefundContract.rejectRefund, {
+  middleware: [authMiddleware, guard({ permission: 'payment:refund:approve', audit: { description: '驳回退款', module: '支付中心' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, await getRefundDetail(id));
@@ -417,40 +227,12 @@ const refundRejectRoute = defineOpenAPIRoute({
 });
 
 // ─── 回调日志 ─────────────────────────────────────────────────────────────────────
-const logsListRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/logs', tags: ['支付中心'], summary: '支付回调日志',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:log:list' })] as const,
-    request: { query: logsQuery },
-    responses: { ...okPaginated(PaymentNotifyLogDTO, '回调日志'), ...commonErrorResponses },
-  }),
+const logsListRoute = defineContractRoute(paymentNotifyLogContract.logs, {
+  middleware: [authMiddleware, guard({ permission: 'payment:log:list' })],
   handler: async (c) => c.json(okBody(await listNotifyLogs(c.req.valid('query'))), 200),
 });
 
-// ─── 统计与导出 ───────────────────────────────────────────────────
-const statsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/stats', tags: ['支付中心'], summary: '支付统计概览',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:order:list' })] as const,
-    request: {},
-    responses: { ...ok(PaymentStatsDTO, '统计概览'), ...commonErrorResponses },
-  }),
-  handler: async (c) => c.json(okBody(await getPaymentStats()), 200),
-});
-
-const trendRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/trend', tags: ['支付中心'], summary: '收款趋势（近 N 天）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:order:list' })] as const,
-    request: { query: z.object({ days: z.coerce.number().int().min(1).max(365).default(30) }) },
-    responses: { ...ok(z.array(PaymentTrendPointDTO), '收款趋势'), ...commonErrorResponses },
-  }),
-  handler: async (c) => c.json(okBody(await getPaymentTrend(c.req.valid('query').days)), 200),
-});
-
+// 注册顺序即匹配顺序：静态段（/channels/all、/orders/by-no）必须早于同级动态段（/{id}）
 paymentRouter.openapiRoutes([
   statsRoute,
   trendRoute,
@@ -463,6 +245,9 @@ paymentRouter.openapiRoutes([
   channelDeleteRoute,
   channelTestRoute,
   channelSetDefaultRoute,
+] as const);
+
+paymentRouter.openapiRoutes([
   ordersListRoute,
   orderCreateRoute,
   orderGetByNoRoute,
@@ -470,6 +255,9 @@ paymentRouter.openapiRoutes([
   orderRefundsRoute,
   orderQueryRoute,
   orderCloseRoute,
+] as const);
+
+paymentRouter.openapiRoutes([
   refundCreateRoute,
   refundsListRoute,
   refundGetRoute,
