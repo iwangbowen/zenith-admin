@@ -1,10 +1,10 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { dataMaskConfigContract } from '@zenith/shared/platform';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
 import { platformAdminOnly } from '../../middleware/platform-admin';
-import { jsonContent, validationHook, commonErrorResponses, ok, okMsg, okPaginated, IdParam, okBody, PaginationQuery } from '../../lib/openapi-schemas';
-import { DataMaskConfigDTO, SensitiveFieldDTO } from '../../lib/openapi-dtos';
-import { createDataMaskConfigSchema, maskTypeValues, updateDataMaskConfigSchema } from '@zenith/shared/platform';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   listDataMaskConfigs,
   getDataMaskConfig,
@@ -17,53 +17,30 @@ import {
 
 const dataMaskConfigsRouter = new OpenAPIHono({ defaultHook: validationHook });
 
-const listRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/', tags: ['DataMaskConfigs'], summary: '数据脱敏规则列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:data-mask:list' })] as const,
-    request: { query: PaginationQuery.extend({ keyword: z.string().optional(), maskType: z.enum(maskTypeValues).optional(), enabled: z.enum(['true', 'false']).optional() }) },
-    responses: { ...commonErrorResponses, ...okPaginated(DataMaskConfigDTO, '脉敏规则列表') },
-  }),
+const read = [authMiddleware, guard({ permission: 'system:data-mask:list' })] as const;
+
+const dataMaskAdmin = platformAdminOnly({ message: '多租户模式下仅平台管理员可管理数据脱敏规则', onlyInMultiTenant: true });
+
+const listRoute = defineContractRoute(dataMaskConfigContract.list, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await listDataMaskConfigs(c.req.valid('query'))), 200),
 });
 
-const getOneRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/{id}', tags: ['DataMaskConfigs'], summary: '获取脱敏规则详情',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:data-mask:list' })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...ok(DataMaskConfigDTO, '脱敏规则详情') },
-  }),
+const getOneRoute = defineContractRoute(dataMaskConfigContract.detail, {
+  middleware: read,
   handler: async (c) => {
     const { id } = c.req.valid('param');
     return c.json(okBody(await getDataMaskConfig(id)), 200);
   },
 });
 
-const createRoute_ = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/', tags: ['DataMaskConfigs'], summary: '创建脱敏规则',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, platformAdminOnly({ message: '多租户模式下仅平台管理员可管理数据脱敏规则', onlyInMultiTenant: true }), guard({ permission: 'system:data-mask:create', audit: { description: '创建脱敏规则', module: '数据脱敏配置' } })] as const,
-    request: { body: { content: jsonContent(createDataMaskConfigSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(DataMaskConfigDTO, '创建成功') },
-  }),
+const createRouteDef = defineContractRoute(dataMaskConfigContract.create, {
+  middleware: [authMiddleware, dataMaskAdmin, guard({ permission: 'system:data-mask:create', audit: { description: '创建脱敏规则', module: '数据脱敏配置' } })],
   handler: async (c) => c.json(okBody(await createDataMaskConfig(c.req.valid('json'))), 200),
 });
 
-const updateRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/{id}', tags: ['DataMaskConfigs'], summary: '更新脱敏规则',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, platformAdminOnly({ message: '多租户模式下仅平台管理员可管理数据脱敏规则', onlyInMultiTenant: true }), guard({ permission: 'system:data-mask:update', audit: { description: '更新脱敏规则', module: '数据脱敏配置' } })] as const,
-    request: {
-      params: IdParam,
-      body: { content: jsonContent(updateDataMaskConfigSchema), required: true },
-    },
-    responses: { ...commonErrorResponses, ...ok(DataMaskConfigDTO, '更新成功') },
-  }),
+const updateRoute = defineContractRoute(dataMaskConfigContract.update, {
+  middleware: [authMiddleware, dataMaskAdmin, guard({ permission: 'system:data-mask:update', audit: { description: '更新脱敏规则', module: '数据脱敏配置' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const body = c.req.valid('json');
@@ -72,14 +49,8 @@ const updateRoute = defineOpenAPIRoute({
   },
 });
 
-const deleteRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/{id}', tags: ['DataMaskConfigs'], summary: '删除脱敏规则',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, platformAdminOnly({ message: '多租户模式下仅平台管理员可管理数据脱敏规则', onlyInMultiTenant: true }), guard({ permission: 'system:data-mask:delete', audit: { description: '删除脱敏规则', module: '数据脱敏配置' } })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...okMsg('删除成功') },
-  }),
+const deleteRoute = defineContractRoute(dataMaskConfigContract.remove, {
+  middleware: [authMiddleware, dataMaskAdmin, guard({ permission: 'system:data-mask:delete', audit: { description: '删除脱敏规则', module: '数据脱敏配置' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, await getDataMaskConfig(id));
@@ -88,34 +59,13 @@ const deleteRoute = defineOpenAPIRoute({
   },
 });
 
-const scanRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/scan', tags: ['DataMaskConfigs'], summary: '扫描数据库敏感字段',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:data-mask:list' })] as const,
-    responses: { ...commonErrorResponses, ...ok(z.array(SensitiveFieldDTO), '扫描结果') },
-  }),
+const scanRoute = defineContractRoute(dataMaskConfigContract.scan, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await scanSensitiveFields()), 200),
 });
 
-const batchCreateRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/batch-create', tags: ['DataMaskConfigs'], summary: '批量创建脱敏规则',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, platformAdminOnly({ message: '多租户模式下仅平台管理员可管理数据脱敏规则', onlyInMultiTenant: true }), guard({ permission: 'system:data-mask:create', audit: { description: '批量创建脱敏规则', module: '数据脱敏配置' } })] as const,
-    request: {
-      body: {
-        content: jsonContent(z.object({
-          items: z.array(createDataMaskConfigSchema.pick({ entity: true, field: true, label: true, maskType: true, exemptRoleCodes: true, enabled: true })).min(1),
-        })),
-        required: true,
-      },
-    },
-    responses: {
-      ...commonErrorResponses,
-      ...ok(z.object({ created: z.number(), skipped: z.number() }).openapi('BatchCreateResult'), '批量创建结果'),
-    },
-  }),
+const batchCreateRoute = defineContractRoute(dataMaskConfigContract.batchCreate, {
+  middleware: [authMiddleware, dataMaskAdmin, guard({ permission: 'system:data-mask:create', audit: { description: '批量创建脱敏规则', module: '数据脱敏配置' } })],
   handler: async (c) => {
     const { items } = c.req.valid('json');
     const result = await batchCreateDataMaskConfigs(items);
@@ -123,6 +73,6 @@ const batchCreateRoute = defineOpenAPIRoute({
   },
 });
 
-dataMaskConfigsRouter.openapiRoutes([listRoute, scanRoute, batchCreateRoute, getOneRoute, createRoute_, updateRoute, deleteRoute] as const);
+dataMaskConfigsRouter.openapiRoutes([listRoute, scanRoute, batchCreateRoute, getOneRoute, createRouteDef, updateRoute, deleteRoute] as const);
 
 export default dataMaskConfigsRouter;

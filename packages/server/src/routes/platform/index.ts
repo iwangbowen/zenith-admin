@@ -1,4 +1,28 @@
 import { upgradeWebSocket } from '@hono/node-server';
+import { licensingContract } from '@zenith/shared/licensing';
+import {
+  cacheContract,
+  dataMaskConfigContract,
+  dictContract,
+  healthContract,
+  ipAccessLogContract,
+  monitorAlertContract,
+  monitorContract,
+  operationLogContract,
+  rateLimitContract,
+  regionContract,
+  systemConfigContract,
+  tagContract,
+  traceContract,
+  userFeedbackContract,
+} from '@zenith/shared/platform';
+import {
+  decisionFlowContract,
+  decisionTableContract,
+  ruleExecutionContract,
+  ruleListContract,
+  ruleScorecardContract,
+} from '@zenith/shared/rules';
 import { defineRouteDomain } from '../_kit';
 import cacheRoutes from './cache';
 import dataMaskConfigsRoutes from './data-mask-configs';
@@ -25,27 +49,27 @@ import { createWsRoute } from './ws';
 export default defineRouteDomain({
   name: 'platform',
   mounts: () => [
-    ['/api/dicts', dictsRoutes],
-    ['/api/monitor', monitorRoutes],
-    ['/api/monitor-alerts', monitorAlertsRoutes],
-    ['/api/operation-logs', operationLogsRoutes],
-    ['/api/ip-access-logs', ipAccessLogsRoutes],
-    ['/api/system-configs', systemConfigsRoutes],
+    [dictContract.basePath, dictsRoutes],
+    [monitorContract.basePath, monitorRoutes],
+    [monitorAlertContract.basePath, monitorAlertsRoutes],
+    [operationLogContract.basePath, operationLogsRoutes],
+    [ipAccessLogContract.basePath, ipAccessLogsRoutes],
+    [systemConfigContract.basePath, systemConfigsRoutes],
     // License 管理面永不打 feature 标（受限模式下也必须可达，否则无法自救）
-    ['/api/licensing', licensingRoutes],
-    ['/api/feedbacks', userFeedbacksRoutes],
-    ['/api/data-mask-configs', dataMaskConfigsRoutes],
-    ['/api/regions', regionsRoutes],
-    ['/api/cache', cacheRoutes],
-    ['/api/rules/decision-tables', rulesRoutes, { feature: 'rules' }],
-    ['/api/rules/decision-flows', rulesFlowsRoutes, { feature: 'rules' }],
-    ['/api/rules/executions', rulesExecutionsRoutes, { feature: 'rules' }],
-    ['/api/rules/lists', rulesListsRoutes, { feature: 'rules' }],
-    ['/api/rules/scorecards', rulesScorecardsRoutes, { feature: 'rules' }],
-    ['/api/tags', tagsRoutes],
-    ['/api/trace', traceRoutes],
-    ['/api/rate-limit', rateLimitRoutes],
+    [licensingContract.basePath, licensingRoutes],
+    [userFeedbackContract.basePath, userFeedbacksRoutes],
+    [dataMaskConfigContract.basePath, dataMaskConfigsRoutes],
+    [regionContract.basePath, regionsRoutes],
+    [cacheContract.basePath, cacheRoutes],
+    [decisionTableContract.basePath, rulesRoutes, { feature: 'rules' }],
+    [decisionFlowContract.basePath, rulesFlowsRoutes, { feature: 'rules' }],
+    [ruleExecutionContract.basePath, rulesExecutionsRoutes, { feature: 'rules' }],
+    [ruleListContract.basePath, rulesListsRoutes, { feature: 'rules' }],
+    [ruleScorecardContract.basePath, rulesScorecardsRoutes, { feature: 'rules' }],
+    [tagContract.basePath, tagsRoutes],
+    [traceContract.basePath, traceRoutes],
+    [rateLimitContract.basePath, rateLimitRoutes],
     ['/api/ws', createWsRoute(upgradeWebSocket)],
-    ['/api/health', healthRoutes],
+    [healthContract.basePath, healthRoutes],
   ],
 });

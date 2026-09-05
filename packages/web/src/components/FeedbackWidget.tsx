@@ -4,8 +4,8 @@ import { Empty, Feedback, Radio, RadioGroup, Rating, TextArea, Typography } from
 import { IllustrationSuccess, IllustrationSuccessDark } from '@douyinfe/semi-illustrations';
 import { startManualReplay } from '@zenith/analytics-sdk';
 import { useSubmitFeedback } from '@/hooks/queries/user-feedbacks';
-import type { UserFeedbackCategory } from '@zenith/shared/identity';
-import { USER_FEEDBACK_CATEGORY_LABELS } from '@zenith/shared/identity';
+import type { UserFeedbackCategory } from '@zenith/shared/platform';
+import { USER_FEEDBACK_CATEGORY_LABELS } from '@zenith/shared/platform';
 
 const CATEGORY_OPTIONS: Array<{ value: UserFeedbackCategory; label: string }> =
   (Object.keys(USER_FEEDBACK_CATEGORY_LABELS) as UserFeedbackCategory[]).map((value) => ({ value, label: USER_FEEDBACK_CATEGORY_LABELS[value] }));
@@ -39,11 +39,13 @@ export function FeedbackWidget({ visible, onClose }: FeedbackWidgetProps) {
       // 回放联动：录制中则把缓冲现场转为持续上传，反馈携带 replayId 供管理员回看
       const replayId = startManualReplay();
       await submitMutation.mutateAsync({
-        score: score || null,
-        category,
-        content: content.trim() || null,
-        pagePath: location.pathname,
-        replayId,
+        body: {
+          score: score || null,
+          category,
+          content: content.trim() || null,
+          pagePath: location.pathname,
+          replayId,
+        },
       });
     } catch {
       return; // 错误 Toast 由 request 层弹出，保持弹层打开

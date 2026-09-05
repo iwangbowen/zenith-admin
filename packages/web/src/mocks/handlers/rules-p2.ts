@@ -1,6 +1,7 @@
-import { http } from 'msw';
-import { ok, badRequest, notFound, conflict } from '@/mocks/utils/handlers';
-import type { RuleDecisionFlow, RuleFlowStep, RuleFlowStepTrace, RuleList, RuleScorecard, RuleScorecardEvaluateResult } from '@zenith/shared/rules';
+import type { RuleDecisionFlow, RuleFlowStep, RuleFlowStepTrace, RuleList, RuleListItem, RuleScorecard, RuleScorecardEvaluateResult, RuleUsageItem } from '@zenith/shared/rules';
+import { decisionFlowContract, ruleListContract, ruleScorecardContract } from '@zenith/shared/rules';
+import { mock } from '@/mocks/utils/contract';
+import { badRequest, notFound, conflict } from '@/mocks/utils/handlers';
 import { mockDecisionFlows, getNextFlowId, mockRuleLists, mockRuleListItems, getNextListId, getNextListItemId, mockRuleScorecards, getNextScorecardId, mockAssetVersions, getNextAssetVersionId } from '@/mocks/data/rules-p2';
 import { mockDecisionTables } from '@/mocks/data/decision-tables';
 import { mockPaymentRiskRules } from './payment-bext';
@@ -78,34 +79,54 @@ function evaluateMockScorecard(card: RuleScorecard, input: Record<string, unknow
   return { totalScore, baseScore: card.baseScore, grade: grade?.grade ?? null, decision: grade?.decision ?? null, variables };
 }
 
+const listUsages = (key: string): RuleUsageItem[] => mockPaymentRiskRules
+  .filter((r) => (r.blockListKeys ?? []).includes(key) || (r.allowListKeys ?? []).includes(key))
+  .map((r) => ({ type: 'paymentRisk' as const, id: r.id, name: r.name, status: r.status }));
+
 export const rulesP2Handlers = [
   // ── 决策流 ──────────────────────────────────────────────────────────────────
-  http.get('/api/rules/decision-flows', ({ request }) => {
-    const url = new URL(request.url);
-    const page = Number(url.searchParams.get('page')) || 1, pageSize = Number(url.searchParams.get('pageSize')) || 20;
-    const kw = url.searchParams.get('keyword') ?? '';
+  mock(decisionFlowContract.list, ({ query, ok, paginate }) => {
+    const { keyword, status } = query;
     let list = [...mockDecisionFlows];
-    if (kw) list = list.filter((t) => t.name.includes(kw) || t.key.includes(kw));
-    return ok({ list: list.slice((page - 1) * pageSize, page * pageSize), total: list.length, page, pageSize });
+    if (keyword) list = list.filter((t) => t.name.includes(keyword) || t.key.includes(keyword));
+    if (status) list = list.filter((t) => t.status === status);
+    return ok(paginate(list));
   }),
-  http.post('/api/rules/decision-flows', async ({ request }) => {
-    const b = (await request.json()) as Partial<RuleDecisionFlow>;
+  mock(decisionFlowContract.create, ({ body, ok }) => {
     const now = mockDateTime();
-    const row: RuleDecisionFlow = { id: getNextFlowId(), key: b.key!, name: b.name!, description: b.description ?? null, status: 'draft', steps: b.steps ?? [], publishedSteps: null, version: 1, publishedAt: null, dirty: false, createdAt: now, updatedAt: now };
+    const row: RuleDecisionFlow = { id: getNextFlowId(), key: body.key, name: body.name, description: body.description ?? null, status: 'draft', steps: body.steps, publishedSteps: null, version: 1, publishedAt: null, dirty: false, createdAt: now, updatedAt: now };
     mockDecisionFlows.unshift(row);
     return ok(row, '创建成功');
   }),
-  http.put('/api/rules/decision-flows/:id', async ({ params, request }) => {
-    const r = mockDecisionFlows.find((t) => t.id === Number(params.id));
+  mock(decisionFlowContract.evaluate, ({ body, ok }) => {
+    const { key, input } = body;
+    const r = mockDecisionFlows.find((t) => t.key === key);
     if (!r) return notFound('决策流不存在', { status: 404 });
-    const { expectedUpdatedAt, ...body } = (await request.json()) as Record<string, unknown> & { expectedUpdatedAt?: string };
+    if (r.status === 'disabled') return badRequest('决策流已禁用', { status: 400 });
+    return ok(evaluateFlow(r.status === 'published' && r.publishedSteps ? r.publishedSteps : r.steps, input));
+  }),
+  mock(decisionFlowContract.removeBatch, ({ body, ok }) => {
+    for (const id of body.ids) {
+      const i = mockDecisionFlows.findIndex((t) => t.id === id);
+      if (i >= 0) mockDecisionFlows.splice(i, 1);
+    }
+    return ok(null, '删除成功');
+  }),
+  mock(decisionFlowContract.detail, ({ params, ok }) => {
+    const r = mockDecisionFlows.find((t) => t.id === params.id);
+    return r ? ok(r) : notFound('决策流不存在', { status: 404 });
+  }),
+  mock(decisionFlowContract.update, ({ params, body, ok }) => {
+    const r = mockDecisionFlows.find((t) => t.id === params.id);
+    if (!r) return notFound('决策流不存在', { status: 404 });
+    const { expectedUpdatedAt, ...patch } = body;
     if (expectedUpdatedAt && expectedUpdatedAt !== r.updatedAt) return conflict('决策流已被他人修改，请刷新后重试', { status: 409 });
-    Object.assign(r, body, { updatedAt: mockDateTime() });
+    Object.assign(r, patch, { updatedAt: mockDateTime() });
     r.dirty = flowDirty(r);
     return ok(r, '更新成功');
   }),
-  http.post('/api/rules/decision-flows/:id/publish', ({ params }) => {
-    const r = mockDecisionFlows.find((t) => t.id === Number(params.id));
+  mock(decisionFlowContract.publish, ({ params, ok }) => {
+    const r = mockDecisionFlows.find((t) => t.id === params.id);
     if (!r) return notFound('决策流不存在', { status: 404 });
     if (r.steps.length === 0) return badRequest('决策流至少需要一个步骤', { status: 400 });
     const bad = r.steps.filter((s) => mockDecisionTables.find((t) => t.key === s.tableKey)?.status !== 'published');
@@ -115,81 +136,98 @@ export const rulesP2Handlers = [
     mockAssetVersions.unshift({ id: getNextAssetVersionId(), refKind: 'flow', refId: r.id, version: nextVersion, publishedBy: 1, publishedAt: r.publishedAt, snapshot: { name: r.name, description: r.description, steps: JSON.parse(JSON.stringify(r.steps)) } });
     return ok(r, '发布成功');
   }),
-  http.get('/api/rules/decision-flows/:id/versions', ({ params }) => {
-    const list = mockAssetVersions.filter((v) => v.refKind === 'flow' && v.refId === Number(params.id))
+  mock(decisionFlowContract.versions, ({ params, ok }) => {
+    const list = mockAssetVersions.filter((v) => v.refKind === 'flow' && v.refId === params.id)
       .map(({ snapshot: _s, ...meta }) => meta);
     return ok(list);
   }),
-  http.post('/api/rules/decision-flows/:id/rollback/:version', ({ params }) => {
-    const r = mockDecisionFlows.find((t) => t.id === Number(params.id));
+  mock(decisionFlowContract.rollback, ({ params, ok }) => {
+    const r = mockDecisionFlows.find((t) => t.id === params.id);
     if (!r) return notFound('决策流不存在', { status: 404 });
-    const v = mockAssetVersions.find((x) => x.refKind === 'flow' && x.refId === r.id && x.version === Number(params.version));
+    const v = mockAssetVersions.find((x) => x.refKind === 'flow' && x.refId === r.id && x.version === params.version);
     if (!v) return notFound(`版本 v${params.version} 不存在`, { status: 404 });
     const snap = v.snapshot as { name: string; description: string | null; steps: RuleFlowStep[] };
     Object.assign(r, { name: snap.name, description: snap.description ?? null, steps: snap.steps ?? [], status: 'draft', updatedAt: mockDateTime() });
     r.dirty = flowDirty(r);
     return ok(r, '回滚成功');
   }),
-  http.post('/api/rules/decision-flows/:id/toggle', async ({ params, request }) => {
-    const r = mockDecisionFlows.find((t) => t.id === Number(params.id));
+  mock(decisionFlowContract.toggle, ({ params, body, ok }) => {
+    const r = mockDecisionFlows.find((t) => t.id === params.id);
     if (!r) return notFound('决策流不存在', { status: 404 });
-    const { enabled } = (await request.json()) as { enabled: boolean };
-    r.status = enabled ? (r.publishedAt ? 'published' : 'draft') : 'disabled';
+    r.status = body.enabled ? (r.publishedAt ? 'published' : 'draft') : 'disabled';
     return ok(r);
   }),
-  http.post('/api/rules/decision-flows/:id/test', async ({ params, request }) => {
-    const r = mockDecisionFlows.find((t) => t.id === Number(params.id));
+  mock(decisionFlowContract.test, ({ params, body, ok }) => {
+    const r = mockDecisionFlows.find((t) => t.id === params.id);
     if (!r) return notFound('决策流不存在', { status: 404 });
-    const { input } = (await request.json()) as { input: Record<string, unknown> };
-    return ok(evaluateFlow(r.steps, input ?? {}));
+    return ok(evaluateFlow(r.steps, body.input));
   }),
-  http.post('/api/rules/decision-flows/evaluate', async ({ request }) => {
-    const { key, input } = (await request.json()) as { key: string; input: Record<string, unknown> };
-    const r = mockDecisionFlows.find((t) => t.key === key);
-    if (!r) return notFound('决策流不存在', { status: 404 });
-    if (r.status === 'disabled') return badRequest('决策流已禁用', { status: 400 });
-    return ok(evaluateFlow(r.status === 'published' && r.publishedSteps ? r.publishedSteps : r.steps, input ?? {}));
-  }),
-  http.delete('/api/rules/decision-flows/:id', ({ params }) => {
-    const i = mockDecisionFlows.findIndex((t) => t.id === Number(params.id));
+  mock(decisionFlowContract.remove, ({ params, ok }) => {
+    const i = mockDecisionFlows.findIndex((t) => t.id === params.id);
     if (i === -1) return notFound('决策流不存在', { status: 404 });
     mockDecisionFlows.splice(i, 1);
     return ok(null, '删除成功');
   }),
 
   // ── 评分卡 ──────────────────────────────────────────────────────────────────
-  http.get('/api/rules/scorecards', ({ request }) => {
-    const url = new URL(request.url);
-    const page = Number(url.searchParams.get('page')) || 1, pageSize = Number(url.searchParams.get('pageSize')) || 20;
-    const kw = url.searchParams.get('keyword') ?? '';
-    const status = url.searchParams.get('status') ?? '';
+  mock(ruleScorecardContract.list, ({ query, ok, paginate }) => {
+    const { keyword, status } = query;
     let list = [...mockRuleScorecards];
-    if (kw) list = list.filter((t) => t.name.includes(kw) || t.key.includes(kw));
+    if (keyword) list = list.filter((t) => t.name.includes(keyword) || t.key.includes(keyword));
     if (status) list = list.filter((t) => t.status === status);
-    return ok({ list: list.slice((page - 1) * pageSize, page * pageSize), total: list.length, page, pageSize });
+    return ok(paginate(list));
   }),
-  http.post('/api/rules/scorecards', async ({ request }) => {
-    const b = (await request.json()) as Partial<RuleScorecard>;
-    if (mockRuleScorecards.some((t) => t.key === b.key)) return conflict('评分卡 key 已存在', { status: 409 });
+  mock(ruleScorecardContract.evaluateByKey, ({ body, ok }) => {
+    const r = mockRuleScorecards.find((t) => t.key === body.key);
+    if (!r) return notFound('评分卡不存在', { status: 404 });
+    if (r.status !== 'published') return badRequest('评分卡未发布', { status: 400 });
+    return ok(evaluateMockScorecard(r, body.input));
+  }),
+  mock(ruleScorecardContract.create, ({ body, ok }) => {
+    if (mockRuleScorecards.some((t) => t.key === body.key)) return conflict('评分卡 key 已存在', { status: 409 });
     const now = mockDateTime();
     const row: RuleScorecard = {
-      id: getNextScorecardId(), key: b.key!, name: b.name!, description: b.description ?? null,
-      status: 'draft', baseScore: b.baseScore ?? 0, variables: b.variables ?? [], grades: b.grades ?? [],
+      id: getNextScorecardId(), key: body.key, name: body.name, description: body.description ?? null,
+      status: 'draft', baseScore: body.baseScore, variables: body.variables, grades: body.grades,
       version: 1, publishedAt: null, dirty: false, createdAt: now, updatedAt: now,
     };
     mockRuleScorecards.unshift(row);
     return ok(row, '创建成功');
   }),
-  http.put('/api/rules/scorecards/:id', async ({ params, request }) => {
-    const r = mockRuleScorecards.find((t) => t.id === Number(params.id));
+  mock(ruleScorecardContract.versions, ({ params, ok }) => {
+    const list = mockAssetVersions.filter((v) => v.refKind === 'scorecard' && v.refId === params.id)
+      .map(({ snapshot: _s, ...meta }) => meta);
+    return ok(list);
+  }),
+  mock(ruleScorecardContract.rollback, ({ params, ok }) => {
+    const r = mockRuleScorecards.find((t) => t.id === params.id);
     if (!r) return notFound('评分卡不存在', { status: 404 });
-    const { expectedUpdatedAt, ...body } = (await request.json()) as Record<string, unknown> & { expectedUpdatedAt?: string };
+    const v = mockAssetVersions.find((x) => x.refKind === 'scorecard' && x.refId === r.id && x.version === params.version);
+    if (!v) return notFound(`版本 v${params.version} 不存在`, { status: 404 });
+    const snap = v.snapshot as { name: string; description: string | null; baseScore: number; variables: RuleScorecard['variables']; grades: RuleScorecard['grades'] };
+    Object.assign(r, { name: snap.name, description: snap.description ?? null, baseScore: snap.baseScore ?? 0, variables: snap.variables ?? [], grades: snap.grades ?? [], status: 'draft', updatedAt: mockDateTime() });
+    return ok(r, '回滚成功');
+  }),
+  mock(ruleScorecardContract.detail, ({ params, ok }) => {
+    const r = mockRuleScorecards.find((t) => t.id === params.id);
+    return r ? ok(r) : notFound('评分卡不存在', { status: 404 });
+  }),
+  mock(ruleScorecardContract.update, ({ params, body, ok }) => {
+    const r = mockRuleScorecards.find((t) => t.id === params.id);
+    if (!r) return notFound('评分卡不存在', { status: 404 });
+    const { expectedUpdatedAt, ...patch } = body;
     if (expectedUpdatedAt && expectedUpdatedAt !== r.updatedAt) return conflict('评分卡已被他人修改，请刷新后重试', { status: 409 });
-    Object.assign(r, body, { updatedAt: mockDateTime(), dirty: r.status === 'published' ? true : r.dirty });
+    Object.assign(r, patch, { updatedAt: mockDateTime(), dirty: r.status === 'published' ? true : r.dirty });
     return ok(r, '更新成功');
   }),
-  http.post('/api/rules/scorecards/:id/publish', ({ params }) => {
-    const r = mockRuleScorecards.find((t) => t.id === Number(params.id));
+  mock(ruleScorecardContract.remove, ({ params, ok }) => {
+    const i = mockRuleScorecards.findIndex((t) => t.id === params.id);
+    if (i === -1) return notFound('评分卡不存在', { status: 404 });
+    mockRuleScorecards.splice(i, 1);
+    return ok(null, '删除成功');
+  }),
+  mock(ruleScorecardContract.publish, ({ params, ok }) => {
+    const r = mockRuleScorecards.find((t) => t.id === params.id);
     if (!r) return notFound('评分卡不存在', { status: 404 });
     if (r.variables.length === 0) return badRequest('评分卡至少需要一个变量', { status: 400 });
     const nextVersion = r.publishedAt == null ? r.version : r.version + 1;
@@ -197,102 +235,70 @@ export const rulesP2Handlers = [
     mockAssetVersions.unshift({ id: getNextAssetVersionId(), refKind: 'scorecard', refId: r.id, version: nextVersion, publishedBy: 1, publishedAt: r.publishedAt, snapshot: { name: r.name, description: r.description, baseScore: r.baseScore, variables: JSON.parse(JSON.stringify(r.variables)), grades: JSON.parse(JSON.stringify(r.grades)) } });
     return ok(r, '发布成功');
   }),
-  http.get('/api/rules/scorecards/:id/versions', ({ params }) => {
-    const list = mockAssetVersions.filter((v) => v.refKind === 'scorecard' && v.refId === Number(params.id))
-      .map(({ snapshot: _s, ...meta }) => meta);
-    return ok(list);
-  }),
-  http.post('/api/rules/scorecards/:id/rollback/:version', ({ params }) => {
-    const r = mockRuleScorecards.find((t) => t.id === Number(params.id));
+  mock(ruleScorecardContract.toggle, ({ params, body, ok }) => {
+    const r = mockRuleScorecards.find((t) => t.id === params.id);
     if (!r) return notFound('评分卡不存在', { status: 404 });
-    const v = mockAssetVersions.find((x) => x.refKind === 'scorecard' && x.refId === r.id && x.version === Number(params.version));
-    if (!v) return notFound(`版本 v${params.version} 不存在`, { status: 404 });
-    const snap = v.snapshot as { name: string; description: string | null; baseScore: number; variables: RuleScorecard['variables']; grades: RuleScorecard['grades'] };
-    Object.assign(r, { name: snap.name, description: snap.description ?? null, baseScore: snap.baseScore ?? 0, variables: snap.variables ?? [], grades: snap.grades ?? [], status: 'draft', updatedAt: mockDateTime() });
-    return ok(r, '回滚成功');
-  }),
-  http.post('/api/rules/scorecards/:id/toggle', async ({ params, request }) => {
-    const r = mockRuleScorecards.find((t) => t.id === Number(params.id));
-    if (!r) return notFound('评分卡不存在', { status: 404 });
-    const { enabled } = (await request.json()) as { enabled: boolean };
-    if (enabled && !r.publishedAt) return badRequest('评分卡尚未发布过，请先发布', { status: 400 });
-    r.status = enabled ? 'published' : 'disabled';
+    if (body.enabled && !r.publishedAt) return badRequest('评分卡尚未发布过，请先发布', { status: 400 });
+    r.status = body.enabled ? 'published' : 'disabled';
     return ok(r);
   }),
-  http.post('/api/rules/scorecards/:id/evaluate', async ({ params, request }) => {
-    const r = mockRuleScorecards.find((t) => t.id === Number(params.id));
+  mock(ruleScorecardContract.evaluate, ({ params, body, ok }) => {
+    const r = mockRuleScorecards.find((t) => t.id === params.id);
     if (!r) return notFound('评分卡不存在', { status: 404 });
-    const { input } = (await request.json()) as { input: Record<string, unknown> };
-    return ok(evaluateMockScorecard(r, input ?? {}));
-  }),
-  http.delete('/api/rules/scorecards/:id', ({ params }) => {
-    const i = mockRuleScorecards.findIndex((t) => t.id === Number(params.id));
-    if (i === -1) return notFound('评分卡不存在', { status: 404 });
-    mockRuleScorecards.splice(i, 1);
-    return ok(null, '删除成功');
+    return ok(evaluateMockScorecard(r, body.input));
   }),
 
   // ── 名单库 ──────────────────────────────────────────────────────────────────
-  http.get('/api/rules/lists', ({ request }) => {
-    const url = new URL(request.url);
-    const page = Number(url.searchParams.get('page')) || 1, pageSize = Number(url.searchParams.get('pageSize')) || 20;
-    const kw = url.searchParams.get('keyword') ?? '';
-    const type = url.searchParams.get('type');
-    let list = mockRuleLists.map((l) => ({ ...l, itemCount: mockRuleListItems.filter((i) => i.listId === l.id).length }));
-    if (kw) list = list.filter((t) => t.name.includes(kw) || t.key.includes(kw));
+  mock(ruleListContract.list, ({ query, ok, paginate }) => {
+    const { keyword, type } = query;
+    let list: RuleList[] = mockRuleLists.map((l) => ({ ...l, itemCount: mockRuleListItems.filter((i) => i.listId === l.id).length }));
+    if (keyword) list = list.filter((t) => t.name.includes(keyword) || t.key.includes(keyword));
     if (type) list = list.filter((t) => t.type === type);
-    return ok({ list: list.slice((page - 1) * pageSize, page * pageSize), total: list.length, page, pageSize });
+    return ok(paginate(list));
   }),
-  http.post('/api/rules/lists/check', async ({ request }) => {
-    const { key, value } = (await request.json()) as { key: string; value: string };
+  mock(ruleListContract.check, ({ body, ok }) => {
+    const { key, value } = body;
     const list = mockRuleLists.find((l) => l.key === key);
     if (!list || list.status !== 'enabled') return ok({ hit: false });
     const item = mockRuleListItems.find((i) => i.listId === list.id && i.value === value.trim() && (!i.expiresAt || i.expiresAt > mockDateTime()));
     return ok(item ? { hit: true, listType: list.type, item: { value: item.value, label: item.label, expiresAt: item.expiresAt } } : { hit: false });
   }),
-  http.post('/api/rules/lists', async ({ request }) => {
-    const b = (await request.json()) as Partial<RuleList>;
+  mock(ruleListContract.create, ({ body, ok }) => {
     const now = mockDateTime();
-    const row: RuleList = { id: getNextListId(), key: b.key!, name: b.name!, type: b.type ?? 'black', description: b.description ?? null, status: 'enabled', itemCount: 0, createdAt: now, updatedAt: now };
+    const row: RuleList = { id: getNextListId(), key: body.key, name: body.name, type: body.type, description: body.description ?? null, status: 'enabled', itemCount: 0, createdAt: now, updatedAt: now };
     mockRuleLists.unshift(row);
     return ok(row, '创建成功');
   }),
-  http.put('/api/rules/lists/:id', async ({ params, request }) => {
-    const r = mockRuleLists.find((t) => t.id === Number(params.id));
+  mock(ruleListContract.usages, ({ params, ok }) => {
+    const list = mockRuleLists.find((l) => l.id === params.id);
+    if (!list) return notFound('名单不存在', { status: 404 });
+    return ok(listUsages(list.key));
+  }),
+  mock(ruleListContract.update, ({ params, body, ok }) => {
+    const r = mockRuleLists.find((t) => t.id === params.id);
     if (!r) return notFound('名单不存在', { status: 404 });
-    Object.assign(r, await request.json() as object, { updatedAt: mockDateTime() });
+    Object.assign(r, body, { updatedAt: mockDateTime() });
     return ok(r, '更新成功');
   }),
-  http.get('/api/rules/lists/:id/usages', ({ params }) => {
-    const list = mockRuleLists.find((l) => l.id === Number(params.id));
-    if (!list) return notFound('名单不存在', { status: 404 });
-    const usages = mockPaymentRiskRules
-      .filter((r) => (r.blockListKeys ?? []).includes(list.key) || (r.allowListKeys ?? []).includes(list.key))
-      .map((r) => ({ type: 'paymentRisk' as const, id: r.id, name: r.name, status: r.status }));
-    return ok(usages);
-  }),
-  http.delete('/api/rules/lists/:id', ({ params }) => {
-    const i = mockRuleLists.findIndex((t) => t.id === Number(params.id));
+  mock(ruleListContract.remove, ({ params, ok }) => {
+    const i = mockRuleLists.findIndex((t) => t.id === params.id);
     if (i === -1) return notFound('名单不存在', { status: 404 });
     const { id: listId, key, name } = mockRuleLists[i];
-    const refs = mockPaymentRiskRules.filter((r) => (r.blockListKeys ?? []).includes(key) || (r.allowListKeys ?? []).includes(key));
+    const refs = listUsages(key);
     if (refs.length > 0) return badRequest(`名单「${name}」被 ${refs.length} 处引用（${refs.map((r) => r.name).join('、')}），请先解除引用后再删除`, { status: 400 });
     mockRuleLists.splice(i, 1);
     for (let k = mockRuleListItems.length - 1; k >= 0; k -= 1) if (mockRuleListItems[k].listId === listId) mockRuleListItems.splice(k, 1);
     return ok(null, '删除成功');
   }),
-  http.get('/api/rules/lists/:id/items', ({ params, request }) => {
-    const url = new URL(request.url);
-    const page = Number(url.searchParams.get('page')) || 1, pageSize = Number(url.searchParams.get('pageSize')) || 20;
-    const kw = url.searchParams.get('keyword') ?? '';
-    let list = mockRuleListItems.filter((i) => i.listId === Number(params.id));
-    if (kw) list = list.filter((i) => i.value.includes(kw));
-    list = [...list].reverse();
-    return ok({ list: list.slice((page - 1) * pageSize, page * pageSize), total: list.length, page, pageSize });
+  mock(ruleListContract.items, ({ params, query, ok, paginate }) => {
+    const { keyword } = query;
+    let list = mockRuleListItems.filter((i) => i.listId === params.id);
+    if (keyword) list = list.filter((i) => i.value.includes(keyword));
+    return ok(paginate([...list].reverse()));
   }),
-  http.post('/api/rules/lists/:id/items/batch', async ({ params, request }) => {
-    const listId = Number(params.id);
-    const { values, expiresAt } = (await request.json()) as { values: string[]; expiresAt?: string | null };
+  mock(ruleListContract.createItemsBatch, ({ params, body, ok }) => {
+    const listId = params.id;
+    const { values, expiresAt } = body;
     const existing = new Set(mockRuleListItems.filter((i) => i.listId === listId).map((i) => i.value));
     let added = 0;
     for (const raw of [...new Set(values.map((v) => v.trim()).filter(Boolean))]) {
@@ -302,8 +308,8 @@ export const rulesP2Handlers = [
     }
     return ok(null, `导入完成：新增 ${added} 条（重复值已跳过）`);
   }),
-  http.post('/api/rules/lists/:id/items/purge-expired', ({ params }) => {
-    const listId = Number(params.id);
+  mock(ruleListContract.purgeExpiredItems, ({ params, ok }) => {
+    const listId = params.id;
     const now = mockDateTime();
     let removed = 0;
     for (let k = mockRuleListItems.length - 1; k >= 0; k -= 1) {
@@ -312,16 +318,15 @@ export const rulesP2Handlers = [
     }
     return ok(null, `清理完成：删除 ${removed} 条过期条目`);
   }),
-  http.post('/api/rules/lists/:id/items', async ({ params, request }) => {
-    const listId = Number(params.id);
-    const b = (await request.json()) as { value: string; label?: string | null; matchMode?: 'exact' | 'prefix' | 'regex'; expiresAt?: string | null; remark?: string | null };
-    if (mockRuleListItems.some((i) => i.listId === listId && i.value === b.value.trim())) return badRequest('该值已在名单中', { status: 400 });
-    const row = { id: getNextListItemId(), listId, value: b.value.trim(), label: b.label ?? null, matchMode: b.matchMode ?? 'exact' as const, expiresAt: b.expiresAt ?? null, remark: b.remark ?? null, createdAt: mockDateTime() };
+  mock(ruleListContract.createItem, ({ params, body, ok }) => {
+    const listId = params.id;
+    if (mockRuleListItems.some((i) => i.listId === listId && i.value === body.value.trim())) return badRequest('该值已在名单中', { status: 400 });
+    const row: RuleListItem = { id: getNextListItemId(), listId, value: body.value.trim(), label: body.label ?? null, matchMode: body.matchMode, expiresAt: body.expiresAt ?? null, remark: body.remark ?? null, createdAt: mockDateTime() };
     mockRuleListItems.push(row);
     return ok(row, '新增成功');
   }),
-  http.delete('/api/rules/lists/:id/items/:itemId', ({ params }) => {
-    const i = mockRuleListItems.findIndex((x) => x.id === Number(params.itemId) && x.listId === Number(params.id));
+  mock(ruleListContract.removeItem, ({ params, ok }) => {
+    const i = mockRuleListItems.findIndex((x) => x.id === params.itemId && x.listId === params.id);
     if (i >= 0) mockRuleListItems.splice(i, 1);
     return ok(null, '删除成功');
   }),

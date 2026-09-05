@@ -1,13 +1,4 @@
 [
-  "d2s__Dict",
-  "d2s__DictItem",
-  "d2s__MonitorAlertEvent",
-  "d2s__MonitorAlertRule",
-  "d2s__Region",
   "d2s__RetentionRunResult",
-  "s2d__RuleList",
-  "s2d__RuleListItem",
-  "s2d__RuleScorecard",
-  "s2d__SslCertificate",
-  "s2d__UserFeedback"
+  "s2d__SslCertificate"
 ]

@@ -1,93 +1,64 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { Dict, DictItem } from '@zenith/shared/platform';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import type { QueryClient } from '@tanstack/react-query';
+import type { QueryOf } from '@zenith/shared/core';
+import { dictContract } from '@zenith/shared/platform';
+import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
-export interface DictListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-}
+export type DictListParams = NonNullable<QueryOf<typeof dictContract.list>>;
+
+const resource = createResourceQueries(dictContract);
 
 export const dictKeys = {
-  all: ['dicts'] as const,
-  lists: ['dicts', 'list'] as const,
-  list: (params: DictListParams) => ['dicts', 'list', params] as const,
-  items: (dictId: number | undefined) => ['dicts', 'items', dictId] as const,
-  detail: (id: number | undefined) => ['dicts', 'detail', id] as const,
-  itemDetail: (dictId: number | undefined, itemId: number | undefined) => ['dicts', 'item-detail', dictId, itemId] as const,
+  ...resource.keys,
+  items: (dictId: number | undefined) => contractKey(dictContract.items, { params: { id: dictId ?? 0 } }),
+  itemsByCode: (code: string) => contractKey(dictContract.itemsByCode, { params: { code } }),
+  itemDetail: (dictId: number | undefined, itemId: number | undefined) =>
+    contractKey(dictContract.itemDetail, { params: { id: dictId ?? 0, itemId: itemId ?? 0 } }),
 };
 
-export function useDictList(params: DictListParams) {
-  return useQuery({
-    queryKey: dictKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<Dict>>(`/api/dicts${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
-}
-
-export function useDictDetail(id: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: dictKeys.detail(id),
-    queryFn: () => request.get<Dict>(`/api/dicts/${id}`).then(unwrap),
-    enabled: enabled && id !== undefined,
-  });
-}
+export const useDictList = resource.useList;
+export const useDictDetail = resource.useDetail;
+export const useSaveDict = resource.useSave;
+export const useDeleteDicts = resource.useDelete;
 
 export function useDictItemsById(dictId: number | undefined) {
-  return useQuery({
-    queryKey: dictKeys.items(dictId),
-    queryFn: () => request.get<DictItem[]>(`/api/dicts/${dictId}/items`).then(unwrap),
-    enabled: !!dictId,
-  });
+  return useApiQuery(dictContract.items, { params: { id: dictId ?? 0 } }, { enabled: !!dictId });
 }
 
 export function useDictItemDetail(dictId: number | undefined, itemId: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: dictKeys.itemDetail(dictId, itemId),
-    queryFn: () => request.get<DictItem>(`/api/dicts/${dictId}/items/${itemId}`).then(unwrap),
-    enabled: enabled && dictId !== undefined && itemId !== undefined,
+  return useApiQuery(
+    dictContract.itemDetail,
+    { params: { id: dictId ?? 0, itemId: itemId ?? 0 } },
+    { enabled: enabled && dictId !== undefined && itemId !== undefined },
+  );
+}
+
+/**
+ * 字典项变更只影响所属字典的项列表 / 项详情与按编码读取的下拉源；
+ * 字典本身（名称 / 编码 / 状态）不变，列表与详情无需回源。
+ */
+function invalidateDictItems(qc: QueryClient, dictId: number) {
+  void qc.invalidateQueries({ queryKey: dictKeys.items(dictId) });
+  void qc.invalidateQueries({ queryKey: contractKey(dictContract.itemDetail) });
+  void qc.invalidateQueries({ queryKey: contractKey(dictContract.itemsByCode) });
+}
+
+export function useCreateDictItem() {
+  return useApiMutation(dictContract.createItem, {
+    invalidate: (qc, _output, { params }) => invalidateDictItems(qc, params.id),
   });
 }
 
-export function useSaveDict() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: Partial<Dict> }) =>
-      (id === undefined
-        ? request.post<Dict>('/api/dicts', values)
-        : request.put<Dict>(`/api/dicts/${id}`, values)
-      ).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: dictKeys.all }),
-  });
-}
-
-export function useDeleteDict() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/dicts/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: dictKeys.all }),
-  });
-}
-
-export function useSaveDictItem() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ dictId, itemId, values }: { dictId: number; itemId?: number; values: Partial<DictItem> }) =>
-      (itemId === undefined
-        ? request.post<DictItem>(`/api/dicts/${dictId}/items`, values)
-        : request.put<DictItem>(`/api/dicts/${dictId}/items/${itemId}`, values)
-      ).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: dictKeys.all }),
+export function useUpdateDictItem() {
+  return useApiMutation(dictContract.updateItem, {
+    invalidate: (qc, _output, { params }) => invalidateDictItems(qc, params.id),
   });
 }
 
 export function useDeleteDictItem() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ dictId, itemId }: { dictId: number; itemId: number }) =>
-      request.delete<null>(`/api/dicts/${dictId}/items/${itemId}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: dictKeys.all }),
+  return useApiMutation(dictContract.removeItem, {
+    invalidate: (qc, _output, { params }) => {
+      qc.removeQueries({ queryKey: dictKeys.itemDetail(params.id, params.itemId) });
+      invalidateDictItems(qc, params.id);
+    },
   });
 }

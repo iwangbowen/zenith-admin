@@ -1,28 +1,19 @@
-import { useQuery } from '@tanstack/react-query';
-import type { TraceFailureEntry, TraceNodeKind, TraceTimeline } from '@zenith/shared/platform';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import { resourceKeyOf } from '@zenith/shared/core';
+import { traceContract, type TraceNodeKind } from '@zenith/shared/platform';
+import { contractKey, useApiQuery } from '@/lib/contract-query';
 
 export const traceKeys = {
-  all: ['trace'] as const,
-  of: (traceId: string) => ['trace', traceId] as const,
-  failures: (params: { days: number; kind: string | undefined }) => ['trace', 'failures', params] as const,
+  all: [resourceKeyOf(traceContract.basePath)] as const,
+  of: (traceId: string) => contractKey(traceContract.timeline, { params: { traceId } }),
+  failures: (params: { days: number; kind: TraceNodeKind | undefined }) => contractKey(traceContract.recentFailures, { query: params }),
 };
 
 /** 链路时间线（纯读；traceId 为空时不请求） */
 export function useTraceTimeline(traceId: string | null) {
-  return useQuery({
-    queryKey: traceKeys.of(traceId ?? ''),
-    queryFn: () => request.get<TraceTimeline>(`/api/trace/${encodeURIComponent(traceId!)}`).then(unwrap),
-    enabled: Boolean(traceId),
-  });
+  return useApiQuery(traceContract.timeline, { params: { traceId: traceId ?? '' } }, { enabled: Boolean(traceId) });
 }
 
 /** 最近失败链路（排障入口） */
 export function useRecentTraceFailures(days: number, kind: TraceNodeKind | undefined, enabled = true) {
-  return useQuery({
-    queryKey: traceKeys.failures({ days, kind }),
-    queryFn: () => request.get<TraceFailureEntry[]>(`/api/trace/recent-failures${toQueryString({ days, kind })}`).then(unwrap),
-    enabled,
-  });
+  return useApiQuery(traceContract.recentFailures, { query: { days, kind } }, { enabled });
 }

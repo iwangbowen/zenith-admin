@@ -1,8 +1,9 @@
 import { useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { DictItem } from '@zenith/shared/platform';
-import { request } from '@/utils/request';
-import { unwrap, LOOKUP_STALE_TIME } from '@/lib/query';
+import { dictContract } from '@zenith/shared/platform';
+import { dictKeys } from '@/hooks/queries/dicts';
+import { api } from '@/lib/contract-query';
+import { LOOKUP_STALE_TIME } from '@/lib/query';
 
 /**
  * 按字典编码获取字典项。
@@ -10,8 +11,8 @@ import { unwrap, LOOKUP_STALE_TIME } from '@/lib/query';
  */
 export function useDictItems(code: string) {
   const { data, isPending } = useQuery({
-    queryKey: ['dicts', 'code-items', code],
-    queryFn: () => request.get<DictItem[]>(`/api/dicts/code/${code}/items`).then(unwrap),
+    queryKey: dictKeys.itemsByCode(code),
+    queryFn: () => api(dictContract.itemsByCode, { params: { code } }),
     enabled: !!code,
     staleTime: LOOKUP_STALE_TIME,
   });

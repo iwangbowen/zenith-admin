@@ -1,27 +1,15 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { ipAccessLogContract } from '@zenith/shared/platform';
 import { authMiddleware } from '../../middleware/auth';
 import { guard } from '../../middleware/guard';
-import { PaginationQuery, commonErrorResponses, dateRangeBound, okBody, okPaginated, validationHook } from '../../lib/openapi-schemas';
-import { IpAccessLogDTO } from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { listIpAccessLogs } from '../../services/platform/ip-access-logs.service';
 
 const ipAccessLogsRoute = new OpenAPIHono({ defaultHook: validationHook });
 
-const listRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/', tags: ['IpAccessLogs'], summary: 'IP 访问控制拦截日志分页查询',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:ip-access:log' })] as const,
-    request: {
-      query: PaginationQuery.extend({
-        ip: z.string().optional(),
-        blockType: z.enum(['blacklist', 'whitelist']).optional(),
-        startTime: dateRangeBound('起始时间'),
-        endTime: dateRangeBound('结束时间'),
-      }),
-    },
-    responses: { ...okPaginated(IpAccessLogDTO, 'IP 拦截日志列表'), ...commonErrorResponses },
-  }),
+const listRoute = defineContractRoute(ipAccessLogContract.list, {
+  middleware: [authMiddleware, guard({ permission: 'system:ip-access:log' })],
   handler: async (c) => c.json(okBody(await listIpAccessLogs(c.req.valid('query'))), 200),
 });
 

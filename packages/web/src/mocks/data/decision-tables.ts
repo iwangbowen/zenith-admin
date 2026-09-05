@@ -1,5 +1,5 @@
 import { SEED_DECISION_TABLES } from '@zenith/shared/seed';
-import type { RuleDecisionTable, RuleExecution } from '@zenith/shared/rules';
+import type { RuleDecisionTable, RuleDecisionTableVersion, RuleExecution, RuleTestCase } from '@zenith/shared/rules';
 import { mockDateTime } from '@/mocks/utils/date';
 
 export const mockDecisionTables: RuleDecisionTable[] = SEED_DECISION_TABLES.map((t) => ({
@@ -7,9 +7,15 @@ export const mockDecisionTables: RuleDecisionTable[] = SEED_DECISION_TABLES.map(
   description: t.description ?? null,
   categoryId: null,
   status: 'draft',
+  settings: {},
   version: 1,
   publishedAt: null,
+  gray: null,
   dirty: false,
+  reviewStatus: null,
+  reviewRequestedBy: null,
+  reviewRequestedAt: null,
+  reviewComment: null,
   createdAt: mockDateTime(),
   updatedAt: mockDateTime(),
 }));
@@ -17,8 +23,11 @@ export const mockDecisionTables: RuleDecisionTable[] = SEED_DECISION_TABLES.map(
 let seq = mockDecisionTables.length + 1;
 export const getNextTableId = () => seq++;
 
-export const mockDecisionVersions: Record<number, Array<{ version: number; name: string; hitPolicy: string; inputs: unknown; outputs: unknown; rules: unknown; settings?: unknown; publishedAt: string }>> = {};
-export const mockTestCases: Record<number, Array<{ id: number; tableId: number; name: string; input: Record<string, unknown>; expected: Record<string, unknown>; createdAt: string; updatedAt: string }>> = {};
+/** 已发布版本快照（新版本在前） */
+export const mockDecisionVersions: Record<number, RuleDecisionTableVersion[]> = {};
+let versionSeq = 1;
+export const getNextVersionId = () => versionSeq++;
+export const mockTestCases: Record<number, RuleTestCase[]> = {};
 let caseSeq = 1;
 export const getNextCaseId = () => caseSeq++;
 export const mockExecutions: RuleExecution[] = [];

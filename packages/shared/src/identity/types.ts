@@ -88,31 +88,3 @@ export interface IdentityProviderSyncLog {
 }
 
 export type { UserAiConfig } from '../ai/contracts';
-
-// ─── 意见反馈 ────────────────────────────────────────────────────────────────
-export type UserFeedbackCategory = 'suggestion' | 'bug' | 'ux' | 'other';
-
-export type UserFeedbackStatus = 'pending' | 'processing' | 'resolved' | 'ignored';
-
-export interface UserFeedback {
-  id: number;
-  userId: number;
-  /** 提交人昵称（JOIN 后附加） */
-  userNickname?: string | null;
-  /** 满意度评分 1-5，可空 */
-  score: number | null;
-  category: UserFeedbackCategory;
-  content: string | null;
-  /** 提交时所在页面路由 */
-  pagePath: string | null;
-  /** 提交时活跃的会话回放 ID（反馈联动） */
-  replayId: string | null;
-  status: UserFeedbackStatus;
-  handleRemark: string | null;
-  handledBy: number | null;
-  /** 处理人昵称（JOIN 后附加） */
-  handlerNickname?: string | null;
-  handledAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-}

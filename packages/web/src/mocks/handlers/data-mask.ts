@@ -1,8 +1,8 @@
-import { http } from 'msw';
-import { ok, badRequest, notFound, pageParams } from '@/mocks/utils/handlers';
+import { dataMaskConfigContract, type SensitiveField } from '@zenith/shared/platform';
+import { mock } from '@/mocks/utils/contract';
+import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockDataMaskConfigs, createMockDataMaskConfig, getNextDataMaskId } from '@/mocks/data/data-mask';
 import { mockDateTime } from '@/mocks/utils/date';
-import type { DataMaskConfig, SensitiveField, MaskType } from '@zenith/shared/platform';
 
 // 模拟的敏感字段扫描结果（基于 seed 数据的表结构）
 const MOCK_SENSITIVE_FIELDS: SensitiveField[] = [
@@ -15,9 +15,8 @@ const MOCK_SENSITIVE_FIELDS: SensitiveField[] = [
 ];
 
 export const dataMaskHandlers = [
-  // 扫描敏感字段
-  http.get('/api/data-mask-configs/scan', () => {
-    // 根据当前已有规则动态计算 hasRule
+  // 扫描敏感字段：根据当前已有规则动态计算 hasRule
+  mock(dataMaskConfigContract.scan, ({ ok }) => {
     const fields = MOCK_SENSITIVE_FIELDS.map((f) => ({
       ...f,
       hasRule: mockDataMaskConfigs.some((r) => r.entity === f.tableName && r.field === f.columnName),
@@ -26,8 +25,7 @@ export const dataMaskHandlers = [
   }),
 
   // 批量创建
-  http.post('/api/data-mask-configs/batch-create', async ({ request: req }) => {
-    const body = await req.json() as { items: Array<{ entity: string; field: string; label: string; maskType: MaskType; exemptRoleCodes: string[]; enabled: boolean }> };
+  mock(dataMaskConfigContract.batchCreate, ({ body, ok }) => {
     let created = 0;
     let skipped = 0;
     for (const item of body.items) {
@@ -40,8 +38,8 @@ export const dataMaskHandlers = [
         label: item.label,
         maskType: item.maskType,
         customRule: null,
-        exemptRoleCodes: item.exemptRoleCodes ?? [],
-        enabled: item.enabled ?? true,
+        exemptRoleCodes: item.exemptRoleCodes,
+        enabled: item.enabled,
         remark: null,
         createdAt: mockDateTime(),
         updatedAt: mockDateTime(),
@@ -51,14 +49,9 @@ export const dataMaskHandlers = [
     return ok({ created, skipped }, `已创建 ${created} 条，跳过 ${skipped} 条`);
   }),
 
-  // 列表（分页+关键词）
-  http.get('/api/data-mask-configs', ({ request }) => {
-    const url = new URL(request.url);
-    const { page, pageSize } = pageParams(url, 20);
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const maskType = url.searchParams.get('maskType') ?? '';
-    const enabledStr = url.searchParams.get('enabled') ?? '';
-
+  // 列表（分页 + 关键词）
+  mock(dataMaskConfigContract.list, ({ query, ok, paginate }) => {
+    const { keyword, maskType, enabled } = query;
     let list = [...mockDataMaskConfigs];
     if (keyword) {
       const kw = keyword.toLowerCase();
@@ -67,15 +60,19 @@ export const dataMaskHandlers = [
       );
     }
     if (maskType) list = list.filter((r) => r.maskType === maskType);
-    if (enabledStr) list = list.filter((r) => r.enabled === (enabledStr === 'true'));
-    const total = list.length;
-    const paged = list.slice((page - 1) * pageSize, page * pageSize);
-    return ok({ list: paged, total, page, pageSize });
+    if (enabled !== undefined) list = list.filter((r) => r.enabled === enabled);
+    return ok(paginate(list));
+  }),
+
+  // 详情
+  mock(dataMaskConfigContract.detail, ({ params, ok }) => {
+    const config = mockDataMaskConfigs.find((r) => r.id === params.id);
+    if (!config) return notFound('规则不存在', { status: 404 });
+    return ok(config);
   }),
 
   // 创建
-  http.post('/api/data-mask-configs', async ({ request }) => {
-    const body = await request.json() as Partial<DataMaskConfig>;
+  mock(dataMaskConfigContract.create, ({ body, ok }) => {
     const dup = mockDataMaskConfigs.find((r) => r.entity === body.entity && r.field === body.field);
     if (dup) {
       return badRequest(`实体 ${body.entity} 的字段 ${body.field} 脱敏规则已存在`, { status: 400 });
@@ -86,19 +83,16 @@ export const dataMaskHandlers = [
   }),
 
   // 更新
-  http.put('/api/data-mask-configs/:id', async ({ params, request }) => {
-    const id = Number(params.id);
-    const idx = mockDataMaskConfigs.findIndex((r) => r.id === id);
+  mock(dataMaskConfigContract.update, ({ params, body, ok }) => {
+    const idx = mockDataMaskConfigs.findIndex((r) => r.id === params.id);
     if (idx < 0) return notFound('规则不存在', { status: 404 });
-    const body = await request.json() as Partial<DataMaskConfig>;
-    mockDataMaskConfigs[idx] = { ...mockDataMaskConfigs[idx], ...body, id, updatedAt: mockDateTime() };
+    mockDataMaskConfigs[idx] = { ...mockDataMaskConfigs[idx], ...body, id: params.id, updatedAt: mockDateTime() };
     return ok(mockDataMaskConfigs[idx], '更新成功');
   }),
 
   // 删除
-  http.delete('/api/data-mask-configs/:id', ({ params }) => {
-    const id = Number(params.id);
-    const idx = mockDataMaskConfigs.findIndex((r) => r.id === id);
+  mock(dataMaskConfigContract.remove, ({ params, ok }) => {
+    const idx = mockDataMaskConfigs.findIndex((r) => r.id === params.id);
     if (idx < 0) return notFound('规则不存在', { status: 404 });
     mockDataMaskConfigs.splice(idx, 1);
     return ok(null, '删除成功');

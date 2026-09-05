@@ -20,7 +20,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, MoreHorizontal, BookOpen, ChevronsDownUp, ChevronsUpDown, RefreshCw, Pencil, Trash2 } from 'lucide-react';
-import type { Dict, DictItem } from '@zenith/shared/platform';
+import type { CreateDictInput, CreateDictItemInput, Dict, DictItem } from '@zenith/shared/platform';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
@@ -40,14 +40,15 @@ import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import {
   dictKeys,
-  useDeleteDict,
+  useCreateDictItem,
   useDeleteDictItem,
+  useDeleteDicts,
   useDictDetail,
   useDictItemDetail,
   useDictItemsById,
   useDictList,
   useSaveDict,
-  useSaveDictItem,
+  useUpdateDictItem,
 } from '@/hooks/queries/dicts';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { confirmDelete, confirmDangerAsync } from '@/utils/confirm';
@@ -116,18 +117,19 @@ export default function DictsPage() {
   const editingItem = editingItemRecord ? (itemDetailQuery.data ?? editingItemRecord) : null;
 
   const saveDictMutation = useSaveDict();
-  const dictModal = useEditModal<Dict>({
+  const dictModal = useEditModal<Dict, Partial<CreateDictInput>>({
     entityName: '字典',
     save: saveDictMutation,
     useDetail: useDictDetail,
     defaults: { status: 'enabled' },
   });
   const toggleDictStatusMutation = useSaveDict();
-  const deleteDictMutation = useDeleteDict();
-  const saveItemMutation = useSaveDictItem();
-  const toggleItemStatusMutation = useSaveDictItem();
+  const deleteDictMutation = useDeleteDicts();
+  const createItemMutation = useCreateDictItem();
+  const updateItemMutation = useUpdateDictItem();
+  const toggleItemStatusMutation = useUpdateDictItem();
   const deleteItemMutation = useDeleteDictItem();
-  const togglingItemStatusId = toggleItemStatusMutation.isPending ? (toggleItemStatusMutation.variables?.itemId ?? null) : null;
+  const togglingItemStatusId = toggleItemStatusMutation.isPending ? (toggleItemStatusMutation.variables?.params.itemId ?? null) : null;
   const togglingDictStatusId = toggleDictStatusMutation.isPending ? (toggleDictStatusMutation.variables?.id ?? null) : null;
 
   useEffect(() => {
@@ -260,7 +262,7 @@ export default function DictsPage() {
   };
 
   const handleDictDelete = async (id: number) => {
-    await deleteDictMutation.mutateAsync(id);
+    await deleteDictMutation.mutateAsync([id]);
     Toast.success('删除成功');
     if (selectedDictKey === String(id)) {
       setSelectedDictKey(null);
@@ -286,8 +288,13 @@ export default function DictsPage() {
         abortSubmit();
       }
     }
-    const payload = { ...values, parentId: itemParentId ?? undefined, color: itemColor ?? null, metadata };
-    await saveItemMutation.mutateAsync({ dictId: selectedDict.id, itemId: editingItemRecord?.id, values: payload as Partial<DictItem> });
+    // 表单值来自 Semi validate()，形状由表单字段决定；label / value 必填由表单 rules 保证
+    const payload = { ...values, parentId: itemParentId ?? undefined, color: itemColor ?? null, metadata } as CreateDictItemInput;
+    if (editingItemRecord) {
+      await updateItemMutation.mutateAsync({ params: { id: selectedDict.id, itemId: editingItemRecord.id }, body: payload });
+    } else {
+      await createItemMutation.mutateAsync({ params: { id: selectedDict.id }, body: payload });
+    }
     Toast.success(editingItemRecord ? '更新成功' : '创建成功');
     setItemModalVisible(false);
     setEditingItemRecord(null);
@@ -295,7 +302,7 @@ export default function DictsPage() {
 
   const handleItemDelete = async (id: number) => {
     if (!selectedDict) return;
-    await deleteItemMutation.mutateAsync({ dictId: selectedDict.id, itemId: id });
+    await deleteItemMutation.mutateAsync({ params: { id: selectedDict.id, itemId: id } });
     Toast.success('删除成功');
   };
 
@@ -325,7 +332,7 @@ export default function DictsPage() {
       });
       if (!confirmed) return;
     }
-    await toggleItemStatusMutation.mutateAsync({ dictId: selectedDict.id, itemId: item.id, values: { status: newStatus } });
+    await toggleItemStatusMutation.mutateAsync({ params: { id: selectedDict.id, itemId: item.id }, body: { status: newStatus } });
     Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
   };
 

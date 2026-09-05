@@ -13,7 +13,12 @@ export function mapDict(row: typeof dicts.$inferSelect) {
 }
 
 export function mapDictItem(row: typeof dictItems.$inferSelect) {
-  return { ...row, createdAt: formatDateTime(row.createdAt), updatedAt: formatDateTime(row.updatedAt) };
+  return {
+    ...row,
+    metadata: row.metadata as Record<string, unknown> | null,
+    createdAt: formatDateTime(row.createdAt),
+    updatedAt: formatDateTime(row.updatedAt),
+  };
 }
 
 export interface ListDictsQuery {

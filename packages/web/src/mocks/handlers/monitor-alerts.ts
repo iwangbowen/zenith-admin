@@ -1,27 +1,19 @@
-import { http } from 'msw';
-import { ok, notFound, paginate, nextIdFrom } from '@/mocks/utils/handlers';
+import {
+  MONITOR_ALERT_LEVELS,
+  monitorAlertContract,
+  type MonitorAlertEvent,
+  type MonitorAlertHandleStatus,
+  type MonitorAlertRule,
+} from '@zenith/shared/platform';
+import { mock } from '@/mocks/utils/contract';
+import { notFound, nextIdFrom } from '@/mocks/utils/handlers';
+import { removeWhere } from '@/mocks/utils/array';
 import { mockDateTime, mockDateTimeOffset } from '../utils/date';
 
 /** N 分钟前的时间字符串 */
 const minsAgo = (m: number) => mockDateTimeOffset(-m * 60 * 1000);
 
-interface MockRule {
-  id: number; name: string; metric: string; operator: string; threshold: number;
-  durationMinutes: number; level: string; channels: string[]; webhookUrl: string | null;
-  recipientUserIds: number[]; recipientEmails: string[]; silenceMinutes: number; enabled: boolean; state: string;
-  lastTriggeredAt: string | null; lastValue: number | null; createdAt: string; updatedAt: string;
-}
-
-interface MockEvent {
-  id: number; ruleId: number; ruleName: string; metric: string; level: string; operator: string;
-  threshold: number; value: number; status: string; message: string;
-  notifyStatus: string; notifyChannels: string[]; notifyError: string | null; notifiedAt: string | null;
-  handleStatus: string; acknowledgedAt: string | null; handledBy: number | null; handledByName: string | null;
-  handledAt: string | null; handleNote: string | null;
-  triggeredAt: string; resolvedAt: string | null;
-}
-
-const rules: MockRule[] = [
+const rules: MonitorAlertRule[] = [
   {
     id: 1, name: 'CPU 使用率过高', metric: 'cpu', operator: 'gt', threshold: 85, durationMinutes: 5,
     level: 'warning', channels: ['inapp', 'email'], webhookUrl: null, recipientUserIds: [1], recipientEmails: ['ops@example.com'],
@@ -78,7 +70,7 @@ const rules: MockRule[] = [
   },
 ];
 
-const events: MockEvent[] = [
+const events: MonitorAlertEvent[] = [
   {
     id: 6, ruleId: 9, ruleName: '日志错误频率异常', metric: 'logErrorPerMin', level: 'critical', operator: 'gte',
     threshold: 10, value: 24.6, status: 'firing', message: '日志 ERROR 频率 当前 24.6 条/分钟，已满足条件 ≥ 10（持续 3 分钟）',
@@ -145,7 +137,7 @@ function resolveRuleEvents(ruleId: number) {
 }
 
 /** 与服务端 buildHandlePatch 同语义：acknowledgedAt 只写一次，撤销认领清空全部处理痕迹 */
-function applyHandle(event: MockEvent, handleStatus: string, note?: string | null) {
+function applyHandle(event: MonitorAlertEvent, handleStatus: MonitorAlertHandleStatus, note?: string | null) {
   if (handleStatus === 'pending') {
     event.handleStatus = 'pending';
     event.acknowledgedAt = null;
@@ -170,8 +162,8 @@ function minutesSince(value: string): number {
 }
 
 export const monitorAlertsHandlers = [
-  http.get('/api/monitor-alerts/overview', ({ request }) => {
-    const range = new URL(request.url).searchParams.get('range') ?? '24h';
+  mock(monitorAlertContract.overview, ({ query, ok }) => {
+    const range = query.range ?? '24h';
     const days = range === '30d' ? 30 : range === '7d' ? 7 : 1;
     const sinceMinutes = days * 24 * 60;
     const inRange = events.filter((e) => minutesSince(e.triggeredAt) <= sinceMinutes);
@@ -190,7 +182,7 @@ export const monitorAlertsHandlers = [
       trendMap.set(date, entry);
     }
 
-    const ruleMap = new Map<string, { ruleId: number; ruleName: string; count: number }>();
+    const ruleMap = new Map<string, { ruleId: number | null; ruleName: string; count: number }>();
     for (const event of inRange) {
       const entry = ruleMap.get(event.ruleName) ?? { ruleId: event.ruleId, ruleName: event.ruleName, count: 0 };
       entry.count += 1;
@@ -205,7 +197,7 @@ export const monitorAlertsHandlers = [
     return ok({
       range,
       firingTotal: firing.length,
-      firingByLevel: ['info', 'warning', 'critical'].map((level) => ({
+      firingByLevel: MONITOR_ALERT_LEVELS.map((level) => ({
         level,
         count: firing.filter((e) => e.level === level).length,
       })),
@@ -224,18 +216,9 @@ export const monitorAlertsHandlers = [
     }, 'success');
   }),
 
-  http.get('/api/monitor-alerts/events', ({ request }) => {
-    const url = new URL(request.url);
-    const sp = url.searchParams;
-    const keyword = sp.get('keyword')?.trim().toLowerCase();
-    const metric = sp.get('metric');
-    const level = sp.get('level');
-    const status = sp.get('status');
-    const notifyStatus = sp.get('notifyStatus');
-    const handleStatus = sp.get('handleStatus');
-    const ruleId = Number(sp.get('ruleId')) || undefined;
-    const startTime = sp.get('startTime');
-    const endTime = sp.get('endTime');
+  mock(monitorAlertContract.events, ({ query, ok, paginate }) => {
+    const keyword = query.keyword?.trim().toLowerCase();
+    const { metric, level, status, notifyStatus, handleStatus, ruleId, startTime, endTime } = query;
 
     let filtered = [...events];
     if (keyword) {
@@ -251,12 +234,12 @@ export const monitorAlertsHandlers = [
     // 时间范围为闭区间，与服务端 dateRangeConditions 一致
     if (startTime) filtered = filtered.filter((e) => e.triggeredAt >= startTime);
     if (endTime) filtered = filtered.filter((e) => e.triggeredAt <= endTime);
-    return ok(paginate(filtered, url, 20), 'success');
+    return ok(paginate(filtered), 'success');
   }),
 
-  // 批量必须先于 `/events/:id/handle` 注册，否则 batch 会被当成事件 id
-  http.patch('/api/monitor-alerts/events/batch/handle', async ({ request }) => {
-    const { ids, handleStatus, note } = await request.json() as { ids: number[]; handleStatus: string; note?: string | null };
+  // 批量必须先于 `/events/{id}/handle` 注册，否则 batch 会被当成事件 id
+  mock(monitorAlertContract.handleEventsBatch, ({ body, ok }) => {
+    const { ids, handleStatus, note } = body;
     let count = 0;
     for (const event of events.filter((e) => ids.includes(e.id))) {
       applyHandle(event, handleStatus, note);
@@ -265,50 +248,43 @@ export const monitorAlertsHandlers = [
     return ok(null, `已处理 ${count} 条告警`);
   }),
 
-  http.patch('/api/monitor-alerts/events/:id/handle', async ({ params, request }) => {
-    const event = events.find((e) => e.id === Number(params.id));
+  mock(monitorAlertContract.handleEvent, ({ params, body, ok }) => {
+    const event = events.find((e) => e.id === params.id);
     if (!event) return notFound('告警事件不存在', { status: 404 });
-    const { handleStatus, note } = await request.json() as { handleStatus: string; note?: string | null };
-    applyHandle(event, handleStatus, note);
+    applyHandle(event, body.handleStatus, body.note);
     return ok(event, '操作成功');
   }),
 
-  http.get('/api/monitor-alerts', ({ request }) => {
-    const url = new URL(request.url);
-    const sp = url.searchParams;
-    const keyword = sp.get('keyword')?.trim().toLowerCase();
-    const metric = sp.get('metric');
-    const level = sp.get('level');
-    const enabled = sp.get('enabled');
-    const state = sp.get('state');
+  mock(monitorAlertContract.list, ({ query, ok, paginate }) => {
+    const keyword = query.keyword?.trim().toLowerCase();
+    const { metric, level, enabled, state } = query;
 
     let filtered = [...rules];
     if (keyword) filtered = filtered.filter((r) => r.name.toLowerCase().includes(keyword));
     if (metric) filtered = filtered.filter((r) => r.metric === metric);
     if (level) filtered = filtered.filter((r) => r.level === level);
-    if (enabled) filtered = filtered.filter((r) => r.enabled === (enabled === 'true'));
+    if (enabled !== undefined) filtered = filtered.filter((r) => r.enabled === enabled);
     if (state) filtered = filtered.filter((r) => r.state === state);
-    return ok(paginate(filtered, url, 20), 'success');
+    return ok(paginate(filtered), 'success');
   }),
 
-  http.post('/api/monitor-alerts', async ({ request }) => {
-    const body = await request.json() as Partial<MockRule>;
+  mock(monitorAlertContract.create, ({ body, ok }) => {
     const now = mockDateTime();
-    const rule: MockRule = {
-      id: nextIdFrom(rules), name: body.name ?? '新规则', metric: body.metric ?? 'cpu', operator: body.operator ?? 'gt',
-      threshold: body.threshold ?? 80, durationMinutes: body.durationMinutes ?? 0, level: body.level ?? 'warning',
-      channels: body.channels ?? [], webhookUrl: body.webhookUrl ?? null,
-      recipientUserIds: body.recipientUserIds ?? [], recipientEmails: body.recipientEmails ?? [],
-      silenceMinutes: body.silenceMinutes ?? 30, enabled: body.enabled ?? true, state: 'ok',
+    const rule: MonitorAlertRule = {
+      id: nextIdFrom(rules), name: body.name, metric: body.metric, operator: body.operator,
+      threshold: body.threshold, durationMinutes: body.durationMinutes, level: body.level,
+      channels: body.channels, webhookUrl: body.webhookUrl ?? null,
+      recipientUserIds: body.recipientUserIds, recipientEmails: body.recipientEmails,
+      silenceMinutes: body.silenceMinutes, enabled: body.enabled, state: 'ok',
       lastTriggeredAt: null, lastValue: null, createdAt: now, updatedAt: now,
     };
     rules.unshift(rule);
     return ok(rule, '创建成功');
   }),
 
-  // 批量路由必须先于 `/:id` 注册，否则会被匹配成 id="batch"
-  http.patch('/api/monitor-alerts/batch/enabled', async ({ request }) => {
-    const { ids, enabled } = await request.json() as { ids: number[]; enabled: boolean };
+  // 批量路由必须先于 `/{id}` 注册，否则会被匹配成 id="batch"
+  mock(monitorAlertContract.setEnabledBatch, ({ body, ok }) => {
+    const { ids, enabled } = body;
     let count = 0;
     for (const rule of rules.filter((r) => ids.includes(r.id))) {
       rule.enabled = enabled;
@@ -320,17 +296,14 @@ export const monitorAlertsHandlers = [
     return ok(null, `已${enabled ? '启用' : '停用'} ${count} 条规则`);
   }),
 
-  http.delete('/api/monitor-alerts/batch', async ({ request }) => {
-    const { ids } = await request.json() as { ids: number[] };
-    for (const id of ids) {
-      const idx = rules.findIndex((r) => r.id === id);
-      if (idx >= 0) rules.splice(idx, 1);
-    }
+  mock(monitorAlertContract.removeBatch, ({ body, ok }) => {
+    const ids = new Set(body.ids);
+    removeWhere(rules, (r) => ids.has(r.id));
     return ok(null, '删除成功');
   }),
 
-  http.post('/api/monitor-alerts/:id/test', ({ params }) => {
-    const rule = rules.find((r) => r.id === Number(params.id));
+  mock(monitorAlertContract.test, ({ params, ok }) => {
+    const rule = rules.find((r) => r.id === params.id);
     if (!rule) return notFound('告警规则不存在', { status: 404 });
     const channels = rule.channels ?? [];
     if (channels.length === 0) {
@@ -345,36 +318,31 @@ export const monitorAlertsHandlers = [
     }, '测试通知已发送');
   }),
 
-  http.put('/api/monitor-alerts/:id', async ({ params, request }) => {
-    const id = Number(params.id);
-    const rule = rules.find((r) => r.id === id);
+  mock(monitorAlertContract.update, ({ params, body, ok }) => {
+    const rule = rules.find((r) => r.id === params.id);
     if (!rule) return notFound('告警规则不存在', { status: 404 });
-    const body = await request.json() as Partial<MockRule>;
     Object.assign(rule, body, { updatedAt: mockDateTime() });
     if (body.enabled === false) {
       rule.state = 'ok';
-      resolveRuleEvents(id);
+      resolveRuleEvents(params.id);
     }
     return ok(rule, '更新成功');
   }),
 
-  http.patch('/api/monitor-alerts/:id/enabled', async ({ params, request }) => {
-    const id = Number(params.id);
-    const rule = rules.find((r) => r.id === id);
+  mock(monitorAlertContract.setEnabled, ({ params, body, ok }) => {
+    const rule = rules.find((r) => r.id === params.id);
     if (!rule) return notFound('告警规则不存在', { status: 404 });
-    const body = await request.json() as { enabled: boolean };
     rule.enabled = body.enabled;
     if (!body.enabled) {
       rule.state = 'ok';
-      resolveRuleEvents(id);
+      resolveRuleEvents(params.id);
     }
     rule.updatedAt = mockDateTime();
     return ok(rule, '操作成功');
   }),
 
-  http.delete('/api/monitor-alerts/:id', ({ params }) => {
-    const id = Number(params.id);
-    const idx = rules.findIndex((r) => r.id === id);
+  mock(monitorAlertContract.remove, ({ params, ok }) => {
+    const idx = rules.findIndex((r) => r.id === params.id);
     if (idx >= 0) rules.splice(idx, 1);
     return ok(null, '删除成功');
   }),
