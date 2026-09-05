@@ -1,0 +1,26 @@
+{
+  "$comment": "构建产物预算（npm run check:bundle）。数值 = 当前实测留 ~10% 余量；改动分包或新增首屏依赖使其超限时，先证明必要性再上调。口径见 scripts/bundle-analyze.mjs。",
+  "maxJsChunks": 1700,
+  "entries": {
+    "index.html": {
+      "maxCriticalFiles": 8,
+      "maxCriticalGzKB": 520,
+      "maxCriticalCssFiles": 4,
+      "routes": {
+        "AdminLayout": { "maxFiles": 40, "maxGzKB": 450 },
+        "DashboardPage": { "maxFiles": 30, "maxGzKB": 420 }
+      },
+      "authenticatedFirstScreen": { "maxFiles": 60, "maxGzKB": 1000 }
+    },
+    "member.html": {
+      "maxCriticalFiles": 8,
+      "maxCriticalGzKB": 270,
+      "maxCriticalCssFiles": 4
+    },
+    "approval.html": {
+      "maxCriticalFiles": 8,
+      "maxCriticalGzKB": 220,
+      "maxCriticalCssFiles": 4
+    }
+  }
+}

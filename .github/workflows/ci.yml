@@ -47,3 +47,41 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # 产物预算：入口关键路径文件数 / 体积、壳层增量、chunk 总数超过 packages/web/bundle-budget.json 即失败
+      - name: Bundle budget
+        run: npm run check:bundle -w @zenith/web
+
+  smoke:
+    name: Web boot smoke (demo build)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Cache node_modules
+        id: modules-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            packages/*/node_modules
+          key: modules-${{ runner.os }}-node24-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        if: steps.modules-cache.outputs.cache-hit != 'true'
+        run: npm ci
+
+      # Demo 模式（MSW）产物无需后端；用 runner 自带的 Google Chrome 真实启动三个入口 + 登录 → 仪表盘 → 用户管理，
+      # 任何控制台错误 / 错误边界即失败——堵住「构建 exit 0、页面白屏」的跨 chunk 求值顺序问题
+      - name: Build (demo)
+        run: npm run build:demo
+
+      - name: Boot smoke
+        run: npm run smoke -w @zenith/web
