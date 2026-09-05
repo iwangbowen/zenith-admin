@@ -2,14 +2,16 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Button, Input, Select, InputNumber, Tag, Typography, Tabs, TabPane } from '@douyinfe/semi-ui';
 import { Play, Square, Wifi, Search } from 'lucide-react';
 import { streamText } from '@/utils/streaming';
+import { DNS_RECORD_TYPES, NET_DIAG_STREAM_TYPES, type DnsRecordType } from '@zenith/shared/ops';
+import { enumValueOf } from '@zenith/shared/core';
 import {
+  networkDiagStreamUrl,
   useDnsLookup,
   useHttpProbe,
   useNetworkInterfaces,
   useNslookup,
   usePortCheck,
   useReverseLookup,
-  type DnsType,
 } from '@/hooks/queries/network-diag';
 
 const TOOL_OPTIONS = [
@@ -25,7 +27,6 @@ const TOOL_OPTIONS = [
 
 type ToolType = (typeof TOOL_OPTIONS)[number]['value'];
 
-const STREAMING_TOOLS = new Set<ToolType>(['ping', 'traceroute']);
 /** 无需主机输入的工具 */
 const NO_HOST_TOOLS = new Set<ToolType>(['interfaces']);
 
@@ -138,7 +139,7 @@ export default function NetworkDiagPage() {
   const [tool, setTool] = useState<ToolType>('ping');
   const [host, setHost] = useState('');
   const [port, setPort] = useState(80);
-  const [dnsType, setDnsType] = useState<DnsType>('A');
+  const [dnsType, setDnsType] = useState<DnsRecordType>('A');
   const [running, setRunning] = useState(false);
   const [output, setOutput] = useState('');
   const abortRef = useRef<AbortController | null>(null);
@@ -162,13 +163,13 @@ export default function NetworkDiagPage() {
     setOutput('');
     setRunning(true);
 
-    if (STREAMING_TOOLS.has(tool)) {
+    const streamType = enumValueOf(NET_DIAG_STREAM_TYPES, tool);
+    if (streamType) {
       const abort = new AbortController();
       abortRef.current = abort;
-      const params = new URLSearchParams({ type: tool, host: host.trim() });
       try {
         await streamText(
-          `/api/network-diag/stream?${params.toString()}`,
+          networkDiagStreamUrl(streamType, host.trim()),
           (text) => setOutput((prev) => prev + text),
           abort.signal,
         );
@@ -210,13 +211,13 @@ export default function NetworkDiagPage() {
         setOutput(lines.join('\n'));
       }
     } else if (tool === 'interfaces') {
-      const res = await interfacesMutation.mutateAsync();
+      const res = await interfacesMutation.mutateAsync({});
       const rows = res.map((i) =>
         `${i.name.padEnd(12)} ${i.family.padEnd(6)} ${i.address.padEnd(40)} ${i.internal ? '(internal)' : ''} ${i.mac && i.mac !== '00:00:00:00:00:00' ? i.mac : ''}`.trimEnd(),
       );
       setOutput(`本机网卡（${res.length} 条）:\n\n${rows.join('\n')}`);
     } else if (tool === 'port-check') {
-      const { open, latencyMs } = await portCheckMutation.mutateAsync({ host: host.trim(), port });
+      const { open, latencyMs } = await portCheckMutation.mutateAsync({ body: { host: host.trim(), port } });
       setOutput(open
         ? `✅ ${host.trim()}:${port} 端口开放（延迟 ${latencyMs} ms）`
         : `❌ ${host.trim()}:${port} 端口不可达（超时 ${latencyMs} ms）`,
@@ -272,7 +273,7 @@ export default function NetworkDiagPage() {
         {tool === 'dns' && (
           <div>
             <Typography.Text size="small" type="secondary" style={{ display: 'block', marginBottom: 4 }}>记录类型</Typography.Text>
-            <Select value={dnsType} onChange={(v) => setDnsType(v as DnsType)} style={{ width: 100 }}
+            <Select value={dnsType} onChange={(v) => setDnsType(enumValueOf(DNS_RECORD_TYPES, v) ?? 'A')} style={{ width: 100 }}
               optionList={['A', 'AAAA', 'MX', 'TXT', 'NS', 'CNAME', 'SOA'].map((t) => ({ value: t, label: t }))} />
           </div>
         )}

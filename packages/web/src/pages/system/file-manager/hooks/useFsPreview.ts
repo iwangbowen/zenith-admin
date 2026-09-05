@@ -11,6 +11,7 @@ import { NON_SVG_IMAGE_EXTS, getFileMimeType } from '../fs-utils';
 import { createDisplayableImageUrl } from '@/utils/image-decode';
 import type { FsEntry } from '../types';
 import { request } from '@/utils/request';
+import { terminalFileDownloadUrl } from '@/hooks/queries/terminal-files';
 
 export function useFsPreview(filteredEntries: FsEntry[]) {
   // 通用文件预览（FilePreviewModal）
@@ -35,7 +36,7 @@ export function useFsPreview(filteredEntries: FsEntry[]) {
     if (previewBlobUrlsRef.current[idx]) return;
     previewBlobUrlsRef.current[idx] = 'loading';
     try {
-      const blob = await request.getBlob(`/api/terminal-files/download?path=${encodeURIComponent(entries[idx].path)}`);
+      const blob = await request.getBlob(terminalFileDownloadUrl(entries[idx].path));
       if (previewSessionRef.current !== session) return;
       if (!blob) throw new Error('预览加载失败');
       if (previewSessionRef.current !== session) return;
@@ -81,7 +82,7 @@ export function useFsPreview(filteredEntries: FsEntry[]) {
     } else {
       const mimeType = getFileMimeType(entry.name);
       if (mimeType) {
-        setPreview({ url: `/api/terminal-files/download?path=${encodeURIComponent(entry.path)}`, name: entry.name, mimeType });
+        setPreview({ url: terminalFileDownloadUrl(entry.path), name: entry.name, mimeType });
       } else {
         Toast.warning('该文件不支持预览，请下载后查看');
       }

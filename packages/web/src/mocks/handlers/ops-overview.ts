@@ -1,15 +1,13 @@
-import { http } from 'msw';
-import { ok } from '@/mocks/utils/handlers';
+import { opsOverviewContract, type OpsOverviewSection } from '@zenith/shared/ops';
+import { mock } from '@/mocks/utils/contract';
 import { mockDateTime } from '@/mocks/utils/date';
 
-const API = import.meta.env.VITE_API_BASE_URL || '';
-
-function section<T>(data: T) {
+function section<T>(data: T): OpsOverviewSection<T> {
   return { available: true, reason: null, data };
 }
 
 export const opsOverviewHandlers = [
-  http.get(`${API}/api/ops-overview`, () =>
+  mock(opsOverviewContract.get, ({ ok }) =>
     ok({
       host: section({
         hostname: 'demo-server',

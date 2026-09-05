@@ -18,22 +18,6 @@ export type FileUrlStrategy = 'proxy' | 'public' | 'presigned';
 /** 托管文件可见性；public=持 ID 可读，restricted=仅归属模块鉴权接口可读 */
 export type FileVisibility = 'public' | 'restricted';
 
-// ─── Maintenance Logs ────────────────────────────────────
-export type MaintenanceLogStatus = 'ongoing' | 'completed';
-
-export interface MaintenanceLog {
-  id: number;
-  message: string;
-  estimatedEndAt: string | null;
-  startedAt: string | null;
-  startedByName: string | null;
-  endedAt: string | null;
-  endedByName: string | null;
-  durationSeconds: number | null;
-  status: MaintenanceLogStatus;
-  createdAt: string;
-}
-
 // ─── WebSocket 推送消息 ────────────────────────────────────────────────────────
 export type WsMessage =
   | { type: 'announcement:new'; payload: Announcement }
@@ -91,32 +75,3 @@ export type WsMessage =
   | { type: 'iot:telemetry'; payload: { deviceId: number; metrics: Record<string, number | string | boolean>; reportedAt: string } }
   | { type: 'iot:shadow'; payload: { deviceId: number; reported: Record<string, number | string | boolean>; desired: Record<string, number | string | boolean>; desiredVersion: number } }
   | { type: 'iot:device-event'; payload: { deviceId: number; kind: 'lifecycle' | 'model' | 'anomaly'; identifier: string; name: string; level: 'info' | 'warn' | 'fault'; reportedAt: string } };
-
-// ─── 数据库备份 ────────────────────────────────────────────────────────────
-export type BackupType = 'pg_dump' | 'drizzle_export';
-
-export type BackupStatus = 'pending' | 'running' | 'success' | 'failed';
-
-export interface DbBackup {
-  id: number;
-  name: string;
-  type: BackupType;
-  fileId: string | null;
-  fileSize: number | null;
-  status: BackupStatus;
-  tables: string | null;
-  startedAt: string | null;
-  completedAt: string | null;
-  durationMs: number | null;
-  errorMessage: string | null;
-  createdBy: number | null;
-  createdByName?: string | null;
-  createdAt: string;
-}
-
-export interface UploadCertInput {
-  name: string;
-  domain: string;
-  certContent: string;
-  keyContent: string;
-}

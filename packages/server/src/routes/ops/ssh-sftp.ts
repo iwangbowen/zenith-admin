@@ -1,19 +1,12 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono } from '@hono/zod-openapi';
 import { Readable } from 'node:stream';
 import { HTTPException } from 'hono/http-exception';
+import { sshSftpContract } from '@zenith/shared/ops';
 import { authMiddleware } from '../../middleware/auth';
 import { guard } from '../../middleware/guard';
 import { currentUser } from '../../lib/context';
-import {
-  validationHook,
-  commonErrorResponses,
-  ok,
-  okMsg,
-  okBody,
-  jsonContent,
-  ErrorResponse,
-} from '../../lib/openapi-schemas';
-import { SftpDirListingDTO, SftpFileEntryDTO, SftpFileContentDTO, SftpHomeDTO } from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { ErrorResponse, jsonContent, okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   sftpHome,
   sftpList,
@@ -38,75 +31,37 @@ import { assertContentLengthWithinLimit } from '../../services/ops/terminal-file
 const router = new OpenAPIHono({ defaultHook: validationHook });
 const PERM = 'system:terminal:execute';
 
-const ProfileIdParam = z.object({
-  profileId: z.coerce.number().int().openapi({ param: { name: 'profileId', in: 'path' }, example: 1 }),
-});
+const read = [authMiddleware, guard({ permission: PERM })] as const;
+const write = (description: string, recordBody = true) =>
+  [authMiddleware, guard({ permission: PERM, audit: { description, module: 'Web 终端', recordBody } })] as const;
 
-const homeRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/:profileId/home', tags: ['SshSftp'], summary: '获取远程 home 目录',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: PERM })] as const,
-    request: { params: ProfileIdParam },
-    responses: { ...commonErrorResponses, ...ok(SftpHomeDTO, '远程 home 目录') },
-  }),
+const homeRoute = defineContractRoute(sshSftpContract.home, {
+  middleware: read,
   handler: async (c) => {
     const user = currentUser();
     return c.json(okBody(await sftpHome(user.userId, Number(c.req.valid('param').profileId))), 200);
   },
 });
 
-const listRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/:profileId/list', tags: ['SshSftp'], summary: '列出远程目录内容',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: PERM })] as const,
-    request: { params: ProfileIdParam, query: z.object({ path: z.string().optional() }) },
-    responses: { ...commonErrorResponses, ...ok(SftpDirListingDTO, '远程目录列表') },
-  }),
+const listRoute = defineContractRoute(sshSftpContract.list, {
+  middleware: read,
   handler: async (c) => {
     const user = currentUser();
     return c.json(okBody(await sftpList(user.userId, Number(c.req.valid('param').profileId), c.req.valid('query').path)), 200);
   },
 });
 
-const readContentRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/:profileId/content', tags: ['SshSftp'], summary: '读取远程文本文件内容',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: PERM })] as const,
-    request: { params: ProfileIdParam, query: z.object({ path: z.string().min(1) }) },
-    responses: { ...commonErrorResponses, ...ok(SftpFileContentDTO, '文件内容') },
-  }),
+const readContentRoute = defineContractRoute(sshSftpContract.content, {
+  middleware: read,
   handler: async (c) => {
     const user = currentUser();
     return c.json(okBody(await sftpReadText(user.userId, Number(c.req.valid('param').profileId), c.req.valid('query').path)), 200);
   },
 });
 
-const writeContentRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/:profileId/content', tags: ['SshSftp'], summary: '保存远程文本文件内容',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: PERM, audit: { description: 'SFTP 保存文件', module: 'Web 终端', recordBody: false } })] as const,
-    request: {
-      params: ProfileIdParam,
-      body: {
-        content: jsonContent(z.object({
-          path: z.string().min(1),
-          content: z.string(),
-          /** 读取时拿到的版本；不传表示强制覆盖 */
-          baseEtag: z.string().optional(),
-        })),
-        required: true,
-      },
-    },
-    responses: {
-      ...commonErrorResponses,
-      ...ok(SftpFileEntryDTO, '保存成功'),
-      409: { content: jsonContent(ErrorResponse), description: '文件已被他人修改' },
-    },
-  }),
+const writeContentRoute = defineContractRoute(sshSftpContract.saveContent, {
+  middleware: write('SFTP 保存文件', false),
+  responses: { 409: { content: jsonContent(ErrorResponse), description: '文件已被他人修改' } },
   handler: async (c) => {
     const user = currentUser();
     const { path: filePath, content, baseEtag } = c.req.valid('json');
@@ -114,14 +69,8 @@ const writeContentRoute = defineOpenAPIRoute({
   },
 });
 
-const createEntryRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/:profileId/create', tags: ['SshSftp'], summary: '新建远程文件或目录',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: PERM, audit: { description: 'SFTP 新建文件/目录', module: 'Web 终端' } })] as const,
-    request: { params: ProfileIdParam, body: { content: jsonContent(z.object({ path: z.string().min(1), type: z.enum(['file', 'dir']) })), required: true } },
-    responses: { ...commonErrorResponses, ...ok(SftpFileEntryDTO, '创建成功') },
-  }),
+const createEntryRoute = defineContractRoute(sshSftpContract.create, {
+  middleware: write('SFTP 新建文件/目录'),
   handler: async (c) => {
     const user = currentUser();
     const { path: targetPath, type } = c.req.valid('json');
@@ -129,14 +78,8 @@ const createEntryRoute = defineOpenAPIRoute({
   },
 });
 
-const renameEntryRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/:profileId/rename', tags: ['SshSftp'], summary: '重命名 / 移动远程文件或目录',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: PERM, audit: { description: 'SFTP 重命名/移动', module: 'Web 终端' } })] as const,
-    request: { params: ProfileIdParam, body: { content: jsonContent(z.object({ from: z.string().min(1), to: z.string().min(1) })), required: true } },
-    responses: { ...commonErrorResponses, ...ok(SftpFileEntryDTO, '操作成功') },
-  }),
+const renameEntryRoute = defineContractRoute(sshSftpContract.rename, {
+  middleware: write('SFTP 重命名/移动'),
   handler: async (c) => {
     const user = currentUser();
     const { from, to } = c.req.valid('json');
@@ -144,14 +87,8 @@ const renameEntryRoute = defineOpenAPIRoute({
   },
 });
 
-const deleteEntryRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/:profileId/entry', tags: ['SshSftp'], summary: '删除远程文件或目录',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: PERM, audit: { description: 'SFTP 删除文件/目录', module: 'Web 终端' } })] as const,
-    request: { params: ProfileIdParam, query: z.object({ path: z.string().min(1) }) },
-    responses: { ...commonErrorResponses, ...okMsg('删除成功') },
-  }),
+const deleteEntryRoute = defineContractRoute(sshSftpContract.remove, {
+  middleware: write('SFTP 删除文件/目录'),
   handler: async (c) => {
     const user = currentUser();
     await sftpDelete(user.userId, Number(c.req.valid('param').profileId), c.req.valid('query').path);
@@ -159,14 +96,8 @@ const deleteEntryRoute = defineOpenAPIRoute({
   },
 });
 
-const chmodEntryRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/:profileId/chmod', tags: ['SshSftp'], summary: '修改远程文件/目录权限',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: PERM, audit: { description: 'SFTP 修改权限', module: 'Web 终端' } })] as const,
-    request: { params: ProfileIdParam, body: { content: jsonContent(z.object({ path: z.string().min(1), mode: z.number().int().min(0).max(0o7777) })), required: true } },
-    responses: { ...commonErrorResponses, ...okMsg('权限已修改') },
-  }),
+const chmodEntryRoute = defineContractRoute(sshSftpContract.chmod, {
+  middleware: write('SFTP 修改权限'),
   handler: async (c) => {
     const user = currentUser();
     const { path: targetPath, mode } = c.req.valid('json');
@@ -175,18 +106,9 @@ const chmodEntryRoute = defineOpenAPIRoute({
   },
 });
 
-const downloadRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/:profileId/download', tags: ['SshSftp'], summary: '下载远程文件',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: PERM })] as const,
-    request: { params: ProfileIdParam, query: z.object({ path: z.string().min(1) }) },
-    responses: {
-      ...commonErrorResponses,
-      200: { content: { 'application/octet-stream': { schema: z.string() } }, description: '文件内容' },
-      404: { content: jsonContent(ErrorResponse), description: '文件不存在' },
-    },
-  }),
+const downloadRoute = defineContractRoute(sshSftpContract.download, {
+  middleware: read,
+  responses: { 404: { content: jsonContent(ErrorResponse), description: '文件不存在' } },
   handler: async (c) => {
     const user = currentUser();
     const { stream, fileName } = await sftpDownload(user.userId, Number(c.req.valid('param').profileId), c.req.valid('query').path);
@@ -200,31 +122,9 @@ const downloadRoute = defineOpenAPIRoute({
   },
 });
 
-const uploadRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/:profileId/upload', tags: ['SshSftp'], summary: '上传文件到远程目录',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: PERM, audit: { description: 'SFTP 上传文件', module: 'Web 终端', recordBody: false } })] as const,
-    request: {
-      params: ProfileIdParam,
-      body: {
-        content: {
-          'multipart/form-data': {
-            schema: z.object({
-              path: z.string(),
-              file: z.any().openapi({ type: 'string', format: 'binary' }),
-            }),
-          },
-        },
-        required: true,
-      },
-    },
-    responses: {
-      ...commonErrorResponses,
-      ...ok(SftpFileEntryDTO, '上传成功'),
-      400: { content: jsonContent(ErrorResponse), description: '未选择文件或目标无效' },
-    },
-  }),
+const uploadRoute = defineContractRoute(sshSftpContract.upload, {
+  middleware: write('SFTP 上传文件', false),
+  responses: { 400: { content: jsonContent(ErrorResponse), description: '未选择文件或目标无效' } },
   handler: async (c) => {
     const user = currentUser();
     const profileId = Number(c.req.valid('param').profileId);

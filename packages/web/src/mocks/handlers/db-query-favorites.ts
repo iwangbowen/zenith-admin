@@ -1,22 +1,11 @@
-import { http } from 'msw';
-import { ok, notFound } from '@/mocks/utils/handlers';
+import { dbAdminContract, type DbQueryFavorite } from '@zenith/shared/ops';
+import { mock } from '@/mocks/utils/contract';
+import { notFound } from '@/mocks/utils/handlers';
 import { mockDateTime } from '@/mocks/utils/date';
-
-const API = import.meta.env.VITE_API_BASE_URL || '';
 
 let nextId = 4;
 
-type MockFavorite = {
-  id: number;
-  name: string;
-  sql: string;
-  description: string | null;
-  tags: string[];
-  createdAt: string;
-  updatedAt: string;
-};
-
-const mockFavorites: MockFavorite[] = [
+const mockFavorites: DbQueryFavorite[] = [
   {
     id: 1,
     name: '查询所有用户',
@@ -52,15 +41,12 @@ ORDER BY user_count DESC;`,
 
 export const dbQueryFavoritesHandlers = [
   // 获取收藏夹列表
-  http.get(`${API}/api/db-admin/query-favorites`, () => {
-    return ok([...mockFavorites], 'success');
-  }),
+  mock(dbAdminContract.favorites, ({ ok }) => ok([...mockFavorites], 'success')),
 
   // 新增收藏
-  http.post(`${API}/api/db-admin/query-favorites`, async ({ request }) => {
-    const body = await request.json() as { name: string; sql: string; description?: string; tags?: string[] };
+  mock(dbAdminContract.createFavorite, ({ body, ok }) => {
     const now = mockDateTime();
-    const newFav = {
+    const newFav: DbQueryFavorite = {
       id: nextId++,
       name: body.name,
       sql: body.sql,
@@ -74,16 +60,18 @@ export const dbQueryFavoritesHandlers = [
   }),
 
   // 更新收藏
-  http.patch(`${API}/api/db-admin/query-favorites/:id`, async ({ params, request }) => {
-    const id = Number(params.id);
-    const body = await request.json() as Partial<{ name: string; sql: string; description?: string; tags?: string[] }>;
-    const idx = mockFavorites.findIndex((f) => f.id === id);
+  mock(dbAdminContract.updateFavorite, ({ params, body, ok }) => {
+    const idx = mockFavorites.findIndex((f) => f.id === params.id);
     if (idx === -1) {
       return notFound('收藏不存在', { status: 404 });
     }
-    const updated = {
-      ...mockFavorites[idx],
-      ...body,
+    const current = mockFavorites[idx];
+    const updated: DbQueryFavorite = {
+      ...current,
+      name: body.name ?? current.name,
+      sql: body.sql ?? current.sql,
+      description: body.description === undefined ? current.description : body.description,
+      tags: body.tags ?? current.tags,
       updatedAt: mockDateTime(),
     };
     mockFavorites[idx] = updated;
@@ -91,9 +79,8 @@ export const dbQueryFavoritesHandlers = [
   }),
 
   // 删除收藏
-  http.delete(`${API}/api/db-admin/query-favorites/:id`, ({ params }) => {
-    const id = Number(params.id);
-    const idx = mockFavorites.findIndex((f) => f.id === id);
+  mock(dbAdminContract.removeFavorite, ({ params, ok }) => {
+    const idx = mockFavorites.findIndex((f) => f.id === params.id);
     if (idx !== -1) {
       mockFavorites.splice(idx, 1);
     }

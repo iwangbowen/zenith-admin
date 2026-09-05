@@ -21,20 +21,19 @@ import {
   terminalKeys,
   useTerminateTerminalSession,
   useTerminalSessionList,
-  type TerminalKind,
-  type TerminalSessionItem,
 } from '@/hooks/queries/terminal';
+import type { TerminalSession, TerminalSessionKind } from '@zenith/shared/ops';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
 
-const KIND_META: Record<TerminalKind, { label: string; color: 'blue' | 'green' | 'cyan' | 'purple' }> = {
+const KIND_META: Record<TerminalSessionKind, { label: string; color: 'blue' | 'green' | 'cyan' | 'purple' }> = {
   local: { label: '本地', color: 'blue' },
   ssh: { label: 'SSH', color: 'green' },
   docker: { label: 'Docker', color: 'cyan' },
   db: { label: '数据库', color: 'purple' },
 };
-const KIND_FILTER_OPTIONS = (Object.keys(KIND_META) as TerminalKind[]).map((value) => ({ value, label: KIND_META[value].label }));
+const KIND_FILTER_OPTIONS = (Object.keys(KIND_META) as TerminalSessionKind[]).map((value) => ({ value, label: KIND_META[value].label }));
 
 function buildMonitorWsUrl(sessionId: string, takeover: boolean): string {
   let wsBase = config.wsBaseUrl;
@@ -123,7 +122,7 @@ export default function TerminalSessionsPage() {
   const { hasPermission } = usePermission();
   const [autoRefresh, setAutoRefresh] = useState(false);
 
-  interface SearchParams { keyword: string; kind?: TerminalKind }
+  interface SearchParams { keyword: string; kind?: TerminalSessionKind }
   const defaultSearchParams: SearchParams = { keyword: '', kind: undefined };
   const {
     page, pageSize, buildPagination,
@@ -132,7 +131,7 @@ export default function TerminalSessionsPage() {
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: terminalKeys.sessionLists });
 
   // 监控 SideSheet 状态
-  const [watching, setWatching] = useState<TerminalSessionItem | null>(null);
+  const [watching, setWatching] = useState<TerminalSession | null>(null);
   const [takeover, setTakeover] = useState(false);
 
   const listQuery = useTerminalSessionList({
@@ -145,21 +144,21 @@ export default function TerminalSessionsPage() {
   const total = listQuery.data?.total ?? 0;
   const terminateMutation = useTerminateTerminalSession();
 
-  const handleTerminate = async (record: TerminalSessionItem) => {
-    await terminateMutation.mutateAsync(record.sessionId);
+  const handleTerminate = async (record: TerminalSession) => {
+    await terminateMutation.mutateAsync({ params: { sessionId: record.sessionId } });
     Toast.success('已强制终止');
   };
 
-  const openWatch = (record: TerminalSessionItem) => {
+  const openWatch = (record: TerminalSession) => {
     setTakeover(false);
     setWatching(record);
   };
 
-  const columns: ColumnProps<TerminalSessionItem>[] = [
+  const columns: ColumnProps<TerminalSession>[] = [
     { title: '用户', dataIndex: 'username', width: 140, render: renderEllipsis },
     {
       title: '类型', dataIndex: 'kind', width: 90,
-      render: (k: TerminalKind) => <Tag size="small" color={KIND_META[k].color}>{KIND_META[k].label}</Tag>,
+      render: (k: TerminalSessionKind) => <Tag size="small" color={KIND_META[k].color}>{KIND_META[k].label}</Tag>,
     },
     { title: '标签 / 主机', dataIndex: 'label', minWidth: 200, render: renderEllipsis },
     { title: '客户端 IP', dataIndex: 'clientIp', width: 140, render: (v: string) => v || '-' },
@@ -184,7 +183,7 @@ export default function TerminalSessionsPage() {
         </Space>
       ),
     },
-    createOperationColumn<TerminalSessionItem>({
+    createOperationColumn<TerminalSession>({
       width: 180,
       actions: (record) => [
         {

@@ -1,71 +1,46 @@
 import { useMutation } from '@tanstack/react-query';
-import { request } from '@/utils/request';
-import { unwrap } from '@/lib/query';
-
-export type DnsType = 'A' | 'AAAA' | 'MX' | 'TXT' | 'NS' | 'CNAME' | 'SOA';
-
-export interface HttpProbeResult {
-  ok: boolean;
-  status: number;
-  statusText: string;
-  latencyMs: number;
-  server: string | null;
-  contentType: string | null;
-  contentLength: string | null;
-  redirectLocation: string | null;
-  error: string | null;
-}
-
-export interface NetworkInterfaceInfo {
-  name: string;
-  address: string;
-  netmask: string;
-  family: string;
-  mac: string;
-  internal: boolean;
-  cidr: string | null;
-}
+import { networkDiagContract, type DnsRecordType, type NetDiagStreamType } from '@zenith/shared/ops';
+import { api, urlOf, useApiMutation } from '@/lib/contract-query';
 
 export const networkDiagKeys = {
   all: ['network-diag'] as const,
 };
 
+/** 诊断均为一次性查询（不进缓存），故以 mutation 形态暴露 */
+
 export function useNslookup() {
   return useMutation({
-    mutationFn: (host: string) =>
-      request.get<{ output: string }>(`/api/network-diag/nslookup?host=${encodeURIComponent(host)}`).then(unwrap),
+    mutationFn: (host: string) => api(networkDiagContract.nslookup, { query: { host } }),
   });
 }
 
 export function useDnsLookup() {
   return useMutation({
-    mutationFn: ({ host, type }: { host: string; type: DnsType }) =>
-      request.get<{ type: string; records: string[] }>(`/api/network-diag/dns?host=${encodeURIComponent(host)}&type=${type}`).then(unwrap),
+    mutationFn: ({ host, type }: { host: string; type: DnsRecordType }) => api(networkDiagContract.dns, { query: { host, type } }),
   });
 }
 
 export function useReverseLookup() {
   return useMutation({
-    mutationFn: (ip: string) =>
-      request.get<{ hostnames: string[] }>(`/api/network-diag/reverse?ip=${encodeURIComponent(ip)}`).then(unwrap),
+    mutationFn: (ip: string) => api(networkDiagContract.reverse, { query: { ip } }),
   });
 }
 
 export function useHttpProbe() {
   return useMutation({
-    mutationFn: (url: string) => request.post<HttpProbeResult>('/api/network-diag/http-probe', { url }).then(unwrap),
+    mutationFn: (url: string) => api(networkDiagContract.httpProbe, { body: { url } }),
   });
 }
 
 export function useNetworkInterfaces() {
-  return useMutation({
-    mutationFn: () => request.get<NetworkInterfaceInfo[]>('/api/network-diag/interfaces').then(unwrap),
-  });
+  return useApiMutation(networkDiagContract.interfaces);
 }
 
 export function usePortCheck() {
-  return useMutation({
-    mutationFn: ({ host, port }: { host: string; port: number }) =>
-      request.post<{ open: boolean; latencyMs: number }>('/api/network-diag/port-check', { host, port }).then(unwrap),
-  });
+  return useApiMutation(networkDiagContract.portCheck);
+}
+
+/** ping / traceroute 流式地址（`streamText` 消费） */
+export function networkDiagStreamUrl(type: NetDiagStreamType, host: string) {
+  return urlOf(networkDiagContract.stream, { query: { type, host } });
 }

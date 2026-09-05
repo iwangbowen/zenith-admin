@@ -1,16 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { request } from '@/utils/request';
+import { dbAdminContract, type DbAdminTableRows as TableRowsResponse } from '@zenith/shared/ops';
+import { api } from '@/lib/contract-query';
 
 const PAGE_SIZE = 200;
 /** 与后端 db-admin.service 的 MAX_ROWS 对齐 */
 const MAX_ROWS = 5000;
-
-interface TableRowsResponse {
-  list: Array<Record<string, unknown>>;
-  total: number;
-  page: number;
-  pageSize: number;
-}
 
 interface Params {
   schema?: string;
@@ -46,22 +40,22 @@ export function useTableRowsInfinite(params: Params) {
 
   const fetchPage = useCallback(async (page: number): Promise<TableRowsResponse | null> => {
     if (!schema || !table) return null;
-    const qs = new URLSearchParams();
-    qs.set('page', String(page));
-    qs.set('pageSize', String(PAGE_SIZE));
-    if (orderBy && orderDir) {
-      qs.set('orderBy', orderBy);
-      qs.set('orderDir', orderDir);
-    }
     const active = Object.fromEntries(Object.entries(filters).filter(([, v]) => v.length > 0));
-    if (Object.keys(active).length > 0) qs.set('filters', JSON.stringify(active));
-    if (search.trim()) qs.set('search', search.trim());
-    if (whereRaw?.trim()) qs.set('where', whereRaw.trim());
-    const res = await request.get<TableRowsResponse>(
-      `/api/db-admin/tables/${encodeURIComponent(schema)}/${encodeURIComponent(table)}/rows?${qs.toString()}`,
-    );
-    if (res.code !== 0 || !res.data) return null;
-    return res.data;
+    try {
+      return await api(dbAdminContract.tableRows, {
+        params: { schema, name: table },
+        query: {
+          page,
+          pageSize: PAGE_SIZE,
+          ...(orderBy && orderDir ? { orderBy, orderDir } : {}),
+          ...(Object.keys(active).length > 0 ? { filters: JSON.stringify(active) } : {}),
+          ...(search.trim() ? { search: search.trim() } : {}),
+          ...(whereRaw?.trim() ? { where: whereRaw.trim() } : {}),
+        },
+      });
+    } catch {
+      return null;
+    }
     // filtersKey 代表 filters 的稳定序列化，避免对象引用抖动
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schema, table, orderBy, orderDir, filtersKey, search, whereRaw]);

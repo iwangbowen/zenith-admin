@@ -15,8 +15,10 @@ import { readSseStream } from '@/utils/streaming';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
-import type { ProcessInfo, ProcessListResponse } from '@zenith/shared/ops';
-import { useKillProcess, useProcessDetail, useProcessList, useSetProcessPriority } from '@/hooks/queries/processes';
+import { PROCESS_KILL_SIGNALS, PROCESS_PRIORITY_CLASSES, type ProcessInfo, type ProcessKillSignal, type ProcessListResponse, type SetProcessPriorityInput } from '@zenith/shared/ops';
+import { enumValueOf } from '@zenith/shared/core';
+import { hostQueryOf } from '@/hooks/queries/ops-hosts';
+import { processStreamUrl, useKillProcess, useProcessDetail, useProcessList, useSetProcessPriority } from '@/hooks/queries/processes';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { HostSelector } from '@/components/HostSelector';
 import { useOpsHostSelection } from '@/hooks/useOpsHostSelection';
@@ -112,22 +114,22 @@ export default function ProcessesPage() {
   // ─── 结束进程弹窗 ──────────────────────────────────────────────────────
   const [killVisible, setKillVisible] = useState(false);
   const [killTarget, setKillTarget] = useState<ProcessInfo | null>(null);
-  const [killSignal, setKillSignal] = useState('SIGTERM');
+  const [killSignal, setKillSignal] = useState<ProcessKillSignal>('SIGTERM');
 
   const remoteListQuery = useProcessList(hostId, hostId != null);
   const detailQuery = useProcessDetail(detailProcess?.pid, detailVisible, hostId);
   const killMutation = useKillProcess();
   const priorityMutation = useSetProcessPriority();
-  const priorityModal = useEditModal<PriorityRecord, Record<string, unknown>>({
+  const priorityModal = useEditModal<PriorityRecord, SetProcessPriorityInput>({
     save: {
       mutateAsync: async ({ id, values }) => {
-        await priorityMutation.mutateAsync({ pid: id ?? 0, values, hostId });
+        await priorityMutation.mutateAsync({ params: { pid: id ?? 0 }, query: hostQueryOf(hostId), body: values });
         return { id: id ?? 0, pid: id ?? 0, name: '' };
       },
       isPending: priorityMutation.isPending,
     },
     toValues: (record) => platform === 'win32'
-      ? { priorityClass: record.priorityClass ?? 'Normal' }
+      ? { priorityClass: enumValueOf(PROCESS_PRIORITY_CLASSES, record.priorityClass) ?? 'Normal' }
       : { nice: record.nice ?? 0 },
     successMessage: () => '优先级已调整',
     labelWidth: 100,
@@ -177,7 +179,7 @@ export default function ProcessesPage() {
 
     (async () => {
       try {
-        const res = await request.fetchRaw('/api/processes/stream', { signal: ctrl.signal, silent: true });
+        const res = await request.fetchRaw(processStreamUrl(), { signal: ctrl.signal, silent: true });
         if (!res || !res.ok || !res.body) {
           setSseStatus('error');
           return;
@@ -237,7 +239,7 @@ export default function ProcessesPage() {
   // ─── 结束进程 ──────────────────────────────────────────────────────────
   async function confirmKill() {
     if (!killTarget) return;
-    await killMutation.mutateAsync({ pid: killTarget.pid, signal: killSignal, hostId });
+    await killMutation.mutateAsync({ params: { pid: killTarget.pid }, query: hostQueryOf(hostId), body: { signal: killSignal } });
     Toast.success(`已向进程 ${killTarget.name}（PID: ${killTarget.pid}）发送 ${killSignal}`);
     setKillVisible(false);
     setKillTarget(null);
@@ -655,7 +657,7 @@ export default function ProcessesPage() {
                   initValue="SIGTERM"
                   style={{ width: '100%' }}
                   optionList={SIGNAL_OPTIONS}
-                  onChange={(v) => setKillSignal(v as string)}
+                  onChange={(v) => setKillSignal(enumValueOf(PROCESS_KILL_SIGNALS, v) ?? 'SIGTERM')}
                 />
               </Form>
             )}

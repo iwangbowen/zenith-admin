@@ -1,16 +1,9 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { TERMINAL_SESSION_KINDS } from '@zenith/shared/ops';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { terminalSessionContract } from '@zenith/shared/ops';
 import { authMiddleware } from '../../middleware/auth';
 import { guard } from '../../middleware/guard';
-import {
-  validationHook,
-  commonErrorResponses,
-  okPaginated,
-  okMsg,
-  okBody,
-  PaginationQuery,
-} from '../../lib/openapi-schemas';
-import { TerminalSessionDTO } from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   listTerminalSessions,
   terminateTerminalSession,
@@ -26,37 +19,16 @@ import {
 const router = new OpenAPIHono({ defaultHook: validationHook });
 const PERM = 'system:terminal:monitor';
 
-const SessionIdParam = z.object({
-  sessionId: z.string().min(1).openapi({ param: { name: 'sessionId', in: 'path' }, example: 'tab-1-1700000000000' }),
-});
-
-const listRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/', tags: ['TerminalSessions'], summary: '活动终端会话列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: PERM })] as const,
-    request: {
-      query: PaginationQuery.extend({
-        keyword: z.string().optional(),
-        kind: z.enum(TERMINAL_SESSION_KINDS).optional(),
-      }),
-    },
-    responses: { ...commonErrorResponses, ...okPaginated(TerminalSessionDTO, '活动会话列表') },
-  }),
+const listRoute = defineContractRoute(terminalSessionContract.list, {
+  middleware: [authMiddleware, guard({ permission: PERM })],
   handler: (c) => {
     const { page, pageSize, keyword, kind } = c.req.valid('query');
     return c.json(okBody(listTerminalSessions({ page, pageSize, keyword, kind })), 200);
   },
 });
 
-const terminateRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/:sessionId/terminate', tags: ['TerminalSessions'], summary: '强制终止终端会话',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: PERM, audit: { description: '强制终止终端会话', module: 'Web 终端' } })] as const,
-    request: { params: SessionIdParam },
-    responses: { ...commonErrorResponses, ...okMsg('已终止') },
-  }),
+const terminateRoute = defineContractRoute(terminalSessionContract.terminate, {
+  middleware: [authMiddleware, guard({ permission: PERM, audit: { description: '强制终止终端会话', module: 'Web 终端' } })],
   handler: (c) => {
     const { sessionId } = c.req.valid('param');
     // 终止前记录会话快照，便于审计日志展示被终止的会话信息

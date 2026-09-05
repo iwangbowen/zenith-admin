@@ -1,29 +1,9 @@
-import { http } from 'msw';
-import type { TerminalSessionKind } from '@zenith/shared/ops';
-import { ok, notFound, pageParams } from '@/mocks/utils/handlers';
+import { terminalSessionContract, type TerminalSession } from '@zenith/shared/ops';
+import { mock } from '@/mocks/utils/contract';
+import { notFound } from '@/mocks/utils/handlers';
 import { mockDateTimeOffset } from '@/mocks/utils/date';
 
-type Kind = TerminalSessionKind;
-
-interface MockTerminalSession {
-  sessionId: string;
-  userId: number;
-  username: string;
-  kind: Kind;
-  label: string;
-  clientIp: string;
-  cols: number;
-  rows: number;
-  connected: boolean;
-  observerCount: number;
-  takenOver: boolean;
-  startedAt: string;
-  lastActivityAt: string;
-  idleSeconds: number;
-  durationSeconds: number;
-}
-
-const mockTerminalSessions: MockTerminalSession[] = [
+const mockTerminalSessions: TerminalSession[] = [
   {
     sessionId: 'tab-1-demo', userId: 1, username: 'admin', kind: 'local', label: 'Bash',
     clientIp: '192.168.1.10', cols: 120, rows: 32, connected: true, observerCount: 0, takenOver: false,
@@ -46,24 +26,18 @@ const mockTerminalSessions: MockTerminalSession[] = [
 
 export const terminalSessionsHandlers = [
   // 活动终端会话列表
-  http.get('/api/terminal-sessions', ({ request }) => {
-    const url = new URL(request.url);
-    const { page, pageSize } = pageParams(url);
-    const keyword = (url.searchParams.get('keyword') ?? '').toLowerCase();
-    const kind = url.searchParams.get('kind') ?? '';
-
-    let list = mockTerminalSessions.filter((s) => {
-      if (kind && s.kind !== kind) return false;
+  mock(terminalSessionContract.list, ({ query, ok, paginate }) => {
+    const keyword = (query.keyword ?? '').toLowerCase();
+    const list = mockTerminalSessions.filter((s) => {
+      if (query.kind && s.kind !== query.kind) return false;
       if (keyword && !(s.username.toLowerCase().includes(keyword) || s.label.toLowerCase().includes(keyword) || s.clientIp.includes(keyword))) return false;
       return true;
     });
-    const total = list.length;
-    list = list.slice((page - 1) * pageSize, page * pageSize);
-    return ok({ list, total, page, pageSize });
+    return ok(paginate(list));
   }),
 
   // 强制终止（demo 模式仅从列表中移除）
-  http.post('/api/terminal-sessions/:sessionId/terminate', ({ params }) => {
+  mock(terminalSessionContract.terminate, ({ params, ok }) => {
     const idx = mockTerminalSessions.findIndex((s) => s.sessionId === params.sessionId);
     if (idx === -1) return notFound('会话不存在或已结束');
     mockTerminalSessions.splice(idx, 1);

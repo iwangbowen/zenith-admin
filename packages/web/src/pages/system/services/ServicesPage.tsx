@@ -7,12 +7,14 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { useServiceAction, useServiceList, useServiceLogs, type ServiceAction, type ServiceInfo } from '@/hooks/queries/services';
+import type { SystemdAction, SystemdService } from '@zenith/shared/ops';
+import { hostQueryOf } from '@/hooks/queries/ops-hosts';
+import { serviceLogsStreamUrl, useServiceAction, useServiceList, useServiceLogs } from '@/hooks/queries/services';
 import { HostSelector } from '@/components/HostSelector';
 import { useOpsHostSelection } from '@/hooks/useOpsHostSelection';
 import { usePermission } from '@/hooks/usePermission';
-const ACTION_MSG: Record<ServiceAction, string> = {
-  start: '已启动', stop: '已停止', restart: '已重启', enable: '已设为开机自启', disable: '已取消开机自启', mask: '已屏蔽', unmask: '已取消屏蔽',
+const ACTION_MSG: Record<SystemdAction, string> = {
+  start: '已启动', stop: '已停止', restart: '已重启', reload: '已重载', enable: '已设为开机自启', disable: '已取消开机自启', mask: '已屏蔽', unmask: '已取消屏蔽',
 };
 
 const STATE_COLOR: Record<string, 'green' | 'grey' | 'red' | 'orange'> = {
@@ -25,7 +27,7 @@ export default function ServicesPage() {
   const [hostId, setHostId] = useOpsHostSelection();
   const [keyword, setKeyword] = useState('');
   const [stateFilter, setStateFilter] = useState<string | undefined>();
-  const [logsService, setLogsService] = useState<ServiceInfo | null>(null);
+  const [logsService, setLogsService] = useState<SystemdService | null>(null);
   const [logs, setLogs] = useState('');
   const [logsFollowing, setLogsFollowing] = useState(false);
   const logsAbortRef = useRef<AbortController | null>(null);
@@ -52,12 +54,12 @@ export default function ServicesPage() {
 
   useEffect(() => () => { logsAbortRef.current?.abort(); }, []);
 
-  const handleAction = async (name: string, action: ServiceAction) => {
-    await actionMutation.mutateAsync({ name, action, hostId });
+  const handleAction = async (name: string, action: SystemdAction) => {
+    await actionMutation.mutateAsync({ params: { name, action }, query: hostQueryOf(hostId) });
     Toast.success({ content: ACTION_MSG[action], duration: 2 });
   };
 
-  const openLogs = async (svc: ServiceInfo) => {
+  const openLogs = async (svc: SystemdService) => {
     logsAbortRef.current?.abort();
     setLogsService(svc);
     setLogs('');
@@ -84,7 +86,7 @@ export default function ServicesPage() {
       const abort = new AbortController();
       logsAbortRef.current = abort;
       void streamText(
-        `/api/systemd/${logsService.name}/logs/stream${hostId == null ? '' : `?hostId=${hostId}`}`,
+        serviceLogsStreamUrl(logsService.name, hostId),
         (text) => setLogs((prev) => prev + text),
         abort.signal,
       ).catch(() => { /* disconnected */ }).finally(() => { setLogsFollowing(false); });
@@ -99,22 +101,22 @@ export default function ServicesPage() {
   });
   const failedCount = services.filter((s) => s.activeState === 'failed').length;
 
-  const columns: ColumnProps<ServiceInfo>[] = [
+  const columns: ColumnProps<SystemdService>[] = [
     {
       title: '服务名',
-      render: (_: unknown, r: ServiceInfo) => (
+      render: (_: unknown, r: SystemdService) => (
         <Typography.Text size="small" code style={{ fontSize: 12 }}>{r.name}</Typography.Text>
       ),
     },
     {
       title: '描述',
-      render: (_: unknown, r: ServiceInfo) => (
+      render: (_: unknown, r: SystemdService) => (
         <Typography.Text size="small" type="secondary" ellipsis={{ showTooltip: true }}>{r.description || '—'}</Typography.Text>
       ),
     },
     {
       title: '状态', width: 130,
-      render: (_: unknown, r: ServiceInfo) => (
+      render: (_: unknown, r: SystemdService) => (
         <div style={{ display: 'flex', gap: 4 }}>
           <Tag size="small" color={STATE_COLOR[r.activeState] ?? 'grey'}>{r.activeState}</Tag>
           {r.subState && r.subState !== r.activeState && (
@@ -127,11 +129,11 @@ export default function ServicesPage() {
       title: '加载状态', dataIndex: 'loadState', width: 100,
       render: (v: string) => <Tag size="small" color={v === 'loaded' ? 'blue' : 'grey'}>{v}</Tag>,
     },
-    createOperationColumn<ServiceInfo>({
+    createOperationColumn<SystemdService>({
       width: 240,
       desktopInlineKeys: ['toggle', 'restart', 'logs'],
       actions: (record) => {
-        const busy = actionMutation.isPending && actionMutation.variables?.name === record.name;
+        const busy = actionMutation.isPending && actionMutation.variables?.params.name === record.name;
         const isActive = record.activeState === 'active';
         return [
           {

@@ -6,7 +6,9 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePermission } from '@/hooks/usePermission';
-import { useKillPortProcess, usePortList, type PortEntry } from '@/hooks/queries/ports';
+import type { PortEntry } from '@zenith/shared/ops';
+import { hostQueryOf } from '@/hooks/queries/ops-hosts';
+import { useKillPortProcess, usePortList } from '@/hooks/queries/ports';
 import { ResetButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
@@ -36,12 +38,12 @@ export default function PortsPage() {
   const listQuery = usePortList(refreshInterval > 0 ? refreshInterval : false, hostId);
   const all = listQuery.data ?? [];
   const killMutation = useKillPortProcess();
-  const killingPid = killMutation.isPending ? (killMutation.variables ?? null) : null;
+  const killingPid = killMutation.isPending ? (killMutation.variables?.params.pid ?? null) : null;
 
   const handleReset = () => { setKeyword(''); setProtocol(''); void listQuery.refetch(); };
 
   async function handleKill(pid: number) {
-    await killMutation.mutateAsync({ pid, hostId });
+    await killMutation.mutateAsync({ params: { pid }, query: hostQueryOf(hostId) });
     Toast.success('进程已结束');
   }
 

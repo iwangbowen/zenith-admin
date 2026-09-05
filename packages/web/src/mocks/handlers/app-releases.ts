@@ -4,9 +4,22 @@
  * 覆盖管理侧全部端点：应用 / 版本 / 制品 CRUD、发布状态机、灰度调整与看板统计。
  * 看板统计由确定性伪随机数生成（同一应用同一天数结果恒定），不重复维护静态数组。
  */
-import { http } from 'msw';
-import type { AppArtifact, AppRelease, AppReleaseStats, ClientApp } from '@zenith/shared/ops';
-import { badRequest, notFound, ok, paginate } from '@/mocks/utils/handlers';
+import { enumValueOf } from '@zenith/shared/core';
+import {
+  APP_ARCHES,
+  APP_FILE_ARTIFACT_KINDS,
+  APP_PLATFORMS,
+  appArtifactContract,
+  appReleaseContract,
+  appReleaseStatsContract,
+  clientAppContract,
+  type AppArtifact,
+  type AppRelease,
+  type AppReleaseStats,
+  type ClientApp,
+} from '@zenith/shared/ops';
+import { mock } from '@/mocks/utils/contract';
+import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { removeWhere } from '@/mocks/utils/array';
 import { mockDateTime } from '@/mocks/utils/date';
 import {
@@ -51,31 +64,27 @@ function seededInt(seed: string, max: number): number {
 
 export const appReleasesHandlers = [
   // ─── 应用 ──────────────────────────────────────────────────────────────────
-  http.get('/api/app-releases/apps/all', () =>
+  mock(clientAppContract.all, ({ ok }) =>
     ok(mockClientApps.filter((a) => a.status === 'enabled').map(decorateApp))),
 
-  http.get('/api/app-releases/apps', ({ request }) => {
-    const url = new URL(request.url);
-    const keyword = url.searchParams.get('keyword') || '';
-    const status = url.searchParams.get('status') || '';
+  mock(clientAppContract.list, ({ query, ok, paginate }) => {
     let list = mockClientApps.map(decorateApp);
-    if (keyword) list = list.filter((a) => a.name.includes(keyword) || a.appKey.includes(keyword));
-    if (status) list = list.filter((a) => a.status === status);
-    return ok(paginate(list, url));
+    if (query.keyword) list = list.filter((a) => a.name.includes(query.keyword!) || a.appKey.includes(query.keyword!));
+    if (query.status) list = list.filter((a) => a.status === query.status);
+    return ok(paginate(list));
   }),
 
-  http.post('/api/app-releases/apps', async ({ request }) => {
-    const body = (await request.json()) as Partial<ClientApp>;
+  mock(clientAppContract.create, ({ body, ok }) => {
     if (mockClientApps.some((a) => a.appKey === body.appKey)) {
       return badRequest('应用标识（appKey）已存在', { status: 400 });
     }
     const now = mockDateTime();
     const app: ClientApp = {
       id: getNextClientAppId(),
-      appKey: body.appKey ?? '',
-      name: body.name ?? '',
+      appKey: body.appKey,
+      name: body.name,
       description: body.description ?? '',
-      status: body.status ?? 'enabled',
+      status: body.status,
       createdAt: now,
       updatedAt: now,
     };
@@ -83,32 +92,30 @@ export const appReleasesHandlers = [
     return ok(decorateApp(app), '创建成功');
   }),
 
-  http.put('/api/app-releases/apps/:id', async ({ params, request }) => {
-    const idx = mockClientApps.findIndex((a) => a.id === Number(params.id));
-    if (idx === -1) return notFound('应用不存在', { status: 404 });
-    const body = (await request.json()) as Partial<ClientApp>;
-    // appKey 创建后不可修改，与后端一致
-    delete body.appKey;
-    Object.assign(mockClientApps[idx], { ...body, updatedAt: mockDateTime() });
-    return ok(decorateApp(mockClientApps[idx]), '更新成功');
+  mock(clientAppContract.update, ({ params, body, ok }) => {
+    const app = mockClientApps.find((a) => a.id === params.id);
+    if (!app) return notFound('应用不存在', { status: 404 });
+    if (body.name !== undefined) app.name = body.name;
+    if (body.description !== undefined) app.description = body.description;
+    if (body.status !== undefined) app.status = body.status;
+    app.updatedAt = mockDateTime();
+    return ok(decorateApp(app), '更新成功');
   }),
 
-  http.delete('/api/app-releases/apps/:id', ({ params }) => {
-    const id = Number(params.id);
-    const idx = mockClientApps.findIndex((a) => a.id === id);
+  mock(clientAppContract.remove, ({ params, ok }) => {
+    const idx = mockClientApps.findIndex((a) => a.id === params.id);
     if (idx === -1) return notFound('应用不存在', { status: 404 });
-    if (mockAppReleases.some((r) => r.appId === id)) {
+    if (mockAppReleases.some((r) => r.appId === params.id)) {
       return badRequest('该应用下仍有版本记录，请先删除全部版本', { status: 400 });
     }
     mockClientApps.splice(idx, 1);
     return ok(null, '删除成功');
   }),
 
-  // ─── 看板统计（静态路径须早于 /releases/:id 之类的动态段）──────────────────
-  http.get('/api/app-releases/stats', ({ request }) => {
-    const url = new URL(request.url);
-    const appId = Number(url.searchParams.get('appId'));
-    const days = Number(url.searchParams.get('days') || 30);
+  // ─── 看板统计 ───────────────────────────────────────────────────────────────
+  mock(appReleaseStatsContract.stats, ({ query, ok }) => {
+    const appId = query.appId;
+    const days = query.days ?? 30;
     if (!mockClientApps.some((a) => a.id === appId)) return notFound('应用不存在', { status: 404 });
 
     const trend: AppReleaseStats['trend'] = [];
@@ -147,48 +154,42 @@ export const appReleasesHandlers = [
       .map((r) => ({ version: r.version, devices: 30 + seededInt(`${appId}:${r.version}:${days}`, 260) }))
       .sort((a, b) => b.devices - a.devices);
 
-    return ok({ totals, trend, platforms, versions } satisfies AppReleaseStats);
+    return ok({ totals, trend, platforms, versions });
   }),
 
   // ─── 版本 ──────────────────────────────────────────────────────────────────
-  http.get('/api/app-releases/releases', ({ request }) => {
-    const url = new URL(request.url);
-    const appId = url.searchParams.get('appId');
-    const channel = url.searchParams.get('channel') || '';
-    const status = url.searchParams.get('status') || '';
-    const keyword = url.searchParams.get('keyword') || '';
+  mock(appReleaseContract.list, ({ query, ok, paginate }) => {
     let list = mockAppReleases.map(decorateRelease);
-    if (appId) list = list.filter((r) => r.appId === Number(appId));
-    if (channel) list = list.filter((r) => r.channel === channel);
-    if (status) list = list.filter((r) => r.status === status);
-    if (keyword) list = list.filter((r) => r.version.includes(keyword) || (r.notes ?? '').includes(keyword));
+    if (query.appId) list = list.filter((r) => r.appId === query.appId);
+    if (query.channel) list = list.filter((r) => r.channel === query.channel);
+    if (query.status) list = list.filter((r) => r.status === query.status);
+    if (query.keyword) list = list.filter((r) => r.version.includes(query.keyword!) || (r.notes ?? '').includes(query.keyword!));
     list = list.sort((a, b) => b.id - a.id);
-    return ok(paginate(list, url));
+    return ok(paginate(list));
   }),
 
-  http.get('/api/app-releases/releases/:id', ({ params }) => {
-    const release = mockAppReleases.find((r) => r.id === Number(params.id));
+  mock(appReleaseContract.detail, ({ params, ok }) => {
+    const release = mockAppReleases.find((r) => r.id === params.id);
     if (!release) return notFound('版本不存在', { status: 404 });
     return ok(decorateRelease(release));
   }),
 
-  http.post('/api/app-releases/releases', async ({ request }) => {
-    const body = (await request.json()) as Partial<AppRelease>;
+  mock(appReleaseContract.create, ({ body, ok }) => {
     if (!mockClientApps.some((a) => a.id === body.appId)) return badRequest('指定的应用不存在', { status: 400 });
-    if (mockAppReleases.some((r) => r.appId === body.appId && r.channel === (body.channel ?? 'stable') && r.version === body.version)) {
+    if (mockAppReleases.some((r) => r.appId === body.appId && r.channel === body.channel && r.version === body.version)) {
       return badRequest('该应用在此渠道下已存在相同版本号', { status: 400 });
     }
     const now = mockDateTime();
     const release: AppRelease = {
       id: getNextAppReleaseId(),
-      appId: body.appId ?? 0,
-      channel: body.channel ?? 'stable',
-      version: body.version ?? '',
+      appId: body.appId,
+      channel: body.channel,
+      version: body.version,
       notes: body.notes ?? '',
       status: 'draft',
-      mandatory: body.mandatory ?? false,
+      mandatory: body.mandatory,
       minVersion: body.minVersion ?? null,
-      rolloutPercent: body.rolloutPercent ?? 100,
+      rolloutPercent: body.rolloutPercent,
       publishedAt: null,
       createdAt: now,
       updatedAt: now,
@@ -197,10 +198,9 @@ export const appReleasesHandlers = [
     return ok(decorateRelease(release), '创建成功');
   }),
 
-  http.put('/api/app-releases/releases/:id', async ({ params, request }) => {
-    const release = mockAppReleases.find((r) => r.id === Number(params.id));
+  mock(appReleaseContract.update, ({ params, body, ok }) => {
+    const release = mockAppReleases.find((r) => r.id === params.id);
     if (!release) return notFound('版本不存在', { status: 404 });
-    const body = (await request.json()) as Partial<AppRelease>;
     if (release.status !== 'draft') {
       if (body.version !== undefined && body.version !== release.version) {
         return badRequest('仅草稿状态可修改版本号', { status: 400 });
@@ -209,13 +209,18 @@ export const appReleasesHandlers = [
         return badRequest('仅草稿状态可修改发布渠道', { status: 400 });
       }
     }
-    delete body.appId;
-    Object.assign(release, { ...body, updatedAt: mockDateTime() });
+    if (body.channel !== undefined) release.channel = body.channel;
+    if (body.version !== undefined) release.version = body.version;
+    if (body.notes !== undefined) release.notes = body.notes;
+    if (body.mandatory !== undefined) release.mandatory = body.mandatory;
+    if (body.minVersion !== undefined) release.minVersion = body.minVersion;
+    if (body.rolloutPercent !== undefined) release.rolloutPercent = body.rolloutPercent;
+    release.updatedAt = mockDateTime();
     return ok(decorateRelease(release), '更新成功');
   }),
 
-  http.post('/api/app-releases/releases/:id/publish', ({ params }) => {
-    const release = mockAppReleases.find((r) => r.id === Number(params.id));
+  mock(appReleaseContract.publish, ({ params, ok }) => {
+    const release = mockAppReleases.find((r) => r.id === params.id);
     if (!release) return notFound('版本不存在', { status: 404 });
     if (release.status === 'published') return badRequest('该版本已是发布状态', { status: 400 });
     if (!mockAppArtifacts.some((a) => a.releaseId === release.id)) {
@@ -225,51 +230,50 @@ export const appReleasesHandlers = [
     return ok(decorateRelease(release), '发布成功');
   }),
 
-  http.post('/api/app-releases/releases/:id/revoke', ({ params }) => {
-    const release = mockAppReleases.find((r) => r.id === Number(params.id));
+  mock(appReleaseContract.revoke, ({ params, ok }) => {
+    const release = mockAppReleases.find((r) => r.id === params.id);
     if (!release) return notFound('版本不存在', { status: 404 });
     if (release.status !== 'published') return badRequest('仅已发布版本可以撤回', { status: 400 });
     Object.assign(release, { status: 'revoked', updatedAt: mockDateTime() });
     return ok(decorateRelease(release), '撤回成功');
   }),
 
-  http.put('/api/app-releases/releases/:id/rollout', async ({ params, request }) => {
-    const release = mockAppReleases.find((r) => r.id === Number(params.id));
+  mock(appReleaseContract.rollout, ({ params, body, ok }) => {
+    const release = mockAppReleases.find((r) => r.id === params.id);
     if (!release) return notFound('版本不存在', { status: 404 });
-    const body = (await request.json()) as { rolloutPercent?: number };
-    Object.assign(release, { rolloutPercent: body.rolloutPercent ?? 100, updatedAt: mockDateTime() });
+    Object.assign(release, { rolloutPercent: body.rolloutPercent, updatedAt: mockDateTime() });
     return ok(decorateRelease(release), '调整成功');
   }),
 
-  http.delete('/api/app-releases/releases/:id', ({ params }) => {
-    const id = Number(params.id);
-    const idx = mockAppReleases.findIndex((r) => r.id === id);
+  mock(appReleaseContract.remove, ({ params, ok }) => {
+    const idx = mockAppReleases.findIndex((r) => r.id === params.id);
     if (idx === -1) return notFound('版本不存在', { status: 404 });
     if (mockAppReleases[idx].status === 'published') {
       return badRequest('已发布版本不可删除，请先撤回', { status: 400 });
     }
     mockAppReleases.splice(idx, 1);
-    removeWhere(mockAppArtifacts, (a) => a.releaseId === id);
+    removeWhere(mockAppArtifacts, (a) => a.releaseId === params.id);
     return ok(null, '删除成功');
   }),
 
   // ─── 制品 ──────────────────────────────────────────────────────────────────
-  http.post('/api/app-releases/releases/:id/artifacts', async ({ params, request }) => {
-    const releaseId = Number(params.id);
+  mock(appReleaseContract.uploadArtifact, ({ params, body, ok }) => {
+    const releaseId = params.id;
     if (!mockAppReleases.some((r) => r.id === releaseId)) return notFound('版本不存在', { status: 404 });
-    const form = await request.formData();
-    const file = form.get('file');
+    const file = body.get('file');
     if (!(file instanceof File)) return badRequest('请选择要上传的制品文件', { status: 400 });
     if (mockAppArtifacts.some((a) => a.releaseId === releaseId && a.fileName === file.name)) {
       return badRequest('该版本下已存在同名制品文件', { status: 400 });
     }
+    const platform = enumValueOf(APP_PLATFORMS, body.get('platform'));
+    if (!platform) return badRequest('platform 不合法', { status: 400 });
     const now = mockDateTime();
     const artifact: AppArtifact = {
       id: getNextAppArtifactId(),
       releaseId,
-      platform: (form.get('platform') as AppArtifact['platform']) ?? 'windows',
-      arch: (form.get('arch') as AppArtifact['arch']) ?? 'x64',
-      kind: (form.get('kind') as AppArtifact['kind']) ?? 'installer',
+      platform,
+      arch: enumValueOf(APP_ARCHES, body.get('arch')) ?? 'x64',
+      kind: enumValueOf(APP_FILE_ARTIFACT_KINDS, body.get('kind')) ?? 'installer',
       fileId: null,
       externalUrl: null,
       fileName: file.name,
@@ -283,10 +287,9 @@ export const appReleasesHandlers = [
     return ok(artifact, '上传成功');
   }),
 
-  http.post('/api/app-releases/releases/:id/artifacts/external', async ({ params, request }) => {
-    const releaseId = Number(params.id);
+  mock(appReleaseContract.addExternalArtifact, ({ params, body, ok }) => {
+    const releaseId = params.id;
     if (!mockAppReleases.some((r) => r.id === releaseId)) return notFound('版本不存在', { status: 404 });
-    const body = (await request.json()) as { platform?: AppArtifact['platform']; arch?: AppArtifact['arch']; externalUrl?: string; fileName?: string };
     if (mockAppArtifacts.some((a) => a.releaseId === releaseId && a.fileName === body.fileName)) {
       return badRequest('该版本下已存在同名制品文件', { status: 400 });
     }
@@ -294,12 +297,12 @@ export const appReleasesHandlers = [
     const artifact: AppArtifact = {
       id: getNextAppArtifactId(),
       releaseId,
-      platform: body.platform ?? 'ios',
-      arch: body.arch ?? 'universal',
+      platform: body.platform,
+      arch: body.arch,
       kind: 'external',
       fileId: null,
-      externalUrl: body.externalUrl ?? '',
-      fileName: body.fileName ?? '',
+      externalUrl: body.externalUrl,
+      fileName: body.fileName,
       size: 0,
       sha256: null,
       downloadCount: 0,
@@ -310,8 +313,8 @@ export const appReleasesHandlers = [
     return ok(artifact, '添加成功');
   }),
 
-  http.delete('/api/app-releases/artifacts/:id', ({ params }) => {
-    const idx = mockAppArtifacts.findIndex((a) => a.id === Number(params.id));
+  mock(appArtifactContract.remove, ({ params, ok }) => {
+    const idx = mockAppArtifacts.findIndex((a) => a.id === params.id);
     if (idx === -1) return notFound('制品不存在', { status: 404 });
     mockAppArtifacts.splice(idx, 1);
     return ok(null, '删除成功');

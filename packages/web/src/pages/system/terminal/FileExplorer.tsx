@@ -30,12 +30,14 @@ import {
   parentNativePath,
   type FsTreeNode,
 } from './fileTree';
+import { terminalFileContract, type FsRootInfo as RootInfo } from '@zenith/shared/ops';
+import { urlOf } from '@/lib/contract-query';
 import {
   fetchLocalDir,
   rootInfoQueryOptions,
+  terminalFileDownloadUrl,
   useLocalFileMutation,
   useLocalFileUpload,
-  type RootInfo,
 } from '@/hooks/queries/terminal-files';
 
 /** 本机文件树节点等价于共享的文件树节点，仅为可读性保留别名 */
@@ -76,7 +78,7 @@ function uploadOneXhr(
       else reject(new Error(`HTTP ${xhr.status}`));
     };
     xhr.onerror = () => reject(new Error('网络错误'));
-    xhr.open('POST', `${config.apiBaseUrl || ''}/api/terminal-files/upload`);
+    xhr.open('POST', `${config.apiBaseUrl || ''}${urlOf(terminalFileContract.upload)}`);
     for (const [name, value] of Object.entries(request.authHeaders())) xhr.setRequestHeader(name, value);
     xhr.send(fd);
   });
@@ -350,7 +352,7 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
 
   const downloadFile = (path: string) => {
     const fileName = path.split(/[\\/]/).pop() ?? 'download';
-    request.download(`/api/terminal-files/download?path=${encodeURIComponent(path)}`, fileName).catch(() => undefined);
+    request.download(terminalFileDownloadUrl(path), fileName).catch(() => undefined);
   };
 
   const confirmDelete = (node: FileNode) => {

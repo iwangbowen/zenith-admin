@@ -1,11 +1,12 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono } from '@hono/zod-openapi';
 import { streamSSE } from 'hono/streaming';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
+import { logFileContract } from '@zenith/shared/ops';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
-import { validationHook, commonErrorResponses, ok, okMsg, ErrorResponse, jsonContent, okBody, errBody } from '../../lib/openapi-schemas';
-import { LogFileDTO, LogFileContentDTO } from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { ErrorResponse, errBody, jsonContent, okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   readLastLines, watchTail,
   listLogFiles, readLogFileLines, deleteLogFile, resolveLogFile, getLogFileBeforeAudit,
@@ -13,105 +14,84 @@ import {
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
-const listRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/', tags: ['LogFiles'], summary: '日志文件列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:log:files' })] as const,
-    responses: { ...ok(z.array(LogFileDTO), '日志文件列表'), ...commonErrorResponses },
-  }),
+const view = [authMiddleware, guard({ permission: 'system:log:files' })] as const;
+
+const fileErrorResponses = {
+  400: { content: jsonContent(ErrorResponse), description: '无效的文件名' },
+  404: { content: jsonContent(ErrorResponse), description: '文件不存在' },
+} as const;
+
+const listRoute = defineContractRoute(logFileContract.list, {
+  middleware: view,
   handler: async (c) => c.json(okBody(await listLogFiles(), 'success'), 200),
 });
 
-const contentRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/:filename/content', tags: ['LogFiles'], summary: '读取日志文件内容（最后 N 行）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:log:files' })] as const,
-    request: {
-      params: z.object({ filename: z.string().openapi({ param: { name: 'filename', in: 'path' }, example: 'app.log' }) }),
-      query: z.object({
-        lines: z.coerce.number().min(1).max(5000).default(500).optional(),
-        keyword: z.string().max(200).optional(),
-        context: z.coerce.number().min(0).max(10).default(0).optional(),
-      }),
-    },
-    responses: {
-      ...ok(LogFileContentDTO, '文件内容'),
-      ...commonErrorResponses,
-      400: { content: jsonContent(ErrorResponse), description: '无效的文件名' },
-      404: { content: jsonContent(ErrorResponse), description: '文件不存在' },
-    },
-  }),
+const contentRoute = defineContractRoute(logFileContract.content, {
+  middleware: view,
+  responses: fileErrorResponses,
   handler: async (c) => {
     const q = c.req.valid('query');
-    const lines = await readLogFileLines(c.req.param('filename'), q.lines ?? 500, q.keyword, q.context);
+    const lines = await readLogFileLines(c.req.valid('param').filename, q.lines ?? 500, q.keyword, q.context);
     return c.json(okBody({ lines }, 'success'), 200);
   },
 });
 
-const deleteApiRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/:filename', tags: ['LogFiles'], summary: '删除日志文件',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({
-      permission: 'system:log:files:delete',
-      audit: { description: '删除日志文件', module: '日志文件' },
-    })] as const,
-    request: {
-      params: z.object({ filename: z.string().openapi({ param: { name: 'filename', in: 'path' }, example: 'app.log' }) }),
-    },
-    responses: {
-      ...okMsg('删除成功'),
-      ...commonErrorResponses,
-      400: { content: jsonContent(ErrorResponse), description: '无效的文件名' },
-      404: { content: jsonContent(ErrorResponse), description: '文件不存在' },
-    },
-  }),
+const deleteApiRoute = defineContractRoute(logFileContract.remove, {
+  middleware: [authMiddleware, guard({
+    permission: 'system:log:files:delete',
+    audit: { description: '删除日志文件', module: '日志文件' },
+  })],
+  responses: fileErrorResponses,
   handler: async (c) => {
-    const filename = c.req.param('filename');
+    const { filename } = c.req.valid('param');
     setAuditBeforeData(c, await getLogFileBeforeAudit(filename));
     await deleteLogFile(filename);
     return c.json(okBody(null, '删除成功'), 200);
   },
 });
 
-router.openapiRoutes([listRoute, contentRoute, deleteApiRoute] as const);
-
-// 非 OpenAPI 路由：下载 & SSE
-router.get('/:filename/download', authMiddleware, guard({ permission: 'system:log:files:download' }), async (c) => {
-  const { name, filepath } = await resolveLogFile(c.req.param('filename'));
-  const stat = await fsp.stat(filepath);
-  const stream = fs.createReadStream(filepath);
-  const { Readable } = await import('node:stream');
-  const webStream = Readable.toWeb(stream) as ReadableStream;
-  return new Response(webStream, {
-    headers: {
-      'Content-Type': 'application/octet-stream',
-      'Content-Disposition': `attachment; filename="${encodeURIComponent(name)}"`,
-      'Content-Length': String(stat.size),
-    },
-  });
+const downloadRoute = defineContractRoute(logFileContract.download, {
+  middleware: [authMiddleware, guard({ permission: 'system:log:files:download' })],
+  handler: async (c) => {
+    const { name, filepath } = await resolveLogFile(c.req.valid('param').filename);
+    const stat = await fsp.stat(filepath);
+    const stream = fs.createReadStream(filepath);
+    const { Readable } = await import('node:stream');
+    const webStream = Readable.toWeb(stream) as ReadableStream;
+    return new Response(webStream, {
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(name)}"`,
+        'Content-Length': String(stat.size),
+      },
+    });
+  },
 });
 
-router.get('/:filename/tail', authMiddleware, guard({ permission: 'system:log:files' }), async (c) => {
-  const rawName = c.req.param('filename');
-  if (rawName.endsWith('.gz')) return c.json(errBody('压缩文件不支持实时追踪'), 400);
-  const { filepath } = await resolveLogFile(rawName);
-  return streamSSE(c, async (stream) => {
-    const initialLines = await readLastLines(filepath, 100);
-    for (const line of initialLines) {
-      await stream.writeSSE({ data: line, event: 'log' });
-    }
-    let position = (await fsp.stat(filepath)).size;
-    const signal = c.req.raw.signal;
-    await watchTail(filepath, signal, position, async (newLines, newPos) => {
-      position = newPos;
-      for (const line of newLines) {
+// SSE 实时跟踪：先回放末尾 100 行，再按文件增长推送新增行
+const tailRoute = defineContractRoute(logFileContract.tail, {
+  middleware: view,
+  handler: async (c) => {
+    const rawName = c.req.valid('param').filename;
+    if (rawName.endsWith('.gz')) return c.json(errBody('压缩文件不支持实时追踪'), 400);
+    const { filepath } = await resolveLogFile(rawName);
+    return streamSSE(c, async (stream) => {
+      const initialLines = await readLastLines(filepath, 100);
+      for (const line of initialLines) {
         await stream.writeSSE({ data: line, event: 'log' });
       }
+      let position = (await fsp.stat(filepath)).size;
+      const signal = c.req.raw.signal;
+      await watchTail(filepath, signal, position, async (newLines, newPos) => {
+        position = newPos;
+        for (const line of newLines) {
+          await stream.writeSSE({ data: line, event: 'log' });
+        }
+      });
     });
-  });
+  },
 });
+
+router.openapiRoutes([listRoute, contentRoute, deleteApiRoute, downloadRoute, tailRoute] as const);
 
 export default router;

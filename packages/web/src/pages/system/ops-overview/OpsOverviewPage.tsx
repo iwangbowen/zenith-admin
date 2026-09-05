@@ -8,7 +8,8 @@ import {
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { RefreshButton } from '@/components/toolbar-controls';
 import PageLoading from '@/components/PageLoading';
-import { useOpsOverview, type OpsOverview, type OpsOverviewSection } from '@/hooks/queries/ops-overview';
+import type { OpsOverview, OpsOverviewSection } from '@zenith/shared/ops';
+import { useOpsOverview } from '@/hooks/queries/ops-overview';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { formatBytes } from '@zenith/shared/core';

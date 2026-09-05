@@ -1,9 +1,7 @@
-import { http } from 'msw';
-import type { OpsHost } from '@zenith/shared/ops';
+import { opsHostContract, type OpsHost } from '@zenith/shared/ops';
+import { mock } from '@/mocks/utils/contract';
 import { mockDateTime } from '@/mocks/utils/date';
-import { ok, notFound } from '@/mocks/utils/handlers';
-
-const API = import.meta.env.VITE_API_BASE_URL || '';
+import { notFound } from '@/mocks/utils/handlers';
 
 let nextId = 3;
 const hosts: OpsHost[] = [
@@ -61,40 +59,15 @@ const hosts: OpsHost[] = [
   },
 ];
 
+function findHost(id: number) {
+  return hosts.find((item) => item.id === id);
+}
+
 export const opsHostHandlers = [
-  http.get(`${API}/api/ops-hosts`, () => ok(hosts)),
-  http.get(`${API}/api/ops-hosts/:id`, ({ params }) => {
-    const host = hosts.find((item) => item.id === Number(params.id));
-    return host ? ok(host) : notFound('主机不存在', { status: 404 });
-  }),
-  http.post(`${API}/api/ops-hosts`, async ({ request }) => {
-    const body = await request.json() as Record<string, unknown>;
-    const now = mockDateTime();
-    const host: OpsHost = {
-      id: nextId++,
-      name: String(body.name),
-      host: String(body.host),
-      port: Number(body.port ?? 22),
-      username: String(body.username),
-      authType: body.authType === 'key_content' ? 'key_content' : 'password',
-      hasPassword: !!body.password,
-      hasKeyContent: !!body.keyContent,
-      hasKeyPassphrase: !!body.keyPassphrase,
-      hostKeyFingerprint: null,
-      status: 'unknown',
-      snapshot: null,
-      probedAt: null,
-      probeError: null,
-      enabled: body.enabled !== false,
-      remark: typeof body.remark === 'string' ? body.remark : null,
-      createdAt: now,
-      updatedAt: now,
-    };
-    hosts.unshift(host);
-    return ok(host, '已创建');
-  }),
-  http.post(`${API}/api/ops-hosts/import-ssh-profile/:profileId`, ({ params }) => {
-    const id = Number(params.profileId);
+  mock(opsHostContract.list, ({ ok }) => ok(hosts)),
+  mock(opsHostContract.probeAll, ({ ok }) => ok(hosts)),
+  mock(opsHostContract.importSshProfile, ({ params, ok }) => {
+    const id = params.profileId;
     const now = mockDateTime();
     const host: OpsHost = {
       id: nextId++,
@@ -119,46 +92,73 @@ export const opsHostHandlers = [
     hosts.unshift(host);
     return ok(host, '已导入');
   }),
-  http.put(`${API}/api/ops-hosts/:id`, async ({ params, request }) => {
-    const index = hosts.findIndex((item) => item.id === Number(params.id));
+  mock(opsHostContract.detail, ({ params, ok }) => {
+    const host = findHost(params.id);
+    return host ? ok(host) : notFound('主机不存在', { status: 404 });
+  }),
+  mock(opsHostContract.create, ({ body, ok }) => {
+    const now = mockDateTime();
+    const host: OpsHost = {
+      id: nextId++,
+      name: body.name,
+      host: body.host,
+      port: body.port,
+      username: body.username,
+      authType: body.authType,
+      hasPassword: !!body.password,
+      hasKeyContent: !!body.keyContent,
+      hasKeyPassphrase: !!body.keyPassphrase,
+      hostKeyFingerprint: null,
+      status: 'unknown',
+      snapshot: null,
+      probedAt: null,
+      probeError: null,
+      enabled: body.enabled,
+      remark: body.remark ?? null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    hosts.unshift(host);
+    return ok(host, '已创建');
+  }),
+  mock(opsHostContract.update, ({ params, body, ok }) => {
+    const index = hosts.findIndex((item) => item.id === params.id);
     if (index < 0) return notFound('主机不存在', { status: 404 });
-    const body = await request.json() as Record<string, unknown>;
     const current = hosts[index];
-    const {
-      password,
-      keyContent,
-      keyPassphrase,
-      ...safeBody
-    } = body;
     hosts[index] = {
       ...current,
-      ...Object.fromEntries(Object.entries(safeBody).filter(([, value]) => value !== undefined)),
-      id: current.id,
-      authType: body.authType === 'key_content' ? 'key_content' : body.authType === 'password' ? 'password' : current.authType,
-      hasPassword: password ? true : current.hasPassword,
-      hasKeyContent: keyContent ? true : current.hasKeyContent,
-      hasKeyPassphrase: keyPassphrase ? true : current.hasKeyPassphrase,
+      name: body.name ?? current.name,
+      host: body.host ?? current.host,
+      port: body.port ?? current.port,
+      username: body.username ?? current.username,
+      authType: body.authType ?? current.authType,
+      hasPassword: body.password ? true : current.hasPassword,
+      hasKeyContent: body.keyContent ? true : current.hasKeyContent,
+      hasKeyPassphrase: body.keyPassphrase ? true : current.hasKeyPassphrase,
+      enabled: body.enabled ?? current.enabled,
+      remark: body.remark === undefined ? current.remark : body.remark,
       updatedAt: mockDateTime(),
-    } as OpsHost;
+    };
     return ok(hosts[index], '已更新');
   }),
-  http.delete(`${API}/api/ops-hosts/:id`, ({ params }) => {
-    const index = hosts.findIndex((item) => item.id === Number(params.id));
+  mock(opsHostContract.remove, ({ params, ok }) => {
+    const index = hosts.findIndex((item) => item.id === params.id);
     if (index < 0) return notFound('主机不存在', { status: 404 });
     hosts.splice(index, 1);
     return ok(null, '已删除');
   }),
-  http.post(`${API}/api/ops-hosts/probe-all`, () => ok(hosts)),
-  http.post(`${API}/api/ops-hosts/:id/test`, ({ params }) => {
-    const host = hosts.find((item) => item.id === Number(params.id));
-    return host ? ok({ ok: host.status !== 'offline', message: host.status === 'offline' ? 'SSH 连接超时' : '连接成功', latencyMs: host.status === 'offline' ? null : 32 }) : notFound('主机不存在', { status: 404 });
+  mock(opsHostContract.test, ({ params, ok }) => {
+    const host = findHost(params.id);
+    return host
+      ? ok({ ok: host.status !== 'offline', message: host.status === 'offline' ? 'SSH 连接超时' : '连接成功', latencyMs: host.status === 'offline' ? null : 32 })
+      : notFound('主机不存在', { status: 404 });
   }),
-  http.post(`${API}/api/ops-hosts/:id/probe`, ({ params }) => {
-    const host = hosts.find((item) => item.id === Number(params.id));
+  mock(opsHostContract.probe, ({ params, ok }) => {
+    const host = findHost(params.id);
     return host ? ok(host) : notFound('主机不存在', { status: 404 });
   }),
-  http.post(`${API}/api/ops-hosts/:id/reset-host-key`, ({ params }) => {
-    const host = hosts.find((item) => item.id === Number(params.id));
+  mock(opsHostContract.resetHostKey, ({ params, ok }) => {
+    const host = findHost(params.id);
     if (!host) return notFound('主机不存在', { status: 404 });
     host.hostKeyFingerprint = null;
     return ok(null, '已重置');

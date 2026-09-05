@@ -1,60 +1,31 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { maintenanceContract } from '@zenith/shared/ops';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
-import { validationHook, ok, okPaginated, okBody, commonErrorResponses, PaginationQuery } from '../../lib/openapi-schemas';
-import { MaintenanceStatusDTO, MaintenanceLogDTO } from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { validationHook, okBody } from '../../lib/openapi-schemas';
 import { getMaintenanceStatus, updateMaintenanceStatus, listMaintenanceLogs } from '../../services/ops/maintenance.service';
 
 const maintenanceRouter = new OpenAPIHono({ defaultHook: validationHook });
 
-// ── GET /api/maintenance/status — Public ──────────────────────────────────
-const statusRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get',
-    path: '/status',
-    tags: ['维护模式'],
-    summary: '获取维护模式状态（公开）',
-    security: [],
-    responses: { ...commonErrorResponses, ...ok(MaintenanceStatusDTO, '维护模式状态') },
-  }),
+const manage = [authMiddleware, guard({ permission: 'system:maintenance:manage' })] as const;
+
+// 公开探测：全站维护遮罩与登录页在未登录状态下也要能读到
+const statusRoute = defineContractRoute(maintenanceContract.status, {
+  middleware: [],
   handler: async (c) => c.json(okBody(await getMaintenanceStatus()), 200),
 });
 
-// ── GET /api/maintenance — Admin ──────────────────────────────────────────
-const getRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get',
-    path: '/',
-    tags: ['维护模式'],
-    summary: '获取维护模式详情',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:maintenance:manage' })] as const,
-    responses: { ...ok(MaintenanceStatusDTO, '维护模式状态'), ...commonErrorResponses },
-  }),
+const getRoute = defineContractRoute(maintenanceContract.detail, {
+  middleware: manage,
   handler: async (c) => c.json(okBody(await getMaintenanceStatus()), 200),
 });
 
-// ── PUT /api/maintenance — Admin ──────────────────────────────────────────
-const UpdateBody = z.object({
-  enabled: z.boolean(),
-  message: z.string().max(512).optional(),
-  estimatedEndAt: z.string().nullable().optional(),
-});
-
-const updateRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put',
-    path: '/',
-    tags: ['维护模式'],
-    summary: '开启 / 关闭维护模式',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({
-      permission: 'system:maintenance:manage',
-      audit: { description: '更新维护模式', module: '维护模式' },
-    })] as const,
-    request: { body: { content: { 'application/json': { schema: UpdateBody } } } },
-    responses: { ...ok(MaintenanceStatusDTO, '更新后的维护模式状态'), ...commonErrorResponses },
-  }),
+const updateRoute = defineContractRoute(maintenanceContract.update, {
+  middleware: [authMiddleware, guard({
+    permission: 'system:maintenance:manage',
+    audit: { description: '更新维护模式', module: '维护模式' },
+  })],
   handler: async (c) => {
     const body = c.req.valid('json');
     setAuditBeforeData(c, await getMaintenanceStatus());
@@ -63,22 +34,8 @@ const updateRoute = defineOpenAPIRoute({
   },
 });
 
-// ── GET /api/maintenance/logs — Admin ─────────────────────────────────────
-const logsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get',
-    path: '/logs',
-    tags: ['维护模式'],
-    summary: '维护记录分页查询',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:maintenance:manage' })] as const,
-    request: {
-      query: PaginationQuery.extend({
-        status: z.enum(['ongoing', 'completed']).optional(),
-      }),
-    },
-    responses: { ...okPaginated(MaintenanceLogDTO, '维护记录列表'), ...commonErrorResponses },
-  }),
+const logsRoute = defineContractRoute(maintenanceContract.logs, {
+  middleware: manage,
   handler: async (c) => c.json(okBody(await listMaintenanceLogs(c.req.valid('query'))), 200),
 });
 

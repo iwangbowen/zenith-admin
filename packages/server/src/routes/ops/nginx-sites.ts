@@ -1,13 +1,7 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import {
-  NginxInfoDTO,
-  NginxSiteDTO,
-  NginxSiteDetailDTO,
-  CreateNginxSiteDTO,
-  UpdateNginxSiteContentDTO,
-  NginxTestResultDTO,
-} from '../../lib/openapi-dtos';
-import { ok, okMsg, okBody, validationHook, commonErrorResponses, jsonContent } from '../../lib/openapi-schemas';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { nginxSiteContract } from '@zenith/shared/ops';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditAfterData, setAuditBeforeData } from '../../middleware/guard';
 import {
@@ -25,93 +19,39 @@ import {
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
-const SiteNameParam = z.object({
-  name: z.string().min(1).max(100).openapi({
-    param: { name: 'name', in: 'path' },
-    example: 'example.com',
-  }),
-});
+const view = [authMiddleware, guard({ permission: 'system:nginx:view' })] as const;
+const manage = (description: string) => [authMiddleware, guard({ permission: 'system:nginx:manage', audit: { description, module: 'Nginx 站点' } })] as const;
 
-const infoRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get',
-    path: '/info',
-    tags: ['Nginx站点'],
-    summary: '获取 Nginx 信息',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:nginx:view' })] as const,
-    responses: { ...commonErrorResponses, ...ok(NginxInfoDTO, 'Nginx 信息') },
-  }),
+const infoRoute = defineContractRoute(nginxSiteContract.info, {
+  middleware: view,
   handler: async (c) => c.json(okBody(await getNginxInfo()), 200),
 });
 
-const listRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get',
-    path: '/',
-    tags: ['Nginx站点'],
-    summary: '获取 Nginx 站点列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:nginx:view' })] as const,
-    responses: { ...commonErrorResponses, ...ok(z.array(NginxSiteDTO), 'Nginx 站点列表') },
-  }),
+const listRoute = defineContractRoute(nginxSiteContract.list, {
+  middleware: view,
   handler: async (c) => c.json(okBody(await listNginxSites()), 200),
 });
 
-const testRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post',
-    path: '/test',
-    tags: ['Nginx站点'],
-    summary: '测试 Nginx 配置',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:nginx:manage', audit: { description: '测试 Nginx 配置', module: 'Nginx 站点' } })] as const,
-    responses: { ...commonErrorResponses, ...ok(NginxTestResultDTO, '测试结果') },
-  }),
+const testRoute = defineContractRoute(nginxSiteContract.test, {
+  middleware: manage('测试 Nginx 配置'),
   handler: async (c) => c.json(okBody(await testNginxConfig()), 200),
 });
 
-const reloadRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post',
-    path: '/reload',
-    tags: ['Nginx站点'],
-    summary: '重载 Nginx',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:nginx:reload', audit: { description: '重载 Nginx', module: 'Nginx 站点' } })] as const,
-    responses: { ...commonErrorResponses, ...okMsg('Nginx 已重载') },
-  }),
+const reloadRoute = defineContractRoute(nginxSiteContract.reload, {
+  middleware: [authMiddleware, guard({ permission: 'system:nginx:reload', audit: { description: '重载 Nginx', module: 'Nginx 站点' } })],
   handler: async (c) => {
     await reloadNginx();
     return c.json(okBody(null, 'Nginx 已重载'), 200);
   },
 });
 
-const detailRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get',
-    path: '/:name',
-    tags: ['Nginx站点'],
-    summary: '获取 Nginx 站点详情',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:nginx:view' })] as const,
-    request: { params: SiteNameParam },
-    responses: { ...commonErrorResponses, ...ok(NginxSiteDetailDTO, '站点详情') },
-  }),
+const detailRoute = defineContractRoute(nginxSiteContract.detail, {
+  middleware: view,
   handler: async (c) => c.json(okBody(await getNginxSiteDetail(c.req.valid('param').name)), 200),
 });
 
-const createRouteDef = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post',
-    path: '/',
-    tags: ['Nginx站点'],
-    summary: '创建 Nginx 站点',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:nginx:manage', audit: { description: '创建 Nginx 站点', module: 'Nginx 站点' } })] as const,
-    request: { body: { content: jsonContent(CreateNginxSiteDTO), required: true } },
-    responses: { ...commonErrorResponses, ...okMsg('站点已创建') },
-  }),
+const createRouteDef = defineContractRoute(nginxSiteContract.create, {
+  middleware: manage('创建 Nginx 站点'),
   handler: async (c) => {
     const input = c.req.valid('json');
     await createNginxSite(input);
@@ -120,20 +60,8 @@ const createRouteDef = defineOpenAPIRoute({
   },
 });
 
-const updateRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put',
-    path: '/:name',
-    tags: ['Nginx站点'],
-    summary: '更新 Nginx 站点配置内容',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:nginx:manage', audit: { description: '更新 Nginx 站点配置', module: 'Nginx 站点' } })] as const,
-    request: {
-      params: SiteNameParam,
-      body: { content: jsonContent(UpdateNginxSiteContentDTO), required: true },
-    },
-    responses: { ...commonErrorResponses, ...okMsg('配置已保存') },
-  }),
+const updateRoute = defineContractRoute(nginxSiteContract.update, {
+  middleware: manage('更新 Nginx 站点配置'),
   handler: async (c) => {
     const { name } = c.req.valid('param');
     const { content } = c.req.valid('json');
@@ -144,17 +72,8 @@ const updateRoute = defineOpenAPIRoute({
   },
 });
 
-const deleteRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete',
-    path: '/:name',
-    tags: ['Nginx站点'],
-    summary: '删除 Nginx 站点',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:nginx:manage', audit: { description: '删除 Nginx 站点', module: 'Nginx 站点' } })] as const,
-    request: { params: SiteNameParam },
-    responses: { ...commonErrorResponses, ...okMsg('站点已删除') },
-  }),
+const deleteRoute = defineContractRoute(nginxSiteContract.remove, {
+  middleware: manage('删除 Nginx 站点'),
   handler: async (c) => {
     const { name } = c.req.valid('param');
     setAuditBeforeData(c, await getNginxSiteDetail(name));
@@ -164,17 +83,8 @@ const deleteRoute = defineOpenAPIRoute({
   },
 });
 
-const enableRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post',
-    path: '/:name/enable',
-    tags: ['Nginx站点'],
-    summary: '启用 Nginx 站点',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:nginx:manage', audit: { description: '启用 Nginx 站点', module: 'Nginx 站点' } })] as const,
-    request: { params: SiteNameParam },
-    responses: { ...commonErrorResponses, ...okMsg('站点已启用') },
-  }),
+const enableRoute = defineContractRoute(nginxSiteContract.enable, {
+  middleware: manage('启用 Nginx 站点'),
   handler: async (c) => {
     const { name } = c.req.valid('param');
     setAuditBeforeData(c, await getNginxSiteDetail(name));
@@ -184,17 +94,8 @@ const enableRoute = defineOpenAPIRoute({
   },
 });
 
-const disableRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post',
-    path: '/:name/disable',
-    tags: ['Nginx站点'],
-    summary: '禁用 Nginx 站点',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:nginx:manage', audit: { description: '禁用 Nginx 站点', module: 'Nginx 站点' } })] as const,
-    request: { params: SiteNameParam },
-    responses: { ...commonErrorResponses, ...okMsg('站点已禁用') },
-  }),
+const disableRoute = defineContractRoute(nginxSiteContract.disable, {
+  middleware: manage('禁用 Nginx 站点'),
   handler: async (c) => {
     const { name } = c.req.valid('param');
     setAuditBeforeData(c, await getNginxSiteDetail(name));
@@ -204,6 +105,7 @@ const disableRoute = defineOpenAPIRoute({
   },
 });
 
+// 静态 /info /test /reload 先于动态 /{name} 注册
 router.openapiRoutes([
   infoRoute,
   listRoute,

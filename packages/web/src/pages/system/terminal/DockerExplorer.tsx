@@ -25,37 +25,21 @@ import {
   TerminalSquare,
 } from 'lucide-react';
 import { Icon } from '@iconify/react';
-import { request } from '@/utils/request';
 import { getFileIcon } from '@/utils/fileIcons';
 import { fetchDockerDir, useDockerExplorerAction } from '@/hooks/queries/terminal-files';
-import { useDockerContainers, useDockerFetchStats } from '@/hooks/queries/docker';
+import { fetchDockerContainerLogs, useDockerContainers, useDockerFetchStats } from '@/hooks/queries/docker';
+import type { DockerContainer, DockerFileEntry } from '@zenith/shared/ops';
 import { MetricMeter } from '@/components/data-viz/MetricMeter';
 import { formatBytes } from '@zenith/shared/core';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
-
-interface ContainerInfo {
-  id: string;
-  shortId?: string;
-  names: string[];
-  image: string;
-  state: string;
-  status?: string;
-  composeProject: string | null;
-}
-
-interface FileEntry {
-  name: string;
-  path: string;
-  type: 'file' | 'dir' | 'symlink';
-}
 
 interface DockerTreeNode extends TreeNodeData {
   nodeType: 'group' | 'container' | 'dir' | 'file';
   containerId?: string;
   filePath?: string;
   containerState?: string;
-  container?: ContainerInfo;
+  container?: DockerContainer;
 }
 
 interface DockerExplorerProps {
@@ -92,7 +76,7 @@ function formatPercent(value: number): string {
   return `${value >= 10 ? value.toFixed(1) : value.toFixed(2)}%`;
 }
 
-function containerName(container: ContainerInfo): string {
+function containerName(container: DockerContainer): string {
   return container.names[0] ?? container.shortId ?? container.id.slice(0, 12);
 }
 
@@ -101,7 +85,7 @@ function makeGroupKey(project: string) { return `group:${project}`; }
 function makeDirKey(cid: string, path: string) { return `dir:${cid}:${path}`; }
 function makeFileKey(cid: string, path: string) { return `file:${cid}:${path}`; }
 
-function buildContainerNode(c: ContainerInfo): DockerTreeNode {
+function buildContainerNode(c: DockerContainer): DockerTreeNode {
   const name = containerName(c);
   const stateIcon = STATE_ICON[c.state] ?? '⬛';
   const canExpand = c.state === 'running';
@@ -123,7 +107,7 @@ function buildContainerNode(c: ContainerInfo): DockerTreeNode {
   } as DockerTreeNode & { _stateIcon: string; _image: string; _name: string };
 }
 
-function buildFileNodes(entries: FileEntry[], containerId: string): DockerTreeNode[] {
+function buildFileNodes(entries: DockerFileEntry[], containerId: string): DockerTreeNode[] {
   return entries
     .sort((a, b) => {
       if (a.type === 'dir' && b.type !== 'dir') return -1;
@@ -162,24 +146,24 @@ export default function DockerExplorer({ active, onOpenFile, onAttachShell }: Do
   const statsMutation = useDockerFetchStats();
   const [logsModal, setLogsModal] = useState<{
     visible: boolean;
-    container: ContainerInfo | null;
+    container: DockerContainer | null;
     logs: string;
     loading: boolean;
     tail: number;
   }>({ visible: false, container: null, logs: '', loading: false, tail: 200 });
   const [statsModal, setStatsModal] = useState<{
     visible: boolean;
-    container: ContainerInfo | null;
+    container: DockerContainer | null;
     stats: ContainerStats | null;
     loading: boolean;
   }>({ visible: false, container: null, stats: null, loading: false });
 
-  const applyContainers = useCallback((containers: ContainerInfo[]) => {
+  const applyContainers = useCallback((containers: DockerContainer[]) => {
     setDockerAvailable(true);
 
     // 按 Compose 项目分组
-    const groups: Record<string, ContainerInfo[]> = {};
-    const standalone: ContainerInfo[] = [];
+    const groups: Record<string, DockerContainer[]> = {};
+    const standalone: DockerContainer[] = [];
     for (const c of containers) {
       if (c.composeProject) {
         if (!groups[c.composeProject]) groups[c.composeProject] = [];
@@ -218,7 +202,7 @@ export default function DockerExplorer({ active, onOpenFile, onAttachShell }: Do
   }, [applyContainers, containersQuery.data, containersQuery.isError]);
 
   const runContainerAction = useCallback(async (
-    container: ContainerInfo,
+    container: DockerContainer,
     action: 'start' | 'stop' | 'restart',
   ) => {
     const name = containerName(container);
@@ -231,7 +215,7 @@ export default function DockerExplorer({ active, onOpenFile, onAttachShell }: Do
     Toast.success({ content: `${name} ${successText[action]}`, duration: 2 });
   }, [actionMutation]);
 
-  const confirmContainerAction = useCallback((container: ContainerInfo, action: 'stop' | 'restart') => {
+  const confirmContainerAction = useCallback((container: DockerContainer, action: 'stop' | 'restart') => {
     const name = containerName(container);
     Modal.confirm({
       title: action === 'stop' ? '停止容器' : '重启容器',
@@ -243,20 +227,20 @@ export default function DockerExplorer({ active, onOpenFile, onAttachShell }: Do
     });
   }, [runContainerAction]);
 
-  const fetchContainerLogs = useCallback(async (container: ContainerInfo, tail = 200) => {
+  const fetchContainerLogs = useCallback(async (container: DockerContainer, tail = 200) => {
     setLogsModal({ visible: true, container, logs: '', loading: true, tail });
-    const res = await request.get<{ logs: string }>(`/api/docker/${container.id}/logs?tail=${tail}`);
+    const logs = await fetchDockerContainerLogs(container.id, tail).then((res) => res.logs).catch(() => '');
     setLogsModal((prev) => (
       prev.container?.id === container.id
-        ? { ...prev, logs: res.code === 0 && res.data ? res.data.logs : '', loading: false, tail }
+        ? { ...prev, logs, loading: false, tail }
         : prev
     ));
   }, []);
 
-  const fetchContainerStats = useCallback(async (container: ContainerInfo) => {
+  const fetchContainerStats = useCallback(async (container: DockerContainer) => {
     setStatsModal({ visible: true, container, stats: null, loading: true });
     try {
-      const res = await statsMutation.mutateAsync(container.id);
+      const res = await statsMutation.mutateAsync({ params: { id: container.id } });
       setStatsModal((prev) => (
         prev.container?.id === container.id
           ? { ...prev, stats: res as ContainerStats, loading: false }
@@ -275,7 +259,7 @@ export default function DockerExplorer({ active, onOpenFile, onAttachShell }: Do
       if (!containerId) return;
       try {
         const res = await fetchDockerDir(queryClient, containerId, '/', { silent: true });
-        const children = buildFileNodes(res as FileEntry[], containerId);
+        const children = buildFileNodes(res as DockerFileEntry[], containerId);
         setTreeData((prev) => patchTreeChildren(prev, key, children));
       } catch {
         setTreeData((prev) => patchTreeChildren(prev, key, []));
@@ -290,7 +274,7 @@ export default function DockerExplorer({ active, onOpenFile, onAttachShell }: Do
       if (!containerId || !filePath) return;
       try {
         const res = await fetchDockerDir(queryClient, containerId, filePath, { silent: true });
-        const children = buildFileNodes(res as FileEntry[], containerId);
+        const children = buildFileNodes(res as DockerFileEntry[], containerId);
         setTreeData((prev) => patchTreeChildren(prev, key, children));
       } catch {
         setTreeData((prev) => patchTreeChildren(prev, key, []));
@@ -320,7 +304,7 @@ export default function DockerExplorer({ active, onOpenFile, onAttachShell }: Do
     Toast.success({ content: `已连接到容器 ${name}`, duration: 2 });
   }, [onAttachShell]);
 
-  const renderAttachMenu = useCallback((container: ContainerInfo) => {
+  const renderAttachMenu = useCallback((container: DockerContainer) => {
     const name = containerName(container);
     return (
       <Dropdown.Menu>
@@ -340,7 +324,7 @@ export default function DockerExplorer({ active, onOpenFile, onAttachShell }: Do
     );
   }, [handleAttach]);
 
-  const renderContainerMenu = useCallback((container: ContainerInfo) => {
+  const renderContainerMenu = useCallback((container: DockerContainer) => {
     const isRunning = container.state === 'running';
     const isStarting = actionMutation.isPending && actionMutation.variables?.id === container.id && actionMutation.variables.action === 'start';
     const isStopping = actionMutation.isPending && actionMutation.variables?.id === container.id && actionMutation.variables.action === 'stop';

@@ -23,7 +23,7 @@ export function useMaintenanceBanner(isSuperAdmin: boolean) {
   }, [isSuperAdmin, queryClient]);
 
   const handleDisableMaintenance = useCallback(async () => {
-    await updateMutation.mutateAsync({ enabled: false });
+    await updateMutation.mutateAsync({ body: { enabled: false } });
     Toast.success('维护模式已关闭');
   }, [updateMutation]);
 

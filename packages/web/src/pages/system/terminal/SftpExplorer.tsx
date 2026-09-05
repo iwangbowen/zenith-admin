@@ -28,11 +28,13 @@ import {
   type FsDialogState,
   type FsTreeNode,
 } from './fileTree';
+import type { SftpFileEntry } from '@zenith/shared/ops';
 import {
   fetchSftpDir,
+  sftpDownloadUrl,
   sftpHomeQueryOptions,
+  uploadSftpFile,
   useSftpFileMutation,
-  type SftpEntry,
 } from '@/hooks/queries/terminal-files';
 
 /** SFTP 树节点等价于共享的文件树节点，仅为可读性保留别名 */
@@ -55,9 +57,7 @@ export default function SftpExplorer({ profile, onOpenFile }: SftpExplorerProps)
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const uploadDirRef = useRef('/');
 
-  const api = `/api/ssh-sftp/${profile.id}`;
-
-  const listDir = useCallback(async (dir: string): Promise<SftpEntry[] | null> => {
+  const listDir = useCallback(async (dir: string): Promise<SftpFileEntry[] | null> => {
     try {
       const res = await fetchSftpDir(queryClient, profile.id, dir, { silent: true });
       return res.entries;
@@ -147,8 +147,8 @@ export default function SftpExplorer({ profile, onOpenFile }: SftpExplorerProps)
 
   const handleDownload = useCallback(async (node: SftpNode) => {
     // 走统一 request：裸 fetch 会绕过 401 刷新、错误上报与 Demo 模式
-    await request.download(`${api}/download?path=${encodeURIComponent(node.fullPath)}`, node.label as string);
-  }, [api]);
+    await request.download(sftpDownloadUrl(profile.id, node.fullPath), node.label as string);
+  }, [profile.id]);
 
   const triggerUpload = useCallback((dir: string) => {
     uploadDirRef.current = dir;
@@ -162,11 +162,11 @@ export default function SftpExplorer({ profile, onOpenFile }: SftpExplorerProps)
       fd.append('path', dir);
       fd.append('file', file);
       // 走统一 request：超限（413）等错误由全局提示统一呈现
-      const res = await request.postForm(`${api}/upload`, fd);
+      const res = await uploadSftpFile(profile.id, fd);
       if (res.code === 0) Toast.success(`已上传 ${file.name}`);
     }
     void reloadDir(dir);
-  }, [api, reloadDir]);
+  }, [profile.id, reloadDir]);
 
   const renderContextMenu = useCallback((node: SftpNode) => {
     const isDir = node.fileType === 'dir';

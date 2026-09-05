@@ -1,43 +1,23 @@
-import { keepPreviousData, queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { MaintenanceLog } from '@zenith/shared/platform';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import type { QueryOf } from '@zenith/shared/core';
+import { maintenanceContract } from '@zenith/shared/ops';
+import { apiQueryOptions, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
-export interface MaintenanceStatus {
-  enabled: boolean;
-  message: string;
-  estimatedEndAt: string | null;
-  startedAt: string | null;
-  startedByName: string | null;
-  updatedAt: string;
-}
-
-export interface MaintenanceLogListParams {
-  page: number;
-  pageSize: number;
-}
-
-export interface UpdateMaintenanceStatusInput {
-  enabled: boolean;
-  message?: string;
-  estimatedEndAt?: string | null;
-}
+export type MaintenanceLogListParams = NonNullable<QueryOf<typeof maintenanceContract.logs>>;
 
 export const maintenanceKeys = {
   all: ['maintenance'] as const,
-  /** 管理端详情 GET /api/maintenance —— 需 system:maintenance:manage 权限 */
-  status: ['maintenance', 'status'] as const,
-  /** 公开探测 GET /api/maintenance/status —— 未登录/无权限用户也可访问 */
-  publicStatus: ['maintenance', 'public-status'] as const,
-  logs: ['maintenance', 'logs'] as const,
-  logList: (params: MaintenanceLogListParams) => ['maintenance', 'logs', params] as const,
+  /** 管理端详情 —— 需 system:maintenance:manage 权限 */
+  status: contractKey(maintenanceContract.detail),
+  /** 公开探测 —— 未登录 / 无权限用户也可访问 */
+  publicStatus: contractKey(maintenanceContract.status),
+  logs: contractKey(maintenanceContract.logs),
+  logList: (params: MaintenanceLogListParams) => contractKey(maintenanceContract.logs, { query: params }),
 };
 
 export function publicMaintenanceStatusQueryOptions() {
-  return queryOptions({
-    queryKey: maintenanceKeys.publicStatus,
-    queryFn: () => request.get<MaintenanceStatus>('/api/maintenance/status', { silent: true }).then(unwrap),
+  return apiQueryOptions(maintenanceContract.status, {
+    requestOptions: { silent: true },
     staleTime: 30_000,
     retry: false,
   });
@@ -57,24 +37,18 @@ export function usePublicMaintenanceStatus(options?: { enabled?: boolean; refetc
 }
 
 export function useMaintenanceStatus() {
-  return useQuery({
-    queryKey: maintenanceKeys.status,
-    queryFn: () => request.get<MaintenanceStatus>('/api/maintenance').then(unwrap),
-  });
+  return useApiQuery(maintenanceContract.detail);
 }
 
 export function useMaintenanceLogs(params: MaintenanceLogListParams) {
-  return useQuery({
-    queryKey: maintenanceKeys.logList(params),
-    queryFn: () => request.get<PaginatedResponse<MaintenanceLog>>(`/api/maintenance/logs${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+  return useApiQuery(maintenanceContract.logs, { query: params }, { placeholderData: keepPreviousData });
 }
 
+/** 开关维护模式：公开状态、管理详情与维护记录（开启 / 关闭各落一条）全部随之变化 */
 export function useUpdateMaintenanceStatus() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: UpdateMaintenanceStatusInput) => request.put<MaintenanceStatus>('/api/maintenance', values).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: maintenanceKeys.all }),
+  return useApiMutation(maintenanceContract.update, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: maintenanceKeys.all });
+    },
   });
 }

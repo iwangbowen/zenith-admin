@@ -4,8 +4,8 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { and, desc, eq, isNull, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import type { GenerateSelfSignedCertInput } from '@zenith/shared/member';
-import type { UploadCertInput } from '@zenith/shared/platform';
+import type { GenerateSelfSignedCertInput } from '@zenith/shared/ops';
+import type { UploadCertSchemaInput } from '@zenith/shared/platform';
 import { db } from '../../db';
 import { sslCertificates, users } from '../../db/schema';
 import type { SslCertificateRow } from '../../db/schema';
@@ -322,7 +322,7 @@ export async function generateSelfSignedCert(input: GenerateSelfSignedCertInput)
   }
 }
 
-export async function uploadCert(input: UploadCertInput): Promise<{ id: number }> {
+export async function uploadCert(input: UploadCertSchemaInput): Promise<{ id: number }> {
   const certContent = input.certContent.trim();
   const keyContent = input.keyContent.trim();
   if (!certContent.includes(PEM_CERT_HEADER)) {

@@ -1,154 +1,145 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { request } from '@/utils/request';
-import { unwrap } from '@/lib/query';
-
-export interface PortBinding { privatePort: number; publicPort?: number; type: string }
-export interface ContainerInfo {
-  id: string; shortId: string; names: string[]; image: string; imageId: string;
-  command: string; created: number; state: string; status: string;
-  ports: PortBinding[]; composeProject: string | null; composeService: string | null;
-}
-export interface StatsInfo { cpuPercent: number; memUsage: number; memLimit: number }
-export interface ImageInfo { id: string; shortId: string; repoTags: string[]; size: number; created: number; containers: number }
-export interface NetworkInfo {
-  id: string; name: string; driver: string; scope: string;
-  ipam: { driver: string; subnet?: string; gateway?: string };
-  internal: boolean; created: string; containers: number;
-}
-export interface VolumeInfo { name: string; driver: string; mountpoint: string; scope: string; created: string; labels: Record<string, string> }
-export interface DockerFileEntry { name: string; path: string; type: 'file' | 'dir' | 'symlink' }
-export interface PruneResultData {
-  containersDeleted?: number; imagesDeleted?: number; networksDeleted?: number; volumesDeleted?: number; spaceReclaimed?: number;
-}
+import { keepPreviousData, useMutation, useQueryClient } from '@tanstack/react-query';
+import { dockerContract } from '@zenith/shared/ops';
+import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export const dockerKeys = {
   all: ['docker'] as const,
-  containers: ['docker', 'containers'] as const,
-  images: ['docker', 'images'] as const,
-  networks: ['docker', 'networks'] as const,
-  volumes: ['docker', 'volumes'] as const,
-  stats: (id: string | undefined) => ['docker', 'stats', id] as const,
-  files: (containerId: string, path: string) => ['docker', 'files', containerId, path] as const,
+  containers: contractKey(dockerContract.containers),
+  images: contractKey(dockerContract.images),
+  networks: contractKey(dockerContract.networks),
+  volumes: contractKey(dockerContract.volumes),
+  stats: (id: string | undefined) => contractKey(dockerContract.stats, { params: { id: id ?? '' } }),
+  files: (containerId: string, path: string) => contractKey(dockerContract.containerFiles, { params: { id: containerId }, query: { path } }),
 };
 
 export function useDockerContainers(options?: { enabled?: boolean; silent?: boolean; refetchInterval?: number | false }) {
-  return useQuery({
-    queryKey: dockerKeys.containers,
-    queryFn: () => request.get<ContainerInfo[]>('/api/docker', { silent: options?.silent }).then(unwrap),
+  return useApiQuery(dockerContract.containers, {
+    requestOptions: { silent: options?.silent },
     enabled: options?.enabled ?? true,
     refetchInterval: options?.refetchInterval,
     placeholderData: keepPreviousData,
   });
 }
 
+/** 容器清单同时充当 Docker 可用性探测（daemon 不可达时服务端回 503） */
 export function useDockerAvailable() {
-  return useQuery({
-    queryKey: dockerKeys.containers,
-    queryFn: () => request.get<ContainerInfo[]>('/api/docker', { silent: true }).then(unwrap),
-  });
+  return useApiQuery(dockerContract.containers, { requestOptions: { silent: true } });
 }
 
 export function useDockerImages() {
-  return useQuery({
-    queryKey: dockerKeys.images,
-    queryFn: () => request.get<ImageInfo[]>('/api/docker/images').then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+  return useApiQuery(dockerContract.images, { placeholderData: keepPreviousData });
 }
 
 export function useDockerNetworks() {
-  return useQuery({
-    queryKey: dockerKeys.networks,
-    queryFn: () => request.get<NetworkInfo[]>('/api/docker/networks').then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+  return useApiQuery(dockerContract.networks, { placeholderData: keepPreviousData });
 }
 
 export function useDockerVolumes() {
-  return useQuery({
-    queryKey: dockerKeys.volumes,
-    queryFn: () => request.get<VolumeInfo[]>('/api/docker/volumes').then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+  return useApiQuery(dockerContract.volumes, { placeholderData: keepPreviousData });
 }
 
+export type DockerContainerAction = 'start' | 'stop' | 'restart';
+
+const CONTAINER_ACTION_OPS = {
+  start: dockerContract.start,
+  stop: dockerContract.stop,
+  restart: dockerContract.restart,
+} as const;
+
+/** 启停只改容器状态：镜像 / 网络 / 存储卷清单与其占用计数都不变 */
 export function useDockerContainerAction() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, action }: { id: string; action: 'start' | 'stop' | 'restart' }) =>
-      request.post<null>(`/api/docker/${id}/${action}`, {}).then(unwrap),
-    // 启停只改容器状态：镜像 / 网络 / 存储卷清单与其占用计数都不变
+    mutationFn: ({ id, action }: { id: string; action: DockerContainerAction }) => api(CONTAINER_ACTION_OPS[action], { params: { id } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: dockerKeys.containers }),
   });
 }
 
+/** 容器日志（末尾 N 行）；日志抽屉按固定间隔轮询，不进缓存 */
+export function fetchDockerContainerLogs(id: string, tail: number) {
+  return api(dockerContract.logs, { params: { id }, query: { tail } });
+}
+
 export function useDockerRemoveImage() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => request.delete<null>(`/api/docker/images/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: dockerKeys.images }),
+  return useApiMutation(dockerContract.removeImage, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: dockerKeys.images });
+    },
   });
 }
 
 export function useDockerPullImage() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (repoTag: string) => request.post<null>('/api/docker/images/pull', { repoTag }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: dockerKeys.images }),
+  return useApiMutation(dockerContract.pullImage, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: dockerKeys.images });
+    },
   });
 }
 
 export function useDockerCreateNetwork() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: { name: string; driver: string; internal: boolean }) =>
-      request.post<null>('/api/docker/networks', values).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: dockerKeys.networks }),
+  return useApiMutation(dockerContract.createNetwork, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: dockerKeys.networks });
+    },
   });
 }
 
 export function useDockerRemoveNetwork() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => request.delete<null>(`/api/docker/networks/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: dockerKeys.networks }),
+  return useApiMutation(dockerContract.removeNetwork, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: dockerKeys.networks });
+    },
   });
 }
 
 export function useDockerCreateVolume() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: { name: string; driver: string }) => request.post<null>('/api/docker/volumes', values).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: dockerKeys.volumes }),
+  return useApiMutation(dockerContract.createVolume, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: dockerKeys.volumes });
+    },
   });
 }
 
 export function useDockerRemoveVolume() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (name: string) => request.delete<null>(`/api/docker/volumes/${name}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: dockerKeys.volumes }),
+  return useApiMutation(dockerContract.removeVolume, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: dockerKeys.volumes });
+    },
   });
 }
 
+export type DockerPruneScope = 'containers' | 'images' | 'networks' | 'volumes' | 'system';
+
+export interface DockerPruneVariables {
+  scope: DockerPruneScope;
+  /** 仅 images：true 清理全部未使用镜像，缺省只清理悬空镜像 */
+  all?: boolean;
+}
+
+/**
+ * 清理：`system` 一次清理已停止容器 + 悬空镜像 + 未使用网络，
+ * 各范围对其他资源的占用计数亦有影响，故保留域根广播。
+ */
 export function useDockerPrune() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (url: string) => request.post<PruneResultData>(url).then(unwrap),
-    // 保留域根广播：`/prune/system` 一次清理已停止容器 + 悬空镜像 + 未使用网络，
-    // 且调用方以 URL 字符串传入清理范围，此处无法静态判定受影响的资源类型
+    mutationFn: ({ scope, all }: DockerPruneVariables) => {
+      switch (scope) {
+        case 'containers': return api(dockerContract.pruneContainers);
+        case 'images': return api(dockerContract.pruneImages, { query: all ? { all: 'true' } : {} });
+        case 'networks': return api(dockerContract.pruneNetworks);
+        case 'volumes': return api(dockerContract.pruneVolumes);
+        case 'system': return api(dockerContract.pruneSystem);
+      }
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: dockerKeys.all }),
   });
 }
 
 export function useDockerFetchStats() {
-  return useMutation({
-    mutationFn: (id: string) => request.get<StatsInfo>(`/api/docker/${id}/stats`).then(unwrap),
-  });
+  return useApiMutation(dockerContract.stats);
 }
 
 export function useDockerInspect() {
-  return useMutation({
-    mutationFn: (id: string) => request.get<Record<string, unknown>>(`/api/docker/${id}/inspect`).then(unwrap),
-  });
+  return useApiMutation(dockerContract.inspect);
 }

@@ -2,7 +2,7 @@
  * 服务器文件管理器（/system/file-manager，菜单归属「系统运维」）。
  *
  * 操作对象是**宿主机磁盘上的真实文件系统**：目录浏览、复制/剪切、重命名、压缩解压、
- * chmod、校验和、递归搜索、文本文件在线编辑。数据来自 `/api/terminal-files/*`
+ * chmod、校验和、递归搜索、文本文件在线编辑。数据来自 `terminalFileContract`
  * （`services/ops/terminal-files.service.ts`），DB 中没有任何记录，`FsEntry`
  * 携带的是 permissions / uid / gid 这类 POSIX 元数据。
  *
@@ -21,7 +21,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, ImagePreview, Progress, Spin, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import { FolderOpen, Home, UploadCloud } from 'lucide-react';
-import { useTerminalArchiveTask, useTerminalFileOperation, useTerminalSearch } from '@/hooks/queries/terminal-files';
+import { useTerminalExtract, useTerminalFileOperation, useTerminalSearch } from '@/hooks/queries/terminal-files';
 import FilePreviewModal from '@/components/FilePreviewModal';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { confirmDelete } from '@/utils/confirm';
@@ -83,7 +83,7 @@ function LocalFileManagerPage() {
   const upload = useFsUpload(currentPath);
   const bookmarks = useBookmarks(currentPath);
   const fileOperationMutation = useTerminalFileOperation();
-  const extractTask = useTerminalArchiveTask('extract');
+  const extractTask = useTerminalExtract();
 
   // ── 过滤 + 排序 + 侧栏 ────────────────────────────────────────────────────
   const filteredEntries = useMemo(() => {
@@ -164,7 +164,7 @@ function LocalFileManagerPage() {
   };
 
   const handleExtract = async (entry: FsEntry) => {
-    await extractTask.mutateAsync({ path: entry.path });
+    await extractTask.mutateAsync({ body: { path: entry.path } });
     // 解压已转为后台任务：进度与取消由任务托盘承载，页面只确认已受理
     Toast.success('解压任务已提交，可在任务中心查看进度');
   };

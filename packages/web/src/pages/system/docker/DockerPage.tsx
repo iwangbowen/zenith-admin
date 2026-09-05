@@ -21,7 +21,6 @@ import {
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { FileText, RefreshCw, ChevronDown, ChevronUp, Activity, Info, Download, Trash2 } from 'lucide-react';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { MetricMeter } from '@/components/data-viz/MetricMeter';
@@ -43,14 +42,18 @@ import {
   useDockerRemoveNetwork,
   useDockerRemoveVolume,
   useDockerVolumes,
-  type ContainerInfo,
-  type ImageInfo,
-  type NetworkInfo,
-  type PortBinding,
-  type PruneResultData,
-  type StatsInfo,
-  type VolumeInfo,
+  fetchDockerContainerLogs,
+  type DockerPruneVariables,
 } from '@/hooks/queries/docker';
+import type {
+  DockerContainer,
+  DockerContainerStats,
+  DockerImage,
+  DockerNetwork,
+  DockerPortBinding,
+  DockerPruneResult,
+  DockerVolume,
+} from '@zenith/shared/ops';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 import { confirmDelete, confirmDanger } from '@/utils/confirm';
@@ -59,14 +62,14 @@ import { dateTimeColumn } from '@/utils/table-columns';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { formatBytes } from '@zenith/shared/core';
 // ─── Prune（清理）辅助 ──────────────────────────────────────────────────────────
-function runPrune(url: string, title: string, content: string, prune: (url: string) => Promise<PruneResultData>): void {
+function runPrune(variables: DockerPruneVariables, title: string, content: string, prune: (variables: DockerPruneVariables) => Promise<DockerPruneResult>): void {
   confirmDelete({
     title,
     content,
     okText: '确定清理',
     cancelText: '取消',
     onOk: async () => {
-      const d = await prune(url);
+      const d = await prune(variables);
       const parts: string[] = [];
       if (d.containersDeleted) parts.push(`容器 ${d.containersDeleted}`);
       if (d.imagesDeleted) parts.push(`镜像 ${d.imagesDeleted}`);
@@ -86,8 +89,8 @@ interface ImageRow {
   versionCount?: number; children?: ImageRow[];
 }
 
-const EMPTY_CONTAINERS: ContainerInfo[] = [];
-const EMPTY_IMAGES: ImageInfo[] = [];
+const EMPTY_CONTAINERS: DockerContainer[] = [];
+const EMPTY_IMAGES: DockerImage[] = [];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -95,14 +98,14 @@ const STATE_COLOR: Record<string, 'green' | 'grey' | 'orange' | 'blue' | 'red'> 
   running: 'green', exited: 'grey', paused: 'orange', created: 'blue', dead: 'red',
 };
 
-function formatPorts(ports: PortBinding[]): string {
+function formatPorts(ports: DockerPortBinding[]): string {
   const b = ports.filter((p) => p.publicPort).map((p) => `${p.publicPort}→${p.privatePort}/${p.type}`).join(', ');
   return b || '—';
 }
 
-function groupByCompose(containers: ContainerInfo[]): (ContainerInfo & { children?: ContainerInfo[] })[] {
-  const groups: Record<string, ContainerInfo[]> = {};
-  const standalone: ContainerInfo[] = [];
+function groupByCompose(containers: DockerContainer[]): (DockerContainer & { children?: DockerContainer[] })[] {
+  const groups: Record<string, DockerContainer[]> = {};
+  const standalone: DockerContainer[] = [];
   for (const c of containers) {
     if (c.composeProject) {
       if (!groups[c.composeProject]) groups[c.composeProject] = [];
@@ -111,7 +114,7 @@ function groupByCompose(containers: ContainerInfo[]): (ContainerInfo & { childre
       standalone.push(c);
     }
   }
-  const result: (ContainerInfo & { children?: ContainerInfo[] })[] = [];
+  const result: (DockerContainer & { children?: DockerContainer[] })[] = [];
   for (const [project, members] of Object.entries(groups)) {
     const runningCount = members.filter((m) => m.state === 'running').length;
     let parentState: string;
@@ -135,13 +138,13 @@ function groupByCompose(containers: ContainerInfo[]): (ContainerInfo & { childre
 function ContainersTab() {
   const navigate = useNavigate();
   const [keyword, setKeyword] = useState('');
-  const [logsContainer, setLogsContainer] = useState<ContainerInfo | null>(null);
+  const [logsContainer, setLogsContainer] = useState<DockerContainer | null>(null);
   const [logs, setLogs] = useState('');
   const [logsLoading, setLogsLoading] = useState(false);
-  const [statsContainer, setStatsContainer] = useState<ContainerInfo | null>(null);
-  const [stats, setStats] = useState<StatsInfo | null>(null);
+  const [statsContainer, setStatsContainer] = useState<DockerContainer | null>(null);
+  const [stats, setStats] = useState<DockerContainerStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
-  const [inspectTarget, setInspectTarget] = useState<ContainerInfo | null>(null);
+  const [inspectTarget, setInspectTarget] = useState<DockerContainer | null>(null);
   const [inspectData, setInspectData] = useState('');
   const [inspectLoading, setInspectLoading] = useState(false);
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
@@ -184,12 +187,14 @@ function ContainersTab() {
     Toast.success({ content: msgMap[action], duration: 2 });
   };
 
-  const openLogs = async (c: ContainerInfo) => {
+  const openLogs = async (c: DockerContainer) => {
     if (logsIntervalRef.current) { clearInterval(logsIntervalRef.current); logsIntervalRef.current = null; }
     setLogsContainer(c); setLogsLoading(true); setLogs(''); setLogsFollowing(true);
     const fetchOnce = async () => {
-      const res = await request.get<{ logs: string }>(`/api/docker/${c.id}/logs?tail=500`);
-      if (res.code === 0 && res.data) { setLogs(res.data.logs); setLogsLoading(false); }
+      try {
+        const { logs: text } = await fetchDockerContainerLogs(c.id, 500);
+        setLogs(text); setLogsLoading(false);
+      } catch { /* 请求层已提示 */ }
     };
     await fetchOnce();
     logsIntervalRef.current = setInterval(() => void fetchOnce(), 2000);
@@ -207,8 +212,10 @@ function ContainersTab() {
         if (logsIntervalRef.current) { clearInterval(logsIntervalRef.current); logsIntervalRef.current = null; }
       } else if (logsContainer) {
         const fetchOnce = async () => {
-          const res = await request.get<{ logs: string }>(`/api/docker/${logsContainer.id}/logs?tail=500`);
-          if (res.code === 0 && res.data) setLogs(res.data.logs);
+          try {
+            const { logs: text } = await fetchDockerContainerLogs(logsContainer.id, 500);
+            setLogs(text);
+          } catch { /* 请求层已提示 */ }
         };
         void fetchOnce();
         logsIntervalRef.current = setInterval(() => void fetchOnce(), 2000);
@@ -217,27 +224,27 @@ function ContainersTab() {
     });
   };
 
-  const openStats = async (c: ContainerInfo) => {
+  const openStats = async (c: DockerContainer) => {
     setStatsContainer(c); setStatsLoading(true); setStats(null);
     try {
-      const res = await statsMutation.mutateAsync(c.id);
+      const res = await statsMutation.mutateAsync({ params: { id: c.id } });
       setStats(res);
     } finally {
       setStatsLoading(false);
     }
   };
 
-  const openInspect = async (c: ContainerInfo) => {
+  const openInspect = async (c: DockerContainer) => {
     setInspectTarget(c); setInspectLoading(true); setInspectData('');
     try {
-      const res = await inspectMutation.mutateAsync(c.id);
+      const res = await inspectMutation.mutateAsync({ params: { id: c.id } });
       setInspectData(JSON.stringify(res, null, 2));
     } finally {
       setInspectLoading(false);
     }
   };
 
-  const isGroup = (r: ContainerInfo) => r.id.startsWith('__compose__');
+  const isGroup = (r: DockerContainer) => r.id.startsWith('__compose__');
 
   const allGroupIds = useMemo(
     () => [...new Set(containers.filter(c => c.composeProject).map(c => `__compose__${c.composeProject}`))],
@@ -253,10 +260,10 @@ function ContainersTab() {
       ))
     : groupByCompose(containers);
 
-  const columns: ColumnProps<ContainerInfo>[] = [
+  const columns: ColumnProps<DockerContainer>[] = [
     {
       title: '容器名 / 服务',
-      render: (_: unknown, r: ContainerInfo) => {
+      render: (_: unknown, r: DockerContainer) => {
         const name = r.names[0] ?? r.shortId;
         if (isGroup(r)) return <Typography.Text strong>{name}</Typography.Text>;
         return (
@@ -269,14 +276,14 @@ function ContainersTab() {
     },
     {
       title: '镜像', dataIndex: 'image', width: 220,
-      render: (v: string, r: ContainerInfo) => {
+      render: (v: string, r: DockerContainer) => {
         if (isGroup(r)) return <Typography.Text type="tertiary" size="small">{v}</Typography.Text>;
         return <Tooltip content={v}><Tag size="small" color="blue">{v.length > 30 ? `${v.slice(0, 30)}…` : v}</Tag></Tooltip>;
       },
     },
     {
       title: '状态', dataIndex: 'state', width: 140,
-      render: (v: string, r: ContainerInfo) => (
+      render: (v: string, r: DockerContainer) => (
         <Tooltip content={r.status}>
           <Tag size="small" color={STATE_COLOR[v] ?? 'grey'}>{r.status}</Tag>
         </Tooltip>
@@ -284,13 +291,13 @@ function ContainersTab() {
     },
     {
       title: '端口映射', width: 200,
-      render: (_: unknown, r: ContainerInfo) => {
+      render: (_: unknown, r: DockerContainer) => {
         if (isGroup(r)) return null;
         return <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{formatPorts(r.ports)}</span>;
       },
     },
     dateTimeColumn('创建时间', 'created', { unit: 'second' }),
-    createOperationColumn<ContainerInfo>({
+    createOperationColumn<DockerContainer>({
       width: 180,
       desktopInlineKeys: ['toggle', 'logs'],
       actions: (record) => {
@@ -363,9 +370,9 @@ function ContainersTab() {
             )}
             <Dropdown trigger="click" clickToHide position="bottomRight" render={(
               <Dropdown.Menu>
-                <Dropdown.Item onClick={() => runPrune('/api/docker/prune/containers', '清理停止容器', '将删除所有已停止的容器，确定继续？', pruneMutation.mutateAsync)}>清理已停止容器</Dropdown.Item>
+                <Dropdown.Item onClick={() => runPrune({ scope: 'containers' }, '清理停止容器', '将删除所有已停止的容器，确定继续？', pruneMutation.mutateAsync)}>清理已停止容器</Dropdown.Item>
                 <Dropdown.Divider />
-                <Dropdown.Item type="danger" onClick={() => runPrune('/api/docker/prune/system', '系统清理', '将清理：已停止容器 + 悬空镜像 + 未使用网络（不含数据卷），确定继续？', pruneMutation.mutateAsync)}>系统清理</Dropdown.Item>
+                <Dropdown.Item type="danger" onClick={() => runPrune({ scope: 'system' }, '系统清理', '将清理：已停止容器 + 悬空镜像 + 未使用网络（不含数据卷），确定继续？', pruneMutation.mutateAsync)}>系统清理</Dropdown.Item>
               </Dropdown.Menu>
             )}>
               <Button icon={<Trash2 size={14} />}>清理</Button>
@@ -385,8 +392,8 @@ function ContainersTab() {
                 {allExpanded ? '全部折叠' : '全部展开'}
               </Button>
             )}
-            <Button icon={<Trash2 size={14} />} onClick={() => runPrune('/api/docker/prune/containers', '清理停止容器', '将删除所有已停止的容器，确定继续？', pruneMutation.mutateAsync)}>清理已停止容器</Button>
-            <Button type="danger" icon={<Trash2 size={14} />} onClick={() => runPrune('/api/docker/prune/system', '系统清理', '将清理：已停止容器 + 悬空镜像 + 未使用网络（不含数据卷），确定继续？', pruneMutation.mutateAsync)}>系统清理</Button>
+            <Button icon={<Trash2 size={14} />} onClick={() => runPrune({ scope: 'containers' }, '清理停止容器', '将删除所有已停止的容器，确定继续？', pruneMutation.mutateAsync)}>清理已停止容器</Button>
+            <Button type="danger" icon={<Trash2 size={14} />} onClick={() => runPrune({ scope: 'system' }, '系统清理', '将清理：已停止容器 + 悬空镜像 + 未使用网络（不含数据卷），确定继续？', pruneMutation.mutateAsync)}>系统清理</Button>
           </>
         )}
         actionTitle="容器操作"
@@ -474,7 +481,7 @@ function ContainersTab() {
 
 // ─── Images Tab ───────────────────────────────────────────────────────────────
 
-function buildImageTree(images: ImageInfo[], keyword: string): ImageRow[] {
+function buildImageTree(images: DockerImage[], keyword: string): ImageRow[] {
   const groups: Record<string, ImageRow[]> = {};
   for (const img of images) {
     const validTags = img.repoTags.filter((t) => t !== '<none>:<none>');
@@ -549,13 +556,13 @@ function ImagesTab() {
   }, [images]);
 
   const handleRemove = async (id: string) => {
-    await removeImageMutation.mutateAsync(id);
+    await removeImageMutation.mutateAsync({ params: { id } });
     Toast.success({ content: '已删除', duration: 2 });
   };
 
   const handlePull = async () => {
     if (!pullTag.trim()) return;
-    await pullImageMutation.mutateAsync(pullTag.trim());
+    await pullImageMutation.mutateAsync({ body: { repoTag: pullTag.trim() } });
     Toast.success({ content: `镜像 ${pullTag} 拉取成功`, duration: 3 });
     setPullVisible(false); setPullTag('');
   };
@@ -653,8 +660,8 @@ function ImagesTab() {
             )}
             <Dropdown trigger="click" clickToHide position="bottomRight" render={(
               <Dropdown.Menu>
-                <Dropdown.Item onClick={() => runPrune('/api/docker/prune/images', '清理悬空镜像', '将删除所有悬空（dangling）镜像，确定继续？', pruneMutation.mutateAsync)}>清理悬空镜像</Dropdown.Item>
-                <Dropdown.Item type="danger" onClick={() => runPrune('/api/docker/prune/images?all=true', '清理所有未用镜像', '将删除所有未被容器使用的镜像，确定继续？', pruneMutation.mutateAsync)}>清理所有未用镜像</Dropdown.Item>
+                <Dropdown.Item onClick={() => runPrune({ scope: 'images' }, '清理悬空镜像', '将删除所有悬空（dangling）镜像，确定继续？', pruneMutation.mutateAsync)}>清理悬空镜像</Dropdown.Item>
+                <Dropdown.Item type="danger" onClick={() => runPrune({ scope: 'images', all: true }, '清理所有未用镜像', '将删除所有未被容器使用的镜像，确定继续？', pruneMutation.mutateAsync)}>清理所有未用镜像</Dropdown.Item>
               </Dropdown.Menu>
             )}>
               <Button icon={<Trash2 size={14} />}>清理</Button>
@@ -678,8 +685,8 @@ function ImagesTab() {
                 {allExpanded ? '全部折叠' : '全部展开'}
               </Button>
             )}
-            <Button icon={<Trash2 size={14} />} onClick={() => runPrune('/api/docker/prune/images', '清理悬空镜像', '将删除所有悬空（dangling）镜像，确定继续？', pruneMutation.mutateAsync)}>清理悬空镜像</Button>
-            <Button type="danger" icon={<Trash2 size={14} />} onClick={() => runPrune('/api/docker/prune/images?all=true', '清理所有未用镜像', '将删除所有未被容器使用的镜像，确定继续？', pruneMutation.mutateAsync)}>清理所有未用镜像</Button>
+            <Button icon={<Trash2 size={14} />} onClick={() => runPrune({ scope: 'images' }, '清理悬空镜像', '将删除所有悬空（dangling）镜像，确定继续？', pruneMutation.mutateAsync)}>清理悬空镜像</Button>
+            <Button type="danger" icon={<Trash2 size={14} />} onClick={() => runPrune({ scope: 'images', all: true }, '清理所有未用镜像', '将删除所有未被容器使用的镜像，确定继续？', pruneMutation.mutateAsync)}>清理所有未用镜像</Button>
           </>
         )}
         actionTitle="镜像操作"
@@ -727,13 +734,13 @@ function NetworksTab() {
   const pruneMutation = useDockerPrune();
 
   const handleRemove = async (id: string) => {
-    await removeNetworkMutation.mutateAsync(id);
+    await removeNetworkMutation.mutateAsync({ params: { id } });
     Toast.success({ content: '已删除', duration: 2 });
   };
 
   const handleCreate = async () => {
     if (!createForm.name.trim()) return;
-    await createNetworkMutation.mutateAsync(createForm);
+    await createNetworkMutation.mutateAsync({ body: createForm });
     Toast.success({ content: `网络 ${createForm.name} 创建成功`, duration: 2 });
     setCreateVisible(false); setCreateForm({ name: '', driver: 'bridge', internal: false });
   };
@@ -744,13 +751,13 @@ function NetworksTab() {
     ? networks.filter((n) => n.name.toLowerCase().includes(keyword.toLowerCase()) || n.driver.includes(keyword))
     : networks;
 
-  const columns: ColumnProps<NetworkInfo>[] = [
+  const columns: ColumnProps<DockerNetwork>[] = [
     { title: '网络名', dataIndex: 'name', render: (v: string) => <Typography.Text strong size="small">{v}</Typography.Text> },
     { title: '驱动', dataIndex: 'driver', width: 100, render: (v: string) => <Tag size="small" color="blue">{v}</Tag> },
     { title: '范围', dataIndex: 'scope', width: 90, render: (v: string) => <Tag size="small">{v}</Tag> },
     {
       title: 'IP 配置', width: 200,
-      render: (_: unknown, r: NetworkInfo) => (
+      render: (_: unknown, r: DockerNetwork) => (
         r.ipam.subnet
           ? <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{r.ipam.subnet}{r.ipam.gateway ? ` → ${r.ipam.gateway}` : ''}</span>
           : <Typography.Text type="tertiary" size="small">—</Typography.Text>
@@ -759,7 +766,7 @@ function NetworksTab() {
     { title: '容器数', dataIndex: 'containers', width: 90, render: (v: number) => <Tag size="small" color={v > 0 ? 'green' : 'grey'}>{v}</Tag> },
     { title: '内部网络', dataIndex: 'internal', width: 100, render: (v: boolean) => v ? <Tag size="small" color="orange">内部</Tag> : null },
     dateTimeColumn('创建时间', 'created'),
-    createOperationColumn<NetworkInfo>({
+    createOperationColumn<DockerNetwork>({
       width: 100,
       emptyContent: (record) => SYSTEM_NETWORKS.has(record.name)
         ? <Typography.Text type="tertiary" size="small">系统网络</Typography.Text>
@@ -791,7 +798,7 @@ function NetworksTab() {
             <CreateButton onClick={() => setCreateVisible(true)}>创建网络</CreateButton>
           </>
         )}
-        actions={<Button icon={<Trash2 size={14} />} onClick={() => runPrune('/api/docker/prune/networks', '清理未用网络', '将删除所有未被容器使用的网络，确定继续？', pruneMutation.mutateAsync)}>清理</Button>}
+        actions={<Button icon={<Trash2 size={14} />} onClick={() => runPrune({ scope: 'networks' }, '清理未用网络', '将删除所有未被容器使用的网络，确定继续？', pruneMutation.mutateAsync)}>清理</Button>}
         mobilePrimary={(
           <>
             <KeywordInput placeholder="搜索网络名 / 驱动" value={keyword} onChange={setKeyword} width={260} />
@@ -801,7 +808,7 @@ function NetworksTab() {
         mobileActions={(
           <>
             <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void networksQuery.refetch()}>刷新</Button>
-            <Button icon={<Trash2 size={14} />} onClick={() => runPrune('/api/docker/prune/networks', '清理未用网络', '将删除所有未被容器使用的网络，确定继续？', pruneMutation.mutateAsync)}>清理</Button>
+            <Button icon={<Trash2 size={14} />} onClick={() => runPrune({ scope: 'networks' }, '清理未用网络', '将删除所有未被容器使用的网络，确定继续？', pruneMutation.mutateAsync)}>清理</Button>
           </>
         )}
         actionTitle="网络操作"
@@ -850,13 +857,13 @@ function VolumesTab() {
   const pruneMutation = useDockerPrune();
 
   const handleRemove = async (name: string) => {
-    await removeVolumeMutation.mutateAsync(name);
+    await removeVolumeMutation.mutateAsync({ params: { name } });
     Toast.success({ content: '已删除', duration: 2 });
   };
 
   const handleCreate = async () => {
     if (!createForm.name.trim()) return;
-    await createVolumeMutation.mutateAsync(createForm);
+    await createVolumeMutation.mutateAsync({ body: createForm });
     Toast.success({ content: `存储卷 ${createForm.name} 创建成功`, duration: 2 });
     setCreateVisible(false); setCreateForm({ name: '', driver: 'local' });
   };
@@ -865,7 +872,7 @@ function VolumesTab() {
     ? volumes.filter((v) => v.name.toLowerCase().includes(keyword.toLowerCase()) || v.driver.includes(keyword))
     : volumes;
 
-  const columns: ColumnProps<VolumeInfo>[] = [
+  const columns: ColumnProps<DockerVolume>[] = [
     { title: '卷名', dataIndex: 'name', render: (v: string) => <Typography.Text strong size="small">{v}</Typography.Text> },
     { title: '驱动', dataIndex: 'driver', width: 100, render: (v: string) => <Tag size="small" color="blue">{v}</Tag> },
     { title: '范围', dataIndex: 'scope', width: 90, render: (v: string) => <Tag size="small">{v}</Tag> },
@@ -874,7 +881,7 @@ function VolumesTab() {
       render: (v: string) => <Tooltip content={v}><code style={{ fontSize: 11 }}>{v.length > 50 ? `...${v.slice(-48)}` : v}</code></Tooltip>,
     },
     dateTimeColumn('创建时间', 'created'),
-    createOperationColumn<VolumeInfo>({
+    createOperationColumn<DockerVolume>({
       width: 100,
       actions: (record) => [
         {
@@ -902,7 +909,7 @@ function VolumesTab() {
             <CreateButton onClick={() => setCreateVisible(true)}>创建存储卷</CreateButton>
           </>
         )}
-        actions={<Button type="danger" icon={<Trash2 size={14} />} onClick={() => runPrune('/api/docker/prune/volumes', '清理未用存储卷', '将删除所有未被容器使用的存储卷（数据不可恢复），确定继续？', pruneMutation.mutateAsync)}>清理</Button>}
+        actions={<Button type="danger" icon={<Trash2 size={14} />} onClick={() => runPrune({ scope: 'volumes' }, '清理未用存储卷', '将删除所有未被容器使用的存储卷（数据不可恢复），确定继续？', pruneMutation.mutateAsync)}>清理</Button>}
         mobilePrimary={(
           <>
             <KeywordInput placeholder="搜索卷名 / 驱动" value={keyword} onChange={setKeyword} width={260} />
@@ -912,7 +919,7 @@ function VolumesTab() {
         mobileActions={(
           <>
             <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void volumesQuery.refetch()}>刷新</Button>
-            <Button type="danger" icon={<Trash2 size={14} />} onClick={() => runPrune('/api/docker/prune/volumes', '清理未用存储卷', '将删除所有未被容器使用的存储卷（数据不可恢复），确定继续？', pruneMutation.mutateAsync)}>清理</Button>
+            <Button type="danger" icon={<Trash2 size={14} />} onClick={() => runPrune({ scope: 'volumes' }, '清理未用存储卷', '将删除所有未被容器使用的存储卷（数据不可恢复），确定继续？', pruneMutation.mutateAsync)}>清理</Button>
           </>
         )}
         actionTitle="存储卷操作"

@@ -12,7 +12,7 @@ import {
 import type { editor as MonacoEditor, KeyMod as KeyModT, KeyCode as KeyCodeT, Position } from 'monaco-editor';
 import Editor from '@monaco-editor/react';
 import { format as formatSql } from 'sql-formatter';
-import type { DbQueryFavorite } from '@zenith/shared/ops';
+import type { DbAdminQueryResult, DbQueryFavorite } from '@zenith/shared/ops';
 import { downloadBlob } from '@/utils/download';
 import { AppModal } from '@/components/AppModal';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -27,6 +27,7 @@ import { rowsToJson, rowsToMarkdown } from './result-format';
 import { isReadOnlySql } from './sql-format';
 import { copyTextWithToast } from '@/utils/clipboard';
 import {
+  dbAdminQueryExportUrl,
   useDbAdminCancelQuery,
   useDbAdminExecuteQuery,
   useDbAdminExplain,
@@ -34,7 +35,6 @@ import {
   useDbQueryFavorites,
   useDeleteDbQueryFavorite,
   useSaveDbQueryFavorite,
-  type DbAdminQueryResult,
 } from '@/hooks/queries/db-admin';
 import { request } from '@/utils/request';
 
@@ -243,7 +243,7 @@ export const SqlConsole = forwardRef<SqlConsoleHandle, SqlConsoleProps>(function
     setRunningQueryId(queryId);
     if (resetView) { patchActive({ error: null, result: null }); setShowChart(false); }
     try {
-      const data = await executeQueryMutation.mutateAsync({ sql: sqlText, queryId, page, pageSize: PAGE_SIZE });
+      const data = await executeQueryMutation.mutateAsync({ body: { sql: sqlText, queryId, page, pageSize: PAGE_SIZE } });
       patchActive({ result: data, error: null, executedSql: sqlText });
       if (resetView) {
         if (data.paginated) Toast.success(`共 ${data.total?.toLocaleString()} 行 · 第 ${data.page} 页 / ${data.durationMs}ms`);
@@ -278,7 +278,7 @@ export const SqlConsole = forwardRef<SqlConsoleHandle, SqlConsoleProps>(function
 
   const cancelRunning = useCallback(async () => {
     if (!runningQueryId) return;
-    await cancelQueryMutation.mutateAsync(runningQueryId);
+    await cancelQueryMutation.mutateAsync({ body: { queryId: runningQueryId } });
     Toast.info('已请求取消查询');
   }, [cancelQueryMutation, runningQueryId]);
 
@@ -289,7 +289,7 @@ export const SqlConsole = forwardRef<SqlConsoleHandle, SqlConsoleProps>(function
     if (!text.trim()) { Toast.warning('请输入 SQL'); return; }
     setExplainOpen(true);
     try {
-      const data = await explainMutation.mutateAsync({ sql: text, analyze });
+      const data = await explainMutation.mutateAsync({ body: { sql: text, analyze } });
       setExplainData(data.plan);
       setExplainAnalyzed(data.analyzed);
       setExplainDuration(data.durationMs);
@@ -312,13 +312,13 @@ export const SqlConsole = forwardRef<SqlConsoleHandle, SqlConsoleProps>(function
     }
   }, [activeTab.sql, patchActive]);
 
-  const downloadStream = useCallback(async (path: string, filename: string, kind: 'csv' | 'json') => {
+  const downloadStream = useCallback(async (kind: 'csv' | 'json', filename: string) => {
     const text = editorRef.current?.getValue() ?? activeTab.sql;
     if (!text.trim()) { Toast.warning('请输入 SQL'); return; }
     const setLoading = kind === 'csv' ? setExportCsvLoading : setExportJsonLoading;
     setLoading(true);
     try {
-      const blob = await request.getBlob(path, { method: 'POST', body: JSON.stringify({ sql: text }) });
+      const blob = await request.getBlob(dbAdminQueryExportUrl(kind), { method: 'POST', body: JSON.stringify({ sql: text }) });
       if (!blob) return;
       downloadBlob(blob, filename);
     } catch (err) {
@@ -343,7 +343,7 @@ export const SqlConsole = forwardRef<SqlConsoleHandle, SqlConsoleProps>(function
   }, [favoritesQuery]);
 
   const handleDeleteFavorite = useCallback(async (id: number) => {
-    await deleteFavoriteMutation.mutateAsync(id);
+    await deleteFavoriteMutation.mutateAsync({ params: { id } });
     Toast.success('已删除');
   }, [deleteFavoriteMutation]);
 
@@ -555,8 +555,8 @@ export const SqlConsole = forwardRef<SqlConsoleHandle, SqlConsoleProps>(function
           trigger="click"
           render={(
             <Dropdown.Menu>
-              <Dropdown.Item icon={<Download size={14} />} onClick={() => void downloadStream('/api/db-admin/query/export.csv', `query_${Date.now()}.csv`, 'csv')}>导出 CSV</Dropdown.Item>
-              <Dropdown.Item icon={<Download size={14} />} onClick={() => void downloadStream('/api/db-admin/query/export.json', `query_${Date.now()}.json`, 'json')}>导出 JSON</Dropdown.Item>
+              <Dropdown.Item icon={<Download size={14} />} onClick={() => void downloadStream('csv', `query_${Date.now()}.csv`)}>导出 CSV</Dropdown.Item>
+              <Dropdown.Item icon={<Download size={14} />} onClick={() => void downloadStream('json', `query_${Date.now()}.json`)}>导出 JSON</Dropdown.Item>
             </Dropdown.Menu>
           )}
         >

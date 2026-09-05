@@ -1,42 +1,37 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { RetentionPolicy, RetentionPreview, UpdateRetentionPolicyInput } from '@zenith/shared/ops';
-import { request } from '@/utils/request';
-import { unwrap } from '@/lib/query';
+import { useMutation } from '@tanstack/react-query';
+import { retentionPolicyContract } from '@zenith/shared/ops';
+import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export const retentionKeys = {
   all: ['retention-policies'] as const,
-  list: ['retention-policies', 'list'] as const,
-  preview: (key: string) => ['retention-policies', 'preview', key] as const,
+  list: contractKey(retentionPolicyContract.list),
+  preview: (key: string) => contractKey(retentionPolicyContract.preview, { params: { key } }),
 };
 
 export function useRetentionPolicies() {
-  return useQuery({
-    queryKey: retentionKeys.list,
-    queryFn: () => request.get<RetentionPolicy[]>('/api/retention-policies').then(unwrap),
-  });
+  return useApiQuery(retentionPolicyContract.list);
 }
 
 export function useUpdateRetentionPolicy() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ key, input }: { key: string; input: UpdateRetentionPolicyInput }) =>
-      request.put<RetentionPolicy>(`/api/retention-policies/${key}`, input).then(unwrap),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: retentionKeys.all }),
+  return useApiMutation(retentionPolicyContract.update, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: retentionKeys.all });
+    },
   });
 }
 
+/** 预览按需触发（执行前确认弹窗），结果不进缓存 */
 export function useRetentionPreview() {
   return useMutation({
-    mutationFn: (key: string) =>
-      request.get<RetentionPreview>(`/api/retention-policies/${key}/preview`).then(unwrap),
+    mutationFn: (key: string) => api(retentionPolicyContract.preview, { params: { key } }),
   });
 }
 
+/** 立即执行：策略行的 lastRunAt / lastDeleted 随之变化 */
 export function useRunRetentionPolicy() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (key: string) =>
-      request.post<{ key: string; deleted: number }>(`/api/retention-policies/${key}/run`).then(unwrap),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: retentionKeys.all }),
+  return useApiMutation(retentionPolicyContract.run, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: retentionKeys.all });
+    },
   });
 }

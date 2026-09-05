@@ -1,28 +1,10 @@
-import { http, HttpResponse } from 'msw';
-import { ok, notFound, pageParams } from '@/mocks/utils/handlers';
+import { HttpResponse } from 'msw';
+import { sslCertificateContract, type SslCertificate } from '@zenith/shared/ops';
+import { mock } from '@/mocks/utils/contract';
+import { notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockDateTime } from '../utils/date';
 
-interface MockCert {
-  id: number;
-  name: string;
-  domain: string;
-  type: 'self_signed' | 'uploaded' | 'letsencrypt';
-  certPath: string | null;
-  keyPath: string | null;
-  issuer: string | null;
-  subject: string | null;
-  validFrom: string | null;
-  validTo: string | null;
-  fingerprint: string | null;
-  serialNumber: string | null;
-  status: 'valid' | 'expiring' | 'expired' | 'invalid';
-  autoRenew: boolean;
-  daysRemaining: number | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-const mockCerts: MockCert[] = [
+const mockCerts: SslCertificate[] = [
   {
     id: 1,
     name: 'example.com 证书',
@@ -82,40 +64,25 @@ const mockCerts: MockCert[] = [
   },
 ];
 
-let nextId = 4;
-
 export const sslCertificatesHandlers = [
-  http.get('/api/ssl-certificates', ({ request }) => {
-    const url = new URL(request.url);
-    const keyword = (url.searchParams.get('keyword') ?? '').toLowerCase();
-    const type = url.searchParams.get('type') ?? '';
-    const { page, pageSize } = pageParams(url);
+  mock(sslCertificateContract.list, ({ query, ok, paginate }) => {
+    const keyword = (query.keyword ?? '').toLowerCase();
     const filtered = mockCerts.filter((cert) => {
       const matchesKeyword = !keyword || cert.name.toLowerCase().includes(keyword) || cert.domain.toLowerCase().includes(keyword);
-      const matchesType = !type || cert.type === type;
+      const matchesType = !query.type || cert.type === query.type;
       return matchesKeyword && matchesType;
     });
-    const start = (page - 1) * pageSize;
-    return ok({
-      list: filtered.slice(start, start + pageSize),
-      total: filtered.length,
-      page,
-      pageSize,
-    });
+    return ok(paginate(filtered));
   }),
-  http.get('/api/ssl-certificates/:id', ({ params }) => {
-    const cert = mockCerts.find((item) => item.id === Number(params.id));
-    if (!cert) {
-      return notFound('证书不存在', { status: 404 });
-    }
+  mock(sslCertificateContract.detail, ({ params, ok }) => {
+    const cert = mockCerts.find((item) => item.id === params.id);
+    if (!cert) return notFound('证书不存在', { status: 404 });
     return ok(cert);
   }),
-  http.get('/api/ssl-certificates/:id/download', ({ params, request }) => {
-    const cert = mockCerts.find((item) => item.id === Number(params.id));
-    if (!cert) {
-      return notFound('证书不存在', { status: 404 });
-    }
-    const kind = new URL(request.url).searchParams.get('kind') === 'key' ? 'key' : 'cert';
+  mock(sslCertificateContract.download, ({ params, query }) => {
+    const cert = mockCerts.find((item) => item.id === params.id);
+    if (!cert) return notFound('证书不存在', { status: 404 });
+    const kind = query.kind === 'key' ? 'key' : 'cert';
     const content = kind === 'cert'
       ? `-----BEGIN CERTIFICATE-----\nMOCK-${cert.domain}\n-----END CERTIFICATE-----\n`
       : `-----BEGIN PRIVATE KEY-----\nMOCK-${cert.domain}\n-----END PRIVATE KEY-----\n`;
@@ -126,11 +93,10 @@ export const sslCertificatesHandlers = [
       },
     });
   }),
-  http.post('/api/ssl-certificates/generate', async ({ request }) => {
-    const body = await request.json() as { name: string; domain: string; days?: number };
-    const daysRemaining = body.days ?? 365;
-    const id = nextId++;
-    const cert: MockCert = {
+  mock(sslCertificateContract.generate, ({ body, ok }) => {
+    const daysRemaining = body.days;
+    const id = nextIdFrom(mockCerts);
+    const cert: SslCertificate = {
       id,
       name: body.name,
       domain: body.domain,
@@ -152,10 +118,9 @@ export const sslCertificatesHandlers = [
     mockCerts.unshift(cert);
     return ok({ id: cert.id }, '证书已生成');
   }),
-  http.post('/api/ssl-certificates/upload', async ({ request }) => {
-    const body = await request.json() as { name: string; domain: string };
-    const id = nextId++;
-    const cert: MockCert = {
+  mock(sslCertificateContract.upload, ({ body, ok }) => {
+    const id = nextIdFrom(mockCerts);
+    const cert: SslCertificate = {
       id,
       name: body.name,
       domain: body.domain,
@@ -177,8 +142,8 @@ export const sslCertificatesHandlers = [
     mockCerts.unshift(cert);
     return ok({ id: cert.id }, '证书已上传');
   }),
-  http.delete('/api/ssl-certificates/:id', ({ params }) => {
-    const index = mockCerts.findIndex((item) => item.id === Number(params.id));
+  mock(sslCertificateContract.remove, ({ params, ok }) => {
+    const index = mockCerts.findIndex((item) => item.id === params.id);
     if (index !== -1) {
       mockCerts.splice(index, 1);
     }

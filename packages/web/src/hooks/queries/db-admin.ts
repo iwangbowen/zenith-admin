@@ -1,456 +1,216 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { DbQueryFavorite } from '@zenith/shared/ops';
-import type { ErSchema } from '@/pages/system/db-admin/ErDiagram';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import { keepPreviousData, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { QueryOf } from '@zenith/shared/core';
+import { dbAdminContract, type CreateDbQueryFavoriteInput, type DbAdminSqlExportMode } from '@zenith/shared/ops';
+import { api, contractKey, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
-export interface DbAdminTableItem {
-  schema: string;
-  name: string;
-  kind: 'table' | 'view' | 'matview';
-  rowEstimate: number;
-  sizeBytes: number;
-  sizeText: string;
-  comment: string | null;
-}
+export type DbAdminHistoryParams = NonNullable<QueryOf<typeof dbAdminContract.history>>;
 
-export interface DbAdminColumnInfo {
-  name: string;
-  dataType: string;
-  isNullable: boolean;
-  defaultValue: string | null;
-  isPrimaryKey: boolean;
-  comment: string | null;
-  maxLength: number | null;
-  enumValues?: string[] | null;
-}
-
-export interface DbAdminIndexInfo {
-  name: string;
-  columns: string[];
-  isUnique: boolean;
-  isPrimary: boolean;
-  definition: string;
-}
-
-export interface DbAdminForeignKeyInfo {
-  name: string;
-  columns: string[];
-  referencedSchema: string;
-  referencedTable: string;
-  referencedColumns: string[];
-  onUpdate: string;
-  onDelete: string;
-}
-
-export interface DbAdminTableStructure {
-  columns: DbAdminColumnInfo[];
-  indexes: DbAdminIndexInfo[];
-  foreignKeys: DbAdminForeignKeyInfo[];
-  primaryKey: string[];
-}
-
-export interface DbAdminOverviewTopTable {
-  schema: string;
-  name: string;
-  sizeBytes: number;
-  sizeText: string;
-  rowEstimate: number;
-}
-
-export interface DbAdminOverview {
-  version: string;
-  databaseName: string;
-  databaseSize: number;
-  databaseSizeText: string;
-  schemaCount: number;
-  tableCount: number;
-  viewCount: number;
-  indexCount: number;
-  totalRowEstimate: number;
-  activeConnections: number;
-  maxConnections: number;
-  startedAt: string | null;
-  uptimeSeconds: number;
-  topTables: DbAdminOverviewTopTable[];
-}
-
-export interface DbAdminObjects {
-  sequences: Array<{ schema: string; name: string; dataType: string; startValue: string; incrementBy: string; lastValue: string | null }>;
-  functions: Array<{ schema: string; name: string; kind: string; language: string; args: string; result: string; definition: string | null }>;
-  triggers: Array<{ schema: string; table: string; name: string; enabled: boolean; definition: string }>;
-  enums: Array<{ schema: string; name: string; values: string[] }>;
-  extensions: Array<{ name: string; version: string; schema: string; comment: string | null }>;
-}
-
-export interface DbAdminActivityConnection {
-  pid: number;
-  username: string | null;
-  applicationName: string | null;
-  clientAddr: string | null;
-  state: string | null;
-  waitEventType: string | null;
-  waitEvent: string | null;
-  backendType: string | null;
-  query: string | null;
-  querySeconds: number | null;
-  xactSeconds: number | null;
-  backendSeconds: number | null;
-  queryStart: string | null;
-  backendStart: string | null;
-  blockedBy: number[];
-  isCurrent: boolean;
-}
-
-export interface DbAdminTableMaintenance {
-  schema: string;
-  name: string;
-  liveTuples: number;
-  deadTuples: number;
-  deadRatio: number;
-  sizeBytes: number;
-  sizeText: string;
-  lastVacuum: string | null;
-  lastAutovacuum: string | null;
-  lastAnalyze: string | null;
-  lastAutoanalyze: string | null;
-}
-
-export interface DbAdminIndexInfoRow {
-  schema: string;
-  table: string;
-  index: string;
-  scans: number;
-  sizeBytes: number;
-  sizeText: string;
-  isUnique: boolean;
-  isPrimary: boolean;
-  columns: string[];
-  definition: string;
-  /** 归并进本行的叶子分区索引数，普通索引为 1 */
-  partitions: number;
-}
-
-export interface DbAdminIndexHealth {
-  unused: DbAdminIndexInfoRow[];
-  /** shape：判重依据——去掉 UNIQUE / 索引名 / 表名后的定义正文（USING … WHERE …） */
-  duplicate: Array<{ schema: string; table: string; columns: string[]; shape: string; indexes: DbAdminIndexInfoRow[] }>;
-  totalIndexes: number;
-  totalIndexBytes: number;
-}
-
-export interface DbAdminColumnDiff {
-  column: string;
-  issue: 'missing_in_db' | 'extra_in_db' | 'type_mismatch' | 'nullable_mismatch';
-  expected: string | null;
-  actual: string | null;
-}
-
-export interface DbAdminTableDrift {
-  schema: string;
-  table: string;
-  status: 'missing_in_db' | 'extra_in_db' | 'column_diff';
-  columns: DbAdminColumnDiff[];
-}
-
-export interface DbAdminSchemaDrift {
-  inSync: boolean;
-  expectedTables: number;
-  actualTables: number;
-  drifts: DbAdminTableDrift[];
-}
-
-export interface DbAdminQueryResult {
-  columns: Array<{ name: string; dataType: string }>;
-  rows: Array<Record<string, unknown>>;
-  rowCount: number;
-  durationMs: number;
-  truncated: boolean;
-  paginated: boolean;
-  total: number | null;
-  page: number | null;
-  pageSize: number | null;
-}
-
-export interface DbAdminQueryHistoryItem {
-  id: number;
-  sqlText: string;
-  durationMs: number;
-  rowCount: number;
-  success: boolean;
-  errorMessage: string | null;
-  executedAt: string;
-}
-
-export interface DbAdminHistoryParams {
-  page: number;
-  pageSize: number;
-}
-
-export interface DbAdminImportResult {
-  inserted: number;
-}
-
-export interface DbAdminBatchMutateResult {
-  inserted: number;
-  updated: number;
-  deleted: number;
-}
-
-export interface DbAdminExplainResult {
-  plan: unknown;
-  durationMs: number;
-  analyzed: boolean;
-}
+const tableParams = (schema: string, table: string) => ({ schema, name: table });
 
 export const dbAdminKeys = {
   all: ['db-admin'] as const,
-  tables: ['db-admin', 'tables'] as const,
-  overview: ['db-admin', 'overview'] as const,
-  structure: (schema: string | undefined, table: string | undefined) => ['db-admin', 'structure', schema, table] as const,
-  historyLists: ['db-admin', 'history', 'list'] as const,
-  historyList: (params: DbAdminHistoryParams) => ['db-admin', 'history', 'list', params] as const,
-  erSchema: ['db-admin', 'er-schema'] as const,
-  objects: ['db-admin', 'objects'] as const,
-  activity: ['db-admin', 'activity'] as const,
-  maintenance: ['db-admin', 'maintenance'] as const,
-  indexHealth: ['db-admin', 'index-health'] as const,
-  schemaDrift: ['db-admin', 'schema-drift'] as const,
-  favorites: ['db-admin', 'query-favorites'] as const,
-  terminalAvailability: ['db-admin', 'terminal-availability'] as const,
+  tables: contractKey(dbAdminContract.tables),
+  overview: contractKey(dbAdminContract.overview),
+  structure: (schema: string | undefined, table: string | undefined) =>
+    contractKey(dbAdminContract.tableStructure, { params: tableParams(schema ?? '', table ?? '') }),
+  historyLists: contractKey(dbAdminContract.history),
+  historyList: (params: DbAdminHistoryParams) => contractKey(dbAdminContract.history, { query: params }),
+  erSchema: contractKey(dbAdminContract.erSchema),
+  objects: contractKey(dbAdminContract.objects),
+  activity: contractKey(dbAdminContract.activity),
+  maintenance: contractKey(dbAdminContract.maintenanceTables),
+  indexHealth: contractKey(dbAdminContract.indexHealth),
+  schemaDrift: contractKey(dbAdminContract.schemaDrift),
+  favorites: contractKey(dbAdminContract.favorites),
+  terminalAvailability: contractKey(dbAdminContract.terminalAvailability),
 };
 
+// ─── 只读查询 ─────────────────────────────────────────────────────────────────
+
 export function useDbAdminOverview() {
-  return useQuery({
-    queryKey: dbAdminKeys.overview,
-    queryFn: () => request.get<DbAdminOverview>('/api/db-admin/overview').then(unwrap),
-  });
+  return useApiQuery(dbAdminContract.overview);
 }
 
 export function useDbAdminTables() {
-  return useQuery({
-    queryKey: dbAdminKeys.tables,
-    queryFn: () => request.get<DbAdminTableItem[]>('/api/db-admin/tables').then(unwrap),
-  });
-}
-
-export interface DbAdminTerminalAvailability {
-  available: boolean;
-  version: string | null;
-  reason: string | null;
+  return useApiQuery(dbAdminContract.tables);
 }
 
 /** 数据库终端（psql）可用性；服务端环境探测结果，短期内视为静态 */
 export function useDbAdminTerminalAvailability(enabled: boolean) {
-  return useQuery({
-    queryKey: dbAdminKeys.terminalAvailability,
-    queryFn: () => request.get<DbAdminTerminalAvailability>('/api/db-admin/terminal-availability').then(unwrap),
-    enabled,
-    staleTime: 5 * 60 * 1000,
-  });
+  return useApiQuery(dbAdminContract.terminalAvailability, { enabled, staleTime: 5 * 60 * 1000 });
 }
 
 export function fetchDbAdminTableStructure(schema: string, table: string) {
-  return request
-    .get<DbAdminTableStructure>(`/api/db-admin/tables/${encodeURIComponent(schema)}/${encodeURIComponent(table)}/structure`)
-    .then(unwrap);
+  return api(dbAdminContract.tableStructure, { params: tableParams(schema, table) });
 }
 
 export function useDbAdminTableStructure(schema: string | undefined, table: string | undefined, enabled = true) {
-  return useQuery({
-    queryKey: dbAdminKeys.structure(schema, table),
-    queryFn: () => fetchDbAdminTableStructure(schema!, table!),
+  return useApiQuery(dbAdminContract.tableStructure, { params: tableParams(schema ?? '', table ?? '') }, {
     enabled: enabled && !!schema && !!table,
   });
 }
 
 export function useDbAdminHistory(params: DbAdminHistoryParams, enabled = true) {
-  return useQuery({
-    queryKey: dbAdminKeys.historyList(params),
-    queryFn: () =>
-      request.get<PaginatedResponse<DbAdminQueryHistoryItem>>(`/api/db-admin/query/history${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-    enabled,
-  });
+  return useApiQuery(dbAdminContract.history, { query: params }, { placeholderData: keepPreviousData, enabled });
 }
 
 export function useDbAdminErSchema(enabled = true) {
-  return useQuery({
-    queryKey: dbAdminKeys.erSchema,
-    queryFn: () => request.get<ErSchema>('/api/db-admin/er-schema').then(unwrap),
-    enabled,
-  });
+  return useApiQuery(dbAdminContract.erSchema, { enabled });
 }
 
 export function useDbAdminObjects(enabled = true) {
-  return useQuery({
-    queryKey: dbAdminKeys.objects,
-    queryFn: () => request.get<DbAdminObjects>('/api/db-admin/objects').then(unwrap),
-    enabled,
-  });
+  return useApiQuery(dbAdminContract.objects, { enabled });
 }
 
 export function useDbAdminActivity(auto: boolean) {
-  return useQuery({
-    queryKey: dbAdminKeys.activity,
-    queryFn: () => request.get<DbAdminActivityConnection[]>('/api/db-admin/activity').then(unwrap),
-    refetchInterval: auto ? 5000 : false,
-  });
+  return useApiQuery(dbAdminContract.activity, { refetchInterval: auto ? 5000 : false });
 }
 
 export function useDbAdminMaintenance() {
-  return useQuery({
-    queryKey: dbAdminKeys.maintenance,
-    queryFn: () => request.get<DbAdminTableMaintenance[]>('/api/db-admin/maintenance/tables').then(unwrap),
-  });
+  return useApiQuery(dbAdminContract.maintenanceTables);
 }
 
 export function useDbAdminIndexHealth() {
-  return useQuery({
-    queryKey: dbAdminKeys.indexHealth,
-    queryFn: () => request.get<DbAdminIndexHealth>('/api/db-admin/index-health').then(unwrap),
-  });
+  return useApiQuery(dbAdminContract.indexHealth);
 }
 
 export function useDbAdminSchemaDrift() {
-  return useQuery({
-    queryKey: dbAdminKeys.schemaDrift,
-    queryFn: () => request.get<DbAdminSchemaDrift>('/api/db-admin/schema-drift').then(unwrap),
-  });
+  return useApiQuery(dbAdminContract.schemaDrift);
 }
 
 export function useDbQueryFavorites(enabled = true) {
-  return useQuery({
-    queryKey: dbAdminKeys.favorites,
-    queryFn: () => request.get<DbQueryFavorite[]>('/api/db-admin/query-favorites').then(unwrap),
-    enabled,
-  });
+  return useApiQuery(dbAdminContract.favorites, { enabled });
 }
 
+// ─── SQL 控制台（一次性执行，不进缓存） ────────────────────────────────────────
+
 export function useDbAdminExecuteQuery() {
-  return useMutation({
-    mutationFn: (body: { sql: string; queryId: string; page: number; pageSize: number }) =>
-      request.post<DbAdminQueryResult>('/api/db-admin/query', body, { silent: true }).then(unwrap),
-  });
+  return useApiMutation(dbAdminContract.query, { requestOptions: { silent: true } });
 }
 
 export function useDbAdminCancelQuery() {
-  return useMutation({
-    mutationFn: (queryId: string) =>
-      request.post<{ ok: boolean }>('/api/db-admin/query/cancel', { queryId }, { silent: true }).then(unwrap),
-  });
+  return useApiMutation(dbAdminContract.cancelQuery, { requestOptions: { silent: true } });
 }
 
 export function useDbAdminExplain() {
-  return useMutation({
-    mutationFn: ({ sql, analyze }: { sql: string; analyze: boolean }) =>
-      request.post<DbAdminExplainResult>('/api/db-admin/explain', { sql, analyze }, { silent: true }).then(unwrap),
-  });
+  return useApiMutation(dbAdminContract.explain, { requestOptions: { silent: true } });
 }
 
+/** SQL 结果导出（CSV / JSON）的流式下载地址；由 `request.getBlob(url, { method: 'POST', body })` 消费 */
+export function dbAdminQueryExportUrl(format: 'csv' | 'json') {
+  return urlOf(format === 'csv' ? dbAdminContract.exportQueryCsv : dbAdminContract.exportQueryJson);
+}
+
+export function dbAdminTableExportCsvUrl(schema: string, table: string) {
+  return urlOf(dbAdminContract.exportTableCsv, { params: tableParams(schema, table) });
+}
+
+export function dbAdminTableExportSqlUrl(schema: string, table: string, mode: DbAdminSqlExportMode) {
+  return urlOf(dbAdminContract.exportTableSql, { params: tableParams(schema, table), query: { mode } });
+}
+
+// ─── SQL 收藏夹 ───────────────────────────────────────────────────────────────
+
+/** 无 id 走新增，有 id 走更新；收藏夹为当前用户私有清单，只失效自身 */
 export function useSaveDbQueryFavorite() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: { name?: string; sql?: string; description?: string; tags?: string[] } }) =>
+    // 同一表单同时服务新增与编辑，必填字段由表单 rules 保证、服务端 schema 兜底校验
+    mutationFn: ({ id, values }: { id?: number; values: Partial<CreateDbQueryFavoriteInput> }) =>
       (id === undefined
-        ? request.post<DbQueryFavorite>('/api/db-admin/query-favorites', values)
-        : request.put<DbQueryFavorite>(`/api/db-admin/query-favorites/${id}`, values)
-      ).then(unwrap),
+        ? api(dbAdminContract.createFavorite, { body: values as CreateDbQueryFavoriteInput })
+        : api(dbAdminContract.updateFavorite, { params: { id }, body: values })),
     onSuccess: () => qc.invalidateQueries({ queryKey: dbAdminKeys.favorites }),
   });
 }
 
 export function useDeleteDbQueryFavorite() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/db-admin/query-favorites/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: dbAdminKeys.favorites }),
+  return useApiMutation(dbAdminContract.removeFavorite, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: dbAdminKeys.favorites });
+    },
   });
 }
 
+// ─── 查询历史 ─────────────────────────────────────────────────────────────────
+
 export function useDeleteDbQueryHistory() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/db-admin/query/history/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: dbAdminKeys.historyLists }),
+  return useApiMutation(dbAdminContract.removeHistory, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: dbAdminKeys.historyLists });
+    },
   });
 }
 
 export function useClearDbQueryHistory() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () => request.delete<null>('/api/db-admin/query/history').then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: dbAdminKeys.historyLists }),
+  return useApiMutation(dbAdminContract.clearHistory, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: dbAdminKeys.historyLists });
+    },
   });
 }
 
+// ─── 表数据写操作 ─────────────────────────────────────────────────────────────
+
+/** 截断只清空数据：表清单的行数估算随之变化 */
 export function useDbAdminTruncateTable() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ schema, table }: { schema: string; table: string }) =>
-      request.post<null>(`/api/db-admin/tables/${encodeURIComponent(schema)}/${encodeURIComponent(table)}/truncate`, {}).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: dbAdminKeys.tables }),
+  return useApiMutation(dbAdminContract.truncateTable, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: dbAdminKeys.tables });
+    },
   });
 }
 
+/** 刷新物化视图影响行数与维护统计等多处，按域根广播 */
 export function useDbAdminRefreshMatview() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ schema, table }: { schema: string; table: string }) =>
-      request.post<null>(`/api/db-admin/tables/${encodeURIComponent(schema)}/${encodeURIComponent(table)}/refresh`, {}).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: dbAdminKeys.all }),
+  return useApiMutation(dbAdminContract.refreshMatview, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: dbAdminKeys.all });
+    },
   });
 }
 
 export function useDbAdminBatchMutateRows() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ schema, table, values }: {
-      schema: string;
-      table: string;
-      values: {
-        inserts?: Array<Record<string, unknown>>;
-        updates?: Array<{ pk: Record<string, unknown>; changes: Record<string, unknown> }>;
-        deletes?: Array<{ pk: Record<string, unknown> }>;
-      };
-    }) =>
-      request
-        .post<DbAdminBatchMutateResult>(`/api/db-admin/tables/${encodeURIComponent(schema)}/${encodeURIComponent(table)}/batch-mutate`, values)
-        .then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: dbAdminKeys.tables }),
+  return useApiMutation(dbAdminContract.batchMutate, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: dbAdminKeys.tables });
+    },
   });
 }
 
 export function useDbAdminImportRows() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ schema, table, rows }: { schema: string; table: string; rows: Array<Record<string, unknown>> }) =>
-      request
-        .post<DbAdminImportResult>(
-          `/api/db-admin/tables/${encodeURIComponent(schema)}/${encodeURIComponent(table)}/import`,
-          { rows },
-          { silent: true },
-        )
-        .then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: dbAdminKeys.tables }),
+  return useApiMutation(dbAdminContract.importRows, {
+    requestOptions: { silent: true },
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: dbAdminKeys.tables });
+    },
   });
 }
 
+export function useDbAdminInsertRow() {
+  return useApiMutation(dbAdminContract.insertRow);
+}
+
+export function useDbAdminUpdateRow() {
+  return useApiMutation(dbAdminContract.updateRow);
+}
+
+// ─── 运维 ─────────────────────────────────────────────────────────────────────
+
+/** 取消查询 / 终止连接：活动连接列表随之变化 */
 export function useDbAdminActivityAction() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ pid, action }: { pid: number; action: 'cancel' | 'terminate' }) =>
-      request.post<{ ok: boolean }>(`/api/db-admin/activity/${pid}/${action}`, {}).then(unwrap),
+      api(action === 'cancel' ? dbAdminContract.cancelBackend : dbAdminContract.terminateBackend, { params: { pid } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: dbAdminKeys.activity }),
   });
 }
 
 export function useDbAdminRunMaintenance() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ schema, table, action }: { schema: string; table: string; action: 'vacuum' | 'vacuum_analyze' | 'analyze' | 'reindex' }) =>
-      request.post<null>(`/api/db-admin/tables/${encodeURIComponent(schema)}/${encodeURIComponent(table)}/maintenance`, { action }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: dbAdminKeys.maintenance }),
+  return useApiMutation(dbAdminContract.runMaintenance, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: dbAdminKeys.maintenance });
+    },
   });
 }

@@ -1,49 +1,46 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ProcessInfo, ProcessListResponse } from '@zenith/shared/ops';
-import { request } from '@/utils/request';
-import { unwrap } from '@/lib/query';
+import { processContract } from '@zenith/shared/ops';
+import { contractKey, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { hostQueryOf } from './ops-hosts';
 
 export const processKeys = {
   all: ['processes'] as const,
-  list: (hostId: number | null) => ['processes', 'list', hostId] as const,
-  detail: (pid: number | undefined, hostId: number | null) => ['processes', 'detail', hostId, pid] as const,
+  list: (hostId: number | null) => contractKey(processContract.list, { query: hostQueryOf(hostId) }),
+  detail: (pid: number | undefined, hostId: number | null) =>
+    contractKey(processContract.detail, { params: { pid: pid ?? 0 }, query: hostQueryOf(hostId) }),
 };
 
-function hostQuery(hostId: number | null): string {
-  return hostId == null ? '' : `?hostId=${hostId}`;
-}
-
+/** 本机走 SSE 实时流（见 processStreamUrl），远端主机按 5 秒轮询 */
 export function useProcessList(hostId: number | null, enabled = true) {
-  return useQuery({
-    queryKey: processKeys.list(hostId),
-    queryFn: () => request.get<ProcessListResponse>(`/api/processes${hostQuery(hostId)}`, { silent: true }).then(unwrap),
+  return useApiQuery(processContract.list, { query: hostQueryOf(hostId) }, {
+    requestOptions: { silent: true },
     enabled,
     refetchInterval: hostId == null ? false : 5000,
   });
 }
 
 export function useProcessDetail(pid: number | undefined, enabled = true, hostId: number | null = null) {
-  return useQuery({
-    queryKey: processKeys.detail(pid, hostId),
-    queryFn: () => request.get<ProcessInfo>(`/api/processes/${pid}${hostQuery(hostId)}`).then(unwrap),
+  return useApiQuery(processContract.detail, { params: { pid: pid ?? 0 }, query: hostQueryOf(hostId) }, {
     enabled: enabled && pid !== undefined,
   });
 }
 
+/** 进程列表 SSE 地址（`request.fetchRaw` 消费，event: processes） */
+export function processStreamUrl(hostId: number | null = null) {
+  return urlOf(processContract.stream, { query: hostQueryOf(hostId) });
+}
+
 export function useKillProcess() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ pid, signal, hostId = null }: { pid: number; signal: string; hostId?: number | null }) =>
-      request.delete<null>(`/api/processes/${pid}${hostQuery(hostId)}`, { signal }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: processKeys.all }),
+  return useApiMutation(processContract.kill, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: processKeys.all });
+    },
   });
 }
 
 export function useSetProcessPriority() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ pid, values, hostId = null }: { pid: number; values: Record<string, unknown>; hostId?: number | null }) =>
-      request.put<null>(`/api/processes/${pid}/priority${hostQuery(hostId)}`, values).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: processKeys.all }),
+  return useApiMutation(processContract.setPriority, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: processKeys.all });
+    },
   });
 }

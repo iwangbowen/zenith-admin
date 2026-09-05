@@ -1,20 +1,10 @@
 import { useEffect, useMemo, useRef, type JSX } from 'react';
-import { useMutation } from '@tanstack/react-query';
 import { Form, Space, Tag, Banner, Tooltip } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Info } from 'lucide-react';
+import type { DbAdminColumn as ColumnInfo } from '@zenith/shared/ops';
 import AppModal from '@/components/AppModal';
-import { request } from '@/utils/request';
-
-interface ColumnInfo {
-  name: string;
-  dataType: string;
-  isNullable: boolean;
-  defaultValue: string | null;
-  isPrimaryKey: boolean;
-  comment: string | null;
-  maxLength: number | null;
-}
+import { useDbAdminInsertRow, useDbAdminUpdateRow } from '@/hooks/queries/db-admin';
 
 interface Props {
   open: boolean;
@@ -65,22 +55,9 @@ function toApiValue(v: unknown, col: ColumnInfo, kind: FieldKind): unknown {
 export function RowEditModal(props: Readonly<Props>): JSX.Element {
   const { open, mode, schema, table, columns, primaryKey, initial, focusField, onClose, onSuccess } = props;
   const formRef = useRef<FormApi | null>(null);
-  const rowMutation = useMutation({
-    mutationFn: (variables:
-      | { mode: 'create'; values: Record<string, unknown> }
-      | { mode: 'edit'; pk: Record<string, unknown>; changes: Record<string, unknown> }) => {
-      if (variables.mode === 'create') {
-        return request.post(
-          `/api/db-admin/tables/${encodeURIComponent(schema)}/${encodeURIComponent(table)}/rows`,
-          { values: variables.values },
-        );
-      }
-      return request.patch(
-        `/api/db-admin/tables/${encodeURIComponent(schema)}/${encodeURIComponent(table)}/rows`,
-        { pk: variables.pk, changes: variables.changes },
-      );
-    },
-  });
+  const insertRowMutation = useDbAdminInsertRow();
+  const updateRowMutation = useDbAdminUpdateRow();
+  const tableParams = { schema, name: table };
 
   const kinds = useMemo(() => {
     const m = new Map<string, FieldKind>();
@@ -120,7 +97,7 @@ export function RowEditModal(props: Readonly<Props>): JSX.Element {
         if (raw === undefined && c.defaultValue) continue;
         payload[c.name] = toApiValue(raw, c, getKind(c.name));
       }
-      await rowMutation.mutateAsync({ mode: 'create', values: payload });
+      await insertRowMutation.mutateAsync({ params: tableParams, body: { values: payload } });
     } else {
       const changes: Record<string, unknown> = {};
       const pk: Record<string, unknown> = {};
@@ -140,7 +117,7 @@ export function RowEditModal(props: Readonly<Props>): JSX.Element {
         onClose();
         return;
       }
-      await rowMutation.mutateAsync({ mode: 'edit', pk, changes });
+      await updateRowMutation.mutateAsync({ params: tableParams, body: { pk, changes } });
     }
     onSuccess();
   };
@@ -207,7 +184,7 @@ export function RowEditModal(props: Readonly<Props>): JSX.Element {
       okText={mode === 'create' ? '插入' : '保存'}
       cancelText="取消"
       width={880}
-      confirmLoading={rowMutation.isPending}
+      confirmLoading={insertRowMutation.isPending || updateRowMutation.isPending}
       bodyStyle={{ maxHeight: '70vh', overflowY: 'auto' }}
     >
       {mode === 'edit' && primaryKey.length === 0 && (

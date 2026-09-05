@@ -1,29 +1,26 @@
 /**
- * 应用版本管理域 hooks（应用 / 版本 / 制品 / 看板统计）。
+ * 应用版本管理域 hooks（应用 / 版本 / 制品 / 看板统计 / 设备中心）。
  *
- * key 结构：client-apps 与 app-releases 是两个独立命名空间；
- * 看板统计读事件流水（另一份数据源），单独命名空间 app-release-stats，
+ * key 结构：五组子资源契约各自派生独立命名空间（app-releases/apps、app-releases/releases、
+ * app-releases/artifacts、app-releases/devices、app-releases）；看板统计读事件流水（另一份数据源），
  * 不随版本 CRUD 失效（发布 / 下载事件由客户端行为产生，刷新按钮手动回源）。
  */
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import type {
-  AppArtifact,
-  AppRelease,
-  AppReleaseStats,
-  ClientApp,
-  ClientDevice,
-  CreateExternalArtifactInput,
+import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import type { OutputOf, QueryOf } from '@zenith/shared/core';
+import {
+  appArtifactContract,
+  appReleaseContract,
+  appReleaseStatsContract,
+  clientAppContract,
+  clientDeviceContract,
 } from '@zenith/shared/ops';
-import { request } from '@/utils/request';
+import { api, contractKey, createResourceQueries, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { unwrap } from '@/lib/query';
-import { createCrudQueries, type CrudListParams } from '@/lib/crud-queries';
+import { request } from '@/utils/request';
 
 // ─── 应用 ────────────────────────────────────────────────────────────────────
 
-export interface ClientAppListParams extends CrudListParams {
-  keyword?: string;
-  status?: string;
-}
+export type ClientAppListParams = NonNullable<QueryOf<typeof clientAppContract.list>>;
 
 export const {
   keys: clientAppKeys,
@@ -31,21 +28,11 @@ export const {
   useSave: useSaveClientApp,
   useDelete: useDeleteClientApps,
   useLookup: useAllClientApps,
-} = createCrudQueries<ClientApp, ClientAppListParams, Partial<ClientApp>>({
-  resource: 'client-apps',
-  path: '/api/app-releases/apps',
-  lookup: true,
-  deleteMode: 'single',
-});
+} = createResourceQueries(clientAppContract);
 
 // ─── 版本 ────────────────────────────────────────────────────────────────────
 
-export interface AppReleaseListParams extends CrudListParams {
-  appId?: number;
-  channel?: string;
-  status?: string;
-  keyword?: string;
-}
+export type AppReleaseListParams = NonNullable<QueryOf<typeof appReleaseContract.list>>;
 
 /** 应用列表的 releaseCount / latestVersion 冗余列随版本增删与发布状态变化 */
 function invalidateClientAppLists(qc: QueryClient) {
@@ -58,10 +45,7 @@ export const {
   useDetail: useAppReleaseDetail,
   useSave: useSaveAppRelease,
   useDelete: useDeleteAppReleases,
-} = createCrudQueries<AppRelease, AppReleaseListParams, Partial<AppRelease>>({
-  resource: 'app-releases',
-  path: '/api/app-releases/releases',
-  deleteMode: 'single',
+} = createResourceQueries(appReleaseContract, {
   onSaved: invalidateClientAppLists,
   onDeleted: invalidateClientAppLists,
 });
@@ -74,27 +58,20 @@ function invalidateReleaseLifecycle(qc: QueryClient, id: number) {
 }
 
 export function usePublishAppRelease() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.post<AppRelease>(`/api/app-releases/releases/${id}/publish`).then(unwrap),
-    onSuccess: (_saved, id) => invalidateReleaseLifecycle(qc, id),
+  return useApiMutation(appReleaseContract.publish, {
+    invalidate: (qc, _saved, { params }) => invalidateReleaseLifecycle(qc, params.id),
   });
 }
 
 export function useRevokeAppRelease() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.post<AppRelease>(`/api/app-releases/releases/${id}/revoke`).then(unwrap),
-    onSuccess: (_saved, id) => invalidateReleaseLifecycle(qc, id),
+  return useApiMutation(appReleaseContract.revoke, {
+    invalidate: (qc, _saved, { params }) => invalidateReleaseLifecycle(qc, params.id),
   });
 }
 
 export function useSetAppReleaseRollout() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, rolloutPercent }: { id: number; rolloutPercent: number }) =>
-      request.put<AppRelease>(`/api/app-releases/releases/${id}/rollout`, { rolloutPercent }).then(unwrap),
-    onSuccess: (_saved, { id }) => invalidateReleaseLifecycle(qc, id),
+  return useApiMutation(appReleaseContract.rollout, {
+    invalidate: (qc, _saved, { params }) => invalidateReleaseLifecycle(qc, params.id),
   });
 }
 
@@ -106,6 +83,7 @@ function invalidateReleaseArtifacts(qc: QueryClient, releaseId: number) {
   void qc.invalidateQueries({ queryKey: appReleaseKeys.lists });
 }
 
+/** 制品文件上传带进度，走 XHR 表单通道而非 api() */
 export function useUploadAppArtifact() {
   const qc = useQueryClient();
   return useMutation({
@@ -113,25 +91,27 @@ export function useUploadAppArtifact() {
       releaseId: number;
       formData: FormData;
       onProgress?: (percent: number) => void;
-    }) => request.postForm<AppArtifact>(`/api/app-releases/releases/${releaseId}/artifacts`, formData, { onProgress }).then(unwrap),
+    }) => request.postForm<OutputOf<typeof appReleaseContract.uploadArtifact>>(
+      urlOf(appReleaseContract.uploadArtifact, { params: { id: releaseId } }),
+      formData,
+      { onProgress },
+    ).then(unwrap),
     onSuccess: (_data, { releaseId }) => invalidateReleaseArtifacts(qc, releaseId),
   });
 }
 
 export function useAddExternalArtifact() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ releaseId, values }: { releaseId: number; values: CreateExternalArtifactInput }) =>
-      request.post<AppArtifact>(`/api/app-releases/releases/${releaseId}/artifacts/external`, values).then(unwrap),
-    onSuccess: (_data, { releaseId }) => invalidateReleaseArtifacts(qc, releaseId),
+  return useApiMutation(appReleaseContract.addExternalArtifact, {
+    invalidate: (qc, _data, { params }) => invalidateReleaseArtifacts(qc, params.id),
   });
 }
 
+/** 删除制品：制品 ID 走制品契约，所属版本 ID 只用于失效 */
 export function useDeleteAppArtifact() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ artifactId }: { artifactId: number; releaseId: number }) =>
-      request.delete<null>(`/api/app-releases/artifacts/${artifactId}`).then(unwrap),
+      api(appArtifactContract.remove, { params: { id: artifactId } }),
     onSuccess: (_data, { releaseId }) => invalidateReleaseArtifacts(qc, releaseId),
   });
 }
@@ -139,53 +119,36 @@ export function useDeleteAppArtifact() {
 // ─── 看板统计 ────────────────────────────────────────────────────────────────
 
 export const appReleaseStatsKeys = {
-  all: ['app-release-stats'] as const,
-  of: (appId: number | undefined, days: number) => ['app-release-stats', appId, days] as const,
+  all: contractKey(appReleaseStatsContract.stats),
+  of: (appId: number | undefined, days: number) => contractKey(appReleaseStatsContract.stats, { query: { appId: appId ?? 0, days } }),
 };
 
 export function useAppReleaseStats(appId: number | undefined, days: number) {
-  return useQuery({
-    queryKey: appReleaseStatsKeys.of(appId, days),
-    queryFn: () => request.get<AppReleaseStats>(`/api/app-releases/stats?appId=${appId}&days=${days}`).then(unwrap),
-    enabled: appId !== undefined,
-  });
+  return useApiQuery(appReleaseStatsContract.stats, { query: { appId: appId ?? 0, days } }, { enabled: appId !== undefined });
 }
 
 // ─── 统一设备中心（升级心跳 / 推送绑定共用的设备档案）───────────────────────
 
-export interface ClientDeviceListParams extends CrudListParams {
-  appId?: number;
-  platform?: string;
-  subjectType?: string;
-  pushBound?: string;
-  keyword?: string;
-}
+export type ClientDeviceListParams = NonNullable<QueryOf<typeof clientDeviceContract.list>>;
 
 export const {
   keys: clientDeviceKeys,
   useList: useClientDeviceList,
-} = createCrudQueries<ClientDevice, ClientDeviceListParams, never>({
-  resource: 'client-devices',
-  path: '/api/app-releases/devices',
-});
+} = createResourceQueries(clientDeviceContract);
 
-/** 解绑推送:设备行的绑定人与推送标识变化,失效设备列表 */
+/** 解绑推送：设备行的绑定人与推送标识变化，失效设备列表 */
 export function useUnbindDevicePush() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.put<null>(`/api/app-releases/devices/${id}/unbind`).then(unwrap),
-    onSuccess: () => {
+  return useApiMutation(clientDeviceContract.unbind, {
+    invalidate: (qc) => {
       void qc.invalidateQueries({ queryKey: clientDeviceKeys.lists });
     },
   });
 }
 
-/** 删除设备档案:失效设备列表;在网统计随下次查询自然刷新,不强制失效 stats */
+/** 删除设备档案：失效设备列表；在网统计随下次查询自然刷新，不强制失效 stats */
 export function useDeleteClientDevice() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/app-releases/devices/${id}`).then(unwrap),
-    onSuccess: () => {
+  return useApiMutation(clientDeviceContract.remove, {
+    invalidate: (qc) => {
       void qc.invalidateQueries({ queryKey: clientDeviceKeys.lists });
     },
   });

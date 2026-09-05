@@ -1,52 +1,45 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { request } from '@/utils/request';
-import { unwrap } from '@/lib/query';
-
-export interface ServiceInfo {
-  name: string;
-  description: string;
-  loadState: string;
-  activeState: string;
-  subState: string;
-}
-
-export type ServiceAction = 'start' | 'stop' | 'restart' | 'enable' | 'disable' | 'mask' | 'unmask';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { systemdContract, type SystemdService } from '@zenith/shared/ops';
+import { api, contractKey, urlOf, useApiMutation } from '@/lib/contract-query';
+import { hostQueryOf } from './ops-hosts';
 
 export const serviceKeys = {
-  all: ['services'] as const,
-  lists: ['services', 'list'] as const,
-  list: (hostId: number | null) => ['services', 'list', hostId] as const,
-  logs: (name: string | undefined, hostId: number | null) => ['services', 'logs', hostId, name] as const,
+  all: ['systemd'] as const,
+  lists: contractKey(systemdContract.list),
+  list: (hostId: number | null) => contractKey(systemdContract.list, { query: hostQueryOf(hostId) }),
 };
 
-function hostQuery(hostId: number | null): string {
-  return hostId == null ? '' : `?hostId=${hostId}`;
-}
-
+/** 先探测 systemd 可用性，不可用时不再请求服务清单（Windows / 容器环境） */
 export function useServiceList(hostId: number | null = null) {
   return useQuery({
     queryKey: serviceKeys.list(hostId),
     queryFn: async () => {
-      const check = await request.get<{ available: boolean }>(`/api/systemd/check${hostQuery(hostId)}`, { silent: true }).then(unwrap);
-      if (!check.available) return { available: false, services: [] as ServiceInfo[] };
-      const services = await request.get<ServiceInfo[]>(`/api/systemd/${hostQuery(hostId)}`).then(unwrap);
+      const query = hostQueryOf(hostId);
+      const check = await api(systemdContract.check, { query }, { silent: true });
+      if (!check.available) return { available: false, services: [] as SystemdService[] };
+      const services = await api(systemdContract.list, { query });
       return { available: true, services };
     },
   });
 }
 
 export function useServiceAction() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ name, action, hostId = null }: { name: string; action: ServiceAction; hostId?: number | null }) =>
-      request.post<null>(`/api/systemd/${name}/${action}${hostQuery(hostId)}`, {}).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: serviceKeys.all }),
+  return useApiMutation(systemdContract.control, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: serviceKeys.all });
+    },
   });
 }
 
+/** 近期日志按需拉取（打开日志抽屉时），不进缓存 */
 export function useServiceLogs() {
   return useMutation({
     mutationFn: ({ name, hostId = null }: { name: string; hostId?: number | null }) =>
-      request.get<{ logs: string }>(`/api/systemd/${name}/logs${hostQuery(hostId)}`).then(unwrap),
+      api(systemdContract.logs, { params: { name }, query: hostQueryOf(hostId) }),
   });
+}
+
+/** journalctl -f 实时跟踪的流式地址（`streamText` 消费） */
+export function serviceLogsStreamUrl(name: string, hostId: number | null = null) {
+  return urlOf(systemdContract.logsStream, { params: { name }, query: hostQueryOf(hostId) });
 }

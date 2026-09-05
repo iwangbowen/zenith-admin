@@ -1,43 +1,28 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { BackupType, DbBackup } from '@zenith/shared/platform';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import type { QueryOf } from '@zenith/shared/core';
+import { dbBackupContract } from '@zenith/shared/ops';
+import { createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { keepPreviousData } from '@tanstack/react-query';
 
-export interface DbBackupListParams {
-  page: number;
-  pageSize: number;
-  status?: string;
-  type?: string;
-}
+export type DbBackupListParams = NonNullable<QueryOf<typeof dbBackupContract.list>>;
 
-export const dbBackupKeys = {
-  all: ['db-backups'] as const,
-  lists: ['db-backups', 'list'] as const,
-  list: (params: DbBackupListParams) => ['db-backups', 'list', params] as const,
-};
+export const {
+  keys: dbBackupKeys,
+  useDelete: useDeleteDbBackups,
+} = createResourceQueries(dbBackupContract);
 
+/** 备份任务在后台执行，页面按需轮询列表观察 pending → success / failed */
 export function useDbBackupList(params: DbBackupListParams, options?: { refetchInterval?: number | false }) {
-  return useQuery({
-    queryKey: dbBackupKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<DbBackup>>(`/api/db-backups${toQueryString(params)}`).then(unwrap),
+  return useApiQuery(dbBackupContract.list, { query: params }, {
     placeholderData: keepPreviousData,
     refetchInterval: options?.refetchInterval,
   });
 }
 
+/** 创建备份只返回任务回执，新记录经列表失效回源 */
 export function useCreateDbBackup() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: { type: BackupType; name?: string }) => request.post<DbBackup>('/api/db-backups', values).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: dbBackupKeys.all }),
-  });
-}
-
-export function useDeleteDbBackup() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/db-backups/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: dbBackupKeys.all }),
+  return useApiMutation(dbBackupContract.create, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: dbBackupKeys.all });
+    },
   });
 }

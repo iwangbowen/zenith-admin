@@ -64,7 +64,6 @@ export function useFsSelection() {
     op: 'copy' | 'move',
   ): Promise<number> => {
     const taken = await fetchDirNames(destDir);
-    const endpoint = op === 'move' ? '/api/terminal-files/move' : '/api/terminal-files/copy';
 
     // 同目录复制：全部自动「副本」命名，无需询问；同目录移动无意义，直接跳过
     const plans: { from: string; to: string; overwrite: boolean }[] = [];
@@ -105,7 +104,7 @@ export function useFsSelection() {
       if (plan.overwrite) {
         await deleteEntriesMutation.mutateAsync([plan.to]).catch(() => {});
       }
-      await fileOperationMutation.mutateAsync({ endpoint, values: { from: plan.from, to: plan.to } });
+      await fileOperationMutation.mutateAsync({ kind: op, from: plan.from, to: plan.to });
     }
     return plans.length;
   }, [fetchDirNames, askConflictResolution, deleteEntriesMutation, fileOperationMutation]);

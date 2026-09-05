@@ -29,17 +29,3 @@ export function assertPlatformHostAccess(c: Context): void {
     throw new HTTPException(403, { message: '运维主机仅平台侧可见' });
   }
 }
-
-/**
- * 非 OpenAPI 路由（流式接口）读取 `?hostId`：非法值直接 400，非空时执行远端主机准入校验。
- * OpenAPI 路由改用 `HostQuery` 校验参数后再调用 `assertRemoteHostAccess`。
- */
-export async function resolveHostIdQuery(c: Context): Promise<number | undefined> {
-  const raw = c.req.query('hostId');
-  const hostId = raw ? Number(raw) : undefined;
-  if (raw && (!Number.isInteger(hostId) || (hostId ?? 0) <= 0)) {
-    throw new HTTPException(400, { message: '无效的 hostId' });
-  }
-  await assertRemoteHostAccess(c, hostId);
-  return hostId;
-}

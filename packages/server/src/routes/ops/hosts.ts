@@ -1,17 +1,9 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { createOpsHostSchema, updateOpsHostSchema } from '@zenith/shared/ops';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { opsHostContract } from '@zenith/shared/ops';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
-import {
-  validationHook,
-  commonErrorResponses,
-  jsonContent,
-  ok,
-  okMsg,
-  okBody,
-  IdParam,
-} from '../../lib/openapi-schemas';
-import { OpsHostDTO, OpsHostTestResultDTO } from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { assertPlatformHostAccess } from '../../lib/host-access';
 import {
   createOpsHost,
@@ -33,62 +25,42 @@ const router = new OpenAPIHono({ defaultHook: validationHook });
 const VIEW_PERM = 'system:host:view';
 const MANAGE_PERM = 'system:host:manage';
 
-const listRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/', tags: ['OpsHosts'], summary: '运维主机列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: [VIEW_PERM, 'system:host:use'] })] as const,
-    responses: { ...commonErrorResponses, ...ok(OpsHostDTO.array(), '主机列表') },
-  }),
+/** 主机清单对「使用远端主机」的功能页也可见（下拉选择），满足其一即可 */
+const view = [authMiddleware, guard({ permission: [VIEW_PERM, 'system:host:use'] })] as const;
+
+const listRoute = defineContractRoute(opsHostContract.list, {
+  middleware: view,
   handler: async (c) => {
     assertPlatformHostAccess(c);
     return c.json(okBody(await listOpsHosts()), 200);
   },
 });
 
-const detailRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/{id}', tags: ['OpsHosts'], summary: '主机详情',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: [VIEW_PERM, 'system:host:use'] })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...ok(OpsHostDTO, '主机详情') },
-  }),
+const detailRoute = defineContractRoute(opsHostContract.detail, {
+  middleware: view,
   handler: async (c) => {
     assertPlatformHostAccess(c);
     return c.json(okBody(await getOpsHost(c.req.valid('param').id)), 200);
   },
 });
 
-const createRouteDef = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/', tags: ['OpsHosts'], summary: '新增主机',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({
-      permission: MANAGE_PERM,
-      // 凭据不进审计日志
-      audit: { description: '新增运维主机', module: '主机管理', recordBody: false },
-    })] as const,
-    request: { body: { content: jsonContent(createOpsHostSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(OpsHostDTO, '已创建') },
-  }),
+const createRouteDef = defineContractRoute(opsHostContract.create, {
+  middleware: [authMiddleware, guard({
+    permission: MANAGE_PERM,
+    // 凭据不进审计日志
+    audit: { description: '新增运维主机', module: '主机管理', recordBody: false },
+  })],
   handler: async (c) => {
     assertPlatformHostAccess(c);
     return c.json(okBody(await createOpsHost(c.req.valid('json')), '已创建'), 200);
   },
 });
 
-const updateRouteDef = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/{id}', tags: ['OpsHosts'], summary: '更新主机',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({
-      permission: MANAGE_PERM,
-      audit: { description: '更新运维主机', module: '主机管理', recordBody: false },
-    })] as const,
-    request: { params: IdParam, body: { content: jsonContent(updateOpsHostSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(OpsHostDTO, '已更新') },
-  }),
+const updateRouteDef = defineContractRoute(opsHostContract.update, {
+  middleware: [authMiddleware, guard({
+    permission: MANAGE_PERM,
+    audit: { description: '更新运维主机', module: '主机管理', recordBody: false },
+  })],
   handler: async (c) => {
     assertPlatformHostAccess(c);
     const { id } = c.req.valid('param');
@@ -97,17 +69,11 @@ const updateRouteDef = defineOpenAPIRoute({
   },
 });
 
-const deleteRouteDef = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/{id}', tags: ['OpsHosts'], summary: '删除主机',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({
-      permission: MANAGE_PERM,
-      audit: { description: '删除运维主机', module: '主机管理' },
-    })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...okMsg('已删除') },
-  }),
+const deleteRouteDef = defineContractRoute(opsHostContract.remove, {
+  middleware: [authMiddleware, guard({
+    permission: MANAGE_PERM,
+    audit: { description: '删除运维主机', module: '主机管理' },
+  })],
   handler: async (c) => {
     assertPlatformHostAccess(c);
     const { id } = c.req.valid('param');
@@ -117,44 +83,24 @@ const deleteRouteDef = defineOpenAPIRoute({
   },
 });
 
-const testRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/{id}/test', tags: ['OpsHosts'], summary: '测试主机连接',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: MANAGE_PERM })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...ok(OpsHostTestResultDTO, '测试结果') },
-  }),
+const testRoute = defineContractRoute(opsHostContract.test, {
+  middleware: [authMiddleware, guard({ permission: MANAGE_PERM })],
   handler: async (c) => {
     assertPlatformHostAccess(c);
     return c.json(okBody(await testOpsHostConnection(c.req.valid('param').id)), 200);
   },
 });
 
-const probeRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/{id}/probe', tags: ['OpsHosts'], summary: '立即探测主机',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: VIEW_PERM })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...ok(OpsHostDTO, '探测结果') },
-  }),
+const probeRoute = defineContractRoute(opsHostContract.probe, {
+  middleware: [authMiddleware, guard({ permission: VIEW_PERM })],
   handler: async (c) => {
     assertPlatformHostAccess(c);
     return c.json(okBody(await probeOpsHost(c.req.valid('param').id)), 200);
   },
 });
 
-const probeAllRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/probe-all', tags: ['OpsHosts'], summary: '探测全部启用主机',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: VIEW_PERM })] as const,
-    responses: {
-      ...commonErrorResponses,
-      ...ok(OpsHostDTO.array(), '探测完成后的主机列表'),
-    },
-  }),
+const probeAllRoute = defineContractRoute(opsHostContract.probeAll, {
+  middleware: [authMiddleware, guard({ permission: VIEW_PERM })],
   handler: async (c) => {
     assertPlatformHostAccess(c);
     await probeAllOpsHosts();
@@ -162,17 +108,11 @@ const probeAllRoute = defineOpenAPIRoute({
   },
 });
 
-const resetKeyRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/{id}/reset-host-key', tags: ['OpsHosts'], summary: '重置 host key 指纹(主机重装后)',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({
-      permission: MANAGE_PERM,
-      audit: { description: '重置主机指纹', module: '主机管理' },
-    })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...okMsg('已重置') },
-  }),
+const resetKeyRoute = defineContractRoute(opsHostContract.resetHostKey, {
+  middleware: [authMiddleware, guard({
+    permission: MANAGE_PERM,
+    audit: { description: '重置主机指纹', module: '主机管理' },
+  })],
   handler: async (c) => {
     assertPlatformHostAccess(c);
     const { id } = c.req.valid('param');
@@ -182,24 +122,11 @@ const resetKeyRoute = defineOpenAPIRoute({
   },
 });
 
-const importSshProfileRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/import-ssh-profile/{profileId}', tags: ['OpsHosts'], summary: '从当前用户 SSH 配置导入平台主机',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({
-      permission: MANAGE_PERM,
-      audit: { description: '从 SSH 配置导入运维主机', module: '主机管理', recordBody: false },
-    })] as const,
-    request: {
-      params: z.object({
-        profileId: z.coerce.number().int().positive().openapi({
-          param: { name: 'profileId', in: 'path' },
-          example: 1,
-        }),
-      }),
-    },
-    responses: { ...commonErrorResponses, ...ok(OpsHostDTO, '已导入') },
-  }),
+const importSshProfileRoute = defineContractRoute(opsHostContract.importSshProfile, {
+  middleware: [authMiddleware, guard({
+    permission: MANAGE_PERM,
+    audit: { description: '从 SSH 配置导入运维主机', module: '主机管理', recordBody: false },
+  })],
   handler: async (c) => {
     assertPlatformHostAccess(c);
     const host = await importOpsHostFromSshProfile(c.req.valid('param').profileId, currentUser().userId);
@@ -207,7 +134,7 @@ const importSshProfileRoute = defineOpenAPIRoute({
   },
 });
 
-// probe-all 是静态路径,必须先于 /{id} 系列注册
+// probe-all / import-ssh-profile 是静态路径，必须先于 /{id} 系列注册
 router.openapiRoutes([
   listRoute,
   probeAllRoute,

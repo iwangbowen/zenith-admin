@@ -15,7 +15,8 @@ import { readSseStream } from '@/utils/streaming';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { useUrlSelectionState } from '@/hooks/useUrlSelectionState';
-import { type LogFile, useDeleteLogFile, useLogFileContent, useLogFiles } from '@/hooks/queries/log-files';
+import type { LogFile } from '@zenith/shared/ops';
+import { logFileDownloadUrl, logFileTailUrl, useDeleteLogFile, useLogFileContent, useLogFiles } from '@/hooks/queries/log-files';
 import { confirmDelete } from '@/utils/confirm';
 import { copyTextWithToast } from '@/utils/clipboard';
 import { buildSearchIndex, compileSearchPattern, computeEffectiveLevels, type LogLevel, type MatchRange, type SearchMatch } from './logFilesSearch';
@@ -272,7 +273,7 @@ export default function LogFilesPage() {
       while (!ctrl.signal.aborted) {
         let gotData = false;
         try {
-          const res = await request.fetchRaw(`/api/log-files/${encodeURIComponent(fileName)}/tail`, { signal: ctrl.signal, silent: true });
+          const res = await request.fetchRaw(logFileTailUrl(fileName), { signal: ctrl.signal, silent: true });
           if (res?.ok && res.body) {
             setReconnecting(false);
             await readSseStream(res, (events) => {
@@ -393,7 +394,7 @@ export default function LogFilesPage() {
 
   const handleDownload = async (file: LogFile) => {
     try {
-      await request.download(`/api/log-files/${encodeURIComponent(file.name)}/download`, file.name);
+      await request.download(logFileDownloadUrl(file.name), file.name);
     } catch {
       Toast.error('下载失败');
     }
@@ -411,7 +412,7 @@ export default function LogFilesPage() {
       title: `确定要删除 ${file.name} 吗？`,
       content: '删除后无法恢复，请谨慎操作。',
       onOk: async () => {
-        await deleteMutation.mutateAsync(file.name);
+        await deleteMutation.mutateAsync({ params: { filename: file.name } });
         Toast.success('删除成功');
         if (selected?.name === file.name) deselectFile();
       },
@@ -428,7 +429,7 @@ export default function LogFilesPage() {
       content: `共 ${gzFiles.length} 个 .gz 文件（${formatBytes(totalSize)}），删除后无法恢复。`,
       onOk: async () => {
         for (const file of gzFiles) {
-          await deleteMutation.mutateAsync(file.name);
+          await deleteMutation.mutateAsync({ params: { filename: file.name } });
         }
         Toast.success(`已清理 ${gzFiles.length} 个压缩日志`);
         if (selected?.isGzip) deselectFile();

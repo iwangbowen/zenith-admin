@@ -1,20 +1,8 @@
-import { http } from 'msw';
-import { ok, pageParams } from '@/mocks/utils/handlers';
-import type { MaintenanceLog } from '@zenith/shared/platform';
+import { maintenanceContract, type MaintenanceLog, type MaintenanceStatus } from '@zenith/shared/ops';
+import { mock } from '@/mocks/utils/contract';
 import { mockDateTime } from '@/mocks/utils/date';
 
-const API = import.meta.env.VITE_API_BASE_URL || '';
-
-interface MaintenanceRecord {
-  enabled: boolean;
-  message: string;
-  estimatedEndAt: string | null;
-  startedAt: string | null;
-  startedByName: string | null;
-  updatedAt: string;
-}
-
-let mockMaintenance: MaintenanceRecord = {
+let mockMaintenance: MaintenanceStatus = {
   enabled: false,
   message: '系统升级维护中，预计 30 分钟后恢复，请稍后重试。',
   estimatedEndAt: null,
@@ -64,39 +52,20 @@ function findOngoingLog(): MaintenanceLog | undefined {
 }
 
 export const maintenanceHandlers = [
-  // GET /api/maintenance/status — public
-  http.get(`${API}/api/maintenance/status`, () => {
-    return ok(mockMaintenance, 'success');
-  }),
+  // 公开探测
+  mock(maintenanceContract.status, ({ ok }) => ok(mockMaintenance, 'success')),
 
-  // GET /api/maintenance — admin
-  http.get(`${API}/api/maintenance`, () => {
-    return ok(mockMaintenance, 'success');
-  }),
+  mock(maintenanceContract.detail, ({ ok }) => ok(mockMaintenance, 'success')),
 
-  // GET /api/maintenance/logs — admin（分页 + 状态筛选）
-  http.get(`${API}/api/maintenance/logs`, ({ request }) => {
-    const url = new URL(request.url);
-    const { page, pageSize } = pageParams(url);
-    const status = url.searchParams.get('status');
-
+  // 维护记录：分页 + 状态筛选，按开始时间倒序
+  mock(maintenanceContract.logs, ({ query, ok, paginate }) => {
     let list = [...mockMaintenanceLogs];
-    if (status === 'ongoing') list = list.filter((l) => l.status === 'ongoing');
-    if (status === 'completed') list = list.filter((l) => l.status === 'completed');
+    if (query.status) list = list.filter((l) => l.status === query.status);
     list.sort((a, b) => (b.startedAt ?? '').localeCompare(a.startedAt ?? ''));
-
-    const total = list.length;
-    const start = (page - 1) * pageSize;
-    return ok({ list: list.slice(start, start + pageSize), total, page, pageSize }, 'success');
+    return ok(paginate(list), 'success');
   }),
 
-  // PUT /api/maintenance — admin
-  http.put(`${API}/api/maintenance`, async ({ request }) => {
-    const body = await request.json() as {
-      enabled: boolean;
-      message?: string;
-      estimatedEndAt?: string | null;
-    };
+  mock(maintenanceContract.update, ({ body, ok }) => {
     const wasEnabled = mockMaintenance.enabled;
     const now = mockDateTime();
     const message = body.message ?? mockMaintenance.message;
