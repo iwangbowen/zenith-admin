@@ -13,6 +13,7 @@ import { filterValuesFromSearch, withFilterParam } from './widgets/filter-url';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import type { ReportCanvasItem, ReportDatasetQueryOptions, ReportEmbedDrilldownPayload, ReportEmbedFilterChangePayload, ReportEmbedFilterValue, ReportEmbedFilterValues, ReportEmbedState, ReportEmbedWidgetClickPayload, ReportFilter, ReportGridItem, ReportPublicDashboard, ReportWidget } from '@zenith/shared/report';
 import { usePublicReportDashboard, usePublicReportDashboardAccess, usePublicReportDashboardData } from '@/hooks/queries/report-dashboards';
+import { ApiError } from '@/lib/query';
 import { sanitizeReportEmbedFilterValues, useReportEmbedBridge } from '@/components/report-embed-bridge';
 import { openExternalUrl } from '@/utils/safe-url';
 
@@ -68,23 +69,19 @@ export default function PublicDashboardPage() {
   const load = useCallback(async (pwd?: string) => {
     if (!token) return;
     try {
-      const res = await accessMutation.mutateAsync({ token, password: pwd });
-      if (res.code === 0 && res.data) {
-        setSessionToken(res.data.accessSessionToken);
-        setBootstrapDashboard(res.data.dashboard);
-        setNeedPwd(false);
-        setError(null);
-        return;
-      }
+      const session = await accessMutation.mutateAsync({ params: { token }, body: { password: pwd } });
+      setSessionToken(session.accessSessionToken);
+      setBootstrapDashboard(session.dashboard);
+      setNeedPwd(false);
+      setError(null);
+    } catch (err) {
       setSessionToken(undefined);
       setBootstrapDashboard(null);
-      if (res.code === 401) {
+      if (err instanceof ApiError && err.code === 401) {
         setNeedPwd(true);
         Toast.error('访问密码错误');
         return;
       }
-      setError(res.message || '链接不存在或已失效');
-    } catch (err) {
       setError(err instanceof Error ? err.message : '链接不存在或已失效');
     }
   }, [accessMutation, token]);

@@ -47,8 +47,8 @@ export function ShareModal({ visible, dashboardId, onClose }: Readonly<{ visible
     }
     const expireAt = expireDays > 0 ? formatDateTimeForApi(dayjs().add(expireDays, 'day').toDate()) : null;
     await createMutation.mutateAsync({
-      dashboardId,
-      values: {
+      params: { id: dashboardId },
+      body: {
         enabled: true,
         password: password || undefined,
         expireAt,
@@ -64,10 +64,10 @@ export function ShareModal({ visible, dashboardId, onClose }: Readonly<{ visible
     setAllowedCidrs('');
   }
   async function toggle(s: ReportDashboardShare) {
-    await updateMutation.mutateAsync({ shareId: s.id, dashboardId: s.dashboardId, values: { enabled: !s.enabled } });
+    await updateMutation.mutateAsync({ params: { shareId: s.id }, body: { enabled: !s.enabled } });
   }
   async function remove(share: ReportDashboardShare) {
-    await deleteMutation.mutateAsync(share);
+    await deleteMutation.mutateAsync({ shareId: share.id, dashboardId: share.dashboardId });
     Toast.success('已删除');
   }
   function urlOf(token: string) { return `${window.location.origin}/public/report/${token}`; }
@@ -111,8 +111,8 @@ export function ShareModal({ visible, dashboardId, onClose }: Readonly<{ visible
               <Space>
                 <Button size="small" icon={<Copy size={13} />} onClick={() => copy(s.token)}>链接</Button>
                 <Button size="small" onClick={() => copyIframe(s.token)}>iframe</Button>
-                <Switch size="small" checked={s.enabled} loading={updateMutation.isPending && updateMutation.variables?.shareId === s.id} onChange={() => void toggle(s)} />
-                <Button size="small" theme="borderless" type="danger" icon={<Trash2 size={13} />} loading={deleteMutation.isPending && deleteMutation.variables?.id === s.id} onClick={() => void remove(s)} />
+                <Switch size="small" checked={s.enabled} loading={updateMutation.isPending && updateMutation.variables?.params.shareId === s.id} onChange={() => void toggle(s)} />
+                <Button size="small" theme="borderless" type="danger" icon={<Trash2 size={13} />} loading={deleteMutation.isPending && deleteMutation.variables?.shareId === s.id} onClick={() => void remove(s)} />
               </Space>
             )}
           />
@@ -134,12 +134,12 @@ export function VersionModal({ visible, dashboardId, onClose, onRestored }: Read
 
   async function saveSnapshot() {
     if (!dashboardId) return;
-    await saveMutation.mutateAsync({ dashboardId });
+    await saveMutation.mutateAsync({ params: { id: dashboardId }, body: {} });
     Toast.success('已保存当前版本');
   }
   async function restore(versionId: number) {
     if (!dashboardId || !dashboardQuery.data) return;
-    await restoreMutation.mutateAsync({ dashboardId, versionId, expectedRevision: dashboardQuery.data.revision });
+    await restoreMutation.mutateAsync({ params: { id: dashboardId, versionId }, body: { expectedRevision: dashboardQuery.data.revision } });
     Toast.success('已恢复');
     setPendingVersionId(null);
     onRestored?.();
@@ -152,7 +152,7 @@ export function VersionModal({ visible, dashboardId, onClose, onRestored }: Read
         <List dataSource={versions} loading={versionsQuery.isFetching} renderItem={(v) => (
           <List.Item
           main={<Space vertical align="start"><Typography.Text strong>v{v.version}</Typography.Text><Typography.Text type="tertiary" size="small">{formatDateTime(v.createdAt)} · {v.source}{v.remark ? ` · ${v.remark}` : ''}</Typography.Text></Space>}
-          extra={<Space><Button size="small" onClick={() => setPendingVersionId(v.id)}>查看差异</Button><Button size="small" icon={<RotateCcw size={13} />} loading={restoreMutation.isPending && restoreMutation.variables?.versionId === v.id} onClick={() => restore(v.id)}>恢复</Button></Space>}
+          extra={<Space><Button size="small" onClick={() => setPendingVersionId(v.id)}>查看差异</Button><Button size="small" icon={<RotateCcw size={13} />} loading={restoreMutation.isPending && restoreMutation.variables?.params.versionId === v.id} onClick={() => restore(v.id)}>恢复</Button></Space>}
           />
         )} />
       )}

@@ -1,57 +1,43 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { ReportMaterializationSnapshot, RequestReportMaterializationInput } from '@zenith/shared/report';
-import type { AsyncTask } from '@zenith/shared/tasks';
-import { toQueryString, unwrap } from '@/lib/query';
-import { request } from '@/utils/request';
+import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
+import { resourceKeyOf } from '@zenith/shared/core';
+import { reportMaterializationContract } from '@zenith/shared/report';
+import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
+/** 快照历史与当前快照互相派生，任何写操作整域失效 */
 export const reportMaterializationKeys = {
-  all: ['report', 'materializations'] as const,
-  lists: ['report', 'materializations', 'list'] as const,
-  list: (params: { datasetId: number; page: number; pageSize: number }) => ['report', 'materializations', 'list', params] as const,
-  detail: (id: number | undefined) => ['report', 'materializations', 'detail', id] as const,
-  current: (datasetId: number | undefined) => ['report', 'materializations', 'current', datasetId] as const,
+  all: [resourceKeyOf(reportMaterializationContract.basePath)] as const,
+  list: (params: { datasetId: number; page: number; pageSize: number }) => {
+    const { datasetId, ...query } = params;
+    return contractKey(reportMaterializationContract.snapshots, { params: { id: datasetId }, query });
+  },
+  current: (datasetId: number | undefined) => contractKey(reportMaterializationContract.current, { params: { id: datasetId ?? 0 } }),
 };
+
+const invalidateAll = {
+  requestOptions: { silent: true },
+  invalidate: (qc: QueryClient) => void qc.invalidateQueries({ queryKey: reportMaterializationKeys.all }),
+} as const;
 
 export function useReportMaterializationList(params: { datasetId: number; page: number; pageSize: number }, enabled = true) {
   const { datasetId, ...query } = params;
-  return useQuery({
-    queryKey: reportMaterializationKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<ReportMaterializationSnapshot>>(`/api/report/materializations/datasets/${datasetId}/snapshots${toQueryString(query)}`).then(unwrap),
+  return useApiQuery(reportMaterializationContract.snapshots, { params: { id: datasetId }, query }, {
     placeholderData: keepPreviousData,
     enabled: enabled && datasetId > 0,
   });
 }
 
 export function useCurrentReportMaterialization(datasetId: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: reportMaterializationKeys.current(datasetId),
-    queryFn: () => request.get<ReportMaterializationSnapshot | null>(`/api/report/materializations/datasets/${datasetId}/current`).then(unwrap),
-    enabled: enabled && !!datasetId,
-  });
+  return useApiQuery(reportMaterializationContract.current, { params: { id: datasetId ?? 0 } }, { enabled: enabled && !!datasetId });
 }
 
 export function useRefreshReportMaterialization() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ datasetId, values }: { datasetId: number; values: RequestReportMaterializationInput }) =>
-      request.post<AsyncTask>(`/api/report/materializations/datasets/${datasetId}/refresh`, values, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportMaterializationKeys.all }),
-  });
+  return useApiMutation(reportMaterializationContract.refresh, invalidateAll);
 }
 
 export function usePurgeReportMaterialization() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/report/materializations/snapshots/${id}`, undefined, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportMaterializationKeys.all }),
-  });
+  return useApiMutation(reportMaterializationContract.purge, invalidateAll);
 }
 
 export function usePurgeDatasetMaterializations() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (datasetId: number) => request.delete<null>(`/api/report/materializations/datasets/${datasetId}/snapshots`, undefined, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportMaterializationKeys.all }),
-  });
+  return useApiMutation(reportMaterializationContract.purgeDataset, invalidateAll);
 }

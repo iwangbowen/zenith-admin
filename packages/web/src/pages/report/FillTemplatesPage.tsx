@@ -106,8 +106,8 @@ export default function FillTemplatesPage() {
     save: {
       isPending: cloneMutation.isPending,
       mutateAsync: ({ id, values }) => cloneMutation.mutateAsync({
-        id: id!,
-        values: {
+        params: { id: id! },
+        body: {
           code: String(values.code),
           name: String(values.name),
           folderId: values.folderId ? Number(values.folderId) : null,
@@ -192,7 +192,7 @@ export default function FillTemplatesPage() {
           Toast.error(validation.message);
           abortSubmit('validation');
         }
-        await updateMutation.mutateAsync({ id: editing.id, values: payload });
+        await updateMutation.mutateAsync({ params: { id: editing.id }, body: payload });
       } else {
         const payload = { ...base, code: String(values.code ?? '').trim() };
         const validation = validateFillTemplateInput(payload, false);
@@ -200,7 +200,7 @@ export default function FillTemplatesPage() {
           Toast.error(validation.message);
           abortSubmit('validation');
         }
-        await createMutation.mutateAsync(payload);
+        await createMutation.mutateAsync({ body: payload });
       }
       Toast.success(editing ? '模板更新成功' : '模板创建成功');
       editorModal.close();
@@ -217,8 +217,8 @@ export default function FillTemplatesPage() {
   async function changeLifecycle(template: ReportFillTemplate, action: 'publish' | 'offline') {
     try {
       await lifecycleMutation.mutateAsync({
-        id: template.id,
-        values: { action, expectedRevision: template.revision },
+        params: { id: template.id },
+        body: { action, expectedRevision: template.revision },
       });
       Toast.success(action === 'publish' ? '模板已发布' : '模板已下线');
     } catch (error) {
@@ -305,7 +305,7 @@ export default function FillTemplatesPage() {
               title: `删除模板「${record.name}」？`,
               content: '已有填报记录的模板不能删除。',
               onOk: async () => {
-                await deleteMutation.mutateAsync(record.id);
+                await deleteMutation.mutateAsync({ params: { id: record.id } });
                 Toast.success('模板已删除');
               },
             });

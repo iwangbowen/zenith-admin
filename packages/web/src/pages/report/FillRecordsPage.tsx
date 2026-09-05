@@ -133,8 +133,8 @@ export default function FillRecordsPage() {
   async function handleWithdraw(record: ReportFillRecord) {
     try {
       await withdrawMutation.mutateAsync({
-        id: record.id,
-        values: { expectedRevision: record.revision, reason: '用户主动撤回' },
+        params: { id: record.id },
+        body: { expectedRevision: record.revision, reason: '用户主动撤回' },
       });
       Toast.success(record.status === 'draft' ? '草稿已取消' : '填报已撤回');
     } catch (error) {
@@ -154,7 +154,7 @@ export default function FillRecordsPage() {
     isPending: reviewMutation.isPending,
     mutateAsync: async (vars: { id?: number; values: { decision: typeof reviewDecision; expectedRevision: number; comment?: string } }) => {
       try {
-        return await reviewMutation.mutateAsync(vars as { id: number; values: { decision: typeof reviewDecision; expectedRevision: number; comment?: string } });
+        return await reviewMutation.mutateAsync({ params: { id: vars.id ?? 0 }, body: vars.values });
       } catch (error) {
         if (isRevisionConflict(error)) {
           Modal.warning({
@@ -279,7 +279,7 @@ export default function FillRecordsPage() {
     <KeywordInput placeholder="搜索模板名称/编码" value={mineDraft.keyword} onChange={(value) => setMineDraft((current) => ({ ...current, keyword: value }))} onSearch={() => {
         minePagination.setPage(1);
         setMineSubmitted(mineDraft);
-        void queryClient.invalidateQueries({ queryKey: reportFillKeys.recordLists });
+        void queryClient.invalidateQueries({ queryKey: reportFillKeys.recordMineLists });
       }} />
   );
   const templateFilter = (value: number | undefined, onChange: (value?: number) => void) => canCreate ? (
@@ -314,13 +314,13 @@ export default function FillRecordsPage() {
                 <SearchButton onClick={() => {
                     minePagination.setPage(1);
                     setMineSubmitted(mineDraft);
-                    void queryClient.invalidateQueries({ queryKey: reportFillKeys.recordLists });
+                    void queryClient.invalidateQueries({ queryKey: reportFillKeys.recordMineLists });
                   }} />
                 <ResetButton onClick={() => {
                     setMineDraft(DEFAULT_MINE);
                     setMineSubmitted(DEFAULT_MINE);
                     minePagination.setPage(1);
-                    void queryClient.invalidateQueries({ queryKey: reportFillKeys.recordLists });
+                    void queryClient.invalidateQueries({ queryKey: reportFillKeys.recordMineLists });
                   }} />
               </>
             )}
@@ -373,13 +373,13 @@ export default function FillRecordsPage() {
                   <SearchButton onClick={() => {
                       adminPagination.setPage(1);
                       setAdminSubmitted(adminDraft);
-                      void queryClient.invalidateQueries({ queryKey: reportFillKeys.recordLists });
+                      void queryClient.invalidateQueries({ queryKey: reportFillKeys.recordAdminLists });
                     }} />
                   <ResetButton onClick={() => {
                       setAdminDraft(DEFAULT_ADMIN);
                       setAdminSubmitted(DEFAULT_ADMIN);
                       adminPagination.setPage(1);
-                      void queryClient.invalidateQueries({ queryKey: reportFillKeys.recordLists });
+                      void queryClient.invalidateQueries({ queryKey: reportFillKeys.recordAdminLists });
                     }} />
                 </>
               )}

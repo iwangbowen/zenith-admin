@@ -1,79 +1,58 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { CreateReportSlaRuleInput, ReportSlaRule, ReportSlaType, ReportSlaViolation, ReportSlaViolationStatus, UpdateReportSlaRuleInput, UpdateReportSlaViolationInput } from '@zenith/shared/report';
-import type { AsyncTask } from '@zenith/shared/tasks';
-import { toQueryString, unwrap } from '@/lib/query';
-import { request } from '@/utils/request';
+import { keepPreviousData, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { resourceKeyOf, type BodyOf, type QueryOf } from '@zenith/shared/core';
+import { reportSlaContract, type ReportSlaRule } from '@zenith/shared/report';
+import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
+export type ReportSlaRuleListParams = NonNullable<QueryOf<typeof reportSlaContract.rules>>;
+export type ReportSlaViolationListParams = NonNullable<QueryOf<typeof reportSlaContract.violations>>;
+
+/** 规则与违规记录互相派生，任何写操作整域失效 */
 export const reportSlaKeys = {
-  all: ['report', 'sla'] as const,
-  lists: ['report', 'sla', 'list'] as const,
-  list: (params: object) => ['report', 'sla', 'list', params] as const,
-  detail: (id: number | undefined) => ['report', 'sla', 'detail', id] as const,
-  violations: (params: object) => ['report', 'sla', 'violations', params] as const,
+  all: [resourceKeyOf(reportSlaContract.basePath)] as const,
+  lists: contractKey(reportSlaContract.rules),
+  list: (params: ReportSlaRuleListParams) => contractKey(reportSlaContract.rules, { query: params }),
+  detail: (id: number | undefined) => contractKey(reportSlaContract.ruleDetail, { params: { id: id ?? 0 } }),
+  violations: (params: ReportSlaViolationListParams) => contractKey(reportSlaContract.violations, { query: params }),
 };
 
-export function useReportSlaRuleList(params: {
-  page: number; pageSize: number; datasetId?: number; type?: ReportSlaType; enabled?: boolean;
-}) {
-  return useQuery({
-    queryKey: reportSlaKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<ReportSlaRule>>(`/api/report/sla/rules${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+const invalidateAll = {
+  requestOptions: { silent: true },
+  invalidate: (qc: QueryClient) => void qc.invalidateQueries({ queryKey: reportSlaKeys.all }),
+} as const;
+
+export function useReportSlaRuleList(params: ReportSlaRuleListParams) {
+  return useApiQuery(reportSlaContract.rules, { query: params }, { placeholderData: keepPreviousData });
 }
 
 export function useReportSlaRuleDetail(id: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: reportSlaKeys.detail(id),
-    queryFn: () => request.get<ReportSlaRule>(`/api/report/sla/rules/${id}`).then(unwrap),
-    enabled: enabled && !!id,
-  });
+  return useApiQuery(reportSlaContract.ruleDetail, { params: { id: id ?? 0 } }, { enabled: enabled && !!id });
 }
 
+export type SaveReportSlaRuleValues = Partial<BodyOf<typeof reportSlaContract.createRule>>;
+
+/** 无 id 走 createRule，有 id 走 updateRule（供 useEditModal 使用） */
 export function useSaveReportSlaRule() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: CreateReportSlaRuleInput | UpdateReportSlaRuleInput }) =>
-      (id
-        ? request.put<ReportSlaRule>(`/api/report/sla/rules/${id}`, values, { silent: true })
-        : request.post<ReportSlaRule>('/api/report/sla/rules', values, { silent: true })
-      ).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportSlaKeys.all }),
+  return useMutation<ReportSlaRule, Error, { id?: number; values: SaveReportSlaRuleValues }>({
+    mutationFn: ({ id, values }) => (id === undefined
+      ? api(reportSlaContract.createRule, { body: values as BodyOf<typeof reportSlaContract.createRule> }, { silent: true })
+      : api(reportSlaContract.updateRule, { params: { id }, body: values }, { silent: true })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: reportSlaKeys.all }),
   });
 }
 
 export function useDeleteReportSlaRule() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/report/sla/rules/${id}`, undefined, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportSlaKeys.all }),
-  });
+  return useApiMutation(reportSlaContract.removeRule, invalidateAll);
 }
 
 export function useEvaluateReportSlaRule() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.post<AsyncTask>(`/api/report/sla/rules/${id}/evaluate`, {}, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportSlaKeys.all }),
-  });
+  return useApiMutation(reportSlaContract.evaluate, invalidateAll);
 }
 
-export function useReportSlaViolationList(params: {
-  page: number; pageSize: number; datasetId?: number; ruleId?: number; status?: ReportSlaViolationStatus;
-}) {
-  return useQuery({
-    queryKey: reportSlaKeys.violations(params),
-    queryFn: () => request.get<PaginatedResponse<ReportSlaViolation>>(`/api/report/sla/violations${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+export function useReportSlaViolationList(params: ReportSlaViolationListParams) {
+  return useApiQuery(reportSlaContract.violations, { query: params }, { placeholderData: keepPreviousData });
 }
 
 export function useUpdateReportSlaViolation() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id: number; values: UpdateReportSlaViolationInput }) =>
-      request.post<ReportSlaViolation>(`/api/report/sla/violations/${id}/status`, values, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportSlaKeys.all }),
-  });
+  return useApiMutation(reportSlaContract.updateViolationStatus, invalidateAll);
 }

@@ -1,4 +1,4 @@
-import type { ReportFieldFormat, ReportResultField } from './types';
+import type { ReportFieldFormat, ReportResultField } from './contracts';
 
 function fmtNumber(n: number, decimals: number | undefined, thousands: boolean | undefined): string {
   if (!Number.isFinite(n)) return '';

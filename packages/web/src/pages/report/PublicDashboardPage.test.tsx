@@ -18,13 +18,9 @@ const mocks = vi.hoisted(() => {
   return {
     dashboard,
     access: vi.fn().mockResolvedValue({
-      code: 0,
-      message: 'success',
-      data: {
-        accessSessionToken: 'session-token-123456',
-        expiresAt: '2026-07-11 05:00:00',
-        dashboard,
-      },
+      accessSessionToken: 'session-token-123456',
+      expiresAt: '2026-07-11 05:00:00',
+      dashboard,
     }),
   };
 });
@@ -76,7 +72,7 @@ describe('PublicDashboardPage', () => {
       </MemoryRouter>,
     );
 
-    await waitFor(() => expect(mocks.access).toHaveBeenCalledWith({ token: 'share-token', password: undefined }));
+    await waitFor(() => expect(mocks.access).toHaveBeenCalledWith({ params: { token: 'share-token' }, body: { password: undefined } }));
     expect(document.body.contains(await screen.findByText('公开销售看板'))).toBe(true);
     expect(document.body.contains(screen.getByTestId('public-filter'))).toBe(true);
     expect(document.body.contains(screen.getByTestId('public-canvas'))).toBe(true);

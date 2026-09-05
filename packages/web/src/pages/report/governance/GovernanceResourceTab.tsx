@@ -84,10 +84,10 @@ export default function GovernanceResourceTab() {
       mutateAsync: ({ values }) => grantAclMutation.mutateAsync(values),
     },
     defaults: { subjectType: 'user', role: 'viewer', inheritFromFolder: false },
-    beforeSave: (values) => normalizeAclGrantValues(resourceType, resourceId!, {
+    beforeSave: (values) => ({ body: normalizeAclGrantValues(resourceType, resourceId!, {
         ...values,
         expiresAt: values.expiresAt ? formatDateTimeForApi(values.expiresAt as Date) : null,
-    }),
+    }) }),
     successMessage: () => '资源权限已授予',
   });
   const openGrantAcl = () => {
@@ -113,7 +113,7 @@ export default function GovernanceResourceTab() {
           onClick: () => { confirmDelete({
             title: `删除目录「${record.name}」？`,
             content: '存在子目录或资源时无法删除。',
-            onOk: async () => { await deleteFolderMutation.mutateAsync(record.id); Toast.success('目录已删除'); },
+            onOk: async () => { await deleteFolderMutation.mutateAsync({ params: { id: record.id } }); Toast.success('目录已删除'); },
           }); },
         },
       ],
@@ -133,7 +133,7 @@ export default function GovernanceResourceTab() {
         onClick: () => { confirmDanger({
           title: '确认撤销该资源权限？',
           content: aclRevokeWarning(),
-          onOk: async () => { await revokeAclMutation.mutateAsync(record.id); Toast.success('权限已撤销'); },
+          onOk: async () => { await revokeAclMutation.mutateAsync({ params: { id: record.id } }); Toast.success('权限已撤销'); },
         }); },
       }],
     }),

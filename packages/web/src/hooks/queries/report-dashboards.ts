@@ -1,215 +1,182 @@
 import { useCallback } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ApiResponse, PaginatedResponse } from '@zenith/shared/core';
-import type { ReportDashboard, ReportDashboardCategory, ReportDashboardComment, ReportDashboardEmbedToken, ReportDashboardLifecycleStatus, ReportDashboardShare, ReportDashboardVersion, ReportDashboardVersionDiff, ReportDatasetQueryOptions, ReportPublicAccessSession, ReportPublicDashboard, ReportWidget, ReportWidgetDataResult, ReportExecutionStats } from '@zenith/shared/report';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
-import { useReportLookup } from './report-lookups';
+import { resourceKeyOf, type BodyOf, type QueryOf } from '@zenith/shared/core';
+import {
+  reportCategoryContract,
+  reportDashboardContract,
+  reportDashboardOpsContract,
+  reportExecutionContract,
+  reportPublicContract,
+  type ReportDashboard,
+  type ReportDashboardCategory,
+  type ReportDatasetQueryOptions,
+  type ReportWidget,
+  type ReportWidgetDataResult,
+} from '@zenith/shared/report';
+import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { useReportLookup, type ReportLookupParams } from './report-lookups';
 
-export interface ReportDashboardListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  status?: string;
-  lifecycleStatus?: ReportDashboardLifecycleStatus;
-  categoryId?: number;
-  favorited?: boolean;
-  ownerId?: number;
-  folderId?: number;
-}
+export type ReportDashboardListParams = NonNullable<QueryOf<typeof reportDashboardContract.list>>;
+export type ReportDashboardCommentListParams = NonNullable<QueryOf<typeof reportDashboardOpsContract.comments>>;
+export type ReportDashboardViewMode = NonNullable<NonNullable<QueryOf<typeof reportDashboardContract.detail>>['mode']>;
 
-export interface ReportDashboardCommentListParams {
-  page: number;
-  pageSize: number;
-  widgetId?: string;
-}
+/** 仪表盘取数请求体（筛选值 / 行数上限 / 组件级查询选项） */
+type DashboardDataBody = BodyOf<typeof reportDashboardContract.data>;
+
+const sortIds = (ids: number[]) => [...ids].sort((a, b) => a - b);
 
 export const reportDashboardKeys = {
-  all: ['report', 'dashboards'] as const,
-  lists: ['report', 'dashboards', 'list'] as const,
-  list: (params: ReportDashboardListParams) => ['report', 'dashboards', 'list', params] as const,
+  /** 仪表盘 CRUD 与运维操作共用资源根路径，该前缀覆盖两个契约组的全部查询 */
+  all: [resourceKeyOf(reportDashboardContract.basePath)] as const,
+  lists: contractKey(reportDashboardContract.list),
+  list: (params: ReportDashboardListParams) => contractKey(reportDashboardContract.list, { query: params }),
   /** 某个看板的全部模式（auto / draft / published）详情 */
-  detailOf: (id: number | undefined) => ['report', 'dashboards', 'detail', id] as const,
-  detail: (id: number | undefined, mode: 'auto' | 'draft' | 'published' = 'auto') =>
-    ['report', 'dashboards', 'detail', id, mode] as const,
-  batch: (ids: number[], mode: 'auto' | 'draft' | 'published' = 'auto') =>
-    ['report', 'dashboards', 'batch', [...ids].sort((a, b) => a - b), mode] as const,
-  categories: ['report', 'dashboards', 'categories'] as const,
-  categoryLookup: (params: { keyword?: string; limit?: number }) => ['report', 'dashboards', 'category-lookup', params] as const,
-  lookup: (params: { keyword?: string; status?: 'enabled' | 'disabled'; limit?: number }) => ['report', 'dashboards', 'lookup', params] as const,
-  healthSummary: (dashboardId: number | undefined, params: Record<string, unknown>) => ['report', 'dashboards', 'health-summary', dashboardId, params] as const,
+  detailOf: (id: number | undefined) => contractKey(reportDashboardContract.detail, { params: { id: id ?? 0 }, query: {} }),
+  detail: (id: number | undefined, mode: ReportDashboardViewMode = 'auto') =>
+    contractKey(reportDashboardContract.detail, { params: { id: id ?? 0 }, query: { mode } }),
+  batch: (ids: number[], mode: ReportDashboardViewMode = 'auto') =>
+    contractKey(reportDashboardContract.batch, { body: { ids: sortIds(ids), mode } }),
+  categories: contractKey(reportCategoryContract.list),
+  healthSummary: (dashboardId: number | undefined, params: { startAt?: string; endAt?: string }) =>
+    contractKey(reportExecutionContract.stats, { query: { dashboardId, ...params } }),
+  commentsOf: (id: number | undefined) => contractKey(reportDashboardOpsContract.comments, { params: { id: id ?? 0 }, query: {} }),
   comments: (id: number | undefined, params: ReportDashboardCommentListParams) =>
-    ['report', 'dashboards', 'comments', id, params] as const,
-  shares: (id: number | undefined) => ['report', 'dashboards', 'shares', id] as const,
-  embedTokens: (id: number | undefined) => ['report', 'dashboards', 'embedTokens', id] as const,
-  versions: (id: number | undefined) => ['report', 'dashboards', 'versions', id] as const,
+    contractKey(reportDashboardOpsContract.comments, { params: { id: id ?? 0 }, query: params }),
+  shares: (id: number | undefined) => contractKey(reportDashboardOpsContract.shares, { params: { id: id ?? 0 } }),
+  embedTokens: (id: number | undefined) => contractKey(reportDashboardOpsContract.embedTokens, { params: { id: id ?? 0 } }),
+  versions: (id: number | undefined) => contractKey(reportDashboardOpsContract.versions, { params: { id: id ?? 0 } }),
   versionDiff: (dashboardId: number | undefined, left: number, right: number) =>
-    ['report', 'dashboards', 'version-diff', dashboardId, left, right] as const,
+    contractKey(reportDashboardOpsContract.versionDiff, { params: { id: dashboardId ?? 0 }, query: { left, right } }),
   /**
    * 某个看板的全部组件取数。一屏可能扇出数十个数据集查询，
    * 是本域最贵的缓存，只有看板内容真正变化时才允许失效。
    */
-  dataOf: (dashboardId: number | undefined) => ['report', 'dashboards', 'data', dashboardId] as const,
-  dashboardData: (
-    dashboardId: number | undefined,
-    mode: 'auto' | 'draft' | 'published',
-    filters: Record<string, unknown>,
-    limit: number,
-    widgetQueries?: Record<string, ReportDatasetQueryOptions>,
-  ) => ['report', 'dashboards', 'data', dashboardId, mode, filters, limit, widgetQueries ?? null] as const,
-  publicAccess: (token: string | undefined) => ['report', 'dashboards', 'public-access', token] as const,
+  dataOf: (dashboardId: number | undefined) =>
+    contractKey(reportDashboardContract.data, { params: { id: dashboardId ?? 0 }, query: {}, body: {} }),
+  dashboardData: (dashboardId: number | undefined, mode: ReportDashboardViewMode, body: DashboardDataBody) =>
+    contractKey(reportDashboardContract.data, { params: { id: dashboardId ?? 0 }, query: { mode }, body }),
   publicDashboard: (token: string | undefined, session: string | undefined) =>
-    ['report', 'dashboards', 'public', token, session ?? ''] as const,
-  publicData: (
-    token: string | undefined,
-    session: string | undefined,
-    filters: Record<string, unknown>,
-    widgetQueries?: Record<string, ReportDatasetQueryOptions>,
-  ) => ['report', 'dashboards', 'public-data', token, session ?? '', filters, widgetQueries ?? null] as const,
+    [...contractKey(reportPublicContract.dashboard, { params: { token: token ?? '' } }), session ?? ''] as const,
+  publicData: (token: string | undefined, session: string | undefined, body: DashboardDataBody) =>
+    [...contractKey(reportPublicContract.dashboardData, { params: { token: token ?? '' }, body }), session ?? ''] as const,
 };
 
 export function useReportDashboardList(params: ReportDashboardListParams) {
-  return useQuery({
-    queryKey: reportDashboardKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<ReportDashboard>>(`/api/report/dashboards${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+  return useApiQuery(reportDashboardContract.list, { query: params }, { placeholderData: keepPreviousData });
 }
 
 export function useReportDashboardCategories() {
-  return useQuery({
-    queryKey: reportDashboardKeys.categories,
-    queryFn: () => request.get<ReportDashboardCategory[]>('/api/report/categories').then(unwrap),
-  });
+  return useApiQuery(reportCategoryContract.list);
 }
 
-export function useReportDashboardCategoryLookup(params: { keyword?: string; limit?: number } = {}, enabled = true) {
+export function useReportDashboardCategoryLookup(params: Pick<ReportLookupParams, 'keyword' | 'limit'> = {}, enabled = true) {
   return useReportLookup('categories', params, enabled);
 }
 
-export function useReportDashboardLookup(params: { keyword?: string; status?: 'enabled' | 'disabled'; limit?: number } = {}, enabled = true) {
+export function useReportDashboardLookup(params: ReportLookupParams = {}, enabled = true) {
   return useReportLookup('dashboards', params, enabled);
 }
 
-export function useReportDashboardDetail(
-  id: number | undefined,
-  enabled = true,
-  mode: 'auto' | 'draft' | 'published' = 'auto',
-) {
-  return useQuery({
-    queryKey: reportDashboardKeys.detail(id, mode),
-    queryFn: () => request.get<ReportDashboard>(`/api/report/dashboards/${id}${toQueryString({ mode })}`).then(unwrap),
-    enabled: enabled && !!id,
-  });
+export function useReportDashboardDetail(id: number | undefined, enabled = true, mode: ReportDashboardViewMode = 'auto') {
+  return useApiQuery(reportDashboardContract.detail, { params: { id: id ?? 0 }, query: { mode } }, { enabled: enabled && !!id });
 }
 
-export function useReportDashboardBatch(ids: number[], enabled = true, mode: 'auto' | 'draft' | 'published' = 'auto') {
+export function useReportDashboardBatch(ids: number[], enabled = true, mode: ReportDashboardViewMode = 'auto') {
   return useQuery({
     queryKey: reportDashboardKeys.batch(ids, mode),
-    queryFn: () => request.post<ReportDashboard[]>('/api/report/dashboards/batch', { ids, mode }).then(unwrap),
+    queryFn: () => api(reportDashboardContract.batch, { body: { ids, mode } }),
     enabled: enabled && ids.length > 0,
   });
 }
 
+/** 保存会改写看板内容：详情（各模式）、列表与该看板的取数结果都要回源 */
+function invalidateDashboardContent(qc: ReturnType<typeof useQueryClient>, id: number) {
+  void qc.invalidateQueries({ queryKey: reportDashboardKeys.lists });
+  void qc.invalidateQueries({ queryKey: reportDashboardKeys.detailOf(id) });
+  void qc.invalidateQueries({ queryKey: reportDashboardKeys.dataOf(id) });
+}
+
+export type SaveReportDashboardValues = Partial<BodyOf<typeof reportDashboardContract.create>> & { expectedRevision?: number };
+
+/** 无 id 走 create，有 id 走 update（供 useEditModal 使用；编辑时必须携带 expectedRevision） */
 export function useSaveReportDashboard() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
-      (id ? request.put<ReportDashboard>(`/api/report/dashboards/${id}`, values) : request.post<ReportDashboard>('/api/report/dashboards', values)).then(unwrap),
+  return useMutation<ReportDashboard, Error, { id?: number; values: SaveReportDashboardValues }>({
+    mutationFn: ({ id, values }) => (id === undefined
+      ? api(reportDashboardContract.create, { body: values as BodyOf<typeof reportDashboardContract.create> })
+      : api(reportDashboardContract.update, { params: { id }, body: values as BodyOf<typeof reportDashboardContract.update> })),
     onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: reportDashboardKeys.lists });
-      if (vars.id) {
-        // detailOf 覆盖 auto / draft / published 三种模式，无需逐个列举
-        void qc.invalidateQueries({ queryKey: reportDashboardKeys.detailOf(vars.id) });
-        // 组件布局与查询配置变了，取数结果随之失效
-        void qc.invalidateQueries({ queryKey: reportDashboardKeys.dataOf(vars.id) });
-      }
+      if (vars.id) invalidateDashboardContent(qc, vars.id);
     },
   });
 }
 
+/** 发布会改变 published 模式下的取数结果，版本与分享随之刷新 */
 export function usePublishReportDashboard() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ dashboardId, expectedRevision, remark }: { dashboardId: number; expectedRevision: number; remark?: string }) =>
-      request.post<ReportDashboard>(`/api/report/dashboards/${dashboardId}/publish`, { expectedRevision, remark }).then(unwrap),
-    onSuccess: (_data, vars) => {
-      void qc.invalidateQueries({ queryKey: reportDashboardKeys.lists });
-      void qc.invalidateQueries({ queryKey: reportDashboardKeys.detailOf(vars.dashboardId) });
-      void qc.invalidateQueries({ queryKey: reportDashboardKeys.versions(vars.dashboardId) });
-      void qc.invalidateQueries({ queryKey: reportDashboardKeys.shares(vars.dashboardId) });
-      // 发布会改变 published 模式下的取数结果
-      void qc.invalidateQueries({ queryKey: reportDashboardKeys.dataOf(vars.dashboardId) });
+  return useApiMutation(reportDashboardContract.publish, {
+    invalidate: (qc, _output, { params }) => {
+      invalidateDashboardContent(qc, params.id);
+      void qc.invalidateQueries({ queryKey: reportDashboardKeys.versions(params.id) });
+      void qc.invalidateQueries({ queryKey: reportDashboardKeys.shares(params.id) });
     },
   });
 }
 
 export function useOfflineReportDashboard() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ dashboardId, expectedRevision, remark }: { dashboardId: number; expectedRevision: number; remark?: string }) =>
-      request.post<ReportDashboard>(`/api/report/dashboards/${dashboardId}/offline`, { expectedRevision, remark }).then(unwrap),
-    onSuccess: (_data, vars) => {
+  return useApiMutation(reportDashboardContract.offline, {
+    invalidate: (qc, _output, { params }) => {
       void qc.invalidateQueries({ queryKey: reportDashboardKeys.lists });
-      void qc.invalidateQueries({ queryKey: reportDashboardKeys.detailOf(vars.dashboardId) });
+      void qc.invalidateQueries({ queryKey: reportDashboardKeys.detailOf(params.id) });
     },
   });
 }
 
+/** 看板已删除：详情、取数、版本、分享都不再有对应资源 */
 export function useDeleteReportDashboard() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/report/dashboards/${id}`).then(unwrap),
-    onSuccess: (_data, id) => {
-      // 看板已删除：详情、取数、版本、分享都不再有对应资源
-      qc.removeQueries({ queryKey: reportDashboardKeys.detailOf(id) });
-      qc.removeQueries({ queryKey: reportDashboardKeys.dataOf(id) });
-      qc.removeQueries({ queryKey: reportDashboardKeys.versions(id) });
-      qc.removeQueries({ queryKey: reportDashboardKeys.shares(id) });
+  return useApiMutation(reportDashboardContract.remove, {
+    invalidate: (qc, _output, { params }) => {
+      qc.removeQueries({ queryKey: reportDashboardKeys.detailOf(params.id) });
+      qc.removeQueries({ queryKey: reportDashboardKeys.dataOf(params.id) });
+      qc.removeQueries({ queryKey: reportDashboardKeys.versions(params.id) });
+      qc.removeQueries({ queryKey: reportDashboardKeys.shares(params.id) });
       void qc.invalidateQueries({ queryKey: reportDashboardKeys.lists });
     },
   });
 }
 
 export function useBatchReportDashboardStatus() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ ids, status }: { ids: number[]; status: 'enabled' | 'disabled' }) =>
-      request.put<null>('/api/report/dashboards/batch-status', { ids, status }).then(unwrap),
-    onSuccess: (_data, { ids }) => {
+  return useApiMutation(reportDashboardContract.batchStatus, {
+    invalidate: (qc, _output, { body }) => {
       void qc.invalidateQueries({ queryKey: reportDashboardKeys.lists });
-      for (const id of ids) void qc.invalidateQueries({ queryKey: reportDashboardKeys.detailOf(id) });
+      for (const id of body.ids) void qc.invalidateQueries({ queryKey: reportDashboardKeys.detailOf(id) });
     },
   });
 }
 
+/** 克隆只新增一条记录，源看板与其取数结果都不受影响 */
 export function useCloneReportDashboard() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, name }: { id: number; name?: string }) =>
-      request.post<ReportDashboard>(`/api/report/dashboards/${id}/clone`, name ? { name } : {}).then(unwrap),
-    // 克隆只新增一条记录，源看板与其取数结果都不受影响
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportDashboardKeys.lists }),
+  return useApiMutation(reportDashboardContract.clone, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportDashboardKeys.lists }),
   });
 }
 
+export type SaveReportDashboardCategoryValues = Partial<BodyOf<typeof reportCategoryContract.create>>;
+
+/** 无 id 走 create，有 id 走 update（供 useEditModal 使用） */
 export function useSaveReportDashboardCategory() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
-      (id
-        ? request.put<ReportDashboardCategory>(`/api/report/categories/${id}`, values)
-        : request.post<ReportDashboardCategory>('/api/report/categories', values)
-      ).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportDashboardKeys.categories }),
+  return useMutation<ReportDashboardCategory, Error, { id?: number; values: SaveReportDashboardCategoryValues }>({
+    mutationFn: ({ id, values }) => (id === undefined
+      ? api(reportCategoryContract.create, { body: values as BodyOf<typeof reportCategoryContract.create> })
+      : api(reportCategoryContract.update, { params: { id }, body: values })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: reportDashboardKeys.categories }),
   });
 }
 
 export function useDeleteReportDashboardCategory() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/report/categories/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportDashboardKeys.categories }),
+  return useApiMutation(reportCategoryContract.remove, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportDashboardKeys.categories }),
   });
 }
 
@@ -218,173 +185,133 @@ export function useReportDashboardHealthSummary(
   params: { startAt?: string; endAt?: string } = {},
   enabled = true,
 ) {
-  return useQuery({
-    queryKey: reportDashboardKeys.healthSummary(dashboardId, params),
-    queryFn: () => request.get<ReportExecutionStats>(`/api/report/executions/stats${toQueryString({ dashboardId, ...params })}`).then(unwrap),
-    enabled: enabled && !!dashboardId,
-  });
+  return useApiQuery(reportExecutionContract.stats, { query: { dashboardId, ...params } }, { enabled: enabled && !!dashboardId });
 }
 
+/** 收藏只是列表上的一个标记，不影响详情与取数 */
 export function useToggleReportDashboardFavorite() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.post<{ favorited: boolean }>(`/api/report/dashboards/${id}/favorite`).then(unwrap),
-    // 收藏只是列表上的一个标记；此前的 `.all` 会连带重跑整个看板的组件取数
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportDashboardKeys.lists }),
+  return useApiMutation(reportDashboardOpsContract.favorite, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportDashboardKeys.lists }),
   });
 }
 
-export function useReportDashboardComments(
-  id: number | undefined,
-  params: ReportDashboardCommentListParams,
-  enabled = true,
-) {
-  return useQuery({
-    queryKey: reportDashboardKeys.comments(id, params),
-    queryFn: () => request.get<PaginatedResponse<ReportDashboardComment>>(
-      `/api/report/dashboards/${id}/comments${toQueryString(params)}`,
-      { silent: true },
-    ).then(unwrap),
+// ─── 评论 ───────────────────────────────────────────────────────────────────
+
+export function useReportDashboardComments(id: number | undefined, params: ReportDashboardCommentListParams, enabled = true) {
+  return useApiQuery(reportDashboardOpsContract.comments, { params: { id: id ?? 0 }, query: params }, {
     enabled: enabled && !!id,
     placeholderData: keepPreviousData,
+    requestOptions: { silent: true },
   });
 }
 
+const commentMutation = { requestOptions: { silent: true } } as const;
+
 export function useCreateReportDashboardComment() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ dashboardId, widgetId, parentId, content }: { dashboardId: number; widgetId?: string | null; parentId?: number | null; content: string }) =>
-      request.post<ReportDashboardComment>(`/api/report/dashboards/${dashboardId}/comments`, { widgetId: widgetId ?? null, parentId: parentId ?? null, content }, { silent: true }).then(unwrap),
-    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: ['report', 'dashboards', 'comments', vars.dashboardId] }),
+  return useApiMutation(reportDashboardOpsContract.createComment, {
+    ...commentMutation,
+    invalidate: (qc, _output, { params }) => void qc.invalidateQueries({ queryKey: reportDashboardKeys.commentsOf(params.id) }),
   });
 }
 
 export function useUpdateReportDashboardComment() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ dashboardId, commentId, content }: { dashboardId: number; commentId: number; content: string }) =>
-      request.put<ReportDashboardComment>(`/api/report/dashboards/${dashboardId}/comments/${commentId}`, { content }, { silent: true }).then(unwrap),
-    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: ['report', 'dashboards', 'comments', vars.dashboardId] }),
+  return useApiMutation(reportDashboardOpsContract.updateComment, {
+    ...commentMutation,
+    invalidate: (qc, _output, { params }) => void qc.invalidateQueries({ queryKey: reportDashboardKeys.commentsOf(params.id) }),
   });
 }
 
 export function useResolveReportDashboardComment() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ dashboardId, commentId, resolved }: { dashboardId: number; commentId: number; resolved: boolean }) =>
-      request.post<ReportDashboardComment>(`/api/report/dashboards/${dashboardId}/comments/${commentId}/resolve`, { resolved }, { silent: true }).then(unwrap),
-    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: ['report', 'dashboards', 'comments', vars.dashboardId] }),
+  return useApiMutation(reportDashboardOpsContract.resolveComment, {
+    ...commentMutation,
+    invalidate: (qc, _output, { params }) => void qc.invalidateQueries({ queryKey: reportDashboardKeys.commentsOf(params.id) }),
   });
 }
 
 export function useDeleteReportDashboardComment() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ dashboardId, commentId }: { dashboardId: number; commentId: number }) =>
-      request.delete<null>(`/api/report/dashboards/${dashboardId}/comments/${commentId}`, undefined, { silent: true }).then(unwrap),
-    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: ['report', 'dashboards', 'comments', vars.dashboardId] }),
+  return useApiMutation(reportDashboardOpsContract.removeComment, {
+    ...commentMutation,
+    invalidate: (qc, _output, { params }) => void qc.invalidateQueries({ queryKey: reportDashboardKeys.commentsOf(params.id) }),
   });
 }
 
+// ─── 分享 / 嵌入令牌 ───────────────────────────────────────────────────────
+
 export function useReportDashboardShares(id: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: reportDashboardKeys.shares(id),
-    queryFn: () => request.get<ReportDashboardShare[]>(`/api/report/dashboards/${id}/shares`).then(unwrap),
-    enabled: enabled && !!id,
-  });
+  return useApiQuery(reportDashboardOpsContract.shares, { params: { id: id ?? 0 } }, { enabled: enabled && !!id });
 }
 
 export function useCreateReportDashboardShare() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ dashboardId, values }: { dashboardId: number; values: Record<string, unknown> }) =>
-      request.post<ReportDashboardShare>(`/api/report/dashboards/${dashboardId}/shares`, values).then(unwrap),
-    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: reportDashboardKeys.shares(vars.dashboardId) }),
+  return useApiMutation(reportDashboardOpsContract.createShare, {
+    invalidate: (qc, _output, { params }) => void qc.invalidateQueries({ queryKey: reportDashboardKeys.shares(params.id) }),
   });
 }
 
 export function useUpdateReportDashboardShare() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ shareId, dashboardId: _dashboardId, values }: { shareId: number; dashboardId: number; values: Record<string, unknown> }) =>
-      request.put<ReportDashboardShare>(`/api/report/dashboards/shares/${shareId}`, values).then(unwrap),
-    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: reportDashboardKeys.shares(vars.dashboardId) }),
+  return useApiMutation(reportDashboardOpsContract.updateShare, {
+    invalidate: (qc, share) => void qc.invalidateQueries({ queryKey: reportDashboardKeys.shares(share.dashboardId) }),
   });
 }
 
+/** 删除接口不返回实体，调用方随变量携带 dashboardId 以定位失效范围 */
 export function useDeleteReportDashboardShare() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (share: ReportDashboardShare) => request.delete<null>(`/api/report/dashboards/shares/${share.id}`).then(unwrap),
-    onSuccess: (_data, share) => qc.invalidateQueries({ queryKey: reportDashboardKeys.shares(share.dashboardId) }),
+    mutationFn: ({ shareId }: { shareId: number; dashboardId: number }) =>
+      api(reportDashboardOpsContract.removeShare, { params: { shareId } }),
+    onSuccess: (_data, vars) => void qc.invalidateQueries({ queryKey: reportDashboardKeys.shares(vars.dashboardId) }),
   });
 }
 
 export function useReportDashboardEmbedTokens(id: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: reportDashboardKeys.embedTokens(id),
-    queryFn: () => request.get<ReportDashboardEmbedToken[]>(`/api/report/dashboards/${id}/embed-tokens`).then(unwrap),
-    enabled: enabled && !!id,
-  });
+  return useApiQuery(reportDashboardOpsContract.embedTokens, { params: { id: id ?? 0 } }, { enabled: enabled && !!id });
 }
 
 export function useCreateReportDashboardEmbedToken() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ dashboardId, values }: { dashboardId: number; values: Record<string, unknown> }) =>
-      request.post<ReportDashboardEmbedToken>(`/api/report/dashboards/${dashboardId}/embed-tokens`, values).then(unwrap),
-    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: reportDashboardKeys.embedTokens(vars.dashboardId) }),
+  return useApiMutation(reportDashboardOpsContract.createEmbedToken, {
+    invalidate: (qc, _output, { params }) => void qc.invalidateQueries({ queryKey: reportDashboardKeys.embedTokens(params.id) }),
   });
 }
 
+/** 撤销接口不返回实体，调用方随变量携带 dashboardId 以定位失效范围 */
 export function useRevokeReportDashboardEmbedToken() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ embedTokenId, dashboardId: _dashboardId }: { embedTokenId: number; dashboardId: number }) =>
-      request.post<null>(`/api/report/dashboards/embed-tokens/${embedTokenId}/revoke`).then(unwrap),
-    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: reportDashboardKeys.embedTokens(vars.dashboardId) }),
+    mutationFn: ({ embedTokenId }: { embedTokenId: number; dashboardId: number }) =>
+      api(reportDashboardOpsContract.revokeEmbedToken, { params: { embedTokenId } }),
+    onSuccess: (_data, vars) => void qc.invalidateQueries({ queryKey: reportDashboardKeys.embedTokens(vars.dashboardId) }),
   });
 }
 
+// ─── 版本 ───────────────────────────────────────────────────────────────────
+
 export function useReportDashboardVersions(id: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: reportDashboardKeys.versions(id),
-    queryFn: () => request.get<ReportDashboardVersion[]>(`/api/report/dashboards/${id}/versions`).then(unwrap),
-    enabled: enabled && !!id,
-  });
+  return useApiQuery(reportDashboardOpsContract.versions, { params: { id: id ?? 0 } }, { enabled: enabled && !!id });
 }
 
 export function useReportDashboardVersionDiff(dashboardId: number | undefined, left: number, right: number, enabled = true) {
-  return useQuery({
-    queryKey: reportDashboardKeys.versionDiff(dashboardId, left, right),
-    queryFn: () => request.get<ReportDashboardVersionDiff>(`/api/report/dashboards/${dashboardId}/versions/diff${toQueryString({ left, right })}`).then(unwrap),
+  return useApiQuery(reportDashboardOpsContract.versionDiff, { params: { id: dashboardId ?? 0 }, query: { left, right } }, {
     enabled: enabled && !!dashboardId,
   });
 }
 
 export function useSaveReportDashboardVersion() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ dashboardId, remark }: { dashboardId: number; remark?: string }) =>
-      request.post<ReportDashboardVersion>(`/api/report/dashboards/${dashboardId}/versions`, { remark }).then(unwrap),
-    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: reportDashboardKeys.versions(vars.dashboardId) }),
+  return useApiMutation(reportDashboardOpsContract.createVersion, {
+    invalidate: (qc, _output, { params }) => void qc.invalidateQueries({ queryKey: reportDashboardKeys.versions(params.id) }),
   });
 }
 
+/** 回滚会改写草稿内容，取数结果随之失效 */
 export function useRestoreReportDashboardVersion() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ dashboardId, versionId, expectedRevision }: { dashboardId: number; versionId: number; expectedRevision: number }) =>
-      request.post<null>(`/api/report/dashboards/${dashboardId}/versions/${versionId}/restore`, { expectedRevision }).then(unwrap),
-    onSuccess: (_data, vars) => {
-      void qc.invalidateQueries({ queryKey: reportDashboardKeys.versions(vars.dashboardId) });
-      void qc.invalidateQueries({ queryKey: reportDashboardKeys.detailOf(vars.dashboardId) });
-      // 回滚会改写草稿内容，取数结果随之失效
-      void qc.invalidateQueries({ queryKey: reportDashboardKeys.dataOf(vars.dashboardId) });
-      void qc.invalidateQueries({ queryKey: reportDashboardKeys.lists });
+  return useApiMutation(reportDashboardOpsContract.restoreVersion, {
+    invalidate: (qc, _output, { params }) => {
+      void qc.invalidateQueries({ queryKey: reportDashboardKeys.versions(params.id) });
+      invalidateDashboardContent(qc, params.id);
     },
   });
 }
+
+// ─── 组件取数 ───────────────────────────────────────────────────────────────
 
 export interface DashboardWidgetDataState {
   data: ReportWidgetDataResult['data'] | null;
@@ -409,19 +336,17 @@ export function useReportDashboardWidgetData(
     limit?: number;
     refetchInterval?: number | false;
     widgetQueries?: Record<string, ReportDatasetQueryOptions>;
-    mode?: 'auto' | 'draft' | 'published';
+    mode?: ReportDashboardViewMode;
   },
 ) {
   const queryClient = useQueryClient();
   const limit = options?.limit ?? 500;
   const mode = options?.mode ?? 'auto';
+  const body: DashboardDataBody = { filters: filterValues, limit, widgetQueries: options?.widgetQueries };
+  const queryKey = reportDashboardKeys.dashboardData(dashboardId, mode, body);
   const dataQuery = useQuery({
-    queryKey: reportDashboardKeys.dashboardData(dashboardId, mode, filterValues, limit, options?.widgetQueries),
-    queryFn: ({ signal }) => request.post<Record<string, ReportWidgetDataResult>>(
-      `/api/report/dashboards/${dashboardId}/data${toQueryString({ mode })}`,
-      { filters: filterValues, limit, widgetQueries: options?.widgetQueries },
-      { silent: true, signal },
-    ).then(unwrap),
+    queryKey,
+    queryFn: ({ signal }) => api(reportDashboardContract.data, { params: { id: dashboardId ?? 0 }, query: { mode }, body }, { silent: true, signal }),
     enabled: !!dashboardId,
     refetchInterval: buildStableJitter(options?.refetchInterval, `dashboard:${dashboardId ?? 'none'}:${mode}`),
   });
@@ -436,28 +361,33 @@ export function useReportDashboardWidgetData(
     };
   }, [dataQuery.data, dataQuery.error, dataQuery.isFetching]);
 
+  const widgetQueries = options?.widgetQueries;
   const refresh = useCallback(() => {
-    void queryClient.refetchQueries({ queryKey: reportDashboardKeys.dashboardData(dashboardId, mode, filterValues, limit, options?.widgetQueries), type: 'active' });
-  }, [dashboardId, filterValues, limit, mode, options?.widgetQueries, queryClient]);
+    void queryClient.refetchQueries({
+      queryKey: reportDashboardKeys.dashboardData(dashboardId, mode, { filters: filterValues, limit, widgetQueries }),
+      type: 'active',
+    });
+  }, [dashboardId, filterValues, limit, mode, widgetQueries, queryClient]);
 
   return { get, refresh, query: dataQuery };
 }
 
+// ─── 公开分享 ───────────────────────────────────────────────────────────────
+
+const publicRequest = { skipAuth: true, silent: true } as const;
+
+/** 密码验证并签发访问会话；code !== 0 时以 ApiError 抛出（401 = 密码错误） */
 export function usePublicReportDashboardAccess() {
-  return useMutation({
-    mutationFn: ({ token, password }: { token: string; password?: string }) =>
-      request.post<ReportPublicAccessSession>(`/api/report/public/dashboards/${token}/access`, { password }, { skipAuth: true, silent: true }) as Promise<ApiResponse<ReportPublicAccessSession>>,
-  });
+  return useApiMutation(reportPublicContract.access, { requestOptions: publicRequest });
 }
 
 export function usePublicReportDashboard(token: string | undefined, session: string | undefined, enabled = true) {
   return useQuery({
     queryKey: reportDashboardKeys.publicDashboard(token, session),
-    queryFn: () => request.get<ReportPublicDashboard>(`/api/report/public/dashboards/${token}`, {
-      skipAuth: true,
-      silent: true,
+    queryFn: () => api(reportPublicContract.dashboard, { params: { token: token ?? '' } }, {
+      ...publicRequest,
       headers: session ? { session } : undefined,
-    }).then(unwrap),
+    }),
     enabled: enabled && !!token && !!session,
   });
 }
@@ -469,13 +399,14 @@ export function usePublicReportDashboardData(
   widgetQueries?: Record<string, ReportDatasetQueryOptions>,
   enabled = true,
 ) {
+  const body: DashboardDataBody = { filters, widgetQueries };
   return useQuery({
-    queryKey: reportDashboardKeys.publicData(token, session, filters, widgetQueries),
-    queryFn: ({ signal }) => request.post<Record<string, ReportWidgetDataResult>>(
-      `/api/report/public/dashboards/${token}/data`,
-      { filters, widgetQueries },
-      { skipAuth: true, silent: true, signal, headers: session ? { session } : undefined },
-    ).then(unwrap),
+    queryKey: reportDashboardKeys.publicData(token, session, body),
+    queryFn: ({ signal }) => api(reportPublicContract.dashboardData, { params: { token: token ?? '' }, body }, {
+      ...publicRequest,
+      signal,
+      headers: session ? { session } : undefined,
+    }),
     enabled: enabled && !!token && !!session,
   });
 }

@@ -7,6 +7,7 @@
 export * from './constants';
 export * from './types';
 export * from './validation';
+export * from './contracts';
 export * from './aggregation';
 export * from './embed';
 export * from './format';

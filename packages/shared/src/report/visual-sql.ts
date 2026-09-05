@@ -1,4 +1,4 @@
-import type { ReportVisualFilter, ReportVisualJoin, ReportVisualMetric, ReportVisualModel } from './types';
+import type { ReportVisualFilter, ReportVisualJoin, ReportVisualMetric, ReportVisualModel } from './contracts';
 
 const IDENT_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
