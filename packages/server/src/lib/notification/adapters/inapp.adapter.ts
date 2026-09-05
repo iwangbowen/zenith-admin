@@ -57,8 +57,9 @@ export const inAppAdapter: NotificationChannelAdapter = {
       payload: {
         id: inserted.id,
         templateId: null,
+        templateName: null,
         userId,
-        userName: null,
+        username: null,
         title: ctx.title,
         content: ctx.content,
         type,
@@ -68,7 +69,6 @@ export const inAppAdapter: NotificationChannelAdapter = {
         senderId: null,
         senderName: null,
         link: ctx.link,
-        tenantId: ctx.tenantId,
         createdAt: formatDateTime(inserted.createdAt),
       },
     });

@@ -2,12 +2,12 @@
  * 支付风控运营路由（/api/payment/risk）。
  * 拦截/命中留痕列表、人工审核队列（放行/拒绝）。规则 CRUD 见 /api/payment/risk-rules。
  */
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { handlePaymentRiskReviewSchema } from '@zenith/shared/payment';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { paymentRiskOpsContract } from '@zenith/shared/payment';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
-import { IdParam, PaginationQuery, commonErrorResponses, dateRangeBound, jsonContent, ok, okBody, okPaginated, validationHook } from '../../lib/openapi-schemas';
-import { PaymentRiskHitDTO, PaymentRiskReviewDTO } from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   approveRiskReview,
   findRiskReviewById,
@@ -17,75 +17,31 @@ import {
 } from '../../services/payment/payment-risk.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
-const channelEnum = z.enum(['wechat', 'alipay', 'unionpay']);
 
-const hitsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/hits', tags: ['支付中心-风控'], summary: '风控命中/拦截记录',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:risk:list' })] as const,
-    request: {
-      query: PaginationQuery.extend({
-        keyword: z.string().optional(),
-        action: z.enum(['block', 'review']).optional(),
-        dimension: z.enum(['blocklist', 'single_limit', 'daily_limit', 'daily_count']).optional(),
-        channel: channelEnum.optional(),
-        startTime: dateRangeBound('起始时间'),
-        endTime: dateRangeBound('结束时间'),
-      }),
-    },
-    responses: { ...okPaginated(PaymentRiskHitDTO, '命中记录列表'), ...commonErrorResponses },
-  }),
+const hitsRoute = defineContractRoute(paymentRiskOpsContract.hits, {
+  middleware: [authMiddleware, guard({ permission: 'payment:risk:list' })],
   handler: async (c) => c.json(okBody(await listRiskHits(c.req.valid('query'))), 200),
 });
 
-const reviewsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/reviews', tags: ['支付中心-风控'], summary: '人工审核队列',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:risk:list' })] as const,
-    request: {
-      query: PaginationQuery.extend({
-        keyword: z.string().optional(),
-        status: z.enum(['pending', 'approved', 'rejected']).optional(),
-        channel: channelEnum.optional(),
-      }),
-    },
-    responses: { ...okPaginated(PaymentRiskReviewDTO, '审核队列'), ...commonErrorResponses },
-  }),
+const reviewsRoute = defineContractRoute(paymentRiskOpsContract.reviews, {
+  middleware: [authMiddleware, guard({ permission: 'payment:risk:list' })],
   handler: async (c) => c.json(okBody(await listRiskReviews(c.req.valid('query'))), 200),
 });
 
-async function reviewBefore(id: number) {
-  return findRiskReviewById(id);
-}
-
-const approveRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/reviews/{id}/approve', tags: ['支付中心-风控'], summary: '审核放行（挂起订单可继续支付）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:risk:review', audit: { description: '风控审核放行', module: '支付中心' } })] as const,
-    request: { params: IdParam, body: { content: jsonContent(handlePaymentRiskReviewSchema), required: true } },
-    responses: { ...ok(PaymentRiskReviewDTO, '已放行'), ...commonErrorResponses },
-  }),
+const approveRoute = defineContractRoute(paymentRiskOpsContract.approveReview, {
+  middleware: [authMiddleware, guard({ permission: 'payment:risk:review', audit: { description: '风控审核放行', module: '支付中心' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    setAuditBeforeData(c, await reviewBefore(id));
+    setAuditBeforeData(c, await findRiskReviewById(id));
     return c.json(okBody(await approveRiskReview(id, c.req.valid('json').remark), '已放行'), 200);
   },
 });
 
-const rejectRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/reviews/{id}/reject', tags: ['支付中心-风控'], summary: '审核拒绝（关闭挂起订单）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:risk:review', audit: { description: '风控审核拒绝', module: '支付中心' } })] as const,
-    request: { params: IdParam, body: { content: jsonContent(handlePaymentRiskReviewSchema), required: true } },
-    responses: { ...ok(PaymentRiskReviewDTO, '已拒绝'), ...commonErrorResponses },
-  }),
+const rejectRoute = defineContractRoute(paymentRiskOpsContract.rejectReview, {
+  middleware: [authMiddleware, guard({ permission: 'payment:risk:review', audit: { description: '风控审核拒绝', module: '支付中心' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    setAuditBeforeData(c, await reviewBefore(id));
+    setAuditBeforeData(c, await findRiskReviewById(id));
     return c.json(okBody(await rejectRiskReview(id, c.req.valid('json').remark), '已拒绝'), 200);
   },
 });

@@ -50,7 +50,7 @@ export default function NotificationsPage() {
   const total = listQuery.data?.total ?? 0;
 
   const handleMarkAll = async () => {
-    await markAllRead.mutateAsync();
+    await markAllRead.mutateAsync({});
     Toast.success('已全部标为已读');
   };
 
@@ -71,7 +71,7 @@ export default function NotificationsPage() {
       ) : (
         <>
           {list.map((n) => (
-            <NotificationItem key={n.id} item={n} onRead={(id) => void markRead.mutateAsync(id)} />
+            <NotificationItem key={n.id} item={n} onRead={(id) => void markRead.mutateAsync({ params: { id } })} />
           ))}
           {total > pageSize && (
             <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 8 }}>

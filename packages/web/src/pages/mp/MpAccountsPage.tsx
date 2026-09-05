@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Banner, Button, Col, Form, Row, SideSheet, Spin, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
-import type { MpAccount, MpAccountType } from '@zenith/shared/mp';
+import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
+import { MP_ACCOUNT_TYPES, type CreateMpAccountInput, type MpAccount, type MpAccountType } from '@zenith/shared/mp';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -13,7 +14,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
 import {
   mpAccountKeys,
-  useDeleteMpAccount,
+  useDeleteMpAccounts,
   useMpAccountDetail,
   useMpAccountList,
   useSaveMpAccount,
@@ -66,20 +67,35 @@ export default function MpAccountsPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    type: submittedParams.filterType,
-    status: submittedParams.filterStatus,
+    type: enumValueOf(MP_ACCOUNT_TYPES, submittedParams.filterType),
+    status: enumValueOf(USER_STATUSES, submittedParams.filterStatus),
   });
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
   const saveMutation = useSaveMpAccount();
-  const modal = useEditModal<MpAccount, Record<string, unknown>>({
+  const modal = useEditModal<MpAccount, Partial<CreateMpAccountInput>>({
     entityName: '公众号',
     save: saveMutation,
     useDetail: useMpAccountDetail,
     defaults: { status: 'enabled', isDefault: false, type: 'service', encryptMode: 'plaintext' },
-    toValues: (record) => ({ ...record, appSecret: '' }),
+    toValues: (record) => ({
+      name: record.name,
+      account: record.account ?? undefined,
+      appId: record.appId,
+      appSecret: '',
+      token: record.token,
+      encodingAesKey: record.encodingAesKey ?? undefined,
+      encryptMode: record.encryptMode,
+      type: record.type,
+      qrCodeUrl: record.qrCodeUrl ?? undefined,
+      isDefault: record.isDefault,
+      autoCreateMember: record.autoCreateMember,
+      contentCheckEnabled: record.contentCheckEnabled,
+      status: record.status,
+      remark: record.remark ?? undefined,
+    }),
     beforeSave: (values, { isEdit }) => {
-      const payload: Record<string, unknown> = { ...values };
+      const payload = { ...values };
       if (isEdit && !payload.appSecret) delete payload.appSecret;
       return payload;
     },
@@ -87,18 +103,18 @@ export default function MpAccountsPage() {
   });
   const setDefaultMutation = useSetDefaultMpAccount();
   const testMutation = useTestMpAccount();
-  const deleteMutation = useDeleteMpAccount();
+  const deleteMutation = useDeleteMpAccounts();
   const toggleStatusMutation = useSaveMpAccount();
-  const testingId = testMutation.isPending ? (testMutation.variables ?? null) : null;
+  const testingId = testMutation.isPending ? (testMutation.variables?.params.id ?? null) : null;
   const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
 
   const handleSetDefault = async (record: MpAccount) => {
-    await setDefaultMutation.mutateAsync(record.id);
+    await setDefaultMutation.mutateAsync({ params: { id: record.id } });
     Toast.success('已设为默认');
   };
 
   const handleTest = async (record: MpAccount) => {
-    const data = await testMutation.mutateAsync(record.id);
+    const data = await testMutation.mutateAsync({ params: { id: record.id } });
     Toast.success(data.message || '连接成功');
   };
 

@@ -1,10 +1,5 @@
-import type { EmailTemplate } from '@zenith/shared/messaging';
-import { createCrudQueries, type CrudListParams } from '@/lib/crud-queries';
-
-export interface EmailTemplateListParams extends CrudListParams {
-  keyword?: string;
-  status?: string;
-}
+import { emailTemplateContract } from '@zenith/shared/messaging';
+import { createResourceQueries } from '@/lib/contract-query';
 
 export const {
   keys: emailTemplateKeys,
@@ -12,7 +7,4 @@ export const {
   useDetail: useEmailTemplateDetail,
   useSave: useSaveEmailTemplate,
   useDelete: useDeleteEmailTemplate,
-} = createCrudQueries<EmailTemplate, EmailTemplateListParams>({
-  resource: 'email-templates',
-  deleteMode: 'single',
-});
+} = createResourceQueries(emailTemplateContract);

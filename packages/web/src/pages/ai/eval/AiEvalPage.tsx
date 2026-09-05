@@ -171,7 +171,7 @@ function DatasetDetail({ dataset, canManage }: { dataset: AiEvalDataset; canMana
             confirmDelete({
               title: '确定要删除该条目吗？',
               onOk: async () => {
-                await deleteItemMutation.mutateAsync({ datasetId: dataset.id, itemId: record.id }).then(() => Toast.success('已删除')).catch(() => {});
+                await deleteItemMutation.mutateAsync({ params: { id: dataset.id, itemId: record.id } }).then(() => Toast.success('已删除')).catch(() => {});
               },
             });
           }}
@@ -299,7 +299,7 @@ function DatasetDetail({ dataset, canManage }: { dataset: AiEvalDataset; canMana
               return;
             }
             try {
-              await addItemsMutation.mutateAsync({ datasetId: dataset.id, values: { items } });
+              await addItemsMutation.mutateAsync({ params: { id: dataset.id }, body: { items } });
               Toast.success(`已添加 ${items.length} 条`);
               setAddVisible(false);
             } catch { /* 请求层已提示 */ }
@@ -332,8 +332,8 @@ function DatasetDetail({ dataset, canManage }: { dataset: AiEvalDataset; canMana
           onSubmit={async (values) => {
             try {
               await runMutation.mutateAsync({
-                datasetId: dataset.id,
-                values: {
+                params: { id: dataset.id },
+                body: {
                   name: values.name || undefined,
                   targetId: values.targetId,
                   scorers: values.scorers?.length ? values.scorers : undefined,
@@ -472,7 +472,7 @@ export default function AiEvalPage() {
               title: '确定要删除该数据集吗？',
               content: '将级联删除全部条目与实验记录',
               onOk: async () => {
-                await deleteMutation.mutateAsync(record.id).then(() => Toast.success('已删除')).catch(() => {});
+                await deleteMutation.mutateAsync({ params: { id: record.id } }).then(() => Toast.success('已删除')).catch(() => {});
               },
             });
           },

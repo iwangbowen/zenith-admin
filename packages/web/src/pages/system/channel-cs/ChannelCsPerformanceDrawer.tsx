@@ -1,8 +1,7 @@
 /**
  * 客服绩效统计抽屉
  *
- * 打开时拉取 GET /api/channels/cs/performance，展示每位客服的回复数、解决数、
- * 平均响应时长与平均评分。
+ * 打开时拉取客服绩效统计，展示每位客服的回复数、解决数、平均响应时长与平均评分。
  */
 import { Empty, SideSheet, Space, Spin, Table } from '@douyinfe/semi-ui';
 import { Star } from 'lucide-react';

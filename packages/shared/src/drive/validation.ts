@@ -271,3 +271,10 @@ export const driveSettingsSchema = z.object({
 });
 
 export type DriveSettingsInput = z.infer<typeof driveSettingsSchema>;
+
+/** 治理任务（容量重算 / 索引补建）作用范围；缺省为全部空间 */
+export const driveAdminTaskScopeSchema = z.object({
+  spaceId: z.number().int().positive().optional(),
+});
+
+export type DriveAdminTaskScopeInput = z.infer<typeof driveAdminTaskScopeSchema>;

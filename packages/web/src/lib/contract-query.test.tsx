@@ -29,6 +29,13 @@ const itemContract = defineContract('/api/items', {
   archive: op.post('/{id}/archive', { params: idParam, body: z.object({ reason: z.string() }), summary: '归档' }),
   exportFile: op.get('/export', { kind: 'excel', summary: '导出' }),
   upload: op.post('/upload', { body: multipart(z.object({ file: fileField() })), response: itemSchema, summary: '上传' }),
+  refund: op.post('/{id}/refund', {
+    params: idParam,
+    headers: z.object({ 'x-idempotency-key': z.string().min(8) }),
+    body: z.object({ amount: z.number().int() }),
+    response: itemSchema,
+    summary: '退款（幂等）',
+  }),
 });
 
 /** UUID 主键资源：id 类型由契约 detail 的路径参数推导 */
@@ -52,6 +59,7 @@ beforeEach(() => {
     .on('DELETE', /\/api\/items\/\d+$/, null)
     .on('DELETE', '/api/items/batch', null)
     .on('POST', /\/api\/items\/\d+\/archive$/, null)
+    .on('POST', /\/api\/items\/\d+\/refund$/, (call: RecordedCall) => ({ id: Number(call.url.split('/').at(-2)), name: call.headers?.['x-idempotency-key'] ?? '' }))
     .on('GET', /\/api\/docs\/[\w-]+$/, (call: RecordedCall) => ({ id: call.url.split('/').pop(), title: 'doc' }))
     .on('DELETE', /\/api\/docs\/[\w-]+$/, null);
 });
@@ -90,6 +98,15 @@ describe('api', () => {
     const all = await api(itemContract.all, { silent: true });
     expect(all).toEqual([{ id: 1, name: 'one' }]);
     expect(recorder.calls).toEqual([{ method: 'GET', url: '/api/items/all' }]);
+  });
+
+  it('sends contract headers from the input and keeps them out of the query key', async () => {
+    const refunded = await api(itemContract.refund, { params: { id: 5 }, headers: { 'x-idempotency-key': 'idem-key-0001' }, body: { amount: 100 } }, { silent: true });
+    expect(refunded).toEqual({ id: 5, name: 'idem-key-0001' });
+    expect(recorder.calls).toEqual([{ method: 'POST', url: '/api/items/5/refund', body: { amount: 100 }, headers: { 'x-idempotency-key': 'idem-key-0001' } }]);
+    expect(contractKey(itemContract.refund, { params: { id: 5 }, headers: { 'x-idempotency-key': 'k' }, body: { amount: 1 } }))
+      .toEqual(['items', 'refund', { params: { id: 5 }, body: { amount: 1 } }]);
+    expectTypeOf<Parameters<typeof api<typeof itemContract.refund>>[1]>().toEqualTypeOf<{ params: { id: number }; headers: { 'x-idempotency-key': string }; body: { amount: number } }>();
   });
 
   it('refuses binary operations', async () => {

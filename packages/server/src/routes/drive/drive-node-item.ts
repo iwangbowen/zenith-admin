@@ -1,26 +1,9 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import {
-  createDriveNodeCommentSchema,
-  createDriveShareLinkSchema,
-  lockDriveNodeSchema,
-  renameDriveNodeSchema,
-  saveDriveNodePermissionsSchema,
-  setDriveNodeInheritSchema,
-  setDriveNodeTagsSchema,
-} from '@zenith/shared/drive';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { driveNodeContract } from '@zenith/shared/drive';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditAfterData, setAuditBeforeData } from '../../middleware/guard';
-import { ErrorResponse, IdParam, PaginationQuery, commonErrorResponses, errBody, jsonContent, ok, okBody, okMsg, okPaginated, queryBool, validationHook } from '../../lib/openapi-schemas';
-import {
-  DriveAccessUrlDTO,
-  DriveActivityDTO,
-  DriveFileVersionDTO,
-  DriveNodeCommentDTO,
-  DriveNodeDTO,
-  DriveNodeDetailDTO,
-  DriveNodePermissionsResultDTO,
-  DriveShareLinkDTO,
-} from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { ErrorResponse, errBody, jsonContent, okBody, validationHook } from '../../lib/openapi-schemas';
 import { parseRangeHeader, rangeNotSatisfiable, supportsRange } from '../../lib/http-range';
 import { ensureNodeRole } from '../../services/drive/drive-access.service';
 import { getDriveNodeAccessUrl, openDriveNodeContent, prepareDriveNodeContent, readDriveNodeThumbnail } from '../../services/drive/drive-content.service';
@@ -39,35 +22,21 @@ import { binaryResponses, streamStoredContent } from './drive-nodes';
  * 同时避免单个 openapiRoutes 元组过大触发 TS2589。
  */
 const router = new OpenAPIHono({ defaultHook: validationHook });
-const TAG = '企业网盘-文件';
 const AUDIT = { module: '企业网盘' } as const;
 
-const NodeIdParam = IdParam;
-const VersionParam = z.object({
-  id: z.coerce.number().int().positive().openapi({ param: { name: 'id', in: 'path' }, example: 1 }),
-  version: z.coerce.number().int().positive().openapi({ param: { name: 'version', in: 'path' }, example: 2 }),
-});
+const read = [authMiddleware, guard({ permission: 'drive:node:list' })] as const;
+const download = [authMiddleware, guard({ permission: 'drive:node:download' })] as const;
+const edit = [authMiddleware, guard({ permission: 'drive:node:edit' })] as const;
+
 // ─── 单节点 ───────────────────────────────────────────────────────────────────
 
-const detailRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/{id}', tags: [TAG], summary: '节点详情',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'drive:node:list' })] as const,
-    request: { params: NodeIdParam },
-    responses: { ...commonErrorResponses, ...ok(DriveNodeDetailDTO, '详情') },
-  }),
+const detailRoute = defineContractRoute(driveNodeContract.detail, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await getDriveNodeDetail(c.req.valid('param').id)), 200),
 });
 
-const renameRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/{id}/rename', tags: [TAG], summary: '重命名',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'drive:node:edit', audit: { description: '重命名网盘文件', ...AUDIT } })] as const,
-    request: { params: NodeIdParam, body: { content: jsonContent(renameDriveNodeSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(DriveNodeDTO, '已重命名') },
-  }),
+const renameRoute = defineContractRoute(driveNodeContract.rename, {
+  middleware: [authMiddleware, guard({ permission: 'drive:node:edit', audit: { description: '重命名网盘文件', ...AUDIT } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const before = await ensureDriveNodeExists(id);
@@ -76,14 +45,9 @@ const renameRoute = defineOpenAPIRoute({
   },
 });
 
-const contentRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/{id}/content', tags: [TAG], summary: '文件内容（预览需 viewer；?download=1 需 downloader）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'drive:node:list' })] as const,
-    request: { params: NodeIdParam, query: z.object({ download: queryBool('以附件方式下载'), version: z.coerce.number().int().positive().optional() }) },
-    responses: binaryResponses,
-  }),
+const contentRoute = defineContractRoute(driveNodeContract.content, {
+  middleware: read,
+  responses: binaryResponses,
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const { download, version } = c.req.valid('query');
@@ -99,14 +63,9 @@ const contentRoute = defineOpenAPIRoute({
   },
 });
 
-const thumbnailRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/{id}/thumbnail', tags: [TAG], summary: '缩略图',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'drive:node:list' })] as const,
-    request: { params: NodeIdParam },
-    responses: binaryResponses,
-  }),
+const thumbnailRoute = defineContractRoute(driveNodeContract.thumbnail, {
+  middleware: read,
+  responses: binaryResponses,
   handler: async (c) => {
     const { stored, file } = await readDriveNodeThumbnail(c.req.valid('param').id);
     return new Response(stored.stream, {
@@ -122,14 +81,8 @@ const thumbnailRoute = defineOpenAPIRoute({
   },
 });
 
-const accessUrlRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/{id}/access-url', tags: [TAG], summary: '解析访问直链（presigned / public；proxy 回落到鉴权地址）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'drive:node:download' })] as const,
-    request: { params: NodeIdParam, query: z.object({ purpose: z.enum(['preview', 'download']).default('download') }) },
-    responses: { ...commonErrorResponses, ...ok(DriveAccessUrlDTO, '访问地址') },
-  }),
+const accessUrlRoute = defineContractRoute(driveNodeContract.accessUrl, {
+  middleware: download,
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const { purpose } = c.req.valid('query');
@@ -139,39 +92,13 @@ const accessUrlRoute = defineOpenAPIRoute({
 
 // ─── 版本 ─────────────────────────────────────────────────────────────────────
 
-const versionsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/{id}/versions', tags: [TAG], summary: '版本列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'drive:node:list' })] as const,
-    request: { params: NodeIdParam },
-    responses: { ...commonErrorResponses, ...ok(z.array(DriveFileVersionDTO), '版本列表') },
-  }),
+const versionsRoute = defineContractRoute(driveNodeContract.versions, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await listDriveNodeVersions(c.req.valid('param').id)), 200),
 });
 
-const uploadVersionRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/{id}/versions', tags: [TAG], summary: '上传新版本（≤ 5MB 单请求；大文件用分片 init 传 nodeId）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'drive:node:upload', audit: { description: '上传网盘文件新版本', recordBody: false, ...AUDIT } })] as const,
-    request: {
-      params: NodeIdParam,
-      body: {
-        content: {
-          'multipart/form-data': {
-            schema: z.object({ file: z.any().openapi({ type: 'string', format: 'binary' }), comment: z.string().optional() }),
-          },
-        },
-        required: true,
-      },
-    },
-    responses: {
-      ...commonErrorResponses,
-      ...ok(DriveNodeDTO, '已上传新版本'),
-      400: { content: jsonContent(ErrorResponse), description: '未选择文件或超过阈值' },
-    },
-  }),
+const uploadVersionRoute = defineContractRoute(driveNodeContract.uploadVersion, {
+  middleware: [authMiddleware, guard({ permission: 'drive:node:upload', audit: { description: '上传网盘文件新版本', recordBody: false, ...AUDIT } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const body = await c.req.parseBody();
@@ -182,14 +109,9 @@ const uploadVersionRoute = defineOpenAPIRoute({
   },
 });
 
-const versionContentRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/{id}/versions/{version}/content', tags: [TAG], summary: '历史版本内容',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'drive:node:download' })] as const,
-    request: { params: VersionParam },
-    responses: binaryResponses,
-  }),
+const versionContentRoute = defineContractRoute(driveNodeContract.versionContent, {
+  middleware: download,
+  responses: binaryResponses,
   handler: async (c) => {
     const { id, version } = c.req.valid('param');
     const prepared = await prepareDriveNodeContent(id, true, version);
@@ -201,28 +123,16 @@ const versionContentRoute = defineOpenAPIRoute({
   },
 });
 
-const versionRestoreRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/{id}/versions/{version}/restore', tags: [TAG], summary: '回滚到历史版本（生成新版本）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'drive:node:edit', audit: { description: '回滚网盘文件版本', ...AUDIT } })] as const,
-    request: { params: VersionParam },
-    responses: { ...commonErrorResponses, ...ok(DriveNodeDTO, '已回滚') },
-  }),
+const versionRestoreRoute = defineContractRoute(driveNodeContract.restoreVersion, {
+  middleware: [authMiddleware, guard({ permission: 'drive:node:edit', audit: { description: '回滚网盘文件版本', ...AUDIT } })],
   handler: async (c) => {
     const { id, version } = c.req.valid('param');
     return c.json(okBody(await restoreDriveNodeVersion(id, version), '已回滚'), 200);
   },
 });
 
-const versionDeleteRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/{id}/versions/{version}', tags: [TAG], summary: '删除历史版本',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'drive:node:delete', audit: { description: '删除网盘文件历史版本', ...AUDIT } })] as const,
-    request: { params: VersionParam },
-    responses: { ...commonErrorResponses, ...okMsg('已删除') },
-  }),
+const versionDeleteRoute = defineContractRoute(driveNodeContract.removeVersion, {
+  middleware: [authMiddleware, guard({ permission: 'drive:node:delete', audit: { description: '删除网盘文件历史版本', ...AUDIT } })],
   handler: async (c) => {
     const { id, version } = c.req.valid('param');
     await deleteDriveNodeVersion(id, version);
@@ -232,25 +142,13 @@ const versionDeleteRoute = defineOpenAPIRoute({
 
 // ─── 授权 ─────────────────────────────────────────────────────────────────────
 
-const permissionsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/{id}/permissions', tags: [TAG], summary: '节点授权（直接 + 继承）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'drive:node:list' })] as const,
-    request: { params: NodeIdParam },
-    responses: { ...commonErrorResponses, ...ok(DriveNodePermissionsResultDTO, '授权信息') },
-  }),
+const permissionsRoute = defineContractRoute(driveNodeContract.permissions, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await getDriveNodePermissions(c.req.valid('param').id)), 200),
 });
 
-const savePermissionsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/{id}/permissions', tags: [TAG], summary: '全量保存节点直接授权（需 manager）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'drive:node:grant', audit: { description: '保存网盘节点授权', ...AUDIT } })] as const,
-    request: { params: NodeIdParam, body: { content: jsonContent(saveDriveNodePermissionsSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(DriveNodePermissionsResultDTO, '保存成功') },
-  }),
+const savePermissionsRoute = defineContractRoute(driveNodeContract.savePermissions, {
+  middleware: [authMiddleware, guard({ permission: 'drive:node:grant', audit: { description: '保存网盘节点授权', ...AUDIT } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, await getDriveNodePermissionsBeforeAudit(id));
@@ -260,14 +158,8 @@ const savePermissionsRoute = defineOpenAPIRoute({
   },
 });
 
-const inheritRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/{id}/inherit', tags: [TAG], summary: '断开 / 恢复继承（需 manager）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'drive:node:grant', audit: { description: '变更网盘节点继承', ...AUDIT } })] as const,
-    request: { params: NodeIdParam, body: { content: jsonContent(setDriveNodeInheritSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(DriveNodePermissionsResultDTO, '已更新') },
-  }),
+const inheritRoute = defineContractRoute(driveNodeContract.setInherit, {
+  middleware: [authMiddleware, guard({ permission: 'drive:node:grant', audit: { description: '变更网盘节点继承', ...AUDIT } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     return c.json(okBody(await setDriveNodeInherit(id, c.req.valid('json')), '已更新'), 200);
@@ -276,14 +168,8 @@ const inheritRoute = defineOpenAPIRoute({
 
 // ─── 动态 / 评论 / 收藏 / 标签 / 锁 / 外链 ─────────────────────────────────────
 
-const activitiesRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/{id}/activities', tags: [TAG], summary: '节点动态',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'drive:node:list' })] as const,
-    request: { params: NodeIdParam, query: PaginationQuery },
-    responses: { ...commonErrorResponses, ...okPaginated(DriveActivityDTO, '动态') },
-  }),
+const activitiesRoute = defineContractRoute(driveNodeContract.activities, {
+  middleware: read,
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const node = await ensureDriveNodeExists(id, { allowDeleted: true });
@@ -292,44 +178,21 @@ const activitiesRoute = defineOpenAPIRoute({
   },
 });
 
-const commentsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/{id}/comments', tags: [TAG], summary: '评论列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'drive:node:list' })] as const,
-    request: { params: NodeIdParam },
-    responses: { ...commonErrorResponses, ...ok(z.array(DriveNodeCommentDTO), '评论') },
-  }),
+const commentsRoute = defineContractRoute(driveNodeContract.comments, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await listDriveNodeComments(c.req.valid('param').id)), 200),
 });
 
-const createCommentRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/{id}/comments', tags: [TAG], summary: '发表评论',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'drive:node:list' })] as const,
-    request: { params: NodeIdParam, body: { content: jsonContent(createDriveNodeCommentSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(DriveNodeCommentDTO, '已评论') },
-  }),
+const createCommentRoute = defineContractRoute(driveNodeContract.createComment, {
+  middleware: read,
   handler: async (c) => {
     const { id } = c.req.valid('param');
     return c.json(okBody(await createDriveNodeComment(id, c.req.valid('json')), '已评论'), 200);
   },
 });
 
-const CommentParam = z.object({
-  id: z.coerce.number().int().positive().openapi({ param: { name: 'id', in: 'path' }, example: 1 }),
-  commentId: z.coerce.number().int().positive().openapi({ param: { name: 'commentId', in: 'path' }, example: 1 }),
-});
-
-const deleteCommentRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/{id}/comments/{commentId}', tags: [TAG], summary: '删除评论（作者或 manager）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'drive:node:list' })] as const,
-    request: { params: CommentParam },
-    responses: { ...commonErrorResponses, ...okMsg('已删除') },
-  }),
+const deleteCommentRoute = defineContractRoute(driveNodeContract.removeComment, {
+  middleware: read,
   handler: async (c) => {
     const { id, commentId } = c.req.valid('param');
     await deleteDriveNodeComment(id, commentId);
@@ -337,92 +200,51 @@ const deleteCommentRoute = defineOpenAPIRoute({
   },
 });
 
-const starRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/{id}/star', tags: [TAG], summary: '收藏',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'drive:node:list' })] as const,
-    request: { params: NodeIdParam },
-    responses: { ...commonErrorResponses, ...okMsg('已收藏') },
-  }),
+const starRoute = defineContractRoute(driveNodeContract.star, {
+  middleware: read,
   handler: async (c) => {
     await setDriveNodeStar(c.req.valid('param').id, true);
     return c.json(okBody(null, '已收藏'), 200);
   },
 });
 
-const unstarRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/{id}/star', tags: [TAG], summary: '取消收藏',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'drive:node:list' })] as const,
-    request: { params: NodeIdParam },
-    responses: { ...commonErrorResponses, ...okMsg('已取消收藏') },
-  }),
+const unstarRoute = defineContractRoute(driveNodeContract.unstar, {
+  middleware: read,
   handler: async (c) => {
     await setDriveNodeStar(c.req.valid('param').id, false);
     return c.json(okBody(null, '已取消收藏'), 200);
   },
 });
 
-const tagsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/{id}/tags', tags: [TAG], summary: '设置节点标签',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'drive:node:edit' })] as const,
-    request: { params: NodeIdParam, body: { content: jsonContent(setDriveNodeTagsSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(DriveNodeDTO, '已更新') },
-  }),
+const tagsRoute = defineContractRoute(driveNodeContract.setTags, {
+  middleware: edit,
   handler: async (c) => {
     const { id } = c.req.valid('param');
     return c.json(okBody(await setDriveNodeTags(id, c.req.valid('json').tagIds), '已更新'), 200);
   },
 });
 
-const lockRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/{id}/lock', tags: [TAG], summary: '签出锁定',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'drive:node:edit', audit: { description: '锁定网盘文件', ...AUDIT } })] as const,
-    request: { params: NodeIdParam, body: { content: jsonContent(lockDriveNodeSchema), required: false } },
-    responses: { ...commonErrorResponses, ...ok(DriveNodeDTO, '已锁定'), 423: { content: jsonContent(ErrorResponse), description: '已被他人锁定' } },
-  }),
+const lockRoute = defineContractRoute(driveNodeContract.lock, {
+  middleware: [authMiddleware, guard({ permission: 'drive:node:edit', audit: { description: '锁定网盘文件', ...AUDIT } })],
+  responses: { 423: { content: jsonContent(ErrorResponse), description: '已被他人锁定' } },
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    return c.json(okBody(await lockDriveNode(id, c.req.valid('json') ?? {}), '已锁定'), 200);
+    return c.json(okBody(await lockDriveNode(id, c.req.valid('json')), '已锁定'), 200);
   },
 });
 
-const unlockRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/{id}/lock', tags: [TAG], summary: '解除锁定',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'drive:node:edit', audit: { description: '解锁网盘文件', ...AUDIT } })] as const,
-    request: { params: NodeIdParam },
-    responses: { ...commonErrorResponses, ...ok(DriveNodeDTO, '已解锁') },
-  }),
+const unlockRoute = defineContractRoute(driveNodeContract.unlock, {
+  middleware: [authMiddleware, guard({ permission: 'drive:node:edit', audit: { description: '解锁网盘文件', ...AUDIT } })],
   handler: async (c) => c.json(okBody(await unlockDriveNode(c.req.valid('param').id), '已解锁'), 200),
 });
 
-const nodeShareLinksRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/{id}/share-links', tags: [TAG], summary: '节点外链（manager 见全部，其他人见自己创建的）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'drive:node:list' })] as const,
-    request: { params: NodeIdParam },
-    responses: { ...commonErrorResponses, ...ok(z.array(DriveShareLinkDTO), '外链') },
-  }),
+const nodeShareLinksRoute = defineContractRoute(driveNodeContract.shareLinks, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await listNodeShareLinks(c.req.valid('param').id)), 200),
 });
 
-const createShareLinkRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/{id}/share-links', tags: [TAG], summary: '创建外链（需 editor + drive:link:create）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'drive:link:create', audit: { description: '创建网盘外链', recordBody: false, ...AUDIT } })] as const,
-    request: { params: NodeIdParam, body: { content: jsonContent(createDriveShareLinkSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(DriveShareLinkDTO, '已创建') },
-  }),
+const createShareLinkRoute = defineContractRoute(driveNodeContract.createShareLink, {
+  middleware: [authMiddleware, guard({ permission: 'drive:link:create', audit: { description: '创建网盘外链', recordBody: false, ...AUDIT } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     return c.json(okBody(await createDriveShareLink(id, c.req.valid('json')), '已创建'), 200);

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Spin, Toast, Banner } from '@douyinfe/semi-ui';
 import { RefreshCw } from 'lucide-react';
-import type { MpTag } from '@zenith/shared/mp';
+import type { CreateMpTagInput, MpTag } from '@zenith/shared/mp';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -13,7 +13,7 @@ import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
-import { mpTagKeys, useDeleteMpTag, useMpTagList, useSaveMpTag, useSyncMpTags } from '@/hooks/queries/mp-tags';
+import { mpTagKeys, useDeleteMpTags, useMpTagList, useSaveMpTag, useSyncMpTags } from '@/hooks/queries/mp-tags';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
@@ -29,16 +29,16 @@ export default function MpTagsPage() {
   const [submittedKeyword, setSubmittedKeyword] = useState('');
 
   const listQuery = useMpTagList({
-    accountId: currentId,
+    accountId: currentId ?? 0,
     page,
     pageSize,
     keyword: submittedKeyword || undefined,
-  });
+  }, !!currentId);
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
   const syncMutation = useSyncMpTags();
   const saveMutation = useSaveMpTag();
-  const deleteMutation = useDeleteMpTag();
+  const deleteMutation = useDeleteMpTags();
   const syncing = syncMutation.isPending;
   useEffect(() => {
     setPage(1);
@@ -47,33 +47,32 @@ export default function MpTagsPage() {
   const handleSearch = () => {
     setPage(1);
     setSubmittedKeyword(draftKeyword);
-    void queryClient.invalidateQueries({ queryKey: mpTagKeys.lists(currentId) });
+    void queryClient.invalidateQueries({ queryKey: mpTagKeys.lists });
   };
   const handleReset = () => {
     setDraftKeyword('');
     setSubmittedKeyword('');
     setPage(1);
-    void queryClient.invalidateQueries({ queryKey: mpTagKeys.lists(currentId) });
+    void queryClient.invalidateQueries({ queryKey: mpTagKeys.lists });
   };
 
   const handleSync = async () => {
     if (!currentId) return;
-    const data = await syncMutation.mutateAsync(currentId);
+    const data = await syncMutation.mutateAsync({ body: { accountId: currentId } });
     Toast.success(`同步完成：新增 ${data.created ?? 0}，更新 ${data.updated ?? 0}`);
   };
 
-  const tagSaveMutation = {
-    mutateAsync: ({ id, values }: { id?: number; values: { name: string } }) => {
-      if (!currentId) abortSubmit('validation');
-      return saveMutation.mutateAsync({ id, accountId: currentId, name: values.name });
-    },
-    isPending: saveMutation.isPending,
-  };
-  const modal = useEditModal<MpTag, { name: string }>({
+  const modal = useEditModal<MpTag, Pick<CreateMpTagInput, 'name'>, Partial<CreateMpTagInput>>({
     entityName: '标签',
-    save: tagSaveMutation,
+    save: saveMutation,
     defaults: { name: '' },
     toValues: (record) => ({ name: record.name }),
+    // 新增归属当前公众号；编辑只改名称
+    beforeSave: (values, { isEdit }) => {
+      if (isEdit) return { name: values.name };
+      if (!currentId) abortSubmit('validation');
+      return { accountId: currentId, name: values.name };
+    },
   });
 
   const handleDelete = (record: MpTag) => {
@@ -81,7 +80,7 @@ export default function MpTagsPage() {
       title: `确定要删除标签「${record.name}」吗？`,
       content: '删除后将从所有粉丝的本地标签中移除该标签。',
       onOk: async () => {
-        await deleteMutation.mutateAsync(record.id);
+        await deleteMutation.mutateAsync([record.id]);
         Toast.success('删除成功');
       },
     });

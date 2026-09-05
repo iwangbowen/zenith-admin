@@ -4,9 +4,8 @@ import { Button, Modal, Select, Space, Tag, Typography, Toast } from '@douyinfe/
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Ban, CircleCheck, GitCompare, Layers, LayoutTemplate, Save, Trash2, Upload } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import type { WorkflowDefinition, WorkflowFormType, WorkflowVersionDiff as WorkflowVersionDiffData } from '@zenith/shared/workflow';
-import { WORKFLOW_FORM_TYPE_LABELS } from '@zenith/shared/workflow';
-import { request } from '@/utils/request';
+import { importWorkflowDefinitionSchema, workflowDefinitionContract, WORKFLOW_FORM_TYPE_LABELS, type WorkflowDefinition, type WorkflowFormType, type WorkflowVersionDiff as WorkflowVersionDiffData } from '@zenith/shared/workflow';
+import { api } from '@/lib/contract-query';
 import { downloadBlob } from '@/utils/download';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
@@ -57,24 +56,6 @@ interface SearchParams {
   keyword: string;
   status?: string;
   selectedCategoryId: number | null;
-}
-
-interface WorkflowDefinitionExportData {
-  name: string;
-  description?: string | null;
-  categoryName?: string | null;
-  flowData: unknown;
-  form?: unknown;
-  exportedAt?: string;
-  schemaVersion?: number;
-}
-
-interface WorkflowDefinitionImportPayload {
-  name: string;
-  description?: string | null;
-  categoryName?: string | null;
-  flowData: unknown;
-  form?: unknown;
 }
 
 const defaultSearchParams: SearchParams = { keyword: '', status: undefined, selectedCategoryId: null };
@@ -150,22 +131,22 @@ export default function WorkflowDefinitionsPage() {
   };
 
   const handlePublish = async (record: WorkflowDefinition) => {
-    await publishMutation.mutateAsync(record.id);
+    await publishMutation.mutateAsync({ params: { id: record.id } });
     Toast.success('发布成功');
   };
 
   const handleDisable = async (record: WorkflowDefinition) => {
-    await disableMutation.mutateAsync(record.id);
+    await disableMutation.mutateAsync({ params: { id: record.id } });
     Toast.success('已禁用');
   };
 
   const handleEnable = async (record: WorkflowDefinition) => {
-    await enableMutation.mutateAsync(record.id);
+    await enableMutation.mutateAsync({ params: { id: record.id } });
     Toast.success('已启用');
   };
 
   const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync(id);
+    await deleteMutation.mutateAsync({ params: { id } });
     Toast.success('删除成功');
   };
 
@@ -175,7 +156,7 @@ export default function WorkflowDefinitionsPage() {
       title: `确定禁用选中的 ${selectedRowKeys.length} 个流程？`,
       content: '仅「已发布」状态的流程会被禁用，禁用后不可发起新申请。',
       onOk: async () => {
-        await batchDisableMutation.mutateAsync(selectedRowKeys);
+        await batchDisableMutation.mutateAsync({ body: { ids: selectedRowKeys } });
         Toast.success('操作成功');
         setSelectedRowKeys([]);
       },
@@ -188,7 +169,7 @@ export default function WorkflowDefinitionsPage() {
       title: `确定启用选中的 ${selectedRowKeys.length} 个流程？`,
       content: '仅「已禁用」状态的流程会被启用，启用后恢复为已发布状态。',
       onOk: async () => {
-        await batchEnableMutation.mutateAsync(selectedRowKeys);
+        await batchEnableMutation.mutateAsync({ body: { ids: selectedRowKeys } });
         Toast.success('操作成功');
         setSelectedRowKeys([]);
       },
@@ -201,7 +182,7 @@ export default function WorkflowDefinitionsPage() {
       title: `确定删除选中的 ${selectedRowKeys.length} 个流程？`,
       content: '仅「非已发布」且无发起实例的流程会被删除，删除后无法恢复。',
       onOk: async () => {
-        await batchDeleteMutation.mutateAsync(selectedRowKeys);
+        await batchDeleteMutation.mutateAsync({ body: { ids: selectedRowKeys } });
         Toast.success('删除成功');
         setSelectedRowKeys([]);
       },
@@ -209,15 +190,13 @@ export default function WorkflowDefinitionsPage() {
   };
 
   const handleDuplicate = async (record: WorkflowDefinition) => {
-    await duplicateMutation.mutateAsync(record.id);
+    await duplicateMutation.mutateAsync({ params: { id: record.id } });
     Toast.success('已复制为新草稿');
   };
 
   const handleExport = async (record: WorkflowDefinition) => {
-    const res = await request.get<WorkflowDefinitionExportData>(`/api/workflows/definitions/${record.id}/export`);
-    if (res.code !== 0) return;
-
-    const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json;charset=utf-8' });
+    const exported = await api(workflowDefinitionContract.export, { params: { id: record.id } });
+    const blob = new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json;charset=utf-8' });
     downloadBlob(blob, `${record.name}.workflow.json`);
     Toast.success('已导出');
   };
@@ -229,27 +208,20 @@ export default function WorkflowDefinitionsPage() {
 
     setImporting(true);
     try {
-      let parsed: Partial<WorkflowDefinitionExportData>;
+      let raw: unknown;
       try {
-        const raw = JSON.parse(await file.text()) as unknown;
-        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-          Toast.error('文件格式不正确');
-          return;
-        }
-        parsed = raw;
+        raw = JSON.parse(await file.text());
       } catch {
         Toast.error('文件格式不正确');
         return;
       }
-
-      const payload: WorkflowDefinitionImportPayload = {
-        name: parsed.name ?? '',
-        description: parsed.description,
-        categoryName: parsed.categoryName,
-        flowData: parsed.flowData,
-        form: parsed.form,
-      };
-      await importMutation.mutateAsync(payload);
+      // 导出文件即导入请求体：按共享校验 schema 解析，剔除 exportedAt 等只读字段
+      const parsed = importWorkflowDefinitionSchema.safeParse(raw);
+      if (!parsed.success) {
+        Toast.error(parsed.error.issues[0]?.message ?? '文件格式不正确');
+        return;
+      }
+      await importMutation.mutateAsync({ body: parsed.data });
       Toast.success('已导入为新草稿');
     } finally {
       setImporting(false);
@@ -277,8 +249,14 @@ export default function WorkflowDefinitionsPage() {
   const handleSaveAsTemplate = async (values: WorkflowTemplateFormValues) => {
     if (!saveAsTarget) return;
     await saveAsMutation.mutateAsync({
-      definitionId: saveAsTarget.id,
-      ...values,
+      body: {
+        definitionId: saveAsTarget.id,
+        name: values.name ?? '',
+        code: values.code,
+        description: values.description,
+        icon: values.icon,
+        color: values.color,
+      },
     });
     Toast.success('已保存为模板');
     setSaveAsTarget(null);

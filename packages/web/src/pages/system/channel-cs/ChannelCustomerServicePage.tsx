@@ -126,19 +126,19 @@ export default function ChannelCustomerServicePage() {
       const cid = channelIdRef.current;
       if (cid == null || wsMsg.payload.channelId !== cid) return;
       const uid = activeUserIdRef.current;
-      if (uid != null) void queryClient.invalidateQueries({ queryKey: ['channel-cs', 'messages', cid, uid] });
+      if (uid != null) void queryClient.invalidateQueries({ queryKey: channelCsKeys.conversationMessages(cid, uid) });
       return;
     }
     if (wsMsg.type !== 'channel:cs-message') return;
     const cid = channelIdRef.current;
     if (cid == null) return;
     if (wsMsg.payload.channelId === cid) {
-      void queryClient.invalidateQueries({ queryKey: ['channel-cs', 'conversations', cid] });
+      void queryClient.invalidateQueries({ queryKey: channelCsKeys.channelConversations(cid) });
       const uid = activeUserIdRef.current;
-      if (uid != null) void queryClient.invalidateQueries({ queryKey: ['channel-cs', 'messages', cid, uid] });
+      if (uid != null) void queryClient.invalidateQueries({ queryKey: channelCsKeys.conversationMessages(cid, uid) });
     } else {
       // 其他频道有新消息：刷新会话列表更新未读角标（仅当前选中频道维度）
-      void queryClient.invalidateQueries({ queryKey: ['channel-cs', 'conversations', cid] });
+      void queryClient.invalidateQueries({ queryKey: channelCsKeys.channelConversations(cid) });
     }
   }, [queryClient]);
 
@@ -152,7 +152,7 @@ export default function ChannelCustomerServicePage() {
   const handleReply = useCallback(async () => {
     const content = reply.trim();
     if (!content || sending || channelId == null || activeUserId == null) return;
-    const sent = await replyMutation.mutateAsync({ channelId, userId: activeUserId, content });
+    const sent = await replyMutation.mutateAsync({ params: { id: channelId, userId: activeUserId }, body: { content } });
     setReply('');
     queryClient.setQueryData(
       channelCsKeys.messages(channelId, activeUserId, { page: 1, pageSize: 50 }),
@@ -172,21 +172,21 @@ export default function ChannelCustomerServicePage() {
   const refreshAfterOp = useCallback(() => {
     const cid = channelIdRef.current;
     if (cid == null) return;
-    void queryClient.invalidateQueries({ queryKey: ['channel-cs', 'conversations', cid] });
+    void queryClient.invalidateQueries({ queryKey: channelCsKeys.channelConversations(cid) });
     const uid = activeUserIdRef.current;
-    if (uid != null) void queryClient.invalidateQueries({ queryKey: ['channel-cs', 'messages', cid, uid] });
+    if (uid != null) void queryClient.invalidateQueries({ queryKey: channelCsKeys.conversationMessages(cid, uid) });
   }, [queryClient]);
 
   const handleAssign = useCallback(async (assigneeId: number | null) => {
     if (channelId == null || activeUserId == null || opLoading) return;
-    await assignMutation.mutateAsync({ channelId, userId: activeUserId, assigneeId });
+    await assignMutation.mutateAsync({ params: { id: channelId, userId: activeUserId }, body: { assigneeId } });
     Toast.success(assigneeId == null ? '已取消指派' : '已指派');
     refreshAfterOp();
   }, [channelId, activeUserId, opLoading, assignMutation, refreshAfterOp]);
 
   const handleResolve = useCallback(async () => {
     if (channelId == null || activeUserId == null || opLoading) return;
-    await resolveMutation.mutateAsync({ channelId, userId: activeUserId });
+    await resolveMutation.mutateAsync({ params: { id: channelId, userId: activeUserId } });
     Toast.success('已标记为已解决');
     refreshAfterOp();
   }, [channelId, activeUserId, opLoading, resolveMutation, refreshAfterOp]);
@@ -194,7 +194,7 @@ export default function ChannelCustomerServicePage() {
   const handleSearch = useCallback(() => {
     setKeyword(keywordInput.trim());
     // 关键词未变时 query key 不变，不显式失效就不会真正回源刷新会话列表
-    void queryClient.invalidateQueries({ queryKey: ['channel-cs', 'conversations'] });
+    void queryClient.invalidateQueries({ queryKey: channelCsKeys.conversationsAll });
   }, [keywordInput, queryClient]);
 
   return (

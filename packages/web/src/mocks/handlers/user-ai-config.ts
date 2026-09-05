@@ -1,28 +1,28 @@
-import { http } from 'msw';
-import { ok, notFound } from '@/mocks/utils/handlers';
-import type { UserAiConfig } from '@zenith/shared/identity';
+import { userAiConfigContract } from '@zenith/shared/ai';
+import type { UserAiConfig } from '@zenith/shared/ai';
+import { mock } from '@/mocks/utils/contract';
+import { notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockDateTime } from '../utils/date';
 
 const mockUserAiConfigs: UserAiConfig[] = [];
-let nextId = 1;
+
+/** 与服务端一致：列表 / 详情只返回脱敏后的 API Key */
+function maskApiKey(apiKey: string) {
+  return `${apiKey.slice(0, 4)}...${apiKey.slice(-4)}`;
+}
 
 export const userAiConfigHandlers = [
-  // GET /api/ai/user-configs
-  http.get('/api/ai/user-configs', () => {
-    return ok(mockUserAiConfigs);
-  }),
+  mock(userAiConfigContract.list, ({ ok }) => ok(mockUserAiConfigs)),
 
-  // POST /api/ai/user-configs
-  http.post('/api/ai/user-configs', async ({ request }) => {
-    const body = await request.json() as Partial<UserAiConfig>;
+  mock(userAiConfigContract.create, ({ body, ok }) => {
     const now = mockDateTime();
     const newCfg: UserAiConfig = {
-      id: nextId++,
+      id: nextIdFrom(mockUserAiConfigs),
       userId: 1,
       name: body.name ?? null,
       providerId: body.providerId ?? 'custom',
       baseUrl: body.baseUrl ?? null,
-      apiKey: body.apiKey ? `${String(body.apiKey).slice(0, 4)}...${String(body.apiKey).slice(-4)}` : null,
+      apiKey: body.apiKey ? maskApiKey(body.apiKey) : null,
       headers: body.headers ?? null,
       models: body.models ?? [],
       defaultModel: body.defaultModel ?? body.models?.[0] ?? null,
@@ -38,38 +38,24 @@ export const userAiConfigHandlers = [
     return ok(newCfg, '创建成功');
   }),
 
-  // PUT /api/ai/user-configs/:id
-  http.put('/api/ai/user-configs/:id', async ({ params, request }) => {
-    const id = Number(params.id);
-    const body = await request.json() as Partial<UserAiConfig>;
-    const now = mockDateTime();
-    const idx = mockUserAiConfigs.findIndex((c) => c.id === id);
+  // 更新：脱敏格式的 apiKey 表示保持不变
+  mock(userAiConfigContract.update, ({ params, body, ok }) => {
+    const idx = mockUserAiConfigs.findIndex((c) => c.id === params.id);
     if (idx < 0) return notFound('配置不存在', { status: 404 });
     const existing = mockUserAiConfigs[idx];
+    const { apiKey, ...rest } = body;
     const updated: UserAiConfig = {
       ...existing,
-      ...(body.name !== undefined && { name: body.name }),
-      ...(body.providerId !== undefined && { providerId: body.providerId }),
-      ...(body.baseUrl !== undefined && { baseUrl: body.baseUrl }),
-      apiKey: body.apiKey && !String(body.apiKey).includes('...') ? `${String(body.apiKey).slice(0, 4)}...${String(body.apiKey).slice(-4)}` : existing.apiKey,
-      ...(body.headers !== undefined && { headers: body.headers }),
-      ...(body.models !== undefined && { models: body.models }),
-      ...(body.defaultModel !== undefined && { defaultModel: body.defaultModel }),
-      ...(body.modelSettings !== undefined && { modelSettings: body.modelSettings }),
-      ...(body.providerOptions !== undefined && { providerOptions: body.providerOptions }),
-      ...(body.capabilities !== undefined && { capabilities: body.capabilities }),
-      ...(body.systemPrompt !== undefined && { systemPrompt: body.systemPrompt }),
-      ...(body.isEnabled !== undefined && { isEnabled: body.isEnabled }),
-      updatedAt: now,
+      ...rest,
+      apiKey: apiKey && !apiKey.includes('...') ? maskApiKey(apiKey) : existing.apiKey,
+      updatedAt: mockDateTime(),
     };
     mockUserAiConfigs[idx] = updated;
     return ok(updated, '更新成功');
   }),
 
-  // DELETE /api/ai/user-configs/:id
-  http.delete('/api/ai/user-configs/:id', ({ params }) => {
-    const id = Number(params.id);
-    const idx = mockUserAiConfigs.findIndex((c) => c.id === id);
+  mock(userAiConfigContract.remove, ({ params, ok }) => {
+    const idx = mockUserAiConfigs.findIndex((c) => c.id === params.id);
     if (idx < 0) return notFound('配置不存在', { status: 404 });
     mockUserAiConfigs.splice(idx, 1);
     return ok(null, '删除成功');

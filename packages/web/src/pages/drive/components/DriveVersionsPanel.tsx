@@ -67,7 +67,7 @@ export function DriveVersionsPanel({ node }: DriveVersionsPanelProps) {
             confirmDanger({
               title: `回滚到版本 v${r.version}？`,
               content: '将以该版本内容生成一个新版本，当前版本保留在历史中。',
-              onOk: () => restore.mutateAsync({ id: node.id, version: r.version }).then(() => Toast.success('已回滚')),
+              onOk: () => restore.mutateAsync({ params: { id: node.id, version: r.version } }).then(() => Toast.success('已回滚')),
             });
           },
         },

@@ -51,9 +51,9 @@ export default function InboxPage() {
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
-  let isRead: string | undefined;
-  if (activeTab === 'unread') isRead = 'false';
-  else if (activeTab === 'read') isRead = 'true';
+  let isRead: boolean | undefined;
+  if (activeTab === 'unread') isRead = false;
+  else if (activeTab === 'read') isRead = true;
 
   const listParams = { page, pageSize, isRead };
   const listQuery = useInboxList(listParams);
@@ -73,7 +73,7 @@ export default function InboxPage() {
 
   const openMessage = async (item: InAppMessage, index?: number) => {
     if (!item.isRead) {
-      await markReadMutation.mutateAsync(item.id);
+      await markReadMutation.mutateAsync({ params: { id: item.id } });
       queryClient.setQueryData(inboxKeys.list(listParams), (old: typeof listQuery.data) =>
         old ? { ...old, list: old.list.map((n) => (n.id === item.id ? { ...n, isRead: true } : n)) } : old,
       );
@@ -91,25 +91,25 @@ export default function InboxPage() {
   };
 
   const handleMarkAllRead = async () => {
-    await markAllReadMutation.mutateAsync();
+    await markAllReadMutation.mutateAsync({});
     Toast.success('已全部标记为已读');
     setPage(1);
   };
 
   const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync(id);
+    await deleteMutation.mutateAsync({ params: { id } });
     setSelectedIds((prev) => prev.filter((x) => x !== id));
     Toast.success('已删除');
   };
 
   const handleBatchRead = async () => {
-    await batchReadMutation.mutateAsync(selectedIds);
+    await batchReadMutation.mutateAsync({ body: { ids: selectedIds } });
     setSelectedIds([]);
     Toast.success('已标记为已读');
   };
 
   const handleBatchDelete = async () => {
-    await batchDeleteMutation.mutateAsync(selectedIds);
+    await batchDeleteMutation.mutateAsync({ body: { ids: selectedIds } });
     setSelectedIds([]);
     Toast.success('已删除');
   };

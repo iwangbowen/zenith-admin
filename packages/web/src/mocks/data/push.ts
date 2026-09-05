@@ -23,14 +23,14 @@ export const mockPushSendLogs: PushSendLog[] = [
     deviceCount: 2, title: '待办审批提醒', content: '你有一条新的待办：流程「请假申请」（节点：部门审批），请及时处理',
     link: '/approval/tasks/1', eventKey: 'workflow.task.created', status: 'success',
     providerMsgId: '18101216-1a2b3c', deliveryStatus: 'clicked', deliveredAt: now, clickedAt: now,
-    errorMsg: null, source: 'system', sentAt: now, createdAt: now,
+    errorMsg: null, source: 'system', tenantId: null, sentAt: now, createdAt: now,
   },
   {
     id: 2, configId: 1, appId: 2, appName: 'Zenith 移动端', provider: 'jpush', subjectType: null, subjectId: null, subjectName: null,
     deviceCount: 1, title: 'Zenith 推送测试', content: '这是一条测试推送,收到说明通道配置正确',
     link: null, eventKey: null, status: 'failed',
     providerMsgId: null, deliveryStatus: null, deliveredAt: null, clickedAt: null,
-    errorMsg: '极光推送失败: [1011] 目标设备不存在', source: 'test', sentAt: now, createdAt: now,
+    errorMsg: '极光推送失败: [1011] 目标设备不存在', source: 'test', tenantId: null, sentAt: now, createdAt: now,
   },
 ];
 

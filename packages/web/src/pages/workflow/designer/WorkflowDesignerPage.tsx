@@ -657,7 +657,7 @@ export default function WorkflowDesignerPage({
       }
       const saved = await doSave(buildCurrentMeta(), { showToast: false });
       if (!saved) return;
-      const published = await publishMutation.mutateAsync(Number(id));
+      const published = await publishMutation.mutateAsync({ params: { id: Number(id) } });
       Toast.success('发布成功');
       setDefinition(published ?? { ...saved, status: 'published', version: saved.version + 1 });
     } catch {

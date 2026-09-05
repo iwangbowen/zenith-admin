@@ -3,14 +3,23 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   DRIVE_CLIENT_HASH_MAX_BYTES,
   DRIVE_SIMPLE_UPLOAD_MAX_BYTES,
+  driveNodeContract,
   type DriveNode,
   type DriveUploadConflictPolicy,
-  type DriveUploadPrecheck,
 } from '@zenith/shared/drive';
 import { request } from '@/utils/request';
+import { api, urlOf } from '@/lib/contract-query';
 import { unwrap } from '@/lib/query';
-import { chunkedUpload } from '@/utils/chunked-upload';
+import { chunkedUpload, type ChunkedUploadEndpoints } from '@/utils/chunked-upload';
 import { driveKeys, invalidateDir } from '@/hooks/queries/drive';
+
+/** 网盘自有的分片上传接口（init / chunk / complete / status），由契约派生 */
+const DRIVE_UPLOAD_ENDPOINTS: ChunkedUploadEndpoints = {
+  init: urlOf(driveNodeContract.uploadInit),
+  chunk: urlOf(driveNodeContract.uploadChunk),
+  complete: urlOf(driveNodeContract.uploadComplete),
+  status: (uploadId) => urlOf(driveNodeContract.uploadStatus, { params: { uploadId } }),
+};
 
 export type UploadItemStatus = 'pending' | 'hashing' | 'uploading' | 'done' | 'skipped' | 'error' | 'cancelled';
 
@@ -96,7 +105,7 @@ export function useDriveUploader() {
       if (controller.signal.aborted) throw new Error('已取消');
       const precheckBody = { spaceId: item.spaceId, parentId: item.parentId, fileName: item.file.name, fileSize: item.file.size, contentHash };
       // 先用 fail 策略探测冲突（不会落地），交给用户决定
-      const precheck = await request.post<DriveUploadPrecheck>('/api/drive/nodes/precheck', { ...precheckBody, conflictPolicy: 'fail' }, { signal: controller.signal, silent: true }).then(unwrap);
+      const precheck = await api(driveNodeContract.precheck, { body: { ...precheckBody, conflictPolicy: 'fail' } }, { signal: controller.signal, silent: true });
       if (!precheck.quotaOk) throw new Error('空间配额不足');
       let policy: DriveUploadConflictPolicy = 'rename';
       if (precheck.conflict) {
@@ -117,7 +126,7 @@ export function useDriveUploader() {
         }
       }
       if (precheck.instant && contentHash) {
-        const instant = await request.post<DriveUploadPrecheck>('/api/drive/nodes/precheck', { ...precheckBody, conflictPolicy: policy }, { signal: controller.signal, silent: true }).then(unwrap);
+        const instant = await api(driveNodeContract.precheck, { body: { ...precheckBody, conflictPolicy: policy } }, { signal: controller.signal, silent: true });
         if (instant.node) {
           patch(item.id, { status: 'done', percent: 100, instant: true, node: instant.node });
           finish(item);
@@ -132,13 +141,13 @@ export function useDriveUploader() {
         fd.append('spaceId', String(item.spaceId));
         if (item.parentId) fd.append('parentId', String(item.parentId));
         fd.append('conflictPolicy', policy);
-        node = await request.postForm<DriveNode>('/api/drive/nodes/upload', fd, {
+        node = await request.postForm<DriveNode>(urlOf(driveNodeContract.upload), fd, {
           silent: true,
           onProgress: (p) => patch(item.id, { percent: Math.min(99, p) }),
         }).then(unwrap);
       } else {
         node = await chunkedUpload<DriveNode>(item.file, {
-          endpointBase: '/api/drive/nodes/upload',
+          endpoints: DRIVE_UPLOAD_ENDPOINTS,
           initExtra: { spaceId: item.spaceId, parentId: item.parentId, conflictPolicy: policy, contentHash },
           resumeScope: `drive:${item.spaceId}:${item.parentId ?? 0}`,
           signal: controller.signal,

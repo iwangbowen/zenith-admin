@@ -1,6 +1,7 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { validationHook, commonErrorResponses, ok, okBody } from '../../lib/openapi-schemas';
-import { MpOAuthResultDTO } from '../../lib/openapi-dtos';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { mpOAuthPublicContract } from '@zenith/shared/mp';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { handleMpOAuthCallback } from '../../services/mp/mp-oauth.service';
 
 /**
@@ -10,17 +11,8 @@ import { handleMpOAuthCallback } from '../../services/mp/mp-oauth.service';
  */
 const mpOAuthPublicRouter = new OpenAPIHono({ defaultHook: validationHook });
 
-const callbackRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/{accountId}', tags: ['公众号网页授权（公开）'],
-    summary: '网页授权回调（公开，无需登录）',
-    security: [],
-    request: {
-      params: z.object({ accountId: z.coerce.number().int().positive().openapi({ param: { name: 'accountId', in: 'path' }, example: 1 }) }),
-      query: z.object({ code: z.string().min(1, '缺少 code'), state: z.string().optional() }),
-    },
-    responses: { ...commonErrorResponses, ...ok(MpOAuthResultDTO, '授权成功') },
-  }),
+const callbackRoute = defineContractRoute(mpOAuthPublicContract.callback, {
+  middleware: [] as const,
   handler: async (c) => {
     const { accountId } = c.req.valid('param');
     const { code } = c.req.valid('query');

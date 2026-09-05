@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { Modal, Select, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import type { WorkflowHealthIssue, WorkflowHealthSummary } from '@zenith/shared/workflow';
+import { workflowTaskContract, type WorkflowHealthIssue, type WorkflowHealthSummary } from '@zenith/shared/workflow';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -13,8 +13,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { dateTimeColumn } from '@/utils/table-columns';
-import { request } from '@/utils/request';
-import { unwrap } from '@/lib/query';
+import { useApiMutation } from '@/lib/contract-query';
 import { createLabelOptionsFromMap } from '@zenith/shared/core';
 import { FilterSelect } from '@/components/search-filters';
 
@@ -55,9 +54,8 @@ export default function WorkflowHealthPage() {
   const summaryQuery = useWorkflowHealthSummary({ thresholdMinutes: submittedThresholdMinutes });
   const data: WorkflowHealthSummary | null = summaryQuery.data ?? null;
 
-  // 与任务监控同一入口：非 0 code（如催办限频）通过 unwrap 抛错走全局提示
-  const urgeMutation = useMutation({
-    mutationFn: (taskId: number) => request.post<unknown>(`/api/workflows/tasks/${taskId}/urge`, {}).then(unwrap),
+  // 与任务监控同一入口：非 0 code（如催办限频）由 api() 抛错走全局提示
+  const urgeMutation = useApiMutation(workflowTaskContract.urgeTask, {
     onSuccess: () => {
       Toast.success('已催办');
     },
@@ -132,7 +130,7 @@ export default function WorkflowHealthPage() {
             Modal.confirm({
               title: '确定催办该任务？',
               content: '将向当前处理人发送催办提醒。',
-              onOk: () => urgeMutation.mutateAsync(row.taskId as number).then(() => undefined),
+              onOk: () => urgeMutation.mutateAsync({ params: { taskId: row.taskId as number }, body: {} }).then(() => undefined),
             });
           },
         },

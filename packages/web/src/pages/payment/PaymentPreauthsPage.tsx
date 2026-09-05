@@ -20,8 +20,9 @@ import {
   useRecoverPaymentPreauth,
   useReleasePaymentPreauth,
 } from '@/hooks/queries/payment-preauths';
-import { PAYMENT_CHANNEL_LABELS, PAYMENT_PREAUTH_STATUS_LABELS, PAYMENT_PREAUTH_STATUS_OPTIONS, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared/payment';
-import type { PaymentChannel, PaymentPreauth, PaymentPreauthMethod, PaymentPreauthStatus } from '@zenith/shared/payment';
+import { enumValueOf } from '@zenith/shared/core';
+import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNELS, PAYMENT_PREAUTH_STATUS_LABELS, PAYMENT_PREAUTH_STATUS_OPTIONS, PAYMENT_PREAUTH_STATUSES, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared/payment';
+import type { CreatePaymentPreauthInput, PaymentChannel, PaymentPreauth, PaymentPreauthMethod, PaymentPreauthStatus } from '@zenith/shared/payment';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 
@@ -66,8 +67,8 @@ export default function PaymentPreauthsPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
-    channel: submittedParams.channel || undefined,
+    status: enumValueOf(PAYMENT_PREAUTH_STATUSES, submittedParams.status),
+    channel: enumValueOf(PAYMENT_CHANNELS, submittedParams.channel),
   }, effectivePreauthAppId != null);
   const data = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
@@ -81,15 +82,15 @@ export default function PaymentPreauthsPage() {
   const recoverMutation = useRecoverPaymentPreauth();
 
   const createSaveMutation = {
-    mutateAsync: async ({ values }: { id?: number; values: { applicationId: number; payMethod: PaymentPreauthMethod; currency: 'CNY'; payerAccount: string; subject: string; frozenAmount: number; bizType?: string; bizId: string; remark?: string } }) => {
-      const res = await createMutation.mutateAsync(values);
+    mutateAsync: async ({ values }: { id?: number; values: CreatePaymentPreauthInput }) => {
+      const res = await createMutation.mutateAsync({ body: values });
       latestCreateResult.current = res;
       setPreauthAppId(res.appId);
       return res;
     },
     isPending: createMutation.isPending,
   };
-  const createModal = useEditModal<PaymentPreauth, PreauthFormValues, { applicationId: number; payMethod: PaymentPreauthMethod; currency: 'CNY'; payerAccount: string; subject: string; frozenAmount: number; bizType?: string; bizId: string; remark?: string }>({
+  const createModal = useEditModal<PaymentPreauth, PreauthFormValues, CreatePaymentPreauthInput>({
     save: createSaveMutation,
     defaults: { currency: 'CNY' },
     beforeSave: (values) => ({
@@ -128,7 +129,7 @@ export default function PaymentPreauthsPage() {
       Toast.warning('转支付金额不能超过冻结金额');
       return;
     }
-    const res = await captureMutation.mutateAsync({ id: captureTarget.id, applicationId: captureTarget.appId, captureAmount: amount });
+    const res = await captureMutation.mutateAsync({ params: { id: captureTarget.id }, query: { applicationId: captureTarget.appId }, body: { captureAmount: amount } });
     Toast.success(`转支付成功（订单 ${res.captureOrderNo}）`);
     setCaptureTarget(null);
   }
@@ -138,14 +139,14 @@ export default function PaymentPreauthsPage() {
       title: '解冻该预授权？',
       content: `将全额释放冻结资金 ${yuan(r.frozenAmount)}`,
       onOk: async () => {
-        await releaseMutation.mutateAsync({ id: r.id, applicationId: r.appId });
+        await releaseMutation.mutateAsync({ params: { id: r.id }, query: { applicationId: r.appId } });
         Toast.success('已解冻');
       },
     });
   }
 
   async function handleRecover(record: PaymentPreauth) {
-    const result = await recoverMutation.mutateAsync({ id: record.id, applicationId: record.appId });
+    const result = await recoverMutation.mutateAsync({ params: { id: record.id }, query: { applicationId: record.appId } });
     Toast.info(`查询完成：${PAYMENT_PREAUTH_STATUS_LABELS[result.status]}`);
   }
 
@@ -178,7 +179,7 @@ export default function PaymentPreauthsPage() {
         ...(r.status === 'pending' || r.status === 'unknown' ? [{
           key: 'recover',
           label: '查单恢复',
-          loading: recoverMutation.isPending && recoverMutation.variables?.id === r.id,
+          loading: recoverMutation.isPending && recoverMutation.variables?.params.id === r.id,
           onClick: () => { void handleRecover(r); },
         }] : []),
       ] : [],

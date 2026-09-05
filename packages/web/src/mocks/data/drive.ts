@@ -1,15 +1,17 @@
-import type {
-  DriveActivity,
-  DriveFileVersion,
-  DriveNode,
-  DriveNodeComment,
-  DriveNodePermission,
-  DriveSettings,
-  DriveShareAccessLog,
-  DriveShareLink,
-  DriveSpace,
-  DriveSpaceMember,
-  DriveTag,
+import { fillPath } from '@zenith/shared/core';
+import {
+  driveNodeContract,
+  type DriveActivity,
+  type DriveFileVersion,
+  type DriveNode,
+  type DriveNodeComment,
+  type DriveNodePermission,
+  type DriveSettings,
+  type DriveShareAccessLog,
+  type DriveShareLink,
+  type DriveSpace,
+  type DriveSpaceMember,
+  type DriveTag,
 } from '@zenith/shared/drive';
 import { mockDateTime } from '@/mocks/utils/date';
 import { nextIdFrom } from '@/mocks/utils/handlers';
@@ -19,6 +21,11 @@ const SEED_DATE = '2026-01-20 10:00:00';
 export const MOCK_USER = { id: 1, name: '管理员' };
 
 const GB = 1024 ** 3;
+
+/** 节点内容 / 缩略图 / 历史版本内容的鉴权地址（与服务端映射一致，由契约派生） */
+export const mockDriveContentUrl = (nodeId: number) => fillPath(driveNodeContract.content.fullPath, { id: nodeId });
+export const mockDriveThumbnailUrl = (nodeId: number) => fillPath(driveNodeContract.thumbnail.fullPath, { id: nodeId });
+export const mockDriveVersionContentUrl = (nodeId: number, version: number) => fillPath(driveNodeContract.versionContent.fullPath, { id: nodeId, version });
 
 export const mockDriveSpaces: DriveSpace[] = [
   {
@@ -51,8 +58,8 @@ function fileNode(partial: Pick<DriveNode, 'id' | 'spaceId' | 'parentId' | 'name
   return {
     ancestorIds: [], depth: 0, type: 'file', extension: ext, fileId: `mock-file-${partial.id}`, contentHash: `hash-${partial.id}`.padEnd(64, '0'),
     currentVersion: 1, inheritPermissions: true, lockedBy: null, lockedByName: null, lockedAt: null, lockExpiresAt: null,
-    thumbnailUrl: partial.mimeType?.startsWith('image/') ? `/api/drive/nodes/${partial.id}/thumbnail` : null,
-    url: `/api/drive/nodes/${partial.id}/content`, deletedAt: null, deletedBy: null, deletedByName: null, isStarred: false, myRole: 'manager', tags: [],
+    thumbnailUrl: partial.mimeType?.startsWith('image/') ? mockDriveThumbnailUrl(partial.id) : null,
+    url: mockDriveContentUrl(partial.id), deletedAt: null, deletedBy: null, deletedByName: null, isStarred: false, myRole: 'manager', tags: [],
     createdBy: 1, createdByName: '管理员', updatedBy: 1, updatedByName: '管理员', createdAt: SEED_DATE, updatedAt: SEED_DATE,
     ...partial,
   };
@@ -89,8 +96,8 @@ export const mockDrivePermissions: DriveNodePermission[] = [
 ];
 
 export const mockDriveVersions: DriveFileVersion[] = [
-  { id: 1, nodeId: 5, version: 1, fileId: 'mock-file-5-v1', size: 1_048_576, contentHash: null, comment: '初稿', authorId: 1, authorName: '管理员', isCurrent: false, url: '/api/drive/nodes/5/versions/1/content', createdAt: '2026-01-05 10:00:00' },
-  { id: 2, nodeId: 5, version: 2, fileId: 'mock-file-5', size: 1_258_291, contentHash: null, comment: '补充 Q1 数据', authorId: 1, authorName: '管理员', isCurrent: true, url: '/api/drive/nodes/5/versions/2/content', createdAt: SEED_DATE },
+  { id: 1, nodeId: 5, version: 1, fileId: 'mock-file-5-v1', size: 1_048_576, contentHash: null, comment: '初稿', authorId: 1, authorName: '管理员', isCurrent: false, url: mockDriveVersionContentUrl(5, 1), createdAt: '2026-01-05 10:00:00' },
+  { id: 2, nodeId: 5, version: 2, fileId: 'mock-file-5', size: 1_258_291, contentHash: null, comment: '补充 Q1 数据', authorId: 1, authorName: '管理员', isCurrent: true, url: mockDriveVersionContentUrl(5, 2), createdAt: SEED_DATE },
 ];
 
 export const mockDriveShareLinks: DriveShareLink[] = [

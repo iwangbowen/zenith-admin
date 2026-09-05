@@ -25,7 +25,7 @@ export function mapDefinition(
     categoryName: row.category?.name ?? null,
     categoryColor: row.category?.color ?? null,
     categoryIcon: row.category?.icon ?? null,
-    flowData: row.flowData,
+    flowData: (row.flowData ?? null) as WorkflowFlowData | null,
     formId: row.formId ?? null,
     formName: row.form?.name ?? null,
     formFields: formSchema?.fields ?? null,
@@ -55,7 +55,7 @@ export function mapDefinitionVersion(
     version: row.version,
     name: row.name,
     description: row.description,
-    flowData: row.flowData,
+    flowData: (row.flowData ?? null) as WorkflowFlowData | null,
     formId: row.formId ?? null,
     formName: form?.name ?? null,
     formFields: formSchema?.fields ?? null,
@@ -464,11 +464,11 @@ export async function exportDefinition(id: number) {
     name: row.name,
     description: row.description ?? null,
     categoryName: row.category?.name ?? null,
-    flowData: row.flowData ?? null,
+    flowData: (row.flowData ?? null) as WorkflowFlowData | null,
     formType: (row.formType ?? 'designer') as WorkflowFormType,
     customForm: (row.customForm ?? null) as WorkflowCustomFormConfig | null,
     form: row.form
-      ? { name: row.form.name ?? '表单', description: row.form.description ?? null, schema: row.form.schema ?? null }
+      ? { name: row.form.name ?? '表单', description: row.form.description ?? null, schema: (row.form.schema ?? null) as WorkflowFormSchema | null }
       : null,
     exportedAt: formatDateTime(new Date()),
     schemaVersion: WORKFLOW_SCHEMA_VERSION,

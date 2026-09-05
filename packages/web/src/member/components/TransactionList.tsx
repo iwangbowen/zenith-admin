@@ -1,19 +1,20 @@
 import { useState } from 'react';
 import { Table, Typography } from '@douyinfe/semi-ui';
-import { useMemberTransactions } from '../hooks/queries';
+import { useMemberTransactions, type MemberTransactionOp } from '../hooks/queries';
 import { dateTimeColumn } from '@/utils/table-columns';
 
 interface TransactionListProps {
-  fetchUrl: string;
+  /** 数据源契约操作：积分流水或钱包流水 */
+  op: MemberTransactionOp;
   typeLabels: Record<string, string>;
   formatAmount: (absAmount: number) => string;
 }
 
 const PAGE_SIZE = 15;
 
-export function TransactionList({ fetchUrl, typeLabels, formatAmount }: TransactionListProps) {
+export function TransactionList({ op, typeLabels, formatAmount }: TransactionListProps) {
   const [page, setPage] = useState(1);
-  const query = useMemberTransactions(fetchUrl, { page, pageSize: PAGE_SIZE });
+  const query = useMemberTransactions(op, { page, pageSize: PAGE_SIZE });
   const data = query.data?.list ?? [];
   const total = query.data?.total ?? 0;
 

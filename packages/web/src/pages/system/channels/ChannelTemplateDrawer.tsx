@@ -13,7 +13,8 @@ import { Form, SideSheet, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { CHANNEL_MESSAGE_TYPE_LABELS as TYPE_LABELS } from '@zenith/shared/messaging';
 import type { ChatCard, ChatMessageExtra } from '@zenith/shared/chat';
-import type { ChannelMessageTemplate, ChannelMessageType } from '@zenith/shared/messaging';
+import type { ChannelMessageTemplate, ChannelMessageType, CreateChannelTemplateInput } from '@zenith/shared/messaging';
+import { enumValueOf } from '@zenith/shared/core';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { ImageUploadField } from '@/components/ImageUploadField';
@@ -40,9 +41,13 @@ const TYPE_COLOR: Partial<Record<ChannelMessageType, 'blue' | 'cyan' | 'purple'>
   news: 'purple',
 };
 
+/** 群发模板只支持文本 / 图片 / 图文（不含聊天卡片） */
+type TemplateType = CreateChannelTemplateInput['type'];
+const TEMPLATE_TYPES = ['text', 'image', 'news'] as const satisfies readonly TemplateType[];
+
 interface TemplateFormValues {
   name?: string;
-  type?: ChannelMessageType;
+  type?: TemplateType;
   title?: string;
   content?: string;
   summary?: string;
@@ -74,7 +79,7 @@ export function ChannelTemplateDrawer({ visible, onClose, onChanged }: Readonly<
     setCoverUrl(t.type === 'news' ? (t.extra?.card?.cover ?? '') : '');
     setFormValues({
       name: t.name,
-      type: t.type,
+      type: enumValueOf(TEMPLATE_TYPES, t.type) ?? 'text',
       title: t.title ?? '',
       content: t.type === 'image' ? '' : t.content,
       summary: t.extra?.card?.text ?? '',
@@ -85,7 +90,7 @@ export function ChannelTemplateDrawer({ visible, onClose, onChanged }: Readonly<
 
   const handleSubmit = async () => {
     const name = (formValues.name ?? '').trim();
-    const type: ChannelMessageType = formValues.type ?? 'text';
+    const type: TemplateType = formValues.type ?? 'text';
     const title = (formValues.title ?? '').trim();
     const content = (formValues.content ?? '').trim();
 
@@ -121,7 +126,7 @@ export function ChannelTemplateDrawer({ visible, onClose, onChanged }: Readonly<
   };
 
   const handleDelete = async (t: ChannelMessageTemplate) => {
-    await deleteMutation.mutateAsync(t.id);
+    await deleteMutation.mutateAsync({ params: { id: t.id } });
     Toast.success('已删除');
     onChanged?.();
   };

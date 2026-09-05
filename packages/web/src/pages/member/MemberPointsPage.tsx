@@ -2,8 +2,9 @@ import { useMemo } from 'react';
 import { Button, Form, Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Coins } from 'lucide-react';
-import type { MemberPointTransaction } from '@zenith/shared/member';
-import { MEMBER_BIZ_TYPE_LABELS, POINT_TX_TYPE_LABELS } from '@zenith/shared/member';
+import type { AdjustMemberPointsInput, MemberPointTransaction } from '@zenith/shared/member';
+import { MEMBER_BIZ_TYPE_LABELS, POINT_TX_TYPES, POINT_TX_TYPE_LABELS } from '@zenith/shared/member';
+import { enumValueOf } from '@zenith/shared/core';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
@@ -23,11 +24,7 @@ const TYPE_COLORS: Record<string, string> = { earn: 'green', redeem: 'orange', e
 
 interface SearchParams { memberKeyword?: string; type?: string }
 
-interface AdjustPointFormValues extends Record<string, unknown> {
-  memberId: number;
-  delta: number;
-  remark?: string;
-}
+type AdjustPointFormValues = AdjustMemberPointsInput;
 
 interface AdjustPointModalRecord {
   id: number;
@@ -46,14 +43,14 @@ export default function MemberPointsPage() {
     page,
     pageSize,
     memberKeyword: submittedParams.memberKeyword || undefined,
-    type: submittedParams.type || undefined,
+    type: enumValueOf(POINT_TX_TYPES, submittedParams.type),
   });
   const data = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
   const adjustMutation = useAdjustMemberPoints();
   const adjustSave = useMemo(() => ({
     mutateAsync: async ({ values }: { id?: number; values: AdjustPointFormValues }) => {
-      await adjustMutation.mutateAsync(values);
+      await adjustMutation.mutateAsync({ body: values });
       return { id: 0 };
     },
     isPending: adjustMutation.isPending,

@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { Button, Collapse, List, Popconfirm, SideSheet, Space, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { Plus } from 'lucide-react';
-import type { AiChatModel } from '@zenith/shared/ai';
+import type { AiChatModel, UserAiConfig } from '@zenith/shared/ai';
 import { AI_COMMON_PROVIDERS } from '@zenith/shared/ai';
-import type { UserAiConfig } from '@zenith/shared/identity';
 import AiProviderFormModal from './AiProviderFormModal';
 import { useAiChatModels } from '@/hooks/queries/ai-providers';
 import { useAiUserConfigs, useDeleteAiUserConfig } from '@/hooks/queries/ai-user-config';
@@ -32,11 +31,11 @@ export default function UserAiConfigModal({ visible, onClose, onSaved }: UserAiC
   const systemConfigs = visible ? (systemConfigsQuery.data ?? []) : [];
   const userConfigs = visible ? (userConfigsQuery.data ?? []) : [];
   const loading = systemConfigsQuery.isFetching || userConfigsQuery.isFetching;
-  const deletingId = deleteMutation.isPending ? deleteMutation.variables : null;
+  const deletingId = deleteMutation.isPending ? (deleteMutation.variables?.params.id ?? null) : null;
 
   const handleDelete = async (id: number) => {
     try {
-      await deleteMutation.mutateAsync(id);
+      await deleteMutation.mutateAsync({ params: { id } });
       Toast.success('删除成功');
       onSaved();
     } catch {

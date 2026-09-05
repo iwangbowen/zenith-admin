@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button, Col, Form, Row, SideSheet, Spin, Toast, useFormState } from '@douyinfe/semi-ui';
-import type { AiModelFallbackRef, AiProviderConfig, AiReasoningLevel } from '@zenith/shared/ai';
+import type { AiModelFallbackRef, AiModelSettings, AiProviderConfig, AiReasoningLevel, SaveUserAiConfigInput, UserAiConfig } from '@zenith/shared/ai';
 import { AI_CUSTOM_PROVIDER_ID, AI_REASONING_LEVELS } from '@zenith/shared/ai';
-import type { UserAiConfig } from '@zenith/shared/identity';
 import {
   useAiProviderDetail,
   useSaveAiProvider,
@@ -11,6 +10,9 @@ import {
   useAiProviderList,
   useAiProviderCatalog,
   useAiCatalogModels,
+  type AiProviderFetchModelsPayload,
+  type AiProviderTestPayload,
+  type SaveAiProviderValues,
 } from '@/hooks/queries/ai-providers';
 import { useSaveAiUserConfig } from '@/hooks/queries/ai-user-config';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -139,8 +141,8 @@ function userConfigToFormValues(config: UserAiConfig): FormValues {
 }
 
 /** 温度/最大输出/推理力度并入 Mastra modelSettings(留空的键不写入) */
-function toModelSettings(values: FormValues) {
-  const settings: Record<string, number | string> = {};
+function toModelSettings(values: FormValues): AiModelSettings | null {
+  const settings: AiModelSettings = {};
   if (values.temperature !== null && values.temperature !== undefined) settings.temperature = values.temperature;
   if (values.maxOutputTokens) settings.maxOutputTokens = values.maxOutputTokens;
   if (values.reasoning) settings.reasoning = values.reasoning;
@@ -177,7 +179,7 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
   const isUser = props.mode === 'user';
   const editTarget = isUser ? undefined : props.editTarget;
   const existingUserConfig = isUser ? (props as { mode: 'user'; userConfig?: UserAiConfig | null }).userConfig ?? null : null;
-  const allProvidersQuery = useAiProviderList({}, { enabled: visible && !isUser });
+  const allProvidersQuery = useAiProviderList({ enabled: visible && !isUser });
   const catalogQuery = useAiProviderCatalog({ enabled: visible });
   const saveProviderMutation = useSaveAiProvider();
   const saveUserConfigMutation = useSaveAiUserConfig();
@@ -188,7 +190,7 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
   const isCustom = providerId === AI_CUSTOM_PROVIDER_ID;
   const catalogModelsQuery = useAiCatalogModels(providerId, { enabled: visible && !isCustom });
 
-  const systemModal = useEditModal<AiProviderConfig, FormValues, Partial<AiProviderConfig>>({
+  const systemModal = useEditModal<AiProviderConfig, FormValues, SaveAiProviderValues>({
     save: saveProviderMutation,
     useDetail: useAiProviderDetail,
     defaults: SYSTEM_DEFAULTS,
@@ -224,7 +226,7 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
       onClose();
     },
   });
-  const userModal = useEditModal<UserAiConfig, FormValues, Partial<UserAiConfig>>({
+  const userModal = useEditModal<UserAiConfig, FormValues, SaveUserAiConfigInput>({
     save: saveUserConfigMutation,
     defaults: SYSTEM_DEFAULTS,
     toValues: userConfigToFormValues,
@@ -297,7 +299,7 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
       return;
     }
     try {
-      const body: { id?: number; providerId: string; baseUrl?: string | null; apiKey?: string } = {
+      const body: AiProviderFetchModelsPayload = {
         providerId: values.providerId,
         baseUrl: values.baseUrl ?? null,
       };
@@ -307,7 +309,7 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
       } else if (apiKey) {
         body.apiKey = apiKey;
       }
-      const models = await fetchModelsMutation.mutateAsync(body);
+      const models = await fetchModelsMutation.mutateAsync({ body });
       if (models.length === 0) {
         Toast.info('未发现可用模型');
         return;
@@ -333,7 +335,7 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
       return;
     }
     try {
-      const body: { id?: number; providerId: string; baseUrl?: string | null; apiKey?: string; model: string } = {
+      const body: AiProviderTestPayload = {
         providerId: values.providerId,
         baseUrl: values.baseUrl ?? null,
         model,
@@ -347,7 +349,7 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
         body.apiKey = apiKey;
       }
 
-      const res = await testConnectionMutation.mutateAsync(body);
+      const res = await testConnectionMutation.mutateAsync({ body });
       if (res.success) {
         Toast.success('连接测试成功');
       } else {

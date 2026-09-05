@@ -6,12 +6,12 @@ import {
   type DriveFileVersion,
   type DriveNode,
   type DriveUploadCompleteInput,
-  type DriveUploadInit,
   type DriveUploadInitInput,
   type DriveUploadPrecheck,
   type DriveUploadPrecheckInput,
   type DriveUploadConflictPolicy,
 } from '@zenith/shared/drive';
+import type { UploadSessionInit } from '@zenith/shared/platform';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import { driveFileVersions, driveNodes, driveUploadBindings, managedFiles, type DriveNodeRow, type DriveSpaceRow } from '../../db/schema';
@@ -294,7 +294,7 @@ export async function uploadDriveNodeVersion(nodeId: number, file: File, comment
 
 // ─── 分片上传（包装通用 upload_sessions）──────────────────────────────────────
 
-export async function initDriveUpload(data: DriveUploadInitInput): Promise<DriveUploadInit> {
+export async function initDriveUpload(data: DriveUploadInitInput): Promise<UploadSessionInit> {
   await assertExtensionAllowed(data.fileName);
   let target: { space: DriveSpaceRow; parentId: number | null };
   if (data.nodeId) {

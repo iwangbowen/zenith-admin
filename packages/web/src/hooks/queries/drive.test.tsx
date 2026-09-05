@@ -107,7 +107,7 @@ describe('useRenameDriveNode', () => {
     const fetches = observeFetches(qc);
     api.resetCalls();
 
-    await result.current.rename.mutateAsync({ id: 11, name: 'renamed.txt' });
+    await result.current.rename.mutateAsync({ params: { id: 11 }, body: { name: 'renamed.txt' } });
     await waitFor(() => expect(fetches.countOf(driveKeys.dir(1, 10))).toBe(1));
     await waitFor(() => expect(result.current.detail.isFetching).toBe(false));
 
@@ -125,7 +125,7 @@ describe('useMoveDriveNodes', () => {
     const fetches = observeFetches(qc);
     api.resetCalls();
 
-    await result.current.move.mutateAsync({ ids: [11], targetSpaceId: 1, targetParentId: 20, sources: [FILE_IN_A] });
+    await result.current.move.mutateAsync({ body: { ids: [11], targetSpaceId: 1, targetParentId: 20 }, sources: [FILE_IN_A] });
     await waitFor(() => {
       expect(fetches.countOf(driveKeys.dir(1, 10))).toBe(1);
       expect(fetches.countOf(driveKeys.dir(1, 20))).toBe(1);
@@ -201,7 +201,7 @@ describe('useCreateDriveFolder', () => {
     const fetches = observeFetches(qc);
     api.resetCalls();
 
-    await result.current.createFolder.mutateAsync({ spaceId: 1, parentId: 10, name: 'New' });
+    await result.current.createFolder.mutateAsync({ body: { spaceId: 1, parentId: 10, name: 'New' } });
     await waitFor(() => expect(fetches.countOf(driveKeys.dir(1, 10))).toBe(1));
 
     expect(fetches.countOf(driveKeys.dir(1, 20))).toBe(0);

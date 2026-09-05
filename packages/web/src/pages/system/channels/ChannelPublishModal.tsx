@@ -15,7 +15,8 @@ import { Button, Col, Form, Input, Row, Select, SideSheet, Space, Toast, Typogra
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Eye, Save, Send, Settings2, Users } from 'lucide-react';
 import type { ChatCard, ChatMessageExtra } from '@zenith/shared/chat';
-import type { ChannelAdmin, ChannelMessage, ChannelMessageTemplate, ChannelMessageType, ChannelPublishAudienceMode, ChannelSendMode } from '@zenith/shared/messaging';
+import type { ChannelAdmin, ChannelMessage, ChannelMessageTemplate, ChannelPublishAudienceMode, ChannelSendMode } from '@zenith/shared/messaging';
+import type { PublishChannelInput } from '@zenith/shared/mp';
 import { formatDateTimeForApi } from '@/utils/date';
 import { AppModal } from '@/components/AppModal';
 import UserSelect from '@/components/UserSelect';
@@ -48,8 +49,11 @@ interface Props {
   onSuccess: () => void;
 }
 
+/** 群发只支持文本 / 图片 / 图文（不含聊天卡片） */
+type PublishType = PublishChannelInput['type'];
+
 interface PublishFormValues {
-  type: ChannelMessageType;
+  type: PublishType;
   audienceMode: ChannelPublishAudienceMode;
   userIds?: number[];
   departmentIds?: number[];
@@ -93,7 +97,7 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
   /** 消息内容（标题/正文/图片/封面/摘要/链接/富文本），与发布设置分离，便于模板往返 */
   const [content, setContent] = useState<ChannelContentValue>(EMPTY_CHANNEL_CONTENT);
   const updateContent = (patch: Partial<ChannelContentValue>) => setContent((prev) => ({ ...prev, ...patch }));
-  const [modalType, setModalType] = useState<ChannelMessageType>('text');
+  const [modalType, setModalType] = useState<PublishType>('text');
 
   const [audienceSel, setAudienceSel] = useState<AudienceSelection>({
     mode: 'all', userIds: [], departmentIds: [], roleIds: [],
@@ -137,7 +141,7 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
 
   const audienceKey = JSON.stringify(audienceSel);
   const estimateDebouncer = useDebouncer((audience: AudienceSelection) => {
-    audienceEstimateMutation.mutateAsync(audience as unknown as Record<string, unknown>)
+    audienceEstimateMutation.mutateAsync({ body: { audience } })
       .then((res) => setEstimateCount(res.count))
       .catch(() => setEstimateCount(null));
   }, { wait: 300 });
@@ -244,13 +248,13 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
     const body = buildBody(values);
     if (!body) return;
 
-    await testSendMutation.mutateAsync({ channelId: channel.id, values: body });
+    await testSendMutation.mutateAsync({ params: { id: channel.id }, body });
     Toast.success('测试消息已发送，请在消息中心查看');
   };
 
   /** 把当前表单内容抽取为模板内容（不含受众/发送方式） */
   const buildTemplateContent = (values: PublishFormValues): {
-    type: ChannelMessageType;
+    type: PublishType;
     title: string | null;
     content: string;
     extra: ChatMessageExtra | null;
@@ -280,7 +284,7 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
   /** 把模板内容回填到本地内容状态，实现 保存→载入→发布 的内容往返 */
   const applyTemplate = (tpl: ChannelMessageTemplate) => {
     if (!formApi) return;
-    const type: ChannelMessageType = tpl.type === 'news' ? 'news' : tpl.type === 'image' ? 'image' : 'text';
+    const type: PublishType = tpl.type === 'news' ? 'news' : tpl.type === 'image' ? 'image' : 'text';
     setModalType(type);
     formApi.setValue('type', type);
     if (type === 'image') {

@@ -2,7 +2,7 @@ import { Button, Form, Modal, Popconfirm, Space, Table, Tag, Toast } from '@douy
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { MemberTag } from '@zenith/shared/member';
 import { AppModal } from '@/components/AppModal';
-import { useDeleteMemberTag, useMemberTags, useSaveMemberTag } from '@/hooks/queries/member-admin';
+import { useDeleteMemberTag, useMemberTags, useSaveMemberTag, type MemberTagFormValues } from '@/hooks/queries/member-admin';
 import { useDictItems } from '@/hooks/useDictItems';
 import { CreateButton } from '@/components/toolbar-controls';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -23,7 +23,7 @@ export function MemberTagsManageModal({ visible, onClose }: Readonly<Props>) {
   const deleteMutation = useDeleteMemberTag();
   const tags = tagsQuery.data ?? [];
 
-  const tagModal = useEditModal<MemberTag>({
+  const tagModal = useEditModal<MemberTag, MemberTagFormValues>({
     entityName: '标签',
     save: saveMutation,
     defaults: { status: 'enabled', color: 'blue' },
@@ -32,7 +32,7 @@ export function MemberTagsManageModal({ visible, onClose }: Readonly<Props>) {
   });
 
   const handleDelete = async (record: MemberTag) => {
-    await deleteMutation.mutateAsync(record.id);
+    await deleteMutation.mutateAsync({ params: { id: record.id } });
     Toast.success('删除成功');
   };
 

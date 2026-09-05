@@ -1,11 +1,5 @@
-import type { SmsProvider, SmsTemplate } from '@zenith/shared/messaging';
-import { createCrudQueries, type CrudListParams } from '@/lib/crud-queries';
-
-export interface SmsTemplateListParams extends CrudListParams {
-  keyword?: string;
-  provider?: SmsProvider;
-  status?: string;
-}
+import { smsTemplateContract } from '@zenith/shared/messaging';
+import { createResourceQueries } from '@/lib/contract-query';
 
 export const {
   keys: smsTemplateKeys,
@@ -13,7 +7,4 @@ export const {
   useDetail: useSmsTemplateDetail,
   useSave: useSaveSmsTemplate,
   useDelete: useDeleteSmsTemplate,
-} = createCrudQueries<SmsTemplate, SmsTemplateListParams>({
-  resource: 'sms-templates',
-  deleteMode: 'single',
-});
+} = createResourceQueries(smsTemplateContract);

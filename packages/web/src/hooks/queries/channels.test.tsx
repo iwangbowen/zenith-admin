@@ -94,7 +94,7 @@ describe('菜单与自动回复不出现在频道列表，故不应牵动列表'
     const fetches = observeFetches(qc);
     api.resetCalls();
 
-    await hook.result.current.saveMenus.mutateAsync({ channelId: 1, menus: [] });
+    await hook.result.current.saveMenus.mutateAsync({ params: { id: 1 }, body: { menus: [] } });
     await waitFor(() => expect(fetches.countOf(channelKeys.menus(1))).toBe(1));
 
     expect(fetches.countOf(channelKeys.lists)).toBe(0);
@@ -132,7 +132,7 @@ describe('订阅者变更影响列表的 subscriberCount', () => {
     const fetches = observeFetches(qc);
     api.resetCalls();
 
-    await hook.result.current.addSubscribers.mutateAsync({ channelId: 1, userIds: [7] });
+    await hook.result.current.addSubscribers.mutateAsync({ params: { id: 1 }, body: { userIds: [7] } });
     await waitFor(() => expect(fetches.countOf(channelKeys.lists)).toBe(1));
 
     expect(fetches.countOf(channelKeys.channelSubscribers(1))).toBe(1);
@@ -153,7 +153,7 @@ describe('useDeleteChannel', () => {
     qc.setQueryData(messagesKey, { list: [], total: 0 });
     expect(hasCacheEntry(qc, messagesKey)).toBe(true);
 
-    await hook.result.current.removeChannel.mutateAsync(1);
+    await hook.result.current.removeChannel.mutateAsync([1]);
     await waitFor(() => expect(hook.result.current.list.isFetching).toBe(false));
 
     expect(hasCacheEntry(qc, messagesKey)).toBe(false);

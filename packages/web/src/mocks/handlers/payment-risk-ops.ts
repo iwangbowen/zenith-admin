@@ -1,7 +1,7 @@
-import { http } from 'msw';
+import { mock } from '@/mocks/utils/contract';
 import { mockDateTime } from '@/mocks/utils/date';
-import { ok, notFound, badRequest, paginate } from '@/mocks/utils/handlers';
-import type { PaymentRiskHit, PaymentRiskReview } from '@zenith/shared/payment';
+import { notFound, badRequest } from '@/mocks/utils/handlers';
+import { paymentRiskOpsContract, type PaymentRiskHit, type PaymentRiskReview } from '@zenith/shared/payment';
 import dayjs from 'dayjs';
 
 const hits: PaymentRiskHit[] = [
@@ -45,50 +45,40 @@ const reviews: PaymentRiskReview[] = [
 ];
 
 export const paymentRiskOpsHandlers = [
-  http.get('/api/payment/risk/hits', ({ request }) => {
-    const url = new URL(request.url);
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const action = url.searchParams.get('action') ?? '';
-    const dimension = url.searchParams.get('dimension') ?? '';
+  mock(paymentRiskOpsContract.hits, ({ query, ok, paginate }) => {
     const filtered = hits.filter((h) =>
-      (!keyword || h.ruleName.includes(keyword) || (h.orderNo ?? '').includes(keyword) || h.bizId.includes(keyword)) &&
-      (!action || h.action === action) && (!dimension || h.dimension === dimension),
+      (!query.keyword || h.ruleName.includes(query.keyword) || (h.orderNo ?? '').includes(query.keyword) || h.bizId.includes(query.keyword)) &&
+      (!query.action || h.action === query.action) && (!query.dimension || h.dimension === query.dimension) && (!query.channel || h.channel === query.channel) &&
+      (!query.startTime || h.createdAt >= query.startTime) && (!query.endTime || h.createdAt <= query.endTime),
     );
-    return ok(paginate([...filtered].sort((a, b) => b.id - a.id), url));
+    return ok(paginate([...filtered].sort((a, b) => b.id - a.id)));
   }),
-  http.get('/api/payment/risk/reviews', ({ request }) => {
-    const url = new URL(request.url);
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const status = url.searchParams.get('status') ?? '';
+  mock(paymentRiskOpsContract.reviews, ({ query, ok, paginate }) => {
     const filtered = reviews.filter((r) =>
-      (!keyword || r.reviewNo.includes(keyword) || r.orderNo.includes(keyword) || r.bizId.includes(keyword)) &&
-      (!status || r.status === status),
+      (!query.keyword || r.reviewNo.includes(query.keyword) || r.orderNo.includes(query.keyword) || r.bizId.includes(query.keyword)) &&
+      (!query.status || r.status === query.status) && (!query.channel || r.channel === query.channel),
     );
-    return ok(paginate([...filtered].sort((a, b) => b.id - a.id), url));
+    return ok(paginate([...filtered].sort((a, b) => b.id - a.id)));
   }),
-  http.post('/api/payment/risk/reviews/:id/approve', async ({ params, request }) => {
-    const r = reviews.find((x) => x.id === Number(params.id));
+  mock(paymentRiskOpsContract.approveReview, ({ params, body, ok }) => {
+    const r = reviews.find((x) => x.id === params.id);
     if (!r) return notFound('审核单不存在');
     if (r.status !== 'pending') return badRequest('该审核单已处理');
-    const b = (await request.json().catch(() => ({}))) as { remark?: string };
-    if (!b.remark?.trim()) return badRequest('审核意见不能为空');
     r.status = 'approved';
     r.reviewerName = '管理员';
     r.reviewedAt = mockDateTime();
-    r.reviewRemark = b.remark.trim();
+    r.reviewRemark = body.remark;
     r.updatedAt = mockDateTime();
     return ok(r, '已放行');
   }),
-  http.post('/api/payment/risk/reviews/:id/reject', async ({ params, request }) => {
-    const r = reviews.find((x) => x.id === Number(params.id));
+  mock(paymentRiskOpsContract.rejectReview, ({ params, body, ok }) => {
+    const r = reviews.find((x) => x.id === params.id);
     if (!r) return notFound('审核单不存在');
     if (r.status !== 'pending') return badRequest('该审核单已处理');
-    const b = (await request.json().catch(() => ({}))) as { remark?: string };
-    if (!b.remark?.trim()) return badRequest('审核意见不能为空');
     r.status = 'rejected';
     r.reviewerName = '管理员';
     r.reviewedAt = mockDateTime();
-    r.reviewRemark = b.remark.trim();
+    r.reviewRemark = body.remark;
     r.updatedAt = mockDateTime();
     return ok(r, '已拒绝');
   }),

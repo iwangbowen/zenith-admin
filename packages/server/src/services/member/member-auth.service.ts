@@ -6,12 +6,13 @@
  * - 注册时在事务内初始化积分账户 + 钱包账户
  */
 import { hashPassword, verifyPassword } from '../../lib/password';
-import { and, asc, eq, isNull, or } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, or } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { members, memberLevels, memberPointAccounts, memberWallets, memberLoginLogs, tenants } from '../../db/schema';
 import type { MemberRow } from '../../db/schema';
 import { signToken, verifyToken } from '../../lib/jwt';
+import { pageOffset } from '../../lib/pagination';
 import {
   generateMemberTokenId,
   registerMemberSession,
@@ -171,6 +172,36 @@ export function recordMemberLoginLog(params: MemberLoginLogParams): void {
   }).catch((err: unknown) => {
     logger.warn('会员登录日志写入失败', { memberId: params.memberId, status: params.status, error: err instanceof Error ? err.message : String(err) });
   });
+}
+
+/** 会员端：我的登录历史（本人可见，不附加昵称列） */
+export async function listMyLoginLogs(q: { page: number; pageSize: number }) {
+  const { memberId } = currentMember();
+  const [rows, total] = await Promise.all([
+    db.select().from(memberLoginLogs)
+      .where(eq(memberLoginLogs.memberId, memberId))
+      .orderBy(desc(memberLoginLogs.createdAt))
+      .limit(q.pageSize)
+      .offset(pageOffset(q.page, q.pageSize)),
+    db.$count(memberLoginLogs, eq(memberLoginLogs.memberId, memberId)),
+  ]);
+  return {
+    list: rows.map((r) => ({
+      id: r.id,
+      memberId: r.memberId,
+      ip: r.ip,
+      location: r.location,
+      browser: r.browser,
+      os: r.os,
+      userAgent: r.userAgent,
+      status: r.status,
+      message: r.message,
+      createdAt: formatDateTime(r.createdAt),
+    })),
+    total,
+    page: q.page,
+    pageSize: q.pageSize,
+  };
 }
 
 // ─── 注册 ─────────────────────────────────────────────────────────────────────

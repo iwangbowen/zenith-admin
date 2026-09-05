@@ -1,4 +1,3 @@
-import type { AiModelSettings, AiModelCapabilities } from '../ai/types';
 import type { PaginatedResponse } from '../core/types';
 import type { IdentityProviderSyncStatus, OAuthProviderType } from './constants';
 
@@ -88,30 +87,7 @@ export interface IdentityProviderSyncLog {
   createdAt: string;
 }
 
-export interface UserAiConfig {
-  id: number;
-  userId: number;
-  name: string | null;
-  /** Mastra provider ID 或 'custom' */
-  providerId: string;
-  baseUrl: string | null;
-  apiKey: string | null;
-  /** 自定义请求头（组织 ID 等，随请求透传） */
-  headers: Record<string, string> | null;
-  /** 启用的模型列表（聊天时可切换） */
-  models: string[];
-  /** 默认模型（须包含在 models 中） */
-  defaultModel: string | null;
-  modelSettings: AiModelSettings | null;
-  /** 服务商特定选项（按 provider 分组透传） */
-  providerOptions: Record<string, Record<string, unknown>> | null;
-  /** 模型能力标签（vision / tools） */
-  capabilities: AiModelCapabilities | null;
-  systemPrompt: string | null;
-  isEnabled: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
+export type { UserAiConfig } from '../ai/contracts';
 
 // ─── 意见反馈 ────────────────────────────────────────────────────────────────
 export type UserFeedbackCategory = 'suggestion' | 'bug' | 'ux' | 'other';

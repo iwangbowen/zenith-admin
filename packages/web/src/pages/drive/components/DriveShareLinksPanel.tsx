@@ -57,11 +57,11 @@ export function DriveShareLinksPanel({ node, allowExternalShare }: DriveShareLin
       remark: values.remark || undefined,
     };
     if (editing === 'new') {
-      const link = await create.mutateAsync({ nodeId: node.id, ...payload });
+      const link = await create.mutateAsync({ params: { id: node.id }, body: payload });
       setEditing(null);
       await copyTextWithToast(shareLinkAbsoluteUrl(link), { success: '外链已创建并复制到剪贴板' });
     } else if (editing) {
-      await update.mutateAsync({ id: editing.id, ...payload, clearPassword: editing.hasPassword && !values.password ? undefined : undefined });
+      await update.mutateAsync({ params: { id: editing.id }, body: { ...payload, clearPassword: editing.hasPassword && !values.password ? undefined : undefined } });
       setEditing(null);
       Toast.success('外链已更新');
     }

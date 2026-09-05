@@ -1,17 +1,27 @@
 import { useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { WorkflowCategory } from '@zenith/shared/workflow';
-import { request } from '@/utils/request';
-import { LOOKUP_STALE_TIME, unwrap } from '@/lib/query';
+import { workflowCategoryContract } from '@zenith/shared/workflow';
+import { api, createResourceQueries } from '@/lib/contract-query';
+import { LOOKUP_STALE_TIME } from '@/lib/query';
+
+const resource = createResourceQueries(workflowCategoryContract, {
+  // 分类下拉（useWorkflowCategories）与列表页共用 ['workflow','categories'] 前缀，保存 / 删除后一并失效
+  keyPrefix: ['workflow', 'categories'],
+});
 
 export const workflowCategoryKeys = {
+  ...resource.keys,
+  /** 全部分类（发起工作台分组 / 定义页侧栏 / 待办筛选共用） */
   all: ['workflow', 'categories'] as const,
 };
+
+export const useSaveWorkflowCategory = resource.useSave;
+export const useDeleteWorkflowCategories = resource.useDelete;
 
 export function useWorkflowCategories() {
   const categoriesQuery = useQuery({
     queryKey: workflowCategoryKeys.all,
-    queryFn: () => request.get<WorkflowCategory[]>('/api/workflows/categories/all').then(unwrap),
+    queryFn: () => api(workflowCategoryContract.all),
     staleTime: LOOKUP_STALE_TIME,
   });
   const { data, isFetching, refetch: refetchCategories } = categoriesQuery;

@@ -83,7 +83,7 @@ describe('已发布定义只保留一份缓存', () => {
     const fetches = observeFetches(qc);
     api.resetCalls();
 
-    await result.current.publish.mutateAsync(1);
+    await result.current.publish.mutateAsync({ params: { id: 1 } });
 
     // 失效会覆盖 staleTime，长缓存不再是「发布后读不到」的借口
     await waitFor(() => {

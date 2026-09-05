@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { Form, Toast, Tag, Row, Col, Typography, SideSheet, Button } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import type { Coupon, CouponType, CouponTemplateStatus } from '@zenith/shared/member';
-import { COUPON_TYPE_LABELS, COUPON_TEMPLATE_STATUS_LABELS } from '@zenith/shared/member';
+import type { Coupon, CouponType, CouponTemplateStatus, CreateCouponInput } from '@zenith/shared/member';
+import { COUPON_TEMPLATE_STATUSES, COUPON_TYPES, COUPON_TYPE_LABELS, COUPON_TEMPLATE_STATUS_LABELS } from '@zenith/shared/member';
+import { enumValueOf } from '@zenith/shared/core';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -17,7 +18,7 @@ import { formatDateTimeForApi } from '@/utils/date';
 import {
   memberAdminKeys,
   useCouponList,
-  useDeleteCoupon,
+  useDeleteCoupons,
   useIssueCoupon,
   useSaveCoupon,
 } from '@/hooks/queries/member-admin';
@@ -66,16 +67,16 @@ export default function CouponsPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
-    type: submittedParams.type || undefined,
+    status: enumValueOf(COUPON_TEMPLATE_STATUSES, submittedParams.status),
+    type: enumValueOf(COUPON_TYPES, submittedParams.type),
   });
   const data = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
   const saveMutation = useSaveCoupon();
-  const deleteMutation = useDeleteCoupon();
+  const deleteMutation = useDeleteCoupons();
   const issueMutation = useIssueCoupon();
 
-  const couponModal = useEditModal<Coupon, FormValues, Record<string, unknown>>({
+  const couponModal = useEditModal<Coupon, FormValues, Partial<CreateCouponInput>>({
     entityName: '优惠券',
     save: saveMutation,
     defaults: { type: 'amount', validType: 'fixed', status: 'draft', threshold: 0, totalQuantity: 0, perLimit: 0, exchangePoints: 0 },
@@ -128,7 +129,7 @@ export default function CouponsPage() {
   };
 
   const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync(id);
+    await deleteMutation.mutateAsync([id]);
     Toast.success('已删除');
   };
 
@@ -150,7 +151,7 @@ export default function CouponsPage() {
   const handleIssue = async () => {
     let values: { memberId: number };
     try { values = (await issueFormApi.current!.validate()) as { memberId: number }; } catch { abortSubmit('validation'); }
-    await issueMutation.mutateAsync({ id: issuing!.id, memberId: values.memberId });
+    await issueMutation.mutateAsync({ params: { id: issuing!.id }, body: { memberId: values.memberId } });
     Toast.success('发放成功');
     setIssueVisible(false);
   };

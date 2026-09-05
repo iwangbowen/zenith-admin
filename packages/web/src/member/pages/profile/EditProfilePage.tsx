@@ -35,10 +35,12 @@ export default function EditProfilePage() {
       return;
     }
     const updated = await updateProfileMutation.mutateAsync({
-      nickname: nickname.trim(),
-      email: email || null,
-      gender: gender || null,
-      avatar: avatarUrl,
+      body: {
+        nickname: nickname.trim(),
+        email: email || null,
+        gender: gender || null,
+        avatar: avatarUrl,
+      },
     });
     updateMember(updated);
     Toast.success('已保存');

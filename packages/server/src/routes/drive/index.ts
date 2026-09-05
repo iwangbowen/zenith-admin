@@ -1,3 +1,11 @@
+import {
+  driveAdminContract,
+  driveNodeContract,
+  drivePublicShareContract,
+  driveShareLinkContract,
+  driveSpaceContract,
+  driveTagContract,
+} from '@zenith/shared/drive';
 import { defineRouteDomain } from '../_kit';
 import driveSpacesRoutes from './drive-spaces';
 import driveNodesRoutes from './drive-nodes';
@@ -10,14 +18,14 @@ import driveAdminRoutes from './drive-admin';
 export default defineRouteDomain({
   name: 'drive',
   mounts: () => [
-    ['/api/drive/spaces', driveSpacesRoutes, { feature: 'drive' }],
+    [driveSpaceContract.basePath, driveSpacesRoutes, { feature: 'drive' }],
     // 静态路径路由器先于单节点 /{id} 路由器挂载在同一路径
-    ['/api/drive/nodes', driveNodesRoutes, { feature: 'drive' }],
-    ['/api/drive/nodes', driveNodeItemRoutes, { feature: 'drive' }],
-    ['/api/drive/share-links', driveShareLinksRoutes, { feature: 'drive' }],
-    ['/api/drive/tags', driveTagsRoutes, { feature: 'drive' }],
-    ['/api/drive/admin', driveAdminRoutes, { feature: 'drive' }],
+    [driveNodeContract.basePath, driveNodesRoutes, { feature: 'drive' }],
+    [driveNodeContract.basePath, driveNodeItemRoutes, { feature: 'drive' }],
+    [driveShareLinkContract.basePath, driveShareLinksRoutes, { feature: 'drive' }],
+    [driveTagContract.basePath, driveTagsRoutes, { feature: 'drive' }],
+    [driveAdminContract.basePath, driveAdminRoutes, { feature: 'drive' }],
     // 外链匿名访问：feature 门禁同样生效（关闭网盘功能即整体不可达）
-    ['/api/drive/public', drivePublicRoutes, { feature: 'drive' }],
+    [drivePublicShareContract.basePath, drivePublicRoutes, { feature: 'drive' }],
   ],
 });

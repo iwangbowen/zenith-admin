@@ -247,6 +247,11 @@ export const PAYMENT_RISK_DIMENSION_LABELS: Record<PaymentRiskDimension, string>
 
 export const PAYMENT_RISK_DIMENSION_OPTIONS = createLabelOptionsFromMap(PAYMENT_RISK_DIMENSION_LABELS);
 
+/** 命中记录可按维度筛选的子集（决策表策略命中不单独筛选） */
+export const PAYMENT_RISK_HIT_QUERY_DIMENSIONS = ['blocklist', 'single_limit', 'daily_limit', 'daily_count'] as const satisfies readonly PaymentRiskDimension[];
+
+export type PaymentRiskHitQueryDimension = typeof PAYMENT_RISK_HIT_QUERY_DIMENSIONS[number];
+
 export const PAYMENT_RISK_REVIEW_STATUSES = ['pending', 'approved', 'rejected'] as const;
 
 export type PaymentRiskReviewStatus = typeof PAYMENT_RISK_REVIEW_STATUSES[number];
@@ -407,3 +412,101 @@ export type PaymentLedgerNormalBalance = typeof PAYMENT_LEDGER_NORMAL_BALANCES[n
 export const PAYMENT_FUND_RESERVATION_STATUSES = ['active', 'captured', 'released', 'expired'] as const;
 
 export type PaymentFundReservationStatus = typeof PAYMENT_FUND_RESERVATION_STATUSES[number];
+
+// ─── 支付应用 / 运营 ─────────────────────────────────────────────────────
+export const PAYMENT_APP_ENVIRONMENTS = ['production', 'sandbox'] as const;
+
+export type PaymentAppEnvironment = typeof PAYMENT_APP_ENVIRONMENTS[number];
+
+export const PAYMENT_OUTBOX_EVENT_STATUSES = ['pending', 'done', 'failed'] as const;
+
+export type PaymentOutboxEventStatus = typeof PAYMENT_OUTBOX_EVENT_STATUSES[number];
+
+/** 支付链接不可用原因 */
+export const PAYMENT_LINK_UNAVAILABLE_REASONS = ['disabled', 'expired', 'usage_limit'] as const;
+
+export type PaymentLinkUnavailableReason = typeof PAYMENT_LINK_UNAVAILABLE_REASONS[number];
+
+/** 公开收银台可选择的支付方式（不含需要 openId / APP 环境的 JSAPI 与 APP 支付） */
+export const PAYMENT_LINK_PAY_METHODS = ['wechat_native', 'wechat_h5', 'alipay_page', 'alipay_wap', 'unionpay_qr'] as const satisfies readonly PaymentCashierMethod[];
+
+export type PaymentLinkPayMethod = typeof PAYMENT_LINK_PAY_METHODS[number];
+
+/** 投诉回复的发言方 */
+export const PAYMENT_DISPUTE_REPLY_AUTHORS = ['merchant', 'user', 'system'] as const;
+
+export type PaymentDisputeReplyAuthor = typeof PAYMENT_DISPUTE_REPLY_AUTHORS[number];
+
+/** 单期扣款 / 预授权等资金操作的执行结果 */
+export const PAYMENT_DEDUCT_RESULT_STATUSES = ['success', 'processing', 'failed'] as const;
+
+export type PaymentDeductResultStatus = typeof PAYMENT_DEDUCT_RESULT_STATUSES[number];
+
+/** 签约协议处于 unknown 状态时等待收敛的操作 */
+export const PAYMENT_CONTRACT_UNKNOWN_OPERATIONS = ['sign', 'terminate'] as const;
+
+export type PaymentContractUnknownOperation = typeof PAYMENT_CONTRACT_UNKNOWN_OPERATIONS[number];
+
+/** 预授权单处于 unknown 状态时等待收敛的操作 */
+export const PAYMENT_PREAUTH_UNKNOWN_OPERATIONS = ['freeze', 'capture', 'release'] as const;
+
+export type PaymentPreauthUnknownOperation = typeof PAYMENT_PREAUTH_UNKNOWN_OPERATIONS[number];
+
+// ─── 渠道能力（适配器声明 × 商户配置 × 运行模式的交集）────────────────────
+/** 支付引擎运行模式 */
+export const PAYMENT_ENGINE_MODES = ['off', 'sandbox', 'live'] as const;
+
+export type PaymentEngineMode = typeof PAYMENT_ENGINE_MODES[number];
+
+/** 渠道适配器运行环境 */
+export const PAYMENT_PROVIDER_ENVIRONMENTS = ['sandbox', 'live'] as const;
+
+export type PaymentProviderEnvironment = typeof PAYMENT_PROVIDER_ENVIRONMENTS[number];
+
+/** 渠道适配器可声明的操作 */
+export const PAYMENT_PROVIDER_OPERATIONS = [
+  'payment.create',
+  'payment.query',
+  'payment.close',
+  'refund.create',
+  'refund.query',
+  'notification.verify',
+  'profit-sharing.create',
+  'profit-sharing.query',
+  'profit-sharing.reverse',
+  'transfer.create',
+  'transfer.query',
+  'contract.sign',
+  'contract.query',
+  'contract.terminate',
+  'contract.deduct',
+  'preauth.freeze',
+  'preauth.query',
+  'preauth.capture',
+  'preauth.release',
+  'bill.download',
+] as const;
+
+export type PaymentProviderOperation = typeof PAYMENT_PROVIDER_OPERATIONS[number];
+
+/** 操作的执行方式：跳转 / 同步返回 / 异步回调 / 本地完成 */
+export const PAYMENT_PROVIDER_EXECUTIONS = ['redirect', 'synchronous', 'asynchronous', 'local'] as const;
+
+export type PaymentProviderExecution = typeof PAYMENT_PROVIDER_EXECUTIONS[number];
+
+/** 能力不可用的原因码 */
+export const PAYMENT_CAPABILITY_REASON_CODES = [
+  'ENGINE_OFF',
+  'ENGINE_MODE_MISMATCH',
+  'CONFIG_DISABLED',
+  'ENVIRONMENT_UNSUPPORTED',
+  'CONFIG_INCOMPLETE',
+  'PAYMENT_METHOD_NOT_CONFIGURED',
+  'PAYMENT_METHOD_DISABLED',
+  'PAYMENT_METHOD_CHANNEL_MISMATCH',
+  'PAYMENT_METHOD_UNSUPPORTED',
+  'CURRENCY_UNSUPPORTED',
+  'OPERATION_UNSUPPORTED',
+] as const;
+
+export type PaymentCapabilityReasonCode = typeof PAYMENT_CAPABILITY_REASON_CODES[number];

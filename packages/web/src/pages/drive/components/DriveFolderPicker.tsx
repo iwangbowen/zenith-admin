@@ -2,12 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Select, Tree, Typography } from '@douyinfe/semi-ui';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { Folder, HardDrive } from 'lucide-react';
-import type { DriveNodeListResult, DriveSpace } from '@zenith/shared/drive';
-import { DRIVE_SPACE_TYPE_LABELS } from '@zenith/shared/drive';
+import { DRIVE_SPACE_TYPE_LABELS, driveNodeContract, type DriveSpace } from '@zenith/shared/drive';
 import { AppModal } from '@/components/AppModal';
-import { request } from '@/utils/request';
-import { unwrap } from '@/lib/query';
-import { toQueryString } from '@/lib/query';
+import { api } from '@/lib/contract-query';
 import { useMyDriveSpaces } from '@/hooks/queries/drive';
 import { roleAtLeast } from '../drive-utils';
 
@@ -57,9 +54,9 @@ export function DriveFolderPicker({ visible, title, okText = '确定', defaultSp
 
   const loadChildren = useCallback(async (parentId: number | null): Promise<TreeNodeData[]> => {
     if (!spaceId) return [];
-    const res = await request.get<DriveNodeListResult>(`/api/drive/nodes${toQueryString({
-      spaceId: parentId ? undefined : spaceId, parentId: parentId ?? undefined, type: 'folder', pageSize: 200, sortBy: 'name',
-    })}`).then(unwrap);
+    const res = await api(driveNodeContract.list, {
+      query: { spaceId: parentId ? undefined : spaceId, parentId: parentId ?? undefined, type: 'folder', pageSize: 200, sortBy: 'name' },
+    });
     return res.list.map((n) => ({
       key: String(n.id),
       label: n.name,

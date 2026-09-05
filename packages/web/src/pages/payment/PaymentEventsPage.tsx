@@ -7,13 +7,13 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { JsonBlock } from '@/components/JsonBlock';
 import { usePermission } from '@/hooks/usePermission';
-import type { PaymentOutboxEvent } from '@zenith/shared/payment';
+import { PAYMENT_OUTBOX_EVENT_STATUSES, type PaymentOutboxEvent } from '@zenith/shared/payment';
 import { paymentEventKeys, usePaymentEventList, usePaymentOpsHealth, useRedispatchPaymentEvent } from '@/hooks/queries/payment-events';
 import { useListSearch } from '@/hooks/useListSearch';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
-import { createLabelOptionsFromMap } from '@zenith/shared/core';
+import { createLabelOptionsFromMap, enumValueOf } from '@zenith/shared/core';
 
 const EVENT_STATUS_LABELS = { pending: '待处理', done: '已完成', failed: '失败' } as const satisfies Record<PaymentOutboxEvent['status'], string>;
 const EVENT_STATUS_OPTIONS = createLabelOptionsFromMap(EVENT_STATUS_LABELS);
@@ -52,17 +52,17 @@ export default function PaymentEventsPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
+    status: enumValueOf(PAYMENT_OUTBOX_EVENT_STATUSES, submittedParams.status),
     type: submittedParams.type || undefined,
   });
   const data = listQuery.data ?? null;
   const healthQuery = usePaymentOpsHealth();
   const health = healthQuery.data ?? null;
   const redispatchMutation = useRedispatchPaymentEvent();
-  const redispatchingId = redispatchMutation.isPending ? (redispatchMutation.variables ?? null) : null;
+  const redispatchingId = redispatchMutation.isPending ? (redispatchMutation.variables?.params.id ?? null) : null;
 
   function handleRedispatch(record: PaymentOutboxEvent) {
-    redispatchMutation.mutate(record.id, {
+    redispatchMutation.mutate({ params: { id: record.id } }, {
       onSuccess: (event) => {
         if (event.status === 'done') {
           Toast.success('事件重投完成');

@@ -8,9 +8,11 @@ import { useRef, useState } from 'react';
 import { Banner, Col, Form, Modal, Row, Spin, Switch, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
+import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import {
   PUSH_PROVIDER_LABELS,
   PUSH_PROVIDER_OPTIONS,
+  type CreatePushConfigInput,
   type PushConfig,
   type PushProvider,
   type TestPushSendInput,
@@ -58,7 +60,7 @@ function TestSendModal({ config, onClose }: { config: PushConfig | null; onClose
     } catch {
       return;
     }
-    await testMutation.mutateAsync({ id: config.id, values });
+    await testMutation.mutateAsync({ params: { id: config.id }, body: values });
     Toast.success('测试推送已发送,请在目标设备确认');
     onClose();
   }
@@ -107,12 +109,12 @@ export default function PushConfigsPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
+    status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
 
-  const modal = useEditModal<PushConfig>({
+  const modal = useEditModal<PushConfig, Partial<CreatePushConfigInput>>({
     entityName: '推送配置',
     save: useSavePushConfig(),
     useDetail: usePushConfigDetail,

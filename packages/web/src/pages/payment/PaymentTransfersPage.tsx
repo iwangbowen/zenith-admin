@@ -21,10 +21,11 @@ import {
   usePaymentTransferSummary,
   useQueryPaymentTransfer,
   useRejectPaymentTransfer,
-  type CreatePaymentTransferValues,
 } from '@/hooks/queries/payment-transfers';
-import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS, PAYMENT_TRANSFER_APPROVAL_STATUS_LABELS, PAYMENT_TRANSFER_STATUS_LABELS, PAYMENT_TRANSFER_STATUS_OPTIONS, PAYMENT_TRANSFER_APPROVAL_STATUS_OPTIONS } from '@zenith/shared/payment';
+import { enumValueOf } from '@zenith/shared/core';
+import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS, PAYMENT_CHANNELS, PAYMENT_TRANSFER_APPROVAL_STATUS_LABELS, PAYMENT_TRANSFER_APPROVAL_STATUSES, PAYMENT_TRANSFER_STATUS_LABELS, PAYMENT_TRANSFER_STATUS_OPTIONS, PAYMENT_TRANSFER_STATUSES, PAYMENT_TRANSFER_APPROVAL_STATUS_OPTIONS } from '@zenith/shared/payment';
 import type {
+  CreatePaymentTransferInput,
   PaymentChannel,
   PaymentTransfer,
   PaymentTransferApprovalStatus,
@@ -73,9 +74,9 @@ export default function PaymentTransfersPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    channel: submittedParams.channel || undefined,
-    status: submittedParams.status || undefined,
-    approvalStatus: submittedParams.approvalStatus || undefined,
+    channel: enumValueOf(PAYMENT_CHANNELS, submittedParams.channel),
+    status: enumValueOf(PAYMENT_TRANSFER_STATUSES, submittedParams.status),
+    approvalStatus: enumValueOf(PAYMENT_TRANSFER_APPROVAL_STATUSES, submittedParams.approvalStatus),
   });
   const data = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
@@ -102,15 +103,17 @@ export default function PaymentTransfersPage() {
   const rejectMutation = useRejectPaymentTransfer();
 
   const transferSaveMutation = {
-    mutateAsync: async ({ values }: { id?: number; values: CreatePaymentTransferValues }) => {
-      const transfer = await createMutation.mutateAsync(values);
+    // 幂等键按一次表单提交意图生成：校验失败重试沿用同一个键，成功后清空，下一笔转账换新键
+    mutateAsync: async ({ values }: { id?: number; values: CreatePaymentTransferInput }) => {
+      const idempotencyKey = transferIdempotencyKey.current ?? (transferIdempotencyKey.current = crypto.randomUUID());
+      const transfer = await createMutation.mutateAsync({ headers: { 'x-idempotency-key': idempotencyKey }, body: values });
       latestTransfer.current = transfer;
       transferIdempotencyKey.current = null;
       return transfer;
     },
     isPending: createMutation.isPending,
   };
-  const transferModal = useEditModal<PaymentTransfer, TransferFormValues, CreatePaymentTransferValues>({
+  const transferModal = useEditModal<PaymentTransfer, TransferFormValues, CreatePaymentTransferInput>({
     save: transferSaveMutation,
     defaults: { currency: 'CNY' },
     beforeSave: (values) => ({
@@ -123,7 +126,6 @@ export default function PaymentTransfersPage() {
       remark: values.remark.trim(),
       bizType: values.bizType || undefined,
       bizId: values.bizId || undefined,
-      idempotencyKey: transferIdempotencyKey.current ?? (transferIdempotencyKey.current = crypto.randomUUID()),
     }),
     successMessage: () => {
       const transfer = latestTransfer.current;
@@ -135,7 +137,7 @@ export default function PaymentTransfersPage() {
   });
 
   async function handleQuery(id: number) {
-    const t = await queryMutation.mutateAsync(id);
+    const t = await queryMutation.mutateAsync({ params: { id } });
     Toast.info(`当前状态：${PAYMENT_TRANSFER_STATUS_LABELS[t.status]}`);
   }
 
@@ -148,7 +150,7 @@ export default function PaymentTransfersPage() {
     if (!approveTarget) return;
     const remark = approveRemark.trim();
     if (!remark) { Toast.warning('请填写审批意见'); return; }
-    const transfer = await approveMutation.mutateAsync({ id: approveTarget.id, remark });
+    const transfer = await approveMutation.mutateAsync({ params: { id: approveTarget.id }, body: { remark } });
     Toast.success(transfer.status === 'success' ? '审批通过，转账已成功' : '审批通过，转账已提交渠道处理');
     setApproveTarget(null);
   }
@@ -162,7 +164,7 @@ export default function PaymentTransfersPage() {
     if (!rejectTarget) return;
     const remark = rejectRemark.trim();
     if (!remark) { Toast.warning('请填写驳回原因'); return; }
-    await rejectMutation.mutateAsync({ id: rejectTarget.id, remark });
+    await rejectMutation.mutateAsync({ params: { id: rejectTarget.id }, body: { remark } });
     Toast.success('转账已驳回，资金预占已释放');
     setRejectTarget(null);
   }
@@ -204,7 +206,7 @@ export default function PaymentTransfersPage() {
           key: 'approve',
           label: '通过',
           type: 'primary' as const,
-          loading: approveMutation.isPending && approveMutation.variables?.id === r.id,
+          loading: approveMutation.isPending && approveMutation.variables?.params.id === r.id,
           disabled: r.appliedById != null && r.appliedById === user?.id,
           disabledReason: '转账申请人与审批人必须为不同用户',
           onClick: () => openApprove(r),
@@ -212,7 +214,7 @@ export default function PaymentTransfersPage() {
           key: 'reject',
           label: '驳回',
           danger: true,
-          loading: rejectMutation.isPending && rejectMutation.variables?.id === r.id,
+          loading: rejectMutation.isPending && rejectMutation.variables?.params.id === r.id,
           onClick: () => openReject(r),
         }] : []),
       ],

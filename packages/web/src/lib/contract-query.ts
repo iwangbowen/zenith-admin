@@ -64,7 +64,7 @@ type UrlInputArgs<Op extends AnyOperation> = Record<never, never> extends UrlInp
   ? [input?: UrlInputOf<Op>]
   : [input: UrlInputOf<Op>];
 
-type LooseInput = { params?: Record<string, unknown>; query?: object; body?: unknown } | undefined;
+type LooseInput = { params?: Record<string, unknown>; query?: object; headers?: Record<string, unknown>; body?: unknown } | undefined;
 
 /**
  * 契约操作 + 输入 → 完整 URL（含查询串）。只需要 params / query 段，
@@ -75,16 +75,27 @@ export function urlOf<Op extends AnyOperation>(op: Op, ...args: UrlInputArgs<Op>
   return fillPath(op.fullPath, input?.params) + (input?.query ? toQueryString(input.query) : '');
 }
 
+/** 契约声明的业务请求头（输入 `headers` 段）合并到请求选项；未声明时原样返回 */
+function withContractHeaders(options: RequestOptions, headers: Record<string, unknown> | undefined): RequestOptions {
+  if (!headers) return options;
+  const merged = new Headers(options.headers);
+  for (const [name, value] of Object.entries(headers)) {
+    if (value !== undefined && value !== null) merged.set(name, String(value));
+  }
+  return { ...options, headers: merged };
+}
+
 /** 调用契约操作并解包 `data`；`code !== 0` 抛 `ApiError` */
 export async function api<Op extends AnyOperation>(
   op: Op,
   ...args: [...InputArgs<Op>, options?: ApiCallOptions]
 ): Promise<OutputOf<Op>> {
-  const [rawInput, rawOptions] = splitArgs<Op>(args);
+  const [rawInput, rawOptions] = splitArgs<Op>(op, args);
   if (op.kind !== 'json') {
     throw new Error(`契约操作「${op.name}」为 ${op.kind} 响应，请使用 request.download(urlOf(op, input)) 等二进制通道`);
   }
-  const { client = request, ...requestOptions } = rawOptions ?? {};
+  const { client = request, ...baseOptions } = rawOptions ?? {};
+  const requestOptions = withContractHeaders(baseOptions, (rawInput as LooseInput)?.headers);
   const url = urlOf(op, ...([rawInput] as unknown as UrlInputArgs<Op>));
   const body = (rawInput as LooseInput)?.body;
   const response = op.method === 'get'
@@ -93,12 +104,19 @@ export async function api<Op extends AnyOperation>(
   return unwrap(response);
 }
 
-function splitArgs<Op extends AnyOperation>(args: unknown[]): [InputOf<Op> | undefined, ApiCallOptions | undefined] {
-  // 第一个参数是输入（可能省略），第二个是选项；单参数时按「含 params/query/body 键」判定为输入
+const INPUT_KEYS = new Set(['params', 'query', 'headers', 'body']);
+
+function splitArgs<Op extends AnyOperation>(op: Op, args: unknown[]): [InputOf<Op> | undefined, ApiCallOptions | undefined] {
+  // 第一个参数是输入（可能省略），第二个是选项；单参数时按键集合判定：
+  // 含 params / query / body 即输入；只含 headers 时，契约声明了 headers 段才视为输入（否则是请求选项）
   const [first, second] = args;
   if (args.length >= 2) return [first as InputOf<Op> | undefined, second as ApiCallOptions | undefined];
-  if (first && typeof first === 'object' && ('params' in first || 'query' in first || 'body' in first)) {
-    return [first as InputOf<Op>, undefined];
+  if (first && typeof first === 'object') {
+    const keys = Object.keys(first);
+    const onlyInputKeys = keys.length > 0 && keys.every((k) => INPUT_KEYS.has(k));
+    if ('params' in first || 'query' in first || 'body' in first || (onlyInputKeys && op.headers)) {
+      return [first as InputOf<Op>, undefined];
+    }
   }
   return [undefined, first as ApiCallOptions | undefined];
 }
@@ -108,9 +126,12 @@ function splitArgs<Op extends AnyOperation>(args: unknown[]): [InputOf<Op> | und
 /**
  * 契约操作的 query key：`[资源键, 操作名, input?]`。
  * 省略 input 得到该操作全部查询的公共前缀（供 `invalidateQueries` / `useListSearch({ listKey })` 使用）。
+ * 业务请求头不参与 key：它们不是资源身份的一部分。
  */
 export function contractKey<Op extends AnyOperation>(op: Op, input?: InputOf<Op>): readonly unknown[] {
-  return input === undefined ? [resourceKeyOf(op.basePath), op.name] : [resourceKeyOf(op.basePath), op.name, input];
+  if (input === undefined) return [resourceKeyOf(op.basePath), op.name];
+  const { headers: _headers, ...identity } = input as LooseInput & object;
+  return [resourceKeyOf(op.basePath), op.name, identity];
 }
 
 type ApiQueryExtraOptions<Op extends AnyOperation> = Omit<

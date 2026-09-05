@@ -1,12 +1,12 @@
 /**
  * useFlowHealth — 设计器实时画布体检（3A）。
- * 监听流程模型变化，debounce 后调用已有 /health-check（传 inline flowData + 当前表单字段），
+ * 监听流程模型变化，debounce 后调用定义契约的 healthCheck（传 inline flowData + 当前表单字段），
  * 将返回的按 nodeKey 标记的问题聚合为 Map，驱动画布上的节点红点/告警角标。复用后端体检引擎，不重写。
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDebouncer } from '@tanstack/react-pacer';
 import type { WorkflowDefinitionHealthReport, WorkflowFlowData } from '@zenith/shared/workflow';
-import { request } from '@/utils/request';
+import { fetchWorkflowFlowHealth } from '@/hooks/queries/workflow-designer';
 import type { NodeHealthInfo, NodeHealthIssue } from '../types';
 
 interface UseFlowHealthParams {
@@ -34,14 +34,8 @@ export function useFlowHealth({ enabled, buildFlowData, formFields }: UseFlowHea
       setReport(null);
       return;
     }
-    const fieldPayload = fieldsRef.current.filter((f) => f.key).map((f) => ({ key: f.key, type: f.type }));
-    void request
-      .post<WorkflowDefinitionHealthReport>(
-        '/api/workflows/definitions/health-check',
-        { flowData, formFields: fieldPayload },
-        { silent: true },
-      )
-      .then((res) => { if (res.code === 0) setReport(res.data); })
+    void fetchWorkflowFlowHealth(flowData, fieldsRef.current)
+      .then((next) => setReport(next))
       .catch(() => { /* 体检失败静默，不打扰编辑 */ });
   }, { wait: 600 });
 

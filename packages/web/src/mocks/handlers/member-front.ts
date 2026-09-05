@@ -1,6 +1,9 @@
 import { http } from 'msw';
+import { memberAuthContract, memberSelfContract } from '@zenith/shared/member';
+import { mock } from '@/mocks/utils/contract';
 import { badRequest, ok, notFound } from '@/mocks/utils/handlers';
 import {
+  memberView,
   mockMembers,
   mockMemberPointAccount,
   mockMemberPointTxs,
@@ -19,36 +22,31 @@ import { mockDateTime } from '../utils/date';
 const MEMBER_TOKEN = 'mock-member-token-demo';
 const MEMBER_REFRESH = 'mock-member-refresh-demo';
 
-function memberView(m: (typeof mockMembers)[number]) {
-  const { password: _pwd, ...rest } = m;
-  return rest;
-}
-
 const demo = mockMembers[0];
 
+/** CMS 会员侧 handler 的分页响应（尚未契约化，沿用固定页大小） */
 function paginated<T>(list: T[]) {
   return ok({ list, total: list.length, page: 1, pageSize: 15 });
 }
 
 export const memberFrontHandlers = [
   // ── 认证 ──────────────────────────────────────────────────────────────────
-  http.post('/api/member/auth/sms-code', () => ok({ sent: true, devCode: '123456' }, '验证码已发送')),
-  http.post('/api/member/auth/login', () =>
+  mock(memberAuthContract.smsCode, ({ ok }) => ok({ sent: true, devCode: '123456' }, '验证码已发送')),
+  mock(memberAuthContract.login, ({ ok }) =>
     ok({ member: memberView(demo), token: { accessToken: MEMBER_TOKEN, refreshToken: MEMBER_REFRESH } }, '登录成功'),
   ),
-  http.post('/api/member/auth/register', () =>
+  mock(memberAuthContract.register, ({ ok }) =>
     ok({ member: memberView(demo), token: { accessToken: MEMBER_TOKEN, refreshToken: MEMBER_REFRESH } }, '注册成功'),
   ),
-  http.post('/api/member/auth/refresh', () => ok({ accessToken: MEMBER_TOKEN, refreshToken: MEMBER_REFRESH })),
-  http.post('/api/member/auth/logout', () => ok(null, '已退出登录')),
-  http.post('/api/member/auth/reset-password', () => ok(null, '密码已重置')),
-  http.get('/api/member/auth/me', () => ok(memberView(demo))),
-  http.put('/api/member/auth/profile', async ({ request }) => {
-    const body = (await request.json()) as Partial<typeof demo>;
-    Object.assign(demo, body);
+  mock(memberAuthContract.refresh, ({ ok }) => ok({ accessToken: MEMBER_TOKEN, refreshToken: MEMBER_REFRESH })),
+  mock(memberAuthContract.logout, ({ ok }) => ok(null, '已退出登录')),
+  mock(memberAuthContract.resetPassword, ({ ok }) => ok(null, '密码已重置')),
+  mock(memberAuthContract.me, ({ ok }) => ok(memberView(demo))),
+  mock(memberAuthContract.updateProfile, ({ body, ok }) => {
+    Object.assign(demo, body, { updatedAt: mockDateTime() });
     return ok(memberView(demo), '资料已更新');
   }),
-  // Avatar upload (returns a preset URL for demo)
+  // 头像上传：服务端尚无对应路由（见 api-conformance.allowlist），Demo 模式返回预置头像
   http.post('/api/member/files/avatar', async ({ request }) => {
     const form = await request.formData();
     const file = form.get('file') as File | null;
@@ -56,16 +54,22 @@ export const memberFrontHandlers = [
     const idx = Math.floor(Math.random() * 12) + 1;
     return ok({ url: `${import.meta.env.BASE_URL}avatars/avatar-${String(idx).padStart(2, '0')}.svg` }, '上传成功');
   }),
-  http.put('/api/member/auth/password', () => ok(null, '密码已修改')),
+  mock(memberAuthContract.changePassword, ({ ok }) => ok(null, '密码已修改')),
 
   // ── 自助：积分 ────────────────────────────────────────────────────────────
-  http.get('/api/member/points/account', () => ok(mockMemberPointAccount)),
-  http.get('/api/member/points/transactions', () => paginated(mockMemberPointTxs)),
+  mock(memberSelfContract.pointAccount, ({ ok }) => ok(mockMemberPointAccount)),
+  mock(memberSelfContract.pointTransactions, ({ query, ok, paginate }) => {
+    const rows = query.type ? mockMemberPointTxs.filter((r) => r.type === query.type) : mockMemberPointTxs;
+    return ok(paginate(rows));
+  }),
 
   // ── 自助：钱包 ────────────────────────────────────────────────────────────
-  http.get('/api/member/wallet', () => ok(mockMemberWallet)),
-  http.get('/api/member/wallet/transactions', () => paginated(mockMemberWalletTxs)),
-  http.get('/api/member/payment-options', () => ok([
+  mock(memberSelfContract.wallet, ({ ok }) => ok(mockMemberWallet)),
+  mock(memberSelfContract.walletTransactions, ({ query, ok, paginate }) => {
+    const rows = query.type ? mockMemberWalletTxs.filter((r) => r.type === query.type) : mockMemberWalletTxs;
+    return ok(paginate(rows));
+  }),
+  mock(memberSelfContract.paymentOptions, ({ ok }) => ok([
     {
       id: 1,
       name: '演示微信支付应用',
@@ -79,58 +83,66 @@ export const memberFrontHandlers = [
       deductMethods: [{ method: 'alipay_cycle', label: '支付宝周期扣款' }],
     },
   ])),
-  http.post('/api/member/wallet/recharge', async ({ request }) => {
-    const body = (await request.json()) as { applicationId: number; amount: number; payMethod: string };
-    if (!body.applicationId) return badRequest('请选择支付应用');
-    return ok({
-      orderNo: `MOCK${Date.now()}`,
-      payMethod: body.payMethod,
-      channel: body.payMethod.startsWith('wechat') ? 'wechat' : 'alipay',
-      codeUrl: 'https://example.com/mock-pay-qr',
-      expiredAt: '2027-01-01 00:00:00',
-    }, '已创建充值订单（演示）');
-  }),
+  mock(memberSelfContract.recharge, ({ body, ok }) => ok({
+    orderNo: `MOCK${Date.now()}`,
+    payMethod: body.payMethod,
+    channel: body.payMethod.startsWith('wechat') ? 'wechat' : 'alipay',
+    codeUrl: 'https://example.com/mock-pay-qr',
+    expiredAt: '2027-01-01 00:00:00',
+  }, '已创建充值订单（演示）')),
 
   // ── 自助：等级 ────────────────────────────────────────────────────────────
-  http.get('/api/member/levels', () => ok(mockMemberLevels)),
-  http.get('/api/member/benefits', () => ok(mockMemberBenefits)),
+  mock(memberSelfContract.levels, ({ ok }) => ok(mockMemberLevels)),
+  mock(memberSelfContract.benefits, ({ ok }) => ok(mockMemberBenefits)),
 
-  // ── 自助：通知 ────────────────────────────────────────────────────────────
-  http.get('/api/member/notifications/unread-count', () =>
+  // ── 自助：通知（静态段 /unread-count、/read-all 先于 /:id/read）───────────
+  mock(memberSelfContract.unreadCount, ({ ok }) =>
     ok({ count: mockMemberNotifications.filter((n) => !n.readAt).length })),
-  http.get('/api/member/notifications', () => paginated(mockMemberNotifications)),
-  http.put('/api/member/notifications/read-all', () => {
-    for (const n of mockMemberNotifications) n.readAt = n.readAt ?? mockDateTime();
-    return ok(null, '已全部已读');
+  mock(memberSelfContract.notifications, ({ query, ok, paginate }) => {
+    const rows = query.unreadOnly ? mockMemberNotifications.filter((n) => !n.readAt) : mockMemberNotifications;
+    return ok(paginate(rows));
   }),
-  http.put('/api/member/notifications/:id/read', ({ params }) => {
-    const n = mockMemberNotifications.find((x) => x.id === Number(params.id));
-    if (n) n.readAt = n.readAt ?? mockDateTime();
+  mock(memberSelfContract.markAllRead, ({ ok }) => {
+    let n = 0;
+    for (const item of mockMemberNotifications) {
+      if (item.readAt) continue;
+      item.readAt = mockDateTime();
+      n += 1;
+    }
+    return ok(null, `已读 ${n} 条`);
+  }),
+  mock(memberSelfContract.markRead, ({ params, ok }) => {
+    const n = mockMemberNotifications.find((x) => x.id === params.id);
+    if (!n) return notFound('通知不存在', { status: 404 });
+    n.readAt = n.readAt ?? mockDateTime();
     return ok(null, '已读');
   }),
 
   // ── 自助：邀请 ────────────────────────────────────────────────────────────
-  http.get('/api/member/invite/summary', () => ok(mockInviteSummary)),
+  mock(memberSelfContract.inviteSummary, ({ ok }) => ok(mockInviteSummary)),
 
   // ── 自助：注销 ────────────────────────────────────────────────────────────
-  http.post('/api/member/auth/deactivate', () => ok(null, '账户已注销')),
+  mock(memberAuthContract.deactivate, ({ ok }) => ok(null, '账户已注销')),
 
-  // ── 自助：优惠券 ──────────────────────────────────────────────────────────
-  http.get('/api/member/coupons', () => paginated(mockMemberCoupons)),
-  http.get('/api/member/coupons/available', () => ok(mockCoupons)),
-  http.get('/api/member/coupons/exchangeable', () => ok(mockCoupons.filter((c) => (c.exchangePoints ?? 0) > 0))),
-  http.post('/api/member/coupons/receive', () => ok(mockMemberCoupons[0], '领取成功')),
-  http.post('/api/member/coupons/exchange', () => ok(mockMemberCoupons[0], '兑换成功')),
+  // ── 自助：优惠券（静态段 /available、/exchangeable 先于列表）──────────────
+  mock(memberSelfContract.availableCoupons, ({ ok }) => ok(mockCoupons)),
+  mock(memberSelfContract.exchangeableCoupons, ({ ok }) => ok(mockCoupons.filter((c) => c.exchangePoints > 0))),
+  mock(memberSelfContract.coupons, ({ query, ok, paginate }) => {
+    const rows = query.status ? mockMemberCoupons.filter((mc) => mc.status === query.status) : mockMemberCoupons;
+    return ok(paginate(rows));
+  }),
+  mock(memberSelfContract.receiveCoupon, ({ body, ok }) => {
+    if (!mockCoupons.some((c) => c.id === body.couponId)) return badRequest('优惠券不可领取', { status: 400 });
+    return ok(mockMemberCoupons[0], '领取成功');
+  }),
+  mock(memberSelfContract.exchangeCoupon, ({ body, ok }) => {
+    const coupon = mockCoupons.find((c) => c.id === body.couponId);
+    if (!coupon || coupon.exchangePoints <= 0) return badRequest('该优惠券不支持积分兑换', { status: 400 });
+    return ok(mockMemberCoupons[0], '兑换成功');
+  }),
 
   // ── 自助：登录历史 ────────────────────────────────────────────────────────
-  http.get('/api/member/login-logs', ({ request }) => {
-    const url = new URL(request.url);
-    const page = parseInt(url.searchParams.get('page') ?? '1');
-    const pageSize = parseInt(url.searchParams.get('pageSize') ?? '15');
-    const start = (page - 1) * pageSize;
-    const list = mockMemberLoginLogs.slice(start, start + pageSize);
-    return ok({ list, total: mockMemberLoginLogs.length, page, pageSize });
-  }),
+  mock(memberSelfContract.loginLogs, ({ ok, paginate }) => ok(paginate(mockMemberLoginLogs))),
 
   // ── CMS 会员投稿 ──────────────────────────────────────────────────────────
   http.get('/api/member/cms/channels', () => ok([

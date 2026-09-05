@@ -1,5 +1,6 @@
 import { Icon } from '@iconify/react';
 import { escapeRegExp } from '@zenith/shared/core';
+import { drivePublicShareContract } from '@zenith/shared/drive';
 import { fileContract } from '@zenith/shared/platform';
 import { config } from '@/config';
 import { getFileIcon } from '@/utils/fileIcons';
@@ -354,7 +355,7 @@ export function isArchiveFile(mimeType?: string | null): boolean {
   return isZipFile(mime) || ARCHIVE_MIME_TYPES.has(mime);
 }
 /** 匿名可访问的公开端点：不带 token、401 也不触发登录态刷新与跳转（外链访客本就未登录） */
-const ANONYMOUS_URL_PREFIXES = ['/api/drive/public/'];
+const ANONYMOUS_URL_PREFIXES = [`${drivePublicShareContract.basePath}/`];
 
 /** 使用当前登录 token 获取受保护的文件内容，返回 Blob；绝对 URL（云存储直链）与公开端点直接裸 fetch，不携带 token */
 export async function fetchProtectedFile(url: string): Promise<Blob> {

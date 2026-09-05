@@ -1,11 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { Select, Input, InputNumber, Toast, Typography, Space } from '@douyinfe/semi-ui';
-import type { WorkflowDefinition, WorkflowFlowData } from '@zenith/shared/workflow';
-import { request } from '@/utils/request';
-import { unwrap } from '@/lib/query';
 import AppModal from '@/components/AppModal';
-import { useWorkflowBatchRecovery, useWorkflowDefinitionDetail } from '@/hooks/queries/workflow-monitor';
+import { useWorkflowBatchRecovery, useWorkflowDefinitionDetail, useWorkflowMonitorDefinitionOptions } from '@/hooks/queries/workflow-monitor';
 
 interface Props {
   visible: boolean;
@@ -22,14 +18,10 @@ export default function WorkflowBatchRecoveryModal({ visible, onClose }: Readonl
   const [olderThanMinutes, setOlderThanMinutes] = useState<number | undefined>();
   const [reason, setReason] = useState('');
   const recoveryMutation = useWorkflowBatchRecovery();
-  const definitionsQuery = useQuery({
-    queryKey: ['workflow', 'definitions', 'options'] as const,
-    queryFn: () => request.get<WorkflowDefinition[]>('/api/workflows/definitions/published').then(unwrap),
-    enabled: visible,
-  });
+  const definitionsQuery = useWorkflowMonitorDefinitionOptions(visible);
   const definitionQuery = useWorkflowDefinitionDetail(definitionId, visible && definitionId !== undefined);
   const definitions = definitionsQuery.data ?? [];
-  const flow = (definitionQuery.data?.flowData ?? null) as WorkflowFlowData | null;
+  const flow = definitionQuery.data?.flowData ?? null;
   const nodeOptions = (flow?.nodes ?? [])
     .filter((n) => n.data.type !== 'start' && n.data.type !== 'end')
     .map((n) => ({ label: `${n.data.label || n.data.key}（${n.data.key}）`, value: n.data.key }));
@@ -57,10 +49,12 @@ export default function WorkflowBatchRecoveryModal({ visible, onClose }: Readonl
       return;
     }
     const result = await recoveryMutation.mutateAsync({
-      definitionId,
-      nodeKey,
-      ...(olderThanMinutes ? { olderThanMinutes } : {}),
-      reason: reason.trim(),
+      body: {
+        definitionId,
+        nodeKey,
+        ...(olderThanMinutes ? { olderThanMinutes } : {}),
+        reason: reason.trim(),
+      },
     });
     Toast.success(`已推进 ${result.success}/${result.total} 个实例`);
     onClose();

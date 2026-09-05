@@ -1,8 +1,9 @@
 import type { ChatMessage, ChatReactionGroup, ChatVoteData } from '../chat/contracts';
 import type { RtcIceCandidateInit, RtcInvitePayload, RtcPeerInfo } from '../chat/types';
 import type { EntityStatus } from '../core/types';
-import type { Announcement, ChannelMessage, InAppMessage } from '../messaging/types';
-import type { MpKfSession, MpMessageDirection, MpMessageType } from '../mp/types';
+import type { Announcement, ChannelMessage, InAppMessage } from '../messaging/contracts';
+import type { MpMessageDirection, MpMessageType } from '../mp/constants';
+import type { MpKfSession } from '../mp/contracts';
 import type { AsyncTask } from '../tasks/contracts';
 import type { WorkflowInstanceStatus } from '../workflow/types';
 import type {

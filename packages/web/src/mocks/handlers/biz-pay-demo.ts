@@ -1,42 +1,34 @@
-import { http } from 'msw';
-import { ok, badRequest, notFound, pageParams } from '@/mocks/utils/handlers';
-import type { BizPayDemo } from '@zenith/shared/biz';
-import type { CreatePaymentResult, PaymentChannel, PaymentMethod } from '@zenith/shared/payment';
+import { bizPayDemoContract, type BizPayDemo } from '@zenith/shared/biz';
+import { PAYMENT_METHOD_CHANNEL, type CreatePaymentResult } from '@zenith/shared/payment';
 import { mockBizPayDemos, getNextPayDemoId } from '@/mocks/data/biz-pay-demo';
+import { mock } from '@/mocks/utils/contract';
 import { mockDateTime } from '@/mocks/utils/date';
-
-const channelOf = (m: PaymentMethod): PaymentChannel => (m.startsWith('wechat') ? 'wechat' : 'alipay');
+import { badRequest, notFound } from '@/mocks/utils/handlers';
 
 export const bizPayDemoHandlers = [
   // 列表
-  http.get('/api/biz/pay-demos', ({ request }) => {
-    const url = new URL(request.url);
-    const { page, pageSize } = pageParams(url);
-    const status = url.searchParams.get('status') ?? '';
-    const keyword = (url.searchParams.get('keyword') ?? '').trim().toLowerCase();
+  mock(bizPayDemoContract.list, ({ query, ok, paginate }) => {
+    const keyword = (query.keyword ?? '').trim().toLowerCase();
     let list = [...mockBizPayDemos].sort((a, b) => b.id - a.id);
-    if (status) list = list.filter((d) => d.status === status);
+    if (query.status) list = list.filter((d) => d.status === query.status);
     if (keyword) list = list.filter((d) => d.subject.toLowerCase().includes(keyword));
-    const total = list.length;
-    const paged = list.slice((page - 1) * pageSize, page * pageSize);
-    return ok({ list: paged, total, page, pageSize });
+    return ok(paginate(list));
   }),
 
   // 详情
-  http.get('/api/biz/pay-demos/:id', ({ params }) => {
-    const demo = mockBizPayDemos.find((d) => d.id === Number(params.id));
+  mock(bizPayDemoContract.detail, ({ params, ok }) => {
+    const demo = mockBizPayDemos.find((d) => d.id === params.id);
     if (!demo) return notFound('示例单不存在');
     return ok(demo);
   }),
 
   // 新建
-  http.post('/api/biz/pay-demos', async ({ request }) => {
-    const body = await request.json() as Partial<BizPayDemo>;
+  mock(bizPayDemoContract.create, ({ body, ok }) => {
     const now = mockDateTime();
     const demo: BizPayDemo = {
       id: getNextPayDemoId(),
-      subject: body.subject ?? '示例事项',
-      amount: Number(body.amount ?? 0),
+      subject: body.subject,
+      amount: body.amount,
       payMethod: null,
       status: 'pending',
       paymentOrderNo: null,
@@ -51,8 +43,8 @@ export const bizPayDemoHandlers = [
   }),
 
   // 删除
-  http.delete('/api/biz/pay-demos/:id', ({ params }) => {
-    const idx = mockBizPayDemos.findIndex((d) => d.id === Number(params.id));
+  mock(bizPayDemoContract.remove, ({ params, ok }) => {
+    const idx = mockBizPayDemos.findIndex((d) => d.id === params.id);
     if (idx === -1) return notFound('示例单不存在');
     if (mockBizPayDemos[idx].status === 'paid') return badRequest('已支付的示例单不可删除');
     mockBizPayDemos.splice(idx, 1);
@@ -60,14 +52,12 @@ export const bizPayDemoHandlers = [
   }),
 
   // 发起支付：返回二维码/跳转链接，并置「支付中」
-  http.post('/api/biz/pay-demos/:id/pay', async ({ params, request }) => {
-    const demo = mockBizPayDemos.find((d) => d.id === Number(params.id));
+  mock(bizPayDemoContract.pay, ({ params, body, ok }) => {
+    const demo = mockBizPayDemos.find((d) => d.id === params.id);
     if (!demo) return notFound('示例单不存在');
     if (demo.status === 'paid') return badRequest('该示例单已支付，无需重复发起');
-    const body = await request.json() as { applicationId: number; payMethod: PaymentMethod };
-    if (!body.applicationId) return badRequest('请选择支付应用');
     const payMethod = body.payMethod;
-    const channel = channelOf(payMethod);
+    const channel = PAYMENT_METHOD_CHANNEL[payMethod];
     const orderNo = `PAYDEMO${Date.now()}${demo.id}`;
     demo.status = 'paying';
     demo.payMethod = payMethod;
@@ -85,8 +75,8 @@ export const bizPayDemoHandlers = [
   }),
 
   // 模拟支付成功：履约（置 paid + 发放权益）
-  http.post('/api/biz/pay-demos/:id/simulate-paid', ({ params }) => {
-    const demo = mockBizPayDemos.find((d) => d.id === Number(params.id));
+  mock(bizPayDemoContract.simulatePaid, ({ params, ok }) => {
+    const demo = mockBizPayDemos.find((d) => d.id === params.id);
     if (!demo) return notFound('示例单不存在');
     if (!demo.paymentOrderNo) return badRequest('请先创建支付订单');
     if (demo.status !== 'paid') {

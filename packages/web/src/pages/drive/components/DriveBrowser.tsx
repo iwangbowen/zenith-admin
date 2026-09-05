@@ -130,10 +130,10 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
     if (!picker) return;
     const ids = picker.nodes.map((n) => n.id);
     if (picker.mode === 'move') {
-      await move.mutateAsync({ ids, targetSpaceId: target.spaceId, targetParentId: target.parentId, sources: picker.nodes });
+      await move.mutateAsync({ body: { ids, targetSpaceId: target.spaceId, targetParentId: target.parentId }, sources: picker.nodes });
       Toast.success(`已移动到「${target.label}」`);
     } else {
-      const result = await copy.mutateAsync({ ids, targetSpaceId: target.spaceId, targetParentId: target.parentId });
+      const result = await copy.mutateAsync({ body: { ids, targetSpaceId: target.spaceId, targetParentId: target.parentId } });
       Toast.success(result.mode === 'task' ? '项目较多，已转为后台复制' : `已复制到「${target.label}」`);
     }
     setPicker(null);
@@ -145,11 +145,11 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
     if (!api) return;
     const { name } = await api.validate();
     if (mode === 'rename' && renaming) {
-      await rename.mutateAsync({ id: renaming.id, name });
+      await rename.mutateAsync({ params: { id: renaming.id }, body: { name } });
       setRenaming(null);
       Toast.success('已重命名');
     } else {
-      await createFolder.mutateAsync({ spaceId, parentId: folderId, name });
+      await createFolder.mutateAsync({ body: { spaceId, parentId: folderId, name } });
       setCreating(false);
       Toast.success('文件夹已创建');
     }

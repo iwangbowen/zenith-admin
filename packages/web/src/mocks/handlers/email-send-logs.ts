@@ -1,44 +1,31 @@
-import { http } from 'msw';
-import { ok, notFound, paginate } from '@/mocks/utils/handlers';
-import { removeWhere } from '@/mocks/utils/array';
+import { emailSendLogContract } from '@zenith/shared/messaging';
+import type { EmailSendLog } from '@zenith/shared/messaging';
+import { mock } from '@/mocks/utils/contract';
+import { notFound } from '@/mocks/utils/handlers';
 import { mockEmailSendLogs, getNextEmailSendLogId } from '@/mocks/data/email-send-logs';
 import { mockEmailTemplates } from '@/mocks/data/email-templates';
 import { mockDateTime } from '@/mocks/utils/date';
-import type { EmailSendLog } from '@zenith/shared/messaging';
 
 export const emailSendLogsHandlers = [
-  http.get('/api/email-send-logs', ({ request }) => {
-    const url = new URL(request.url);
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const toEmail = url.searchParams.get('toEmail') ?? '';
-    const status = url.searchParams.get('status') ?? '';
-    const source = url.searchParams.get('source') ?? '';
+  mock(emailSendLogContract.list, ({ query, ok, paginate }) => {
     const filtered = mockEmailSendLogs.filter((l) => {
-      if (keyword && !l.subject.includes(keyword) && !l.toEmail.includes(keyword)) return false;
-      if (toEmail && !l.toEmail.includes(toEmail)) return false;
-      if (status && l.status !== status) return false;
-      if (source && l.source !== source) return false;
+      if (query.keyword && !l.subject.includes(query.keyword) && !l.toEmail.includes(query.keyword)) return false;
+      if (query.toEmail && !l.toEmail.includes(query.toEmail)) return false;
+      if (query.status && l.status !== query.status) return false;
+      if (query.source && l.source !== query.source) return false;
       return true;
     });
-    return ok(paginate(filtered, url, 20));
+    return ok(paginate(filtered));
   }),
 
-  http.delete('/api/email-send-logs/:id', ({ params }) => {
-    const idx = mockEmailSendLogs.findIndex((x) => x.id === Number(params.id));
+  mock(emailSendLogContract.remove, ({ params, ok }) => {
+    const idx = mockEmailSendLogs.findIndex((x) => x.id === params.id);
     if (idx === -1) return notFound('记录不存在', { status: 404 });
     mockEmailSendLogs.splice(idx, 1);
     return ok(null, '删除成功');
   }),
 
-  http.delete('/api/email-send-logs/batch', async ({ request }) => {
-    const body = await request.json() as { ids: number[] };
-    const ids = new Set(body.ids ?? []);
-    const count = removeWhere(mockEmailSendLogs, (log) => ids.has(log.id));
-    return ok(null, `已删除 ${count} 条记录`);
-  }),
-
-  http.post('/api/email-send-logs/test-send', async ({ request }) => {
-    const body = await request.json() as { templateId?: number; toEmail: string; subject?: string; content?: string };
+  mock(emailSendLogContract.testSend, ({ body, ok }) => {
     const tpl = body.templateId ? mockEmailTemplates.find((t) => t.id === body.templateId) : null;
     const now = mockDateTime();
     const log: EmailSendLog = {
@@ -52,12 +39,12 @@ export const emailSendLogsHandlers = [
       errorMsg: null,
       source: 'test',
       userId: 1,
-      userName: '管理员',
+      username: '管理员',
       ip: '127.0.0.1',
       sentAt: now,
       createdAt: now,
     };
     mockEmailSendLogs.unshift(log);
-    return ok({ success: true, status: 'success', logId: log.id }, '测试发送成功');
+    return ok({ logId: log.id, status: log.status, errorMsg: null }, '发送成功');
   }),
 ];

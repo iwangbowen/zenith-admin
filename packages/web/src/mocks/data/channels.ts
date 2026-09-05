@@ -199,6 +199,7 @@ function buildChannel(seed: (typeof SEED_CHANNELS)[number]): Channel {
     lastMessage: last,
     isMuted: false,
     isSubscribed: true,
+    tenantId: null,
     createdAt: mockDateTime(),
     updatedAt: mockDateTime(),
   };
@@ -219,6 +220,7 @@ export const mockChannels: Channel[] = [
     lastMessage: null,
     isMuted: false,
     isSubscribed: false,
+    tenantId: null,
     createdAt: mockDateTime(),
     updatedAt: mockDateTime(),
   },
@@ -235,6 +237,7 @@ export const mockChannels: Channel[] = [
     lastMessage: mockChannelMessages.filter((m) => m.channelId === 3 && m.convUserId === MOCK_CURRENT_USER_ID).slice(-1)[0] ?? null,
     isMuted: false,
     isSubscribed: true,
+    tenantId: null,
     createdAt: mockDateTime(),
     updatedAt: mockDateTime(),
   },

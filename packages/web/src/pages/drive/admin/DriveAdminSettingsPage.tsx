@@ -41,7 +41,7 @@ export default function DriveAdminSettingsPage() {
   const num = (v: unknown, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
 
   const handleSave = () => {
-    save.mutate(form, { onSuccess: () => Toast.success('设置已保存') });
+    save.mutate({ body: form }, { onSuccess: () => Toast.success('设置已保存') });
   };
 
   return (

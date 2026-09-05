@@ -1,8 +1,19 @@
-import { http } from 'msw';
+import {
+  paymentOpsContract,
+  paymentReconContract,
+  paymentRefundContract,
+  type PaymentChannel,
+  type PaymentOpsHealth,
+  type PaymentOutboxEvent,
+  type PaymentReconBatch,
+  type PaymentReconItem,
+  type PaymentReconResult,
+  type PaymentReconSource,
+} from '@zenith/shared/payment';
 import { PAYMENT_MOCK_SEED_TIME, mockPaymentChannels, mockPaymentOrders, mockPaymentRefunds } from '@/mocks/data/payment';
+import { mock } from '@/mocks/utils/contract';
 import { mockDateTime } from '@/mocks/utils/date';
-import { ok, badRequest, conflict, notFound, paginate } from '@/mocks/utils/handlers';
-import type { PaymentChannel, PaymentReconBatch, PaymentReconItem, PaymentReconResult, PaymentReconSource, PaymentOutboxEvent } from '@zenith/shared/payment';
+import { badRequest, conflict, notFound } from '@/mocks/utils/handlers';
 import { recordMockSystemJournal } from './payment-journals';
 
 const SEED = PAYMENT_MOCK_SEED_TIME;
@@ -79,53 +90,41 @@ function createBatchFromBill(applicationId: number, channel: PaymentChannel, cha
 }
 
 const reconHandlers = [
-  http.get('/api/payment/recon/batches', ({ request }) => {
-    const url = new URL(request.url);
-    const channel = url.searchParams.get('channel') ?? '';
-    const status = url.searchParams.get('status') ?? '';
-    const filtered = reconBatches.filter((b) => (!channel || b.channel === channel) && (!status || b.status === status));
-    return ok(paginate([...filtered].reverse(), url));
+  mock(paymentReconContract.list, ({ query, ok, paginate }) => {
+    const filtered = reconBatches.filter((b) => (!query.channel || b.channel === query.channel) && (!query.status || b.status === query.status));
+    return ok(paginate([...filtered].reverse()));
   }),
-  http.get('/api/payment/recon/sample-bill', ({ request }) => {
-    const url = new URL(request.url);
-    return ok({ billText: sampleBill((url.searchParams.get('channel') as PaymentChannel) ?? 'wechat') });
-  }),
-  http.post('/api/payment/recon/batches', async ({ request }) => {
-    const body = (await request.json()) as { applicationId: number; channel: PaymentChannel; channelConfigId: number; currency?: string; billDate: string; billText: string; remark?: string };
+  mock(paymentReconContract.sampleBill, ({ query, ok }) => ok({ billText: sampleBill(query.channel) })),
+  mock(paymentReconContract.create, ({ body, ok }) => {
     const config = mockPaymentChannels.find((item) => item.id === body.channelConfigId && item.channel === body.channel && item.status === 'enabled');
     if (!config) return badRequest('所选商户配置不存在或未启用');
     const appHasConfig = mockPaymentOrders.some((order) => order.appId === body.applicationId && order.channelConfigId === body.channelConfigId);
     if (!appHasConfig) return badRequest('支付应用未绑定所选商户配置');
-    const batch = createBatchFromBill(body.applicationId, body.channel, body.channelConfigId, body.currency ?? 'CNY', body.billDate, body.billText, body.remark ?? null, 'manual_upload');
+    const batch = createBatchFromBill(body.applicationId, body.channel, body.channelConfigId, body.currency, body.billDate, body.billText, body.remark ?? null, 'manual_upload');
     return ok(batch, '对账完成');
   }),
-  http.post('/api/payment/recon/auto', async ({ request }) => {
-    const body = (await request.json()) as { channel: PaymentChannel; billDate: string };
+  mock(paymentReconContract.auto, ({ body, ok }) => {
     const config = mockPaymentChannels.find((item) => item.channel === body.channel && item.status === 'enabled' && item.isDefault)
       ?? mockPaymentChannels.find((item) => item.channel === body.channel && item.status === 'enabled');
     if (!config) return badRequest('该渠道没有启用的商户配置');
     const applicationId = mockPaymentOrders.find((order) => order.channelConfigId === config.id)?.appId;
     if (!applicationId) return badRequest('该商户配置没有可用支付应用');
-    const batch = createBatchFromBill(applicationId, body.channel, config.id, 'CNY', body.billDate, sampleBill(body.channel), '自动对账（沙箱模拟账单）', 'sandbox_generated');
+    const batch = createBatchFromBill(applicationId, body.channel, config.id, body.currency, body.billDate, sampleBill(body.channel), '自动对账（沙箱模拟账单）', 'sandbox_generated');
     return ok(batch, '对账完成');
   }),
-  http.get('/api/payment/recon/batches/:id', ({ params }) => {
-    const b = reconBatches.find((x) => x.id === Number(params.id));
+  mock(paymentReconContract.detail, ({ params, ok }) => {
+    const b = reconBatches.find((x) => x.id === params.id);
     return b ? ok(b) : notFound('对账批次不存在');
   }),
-  http.get('/api/payment/recon/batches/:id/items', ({ params, request }) => {
-    const url = new URL(request.url);
-    const result = url.searchParams.get('result') ?? '';
-    const handleStatus = url.searchParams.get('handleStatus') ?? '';
-    const items = (reconItemsByBatch[Number(params.id)] ?? []).filter((i) => (!result || i.result === result) && (!handleStatus || i.handleStatus === handleStatus));
-    return ok(paginate(items, url));
+  mock(paymentReconContract.items, ({ params, query, ok, paginate }) => {
+    const items = (reconItemsByBatch[params.id] ?? []).filter((i) => (!query.result || i.result === query.result) && (!query.handleStatus || i.handleStatus === query.handleStatus));
+    return ok(paginate(items));
   }),
-  http.patch('/api/payment/recon/items/:id/handle', async ({ params, request }) => {
-    const body = (await request.json()) as { action: 'adjusted' | 'suspended' | 'ignored'; remark?: string };
-    const remark = body.remark?.trim() ?? '';
+  mock(paymentReconContract.handleItem, ({ params, body, ok }) => {
+    const remark = body.remark.trim();
     if (!remark) return badRequest('处理备注不能为空');
     for (const items of Object.values(reconItemsByBatch)) {
-      const item = items.find((i) => i.id === Number(params.id));
+      const item = items.find((i) => i.id === params.id);
       if (item) {
         if (item.handleStatus !== 'pending') return badRequest('该差异已被处理，请刷新后查看');
         const batch = reconBatches.find((candidate) => candidate.id === item.batchId);
@@ -148,11 +147,11 @@ const reconHandlers = [
     }
     return notFound('对账明细不存在');
   }),
-  http.delete('/api/payment/recon/batches/:id', ({ params }) => {
-    const i = reconBatches.findIndex((x) => x.id === Number(params.id));
+  mock(paymentReconContract.remove, ({ params, ok }) => {
+    const i = reconBatches.findIndex((x) => x.id === params.id);
     if (i === -1) return notFound('对账批次不存在');
     reconBatches.splice(i, 1);
-    delete reconItemsByBatch[Number(params.id)];
+    delete reconItemsByBatch[params.id];
     return ok(null, '删除成功');
   }),
 ];
@@ -225,26 +224,24 @@ export function recordMockRefundSucceeded(refund: typeof mockPaymentRefunds[numb
   recordMockOutboxEvent('refund.succeeded', refund.orderNo);
 }
 
+const MOCK_OPS_HEALTH: PaymentOpsHealth = {
+  outboxPending: 2,
+  outboxFailed: 1,
+  webhookPending: 3,
+  webhookFailed24h: 1,
+  sharingProcessing: 1,
+  transferProcessing: 1,
+  reconPendingDiff: 1,
+};
+
 const opsHandlers = [
-  http.get('/api/payment/ops/health', () => ok({
-    outboxPending: 2,
-    outboxFailed: 1,
-    webhookPending: 3,
-    webhookFailed24h: 1,
-    sharingProcessing: 1,
-    transferProcessing: 1,
-    reconPendingDiff: 1,
-  })),
-  http.get('/api/payment/ops/events', ({ request }) => {
-    const url = new URL(request.url);
-    const status = url.searchParams.get('status') ?? '';
-    const type = url.searchParams.get('type') ?? '';
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const filtered = outboxEvents.filter((e) => (!status || e.status === status) && (!type || e.type === type) && (!keyword || e.orderNo.includes(keyword)));
-    return ok(paginate([...filtered].reverse(), url));
+  mock(paymentOpsContract.health, ({ ok }) => ok(MOCK_OPS_HEALTH)),
+  mock(paymentOpsContract.events, ({ query, ok, paginate }) => {
+    const filtered = outboxEvents.filter((e) => (!query.status || e.status === query.status) && (!query.type || e.type === query.type) && (!query.keyword || e.orderNo.includes(query.keyword)));
+    return ok(paginate([...filtered].reverse()));
   }),
-  http.post('/api/payment/ops/events/:id/redispatch', ({ params }) => {
-    const e = outboxEvents.find((x) => x.id === Number(params.id));
+  mock(paymentOpsContract.redispatchEvent, ({ params, ok }) => {
+    const e = outboxEvents.find((x) => x.id === params.id);
     if (!e) return notFound('事件不存在');
     if (e.type === 'payment.succeeded') {
       const order = mockPaymentOrders.find((o) => o.orderNo === e.orderNo);
@@ -259,8 +256,8 @@ const opsHandlers = [
     e.processedAt = mockDateTime();
     return ok(e, '已重投');
   }),
-  http.post('/api/payment/ops/orders/:id/simulate-paid', ({ params }) => {
-    const o = mockPaymentOrders.find((x) => x.id === Number(params.id));
+  mock(paymentOpsContract.simulateOrderPaid, ({ params, ok }) => {
+    const o = mockPaymentOrders.find((x) => x.id === params.id);
     if (!o) return notFound('支付订单不存在');
     if (o.status !== 'pending' && o.status !== 'paying') return badRequest('仅待支付/支付中订单可模拟支付');
     o.status = 'success';
@@ -275,13 +272,14 @@ const opsHandlers = [
 
 // ─── 退款审批（approve / reject）──────────────────────────────────────────────
 const refundApprovalHandlers = [
-  http.post('/api/payment/refunds/:id/approve', ({ params }) => {
-    const r = mockPaymentRefunds.find((x) => x.id === Number(params.id));
+  mock(paymentRefundContract.approveRefund, ({ params, body, ok }) => {
+    const r = mockPaymentRefunds.find((x) => x.id === params.id);
     if (!r) return notFound('退款记录不存在');
     if (r.approvalStatus !== 'pending') return badRequest('该退款单无需审批或已处理');
     r.approvalStatus = 'approved';
     r.approverId = 1;
     r.approvedAt = mockDateTime();
+    r.approvalRemark = body.remark ?? null;
     r.status = 'success';
     r.refundedAt = mockDateTime();
     r.version += 1;
@@ -294,15 +292,14 @@ const refundApprovalHandlers = [
     recordMockRefundSucceeded(r);
     return ok({ refundNo: r.refundNo, status: 'success' }, '已审批通过');
   }),
-  http.post('/api/payment/refunds/:id/reject', async ({ params, request }) => {
-    const r = mockPaymentRefunds.find((x) => x.id === Number(params.id));
+  mock(paymentRefundContract.rejectRefund, ({ params, body, ok }) => {
+    const r = mockPaymentRefunds.find((x) => x.id === params.id);
     if (!r) return notFound('退款记录不存在');
     if (r.approvalStatus !== 'pending') return badRequest('该退款单无需审批或已处理');
-    const body = (await request.json().catch(() => ({}))) as { remark?: string };
     r.approvalStatus = 'rejected';
     r.approverId = 1;
     r.approvedAt = mockDateTime();
-    r.approvalRemark = body.remark ?? null;
+    r.approvalRemark = body.remark;
     r.status = 'failed';
     r.errorMessage = '退款审批被驳回';
     r.version += 1;

@@ -1,68 +1,40 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { CreatePaymentResult, PaymentOrder, PaymentRefund, PaymentRefundStatus } from '@zenith/shared/payment';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
-import { paymentRefundKeys } from './payment-refunds';
+import { keepPreviousData, useQuery, type QueryClient } from '@tanstack/react-query';
+import type { QueryOf } from '@zenith/shared/core';
+import { paymentOpsContract, paymentOrderContract, paymentRefundContract } from '@zenith/shared/payment';
+import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { invalidatePaymentRefunds, paymentRefundKeys } from './payment-refunds';
 import { paymentStatsKeys } from './payment-stats';
 
-export interface PaymentOrderListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  channel?: string;
-  status?: string;
-  payMethod?: string;
-  bizType?: string;
-  minAmount?: number;
-  maxAmount?: number;
-  startTime?: string;
-  endTime?: string;
-}
+export type PaymentOrderListParams = NonNullable<QueryOf<typeof paymentOrderContract.orders>>;
 
-export interface CreatePaymentOrderValues {
-  applicationId: number;
-  bizType: string;
-  bizId: string;
-  subject: string;
-  amount: number;
-  payMethod: string;
-  openId?: string;
-}
-
-export interface CreateRefundValues {
-  orderNo: string;
-  refundAmount: number;
-  reason?: string;
-  idempotencyKey: string;
-}
-
-export interface CreatePaymentRefundResult {
-  refundNo: string;
-  status: PaymentRefundStatus;
-}
-
+/** 订单与商户配置 / 退款共用 `/api/payment` 根，key 按操作名区分 */
 export const paymentOrderKeys = {
-  all: ['payment-orders'] as const,
-  lists: ['payment-orders', 'list'] as const,
-  list: (params: PaymentOrderListParams) => ['payment-orders', 'list', params] as const,
-  detail: (id: number | undefined) => ['payment-orders', 'detail', id] as const,
-  byNo: (orderNo: string | undefined) => ['payment-orders', 'by-no', orderNo] as const,
-  refunds: (id: number | undefined) => ['payment-orders', 'refunds', id] as const,
+  lists: contractKey(paymentOrderContract.orders),
+  list: (params: PaymentOrderListParams) => contractKey(paymentOrderContract.orders, { query: params }),
+  details: contractKey(paymentOrderContract.orderDetail),
+  detail: (id: number | undefined) => contractKey(paymentOrderContract.orderDetail, { params: { id: id ?? 0 } }),
+  byNos: contractKey(paymentOrderContract.orderByNo),
+  byNo: (orderNo: string | undefined) => contractKey(paymentOrderContract.orderByNo, { params: { orderNo: orderNo ?? '' } }),
+  refunds: paymentRefundKeys.byOrder,
 };
 
+/** 订单状态变化影响列表、详情、按单号查询与统计概览 / 趋势 */
+export function invalidatePaymentOrders(qc: QueryClient) {
+  void qc.invalidateQueries({ queryKey: paymentOrderKeys.lists });
+  void qc.invalidateQueries({ queryKey: paymentOrderKeys.details });
+  void qc.invalidateQueries({ queryKey: paymentOrderKeys.byNos });
+  void qc.invalidateQueries({ queryKey: paymentStatsKeys.stats });
+  void qc.invalidateQueries({ queryKey: paymentStatsKeys.trends });
+}
+
 export function usePaymentOrderList(params: PaymentOrderListParams) {
-  return useQuery({
-    queryKey: paymentOrderKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<PaymentOrder>>(`/api/payment/orders${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+  return useApiQuery(paymentOrderContract.orders, { query: params }, { placeholderData: keepPreviousData });
 }
 
 export function usePaymentOrderDetail(id: number | undefined, enabled = true) {
   return useQuery({
     queryKey: paymentOrderKeys.detail(id),
-    queryFn: () => request.get<PaymentOrder>(`/api/payment/orders/${id}`).then(unwrap),
+    queryFn: () => api(paymentOrderContract.orderDetail, { params: { id: id ?? 0 } }),
     enabled: enabled && id !== undefined,
   });
 }
@@ -70,7 +42,7 @@ export function usePaymentOrderDetail(id: number | undefined, enabled = true) {
 export function usePaymentOrderByNo(orderNo: string | undefined, enabled = true) {
   return useQuery({
     queryKey: paymentOrderKeys.byNo(orderNo),
-    queryFn: () => request.get<PaymentOrder>(`/api/payment/orders/by-no/${encodeURIComponent(orderNo ?? '')}`).then(unwrap),
+    queryFn: () => api(paymentOrderContract.orderByNo, { params: { orderNo: orderNo ?? '' } }),
     enabled: enabled && !!orderNo,
     // 终态（成功/关闭/退款/失败）自动停止轮询，避免弹窗未及时关闭时空转
     refetchInterval: (query) => {
@@ -84,65 +56,35 @@ export function usePaymentOrderByNo(orderNo: string | undefined, enabled = true)
 
 export function usePaymentOrderRefunds(id: number | undefined, enabled = true) {
   return useQuery({
-    queryKey: paymentOrderKeys.refunds(id),
-    queryFn: () => request.get<PaymentRefund[]>(`/api/payment/orders/${id}/refunds`).then(unwrap),
+    queryKey: paymentRefundKeys.byOrder(id),
+    queryFn: () => api(paymentRefundContract.orderRefunds, { params: { id: id ?? 0 } }),
     enabled: enabled && id !== undefined,
   });
 }
 
 export function useCreatePaymentOrder() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: CreatePaymentOrderValues) =>
-      request.post<{ orderNo: string; payParams: CreatePaymentResult }>('/api/payment/orders', values).then(unwrap),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: paymentOrderKeys.all });
-      void qc.invalidateQueries({ queryKey: paymentStatsKeys.all });
-    },
-  });
+  return useApiMutation(paymentOrderContract.createOrder, { invalidate: invalidatePaymentOrders });
 }
 
 export function useQueryPaymentOrder() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.post<PaymentOrder>(`/api/payment/orders/${id}/query`).then(unwrap),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: paymentOrderKeys.all });
-      void qc.invalidateQueries({ queryKey: paymentStatsKeys.all });
-    },
-  });
+  return useApiMutation(paymentOrderContract.queryOrder, { invalidate: invalidatePaymentOrders });
 }
 
+/** 模拟支付走运营域端点，但改变的是订单状态与统计 */
 export function useSimulatePaymentOrderPaid() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.post<PaymentOrder>(`/api/payment/ops/orders/${id}/simulate-paid`, {}).then(unwrap),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: paymentOrderKeys.all });
-      void qc.invalidateQueries({ queryKey: paymentStatsKeys.all });
-    },
-  });
+  return useApiMutation(paymentOpsContract.simulateOrderPaid, { invalidate: invalidatePaymentOrders });
 }
 
 export function useClosePaymentOrder() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.post<null>(`/api/payment/orders/${id}/close`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: paymentOrderKeys.all }),
-  });
+  return useApiMutation(paymentOrderContract.closeOrder, { invalidate: invalidatePaymentOrders });
 }
 
+/** 发起退款：订单进入退款中 / 已退款，退款列表与统计随之变化；幂等键由页面按业务意图生成，放在输入的 headers 段 */
 export function useCreatePaymentRefund() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ idempotencyKey, ...values }: CreateRefundValues) =>
-      request
-        .post<CreatePaymentRefundResult>('/api/payment/refunds', values, { headers: { 'X-Idempotency-Key': idempotencyKey } })
-        .then(unwrap),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: paymentOrderKeys.all });
-      void qc.invalidateQueries({ queryKey: paymentRefundKeys.all });
-      void qc.invalidateQueries({ queryKey: paymentStatsKeys.all });
+  return useApiMutation(paymentRefundContract.createRefund, {
+    invalidate: (qc) => {
+      invalidatePaymentOrders(qc);
+      invalidatePaymentRefunds(qc);
     },
   });
 }

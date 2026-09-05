@@ -92,6 +92,11 @@ export const DRIVE_SHARE_PERMISSION_LABELS: Record<DriveSharePermission, string>
 export const DRIVE_SHARE_PERMISSION_OPTIONS: Array<{ value: DriveSharePermission; label: string }> =
   createLabelOptions(DRIVE_SHARE_PERMISSIONS, DRIVE_SHARE_PERMISSION_LABELS);
 
+// ─── 外链派生状态 ─────────────────────────────────────────────────────────────
+export const DRIVE_SHARE_LINK_STATES = ['active', 'expired', 'exhausted', 'disabled', 'revoked'] as const;
+
+export type DriveShareLinkState = (typeof DRIVE_SHARE_LINK_STATES)[number];
+
 // ─── 同名冲突策略 ─────────────────────────────────────────────────────────────
 export const DRIVE_UPLOAD_CONFLICT_POLICIES = ['rename', 'version', 'fail'] as const;
 

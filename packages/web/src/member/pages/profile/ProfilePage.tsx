@@ -36,7 +36,7 @@ export default function ProfilePage() {
       Toast.warning(needPassword ? '请输入登录密码' : '请输入短信验证码');
       return;
     }
-    await deactivateMutation.mutateAsync(needPassword ? { password: credential } : { smsCode: credential });
+    await deactivateMutation.mutateAsync({ body: needPassword ? { password: credential } : { smsCode: credential } });
     Toast.success('账户已注销');
     logout();
     navigate('/', { replace: true });

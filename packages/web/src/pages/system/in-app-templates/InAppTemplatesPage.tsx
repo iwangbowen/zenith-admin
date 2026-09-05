@@ -1,5 +1,6 @@
 import { Col, Form, Row, Spin, Tag, Toast, Switch } from '@douyinfe/semi-ui';
-import type { InAppMessageType, InAppTemplate } from '@zenith/shared/messaging';
+import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
+import type { CreateInAppTemplateInput, InAppMessageType, InAppTemplate } from '@zenith/shared/messaging';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -38,16 +39,26 @@ export default function InAppTemplatesPage() {
     pageSize,
     keyword: submittedParams.keyword || undefined,
     type: submittedParams.filterType,
-    status: submittedParams.filterStatus,
+    status: enumValueOf(USER_STATUSES, submittedParams.filterStatus),
   });
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
   const saveMutation = useSaveInAppTemplate();
-  const modal = useEditModal<InAppTemplate>({
+  const modal = useEditModal<InAppTemplate, Partial<CreateInAppTemplateInput>>({
     entityName: '站内信模板',
     save: saveMutation,
     useDetail: useInAppTemplateDetail,
     defaults: { status: 'enabled', type: 'info' },
+    toValues: (r) => ({
+      name: r.name,
+      code: r.code,
+      title: r.title,
+      content: r.content,
+      type: r.type,
+      variables: r.variables ?? undefined,
+      status: r.status,
+      remark: r.remark ?? undefined,
+    }),
     labelWidth: 120,
   });
   const toggleStatusMutation = useSaveInAppTemplate();

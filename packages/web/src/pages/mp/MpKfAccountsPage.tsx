@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Avatar, Button, Form, Space, Spin, Tag, Toast, Banner } from '@douyinfe/semi-ui';
 import { RefreshCw } from 'lucide-react';
-import type { MpKfAccount } from '@zenith/shared/mp';
+import type { CreateMpKfAccountInput, MpKfAccount } from '@zenith/shared/mp';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -14,8 +14,8 @@ import { usePagination } from '@/hooks/usePagination';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import {
-  mpKfKeys,
-  useDeleteMpKfAccount,
+  mpKfAccountKeys,
+  useDeleteMpKfAccounts,
   useMpKfAccountList,
   useSaveMpKfAccount,
   useSyncMpKfAccounts,
@@ -39,36 +39,37 @@ export default function MpKfAccountsPage() {
   const { page, pageSize, setPage, buildPagination } = usePagination();
   const [draftKeyword, setDraftKeyword] = useState('');
   const [submittedKeyword, setSubmittedKeyword] = useState('');
-  const listQuery = useMpKfAccountList(currentId, { page, pageSize, keyword: submittedKeyword || undefined });
+  const listQuery = useMpKfAccountList({ accountId: currentId ?? 0, page, pageSize, keyword: submittedKeyword || undefined }, !!currentId);
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
 
   const syncMutation = useSyncMpKfAccounts();
   const saveMutation = useSaveMpKfAccount();
-  const deleteMutation = useDeleteMpKfAccount();
+  const deleteMutation = useDeleteMpKfAccounts();
 
   const handleSearch = () => {
     setPage(1);
     setSubmittedKeyword(draftKeyword);
-    void queryClient.invalidateQueries({ queryKey: mpKfKeys.accountLists(currentId) });
+    void queryClient.invalidateQueries({ queryKey: mpKfAccountKeys.lists });
   };
   const handleReset = () => {
     setDraftKeyword('');
     setSubmittedKeyword('');
     setPage(1);
-    void queryClient.invalidateQueries({ queryKey: mpKfKeys.accountLists(currentId) });
+    void queryClient.invalidateQueries({ queryKey: mpKfAccountKeys.lists });
   };
 
   const handleSync = async () => {
     if (!currentId) return;
-    await syncMutation.mutateAsync(currentId);
+    await syncMutation.mutateAsync({ body: { accountId: currentId } });
     Toast.success('同步完成');
   };
 
-  const modal = useEditModal<MpKfAccount, { kfAccount: string; nickname: string }, Record<string, unknown>>({
+  const modal = useEditModal<MpKfAccount, Pick<CreateMpKfAccountInput, 'kfAccount' | 'nickname'>, Partial<CreateMpKfAccountInput>>({
     save: saveMutation,
     defaults: { kfAccount: '', nickname: '' },
     toValues: (record) => ({ kfAccount: record.kfAccount, nickname: record.nickname }),
+    // 新增归属当前公众号；编辑只改昵称
     beforeSave: (values, { isEdit }) => {
       if (!currentId) abortSubmit('validation');
       return isEdit ? { nickname: values.nickname } : { accountId: currentId, kfAccount: values.kfAccount, nickname: values.nickname };
@@ -80,7 +81,7 @@ export default function MpKfAccountsPage() {
       title: `确定删除客服「${record.nickname}」吗？`,
       content: '将同时删除微信侧客服账号。',
       onOk: async () => {
-        await deleteMutation.mutateAsync(record.id);
+        await deleteMutation.mutateAsync([record.id]);
         Toast.success('删除成功');
       },
     });

@@ -26,9 +26,9 @@ flowchart LR
 
 | 层 | 位置 | 职责 |
 | --- | --- | --- |
-| 共享契约 | `packages\shared\src\drive\` | 空间类型、角色、主体类型、节点、外链、设置键、Zod 入参 |
+| 共享契约 | `packages\shared\src\drive\` | 实体 schema 与 API 契约（`contracts/`）、空间类型、角色、主体类型、设置键、Zod 入参 |
 | 数据模型 | `packages\server\src\db\schema\drive.ts` | 空间、成员、节点树、授权、版本、外链、访问日志、动态、收藏、最近、标签、评论、正文索引 |
-| API 路由 | `packages\server\src\routes\drive\` | `/api/drive/*` OpenAPI 路由与权限门控；`/api/drive/public/*` 匿名外链 |
+| API 路由 | `packages\server\src\routes\drive\` | 由契约派生的 `/api/drive/*` 路由与权限门控；`/api/drive/public/*` 匿名外链 |
 | 业务服务 | `packages\server\src\services\drive\` | ACL 解析、目录树操作、上传 / 秒传 / 版本、外链会话、回收站、检索、治理、任务处理器 |
 | 前端页面 | `packages\web\src\pages\drive\` | 工作台、共享空间、治理页、公开外链页 |
 | 菜单权限 | `packages\shared\src\seed\menus\drive.ts` | `19000` 段企业网盘菜单与 `drive:*` 权限 |
@@ -148,4 +148,5 @@ flowchart LR
 | `/api/drive/tags*` | 空间标签 |
 | `/api/drive/admin/*` | 统计、空间治理、部门空间、容量重算、索引补建、外链治理、动态审计、设置 |
 
-完整参数与响应见运行中的 `/api/docs`（`drive` 标签）。
+完整参数与响应以 `packages\shared\src\drive\contracts\` 中的契约为准（`driveSpaceContract` / `driveNodeContract` / `driveShareLinkContract` /
+`driveTagContract` / `driveAdminContract` / `drivePublicShareContract`），服务端路由、前端 hooks、MSW mock 与运行中的 `/api/docs`（`企业网盘-*` 标签）均由其派生。

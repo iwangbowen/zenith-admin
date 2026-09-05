@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Modal, Button, Select, Toast, RadioGroup, Radio, InputNumber } from '@douyinfe/semi-ui';
 import { Plus, RefreshCw, Ticket, Wallet } from 'lucide-react';
-import { WALLET_TX_TYPE_LABELS } from '@zenith/shared/member';
+import { WALLET_TX_TYPE_LABELS, memberSelfContract } from '@zenith/shared/member';
 import type { MemberCoupon } from '@zenith/shared/member';
+import type { PaymentCashierMethod } from '@zenith/shared/payment';
 import { MemberPage } from '../../components/MemberPage';
 import { TransactionList } from '../../components/TransactionList';
 import { formatYuan } from '../../utils/format';
@@ -42,7 +43,7 @@ export default function WalletPage() {
   const rechargeMutation = useCreateRechargeOrder();
   const [modalOpen, setModalOpen] = useState(false);
   const [amount, setAmount] = useState<number>(100);
-  const [payMethod, setPayMethod] = useState('wechat_h5');
+  const [payMethod, setPayMethod] = useState<PaymentCashierMethod>('wechat_h5');
   const [couponId, setCouponId] = useState<number | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -80,10 +81,12 @@ export default function WalletPage() {
       return;
     }
     const r = await rechargeMutation.mutateAsync({
-      applicationId,
-      amount: amountCents,
-      payMethod,
-      memberCouponId: selectedCoupon?.id,
+      body: {
+        applicationId,
+        amount: amountCents,
+        payMethod,
+        memberCouponId: selectedCoupon?.id,
+      },
     });
     setModalOpen(false);
     setCouponId(null);
@@ -105,8 +108,8 @@ export default function WalletPage() {
 
   const handleRefresh = () => {
     setRefreshKey((k) => k + 1);
-    void queryClient.invalidateQueries({ queryKey: memberKeys.wallet.all });
-    void queryClient.invalidateQueries({ queryKey: memberKeys.transactions.lists });
+    void queryClient.invalidateQueries({ queryKey: memberKeys.wallet.detail });
+    void queryClient.invalidateQueries({ queryKey: memberKeys.wallet.transactions });
   };
 
   return (
@@ -152,7 +155,7 @@ export default function WalletPage() {
       <div className="mc-card-title">收支明细</div>
       <TransactionList
         key={refreshKey}
-        fetchUrl="/api/member/wallet/transactions"
+        op={memberSelfContract.walletTransactions}
         typeLabels={WALLET_TX_TYPE_LABELS}
         formatAmount={(n) => formatYuan(n)}
       />
@@ -220,7 +223,7 @@ export default function WalletPage() {
             style={{ flex: 1 }}
           />
         </div>
-        <RadioGroup value={payMethod} onChange={(e) => setPayMethod(e.target.value)} type="button">
+        <RadioGroup value={payMethod} onChange={(e) => setPayMethod(e.target.value as PaymentCashierMethod)} type="button">
           {availableMethods.map((p) => (
             <Radio key={p.method} value={p.method}>
               {p.label}

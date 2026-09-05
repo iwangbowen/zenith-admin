@@ -1,4 +1,4 @@
-import { POINT_TX_TYPE_LABELS } from '@zenith/shared/member';
+import { POINT_TX_TYPE_LABELS, memberSelfContract } from '@zenith/shared/member';
 import { Coins } from 'lucide-react';
 import { MemberPage } from '../../components/MemberPage';
 import { TransactionList } from '../../components/TransactionList';
@@ -36,7 +36,7 @@ export default function PointsPage() {
 
       <div className="mc-card-title">积分明细</div>
       <TransactionList
-        fetchUrl="/api/member/points/transactions"
+        op={memberSelfContract.pointTransactions}
         typeLabels={POINT_TX_TYPE_LABELS}
         formatAmount={(n) => String(n)}
       />

@@ -4,7 +4,8 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { WalletCards, Undo2 } from 'lucide-react';
 import type { MemberWalletTransaction } from '@zenith/shared/member';
-import { MEMBER_BIZ_TYPE_LABELS, WALLET_TX_TYPE_LABELS } from '@zenith/shared/member';
+import { MEMBER_BIZ_TYPE_LABELS, WALLET_TX_TYPES, WALLET_TX_TYPE_LABELS } from '@zenith/shared/member';
+import { enumValueOf } from '@zenith/shared/core';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useListDeepLink } from '@/hooks/useListDeepLink';
@@ -46,7 +47,7 @@ export default function MemberWalletPage() {
     page,
     pageSize,
     memberKeyword: submittedParams.memberKeyword || undefined,
-    type: submittedParams.type || undefined,
+    type: enumValueOf(WALLET_TX_TYPES, submittedParams.type),
   });
   const data = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
@@ -58,8 +59,13 @@ export default function MemberWalletPage() {
   const handleSubmit = async () => {
     let values: { memberId: number; amount: number; remark?: string; bizId?: string };
     try { values = (await formApi.current!.validate()) as { memberId: number; amount: number; remark?: string; bizId?: string }; } catch { abortSubmit('validation'); }
-    const payload = { memberId: values.memberId, amount: Math.round(values.amount * 100), remark: values.remark, ...(mode === 'refund' && values.bizId ? { bizId: values.bizId } : {}) };
-    await (mode === 'adjust' ? adjustMutation : refundMutation).mutateAsync(payload);
+    const amount = Math.round(values.amount * 100);
+    if (mode === 'adjust') {
+      await adjustMutation.mutateAsync({ body: { memberId: values.memberId, amount, remark: values.remark } });
+    } else {
+      // 退款原因必填由服务端校验兜底，表单 rules 已保证非空
+      await refundMutation.mutateAsync({ body: { memberId: values.memberId, amount, remark: values.remark ?? '', ...(values.bizId ? { bizId: values.bizId } : {}) } });
+    }
     Toast.success(mode === 'adjust' ? '已调整' : '已退款');
     setModalVisible(false);
   };

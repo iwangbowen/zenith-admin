@@ -66,6 +66,7 @@ type MultipartRequestBody<B extends z.ZodType> = {
 type RequestFor<Op extends AnyOperation> = Record<never, never> &
   (Op['params'] extends ParamsSchema ? { params: Op['params'] } : unknown) &
   (Op['query'] extends ParamsSchema ? { query: Op['query'] } : unknown) &
+  (Op['headers'] extends ParamsSchema ? { headers: Op['headers'] } : unknown) &
   (Op['body'] extends MultipartBody ? { body: MultipartRequestBody<Op['body']> } : Op['body'] extends z.ZodType ? { body: JsonBody<Op['body']> } : unknown);
 
 type JsonSuccess<R extends z.ZodType> = {
@@ -120,6 +121,7 @@ function buildRequest(op: AnyOperation): RouteConfig['request'] {
   const request: NonNullable<RouteConfig['request']> = {};
   if (op.params) request.params = op.params;
   if (op.query) request.query = op.query;
+  if (op.headers) request.headers = op.headers;
   if (op.body) {
     request.body = isMultipart(op.body)
       ? { content: { [MULTIPART_CONTENT_TYPE]: { schema: op.body } }, required: true }

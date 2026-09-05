@@ -1,6 +1,7 @@
 import { Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import type { MemberRecharge } from '@zenith/shared/member';
+import type { MemberRecharge, MemberRechargeStatus } from '@zenith/shared/member';
+import { MEMBER_RECHARGE_STATUSES } from '@zenith/shared/member';
 import type { PaymentChannel, PaymentOrderStatus } from '@zenith/shared/payment';
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_METHOD_LABELS, PAYMENT_ORDER_STATUS_LABELS } from '@zenith/shared/payment';
 import { usePermission } from '@/hooks/usePermission';
@@ -17,14 +18,15 @@ import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/com
 
 interface SearchParams {
   keyword?: string;
-  status?: PaymentOrderStatus;
+  status?: MemberRechargeStatus;
   channel?: PaymentChannel;
   dateRange: [Date, Date] | null;
 }
 
 const defaultSearch: SearchParams = { keyword: undefined, status: undefined, channel: undefined, dateRange: null };
 
-const statusOptions = (Object.keys(PAYMENT_ORDER_STATUS_LABELS) as PaymentOrderStatus[]).map((v) => ({ value: v, label: PAYMENT_ORDER_STATUS_LABELS[v] }));
+// 筛选项与服务端可筛选状态对齐：不含瞬态的 unknown（渠道结果待确认）
+const statusOptions = MEMBER_RECHARGE_STATUSES.map((v) => ({ value: v, label: PAYMENT_ORDER_STATUS_LABELS[v] }));
 const channelOptions = (Object.keys(PAYMENT_CHANNEL_LABELS) as PaymentChannel[]).map((v) => ({ value: v, label: PAYMENT_CHANNEL_LABELS[v] }));
 
 const STATUS_COLORS: Record<PaymentOrderStatus, string> = {
@@ -83,7 +85,7 @@ export default function MemberRechargesPage() {
     <StatusSelect
       items={statusOptions}
       value={draftParams.status}
-      onChange={(value) => setDraftParams((prev) => ({ ...prev, status: value as PaymentOrderStatus | undefined }))}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, status: value as MemberRechargeStatus | undefined }))}
     />
   );
 

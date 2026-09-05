@@ -4,7 +4,7 @@ import { Button, Form, Toast } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Settings } from 'lucide-react';
-import type { CheckinRule } from '@zenith/shared/member';
+import type { CheckinRule, UpdateCheckinSettingsInput } from '@zenith/shared/member';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -18,6 +18,7 @@ import {
   useDeleteCheckinRule,
   useSaveCheckinRule,
   useSaveCheckinSettings,
+  type CheckinRuleFormValues,
 } from '@/hooks/queries/member-admin';
 import { CreateButton, RefreshButton } from '@/components/toolbar-controls';
 import { confirmDelete } from '@/utils/confirm';
@@ -40,18 +41,18 @@ export default function CheckinRulesPage() {
   const openSettings = () => setSettingsVisible(true);
 
   const handleSaveSettings = async () => {
-    let values: Record<string, unknown> | undefined;
+    let values: UpdateCheckinSettingsInput | undefined;
     try {
       values = await settingsFormApi.current!.validate();
     } catch {
       abortSubmit('validation');
     }
-    await saveSettingsMutation.mutateAsync(values ?? {});
+    await saveSettingsMutation.mutateAsync({ body: values ?? {} });
     Toast.success('保存成功');
     setSettingsVisible(false);
   };
 
-  const ruleModal = useEditModal<CheckinRule, Record<string, unknown>>({
+  const ruleModal = useEditModal<CheckinRule, CheckinRuleFormValues>({
     entityName: '签到规则',
     save: saveRuleMutation,
     defaults: { dayNumber: 1, points: 0, experience: 0, remark: '' },
@@ -62,7 +63,7 @@ export default function CheckinRulesPage() {
       title: `确认删除第 ${record.dayNumber} 天规则？`,
       content: '删除后该连续天数的奖励配置将失效。',
       onOk: async () => {
-        await deleteRuleMutation.mutateAsync(record.id);
+        await deleteRuleMutation.mutateAsync({ params: { id: record.id } });
         Toast.success('删除成功');
       },
     });

@@ -63,7 +63,7 @@ export default function WorkflowVersionsSheet({
       title: `确认恢复到 v${ver.version}？`,
       content: '当前未保存的修改将被覆盖，流程将转为草稿状态，需要重新发布。',
       onOk: async () => {
-        const res = await restoreMutation.mutateAsync({ definitionId, versionId: ver.id });
+        const res = await restoreMutation.mutateAsync({ params: { id: definitionId, versionId: ver.id } });
         Toast.success('已恢复为草稿');
         onCancel();
         onRestored?.(res);

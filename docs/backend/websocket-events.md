@@ -26,12 +26,12 @@ Sec-WebSocket-Protocol: zenith-auth, eyJ...
 
 | 类型 | payload | 说明 |
 | --- | --- | --- |
-| `announcement:new` | `AnnouncementDTO` | 新公告 |
-| `announcement:updated` | `AnnouncementDTO` | 公告更新 |
+| `announcement:new` | `Announcement`（`@zenith/shared/messaging`） | 新公告 |
+| `announcement:updated` | `Announcement` | 公告更新 |
 | `announcement:deleted` | `{ id: number }` | 公告删除 |
 | `announcement:read` | `{ id: number }` | 公告已读 |
 | `announcement:read-all` | `{}` | 公告全部已读 |
-| `in-app-message:new` | `InAppMessageDTO` | 新站内信 |
+| `in-app-message:new` | `InAppMessage`（`@zenith/shared/messaging`） | 新站内信 |
 | `in-app-message:read` | `{ id: number }` | 站内信已读 |
 | `in-app-message:read-all` | `{}` | 站内信全部已读 |
 | `in-app-message:deleted` | `{ id: number }` | 站内信删除 |
@@ -50,7 +50,7 @@ Sec-WebSocket-Protocol: zenith-auth, eyJ...
 | `chat:edit` | `unknown` | 编辑消息 |
 | `chat:vote-update` | `unknown` | 投票更新 |
 | `chat:presence` | `unknown` | 在线状态 |
-| `channel:message` | `unknown` | 频道消息 |
+| `channel:message` | `ChannelMessage`（`@zenith/shared/messaging`） | 频道消息 |
 | `channel:message-retract` | `unknown` | 频道消息撤回 |
 | `channel:cs-message` | `unknown` | 客服消息 |
 | `rtc:invite` | `unknown` | 音视频邀请 |

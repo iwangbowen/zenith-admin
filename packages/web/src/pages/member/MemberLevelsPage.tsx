@@ -10,7 +10,7 @@ import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { renderEllipsis } from '../../utils/table-columns';
-import { memberAdminKeys, useDeleteMemberLevel, useMemberLevels, useSaveMemberLevel } from '@/hooks/queries/member-admin';
+import { memberAdminKeys, useDeleteMemberLevel, useMemberLevels, useSaveMemberLevel, type MemberLevelFormValues } from '@/hooks/queries/member-admin';
 import { useDictItems } from '@/hooks/useDictItems';
 import { CreateButton, RefreshButton } from '@/components/toolbar-controls';
 import { confirmDelete } from '@/utils/confirm';
@@ -27,7 +27,7 @@ export default function MemberLevelsPage() {
   const saveMutation = useSaveMemberLevel();
   const deleteMutation = useDeleteMemberLevel();
 
-  const levelModal = useEditModal<MemberLevel>({
+  const levelModal = useEditModal<MemberLevel, MemberLevelFormValues>({
     entityName: '等级',
     save: saveMutation,
     defaults: { level: 0, growthThreshold: 0, discount: 100, sort: 0, status: 'enabled' as const, benefits: [] },
@@ -39,7 +39,7 @@ export default function MemberLevelsPage() {
       title: `确认删除等级「${record.name}」？`,
       content: '删除后该等级下会员的等级将被置空。',
       onOk: async () => {
-        await deleteMutation.mutateAsync(record.id);
+        await deleteMutation.mutateAsync({ params: { id: record.id } });
         Toast.success('删除成功');
       },
     });

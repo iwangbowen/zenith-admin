@@ -1,26 +1,9 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { memberSelfContract } from '@zenith/shared/member';
 import { memberAuthMiddleware } from '../../middleware/member-auth';
 import { idempotencyGuard } from '../../middleware/idempotency';
-import { IdParam, PaginationQuery, commonErrorResponses, dateRangeBound, jsonContent, ok, okBody, okMsg, okPaginated, queryBool, validationHook } from '../../lib/openapi-schemas';
-import {
-  MemberPointAccountDTO,
-  MemberPointTransactionDTO,
-  MemberWalletDTO,
-  MemberWalletTransactionDTO,
-  MemberWalletRechargeResultDTO,
-  MemberLevelDTO,
-  MemberCouponDTO,
-  CouponDTO,
-  MemberLoginLogDTO,
-  MemberCheckinStatusDTO,
-  MemberCheckinDTO,
-  MemberMilestoneStatusDTO,
-  MakeupCheckinResultDTO,
-  MemberNotificationDTO,
-  MemberBenefitsDTO,
-  MemberInviteSummaryDTO,
-  MemberPaymentApplicationOptionDTO,
-} from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { currentMemberId } from '../../lib/member-context';
 import { getClientInfo } from '../../lib/request-helpers';
 import { getMyPointAccount, listMyPointTransactions } from '../../services/member/member-points.service';
@@ -31,93 +14,40 @@ import { doCheckin, getMemberCheckinStatus, getMyCheckinHistory, doMyMakeupCheck
 import { getMyBenefits } from '../../services/member/member-benefits.service';
 import { listMyNotifications, getMyUnreadCount, markMyNotificationRead, markAllMyNotificationsRead } from '../../services/member/member-notifications.service';
 import { getMyInviteSummary } from '../../services/member/member-invite.service';
-import { db } from '../../db';
-import { memberLoginLogs } from '../../db/schema';
-import { desc, eq } from 'drizzle-orm';
-import { formatDateTime } from '../../lib/datetime';
-import { pageOffset } from '../../lib/pagination';
-import { memberRechargeSchema } from '@zenith/shared/member';
+import { listMyLoginLogs } from '../../services/member/member-auth.service';
 import { listMemberPaymentOptions } from '../../services/member/member-payment-options.service';
 
 const memberSelf = new OpenAPIHono({ defaultHook: validationHook });
 
-const pointTypeEnum = z.enum(['earn', 'redeem', 'expire', 'adjust', 'refund']);
-const walletTypeEnum = z.enum(['recharge', 'consume', 'refund', 'adjust']);
-const memberCouponStatusEnum = z.enum(['unused', 'used', 'expired', 'frozen']);
+const member = [memberAuthMiddleware] as const;
 
-const receiveCouponSchema = z.object({ couponId: z.number().int().positive() });
-const checkinResultSchema = z.object({
-  consecutiveDays: z.number().int(),
-  points: z.number().int(),
-  experience: z.number().int(),
-  checkinDate: z.string(),
-});
-
-// ─── GET /points/account — 我的积分账户 ──────────────────────────────────────
-const pointAccountRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/points/account', tags: ['MemberSelf'], summary: '我的积分账户',
-    security: [{ BearerAuth: [] }],
-    middleware: [memberAuthMiddleware] as const,
-    responses: { ...commonErrorResponses, ...ok(MemberPointAccountDTO, 'ok') },
-  }),
+const pointAccountRoute = defineContractRoute(memberSelfContract.pointAccount, {
+  middleware: member,
   handler: async (c) => c.json(okBody(await getMyPointAccount()), 200),
 });
 
-// ─── GET /points/transactions — 我的积分流水 ─────────────────────────────────
-const pointTxRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/points/transactions', tags: ['MemberSelf'], summary: '我的积分流水',
-    security: [{ BearerAuth: [] }],
-    middleware: [memberAuthMiddleware] as const,
-    request: { query: PaginationQuery.extend({ type: pointTypeEnum.optional() }) },
-    responses: { ...commonErrorResponses, ...okPaginated(MemberPointTransactionDTO, 'ok') },
-  }),
+const pointTxRoute = defineContractRoute(memberSelfContract.pointTransactions, {
+  middleware: member,
   handler: async (c) => c.json(okBody(await listMyPointTransactions(c.req.valid('query'))), 200),
 });
 
-// ─── GET /wallet — 我的钱包 ──────────────────────────────────────────────────
-const walletRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/wallet', tags: ['MemberSelf'], summary: '我的钱包',
-    security: [{ BearerAuth: [] }],
-    middleware: [memberAuthMiddleware] as const,
-    responses: { ...commonErrorResponses, ...ok(MemberWalletDTO, 'ok') },
-  }),
+const walletRoute = defineContractRoute(memberSelfContract.wallet, {
+  middleware: member,
   handler: async (c) => c.json(okBody(await getMyWallet()), 200),
 });
 
-const paymentOptionsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/payment-options', tags: ['MemberSelf'], summary: '会员可用支付应用与方式',
-    security: [{ BearerAuth: [] }],
-    middleware: [memberAuthMiddleware] as const,
-    responses: { ...commonErrorResponses, ...ok(z.array(MemberPaymentApplicationOptionDTO), '支付选项') },
-  }),
+const paymentOptionsRoute = defineContractRoute(memberSelfContract.paymentOptions, {
+  middleware: member,
   handler: async (c) => c.json(okBody(await listMemberPaymentOptions()), 200),
 });
 
-// ─── GET /wallet/transactions — 钱包流水 ─────────────────────────────────────
-const walletTxRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/wallet/transactions', tags: ['MemberSelf'], summary: '我的钱包流水',
-    security: [{ BearerAuth: [] }],
-    middleware: [memberAuthMiddleware] as const,
-    request: { query: PaginationQuery.extend({ type: walletTypeEnum.optional() }) },
-    responses: { ...commonErrorResponses, ...okPaginated(MemberWalletTransactionDTO, 'ok') },
-  }),
+const walletTxRoute = defineContractRoute(memberSelfContract.walletTransactions, {
+  middleware: member,
   handler: async (c) => c.json(okBody(await listMyWalletTransactions(c.req.valid('query'))), 200),
 });
 
-// ─── POST /wallet/recharge — 发起充值 ────────────────────────────────────────
-const rechargeRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/wallet/recharge', tags: ['MemberSelf'], summary: '发起钱包充值',
-    security: [{ BearerAuth: [] }],
-    middleware: [memberAuthMiddleware, idempotencyGuard({ ttlSeconds: 10 })] as const,
-    request: { body: { content: jsonContent(memberRechargeSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(MemberWalletRechargeResultDTO, '已创建充值订单') },
-  }),
+const rechargeRoute = defineContractRoute(memberSelfContract.recharge, {
+  middleware: [memberAuthMiddleware, idempotencyGuard({ ttlSeconds: 10 })],
   handler: async (c) => {
     const { applicationId, amount, payMethod, memberCouponId } = c.req.valid('json');
     const { ip } = getClientInfo(c);
@@ -126,256 +56,103 @@ const rechargeRoute = defineOpenAPIRoute({
   },
 });
 
-// ─── GET /levels — 会员等级权益 ──────────────────────────────────────────────
-// 等级体系属于公开营销信息（落地页「等级体系」也要展示），不做登录门槛
-const levelsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/levels', tags: ['MemberSelf'], summary: '会员等级权益列表',
-    security: [],
-    responses: { ...commonErrorResponses, ...ok(z.array(MemberLevelDTO), 'ok') },
-  }),
+const levelsRoute = defineContractRoute(memberSelfContract.levels, {
+  middleware: [] as const,
   handler: async (c) => c.json(okBody(await getEnabledLevels()), 200),
 });
 
-// ─── GET /coupons — 我的优惠券 ───────────────────────────────────────────────
-const myCouponsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/coupons', tags: ['MemberSelf'], summary: '我的优惠券',
-    security: [{ BearerAuth: [] }],
-    middleware: [memberAuthMiddleware] as const,
-    request: { query: PaginationQuery.extend({ status: memberCouponStatusEnum.optional() }) },
-    responses: { ...commonErrorResponses, ...okPaginated(MemberCouponDTO, 'ok') },
-  }),
+const myCouponsRoute = defineContractRoute(memberSelfContract.coupons, {
+  middleware: member,
   handler: async (c) => c.json(okBody(await listMyCoupons(c.req.valid('query'))), 200),
 });
 
-// ─── GET /coupons/available — 可领取优惠券 ───────────────────────────────────
-const availableCouponsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/coupons/available', tags: ['MemberSelf'], summary: '可领取的优惠券',
-    security: [{ BearerAuth: [] }],
-    middleware: [memberAuthMiddleware] as const,
-    responses: { ...commonErrorResponses, ...ok(z.array(CouponDTO), 'ok') },
-  }),
+const availableCouponsRoute = defineContractRoute(memberSelfContract.availableCoupons, {
+  middleware: member,
   handler: async (c) => c.json(okBody(await getAvailableCoupons()), 200),
 });
 
-// ─── POST /coupons/receive — 领取优惠券 ──────────────────────────────────────
-const receiveCouponRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/coupons/receive', tags: ['MemberSelf'], summary: '领取优惠券',
-    security: [{ BearerAuth: [] }],
-    middleware: [memberAuthMiddleware, idempotencyGuard({ ttlSeconds: 5 })] as const,
-    request: { body: { content: jsonContent(receiveCouponSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(MemberCouponDTO, '领取成功') },
-  }),
-  handler: async (c) => {
-    const { couponId } = c.req.valid('json');
-    const r = await receiveCoupon(couponId);
-    return c.json(okBody(r, '领取成功'), 200);
-  },
+const receiveCouponRoute = defineContractRoute(memberSelfContract.receiveCoupon, {
+  middleware: [memberAuthMiddleware, idempotencyGuard({ ttlSeconds: 5 })],
+  handler: async (c) => c.json(okBody(await receiveCoupon(c.req.valid('json').couponId), '领取成功'), 200),
 });
 
-// ─── GET /coupons/exchangeable — 可积分兑换的优惠券 ──────────────────────────
-const exchangeableCouponsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/coupons/exchangeable', tags: ['MemberSelf'], summary: '可积分兑换的优惠券',
-    security: [{ BearerAuth: [] }],
-    middleware: [memberAuthMiddleware] as const,
-    responses: { ...commonErrorResponses, ...ok(z.array(CouponDTO), 'ok') },
-  }),
+const exchangeableCouponsRoute = defineContractRoute(memberSelfContract.exchangeableCoupons, {
+  middleware: member,
   handler: async (c) => c.json(okBody(await getExchangeableCoupons()), 200),
 });
 
-// ─── POST /coupons/exchange — 积分兑换优惠券 ─────────────────────────────────
-const exchangeCouponRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/coupons/exchange', tags: ['MemberSelf'], summary: '积分兑换优惠券',
-    security: [{ BearerAuth: [] }],
-    middleware: [memberAuthMiddleware, idempotencyGuard({ ttlSeconds: 5 })] as const,
-    request: { body: { content: jsonContent(receiveCouponSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(MemberCouponDTO, '兑换成功') },
-  }),
-  handler: async (c) => {
-    const { couponId } = c.req.valid('json');
-    const r = await exchangePointsForCoupon(couponId);
-    return c.json(okBody(r, '兑换成功'), 200);
-  },
+const exchangeCouponRoute = defineContractRoute(memberSelfContract.exchangeCoupon, {
+  middleware: [memberAuthMiddleware, idempotencyGuard({ ttlSeconds: 5 })],
+  handler: async (c) => c.json(okBody(await exchangePointsForCoupon(c.req.valid('json').couponId), '兑换成功'), 200),
 });
 
-// ─── GET /checkin/status — 今日签到状态 ────────────────────────────────────────
-const checkinStatusRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/checkin/status', tags: ['MemberSelf'], summary: '今日签到状态',
-    security: [{ BearerAuth: [] }],
-    middleware: [memberAuthMiddleware] as const,
-    responses: { ...commonErrorResponses, ...ok(MemberCheckinStatusDTO, 'ok') },
-  }),
+const checkinStatusRoute = defineContractRoute(memberSelfContract.checkinStatus, {
+  middleware: member,
   handler: async (c) => c.json(okBody(await getMemberCheckinStatus()), 200),
 });
 
-// ─── POST /checkin — 执行签到 ────────────────────────────────────────────────
-const checkinRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/checkin', tags: ['MemberSelf'], summary: '执行签到',
-    security: [{ BearerAuth: [] }],
-    middleware: [memberAuthMiddleware, idempotencyGuard({ ttlSeconds: 5 })] as const,
-    responses: { ...commonErrorResponses, ...ok(checkinResultSchema, '签到成功') },
-  }),
+const checkinRoute = defineContractRoute(memberSelfContract.checkin, {
+  middleware: [memberAuthMiddleware, idempotencyGuard({ ttlSeconds: 5 })],
   handler: async (c) => c.json(okBody(await doCheckin(), '签到成功'), 200),
 });
 
-// ─── GET /checkin/history — 我的签到历史 ──────────────────────────────────────
-const checkinHistoryRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/checkin/history', tags: ['MemberSelf'], summary: '我的签到历史',
-    security: [{ BearerAuth: [] }],
-    middleware: [memberAuthMiddleware] as const,
-    request: {
-      query: PaginationQuery.extend({
-        dateStart: dateRangeBound('起始日期').openapi({ param: { name: 'dateStart', in: 'query' }, example: '2026-06-01' }),
-        dateEnd: dateRangeBound('结束日期').openapi({ param: { name: 'dateEnd', in: 'query' }, example: '2026-06-30' }),
-      }),
-    },
-    responses: { ...commonErrorResponses, ...okPaginated(MemberCheckinDTO, '签到历史') },
-  }),
+const checkinHistoryRoute = defineContractRoute(memberSelfContract.checkinHistory, {
+  middleware: member,
   handler: async (c) => c.json(okBody(await getMyCheckinHistory(c.req.valid('query'))), 200),
 });
 
-// ─── POST /checkin/makeup — 自助补签（消耗积分）─────────────────────────────────
-const checkinMakeupRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/checkin/makeup', tags: ['MemberSelf'], summary: '自助补签',
-    security: [{ BearerAuth: [] }],
-    middleware: [memberAuthMiddleware, idempotencyGuard({ ttlSeconds: 5 })] as const,
-    request: { body: { content: jsonContent(z.object({ date: z.string().openapi({ example: '2026-06-18' }) })), required: true } },
-    responses: { ...commonErrorResponses, ...ok(MakeupCheckinResultDTO, '补签成功') },
-  }),
+const checkinMakeupRoute = defineContractRoute(memberSelfContract.makeupCheckin, {
+  middleware: [memberAuthMiddleware, idempotencyGuard({ ttlSeconds: 5 })],
   handler: async (c) => c.json(okBody(await doMyMakeupCheckin(c.req.valid('json').date), '补签成功'), 200),
 });
 
-// ─── GET /checkin/milestones — 我的里程碑 ─────────────────────────────────────
-const checkinMilestonesRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/checkin/milestones', tags: ['MemberSelf'], summary: '我的签到里程碑',
-    security: [{ BearerAuth: [] }],
-    middleware: [memberAuthMiddleware] as const,
-    responses: { ...commonErrorResponses, ...ok(MemberMilestoneStatusDTO, '里程碑达成情况') },
-  }),
+const checkinMilestonesRoute = defineContractRoute(memberSelfContract.checkinMilestones, {
+  middleware: member,
   handler: async (c) => c.json(okBody(await getMyMilestones()), 200),
 });
 
-// ─── GET /login-logs — 我的登录历史 ──────────────────────────────────────────
-const loginLogsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/login-logs', tags: ['MemberSelf'], summary: '我的登录历史',
-    security: [{ BearerAuth: [] }],
-    middleware: [memberAuthMiddleware] as const,
-    request: { query: PaginationQuery },
-    responses: { ...commonErrorResponses, ...okPaginated(MemberLoginLogDTO, '登录历史') },
-  }),
-  handler: async (c) => {
-    const memberId = currentMemberId();
-    const { page = 1, pageSize = 20 } = c.req.valid('query');
-    const [list, total] = await Promise.all([
-      db.select().from(memberLoginLogs)
-        .where(eq(memberLoginLogs.memberId, memberId))
-        .orderBy(desc(memberLoginLogs.createdAt))
-        .limit(pageSize)
-        .offset(pageOffset(page, pageSize)),
-      db.$count(memberLoginLogs, eq(memberLoginLogs.memberId, memberId)),
-    ]);
-    return c.json(okBody({
-      list: list.map(r => ({
-        id: r.id,
-        memberId: r.memberId,
-        ip: r.ip,
-        location: r.location,
-        browser: r.browser,
-        os: r.os,
-        userAgent: r.userAgent,
-        status: r.status,
-        message: r.message,
-        createdAt: formatDateTime(r.createdAt),
-      })),
-      total,
-      page,
-      pageSize,
-    }), 200);
-  },
+const loginLogsRoute = defineContractRoute(memberSelfContract.loginLogs, {
+  middleware: member,
+  handler: async (c) => c.json(okBody(await listMyLoginLogs(c.req.valid('query'))), 200),
 });
 
-// ─── GET /benefits — 我的权益（等级折扣 + 升级进度）──────────────────────────
-const benefitsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/benefits', tags: ['MemberSelf'], summary: '我的权益（折扣与升级进度）',
-    security: [{ BearerAuth: [] }],
-    middleware: [memberAuthMiddleware] as const,
-    responses: { ...commonErrorResponses, ...ok(MemberBenefitsDTO, 'ok') },
-  }),
+const benefitsRoute = defineContractRoute(memberSelfContract.benefits, {
+  middleware: member,
   handler: async (c) => c.json(okBody(await getMyBenefits()), 200),
 });
 
-// ─── 站内通知 ─────────────────────────────────────────────────────────────────
-const notificationsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/notifications', tags: ['MemberSelf'], summary: '我的通知列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [memberAuthMiddleware] as const,
-    request: { query: PaginationQuery.extend({ unreadOnly: queryBool() }) },
-    responses: { ...commonErrorResponses, ...okPaginated(MemberNotificationDTO, 'ok') },
-  }),
+const notificationsRoute = defineContractRoute(memberSelfContract.notifications, {
+  middleware: member,
   handler: async (c) => c.json(okBody(await listMyNotifications(c.req.valid('query'))), 200),
 });
 
-const unreadCountRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/notifications/unread-count', tags: ['MemberSelf'], summary: '未读通知数',
-    security: [{ BearerAuth: [] }],
-    middleware: [memberAuthMiddleware] as const,
-    responses: { ...commonErrorResponses, ...ok(z.object({ count: z.number().int() }), 'ok') },
-  }),
+const unreadCountRoute = defineContractRoute(memberSelfContract.unreadCount, {
+  middleware: member,
   handler: async (c) => c.json(okBody({ count: await getMyUnreadCount() }), 200),
 });
 
-const markReadRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/notifications/{id}/read', tags: ['MemberSelf'], summary: '标记通知已读',
-    security: [{ BearerAuth: [] }],
-    middleware: [memberAuthMiddleware] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...okMsg('已读') },
-  }),
+const markReadRoute = defineContractRoute(memberSelfContract.markRead, {
+  middleware: member,
   handler: async (c) => {
     await markMyNotificationRead(c.req.valid('param').id);
     return c.json(okBody(null, '已读'), 200);
   },
 });
 
-const markAllReadRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/notifications/read-all', tags: ['MemberSelf'], summary: '全部标记已读',
-    security: [{ BearerAuth: [] }],
-    middleware: [memberAuthMiddleware] as const,
-    responses: { ...commonErrorResponses, ...okMsg('已全部已读') },
-  }),
+const markAllReadRoute = defineContractRoute(memberSelfContract.markAllRead, {
+  middleware: member,
   handler: async (c) => {
     const n = await markAllMyNotificationsRead();
     return c.json(okBody(null, `已读 ${n} 条`), 200);
   },
 });
 
-// ─── GET /invite/summary — 我的邀请 ──────────────────────────────────────────
-const inviteSummaryRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/invite/summary', tags: ['MemberSelf'], summary: '我的邀请汇总',
-    security: [{ BearerAuth: [] }],
-    middleware: [memberAuthMiddleware] as const,
-    responses: { ...commonErrorResponses, ...ok(MemberInviteSummaryDTO, 'ok') },
-  }),
+const inviteSummaryRoute = defineContractRoute(memberSelfContract.inviteSummary, {
+  middleware: member,
   handler: async (c) => c.json(okBody(await getMyInviteSummary()), 200),
 });
 
+// 静态段（/coupons/available、/notifications/read-all 等）先于同级动态段注册
 memberSelf.openapiRoutes([
   pointAccountRoute,
   pointTxRoute,

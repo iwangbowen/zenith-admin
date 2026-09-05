@@ -1,29 +1,22 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute } from '@hono/zod-openapi';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { memberStatsContract } from '@zenith/shared/member';
 import { authMiddleware } from '../../middleware/auth';
 import { guard } from '../../middleware/guard';
-import { validationHook, commonErrorResponses, ok, okBody } from '../../lib/openapi-schemas';
-import { MemberStatsOverviewDTO, MemberStatsChartsDTO } from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { getMemberStats, getMemberCharts } from '../../services/member/member-stats.service';
 
 const memberStatsRouter = new OpenAPIHono({ defaultHook: validationHook });
 
-const overviewRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/overview', tags: ['会员看板'], summary: '会员统计概览',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'member:dashboard:view' })] as const,
-    responses: { ...commonErrorResponses, ...ok(MemberStatsOverviewDTO, '会员统计概览') },
-  }),
+const read = [authMiddleware, guard({ permission: 'member:dashboard:view' })] as const;
+
+const overviewRoute = defineContractRoute(memberStatsContract.overview, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await getMemberStats()), 200),
 });
 
-const chartsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/charts', tags: ['会员看板'], summary: '会员统计图表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'member:dashboard:view' })] as const,
-    responses: { ...commonErrorResponses, ...ok(MemberStatsChartsDTO, '会员统计图表') },
-  }),
+const chartsRoute = defineContractRoute(memberStatsContract.charts, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await getMemberCharts()), 200),
 });
 

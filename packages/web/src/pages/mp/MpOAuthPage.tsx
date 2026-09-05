@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Button, Select, Input, Toast, Banner, Typography, Card, Tag } from '@douyinfe/semi-ui';
 import { Link2, Copy } from 'lucide-react';
+import { fillPath } from '@zenith/shared/core';
+import { mpOAuthPublicContract, type MpJsConfig, type MpOAuthScope } from '@zenith/shared/mp';
 import { config } from '@/config';
 import { copyTextWithToast } from '@/utils/clipboard';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -15,30 +17,31 @@ const SCOPE_OPTIONS = [
 
 export default function MpOAuthPage() {
   const { accounts, currentId, setCurrentId, loading: accountsLoading } = useMpAccounts();
-  const [scope, setScope] = useState<'snsapi_base' | 'snsapi_userinfo'>('snsapi_base');
+  const [scope, setScope] = useState<MpOAuthScope>('snsapi_base');
   const [redirectUri, setRedirectUri] = useState('');
   const [state, setState] = useState('');
   const [genUrl, setGenUrl] = useState('');
 
   const [jsUrl, setJsUrl] = useState('');
-  const [jsConfig, setJsConfig] = useState<{ appId: string; timestamp: number; nonceStr: string; signature: string } | null>(null);
+  const [jsConfig, setJsConfig] = useState<MpJsConfig | null>(null);
   const generateUrlMutation = useGenerateMpOAuthUrl();
   const jsConfigMutation = useGenerateMpJsConfig();
 
   const handleJsConfig = async () => {
     if (!currentId) { Toast.error('请先选择公众号'); return; }
     if (!jsUrl.trim()) { Toast.error('请填写页面 URL'); return; }
-    const data = await jsConfigMutation.mutateAsync({ accountId: currentId, url: jsUrl.trim() });
+    const data = await jsConfigMutation.mutateAsync({ body: { accountId: currentId, url: jsUrl.trim() } });
     setJsConfig(data);
   };
 
-  const callbackUrl = currentId ? `${config.apiBaseUrl}/api/public/mp/oauth/${currentId}` : '';
+  // 微信回跳的公开回调地址：路径由契约派生，展示给用户填入公众平台
+  const callbackUrl = currentId ? `${config.apiBaseUrl}${fillPath(mpOAuthPublicContract.callback.fullPath, { accountId: currentId })}` : '';
 
   const handleGenerate = async () => {
     if (!currentId) { Toast.error('请先选择公众号'); return; }
     if (!redirectUri.trim()) { Toast.error('请填写回调地址'); return; }
     const data = await generateUrlMutation.mutateAsync({
-      accountId: currentId, redirectUri: redirectUri.trim(), scope, state: state.trim() || undefined,
+      body: { accountId: currentId, redirectUri: redirectUri.trim(), scope, state: state.trim() || undefined },
     });
     setGenUrl(data.url);
   };
@@ -69,7 +72,7 @@ export default function MpOAuthPage() {
 
         <div>
           <Typography.Text type="secondary" size="small">授权作用域 scope</Typography.Text>
-          <Select style={{ width: '100%', marginTop: 4 }} value={scope} onChange={(v) => setScope(v as 'snsapi_base' | 'snsapi_userinfo')} optionList={SCOPE_OPTIONS} />
+          <Select style={{ width: '100%', marginTop: 4 }} value={scope} onChange={(v) => setScope(v as MpOAuthScope)} optionList={SCOPE_OPTIONS} />
         </div>
 
         <div>

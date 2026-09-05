@@ -82,8 +82,9 @@ const user = currentUser();
 
 ## 参数校验与路由声明
 
-每个端点由 `@zenith/shared/{业务域}/contracts/` 中的契约操作定义：方法、路径、`params` / `query` / `body`
-schema 与响应 schema。路由文件用 `defineContractRoute(op, { middleware, handler })`（`lib/contract-route.ts`）
+每个端点由 `@zenith/shared/{业务域}/contracts/` 中的契约操作定义：方法、路径、`params` / `query` / `headers` / `body`
+schema 与响应 schema（`headers` 只声明业务请求头，如幂等键 `x-idempotency-key`；认证头由 security 表达）。
+路由文件用 `defineContractRoute(op, { middleware, handler })`（`lib/contract-route.ts`）
 把契约变成 Hono 路由，入参按契约 schema 校验，由 `validationHook` 统一转为标准错误响应。
 
 ```json

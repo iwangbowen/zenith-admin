@@ -11,6 +11,7 @@ import {
   BROADCAST_AUDIENCE_TYPE_LABELS,
   BROADCAST_AUDIENCE_TYPE_OPTIONS,
   BROADCAST_CHANNELS,
+  BROADCAST_STATUSES,
   BROADCAST_STATUS_LABELS,
   BROADCAST_STATUS_OPTIONS,
   NOTIFICATION_CHANNEL_LABELS,
@@ -20,6 +21,7 @@ import {
   type BroadcastStatus,
   type CreateBroadcastInput,
 } from '@zenith/shared/messaging';
+import { enumValueOf } from '@zenith/shared/core';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import AppModal from '@/components/AppModal';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
@@ -90,7 +92,7 @@ export default function BroadcastsPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
+    status: enumValueOf(BROADCAST_STATUSES, submittedParams.status),
   });
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
@@ -155,7 +157,7 @@ export default function BroadcastsPage() {
       title: `确认发送「${record.title}」？`,
       content: `受众:${BROADCAST_AUDIENCE_TYPE_LABELS[record.audienceType]}${record.audienceIds.length ? `（${record.audienceIds.length} 人）` : ''},渠道:${record.channels.map((c) => NOTIFICATION_CHANNEL_LABELS[c]).join('、')}。发送后经通知中心分批派发,不可撤回。`,
       onOk: async () => {
-        await sendMutation.mutateAsync(record.id);
+        await sendMutation.mutateAsync({ params: { id: record.id } });
         Toast.success('发送任务已提交');
       },
     });

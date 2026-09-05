@@ -23,6 +23,7 @@ export const mockMemberCheckins: MemberCheckin[] = Array.from({ length: 10 }, (_
     consecutiveDays,
     pointsAwarded: consecutiveDays >= 7 ? 50 : consecutiveDays >= 5 ? 20 : consecutiveDays >= 3 ? 15 : 10,
     experienceAwarded: consecutiveDays >= 7 ? 30 : consecutiveDays >= 5 ? 10 : consecutiveDays >= 3 ? 8 : 5,
+    isMakeup: false,
     remark: null,
     createdAt: mockDateTime(day.hour(9).minute(30).second(0).toDate()),
   };

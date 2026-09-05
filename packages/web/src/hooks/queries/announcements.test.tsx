@@ -33,7 +33,7 @@ import {
   useAnnouncementList,
   useAnnouncementRecipientOptions,
   useAnnouncementUserSearch,
-  useDeleteAnnouncement,
+  useDeleteAnnouncements,
   useMarkMyAnnouncementRead,
   useMyAnnouncementList,
   usePublishedAnnouncements,
@@ -132,7 +132,7 @@ describe('useMarkMyAnnouncementRead —— 只动收件箱与已读统计', () =
     const fetches = observeFetches(qc);
     api.resetCalls();
 
-    await result.current.markRead.mutateAsync(1);
+    await result.current.markRead.mutateAsync({ params: { id: 1 } });
     await waitFor(() => expect(fetches.countOf(announcementKeys.myLists)).toBe(1));
 
     expect(isInvalidated(qc, announcementKeys.list(LIST_PARAMS))).toBe(false);
@@ -166,7 +166,7 @@ describe('顶栏公告铃铛与工作台公告卡片共享同一份缓存', () =
     });
     expect(result.current.dashboard.data?.[0]?.isRead).toBe(false);
 
-    await result.current.markRead.mutateAsync(1);
+    await result.current.markRead.mutateAsync({ params: { id: 1 } });
 
     // 修复前：工作台读的是 ['dashboard','announcements']，不在失效范围内，
     // 未读圆点会一直留着，且停留在工作台时不会自愈
@@ -212,11 +212,11 @@ describe('收件人选项归还所有者域', () => {
   });
 });
 
-describe('useDeleteAnnouncement', () => {
+describe('useDeleteAnnouncements', () => {
   it('drops both the admin and inbox detail caches for the deleted notice', async () => {
     const qc = createTestQueryClient();
     const { result } = renderHook(
-      () => ({ list: useAnnouncementList(LIST_PARAMS), remove: useDeleteAnnouncement() }),
+      () => ({ list: useAnnouncementList(LIST_PARAMS), remove: useDeleteAnnouncements() }),
       { wrapper: createWrapper(qc) },
     );
     await waitFor(() => expect(result.current.list.isSuccess).toBe(true));
@@ -224,7 +224,7 @@ describe('useDeleteAnnouncement', () => {
     qc.setQueryData(announcementKeys.detail(1), NOTICE);
     qc.setQueryData(announcementKeys.myDetail(1), NOTICE);
 
-    await result.current.remove.mutateAsync(1);
+    await result.current.remove.mutateAsync([1]);
     await waitFor(() => expect(result.current.list.isFetching).toBe(false));
 
     expect(hasCacheEntry(qc, announcementKeys.detail(1))).toBe(false);

@@ -1,10 +1,9 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { chatContract } from '@zenith/shared/chat';
-import type { Channel, ChannelMenu, ChannelMessage } from '@zenith/shared/messaging';
 import { resourceKeyOf, type QueryOf } from '@zenith/shared/core';
+import { channelContract } from '@zenith/shared/messaging';
 import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
-import { request } from '@/utils/request';
-import { LOOKUP_STALE_TIME, toQueryString, unwrap } from '@/lib/query';
+import { LOOKUP_STALE_TIME } from '@/lib/query';
 
 export type ChatUserSearchParams = QueryOf<typeof chatContract.users>;
 
@@ -60,7 +59,7 @@ export const chatKeys = {
 export function useDiscoverableChannels(params: DiscoverableChannelParams, enabled = true) {
   return useQuery({
     queryKey: chatKeys.discoverableChannels(params),
-    queryFn: () => request.get<Channel[]>(`/api/channels/discoverable${toQueryString(params)}`, { silent: true }).then(unwrap),
+    queryFn: () => api(channelContract.discoverable, { query: params }, silent),
     enabled,
     placeholderData: keepPreviousData,
   });
@@ -301,18 +300,17 @@ export function useCreateChatGroup() {
 export function useChannelMessages(params: ChannelMessageParams) {
   return useQuery({
     queryKey: chatKeys.channelMessages(params),
-    queryFn: () =>
-      request.get<{ list: ChannelMessage[]; total: number }>(
-        `/api/channels/${params.channelId}/messages${toQueryString({ page: params.page, pageSize: params.pageSize })}`,
-        { silent: true },
-      ).then(unwrap),
+    queryFn: () => api(channelContract.messages, {
+      params: { id: params.channelId },
+      query: { page: params.page, pageSize: params.pageSize },
+    }, silent),
   });
 }
 
 export function useChannelMenus(channelId: number | undefined, enabled = true) {
   return useQuery({
     queryKey: chatKeys.channelMenus(channelId),
-    queryFn: () => request.get<ChannelMenu[]>(`/api/channels/${channelId}/menus`, { silent: true }).then(unwrap),
+    queryFn: () => api(channelContract.menus, { params: { id: channelId ?? 0 } }, silent),
     enabled: enabled && channelId !== undefined,
     staleTime: LOOKUP_STALE_TIME,
   });

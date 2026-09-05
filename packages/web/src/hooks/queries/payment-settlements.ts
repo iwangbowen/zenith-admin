@@ -1,78 +1,45 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { PaymentSettlementBatch, PaymentSettlementItem, PaymentSettlementStatus } from '@zenith/shared/payment';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import type { QueryClient } from '@tanstack/react-query';
+import type { QueryOf } from '@zenith/shared/core';
+import { paymentSettlementContract } from '@zenith/shared/payment';
+import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
-export interface PaymentSettlementListParams {
-  page: number;
-  pageSize: number;
-  channel?: string;
-  status?: string;
-}
+export type PaymentSettlementListParams = NonNullable<QueryOf<typeof paymentSettlementContract.list>>;
 
-export interface GeneratePaymentSettlementValues {
-  applicationId: number;
-  channelConfigId: number;
-  currency: string;
-  periodStart: string;
-  periodEnd: string;
-  remark?: string;
-}
-
-export interface UpdatePaymentSettlementStatusValues {
-  id: number;
-  status: PaymentSettlementStatus;
-  failureReason?: string;
-  payoutReference?: string;
-}
+const resource = createResourceQueries(paymentSettlementContract);
 
 export const paymentSettlementKeys = {
-  all: ['payment-settlements'] as const,
-  lists: ['payment-settlements', 'list'] as const,
-  list: (params: PaymentSettlementListParams) => ['payment-settlements', 'list', params] as const,
-  detail: (id: number | undefined) => ['payment-settlements', 'detail', id] as const,
-  items: (id: number | undefined) => ['payment-settlements', 'items', id] as const,
+  ...resource.keys,
+  itemLists: contractKey(paymentSettlementContract.items),
+  items: (id: number | undefined) => contractKey(paymentSettlementContract.items, { params: { id: id ?? 0 } }),
 };
 
-export function usePaymentSettlementList(params: PaymentSettlementListParams) {
-  return useQuery({
-    queryKey: paymentSettlementKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<PaymentSettlementBatch>>(`/api/payment/settlements${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+/** 批次状态流转 / 生成 / 删除都会改变列表与详情 */
+function invalidateSettlements(qc: QueryClient) {
+  void qc.invalidateQueries({ queryKey: paymentSettlementKeys.lists });
+  void qc.invalidateQueries({ queryKey: [...paymentSettlementKeys.all, 'detail'] });
 }
 
+export const usePaymentSettlementList = resource.useList;
+export const usePaymentSettlementDetail = resource.useDetail;
+
 export function usePaymentSettlementItems(id: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: paymentSettlementKeys.items(id),
-    queryFn: () => request.get<PaymentSettlementItem[]>(`/api/payment/settlements/${id}/items`).then(unwrap),
-    enabled: enabled && id !== undefined,
-  });
+  return useApiQuery(paymentSettlementContract.items, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
 }
 
 export function useGeneratePaymentSettlement() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: GeneratePaymentSettlementValues) =>
-      request.post<PaymentSettlementBatch>('/api/payment/settlements/generate', values).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: paymentSettlementKeys.all }),
-  });
+  return useApiMutation(paymentSettlementContract.generate, { invalidate: invalidateSettlements });
 }
 
 export function useUpdatePaymentSettlementStatus() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, ...values }: UpdatePaymentSettlementStatusValues) =>
-      request.post<PaymentSettlementBatch>(`/api/payment/settlements/${id}/status`, values).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: paymentSettlementKeys.all }),
-  });
+  return useApiMutation(paymentSettlementContract.transition, { invalidate: invalidateSettlements });
 }
 
 export function useDeletePaymentSettlement() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/payment/settlements/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: paymentSettlementKeys.all }),
+  return useApiMutation(paymentSettlementContract.remove, {
+    invalidate: (qc, _output, { params }) => {
+      qc.removeQueries({ queryKey: paymentSettlementKeys.detail(params.id) });
+      qc.removeQueries({ queryKey: paymentSettlementKeys.items(params.id) });
+      invalidateSettlements(qc);
+    },
   });
 }

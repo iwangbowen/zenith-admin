@@ -24,8 +24,9 @@ import {
 } from '@/hooks/queries/payment-recon';
 import { usePaymentChannelOperationLookup } from '@/hooks/queries/payment-channels';
 import { usePaymentAppList } from '@/hooks/queries/payment-apps';
-import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS, PAYMENT_RECON_HANDLE_STATUS_LABELS, PAYMENT_RECON_RESULT_LABELS, PAYMENT_RECON_SOURCE_LABELS, PAYMENT_RECON_STATUS_LABELS, PAYMENT_RECON_STATUS_OPTIONS, PAYMENT_RECON_RESULT_OPTIONS, PAYMENT_RECON_HANDLE_STATUS_OPTIONS } from '@zenith/shared/payment';
-import type { PaymentChannel, PaymentReconBatch, PaymentReconHandleStatus, PaymentReconItem, PaymentReconResult, PaymentReconSource, PaymentReconStatus } from '@zenith/shared/payment';
+import { enumValueOf } from '@zenith/shared/core';
+import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS, PAYMENT_CHANNELS, PAYMENT_RECON_HANDLE_STATUS_LABELS, PAYMENT_RECON_HANDLE_STATUSES, PAYMENT_RECON_RESULT_LABELS, PAYMENT_RECON_RESULTS, PAYMENT_RECON_SOURCE_LABELS, PAYMENT_RECON_STATUS_LABELS, PAYMENT_RECON_STATUSES, PAYMENT_RECON_STATUS_OPTIONS, PAYMENT_RECON_RESULT_OPTIONS, PAYMENT_RECON_HANDLE_STATUS_OPTIONS } from '@zenith/shared/payment';
+import type { AutoPaymentReconInput, CreatePaymentReconBatchInput, PaymentChannel, PaymentReconBatch, PaymentReconHandleStatus, PaymentReconItem, PaymentReconResult, PaymentReconSource, PaymentReconStatus } from '@zenith/shared/payment';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { confirmDelete } from '@/utils/confirm';
 import { copyableNoColumn, dateColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
@@ -85,8 +86,8 @@ export default function PaymentReconPage() {
   const listQuery = usePaymentReconBatchList({
     page,
     pageSize,
-    channel: submittedParams.channel || undefined,
-    status: submittedParams.status || undefined,
+    channel: enumValueOf(PAYMENT_CHANNELS, submittedParams.channel),
+    status: enumValueOf(PAYMENT_RECON_STATUSES, submittedParams.status),
   });
   const data = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
@@ -118,12 +119,11 @@ export default function PaymentReconPage() {
     .flatMap((config) => paymentApps
       .filter((app) => [app.wechatConfigId, app.alipayConfigId, app.unionpayConfigId].includes(config.id))
       .map((app) => ({ value: `${app.id}:${config.id}`, label: `${app.name} · ${config.name} · ${PAYMENT_CHANNEL_LABELS[config.channel]}`, applicationId: app.id, channelConfigId: config.id, channel: config.channel }))), [paymentApps, operationChannelConfigs]);
-  const itemsQuery = usePaymentReconItems({
-    batchId: detailBatch?.id,
+  const itemsQuery = usePaymentReconItems(detailBatch?.id, {
     page: itemPage,
     pageSize: itemPageSize,
-    result: itemResult || undefined,
-    handleStatus: itemHandleStatus || undefined,
+    result: enumValueOf(PAYMENT_RECON_RESULTS, itemResult),
+    handleStatus: enumValueOf(PAYMENT_RECON_HANDLE_STATUSES, itemHandleStatus),
   }, !!detailBatch);
   const itemsData = itemsQuery.data?.list ?? [];
   const itemsTotal = itemsQuery.data?.total ?? 0;
@@ -134,10 +134,10 @@ export default function PaymentReconPage() {
   const autoMutation = useAutoPaymentRecon();
 
   const createSaveMutation = {
-    mutateAsync: ({ values }: { id?: number; values: { applicationId: number; channel: string; channelConfigId: number; currency: 'CNY'; billDate: string; billText: string; remark?: string } }) => createMutation.mutateAsync(values),
+    mutateAsync: ({ values }: { id?: number; values: CreatePaymentReconBatchInput }) => createMutation.mutateAsync({ body: values }),
     isPending: createMutation.isPending,
   };
-  const createModal = useEditModal<PaymentReconBatch, ReconFormValues, { applicationId: number; channel: string; channelConfigId: number; currency: 'CNY'; billDate: string; billText: string; remark?: string }>({
+  const createModal = useEditModal<PaymentReconBatch, ReconFormValues, CreatePaymentReconBatchInput>({
     save: createSaveMutation,
     defaults: { currency: 'CNY' },
     beforeSave: (values) => {
@@ -162,14 +162,14 @@ export default function PaymentReconPage() {
     labelWidth: 100,
   });
   const autoSaveMutation = {
-    mutateAsync: async ({ values }: { id?: number; values: { applicationId: number; channel: string; channelConfigId: number; currency: string; billDate: string } }) => {
-      const batch = await autoMutation.mutateAsync(values);
+    mutateAsync: async ({ values }: { id?: number; values: AutoPaymentReconInput }) => {
+      const batch = await autoMutation.mutateAsync({ body: values });
       latestAutoBatch.current = batch;
       return batch;
     },
     isPending: autoMutation.isPending,
   };
-  const autoModal = useEditModal<PaymentReconBatch, AutoReconFormValues, { applicationId: number; channel: string; channelConfigId: number; currency: string; billDate: string }>({
+  const autoModal = useEditModal<PaymentReconBatch, AutoReconFormValues, AutoPaymentReconInput>({
     save: autoSaveMutation,
     beforeSave: (values) => {
       const selected = autoOptions.find((option) => option.value === values.channel);
@@ -185,7 +185,7 @@ export default function PaymentReconPage() {
   const handleSaveMutation = {
     mutateAsync: ({ id, values }: { id?: number; values: HandleFormValues }) => {
       if (id == null) throw new Error('缺少记录 ID，请刷新后重试');
-      return handleItemMutation.mutateAsync({ id, values: { action: values.action, remark: values.remark.trim() } });
+      return handleItemMutation.mutateAsync({ params: { id }, body: { action: values.action, remark: values.remark.trim() } });
     },
     isPending: handleItemMutation.isPending,
   };
@@ -212,7 +212,7 @@ export default function PaymentReconPage() {
   }
 
   async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync(id);
+    await deleteMutation.mutateAsync({ params: { id } });
     Toast.success('删除成功');
   }
 

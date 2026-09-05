@@ -120,7 +120,7 @@ function AvailableCoupons() {
   const list = query.data ?? [];
 
   const receive = async (couponId: number) => {
-    await receiveMutation.mutateAsync(couponId);
+    await receiveMutation.mutateAsync({ body: { couponId } });
     Toast.success('领取成功');
   };
 
@@ -141,7 +141,7 @@ function AvailableCoupons() {
             <Button
               size="small"
               theme="solid"
-              loading={receiveMutation.isPending && receiveMutation.variables === c.id}
+              loading={receiveMutation.isPending && receiveMutation.variables?.body.couponId === c.id}
               onClick={() => receive(c.id)}
               style={{ background: 'var(--m-primary)' }}
             >
@@ -168,7 +168,7 @@ function ExchangeCoupons() {
       content: `将消耗 ${cost} 积分（当前余额 ${balance}）`,
       okText: '确认兑换',
       onOk: async () => {
-        await exchangeMutation.mutateAsync(coupon.id);
+        await exchangeMutation.mutateAsync({ body: { couponId: coupon.id } });
         Toast.success('兑换成功');
       },
     });
@@ -200,7 +200,7 @@ function ExchangeCoupons() {
                   size="small"
                   theme="solid"
                   disabled={!enough}
-                  loading={exchangeMutation.isPending && exchangeMutation.variables === c.id}
+                  loading={exchangeMutation.isPending && exchangeMutation.variables?.body.couponId === c.id}
                   onClick={() => exchange(c)}
                   style={enough ? { background: 'var(--m-primary)' } : undefined}
                 >

@@ -33,6 +33,48 @@ export const AI_REASONING_LEVELS = ['provider-default', 'none', 'minimal', 'low'
 
 export type AiReasoningLevel = (typeof AI_REASONING_LEVELS)[number];
 
+/** 对话消息角色 */
+export const AI_MESSAGE_ROLES = ['system', 'user', 'assistant'] as const;
+
+export type AiMessageRole = (typeof AI_MESSAGE_ROLES)[number];
+
+/** 消息反馈处理状态：pending 待处理 / resolved 已处理 / ignored 已忽略 */
+export const AI_FEEDBACK_STATUSES = ['pending', 'resolved', 'ignored'] as const;
+
+export type AiFeedbackStatus = (typeof AI_FEEDBACK_STATUSES)[number];
+
+/** 提示词模板范围：system 系统级 / user 用户私有 */
+export const AI_PROMPT_SCOPES = ['system', 'user'] as const;
+
+export type AiPromptScope = (typeof AI_PROMPT_SCOPES)[number];
+
+/** 知识库文档处理状态 */
+export const AI_KB_DOCUMENT_STATUSES = ['ready', 'processing', 'failed'] as const;
+
+export type AiKbDocumentStatus = (typeof AI_KB_DOCUMENT_STATUSES)[number];
+
+/** 生成调用链 trace 步骤类型（检索 / 工具执行 / LLM 轮次 / 降级切换） */
+export const AI_TRACE_STEP_TYPES = ['retrieval', 'tool_call', 'llm_round', 'failover'] as const;
+
+export type AiTraceStepType = (typeof AI_TRACE_STEP_TYPES)[number];
+
+/** 工具来源：内置 / 管理员配置的 HTTP 工具 */
+export const AI_TOOL_SOURCES = ['builtin', 'http'] as const;
+
+export type AiToolSource = (typeof AI_TOOL_SOURCES)[number];
+
+export const AI_HTTP_TOOL_METHODS = ['GET', 'POST', 'PUT', 'DELETE'] as const;
+
+export const AI_HTTP_TOOL_PARAM_TYPES = ['string', 'number', 'boolean'] as const;
+
+/** query = URL 查询参数 / body = JSON body 字段 / path = URL 路径占位符 {name} */
+export const AI_HTTP_TOOL_PARAM_LOCATIONS = ['query', 'body', 'path'] as const;
+
+/** 评测实验状态 */
+export const AI_EVAL_EXPERIMENT_STATUSES = ['pending', 'running', 'completed', 'failed'] as const;
+
+export type AiEvalExperimentStatus = (typeof AI_EVAL_EXPERIMENT_STATUSES)[number];
+
 /** 用户级 AI 设置默认值(DB 稀疏存储,读取时深合并;新增域只需扩展此处与 schema) */
 export const AI_USER_SETTINGS_DEFAULTS = {
   instructions: { enabled: true, aboutMe: null, replyStyle: null },

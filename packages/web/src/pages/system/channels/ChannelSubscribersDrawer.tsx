@@ -83,14 +83,14 @@ export function ChannelSubscribersDrawer({ channel, visible, onClose }: Readonly
 
   const handleAdd = async () => {
     if (!channel || addUserIds.length === 0) { Toast.warning('请选择要添加的用户'); return; }
-    await addMutation.mutateAsync({ channelId: channel.id, userIds: addUserIds });
+    await addMutation.mutateAsync({ params: { id: channel.id }, body: { userIds: addUserIds } });
     Toast.success('已添加');
     setAddVisible(false);
   };
 
   const handleRemove = async (sub: ChannelSubscriber) => {
     if (!channel) return;
-    await removeMutation.mutateAsync({ channelId: channel.id, userId: sub.userId });
+    await removeMutation.mutateAsync({ params: { id: channel.id, userId: sub.userId } });
     Toast.success('已移除');
   };
 

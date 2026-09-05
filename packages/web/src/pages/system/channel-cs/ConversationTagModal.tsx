@@ -1,14 +1,12 @@
 /**
  * 会话标签编辑弹窗
  *
- * 用 Semi TagInput 维护会话标签数组（最多 10 个，每个 ≤ 20 字），
- * 保存时调用 PUT /api/channels/cs/{channelId}/conversations/{userId}/tags。
+ * 用 Semi TagInput 维护会话标签数组（最多 10 个，每个 ≤ 20 字），保存时整体替换会话标签。
  */
 import { useEffect, useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
 import { TagInput, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ChannelConversation } from '@zenith/shared/messaging';
-import { request } from '@/utils/request';
+import { useSetChannelConversationTags } from '@/hooks/queries/channel-cs';
 import { AppModal } from '@/components/AppModal';
 
 const MAX_TAGS = 10;
@@ -24,13 +22,7 @@ interface Props {
 
 export function ConversationTagModal({ channelId, conversation, visible, onClose, onSaved }: Readonly<Props>) {
   const [tags, setTags] = useState<string[]>([]);
-  const saveTagsMutation = useMutation({
-    mutationFn: ({ userId, values }: { userId: number; values: string[] }) =>
-      request.put(
-        `/api/channels/cs/${channelId}/conversations/${userId}/tags`,
-        { tags: values },
-      ),
-  });
+  const saveTagsMutation = useSetChannelConversationTags();
 
   useEffect(() => {
     if (visible) setTags(conversation?.tags ?? []);
@@ -52,12 +44,10 @@ export function ConversationTagModal({ channelId, conversation, visible, onClose
 
   const handleSubmit = async () => {
     if (conversation == null) return;
-    const res = await saveTagsMutation.mutateAsync({ userId: conversation.userId, values: tags });
-    if (res.code === 0) {
-      Toast.success('标签已更新');
-      onClose();
-      onSaved?.();
-    }
+    await saveTagsMutation.mutateAsync({ params: { id: channelId, userId: conversation.userId }, body: { tags } });
+    Toast.success('标签已更新');
+    onClose();
+    onSaved?.();
   };
 
   return (
